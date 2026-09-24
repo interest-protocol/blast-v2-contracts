@@ -7,7 +7,7 @@
 #[allow(lint(abort_without_constant))]
 /// Small live protocol settings read by bonding-curve trades and creator claims.
 ///
-/// Fees collected from migrated liquidity use `lp_fee_policy::LpFeePolicy` instead.
+/// Fees collected from migrated liquidity belong to the migrators' `lp_fee_policy::LpFeePolicy`.
 module blast_fun::runtime_config;
 
 // === Public Types ===

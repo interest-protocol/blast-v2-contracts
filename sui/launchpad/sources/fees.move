@@ -34,8 +34,7 @@ public fun new<Meme, Quote>(): FeeLedger<Meme, Quote> {
 ///
 /// Only the module that embeds the ledger can reach it mutably, so that owner chooses
 /// `protocol_fee_share` from its accepted policy on every accrual: trades read
-/// `RuntimeConfig` and migrated LP positions read `LpFeePolicy`. Protocol amounts
-/// round up and the creator receives the exact remainder.
+/// `RuntimeConfig`. Protocol amounts round up and the creator receives the exact remainder.
 ///
 /// Returns the protocol and creator deltas for each asset.
 public fun accrue<Meme, Quote>(

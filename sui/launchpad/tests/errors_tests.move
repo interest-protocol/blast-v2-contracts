@@ -8,30 +8,24 @@ module blast_fun::errors_tests;
 
 #[test]
 fun launch_protection_error_registry_is_stable() {
-    assert_eq!(blast_fun::errors::invalid_protection!(), 53);
-    assert_eq!(blast_fun::errors::per_transaction_limit_exceeded!(), 54);
-    assert_eq!(blast_fun::errors::cumulative_limit_exceeded!(), 55);
+    assert_eq!(blast_fun::errors::invalid_protection!(), 50);
+    assert_eq!(blast_fun::errors::per_transaction_limit_exceeded!(), 51);
+    assert_eq!(blast_fun::errors::cumulative_limit_exceeded!(), 52);
 }
 
 #[test]
 fun pre_share_error_registry_is_stable() {
-    assert_eq!(blast_fun::errors::launch_already_shared!(), 56);
-    assert_eq!(blast_fun::errors::pre_share_buy_already_completed!(), 57);
-    assert_eq!(blast_fun::errors::pre_share_buy_would_graduate!(), 58);
+    assert_eq!(blast_fun::errors::launch_already_shared!(), 53);
+    assert_eq!(blast_fun::errors::pre_share_buy_already_completed!(), 54);
+    assert_eq!(blast_fun::errors::pre_share_buy_would_graduate!(), 55);
 }
 
 #[test]
-fun recurring_router_error_registry_is_stable() {
-    assert_eq!(blast_fun::errors::router_mismatch!(), 60);
-    assert_eq!(blast_fun::errors::router_not_active!(), 61);
-    assert_eq!(blast_fun::errors::router_already_active!(), 62);
-    assert_eq!(blast_fun::errors::route_capacity_reached!(), 63);
-    assert_eq!(blast_fun::errors::route_sum_invalid!(), 64);
-    assert_eq!(blast_fun::errors::route_duplicate_destination!(), 65);
-    assert_eq!(blast_fun::errors::route_invalid_destination!(), 66);
-    assert_eq!(blast_fun::errors::route_unchanged!(), 67);
-    assert_eq!(blast_fun::errors::settlement_binding_mismatch!(), 68);
-    assert_eq!(blast_fun::errors::protocol_destination_unchanged!(), 69);
+fun route_error_registry_is_stable() {
+    assert_eq!(blast_fun::errors::route_capacity_reached!(), 57);
+    assert_eq!(blast_fun::errors::route_sum_invalid!(), 58);
+    assert_eq!(blast_fun::errors::route_duplicate_destination!(), 59);
+    assert_eq!(blast_fun::errors::route_invalid_destination!(), 60);
 }
 
 #[test]
@@ -81,26 +75,25 @@ fun market_and_launch_error_registry_is_stable() {
 
 #[test]
 fun reusable_launch_and_allocation_error_registry_is_stable() {
-    assert_eq!(blast_fun::errors::invalid_curve_fee!(), 44);
-    assert_eq!(blast_fun::errors::decimals_not_allowed!(), 45);
-    assert_eq!(blast_fun::errors::allocation_sum_invalid!(), 46);
-    assert_eq!(blast_fun::errors::duplicate_migration_channel!(), 47);
-    assert_eq!(blast_fun::errors::unknown_migration_channel!(), 48);
-    assert_eq!(blast_fun::errors::migration_channel_capacity_reached!(), 49);
-    assert_eq!(blast_fun::errors::invalid_liquidity_channel!(), 50);
-    assert_eq!(blast_fun::errors::protocol_channel_mismatch!(), 51);
-    assert_eq!(blast_fun::errors::invalid_graduation_target!(), 52);
-    assert_eq!(blast_fun::errors::migration_settlement_mismatch!(), 59);
+    assert_eq!(blast_fun::errors::invalid_curve_fee!(), 41);
+    assert_eq!(blast_fun::errors::decimals_not_allowed!(), 42);
+    assert_eq!(blast_fun::errors::allocation_sum_invalid!(), 43);
+    assert_eq!(blast_fun::errors::duplicate_migration_channel!(), 44);
+    assert_eq!(blast_fun::errors::unknown_migration_channel!(), 45);
+    assert_eq!(blast_fun::errors::migration_channel_capacity_reached!(), 46);
+    assert_eq!(blast_fun::errors::invalid_liquidity_channel!(), 47);
+    assert_eq!(blast_fun::errors::protocol_channel_mismatch!(), 48);
+    assert_eq!(blast_fun::errors::invalid_graduation_target!(), 49);
+    assert_eq!(blast_fun::errors::migration_settlement_mismatch!(), 56);
+    assert_eq!(blast_fun::errors::meme_symbol_too_long!(), 61);
+    assert_eq!(blast_fun::errors::launch_settings_incomplete!(), 62);
 }
 
 #[test]
 fun creator_authority_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::curve_fee_cap_not_live!(), 38);
     assert_eq!(blast_fun::errors::metadata_unchanged!(), 39);
-    assert_eq!(blast_fun::errors::creator_fees_locked!(), 40);
-    assert_eq!(blast_fun::errors::creator_custodian_mismatch!(), 41);
-    assert_eq!(blast_fun::errors::metadata_cap_not_live!(), 42);
-    assert_eq!(blast_fun::errors::invalid_fee_custodian!(), 43);
+    assert_eq!(blast_fun::errors::metadata_cap_not_live!(), 40);
 }
 
 #[test]

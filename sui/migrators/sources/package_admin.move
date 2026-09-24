@@ -6,7 +6,7 @@
 /// Migrators shares the Launchpad administration domain, so its governed
 /// transitions accept `AdminWitness<BLAST_FUN_DOMAIN>` and assert the role that
 /// Launchpad exports. Custody itself stays package-local: advancing Migrators
-/// leaves Launchpad and Distributor on their own generations.
+/// leaves Launchpad on its own generation.
 module blast_fun_migrators::package_admin;
 
 // === Errors ===
@@ -64,8 +64,8 @@ public fun commit_upgrade_and_advance(
     admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
     receipt: UpgradeReceipt,
 ) {
-    admin_witness.assert_role(blast_fun_domain::package_admin_role());
     package_version.assert_next();
+    admin_witness.assert_role(blast_fun_domain::package_admin_role());
     let custodian_id = self.id.to_inner();
 
     self.custody.commit_upgrade(custodian_id, receipt);

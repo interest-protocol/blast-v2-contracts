@@ -6,82 +6,6 @@ module blast_fun::events;
 
 // === Public Types ===
 
-/// An activation policy source changed; absent old/new pairs represent override creation/removal.
-public struct LpFeePolicyChanged has copy, drop {
-    override_meme: Option<TypeName>,
-    old_meme_bps: Option<u64>,
-    old_quote_bps: Option<u64>,
-    new_meme_bps: Option<u64>,
-    new_quote_bps: Option<u64>,
-}
-
-/// The protocol share of every later collection pays a new address.
-public struct LpFeeDestinationChanged has copy, drop {
-    old_destination: address,
-    new_destination: address,
-}
-
-/// A launch committed its pending router, its sole configuration capability, and initial routes.
-public struct FeeRouterCreated has copy, drop {
-    router_id: ID,
-    launch_id: ID,
-    config_cap_id: ID,
-    routes: blast_fun::allocation::Routes,
-}
-
-/// Successful migration froze a router's policy, settlement binding, and routes.
-public struct RouterActivated has copy, drop {
-    router_id: ID,
-    launch_id: ID,
-    partner: bool,
-    meme_bps: u64,
-    quote_bps: u64,
-    settlement_witness: TypeName,
-    vault_id: ID,
-    pool_id: ID,
-    position_id: ID,
-    generation: u64,
-    routes: blast_fun::allocation::Routes,
-}
-
-/// One nonzero collection: the protocol share and every route paid under `generation`.
-/// Amounts align with the route tables frozen for that generation.
-public struct FeesCollected has copy, drop {
-    router_id: ID,
-    launch_id: ID,
-    generation: u64,
-    gross_meme: u64,
-    gross_quote: u64,
-    protocol_destination: address,
-    protocol_meme: u64,
-    protocol_quote: u64,
-    meme_amounts: vector<u64>,
-    quote_amounts: vector<u64>,
-}
-
-/// An authenticated creator claim released the pending cap for transaction composition.
-/// Subsequent custody follows native effects rather than a declared recipient.
-public struct RouterConfigCapReleased has copy, drop {
-    launch_id: ID,
-    cap_id: ID,
-}
-
-/// Creator-authority takeover natively delivered the still-pending cap to its recipient.
-public struct RouterConfigCapDelivered has copy, drop {
-    launch_id: ID,
-    cap_id: ID,
-    recipient: address,
-}
-
-/// Configuration authority committed complete new routes as the next generation.
-public struct RoutesChanged has copy, drop {
-    router_id: ID,
-    old_generation: u64,
-    new_generation: u64,
-    old_routes: blast_fun::allocation::Routes,
-    new_routes: blast_fun::allocation::Routes,
-}
-
 /// Immutable one-time Blast policy, including the stable identity and destination.
 public struct ProtocolAllocationConfigured has copy, drop {
     channel_id: u64,
@@ -158,13 +82,6 @@ public struct MetadataCapReassigned has copy, drop {
     recipient: address,
 }
 
-/// Emitted after a curve-fee cap is destroyed and curve fees are bound to a custodian forever.
-public struct CreatorFeesLocked has copy, drop {
-    launch_id: ID,
-    curve_fee_cap_id: ID,
-    custodian: TypeName,
-}
-
 /// Emitted after the metadata-cap holder updates coin metadata through the launch.
 public struct MemeMetadataUpdated has copy, drop {
     launch_id: ID,
@@ -187,7 +104,8 @@ public struct LaunchTicketCreated has copy, drop {
 }
 
 /// Emitted after one ticket is normalized into launch custody and immutable policy.
-/// `meme_amounts` are the exact atomic Meme partition in the plan's Meme table order.
+/// `meme_amounts` are the exact atomic Meme partition in the plan's Meme table order. The pool
+/// tier and LP-fee split are the creator's settings the migration adapter receives.
 public struct LaunchCreated has copy, drop {
     launch_id: ID,
     ticket_id: ID,
@@ -195,6 +113,9 @@ public struct LaunchCreated has copy, drop {
     atomic_supply: u64,
     quote: TypeName,
     migration_witness: TypeName,
+    pool_tick_spacing: u32,
+    pool_fee_rate: u64,
+    lp_fee_split: blast_fun::allocation::FeeSplit,
     virtual_quote: u64,
     graduation_target: u64,
     quote_fee_bps: u64,
@@ -214,10 +135,9 @@ public struct ProtectionConfigured has copy, drop {
     per_transaction_atomic_limit: u64,
 }
 
-/// Emitted after the launch and bound router become public shared objects.
+/// Emitted after the launch becomes a public shared object.
 public struct LaunchShared has copy, drop {
     launch_id: ID,
-    fee_router_id: ID,
     public_start_ms: u64,
     pre_share_buy_completed: bool,
 }
@@ -267,7 +187,7 @@ public struct Sold has copy, drop {
 }
 
 /// Emitted after one migration completed: exact reconciliation and disposal. The handoff is
-/// `supplied + residual`; the custody binding is in the same transaction's `RouterActivated`.
+/// `supplied + residual`; the adapter records its custody in the same transaction.
 public struct Migrated has copy, drop {
     launch_id: ID,
     supplied_meme: u64,
@@ -295,129 +215,6 @@ public struct ProtocolFeesClaimed has copy, drop {
 }
 
 // === Package Functions ===
-
-/// Records a default or original-type partner policy mutation with complete old/new pairs.
-public(package) fun lp_fee_policy_changed(
-    override_meme: Option<TypeName>,
-    old_meme_bps: Option<u64>,
-    old_quote_bps: Option<u64>,
-    new_meme_bps: Option<u64>,
-    new_quote_bps: Option<u64>,
-) {
-    blast_fun::blast_events::emit_event(LpFeePolicyChanged {
-        override_meme,
-        old_meme_bps,
-        old_quote_bps,
-        new_meme_bps,
-        new_quote_bps,
-    });
-}
-
-/// Records the protocol share redirection.
-public(package) fun lp_fee_destination_changed(old_destination: address, new_destination: address) {
-    blast_fun::blast_events::emit_event(LpFeeDestinationChanged {
-        old_destination,
-        new_destination,
-    });
-}
-
-/// Records the complete pending router configuration after mutual binding.
-public(package) fun fee_router_created(
-    router_id: ID,
-    launch_id: ID,
-    config_cap_id: ID,
-    routes: blast_fun::allocation::Routes,
-) {
-    blast_fun::blast_events::emit_event(FeeRouterCreated {
-        router_id,
-        launch_id,
-        config_cap_id,
-        routes,
-    });
-}
-
-/// Records frozen activation inputs, the settlement binding, and complete canonical routes.
-public(package) fun router_activated(
-    router_id: ID,
-    launch_id: ID,
-    partner: bool,
-    meme_bps: u64,
-    quote_bps: u64,
-    settlement_witness: TypeName,
-    vault_id: ID,
-    pool_id: ID,
-    position_id: ID,
-    generation: u64,
-    routes: blast_fun::allocation::Routes,
-) {
-    blast_fun::blast_events::emit_event(RouterActivated {
-        router_id,
-        launch_id,
-        partner,
-        meme_bps,
-        quote_bps,
-        settlement_witness,
-        vault_id,
-        pool_id,
-        position_id,
-        generation,
-        routes,
-    });
-}
-
-/// Records one nonzero collection after every share has been paid.
-public(package) fun fees_collected(
-    router_id: ID,
-    launch_id: ID,
-    generation: u64,
-    gross_meme: u64,
-    gross_quote: u64,
-    protocol_destination: address,
-    protocol_meme: u64,
-    protocol_quote: u64,
-    meme_amounts: vector<u64>,
-    quote_amounts: vector<u64>,
-) {
-    blast_fun::blast_events::emit_event(FeesCollected {
-        router_id,
-        launch_id,
-        generation,
-        gross_meme,
-        gross_quote,
-        protocol_destination,
-        protocol_meme,
-        protocol_quote,
-        meme_amounts,
-        quote_amounts,
-    });
-}
-
-/// Records a composable creator claim's exact cap release without asserting its next owner.
-public(package) fun router_config_cap_released(launch_id: ID, cap_id: ID) {
-    blast_fun::blast_events::emit_event(RouterConfigCapReleased { launch_id, cap_id });
-}
-
-/// Records the exact recipient only after native delivery of the pending cap.
-public(package) fun router_config_cap_delivered(launch_id: ID, cap_id: ID, recipient: address) {
-    blast_fun::blast_events::emit_event(RouterConfigCapDelivered { launch_id, cap_id, recipient });
-}
-
-/// Records complete routing changes as the next generation.
-public(package) fun routes_changed(
-    router_id: ID,
-    old_generation: u64,
-    new_generation: u64,
-    old_routes: blast_fun::allocation::Routes,
-    new_routes: blast_fun::allocation::Routes,
-) {
-    blast_fun::blast_events::emit_event(RoutesChanged {
-        router_id,
-        old_generation,
-        new_generation,
-        old_routes,
-        new_routes,
-    });
-}
 
 /// Records the only protocol-allocation configuration transition.
 public(package) fun protocol_allocation_configured(
@@ -562,15 +359,6 @@ public(package) fun metadata_cap_reassigned(
     });
 }
 
-/// Emits the permanent binding of creator fees to a custodian module.
-public(package) fun creator_fees_locked(launch_id: ID, curve_fee_cap_id: ID, custodian: TypeName) {
-    blast_fun::blast_events::emit_event(CreatorFeesLocked {
-        launch_id,
-        curve_fee_cap_id,
-        custodian,
-    });
-}
-
 /// Emits the complete coin metadata snapshot after a creator update.
 public(package) fun meme_metadata_updated(
     launch_id: ID,
@@ -617,6 +405,9 @@ public(package) fun launch_created<Quote>(
     decimals: u8,
     atomic_supply: u64,
     migration_witness: TypeName,
+    pool_tick_spacing: u32,
+    pool_fee_rate: u64,
+    lp_fee_split: blast_fun::allocation::FeeSplit,
     virtual_quote: u64,
     graduation_target: u64,
     quote_fee_bps: u64,
@@ -631,6 +422,9 @@ public(package) fun launch_created<Quote>(
         atomic_supply,
         quote: type_name::with_original_ids<Quote>(),
         migration_witness,
+        pool_tick_spacing,
+        pool_fee_rate,
+        lp_fee_split,
         virtual_quote,
         graduation_target,
         quote_fee_bps,
@@ -659,16 +453,10 @@ public(package) fun protection_configured(
     });
 }
 
-/// Emits terminal sharing of the launch and its router.
-public(package) fun launch_shared(
-    launch_id: ID,
-    fee_router_id: ID,
-    public_start_ms: u64,
-    pre_share_buy_completed: bool,
-) {
+/// Emits terminal sharing of the launch.
+public(package) fun launch_shared(launch_id: ID, public_start_ms: u64, pre_share_buy_completed: bool) {
     blast_fun::blast_events::emit_event(LaunchShared {
         launch_id,
-        fee_router_id,
         public_start_ms,
         pre_share_buy_completed,
     });
@@ -757,7 +545,7 @@ public(package) fun sold(
     });
 }
 
-/// Emits the completed migration after the router activated and the lifecycle committed.
+/// Emits the completed migration after the lifecycle committed.
 public(package) fun migrated(
     launch_id: ID,
     supplied_meme: u64,
@@ -822,18 +610,6 @@ public fun collect_one<T: copy + drop>(abort_code: u64): T {
     assert!(events.length() == 1, abort_code);
 
     events.pop_back()
-}
-
-#[test_only]
-public fun protocol_destination_for_testing(self: &FeesCollected): address {
-    self.protocol_destination
-}
-
-#[test_only]
-public fun fees_collected_amounts_for_testing(
-    self: &FeesCollected,
-): (u64, u64, vector<u64>, vector<u64>) {
-    (self.protocol_meme, self.protocol_quote, self.meme_amounts, self.quote_amounts)
 }
 
 #[test_only]

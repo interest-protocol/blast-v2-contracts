@@ -143,7 +143,6 @@ published.
 | `package_admin::PackageAdmin` | type | shared non-storable custody object that removes Blast's Publisher and raw UpgradeCap from deployment-key custody ([ADR 0032](0032-admin-authorized-upgrade-cap-custody.md)) |
 | `package_admin::wrap` | function | the publisher must be able to validate and move both unique package capabilities into shared protocol custody after publication |
 | `package_admin::authorize_upgrade`, `package_admin::commit_upgrade` | functions | an external upgrade PTB must turn a live `AdminWitness` and exact digest into the native ticket, then consume the cap-bound native receipt |
-| `package_admin::restrict_to_additive`, `package_admin::restrict_to_dependency_only` | functions | an active admin must be able to irreversibly reduce the Sui framework policy without exposing a generic or loosening setter |
 | `launch::prepare` | function | first command of the launch PTB; its results feed an adapter in another package |
 | `launch::finish` | function | last command of the launch PTB; consumes the adapter's sealed commitment |
 | `launch::buy`, `launch::sell` | function | must compose inside router PTBs and return owned coins |
@@ -259,9 +258,8 @@ risk; retained as a documented upgrade path.
 - Publisher test: `blast::init` delivers one `Publisher` that recognizes both
   the defining `blast` module and other types in the `blast_fun` package.
 - Package-administration test: only Blast's canonical Publisher and original
-  package cap can be wrapped, a live admin witness authorizes an exact digest
-  and may irreversibly narrow policy, and only the matching native receipt
-  advances the cap version.
+  package cap can be wrapped, a live admin witness authorizes an exact digest,
+  and only the matching native receipt advances the cap version.
 - Constants test: production protocol values appear only in `constants.move`, and no source duplicates
   primitive `MAX_U*` bounds supplied by MoveStdlib.
 - Public-surface test: an inventory test enumerates the package's public functions and fails if any

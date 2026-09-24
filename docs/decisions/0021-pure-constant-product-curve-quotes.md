@@ -63,7 +63,7 @@ avoid committing a public quote struct before an external consumer exists.
 Validation order is part of the package contract: reserves, quote-fee bound,
 meme-fee bound, sell-burn bound when applicable, nonzero input, derived post-fee/effective input,
 representable post-trade reserve, nonzero gross output, sell-back invariant, and nonzero net output.
-Stable errors 29 through 37 identify these failures.
+Named errors in `blast_fun::errors` identify these failures.
 
 All products and effective-reserve sums widen to `u256`. Narrowing is permitted only after the formula
 or an explicit invariant bounds the result by an input `u64`. Stored post-trade reserve additions use

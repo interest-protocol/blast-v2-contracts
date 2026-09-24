@@ -26,6 +26,10 @@ const SIX_DECIMAL_SUPPLY: u64 = 1_000_000_000_000_000;
 
 const NINE_DECIMAL_SUPPLY: u64 = 1_000_000_000_000_000_000;
 
+const POOL_TICK_SPACING: u32 = 200;
+
+const POOL_FEE_RATE: u64 = 10_000;
+
 // === Test-Only Types ===
 
 /// Six-decimal fixture currency named by this module's one-time witness; the nine-decimal
@@ -46,8 +50,6 @@ public struct CompositionFixture {
 
 public struct CompositionResult has copy, drop {
     launch_id: ID,
-    router_id: ID,
-    config_cap_id: ID,
     vesting_id: ID,
     cancel_cap_id: Option<ID>,
     meme_out: u64,
@@ -69,7 +71,6 @@ public struct ExpectedPreShareBought has copy, drop {
 
 public struct ExpectedLaunchShared has copy, drop {
     launch_id: ID,
-    fee_router_id: ID,
     public_start_ms: u64,
     pre_share_buy_completed: bool,
 }
@@ -111,7 +112,7 @@ fun actual_nine_decimal_template_creates_its_account_ticket_and_currency() {
 }
 
 #[test]
-fun six_decimal_pre_buy_vests_atomically_while_a_distinct_address_creator_claims_setup_later() {
+fun six_decimal_pre_buy_vests_atomically_while_a_distinct_address_creator_claims_caps_later() {
     let mut fixture = start();
     let result;
     fixture.next_tx!(LAUNCHER, |f| f.create_six_decimal_ticket());
@@ -119,7 +120,7 @@ fun six_decimal_pre_buy_vests_atomically_while_a_distinct_address_creator_claims
         result = f.compose_and_share<LAUNCH_VESTING_COMPOSITION_TESTS>(SIX_DECIMAL_SUPPLY, false);
     });
     fixture.next_tx!(CREATOR, |f| {
-        f.claim_setup<LAUNCH_VESTING_COMPOSITION_TESTS>(result, option::none());
+        f.claim_creator_caps<LAUNCH_VESTING_COMPOSITION_TESTS>(result, option::none());
     });
     fixture.next_tx!(CREATOR, |f| {
         f.assert_delivered_caps<LAUNCH_VESTING_COMPOSITION_TESTS>(result);
@@ -140,7 +141,7 @@ fun actual_template_account_creator_claims_exact_escrowed_cap_after_irrevocable_
         result = f.compose_and_share<TemplateProject>(NINE_DECIMAL_SUPPLY, false);
     });
     fixture.next_tx!(CREATOR, |f| {
-        f.claim_setup<TemplateProject>(result, option::some(account_attestation()));
+        f.claim_creator_caps<TemplateProject>(result, option::some(account_attestation()));
     });
     fixture.next_tx!(CREATOR, |f| {
         f.assert_delivered_caps<TemplateProject>(result);
@@ -162,7 +163,7 @@ fun cancelable_composition_delivers_cancel_cap_and_preserves_beneficiary_refund_
         result = f.compose_and_share<LAUNCH_VESTING_COMPOSITION_TESTS>(SIX_DECIMAL_SUPPLY, true);
     });
     fixture.next_tx!(CREATOR, |f| {
-        f.claim_setup<LAUNCH_VESTING_COMPOSITION_TESTS>(result, option::none());
+        f.claim_creator_caps<LAUNCH_VESTING_COMPOSITION_TESTS>(result, option::none());
     });
     fixture.next_tx!(CREATOR, |f| {
         f.assert_delivered_caps<LAUNCH_VESTING_COMPOSITION_TESTS>(result);
@@ -178,7 +179,7 @@ fun cancelable_composition_delivers_cancel_cap_and_preserves_beneficiary_refund_
 }
 
 #[test, expected_failure(abort_code = 9, location = blast_fun::creator_authority)]
-fun launcher_cannot_claim_a_distinct_address_creators_escrowed_setup_caps() {
+fun launcher_cannot_claim_a_distinct_address_creators_escrowed_caps() {
     let mut fixture = start();
     let result;
     fixture.next_tx!(LAUNCHER, |f| f.create_six_decimal_ticket());
@@ -186,7 +187,7 @@ fun launcher_cannot_claim_a_distinct_address_creators_escrowed_setup_caps() {
         result = f.compose_and_share<LAUNCH_VESTING_COMPOSITION_TESTS>(SIX_DECIMAL_SUPPLY, false);
     });
     fixture.next_tx!(LAUNCHER, |f| {
-        f.claim_setup<LAUNCH_VESTING_COMPOSITION_TESTS>(result, option::none());
+        f.claim_creator_caps<LAUNCH_VESTING_COMPOSITION_TESTS>(result, option::none());
     });
     fixture.end();
 }
@@ -200,7 +201,7 @@ fun launcher_cannot_reuse_an_account_attestation_bound_to_the_creator_wallet() {
         result = f.compose_and_share<TemplateProject>(NINE_DECIMAL_SUPPLY, false);
     });
     fixture.next_tx!(LAUNCHER, |f| {
-        f.claim_setup<TemplateProject>(result, option::some(account_attestation()));
+        f.claim_creator_caps<TemplateProject>(result, option::some(account_attestation()));
     });
     fixture.end();
 }
@@ -281,19 +282,23 @@ fun compose_and_share<Meme>(
     cancelable: bool,
 ): CompositionResult {
     self.clock.set_for_testing(SHARE_MS);
-    let mut ticket = self.scenario.take_from_sender<LaunchTicket<Meme>>();
+    let ticket = self.scenario.take_from_sender<LaunchTicket<Meme>>();
     let mut currency = self.scenario.take_from_address<Currency<Meme>>(COIN_REGISTRY);
-    ticket.bind_migration_witness<_, QUOTE, _>(&self.config, Migration {});
-    let mut launch = launch::new<_, QUOTE>(
+    let mut initializer = launch::new<_, QUOTE, _>(
         ticket,
-        &mut currency,
         &self.version,
         &self.config,
-        25_000_000,
-        allocation_plan(),
-        0,
-        bps::new(0),
-        bps::new(0),
+        Migration {},
+        POOL_TICK_SPACING,
+        POOL_FEE_RATE,
+    );
+    initializer.set_graduation_target(25_000_000);
+    initializer.set_allocation_plan(allocation_plan());
+    initializer.set_lp_fee_split(fee_split());
+    let mut launch = initializer.finalize(
+        &self.version,
+        &mut currency,
+        &self.config,
         self.scenario.ctx(),
     );
     assert!(currency.is_supply_fixed());
@@ -301,19 +306,11 @@ fun compose_and_share<Meme>(
     test_scenario::return_to_address(COIN_REGISTRY, currency);
     assert!(launch.public_start_ms().is_none());
     assert!(!launch.pre_share_buy_completed());
-    let (router, config_cap) = launch.new_fee_router(
-        &self.version,
-        fee_routes(),
-        self.scenario.ctx(),
-    );
+    assert_eq!(launch.lp_fee_split(), fee_split());
+    let (tick_spacing, fee_rate) = launch.pool_tier();
+    assert_eq!(tick_spacing, POOL_TICK_SPACING);
+    assert_eq!(fee_rate, POOL_FEE_RATE);
     let launch_id = object::id(&launch);
-    let router_id = object::id(&router);
-    let config_cap_id = object::id(&config_cap);
-    let mut created_bytes = bcs::to_bytes(&router_id);
-    created_bytes.append(bcs::to_bytes(&launch_id));
-    created_bytes.append(bcs::to_bytes(&config_cap_id));
-    created_bytes.append(bcs::to_bytes(&fee_routes()));
-    assert_eq!(bcs::to_bytes(&events::collect_one<events::FeeRouterCreated>(0)), created_bytes);
     let quote = coin::mint_for_testing<QUOTE>(1_000_000, self.scenario.ctx());
     let (meme, refund) = launch.pre_share_buy(
         &self.version,
@@ -381,13 +378,12 @@ fun compose_and_share<Meme>(
         ),
     );
     vesting.share();
-    launch.share(&self.version, config_cap, router, &self.clock);
+    launch.share(&self.version, &self.clock);
     assert_eq!(
         bcs::to_bytes(&events::collect_one<events::LaunchShared>(0)),
         bcs::to_bytes(
             &ExpectedLaunchShared {
                 launch_id,
-                fee_router_id: router_id,
                 public_start_ms: SHARE_MS,
                 pre_share_buy_completed: true,
             },
@@ -395,61 +391,44 @@ fun compose_and_share<Meme>(
     );
     CompositionResult {
         launch_id,
-        router_id,
-        config_cap_id,
         vesting_id,
         cancel_cap_id,
         meme_out,
     }
 }
 
-fun claim_setup<Meme>(
+fun claim_creator_caps<Meme>(
     self: &mut CompositionFixture,
     result: CompositionResult,
     attestation: Option<vector<u8>>,
 ) {
     let mut launch = self.scenario.take_shared<Launch<Meme, QUOTE>>();
-    let router = self.scenario.take_shared<FeeRouter<Meme, QUOTE>>();
     assert_eq!(object::id(&launch), result.launch_id);
-    assert_eq!(object::id(&router), result.router_id);
-    assert_eq!(launch.fee_router_id(), option::some(result.router_id));
     assert_eq!(launch.public_start_ms(), option::some(SHARE_MS));
     assert!(launch.pre_share_buy_completed());
-    assert!(!router.is_active());
-    let (curve, metadata, config) = launch.claim_setup_caps(
+    let (curve, metadata) = launch.claim_creator_caps(
         &self.version,
         &self.runtime,
         attestation,
         &self.clock,
         self.scenario.ctx(),
     );
-    assert_eq!(object::id(&config), result.config_cap_id);
-    let mut released_cap_bytes = bcs::to_bytes(&result.launch_id);
-    released_cap_bytes.append(bcs::to_bytes(&result.config_cap_id));
-    assert_eq!(
-        bcs::to_bytes(&events::collect_one<events::RouterConfigCapReleased>(0)),
-        released_cap_bytes,
-    );
     transfer::public_transfer(curve, CREATOR);
     transfer::public_transfer(metadata, CREATOR);
-    transfer::public_transfer(config, CREATOR);
-    test_scenario::return_shared(router);
     test_scenario::return_shared(launch);
 }
 
+/// The delivered curve-fee cap is the one the launch honors, including for LP-fee route updates.
 fun assert_delivered_caps<Meme>(self: &CompositionFixture, result: CompositionResult) {
     let curve = self.scenario.take_from_sender<CurveFeeCap<Meme>>();
     let metadata = self.scenario.take_from_sender<BlastMetadataCap<Meme>>();
-    let config = self.scenario.take_from_sender<RouterConfigCap<Meme, QUOTE>>();
-    assert_eq!(object::id(&config), result.config_cap_id);
-    let mut router = self.scenario.take_shared<FeeRouter<Meme, QUOTE>>();
-    let route = vector[allocation::route(BENEFICIARY, bps::new(10_000))];
-    router.configure(&self.version, &config, allocation::routes(route, route));
-    assert_eq!(router.generation(), 1);
-    test_scenario::return_shared(router);
+    let launch = self.scenario.take_shared<Launch<Meme, QUOTE>>();
+    assert_eq!(object::id(&launch), result.launch_id);
+    launch.assert_curve_fee_cap(&curve);
+    assert_eq!(launch.blast_metadata_cap_id_for_testing(), option::some(object::id(&metadata)));
+    test_scenario::return_shared(launch);
     test_scenario::return_to_sender(&self.scenario, curve);
     test_scenario::return_to_sender(&self.scenario, metadata);
-    test_scenario::return_to_sender(&self.scenario, config);
 }
 
 fun complete_irrevocable<Meme>(self: &mut CompositionFixture, result: CompositionResult) {
@@ -516,9 +495,13 @@ fun allocation_plan(): AllocationPlan {
     )
 }
 
-fun fee_routes(): allocation::Routes {
-    let route = vector[allocation::route(CREATOR, bps::new(10_000))];
-    allocation::routes(route, route)
+fun fee_split(): allocation::FeeSplit {
+    allocation::fee_split(
+        bps::new(5_000),
+        bps::new(0),
+        bps::new(0),
+        vector[allocation::route(CREATOR, bps::new(5_000))],
+    )
 }
 
 /// Independently signed canonical BCS for the actual template's account, its `MEME` type,
@@ -560,7 +543,6 @@ use blast_fun::{
     bps,
     creator_authority::{Self, BlastMetadataCap, CurveFeeCap},
     events,
-    fee_router::{FeeRouter, RouterConfigCap},
     launch::{Self, Launch},
     launch_config::{Self, LaunchConfig},
     launch_ticket::{Self, LaunchTicket},

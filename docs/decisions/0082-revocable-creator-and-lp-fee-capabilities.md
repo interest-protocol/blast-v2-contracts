@@ -1,6 +1,8 @@
 # 0082: Revocable curve-fee, metadata, and LP-fee capabilities
 
-- Status: accepted; LP-fee authority superseded by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)
+- Status: accepted; LP-fee authority superseded by [0088](0088-reusable-launch-accounting-and-atomic-migration.md);
+  the curve-fee lock to a custodian removed by [0089](0089-migrators-own-post-migration-and-start-launches.md),
+  so the creator always keeps a reassignable curve-fee cap
 - Date: 2026-09-15
 - Amends: [0023](0023-generated-coin-supply-and-metadata-custody.md),
   [0054](0054-v3-dex-migrators-and-locked-lp-fees.md),
@@ -67,8 +69,8 @@ type. Afterward only `claim_custodied_creator_fees` with the same witness
 claims it, and `reassign_curve_fee_cap` or `issue_lp_fee_cap` abort before any
 role or recipient check. Each lock rejects a witness anyone can construct: a
 primitive, a vector, or a framework type such as `Option`, `String`, or
-`VecMap`, whose package is `0x1` or `0x2` (`EInvalidFeeCustodian`, launchpad
-code 93, and `EInvalidLpFeeCustodian`, `lp_fee_authority` code 5). Move cannot
+`VecMap`, whose package is `0x1` or `0x2` (`EInvalidFeeCustodian` in launchpad
+and `EInvalidLpFeeCustodian` in `lp_fee_authority`). Move cannot
 prove that any other package keeps its witness constructor private, so the
 enforced property is that the witness is not publicly constructible by
 construction rules the chain can check; the locking cap holder chooses the type

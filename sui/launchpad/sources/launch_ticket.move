@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// One-time-witness currency creation, adapter binding, and linear custody before launch opens.
+/// One-time-witness currency creation and custody of its inventory until a launch starts.
 module blast_fun::launch_ticket;
 
 // === Public Types ===
 
-/// Linear custody of a generated coin's inventory and authorities before launch.
+/// Custody of a generated coin's inventory and authorities before launch.
 ///
-/// The treasury capability stays here until launch intake fixes the supply mode, so the bound
-/// migration adapter can prepare its venue for the bound Quote (a pool reservation can need it)
-/// before any Meme can reach a third party.
+/// The treasury capability stays here until launch finalization fixes the supply mode, so the
+/// migration adapter that starts the launch can prepare its venue (a pool reservation can need
+/// it) before any Meme can reach a third party. Nothing outside the launchpad can borrow it.
 public struct LaunchTicket<phantom Meme> has key, store {
     id: UID,
     meme: Balance<Meme>,
@@ -20,8 +20,6 @@ public struct LaunchTicket<phantom Meme> has key, store {
     decimals: u8,
     burnable: bool,
     sell_burn_bps: Bps,
-    migration_witness: Option<TypeName>,
-    migration_quote: Option<TypeName>,
 }
 
 // === Public Functions ===
@@ -74,8 +72,6 @@ public fun new<Meme: drop>(
         decimals,
         burnable,
         sell_burn_bps,
-        migration_witness: option::none(),
-        migration_quote: option::none(),
     };
 
     events::launch_ticket_created<Meme>(
@@ -90,44 +86,6 @@ public fun new<Meme: drop>(
     );
 
     ticket
-}
-
-/// Binds the ticket to the admitted migration adapter that constructs `Witness`, for `Quote`.
-///
-/// Only the adapter module can construct its witness, and only an admitted adapter can bind, so
-/// no other code ever borrows the treasury capability. Launch intake admits the ticket only under
-/// the adapter and Quote bound last, so an adapter that prepares its venue while binding has
-/// always done so for the pair it migrates. Binding again replaces both.
-public fun bind_migration_witness<Meme, Quote, Witness: drop>(
-    self: &mut LaunchTicket<Meme>,
-    config: &LaunchConfig,
-    _: Witness,
-) {
-    let migration_witness = type_name::with_original_ids<Witness>();
-    config.assert_migration_witness_allowed(migration_witness);
-
-    self.migration_witness = option::some(migration_witness);
-    self.migration_quote = option::some(type_name::with_original_ids<Quote>());
-}
-
-/// Lends the treasury capability to the bound adapter for venue preparation.
-///
-/// The adapter must still be admitted, so removing it from the allowlist also stops it borrowing
-/// the capability of tickets already bound to it. Launch intake rejects any supply other than the
-/// canonical one, so the adapter cannot change what the launch receives.
-public fun treasury_cap_mut<Meme, Witness: drop>(
-    self: &mut LaunchTicket<Meme>,
-    config: &LaunchConfig,
-    _: Witness,
-): &mut TreasuryCap<Meme> {
-    let migration_witness = type_name::with_original_ids<Witness>();
-    assert!(
-        self.migration_witness == option::some(migration_witness),
-        blast_fun::errors::invalid_migration_witness!(),
-    );
-    config.assert_migration_witness_allowed(migration_witness);
-
-    &mut self.treasury_cap
 }
 
 // === Package Functions ===
@@ -152,13 +110,9 @@ public(package) fun sell_burn_bps<Meme>(self: &LaunchTicket<Meme>): Bps {
     self.sell_burn_bps
 }
 
-/// Returns the bound migration adapter's witness type if the ticket was bound for `Quote`.
-public(package) fun migration_witness<Meme, Quote>(self: &LaunchTicket<Meme>): Option<TypeName> {
-    if (self.migration_quote == option::some(type_name::with_original_ids<Quote>())) {
-        self.migration_witness
-    } else {
-        option::none()
-    }
+/// Borrows the treasury capability for a launch initializer lending it to its adapter.
+public(package) fun treasury_cap_mut<Meme>(self: &mut LaunchTicket<Meme>): &mut TreasuryCap<Meme> {
+    &mut self.treasury_cap
 }
 
 /// Destroys the ticket, fixes the supply mode in the Coin Registry, and releases its resources.
@@ -183,8 +137,6 @@ public(package) fun destroy<Meme>(
         decimals: _,
         burnable,
         sell_burn_bps,
-        migration_witness: _,
-        migration_quote: _,
     } = self;
 
     assert!(
@@ -230,9 +182,8 @@ use blast_fun::{
     constants,
     creator_authority::{CreatorAuthority, CreatorRecipient},
     events,
-    launch_config::LaunchConfig,
 };
 
-use std::{string::String, type_name::{Self, TypeName}};
+use std::string::String;
 
 use sui::{balance::Balance, coin::TreasuryCap, coin_registry::{Self, Currency, MetadataCap}};

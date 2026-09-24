@@ -585,7 +585,7 @@ fun protocol_plan(): AllocationPlan {
 }
 
 fun new_ticket(self: &mut ProtectionFixture): LaunchTicket<LAUNCH_PROTECTION_TESTS> {
-    let mut ticket = launch_ticket::new(
+    launch_ticket::new(
         test_utils::create_one_time_witness<LAUNCH_PROTECTION_TESTS>(),
         9,
         b"GUARD".to_string(),
@@ -596,13 +596,11 @@ fun new_ticket(self: &mut ProtectionFixture): LaunchTicket<LAUNCH_PROTECTION_TES
         false,
         SELL_BURN_BPS,
         self.scenario.ctx(),
-    );
-    ticket.bind_migration_witness<_, TEST_QUOTE, _>(&self.config, TEST_MIGRATION_WITNESS());
-
-    ticket
+    )
 }
 
-/// Runs intake in the next transaction, once the Coin Registry holds the ticket's currency.
+/// Starts, configures, and finalizes the launch in the next transaction, once the Coin Registry
+/// holds the ticket's currency.
 fun intake(
     self: &mut ProtectionFixture,
     ticket: LaunchTicket<LAUNCH_PROTECTION_TESTS>,
@@ -615,16 +613,28 @@ fun intake(
     let mut currency = self
         .scenario
         .take_from_address<Currency<LAUNCH_PROTECTION_TESTS>>(COIN_REGISTRY);
-    let launch = launch::new(
+    let mut initializer = launch::new<_, TEST_QUOTE, _>(
         ticket,
-        &mut currency,
         &self.package_version,
         &self.config,
-        TARGET,
-        plan,
+        TEST_MIGRATION_WITNESS(),
+        200,
+        10_000,
+    );
+    initializer.set_graduation_target(TARGET);
+    initializer.set_allocation_plan(plan);
+    initializer.set_lp_fee_split(
+        allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), vector[]),
+    );
+    initializer.set_protection(
         window_ms,
         bps::new(cumulative_sender_bps),
         bps::new(per_transaction_bps),
+    );
+    let launch = initializer.finalize(
+        &self.package_version,
+        &mut currency,
+        &self.config,
         self.scenario.ctx(),
     );
     test_scenario::return_to_address(COIN_REGISTRY, currency);
@@ -641,22 +651,6 @@ fun new_launch(
     let ticket = self.new_ticket();
 
     self.intake(ticket, plan(), window_ms, cumulative_sender_bps, per_transaction_bps)
-}
-
-fun new_router(
-    self: &mut ProtectionFixture,
-    launch: &mut Launch<LAUNCH_PROTECTION_TESTS, TEST_QUOTE>,
-): (
-    FeeRouter<LAUNCH_PROTECTION_TESTS, TEST_QUOTE>,
-    RouterConfigCap<LAUNCH_PROTECTION_TESTS, TEST_QUOTE>,
-) {
-    let route = vector[allocation::route(CREATOR, bps::new(10_000))];
-
-    launch.new_fee_router(
-        &self.package_version,
-        allocation::routes(route, route),
-        self.scenario.ctx(),
-    )
 }
 
 /// Moves the fixture clock to `timestamp_ms` for the following transactions.
@@ -677,10 +671,8 @@ fun open(
 }
 
 /// Shares the launch at the fixture clock's current time.
-fun share(self: &mut ProtectionFixture, mut launch: Launch<LAUNCH_PROTECTION_TESTS, TEST_QUOTE>) {
-    let (router, config_cap) = self.new_router(&mut launch);
-
-    launch.share(&self.package_version, config_cap, router, &self.clock);
+fun share(self: &ProtectionFixture, launch: Launch<LAUNCH_PROTECTION_TESTS, TEST_QUOTE>) {
+    launch.share(&self.package_version, &self.clock);
 }
 
 fun take_launch(self: &ProtectionFixture): Launch<LAUNCH_PROTECTION_TESTS, TEST_QUOTE> {
@@ -811,7 +803,6 @@ use blast_fun::{
     creator_authority,
     domain_fixture,
     events,
-    fee_router::{FeeRouter, RouterConfigCap},
     launch::{Self, Launch},
     launch_config::{Self, LaunchConfig},
     launch_ticket::{Self, LaunchTicket},

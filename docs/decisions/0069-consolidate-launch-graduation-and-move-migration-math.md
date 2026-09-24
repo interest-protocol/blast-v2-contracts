@@ -42,10 +42,6 @@ Use one module-local, contiguous error space for migrator arithmetic:
 | 2 | `EMigrationPriceDeviationExceeded` | An observed pool price exceeds the accepted seed-price deviation. |
 | 3 | `EMigrationResidualExceeded` | A venue residual exceeds the accepted share of migration principal. |
 
-Launchpad codes 79 through 81 remain reserved as moved pre-release registry
-entries. New launchpad errors continue at 82, so no old diagnostic number can
-silently acquire a different meaning.
-
 Regenerate the frozen launchpad/migrators ABI artifact as an approved
 pre-release amendment. The deleted launchpad modules disappear from the public
 surface; migrator arithmetic does not enter it because the functions are

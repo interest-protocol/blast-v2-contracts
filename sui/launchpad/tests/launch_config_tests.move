@@ -379,13 +379,13 @@ fun admin_allows_migration_witness_for_launch_snapshot() {
             .config
             .allow_migration_witness<TEST_MIGRATION_WITNESS>(&f.package_version, &admin_witness);
 
-        let (_, _, _, migration_witness) = f
+        let (virtual_quote, _, _) = f
             .config
             .snapshot_for_launch<TEST_QUOTE>(
-                bound_test_witness(),
+                test_witness(),
             );
 
-        assert_eq!(migration_witness, std::type_name::with_original_ids<TEST_MIGRATION_WITNESS>());
+        assert_eq!(virtual_quote, VIRTUAL_QUOTE);
     });
 
     fixture.end();
@@ -405,10 +405,10 @@ fun admin_allows_quote_and_launch_snapshot_uses_its_parameters() {
             .config
             .allow_migration_witness<TEST_MIGRATION_WITNESS>(&f.package_version, &admin_witness);
 
-        let (virtual_quote, _, _, _) = f
+        let (virtual_quote, _, _) = f
             .config
             .snapshot_for_launch<TEST_QUOTE>(
-                bound_test_witness(),
+                test_witness(),
             );
         let allowed = events::collect_one<events::QuoteAllowed>(0);
 
@@ -439,10 +439,10 @@ fun allowing_an_existing_quote_updates_its_virtual_reserve_for_later_launches() 
             .config
             .allow_quote<TEST_QUOTE>(&f.package_version, &admin_witness, UPDATED_VIRTUAL_QUOTE);
 
-        let (virtual_quote, _, _, _) = f
+        let (virtual_quote, _, _) = f
             .config
             .snapshot_for_launch<TEST_QUOTE>(
-                bound_test_witness(),
+                test_witness(),
             );
         let allowed = events::collect<events::QuoteAllowed>();
 
@@ -509,10 +509,10 @@ fun admin_can_readd_a_disallowed_quote() {
                 &admin_witness,
             );
 
-        let (virtual_quote, _, _, _) = f
+        let (virtual_quote, _, _) = f
             .config
             .snapshot_for_launch<TEST_QUOTE>(
-                bound_test_witness(),
+                test_witness(),
             );
 
         assert_eq!(f.config.allowed_quote_count_for_testing(), 1);
@@ -544,10 +544,10 @@ fun admin_sets_trade_fees_for_future_launch_snapshots() {
                 bps::new(MEME_FEE_BPS),
             );
 
-        let (_, quote_fee_bps, meme_fee_bps, _) = f
+        let (_, quote_fee_bps, meme_fee_bps) = f
             .config
             .snapshot_for_launch<TEST_QUOTE>(
-                bound_test_witness(),
+                test_witness(),
             );
         let changed = events::collect_one<events::LaunchTradeFeesChanged>(0);
 
@@ -621,10 +621,10 @@ fun disallowing_migration_witness_does_not_change_an_existing_launch_snapshot() 
         f
             .config
             .allow_migration_witness<TEST_MIGRATION_WITNESS>(&f.package_version, &admin_witness);
-        let (_, _, _, snapshotted_migration_witness) = f
+        let (_, _, _) = f
             .config
             .snapshot_for_launch<TEST_QUOTE>(
-                bound_test_witness(),
+                test_witness(),
             );
         let _ = events::collect_one<events::MigrationWitnessAllowed>(0);
 
@@ -635,7 +635,7 @@ fun disallowing_migration_witness_does_not_change_an_existing_launch_snapshot() 
         let disallowed = events::collect_one<events::MigrationWitnessDisallowed>(0);
 
         assert_eq!(f.config.allowed_migration_witness_count_for_testing(), 0);
-        assert_eq!(bcs::to_bytes(&disallowed), bcs::to_bytes(&snapshotted_migration_witness));
+        assert_eq!(bcs::to_bytes(&disallowed), bcs::to_bytes(&test_witness()));
     });
 
     fixture.end();
@@ -975,10 +975,10 @@ fun launch_snapshot_rejects_disallowed_quote() {
             .config
             .allow_quote<TEST_QUOTE>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
         f.config.disallow_quote<TEST_QUOTE>(&f.package_version, &admin_witness);
-        let (_, _, _, _) = f
+        let (_, _, _) = f
             .config
             .snapshot_for_launch<TEST_QUOTE>(
-                bound_test_witness(),
+                test_witness(),
             );
     });
 
@@ -1001,10 +1001,10 @@ fun launch_snapshot_rejects_unlisted_migration_witness() {
         f
             .config
             .allow_quote<TEST_QUOTE>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
-        let (_, _, _, _) = f
+        let (_, _, _) = f
             .config
             .snapshot_for_launch<TEST_QUOTE>(
-                bound_test_witness(),
+                test_witness(),
             );
     });
 
@@ -1014,8 +1014,8 @@ fun launch_snapshot_rejects_unlisted_migration_witness() {
 // === Test Helpers ===
 
 /// The binding a ticket bound to the test adapter hands to launch intake.
-fun bound_test_witness(): Option<std::type_name::TypeName> {
-    option::some(std::type_name::with_original_ids<TEST_MIGRATION_WITNESS>())
+fun test_witness(): std::type_name::TypeName {
+    std::type_name::with_original_ids<TEST_MIGRATION_WITNESS>()
 }
 
 fun protocol_plan(meme_bps: u64, quote_bps: u64): blast_fun::allocation::AllocationPlan {

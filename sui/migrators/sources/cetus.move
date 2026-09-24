@@ -1,38 +1,34 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// Cetus migration into vault custody, with pool creation reserved while binding.
+/// Cetus launch start, pool-creation reservation, migration into vault custody, and collection.
 ///
 /// Anyone holding Meme can create a Cetus pool, and Cetus allows one pool per pair and tick
-/// spacing, so a buyer could pre-create the migration pool at a price of their choosing. Binding
-/// therefore mints the Meme type's single Cetus `PoolCreationCap` from the ticket's treasury
-/// capability, before any Meme can leave the ticket, and registers each bound Quote at the
-/// effective tick spacing; afterwards only that capability or Cetus's pool-manager role can create
+/// spacing, so a buyer could pre-create the migration pool at a price of their choosing. Starting
+/// the launch therefore mints the Meme type's single Cetus `PoolCreationCap` from the ticket's
+/// treasury capability, before any Meme can leave the ticket, and registers the pair at the
+/// creator's tick spacing; afterwards only that capability or Cetus's pool-manager role can create
 /// the pair's pool there. Trusting that role is a venue-operator assumption: a pool it creates
 /// first makes the pair's migration abort, and only a migrators upgrade could recover the launch.
-/// The capability and every reservation stay in `VenueConfig` under keys only this module
-/// constructs, with no extraction or unregistration path. Cetus orders a pool's coin types by type
-/// name, so migration, collection, and settled route updates each exist once per ordering.
+/// The capability stays in `VenueConfig` under a key only this module constructs, with no
+/// extraction or unregistration path.
+///
+/// Migration burns the full-range position through Cetus LP Burn, so Cetus itself records the
+/// launch liquidity as permanently locked; the vault keeps the `CetusLPBurnProof`, which can only
+/// collect fees. A burned position cannot receive liquidity, so auto-LP adds to a second full-range
+/// position the vault opens on first use and keeps with no removal path.
+///
+/// Cetus orders a pool's coin types by type name, so migration, collection, and settled fee-split
+/// updates each exist once per ordering.
 module blast_fun_migrators::cetus;
-
-// === Constants ===
-
-/// The tick spacing Cetus admits for permissioned SUI and USDC pairs and its registered 1% fee
-/// (1e6 denominator), read from the live mainnet registries on 2026-09-22.
-const DEFAULT_TICK_SPACING: u32 = 200;
-
-const DEFAULT_FEE_RATE: u64 = 10_000;
 
 // === Errors ===
 
 #[error(code = 0)]
-const ETierMismatch: vector<u8> = b"Cetus must register the effective tick spacing at the effective fee rate.";
-
-#[error(code = 1)]
 const EInvalidCoinOrder: vector<u8> = b"Migration route must match the Cetus coin order of the pair.";
 
-#[error(code = 2)]
-const EPositionPoolMismatch: vector<u8> = b"Custodied position must belong to the supplied pool.";
+#[error(code = 1)]
+const EPositionPoolMismatch: vector<u8> = b"Pool must be the vault's own pool.";
 
 // === Public Types ===
 
@@ -48,80 +44,81 @@ public struct Venue() has drop;
 /// and every `CetusPoolReserved` event record, and stays readable by that ID.
 public struct CreationCapKey<phantom Meme>() has copy, drop, store;
 
-/// Sealed `VenueConfig` field name for one reserved pair; the value is its reserved tick spacing.
-public struct ReservationKey<phantom Meme, phantom Quote>() has copy, drop, store;
-
 // === Public Functions ===
 
-/// Binds `ticket` to Cetus for `Quote` and reserves Cetus pool creation for the pair.
+/// Starts a Cetus launch in `Quote` at the creator's `tick_spacing` and reserves Cetus pool
+/// creation for the pair.
 ///
-/// The first binding for a Meme type mints its `PoolCreationCap` from the ticket's treasury
-/// capability; a binding for a Quote not yet reserved registers the pair at the effective tier's
-/// tick spacing, which its migration then uses whatever the tier is later pinned to. A Quote
-/// already reserved keeps its reservation. Aborts, leaving the ticket and Cetus unchanged, when
-/// Cetus refuses the pair or does not register the effective tier, so the creator can bind another
-/// admitted adapter instead.
-public fun bind<Meme, Quote>(
-    ticket: &mut LaunchTicket<Meme>,
-    config: &LaunchConfig,
+/// Cetus fixes the fee rate of each registered tick spacing, and the launch records both. The
+/// Meme type's single `PoolCreationCap` is minted from the ticket's treasury capability before
+/// any Meme can leave it, and the pair is registered at `tick_spacing`. Aborts, leaving Cetus
+/// unchanged, when Cetus does not register the spacing or refuses the pair at it, so the creator
+/// can choose another tier or adapter instead. The creator completes the returned initializer
+/// with `launch::finalize`.
+public fun new<Meme, Quote>(
+    ticket: LaunchTicket<Meme>,
     migrators_version: &MigratorsVersion,
+    package_version: &PackageVersion,
+    config: &LaunchConfig,
     venue_config: &mut VenueConfig,
     cetus_config: &GlobalConfig,
     pools: &mut Pools,
+    tick_spacing: u32,
     ctx: &mut TxContext,
-) {
+): LaunchInitializer<Meme, Quote> {
     migrators_version.assert_current();
-    ticket.bind_migration_witness<_, Quote, _>(config, Witness());
-    if (venue_config.has_policy(ReservationKey<Meme, Quote>())) return;
+    let fee_rate = config::get_fee_rate(tick_spacing, cetus_config);
 
-    let (tick_spacing, fee_rate) = venue_config.effective_tier();
-    assert!(config::get_fee_rate(tick_spacing, cetus_config) == fee_rate, ETierMismatch);
-
-    if (!venue_config.has_object(CreationCapKey<Meme>())) {
-        let pool_creation_cap = factory::mint_pool_creation_cap(
-            cetus_config,
-            pools,
-            ticket.treasury_cap_mut(config, Witness()),
-            ctx,
-        );
-        venue_config.add_object(CreationCapKey<Meme>(), pool_creation_cap);
-    };
-    let pool_creation_cap = venue_config.pool_creation_cap<Meme>();
+    let mut launch = launch::new<Meme, Quote, _>(
+        ticket,
+        package_version,
+        config,
+        Witness(),
+        tick_spacing,
+        fee_rate,
+    );
+    let pool_creation_cap = factory::mint_pool_creation_cap(
+        cetus_config,
+        pools,
+        launch.treasury_cap_mut(Witness()),
+        ctx,
+    );
     factory::register_permission_pair<Meme, Quote>(
         cetus_config,
         pools,
         tick_spacing,
-        pool_creation_cap,
+        &pool_creation_cap,
         ctx,
     );
-    let pool_creation_cap_id = object::id(pool_creation_cap);
-    venue_config.add_policy(ReservationKey<Meme, Quote>(), tick_spacing);
+    let pool_creation_cap_id = object::id(&pool_creation_cap);
+    venue_config.add_object(CreationCapKey<Meme>(), pool_creation_cap);
 
     blast_events::cetus_pool_reserved<Meme, Quote>(pool_creation_cap_id, tick_spacing);
+
+    launch
 }
 
 /// Migrates a MigrationReady launch whose Meme is Cetus coin A into vault custody.
 ///
-/// Creates the pair's pool with the reserved capability at the reserved tick spacing, priced from
-/// the handed-off balances, and seeds full-range liquidity with exactly those balances. Any Cetus
-/// refusal, including a reserved tier Cetus no longer registers, aborts the whole migration and
-/// leaves the launch MigrationReady.
+/// Creates the pair's pool with the reserved capability at the launch's tick spacing, priced from
+/// the handed-off balances, seeds full-range liquidity with exactly those balances, and burns the
+/// position. Any Cetus refusal, including a tier Cetus no longer registers, aborts the whole
+/// migration and leaves the launch MigrationReady.
 public fun migrate_meme_a<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     migrators_version: &MigratorsVersion,
     package_version: &PackageVersion,
-    router: &mut FeeRouter<Meme, Quote>,
-    policy: &LpFeePolicy,
     currency: &mut Currency<Meme>,
     venue_config: &VenueConfig,
     cetus_config: &GlobalConfig,
     pools: &mut Pools,
+    burn_manager: &mut BurnManager,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
     assert!(factory::is_right_order<Meme, Quote>(), EInvalidCoinOrder);
-    let tick_spacing = venue_config.reserved_tick_spacing<Meme, Quote>();
+    let (tick_spacing, _) = launch.pool_tier();
     let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
 
     let (meme, quote, migration) = launch.begin_migration(package_version, Witness());
@@ -150,9 +147,8 @@ public fun migrate_meme_a<Meme, Quote>(
 
     launch.complete_into_vault(
         package_version,
-        router,
-        policy,
         currency,
+        burn_manager,
         migration,
         meme_amount,
         quote_amount,
@@ -170,18 +166,17 @@ public fun migrate_meme_b<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     migrators_version: &MigratorsVersion,
     package_version: &PackageVersion,
-    router: &mut FeeRouter<Meme, Quote>,
-    policy: &LpFeePolicy,
     currency: &mut Currency<Meme>,
     venue_config: &VenueConfig,
     cetus_config: &GlobalConfig,
     pools: &mut Pools,
+    burn_manager: &mut BurnManager,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
     assert!(factory::is_right_order<Quote, Meme>(), EInvalidCoinOrder);
-    let tick_spacing = venue_config.reserved_tick_spacing<Meme, Quote>();
+    let (tick_spacing, _) = launch.pool_tier();
     let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
 
     let (meme, quote, migration) = launch.begin_migration(package_version, Witness());
@@ -208,9 +203,8 @@ public fun migrate_meme_b<Meme, Quote>(
 
     launch.complete_into_vault(
         package_version,
-        router,
-        policy,
         currency,
+        burn_manager,
         migration,
         meme_amount,
         quote_amount,
@@ -221,163 +215,104 @@ public fun migrate_meme_b<Meme, Quote>(
     );
 }
 
-/// Collects the vault position's fees from its Meme-A pool and pays them through the router.
+/// Collects the vault position's fees from its Meme-A pool, splits them, and adds the auto-LP
+/// share back to the position. Anyone may call it.
 public fun collect_fees_meme_a<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    package_version: &PackageVersion,
-    router: &mut FeeRouter<Meme, Quote>,
     policy: &LpFeePolicy,
     cetus_config: &GlobalConfig,
+    burn_manager: &BurnManager,
     pool: &mut Pool<Meme, Quote>,
+    clock: &Clock,
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    let (position_id, meme_fee, quote_fee) = self.collect_position_fees(cetus_config, pool);
+    let (meme_fee, quote_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
 
-    router.collect(
-        package_version,
-        policy,
-        Witness(),
-        object::id(self),
-        object::id(pool),
-        position_id,
-        meme_fee,
-        quote_fee,
-        ctx,
-    );
+    self.split_fees(policy, meme_fee, quote_fee, ctx);
+    self.compound_meme_a(cetus_config, pool, clock, ctx);
 }
 
-/// Collects the vault position's fees from its Meme-B pool and pays them through the router.
+/// Collects the vault position's fees from its Meme-B pool, splits them, and adds the auto-LP
+/// share back to the position. Anyone may call it.
 public fun collect_fees_meme_b<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    package_version: &PackageVersion,
-    router: &mut FeeRouter<Meme, Quote>,
     policy: &LpFeePolicy,
     cetus_config: &GlobalConfig,
+    burn_manager: &BurnManager,
     pool: &mut Pool<Quote, Meme>,
+    clock: &Clock,
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    let (position_id, quote_fee, meme_fee) = self.collect_position_fees(cetus_config, pool);
+    let (quote_fee, meme_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
 
-    router.collect(
-        package_version,
-        policy,
-        Witness(),
-        object::id(self),
-        object::id(pool),
-        position_id,
-        meme_fee,
-        quote_fee,
-        ctx,
-    );
+    self.split_fees(policy, meme_fee, quote_fee, ctx);
+    self.compound_meme_b(cetus_config, pool, clock, ctx);
 }
 
-/// Pays the Meme-A position's accrued fees under the current routes, then commits `proposed`.
-public fun settle_and_update_routes_meme_a<Meme, Quote>(
+/// Settles the Meme-A position's accrued fees under the current split, then commits `proposed`.
+public fun settle_and_update_fee_split_meme_a<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    package_version: &PackageVersion,
-    router: &mut FeeRouter<Meme, Quote>,
     policy: &LpFeePolicy,
-    router_config_cap: &RouterConfigCap<Meme, Quote>,
+    launch: &Launch<Meme, Quote>,
+    curve_fee_cap: &CurveFeeCap<Meme>,
     cetus_config: &GlobalConfig,
+    burn_manager: &BurnManager,
     pool: &mut Pool<Meme, Quote>,
-    proposed: Routes,
+    proposed: FeeSplit,
+    clock: &Clock,
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    let (position_id, meme_fee, quote_fee) = self.collect_position_fees(cetus_config, pool);
+    let (meme_fee, quote_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
 
-    router.settle_and_update_routes(
-        package_version,
-        policy,
-        router_config_cap,
-        Witness(),
-        object::id(self),
-        object::id(pool),
-        position_id,
-        meme_fee,
-        quote_fee,
-        proposed,
-        ctx,
-    );
+    self.split_fees(policy, meme_fee, quote_fee, ctx);
+    self.compound_meme_a(cetus_config, pool, clock, ctx);
+    self.update_fee_split(launch, curve_fee_cap, proposed);
 }
 
-/// Pays the Meme-B position's accrued fees under the current routes, then commits `proposed`.
-public fun settle_and_update_routes_meme_b<Meme, Quote>(
+/// Settles the Meme-B position's accrued fees under the current split, then commits `proposed`.
+public fun settle_and_update_fee_split_meme_b<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    package_version: &PackageVersion,
-    router: &mut FeeRouter<Meme, Quote>,
     policy: &LpFeePolicy,
-    router_config_cap: &RouterConfigCap<Meme, Quote>,
+    launch: &Launch<Meme, Quote>,
+    curve_fee_cap: &CurveFeeCap<Meme>,
     cetus_config: &GlobalConfig,
+    burn_manager: &BurnManager,
     pool: &mut Pool<Quote, Meme>,
-    proposed: Routes,
+    proposed: FeeSplit,
+    clock: &Clock,
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    let (position_id, quote_fee, meme_fee) = self.collect_position_fees(cetus_config, pool);
+    let (quote_fee, meme_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
 
-    router.settle_and_update_routes(
-        package_version,
-        policy,
-        router_config_cap,
-        Witness(),
-        object::id(self),
-        object::id(pool),
-        position_id,
-        meme_fee,
-        quote_fee,
-        proposed,
-        ctx,
-    );
-}
-
-/// Pins the Cetus tier for later bindings under a live core admin witness.
-public fun set_tier(
-    venue_config: &mut VenueConfig,
-    migrators_version: &MigratorsVersion,
-    _: &AdminWitness<BLAST_FUN_DOMAIN>,
-    tick_spacing: u32,
-    fee_rate: u64,
-) {
-    migrators_version.assert_current();
-    venue_config.set_tier(Venue(), tick_spacing, fee_rate);
+    self.split_fees(policy, meme_fee, quote_fee, ctx);
+    self.compound_meme_b(cetus_config, pool, clock, ctx);
+    self.update_fee_split(launch, curve_fee_cap, proposed);
 }
 
 // === Private Functions ===
-
-/// Returns the pinned tier, or the compiled default while no pin exists.
-fun effective_tier(venue_config: &VenueConfig): (u32, u64) {
-    if (venue_config.has_tier<Venue>()) {
-        venue_config.tier<Venue>()
-    } else {
-        (DEFAULT_TICK_SPACING, DEFAULT_FEE_RATE)
-    }
-}
 
 fun pool_creation_cap<Meme>(venue_config: &VenueConfig): &PoolCreationCap {
     venue_config.object(CreationCapKey<Meme>())
 }
 
-fun reserved_tick_spacing<Meme, Quote>(venue_config: &VenueConfig): u32 {
-    *venue_config.policy(ReservationKey<Meme, Quote>())
-}
-
-/// Locks the position and residuals in a new vault and completes the launch against them.
+/// Burns the position, locks its burn proof and the residuals in a new vault, and completes the
+/// launch against them.
 ///
 /// The supplied principal is what Cetus took from the handed-off balances: everything it did not
 /// return as a residual.
 fun complete_into_vault<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
-    router: &mut FeeRouter<Meme, Quote>,
-    policy: &LpFeePolicy,
     currency: &mut Currency<Meme>,
+    burn_manager: &mut BurnManager,
     migration: Migration<Meme, Quote>,
     meme_amount: u64,
     quote_amount: u64,
@@ -388,20 +323,21 @@ fun complete_into_vault<Meme, Quote>(
 ) {
     let pool_id = position.pool_id();
     let liquidity = position.liquidity();
-    let mut vault = vault::prepare(residual_meme.into_balance(), residual_quote.into_balance(), ctx);
-    vault.attach(&Venue(), pool_id, position);
+    let burn_proof = lp_burn::burn_lp_v2(burn_manager, position, ctx);
+    let mut vault = vault::prepare(
+        launch,
+        residual_meme.into_balance(),
+        residual_quote.into_balance(),
+        ctx,
+    );
+    vault.attach(&Venue(), pool_id, burn_proof);
 
     let (residual_meme, residual_quote) = vault.pending_residuals();
     launch.complete_migration(
         package_version,
-        router,
-        policy,
         currency,
         migration,
         Witness(),
-        &vault,
-        pool_id,
-        vault.position<_, _, _, Position>(&Venue()),
         meme_amount - residual_meme.value(),
         quote_amount - residual_quote.value(),
         residual_meme,
@@ -412,55 +348,142 @@ fun complete_into_vault<Meme, Quote>(
     vault.share(&Venue());
 }
 
-/// Collects the attached position's fees from `pool`, which must be the position's own pool.
+/// Collects the burned migration position's fees and, once it exists, the auto-LP position's fees
+/// from `pool`, which must be the vault's own pool.
 fun collect_position_fees<X, Y, Meme, Quote>(
-    self: &LpVault<Meme, Quote>,
+    self: &mut LpVault<Meme, Quote>,
     cetus_config: &GlobalConfig,
+    burn_manager: &BurnManager,
     pool: &mut Pool<X, Y>,
-): (ID, Balance<X>, Balance<Y>) {
-    let position = self.position<_, _, _, Position>(&Venue());
-    assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
+    ctx: &mut TxContext,
+): (Balance<X>, Balance<Y>) {
+    assert!(self.pool_id() == object::id(pool), EPositionPoolMismatch);
 
-    let (fee_a, fee_b) = pool::collect_fee(cetus_config, pool, position, true);
+    let burn_proof = self.position_mut<_, _, _, CetusLPBurnProof>(&Venue());
+    let (fee_x, fee_y) = lp_burn::collect_fee(burn_manager, cetus_config, pool, burn_proof, ctx);
+    let mut fee_x = fee_x.into_balance();
+    let mut fee_y = fee_y.into_balance();
+    if (self.has_auto_lp_position(&Venue())) {
+        let position = self.auto_lp_position<_, _, _, Position>(&Venue());
+        let (auto_lp_x, auto_lp_y) = pool::collect_fee(cetus_config, pool, position, true);
+        fee_x.join(auto_lp_x);
+        fee_y.join(auto_lp_y);
+    };
 
-    (object::id(position), fee_a, fee_b)
+    (fee_x, fee_y)
 }
 
-// === Test-Only Functions ===
+/// Adds the waiting auto-LP balances to the position in its Meme-A pool.
+fun compound_meme_a<Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    cetus_config: &GlobalConfig,
+    pool: &mut Pool<Meme, Quote>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    let (meme, quote) = self.take_auto_lp();
+    let (meme, quote, added_meme, added_quote) = self.add_liquidity(
+        cetus_config,
+        pool,
+        meme,
+        quote,
+        clock,
+        ctx,
+    );
 
-#[test_only]
-public fun effective_tier_for_testing(venue_config: &VenueConfig): (u32, u64) {
-    venue_config.effective_tier()
+    self.keep_auto_lp(added_meme, added_quote, meme, quote);
 }
 
-/// Records a reservation without Cetus, whose capability the local link stub cannot mint.
-#[test_only]
-public fun reserve_for_testing<Meme, Quote>(venue_config: &mut VenueConfig, tick_spacing: u32) {
-    venue_config.add_policy(ReservationKey<Meme, Quote>(), tick_spacing);
+/// Adds the waiting auto-LP balances to the position in its Meme-B pool.
+fun compound_meme_b<Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    cetus_config: &GlobalConfig,
+    pool: &mut Pool<Quote, Meme>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    let (meme, quote) = self.take_auto_lp();
+    let (quote, meme, added_quote, added_meme) = self.add_liquidity(
+        cetus_config,
+        pool,
+        quote,
+        meme,
+        clock,
+        ctx,
+    );
+
+    self.keep_auto_lp(added_meme, added_quote, meme, quote);
 }
 
-#[test_only]
-public fun reserved_tick_spacing_for_testing<Meme, Quote>(venue_config: &VenueConfig): u32 {
-    venue_config.reserved_tick_spacing<Meme, Quote>()
+/// Adds as much of `a` and `b` as the auto-LP position takes at the pool's current price, fixing
+/// the side Cetus's own liquidity math says the other side can cover, and returns the rest with
+/// the amounts added. The burned migration position cannot receive liquidity, so the first add
+/// opens a full-range auto-LP position the vault keeps with no removal path. Nothing is added while
+/// either side is empty or would give zero liquidity.
+fun add_liquidity<A, B, Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    cetus_config: &GlobalConfig,
+    pool: &mut Pool<A, B>,
+    mut a: Balance<A>,
+    mut b: Balance<B>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): (Balance<A>, Balance<B>, u64, u64) {
+    if (a.value() == 0 || b.value() == 0) return (a, b, 0, 0);
+    if (!self.has_auto_lp_position(&Venue())) {
+        let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(pool.tick_spacing());
+        let position = pool::open_position(cetus_config, pool, tick_lower, tick_upper, ctx);
+        self.attach_auto_lp_position(&Venue(), position);
+    };
+    let position = self.auto_lp_position_mut<_, _, _, Position>(&Venue());
+    let (lower, upper) = position.tick_range();
+    let tick = pool.current_tick_index();
+    let price = pool.current_sqrt_price();
+    let (liquidity_a, _, needed_b) = clmm_math::get_liquidity_by_amount(
+        lower,
+        upper,
+        tick,
+        price,
+        a.value(),
+        true,
+    );
+    let (liquidity_b, needed_a, _) = clmm_math::get_liquidity_by_amount(
+        lower,
+        upper,
+        tick,
+        price,
+        b.value(),
+        false,
+    );
+    let (fix_a, amount) = if (liquidity_a > 0 && needed_b <= b.value()) {
+        (true, a.value())
+    } else if (liquidity_b > 0 && needed_a <= a.value()) {
+        (false, b.value())
+    } else {
+        return (a, b, 0, 0)
+    };
+
+    let receipt = pool::add_liquidity_fix_coin(cetus_config, pool, position, amount, fix_a, clock);
+    let (paid_a, paid_b) = receipt.add_liquidity_pay_amount();
+    pool::repay_add_liquidity(cetus_config, pool, a.split(paid_a), b.split(paid_b), receipt);
+
+    (a, b, paid_a, paid_b)
 }
 
 // === Imports ===
 
-use blast_admin::acl::AdminWitness;
-
 use blast_fun::{
-    allocation::Routes,
-    blast_fun_domain::BLAST_FUN_DOMAIN,
-    fee_router::{FeeRouter, RouterConfigCap},
-    launch::{Launch, Migration},
+    allocation::FeeSplit,
+    creator_authority::CurveFeeCap,
+    launch::{Self, Launch, LaunchInitializer, Migration},
     launch_config::LaunchConfig,
     launch_ticket::LaunchTicket,
-    lp_fee_policy::LpFeePolicy,
     package_version::PackageVersion,
 };
 
 use blast_fun_migrators::{
     blast_events,
+    lp_fee_policy::LpFeePolicy,
     migration_math,
     package_version::PackageVersion as MigratorsVersion,
     vault::{Self, LpVault},
@@ -468,6 +491,7 @@ use blast_fun_migrators::{
 };
 
 use cetus_clmm::{
+    clmm_math,
     config::{Self, GlobalConfig},
     factory::{Self, PoolCreationCap, Pools},
     pool::{Self, Pool},
@@ -475,14 +499,19 @@ use cetus_clmm::{
     position::Position,
 };
 
+use lp_burn::lp_burn::{Self, BurnManager, CetusLPBurnProof};
+
 use sui::{balance::Balance, clock::Clock, coin::Coin, coin_registry::Currency};
+
+use fun add_liquidity as LpVault.add_liquidity;
 
 use fun collect_position_fees as LpVault.collect_position_fees;
 
-use fun complete_into_vault as Launch.complete_into_vault;
+use fun compound_meme_a as LpVault.compound_meme_a;
 
-use fun effective_tier as VenueConfig.effective_tier;
+use fun compound_meme_b as LpVault.compound_meme_b;
+
+use fun complete_into_vault as Launch.complete_into_vault;
 
 use fun pool_creation_cap as VenueConfig.pool_creation_cap;
 
-use fun reserved_tick_spacing as VenueConfig.reserved_tick_spacing;

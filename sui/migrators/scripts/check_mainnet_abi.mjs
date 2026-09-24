@@ -57,6 +57,15 @@ const REV = {
     moveStl: '0681fec63a310ae753d03a06f7c05d3e2925bb09',
 };
 
+/// The mainnet packages the pinned Git revisions of Cetus's libraries declare as `published-at`:
+/// integer-mate 09a12d9b is version 7 and move-stl 0681fec6 is version 5.
+const INTEGER_MATE_ORIGINAL =
+    '0x714a63a0dba6da4f017b42d5d0fb78867f18bcde904868e51d951a5a6f5b7f57';
+const INTEGER_MATE_PUBLISHED =
+    '0xdfaadf86be9af246900d1e3f3b996cf549e7948e662a9977bdd7646d8fa3a778';
+const MOVE_STL_ORIGINAL = '0xbe21a06129308e0495431d12286127897aff07a8ade3970495a4404d97f9eaaa';
+const MOVE_STL_PUBLISHED = '0x8569b7efebec65c73b9dc15c5ac2a9542870d286fa79a3feedffbaa94ed53002';
+
 /// The one Sui framework revision every local normalized interface must bind.
 const SUI_FRAMEWORK_REV = REV.sui;
 
@@ -133,6 +142,8 @@ const PACKAGES = [
                     'add_liquidity_with_fixed_amount',
                     'collect_fee',
                     'create_pool_and_get_object',
+                    'current_sqrt_price',
+                    'get_tick_manager',
                     'open_position',
                     'share_pool_object',
                 ],
@@ -141,7 +152,13 @@ const PACKAGES = [
                 name: 'position',
                 sha256: 'ea83d3b9a65c7f62579dd0a902ddad8ade46cec277e5781ab9e52783c48caaec',
                 structs: ['Position'],
-                functions: ['liquidity', 'pool_id'],
+                functions: ['liquidity', 'lower_tick', 'pool_id', 'upper_tick'],
+            },
+            {
+                name: 'tick',
+                sha256: '2ac4cbe4fa1270ac16e3ffa4716fd745fef0a480dd9685947e17539b269a10f8',
+                structs: ['TickInfo', 'TickManager'],
+                functions: ['get_tick_from_manager', 'sqrt_price'],
             },
         ],
     },
@@ -157,7 +174,20 @@ const PACKAGES = [
         digest: '9rZP5D79m4Yfq9fvtPujtpvU5rhfiYm1JS6LaxcMZVSu',
         previousTransaction: '5sSoTfTiti8kXjJhZeYuFWFcxxvjbZpFQ96rZ3dzeQbC',
         manifest: 'interfaces/cetus/Move.toml',
+        // Cetus links the library versions the local interface's pinned Git revisions declare.
+        linkage: [
+            [STD_ADDRESS, STD_ADDRESS, 25],
+            [SUI_ADDRESS, SUI_ADDRESS, 59],
+            [INTEGER_MATE_ORIGINAL, INTEGER_MATE_PUBLISHED, 7],
+            [MOVE_STL_ORIGINAL, MOVE_STL_PUBLISHED, 5],
+        ],
         modules: [
+            {
+                name: 'clmm_math',
+                sha256: '851de164740b305acc2422452e30b34fff80f366113a286719c4ee8f25d41e6f',
+                structs: [],
+                functions: ['get_liquidity_by_amount'],
+            },
             {
                 name: 'config',
                 sha256: 'd0575fcd8fa5e6d63a779a19fbc1ee276459d151d8045bc7e7a9f5f380adfad5',
@@ -182,8 +212,17 @@ const PACKAGES = [
             {
                 name: 'pool',
                 sha256: '059cbeeb4502c7e54b1a9ada73709505f9572f4c80c441c1c31fbee64c32c7a1',
-                structs: ['Pool'],
-                functions: ['collect_fee'],
+                structs: ['AddLiquidityReceipt', 'Pool'],
+                functions: [
+                    'add_liquidity_fix_coin',
+                    'add_liquidity_pay_amount',
+                    'collect_fee',
+                    'current_sqrt_price',
+                    'current_tick_index',
+                    'open_position',
+                    'repay_add_liquidity',
+                    'tick_spacing',
+                ],
             },
             {
                 name: 'pool_creator',
@@ -195,9 +234,82 @@ const PACKAGES = [
                 name: 'position',
                 sha256: '78f71fd13a5ab6528509d1a2ceb279e4d6616cd8e6877baf4a5ee25627789cc3',
                 structs: ['Position'],
-                functions: ['liquidity', 'pool_id'],
+                functions: ['liquidity', 'pool_id', 'tick_range'],
             },
         ],
+    },
+    {
+        key: 'lp_burn',
+        label: 'Cetus LP Burn',
+        addressName: 'lp_burn',
+        originalId:
+            '0x12d73de9a6bc3cb658ec9dc0fe7de2662be1cea5c76c092fcc3606048cdbac27',
+        currentId:
+            '0xc4aabc874f5060d3147d8f74c14e3a8a1f9f8d92edea138a51635395ed167cd9',
+        version: 8,
+        digest: '77pAM8TdzRbHqA4b5ccyLQHZzNNhj3k15cZMtD37qLHH',
+        previousTransaction: '6m7WqScGvn4M6n5k9HE5241wGNW8izpdSCs69Smy3EKy',
+        manifest: 'interfaces/cetus_lp_burn/Move.toml',
+        // LP Burn must call exactly the Cetus, vester, and token revisions this lock resolves.
+        linkage: [
+            [STD_ADDRESS, STD_ADDRESS, 25],
+            [SUI_ADDRESS, SUI_ADDRESS, 59],
+            [
+                '0x06864a6f921804860930db6ddbe2e16acdf8504495ea7481637a1c8b9a8fe54b',
+                '0x06864a6f921804860930db6ddbe2e16acdf8504495ea7481637a1c8b9a8fe54b',
+                1,
+            ],
+            [
+                '0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb',
+                '0x260693ec785a6e6c9d81d58c7d2ff72f1288ae0fa6a9725abe05a6478b11f084',
+                15,
+            ],
+            [INTEGER_MATE_ORIGINAL, INTEGER_MATE_PUBLISHED, 7],
+            [
+                '0x9d2f067d3b9d19ac0f8d2e5c2c393b1760232083e42005b2e5df39c06064d522',
+                '0x48dcc51091e692a0c8a64930fc839fb5a8e58de3590c084a8322b9cd34754c36',
+                2,
+            ],
+            [MOVE_STL_ORIGINAL, MOVE_STL_PUBLISHED, 5],
+        ],
+        modules: [
+            {
+                name: 'lp_burn',
+                sha256: '653b9673273bd5f5e237b3105959410e757abc11b08535481a40c6ae0d88930b',
+                structs: ['BurnManager', 'CetusLPBurnProof'],
+                functions: ['burn_lp_v2', 'collect_fee'],
+            },
+        ],
+    },
+    {
+        // Linkage-only dependency of LP Burn; nothing calls it.
+        key: 'vester',
+        label: 'Cetus CLMM Vester',
+        addressName: 'clmm_vester',
+        originalId:
+            '0x9d2f067d3b9d19ac0f8d2e5c2c393b1760232083e42005b2e5df39c06064d522',
+        currentId:
+            '0x48dcc51091e692a0c8a64930fc839fb5a8e58de3590c084a8322b9cd34754c36',
+        version: 2,
+        digest: '8jHEsYqEFhApzrEL1r9oG2gMq2KNgDtni9mJUakQZXwS',
+        previousTransaction: 'Gw3d3xwyJtgQ2Qf9GKUnJAwhyiRNGDZwyTMzWbFU8kk5',
+        manifest: 'interfaces/cetus_clmm_vester/Move.toml',
+        modules: [],
+    },
+    {
+        // Linkage-only dependency of LP Burn and the vester; nothing calls it.
+        key: 'token',
+        label: 'CETUS token',
+        addressName: 'cetus',
+        originalId:
+            '0x06864a6f921804860930db6ddbe2e16acdf8504495ea7481637a1c8b9a8fe54b',
+        currentId:
+            '0x06864a6f921804860930db6ddbe2e16acdf8504495ea7481637a1c8b9a8fe54b',
+        version: 1,
+        digest: '8ySdLMhVG9RRwD4zB3s4JwohqNraxTwbF1RWFSuXvL32',
+        previousTransaction: 'CqKi5wdUgWsB3EPDzBtSRasS6hkKZ2TvurLGKVCjc1kC',
+        manifest: 'interfaces/cetus_token/Move.toml',
+        modules: [],
     },
 ];
 
@@ -224,6 +336,7 @@ const MANIFESTS = [
             blast_fun: { local: '../launchpad' },
             BluefinSpot: { git: BLUEFIN_GIT, rev: REV.bluefin },
             CetusClmm: { local: 'interfaces/cetus' },
+            CetusLpBurn: { local: 'interfaces/cetus_lp_burn' },
             Sui: {
                 git: SUI_GIT,
                 subdir: SUI_FRAMEWORK_SUBDIR,
@@ -262,6 +375,63 @@ const MANIFESTS = [
             MoveSTL: { git: MOVE_STL_GIT, rev: REV.moveStl, override: true },
         },
     },
+    {
+        path: 'interfaces/cetus_lp_burn/Move.toml',
+        packageName: 'CetusLpBurn',
+        packageKey: 'lp_burn',
+        lockNode: 'CetusLpBurn',
+        dependencies: {
+            Sui: {
+                git: SUI_GIT,
+                subdir: SUI_FRAMEWORK_SUBDIR,
+                rev: REV.sui,
+                override: true,
+            },
+            CetusClmm: { local: '../cetus' },
+            CetusClmmVester: { local: '../cetus_clmm_vester' },
+            CetusToken: { local: '../cetus_token' },
+            IntegerMate: {
+                git: INTEGER_MATE_GIT,
+                rev: REV.integerMate,
+                override: true,
+            },
+        },
+    },
+    {
+        path: 'interfaces/cetus_clmm_vester/Move.toml',
+        packageName: 'CetusClmmVester',
+        packageKey: 'vester',
+        lockNode: 'CetusClmmVester',
+        dependencies: {
+            Sui: {
+                git: SUI_GIT,
+                subdir: SUI_FRAMEWORK_SUBDIR,
+                rev: REV.sui,
+                override: true,
+            },
+            CetusClmm: { local: '../cetus' },
+            CetusToken: { local: '../cetus_token' },
+            IntegerMate: {
+                git: INTEGER_MATE_GIT,
+                rev: REV.integerMate,
+                override: true,
+            },
+        },
+    },
+    {
+        path: 'interfaces/cetus_token/Move.toml',
+        packageName: 'CetusToken',
+        packageKey: 'token',
+        lockNode: 'CetusToken',
+        dependencies: {
+            Sui: {
+                git: SUI_GIT,
+                subdir: SUI_FRAMEWORK_SUBDIR,
+                rev: REV.sui,
+                override: true,
+            },
+        },
+    },
 ];
 
 /// Every pinned node the lock is allowed to contain, in both environments,
@@ -275,6 +445,29 @@ const LOCK_NODES = {
     CetusClmm: {
         source: { local: 'interfaces/cetus' },
         deps: { IntegerMate: 'IntegerMate_1', MoveSTL: 'MoveSTL', Sui: 'Sui_2' },
+    },
+    CetusClmmVester: {
+        source: { local: 'interfaces/cetus_clmm_vester' },
+        deps: {
+            CetusClmm: 'CetusClmm',
+            CetusToken: 'CetusToken',
+            IntegerMate: 'IntegerMate_1',
+            Sui: 'Sui_2',
+        },
+    },
+    CetusLpBurn: {
+        source: { local: 'interfaces/cetus_lp_burn' },
+        deps: {
+            CetusClmm: 'CetusClmm',
+            CetusClmmVester: 'CetusClmmVester',
+            CetusToken: 'CetusToken',
+            IntegerMate: 'IntegerMate_1',
+            Sui: 'Sui_2',
+        },
+    },
+    CetusToken: {
+        source: { local: 'interfaces/cetus_token' },
+        deps: { Sui: 'Sui_2' },
     },
     IntegerLibrary: {
         source: { git: INTEGER_LIBRARY_GIT, subdir: '.', rev: REV.integerLibrary },
@@ -331,6 +524,7 @@ const LOCK_NODES = {
         deps: {
             BluefinSpot: 'BluefinSpot',
             CetusClmm: 'CetusClmm',
+            CetusLpBurn: 'CetusLpBurn',
             IntegerLibrary: 'IntegerLibrary',
             IntegerMate: 'IntegerMate_1',
             Sui: 'Sui_2',
@@ -357,6 +551,10 @@ const ABI = {
         'public fun collect_fee<$0, $1>(&@sui::clock::Clock, &@self::config::GlobalConfig, &mut @self::pool::Pool<$0, $1>, &mut @self::position::Position): (u64, u64, @sui::balance::Balance<$0>, @sui::balance::Balance<$1>)',
     'bluefin_spot::pool::create_pool_and_get_object':
         'public fun create_pool_and_get_object<$0, $1, $2>(&@sui::clock::Clock, &mut @self::config::GlobalConfig, vector<u8>, vector<u8>, vector<u8>, u8, vector<u8>, vector<u8>, u8, vector<u8>, u32, u64, u128, @sui::balance::Balance<$2>, &mut @sui::tx_context::TxContext): @self::pool::Pool<$0, $1>',
+    'bluefin_spot::pool::current_sqrt_price':
+        'public fun current_sqrt_price<$0, $1>(&@self::pool::Pool<$0, $1>): u128',
+    'bluefin_spot::pool::get_tick_manager':
+        'public fun get_tick_manager<$0, $1>(&@self::pool::Pool<$0, $1>): &@self::tick::TickManager',
     'bluefin_spot::pool::open_position':
         'public fun open_position<$0, $1>(&@self::config::GlobalConfig, &mut @self::pool::Pool<$0, $1>, u32, u32, &mut @sui::tx_context::TxContext): @self::position::Position',
     'bluefin_spot::pool::share_pool_object':
@@ -365,8 +563,22 @@ const ABI = {
         'struct Position has store, key',
     'bluefin_spot::position::liquidity':
         'public fun liquidity(&@self::position::Position): u128',
+    'bluefin_spot::position::lower_tick':
+        'public fun lower_tick(&@self::position::Position): 0x714a63a0dba6da4f017b42d5d0fb78867f18bcde904868e51d951a5a6f5b7f57::i32::I32',
     'bluefin_spot::position::pool_id':
         'public fun pool_id(&@self::position::Position): @sui::object::ID',
+    'bluefin_spot::position::upper_tick':
+        'public fun upper_tick(&@self::position::Position): 0x714a63a0dba6da4f017b42d5d0fb78867f18bcde904868e51d951a5a6f5b7f57::i32::I32',
+    'bluefin_spot::tick::TickInfo':
+        'struct TickInfo has copy, drop, store',
+    'bluefin_spot::tick::TickManager':
+        'struct TickManager has store',
+    'bluefin_spot::tick::get_tick_from_manager':
+        'public fun get_tick_from_manager(&@self::tick::TickManager, 0x714a63a0dba6da4f017b42d5d0fb78867f18bcde904868e51d951a5a6f5b7f57::i32::I32): &@self::tick::TickInfo',
+    'bluefin_spot::tick::sqrt_price':
+        'public fun sqrt_price(&@self::tick::TickInfo): u128',
+    'cetus_clmm::clmm_math::get_liquidity_by_amount':
+        'public fun get_liquidity_by_amount(0x714a63a0dba6da4f017b42d5d0fb78867f18bcde904868e51d951a5a6f5b7f57::i32::I32, 0x714a63a0dba6da4f017b42d5d0fb78867f18bcde904868e51d951a5a6f5b7f57::i32::I32, 0x714a63a0dba6da4f017b42d5d0fb78867f18bcde904868e51d951a5a6f5b7f57::i32::I32, u128, u64, bool): (u128, u64, u64)',
     'cetus_clmm::config::GlobalConfig':
         'struct GlobalConfig has store, key',
     'cetus_clmm::config::get_fee_rate':
@@ -381,10 +593,26 @@ const ABI = {
         'public fun mint_pool_creation_cap<$0>(&@self::config::GlobalConfig, &mut @self::factory::Pools, &mut @sui::coin::TreasuryCap<$0>, &mut @sui::tx_context::TxContext): @self::factory::PoolCreationCap',
     'cetus_clmm::factory::register_permission_pair':
         'public fun register_permission_pair<$0, $1>(&@self::config::GlobalConfig, &mut @self::factory::Pools, u32, &@self::factory::PoolCreationCap, &mut @sui::tx_context::TxContext)',
+    'cetus_clmm::pool::AddLiquidityReceipt':
+        'struct AddLiquidityReceipt<phantom $0, phantom $1>',
     'cetus_clmm::pool::Pool':
         'struct Pool<phantom $0, phantom $1> has store, key',
+    'cetus_clmm::pool::add_liquidity_fix_coin':
+        'public fun add_liquidity_fix_coin<$0, $1>(&@self::config::GlobalConfig, &mut @self::pool::Pool<$0, $1>, &mut @self::position::Position, u64, bool, &@sui::clock::Clock): @self::pool::AddLiquidityReceipt<$0, $1>',
+    'cetus_clmm::pool::add_liquidity_pay_amount':
+        'public fun add_liquidity_pay_amount<$0, $1>(&@self::pool::AddLiquidityReceipt<$0, $1>): (u64, u64)',
     'cetus_clmm::pool::collect_fee':
         'public fun collect_fee<$0, $1>(&@self::config::GlobalConfig, &mut @self::pool::Pool<$0, $1>, &@self::position::Position, bool): (@sui::balance::Balance<$0>, @sui::balance::Balance<$1>)',
+    'cetus_clmm::pool::current_sqrt_price':
+        'public fun current_sqrt_price<$0, $1>(&@self::pool::Pool<$0, $1>): u128',
+    'cetus_clmm::pool::current_tick_index':
+        'public fun current_tick_index<$0, $1>(&@self::pool::Pool<$0, $1>): 0x714a63a0dba6da4f017b42d5d0fb78867f18bcde904868e51d951a5a6f5b7f57::i32::I32',
+    'cetus_clmm::pool::open_position':
+        'public fun open_position<$0, $1>(&@self::config::GlobalConfig, &mut @self::pool::Pool<$0, $1>, u32, u32, &mut @sui::tx_context::TxContext): @self::position::Position',
+    'cetus_clmm::pool::repay_add_liquidity':
+        'public fun repay_add_liquidity<$0, $1>(&@self::config::GlobalConfig, &mut @self::pool::Pool<$0, $1>, @sui::balance::Balance<$0>, @sui::balance::Balance<$1>, @self::pool::AddLiquidityReceipt<$0, $1>)',
+    'cetus_clmm::pool::tick_spacing':
+        'public fun tick_spacing<$0, $1>(&@self::pool::Pool<$0, $1>): u32',
     'cetus_clmm::pool_creator::create_pool_v3_with_creation_cap':
         'public fun create_pool_v3_with_creation_cap<$0, $1>(&@self::config::GlobalConfig, &mut @self::factory::Pools, &@self::factory::PoolCreationCap, u32, u128, @std::string::String, u32, u32, @sui::coin::Coin<$0>, @sui::coin::Coin<$1>, bool, &@sui::clock::Clock, &mut @sui::tx_context::TxContext): (@self::position::Position, @sui::coin::Coin<$0>, @sui::coin::Coin<$1>)',
     'cetus_clmm::pool_creator::full_range_tick_range':
@@ -395,6 +623,16 @@ const ABI = {
         'public fun liquidity(&@self::position::Position): u128',
     'cetus_clmm::position::pool_id':
         'public fun pool_id(&@self::position::Position): @sui::object::ID',
+    'cetus_clmm::position::tick_range':
+        'public fun tick_range(&@self::position::Position): (0x714a63a0dba6da4f017b42d5d0fb78867f18bcde904868e51d951a5a6f5b7f57::i32::I32, 0x714a63a0dba6da4f017b42d5d0fb78867f18bcde904868e51d951a5a6f5b7f57::i32::I32)',
+    'lp_burn::lp_burn::BurnManager':
+        'struct BurnManager has key',
+    'lp_burn::lp_burn::CetusLPBurnProof':
+        'struct CetusLPBurnProof has store, key',
+    'lp_burn::lp_burn::burn_lp_v2':
+        'public fun burn_lp_v2(&mut @self::lp_burn::BurnManager, 0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb::position::Position, &mut @sui::tx_context::TxContext): @self::lp_burn::CetusLPBurnProof',
+    'lp_burn::lp_burn::collect_fee':
+        'public fun collect_fee<$0, $1>(&@self::lp_burn::BurnManager, &0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb::config::GlobalConfig, &mut 0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb::pool::Pool<$0, $1>, &mut @self::lp_burn::CetusLPBurnProof, &mut @sui::tx_context::TxContext): (@sui::coin::Coin<$0>, @sui::coin::Coin<$1>)',
 };
 
 // === Failures ===
@@ -749,6 +987,38 @@ const PACKAGE_QUERY = `query($address: SuiAddress!, $version: UInt53!) {
   }
 }`;
 
+/// The exact revision's linkage table: the dependency revision every call it makes resolves to.
+const LINKAGE_QUERY = `query($address: SuiAddress!, $version: UInt53!) {
+  package(address: $address, version: $version) {
+    linkage { originalId upgradedId version }
+  }
+}`;
+
+/// Renders a linkage table as sorted `original -> upgraded vN` lines, rejecting a malformed or
+/// repeated entry, so a missing, extra, or rebound dependency changes the rendering.
+function renderLinkage(value, path) {
+    const seen = new Set();
+    return expectArray(value, path)
+        .map((entry, index) => {
+            const entryPath = `${path}[${index}]`;
+            const link = expectObject(entry, entryPath, ['originalId', 'upgradedId', 'version']);
+            const original = normalizeAddress(link.originalId, `${entryPath}.originalId`);
+            if (seen.has(original)) throw shapeError(entryPath, `duplicate linkage for ${original}`);
+            seen.add(original);
+            const upgraded = normalizeAddress(link.upgradedId, `${entryPath}.upgradedId`);
+            return `${original} -> ${upgraded} v${expectInteger(link.version, `${entryPath}.version`)}`;
+        })
+        .sort();
+}
+
+function expectedLinkage(linkage) {
+    return linkage
+        .map(([original, upgraded, version]) =>
+            `${normalizeAddress(original)} -> ${normalizeAddress(upgraded)} v${version}`,
+        )
+        .sort();
+}
+
 function moduleQuery(module) {
     const structFields = module.structs
         .map(
@@ -934,7 +1204,30 @@ async function verifyPackage(expected, observed) {
         return null;
     }
 
-    return { currentId: live.address, checkedOrigins };
+    let checkedLinks = 0;
+    if (expected.linkage) {
+        const linked = await graphql(LINKAGE_QUERY, {
+            address: expected.originalId,
+            version: expected.version,
+        });
+        try {
+            const table = expectObject(linked.package, `${label} linkage`, ['linkage']);
+            const rendered = renderLinkage(table.linkage, `${label} linkage`);
+            if (
+                checkEqual(
+                    rendered.join('; '),
+                    expectedLinkage(expected.linkage).join('; '),
+                    `${label}: revision ${expected.version} links other dependency revisions`,
+                )
+            ) {
+                checkedLinks = rendered.length;
+            }
+        } catch (error) {
+            check(false, `${label}: ${error.message}`);
+        }
+    }
+
+    return { currentId: live.address, checkedOrigins, checkedLinks };
 }
 
 /// The package that must define a consumed struct: the original package, unless the expectation
@@ -1449,6 +1742,25 @@ function mutateSource(source, from, to) {
     return source.slice(0, index) + to + source.slice(index + from.length);
 }
 
+/// The committed LP Burn linkage as the live schema returns it, in the live order.
+function GOOD_LINKAGE() {
+    return packageByKey('lp_burn').linkage.map(([originalId, upgradedId, version]) => ({
+        originalId,
+        upgradedId,
+        version,
+    }));
+}
+
+/// Throws unless the mutated linkage renders differently from the committed expectation.
+function assertLinkage(mutate) {
+    const links = GOOD_LINKAGE();
+    mutate(links);
+    const rendered = renderLinkage(links, 'linkage').join('; ');
+    if (rendered !== expectedLinkage(packageByKey('lp_burn').linkage).join('; ')) {
+        throw new Error('linkage drift detected');
+    }
+}
+
 function selfTestCases() {
     const rootManifest = readPackageFile('Move.toml');
     const cetusManifest = readPackageFile('interfaces/cetus/Move.toml');
@@ -1494,6 +1806,46 @@ function selfTestCases() {
                     throw new Error(`unexpected rendering: ${rendered}`);
                 }
             },
+        },
+
+        {
+            name: 'committed linkage expectation renders canonically',
+            expect: 'pass',
+            run: () => {
+                const expected = packageByKey('lp_burn').linkage;
+                const rendered = renderLinkage(GOOD_LINKAGE(), 'linkage');
+                if (rendered.join('; ') !== expectedLinkage(expected).join('; ')) {
+                    throw new Error(`unexpected rendering: ${rendered.join('; ')}`);
+                }
+            },
+        },
+
+        // --- Negative: linkage ---
+        {
+            name: 'rebound linkage entry is rejected',
+            run: () => assertLinkage((links) => { links[3].upgradedId = links[0].upgradedId; }),
+        },
+        {
+            name: 'older linked version is rejected',
+            run: () => assertLinkage((links) => { links[3].version = 14; }),
+        },
+        {
+            name: 'missing linkage entry is rejected',
+            run: () => assertLinkage((links) => { links.pop(); }),
+        },
+        {
+            name: 'extra linkage entry is rejected',
+            run: () => assertLinkage((links) => {
+                links.push({ originalId: '0x3', upgradedId: '0x3', version: 1 });
+            }),
+        },
+        {
+            name: 'duplicate linkage entry is rejected',
+            run: () => assertLinkage((links) => { links.push({ ...links[2] }); }),
+        },
+        {
+            name: 'linkage entry with an unknown field is rejected',
+            run: () => assertLinkage((links) => { links[0].digest = 'x'; }),
         },
 
         // --- Negative: ABI response shape ---
@@ -2023,7 +2375,8 @@ async function main() {
                 `${short(observed.currentId)} digest ${observed.digest} ` +
                 `tx ${observed.previousTransaction} | ` +
                 `modules ${expected.modules.length} functions ${functions} ` +
-                `structs ${structs} origins ${resolved.checkedOrigins}\n`,
+                `structs ${structs} origins ${resolved.checkedOrigins} ` +
+                `links ${resolved.checkedLinks}\n`,
         );
     }
 

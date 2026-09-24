@@ -13,18 +13,22 @@ each venue module depends inward on the narrow core interface, owns one sealed
 Move call. Aftermath, MMT, and Turbos were removed before publication together
 with their witnesses, local interfaces, and dependency pins.
 
-- **Release adapter matrix.** An adapter reaches the launchpad seams (ticket
-  binding, the treasury-capability borrow, `begin_migration`,
-  `complete_migration`, `fee_router::collect`, and `settle_and_update_routes`)
-  only by constructing its own witness. The matrix is therefore exactly
+- **Release adapter matrix.** An adapter reaches the launchpad seams
+  (`launch::new`, the initializer's treasury-capability borrow,
+  `begin_migration`, and `complete_migration`) only by constructing its own
+  witness. The matrix is therefore exactly
   `cetus::Witness` and `bluefin::Witness`, each completing into sealed `LpVault`
-  custody. `scripts/check_source_boundaries.sh` fails when any other module
-  declares a witness or calls a seam, when a completion does not prepare, attach,
-  and share its vault, or when a local venue interface other than Cetus's exists.
-  A future adapter is separate work: it first defines and tests its pinned-tier
-  rule, its ticket binding with any venue preparation, permanent `LpVault`
-  custody, its atomic route, collection, settled route update, and event
-  conformance, and then extends that gate. There is no generic plug-in
+  custody. `scripts/check_source_boundaries.sh` pins the package's exact module
+  set and every module's public and package function set, so any added module
+  or non-private function fails it until the gate is extended, and no module
+  declares an `entry` function. Within that set it fails when any module other
+  than `cetus` and `bluefin` declares a `Witness` type or names a seam, when a
+  completion does not prepare, attach, and share its vault, or when a local
+  venue interface other than Cetus's exists.
+  A future adapter is separate work: it first defines and tests its tier
+  validation, its launch start with any venue preparation, `LpVault` custody
+  with no exposed withdrawal path, its atomic route, collection, settled route
+  update, and event conformance, and then extends that gate. There is no generic plug-in
   constructor.
 - **One aggregate package.** Cetus and Bluefin ship together, so the release
   gate, dependency graph, and `UpgradeCap` lifecycle are shared.
@@ -32,40 +36,53 @@ with their witnesses, local interfaces, and dependency pins.
   *type*, not one global object. Every migrated launch shares its own vault, so
   unrelated fee collections never contend on the same Sui object. The venue
   position is one dynamic **object** field under the sealed
-  `vault::PositionKey<Venue>` name, with no removal, transfer, or immutable
-  borrow path.
+  `vault::PositionKey<Venue>` name, with no removal, transfer, or public borrow
+  path; adapters borrow it only through package-only `vault::position` and
+  `position_mut`.
 - **Protocol residual custody.** Every venue residual stays in its per-launch
   vault and is claimed only by the existing admin-gated protocol claim. No
   adapter stores a payout address, burns a nonzero residual, or sends one to
   `0x0`.
-- **Router-only LP fees.** The vault holds no LP fees, fee ledger, fee
-  capability, or fee policy. An adapter collects its bound position and hands
-  both balances to `blast_fun::fee_router::collect`, or to
-  `settle_and_update_routes` with a route change, in the same transaction; the
-  router splits them by the share pair frozen at activation and pays every
-  destination at once (ADR 0088).
-- **Sealed venue tiers.** `venue_config::VenueConfig` is one shared singleton
-  holding one `(tick_spacing, fee_rate)` entry per venue as a dynamic field
-  keyed by `TierKey<Venue>`, so an upgrade-added venue module can register its
-  own tier without touching the frozen struct layout. Migration is
-  permissionless, so routes read the effective tier instead of trusting caller
-  parameters. Only Cetus compiles a default, used while no pin exists; Bluefin
-  has none, so its migration aborts until a pin exists. Only the venue module's
-  sealed marker can write its entry, behind this package's own current
-  generation and a live `AdminWitness<BLAST_FUN_DOMAIN>` from the shared
-  Launchpad authority. A pin affects only later migrations, and for Cetus only
-  later bindings: a bound Cetus ticket migrates at the tier it reserved.
+- **Vault-split LP fees.** At migration the vault takes the launch's LP-fee
+  split. An adapter's permissionless collection hands both collected balances to
+  `vault::split_fees`, which pays Blast's live per-coin share from
+  `lp_fee_policy::LpFeePolicy` and every recipient, and credits the creator,
+  auto-LP, and rewards balances; the adapter then adds the auto-LP balances
+  back to the position with the venue's own add-liquidity call. A split change
+  runs the same settlement first, then `vault::update_fee_split` under the
+  launch's live `CurveFeeCap` (ADR 0089).
+- **Creator-chosen venue tiers.** The creator passes the pool tier to the
+  adapter's `new`, which validates it against the venue before `launch::new`
+  stores it; migration reads it from the launch and never trusts a migration
+  caller. There are no administrator tier pins or compiled defaults.
+  Cetus fixes the fee rate of each registered tick spacing, so `cetus::new` takes
+  only the tick spacing; Bluefin checks its bounds only when a pool is created,
+  so `bluefin::new` applies them first. `venue_config::VenueConfig` keeps only
+  write-once venue objects, under keys only their venue module constructs.
+- **Cetus LP Burn.** Cetus migration burns the full-range position with
+  `lp_burn::burn_lp_v2` (original package
+  `0x12d73de9a6bc3cb658ec9dc0fe7de2662be1cea5c76c092fcc3606048cdbac27`, version 8
+  at `0xc4aabc874f5060d3147d8f74c14e3a8a1f9f8d92edea138a51635395ed167cd9`, shared
+  `BurnManager` `0x1d94aa32518d0cb00f9de6ed60d450c9a2090761f326752ffad06b2e9404f845`).
+  Version 8 links Cetus CLMM version 15, integer_mate 7, move_stl 5, the CLMM
+  vester (`0x9d2f067d…`, version 2 at `0x48dcc510…`), and the CETUS token
+  (`0x06864a6f…`); `interfaces/cetus_lp_burn` declares `burn_lp_v2` and
+  `collect_fee` as read from the live bytecode (no type parameters on
+  `burn_lp_v2`, unlike the upstream README), and `interfaces/cetus_clmm_vester`
+  and `interfaces/cetus_token` exist only so the published linkage covers LP
+  Burn's dependencies. The vault keeps the `CetusLPBurnProof`; Cetus auto-LP adds
+  to a second full-range position the vault opens with `pool::open_position` on
+  its first add.
 - **Cetus pool-creation reservation.** Any Meme holder could pre-create the
-  Cetus pool for a pair and tick spacing, so `cetus::bind` reserves creation
+  Cetus pool for a pair and tick spacing, so `cetus::new` reserves creation
   before any Meme leaves the ticket: it mints the Meme type's single
-  `factory::PoolCreationCap` from the lent treasury capability and registers the
-  bound Quote at the effective tick spacing (compiled default 200 at 1%, the tier
-  Cetus admits for permissioned SUI and USDC pairs on 2026-09-22). The
-  capability is a dynamic object field of `VenueConfig`, so it keeps its ID, and
-  each reserved tick spacing is a dynamic field; only `cetus` constructs either
-  key, and nothing extracts the capability or unregisters a pair. Migration
-  creates the pool with that capability at the reserved tick spacing and never
-  adopts an existing pool. Cetus's pool-manager role can also create a reserved
+  `factory::PoolCreationCap` from the initializer's lent treasury capability
+  and registers the pair at the creator's tick spacing (Cetus admitted only 200
+  at 1% for permissioned SUI and USDC pairs on 2026-09-22). The capability is a
+  dynamic object field of `VenueConfig`, so it keeps its ID; only `cetus`
+  constructs its key, and nothing extracts the capability or unregisters a pair.
+  Migration creates the pool with that capability at the launch's tick spacing
+  and never adopts an existing pool. Cetus's pool-manager role can also create a reserved
   pair's pool without the capability. That is a trust assumption on the venue
   operator: such a pool makes the pair's migration abort, and recovering the
   launch would need a migrators upgrade.
@@ -327,10 +344,8 @@ a documentation footnote. Vault claim: `vault::claim_protocol_fees` pays the
 protocol migration residuals under `AdminWitness<BLAST_FUN_DOMAIN>` and this
 package's current generation. It touches neither the venue nor the position.
 
-Cetus's compiled default tier is active from publication, and a Cetus fixture
-that overrides it must record that Cetus registers the pinned
-`(tick_spacing, fee_rate)`. Bluefin has no default, so its migration fixture
-runs after a tier pin.
+Each fixture starts its launch through the adapter's `new` at a tier the venue
+accepts, and records that the launch stores that tier.
 
 Each migration fixture must show:
 
@@ -341,10 +356,11 @@ Each migration fixture must show:
 - the returned position belongs to the new pool, has positive liquidity, and
   enters the vault as its one sealed dynamic object field.
 
-Each router-bound collection fixture must show venue liquidity is identical
-immediately before and after collection, the vault, pool, and position ids match
-the router's settlement binding, and the collected balances reach the router
-unchanged.
+Each collection fixture must show the position's liquidity grows only by the
+auto-LP addition, only the vault's own position on its own pool is
+collected, the collected balances are split in full by Blast's live share and
+the vault's current fee split, and the auto-LP add fixes the side the other
+balance covers and leaves the rest in the vault.
 
 One venue-semantics row was already **proven against published mainnet
 bytecode on 2026-08-30** by disassembling the live module (fetched through the
@@ -359,64 +375,68 @@ disassemble`); the dev-inspect fixtures re-confirm it end to end:
 
 | Route | Orientation and authority |
 | --- | --- |
-| `bind` | Binds a launch ticket in `Quote` through the core and reserves the pair's Cetus pool creation; aborts unless `LaunchConfig` admits `cetus::Witness` |
-| `migrate_meme_a`, `migrate_meme_b` | Permissionless; the route matching the pair's Cetus coin order |
-| `collect_fees_meme_a`, `collect_fees_meme_b` | Permissionless; pays the router's current routes |
-| `settle_and_update_routes_meme_a`, `settle_and_update_routes_meme_b` | Under the launch's `RouterConfigCap`; pays the current routes, then commits the proposed ones |
+| `new` | Starts a launch in `Quote` at the creator's tick spacing through the core and reserves the pair's Cetus pool creation; aborts unless `LaunchConfig` admits `cetus::Witness` and the Quote |
+| `migrate_meme_a`, `migrate_meme_b` | Permissionless; the route matching the pair's Cetus coin order; burns the position through the shared `BurnManager` |
+| `collect_fees_meme_a`, `collect_fees_meme_b` | Permissionless; splits the collection and adds the auto-LP share back through `add_liquidity_fix_coin` / `repay_add_liquidity`, fixing the side `clmm_math::get_liquidity_by_amount` says the other balance covers |
+| `settle_and_update_fee_split_meme_a`, `settle_and_update_fee_split_meme_b` | Under the launch's live `CurveFeeCap`; settles under the current split, then commits the proposed one |
 
 Each Cetus fixture must show:
 
-- `bind` mints the Meme type's single `PoolCreationCap` from the lent treasury
-  capability on its first binding only and keeps it as a `VenueConfig` dynamic
-  object field, registers the Quote at the effective tick spacing, aborts with
-  `ETierMismatch` unless Cetus registers that tick spacing at the effective fee
-  rate, and emits `CetusPoolReserved`; a Quote already reserved keeps its
-  reservation;
+- `new` reads the fee rate Cetus registers for the tick spacing (aborting when
+  Cetus registers none), mints the Meme type's single `PoolCreationCap` from the
+  lent treasury capability and keeps it as a `VenueConfig` dynamic object
+  field, registers the pair at that tick spacing (aborting when Cetus refuses
+  it), and emits `CetusPoolReserved`;
 - each migration route aborts with `EInvalidCoinOrder` unless Cetus's own
   `factory::is_right_order` agrees with it, and creates the pool only with the
-  reserved `PoolCreationCap` at the reserved tick spacing, never adopting one;
+  reserved `PoolCreationCap` at the launch's tick spacing, never adopting one;
 - liquidity is seeded with the exact handed-off balances; whatever the venue does
   not take stays in the vault as protocol residuals, and supplied principal plus
   residual reconciles exactly with the hand-off;
-- the position enters the vault under `PositionKey<cetus::Venue>`, the vault is
-  shared, the router is bound to the vault, pool, and position IDs, and the
-  caller receives no object; and
+- the position is burned with `lp_burn::burn_lp_v2`, its `CetusLPBurnProof`
+  enters the vault under `PositionKey<cetus::Venue>`, the vault is shared with
+  the launch's fee split, and the caller receives no object;
+- the first auto-LP add opens one full-range position under
+  `AutoLpPositionKey<cetus::Venue>` (`AutoLpPositionOpened`), and later adds and
+  collections reuse it; and
 - collection and the settled update collect only that position on its own pool
   (another pool aborts with `EPositionPoolMismatch`), leave its liquidity
-  unchanged, and pay through the router, the update under the old routes first.
+  unchanged except for the auto-LP addition, and split through the vault, the
+  update under the old split first.
 
 ### Bluefin revision-3 rows
 
 | Route | Orientation and authority |
 | --- | --- |
-| `bind` | Binds a launch ticket in `Quote` through the core; aborts unless `LaunchConfig` admits `bluefin::Witness` |
+| `new` | Starts a launch in `Quote` at the creator's tier through the core; aborts with `EInvalidTier` outside tick spacing 1–400 and fee rate 1–20,000, and unless `LaunchConfig` admits `bluefin::Witness` and the Quote |
 | `migrate` | Permissionless; creates `Pool<Meme, Quote>` with Meme as coin A |
-| `collect_fees` | Permissionless; pays the router's current routes |
-| `settle_and_update_routes` | Under the launch's `RouterConfigCap`; pays the current routes, then commits the proposed ones |
+| `collect_fees` | Permissionless; splits the collection and adds the auto-LP share back through `add_liquidity_with_fixed_amount`, fixing the side chosen from the pool's and the position's bound tick sqrt prices with a two-atom margin |
+| `settle_and_update_fee_split` | Under the launch's live `CurveFeeCap`; settles under the current split, then commits the proposed one |
 
 Each Bluefin fixture must show:
 
-- `migrate` aborts until `bluefin::set_tier` pins a pair (there is no compiled
-  default), and Bluefin's own pool creation bounds that pair: tick spacing at
-  most 400 (`pool` aborts 1026) and fee rate at most 20,000 (1027), so an
-  above-bound pin leaves the launch MigrationReady until a valid pin;
+- `migrate` creates the pool at the launch's tier, which `new` bounded exactly
+  as Bluefin's pool creation does: tick spacing at most 400 (`pool` aborts 1026)
+  and fee rate at most 20,000 (1027);
 - the pool is created with `create_pool_and_get_object<Meme, Quote, SUI>` at the
-  balance-derived `sqrt_price_x64`, full-range ticks aligned inward to the pinned
-  spacing, and the caller's whole `Coin<SUI>` as the creation fee, which Bluefin
+  balance-derived `sqrt_price_x64`, full-range ticks aligned inward to the
+  launch's spacing, and the caller's whole `Coin<SUI>` as the creation fee, which Bluefin
   accepts only at exactly its configured SUI amount (1038 for an unsupported fee
   coin, 1039 for any other amount); the Quote's shared `Currency` supplies coin
-  B's symbol, decimals, and icon;
+  B's symbol, decimals, and icon, while the Meme side passes its symbol (at most
+  32 bytes, bounded at launch intake) and an empty icon URL, so a Meme icon of
+  about 256 KB still migrates;
 - liquidity is seeded with the exact handed-off balances, fixing Meme when its
   atoms are at least the Quote atoms and Quote otherwise; whatever the venue does
   not take stays in the vault as protocol residuals, with no utilization bound,
   and supplied principal plus residual reconciles exactly with the hand-off;
 - the position enters the vault under `PositionKey<bluefin::Venue>`, the vault and
-  the pool are shared, the router is bound to their IDs and the position's, and
-  the caller receives no object; and
+  the pool are shared, the vault holds the launch's fee split, and the caller
+  receives no object; and
 - collection and the settled update collect only that position on its own pool
   (another `Pool<Meme, Quote>` aborts with `EPositionPoolMismatch`), leave its
-  liquidity unchanged, and pay through the router, the update under the old
-  routes first.
+  liquidity unchanged except for the auto-LP addition, and split through the
+  vault, the update under the old split first.
 
 ## Release gate
 
@@ -445,10 +465,9 @@ Before release, in order:
 4. the deployment runbook admits exactly `cetus::Witness` and
    `bluefin::Witness` in the Launchpad `LaunchConfig` with
    `launch_config::allow_migration_witness`, each only after that adapter's
-   binding, migration routes, collection, and settled update are reviewed and
-   its dev-inspect rows pass, and `bluefin::Witness` only after
-   `bluefin::set_tier` has pinned the Bluefin tier. No other migration witness
-   exists in this package, and none is admitted.
+   launch start, migration routes, collection, and settled update are reviewed
+   and its dev-inspect rows pass. No other migration witness exists in this
+   package, and none is admitted.
 
 After release, before `launch_config::allow_meme_decimals` admits a new Meme
 precision, rerun the migration extremes at that precision (the smallest and

@@ -2,25 +2,25 @@
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
 #[test_only]
-module blast_fun_distributor::merkle_tests;
+module blast_fun_migrators::merkle_tests;
 
 // === Tests ===
 
 #[test]
 fun single_leaf_verifies_only_its_exact_beneficiary_and_amounts() {
-    let distributor = object::id_from_address(@0xD);
-    let leaf = merkle::leaf(distributor, 0, 0, @0xA, 10, 20);
+    let vault = object::id_from_address(@0xD);
+    let leaf = merkle::leaf(vault, 0, 0, @0xA, 10, 20);
     assert_eq!(leaf.length(), 32);
     assert!(merkle::verify(leaf, leaf, 0, 1, &vector[]));
-    assert!(!merkle::verify(leaf, merkle::leaf(distributor, 0, 0, @0xB, 10, 20), 0, 1, &vector[]));
-    assert!(!merkle::verify(leaf, merkle::leaf(distributor, 1, 0, @0xA, 10, 20), 0, 1, &vector[]));
+    assert!(!merkle::verify(leaf, merkle::leaf(vault, 0, 0, @0xB, 10, 20), 0, 1, &vector[]));
+    assert!(!merkle::verify(leaf, merkle::leaf(vault, 1, 0, @0xA, 10, 20), 0, 1, &vector[]));
 }
 
 #[test]
 fun two_leaves_use_positional_proofs() {
-    let distributor = object::id_from_address(@0xD);
-    let a = merkle::leaf(distributor, 0, 0, @0xA, 10, 20);
-    let b = merkle::leaf(distributor, 0, 1, @0xB, 30, 40);
+    let vault = object::id_from_address(@0xD);
+    let a = merkle::leaf(vault, 0, 0, @0xA, 10, 20);
+    let b = merkle::leaf(vault, 0, 1, @0xB, 30, 40);
     let root = merkle::node_for_testing(a, b);
     assert!(merkle::verify(root, a, 0, 2, &vector[b]));
     assert!(merkle::verify(root, b, 1, 2, &vector[a]));
@@ -29,8 +29,8 @@ fun two_leaves_use_positional_proofs() {
 
 #[test]
 fun sdk_three_holder_vector_matches_move_hashes_and_odd_leaf_proof() {
-    let distributor = object::id_from_address(@0xD);
-    let leaf = merkle::leaf(distributor, 0, 0, @0xA, 10, 20);
+    let vault = object::id_from_address(@0xD);
+    let leaf = merkle::leaf(vault, 0, 0, @0xA, 10, 20);
     assert_eq!(leaf, x"18ba1db53bc0da39eb6f1f00df49fa5be0932e85ca8f8257f4d278edea7f1aa8");
     let root = x"93f46ab27a1d3a5def3379afd0a3b02cc149d6fa03b7105b2697deba8c12cb2d";
     assert!(
@@ -45,7 +45,7 @@ fun sdk_three_holder_vector_matches_move_hashes_and_odd_leaf_proof() {
             ],
         ),
     );
-    let last = merkle::leaf(distributor, 0, 2, @0xC, 50, 60);
+    let last = merkle::leaf(vault, 0, 2, @0xC, 50, 60);
     // The duplicate-last padding node cannot be claimed as a fourth allocation.
     assert!(
         !merkle::verify(
@@ -80,21 +80,21 @@ fun proof_shape_and_first_over_capacity_are_rejected() {
 
 #[test]
 fun every_leaf_field_is_bound_to_the_commitment() {
-    let distributor = object::id_from_address(@0xD);
-    let root = merkle::leaf(distributor, 0, 0, @0xA, 10, 20);
+    let vault = object::id_from_address(@0xD);
+    let root = merkle::leaf(vault, 0, 0, @0xA, 10, 20);
     let altered = vector[
         merkle::leaf(object::id_from_address(@0xE), 0, 0, @0xA, 10, 20),
-        merkle::leaf(distributor, 1, 0, @0xA, 10, 20),
-        merkle::leaf(distributor, 0, 1, @0xA, 10, 20),
-        merkle::leaf(distributor, 0, 0, @0xB, 10, 20),
-        merkle::leaf(distributor, 0, 0, @0xA, 11, 20),
-        merkle::leaf(distributor, 0, 0, @0xA, 10, 21),
+        merkle::leaf(vault, 1, 0, @0xA, 10, 20),
+        merkle::leaf(vault, 0, 1, @0xA, 10, 20),
+        merkle::leaf(vault, 0, 0, @0xB, 10, 20),
+        merkle::leaf(vault, 0, 0, @0xA, 11, 20),
+        merkle::leaf(vault, 0, 0, @0xA, 10, 21),
     ];
     altered.do!(|leaf| assert!(!merkle::verify(root, leaf, 0, 1, &vector[])));
 }
 
 // === Imports ===
 
-use blast_fun_distributor::merkle;
+use blast_fun_migrators::merkle;
 
 use std::unit_test::assert_eq;

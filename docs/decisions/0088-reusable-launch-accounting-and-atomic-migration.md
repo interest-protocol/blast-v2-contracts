@@ -1,17 +1,27 @@
 # 0088: Reusable launch accounting and atomic migration
 
-- Status: accepted
+- Status: accepted; amended by [0089](0089-migrators-own-post-migration-and-start-launches.md)
+  (recurring LP-fee routing and policy move to the migrators, launches start in the adapter
+  through a launch initializer, and the creator chooses the pool tier)
 - Date: 2026-09-22
 - Revised: 2026-09-22, rewritten in place after the founder rulings of the same day, then
   amended the same day after the real Cetus and Bluefin bytecode was run locally against the
   migration seam (migrators stay upgradeable; the ticket binds its adapter; the adapter supplies
   the pool ID); amended 2026-09-23 to remove the nonconforming Aftermath, MMT, and Turbos adapters,
-  then to record the venue-operator trust assumptions and the migrators upgrade-policy rule
+  then to record the venue-operator trust assumptions and the migrators upgrade-policy rule;
+  amended 2026-09-23 again for the owner's rulings (the upgrade finalizer checks the version
+  first; Bluefin receives an empty Meme icon; launch intake bounds the Meme symbol at 32 bytes;
+  launchpad policy narrowing is removed)
 - Supersedes: [0036](0036-fixed-nine-decimal-generated-memes.md),
   [0068](0068-compact-lp-fee-principal-snapshot.md),
   [0081](0081-separate-lp-fee-share-policy.md), and
   [0083](0083-migrators-own-lp-fee-policy-and-authority.md)
-- Amends: [0022](0022-dual-asset-fee-ledger-and-claims.md),
+- Amends: [0001](0001-sui-package-and-module-layout.md),
+  [0007](0007-acl-pause-and-versioning.md),
+  [0015](0015-protocol-authority-and-x-signer-state.md),
+  [0022](0022-dual-asset-fee-ledger-and-claims.md),
+  [0032](0032-admin-authorized-upgrade-cap-custody.md),
+  [0034](0034-remove-premature-governance-cutover.md),
   [0035](0035-initializer-finalized-meme-supply.md),
   [0042](0042-key-only-shared-launch.md),
   [0043](0043-versioned-launch-trading-and-atomic-migration.md),
@@ -87,8 +97,8 @@ package-specific and keeps the accepted authority boundaries:
 
 | Package | `Publisher` / `UpgradeCap` posture | Operational version gate |
 | --- | --- | --- |
-| launchpad | ADR 0032 unchanged: canonical `Publisher` and raw `UpgradeCap` are permanently wrapped in shared `PackageAdmin` | shared launchpad package version is checked first |
-| migrators | canonical `Publisher` and raw `UpgradeCap` enter the migrators' shared `PackageAdmin` and stay there, with no policy-narrowing or immutability path: the package remains upgradeable so it can relink when a venue raises its version gate or a launchpad cutover advances its package version | migrators package version is checked before venue or core state |
+| launchpad | ADR 0032, amended: canonical `Publisher` and raw `UpgradeCap` are permanently wrapped in shared `PackageAdmin`, with no policy-narrowing path (owner, 2026-09-23), because a narrowed cap could never commit and advance again; `make_immutable` remains the deliberate end of upgrades | shared launchpad package version is checked first; the upgrade finalizer checks the next generation before the role |
+| migrators | canonical `Publisher` and raw `UpgradeCap` enter the migrators' shared `PackageAdmin` and stay there, with no policy-narrowing or immutability path: the package remains upgradeable so it can relink when a venue raises its version gate or a launchpad cutover advances its package version | migrators package version is checked before venue or core state; the upgrade finalizer checks the next generation before the role |
 | distributor | ADR 0075 unchanged: the owner retains the native `UpgradeCap`; singleton `AdminCap` controls pause and stored-version migration | every entry checks the distributor `Version` first, then pause |
 | each generated Meme package | no `Publisher` is claimed; the publisher keeps the `UpgradeCap`, so the package stays upgradeable unless the publishing transaction makes it immutable | one-time initializer; the Sui verifier forbids packing the one-time witness in any later version |
 
@@ -186,9 +196,20 @@ transaction sender as the new pool's manager. Migration stays permissionless,
 so whoever migrates holds that role; it can fund reward emissions with its own
 coins, extend existing emissions, and hand itself on, and it reaches no
 principal, position, fee, price, or tier. The owner accepted this on
-2026-09-22, as memez-gg's Bluefin migrator does. Neither adapter collects venue
-rewards, so any reward a venue credits to a custodied position is never
-collected and is forfeited.
+2026-09-22, as memez-gg's Bluefin migrator does. The Bluefin route passes the
+Meme `Currency`'s fixed symbol into the pool but an empty icon URL, as Cetus
+does (owner, 2026-09-23): Bluefin's `Position` stores the URL it is given, and
+the `BlastMetadataCap` holder can lengthen the Meme icon URL to about 256 KB,
+which would push the `Position` past Sui's object size limit and hold the
+launch in `MigrationReady`. The pool name Bluefin also stores twice in every
+`Position` is built from the Meme symbol, which is fixed at creation, so launch
+intake rejects a symbol longer than 32 bytes (owner, 2026-09-23). The Quote
+side of the pool name and coin B's icon come from the admitted Quote's
+`Currency`, so an admitted Quote's issuer is trusted like the venue operator:
+lengthening that Quote's symbol or icon would hold its Bluefin launches in
+`MigrationReady` until reverted or until a migrators upgrade. Neither adapter collects venue rewards, so any
+reward a venue credits to a custodied position is not collected by these
+adapters; only a migrators upgrade adding a collection path could recover it.
 
 Venues gate callers by package version: Cetus aborts once its configuration
 version exceeds the calling code's, and Bluefin requires the exact version. The
@@ -211,9 +232,9 @@ first defines and tests its pinned-tier rule, its ticket binding with any venue
 preparation, `LpVault` custody with no exposed withdrawal path, its atomic
 route, collection, settled route update, and event conformance; there is no
 generic plug-in constructor. Each adapter must prove its venue accepts the
-smallest and largest liquidity amounts and price ratios that intake admits
-(AC-080). That proof covers only the admitted Meme precisions, so admitting a
-new precision requires rerunning AC-080 on each enabled venue first.
+smallest and largest liquidity amounts and price ratios that intake admits.
+That proof covers only the admitted Meme precisions, so admitting a new
+precision requires rerunning that proof on each enabled venue first.
 
 ### Graduation target
 

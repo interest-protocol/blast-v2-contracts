@@ -1,27 +1,29 @@
-//! Programmable-transaction integration tests for the atomic migration seam, fee routing, and
+//! Programmable-transaction integration tests for launch creation, the atomic migration seam, and
 //! protected buys.
+//!
+//! Every launch is opened by one PTB composed from public calls: the mock adapter starts it under
+//! its own witness and pool tier, the launchpad setters configure the initializer, and `finalize`
+//! and `share` consume it, so the ability-less initializer crosses commands of one transaction.
 //!
 //! Two independent one-time-witness launches reach MigrationReady through public PTBs. Every
 //! failing migration PTB must commit nothing (see `Harness::assert_rolled_back`): no allocation
 //! reaches its destination, and launch A stays migratable through the whole failure matrix before
-//! completing in one successful PTB. After migration, collection and settled route-update PTBs
-//! pay every destination before their events, in native order, and a failure after payment
-//! commits no payment and no event. Every event travels in the launchpad envelope.
+//! completing in one successful PTB. Every event travels in the launchpad envelope.
 //!
 //! A protected launch shows the launch-owned sender record the first protected buy creates, the
 //! storage cost of that buy and of a later one, and that every failing protected buy commits
 //! nothing.
 //!
-//! Route proposals with zero or seventeen destinations abort in the route constructor before any
-//! router mutation at creation, pending configuration, and settlement, while one and sixteen
-//! commit. Sixteen-destination tables with distinct Meme and Quote weights are measured at
-//! creation, pending replacement, activation, the largest and a zero collection, and a settled
-//! full replacement; each record prints as one `ROUTER_CAPACITY` JSON line with its margins to the
-//! simulator's protocol limits.
+//! LP-fee splits that sum to zero or name seventeen recipients abort in the fee-split constructor
+//! before the launch exists, while sixteen recipients commit unchanged into the launch. A split
+//! with every part and sixteen distinct recipient weights is measured at creation and migration;
+//! each record prints as one `LAUNCH_FEE_SPLIT_CAPACITY` JSON line with its margins to the
+//! simulator's protocol limits. Recurring LP-fee collection and split updates belong to the
+//! migrators package.
 //!
 //! Run from `sui/launchpad/ptb_tests` with `cargo test` (needs the pinned `sui` on PATH).
 
-use std::{collections::BTreeSet, path::Path, time::Duration};
+use std::{path::Path, time::Duration};
 
 use anyhow::Result;
 use blast_launchpad_ptb_tests::{
@@ -42,7 +44,12 @@ use sui_types::{
 const TARGET: u64 = 25_000_000;
 const BUY: u64 = 30_000_000;
 
-/// `create_launch` protection arguments: window, cumulative BPS, per-transaction BPS.
+/// The pool tier every launch starts at, in the mock venue's native units.
+const POOL_TICK_SPACING: u32 = 60;
+const POOL_FEE_RATE: u64 = 2_500;
+
+/// Protection arguments: window, cumulative BPS, per-transaction BPS. Unprotected launches leave
+/// protection at its disabled default.
 const UNPROTECTED: [u64; 3] = [0, 0, 0];
 const WINDOW_MS: u64 = 60_000;
 /// One percent of the 10^18-atom supply per sender, half a percent per buy.
@@ -60,13 +67,7 @@ const ZERO_LIQUIDITY: u8 = 2;
 const UNDERFUND_MEME: u8 = 3;
 const POST_FINALIZER_FAILURE: u8 = 4;
 
-/// Default LP-fee shares the measured router freezes at activation, different per asset.
-const MEME_SHARE: u64 = 333;
-const QUOTE_SHARE: u64 = 1_667;
-
 const DESTINATION: ObjectID = address(&[0xD5]);
-/// Where the settled route update sends both assets.
-const NEXT_DESTINATION: ObjectID = address(&[0xD6]);
 const PROTOCOL: ObjectID = address(&[0xAD]);
 /// Where the underfunding failpoint sends the missing unit.
 const SINK: ObjectID = address(&[0xDE, 0xAD]);
@@ -84,19 +85,15 @@ const fn address(suffix: &[u8]) -> ObjectID {
 struct Launch {
     meme: TypeTag,
     launch: ObjectID,
-    router: ObjectID,
     currency: ObjectID,
 }
 
 struct World {
     h: Harness,
-    admin: ObjectID,
-    authority: ObjectID,
     blast: ObjectID,
     adapter: ObjectID,
     version: ObjectID,
     runtime: ObjectID,
-    policy: ObjectID,
     config: ObjectID,
     project: CompiledPackage,
 }
@@ -104,28 +101,27 @@ struct World {
 #[test]
 fn failed_migration_ptbs_commit_nothing_and_one_ptb_completes_atomically() -> Result<()> {
     let (mut w, a, b) = setup()?;
-    let b_ready = w.h.snapshot(&[b.launch, b.router, b.currency], &[]);
-    let watched = [a.launch, a.router, a.currency];
+    let b_ready = w.h.snapshot(&[b.launch, b.currency], &[]);
+    let watched = [a.launch, a.currency];
     let owners = [w.h.sender, DESTINATION.into(), SINK.into()];
 
     for (failpoint, expected) in [
         (CUSTODY_FAILURE, Expected::Abort { package: w.adapter, module: "mock_adapter", code: 0 }),
-        (ZERO_LIQUIDITY, Expected::Abort { package: w.blast, module: "launch", code: 59 }),
-        (UNDERFUND_MEME, Expected::Abort { package: w.blast, module: "launch", code: 59 }),
+        (ZERO_LIQUIDITY, Expected::Abort { package: w.blast, module: "launch", code: 56 }),
+        (UNDERFUND_MEME, Expected::Abort { package: w.blast, module: "launch", code: 56 }),
         (POST_FINALIZER_FAILURE, Expected::Abort { package: w.adapter, module: "mock_adapter", code: 1 }),
     ] {
         let pt = w.migrate(&a, &a, failpoint)?;
         w.h.assert_rolled_back(pt, expected, &watched, &owners)?;
     }
 
-    // VM type-rule evidence, not a launch check: launch B's router cannot stand in for launch A's
-    // because distinct one-time-witness types fail PTB type checking before any Move code runs.
-    // This is why core keeps no launch/router ID binding.
+    // VM type-rule evidence, not a launch check: launch B's currency cannot stand in for launch
+    // A's because distinct one-time-witness types fail PTB type checking before any Move code runs.
     let pt = w.migrate(&a, &b, 0)?;
     w.h.assert_rolled_back(
         pt,
         Expected::Error("TypeMismatch"),
-        &[a.launch, a.router, a.currency, b.router],
+        &[a.launch, a.currency, b.currency],
         &owners,
     )?;
 
@@ -166,14 +162,8 @@ fn failed_migration_ptbs_commit_nothing_and_one_ptb_completes_atomically() -> Re
     let pt = w.migrate(&a, &a, 0)?;
     let outcome = w.h.execute(pt)?;
     outcome.assert_success();
-    assert_eq!(outcome.wrapped_payloads(w.blast), ["RouterActivated", "MigrationAllocationPaid", "Migrated"]);
+    assert_eq!(outcome.wrapped_payloads(w.blast), ["MigrationAllocationPaid", "Migrated"]);
     assert_eq!(w.launch_lifecycle(&a)?, LaunchLifecycle::Migrated);
-    let router: Router = bcs::from_bytes(&w.h.contents(a.router))?;
-    assert_eq!(router.launch_id, a.launch);
-    let RouterLifecycle::Active { binding, .. } = router.lifecycle else {
-        panic!("migration did not activate the router");
-    };
-    assert_eq!(outcome.events_of("events", "RouterActivated").len(), 1);
     let migrated = outcome.events_of("events", "Migrated");
     assert_eq!(migrated.len(), 1);
     let migrated: Migrated = bcs::from_bytes(migrated[0])?;
@@ -182,10 +172,8 @@ fn failed_migration_ptbs_commit_nothing_and_one_ptb_completes_atomically() -> Re
     assert_eq!((migrated.residual_meme, migrated.residual_quote), (1, 1));
     assert!(migrated.liquidity > 0);
     let vaults = outcome.created(&w.h, "mock_adapter", "MockVault");
-    let pools = outcome.created(&w.h, "mock_adapter", "MockPool");
-    assert_eq!(vaults, vec![binding.vault_id]);
-    assert_eq!(pools, vec![binding.pool_id]);
-    assert!(w.h.object(binding.vault_id).is_shared() && w.h.object(binding.pool_id).is_shared());
+    assert_eq!(vaults.len(), 1);
+    assert!(w.h.object(vaults[0]).is_shared());
     let paid = outcome.events_of("events", "MigrationAllocationPaid");
     assert_eq!(paid.len(), 1);
     let paid: MigrationAllocationPaid = bcs::from_bytes(paid[0])?;
@@ -206,207 +194,61 @@ fn failed_migration_ptbs_commit_nothing_and_one_ptb_completes_atomically() -> Re
     let pt = w.migrate(&a, &a, 0)?;
     let lifecycle = Expected::Abort { package: w.blast, module: "launch", code: 29 };
     w.h.assert_rolled_back(pt, lifecycle, &watched, &owners)?;
-    assert_eq!(w.h.snapshot(&[b.launch, b.router, b.currency], &[]), b_ready);
+    assert_eq!(w.h.snapshot(&[b.launch, b.currency], &[]), b_ready);
 
     Ok(())
 }
 
 #[test]
-fn collection_and_route_update_ptbs_pay_before_their_events_and_failures_commit_nothing() -> Result<()> {
-    let mut w = world("fee_routing")?;
-    let a = w.open_launch(UNPROTECTED)?;
-    w.buy_to_migration(&a)?;
-    let outcome = w.h.execute(w.migrate(&a, &a, 0)?)?;
-    outcome.assert_success();
-    let vault = outcome.created(&w.h, "mock_adapter", "MockVault")[0];
-    let config_cap = w.claim_router_config_cap(&a)?;
-    let meme_coin = w.meme_coin(&a);
-    let owners = [w.h.sender, DESTINATION.into(), NEXT_DESTINATION.into()];
-    let post_payment = || Expected::Abort { package: w.adapter, module: "mock_adapter", code: 1 };
-
-    // The router pays and emits before the adapter aborts; the failure keeps neither.
-    let pt = w.collect(&a, vault, meme_coin, 1_000, 2_000, POST_FINALIZER_FAILURE)?;
-    w.h.assert_rolled_back(pt, post_payment(), &[a.router, meme_coin], &owners)?;
-
-    let outcome = w.h.execute(w.collect(&a, vault, meme_coin, 1_000, 2_000, 0)?)?;
-    outcome.assert_success();
-    assert_eq!(outcome.wrapped_payloads(w.blast), ["FeesCollected"]);
-    let collected = w.fees_collected(&outcome, &a, 0)?;
-    assert_eq!((collected.gross_meme, collected.gross_quote), (1_000, 2_000));
-    assert_eq!((collected.meme_amounts, collected.quote_amounts), (vec![1_000], vec![2_000]));
-    assert_eq!(outcome.coins_created_for(&w.h, DESTINATION.into()), w.coins(&a, 1_000, 2_000));
-
-    // Proposing the live routes aborts in core before any payment.
-    let pt = w.settle(&a, vault, config_cap, meme_coin, 300, 400, DESTINATION, 0)?;
-    let unchanged = Expected::Abort { package: w.blast, module: "fee_router", code: 67 };
-    w.h.assert_rolled_back(pt, unchanged, &[a.router, meme_coin, config_cap], &owners)?;
-    // Payment, route commitment, and both events are all discarded with the adapter's abort.
-    let pt = w.settle(&a, vault, config_cap, meme_coin, 300, 400, NEXT_DESTINATION, POST_FINALIZER_FAILURE)?;
-    w.h.assert_rolled_back(pt, post_payment(), &[a.router, meme_coin, config_cap], &owners)?;
-
-    // The update pays the outstanding fees under generation zero, then commits generation one.
-    let outcome = w.h.execute(w.settle(&a, vault, config_cap, meme_coin, 300, 400, NEXT_DESTINATION, 0)?)?;
-    outcome.assert_success();
-    assert_eq!(outcome.wrapped_payloads(w.blast), ["FeesCollected", "RoutesChanged"]);
-    let settled = w.fees_collected(&outcome, &a, 0)?;
-    assert_eq!((settled.meme_amounts, settled.quote_amounts), (vec![300], vec![400]));
-    assert_eq!(outcome.coins_created_for(&w.h, DESTINATION.into()), w.coins(&a, 300, 400));
-    assert!(outcome.coins_created_for(&w.h, NEXT_DESTINATION.into()).is_empty());
-    let changed = outcome.events_of("events", "RoutesChanged");
-    let changed: RoutesChanged = bcs::from_bytes(changed[0])?;
-    assert_eq!(changed.router_id, a.router);
-    assert_eq!((changed.old_generation, changed.new_generation), (0, 1));
-    assert_eq!(changed.old_routes, Routes::single(DESTINATION));
-    assert_eq!(changed.new_routes, Routes::single(NEXT_DESTINATION));
-
-    let outcome = w.h.execute(w.collect(&a, vault, meme_coin, 5, 6, 0)?)?;
-    outcome.assert_success();
-    assert_eq!(outcome.wrapped_payloads(w.blast), ["FeesCollected"]);
-    let collected = w.fees_collected(&outcome, &a, 1)?;
-    assert_eq!((collected.meme_amounts, collected.quote_amounts), (vec![5], vec![6]));
-    assert_eq!(outcome.coins_created_for(&w.h, NEXT_DESTINATION.into()), w.coins(&a, 5, 6));
-    assert!(outcome.coins_created_for(&w.h, DESTINATION.into()).is_empty());
-
-    // The object read agrees with the replayed generation and routes.
-    let router: Router = bcs::from_bytes(&w.h.contents(a.router))?;
-    assert_eq!(router.generation, 1);
-    assert_eq!(router.routes, Routes::single(NEXT_DESTINATION));
-
-    Ok(())
-}
-
-#[test]
-fn zero_and_seventeen_route_destinations_abort_before_any_router_mutation() -> Result<()> {
-    let mut w = world("route_boundaries")?;
-    let one = Routes::single(DESTINATION);
-    let sixteen = Routes::sixteen(0xA0, 10);
-    // Zero destinations fail both tables' 10,000 sum; a seventeenth distinct Quote destination
-    // fails capacity before the sum.
-    let rejected = [(Routes::default(), 64), (sixteen.clone().with_seventeenth(), 63)];
+fn zero_sum_and_seventeen_recipient_fee_splits_abort_before_the_launch_exists() -> Result<()> {
+    let mut w = world("fee_split_boundaries")?;
+    let sixteen = FeeSplit::sixteen(0xA0, 10);
+    // An empty split fails the 10,000 sum (`route_sum_invalid`); a seventeenth distinct recipient
+    // fails capacity (`route_capacity_reached`) while the sum stays whole.
+    let rejected = [(FeeSplit::default(), 58), (sixteen.clone().with_seventeenth(), 57)];
     let blast = w.blast;
     let abort = |code| Expected::Abort { package: blast, module: "allocation", code };
     let owners = [w.h.sender, DESTINATION.into()];
 
-    // Creation: each rejected proposal aborts before the launch or router exists.
+    // Each rejected split aborts before the ticket is consumed; the same ticket then opens with
+    // sixteen recipients, which the launch records unchanged.
     let (ticket, currency, meme) = w.publish_ticket()?;
-    for (routes, code) in &rejected {
-        let pt = w.create_routed_launch(ticket, currency, &meme, routes)?;
+    for (fee_split, code) in &rejected {
+        let pt = w.create_launch(ticket, currency, &meme, fee_split, UNPROTECTED)?;
         w.h.assert_rolled_back(pt, abort(*code), &[ticket, currency], &owners)?;
     }
-    let (launch, _) = w.open_routed_launch(ticket, currency, meme, &sixteen)?;
-    assert_eq!(w.router(&launch)?.routes, sixteen);
-
-    // Pending configuration: rejected proposals leave the router untouched; one and sixteen commit.
-    let config_cap = w.claim_router_config_cap(&launch)?;
-    for (routes, code) in &rejected {
-        let pt = w.configure(&launch, config_cap, routes)?;
-        w.h.assert_rolled_back(pt, abort(*code), &[launch.router, config_cap], &owners)?;
-    }
-    for (generation, routes) in [(1, &one), (2, &sixteen)] {
-        w.h.execute(w.configure(&launch, config_cap, routes)?)?.assert_success();
-        let router = w.router(&launch)?;
-        assert_eq!((router.generation, &router.routes), (generation, routes));
-    }
-
-    // Settlement: rejected proposals commit no payment and no route; one and sixteen commit.
-    w.buy_to_migration(&launch)?;
-    let migrated = w.h.execute(w.migrate(&launch, &launch, 0)?)?;
-    migrated.assert_success();
-    let vault = migrated.created(&w.h, "mock_adapter", "MockVault")[0];
-    let meme_coin = w.meme_coin(&launch);
-    for (routes, code) in &rejected {
-        let pt = w.settle_routes(&launch, vault, config_cap, meme_coin, 7, 9, routes)?;
-        w.h.assert_rolled_back(pt, abort(*code), &[launch.router, config_cap, meme_coin], &owners)?;
-    }
-    for (generation, routes) in [(3, &one), (4, &sixteen)] {
-        let pt = w.settle_routes(&launch, vault, config_cap, meme_coin, 7, 9, routes)?;
-        let settled = w.h.execute(pt)?;
-        settled.assert_success();
-        assert_eq!(settled.wrapped_payloads(w.blast), ["FeesCollected", "RoutesChanged"]);
-        let router = w.router(&launch)?;
-        assert_eq!((router.generation, &router.routes), (generation, routes));
-    }
+    let (_, created) = w.open_split_launch(ticket, currency, meme, &sixteen)?;
+    assert_eq!(w.launch_created(&created)?.lp_fee_split, sixteen);
 
     Ok(())
 }
 
 #[test]
-fn maximum_router_shapes_pay_exactly_within_protocol_limits() -> Result<()> {
-    let mut w = world("router_capacity")?;
-    w.set_lp_fee_policy(MEME_SHARE, QUOTE_SHARE)?;
-    let created_routes = Routes::sixteen(0xA0, 10);
-    let pending_routes = Routes::sixteen(0xB0, 20);
-    let active_routes = Routes::sixteen(0xC0, 30);
-    let one = Routes::single(DESTINATION);
-    let (gross_meme, gross_quote) = worst_case_gross();
+fn maximum_fee_split_fits_protocol_limits_at_creation_and_migration() -> Result<()> {
+    let mut w = world("fee_split_capacity")?;
+    let fee_split = FeeSplit::sixteen(0xA0, 10);
     let mut records = Vec::new();
 
-    // Creation and a complete pending replacement, each with sixteen routes per table.
     let (ticket, currency, meme) = w.publish_ticket()?;
-    let (a, created) = w.open_routed_launch(ticket, currency, meme, &created_routes)?;
-    let router_created = created.events_of("events", "FeeRouterCreated");
-    let router_created: FeeRouterCreated = bcs::from_bytes(router_created[0])?;
-    assert_eq!((router_created.router_id, router_created.launch_id), (a.router, a.launch));
-    assert_eq!(router_created.routes, created_routes);
-    records.push(w.record(&a, "create_launch", "16+16 routes", &created));
-    let config_cap = w.claim_router_config_cap(&a)?;
-    let configured = w.h.execute(w.configure(&a, config_cap, &pending_routes)?)?;
-    w.assert_routes_changed(&a, &configured, 0, &created_routes, &pending_routes)?;
-    records.push(w.record(&a, "configure_pending", "16+16 -> disjoint 16+16 routes", &configured));
+    let (a, created) = w.open_split_launch(ticket, currency, meme, &fee_split)?;
+    let launch_created = w.launch_created(&created)?;
+    assert_eq!(launch_created.lp_fee_split, fee_split);
+    assert_eq!(
+        (launch_created.pool_tick_spacing, launch_created.pool_fee_rate),
+        (POOL_TICK_SPACING, POOL_FEE_RATE),
+    );
+    records.push(w.record(&a, "create_launch", "3 parts + 16 recipients", &created));
 
-    // Activation freezes both shares and the sixteen-destination routes.
+    // The launch carries the split unchanged to migration, which neither reads nor pays it.
     w.buy_to_migration(&a)?;
     let migrated = w.h.execute(w.migrate(&a, &a, 0)?)?;
     migrated.assert_success();
-    let activated = migrated.events_of("events", "RouterActivated");
-    let activated: RouterActivated = bcs::from_bytes(activated[0])?;
-    assert_eq!(activated.router_id, a.router);
-    assert_eq!((activated.meme_bps, activated.quote_bps), (MEME_SHARE, QUOTE_SHARE));
-    assert_eq!((activated.generation, &activated.routes), (1, &pending_routes));
-    records.push(w.record(&a, "migrate_and_activate", "16+16 routes", &migrated));
-    let vault = migrated.created(&w.h, "mock_adapter", "MockVault")[0];
-    let meme_coin = w.meme_coin(&a);
+    assert_eq!(migrated.wrapped_payloads(w.blast), ["MigrationAllocationPaid", "Migrated"]);
+    records.push(w.record(&a, "migrate", "3 parts + 16 recipients", &migrated));
 
-    // The largest collection pays 2 protocol and 16 + 16 route coins; a zero one moves nothing.
-    let collected = w.h.execute(w.collect(&a, vault, meme_coin, gross_meme, gross_quote, 0)?)?;
-    w.assert_paid(&a, &collected, 1, &pending_routes, gross_meme, gross_quote)?;
-    assert_eq!(collected.effects.created().len(), 34);
-    records.push(w.record(&a, "collect", "16+16 routes, nonzero", &collected));
-    let empty = w.h.execute(w.collect(&a, vault, meme_coin, 0, 0, 0)?)?;
-    empty.assert_success();
-    assert!(empty.events.is_empty() && empty.effects.created().is_empty());
-    records.push(w.record(&a, "collect", "16+16 routes, zero", &empty));
-
-    // A settled full replacement pays the outstanding fees under the old sixteen routes, then
-    // commits sixteen disjoint ones that alone receive later fees.
-    let pt = w.settle_routes(&a, vault, config_cap, meme_coin, gross_meme, gross_quote, &active_routes)?;
-    let settled = w.h.execute(pt)?;
-    w.assert_paid(&a, &settled, 1, &pending_routes, gross_meme, gross_quote)?;
-    w.assert_routes_changed(&a, &settled, 1, &pending_routes, &active_routes)?;
-    assert_eq!(settled.effects.created().len(), 34);
-    let fixture = "16+16 -> disjoint 16+16 routes, nonzero";
-    records.push(w.record(&a, "settle_and_update_routes", fixture, &settled));
-    let later = w.h.execute(w.collect(&a, vault, meme_coin, gross_meme, gross_quote, 0)?)?;
-    w.assert_paid(&a, &later, 2, &active_routes, gross_meme, gross_quote)?;
-
-    // One-destination baselines for the same operations.
-    let pt = w.settle_routes(&a, vault, config_cap, meme_coin, gross_meme, gross_quote, &one)?;
-    let settled = w.h.execute(pt)?;
-    w.assert_paid(&a, &settled, 2, &active_routes, gross_meme, gross_quote)?;
-    w.assert_routes_changed(&a, &settled, 2, &active_routes, &one)?;
-    records.push(w.record(&a, "settle_and_update_routes", "16+16 -> 1+1 routes, nonzero", &settled));
-    let collected = w.h.execute(w.collect(&a, vault, meme_coin, gross_meme, gross_quote, 0)?)?;
-    w.assert_paid(&a, &collected, 3, &one, gross_meme, gross_quote)?;
-    records.push(w.record(&a, "collect", "1+1 routes, nonzero", &collected));
-
-    let fixture = json!({
-        "shares_bps": { "meme": MEME_SHARE, "quote": QUOTE_SHARE },
-        "gross": { "meme": gross_meme, "quote": gross_quote },
-        "routes": { "created": created_routes, "pending": pending_routes, "active": active_routes },
-    });
     println!(
-        "ROUTER_CAPACITY {}",
-        json!({ "limits": w.h.protocol_limits(), "fixture": fixture, "records": records })
+        "LAUNCH_FEE_SPLIT_CAPACITY {}",
+        json!({ "limits": w.h.protocol_limits(), "fixture": { "fee_split": fee_split }, "records": records })
     );
 
     Ok(())
@@ -439,8 +281,8 @@ fn protected_buys_keep_one_record_per_sender_and_failed_buys_commit_nothing() ->
     // launch reserves, fee ledger, record, and the buyer's coins exactly as they were.
     for (quote_in, min_meme_out, code) in [
         (SMALL_BUY, u64::MAX, 30),
-        (OVERSIZED_BUY, 1, 54),
-        (SMALL_BUY, 1, 55),
+        (OVERSIZED_BUY, 1, 51),
+        (SMALL_BUY, 1, 52),
     ] {
         let pt = w.buy(&launch, quote_in, min_meme_out)?;
         let expected = Expected::Abort { package: w.blast, module: "launch", code };
@@ -512,6 +354,35 @@ struct ProtectedPurchases {
     purchases: u64,
 }
 
+/// Mirrors `blast_fun::events::LaunchCreated`, its allocation plan's fields inline.
+#[derive(Deserialize)]
+struct LaunchCreated {
+    _launch_id: ObjectID,
+    _ticket_id: ObjectID,
+    _decimals: u8,
+    _atomic_supply: u64,
+    _quote: String,
+    _migration_witness: String,
+    pool_tick_spacing: u32,
+    pool_fee_rate: u64,
+    lp_fee_split: FeeSplit,
+    _virtual_quote: u64,
+    _graduation_target: u64,
+    _quote_fee_bps: u64,
+    _meme_fee_bps: u64,
+    _channels: Vec<(u64, Role, SuiAddress)>,
+    _meme_weights: Vec<(u64, u64)>,
+    _quote_weights: Vec<(u64, u64)>,
+    _meme_amounts: Vec<u64>,
+}
+
+#[derive(Deserialize)]
+enum Role {
+    Liquidity,
+    Protocol,
+    External,
+}
+
 /// Mirrors `blast_fun::events::Migrated` field order for BCS decoding.
 #[derive(Deserialize)]
 struct Migrated {
@@ -536,74 +407,40 @@ enum LaunchLifecycle {
     Migrated,
 }
 
-/// Mirrors `blast_fun::fee_router::FeeRouter` and the types it stores.
-#[derive(Deserialize)]
-struct Router {
-    _id: ObjectID,
-    launch_id: ObjectID,
-    lifecycle: RouterLifecycle,
-    generation: u64,
-    routes: Routes,
-}
-
-#[derive(Deserialize)]
-enum RouterLifecycle {
-    Pending,
-    Active { _policy: PolicySnapshot, binding: SettlementBinding },
-}
-
-#[derive(Deserialize)]
-struct PolicySnapshot {
-    _partner: bool,
-    _meme_bps: u64,
-    _quote_bps: u64,
-}
-
-#[derive(Deserialize)]
-struct SettlementBinding {
-    _settlement_witness: String,
-    vault_id: ObjectID,
-    pool_id: ObjectID,
-    _position_id: ObjectID,
-}
-
+/// Mirrors `blast_fun::allocation::FeeSplit`; each `Bps` is one `u64` in BCS.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-struct Routes {
-    meme: Vec<Route>,
-    quote: Vec<Route>,
+struct FeeSplit {
+    creator_bps: u64,
+    auto_lp_bps: u64,
+    rewards_bps: u64,
+    recipients: Vec<Route>,
 }
 
-impl Routes {
-    /// The mock adapter's routes: both assets wholly to one destination.
+impl FeeSplit {
+    /// Every collection wholly to one recipient.
     fn single(destination: ObjectID) -> Self {
-        let route = || vec![Route { destination: destination.into(), bps: 10_000 }];
-        Self { meme: route(), quote: route() }
+        let recipients = vec![Route { destination: destination.into(), bps: 10_000 }];
+        Self { recipients, ..Self::default() }
     }
 
-    /// The same sixteen destinations in both canonical tables. Weights fall along canonical order,
-    /// by `step` for Meme and twice as steeply for Quote, so they are distinct within each table,
-    /// differ between the assets for every destination, and each table sums to 10,000.
+    /// Every part set, and sixteen recipients in canonical order whose weights fall by `step`, so
+    /// they are distinct; the whole split sums to 10,000.
     fn sixteen(tag: u8, step: u64) -> Self {
-        let table = |step: u64| {
-            assert_eq!((10_000 - 120 * step) % 16, 0);
-            let lowest = (10_000 - 120 * step) / 16;
-            (0..16u8)
-                .map(|i| Route {
-                    destination: address(&[tag, i]).into(),
-                    bps: lowest + step * u64::from(15 - i),
-                })
-                .collect()
-        };
+        let (creator_bps, auto_lp_bps, rewards_bps) = (1_000, 600, 400);
+        let shared = 10_000 - creator_bps - auto_lp_bps - rewards_bps;
+        assert_eq!((shared - 120 * step) % 16, 0);
+        let lowest = (shared - 120 * step) / 16;
+        let recipients = (0..16u8)
+            .map(|i| Route { destination: address(&[tag, i]).into(), bps: lowest + step * u64::from(15 - i) })
+            .collect();
 
-        let routes = Self { meme: table(step), quote: table(2 * step) };
-        assert!(routes.meme.iter().zip(&routes.quote).all(|(meme, quote)| meme.bps != quote.bps));
-
-        routes
+        Self { creator_bps, auto_lp_bps, rewards_bps, recipients }
     }
 
-    /// Replaces the last Quote destination with a seventeenth distinct one; both sums stay whole.
+    /// Moves the rewards share to a seventeenth distinct recipient; the sum stays whole.
     fn with_seventeenth(mut self) -> Self {
-        self.quote[15].destination = address(&[0x17, 0x17]).into();
+        let bps = std::mem::take(&mut self.rewards_bps);
+        self.recipients.push(Route { destination: address(&[0x17, 0x17]).into(), bps });
         self
     }
 }
@@ -612,56 +449,6 @@ impl Routes {
 struct Route {
     destination: SuiAddress,
     bps: u64,
-}
-
-/// Mirrors `blast_fun::events::FeeRouterCreated`.
-#[derive(Deserialize)]
-struct FeeRouterCreated {
-    router_id: ObjectID,
-    launch_id: ObjectID,
-    _config_cap_id: ObjectID,
-    routes: Routes,
-}
-
-/// Mirrors `blast_fun::events::RouterActivated`.
-#[derive(Deserialize)]
-struct RouterActivated {
-    router_id: ObjectID,
-    _launch_id: ObjectID,
-    _partner: bool,
-    meme_bps: u64,
-    quote_bps: u64,
-    _settlement_witness: String,
-    _vault_id: ObjectID,
-    _pool_id: ObjectID,
-    _position_id: ObjectID,
-    generation: u64,
-    routes: Routes,
-}
-
-/// Mirrors `blast_fun::events::FeesCollected`.
-#[derive(Deserialize)]
-struct FeesCollected {
-    router_id: ObjectID,
-    launch_id: ObjectID,
-    generation: u64,
-    gross_meme: u64,
-    gross_quote: u64,
-    protocol_destination: SuiAddress,
-    protocol_meme: u64,
-    protocol_quote: u64,
-    meme_amounts: Vec<u64>,
-    quote_amounts: Vec<u64>,
-}
-
-/// Mirrors `blast_fun::events::RoutesChanged`.
-#[derive(Deserialize)]
-struct RoutesChanged {
-    router_id: ObjectID,
-    old_generation: u64,
-    new_generation: u64,
-    old_routes: Routes,
-    new_routes: Routes,
 }
 
 /// Mirrors `blast_fun::events::MigrationAllocationPaid`.
@@ -712,7 +499,6 @@ fn world(work: &str) -> Result<World> {
     let config = one("launch_config", "LaunchConfig");
     let version = one("package_version", "PackageVersion");
     let runtime = one("runtime_config", "RuntimeConfig");
-    let policy = one("lp_fee_policy", "LpFeePolicy");
     let (adapter, _) = h.publish(build(
         &fixture.join("adapter"),
         &[(&admin_dir, admin), (&launchpad_dir, blast)],
@@ -723,7 +509,7 @@ fn world(work: &str) -> Result<World> {
         &[(&admin_dir, admin), (&launchpad_dir, blast)],
         &work,
     )?;
-    let mut w = World { h, admin, authority, blast, adapter, version, runtime, policy, config, project };
+    let mut w = World { h, blast, adapter, version, runtime, config, project };
     let domain = parse_sui_type_tag(&format!("{blast}::blast_fun_domain::BLAST_FUN_DOMAIN"))?;
 
     // Production admin path: the publisher's SuperAdminCap grants an AdminCap.
@@ -787,36 +573,83 @@ fn world(work: &str) -> Result<World> {
 }
 
 impl World {
-    /// Publishes one generated project and opens its SUI-quoted launch under `protection`.
+    /// Publishes one generated project and opens its SUI-quoted launch under `protection`, with
+    /// the LP-fee split paying `DESTINATION` wholly.
     fn open_launch(&mut self, protection: [u64; 3]) -> Result<Launch> {
         let (ticket, currency, meme) = self.publish_ticket()?;
-        let mut builder = ProgrammableTransactionBuilder::new();
-        let ticket = builder.obj(self.h.owned(ticket))?;
-        let currency_arg = builder.obj(self.h.shared(currency, true))?;
-        let version = builder.obj(self.h.shared(self.version, false))?;
-        let config = builder.obj(self.h.shared(self.config, false))?;
-        let clock = builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?;
-        let target = builder.pure(TARGET)?;
-        let destination = builder.pure(SuiAddress::from(DESTINATION))?;
-        let [window_ms, cumulative_bps, per_transaction_bps] = protection;
-        let window_ms = builder.pure(window_ms)?;
-        let cumulative_bps = builder.pure(cumulative_bps)?;
-        let per_transaction_bps = builder.pure(per_transaction_bps)?;
-        call(&mut builder, self.adapter, "mock_adapter", "create_launch", vec![meme.clone()], vec![
-            ticket,
-            currency_arg,
-            version,
-            config,
-            clock,
-            target,
-            destination,
-            window_ms,
-            cumulative_bps,
-            per_transaction_bps,
-        ]);
-        let created = self.h.execute(builder.finish())?;
+        let pt = self.create_launch(ticket, currency, &meme, &FeeSplit::single(DESTINATION), protection)?;
+        let created = self.h.execute(pt)?;
 
         Ok(self.created_launch(&created, meme, currency))
+    }
+
+    /// Opens `ticket`'s unprotected launch with `fee_split` and returns it with the creation outcome.
+    fn open_split_launch(
+        &mut self,
+        ticket: ObjectID,
+        currency: ObjectID,
+        meme: TypeTag,
+        fee_split: &FeeSplit,
+    ) -> Result<(Launch, Outcome)> {
+        let created = self.h.execute(self.create_launch(ticket, currency, &meme, fee_split, UNPROTECTED)?)?;
+
+        Ok((self.created_launch(&created, meme, currency), created))
+    }
+
+    /// One PTB that starts `ticket`'s launch through the adapter, sets the graduation target, the
+    /// allocation plan, `fee_split`, and any protection, then finalizes and shares it. Every
+    /// non-liquidity allocation pays `DESTINATION`.
+    fn create_launch(
+        &self,
+        ticket: ObjectID,
+        currency: ObjectID,
+        meme: &TypeTag,
+        fee_split: &FeeSplit,
+        protection: [u64; 3],
+    ) -> Result<ProgrammableTransaction> {
+        let mut builder = ProgrammableTransactionBuilder::new();
+        let fee_split = self.fee_split_arg(&mut builder, fee_split)?;
+        let plan = self.plan_arg(&mut builder)?;
+        let ticket = builder.obj(self.h.owned(ticket))?;
+        let version = builder.obj(self.h.shared(self.version, false))?;
+        let config = builder.obj(self.h.shared(self.config, false))?;
+        let tick_spacing = builder.pure(POOL_TICK_SPACING)?;
+        let fee_rate = builder.pure(POOL_FEE_RATE)?;
+        let initializer = call(&mut builder, self.adapter, "mock_adapter", "new", vec![meme.clone()], vec![
+            ticket,
+            version,
+            config,
+            tick_spacing,
+            fee_rate,
+        ]);
+        let pair = vec![meme.clone(), sui()];
+        let target = builder.pure(TARGET)?;
+        call(&mut builder, self.blast, "launch", "set_graduation_target", pair.clone(), vec![initializer, target]);
+        call(&mut builder, self.blast, "launch", "set_allocation_plan", pair.clone(), vec![initializer, plan]);
+        call(&mut builder, self.blast, "launch", "set_lp_fee_split", pair.clone(), vec![initializer, fee_split]);
+        if protection != UNPROTECTED {
+            let [window_ms, cumulative_bps, per_transaction_bps] = protection;
+            let window_ms = builder.pure(window_ms)?;
+            let cumulative_bps = self.bps(&mut builder, cumulative_bps)?;
+            let per_transaction_bps = self.bps(&mut builder, per_transaction_bps)?;
+            call(&mut builder, self.blast, "launch", "set_protection", pair.clone(), vec![
+                initializer,
+                window_ms,
+                cumulative_bps,
+                per_transaction_bps,
+            ]);
+        }
+        let currency = builder.obj(self.h.shared(currency, true))?;
+        let launch = call(&mut builder, self.blast, "launch", "finalize", pair.clone(), vec![
+            initializer,
+            version,
+            currency,
+            config,
+        ]);
+        let clock = builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?;
+        call(&mut builder, self.blast, "launch", "share", pair, vec![launch, version, clock]);
+
+        Ok(builder.finish())
     }
 
     /// Publishes one generated project, which runs its OTW init: the ticket goes to the publisher
@@ -844,25 +677,26 @@ impl World {
         Ok((ticket, currency, meme))
     }
 
-    /// The launch and router a successful creation shared.
+    /// The launch a successful creation shared.
     fn created_launch(&self, created: &Outcome, meme: TypeTag, currency: ObjectID) -> Launch {
         created.assert_success();
         assert_eq!(
             created.wrapped_payloads(self.blast),
-            ["LaunchCreated", "ProtectionConfigured", "FeeRouterCreated", "LaunchShared"],
+            ["LaunchCreated", "ProtectionConfigured", "LaunchShared"],
         );
-        let only = |module: &str, name: &str| {
-            let ids = created.created(&self.h, module, name);
-            assert_eq!(ids.len(), 1, "{module}::{name}");
-            ids[0]
-        };
+        let launch = created.created(&self.h, "launch", "Launch");
+        assert_eq!(launch.len(), 1, "launch::Launch");
+        assert!(self.h.object(launch[0]).is_shared());
 
-        Launch {
-            meme,
-            launch: only("launch", "Launch"),
-            router: only("fee_router", "FeeRouter"),
-            currency,
-        }
+        Launch { meme, launch: launch[0], currency }
+    }
+
+    /// Decodes the one `LaunchCreated` of a creation.
+    fn launch_created(&self, created: &Outcome) -> Result<LaunchCreated> {
+        let launch_created = created.events_of("events", "LaunchCreated");
+        assert_eq!(launch_created.len(), 1);
+
+        Ok(bcs::from_bytes(launch_created[0])?)
     }
 
     fn adapter_type(&self, name: &str) -> Result<TypeTag> {
@@ -883,10 +717,7 @@ impl World {
     fn buy(&self, launch: &Launch, quote_in: u64, min_meme_out: u64) -> Result<ProgrammableTransaction> {
         let mut builder = ProgrammableTransactionBuilder::new();
         let amount = builder.pure(quote_in)?;
-        let Argument::Result(split) = builder.command(sui_types::transaction::Command::SplitCoins(
-            Argument::GasCoin,
-            vec![amount],
-        )) else {
+        let Argument::Result(split) = builder.command(Command::SplitCoins(Argument::GasCoin, vec![amount])) else {
             unreachable!()
         };
         let launch_arg = builder.obj(self.h.shared(launch.launch, true))?;
@@ -923,132 +754,6 @@ impl World {
         coins
     }
 
-    /// The Meme coin the sender bought on `launch`, which funds the mock venue fees.
-    fn meme_coin(&self, launch: &Launch) -> ObjectID {
-        let coins: Vec<_> = self
-            .h
-            .owned_by(self.h.sender)
-            .into_iter()
-            .filter(|object| object.coin_type_maybe().as_ref() == Some(&launch.meme))
-            .map(|object| object.id())
-            .collect();
-        assert_eq!(coins.len(), 1, "one Meme coin per launch");
-        coins[0]
-    }
-
-    /// The creator recipient, which is the sender, claims its setup capabilities and keeps them.
-    fn claim_router_config_cap(&mut self, launch: &Launch) -> Result<ObjectID> {
-        let mut builder = ProgrammableTransactionBuilder::new();
-        let launch_arg = builder.obj(self.h.shared(launch.launch, true))?;
-        let version = builder.obj(self.h.shared(self.version, false))?;
-        let runtime = builder.obj(self.h.shared(self.runtime, false))?;
-        let attestation = builder.pure(Option::<Vec<u8>>::None)?;
-        let clock = builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?;
-        let Argument::Result(caps) = call(
-            &mut builder,
-            self.blast,
-            "launch",
-            "claim_setup_caps",
-            vec![launch.meme.clone(), sui()],
-            vec![launch_arg, version, runtime, attestation, clock],
-        ) else {
-            unreachable!()
-        };
-        builder.transfer_args(self.h.sender, (0..3).map(|i| Argument::NestedResult(caps, i)).collect());
-        let outcome = self.h.execute(builder.finish())?;
-        outcome.assert_success();
-        assert_eq!(outcome.wrapped_payloads(self.blast), ["CreatorCapsClaimed", "RouterConfigCapReleased"]);
-        let caps = self.h.owned_of_type(self.h.sender, "fee_router", "RouterConfigCap");
-        assert_eq!(caps.len(), 1);
-
-        Ok(caps[0])
-    }
-
-    /// Venue fees split from the sender's Meme coin and the gas coin for one adapter call.
-    fn fees(
-        &self,
-        builder: &mut ProgrammableTransactionBuilder,
-        meme_coin: ObjectID,
-        meme: u64,
-        quote: u64,
-    ) -> Result<(Argument, Argument)> {
-        let meme_coin = builder.obj(self.h.owned(meme_coin))?;
-        let meme = builder.pure(meme)?;
-        let Argument::Result(meme) = builder.command(Command::SplitCoins(meme_coin, vec![meme])) else {
-            unreachable!()
-        };
-        let quote = builder.pure(quote)?;
-        let Argument::Result(quote) = builder.command(Command::SplitCoins(Argument::GasCoin, vec![quote]))
-        else {
-            unreachable!()
-        };
-
-        Ok((Argument::NestedResult(meme, 0), Argument::NestedResult(quote, 0)))
-    }
-
-    fn collect(
-        &self,
-        launch: &Launch,
-        vault: ObjectID,
-        meme_coin: ObjectID,
-        meme: u64,
-        quote: u64,
-        failpoint: u8,
-    ) -> Result<ProgrammableTransaction> {
-        let mut builder = ProgrammableTransactionBuilder::new();
-        let (meme, quote) = self.fees(&mut builder, meme_coin, meme, quote)?;
-        let vault = builder.obj(self.h.shared(vault, false))?;
-        let router = builder.obj(self.h.shared(launch.router, true))?;
-        let version = builder.obj(self.h.shared(self.version, false))?;
-        let policy = builder.obj(self.h.shared(self.policy, false))?;
-        let failpoint = builder.pure(failpoint)?;
-        call(&mut builder, self.adapter, "mock_adapter", "collect", vec![launch.meme.clone()], vec![
-            vault, router, version, policy, meme, quote, failpoint,
-        ]);
-
-        Ok(builder.finish())
-    }
-
-    fn settle(
-        &self,
-        launch: &Launch,
-        vault: ObjectID,
-        config_cap: ObjectID,
-        meme_coin: ObjectID,
-        meme: u64,
-        quote: u64,
-        destination: ObjectID,
-        failpoint: u8,
-    ) -> Result<ProgrammableTransaction> {
-        let mut builder = ProgrammableTransactionBuilder::new();
-        let (meme, quote) = self.fees(&mut builder, meme_coin, meme, quote)?;
-        let vault = builder.obj(self.h.shared(vault, false))?;
-        let router = builder.obj(self.h.shared(launch.router, true))?;
-        let version = builder.obj(self.h.shared(self.version, false))?;
-        let policy = builder.obj(self.h.shared(self.policy, false))?;
-        let config_cap = builder.obj(self.h.owned(config_cap))?;
-        let destination = builder.pure(SuiAddress::from(destination))?;
-        let failpoint = builder.pure(failpoint)?;
-        call(&mut builder, self.adapter, "mock_adapter", "settle", vec![launch.meme.clone()], vec![
-            vault, router, version, policy, config_cap, meme, quote, destination, failpoint,
-        ]);
-
-        Ok(builder.finish())
-    }
-
-    /// Decodes the one `FeesCollected`; the zero default policy pays the publisher nothing.
-    fn fees_collected(&self, outcome: &Outcome, launch: &Launch, generation: u64) -> Result<FeesCollected> {
-        let collected = outcome.events_of("events", "FeesCollected");
-        assert_eq!(collected.len(), 1);
-        let collected: FeesCollected = bcs::from_bytes(collected[0])?;
-        assert_eq!((collected.router_id, collected.launch_id), (launch.router, launch.launch));
-        assert_eq!(collected.generation, generation);
-        assert_eq!(collected.protocol_destination, self.h.sender);
-        assert_eq!((collected.protocol_meme, collected.protocol_quote), (0, 0));
-
-        Ok(collected)
-    }
-
     fn launch_lifecycle(&self, launch: &Launch) -> Result<LaunchLifecycle> {
         let contents = self.h.contents(launch.launch);
         let (_, lifecycle): (ObjectID, LaunchLifecycle) = bcs::from_bytes(&contents[..33])?;
@@ -1056,20 +761,16 @@ impl World {
         Ok(lifecycle)
     }
 
-    /// The adapter entry point with `launch`'s launch and currency and `router_owner`'s router.
-    fn migrate(&self, launch: &Launch, router_owner: &Launch, failpoint: u8) -> Result<ProgrammableTransaction> {
+    /// The adapter entry point with `launch`'s launch and `currency_owner`'s currency.
+    fn migrate(&self, launch: &Launch, currency_owner: &Launch, failpoint: u8) -> Result<ProgrammableTransaction> {
         let mut builder = ProgrammableTransactionBuilder::new();
         let launch_arg = builder.obj(self.h.shared(launch.launch, true))?;
-        let router = builder.obj(self.h.shared(router_owner.router, true))?;
         let version = builder.obj(self.h.shared(self.version, false))?;
-        let policy = builder.obj(self.h.shared(self.policy, false))?;
-        let currency = builder.obj(self.h.shared(launch.currency, true))?;
+        let currency = builder.obj(self.h.shared(currency_owner.currency, true))?;
         let failpoint = builder.pure(failpoint)?;
         call(&mut builder, self.adapter, "mock_adapter", "migrate", vec![launch.meme.clone()], vec![
             launch_arg,
-            router,
             version,
-            policy,
             currency,
             failpoint,
         ]);
@@ -1078,271 +779,87 @@ impl World {
     }
 }
 
-/// Route fixtures and measurements.
+/// Launch fixtures and measurements.
 impl World {
-    /// Sets the default LP-fee shares later activations freeze and pays the protocol share to
-    /// `PROTOCOL`.
-    fn set_lp_fee_policy(&mut self, meme_bps: u64, quote_bps: u64) -> Result<()> {
-        let admin_cap = self.h.owned_of_type(self.h.sender, "acl", "AdminCap")[0];
-        let domain = parse_sui_type_tag(&format!("{}::blast_fun_domain::BLAST_FUN_DOMAIN", self.blast))?;
-        let mut builder = ProgrammableTransactionBuilder::new();
-        let authority = builder.obj(self.h.shared(self.authority, false))?;
-        let admin_cap = builder.obj(self.h.owned(admin_cap))?;
-        let signed_in =
-            call(&mut builder, self.admin, "acl", "sign_in", vec![domain], vec![authority, admin_cap]);
-        let policy = builder.obj(self.h.shared(self.policy, true))?;
-        let version = builder.obj(self.h.shared(self.version, false))?;
-        let meme_bps = builder.pure(meme_bps)?;
-        let meme_bps = call(&mut builder, self.blast, "bps", "new", vec![], vec![meme_bps]);
-        let quote_bps = builder.pure(quote_bps)?;
-        let quote_bps = call(&mut builder, self.blast, "bps", "new", vec![], vec![quote_bps]);
-        call(&mut builder, self.blast, "lp_fee_policy", "set_default_shares", vec![], vec![
-            policy, version, signed_in, meme_bps, quote_bps,
-        ]);
-        let destination = builder.pure(SuiAddress::from(PROTOCOL))?;
-        call(&mut builder, self.blast, "lp_fee_policy", "set_protocol_destination", vec![], vec![
-            policy,
-            version,
-            signed_in,
-            destination,
-        ]);
-        self.h.execute(builder.finish())?.assert_success();
+    fn bps(&self, builder: &mut ProgrammableTransactionBuilder, value: u64) -> Result<Argument> {
+        let value = builder.pure(value)?;
 
-        Ok(())
+        Ok(call(builder, self.blast, "bps", "new", vec![], vec![value]))
     }
 
-    /// Builds `routes` through the public constructors, as a client would.
-    fn routes_arg(&self, builder: &mut ProgrammableTransactionBuilder, routes: &Routes) -> Result<Argument> {
-        let meme = self.route_table(builder, &routes.meme)?;
-        let quote = self.route_table(builder, &routes.quote)?;
+    /// The fixture plan: 70% of the Meme on the curve, liquidity channel 2 with 20% of the Meme
+    /// and 90% of the Quote, and external channel 3 with the rest, both paying `DESTINATION`.
+    fn plan_arg(&self, builder: &mut ProgrammableTransactionBuilder) -> Result<Argument> {
+        let destination = SuiAddress::from(DESTINATION);
+        let liquidity = call(builder, self.blast, "allocation", "liquidity_role", vec![], vec![]);
+        let external = call(builder, self.blast, "allocation", "external_role", vec![], vec![]);
+        let mut channels = Vec::new();
+        for (id, role) in [(2u64, liquidity), (3, external)] {
+            let id = builder.pure(id)?;
+            let destination = builder.pure(destination)?;
+            channels.push(call(builder, self.blast, "allocation", "channel", vec![], vec![id, role, destination]));
+        }
+        let channel = parse_sui_type_tag(&format!("{}::allocation::Channel", self.blast))?;
+        let channels = builder.command(Command::make_move_vec(Some(channel), channels));
+        let mut tables = Vec::new();
+        for table in [vec![(0u64, 7_000u64), (2, 2_000), (3, 1_000)], vec![(2, 9_000), (3, 1_000)]] {
+            let mut weights = Vec::new();
+            for (id, bps) in table {
+                let id = builder.pure(id)?;
+                let bps = self.bps(builder, bps)?;
+                weights.push(call(builder, self.blast, "allocation", "weight", vec![], vec![id, bps]));
+            }
+            let weight = parse_sui_type_tag(&format!("{}::allocation::Weight", self.blast))?;
+            tables.push(builder.command(Command::make_move_vec(Some(weight), weights)));
+        }
 
-        Ok(call(builder, self.blast, "allocation", "routes", vec![], vec![meme, quote]))
+        Ok(call(builder, self.blast, "allocation", "new", vec![], vec![channels, tables[0], tables[1]]))
     }
 
-    /// One table in descending destination order, the canonical sort's worst case, with every
-    /// value its own pure input.
-    fn route_table(&self, builder: &mut ProgrammableTransactionBuilder, table: &[Route]) -> Result<Argument> {
-        let mut routes = Vec::new();
-        for route in table.iter().rev() {
-            let bps = builder.pure_bytes(bcs::to_bytes(&route.bps)?, true);
-            let bps = call(builder, self.blast, "bps", "new", vec![], vec![bps]);
+    /// Builds `fee_split` through the public constructors, as a client would: recipients in
+    /// descending destination order, the canonical sort's worst case, with every value its own
+    /// pure input.
+    fn fee_split_arg(&self, builder: &mut ProgrammableTransactionBuilder, fee_split: &FeeSplit) -> Result<Argument> {
+        let mut recipients = Vec::new();
+        for route in fee_split.recipients.iter().rev() {
+            let bps = self.unique_bps(builder, route.bps)?;
             let destination = builder.pure_bytes(bcs::to_bytes(&route.destination)?, true);
-            routes.push(call(builder, self.blast, "allocation", "route", vec![], vec![destination, bps]));
+            recipients.push(call(builder, self.blast, "allocation", "route", vec![], vec![destination, bps]));
         }
         let route = parse_sui_type_tag(&format!("{}::allocation::Route", self.blast))?;
+        let recipients = builder.command(Command::make_move_vec(Some(route), recipients));
+        let creator_bps = self.unique_bps(builder, fee_split.creator_bps)?;
+        let auto_lp_bps = self.unique_bps(builder, fee_split.auto_lp_bps)?;
+        let rewards_bps = self.unique_bps(builder, fee_split.rewards_bps)?;
 
-        Ok(builder.command(Command::make_move_vec(Some(route), routes)))
+        Ok(call(builder, self.blast, "allocation", "fee_split", vec![], vec![
+            creator_bps,
+            auto_lp_bps,
+            rewards_bps,
+            recipients,
+        ]))
     }
 
-    /// The adapter's creation of `ticket`'s unprotected launch with `routes`.
-    fn create_routed_launch(
-        &self,
-        ticket: ObjectID,
-        currency: ObjectID,
-        meme: &TypeTag,
-        routes: &Routes,
-    ) -> Result<ProgrammableTransaction> {
-        let mut builder = ProgrammableTransactionBuilder::new();
-        let routes = self.routes_arg(&mut builder, routes)?;
-        let mut arguments = vec![
-            builder.obj(self.h.owned(ticket))?,
-            builder.obj(self.h.shared(currency, true))?,
-            builder.obj(self.h.shared(self.version, false))?,
-            builder.obj(self.h.shared(self.config, false))?,
-            builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?,
-            builder.pure(TARGET)?,
-            builder.pure(SuiAddress::from(DESTINATION))?,
-        ];
-        for protection in UNPROTECTED {
-            arguments.push(builder.pure(protection)?);
-        }
-        arguments.push(routes);
-        let meme = vec![meme.clone()];
-        call(&mut builder, self.adapter, "mock_adapter", "create_routed_launch", meme, arguments);
+    /// A `Bps` from its own pure input, never shared with an equal value.
+    fn unique_bps(&self, builder: &mut ProgrammableTransactionBuilder, value: u64) -> Result<Argument> {
+        let value = builder.pure_bytes(bcs::to_bytes(&value)?, true);
 
-        Ok(builder.finish())
+        Ok(call(builder, self.blast, "bps", "new", vec![], vec![value]))
     }
 
-    /// Opens `ticket`'s launch with `routes` and returns it with the creation outcome.
-    fn open_routed_launch(
-        &mut self,
-        ticket: ObjectID,
-        currency: ObjectID,
-        meme: TypeTag,
-        routes: &Routes,
-    ) -> Result<(Launch, Outcome)> {
-        let created = self.h.execute(self.create_routed_launch(ticket, currency, &meme, routes)?)?;
-
-        Ok((self.created_launch(&created, meme, currency), created))
-    }
-
-    /// Replaces the pending router's routes directly through the core.
-    fn configure(
-        &self,
-        launch: &Launch,
-        config_cap: ObjectID,
-        routes: &Routes,
-    ) -> Result<ProgrammableTransaction> {
-        let mut builder = ProgrammableTransactionBuilder::new();
-        let routes = self.routes_arg(&mut builder, routes)?;
-        let router = builder.obj(self.h.shared(launch.router, true))?;
-        let version = builder.obj(self.h.shared(self.version, false))?;
-        let config_cap = builder.obj(self.h.owned(config_cap))?;
-        call(&mut builder, self.blast, "fee_router", "configure", vec![launch.meme.clone(), sui()], vec![
-            router, version, config_cap, routes,
-        ]);
-
-        Ok(builder.finish())
-    }
-
-    /// Settles `meme` and `quote` under the current routes, then commits `routes`.
-    fn settle_routes(
-        &self,
-        launch: &Launch,
-        vault: ObjectID,
-        config_cap: ObjectID,
-        meme_coin: ObjectID,
-        meme: u64,
-        quote: u64,
-        routes: &Routes,
-    ) -> Result<ProgrammableTransaction> {
-        let mut builder = ProgrammableTransactionBuilder::new();
-        let (meme, quote) = self.fees(&mut builder, meme_coin, meme, quote)?;
-        let routes = self.routes_arg(&mut builder, routes)?;
-        let vault = builder.obj(self.h.shared(vault, false))?;
-        let router = builder.obj(self.h.shared(launch.router, true))?;
-        let version = builder.obj(self.h.shared(self.version, false))?;
-        let policy = builder.obj(self.h.shared(self.policy, false))?;
-        let config_cap = builder.obj(self.h.owned(config_cap))?;
-        let failpoint = builder.pure(0u8)?;
-        call(&mut builder, self.adapter, "mock_adapter", "settle_routes", vec![launch.meme.clone()], vec![
-            vault, router, version, policy, config_cap, meme, quote, routes, failpoint,
-        ]);
-
-        Ok(builder.finish())
-    }
-
-    fn router(&self, launch: &Launch) -> Result<Router> {
-        Ok(bcs::from_bytes(&self.h.contents(launch.router))?)
-    }
-
-    /// Asserts the one `FeesCollected` under `generation` paid exactly the oracle's protected-first
-    /// amounts of `routes`, and that those coins alone reached the protocol and each destination.
-    fn assert_paid(
-        &self,
-        launch: &Launch,
-        outcome: &Outcome,
-        generation: u64,
-        routes: &Routes,
-        gross_meme: u64,
-        gross_quote: u64,
-    ) -> Result<()> {
-        outcome.assert_success();
-        let collected = outcome.events_of("events", "FeesCollected");
-        assert_eq!(collected.len(), 1);
-        let collected: FeesCollected = bcs::from_bytes(collected[0])?;
-        let (protocol_meme, meme_amounts) = payouts(gross_meme, MEME_SHARE, &routes.meme);
-        let (protocol_quote, quote_amounts) = payouts(gross_quote, QUOTE_SHARE, &routes.quote);
-        assert_eq!(protocol_meme + meme_amounts.iter().sum::<u64>(), gross_meme);
-        assert_eq!(protocol_quote + quote_amounts.iter().sum::<u64>(), gross_quote);
-        assert_eq!((collected.router_id, collected.launch_id), (launch.router, launch.launch));
-        assert_eq!(collected.generation, generation);
-        assert_eq!((collected.gross_meme, collected.gross_quote), (gross_meme, gross_quote));
-        assert_eq!(collected.protocol_destination, SuiAddress::from(PROTOCOL));
-        assert_eq!((collected.protocol_meme, collected.protocol_quote), (protocol_meme, protocol_quote));
-        assert_eq!((&collected.meme_amounts, &collected.quote_amounts), (&meme_amounts, &quote_amounts));
-
-        let protocol = self.coins(launch, protocol_meme, protocol_quote);
-        let mut payments = protocol.len();
-        assert_eq!(outcome.coins_created_for(&self.h, PROTOCOL.into()), protocol);
-        let destinations: BTreeSet<_> =
-            routes.meme.iter().chain(&routes.quote).map(|route| route.destination).collect();
-        for destination in destinations {
-            let amount = |table: &[Route], amounts: &[u64]| {
-                table.iter().position(|route| route.destination == destination).map_or(0, |i| amounts[i])
-            };
-            let coins = self.coins(
-                launch,
-                amount(&routes.meme, &meme_amounts),
-                amount(&routes.quote, &quote_amounts),
-            );
-            payments += coins.len();
-            assert_eq!(outcome.coins_created_for(&self.h, destination), coins);
-        }
-        assert_eq!(outcome.effects.created().len(), payments, "an object other than a payment was created");
-
-        Ok(())
-    }
-
-    /// Asserts `outcome` replaced `old` with `new` as generation `old_generation + 1`.
-    fn assert_routes_changed(
-        &self,
-        launch: &Launch,
-        outcome: &Outcome,
-        old_generation: u64,
-        old: &Routes,
-        new: &Routes,
-    ) -> Result<()> {
-        outcome.assert_success();
-        let changed = outcome.events_of("events", "RoutesChanged");
-        assert_eq!(changed.len(), 1);
-        let changed: RoutesChanged = bcs::from_bytes(changed[0])?;
-        assert_eq!(changed.router_id, launch.router);
-        assert_eq!((changed.old_generation, changed.new_generation), (old_generation, old_generation + 1));
-        assert_eq!((&changed.old_routes, &changed.new_routes), (old, new));
-        let router = self.router(launch)?;
-        assert_eq!((router.generation, &router.routes), (old_generation + 1, new));
-
-        Ok(())
-    }
-
-    /// One measurement: the operation and fixture, the router object's size afterwards, and the
+    /// One measurement: the operation and fixture, the launch object's size afterwards, and the
     /// transaction's resources against the protocol limits.
     fn record(&self, launch: &Launch, operation: &str, fixture: &str, outcome: &Outcome) -> Value {
         json!({
             "operation": operation,
             "fixture": fixture,
-            "router_object": {
-                "contents_bytes": self.h.contents(launch.router).len(),
-                "metered_bytes": self.h.object(launch.router).object_size_for_gas_metering(),
+            "launch_object": {
+                "contents_bytes": self.h.contents(launch.launch).len(),
+                "metered_bytes": self.h.object(launch.launch).object_size_for_gas_metering(),
             },
             "resources": self.h.resources(outcome),
         })
     }
-}
-
-/// Independent protected-first oracle: the protocol takes the ceiling of its share; each route the
-/// floor of its weight of the rest; the leftover units go one each by descending remainder, ties
-/// to the earlier canonical route.
-fn payouts(gross: u64, share_bps: u64, table: &[Route]) -> (u64, Vec<u64>) {
-    let protocol = protocol_share(gross, share_bps);
-    let project = u128::from(gross - protocol);
-    let mut amounts: Vec<_> =
-        table.iter().map(|route| (project * u128::from(route.bps) / 10_000) as u64).collect();
-    let mut ranked: Vec<_> = (0..table.len()).collect();
-    ranked.sort_by_key(|&i| std::cmp::Reverse(project * u128::from(table[i].bps) % 10_000));
-    let leftover = gross - protocol - amounts.iter().sum::<u64>();
-    ranked[..leftover as usize].iter().for_each(|&i| amounts[i] += 1);
-
-    (protocol, amounts)
-}
-
-fn protocol_share(gross: u64, share_bps: u64) -> u64 {
-    (u128::from(gross) * u128::from(share_bps)).div_ceil(10_000) as u64
-}
-
-/// Gross amounts from 10^15 Meme atoms and 10^9 MIST that leave 9,999 modulo 10,000 after the
-/// protocol share. Each route's remainder is then 10,000 minus its weight: falling weights give
-/// rising remainders, the worst case for the router's descending-remainder insertion sort, and
-/// the remainders leave 15 units of dust, the most sixteen routes can receive.
-fn worst_case_gross() -> (u64, u64) {
-    let first_from = |start: u64, share_bps| {
-        (start..)
-            .find(|gross| (gross - protocol_share(*gross, share_bps)) % 10_000 == 9_999)
-            .expect("gross")
-    };
-
-    (first_from(1_000_000_000_000_000, MEME_SHARE), first_from(1_000_000_000, QUOTE_SHARE))
 }
 
 fn sui() -> TypeTag {

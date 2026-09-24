@@ -16,6 +16,24 @@ use_environment = "mainnet"
 manifest_digest = "54B7F4BFC60DEA96EA008E3E030DB14787B8F2B4736B40B0550A228917B2039C"
 deps = { IntegerMate = "IntegerMate_1", MoveSTL = "MoveSTL", Sui = "Sui_2" }
 
+[pinned.mainnet.CetusClmmVester]
+source = { local = "interfaces/cetus_clmm_vester" }
+use_environment = "mainnet"
+manifest_digest = "7E72AD3396318EFE9642E1BD94F52744A5B5501E4651795A3F70D50B1DEA7C9D"
+deps = { CetusClmm = "CetusClmm", CetusToken = "CetusToken", IntegerMate = "IntegerMate_1", Sui = "Sui_2" }
+
+[pinned.mainnet.CetusLpBurn]
+source = { local = "interfaces/cetus_lp_burn" }
+use_environment = "mainnet"
+manifest_digest = "F2C767C3EB1F932F5387124724FA2CDE9521D3215942FF210E277DEA5D8C75F8"
+deps = { CetusClmm = "CetusClmm", CetusClmmVester = "CetusClmmVester", CetusToken = "CetusToken", IntegerMate = "IntegerMate_1", Sui = "Sui_2" }
+
+[pinned.mainnet.CetusToken]
+source = { local = "interfaces/cetus_token" }
+use_environment = "mainnet"
+manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
+deps = { Sui = "Sui_2" }
+
 [pinned.mainnet.IntegerLibrary]
 source = { git = "https://github.com/fireflyprotocol/integer-library.git", subdir = ".", rev = "8a534bd1c0b334cd3937c27987f3147a06ba6a18" }
 use_environment = "mainnet"
@@ -91,8 +109,8 @@ deps = { blast_admin = "blast_admin", std = "MoveStdlib_2", sui = "Sui_2" }
 [pinned.mainnet.blast_fun_migrators]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "BF191CEF651E94C28570061B46205884C2845894CADB1E7361E005172BB45B17"
-deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_admin = "blast_admin", blast_fun = "blast_fun" }
+manifest_digest = "E55C97F82BC0F60DACFCDF5AC2F0CCAFEFAA23A5179F8C914CB0C1D1EBECCCDB"
+deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_admin = "blast_admin", blast_fun = "blast_fun" }
 
 [pinned.testnet.BluefinSpot]
 source = { git = "https://github.com/fireflyprotocol/bluefin-spot-contract-interface.git", subdir = ".", rev = "91ce930575b2aa3decab9b7e129b8002deba80c1" }
@@ -105,6 +123,24 @@ source = { local = "interfaces/cetus" }
 use_environment = "testnet"
 manifest_digest = "042D999A0B5CE153B367D86006C2F427B0EB6C1AE71D63AF9BBD4FBF3747A3F5"
 deps = { IntegerMate = "IntegerMate_1", MoveSTL = "MoveSTL", Sui = "Sui_2" }
+
+[pinned.testnet.CetusClmmVester]
+source = { local = "interfaces/cetus_clmm_vester" }
+use_environment = "testnet"
+manifest_digest = "8CDC264AB1C58BB14454918D89FA67C77C0ECAAF75C9944B70062C97245400CF"
+deps = { CetusClmm = "CetusClmm", CetusToken = "CetusToken", IntegerMate = "IntegerMate_1", Sui = "Sui_2" }
+
+[pinned.testnet.CetusLpBurn]
+source = { local = "interfaces/cetus_lp_burn" }
+use_environment = "testnet"
+manifest_digest = "78AE5DC1CD4B61F410278A5BFABC2ED66111CDAB87253645309EFCCC4AE83998"
+deps = { CetusClmm = "CetusClmm", CetusClmmVester = "CetusClmmVester", CetusToken = "CetusToken", IntegerMate = "IntegerMate_1", Sui = "Sui_2" }
+
+[pinned.testnet.CetusToken]
+source = { local = "interfaces/cetus_token" }
+use_environment = "testnet"
+manifest_digest = "271408FC66479D0667DD522595BEB59E742B3EA9CD00ED7395433A07D5595564"
+deps = { Sui = "Sui_2" }
 
 [pinned.testnet.IntegerLibrary]
 source = { git = "https://github.com/fireflyprotocol/integer-library.git", subdir = ".", rev = "8a534bd1c0b334cd3937c27987f3147a06ba6a18" }
@@ -181,5 +217,5 @@ deps = { blast_admin = "blast_admin", std = "MoveStdlib_2", sui = "Sui_2" }
 [pinned.testnet.blast_fun_migrators]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "36FA431821A9AECECAAF2B1069BA8B9A5156F748EB3A17F0F762EB152479BE72"
-deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_admin = "blast_admin", blast_fun = "blast_fun" }
+manifest_digest = "4F84971CEE13CC3F6BC278E7E0B79A231546458535598E1B752D1732734F079E"
+deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_admin = "blast_admin", blast_fun = "blast_fun" }

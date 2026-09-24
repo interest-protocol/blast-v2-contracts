@@ -211,7 +211,7 @@ fun zero_role_admin_cannot_authorize_an_upgrade() {
     abort_code = errors::EAdminRoleNotGranted,
     location = blast_admin::acl,
 )]
-/// The upgrade finalizer checks the package-admin role before touching the receipt or version.
+/// The upgrade finalizer checks the package-admin role before touching the receipt.
 fun zero_role_admin_cannot_commit_an_upgrade() {
     let mut fixture = start_without_package_admin_role();
 
@@ -244,6 +244,46 @@ fun commit_rejects_a_skipped_generation_before_the_native_cap_is_touched() {
         f.package_admin.commit_upgrade_and_advance(&mut f.package_version, &admin_witness, receipt);
 
         destroy(foreign_cap);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+/// The upgrade finalizer checks the generation before the package-admin role.
+fun commit_checks_the_generation_before_the_role() {
+    let mut fixture = start_without_package_admin_role();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+        let (receipt, foreign_cap) = f.foreign_receipt();
+        f.package_version.set_for_testing(5);
+
+        f.package_admin.commit_upgrade_and_advance(&mut f.package_version, &admin_witness, receipt);
+
+        destroy(foreign_cap);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = errors::EAdminRoleNotGranted,
+    location = blast_admin::acl,
+)]
+/// Only the exported package-admin role can permanently destroy native upgrade authority.
+fun zero_role_admin_cannot_make_the_package_immutable() {
+    let mut fixture = start_without_package_admin_role();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+
+        f.package_admin.make_immutable(&f.package_version, &admin_witness);
     });
 
     fixture.end();
@@ -387,92 +427,6 @@ fun revoked_admin_cannot_reach_upgrade_authorization() {
         );
 
         destroy(ticket);
-    });
-
-    fixture.end();
-}
-
-#[test]
-fun active_admin_can_irreversibly_restrict_upgrade_policy() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        f.package_admin.restrict_to_additive(&f.package_version, &admin_witness);
-
-        let additive = events::collect_one<events::UpgradePolicyRestricted<BLAST_FUN>>(0);
-        let (_, _, _, _, previous_policy, new_policy) =
-            additive.upgrade_policy_restricted_fields();
-        assert_eq!(previous_policy, package::compatible_policy());
-        assert_eq!(new_policy, package::additive_policy());
-        assert_eq!(f.package_admin.policy_for_testing(), package::additive_policy());
-        assert_eq!(event::num_events(), 1);
-    });
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        f.package_admin.restrict_to_dependency_only(
-            &f.package_version,
-            &admin_witness,
-        );
-
-        let dependency_only =
-            events::collect_one<events::UpgradePolicyRestricted<BLAST_FUN>>(0);
-        let (_, _, _, _, previous_policy, new_policy) =
-            dependency_only.upgrade_policy_restricted_fields();
-        assert_eq!(previous_policy, package::additive_policy());
-        assert_eq!(new_policy, package::dep_only_policy());
-        assert_eq!(f.package_admin.policy_for_testing(), package::dep_only_policy());
-        assert_eq!(event::num_events(), 1);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EUpgradePolicyNotMoreRestrictive,
-    location = blast_admin::upgrade_custody,
-)]
-fun policy_restriction_rejects_unchanged_policy() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-        f.package_admin.restrict_to_additive(&f.package_version, &admin_witness);
-        let _ = events::collect_one<events::UpgradePolicyRestricted<BLAST_FUN>>(0);
-    });
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-        f.package_admin.restrict_to_additive(&f.package_version, &admin_witness);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EUpgradePolicyNotMoreRestrictive,
-    location = blast_admin::upgrade_custody,
-)]
-fun policy_restriction_rejects_looser_policy() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-        f.package_admin.restrict_to_dependency_only(
-            &f.package_version,
-            &admin_witness,
-        );
-        let _ = events::collect_one<events::UpgradePolicyRestricted<BLAST_FUN>>(0);
-    });
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-        f.package_admin.restrict_to_additive(&f.package_version, &admin_witness);
     });
 
     fixture.end();

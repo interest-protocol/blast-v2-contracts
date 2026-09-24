@@ -61,38 +61,12 @@ public fun commit_upgrade_and_advance(
     admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
     receipt: UpgradeReceipt,
 ) {
-    admin_witness.assert_role(blast_fun_domain::package_admin_role());
     package_version.assert_next();
+    admin_witness.assert_role(blast_fun_domain::package_admin_role());
     let custodian_id = self.id.to_inner();
 
     self.custody.commit_upgrade(custodian_id, receipt);
     package_version.advance();
-}
-
-/// Irreversibly narrows the wrapped UpgradeCap to additive upgrades.
-public fun restrict_to_additive(
-    self: &mut PackageAdmin,
-    package_version: &PackageVersion,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
-) {
-    package_version.assert_current();
-    admin_witness.assert_role(blast_fun_domain::package_admin_role());
-    let custodian_id = self.id.to_inner();
-
-    self.custody.restrict_to_additive(custodian_id);
-}
-
-/// Irreversibly narrows the wrapped UpgradeCap to dependency-only upgrades.
-public fun restrict_to_dependency_only(
-    self: &mut PackageAdmin,
-    package_version: &PackageVersion,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
-) {
-    package_version.assert_current();
-    admin_witness.assert_role(blast_fun_domain::package_admin_role());
-    let custodian_id = self.id.to_inner();
-
-    self.custody.restrict_to_dependency_only(custodian_id);
 }
 
 /// Irreversibly destroys native upgrade authority and freezes this package generation.

@@ -2,13 +2,13 @@
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
 /// Positional Blake2b-256 proofs with distinct leaf and internal-node domains.
-module blast_fun_distributor::merkle;
+module blast_fun_migrators::merkle;
 
 // === Package Functions ===
 
-/// The unique distributor ID and monotonically increasing round separate claims.
+/// The unique vault ID and monotonically increasing round separate claims.
 public(package) fun leaf(
-    distributor: ID,
+    vault: ID,
     round: u64,
     index: u64,
     beneficiary: address,
@@ -16,7 +16,7 @@ public(package) fun leaf(
     quote: u64,
 ): vector<u8> {
     let mut bytes = b"\x00blast-holder-rewards-v1";
-    bytes.append(bcs::to_bytes(&distributor));
+    bytes.append(bcs::to_bytes(&vault));
     bytes.append(bcs::to_bytes(&round));
     bytes.append(bcs::to_bytes(&index));
     bytes.append(bcs::to_bytes(&beneficiary));

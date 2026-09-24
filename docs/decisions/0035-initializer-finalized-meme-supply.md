@@ -71,8 +71,9 @@ fits through ten decimals:
 ```
 
 Eleven decimals would exceed `u64::MAX`. Generated Meme decimals are therefore
-bounded to `0..=10` before currency construction. Error code 61 records an
-invalid Meme decimals value. The bound makes the subsequent `u64` exponent and
+bounded to `0..=10` before currency construction: eleven or more decimals
+overflow the `u64` supply computation, which aborts before the currency is
+created (ADR 0088). The bound makes the subsequent `u64` exponent and
 multiplication overflow-proof.
 
 ### Ticket and event shape
@@ -141,7 +142,7 @@ supply.
 - Fixed and burnable ticket tests assert the exact normalized billion-unit
   balance and immutable mode.
 - Decimals-0 and decimals-10 boundary tests prove the smallest and largest
-  normalized supplies, while decimals 11 aborts with code 61 before currency
+  normalized supplies, while decimals 11 aborts before currency
   construction.
 - Structural checks require balance custody, both initializer supply
   transitions, exact minting, and the absence of `TreasuryCap<Meme>` from the

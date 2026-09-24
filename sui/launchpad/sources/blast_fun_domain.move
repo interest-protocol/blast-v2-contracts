@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// The blast.fun administration domain shared with Migrators and Distributor.
+/// The blast.fun administration domain shared with Migrators.
 ///
 /// This module owns the domain one-time witness, the governance configuration,
 /// and the exported role bits. Reusing packages import

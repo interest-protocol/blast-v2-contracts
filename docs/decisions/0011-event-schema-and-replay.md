@@ -119,7 +119,6 @@ Domain column: **L** per-launch, **G** global, **E** epoch, **M** per-meme fact.
 | `UpgradeAuthorized` | G | package id and version, cap policy, and exact package digest authorized by a live admin witness |
 | `UpgradeCommitted` | G | replacement package id and previous/new cap versions |
 | `PackageVersionAdvanced` | G | previous/new shared package cutover versions after explicit checked activation |
-| `UpgradePolicyRestricted` | G | previous/new irreversible framework policy |
 | `RouteSelected` | L | route A/B/C, venue, tick spacing, fee rate, orientation, target sqrt price, `reservation_id` |
 | `ReservationReleased` | L | `venue`, `reservation_id`, `tick_spacing`, `orientation`, reason |
 | `MigrationBegun` | L | payload id, `M`, `Q` at handoff |
@@ -196,13 +195,13 @@ counters to protocol storage. `CreatorCapClaimed` is reduced as one immutable fa
 | `sell` | package version, `Live`, pending-burn allocation, slippage, non-zero out | `Sold` | none | one embedded pending-burn balance | returns `Coin<Quote>` | zero output, slippage, lifecycle |
 | claim fees | capability, accrued only | `*FeesClaimed` | none | none | returns coin | `ENotAuthorized`, `ENothingAccrued` |
 | set protocol fee share | admin witness, valid `Bps` | `ProtocolFeeShareChanged` | none | one scalar | n/a | `EInvalidBps` |
-| mutate quote whitelist | admin witness, target, membership | `QuoteAllowed`, `QuoteParametersChanged`, or `QuoteDisallowed` | none | one Table child per admitted Quote; no on-chain iteration | removal remains available | exact errors 42, 45, 64, and 65; 43, 44, and 46 retired |
+| mutate quote whitelist | admin witness, target, membership | `QuoteAllowed`, `QuoteParametersChanged`, or `QuoteDisallowed` | none | one Table child per admitted Quote; no on-chain iteration | removal remains available | exact errors `quote_not_allowed`, `invalid_virtual_quote`, and `quote_parameters_unchanged` |
 | collect LP fees | capability, vault-locked position | `LpFeesCollected` | vendored SHA pin | none | returns coins | `ENotAuthorized`, `EPositionNotInVault` |
 | release reservation | capability, reservation exists | `ReservationReleased` | vendored SHA pin | frees the reservation slot | n/a | `ENoReservation`, `EWrongVenue` |
 | metadata update | capability, bonding only | `MetadataUpdated` | none | none | n/a | `EMetadataFrozen` |
 | creator-cap claim | consume `CreatorAuthority`; address equality with no attestation, or X backend signature/domain/expiry/active signer | `CreatorCapClaimed` | none | removes one authority | returns `CreatorCap` | address/X branch and structural consumption tests |
 | destroy admin cap | owned cap; membership lookup cannot block deletion | `AdminDestroyed` | none | removes one membership if present and deletes cap | n/a | active and already-revoked branches |
-| package administration / upgrade | package-version gate; canonical-module Publisher and original-package cap at intake; admin witness; exact digest; strictly narrower policies; native receipt bound to cap | `PackageAdminCreated`, `UpgradeAuthorized`, `UpgradeCommitted`, `PackageVersionAdvanced`, `UpgradePolicyRestricted` | pinned Sui framework | one package admin plus scalar runtime cutover | ticket/receipt PTB | exact errors 53, 54, 56, 57, 68 plus framework wrong-cap failure |
+| package administration / upgrade | package-version gate; canonical-module Publisher and original-package cap at intake; admin witness; exact digest; native receipt bound to cap | `UpgradeCustodyCreated`, `UpgradeAuthorized`, `UpgradeCommitted`, `OperationalVersionAdvanced`, `UpgradeCapDestroyed` | pinned Sui framework | one package admin plus scalar runtime cutover | ticket/receipt PTB | exact package-administration and custody errors plus framework wrong-cap failure |
 | `migrate` | package version, `MigrationReady`, selected witness type, native Fixed/BurnOnly mode | `Migrated` | core has no venue dep | one non-droppable typed payload | returns payload | lifecycle, witness-type, unsupported native-mode errors |
 | `redeem_migration` | payload and exact sealed witness value | no separate event | core has no venue dep | consumes the payload | returns balances | static witness-type equality |
 | admin setters | capability, ceiling | `ConfigChanged` | none | none | n/a | `EAboveCeiling` |

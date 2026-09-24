@@ -35,16 +35,20 @@ public struct AllocationPlan has copy, drop, store {
     quote: vector<Weight>,
 }
 
-/// One recurring-fee destination and its positive share of one asset.
+/// One recurring-fee recipient address and its positive share.
 public struct Route has copy, drop, store {
     destination: address,
     bps: Bps,
 }
 
-/// Canonical positive per-asset route tables naming at most sixteen distinct destinations.
-public struct Routes has copy, drop, store {
-    meme: vector<Route>,
-    quote: vector<Route>,
+/// The creator's split of every LP-fee collection after Blast's share, applied to both assets:
+/// credited to the creator, added back to the pool position, funding holder rewards, or paid to
+/// at most sixteen distinct recipients in canonical address order. The parts sum to 10,000.
+public struct FeeSplit has copy, drop, store {
+    creator_bps: Bps,
+    auto_lp_bps: Bps,
+    rewards_bps: Bps,
+    recipients: vector<Route>,
 }
 
 // === Public Functions ===
@@ -159,46 +163,71 @@ public fun route(destination: address, bps: Bps): Route {
     Route { destination, bps }
 }
 
-/// Canonicalizes and validates both complete route tables before a router stores them.
-public fun routes(mut meme: vector<Route>, mut quote: vector<Route>): Routes {
-    // Permit one-over inputs for duplicate precedence, but never sort unbounded input.
+/// Canonicalizes and validates a complete split before a launch or LP vault stores it.
+public fun fee_split(
+    creator_bps: Bps,
+    auto_lp_bps: Bps,
+    rewards_bps: Bps,
+    mut recipients: vector<Route>,
+): FeeSplit {
+    // Permit one-over input for duplicate precedence, but never sort unbounded input.
     assert!(
-        meme.length() <= constants::max_route_destinations!() + 1
-            && quote.length() <= constants::max_route_destinations!() + 1,
+        recipients.length() <= constants::max_route_destinations!() + 1,
         blast_fun::errors::route_capacity_reached!(),
     );
-    meme.insertion_sort_by!(|a, b| address::to_u256(a.destination) <= address::to_u256(b.destination));
-    quote.insertion_sort_by!(|a, b| address::to_u256(a.destination) <= address::to_u256(b.destination));
-    assert_routes_unique(&meme);
-    assert_routes_unique(&quote);
-    let mut destinations = meme.map_ref!(|route| route.destination);
-    quote.do_ref!(|route| {
-        if (!destinations.contains(&route.destination)) destinations.push_back(route.destination);
-    });
+    recipients.insertion_sort_by!(
+        |a, b| address::to_u256(a.destination) <= address::to_u256(b.destination),
+    );
+    assert_routes_unique(&recipients);
     assert!(
-        destinations.length() <= constants::max_route_destinations!(),
+        recipients.length() <= constants::max_route_destinations!(),
         blast_fun::errors::route_capacity_reached!(),
     );
     assert!(
-        meme.fold!(0, |sum, route| sum + route.bps.value()) == 10_000
-            && quote.fold!(0, |sum, route| sum + route.bps.value()) == 10_000,
+        recipients.fold!(
+            creator_bps.value() + auto_lp_bps.value() + rewards_bps.value(),
+            |sum, route| sum + route.bps.value(),
+        ) == 10_000,
         blast_fun::errors::route_sum_invalid!(),
     );
 
-    Routes { meme, quote }
+    FeeSplit { creator_bps, auto_lp_bps, rewards_bps, recipients }
 }
 
-/// Returns the canonical Meme route table.
-public fun meme_routes(self: &Routes): &vector<Route> { &self.meme }
+/// Returns the share credited to the creator.
+public fun creator_bps(self: &FeeSplit): Bps { self.creator_bps }
 
-/// Returns the canonical Quote route table.
-public fun quote_routes(self: &Routes): &vector<Route> { &self.quote }
+/// Returns the share added back to the pool position.
+public fun auto_lp_bps(self: &FeeSplit): Bps { self.auto_lp_bps }
+
+/// Returns the share funding holder rewards.
+public fun rewards_bps(self: &FeeSplit): Bps { self.rewards_bps }
+
+/// Returns the canonical recipient table.
+public fun recipients(self: &FeeSplit): &vector<Route> { &self.recipients }
 
 /// Returns the address paid for this route.
 public fun destination(self: &Route): address { self.destination }
 
 /// Returns the route's positive basis-point share.
 public fun route_bps(self: &Route): u64 { self.bps.value() }
+
+/// Apportions `total` into the creator, auto-LP, rewards, and per-recipient amounts, conserving it
+/// exactly. No part is protected; dust follows descending remainder, then that order.
+public fun apportion_fee_split(self: &FeeSplit, total: u64): (u64, u64, u64, vector<u64>) {
+    let mut weights = vector[
+        Weight { channel_id: 0, bps: self.creator_bps },
+        Weight { channel_id: 1, bps: self.auto_lp_bps },
+        Weight { channel_id: 2, bps: self.rewards_bps },
+    ];
+    self.recipients.length().do!(|i| {
+        weights.push_back(Weight { channel_id: i + 3, bps: self.recipients[i].bps });
+    });
+    let amounts = apportion(&weights, option::none(), total);
+    let recipients = vector::tabulate!(amounts.length() - 3, |i| amounts[i + 3]);
+
+    (amounts[0], amounts[1], amounts[2], recipients)
+}
 
 /// Returns the sole LP identity for the migration handoff.
 public fun liquidity_channel_id(self: &AllocationPlan): u64 {
@@ -254,16 +283,6 @@ public(package) fun amount_for(table: &vector<Weight>, amounts: &vector<u64>, ch
         table.length().do!(|i| if (table[i].channel_id == channel_id) return 'found amounts[i]);
         0
     }
-}
-
-/// Apportions the project remainder after the recurring protocol share has been removed.
-/// No route is protected; dust follows descending remainder then canonical route order.
-public(package) fun apportion_routes(table: &vector<Route>, total: u64): vector<u64> {
-    apportion(
-        &vector::tabulate!(table.length(), |i| Weight { channel_id: i, bps: table[i].bps }),
-        option::none(),
-        total,
-    )
 }
 
 // === Private Functions ===

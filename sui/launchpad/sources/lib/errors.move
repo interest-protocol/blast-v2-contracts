@@ -168,116 +168,92 @@ const ECurveFeeCapNotLive: u64 = 38;
 const EMetadataUnchanged: u64 = 39;
 
 #[test_only]
-/// Creator fees are permanently bound to a custodian and cannot be reassigned.
-const ECreatorFeesLocked: u64 = 40;
-
-#[test_only]
-/// The supplied custodian is not the one the launch's creator fees are bound to.
-const ECreatorCustodianMismatch: u64 = 41;
-
-#[test_only]
 /// The metadata capability is not the one the launch currently honors.
-const EMetadataCapNotLive: u64 = 42;
-
-#[test_only]
-/// A custodian witness was a primitive or vector type that anyone can construct.
-const EInvalidFeeCustodian: u64 = 43;
+const EMetadataCapNotLive: u64 = 40;
 
 #[test_only]
 /// A curve fee rate is one hundred percent, leaving no complement to divide by.
-const EInvalidCurveFee: u64 = 44;
+const EInvalidCurveFee: u64 = 41;
 
 #[test_only]
 /// The ticket's Meme decimal precision is not admitted by the launch configuration.
-const EDecimalsNotAllowed: u64 = 45;
+const EDecimalsNotAllowed: u64 = 42;
 
 #[test_only]
-const EAllocationSumInvalid: u64 = 46;
+const EAllocationSumInvalid: u64 = 43;
 
 #[test_only]
-const EDuplicateMigrationChannel: u64 = 47;
+const EDuplicateMigrationChannel: u64 = 44;
 
 #[test_only]
-const EUnknownMigrationChannel: u64 = 48;
+const EUnknownMigrationChannel: u64 = 45;
 
 #[test_only]
-const EMigrationChannelCapacityReached: u64 = 49;
+const EMigrationChannelCapacityReached: u64 = 46;
 
 #[test_only]
-const EInvalidLiquidityChannel: u64 = 50;
+const EInvalidLiquidityChannel: u64 = 47;
 
 #[test_only]
-const EProtocolChannelMismatch: u64 = 51;
+const EProtocolChannelMismatch: u64 = 48;
 
 #[test_only]
 /// The graduation target leaves the liquidity channel with no Quote to hand off.
-const EInvalidGraduationTarget: u64 = 52;
+const EInvalidGraduationTarget: u64 = 49;
 
 #[test_only]
 /// Launch protection is neither all zeros nor a nonzero window with a positive cumulative rate.
-const EInvalidProtection: u64 = 53;
+const EInvalidProtection: u64 = 50;
 
 #[test_only]
 /// A protected purchase's gross Meme curve output exceeds the per-transaction limit, which checks
 /// each purchase call on its own; repeated purchases in one transaction are bounded in total only
 /// by the cumulative limit.
-const EPerTransactionLimitExceeded: u64 = 54;
+const EPerTransactionLimitExceeded: u64 = 51;
 
 #[test_only]
 /// A protected purchase would take its sender's cumulative gross Meme curve output past the limit.
-const ECumulativeLimitExceeded: u64 = 55;
+const ECumulativeLimitExceeded: u64 = 52;
 
 #[test_only]
 /// A pre-share operation targeted a launch that has already been shared.
-const ELaunchAlreadyShared: u64 = 56;
+const ELaunchAlreadyShared: u64 = 53;
 
 #[test_only]
 /// The launch has already completed its single permitted pre-share purchase.
-const EPreShareBuyAlreadyCompleted: u64 = 57;
+const EPreShareBuyAlreadyCompleted: u64 = 54;
 
 #[test_only]
 /// The pre-share purchase would reach the migration target and close trading.
-const EPreShareBuyWouldGraduate: u64 = 58;
+const EPreShareBuyWouldGraduate: u64 = 55;
 
 #[test_only]
 /// The migration value, supplied and residual amounts, or liquidity did not match the launch.
-const EMigrationSettlementMismatch: u64 = 59;
+const EMigrationSettlementMismatch: u64 = 56;
 
 #[test_only]
-const ERouterMismatch: u64 = 60;
+/// The LP-fee split names more than sixteen recipients.
+const ERouteCapacityReached: u64 = 57;
 
 #[test_only]
-const ERouterNotActive: u64 = 61;
+/// A recipient share is zero, or the LP-fee split does not sum to 10,000.
+const ERouteSumInvalid: u64 = 58;
 
 #[test_only]
-const ERouterAlreadyActive: u64 = 62;
+/// The LP-fee split names the same recipient twice.
+const ERouteDuplicateDestination: u64 = 59;
 
 #[test_only]
-/// The route tables name more than sixteen distinct destinations.
-const ERouteCapacityReached: u64 = 63;
+/// A recipient is the zero address.
+const ERouteInvalidDestination: u64 = 60;
 
 #[test_only]
-const ERouteSumInvalid: u64 = 64;
+/// The Meme symbol is longer than the launch intake bound.
+const EMemeSymbolTooLong: u64 = 61;
 
 #[test_only]
-/// One asset's route table names the same destination twice.
-const ERouteDuplicateDestination: u64 = 65;
-
-#[test_only]
-/// A route names the zero address.
-const ERouteInvalidDestination: u64 = 66;
-
-#[test_only]
-/// A route proposal is identical to the current complete routes.
-const ERouteUnchanged: u64 = 67;
-
-#[test_only]
-/// The collector is not the router's exact bound adapter and permanent position.
-const ESettlementBindingMismatch: u64 = 68;
-
-#[test_only]
-/// A protocol destination update supplied the zero address or the current address.
-const EProtocolDestinationUnchanged: u64 = 69;
+/// Launch finalization found no graduation target, allocation plan, or LP-fee split.
+const ELaunchSettingsIncomplete: u64 = 62;
 
 macro public(package) fun invalid_creator_claim_public_key(): u64 { 0 }
 
@@ -360,62 +336,48 @@ macro public(package) fun curve_fee_cap_not_live(): u64 { 38 }
 
 macro public(package) fun metadata_unchanged(): u64 { 39 }
 
-macro public(package) fun creator_fees_locked(): u64 { 40 }
+macro public(package) fun metadata_cap_not_live(): u64 { 40 }
 
-macro public(package) fun creator_custodian_mismatch(): u64 { 41 }
+macro public(package) fun invalid_curve_fee(): u64 { 41 }
 
-macro public(package) fun metadata_cap_not_live(): u64 { 42 }
+macro public(package) fun decimals_not_allowed(): u64 { 42 }
 
-macro public(package) fun invalid_fee_custodian(): u64 { 43 }
+macro public(package) fun allocation_sum_invalid(): u64 { 43 }
 
-macro public(package) fun invalid_curve_fee(): u64 { 44 }
+macro public(package) fun duplicate_migration_channel(): u64 { 44 }
 
-macro public(package) fun decimals_not_allowed(): u64 { 45 }
+macro public(package) fun unknown_migration_channel(): u64 { 45 }
 
-macro public(package) fun allocation_sum_invalid(): u64 { 46 }
+macro public(package) fun migration_channel_capacity_reached(): u64 { 46 }
 
-macro public(package) fun duplicate_migration_channel(): u64 { 47 }
+macro public(package) fun invalid_liquidity_channel(): u64 { 47 }
 
-macro public(package) fun unknown_migration_channel(): u64 { 48 }
+macro public(package) fun protocol_channel_mismatch(): u64 { 48 }
 
-macro public(package) fun migration_channel_capacity_reached(): u64 { 49 }
+macro public(package) fun invalid_graduation_target(): u64 { 49 }
 
-macro public(package) fun invalid_liquidity_channel(): u64 { 50 }
+macro public(package) fun invalid_protection(): u64 { 50 }
 
-macro public(package) fun protocol_channel_mismatch(): u64 { 51 }
+macro public(package) fun per_transaction_limit_exceeded(): u64 { 51 }
 
-macro public(package) fun invalid_graduation_target(): u64 { 52 }
+macro public(package) fun cumulative_limit_exceeded(): u64 { 52 }
 
-macro public(package) fun invalid_protection(): u64 { 53 }
+macro public(package) fun launch_already_shared(): u64 { 53 }
 
-macro public(package) fun per_transaction_limit_exceeded(): u64 { 54 }
+macro public(package) fun pre_share_buy_already_completed(): u64 { 54 }
 
-macro public(package) fun cumulative_limit_exceeded(): u64 { 55 }
+macro public(package) fun pre_share_buy_would_graduate(): u64 { 55 }
 
-macro public(package) fun launch_already_shared(): u64 { 56 }
+macro public(package) fun migration_settlement_mismatch(): u64 { 56 }
 
-macro public(package) fun pre_share_buy_already_completed(): u64 { 57 }
+macro public(package) fun route_capacity_reached(): u64 { 57 }
 
-macro public(package) fun pre_share_buy_would_graduate(): u64 { 58 }
+macro public(package) fun route_sum_invalid(): u64 { 58 }
 
-macro public(package) fun migration_settlement_mismatch(): u64 { 59 }
+macro public(package) fun route_duplicate_destination(): u64 { 59 }
 
-macro public(package) fun router_mismatch(): u64 { 60 }
+macro public(package) fun route_invalid_destination(): u64 { 60 }
 
-macro public(package) fun router_not_active(): u64 { 61 }
+macro public(package) fun meme_symbol_too_long(): u64 { 61 }
 
-macro public(package) fun router_already_active(): u64 { 62 }
-
-macro public(package) fun route_capacity_reached(): u64 { 63 }
-
-macro public(package) fun route_sum_invalid(): u64 { 64 }
-
-macro public(package) fun route_duplicate_destination(): u64 { 65 }
-
-macro public(package) fun route_invalid_destination(): u64 { 66 }
-
-macro public(package) fun route_unchanged(): u64 { 67 }
-
-macro public(package) fun settlement_binding_mismatch(): u64 { 68 }
-
-macro public(package) fun protocol_destination_unchanged(): u64 { 69 }
+macro public(package) fun launch_settings_incomplete(): u64 { 62 }

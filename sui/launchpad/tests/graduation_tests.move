@@ -73,7 +73,7 @@ fun distinct_remainders_beat_id_and_equal_remainders_use_id() {
 fun recurring_protocol_ceiling_leaves_project_remainder_for_equal_weights() {
     let gross = 11;
     let protocol = bps::new(1_000).apply_up(gross);
-    let project = allocation::apportion_routes(
+    let project = recipient_amounts(
         &vector[route(@0x3, 5_000), route(@0x7, 5_000)],
         gross - protocol,
     );
@@ -87,30 +87,30 @@ fun recurring_protocol_ceiling_leaves_project_remainder_for_equal_weights() {
 fun route_ties_use_table_order_without_protecting_any_route() {
     let routes = vector[route(@0x3, 5_000), route(@0x7, 5_000)];
 
-    assert_eq!(allocation::apportion_routes(&routes, 1), vector[1, 0]);
-    assert_eq!(allocation::apportion_routes(&routes, 2), vector[1, 1]);
-    assert_eq!(allocation::apportion_routes(&routes, 3), vector[2, 1]);
+    assert_eq!(recipient_amounts(&routes, 1), vector[1, 0]);
+    assert_eq!(recipient_amounts(&routes, 2), vector[1, 1]);
+    assert_eq!(recipient_amounts(&routes, 3), vector[2, 1]);
 }
 
 #[test]
 fun route_distinct_remainders_precede_table_order() {
     let routes = vector[route(@0x3, 1_000), route(@0x7, 6_000), route(@0x9, 3_000)];
 
-    assert_eq!(allocation::apportion_routes(&routes, 1), vector[0, 1, 0]);
-    assert_eq!(allocation::apportion_routes(&routes, 3), vector[0, 2, 1]);
-    assert_eq!(allocation::apportion_routes(&routes, 10), vector[1, 6, 3]);
+    assert_eq!(recipient_amounts(&routes, 1), vector[0, 1, 0]);
+    assert_eq!(recipient_amounts(&routes, 3), vector[0, 2, 1]);
+    assert_eq!(recipient_amounts(&routes, 10), vector[1, 6, 3]);
 }
 
 #[test]
 fun route_zero_and_maximum_totals_conserve_without_overflow() {
     let routes = vector[route(@0x3, 5_000), route(@0x7, 5_000)];
     let maximum = std::u64::max_value!();
-    let amounts = allocation::apportion_routes(&routes, maximum);
+    let amounts = recipient_amounts(&routes, maximum);
 
-    assert_eq!(allocation::apportion_routes(&routes, 0), vector[0, 0]);
+    assert_eq!(recipient_amounts(&routes, 0), vector[0, 0]);
     assert_eq!(amounts, vector[maximum / 2 + 1, maximum / 2]);
     assert_eq!(amounts.fold!(0u64, |sum, amount| sum + amount), maximum);
-    assert_eq!(allocation::apportion_routes(&vector[route(@0x7, 10_000)], maximum), vector[maximum]);
+    assert_eq!(recipient_amounts(&vector[route(@0x7, 10_000)], maximum), vector[maximum]);
 }
 
 #[test]
@@ -458,6 +458,15 @@ fun zero_policy_requires_protocol_absence() {
 fun weight(id: u64, value: u64): Weight { allocation::weight(id, bps::new(value)) }
 
 fun route(destination: address, value: u64): Route { allocation::route(destination, bps::new(value)) }
+
+/// Apportions `total` across a split whose whole share goes to `recipients`.
+fun recipient_amounts(recipients: &vector<Route>, total: u64): vector<u64> {
+    let split = allocation::fee_split(bps::new(0), bps::new(0), bps::new(0), *recipients);
+    let (creator, auto_lp, rewards, amounts) = split.apportion_fee_split(total);
+    assert_eq!(creator + auto_lp + rewards, 0);
+
+    amounts
+}
 
 fun lp(): Channel { allocation::channel(2, allocation::liquidity_role(), @0x2) }
 

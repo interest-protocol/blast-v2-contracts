@@ -232,32 +232,21 @@ public(package) fun assert_allocation_policy(
     );
 }
 
-/// Validates the launch Quote and the ticket's bound witness against the allowlists and returns all
-/// cold policy to snapshot into launch state.
+/// Validates the launch Quote and the starting adapter's witness against the allowlists and
+/// returns all cold policy to snapshot into launch state.
 public(package) fun snapshot_for_launch<Quote>(
     self: &LaunchConfig,
-    migration_witness: Option<TypeName>,
-): (u64, Bps, Bps, TypeName) {
+    migration_witness: TypeName,
+): (u64, Bps, Bps) {
     let quote = type_name::with_original_ids<Quote>();
 
     assert!(self.quotes.contains(quote), blast_fun::errors::quote_not_allowed!());
     assert!(
-        migration_witness.is_some_and!(|witness| self.migration_witnesses.contains(witness)),
-        blast_fun::errors::migration_witness_not_allowed!(),
-    );
-
-    (self.quotes[quote], self.quote_fee_bps, self.meme_fee_bps, migration_witness.destroy_some())
-}
-
-/// Aborts unless the allowlist names `migration_witness`.
-public(package) fun assert_migration_witness_allowed(
-    self: &LaunchConfig,
-    migration_witness: TypeName,
-) {
-    assert!(
         self.migration_witnesses.contains(&migration_witness),
         blast_fun::errors::migration_witness_not_allowed!(),
     );
+
+    (self.quotes[quote], self.quote_fee_bps, self.meme_fee_bps)
 }
 
 /// Aborts unless `decimals` is admitted for launches created now.

@@ -16,7 +16,7 @@ Registry address; anyone may complete its registration with
 one admitted migration adapter and one Quote through that adapter's binding
 function, and the launchpad's `launch::new` consumes the ticket and the
 registered currency: it checks the bound adapter and Quote, the decimals against the admitted allowlist, the
-supply against the canonical amount, and the sell-burn rate against the current
+symbol against its 32-byte bound (so choose a symbol of at most 32 bytes), the supply against the canonical amount, and the sell-burn rate against the current
 ceiling, then fixes the supply as fixed or burn-only.
 
 The publication boundary is defined by

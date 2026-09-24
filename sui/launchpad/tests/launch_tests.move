@@ -27,6 +27,9 @@ const VIRTUAL_QUOTE: u64 = 5_000_000;
 
 const MIGRATION_QUOTE_TARGET: u64 = 25_000_000;
 
+/// A Meme symbol exactly at the 32-byte launch intake bound.
+const MAX_LENGTH_SYMBOL: vector<u8> = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ012345";
+
 const QUOTE_FEE_BPS: u64 = 100;
 
 const MEME_FEE_BPS: u64 = 250;
@@ -45,6 +48,10 @@ const EXPECTED_PROTOCOL_MEME: u64 = 75_000_000__000_000_000;
 
 const EXPECTED_POOL_MEME: u64 = 200_000_000__000_000_000;
 
+const POOL_TICK_SPACING: u32 = 200;
+
+const POOL_FEE_RATE: u64 = 10_000;
+
 // === Test-Only Types ===
 
 /// This module's one-time witness stands in for a generated package's.
@@ -56,26 +63,16 @@ public struct OTHER_QUOTE() has drop;
 
 public struct TEST_MIGRATION_WITNESS() has drop;
 
-public struct TestCustodian() has drop;
-
-public struct OtherCustodian() has drop;
-
 public struct OTHER_MIGRATION_WITNESS() has drop;
 
 /// Test-only permanent custody proving the adapter, not its caller, retains every source atom.
 public struct MockMigrationVault<phantom Meme, phantom Quote> has key {
     id: UID,
-    pool: MockPool,
-    position: MockPosition,
     supplied_meme: Balance<Meme>,
     supplied_quote: Balance<Quote>,
     residual_meme: Balance<Meme>,
     residual_quote: Balance<Quote>,
 }
-
-public struct MockPool has key, store { id: UID }
-
-public struct MockPosition has key, store { id: UID }
 
 /// Launch construction through configured cold policy and creator custody.
 public struct LaunchFixture {
@@ -366,109 +363,80 @@ fun intake_rejects_a_ticket_whose_decimals_are_no_longer_allowed() {
 }
 
 #[test]
-fun combined_share_publishes_both_key_only_objects_with_exact_mutual_binding() {
-    let mut fixture = start();
-    let expected_launch_id;
-    let expected_router_id;
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
-        assert!(launch.fee_router_id().is_none());
-        let (router, config_cap) = launch.new_fee_router(
-            &f.package_version,
-            default_routes(),
-            f.ctx!(),
-        );
-        expected_launch_id = option::some(object::id(&launch));
-        expected_router_id = option::some(object::id(&router));
-        assert_eq!(launch.fee_router_id(), expected_router_id);
-        assert_eq!(router.launch_id(), object::id(&launch));
-        assert!(!router.is_active());
-
-        let mut expected = bcs::to_bytes(&object::id(&router));
-        expected.append(bcs::to_bytes(&object::id(&launch)));
-        expected.append(bcs::to_bytes(&object::id(&config_cap)));
-        expected.append(bcs::to_bytes(&default_routes()));
-        assert_eq!(bcs::to_bytes(&events::collect_one<events::FeeRouterCreated>(0)), expected);
-
-        launch.share(&f.package_version, config_cap, router, &f.clock);
-    });
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        let launch = f.take_launch();
-        let router = f.take_router();
-
-        launch.assert_snapshot();
-        assert_eq!(option::some(object::id(&launch)), expected_launch_id);
-        assert_eq!(option::some(object::id(&router)), expected_router_id);
-        assert_eq!(launch.fee_router_id(), option::some(object::id(&router)));
-        assert_eq!(router.launch_id(), object::id(&launch));
-        assert_eq!(router.routes().meme_routes()[0].destination(), CREATOR);
-        assert!(!router.is_active());
-
-        destroy(launch);
-        destroy(router);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(abort_code = blast_fun::errors::ERouterMismatch, location = blast_fun::launch)]
-fun launch_cannot_issue_a_second_bound_router() {
+fun intake_accepts_a_meme_symbol_at_the_length_bound() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
-        let (router, config_cap) = launch.new_fee_router(
-            &f.package_version,
-            default_routes(),
-            f.ctx!(),
-        );
-        transfer::public_transfer(config_cap, LAUNCHER);
-        let (repeated, repeated_config_cap) = launch.new_fee_router(
-            &f.package_version,
-            default_routes(),
-            f.ctx!(),
+        let ticket = f.new_ticket_with_symbol(MAX_LENGTH_SYMBOL);
+        let launch = f.intake<TEST_QUOTE, _>(
+            ticket,
+            TEST_MIGRATION_WITNESS(),
+            MIGRATION_QUOTE_TARGET,
+            default_plan(),
         );
 
-        transfer::public_transfer(repeated_config_cap, LAUNCHER);
-        destroy(repeated);
-        destroy(router);
         destroy(launch);
     });
 
     fixture.end();
 }
 
-#[test]
-#[
-    expected_failure(
-        abort_code = blast_admin::errors::EOperationalVersionMismatch,
-        location = blast_admin::operational_version,
-    ),
-]
-fun stale_version_precedes_already_bound_router_rejection() {
+#[test, expected_failure(abort_code = blast_fun::errors::EMemeSymbolTooLong, location = blast_fun::launch)]
+fun intake_rejects_a_meme_symbol_over_the_length_bound() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
-        let (router, config_cap) = launch.new_fee_router(
-            &f.package_version,
-            default_routes(),
-            f.ctx!(),
+        let ticket = f.new_ticket_with_symbol(over_length_symbol());
+        let launch = f.intake<TEST_QUOTE, _>(
+            ticket,
+            TEST_MIGRATION_WITNESS(),
+            MIGRATION_QUOTE_TARGET,
+            default_plan(),
         );
-        transfer::public_transfer(config_cap, LAUNCHER);
+
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EDecimalsNotAllowed, location = blast_fun::launch_config)]
+fun intake_checks_the_decimals_before_the_symbol_length() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let ticket = f.new_ticket_with(CREATOR, false, 6, over_length_symbol());
+        let admin_witness = f.sign_in();
+
+        f.config.disallow_meme_decimals(&f.package_version, &admin_witness, 6);
+
+        let launch = f.intake<TEST_QUOTE, _>(
+            ticket,
+            TEST_MIGRATION_WITNESS(),
+            MIGRATION_QUOTE_TARGET,
+            default_plan(),
+        );
+
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+fun intake_checks_the_version_before_the_symbol_length() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let ticket = f.new_ticket_with_symbol(over_length_symbol());
         f.package_version.set_for_testing(2);
-        let (repeated, repeated_config_cap) = launch.new_fee_router(
-            &f.package_version,
-            default_routes(),
-            f.ctx!(),
+        let launch = f.intake<TEST_QUOTE, _>(
+            ticket,
+            TEST_MIGRATION_WITNESS(),
+            MIGRATION_QUOTE_TARGET,
+            default_plan(),
         );
 
-        transfer::public_transfer(repeated_config_cap, LAUNCHER);
-        destroy(repeated);
-        destroy(router);
         destroy(launch);
     });
 
@@ -493,14 +461,13 @@ fun launcher_can_designate_another_address_as_creator() {
 
     fixture.next_tx!(CREATOR, |f| {
         let mut launch = f.take_launch();
-        let (creator_cap, metadata_cap, config_cap) = launch.claim_setup_caps(
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
             &f.clock,
             f.ctx!(),
         );
-        destroy(config_cap);
         destroy(metadata_cap);
 
         destroy(creator_cap);
@@ -565,14 +532,13 @@ fun creator_claim_returns_both_creator_caps_and_retains_native_metadata_cap() {
         );
         let mut launch = f.open_launch(launch);
         let expected_metadata_cap_id = launch.metadata_cap_id_for_testing();
-        let (creator_cap, metadata_cap, config_cap) = launch.claim_setup_caps(
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
             &f.clock,
             f.ctx!(),
         );
-        destroy(config_cap);
         destroy(metadata_cap);
 
         assert_eq!(launch.metadata_cap_id_for_testing(), expected_metadata_cap_id);
@@ -606,26 +572,24 @@ fun creator_claim_cannot_be_repeated() {
             default_plan(),
         );
         let mut launch = f.open_launch(launch);
-        let (creator_cap, metadata_cap, config_cap) = launch.claim_setup_caps(
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
             &f.clock,
             f.ctx!(),
         );
-        destroy(config_cap);
         destroy(metadata_cap);
 
         destroy(creator_cap);
 
-        let (creator_cap, metadata_cap, config_cap) = launch.claim_setup_caps(
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
             &f.clock,
             f.ctx!(),
         );
-        destroy(config_cap);
         destroy(metadata_cap);
 
         destroy(creator_cap);
@@ -748,10 +712,13 @@ fun launch_rejects_supply_minted_through_the_lent_treasury_cap() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let mut ticket = f.new_ticket(CREATOR);
-        ticket.bind_migration_witness<_, TEST_QUOTE, _>(&f.config, TEST_MIGRATION_WITNESS());
-        destroy(ticket.treasury_cap_mut(&f.config, TEST_MIGRATION_WITNESS()).mint_balance(1));
-        let launch = f.intake_bound<TEST_QUOTE>(ticket, MIGRATION_QUOTE_TARGET, default_plan());
+        let ticket = f.new_ticket(CREATOR);
+        let mut initializer = f.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
+        destroy(initializer.treasury_cap_mut(TEST_MIGRATION_WITNESS()).mint_balance(1));
+        initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
+        initializer.set_allocation_plan(default_plan());
+        initializer.set_lp_fee_split(default_fee_split());
+        let launch = f.finalize_launch(initializer);
 
         destroy(launch);
     });
@@ -770,10 +737,110 @@ fun launch_rejects_extra_supply_on_a_burn_only_ticket() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let mut ticket = f.new_ticket_with_mode(CREATOR, true);
-        ticket.bind_migration_witness<_, TEST_QUOTE, _>(&f.config, TEST_MIGRATION_WITNESS());
-        destroy(ticket.treasury_cap_mut(&f.config, TEST_MIGRATION_WITNESS()).mint_balance(1));
-        let launch = f.intake_bound<TEST_QUOTE>(ticket, MIGRATION_QUOTE_TARGET, default_plan());
+        let ticket = f.new_ticket_with_mode(CREATOR, true);
+        let mut initializer = f.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
+        destroy(initializer.treasury_cap_mut(TEST_MIGRATION_WITNESS()).mint_balance(1));
+        initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
+        initializer.set_allocation_plan(default_plan());
+        initializer.set_lp_fee_split(default_fee_split());
+        let launch = f.finalize_launch(initializer);
+
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun launch_stores_the_creator_post_migration_settings_unchanged() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let launch = f.new_default_launch(CREATOR);
+        let (tick_spacing, fee_rate) = launch.pool_tier();
+
+        assert_eq!(tick_spacing, POOL_TICK_SPACING);
+        assert_eq!(fee_rate, POOL_FEE_RATE);
+        assert_eq!(launch.lp_fee_split(), default_fee_split());
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun later_setter_calls_replace_earlier_settings() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut initializer = f.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
+        let routes = blast_fun::allocation::fee_split(
+            bps::new(0),
+            bps::new(0),
+            bps::new(0),
+            vector[blast_fun::allocation::route(LAUNCHER, bps::new(10_000))],
+        );
+        initializer.set_graduation_target(MIGRATION_QUOTE_TARGET * 2);
+        initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
+        initializer.set_allocation_plan(external_plan());
+        initializer.set_allocation_plan(default_plan());
+        initializer.set_lp_fee_split(default_fee_split());
+        initializer.set_lp_fee_split(routes);
+        let launch = f.finalize_launch(initializer);
+
+        launch.assert_snapshot();
+        assert_eq!(launch.lp_fee_split(), routes);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::ELaunchSettingsIncomplete, location = blast_fun::launch)]
+fun finalize_requires_a_graduation_target() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut initializer = f.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
+        initializer.set_allocation_plan(default_plan());
+        initializer.set_lp_fee_split(default_fee_split());
+        let launch = f.finalize_launch(initializer);
+
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::ELaunchSettingsIncomplete, location = blast_fun::launch)]
+fun finalize_requires_an_allocation_plan() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut initializer = f.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
+        initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
+        initializer.set_lp_fee_split(default_fee_split());
+        let launch = f.finalize_launch(initializer);
+
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::ELaunchSettingsIncomplete, location = blast_fun::launch)]
+fun finalize_requires_lp_fee_split() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut initializer = f.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
+        initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
+        initializer.set_allocation_plan(default_plan());
+        let launch = f.finalize_launch(initializer);
 
         destroy(launch);
     });
@@ -784,21 +851,19 @@ fun launch_rejects_extra_supply_on_a_burn_only_ticket() {
 #[test]
 #[
     expected_failure(
-        abort_code = blast_fun::errors::EMigrationWitnessNotAllowed,
-        location = blast_fun::launch_config,
+        abort_code = blast_fun::errors::EInvalidMigrationWitness,
+        location = blast_fun::launch,
     ),
 ]
-fun disallowed_adapter_can_no_longer_borrow_the_treasury_cap() {
+fun only_the_starting_adapter_borrows_the_treasury_cap() {
     let mut fixture = start();
 
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let mut ticket = f.new_ticket(CREATOR);
-        ticket.bind_migration_witness<_, TEST_QUOTE, _>(&f.config, TEST_MIGRATION_WITNESS());
-        let admin_witness = f.sign_in();
-        f.config.disallow_migration_witness<TEST_MIGRATION_WITNESS>(&f.package_version, &admin_witness);
-        ticket.treasury_cap_mut(&f.config, TEST_MIGRATION_WITNESS());
+    fixture.next_tx!(LAUNCHER, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut initializer = f.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
+        initializer.treasury_cap_mut(OTHER_MIGRATION_WITNESS());
 
-        destroy(ticket);
+        destroy(initializer);
     });
 
     fixture.end();
@@ -811,90 +876,31 @@ fun disallowed_adapter_can_no_longer_borrow_the_treasury_cap() {
         location = blast_fun::launch_config,
     ),
 ]
-fun launch_rejects_an_unbound_ticket() {
+fun an_unadmitted_adapter_cannot_start_a_launch() {
     let mut fixture = start();
-    let ticket;
 
-    fixture.next_tx!(LAUNCHER, |f| ticket = f.new_ticket(CREATOR));
     fixture.next_tx!(LAUNCHER, |f| {
-        let mut currency = f.take_currency();
-        let launch = launch::new<_, TEST_QUOTE>(
+        let ticket = f.new_ticket(CREATOR);
+        let initializer = f.start_launch<TEST_QUOTE, _>(ticket, OTHER_MIGRATION_WITNESS());
+
+        destroy(initializer);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EQuoteNotAllowed, location = blast_fun::launch_config)]
+fun starting_checks_the_quote_before_finalize_checks_the_symbol() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let ticket = f.new_ticket_with_symbol(over_length_symbol());
+        let launch = f.intake<OTHER_QUOTE, _>(
             ticket,
-            &mut currency,
-            &f.package_version,
-            &f.config,
+            TEST_MIGRATION_WITNESS(),
             MIGRATION_QUOTE_TARGET,
             default_plan(),
-            0,
-            bps::new(0),
-            bps::new(0),
-            f.ctx!(),
         );
-
-        destroy(launch);
-        destroy(currency);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[
-    expected_failure(
-        abort_code = blast_fun::errors::EMigrationWitnessNotAllowed,
-        location = blast_fun::launch_config,
-    ),
-]
-fun binding_rejects_an_unadmitted_adapter() {
-    let mut fixture = start();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        let mut ticket = f.new_ticket(CREATOR);
-        ticket.bind_migration_witness<_, TEST_QUOTE, _>(&f.config, OTHER_MIGRATION_WITNESS());
-
-        destroy(ticket);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[
-    expected_failure(
-        abort_code = blast_fun::errors::EMigrationWitnessNotAllowed,
-        location = blast_fun::launch_config,
-    ),
-]
-fun launch_rejects_a_ticket_whose_adapter_was_disallowed_after_binding() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let mut ticket = f.new_ticket(CREATOR);
-        ticket.bind_migration_witness<_, TEST_QUOTE, _>(&f.config, TEST_MIGRATION_WITNESS());
-        let admin_witness = f.sign_in();
-        f.config.disallow_migration_witness<TEST_MIGRATION_WITNESS>(&f.package_version, &admin_witness);
-        let launch = f.intake_bound<TEST_QUOTE>(ticket, MIGRATION_QUOTE_TARGET, default_plan());
-
-        destroy(launch);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[
-    expected_failure(
-        abort_code = blast_fun::errors::EMigrationWitnessNotAllowed,
-        location = blast_fun::launch_config,
-    ),
-]
-fun launch_rejects_a_ticket_bound_for_another_quote() {
-    let mut fixture = start();
-
-    fixture.next_tx!(LAUNCHER, |f| {
-        let mut ticket = f.new_ticket(CREATOR);
-        ticket.bind_migration_witness<_, OTHER_QUOTE, _>(&f.config, TEST_MIGRATION_WITNESS());
-        let launch = f.intake_bound<TEST_QUOTE>(ticket, MIGRATION_QUOTE_TARGET, default_plan());
 
         destroy(launch);
     });
@@ -909,14 +915,13 @@ fun buy_and_sell_all_bought_meme_move_exact_coins_and_accounting() {
     fixture.next_tx!(LAUNCHER, |f| {
         let launch = f.new_default_launch(LAUNCHER);
         let mut launch = f.open_launch(launch);
-        let (creator_cap, metadata_cap, config_cap) = launch.claim_setup_caps(
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
             &f.clock,
             f.ctx!(),
         );
-        destroy(config_cap);
         destroy(metadata_cap);
         let quote_in_gross = 10_000_000;
         let (quote_fee, meme_out_gross, meme_fee, meme_out_net) = curve::quote_buy(
@@ -1124,14 +1129,13 @@ fun creator_claim_returns_trade_fees_as_composable_coins() {
             default_plan(),
         );
         let mut launch = f.open_launch(launch);
-        let (creator_cap, metadata_cap, config_cap) = launch.claim_setup_caps(
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
             &f.clock,
             f.ctx!(),
         );
-        destroy(config_cap);
         destroy(metadata_cap);
         let quote_in = coin::mint_for_testing<TEST_QUOTE>(10_000_000, f.ctx!());
         let (meme_bought, quote_refund) = launch.buy(
@@ -1948,14 +1952,13 @@ fun admin_reassigns_claimed_creator_and_the_new_cap_claims_prior_fees() {
             default_plan(),
         );
         let mut launch = f.open_launch(launch);
-        let (creator_cap, metadata_cap, config_cap) = launch.claim_setup_caps(
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
             &f.clock,
             f.ctx!(),
         );
-        destroy(config_cap);
         destroy(metadata_cap);
         let quote_in = coin::mint_for_testing<TEST_QUOTE>(10_000_000, f.ctx!());
         let (meme_bought, quote_refund) = launch.buy(
@@ -2039,14 +2042,13 @@ fun retired_creator_cap_is_rejected_before_the_empty_fee_ledger_check() {
             default_plan(),
         );
         let mut launch = f.open_launch(launch);
-        let (creator_cap, metadata_cap, config_cap) = launch.claim_setup_caps(
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
             &f.clock,
             f.ctx!(),
         );
-        destroy(config_cap);
         destroy(metadata_cap);
         let admin_witness = f.sign_in();
 
@@ -2123,14 +2125,13 @@ fun reassignment_prevents_the_original_recipient_from_claiming() {
         let admin_witness = f.sign_in();
 
         launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
-        let (creator_cap, metadata_cap, config_cap) = launch.claim_setup_caps(
+        let (creator_cap, metadata_cap) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
             &f.clock,
             f.ctx!(),
         );
-        destroy(config_cap);
         destroy(metadata_cap);
 
         destroy(creator_cap);
@@ -2221,14 +2222,13 @@ fun metadata_cap_holder_updates_coin_metadata_through_the_launch() {
         let mut launch = f.take_launch();
         let mut currency = f.take_currency();
         let native_metadata_cap_id = launch.metadata_cap_id_for_testing();
-        let (curve_fee_cap, metadata_cap, config_cap) = launch.claim_setup_caps(
+        let (curve_fee_cap, metadata_cap) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
             &f.clock,
             f.ctx!(),
         );
-        destroy(config_cap);
 
         launch.set_name(
             &f.package_version,
@@ -2296,14 +2296,13 @@ fun metadata_update_rejects_the_current_value() {
     fixture.next_tx!(CREATOR, |f| {
         let mut launch = f.take_launch();
         let mut currency = f.take_currency();
-        let (curve_fee_cap, metadata_cap, config_cap) = launch.claim_setup_caps(
+        let (curve_fee_cap, metadata_cap) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
             &f.clock,
             f.ctx!(),
         );
-        destroy(config_cap);
 
         launch.set_name(
             &f.package_version,
@@ -2346,14 +2345,13 @@ fun retired_metadata_cap_is_rejected_before_unchanged_metadata() {
     fixture.next_tx!(CREATOR, |f| {
         let mut launch = f.take_launch();
         let mut currency = f.take_currency();
-        let (curve_fee_cap, metadata_cap, config_cap) = launch.claim_setup_caps(
+        let (curve_fee_cap, metadata_cap) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
             &f.clock,
             f.ctx!(),
         );
-        destroy(config_cap);
         let admin_witness = f.sign_in();
 
         launch.reassign_metadata_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
@@ -2365,72 +2363,6 @@ fun retired_metadata_cap_is_rejected_before_unchanged_metadata() {
         );
 
         destroy(curve_fee_cap);
-        destroy(metadata_cap);
-        destroy(currency);
-        launch.put_back();
-    });
-
-    fixture.end();
-}
-
-#[test]
-fun metadata_stays_editable_and_reassignable_after_curve_fees_are_locked() {
-    let mut fixture = start();
-
-    fixture.next_tx!(CREATOR, |f| {
-        let ticket = f.new_ticket(CREATOR);
-        let launch = f.intake<TEST_QUOTE, _>(
-            ticket,
-            TEST_MIGRATION_WITNESS(),
-            MIGRATION_QUOTE_TARGET,
-            default_plan(),
-        );
-
-        f.share_launch(launch);
-    });
-
-    fixture.next_tx!(CREATOR, |f| {
-        let mut launch = f.take_launch();
-        let mut currency = f.take_currency();
-        let (curve_fee_cap, metadata_cap, config_cap) = launch.claim_setup_caps(
-            &f.package_version,
-            &f.runtime_config,
-            option::none(),
-            &f.clock,
-            f.ctx!(),
-        );
-        destroy(config_cap);
-        let admin_witness = f.sign_in();
-        let retired_metadata_cap_id = object::id(&metadata_cap);
-
-        launch.lock_creator_fees(&f.package_version, curve_fee_cap, TestCustodian());
-        launch.set_name(
-            &f.package_version,
-            &metadata_cap,
-            &mut currency,
-            b"Locked Fees".to_string(),
-        );
-        assert_eq!(currency.name(), b"Locked Fees".to_string());
-
-        launch.reassign_metadata_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
-
-        let reassigned = events::collect_one<events::MetadataCapReassigned>(0);
-        let metadata_cap_id = launch.blast_metadata_cap_id_for_testing().destroy_some();
-        assert!(metadata_cap_id != retired_metadata_cap_id);
-        assert_eq!(
-            bcs::to_bytes(&reassigned),
-            cap_reassigned_bytes(
-                object::id(&launch),
-                option::some(retired_metadata_cap_id),
-                metadata_cap_id,
-                NEW_CREATOR,
-            ),
-        );
-        assert_eq!(
-            launch.fee_custodian_for_testing(),
-            option::some(type_name::with_original_ids<TestCustodian>()),
-        );
-
         destroy(metadata_cap);
         destroy(currency);
         launch.put_back();
@@ -2452,319 +2384,16 @@ fun holders_destroy_curve_fee_and_metadata_capabilities() {
             default_plan(),
         );
         let mut launch = f.open_launch(launch);
-        let (curve_fee_cap, metadata_cap, config_cap) = launch.claim_setup_caps(
+        let (curve_fee_cap, metadata_cap) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
             &f.clock,
             f.ctx!(),
         );
-        destroy(config_cap);
 
         curve_fee_cap.destroy_curve_fee_cap();
         metadata_cap.destroy_metadata_cap();
-
-        destroy(launch);
-    });
-
-    fixture.end();
-}
-
-#[test]
-fun locking_destroys_the_cap_and_binds_creator_fees_to_the_custodian() {
-    let mut fixture = start();
-
-    fixture.next_tx!(CREATOR, |f| {
-        let ticket = f.new_ticket(CREATOR);
-        let launch = f.intake<TEST_QUOTE, _>(
-            ticket,
-            TEST_MIGRATION_WITNESS(),
-            MIGRATION_QUOTE_TARGET,
-            default_plan(),
-        );
-        let mut launch = f.open_launch(launch);
-        let (creator_cap, metadata_cap, config_cap) = launch.claim_setup_caps(
-            &f.package_version,
-            &f.runtime_config,
-            option::none(),
-            &f.clock,
-            f.ctx!(),
-        );
-        destroy(config_cap);
-        destroy(metadata_cap);
-        let creator_cap_id = object::id(&creator_cap);
-        let quote_in = coin::mint_for_testing<TEST_QUOTE>(10_000_000, f.ctx!());
-        let (meme_bought, quote_refund) = launch.buy(
-            &f.package_version,
-            &f.runtime_config,
-            quote_in,
-            1,
-            &f.clock,
-            f.ctx!(),
-        );
-
-        launch.lock_creator_fees(&f.package_version, creator_cap, TestCustodian());
-
-        let locked = events::collect_one<events::CreatorFeesLocked>(0);
-        let mut expected = bcs::to_bytes(&object::id(&launch));
-        expected.append(bcs::to_bytes(&creator_cap_id));
-        expected.append(bcs::to_bytes(&type_name::with_original_ids<TestCustodian>()));
-        assert_eq!(bcs::to_bytes(&locked), expected);
-        assert_eq!(
-            launch.fee_custodian_for_testing(),
-            option::some(type_name::with_original_ids<TestCustodian>()),
-        );
-        assert!(launch.curve_fee_cap_id_for_testing().is_none());
-
-        let (_, creator_meme, _, creator_quote) = launch.fee_totals_for_testing();
-        let (meme_fees, quote_fees) = launch.claim_custodied_creator_fees(
-            &f.package_version,
-            TestCustodian(),
-            f.ctx!(),
-        );
-        assert!(creator_meme > 0 && creator_quote > 0);
-        assert_eq!(meme_fees.value(), creator_meme);
-        assert_eq!(quote_fees.value(), creator_quote);
-
-        destroy(meme_bought);
-        destroy(quote_refund);
-        destroy(meme_fees);
-        destroy(quote_fees);
-        destroy(launch);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[
-    expected_failure(
-        abort_code = blast_fun::errors::ECreatorFeesLocked,
-        location = blast_fun::launch,
-    ),
-]
-fun locked_creator_fees_reject_reassignment_before_the_role_check() {
-    let mut fixture = start();
-
-    fixture.next_tx!(CREATOR, |f| {
-        let ticket = f.new_ticket(CREATOR);
-        let launch = f.intake<TEST_QUOTE, _>(
-            ticket,
-            TEST_MIGRATION_WITNESS(),
-            MIGRATION_QUOTE_TARGET,
-            default_plan(),
-        );
-        let mut launch = f.open_launch(launch);
-        let (creator_cap, metadata_cap, config_cap) = launch.claim_setup_caps(
-            &f.package_version,
-            &f.runtime_config,
-            option::none(),
-            &f.clock,
-            f.ctx!(),
-        );
-        destroy(config_cap);
-        destroy(metadata_cap);
-        launch.lock_creator_fees(&f.package_version, creator_cap, TestCustodian());
-        let (authority, admin_cap) = f.new_role_less_admin();
-        let admin_witness = authority.sign_in(&admin_cap);
-
-        launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
-
-        destroy(authority);
-        destroy(admin_cap);
-        destroy(launch);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[
-    expected_failure(
-        abort_code = blast_fun::errors::ECreatorCustodianMismatch,
-        location = blast_fun::launch,
-    ),
-]
-fun wrong_custodian_is_rejected_before_the_empty_fee_ledger_check() {
-    let mut fixture = start();
-
-    fixture.next_tx!(CREATOR, |f| {
-        let ticket = f.new_ticket(CREATOR);
-        let launch = f.intake<TEST_QUOTE, _>(
-            ticket,
-            TEST_MIGRATION_WITNESS(),
-            MIGRATION_QUOTE_TARGET,
-            default_plan(),
-        );
-        let mut launch = f.open_launch(launch);
-        let (creator_cap, metadata_cap, config_cap) = launch.claim_setup_caps(
-            &f.package_version,
-            &f.runtime_config,
-            option::none(),
-            &f.clock,
-            f.ctx!(),
-        );
-        destroy(config_cap);
-        destroy(metadata_cap);
-        launch.lock_creator_fees(&f.package_version, creator_cap, TestCustodian());
-
-        let (meme_fees, quote_fees) = launch.claim_custodied_creator_fees(
-            &f.package_version,
-            OtherCustodian(),
-            f.ctx!(),
-        );
-
-        destroy(meme_fees);
-        destroy(quote_fees);
-        destroy(launch);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[
-    expected_failure(
-        abort_code = blast_fun::errors::ECurveFeeCapNotLive,
-        location = blast_fun::launch,
-    ),
-]
-fun retired_creator_cap_cannot_lock_creator_fees() {
-    let mut fixture = start();
-
-    fixture.next_tx!(CREATOR, |f| {
-        let ticket = f.new_ticket(CREATOR);
-        let launch = f.intake<TEST_QUOTE, _>(
-            ticket,
-            TEST_MIGRATION_WITNESS(),
-            MIGRATION_QUOTE_TARGET,
-            default_plan(),
-        );
-        let mut launch = f.open_launch(launch);
-        let (creator_cap, metadata_cap, config_cap) = launch.claim_setup_caps(
-            &f.package_version,
-            &f.runtime_config,
-            option::none(),
-            &f.clock,
-            f.ctx!(),
-        );
-        destroy(config_cap);
-        destroy(metadata_cap);
-        let admin_witness = f.sign_in();
-        launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
-
-        launch.lock_creator_fees(&f.package_version, creator_cap, TestCustodian());
-
-        destroy(launch);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[
-    expected_failure(
-        abort_code = blast_fun::errors::EInvalidFeeCustodian,
-        location = blast_fun::launch,
-    ),
-]
-fun locking_rejects_a_primitive_custodian_witness() {
-    let mut fixture = start();
-
-    fixture.next_tx!(CREATOR, |f| {
-        let ticket = f.new_ticket(CREATOR);
-        let launch = f.intake<TEST_QUOTE, _>(
-            ticket,
-            TEST_MIGRATION_WITNESS(),
-            MIGRATION_QUOTE_TARGET,
-            default_plan(),
-        );
-        let mut launch = f.open_launch(launch);
-        let (creator_cap, metadata_cap, config_cap) = launch.claim_setup_caps(
-            &f.package_version,
-            &f.runtime_config,
-            option::none(),
-            &f.clock,
-            f.ctx!(),
-        );
-        destroy(config_cap);
-        destroy(metadata_cap);
-
-        launch.lock_creator_fees(&f.package_version, creator_cap, 0u64);
-
-        destroy(launch);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[
-    expected_failure(
-        abort_code = blast_fun::errors::EInvalidFeeCustodian,
-        location = blast_fun::launch,
-    ),
-]
-fun locking_rejects_a_vector_custodian_witness() {
-    let mut fixture = start();
-
-    fixture.next_tx!(CREATOR, |f| {
-        let ticket = f.new_ticket(CREATOR);
-        let launch = f.intake<TEST_QUOTE, _>(
-            ticket,
-            TEST_MIGRATION_WITNESS(),
-            MIGRATION_QUOTE_TARGET,
-            default_plan(),
-        );
-        let mut launch = f.open_launch(launch);
-        let (creator_cap, metadata_cap, config_cap) = launch.claim_setup_caps(
-            &f.package_version,
-            &f.runtime_config,
-            option::none(),
-            &f.clock,
-            f.ctx!(),
-        );
-        destroy(config_cap);
-        destroy(metadata_cap);
-
-        launch.lock_creator_fees(&f.package_version, creator_cap, vector[0u8]);
-
-        destroy(launch);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[
-    expected_failure(
-        abort_code = blast_fun::errors::EInvalidFeeCustodian,
-        location = blast_fun::launch,
-    ),
-]
-fun locking_rejects_a_publicly_constructible_framework_witness() {
-    let mut fixture = start();
-
-    fixture.next_tx!(CREATOR, |f| {
-        let ticket = f.new_ticket(CREATOR);
-        let launch = f.intake<TEST_QUOTE, _>(
-            ticket,
-            TEST_MIGRATION_WITNESS(),
-            MIGRATION_QUOTE_TARGET,
-            default_plan(),
-        );
-        let mut launch = f.open_launch(launch);
-        let (creator_cap, metadata_cap, config_cap) = launch.claim_setup_caps(
-            &f.package_version,
-            &f.runtime_config,
-            option::none(),
-            &f.clock,
-            f.ctx!(),
-        );
-        destroy(config_cap);
-        destroy(metadata_cap);
-
-        launch.lock_creator_fees(&f.package_version, creator_cap, option::none<TestCustodian>());
 
         destroy(launch);
     });
@@ -2834,44 +2463,28 @@ fun pre_share_buy_reuses_curve_accounting_and_emits_only_its_complete_disclosure
 #[test]
 fun terminal_share_alone_starts_public_time_and_freezes_disclosure() {
     let mut fixture = start();
-    let expected_cap;
     fixture.next_tx!(LAUNCHER, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
+        let launch = f.new_default_launch(CREATOR);
         f.clock.set_for_testing(250_000);
-        let (router, config_cap) = launch.new_fee_router(
-            &f.package_version,
-            default_routes(),
-            f.ctx!(),
-        );
-        expected_cap = object::id(&config_cap);
         let mut expected = bcs::to_bytes(&object::id(&launch));
-        expected.append(bcs::to_bytes(&object::id(&router)));
         expected.append(u64_bytes(250_000));
         expected.append(bcs::to_bytes(&false));
-        launch.share(&f.package_version, config_cap, router, &f.clock);
+        launch.share(&f.package_version, &f.clock);
         assert_eq!(bcs::to_bytes(&events::collect_one<events::LaunchShared>(0)), expected);
     });
     fixture.next_tx!(CREATOR, |f| {
         let mut launch = f.take_launch();
         assert_eq!(launch.public_start_ms(), option::some(250_000));
         assert!(!launch.pre_share_buy_completed());
-        let (curve, metadata, config_cap) = launch.claim_setup_caps(
+        let (curve, metadata) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
             &f.clock,
             f.ctx!(),
         );
-        assert_eq!(object::id(&config_cap), expected_cap);
-        let mut expected = bcs::to_bytes(&object::id(&launch));
-        expected.append(bcs::to_bytes(&object::id(&config_cap)));
-        assert_eq!(
-            bcs::to_bytes(&events::collect_one<events::RouterConfigCapReleased>(0)),
-            expected,
-        );
         transfer::public_transfer(curve, CREATOR);
         transfer::public_transfer(metadata, CREATOR);
-        transfer::public_transfer(config_cap, CREATOR);
         launch.put_back();
     });
     fixture.end();
@@ -3002,7 +2615,7 @@ fun setup_claim_cannot_consume_creator_rights_before_terminal_share() {
     let mut fixture = start();
     fixture.next_tx!(CREATOR, |f| {
         let mut launch = f.new_default_launch(CREATOR);
-        let (curve, metadata, config_cap) = launch.claim_setup_caps(
+        let (curve, metadata) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
@@ -3011,66 +2624,7 @@ fun setup_claim_cannot_consume_creator_rights_before_terminal_share() {
         );
         destroy(curve);
         destroy(metadata);
-        destroy(config_cap);
         destroy(launch);
-    });
-    fixture.end();
-}
-
-#[test]
-fun first_curve_takeover_delivers_pending_router_cap_once() {
-    let mut fixture = start();
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| { f.assert_takeover_delivery(false); });
-    fixture.next_tx!(NEW_CREATOR, |f| {
-        let cap = f.take_config_cap();
-        transfer::public_transfer(cap, CREATOR);
-    });
-    fixture.end();
-}
-
-#[test]
-fun first_metadata_takeover_delivers_pending_router_cap_once() {
-    let mut fixture = start();
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| { f.assert_takeover_delivery(true); });
-    fixture.next_tx!(NEW_CREATOR, |f| {
-        let cap = f.take_config_cap();
-        transfer::public_transfer(cap, CREATOR);
-    });
-    fixture.end();
-}
-
-#[test]
-fun post_claim_takeover_cannot_recover_or_reissue_router_config_cap() {
-    let mut fixture = start();
-    let claimed_cap;
-    fixture.next_tx!(CREATOR, |f| {
-        let launch = f.new_default_launch(CREATOR);
-        let mut launch = f.open_launch(launch);
-        let (curve, metadata, cap) = launch.claim_setup_caps(
-            &f.package_version,
-            &f.runtime_config,
-            option::none(),
-            &f.clock,
-            f.ctx!(),
-        );
-        claimed_cap = object::id(&cap);
-        transfer::public_transfer(curve, CREATOR);
-        transfer::public_transfer(metadata, CREATOR);
-        transfer::public_transfer(cap, CREATOR);
-        launch.put_back();
-    });
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let mut launch = f.take_launch();
-        let admin = f.sign_in();
-        launch.reassign_curve_fee_cap(&f.package_version, &admin, NEW_CREATOR, f.ctx!());
-        launch.reassign_metadata_cap(&f.package_version, &admin, NEW_CREATOR, f.ctx!());
-        assert!(events::collect<events::RouterConfigCapDelivered>().is_empty());
-        launch.put_back();
-    });
-    fixture.next_tx!(CREATOR, |f| {
-        let cap = f.take_config_cap();
-        assert_eq!(object::id(&cap), claimed_cap);
-        transfer::public_transfer(cap, CREATOR);
     });
     fixture.end();
 }
@@ -3088,12 +2642,12 @@ fun pre_share_admin_revocation_cannot_strand_wrapped_setup_authority() {
 }
 
 #[test, expected_failure(abort_code = blast_fun::errors::ECreatorNotSender, location = blast_fun::creator_authority)]
-fun launcher_cannot_extract_another_address_creators_wrapped_config_cap() {
+fun launcher_cannot_claim_another_address_creators_caps() {
     let mut fixture = start();
     fixture.next_tx!(LAUNCHER, |f| {
         let launch = f.new_default_launch(CREATOR);
         let mut launch = f.open_launch(launch);
-        let (curve, metadata, cap) = launch.claim_setup_caps(
+        let (curve, metadata) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
@@ -3102,7 +2656,6 @@ fun launcher_cannot_extract_another_address_creators_wrapped_config_cap() {
         );
         destroy(curve);
         destroy(metadata);
-        destroy(cap);
         destroy(launch);
     });
     fixture.end();
@@ -3114,12 +2667,7 @@ fun terminal_share_rejects_a_second_share() {
     fixture.next_tx!(LAUNCHER, |f| {
         let launch = f.new_default_launch(CREATOR);
         let launch = f.open_launch(launch);
-        let (router, config_cap) = fee_router::new_for_testing<LAUNCH_TESTS, TEST_QUOTE>(
-            object::id(&launch),
-            default_routes(),
-            f.ctx!(),
-        );
-        launch.share(&f.package_version, config_cap, router, &f.clock);
+        launch.share(&f.package_version, &f.clock);
     });
     fixture.end();
 }
@@ -3136,13 +2684,57 @@ fun first_pre_share_buy_preserves_zero_input_rejection() {
 }
 
 #[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+fun public_buy_checks_the_version_before_the_shared_state() {
+    let mut fixture = start();
+    fixture.next_tx!(LAUNCHER, |f| {
+        let mut launch = f.new_default_launch(CREATOR);
+        f.package_version.set_for_testing(2);
+        let quote_in = coin::mint_for_testing<TEST_QUOTE>(1_000, f.ctx!());
+        let (meme, quote_refund) = launch.buy(
+            &f.package_version,
+            &f.runtime_config,
+            quote_in,
+            0,
+            &f.clock,
+            f.ctx!(),
+        );
+        destroy(meme);
+        destroy(quote_refund);
+        destroy(launch);
+    });
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EZeroTradeInput, location = blast_fun::curve)]
+fun public_buy_checks_the_curve_before_slippage() {
+    let mut fixture = start();
+    fixture.next_tx!(LAUNCHER, |f| {
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
+        let quote_in = coin::mint_for_testing<TEST_QUOTE>(0, f.ctx!());
+        let (meme, quote_refund) = launch.buy(
+            &f.package_version,
+            &f.runtime_config,
+            quote_in,
+            std::u64::max_value!(),
+            &f.clock,
+            f.ctx!(),
+        );
+        destroy(meme);
+        destroy(quote_refund);
+        destroy(launch);
+    });
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
 fun setup_claim_checks_version_before_wrong_sender() {
     let mut fixture = start();
     fixture.next_tx!(LAUNCHER, |f| {
         let launch = f.new_default_launch(CREATOR);
         let mut launch = f.open_launch(launch);
         f.package_version.set_for_testing(2);
-        let (curve, metadata, cap) = launch.claim_setup_caps(
+        let (curve, metadata) = launch.claim_creator_caps(
             &f.package_version,
             &f.runtime_config,
             option::none(),
@@ -3151,7 +2743,6 @@ fun setup_claim_checks_version_before_wrong_sender() {
         );
         destroy(curve);
         destroy(metadata);
-        destroy(cap);
         destroy(launch);
     });
     fixture.end();
@@ -3191,62 +2782,6 @@ fun target_that_rounds_the_liquidity_quote_to_zero_is_rejected() {
 }
 
 // === Test Helpers ===
-
-fun take_config_cap(
-    self: &LaunchFixture,
-): fee_router::RouterConfigCap<LAUNCH_TESTS, TEST_QUOTE> {
-    self.scenario.take_from_sender()
-}
-
-fun assert_takeover_delivery(self: &mut LaunchFixture, metadata_first: bool) {
-    let sender = self.scenario.ctx().sender();
-    let mut launch = self.new_default_launch(CREATOR);
-    let (router, config_cap) = launch.new_fee_router(
-        &self.package_version,
-        default_routes(),
-        self.scenario.ctx(),
-    );
-    let mut expected = bcs::to_bytes(&object::id(&launch));
-    expected.append(bcs::to_bytes(&object::id(&config_cap)));
-    let recipient = NEW_CREATOR;
-    expected.append(bcs::to_bytes(&recipient));
-    launch.share(&self.package_version, config_cap, router, &self.clock);
-    self.scenario.next_tx(sender);
-    let mut launch = self.take_launch();
-    let admin = self.sign_in();
-    if (metadata_first) {
-        launch.reassign_metadata_cap(
-            &self.package_version,
-            &admin,
-            NEW_CREATOR,
-            self.scenario.ctx(),
-        );
-        launch.reassign_curve_fee_cap(
-            &self.package_version,
-            &admin,
-            NEW_CREATOR,
-            self.scenario.ctx(),
-        );
-    } else {
-        launch.reassign_curve_fee_cap(
-            &self.package_version,
-            &admin,
-            NEW_CREATOR,
-            self.scenario.ctx(),
-        );
-        launch.reassign_metadata_cap(
-            &self.package_version,
-            &admin,
-            NEW_CREATOR,
-            self.scenario.ctx(),
-        );
-    };
-    let delivered = events::collect<events::RouterConfigCapDelivered>();
-    assert_eq!(delivered.length(), 1);
-    assert_eq!(bcs::to_bytes(&delivered[0]), expected);
-    assert!(!launch.has_creator_authority_for_testing());
-    launch.put_back();
-}
 
 fun pre_buy(
     self: &mut LaunchFixture,
@@ -3369,7 +2904,6 @@ fun start(): LaunchFixture {
     );
     destroy(super_admin_cap);
     launch_config::init_for_testing(scenario.ctx());
-    lp_fee_policy::init_for_testing(scenario.ctx());
     let runtime_config = runtime_config::new_disabled_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
 
@@ -3430,10 +2964,34 @@ fun launch_new_ticket_with_decimals(
     burnable: bool,
     decimals: u8,
 ): LaunchTicket<LAUNCH_TESTS> {
+    self.new_ticket_with(creator, burnable, decimals, b"LAUNCH")
+}
+
+/// A Meme symbol one byte over the launch intake bound.
+fun over_length_symbol(): vector<u8> {
+    let mut symbol = MAX_LENGTH_SYMBOL;
+    symbol.push_back(b"X"[0]);
+    symbol
+}
+
+fun launch_new_ticket_with_symbol(
+    self: &mut LaunchFixture,
+    symbol: vector<u8>,
+): LaunchTicket<LAUNCH_TESTS> {
+    self.new_ticket_with(CREATOR, false, MEME_DECIMALS, symbol)
+}
+
+fun launch_new_ticket_with(
+    self: &mut LaunchFixture,
+    creator: address,
+    burnable: bool,
+    decimals: u8,
+    symbol: vector<u8>,
+): LaunchTicket<LAUNCH_TESTS> {
     launch_ticket::new(
         test_utils::create_one_time_witness<LAUNCH_TESTS>(),
         decimals,
-        b"LAUNCH".to_string(),
+        symbol.to_string(),
         b"Launch Test".to_string(),
         b"Normalized launch state".to_string(),
         b"".to_string(),
@@ -3466,18 +3024,12 @@ fun launch_sign_in(self: &LaunchFixture): AdminWitness<BLAST_FUN_DOMAIN> {
     self.authority.sign_in(&self.admin_cap)
 }
 
-fun default_routes(): blast_fun::allocation::Routes {
-    let route = vector[blast_fun::allocation::route(CREATOR, bps::new(10_000))];
-    blast_fun::allocation::routes(route, route)
+fun default_fee_split(): blast_fun::allocation::FeeSplit {
+    blast_fun::allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), vector[])
 }
 
-fun share_launch(self: &mut LaunchFixture, mut launch: Launch<LAUNCH_TESTS, TEST_QUOTE>) {
-    let (router, config_cap) = launch.new_fee_router(
-        &self.package_version,
-        default_routes(),
-        self.scenario.ctx(),
-    );
-    launch.share(&self.package_version, config_cap, router, &self.clock);
+fun share_launch(self: &LaunchFixture, launch: Launch<LAUNCH_TESTS, TEST_QUOTE>) {
+    launch.share(&self.package_version, &self.clock);
 }
 
 fun new_launch_at_target(
@@ -3502,10 +3054,6 @@ fun open_launch(
     self.share_launch(launch);
     self.scenario.next_tx(sender);
     self.take_launch()
-}
-
-fun take_router(self: &LaunchFixture): fee_router::FeeRouter<LAUNCH_TESTS, TEST_QUOTE> {
-    self.scenario.take_shared()
 }
 
 fun new_default_launch(
@@ -3541,16 +3089,12 @@ fun mock_atomic_migration(
     launch: &mut Launch<LAUNCH_TESTS, TEST_QUOTE>,
     currency: &mut Currency<LAUNCH_TESTS>,
 ): (Balance<LAUNCH_TESTS>, Balance<TEST_QUOTE>) {
-    let mut router = self.take_router();
-    let policy = self.scenario.take_shared<lp_fee_policy::LpFeePolicy>();
     let (meme, quote, migration) = launch.begin_migration(
         &self.package_version,
         TEST_MIGRATION_WITNESS(),
     );
     let vault = MockMigrationVault {
         id: object::new(self.scenario.ctx()),
-        pool: MockPool { id: object::new(self.scenario.ctx()) },
-        position: MockPosition { id: object::new(self.scenario.ctx()) },
         supplied_meme: meme,
         supplied_quote: quote,
         residual_meme: balance::zero(),
@@ -3558,14 +3102,9 @@ fun mock_atomic_migration(
     };
     launch.complete_migration(
         &self.package_version,
-        &mut router,
-        &policy,
         currency,
         migration,
         TEST_MIGRATION_WITNESS(),
-        &vault,
-        object::id(&vault.pool),
-        &vault.position,
         vault.supplied_meme.value(),
         vault.supplied_quote.value(),
         &vault.residual_meme,
@@ -3575,20 +3114,14 @@ fun mock_atomic_migration(
     );
     let MockMigrationVault {
         id,
-        pool: MockPool { id: pool_id },
-        position: MockPosition { id: position_id },
         supplied_meme: meme,
         supplied_quote: quote,
         residual_meme,
         residual_quote,
     } = vault;
     id.delete();
-    pool_id.delete();
-    position_id.delete();
     residual_meme.destroy_zero();
     residual_quote.destroy_zero();
-    test_scenario::return_shared(router);
-    test_scenario::return_shared(policy);
     (meme, quote)
 }
 
@@ -3633,38 +3166,51 @@ fun open_dust_target_launch(self: &mut LaunchFixture) {
     launch.put_back();
 }
 
-/// Binds `witness` for `Quote`, then runs intake.
+/// Starts the launch for `witness`, sets the target, plan, and default fee split, and finalizes it
+/// unprotected.
 fun launch_intake<Quote, MigrationWitness: drop>(
     self: &mut LaunchFixture,
-    mut ticket: LaunchTicket<LAUNCH_TESTS>,
+    ticket: LaunchTicket<LAUNCH_TESTS>,
     witness: MigrationWitness,
     target: u64,
     plan: blast_fun::allocation::AllocationPlan,
 ): Launch<LAUNCH_TESTS, Quote> {
-    ticket.bind_migration_witness<_, Quote, _>(&self.config, witness);
-    self.launch_intake_bound(ticket, target, plan)
+    let mut initializer = self.start_launch<Quote, _>(ticket, witness);
+    initializer.set_graduation_target(target);
+    initializer.set_allocation_plan(plan);
+    initializer.set_lp_fee_split(default_fee_split());
+    self.finalize_launch(initializer)
 }
 
-/// Runs unprotected intake in the next transaction, once the Coin Registry holds the currency.
-fun launch_intake_bound<Quote>(
+/// Starts construction at the fixture tier in the next transaction, once the Coin Registry holds
+/// the ticket's currency.
+fun launch_start<Quote, MigrationWitness: drop>(
     self: &mut LaunchFixture,
     ticket: LaunchTicket<LAUNCH_TESTS>,
-    target: u64,
-    plan: blast_fun::allocation::AllocationPlan,
-): Launch<LAUNCH_TESTS, Quote> {
+    witness: MigrationWitness,
+): LaunchInitializer<LAUNCH_TESTS, Quote> {
     let sender = self.scenario.sender();
     self.scenario.next_tx(sender);
-    let mut currency = self.take_currency();
-    let launch = launch::new(
+    launch::new(
         ticket,
-        &mut currency,
         &self.package_version,
         &self.config,
-        target,
-        plan,
-        0,
-        bps::new(0),
-        bps::new(0),
+        witness,
+        POOL_TICK_SPACING,
+        POOL_FEE_RATE,
+    )
+}
+
+/// Finalizes construction against the registered currency.
+fun launch_finalize<Quote>(
+    self: &mut LaunchFixture,
+    initializer: LaunchInitializer<LAUNCH_TESTS, Quote>,
+): Launch<LAUNCH_TESTS, Quote> {
+    let mut currency = self.take_currency();
+    let launch = initializer.finalize(
+        &self.package_version,
+        &mut currency,
+        &self.config,
         self.scenario.ctx(),
     );
     test_scenario::return_to_address(COIN_REGISTRY, currency);
@@ -3756,6 +3302,10 @@ fun launch_created_bytes(launch_id: ID, ticket_id: ID): vector<u8> {
     expected.append(u64_bytes(INITIAL_MEME_SUPPLY));
     expected.append(bcs::to_bytes(&type_name::with_original_ids<TEST_QUOTE>()));
     expected.append(bcs::to_bytes(&type_name::with_original_ids<TEST_MIGRATION_WITNESS>()));
+    let pool_tick_spacing = POOL_TICK_SPACING;
+    expected.append(bcs::to_bytes(&pool_tick_spacing));
+    expected.append(u64_bytes(POOL_FEE_RATE));
+    expected.append(bcs::to_bytes(&default_fee_split()));
     expected.append(u64_bytes(VIRTUAL_QUOTE));
     expected.append(u64_bytes(MIGRATION_QUOTE_TARGET));
     expected.append(u64_bytes(QUOTE_FEE_BPS));
@@ -3918,11 +3468,9 @@ use blast_fun::{
     curve,
     domain_fixture,
     events,
-    fee_router,
-    launch::{Self, Launch},
+    launch::{Self, Launch, LaunchInitializer},
     launch_config,
     launch_ticket::{Self, LaunchTicket},
-    lp_fee_policy,
     blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
     package_version::{Self, PackageVersion},
     runtime_config,
@@ -3947,7 +3495,11 @@ use fun launch_new_ticket as LaunchFixture.new_ticket;
 
 use fun launch_new_ticket_with_mode as LaunchFixture.new_ticket_with_mode;
 
+use fun launch_new_ticket_with as LaunchFixture.new_ticket_with;
+
 use fun launch_new_ticket_with_decimals as LaunchFixture.new_ticket_with_decimals;
+
+use fun launch_new_ticket_with_symbol as LaunchFixture.new_ticket_with_symbol;
 
 use fun launch_next_tx as LaunchFixture.next_tx;
 
@@ -3955,7 +3507,9 @@ use fun launch_sign_in as LaunchFixture.sign_in;
 
 use fun launch_intake as LaunchFixture.intake;
 
-use fun launch_intake_bound as LaunchFixture.intake_bound;
+use fun launch_start as LaunchFixture.start_launch;
+
+use fun launch_finalize as LaunchFixture.finalize_launch;
 
 use fun launch_take_currency as LaunchFixture.take_currency;
 

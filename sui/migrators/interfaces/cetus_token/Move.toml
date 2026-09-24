@@ -1,13 +1,10 @@
 [package]
-name = "blast_fun_auto_lp"
+name = "CetusToken"
 edition = "2024"
-license = "BUSL-1.1"
+published-at = "0x06864a6f921804860930db6ddbe2e16acdf8504495ea7481637a1c8b9a8fe54b"
 
 [dependencies]
-blast_fun = { local = "../../sui/launchpad" }
-blast_fun_dex = { local = "../dex" }
-blast_fun_migrators = { local = "../../sui/migrators" }
 Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2", override = true }
 
 [addresses]
-blast_fun_auto_lp = "0x0"
+cetus = "0x06864a6f921804860930db6ddbe2e16acdf8504495ea7481637a1c8b9a8fe54b"

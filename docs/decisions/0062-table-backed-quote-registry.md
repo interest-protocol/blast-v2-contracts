@@ -39,8 +39,8 @@ define how every remaining quote child is removed or intentionally retained.
 The separate migration-witness `VecSet` remains capped at 16 because launch
 migration admits executable adapter identities, not passive quote-policy data.
 All quote parameter validation, administrator authorization, event schemas,
-launch snapshots, and guard order remain unchanged. Error code 44 and the
-`max_quote_assets` constant are retired and must not be reused.
+launch snapshots, and guard order remain unchanged. The quote-count error and
+the `max_quote_assets` constant are removed.
 
 ## Consequences
 

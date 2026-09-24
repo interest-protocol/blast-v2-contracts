@@ -51,7 +51,7 @@ is independently bounded from zero through 1,000 basis points. Guard order is:
 
 1. invalid Quote fee, using `invalid_quote_fee_bps`;
 2. invalid Meme fee, using `invalid_meme_fee_bps`; and
-3. unchanged pair, using new error `trade_fee_defaults_unchanged`, code 67.
+3. unchanged pair, using new error `trade_fee_defaults_unchanged`.
 
 `LaunchTradeFeesChanged` records both old values and both new values. The
 creation event records the initial zero pair. No independent setters exist

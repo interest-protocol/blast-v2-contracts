@@ -29,6 +29,13 @@ macro public(package) fun max_sell_burn_bps(): u64 {
     5_000
 }
 
+/// Maximum Meme symbol length in bytes. A venue may copy the symbol into its pool and position
+/// objects more than once, so a bounded symbol keeps every migration within Sui's object size
+/// limit.
+macro public(package) fun max_meme_symbol_length(): u64 {
+    32
+}
+
 /// Maximum number of external migration implementations admitted for new launches.
 macro public(package) fun max_migration_witnesses(): u64 {
     16

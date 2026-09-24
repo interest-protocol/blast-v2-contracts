@@ -1,6 +1,7 @@
 # 0057 — Admin-pinned venue tiers for permissionless migration
 
-- Status: **accepted; amended by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)**
+- Status: superseded by [0089](0089-migrators-own-post-migration-and-start-launches.md): the creator
+  chooses the pool tier at launch and administrator tier pins are removed
 - Date: 2026-08-29
 - Amends: [0054](0054-v3-dex-migrators-and-locked-lp-fees.md)
 - Amended by: [0067](0067-retire-full-sail-migrator.md) and

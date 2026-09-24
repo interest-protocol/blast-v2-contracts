@@ -7,9 +7,8 @@ package; adapters compose with it through a programmable transaction block.
 Administration is not implemented here. `blast_admin` owns the reusable ACL,
 operational-generation, and package-custody primitives; this package owns the
 `BLAST_FUN_DOMAIN` marker, its governance constants, and the one package-admin
-role it exports to Migrators and Distributor. Those two packages share this
-domain's administrator membership while keeping their own generation and
-`PackageAdmin`.
+role it exports to Migrators. That package shares this domain's administrator
+membership while keeping its own generation and `PackageAdmin`.
 
 A governed upgrade is one transaction: authorize the digest, run the native
 Upgrade command, then call `package_admin::commit_upgrade_and_advance`, which

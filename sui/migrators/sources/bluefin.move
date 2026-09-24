@@ -1,17 +1,27 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// Bluefin migration, fee collection, and settled route updates over custodied
-/// concentrated-liquidity principal.
+/// Bluefin launch start, migration, fee collection with auto-LP, and settled fee-split updates
+/// over custodied concentrated-liquidity principal.
 ///
 /// Bluefin pools are keyed by their exact type-parameter order, so this module
 /// always creates and expects `Pool<Meme, Quote>` with Meme as coin A.
 module blast_fun_migrators::bluefin;
 
+// === Constants ===
+
+/// Bluefin pool creation's own tier bounds (`pool` aborts 1026 and 1027 above them).
+const MAX_TICK_SPACING: u32 = 400;
+
+const MAX_FEE_RATE: u64 = 20_000;
+
 // === Errors ===
 
 #[error(code = 0)]
 const EPositionPoolMismatch: vector<u8> = b"Custodied position must belong to the supplied pool.";
+
+#[error(code = 1)]
+const EInvalidTier: vector<u8> = b"Bluefin tier needs a tick spacing in 1..=400 and a fee rate in 1..=20,000.";
 
 // === Public Types ===
 
@@ -23,12 +33,31 @@ public struct Venue() has drop;
 
 // === Public Functions ===
 
-/// Binds a launch ticket to Bluefin migration in `Quote`; the core aborts unless it admits Bluefin.
-public fun bind<Meme, Quote>(ticket: &mut LaunchTicket<Meme>, config: &LaunchConfig) {
-    ticket.bind_migration_witness<Meme, Quote, Witness>(config, Witness());
+/// Starts a Bluefin launch in `Quote` at the creator's tier; the core aborts unless it admits
+/// Bluefin and the Quote.
+///
+/// Bluefin checks the tier only when migration creates the pool, and a launch cannot change its
+/// tier, so the same bounds apply here first. The creator completes the returned initializer with
+/// `launch::finalize`.
+public fun new<Meme, Quote>(
+    ticket: LaunchTicket<Meme>,
+    migrators_version: &MigratorsVersion,
+    package_version: &PackageVersion,
+    config: &LaunchConfig,
+    tick_spacing: u32,
+    fee_rate: u64,
+): LaunchInitializer<Meme, Quote> {
+    migrators_version.assert_current();
+    assert!(
+        tick_spacing > 0 && tick_spacing <= MAX_TICK_SPACING && fee_rate > 0
+            && fee_rate <= MAX_FEE_RATE,
+        EInvalidTier,
+    );
+
+    launch::new<Meme, Quote, _>(ticket, package_version, config, Witness(), tick_spacing, fee_rate)
 }
 
-/// Migrates a MigrationReady launch into a new full-range pool at the admin-pinned tier.
+/// Migrates a MigrationReady launch into a new full-range pool at the launch's tier.
 ///
 /// The opening price derives from the handed-off balances. Meme is the fixed side when its atoms
 /// are at least the Quote atoms, and Quote otherwise: a full-range seed fixed on the fewer atoms
@@ -41,23 +70,19 @@ public fun migrate<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     migrators_version: &MigratorsVersion,
     package_version: &PackageVersion,
-    router: &mut FeeRouter<Meme, Quote>,
-    policy: &LpFeePolicy,
     currency: &mut Currency<Meme>,
     quote_currency: &Currency<Quote>,
-    venue_config: &VenueConfig,
     bluefin_config: &mut GlobalConfig,
     creation_fee: Coin<SUI>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    let (tick_spacing, fee_rate) = venue_config.tier<Venue>();
+    let (tick_spacing, fee_rate) = launch.pool_tier();
     let (minimum_tick, maximum_tick) = bluefin_config.get_tick_range();
     let spacing = i32::from(tick_spacing);
     let lower_tick = minimum_tick.div(spacing).mul(spacing).as_u32();
     let upper_tick = maximum_tick.div(spacing).mul(spacing).as_u32();
-    let meme_icon_url = currency.icon_url().into_bytes();
     let mut pool_name = currency.symbol().into_bytes();
     pool_name.append(b"-");
     pool_name.append(quote_currency.symbol().into_bytes());
@@ -71,10 +96,12 @@ public fun migrate<Meme, Quote>(
         clock,
         bluefin_config,
         pool_name,
-        meme_icon_url,
+        // No Meme icon, as Cetus: the metadata capability can grow the icon URL, and the position
+        // stores it, so a long URL would make the position too large to create.
+        b"",
         currency.symbol().into_bytes(),
         currency.decimals(),
-        meme_icon_url,
+        b"",
         quote_currency.symbol().into_bytes(),
         quote_currency.decimals(),
         quote_currency.icon_url().into_bytes(),
@@ -97,37 +124,31 @@ public fun migrate<Meme, Quote>(
             fix_meme,
         );
 
-    let mut vault = vault::prepare(residual_meme, residual_quote, ctx);
+    let liquidity = position.liquidity();
+    let mut vault = vault::prepare(launch, residual_meme, residual_quote, ctx);
     vault.attach(&Venue(), position.pool_id(), position);
-    let position = vault.position<_, _, _, Position>(&Venue());
     let (residual_meme, residual_quote) = vault.pending_residuals();
     launch.complete_migration(
         package_version,
-        router,
-        policy,
         currency,
         migration,
         Witness(),
-        &vault,
-        position.pool_id(),
-        position,
         supplied_meme,
         supplied_quote,
         residual_meme,
         residual_quote,
-        position.liquidity(),
+        liquidity,
         ctx,
     );
     vault.share(&Venue());
     pool.share_pool_object();
 }
 
-/// Collects the custodied position's fees and pays them by the router's current routes.
+/// Collects the custodied position's fees, splits them, and adds the auto-LP share back to the
+/// position. Anyone may call it.
 public fun collect_fees<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    package_version: &PackageVersion,
-    router: &mut FeeRouter<Meme, Quote>,
     policy: &LpFeePolicy,
     bluefin_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
@@ -135,66 +156,31 @@ public fun collect_fees<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    let (position_id, meme_fee, quote_fee) = self.collect_position_fees(bluefin_config, pool, clock);
+    let (meme_fee, quote_fee) = self.collect_position_fees(bluefin_config, pool, clock);
 
-    router.collect(
-        package_version,
-        policy,
-        Witness(),
-        object::id(self),
-        object::id(pool),
-        position_id,
-        meme_fee,
-        quote_fee,
-        ctx,
-    );
+    self.split_fees(policy, meme_fee, quote_fee, ctx);
+    self.compound(bluefin_config, pool, clock);
 }
 
-/// Pays the custodied position's fees by the current routes, then commits `proposed`.
-public fun settle_and_update_routes<Meme, Quote>(
+/// Settles the custodied position's accrued fees under the current split, then commits `proposed`.
+public fun settle_and_update_fee_split<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    package_version: &PackageVersion,
-    router: &mut FeeRouter<Meme, Quote>,
     policy: &LpFeePolicy,
-    router_config_cap: &RouterConfigCap<Meme, Quote>,
+    launch: &Launch<Meme, Quote>,
+    curve_fee_cap: &CurveFeeCap<Meme>,
     bluefin_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
-    proposed: Routes,
+    proposed: FeeSplit,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    let (position_id, meme_fee, quote_fee) = self.collect_position_fees(bluefin_config, pool, clock);
+    let (meme_fee, quote_fee) = self.collect_position_fees(bluefin_config, pool, clock);
 
-    router.settle_and_update_routes(
-        package_version,
-        policy,
-        router_config_cap,
-        Witness(),
-        object::id(self),
-        object::id(pool),
-        position_id,
-        meme_fee,
-        quote_fee,
-        proposed,
-        ctx,
-    );
-}
-
-/// Pins the Bluefin tier under a live core admin witness.
-///
-/// Bluefin bounds the pair itself (tick spacing at most 400, fee rate at most 20,000): pool
-/// creation rejects a pin above either bound, so migration aborts until a valid pair is pinned.
-public fun set_tier(
-    venue_config: &mut VenueConfig,
-    migrators_version: &MigratorsVersion,
-    _: &AdminWitness<BLAST_FUN_DOMAIN>,
-    tick_spacing: u32,
-    fee_rate: u64,
-) {
-    migrators_version.assert_current();
-    venue_config.set_tier(Venue(), tick_spacing, fee_rate);
+    self.split_fees(policy, meme_fee, quote_fee, ctx);
+    self.compound(bluefin_config, pool, clock);
+    self.update_fee_split(launch, curve_fee_cap, proposed);
 }
 
 // === Private Functions ===
@@ -205,35 +191,70 @@ fun collect_position_fees<Meme, Quote>(
     bluefin_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
     clock: &Clock,
-): (ID, Balance<Meme>, Balance<Quote>) {
+): (Balance<Meme>, Balance<Quote>) {
     let position = self.position_mut<_, _, _, Position>(&Venue());
     assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
 
     let (_, _, meme_fee, quote_fee) = pool::collect_fee(clock, bluefin_config, pool, position);
 
-    (object::id(position), meme_fee, quote_fee)
+    (meme_fee, quote_fee)
+}
+
+/// Adds as much of the waiting auto-LP balances as the position takes at the pool's current price,
+/// fixing the side the other can cover from the pool's and the position's bound sqrt prices, and
+/// keeps the rest for the next call. `collect_position_fees` already matched the pool.
+fun compound<Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    bluefin_config: &GlobalConfig,
+    pool: &mut Pool<Meme, Quote>,
+    clock: &Clock,
+) {
+    let (meme, quote) = self.take_auto_lp();
+    let position = self.position_mut<_, _, _, Position>(&Venue());
+    let ticks = pool.get_tick_manager();
+    let sqrt_lower = ticks.get_tick_from_manager(position.lower_tick()).sqrt_price();
+    let sqrt_upper = ticks.get_tick_from_manager(position.upper_tick()).sqrt_price();
+    let (fix_meme, amount) = migration_math::auto_lp_fixed_side(
+        sqrt_lower,
+        pool.current_sqrt_price(),
+        sqrt_upper,
+        meme.value(),
+        quote.value(),
+    );
+
+    let (added_meme, added_quote, meme, quote) = if (amount > 0) {
+        pool::add_liquidity_with_fixed_amount(
+            clock,
+            bluefin_config,
+            pool,
+            position,
+            meme,
+            quote,
+            amount,
+            fix_meme,
+        )
+    } else {
+        (0, 0, meme, quote)
+    };
+    self.keep_auto_lp(added_meme, added_quote, meme, quote);
 }
 
 // === Imports ===
 
-use blast_admin::acl::AdminWitness;
-
 use blast_fun::{
-    allocation::Routes,
-    blast_fun_domain::BLAST_FUN_DOMAIN,
-    fee_router::{FeeRouter, RouterConfigCap},
-    launch::Launch,
+    allocation::FeeSplit,
+    creator_authority::CurveFeeCap,
+    launch::{Self, Launch, LaunchInitializer},
     launch_config::LaunchConfig,
     launch_ticket::LaunchTicket,
-    lp_fee_policy::LpFeePolicy,
     package_version::PackageVersion,
 };
 
 use blast_fun_migrators::{
+    lp_fee_policy::LpFeePolicy,
     migration_math,
     package_version::PackageVersion as MigratorsVersion,
     vault::{Self, LpVault},
-    venue_config::VenueConfig,
 };
 
 use bluefin_spot::{config::GlobalConfig, pool::{Self, Pool}, position::Position};
@@ -243,3 +264,5 @@ use integer_mate::i32;
 use sui::{balance::Balance, clock::Clock, coin::Coin, coin_registry::Currency, sui::SUI};
 
 use fun collect_position_fees as LpVault.collect_position_fees;
+
+use fun compound as LpVault.compound;
