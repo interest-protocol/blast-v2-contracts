@@ -9,8 +9,8 @@ Model: `claude-fable-5-1`
 
 Authorized Claude account: `jose@ilovemochi.com`
 
-Scope: `contracts/sui/leverage_coins` only. The launchpad, migrators, and
-vesting packages were not audited. Toolchain `sui 1.77.2-51d177ad7d65`,
+Scope: `contracts/sui/leverage_coins` only. The launchpad and migrators
+packages were not audited. Toolchain `sui 1.77.2-51d177ad7d65`,
 framework `06734f6ff0af45d8632a14a4dc4b100197f6b1a2`.
 
 This record complements the

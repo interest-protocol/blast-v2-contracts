@@ -73,9 +73,8 @@ below is a pre-publication choice with no migration path.
 `blast_fun` owns reusable token, launch, allocation, route, and lifecycle
 accounting. `blast_fun_migrators` depends inward and owns venue calls, position
 custody, and collection. Core never imports a venue package. The distributor is
-an ordinary payout destination. The generated Meme template and the existing
-vesting package compose with the single launch path; neither creates a
-project-specific mode.
+an ordinary payout destination. The generated Meme template composes with the
+single launch path and creates no project-specific mode.
 
 Launchpad, migrators, distributor, and Meme template are one coordinated
 pre-publication release. Their versions, dependency pins, ABI checks, and
@@ -121,8 +120,7 @@ ascending destination). Every operation conserves each asset exactly.
 
 Launch construction is an owned, key-only composition phase. It creates the
 launch's one fee router, may make one ordinary curve purchase that cannot
-graduate, may pass the returned Meme to the existing vesting package, and then
-shares the launch and its router in one terminal call. Public time and
+graduate, and then shares the launch and its router in one terminal call. Public time and
 optional purchase protection begin at share; protection counts gross public
 curve output per sender and never claims to constrain wallet balances. Despite
 its name, the per-transaction limit bounds each purchase call on its own: one

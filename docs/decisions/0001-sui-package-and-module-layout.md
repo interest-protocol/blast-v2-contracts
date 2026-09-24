@@ -53,10 +53,8 @@ Pulling any of those into `blast_fun` would make the trusted core unreproducible
 ### Package set
 
 The repository places the core package at `sui/launchpad/` and venue-specific
-packages below `sui/migrators/`. The independently deployed vesting package
-lives in
-[blast-util-contracts](https://github.com/interest-protocol/blast-util-contracts).
-The `sui/` root is a package workspace and has no `Move.toml`. See ADR 0048.
+packages below `sui/migrators/`. The `sui/` root is a package workspace and has
+no `Move.toml`. See ADR 0048.
 
 | Package | Contains | Depends on |
 | --- | --- | --- |
@@ -64,14 +62,13 @@ The `sui/` root is a package workspace and has no `Move.toml`. See ADR 0048.
 | `blast_fun_cetus` | Cetus route preflight and migration adapter | `blast_fun`, Cetus |
 | `blast_fun_bluefin` | Bluefin migration adapter | `blast_fun`, Bluefin |
 | `blast_fun_turbos` | Turbos migration adapter | `blast_fun`, Turbos |
-| `blast_fun_vesting` | vesting custody and release, in [blast-util-contracts](https://github.com/interest-protocol/blast-util-contracts) | Sui framework only |
 | `blast_fun_revshare` | epoch settlement and claims | `blast_fun` (types only), Sui framework |
 | `meme_template` | generated per-launch coin package | `blast_fun`, Sui framework |
 
 Each adapter is a separate package because it carries a distinct external failure surface and a distinct
-dependency-immutability exemption — the boundary test in `../architecture.md`. Vesting and
-`blast_fun_revshare` packages are separate because they hold funds under independent lifecycle and
-governance rules; they must not be able to touch curve state.
+dependency-immutability exemption — the boundary test in `../architecture.md`. `blast_fun_revshare`
+is separate because it holds funds under independent lifecycle and governance rules; it must not be
+able to touch curve state.
 
 ### Modules inside `blast_fun`
 

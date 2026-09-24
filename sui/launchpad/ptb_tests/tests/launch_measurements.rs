@@ -1,5 +1,5 @@
 //! Resource measurements for the launch and protection family: the one-time channel boundary,
-//! maximum launch creation with terminal share, the pre-share purchase with linear vesting, and
+//! maximum launch creation with terminal share, the pre-share purchase, and
 //! first, later, and expired protected buys.
 //!
 //! Every Meme comes from the actual `meme_template` source with only its decimals substituted, as
@@ -36,9 +36,6 @@ use sui_types::{
 };
 
 const COMMAND: &str = "cd sui/launchpad/ptb_tests && cargo test --test launch_measurements -- --nocapture";
-/// The vesting package lives in its own repository; the pre-share purchase composes this revision.
-const VESTING_REPOSITORY: &str = "https://github.com/interest-protocol/blast-util-contracts.git";
-const VESTING_REVISION: &str = "f518095d8dff6a99fb0a2c406d8f495d6495f8a0";
 const NOT_MEASURED: [&str; 3] = [
     "IDs created and destroyed or wrapped within one transaction are absent from effects, so \
      resources.effects.created is a lower bound for max_num_new_move_object_ids",
@@ -69,8 +66,6 @@ const PROTOCOL_CHANNEL: u64 = 1;
 const LIQUIDITY_CHANNEL: u64 = 2;
 const PROTOCOL: ObjectID = address(&[0xAD]);
 const BENEFICIARY: ObjectID = address(&[0xBE]);
-const REFUND_RECIPIENT: ObjectID = address(&[0xDF]);
-const CREATOR: ObjectID = address(&[0xC0, 0xDE]);
 
 const fn address(suffix: &[u8]) -> ObjectID {
     let mut bytes = [0u8; 32];
@@ -106,12 +101,6 @@ fn protocol_channel_plans_and_maximum_shapes_fit_protocol_limits() -> Result<()>
     w.write()
 }
 
-#[derive(Clone, Copy, Debug)]
-enum Vesting {
-    Cancelable,
-    Irrevocable,
-}
-
 /// One launch-opening PTB.
 #[derive(Clone, Copy, Debug)]
 struct Shape {
@@ -119,7 +108,7 @@ struct Shape {
     destinations: usize,
     target: u64,
     protection: [u64; 3],
-    vesting: Option<Vesting>,
+    pre_share_buy: bool,
 }
 
 impl Shape {
@@ -129,7 +118,7 @@ impl Shape {
             destinations: MAX_DESTINATIONS,
             target: MAXIMUM_TARGET,
             protection: PROTECTED,
-            vesting: None,
+            pre_share_buy: false,
         }
     }
 }
@@ -188,7 +177,6 @@ struct World {
     h: Harness,
     blast: ObjectID,
     adapter: ObjectID,
-    vesting: ObjectID,
     version: ObjectID,
     runtime: ObjectID,
     config: ObjectID,
@@ -223,7 +211,6 @@ impl World {
         let runtime = one("runtime_config", "RuntimeConfig");
         let linked = [(admin_dir.as_path(), admin), (launchpad_dir.as_path(), blast)];
         let (adapter, _) = h.publish(build(&fixture.join("adapter"), &linked, &work)?)?;
-        let (vesting, _) = h.publish(build(&vesting_package(&work)?, &[], &work)?)?;
         let mut templates = Vec::new();
         for decimals in [6u8, 9] {
             templates.push((decimals, build(&generate_template(&work, decimals)?, &linked, &work)?));
@@ -236,7 +223,6 @@ impl World {
             "executor": "simulacrum in-memory chain at the pinned sui revision, no network",
             "host": format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
             "revision": source_revision(),
-            "vesting_revision": VESTING_REVISION,
             "protocol_limits": h.protocol_limits(),
         });
         let mut w = Self {
@@ -244,7 +230,6 @@ impl World {
             h,
             blast,
             adapter,
-            vesting,
             version,
             runtime,
             config,
@@ -340,7 +325,7 @@ impl World {
             destinations: 1,
             target: TARGET,
             protection: UNPROTECTED,
-            vesting: None,
+            pre_share_buy: false,
         };
         self.open_and_record("smallest_plan_created_and_shared", &ticket, smallest)?;
 
@@ -349,14 +334,8 @@ impl World {
         let opened = self.open_and_record("maximum_plan_created_and_shared", &ticket, maximum)?;
         self.protected_buys(decimals, &opened)?;
 
-        for vesting in [Vesting::Cancelable, Vesting::Irrevocable] {
-            let ticket = self.publish_template(decimals, None)?;
-            let name = match vesting {
-                Vesting::Cancelable => "maximum_plan_pre_share_cancelable_vesting",
-                Vesting::Irrevocable => "maximum_plan_pre_share_irrevocable_vesting",
-            };
-            self.open_and_record(name, &ticket, Shape { vesting: Some(vesting), ..maximum })?;
-        }
+        let ticket = self.publish_template(decimals, None)?;
+        self.open_and_record("maximum_plan_pre_share_buy", &ticket, Shape { pre_share_buy: true, ..maximum })?;
 
         Ok(())
     }
@@ -421,16 +400,10 @@ impl World {
         let outcome = self.h.execute(self.open(ticket, shape)?)?;
         outcome.assert_success();
         let names: Vec<_> = outcome.events.iter().map(payload_name).collect();
-        let expected: &[&str] = match shape.vesting {
-            None => &["LaunchCreated", "ProtectionConfigured", "FeeRouterCreated", "LaunchShared"],
-            Some(_) => &[
-                "LaunchCreated",
-                "ProtectionConfigured",
-                "FeeRouterCreated",
-                "PreShareBought",
-                "VestingCreated",
-                "LaunchShared",
-            ],
+        let expected: &[&str] = if shape.pre_share_buy {
+            &["LaunchCreated", "ProtectionConfigured", "FeeRouterCreated", "PreShareBought", "LaunchShared"]
+        } else {
+            &["LaunchCreated", "ProtectionConfigured", "FeeRouterCreated", "LaunchShared"]
         };
         assert_eq!(names, expected, "{name}");
         let created: LaunchCreated = bcs::from_bytes(&outcome.events[0].contents)?;
@@ -489,7 +462,7 @@ impl World {
     }
 
     /// Composes one launch from the public calls: plan and routes, adapter binding, intake, the
-    /// router, the optional pre-share purchase vested linearly, and terminal share.
+    /// router, the optional pre-share purchase delivered to the beneficiary, and terminal share.
     fn open(&self, ticket: &Ticket, shape: Shape) -> Result<ProgrammableTransaction> {
         let mut builder = ProgrammableTransactionBuilder::new();
         let plan = self.plan(&mut builder, shape.identities)?;
@@ -519,7 +492,7 @@ impl World {
             unreachable!()
         };
         let clock = builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?;
-        if let Some(vesting) = shape.vesting {
+        if shape.pre_share_buy {
             let runtime = builder.obj(self.h.shared(self.runtime, false))?;
             let amount = builder.pure(PRE_SHARE_BUY)?;
             let Argument::Result(split) = builder.command(Command::SplitCoins(Argument::GasCoin, vec![amount])) else {
@@ -545,39 +518,7 @@ impl World {
                 vec![sui()],
                 vec![Argument::NestedResult(bought, 1)],
             );
-            let beneficiary = builder.pure(SuiAddress::from(BENEFICIARY))?;
-            let start_ms = builder.pure(self.h.sim.store().get_clock().timestamp_ms())?;
-            let cliff_ms = builder.pure(0u64)?;
-            let period_ms = builder.pure(1_000u64)?;
-            let periods = builder.pure(2u64)?;
-            let meme = vec![ticket.meme.clone()];
-            let funds = Argument::NestedResult(bought, 0);
-            let schedule = match vesting {
-                Vesting::Cancelable => {
-                    let refund_recipient = builder.pure(SuiAddress::from(REFUND_RECIPIENT))?;
-                    let Argument::Result(created) = call(
-                        &mut builder,
-                        self.vesting,
-                        "blast_fun_linear_vesting",
-                        "new_cancelable",
-                        meme.clone(),
-                        vec![funds, beneficiary, refund_recipient, start_ms, cliff_ms, period_ms, periods, clock],
-                    ) else {
-                        unreachable!()
-                    };
-                    builder.transfer_args(CREATOR.into(), vec![Argument::NestedResult(created, 1)]);
-                    Argument::NestedResult(created, 0)
-                }
-                Vesting::Irrevocable => call(
-                    &mut builder,
-                    self.vesting,
-                    "blast_fun_linear_vesting",
-                    "new_irrevocable",
-                    meme.clone(),
-                    vec![funds, beneficiary, start_ms, cliff_ms, period_ms, periods, clock],
-                ),
-            };
-            call(&mut builder, self.vesting, "blast_fun_linear_vesting", "share", meme, vec![schedule]);
+            builder.transfer_args(BENEFICIARY.into(), vec![Argument::NestedResult(bought, 0)]);
         }
         call(
             &mut builder,
@@ -740,7 +681,7 @@ impl World {
                     "protection_window_ms": shape.protection[0],
                     "cumulative_sender_bps": shape.protection[1],
                     "per_transaction_bps": shape.protection[2],
-                    "pre_share_vesting": shape.vesting.map(|vesting| format!("{vesting:?}")),
+                    "pre_share_buy": shape.pre_share_buy,
                 })),
             },
             "units": "MIST, bytes, and gas units as each field names; an event's emit_size is the abstract \
@@ -851,22 +792,6 @@ fn payload_name(event: &sui_types::event::Event) -> String {
         [TypeTag::Struct(payload)] if event.type_.module.as_str() == "blast_events" => payload.name.to_string(),
         _ => event.type_.name.to_string(),
     }
-}
-
-/// Checks out the vesting package at `VESTING_REVISION`, once per revision.
-fn vesting_package(work: &Path) -> Result<PathBuf> {
-    let checkout = work.join(format!("blast-util-contracts-{VESTING_REVISION}"));
-    let git = |args: &[&str]| -> Result<()> {
-        let output = std::process::Command::new("git").args(args).output().context("run git")?;
-        ensure!(output.status.success(), "git {}: {}", args.join(" "), String::from_utf8_lossy(&output.stderr));
-        Ok(())
-    };
-    if !checkout.join(".git").exists() {
-        git(&["clone", "--quiet", VESTING_REPOSITORY, &checkout.to_string_lossy()])?;
-        git(&["-C", &checkout.to_string_lossy(), "checkout", "--quiet", "--detach", VESTING_REVISION])?;
-    }
-
-    Ok(checkout.join("sui/vesting"))
 }
 
 fn sui_version() -> Result<String> {

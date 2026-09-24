@@ -124,19 +124,6 @@ fn payload_layout(payload: &StructTag) -> Layout {
         ]),
         "PreShareBought" => Struct(vec![id(), U64, U64, U64, U64, U64, U64, U64, U64, U64, U64]),
         "Bought" => Struct(vec![id(), U64, U64, U64, U64, U64, U64, U64, U64]),
-        "VestingCreated" => Struct(vec![
-            id(),
-            type_name(),
-            Address,
-            Address,
-            Struct(vec![Vector(Box::new(Address))]),
-            Struct(vec![Vector(Box::new(id()))]),
-            U64,
-            U64,
-            U64,
-            U64,
-            U64,
-        ]),
         other => panic!("no layout for event payload {other}"),
     }
 }
