@@ -36,6 +36,9 @@ use sui_types::{
 };
 
 const COMMAND: &str = "cd sui/launchpad/ptb_tests && cargo test --test launch_measurements -- --nocapture";
+/// The vesting package lives in its own repository; the pre-share purchase composes this revision.
+const VESTING_REPOSITORY: &str = "https://github.com/interest-protocol/blast-util-contracts.git";
+const VESTING_REVISION: &str = "f518095d8dff6a99fb0a2c406d8f495d6495f8a0";
 const NOT_MEASURED: [&str; 3] = [
     "IDs created and destroyed or wrapped within one transaction are absent from effects, so \
      resources.effects.created is a lower bound for max_num_new_move_object_ids",
@@ -220,7 +223,7 @@ impl World {
         let runtime = one("runtime_config", "RuntimeConfig");
         let linked = [(admin_dir.as_path(), admin), (launchpad_dir.as_path(), blast)];
         let (adapter, _) = h.publish(build(&fixture.join("adapter"), &linked, &work)?)?;
-        let (vesting, _) = h.publish(build(&sui_dir.join("vesting"), &[], &work)?)?;
+        let (vesting, _) = h.publish(build(&vesting_package(&work)?, &[], &work)?)?;
         let mut templates = Vec::new();
         for decimals in [6u8, 9] {
             templates.push((decimals, build(&generate_template(&work, decimals)?, &linked, &work)?));
@@ -233,6 +236,7 @@ impl World {
             "executor": "simulacrum in-memory chain at the pinned sui revision, no network",
             "host": format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
             "revision": source_revision(),
+            "vesting_revision": VESTING_REVISION,
             "protocol_limits": h.protocol_limits(),
         });
         let mut w = Self {
@@ -847,6 +851,22 @@ fn payload_name(event: &sui_types::event::Event) -> String {
         [TypeTag::Struct(payload)] if event.type_.module.as_str() == "blast_events" => payload.name.to_string(),
         _ => event.type_.name.to_string(),
     }
+}
+
+/// Checks out the vesting package at `VESTING_REVISION`, once per revision.
+fn vesting_package(work: &Path) -> Result<PathBuf> {
+    let checkout = work.join(format!("blast-util-contracts-{VESTING_REVISION}"));
+    let git = |args: &[&str]| -> Result<()> {
+        let output = std::process::Command::new("git").args(args).output().context("run git")?;
+        ensure!(output.status.success(), "git {}: {}", args.join(" "), String::from_utf8_lossy(&output.stderr));
+        Ok(())
+    };
+    if !checkout.join(".git").exists() {
+        git(&["clone", "--quiet", VESTING_REPOSITORY, &checkout.to_string_lossy()])?;
+        git(&["-C", &checkout.to_string_lossy(), "checkout", "--quiet", "--detach", VESTING_REVISION])?;
+    }
+
+    Ok(checkout.join("sui/vesting"))
 }
 
 fn sui_version() -> Result<String> {

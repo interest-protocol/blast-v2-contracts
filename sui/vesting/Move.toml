@@ -1,8 +1,0 @@
-[package]
-name = "blast_fun_vesting"
-edition = "2024"
-license = "BUSL-1.1"
-authors = ["Jose Cerqueira (jose@interestprotocol.com)"]
-
-[addresses]
-blast_fun_vesting = "0x0"
