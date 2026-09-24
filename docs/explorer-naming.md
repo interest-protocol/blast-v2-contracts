@@ -28,7 +28,6 @@ identified only through its package marker; ADR 0085 records why.
 | `blast_boosts_products` | Publisher marker (new package) | — | `blast_boosts_products::BLAST_BOOSTS_PRODUCTS` |
 | `blast_admin` | none: library package with no `init` | — | — |
 | `blast_fun_distributor` | none: `init` creates `AdminCap` and `Version` without a witness | — | — |
-| `blast_fun_vesting` | none: no `init` | — | — |
 | `meme_template` | generated package one-time witness | `meme::MEME` | unchanged name; the generated package's one-time witness, renamed per launch by the SDK template |
 
 The Publisher object shows `module_name` of the claiming module, and
@@ -73,10 +72,6 @@ every package-administration object.
 | `blast_fun_distributor` | `distributor::AdminCap` | `blast_fun_distributor::AdminCap` | module |
 | `blast_fun_distributor` | `distributor::PublisherCap` | `blast_fun_distributor::PublisherCap` | module |
 | `blast_fun_distributor` | `distributor::Version` | `blast_fun_distributor::Version` | module |
-| `blast_fun_vesting` | `linear::Vesting<CoinType>` | `blast_fun_linear_vesting::Vesting<CoinType>` | module |
-| `blast_fun_vesting` | `linear::CancelCap<CoinType>` | `blast_fun_linear_vesting::CancelCap<CoinType>` | module |
-| `blast_fun_vesting` | `checkpoints::Vesting<CoinType>` | `blast_fun_checkpoint_vesting::Vesting<CoinType>` | module |
-| `blast_fun_vesting` | `checkpoints::CancelCap<CoinType>` | `blast_fun_checkpoint_vesting::CancelCap<CoinType>` | module |
 | `blast_boosts_aftermath` | `vault::Vault<Product>` (shared custody) | unchanged | `Product` is a `blast_boosts_products` tag |
 | `blast_boosts_aftermath` | `protocol::Protocol` | unchanged | holds `OperationalVersion<BLAST_BOOSTS_AFTERMATH>` |
 | `blast_boosts_aftermath` | `package_admin::PackageAdmin` | unchanged | holds `UpgradeCustody<BLAST_BOOSTS_AFTERMATH>` |
@@ -94,7 +89,6 @@ every package-administration object.
 | `blast_boosts_aftermath` | `events_wrapper::Event<events::X<Product>>` | `blast_events::Event<events::X<Product>>` | envelope module and `Product` |
 | `blast_fun_migrators` | `events::X` (direct emission) | `blast_events::X` | module |
 | `blast_fun_distributor` | `distributor::X` | `blast_fun_distributor::X` | module |
-| `blast_fun_vesting` | `linear::X`, `checkpoints::X` | `blast_fun_linear_vesting::X`, `blast_fun_checkpoint_vesting::X` | module |
 | `blast_admin` | `events::X<Domain>` | unchanged | `Domain` or `PackageMarker` is a Blast witness |
 
 Payload struct names inside the envelopes (`Bought`, `Migrated`,

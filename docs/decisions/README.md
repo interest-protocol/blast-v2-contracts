@@ -97,10 +97,8 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0049](0049-audit-hardened-package-version-and-launch-intake.md) | Audit-hardened package cutover and launch intake | **accepted** |
 | [0050](0050-module-local-package-version-constant.md) | Module-local package-version constant | **accepted** |
 | [0051](0051-generated-meme-package-template.md) | Generated Meme package template | **accepted; publish-time immutability amended by 0088** |
-| [0052](https://github.com/interest-protocol/blast-util-contracts/blob/main/docs/decisions/0052-stepped-linear-vesting.md) | Fully funded stepped-linear vesting | **accepted** |
 | [0053](0053-single-validator-funsui-and-blastsui.md) | Single-validator `funSUI` and `blastSUI` | **accepted** |
 | [0054](0054-v3-dex-migrators-and-locked-lp-fees.md) | V3 DEX migrators, exact seed pricing, and locked LP fees | **accepted; new-lineage admission and fee custody amended by 0088** |
-| [0055](https://github.com/interest-protocol/blast-util-contracts/blob/main/docs/decisions/0055-global-vesting-package-and-checkpoints.md) | Global vesting package and checkpoint schedules | **accepted** |
 | [0056](0056-bounded-pending-stake-vector.md) | Bounded pending-stake vector in custody ledgers | **accepted** |
 | [0057](0057-admin-pinned-venue-tiers.md) | Admin-pinned venue tiers for permissionless migration | **accepted; amended by 0088** |
 | [0058](0058-eventless-package-initialization.md) | Eventless package initialization | **accepted** |
@@ -147,11 +145,6 @@ and storage commitments still await approval.
 ADR 0027 accepts the graduation economics, launch-policy consolidation,
 bounded migration-witness admission, external migrator package boundary, and
 the exclusion of DEX pool-opening fees.
-
-ADR 0055 consolidates vesting under one package and adds exact irregular
-checkpoint schedules. A linear builder stores up to 256 entries in an inline
-vector; claims use binary search and retain ADR 0052's fixed-beneficiary and
-fair-cancellation policy.
 
 ADR 0028 consolidates the dedicated creator-claim signer and live protocol fee share into
 one small `RuntimeConfig`, while preserving separate `ProtocolAuthority` and
@@ -251,8 +244,8 @@ fixes the native mode; the Launch retains `sell_burn_bps` but no cached
 from `Currency<Meme>`.
 
 ADR 0048 turns `sui/` into a package workspace. The current `blast_fun` package
-lives in `sui/launchpad/`; future venue adapters and vesting packages live below
-`sui/migrators/` and `sui/vesting/` with independent manifests and lockfiles.
+lives in `sui/launchpad/`; future venue adapters live below `sui/migrators/`
+with independent manifests and lockfiles.
 
 ADR 0049 moves the one operational package version into a dedicated singleton
 so every mutable shared object can use the same gate without a module cycle. It
@@ -267,10 +260,6 @@ longer exposes a value that no other module consumes.
 ADR 0051 adds the buildable generated Meme package template. Its initializer
 calls the Blast launch-ticket constructor and sends the returned ticket to the
 publisher, converting P6 into compile evidence.
-
-ADR 0052 adds a framework-only Sui vesting package with fully funded,
-fixed-beneficiary stepped-linear schedules. Cancellation is opt-in through a
-schedule-bound capability and can return only unvested value.
 
 ADR 0053 accepts the independent `blast_sui` package: a 1:1 `funSUI` ledger
 and a `blastSUI` share ledger with separate native positions on one immutable

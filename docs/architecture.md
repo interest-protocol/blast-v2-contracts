@@ -53,7 +53,6 @@ without returning to core for its post-conditions.
 | Off-chain SDK | deterministic curve-release and native-Quote valuation previews from immutable launch facts | contract authority, balance mutation, migration permission, or a second source of truth |
 | Fees | creator/protocol curve-fee splitting and accrued accounting; the embedding launch checks its live curve-fee capability or bound custodian | recurring LP fees, arbitrary recipient execution, or referral attribution |
 | Fee router | frozen protocol shares, generation-versioned project routes, and immediate payout of every collection to its destinations | balance custody, launch pricing, or venue calls |
-| Vesting | bounded stakeholder schedules and claims | launch pricing or migration allocation |
 | Migration interface | one-time liquidity handoff, linear migration value, and reconciled completion | DEX-specific object/storage details |
 | Adapter | prepare and complete a migration for one venue | changing core economics |
 
@@ -266,7 +265,7 @@ reserves and is never a configured constant. See
 Any future chain implementation must preserve:
 
 - lifecycle transitions and authorization outcomes;
-- quote, fee, allocation, vesting, and migration arithmetic;
+- quote, fee, allocation, and migration arithmetic;
 - slippage, deadline, protection, pause, and limit behavior;
 - event meaning and reconstructable state;
 - error categories, even when numeric representations differ.

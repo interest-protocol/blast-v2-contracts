@@ -1083,9 +1083,9 @@ if [[ ! -f sources/launch.move ]] \
     <<<"$launch_source" \
   || rg -n '\bbps::new\(' sources/launch.move \
   || ! rg -Fq 'let burnable = currency.is_supply_burn_only();' sources/launch.move \
-  || rg -q '\b(MigrationChannelCap|LaunchMigrationCap|MigrationChannelBalance|VenueSelection|venue_selection|vesting_id)\b' <<<"$launch_source" \
+  || rg -q '\b(MigrationChannelCap|LaunchMigrationCap|MigrationChannelBalance|VenueSelection|venue_selection)\b' <<<"$launch_source" \
   || rg -n 'max_launch_fee_bps|invalid_(quote|meme)_fee_bps' sources/launch.move; then
-  echo 'Launch intake must validate the pair, sell burn, allocation policy, decimals, and canonical supply before custody, keep the native MetadataCap inline, and carry no venue selection, per-channel custody, or vesting disclosure.' >&2
+  echo 'Launch intake must validate the pair, sell burn, allocation policy, decimals, and canonical supply before custody, keep the native MetadataCap inline, and carry no venue selection or per-channel custody.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1212,13 +1212,10 @@ if [[ "$launch_dynamic_field_aliases" != 'use fun dynamic_field::add as UID.add_
 fi
 for move_file in "${source_files[@]}"; do
   setup_source="$(move_facts "$move_file" | move_normalized_source)"
-  if rg -q '\b(CreatorSetupReceipt|blast_fun_vesting|blast_fun_linear_vesting|blast_fun_checkpoint_vesting)\b' <<<"$setup_source"; then
-    launch_authority_violations+="  ${move_file} introduces a setup receipt or vesting dependency"$'\n'
+  if rg -q '\bCreatorSetupReceipt\b' <<<"$setup_source"; then
+    launch_authority_violations+="  ${move_file} introduces a setup receipt"$'\n'
   fi
 done
-if rg -q 'vesting' Move.toml; then
-  launch_authority_violations+='  launchpad must not import the independently composed vesting package'$'\n'
-fi
 
 if [[ -n "$launch_authority_violations" ]]; then
   printf '%s' "$launch_authority_violations"

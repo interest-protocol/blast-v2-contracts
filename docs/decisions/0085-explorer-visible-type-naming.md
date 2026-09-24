@@ -23,8 +23,7 @@ named Aftermath, not Blast. Its share currency was
 `vault::Vault<…>`, which says nothing about leverage or Blast in a wallet.
 The launchpad's marker was `blast::BLAST` while Blast SUI's coin was
 `blast_sui::BLAST_SUI`; migrators used `package_marker::PACKAGE_MARKER`; the
-distributor and vesting objects were `distributor::Distributor`,
-`linear::Vesting`, and `checkpoints::Vesting`; and every wrapped event was
+distributor object was `distributor::Distributor`; and every wrapped event was
 `events_wrapper::Event<events::…>`.
 
 No package is published (confirmed 2026-09-16), so the renames cost no
@@ -77,15 +76,14 @@ compatible upgrade of that package.
 **Single-module and product-named modules.** A package whose visible types
 live in one module names that module after the package:
 `blast_fun_distributor::Distributor`. A package with several user-held object
-modules names each after its product: `blast_fun_linear_vesting::Vesting`,
-`blast_fun_checkpoint_vesting::Vesting`.
+modules names each after its product.
 
 **Events.** The module that names the outermost emitted type is
 `blast_events`. In packages that wrap payloads, the envelope module is
 `blast_events` and payloads stay in `events`
 (`blast_events::Event<events::Bought>`); in migrators, which emits directly,
-the payload module is `blast_events`. Distributor and vesting events already
-live in their renamed modules.
+the payload module is `blast_events`. Distributor events already live in
+their renamed module.
 
 **Internal modules.** `vault`, `state`, `policy`, `operations`, `launch`,
 `acl`, and the other modules that own shared singletons or nested values keep
@@ -123,7 +121,7 @@ launch and it must not read as Blast.
 ## Consequences
 
 - Every Publisher, `PackageAdmin`, `PackageVersion`, `Authority<Domain>`,
-  `AdminCap<Domain>`, coin, distributor, vesting, and event type now names
+  `AdminCap<Domain>`, coin, distributor, and event type now names
   Blast in its type string.
 - SDK, indexer, and script type strings for `events_wrapper`, `distributor`,
   `linear`, `checkpoints`, and the Boost currency change; the frozen SDK
