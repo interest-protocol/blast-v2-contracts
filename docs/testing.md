@@ -15,7 +15,7 @@ and coverage artifacts are not committed.
 
 The chain-neutral vectors under [`vectors/`](vectors/) are the numerical
 compatibility boundary for curve quotes, fees, graduation, quote decimals,
-vesting, and creator attestations. Regenerate vectors from the formula that
+and creator attestations. Regenerate vectors from the formula that
 owns them; do not hand-edit expected results. An unexplained difference is a
 release blocker.
 
@@ -39,14 +39,6 @@ Run the complete `sui/blast_sui/scripts/verify.sh` gate. Publishing and
 upgrading additionally follow the package's
 [deployment](../sui/blast_sui/DEPLOYING.md) or
 [upgrade](../sui/blast_sui/UPGRADING.md) runbook.
-
-## Vesting mainnet gate
-
-Before making vesting immutable on mainnet, create irrevocable and cancellable
-schedules with the full 256-checkpoint vector. Decode the complete vectors,
-exercise first, middle, and final claims plus cancellation and closure, and
-record transaction digests, gas, serialized object size, and the absence of
-checkpoint dynamic fields.
 
 ## Evidence
 

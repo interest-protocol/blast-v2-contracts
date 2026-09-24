@@ -52,10 +52,11 @@ Pulling any of those into `blast_fun` would make the trusted core unreproducible
 
 ### Package set
 
-The repository places the core package at `sui/launchpad/`, venue-specific
-packages below `sui/migrators/`, and independently deployed vesting packages
-below `sui/vesting/`. The `sui/` root is a package workspace and has no
-`Move.toml`. See ADR 0048.
+The repository places the core package at `sui/launchpad/` and venue-specific
+packages below `sui/migrators/`. The independently deployed vesting package
+lives in
+[blast-util-contracts](https://github.com/interest-protocol/blast-util-contracts).
+The `sui/` root is a package workspace and has no `Move.toml`. See ADR 0048.
 
 | Package | Contains | Depends on |
 | --- | --- | --- |
@@ -63,7 +64,7 @@ below `sui/vesting/`. The `sui/` root is a package workspace and has no
 | `blast_fun_cetus` | Cetus route preflight and migration adapter | `blast_fun`, Cetus |
 | `blast_fun_bluefin` | Bluefin migration adapter | `blast_fun`, Bluefin |
 | `blast_fun_turbos` | Turbos migration adapter | `blast_fun`, Turbos |
-| `blast_fun_vesting_*` | approved vesting custody and release design | `blast_fun` (types only), Sui framework |
+| `blast_fun_vesting` | vesting custody and release, in [blast-util-contracts](https://github.com/interest-protocol/blast-util-contracts) | Sui framework only |
 | `blast_fun_revshare` | epoch settlement and claims | `blast_fun` (types only), Sui framework |
 | `meme_template` | generated per-launch coin package | `blast_fun`, Sui framework |
 

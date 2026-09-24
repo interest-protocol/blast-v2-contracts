@@ -8,9 +8,8 @@ failures=0
 
 if [[ -e ../Move.toml ]] \
   || [[ ! -f Move.toml ]] \
-  || [[ ! -d ../migrators ]] \
-  || [[ ! -d ../vesting ]]; then
-  echo 'sui/ must remain a package workspace with launchpad core, migrators, and vesting boundaries.' >&2
+  || [[ ! -d ../migrators ]]; then
+  echo 'sui/ must remain a package workspace with launchpad core and migrators boundaries.' >&2
   failures=$((failures + 1))
 fi
 

@@ -49,7 +49,7 @@ deps = { authority_cap = "authority_cap", blast_admin = "blast_admin", blast_boo
 [pinned.mainnet.blast_boosts_composition_tests]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "6A39BC1FE3590C251903B8657AE9F7C8512BF83618249E283DFC856AA14863E0"
+manifest_digest = "65AA9801E88BF184C23AC1DCB9478D6B008149A72DCB751A026A24E252B78AC7"
 deps = { blast_admin = "blast_admin", blast_boosts_aftermath = "blast_boosts_aftermath", blast_boosts_products = "blast_boosts_products", blast_fun = "blast_fun", blast_fun_vesting = "blast_fun_vesting", meme_template = "meme_template", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.blast_boosts_core]
@@ -71,7 +71,7 @@ manifest_digest = "2EE0BE6CC23D1718E36913BC8AFF07AB623F8E972B9E6253C5BE9AFEE9962
 deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.blast_fun_vesting]
-source = { local = "../../vesting" }
+source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/vesting", rev = "f518095d8dff6a99fb0a2c406d8f495d6495f8a0" }
 use_environment = "mainnet"
 manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
 deps = { std = "MoveStdlib", sui = "Sui" }
@@ -157,7 +157,7 @@ deps = { authority_cap = "authority_cap", blast_admin = "blast_admin", blast_boo
 [pinned.testnet.blast_boosts_composition_tests]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "21FA15DCA2E6AA81C4F27792D62262ED4D2519708E40EA9D9475680F6748EC16"
+manifest_digest = "E06ECF180627397F9E8DF514920C622D908B87F95C001A723A2D49B1BE548183"
 deps = { blast_admin = "blast_admin", blast_boosts_aftermath = "blast_boosts_aftermath", blast_boosts_products = "blast_boosts_products", blast_fun = "blast_fun", blast_fun_vesting = "blast_fun_vesting", meme_template = "meme_template", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.blast_boosts_core]
@@ -179,7 +179,7 @@ manifest_digest = "B9BC26466630CEB8A3C2BE1A745F7338CFDF92C219AC0FF7F363DA750C267
 deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.blast_fun_vesting]
-source = { local = "../../vesting" }
+source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/vesting", rev = "f518095d8dff6a99fb0a2c406d8f495d6495f8a0" }
 use_environment = "testnet"
 manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
 deps = { std = "MoveStdlib", sui = "Sui" }

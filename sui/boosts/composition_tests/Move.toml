@@ -8,7 +8,7 @@ blast_admin = { local = "../../admin" }
 blast_boosts_aftermath = { local = "../aftermath_adapter" }
 blast_boosts_products = { local = "../products" }
 blast_fun = { local = "../../launchpad" }
-blast_fun_vesting = { local = "../../vesting" }
+blast_fun_vesting = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/vesting", rev = "f518095d8dff6a99fb0a2c406d8f495d6495f8a0" }
 meme_template = { local = "../../meme_template" }
 
 [addresses]

@@ -97,10 +97,10 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0049](0049-audit-hardened-package-version-and-launch-intake.md) | Audit-hardened package cutover and launch intake | **accepted** |
 | [0050](0050-module-local-package-version-constant.md) | Module-local package-version constant | **accepted** |
 | [0051](0051-generated-meme-package-template.md) | Generated Meme package template | **accepted; publish-time immutability amended by 0088** |
-| [0052](0052-stepped-linear-vesting.md) | Fully funded stepped-linear vesting | **accepted** |
+| [0052](https://github.com/interest-protocol/blast-util-contracts/blob/main/docs/decisions/0052-stepped-linear-vesting.md) | Fully funded stepped-linear vesting | **accepted** |
 | [0053](0053-single-validator-funsui-and-blastsui.md) | Single-validator `funSUI` and `blastSUI` | **accepted** |
 | [0054](0054-v3-dex-migrators-and-locked-lp-fees.md) | V3 DEX migrators, exact seed pricing, and locked LP fees | **accepted; new-lineage admission and fee custody amended by 0088** |
-| [0055](0055-global-vesting-package-and-checkpoints.md) | Global vesting package and checkpoint schedules | **accepted** |
+| [0055](https://github.com/interest-protocol/blast-util-contracts/blob/main/docs/decisions/0055-global-vesting-package-and-checkpoints.md) | Global vesting package and checkpoint schedules | **accepted** |
 | [0056](0056-bounded-pending-stake-vector.md) | Bounded pending-stake vector in custody ledgers | **accepted** |
 | [0057](0057-admin-pinned-venue-tiers.md) | Admin-pinned venue tiers for permissionless migration | **accepted; amended by 0088** |
 | [0058](0058-eventless-package-initialization.md) | Eventless package initialization | **accepted** |
