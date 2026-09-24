@@ -232,7 +232,7 @@ fun an_identical_proposal_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::ECurveFeeCapNotLive,
+    abort_code = blast_fun::errors::ECreatorCapNotLive,
     location = blast_fun::launch,
 )]
 fun a_retired_curve_fee_cap_cannot_update_the_split() {
@@ -248,7 +248,7 @@ fun a_retired_curve_fee_cap_cannot_update_the_split() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::ECurveFeeCapNotLive,
+    abort_code = blast_fun::errors::ECreatorCapNotLive,
     location = blast_fun::launch,
 )]
 fun the_live_cap_is_checked_before_the_proposal() {
@@ -345,7 +345,7 @@ fun a_reassigned_cap_claims_the_creator_fees_accrued_before_the_reassignment() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun::errors::ECurveFeeCapNotLive,
+    abort_code = blast_fun::errors::ECreatorCapNotLive,
     location = blast_fun::launch,
 )]
 fun a_retired_cap_cannot_claim_creator_fees() {

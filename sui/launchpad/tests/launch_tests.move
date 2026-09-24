@@ -1710,8 +1710,8 @@ fun migration_pays_every_recipient_blast_first() {
         assert_eq!(f.take_coin<TEST_QUOTE>(BLAST).burn_for_testing(), EXPECTED_PROTOCOL_QUOTE);
         assert_eq!(f.take_coin<TEST_QUOTE>(CREATOR).burn_for_testing(), 1_875_000);
         assert_eq!(f.take_coin<LAUNCH_TESTS>(ALICE).burn_for_testing(), 25_000_000__000_000_000);
-        assert!(!test_scenario::has_most_recent_for_address<Coin<LAUNCH_TESTS>>(CREATOR));
-        assert!(!test_scenario::has_most_recent_for_address<Coin<TEST_QUOTE>>(ALICE));
+        assert!(!f.has_coin<LAUNCH_TESTS>(CREATOR));
+        assert!(!f.has_coin<TEST_QUOTE>(ALICE));
     });
 
     fixture.end();
@@ -2434,6 +2434,10 @@ fun launch_take_coin<T>(self: &LaunchFixture, owner: address): Coin<T> {
     self.scenario.take_from_address(owner)
 }
 
+fun launch_has_coin<T>(_: &LaunchFixture, owner: address): bool {
+    test_scenario::has_most_recent_for_address<Coin<T>>(owner)
+}
+
 fun launch_take_shared(self: &LaunchFixture): Launch<LAUNCH_TESTS, TEST_QUOTE> {
     self.scenario.take_shared<Launch<LAUNCH_TESTS, TEST_QUOTE>>()
 }
@@ -2643,6 +2647,8 @@ use fun launch_claim as LaunchFixture.claim;
 use fun launch_take_currency as LaunchFixture.take_currency;
 
 use fun launch_take_coin as LaunchFixture.take_coin;
+
+use fun launch_has_coin as LaunchFixture.has_coin;
 
 use fun launch_take_shared as LaunchFixture.take_launch;
 

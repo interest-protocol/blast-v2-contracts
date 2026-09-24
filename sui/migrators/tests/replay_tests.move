@@ -30,11 +30,11 @@ const BUYER: address = @0xB0;
 
 const KEEPER: address = @0xEE;
 
-const PROTOCOL_CHANNEL: address = @0xA1;
-
-const LIQUIDITY_CHANNEL: address = @0xA2;
+const PROTOCOL_RECIPIENT: address = @0xA1;
 
 const TEAM: address = @0xA4;
+
+const ADVISOR: address = @0xA5;
 
 const ROUTE_A: address = @0xD1;
 
@@ -64,22 +64,35 @@ const POOL_TICK_SPACING: u32 = 60;
 
 const POOL_FEE_RATE: u64 = 2_500;
 
-/// `launch::Lifecycle` tags in declaration order; `Migrating` never outlives its transaction.
+const PROTECTION_WINDOW_MS: u64 = 60_000;
+
+const CUMULATIVE_SENDER_BPS: u64 = 9_000;
+
+const PER_TRANSACTION_BPS: u64 = 8_000;
+
+const BASIS_POINTS: u64 = 10_000;
+
+/// Whole tokens every generated Meme currency mints, at its decimals.
+const MEME_SUPPLY_WHOLE_TOKENS: u64 = 1_000_000_000;
+
+/// Blast's allocation is always the first recipient and rounds up: part 2 of the Meme parts
+/// (curve, pool, recipients) and part 1 of the Quote parts (pool, recipients).
+const PROTOCOL_MEME_PART: u64 = 2;
+
+const PROTOCOL_QUOTE_PART: u64 = 1;
+
+/// `launch::Lifecycle` tags in declaration order.
 const LIVE: u8 = 0;
 
 const MIGRATION_READY: u8 = 1;
 
-const MIGRATED: u8 = 3;
+const MIGRATED: u8 = 2;
 
 /// Model lifecycle before any launch exists.
 const UNCREATED: u8 = 255;
 
-/// `allocation::ChannelRole` tags in declaration order.
-const LIQUIDITY_ROLE: u32 = 0;
-
-const PROTOCOL_ROLE: u32 = 1;
-
-const EXTERNAL_ROLE: u32 = 2;
+/// `creator_authority::CreatorRecipient::Address` tag.
+const CREATOR_ADDRESS_TAG: u32 = 0;
 
 // === Test-Only Types ===
 
@@ -123,8 +136,7 @@ public struct Replay has drop {
     default_shares: Shares,
     coin_shares: vector<CoinShares>,
     protocol_destination: address,
-    protocol_channel: ChannelEntry,
-    protocol_shares: Shares,
+    protocol_allocation: RecipientEntry,
     ticket_id: ID,
     meme: String,
     decimals: u8,
@@ -143,21 +155,22 @@ public struct Replay has drop {
     graduation_target: u64,
     quote_fee_bps: u64,
     meme_fee_bps: u64,
-    channels: vector<ChannelEntry>,
-    meme_weights: vector<WeightEntry>,
-    quote_weights: vector<WeightEntry>,
-    meme_amounts: vector<u64>,
+    plan: PlanEntry,
+    protection_window_ms: u64,
+    cumulative_sender_bps: u64,
+    per_transaction_bps: u64,
     public_start_ms: Option<u64>,
-    pre_share_buy_completed: bool,
     lifecycle: u8,
     meme_reserve: u64,
     real_quote_reserve: u64,
+    allocated_meme: u64,
     binding: Binding,
     generation: u64,
     fee_split: SplitEntry,
     venue: String,
     residual_meme: u64,
     residual_quote: u64,
+    liquidity: u128,
     position_meme: u64,
     position_quote: u64,
     creator_balance: Pair,
@@ -166,6 +179,7 @@ public struct Replay has drop {
     next_round: u64,
     last_checkpoint: Option<u64>,
     rounds: vector<RoundEntry>,
+    recipients_paid: u64,
     allocated_meme_paid: u64,
     allocated_quote_paid: u64,
     payouts: vector<Payout>,
@@ -188,15 +202,20 @@ public struct Pair has copy, drop {
     quote: u64,
 }
 
-public struct ChannelEntry has copy, drop {
-    channel_id: u64,
-    role: u32,
+/// A decoded allocation `Recipient`.
+public struct RecipientEntry has copy, drop {
     destination: address,
+    meme_bps: u64,
+    quote_bps: u64,
 }
 
-public struct WeightEntry has copy, drop {
-    channel_id: u64,
-    bps: u64,
+/// A decoded `AllocationPlan`: the curve's and the pool's shares, then its recipients in payment
+/// order.
+public struct PlanEntry has copy, drop {
+    curve_meme_bps: u64,
+    lp_meme_bps: u64,
+    lp_quote_bps: u64,
+    recipients: vector<RecipientEntry>,
 }
 
 public struct RouteEntry has copy, drop {
@@ -204,7 +223,7 @@ public struct RouteEntry has copy, drop {
     bps: u64,
 }
 
-/// A decoded `FeeSplit`: its three shares, then its canonical recipients.
+/// A decoded `FeeSplit`: its three shares, then its recipients in payment order.
 public struct SplitEntry has copy, drop {
     creator_bps: u64,
     auto_lp_bps: u64,
@@ -350,14 +369,13 @@ fun configure_policy(self: &mut ReplayFixture) {
         let mut config = f.scenario.take_shared<LaunchConfig>();
         let mut policy = f.take_policy();
 
-        config.allow_quote<QUOTE>(&f.version, &admin, VIRTUAL_QUOTE);
-        config.allow_migration_witness<Venue>(&f.version, &admin);
+        config.set_quote<QUOTE>(&f.version, &admin, VIRTUAL_QUOTE);
+        config.set_migration_witness_allowed<Venue>(&f.version, &admin, true);
         config.set_trade_fees(&f.version, &admin, bps::new(QUOTE_FEE_BPS), bps::new(MEME_FEE_BPS));
         config.set_protocol_allocation(
             &f.version,
             &admin,
-            1,
-            PROTOCOL_CHANNEL,
+            PROTOCOL_RECIPIENT,
             bps::new(500),
             bps::new(1_000),
         );
@@ -373,7 +391,7 @@ fun configure_policy(self: &mut ReplayFixture) {
     });
 }
 
-/// Mints the ticket, then starts, configures, pre-buys, and shares the launch.
+/// Mints the ticket, then starts, configures with protection, pre-buys, and shares the launch.
 fun create_launch(self: &mut ReplayFixture) {
     let ticket;
     self.next_tx!(LAUNCHER, |f| {
@@ -404,6 +422,11 @@ fun create_launch(self: &mut ReplayFixture) {
         initializer.set_graduation_target(TARGET);
         initializer.set_allocation_plan(plan());
         initializer.set_lp_fee_split(first_split());
+        initializer.set_protection(
+            PROTECTION_WINDOW_MS,
+            bps::new(CUMULATIVE_SENDER_BPS),
+            bps::new(PER_TRANSACTION_BPS),
+        );
         let mut launch = initializer.finalize(&f.version, &mut currency, &config, f.ctx!());
         let (meme, refund) = launch.pre_share_buy(
             &f.version,
@@ -421,7 +444,7 @@ fun create_launch(self: &mut ReplayFixture) {
     });
 }
 
-/// One public purchase past the target: the excess is refunded and trading closes.
+/// One protected public purchase past the target: the excess is refunded and trading closes.
 fun buy_to_graduation(self: &mut ReplayFixture) {
     self.next_tx!(BUYER, |f| {
         let mut launch = f.take_launch();
@@ -641,29 +664,21 @@ fun compound(vault: &mut LpVault<REPLAY_TESTS, QUOTE>) {
     vault.keep_auto_lp(added, added, meme, quote);
 }
 
-/// Deliberately non-canonical input: channel IDs descend.
+/// The creator's plan leaves Blast out; the advisor takes Quote only, so its payment carries no
+/// Meme.
 fun plan(): AllocationPlan {
-    allocation::new(
+    allocation::plan(
+        bps::new(7_000),
+        bps::new(2_000),
+        bps::new(8_000),
         vector[
-            allocation::channel(4, allocation::external_role(), TEAM),
-            allocation::channel(2, allocation::liquidity_role(), LIQUIDITY_CHANNEL),
-            allocation::channel(1, allocation::protocol_role(), PROTOCOL_CHANNEL),
-        ],
-        vector[
-            allocation::weight(4, bps::new(500)),
-            allocation::weight(2, bps::new(2_000)),
-            allocation::weight(1, bps::new(500)),
-            allocation::weight(0, bps::new(7_000)),
-        ],
-        vector[
-            allocation::weight(4, bps::new(1_000)),
-            allocation::weight(2, bps::new(8_000)),
-            allocation::weight(1, bps::new(1_000)),
+            allocation::recipient(TEAM, bps::new(500), bps::new(700)),
+            allocation::recipient(ADVISOR, bps::new(0), bps::new(300)),
         ],
     )
 }
 
-/// Every part is used; recipients are given out of canonical address order.
+/// Every part is used; recipients are paid in the order given.
 fun first_split(): FeeSplit {
     allocation::fee_split(
         bps::new(1_000),
@@ -676,7 +691,7 @@ fun first_split(): FeeSplit {
     )
 }
 
-/// Half back into the position and the rest to two new recipients, out of order.
+/// Half back into the position and the rest to two new recipients.
 fun next_split(): FeeSplit {
     allocation::fee_split(
         bps::new(0),
@@ -728,8 +743,8 @@ fun reduce_transaction(self: &mut ReplayFixture, sender: address) {
     let replay = &mut self.replay;
     let mut reduced = 0;
 
-    wrapped<events::ProtocolAllocationConfigured>().do!(|bytes| {
-        replay.protocol_allocation_configured(bytes);
+    wrapped<events::ProtocolAllocationSet>().do!(|bytes| {
+        replay.protocol_allocation_set(bytes);
         reduced = reduced + 1;
     });
     direct<blast_events::LpFeePolicyChanged>().do!(|bytes| {
@@ -746,10 +761,6 @@ fun reduce_transaction(self: &mut ReplayFixture, sender: address) {
     });
     wrapped<events::LaunchCreated>().do!(|bytes| {
         replay.launch_created(bytes);
-        reduced = reduced + 1;
-    });
-    wrapped<events::PreShareBought>().do!(|bytes| {
-        replay.pre_share_bought(bytes);
         reduced = reduced + 1;
     });
     wrapped<events::LaunchShared>().do!(|bytes| {
@@ -797,12 +808,11 @@ fun reduce_transaction(self: &mut ReplayFixture, sender: address) {
         reduced = reduced + 1;
     });
 
-    // Intake admissions, the protection ticket's policy record, and the creator capability claim
-    // are outside this schema; nothing else may appear.
-    let unreduced = wrapped<events::QuoteAllowed>().length()
-        + wrapped<events::MigrationWitnessAllowed>().length()
+    // Intake admissions and the creator capability claim are outside this schema; nothing else
+    // may appear.
+    let unreduced = wrapped<events::QuoteSet>().length()
+        + wrapped<events::MigrationWitnessSet>().length()
         + wrapped<events::LaunchTradeFeesChanged>().length()
-        + wrapped<events::ProtectionConfigured>().length()
         + wrapped<events::CreatorCapsClaimed>().length();
     assert_eq!(event::num_events() as u64, reduced + unreduced);
 }
@@ -825,8 +835,7 @@ fun new_replay(publisher: address): Replay {
         default_shares: Shares { meme_bps: 0, quote_bps: 0 },
         coin_shares: vector[],
         protocol_destination: publisher,
-        protocol_channel: ChannelEntry { channel_id: 0, role: PROTOCOL_ROLE, destination: @0x0 },
-        protocol_shares: Shares { meme_bps: 0, quote_bps: 0 },
+        protocol_allocation: RecipientEntry { destination: @0x0, meme_bps: 0, quote_bps: 0 },
         ticket_id: absent(),
         meme: b"".to_ascii_string(),
         decimals: 0,
@@ -845,15 +854,15 @@ fun new_replay(publisher: address): Replay {
         graduation_target: 0,
         quote_fee_bps: 0,
         meme_fee_bps: 0,
-        channels: vector[],
-        meme_weights: vector[],
-        quote_weights: vector[],
-        meme_amounts: vector[],
+        plan: PlanEntry { curve_meme_bps: 0, lp_meme_bps: 0, lp_quote_bps: 0, recipients: vector[] },
+        protection_window_ms: 0,
+        cumulative_sender_bps: 0,
+        per_transaction_bps: 0,
         public_start_ms: option::none(),
-        pre_share_buy_completed: false,
         lifecycle: UNCREATED,
         meme_reserve: 0,
         real_quote_reserve: 0,
+        allocated_meme: 0,
         binding: Binding {
             vault_id: absent(),
             pool_id: absent(),
@@ -864,6 +873,7 @@ fun new_replay(publisher: address): Replay {
         venue: b"".to_ascii_string(),
         residual_meme: 0,
         residual_quote: 0,
+        liquidity: 0,
         position_meme: 0,
         position_quote: 0,
         creator_balance: Pair { meme: 0, quote: 0 },
@@ -872,22 +882,19 @@ fun new_replay(publisher: address): Replay {
         next_round: 0,
         last_checkpoint: option::none(),
         rounds: vector[],
+        recipients_paid: 0,
         allocated_meme_paid: 0,
         allocated_quote_paid: 0,
         payouts: vector[],
     }
 }
 
-fun protocol_allocation_configured(self: &mut Replay, bytes: vector<u8>) {
+fun protocol_allocation_set(self: &mut Replay, bytes: vector<u8>) {
     let mut r = bcs::new(bytes);
-    let channel_id = r.peel_u64();
-    let destination = r.peel_address();
-    let meme_bps = r.peel_u64();
-    let quote_bps = r.peel_u64();
+    let protocol_allocation = r.peel_recipient();
     r.assert_consumed();
 
-    self.protocol_channel = ChannelEntry { channel_id, role: PROTOCOL_ROLE, destination };
-    self.protocol_shares = Shares { meme_bps, quote_bps };
+    self.protocol_allocation = protocol_allocation;
 }
 
 fun lp_fee_policy_changed(self: &mut Replay, bytes: vector<u8>) {
@@ -918,28 +925,29 @@ fun lp_fee_destination_changed(self: &mut Replay, bytes: vector<u8>) {
     self.protocol_destination = new_destination;
 }
 
+/// The ticket fixes the canonical supply: one billion whole tokens at its decimals.
 fun launch_ticket_created(self: &mut Replay, bytes: vector<u8>) {
     let mut r = bcs::new(bytes);
     self.ticket_id = r.peel_id();
     self.meme = r.peel_type_name();
     self.decimals = r.peel_u8();
-    self.atomic_supply = r.peel_u64();
     self.metadata_cap_id = r.peel_id();
-    self.creator = r.peel_option_address();
-    assert!(r.peel_option!(|r| r.peel_vec_u8()).is_none());
+    assert_eq!(r.peel_enum_tag(), CREATOR_ADDRESS_TAG);
+    self.creator = option::some(r.peel_address());
     self.burnable = r.peel_bool();
     self.sell_burn_bps = r.peel_u64();
     r.assert_consumed();
 
+    self.atomic_supply = MEME_SUPPLY_WHOLE_TOKENS * 10u64.pow(self.decimals);
     self.total_supply = self.atomic_supply;
 }
 
+/// Finalization puts Blast's allocation first in the creator's plan, each asset sums to 10,000,
+/// and the curve starts with its apportioned Meme while the pool's and the recipients' wait.
 fun launch_created(self: &mut Replay, bytes: vector<u8>) {
     let mut r = bcs::new(bytes);
     self.launch_id = r.peel_id();
     assert_eq!(r.peel_id(), self.ticket_id);
-    assert_eq!(r.peel_u8(), self.decimals);
-    assert_eq!(r.peel_u64(), self.atomic_supply);
     assert_eq!(r.peel_type_name(), type_name::with_original_ids<QUOTE>().into_string());
     self.migration_witness = r.peel_type_name();
     self.pool_tick_spacing = r.peel_u32();
@@ -949,70 +957,56 @@ fun launch_created(self: &mut Replay, bytes: vector<u8>) {
     self.graduation_target = r.peel_u64();
     self.quote_fee_bps = r.peel_u64();
     self.meme_fee_bps = r.peel_u64();
-    self.channels = r.peel_vec!(|r| {
-        let channel_id = r.peel_u64();
-        let role = r.peel_enum_tag();
-        let destination = r.peel_address();
-        ChannelEntry { channel_id, role, destination }
-    });
-    self.meme_weights = r.peel_weights();
-    self.quote_weights = r.peel_weights();
-    self.meme_amounts = r.peel_vec_u64();
+    self.plan = r.peel_plan();
+    self.protection_window_ms = r.peel_u64();
+    self.cumulative_sender_bps = r.peel_u64();
+    self.per_transaction_bps = r.peel_u64();
     r.assert_consumed();
 
-    // The immutable Blast policy is enforced at intake, and the plan partitions the supply.
-    assert!(self.channels.contains(&self.protocol_channel));
-    assert_eq!(self.meme_weights.bps_of(self.protocol_channel.channel_id), self.protocol_shares.meme_bps);
-    assert_eq!(self.quote_weights.bps_of(self.protocol_channel.channel_id), self.protocol_shares.quote_bps);
-    assert_eq!(self.meme_amounts.length(), self.meme_weights.length());
-    assert_eq!(self.meme_amounts.fold!(0, |sum, amount| sum + amount), self.atomic_supply);
+    let recipients = self.plan.recipients;
+    assert_eq!(recipients[0], self.protocol_allocation);
+    assert_eq!(self.plan.meme_bps().total(), BASIS_POINTS);
+    assert_eq!(self.plan.quote_bps().total(), BASIS_POINTS);
+    let curve_meme = self.plan.meme_amounts(self.atomic_supply)[0];
     self.lifecycle = LIVE;
-    self.meme_reserve = self.meme_weights.amount_of(&self.meme_amounts, 0);
-}
-
-fun pre_share_bought(self: &mut Replay, bytes: vector<u8>) {
-    let mut r = bcs::new(bytes);
-    assert_eq!(r.peel_id(), self.launch_id);
-    self.reduce_purchase(&mut r);
-    let _meme_out_net = r.peel_u64();
-    let _quote_refund = r.peel_u64();
-    r.assert_consumed();
-
-    assert_eq!(self.lifecycle, LIVE);
-    self.pre_share_buy_completed = true;
+    self.meme_reserve = curve_meme;
+    self.allocated_meme = self.atomic_supply - curve_meme;
 }
 
 fun launch_shared(self: &mut Replay, bytes: vector<u8>) {
     let mut r = bcs::new(bytes);
     assert_eq!(r.peel_id(), self.launch_id);
-    self.public_start_ms = option::some(r.peel_u64());
-    assert_eq!(r.peel_bool(), self.pre_share_buy_completed);
+    let public_start_ms = r.peel_u64();
     r.assert_consumed();
+
+    assert!(self.public_start_ms.is_none());
+    self.public_start_ms = option::some(public_start_ms);
 }
 
+/// Applies a purchase's gross amounts and fees, checks the posted reserves against them, and
+/// closes trading once the real Quote reserve reaches the graduation target. Purchases before
+/// `LaunchShared` are the creator's pre-share purchases.
 fun bought(self: &mut Replay, bytes: vector<u8>) {
     let mut r = bcs::new(bytes);
     assert_eq!(r.peel_id(), self.launch_id);
-    self.reduce_purchase(&mut r);
-    r.assert_consumed();
-}
-
-/// Applies a purchase's gross amounts and fee deltas, checks the posted reserves against them,
-/// and closes trading once the real Quote reserve reaches the graduation target.
-fun reduce_purchase(self: &mut Replay, r: &mut BCS) {
     let quote_in = r.peel_u64();
     let meme_out_gross = r.peel_u64();
-    let _protocol_meme_fee_delta = r.peel_u64();
-    let _creator_meme_fee_delta = r.peel_u64();
-    let protocol_quote_fee_delta = r.peel_u64();
-    let creator_quote_fee_delta = r.peel_u64();
+    let meme_out_net = r.peel_u64();
+    let _quote_refund = r.peel_u64();
+    let protocol_meme_fee = r.peel_u64();
+    let creator_meme_fee = r.peel_u64();
+    let protocol_quote_fee = r.peel_u64();
+    let creator_quote_fee = r.peel_u64();
     let meme_reserve = r.peel_u64();
     let real_quote_reserve = r.peel_u64();
+    r.assert_consumed();
 
+    assert_eq!(self.lifecycle, LIVE);
+    assert_eq!(meme_out_net, meme_out_gross - protocol_meme_fee - creator_meme_fee);
     assert_eq!(meme_reserve, self.meme_reserve - meme_out_gross);
     assert_eq!(
         real_quote_reserve,
-        self.real_quote_reserve + quote_in - protocol_quote_fee_delta - creator_quote_fee_delta,
+        self.real_quote_reserve + quote_in - protocol_quote_fee - creator_quote_fee,
     );
     self.meme_reserve = meme_reserve;
     self.real_quote_reserve = real_quote_reserve;
@@ -1020,7 +1014,8 @@ fun reduce_purchase(self: &mut Replay, r: &mut BCS) {
 }
 
 /// Migration copies the creator's launch fee split into the custody `VaultCreated` announces, at
-/// generation zero, and the residuals it keeps leave the rest of the hand-off in the position.
+/// generation zero, and the residuals it keeps leave the rest of the hand-off in a position that
+/// holds liquidity.
 fun vault_created(self: &mut Replay, bytes: vector<u8>) {
     let mut r = bcs::new(bytes);
     self.binding.vault_id = r.peel_id();
@@ -1031,10 +1026,12 @@ fun vault_created(self: &mut Replay, bytes: vector<u8>) {
     assert_eq!(r.peel_type_name(), type_name::with_original_ids<QUOTE>().into_string());
     self.residual_meme = r.peel_u64();
     self.residual_quote = r.peel_u64();
-    assert!(r.peel_u128() > 0);
+    self.liquidity = r.peel_u128();
     let fee_split = r.peel_fee_split();
     r.assert_consumed();
 
+    assert_eq!(self.lifecycle, MIGRATED);
+    assert!(self.liquidity > 0);
     assert_eq!(self.venue, self.migration_witness);
     assert_eq!(fee_split, self.launch_fee_split);
     self.generation = 0;
@@ -1043,26 +1040,29 @@ fun vault_created(self: &mut Replay, bytes: vector<u8>) {
     self.position_quote = self.position_quote - self.residual_quote;
 }
 
+/// Recipients are paid in plan order, each its apportioned Meme and its apportioned share of the
+/// final Quote reserve, even when an amount is zero.
 fun migration_allocation_paid(self: &mut Replay, bytes: vector<u8>) {
     let mut r = bcs::new(bytes);
     assert_eq!(r.peel_id(), self.launch_id);
-    let channel_id = r.peel_u64();
     let destination = r.peel_address();
     let meme = r.peel_u64();
     let quote = r.peel_u64();
     r.assert_consumed();
 
-    let channel = self.channels.find_channel(channel_id);
-    assert!(channel.role != LIQUIDITY_ROLE);
-    assert_eq!(channel.destination, destination);
-    assert_eq!(meme, self.meme_weights.amount_of(&self.meme_amounts, channel_id));
+    let i = self.recipients_paid;
+    assert_eq!(self.lifecycle, MIGRATION_READY);
+    assert_eq!(destination, self.plan.recipients[i].destination);
+    assert_eq!(meme, self.plan.meme_amounts(self.atomic_supply)[PROTOCOL_MEME_PART + i]);
+    assert_eq!(quote, self.plan.quote_amounts(self.real_quote_reserve)[PROTOCOL_QUOTE_PART + i]);
+    self.recipients_paid = i + 1;
     self.allocated_meme_paid = self.allocated_meme_paid + meme;
     self.allocated_quote_paid = self.allocated_quote_paid + quote;
     self.credit(destination, meme, quote);
 }
 
-/// The liquidity principal plus every paid allocation empties both pools, and disposal removes
-/// the remaining curve reserve from supply.
+/// After every recipient is paid, the adapter receives the pool's shares, which empty the
+/// allocated Meme and the Quote reserve, and disposal removes the curve's unsold Meme from supply.
 fun migrated(self: &mut Replay, bytes: vector<u8>) {
     let mut r = bcs::new(bytes);
     assert_eq!(r.peel_id(), self.launch_id);
@@ -1073,19 +1073,12 @@ fun migrated(self: &mut Replay, bytes: vector<u8>) {
     self.total_supply = r.peel_u64();
     r.assert_consumed();
 
-    let liquidity_id = self.channels.find_role(LIQUIDITY_ROLE).channel_id;
-    assert_eq!(
-        meme,
-        self.meme_weights.amount_of(&self.meme_amounts, liquidity_id),
-    );
-    assert_eq!(
-        meme + self.allocated_meme_paid,
-        self.atomic_supply - self.meme_weights.amount_of(&self.meme_amounts, 0),
-    );
-    assert_eq!(
-        quote + self.allocated_quote_paid,
-        self.real_quote_reserve,
-    );
+    assert_eq!(self.lifecycle, MIGRATION_READY);
+    assert_eq!(self.recipients_paid, self.plan.recipients.length());
+    assert_eq!(meme, self.plan.meme_amounts(self.atomic_supply)[1]);
+    assert_eq!(quote, self.plan.quote_amounts(self.real_quote_reserve)[0]);
+    assert_eq!(meme + self.allocated_meme_paid, self.allocated_meme);
+    assert_eq!(quote + self.allocated_quote_paid, self.real_quote_reserve);
     assert_eq!(disposed_meme, self.meme_reserve);
     assert_eq!(self.total_supply, self.atomic_supply - disposed_meme);
     self.lifecycle = MIGRATED;
@@ -1094,11 +1087,12 @@ fun migrated(self: &mut Replay, bytes: vector<u8>) {
     self.position_quote = quote;
     self.meme_reserve = 0;
     self.real_quote_reserve = 0;
+    self.allocated_meme = 0;
 }
 
 /// Blast's live share for this Meme rounds up and pays the live destination; the rest splits
 /// under the stamped generation into the creator, auto-LP, and rewards balances and one payment
-/// per recipient in canonical order, conserving each asset.
+/// per recipient in the split's order, conserving each asset.
 fun fees_collected(self: &mut Replay, bytes: vector<u8>) {
     let mut r = bcs::new(bytes);
     assert_eq!(r.peel_id(), self.binding.vault_id);
@@ -1296,12 +1290,21 @@ fun peel_shares(r: &mut BCS): Option<Shares> {
     meme_bps.map!(|meme_bps| Shares { meme_bps, quote_bps: quote_bps.destroy_some() })
 }
 
-fun peel_weights(r: &mut BCS): vector<WeightEntry> {
-    r.peel_vec!(|r| {
-        let channel_id = r.peel_u64();
-        let bps = r.peel_u64();
-        WeightEntry { channel_id, bps }
-    })
+fun peel_plan(r: &mut BCS): PlanEntry {
+    let curve_meme_bps = r.peel_u64();
+    let lp_meme_bps = r.peel_u64();
+    let lp_quote_bps = r.peel_u64();
+    let recipients = r.peel_vec!(|r| r.peel_recipient());
+
+    PlanEntry { curve_meme_bps, lp_meme_bps, lp_quote_bps, recipients }
+}
+
+fun peel_recipient(r: &mut BCS): RecipientEntry {
+    let destination = r.peel_address();
+    let meme_bps = r.peel_u64();
+    let quote_bps = r.peel_u64();
+
+    RecipientEntry { destination, meme_bps, quote_bps }
 }
 
 fun peel_fee_split(r: &mut BCS): SplitEntry {
@@ -1332,20 +1335,60 @@ fun assert_consumed(r: BCS) {
     assert!(r.into_remainder_bytes().is_empty());
 }
 
-fun bps_of(weights: &vector<WeightEntry>, channel_id: u64): u64 {
-    weights.find_index!(|entry| entry.channel_id == channel_id).map!(|i| weights[i].bps).destroy_or!(0)
+// Reference Apportionment
+
+/// The Meme parts in apportionment order: the curve, the pool, then each recipient.
+fun meme_bps(self: &PlanEntry): vector<u64> {
+    let mut bps = vector[self.curve_meme_bps, self.lp_meme_bps];
+    self.recipients.do_ref!(|recipient| bps.push_back(recipient.meme_bps));
+
+    bps
 }
 
-fun amount_of(weights: &vector<WeightEntry>, amounts: &vector<u64>, channel_id: u64): u64 {
-    weights.find_index!(|entry| entry.channel_id == channel_id).map!(|i| amounts[i]).destroy_or!(0)
+/// The Quote parts in apportionment order: the pool, then each recipient.
+fun quote_bps(self: &PlanEntry): vector<u64> {
+    let mut bps = vector[self.lp_quote_bps];
+    self.recipients.do_ref!(|recipient| bps.push_back(recipient.quote_bps));
+
+    bps
 }
 
-fun find_channel(channels: &vector<ChannelEntry>, channel_id: u64): ChannelEntry {
-    channels[channels.find_index!(|channel| channel.channel_id == channel_id).destroy_some()]
+fun meme_amounts(self: &PlanEntry, supply: u64): vector<u64> {
+    apportion(self.meme_bps(), supply, PROTOCOL_MEME_PART)
 }
 
-fun find_role(channels: &vector<ChannelEntry>, role: u32): ChannelEntry {
-    channels[channels.find_index!(|channel| channel.role == role).destroy_some()]
+fun quote_amounts(self: &PlanEntry, reserve: u64): vector<u64> {
+    apportion(self.quote_bps(), reserve, PROTOCOL_QUOTE_PART)
+}
+
+/// Blast's part takes its ceiling and every other part its floor; each leftover unit then goes to
+/// the part with the largest remaining remainder, the earliest on a tie.
+fun apportion(bps: vector<u64>, total: u64, rounded_up: u64): vector<u64> {
+    let exact = bps.map!(|share| (total as u128) * (share as u128));
+    let denominator = BASIS_POINTS as u128;
+    let mut amounts = vector::tabulate!(exact.length(), |i| {
+        let floor = (exact[i] / denominator) as u64;
+        if (i == rounded_up && exact[i] % denominator > 0) floor + 1 else floor
+    });
+    let mut remainders = vector::tabulate!(exact.length(), |i| {
+        if (i == rounded_up) option::none() else option::some(exact[i] % denominator)
+    });
+    let leftover = total - amounts.total();
+    leftover.do!(|_| {
+        let mut largest = option::none<u64>();
+        remainders.length().do!(|i| {
+            if (remainders[i].is_some()
+                && largest.is_none_or!(|j| *remainders[i].borrow() > *remainders[*j].borrow())
+            ) {
+                largest = option::some(i);
+            };
+        });
+        let i = largest.destroy_some();
+        *&mut amounts[i] = amounts[i] + 1;
+        *&mut remainders[i] = option::none();
+    });
+
+    amounts
 }
 
 fun absent(): ID {
@@ -1405,7 +1448,7 @@ fun assert_policy(self: &Replay, policy: &LpFeePolicy) {
 }
 
 fun assert_launch(self: &Replay, launch: &Launch<REPLAY_TESTS, QUOTE>, currency: &Currency<REPLAY_TESTS>) {
-    let (meme_reserve, real_quote_reserve, _, _) = launch.balances_for_testing();
+    let (meme_reserve, real_quote_reserve, pending_burn, allocated_meme) = launch.balances_for_testing();
 
     assert_eq!(object::id(launch), self.launch_id);
     assert_eq!(launch.is_live_for_testing(), self.lifecycle == LIVE);
@@ -1414,9 +1457,22 @@ fun assert_launch(self: &Replay, launch: &Launch<REPLAY_TESTS, QUOTE>, currency:
     assert_eq!(launch.graduation_target_for_testing(), self.graduation_target);
     assert_eq!(meme_reserve, self.meme_reserve);
     assert_eq!(real_quote_reserve, self.real_quote_reserve);
+    assert_eq!(pending_burn, 0);
+    assert_eq!(allocated_meme, self.allocated_meme);
     assert_eq!(launch.virtual_quote_for_testing(), self.virtual_quote);
-    assert_eq!(launch.public_start_ms_for_testing(), self.public_start_ms);
-    assert_eq!(launch.pre_share_buy_completed_for_testing(), self.pre_share_buy_completed);
+    assert_eq!(
+        launch.protection_end_ms_for_testing(),
+        self.public_start_ms.map!(|start| start + self.protection_window_ms),
+    );
+    assert_eq!(launch.protection_window_ms_for_testing(), self.protection_window_ms);
+    assert_eq!(
+        launch.cumulative_atomic_limit_for_testing(),
+        self.atomic_supply * self.cumulative_sender_bps / BASIS_POINTS,
+    );
+    assert_eq!(
+        launch.per_transaction_atomic_limit_for_testing(),
+        self.atomic_supply * self.per_transaction_bps / BASIS_POINTS,
+    );
     assert_eq!(launch.atomic_supply_for_testing(), self.atomic_supply);
     assert_eq!(launch.migration_witness_for_testing().into_string(), self.migration_witness);
     let (pool_tick_spacing, pool_fee_rate) = launch.pool_tier();
@@ -1426,14 +1482,15 @@ fun assert_launch(self: &Replay, launch: &Launch<REPLAY_TESTS, QUOTE>, currency:
 
     assert_eq!(
         *launch.allocation_plan_for_testing(),
-        allocation::new(
-            self.channels.map_ref!(|entry| allocation::channel(
-                entry.channel_id,
-                channel_role(entry.role),
+        allocation::plan(
+            bps::new(self.plan.curve_meme_bps),
+            bps::new(self.plan.lp_meme_bps),
+            bps::new(self.plan.lp_quote_bps),
+            self.plan.recipients.map_ref!(|entry| allocation::recipient(
                 entry.destination,
+                bps::new(entry.meme_bps),
+                bps::new(entry.quote_bps),
             )),
-            self.meme_weights.map_ref!(|entry| allocation::weight(entry.channel_id, bps::new(entry.bps))),
-            self.quote_weights.map_ref!(|entry| allocation::weight(entry.channel_id, bps::new(entry.bps))),
         ),
     );
 
@@ -1469,24 +1526,18 @@ fun assert_vault(self: &Replay, vault: &LpVault<REPLAY_TESTS, QUOTE>) {
     let position = vault.position<_, _, _, MockPosition<REPLAY_TESTS, QUOTE>>(&Venue());
     assert_eq!(position.meme.value(), self.position_meme);
     assert_eq!(position.quote.value(), self.position_quote);
+    assert_eq!(position.liquidity, self.liquidity);
 }
 
 /// Every payout event must equal the native coins its destination received.
 fun assert_native_payouts(self: &mut ReplayFixture) {
     self.next_tx!(KEEPER, |f| {
-        assert_eq!(f.replay.payouts.length(), 9);
+        assert_eq!(f.replay.payouts.length(), 10);
         f.replay.payouts.do_ref!(|payout| {
             assert_eq!(f.coin_total<REPLAY_TESTS>(payout.destination), payout.meme);
             assert_eq!(f.coin_total<QUOTE>(payout.destination), payout.quote);
         });
     });
-}
-
-fun channel_role(tag: u32): ChannelRole {
-    if (tag == LIQUIDITY_ROLE) return allocation::liquidity_role();
-    if (tag == PROTOCOL_ROLE) return allocation::protocol_role();
-    assert_eq!(tag, EXTERNAL_ROLE);
-    allocation::external_role()
 }
 
 fun route_entry(route: &Route): RouteEntry {
@@ -1514,7 +1565,7 @@ macro fun pair($balances: || -> (u64, u64)): Pair {
 use blast_admin::acl::{Self, Authority, AdminCap};
 
 use blast_fun::{
-    allocation::{Self, AllocationPlan, ChannelRole, FeeSplit, Route},
+    allocation::{Self, AllocationPlan, FeeSplit, Route},
     blast_events::Event as BlastEvent,
     blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
     bps,
@@ -1561,7 +1612,9 @@ use fun peel_type_name as BCS.peel_type_name;
 
 use fun peel_shares as BCS.peel_shares;
 
-use fun peel_weights as BCS.peel_weights;
+use fun peel_plan as BCS.peel_plan;
+
+use fun peel_recipient as BCS.peel_recipient;
 
 use fun peel_fee_split as BCS.peel_fee_split;
 
@@ -1570,13 +1623,5 @@ use fun peel_pair as BCS.peel_pair;
 use fun peel_route as BCS.peel_route;
 
 use fun assert_consumed as BCS.assert_consumed;
-
-use fun bps_of as vector.bps_of;
-
-use fun amount_of as vector.amount_of;
-
-use fun find_channel as vector.find_channel;
-
-use fun find_role as vector.find_role;
 
 use fun total as vector.total;

@@ -24,16 +24,16 @@ const POOL_FEE_RATE: u64 = 2_500;
 
 // === Test Helpers ===
 
-/// Admits `Quote` and the adapter's `Witness` with fixed trade fees and no protocol allocation.
+/// Admits `Quote` and the adapter's `Witness` with fixed trade fees and a zero Blast allocation.
 public fun admit<Quote, Witness: drop>(
     config: &mut LaunchConfig,
     version: &PackageVersion,
     admin: &AdminWitness<BLAST_FUN_DOMAIN>,
 ) {
-    config.allow_quote<Quote>(version, admin, VIRTUAL_QUOTE);
-    config.allow_migration_witness<Witness>(version, admin);
+    config.set_quote<Quote>(version, admin, VIRTUAL_QUOTE);
+    config.set_migration_witness_allowed<Witness>(version, admin, true);
     config.set_trade_fees(version, admin, bps::new(100), bps::new(100));
-    config.set_protocol_allocation(version, admin, 1, CREATOR, bps::new(0), bps::new(0));
+    config.set_protocol_allocation(version, admin, CREATOR, bps::new(0), bps::new(0));
 }
 
 /// Mints the ticket, then starts the launch for `witness` at the fixture tier with `fee_split` and
@@ -71,11 +71,7 @@ public fun open_launch<Meme: drop, Quote, Witness: drop>(
     );
     initializer.set_graduation_target(TARGET);
     initializer.set_allocation_plan(
-        allocation::new(
-            vector[allocation::channel(2, allocation::liquidity_role(), CREATOR)],
-            vector[allocation::weight(0, bps::new(8_000)), allocation::weight(2, bps::new(2_000))],
-            vector[allocation::weight(2, bps::new(10_000))],
-        ),
+        allocation::plan(bps::new(8_000), bps::new(2_000), bps::new(10_000), vector[]),
     );
     initializer.set_lp_fee_split(fee_split);
     let launch = initializer.finalize(version, &mut currency, config, scenario.ctx());

@@ -27,16 +27,11 @@ public struct ConfigFixture {
 /// Package initialization shares a silent configuration with account claims disabled and no
 /// protocol share.
 fun package_init_shares_a_config_without_signer_or_protocol_share() {
-    let mut scenario = test_scenario::begin(PUBLISHER);
-    runtime_config::init_for_testing(scenario.ctx());
+    let (events, signer_public_key, protocol_fee_share_bps) = published_config();
 
-    assert_eq!(scenario.next_tx(PUBLISHER).num_user_events(), 0);
-    let config = scenario.take_shared<RuntimeConfig>();
-    assert!(config.creator_claim_signer().is_empty());
-    assert_eq!(config.protocol_fee_share().value(), 0);
-
-    test_scenario::return_shared(config);
-    scenario.end();
+    assert_eq!(events, 0);
+    assert!(signer_public_key.is_empty());
+    assert_eq!(protocol_fee_share_bps, 0);
 }
 
 // --- Protocol fee share ---
@@ -201,6 +196,21 @@ macro fun config_next_tx(
 
     fixture.scenario.next_tx($sender);
     $fn(fixture);
+}
+
+/// Package initialization's events, and its shared configuration's signer key and protocol share.
+fun published_config(): (u64, vector<u8>, u64) {
+    let mut scenario = test_scenario::begin(PUBLISHER);
+    runtime_config::init_for_testing(scenario.ctx());
+
+    let events = scenario.next_tx(PUBLISHER).num_user_events();
+    let config = scenario.take_shared<RuntimeConfig>();
+    let signer_public_key = *config.creator_claim_signer();
+    let protocol_fee_share_bps = config.protocol_fee_share().value();
+    test_scenario::return_shared(config);
+    scenario.end();
+
+    (events, signer_public_key, protocol_fee_share_bps)
 }
 
 /// A zero-role administrator over a configuration as package initialization leaves it.

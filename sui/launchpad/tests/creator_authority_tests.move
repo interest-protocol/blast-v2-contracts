@@ -80,7 +80,7 @@ fun account_claim_with_the_backend_signature_issues_both_caps() {
             f.config.creator_claim_signer(),
             option::some(attestation()),
             &f.clock,
-            f.scenario.ctx(),
+            f.ctx!(),
         );
 
         assert!(object::id(&curve_fee_cap) != object::id(&metadata_cap));
@@ -261,6 +261,12 @@ macro fun claim_next_tx(
     $fn(fixture);
 }
 
+macro fun claim_ctx($fixture: &mut ClaimFixture): &mut TxContext {
+    let fixture = $fixture;
+
+    fixture.scenario.ctx()
+}
+
 fun start(): ClaimFixture {
     let mut scenario = test_scenario::begin(ADMIN);
     let package_version = package_version::new_for_testing(scenario.ctx());
@@ -343,6 +349,8 @@ use std::unit_test::{assert_eq, destroy};
 use sui::{clock::{Self, Clock}, test_scenario::{Self, Scenario}};
 
 use fun claim_claim as ClaimFixture.claim;
+
+use fun claim_ctx as ClaimFixture.ctx;
 
 use fun claim_end as ClaimFixture.end;
 

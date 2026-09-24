@@ -400,8 +400,8 @@ fun split_rounds_blast_up_then_credits_every_balance_and_pays_every_recipient_ex
     f.split(&mut vault, 11, 7);
 
     // Blast takes ceil(11 * 10%) = 2 Meme and ceil(7 * 25%) = 2 Quote. The rest, 9 Meme and 5
-    // Quote, splits 20/30/10 to creator, auto-LP, and rewards and 15/25 to A and B, with each
-    // unit of dust going to the largest remainder, then to the earlier part.
+    // Quote, splits 20/30/10 to creator, auto-LP, and rewards and 25/15 to B and A in the split's
+    // order, with each unit of dust going to the largest remainder, then to the earlier part.
     let events = event::events_by_type<blast_events::FeesCollected>();
     assert_eq!(events.length(), 1);
     assert_eq!(
@@ -421,7 +421,7 @@ fun split_rounds_blast_up_then_credits_every_balance_and_pays_every_recipient_ex
                 auto_lp_quote: 2,
                 rewards_meme: 1,
                 rewards_quote: 0,
-                recipient_meme: vector[1, 2],
+                recipient_meme: vector[2, 1],
                 recipient_quote: vector[1, 1],
             },
         ),
@@ -517,7 +517,7 @@ fun zero_collection_is_eventless_and_one_sided_collections_pay_only_the_nonzero_
     assert_eq!(quote.gross_meme, 0);
     assert_eq!(quote.gross_quote, 9);
     assert_eq!(quote.recipient_meme, vector[0, 0]);
-    assert_eq!(quote.recipient_quote, vector[1, 2]);
+    assert_eq!(quote.recipient_quote, vector[2, 1]);
     assert_balances!(|| vault.creator_balances_for_testing(), 0, 2);
     assert_balances!(|| vault.auto_lp_balances_for_testing(), 0, 3);
     assert_balances!(|| vault.rewards_balances(), 0, 1);
@@ -528,7 +528,7 @@ fun zero_collection_is_eventless_and_one_sided_collections_pay_only_the_nonzero_
     f.scenario.next_tx(ADMIN);
     f.split(&mut vault, 9, 0);
     let meme = collection(0);
-    assert_eq!(meme.recipient_meme, vector[1, 2]);
+    assert_eq!(meme.recipient_meme, vector[2, 1]);
     assert_eq!(meme.recipient_quote, vector[0, 0]);
     assert_balances!(|| vault.creator_balances_for_testing(), 2, 2);
     f.assert_received(DESTINATION_A, 1, 0);
@@ -625,15 +625,15 @@ fun u64_max_collection_uses_wide_products_and_conserves_every_unit() {
     assert_balances!(|| vault.auto_lp_balances_for_testing(), paid.auto_lp_meme, paid.auto_lp_quote);
     assert_balances!(|| vault.rewards_balances(), paid.rewards_meme, paid.rewards_quote);
     f.assert_received(PROTOCOL, paid.protocol_meme, paid.protocol_quote);
-    f.assert_received(DESTINATION_A, paid.recipient_meme[0], paid.recipient_quote[0]);
-    f.assert_received(DESTINATION_B, paid.recipient_meme[1], paid.recipient_quote[1]);
+    f.assert_received(DESTINATION_B, paid.recipient_meme[0], paid.recipient_quote[0]);
+    f.assert_received(DESTINATION_A, paid.recipient_meme[1], paid.recipient_quote[1]);
 
     destroy(vault);
     f.end();
 }
 
 #[test]
-fun sixteen_recipients_are_canonical_and_all_paid() {
+fun sixteen_recipients_are_paid_in_the_split_order() {
     let mut recipients = vector[];
     16u64.do!(|i| recipients.push_back(route(sui::address::from_u256(16 - (i as u256)), 625)));
     let split = allocation::fee_split(bps::new(0), bps::new(0), bps::new(0), recipients);
@@ -643,8 +643,8 @@ fun sixteen_recipients_are_canonical_and_all_paid() {
     f.scenario.next_tx(ADMIN);
     f.split(&mut vault, 17, 9);
 
-    // Sorted by address, recipient 0x1 comes first and takes the single Meme dust unit; each of
-    // the first nine takes one Quote unit.
+    // Kept in the given descending order, recipient 0x10 comes first and takes the single Meme
+    // dust unit; each of the first nine takes one Quote unit.
     let paid = collection(0);
     let mut quote = vector::tabulate!(9, |_| 1);
     quote.append(vector::tabulate!(7, |_| 0));
@@ -655,7 +655,7 @@ fun sixteen_recipients_are_canonical_and_all_paid() {
     assert_eq!(vector[paid.creator_meme, paid.auto_lp_meme, paid.rewards_meme], vector[0, 0, 0]);
     let recipients = *vault.fee_split_for_testing().recipients();
     16u64.do!(|i| {
-        let destination = sui::address::from_u256((i as u256) + 1);
+        let destination = sui::address::from_u256(16 - (i as u256));
         assert_eq!(recipients[i].destination(), destination);
         f.assert_received(destination, meme[i], quote[i]);
     });
@@ -789,8 +789,8 @@ fun dense_totals(share: u64) {
     let mut f = start(mixed_split());
     if (share != 0) f.set_defaults(share, share);
     let mut vault = f.new_vault(0, 0);
-    // Creator, auto-LP, rewards, then A and B in canonical address order.
-    let weights = vector[2_000, 3_000, 1_000, 1_500, 2_500];
+    // Creator, auto-LP, rewards, then B and A in the split's order.
+    let weights = vector[2_000, 3_000, 1_000, 2_500, 1_500];
     let mut sums = vector[0, 0, 0, 0, 0, 0];
 
     32u64.do!(|i| {
@@ -828,10 +828,10 @@ fun dense_totals(share: u64) {
     assert_balances!(|| vault.rewards_balances(), sums[3], sums[3]);
     assert_eq!(f.received<VAULT_TESTS>(PROTOCOL), sums[0]);
     assert_eq!(f.received<QUOTE>(PROTOCOL), sums[0]);
-    assert_eq!(f.received<VAULT_TESTS>(DESTINATION_A), sums[4]);
-    assert_eq!(f.received<QUOTE>(DESTINATION_A), sums[4]);
-    assert_eq!(f.received<VAULT_TESTS>(DESTINATION_B), sums[5]);
-    assert_eq!(f.received<QUOTE>(DESTINATION_B), sums[5]);
+    assert_eq!(f.received<VAULT_TESTS>(DESTINATION_B), sums[4]);
+    assert_eq!(f.received<QUOTE>(DESTINATION_B), sums[4]);
+    assert_eq!(f.received<VAULT_TESTS>(DESTINATION_A), sums[5]);
+    assert_eq!(f.received<QUOTE>(DESTINATION_A), sums[5]);
 
     destroy(vault);
     f.end();
@@ -964,7 +964,7 @@ fun route(destination: address, route_bps: u64): Route {
     allocation::route(destination, bps::new(route_bps))
 }
 
-/// Creator 20%, auto-LP 30%, rewards 10%, A 15%, and B 25%; recipients given out of order.
+/// Creator 20%, auto-LP 30%, rewards 10%, B 25%, and A 15%; recipients are paid in this order.
 fun mixed_split(): FeeSplit {
     allocation::fee_split(
         bps::new(2_000),

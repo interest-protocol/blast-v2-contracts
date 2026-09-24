@@ -53,7 +53,7 @@ fun start(): MatrixFixture {
 
 fun admit<MigrationWitness: drop>(self: &mut MatrixFixture) {
     let admin = self.authority.sign_in(&self.admin_cap);
-    self.config.allow_migration_witness<MigrationWitness>(&self.version, &admin);
+    self.config.set_migration_witness_allowed<MigrationWitness>(&self.version, &admin, true);
 }
 
 fun end(self: MatrixFixture) {

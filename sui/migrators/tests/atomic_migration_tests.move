@@ -74,13 +74,14 @@ fun single_ptb_sealed_mock_adapter_keeps_principal_and_residuals_in_vault_custod
     mock_adapter(&mut launch, &f.version, &mut currency, f.scenario.ctx());
 
     assert!(!launch.is_live_for_testing() && !launch.is_migration_ready_for_testing());
-    assert!(launch.is_migrated_for_testing() && !launch.is_migrating_for_testing());
+    assert!(launch.is_migrated_for_testing());
     let (_, quote_after, _, allocated_after) = launch.balances_for_testing();
     assert_eq!(quote_after, 0);
     assert_eq!(allocated_after, 0);
-    assert_eq!(events::collect<events::Migrated>().length(), 1);
+    // Blast's zero allocation and the creator's are both reported.
+    assert_eq!(collect<events::MigrationAllocationPaid>().length(), 2);
+    assert_eq!(collect<events::Migrated>().length(), 1);
     assert_eq!(event::events_by_type<blast_events::VaultCreated>().length(), 1);
-    assert_eq!(events::collect<events::MigrationAllocationPaid>().length(), 1);
 
     let fee_split = launch.lp_fee_split();
     test_scenario::return_shared(launch);
@@ -266,10 +267,10 @@ fun start(): Fixture {
     let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
     let admin = authority.sign_in(&admin_cap);
     let mut config = scenario.take_shared<LaunchConfig>();
-    config.allow_quote<QUOTE>(&version, &admin, 5_000_000);
-    config.allow_migration_witness<Venue>(&version, &admin);
+    config.set_quote<QUOTE>(&version, &admin, 5_000_000);
+    config.set_migration_witness_allowed<Venue>(&version, &admin, true);
     config.set_trade_fees(&version, &admin, bps::new(100), bps::new(100));
-    config.set_protocol_allocation(&version, &admin, 1, ADMIN, bps::new(0), bps::new(0));
+    config.set_protocol_allocation(&version, &admin, ADMIN, bps::new(0), bps::new(0));
     let launch_id = share_launch(&mut scenario, &version, &config, &clock);
     test_scenario::return_shared(config);
 
@@ -318,20 +319,11 @@ fun share_launch(
     );
     initializer.set_graduation_target(TARGET);
     initializer.set_allocation_plan(
-        allocation::new(
-            vector[
-                allocation::channel(2, allocation::liquidity_role(), CREATOR),
-                allocation::channel(3, allocation::external_role(), CREATOR),
-            ],
-            vector[
-                allocation::weight(0, bps::new(7_000)),
-                allocation::weight(2, bps::new(2_000)),
-                allocation::weight(3, bps::new(1_000)),
-            ],
-            vector[
-                allocation::weight(2, bps::new(9_000)),
-                allocation::weight(3, bps::new(1_000)),
-            ],
+        allocation::plan(
+            bps::new(7_000),
+            bps::new(2_000),
+            bps::new(9_000),
+            vector[allocation::recipient(CREATOR, bps::new(1_000), bps::new(1_000))],
         ),
     );
     initializer.set_lp_fee_split(creator_split());
@@ -359,6 +351,11 @@ fun take_launch(f: &Fixture): Launch<ATOMIC_MIGRATION_TESTS, QUOTE> {
 
 fun take_currency(f: &Fixture): Currency<ATOMIC_MIGRATION_TESTS> {
     f.scenario.take_from_address(COIN_REGISTRY)
+}
+
+/// Payloads of each `T` this transaction emitted inside the launchpad envelope.
+fun collect<T: copy + drop>(): vector<T> {
+    event::events_by_type<BlastEvent<T>>().map!(|envelope| envelope.unwrap())
 }
 
 /// Everything after Blast's share goes to the creator.
@@ -392,6 +389,7 @@ use blast_admin::acl::{Self, Authority, AdminCap};
 
 use blast_fun::{
     allocation::{Self, FeeSplit},
+    blast_events::Event as BlastEvent,
     blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
     bps,
     creator_authority,

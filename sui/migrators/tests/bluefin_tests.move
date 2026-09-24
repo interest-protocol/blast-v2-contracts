@@ -181,9 +181,9 @@ fun start(): BluefinFixture {
     scenario.next_tx(ADMIN);
     let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
     let admin = authority.sign_in(&admin_cap);
-    config.allow_quote<QUOTE>(&version, &admin, 5_000_000);
+    config.set_quote<QUOTE>(&version, &admin, 5_000_000);
     config.set_trade_fees(&version, &admin, bps::new(100), bps::new(100));
-    config.set_protocol_allocation(&version, &admin, 1, ADMIN, bps::new(0), bps::new(0));
+    config.set_protocol_allocation(&version, &admin, ADMIN, bps::new(0), bps::new(0));
 
     BluefinFixture {
         scenario,
@@ -215,7 +215,7 @@ fun start_rejected_tier(tick_spacing: u32, fee_rate: u64) {
 
 fun admit_bluefin(f: &mut BluefinFixture) {
     let admin = f.authority.sign_in(&f.admin_cap);
-    f.config.allow_migration_witness<bluefin::Witness>(&f.version, &admin);
+    f.config.set_migration_witness_allowed<bluefin::Witness>(&f.version, &admin, true);
 }
 
 fun new_ticket(f: &mut BluefinFixture): LaunchTicket<BLUEFIN_TESTS> {
@@ -253,11 +253,7 @@ fun open_launch(
     );
     initializer.set_graduation_target(TARGET);
     initializer.set_allocation_plan(
-        allocation::new(
-            vector[allocation::channel(2, allocation::liquidity_role(), CREATOR)],
-            vector[allocation::weight(0, bps::new(8_000)), allocation::weight(2, bps::new(2_000))],
-            vector[allocation::weight(2, bps::new(10_000))],
-        ),
+        allocation::plan(bps::new(8_000), bps::new(2_000), bps::new(10_000), vector[]),
     );
     initializer.set_lp_fee_split(
         allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), vector[]),
