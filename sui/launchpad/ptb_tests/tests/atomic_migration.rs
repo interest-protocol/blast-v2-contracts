@@ -386,7 +386,6 @@ struct LaunchCreated {
     _quote_fee_bps: u64,
     _meme_fee_bps: u64,
     allocation_plan: AllocationPlan,
-    _public_start_ms: u64,
     opening_round_ms: u64,
 }
 
@@ -609,7 +608,7 @@ impl World {
     }
 
     /// One PTB that starts `ticket`'s launch through the adapter, sets the graduation target, the
-    /// allocation plan, `fee_split`, and any opening round, then finalizes it, which shares it.
+    /// allocation plan, `fee_split`, and any opening round, then finalizes and shares it.
     fn create_launch(
         &self,
         ticket: ObjectID,
@@ -648,8 +647,10 @@ impl World {
             ]);
         }
         let currency = builder.obj(self.h.shared(currency, true))?;
+        let launch =
+            call(&mut builder, self.blast, "launch", "finalize", pair.clone(), vec![initializer, currency, config]);
         let clock = builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?;
-        call(&mut builder, self.blast, "launch", "finalize", pair, vec![initializer, currency, config, clock]);
+        call(&mut builder, self.blast, "launch", "share", pair, vec![launch, clock]);
 
         Ok(builder.finish())
     }
@@ -684,7 +685,7 @@ impl World {
         created.assert_success();
         assert_eq!(
             created.wrapped_payloads(self.blast),
-            ["LaunchCreated"],
+            ["LaunchCreated", "LaunchShared"],
         );
         let launch = created.created(&self.h, "launch", "Launch");
         assert_eq!(launch.len(), 1, "launch::Launch");

@@ -619,7 +619,7 @@ fun start(): RewardsFixture {
         balance::create_for_testing(FUNDED_QUOTE),
         scenario.ctx(),
     );
-    test_scenario::return_shared(launch);
+    destroy(launch);
     destroy(currency);
     destroy(config);
     destroy(version);

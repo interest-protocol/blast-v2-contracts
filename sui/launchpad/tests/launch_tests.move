@@ -103,22 +103,23 @@ fun finalize_snapshots_the_config_and_emits_launch_created() {
     fixture.next_tx!(LAUNCHER, |f| {
         let ticket = f.new_ticket(CREATOR);
         let ticket_id = object::id(&ticket);
-        let mut initializer = f.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
-        initializer.set_virtual_quote(VIRTUAL_QUOTE);
-        initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
-        initializer.set_allocation_plan(default_plan());
-        initializer.set_lp_fee_split(default_fee_split());
-        f.finalize_launch(initializer);
-        let created = bcs::to_bytes(&collect_one<events::LaunchCreated>());
-        let launch = f.take_created<TEST_QUOTE>();
+        let launch = f.intake<TEST_QUOTE, _>(
+            ticket,
+            TEST_MIGRATION_WITNESS(),
+            MIGRATION_QUOTE_TARGET,
+            default_plan(),
+        );
 
-        assert_eq!(created, launch_created_bytes(object::id(&launch), ticket_id));
+        assert_eq!(
+            bcs::to_bytes(&collect_one<events::LaunchCreated>()),
+            launch_created_bytes(object::id(&launch), ticket_id),
+        );
         assert_eq!(launch.sell_burn_bps_for_testing(), SELL_BURN_BPS);
         assert_eq!(launch.atomic_supply_for_testing(), INITIAL_MEME_SUPPLY);
         launch.assert_lifecycle(true, false, false);
         launch.assert_snapshot();
 
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -147,7 +148,7 @@ fun burn_only_ticket_keeps_supply_mode_authoritative_in_coin_registry() {
         );
         launch.assert_snapshot();
 
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.next_tx!(LAUNCHER, |f| {
@@ -175,7 +176,7 @@ fun launch_snapshot_does_not_follow_later_config_updates() {
 
         launch.assert_snapshot();
 
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -193,7 +194,7 @@ fun launch_stores_the_creator_post_migration_settings_unchanged() {
         assert_eq!(fee_rate, POOL_FEE_RATE);
         assert_eq!(launch.lp_fee_split(), default_fee_split());
 
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -220,13 +221,12 @@ fun later_setter_calls_replace_earlier_settings() {
         initializer.set_allocation_plan(default_plan());
         initializer.set_lp_fee_split(default_fee_split());
         initializer.set_lp_fee_split(routes);
-        f.finalize_launch(initializer);
-        let launch = f.take_created<TEST_QUOTE>();
+        let launch = f.finalize_launch(initializer);
 
         launch.assert_snapshot();
         assert_eq!(launch.lp_fee_split(), routes);
 
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -243,7 +243,7 @@ fun finalize_requires_a_graduation_target() {
         initializer.set_allocation_plan(default_plan());
         initializer.set_lp_fee_split(default_fee_split());
 
-        f.finalize_launch(initializer);
+        destroy(f.finalize_launch(initializer));
     });
 
     fixture.end();
@@ -260,7 +260,7 @@ fun finalize_requires_a_virtual_quote() {
         initializer.set_allocation_plan(default_plan());
         initializer.set_lp_fee_split(default_fee_split());
 
-        f.finalize_launch(initializer);
+        destroy(f.finalize_launch(initializer));
     });
 
     fixture.end();
@@ -278,7 +278,7 @@ fun finalize_rejects_a_zero_virtual_quote() {
         initializer.set_allocation_plan(default_plan());
         initializer.set_lp_fee_split(default_fee_split());
 
-        f.finalize_launch(initializer);
+        destroy(f.finalize_launch(initializer));
     });
 
     fixture.end();
@@ -295,12 +295,11 @@ fun the_creator_picks_the_virtual_quote() {
         initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
         initializer.set_allocation_plan(default_plan());
         initializer.set_lp_fee_split(default_fee_split());
-        f.finalize_launch(initializer);
-        let launch = f.take_created<TEST_QUOTE>();
+        let launch = f.finalize_launch(initializer);
 
         assert_eq!(launch.virtual_quote_for_testing(), 1);
 
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -317,7 +316,7 @@ fun finalize_requires_an_allocation_plan() {
         initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
         initializer.set_lp_fee_split(default_fee_split());
 
-        f.finalize_launch(initializer);
+        destroy(f.finalize_launch(initializer));
     });
 
     fixture.end();
@@ -334,7 +333,7 @@ fun finalize_requires_lp_fee_split() {
         initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
         initializer.set_allocation_plan(default_plan());
 
-        f.finalize_launch(initializer);
+        destroy(f.finalize_launch(initializer));
     });
 
     fixture.end();
@@ -408,7 +407,7 @@ fun launches_choose_their_own_graduation_target() {
 
         assert_eq!(launch.graduation_target_for_testing(), MIGRATION_QUOTE_TARGET * 3);
 
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -424,7 +423,7 @@ fun smallest_target_that_leaves_the_pool_quote_is_accepted() {
 
         assert_eq!(launch.graduation_target_for_testing(), 2);
 
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -700,44 +699,10 @@ fun an_unadmitted_adapter_cannot_start_a_launch() {
     fixture.end();
 }
 
-// --- Creation and first buys ---
+// --- Buys before sharing, and sharing ---
 
 #[test]
-fun finalize_shares_the_launch_and_starts_public_time_at_the_clock() {
-    let mut fixture = start();
-
-    fixture.next_tx!(CREATOR, |f| {
-        f.clock.set_for_testing(250_000);
-        let ticket = f.new_ticket(CREATOR);
-        let mut initializer = f.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
-        initializer.set_virtual_quote(VIRTUAL_QUOTE);
-        initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
-        initializer.set_allocation_plan(default_plan());
-        initializer.set_lp_fee_split(default_fee_split());
-        f.finalize_launch(initializer);
-        let created = bcs::to_bytes(&collect_one<events::LaunchCreated>());
-        let tail = created.length() - 16;
-
-        let mut expected_tail = u64_bytes(250_000);
-        expected_tail.append(u64_bytes(0));
-        assert_eq!(vector::tabulate!(16, |i| created[tail + i]), expected_tail);
-
-        let mut launch = f.take_created<TEST_QUOTE>();
-        let (curve_fee_cap, metadata_cap) = f.claim(&mut launch);
-
-        assert_eq!(launch.opening_round_end_ms_for_testing(), 250_000);
-        launch.assert_lifecycle(true, false, false);
-
-        destroy(curve_fee_cap);
-        destroy(metadata_cap);
-        launch.put_back();
-    });
-
-    fixture.end();
-}
-
-#[test]
-fun first_buy_emits_bought() {
+fun buy_before_share_emits_bought() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
@@ -754,6 +719,7 @@ fun first_buy_emits_bought() {
 
         assert_eq!(meme.value(), net);
         assert_eq!(refund.value(), 0);
+        assert!(launch.public_start_ms_for_testing().is_none());
         launch.assert_lifecycle(true, false, false);
         assert_eq!(
             bcs::to_bytes(&collect_one<events::Bought>()),
@@ -776,16 +742,16 @@ fun first_buy_emits_bought() {
 
         destroy(meme);
         destroy(refund);
-        launch.put_back();
+        f.share_launch(launch);
     });
 
     fixture.end();
 }
 
 #[test]
-/// Two buys stay below the target; the third reaches it, refunds the excess, and closes the curve,
-/// which then migrates.
-fun buys_repeat_until_one_graduates_the_launch() {
+/// Two buys before sharing stay below the target; the third reaches it, refunds the excess, and closes
+/// the curve before the launch is shared. The shared launch then migrates.
+fun buys_before_share_repeat_until_one_graduates_the_launch() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
@@ -805,21 +771,44 @@ fun buys_repeat_until_one_graduates_the_launch() {
         assert_eq!(third_refund.value(), 10_000_000 - 5_252_526);
         launch.assert_lifecycle(false, true, false);
 
+        destroy(vector[first, second, third]);
+        destroy(vector[first_refund, second_refund, third_refund]);
+        f.share_launch(launch);
+    });
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let mut launch = f.take_launch();
         f.migrate(&mut launch);
 
         launch.assert_lifecycle(false, false, true);
 
-        destroy(vector[first, second, third]);
-        destroy(vector[first_refund, second_refund, third_refund]);
         launch.put_back();
     });
 
     fixture.end();
 }
 
+#[test, expected_failure(abort_code = blast_fun::errors::EInvalidLaunchLifecycle, location = blast_fun::launch)]
+fun buy_before_share_after_graduation_is_rejected() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let mut launch = f.new_default_launch(CREATOR);
+        let (meme, refund) = f.buy(&mut launch, 30_000_000, 1);
+        destroy(meme);
+        destroy(refund);
+        let (meme, refund) = f.buy(&mut launch, 1_000_000, 0);
+
+        destroy(meme);
+        destroy(refund);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
 #[test, expected_failure(abort_code = blast_fun::errors::EZeroTradeOutput, location = blast_fun::launch)]
-/// Zero output fails on its own, even when the minimum lets it through.
-fun buy_rejects_zero_input() {
+fun buy_before_share_rejects_zero_input() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
@@ -828,7 +817,83 @@ fun buy_rejects_zero_input() {
 
         destroy(meme);
         destroy(refund);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::ESlippageExceeded, location = blast_fun::launch)]
+fun buy_before_share_enforces_the_minimum_output() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let mut launch = f.new_default_launch(CREATOR);
+        let (meme, refund) = f.buy(&mut launch, 1_000_000, INITIAL_MEME_SUPPLY);
+
+        destroy(meme);
+        destroy(refund);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun share_starts_public_trading_and_emits_launch_shared() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let launch = f.new_default_launch(CREATOR);
+        let launch_id = object::id(&launch);
+        f.clock.set_for_testing(250_000);
+        f.share_launch(launch);
+
+        assert_eq!(
+            bcs::to_bytes(&collect_one<events::LaunchShared>()),
+            u64_payload(launch_id, vector[250_000]),
+        );
+    });
+
+    fixture.next_tx!(CREATOR, |f| {
+        let mut launch = f.take_launch();
+        let (curve_fee_cap, metadata_cap) = f.claim(&mut launch);
+
+        assert_eq!(launch.public_start_ms_for_testing(), option::some(250_000));
+
+        destroy(curve_fee_cap);
+        destroy(metadata_cap);
         launch.put_back();
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EInvalidLaunchLifecycle, location = blast_fun::launch)]
+fun share_rejects_a_second_share() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let launch = f.new_default_launch(CREATOR);
+        let launch = f.open_launch(launch);
+
+        f.share_launch(launch);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EInvalidLaunchLifecycle, location = blast_fun::launch)]
+fun owned_launch_rejects_public_sell_before_zero_input() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let mut launch = f.new_default_launch(CREATOR);
+        let meme = coin::zero<LAUNCH_TESTS>(f.ctx!());
+        let quote = launch.sell(&f.package_version, &f.runtime_config, meme, 0, f.ctx!());
+
+        destroy(quote);
+        destroy(launch);
     });
 
     fixture.end();
@@ -845,7 +910,7 @@ fun buy_checks_the_version_first() {
 
         destroy(meme);
         destroy(refund);
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -860,7 +925,7 @@ fun designated_creator_claims_both_caps() {
 
     fixture.next_tx!(LAUNCHER, |f| {
         let launch = f.new_default_launch(CREATOR);
-        launch.put_back();
+        f.share_launch(launch);
     });
 
     fixture.next_tx!(CREATOR, |f| {
@@ -893,7 +958,8 @@ fun creator_claim_cannot_be_repeated() {
     let mut fixture = start();
 
     fixture.next_tx!(CREATOR, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
         let (curve_fee_cap, metadata_cap) = f.claim(&mut launch);
         destroy(curve_fee_cap);
         destroy(metadata_cap);
@@ -901,7 +967,23 @@ fun creator_claim_cannot_be_repeated() {
 
         destroy(curve_fee_cap);
         destroy(metadata_cap);
-        launch.put_back();
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EInvalidLaunchLifecycle, location = blast_fun::launch)]
+fun creator_claim_waits_for_the_share() {
+    let mut fixture = start();
+
+    fixture.next_tx!(CREATOR, |f| {
+        let mut launch = f.new_default_launch(CREATOR);
+        let (curve_fee_cap, metadata_cap) = f.claim(&mut launch);
+
+        destroy(curve_fee_cap);
+        destroy(metadata_cap);
+        destroy(launch);
     });
 
     fixture.end();
@@ -912,12 +994,13 @@ fun launcher_cannot_claim_another_address_creators_caps() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
         let (curve_fee_cap, metadata_cap) = f.claim(&mut launch);
 
         destroy(curve_fee_cap);
         destroy(metadata_cap);
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -928,13 +1011,14 @@ fun creator_claim_checks_the_version_before_the_sender() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
         f.package_version.set_for_testing(2);
         let (curve_fee_cap, metadata_cap) = f.claim(&mut launch);
 
         destroy(curve_fee_cap);
         destroy(metadata_cap);
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -945,7 +1029,8 @@ fun admin_reassigns_claimed_creator_and_the_new_cap_claims_prior_fees() {
     let mut fixture = start();
 
     fixture.next_tx!(CREATOR, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
         let (curve_fee_cap, metadata_cap) = f.claim(&mut launch);
         let (meme, refund) = f.buy(&mut launch, 10_000_000, 1);
 
@@ -1001,7 +1086,8 @@ fun retired_creator_cap_is_rejected_before_the_empty_fee_ledger_check() {
     let mut fixture = start();
 
     fixture.next_tx!(CREATOR, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
         let (curve_fee_cap, metadata_cap) = f.claim(&mut launch);
         let admin_witness = f.sign_in();
 
@@ -1016,7 +1102,7 @@ fun retired_creator_cap_is_rejected_before_the_empty_fee_ledger_check() {
         destroy(metadata_cap);
         destroy(meme_fees);
         destroy(quote_fees);
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -1027,7 +1113,8 @@ fun admin_reassigns_an_unclaimed_creator_and_removes_the_pending_claim() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
         let admin_witness = f.sign_in();
 
         launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
@@ -1052,7 +1139,8 @@ fun reassignment_prevents_the_original_recipient_from_claiming() {
     let mut fixture = start();
 
     fixture.next_tx!(CREATOR, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
         let admin_witness = f.sign_in();
 
         launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
@@ -1060,7 +1148,7 @@ fun reassignment_prevents_the_original_recipient_from_claiming() {
 
         destroy(curve_fee_cap);
         destroy(metadata_cap);
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -1071,12 +1159,13 @@ fun reassignment_rejects_the_zero_recipient() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
         let admin_witness = f.sign_in();
 
         launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, @0x0, f.ctx!());
 
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -1087,7 +1176,8 @@ fun reassignment_requires_the_creator_admin_role() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
         let (authority, admin_cap) = f.new_role_less_admin();
         let admin_witness = authority.sign_in(&admin_cap);
 
@@ -1095,7 +1185,7 @@ fun reassignment_requires_the_creator_admin_role() {
 
         destroy(authority);
         destroy(admin_cap);
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -1107,7 +1197,7 @@ fun metadata_cap_holder_updates_coin_metadata_through_the_launch() {
 
     fixture.next_tx!(CREATOR, |f| {
         let launch = f.new_default_launch(CREATOR);
-        launch.put_back();
+        f.share_launch(launch);
     });
 
     fixture.next_tx!(CREATOR, |f| {
@@ -1162,7 +1252,7 @@ fun metadata_update_rejects_the_current_value() {
 
     fixture.next_tx!(CREATOR, |f| {
         let launch = f.new_default_launch(CREATOR);
-        launch.put_back();
+        f.share_launch(launch);
     });
 
     fixture.next_tx!(CREATOR, |f| {
@@ -1192,7 +1282,7 @@ fun retired_metadata_cap_is_rejected_before_unchanged_metadata() {
 
     fixture.next_tx!(CREATOR, |f| {
         let launch = f.new_default_launch(CREATOR);
-        launch.put_back();
+        f.share_launch(launch);
     });
 
     fixture.next_tx!(CREATOR, |f| {
@@ -1223,13 +1313,14 @@ fun holders_destroy_curve_fee_and_metadata_capabilities() {
     let mut fixture = start();
 
     fixture.next_tx!(CREATOR, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
         let (curve_fee_cap, metadata_cap) = f.claim(&mut launch);
 
         curve_fee_cap.destroy_curve_fee_cap();
         metadata_cap.destroy_metadata_cap();
 
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -1242,7 +1333,8 @@ fun buy_and_sell_move_exact_coins_accounting_and_payloads() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let mut launch = f.new_default_launch(LAUNCHER);
+        let launch = f.new_default_launch(LAUNCHER);
+        let mut launch = f.open_launch(launch);
         let launch_id = object::id(&launch);
         let (curve_fee_cap, metadata_cap) = f.claim(&mut launch);
         let (quote_fee, meme_out_gross, meme_fee, meme_out_net) = curve::quote_buy(
@@ -1349,7 +1441,7 @@ fun buy_and_sell_move_exact_coins_accounting_and_payloads() {
         destroy(quote_out);
         destroy(meme_fees);
         destroy(quote_fees);
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -1360,7 +1452,8 @@ fun graduating_buy_refunds_the_excess_and_closes_the_curve() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
         let (meme, refund) = f.buy(&mut launch, 30_000_000, 1);
         let quote_in = 30_000_000 - refund.value();
         let (quote_fee, meme_out_gross, meme_fee, meme_out_net) = curve::quote_buy(
@@ -1399,7 +1492,7 @@ fun graduating_buy_refunds_the_excess_and_closes_the_curve() {
 
         destroy(meme);
         destroy(refund);
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -1412,7 +1505,8 @@ fun zero_launch_trade_fees_sell_all_bought_meme_without_fee_balances() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
         f.config.set_trade_fees(&f.package_version, &admin_witness, bps::new(0), bps::new(0));
-        let mut launch = f.new_default_launch(CREATOR);
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
         let (meme, refund) = f.buy(&mut launch, 10_000_000, 1);
         let quote_out = launch.sell(&f.package_version, &f.runtime_config, meme, 1, f.ctx!());
         let (protocol_meme, creator_meme, protocol_quote, creator_quote) = launch
@@ -1423,7 +1517,7 @@ fun zero_launch_trade_fees_sell_all_bought_meme_without_fee_balances() {
 
         destroy(refund);
         destroy(quote_out);
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -1438,7 +1532,8 @@ fun live_protocol_share_routes_and_claims_launch_trade_fees() {
         f
             .runtime_config
             .set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(2_500));
-        let mut launch = f.new_default_launch(CREATOR);
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
         let (meme, refund) = f.buy(&mut launch, 10_000_000, 1);
         let (protocol_meme, creator_meme, protocol_quote, creator_quote) = launch
             .fee_totals_for_testing();
@@ -1465,7 +1560,7 @@ fun live_protocol_share_routes_and_claims_launch_trade_fees() {
         destroy(refund);
         destroy(meme_fees);
         destroy(quote_fees);
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -1476,7 +1571,8 @@ fun buy_rejects_minimum_above_exact_returned_coin() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
         let (_, _, _, meme_out_net) = curve::quote_buy(
             EXPECTED_CURVE_MEME,
             0,
@@ -1489,7 +1585,7 @@ fun buy_rejects_minimum_above_exact_returned_coin() {
 
         destroy(meme);
         destroy(refund);
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -1500,7 +1596,8 @@ fun sell_rejects_minimum_above_exact_returned_coin() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
         let (meme, refund) = f.buy(&mut launch, 10_000_000, 1);
         let (meme_reserve, real_quote, _, _) = launch.balances_for_testing();
         let (_, _, _, _, quote_out_net) = curve::quote_sell(
@@ -1522,7 +1619,7 @@ fun sell_rejects_minimum_above_exact_returned_coin() {
 
         destroy(refund);
         destroy(quote);
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -1533,12 +1630,13 @@ fun public_buy_checks_zero_output_before_slippage() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
         let (meme, refund) = f.buy(&mut launch, 0, std::u64::max_value!());
 
         destroy(meme);
         destroy(refund);
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -1549,13 +1647,14 @@ fun threshold_crossing_buy_closes_sell_before_curve_validation() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
         let (meme, refund) = f.buy(&mut launch, 30_000_000, 1);
         let quote = launch.sell(&f.package_version, &f.runtime_config, meme, 0, f.ctx!());
 
         destroy(refund);
         destroy(quote);
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -1566,13 +1665,14 @@ fun threshold_crossing_buy_closes_another_buy_before_curve_validation() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
         f.graduate(&mut launch);
         let (meme, refund) = f.buy(&mut launch, 0, 0);
 
         destroy(meme);
         destroy(refund);
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -1593,7 +1693,7 @@ fun migration_pays_every_recipient_blast_first() {
         assert_eq!(curve, 700_000_000__000_000_000);
         assert_eq!(allocated, INITIAL_MEME_SUPPLY - curve);
 
-        launch.put_back();
+        f.share_launch(launch);
     });
 
     fixture.next_tx!(LAUNCHER, |f| {
@@ -1664,7 +1764,7 @@ fun migration_apportions_by_largest_remainder_and_conserves_both_assets() {
             ],
         );
         let launch = f.new_launch_with(25_000_007, plan);
-        launch.put_back();
+        f.share_launch(launch);
     });
 
     fixture.next_tx!(LAUNCHER, |f| {
@@ -1722,7 +1822,7 @@ fun migration_pays_sixteen_recipients() {
 
     fixture.next_tx!(LAUNCHER, |f| {
         let launch = f.new_launch_with(MIGRATION_QUOTE_TARGET, recipients_plan(15));
-        launch.put_back();
+        f.share_launch(launch);
     });
 
     fixture.next_tx!(LAUNCHER, |f| {
@@ -1747,7 +1847,7 @@ fun fixed_supply_migration_sends_the_disposal_to_zero() {
 
     fixture.next_tx!(LAUNCHER, |f| {
         let launch = f.new_default_launch(CREATOR);
-        launch.put_back();
+        f.share_launch(launch);
     });
 
     fixture.next_tx!(LAUNCHER, |f| {
@@ -1795,7 +1895,7 @@ fun burn_only_migration_burns_the_disposal_from_native_supply() {
             MIGRATION_QUOTE_TARGET,
             default_plan(),
         );
-        launch.put_back();
+        f.share_launch(launch);
     });
 
     fixture.next_tx!(LAUNCHER, |f| {
@@ -1831,7 +1931,8 @@ fun migration_rejects_a_live_launch_before_witness_validation() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
         let mut currency = f.take_currency();
         let (meme, quote) = launch.migrate(
             &f.package_version,
@@ -1843,7 +1944,7 @@ fun migration_rejects_a_live_launch_before_witness_validation() {
         destroy(meme);
         destroy(quote);
         destroy(currency);
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -1854,7 +1955,8 @@ fun migration_cannot_be_repeated() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
         f.graduate(&mut launch);
         let mut currency = f.take_currency();
         let (meme, quote) = launch.migrate(
@@ -1875,7 +1977,7 @@ fun migration_cannot_be_repeated() {
         destroy(meme);
         destroy(quote);
         destroy(currency);
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -1886,7 +1988,8 @@ fun migration_rejects_a_witness_type_not_stored_at_launch() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
         f.graduate(&mut launch);
         let mut currency = f.take_currency();
         let (meme, quote) = launch.migrate(
@@ -1899,7 +2002,7 @@ fun migration_rejects_a_witness_type_not_stored_at_launch() {
         destroy(meme);
         destroy(quote);
         destroy(currency);
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -1910,7 +2013,8 @@ fun stale_package_version_aborts_migration_before_lifecycle_and_witness_validati
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let mut launch = f.new_default_launch(CREATOR);
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
         f.package_version.set_for_testing(2);
         let mut currency = f.take_currency();
         let (meme, quote) = launch.migrate(
@@ -1923,7 +2027,7 @@ fun stale_package_version_aborts_migration_before_lifecycle_and_witness_validati
         destroy(meme);
         destroy(quote);
         destroy(currency);
-        launch.put_back();
+        destroy(launch);
     });
 
     fixture.end();
@@ -2162,11 +2266,10 @@ fun launch_intake<Quote, MigrationWitness: drop>(
     initializer.set_graduation_target(target);
     initializer.set_allocation_plan(plan);
     initializer.set_lp_fee_split(default_fee_split());
-    self.finalize_launch(initializer);
-    self.take_created()
+    self.finalize_launch(initializer)
 }
 
-/// A launch for `creator` with the default target and plan, taken in the next transaction.
+/// An unshared launch for `creator` with the default target and plan.
 fun new_default_launch(
     self: &mut LaunchFixture,
     creator: address,
@@ -2175,7 +2278,7 @@ fun new_default_launch(
     self.intake(ticket, TEST_MIGRATION_WITNESS(), MIGRATION_QUOTE_TARGET, default_plan())
 }
 
-/// A launch for `CREATOR` with this target and plan, taken in the next transaction.
+/// An unshared launch for `CREATOR` with this target and plan.
 fun launch_new_launch_with(
     self: &mut LaunchFixture,
     target: u64,
@@ -2204,21 +2307,16 @@ fun launch_start<Quote, MigrationWitness: drop>(
     )
 }
 
-/// Finalizes construction against the registered currency, which shares the launch.
+/// Finalizes construction against the registered currency.
 fun launch_finalize<Quote>(
     self: &mut LaunchFixture,
     initializer: LaunchInitializer<LAUNCH_TESTS, Quote>,
-) {
+): Launch<LAUNCH_TESTS, Quote> {
     let mut currency = self.take_currency();
-    initializer.finalize(&mut currency, &self.config, &self.clock, self.scenario.ctx());
+    let launch = initializer.finalize(&mut currency, &self.config, self.scenario.ctx());
     test_scenario::return_to_address(COIN_REGISTRY, currency);
-}
 
-/// Takes the launch finalization shared, in the next transaction from the same sender.
-fun launch_take_created<Quote>(self: &mut LaunchFixture): Launch<LAUNCH_TESTS, Quote> {
-    let sender = self.scenario.sender();
-    self.scenario.next_tx(sender);
-    self.scenario.take_shared()
+    launch
 }
 
 /// Mints one extra unit through the lent treasury cap, then finalizes.
@@ -2232,7 +2330,22 @@ fun launch_mint_extra_supply_and_finalize(
     initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
     initializer.set_allocation_plan(default_plan());
     initializer.set_lp_fee_split(default_fee_split());
-    self.finalize_launch(initializer);
+    destroy(self.finalize_launch(initializer));
+}
+
+fun share_launch(self: &LaunchFixture, launch: Launch<LAUNCH_TESTS, TEST_QUOTE>) {
+    launch.share(&self.clock);
+}
+
+/// Shares the launch and takes it back in the next transaction from the same sender.
+fun open_launch(
+    self: &mut LaunchFixture,
+    launch: Launch<LAUNCH_TESTS, TEST_QUOTE>,
+): Launch<LAUNCH_TESTS, TEST_QUOTE> {
+    let sender = self.scenario.ctx().sender();
+    self.share_launch(launch);
+    self.scenario.next_tx(sender);
+    self.take_launch()
 }
 
 // --- Trading ---
@@ -2415,8 +2528,8 @@ fun ticket_created_bytes(ticket_id: ID, metadata_cap_id: ID, burnable: bool): ve
     expected
 }
 
-/// Expected `LaunchCreated` bytes for the fixture's cold policy, public from time zero without an
-/// opening round, with Blast first.
+/// Expected `LaunchCreated` bytes for the fixture's cold policy, without an opening round, with Blast
+/// first.
 fun launch_created_bytes(launch_id: ID, ticket_id: ID): vector<u8> {
     let pool_tick_spacing = POOL_TICK_SPACING;
     let mut expected = bcs::to_bytes(&launch_id);
@@ -2431,7 +2544,6 @@ fun launch_created_bytes(launch_id: ID, ticket_id: ID): vector<u8> {
     expected.append(u64_bytes(QUOTE_FEE_BPS));
     expected.append(u64_bytes(MEME_FEE_BPS));
     expected.append(bcs::to_bytes(&default_plan_with_blast()));
-    expected.append(u64_bytes(0));
     expected.append(u64_bytes(0));
     expected
 }
@@ -2525,8 +2637,6 @@ use fun launch_new_launch_with as LaunchFixture.new_launch_with;
 use fun launch_start as LaunchFixture.start_launch;
 
 use fun launch_finalize as LaunchFixture.finalize_launch;
-
-use fun launch_take_created as LaunchFixture.take_created;
 
 use fun launch_mint_extra_supply_and_finalize as LaunchFixture.mint_extra_supply_and_finalize;
 

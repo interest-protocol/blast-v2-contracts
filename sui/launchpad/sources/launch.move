@@ -20,13 +20,14 @@ public struct OpeningRoundBidKey(address) has copy, drop, store;
 
 /// One launch: its curve, its settings, and custody until migration.
 ///
-/// A launch with an opening round starts in `OpeningRound`. Until `opening_round_end_ms`, Quote
-/// joins one pot and nothing trades; settling buys from the curve once with the whole pot, and each
-/// bidder is delivered its pro-rata share of the Meme bought and of any Quote refunded.
+/// A launch with an opening round starts in `OpeningRound`. Until `opening_round_ms` after share,
+/// Quote joins one pot and nothing trades; settling buys from the curve once with the whole pot, and
+/// each bidder is delivered its pro-rata share of the Meme bought and of any Quote refunded.
 public struct Launch<phantom Meme, phantom Quote> has key {
     id: UID,
     lifecycle: Lifecycle,
-    opening_round_end_ms: u64,
+    public_start_ms: Option<u64>,
+    opening_round_ms: u64,
     /// Total Quote of the opening-round bids not yet delivered.
     opening_round_bids: u64,
     /// The pot until settlement, then the Quote it left to refund.
@@ -150,8 +151,8 @@ public fun set_lp_fee_split<Meme, Quote>(
     self.lp_fee_split = option::some(lp_fee_split);
 }
 
-/// Sets how long the opening round runs after creation, within the protocol's bounds. Zero, the
-/// default, has no opening round: trading starts at creation.
+/// Sets how long the opening round runs after share, within the protocol's bounds. Zero, the
+/// default, has no opening round: trading starts at share.
 public fun set_opening_round<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,
     opening_round_ms: u64,
@@ -160,16 +161,14 @@ public fun set_opening_round<Meme, Quote>(
 }
 
 /// Checks every setting, adds Blast's allocation to the plan, fixes the canonical supply in the
-/// Coin Registry, splits the Meme into the curve reserve and the migration allocations, and shares
-/// the launch. Public time starts now: trading, or the opening round. The initializer cannot leave
-/// the transaction whose `new` checked the package version.
+/// Coin Registry, and splits the Meme into the curve reserve and the migration allocations. The
+/// initializer cannot leave the transaction whose `new` checked the package version.
 public fun finalize<Meme, Quote>(
     self: LaunchInitializer<Meme, Quote>,
     currency: &mut Currency<Meme>,
     config: &LaunchConfig,
-    clock: &Clock,
     ctx: &mut TxContext,
-) {
+): Launch<Meme, Quote> {
     let LaunchInitializer {
         ticket,
         migration_witness,
@@ -205,12 +204,12 @@ public fun finalize<Meme, Quote>(
     let atomic_supply = launch_ticket::atomic_supply(ticket.decimals());
     let (curve_meme, _, _) = allocation_plan.apportion_meme(atomic_supply);
     let (mut meme, metadata_cap, creator, sell_burn_bps) = ticket.destroy(currency, atomic_supply);
-    let public_start_ms = clock.timestamp_ms();
 
-    let launch = Launch<Meme, Quote> {
+    let launch = Launch {
         id: object::new(ctx),
         lifecycle: if (opening_round_ms == 0) Lifecycle::Live else Lifecycle::OpeningRound,
-        opening_round_end_ms: public_start_ms + opening_round_ms,
+        public_start_ms: option::none(),
+        opening_round_ms,
         opening_round_bids: 0,
         opening_round_quote: balance::zero(),
         opening_round_meme: balance::zero(),
@@ -248,11 +247,23 @@ public fun finalize<Meme, Quote>(
         launch.quote_fee_bps.value(),
         launch.meme_fee_bps.value(),
         launch.allocation_plan,
-        public_start_ms,
-        opening_round_ms,
+        launch.opening_round_ms,
     );
 
-    transfer::share_object(launch);
+    launch
+}
+
+/// Shares the launch. Public time starts now: trading, or the opening round, which ends
+/// `opening_round_ms` later.
+public fun share<Meme, Quote>(mut self: Launch<Meme, Quote>, clock: &Clock) {
+    assert!(self.public_start_ms.is_none(), blast_fun::errors::invalid_launch_lifecycle!());
+
+    let public_start_ms = clock.timestamp_ms();
+    self.public_start_ms = option::some(public_start_ms);
+
+    events::launch_shared(self.id.to_inner(), public_start_ms);
+
+    transfer::share_object(self);
 }
 
 /// Returns the creator's `(tick_spacing, fee_rate)` pool tier, in the adapter's venue units.
@@ -274,6 +285,7 @@ public fun claim_creator_caps<Meme, Quote>(
     ctx: &mut TxContext,
 ): (CurveFeeCap<Meme>, BlastMetadataCap<Meme>) {
     package_version.assert_current();
+    assert!(self.public_start_ms.is_some(), blast_fun::errors::invalid_launch_lifecycle!());
 
     let (curve_fee_cap, blast_metadata_cap) = creator_authority::claim_creator_caps<Meme>(
         self.creator.extract(),
@@ -378,7 +390,8 @@ public fun set_icon_url<Meme, Quote>(
     self.emit_metadata_updated(currency);
 }
 
-/// Adds `quote_in` to the sender's opening-round bid.
+/// Adds `quote_in` to the sender's opening-round bid. Before share only the creator's own
+/// transaction can reach the launch, so the creator's bid joins the same pot at the same price.
 public fun join_opening_round<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
@@ -391,10 +404,7 @@ public fun join_opening_round<Meme, Quote>(
         self.lifecycle == Lifecycle::OpeningRound,
         blast_fun::errors::invalid_launch_lifecycle!(),
     );
-    assert!(
-        clock.timestamp_ms() < self.opening_round_end_ms,
-        blast_fun::errors::opening_round_ended!(),
-    );
+    assert!(!self.has_opening_round_ended(clock), blast_fun::errors::opening_round_ended!());
     let quote = quote_in.value();
     assert!(quote > 0, blast_fun::errors::zero_opening_round_bid!());
 
@@ -422,10 +432,7 @@ public fun settle_opening_round<Meme, Quote>(
         self.lifecycle == Lifecycle::OpeningRound,
         blast_fun::errors::invalid_launch_lifecycle!(),
     );
-    assert!(
-        clock.timestamp_ms() >= self.opening_round_end_ms,
-        blast_fun::errors::opening_round_not_ended!(),
-    );
+    assert!(self.has_opening_round_ended(clock), blast_fun::errors::opening_round_not_ended!());
 
     self.lifecycle = Lifecycle::Live;
     let pot = self.opening_round_quote.withdraw_all();
@@ -470,8 +477,8 @@ public fun deliver_opening_round<Meme, Quote>(
     events::opening_round_delivered(self.id.to_inner(), bidder, bid, meme, quote);
 }
 
-/// Buys Meme with Quote; Quote beyond the graduation target is refunded. Trading opens at creation,
-/// or at settlement after an opening round.
+/// Buys Meme with Quote; Quote beyond the graduation target is refunded. Trading opens at share,
+/// or at settlement after an opening round; before share only the creator's transaction can buy.
 public fun buy<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
@@ -503,7 +510,10 @@ public fun sell<Meme, Quote>(
     ctx: &mut TxContext,
 ): Coin<Quote> {
     package_version.assert_current();
-    assert!(self.lifecycle == Lifecycle::Live, blast_fun::errors::invalid_launch_lifecycle!());
+    assert!(
+        self.public_start_ms.is_some() && self.lifecycle == Lifecycle::Live,
+        blast_fun::errors::invalid_launch_lifecycle!(),
+    );
 
     let meme_in_gross = meme_in.value();
     let (
@@ -725,6 +735,13 @@ fun buy_from_curve<Meme, Quote>(
     (meme_out, quote_refund)
 }
 
+/// Whether the opening round has ended; never before share.
+fun has_opening_round_ended<Meme, Quote>(self: &Launch<Meme, Quote>, clock: &Clock): bool {
+    let opening_round_ms = self.opening_round_ms;
+
+    self.public_start_ms.is_some_and!(|start_ms| clock.timestamp_ms() >= *start_ms + opening_round_ms)
+}
+
 // === Test-Only Functions ===
 
 #[test_only]
@@ -803,8 +820,13 @@ public fun fee_totals_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): (u64
 }
 
 #[test_only]
-public fun opening_round_end_ms_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): u64 {
-    self.opening_round_end_ms
+public fun public_start_ms_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): Option<u64> {
+    self.public_start_ms
+}
+
+#[test_only]
+public fun opening_round_ms_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): u64 {
+    self.opening_round_ms
 }
 
 #[test_only]

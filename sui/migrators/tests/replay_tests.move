@@ -8,8 +8,9 @@
 /// starts from the eventless publication state. After every lifecycle step the model must equal
 /// the authoritative getters and object reads, and at the end every destination's native coins.
 /// Launchpad payloads must arrive only inside the `blast_events::Event<T>` envelope; migrator
-/// payloads only directly. The launch opens with an opening round the creator and a bidder join; a
-/// keeper settles it and delivers both shares before a public purchase graduates the curve. After migration the mock adapter collects with auto-LP and burns the
+/// payloads only directly. The launch opens with an opening round the creator joins before share and
+/// a bidder joins after; a keeper settles it and delivers both shares before a public purchase
+/// graduates the curve. After migration the mock adapter collects with auto-LP and burns the
 /// burn share's Meme, the creator settles a fee-split update and claims the creator balance, a
 /// buyback admin burns Meme bought with the burn Quote, Blast's live share changes between
 /// collections, and a holder-reward round is published and claimed.
@@ -281,8 +282,7 @@ fun replayed_events_equal_every_getter_and_native_payout_across_the_lifecycle() 
     fixture.assert_state();
     fixture.create_launch();
     fixture.assert_state();
-    fixture.join_opening_round(LAUNCHER, CREATOR_BID);
-    fixture.join_opening_round(BIDDER, BIDDER_BID);
+    fixture.join_opening_round();
     fixture.assert_state();
     fixture.settle_opening_round();
     fixture.assert_state();
@@ -419,8 +419,8 @@ fun configure_policy(self: &mut ReplayFixture) {
     });
 }
 
-/// Mints the ticket, then starts, configures, and finalizes the launch with an opening round, which
-/// shares it.
+/// Mints the ticket, then starts and configures the launch with an opening round, joins it as the
+/// creator, and shares it.
 fun create_launch(self: &mut ReplayFixture) {
     let ticket;
     self.next_tx!(LAUNCHER, |f| {
@@ -453,20 +453,27 @@ fun create_launch(self: &mut ReplayFixture) {
         initializer.set_allocation_plan(plan());
         initializer.set_lp_fee_split(first_split());
         initializer.set_opening_round(OPENING_ROUND_MS);
-        initializer.finalize(&mut currency, &config, &f.clock, f.ctx!());
+        let mut launch = initializer.finalize(&mut currency, &config, f.ctx!());
+        launch.join_opening_round(
+            &f.version,
+            coin::mint_for_testing<QUOTE>(CREATOR_BID, f.ctx!()),
+            &f.clock,
+            f.ctx!(),
+        );
+        launch.share(&f.clock);
 
         test_scenario::return_to_address(COIN_REGISTRY, currency);
         test_scenario::return_shared(config);
     });
 }
 
-/// `bidder` joins the launch's opening round with `quote`.
-fun join_opening_round(self: &mut ReplayFixture, bidder: address, quote: u64) {
-    self.next_tx!(bidder, |f| {
+/// A public bidder joins the shared launch's opening round.
+fun join_opening_round(self: &mut ReplayFixture) {
+    self.next_tx!(BIDDER, |f| {
         let mut launch = f.take_launch();
         launch.join_opening_round(
             &f.version,
-            coin::mint_for_testing<QUOTE>(quote, f.ctx!()),
+            coin::mint_for_testing<QUOTE>(BIDDER_BID, f.ctx!()),
             &f.clock,
             f.ctx!(),
         );
@@ -842,6 +849,10 @@ fun reduce_transaction(self: &mut ReplayFixture, sender: address) {
         replay.launch_created(bytes);
         reduced = reduced + 1;
     });
+    wrapped<events::LaunchShared>().do!(|bytes| {
+        replay.launch_shared(bytes);
+        reduced = reduced + 1;
+    });
     wrapped<events::OpeningRoundJoined>().do!(|bytes| {
         replay.opening_round_joined(bytes, sender);
         reduced = reduced + 1;
@@ -1053,7 +1064,6 @@ fun launch_created(self: &mut Replay, bytes: vector<u8>) {
     self.quote_fee_bps = r.peel_u64();
     self.meme_fee_bps = r.peel_u64();
     self.plan = r.peel_plan();
-    self.public_start_ms = option::some(r.peel_u64());
     self.opening_round_ms = r.peel_u64();
     r.assert_consumed();
 
@@ -1065,6 +1075,16 @@ fun launch_created(self: &mut Replay, bytes: vector<u8>) {
     self.lifecycle = if (self.opening_round_ms == 0) LIVE else OPENING_ROUND;
     self.meme_reserve = curve_meme;
     self.allocated_meme = self.atomic_supply - curve_meme;
+}
+
+fun launch_shared(self: &mut Replay, bytes: vector<u8>) {
+    let mut r = bcs::new(bytes);
+    assert_eq!(r.peel_id(), self.launch_id);
+    let public_start_ms = r.peel_u64();
+    r.assert_consumed();
+
+    assert!(self.public_start_ms.is_none());
+    self.public_start_ms = option::some(public_start_ms);
 }
 
 /// A bid adds to the sender's record and to the pot; `bids` is the pot after it.
@@ -1652,10 +1672,8 @@ fun assert_launch(self: &Replay, launch: &Launch<REPLAY_TESTS, QUOTE>, currency:
     assert_eq!(pending_burn, 0);
     assert_eq!(allocated_meme, self.allocated_meme);
     assert_eq!(launch.virtual_quote_for_testing(), self.virtual_quote);
-    assert_eq!(
-        launch.opening_round_end_ms_for_testing(),
-        *self.public_start_ms.borrow() + self.opening_round_ms,
-    );
+    assert_eq!(launch.public_start_ms_for_testing(), self.public_start_ms);
+    assert_eq!(launch.opening_round_ms_for_testing(), self.opening_round_ms);
     let (bids, round_quote, round_meme) = launch.opening_round_for_testing();
     assert_eq!(bids, self.opening_round_bids);
     assert_eq!(round_quote, self.opening_round_quote);
