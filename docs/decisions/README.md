@@ -130,11 +130,12 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0085](0085-explorer-visible-type-naming.md) | Explorer-visible type naming: every on-chain type names Blast | **accepted** |
 | [0086](0086-maintenance-reserve-ceiling.md) | Maintenance reserve ceiling: `max_reserve_bps` of notional, clamped credits, priced-after-release, no admin release | **accepted** |
 | [0087](0087-vault-issuance-activated-in-one-transaction.md) | Vault issuance activated in one transaction: `issue` returns a hot-potato issuance, `initialize` returns the Vault, no optional activation fields | **accepted** |
-| [0088](0088-reusable-launch-accounting-and-atomic-migration.md) | Reusable launch accounting and atomic migration | **accepted; amended by 0089 and 0090; rewritten in place 2026-09-22: push payouts, no digests, venue selection, or type-guaranteed ID bindings, one linear migration value, creator-selected target, one-time-witness Meme; amended the same day: upgradeable migrators, ticket-bound adapter with venue preparation, adapter-supplied pool ID; amended 2026-09-23: Aftermath, MMT, and Turbos adapters removed; venue-operator trust assumptions and the migrators upgrade-policy rule recorded** |
+| [0088](0088-reusable-launch-accounting-and-atomic-migration.md) | Reusable launch accounting and atomic migration | **accepted; amended by 0089, 0090, and 0093; rewritten in place 2026-09-22: push payouts, no digests, venue selection, or type-guaranteed ID bindings, one linear migration value, creator-selected target, one-time-witness Meme; amended the same day: upgradeable migrators, ticket-bound adapter with venue preparation, adapter-supplied pool ID; amended 2026-09-23: Aftermath, MMT, and Turbos adapters removed; venue-operator trust assumptions and the migrators upgrade-policy rule recorded** |
 | [0089](0089-migrators-own-post-migration-and-start-launches.md) | One migrators package owns everything after migration and starts every launch | **accepted; amended by 0090 and 0091** |
-| [0090](0090-minimal-launchpad-surface.md) | A minimal launchpad surface | **accepted; amended by 0092** |
+| [0090](0090-minimal-launchpad-surface.md) | A minimal launchpad surface | **accepted; amended by 0092 and 0093** |
 | [0091](0091-fee-split-buyback-and-burn.md) | A burn part in the LP-fee split, bought back by a buyback administrator | **accepted** |
 | [0092](0092-creator-picks-the-virtual-quote.md) | The creator picks the virtual Quote reserve; launch config only admits Quotes | **accepted** |
+| [0093](0093-optional-opening-round.md) | An optional opening round replaces purchase protection | **accepted** |
 
 ADRs 0013–0035, 0038–0056, 0058–0067, 0069, 0073, 0074, 0076–0080, 0082, and 0085–0089 are accepted subject to the amendments shown above; ADR 0088 supersedes 0036, 0068, 0081, and 0083, and ADR 0089 supersedes 0057 and 0075. ADR 0074 accepts the Aftermath dependency and raw-field normalization while retaining its live evidence gate; ADR 0037 is superseded by 0043, and ADRs 0070–0072 are superseded by 0073. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
@@ -354,8 +355,9 @@ administrator registry plus venue-neutral policy, lifecycle, accounting, and
 state. Runtime product witnesses let one adapter package issue several distinct
 currencies without an adapter root or generic handoff.
 
-ADR 0088 accepts the reusable launch, allocation, protection, Cetus/Bluefin
-custody, atomic migration, and independent fee-router contract. A generated
+ADR 0088 accepts the reusable launch, allocation, protection (since replaced by
+ADR 0093's optional opening round), Cetus/Bluefin custody, atomic migration, and
+independent fee-router contract. A generated
 package creates its currency from its one-time witness at publication (ADR
 0051) and hands the persistable ticket to its publisher, who binds it to one
 admitted migration adapter; the launchpad applies the witness allowlist, the

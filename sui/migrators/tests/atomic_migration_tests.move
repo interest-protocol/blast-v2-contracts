@@ -353,7 +353,7 @@ fun reach_migration(f: &mut Fixture) {
     f.scenario.next_tx(TESTER);
     let mut launch = f.take_launch();
     let quote = coin::mint_for_testing<QUOTE>(30_000_000, f.scenario.ctx());
-    let (meme, refund) = launch.buy(&f.version, &f.runtime, quote, 1, &f.clock, f.scenario.ctx());
+    let (meme, refund) = launch.buy(&f.version, &f.runtime, quote, 1, f.scenario.ctx());
     destroy(meme);
     destroy(refund);
     test_scenario::return_shared(launch);

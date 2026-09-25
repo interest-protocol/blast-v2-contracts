@@ -78,8 +78,8 @@ public struct LaunchTicketCreated has copy, drop {
     sell_burn_bps: u64,
 }
 
-/// A launch was created from `ticket_id` with these settings. Protection limits are the rates
-/// applied to the supply, rounded down.
+/// A launch was created from `ticket_id` with these settings; a zero `opening_round_ms` has no
+/// opening round.
 public struct LaunchCreated has copy, drop {
     launch_id: ID,
     ticket_id: ID,
@@ -93,9 +93,7 @@ public struct LaunchCreated has copy, drop {
     quote_fee_bps: u64,
     meme_fee_bps: u64,
     allocation_plan: AllocationPlan,
-    protection_window_ms: u64,
-    cumulative_sender_bps: u64,
-    per_transaction_bps: u64,
+    opening_round_ms: u64,
 }
 
 public struct LaunchShared has copy, drop {
@@ -103,8 +101,34 @@ public struct LaunchShared has copy, drop {
     public_start_ms: u64,
 }
 
+/// Quote joined a launch's opening round from the sender; `bids` is the pot after it.
+public struct OpeningRoundJoined has copy, drop {
+    launch_id: ID,
+    quote: u64,
+    bids: u64,
+}
+
+/// The opening round closed: its `bids` bought `meme` from the curve, in the same transaction's
+/// `Bought` when there is one, and left `quote` to refund. Both are delivered pro rata.
+public struct OpeningRoundSettled has copy, drop {
+    launch_id: ID,
+    bids: u64,
+    meme: u64,
+    quote: u64,
+}
+
+/// `bidder`'s share of the opening round, for its `bid`, was sent to it.
+public struct OpeningRoundDelivered has copy, drop {
+    launch_id: ID,
+    bidder: address,
+    bid: u64,
+    meme: u64,
+    quote: u64,
+}
+
 /// A curve purchase; reserves are after the purchase. Purchases before `LaunchShared` are the
-/// creator's, made in the transaction that creates the launch.
+/// creator's, made in the transaction that creates the launch; the one beside
+/// `OpeningRoundSettled` is the opening round's pot.
 public struct Bought has copy, drop {
     launch_id: ID,
     quote_in: u64,
@@ -252,9 +276,7 @@ public(package) fun launch_created<Quote>(
     quote_fee_bps: u64,
     meme_fee_bps: u64,
     allocation_plan: AllocationPlan,
-    protection_window_ms: u64,
-    cumulative_sender_bps: u64,
-    per_transaction_bps: u64,
+    opening_round_ms: u64,
 ) {
     emit(LaunchCreated {
         launch_id,
@@ -269,14 +291,30 @@ public(package) fun launch_created<Quote>(
         quote_fee_bps,
         meme_fee_bps,
         allocation_plan,
-        protection_window_ms,
-        cumulative_sender_bps,
-        per_transaction_bps,
+        opening_round_ms,
     });
 }
 
 public(package) fun launch_shared(launch_id: ID, public_start_ms: u64) {
     emit(LaunchShared { launch_id, public_start_ms });
+}
+
+public(package) fun opening_round_joined(launch_id: ID, quote: u64, bids: u64) {
+    emit(OpeningRoundJoined { launch_id, quote, bids });
+}
+
+public(package) fun opening_round_settled(launch_id: ID, bids: u64, meme: u64, quote: u64) {
+    emit(OpeningRoundSettled { launch_id, bids, meme, quote });
+}
+
+public(package) fun opening_round_delivered(
+    launch_id: ID,
+    bidder: address,
+    bid: u64,
+    meme: u64,
+    quote: u64,
+) {
+    emit(OpeningRoundDelivered { launch_id, bidder, bid, meme, quote });
 }
 
 public(package) fun bought(

@@ -46,7 +46,7 @@ without returning to core for its post-conditions.
 | Launch config | a table of admitted Quote types (the creator picks each launch's virtual Quote reserve), mutable generated-Meme decimal admission, Quote/Meme trade-fee rates, one-time protocol allocation policy, and bounded external migrator witness admission that gates which adapter may start a launch | live launch repricing, per-launch project allocation choices, quote currency-registry objects, DEX costs or dependencies, user balances, derived valuations, or hot trade configuration |
 | Registry/config | global limits, other fee ceilings, emergency state | user balances or curve math |
 | Launch ticket | one-time-witness currency creation, exact supply mint, and pre-launch capability custody | adapter binding, decimal policy, trades, metadata updates, or migration |
-| Launch initializer | no-ability construction started by the adapter with its witness and the creator's tier; creator setters for target, plan, LP-fee split, and protection; the adapter-only treasury-capability loan; `finalize` checks every invariant | persistence beyond its transaction or any post-migration behavior |
+| Launch initializer | no-ability construction started by the adapter with its witness and the creator's tier; creator setters for target, plan, LP-fee split, and opening round; the adapter-only treasury-capability loan; `finalize` checks every invariant | persistence beyond its transaction or any post-migration behavior |
 | Launch | key-only top-level shared asset identity, lifecycle, reserves, accounting, transition guards, and the creator's immutable post-migration settings (adapter, pool tier, LP-fee split) | owned transfer, nesting, venue-specific migration code, or any post-migration update |
 | Basis-points unit | universal 0–10,000 rate validation, explicit up/down application, and complement math | domain ceilings, combined-rate policy, authority, storage ownership, or events |
 | Curve math | pure quote and reserve transition formulas | authority, storage, transfers |
@@ -135,7 +135,7 @@ adapter, so nothing is custodied or claimed afterwards.
 Only a regulated Quote whose deny list names a destination can make that
 transfer fail, which strands the launch; the founder accepted that risk.
 `LaunchCreated` carries the complete plan, the pool tier, the LP-fee split,
-and the protection settings, one `MigrationAllocationPaid` records each
+and the opening-round length, one `MigrationAllocationPaid` records each
 payout, the migrators' `VaultCreated` records the vault, pool, and position
 identities with the split, the residuals it keeps, and the position's liquidity,
 and `Migrated` records the handoff and disposal amounts. Each LP-fee collection's `FeesCollected`
@@ -168,7 +168,7 @@ which validates the creator's pool tier against its venue and calls
 with no abilities: only the starting adapter's witness can borrow its treasury
 cap, which the adapter uses to prepare its venue before any Meme can leave the
 launch (the Cetus adapter reserves pool creation). The creator sets the
-graduation target, allocation plan, LP-fee split, and optional protection, and
+graduation target, allocation plan, LP-fee split, and optional opening round, and
 `finalize` checks them all. Because a generated package's initializer cannot
 read launch policy, starting checks the decimals, the Quote, and the adapter
 against the current policy, and finalization checks the Meme symbol against its
@@ -199,15 +199,20 @@ from Coin Registry.
 The common lifecycle is intentionally small:
 
 ```text
-Live -> MigrationReady -> Migrated
+[OpeningRound ->] Live -> MigrationReady -> Migrated
 ```
 
+- `OpeningRound`: only when the creator set one. Bids join one pot, the
+  creator's before share included, until the round's end after share; nothing
+  trades. Anyone then settles it: one curve purchase with the whole pot, whose
+  Meme and refunded Quote anyone may deliver pro rata to each bidder, in any
+  later state.
 - `Live`: the curve accepts buys and sells while enforcing slippage, fee, and
-  reserve rules. Before the launch is shared, its owner may `buy` (without
-  protection); sell-designated burn waits in a pending balance.
-- `MigrationReady`: a buy reached the target, closed trading, and returned
-  excess Quote; a buy before sharing may do this. Only the adapter whose witness the
-  launch stored can migrate it.
+  reserve rules. Without an opening round, the owner may `buy` before the launch
+  is shared; sell-designated burn waits in a pending balance.
+- `MigrationReady`: a buy or the round's settlement reached the target, closed
+  trading, and returned excess Quote; a buy before sharing may do this. Only the
+  adapter whose witness the launch stored can migrate it.
 - `Migrated`: set by the one `migrate` call, which also completes terminal
   disposal.
 
@@ -248,7 +253,7 @@ Any future chain implementation must preserve:
 
 - lifecycle transitions and authorization outcomes;
 - quote, fee, allocation, and migration arithmetic;
-- slippage, deadline, protection, pause, and limit behavior;
+- slippage, deadline, opening-round, pause, and limit behavior;
 - event meaning and reconstructable state;
 - error categories, even when numeric representations differ.
 

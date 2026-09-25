@@ -91,7 +91,7 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
     scenario.next_tx(@0xa);
     let mut market = scenario.take_shared<Launch<QUOTE_COMPOSITION_TESTS, Quote>>();
     let quote = coin::mint_for_testing<Quote>(1_000_000, scenario.ctx());
-    let (meme, refund) = market.buy(&version, &runtime, quote, 1, &clock, scenario.ctx());
+    let (meme, refund) = market.buy(&version, &runtime, quote, 1, scenario.ctx());
     assert!(meme.value() > 0);
     assert_eq!(refund.value(), 0);
     refund.destroy_zero();
@@ -176,7 +176,7 @@ public fun mint_and_buy<Product, Collateral, Meme>(
     let shares = operations::mint(vault, protocol, account, registry, clearing_house,
         base_oracle, collateral_oracle, cash,
         minimum_shares, deadline, clock, ctx);
-    market.buy(version, runtime, shares, minimum_meme, clock, ctx)
+    market.buy(version, runtime, shares, minimum_meme, ctx)
 }
 
 /// Typechecks the atomic launch sell -> redemption handoff without a receipt currency.

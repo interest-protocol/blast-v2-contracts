@@ -1,6 +1,6 @@
-//! Resource measurements for the launch and protection family: the allocation-recipient capacity
-//! boundary, maximum launch creation with terminal share, the purchase before sharing, and first,
-//! later, and expired protected buys.
+//! Resource measurements for the launch and opening-round family: the allocation-recipient capacity
+//! boundary, maximum launch creation with terminal share, the creator's purchase or bid before
+//! sharing, and the first and a later bid, settlement, delivery, and the first buy after it.
 //!
 //! Every Meme comes from the actual `meme_template` source with only its decimals substituted, as
 //! the generator does, at both admitted precisions. Each launch is opened by one PTB composed from
@@ -62,16 +62,12 @@ const CURVE_BPS: u64 = 7_000;
 const POOL_TICK_SPACING: u32 = 60;
 const POOL_FEE_RATE: u64 = 2_500;
 
-/// `launch::set_protection` arguments: window, cumulative BPS, per-transaction BPS. Unprotected
-/// shapes leave protection at its disabled default and skip the call.
-const UNPROTECTED: [u64; 3] = [0, 0, 0];
-const WINDOW_MS: u64 = 60_000;
-const PROTECTED: [u64; 3] = [WINDOW_MS, 100, 50];
-/// Fits both limits twice at either precision.
-const PROTECTED_BUY: u64 = 25_000;
-/// Above both limits; bought at the protection end, where nothing is checked.
-const EXPIRED_BUY: u64 = 80_000;
-/// Far below the graduation target, so the purchase before sharing refunds nothing.
+/// `launch::set_opening_round` argument; zero leaves the launch without one and skips the call.
+const NO_OPENING_ROUND: u64 = 0;
+const OPENING_ROUND_MS: u64 = 60_000;
+/// One public bid, and the purchase after settlement.
+const BID: u64 = 25_000;
+/// Far below the graduation target, so the creator's purchase before sharing refunds nothing.
 const BUY_BEFORE_SHARE: u64 = 1_000_000;
 
 const PROTOCOL: ObjectID = address(&[0xAD]);
@@ -117,8 +113,9 @@ struct Shape {
     plan_recipients: usize,
     fee_recipients: usize,
     target: u64,
-    protection: [u64; 3],
-    buy_before_share: bool,
+    opening_round_ms: u64,
+    /// The creator's purchase before sharing: a curve buy without an opening round, a bid with one.
+    creator_purchase: bool,
 }
 
 impl Shape {
@@ -127,8 +124,8 @@ impl Shape {
             plan_recipients,
             fee_recipients: MAX_FEE_RECIPIENTS,
             target: MAXIMUM_TARGET,
-            protection: PROTECTED,
-            buy_before_share: false,
+            opening_round_ms: OPENING_ROUND_MS,
+            creator_purchase: false,
         }
     }
 }
@@ -169,9 +166,7 @@ struct LaunchCreated {
     _lp_meme_bps: u64,
     _lp_quote_bps: u64,
     plan_recipients: Vec<(SuiAddress, u64, u64)>,
-    _protection_window_ms: u64,
-    _cumulative_sender_bps: u64,
-    _per_transaction_bps: u64,
+    opening_round_ms: u64,
 }
 
 struct World {
@@ -327,18 +322,22 @@ impl World {
             plan_recipients: 1,
             fee_recipients: 0,
             target: TARGET,
-            protection: UNPROTECTED,
-            buy_before_share: false,
+            opening_round_ms: NO_OPENING_ROUND,
+            creator_purchase: false,
         };
         self.open_and_record("smallest_plan_created_and_shared", &ticket, smallest)?;
 
         let ticket = self.publish_template(decimals, None)?;
         let maximum = Shape::maximum(MAX_PLAN_RECIPIENTS);
         let opened = self.open_and_record("maximum_plan_created_and_shared", &ticket, maximum)?;
-        self.protected_buys(decimals, &opened)?;
+        self.opening_round(decimals, &opened)?;
 
         let ticket = self.publish_template(decimals, None)?;
-        self.open_and_record("maximum_plan_buy_before_share", &ticket, Shape { buy_before_share: true, ..maximum })?;
+        let buy_before_share = Shape { opening_round_ms: NO_OPENING_ROUND, creator_purchase: true, ..maximum };
+        self.open_and_record("maximum_plan_buy_before_share", &ticket, buy_before_share)?;
+
+        let ticket = self.publish_template(decimals, None)?;
+        self.open_and_record("maximum_plan_bid_before_share", &ticket, Shape { creator_purchase: true, ..maximum })?;
 
         Ok(())
     }
@@ -403,13 +402,14 @@ impl World {
         let outcome = self.h.execute(self.open(ticket, shape)?)?;
         outcome.assert_success();
         let names: Vec<_> = outcome.events.iter().map(payload_name).collect();
-        let expected: &[&str] = if shape.buy_before_share {
-            &["LaunchCreated", "Bought", "LaunchShared"]
-        } else {
-            &["LaunchCreated", "LaunchShared"]
+        let expected: &[&str] = match (shape.creator_purchase, shape.opening_round_ms) {
+            (false, _) => &["LaunchCreated", "LaunchShared"],
+            (true, NO_OPENING_ROUND) => &["LaunchCreated", "Bought", "LaunchShared"],
+            (true, _) => &["LaunchCreated", "OpeningRoundJoined", "LaunchShared"],
         };
         assert_eq!(names, expected, "{name}");
         let created: LaunchCreated = bcs::from_bytes(&outcome.events[0].contents)?;
+        assert_eq!(created.opening_round_ms, shape.opening_round_ms, "{name}: opening round");
         assert_eq!(created.plan_recipients.len(), shape.plan_recipients, "{name}: plan recipients");
         let [meme_bps, quote_bps] = self.protocol;
         assert_eq!(created.plan_recipients[0], (PROTOCOL.into(), meme_bps, quote_bps), "{name}: Blast first");
@@ -430,35 +430,40 @@ impl World {
         Ok(Opened { meme: ticket.meme.clone(), launch: launch[0] })
     }
 
-    /// The first protected buy creates the sender's launch-owned record, a later one reads and
-    /// raises it, and a buy at the protection end neither checks nor touches it. The launch object
-    /// itself never grows.
-    fn protected_buys(&mut self, decimals: u8, opened: &Opened) -> Result<()> {
+    /// The first bid creates the bidder's launch-owned record and a later one raises it; at the
+    /// end, settlement buys once with the pot, delivery deletes the record, and the curve trades.
+    /// The launch object itself never grows.
+    fn opening_round(&mut self, decimals: u8, opened: &Opened) -> Result<()> {
         let launch_bytes = self.h.contents(opened.launch).len();
         let shape = Some(Shape::maximum(MAX_PLAN_RECIPIENTS));
 
-        let first = self.h.execute(self.buy(opened, PROTECTED_BUY)?)?;
+        let first = self.h.execute(self.join(opened, BID)?)?;
         first.assert_success();
         let records = first.created(&self.h, "dynamic_field", "Field");
-        assert_eq!(records.len(), 1, "the first protected buy creates one sender record");
+        assert_eq!(records.len(), 1, "the first bid creates one bidder record");
         let record = records[0];
         assert_eq!(*self.h.object(record).owner(), Owner::ObjectOwner(opened.launch.into()));
-        self.record("first_protected_buy", decimals, shape, &first);
+        self.record("first_bid", decimals, shape, &first);
 
-        let later = self.h.execute(self.buy(opened, PROTECTED_BUY)?)?;
+        let later = self.h.execute(self.join(opened, BID)?)?;
         later.assert_success();
         assert!(later.created(&self.h, "dynamic_field", "Field").is_empty());
         assert!(later.effects.mutated().iter().any(|(object, _)| object.0 == record));
-        self.record("later_protected_buy", decimals, shape, &later);
+        self.record("later_bid", decimals, shape, &later);
 
-        self.h.sim.advance_clock(Duration::from_millis(WINDOW_MS));
-        let record_bytes = self.h.contents(record);
-        let expired = self.h.execute(self.buy(opened, EXPIRED_BUY)?)?;
-        expired.assert_success();
-        assert!(expired.created(&self.h, "dynamic_field", "Field").is_empty());
-        assert!(expired.effects.mutated().iter().all(|(object, _)| object.0 != record));
-        assert_eq!(self.h.contents(record), record_bytes);
-        self.record("buy_at_protection_end", decimals, shape, &expired);
+        self.h.sim.advance_clock(Duration::from_millis(OPENING_ROUND_MS));
+        let settled = self.h.execute(self.settle(opened)?)?;
+        settled.assert_success();
+        self.record("opening_round_settled", decimals, shape, &settled);
+
+        let delivered = self.h.execute(self.deliver(opened)?)?;
+        delivered.assert_success();
+        assert!(delivered.effects.deleted().iter().any(|(object, _, _)| *object == record));
+        self.record("opening_round_delivered", decimals, shape, &delivered);
+
+        let bought = self.h.execute(self.buy(opened, BID)?)?;
+        bought.assert_success();
+        self.record("buy_after_settlement", decimals, shape, &bought);
 
         assert_eq!(self.h.contents(opened.launch).len(), launch_bytes, "the launch object grew");
 
@@ -466,8 +471,8 @@ impl World {
     }
 
     /// Composes one launch from the public calls: plan and fee split, the adapter's start, the
-    /// settings, finalization, the optional purchase before sharing, delivered to the beneficiary,
-    /// and terminal share.
+    /// settings, finalization, the creator's optional purchase before sharing (a curve buy
+    /// delivered to the beneficiary, or a bid), and terminal share.
     fn open(&self, ticket: &Ticket, shape: Shape) -> Result<ProgrammableTransaction> {
         let mut builder = ProgrammableTransactionBuilder::new();
         let plan = self.plan(&mut builder, shape.plan_recipients)?;
@@ -492,18 +497,15 @@ impl World {
         call(&mut builder, self.blast, "launch", "set_graduation_target", pair.clone(), vec![initializer, target]);
         call(&mut builder, self.blast, "launch", "set_allocation_plan", pair.clone(), vec![initializer, plan]);
         call(&mut builder, self.blast, "launch", "set_lp_fee_split", pair.clone(), vec![initializer, fee_split]);
-        if shape.protection != UNPROTECTED {
-            let [window_ms, cumulative_bps, per_transaction_bps] = shape.protection;
-            let window_ms = builder.pure(window_ms)?;
-            let cumulative_bps = self.bps(&mut builder, cumulative_bps)?;
-            let per_transaction_bps = self.bps(&mut builder, per_transaction_bps)?;
+        if shape.opening_round_ms != NO_OPENING_ROUND {
+            let opening_round_ms = builder.pure(shape.opening_round_ms)?;
             call(
                 &mut builder,
                 self.blast,
                 "launch",
-                "set_protection",
+                "set_opening_round",
                 pair.clone(),
-                vec![initializer, window_ms, cumulative_bps, per_transaction_bps],
+                vec![initializer, opening_round_ms],
             );
         }
         let currency = builder.obj(self.h.shared(ticket.currency, true))?;
@@ -517,7 +519,20 @@ impl World {
                 vec![initializer, currency, config],
             );
         let clock = builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?;
-        if shape.buy_before_share {
+        if shape.creator_purchase && shape.opening_round_ms != NO_OPENING_ROUND {
+            let amount = builder.pure(BUY_BEFORE_SHARE)?;
+            let Argument::Result(split) = builder.command(Command::SplitCoins(Argument::GasCoin, vec![amount])) else {
+                unreachable!()
+            };
+            call(
+                &mut builder,
+                self.blast,
+                "launch",
+                "join_opening_round",
+                pair.clone(),
+                vec![launch, version, Argument::NestedResult(split, 0), clock],
+            );
+        } else if shape.creator_purchase {
             let runtime = builder.obj(self.h.shared(self.runtime, false))?;
             let amount = builder.pure(BUY_BEFORE_SHARE)?;
             let Argument::Result(split) = builder.command(Command::SplitCoins(Argument::GasCoin, vec![amount])) else {
@@ -530,7 +545,7 @@ impl World {
                 "launch",
                 "buy",
                 pair.clone(),
-                vec![launch, version, runtime, Argument::NestedResult(split, 0), min_meme_out, clock],
+                vec![launch, version, runtime, Argument::NestedResult(split, 0), min_meme_out],
             ) else {
                 unreachable!()
             };
@@ -627,19 +642,77 @@ impl World {
         let version = builder.obj(self.h.shared(self.version, false))?;
         let runtime = builder.obj(self.h.shared(self.runtime, false))?;
         let min_meme_out = builder.pure(1u64)?;
-        let clock = builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?;
         let Argument::Result(bought) = call(
             &mut builder,
             self.blast,
             "launch",
             "buy",
             vec![opened.meme.clone(), sui()],
-            vec![launch, version, runtime, Argument::NestedResult(split, 0), min_meme_out, clock],
+            vec![launch, version, runtime, Argument::NestedResult(split, 0), min_meme_out],
         ) else {
             unreachable!()
         };
         builder
             .transfer_args(self.h.sender, vec![Argument::NestedResult(bought, 0), Argument::NestedResult(bought, 1)]);
+
+        Ok(builder.finish())
+    }
+
+    /// Joins `opened`'s opening round with `quote_in` MIST split from gas.
+    fn join(&self, opened: &Opened, quote_in: u64) -> Result<ProgrammableTransaction> {
+        let mut builder = ProgrammableTransactionBuilder::new();
+        let amount = builder.pure(quote_in)?;
+        let Argument::Result(split) = builder.command(Command::SplitCoins(Argument::GasCoin, vec![amount])) else {
+            unreachable!()
+        };
+        let launch = builder.obj(self.h.shared(opened.launch, true))?;
+        let version = builder.obj(self.h.shared(self.version, false))?;
+        let clock = builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?;
+        call(
+            &mut builder,
+            self.blast,
+            "launch",
+            "join_opening_round",
+            vec![opened.meme.clone(), sui()],
+            vec![launch, version, Argument::NestedResult(split, 0), clock],
+        );
+
+        Ok(builder.finish())
+    }
+
+    /// Settles `opened`'s opening round.
+    fn settle(&self, opened: &Opened) -> Result<ProgrammableTransaction> {
+        let mut builder = ProgrammableTransactionBuilder::new();
+        let launch = builder.obj(self.h.shared(opened.launch, true))?;
+        let version = builder.obj(self.h.shared(self.version, false))?;
+        let runtime = builder.obj(self.h.shared(self.runtime, false))?;
+        let clock = builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?;
+        call(
+            &mut builder,
+            self.blast,
+            "launch",
+            "settle_opening_round",
+            vec![opened.meme.clone(), sui()],
+            vec![launch, version, runtime, clock],
+        );
+
+        Ok(builder.finish())
+    }
+
+    /// Delivers the sender's share of `opened`'s settled opening round.
+    fn deliver(&self, opened: &Opened) -> Result<ProgrammableTransaction> {
+        let mut builder = ProgrammableTransactionBuilder::new();
+        let launch = builder.obj(self.h.shared(opened.launch, true))?;
+        let version = builder.obj(self.h.shared(self.version, false))?;
+        let bidder = builder.pure(self.h.sender)?;
+        call(
+            &mut builder,
+            self.blast,
+            "launch",
+            "deliver_opening_round",
+            vec![opened.meme.clone(), sui()],
+            vec![launch, version, bidder],
+        );
 
         Ok(builder.finish())
     }
@@ -682,10 +755,8 @@ impl World {
                     "plan_recipients": shape.plan_recipients,
                     "fee_split_recipients": shape.fee_recipients,
                     "graduation_target": shape.target,
-                    "protection_window_ms": shape.protection[0],
-                    "cumulative_sender_bps": shape.protection[1],
-                    "per_transaction_bps": shape.protection[2],
-                    "buy_before_share": shape.buy_before_share,
+                    "opening_round_ms": shape.opening_round_ms,
+                    "creator_purchase_before_share": shape.creator_purchase,
                 })),
             },
             "units": "MIST, bytes, and gas units as each field names; an event's emit_size is the abstract \

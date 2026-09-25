@@ -31,7 +31,8 @@ public(package) fun cap_buy_quote_input(
     }
 }
 
-/// Returns `(quote_fee, meme_out_gross, meme_fee, meme_out_net)`, rounded against the buyer.
+/// Returns `(quote_fee, meme_out_gross, meme_fee, meme_out_net)`, rounded against the buyer. The
+/// net output is zero when the input buys less than one Meme atom; the caller decides.
 public(package) fun quote_buy(
     meme_reserve: u64,
     real_quote: u64,
@@ -47,10 +48,8 @@ public(package) fun quote_buy(
         meme_reserve as u256,
     );
     let meme_fee = meme_fee_bps.apply_up(meme_out_gross);
-    let meme_out_net = meme_out_gross - meme_fee;
-    assert!(meme_out_net > 0, blast_fun::errors::zero_trade_output!());
 
-    (quote_fee, meme_out_gross, meme_fee, meme_out_net)
+    (quote_fee, meme_out_gross, meme_fee, meme_out_gross - meme_fee)
 }
 
 /// Returns `(meme_fee, pending_burn, quote_out_gross, quote_fee, quote_out_net)`, rounded against

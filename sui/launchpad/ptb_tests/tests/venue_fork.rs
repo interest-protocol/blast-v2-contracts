@@ -79,6 +79,10 @@ const ATOMIC_SUPPLY: u64 = 1_000_000_000_000_000_000;
 const LP_MEME: u64 = ATOMIC_SUPPLY / 5;
 const ALLOCATION_BPS: u64 = 500;
 
+/// `launch::Lifecycle` tags in declaration order: `OpeningRound`, `Live`, `MigrationReady`,
+/// `Migrated`.
+const MIGRATION_READY: u8 = 2;
+const MIGRATED: u8 = 3;
 /// `blast_fun::errors` codes.
 const INVALID_LAUNCH_LIFECYCLE: u64 = 15;
 const CREATOR_CAP_NOT_LIVE: u64 = 22;
@@ -903,20 +907,19 @@ impl World {
         let version = self.shared(&mut b, self.version, false)?;
         let runtime = self.shared(&mut b, self.runtime, false)?;
         let min_out = b.pure(1u64)?;
-        let clock = self.clock(&mut b)?;
         let Argument::Result(bought) = call(
             &mut b,
             self.blast,
             "launch",
             "buy",
             self.pair(launch),
-            vec![launch_arg, version, runtime, coin, min_out, clock],
+            vec![launch_arg, version, runtime, coin, min_out],
         ) else {
             unreachable!()
         };
         b.transfer_args(self.h.sender, vec![Argument::NestedResult(bought, 0), Argument::NestedResult(bought, 1)]);
         self.h.execute(b.finish())?.assert_success();
-        ensure!(self.launch_lifecycle(launch) == 1, "the launch is MigrationReady");
+        ensure!(self.launch_lifecycle(launch) == MIGRATION_READY, "the launch is MigrationReady");
 
         Ok(())
     }
@@ -1008,7 +1011,7 @@ impl World {
         self.migrate_command(&mut b, launch, self.case, None)?;
         let expected = Expected::Abort { package: self.blast, module: "launch", code: INVALID_LAUNCH_LIFECYCLE };
         self.h.assert_rolled_back(b.finish(), expected, &watched, &owners)?;
-        ensure!(self.launch_lifecycle(launch) == 1, "the launch stays MigrationReady");
+        ensure!(self.launch_lifecycle(launch) == MIGRATION_READY, "the launch stays MigrationReady");
         self.report("PTB [migrate (pool created, position custodied), migrate again]: launch aborts invalid_launch_lifecycle, nothing committed, launch MigrationReady".into());
 
         if !self.case.is_cetus() {
@@ -1036,7 +1039,7 @@ impl World {
         self.migrate_command(&mut b, launch, self.case, None)?;
         let outcome = self.h.execute(b.finish())?;
         outcome.assert_success();
-        ensure!(self.launch_lifecycle(launch) == 2, "the launch is Migrated");
+        ensure!(self.launch_lifecycle(launch) == MIGRATED, "the launch is Migrated");
         for (object, owner) in outcome.effects.created() {
             ensure!(owner != Owner::AddressOwner(self.h.sender), "the caller received {}", object.0);
         }
@@ -2108,9 +2111,7 @@ struct LaunchCreated {
     _lp_meme_bps: u64,
     _lp_quote_bps: u64,
     _allocation_recipients: Vec<(SuiAddress, u64, u64)>,
-    _protection_window_ms: u64,
-    _cumulative_sender_bps: u64,
-    _per_transaction_bps: u64,
+    _opening_round_ms: u64,
 }
 
 #[derive(Deserialize)]

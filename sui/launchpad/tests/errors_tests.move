@@ -31,7 +31,7 @@ fun launch_intake_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::invalid_initial_meme_supply!(), 10);
     assert_eq!(blast_fun::errors::invalid_meme_quote_pair!(), 11);
     assert_eq!(blast_fun::errors::meme_symbol_too_long!(), 12);
-    assert_eq!(blast_fun::errors::invalid_protection!(), 13);
+    assert_eq!(blast_fun::errors::invalid_opening_round!(), 13);
     assert_eq!(blast_fun::errors::invalid_graduation_target!(), 14);
     assert_eq!(blast_fun::errors::invalid_launch_lifecycle!(), 15);
 }
@@ -40,9 +40,14 @@ fun launch_intake_error_registry_is_stable() {
 fun trade_and_fee_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::slippage_exceeded!(), 16);
     assert_eq!(blast_fun::errors::zero_trade_output!(), 17);
-    assert_eq!(blast_fun::errors::per_transaction_limit_exceeded!(), 18);
-    assert_eq!(blast_fun::errors::cumulative_limit_exceeded!(), 19);
     assert_eq!(blast_fun::errors::nothing_accrued!(), 20);
+}
+
+#[test]
+fun opening_round_error_registry_is_stable() {
+    assert_eq!(blast_fun::errors::opening_round_ended!(), 18);
+    assert_eq!(blast_fun::errors::opening_round_not_ended!(), 19);
+    assert_eq!(blast_fun::errors::zero_opening_round_bid!(), 34);
 }
 
 #[test]

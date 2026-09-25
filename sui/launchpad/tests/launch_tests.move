@@ -702,7 +702,7 @@ fun an_unadmitted_adapter_cannot_start_a_launch() {
 // --- Buys before sharing, and sharing ---
 
 #[test]
-fun buy_before_share_is_unprotected_and_emits_bought() {
+fun buy_before_share_emits_bought() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
@@ -719,7 +719,7 @@ fun buy_before_share_is_unprotected_and_emits_bought() {
 
         assert_eq!(meme.value(), net);
         assert_eq!(refund.value(), 0);
-        assert!(launch.protection_end_ms_for_testing().is_none());
+        assert!(launch.public_start_ms_for_testing().is_none());
         launch.assert_lifecycle(true, false, false);
         assert_eq!(
             bcs::to_bytes(&collect_one<events::Bought>()),
@@ -807,7 +807,7 @@ fun buy_before_share_after_graduation_is_rejected() {
     fixture.end();
 }
 
-#[test, expected_failure(abort_code = blast_fun::errors::EZeroTradeOutput, location = blast_fun::curve)]
+#[test, expected_failure(abort_code = blast_fun::errors::EZeroTradeOutput, location = blast_fun::launch)]
 fun buy_before_share_rejects_zero_input() {
     let mut fixture = start();
 
@@ -859,7 +859,7 @@ fun share_starts_public_trading_and_emits_launch_shared() {
         let mut launch = f.take_launch();
         let (curve_fee_cap, metadata_cap) = f.claim(&mut launch);
 
-        assert_eq!(launch.protection_end_ms_for_testing(), option::some(250_000));
+        assert_eq!(launch.public_start_ms_for_testing(), option::some(250_000));
 
         destroy(curve_fee_cap);
         destroy(metadata_cap);
@@ -1625,8 +1625,8 @@ fun sell_rejects_minimum_above_exact_returned_coin() {
     fixture.end();
 }
 
-#[test, expected_failure(abort_code = blast_fun::errors::EZeroTradeOutput, location = blast_fun::curve)]
-fun public_buy_checks_the_curve_before_slippage() {
+#[test, expected_failure(abort_code = blast_fun::errors::EZeroTradeOutput, location = blast_fun::launch)]
+fun public_buy_checks_zero_output_before_slippage() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
@@ -2253,7 +2253,7 @@ fun over_length_symbol(): vector<u8> {
 }
 
 /// Starts the launch for `witness`, sets the target, plan, and default fee split, and finalizes it
-/// unprotected.
+/// without an opening round.
 fun launch_intake<Quote, MigrationWitness: drop>(
     self: &mut LaunchFixture,
     ticket: LaunchTicket<LAUNCH_TESTS>,
@@ -2362,7 +2362,6 @@ fun launch_buy(
         &self.runtime_config,
         quote,
         min_meme_out,
-        &self.clock,
         self.scenario.ctx(),
     )
 }
@@ -2529,7 +2528,8 @@ fun ticket_created_bytes(ticket_id: ID, metadata_cap_id: ID, burnable: bool): ve
     expected
 }
 
-/// Expected `LaunchCreated` bytes for the fixture's cold policy, unprotected, with Blast first.
+/// Expected `LaunchCreated` bytes for the fixture's cold policy, without an opening round, with Blast
+/// first.
 fun launch_created_bytes(launch_id: ID, ticket_id: ID): vector<u8> {
     let pool_tick_spacing = POOL_TICK_SPACING;
     let mut expected = bcs::to_bytes(&launch_id);
@@ -2544,8 +2544,6 @@ fun launch_created_bytes(launch_id: ID, ticket_id: ID): vector<u8> {
     expected.append(u64_bytes(QUOTE_FEE_BPS));
     expected.append(u64_bytes(MEME_FEE_BPS));
     expected.append(bcs::to_bytes(&default_plan_with_blast()));
-    expected.append(u64_bytes(0));
-    expected.append(u64_bytes(0));
     expected.append(u64_bytes(0));
     expected
 }

@@ -9,25 +9,30 @@ module blast_fun::launch;
 // === Public Types ===
 
 public enum Lifecycle has copy, drop, store {
+    OpeningRound,
     Live,
     MigrationReady,
     Migrated,
 }
 
-/// Dynamic-field name of one sender's cumulative protected gross Meme purchases.
-public struct ProtectedPurchasesKey(address) has copy, drop, store;
+/// Dynamic-field name of one bidder's undelivered opening-round Quote.
+public struct OpeningRoundBidKey(address) has copy, drop, store;
 
 /// One launch: its curve, its settings, and custody until migration.
 ///
-/// Until `protection_end_ms`, each public purchase's gross Meme output, and each transaction
-/// sender's running total of it, are limited.
+/// A launch with an opening round starts in `OpeningRound`. Until `opening_round_ms` after share,
+/// Quote joins one pot and nothing trades; settling buys from the curve once with the whole pot, and
+/// each bidder is delivered its pro-rata share of the Meme bought and of any Quote refunded.
 public struct Launch<phantom Meme, phantom Quote> has key {
     id: UID,
     lifecycle: Lifecycle,
-    protection_end_ms: Option<u64>,
-    protection_window_ms: u64,
-    cumulative_atomic_limit: u64,
-    per_transaction_atomic_limit: u64,
+    public_start_ms: Option<u64>,
+    opening_round_ms: u64,
+    /// Total Quote of the opening-round bids not yet delivered.
+    opening_round_bids: u64,
+    /// The pot until settlement, then the Quote it left to refund.
+    opening_round_quote: Balance<Quote>,
+    opening_round_meme: Balance<Meme>,
     sell_burn_bps: Bps,
     virtual_quote: u64,
     graduation_target: u64,
@@ -62,9 +67,7 @@ public struct LaunchInitializer<phantom Meme, phantom Quote> {
     graduation_target: Option<u64>,
     allocation_plan: Option<AllocationPlan>,
     lp_fee_split: Option<FeeSplit>,
-    protection_window_ms: u64,
-    cumulative_sender_bps: Bps,
-    per_transaction_bps: Bps,
+    opening_round_ms: u64,
 }
 
 // === Public Functions ===
@@ -101,9 +104,7 @@ public fun new<Meme, Quote, Witness: drop>(
         graduation_target: option::none(),
         allocation_plan: option::none(),
         lp_fee_split: option::none(),
-        protection_window_ms: 0,
-        cumulative_sender_bps: bps::new(0),
-        per_transaction_bps: bps::new(0),
+        opening_round_ms: 0,
     }
 }
 
@@ -150,17 +151,13 @@ public fun set_lp_fee_split<Meme, Quote>(
     self.lp_fee_split = option::some(lp_fee_split);
 }
 
-/// Sets public-purchase protection. A zero window with both rates zero disables it; a nonzero
-/// window needs a positive cumulative rate, and a zero per-transaction rate skips that check.
-public fun set_protection<Meme, Quote>(
+/// Sets how long the opening round runs after share, within the protocol's bounds. Zero, the
+/// default, has no opening round: trading starts at share.
+public fun set_opening_round<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,
-    window_ms: u64,
-    cumulative_sender_bps: Bps,
-    per_transaction_bps: Bps,
+    opening_round_ms: u64,
 ) {
-    self.protection_window_ms = window_ms;
-    self.cumulative_sender_bps = cumulative_sender_bps;
-    self.per_transaction_bps = per_transaction_bps;
+    self.opening_round_ms = opening_round_ms;
 }
 
 /// Checks every setting, adds Blast's allocation to the plan, fixes the canonical supply in the
@@ -183,21 +180,18 @@ public fun finalize<Meme, Quote>(
         graduation_target,
         allocation_plan,
         lp_fee_split,
-        protection_window_ms,
-        cumulative_sender_bps,
-        per_transaction_bps,
+        opening_round_ms,
     } = self;
     let virtual_quote = virtual_quote.destroy_some();
     let graduation_target = graduation_target.destroy_some();
     let allocation_plan = allocation_plan.destroy_some().add_protocol(config.protocol_allocation());
     assert!(virtual_quote > 0, blast_fun::errors::invalid_virtual_quote!());
     assert!(
-        if (protection_window_ms == 0) {
-            cumulative_sender_bps.value() == 0 && per_transaction_bps.value() == 0
-        } else {
-            cumulative_sender_bps.value() > 0
-        },
-        blast_fun::errors::invalid_protection!(),
+        opening_round_ms == 0 || (
+            opening_round_ms >= constants::min_opening_round_ms!()
+                && opening_round_ms <= constants::max_opening_round_ms!()
+        ),
+        blast_fun::errors::invalid_opening_round!(),
     );
     assert!(
         currency.symbol().length() <= constants::max_meme_symbol_length!(),
@@ -213,17 +207,12 @@ public fun finalize<Meme, Quote>(
 
     let launch = Launch {
         id: object::new(ctx),
-        lifecycle: Lifecycle::Live,
-        protection_end_ms: option::none(),
-        protection_window_ms,
-        cumulative_atomic_limit: atomic_supply.mul_div(
-            cumulative_sender_bps.value(),
-            constants::basis_points_denominator!(),
-        ),
-        per_transaction_atomic_limit: atomic_supply.mul_div(
-            per_transaction_bps.value(),
-            constants::basis_points_denominator!(),
-        ),
+        lifecycle: if (opening_round_ms == 0) Lifecycle::Live else Lifecycle::OpeningRound,
+        public_start_ms: option::none(),
+        opening_round_ms,
+        opening_round_bids: 0,
+        opening_round_quote: balance::zero(),
+        opening_round_meme: balance::zero(),
         sell_burn_bps,
         virtual_quote,
         graduation_target,
@@ -258,20 +247,19 @@ public fun finalize<Meme, Quote>(
         launch.quote_fee_bps.value(),
         launch.meme_fee_bps.value(),
         launch.allocation_plan,
-        launch.protection_window_ms,
-        cumulative_sender_bps.value(),
-        per_transaction_bps.value(),
+        launch.opening_round_ms,
     );
 
     launch
 }
 
-/// Shares the launch. Public trading starts now; protection ends `protection_window_ms` later.
+/// Shares the launch. Public time starts now: trading, or the opening round, which ends
+/// `opening_round_ms` later.
 public fun share<Meme, Quote>(mut self: Launch<Meme, Quote>, clock: &Clock) {
-    assert!(self.protection_end_ms.is_none(), blast_fun::errors::invalid_launch_lifecycle!());
+    assert!(self.public_start_ms.is_none(), blast_fun::errors::invalid_launch_lifecycle!());
 
     let public_start_ms = clock.timestamp_ms();
-    self.protection_end_ms = option::some(public_start_ms + self.protection_window_ms);
+    self.public_start_ms = option::some(public_start_ms);
 
     events::launch_shared(self.id.to_inner(), public_start_ms);
 
@@ -297,7 +285,7 @@ public fun claim_creator_caps<Meme, Quote>(
     ctx: &mut TxContext,
 ): (CurveFeeCap<Meme>, BlastMetadataCap<Meme>) {
     package_version.assert_current();
-    assert!(self.protection_end_ms.is_some(), blast_fun::errors::invalid_launch_lifecycle!());
+    assert!(self.public_start_ms.is_some(), blast_fun::errors::invalid_launch_lifecycle!());
 
     let (curve_fee_cap, blast_metadata_cap) = creator_authority::claim_creator_caps<Meme>(
         self.creator.extract(),
@@ -402,67 +390,112 @@ public fun set_icon_url<Meme, Quote>(
     self.emit_metadata_updated(currency);
 }
 
-/// Buys Meme with Quote; Quote beyond the graduation target is refunded.
-///
-/// Before the launch is shared only the creator's own transaction can reach it, so those purchases
-/// are unprotected. While protected, the gross Meme output must fit the per-purchase limit and the
-/// sender's remaining cumulative limit. Sells and transfers never reduce a sender's record.
+/// Adds `quote_in` to the sender's opening-round bid. Before share only the creator's own
+/// transaction can reach the launch, so the creator's bid joins the same pot at the same price.
+public fun join_opening_round<Meme, Quote>(
+    self: &mut Launch<Meme, Quote>,
+    package_version: &PackageVersion,
+    quote_in: Coin<Quote>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    package_version.assert_current();
+    assert!(
+        self.lifecycle == Lifecycle::OpeningRound,
+        blast_fun::errors::invalid_launch_lifecycle!(),
+    );
+    assert!(!self.has_opening_round_ended(clock), blast_fun::errors::opening_round_ended!());
+    let quote = quote_in.value();
+    assert!(quote > 0, blast_fun::errors::zero_opening_round_bid!());
+
+    let key = OpeningRoundBidKey(ctx.sender());
+    if (!self.id.has_dynamic_field(key)) self.id.add_dynamic_field(key, 0u64);
+    let bid = self.id.dynamic_field_mut<_, u64>(key);
+    *bid = *bid + quote;
+    self.opening_round_bids = self.opening_round_bids + quote;
+    self.opening_round_quote.join(quote_in.into_balance());
+
+    events::opening_round_joined(self.id.to_inner(), quote, self.opening_round_bids);
+}
+
+/// Closes the ended opening round: buys from the curve once with the whole pot, at the usual fees
+/// and graduation cap, and holds the Meme bought and any Quote refunded for delivery. A pot too
+/// small to buy one Meme atom is held whole for refund. Anyone may settle.
+public fun settle_opening_round<Meme, Quote>(
+    self: &mut Launch<Meme, Quote>,
+    package_version: &PackageVersion,
+    runtime_config: &RuntimeConfig,
+    clock: &Clock,
+) {
+    package_version.assert_current();
+    assert!(
+        self.lifecycle == Lifecycle::OpeningRound,
+        blast_fun::errors::invalid_launch_lifecycle!(),
+    );
+    assert!(self.has_opening_round_ended(clock), blast_fun::errors::opening_round_not_ended!());
+
+    self.lifecycle = Lifecycle::Live;
+    let pot = self.opening_round_quote.withdraw_all();
+    let (meme, quote_refund) = self.buy_from_curve(runtime_config, pot, 0);
+    self.opening_round_meme.join(meme);
+    self.opening_round_quote.join(quote_refund);
+
+    events::opening_round_settled(
+        self.id.to_inner(),
+        self.opening_round_bids,
+        self.opening_round_meme.value(),
+        self.opening_round_quote.value(),
+    );
+}
+
+/// Sends `bidder` its share of the settled opening round: the Meme bought and the Quote refunded,
+/// pro rata to its bid among the undelivered bids and rounded down, so the last delivery takes the
+/// remainder. Anyone may deliver, in any later lifecycle.
+public fun deliver_opening_round<Meme, Quote>(
+    self: &mut Launch<Meme, Quote>,
+    package_version: &PackageVersion,
+    bidder: address,
+    ctx: &mut TxContext,
+) {
+    package_version.assert_current();
+    assert!(
+        self.lifecycle != Lifecycle::OpeningRound,
+        blast_fun::errors::invalid_launch_lifecycle!(),
+    );
+
+    let bid = self.id.remove_dynamic_field<_, u64>(OpeningRoundBidKey(bidder));
+    let meme = self.opening_round_meme.value().mul_div(bid, self.opening_round_bids);
+    let quote = self.opening_round_quote.value().mul_div(bid, self.opening_round_bids);
+    self.opening_round_bids = self.opening_round_bids - bid;
+    if (meme > 0) {
+        transfer::public_transfer(self.opening_round_meme.split(meme).into_coin(ctx), bidder);
+    };
+    if (quote > 0) {
+        transfer::public_transfer(self.opening_round_quote.split(quote).into_coin(ctx), bidder);
+    };
+
+    events::opening_round_delivered(self.id.to_inner(), bidder, bid, meme, quote);
+}
+
+/// Buys Meme with Quote; Quote beyond the graduation target is refunded. Trading opens at share,
+/// or at settlement after an opening round; before share only the creator's transaction can buy.
 public fun buy<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
     runtime_config: &RuntimeConfig,
     quote_in: Coin<Quote>,
     min_meme_out: u64,
-    clock: &Clock,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
     package_version.assert_current();
     assert!(self.lifecycle == Lifecycle::Live, blast_fun::errors::invalid_launch_lifecycle!());
 
-    let protected = self.protection_end_ms.is_some_and!(|end_ms| clock.timestamp_ms() < *end_ms);
-    let (quote_in_gross, quote_refund) = curve::cap_buy_quote_input(
-        self.real_quote_reserve.value(),
-        self.graduation_target,
-        quote_in.value(),
-        self.quote_fee_bps,
+    let (meme_out, quote_refund) = self.buy_from_curve(
+        runtime_config,
+        quote_in.into_balance(),
+        min_meme_out,
     );
-    let (quote_fee, meme_out_gross, meme_fee, meme_out_net) = curve::quote_buy(
-        self.meme_reserve.value(),
-        self.real_quote_reserve.value(),
-        self.virtual_quote,
-        quote_in_gross,
-        self.quote_fee_bps,
-        self.meme_fee_bps,
-    );
-    assert!(meme_out_net >= min_meme_out, blast_fun::errors::slippage_exceeded!());
-    if (protected) self.record_protected_purchase(ctx.sender(), meme_out_gross);
-
-    let mut quote_in = quote_in.into_balance();
-    let quote_refund = quote_in.split(quote_refund);
-    let quote_fee = quote_in.split(quote_fee);
-    self.real_quote_reserve.join(quote_in);
-    let mut meme_out = self.meme_reserve.split(meme_out_gross);
-    let meme_fee = meme_out.split(meme_fee);
-    if (self.real_quote_reserve.value() >= self.graduation_target) {
-        self.lifecycle = Lifecycle::MigrationReady;
-    };
-    let (protocol_meme, creator_meme, protocol_quote, creator_quote) = self
-        .fee_ledger
-        .accrue(meme_fee, quote_fee, runtime_config.protocol_fee_share());
-
-    events::bought(
-        self.id.to_inner(),
-        quote_in_gross,
-        meme_out_gross,
-        meme_out_net,
-        quote_refund.value(),
-        protocol_meme,
-        creator_meme,
-        protocol_quote,
-        creator_quote,
-        self.meme_reserve.value(),
-        self.real_quote_reserve.value(),
-    );
+    assert!(meme_out.value() > 0, blast_fun::errors::zero_trade_output!());
 
     (meme_out.into_coin(ctx), quote_refund.into_coin(ctx))
 }
@@ -478,7 +511,7 @@ public fun sell<Meme, Quote>(
 ): Coin<Quote> {
     package_version.assert_current();
     assert!(
-        self.protection_end_ms.is_some() && self.lifecycle == Lifecycle::Live,
+        self.public_start_ms.is_some() && self.lifecycle == Lifecycle::Live,
         blast_fun::errors::invalid_launch_lifecycle!(),
     );
 
@@ -648,25 +681,65 @@ fun emit_metadata_updated<Meme, Quote>(self: &Launch<Meme, Quote>, currency: &Cu
     );
 }
 
-/// Checks one protected purchase against the per-purchase limit and the sender's remaining
-/// cumulative limit, then adds it to the sender's record.
-fun record_protected_purchase<Meme, Quote>(
+/// Buys from the curve with `quote_in` and returns the net Meme and the Quote refunded past the
+/// graduation target. Input too small to buy one Meme atom is returned whole, and nothing changes.
+fun buy_from_curve<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
-    sender: address,
-    meme_out_gross: u64,
-) {
-    assert!(
-        self.per_transaction_atomic_limit == 0 || meme_out_gross <= self.per_transaction_atomic_limit,
-        blast_fun::errors::per_transaction_limit_exceeded!(),
+    runtime_config: &RuntimeConfig,
+    mut quote_in: Balance<Quote>,
+    min_meme_out: u64,
+): (Balance<Meme>, Balance<Quote>) {
+    let (quote_in_gross, quote_refund) = curve::cap_buy_quote_input(
+        self.real_quote_reserve.value(),
+        self.graduation_target,
+        quote_in.value(),
+        self.quote_fee_bps,
     );
-    let key = ProtectedPurchasesKey(sender);
-    if (!self.id.has_dynamic_field(key)) self.id.add_dynamic_field(key, 0u64);
-    let purchases = self.id.dynamic_field_mut<_, u64>(key);
-    assert!(
-        meme_out_gross <= self.cumulative_atomic_limit - *purchases,
-        blast_fun::errors::cumulative_limit_exceeded!(),
+    let (quote_fee, meme_out_gross, meme_fee, meme_out_net) = curve::quote_buy(
+        self.meme_reserve.value(),
+        self.real_quote_reserve.value(),
+        self.virtual_quote,
+        quote_in_gross,
+        self.quote_fee_bps,
+        self.meme_fee_bps,
     );
-    *purchases = *purchases + meme_out_gross;
+    if (meme_out_net == 0) return (balance::zero(), quote_in);
+    assert!(meme_out_net >= min_meme_out, blast_fun::errors::slippage_exceeded!());
+
+    let quote_refund = quote_in.split(quote_refund);
+    let quote_fee = quote_in.split(quote_fee);
+    self.real_quote_reserve.join(quote_in);
+    let mut meme_out = self.meme_reserve.split(meme_out_gross);
+    let meme_fee = meme_out.split(meme_fee);
+    if (self.real_quote_reserve.value() >= self.graduation_target) {
+        self.lifecycle = Lifecycle::MigrationReady;
+    };
+    let (protocol_meme, creator_meme, protocol_quote, creator_quote) = self
+        .fee_ledger
+        .accrue(meme_fee, quote_fee, runtime_config.protocol_fee_share());
+
+    events::bought(
+        self.id.to_inner(),
+        quote_in_gross,
+        meme_out_gross,
+        meme_out_net,
+        quote_refund.value(),
+        protocol_meme,
+        creator_meme,
+        protocol_quote,
+        creator_quote,
+        self.meme_reserve.value(),
+        self.real_quote_reserve.value(),
+    );
+
+    (meme_out, quote_refund)
+}
+
+/// Whether the opening round has ended; never before share.
+fun has_opening_round_ended<Meme, Quote>(self: &Launch<Meme, Quote>, clock: &Clock): bool {
+    let opening_round_ms = self.opening_round_ms;
+
+    self.public_start_ms.is_some_and!(|start_ms| clock.timestamp_ms() >= *start_ms + opening_round_ms)
 }
 
 // === Test-Only Functions ===
@@ -708,31 +781,32 @@ public fun blast_metadata_cap_id_for_testing<Meme, Quote>(self: &Launch<Meme, Qu
 }
 
 #[test_only]
-/// Runs the protected-purchase check and record on an exact gross output.
-public fun record_protected_purchase_for_testing<Meme, Quote>(
-    self: &mut Launch<Meme, Quote>,
-    sender: address,
-    meme_out_gross: u64,
-) {
-    self.record_protected_purchase(sender, meme_out_gross);
-}
-
-#[test_only]
-public fun protected_purchases_for_testing<Meme, Quote>(
+/// Returns the bidder's undelivered opening-round Quote; zero without a bid.
+public fun opening_round_bid_for_testing<Meme, Quote>(
     self: &Launch<Meme, Quote>,
-    sender: address,
+    bidder: address,
 ): u64 {
-    let key = ProtectedPurchasesKey(sender);
+    let key = OpeningRoundBidKey(bidder);
 
     if (self.id.has_dynamic_field(key)) *dynamic_field::borrow(&self.id, key) else 0
 }
 
 #[test_only]
-public fun has_protected_purchases_for_testing<Meme, Quote>(
+public fun has_opening_round_bid_for_testing<Meme, Quote>(
     self: &Launch<Meme, Quote>,
-    sender: address,
+    bidder: address,
 ): bool {
-    self.id.has_dynamic_field(ProtectedPurchasesKey(sender))
+    self.id.has_dynamic_field(OpeningRoundBidKey(bidder))
+}
+
+#[test_only]
+/// Returns the undelivered bids' total, and the Quote and Meme held for them.
+public fun opening_round_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): (u64, u64, u64) {
+    (
+        self.opening_round_bids,
+        self.opening_round_quote.value(),
+        self.opening_round_meme.value(),
+    )
 }
 
 #[test_only]
@@ -746,23 +820,13 @@ public fun fee_totals_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): (u64
 }
 
 #[test_only]
-public fun protection_end_ms_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): Option<u64> {
-    self.protection_end_ms
+public fun public_start_ms_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): Option<u64> {
+    self.public_start_ms
 }
 
 #[test_only]
-public fun protection_window_ms_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): u64 {
-    self.protection_window_ms
-}
-
-#[test_only]
-public fun cumulative_atomic_limit_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): u64 {
-    self.cumulative_atomic_limit
-}
-
-#[test_only]
-public fun per_transaction_atomic_limit_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): u64 {
-    self.per_transaction_atomic_limit
+public fun opening_round_ms_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): u64 {
+    self.opening_round_ms
 }
 
 #[test_only]
@@ -778,6 +842,11 @@ public fun allocation_plan_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>):
 #[test_only]
 public fun atomic_supply_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): u64 {
     self.atomic_supply
+}
+
+#[test_only]
+public fun is_opening_round_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): bool {
+    self.lifecycle == Lifecycle::OpeningRound
 }
 
 #[test_only]
@@ -812,7 +881,7 @@ use blast_admin::acl::AdminWitness;
 use blast_fun::{
     allocation::{AllocationPlan, FeeSplit},
     blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
-    bps::{Self, Bps},
+    bps::Bps,
     constants,
     creator_authority::{Self, BlastMetadataCap, CreatorRecipient, CurveFeeCap},
     curve,
@@ -839,3 +908,5 @@ use fun dynamic_field::add as UID.add_dynamic_field;
 use fun dynamic_field::borrow_mut as UID.dynamic_field_mut;
 
 use fun dynamic_field::exists as UID.has_dynamic_field;
+
+use fun dynamic_field::remove as UID.remove_dynamic_field;

@@ -60,8 +60,8 @@ const EInvalidMemeQuotePair: u64 = 11;
 const EMemeSymbolTooLong: u64 = 12;
 
 #[test_only]
-/// The protection window and rates are inconsistent.
-const EInvalidProtection: u64 = 13;
+/// The opening round is neither zero nor within its bounds.
+const EInvalidOpeningRound: u64 = 13;
 
 #[test_only]
 /// The pool's Quote share of the graduation target rounds to zero.
@@ -80,12 +80,12 @@ const ESlippageExceeded: u64 = 16;
 const EZeroTradeOutput: u64 = 17;
 
 #[test_only]
-/// A protected purchase exceeds the per-purchase limit.
-const EPerTransactionLimitExceeded: u64 = 18;
+/// The opening round has ended.
+const EOpeningRoundEnded: u64 = 18;
 
 #[test_only]
-/// A protected purchase exceeds the sender's remaining limit.
-const ECumulativeLimitExceeded: u64 = 19;
+/// The opening round has not ended, or the launch is not shared yet.
+const EOpeningRoundNotEnded: u64 = 19;
 
 #[test_only]
 /// There are no fees to claim.
@@ -143,6 +143,10 @@ const EQuoteNotAllowed: u64 = 32;
 /// The virtual Quote reserve is zero, which would let the first purchase take the whole curve.
 const EInvalidVirtualQuote: u64 = 33;
 
+#[test_only]
+/// An opening-round bid is zero.
+const EZeroOpeningRoundBid: u64 = 34;
+
 macro public(package) fun invalid_bps(): u64 { 0 }
 
 macro public(package) fun invalid_trade_fee_bps(): u64 { 1 }
@@ -169,7 +173,7 @@ macro public(package) fun invalid_meme_quote_pair(): u64 { 11 }
 
 macro public(package) fun meme_symbol_too_long(): u64 { 12 }
 
-macro public(package) fun invalid_protection(): u64 { 13 }
+macro public(package) fun invalid_opening_round(): u64 { 13 }
 
 macro public(package) fun invalid_graduation_target(): u64 { 14 }
 
@@ -179,9 +183,9 @@ macro public(package) fun slippage_exceeded(): u64 { 16 }
 
 macro public(package) fun zero_trade_output(): u64 { 17 }
 
-macro public(package) fun per_transaction_limit_exceeded(): u64 { 18 }
+macro public(package) fun opening_round_ended(): u64 { 18 }
 
-macro public(package) fun cumulative_limit_exceeded(): u64 { 19 }
+macro public(package) fun opening_round_not_ended(): u64 { 19 }
 
 macro public(package) fun nothing_accrued(): u64 { 20 }
 
@@ -210,3 +214,5 @@ macro public(package) fun invalid_creator_claim_signature(): u64 { 31 }
 macro public(package) fun quote_not_allowed(): u64 { 32 }
 
 macro public(package) fun invalid_virtual_quote(): u64 { 33 }
+
+macro public(package) fun zero_opening_round_bid(): u64 { 34 }

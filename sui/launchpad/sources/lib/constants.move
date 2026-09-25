@@ -26,6 +26,16 @@ macro public(package) fun max_sell_burn_bps(): u64 {
     5_000
 }
 
+/// Shortest opening round a creator may choose.
+macro public(package) fun min_opening_round_ms(): u64 {
+    60_000
+}
+
+/// Longest opening round a creator may choose.
+macro public(package) fun max_opening_round_ms(): u64 {
+    300_000
+}
+
 /// Maximum Meme symbol length in bytes. Venues copy the symbol into pool and position objects,
 /// which Sui caps in size.
 macro public(package) fun max_meme_symbol_length(): u64 {

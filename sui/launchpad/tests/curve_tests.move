@@ -368,12 +368,8 @@ fun buy_math_supports_maximum_u64_operands_without_intermediate_overflow() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::EZeroTradeOutput,
-    location = blast_fun::curve,
-)]
-fun buy_rejects_zero_input_as_zero_output() {
-    quote_buy(
+fun buy_quotes_zero_input_as_zero_output() {
+    let (_, _, _, _, meme_out_net, _, _, _) = quote_buy(
         MEME_RESERVE,
         0,
         VIRTUAL_QUOTE,
@@ -382,15 +378,13 @@ fun buy_rejects_zero_input_as_zero_output() {
         QUOTE_FEE_BPS,
         0,
     );
+
+    assert_eq!(meme_out_net, 0);
 }
 
 #[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::EZeroTradeOutput,
-    location = blast_fun::curve,
-)]
-fun buy_one_atomic_unit_rejects_zero_output() {
-    quote_buy(
+fun buy_quotes_one_atomic_unit_as_zero_output() {
+    let (_, _, _, _, meme_out_net, _, _, _) = quote_buy(
         MEME_RESERVE,
         0,
         VIRTUAL_QUOTE,
@@ -399,15 +393,13 @@ fun buy_one_atomic_unit_rejects_zero_output() {
         QUOTE_FEE_BPS,
         0,
     );
+
+    assert_eq!(meme_out_net, 0);
 }
 
 #[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::EZeroTradeOutput,
-    location = blast_fun::curve,
-)]
-fun buy_rejects_a_meme_output_rounded_to_zero() {
-    quote_buy(
+fun buy_quotes_a_meme_output_rounded_to_zero() {
+    let (_, _, _, _, meme_out_net, _, _, _) = quote_buy(
         1,
         0,
         std::u64::max_value!(),
@@ -416,15 +408,13 @@ fun buy_rejects_a_meme_output_rounded_to_zero() {
         0,
         0,
     );
+
+    assert_eq!(meme_out_net, 0);
 }
 
 #[test]
-#[expected_failure(
-    abort_code = blast_fun::errors::EZeroTradeOutput,
-    location = blast_fun::curve,
-)]
-fun buy_rejects_an_output_consumed_entirely_by_the_meme_fee() {
-    quote_buy(
+fun buy_quotes_an_output_consumed_entirely_by_the_meme_fee() {
+    let (_, _, meme_out_gross, _, meme_out_net, _, _, _) = quote_buy(
         MEME_RESERVE,
         0,
         VIRTUAL_QUOTE,
@@ -433,6 +423,9 @@ fun buy_rejects_an_output_consumed_entirely_by_the_meme_fee() {
         0,
         10_000,
     );
+
+    assert!(meme_out_gross > 0);
+    assert_eq!(meme_out_net, 0);
 }
 
 #[test]
