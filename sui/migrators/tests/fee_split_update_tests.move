@@ -469,7 +469,7 @@ fun start(fee_split: FeeSplit): FeeSplitFixture {
         balance::zero(),
         scenario.ctx(),
     );
-    launch.share(&clock);
+    test_scenario::return_shared(launch);
     destroy(config);
 
     FeeSplitFixture {

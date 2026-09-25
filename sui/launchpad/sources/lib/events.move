@@ -78,8 +78,8 @@ public struct LaunchTicketCreated has copy, drop {
     sell_burn_bps: u64,
 }
 
-/// A launch was created from `ticket_id` with these settings; a zero `opening_round_ms` has no
-/// opening round.
+/// A launch was created from `ticket_id` with these settings and shared at `public_start_ms`; its
+/// opening round ends `opening_round_ms` later, and a zero `opening_round_ms` has none.
 public struct LaunchCreated has copy, drop {
     launch_id: ID,
     ticket_id: ID,
@@ -93,12 +93,8 @@ public struct LaunchCreated has copy, drop {
     quote_fee_bps: u64,
     meme_fee_bps: u64,
     allocation_plan: AllocationPlan,
-    opening_round_ms: u64,
-}
-
-public struct LaunchShared has copy, drop {
-    launch_id: ID,
     public_start_ms: u64,
+    opening_round_ms: u64,
 }
 
 /// Quote joined a launch's opening round from the sender; `bids` is the pot after it.
@@ -126,9 +122,8 @@ public struct OpeningRoundDelivered has copy, drop {
     quote: u64,
 }
 
-/// A curve purchase; reserves are after the purchase. Purchases before `LaunchShared` are the
-/// creator's, made in the transaction that creates the launch; the one beside
-/// `OpeningRoundSettled` is the opening round's pot.
+/// A curve purchase; reserves are after the purchase. The one beside `OpeningRoundSettled` is the
+/// opening round's pot.
 public struct Bought has copy, drop {
     launch_id: ID,
     quote_in: u64,
@@ -276,6 +271,7 @@ public(package) fun launch_created<Quote>(
     quote_fee_bps: u64,
     meme_fee_bps: u64,
     allocation_plan: AllocationPlan,
+    public_start_ms: u64,
     opening_round_ms: u64,
 ) {
     emit(LaunchCreated {
@@ -291,12 +287,9 @@ public(package) fun launch_created<Quote>(
         quote_fee_bps,
         meme_fee_bps,
         allocation_plan,
+        public_start_ms,
         opening_round_ms,
     });
-}
-
-public(package) fun launch_shared(launch_id: ID, public_start_ms: u64) {
-    emit(LaunchShared { launch_id, public_start_ms });
 }
 
 public(package) fun opening_round_joined(launch_id: ID, quote: u64, bids: u64) {

@@ -299,8 +299,8 @@ fun start(): Fixture {
     }
 }
 
-/// Starts the launch for the mock adapter's witness, finalizes it once the Coin Registry holds
-/// the currency, and shares it.
+/// Starts the launch for the mock adapter's witness and finalizes it once the Coin Registry holds
+/// the currency, which shares it; returns its ID in the transaction after.
 fun share_launch(
     scenario: &mut Scenario,
     version: &PackageVersion,
@@ -341,12 +341,11 @@ fun share_launch(
         ),
     );
     initializer.set_lp_fee_split(creator_split());
-    let launch = initializer.finalize(&mut currency, config, scenario.ctx());
-    let launch_id = object::id(&launch);
-    launch.share(clock);
+    initializer.finalize(&mut currency, config, clock, scenario.ctx());
     test_scenario::return_to_address(COIN_REGISTRY, currency);
+    scenario.next_tx(sender);
 
-    launch_id
+    test_scenario::most_recent_id_shared<Launch<ATOMIC_MIGRATION_TESTS, QUOTE>>().destroy_some()
 }
 
 fun reach_migration(f: &mut Fixture) {

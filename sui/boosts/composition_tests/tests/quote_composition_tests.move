@@ -83,9 +83,8 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
     initializer.set_graduation_target(25_000_000);
     initializer.set_allocation_plan(default_allocation_plan());
     initializer.set_lp_fee_split(default_fee_split());
-    let market = initializer.finalize(&mut currency, &config, scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
-    market.share(&clock);
+    initializer.finalize(&mut currency, &config, &clock, scenario.ctx());
     test_scenario::return_shared(config);
     test_scenario::return_to_address(@0xc, currency);
     scenario.next_tx(@0xa);

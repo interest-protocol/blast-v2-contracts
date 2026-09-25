@@ -1,4 +1,4 @@
-# 0093: An optional opening round replaces purchase protection
+# 0093: An optional opening round replaces purchase protection and the creator's head start
 
 - Status: accepted
 - Date: 2026-09-25
@@ -18,23 +18,29 @@ within the window changes nothing.
 
 The founder also ruled that the mechanism must be simple enough for traders to
 understand in one sentence, and optional: the platform is generic, and some
-creators want trading to start at share.
+creators want trading to start at once. The same day the founder ruled that the
+creator no longer needs a purchase before anyone else can trade: that head start
+was the last guaranteed snipe.
 
 ## Decision
 
+**Creation shares.** `finalize` takes the `Clock` and shares the launch; `share`
+is removed. Public time starts at creation, so there is no unshared launch for
+the creator to buy from first: the creator buys, or bids, like everyone else.
+With no function taking a launch by value, a shared launch cannot be re-shared
+to restart its clock.
+
 **Setting.** `set_opening_round(opening_round_ms)` replaces `set_protection`.
 Zero, the default, has no opening round. Otherwise `finalize` requires one
-minute to five minutes (package constants) and the launch starts in a new first
-lifecycle state, `OpeningRound`.
+minute to five minutes (package constants), stores the round's end, and the
+launch starts in a new first lifecycle state, `OpeningRound`.
 
 **Joining.** `join_opening_round` adds Quote to the sender's bid, recorded as a
-launch-owned dynamic field, until `opening_round_ms` after share. Before share
-only the creator's transaction reaches the launch, so the creator's early
-purchase is a bid at the same price as everyone's. A zero bid aborts. No bid
+launch-owned dynamic field, until the round's end. A zero bid aborts. No bid
 can be withdrawn, so a large bid cannot fake demand and leave.
 
 **Nothing trades.** `buy` and `sell` need `Live`, so no one can trade before
-or ahead of the pot, including the creator before share.
+or ahead of the pot.
 
 **Settlement.** From the round's end, anyone may `settle_opening_round`: it
 moves the launch to `Live` and buys from the curve once with the whole pot,
@@ -53,14 +59,13 @@ delivery orders. Delivery transfers to the bidder, never to the caller, and one
 bidder whose transfer fails cannot block the others.
 
 **Removed.** The per-transaction and cumulative limits, their errors, and the
-per-sender purchase records. `buy` no longer takes the `Clock`. The launch
-records `public_start_ms` at share, which also marks it shared for `sell` and
-creator claims.
+per-sender purchase records; `share`, the purchase before sharing, and the
+shared checks in `sell` and creator claims. `buy` no longer takes the `Clock`.
 
-**Events.** `LaunchCreated` carries `opening_round_ms` instead of the
-protection settings. `OpeningRoundJoined` (the bidder is the sender),
-`OpeningRoundSettled`, and `OpeningRoundDelivered` (the bidder can differ from
-the sender) are new. The pot's purchase emits `Bought` in the same transaction
+**Events.** `LaunchCreated` carries `public_start_ms` and `opening_round_ms`
+instead of the protection settings, and `LaunchShared` is removed.
+`OpeningRoundJoined` (the bidder is the sender), `OpeningRoundSettled`, and
+`OpeningRoundDelivered` (the bidder can differ from the sender) are new. The pot's purchase emits `Bought` in the same transaction
 as `OpeningRoundSettled`; indexers attribute it to the round, not the settler.
 
 ## Consequences

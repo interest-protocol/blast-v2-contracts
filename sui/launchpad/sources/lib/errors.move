@@ -84,7 +84,7 @@ const EZeroTradeOutput: u64 = 17;
 const EOpeningRoundEnded: u64 = 18;
 
 #[test_only]
-/// The opening round has not ended, or the launch is not shared yet.
+/// The opening round has not ended.
 const EOpeningRoundNotEnded: u64 = 19;
 
 #[test_only]

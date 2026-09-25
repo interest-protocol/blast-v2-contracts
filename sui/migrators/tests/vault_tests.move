@@ -38,7 +38,7 @@ public struct OtherVenue() has drop;
 
 public struct TestPosition has key, store { id: UID }
 
-/// One owned launch whose fee split and Meme type every built vault copies, its currency, and a
+/// One shared launch whose fee split and Meme type every built vault copies, its currency, and a
 /// buyback admin.
 public struct VaultFixture {
     scenario: Scenario,
@@ -47,7 +47,7 @@ public struct VaultFixture {
     admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     migrators_version: MigratorsVersion,
     policy: LpFeePolicy,
-    launch: Launch<VAULT_TESTS, QUOTE>,
+    launch_id: ID,
     currency: Currency<VAULT_TESTS>,
 }
 
@@ -116,12 +116,15 @@ public struct ExpectedBuybackBurned has copy, drop {
 #[test]
 fun attaching_announces_the_residuals_liquidity_and_launch_fee_split_at_generation_zero() {
     let mut f = start(mixed_split());
+    let launch = f.take_launch();
+    let launch_fee_split = launch.lp_fee_split();
+    test_scenario::return_shared(launch);
 
     f.scenario.next_tx(ADMIN);
     let vault = f.new_vault(3, 4);
 
     assert_eq!(vault.generation_for_testing(), 0);
-    assert_eq!(vault.fee_split_for_testing(), f.launch.lp_fee_split());
+    assert_eq!(vault.fee_split_for_testing(), launch_fee_split);
     assert_eq!(vault.fee_split_for_testing(), mixed_split());
     assert_balances!(|| vault.creator_balances_for_testing(), 0, 0);
     assert_balances!(|| vault.auto_lp_balances_for_testing(), 0, 0);
@@ -159,8 +162,9 @@ fun create_shares_the_vault_it_announces_with_its_pool_and_position() {
     let position = TestPosition { id: object::new(f.scenario.ctx()) };
     let position_id = object::id(&position);
 
+    let launch = f.take_launch();
     vault::create(
-        &f.launch,
+        &launch,
         &TestVenue(),
         object::id_from_address(POOL),
         position,
@@ -169,6 +173,7 @@ fun create_shares_the_vault_it_announces_with_its_pool_and_position() {
         balance::create_for_testing(4),
         f.scenario.ctx(),
     );
+    test_scenario::return_shared(launch);
 
     let created = event::events_by_type<blast_events::VaultCreated>();
     assert_eq!(created.length(), 1);
@@ -453,7 +458,9 @@ fun split_rounds_blast_up_then_credits_every_balance_and_pays_every_recipient_ex
     assert_balances!(|| vault.auto_lp_balances_for_testing(), 2, 1);
     assert_balances!(|| vault.rewards_balances(), 1, 1);
     assert_eq!(vault.burn_quote_for_testing(), 0);
-    assert_eq!(f.total_supply(), f.launch.atomic_supply_for_testing());
+    let launch = f.take_launch();
+    assert_eq!(f.total_supply(), launch.atomic_supply_for_testing());
+    test_scenario::return_shared(launch);
     f.assert_received(PROTOCOL, 2, 2);
     f.assert_received(DESTINATION_A, 1, 1);
     f.assert_received(DESTINATION_B, 2, 1);
@@ -982,8 +989,11 @@ fun start_with_supply(fee_split: FeeSplit, burnable: bool): VaultFixture {
         fee_split,
         burnable,
     );
+    let launch_id = object::id(&launch);
+    test_scenario::return_shared(launch);
     destroy(config);
     destroy(version);
+    scenario.next_tx(ADMIN);
 
     VaultFixture {
         scenario,
@@ -992,7 +1002,7 @@ fun start_with_supply(fee_split: FeeSplit, burnable: bool): VaultFixture {
         admin_cap,
         migrators_version,
         policy,
-        launch,
+        launch_id,
         currency,
     }
 }
@@ -1004,9 +1014,9 @@ fun new_vault(
     protocol_quote_residual: u64,
 ): LpVault<VAULT_TESTS, QUOTE> {
     let position = TestPosition { id: object::new(self.scenario.ctx()) };
-
-    vault::new_for_testing(
-        &self.launch,
+    let launch = self.take_launch();
+    let vault = vault::new_for_testing(
+        &launch,
         &TestVenue(),
         object::id_from_address(POOL),
         position,
@@ -1014,7 +1024,15 @@ fun new_vault(
         balance::create_for_testing(protocol_meme_residual),
         balance::create_for_testing(protocol_quote_residual),
         self.scenario.ctx(),
-    )
+    );
+    test_scenario::return_shared(launch);
+
+    vault
+}
+
+/// Takes the fixture launch from shared storage; return it before the transaction ends.
+fun take_launch(self: &VaultFixture): Launch<VAULT_TESTS, QUOTE> {
+    self.scenario.take_shared_by_id(self.launch_id)
 }
 
 /// Splits totals 1 through 32 of both assets at `share` for both, comparing every part with an

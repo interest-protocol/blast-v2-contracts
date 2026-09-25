@@ -72,53 +72,62 @@ public struct OpeningRoundFixture {
 #[test]
 fun zero_opening_round_starts_live() {
     let mut fixture = start();
-    let launch = fixture.new_launch(0);
+    fixture.create(0);
 
-    assert_launch_created(object::id(&launch), 0);
-    assert!(launch.is_live_for_testing());
-    assert_eq!(launch.opening_round_ms_for_testing(), 0);
-    destroy(launch);
+    assert_launch_created(0);
+    fixture.next_tx!(LAUNCHER, |f| {
+        let launch = f.take_launch();
+
+        assert!(launch.is_live_for_testing());
+        assert_eq!(launch.opening_round_end_ms_for_testing(), PUBLIC_START_MS);
+        launch.put_back();
+    });
     fixture.end();
 }
 
 #[test]
 fun shortest_opening_round_is_accepted() {
     let mut fixture = start();
-    let launch = fixture.new_launch(MIN_ROUND_MS);
+    fixture.create(MIN_ROUND_MS);
 
-    assert_launch_created(object::id(&launch), MIN_ROUND_MS);
-    assert!(launch.is_opening_round_for_testing());
-    assert_eq!(launch.opening_round_ms_for_testing(), MIN_ROUND_MS);
-    destroy(launch);
+    assert_launch_created(MIN_ROUND_MS);
+    fixture.next_tx!(LAUNCHER, |f| {
+        let launch = f.take_launch();
+
+        assert!(launch.is_opening_round_for_testing());
+        assert_eq!(launch.opening_round_end_ms_for_testing(), ROUND_END_MS);
+        launch.put_back();
+    });
     fixture.end();
 }
 
 #[test]
 fun longest_opening_round_is_accepted() {
     let mut fixture = start();
-    let launch = fixture.new_launch(MAX_ROUND_MS);
+    fixture.create(MAX_ROUND_MS);
 
-    assert_launch_created(object::id(&launch), MAX_ROUND_MS);
-    assert!(launch.is_opening_round_for_testing());
-    destroy(launch);
+    assert_launch_created(MAX_ROUND_MS);
+    fixture.next_tx!(LAUNCHER, |f| {
+        let launch = f.take_launch();
+
+        assert!(launch.is_opening_round_for_testing());
+        assert_eq!(launch.opening_round_end_ms_for_testing(), PUBLIC_START_MS + MAX_ROUND_MS);
+        launch.put_back();
+    });
     fixture.end();
 }
 
 #[test, expected_failure(abort_code = blast_fun::errors::EInvalidOpeningRound, location = blast_fun::launch)]
 fun opening_round_below_the_minimum_is_rejected() {
     let mut fixture = start();
-    let launch = fixture.new_launch(MIN_ROUND_MS - 1);
-
-    destroy(launch);
+    fixture.create(MIN_ROUND_MS - 1);
     fixture.end();
 }
 
 #[test, expected_failure(abort_code = blast_fun::errors::EInvalidOpeningRound, location = blast_fun::launch)]
 fun opening_round_above_the_maximum_is_rejected() {
     let mut fixture = start();
-    let launch = fixture.new_launch(MAX_ROUND_MS + 1);
-
-    destroy(launch);
+    fixture.create(MAX_ROUND_MS + 1);
     fixture.end();
 }
 
@@ -127,9 +136,7 @@ fun invalid_opening_round_precedes_the_ticket_sell_burn() {
     let mut fixture = start();
     let mut ticket = fixture.new_ticket();
     ticket.set_sell_burn_bps_for_testing(5_001);
-    let launch = fixture.intake(ticket, plan(), 1);
-
-    destroy(launch);
+    fixture.intake(ticket, plan(), 1);
     fixture.end();
 }
 
@@ -143,9 +150,7 @@ fun allocation_sums_precede_an_invalid_opening_round() {
         bps::new(10_000),
         vector[allocation::recipient(CREATOR, bps::new(1), bps::new(0))],
     );
-    let launch = fixture.intake(ticket, plan, 1);
-
-    destroy(launch);
+    fixture.intake(ticket, plan, 1);
     fixture.end();
 }
 
@@ -154,26 +159,22 @@ fun invalid_opening_round_aborts_before_ticket_custody_moves() {
     let mut fixture = start();
     let mut ticket = fixture.new_ticket();
     ticket.burn_meme_for_testing(1);
-    let launch = fixture.intake(ticket, plan(), 1);
-
-    destroy(launch);
+    fixture.intake(ticket, plan(), 1);
     fixture.end();
 }
 
 // --- Joining ---
 
 #[test]
-fun creator_and_public_bids_accumulate_per_bidder() {
+fun bids_accumulate_per_bidder() {
     let mut fixture = start();
-    let mut launch = fixture.new_launch(MIN_ROUND_MS);
-    fixture.join_before_share(&mut launch, ALICE_BID);
-    let launch_id = object::id(&launch);
+    let launch_id = fixture.open(MIN_ROUND_MS);
+    fixture.join(CREATOR, ALICE_BID);
 
     assert_eq!(
         bcs::to_bytes(&only_event<OpeningRoundJoined>()),
         u64_payload(launch_id, vector[ALICE_BID, ALICE_BID]),
     );
-    fixture.share(launch);
     fixture.join(ALICE, ALICE_BID);
     fixture.join(ALICE, ALICE_BID);
     fixture.join(BOB, BOB_BID);
@@ -185,7 +186,7 @@ fun creator_and_public_bids_accumulate_per_bidder() {
     fixture.next_tx!(ALICE, |f| {
         let launch = f.take_launch();
 
-        assert_eq!(launch.opening_round_bid_for_testing(LAUNCHER), ALICE_BID);
+        assert_eq!(launch.opening_round_bid_for_testing(CREATOR), ALICE_BID);
         assert_eq!(launch.opening_round_bid_for_testing(ALICE), 2 * ALICE_BID);
         assert_eq!(launch.opening_round_bid_for_testing(BOB), BOB_BID);
         assert_opening_round(&launch, 3 * ALICE_BID + BOB_BID, 3 * ALICE_BID + BOB_BID, 0);
@@ -262,25 +263,6 @@ fun join_after_settlement_is_rejected() {
 // --- Nothing trades during the round ---
 
 #[test, expected_failure(abort_code = blast_fun::errors::EInvalidLaunchLifecycle, location = blast_fun::launch)]
-fun creator_cannot_buy_before_share_with_an_opening_round() {
-    let mut fixture = start();
-    let mut launch = fixture.new_launch(MIN_ROUND_MS);
-    let quote = coin::mint_for_testing<TEST_QUOTE>(ALICE_BID, fixture.scenario.ctx());
-    let (meme, refund) = launch.buy(
-        &fixture.package_version,
-        &fixture.runtime_config,
-        quote,
-        1,
-        fixture.scenario.ctx(),
-    );
-
-    destroy(meme);
-    destroy(refund);
-    destroy(launch);
-    fixture.end();
-}
-
-#[test, expected_failure(abort_code = blast_fun::errors::EInvalidLaunchLifecycle, location = blast_fun::launch)]
 fun buy_during_the_round_is_rejected() {
     let mut fixture = start();
     fixture.open(MIN_ROUND_MS);
@@ -334,17 +316,6 @@ fun settle_one_millisecond_before_the_end_is_rejected() {
     fixture.set_time(ROUND_END_MS - 1);
 
     fixture.settle(KEEPER);
-    fixture.end();
-}
-
-#[test, expected_failure(abort_code = blast_fun::errors::EOpeningRoundNotEnded, location = blast_fun::launch)]
-fun settle_before_share_is_rejected() {
-    let mut fixture = start();
-    let mut launch = fixture.new_launch(MIN_ROUND_MS);
-    fixture.set_time(ROUND_END_MS);
-
-    launch.settle_opening_round(&fixture.package_version, &fixture.runtime_config, &fixture.clock);
-    destroy(launch);
     fixture.end();
 }
 
@@ -756,13 +727,13 @@ fun new_ticket(self: &mut OpeningRoundFixture): LaunchTicket<LAUNCH_OPENING_ROUN
 }
 
 /// Starts, configures, and finalizes the launch in the next transaction, once the Coin Registry
-/// holds the ticket's currency.
+/// holds the ticket's currency; finalization shares it.
 fun intake(
     self: &mut OpeningRoundFixture,
     ticket: LaunchTicket<LAUNCH_OPENING_ROUND_TESTS>,
     plan: AllocationPlan,
     opening_round_ms: u64,
-): Launch<LAUNCH_OPENING_ROUND_TESTS, TEST_QUOTE> {
+) {
     self.scenario.next_tx(LAUNCHER);
     let mut currency = self
         .scenario
@@ -782,19 +753,15 @@ fun intake(
         allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), bps::new(0), vector[]),
     );
     initializer.set_opening_round(opening_round_ms);
-    let launch = initializer.finalize(&mut currency, &self.config, self.scenario.ctx());
+    initializer.finalize(&mut currency, &self.config, &self.clock, self.scenario.ctx());
     test_scenario::return_to_address(COIN_REGISTRY, currency);
-
-    launch
 }
 
-fun new_launch(
-    self: &mut OpeningRoundFixture,
-    opening_round_ms: u64,
-): Launch<LAUNCH_OPENING_ROUND_TESTS, TEST_QUOTE> {
+/// Creates and shares one launch at the fixture clock's current time.
+fun create(self: &mut OpeningRoundFixture, opening_round_ms: u64) {
     let ticket = self.new_ticket();
 
-    self.intake(ticket, plan(), opening_round_ms)
+    self.intake(ticket, plan(), opening_round_ms);
 }
 
 /// Moves the fixture clock to `timestamp_ms` for the following transactions.
@@ -804,16 +771,13 @@ fun set_time(self: &mut OpeningRoundFixture, timestamp_ms: u64) {
 
 /// Creates and shares one launch at the fixture clock's current time and returns its ID.
 fun open(self: &mut OpeningRoundFixture, opening_round_ms: u64): ID {
-    let launch = self.new_launch(opening_round_ms);
+    self.create(opening_round_ms);
+    self.scenario.next_tx(LAUNCHER);
+    let launch = self.take_launch();
     let launch_id = object::id(&launch);
-    self.share(launch);
+    launch.put_back();
 
     launch_id
-}
-
-/// Shares the launch at the fixture clock's current time.
-fun share(self: &OpeningRoundFixture, launch: Launch<LAUNCH_OPENING_ROUND_TESTS, TEST_QUOTE>) {
-    launch.share(&self.clock);
 }
 
 fun take_launch(self: &OpeningRoundFixture): Launch<LAUNCH_OPENING_ROUND_TESTS, TEST_QUOTE> {
@@ -823,17 +787,6 @@ fun take_launch(self: &OpeningRoundFixture): Launch<LAUNCH_OPENING_ROUND_TESTS, 
 /// Returns a taken launch to shared storage for a later transaction.
 fun put_back(launch: Launch<LAUNCH_OPENING_ROUND_TESTS, TEST_QUOTE>) {
     test_scenario::return_shared(launch);
-}
-
-/// Joins the owned launch's opening round before it is shared, as the launcher.
-fun join_before_share(
-    self: &mut OpeningRoundFixture,
-    launch: &mut Launch<LAUNCH_OPENING_ROUND_TESTS, TEST_QUOTE>,
-    quote_in: u64,
-) {
-    let quote = coin::mint_for_testing<TEST_QUOTE>(quote_in, self.scenario.ctx());
-
-    launch.join_opening_round(&self.package_version, quote, &self.clock, self.scenario.ctx());
 }
 
 /// Joins the opening round as `sender` in a new transaction.
@@ -881,14 +834,16 @@ fun buy(self: &mut OpeningRoundFixture, sender: address, quote_in: u64, min_meme
     launch.put_back();
 }
 
-/// Checks this transaction's only `LaunchCreated` event names `launch_id` and ends with
+/// Checks this transaction's only `LaunchCreated` event ends with the fixture's start time and
 /// `opening_round_ms`.
-fun assert_launch_created(launch_id: ID, opening_round_ms: u64) {
+fun assert_launch_created(opening_round_ms: u64) {
     let created = bcs::to_bytes(&only_event<LaunchCreated>());
-    let tail = created.length() - 8;
+    let tail = created.length() - 16;
+    let public_start_ms = PUBLIC_START_MS;
+    let mut expected = bcs::to_bytes(&public_start_ms);
+    expected.append(bcs::to_bytes(&opening_round_ms));
 
-    assert_eq!(vector::tabulate!(32, |i| created[i]), bcs::to_bytes(&launch_id));
-    assert_eq!(vector::tabulate!(8, |i| created[tail + i]), bcs::to_bytes(&opening_round_ms));
+    assert_eq!(vector::tabulate!(16, |i| created[tail + i]), expected);
 }
 
 /// Expected bytes of a payload whose fields after the launch ID are all `u64`.

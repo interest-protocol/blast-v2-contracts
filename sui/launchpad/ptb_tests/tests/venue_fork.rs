@@ -798,9 +798,8 @@ impl World {
         let split = self.fee_split_arg(&mut b, split)?;
         call(&mut b, self.blast, "launch", "set_lp_fee_split", pair.clone(), vec![initializer, split]);
         let currency = self.shared(&mut b, currency, true)?;
-        let launch = call(&mut b, self.blast, "launch", "finalize", pair.clone(), vec![initializer, currency, config]);
         let clock = self.clock(&mut b)?;
-        call(&mut b, self.blast, "launch", "share", pair, vec![launch, clock]);
+        call(&mut b, self.blast, "launch", "finalize", pair, vec![initializer, currency, config, clock]);
 
         Ok(b.finish())
     }
@@ -2111,6 +2110,7 @@ struct LaunchCreated {
     _lp_meme_bps: u64,
     _lp_quote_bps: u64,
     _allocation_recipients: Vec<(SuiAddress, u64, u64)>,
+    _public_start_ms: u64,
     _opening_round_ms: u64,
 }
 

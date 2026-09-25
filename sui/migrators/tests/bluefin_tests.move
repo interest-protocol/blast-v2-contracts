@@ -234,7 +234,7 @@ fun new_ticket(f: &mut BluefinFixture): LaunchTicket<BLUEFIN_TESTS> {
 }
 
 /// Starts a Bluefin launch in `QUOTE` at the tier and finalizes it once the Coin Registry holds
-/// the currency.
+/// the currency, which shares it; returns it taken in the transaction after.
 fun open_launch(
     f: &mut BluefinFixture,
     tick_spacing: u32,
@@ -259,10 +259,13 @@ fun open_launch(
     initializer.set_lp_fee_split(
         allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), bps::new(0), vector[]),
     );
-    let launch = initializer.finalize(&mut currency, &f.config, f.scenario.ctx());
+    let clock = clock::create_for_testing(f.scenario.ctx());
+    initializer.finalize(&mut currency, &f.config, &clock, f.scenario.ctx());
+    clock.destroy_for_testing();
     test_scenario::return_to_address(COIN_REGISTRY, currency);
+    f.scenario.next_tx(ADMIN);
 
-    launch
+    f.scenario.take_shared()
 }
 
 fun end(f: BluefinFixture) {
@@ -291,4 +294,4 @@ use blast_fun_migrators::{
 
 use std::{type_name, unit_test::{assert_eq, destroy}};
 
-use sui::{coin_registry::Currency, test_scenario::{Self, Scenario}, test_utils};
+use sui::{clock, coin_registry::Currency, test_scenario::{Self, Scenario}, test_utils};

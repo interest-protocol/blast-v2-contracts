@@ -169,7 +169,8 @@ with no abilities: only the starting adapter's witness can borrow its treasury
 cap, which the adapter uses to prepare its venue before any Meme can leave the
 launch (the Cetus adapter reserves pool creation). The creator sets the
 graduation target, allocation plan, LP-fee split, and optional opening round, and
-`finalize` checks them all. Because a generated package's initializer cannot
+`finalize` checks them all and shares the launch, so no one, the creator
+included, can trade before it is public. Because a generated package's initializer cannot
 read launch policy, starting checks the decimals, the Quote, and the adapter
 against the current policy, and finalization checks the Meme symbol against its
 32-byte bound and, since a ticket may come from an older launchpad version, the
@@ -202,17 +203,15 @@ The common lifecycle is intentionally small:
 [OpeningRound ->] Live -> MigrationReady -> Migrated
 ```
 
-- `OpeningRound`: only when the creator set one. Bids join one pot, the
-  creator's before share included, until the round's end after share; nothing
-  trades. Anyone then settles it: one curve purchase with the whole pot, whose
-  Meme and refunded Quote anyone may deliver pro rata to each bidder, in any
-  later state.
+- `OpeningRound`: only when the creator set one. Bids, the creator's included,
+  join one pot until the round's end; nothing trades. Anyone then settles it:
+  one curve purchase with the whole pot, whose Meme and refunded Quote anyone
+  may deliver pro rata to each bidder, in any later state.
 - `Live`: the curve accepts buys and sells while enforcing slippage, fee, and
-  reserve rules. Without an opening round, the owner may `buy` before the launch
-  is shared; sell-designated burn waits in a pending balance.
+  reserve rules; sell-designated burn waits in a pending balance.
 - `MigrationReady`: a buy or the round's settlement reached the target, closed
-  trading, and returned excess Quote; a buy before sharing may do this. Only the
-  adapter whose witness the launch stored can migrate it.
+  trading, and returned excess Quote. Only the adapter whose witness the launch
+  stored can migrate it.
 - `Migrated`: set by the one `migrate` call, which also completes terminal
   disposal.
 
