@@ -376,7 +376,7 @@ fun configure_policy(self: &mut ReplayFixture) {
         let mut config = f.scenario.take_shared<LaunchConfig>();
         let mut policy = f.take_policy();
 
-        config.set_quote<QUOTE>(&f.version, &admin, VIRTUAL_QUOTE);
+        config.set_quote_allowed<QUOTE>(&f.version, &admin, true);
         config.set_migration_witness_allowed<Venue>(&f.version, &admin, true);
         config.set_trade_fees(&f.version, &admin, bps::new(QUOTE_FEE_BPS), bps::new(MEME_FEE_BPS));
         config.set_protocol_allocation(
@@ -426,6 +426,7 @@ fun create_launch(self: &mut ReplayFixture) {
             POOL_TICK_SPACING,
             POOL_FEE_RATE,
         );
+        initializer.set_virtual_quote(VIRTUAL_QUOTE);
         initializer.set_graduation_target(TARGET);
         initializer.set_allocation_plan(plan());
         initializer.set_lp_fee_split(first_split());

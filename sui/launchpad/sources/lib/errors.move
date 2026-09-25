@@ -135,6 +135,14 @@ const ECreatorNotSender: u64 = 30;
 /// The claim attestation's signature does not verify.
 const EInvalidCreatorClaimSignature: u64 = 31;
 
+#[test_only]
+/// The Quote is not admitted for new launches.
+const EQuoteNotAllowed: u64 = 32;
+
+#[test_only]
+/// The virtual Quote reserve is zero, which would let the first purchase take the whole curve.
+const EInvalidVirtualQuote: u64 = 33;
+
 macro public(package) fun invalid_bps(): u64 { 0 }
 
 macro public(package) fun invalid_trade_fee_bps(): u64 { 1 }
@@ -198,3 +206,7 @@ macro public(package) fun creator_claim_expired(): u64 { 29 }
 macro public(package) fun creator_not_sender(): u64 { 30 }
 
 macro public(package) fun invalid_creator_claim_signature(): u64 { 31 }
+
+macro public(package) fun quote_not_allowed(): u64 { 32 }
+
+macro public(package) fun invalid_virtual_quote(): u64 { 33 }

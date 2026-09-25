@@ -50,7 +50,7 @@ recipient directly, derives "shared" from the protection end, and keeps only the
 atomic protection limits.
 
 **Configuration.** Each allow/disallow pair is one setter (`set_quote` with zero
-disallowing, `set_meme_decimals_allowed`, `set_migration_witness_allowed`), and
+disallowing, since replaced by ADR 0092's `set_quote_allowed`, `set_meme_decimals_allowed`, `set_migration_witness_allowed`), and
 an empty signer key revokes account claims. A setter called with the value
 already in place aborts: with one shared `unchanged` error, or, for the decimals
 and migration-witness sets, with the set's own insert or remove abort. The

@@ -539,7 +539,7 @@ fun start(): ProtectionFixture {
     let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
     let mut config = scenario.take_shared<LaunchConfig>();
     let admin_witness = authority.sign_in(&admin_cap);
-    config.set_quote<TEST_QUOTE>(&package_version, &admin_witness, 5_000_000);
+    config.set_quote_allowed<TEST_QUOTE>(&package_version, &admin_witness, true);
     config.set_migration_witness_allowed<TEST_MIGRATION_WITNESS>(
         &package_version,
         &admin_witness,
@@ -602,6 +602,7 @@ fun intake(
         200,
         10_000,
     );
+    initializer.set_virtual_quote(5_000_000);
     initializer.set_graduation_target(TARGET);
     initializer.set_allocation_plan(plan);
     initializer.set_lp_fee_split(

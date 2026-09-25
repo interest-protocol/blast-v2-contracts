@@ -10,10 +10,6 @@ const PUBLISHER: address = @0xA11CE;
 
 const PROTOCOL_ADMIN: address = @0xAD;
 
-const VIRTUAL_QUOTE: u64 = 5_000_000;
-
-const UPDATED_VIRTUAL_QUOTE: u64 = 8_000_000;
-
 const QUOTE_FEE_BPS: u64 = 100;
 
 const MEME_FEE_BPS: u64 = 250;
@@ -359,10 +355,10 @@ fun launch_snapshot_rejects_disallowed_decimals() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.set_quote<TEST_QUOTE>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
+        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
         f.allow_test_migration_witness(&admin_witness);
         f.config.set_meme_decimals_allowed(&f.package_version, &admin_witness, MEME_DECIMALS, false);
-        let (_, _, _) = f.config.snapshot_for_launch<TEST_QUOTE>(test_witness(), MEME_DECIMALS);
+        let (_, _) = f.config.snapshot_for_launch<TEST_QUOTE>(test_witness(), MEME_DECIMALS);
     });
 
     fixture.end();
@@ -375,84 +371,54 @@ fun admin_allows_migration_witness_for_launch_snapshot() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.set_quote<TEST_QUOTE>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
+        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
         f.allow_test_migration_witness(&admin_witness);
 
-        let (virtual_quote, _, _) = f
+        let (quote_fee_bps, meme_fee_bps) = f
             .config
             .snapshot_for_launch<TEST_QUOTE>(test_witness(), MEME_DECIMALS);
 
-        assert_eq!(virtual_quote, VIRTUAL_QUOTE);
+        assert_eq!(quote_fee_bps.value(), 0);
+        assert_eq!(meme_fee_bps.value(), 0);
     });
 
     fixture.end();
 }
 
 #[test]
-fun admin_sets_quote_and_launch_snapshot_uses_its_virtual_reserve() {
+fun admin_allows_quote_for_launch_snapshot() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.set_quote<TEST_QUOTE>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
+        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
         f.allow_test_migration_witness(&admin_witness);
 
-        let (virtual_quote, _, _) = f
-            .config
-            .snapshot_for_launch<TEST_QUOTE>(test_witness(), MEME_DECIMALS);
+        let (_, _) = f.config.snapshot_for_launch<TEST_QUOTE>(test_witness(), MEME_DECIMALS);
 
-        assert_eq!(virtual_quote, VIRTUAL_QUOTE);
         assert_eq!(f.config.allowed_quote_count_for_testing(), 1);
-        assert_eq!(
-            bcs::to_bytes(&collect_one<events::QuoteSet>()),
-            quote_set_bytes(VIRTUAL_QUOTE),
-        );
+        assert_eq!(bcs::to_bytes(&collect_one<events::QuoteSet>()), quote_set_bytes(true));
     });
 
     fixture.end();
 }
 
 #[test]
-fun setting_an_admitted_quote_updates_its_virtual_reserve_for_later_launches() {
+fun disallowing_a_quote_removes_it_from_future_launches() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.set_quote<TEST_QUOTE>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
-        f.allow_test_migration_witness(&admin_witness);
-        f.config.set_quote<TEST_QUOTE>(&f.package_version, &admin_witness, UPDATED_VIRTUAL_QUOTE);
-
-        let (virtual_quote, _, _) = f
-            .config
-            .snapshot_for_launch<TEST_QUOTE>(test_witness(), MEME_DECIMALS);
-        let set = collect<events::QuoteSet>();
-
-        assert_eq!(virtual_quote, UPDATED_VIRTUAL_QUOTE);
-        assert_eq!(f.config.allowed_quote_count_for_testing(), 1);
-        assert_eq!(set.length(), 2);
-        assert_eq!(bcs::to_bytes(&set[1]), quote_set_bytes(UPDATED_VIRTUAL_QUOTE));
-    });
-
-    fixture.end();
-}
-
-#[test]
-fun setting_quote_to_zero_disallows_it_from_future_launches() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        f.config.set_quote<TEST_QUOTE>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
-        f.config.set_quote<TEST_QUOTE>(&f.package_version, &admin_witness, 0);
+        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
+        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, false);
 
         let set = collect<events::QuoteSet>();
 
         assert_eq!(f.config.allowed_quote_count_for_testing(), 0);
         assert_eq!(set.length(), 2);
-        assert_eq!(bcs::to_bytes(&set[1]), quote_set_bytes(0));
+        assert_eq!(bcs::to_bytes(&set[1]), quote_set_bytes(false));
     });
 
     fixture.end();
@@ -465,46 +431,43 @@ fun admin_can_readd_a_disallowed_quote() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.set_quote<TEST_QUOTE>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
-        f.config.set_quote<TEST_QUOTE>(&f.package_version, &admin_witness, 0);
-        f.config.set_quote<TEST_QUOTE>(&f.package_version, &admin_witness, UPDATED_VIRTUAL_QUOTE);
+        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
+        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, false);
+        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
         f.allow_test_migration_witness(&admin_witness);
 
-        let (virtual_quote, _, _) = f
-            .config
-            .snapshot_for_launch<TEST_QUOTE>(test_witness(), MEME_DECIMALS);
+        let (_, _) = f.config.snapshot_for_launch<TEST_QUOTE>(test_witness(), MEME_DECIMALS);
 
         assert_eq!(f.config.allowed_quote_count_for_testing(), 1);
-        assert_eq!(virtual_quote, UPDATED_VIRTUAL_QUOTE);
     });
 
     fixture.end();
 }
 
 #[test]
-fun quote_table_admits_more_than_the_previous_vector_limit() {
+fun many_quotes_can_be_admitted() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.set_quote<QUOTE<Q0>>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
-        f.config.set_quote<QUOTE<Q1>>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
-        f.config.set_quote<QUOTE<Q2>>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
-        f.config.set_quote<QUOTE<Q3>>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
-        f.config.set_quote<QUOTE<Q4>>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
-        f.config.set_quote<QUOTE<Q5>>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
-        f.config.set_quote<QUOTE<Q6>>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
-        f.config.set_quote<QUOTE<Q7>>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
-        f.config.set_quote<QUOTE<Q8>>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
-        f.config.set_quote<QUOTE<Q9>>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
-        f.config.set_quote<QUOTE<Q10>>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
-        f.config.set_quote<QUOTE<Q11>>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
-        f.config.set_quote<QUOTE<Q12>>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
-        f.config.set_quote<QUOTE<Q13>>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
-        f.config.set_quote<QUOTE<Q14>>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
-        f.config.set_quote<QUOTE<Q15>>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
-        f.config.set_quote<QUOTE<Q16>>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
+        f.config.set_quote_allowed<QUOTE<Q0>>(&f.package_version, &admin_witness, true);
+        f.config.set_quote_allowed<QUOTE<Q1>>(&f.package_version, &admin_witness, true);
+        f.config.set_quote_allowed<QUOTE<Q2>>(&f.package_version, &admin_witness, true);
+        f.config.set_quote_allowed<QUOTE<Q3>>(&f.package_version, &admin_witness, true);
+        f.config.set_quote_allowed<QUOTE<Q4>>(&f.package_version, &admin_witness, true);
+        f.config.set_quote_allowed<QUOTE<Q5>>(&f.package_version, &admin_witness, true);
+        f.config.set_quote_allowed<QUOTE<Q6>>(&f.package_version, &admin_witness, true);
+        f.config.set_quote_allowed<QUOTE<Q7>>(&f.package_version, &admin_witness, true);
+        f.config.set_quote_allowed<QUOTE<Q8>>(&f.package_version, &admin_witness, true);
+        f.config.set_quote_allowed<QUOTE<Q9>>(&f.package_version, &admin_witness, true);
+        f.config.set_quote_allowed<QUOTE<Q10>>(&f.package_version, &admin_witness, true);
+        f.config.set_quote_allowed<QUOTE<Q11>>(&f.package_version, &admin_witness, true);
+        f.config.set_quote_allowed<QUOTE<Q12>>(&f.package_version, &admin_witness, true);
+        f.config.set_quote_allowed<QUOTE<Q13>>(&f.package_version, &admin_witness, true);
+        f.config.set_quote_allowed<QUOTE<Q14>>(&f.package_version, &admin_witness, true);
+        f.config.set_quote_allowed<QUOTE<Q15>>(&f.package_version, &admin_witness, true);
+        f.config.set_quote_allowed<QUOTE<Q16>>(&f.package_version, &admin_witness, true);
 
         assert_eq!(f.config.allowed_quote_count_for_testing(), 17);
     });
@@ -515,18 +478,18 @@ fun quote_table_admits_more_than_the_previous_vector_limit() {
 #[test]
 #[
     expected_failure(
-        abort_code = blast_fun::errors::EUnchanged,
-        location = blast_fun::launch_config,
+        abort_code = sui::vec_set::EKeyAlreadyExists,
+        location = sui::vec_set,
     ),
 ]
-fun setting_quote_rejects_an_unchanged_virtual_reserve() {
+fun allowing_an_admitted_quote_aborts() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.set_quote<TEST_QUOTE>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
-        f.config.set_quote<TEST_QUOTE>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
+        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
+        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
     });
 
     fixture.end();
@@ -535,17 +498,17 @@ fun setting_quote_rejects_an_unchanged_virtual_reserve() {
 #[test]
 #[
     expected_failure(
-        abort_code = blast_fun::errors::EUnchanged,
-        location = blast_fun::launch_config,
+        abort_code = sui::vec_set::EKeyDoesNotExist,
+        location = sui::vec_set,
     ),
 ]
-fun disallowing_an_unlisted_quote_rejects_the_unchanged_table() {
+fun disallowing_an_unlisted_quote_aborts() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.set_quote<TEST_QUOTE>(&f.package_version, &admin_witness, 0);
+        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, false);
     });
 
     fixture.end();
@@ -558,14 +521,14 @@ fun disallowing_an_unlisted_quote_rejects_the_unchanged_table() {
         location = blast_admin::operational_version,
     ),
 ]
-fun stale_package_version_rejects_quote_before_the_unchanged_check() {
+fun stale_package_version_rejects_quote_before_the_set_update() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
         f.package_version.set_for_testing(2);
 
-        f.config.set_quote<TEST_QUOTE>(&f.package_version, &admin_witness, 0);
+        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, false);
     });
 
     fixture.end();
@@ -574,8 +537,8 @@ fun stale_package_version_rejects_quote_before_the_unchanged_check() {
 #[test]
 #[
     expected_failure(
-        abort_code = sui::dynamic_field::EFieldDoesNotExist,
-        location = sui::dynamic_field,
+        abort_code = blast_fun::errors::EQuoteNotAllowed,
+        location = blast_fun::launch_config,
     ),
 ]
 fun launch_snapshot_rejects_disallowed_quote() {
@@ -584,10 +547,10 @@ fun launch_snapshot_rejects_disallowed_quote() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.set_quote<TEST_QUOTE>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
-        f.config.set_quote<TEST_QUOTE>(&f.package_version, &admin_witness, 0);
+        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
+        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, false);
         f.allow_test_migration_witness(&admin_witness);
-        let (_, _, _) = f.config.snapshot_for_launch<TEST_QUOTE>(test_witness(), MEME_DECIMALS);
+        let (_, _) = f.config.snapshot_for_launch<TEST_QUOTE>(test_witness(), MEME_DECIMALS);
     });
 
     fixture.end();
@@ -600,7 +563,7 @@ fun admin_sets_trade_fees_for_future_launch_snapshots() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.set_quote<TEST_QUOTE>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
+        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
         f.allow_test_migration_witness(&admin_witness);
         f
             .config
@@ -611,7 +574,7 @@ fun admin_sets_trade_fees_for_future_launch_snapshots() {
                 bps::new(MEME_FEE_BPS),
             );
 
-        let (_, quote_fee_bps, meme_fee_bps) = f
+        let (quote_fee_bps, meme_fee_bps) = f
             .config
             .snapshot_for_launch<TEST_QUOTE>(test_witness(), MEME_DECIMALS);
         let mut expected = u64_bytes(QUOTE_FEE_BPS);
@@ -777,11 +740,9 @@ fun disallowing_migration_witness_does_not_change_an_existing_launch_snapshot() 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.set_quote<TEST_QUOTE>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
+        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
         f.allow_test_migration_witness(&admin_witness);
-        let (virtual_quote, _, _) = f
-            .config
-            .snapshot_for_launch<TEST_QUOTE>(test_witness(), MEME_DECIMALS);
+        let (_, _) = f.config.snapshot_for_launch<TEST_QUOTE>(test_witness(), MEME_DECIMALS);
 
         f
             .config
@@ -795,7 +756,6 @@ fun disallowing_migration_witness_does_not_change_an_existing_launch_snapshot() 
         let mut expected = bcs::to_bytes(&test_witness());
         expected.append(bcs::to_bytes(&false));
 
-        assert_eq!(virtual_quote, VIRTUAL_QUOTE);
         assert_eq!(f.config.allowed_migration_witness_count_for_testing(), 0);
         assert_eq!(set.length(), 2);
         assert_eq!(bcs::to_bytes(&set[1]), expected);
@@ -1003,8 +963,8 @@ fun launch_snapshot_rejects_unlisted_migration_witness() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
-        f.config.set_quote<TEST_QUOTE>(&f.package_version, &admin_witness, VIRTUAL_QUOTE);
-        let (_, _, _) = f.config.snapshot_for_launch<TEST_QUOTE>(test_witness(), MEME_DECIMALS);
+        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
+        let (_, _) = f.config.snapshot_for_launch<TEST_QUOTE>(test_witness(), MEME_DECIMALS);
     });
 
     fixture.end();
@@ -1023,9 +983,9 @@ fun u64_bytes(value: u64): vector<u8> {
 }
 
 /// Expected `QuoteSet` bytes for the test quote.
-fun quote_set_bytes(virtual_quote: u64): vector<u8> {
+fun quote_set_bytes(allowed: bool): vector<u8> {
     let mut expected = bcs::to_bytes(&type_name::with_original_ids<TEST_QUOTE>());
-    expected.append(bcs::to_bytes(&virtual_quote));
+    expected.append(bcs::to_bytes(&allowed));
     expected
 }
 

@@ -30,7 +30,7 @@ public fun admit<Quote, Witness: drop>(
     version: &PackageVersion,
     admin: &AdminWitness<BLAST_FUN_DOMAIN>,
 ) {
-    config.set_quote<Quote>(version, admin, VIRTUAL_QUOTE);
+    config.set_quote_allowed<Quote>(version, admin, true);
     config.set_migration_witness_allowed<Witness>(version, admin, true);
     config.set_trade_fees(version, admin, bps::new(100), bps::new(100));
     config.set_protocol_allocation(version, admin, CREATOR, bps::new(0), bps::new(0));
@@ -71,6 +71,7 @@ public fun open_launch<Meme: drop, Quote, Witness: drop>(
         POOL_TICK_SPACING,
         POOL_FEE_RATE,
     );
+    initializer.set_virtual_quote(VIRTUAL_QUOTE);
     initializer.set_graduation_target(TARGET);
     initializer.set_allocation_plan(
         allocation::plan(bps::new(8_000), bps::new(2_000), bps::new(10_000), vector[]),

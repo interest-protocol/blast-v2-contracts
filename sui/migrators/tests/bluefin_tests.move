@@ -147,8 +147,8 @@ fun new_aborts_until_the_config_admits_bluefin() {
 }
 
 #[test, expected_failure(
-    abort_code = sui::dynamic_field::EFieldDoesNotExist,
-    location = sui::dynamic_field,
+    abort_code = blast_fun::errors::EQuoteNotAllowed,
+    location = blast_fun::launch_config,
 )]
 fun new_admits_only_an_allowed_quote() {
     let mut f = start();
@@ -181,7 +181,7 @@ fun start(): BluefinFixture {
     scenario.next_tx(ADMIN);
     let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
     let admin = authority.sign_in(&admin_cap);
-    config.set_quote<QUOTE>(&version, &admin, 5_000_000);
+    config.set_quote_allowed<QUOTE>(&version, &admin, true);
     config.set_trade_fees(&version, &admin, bps::new(100), bps::new(100));
     config.set_protocol_allocation(&version, &admin, ADMIN, bps::new(0), bps::new(0));
 
@@ -251,6 +251,7 @@ fun open_launch(
         tick_spacing,
         fee_rate,
     );
+    initializer.set_virtual_quote(5_000_000);
     initializer.set_graduation_target(TARGET);
     initializer.set_allocation_plan(
         allocation::plan(bps::new(8_000), bps::new(2_000), bps::new(10_000), vector[]),

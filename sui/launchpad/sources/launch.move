@@ -56,9 +56,9 @@ public struct LaunchInitializer<phantom Meme, phantom Quote> {
     migration_witness: TypeName,
     pool_tick_spacing: u32,
     pool_fee_rate: u64,
-    virtual_quote: u64,
     quote_fee_bps: Bps,
     meme_fee_bps: Bps,
+    virtual_quote: Option<u64>,
     graduation_target: Option<u64>,
     allocation_plan: Option<AllocationPlan>,
     lp_fee_split: Option<FeeSplit>,
@@ -85,7 +85,7 @@ public fun new<Meme, Quote, Witness: drop>(
         blast_fun::errors::invalid_meme_quote_pair!(),
     );
     let migration_witness = type_name::with_original_ids<Witness>();
-    let (virtual_quote, quote_fee_bps, meme_fee_bps) = config.snapshot_for_launch<Quote>(
+    let (quote_fee_bps, meme_fee_bps) = config.snapshot_for_launch<Quote>(
         migration_witness,
         ticket.decimals(),
     );
@@ -95,9 +95,9 @@ public fun new<Meme, Quote, Witness: drop>(
         migration_witness,
         pool_tick_spacing,
         pool_fee_rate,
-        virtual_quote,
         quote_fee_bps,
         meme_fee_bps,
+        virtual_quote: option::none(),
         graduation_target: option::none(),
         allocation_plan: option::none(),
         lp_fee_split: option::none(),
@@ -118,6 +118,14 @@ public fun treasury_cap_mut<Meme, Quote, Witness: drop>(
     );
 
     self.ticket.treasury_cap_mut()
+}
+
+/// Sets the virtual Quote reserve the curve starts from, which prices the first purchase.
+public fun set_virtual_quote<Meme, Quote>(
+    self: &mut LaunchInitializer<Meme, Quote>,
+    virtual_quote: u64,
+) {
+    self.virtual_quote = option::some(virtual_quote);
 }
 
 /// Sets the Quote reserve at which the curve closes.
@@ -169,9 +177,9 @@ public fun finalize<Meme, Quote>(
         migration_witness,
         pool_tick_spacing,
         pool_fee_rate,
-        virtual_quote,
         quote_fee_bps,
         meme_fee_bps,
+        virtual_quote,
         graduation_target,
         allocation_plan,
         lp_fee_split,
@@ -179,8 +187,10 @@ public fun finalize<Meme, Quote>(
         cumulative_sender_bps,
         per_transaction_bps,
     } = self;
+    let virtual_quote = virtual_quote.destroy_some();
     let graduation_target = graduation_target.destroy_some();
     let allocation_plan = allocation_plan.destroy_some().add_protocol(config.protocol_allocation());
+    assert!(virtual_quote > 0, blast_fun::errors::invalid_virtual_quote!());
     assert!(
         if (protection_window_ms == 0) {
             cumulative_sender_bps.value() == 0 && per_transaction_bps.value() == 0

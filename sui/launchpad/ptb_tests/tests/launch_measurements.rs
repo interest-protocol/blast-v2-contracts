@@ -264,14 +264,14 @@ impl World {
         let signed_in = call(&mut builder, admin, "acl", "sign_in", vec![domain], vec![authority, admin_cap]);
         let config_arg = builder.obj(w.h.shared(config, true))?;
         let version_arg = builder.obj(w.h.shared(version, false))?;
-        let virtual_quote = builder.pure(5_000_000u64)?;
+        let quote_allowed = builder.pure(true)?;
         call(
             &mut builder,
             blast,
             "launch_config",
-            "set_quote",
+            "set_quote_allowed",
             vec![sui()],
-            vec![config_arg, version_arg, signed_in, virtual_quote],
+            vec![config_arg, version_arg, signed_in, quote_allowed],
         );
         let witness = parse_sui_type_tag(&format!("{adapter}::mock_adapter::Venue"))?;
         let allowed = builder.pure(true)?;
@@ -486,6 +486,8 @@ impl World {
             vec![ticket_arg, version, config, tick_spacing, fee_rate],
         );
         let pair = vec![ticket.meme.clone(), sui()];
+        let virtual_quote = builder.pure(5_000_000u64)?;
+        call(&mut builder, self.blast, "launch", "set_virtual_quote", pair.clone(), vec![initializer, virtual_quote]);
         let target = builder.pure(shape.target)?;
         call(&mut builder, self.blast, "launch", "set_graduation_target", pair.clone(), vec![initializer, target]);
         call(&mut builder, self.blast, "launch", "set_allocation_plan", pair.clone(), vec![initializer, plan]);

@@ -8,12 +8,12 @@ module blast_fun::launch_config;
 
 // === Public Types ===
 
-/// Admitted decimals, Quotes (with the virtual reserve each starts from), and migration
-/// adapters; the trade fees; and Blast's one-time migration allocation.
+/// Admitted decimals, Quotes, and migration adapters; the trade fees; and Blast's one-time
+/// migration allocation. Each creator picks the virtual Quote reserve their curve starts from.
 public struct LaunchConfig has key {
     id: UID,
     meme_decimals: VecSet<u8>,
-    virtual_quotes: Table<TypeName, u64>,
+    quotes: VecSet<TypeName>,
     quote_fee_bps: Bps,
     meme_fee_bps: Bps,
     migration_witnesses: VecSet<TypeName>,
@@ -63,21 +63,19 @@ public fun set_meme_decimals_allowed(
     events::meme_decimals_set(decimals, allowed);
 }
 
-/// Sets the virtual Quote reserve future launches on `Quote` start from; zero disallows `Quote`.
-public fun set_quote<Quote>(
+/// Admits or removes `Quote` for future launches; existing launches keep trading in it.
+public fun set_quote_allowed<Quote>(
     self: &mut LaunchConfig,
     package_version: &PackageVersion,
     _: &AdminWitness<BLAST_FUN_DOMAIN>,
-    virtual_quote: u64,
+    allowed: bool,
 ) {
     package_version.assert_current();
     let quote = type_name::with_original_ids<Quote>();
-    let current = if (self.virtual_quotes.contains(quote)) self.virtual_quotes.remove(quote) else 0;
-    assert!(current != virtual_quote, blast_fun::errors::unchanged!());
 
-    if (virtual_quote > 0) self.virtual_quotes.add(quote, virtual_quote);
+    if (allowed) self.quotes.insert(quote) else self.quotes.remove(&quote);
 
-    events::quote_set<Quote>(virtual_quote);
+    events::quote_set<Quote>(allowed);
 }
 
 /// Sets the trade fees launches created afterward snapshot.
@@ -125,22 +123,23 @@ public fun set_migration_witness_allowed<MigrationWitness: drop>(
 
 // === Package Functions ===
 
-/// Checks the Quote, the adapter, and the decimals, and returns the Quote's virtual reserve and
-/// the trade fees.
+/// Checks the Quote, the adapter, and the decimals, and returns the trade fees.
 public(package) fun snapshot_for_launch<Quote>(
     self: &LaunchConfig,
     migration_witness: TypeName,
     decimals: u8,
-): (u64, Bps, Bps) {
-    let quote = type_name::with_original_ids<Quote>();
-
+): (Bps, Bps) {
+    assert!(
+        self.quotes.contains(&type_name::with_original_ids<Quote>()),
+        blast_fun::errors::quote_not_allowed!(),
+    );
     assert!(
         self.migration_witnesses.contains(&migration_witness),
         blast_fun::errors::migration_witness_not_allowed!(),
     );
     assert!(self.meme_decimals.contains(&decimals), blast_fun::errors::decimals_not_allowed!());
 
-    (self.virtual_quotes[quote], self.quote_fee_bps, self.meme_fee_bps)
+    (self.quote_fee_bps, self.meme_fee_bps)
 }
 
 public(package) fun protocol_allocation(self: &LaunchConfig): Recipient {
@@ -153,7 +152,7 @@ fun new(ctx: &mut TxContext): LaunchConfig {
     LaunchConfig {
         id: object::new(ctx),
         meme_decimals: vec_set::from_keys(vector[6, 9]),
-        virtual_quotes: table::new(ctx),
+        quotes: vec_set::empty(),
         quote_fee_bps: bps::new(0),
         meme_fee_bps: bps::new(0),
         migration_witnesses: vec_set::empty(),
@@ -175,7 +174,7 @@ public fun new_for_testing(ctx: &mut TxContext): LaunchConfig {
 
 #[test_only]
 public fun allowed_quote_count_for_testing(self: &LaunchConfig): u64 {
-    self.virtual_quotes.length()
+    self.quotes.length()
 }
 
 #[test_only]
@@ -208,4 +207,4 @@ use blast_fun::{
 
 use std::type_name::{Self, TypeName};
 
-use sui::{table::{Self, Table}, vec_set::{Self, VecSet}};
+use sui::vec_set::{Self, VecSet};

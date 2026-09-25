@@ -171,7 +171,7 @@ fun launch_snapshot_does_not_follow_later_config_updates() {
         let launch = f.new_default_launch(CREATOR);
         let admin_witness = f.sign_in();
 
-        f.config.set_quote<TEST_QUOTE>(&f.package_version, &admin_witness, VIRTUAL_QUOTE + 1);
+        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, false);
         f.config.set_trade_fees(&f.package_version, &admin_witness, bps::new(0), bps::new(0));
 
         launch.assert_snapshot();
@@ -214,6 +214,7 @@ fun later_setter_calls_replace_earlier_settings() {
             bps::new(0),
             vector[allocation::route(LAUNCHER, bps::new(10_000))],
         );
+        initializer.set_virtual_quote(VIRTUAL_QUOTE);
         initializer.set_graduation_target(MIGRATION_QUOTE_TARGET * 2);
         initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
         initializer.set_allocation_plan(external_plan());
@@ -238,10 +239,67 @@ fun finalize_requires_a_graduation_target() {
     fixture.next_tx!(LAUNCHER, |f| {
         let ticket = f.new_ticket(CREATOR);
         let mut initializer = f.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
+        initializer.set_virtual_quote(VIRTUAL_QUOTE);
         initializer.set_allocation_plan(default_plan());
         initializer.set_lp_fee_split(default_fee_split());
 
         destroy(f.finalize_launch(initializer));
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = std::option::EOPTION_NOT_SET, location = std::option)]
+fun finalize_requires_a_virtual_quote() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut initializer = f.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
+        initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
+        initializer.set_allocation_plan(default_plan());
+        initializer.set_lp_fee_split(default_fee_split());
+
+        destroy(f.finalize_launch(initializer));
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EInvalidVirtualQuote, location = blast_fun::launch)]
+fun finalize_rejects_a_zero_virtual_quote() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut initializer = f.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
+        initializer.set_virtual_quote(0);
+        initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
+        initializer.set_allocation_plan(default_plan());
+        initializer.set_lp_fee_split(default_fee_split());
+
+        destroy(f.finalize_launch(initializer));
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun the_creator_picks_the_virtual_quote() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut initializer = f.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
+        initializer.set_virtual_quote(1);
+        initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
+        initializer.set_allocation_plan(default_plan());
+        initializer.set_lp_fee_split(default_fee_split());
+        let launch = f.finalize_launch(initializer);
+
+        assert_eq!(launch.virtual_quote_for_testing(), 1);
+
+        destroy(launch);
     });
 
     fixture.end();
@@ -254,6 +312,7 @@ fun finalize_requires_an_allocation_plan() {
     fixture.next_tx!(LAUNCHER, |f| {
         let ticket = f.new_ticket(CREATOR);
         let mut initializer = f.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
+        initializer.set_virtual_quote(VIRTUAL_QUOTE);
         initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
         initializer.set_lp_fee_split(default_fee_split());
 
@@ -270,6 +329,7 @@ fun finalize_requires_lp_fee_split() {
     fixture.next_tx!(LAUNCHER, |f| {
         let ticket = f.new_ticket(CREATOR);
         let mut initializer = f.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
+        initializer.set_virtual_quote(VIRTUAL_QUOTE);
         initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
         initializer.set_allocation_plan(default_plan());
 
@@ -495,7 +555,7 @@ fun intake_checks_the_version_before_the_symbol_length() {
     fixture.end();
 }
 
-#[test, expected_failure(abort_code = sui::dynamic_field::EFieldDoesNotExist, location = sui::dynamic_field)]
+#[test, expected_failure(abort_code = blast_fun::errors::EQuoteNotAllowed, location = blast_fun::launch_config)]
 fun launch_delegates_quote_admission_to_launch_config() {
     let mut fixture = start();
 
@@ -513,7 +573,7 @@ fun launch_delegates_quote_admission_to_launch_config() {
     fixture.end();
 }
 
-#[test, expected_failure(abort_code = sui::dynamic_field::EFieldDoesNotExist, location = sui::dynamic_field)]
+#[test, expected_failure(abort_code = blast_fun::errors::EQuoteNotAllowed, location = blast_fun::launch_config)]
 fun starting_checks_the_quote_before_finalize_checks_the_symbol() {
     let mut fixture = start();
 
@@ -2017,7 +2077,7 @@ fun start_unallocated(): LaunchFixture {
     let mut config = scenario.take_shared<launch_config::LaunchConfig>();
     let admin_witness = authority.sign_in(&admin_cap);
 
-    config.set_quote<TEST_QUOTE>(&package_version, &admin_witness, VIRTUAL_QUOTE);
+    config.set_quote_allowed<TEST_QUOTE>(&package_version, &admin_witness, true);
     config.set_migration_witness_allowed<TEST_MIGRATION_WITNESS>(
         &package_version,
         &admin_witness,
@@ -2202,6 +2262,7 @@ fun launch_intake<Quote, MigrationWitness: drop>(
     plan: AllocationPlan,
 ): Launch<LAUNCH_TESTS, Quote> {
     let mut initializer = self.start_launch<Quote, _>(ticket, witness);
+    initializer.set_virtual_quote(VIRTUAL_QUOTE);
     initializer.set_graduation_target(target);
     initializer.set_allocation_plan(plan);
     initializer.set_lp_fee_split(default_fee_split());
@@ -2265,6 +2326,7 @@ fun launch_mint_extra_supply_and_finalize(
 ) {
     let mut initializer = self.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
     destroy(initializer.treasury_cap_mut(TEST_MIGRATION_WITNESS()).mint_balance(1));
+    initializer.set_virtual_quote(VIRTUAL_QUOTE);
     initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
     initializer.set_allocation_plan(default_plan());
     initializer.set_lp_fee_split(default_fee_split());

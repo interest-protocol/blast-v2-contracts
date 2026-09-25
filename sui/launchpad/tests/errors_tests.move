@@ -60,6 +60,8 @@ fun creator_authority_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::creator_claim_expired!(), 29);
     assert_eq!(blast_fun::errors::creator_not_sender!(), 30);
     assert_eq!(blast_fun::errors::invalid_creator_claim_signature!(), 31);
+    assert_eq!(blast_fun::errors::quote_not_allowed!(), 32);
+    assert_eq!(blast_fun::errors::invalid_virtual_quote!(), 33);
 }
 
 // === Imports ===

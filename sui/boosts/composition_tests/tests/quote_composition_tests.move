@@ -41,7 +41,7 @@ fun admitted_short_vault_quote_uses_the_same_native_buy_and_sell_path() {
 }
 
 #[test]
-#[expected_failure(abort_code = sui::dynamic_field::EFieldDoesNotExist, location = sui::dynamic_field)]
+#[expected_failure(abort_code = blast_fun::errors::EQuoteNotAllowed, location = blast_fun::launch_config)]
 fun admitting_long_does_not_admit_the_distinct_short_vault_quote() {
     quote_round_trip<BlastBoost<Short2x>>(false);
 }
@@ -61,9 +61,9 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
     let witness = authority.sign_in(&admin);
     let mut config = scenario.take_shared<LaunchConfig>();
     if (admit_exact) {
-        config.set_quote<Quote>(&version, &witness, 5_000_000);
+        config.set_quote_allowed<Quote>(&version, &witness, true);
     } else {
-        config.set_quote<BlastBoost<Long2x>>(&version, &witness, 5_000_000);
+        config.set_quote_allowed<BlastBoost<Long2x>>(&version, &witness, true);
     };
     config.set_migration_witness_allowed<Migration>(&version, &witness, true);
     config.set_protocol_allocation(&version, &witness, @0xa, bps::new(0), bps::new(0));
@@ -79,6 +79,7 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
     let mut initializer = launch::new<_, Quote, _>(
         ticket, &version, &config, Migration(), POOL_TICK_SPACING, POOL_FEE_RATE,
     );
+    initializer.set_virtual_quote(5_000_000);
     initializer.set_graduation_target(25_000_000);
     initializer.set_allocation_plan(default_allocation_plan());
     initializer.set_lp_fee_split(default_fee_split());

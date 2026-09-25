@@ -530,14 +530,14 @@ impl World {
         let signed_in = w.sign_in(&mut b)?;
         let config = b.obj(w.h.shared(w.config, true))?;
         let version = b.obj(w.h.shared(w.version, false))?;
-        let virtual_quote = b.pure(5 * case.quote_unit())?;
+        let quote_allowed = b.pure(true)?;
         call(
             &mut b,
             blast,
             "launch_config",
-            "set_quote",
+            "set_quote_allowed",
             vec![case.quote()],
-            vec![config, version, signed_in, virtual_quote],
+            vec![config, version, signed_in, quote_allowed],
         );
         let witness = tag(&format!("{migrators}::{}::Witness", case.module()));
         let allowed = b.pure(true)?;
@@ -785,6 +785,8 @@ impl World {
                 vec![ticket, migrators_version, version, config, tick_spacing, fee_rate],
             )
         };
+        let virtual_quote = b.pure(5 * self.case.quote_unit())?;
+        call(&mut b, self.blast, "launch", "set_virtual_quote", pair.clone(), vec![initializer, virtual_quote]);
         let target = b.pure(self.target())?;
         call(&mut b, self.blast, "launch", "set_graduation_target", pair.clone(), vec![initializer, target]);
         let plan = self.plan_arg(&mut b)?;

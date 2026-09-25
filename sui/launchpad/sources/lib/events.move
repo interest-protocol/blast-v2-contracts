@@ -27,7 +27,7 @@ public struct LaunchTradeFeesChanged has copy, drop {
 /// A Quote's virtual reserve for future launches; zero means disallowed.
 public struct QuoteSet has copy, drop {
     quote: TypeName,
-    virtual_quote: u64,
+    allowed: bool,
 }
 
 public struct MigrationWitnessSet has copy, drop {
@@ -177,8 +177,8 @@ public(package) fun launch_trade_fees_changed(quote_fee_bps: u64, meme_fee_bps: 
     emit(LaunchTradeFeesChanged { quote_fee_bps, meme_fee_bps });
 }
 
-public(package) fun quote_set<Quote>(virtual_quote: u64) {
-    emit(QuoteSet { quote: type_name::with_original_ids<Quote>(), virtual_quote });
+public(package) fun quote_set<Quote>(allowed: bool) {
+    emit(QuoteSet { quote: type_name::with_original_ids<Quote>(), allowed });
 }
 
 public(package) fun migration_witness_set<MigrationWitness>(allowed: bool) {
