@@ -13,7 +13,7 @@ module blast_fun::launch_config;
 public struct LaunchConfig has key {
     id: UID,
     meme_decimals: VecSet<u8>,
-    quotes: VecSet<TypeName>,
+    quotes: Table<TypeName, bool>,
     quote_fee_bps: Bps,
     meme_fee_bps: Bps,
     migration_witnesses: VecSet<TypeName>,
@@ -73,7 +73,7 @@ public fun set_quote_allowed<Quote>(
     package_version.assert_current();
     let quote = type_name::with_original_ids<Quote>();
 
-    if (allowed) self.quotes.insert(quote) else self.quotes.remove(&quote);
+    if (allowed) self.quotes.add(quote, true) else { self.quotes.remove(quote); };
 
     events::quote_set<Quote>(allowed);
 }
@@ -130,7 +130,7 @@ public(package) fun snapshot_for_launch<Quote>(
     decimals: u8,
 ): (Bps, Bps) {
     assert!(
-        self.quotes.contains(&type_name::with_original_ids<Quote>()),
+        self.quotes.contains(type_name::with_original_ids<Quote>()),
         blast_fun::errors::quote_not_allowed!(),
     );
     assert!(
@@ -152,7 +152,7 @@ fun new(ctx: &mut TxContext): LaunchConfig {
     LaunchConfig {
         id: object::new(ctx),
         meme_decimals: vec_set::from_keys(vector[6, 9]),
-        quotes: vec_set::empty(),
+        quotes: table::new(ctx),
         quote_fee_bps: bps::new(0),
         meme_fee_bps: bps::new(0),
         migration_witnesses: vec_set::empty(),
@@ -207,4 +207,4 @@ use blast_fun::{
 
 use std::type_name::{Self, TypeName};
 
-use sui::vec_set::{Self, VecSet};
+use sui::{table::{Self, Table}, vec_set::{Self, VecSet}};

@@ -478,8 +478,8 @@ fun many_quotes_can_be_admitted() {
 #[test]
 #[
     expected_failure(
-        abort_code = sui::vec_set::EKeyAlreadyExists,
-        location = sui::vec_set,
+        abort_code = sui::dynamic_field::EFieldAlreadyExists,
+        location = sui::dynamic_field,
     ),
 ]
 fun allowing_an_admitted_quote_aborts() {
@@ -498,8 +498,8 @@ fun allowing_an_admitted_quote_aborts() {
 #[test]
 #[
     expected_failure(
-        abort_code = sui::vec_set::EKeyDoesNotExist,
-        location = sui::vec_set,
+        abort_code = sui::dynamic_field::EFieldDoesNotExist,
+        location = sui::dynamic_field,
     ),
 ]
 fun disallowing_an_unlisted_quote_aborts() {

@@ -821,8 +821,8 @@ if [[ "$(move_production_body max_recipients <<<"$constants_facts")" != '16' ]] 
   || ! rg -Fq 'type_name::with_original_ids<Quote>()' sources/launch_config.move \
   || ! rg -Fq 'type_name::with_original_ids<MigrationWitness>()' sources/launch_config.move \
   || ! rg -Fq 'origin != @0x1 && origin != @0x2' sources/launch_config.move \
-  || ! rg -Fq 'self.quotes.contains(&type_name::with_original_ids<Quote>())' sources/launch_config.move \
-  || ! rg -Fq 'quotes: vec_set::empty()' sources/launch_config.move \
+  || ! rg -Fq 'self.quotes.contains(type_name::with_original_ids<Quote>())' sources/launch_config.move \
+  || ! rg -Fq 'quotes: table::new(ctx)' sources/launch_config.move \
   || ! rg -Fq 'assert!(virtual_quote > 0, blast_fun::errors::invalid_virtual_quote!());' sources/launch.move \
   || rg -n '\bvirtual_quote' sources/launch_config.move \
   || ! rg -Fq 'self.meme_decimals.contains(&decimals)' sources/launch_config.move \

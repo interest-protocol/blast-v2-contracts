@@ -14,11 +14,12 @@ whitelisted.
 
 ## Decision
 
-**Configuration.** `LaunchConfig.quotes` is a `VecSet<TypeName>` of admitted
-original Quote types. `set_quote_allowed<Quote>(allowed)` replaces `set_quote`
-and follows the decimals and migration-witness setters: it inserts or removes,
-so re-admitting an admitted Quote or removing an unlisted one aborts with the
-set's own error. `QuoteSet` records `allowed` instead of `virtual_quote`.
+**Configuration.** `LaunchConfig.quotes` is a `Table<TypeName, bool>` of
+admitted original Quote types, so the whitelist grows without bounding the
+object; a key's presence admits it and its value is always `true`.
+`set_quote_allowed<Quote>(allowed)` replaces `set_quote`: it adds or removes the
+key, so re-admitting an admitted Quote or removing an unlisted one aborts with
+the table's own error. `QuoteSet` records `allowed` instead of `virtual_quote`.
 `snapshot_for_launch` aborts with `quote_not_allowed` for a Quote that is
 not admitted and returns only the trade fees.
 
