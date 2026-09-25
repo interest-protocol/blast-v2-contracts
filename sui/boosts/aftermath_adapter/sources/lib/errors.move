@@ -132,7 +132,7 @@ const EActiveCheckpointMismatch: u64 = 29;
 const ERedemptionShareMismatch: u64 = 30;
 
 #[test_only]
-/// Authenticated ordinary plus priority fees exceed a representable conservative rate.
+/// The market's taker fee exceeds a representable rate.
 const EVenueFeeUnusable: u64 = 31;
 
 #[test_only]
@@ -154,6 +154,10 @@ const EVenueNotReady: u64 = 35;
 #[test_only]
 /// A metadata update must change the name, the description, or the icon.
 const EMetadataUnchanged: u64 = 36;
+
+#[test_only]
+/// A permissionless venue trade paid a gas price above the reference gas price.
+const EPriorityGasPrice: u64 = 37;
 
 macro public(package) fun invalid_package_publisher(): u64 { 0 }
 
@@ -228,3 +232,5 @@ macro public(package) fun invalid_unwind_exposure(): u64 { 34 }
 macro public(package) fun venue_not_ready(): u64 { 35 }
 
 macro public(package) fun metadata_unchanged(): u64 { 36 }
+
+macro public(package) fun priority_gas_price(): u64 { 37 }

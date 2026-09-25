@@ -101,14 +101,10 @@ public(package) fun unwind_terms<Product, Collateral>(
     (terms, unwind_base_decoded(base.abs(), !base.is_neg(), before.lot_size(), side), before)
 }
 
-/// Reads the market's taker fee and priority surcharge as one basis-point bound.
+/// Reads the market's taker fee as a basis-point bound. Rebalances run at the
+/// reference gas price, so Aftermath's priority surcharge never applies.
 public(package) fun live_venue_fee_bps<Collateral>(clearing_house: &ClearingHouse<Collateral>): u64 {
-    let params = clearing_house.market_params();
-
-    venue_fee_bound(
-        ifixed_math::nonnegative_rate(params.taker_fee()),
-        ifixed_math::nonnegative_rate(market::resolve_priority_taker_fee(params.priority_taker_fee())),
-    )
+    venue_fee_bound(ifixed_math::nonnegative_rate(clearing_house.market_params().taker_fee()))
 }
 
 /// Places every order of one active mint or redemption, proving each fill
@@ -352,16 +348,12 @@ fun active_terms<Product, Collateral>(vault: &Vault<Product, Collateral>, reduce
     }
 }
 
-/// Aftermath's priority rate is an additional surcharge, not an alternative fee.
-/// Negative rebates are ignored conservatively; callers provide no fee input.
-fun venue_fee_bound(taker_fee: u256, priority_taker_fee: u256): u64 {
-    let one = constants::ifixed_one!();
-    assert!(
-        taker_fee <= one && priority_taker_fee <= one && taker_fee <= one - priority_taker_fee,
-        blast_boosts_aftermath::errors::venue_fee_unusable!(),
-    );
+/// Rounds the taker fee up to whole basis points. Negative rebates are ignored
+/// conservatively; callers provide no fee input.
+fun venue_fee_bound(taker_fee: u256): u64 {
+    assert!(taker_fee <= constants::ifixed_one!(), blast_boosts_aftermath::errors::venue_fee_unusable!());
 
-    ((taker_fee + priority_taker_fee).div_ceil(constants::ifixed_per_basis_point!())) as u64
+    taker_fee.div_ceil(constants::ifixed_per_basis_point!()) as u64
 }
 
 /// Whether opening this side is an ask on the Aftermath port: shorts sell to open, longs buy.
@@ -550,8 +542,8 @@ public fun order_count_for_testing(
 }
 
 #[test_only]
-public fun venue_fee_bound_for_testing(taker_fee: u256, priority_taker_fee: u256): u64 {
-    venue_fee_bound(taker_fee, priority_taker_fee)
+public fun venue_fee_bound_for_testing(taker_fee: u256): u64 {
+    venue_fee_bound(taker_fee)
 }
 
 #[test_only]
@@ -645,6 +637,6 @@ use fun ifixed::is_neg as u256.is_neg;
 
 use oracle_aggregator::price_feed_storage::PriceFeedStorage;
 
-use perpetuals::{account::Account, authority::ACCOUNT, clearing_house::ClearingHouse, market, registry::Registry};
+use perpetuals::{account::Account, authority::ACCOUNT, clearing_house::ClearingHouse, registry::Registry};
 
 use sui::clock::Clock;

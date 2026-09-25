@@ -173,6 +173,8 @@ public fun redeem<Product, Collateral>(
 }
 
 /// Permissionless, policy-sized maintenance with no caller reward or trade parameters.
+///
+/// Holders pay its fills, so it runs only at the reference gas price.
 public fun rebalance<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
@@ -186,6 +188,7 @@ public fun rebalance<Product, Collateral>(
 ) {
     protocol.assert_current();
     vault.state().assert_active();
+    assert_gas_price(ctx);
 
     let (before, checkpoint) = synchronize_or_fail(
         vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle, clock,
@@ -294,6 +297,7 @@ public fun sync_health<Product, Collateral>(
 /// venue has paused only by the venue's own settlement, once it has closed the
 /// market and enabled settlement prices; a frozen clearing house aborts every
 /// venue call on its version check, so it is refused here until unfrozen.
+/// Holders pay its fills, so it runs only at the reference gas price.
 public fun unwind<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
@@ -307,6 +311,7 @@ public fun unwind<Product, Collateral>(
 ) {
     protocol.assert_current();
     vault.state().assert_unwinding();
+    assert_gas_price(ctx);
     assert!(!clearing_house.is_frozen(), blast_boosts_aftermath::errors::venue_not_ready!());
 
     if (clearing_house.is_market_paused()) {
@@ -534,6 +539,17 @@ fun fund_mint<Product, Collateral>(
     before.assert_allocated_deposit_checkpoint(&funded, venue_deposit);
 
     funded
+}
+
+// --- Permissionless Trades ---
+
+/// Aftermath adds its priority taker fee to every fill of a transaction whose
+/// gas price is strictly above the reference gas price.
+fun assert_gas_price(ctx: &TxContext) {
+    assert!(
+        ctx.gas_price() <= ctx.reference_gas_price(),
+        blast_boosts_aftermath::errors::priority_gas_price!(),
+    );
 }
 
 // --- Completion ---
@@ -973,6 +989,9 @@ public fun assert_position_imr_unchanged_for_testing(
 
 #[test_only]
 public fun assert_deadline_for_testing(now_ms: u64, deadline: u64) { assert_deadline(now_ms, deadline); }
+
+#[test_only]
+public fun assert_gas_price_for_testing(ctx: &TxContext) { assert_gas_price(ctx); }
 
 #[test_only]
 public fun assert_settlement_valuation_for_testing(

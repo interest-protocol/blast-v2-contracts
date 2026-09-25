@@ -26,6 +26,7 @@ const ONE_FIXED: u256 = 1_000_000_000_000_000_000;
 /// unit long at a unit collateral price, so the venue settles exactly the raw
 /// rate move: a rise is a cost, a fall a credit.
 const RATE: u256 = 1_000_000_000_000_000_000;
+const REFERENCE_GAS_PRICE: u64 = 750;
 
 // === Test-Only Types ===
 
@@ -659,34 +660,23 @@ fun completed_rebalance_changes_only_holder_equity_and_the_accepted_checkpoint()
 }
 
 #[test]
-fun venue_fee_bound_adds_priority_surcharge_and_rounds_up_once() {
-    assert_eq!(orders::venue_fee_bound_for_testing(1_000_000_000_000_000, 500_000_000_000_000), 15);
-    assert_eq!(orders::venue_fee_bound_for_testing(1, 0), 1);
-    assert_eq!(orders::venue_fee_bound_for_testing(0, 0), 0);
-    assert_eq!(orders::venue_fee_bound_for_testing(1_000_000_000_000_000_000, 0), 10_000);
+/// The live Aftermath taker fee, 4.5 basis points, budgets as 5.
+fun venue_fee_bound_rounds_the_taker_fee_up_to_whole_basis_points() {
+    assert_eq!(orders::venue_fee_bound_for_testing(450_000_000_000_000), 5);
+    assert_eq!(orders::venue_fee_bound_for_testing(100_000_000_000_000), 1);
+    assert_eq!(orders::venue_fee_bound_for_testing(1), 1);
+    assert_eq!(orders::venue_fee_bound_for_testing(0), 0);
+}
+
+#[test]
+fun venue_fee_bound_accepts_a_taker_fee_of_exactly_one() {
+    assert_eq!(orders::venue_fee_bound_for_testing(ONE_FIXED), 10_000);
 }
 
 #[test]
 #[expected_failure(abort_code = blast_boosts_aftermath::errors::EVenueFeeUnusable, location = blast_boosts_aftermath::orders)]
-fun venue_fee_bound_rejects_unrepresentable_addition_before_overflow() {
-    orders::venue_fee_bound_for_testing(std::u256::max_value!(), 1);
-}
-
-#[test]
-#[expected_failure(abort_code = blast_boosts_aftermath::errors::EVenueFeeUnusable, location = blast_boosts_aftermath::orders)]
-fun venue_fee_bound_rejects_a_priority_surcharge_above_one() {
-    orders::venue_fee_bound_for_testing(0, 1_000_000_000_000_000_001);
-}
-
-#[test]
-#[expected_failure(abort_code = blast_boosts_aftermath::errors::EVenueFeeUnusable, location = blast_boosts_aftermath::orders)]
-fun venue_fee_bound_rejects_a_combined_fee_above_one() {
-    orders::venue_fee_bound_for_testing(600_000_000_000_000_000, 500_000_000_000_000_000);
-}
-
-#[test]
-fun venue_fee_bound_accepts_a_combined_fee_of_exactly_one() {
-    assert_eq!(orders::venue_fee_bound_for_testing(500_000_000_000_000_000, 500_000_000_000_000_000), 10_000);
+fun venue_fee_bound_rejects_a_taker_fee_above_one() {
+    orders::venue_fee_bound_for_testing(ONE_FIXED + 1);
 }
 
 #[test]
@@ -1078,6 +1068,19 @@ fun active_order_rejects_a_seventeenth_session() {
 #[expected_failure(abort_code = errors::EDeadlineExpired, location = blast_boosts_aftermath::operations)]
 fun active_order_rejects_an_expired_deadline() {
     operations::assert_deadline_for_testing(1_001, 1_000);
+}
+
+#[test]
+fun permissionless_trades_accept_the_reference_gas_price_and_below() {
+    operations::assert_gas_price_for_testing(&ctx_at_gas_price(REFERENCE_GAS_PRICE));
+    operations::assert_gas_price_for_testing(&ctx_at_gas_price(REFERENCE_GAS_PRICE - 1));
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EPriorityGasPrice, location = blast_boosts_aftermath::operations)]
+/// Aftermath charges its priority taker fee from one unit above the reference.
+fun permissionless_trades_reject_one_unit_above_the_reference_gas_price() {
+    operations::assert_gas_price_for_testing(&ctx_at_gas_price(REFERENCE_GAS_PRICE + 1));
 }
 
 #[test]
@@ -2528,6 +2531,20 @@ fun net_funding_adds_two_costs_and_keeps_the_larger_side_of_a_cost_and_a_credit(
 }
 
 // === Test Helpers ===
+
+fun ctx_at_gas_price(gas_price: u64): TxContext {
+    tx_context::create(
+        SYSTEM,
+        tx_context::dummy_tx_hash_with_hint(0),
+        0,
+        0,
+        0,
+        REFERENCE_GAS_PRICE,
+        gas_price,
+        0,
+        option::none(),
+    )
+}
 
 /// Proves and completes the recovery of `recovered` from an otherwise empty venue.
 fun finalize_recovered<P>(vault: &mut Vault<P, Collateral>, recovered: Coin<Collateral>) {
