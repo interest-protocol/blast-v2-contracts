@@ -578,10 +578,11 @@ public fun claim_creator_fees<Meme, Quote>(
 public fun claim_protocol_fees<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
-    _: &AdminWitness<BLAST_FUN_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
     package_version.assert_current();
+    admin_witness.assert_role(blast_fun_domain::treasury_admin_role());
 
     let (meme, quote) = self.fee_ledger.claim_protocol_fees(ctx);
 

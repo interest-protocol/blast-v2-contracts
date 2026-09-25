@@ -47,10 +47,11 @@ fun init(ctx: &mut TxContext) {
 public fun set_protocol_destination(
     self: &mut LpFeePolicy,
     migrators_version: &MigratorsVersion,
-    _: &AdminWitness<BLAST_FUN_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
     destination: address,
 ) {
     migrators_version.assert_current();
+    admin_witness.assert_role(blast_fun_domain::treasury_admin_role());
     assert!(
         destination != @0x0 && destination != self.destination,
         EProtocolDestinationUnchanged,
@@ -66,11 +67,12 @@ public fun set_protocol_destination(
 public fun set_default_shares(
     self: &mut LpFeePolicy,
     migrators_version: &MigratorsVersion,
-    _: &AdminWitness<BLAST_FUN_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
     meme_bps: Bps,
     quote_bps: Bps,
 ) {
     migrators_version.assert_current();
+    admin_witness.assert_role(blast_fun_domain::fee_admin_role());
     let shares = SharePair { meme_bps, quote_bps };
     assert!(shares != self.defaults, EProtocolFeeSharesUnchanged);
     let old = self.defaults;
@@ -91,11 +93,12 @@ public fun set_default_shares(
 public fun set_coin_shares<Meme>(
     self: &mut LpFeePolicy,
     migrators_version: &MigratorsVersion,
-    _: &AdminWitness<BLAST_FUN_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
     meme_bps: Bps,
     quote_bps: Bps,
 ) {
     migrators_version.assert_current();
+    admin_witness.assert_role(blast_fun_domain::fee_admin_role());
     let meme = type_name::with_original_ids<Meme>();
     let shares = SharePair { meme_bps, quote_bps };
     let old = if (self.coins.contains(meme)) option::some(self.coins.remove(meme))
@@ -117,9 +120,10 @@ public fun set_coin_shares<Meme>(
 public fun clear_coin_shares<Meme>(
     self: &mut LpFeePolicy,
     migrators_version: &MigratorsVersion,
-    _: &AdminWitness<BLAST_FUN_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
 ) {
     migrators_version.assert_current();
+    admin_witness.assert_role(blast_fun_domain::fee_admin_role());
     let meme = type_name::with_original_ids<Meme>();
 
     let old = self.coins.remove(meme);
@@ -190,7 +194,7 @@ public fun default_shares_for_testing(self: &LpFeePolicy): (Bps, Bps) {
 
 use blast_admin::acl::AdminWitness;
 
-use blast_fun::{blast_fun_domain::BLAST_FUN_DOMAIN, bps::{Self, Bps}};
+use blast_fun::{blast_fun_domain::{Self, BLAST_FUN_DOMAIN}, bps::{Self, Bps}};
 
 use blast_fun_migrators::{blast_events, package_version::PackageVersion as MigratorsVersion};
 

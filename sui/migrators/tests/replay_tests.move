@@ -342,7 +342,12 @@ fun start(): ReplayFixture {
     let migrators_version = migrators_version::new_for_testing(scenario.ctx());
     let (root, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(16, 1, scenario.ctx());
     let roles = blast_fun_domain::creator_admin_role_for_testing()
-        | blast_fun_domain::buyback_admin_role();
+        | blast_fun_domain::buyback_admin_role()
+        | blast_fun_domain::treasury_admin_role()
+        | blast_fun_domain::fee_admin_role()
+        | blast_fun_domain::listing_admin_role_for_testing()
+        | blast_fun_domain::adapter_admin_role_for_testing()
+        | blast_fun_domain::rewards_admin_role();
     authority.grant_admin(&root, roles, ADMIN, scenario.ctx());
     destroy(root);
     launch_config::init_for_testing(scenario.ctx());

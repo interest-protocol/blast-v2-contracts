@@ -185,6 +185,24 @@ fun claim_signer_checks_the_version_before_the_key_length() {
     fixture.end();
 }
 
+#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
+fun setting_the_protocol_fee_share_requires_the_fee_admin_role() {
+    let mut fixture = start_with_roles(blast_fun_domain::fee_admin_role().bitwise_not());
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| f.set_protocol_fee_share(bps::new(7_000)));
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
+fun setting_the_claim_signer_requires_the_claim_signer_admin_role() {
+    let mut fixture = start_with_roles(blast_fun_domain::claim_signer_admin_role().bitwise_not());
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| f.set_creator_claim_signer(signer_public_key()));
+
+    fixture.end();
+}
+
 // === Test Helpers ===
 
 macro fun config_next_tx(
@@ -213,12 +231,18 @@ fun published_config(): (u64, vector<u8>, u64) {
     (events, signer_public_key, protocol_fee_share_bps)
 }
 
-/// A zero-role administrator over a configuration as package initialization leaves it.
+/// A fee and claim-signer administrator over a configuration as package initialization leaves it.
 fun start(): ConfigFixture {
+    start_with_roles(
+        blast_fun_domain::fee_admin_role() | blast_fun_domain::claim_signer_admin_role(),
+    )
+}
+
+fun start_with_roles(roles: u64): ConfigFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
     let (super_admin_cap, mut authority) = domain_fixture::new_authority(scenario.ctx());
-    authority.grant_admin(&super_admin_cap, 0, PROTOCOL_ADMIN, scenario.ctx());
+    authority.grant_admin(&super_admin_cap, roles, PROTOCOL_ADMIN, scenario.ctx());
     destroy(super_admin_cap);
     let config = runtime_config::new_disabled_for_testing(scenario.ctx());
 
@@ -264,7 +288,7 @@ use blast_admin::acl::{Authority, AdminCap};
 
 use blast_fun::{
     blast_events::Event,
-    blast_fun_domain::BLAST_FUN_DOMAIN,
+    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
     bps::{Self, Bps},
     domain_fixture,
     events,

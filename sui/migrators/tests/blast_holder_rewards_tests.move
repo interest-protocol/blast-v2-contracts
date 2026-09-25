@@ -334,6 +334,20 @@ fun a_stale_generation_rejects_publication_before_every_round_check() {
     f.end();
 }
 
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EAdminRoleNotGranted,
+    location = blast_admin::acl,
+)]
+fun the_rewards_role_is_checked_before_every_round_check() {
+    let mut f = start_with_roles(blast_fun_domain::rewards_admin_role().bitwise_not());
+
+    f.scenario.next_tx(ADMIN);
+    f.publish(7, 10, 10, vector[], vector[], 0, 0, 0);
+
+    f.end();
+}
+
 // Claims
 
 #[test]
@@ -580,11 +594,15 @@ fun a_stale_generation_rejects_a_claim_before_every_claim_check() {
 /// Opens an owned launch whose whole fee split funds rewards, attaches its vault, and splits one
 /// collection into the rewards balance under the zero default Blast share.
 fun start(): RewardsFixture {
+    start_with_roles(blast_fun_domain::rewards_admin_role() | launch_fixture::admit_roles())
+}
+
+fun start_with_roles(roles: u64): RewardsFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let version = package_version::new_for_testing(scenario.ctx());
     let migrators_version = migrators_version::new_for_testing(scenario.ctx());
     let (root, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(16, 1, scenario.ctx());
-    authority.grant_admin(&root, 0, ADMIN, scenario.ctx());
+    authority.grant_admin(&root, roles, ADMIN, scenario.ctx());
     destroy(root);
     let policy = lp_fee_policy::new_for_testing(scenario.ctx());
     let mut config = launch_config::new_for_testing(scenario.ctx());
@@ -779,7 +797,7 @@ use blast_admin::acl::{Self, Authority, AdminCap};
 
 use blast_fun::{
     allocation,
-    blast_fun_domain::BLAST_FUN_DOMAIN,
+    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
     bps,
     launch_config,
     package_version,

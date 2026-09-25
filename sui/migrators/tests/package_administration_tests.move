@@ -86,18 +86,18 @@ fun a_stale_generation_rejects_an_lp_fee_policy_change() {
 }
 
 #[test]
-/// Generic Launchpad-domain administration needs no role in this package.
-fun a_zero_role_launchpad_admin_changes_the_lp_fee_policy() {
-    let mut fixture = start_with_roles(0);
+#[expected_failure(
+    abort_code = blast_admin::errors::EAdminRoleNotGranted,
+    location = blast_admin::acl,
+)]
+/// Package custody does not reach the LP-fee policy, which needs the fee-admin role.
+fun a_package_admin_cannot_change_the_lp_fee_policy() {
+    let mut fixture = start_with_roles(blast_fun_domain::package_admin_role());
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let admin_witness = f.sign_in();
 
         f.policy.set_default_shares(&f.package_version, &admin_witness, bps::new(1), bps::new(2));
-
-        let (meme_share, quote_share) = f.policy.default_shares_for_testing();
-        assert_eq!(meme_share.value(), 1);
-        assert_eq!(quote_share.value(), 2);
     });
 
     fixture.end();

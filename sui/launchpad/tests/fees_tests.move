@@ -327,12 +327,17 @@ macro fun ctx($fixture: &mut FeesFixture): &mut TxContext {
     fixture.scenario.ctx()
 }
 
-/// A zero-role administrator over a runtime configuration with no protocol share.
+/// A fee administrator over a runtime configuration with no protocol share.
 fun start(): FeesFixture {
     let mut scenario = test_scenario::begin(PROTOCOL_ADMIN);
     let package_version = package_version::new_for_testing(scenario.ctx());
     let (super_admin_cap, mut authority) = domain_fixture::new_authority(scenario.ctx());
-    authority.grant_admin(&super_admin_cap, 0, PROTOCOL_ADMIN, scenario.ctx());
+    authority.grant_admin(
+        &super_admin_cap,
+        blast_fun_domain::fee_admin_role(),
+        PROTOCOL_ADMIN,
+        scenario.ctx(),
+    );
     destroy(super_admin_cap);
     let runtime_config = runtime_config::new_disabled_for_testing(scenario.ctx());
 
@@ -363,7 +368,7 @@ fun end(self: FeesFixture) {
 use blast_admin::acl::{Authority, AdminCap};
 
 use blast_fun::{
-    blast_fun_domain::BLAST_FUN_DOMAIN,
+    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
     bps,
     domain_fixture,
     fees::{Self, FeeLedger},

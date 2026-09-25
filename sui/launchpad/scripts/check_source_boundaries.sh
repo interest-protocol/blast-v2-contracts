@@ -308,14 +308,13 @@ fi
 
 blast_fun_domain_facts="$(move_facts sources/blast_fun_domain.move)"
 
-# The domain defines exactly three distinct role bits: package administration and
-# buyback administration, which the migrators share, and the package-internal
-# creator administration that alone may reassign creator fee authority.
+# The domain defines exactly nine distinct role bits, one per administrator concern (ADR 0094).
+# The roles the migrators assert are public; the rest stay package-internal.
 if [[ ! -f sources/blast_fun_domain.move ]] \
   || [[ "$(move_production_type BLAST_FUN_DOMAIN <<<"$blast_fun_domain_facts")" \
     != 'struct BLAST_FUN_DOMAIN() has drop;' ]] \
   || [[ "$(move_production_functions <<<"$blast_fun_domain_facts")" \
-    != 'buyback_admin_role:public:0 creator_admin_role:package:0 init:private:0 package_admin_role:public:0 ' ]] \
+    != 'adapter_admin_role:package:0 buyback_admin_role:public:0 claim_signer_admin_role:package:0 creator_admin_role:package:0 fee_admin_role:public:0 init:private:0 listing_admin_role:package:0 package_admin_role:public:0 rewards_admin_role:public:0 treasury_admin_role:public:0 ' ]] \
   || [[ "$(move_production_signature init <<<"$blast_fun_domain_facts")" \
     != 'fun init(otw: BLAST_FUN_DOMAIN, ctx: &mut TxContext)' ]] \
   || [[ "$(move_production_body init <<<"$blast_fun_domain_facts")" \
@@ -324,22 +323,66 @@ if [[ ! -f sources/blast_fun_domain.move ]] \
     != 'fun package_admin_role(): u64' ]] \
   || [[ "$(move_production_body package_admin_role <<<"$blast_fun_domain_facts")" \
     != 'PACKAGE_ADMIN_ROLE' ]] \
-  || [[ "$(move_production_signature buyback_admin_role <<<"$blast_fun_domain_facts")" \
-    != 'fun buyback_admin_role(): u64' ]] \
-  || [[ "$(move_production_body buyback_admin_role <<<"$blast_fun_domain_facts")" \
-    != 'BUYBACK_ADMIN_ROLE' ]] \
   || [[ "$(move_production_signature creator_admin_role <<<"$blast_fun_domain_facts")" \
     != 'fun creator_admin_role(): u64' ]] \
   || [[ "$(move_production_body creator_admin_role <<<"$blast_fun_domain_facts")" \
     != 'CREATOR_ADMIN_ROLE' ]] \
+  || [[ "$(move_production_signature buyback_admin_role <<<"$blast_fun_domain_facts")" \
+    != 'fun buyback_admin_role(): u64' ]] \
+  || [[ "$(move_production_body buyback_admin_role <<<"$blast_fun_domain_facts")" \
+    != 'BUYBACK_ADMIN_ROLE' ]] \
+  || [[ "$(move_production_signature treasury_admin_role <<<"$blast_fun_domain_facts")" \
+    != 'fun treasury_admin_role(): u64' ]] \
+  || [[ "$(move_production_body treasury_admin_role <<<"$blast_fun_domain_facts")" \
+    != 'TREASURY_ADMIN_ROLE' ]] \
+  || [[ "$(move_production_signature fee_admin_role <<<"$blast_fun_domain_facts")" \
+    != 'fun fee_admin_role(): u64' ]] \
+  || [[ "$(move_production_body fee_admin_role <<<"$blast_fun_domain_facts")" \
+    != 'FEE_ADMIN_ROLE' ]] \
+  || [[ "$(move_production_signature listing_admin_role <<<"$blast_fun_domain_facts")" \
+    != 'fun listing_admin_role(): u64' ]] \
+  || [[ "$(move_production_body listing_admin_role <<<"$blast_fun_domain_facts")" \
+    != 'LISTING_ADMIN_ROLE' ]] \
+  || [[ "$(move_production_signature adapter_admin_role <<<"$blast_fun_domain_facts")" \
+    != 'fun adapter_admin_role(): u64' ]] \
+  || [[ "$(move_production_body adapter_admin_role <<<"$blast_fun_domain_facts")" \
+    != 'ADAPTER_ADMIN_ROLE' ]] \
+  || [[ "$(move_production_signature claim_signer_admin_role <<<"$blast_fun_domain_facts")" \
+    != 'fun claim_signer_admin_role(): u64' ]] \
+  || [[ "$(move_production_body claim_signer_admin_role <<<"$blast_fun_domain_facts")" \
+    != 'CLAIM_SIGNER_ADMIN_ROLE' ]] \
+  || [[ "$(move_production_signature rewards_admin_role <<<"$blast_fun_domain_facts")" \
+    != 'fun rewards_admin_role(): u64' ]] \
+  || [[ "$(move_production_body rewards_admin_role <<<"$blast_fun_domain_facts")" \
+    != 'REWARDS_ADMIN_ROLE' ]] \
   || ! rg -q '^const MAX_ADMINS: u64 = 16;$' sources/blast_fun_domain.move \
   || ! rg -q '^const ROOT_TRANSFER_DELAY_MS: u64 = 7 \* 24 \* 60 \* 60 \* 1_000;$' \
     sources/blast_fun_domain.move \
   || ! rg -q '^const PACKAGE_ADMIN_ROLE: u64 = 1;$' sources/blast_fun_domain.move \
   || ! rg -q '^const CREATOR_ADMIN_ROLE: u64 = 2;$' sources/blast_fun_domain.move \
   || ! rg -q '^const BUYBACK_ADMIN_ROLE: u64 = 4;$' sources/blast_fun_domain.move \
-  || [[ "$(rg -c '^const ' sources/blast_fun_domain.move)" != 5 ]]; then
-  echo 'blast_fun_domain.move must create exactly one typed domain from module constants and export only the package-admin and buyback-admin role bits; the creator-admin bit stays package-internal.' >&2
+  || ! rg -q '^const TREASURY_ADMIN_ROLE: u64 = 8;$' sources/blast_fun_domain.move \
+  || ! rg -q '^const FEE_ADMIN_ROLE: u64 = 16;$' sources/blast_fun_domain.move \
+  || ! rg -q '^const LISTING_ADMIN_ROLE: u64 = 32;$' sources/blast_fun_domain.move \
+  || ! rg -q '^const ADAPTER_ADMIN_ROLE: u64 = 64;$' sources/blast_fun_domain.move \
+  || ! rg -q '^const CLAIM_SIGNER_ADMIN_ROLE: u64 = 128;$' sources/blast_fun_domain.move \
+  || ! rg -q '^const REWARDS_ADMIN_ROLE: u64 = 256;$' sources/blast_fun_domain.move \
+  || [[ "$(rg -c '^const ' sources/blast_fun_domain.move)" != 11 ]]; then
+  echo 'blast_fun_domain.move must create exactly one typed domain from module constants and define the nine role bits, exporting only the roles the migrators assert.' >&2
+  failures=$((failures + 1))
+fi
+
+# Every administrator action asserts exactly one role, the one pinned here, before any other check
+# but the version, so no role reaches another role's action (ADR 0094). A new function that takes
+# the domain's witness fails until it is mapped deliberately.
+admin_roles="$(for file in "${source_files[@]}"; do
+  move_facts "$file" | awk -F'\t' -v module="$(basename "$file" .move)" -f scripts/admin_roles.awk
+done | LC_ALL=C sort | tr '\n' ' ')"
+
+if [[ "$admin_roles" != \
+  'launch:claim_protocol_fees:treasury_admin_role launch:reassign_curve_fee_cap:creator_admin_role launch:reassign_metadata_cap:creator_admin_role launch_config:set_meme_decimals_allowed:listing_admin_role launch_config:set_migration_witness_allowed:adapter_admin_role launch_config:set_protocol_allocation:treasury_admin_role launch_config:set_quote_allowed:listing_admin_role launch_config:set_trade_fees:fee_admin_role package_admin:authorize_upgrade:package_admin_role package_admin:commit_upgrade_and_advance:package_admin_role package_admin:make_immutable:package_admin_role runtime_config:set_creator_claim_signer:claim_signer_admin_role runtime_config:set_protocol_fee_share:fee_admin_role ' ]]; then
+  printf '  %s\n' $admin_roles
+  echo 'Every administrator action must assert exactly its pinned role right after the version check.' >&2
   failures=$((failures + 1))
 fi
 
@@ -733,7 +776,7 @@ if [[ ! -f sources/runtime_config.move ]] \
 fi
 
 # The two setters are the only RuntimeConfig transitions; each is version-gated first and
-# authorized by a borrowed AdminWitness.
+# authorized by a borrowed AdminWitness, whose role the admin role map pins.
 runtime_config_violations=''
 runtime_config_mutations="$(awk -F'\t' '
   $1 == "FN" && $6 == 0 && $10 ~ /self\.(creator_claim_signer_public_key|protocol_fee_share_bps) = / {
@@ -755,7 +798,7 @@ runtime_config_ungated="$(awk -F'\t' '
     if ($10 !~ /^package_version\.assert_current\(\);/) {
       print "  " $2 " must check the live package version as its first statement"
     }
-    if ($9 !~ /[(,] _: &AdminWitness<BLAST_FUN_DOMAIN>,/) {
+    if ($9 !~ /[(,] admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,/) {
       print "  " $2 " must be authorized by a borrowed AdminWitness"
     }
   }
@@ -800,7 +843,7 @@ launch_config_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources
 
 # Blast's allocation is written once, leaving room for the curve and the pool.
 if [[ ! -f sources/launch_config.move ]] \
-  || [[ "$(move_production_function_contract set_protocol_allocation <<<"$launch_config_facts")" != 'public:0:0:fun set_protocol_allocation( self: &mut LaunchConfig, package_version: &PackageVersion, _: &AdminWitness<BLAST_FUN_DOMAIN>,'* ]] \
+  || [[ "$(move_production_function_contract set_protocol_allocation <<<"$launch_config_facts")" != 'public:0:0:fun set_protocol_allocation( self: &mut LaunchConfig, package_version: &PackageVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,'* ]] \
   || ! rg -Fq 'self.protocol_allocation.is_none() && meme_bps.value() <= 9_998 && quote_bps.value() <= 9_999' <<<"$launch_config_source" \
   || [[ "$(count_occurrences 'self\.protocol_allocation = ' <<<"$launch_config_source")" != 1 ]] \
   || rg -n '\b(set_graduation_defaults|GraduationDefaultsChanged|protocol_(quote_migration|meme_graduation)_fee_bps|meme_liquidity_provision_bps|QuoteParameters|QuoteParametersChanged|min_graduation_target|max_graduation_target)\b' \
@@ -1046,7 +1089,7 @@ if [[ "$(rg -l '\bnew_curve_fee_cap\b' sources | sort | tr '\n' ' ')" \
   || [[ "$(rg -l '\bnew_metadata_cap\b' sources | sort | tr '\n' ' ')" \
     != 'sources/creator_authority.move sources/launch.move ' ]] \
   || [[ "$(rg -l '\.claim_(creator|protocol)_fees\(ctx\)' sources | tr '\n' ' ')" != 'sources/launch.move ' ]] \
-  || [[ "$(move_production_signature claim_protocol_fees <<<"$launch_facts")" != *' _: &AdminWitness<BLAST_FUN_DOMAIN>,'* ]]; then
+  || [[ "$(move_production_signature claim_protocol_fees <<<"$launch_facts")" != *' admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,'* ]]; then
   launch_authority_violations+='  creator capability constructors or ledger claims are reachable outside creator_authority.move and launch.move, or the protocol claim lost its AdminWitness'$'\n'
 fi
 

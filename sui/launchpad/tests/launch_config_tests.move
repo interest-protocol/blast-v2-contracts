@@ -970,6 +970,83 @@ fun launch_snapshot_rejects_unlisted_migration_witness() {
     fixture.end();
 }
 
+#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
+fun setting_the_protocol_allocation_requires_the_treasury_admin_role() {
+    let mut fixture = start_with_roles(blast_fun_domain::treasury_admin_role().bitwise_not());
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f.set_protocol_allocation(PROTOCOL_ADMIN, 100, 100);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
+fun setting_the_trade_fees_requires_the_fee_admin_role() {
+    let mut fixture = start_with_roles(blast_fun_domain::fee_admin_role().bitwise_not());
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+
+        f.config.set_trade_fees(&f.package_version, &admin_witness, bps::new(1), bps::new(1));
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
+fun admitting_a_quote_requires_the_listing_admin_role() {
+    let mut fixture = start_with_roles(blast_fun_domain::listing_admin_role().bitwise_not());
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+
+        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
+fun changing_the_meme_decimals_requires_the_listing_admin_role() {
+    let mut fixture = start_with_roles(blast_fun_domain::listing_admin_role().bitwise_not());
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+
+        f.config.set_meme_decimals_allowed(&f.package_version, &admin_witness, 6, false);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
+fun admitting_an_adapter_requires_the_adapter_admin_role() {
+    let mut fixture = start_with_roles(blast_fun_domain::adapter_admin_role().bitwise_not());
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+
+        f.allow_test_migration_witness(&admin_witness);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+fun a_config_setter_checks_the_version_before_the_role() {
+    let mut fixture = start_with_roles(0);
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin_witness = f.sign_in();
+        f.package_version.set_for_testing(2);
+
+        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
+    });
+
+    fixture.end();
+}
+
 // === Test Helpers ===
 
 /// The binding a ticket bound to the test adapter hands to launch intake.
@@ -1029,11 +1106,21 @@ fun start_init(): InitFixture {
     InitFixture { scenario, config }
 }
 
+/// An administrator holding exactly the four roles LaunchConfig's setters assert.
 fun start(): ConfigFixture {
+    start_with_roles(
+        blast_fun_domain::treasury_admin_role()
+            | blast_fun_domain::fee_admin_role()
+            | blast_fun_domain::listing_admin_role()
+            | blast_fun_domain::adapter_admin_role(),
+    )
+}
+
+fun start_with_roles(roles: u64): ConfigFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
     let (super_admin_cap, mut authority) = domain_fixture::new_authority(scenario.ctx());
-    authority.grant_admin(&super_admin_cap, 0, PROTOCOL_ADMIN, scenario.ctx());
+    authority.grant_admin(&super_admin_cap, roles, PROTOCOL_ADMIN, scenario.ctx());
     destroy(super_admin_cap);
     launch_config::init_for_testing(scenario.ctx());
 
@@ -1096,7 +1183,7 @@ use blast_admin::acl::{Authority, AdminCap, AdminWitness};
 use blast_fun::{
     allocation,
     blast_events::Event,
-    blast_fun_domain::BLAST_FUN_DOMAIN,
+    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
     bps,
     constants,
     domain_fixture,

@@ -434,7 +434,8 @@ fun start(fee_split: FeeSplit): FeeSplitFixture {
     let runtime = runtime_config::new_disabled_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
     let (root, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(16, 1, scenario.ctx());
-    authority.grant_admin(&root, blast_fun_domain::creator_admin_role_for_testing(), ADMIN, scenario.ctx());
+    let roles = blast_fun_domain::creator_admin_role_for_testing() | launch_fixture::admit_roles();
+    authority.grant_admin(&root, roles, ADMIN, scenario.ctx());
     destroy(root);
     let policy = lp_fee_policy::new_for_testing(scenario.ctx());
     let mut config = launch_config::new_for_testing(scenario.ctx());

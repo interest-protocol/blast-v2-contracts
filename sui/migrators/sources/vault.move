@@ -64,14 +64,15 @@ public struct LpVault<phantom Meme, phantom Quote> has key {
 
 // === Public Functions ===
 
-/// Claims the protocol-owned migration residuals under a live admin witness.
+/// Claims the protocol-owned migration residuals under a treasury admin.
 public fun claim_protocol_fees<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    _: &AdminWitness<BLAST_FUN_DOMAIN>,
+    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
     migrators_version.assert_current();
+    admin_witness.assert_role(blast_fun_domain::treasury_admin_role());
     assert!(
         self.protocol_meme_residual.value() > 0 || self.protocol_quote_residual.value() > 0,
         ENothingClaimable,

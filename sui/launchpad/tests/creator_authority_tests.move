@@ -271,7 +271,12 @@ fun start(): ClaimFixture {
     let mut scenario = test_scenario::begin(ADMIN);
     let package_version = package_version::new_for_testing(scenario.ctx());
     let (super_admin_cap, mut authority) = domain_fixture::new_authority(scenario.ctx());
-    authority.grant_admin(&super_admin_cap, 0, ADMIN, scenario.ctx());
+    authority.grant_admin(
+        &super_admin_cap,
+        blast_fun_domain::claim_signer_admin_role(),
+        ADMIN,
+        scenario.ctx(),
+    );
     destroy(super_admin_cap);
     let config = runtime_config::new_for_testing(signer_public_key(), scenario.ctx());
     let mut clock = clock::create_for_testing(scenario.ctx());
@@ -337,7 +342,7 @@ fun signature(): vector<u8> {
 use blast_admin::acl::{Authority, AdminCap};
 
 use blast_fun::{
-    blast_fun_domain::BLAST_FUN_DOMAIN,
+    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
     creator_authority::{Self, CreatorRecipient},
     domain_fixture,
     package_version::{Self, PackageVersion},

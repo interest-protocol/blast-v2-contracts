@@ -1178,11 +1178,53 @@ fun reassignment_requires_the_creator_admin_role() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let launch = f.new_default_launch(CREATOR);
         let mut launch = f.open_launch(launch);
-        let (authority, admin_cap) = f.new_role_less_admin();
+        let (authority, admin_cap) = f.new_admin_without(blast_fun_domain::creator_admin_role());
         let admin_witness = authority.sign_in(&admin_cap);
 
         launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
 
+        destroy(authority);
+        destroy(admin_cap);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
+fun metadata_reassignment_requires_the_creator_admin_role() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
+        let (authority, admin_cap) = f.new_admin_without(blast_fun_domain::creator_admin_role());
+        let admin_witness = authority.sign_in(&admin_cap);
+
+        launch.reassign_metadata_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
+
+        destroy(authority);
+        destroy(admin_cap);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
+fun claiming_protocol_fees_requires_the_treasury_admin_role() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
+        let (authority, admin_cap) = f.new_admin_without(blast_fun_domain::treasury_admin_role());
+        let admin_witness = authority.sign_in(&admin_cap);
+
+        let (meme, quote) = launch.claim_protocol_fees(&f.package_version, &admin_witness, f.ctx!());
+
+        destroy(meme);
+        destroy(quote);
         destroy(authority);
         destroy(admin_cap);
         destroy(launch);
@@ -2063,7 +2105,11 @@ fun start_unallocated(): LaunchFixture {
     let (super_admin_cap, mut authority) = domain_fixture::new_authority(scenario.ctx());
     authority.grant_admin(
         &super_admin_cap,
-        blast_fun_domain::creator_admin_role(),
+        blast_fun_domain::creator_admin_role()
+            | blast_fun_domain::treasury_admin_role()
+            | blast_fun_domain::fee_admin_role()
+            | blast_fun_domain::listing_admin_role()
+            | blast_fun_domain::adapter_admin_role(),
         PROTOCOL_ADMIN,
         scenario.ctx(),
     );
@@ -2122,14 +2168,15 @@ fun launch_sign_in(self: &LaunchFixture): AdminWitness<BLAST_FUN_DOMAIN> {
     self.authority.sign_in(&self.admin_cap)
 }
 
-/// Live administration holding every role except the creator-admin role.
-fun new_role_less_admin(
+/// Live administration holding every role except `role`.
+fun new_admin_without(
     self: &mut LaunchFixture,
+    role: u64,
 ): (Authority<BLAST_FUN_DOMAIN>, AdminCap<BLAST_FUN_DOMAIN>) {
     let (super_admin_cap, mut authority) = domain_fixture::new_authority(self.scenario.ctx());
     authority.grant_admin(
         &super_admin_cap,
-        blast_fun_domain::package_admin_role(),
+        role.bitwise_not(),
         ROLE_LESS_ADMIN,
         self.scenario.ctx(),
     );

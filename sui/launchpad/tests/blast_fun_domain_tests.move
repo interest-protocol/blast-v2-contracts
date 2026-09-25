@@ -5,8 +5,8 @@
 /// Focused wiring tests for the Launchpad-owned shared administration domain.
 ///
 /// The complete reusable ACL matrix belongs to `blast_admin`. These tests prove
-/// only that Launchpad creates exactly one typed domain from its own constants,
-/// exports one role, and keeps generic administration role-free.
+/// only that Launchpad creates exactly one typed domain from its own constants
+/// and pins nine distinct role bits, and that sign-in alone grants no role.
 module blast_fun::blast_fun_domain_tests;
 
 // === Constants ===
@@ -52,15 +52,24 @@ fun init_creates_one_launchpad_authority_with_its_module_constants() {
 }
 
 #[test]
-fun package_admin_role_is_the_single_exported_launchpad_role_bit() {
-    let role = blast_fun_domain::package_admin_role();
+fun every_role_is_a_distinct_single_bit() {
+    let roles = vector[
+        blast_fun_domain::package_admin_role(),
+        blast_fun_domain::creator_admin_role(),
+        blast_fun_domain::buyback_admin_role(),
+        blast_fun_domain::treasury_admin_role(),
+        blast_fun_domain::fee_admin_role(),
+        blast_fun_domain::listing_admin_role(),
+        blast_fun_domain::adapter_admin_role(),
+        blast_fun_domain::claim_signer_admin_role(),
+        blast_fun_domain::rewards_admin_role(),
+    ];
 
-    assert_eq!(role, 1);
-    assert!(role != 0 && role & (role - 1) == 0);
+    assert_eq!(roles, vector[1, 2, 4, 8, 16, 32, 64, 128, 256]);
 }
 
 #[test]
-fun a_zero_role_administrator_signs_in_for_generic_administration() {
+fun a_zero_role_administrator_signs_in_without_any_role() {
     let mut fixture = start_with_roles(0);
 
     fixture.next_tx!(ADMIN, |f| {
@@ -90,7 +99,7 @@ fun a_zero_role_administrator_cannot_assert_the_package_admin_role() {
 }
 
 #[test]
-fun a_package_administrator_remains_an_active_generic_administrator() {
+fun a_package_administrator_holds_only_the_package_admin_role() {
     let mut fixture = start_with_roles(blast_fun_domain::package_admin_role());
 
     fixture.next_tx!(ADMIN, |f| {

@@ -311,6 +311,25 @@ fun an_auto_lp_position_is_sealed_to_its_venue() {
 // Protocol Residuals
 
 #[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EAdminRoleNotGranted,
+    location = blast_admin::acl,
+)]
+fun the_treasury_role_is_checked_before_the_residuals() {
+    let mut f = start(mixed_split());
+    let mut vault = f.new_vault(0, 0);
+    f.revoke_role(blast_fun_domain::treasury_admin_role());
+    let admin = f.sign_in();
+
+    let (meme, quote) = vault.claim_protocol_fees(&f.migrators_version, &admin, f.scenario.ctx());
+
+    destroy(meme);
+    destroy(quote);
+    destroy(vault);
+    f.end();
+}
+
+#[test]
 fun protocol_claim_pays_both_residuals_once_and_emits_the_exact_claim() {
     let mut f = start(mixed_split());
     let mut vault = f.new_vault(3, 4);
@@ -919,7 +938,7 @@ fun a_buyback_returning_less_than_the_minimum_meme_is_rejected() {
 fun the_buyback_role_is_checked_before_the_burn_quote() {
     let mut f = start(mixed_split());
     let mut vault = f.new_vault(0, 0);
-    f.revoke_buyback_role();
+    f.revoke_role(blast_fun_domain::buyback_admin_role());
     let admin = f.sign_in();
 
     let quote = vault.take_buyback_quote(&admin);
@@ -966,7 +985,8 @@ fun start_with_supply(fee_split: FeeSplit, burnable: bool): VaultFixture {
         ROOT_TRANSFER_DELAY_MS,
         scenario.ctx(),
     );
-    authority.grant_admin(&root, blast_fun_domain::buyback_admin_role(), ADMIN, scenario.ctx());
+    let roles = blast_fun_domain::buyback_admin_role() | launch_fixture::admit_roles();
+    authority.grant_admin(&root, roles, ADMIN, scenario.ctx());
     let policy = lp_fee_policy::new_for_testing(scenario.ctx());
     let mut config = launch_config::new_for_testing(scenario.ctx());
 
@@ -1118,11 +1138,11 @@ fun sign_in(self: &VaultFixture): AdminWitness<BLAST_FUN_DOMAIN> {
     self.authority.sign_in(&self.admin_cap)
 }
 
-/// Leaves `ADMIN` a member without the buyback role.
-fun revoke_buyback_role(self: &mut VaultFixture) {
+/// Leaves `ADMIN` a member without `role`.
+fun revoke_role(self: &mut VaultFixture, role: u64) {
     let admin_cap_id = acl::admin_cap_id_for_testing(&self.admin_cap);
 
-    self.authority.revoke_role(&self.root, admin_cap_id, blast_fun_domain::buyback_admin_role());
+    self.authority.revoke_role(&self.root, admin_cap_id, role);
 }
 
 /// Runs one policy administration under a fresh sign-in and the live migrators generation.

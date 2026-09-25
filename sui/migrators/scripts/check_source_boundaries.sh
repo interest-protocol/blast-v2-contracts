@@ -176,7 +176,7 @@ blast_events:package:fun reward_paid( round_id: ID, index: u64, beneficiary: add
 blast_events:package:fun round_published( vault_id: ID, round_id: ID, number: u64, start_checkpoint: u64, end_checkpoint: u64, root: vector<u8>, manifest_digest: vector<u8>, leaf_count: u64, meme_amount: u64, quote_amount: u64, meme_unallocated: u64, quote_unallocated: u64, )
 blast_events:package:fun vault_created<Meme, Quote, Venue>( vault_id: ID, pool_id: ID, position_id: ID, residual_meme: u64, residual_quote: u64, liquidity: u128, fee_split: FeeSplit, )
 blast_holder_rewards:public:fun claim<Meme, Quote>( self: &mut Round<Meme, Quote>, migrators_version: &MigratorsVersion, index: u64, beneficiary: address, meme_amount: u64, quote_amount: u64, proof: vector<vector<u8>>, ctx: &mut TxContext, )
-blast_holder_rewards:public:fun publish_round<Meme, Quote>( vault: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, _: &AdminWitness<BLAST_FUN_DOMAIN>, number: u64, start_checkpoint: u64, end_checkpoint: u64, root: vector<u8>, manifest_digest: vector<u8>, leaf_count: u64, meme_amount: u64, quote_amount: u64, ctx: &mut TxContext, )
+blast_holder_rewards:public:fun publish_round<Meme, Quote>( vault: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, number: u64, start_checkpoint: u64, end_checkpoint: u64, root: vector<u8>, manifest_digest: vector<u8>, leaf_count: u64, meme_amount: u64, quote_amount: u64, ctx: &mut TxContext, )
 bluefin:public:fun buyback_and_burn<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, currency: &mut Currency<Meme>, bluefin_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, min_meme_out: u64, clock: &Clock, ctx: &mut TxContext, )
 bluefin:public:fun collect_fees<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, currency: &mut Currency<Meme>, bluefin_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, clock: &Clock, ctx: &mut TxContext, )
 bluefin:public:fun migrate<Meme, Quote>( launch: &mut Launch<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, currency: &mut Currency<Meme>, quote_currency: &Currency<Quote>, bluefin_config: &mut GlobalConfig, creation_fee: Coin<SUI>, clock: &Clock, ctx: &mut TxContext, )
@@ -203,10 +203,10 @@ constants:package:fun q64_shift(): u8
 constants:package:fun sqrt_upper_bound_shift(): u8
 lp_fee_policy:package:fun protocol_destination(self: &LpFeePolicy): address
 lp_fee_policy:package:fun shares<Meme>(self: &LpFeePolicy): (Bps, Bps)
-lp_fee_policy:public:fun clear_coin_shares<Meme>( self: &mut LpFeePolicy, migrators_version: &MigratorsVersion, _: &AdminWitness<BLAST_FUN_DOMAIN>, )
-lp_fee_policy:public:fun set_coin_shares<Meme>( self: &mut LpFeePolicy, migrators_version: &MigratorsVersion, _: &AdminWitness<BLAST_FUN_DOMAIN>, meme_bps: Bps, quote_bps: Bps, )
-lp_fee_policy:public:fun set_default_shares( self: &mut LpFeePolicy, migrators_version: &MigratorsVersion, _: &AdminWitness<BLAST_FUN_DOMAIN>, meme_bps: Bps, quote_bps: Bps, )
-lp_fee_policy:public:fun set_protocol_destination( self: &mut LpFeePolicy, migrators_version: &MigratorsVersion, _: &AdminWitness<BLAST_FUN_DOMAIN>, destination: address, )
+lp_fee_policy:public:fun clear_coin_shares<Meme>( self: &mut LpFeePolicy, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, )
+lp_fee_policy:public:fun set_coin_shares<Meme>( self: &mut LpFeePolicy, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, meme_bps: Bps, quote_bps: Bps, )
+lp_fee_policy:public:fun set_default_shares( self: &mut LpFeePolicy, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, meme_bps: Bps, quote_bps: Bps, )
+lp_fee_policy:public:fun set_protocol_destination( self: &mut LpFeePolicy, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, destination: address, )
 merkle:package:fun leaf( vault: ID, round: u64, index: u64, beneficiary: address, meme: u64, quote: u64, ): vector<u8>
 merkle:package:fun verify( root: vector<u8>, mut digest: vector<u8>, mut index: u64, leaves: u64, proof: &vector<vector<u8>>, ): bool
 migration_math:package:fun auto_lp_fixed_side( sqrt_lower: u128, sqrt_price: u128, sqrt_upper: u128, amount_a: u64, amount_b: u64, ): (bool, u64)
@@ -236,7 +236,7 @@ vault:package:fun take_auto_lp<Meme, Quote>( self: &mut LpVault<Meme, Quote>, ):
 vault:package:fun take_buyback_quote<Meme, Quote>( self: &mut LpVault<Meme, Quote>, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, ): Balance<Quote>
 vault:package:fun update_fee_split<Meme, Quote>( self: &mut LpVault<Meme, Quote>, proposed: FeeSplit, )
 vault:public:fun claim_creator_fees<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, launch: &Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)
-vault:public:fun claim_protocol_fees<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, _: &AdminWitness<BLAST_FUN_DOMAIN>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)
+vault:public:fun claim_protocol_fees<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)
 venue_config:package:fun add_object<Key: copy + drop + store, Object: key + store>( self: &mut VenueConfig, key: Key, object: Object, )
 venue_config:package:fun object<Key: copy + drop + store, Object: key + store>( self: &VenueConfig, key: Key, ): &Object
 EOF
@@ -1165,6 +1165,28 @@ CUSTODY_ROLE_ASSERTIONS="$(rg -c 'admin_witness\.assert_role\(blast_fun_domain::
     | awk -F'\t' '$1 == "FN" && $2 == "commit_upgrade_and_advance" { print $10 }')" \
     == 'package_version.assert_next(); admin_witness.assert_role(blast_fun_domain::package_admin_role());'* ]] || \
     fail "commit_upgrade_and_advance must check the next generation before the role"
+# Every administrator action asserts exactly one role, the one pinned here, before any other check
+# but the generation, so no role reaches another role's action (ADR 0094). A new function that
+# takes the domain's witness fails until it is mapped deliberately.
+ADMIN_ROLES_READER="$(dirname "$MOVE_FACTS_READER")/admin_roles.awk"
+admin_roles="$(for source in "$SOURCE_DIR"/*.move; do
+    move_facts "$source" | awk -F'\t' -v module="$(basename "$source" .move)" -f "$ADMIN_ROLES_READER"
+done | LC_ALL=C sort)"
+require_text "$admin_roles" \
+    "every administrator action must assert exactly its pinned role right after the generation check" <<'ROLES'
+blast_holder_rewards:publish_round:rewards_admin_role
+bluefin:buyback_and_burn:via take_buyback_quote
+cetus:buyback_and_burn_meme_a:via take_buyback_quote
+cetus:buyback_and_burn_meme_b:via take_buyback_quote
+lp_fee_policy:clear_coin_shares:fee_admin_role
+lp_fee_policy:set_coin_shares:fee_admin_role
+lp_fee_policy:set_default_shares:fee_admin_role
+lp_fee_policy:set_protocol_destination:treasury_admin_role
+package_admin:authorize_upgrade:package_admin_role
+package_admin:commit_upgrade_and_advance:package_admin_role
+vault:claim_protocol_fees:treasury_admin_role
+vault:take_buyback_quote:buyback_admin_role
+ROLES
 # Venues gate callers by package version and launchpad cutovers advance its version, so this
 # package must always be able to relink (ADR 0088): nothing may destroy its UpgradeCap. Every
 # commit also advances the generation, and an additive or dependency-only upgrade cannot change the

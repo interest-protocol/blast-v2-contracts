@@ -519,6 +519,54 @@ fun revoked_admin_cannot_obtain_authority_to_mutate_policy() {
     fixture.end();
 }
 
+#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
+fun redirecting_the_protocol_destination_requires_the_treasury_admin_role() {
+    let mut fixture = start_policy_with_roles(blast_fun_domain::treasury_admin_role().bitwise_not());
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin = f.sign_in();
+        f.policy.set_protocol_destination(&f.migrators_version, &admin, @0xCAFE);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
+fun changing_the_default_shares_requires_the_fee_admin_role() {
+    let mut fixture = start_policy_with_roles(blast_fun_domain::fee_admin_role().bitwise_not());
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin = f.sign_in();
+        f.policy.set_default_shares(&f.migrators_version, &admin, bps::new(2_000), bps::new(7_000));
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
+fun setting_a_coin_pair_requires_the_fee_admin_role() {
+    let mut fixture = start_policy_with_roles(blast_fun_domain::fee_admin_role().bitwise_not());
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin = f.sign_in();
+        f.policy.set_coin_shares<MemeA>(&f.migrators_version, &admin, bps::new(2_000), bps::new(7_000));
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
+fun clearing_a_coin_pair_requires_the_fee_admin_role() {
+    let mut fixture = start_policy_with_roles(blast_fun_domain::fee_admin_role().bitwise_not());
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin = f.sign_in();
+        f.policy.clear_coin_shares<MemeA>(&f.migrators_version, &admin);
+    });
+
+    fixture.end();
+}
+
 // === Test Helpers ===
 
 macro fun init_next_tx($fixture: &mut InitFixture, $sender: address, $fn: |&mut InitFixture|) {
@@ -550,7 +598,14 @@ fun start_init(): InitFixture {
     InitFixture { scenario, policy }
 }
 
+/// A fee and treasury administrator over a fresh policy.
 fun start_policy(): PolicyFixture {
+    start_policy_with_roles(
+        blast_fun_domain::fee_admin_role() | blast_fun_domain::treasury_admin_role(),
+    )
+}
+
+fun start_policy_with_roles(roles: u64): PolicyFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let migrators_version = migrators_version::new_for_testing(scenario.ctx());
     let (root, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(
@@ -558,7 +613,7 @@ fun start_policy(): PolicyFixture {
         ROOT_TRANSFER_DELAY_MS,
         scenario.ctx(),
     );
-    authority.grant_admin(&root, 0, PROTOCOL_ADMIN, scenario.ctx());
+    authority.grant_admin(&root, roles, PROTOCOL_ADMIN, scenario.ctx());
     let policy = lp_fee_policy::new_for_testing(scenario.ctx());
 
     scenario.next_tx(PROTOCOL_ADMIN);
@@ -624,7 +679,7 @@ fun policy_end(self: PolicyFixture) {
 
 use blast_admin::acl::{Self, Authority, SuperAdminCap, AdminCap, AdminWitness};
 
-use blast_fun::{blast_fun_domain::BLAST_FUN_DOMAIN, bps};
+use blast_fun::{blast_fun_domain::{Self, BLAST_FUN_DOMAIN}, bps};
 
 use blast_fun_migrators::{
     blast_events,

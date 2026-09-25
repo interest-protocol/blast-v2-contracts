@@ -695,7 +695,10 @@ fun start(): OpeningRoundFixture {
     let (super_admin_cap, mut authority) = domain_fixture::new_authority(scenario.ctx());
     authority.grant_admin(
         &super_admin_cap,
-        blast_fun_domain::package_admin_role(),
+        blast_fun_domain::treasury_admin_role()
+            | blast_fun_domain::fee_admin_role()
+            | blast_fun_domain::listing_admin_role()
+            | blast_fun_domain::adapter_admin_role(),
         PROTOCOL_ADMIN,
         scenario.ctx(),
     );

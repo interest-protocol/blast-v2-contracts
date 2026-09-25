@@ -87,13 +87,21 @@ public fun creator(): address {
     CREATOR
 }
 
+/// Returns exactly the roles `admit` asserts: listing, adapter, fee, and treasury.
+public fun admit_roles(): u64 {
+    blast_fun_domain::listing_admin_role_for_testing()
+        | blast_fun_domain::adapter_admin_role_for_testing()
+        | blast_fun_domain::fee_admin_role()
+        | blast_fun_domain::treasury_admin_role()
+}
+
 // === Imports ===
 
 use blast_admin::acl::AdminWitness;
 
 use blast_fun::{
     allocation::{Self, FeeSplit},
-    blast_fun_domain::BLAST_FUN_DOMAIN,
+    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
     bps,
     creator_authority,
     launch::{Self, Launch},
