@@ -54,7 +54,11 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
     let (super_admin, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(
         MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, scenario.ctx(),
     );
-    authority.grant_admin(&super_admin, 0, @0xa, scenario.ctx());
+    // Exactly the three roles the LaunchConfig setters below assert.
+    let roles = blast_fun_domain::listing_admin_role_for_testing()
+        | blast_fun_domain::adapter_admin_role_for_testing()
+        | blast_fun_domain::treasury_admin_role();
+    authority.grant_admin(&super_admin, roles, @0xa, scenario.ctx());
     launch_config::init_for_testing(scenario.ctx());
     scenario.next_tx(@0xa);
     let admin = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
@@ -210,7 +214,7 @@ use blast_admin::acl::{Self, AdminCap, AdminWitness};
 
 use blast_fun::{
     allocation::{Self as allocation, AllocationPlan}, bps, creator_authority, launch::{Self, Launch}, launch_config::{Self, LaunchConfig},
-    launch_ticket, blast_fun_domain::BLAST_FUN_DOMAIN,
+    launch_ticket, blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
     package_version::{Self, PackageVersion}, runtime_config::{Self, RuntimeConfig},
 };
 
