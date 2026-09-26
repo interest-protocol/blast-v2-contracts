@@ -601,11 +601,11 @@ fun a_partner_is_paid_only_out_of_the_admin_fee_its_operation_retained() {
 
     assert_eq!(vault.admin_cash_balance<_, Collateral>(), 115);
     assert_eq!(vector[vault.state().maintenance_reserve(), vault.total_share_supply()], vector[reserve, supply]);
-    let (vault_id, partner_id, admin_fee, partner_fee, admin_cash_after) =
+    let (vault_id, partner_id, admin_fee, partner_fee) =
         events::collect_one<events::PartnerFeePaid<Product>>(0).partner_fee_paid_fields();
     assert_eq!(vault_id, vault.id());
     assert_eq!(partner_id, object::id(&partner));
-    assert_eq!(vector[admin_fee, partner_fee, admin_cash_after], vector[30, 15, 115]);
+    assert_eq!(vector[admin_fee, partner_fee], vector[30, 15]);
     let payments = sui::event::events_by_type<PartnerPaid<Collateral>>();
     assert_eq!(payments.length(), 1);
     let (paid_partner, amount) = payments[0].partner_paid_fields();
@@ -629,10 +629,11 @@ fun a_zero_admin_fee_pays_nothing_but_is_still_attributed() {
 
     operations::pay_partner_for_testing(&mut vault, &partner, 40, &clock);
 
-    let (_, partner_id, admin_fee, partner_fee, admin_cash_after) =
+    let (_, partner_id, admin_fee, partner_fee) =
         events::collect_one<events::PartnerFeePaid<Product>>(0).partner_fee_paid_fields();
     assert_eq!(partner_id, object::id(&partner));
-    assert_eq!(vector[admin_fee, partner_fee, admin_cash_after], vector[0, 0, 40]);
+    assert_eq!(vector[admin_fee, partner_fee], vector[0, 0]);
+    assert_eq!(vault.admin_cash_balance<_, Collateral>(), 40);
     assert_eq!(sui::event::events_by_type<PartnerPaid<Collateral>>().length(), 0);
     destroy(partner);
     clock.destroy_for_testing();
@@ -651,9 +652,8 @@ fun the_maximum_partner_share_leaves_blast_a_fifth_of_the_admin_fee() {
 
     operations::pay_partner_for_testing(&mut vault, &partner, 0, &clock);
 
-    let (_, _, _, partner_fee, admin_cash_after) =
-        events::collect_one<events::PartnerFeePaid<Product>>(0).partner_fee_paid_fields();
-    assert_eq!(vector[partner_fee, admin_cash_after], vector[24, 6]);
+    let (_, _, _, partner_fee) = events::collect_one<events::PartnerFeePaid<Product>>(0).partner_fee_paid_fields();
+    assert_eq!(vector[partner_fee, vault.admin_cash_balance<_, Collateral>()], vector[24, 6]);
     destroy(partner);
     clock.destroy_for_testing();
     destroy(vault);
@@ -676,10 +676,10 @@ fun a_partner_share_takes_effect_exactly_at_the_operations_clock() {
     operations::pay_partner_for_testing(&mut vault, &switched, 30, &clock);
 
     let fees = events::collect<events::PartnerFeePaid<Product>>();
-    let (_, _, _, pending_fee, pending_cash) = fees[0].partner_fee_paid_fields();
-    let (_, _, _, switched_fee, switched_cash) = fees[1].partner_fee_paid_fields();
-    assert_eq!(vector[pending_fee, pending_cash], vector[0, 60]);
-    assert_eq!(vector[switched_fee, switched_cash], vector[15, 45]);
+    let (_, _, _, pending_fee) = fees[0].partner_fee_paid_fields();
+    let (_, _, _, switched_fee) = fees[1].partner_fee_paid_fields();
+    assert_eq!(vector[pending_fee, switched_fee], vector[0, 15]);
+    assert_eq!(vault.admin_cash_balance<_, Collateral>(), 45);
     assert_eq!(sui::event::events_by_type<PartnerPaid<Collateral>>().length(), 1);
     destroy(pending);
     destroy(switched);
@@ -3416,11 +3416,10 @@ fun replay_redemption<Tag>(replay: &mut ReplayState, event: events::Redeemed<Tag
 
 // Follows the operation's own event, whose admin cash still includes the partner's fee.
 fun replay_partner_fee_paid<Tag>(replay: &mut ReplayState, event: events::PartnerFeePaid<Tag>) {
-    let (id, _, admin_fee, partner_fee, admin_cash_after) = event.partner_fee_paid_fields();
+    let (id, _, admin_fee, partner_fee) = event.partner_fee_paid_fields();
     assert_eq!(id, replay.vault_id);
     assert!(partner_fee > 0 && partner_fee <= admin_fee);
-    assert_eq!(admin_cash_after, replay.admin_cash - partner_fee);
-    replay.admin_cash = admin_cash_after;
+    replay.admin_cash = replay.admin_cash - partner_fee;
 }
 
 fun assert_replay<Tag>(replay: &ReplayState, vault: &Vault<Tag, Collateral>) {

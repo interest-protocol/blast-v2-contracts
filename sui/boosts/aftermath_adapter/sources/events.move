@@ -96,15 +96,14 @@ public struct Redeemed<phantom Product> has copy, drop {
 /// Emitted after a mint or redeem that named a partner, including a partner
 /// paid nothing because its share is zero or not yet in force. It follows that
 /// operation's `Minted` or `Redeemed` in the same transaction, whose
-/// `admin_cash_after` still includes `partner_fee`. `partner_fee` left
-/// `admin_fee`, the admin fee the operation retained; `admin_cash_after` holds
-/// what Blast kept.
+/// `admin_cash_after` still includes `partner_fee`: Blast's admin cash is that
+/// minus `partner_fee`. `partner_fee` left `admin_fee`, the admin fee the
+/// operation retained.
 public struct PartnerFeePaid<phantom Product> has copy, drop {
     vault_id: ID,
     partner_id: ID,
     admin_fee: u64,
     partner_fee: u64,
-    admin_cash_after: u64,
 }
 
 // --- Rebalance ---
@@ -363,9 +362,8 @@ public(package) fun partner_fee_paid<Product>(
     partner_id: ID,
     admin_fee: u64,
     partner_fee: u64,
-    admin_cash_after: u64,
 ) {
-    emit_event(PartnerFeePaid<Product> { vault_id, partner_id, admin_fee, partner_fee, admin_cash_after });
+    emit_event(PartnerFeePaid<Product> { vault_id, partner_id, admin_fee, partner_fee });
 }
 
 // --- Rebalance ---
@@ -604,8 +602,8 @@ public fun redeemed_checkpoint_fields<Product>(self: &Redeemed<Product>): (ID, C
 }
 
 #[test_only]
-public fun partner_fee_paid_fields<Product>(self: &PartnerFeePaid<Product>): (ID, ID, u64, u64, u64) {
-    (self.vault_id, self.partner_id, self.admin_fee, self.partner_fee, self.admin_cash_after)
+public fun partner_fee_paid_fields<Product>(self: &PartnerFeePaid<Product>): (ID, ID, u64, u64) {
+    (self.vault_id, self.partner_id, self.admin_fee, self.partner_fee)
 }
 
 #[test_only]

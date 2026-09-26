@@ -114,8 +114,10 @@ registration and after every change.
 it just retained: the increase in Blast's admin cash across the operation is
 exactly that fee. The reserve fee, the shares minted and the redemption net are
 the plain operation's. `PartnerFeePaid<Product> { vault_id, partner_id,
-admin_fee, partner_fee, admin_cash_after }` records the payment against the vault,
-also when the partner is paid nothing, so the flow stays attributed. The adapter
+admin_fee, partner_fee }` records the payment against the vault, also when the
+partner is paid nothing, so the flow stays attributed. It carries no admin-cash
+total: it follows the operation's `Minted` or `Redeemed` in the same transaction,
+and Blast's admin cash is that event's `admin_cash_after` minus `partner_fee`. The adapter
 never calls `send_funds` itself, and only `operations` calls `pay` (source gate).
 
 **The launchpad, later.** `buy` and `sell` gain partner variants that pay from

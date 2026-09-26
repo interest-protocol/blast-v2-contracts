@@ -695,9 +695,7 @@ fun pay_partner<Product, Collateral>(
     let partner_fee = partner.pay(&mut fee, clock);
     vault.retain_admin_cash(fee);
 
-    events::partner_fee_paid<Product>(
-        vault.id(), object::id(partner), admin_fee, partner_fee, vault.admin_cash_balance<_, Collateral>(),
-    );
+    events::partner_fee_paid<Product>(vault.id(), object::id(partner), admin_fee, partner_fee);
 }
 
 /// Advances the sole economic checkpoint only after sealed maintenance has succeeded.
