@@ -32,11 +32,12 @@ public struct Fixture {
 #[test]
 fun initialization_creates_the_partner_administration_domain() {
     let mut scenario = test_scenario::begin(ROOT);
-    blast_partners::init_for_testing(scenario.ctx());
+    partners::init_for_testing(scenario.ctx());
 
     scenario.next_tx(ROOT);
     let authority = scenario.take_shared<Authority<BLAST_PARTNERS>>();
     assert_eq!(authority.max_admins_for_testing(), 16);
+    assert_eq!(authority.root_transfer_delay_ms_for_testing(), 7 * 24 * 60 * 60 * 1_000);
     test_scenario::return_shared(authority);
 
     scenario.end();
@@ -72,7 +73,7 @@ fun registration_shares_the_partner_and_delays_its_first_share() {
         fixture.return_partner(partner);
     });
 
-    blast_partners::destroy_cap(cap);
+    partners::destroy_cap(cap);
     fixture.end();
 }
 
@@ -87,37 +88,37 @@ fun registration_accepts_the_zero_share_house_partner_and_the_maximum_share() {
     let (_, _, _, top_share, _, _, _, _) = updates[1].partner_updated_fields();
     assert_eq!(vector[house_share, top_share], vector[0, MAX_SHARE_BPS]);
 
-    blast_partners::destroy_cap(house);
-    blast_partners::destroy_cap(top);
+    partners::destroy_cap(house);
+    partners::destroy_cap(top);
     fixture.end();
 }
 
 #[test]
-#[expected_failure(abort_code = blast_partners::EShareAboveMax)]
+#[expected_failure(abort_code = partners::EShareAboveMax, location = blast_partners::blast_partners)]
 fun registration_rejects_a_share_one_above_the_maximum() {
     let mut fixture = start();
 
-    blast_partners::destroy_cap(fixture.register(RECIPIENT, MAX_SHARE_BPS + 1));
+    partners::destroy_cap(fixture.register(RECIPIENT, MAX_SHARE_BPS + 1));
 
     fixture.end();
 }
 
 #[test]
-#[expected_failure(abort_code = blast_partners::EInvalidRecipient)]
+#[expected_failure(abort_code = partners::EInvalidRecipient, location = blast_partners::blast_partners)]
 fun registration_rejects_a_zero_recipient() {
     let mut fixture = start();
 
-    blast_partners::destroy_cap(fixture.register(@0x0, 2_500));
+    partners::destroy_cap(fixture.register(@0x0, 2_500));
 
     fixture.end();
 }
 
 #[test]
-#[expected_failure(abort_code = blast_partners::EInvalidRecipient)]
+#[expected_failure(abort_code = partners::EInvalidRecipient, location = blast_partners::blast_partners)]
 fun a_zero_recipient_precedes_a_share_above_the_maximum() {
     let mut fixture = start();
 
-    blast_partners::destroy_cap(fixture.register(@0x0, MAX_SHARE_BPS + 1));
+    partners::destroy_cap(fixture.register(@0x0, MAX_SHARE_BPS + 1));
 
     fixture.end();
 }
@@ -128,7 +129,7 @@ fun the_missing_role_precedes_an_invalid_registration() {
     let mut fixture = start();
     fixture.revoke_partner_admin_role();
 
-    blast_partners::destroy_cap(fixture.register(@0x0, MAX_SHARE_BPS + 1));
+    partners::destroy_cap(fixture.register(@0x0, MAX_SHARE_BPS + 1));
 
     fixture.end();
 }
@@ -155,7 +156,7 @@ fun a_scheduled_share_takes_effect_exactly_after_the_delay() {
         fixture.return_partner(partner);
     });
 
-    blast_partners::destroy_cap(cap);
+    partners::destroy_cap(cap);
     fixture.end();
 }
 
@@ -180,7 +181,7 @@ fun a_new_schedule_replaces_a_pending_one_and_restarts_the_delay() {
         fixture.return_partner(partner);
     });
 
-    blast_partners::destroy_cap(cap);
+    partners::destroy_cap(cap);
     fixture.end();
 }
 
@@ -199,12 +200,12 @@ fun scheduling_the_share_in_force_cancels_a_pending_cut() {
         fixture.return_partner(partner);
     });
 
-    blast_partners::destroy_cap(cap);
+    partners::destroy_cap(cap);
     fixture.end();
 }
 
 #[test]
-#[expected_failure(abort_code = blast_partners::EUnchanged)]
+#[expected_failure(abort_code = partners::EUnchanged, location = blast_partners::blast_partners)]
 fun scheduling_the_pending_share_again_is_refused() {
     let mut fixture = start();
     let cap = fixture.register(RECIPIENT, 2_500);
@@ -215,12 +216,12 @@ fun scheduling_the_pending_share_again_is_refused() {
         fixture.return_partner(partner);
     });
 
-    blast_partners::destroy_cap(cap);
+    partners::destroy_cap(cap);
     fixture.end();
 }
 
 #[test]
-#[expected_failure(abort_code = blast_partners::EShareAboveMax)]
+#[expected_failure(abort_code = partners::EShareAboveMax, location = blast_partners::blast_partners)]
 fun a_scheduled_share_one_above_the_maximum_is_refused() {
     let mut fixture = start();
     let cap = fixture.register(RECIPIENT, 2_500);
@@ -231,7 +232,7 @@ fun a_scheduled_share_one_above_the_maximum_is_refused() {
         fixture.return_partner(partner);
     });
 
-    blast_partners::destroy_cap(cap);
+    partners::destroy_cap(cap);
     fixture.end();
 }
 
@@ -248,7 +249,7 @@ fun the_missing_role_precedes_an_invalid_share() {
         fixture.return_partner(partner);
     });
 
-    blast_partners::destroy_cap(cap);
+    partners::destroy_cap(cap);
     fixture.end();
 }
 
@@ -274,16 +275,16 @@ fun a_reissued_cap_goes_live_exactly_after_the_delay() {
         let (recipient, _, live_cap) = partner.terms_for_testing(&fixture.clock);
         assert_eq!(recipient, RECIPIENT);
         assert_eq!(live_cap, object::id(&new_cap));
-        blast_partners::destroy_cap(new_cap);
+        partners::destroy_cap(new_cap);
         fixture.return_partner(partner);
     });
 
-    blast_partners::destroy_cap(old_cap);
+    partners::destroy_cap(old_cap);
     fixture.end();
 }
 
 #[test]
-#[expected_failure(abort_code = blast_partners::ENotLiveCap)]
+#[expected_failure(abort_code = partners::ENotLiveCap, location = blast_partners::blast_partners)]
 fun the_replaced_cap_is_refused_once_the_reissue_takes_effect() {
     let mut fixture = start();
     let old_cap = fixture.register(RECIPIENT, 2_500);
@@ -293,16 +294,16 @@ fun the_replaced_cap_is_refused_once_the_reissue_takes_effect() {
         let new_cap = fixture.reissue_cap(&mut partner);
         fixture.advance(delay());
         fixture.set_recipient(&mut partner, &old_cap, NEW_RECIPIENT);
-        blast_partners::destroy_cap(new_cap);
+        partners::destroy_cap(new_cap);
         fixture.return_partner(partner);
     });
 
-    blast_partners::destroy_cap(old_cap);
+    partners::destroy_cap(old_cap);
     fixture.end();
 }
 
 #[test]
-#[expected_failure(abort_code = blast_partners::ENotLiveCap)]
+#[expected_failure(abort_code = partners::ENotLiveCap, location = blast_partners::blast_partners)]
 fun a_reissued_cap_is_refused_before_the_delay() {
     let mut fixture = start();
     let old_cap = fixture.register(RECIPIENT, 2_500);
@@ -312,16 +313,16 @@ fun a_reissued_cap_is_refused_before_the_delay() {
         let new_cap = fixture.reissue_cap(&mut partner);
         fixture.advance(delay() - 1);
         fixture.set_recipient(&mut partner, &new_cap, NEW_RECIPIENT);
-        blast_partners::destroy_cap(new_cap);
+        partners::destroy_cap(new_cap);
         fixture.return_partner(partner);
     });
 
-    blast_partners::destroy_cap(old_cap);
+    partners::destroy_cap(old_cap);
     fixture.end();
 }
 
 #[test]
-#[expected_failure(abort_code = blast_partners::ENotLiveCap)]
+#[expected_failure(abort_code = partners::ENotLiveCap, location = blast_partners::blast_partners)]
 /// A newer reissue supersedes a pending one, whose cap never goes live.
 fun a_superseded_reissue_never_goes_live() {
     let mut fixture = start();
@@ -333,12 +334,12 @@ fun a_superseded_reissue_never_goes_live() {
         let latest = fixture.reissue_cap(&mut partner);
         fixture.advance(10 * delay());
         fixture.set_recipient(&mut partner, &superseded, NEW_RECIPIENT);
-        blast_partners::destroy_cap(superseded);
-        blast_partners::destroy_cap(latest);
+        partners::destroy_cap(superseded);
+        partners::destroy_cap(latest);
         fixture.return_partner(partner);
     });
 
-    blast_partners::destroy_cap(old_cap);
+    partners::destroy_cap(old_cap);
     fixture.end();
 }
 
@@ -351,11 +352,11 @@ fun reissuing_a_cap_requires_the_partner_admin_role() {
 
     fixture.next_tx!(ADMIN, |fixture| {
         let mut partner = fixture.take_partner();
-        blast_partners::destroy_cap(fixture.reissue_cap(&mut partner));
+        partners::destroy_cap(fixture.reissue_cap(&mut partner));
         fixture.return_partner(partner);
     });
 
-    blast_partners::destroy_cap(old_cap);
+    partners::destroy_cap(old_cap);
     fixture.end();
 }
 
@@ -376,12 +377,12 @@ fun the_live_cap_sets_the_recipient_at_once() {
         fixture.return_partner(partner);
     });
 
-    blast_partners::destroy_cap(cap);
+    partners::destroy_cap(cap);
     fixture.end();
 }
 
 #[test]
-#[expected_failure(abort_code = blast_partners::ENotLiveCap)]
+#[expected_failure(abort_code = partners::ENotLiveCap, location = blast_partners::blast_partners)]
 fun another_partners_cap_precedes_an_invalid_recipient() {
     let mut fixture = start();
     let cap = fixture.register(RECIPIENT, 2_500);
@@ -394,13 +395,13 @@ fun another_partners_cap_precedes_an_invalid_recipient() {
         fixture.return_partner(partner);
     });
 
-    blast_partners::destroy_cap(cap);
-    blast_partners::destroy_cap(other_cap);
+    partners::destroy_cap(cap);
+    partners::destroy_cap(other_cap);
     fixture.end();
 }
 
 #[test]
-#[expected_failure(abort_code = blast_partners::EInvalidRecipient)]
+#[expected_failure(abort_code = partners::EInvalidRecipient, location = blast_partners::blast_partners)]
 fun a_zero_recipient_is_refused() {
     let mut fixture = start();
     let cap = fixture.register(RECIPIENT, 2_500);
@@ -411,12 +412,12 @@ fun a_zero_recipient_is_refused() {
         fixture.return_partner(partner);
     });
 
-    blast_partners::destroy_cap(cap);
+    partners::destroy_cap(cap);
     fixture.end();
 }
 
 #[test]
-#[expected_failure(abort_code = blast_partners::EUnchanged)]
+#[expected_failure(abort_code = partners::EUnchanged, location = blast_partners::blast_partners)]
 fun the_current_recipient_is_refused() {
     let mut fixture = start();
     let cap = fixture.register(RECIPIENT, 2_500);
@@ -427,7 +428,7 @@ fun the_current_recipient_is_refused() {
         fixture.return_partner(partner);
     });
 
-    blast_partners::destroy_cap(cap);
+    partners::destroy_cap(cap);
     fixture.end();
 }
 
@@ -452,7 +453,7 @@ fun a_partner_is_paid_nothing_until_its_share_takes_effect() {
         fixture.return_partner(partner);
     });
 
-    blast_partners::destroy_cap(cap);
+    partners::destroy_cap(cap);
     fixture.end();
 }
 
@@ -465,7 +466,7 @@ fun payment_matches_the_rounded_down_reference() {
     let shares = vector[0, 1, 3_333, 5_000, MAX_SHARE_BPS - 1, MAX_SHARE_BPS];
 
     shares.do_ref!(|share_bps| {
-        let partner = blast_partners::new_for_testing(RECIPIENT, *share_bps, &mut ctx);
+        let partner = partners::new_for_testing(RECIPIENT, *share_bps, &mut ctx);
         301u64.do!(|amount| {
             let mut fee = balance::create_for_testing<SUI>(amount);
             let expected = ((amount as u128) * (*share_bps as u128) / (BASIS_POINTS as u128)) as u64;
@@ -484,7 +485,7 @@ fun payment_matches_the_rounded_down_reference() {
 fun payment_of_the_largest_fee_at_the_maximum_share_does_not_overflow() {
     let mut ctx = tx_context::dummy();
     let clock = clock::create_for_testing(&mut ctx);
-    let partner = blast_partners::new_for_testing(RECIPIENT, MAX_SHARE_BPS, &mut ctx);
+    let partner = partners::new_for_testing(RECIPIENT, MAX_SHARE_BPS, &mut ctx);
     let max = std::u64::max_value!();
     let mut fee = balance::create_for_testing<SUI>(max);
 
@@ -505,7 +506,7 @@ fun start(): Fixture {
     let (super_admin_cap, mut authority) = acl::new_for_testing<BLAST_PARTNERS>(16, delay(), scenario.ctx());
     authority.grant_admin(
         &super_admin_cap,
-        blast_partners::partner_admin_role_for_testing(),
+        partners::partner_admin_role_for_testing(),
         ADMIN,
         scenario.ctx(),
     );
@@ -533,7 +534,7 @@ macro fun next_tx($self: &mut Fixture, $sender: address, $body: |&mut Fixture|) 
 }
 
 fun delay(): u64 {
-    blast_partners::delay_ms_for_testing()
+    partners::delay_ms_for_testing()
 }
 
 fun now(self: &Fixture): u64 {
@@ -551,7 +552,7 @@ fun advance(self: &mut Fixture, ms: u64) {
 /// Registers a partner as the administrator; it is shared from the next transaction on.
 fun register(self: &mut Fixture, recipient: address, share_bps: u64): PartnerCap {
     let witness = self.authority.sign_in(&self.admin_cap);
-    blast_partners::register(&witness, recipient, share_bps, &self.clock, self.scenario.ctx())
+    partners::register(&witness, recipient, share_bps, &self.clock, self.scenario.ctx())
 }
 
 fun schedule_share(self: &Fixture, partner: &mut Partner, share_bps: u64) {
@@ -593,14 +594,14 @@ fun return_partner(_self: &mut Fixture, partner: Partner) {
 
 fun revoke_partner_admin_role(self: &mut Fixture) {
     let Fixture { authority, super_admin_cap, admin_cap, .. } = self;
-    authority.revoke_role(super_admin_cap, object::id(admin_cap), blast_partners::partner_admin_role_for_testing());
+    authority.revoke_role(super_admin_cap, object::id(admin_cap), partners::partner_admin_role_for_testing());
 }
 
 // === Imports ===
 
 use blast_admin::acl::{Self, Authority, AdminCap, SuperAdminCap};
 
-use blast_partners::blast_partners::{Self, BLAST_PARTNERS, Partner, PartnerCap, PartnerUpdated};
+use blast_partners::blast_partners::{Self as partners, BLAST_PARTNERS, Partner, PartnerCap, PartnerUpdated};
 
 use std::unit_test::{assert_eq, destroy};
 

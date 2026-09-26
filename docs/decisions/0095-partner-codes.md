@@ -54,7 +54,10 @@ Boosts core is immutable, so no existing package can hold a type both products
 read. It is published and made immutable in one transaction
 (`sui/partners/scripts/publish_immutable.sh`): the timelock is only as credible
 as the package that enforces it. It has its own `blast_admin` domain,
-`BLAST_PARTNERS`, with one role, the partner administrator.
+`BLAST_PARTNERS`, with one role, the partner administrator. One role covers
+registering, scheduling shares and reissuing caps: all three wait the delay and
+the root can revoke the role within it, so splitting them per action
+([0094](0094-one-role-per-administrator-action.md)) would protect nothing more.
 
 **The partner.** `Partner` is a shared object with a `recipient` address, a
 `share_bps` of Blast's fee (at most 8,000), and the ID of the one live
@@ -74,7 +77,9 @@ recipient, which applies at once.
   after it was last scheduled.
 - `reissue_cap` mints a new cap now that becomes the live one seven days later.
   Until then the old cap keeps working; a newer reissue supersedes a pending
-  one, whose cap never goes live. Anyone may destroy a cap.
+  one, whose cap never goes live. A pending reissue cannot be cancelled back to
+  the original cap: a mistaken one is corrected only by another reissue, whose
+  cap Blast then delivers to the partner. Anyone may destroy a cap.
 
 Reads are lazy: a trade reads the value in force at the Clock it already takes,
 so no keeper applies anything and the object is never written on the hot path.
@@ -143,9 +148,12 @@ also shut out wallet partners, the largest builders on Hyperliquid.
 - The delay protects partners from targeted cuts only: Blast still sets each
   vault's admin share at once, and partners earn nothing while it is zero, its
   value at activation.
-- A recipient the collateral's deny list blocks makes trades naming that partner
-  abort (Sui checks deny lists for address-balance deposits); the partner fixes it
-  instantly with its cap, or integrators name the house partner.
+- A recipient the collateral's deny list blocks is expected to make trades naming
+  that partner abort, since Sui checks deny lists for address-balance deposits;
+  the release rehearsal confirms it. The partner fixes it instantly with its cap,
+  or integrators name the house partner. If the deposit landed instead, the funds
+  would sit where the recipient cannot withdraw them, which touches no Blast
+  invariant.
 - Codes are public: anyone can name any partner. The partner earns on that flow;
   Blast bounds its exposure per code with the share and prices tiers on retained
   fee, which free-riding lowers. Self-referral never pays: every trade still pays

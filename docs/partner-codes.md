@@ -97,27 +97,33 @@ never more than 80% of it.
   it keep working and pay the normal fee to Blast.
 - **Replacing a lost or stolen cap.** `reissue_cap` returns a new cap that goes
   live in seven days. A thief holding the old cap can redirect payouts until
-  then, so tell integrators to name the house partner in the meantime.
+  then, so tell integrators to name the house partner in the meantime. A
+  reissue cannot be cancelled back to the original cap; a mistaken one is
+  corrected by reissuing again and delivering that cap to the partner.
 - **At launch,** publish `blast_partners` immutable, grant the partner
   administrator role, register the zero-share house partner, and record its ID in
   the release input. Also set each vault's admin share: while it is zero, as it is
   at activation, Blast earns nothing and so partners earn nothing.
 - **Deny lists.** If a recipient is blocked by the collateral's deny list, trades
-  naming that partner fail. The partner fixes it at once by setting a new
-  recipient; until then integrators can name the house partner.
+  naming that partner are expected to fail; the release rehearsal confirms it.
+  The partner fixes it at once by setting a new recipient; until then
+  integrators can name the house partner.
 
 ## Guarantees
 
-These properties are enforced by the contracts and covered by tests:
+These properties are enforced by the contracts and covered by tests, except the
+fourth, which rests on the package being published immutable:
 
 1. The reserve fee, the shares minted and the redemption payout are the same for
    every partner, including the house partner.
 2. A partner is paid at most 80% of Blast's admin fee, rounded down; Blast keeps
    the rest.
-3. Minting and redeeming through your own code always costs more than it pays
-   back: the reserve fee and at least a fifth of Blast's fee are still charged.
+3. Minting and redeeming through your own code always costs at least as much as
+   it pays back: the reserve fee and at least a fifth of Blast's fee are still
+   charged.
 4. Nothing Blast schedules for a partner takes effect sooner than seven days
-   after it was last scheduled, and no upgrade can change that.
+   after it was last scheduled, and, since the package is immutable, no upgrade
+   can change that.
 5. Only the live cap can change a partner's recipient; only Blast's partner
    administrator can register partners, schedule shares and reissue caps.
 6. Blast never holds partner money, and there is no claim step to miss.

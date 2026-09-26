@@ -109,7 +109,7 @@ public fun register(
 
     let now_ms = clock.timestamp_ms();
     let cap = PartnerCap { id: object::new(ctx) };
-    let cap_id = object::id(&cap);
+    let cap_id = cap.id.to_inner();
     let partner = Partner {
         id: object::new(ctx),
         recipient,
@@ -152,7 +152,7 @@ public fun reissue_cap(
     admin_witness.assert_role(PARTNER_ADMIN_ROLE);
 
     let cap = PartnerCap { id: object::new(ctx) };
-    self.cap_id.schedule(object::id(&cap), clock.timestamp_ms());
+    self.cap_id.schedule(cap.id.to_inner(), clock.timestamp_ms());
 
     self.emit_updated();
 
@@ -161,7 +161,7 @@ public fun reissue_cap(
 
 /// Sets where the partner is paid, at once. Only the live cap may.
 public fun set_recipient(self: &mut Partner, cap: &PartnerCap, recipient: address, clock: &Clock) {
-    assert!(object::id(cap) == self.cap_id.read(clock.timestamp_ms()), ENotLiveCap);
+    assert!(cap.id.to_inner() == self.cap_id.read(clock.timestamp_ms()), ENotLiveCap);
     assert!(recipient != @0x0, EInvalidRecipient);
     assert!(recipient != self.recipient, EUnchanged);
 
@@ -182,7 +182,7 @@ public fun destroy_cap(cap: PartnerCap) {
 public fun pay<T>(self: &Partner, fee: &mut Balance<T>, clock: &Clock): u64 {
     let amount = fee.value().mul_div(self.share_bps.read(clock.timestamp_ms()), BASIS_POINTS);
 
-    if (amount > 0) balance::send_funds(fee.split(amount), self.recipient);
+    if (amount > 0) fee.split(amount).send_funds(self.recipient);
 
     amount
 }
@@ -229,6 +229,24 @@ public fun new_for_testing(recipient: address, share_bps: u64, ctx: &mut TxConte
 }
 
 #[test_only]
+/// A partner whose share is `before` until `at_ms` and `after` from then on, for products' own tests.
+public fun new_scheduled_for_testing(
+    recipient: address,
+    before: u64,
+    after: u64,
+    at_ms: u64,
+    ctx: &mut TxContext,
+): Partner {
+    let cap_id = object::id_from_address(@0x0);
+    Partner {
+        id: object::new(ctx),
+        recipient,
+        share_bps: Delayed { before, after, at_ms },
+        cap_id: Delayed { before: cap_id, after: cap_id, at_ms: 0 },
+    }
+}
+
+#[test_only]
 public fun partner_admin_role_for_testing(): u64 {
     PARTNER_ADMIN_ROLE
 }
@@ -263,4 +281,4 @@ public fun partner_updated_fields(self: &PartnerUpdated): (ID, address, u64, u64
 
 use blast_admin::acl::{Self, AdminWitness};
 
-use sui::{balance::{Self, Balance}, clock::Clock, event};
+use sui::{balance::Balance, clock::Clock, event};

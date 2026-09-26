@@ -592,8 +592,10 @@ fun native_fee_allocations_preserve_historical_cash_through_redemption_and_rate_
 /// share pays the partner 15.
 fun a_partner_mint_changes_only_blasts_admin_cash() {
     let mut fixture = start();
-    let (house, house_cash, house_fee) = mint_through_partner(&mut fixture, Product(), 0);
-    let (paid, paid_cash, partner_fee) = mint_through_partner(&mut fixture, OtherProduct(), 5_000);
+    let house = partners::new_for_testing(PARTNER_PAYOUT, 0, fixture.ctx!());
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let (house, house_cash, house_fee) = mint_through_partner(&mut fixture, Product(), house);
+    let (paid, paid_cash, partner_fee) = mint_through_partner(&mut fixture, OtherProduct(), partner);
     fixture.end();
 
     assert_eq!(paid, house);
@@ -605,12 +607,30 @@ fun a_partner_mint_changes_only_blasts_admin_cash() {
 /// At the maximum 80% share Blast still keeps a fifth of its admin fee, and holders see no change.
 fun the_maximum_share_leaves_blast_a_fifth_of_its_admin_fee() {
     let mut fixture = start();
-    let (house, _, _) = mint_through_partner(&mut fixture, Product(), 0);
-    let (paid, paid_cash, partner_fee) = mint_through_partner(&mut fixture, OtherProduct(), 8_000);
+    let house = partners::new_for_testing(PARTNER_PAYOUT, 0, fixture.ctx!());
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 8_000, fixture.ctx!());
+    let (house, _, _) = mint_through_partner(&mut fixture, Product(), house);
+    let (paid, paid_cash, partner_fee) = mint_through_partner(&mut fixture, OtherProduct(), partner);
     fixture.end();
 
     assert_eq!(paid, house);
     assert_eq!(vector[partner_fee, paid_cash], vector[24, 6]);
+}
+
+#[test]
+/// The share is read at the trade's own Clock, the one the core prices at: a
+/// share that switches one millisecond after the trade pays nothing, and one that
+/// switches at the trade's time pays in full.
+fun a_partner_share_takes_effect_exactly_at_the_trades_clock() {
+    let mut fixture = start();
+    let pending = partners::new_scheduled_for_testing(PARTNER_PAYOUT, 0, 5_000, REFERENCE_TIME_MS + 1, fixture.ctx!());
+    let switched = partners::new_scheduled_for_testing(PARTNER_PAYOUT, 0, 5_000, REFERENCE_TIME_MS, fixture.ctx!());
+    let (_, pending_cash, pending_fee) = mint_through_partner(&mut fixture, Product(), pending);
+    let (_, switched_cash, switched_fee) = mint_through_partner(&mut fixture, OtherProduct(), switched);
+    fixture.end();
+
+    assert_eq!(vector[pending_fee, pending_cash], vector[0, 30]);
+    assert_eq!(vector[switched_fee, switched_cash], vector[15, 15]);
 }
 
 #[test]
@@ -2753,14 +2773,13 @@ fun issue_and_activate(
 }
 
 /// Mints 10,000 atoms at a 100 bps fee with Blast's admin share at 30%, an admin
-/// fee of 30, through a partner earning `share_bps` of it. Returns every `Minted`
+/// fee of 30, at the reference time through `partner`. Returns every `Minted`
 /// amount except Blast's admin cash, then that admin cash and the partner's fee.
 /// Each run in one fixture needs its own `product`, since Coin Registry admits
 /// each currency once.
-fun mint_through_partner<Tag: drop>(fixture: &mut Fixture, product: Tag, share_bps: u64): (vector<u64>, u64, u64) {
+fun mint_through_partner<Tag: drop>(fixture: &mut Fixture, product: Tag, partner: Partner): (vector<u64>, u64, u64) {
     let mut vault = issue_and_activate_product(fixture, product, initial_checkpoint(),
         fee_capped_vault_policy_for_side(policy::long()));
-    let partner = partners::new_for_testing(PARTNER_PAYOUT, share_bps, fixture.ctx!());
     let clock = reference_clock(fixture);
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.set_fees(&fixture.protocol, &witness, 100, 100, 3_000);
