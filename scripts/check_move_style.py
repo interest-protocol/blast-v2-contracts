@@ -11,6 +11,9 @@ SECTIONS = [
     "Private Functions", "Test-Only Types", "Test-Only Functions",
     "Tests", "Test Helpers", "Imports",
 ]
+TRAILING = ["Constants", "Package Constants", "Errors"]
+# A module may instead keep its constants and errors last, just before Imports.
+TAIL_SECTIONS = [name for name in SECTIONS if name not in TRAILING + ["Imports"]] + TRAILING + ["Imports"]
 ERROR_NAME = r"E[A-Z](?=[A-Za-z0-9]*[a-z])[A-Za-z0-9]*"
 
 
@@ -102,18 +105,20 @@ def check(path):
     names = [heading[1] for heading in headings]
     if any(name not in SECTIONS for name in names):
         raise ValueError("use the section names in AGENTS.md")
-    ranks = [SECTIONS.index(name) for name in names]
-    if ranks != sorted(set(ranks)):
+    in_order = lambda order: [order.index(name) for name in names] == sorted({order.index(name) for name in names})
+    if not (in_order(SECTIONS) or in_order(TAIL_SECTIONS)):
         raise ValueError("sections must occur once, in the order in AGENTS.md")
     previous_kind = None
+    constants_closed = False
     for start, kind, attributes, declaration in items:
         section = next((h[1] for h in reversed(headings) if h.start() < start), None)
         expected = section_for(path, test_module, kind, attributes, declaration)
         if section != expected:
             line = source[:start].count("\n") + 1
             raise ValueError(f"line {line}: declaration belongs under {expected}, found {section}")
-        if kind == "const" and previous_kind not in (None, "const"):
-            raise ValueError("group all constants before functions and types")
+        if kind == "const" and constants_closed:
+            raise ValueError("group all constants together, first or just before Imports")
+        constants_closed = constants_closed or (previous_kind == "const" and kind != "const")
         previous_kind = kind
     codes = [int(code) for code in re.findall(r"#\[error\(code = (\d+)\)\]", mask(source))]
     if codes != list(range(len(codes))):

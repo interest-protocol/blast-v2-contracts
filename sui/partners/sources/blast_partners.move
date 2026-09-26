@@ -18,40 +18,6 @@
 /// and the amount in its own event.
 module blast_partners::blast_partners;
 
-// === Constants ===
-
-/// Maximum number of simultaneously registered partner administrators.
-const MAX_ADMINS: u64 = 16;
-
-/// Fixed delay before a proposed super administrator may accept root custody.
-const ROOT_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
-
-/// The one administrator role: register partners, schedule shares, reissue caps.
-const PARTNER_ADMIN_ROLE: u64 = 1;
-
-/// The forced delay before a share or a cap Blast schedules takes effect.
-const DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
-
-/// The largest share of Blast's fee one partner may earn: 80%.
-const MAX_SHARE_BPS: u64 = 8_000;
-
-/// Basis points in one whole.
-const BASIS_POINTS: u64 = 10_000;
-
-// === Errors ===
-
-#[error(code = 0)]
-const EInvalidRecipient: vector<u8> = b"A partner's recipient must not be the zero address.";
-
-#[error(code = 1)]
-const EShareAboveMax: vector<u8> = b"A partner's share must be at most 80% of Blast's fee.";
-
-#[error(code = 2)]
-const EUnchanged: vector<u8> = b"An update must change the value it sets.";
-
-#[error(code = 3)]
-const ENotLiveCap: vector<u8> = b"Only the partner's live cap may set its recipient.";
-
 // === Public Types ===
 
 /// One-time witness naming the partner administration domain.
@@ -264,6 +230,40 @@ public fun partner_paid_fields<T>(self: &PartnerPaid<T>): (ID, u64) {
 public fun partner_updated_fields(self: &PartnerUpdated): (ID, address, Timelocked<u64>, Timelocked<ID>) {
     (self.partner_id, self.recipient, self.share_bps, self.cap_id)
 }
+
+// === Constants ===
+
+/// Maximum number of simultaneously registered partner administrators.
+const MAX_ADMINS: u64 = 16;
+
+/// Fixed delay before a proposed super administrator may accept root custody.
+const ROOT_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
+
+/// The one administrator role: register partners, schedule shares, move partners between caps.
+const PARTNER_ADMIN_ROLE: u64 = 1;
+
+/// The forced delay before a share or a cap Blast schedules takes effect.
+const DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
+
+/// The largest share of Blast's fee one partner may earn: 80%.
+const MAX_SHARE_BPS: u64 = 8_000;
+
+/// Basis points in one whole.
+const BASIS_POINTS: u64 = 10_000;
+
+// === Errors ===
+
+#[error(code = 0)]
+const EInvalidRecipient: vector<u8> = b"A partner's recipient must not be the zero address.";
+
+#[error(code = 1)]
+const EShareAboveMax: vector<u8> = b"A partner's share must be at most 80% of Blast's fee.";
+
+#[error(code = 2)]
+const EUnchanged: vector<u8> = b"An update must change the value it sets.";
+
+#[error(code = 3)]
+const ENotLiveCap: vector<u8> = b"Only the partner's live cap may set its recipient.";
 
 // === Imports ===
 
