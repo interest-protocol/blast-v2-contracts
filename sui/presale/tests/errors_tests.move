@@ -34,6 +34,7 @@ fun commit_error_registry_is_stable() {
     assert_eq!(blast_presale::errors::invalid_whitelist_proof!(), 15);
     assert_eq!(blast_presale::errors::tranche_sold_out!(), 16);
     assert_eq!(blast_presale::errors::wallet_cap_reached!(), 17);
+    assert_eq!(blast_presale::errors::zero_purchase!(), 22);
 }
 
 #[test]

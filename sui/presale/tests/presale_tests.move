@@ -67,12 +67,13 @@ public struct PresaleFixture {
 // --- Fee policy ---
 
 #[test]
-fun the_policy_starts_free_and_paid_to_its_publisher() {
+fun the_policy_starts_free_paid_to_its_publisher_and_eventless() {
     let mut scenario = test_scenario::begin(PUBLISHER);
     presale_config::init_for_testing(scenario.ctx());
-    scenario.next_tx(PUBLISHER);
+    let events = scenario.next_tx(PUBLISHER).num_user_events();
     let config = scenario.take_shared<BlastPresaleConfig>();
 
+    assert_eq!(events, 0);
     assert_eq!(config.fee_bps(), 0);
     assert_eq!(config.fee_destination(), PUBLISHER);
     test_scenario::return_shared(config);
@@ -356,8 +357,7 @@ fun a_wallet_cap_limits_each_address_in_a_public_tranche() {
         START_MS,
         FIRST_END_MS,
         tranche::pro_rata(),
-        50,
-        option::none(),
+        tranche::public_access(50),
         0,
     );
     fixture.create(vector[capped], 0, CLAIM_MS);
@@ -377,8 +377,7 @@ fun an_address_at_its_wallet_cap_is_rejected() {
         START_MS,
         FIRST_END_MS,
         tranche::pro_rata(),
-        50,
-        option::none(),
+        tranche::public_access(50),
         0,
     );
     fixture.create(vector[capped], 0, CLAIM_MS);
@@ -445,6 +444,17 @@ fun a_stale_package_version_rejects_a_commit_first() {
     fixture.end();
 }
 
+#[test, expected_failure(abort_code = blast_presale::errors::EZeroPurchase, location = blast_presale::tranche)]
+fun a_commit_buying_no_token_atom_is_rejected() {
+    let mut fixture = start();
+    let access = tranche::public_access(0);
+    let one_atom = tranche::new(1, 1_000, START_MS, FIRST_END_MS, tranche::first_come(), access, 0);
+    fixture.create(vector[one_atom], 0, CLAIM_MS);
+
+    fixture.commit(ALICE, 0, 999);
+    fixture.end();
+}
+
 // --- Whitelist ---
 
 #[test]
@@ -487,6 +497,36 @@ fun a_public_commit_to_a_whitelisted_tranche_is_rejected() {
     fixture.create(vector[whitelisted_tranche(root)], 0, CLAIM_MS);
 
     fixture.commit(ALICE, 0, 50);
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_presale::errors::ETrancheAccessMismatch, location = blast_presale::presale)]
+fun the_access_mismatch_precedes_a_closed_tranche() {
+    let mut fixture = start();
+    let (root, _) = two_leaf_tree();
+    let later = tranche::new(
+        FIRST_TOKENS,
+        FIRST_QUOTE,
+        FIRST_END_MS,
+        SECOND_END_MS,
+        tranche::first_come(),
+        tranche::whitelisted(root, 2),
+        0,
+    );
+    fixture.create(vector[later], 0, CLAIM_MS);
+
+    fixture.commit(ALICE, 0, 50);
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_presale::errors::EInvalidWhitelistProof, location = blast_presale::presale)]
+fun an_invalid_proof_precedes_a_sold_out_tranche() {
+    let mut fixture = start();
+    let (root, proofs) = two_leaf_tree();
+    fixture.create(vector[whitelisted_tranche(root)], 0, CLAIM_MS);
+    fixture.commit_listed(BOB, 0, FIRST_QUOTE, 1, 0, proofs[1]);
+
+    fixture.commit_listed(CAROL, 0, 50, 0, 100, proofs[0]);
     fixture.end();
 }
 
@@ -601,6 +641,39 @@ fun a_presale_keeps_the_fee_it_was_created_with() {
 }
 
 #[test]
+fun the_fee_rounds_up_in_blasts_favour() {
+    let mut fixture = start();
+    fixture.create(two_tranches(), 0, CLAIM_MS);
+    fixture.commit(ALICE, 0, 201);
+    fixture.set_time(FIRST_END_MS);
+    fixture.commit(BOB, 1, 300);
+    fixture.commit(CAROL, 1, 300);
+    fixture.set_time(SECOND_END_MS);
+
+    fixture.finalize();
+    assert_eq!(fixture.coin_total<QUOTE>(TREASURY), 7);
+    assert_eq!(fixture.coin_total<QUOTE>(CREATOR), 594);
+    fixture.end();
+}
+
+#[test]
+fun a_raise_of_one_atom_at_the_maximum_fee_all_goes_to_blast() {
+    let mut fixture = start();
+    fixture.next_tx!(ADMIN, |f| {
+        let witness = f.sign_in();
+        f.config.set_fee_bps(&f.package_version, &witness, 1_000);
+    });
+    fixture.create(two_tranches(), 0, CLAIM_MS);
+    fixture.commit(ALICE, 0, 1);
+    fixture.set_time(SECOND_END_MS);
+
+    fixture.finalize();
+    assert_eq!(fixture.coin_total<QUOTE>(TREASURY), 1);
+    assert_eq!(fixture.coin_total<QUOTE>(CREATOR), 0);
+    fixture.end();
+}
+
+#[test]
 fun an_empty_presale_without_a_minimum_returns_every_token() {
     let mut fixture = start();
     fixture.create(two_tranches(), 0, CLAIM_MS);
@@ -689,8 +762,7 @@ fun vested_tokens_are_claimed_as_they_vest() {
         START_MS,
         FIRST_END_MS,
         tranche::first_come(),
-        0,
-        option::none(),
+        tranche::public_access(0),
         1_000,
     );
     fixture.create(vector[vesting], 0, CLAIM_MS);
@@ -713,10 +785,14 @@ fun vested_tokens_are_claimed_as_they_vest() {
 #[test]
 fun a_failed_presale_refunds_every_commit_in_full() {
     let mut fixture = start();
-    fixture.reach_the_end(601);
+    let presale_id = fixture.reach_the_end(601);
     fixture.finalize();
 
     fixture.claim(ALICE, 0);
+    assert_eq!(
+        bcs::to_bytes(&only_event<Claimed>()),
+        claimed_bytes(presale_id, 0, ALICE, 0, 200),
+    );
     fixture.claim(BOB, 1);
     fixture.claim(CAROL, 1);
     assert_eq!(fixture.coin_total<QUOTE>(ALICE), 200);
@@ -764,6 +840,72 @@ fun after_every_claim_the_presale_holds_nothing() {
         assert_balances(&presale, 0, 0);
         presale.put_back();
     });
+    fixture.end();
+}
+
+#[test]
+fun an_oversubscribed_tranche_keeps_only_its_rounding_dust() {
+    let mut fixture = start();
+    let pro_rata = tranche::new(
+        SECOND_TOKENS,
+        SECOND_QUOTE,
+        START_MS,
+        FIRST_END_MS,
+        tranche::pro_rata(),
+        tranche::public_access(0),
+        0,
+    );
+    fixture.create(vector[pro_rata], 0, CLAIM_MS);
+    fixture.commit(BOB, 0, 301);
+    fixture.commit(CAROL, 0, 300);
+    fixture.commit(ALICE, 0, 100);
+    fixture.set_time(CLAIM_MS);
+    fixture.finalize();
+
+    // 701 committed for 400: each position gets `commit × 2,000 / 701` tokens and
+    // `commit × 301 / 701` back, rounded down.
+    fixture.claim(BOB, 0);
+    fixture.claim(CAROL, 0);
+    fixture.claim(ALICE, 0);
+    assert_eq!(fixture.coin_total<TOKEN>(BOB), 858);
+    assert_eq!(fixture.coin_total<QUOTE>(BOB), 129);
+    assert_eq!(fixture.coin_total<TOKEN>(CAROL), 855);
+    assert_eq!(fixture.coin_total<QUOTE>(CAROL), 128);
+    assert_eq!(fixture.coin_total<TOKEN>(ALICE), 285);
+    assert_eq!(fixture.coin_total<QUOTE>(ALICE), 42);
+    fixture.next_tx!(KEEPER, |f| {
+        let presale = f.take_presale();
+
+        assert_balances(&presale, 2, 2);
+        presale.put_back();
+    });
+    fixture.end();
+}
+
+#[test]
+fun a_commit_diluted_below_one_token_atom_is_refunded_and_closed() {
+    let mut fixture = start();
+    let pro_rata = tranche::new(
+        10,
+        100,
+        START_MS,
+        FIRST_END_MS,
+        tranche::pro_rata(),
+        tranche::public_access(0),
+        0,
+    );
+    let presale_id = fixture.create(vector[pro_rata], 0, CLAIM_MS);
+    fixture.commit(ALICE, 0, 1_000);
+    fixture.commit(BOB, 0, 10);
+    fixture.set_time(FIRST_END_MS);
+    fixture.finalize();
+
+    fixture.claim(BOB, 0);
+    assert_eq!(
+        bcs::to_bytes(&only_event<Claimed>()),
+        claimed_bytes(presale_id, 0, BOB, 0, 9),
+    );
+    assert_eq!(fixture.position(BOB, 0), option::none());
     fixture.end();
 }
 
@@ -853,8 +995,7 @@ fun first_tranche(): Tranche {
         START_MS,
         FIRST_END_MS,
         tranche::first_come(),
-        0,
-        option::none(),
+        tranche::public_access(0),
         0,
     )
 }
@@ -868,8 +1009,7 @@ fun two_tranches(): vector<Tranche> {
         FIRST_END_MS,
         SECOND_END_MS,
         tranche::pro_rata(),
-        0,
-        option::none(),
+        tranche::public_access(0),
         0,
     );
 
@@ -884,8 +1024,7 @@ fun whitelisted_tranche(root: vector<u8>): Tranche {
         START_MS,
         FIRST_END_MS,
         tranche::first_come(),
-        0,
-        option::some(tranche::whitelist(root, 2)),
+        tranche::whitelisted(root, 2),
         0,
     )
 }

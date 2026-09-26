@@ -18,8 +18,7 @@ Each tranche is:
 | **Tokens and Quote** | The tranche sells `tokens` for `quote` in total, so the price is `quote / tokens`. |
 | **Window** | Commits are accepted from the start until the end. |
 | **First come or pro rata** | See below. |
-| **Whitelist** (optional) | Only listed addresses may commit, each up to its own allowance. |
-| **Wallet cap** (optional, public tranches) | The most one address may commit. |
+| **Access** | Either **public**, with an optional wallet cap on what one address may commit, or **whitelisted**, where only listed addresses may commit, each up to its own allowance. |
 | **Vesting** (optional) | Tokens unlock linearly from the claim time over this period. Without it, they all unlock at the claim time. |
 
 A presale might run a cheaper whitelisted tranche first and a pricier public one
@@ -76,7 +75,9 @@ A whitelist is a Merkle tree the creator publishes off-chain. Each leaf is
 `(position, address, allowance)`, and an allowance of zero means no limit. To
 commit, a listed buyer sends their leaf's position, their allowance and the
 proof, and can commit up to that allowance in total. The tree doesn't depend on
-the presale, so you can build it before creating the presale.
+the presale, so you can build it before creating the presale. The exact hashing
+and padding rules are in ADR 0096. A standard sorted-pair Merkle library won't
+produce trees this contract accepts.
 
 ## Fees
 
@@ -91,5 +92,8 @@ no fee.
   and all tokens go back to the creator.
 - **Rounding:** tokens and refunds round down, so a few atoms of dust can stay
   in the presale.
+- **Too small to buy anything:** a commit must buy at least one token atom at the
+  tranche's price. In an oversubscribed pro-rata tranche, a very small commit
+  can still end up with zero tokens; it gets its refund.
 - **No cancellation:** once created, a presale's settings can't change, and the
   creator can't pull the tokens before finalization.

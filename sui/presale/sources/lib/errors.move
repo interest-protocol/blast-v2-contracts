@@ -95,6 +95,10 @@ const EPresaleNotFinalized: u64 = 20;
 /// The position has nothing claimable now.
 const ENothingToClaim: u64 = 21;
 
+#[test_only]
+/// The commit buys less than one token atom at the tranche's price.
+const EZeroPurchase: u64 = 22;
+
 macro public(package) fun invalid_fee_bps(): u64 { 0 }
 
 macro public(package) fun invalid_destination(): u64 { 1 }
@@ -138,3 +142,5 @@ macro public(package) fun presale_finalized(): u64 { 19 }
 macro public(package) fun presale_not_finalized(): u64 { 20 }
 
 macro public(package) fun nothing_to_claim(): u64 { 21 }
+
+macro public(package) fun zero_purchase(): u64 { 22 }

@@ -39,10 +39,12 @@ Settings never change after creation, and the creator has no further powers.
 
 - its own window, `[start_ms, end_ms)`;
 - an allocation mode, `first_come` or `pro_rata`;
-- an optional wallet cap for public tranches;
-- an optional `Whitelist`: a Merkle root and a leaf count. Each Blake2b-256 leaf
-  commits `(index, address, max_quote)`, and a `max_quote` of zero means no
-  limit;
+- an `Access`, which is one of two variants, so a wallet cap and a whitelist
+  can never be combined:
+  - `public_access(wallet_cap)`: anyone may commit, up to the cap per address,
+    and zero means no limit;
+  - `whitelisted(root, leaves)`: only the leaves of a Merkle whitelist may
+    commit, each up to its own `max_quote`, where zero means no limit;
 - an optional linear vesting period.
 
 **Commit.** Buyers commit through `commit` for a public tranche, or through
@@ -50,6 +52,8 @@ Settings never change after creation, and the creator has no further powers.
 tranche did not accept. A first-come tranche accepts until its Quote is reached,
 and then fails with `tranche_sold_out`. A pro-rata tranche accepts everything.
 Both modes clamp a commit to the address's remaining allowance under its cap.
+What a commit adds must buy at least one token atom at the tranche's price;
+otherwise it fails with `zero_purchase`.
 Each buyer's commits add up in one position per tranche, kept as a dynamic
 field on the presale.
 
@@ -74,9 +78,23 @@ go to the buyer.
 - After a failure, a claim refunds the whole commit.
 - A position that has paid everything is deleted.
 
+**Whitelist tree.** Leaf `i` is
+`blake2b256(0x00 || "blast-presale-whitelist-v1" || bcs(i: u64) || bcs(address) || bcs(max_quote: u64))`,
+and an internal node is `blake2b256(0x01 || left || right)`.
+
+- Proofs are positional: at each level the index's low bit says whether the
+  running digest is the left child (0) or the right child (1). Pairs are not
+  sorted.
+- A level with an odd count pairs its last node with itself.
+- Every proof has exactly `ceil(log2(leaves))` siblings, each 32 bytes long.
+- `leaves` must equal the tree's leaf count, and `index < leaves` is checked.
+- The leaf commits its own index, so padding cannot create a phantom entry.
+
 **Fee policy.** A shared `BlastPresaleConfig` holds the fee (at most 10%) and
 its destination. The fee admin sets the fee, and the treasury admin sets the
-destination. Setting the current value is rejected.
+destination. Setting the current value is rejected. Each role getter is
+package-internal, and `sui/presale/scripts/check_source_boundaries.sh` pins
+which role each administrator action asserts.
 
 **Events** (inside the `blast_events::Event` envelope): `PresaleCreated`
 (every setting, including the tranches), `Committed`, `PresaleFinalized`,
@@ -111,6 +129,12 @@ destination. Setting the current value is rejected.
   root, which is the same list by construction.
 - Creation is permissionless. A hostile token or Quote affects only its own
   presale.
+- A creator cannot cap the fee it agrees to at creation. The fee admin could
+  raise the fee between the creator signing and the transaction executing, up
+  to the 10% ceiling. That matches the launchpad's snapshot of trade fees at
+  intake. `PresaleCreated` records the fee each presale took.
+- Pro-rata dilution can reduce a small commit to zero tokens. That position
+  still gets its refund, and claiming deletes it.
 - The SDK and indexer need the new package's types and events. The package is
   upgradeable through its own `PackageAdmin`.
 
@@ -118,19 +142,26 @@ destination. Setting the current value is rejected.
 
 - Pure tranche tests cover:
   - constructor bounds and window edges;
+  - the one-atom minimum purchase;
   - both fill modes, with sold-out and cap precedence;
   - owed tokens and refunds, including a conservation property over many
     commits;
   - vesting boundaries;
-  - four-leaf whitelist proofs and their negatives.
+  - one-, three-, and four-leaf whitelist proofs and their negatives.
 - Presale tests cover:
   - fee-policy roles, bounds, and no-op setters;
   - every creation, commit, finalization, and claim guard, each with its
     exact abort;
-  - the success and failure payouts, including the fee snapshot;
-  - refunds before the claim time;
-  - vesting claims, claims made for another buyer, and a presale that ends
-    empty after every claim.
+  - guard precedence pairs;
+  - the success and failure payouts, including the fee snapshot and the fee
+    rounding up;
+  - refunds before the claim time, and a commit diluted to zero tokens;
+  - vesting claims, and claims made for another buyer;
+  - exact rounding dust after every claim;
+  - eventless initialization.
+- `sui/presale/scripts/check_source_boundaries.sh` pins the role each
+  administrator action asserts. Changing a role, dropping an assert, or adding
+  a witness-taking function makes it fail.
 - Package administration and domain tests mirror the launchpad's.
 - `python3 scripts/check_move_style.py` passes, and so does
   `sui move test --lint --warnings-are-errors` in `sui/presale`.

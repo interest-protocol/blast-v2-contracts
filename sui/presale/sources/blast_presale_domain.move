@@ -33,20 +33,20 @@ fun init(otw: BLAST_PRESALE_DOMAIN, ctx: &mut TxContext) {
     blast_admin::acl::new(otw, MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, ctx);
 }
 
-// === Public Functions ===
+// === Package Functions ===
 
 /// The role a witness must carry to authorize, cut over, or seal an upgrade.
-public fun package_admin_role(): u64 {
+public(package) fun package_admin_role(): u64 {
     PACKAGE_ADMIN_ROLE
 }
 
 /// The role a witness must carry to change Blast's fee on new presales.
-public fun fee_admin_role(): u64 {
+public(package) fun fee_admin_role(): u64 {
     FEE_ADMIN_ROLE
 }
 
 /// The role a witness must carry to change where Blast's fee is paid.
-public fun treasury_admin_role(): u64 {
+public(package) fun treasury_admin_role(): u64 {
     TREASURY_ADMIN_ROLE
 }
 

@@ -176,7 +176,7 @@ public fun finalize<Token, Quote>(
     let (mut raised, mut sold) = (0, 0);
     self.tranches.do_ref!(|tranche| {
         raised = raised + tranche.raised();
-        sold = sold + tranche.sold();
+        sold = sold + tranche.sold_down();
     });
     let succeeded = raised >= self.min_raise;
     let fee = if (succeeded) {
@@ -224,8 +224,8 @@ public fun claim<Token, Quote>(
     let claim_ms = self.claim_ms;
     let position = self.id.position_mut<_, Position>(key);
     let (tokens, quote, settled) = if (succeeded) {
-        let (owed, refund) = terms.owed(position.committed);
-        let vested = terms.vested(owed, claim_ms, clock.timestamp_ms());
+        let (owed, refund) = terms.owed_down(position.committed);
+        let vested = terms.vested_down(owed, claim_ms, clock.timestamp_ms());
         let quote = if (position.refunded) 0 else refund;
         let tokens = vested - position.claimed_tokens;
         position.claimed_tokens = vested;
@@ -304,14 +304,6 @@ fun send<T>(balance: Balance<T>, recipient: address, ctx: &mut TxContext) {
 /// Returns the tokens and Quote the presale holds.
 public fun balances_for_testing<Token, Quote>(self: &BlastPresale<Token, Quote>): (u64, u64) {
     (self.tokens.value(), self.quote.value())
-}
-
-#[test_only]
-public fun tranche_for_testing<Token, Quote>(
-    self: &BlastPresale<Token, Quote>,
-    tranche: u64,
-): Tranche {
-    self.tranches[tranche]
 }
 
 #[test_only]
