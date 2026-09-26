@@ -8,7 +8,7 @@
 | Ref | Full commit | Repository |
 | --- | --- | --- |
 | `sui@06734f6` | `06734f6ff0af45d8632a14a4dc4b100197f6b1a2` | MystenLabs/sui (the pinned framework) |
-| `util@83b82f0` | `83b82f0c9882a5267e810d7f19ef9d9985d9163f` | interest-protocol/blast-util-contracts |
+| `util@63b6cf8` | `63b6cf86c0e1a74f699610fe182b1de8d8789a14` | interest-protocol/blast-util-contracts |
 | `deepbook@a60c1ee` | `a60c1eeeec65a61ebc8c76e58492f5dee0674840` | MystenLabs/deepbookv3 |
 | `dhedge@f09febf` | `f09febf528895fdd5b69f68b0dd3a9bb7d9ecc0c` | dhedge/V2-Public |
 | `dydx@127ef76` | `127ef76506ccca909d937920980c1ae2d9b736a5` | dydxprotocol/v4-chain |
@@ -60,10 +60,10 @@ issues answers that.
 ## Decision
 
 **The timelock.** `blast_fun_timelock` lives in the public util contracts
-(`util@83b82f0:sui/timelock/sources/blast_fun_timelock.move`), MIT licensed and to
-be published immutable. `Timelocked<T>` is a value whose every change takes effect
-exactly its delay after it is scheduled; the delay is fixed when the value is
-created (one millisecond to ten years). A new schedule replaces a pending one and
+(`util@63b6cf8:sui/timelock/sources/blast_fun_timelock.move`), MIT licensed and
+published immutable on mainnet at `0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d`. `Timelocked<T>` is a value whose
+every change takes effect exactly its delay after it is scheduled; the delay is
+fixed when the value is created (any positive number of milliseconds). A new schedule replaces a pending one and
 restarts the delay, so scheduling the value in force cancels. Reads are lazy: the
 value in force comes from the Clock the caller already has, so nothing writes on
 a trade and no keeper applies anything. The module that stores a `Timelocked`
@@ -220,15 +220,15 @@ on Hyperliquid.
   immutable like the share and cap delays: the adapter is upgradeable.
 - Removed partners stay as inert dynamic fields under `Protocol`; only the risk
   administrator adds them, and nothing iterates them.
-- `blast_partners` pins the timelock to a util-contracts commit; once the
-  timelock is published, its `Published.toml` links mainnet builds to the
-  immutable package, which must be published before `blast_partners`.
+- `blast_partners` pins the timelock to the util-contracts commit that records
+  its mainnet publication (`util@63b6cf8`), so mainnet builds link to the
+  immutable package through its `Published.toml`.
 
 ## Verification
 
 - Timelock tests (util contracts): the delay boundaries, reschedule, cancel,
-  schedules after a switch, the shortest and longest delays, the refused ones,
-  and 100% coverage.
+  schedules after a switch, the shortest delay, the refused one, and 100%
+  coverage.
 - Partner tests: every guard with exact aborts and guard precedence; a
   registered share and cap in force at once; a scheduled share and a moved cap at
   their boundaries; one cap managing

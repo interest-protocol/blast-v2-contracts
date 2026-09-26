@@ -53,7 +53,7 @@ manifest_digest = "1D81A242A868996BDA2D034470EFF798AACC5958CF9958C94BAAACC9C2C92
 deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.blast_fun_timelock]
-source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/timelock", rev = "83b82f0c9882a5267e810d7f19ef9d9985d9163f" }
+source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/timelock", rev = "63b6cf86c0e1a74f699610fe182b1de8d8789a14" }
 use_environment = "mainnet"
 manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
 deps = { std = "MoveStdlib", sui = "Sui" }
@@ -61,7 +61,7 @@ deps = { std = "MoveStdlib", sui = "Sui" }
 [pinned.mainnet.blast_partners]
 source = { local = "../../partners" }
 use_environment = "mainnet"
-manifest_digest = "A23CD0BBD9C1FAF747E577C478A0E144EBE41DA7BB227BD4C6562ABEACEB05EF"
+manifest_digest = "D5CCB833332CD32F07926CDFF448E853BA674CB7110877E91BA125049FDB2026"
 deps = { blast_admin = "blast_admin", blast_fun_timelock = "blast_fun_timelock", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.ifixed]
@@ -143,7 +143,7 @@ manifest_digest = "D22569635345AD81636092AAA074AE3A61666325E24EA5D65B1CB4BFC9BCE
 deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.blast_fun_timelock]
-source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/timelock", rev = "83b82f0c9882a5267e810d7f19ef9d9985d9163f" }
+source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/timelock", rev = "63b6cf86c0e1a74f699610fe182b1de8d8789a14" }
 use_environment = "testnet"
 manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
 deps = { std = "MoveStdlib", sui = "Sui" }
@@ -151,7 +151,7 @@ deps = { std = "MoveStdlib", sui = "Sui" }
 [pinned.testnet.blast_partners]
 source = { local = "../../partners" }
 use_environment = "testnet"
-manifest_digest = "7B916CD0831E0035DD04C6385A7D0142218C8B4650D8049B60778AB14BA7F918"
+manifest_digest = "8C0E43AF514B7DCD0420AB49466D733394BE7FB875344BC3A6105EE90407F358"
 deps = { blast_admin = "blast_admin", blast_fun_timelock = "blast_fun_timelock", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.ifixed]
