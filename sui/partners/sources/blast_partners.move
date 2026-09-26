@@ -101,26 +101,23 @@ public fun new_cap(ctx: &mut TxContext): PartnerCap {
     PartnerCap { id: object::new(ctx) }
 }
 
-/// Registers and shares a partner managed by the cap `cap_id`, at once. The
-/// partner earns nothing until its share takes effect `DELAY_MS` from now.
+/// Registers and shares a partner managed by the cap `cap_id`, with its share
+/// and cap in force at once. Every later change to either waits `DELAY_MS`.
 public fun register(
     admin_witness: &AdminWitness<BLAST_PARTNERS>,
     cap_id: ID,
     recipient: address,
     share_bps: u64,
-    clock: &Clock,
     ctx: &mut TxContext,
 ) {
     admin_witness.assert_role(PARTNER_ADMIN_ROLE);
     assert!(recipient != @0x0, EInvalidRecipient);
     assert!(share_bps <= MAX_SHARE_BPS, EShareAboveMax);
 
-    let mut share = timelock::new(0, DELAY_MS);
-    share.schedule(share_bps, clock);
     let partner = Partner {
         id: object::new(ctx),
         recipient,
-        share_bps: share,
+        share_bps: timelock::new(share_bps, DELAY_MS),
         cap_id: timelock::new(cap_id, DELAY_MS),
     };
 

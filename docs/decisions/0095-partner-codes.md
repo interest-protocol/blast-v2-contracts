@@ -23,8 +23,9 @@ to 80%; the partner sets its recipient with a `PartnerCap`; a partner that wants
 an extra fee adds it in its own transaction. The same model serves Boosts now and
 the launchpad later. The owner then asked for:
 
-- a forced timelock on Blast's powers over partners: every share Blast sets and
-  every cap change takes effect seven days later, and nobody can shorten that;
+- a forced timelock on Blast's powers over partners: every change to a share or
+  a cap takes effect seven days later, and nobody can shorten that; a new deal's
+  share applies from registration (owner, 2026-09-26);
 - that timelock as its own immutable package in the public util contracts, for
   anyone to reuse;
 - one cap per company across several deals, each with its own share (for
@@ -75,10 +76,10 @@ a type both read. It is published and made immutable in one transaction
 (`sui/partners/scripts/publish_immutable.sh`): the delay is only as credible as
 the packages that enforce it. It has its own `blast_admin` domain,
 `BLAST_PARTNERS`, with one role, the partner administrator. One role covers
-registering, scheduling shares and moving partners between caps: every one of
-them waits the delay and the root can revoke the role within it, so splitting
-them per action ([0094](0094-one-role-per-administrator-action.md)) would protect
-nothing more.
+registering, scheduling shares and moving partners between caps: a registration
+pays only on flow that names the new deal, share changes and cap moves wait the
+delay, and the root can revoke the role at once, so splitting them per action
+([0094](0094-one-role-per-administrator-action.md)) would protect nothing more.
 
 **Partners and caps.** A `Partner` is one deal: a shared object with a
 `recipient`, a `share_bps` of Blast's fee (at most 8,000, timelocked) and the ID
@@ -87,8 +88,8 @@ over the recipients of every partner bound to it; one cap can manage any number
 of partners, each with its own share and recipient. `new_cap` mints a cap that
 controls nothing until Blast registers a partner under it, so anyone may mint one.
 
-- `register(cap_id, recipient, share)` shares a partner managed by that cap at
-  once; its share starts at zero and switches to `share` seven days later.
+- `register(cap_id, recipient, share)` shares a partner managed by that cap,
+  with its share in force at once.
 - `schedule_share` sets the share seven days ahead.
 - `schedule_cap` moves the partner to another cap seven days ahead, to replace a
   lost or stolen cap. Until then the current cap keeps working.
@@ -172,7 +173,11 @@ on Hyperliquid.
   changes are instant and `schedule_cap` waits. Exposure is each bound partner's
   share of Blast's fee for seven days; integrators can stop naming the partner
   meanwhile. Partners should hold their cap in a multisig.
-- A new partner earns nothing for its first seven days, by design.
+- A new partner earns from registration. A rogue partner administrator could
+  therefore register a deal at up to 80% that pays at once; the root can revoke
+  the role at once, but cutting that deal's share waits seven days. The exposure
+  is Blast's fee on flow that names that deal, which the rogue administrator
+  cannot direct to it beyond its own trades or a colluding app's.
 - The delay protects partners from targeted cuts only: Blast still sets each
   vault's admin share at once, and partners earn nothing while it is zero, its
   value at activation.
@@ -199,8 +204,9 @@ on Hyperliquid.
 - Timelock tests (util contracts): the delay boundaries, reschedule, cancel,
   schedules after a switch, the shortest and longest delays, the refused ones,
   and 100% coverage.
-- Partner tests: every guard with exact aborts and guard precedence; the first
-  share, a scheduled share and a moved cap at their boundaries; one cap managing
+- Partner tests: every guard with exact aborts and guard precedence; a
+  registered share and cap in force at once; a scheduled share and a moved cap at
+  their boundaries; one cap managing
   two partners with different shares; a cap anyone mints controls nothing; `pay`
   against a rounded-down reference sweep, at the largest fee, and its
   `PartnerPaid` event, which a zero payment does not emit.

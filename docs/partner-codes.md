@@ -68,13 +68,13 @@ on Boosts and 8% on another product.
 
 | Term | Set by | When it takes effect |
 | --- | --- | --- |
-| Share of Blast's fee, 0% to 80%, per deal | Blast | seven days after Blast sets it |
+| Share of Blast's fee, 0% to 80%, per deal | Blast | at registration; each later change seven days after Blast sets it |
 | Recipient address, per deal | you, with your cap | immediately |
 | Which cap manages a deal | Blast | seven days after Blast moves it |
 
 - You can mint your own cap with `new_cap` (for example straight into your
   multisig) and give Blast its ID; Blast registers each deal under it. Each
-  deal's share starts at zero and switches to the agreed share seven days later.
+  deal earns its agreed share from registration.
 - Change where a deal pays you with `set_recipient`, holding your cap. It applies
   at once. Whoever holds the cap controls where every deal under it pays, so keep
   it somewhere safe.
