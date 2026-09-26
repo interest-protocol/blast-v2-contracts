@@ -203,10 +203,12 @@ on Hyperliquid.
   against a rounded-down reference sweep, at the largest fee, and its
   `PartnerPaid` event, which a zero payment does not emit.
 - Adapter tests: a partner is paid only out of the admin fee its operation
-  retained, leaving earlier admin cash, the reserve and the supply alone; the 80%
-  maximum leaves Blast a fifth; a share switching one millisecond after the
-  operation pays nothing but is still attributed, and one switching at it pays in
-  full; `PartnerFeePaid` and `PartnerPaid` agree.
+  retained, derived from the admin cash before it, leaving earlier admin cash,
+  the reserve and the supply alone; the 80% maximum leaves Blast a fifth; a share
+  switching one millisecond after the operation pays nothing but is still
+  attributed, and one switching at it pays in full; `PartnerFeePaid` and
+  `PartnerPaid` agree; the event reducer replays `PartnerFeePaid` after `Minted`
+  and `Redeemed` and matches the vault's admin cash.
 - Gates: the util coverage script, `sui/partners/scripts/verify.sh`, the adapter's
   `verify.sh local` and boundary gate, the composition tests, the style check.
 - Still to run before release: Move tests cannot observe address balances, so a

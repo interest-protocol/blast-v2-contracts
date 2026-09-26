@@ -9,9 +9,10 @@ share of the fee Blast charges on a trade by calling `pay`, which emits
 Everything Blast changes about a partner (its share and which cap manages it)
 takes effect seven days after it is scheduled, through `blast_fun_timelock` from
 [blast-util-contracts](https://github.com/interest-protocol/blast-util-contracts).
-Both packages are published and made immutable in one transaction
-(`scripts/publish_immutable.sh`), the timelock first, so nobody can shorten that
-delay. The cap holder's recipient changes apply at once.
+Each package is published and made immutable in its own transaction, so nobody
+can shorten that delay: the timelock first, from the util repository, then this
+one with `scripts/publish_immutable.sh`. The cap holder's recipient changes apply
+at once.
 
 Read [ADR 0095](../../docs/decisions/0095-partner-codes.md) and the
 [guide](../../docs/partner-codes.md) before changing this package.

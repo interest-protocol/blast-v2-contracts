@@ -195,8 +195,7 @@ public fun mint_with_partner<Product, Collateral>(
         vault, protocol, account, registry, clearing_house, base_oracle, collateral_oracle,
         cash, minimum_shares, deadline_ms, clock, ctx,
     );
-    let admin_fee = vault.admin_cash_balance<_, Collateral>() - admin_cash_before;
-    pay_partner(vault, partner, admin_fee, clock);
+    pay_partner(vault, partner, admin_cash_before, clock);
 
     shares
 }
@@ -224,8 +223,7 @@ public fun redeem_with_partner<Product, Collateral>(
         vault, protocol, account, registry, clearing_house, base_oracle, collateral_oracle,
         shares, minimum_collateral, deadline_ms, clock, ctx,
     );
-    let admin_fee = vault.admin_cash_balance<_, Collateral>() - admin_cash_before;
-    pay_partner(vault, partner, admin_fee, clock);
+    pay_partner(vault, partner, admin_cash_before, clock);
 
     cash
 }
@@ -681,15 +679,18 @@ fun complete_redemption<Product, Collateral>(
     cash
 }
 
-/// Pays `partner` its share of `admin_fee`, the admin fee one mint or redeem just
-/// retained, keeps the rest as Blast's admin cash, and records the payment
-/// against the vault. The reserve fee is never part of it.
+/// Pays `partner` its share of the admin fee one mint or redeem just retained,
+/// the admin cash added since `admin_cash_before`, keeps the rest as Blast's
+/// admin cash, and records the payment against the vault. The reserve fee is
+/// never part of it.
 fun pay_partner<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     partner: &Partner,
-    admin_fee: u64,
+    admin_cash_before: u64,
     clock: &Clock,
 ) {
+    let admin_fee = vault.admin_cash_balance<_, Collateral>() - admin_cash_before;
+
     let mut fee = vault.take_admin_cash(admin_fee);
     let partner_fee = partner.pay(&mut fee, clock);
     vault.retain_admin_cash(fee);
@@ -1023,10 +1024,10 @@ public fun complete_redemption_for_testing<Product, Collateral>(
 public fun pay_partner_for_testing<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     partner: &Partner,
-    admin_fee: u64,
+    admin_cash_before: u64,
     clock: &Clock,
 ) {
-    pay_partner(vault, partner, admin_fee, clock);
+    pay_partner(vault, partner, admin_cash_before, clock);
 }
 
 #[test_only]

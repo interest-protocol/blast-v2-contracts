@@ -94,7 +94,9 @@ on Boosts and 8% on another product.
 - **Registering a deal.** The partner administrator (its own role in the partner
   domain) calls `register` with the company's cap ID, the recipient and the
   share. For a new company, mint a cap with `new_cap` and send it to them, or
-  use a cap they minted.
+  use a cap they minted. `register` accepts any ID, so first check on chain that
+  the ID is a `PartnerCap` the company holds: a wrong ID leaves the deal without
+  a working cap until `schedule_cap` fixes it seven days later.
 - **Changing a tier.** `schedule_share` sets the new share seven days ahead.
   Scheduling again replaces a pending change and restarts the seven days;
   scheduling the share already in force cancels a pending change. Tiers are

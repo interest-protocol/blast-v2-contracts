@@ -454,7 +454,7 @@ fun a_cap_minted_by_anyone_controls_nothing_until_a_partner_is_registered_under_
     let cap = fixture.register(RECIPIENT, 2_500);
 
     fixture.next_tx!(PARTNER, |fixture| {
-        let own_cap = partners::new_cap(fixture.scenario.ctx());
+        let own_cap = partners::new_cap(fixture.ctx!());
         let partner = fixture.take_partner();
         let (_, _, live_cap) = partner.terms_for_testing(&fixture.clock);
         assert!(live_cap != object::id(&own_cap));
@@ -690,6 +690,11 @@ macro fun next_tx($self: &mut Fixture, $sender: address, $body: |&mut Fixture|) 
     $body(fixture);
 }
 
+macro fun ctx($self: &mut Fixture): &mut TxContext {
+    let fixture = $self;
+    fixture.scenario.ctx()
+}
+
 fun delay(): u64 {
     partners::delay_ms_for_testing()
 }
@@ -709,7 +714,7 @@ fun advance(self: &mut Fixture, ms: u64) {
 /// Mints a company's cap and registers its first partner under it; the partner
 /// is shared from the next transaction on.
 fun register(self: &mut Fixture, recipient: address, share_bps: u64): PartnerCap {
-    let cap = partners::new_cap(self.scenario.ctx());
+    let cap = partners::new_cap(self.ctx!());
     self.register_under(&cap, recipient, share_bps);
     cap
 }
@@ -717,7 +722,7 @@ fun register(self: &mut Fixture, recipient: address, share_bps: u64): PartnerCap
 /// Registers another partner under an existing cap.
 fun register_under(self: &mut Fixture, cap: &PartnerCap, recipient: address, share_bps: u64) {
     let witness = self.authority.sign_in(&self.admin_cap);
-    partners::register(&witness, object::id(cap), recipient, share_bps, &self.clock, self.scenario.ctx());
+    partners::register(&witness, object::id(cap), recipient, share_bps, &self.clock, self.ctx!());
 }
 
 fun schedule_share(self: &Fixture, partner: &mut Partner, share_bps: u64) {
@@ -727,7 +732,7 @@ fun schedule_share(self: &Fixture, partner: &mut Partner, share_bps: u64) {
 
 /// Mints a new cap and schedules the partner to move to it.
 fun reissue_cap(self: &mut Fixture, partner: &mut Partner): PartnerCap {
-    let cap = partners::new_cap(self.scenario.ctx());
+    let cap = partners::new_cap(self.ctx!());
     self.schedule_cap(partner, object::id(&cap));
     cap
 }

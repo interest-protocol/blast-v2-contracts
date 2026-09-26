@@ -94,9 +94,11 @@ public struct Redeemed<phantom Product> has copy, drop {
 // --- Partners ---
 
 /// Emitted after a mint or redeem that named a partner, including a partner
-/// paid nothing because its share is zero or not yet in force. `partner_fee`
-/// left `admin_fee`, the admin fee the operation retained; `admin_cash_after`
-/// holds what Blast kept.
+/// paid nothing because its share is zero or not yet in force. It follows that
+/// operation's `Minted` or `Redeemed` in the same transaction, whose
+/// `admin_cash_after` still includes `partner_fee`. `partner_fee` left
+/// `admin_fee`, the admin fee the operation retained; `admin_cash_after` holds
+/// what Blast kept.
 public struct PartnerFeePaid<phantom Product> has copy, drop {
     vault_id: ID,
     partner_id: ID,
