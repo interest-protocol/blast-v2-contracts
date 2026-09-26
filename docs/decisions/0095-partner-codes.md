@@ -121,10 +121,26 @@ total: it follows the operation's `Minted` or `Redeemed` in the same transaction
 and Blast's admin cash is that event's `admin_cash_after` minus `partner_fee`. The adapter
 never calls `send_funds` itself, and only `operations` calls `pay` (source gate).
 
+**Each product accepts its own partners** (owner, 2026-09-26). A deal is priced
+for one product, so a product pays only the partners it accepts: otherwise a 50%
+Boosts deal could be named on the launchpad. Boosts keeps the list on its
+`Protocol`, one dynamic field per partner under `PartnerKey(ID)`, whose value is
+the time the partner stops being accepted (`u64::MAX` until removed). The
+`Protocol` layout does not change, and partner trades take no new object: they
+already read `&Protocol`. The Boosts risk administrator, who already sets each
+vault's admin share and withdraws its admin cash, calls `operations::add_partner`
+and `operations::remove_partner`. Adding is instant and cancels a pending removal.
+Removing takes effect `blast_partners::delay_ms()` later, and the partner stays
+accepted and paid until then; the owner ruled no instant removal is needed, since
+a bad cap redirects only that partner's payouts. `mint_with_partner` and
+`redeem_with_partner` abort with `EPartnerNotAccepted` before any venue work for
+a partner Boosts does not accept. `PartnerAdded` and `PartnerRemoved { partner_id,
+accepted_until_ms }` record every change.
+
 **The launchpad, later.** `buy` and `sell` gain partner variants that pay from
-Blast's protocol portion of the trade fee in both assets; the creator's share and
-the sell burn are untouched. The opening round's permissionless settlement pays
-no partner.
+Blast's protocol portion of the trade fee in both assets, for partners the
+launchpad accepts; the creator's share and the sell burn are untouched. The
+opening round's permissionless settlement pays no partner.
 
 **Tiers** are set off chain from the Blast fee kept on each partner's attributed
 flow. No on-chain volume counter exists.
@@ -161,6 +177,11 @@ use it without depending on a peer product, and the core is immutable.
 **Upgradeable packages.** An upgrade could shorten the delay. Changing the ABI
 means publishing new packages and registering partners again.
 
+**The partner recording its product.** A product type set at registration and
+checked by `pay` needs no list, but gives products no control of their own, writes
+product type names into an immutable package, and is set by the same partner
+administrator. A per-vault list has the wrong grain: deals are per product.
+
 **A pending value with an apply step or a keeper, a cancel function, accrual with
 claims, binding codes to a gas sponsor.** Each adds state or a call without a
 property the lazy read, a reschedule, the push payment or a public code does not
@@ -173,11 +194,9 @@ on Hyperliquid.
   changes are instant and `schedule_cap` waits. Exposure is each bound partner's
   share of Blast's fee for seven days; integrators can stop naming the partner
   meanwhile. Partners should hold their cap in a multisig.
-- A new partner earns from registration. A rogue partner administrator could
-  therefore register a deal at up to 80% that pays at once; the root can revoke
-  the role at once, but cutting that deal's share waits seven days. The exposure
-  is Blast's fee on flow that names that deal, which the rogue administrator
-  cannot direct to it beyond its own trades or a colluding app's.
+- A new partner earns from registration, on each product that accepts it. A
+  rogue partner administrator's new deal pays nothing until a product's risk
+  administrator accepts it, so both domains must agree before a deal pays.
 - The delay protects partners from targeted cuts only: Blast still sets each
   vault's admin share at once, and partners earn nothing while it is zero, its
   value at activation.
@@ -185,16 +204,22 @@ on Hyperliquid.
   trades abort, since Sui checks deny lists for address-balance deposits; the
   release rehearsal confirms it. The partner fixes it instantly with its cap, or
   integrators call the plain entry points.
-- Codes are public: anyone can name any partner. The partner earns on that flow;
+- Codes are public: anyone can name any partner a product accepts. The partner earns on that flow;
   Blast bounds its exposure per partner with the share and prices tiers on
   retained fee, which free-riding lowers. Self-referral never pays: every trade
   still pays the reserve fee and at least a fifth of Blast's fee, plus venue
   costs.
-- The adapter ABI gains two entry points and one event; `mint`, `redeem`,
-  `Minted` and `Redeemed` are unchanged. The SDK, the indexer reducers and the
-  release PTB builder add the partner variants.
-- The partner administrator is its own role in its own domain; the Boosts risk
-  administrator never touches partners.
+- The adapter ABI gains the two partner entry points, `add_partner`,
+  `remove_partner` and three events; `mint`, `redeem`, `Minted` and `Redeemed`
+  are unchanged. The SDK, the indexer reducers and the release PTB builder add
+  them, and the SDK reads a partner's `PartnerKey` field to fall back to the
+  plain entry points once a removal takes effect.
+- The partner administrator sets each deal's terms in its own domain; the Boosts
+  risk administrator decides which deals Boosts accepts.
+- The Boosts removal notice is as strong as the adapter's governed upgrades, not
+  immutable like the share and cap delays: the adapter is upgradeable.
+- Removed partners stay as inert dynamic fields under `Protocol`; only the risk
+  administrator adds them, and nothing iterates them.
 - `blast_partners` pins the timelock to a util-contracts commit; once the
   timelock is published, its `Published.toml` links mainnet builds to the
   immutable package, which must be published before `blast_partners`.
@@ -210,6 +235,10 @@ on Hyperliquid.
   two partners with different shares; a cap anyone mints controls nothing; `pay`
   against a rounded-down reference sweep, at the largest fee, and its
   `PartnerPaid` event, which a zero payment does not emit.
+- Accepted partners: added at once and a removal at its boundary; a pending
+  removal cancelled; a removed partner added again; refusals for adding twice,
+  removing twice, and removing an unknown or removed partner; the risk role and
+  the version guard, in that order; the events.
 - Adapter tests: a partner is paid only out of the admin fee its operation
   retained, derived from the admin cash before it, leaving earlier admin cash,
   the reserve and the supply alone; the 80% maximum leaves Blast a fifth; a share
@@ -223,4 +252,5 @@ on Hyperliquid.
   live rehearsal of a partnered mint and redeem that reads the recipient's balance,
   and a deny-listed recipient, is a release gate that has not been run. The
   partner entry points cannot run locally against the Aftermath stubs, so the
-  rehearsal also covers `mint_with_partner` and `redeem_with_partner` end to end.
+  rehearsal also covers `mint_with_partner` and `redeem_with_partner` end to end,
+  including a partner Boosts does not accept aborting before any venue effect.

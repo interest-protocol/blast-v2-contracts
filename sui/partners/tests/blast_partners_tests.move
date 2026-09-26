@@ -694,7 +694,7 @@ macro fun ctx($self: &mut Fixture): &mut TxContext {
 }
 
 fun delay(): u64 {
-    partners::delay_ms_for_testing()
+    partners::delay_ms()
 }
 
 fun now(self: &Fixture): u64 {

@@ -54,6 +54,10 @@ never more than 80% of it.
 - With a partner code, call `mint_with_partner` or `redeem_with_partner`, passing
   your `Partner` object right after the `Protocol` object. They do exactly what
   the plain calls do, then pay your share of Blast's fee on that trade.
+- Boosts pays only partners it accepts; naming any other partner aborts the
+  trade. Before building a partner trade, read the partner's `PartnerKey` field
+  on the Boosts `Protocol`: it is accepted while the field exists and the clock is
+  before its value. Otherwise call the plain entry points.
 - The partner object is only read, so naming a busy partner adds no contention
   of its own.
 - To charge your own fee, split it from the user's coin in your own transaction
@@ -71,6 +75,7 @@ on Boosts and 8% on another product.
 | Share of Blast's fee, 0% to 80%, per deal | Blast | at registration; each later change seven days after Blast sets it |
 | Recipient address, per deal | you, with your cap | immediately |
 | Which cap manages a deal | Blast | seven days after Blast moves it |
+| Which products accept a deal | Blast, per product | added at once; removed seven days after Blast removes it |
 
 - You can mint your own cap with `new_cap` (for example straight into your
   multisig) and give Blast its ID; Blast registers each deal under it. Each
@@ -81,13 +86,16 @@ on Boosts and 8% on another product.
 - Blast cannot change your share or your cap without seven days' notice, which
   anyone can read on chain. The delay comes from `blast_fun_timelock`, an
   immutable package nobody can change.
+- A deal pays only on the products that accept it: Boosts accepts a deal once
+  Blast adds it there. If Blast removes it, it stays accepted, and paid, for
+  seven more days.
 - If you lose your cap, mint a new one and ask Blast to move your deals to it;
   each move goes live seven days later, and until then the old cap still works.
 - Every payment emits `PartnerPaid` with your partner ID and the amount you
   received, and the product records the trade in its own event (for Boosts,
   `PartnerFeePaid`), so you can reconcile your income from events alone.
-- Your code is a public object, and any app can name it. If another app does,
-  you still earn on that flow.
+- Your code is a public object, and any app can name it on a product that
+  accepts it. If another app does, you still earn on that flow.
 
 ## For Blast's operators
 
@@ -97,18 +105,25 @@ on Boosts and 8% on another product.
   use a cap they minted. `register` accepts any ID, so first check on chain that
   the ID is a `PartnerCap` the company holds: a wrong ID leaves the deal without
   a working cap until `schedule_cap` fixes it seven days later.
+- **Accepting a deal on Boosts.** After registering it, the Boosts risk
+  administrator calls `operations::add_partner` with the `Partner`; it applies
+  at once. Accept each deal only on the product it was priced for.
+- **Ending a deal on Boosts.** `operations::remove_partner` takes effect seven
+  days later, after which trades naming it abort. Adding it again meanwhile
+  cancels the removal. To keep attributing the flow but pay nothing, schedule
+  its share to zero instead.
 - **Changing a tier.** `schedule_share` sets the new share seven days ahead.
   Scheduling again replaces a pending change and restarts the seven days;
   scheduling the share already in force cancels a pending change. Tiers are
   reviewed off chain from the Blast fee kept on each partner's flow, which wash
   volume and free-riding lower rather than raise.
-- **Switching a deal off.** Schedule its share to zero. Apps that still name it
-  keep working and pay the normal fee to Blast.
+- **Switching a deal off everywhere.** Schedule its share to zero. Apps that
+  still name it keep working and pay the normal fee to Blast.
 - **Replacing a lost or stolen cap.** `schedule_cap` moves a deal to a new cap in
   seven days, one call per deal. A thief holding the old cap can redirect payouts
   until then, so tell integrators to stop naming those deals meanwhile.
 - **At launch,** publish `blast_fun_timelock` and then `blast_partners`, each
-  immutable, and grant the partner administrator role. Also set each vault's
+  immutable, grant the partner administrator role, and add each Boosts deal. Also set each vault's
   admin share: while it is zero, as it is at activation, Blast earns nothing and
   so partners earn nothing.
 - **Deny lists.** If a recipient is blocked by the collateral's deny list, trades
@@ -118,8 +133,8 @@ on Boosts and 8% on another product.
 
 ## Guarantees
 
-These properties are enforced by the contracts and covered by tests, except the
-fourth, which rests on the packages being published immutable:
+These properties are enforced by the contracts and covered by tests; the fourth
+also rests on how each package is published:
 
 1. The reserve fee, the shares minted and the redemption payout are the same with
    or without a partner.
@@ -129,8 +144,10 @@ fourth, which rests on the packages being published immutable:
    it pays back: the reserve fee and at least a fifth of Blast's fee are still
    charged.
 4. Nothing Blast schedules for a partner takes effect sooner than seven days
-   after it was last scheduled, and, since the packages are immutable, no
-   upgrade can change that.
+   after it was last scheduled. For shares and caps no upgrade can change that,
+   since the partner packages are immutable; the Boosts removal notice holds as
+   long as the Boosts adapter, which is upgradeable, keeps it.
 5. Only the cap managing a deal can change its recipient; only Blast's partner
-   administrator can register deals, schedule shares and move deals between caps.
+   administrator can register deals, schedule shares and move deals between caps;
+   only the Boosts risk administrator can add or remove deals on Boosts.
 6. Blast never holds partner money, and there is no claim step to miss.

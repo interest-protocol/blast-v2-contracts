@@ -159,6 +159,12 @@ public fun pay<T>(self: &Partner, fee: &mut Balance<T>, clock: &Clock): u64 {
     amount
 }
 
+/// The forced delay every change Blast makes to a partner waits. Products use it
+/// for their own notice, such as how long a partner they remove stays accepted.
+public fun delay_ms(): u64 {
+    DELAY_MS
+}
+
 // === Private Functions ===
 
 fun emit_updated(self: &Partner) {
@@ -208,11 +214,6 @@ public fun new_scheduled_for_testing(
 #[test_only]
 public fun partner_admin_role_for_testing(): u64 {
     PARTNER_ADMIN_ROLE
-}
-
-#[test_only]
-public fun delay_ms_for_testing(): u64 {
-    DELAY_MS
 }
 
 #[test_only]

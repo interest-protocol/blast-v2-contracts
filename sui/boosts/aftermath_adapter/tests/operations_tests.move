@@ -688,6 +688,197 @@ fun a_partner_share_takes_effect_exactly_at_the_operations_clock() {
     fixture.end();
 }
 
+// --- Accepted partners ---
+
+#[test]
+/// An added partner is accepted at once; a removed one stays accepted, and
+/// paid, until the partner delay ends, and other partners are untouched.
+fun an_added_partner_is_accepted_at_once_and_a_removed_one_until_the_delay_ends() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let other = partners::new_for_testing(PARTNER_PAYOUT, 800, fixture.ctx!());
+    let mut clock = reference_clock(&mut fixture);
+    fixture.add_partner(&partner);
+    fixture.add_partner(&other);
+    fixture.protocol.assert_partner_for_testing(object::id(&partner), REFERENCE_TIME_MS);
+
+    fixture.remove_partner(&partner, &clock);
+
+    let accepted_until_ms = REFERENCE_TIME_MS + partners::delay_ms();
+    let added = events::collect<events::PartnerAdded>();
+    assert_eq!(added[0].partner_added_id(), object::id(&partner));
+    assert_eq!(added[1].partner_added_id(), object::id(&other));
+    let (removed_id, until) = events::collect_one<events::PartnerRemoved>(0).partner_removed_fields();
+    assert_eq!(removed_id, object::id(&partner));
+    assert_eq!(until, accepted_until_ms);
+    fixture.protocol.assert_partner_for_testing(object::id(&partner), accepted_until_ms - 1);
+    clock.set_for_testing(accepted_until_ms);
+    fixture.protocol.assert_partner_for_testing(object::id(&other), accepted_until_ms);
+    destroy(partner);
+    destroy(other);
+    clock.destroy_for_testing();
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EPartnerNotAccepted, location = blast_boosts_aftermath::protocol)]
+fun a_removed_partner_is_refused_from_the_end_of_the_delay() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let clock = reference_clock(&mut fixture);
+    fixture.add_partner(&partner);
+    fixture.remove_partner(&partner, &clock);
+
+    let accepted_until_ms = REFERENCE_TIME_MS + partners::delay_ms();
+    fixture.protocol.assert_partner_for_testing(object::id(&partner), accepted_until_ms);
+
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EPartnerNotAccepted, location = blast_boosts_aftermath::protocol)]
+fun a_partner_never_added_is_refused() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+
+    fixture.protocol.assert_partner_for_testing(object::id(&partner), REFERENCE_TIME_MS);
+
+    abort
+}
+
+#[test]
+/// Adding a partner whose removal is pending cancels it, and it can be removed again.
+fun adding_a_partner_being_removed_cancels_the_removal() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let clock = reference_clock(&mut fixture);
+    fixture.add_partner(&partner);
+    fixture.remove_partner(&partner, &clock);
+
+    fixture.add_partner(&partner);
+
+    assert_eq!(events::collect<events::PartnerAdded>().length(), 2);
+    fixture.protocol.assert_partner_for_testing(object::id(&partner), std::u64::max_value!() - 1);
+    fixture.remove_partner(&partner, &clock);
+    assert_eq!(events::collect<events::PartnerRemoved>().length(), 2);
+    destroy(partner);
+    clock.destroy_for_testing();
+    fixture.end();
+}
+
+#[test]
+/// A removed partner can be added again, accepted at once.
+fun a_removed_partner_added_again_is_accepted_at_once() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let mut clock = reference_clock(&mut fixture);
+    fixture.add_partner(&partner);
+    fixture.remove_partner(&partner, &clock);
+    clock.set_for_testing(REFERENCE_TIME_MS + partners::delay_ms());
+
+    fixture.add_partner(&partner);
+
+    fixture.protocol.assert_partner_for_testing(object::id(&partner), clock.timestamp_ms());
+    destroy(partner);
+    clock.destroy_for_testing();
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EPartnerUnchanged, location = blast_boosts_aftermath::protocol)]
+fun adding_an_accepted_partner_again_is_refused() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    fixture.add_partner(&partner);
+
+    fixture.add_partner(&partner);
+
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EPartnerUnchanged, location = blast_boosts_aftermath::protocol)]
+fun removing_a_partner_already_being_removed_is_refused() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let clock = reference_clock(&mut fixture);
+    fixture.add_partner(&partner);
+    fixture.remove_partner(&partner, &clock);
+
+    fixture.remove_partner(&partner, &clock);
+
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EPartnerNotAccepted, location = blast_boosts_aftermath::protocol)]
+fun removing_a_partner_never_added_is_refused() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let clock = reference_clock(&mut fixture);
+
+    fixture.remove_partner(&partner, &clock);
+
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EPartnerNotAccepted, location = blast_boosts_aftermath::protocol)]
+fun removing_a_removed_partner_is_refused() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let mut clock = reference_clock(&mut fixture);
+    fixture.add_partner(&partner);
+    fixture.remove_partner(&partner, &clock);
+    clock.set_for_testing(REFERENCE_TIME_MS + partners::delay_ms());
+
+    fixture.remove_partner(&partner, &clock);
+
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
+fun adding_a_partner_needs_the_risk_administrator() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    fixture.revoke_role(domain::risk_admin_role());
+
+    fixture.add_partner(&partner);
+
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
+fun removing_a_partner_needs_the_risk_administrator() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let clock = reference_clock(&mut fixture);
+    fixture.add_partner(&partner);
+    fixture.revoke_role(domain::risk_admin_role());
+
+    fixture.remove_partner(&partner, &clock);
+
+    abort
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+fun stale_adapter_version_precedes_the_partner_role_check() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    fixture.protocol.set_version_for_testing(3);
+    fixture.revoke_role(domain::risk_admin_role());
+
+    fixture.add_partner(&partner);
+
+    abort
+}
+
 #[test]
 fun event_reducer_reconstructs_a_positive_funding_checkpoint() {
     let mut fixture = start();
@@ -2783,6 +2974,16 @@ fun reference_clock(fixture: &mut Fixture): Clock {
     clock
 }
 
+fun add_partner(self: &mut Fixture, partner: &Partner) {
+    let witness = self.authority.sign_in(&self.admin_cap);
+    operations::add_partner(&mut self.protocol, &witness, partner);
+}
+
+fun remove_partner(self: &mut Fixture, partner: &Partner, clock: &Clock) {
+    let witness = self.authority.sign_in(&self.admin_cap);
+    operations::remove_partner(&mut self.protocol, &witness, partner, clock);
+}
+
 fun revoke_role(fixture: &mut Fixture, role: u64) {
     let Fixture { authority, super_admin_cap, admin_cap, .. } = fixture;
     authority.revoke_role(super_admin_cap, object::id(admin_cap), role);
@@ -3570,7 +3771,7 @@ use blast_boosts_core::{
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
 };
 
-use blast_partners::blast_partners::{Self as partners, PartnerPaid};
+use blast_partners::blast_partners::{Self as partners, Partner, PartnerPaid};
 
 use perpetuals::authority::ACCOUNT;
 

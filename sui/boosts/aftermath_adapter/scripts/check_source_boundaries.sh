@@ -87,7 +87,8 @@ done
 
 # --- Public surface ---
 # Callers see three modules: vault (issuance, administration, shutdown),
-# operations (the driver) and package_admin (upgrades). Everything else is
+# operations (the driver, and which Blast partners Boosts accepts) and
+# package_admin (upgrades). Everything else is
 # package-private, and no function is an entry point.
 
 for file in "$package_dir"/sources/*.move "$package_dir"/sources/lib/*.move; do

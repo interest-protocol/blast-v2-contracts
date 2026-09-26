@@ -172,8 +172,45 @@ public fun redeem<Product, Collateral>(
     cash
 }
 
-/// `mint`, naming a Blast partner: the partner is paid its share of the admin
-/// fee this mint retained. Holders' shares and the reserve are exactly `mint`'s.
+/// Adds `partner` to the Blast partners Boosts accepts, at once. Adding a
+/// partner whose removal is pending cancels the removal.
+public fun add_partner(
+    protocol: &mut Protocol,
+    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
+    partner: &Partner,
+) {
+    protocol.assert_current();
+    admin_witness.assert_role(domain::risk_admin_role());
+
+    let partner_id = object::id(partner);
+    protocol.add_partner(partner_id);
+
+    events::partner_added(partner_id);
+}
+
+/// Removes `partner` from the Blast partners Boosts accepts, with the same
+/// notice Blast gives for every change to a partner: it stays accepted, and
+/// paid, for `blast_partners::delay_ms()`.
+public fun remove_partner(
+    protocol: &mut Protocol,
+    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
+    partner: &Partner,
+    clock: &Clock,
+) {
+    protocol.assert_current();
+    admin_witness.assert_role(domain::risk_admin_role());
+
+    let partner_id = object::id(partner);
+    let now_ms = clock.timestamp_ms();
+    let accepted_until_ms = now_ms + partners::delay_ms();
+    protocol.remove_partner(partner_id, now_ms, accepted_until_ms);
+
+    events::partner_removed(partner_id, accepted_until_ms);
+}
+
+/// `mint`, naming a Blast partner Boosts accepts: the partner is paid its share
+/// of the admin fee this mint retained. Holders' shares and the reserve are
+/// exactly `mint`'s.
 public fun mint_with_partner<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
@@ -189,6 +226,7 @@ public fun mint_with_partner<Product, Collateral>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<BlastBoost<Product>> {
+    protocol.assert_partner(object::id(partner), clock.timestamp_ms());
     let admin_cash_before = vault.admin_cash_balance<_, Collateral>();
 
     let shares = mint(
@@ -200,8 +238,9 @@ public fun mint_with_partner<Product, Collateral>(
     shares
 }
 
-/// `redeem`, naming a Blast partner: the partner is paid its share of the admin
-/// fee this redemption retained. The redeemer's payout is exactly `redeem`'s.
+/// `redeem`, naming a Blast partner Boosts accepts: the partner is paid its
+/// share of the admin fee this redemption retained. The redeemer's payout is
+/// exactly `redeem`'s.
 public fun redeem_with_partner<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
@@ -217,6 +256,7 @@ public fun redeem_with_partner<Product, Collateral>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<Collateral> {
+    protocol.assert_partner(object::id(partner), clock.timestamp_ms());
     let admin_cash_before = vault.admin_cash_balance<_, Collateral>();
 
     let cash = redeem(
@@ -1132,6 +1172,8 @@ public fun complete_finalization_for_testing<Product, Collateral>(
 
 use authority_cap::authority::{ADMIN, AuthorityCap};
 
+use blast_admin::acl::AdminWitness;
+
 use blast_boosts_aftermath::{
     blast_boost::BlastBoost,
     checkpoint::{Checkpoint, CheckpointChange},
@@ -1168,12 +1210,13 @@ use fun snapshot::capture as Binding.capture;
 use fun snapshot::capture_checkpoint as Binding.capture_checkpoint;
 
 use blast_boosts_core::{
+    blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
     observation::{Self, PositionObservation},
     policy::{Self, PositionSide},
     state::{ActivePosition, Issuance, MintPlan, RebalancePlan, RedemptionPlan},
 };
 
-use blast_partners::blast_partners::Partner;
+use blast_partners::blast_partners::{Self as partners, Partner};
 
 use ifixed::ifixed;
 

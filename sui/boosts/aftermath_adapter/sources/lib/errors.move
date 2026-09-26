@@ -159,6 +159,14 @@ const EMetadataUnchanged: u64 = 36;
 /// A permissionless venue trade paid a gas price above the reference gas price.
 const EPriorityGasPrice: u64 = 37;
 
+#[test_only]
+/// Boosts does not accept this partner: Blast never added it, or its removal took effect.
+const EPartnerNotAccepted: u64 = 38;
+
+#[test_only]
+/// Adding or removing a partner must change the list: it is already accepted, or already being removed.
+const EPartnerUnchanged: u64 = 39;
+
 macro public(package) fun invalid_package_publisher(): u64 { 0 }
 
 macro public(package) fun invalid_product_witness_type(): u64 { 1 }
@@ -234,3 +242,7 @@ macro public(package) fun venue_not_ready(): u64 { 35 }
 macro public(package) fun metadata_unchanged(): u64 { 36 }
 
 macro public(package) fun priority_gas_price(): u64 { 37 }
+
+macro public(package) fun partner_not_accepted(): u64 { 38 }
+
+macro public(package) fun partner_unchanged(): u64 { 39 }

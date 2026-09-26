@@ -54,6 +54,8 @@ fun error_registry_second_half_is_sequential() {
     assert_eq!(errors::venue_not_ready!(), 35);
     assert_eq!(errors::metadata_unchanged!(), 36);
     assert_eq!(errors::priority_gas_price!(), 37);
+    assert_eq!(errors::partner_not_accepted!(), 38);
+    assert_eq!(errors::partner_unchanged!(), 39);
 }
 
 // === Imports ===
