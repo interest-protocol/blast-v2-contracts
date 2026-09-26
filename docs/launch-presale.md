@@ -3,7 +3,7 @@
 > Put SUI in for up to three days. When it ends, the whole pot buys the curve at
 > once: one price for everyone, with a known ceiling. If the pot is bigger than
 > the curve, the coin lists on the DEX straight away and you get the rest back.
-> Your tokens and refund arrive before trading opens.
+> Blast delivers your tokens and refund before trading opens.
 
 A presale is optional. A creator who sets none gets a launch that trades as soon
 as it is shared. The decision record is
@@ -103,8 +103,8 @@ fees turn into an auction. This presale avoids that:
 - Settlement waits ten seconds after the end. By then every bid's deposit has
   settled, so the balance settlement reads includes every bid.
 - Delivery is the only step that writes the launch once per bid. It runs during
-  the delivery window, when nobody is trading, at about 500 bids per
-  transaction.
+  the delivery window, when nobody is trading. The protocol limits allow about
+  500 bids per transaction; the gas of a full batch is not measured yet.
 
 ## Edge cases
 
@@ -118,18 +118,26 @@ fees turn into an auction. This presale avoids that:
 - **Your wallet shows nothing during the presale.** The bid belongs to the
   launch, not to you. Apps list your bids from the `PresaleJoined` events and
   show the tokens once they are delivered.
+- **Delivery is Blast's job, not the contract's.** The contract holds trading
+  back for the delivery window. A bid still undelivered when trading opens
+  gets its tokens later, at the same share, and cannot sell until then.
+- **Many tiny bids** each need their own delivery. That costs whoever sends
+  them gas and storage, and there is no minimum bid by design.
 
 ## For integrators and keepers
 
-| Step | Call | Who | Notes |
-| --- | --- | --- | --- |
-| Set the length | `launch::set_presale(initializer, presale_ms)` | creator, before `finalize` | Zero for no presale. Otherwise 1 minute to 72 hours. |
-| Bid | `launch::join_presale(launch, version, coin, clock)` | anyone | Takes the launch read-only. Emits `PresaleJoined { launch_id, bid_id, quote }`; the bidder is the sender. |
-| Settle | `launch::settle_presale(launch, version, runtime_config, accumulator_root, clock)` | anyone | From the end plus 10 seconds. The accumulator root is the shared object `0xacc`, passed read-only. Emits `Bought` and `PresaleSettled { pot, meme, quote, trading_opens_ms }`. |
-| Deliver | `launch::deliver_presale(launch, version, bid)` | anyone, usually Blast's keeper | `bid` is a `Receiving<BlastPresaleBid>` for one of the launch's bids. Emits `PresaleDelivered { bid_id, bidder, meme, quote }`. |
-| Trade | `launch::buy` / `launch::sell` / `launch::migrate` | anyone | Now take the `Clock` and wait for `trading_opens_ms`. |
+- **Creator:** `launch::set_presale` on the initializer before `finalize`. Zero
+  means no presale.
+- **Bidders:** `launch::join_presale`, which takes the launch read-only and a
+  `Coin` of the Quote. The bidder is the sender.
+- **Anyone, from the end plus 10 seconds:** `launch::settle_presale`. It also
+  takes the accumulator root, the shared object `0xacc`, read-only.
+- **Keeper:** `launch::deliver_presale`, once per bid, with a receiving ticket
+  for one of the `BlastPresaleBid` objects the launch owns. Batch the
+  deliveries, and after a congestion cancellation rebuild the batch without the
+  bids already delivered.
+- **Traders and migrators:** `buy`, `sell` and `migrate` take the `Clock` and
+  wait for the trading time that `PresaleSettled` announces.
 
-The keeper finds undelivered bids as the `BlastPresaleBid` objects the launch
-owns. It batches about 500 deliveries per transaction, and after a
-congestion cancellation it rebuilds the batch without the bids already
-delivered.
+The events `PresaleJoined`, `PresaleSettled` and `PresaleDelivered` are enough
+to rebuild every bid's outcome.

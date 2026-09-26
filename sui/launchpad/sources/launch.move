@@ -761,6 +761,7 @@ fun settle_presale_pot<Meme, Quote>(
     pot: Balance<Quote>,
     clock: &Clock,
 ) {
+    // Live first: the pot's purchase may close the curve and make the launch MigrationReady.
     self.lifecycle = Lifecycle::Live;
     self.presale_pot = pot.value();
     self.trading_opens_ms =

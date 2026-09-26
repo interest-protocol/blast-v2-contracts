@@ -1140,6 +1140,10 @@ check_launch_needles T-005 \
   'self.settle_presale_pot(|settle_presale ' \
   'self.trading_opens_ms = |settle_presale_pot ' \
   'self.presale_pot = |deliver_presale settle_presale_pot ' \
+  'self.presale_meme.join(|settle_presale_pot ' \
+  'self.presale_quote.join(|settle_presale_pot ' \
+  'self.presale_meme.split(|deliver_presale ' \
+  'self.presale_quote.split(|deliver_presale ' \
   'trading_not_open!()|buy migrate sell ' \
   'events::presale_joined(|join_presale ' \
   'events::presale_settled(|settle_presale_pot ' \

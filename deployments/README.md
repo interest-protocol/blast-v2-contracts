@@ -17,6 +17,11 @@ Every record must contain at least:
 Raw simulator or broadcast output stays generated and ignored. Public
 normalized records must not contain secrets.
 
+Before the first launch with a presale on a network, confirm that its protocol
+enables `enable_accumulators` and `enable_object_funds_withdraw` and that the
+accumulator root `0xacc` exists, then dry-run a funded `settle_presale` there
+([ADR 0096](../docs/decisions/0096-presale-through-address-balances.md)).
+
 Package-specific procedures are loaded only for the operation being performed.
 Blast SUI uses its [deployment](../sui/blast_sui/DEPLOYING.md) and
 [upgrade](../sui/blast_sui/UPGRADING.md) runbooks. Other packages record the

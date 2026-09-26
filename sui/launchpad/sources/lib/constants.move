@@ -36,8 +36,9 @@ macro public(package) fun max_presale_ms(): u64 {
     259_200_000
 }
 
-/// Wait between a presale's end and its settlement, so the pot settlement reads is at least one
-/// consensus commit newer than every bid.
+/// Margin between a presale's end and its settlement. Bids close strictly before the end, so
+/// settlement already runs in a later consensus commit than every bid and reads a pot that holds
+/// them all; the margin absorbs settlement lag.
 macro public(package) fun presale_settlement_delay_ms(): u64 {
     10_000
 }

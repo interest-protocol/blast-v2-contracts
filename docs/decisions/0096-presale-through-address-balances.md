@@ -48,11 +48,12 @@ bought and any Quote refunded past the target are held for delivery;
 the window capped at five minutes. A pot that reaches the target makes the
 launch `MigrationReady`.
 
-**Why the delay is enough.** A join needs `clock < end`, and settlement needs
-`clock >= end + 10 s`. The clock is fixed per consensus commit, and every
+**Why settlement sees every bid.** A join needs `clock < end`, and settlement
+needs `clock >= end + 10 s`. The clock is fixed per consensus commit, so the
+strict deadline alone puts settlement in a later commit than every join. Every
 transaction in a settlement batch reads the accumulator version settled before
-it. So settlement always runs in a later commit than every join, and it reads a
-balance that includes every bid.
+it, so the balance settlement reads includes every bid. The 10 seconds are
+margin, not the guarantee.
 
 **Delivery.** Anyone may `deliver_presale` one bid, passed as
 `Receiving<BlastPresaleBid>`, in any lifecycle after `Presale`, migration
@@ -70,7 +71,8 @@ There is no `Delivery` state and no call that opens trading.
 
 **Donations.** Quote anyone sends to the launch's address before settlement
 enlarges the pot. It buys Meme that no bid claims, and that Meme stays in the
-launch with the rounding dust. Quote sent after settlement cannot be recovered.
+launch with the rounding dust. Quote sent in the settlement's commit or later
+cannot be recovered.
 
 **Events.** `LaunchCreated` carries `presale_ms`.
 `PresaleJoined { launch_id, bid_id, quote }` names no bidder, since the bidder
@@ -107,8 +109,31 @@ names the bidder, who can differ from the sender.
   SDK needs its initial shared version.
 - Bidders' wallets show nothing until delivery, because the bid object belongs
   to the launch. The SDK lists bids from `PresaleJoined`.
-- The keeper must deliver every bid. Each delivery creates up to two coins and
-  refunds the bid's storage. About 500 deliveries fit in one transaction.
+- The keeper must deliver every bid. Each delivery creates up to two coins, and
+  the deleted bid's storage rebate goes to whoever delivers. The protocol limits
+  allow about 500 deliveries per transaction; the gas of such a batch is not
+  yet measured.
+- Tokens reach a bidder when its bid is delivered, not at settlement. The
+  contract delays trading by the delivery window; delivering every bid inside
+  it is the keeper's job.
+- There is no minimum bid. Many one-atom bids each need a delivery. That costs
+  the attacker gas and storage, and the deliverer collects the rebates. It is
+  accepted, since caps and minimums were ruled out as dials.
+- **Publication precondition.** Settlement needs the accumulator root and the
+  `enable_accumulators` and `enable_object_funds_withdraw` protocol features.
+  Without the latter, `withdraw_funds_from_object` aborts: the launch stays in
+  `Presale`, and its bids' Quote stays in its address balance with no way out.
+  Move code cannot read the flag to fail closed at `finalize`. Before any
+  presale launch is created on a network, the deployment checks those features
+  and dry-runs a funded `settle_presale` there. The design research read both
+  as enabled on live mainnet at protocol version 137 on 2026-09-26; that
+  reading is a premise the deployment check must confirm.
+- **Accepted residual.** If settlement ever read less than the sum of the bids,
+  for example after a protocol change to accumulator visibility, deliveries
+  would abort on the division or the pot subtraction. The remaining Quote would
+  stay in the launch's address balance, which only settlement can withdraw.
+  There is no recovery path; adding one would need an administrator who can
+  move bidders' funds.
 - The launchpad ABI, lifecycle tag names, event layouts, and error names change.
   The SDK, the indexer, and the migrators' call to `migrate` (which now passes
   the `Clock`) follow.
@@ -118,12 +143,14 @@ names the bidder, who can differ from the sender.
 
 ## Verification
 
-- Move unit tests cover every guard and its precedence. The settlement guards
-  run on the production `settle_presale`; the Move test VM cannot settle
-  accumulators, so it reads an empty pot. Funded settlements use a test-only
-  seam that supplies the pot. The tests also cover pro-rata delivery and order
-  independence, donations, the delivery window, migration before the window
-  opens, and delivery after migration.
+- Move unit tests cover every presale guard and its precedence, including the
+  stale package version, lifecycle before the trading window, the window before
+  the migration witness, and a bid delivered through another launch. The
+  settlement guards run on the production `settle_presale`; the Move test VM
+  cannot settle accumulators, so it reads an empty pot. Funded settlements use
+  a test-only seam that supplies the pot. The tests also cover pro-rata
+  delivery and order independence, donations, the delivery window and its
+  bounds, migration before the window opens, and delivery after migration.
 - The migrators' replay test reduces `PresaleJoined`, `PresaleSettled`, and
   `PresaleDelivered` into a model that must equal every getter and each bid
   object the launch owns.
@@ -132,7 +159,9 @@ names the bidder, who can differ from the sender.
   runs the address-balance path in simulacrum. It covers join, the checkpoint
   that settles deposits, settlement from the settled balance, and delivery by
   `Receiving`. It has not been compiled yet (the harness needs a Sui rebuild),
-  so it must pass before publication.
+  so it must pass before publication. Simulacrum runs no validator-side
+  post-execution funds check, so the harness proves the read and the amounts,
+  not that check.
 - Release gate: a localnet or testnet load test with 10,000 joins, and a
   `send_funds` check with a regulated Quote such as USDC.
 

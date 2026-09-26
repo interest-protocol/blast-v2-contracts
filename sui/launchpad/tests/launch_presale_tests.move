@@ -68,6 +68,8 @@ public struct TEST_QUOTE() has drop;
 
 public struct TEST_MIGRATION_WITNESS() has drop;
 
+public struct OTHER_MIGRATION_WITNESS() has drop;
+
 /// Configured cold policy, the accumulator root, and one clock standing at the public start time.
 public struct PresaleFixture {
     scenario: Scenario,
@@ -181,7 +183,10 @@ fun a_bid_is_owned_by_the_launch_and_joining_leaves_the_launch_untouched() {
     let launch_id = fixture.open(MIN_PRESALE_MS);
     let bid_id = fixture.join(ALICE, ALICE_BID);
 
-    assert_eq!(bcs::to_bytes(&only_event<PresaleJoined>()), joined_bytes(launch_id, bid_id, ALICE_BID));
+    assert_eq!(
+        bcs::to_bytes(&only_event<PresaleJoined>()),
+        joined_bytes(launch_id, bid_id, ALICE_BID),
+    );
     assert_eq!(fixture.bid(launch_id, bid_id), vector[ALICE.to_u256(), ALICE_BID as u256]);
     assert!(!fixture.has_coin<TEST_QUOTE>(ALICE));
     fixture.next_tx!(KEEPER, |f| {
@@ -241,6 +246,16 @@ fun an_ended_presale_precedes_a_zero_bid() {
     fixture.set_time(PRESALE_END_MS);
 
     fixture.join(ALICE, 0);
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+fun stale_package_version_aborts_a_join_before_the_lifecycle_check() {
+    let mut fixture = start();
+    fixture.open(0);
+    fixture.package_version.set_for_testing(2);
+
+    fixture.join(ALICE, ALICE_BID);
     fixture.end();
 }
 
@@ -325,6 +340,16 @@ fun delivery_before_settlement_is_rejected() {
 }
 
 // --- Settling ---
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+fun stale_package_version_aborts_settlement_before_the_lifecycle_check() {
+    let mut fixture = start();
+    fixture.open(0);
+    fixture.package_version.set_for_testing(2);
+
+    fixture.settle(KEEPER);
+    fixture.end();
+}
 
 #[test, expected_failure(abort_code = blast_fun::errors::EPresaleNotSettleable, location = blast_fun::launch)]
 fun settlement_one_millisecond_before_the_delay_passes_is_rejected() {
@@ -629,7 +654,86 @@ fun migration_before_trading_opens_is_rejected() {
     fixture.end();
 }
 
+#[test, expected_failure(abort_code = blast_fun::errors::EInvalidLaunchLifecycle, location = blast_fun::launch)]
+fun a_graduated_presale_rejects_a_buy_on_its_lifecycle_before_the_window() {
+    let mut fixture = start();
+    fixture.open(MIN_PRESALE_MS);
+    fixture.join(ALICE, 30_000_000);
+    fixture.set_time(SETTLE_MS);
+    fixture.settle_pot(30_000_000);
+
+    fixture.buy(ALICE, ALICE_BID, 1);
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EInvalidLaunchLifecycle, location = blast_fun::launch)]
+fun a_graduated_presale_rejects_a_sell_on_its_lifecycle_before_the_window() {
+    let mut fixture = start();
+    fixture.open(MIN_PRESALE_MS);
+    fixture.join(ALICE, 30_000_000);
+    fixture.set_time(SETTLE_MS);
+    fixture.settle_pot(30_000_000);
+
+    fixture.sell(ALICE, 1);
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::ETradingNotOpen, location = blast_fun::launch)]
+fun the_trading_window_precedes_the_migration_witness_check() {
+    let mut fixture = start();
+    fixture.open(MIN_PRESALE_MS);
+    fixture.join(ALICE, 30_000_000);
+    fixture.set_time(SETTLE_MS);
+    fixture.settle_pot(30_000_000);
+
+    fixture.migrate_with(OTHER_MIGRATION_WITNESS());
+    fixture.end();
+}
+
+#[test]
+fun a_presale_of_the_maximum_window_waits_exactly_that_long() {
+    let mut fixture = start();
+    fixture.open(MAX_DELIVERY_WINDOW_MS);
+    let settle_ms = PUBLIC_START_MS + MAX_DELIVERY_WINDOW_MS + SETTLEMENT_DELAY_MS;
+    fixture.set_time(settle_ms);
+    fixture.settle(KEEPER);
+    fixture.next_tx!(KEEPER, |f| {
+        let launch = f.take_launch();
+
+        assert_eq!(launch.trading_opens_ms_for_testing(), settle_ms + MAX_DELIVERY_WINDOW_MS);
+        launch.put_back();
+    });
+    fixture.set_time(settle_ms + MAX_DELIVERY_WINDOW_MS);
+
+    fixture.buy(ALICE, ALICE_BID, 1);
+    fixture.end();
+}
+
 // --- Delivering ---
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+fun stale_package_version_aborts_delivery_before_the_lifecycle_check() {
+    let mut fixture = start();
+    fixture.open(MIN_PRESALE_MS);
+    let bid_id = fixture.join(ALICE, ALICE_BID);
+    fixture.package_version.set_for_testing(2);
+
+    fixture.deliver(bid_id);
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = sui::transfer::EUnableToReceiveObject, location = sui::transfer)]
+fun a_bid_cannot_be_delivered_through_another_launch() {
+    let mut fixture = start();
+    fixture.open(MIN_PRESALE_MS);
+    let bid_id = fixture.join(ALICE, ALICE_BID);
+    let other = fixture.open(MIN_PRESALE_MS);
+    fixture.set_time(SETTLE_MS);
+    fixture.settle_pot_of(other, 0);
+
+    fixture.deliver_through(other, bid_id);
+    fixture.end();
+}
 
 #[test]
 fun deliveries_pay_each_bid_the_same_price_and_the_last_takes_the_remainder() {
@@ -1007,6 +1111,21 @@ fun presale_settle_pot(self: &mut PresaleFixture, pot: u64) {
     launch.put_back();
 }
 
+/// `presale_settle_pot` for the launch `launch_id`, when several exist.
+fun presale_settle_pot_of(self: &mut PresaleFixture, launch_id: ID, pot: u64) {
+    self.scenario.next_tx(KEEPER);
+    let mut launch = self
+        .scenario
+        .take_shared_by_id<Launch<LAUNCH_PRESALE_TESTS, TEST_QUOTE>>(launch_id);
+
+    launch.settle_presale_pot_for_testing(
+        &self.runtime_config,
+        balance::create_for_testing(pot),
+        &self.clock,
+    );
+    launch.put_back();
+}
+
 /// Delivers the bid `bid_id` as the keeper in a new transaction.
 fun presale_deliver(self: &mut PresaleFixture, bid_id: ID) {
     self.scenario.next_tx(KEEPER);
@@ -1020,10 +1139,27 @@ fun presale_deliver(self: &mut PresaleFixture, bid_id: ID) {
     launch.put_back();
 }
 
+/// Delivers the bid `bid_id` through the launch `launch_id`, whichever launch owns the bid.
+fun presale_deliver_through(self: &mut PresaleFixture, launch_id: ID, bid_id: ID) {
+    self.scenario.next_tx(KEEPER);
+    let mut launch = self
+        .scenario
+        .take_shared_by_id<Launch<LAUNCH_PRESALE_TESTS, TEST_QUOTE>>(launch_id);
+
+    launch.deliver_presale(
+        &self.package_version,
+        test_scenario::receiving_ticket_by_id(bid_id),
+        self.scenario.ctx(),
+    );
+    launch.put_back();
+}
+
 /// Returns the bid's `[bidder, quote]` in a new transaction, leaving it with the launch.
 fun presale_bid(self: &mut PresaleFixture, launch_id: ID, bid_id: ID): vector<u256> {
     self.scenario.next_tx(KEEPER);
-    let bid = self.scenario.take_from_address_by_id<BlastPresaleBid>(launch_id.to_address(), bid_id);
+    let bid = self
+        .scenario
+        .take_from_address_by_id<BlastPresaleBid>(launch_id.to_address(), bid_id);
     let (bidder, quote) = bid.presale_bid_for_testing();
     test_scenario::return_to_address(launch_id.to_address(), bid);
 
@@ -1097,6 +1233,11 @@ fun presale_sell(self: &mut PresaleFixture, sender: address, meme_in: u64) {
 
 /// Migrates as the stored adapter in a new transaction and discards the pool's share.
 fun presale_migrate(self: &mut PresaleFixture) {
+    self.migrate_with(TEST_MIGRATION_WITNESS());
+}
+
+/// Migrates with `witness` in a new transaction and discards the pool's share.
+fun presale_migrate_with<Witness: drop>(self: &mut PresaleFixture, witness: Witness) {
     self.scenario.next_tx(KEEPER);
     let mut launch = self.take_launch();
     let mut currency = self
@@ -1105,7 +1246,7 @@ fun presale_migrate(self: &mut PresaleFixture) {
     let (meme, quote) = launch.migrate(
         &self.package_version,
         &mut currency,
-        TEST_MIGRATION_WITNESS(),
+        witness,
         &self.clock,
         self.scenario.ctx(),
     );
@@ -1273,7 +1414,11 @@ use fun presale_settle_owned as PresaleFixture.settle_owned;
 
 use fun presale_settle_pot as PresaleFixture.settle_pot;
 
+use fun presale_settle_pot_of as PresaleFixture.settle_pot_of;
+
 use fun presale_deliver as PresaleFixture.deliver;
+
+use fun presale_deliver_through as PresaleFixture.deliver_through;
 
 use fun presale_bid as PresaleFixture.bid;
 
@@ -1286,6 +1431,8 @@ use fun presale_buy_owned as PresaleFixture.buy_owned;
 use fun presale_sell as PresaleFixture.sell;
 
 use fun presale_migrate as PresaleFixture.migrate;
+
+use fun presale_migrate_with as PresaleFixture.migrate_with;
 
 use fun presale_take_launch as PresaleFixture.take_launch;
 
