@@ -3,11 +3,11 @@
 
 #[test_only]
 /// Supplies a Publisher whose original package address is not Blast's test address.
-module 0xf::foreign_publisher;
+module 0xf::presale_foreign_publisher;
 
 // === Test-Only Types ===
 
-public struct FOREIGN_PUBLISHER() has drop;
+public struct PRESALE_FOREIGN_PUBLISHER() has drop;
 
 // === Tests ===
 
@@ -25,7 +25,7 @@ fun publisher_has_a_foreign_original_package() {
 // === Test Helpers ===
 
 public fun new(ctx: &mut TxContext): Publisher {
-    package::test_claim(FOREIGN_PUBLISHER(), ctx)
+    package::test_claim(PRESALE_FOREIGN_PUBLISHER(), ctx)
 }
 
 // === Imports ===

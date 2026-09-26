@@ -22,6 +22,9 @@ const FEE_ADMIN_ROLE: u64 = 2;
 /// Role that authorizes choosing where Blast's fee is paid.
 const TREASURY_ADMIN_ROLE: u64 = 4;
 
+/// Role that authorizes admitting and removing liquidity adapters.
+const ADAPTER_ADMIN_ROLE: u64 = 8;
+
 // === Public Types ===
 
 /// One-time witness that names this administration domain at the type level.
@@ -50,10 +53,21 @@ public(package) fun treasury_admin_role(): u64 {
     TREASURY_ADMIN_ROLE
 }
 
+/// The role a witness must carry to admit or remove a liquidity adapter.
+public(package) fun adapter_admin_role(): u64 {
+    ADAPTER_ADMIN_ROLE
+}
+
 // === Test-Only Functions ===
 
 #[test_only]
 /// Runs domain initialization with a genuine test one-time witness.
 public fun init_for_testing(ctx: &mut TxContext) {
     init(sui::test_utils::create_one_time_witness<BLAST_PRESALE_DOMAIN>(), ctx);
+}
+
+#[test_only]
+/// The adapter role, for suites in dependent packages that admit a test adapter.
+public fun adapter_admin_role_for_testing(): u64 {
+    ADAPTER_ADMIN_ROLE
 }

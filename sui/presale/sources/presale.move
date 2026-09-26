@@ -5,11 +5,14 @@
 #[allow(lint(abort_without_constant))]
 /// A fixed-price token presale in tranches.
 ///
-/// The creator deposits exactly the tokens its tranches sell. Buyers commit Quote to open
-/// tranches. Once every tranche has ended anyone finalizes the presale. If it raised its minimum,
-/// the creator is paid the raise less Blast's fee and gets its unsold tokens back; each buyer then
-/// claims its tokens from the claim time, vested per tranche, and any pro-rata refund at once. If
-/// it did not, every token goes back to the creator and every commit back to its buyer.
+/// The creator deposits exactly the tokens its tranches sell, plus, when part of the raise goes
+/// into a DEX pool, the tokens that pool can need. Buyers commit Quote to open tranches. Once every
+/// tranche has ended anyone finalizes the presale. If it raised its minimum, Blast takes its fee,
+/// the recipients are paid their shares of the rest, and the liquidity share waits, with the
+/// tokens it buys at the listing price, for the presale's adapter to open the pool from the claim
+/// time; unsold and unused tokens go back to the creator. Each buyer then claims its tokens from
+/// the claim time, vested per tranche, and any pro-rata refund at once. If it did not raise its
+/// minimum, every token goes back to the creator and every commit back to its buyer.
 module blast_presale::presale;
 
 // === Public Types ===
@@ -39,16 +42,27 @@ public struct BlastPresale<phantom Token, phantom Quote> has key {
     claim_ms: u64,
     /// Blast's fee on the raise, snapshotted at creation.
     fee_bps: u64,
+    recipients: vector<Recipient>,
+    /// The pool share until the adapter takes it; none without one, after a failure, or when the
+    /// raise bought no pool tokens.
+    liquidity: Option<Liquidity>,
     status: Status,
     tokens: Balance<Token>,
     quote: Balance<Quote>,
+    /// The tokens reserved for the pool, then, after a success, the pool's tokens.
+    liquidity_tokens: Balance<Token>,
+    /// The pool's Quote after a success.
+    liquidity_quote: Balance<Quote>,
 }
 
 // === Public Functions ===
 
-/// Creates a presale selling `tokens` through `tranches`, at Blast's current fee. It fails unless
+/// Creates a presale selling tokens through `tranches`, at Blast's current fee. It fails unless
 /// the tranches raise `min_raise` in total (zero for no minimum), and buyers claim tokens from
-/// `claim_ms`, which is no earlier than the last tranche's end. The sender is the creator.
+/// `claim_ms`, which is no earlier than the last tranche's end. After Blast's fee, the raise is
+/// paid to `recipients` and any `liquidity` by share. `tokens` is exactly what the tranches sell
+/// plus the pool reserve: the tokens the liquidity share of the whole tranches' Quote buys at the
+/// listing price. The sender is the creator.
 public fun new<Token, Quote>(
     package_version: &PackageVersion,
     config: &BlastPresaleConfig,
@@ -56,6 +70,8 @@ public fun new<Token, Quote>(
     tranches: vector<Tranche>,
     min_raise: u64,
     claim_ms: u64,
+    recipients: vector<Recipient>,
+    liquidity: Option<Liquidity>,
     clock: &Clock,
     ctx: &mut TxContext,
 ): BlastPresale<Token, Quote> {
@@ -74,18 +90,30 @@ public fun new<Token, Quote>(
         tranches.all!(|tranche| tranche.end_ms() > now_ms),
         blast_presale::errors::tranche_already_ended!(),
     );
+    payout::assert_shares(&recipients, &liquidity);
+    assert!(
+        liquidity.map_ref!(|liquidity| liquidity.is_for<Token, Quote>()).destroy_or!(true),
+        blast_presale::errors::invalid_liquidity!(),
+    );
+    let admitted = liquidity.map_ref!(|liquidity| config.is_adapter_allowed(liquidity.venue()));
+    assert!(admitted.destroy_or!(true), blast_presale::errors::adapter_not_allowed!());
     let (mut total_tokens, mut total_quote) = (0, 0);
     tranches.do_ref!(|tranche| {
         total_tokens = total_tokens + tranche.tokens();
         total_quote = total_quote + tranche.quote();
     });
-    assert!(tokens.value() == total_tokens, blast_presale::errors::token_deposit_mismatch!());
+    let reserve = payout::reserve_down(&liquidity, total_quote);
+    assert!(
+        tokens.value() == total_tokens + reserve,
+        blast_presale::errors::token_deposit_mismatch!(),
+    );
     assert!(
         tranches.all!(|tranche| claim_ms >= tranche.end_ms()),
         blast_presale::errors::invalid_claim_time!(),
     );
     assert!(min_raise <= total_quote, blast_presale::errors::invalid_min_raise!());
 
+    let mut tokens = tokens.into_balance();
     let presale = BlastPresale {
         id: object::new(ctx),
         creator: ctx.sender(),
@@ -93,9 +121,13 @@ public fun new<Token, Quote>(
         min_raise,
         claim_ms,
         fee_bps: config.fee_bps(),
+        recipients,
+        liquidity,
         status: Status::Open,
-        tokens: tokens.into_balance(),
+        liquidity_tokens: tokens.split(reserve),
+        tokens,
         quote: balance::zero(),
+        liquidity_quote: balance::zero(),
     };
 
     events::presale_created<Token, Quote>(
@@ -104,6 +136,8 @@ public fun new<Token, Quote>(
         min_raise,
         claim_ms,
         presale.fee_bps,
+        presale.recipients,
+        presale.liquidity,
     );
 
     presale
@@ -154,10 +188,11 @@ public fun commit_whitelisted<Token, Quote>(
     self.accept_commit(tranche, quote_in, max_quote, ctx)
 }
 
-/// Closes the presale once every tranche has ended. If the tranches raised the minimum, the
-/// creator is paid the raise less Blast's fee, rounded up, which goes to the configured
-/// destination; otherwise every commit becomes refundable. Unsold tokens, every token after a
-/// failure, go back to the creator. Anyone may finalize.
+/// Closes the presale once every tranche has ended. If the tranches raised the minimum, Blast's
+/// fee, rounded up, goes to the configured destination, the recipients are paid their shares of
+/// the rest, and the liquidity share and the tokens it buys at the listing price wait for the
+/// adapter; the creator gets back the unsold tokens and the unused pool reserve. Otherwise every
+/// token goes back to the creator and every commit becomes refundable. Anyone may finalize.
 public fun finalize<Token, Quote>(
     self: &mut BlastPresale<Token, Quote>,
     package_version: &PackageVersion,
@@ -182,25 +217,76 @@ public fun finalize<Token, Quote>(
     let fee = if (succeeded) {
         raised.mul_div_ceil(self.fee_bps, constants::basis_points_denominator!())
     } else 0;
-    let unsold = if (succeeded) self.tokens.value() - sold else self.tokens.value();
+    let (amounts, pool_quote) = payout::split_down(&self.recipients, &self.liquidity, raised - fee);
+    let pool_tokens = self.liquidity.map_ref!(|liquidity| liquidity.tokens_down(pool_quote));
+    let pool_tokens = pool_tokens.destroy_or!(0);
+    let pooled = succeeded && pool_quote > 0 && pool_tokens > 0;
     let fee_destination = config.fee_destination();
-    let creator = self.creator;
+    let (presale_id, creator) = (self.id.to_inner(), self.creator);
 
     self.status = if (succeeded) Status::Succeeded else Status::Failed;
+    let mut returned = self.tokens.withdraw_all();
+    returned.join(self.liquidity_tokens.withdraw_all());
     if (succeeded) {
+        self.tokens.join(returned.split(sold));
         send(self.quote.split(fee), fee_destination, ctx);
-        send(self.quote.split(raised - fee), creator, ctx);
+        self.recipients.length().do!(|i| {
+            let destination = self.recipients[i].destination();
+            send(self.quote.split(amounts[i]), destination, ctx);
+            events::proceeds_paid(presale_id, destination, amounts[i]);
+        });
     };
-    send(self.tokens.split(unsold), creator, ctx);
+    if (pooled) {
+        self.liquidity_tokens.join(returned.split(pool_tokens));
+        self.liquidity_quote.join(self.quote.split(pool_quote));
+    } else {
+        // A failed presale or an empty pool share leaves nothing for an adapter; the pool's Quote
+        // share, if any, goes to the creator.
+        self.liquidity = option::none();
+        if (succeeded) send(self.quote.split(pool_quote), creator, ctx);
+    };
+    let returned_value = returned.value();
+    send(returned, creator, ctx);
 
     events::presale_finalized(
-        self.id.to_inner(),
+        presale_id,
         succeeded,
         raised,
         fee,
         fee_destination,
-        unsold,
+        returned_value,
+        self.liquidity_quote.value(),
+        self.liquidity_tokens.value(),
     );
+}
+
+/// Hands the pool's tokens and Quote, with its terms, to the adapter the presale named, once,
+/// from the claim time, so the pool opens when buyers can claim.
+public fun take_liquidity<Token, Quote, Adapter: drop>(
+    self: &mut BlastPresale<Token, Quote>,
+    package_version: &PackageVersion,
+    _: Adapter,
+    clock: &Clock,
+): (Balance<Token>, Balance<Quote>, Liquidity) {
+    package_version.assert_current();
+    assert!(self.status != Status::Open, blast_presale::errors::presale_not_finalized!());
+    assert!(self.liquidity.is_some(), blast_presale::errors::no_liquidity!());
+    assert!(
+        self.liquidity.borrow().venue() == type_name::with_original_ids<Adapter>(),
+        blast_presale::errors::invalid_adapter!(),
+    );
+    assert!(
+        clock.timestamp_ms() >= self.claim_ms,
+        blast_presale::errors::liquidity_not_open!(),
+    );
+
+    let liquidity = self.liquidity.extract();
+    let tokens = self.liquidity_tokens.withdraw_all();
+    let quote = self.liquidity_quote.withdraw_all();
+
+    events::liquidity_taken(self.id.to_inner(), tokens.value(), quote.value());
+
+    (tokens, quote, liquidity)
 }
 
 /// Sends `buyer` what its position in tranche `tranche` can claim now. After a success that is its
@@ -241,6 +327,11 @@ public fun claim<Token, Quote>(
     send(self.quote.split(quote), buyer, ctx);
 
     events::claimed(self.id.to_inner(), tranche, buyer, tokens, quote);
+}
+
+/// The creator, who receives the unsold tokens and, through an adapter's vault, the pool's fees.
+public fun creator<Token, Quote>(self: &BlastPresale<Token, Quote>): address {
+    self.creator
 }
 
 // === Private Functions ===
@@ -301,9 +392,17 @@ fun send<T>(balance: Balance<T>, recipient: address, ctx: &mut TxContext) {
 // === Test-Only Functions ===
 
 #[test_only]
-/// Returns the tokens and Quote the presale holds.
+/// Returns the tokens and Quote the presale holds for buyers.
 public fun balances_for_testing<Token, Quote>(self: &BlastPresale<Token, Quote>): (u64, u64) {
     (self.tokens.value(), self.quote.value())
+}
+
+#[test_only]
+/// Returns the tokens and Quote the presale holds for the pool.
+public fun liquidity_balances_for_testing<Token, Quote>(
+    self: &BlastPresale<Token, Quote>,
+): (u64, u64) {
+    (self.liquidity_tokens.value(), self.liquidity_quote.value())
 }
 
 #[test_only]
@@ -352,6 +451,7 @@ use blast_presale::{
     constants,
     events,
     package_version::PackageVersion,
+    payout::{Self, Liquidity, Recipient},
     presale_config::BlastPresaleConfig,
     tranche::Tranche,
 };

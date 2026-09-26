@@ -57,7 +57,8 @@ without returning to core for its post-conditions.
 | Holder rewards (migrators) | Merkle rounds a Blast administrator funds from a vault's rewards balance, and one-time proof claims | holder accounting, which stays off-chain |
 | Migration interface | one-time liquidity handoff, linear migration value, and reconciled completion | DEX-specific object/storage details |
 | Adapter | start a launch at a venue-valid tier, prepare its venue, complete a migration, and collect the position's fees | changing core economics |
-| Presale (own package) | fixed-price tranches of a creator's deposited tokens: windows, first-come or pro-rata fills, Merkle whitelists and caps, the minimum raise, finalization, Blast's fee, and vested claims ([ADR 0096](decisions/0096-presale-package.md), [how it works](presale.md)) | a bonding curve, launch state, or a liquidity migration |
+| Presale (own package) | fixed-price tranches of a creator's deposited tokens: windows, first-come or pro-rata fills, Merkle whitelists and caps, the minimum raise, finalization, Blast's fee, the payout to recipients, the pool share and its one-time handoff to an admitted adapter, and vested claims ([ADR 0096](decisions/0096-presale-package.md), [how it works](presale.md)) | a bonding curve, launch state, or DEX code |
+| Presale pools (migrators) | Cetus pool reservation and Cetus and Bluefin presale pool creation from the handed-off share, the locked `BlastPresaleVault`, and its fee payments: Blast's live LP share and the rest to the presale's creator | presale accounting or a way to remove the position |
 
 Modules may begin together in the single chain project. These are dependency
 directions, not a demand for seven packages.

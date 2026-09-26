@@ -98,6 +98,50 @@ public fun new<Meme, Quote>(
     launch
 }
 
+/// Reserves Cetus pool creation for a presale's `Token` and `Quote` at `tick_spacing` with the
+/// token's treasury capability, as a launch start does, and returns the liquidity terms the
+/// presale must be created with: `bps` of its raise after Blast's fee into a full-range pool that
+/// opens at `listing_quote` Quote per `listing_tokens` tokens. Only this adapter can open that
+/// pool, and only once Blast admits it for presales.
+public fun presale_liquidity<Token, Quote>(
+    migrators_version: &MigratorsVersion,
+    venue_config: &mut VenueConfig,
+    cetus_config: &GlobalConfig,
+    pools: &mut Pools,
+    treasury_cap: &mut TreasuryCap<Token>,
+    tick_spacing: u32,
+    bps: u64,
+    listing_quote: u64,
+    listing_tokens: u64,
+    ctx: &mut TxContext,
+): Liquidity {
+    migrators_version.assert_current();
+    let fee_rate = config::get_fee_rate(tick_spacing, cetus_config);
+
+    let liquidity = payout::liquidity<Token, Quote, _>(
+        Witness(),
+        tick_spacing,
+        fee_rate,
+        bps,
+        listing_quote,
+        listing_tokens,
+    );
+    let pool_creation_cap = factory::mint_pool_creation_cap(cetus_config, pools, treasury_cap, ctx);
+    factory::register_permission_pair<Token, Quote>(
+        cetus_config,
+        pools,
+        tick_spacing,
+        &pool_creation_cap,
+        ctx,
+    );
+    let pool_creation_cap_id = object::id(&pool_creation_cap);
+    venue_config.add_object(CreationCapKey<Token>(), pool_creation_cap);
+
+    blast_events::cetus_pool_reserved<Token, Quote>(pool_creation_cap_id, tick_spacing);
+
+    liquidity
+}
+
 /// Migrates a MigrationReady launch whose Meme is Cetus coin A into vault custody.
 ///
 /// Creates the pair's pool with the reserved capability at the launch's tick spacing, priced from
@@ -191,6 +235,134 @@ public fun migrate_meme_b<Meme, Quote>(
         );
 
     burn_into_vault(launch, burn_manager, position, residual_meme, residual_quote, ctx);
+}
+
+/// Opens a succeeded presale's reserved Cetus pool, its Token as coin A, from the claim time.
+///
+/// Takes the presale's pool share, creates the pool at its tick spacing priced from those
+/// balances, the listing price, seeds full-range liquidity with them, and burns the position into
+/// a presale vault; the residuals go to the presale's creator. Anyone may call it.
+public fun open_presale_pool_token_a<Token, Quote>(
+    presale: &mut BlastPresale<Token, Quote>,
+    migrators_version: &MigratorsVersion,
+    presale_version: &PresaleVersion,
+    venue_config: &VenueConfig,
+    cetus_config: &GlobalConfig,
+    pools: &mut Pools,
+    burn_manager: &mut BurnManager,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    migrators_version.assert_current();
+    assert!(factory::is_right_order<Token, Quote>(), EInvalidCoinOrder);
+
+    let (token, quote, liquidity) = presale.take_liquidity(presale_version, Witness(), clock);
+    let (tick_spacing, _) = liquidity.pool_tier();
+    let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
+    let token_amount = token.value();
+    let quote_amount = quote.value();
+    let (position, residual_token, residual_quote) =
+        pool_creator::create_pool_v3_with_creation_cap<Token, Quote>(
+            cetus_config,
+            pools,
+            venue_config.pool_creation_cap<Token>(),
+            tick_spacing,
+            migration_math::sqrt_price_x64(token_amount, quote_amount, true),
+            b"".to_string(),
+            tick_lower,
+            tick_upper,
+            token.into_coin(ctx),
+            quote.into_coin(ctx),
+            token_amount >= quote_amount,
+            clock,
+            ctx,
+        );
+
+    burn_into_presale_vault(presale, burn_manager, position, residual_token, residual_quote, ctx);
+}
+
+/// Opens a succeeded presale's reserved Cetus pool, its Quote as coin A, from the claim time.
+///
+/// Identical to `open_presale_pool_token_a` with Quote as coin A.
+public fun open_presale_pool_token_b<Token, Quote>(
+    presale: &mut BlastPresale<Token, Quote>,
+    migrators_version: &MigratorsVersion,
+    presale_version: &PresaleVersion,
+    venue_config: &VenueConfig,
+    cetus_config: &GlobalConfig,
+    pools: &mut Pools,
+    burn_manager: &mut BurnManager,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    migrators_version.assert_current();
+    assert!(factory::is_right_order<Quote, Token>(), EInvalidCoinOrder);
+
+    let (token, quote, liquidity) = presale.take_liquidity(presale_version, Witness(), clock);
+    let (tick_spacing, _) = liquidity.pool_tier();
+    let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
+    let token_amount = token.value();
+    let quote_amount = quote.value();
+    let (position, residual_quote, residual_token) =
+        pool_creator::create_pool_v3_with_creation_cap<Quote, Token>(
+            cetus_config,
+            pools,
+            venue_config.pool_creation_cap<Token>(),
+            tick_spacing,
+            migration_math::sqrt_price_x64(token_amount, quote_amount, false),
+            b"".to_string(),
+            tick_lower,
+            tick_upper,
+            quote.into_coin(ctx),
+            token.into_coin(ctx),
+            token_amount < quote_amount,
+            clock,
+            ctx,
+        );
+
+    burn_into_presale_vault(presale, burn_manager, position, residual_token, residual_quote, ctx);
+}
+
+/// Collects a presale vault's fees from its Token-A pool and pays them out. Anyone may call it.
+public fun collect_presale_fees_token_a<Token, Quote>(
+    self: &mut BlastPresaleVault<Token, Quote>,
+    migrators_version: &MigratorsVersion,
+    policy: &LpFeePolicy,
+    cetus_config: &GlobalConfig,
+    burn_manager: &BurnManager,
+    pool: &mut Pool<Token, Quote>,
+    ctx: &mut TxContext,
+) {
+    migrators_version.assert_current();
+    let (token_fee, quote_fee) = self.collect_presale_position_fees(
+        cetus_config,
+        burn_manager,
+        pool,
+        ctx,
+    );
+
+    self.pay_fees(policy, token_fee, quote_fee, ctx);
+}
+
+/// Collects a presale vault's fees from its Token-B pool and pays them out. Anyone may call it.
+public fun collect_presale_fees_token_b<Token, Quote>(
+    self: &mut BlastPresaleVault<Token, Quote>,
+    migrators_version: &MigratorsVersion,
+    policy: &LpFeePolicy,
+    cetus_config: &GlobalConfig,
+    burn_manager: &BurnManager,
+    pool: &mut Pool<Quote, Token>,
+    ctx: &mut TxContext,
+) {
+    migrators_version.assert_current();
+    let (quote_fee, token_fee) = self.collect_presale_position_fees(
+        cetus_config,
+        burn_manager,
+        pool,
+        ctx,
+    );
+
+    self.pay_fees(policy, token_fee, quote_fee, ctx);
 }
 
 /// Collects the vault position's fees from its Meme-A pool, splits them, burns the burn share's
@@ -357,6 +529,46 @@ fun burn_into_vault<Meme, Quote>(
         residual_quote.into_balance(),
         ctx,
     );
+}
+
+/// Burns a presale's position and locks its burn proof in a new presale vault.
+fun burn_into_presale_vault<Token, Quote>(
+    presale: &BlastPresale<Token, Quote>,
+    burn_manager: &mut BurnManager,
+    position: Position,
+    residual_token: Coin<Token>,
+    residual_quote: Coin<Quote>,
+    ctx: &mut TxContext,
+) {
+    let pool_id = position.pool_id();
+    let liquidity = position.liquidity();
+    let burn_proof = lp_burn::burn_lp_v2(burn_manager, position, ctx);
+    presale_vault::create(
+        presale,
+        &Venue(),
+        pool_id,
+        burn_proof,
+        liquidity,
+        residual_token.into_balance(),
+        residual_quote.into_balance(),
+        ctx,
+    );
+}
+
+/// Collects the burned presale position's fees from `pool`, which must be the vault's own pool.
+fun collect_presale_position_fees<X, Y, Token, Quote>(
+    self: &mut BlastPresaleVault<Token, Quote>,
+    cetus_config: &GlobalConfig,
+    burn_manager: &BurnManager,
+    pool: &mut Pool<X, Y>,
+    ctx: &mut TxContext,
+): (Balance<X>, Balance<Y>) {
+    assert!(self.pool_id() == object::id(pool), EPositionPoolMismatch);
+
+    let burn_proof = self.position_mut<_, _, _, CetusLPBurnProof>(&Venue());
+    let (fee_x, fee_y) = lp_burn::collect_fee(burn_manager, cetus_config, pool, burn_proof, ctx);
+
+    (fee_x.into_balance(), fee_y.into_balance())
 }
 
 /// Collects the burned migration position's fees and, once it exists, the auto-LP position's fees
@@ -533,8 +745,15 @@ use blast_fun_migrators::{
     lp_fee_policy::LpFeePolicy,
     migration_math,
     package_version::PackageVersion as MigratorsVersion,
+    presale_vault::{Self, BlastPresaleVault},
     vault::{Self, LpVault},
     venue_config::VenueConfig,
+};
+
+use blast_presale::{
+    package_version::PackageVersion as PresaleVersion,
+    payout::{Self, Liquidity},
+    presale::BlastPresale,
 };
 
 use cetus_clmm::{
@@ -548,11 +767,18 @@ use cetus_clmm::{
 
 use lp_burn::lp_burn::{Self, BurnManager, CetusLPBurnProof};
 
-use sui::{balance::{Self, Balance}, clock::Clock, coin::Coin, coin_registry::Currency};
+use sui::{
+    balance::{Self, Balance},
+    clock::Clock,
+    coin::{Coin, TreasuryCap},
+    coin_registry::Currency,
+};
 
 use fun add_liquidity as LpVault.add_liquidity;
 
 use fun collect_position_fees as LpVault.collect_position_fees;
+
+use fun collect_presale_position_fees as BlastPresaleVault.collect_presale_position_fees;
 
 use fun compound_meme_a as LpVault.compound_meme_a;
 

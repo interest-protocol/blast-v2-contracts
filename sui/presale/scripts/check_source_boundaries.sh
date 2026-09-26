@@ -39,6 +39,7 @@ expected_map=(
   'package_admin:commit_upgrade_and_advance:package_admin_role'
   'package_admin:make_immutable:package_admin_role'
   'presale_config:set_fee_bps:fee_admin_role'
+  'presale_config:set_adapter_allowed:adapter_admin_role'
   'presale_config:set_fee_destination:treasury_admin_role'
 )
 

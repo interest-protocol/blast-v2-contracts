@@ -99,6 +99,35 @@ const ENothingToClaim: u64 = 21;
 /// The commit buys less than one token atom at the tranche's price.
 const EZeroPurchase: u64 = 22;
 
+#[test_only]
+/// A recipient's address is zero or its share is zero.
+const EInvalidRecipient: u64 = 23;
+
+#[test_only]
+/// More than sixteen recipients, or the recipients' and liquidity's shares do not sum to 10,000.
+const EInvalidPayout: u64 = 24;
+
+#[test_only]
+/// The liquidity share is zero or above 10,000, its listing price has a zero side, or it is for
+/// another pair.
+const EInvalidLiquidity: u64 = 25;
+
+#[test_only]
+/// The liquidity adapter is not admitted.
+const EAdapterNotAllowed: u64 = 26;
+
+#[test_only]
+/// The presale has no liquidity to hand off.
+const ENoLiquidity: u64 = 27;
+
+#[test_only]
+/// The witness is not the adapter the presale named.
+const EInvalidAdapter: u64 = 28;
+
+#[test_only]
+/// The liquidity is handed off only from the claim time.
+const ELiquidityNotOpen: u64 = 29;
+
 macro public(package) fun invalid_fee_bps(): u64 { 0 }
 
 macro public(package) fun invalid_destination(): u64 { 1 }
@@ -144,3 +173,17 @@ macro public(package) fun presale_not_finalized(): u64 { 20 }
 macro public(package) fun nothing_to_claim(): u64 { 21 }
 
 macro public(package) fun zero_purchase(): u64 { 22 }
+
+macro public(package) fun invalid_recipient(): u64 { 23 }
+
+macro public(package) fun invalid_payout(): u64 { 24 }
+
+macro public(package) fun invalid_liquidity(): u64 { 25 }
+
+macro public(package) fun adapter_not_allowed(): u64 { 26 }
+
+macro public(package) fun no_liquidity(): u64 { 27 }
+
+macro public(package) fun invalid_adapter(): u64 { 28 }
+
+macro public(package) fun liquidity_not_open(): u64 { 29 }

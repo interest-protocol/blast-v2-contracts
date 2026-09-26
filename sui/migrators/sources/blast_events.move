@@ -147,6 +147,34 @@ public struct CetusPoolReserved has copy, drop {
     tick_spacing: u32,
 }
 
+/// A presale's pool opened: its position, holding `liquidity` in `pool_id`, is locked in
+/// `vault_id`, and the venue's residuals went to the presale's `creator`, who earns the pool's fees
+/// after Blast's share.
+public struct PresaleVaultCreated has copy, drop {
+    vault_id: ID,
+    presale_id: ID,
+    pool_id: ID,
+    position_id: ID,
+    venue: TypeName,
+    token: TypeName,
+    quote: TypeName,
+    creator: address,
+    residual_token: u64,
+    residual_quote: u64,
+    liquidity: u128,
+}
+
+/// One collection of a presale vault's fees: Blast's live share of `gross_token` and
+/// `gross_quote` went to `protocol_destination`, and the rest to the vault's creator.
+public struct PresaleFeesCollected has copy, drop {
+    vault_id: ID,
+    gross_token: u64,
+    gross_quote: u64,
+    protocol_destination: address,
+    protocol_token: u64,
+    protocol_quote: u64,
+}
+
 // === Package Functions ===
 
 /// Emits a default or original-type partner policy mutation with complete old/new pairs.
@@ -366,6 +394,49 @@ public(package) fun cetus_pool_reserved<Meme, Quote>(pool_creation_cap_id: ID, t
         quote: type_name::with_original_ids<Quote>(),
         pool_creation_cap_id,
         tick_spacing,
+    });
+}
+
+public(package) fun presale_vault_created<Token, Quote, Venue>(
+    vault_id: ID,
+    presale_id: ID,
+    pool_id: ID,
+    position_id: ID,
+    creator: address,
+    residual_token: u64,
+    residual_quote: u64,
+    liquidity: u128,
+) {
+    sui::event::emit(PresaleVaultCreated {
+        vault_id,
+        presale_id,
+        pool_id,
+        position_id,
+        venue: type_name::with_original_ids<Venue>(),
+        token: type_name::with_original_ids<Token>(),
+        quote: type_name::with_original_ids<Quote>(),
+        creator,
+        residual_token,
+        residual_quote,
+        liquidity,
+    });
+}
+
+public(package) fun presale_fees_collected(
+    vault_id: ID,
+    gross_token: u64,
+    gross_quote: u64,
+    protocol_destination: address,
+    protocol_token: u64,
+    protocol_quote: u64,
+) {
+    sui::event::emit(PresaleFeesCollected {
+        vault_id,
+        gross_token,
+        gross_quote,
+        protocol_destination,
+        protocol_token,
+        protocol_quote,
     });
 }
 

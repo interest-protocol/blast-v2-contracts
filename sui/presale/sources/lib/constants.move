@@ -21,6 +21,11 @@ macro public(package) fun max_tranches(): u64 {
     8
 }
 
+/// Most recipients one presale's raise may be paid to.
+macro public(package) fun max_recipients(): u64 {
+    16
+}
+
 /// Byte length of a Blake2b-256 digest, the whitelist roots and proof nodes.
 macro public(package) fun digest_length(): u64 {
     32

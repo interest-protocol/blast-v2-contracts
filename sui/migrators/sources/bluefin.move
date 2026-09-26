@@ -50,6 +50,129 @@ public fun new<Meme, Quote>(
     launch::new<Meme, Quote, _>(ticket, package_version, config, Witness(), tick_spacing, fee_rate)
 }
 
+/// Returns the liquidity terms a presale must be created with to open a Bluefin pool at the
+/// creator's tier: `bps` of its raise after Blast's fee into a full-range pool that opens at
+/// `listing_quote` Quote per `listing_tokens` tokens. Only this adapter can open that pool, and
+/// only once Blast admits it for presales.
+public fun presale_liquidity<Token, Quote>(
+    migrators_version: &MigratorsVersion,
+    tick_spacing: u32,
+    fee_rate: u64,
+    bps: u64,
+    listing_quote: u64,
+    listing_tokens: u64,
+): Liquidity {
+    migrators_version.assert_current();
+    assert!(
+        tick_spacing > 0 && tick_spacing <= constants::bluefin_max_tick_spacing!() && fee_rate > 0
+            && fee_rate <= constants::bluefin_max_fee_rate!(),
+        EInvalidTier,
+    );
+
+    payout::liquidity<Token, Quote, _>(
+        Witness(),
+        tick_spacing,
+        fee_rate,
+        bps,
+        listing_quote,
+        listing_tokens,
+    )
+}
+
+/// Opens a succeeded presale's Bluefin pool, Token as coin A, from the claim time.
+///
+/// Takes the presale's pool share, creates a full-range pool at its tier priced from those
+/// balances, the listing price, and seeds it with them, fixing the side with more atoms as
+/// `migrate` does. `creation_fee` is paid whole. The position is locked in a presale vault and the
+/// residuals go to the presale's creator. Anyone may call it.
+public fun open_presale_pool<Token, Quote>(
+    presale: &mut BlastPresale<Token, Quote>,
+    migrators_version: &MigratorsVersion,
+    presale_version: &PresaleVersion,
+    token_currency: &Currency<Token>,
+    quote_currency: &Currency<Quote>,
+    bluefin_config: &mut GlobalConfig,
+    creation_fee: Coin<SUI>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    migrators_version.assert_current();
+
+    let (token, quote, liquidity) = presale.take_liquidity(presale_version, Witness(), clock);
+    let (tick_spacing, fee_rate) = liquidity.pool_tier();
+    let (minimum_tick, maximum_tick) = bluefin_config.get_tick_range();
+    let spacing = i32::from(tick_spacing);
+    let lower_tick = minimum_tick.div(spacing).mul(spacing).as_u32();
+    let upper_tick = maximum_tick.div(spacing).mul(spacing).as_u32();
+    let mut pool_name = token_currency.symbol().into_bytes();
+    pool_name.append(b"-");
+    pool_name.append(quote_currency.symbol().into_bytes());
+    let source_token = token.value();
+    let source_quote = quote.value();
+    let fix_token = source_token >= source_quote;
+
+    let mut pool = pool::create_pool_and_get_object<Token, Quote, SUI>(
+        clock,
+        bluefin_config,
+        pool_name,
+        b"",
+        token_currency.symbol().into_bytes(),
+        token_currency.decimals(),
+        b"",
+        quote_currency.symbol().into_bytes(),
+        quote_currency.decimals(),
+        quote_currency.icon_url().into_bytes(),
+        tick_spacing,
+        fee_rate,
+        migration_math::sqrt_price_x64(source_token, source_quote, true),
+        creation_fee.into_balance(),
+        ctx,
+    );
+    let mut position = pool::open_position(bluefin_config, &mut pool, lower_tick, upper_tick, ctx);
+    let (_, _, residual_token, residual_quote) =
+        pool::add_liquidity_with_fixed_amount(
+            clock,
+            bluefin_config,
+            &mut pool,
+            &mut position,
+            token,
+            quote,
+            if (fix_token) source_token else source_quote,
+            fix_token,
+        );
+
+    let liquidity = position.liquidity();
+    presale_vault::create(
+        presale,
+        &Venue(),
+        position.pool_id(),
+        position,
+        liquidity,
+        residual_token,
+        residual_quote,
+        ctx,
+    );
+    pool.share_pool_object();
+}
+
+/// Collects a presale vault's fees and pays them out. Anyone may call it.
+public fun collect_presale_fees<Token, Quote>(
+    self: &mut BlastPresaleVault<Token, Quote>,
+    migrators_version: &MigratorsVersion,
+    policy: &LpFeePolicy,
+    bluefin_config: &GlobalConfig,
+    pool: &mut Pool<Token, Quote>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    migrators_version.assert_current();
+    let position = self.position_mut<_, _, _, Position>(&Venue());
+    assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
+
+    let (_, _, token_fee, quote_fee) = pool::collect_fee(clock, bluefin_config, pool, position);
+    self.pay_fees(policy, token_fee, quote_fee, ctx);
+}
+
 /// Migrates a MigrationReady launch into a new full-range pool at the launch's tier.
 ///
 /// The opening price derives from the handed-off balances. Meme is the fixed side when its atoms
@@ -283,7 +406,14 @@ use blast_fun_migrators::{
     lp_fee_policy::LpFeePolicy,
     migration_math,
     package_version::PackageVersion as MigratorsVersion,
+    presale_vault::{Self, BlastPresaleVault},
     vault::{Self, LpVault},
+};
+
+use blast_presale::{
+    package_version::PackageVersion as PresaleVersion,
+    payout::{Self, Liquidity},
+    presale::BlastPresale,
 };
 
 use bluefin_spot::{config::GlobalConfig, pool::{Self, Pool}, position::Position};

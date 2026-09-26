@@ -45,6 +45,17 @@ fun settlement_error_registry_is_stable() {
     assert_eq!(blast_presale::errors::nothing_to_claim!(), 21);
 }
 
+#[test]
+fun payout_error_registry_is_stable() {
+    assert_eq!(blast_presale::errors::invalid_recipient!(), 23);
+    assert_eq!(blast_presale::errors::invalid_payout!(), 24);
+    assert_eq!(blast_presale::errors::invalid_liquidity!(), 25);
+    assert_eq!(blast_presale::errors::adapter_not_allowed!(), 26);
+    assert_eq!(blast_presale::errors::no_liquidity!(), 27);
+    assert_eq!(blast_presale::errors::invalid_adapter!(), 28);
+    assert_eq!(blast_presale::errors::liquidity_not_open!(), 29);
+}
+
 // === Imports ===
 
 use std::unit_test::assert_eq;

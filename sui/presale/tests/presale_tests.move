@@ -20,6 +20,9 @@ const BOB: address = @0xB0B;
 
 const CAROL: address = @0xCA201;
 
+/// A recipient of the raise besides the creator.
+const TEAM: address = @0x7EA3;
+
 /// Claims and finalizes for others without holding a position.
 const KEEPER: address = @0x4EE9;
 
@@ -50,6 +53,12 @@ const SECOND_QUOTE: u64 = 400;
 public struct TOKEN() has drop;
 
 public struct QUOTE() has drop;
+
+/// A liquidity adapter the fixture admits.
+public struct ADAPTER() has drop;
+
+/// A liquidity adapter the fixture does not admit.
+public struct OTHER_ADAPTER() has drop;
 
 /// Configured fee policy, one live administrator holding the fee and treasury roles, and a clock
 /// standing at the first tranche's start.
@@ -202,6 +211,8 @@ fun creation_holds_the_tokens_and_snapshots_the_fee() {
     expected.append(bcs::to_bytes(&0u64));
     expected.append(u64_bytes(CLAIM_MS));
     expected.append(u64_bytes(FEE_BPS));
+    expected.append(bcs::to_bytes(&vector[payout::recipient(CREATOR, 10_000)]));
+    expected.append(bcs::to_bytes(&option::none<Liquidity>()));
     assert_eq!(bcs::to_bytes(&only_event<PresaleCreated>()), expected);
     fixture.next_tx!(KEEPER, |f| {
         let presale = f.take_presale();
@@ -236,6 +247,8 @@ fun a_presale_selling_its_own_quote_is_rejected() {
             vector[first_tranche()],
             0,
             CLAIM_MS,
+            vector[payout::recipient(CREATOR, 10_000)],
+            option::none(),
             &f.clock,
             f.ctx!(),
         );
@@ -695,6 +708,252 @@ fun a_stale_package_version_rejects_finalization_first() {
     fixture.end();
 }
 
+// --- Payout and liquidity ---
+
+#[test]
+fun a_success_pays_the_recipients_and_holds_the_pool_share() {
+    let mut fixture = start();
+    let presale_id = fixture.reach_the_end_with_liquidity(0);
+    // 600 raised, 6 fee, 594 net: half (297) for the pool, 30% (178) and 20% (118) for the
+    // recipients, and the 1 left over for the first. The pool's 297 Quote buys 594 tokens at
+    // 1 Quote per 2; 106 of the 700 reserved and the 334 unsold go back.
+    let (fee, returned, pool_quote, pool_tokens) = (6, 440, 297, 594);
+
+    fixture.finalize();
+    assert_eq!(
+        bcs::to_bytes(&only_event<PresaleFinalized>()),
+        finalized_with_pool_bytes(
+            presale_id,
+            true,
+            600,
+            fee,
+            TREASURY,
+            returned,
+            pool_quote,
+            pool_tokens,
+        ),
+    );
+    assert_eq!(collect_bytes<ProceedsPaid>(), vector[
+        proceeds_bytes(presale_id, TEAM, 179),
+        proceeds_bytes(presale_id, CREATOR, 118),
+    ]);
+    assert_eq!(fixture.coin_total<QUOTE>(TREASURY), fee);
+    assert_eq!(fixture.coin_total<QUOTE>(TEAM), 179);
+    assert_eq!(fixture.coin_total<QUOTE>(CREATOR), 118);
+    assert_eq!(fixture.coin_total<TOKEN>(CREATOR), returned);
+    fixture.next_tx!(KEEPER, |f| {
+        let presale = f.take_presale();
+        let (tokens, quote) = presale.liquidity_balances_for_testing();
+
+        assert_eq!(tokens, pool_tokens);
+        assert_eq!(quote, pool_quote);
+        assert_balances(&presale, 2_666, 200);
+        presale.put_back();
+    });
+    fixture.end();
+}
+
+#[test]
+fun the_adapter_takes_the_pool_share_from_the_claim_time() {
+    let mut fixture = start();
+    let presale_id = fixture.reach_the_end_with_liquidity(0);
+    fixture.finalize();
+    fixture.set_time(CLAIM_MS);
+
+    assert_eq!(fixture.take_liquidity(ADAPTER()), vector[594, 297, 60, 2_500]);
+    assert_eq!(
+        bcs::to_bytes(&only_event<LiquidityTaken>()),
+        u64_payload(presale_id, vector[594, 297]),
+    );
+    fixture.next_tx!(KEEPER, |f| {
+        let presale = f.take_presale();
+        let (tokens, quote) = presale.liquidity_balances_for_testing();
+
+        assert_eq!(tokens + quote, 0);
+        presale.put_back();
+    });
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_presale::errors::ENoLiquidity, location = blast_presale::presale)]
+fun the_pool_share_is_taken_only_once() {
+    let mut fixture = start();
+    fixture.reach_the_end_with_liquidity(0);
+    fixture.finalize();
+    fixture.set_time(CLAIM_MS);
+    fixture.take_liquidity(ADAPTER());
+
+    fixture.take_liquidity(ADAPTER());
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_presale::errors::ELiquidityNotOpen, location = blast_presale::presale)]
+fun the_pool_share_waits_for_the_claim_time() {
+    let mut fixture = start();
+    fixture.reach_the_end_with_liquidity(0);
+    fixture.finalize();
+    fixture.set_time(CLAIM_MS - 1);
+
+    fixture.take_liquidity(ADAPTER());
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_presale::errors::EInvalidAdapter, location = blast_presale::presale)]
+fun another_adapter_cannot_take_the_pool_share() {
+    let mut fixture = start();
+    fixture.reach_the_end_with_liquidity(0);
+    fixture.finalize();
+    fixture.set_time(CLAIM_MS);
+
+    fixture.take_liquidity(OTHER_ADAPTER());
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_presale::errors::EPresaleNotFinalized, location = blast_presale::presale)]
+fun the_pool_share_waits_for_finalization_before_the_adapter_check() {
+    let mut fixture = start();
+    fixture.reach_the_end_with_liquidity(0);
+    fixture.set_time(CLAIM_MS);
+
+    fixture.take_liquidity(OTHER_ADAPTER());
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+fun a_stale_package_version_rejects_the_handoff_first() {
+    let mut fixture = start();
+    fixture.reach_the_end_with_liquidity(0);
+    fixture.package_version.set_for_testing(2);
+
+    fixture.take_liquidity(OTHER_ADAPTER());
+    fixture.end();
+}
+
+#[test]
+fun a_failed_presale_returns_the_pool_reserve_and_opens_no_pool() {
+    let mut fixture = start();
+    fixture.reach_the_end_with_liquidity(601);
+
+    fixture.finalize();
+    assert_eq!(fixture.coin_total<TOKEN>(CREATOR), FIRST_TOKENS + SECOND_TOKENS + 700);
+    assert_eq!(fixture.coin_total<QUOTE>(TEAM), 0);
+    fixture.next_tx!(KEEPER, |f| {
+        let presale = f.take_presale();
+        let (tokens, quote) = presale.liquidity_balances_for_testing();
+
+        assert_eq!(tokens + quote, 0);
+        presale.put_back();
+    });
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_presale::errors::ENoLiquidity, location = blast_presale::presale)]
+fun a_failed_presale_has_no_pool_share_to_take() {
+    let mut fixture = start();
+    fixture.reach_the_end_with_liquidity(601);
+    fixture.finalize();
+    fixture.set_time(CLAIM_MS);
+
+    fixture.take_liquidity(ADAPTER());
+    fixture.end();
+}
+
+#[test]
+fun an_empty_raise_opens_no_pool_and_returns_the_reserve() {
+    let mut fixture = start();
+    fixture.create_with_liquidity(0);
+    fixture.set_time(SECOND_END_MS);
+
+    fixture.finalize();
+    assert_eq!(fixture.coin_total<TOKEN>(CREATOR), FIRST_TOKENS + SECOND_TOKENS + 700);
+    fixture.next_tx!(KEEPER, |f| {
+        let presale = f.take_presale();
+        let (tokens, quote) = presale.liquidity_balances_for_testing();
+
+        assert_eq!(tokens + quote, 0);
+        presale.put_back();
+    });
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_presale::errors::EAdapterNotAllowed, location = blast_presale::presale)]
+fun an_unadmitted_adapter_is_rejected() {
+    let mut fixture = start();
+    let liquidity = payout::liquidity<TOKEN, QUOTE, _>(OTHER_ADAPTER(), 60, 2_500, 5_000, 1, 2);
+
+    let liquidity = option::some(liquidity);
+    fixture.create_paying(3_700, two_tranches(), 0, CLAIM_MS, recipients(), liquidity);
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_presale::errors::EInvalidLiquidity, location = blast_presale::presale)]
+fun liquidity_for_another_pair_is_rejected() {
+    let mut fixture = start();
+    let liquidity = payout::liquidity<QUOTE, TOKEN, _>(ADAPTER(), 60, 2_500, 5_000, 1, 2);
+
+    let liquidity = option::some(liquidity);
+    fixture.create_paying(3_700, two_tranches(), 0, CLAIM_MS, recipients(), liquidity);
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_presale::errors::ETokenDepositMismatch, location = blast_presale::presale)]
+fun a_deposit_without_the_pool_reserve_is_rejected() {
+    let mut fixture = start();
+
+    fixture.create_paying(3_000, two_tranches(), 0, CLAIM_MS, recipients(), pool_share());
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_presale::errors::EInvalidPayout, location = blast_presale::payout)]
+fun shares_that_miss_the_whole_are_rejected_at_creation() {
+    let mut fixture = start();
+
+    fixture.create_paying(3_700, two_tranches(), 0, CLAIM_MS, recipients(), option::none());
+    fixture.end();
+}
+
+#[test]
+fun the_adapter_admin_admits_and_removes_adapters() {
+    let mut fixture = start();
+
+    fixture.next_tx!(ADMIN, |f| {
+        let witness = f.sign_in();
+        f.config.set_adapter_allowed<OTHER_ADAPTER>(&f.package_version, &witness, true);
+    });
+    let mut expected = bcs::to_bytes(&type_name::with_original_ids<OTHER_ADAPTER>());
+    expected.append(bcs::to_bytes(&true));
+    assert_eq!(bcs::to_bytes(&only_event<AdapterSet>()), expected);
+    assert!(fixture.config.is_adapter_allowed(type_name::with_original_ids<OTHER_ADAPTER>()));
+    fixture.next_tx!(ADMIN, |f| {
+        let witness = f.sign_in();
+        f.config.set_adapter_allowed<OTHER_ADAPTER>(&f.package_version, &witness, false);
+    });
+    assert!(!fixture.config.is_adapter_allowed(type_name::with_original_ids<OTHER_ADAPTER>()));
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_presale::errors::EUnchanged, location = blast_presale::presale_config)]
+fun admitting_an_admitted_adapter_is_rejected() {
+    let mut fixture = start();
+
+    fixture.next_tx!(ADMIN, |f| {
+        let witness = f.sign_in();
+        f.config.set_adapter_allowed<ADAPTER>(&f.package_version, &witness, true);
+    });
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
+fun adapters_need_the_adapter_admin_role() {
+    let mut fixture = start_with_roles(blast_presale_domain::fee_admin_role());
+
+    fixture.next_tx!(ADMIN, |f| {
+        let witness = f.sign_in();
+        f.config.set_adapter_allowed<ADAPTER>(&f.package_version, &witness, true);
+    });
+    fixture.end();
+}
+
 // --- Claims ---
 
 #[test, expected_failure(abort_code = blast_presale::errors::EPresaleNotFinalized, location = blast_presale::presale)]
@@ -940,15 +1199,19 @@ macro fun presale_ctx($fixture: &mut PresaleFixture): &mut TxContext {
     fixture.scenario.ctx()
 }
 
-/// A one-percent fee paid to the treasury, and an administrator with the fee and treasury roles.
+/// A one-percent fee paid to the treasury, the test adapter admitted, and an administrator with
+/// the fee, treasury, and adapter roles.
 fun start(): PresaleFixture {
     let mut fixture = start_with_roles(
-        blast_presale_domain::fee_admin_role() | blast_presale_domain::treasury_admin_role(),
+        blast_presale_domain::fee_admin_role()
+            | blast_presale_domain::treasury_admin_role()
+            | blast_presale_domain::adapter_admin_role(),
     );
     fixture.next_tx!(ADMIN, |f| {
         let witness = f.sign_in();
         f.config.set_fee_bps(&f.package_version, &witness, FEE_BPS);
         f.config.set_fee_destination(&f.package_version, &witness, TREASURY);
+        f.config.set_adapter_allowed<ADAPTER>(&f.package_version, &witness, true);
     });
     fixture.scenario.next_tx(CREATOR);
 
@@ -1059,6 +1322,22 @@ fun presale_create_with_deposit(
     min_raise: u64,
     claim_ms: u64,
 ): ID {
+    let recipients = vector[payout::recipient(CREATOR, 10_000)];
+
+    self.create_paying(deposit, tranches, min_raise, claim_ms, recipients, option::none())
+}
+
+/// Creates and shares a presale of `deposit` tokens paying `recipients` and `liquidity`, and
+/// returns its ID.
+fun presale_create_paying(
+    self: &mut PresaleFixture,
+    deposit: u64,
+    tranches: vector<Tranche>,
+    min_raise: u64,
+    claim_ms: u64,
+    recipients: vector<Recipient>,
+    liquidity: Option<Liquidity>,
+): ID {
     self.scenario.next_tx(CREATOR);
     let tokens = coin::mint_for_testing<TOKEN>(deposit, self.scenario.ctx());
     let presale = presale::new<TOKEN, QUOTE>(
@@ -1068,6 +1347,8 @@ fun presale_create_with_deposit(
         tranches,
         min_raise,
         claim_ms,
+        recipients,
+        liquidity,
         &self.clock,
         self.scenario.ctx(),
     );
@@ -1088,6 +1369,56 @@ fun presale_reach_the_end(self: &mut PresaleFixture, min_raise: u64): ID {
     self.set_time(SECOND_END_MS);
 
     presale_id
+}
+
+/// Pays 30% to the team and 20% to the creator, and pools half at 1 Quote per 2 tokens.
+fun recipients(): vector<Recipient> {
+    vector[payout::recipient(TEAM, 3_000), payout::recipient(CREATOR, 2_000)]
+}
+
+fun pool_share(): Option<Liquidity> {
+    option::some(payout::liquidity<TOKEN, QUOTE, _>(ADAPTER(), 60, 2_500, 5_000, 1, 2))
+}
+
+/// The two-tranche presale with `min_raise` and the recipients and pool above; the 700 Quote the
+/// tranches can raise reserves 700 tokens for the pool.
+fun presale_create_with_liquidity(self: &mut PresaleFixture, min_raise: u64): ID {
+    let deposit = FIRST_TOKENS + SECOND_TOKENS + 700;
+
+    self.create_paying(deposit, two_tranches(), min_raise, CLAIM_MS, recipients(), pool_share())
+}
+
+/// `presale_reach_the_end` for the presale with recipients and a pool.
+fun presale_reach_the_end_with_liquidity(self: &mut PresaleFixture, min_raise: u64): ID {
+    let presale_id = self.create_with_liquidity(min_raise);
+    self.commit(ALICE, 0, 200);
+    self.set_time(FIRST_END_MS);
+    self.commit(BOB, 1, 300);
+    self.commit(CAROL, 1, 300);
+    self.set_time(SECOND_END_MS);
+
+    presale_id
+}
+
+/// Takes the pool share as `adapter` and returns `[tokens, quote, tick_spacing, fee_rate]`.
+fun presale_take_liquidity<Adapter: drop>(
+    self: &mut PresaleFixture,
+    adapter: Adapter,
+): vector<u64> {
+    self.scenario.next_tx(KEEPER);
+    let mut presale = self.take_presale();
+    let (tokens, quote, liquidity) = presale.take_liquidity(
+        &self.package_version,
+        adapter,
+        &self.clock,
+    );
+    let (tick_spacing, fee_rate) = liquidity.pool_tier();
+    let taken = vector[tokens.value(), quote.value(), tick_spacing as u64, fee_rate];
+    destroy(tokens);
+    destroy(quote);
+    presale.put_back();
+
+    taken
 }
 
 /// Commits `amount` to public tranche `tranche` as `buyer` and returns what was not accepted.
@@ -1208,6 +1539,18 @@ fun assert_balances(presale: &BlastPresale<TOKEN, QUOTE>, tokens: u64, quote: u6
 
 // --- Events ---
 
+/// Every `T` this transaction emitted, as bytes.
+fun collect_bytes<T: copy + drop>(): vector<vector<u8>> {
+    event::events_by_type<Event<T>>().map!(|event| bcs::to_bytes(&event.unwrap()))
+}
+
+fun proceeds_bytes(presale_id: ID, destination: address, quote: u64): vector<u8> {
+    let mut expected = bcs::to_bytes(&presale_id);
+    expected.append(bcs::to_bytes(&destination));
+    expected.append(bcs::to_bytes(&quote));
+    expected
+}
+
 /// This transaction's only event of type `T`.
 fun only_event<T: copy + drop>(): T {
     let mut events = event::events_by_type<Event<T>>();
@@ -1227,20 +1570,36 @@ fun u64_payload(presale_id: ID, fields: vector<u64>): vector<u8> {
     expected
 }
 
+/// Expected `PresaleFinalized` bytes for a presale without liquidity.
 fun finalized_bytes(
     presale_id: ID,
     succeeded: bool,
     raised: u64,
     fee: u64,
     fee_destination: address,
-    unsold: u64,
+    returned: u64,
+): vector<u8> {
+    finalized_with_pool_bytes(presale_id, succeeded, raised, fee, fee_destination, returned, 0, 0)
+}
+
+fun finalized_with_pool_bytes(
+    presale_id: ID,
+    succeeded: bool,
+    raised: u64,
+    fee: u64,
+    fee_destination: address,
+    returned: u64,
+    liquidity_quote: u64,
+    liquidity_tokens: u64,
 ): vector<u8> {
     let mut expected = bcs::to_bytes(&presale_id);
     expected.append(bcs::to_bytes(&succeeded));
     expected.append(bcs::to_bytes(&raised));
     expected.append(bcs::to_bytes(&fee));
     expected.append(bcs::to_bytes(&fee_destination));
-    expected.append(bcs::to_bytes(&unsold));
+    expected.append(bcs::to_bytes(&returned));
+    expected.append(bcs::to_bytes(&liquidity_quote));
+    expected.append(bcs::to_bytes(&liquidity_tokens));
     expected
 }
 
@@ -1268,15 +1627,19 @@ use blast_presale::{
     blast_presale_domain::{Self, BLAST_PRESALE_DOMAIN},
     domain_fixture,
     events::{
+        AdapterSet,
         Claimed,
         Committed,
         FeeDestinationSet,
         FeeSet,
+        LiquidityTaken,
         PresaleCreated,
         PresaleFinalized,
+        ProceedsPaid,
     },
     merkle,
     package_version::{Self, PackageVersion},
+    payout::{Self, Liquidity, Recipient},
     presale::{Self, BlastPresale},
     presale_config::{Self, BlastPresaleConfig},
     tranche::{Self, Tranche},
@@ -1299,6 +1662,14 @@ use fun presale_set_time as PresaleFixture.set_time;
 use fun presale_create as PresaleFixture.create;
 
 use fun presale_create_with_deposit as PresaleFixture.create_with_deposit;
+
+use fun presale_create_paying as PresaleFixture.create_paying;
+
+use fun presale_create_with_liquidity as PresaleFixture.create_with_liquidity;
+
+use fun presale_reach_the_end_with_liquidity as PresaleFixture.reach_the_end_with_liquidity;
+
+use fun presale_take_liquidity as PresaleFixture.take_liquidity;
 
 use fun presale_reach_the_end as PresaleFixture.reach_the_end;
 

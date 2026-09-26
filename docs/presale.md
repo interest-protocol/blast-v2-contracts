@@ -3,7 +3,9 @@
 A presale sells a creator's tokens at fixed prices, in up to eight
 **tranches**. Each tranche has its own price, amount, time window and, if you
 want, a whitelist. There is no bonding curve: the price in each tranche is the
-price the creator set. The decision record is
+price the creator set. When the presale succeeds, the money raised is split
+between recipients the creator chose and, if they want, a DEX pool that opens
+at their listing price. The decision record is
 [ADR 0096](decisions/0096-presale-package.md).
 
 ## A tranche in one line
@@ -47,20 +49,25 @@ Arriving early doesn't help, and splitting across wallets doesn't either.
 ## The timeline
 
 ```text
- create ── tranche windows ──┬── finalize ──── claim time ──── vesting ends
-                             │   (anyone)      tokens unlock
+ create ── tranche windows ──┬── finalize ──────── claim time ──────── vesting ends
+                             │   (anyone)          tokens unlock
+                             │   recipients paid   DEX pool opens
                              └ last tranche ends
 ```
 
-1. **Create.** The creator deposits exactly the tokens the tranches sell. The
-   creator also picks a **claim time** no earlier than the last tranche's end,
-   and optionally a **minimum raise**. Blast's fee at that moment is locked in
-   for this presale.
+1. **Create.** The creator deposits the tokens the tranches sell, plus the
+   tokens for the pool if there is one (see below). The creator also picks:
+   - a **claim time**, no earlier than the last tranche's end;
+   - optionally, a **minimum raise**;
+   - **where the raise goes**.
+
+   Blast's fee at that moment is locked in for this presale.
 2. **Commit.** Buyers commit Quote to open tranches. Commits to the same tranche
    add up per address.
 3. **Finalize.** After every tranche has ended, anyone can finalize:
-   - **Minimum reached (or none set):** the creator is paid the raise minus
-     Blast's fee, and unsold tokens go back to the creator.
+   - **Minimum reached (or none set):** Blast takes its fee, the recipients are
+     paid their shares, and the pool's share waits for the claim time. Unsold
+     tokens and any unused pool tokens go back to the creator.
    - **Minimum missed:** every token goes back to the creator, and every buyer
      can take their whole commit back.
 4. **Claim.** Buyers, or anyone on their behalf, claim:
@@ -68,6 +75,50 @@ Arriving early doesn't help, and splitting across wallets doesn't either.
    - tokens from the claim time, released linearly if the tranche vests.
 
    Claiming is always paid to the buyer, so Blast can run claims for everyone.
+5. **Pool.** From the claim time, anyone can open the DEX pool. It opens when
+   buyers can first claim, so nobody gets to sell into it ahead of them.
+
+## Where the raise goes
+
+After Blast's fee, the raise is split by percentage, set at creation:
+
+- up to 16 **recipients** (team, treasury, marketing, the creator…), each with
+  a share;
+- optionally a **liquidity** share that goes into a new DEX pool.
+
+The shares must add up to exactly 100%. Each share is rounded down, and the
+first recipient gets the few leftover atoms. Recipients are paid at
+finalization.
+
+## The DEX pool
+
+If the creator chooses liquidity, they also pick:
+
+- **the venue:** Cetus or Bluefin, with its fee tier;
+- **the listing price:** how many tokens one unit of Quote buys in the new pool.
+
+The pool gets its share of the raise plus the tokens that Quote buys at the
+listing price. The creator deposits those tokens up front, sized for the most
+the tranches could raise. If less is raised, the pool needs fewer tokens, and
+the rest go back to the creator at finalization.
+
+> Example: after Blast's fee the presale raised 10,000 SUI. The payout is 30% to
+> the team, 20% to the creator and 50% to liquidity, listing at 50 tokens per
+> SUI. The team gets 3,000 SUI, the creator 2,000 SUI, and the pool opens with
+> 5,000 SUI and 250,000 tokens. If the tranches could have raised 12,000 SUI,
+> the creator deposited 300,000 pool tokens and gets 50,000 back.
+
+The pool is full-range and its position is **locked forever** in a Blast vault,
+so the liquidity can't be pulled. Anyone can collect the pool's trading fees.
+Blast's LP share goes to Blast and the rest to the creator.
+
+- **Cetus:** creating the presale reserves the Cetus pool, which needs the
+  token's `TreasuryCap`, so no one else can create that pool first at another
+  price. Coins whose supply was fixed have no cap and can use Bluefin.
+- **Bluefin:** whoever opens the pool pays Bluefin's pool creation fee in SUI.
+
+If the presale fails, or raises nothing for the pool, no pool is opened and
+every token goes back to the creator.
 
 ## Whitelists
 
@@ -84,7 +135,8 @@ produce trees this contract accepts.
 Blast's fee is a share of the raise, at most 10%, rounded up in Blast's favour.
 The fee admin sets it for presales created afterwards. It is paid at
 finalization to the destination the treasury admin set. A failed presale pays
-no fee.
+no fee. A presale's DEX pool also pays Blast its usual LP-fee share on trading
+fees.
 
 ## Edge cases
 

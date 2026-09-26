@@ -109,8 +109,14 @@ deps = { blast_admin = "blast_admin", std = "MoveStdlib_2", sui = "Sui_2" }
 [pinned.mainnet.blast_fun_migrators]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "E55C97F82BC0F60DACFCDF5AC2F0CCAFEFAA23A5179F8C914CB0C1D1EBECCCDB"
-deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_admin = "blast_admin", blast_fun = "blast_fun" }
+manifest_digest = "AF99830B6348590BA7F5318E056973CCA46312B583DC658A9173446A1FC88121"
+deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_admin = "blast_admin", blast_fun = "blast_fun", blast_presale = "blast_presale" }
+
+[pinned.mainnet.blast_presale]
+source = { local = "../presale" }
+use_environment = "mainnet"
+manifest_digest = "2EE0BE6CC23D1718E36913BC8AFF07AB623F8E972B9E6253C5BE9AFEE9962448"
+deps = { blast_admin = "blast_admin", std = "MoveStdlib_2", sui = "Sui_2" }
 
 [pinned.testnet.BluefinSpot]
 source = { git = "https://github.com/fireflyprotocol/bluefin-spot-contract-interface.git", subdir = ".", rev = "91ce930575b2aa3decab9b7e129b8002deba80c1" }

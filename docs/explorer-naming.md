@@ -66,6 +66,7 @@ every package-administration object.
 | `blast_fun` | `package_version::PackageVersion` | unchanged | holds `OperationalVersion<BLAST_FUN>` |
 | `blast_presale` | `presale::BlastPresale<Token, Quote>` | new | struct |
 | `blast_presale` | `presale_config::BlastPresaleConfig` | new | struct |
+| `blast_fun_migrators` | `presale_vault::BlastPresaleVault<Token, Quote>` | new | struct |
 | `blast_presale` | `package_admin::PackageAdmin` | new | holds `UpgradeCustody<BLAST_PRESALE>` |
 | `blast_presale` | `package_version::PackageVersion` | new | holds `OperationalVersion<BLAST_PRESALE>` |
 | `blast_fun_migrators` | `vault::LpVault<Meme, Quote>` | unchanged | *residual* |

@@ -102,7 +102,7 @@ fun wrap_checks_publisher_before_upgrade_cap_provenance() {
     let mut fixture = start_wrap();
 
     fixture.next_tx!(PUBLISHER, |f| {
-        let foreign_publisher = foreign_publisher::new(f.ctx!());
+        let foreign_publisher = presale_foreign_publisher::new(f.ctx!());
         let foreign_upgrade_cap =
             package::test_publish(OTHER_PACKAGE_ID.to_id(), f.ctx!());
 
@@ -551,7 +551,7 @@ use blast_presale::{
     package_version,
 };
 
-use 0xf::foreign_publisher;
+use 0xf::presale_foreign_publisher;
 
 use std::unit_test::{assert_eq, destroy};
 

@@ -6,7 +6,7 @@
 ///
 /// The complete reusable ACL matrix belongs to `blast_admin`. These tests prove
 /// only that the presale package creates exactly one typed domain from its own
-/// constants and pins three distinct role bits, and that sign-in alone grants
+/// constants and pins four distinct role bits, and that sign-in alone grants
 /// no role.
 module blast_presale::blast_presale_domain_tests;
 
@@ -58,9 +58,10 @@ fun every_role_is_a_distinct_single_bit() {
         blast_presale_domain::package_admin_role(),
         blast_presale_domain::fee_admin_role(),
         blast_presale_domain::treasury_admin_role(),
+        blast_presale_domain::adapter_admin_role(),
     ];
 
-    assert_eq!(roles, vector[1, 2, 4]);
+    assert_eq!(roles, vector[1, 2, 4, 8]);
 }
 
 #[test]
