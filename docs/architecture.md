@@ -57,6 +57,7 @@ without returning to core for its post-conditions.
 | Holder rewards (migrators) | Merkle rounds a Blast administrator funds from a vault's rewards balance, and one-time proof claims | holder accounting, which stays off-chain |
 | Migration interface | one-time liquidity handoff, linear migration value, and reconciled completion | DEX-specific object/storage details |
 | Adapter | start a launch at a venue-valid tier, prepare its venue, complete a migration, and collect the position's fees | changing core economics |
+| Presale (own package) | fixed-price tranches of a creator's deposited tokens: windows, first-come or pro-rata fills, Merkle whitelists and caps, the minimum raise, finalization, Blast's fee, and vested claims ([ADR 0096](decisions/0096-presale-package.md), [how it works](presale.md)) | a bonding curve, launch state, or a liquidity migration |
 
 Modules may begin together in the single chain project. These are dependency
 directions, not a demand for seven packages.
@@ -283,6 +284,9 @@ Upgradeability is a product/security decision, not a default convenience.
   be able to relink (ADR 0088). Every migrators upgrade uses the compatible
   policy and bumps both compiled generation constants; its custody has no
   policy-narrowing or immutability path.
+- The presale package has its own `PackageAdmin`, `PackageVersion`, and
+  administration domain, and follows the launchpad's custody rules
+  ([ADR 0096](decisions/0096-presale-package.md)).
 
 The Sui custody and interim authority decision is accepted in
 [ADR 0032](decisions/0032-admin-authorized-upgrade-cap-custody.md). Replacement

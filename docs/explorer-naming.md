@@ -22,6 +22,8 @@ identified only through its package marker; ADR 0085 records why.
 | `blast_sui` | administration domain | `blast_sui_domain::BLAST_SUI_DOMAIN` | unchanged |
 | `blast_fun` (launchpad) | Publisher marker | `blast::BLAST` | `blast_fun::BLAST_FUN` |
 | `blast_fun` | administration domain, shared with migrators | `launchpad_domain::LAUNCHPAD_DOMAIN` | `blast_fun_domain::BLAST_FUN_DOMAIN` |
+| `blast_presale` | Publisher marker (new package) | — | `blast_presale::BLAST_PRESALE` |
+| `blast_presale` | administration domain | — | `blast_presale_domain::BLAST_PRESALE_DOMAIN` |
 | `blast_fun_migrators` | Publisher marker | `package_marker::PACKAGE_MARKER` | `blast_fun_migrators::BLAST_FUN_MIGRATORS` |
 | `blast_boosts_aftermath` | Publisher marker | `aftermath::AFTERMATH` | `blast_boosts_aftermath::BLAST_BOOSTS_AFTERMATH` |
 | `blast_boosts_core` | administration domain and only OTW; no Publisher is claimed | `series_one_domain::SERIES_ONE_DOMAIN` | `blast_boosts_core::BLAST_BOOSTS_CORE` |
@@ -62,6 +64,10 @@ every package-administration object.
 | `blast_fun` | `creator_authority::BlastMetadataCap<Meme>` | unchanged | struct |
 | `blast_fun` | `package_admin::PackageAdmin` | unchanged | holds `UpgradeCustody<BLAST_FUN>` |
 | `blast_fun` | `package_version::PackageVersion` | unchanged | holds `OperationalVersion<BLAST_FUN>` |
+| `blast_presale` | `presale::BlastPresale<Token, Quote>` | new | struct |
+| `blast_presale` | `presale_config::BlastPresaleConfig` | new | struct |
+| `blast_presale` | `package_admin::PackageAdmin` | new | holds `UpgradeCustody<BLAST_PRESALE>` |
+| `blast_presale` | `package_version::PackageVersion` | new | holds `OperationalVersion<BLAST_PRESALE>` |
 | `blast_fun_migrators` | `vault::LpVault<Meme, Quote>` | unchanged | *residual* |
 | `blast_fun_migrators` | `venue_config::VenueConfig` | unchanged | *residual* |
 | `blast_fun_migrators` | `package_admin::PackageAdmin` | unchanged | holds `UpgradeCustody<BLAST_FUN_MIGRATORS>` |
@@ -82,6 +88,7 @@ every package-administration object.
 | --- | --- | --- | --- |
 | `blast_sui` | `events_wrapper::Event<events::X>` | `blast_events::Event<events::X>` | envelope module |
 | `blast_fun` | `events_wrapper::Event<events::X>` | `blast_events::Event<events::X>` | envelope module |
+| `blast_presale` | — | `blast_events::Event<events::X>` | envelope module |
 | `blast_boosts_aftermath` | `events_wrapper::Event<events::X<Product>>` | `blast_events::Event<events::X<Product>>` | envelope module and `Product` |
 | `blast_fun_migrators` | `events::X` (direct emission) | `blast_events::X` | module |
 | `blast_admin` | `events::X<Domain>` | unchanged | `Domain` or `PackageMarker` is a Blast witness |
