@@ -8,7 +8,7 @@
 | Ref | Full commit | Repository |
 | --- | --- | --- |
 | `sui@06734f6` | `06734f6ff0af45d8632a14a4dc4b100197f6b1a2` | MystenLabs/sui (the pinned framework) |
-| `util@1196ce3` | `1196ce31f717f9935805dd742ce553051bfb21aa` | interest-protocol/blast-util-contracts |
+| `util@83b82f0` | `83b82f0c9882a5267e810d7f19ef9d9985d9163f` | interest-protocol/blast-util-contracts |
 | `deepbook@a60c1ee` | `a60c1eeeec65a61ebc8c76e58492f5dee0674840` | MystenLabs/deepbookv3 |
 | `dhedge@f09febf` | `f09febf528895fdd5b69f68b0dd3a9bb7d9ecc0c` | dhedge/V2-Public |
 | `dydx@127ef76` | `127ef76506ccca909d937920980c1ae2d9b736a5` | dydxprotocol/v4-chain |
@@ -59,7 +59,7 @@ issues answers that.
 ## Decision
 
 **The timelock.** `blast_fun_timelock` lives in the public util contracts
-(`util@1196ce3:sui/timelock/sources/blast_fun_timelock.move`), MIT licensed and to
+(`util@83b82f0:sui/timelock/sources/blast_fun_timelock.move`), MIT licensed and to
 be published immutable. `Timelocked<T>` is a value whose every change takes effect
 exactly its delay after it is scheduled; the delay is fixed when the value is
 created (one millisecond to ten years). A new schedule replaces a pending one and

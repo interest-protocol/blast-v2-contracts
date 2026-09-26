@@ -616,6 +616,28 @@ fun a_partner_is_paid_only_out_of_the_admin_fee_its_operation_retained() {
 }
 
 #[test]
+/// An operation that retained no admin fee pays the partner nothing, sends
+/// nothing, and is still attributed to the partner.
+fun a_zero_admin_fee_pays_nothing_but_is_still_attributed() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let clock = reference_clock(&mut fixture);
+
+    operations::pay_partner_for_testing(&mut vault, &partner, 0, &clock);
+
+    let (_, partner_id, admin_fee, partner_fee, admin_cash_after) =
+        events::collect_one<events::PartnerFeePaid<Product>>(0).partner_fee_paid_fields();
+    assert_eq!(partner_id, object::id(&partner));
+    assert_eq!(vector[admin_fee, partner_fee, admin_cash_after], vector[0, 0, 0]);
+    assert_eq!(sui::event::events_by_type<PartnerPaid<Collateral>>().length(), 0);
+    destroy(partner);
+    clock.destroy_for_testing();
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
 /// At the maximum 80% share Blast still keeps a fifth of the admin fee.
 fun the_maximum_partner_share_leaves_blast_a_fifth_of_the_admin_fee() {
     let mut fixture = start();

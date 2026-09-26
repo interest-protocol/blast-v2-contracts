@@ -393,6 +393,28 @@ fun the_missing_role_precedes_an_unchanged_cap() {
     fixture.end();
 }
 
+#[test]
+/// Scheduling the cap in force cancels a pending move: the original cap stays live and the new one never does.
+fun scheduling_the_live_cap_cancels_a_pending_move() {
+    let mut fixture = start();
+    let cap = fixture.register(RECIPIENT, 2_500);
+
+    fixture.next_tx!(ADMIN, |fixture| {
+        let mut partner = fixture.take_partner();
+        let moved_to = fixture.reissue_cap(&mut partner);
+        fixture.schedule_cap(&mut partner, object::id(&cap));
+        fixture.advance(10 * delay());
+        let (_, _, live_cap) = partner.terms_for_testing(&fixture.clock);
+        assert_eq!(live_cap, object::id(&cap));
+        fixture.set_recipient(&mut partner, &cap, NEW_RECIPIENT);
+        partners::destroy_cap(moved_to);
+        fixture.return_partner(partner);
+    });
+
+    partners::destroy_cap(cap);
+    fixture.end();
+}
+
 // --- One cap, many partners ---
 
 #[test]
@@ -604,6 +626,32 @@ fun every_payment_emits_what_the_partner_received() {
     fee.destroy_for_testing();
     dust.destroy_for_testing();
     destroy(partner);
+    clock.destroy_for_testing();
+    destroy(ctx);
+}
+
+#[test]
+/// Each deal under one cap is paid and reported on its own, at its own share.
+fun each_deal_is_paid_and_reported_at_its_own_share() {
+    let mut ctx = tx_context::dummy();
+    let clock = clock::create_for_testing(&mut ctx);
+    let boosts = partners::new_for_testing(RECIPIENT, 5_000, &mut ctx);
+    let other = partners::new_for_testing(RECIPIENT, 800, &mut ctx);
+    let mut boosts_fee = balance::create_for_testing<SUI>(1_000);
+    let mut other_fee = balance::create_for_testing<SUI>(1_000);
+
+    assert_eq!(boosts.pay(&mut boosts_fee, &clock), 500);
+    assert_eq!(other.pay(&mut other_fee, &clock), 80);
+
+    let payments = event::events_by_type<PartnerPaid<SUI>>();
+    let (first_id, first_amount) = payments[0].partner_paid_fields();
+    let (second_id, second_amount) = payments[1].partner_paid_fields();
+    assert_eq!(vector[first_id, second_id], vector[object::id(&boosts), object::id(&other)]);
+    assert_eq!(vector[first_amount, second_amount], vector[500, 80]);
+    boosts_fee.destroy_for_testing();
+    other_fee.destroy_for_testing();
+    destroy(boosts);
+    destroy(other);
     clock.destroy_for_testing();
     destroy(ctx);
 }
