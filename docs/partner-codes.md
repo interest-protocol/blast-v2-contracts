@@ -1,9 +1,9 @@
 # Partner codes
 
-Partner codes let apps that build on Blast earn from the flow they bring. Every
-Boost mint and redeem names a Blast partner, and that partner is paid a share of
-the fee Blast charges on it, straight to its address, in the same transaction.
-Holders never pay for it. The launchpad will use the same partner codes later.
+Partner codes let apps that build on Blast earn from the flow they bring. A
+partner is paid a share of the fee Blast charges on each trade that names it,
+straight to its address, in the same transaction. Holders never pay for it.
+Boosts supports it today; the launchpad will use the same partner codes later.
 
 The decision and its alternatives are recorded in
 [ADR 0095](decisions/0095-partner-codes.md). This page explains how the program
@@ -35,7 +35,7 @@ within the caps fixed at issuance.
 ## What each side gets
 
 **Users** pay the vault's normal fee. Their shares, their redemption amount and
-their price are identical whichever partner their app names.
+their price are identical with or without a partner.
 
 **Partners** are paid in the vault's collateral (USDC at launch) as each trade
 they bring happens. Nothing accrues on Blast's side and there is nothing to claim.
@@ -49,10 +49,11 @@ never more than 80% of it.
 
 ## For integrators
 
-- `mint` and `redeem` take the partner object right after the `Protocol` object.
-- If you have a partner code, pass your `Partner` object's ID.
-- If you don't, pass Blast's house partner. Its share is zero, so it prices
-  exactly like no partner. Its ID is published with each deployment.
+- Without a partner code, call `mint` and `redeem` as before. Nothing about them
+  changed, and they cost nothing extra.
+- With a partner code, call `mint_with_partner` or `redeem_with_partner`, passing
+  your `Partner` object right after the `Protocol` object. They do exactly what
+  the plain calls do, then pay your share of Blast's fee on that trade.
 - The partner object is only read, so naming a busy partner adds no contention
   of its own.
 - To charge your own fee, split it from the user's coin in your own transaction
@@ -61,69 +62,73 @@ never more than 80% of it.
 
 ## For partners
 
+A company holds one `PartnerCap` for all its deals with Blast. Each deal is its
+own `Partner`, with its own share and recipient, for example 50% of Blast's fee
+on Boosts and 8% on another product.
+
 | Term | Set by | When it takes effect |
 | --- | --- | --- |
-| Share of Blast's fee, 0% to 80% | Blast | seven days after Blast sets it |
-| Recipient address | you, with your `PartnerCap` | immediately |
-| Which cap is live | Blast, by reissuing it | seven days after the reissue |
+| Share of Blast's fee, 0% to 80%, per deal | Blast | seven days after Blast sets it |
+| Recipient address, per deal | you, with your cap | immediately |
+| Which cap manages a deal | Blast | seven days after Blast moves it |
 
-- Blast registers you and hands you your `PartnerCap`. Your share starts at zero
-  and switches to the agreed share seven days later.
-- Change where you are paid with `set_recipient`, holding your live cap. It
-  applies at once. Keep the cap somewhere safe, such as a multisig: whoever holds
-  it controls where your share goes.
+- You can mint your own cap with `new_cap` (for example straight into your
+  multisig) and give Blast its ID; Blast registers each deal under it. Each
+  deal's share starts at zero and switches to the agreed share seven days later.
+- Change where a deal pays you with `set_recipient`, holding your cap. It applies
+  at once. Whoever holds the cap controls where every deal under it pays, so keep
+  it somewhere safe.
 - Blast cannot change your share or your cap without seven days' notice, which
-  anyone can read on chain. The delay is a constant in a package nobody can
-  upgrade.
-- If you lose your cap, Blast reissues one; the new cap goes live seven days
-  later, and until then the old cap still works.
-- Your share arrives in your recipient's balance as each trade happens. Every
-  `Minted` and `Redeemed` event records your partner ID and what you were paid,
-  so you can reconcile your income from events alone.
+  anyone can read on chain. The delay comes from `blast_fun_timelock`, an
+  immutable package nobody can change.
+- If you lose your cap, mint a new one and ask Blast to move your deals to it;
+  each move goes live seven days later, and until then the old cap still works.
+- Every payment emits `PartnerPaid` with your partner ID and the amount you
+  received, and the product records the trade in its own event (for Boosts,
+  `PartnerFeePaid`), so you can reconcile your income from events alone.
 - Your code is a public object, and any app can name it. If another app does,
   you still earn on that flow.
 
 ## For Blast's operators
 
-- **Registering.** The partner administrator (its own role in the partner
-  domain) calls `register` with the partner's recipient and share. The call
-  returns the `PartnerCap`; send it to the partner in the same transaction.
+- **Registering a deal.** The partner administrator (its own role in the partner
+  domain) calls `register` with the company's cap ID, the recipient and the
+  share. For a new company, mint a cap with `new_cap` and send it to them, or
+  use a cap they minted.
 - **Changing a tier.** `schedule_share` sets the new share seven days ahead.
   Scheduling again replaces a pending change and restarts the seven days;
   scheduling the share already in force cancels a pending change. Tiers are
   reviewed off chain from the Blast fee kept on each partner's flow, which wash
   volume and free-riding lower rather than raise.
-- **Switching a partner off.** Schedule its share to zero. Apps that still name
-  it keep working and pay the normal fee to Blast.
-- **Replacing a lost or stolen cap.** `reissue_cap` returns a new cap that goes
-  live in seven days. A thief holding the old cap can redirect payouts until
-  then, so tell integrators to name the house partner in the meantime. A
-  reissue cannot be cancelled back to the original cap; a mistaken one is
-  corrected by reissuing again and delivering that cap to the partner.
-- **At launch,** publish `blast_partners` immutable, grant the partner
-  administrator role, register the zero-share house partner, and record its ID in
-  the release input. Also set each vault's admin share: while it is zero, as it is
-  at activation, Blast earns nothing and so partners earn nothing.
+- **Switching a deal off.** Schedule its share to zero. Apps that still name it
+  keep working and pay the normal fee to Blast.
+- **Replacing a lost or stolen cap.** `schedule_cap` moves a deal to a new cap in
+  seven days, one call per deal. A thief holding the old cap can redirect payouts
+  until then, so tell integrators to stop naming those deals meanwhile.
+- **At launch,** publish `blast_fun_timelock` and then `blast_partners`, each
+  immutable, and grant the partner administrator role. Also set each vault's
+  admin share: while it is zero, as it is at activation, Blast earns nothing and
+  so partners earn nothing.
 - **Deny lists.** If a recipient is blocked by the collateral's deny list, trades
-  naming that partner are expected to fail; the release rehearsal confirms it.
-  The partner fixes it at once by setting a new recipient; until then
-  integrators can name the house partner.
+  naming that deal are expected to fail; the release rehearsal confirms it. The
+  partner fixes it at once by setting a new recipient; until then integrators
+  can call the plain entry points.
 
 ## Guarantees
 
 These properties are enforced by the contracts and covered by tests, except the
-fourth, which rests on the package being published immutable:
+fourth, which rests on the packages being published immutable:
 
-1. The reserve fee, the shares minted and the redemption payout are the same for
-   every partner, including the house partner.
-2. A partner is paid at most 80% of Blast's admin fee, rounded down; Blast keeps
-   the rest.
+1. The reserve fee, the shares minted and the redemption payout are the same with
+   or without a partner.
+2. A partner is paid at most 80% of Blast's admin fee on the trade, rounded down;
+   Blast keeps the rest.
 3. Minting and redeeming through your own code always costs at least as much as
    it pays back: the reserve fee and at least a fifth of Blast's fee are still
    charged.
 4. Nothing Blast schedules for a partner takes effect sooner than seven days
-   after it was last scheduled, and, since the package is immutable, no upgrade
-   can change that.
-5. Only the live cap can change a partner's recipient; only Blast's partner
-   administrator can register partners, schedule shares and reissue caps.
+   after it was last scheduled, and, since the packages are immutable, no
+   upgrade can change that.
+5. Only the cap managing a deal can change its recipient; only Blast's partner
+   administrator can register deals, schedule shares and move deals between caps.
 6. Blast never holds partner money, and there is no claim step to miss.

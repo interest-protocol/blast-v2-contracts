@@ -8,7 +8,7 @@ const input = (operation) => ({
     productType: `${address(1)}::product::Product<${address(1)}::tags::Long2x>`,
     collateralType: `${address(3)}::usdc::USDC`,
     objects: Object.fromEntries(['vault', 'protocol', 'account', 'registry', 'clearingHouse',
-        'baseOracle', 'collateralOracle', 'clock', 'inputCoin', ...(operation === 'rebalance' ? [] : ['partner'])]
+        'baseOracle', 'collateralOracle', 'clock', 'inputCoin']
         .map((role, i) => [role, address(10 + i)])),
     minimumOutput: '1', deadlineMs: '100000',
 });
@@ -68,18 +68,33 @@ test('mint and redemption bind public argument order and transfer only the retur
         const plan = buildActivePlan(value);
         assert.equal(plan.commands[0].target, `${address(1)}::operations::${operation}`);
         assert.deepEqual(plan.commands[0].arguments, [
-            ...['vault', 'protocol', 'partner', 'account', 'registry', 'clearingHouse', 'baseOracle', 'collateralOracle']
+            ...['vault', 'protocol', 'account', 'registry', 'clearingHouse', 'baseOracle', 'collateralOracle']
                 .map((key) => `@${value.objects[key]}`),
             `@${value.objects.inputCoin}`, '1', '100000', `@${value.objects.clock}`,
         ]);
         assert.throws(() => buildActivePlan({...value, maximumFeeBps: '30'}), /unexpected field/);
-        const {partner, ...withoutPartner} = value.objects;
-        assert.throws(() => buildActivePlan({...value, objects: withoutPartner}), /address/);
         const args = renderUnsignedPtbArgs(value);
         assert.deepEqual(args.slice(-3), ['--serialize-unsigned-transaction', '--sender', `@${address(2)}`]);
         assert(!args.includes('--gas-budget'));
         assert(args.includes('[result]'));
     }
+});
+
+test('naming a partner switches mint and redemption to the partner entry points, partner after protocol', () => {
+    for (const operation of ['mint', 'redeem']) {
+        const value = input(operation);
+        value.objects.partner = address(40);
+        const plan = buildActivePlan(value);
+        assert.equal(plan.commands[0].target, `${address(1)}::operations::${operation}_with_partner`);
+        assert.deepEqual(plan.commands[0].arguments, [
+            ...['vault', 'protocol', 'partner', 'account', 'registry', 'clearingHouse', 'baseOracle', 'collateralOracle']
+                .map((key) => `@${value.objects[key]}`),
+            `@${value.objects.inputCoin}`, '1', '100000', `@${value.objects.clock}`,
+        ]);
+        assert.throws(() => buildActivePlan({...value, objects: {...value.objects, partner: 'not-an-address'}}), /address/);
+    }
+    const rebalance = input('rebalance');
+    assert.throws(() => buildActivePlan({...rebalance, objects: {...rebalance.objects, partner: address(40)}}), /unexpected object field partner/);
 });
 
 test('rebalance contains only bound objects, not witness, trade side, size or fee choices', () => {
@@ -89,7 +104,6 @@ test('rebalance contains only bound objects, not witness, trade side, size or fe
     assert.equal(plan.commands[0].assign, null);
     assert.deepEqual(plan.transfers, []);
     assert.throws(() => buildActivePlan({...value, side: 'short'}), /unexpected field/);
-    assert.throws(() => buildActivePlan({...value, objects: {...value.objects, partner: address(9)}}), /unexpected object field partner/);
 });
 
 test('both direction types compose returned values through mint-buy and sell-redeem', () => {
@@ -105,7 +119,7 @@ test('both direction types compose returned values through mint-buy and sell-red
                 assert.equal(plan.commands[1].arguments[3], 'shares');
                 assert.deepEqual(plan.transfers, ['purchase.0', 'purchase.1']);
             } else {
-                assert.equal(plan.commands[1].arguments[8], 'shares');
+                assert.equal(plan.commands[1].arguments[7], 'shares');
                 assert.deepEqual(plan.transfers, ['result']);
             }
             assert(plan.commands.some((c) => c.typeArguments.includes(`${address(1)}::blast_boost::BlastBoost<${value.productType}>`)));

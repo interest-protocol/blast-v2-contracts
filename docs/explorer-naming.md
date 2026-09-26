@@ -74,7 +74,7 @@ every package-administration object.
 | `blast_boosts_aftermath` | `package_admin::PackageAdmin` | unchanged | holds `UpgradeCustody<BLAST_BOOSTS_AFTERMATH>` |
 | `blast_boosts_aftermath` | `blast_boost::BlastBoost<Product>` | new; never instantiated | module and struct |
 | `blast_partners` | `blast_partners::Partner` | new (ADR 0095) | module |
-| `blast_partners` | `blast_partners::PartnerCap` | new (ADR 0095); wallet-held | module |
+| `blast_partners` | `blast_partners::PartnerCap` | new (ADR 0095); wallet-held, one per company | module |
 
 `blast_boosts_core` defines no `key` type; its `State<Product>` is a
 `store` value nested in the adapter Vault.
@@ -88,7 +88,7 @@ every package-administration object.
 | `blast_boosts_aftermath` | `events_wrapper::Event<events::X<Product>>` | `blast_events::Event<events::X<Product>>` | envelope module and `Product` |
 | `blast_fun_migrators` | `events::X` (direct emission) | `blast_events::X` | module |
 | `blast_admin` | `events::X<Domain>` | unchanged | `Domain` or `PackageMarker` is a Blast witness |
-| `blast_partners` | — | `blast_partners::PartnerUpdated` (direct emission, ADR 0095) | module |
+| `blast_partners` | — | `blast_partners::PartnerUpdated` and `blast_partners::PartnerPaid<T>` (direct emission, ADR 0095) | module |
 
 Payload struct names inside the envelopes (`Bought`, `Migrated`,
 `VaultSynced`, `Minted<Product>`, …) are unchanged.

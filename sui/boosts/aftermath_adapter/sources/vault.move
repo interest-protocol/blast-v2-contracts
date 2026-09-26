@@ -357,6 +357,15 @@ public(package) fun retain_admin_cash<Product, Collateral>(
     self.admin_cash.join(cash);
 }
 
+/// Takes `amount` back out of Blast's admin cash, to pay a partner its share of
+/// the admin fee an operation just retained.
+public(package) fun take_admin_cash<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>,
+    amount: u64,
+): Balance<Collateral> {
+    self.admin_cash.split(amount)
+}
+
 /// Native cash is authoritative; no mirrored numerical admin ledger is stored.
 public(package) fun admin_cash_balance<Product, Collateral>(self: &Vault<Product, Collateral>): u64 {
     self.admin_cash.value()

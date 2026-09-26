@@ -14,6 +14,8 @@ const AFTERMATH_GIT = 'https://github.com/AftermathFinance/move-interfaces.git';
 const AFTERMATH_REV = 'f62e74aa862ef65b8950a70d83aac8cb71c19837';
 const SUI_GIT = 'https://github.com/MystenLabs/sui.git';
 const SUI_REV = '06734f6ff0af45d8632a14a4dc4b100197f6b1a2';
+const UTIL_GIT = 'https://github.com/interest-protocol/blast-util-contracts.git';
+const TIMELOCK_REV = '1196ce31f717f9935805dd742ce553051bfb21aa';
 const STD_ADDRESS = `0x${'0'.repeat(63)}1`;
 const SUI_ADDRESS = `0x${'0'.repeat(63)}2`;
 const PACKAGE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -177,7 +179,9 @@ const LOCK_SOURCES = {
     blast_admin: DIRECT_DEPENDENCIES.blast_admin,
     blast_boosts_aftermath: { root: true },
     blast_boosts_core: DIRECT_DEPENDENCIES.blast_boosts_core,
-    // The immutable shared partner-code package is the same kind of inward-only edge (ADR 0095).
+    // The immutable shared partner-code package is the same kind of inward-only
+    // edge; the timelock it stores comes from the public util packages (ADR 0095).
+    blast_fun_timelock: { git: UTIL_GIT, subdir: 'sui/timelock', rev: TIMELOCK_REV },
     blast_partners: DIRECT_DEPENDENCIES.blast_partners,
     ifixed: DIRECT_DEPENDENCIES.ifixed,
     oracle_aggregator: DIRECT_DEPENDENCIES.oracle_aggregator,
@@ -195,7 +199,8 @@ const LOCK_DEPS = {
     blast_admin: { Sui: 'Sui' },
     blast_boosts_aftermath: { authority_cap: 'authority_cap', blast_admin: 'blast_admin', blast_boosts_core: 'blast_boosts_core', blast_partners: 'blast_partners', ifixed: 'ifixed', oracle_aggregator: 'oracle_aggregator', perpetuals: 'perpetuals', position: 'position', std: 'MoveStdlib', sui: 'Sui' },
     blast_boosts_core: { blast_admin: 'blast_admin', std: 'MoveStdlib', sui: 'Sui' },
-    blast_partners: { blast_admin: 'blast_admin', std: 'MoveStdlib', sui: 'Sui' },
+    blast_fun_timelock: { std: 'MoveStdlib', sui: 'Sui' },
+    blast_partners: { blast_admin: 'blast_admin', blast_fun_timelock: 'blast_fun_timelock', std: 'MoveStdlib', sui: 'Sui' },
     ifixed: { std: 'MoveStdlib', sui: 'Sui' },
     oracle_aggregator: { authority_cap: 'authority_cap', std: 'MoveStdlib', sui: 'Sui', vendor: 'vendor' },
     perpetuals: { authority_cap: 'authority_cap', control_flow: 'AftermathControlFlow', ifixed: 'ifixed', oracle_aggregator: 'oracle_aggregator', ordered_map: 'AftermathOrderedMap', position: 'position', std: 'MoveStdlib', sui: 'Sui', vendor: 'vendor' },

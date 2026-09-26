@@ -3,17 +3,19 @@
 
 /// Blast partner codes, shared by every Blast product.
 ///
-/// A partner is paid a share of the fee Blast charges on every trade that
-/// names it, in the same transaction. Blast's partner administrator registers
-/// partners, sets each one's share, and can reissue its cap; the holder of the
-/// live `PartnerCap` sets where the partner is paid. Everything Blast changes
-/// takes effect only `DELAY_MS` after it is scheduled, and this package is
-/// published immutable, so no one can shorten that delay. The recipient the
-/// cap holder sets applies at once.
+/// A partner is one deal: it is paid a share of the fee Blast charges on every
+/// trade that names it, in the same transaction. A company holds one
+/// `PartnerCap` for all its deals, each a separate partner with its own share.
+/// Blast's partner administrator registers partners under a cap, sets each
+/// one's share, and can move a partner to another cap; the cap's holder sets
+/// where each of its partners is paid. Everything Blast changes takes effect
+/// only `DELAY_MS` after it is scheduled, and this package is published
+/// immutable, so no one can shorten that delay. The recipient the cap holder
+/// sets applies at once.
 ///
-/// Products call `pay` with Blast's own fee on a trade and record what it paid
-/// in their own trade event; `pay` emits nothing, so a payment can only be
-/// attributed by the product that made the trade.
+/// Products call `pay` with Blast's own fee on a trade. `pay` emits
+/// `PartnerPaid` for what the partner received; the product records the trade
+/// and the amount in its own event.
 module blast_partners::blast_partners;
 
 // === Constants ===
@@ -55,25 +57,18 @@ const ENotLiveCap: vector<u8> = b"Only the partner's live cap may set its recipi
 /// One-time witness naming the partner administration domain.
 public struct BLAST_PARTNERS() has drop;
 
-/// A value that is `before` until `at_ms` and `after` from then on.
-public struct Delayed<T: copy + drop + store> has copy, drop, store {
-    before: T,
-    after: T,
-    at_ms: u64,
-}
-
 /// One Blast partner. Shared, and read by immutable reference on every trade that names it.
 public struct Partner has key {
     id: UID,
     /// Where the partner's share is sent; set by the live cap's holder.
     recipient: address,
     /// The partner's share of Blast's fee on each trade, in basis points.
-    share_bps: Delayed<u64>,
-    /// The only cap that may set `recipient`.
-    cap_id: Delayed<ID>,
+    share_bps: Timelocked<u64>,
+    /// The only cap that may set `recipient`; one cap may manage many partners.
+    cap_id: Timelocked<ID>,
 }
 
-/// The partner's own authority over its recipient. Only the partner's live cap is accepted.
+/// A company's authority over the recipient of every partner bound to it.
 public struct PartnerCap has key, store {
     id: UID,
 }
@@ -82,8 +77,14 @@ public struct PartnerCap has key, store {
 public struct PartnerUpdated has copy, drop {
     partner_id: ID,
     recipient: address,
-    share_bps: Delayed<u64>,
-    cap_id: Delayed<ID>,
+    share_bps: Timelocked<u64>,
+    cap_id: Timelocked<ID>,
+}
+
+/// Emitted whenever a partner is paid: `amount` of `T` sent to its recipient.
+public struct PartnerPaid<phantom T> has copy, drop {
+    partner_id: ID,
+    amount: u64,
 }
 
 // === Private Initialization ===
@@ -94,33 +95,37 @@ fun init(otw: BLAST_PARTNERS, ctx: &mut TxContext) {
 
 // === Public Functions ===
 
-/// Registers and shares a partner and returns its cap. The partner earns
-/// nothing until its share takes effect `DELAY_MS` from now.
+/// Mints a cap. It controls nothing until Blast registers a partner under it,
+/// so anyone may mint one, a company included.
+public fun new_cap(ctx: &mut TxContext): PartnerCap {
+    PartnerCap { id: object::new(ctx) }
+}
+
+/// Registers and shares a partner managed by the cap `cap_id`, at once. The
+/// partner earns nothing until its share takes effect `DELAY_MS` from now.
 public fun register(
     admin_witness: &AdminWitness<BLAST_PARTNERS>,
+    cap_id: ID,
     recipient: address,
     share_bps: u64,
     clock: &Clock,
     ctx: &mut TxContext,
-): PartnerCap {
+) {
     admin_witness.assert_role(PARTNER_ADMIN_ROLE);
     assert!(recipient != @0x0, EInvalidRecipient);
     assert!(share_bps <= MAX_SHARE_BPS, EShareAboveMax);
 
-    let now_ms = clock.timestamp_ms();
-    let cap = PartnerCap { id: object::new(ctx) };
-    let cap_id = cap.id.to_inner();
+    let mut share = timelock::new(0, DELAY_MS);
+    share.schedule(share_bps, clock);
     let partner = Partner {
         id: object::new(ctx),
         recipient,
-        share_bps: Delayed { before: 0, after: share_bps, at_ms: now_ms + DELAY_MS },
-        cap_id: Delayed { before: cap_id, after: cap_id, at_ms: now_ms },
+        share_bps: share,
+        cap_id: timelock::new(cap_id, DELAY_MS),
     };
 
     partner.emit_updated();
     transfer::share_object(partner);
-
-    cap
 }
 
 /// Schedules the partner's share to become `share_bps` `DELAY_MS` from now.
@@ -134,34 +139,34 @@ public fun schedule_share(
 ) {
     admin_witness.assert_role(PARTNER_ADMIN_ROLE);
     assert!(share_bps <= MAX_SHARE_BPS, EShareAboveMax);
-    assert!(share_bps != self.share_bps.after, EUnchanged);
+    assert!(share_bps != self.share_bps.scheduled(), EUnchanged);
 
-    self.share_bps.schedule(share_bps, clock.timestamp_ms());
+    self.share_bps.schedule(share_bps, clock);
 
     self.emit_updated();
 }
 
-/// Issues a new cap that replaces the live one `DELAY_MS` from now. Until
-/// then the current cap keeps working; a newer reissue supersedes this one.
-public fun reissue_cap(
+/// Schedules the partner to be managed by the cap `cap_id` `DELAY_MS` from
+/// now, to replace a lost or stolen cap. Until then the current cap keeps
+/// working; a new schedule replaces a pending one, and scheduling the cap in
+/// force cancels a pending change.
+public fun schedule_cap(
     self: &mut Partner,
     admin_witness: &AdminWitness<BLAST_PARTNERS>,
+    cap_id: ID,
     clock: &Clock,
-    ctx: &mut TxContext,
-): PartnerCap {
+) {
     admin_witness.assert_role(PARTNER_ADMIN_ROLE);
+    assert!(cap_id != self.cap_id.scheduled(), EUnchanged);
 
-    let cap = PartnerCap { id: object::new(ctx) };
-    self.cap_id.schedule(cap.id.to_inner(), clock.timestamp_ms());
+    self.cap_id.schedule(cap_id, clock);
 
     self.emit_updated();
-
-    cap
 }
 
 /// Sets where the partner is paid, at once. Only the live cap may.
 public fun set_recipient(self: &mut Partner, cap: &PartnerCap, recipient: address, clock: &Clock) {
-    assert!(cap.id.to_inner() == self.cap_id.read(clock.timestamp_ms()), ENotLiveCap);
+    assert!(cap.id.to_inner() == self.cap_id.value(clock), ENotLiveCap);
     assert!(recipient != @0x0, EInvalidRecipient);
     assert!(recipient != self.recipient, EUnchanged);
 
@@ -177,28 +182,21 @@ public fun destroy_cap(cap: PartnerCap) {
 }
 
 /// Sends the partner its share of `fee`, Blast's fee on one trade, rounded
-/// down so Blast keeps the remainder, and returns the amount sent. Nothing is
-/// sent while the share is zero. `fee` keeps the rest.
+/// down so Blast keeps the remainder, emits `PartnerPaid`, and returns the
+/// amount sent. Nothing is sent or emitted while the share is zero. `fee`
+/// keeps the rest. Anyone calling it pays the partner from their own balance.
 public fun pay<T>(self: &Partner, fee: &mut Balance<T>, clock: &Clock): u64 {
-    let amount = fee.value().mul_div(self.share_bps.read(clock.timestamp_ms()), BASIS_POINTS);
+    let amount = fee.value().mul_div(self.share_bps.value(clock), BASIS_POINTS);
 
-    if (amount > 0) fee.split(amount).send_funds(self.recipient);
+    if (amount > 0) {
+        fee.split(amount).send_funds(self.recipient);
+        event::emit(PartnerPaid<T> { partner_id: self.id.to_inner(), amount });
+    };
 
     amount
 }
 
 // === Private Functions ===
-
-fun read<T: copy + drop + store>(self: &Delayed<T>, now_ms: u64): T {
-    if (now_ms >= self.at_ms) self.after else self.before
-}
-
-/// Keeps the value in force now until `DELAY_MS` from now, then `after`.
-fun schedule<T: copy + drop + store>(self: &mut Delayed<T>, after: T, now_ms: u64) {
-    self.before = self.read(now_ms);
-    self.after = after;
-    self.at_ms = now_ms + DELAY_MS;
-}
 
 fun emit_updated(self: &Partner) {
     event::emit(PartnerUpdated {
@@ -219,12 +217,11 @@ public fun init_for_testing(ctx: &mut TxContext) {
 #[test_only]
 /// A partner whose share is already in force, for products' own tests.
 public fun new_for_testing(recipient: address, share_bps: u64, ctx: &mut TxContext): Partner {
-    let cap_id = object::id_from_address(@0x0);
     Partner {
         id: object::new(ctx),
         recipient,
-        share_bps: Delayed { before: share_bps, after: share_bps, at_ms: 0 },
-        cap_id: Delayed { before: cap_id, after: cap_id, at_ms: 0 },
+        share_bps: timelock::new(share_bps, DELAY_MS),
+        cap_id: timelock::new(object::id_from_address(@0x0), DELAY_MS),
     }
 }
 
@@ -237,12 +234,11 @@ public fun new_scheduled_for_testing(
     at_ms: u64,
     ctx: &mut TxContext,
 ): Partner {
-    let cap_id = object::id_from_address(@0x0);
     Partner {
         id: object::new(ctx),
         recipient,
-        share_bps: Delayed { before, after, at_ms },
-        cap_id: Delayed { before: cap_id, after: cap_id, at_ms: 0 },
+        share_bps: timelock::new_scheduled_for_testing(before, after, at_ms, DELAY_MS),
+        cap_id: timelock::new(object::id_from_address(@0x0), DELAY_MS),
     }
 }
 
@@ -259,26 +255,23 @@ public fun delay_ms_for_testing(): u64 {
 #[test_only]
 /// The partner's recipient, share in force and live cap at `clock`.
 public fun terms_for_testing(self: &Partner, clock: &Clock): (address, u64, ID) {
-    let now_ms = clock.timestamp_ms();
-    (self.recipient, self.share_bps.read(now_ms), self.cap_id.read(now_ms))
+    (self.recipient, self.share_bps.value(clock), self.cap_id.value(clock))
 }
 
 #[test_only]
-public fun partner_updated_fields(self: &PartnerUpdated): (ID, address, u64, u64, u64, ID, ID, u64) {
-    (
-        self.partner_id,
-        self.recipient,
-        self.share_bps.before,
-        self.share_bps.after,
-        self.share_bps.at_ms,
-        self.cap_id.before,
-        self.cap_id.after,
-        self.cap_id.at_ms,
-    )
+public fun partner_paid_fields<T>(self: &PartnerPaid<T>): (ID, u64) {
+    (self.partner_id, self.amount)
+}
+
+#[test_only]
+public fun partner_updated_fields(self: &PartnerUpdated): (ID, address, Timelocked<u64>, Timelocked<ID>) {
+    (self.partner_id, self.recipient, self.share_bps, self.cap_id)
 }
 
 // === Imports ===
 
 use blast_admin::acl::{Self, AdminWitness};
+
+use blast_fun_timelock::blast_fun_timelock::{Self as timelock, Timelocked};
 
 use sui::{balance::Balance, clock::Clock, event};

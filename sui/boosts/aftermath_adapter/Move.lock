@@ -52,11 +52,17 @@ use_environment = "mainnet"
 manifest_digest = "1D81A242A868996BDA2D034470EFF798AACC5958CF9958C94BAAACC9C2C92DC8"
 deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
 
+[pinned.mainnet.blast_fun_timelock]
+source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/timelock", rev = "1196ce31f717f9935805dd742ce553051bfb21aa" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
 [pinned.mainnet.blast_partners]
 source = { local = "../../partners" }
 use_environment = "mainnet"
-manifest_digest = "2EE0BE6CC23D1718E36913BC8AFF07AB623F8E972B9E6253C5BE9AFEE9962448"
-deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "D04F033993135DA55436318C3739C66004E73E5EBB0257B9663EF1651D820C2E"
+deps = { blast_admin = "blast_admin", blast_fun_timelock = "blast_fun_timelock", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.ifixed]
 source = { local = "interfaces/aftermath/ifixed/ifixed" }
@@ -136,11 +142,17 @@ use_environment = "testnet"
 manifest_digest = "D22569635345AD81636092AAA074AE3A61666325E24EA5D65B1CB4BFC9BCEE3F"
 deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
 
+[pinned.testnet.blast_fun_timelock]
+source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/timelock", rev = "1196ce31f717f9935805dd742ce553051bfb21aa" }
+use_environment = "testnet"
+manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
+deps = { std = "MoveStdlib", sui = "Sui" }
+
 [pinned.testnet.blast_partners]
 source = { local = "../../partners" }
 use_environment = "testnet"
-manifest_digest = "B9BC26466630CEB8A3C2BE1A745F7338CFDF92C219AC0FF7F363DA750C2676C3"
-deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "D332F6475DFD67B726CFDCA73A056F8284AAA3BF18E6B181A0DBABABC50AA3CE"
+deps = { blast_admin = "blast_admin", blast_fun_timelock = "blast_fun_timelock", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.ifixed]
 source = { local = "interfaces/aftermath/ifixed/ifixed" }

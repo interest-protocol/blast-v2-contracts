@@ -39,8 +39,8 @@ export function buildActivePlan(input) {
     const product = type(input.productType), collateral = type(input.collateralType);
     const objects = input.objects;
     if (!objects || typeof objects !== 'object' || Array.isArray(objects)) throw Error('bound objects required');
-    // Every mint and redeem names a Blast partner (the zero-share house partner for direct flow);
-    // rebalance takes none.
+    // A mint or redeem may name a Blast partner, which switches it to the `_with_partner` entry
+    // point with the partner right after the protocol object; rebalance takes none.
     const allowed = [...BOUND_OBJECTS, 'clock', 'inputCoin', ...(operation === 'rebalance' ? [] : ['partner'])];
     for (const key of Object.keys(objects)) {
         if (!allowed.includes(key)) throw Error(`unexpected object field ${key}`);
@@ -50,7 +50,9 @@ export function buildActivePlan(input) {
     if (operation === 'rebalance') {
         return {commands: [call(`${adapter}::operations::rebalance`, [product, collateral], [...bound, clock], null)], transfers: []};
     }
-    const traded = [...bound.slice(0, 2), `@${address(objects.partner)}`, ...bound.slice(2)];
+    const partnered = objects.partner !== undefined;
+    const traded = partnered ? [...bound.slice(0, 2), `@${address(objects.partner)}`, ...bound.slice(2)] : bound;
+    const entry = (name) => `${adapter}::operations::${name}${partnered ? '_with_partner' : ''}`;
     const coin = `@${address(objects.inputCoin)}`;
     const limits = [u64(input.minimumOutput), u64(input.deadlineMs), clock];
     const composed = operation === 'mint_buy' || operation === 'sell_redeem';
@@ -67,17 +69,17 @@ export function buildActivePlan(input) {
     }
     if (operation === 'mint_buy') {
         return {commands: [
-            call(`${adapter}::operations::mint`, [product, collateral], [...traded, coin, ...limits], 'shares'),
+            call(entry('mint'), [product, collateral], [...traded, coin, ...limits], 'shares'),
             call(`${launchPackage}::launch::buy`, launchTypes, [...launchArgs, 'shares', launchMinimum], 'purchase'),
         ], transfers: ['purchase.0', 'purchase.1']};
     }
     if (operation === 'sell_redeem') {
         return {commands: [
             call(`${launchPackage}::launch::sell`, launchTypes, [...launchArgs, coin, launchMinimum], 'shares'),
-            call(`${adapter}::operations::redeem`, [product, collateral], [...traded, 'shares', ...limits], 'result'),
+            call(entry('redeem'), [product, collateral], [...traded, 'shares', ...limits], 'result'),
         ], transfers: ['result']};
     }
-    return {commands: [call(`${adapter}::operations::${operation}`, [product, collateral], [...traded, coin, ...limits], 'result')], transfers: ['result']};
+    return {commands: [call(entry(operation), [product, collateral], [...traded, coin, ...limits], 'result')], transfers: ['result']};
 }
 
 export function renderUnsignedPtbArgs(input) {

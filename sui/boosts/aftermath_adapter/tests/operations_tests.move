@@ -537,17 +537,15 @@ fun native_fee_allocations_preserve_historical_cash_through_redemption_and_rate_
     let mut fixture = start();
     let mut vault = issue_and_activate_with_policy(&mut fixture, initial_checkpoint(),
         fee_capped_vault_policy_for_side(policy::long()));
-    let house = house_partner(&mut fixture);
-    let clock = reference_clock(&mut fixture);
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.set_fees(&fixture.protocol, &witness, 10, 10, 2_000);
     let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 10_000, vault.total_share_supply(), 9_989_000, REFERENCE_TIME_MS);
     assert_eq!(plan.admin_fee(), 2);
     assert_eq!(plan.base_to_buy(), 19_980_000);
     vault.set_fees(&fixture.protocol, &witness, 0, 0, 0);
+    vault.retain_admin_cash(sui::balance::create_for_testing<Collateral>(2));
     let shares = operations::complete_mint_for_testing<Product, Collateral>(
-        &mut vault, plan, 10_000, sui::balance::create_for_testing(2), &house,
-        active_position(10_997, 21_780), initial_checkpoint(), &clock, fixture.ctx!(),
+        &mut vault, plan, 10_000, active_position(10_997, 21_780), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!(),
     );
     let (_, minted, contribution, fee, admin, buffer, reserve, cash, supply) =
         events::collect_one<events::Minted<Product>>(0).minted_amounts();
@@ -561,7 +559,7 @@ fun native_fee_allocations_preserve_historical_cash_through_redemption_and_rate_
         active_position_with_base(10_996, 1_800_165), REFERENCE_TIME_MS);
     assert_eq!(net + admin, 9_980);
     let cash = sui::coin::mint_for_testing<Collateral>(9_980, fixture.ctx!());
-    let cash = operations::complete_redemption_for_testing(&mut vault, shares, cash, net, admin, fee, reserve_fee, &house, initial_checkpoint(), &clock);
+    let cash = operations::complete_redemption_for_testing(&mut vault, shares, cash, net, admin, fee, reserve_fee, initial_checkpoint(), fixture.ctx!());
     assert_eq!(cash.value(), 9_978);
     assert_eq!(vault.total_share_supply(), 900_000);
     assert_eq!(vault.state().maintenance_reserve(), 116);
@@ -579,85 +577,87 @@ fun native_fee_allocations_preserve_historical_cash_through_redemption_and_rate_
     assert_eq!(vault.total_share_supply(), 900_000);
     sui::transfer::public_transfer(cash, ADMIN);
     sui::transfer::public_transfer(earnings, ADMIN);
-    destroy(house);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+/// A partner is paid only out of the admin fee the operation just retained: of a
+/// 30-atom fee a 50% share takes 15, earlier admin cash, the reserve and the
+/// supply do not move, and both the vault's and the partner package's events
+/// record the payment.
+fun a_partner_is_paid_only_out_of_the_admin_fee_its_operation_retained() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let clock = reference_clock(&mut fixture);
+    vault.retain_admin_cash(sui::balance::create_for_testing<Collateral>(100));
+    vault.retain_admin_cash(sui::balance::create_for_testing<Collateral>(30));
+    let (reserve, supply) = (vault.state().maintenance_reserve(), vault.total_share_supply());
+
+    operations::pay_partner_for_testing(&mut vault, &partner, 30, &clock);
+
+    assert_eq!(vault.admin_cash_balance<_, Collateral>(), 115);
+    assert_eq!(vector[vault.state().maintenance_reserve(), vault.total_share_supply()], vector[reserve, supply]);
+    let (vault_id, partner_id, admin_fee, partner_fee, admin_cash_after) =
+        events::collect_one<events::PartnerFeePaid<Product>>(0).partner_fee_paid_fields();
+    assert_eq!(vault_id, vault.id());
+    assert_eq!(partner_id, object::id(&partner));
+    assert_eq!(vector[admin_fee, partner_fee, admin_cash_after], vector[30, 15, 115]);
+    let payments = sui::event::events_by_type<PartnerPaid<Collateral>>();
+    assert_eq!(payments.length(), 1);
+    let (paid_partner, amount) = payments[0].partner_paid_fields();
+    assert_eq!(paid_partner, object::id(&partner));
+    assert_eq!(amount, 15);
+    destroy(partner);
     clock.destroy_for_testing();
     destroy(vault);
     fixture.end();
 }
 
 #[test]
-/// A partner is paid only out of Blast's admin fee: everything a holder can see
-/// from the mint is identical to the house partner's, and Blast's admin cash is
-/// lower by exactly what the partner was paid. Of 30 atoms of admin fee, a 50%
-/// share pays the partner 15.
-fun a_partner_mint_changes_only_blasts_admin_cash() {
-    let mut fixture = start();
-    let house = partners::new_for_testing(PARTNER_PAYOUT, 0, fixture.ctx!());
-    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
-    let (house, house_cash, house_fee) = mint_through_partner(&mut fixture, Product(), house);
-    let (paid, paid_cash, partner_fee) = mint_through_partner(&mut fixture, OtherProduct(), partner);
-    fixture.end();
-
-    assert_eq!(paid, house);
-    assert_eq!(vector[house_fee, partner_fee], vector[0, 15]);
-    assert_eq!(vector[house_cash, paid_cash], vector[30, 15]);
-}
-
-#[test]
-/// At the maximum 80% share Blast still keeps a fifth of its admin fee, and holders see no change.
-fun the_maximum_share_leaves_blast_a_fifth_of_its_admin_fee() {
-    let mut fixture = start();
-    let house = partners::new_for_testing(PARTNER_PAYOUT, 0, fixture.ctx!());
-    let partner = partners::new_for_testing(PARTNER_PAYOUT, 8_000, fixture.ctx!());
-    let (house, _, _) = mint_through_partner(&mut fixture, Product(), house);
-    let (paid, paid_cash, partner_fee) = mint_through_partner(&mut fixture, OtherProduct(), partner);
-    fixture.end();
-
-    assert_eq!(paid, house);
-    assert_eq!(vector[partner_fee, paid_cash], vector[24, 6]);
-}
-
-#[test]
-/// The share is read at the trade's own Clock, the one the core prices at: a
-/// share that switches one millisecond after the trade pays nothing, and one that
-/// switches at the trade's time pays in full.
-fun a_partner_share_takes_effect_exactly_at_the_trades_clock() {
-    let mut fixture = start();
-    let pending = partners::new_scheduled_for_testing(PARTNER_PAYOUT, 0, 5_000, REFERENCE_TIME_MS + 1, fixture.ctx!());
-    let switched = partners::new_scheduled_for_testing(PARTNER_PAYOUT, 0, 5_000, REFERENCE_TIME_MS, fixture.ctx!());
-    let (_, pending_cash, pending_fee) = mint_through_partner(&mut fixture, Product(), pending);
-    let (_, switched_cash, switched_fee) = mint_through_partner(&mut fixture, OtherProduct(), switched);
-    fixture.end();
-
-    assert_eq!(vector[pending_fee, pending_cash], vector[0, 30]);
-    assert_eq!(vector[switched_fee, switched_cash], vector[15, 15]);
-}
-
-#[test]
-/// On redemption the partner is paid out of Blast's admin fee and the redeemer
-/// receives exactly the core's net. Of 40 atoms of admin fee, a 50% share pays 20.
-fun a_partner_redemption_pays_only_out_of_blasts_admin_fee() {
+/// At the maximum 80% share Blast still keeps a fifth of the admin fee.
+fun the_maximum_partner_share_leaves_blast_a_fifth_of_the_admin_fee() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 8_000, fixture.ctx!());
     let clock = reference_clock(&mut fixture);
-    let shares = vault.mint_shares(1_000, fixture.ctx!());
-    let cash = sui::coin::mint_for_testing<Collateral>(1_040, fixture.ctx!());
+    vault.retain_admin_cash(sui::balance::create_for_testing<Collateral>(30));
 
-    let cash = operations::complete_redemption_for_testing(
-        &mut vault, shares, cash, 1_000, 40, 100, 60, &partner, initial_checkpoint(), &clock,
-    );
+    operations::pay_partner_for_testing(&mut vault, &partner, 30, &clock);
 
-    assert_eq!(cash.value(), 1_000);
-    assert_eq!(vault.admin_cash_balance<_, Collateral>(), 20);
-    let event = events::collect_one<events::Redeemed<Product>>(0);
-    let (partner_id, partner_fee) = event.redeemed_partner_fields();
-    assert_eq!(partner_id, object::id(&partner));
-    assert_eq!(partner_fee, 20);
-    let amounts = event.redeemed_amounts();
-    assert_eq!(vector[amounts[1], amounts[3], amounts[6]], vector[1_000, 40, 20]);
-    sui::transfer::public_transfer(cash, ADMIN);
+    let (_, _, _, partner_fee, admin_cash_after) =
+        events::collect_one<events::PartnerFeePaid<Product>>(0).partner_fee_paid_fields();
+    assert_eq!(vector[partner_fee, admin_cash_after], vector[24, 6]);
     destroy(partner);
+    clock.destroy_for_testing();
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+/// The share is read at the operation's own Clock: a share that switches one
+/// millisecond later pays nothing but the operation is still attributed to the
+/// partner; one that switches at the operation's time pays in full.
+fun a_partner_share_takes_effect_exactly_at_the_operations_clock() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
+    let pending = partners::new_scheduled_for_testing(PARTNER_PAYOUT, 0, 5_000, REFERENCE_TIME_MS + 1, fixture.ctx!());
+    let switched = partners::new_scheduled_for_testing(PARTNER_PAYOUT, 0, 5_000, REFERENCE_TIME_MS, fixture.ctx!());
+    let clock = reference_clock(&mut fixture);
+    vault.retain_admin_cash(sui::balance::create_for_testing<Collateral>(60));
+
+    operations::pay_partner_for_testing(&mut vault, &pending, 30, &clock);
+    operations::pay_partner_for_testing(&mut vault, &switched, 30, &clock);
+
+    let fees = events::collect<events::PartnerFeePaid<Product>>();
+    let (_, _, _, pending_fee, pending_cash) = fees[0].partner_fee_paid_fields();
+    let (_, _, _, switched_fee, switched_cash) = fees[1].partner_fee_paid_fields();
+    assert_eq!(vector[pending_fee, pending_cash], vector[0, 60]);
+    assert_eq!(vector[switched_fee, switched_cash], vector[15, 45]);
+    assert_eq!(sui::event::events_by_type<PartnerPaid<Collateral>>().length(), 1);
+    destroy(pending);
+    destroy(switched);
     clock.destroy_for_testing();
     destroy(vault);
     fixture.end();
@@ -766,8 +766,6 @@ fun venue_fee_bound_rejects_a_taker_fee_above_one() {
 fun completed_redemption_burns_the_native_input_only_after_exact_cash_return() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let house = house_partner(&mut fixture);
-    let clock = reference_clock(&mut fixture);
     let mint_plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_TIME_MS);
     let (amount, _, _, _, _) = vault.state_mut().complete_mint(mint_plan, active_position(1_998, 3_798), REFERENCE_TIME_MS);
     let shares = vault.mint_shares(amount, fixture.ctx!());
@@ -780,14 +778,12 @@ fun completed_redemption_burns_the_native_input_only_after_exact_cash_return() {
     assert_eq!(net + admin, 994);
     let cash = sui::coin::mint_for_testing<Collateral>(994, fixture.ctx!());
     let final_checkpoint = checkpoint_with_market_imr(0, ALLOCATED_FIXED - 994 * ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
-    let cash = operations::complete_redemption_for_testing(&mut vault, shares, cash, net, admin, fee, reserve_fee, &house, final_checkpoint, &clock);
+    let cash = operations::complete_redemption_for_testing(&mut vault, shares, cash, net, admin, fee, reserve_fee, final_checkpoint, fixture.ctx!());
     assert_eq!(cash.value(), 994);
     assert_eq!(vault.total_share_supply(), 900_000);
     assert_eq!(vault.state().maintenance_reserve(), 102);
     assert_eq!(vault.admin_cash_balance<_, Collateral>(), 0);
     sui::transfer::public_transfer(cash, ADMIN);
-    destroy(house);
-    clock.destroy_for_testing();
     destroy(vault);
     fixture.end();
 }
@@ -1234,8 +1230,6 @@ fun posted_orders_are_reported_before_a_liquidation_in_the_same_session() {
 fun completed_mint_returns_native_shares_and_updates_the_same_treasury_supply() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let house = house_partner(&mut fixture);
-    let clock = reference_clock(&mut fixture);
     let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_TIME_MS);
     assert_eq!(plan.base_to_buy(), 1_998_000);
     let priced = plan.mint_position();
@@ -1250,10 +1244,7 @@ fun completed_mint_returns_native_shares_and_updates_the_same_treasury_supply() 
         observation::new_price(PRICE, 0, REFERENCE_TIME_MS),
         observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE,
     );
-    let admin_fee = sui::balance::create_for_testing(plan.admin_fee());
-    let shares = operations::complete_mint_for_testing<Product, Collateral>(
-        &mut vault, plan, 1_000, admin_fee, &house, after, initial_checkpoint(), &clock, fixture.ctx!(),
-    );
+    let shares = operations::complete_mint_for_testing<Product, Collateral>(&mut vault, plan, 1_000, after, initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!());
     let event = events::collect_one<events::Minted<Product>>(0);
     let (deposit, minted, contribution, fee, admin, buffer, reserve, admin_cash, supply) = event.minted_amounts();
     assert_eq!(deposit, 1_000);
@@ -1270,8 +1261,6 @@ fun completed_mint_returns_native_shares_and_updates_the_same_treasury_supply() 
     assert_eq!(vault.state().maintenance_reserve(), 101);
     assert_eq!(vault.admin_cash_balance<_, Collateral>(), 0);
     sui::transfer::public_transfer(shares, ADMIN);
-    destroy(house);
-    clock.destroy_for_testing();
     destroy(vault);
     fixture.end();
 }
@@ -2477,19 +2466,13 @@ fun finalization_is_rejected_before_shutdown_begins() {
 fun completed_mint_is_rejected_after_shutdown_begins() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let house = house_partner(&mut fixture);
-    let clock = reference_clock(&mut fixture);
     let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_TIME_MS);
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
-    let admin_fee = sui::balance::create_for_testing(plan.admin_fee());
     let shares = operations::complete_mint_for_testing<Product, Collateral>(
-        &mut vault, plan, 1_000, admin_fee, &house, active_position(1_998, 3_798), initial_checkpoint(), &clock,
-        fixture.ctx!(),
+        &mut vault, plan, 1_000, active_position(1_998, 3_798), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!(),
     );
     destroy(shares);
-    destroy(house);
-    clock.destroy_for_testing();
     destroy(vault);
     fixture.end();
 }
@@ -2690,8 +2673,6 @@ fun issue_and_begin_shutdown(fixture: &mut Fixture, checkpoint: Checkpoint): Vau
 fun complete_redemption_with_cash(cash_amount: u64) {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let house = house_partner(&mut fixture);
-    let clock = reference_clock(&mut fixture);
     let mint_plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_TIME_MS);
     let (amount, _, _, _, _) = vault.state_mut().complete_mint(mint_plan, active_position(1_998, 3_798), REFERENCE_TIME_MS);
     let shares = vault.mint_shares(amount, fixture.ctx!());
@@ -2702,10 +2683,8 @@ fun complete_redemption_with_cash(cash_amount: u64) {
     assert_eq!(net + admin, 994);
     let cash = sui::coin::mint_for_testing<Collateral>(cash_amount, fixture.ctx!());
     let final_checkpoint = checkpoint_with_market_imr(0, ALLOCATED_FIXED - 994 * ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
-    let cash = operations::complete_redemption_for_testing(&mut vault, shares, cash, net, admin, fee, reserve_fee, &house, final_checkpoint, &clock);
+    let cash = operations::complete_redemption_for_testing(&mut vault, shares, cash, net, admin, fee, reserve_fee, final_checkpoint, fixture.ctx!());
     destroy(cash);
-    destroy(house);
-    clock.destroy_for_testing();
     destroy(vault);
     fixture.end();
 }
@@ -2770,46 +2749,6 @@ fun issue_and_activate(
     checkpoint: Checkpoint,
 ): Vault<Product, Collateral> {
     issue_and_activate_with_policy(fixture, checkpoint, standard_vault_policy())
-}
-
-/// Mints 10,000 atoms at a 100 bps fee with Blast's admin share at 30%, an admin
-/// fee of 30, at the reference time through `partner`. Returns every `Minted`
-/// amount except Blast's admin cash, then that admin cash and the partner's fee.
-/// Each run in one fixture needs its own `product`, since Coin Registry admits
-/// each currency once.
-fun mint_through_partner<Tag: drop>(fixture: &mut Fixture, product: Tag, partner: Partner): (vector<u64>, u64, u64) {
-    let mut vault = issue_and_activate_product(fixture, product, initial_checkpoint(),
-        fee_capped_vault_policy_for_side(policy::long()));
-    let clock = reference_clock(fixture);
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    vault.set_fees(&fixture.protocol, &witness, 100, 100, 3_000);
-    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 10_000, vault.total_share_supply(), 0, REFERENCE_TIME_MS);
-    assert_eq!(plan.admin_fee(), 30);
-    let admin_fee = sui::balance::create_for_testing(plan.admin_fee());
-    // The venue kept the deposit net of the admin fee, less one atom of execution cost.
-    let after = active_position(SEED_EQUITY + 10_000 - 30 - 1, ABSOLUTE_NOTIONAL + plan.base_to_buy() / BASE_PER_NOTIONAL);
-
-    let shares = operations::complete_mint_for_testing<Tag, Collateral>(
-        &mut vault, plan, 10_000, admin_fee, &partner, after, initial_checkpoint(), &clock, fixture.ctx!(),
-    );
-
-    let event = events::collect_one<events::Minted<Tag>>(0);
-    let (deposit, minted, contribution, fee, admin, reserve_fee, reserve, admin_cash, supply) = event.minted_amounts();
-    let (partner_id, partner_fee) = event.minted_partner_fields();
-    assert_eq!(partner_id, object::id(&partner));
-    assert_eq!(admin_cash, vault.admin_cash_balance<_, Collateral>());
-    assert_eq!(minted, shares.value());
-    sui::transfer::public_transfer(shares, ADMIN);
-    destroy(partner);
-    clock.destroy_for_testing();
-    destroy(vault);
-
-    (vector[deposit, minted, contribution, fee, admin, reserve_fee, reserve, supply], admin_cash, partner_fee)
-}
-
-/// The zero-share house partner that Blast's own and unaffiliated flow names.
-fun house_partner(fixture: &mut Fixture): Partner {
-    partners::new_for_testing(ADMIN, 0, fixture.ctx!())
 }
 
 /// A clock at the reference time the completion helpers price at.
@@ -3230,17 +3169,15 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
     let mut fixture = start();
     let vault_policy = fee_capped_vault_policy_for_side(side);
     let mut vault = issue_and_activate_product_with_side(&mut fixture, product, initial_checkpoint(), vault_policy, side);
-    let house = house_partner(&mut fixture);
-    let reference = reference_clock(&mut fixture);
     let mut replay = replay_issued(events::collect_one<events::VaultIssued<Tag>>(0));
     replay_initialized(&mut replay, events::collect_one<events::VaultInitialized<Tag>>(0));
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.set_fees(&fixture.protocol, &witness, 10, 10, 2_000);
     replay_fees(&mut replay, events::collect_one<events::FeesUpdated<Tag>>(0));
     let plan = vault.state().prepare_mint(position_observation_for_side(SEED_EQUITY, side), 10_000, vault.total_share_supply(), 9_989_000, REFERENCE_TIME_MS);
+    vault.retain_admin_cash(sui::balance::create_for_testing<Collateral>(2));
     let mut shares = operations::complete_mint_for_testing<Tag, Collateral>(&mut vault, plan, 10_000,
-        sui::balance::create_for_testing(2), &house,
-        active_position_for_side(10_997, 21_780, side), initial_checkpoint(), &reference, fixture.ctx!());
+        active_position_for_side(10_997, 21_780, side), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!());
     replay_mint(&mut replay, events::collect_one<events::Minted<Tag>>(0));
     let dirty = checkpoint::checkpoint_for_testing(13, 0, 1, 1, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 1, false, 1, 1, 1);
@@ -3296,8 +3233,6 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
     destroy(first_cash);
     destroy(last_cash);
     destroy(clock);
-    destroy(house);
-    reference.destroy_for_testing();
     destroy(vault);
     fixture.end();
 }
@@ -3306,8 +3241,6 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
 // Captures are authenticated-boundary fixtures, not evidence of venue execution.
 fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, Collateral>) {
     let mut replay = replay_issued(events::collect_one<events::VaultIssued<Tag>>(0));
-    let house = house_partner(fixture);
-    let clock = reference_clock(fixture);
     replay_initialized(&mut replay, events::collect_one<events::VaultInitialized<Tag>>(0));
     assert_replay(&replay, vault);
 
@@ -3320,9 +3253,9 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, C
     vault.set_fees(&fixture.protocol, &witness, 0, 0, 0);
     replay_fees(&mut replay, events::collect<events::FeesUpdated<Tag>>()[1]);
     assert_replay(&replay, vault);
+    vault.retain_admin_cash(sui::balance::create_for_testing<Collateral>(2));
     let shares = operations::complete_mint_for_testing<Tag, Collateral>(vault, plan, 10_000,
-        sui::balance::create_for_testing(2), &house,
-        active_position(10_997, 21_780), initial_checkpoint(), &clock, fixture.ctx!());
+        active_position(10_997, 21_780), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!());
     replay_mint(&mut replay, events::collect_one<events::Minted<Tag>>(0));
     assert_replay(&replay, vault);
 
@@ -3333,7 +3266,7 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, C
     let (net, admin, fee, reserve_fee) = operations::settle_redemption_for_testing(vault, plan, &shares,
         active_position_with_base(10_996, 1_800_165), REFERENCE_TIME_MS);
     let cash = sui::coin::mint_for_testing<Collateral>(9_980, fixture.ctx!());
-    let cash = operations::complete_redemption_for_testing(vault, shares, cash, net, admin, fee, reserve_fee, &house, initial_checkpoint(), &clock);
+    let cash = operations::complete_redemption_for_testing(vault, shares, cash, net, admin, fee, reserve_fee, initial_checkpoint(), fixture.ctx!());
     replay_redemption(&mut replay, events::collect_one<events::Redeemed<Tag>>(0));
     assert_replay(&replay, vault);
     sui::transfer::public_transfer(cash, ADMIN);
@@ -3398,8 +3331,6 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, C
     apply_connected_change(vault, after, checkpoint::unchanged_change());
     assert_eq!(events::collect<events::FundingSettled<Tag>>().length(), 1);
     assert_replay(&replay, vault);
-    destroy(house);
-    clock.destroy_for_testing();
 }
 
 fun rebalance_position(equity: u64, base: u64): PositionObservation {
@@ -3417,15 +3348,11 @@ fun replay_fees<Tag>(replay: &mut ReplayState, event: events::FeesUpdated<Tag>) 
 fun replay_mint<Tag>(replay: &mut ReplayState, event: events::Minted<Tag>) {
     let (id, checkpoint) = event.minted_checkpoint_fields();
     let (deposit, shares, contribution, fee, admin, buffer, reserve, cash, supply) = event.minted_amounts();
-    let (_, partner_fee) = event.minted_partner_fields();
     assert_eq!(id, replay.vault_id);
     // The fee was sealed at the rates in force when the plan was prepared; only its split is replayed.
     assert_eq!(fee, admin + buffer);
     assert_eq!(vector[deposit, shares, contribution], vector[10_000, 9_989_000, 9_989]);
-    assert_eq!(
-        vector[reserve, cash, supply],
-        vector[replay.maintenance_reserve + buffer, replay.admin_cash + admin - partner_fee, replay.supply + shares],
-    );
+    assert_eq!(vector[reserve, cash, supply], vector[replay.maintenance_reserve + buffer, replay.admin_cash + admin, replay.supply + shares]);
     replay.maintenance_reserve = reserve;
     replay.admin_cash = cash;
     replay.supply = supply;
@@ -3440,14 +3367,10 @@ fun replay_redemption<Tag>(replay: &mut ReplayState, event: events::Redeemed<Tag
     let fee = amounts[2];
     let admin = amounts[3];
     let buffer = amounts[4];
-    let (_, partner_fee) = event.redeemed_partner_fields();
     assert_eq!(id, replay.vault_id);
     assert_eq!(fee, admin + buffer);
     assert_eq!(vector[shares, net], vector[9_989_000, 9_978]);
-    assert_eq!(
-        vector[amounts[5], amounts[6], amounts[7]],
-        vector[replay.maintenance_reserve + buffer, replay.admin_cash + admin - partner_fee, replay.supply - shares],
-    );
+    assert_eq!(vector[amounts[5], amounts[6], amounts[7]], vector[replay.maintenance_reserve + buffer, replay.admin_cash + admin, replay.supply - shares]);
     replay.maintenance_reserve = amounts[5];
     replay.admin_cash = amounts[6];
     replay.supply = amounts[7];
@@ -3602,7 +3525,7 @@ use blast_boosts_core::{
     blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
 };
 
-use blast_partners::blast_partners::{Self as partners, Partner};
+use blast_partners::blast_partners::{Self as partners, PartnerPaid};
 
 use perpetuals::authority::ACCOUNT;
 

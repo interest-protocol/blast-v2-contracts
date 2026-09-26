@@ -6,6 +6,7 @@ authors = ["Jose Cerqueira (jose@interestprotocol.com)"]
 
 [dependencies]
 blast_admin = { local = "../admin" }
+blast_fun_timelock = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/timelock", rev = "1196ce31f717f9935805dd742ce553051bfb21aa" }
 
 [addresses]
 blast_partners = "0x0"
