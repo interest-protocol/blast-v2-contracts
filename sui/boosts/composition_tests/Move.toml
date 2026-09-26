@@ -8,6 +8,7 @@ blast_admin = { local = "../../admin" }
 blast_boosts_aftermath = { local = "../aftermath_adapter" }
 blast_boosts_products = { local = "../products" }
 blast_fun = { local = "../../launchpad" }
+blast_partners = { local = "../../partners" }
 
 [addresses]
 blast_boosts_composition_tests = "0x0"

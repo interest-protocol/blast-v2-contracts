@@ -162,6 +162,7 @@ public fun issue_published_product<Collateral>(
 public fun mint_and_buy<Product, Collateral, Meme>(
     vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
+    partner: &Partner,
     account: &mut Account<Collateral>,
     registry: &Registry,
     clearing_house: ClearingHouse<Collateral>,
@@ -177,7 +178,7 @@ public fun mint_and_buy<Product, Collateral, Meme>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<BlastBoost<Product>>) {
-    let shares = operations::mint(vault, protocol, account, registry, clearing_house,
+    let shares = operations::mint(vault, protocol, partner, account, registry, clearing_house,
         base_oracle, collateral_oracle, cash,
         minimum_shares, deadline, clock, ctx);
     market.buy(version, runtime, shares, minimum_meme, ctx)
@@ -192,6 +193,7 @@ public fun sell_and_redeem<Product, Collateral, Meme>(
     minimum_shares: u64,
     vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
+    partner: &Partner,
     account: &mut Account<Collateral>,
     registry: &Registry,
     clearing_house: ClearingHouse<Collateral>,
@@ -203,7 +205,7 @@ public fun sell_and_redeem<Product, Collateral, Meme>(
     ctx: &mut TxContext,
 ): Coin<Collateral> {
     let shares = market.sell(version, runtime, meme, minimum_shares, ctx);
-    operations::redeem(vault, protocol, account, registry, clearing_house,
+    operations::redeem(vault, protocol, partner, account, registry, clearing_house,
         base_oracle, collateral_oracle, shares,
         minimum_cash, deadline, clock, ctx)
 }
@@ -218,11 +220,18 @@ use blast_fun::{
     package_version::{Self, PackageVersion}, runtime_config::{Self, RuntimeConfig},
 };
 
-use blast_boosts_aftermath::{blast_boost::BlastBoost, operations, protocol::Protocol, vault::{Self, Vault, VaultIssuance}};
+use blast_boosts_aftermath::{
+    blast_boost::BlastBoost,
+    operations,
+    protocol::Protocol,
+    vault::{Self, Vault, VaultIssuance},
+};
 
 use blast_boosts_core::{blast_boosts_core::BLAST_BOOSTS_CORE, policy::VaultPolicy};
 
 use blast_boosts_products::blast_boosts_products::BTC_BULL_2X;
+
+use blast_partners::blast_partners::Partner;
 
 use oracle_aggregator::price_feed_storage::PriceFeedStorage;
 

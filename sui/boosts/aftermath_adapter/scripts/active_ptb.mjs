@@ -39,14 +39,18 @@ export function buildActivePlan(input) {
     const product = type(input.productType), collateral = type(input.collateralType);
     const objects = input.objects;
     if (!objects || typeof objects !== 'object' || Array.isArray(objects)) throw Error('bound objects required');
+    // Every mint and redeem names a Blast partner (the zero-share house partner for direct flow);
+    // rebalance takes none.
+    const allowed = [...BOUND_OBJECTS, 'clock', 'inputCoin', ...(operation === 'rebalance' ? [] : ['partner'])];
     for (const key of Object.keys(objects)) {
-        if (![...BOUND_OBJECTS, 'clock', 'inputCoin'].includes(key)) throw Error(`unexpected object field ${key}`);
+        if (!allowed.includes(key)) throw Error(`unexpected object field ${key}`);
     }
     const bound = BOUND_OBJECTS.map((role) => `@${address(objects[role])}`);
     const clock = `@${address(objects.clock)}`;
     if (operation === 'rebalance') {
         return {commands: [call(`${adapter}::operations::rebalance`, [product, collateral], [...bound, clock], null)], transfers: []};
     }
+    const traded = [...bound.slice(0, 2), `@${address(objects.partner)}`, ...bound.slice(2)];
     const coin = `@${address(objects.inputCoin)}`;
     const limits = [u64(input.minimumOutput), u64(input.deadlineMs), clock];
     const composed = operation === 'mint_buy' || operation === 'sell_redeem';
@@ -63,17 +67,17 @@ export function buildActivePlan(input) {
     }
     if (operation === 'mint_buy') {
         return {commands: [
-            call(`${adapter}::operations::mint`, [product, collateral], [...bound, coin, ...limits], 'shares'),
+            call(`${adapter}::operations::mint`, [product, collateral], [...traded, coin, ...limits], 'shares'),
             call(`${launchPackage}::launch::buy`, launchTypes, [...launchArgs, 'shares', launchMinimum], 'purchase'),
         ], transfers: ['purchase.0', 'purchase.1']};
     }
     if (operation === 'sell_redeem') {
         return {commands: [
             call(`${launchPackage}::launch::sell`, launchTypes, [...launchArgs, coin, launchMinimum], 'shares'),
-            call(`${adapter}::operations::redeem`, [product, collateral], [...bound, 'shares', ...limits], 'result'),
+            call(`${adapter}::operations::redeem`, [product, collateral], [...traded, 'shares', ...limits], 'result'),
         ], transfers: ['result']};
     }
-    return {commands: [call(`${adapter}::operations::${operation}`, [product, collateral], [...bound, coin, ...limits], 'result')], transfers: ['result']};
+    return {commands: [call(`${adapter}::operations::${operation}`, [product, collateral], [...traded, coin, ...limits], 'result')], transfers: ['result']};
 }
 
 export function renderUnsignedPtbArgs(input) {

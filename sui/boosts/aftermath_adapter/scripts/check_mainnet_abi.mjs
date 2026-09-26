@@ -158,6 +158,7 @@ const ABI = {
 const DIRECT_DEPENDENCIES = {
     blast_admin: { local: '../../admin' },
     blast_boosts_core: { local: '../core' },
+    blast_partners: { local: '../../partners' },
     perpetuals: { local: 'interfaces/aftermath/iperps/perpetuals' },
     position: { local: 'interfaces/aftermath/iperps/position' },
     authority_cap: { local: 'interfaces/aftermath/authority-cap/authority-cap' },
@@ -176,6 +177,8 @@ const LOCK_SOURCES = {
     blast_admin: DIRECT_DEPENDENCIES.blast_admin,
     blast_boosts_aftermath: { root: true },
     blast_boosts_core: DIRECT_DEPENDENCIES.blast_boosts_core,
+    // The immutable shared partner-code package is the same kind of inward-only edge (ADR 0095).
+    blast_partners: DIRECT_DEPENDENCIES.blast_partners,
     ifixed: DIRECT_DEPENDENCIES.ifixed,
     oracle_aggregator: DIRECT_DEPENDENCIES.oracle_aggregator,
     perpetuals: DIRECT_DEPENDENCIES.perpetuals,
@@ -190,8 +193,9 @@ const LOCK_DEPS = {
     Sui: { MoveStdlib: 'MoveStdlib' },
     authority_cap: { std: 'MoveStdlib', sui: 'Sui' },
     blast_admin: { Sui: 'Sui' },
-    blast_boosts_aftermath: { authority_cap: 'authority_cap', blast_admin: 'blast_admin', blast_boosts_core: 'blast_boosts_core', ifixed: 'ifixed', oracle_aggregator: 'oracle_aggregator', perpetuals: 'perpetuals', position: 'position', std: 'MoveStdlib', sui: 'Sui' },
+    blast_boosts_aftermath: { authority_cap: 'authority_cap', blast_admin: 'blast_admin', blast_boosts_core: 'blast_boosts_core', blast_partners: 'blast_partners', ifixed: 'ifixed', oracle_aggregator: 'oracle_aggregator', perpetuals: 'perpetuals', position: 'position', std: 'MoveStdlib', sui: 'Sui' },
     blast_boosts_core: { blast_admin: 'blast_admin', std: 'MoveStdlib', sui: 'Sui' },
+    blast_partners: { blast_admin: 'blast_admin', std: 'MoveStdlib', sui: 'Sui' },
     ifixed: { std: 'MoveStdlib', sui: 'Sui' },
     oracle_aggregator: { authority_cap: 'authority_cap', std: 'MoveStdlib', sui: 'Sui', vendor: 'vendor' },
     perpetuals: { authority_cap: 'authority_cap', control_flow: 'AftermathControlFlow', ifixed: 'ifixed', oracle_aggregator: 'oracle_aggregator', ordered_map: 'AftermathOrderedMap', position: 'position', std: 'MoveStdlib', sui: 'Sui', vendor: 'vendor' },

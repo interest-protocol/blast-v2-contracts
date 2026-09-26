@@ -25,6 +25,7 @@ identified only through its package marker; ADR 0085 records why.
 | `blast_fun_migrators` | Publisher marker | `package_marker::PACKAGE_MARKER` | `blast_fun_migrators::BLAST_FUN_MIGRATORS` |
 | `blast_boosts_aftermath` | Publisher marker | `aftermath::AFTERMATH` | `blast_boosts_aftermath::BLAST_BOOSTS_AFTERMATH` |
 | `blast_boosts_core` | administration domain and only OTW; no Publisher is claimed | `series_one_domain::SERIES_ONE_DOMAIN` | `blast_boosts_core::BLAST_BOOSTS_CORE` |
+| `blast_partners` | administration domain and only OTW; no Publisher is claimed | — | `blast_partners::BLAST_PARTNERS` (ADR 0095) |
 | `blast_boosts_products` | Publisher marker (new package) | — | `blast_boosts_products::BLAST_BOOSTS_PRODUCTS` |
 | `blast_admin` | none: library package with no `init` | — | — |
 | `meme_template` | generated package one-time witness | `meme::MEME` | unchanged name; the generated package's one-time witness, renamed per launch by the SDK template |
@@ -72,6 +73,8 @@ every package-administration object.
 | `blast_boosts_aftermath` | `protocol::Protocol` | unchanged | holds `OperationalVersion<BLAST_BOOSTS_AFTERMATH>` |
 | `blast_boosts_aftermath` | `package_admin::PackageAdmin` | unchanged | holds `UpgradeCustody<BLAST_BOOSTS_AFTERMATH>` |
 | `blast_boosts_aftermath` | `blast_boost::BlastBoost<Product>` | new; never instantiated | module and struct |
+| `blast_partners` | `blast_partners::Partner` | new (ADR 0095) | module |
+| `blast_partners` | `blast_partners::PartnerCap` | new (ADR 0095); wallet-held | module |
 
 `blast_boosts_core` defines no `key` type; its `State<Product>` is a
 `store` value nested in the adapter Vault.
@@ -85,6 +88,7 @@ every package-administration object.
 | `blast_boosts_aftermath` | `events_wrapper::Event<events::X<Product>>` | `blast_events::Event<events::X<Product>>` | envelope module and `Product` |
 | `blast_fun_migrators` | `events::X` (direct emission) | `blast_events::X` | module |
 | `blast_admin` | `events::X<Domain>` | unchanged | `Domain` or `PackageMarker` is a Blast witness |
+| `blast_partners` | — | `blast_partners::PartnerUpdated` (direct emission, ADR 0095) | module |
 
 Payload struct names inside the envelopes (`Bought`, `Migrated`,
 `VaultSynced`, `Minted<Product>`, …) are unchanged.

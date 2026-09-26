@@ -74,9 +74,12 @@ public fun initialize<Product, Collateral>(
 
 /// Exchanges exact bound collateral for native leverage shares in one atomic operation.
 /// Policy fixes direction and whole-lot size; partial sessions must complete the aggregate.
+/// `partner` is paid its share of Blast's admin fee; Blast's own and unaffiliated flow
+/// names the zero-share house partner.
 public fun mint<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
+    partner: &Partner,
     account: &mut Account<Collateral>,
     registry: &Registry,
     mut clearing_house: ClearingHouse<Collateral>,
@@ -101,9 +104,9 @@ public fun mint<Product, Collateral>(
     let plan = vault.state().prepare_mint(before, deposit, vault.total_share_supply(), minimum_shares, clock.timestamp_ms());
     let terms = vault.increasing_terms(plan.mint_position());
 
-    let checkpoint = fund_mint(
+    let (checkpoint, admin_fee) = fund_mint(
         vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle,
-        cash, plan.admin_fee(), &before_checkpoint, ctx,
+        cash, plan.admin_fee(), &before_checkpoint,
     );
 
     let binding = vault.venue().binding();
@@ -115,7 +118,9 @@ public fun mint<Product, Collateral>(
     let (after, final_checkpoint) = binding.capture(
         account, registry, &clearing_house, base_oracle, collateral_oracle, clock,
     ).into_observation();
-    let shares = complete_mint<Product, Collateral>(vault, plan, deposit, after, final_checkpoint, clock.timestamp_ms(), ctx);
+    let shares = complete_mint<Product, Collateral>(
+        vault, plan, deposit, admin_fee, partner, after, final_checkpoint, clock, ctx,
+    );
     clearing_house.share();
 
     shares
@@ -123,9 +128,11 @@ public fun mint<Product, Collateral>(
 
 /// Burns native shares only after their proportional close and exact collateral payout.
 /// Entry-quote and realized PnL use authenticated post-session state, never an invented formula.
+/// `partner` is paid its share of Blast's admin fee.
 public fun redeem<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
+    partner: &Partner,
     account: &mut Account<Collateral>,
     registry: &Registry,
     mut clearing_house: ClearingHouse<Collateral>,
@@ -166,7 +173,7 @@ public fun redeem<Product, Collateral>(
         account, registry, &clearing_house, base_oracle, collateral_oracle,
     );
     after_sell_checkpoint.assert_withdrawal_checkpoint(&final_checkpoint, net + admin);
-    let cash = complete_redemption(vault, shares, cash, net, admin, fee, reserve_fee, final_checkpoint, ctx);
+    let cash = complete_redemption(vault, shares, cash, net, admin, fee, reserve_fee, partner, final_checkpoint, clock);
     clearing_house.share();
 
     cash
@@ -512,11 +519,12 @@ fun assert_deadline(now_ms: u64, deadline: u64) {
     assert!(now_ms <= deadline, blast_boosts_aftermath::errors::deadline_expired!());
 }
 
-/// Keeps the admin's fee slice as vault cash and puts the rest of the deposit
-/// to work on the venue, proving the checkpoint moved by exactly that amount.
-/// Returns the funded checkpoint the orders start from.
+/// Takes the admin fee out of the deposit and puts the rest to work on the
+/// venue, proving the checkpoint moved by exactly that amount. Returns the
+/// funded checkpoint the orders start from and the admin fee, which completion
+/// settles once every check has passed.
 fun fund_mint<Product, Collateral>(
-    vault: &mut Vault<Product, Collateral>,
+    vault: &Vault<Product, Collateral>,
     account: &mut Account<Collateral>,
     registry: &Registry,
     clearing_house: &mut ClearingHouse<Collateral>,
@@ -525,9 +533,8 @@ fun fund_mint<Product, Collateral>(
     mut cash: Coin<Collateral>,
     admin_fee: u64,
     before: &Checkpoint,
-    ctx: &mut TxContext,
-): Checkpoint {
-    vault.retain_admin_cash(cash.split(admin_fee, ctx));
+): (Checkpoint, Balance<Collateral>) {
+    let admin_fee = cash.balance_mut().split(admin_fee);
     let venue_deposit = cash.value();
     vault.venue().deposit(account, registry, cash);
     vault.venue().allocate(account, clearing_house, venue_deposit);
@@ -538,7 +545,7 @@ fun fund_mint<Product, Collateral>(
     );
     before.assert_allocated_deposit_checkpoint(&funded, venue_deposit);
 
-    funded
+    (funded, admin_fee)
 }
 
 // --- Permissionless Trades ---
@@ -554,23 +561,29 @@ fun assert_gas_price(ctx: &TxContext) {
 
 // --- Completion ---
 
-/// Commits native mint effects only after the orchestration proved its venue checkpoint.
+/// Commits native mint effects only after the orchestration proved its venue
+/// checkpoint, then pays the partner its share of the admin fee and keeps the
+/// rest as Blast's admin cash.
 fun complete_mint<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     plan: MintPlan<Product>,
     deposit: u64,
+    admin_fee: Balance<Collateral>,
+    partner: &Partner,
     after: PositionObservation,
     checkpoint: Checkpoint,
-    now_ms: u64,
+    clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<BlastBoost<Product>> {
-    let (amount, contribution, fee, admin, reserve_fee) = vault.state_mut().complete_mint(plan, after, now_ms);
+    let (amount, contribution, fee, admin, reserve_fee) = vault.state_mut().complete_mint(plan, after, clock.timestamp_ms());
 
     let shares = vault.mint_shares(amount, ctx);
     vault.venue_mut().replace_checkpoint(checkpoint);
+    let partner_fee = settle_admin_fee(vault, partner, admin_fee, clock);
 
     events::minted<Product>(
         vault.id(), deposit, shares.value(), contribution, fee, admin, reserve_fee,
+        object::id(partner), partner_fee,
         vault.state().maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(),
         vault.total_share_supply(), checkpoint,
     );
@@ -597,7 +610,8 @@ fun settle_redemption<Product, Collateral>(
 }
 
 /// Completes custody after the public operation proves the withdrawal on the checkpoint:
-/// retains the earned admin cash, burns the held shares, and accepts the checkpoint.
+/// burns the held shares, accepts the checkpoint, pays the partner its share of the
+/// admin fee, and keeps the rest as Blast's admin cash.
 fun complete_redemption<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     shares: Coin<BlastBoost<Product>>,
@@ -606,21 +620,38 @@ fun complete_redemption<Product, Collateral>(
     admin: u64,
     fee: u64,
     reserve_fee: u64,
+    partner: &Partner,
     checkpoint: Checkpoint,
-    ctx: &mut TxContext,
+    clock: &Clock,
 ): Coin<Collateral> {
     assert!(cash.value() == net + admin, blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
 
-    vault.retain_admin_cash(cash.split(admin, ctx));
+    let admin_fee = cash.balance_mut().split(admin);
     let burned = vault.burn_redeemed_shares(shares);
     vault.venue_mut().replace_checkpoint(checkpoint);
+    let partner_fee = settle_admin_fee(vault, partner, admin_fee, clock);
 
     events::redeemed<Product>(
-        vault.id(), burned, net, fee, admin, reserve_fee,
+        vault.id(), burned, net, fee, admin, reserve_fee, object::id(partner), partner_fee,
         vault.state().maintenance_reserve(), vault.admin_cash_balance<_, Collateral>(), vault.total_share_supply(), checkpoint,
     );
 
     cash
+}
+
+/// Pays the named partner its share of Blast's admin fee on one mint or redeem
+/// and keeps the rest as Blast's admin cash; returns what the partner was paid.
+/// The reserve fee is never part of it.
+fun settle_admin_fee<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>,
+    partner: &Partner,
+    mut admin_fee: Balance<Collateral>,
+    clock: &Clock,
+): u64 {
+    let partner_fee = partner.pay(&mut admin_fee, clock);
+    vault.retain_admin_cash(admin_fee);
+
+    partner_fee
 }
 
 /// Advances the sole economic checkpoint only after sealed maintenance has succeeded.
@@ -909,12 +940,14 @@ public fun complete_mint_for_testing<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     plan: MintPlan<Product>,
     deposit: u64,
+    admin_fee: Balance<Collateral>,
+    partner: &Partner,
     after: PositionObservation,
     checkpoint: Checkpoint,
-    now_ms: u64,
+    clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<BlastBoost<Product>> {
-    complete_mint(vault, plan, deposit, after, checkpoint, now_ms, ctx)
+    complete_mint(vault, plan, deposit, admin_fee, partner, after, checkpoint, clock, ctx)
 }
 
 #[test_only]
@@ -937,10 +970,11 @@ public fun complete_redemption_for_testing<Product, Collateral>(
     admin: u64,
     fee: u64,
     reserve_fee: u64,
+    partner: &Partner,
     checkpoint: Checkpoint,
-    ctx: &mut TxContext,
+    clock: &Clock,
 ): Coin<Collateral> {
-    complete_redemption(vault, shares, cash, net, admin, fee, reserve_fee, checkpoint, ctx)
+    complete_redemption(vault, shares, cash, net, admin, fee, reserve_fee, partner, checkpoint, clock)
 }
 
 #[test_only]
@@ -1088,6 +1122,8 @@ use blast_boosts_core::{
     state::{ActivePosition, Issuance, MintPlan, RebalancePlan, RedemptionPlan},
 };
 
+use blast_partners::blast_partners::Partner;
+
 use ifixed::ifixed;
 
 // An IFixed value is a u256 carrier; only its sign reads as a method here.
@@ -1103,4 +1139,4 @@ use perpetuals::{
     registry::Registry,
 };
 
-use sui::{clock::Clock, coin::Coin, coin_registry::Currency};
+use sui::{balance::Balance, clock::Clock, coin::Coin, coin_registry::Currency};

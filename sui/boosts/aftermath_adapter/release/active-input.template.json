@@ -12,7 +12,8 @@
     "collateralType": null, "collateralDecimals": 6,
     "registryId": null, "clearingHouseId": null,
     "baseOracleStorageId": null, "baseOracleSourceId": null, "basePythPriceInfoId": null,
-    "collateralOracleStorageId": null, "collateralOracleSourceId": null, "collateralPythPriceInfoId": null
+    "collateralOracleStorageId": null, "collateralOracleSourceId": null, "collateralPythPriceInfoId": null,
+    "housePartnerId": null
   },
   "commonPolicyCandidates": {
     "targetLeverageBps": 20000, "mintFeeBps": 30, "redeemFeeBps": 30,

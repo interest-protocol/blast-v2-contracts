@@ -1,0 +1,11 @@
+[package]
+name = "blast_partners"
+edition = "2024"
+license = "BUSL-1.1"
+authors = ["Jose Cerqueira (jose@interestprotocol.com)"]
+
+[dependencies]
+blast_admin = { local = "../admin" }
+
+[addresses]
+blast_partners = "0x0"
