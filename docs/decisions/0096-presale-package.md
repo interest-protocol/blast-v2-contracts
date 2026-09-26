@@ -82,9 +82,11 @@ share is the whole 10,000 and takes all of it. Each payment emits
 - the share;
 - the listing price `listing_quote` Quote per `listing_tokens` tokens.
 
-Only an adapter can construct its own witness. A presale accepts the liquidity
-only for its own pair and only when the adapter admin has admitted that adapter
-in `BlastPresaleConfig`.
+Only an adapter can construct its own witness. `Liquidity` cannot be copied, so
+the terms one adapter issues back exactly one presale; `PresaleCreated` carries
+a copy of the terms. A presale accepts the liquidity only for its own pair and
+only when the adapter admin has admitted that adapter in `BlastPresaleConfig`.
+Admission rejects framework types.
 
 - **Reserve:** at creation the creator deposits the pool reserve on top of the
   tranches' tokens. The reserve is the tokens that the liquidity share of every
@@ -107,6 +109,8 @@ adapters under its existing `cetus::Witness` and `bluefin::Witness`.
   Cetus pool creation for the pair at the chosen tick spacing, as a launch
   start does, then returns the terms.
 - `bluefin::presale_liquidity` checks Bluefin's tier bounds.
+- Both check that the listing price lies strictly inside the venue's sqrt-price
+  range.
 - `open_presale_pool` (per Cetus coin order) is permissionless. It takes the
   pool share, creates a full-range pool priced from those balances (the
   listing price), and seeds it with them:
@@ -171,7 +175,7 @@ envelope:
   recipients, and the liquidity;
 - `Committed`;
 - `PresaleFinalized`, with the returned tokens and the pool's Quote and tokens;
-- `ProceedsPaid`;
+- `ProceedsPaid`, for each recipient paid more than zero;
 - `LiquidityTaken`;
 - `Claimed`;
 - `FeeSet`, `FeeDestinationSet`, and `AdapterSet`.
@@ -201,7 +205,8 @@ their other events.
   and the creator, so a small separate vault is simpler.
 - **Opening the pool at finalization.** The creator gets unsold tokens back at
   finalization, before buyers can claim, and could sell them into a fresh pool
-  first. Opening from the claim time closes that gap.
+  first. Opening from the claim time removes that head start in the presale's
+  own pool. The creator can still sell unsold tokens in any other pool.
 
 ## Consequences
 
@@ -223,11 +228,24 @@ their other events.
 - Pro-rata dilution can reduce a small commit to zero tokens. That position
   still gets its refund, and claiming deletes it.
 - A Cetus pool needs the token's `TreasuryCap` at creation to reserve the pool.
-  A coin whose supply was fixed has no cap, so it can only use Bluefin.
-- Opening can fail if Cetus's pool-manager role creates the pair's pool first,
-  or if the venue stops registering the tier. The pool share then stays in the
-  presale, and only a migrators upgrade could recover it. Launches accept the
-  same venue-operator assumption (ADR 0088).
+  A coin whose supply was fixed has no cap, so it can only use Bluefin. Cetus
+  also has to admit the Quote and the tier; see `sui/migrators/DEPENDENCIES.md`.
+- **Accepted: an unopenable pool share.** Cetus's reservation cannot see a pool
+  that already exists for the pair at that tick spacing. A presale sells
+  existing coins, so such a pool is possible, and Cetus exposes no
+  non-aborting check. Opening then aborts. The SDK must check Cetus's `Pools`
+  before `presale_liquidity`. The same outcome follows if Cetus's pool-manager
+  role creates the pool first, or if the venue stops registering the tier, as
+  launches accept (ADR 0088). It also follows if the pool share is so small
+  that it adds no liquidity. In each case the pool share, which can be the
+  whole net raise, stays in the presale. Only an upgrade of the upgradeable
+  migrators package can move it, for example by a route that adds it to the
+  existing pool. Buyers' tokens and refunds are unaffected.
+- A Cetus reservation is permanent and one per token. It stays even if the
+  presale is never created or fails, so the token cannot reserve another Cetus
+  pool afterwards.
+- Whoever opens a Bluefin presale pool becomes its pool manager, a role
+  limited to reward emissions (ADR 0088).
 - The creator earns the pool's fees at the address that created the presale,
   and nothing can transfer that right.
 - The SDK and indexer need the new types and events. The presale package is
@@ -261,15 +279,25 @@ their other events.
   remainder, and pricing at the listing price. Presale tests cover the
   recipients' payments and the pool's balances on success, and the handoff:
   once, from the claim time, to the named adapter only, after finalization,
-  with the version checked first. They also cover a failure or an empty raise
-  returning the reserve, an unadmitted adapter, a pair mismatch, a missing
-  reserve, shares that miss the whole, and the adapter role.
+  with the version checked first and a missing share before a wrong adapter.
+  They also cover:
+  - a failure or an empty raise returning the reserve and paying no zero
+    proceeds;
+  - a pool share too small to buy a token going to the creator;
+  - the terms in `PresaleCreated`;
+  - an unadmitted adapter, a framework type as an adapter, and a pair
+    mismatch;
+  - a missing reserve, shares that miss the whole, and the adapter role.
 - Migrators tests drive a mock adapter through the handoff into a
-  `BlastPresaleVault`. They check the residuals paid to the creator, Blast's
-  rounded-up LP share and the creator's rest, an empty collection that emits
-  nothing, and a position without liquidity.
-- The migrators source gate pins each presale route: its witness, the reserved
-  Cetus cap, the coin order, the LP burn, the Bluefin creation fee, and the
+  `BlastPresaleVault`. They check:
+  - the residuals paid to the creator;
+  - Blast's rounded-up LP share and the creator's rest, including a token-only
+    collection and a token's own LP shares;
+  - an empty collection that emits nothing;
+  - another venue's borrow, and a position without liquidity.
+- The migrators source gate pins each presale route: its witness, the
+  listing-price bound, the reserved Cetus cap, the coin order, the price
+  orientation and fixed side, the LP burn, the Bluefin creation fee, and the
   vault custody. The venue interfaces are link stubs, so a PTB-harness run of
   the real Cetus and Bluefin routes on forked bytecode is a release gate.
 - Package administration and domain tests mirror the launchpad's.

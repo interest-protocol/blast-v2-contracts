@@ -54,6 +54,7 @@ fun payout_error_registry_is_stable() {
     assert_eq!(blast_presale::errors::no_liquidity!(), 27);
     assert_eq!(blast_presale::errors::invalid_adapter!(), 28);
     assert_eq!(blast_presale::errors::liquidity_not_open!(), 29);
+    assert_eq!(blast_presale::errors::invalid_adapter_type!(), 30);
 }
 
 // === Imports ===

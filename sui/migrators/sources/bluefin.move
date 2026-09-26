@@ -16,6 +16,9 @@ const EPositionPoolMismatch: vector<u8> = b"Custodied position must belong to th
 #[error(code = 1)]
 const EInvalidTier: vector<u8> = b"Bluefin tier needs a tick spacing in 1..=400 and a fee rate in 1..=20,000.";
 
+#[error(code = 2)]
+const EInvalidListingPrice: vector<u8> = b"Listing price must lie inside the venue's price range.";
+
 // === Public Types ===
 
 /// Sealed adapter identity selected by a Blast launch.
@@ -52,8 +55,8 @@ public fun new<Meme, Quote>(
 
 /// Returns the liquidity terms a presale must be created with to open a Bluefin pool at the
 /// creator's tier: `bps` of its raise after Blast's fee into a full-range pool that opens at
-/// `listing_quote` Quote per `listing_tokens` tokens. Only this adapter can open that pool, and
-/// only once Blast admits it for presales.
+/// `listing_quote` Quote per `listing_tokens` tokens, which must lie inside Bluefin's price range.
+/// Only this adapter can open that pool, and only once Blast admits it for presales.
 public fun presale_liquidity<Token, Quote>(
     migrators_version: &MigratorsVersion,
     tick_spacing: u32,
@@ -67,6 +70,12 @@ public fun presale_liquidity<Token, Quote>(
         tick_spacing > 0 && tick_spacing <= constants::bluefin_max_tick_spacing!() && fee_rate > 0
             && fee_rate <= constants::bluefin_max_fee_rate!(),
         EInvalidTier,
+    );
+    let listing_sqrt_price = migration_math::sqrt_price_x64(listing_tokens, listing_quote, true);
+    assert!(
+        listing_sqrt_price > constants::min_swap_sqrt_price!()
+            && listing_sqrt_price < constants::max_swap_sqrt_price!(),
+        EInvalidListingPrice,
     );
 
     payout::liquidity<Token, Quote, _>(

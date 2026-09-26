@@ -128,6 +128,10 @@ const EInvalidAdapter: u64 = 28;
 /// The liquidity is handed off only from the claim time.
 const ELiquidityNotOpen: u64 = 29;
 
+#[test_only]
+/// A framework type cannot be a liquidity adapter.
+const EInvalidAdapterType: u64 = 30;
+
 macro public(package) fun invalid_fee_bps(): u64 { 0 }
 
 macro public(package) fun invalid_destination(): u64 { 1 }
@@ -187,3 +191,5 @@ macro public(package) fun no_liquidity(): u64 { 27 }
 macro public(package) fun invalid_adapter(): u64 { 28 }
 
 macro public(package) fun liquidity_not_open(): u64 { 29 }
+
+macro public(package) fun invalid_adapter_type(): u64 { 30 }

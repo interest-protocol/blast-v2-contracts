@@ -139,7 +139,8 @@ public struct ProtocolFeesClaimed has copy, drop {
     quote_amount: u64,
 }
 
-/// Records Cetus pool creation reserved for one pair at the tick spacing its migration uses.
+/// Records Cetus pool creation reserved for one pair at the tick spacing its launch migration or
+/// presale pool uses.
 public struct CetusPoolReserved has copy, drop {
     meme: TypeName,
     quote: TypeName,

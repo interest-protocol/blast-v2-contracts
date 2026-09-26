@@ -797,13 +797,15 @@ bluefin_body() {
 # tier; opening takes the presale's pool share under that witness, creates and funds a new pool
 # with it, and locks the position in a presale vault before sharing the pool; collection pays the
 # locked position's fees through the vault.
-[[ "$(bluefin_body presale_liquidity)" == 'migrators_version.assert_current();assert!(tick_spacing>0&&tick_spacing<=constants::bluefin_max_tick_spacing!()&&fee_rate>0&&fee_rate<=constants::bluefin_max_fee_rate!(),EInvalidTier);payout::liquidity<Token,Quote,_>(Witness(),tick_spacing,fee_rate,bps,listing_quote,listing_tokens)' ]] \
+[[ "$(bluefin_body presale_liquidity)" == 'migrators_version.assert_current();assert!(tick_spacing>0&&tick_spacing<=constants::bluefin_max_tick_spacing!()&&fee_rate>0&&fee_rate<=constants::bluefin_max_fee_rate!(),EInvalidTier);letlisting_sqrt_price=migration_math::sqrt_price_x64(listing_tokens,listing_quote,true);assert!(listing_sqrt_price>constants::min_swap_sqrt_price!()&&listing_sqrt_price<constants::max_swap_sqrt_price!(),EInvalidListingPrice);payout::liquidity<Token,Quote,_>(Witness(),tick_spacing,fee_rate,bps,listing_quote,listing_tokens)' ]] \
     && in_order \
         'migrators_version.assert_current();' \
         '=presale.take_liquidity(presale_version,Witness(),clock);' \
+        'letfix_token=source_token>=source_quote;' \
         'pool::create_pool_and_get_object<Token,Quote,SUI>(' \
+        'migration_math::sqrt_price_x64(source_token,source_quote,true),creation_fee.into_balance(),ctx);' \
         'pool::open_position(' \
-        'pool::add_liquidity_with_fixed_amount(' \
+        'pool::add_liquidity_with_fixed_amount(clock,bluefin_config,&mutpool,&mutposition,token,quote,if(fix_token)source_tokenelsesource_quote,fix_token);' \
         'presale_vault::create(presale,&Venue(),' \
         'pool.share_pool_object();' \
         <<<"$(bluefin_body open_presale_pool)" \
@@ -874,9 +876,10 @@ in_order \
     <<<"$(bluefin_body compound)" \
     && [[ "$(bluefin_body compound)" == *'self.keep_auto_lp(added_meme,added_quote,meme,quote);' ]] || \
     fail "Bluefin auto-LP must add to the custodied position on the side the shared selection fixes and keep the rest"
-require_errors "$BLUEFIN_SOURCE" "Bluefin must use codes 0-1 for its position-pool and tier checks" <<'EOF'
+require_errors "$BLUEFIN_SOURCE" "Bluefin must use codes 0-2 for its position-pool, tier, and listing-price checks" <<'EOF'
 0 EPositionPoolMismatch Custodied position must belong to the supplied pool.
 1 EInvalidTier Bluefin tier needs a tick spacing in 1..=400 and a fee rate in 1..=20,000.
+2 EInvalidListingPrice Listing price must lie inside the venue's price range.
 EOF
 # Bluefin's public routes share one parameter order: the subject, this package's generation, the
 # launchpad generation where the launch is started or migrated, the LP-fee policy after
@@ -953,6 +956,8 @@ cetus_body() {
 in_order \
     'migrators_version.assert_current();' \
     'config::get_fee_rate(tick_spacing,cetus_config);' \
+    'migration_math::sqrt_price_x64(listing_tokens,listing_quote,factory::is_right_order<Token,Quote>());' \
+    'assert!(listing_sqrt_price>constants::min_swap_sqrt_price!()&&listing_sqrt_price<constants::max_swap_sqrt_price!(),EInvalidListingPrice);' \
     'payout::liquidity<Token,Quote,_>(Witness(),' \
     'factory::mint_pool_creation_cap(cetus_config,pools,treasury_cap,ctx);' \
     'factory::register_permission_pair<Token,Quote>(' \
@@ -961,12 +966,19 @@ in_order \
     <<<"$(cetus_body presale_liquidity)" || \
     fail "Cetus presale liquidity must be built under its witness only after reserving the pair's pool creation"
 for order in a b; do
-    if [[ "$order" == a ]]; then pair='Token,Quote'; else pair='Quote,Token'; fi
+    if [[ "$order" == a ]]; then
+        pair='Token,Quote'
+        seed='migration_math::sqrt_price_x64(token_amount,quote_amount,true),b"".to_string(),tick_lower,tick_upper,token.into_coin(ctx),quote.into_coin(ctx),token_amount>=quote_amount,clock,ctx);'
+    else
+        pair='Quote,Token'
+        seed='migration_math::sqrt_price_x64(token_amount,quote_amount,false),b"".to_string(),tick_lower,tick_upper,quote.into_coin(ctx),token.into_coin(ctx),token_amount<quote_amount,clock,ctx);'
+    fi
     in_order \
         'migrators_version.assert_current();' \
         "assert!(factory::is_right_order<${pair}>(),EInvalidCoinOrder);" \
         '=presale.take_liquidity(presale_version,Witness(),clock);' \
         "pool_creator::create_pool_v3_with_creation_cap<${pair}>(cetus_config,pools,venue_config.pool_creation_cap<Token>()," \
+        "$seed" \
         'burn_into_presale_vault(presale,burn_manager,position,residual_token,residual_quote,ctx);' \
         <<<"$(cetus_body "open_presale_pool_token_${order}")" \
         && in_order \
@@ -1084,9 +1096,10 @@ in_order \
     && [[ "$(constant_body max_swap_sqrt_price)" == '79_226_673_515_401_279_992_447_579_054' ]] \
     && [[ "$(move_norm "$CETUS_SOURCE" | grep -o 'flash_swap' | wc -l)" -eq 2 ]] || \
     fail "Cetus buybacks must swap through one flash swap at the widest limit and repay exactly the receipt"
-require_errors "$CETUS_SOURCE" "Cetus must use sequential codes 0-1 for coin order and vault-pool checks" <<'EOF'
+require_errors "$CETUS_SOURCE" "Cetus must use sequential codes 0-2 for coin order, vault-pool, and listing-price checks" <<'EOF'
 0 EInvalidCoinOrder Migration route must match the Cetus coin order of the pair.
 1 EPositionPoolMismatch Pool must be the vault's own pool.
+2 EInvalidListingPrice Listing price must lie inside the venue's price range.
 EOF
 # Cetus's public routes share Bluefin's parameter order, with the LP Burn manager among the venue
 # inputs.

@@ -113,12 +113,18 @@ so the liquidity can't be pulled. Anyone can collect the pool's trading fees.
 Blast's LP share goes to Blast and the rest to the creator.
 
 - **Cetus:** creating the presale reserves the Cetus pool, which needs the
-  token's `TreasuryCap`, so no one else can create that pool first at another
-  price. Coins whose supply was fixed have no cap and can use Bluefin.
+  token's `TreasuryCap`, so no one else can create it afterwards at another
+  price. Cetus must support the Quote and fee tier. If the token **already has
+  a Cetus pool** at that tier, the new pool can't be created. Check first, or
+  use another tier or Bluefin; otherwise the pool share stays stuck until a
+  contract upgrade. Coins whose supply was fixed have no cap and can use
+  Bluefin.
 - **Bluefin:** whoever opens the pool pays Bluefin's pool creation fee in SUI.
 
-If the presale fails, or raises nothing for the pool, no pool is opened and
-every token goes back to the creator.
+The listing price must be within the venue's price range, and a pool share of
+only a few atoms may be too small to open. If the presale fails, or raises
+nothing for the pool, no pool is opened and every token goes back to the
+creator.
 
 ## Whitelists
 

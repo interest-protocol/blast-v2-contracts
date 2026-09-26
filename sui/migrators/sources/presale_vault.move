@@ -120,7 +120,9 @@ public fun creator_for_testing<Token, Quote>(self: &BlastPresaleVault<Token, Quo
 }
 
 #[test_only]
-public fun position_id_for_testing<Token, Quote, Venue>(self: &BlastPresaleVault<Token, Quote>): ID {
+public fun position_id_for_testing<Token, Quote, Venue>(
+    self: &BlastPresaleVault<Token, Quote>,
+): ID {
     dynamic_object_field::id(&self.id, PositionKey<Venue>()).destroy_some()
 }
 

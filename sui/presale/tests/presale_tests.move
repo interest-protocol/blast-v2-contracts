@@ -212,7 +212,7 @@ fun creation_holds_the_tokens_and_snapshots_the_fee() {
     expected.append(u64_bytes(CLAIM_MS));
     expected.append(u64_bytes(FEE_BPS));
     expected.append(bcs::to_bytes(&vector[payout::recipient(CREATOR, 10_000)]));
-    expected.append(bcs::to_bytes(&option::none<Liquidity>()));
+    expected.append(bcs::to_bytes(&option::none<LiquidityTerms>()));
     assert_eq!(bcs::to_bytes(&only_event<PresaleCreated>()), expected);
     fixture.next_tx!(KEEPER, |f| {
         let presale = f.take_presale();
@@ -865,6 +865,7 @@ fun an_empty_raise_opens_no_pool_and_returns_the_reserve() {
     fixture.set_time(SECOND_END_MS);
 
     fixture.finalize();
+    assert_eq!(collect_bytes<ProceedsPaid>(), vector[]);
     assert_eq!(fixture.coin_total<TOKEN>(CREATOR), FIRST_TOKENS + SECOND_TOKENS + 700);
     fixture.next_tx!(KEEPER, |f| {
         let presale = f.take_presale();
@@ -928,7 +929,71 @@ fun the_adapter_admin_admits_and_removes_adapters() {
         let witness = f.sign_in();
         f.config.set_adapter_allowed<OTHER_ADAPTER>(&f.package_version, &witness, false);
     });
+    let mut expected = bcs::to_bytes(&type_name::with_original_ids<OTHER_ADAPTER>());
+    expected.append(bcs::to_bytes(&false));
+    assert_eq!(bcs::to_bytes(&only_event<AdapterSet>()), expected);
     assert!(!fixture.config.is_adapter_allowed(type_name::with_original_ids<OTHER_ADAPTER>()));
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_presale::errors::EInvalidAdapterType, location = blast_presale::presale_config)]
+fun a_framework_type_is_never_an_adapter() {
+    let mut fixture = start();
+
+    fixture.next_tx!(ADMIN, |f| {
+        let witness = f.sign_in();
+        f.config.set_adapter_allowed<sui::sui::SUI>(&f.package_version, &witness, true);
+    });
+    fixture.end();
+}
+
+#[test]
+fun creation_records_the_liquidity_terms() {
+    let mut fixture = start();
+
+    fixture.create_with_liquidity(0);
+    let created = bcs::to_bytes(&only_event<PresaleCreated>());
+    let terms = bcs::to_bytes(&option::some(pool_share().destroy_some().terms()));
+    let tail = created.length() - terms.length();
+    assert_eq!(vector::tabulate!(terms.length(), |i| created[tail + i]), terms);
+    fixture.end();
+}
+
+#[test]
+fun a_pool_share_too_small_to_buy_a_token_goes_to_the_creator() {
+    let mut fixture = start();
+    // 1,000 Quote per token: the pool's 297 Quote buys no token, and no tokens were reserved.
+    let liquidity = payout::liquidity<TOKEN, QUOTE, _>(ADAPTER(), 60, 2_500, 5_000, 1_000, 1);
+    let deposit = FIRST_TOKENS + SECOND_TOKENS;
+    let liquidity = option::some(liquidity);
+    fixture.create_paying(deposit, two_tranches(), 0, CLAIM_MS, recipients(), liquidity);
+    fixture.commit(ALICE, 0, 200);
+    fixture.set_time(FIRST_END_MS);
+    fixture.commit(BOB, 1, 300);
+    fixture.commit(CAROL, 1, 300);
+    fixture.set_time(SECOND_END_MS);
+
+    fixture.finalize();
+    assert_eq!(fixture.coin_total<QUOTE>(TEAM), 179);
+    assert_eq!(fixture.coin_total<QUOTE>(CREATOR), 118 + 297);
+    fixture.next_tx!(KEEPER, |f| {
+        let presale = f.take_presale();
+        let (tokens, quote) = presale.liquidity_balances_for_testing();
+
+        assert_eq!(tokens + quote, 0);
+        presale.put_back();
+    });
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_presale::errors::ENoLiquidity, location = blast_presale::presale)]
+fun a_missing_pool_share_precedes_the_adapter_check() {
+    let mut fixture = start();
+    fixture.reach_the_end_with_liquidity(601);
+    fixture.finalize();
+    fixture.set_time(CLAIM_MS);
+
+    fixture.take_liquidity(OTHER_ADAPTER());
     fixture.end();
 }
 
@@ -1639,7 +1704,7 @@ use blast_presale::{
     },
     merkle,
     package_version::{Self, PackageVersion},
-    payout::{Self, Liquidity, Recipient},
+    payout::{Self, Liquidity, LiquidityTerms, Recipient},
     presale::{Self, BlastPresale},
     presale_config::{Self, BlastPresaleConfig},
     tranche::{Self, Tranche},

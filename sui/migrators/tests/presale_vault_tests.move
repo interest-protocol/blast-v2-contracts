@@ -41,6 +41,9 @@ public struct QUOTE() has drop;
 /// The mock adapter's presale witness, which is also its vault venue marker.
 public struct Venue() has drop;
 
+/// Another venue's marker.
+public struct OtherVenue() has drop;
+
 /// Venue position holding the liquidity the adapter adds.
 public struct MockPosition has key, store {
     id: UID,
@@ -70,7 +73,7 @@ fun the_adapter_locks_the_pool_share_and_pays_the_residuals_to_the_creator() {
     assert_eq!(created.peel_address(), vault_id.to_address());
     assert_eq!(created.peel_address(), presale_id.to_address());
     assert_eq!(created.peel_address(), POOL);
-    created.peel_address();
+    let position_id = created.peel_address();
     assert_eq!(created.peel_vec_u8(), type_bytes<Venue>());
     assert_eq!(created.peel_vec_u8(), type_bytes<TOKEN>());
     assert_eq!(created.peel_vec_u8(), type_bytes<QUOTE>());
@@ -89,6 +92,7 @@ fun the_adapter_locks_the_pool_share_and_pays_the_residuals_to_the_creator() {
         assert_eq!(position.token.value(), 599);
         assert_eq!(position.quote.value(), 299);
         assert_eq!(vault.creator_for_testing(), CREATOR);
+        assert_eq!(vault.position_id_for_testing<_, _, Venue>().to_address(), position_id);
         assert_eq!(vault.pool_id(), object::id_from_address(POOL));
         test_scenario::return_shared(vault);
     });
@@ -124,6 +128,51 @@ fun an_empty_collection_moves_nothing_and_emits_nothing() {
 
     fixture.pay_fees(0, 0);
     assert_eq!(event::events_by_type<PresaleFeesCollected>().length(), 0);
+    fixture.end();
+}
+
+#[test]
+fun a_token_only_collection_pays_only_token_shares() {
+    let mut fixture = start();
+    let (_, vault_id) = fixture.open_pool(1);
+
+    fixture.pay_fees(1_000, 0);
+    let protocol = PROTOCOL;
+    let mut expected = bcs::to_bytes(&vault_id);
+    expected.append(bcs::to_bytes(&1_000u64));
+    expected.append(bcs::to_bytes(&0u64));
+    expected.append(bcs::to_bytes(&protocol));
+    expected.append(bcs::to_bytes(&100u64));
+    expected.append(bcs::to_bytes(&0u64));
+    assert_eq!(bcs::to_bytes(&only_event<PresaleFeesCollected>()), expected);
+    assert_eq!(fixture.coin_total<TOKEN>(PROTOCOL), 100);
+    assert_eq!(fixture.coin_total<QUOTE>(PROTOCOL), 0);
+    fixture.end();
+}
+
+#[test]
+fun the_tokens_own_lp_shares_replace_the_default() {
+    let mut fixture = start();
+    fixture.open_pool(1);
+    fixture.set_token_shares(500, 0);
+
+    fixture.pay_fees(1_000, 1_000);
+    assert_eq!(fixture.coin_total<TOKEN>(PROTOCOL), 50);
+    assert_eq!(fixture.coin_total<QUOTE>(PROTOCOL), 0);
+    assert_eq!(fixture.coin_total<QUOTE>(CREATOR), 1 + 1_000);
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = sui::dynamic_field::EFieldDoesNotExist, location = sui::dynamic_field)]
+fun another_venue_cannot_borrow_the_position() {
+    let mut fixture = start();
+    fixture.open_pool(1);
+
+    fixture.next_tx!(KEEPER, |f| {
+        let mut vault = f.take_vault();
+        vault.position_mut<_, _, _, MockPosition>(&OtherVenue());
+        test_scenario::return_shared(vault);
+    });
     fixture.end();
 }
 
@@ -281,6 +330,24 @@ fun presale_vault_open_pool(self: &mut PresaleVaultFixture, liquidity: u128): (I
     (presale_id, vault_id[0])
 }
 
+/// Sets Blast's LP shares for this token, which replace the defaults.
+fun presale_vault_set_token_shares(self: &mut PresaleVaultFixture, token_bps: u64, quote_bps: u64) {
+    self.scenario.next_tx(ADMIN);
+    let (root, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(16, 1, self.scenario.ctx());
+    authority.grant_admin(&root, blast_fun_domain::fee_admin_role(), ADMIN, self.scenario.ctx());
+    destroy(root);
+    self.scenario.next_tx(ADMIN);
+    let admin_cap = self.scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
+    self.policy.set_coin_shares<TOKEN>(
+        &self.migrators_version,
+        &authority.sign_in(&admin_cap),
+        bps::new(token_bps),
+        bps::new(quote_bps),
+    );
+    destroy(admin_cap);
+    destroy(authority);
+}
+
 /// Pays one collection of `token` and `quote` fees through the vault.
 fun presale_vault_pay_fees(self: &mut PresaleVaultFixture, token: u64, quote: u64) {
     self.scenario.next_tx(KEEPER);
@@ -368,5 +435,7 @@ use fun presale_vault_next_tx as PresaleVaultFixture.next_tx;
 use fun presale_vault_open_pool as PresaleVaultFixture.open_pool;
 
 use fun presale_vault_pay_fees as PresaleVaultFixture.pay_fees;
+
+use fun presale_vault_set_token_shares as PresaleVaultFixture.set_token_shares;
 
 use fun presale_vault_take_vault as PresaleVaultFixture.take_vault;

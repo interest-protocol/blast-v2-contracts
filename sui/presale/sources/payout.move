@@ -18,7 +18,7 @@ public struct Recipient has copy, drop, store {
 /// `bps` of the raise after Blast's fee goes into a new `token`/`quote` pool that opens at
 /// `listing_quote` Quote per `listing_tokens` tokens, through the adapter that constructs `venue`,
 /// at its pool tier in that venue's units.
-public struct Liquidity has copy, drop, store {
+public struct LiquidityTerms has copy, drop, store {
     token: TypeName,
     quote: TypeName,
     venue: TypeName,
@@ -28,6 +28,10 @@ public struct Liquidity has copy, drop, store {
     listing_quote: u64,
     listing_tokens: u64,
 }
+
+/// The terms one adapter issued for one presale's pool. It cannot be copied, so an adapter's
+/// venue reservation backs at most one presale.
+public struct Liquidity(LiquidityTerms) has drop, store;
 
 // === Public Functions ===
 
@@ -53,7 +57,7 @@ public fun liquidity<Token, Quote, Witness: drop>(
         blast_presale::errors::invalid_liquidity!(),
     );
 
-    Liquidity {
+    Liquidity(LiquidityTerms {
         token: type_name::with_original_ids<Token>(),
         quote: type_name::with_original_ids<Quote>(),
         venue: type_name::with_original_ids<Witness>(),
@@ -62,30 +66,34 @@ public fun liquidity<Token, Quote, Witness: drop>(
         bps,
         listing_quote,
         listing_tokens,
-    }
+    })
 }
 
 /// The `(tick_spacing, fee_rate)` pool tier, in the adapter's venue units.
 public fun pool_tier(self: &Liquidity): (u32, u64) {
-    (self.pool_tick_spacing, self.pool_fee_rate)
+    (self.0.pool_tick_spacing, self.0.pool_fee_rate)
 }
 
 // === Package Functions ===
 
+public(package) fun terms(self: &Liquidity): LiquidityTerms {
+    self.0
+}
+
 public(package) fun venue(self: &Liquidity): TypeName {
-    self.venue
+    self.0.venue
 }
 
 /// Whether the liquidity is for a `Token`/`Quote` pool.
 public(package) fun is_for<Token, Quote>(self: &Liquidity): bool {
-    self.token == type_name::with_original_ids<Token>()
-        && self.quote == type_name::with_original_ids<Quote>()
+    self.0.token == type_name::with_original_ids<Token>()
+        && self.0.quote == type_name::with_original_ids<Quote>()
 }
 
 /// Aborts unless there are at most sixteen recipients and their shares and the liquidity's sum to
 /// exactly 10,000.
 public(package) fun assert_shares(recipients: &vector<Recipient>, liquidity: &Option<Liquidity>) {
-    let mut total = liquidity.map_ref!(|liquidity| liquidity.bps).destroy_or!(0);
+    let mut total = liquidity.map_ref!(|liquidity| liquidity.0.bps).destroy_or!(0);
     recipients.do_ref!(|recipient| total = total + recipient.bps);
 
     assert!(
@@ -124,7 +132,7 @@ public(package) fun split_down(
 
 /// The tokens `quote` buys at the listing price, rounded down.
 public(package) fun tokens_down(self: &Liquidity, quote: u64): u64 {
-    quote.mul_div(self.listing_tokens, self.listing_quote)
+    quote.mul_div(self.0.listing_tokens, self.0.listing_quote)
 }
 
 public(package) fun destination(self: &Recipient): address {
@@ -135,7 +143,7 @@ public(package) fun destination(self: &Recipient): address {
 
 /// The liquidity's share of `quote`, rounded down.
 fun share_down(self: &Liquidity, quote: u64): u64 {
-    quote.mul_div(self.bps, constants::basis_points_denominator!())
+    quote.mul_div(self.0.bps, constants::basis_points_denominator!())
 }
 
 // === Imports ===

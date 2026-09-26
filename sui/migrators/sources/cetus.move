@@ -30,6 +30,9 @@ const EInvalidCoinOrder: vector<u8> = b"Migration route must match the Cetus coi
 #[error(code = 1)]
 const EPositionPoolMismatch: vector<u8> = b"Pool must be the vault's own pool.";
 
+#[error(code = 2)]
+const EInvalidListingPrice: vector<u8> = b"Listing price must lie inside the venue's price range.";
+
 // === Public Types ===
 
 /// Sealed adapter identity selected by a Blast launch.
@@ -101,8 +104,12 @@ public fun new<Meme, Quote>(
 /// Reserves Cetus pool creation for a presale's `Token` and `Quote` at `tick_spacing` with the
 /// token's treasury capability, as a launch start does, and returns the liquidity terms the
 /// presale must be created with: `bps` of its raise after Blast's fee into a full-range pool that
-/// opens at `listing_quote` Quote per `listing_tokens` tokens. Only this adapter can open that
-/// pool, and only once Blast admits it for presales.
+/// opens at `listing_quote` Quote per `listing_tokens` tokens, which must lie inside Cetus's price
+/// range. Only this adapter can open that pool, and only once Blast admits it for presales.
+///
+/// The reservation is permanent and one per token, and the terms back exactly one presale. It
+/// cannot see a pool someone already created for the pair at this tick spacing; opening would then
+/// abort, so the caller must check Cetus first.
 public fun presale_liquidity<Token, Quote>(
     migrators_version: &MigratorsVersion,
     venue_config: &mut VenueConfig,
@@ -117,6 +124,16 @@ public fun presale_liquidity<Token, Quote>(
 ): Liquidity {
     migrators_version.assert_current();
     let fee_rate = config::get_fee_rate(tick_spacing, cetus_config);
+    let listing_sqrt_price = migration_math::sqrt_price_x64(
+        listing_tokens,
+        listing_quote,
+        factory::is_right_order<Token, Quote>(),
+    );
+    assert!(
+        listing_sqrt_price > constants::min_swap_sqrt_price!()
+            && listing_sqrt_price < constants::max_swap_sqrt_price!(),
+        EInvalidListingPrice,
+    );
 
     let liquidity = payout::liquidity<Token, Quote, _>(
         Witness(),

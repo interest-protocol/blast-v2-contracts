@@ -66,8 +66,8 @@ public fun set_fee_destination(
 }
 
 /// Admits or removes the liquidity adapter that constructs `Adapter` for presales created from
-/// now on.
-public fun set_adapter_allowed<Adapter>(
+/// now on. A framework type is never an adapter.
+public fun set_adapter_allowed<Adapter: drop>(
     self: &mut BlastPresaleConfig,
     package_version: &PackageVersion,
     admin_witness: &AdminWitness<BLAST_PRESALE_DOMAIN>,
@@ -75,6 +75,8 @@ public fun set_adapter_allowed<Adapter>(
 ) {
     package_version.assert_current();
     admin_witness.assert_role(blast_presale_domain::adapter_admin_role());
+    let origin = type_name::original_id<Adapter>();
+    assert!(origin != @0x1 && origin != @0x2, blast_presale::errors::invalid_adapter_type!());
     let adapter = type_name::with_original_ids<Adapter>();
     assert!(self.adapters.contains(&adapter) != allowed, blast_presale::errors::unchanged!());
 

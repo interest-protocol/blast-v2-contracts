@@ -137,7 +137,7 @@ public fun new<Token, Quote>(
         claim_ms,
         presale.fee_bps,
         presale.recipients,
-        presale.liquidity,
+        presale.liquidity.map_ref!(|liquidity| liquidity.terms()),
     );
 
     presale
@@ -233,7 +233,7 @@ public fun finalize<Token, Quote>(
         self.recipients.length().do!(|i| {
             let destination = self.recipients[i].destination();
             send(self.quote.split(amounts[i]), destination, ctx);
-            events::proceeds_paid(presale_id, destination, amounts[i]);
+            if (amounts[i] > 0) events::proceeds_paid(presale_id, destination, amounts[i]);
         });
     };
     if (pooled) {

@@ -30,7 +30,7 @@ public struct PresaleCreated has copy, drop {
     claim_ms: u64,
     fee_bps: u64,
     recipients: vector<Recipient>,
-    liquidity: Option<Liquidity>,
+    liquidity: Option<LiquidityTerms>,
 }
 
 /// The sender committed `quote` to tranche `tranche`, which has now accepted `tranche_committed`.
@@ -100,7 +100,7 @@ public(package) fun presale_created<Token, Quote>(
     claim_ms: u64,
     fee_bps: u64,
     recipients: vector<Recipient>,
-    liquidity: Option<Liquidity>,
+    liquidity: Option<LiquidityTerms>,
 ) {
     emit(PresaleCreated {
         presale_id,
@@ -157,7 +157,7 @@ public(package) fun claimed(presale_id: ID, tranche: u64, buyer: address, tokens
 
 use blast_presale::{
     blast_events::emit_event as emit,
-    payout::{Liquidity, Recipient},
+    payout::{LiquidityTerms, Recipient},
     tranche::Tranche,
 };
 
