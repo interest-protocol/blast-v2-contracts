@@ -45,9 +45,10 @@ public fun migrate<Meme>(
     version: &PackageVersion,
     currency: &mut Currency<Meme>,
     fail: bool,
+    clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let (meme, quote) = launch.migrate(version, currency, Venue(), ctx);
+    let (meme, quote) = launch.migrate(version, currency, Venue(), clock, ctx);
     transfer::share_object(MockVault { id: object::new(ctx), meme, quote });
     assert!(!fail, EAdapterFailure);
 }
@@ -61,4 +62,4 @@ use blast_fun::{
     package_version::PackageVersion,
 };
 
-use sui::{balance::Balance, coin_registry::Currency, sui::SUI};
+use sui::{balance::Balance, clock::Clock, coin_registry::Currency, sui::SUI};

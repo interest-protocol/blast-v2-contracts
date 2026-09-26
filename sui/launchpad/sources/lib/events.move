@@ -78,8 +78,7 @@ public struct LaunchTicketCreated has copy, drop {
     sell_burn_bps: u64,
 }
 
-/// A launch was created from `ticket_id` with these settings; a zero `opening_round_ms` has no
-/// opening round.
+/// A launch was created from `ticket_id` with these settings; a zero `presale_ms` has no presale.
 public struct LaunchCreated has copy, drop {
     launch_id: ID,
     ticket_id: ID,
@@ -93,7 +92,7 @@ public struct LaunchCreated has copy, drop {
     quote_fee_bps: u64,
     meme_fee_bps: u64,
     allocation_plan: AllocationPlan,
-    opening_round_ms: u64,
+    presale_ms: u64,
 }
 
 public struct LaunchShared has copy, drop {
@@ -101,34 +100,36 @@ public struct LaunchShared has copy, drop {
     public_start_ms: u64,
 }
 
-/// Quote joined a launch's opening round from the sender; `bids` is the pot after it.
-public struct OpeningRoundJoined has copy, drop {
+/// The sender paid `quote` into a launch's presale, recorded as the bid `bid_id`.
+public struct PresaleJoined has copy, drop {
     launch_id: ID,
+    bid_id: ID,
     quote: u64,
-    bids: u64,
 }
 
-/// The opening round closed: its `bids` bought `meme` from the curve, in the same transaction's
-/// `Bought` when there is one, and left `quote` to refund. Both are delivered pro rata.
-public struct OpeningRoundSettled has copy, drop {
+/// The presale closed: its `pot`, the bids plus any Quote donated to the launch's address, bought
+/// `meme` from the curve, in the same transaction's `Bought` when there is one, and left `quote` to
+/// refund. Both are delivered pro rata to the bids; trading opens at `trading_opens_ms`.
+public struct PresaleSettled has copy, drop {
     launch_id: ID,
-    bids: u64,
+    pot: u64,
     meme: u64,
     quote: u64,
+    trading_opens_ms: u64,
 }
 
-/// `bidder`'s share of the opening round, for its `bid`, was sent to it.
-public struct OpeningRoundDelivered has copy, drop {
+/// The bid `bid_id` was delivered: `meme` and `quote` were sent to its `bidder`.
+public struct PresaleDelivered has copy, drop {
     launch_id: ID,
+    bid_id: ID,
     bidder: address,
-    bid: u64,
     meme: u64,
     quote: u64,
 }
 
 /// A curve purchase; reserves are after the purchase. Purchases before `LaunchShared` are the
-/// creator's, made in the transaction that creates the launch; the one beside
-/// `OpeningRoundSettled` is the opening round's pot.
+/// creator's, made in the transaction that creates the launch; the one beside `PresaleSettled` is
+/// the presale's pot.
 public struct Bought has copy, drop {
     launch_id: ID,
     quote_in: u64,
@@ -276,7 +277,7 @@ public(package) fun launch_created<Quote>(
     quote_fee_bps: u64,
     meme_fee_bps: u64,
     allocation_plan: AllocationPlan,
-    opening_round_ms: u64,
+    presale_ms: u64,
 ) {
     emit(LaunchCreated {
         launch_id,
@@ -291,7 +292,7 @@ public(package) fun launch_created<Quote>(
         quote_fee_bps,
         meme_fee_bps,
         allocation_plan,
-        opening_round_ms,
+        presale_ms,
     });
 }
 
@@ -299,22 +300,28 @@ public(package) fun launch_shared(launch_id: ID, public_start_ms: u64) {
     emit(LaunchShared { launch_id, public_start_ms });
 }
 
-public(package) fun opening_round_joined(launch_id: ID, quote: u64, bids: u64) {
-    emit(OpeningRoundJoined { launch_id, quote, bids });
+public(package) fun presale_joined(launch_id: ID, bid_id: ID, quote: u64) {
+    emit(PresaleJoined { launch_id, bid_id, quote });
 }
 
-public(package) fun opening_round_settled(launch_id: ID, bids: u64, meme: u64, quote: u64) {
-    emit(OpeningRoundSettled { launch_id, bids, meme, quote });
-}
-
-public(package) fun opening_round_delivered(
+public(package) fun presale_settled(
     launch_id: ID,
+    pot: u64,
+    meme: u64,
+    quote: u64,
+    trading_opens_ms: u64,
+) {
+    emit(PresaleSettled { launch_id, pot, meme, quote, trading_opens_ms });
+}
+
+public(package) fun presale_delivered(
+    launch_id: ID,
+    bid_id: ID,
     bidder: address,
-    bid: u64,
     meme: u64,
     quote: u64,
 ) {
-    emit(OpeningRoundDelivered { launch_id, bidder, bid, meme, quote });
+    emit(PresaleDelivered { launch_id, bid_id, bidder, meme, quote });
 }
 
 public(package) fun bought(

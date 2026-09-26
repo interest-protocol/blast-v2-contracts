@@ -783,7 +783,7 @@ bluefin_migrate_body="$(bluefin_body migrate)"
 in_order \
     'migrators_version.assert_current();' \
     'let(tick_spacing,fee_rate)=launch.pool_tier();' \
-    'launch.migrate(package_version,currency,Witness(),ctx)' \
+    'launch.migrate(package_version,currency,Witness(),clock,ctx)' \
     'pool::create_pool_and_get_object<Meme,Quote,SUI>(' \
     'creation_fee.into_balance()' \
     'pool::open_position(' \
@@ -918,7 +918,7 @@ for side in a b; do
         "assert!(factory::is_right_order<${coin_order}>(),EInvalidCoinOrder);" \
         'let(tick_spacing,_)=launch.pool_tier();' \
         'let(tick_lower,tick_upper)=pool_creator::full_range_tick_range(tick_spacing);' \
-        'let(meme,quote)=launch.migrate(package_version,currency,Witness(),ctx);' \
+        'let(meme,quote)=launch.migrate(package_version,currency,Witness(),clock,ctx);' \
         'letmeme_amount=meme.value();letquote_amount=quote.value();' \
         "let(${outputs})=pool_creator::create_pool_v3_with_creation_cap<${coin_order}>(cetus_config,pools,venue_config.pool_creation_cap<Meme>(),tick_spacing,migration_math::sqrt_price_x64(meme_amount,quote_amount,${meme_is_coin_a}),b\"\".to_string(),tick_lower,tick_upper,${coins},${fix_coin_a},clock,ctx);" \
         'burn_into_vault(launch,burn_manager,position,residual_meme,residual_quote,ctx);' \

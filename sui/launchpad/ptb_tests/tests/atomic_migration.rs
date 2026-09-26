@@ -1,5 +1,5 @@
 //! Programmable-transaction integration tests for launch creation, the atomic migration seam, and
-//! the opening round.
+//! the presale.
 //!
 //! Every launch is opened by one PTB composed from public calls: the mock adapter starts it under
 //! its own witness and pool tier, the launchpad setters configure the initializer, and `finalize`
@@ -10,10 +10,12 @@
 //! reaches Blast or the creator's recipient, and launch A stays migratable through the whole failure matrix before
 //! completing in one successful PTB. Every event travels in the launchpad envelope.
 //!
-//! A launch with an opening round shows the launch-owned bidder record the first bid creates, that
-//! nothing trades or pays out before settlement, that every failing round call commits nothing,
-//! the pot's one purchase at settlement, and the delivery that retires the record; each step's
-//! storage cost is printed.
+//! A launch with a presale shows that each bid pays the launch's address balance and leaves a bid
+//! object owned by the launch without writing the launch, that nothing trades or pays out before
+//! settlement, that every failing presale call commits nothing, that settlement reads the settled
+//! address balance and buys once with it, that trading waits for the delivery window, and that
+//! delivery receives and deletes each bid; each step's storage cost is printed. This is the only
+//! place the address-balance path runs: Move unit tests cannot settle accumulators.
 //!
 //! LP-fee splits that sum to zero or name seventeen recipients abort in the fee-split constructor
 //! before the launch exists, while sixteen recipients commit unchanged into the launch. A split
@@ -33,7 +35,8 @@ use blast_launchpad_ptb_tests::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sui_types::{
-    SUI_CLOCK_OBJECT_ID, SUI_COIN_REGISTRY_OBJECT_ID, SUI_FRAMEWORK_PACKAGE_ID, TypeTag,
+    SUI_ACCUMULATOR_ROOT_OBJECT_ID, SUI_CLOCK_OBJECT_ID, SUI_COIN_REGISTRY_OBJECT_ID,
+    SUI_FRAMEWORK_PACKAGE_ID, TypeTag,
     base_types::{ObjectID, SuiAddress},
     effects::TransactionEffectsAPI,
     object::Owner,
@@ -49,19 +52,22 @@ const BUY: u64 = 30_000_000;
 const POOL_TICK_SPACING: u32 = 60;
 const POOL_FEE_RATE: u64 = 2_500;
 
-/// `launch::set_opening_round` argument; zero leaves the launch without one and skips the call.
-const NO_OPENING_ROUND: u64 = 0;
-const OPENING_ROUND_MS: u64 = 60_000;
-/// One opening-round bid, far below the graduation target.
+/// `launch::set_presale` argument; zero leaves the launch without one and skips the call.
+const NO_PRESALE: u64 = 0;
+const PRESALE_MS: u64 = 60_000;
+/// `constants::presale_settlement_delay_ms`.
+const SETTLEMENT_DELAY_MS: u64 = 10_000;
+/// One presale bid, far below the graduation target.
 const BID: u64 = 1_000_000;
 
 /// `blast_fun::errors` codes.
 const INVALID_SHARES: u64 = 7;
 const RECIPIENT_CAPACITY_REACHED: u64 = 8;
 const INVALID_LAUNCH_LIFECYCLE: u64 = 15;
-const OPENING_ROUND_ENDED: u64 = 18;
-const OPENING_ROUND_NOT_ENDED: u64 = 19;
-const ZERO_OPENING_ROUND_BID: u64 = 34;
+const PRESALE_ENDED: u64 = 18;
+const PRESALE_NOT_SETTLEABLE: u64 = 19;
+const ZERO_PRESALE_BID: u64 = 34;
+const TRADING_NOT_OPEN: u64 = 35;
 
 const DESTINATION: ObjectID = address(&[0xD5]);
 const PROTOCOL: ObjectID = address(&[0xAD]);
@@ -208,7 +214,7 @@ fn zero_sum_and_seventeen_recipient_fee_splits_abort_before_the_launch_exists() 
     // sixteen recipients, which the launch records unchanged.
     let (ticket, currency, meme) = w.publish_ticket()?;
     for (fee_split, code) in &rejected {
-        let pt = w.create_launch(ticket, currency, &meme, fee_split, NO_OPENING_ROUND)?;
+        let pt = w.create_launch(ticket, currency, &meme, fee_split, NO_PRESALE)?;
         w.h.assert_rolled_back(pt, abort(*code), &[ticket, currency], &owners)?;
     }
     let (_, created) = w.open_split_launch(ticket, currency, meme, &sixteen)?;
@@ -227,7 +233,7 @@ fn maximum_fee_split_fits_protocol_limits_at_creation_and_migration() -> Result<
     let (a, created) = w.open_split_launch(ticket, currency, meme, &fee_split)?;
     let launch_created = w.launch_created(&created)?;
     assert_eq!(launch_created.lp_fee_split, fee_split);
-    assert_eq!(launch_created.opening_round_ms, NO_OPENING_ROUND);
+    assert_eq!(launch_created.presale_ms, NO_PRESALE);
     assert_eq!(
         (launch_created.pool_tick_spacing, launch_created.pool_fee_rate),
         (POOL_TICK_SPACING, POOL_FEE_RATE),
@@ -255,67 +261,80 @@ fn maximum_fee_split_fits_protocol_limits_at_creation_and_migration() -> Result<
 }
 
 #[test]
-fn opening_round_keeps_one_record_per_bidder_and_nothing_trades_before_settlement() -> Result<()> {
-    let mut w = world("opening_round")?;
-    let launch = w.open_launch(OPENING_ROUND_MS)?;
+fn presale_bids_pay_the_launch_address_and_settle_from_its_settled_balance() -> Result<()> {
+    let mut w = world("presale")?;
+    let launch = w.open_launch(PRESALE_MS)?;
     let owners = [w.h.sender];
     let blast = w.blast;
     let abort = |code| Expected::Abort { package: blast, module: "launch", code };
 
-    // The first bid creates the bidder's launch-owned record; a later bid only raises it.
+    // Each join leaves its own bid owned by the launch's address and only reads the launch.
     let first = w.h.execute(w.join(&launch, BID)?)?;
     first.assert_success();
-    assert_eq!(first.wrapped_payloads(w.blast), ["OpeningRoundJoined"]);
-    let records = first.created(&w.h, "dynamic_field", "Field");
-    assert_eq!(records.len(), 1, "the first bid creates one bidder record");
-    let record = records[0];
-    assert_eq!(*w.h.object(record).owner(), Owner::ObjectOwner(launch.launch.into()));
+    assert_eq!(first.wrapped_payloads(w.blast), ["PresaleJoined"]);
+    let first_bid = w.only_bid(&first, &launch);
     let later = w.h.execute(w.join(&launch, BID)?)?;
     later.assert_success();
-    assert!(later.created(&w.h, "dynamic_field", "Field").is_empty());
-    assert!(later.effects.mutated().iter().any(|(object, _)| object.0 == record));
-    let bid: OpeningRoundBid = bcs::from_bytes(&w.h.contents(record))?;
-    assert_eq!((bid.bidder, bid.bid), (w.h.sender, 2 * BID));
+    let later_bid = w.only_bid(&later, &launch);
+    for joined in [&first, &later] {
+        assert!(!joined.effects.mutated().iter().any(|(object, _)| object.0 == launch.launch));
+    }
+    let bid: BlastPresaleBid = bcs::from_bytes(&w.h.contents(later_bid))?;
+    assert_eq!((bid.bidder, bid.quote), (w.h.sender, BID));
 
     // Before the end nothing trades or pays out, settling is early, and a zero bid is refused;
-    // each failure leaves the launch, the record, and the bidder's coins exactly as they were.
-    let watched = [launch.launch, record];
-    let bidder = w.h.sender;
+    // each failure leaves the launch, the bids, and the bidder's coins exactly as they were.
+    let watched = [launch.launch, first_bid, later_bid];
     for (pt, code) in [
         (w.buy(&launch, BID, 1)?, INVALID_LAUNCH_LIFECYCLE),
-        (w.deliver(&launch, bidder)?, INVALID_LAUNCH_LIFECYCLE),
-        (w.settle(&launch)?, OPENING_ROUND_NOT_ENDED),
-        (w.join(&launch, 0)?, ZERO_OPENING_ROUND_BID),
+        (w.deliver(&launch, first_bid)?, INVALID_LAUNCH_LIFECYCLE),
+        (w.settle(&launch)?, PRESALE_NOT_SETTLEABLE),
+        (w.join(&launch, 0)?, ZERO_PRESALE_BID),
     ] {
         w.h.assert_rolled_back(pt, abort(code), &watched, &owners)?;
     }
 
-    // At the end bidding closes, and settlement buys once with the whole pot.
-    w.h.sim.advance_clock(Duration::from_millis(OPENING_ROUND_MS));
+    // At the end bidding closes; settlement waits for the delay, then reads the settled address
+    // balance and buys once with the whole pot.
+    w.h.sim.create_checkpoint();
+    w.h.sim.advance_clock(Duration::from_millis(PRESALE_MS));
     let pt = w.join(&launch, BID)?;
-    w.h.assert_rolled_back(pt, abort(OPENING_ROUND_ENDED), &watched, &owners)?;
+    w.h.assert_rolled_back(pt, abort(PRESALE_ENDED), &watched, &owners)?;
+    let pt = w.settle(&launch)?;
+    w.h.assert_rolled_back(pt, abort(PRESALE_NOT_SETTLEABLE), &watched, &owners)?;
+    w.h.sim.advance_clock(Duration::from_millis(SETTLEMENT_DELAY_MS));
     let settled = w.h.execute(w.settle(&launch)?)?;
     settled.assert_success();
-    assert_eq!(settled.wrapped_payloads(w.blast), ["Bought", "OpeningRoundSettled"]);
+    assert_eq!(settled.wrapped_payloads(w.blast), ["Bought", "PresaleSettled"]);
     let bought: Bought = bcs::from_bytes(settled.events_of("events", "Bought")[0])?;
-    let round: OpeningRoundSettled = bcs::from_bytes(settled.events_of("events", "OpeningRoundSettled")[0])?;
+    let presale: PresaleSettled = bcs::from_bytes(settled.events_of("events", "PresaleSettled")[0])?;
     assert_eq!((bought.quote_in, bought.quote_refund), (2 * BID, 0));
-    assert_eq!((round.launch_id, round.bids, round.meme, round.quote), (launch.launch, 2 * BID, bought.meme_out_net, 0));
+    assert_eq!(
+        (presale.launch_id, presale.pot, presale.meme, presale.quote),
+        (launch.launch, 2 * BID, bought.meme_out_net, 0),
+    );
     assert_eq!(w.launch_lifecycle(&launch)?, LaunchLifecycle::Live);
 
-    // Delivery retires the record and sends the lone bidder everything the pot bought; then the
-    // curve trades.
-    let delivered = w.h.execute(w.deliver(&launch, bidder)?)?;
+    // Trading waits for the delivery window, while delivery receives and deletes each bid and
+    // pays its bidder half of what the pot bought.
+    let pt = w.buy(&launch, BID, 1)?;
+    w.h.assert_rolled_back(pt, abort(TRADING_NOT_OPEN), &[launch.launch], &owners)?;
+    let bidder = w.h.sender;
+    let delivered = w.h.execute(w.deliver(&launch, first_bid)?)?;
     delivered.assert_success();
-    assert_eq!(delivered.wrapped_payloads(w.blast), ["OpeningRoundDelivered"]);
-    assert!(delivered.effects.deleted().iter().any(|(object, _, _)| *object == record));
-    assert_eq!(delivered.coins_created_for(&w.h, bidder), w.coins(&launch, round.meme, 0));
+    assert_eq!(delivered.wrapped_payloads(w.blast), ["PresaleDelivered"]);
+    assert!(delivered.effects.deleted().iter().any(|(object, _, _)| *object == first_bid));
+    assert_eq!(delivered.coins_created_for(&w.h, bidder), w.coins(&launch, presale.meme / 2, 0));
+    let last = w.h.execute(w.deliver(&launch, later_bid)?)?;
+    last.assert_success();
+    assert_eq!(last.coins_created_for(&w.h, bidder), w.coins(&launch, presale.meme - presale.meme / 2, 0));
+    w.h.sim.advance_clock(Duration::from_millis(PRESALE_MS));
     let open = w.h.execute(w.buy(&launch, BID, 1)?)?;
     open.assert_success();
     assert_eq!(open.wrapped_payloads(w.blast), ["Bought"]);
 
-    // Capacity evidence: net storage charged by each step. Only the first bid leaves a new object
-    // behind, and delivery refunds it.
+    // Capacity evidence: net storage charged by each step. Every bid leaves one object behind,
+    // and its delivery refunds it.
     let net_storage = |name: &str, outcome: &Outcome| {
         let cost = outcome.effects.gas_cost_summary();
         println!(
@@ -328,11 +347,10 @@ fn opening_round_keeps_one_record_per_bidder_and_nothing_trades_before_settlemen
         cost.storage_cost as i64 - cost.storage_rebate as i64
     };
     let first_net = net_storage("first bid", &first);
-    let later_net = net_storage("later bid", &later);
+    net_storage("later bid", &later);
     net_storage("settlement", &settled);
     let delivery_net = net_storage("delivery", &delivered);
-    net_storage("buy after settlement", &open);
-    assert!(first_net > later_net);
+    net_storage("buy after the delivery window", &open);
     assert!(delivery_net < first_net);
 
     Ok(())
@@ -354,21 +372,22 @@ struct Bought {
     _real_quote_reserve: u64,
 }
 
-/// Mirrors `blast_fun::events::OpeningRoundSettled`.
+/// Mirrors `blast_fun::events::PresaleSettled`.
 #[derive(Deserialize)]
-struct OpeningRoundSettled {
+struct PresaleSettled {
     launch_id: ObjectID,
-    bids: u64,
+    pot: u64,
     meme: u64,
     quote: u64,
+    _trading_opens_ms: u64,
 }
 
-/// Mirrors `0x2::dynamic_field::Field<blast_fun::launch::OpeningRoundBidKey, u64>`.
+/// Mirrors `blast_fun::launch::BlastPresaleBid`.
 #[derive(Deserialize)]
-struct OpeningRoundBid {
+struct BlastPresaleBid {
     _id: ObjectID,
     bidder: SuiAddress,
-    bid: u64,
+    quote: u64,
 }
 
 /// Mirrors `blast_fun::events::LaunchCreated`.
@@ -386,7 +405,7 @@ struct LaunchCreated {
     _quote_fee_bps: u64,
     _meme_fee_bps: u64,
     allocation_plan: AllocationPlan,
-    opening_round_ms: u64,
+    presale_ms: u64,
 }
 
 /// Mirrors `blast_fun::allocation::AllocationPlan`; each recipient is (destination, Meme, Quote).
@@ -412,7 +431,7 @@ struct Migrated {
 /// byte; the rest of the launch is not mirrored.
 #[derive(Debug, Deserialize, PartialEq)]
 enum LaunchLifecycle {
-    OpeningRound,
+    Presale,
     Live,
     MigrationReady,
     Migrated,
@@ -472,12 +491,12 @@ struct MigrationAllocationPaid {
     quote: u64,
 }
 
-/// Two launches without an opening round at MigrationReady.
+/// Two launches without a presale at MigrationReady.
 fn setup() -> Result<(World, Launch, Launch)> {
     let mut w = world("atomic_migration")?;
     let mut launches = Vec::new();
     for _ in 0..2 {
-        let launch = w.open_launch(NO_OPENING_ROUND)?;
+        let launch = w.open_launch(NO_PRESALE)?;
         w.buy_to_migration(&launch)?;
         launches.push(launch);
     }
@@ -583,17 +602,17 @@ fn world(work: &str) -> Result<World> {
 }
 
 impl World {
-    /// Publishes one generated project and opens its SUI-quoted launch with `opening_round_ms`,
-    /// with the LP-fee split paying `DESTINATION` wholly.
-    fn open_launch(&mut self, opening_round_ms: u64) -> Result<Launch> {
+    /// Publishes one generated project and opens its SUI-quoted launch with `presale_ms`, with the
+    /// LP-fee split paying `DESTINATION` wholly.
+    fn open_launch(&mut self, presale_ms: u64) -> Result<Launch> {
         let (ticket, currency, meme) = self.publish_ticket()?;
-        let pt = self.create_launch(ticket, currency, &meme, &FeeSplit::single(DESTINATION), opening_round_ms)?;
+        let pt = self.create_launch(ticket, currency, &meme, &FeeSplit::single(DESTINATION), presale_ms)?;
         let created = self.h.execute(pt)?;
 
         Ok(self.created_launch(&created, meme, currency))
     }
 
-    /// Opens `ticket`'s launch without an opening round with `fee_split` and returns it with the
+    /// Opens `ticket`'s launch without a presale with `fee_split` and returns it with the
     /// creation outcome.
     fn open_split_launch(
         &mut self,
@@ -602,20 +621,20 @@ impl World {
         meme: TypeTag,
         fee_split: &FeeSplit,
     ) -> Result<(Launch, Outcome)> {
-        let created = self.h.execute(self.create_launch(ticket, currency, &meme, fee_split, NO_OPENING_ROUND)?)?;
+        let created = self.h.execute(self.create_launch(ticket, currency, &meme, fee_split, NO_PRESALE)?)?;
 
         Ok((self.created_launch(&created, meme, currency), created))
     }
 
     /// One PTB that starts `ticket`'s launch through the adapter, sets the graduation target, the
-    /// allocation plan, `fee_split`, and any opening round, then finalizes and shares it.
+    /// allocation plan, `fee_split`, and any presale, then finalizes and shares it.
     fn create_launch(
         &self,
         ticket: ObjectID,
         currency: ObjectID,
         meme: &TypeTag,
         fee_split: &FeeSplit,
-        opening_round_ms: u64,
+        presale_ms: u64,
     ) -> Result<ProgrammableTransaction> {
         let mut builder = ProgrammableTransactionBuilder::new();
         let fee_split = self.fee_split_arg(&mut builder, fee_split)?;
@@ -639,12 +658,9 @@ impl World {
         call(&mut builder, self.blast, "launch", "set_graduation_target", pair.clone(), vec![initializer, target]);
         call(&mut builder, self.blast, "launch", "set_allocation_plan", pair.clone(), vec![initializer, plan]);
         call(&mut builder, self.blast, "launch", "set_lp_fee_split", pair.clone(), vec![initializer, fee_split]);
-        if opening_round_ms != NO_OPENING_ROUND {
-            let opening_round_ms = builder.pure(opening_round_ms)?;
-            call(&mut builder, self.blast, "launch", "set_opening_round", pair.clone(), vec![
-                initializer,
-                opening_round_ms,
-            ]);
+        if presale_ms != NO_PRESALE {
+            let presale_ms = builder.pure(presale_ms)?;
+            call(&mut builder, self.blast, "launch", "set_presale", pair.clone(), vec![initializer, presale_ms]);
         }
         let currency = builder.obj(self.h.shared(currency, true))?;
         let launch =
@@ -727,13 +743,14 @@ impl World {
         let version = builder.obj(self.h.shared(self.version, false))?;
         let runtime = builder.obj(self.h.shared(self.runtime, false))?;
         let min_out = builder.pure(min_meme_out)?;
+        let clock = builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?;
         let Argument::Result(bought) = call(
             &mut builder,
             self.blast,
             "launch",
             "buy",
             vec![launch.meme.clone(), sui()],
-            vec![launch_arg, version, runtime, Argument::NestedResult(split, 0), min_out],
+            vec![launch_arg, version, runtime, Argument::NestedResult(split, 0), min_out, clock],
         ) else {
             unreachable!()
         };
@@ -745,17 +762,17 @@ impl World {
         Ok(builder.finish())
     }
 
-    /// Joins `launch`'s opening round with `quote_in` MIST split from gas.
+    /// Joins `launch`'s presale with `quote_in` MIST split from gas; the launch is only read.
     fn join(&self, launch: &Launch, quote_in: u64) -> Result<ProgrammableTransaction> {
         let mut builder = ProgrammableTransactionBuilder::new();
         let amount = builder.pure(quote_in)?;
         let Argument::Result(split) = builder.command(Command::SplitCoins(Argument::GasCoin, vec![amount])) else {
             unreachable!()
         };
-        let launch_arg = builder.obj(self.h.shared(launch.launch, true))?;
+        let launch_arg = builder.obj(self.h.shared(launch.launch, false))?;
         let version = builder.obj(self.h.shared(self.version, false))?;
         let clock = builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?;
-        call(&mut builder, self.blast, "launch", "join_opening_round", vec![launch.meme.clone(), sui()], vec![
+        call(&mut builder, self.blast, "launch", "join_presale", vec![launch.meme.clone(), sui()], vec![
             launch_arg,
             version,
             Argument::NestedResult(split, 0),
@@ -765,33 +782,44 @@ impl World {
         Ok(builder.finish())
     }
 
-    /// Settles `launch`'s opening round.
+    /// The one bid `joined` created, owned by `launch`'s address.
+    fn only_bid(&self, joined: &Outcome, launch: &Launch) -> ObjectID {
+        let bids = joined.created(&self.h, "launch", "BlastPresaleBid");
+        assert_eq!(bids.len(), 1, "each join creates one bid");
+        assert_eq!(*self.h.object(bids[0]).owner(), Owner::AddressOwner(launch.launch.into()));
+
+        bids[0]
+    }
+
+    /// Settles `launch`'s presale from its settled address balance.
     fn settle(&self, launch: &Launch) -> Result<ProgrammableTransaction> {
         let mut builder = ProgrammableTransactionBuilder::new();
         let launch_arg = builder.obj(self.h.shared(launch.launch, true))?;
         let version = builder.obj(self.h.shared(self.version, false))?;
         let runtime = builder.obj(self.h.shared(self.runtime, false))?;
+        let accumulator_root = builder.obj(self.h.shared(SUI_ACCUMULATOR_ROOT_OBJECT_ID, false))?;
         let clock = builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?;
-        call(&mut builder, self.blast, "launch", "settle_opening_round", vec![launch.meme.clone(), sui()], vec![
+        call(&mut builder, self.blast, "launch", "settle_presale", vec![launch.meme.clone(), sui()], vec![
             launch_arg,
             version,
             runtime,
+            accumulator_root,
             clock,
         ]);
 
         Ok(builder.finish())
     }
 
-    /// Delivers `bidder`'s share of `launch`'s settled opening round.
-    fn deliver(&self, launch: &Launch, bidder: SuiAddress) -> Result<ProgrammableTransaction> {
+    /// Delivers the bid `bid`, which `launch` receives.
+    fn deliver(&self, launch: &Launch, bid: ObjectID) -> Result<ProgrammableTransaction> {
         let mut builder = ProgrammableTransactionBuilder::new();
         let launch_arg = builder.obj(self.h.shared(launch.launch, true))?;
         let version = builder.obj(self.h.shared(self.version, false))?;
-        let bidder = builder.pure(bidder)?;
-        call(&mut builder, self.blast, "launch", "deliver_opening_round", vec![launch.meme.clone(), sui()], vec![
+        let bid = builder.obj(ObjectArg::Receiving(self.h.object(bid).compute_object_reference()))?;
+        call(&mut builder, self.blast, "launch", "deliver_presale", vec![launch.meme.clone(), sui()], vec![
             launch_arg,
             version,
-            bidder,
+            bid,
         ]);
 
         Ok(builder.finish())
@@ -822,11 +850,13 @@ impl World {
         let version = builder.obj(self.h.shared(self.version, false))?;
         let currency = builder.obj(self.h.shared(currency_owner.currency, true))?;
         let fail = builder.pure(fail)?;
+        let clock = builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?;
         call(&mut builder, self.adapter, "mock_adapter", "migrate", vec![launch.meme.clone()], vec![
             launch_arg,
             version,
             currency,
             fail,
+            clock,
         ]);
 
         Ok(builder.finish())

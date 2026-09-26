@@ -9,30 +9,40 @@ module blast_fun::launch;
 // === Public Types ===
 
 public enum Lifecycle has copy, drop, store {
-    OpeningRound,
+    Presale,
     Live,
     MigrationReady,
     Migrated,
 }
 
-/// Dynamic-field name of one bidder's undelivered opening-round Quote.
-public struct OpeningRoundBidKey(address) has copy, drop, store;
+/// One presale bid: the Quote its bidder paid into the launch. It is owned by the launch's address
+/// until delivery receives and deletes it.
+public struct BlastPresaleBid has key {
+    id: UID,
+    bidder: address,
+    quote: u64,
+}
 
 /// One launch: its curve, its settings, and custody until migration.
 ///
-/// A launch with an opening round starts in `OpeningRound`. Until `opening_round_ms` after share,
-/// Quote joins one pot and nothing trades; settling buys from the curve once with the whole pot, and
-/// each bidder is delivered its pro-rata share of the Meme bought and of any Quote refunded.
+/// A launch with a presale starts in `Presale`. Until `presale_ms` after share, bidders pay Quote
+/// into the launch's address balance and nothing trades. Settlement buys from the curve once with
+/// the whole pot, each bid is delivered its pro-rata share of the Meme bought and of any Quote
+/// refunded, and trading opens after the delivery window.
 public struct Launch<phantom Meme, phantom Quote> has key {
     id: UID,
     lifecycle: Lifecycle,
     public_start_ms: Option<u64>,
-    opening_round_ms: u64,
-    /// Total Quote of the opening-round bids not yet delivered.
-    opening_round_bids: u64,
-    /// The pot until settlement, then the Quote it left to refund.
-    opening_round_quote: Balance<Quote>,
-    opening_round_meme: Balance<Meme>,
+    presale_ms: u64,
+    /// The settled presale pot less the bids delivered since; after every delivery, what was
+    /// donated.
+    presale_pot: u64,
+    /// Quote the presale pot left past the graduation target, held for delivery.
+    presale_quote: Balance<Quote>,
+    /// Meme the presale pot bought, held for delivery.
+    presale_meme: Balance<Meme>,
+    /// Zero without a presale; otherwise settlement sets it to the end of the delivery window.
+    trading_opens_ms: u64,
     sell_burn_bps: Bps,
     virtual_quote: u64,
     graduation_target: u64,
@@ -67,7 +77,7 @@ public struct LaunchInitializer<phantom Meme, phantom Quote> {
     graduation_target: Option<u64>,
     allocation_plan: Option<AllocationPlan>,
     lp_fee_split: Option<FeeSplit>,
-    opening_round_ms: u64,
+    presale_ms: u64,
 }
 
 // === Public Functions ===
@@ -104,7 +114,7 @@ public fun new<Meme, Quote, Witness: drop>(
         graduation_target: option::none(),
         allocation_plan: option::none(),
         lp_fee_split: option::none(),
-        opening_round_ms: 0,
+        presale_ms: 0,
     }
 }
 
@@ -151,13 +161,10 @@ public fun set_lp_fee_split<Meme, Quote>(
     self.lp_fee_split = option::some(lp_fee_split);
 }
 
-/// Sets how long the opening round runs after share, within the protocol's bounds. Zero, the
-/// default, has no opening round: trading starts at share.
-public fun set_opening_round<Meme, Quote>(
-    self: &mut LaunchInitializer<Meme, Quote>,
-    opening_round_ms: u64,
-) {
-    self.opening_round_ms = opening_round_ms;
+/// Sets how long the presale runs after share, within the protocol's bounds. Zero, the default,
+/// has no presale: trading starts at share.
+public fun set_presale<Meme, Quote>(self: &mut LaunchInitializer<Meme, Quote>, presale_ms: u64) {
+    self.presale_ms = presale_ms;
 }
 
 /// Checks every setting, adds Blast's allocation to the plan, fixes the canonical supply in the
@@ -180,18 +187,17 @@ public fun finalize<Meme, Quote>(
         graduation_target,
         allocation_plan,
         lp_fee_split,
-        opening_round_ms,
+        presale_ms,
     } = self;
     let virtual_quote = virtual_quote.destroy_some();
     let graduation_target = graduation_target.destroy_some();
     let allocation_plan = allocation_plan.destroy_some().add_protocol(config.protocol_allocation());
     assert!(virtual_quote > 0, blast_fun::errors::invalid_virtual_quote!());
     assert!(
-        opening_round_ms == 0 || (
-            opening_round_ms >= constants::min_opening_round_ms!()
-                && opening_round_ms <= constants::max_opening_round_ms!()
+        presale_ms == 0 || (
+            presale_ms >= constants::min_presale_ms!() && presale_ms <= constants::max_presale_ms!()
         ),
-        blast_fun::errors::invalid_opening_round!(),
+        blast_fun::errors::invalid_presale!(),
     );
     assert!(
         currency.symbol().length() <= constants::max_meme_symbol_length!(),
@@ -207,12 +213,13 @@ public fun finalize<Meme, Quote>(
 
     let launch = Launch {
         id: object::new(ctx),
-        lifecycle: if (opening_round_ms == 0) Lifecycle::Live else Lifecycle::OpeningRound,
+        lifecycle: if (presale_ms == 0) Lifecycle::Live else Lifecycle::Presale,
         public_start_ms: option::none(),
-        opening_round_ms,
-        opening_round_bids: 0,
-        opening_round_quote: balance::zero(),
-        opening_round_meme: balance::zero(),
+        presale_ms,
+        presale_pot: 0,
+        presale_quote: balance::zero(),
+        presale_meme: balance::zero(),
+        trading_opens_ms: 0,
         sell_burn_bps,
         virtual_quote,
         graduation_target,
@@ -247,14 +254,14 @@ public fun finalize<Meme, Quote>(
         launch.quote_fee_bps.value(),
         launch.meme_fee_bps.value(),
         launch.allocation_plan,
-        launch.opening_round_ms,
+        launch.presale_ms,
     );
 
     launch
 }
 
-/// Shares the launch. Public time starts now: trading, or the opening round, which ends
-/// `opening_round_ms` later.
+/// Shares the launch. Public time starts now: trading, or the presale, which ends `presale_ms`
+/// later.
 public fun share<Meme, Quote>(mut self: Launch<Meme, Quote>, clock: &Clock) {
     assert!(self.public_start_ms.is_none(), blast_fun::errors::invalid_launch_lifecycle!());
 
@@ -390,105 +397,103 @@ public fun set_icon_url<Meme, Quote>(
     self.emit_metadata_updated(currency);
 }
 
-/// Adds `quote_in` to the sender's opening-round bid. Before share only the creator's own
-/// transaction can reach the launch, so the creator's bid joins the same pot at the same price.
-public fun join_opening_round<Meme, Quote>(
-    self: &mut Launch<Meme, Quote>,
+/// Pays `quote_in` into the presale as a new bid from the sender. The Quote goes to the launch's
+/// address balance and the bid to the launch's address, so joining only reads the launch. Before
+/// share only the creator's own transaction can reach the launch, so the creator's bid joins the
+/// same pot at the same price. A bid cannot be withdrawn.
+public fun join_presale<Meme, Quote>(
+    self: &Launch<Meme, Quote>,
     package_version: &PackageVersion,
     quote_in: Coin<Quote>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     package_version.assert_current();
-    assert!(
-        self.lifecycle == Lifecycle::OpeningRound,
-        blast_fun::errors::invalid_launch_lifecycle!(),
-    );
-    assert!(!self.has_opening_round_ended(clock), blast_fun::errors::opening_round_ended!());
+    assert!(self.lifecycle == Lifecycle::Presale, blast_fun::errors::invalid_launch_lifecycle!());
+    assert!(!self.has_presale_ended(clock, 0), blast_fun::errors::presale_ended!());
     let quote = quote_in.value();
-    assert!(quote > 0, blast_fun::errors::zero_opening_round_bid!());
+    assert!(quote > 0, blast_fun::errors::zero_presale_bid!());
 
-    let key = OpeningRoundBidKey(ctx.sender());
-    if (!self.id.has_dynamic_field(key)) self.id.add_dynamic_field(key, 0u64);
-    let bid = self.id.dynamic_field_mut<_, u64>(key);
-    *bid = *bid + quote;
-    self.opening_round_bids = self.opening_round_bids + quote;
-    self.opening_round_quote.join(quote_in.into_balance());
+    let launch_address = self.id.to_address();
+    let bid = BlastPresaleBid { id: object::new(ctx), bidder: ctx.sender(), quote };
+    let bid_id = bid.id.to_inner();
+    balance::send_funds(quote_in.into_balance(), launch_address);
+    transfer::transfer(bid, launch_address);
 
-    events::opening_round_joined(self.id.to_inner(), quote, self.opening_round_bids);
+    events::presale_joined(self.id.to_inner(), bid_id, quote);
 }
 
-/// Closes the ended opening round: buys from the curve once with the whole pot, at the usual fees
-/// and graduation cap, and holds the Meme bought and any Quote refunded for delivery. A pot too
-/// small to buy one Meme atom is held whole for refund. Anyone may settle.
-public fun settle_opening_round<Meme, Quote>(
+/// Closes the presale once its end plus the settlement delay has passed: withdraws the pot from the
+/// launch's address balance and buys from the curve once with it, at the usual fees and graduation
+/// cap. The Meme bought and any Quote refunded are held for delivery, and trading opens after the
+/// delivery window. A pot too small to buy one Meme atom is held whole for refund. Anyone may
+/// settle.
+public fun settle_presale<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
     runtime_config: &RuntimeConfig,
+    accumulator_root: &AccumulatorRoot,
     clock: &Clock,
 ) {
     package_version.assert_current();
+    assert!(self.lifecycle == Lifecycle::Presale, blast_fun::errors::invalid_launch_lifecycle!());
     assert!(
-        self.lifecycle == Lifecycle::OpeningRound,
-        blast_fun::errors::invalid_launch_lifecycle!(),
+        self.has_presale_ended(clock, constants::presale_settlement_delay_ms!()),
+        blast_fun::errors::presale_not_settleable!(),
     );
-    assert!(self.has_opening_round_ended(clock), blast_fun::errors::opening_round_not_ended!());
 
-    self.lifecycle = Lifecycle::Live;
-    let pot = self.opening_round_quote.withdraw_all();
-    let (meme, quote_refund) = self.buy_from_curve(runtime_config, pot, 0);
-    self.opening_round_meme.join(meme);
-    self.opening_round_quote.join(quote_refund);
+    let settled = balance::settled_funds_value<Quote>(accumulator_root, self.id.to_address());
+    let pot = if (settled == 0) balance::zero()
+    else balance::redeem_funds(balance::withdraw_funds_from_object(&mut self.id, settled));
 
-    events::opening_round_settled(
-        self.id.to_inner(),
-        self.opening_round_bids,
-        self.opening_round_meme.value(),
-        self.opening_round_quote.value(),
-    );
+    self.settle_presale_pot(runtime_config, pot, clock);
 }
 
-/// Sends `bidder` its share of the settled opening round: the Meme bought and the Quote refunded,
-/// pro rata to its bid among the undelivered bids and rounded down, so the last delivery takes the
-/// remainder. Anyone may deliver, in any later lifecycle.
-public fun deliver_opening_round<Meme, Quote>(
+/// Delivers one bid to its bidder: the bid's share of the held Meme and Quote, pro rata to its
+/// Quote in the undelivered pot and rounded down. Anyone may deliver, in any lifecycle after the
+/// presale, including after migration.
+public fun deliver_presale<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
-    bidder: address,
+    bid: Receiving<BlastPresaleBid>,
     ctx: &mut TxContext,
 ) {
     package_version.assert_current();
-    assert!(
-        self.lifecycle != Lifecycle::OpeningRound,
-        blast_fun::errors::invalid_launch_lifecycle!(),
-    );
+    assert!(self.lifecycle != Lifecycle::Presale, blast_fun::errors::invalid_launch_lifecycle!());
 
-    let bid = self.id.remove_dynamic_field<_, u64>(OpeningRoundBidKey(bidder));
-    let meme = self.opening_round_meme.value().mul_div(bid, self.opening_round_bids);
-    let quote = self.opening_round_quote.value().mul_div(bid, self.opening_round_bids);
-    self.opening_round_bids = self.opening_round_bids - bid;
+    let BlastPresaleBid { id, bidder, quote: bid } = transfer::receive(&mut self.id, bid);
+    let bid_id = id.to_inner();
+    id.delete();
+    let meme = self.presale_meme.value().mul_div(bid, self.presale_pot);
+    let quote = self.presale_quote.value().mul_div(bid, self.presale_pot);
+    self.presale_pot = self.presale_pot - bid;
     if (meme > 0) {
-        transfer::public_transfer(self.opening_round_meme.split(meme).into_coin(ctx), bidder);
+        transfer::public_transfer(self.presale_meme.split(meme).into_coin(ctx), bidder);
     };
     if (quote > 0) {
-        transfer::public_transfer(self.opening_round_quote.split(quote).into_coin(ctx), bidder);
+        transfer::public_transfer(self.presale_quote.split(quote).into_coin(ctx), bidder);
     };
 
-    events::opening_round_delivered(self.id.to_inner(), bidder, bid, meme, quote);
+    events::presale_delivered(self.id.to_inner(), bid_id, bidder, meme, quote);
 }
 
 /// Buys Meme with Quote; Quote beyond the graduation target is refunded. Trading opens at share,
-/// or at settlement after an opening round; before share only the creator's transaction can buy.
+/// or after a presale's delivery window; before share only the creator's transaction can buy.
 public fun buy<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
     runtime_config: &RuntimeConfig,
     quote_in: Coin<Quote>,
     min_meme_out: u64,
+    clock: &Clock,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
     package_version.assert_current();
     assert!(self.lifecycle == Lifecycle::Live, blast_fun::errors::invalid_launch_lifecycle!());
+    assert!(
+        clock.timestamp_ms() >= self.trading_opens_ms,
+        blast_fun::errors::trading_not_open!(),
+    );
 
     let (meme_out, quote_refund) = self.buy_from_curve(
         runtime_config,
@@ -507,12 +512,17 @@ public fun sell<Meme, Quote>(
     runtime_config: &RuntimeConfig,
     meme_in: Coin<Meme>,
     min_quote_out: u64,
+    clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<Quote> {
     package_version.assert_current();
     assert!(
         self.public_start_ms.is_some() && self.lifecycle == Lifecycle::Live,
         blast_fun::errors::invalid_launch_lifecycle!(),
+    );
+    assert!(
+        clock.timestamp_ms() >= self.trading_opens_ms,
+        blast_fun::errors::trading_not_open!(),
     );
 
     let meme_in_gross = meme_in.value();
@@ -593,17 +603,23 @@ public fun claim_protocol_fees<Meme, Quote>(
 
 /// Pays every recipient its allocation, burns the curve's unsold Meme and the pending sell-burn (or
 /// sends them to `@0x0` when the supply is fixed), and hands the pool's share to the stored adapter.
+/// The pool cannot open before trading does, so presale bids are delivered first.
 public fun migrate<Meme, Quote, Witness: drop>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
     currency: &mut Currency<Meme>,
     _: Witness,
+    clock: &Clock,
     ctx: &mut TxContext,
 ): (Balance<Meme>, Balance<Quote>) {
     package_version.assert_current();
     assert!(
         self.lifecycle == Lifecycle::MigrationReady,
         blast_fun::errors::invalid_launch_lifecycle!(),
+    );
+    assert!(
+        clock.timestamp_ms() >= self.trading_opens_ms,
+        blast_fun::errors::trading_not_open!(),
     );
     assert!(
         self.migration_witness == type_name::with_original_ids<Witness>(),
@@ -736,11 +752,39 @@ fun buy_from_curve<Meme, Quote>(
     (meme_out, quote_refund)
 }
 
-/// Whether the opening round has ended; never before share.
-fun has_opening_round_ended<Meme, Quote>(self: &Launch<Meme, Quote>, clock: &Clock): bool {
-    let opening_round_ms = self.opening_round_ms;
+/// Buys from the curve once with the whole presale pot, holds what it bought and refunded for
+/// delivery, and opens trading after the delivery window: the presale's own length, at most
+/// `max_delivery_window_ms`.
+fun settle_presale_pot<Meme, Quote>(
+    self: &mut Launch<Meme, Quote>,
+    runtime_config: &RuntimeConfig,
+    pot: Balance<Quote>,
+    clock: &Clock,
+) {
+    self.lifecycle = Lifecycle::Live;
+    self.presale_pot = pot.value();
+    self.trading_opens_ms =
+        clock.timestamp_ms() + self.presale_ms.min(constants::max_delivery_window_ms!());
+    let (meme, quote_refund) = self.buy_from_curve(runtime_config, pot, 0);
+    self.presale_meme.join(meme);
+    self.presale_quote.join(quote_refund);
 
-    self.public_start_ms.is_some_and!(|start_ms| clock.timestamp_ms() >= *start_ms + opening_round_ms)
+    events::presale_settled(
+        self.id.to_inner(),
+        self.presale_pot,
+        self.presale_meme.value(),
+        self.presale_quote.value(),
+        self.trading_opens_ms,
+    );
+}
+
+/// Whether `delay_ms` has passed since the presale ended; never before share.
+fun has_presale_ended<Meme, Quote>(self: &Launch<Meme, Quote>, clock: &Clock, delay_ms: u64): bool {
+    let presale_ms = self.presale_ms;
+
+    self.public_start_ms.is_some_and!(|start_ms| {
+        clock.timestamp_ms() >= *start_ms + presale_ms + delay_ms
+    })
 }
 
 // === Test-Only Functions ===
@@ -782,32 +826,32 @@ public fun blast_metadata_cap_id_for_testing<Meme, Quote>(self: &Launch<Meme, Qu
 }
 
 #[test_only]
-/// Returns the bidder's undelivered opening-round Quote; zero without a bid.
-public fun opening_round_bid_for_testing<Meme, Quote>(
-    self: &Launch<Meme, Quote>,
-    bidder: address,
-): u64 {
-    let key = OpeningRoundBidKey(bidder);
-
-    if (self.id.has_dynamic_field(key)) *dynamic_field::borrow(&self.id, key) else 0
+/// Returns the undelivered pot, and the Quote and Meme held for it.
+public fun presale_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): (u64, u64, u64) {
+    (self.presale_pot, self.presale_quote.value(), self.presale_meme.value())
 }
 
 #[test_only]
-public fun has_opening_round_bid_for_testing<Meme, Quote>(
-    self: &Launch<Meme, Quote>,
-    bidder: address,
-): bool {
-    self.id.has_dynamic_field(OpeningRoundBidKey(bidder))
+public fun trading_opens_ms_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): u64 {
+    self.trading_opens_ms
 }
 
 #[test_only]
-/// Returns the undelivered bids' total, and the Quote and Meme held for them.
-public fun opening_round_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): (u64, u64, u64) {
-    (
-        self.opening_round_bids,
-        self.opening_round_quote.value(),
-        self.opening_round_meme.value(),
-    )
+/// Settles the presale with `pot` standing in for the launch's address balance, which Move tests
+/// cannot settle; `settle_presale` owns every guard.
+public fun settle_presale_pot_for_testing<Meme, Quote>(
+    self: &mut Launch<Meme, Quote>,
+    runtime_config: &RuntimeConfig,
+    pot: Balance<Quote>,
+    clock: &Clock,
+) {
+    self.settle_presale_pot(runtime_config, pot, clock);
+}
+
+#[test_only]
+/// Returns the bid's `(bidder, quote)`.
+public fun presale_bid_for_testing(self: &BlastPresaleBid): (address, u64) {
+    (self.bidder, self.quote)
 }
 
 #[test_only]
@@ -826,8 +870,8 @@ public fun public_start_ms_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>):
 }
 
 #[test_only]
-public fun opening_round_ms_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): u64 {
-    self.opening_round_ms
+public fun presale_ms_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): u64 {
+    self.presale_ms
 }
 
 #[test_only]
@@ -846,8 +890,8 @@ public fun atomic_supply_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): u
 }
 
 #[test_only]
-public fun is_opening_round_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): bool {
-    self.lifecycle == Lifecycle::OpeningRound
+public fun is_presale_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): bool {
+    self.lifecycle == Lifecycle::Presale
 }
 
 #[test_only]
@@ -897,17 +941,10 @@ use blast_fun::{
 use std::{string::String, type_name::{Self, TypeName}};
 
 use sui::{
+    accumulator::AccumulatorRoot,
     balance::{Self, Balance},
     clock::Clock,
     coin::{Coin, TreasuryCap},
     coin_registry::{Currency, MetadataCap},
-    dynamic_field,
+    transfer::Receiving,
 };
-
-use fun dynamic_field::add as UID.add_dynamic_field;
-
-use fun dynamic_field::borrow_mut as UID.dynamic_field_mut;
-
-use fun dynamic_field::exists as UID.has_dynamic_field;
-
-use fun dynamic_field::remove as UID.remove_dynamic_field;

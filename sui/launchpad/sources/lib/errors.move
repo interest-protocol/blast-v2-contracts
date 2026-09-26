@@ -60,8 +60,8 @@ const EInvalidMemeQuotePair: u64 = 11;
 const EMemeSymbolTooLong: u64 = 12;
 
 #[test_only]
-/// The opening round is neither zero nor within its bounds.
-const EInvalidOpeningRound: u64 = 13;
+/// The presale length is neither zero nor within its bounds.
+const EInvalidPresale: u64 = 13;
 
 #[test_only]
 /// The pool's Quote share of the graduation target rounds to zero.
@@ -80,12 +80,12 @@ const ESlippageExceeded: u64 = 16;
 const EZeroTradeOutput: u64 = 17;
 
 #[test_only]
-/// The opening round has ended.
-const EOpeningRoundEnded: u64 = 18;
+/// The presale has ended.
+const EPresaleEnded: u64 = 18;
 
 #[test_only]
-/// The opening round has not ended, or the launch is not shared yet.
-const EOpeningRoundNotEnded: u64 = 19;
+/// The presale's end plus the settlement delay has not passed, or the launch is not shared yet.
+const EPresaleNotSettleable: u64 = 19;
 
 #[test_only]
 /// There are no fees to claim.
@@ -144,8 +144,12 @@ const EQuoteNotAllowed: u64 = 32;
 const EInvalidVirtualQuote: u64 = 33;
 
 #[test_only]
-/// An opening-round bid is zero.
-const EZeroOpeningRoundBid: u64 = 34;
+/// A presale bid is zero.
+const EZeroPresaleBid: u64 = 34;
+
+#[test_only]
+/// Trading has not opened: the presale's delivery window is still running.
+const ETradingNotOpen: u64 = 35;
 
 macro public(package) fun invalid_bps(): u64 { 0 }
 
@@ -173,7 +177,7 @@ macro public(package) fun invalid_meme_quote_pair(): u64 { 11 }
 
 macro public(package) fun meme_symbol_too_long(): u64 { 12 }
 
-macro public(package) fun invalid_opening_round(): u64 { 13 }
+macro public(package) fun invalid_presale(): u64 { 13 }
 
 macro public(package) fun invalid_graduation_target(): u64 { 14 }
 
@@ -183,9 +187,9 @@ macro public(package) fun slippage_exceeded(): u64 { 16 }
 
 macro public(package) fun zero_trade_output(): u64 { 17 }
 
-macro public(package) fun opening_round_ended(): u64 { 18 }
+macro public(package) fun presale_ended(): u64 { 18 }
 
-macro public(package) fun opening_round_not_ended(): u64 { 19 }
+macro public(package) fun presale_not_settleable(): u64 { 19 }
 
 macro public(package) fun nothing_accrued(): u64 { 20 }
 
@@ -215,4 +219,6 @@ macro public(package) fun quote_not_allowed(): u64 { 32 }
 
 macro public(package) fun invalid_virtual_quote(): u64 { 33 }
 
-macro public(package) fun zero_opening_round_bid(): u64 { 34 }
+macro public(package) fun zero_presale_bid(): u64 { 34 }
+
+macro public(package) fun trading_not_open(): u64 { 35 }

@@ -890,7 +890,7 @@ fun owned_launch_rejects_public_sell_before_zero_input() {
     fixture.next_tx!(LAUNCHER, |f| {
         let mut launch = f.new_default_launch(CREATOR);
         let meme = coin::zero<LAUNCH_TESTS>(f.ctx!());
-        let quote = launch.sell(&f.package_version, &f.runtime_config, meme, 0, f.ctx!());
+        let quote = launch.sell(&f.package_version, &f.runtime_config, meme, 0, &f.clock, f.ctx!());
 
         destroy(quote);
         destroy(launch);
@@ -1433,6 +1433,7 @@ fun buy_and_sell_move_exact_coins_accounting_and_payloads() {
             &f.runtime_config,
             meme,
             quote_out_net,
+            &f.clock,
             f.ctx!(),
         );
         let meme_reserve = meme_reserve + meme_in - sell_meme_fee - pending_burn;
@@ -1550,7 +1551,7 @@ fun zero_launch_trade_fees_sell_all_bought_meme_without_fee_balances() {
         let launch = f.new_default_launch(CREATOR);
         let mut launch = f.open_launch(launch);
         let (meme, refund) = f.buy(&mut launch, 10_000_000, 1);
-        let quote_out = launch.sell(&f.package_version, &f.runtime_config, meme, 1, f.ctx!());
+        let quote_out = launch.sell(&f.package_version, &f.runtime_config, meme, 1, &f.clock, f.ctx!());
         let (protocol_meme, creator_meme, protocol_quote, creator_quote) = launch
             .fee_totals_for_testing();
 
@@ -1656,6 +1657,7 @@ fun sell_rejects_minimum_above_exact_returned_coin() {
             &f.runtime_config,
             meme,
             quote_out_net + 1,
+            &f.clock,
             f.ctx!(),
         );
 
@@ -1692,7 +1694,7 @@ fun threshold_crossing_buy_closes_sell_before_curve_validation() {
         let launch = f.new_default_launch(CREATOR);
         let mut launch = f.open_launch(launch);
         let (meme, refund) = f.buy(&mut launch, 30_000_000, 1);
-        let quote = launch.sell(&f.package_version, &f.runtime_config, meme, 0, f.ctx!());
+        let quote = launch.sell(&f.package_version, &f.runtime_config, meme, 0, &f.clock, f.ctx!());
 
         destroy(refund);
         destroy(quote);
@@ -1743,7 +1745,7 @@ fun migration_pays_every_recipient_blast_first() {
         let launch_id = object::id(&launch);
         f.graduate(&mut launch);
         let mut currency = f.take_currency();
-        let (meme, quote) = launch.migrate(&f.package_version, &mut currency, TEST_MIGRATION_WITNESS(), f.ctx!());
+        let (meme, quote) = launch.migrate(&f.package_version, &mut currency, TEST_MIGRATION_WITNESS(), &f.clock, f.ctx!());
         let paid = collect<events::MigrationAllocationPaid>();
         let (curve, real_quote, pending_burn, allocated) = launch.balances_for_testing();
 
@@ -1823,7 +1825,7 @@ fun migration_apportions_by_largest_remainder_and_conserves_both_assets() {
         );
 
         let mut currency = f.take_currency();
-        let (meme, quote) = launch.migrate(&f.package_version, &mut currency, TEST_MIGRATION_WITNESS(), f.ctx!());
+        let (meme, quote) = launch.migrate(&f.package_version, &mut currency, TEST_MIGRATION_WITNESS(), &f.clock, f.ctx!());
         let paid = collect<events::MigrationAllocationPaid>();
 
         assert_eq!(
@@ -1897,7 +1899,7 @@ fun fixed_supply_migration_sends_the_disposal_to_zero() {
         disposed_meme = f.reach_migration_after_sell(&mut launch);
         let mut currency = f.take_currency();
         let supply = currency.total_supply().destroy_some();
-        let (meme, quote) = launch.migrate(&f.package_version, &mut currency, TEST_MIGRATION_WITNESS(), f.ctx!());
+        let (meme, quote) = launch.migrate(&f.package_version, &mut currency, TEST_MIGRATION_WITNESS(), &f.clock, f.ctx!());
 
         assert_eq!(meme.value(), EXPECTED_POOL_MEME);
         assert_eq!(currency.total_supply().destroy_some(), supply);
@@ -1945,7 +1947,7 @@ fun burn_only_migration_burns_the_disposal_from_native_supply() {
         let disposed_meme = f.reach_migration_after_sell(&mut launch);
         let mut currency = f.take_currency();
         let supply = currency.total_supply().destroy_some();
-        let (meme, quote) = launch.migrate(&f.package_version, &mut currency, TEST_MIGRATION_WITNESS(), f.ctx!());
+        let (meme, quote) = launch.migrate(&f.package_version, &mut currency, TEST_MIGRATION_WITNESS(), &f.clock, f.ctx!());
 
         assert_eq!(currency.total_supply().destroy_some(), supply - disposed_meme);
         assert_eq!(
@@ -1980,6 +1982,7 @@ fun migration_rejects_a_live_launch_before_witness_validation() {
             &f.package_version,
             &mut currency,
             OTHER_MIGRATION_WITNESS(),
+            &f.clock,
             f.ctx!(),
         );
 
@@ -2005,6 +2008,7 @@ fun migration_cannot_be_repeated() {
             &f.package_version,
             &mut currency,
             TEST_MIGRATION_WITNESS(),
+            &f.clock,
             f.ctx!(),
         );
         destroy(meme);
@@ -2013,6 +2017,7 @@ fun migration_cannot_be_repeated() {
             &f.package_version,
             &mut currency,
             TEST_MIGRATION_WITNESS(),
+            &f.clock,
             f.ctx!(),
         );
 
@@ -2038,6 +2043,7 @@ fun migration_rejects_a_witness_type_not_stored_at_launch() {
             &f.package_version,
             &mut currency,
             OTHER_MIGRATION_WITNESS(),
+            &f.clock,
             f.ctx!(),
         );
 
@@ -2063,6 +2069,7 @@ fun stale_package_version_aborts_migration_before_lifecycle_and_witness_validati
             &f.package_version,
             &mut currency,
             OTHER_MIGRATION_WITNESS(),
+            &f.clock,
             f.ctx!(),
         );
 
@@ -2300,7 +2307,7 @@ fun over_length_symbol(): vector<u8> {
 }
 
 /// Starts the launch for `witness`, sets the target, plan, and default fee split, and finalizes it
-/// without an opening round.
+/// without a presale.
 fun launch_intake<Quote, MigrationWitness: drop>(
     self: &mut LaunchFixture,
     ticket: LaunchTicket<LAUNCH_TESTS>,
@@ -2409,6 +2416,7 @@ fun launch_buy(
         &self.runtime_config,
         quote,
         min_meme_out,
+        &self.clock,
         self.scenario.ctx(),
     )
 }
@@ -2432,6 +2440,7 @@ fun reach_migration_after_sell(
         &self.runtime_config,
         meme,
         1,
+        &self.clock,
         self.scenario.ctx(),
     );
     let (_, _, pending_burn_after_sell, _) = launch.balances_for_testing();
@@ -2470,6 +2479,7 @@ fun migrate(self: &mut LaunchFixture, launch: &mut Launch<LAUNCH_TESTS, TEST_QUO
         &self.package_version,
         &mut currency,
         TEST_MIGRATION_WITNESS(),
+        &self.clock,
         self.scenario.ctx(),
     );
     destroy(meme);
@@ -2575,7 +2585,7 @@ fun ticket_created_bytes(ticket_id: ID, metadata_cap_id: ID, burnable: bool): ve
     expected
 }
 
-/// Expected `LaunchCreated` bytes for the fixture's cold policy, without an opening round, with Blast
+/// Expected `LaunchCreated` bytes for the fixture's cold policy, without a presale, with Blast
 /// first.
 fun launch_created_bytes(launch_id: ID, ticket_id: ID): vector<u8> {
     let pool_tick_spacing = POOL_TICK_SPACING;

@@ -26,13 +26,25 @@ macro public(package) fun max_sell_burn_bps(): u64 {
     5_000
 }
 
-/// Shortest opening round a creator may choose.
-macro public(package) fun min_opening_round_ms(): u64 {
+/// Shortest presale a creator may choose.
+macro public(package) fun min_presale_ms(): u64 {
     60_000
 }
 
-/// Longest opening round a creator may choose.
-macro public(package) fun max_opening_round_ms(): u64 {
+/// Longest presale a creator may choose: three days.
+macro public(package) fun max_presale_ms(): u64 {
+    259_200_000
+}
+
+/// Wait between a presale's end and its settlement, so the pot settlement reads is at least one
+/// consensus commit newer than every bid.
+macro public(package) fun presale_settlement_delay_ms(): u64 {
+    10_000
+}
+
+/// Longest wait between a presale's settlement and trading, for bids to be delivered. A shorter
+/// presale waits its own length.
+macro public(package) fun max_delivery_window_ms(): u64 {
     300_000
 }
 

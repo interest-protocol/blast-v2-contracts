@@ -1003,7 +1003,7 @@ launch_initializer_functions="$(awk -F'\t' '
 
 if [[ ! -f sources/launch.move ]] \
   || [[ "$(move_production_type LaunchInitializer <<<"$launch_facts")" != 'struct LaunchInitializer<phantom Meme, phantom Quote> {'* ]] \
-  || [[ "$launch_initializer_functions" != 'finalize:public new:public set_allocation_plan:public set_graduation_target:public set_lp_fee_split:public set_protection:public set_virtual_quote:public treasury_cap_mut:public ' ]] \
+  || [[ "$launch_initializer_functions" != 'finalize:public new:public set_allocation_plan:public set_graduation_target:public set_lp_fee_split:public set_presale:public set_virtual_quote:public treasury_cap_mut:public ' ]] \
   || [[ "$(move_production_function_contract new <<<"$launch_facts")" != 'public:0:0:fun new<Meme, Quote, Witness: drop>( ticket: LaunchTicket<Meme>, package_version: &PackageVersion, config: &LaunchConfig, _: Witness, pool_tick_spacing: u32, pool_fee_rate: u64, ): LaunchInitializer<Meme, Quote>' ]] \
   || ! in_order \
     'package_version.assert_current();' \
@@ -1020,7 +1020,7 @@ if [[ ! -f sources/launch.move ]] \
   || ! in_order \
     'let graduation_target = graduation_target.destroy_some();' \
     'allocation_plan.destroy_some().add_protocol(config.protocol_allocation());' \
-    'invalid_protection!()' \
+    'invalid_presale!()' \
     'meme_symbol_too_long!()' \
     'invalid_graduation_target!()' \
     'let atomic_supply = launch_ticket::atomic_supply(ticket.decimals());' \
@@ -1034,9 +1034,7 @@ if [[ ! -f sources/launch.move ]] \
     != "$(count_occurrences '&self\.metadata_cap\b' <<<"$launch_source")" ]] \
   || rg -q '\bmetadata_cap\.(extract|swap|fill)\(|option::(some|none)\(metadata_cap\)|\bMetadataCap<Meme>\)' \
     <<<"$launch_source" \
-  || [[ "$(launch_functions_containing 'bps::new(')" != 'new ' ]] \
-  || [[ "$(count_occurrences 'bps::new\(' <<<"$launch_source")" != 2 ]] \
-  || [[ "$(count_occurrences 'bps::new\(0\)' <<<"$launch_source")" != 2 ]] \
+  || rg -q 'bps::new\(' <<<"$launch_source" \
   || ! rg -Fq 'let burnable = currency.is_supply_burn_only();' sources/launch.move \
   || rg -q '\b(MigrationChannelCap|LaunchMigrationCap|MigrationChannelBalance|VenueSelection|venue_selection)\b' <<<"$launch_source" \
   || rg -n 'max_launch_fee_bps|invalid_trade_fee_bps' sources/launch.move; then
@@ -1073,7 +1071,7 @@ for authority_spec in \
   'self.assert_curve_fee_cap(|claim_creator_fees ' \
   'self.assert_metadata_update(|set_description set_icon_url set_name ' \
   '&self.metadata_cap|set_description set_icon_url set_name ' \
-  'transfer::public_transfer(|migrate reassign_curve_fee_cap reassign_metadata_cap '; do
+  'transfer::public_transfer(|deliver_presale migrate reassign_curve_fee_cap reassign_metadata_cap '; do
   authority_needle="${authority_spec%%|*}"
   authority_expected="${authority_spec#*|}"
   authority_actual="$(launch_functions_containing "$authority_needle")"
@@ -1111,35 +1109,46 @@ check_launch_needles() {
 
 # T-004 keeps owned construction permissionless while creator authentication remains
 # post-share: only a shared launch releases the creator claim, and the claim itself issues both
-# creator capabilities to the caller.
+# creator capabilities to the caller. Every curve purchase, the presale pot's included, goes
+# through buy_from_curve.
 check_launch_needles T-004 \
   'creator_authority::claim_creator_caps<|claim_creator_caps ' \
-  'clock.timestamp_ms()|buy share ' \
-  'curve::cap_buy_quote_input(|buy ' \
-  'curve::quote_buy(|buy ' \
+  'clock.timestamp_ms()|buy has_presale_ended migrate sell settle_presale_pot share ' \
+  'curve::cap_buy_quote_input(|buy_from_curve ' \
+  'curve::quote_buy(|buy_from_curve ' \
+  'self.buy_from_curve(|buy settle_presale_pot ' \
   'transfer::share_object(self)|share ' \
   'events::launch_shared(|share ' \
-  'events::bought(|buy '
+  'events::bought(|buy_from_curve '
 if ! in_order \
   'package_version.assert_current();' \
-  'self.protection_end_ms.is_some()' \
+  'self.public_start_ms.is_some()' \
   'self.creator.extract()' \
   <<<"$(move_production_body claim_creator_caps <<<"$launch_facts")"; then
   launch_authority_violations+='  T-004 claim_creator_caps must be version-gated and release the creator claim only after share'$'\n'
 fi
 
-# T-005 opens the protection window at share and keeps one sender record, written only by the
-# protected buy path.
+# T-005 (ADR 0096): a presale join only reads the launch. It pays the launch's address balance and
+# transfers a bid to the launch's address; only settlement reads and withdraws that balance, only
+# delivery receives a bid, and trading and migration wait for the delivery window.
 check_launch_needles T-005 \
-  'self.protection_end_ms = |share ' \
-  'self.record_protected_purchase(|buy ' \
-  '.add_dynamic_field(|record_protected_purchase ' \
-  '.dynamic_field_mut|record_protected_purchase ' \
-  'dynamic_field::|'
+  'balance::send_funds(|join_presale ' \
+  'transfer::transfer(|join_presale ' \
+  'balance::settled_funds_value<|settle_presale ' \
+  'balance::withdraw_funds_from_object(|settle_presale ' \
+  'transfer::receive(|deliver_presale ' \
+  'self.settle_presale_pot(|settle_presale ' \
+  'self.trading_opens_ms = |settle_presale_pot ' \
+  'self.presale_pot = |deliver_presale settle_presale_pot ' \
+  'trading_not_open!()|buy migrate sell ' \
+  'events::presale_joined(|join_presale ' \
+  'events::presale_settled(|settle_presale_pot ' \
+  'events::presale_delivered(|deliver_presale '
 
 for setup_visibility in \
   T-004:share:public T-004:claim_creator_caps:public T-004:buy:public \
-  T-005:record_protected_purchase:private; do
+  T-005:join_presale:public T-005:settle_presale:public T-005:deliver_presale:public \
+  T-005:settle_presale_pot:private; do
   setup_ticket="${setup_visibility%%:*}"
   setup_rest="${setup_visibility#*:}"
   setup_name="${setup_rest%%:*}"
@@ -1157,24 +1166,22 @@ launch_buy_body="$(move_semantic_shape <<<"$(move_production_body buy <<<"$launc
 if [[ "$launch_owned_sinks" != 'share ' ]]; then
   launch_authority_violations+='  T-004 must share through one key-only sink'$'\n'
 fi
-if ! in_order 'slippage_exceeded!()' 'self.record_protected_purchase(' 'quote_in.into_balance()' \
+if ! in_order 'invalid_launch_lifecycle!()' 'trading_not_open!()' 'self.buy_from_curve(' 'zero_trade_output!()' \
   <<<"$launch_buy_body"; then
-  launch_authority_violations+='  T-005 must check and record protected purchases after slippage and before custody'$'\n'
+  launch_authority_violations+='  T-005 buy must check the lifecycle, then the trading window, before buying from the curve'$'\n'
 fi
-# T-005 reaches sender records only through these module-local aliases (production bodies name
-# no dynamic_field:: call, per the needle above), and launch.move is the only source naming
-# dynamic_field. With no remove alias or module alias, no launchpad path can delete a record.
-launch_dynamic_field_aliases="$(rg -o 'use fun [^;]*dynamic_field[^;]*;' <<<"$launch_source" \
-  | LC_ALL=C sort | tr '\n' ' ')"
-if [[ "$launch_dynamic_field_aliases" != 'use fun dynamic_field::add as UID.add_dynamic_field; use fun dynamic_field::borrow_mut as UID.dynamic_field_mut; use fun dynamic_field::exists as UID.has_dynamic_field; ' ]] \
-  || rg -q '\bdynamic_field as\b' <<<"$launch_source"; then
-  launch_authority_violations+='  T-005 must reach sender records only through the add, borrow_mut, and exists aliases'$'\n'
+if [[ "$(move_production_function_contract join_presale <<<"$launch_facts")" != 'public:0:0:fun join_presale<Meme, Quote>( self: &Launch<Meme, Quote>,'* ]]; then
+  launch_authority_violations+='  T-005 join_presale must only read the launch'$'\n'
+fi
+# The launch's UID reaches only the balance withdrawal and the bid receipt mutably, and no
+# function hands it out, so nothing else can withdraw the pot or take a bid.
+if [[ "$(count_occurrences '&mut self\.id\b' <<<"$launch_source")" != 2 ]] \
+  || rg -q '\): &mut UID|\): &UID' <<<"$launch_source"; then
+  launch_authority_violations+='  T-005 the launch UID must reach only the pot withdrawal and the bid receipt'$'\n'
 fi
 for move_file in "${source_files[@]}"; do
-  [[ "$move_file" == sources/launch.move ]] && continue
-
   if move_facts "$move_file" | move_normalized_source | rg -q '\bdynamic_field\b'; then
-    launch_authority_violations+="  T-005 ${move_file} must not name dynamic_field; only launch.move reaches sender records"$'\n'
+    launch_authority_violations+="  T-005 ${move_file} must not name dynamic_field; presale bids are launch-owned objects"$'\n'
   fi
 done
 for move_file in "${source_files[@]}"; do
@@ -1394,16 +1401,17 @@ if [[ -e sources/fee_router.move || -e sources/lp_fee_policy.move ]] \
   failures=$((failures + 1))
 fi
 
-# T-010: one call under the stored adapter witness pays every recipient, hands off exactly the
-# pool share, disposes of the curve's unsold Meme, and commits Migrated. Only order anchors are
-# pinned.
+# T-010: one call under the stored adapter witness, once trading has opened, pays every
+# recipient, hands off exactly the pool share, disposes of the curve's unsold Meme, and commits
+# Migrated. Only order anchors are pinned.
 if [[ "$(launch_functions_containing 'self.migration_witness == type_name::with_original_ids<Witness>()')" != 'migrate treasury_cap_mut ' ]] \
   || [[ "$(launch_functions_containing 'self.lifecycle = Lifecycle::Migrated;')" != 'migrate ' ]] \
   || [[ "$(move_production_type Migrated <<<"$events_facts")" != 'struct Migrated has copy, drop { launch_id: ID, meme: u64, quote: u64, disposed_meme: u64, total_supply_after: u64, }' ]] \
-  || [[ "$(move_production_signature migrate <<<"$launch_facts")" != 'fun migrate<Meme, Quote, Witness: drop>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, currency: &mut Currency<Meme>, _: Witness, ctx: &mut TxContext, ): (Balance<Meme>, Balance<Quote>)' ]] \
+  || [[ "$(move_production_signature migrate <<<"$launch_facts")" != 'fun migrate<Meme, Quote, Witness: drop>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, currency: &mut Currency<Meme>, _: Witness, clock: &Clock, ctx: &mut TxContext, ): (Balance<Meme>, Balance<Quote>)' ]] \
   || ! in_order \
     'package_version.assert_current();' \
     'Lifecycle::MigrationReady' \
+    'trading_not_open!()' \
     'self.migration_witness == type_name::with_original_ids<Witness>()' \
     'self.allocated_meme.split(' \
     'self.real_quote_reserve.split(' \
@@ -1429,14 +1437,27 @@ events_follow_mutations() {
 
 if ! events_follow_mutations sources/launch_ticket.move new 'LaunchTicket{' 'events::launch_ticket_created<' \
   || ! events_follow_mutations sources/launch.move finalize 'ticket.destroy(' 'Launch{' 'events::launch_created<' \
-  || ! events_follow_mutations sources/launch.move buy \
+  || ! events_follow_mutations sources/launch.move buy_from_curve \
     'self.real_quote_reserve.join(' \
     'self.meme_reserve.split(' \
     'self.lifecycle = Lifecycle::MigrationReady;' \
     'self.fee_ledger.accrue(' \
     'events::bought(' \
   || ! events_follow_mutations sources/launch.move share \
-    'self.protection_end_ms = option::some(' 'events::launch_shared(' 'transfer::share_object(' \
+    'self.public_start_ms = option::some(' 'events::launch_shared(' 'transfer::share_object(' \
+  || ! events_follow_mutations sources/launch.move join_presale \
+    'balance::send_funds(' 'transfer::transfer(' 'events::presale_joined(' \
+  || ! events_follow_mutations sources/launch.move settle_presale_pot \
+    'self.lifecycle = Lifecycle::Live;' \
+    'self.trading_opens_ms =' \
+    'self.presale_meme.join(' \
+    'self.presale_quote.join(' \
+    'events::presale_settled(' \
+  || ! events_follow_mutations sources/launch.move deliver_presale \
+    'transfer::receive(' \
+    'self.presale_pot = ' \
+    'self.presale_quote.split(' \
+    'events::presale_delivered(' \
   || ! events_follow_mutations sources/launch.move migrate \
     'self.allocated_meme.split(' \
     'self.real_quote_reserve.split(' \

@@ -98,10 +98,14 @@ test('both direction types compose returned values through mint-buy and sell-red
                 launch: address(32), version: address(33), runtime: address(34), minimumOutput: '2' };
             const plan = buildActivePlan(value);
             assert.equal(plan.commands.length, 2);
+            const clock = `@${value.objects.clock}`;
             if (operation === 'mint_buy') {
-                assert.equal(plan.commands[1].arguments[3], 'shares');
+                assert.deepEqual(plan.commands[1].arguments,
+                    [`@${address(32)}`, `@${address(33)}`, `@${address(34)}`, 'shares', '2', clock]);
                 assert.deepEqual(plan.transfers, ['purchase.0', 'purchase.1']);
             } else {
+                assert.deepEqual(plan.commands[0].arguments,
+                    [`@${address(32)}`, `@${address(33)}`, `@${address(34)}`, `@${value.objects.inputCoin}`, '2', clock]);
                 assert.equal(plan.commands[1].arguments[7], 'shares');
                 assert.deepEqual(plan.transfers, ['result']);
             }

@@ -60,6 +60,7 @@ every package-administration object.
 | `blast_fun` | `launch_ticket::LaunchTicket<Meme>` | unchanged | *residual*, wallet-held |
 | `blast_fun` | `creator_authority::CurveFeeCap<Meme>` | unchanged | *residual*, wallet-held |
 | `blast_fun` | `creator_authority::BlastMetadataCap<Meme>` | unchanged | struct |
+| `blast_fun` | `launch::BlastPresaleBid` | new; owned by its launch's address until delivery | struct |
 | `blast_fun` | `package_admin::PackageAdmin` | unchanged | holds `UpgradeCustody<BLAST_FUN>` |
 | `blast_fun` | `package_version::PackageVersion` | unchanged | holds `OperationalVersion<BLAST_FUN>` |
 | `blast_fun_migrators` | `vault::LpVault<Meme, Quote>` | unchanged | *residual* |

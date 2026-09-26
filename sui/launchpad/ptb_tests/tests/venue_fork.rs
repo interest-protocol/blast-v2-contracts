@@ -79,7 +79,7 @@ const ATOMIC_SUPPLY: u64 = 1_000_000_000_000_000_000;
 const LP_MEME: u64 = ATOMIC_SUPPLY / 5;
 const ALLOCATION_BPS: u64 = 500;
 
-/// `launch::Lifecycle` tags in declaration order: `OpeningRound`, `Live`, `MigrationReady`,
+/// `launch::Lifecycle` tags in declaration order: `Presale`, `Live`, `MigrationReady`,
 /// `Migrated`.
 const MIGRATION_READY: u8 = 2;
 const MIGRATED: u8 = 3;
@@ -907,13 +907,14 @@ impl World {
         let version = self.shared(&mut b, self.version, false)?;
         let runtime = self.shared(&mut b, self.runtime, false)?;
         let min_out = b.pure(1u64)?;
+        let clock = self.clock(&mut b)?;
         let Argument::Result(bought) = call(
             &mut b,
             self.blast,
             "launch",
             "buy",
             self.pair(launch),
-            vec![launch_arg, version, runtime, coin, min_out],
+            vec![launch_arg, version, runtime, coin, min_out, clock],
         ) else {
             unreachable!()
         };
@@ -2111,7 +2112,7 @@ struct LaunchCreated {
     _lp_meme_bps: u64,
     _lp_quote_bps: u64,
     _allocation_recipients: Vec<(SuiAddress, u64, u64)>,
-    _opening_round_ms: u64,
+    _presale_ms: u64,
 }
 
 #[derive(Deserialize)]

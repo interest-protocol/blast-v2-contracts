@@ -95,11 +95,11 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
     scenario.next_tx(@0xa);
     let mut market = scenario.take_shared<Launch<QUOTE_COMPOSITION_TESTS, Quote>>();
     let quote = coin::mint_for_testing<Quote>(1_000_000, scenario.ctx());
-    let (meme, refund) = market.buy(&version, &runtime, quote, 1, scenario.ctx());
+    let (meme, refund) = market.buy(&version, &runtime, quote, 1, &clock, scenario.ctx());
     assert!(meme.value() > 0);
     assert_eq!(refund.value(), 0);
     refund.destroy_zero();
-    let quote: Coin<Quote> = market.sell(&version, &runtime, meme, 1, scenario.ctx());
+    let quote: Coin<Quote> = market.sell(&version, &runtime, meme, 1, &clock, scenario.ctx());
     assert!(quote.value() > 0 && quote.value() <= 1_000_000);
     coin::burn_for_testing(quote);
     test_scenario::return_shared(market);
@@ -137,7 +137,7 @@ public fun sell_and_redeem_shutdown<Product, Collateral, Meme>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<Collateral> {
-    let shares = market.sell(version, runtime, meme, minimum_shares, ctx);
+    let shares = market.sell(version, runtime, meme, minimum_shares, clock, ctx);
     vault.redeem_shutdown(protocol, shares, minimum_cash, deadline, clock, ctx)
 }
 
@@ -180,7 +180,7 @@ public fun mint_and_buy<Product, Collateral, Meme>(
     let shares = operations::mint(vault, protocol, account, registry, clearing_house,
         base_oracle, collateral_oracle, cash,
         minimum_shares, deadline, clock, ctx);
-    market.buy(version, runtime, shares, minimum_meme, ctx)
+    market.buy(version, runtime, shares, minimum_meme, clock, ctx)
 }
 
 /// Typechecks the atomic launch sell -> redemption handoff without a receipt currency.
@@ -202,7 +202,7 @@ public fun sell_and_redeem<Product, Collateral, Meme>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<Collateral> {
-    let shares = market.sell(version, runtime, meme, minimum_shares, ctx);
+    let shares = market.sell(version, runtime, meme, minimum_shares, clock, ctx);
     operations::redeem(vault, protocol, account, registry, clearing_house,
         base_oracle, collateral_oracle, shares,
         minimum_cash, deadline, clock, ctx)

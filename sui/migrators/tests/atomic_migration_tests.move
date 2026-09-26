@@ -71,7 +71,7 @@ fun single_ptb_sealed_mock_adapter_keeps_principal_and_residuals_in_vault_custod
     let mut launch = f.take_launch();
     let mut currency = f.take_currency();
     let (_, quote_before, _, allocated_before) = launch.balances_for_testing();
-    mock_adapter(&mut launch, &f.version, &mut currency, f.scenario.ctx());
+    mock_adapter(&mut launch, &f.version, &mut currency, &f.clock, f.scenario.ctx());
 
     assert!(!launch.is_live_for_testing() && !launch.is_migration_ready_for_testing());
     assert!(launch.is_migrated_for_testing());
@@ -121,7 +121,7 @@ fun the_migrated_vault_splits_later_collections_and_updates_its_split_under_the_
     f.scenario.next_tx(TESTER);
     let mut launch = f.take_launch();
     let mut currency = f.take_currency();
-    mock_adapter(&mut launch, &f.version, &mut currency, f.scenario.ctx());
+    mock_adapter(&mut launch, &f.version, &mut currency, &f.clock, f.scenario.ctx());
     test_scenario::return_shared(launch);
     test_scenario::return_to_address(COIN_REGISTRY, currency);
 
@@ -205,7 +205,13 @@ fun another_adapter_cannot_migrate() {
     f.scenario.next_tx(TESTER);
     let mut launch = f.take_launch();
     let mut currency = f.take_currency();
-    let (_meme, _quote) = launch.migrate(&f.version, &mut currency, OtherVenue(), f.scenario.ctx());
+    let (_meme, _quote) = launch.migrate(
+        &f.version,
+        &mut currency,
+        OtherVenue(),
+        &f.clock,
+        f.scenario.ctx(),
+    );
     abort EUnexpectedSuccess
 }
 
@@ -220,7 +226,7 @@ fun zero_liquidity_aborts_the_migration() {
     f.scenario.next_tx(TESTER);
     let mut launch = f.take_launch();
     let mut currency = f.take_currency();
-    mock_adapter_with(&mut launch, &f.version, &mut currency, 0, f.scenario.ctx());
+    mock_adapter_with(&mut launch, &f.version, &mut currency, 0, &f.clock, f.scenario.ctx());
     abort EUnexpectedSuccess
 }
 
@@ -231,9 +237,10 @@ public fun mock_adapter(
     launch: &mut Launch<ATOMIC_MIGRATION_TESTS, QUOTE>,
     version: &PackageVersion,
     currency: &mut Currency<ATOMIC_MIGRATION_TESTS>,
+    clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    mock_adapter_with(launch, version, currency, 1, ctx)
+    mock_adapter_with(launch, version, currency, 1, clock, ctx)
 }
 
 /// Migrate, seed a mock position holding `liquidity` with one residual unit per asset kept in the
@@ -243,9 +250,10 @@ fun mock_adapter_with(
     version: &PackageVersion,
     currency: &mut Currency<ATOMIC_MIGRATION_TESTS>,
     liquidity: u128,
+    clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let (mut meme, mut quote) = launch.migrate(version, currency, Venue(), ctx);
+    let (mut meme, mut quote) = launch.migrate(version, currency, Venue(), clock, ctx);
     let residual_meme = meme.split(1);
     let residual_quote = quote.split(1);
     let pool = MockPool { id: object::new(ctx) };
@@ -357,7 +365,7 @@ fun reach_migration(f: &mut Fixture) {
     f.scenario.next_tx(TESTER);
     let mut launch = f.take_launch();
     let quote = coin::mint_for_testing<QUOTE>(30_000_000, f.scenario.ctx());
-    let (meme, refund) = launch.buy(&f.version, &f.runtime, quote, 1, f.scenario.ctx());
+    let (meme, refund) = launch.buy(&f.version, &f.runtime, quote, 1, &f.clock, f.scenario.ctx());
     destroy(meme);
     destroy(refund);
     test_scenario::return_shared(launch);

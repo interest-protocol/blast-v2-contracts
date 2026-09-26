@@ -80,7 +80,7 @@ public fun migrate<Meme, Quote>(
     pool_name.append(b"-");
     pool_name.append(quote_currency.symbol().into_bytes());
 
-    let (meme, quote) = launch.migrate(package_version, currency, Witness(), ctx);
+    let (meme, quote) = launch.migrate(package_version, currency, Witness(), clock, ctx);
     let source_meme = meme.value();
     let source_quote = quote.value();
     let fix_meme = source_meme >= source_quote;

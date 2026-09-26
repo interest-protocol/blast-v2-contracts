@@ -64,12 +64,12 @@ export function buildActivePlan(input) {
     if (operation === 'mint_buy') {
         return {commands: [
             call(`${adapter}::operations::mint`, [product, collateral], [...bound, coin, ...limits], 'shares'),
-            call(`${launchPackage}::launch::buy`, launchTypes, [...launchArgs, 'shares', launchMinimum], 'purchase'),
+            call(`${launchPackage}::launch::buy`, launchTypes, [...launchArgs, 'shares', launchMinimum, clock], 'purchase'),
         ], transfers: ['purchase.0', 'purchase.1']};
     }
     if (operation === 'sell_redeem') {
         return {commands: [
-            call(`${launchPackage}::launch::sell`, launchTypes, [...launchArgs, coin, launchMinimum], 'shares'),
+            call(`${launchPackage}::launch::sell`, launchTypes, [...launchArgs, coin, launchMinimum, clock], 'shares'),
             call(`${adapter}::operations::redeem`, [product, collateral], [...bound, 'shares', ...limits], 'result'),
         ], transfers: ['result']};
     }

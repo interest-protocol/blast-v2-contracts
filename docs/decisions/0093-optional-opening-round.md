@@ -1,6 +1,6 @@
 # 0093: An optional opening round replaces purchase protection
 
-- Status: accepted
+- Status: superseded by [0096](0096-presale-through-address-balances.md)
 - Date: 2026-09-25
 - Amends: [0088](0088-reusable-launch-accounting-and-atomic-migration.md) and
   [0090](0090-minimal-launchpad-surface.md)

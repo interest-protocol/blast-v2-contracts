@@ -121,7 +121,7 @@ public fun migrate_meme_a<Meme, Quote>(
     let (tick_spacing, _) = launch.pool_tier();
     let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
 
-    let (meme, quote) = launch.migrate(package_version, currency, Witness(), ctx);
+    let (meme, quote) = launch.migrate(package_version, currency, Witness(), clock, ctx);
     let meme_amount = meme.value();
     let quote_amount = quote.value();
 
@@ -168,7 +168,7 @@ public fun migrate_meme_b<Meme, Quote>(
     let (tick_spacing, _) = launch.pool_tier();
     let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
 
-    let (meme, quote) = launch.migrate(package_version, currency, Witness(), ctx);
+    let (meme, quote) = launch.migrate(package_version, currency, Witness(), clock, ctx);
     let meme_amount = meme.value();
     let quote_amount = quote.value();
 
