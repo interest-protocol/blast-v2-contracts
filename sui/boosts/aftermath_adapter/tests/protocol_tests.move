@@ -44,6 +44,21 @@ fun init_shares_the_adapter_generation_at_its_first_generation() {
 }
 
 #[test]
+/// Boosts ships as a fresh publish: this bytecode accepts the generation its
+/// own initialization shares.
+fun a_fresh_publish_of_this_bytecode_accepts_its_own_generation() {
+    let mut fixture = start_init();
+
+    fixture.next_tx!(ROOT, |fixture| {
+        let container = fixture.take_protocol();
+        container.assert_current_for_testing();
+        fixture.return_protocol(container);
+    });
+
+    fixture.end();
+}
+
+#[test]
 /// The container advances to exactly the generation this bytecode hands over
 /// to, and the shared package emits the only cutover fact.
 fun the_generation_advances_to_the_next_compiled_generation() {

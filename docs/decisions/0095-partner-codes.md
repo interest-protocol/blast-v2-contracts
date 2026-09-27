@@ -217,6 +217,12 @@ on Hyperliquid.
   are unchanged. The SDK, the indexer reducers and the release PTB builder add
   them, and the SDK reads a partner's `PartnerKey` field to fall back to the
   plain entry points once a removal takes effect.
+- The adapter changes ship in a fresh publish of the Boosts adapter (owner,
+  2026-09-27), not an upgrade of the live alpha adapter, so it keeps compiling
+  generation 1, the generation its own initialization shares.
+- The new adapter links `blast_partners` by its published address, so
+  `blast_partners` is published, and its `Published.toml` committed, before
+  the adapter's mainnet build.
 - The partner administrator sets each deal's terms in its own domain; the Boosts
   risk administrator decides which deals Boosts accepts.
 - The Boosts removal notice is as strong as the adapter's governed upgrades, not
@@ -232,16 +238,18 @@ on Hyperliquid.
 - Timelock tests (util contracts): the delay boundaries, reschedule, cancel,
   schedules after a switch, the shortest delay, the refused one, and 100%
   coverage.
-- Partner tests: every guard with exact aborts and guard precedence; a
-  registered share and cap in force at once; a scheduled share and a moved cap at
+- Partner tests: every guard with exact aborts and guard precedence; the delay
+  pinned at seven days; a registered share and cap in force at once; a scheduled share and a moved cap at
   their boundaries; one cap managing
-  two partners with different shares; a cap anyone mints controls nothing; `pay`
+  two partners with different shares; a cap anyone mints controls nothing; a
+  partner whose cap is destroyed still paid and moved to a new cap; `pay`
   against a rounded-down reference sweep, at the largest fee, and its
   `PartnerPaid` event, which a zero payment does not emit.
 - Accepted partners: added at once and a removal at its boundary; a pending
   removal cancelled; a removed partner added again; refusals for adding twice,
-  removing twice, and removing an unknown or removed partner; the risk role and
-  the version guard, in that order; the events.
+  removing twice, and removing an unknown or removed partner; the version guard,
+  the risk role and the list's own refusals, in that order, for both calls; the
+  events.
 - Adapter tests: a partner is paid only out of the admin fee its operation
   retained, derived from the admin cash before it, leaving earlier admin cash,
   the reserve and the supply alone; the 80% maximum leaves Blast a fifth; a share

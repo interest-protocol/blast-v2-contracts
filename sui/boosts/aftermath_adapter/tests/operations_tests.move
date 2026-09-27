@@ -812,6 +812,23 @@ fun a_stale_adapter_version_rejects_adding_a_partner() {
 }
 
 #[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+fun a_stale_adapter_version_rejects_removing_a_partner() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let clock = reference_clock(&mut fixture);
+    fixture.add_partner(&partner);
+    fixture.protocol.set_version_for_testing(3);
+
+    fixture.remove_partner(&partner, &clock);
+
+    abort
+}
+
+#[test]
 fun event_reducer_reconstructs_a_positive_funding_checkpoint() {
     let mut fixture = start();
     let initial = initial_checkpoint();
