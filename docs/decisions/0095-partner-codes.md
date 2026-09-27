@@ -2,6 +2,9 @@
 
 - Status: proposed
 - Date: 2026-09-26
+- Amended by: [0097](0097-one-singleton-acl-with-typed-roles.md): the partner
+  administrator is the `blast_partners::PartnerAdmin` role in the singleton Blast
+  ACL; the package no longer creates its own `BLAST_PARTNERS` domain
 
 ## Sources
 

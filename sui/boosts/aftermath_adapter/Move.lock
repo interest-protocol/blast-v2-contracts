@@ -37,8 +37,8 @@ deps = { std = "MoveStdlib", sui = "Sui" }
 [pinned.mainnet.blast_admin]
 source = { local = "../../admin" }
 use_environment = "mainnet"
-manifest_digest = "294D98BBBEFA7E526C52FD7F30B5691CD30B86738DDC489AC065D612D0E5F9EF"
-deps = { Sui = "Sui" }
+manifest_digest = "E26908079EDB3A11E96711E1FF8CDE5BBA0499612C6BF3BE67995DA6D8BED85B"
+deps = { Sui = "Sui", blast_fun_timelock = "blast_fun_timelock" }
 
 [pinned.mainnet.blast_boosts_aftermath]
 source = { root = true }
@@ -127,8 +127,8 @@ deps = { std = "MoveStdlib", sui = "Sui" }
 [pinned.testnet.blast_admin]
 source = { local = "../../admin" }
 use_environment = "testnet"
-manifest_digest = "B7E2FC3044B807508BDB644524C4ABEA393A1871278966067F470AEAE602C62B"
-deps = { Sui = "Sui" }
+manifest_digest = "315F80CAC6292FFBEFF0DD2E2E59B476F1834FC5B6D0443F001EC27204D0B30F"
+deps = { Sui = "Sui", blast_fun_timelock = "blast_fun_timelock" }
 
 [pinned.testnet.blast_boosts_aftermath]
 source = { root = true }

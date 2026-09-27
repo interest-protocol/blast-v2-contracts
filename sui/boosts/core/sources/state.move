@@ -127,19 +127,18 @@ public struct RebalanceOrder has drop {
 
 // --- Issuance ---
 
-/// Issues one product. The caller's live admin witness must hold the Vault
-/// issuer role; `nav_cap` must satisfy `RebalancePolicy::assert_nav_cap_valid`
-/// and stays adjustable through `set_nav_cap`. The asset decimals fix the
-/// units every base valuation of this product uses.
+/// Issues one product. The caller signs in as a Vault issuer; `nav_cap` must
+/// satisfy `RebalancePolicy::assert_nav_cap_valid` and stays adjustable through
+/// `set_nav_cap`. The asset decimals fix the units every base valuation of this
+/// product uses.
 public fun issue<Product>(
-    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
+    _: &AdminWitness<VaultIssuer>,
     vault_policy: VaultPolicy,
     max_order_notional: u64,
     nav_cap: u64,
     base_decimals: u8,
     collateral_decimals: u8,
 ): Issuance<Product> {
-    admin_witness.assert_role(domain::vault_issuer_role());
     assert!(max_order_notional > 0, blast_boosts_core::errors::invalid_max_order_notional!());
     vault_policy.rebalance_policy().assert_nav_cap_valid(nav_cap);
     assert!(
@@ -1091,7 +1090,7 @@ public fun destroy_for_testing<Product>(self: State<Product>) {
 
 // === Imports ===
 
-use blast_admin::acl::AdminWitness;
+use blast_admin::blast_acl::AdminWitness;
 
 use blast_boosts_core::{
     accounting_math,
@@ -1100,5 +1099,5 @@ use blast_boosts_core::{
     observation::{Self, FundingSettlement, PositionObservation, PriceObservation},
     policy::{PositionSide, PricePolicy, VaultPolicy},
     rebalance_math,
-    blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
+    blast_boosts_core::VaultIssuer,
 };

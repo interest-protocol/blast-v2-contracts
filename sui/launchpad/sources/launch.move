@@ -307,12 +307,11 @@ public fun claim_creator_caps<Meme, Quote>(
 public fun reassign_curve_fee_cap<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
+    _: &AdminWitness<CreatorAdmin>,
     recipient: address,
     ctx: &mut TxContext,
 ) {
     package_version.assert_current();
-    admin_witness.assert_role(blast_fun_domain::creator_admin_role());
     assert!(recipient != @0x0, blast_fun::errors::invalid_creator_recipient!());
 
     self.creator = option::none();
@@ -328,12 +327,11 @@ public fun reassign_curve_fee_cap<Meme, Quote>(
 public fun reassign_metadata_cap<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
+    _: &AdminWitness<CreatorAdmin>,
     recipient: address,
     ctx: &mut TxContext,
 ) {
     package_version.assert_current();
-    admin_witness.assert_role(blast_fun_domain::creator_admin_role());
     assert!(recipient != @0x0, blast_fun::errors::invalid_creator_recipient!());
 
     self.creator = option::none();
@@ -578,11 +576,10 @@ public fun claim_creator_fees<Meme, Quote>(
 public fun claim_protocol_fees<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
+    _: &AdminWitness<TreasuryAdmin>,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
     package_version.assert_current();
-    admin_witness.assert_role(blast_fun_domain::treasury_admin_role());
 
     let (meme, quote) = self.fee_ledger.claim_protocol_fees(ctx);
 
@@ -877,11 +874,11 @@ public fun migration_witness_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>
 
 // === Imports ===
 
-use blast_admin::acl::AdminWitness;
+use blast_admin::blast_acl::AdminWitness;
 
 use blast_fun::{
     allocation::{AllocationPlan, FeeSplit},
-    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
+    blast_fun_domain::{CreatorAdmin, TreasuryAdmin},
     bps::Bps,
     constants,
     creator_authority::{Self, BlastMetadataCap, CreatorRecipient, CurveFeeCap},

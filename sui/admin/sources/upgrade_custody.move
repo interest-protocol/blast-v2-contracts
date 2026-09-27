@@ -49,7 +49,7 @@ public fun new<PackageMarker: drop>(
         upgrade_cap: option::some(upgrade_cap),
     };
 
-    events::upgrade_custody_created<PackageMarker>(
+    blast_admin_events::upgrade_custody_created<PackageMarker>(
         custodian_id,
         publisher_id,
         upgrade_cap_id,
@@ -87,7 +87,7 @@ public fun authorize_upgrade<PackageMarker: drop>(
     let policy = cap.policy();
     let ticket = cap.authorize(policy, digest);
 
-    events::upgrade_authorized<PackageMarker>(
+    blast_admin_events::upgrade_authorized<PackageMarker>(
         custodian_id,
         upgrade_cap_id,
         package_id,
@@ -114,7 +114,7 @@ public fun commit_upgrade<PackageMarker: drop>(
 
     cap.commit(receipt);
 
-    events::upgrade_committed<PackageMarker>(
+    blast_admin_events::upgrade_committed<PackageMarker>(
         custodian_id,
         upgrade_cap_id,
         type_name::original_id<PackageMarker>(),
@@ -143,7 +143,7 @@ public fun restrict_to_additive<PackageMarker: drop>(
 
     cap.only_additive_upgrades();
 
-    events::upgrade_policy_restricted<PackageMarker>(
+    blast_admin_events::upgrade_policy_restricted<PackageMarker>(
         custodian_id,
         upgrade_cap_id,
         type_name::original_id<PackageMarker>(),
@@ -172,7 +172,7 @@ public fun restrict_to_dependency_only<PackageMarker: drop>(
 
     cap.only_dep_upgrades();
 
-    events::upgrade_policy_restricted<PackageMarker>(
+    blast_admin_events::upgrade_policy_restricted<PackageMarker>(
         custodian_id,
         upgrade_cap_id,
         type_name::original_id<PackageMarker>(),
@@ -196,7 +196,7 @@ public fun make_immutable<PackageMarker: drop>(
 
     package::make_immutable(cap);
 
-    events::upgrade_cap_destroyed<PackageMarker>(
+    blast_admin_events::upgrade_cap_destroyed<PackageMarker>(
         custodian_id,
         upgrade_cap_id,
         type_name::original_id<PackageMarker>(),
@@ -248,7 +248,7 @@ public fun policy_for_testing<PackageMarker: drop>(
 
 // === Imports ===
 
-use blast_admin::events;
+use blast_admin::blast_admin_events;
 
 use std::type_name;
 

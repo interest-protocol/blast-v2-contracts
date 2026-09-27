@@ -45,13 +45,11 @@ public fun new(
     PackageAdmin { id, custody }
 }
 
-/// Attaches one exact capability type under active routine-admin authority.
-///
-/// Intake is generic administration: a live zero-role witness is enough.
+/// Attaches one exact capability type under upgrade-admin authority.
 public fun add_capability<Capability: key + store>(
     self: &mut PackageAdmin,
     package_version: &PackageVersion,
-    _: &AdminWitness<BLAST_SUI_DOMAIN>,
+    _: &AdminWitness<UpgradeAdmin>,
     capability: Capability,
 ) {
     package_version.assert_current();
@@ -82,11 +80,10 @@ public fun share(self: PackageAdmin) {
 public fun authorize_upgrade(
     self: &mut PackageAdmin,
     package_version: &PackageVersion,
-    admin_witness: &AdminWitness<BLAST_SUI_DOMAIN>,
+    _: &AdminWitness<UpgradeAdmin>,
     digest: vector<u8>,
 ): UpgradeTicket {
     package_version.assert_current();
-    admin_witness.assert_role(blast_sui_domain::package_admin_role());
     let custodian_id = self.id.to_inner();
 
     self.custody.authorize_upgrade(custodian_id, digest)
@@ -99,10 +96,9 @@ public fun authorize_upgrade(
 public fun commit_upgrade_and_advance(
     self: &mut PackageAdmin,
     package_version: &mut PackageVersion,
-    admin_witness: &AdminWitness<BLAST_SUI_DOMAIN>,
+    _: &AdminWitness<UpgradeAdmin>,
     receipt: UpgradeReceipt,
 ) {
-    admin_witness.assert_role(blast_sui_domain::package_admin_role());
     package_version.assert_next();
     let custodian_id = self.id.to_inner();
 
@@ -119,10 +115,9 @@ public fun commit_upgrade_and_advance(
 public fun restrict_to_additive(
     self: &mut PackageAdmin,
     package_version: &PackageVersion,
-    admin_witness: &AdminWitness<BLAST_SUI_DOMAIN>,
+    _: &AdminWitness<UpgradeAdmin>,
 ) {
     package_version.assert_current();
-    admin_witness.assert_role(blast_sui_domain::package_admin_role());
     let custodian_id = self.id.to_inner();
 
     self.custody.restrict_to_additive(custodian_id);
@@ -135,10 +130,9 @@ public fun restrict_to_additive(
 public fun make_immutable(
     self: &mut PackageAdmin,
     package_version: &PackageVersion,
-    admin_witness: &AdminWitness<BLAST_SUI_DOMAIN>,
+    _: &AdminWitness<UpgradeAdmin>,
 ) {
     package_version.assert_current();
-    admin_witness.assert_role(blast_sui_domain::package_admin_role());
     let custodian_id = self.id.to_inner();
 
     self.custody.make_immutable(custodian_id);
@@ -271,14 +265,14 @@ public fun policy_for_testing(self: &PackageAdmin): u8 {
 // === Imports ===
 
 use blast_admin::{
-    acl::AdminWitness,
+    blast_acl::AdminWitness,
     upgrade_custody::{Self, UpgradeCustody},
 };
 
 use blast_sui::{
     blast_sui_package::BLAST_SUI_PACKAGE,
     blast_sui::BLAST_SUI,
-    blast_sui_domain::{Self, BLAST_SUI_DOMAIN},
+    blast_sui_domain::UpgradeAdmin,
     deposit_receipt::BlastSuiDepositReceipt,
     events,
     fun_sui::FUN_SUI,

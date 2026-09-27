@@ -3,10 +3,10 @@
 `blast_boosts_aftermath` connects the Boosts core policy and accounting to
 Aftermath-owned venue state. It owns product currencies, its own operational
 generation, sealed package custody, and `Vault<Product, Collateral>` custody
-while relying on the shared core administration domain.
+while relying on the core's administration roles.
 
-Membership is shared, custody is not: administrators authenticate against the
-core authority, but this package's generation and `UpgradeCap` belong only to
+Membership is shared, custody is not: administrators sign in to the singleton
+Blast ACL with a core role, but this package's generation and `UpgradeCap` belong only to
 it, and advancing them leaves the core untouched. Its Publisher and `UpgradeCap`
 are validated once and sealed inside `blast_admin` custody, from which no call
 returns them; a governed upgrade commits its receipt and advances the generation

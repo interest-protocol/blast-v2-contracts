@@ -176,14 +176,14 @@ blast_events:package:fun reward_paid( round_id: ID, index: u64, beneficiary: add
 blast_events:package:fun round_published( vault_id: ID, round_id: ID, number: u64, start_checkpoint: u64, end_checkpoint: u64, root: vector<u8>, manifest_digest: vector<u8>, leaf_count: u64, meme_amount: u64, quote_amount: u64, meme_unallocated: u64, quote_unallocated: u64, )
 blast_events:package:fun vault_created<Meme, Quote, Venue>( vault_id: ID, pool_id: ID, position_id: ID, residual_meme: u64, residual_quote: u64, liquidity: u128, fee_split: FeeSplit, )
 blast_holder_rewards:public:fun claim<Meme, Quote>( self: &mut Round<Meme, Quote>, migrators_version: &MigratorsVersion, index: u64, beneficiary: address, meme_amount: u64, quote_amount: u64, proof: vector<vector<u8>>, ctx: &mut TxContext, )
-blast_holder_rewards:public:fun publish_round<Meme, Quote>( vault: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, number: u64, start_checkpoint: u64, end_checkpoint: u64, root: vector<u8>, manifest_digest: vector<u8>, leaf_count: u64, meme_amount: u64, quote_amount: u64, ctx: &mut TxContext, )
-bluefin:public:fun buyback_and_burn<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, currency: &mut Currency<Meme>, bluefin_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, min_meme_out: u64, clock: &Clock, ctx: &mut TxContext, )
+blast_holder_rewards:public:fun publish_round<Meme, Quote>( vault: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, _: &AdminWitness<RewardsAdmin>, number: u64, start_checkpoint: u64, end_checkpoint: u64, root: vector<u8>, manifest_digest: vector<u8>, leaf_count: u64, meme_amount: u64, quote_amount: u64, ctx: &mut TxContext, )
+bluefin:public:fun buyback_and_burn<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>, bluefin_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, min_meme_out: u64, clock: &Clock, ctx: &mut TxContext, )
 bluefin:public:fun collect_fees<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, currency: &mut Currency<Meme>, bluefin_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, clock: &Clock, ctx: &mut TxContext, )
 bluefin:public:fun migrate<Meme, Quote>( launch: &mut Launch<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, currency: &mut Currency<Meme>, quote_currency: &Currency<Quote>, bluefin_config: &mut GlobalConfig, creation_fee: Coin<SUI>, clock: &Clock, ctx: &mut TxContext, )
 bluefin:public:fun new<Meme, Quote>( ticket: LaunchTicket<Meme>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, config: &LaunchConfig, tick_spacing: u32, fee_rate: u64, ): LaunchInitializer<Meme, Quote>
 bluefin:public:fun settle_and_update_fee_split<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, launch: &Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, currency: &mut Currency<Meme>, bluefin_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, proposed: FeeSplit, clock: &Clock, ctx: &mut TxContext, )
-cetus:public:fun buyback_and_burn_meme_a<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, min_meme_out: u64, clock: &Clock, ctx: &mut TxContext, )
-cetus:public:fun buyback_and_burn_meme_b<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, pool: &mut Pool<Quote, Meme>, min_meme_out: u64, clock: &Clock, ctx: &mut TxContext, )
+cetus:public:fun buyback_and_burn_meme_a<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, min_meme_out: u64, clock: &Clock, ctx: &mut TxContext, )
+cetus:public:fun buyback_and_burn_meme_b<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, pool: &mut Pool<Quote, Meme>, min_meme_out: u64, clock: &Clock, ctx: &mut TxContext, )
 cetus:public:fun collect_fees_meme_a<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, burn_manager: &BurnManager, pool: &mut Pool<Meme, Quote>, clock: &Clock, ctx: &mut TxContext, )
 cetus:public:fun collect_fees_meme_b<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, burn_manager: &BurnManager, pool: &mut Pool<Quote, Meme>, clock: &Clock, ctx: &mut TxContext, )
 cetus:public:fun migrate_meme_a<Meme, Quote>( launch: &mut Launch<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, currency: &mut Currency<Meme>, venue_config: &VenueConfig, cetus_config: &GlobalConfig, pools: &mut Pools, burn_manager: &mut BurnManager, clock: &Clock, ctx: &mut TxContext, )
@@ -203,16 +203,16 @@ constants:package:fun q64_shift(): u8
 constants:package:fun sqrt_upper_bound_shift(): u8
 lp_fee_policy:package:fun protocol_destination(self: &LpFeePolicy): address
 lp_fee_policy:package:fun shares<Meme>(self: &LpFeePolicy): (Bps, Bps)
-lp_fee_policy:public:fun clear_coin_shares<Meme>( self: &mut LpFeePolicy, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, )
-lp_fee_policy:public:fun set_coin_shares<Meme>( self: &mut LpFeePolicy, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, meme_bps: Bps, quote_bps: Bps, )
-lp_fee_policy:public:fun set_default_shares( self: &mut LpFeePolicy, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, meme_bps: Bps, quote_bps: Bps, )
-lp_fee_policy:public:fun set_protocol_destination( self: &mut LpFeePolicy, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, destination: address, )
+lp_fee_policy:public:fun clear_coin_shares<Meme>( self: &mut LpFeePolicy, migrators_version: &MigratorsVersion, _: &AdminWitness<FeeAdmin>, )
+lp_fee_policy:public:fun set_coin_shares<Meme>( self: &mut LpFeePolicy, migrators_version: &MigratorsVersion, _: &AdminWitness<FeeAdmin>, meme_bps: Bps, quote_bps: Bps, )
+lp_fee_policy:public:fun set_default_shares( self: &mut LpFeePolicy, migrators_version: &MigratorsVersion, _: &AdminWitness<FeeAdmin>, meme_bps: Bps, quote_bps: Bps, )
+lp_fee_policy:public:fun set_protocol_destination( self: &mut LpFeePolicy, migrators_version: &MigratorsVersion, _: &AdminWitness<TreasuryAdmin>, destination: address, )
 merkle:package:fun leaf( vault: ID, round: u64, index: u64, beneficiary: address, meme: u64, quote: u64, ): vector<u8>
 merkle:package:fun verify( root: vector<u8>, mut digest: vector<u8>, mut index: u64, leaves: u64, proof: &vector<vector<u8>>, ): bool
 migration_math:package:fun auto_lp_fixed_side( sqrt_lower: u128, sqrt_price: u128, sqrt_upper: u128, amount_a: u64, amount_b: u64, ): (bool, u64)
 migration_math:package:fun sqrt_price_x64( meme_amount: u64, quote_amount: u64, meme_is_coin_a: bool, ): u128
-package_admin:public:fun authorize_upgrade( self: &mut PackageAdmin, package_version: &PackageVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, digest: vector<u8>, ): UpgradeTicket
-package_admin:public:fun commit_upgrade_and_advance( self: &mut PackageAdmin, package_version: &mut PackageVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, receipt: UpgradeReceipt, )
+package_admin:public:fun authorize_upgrade( self: &mut PackageAdmin, package_version: &PackageVersion, _: &AdminWitness<UpgradeAdmin>, digest: vector<u8>, ): UpgradeTicket
+package_admin:public:fun commit_upgrade_and_advance( self: &mut PackageAdmin, package_version: &mut PackageVersion, _: &AdminWitness<UpgradeAdmin>, receipt: UpgradeReceipt, )
 package_admin:public:fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext)
 package_version:package:fun advance(self: &mut PackageVersion)
 package_version:package:fun assert_current(self: &PackageVersion)
@@ -233,10 +233,10 @@ vault:package:fun position_mut< Meme, Quote, Venue, Position: key + store, >( se
 vault:package:fun rewards_balances<Meme, Quote>(self: &LpVault<Meme, Quote>): (u64, u64)
 vault:package:fun split_fees<Meme, Quote>( self: &mut LpVault<Meme, Quote>, policy: &LpFeePolicy, currency: &mut Currency<Meme>, mut meme: Balance<Meme>, mut quote: Balance<Quote>, ctx: &mut TxContext, )
 vault:package:fun take_auto_lp<Meme, Quote>( self: &mut LpVault<Meme, Quote>, ): (Balance<Meme>, Balance<Quote>)
-vault:package:fun take_buyback_quote<Meme, Quote>( self: &mut LpVault<Meme, Quote>, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, ): Balance<Quote>
+vault:package:fun take_buyback_quote<Meme, Quote>( self: &mut LpVault<Meme, Quote>, _: &AdminWitness<BuybackAdmin>, ): Balance<Quote>
 vault:package:fun update_fee_split<Meme, Quote>( self: &mut LpVault<Meme, Quote>, proposed: FeeSplit, )
 vault:public:fun claim_creator_fees<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, launch: &Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)
-vault:public:fun claim_protocol_fees<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)
+vault:public:fun claim_protocol_fees<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, _: &AdminWitness<TreasuryAdmin>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)
 venue_config:package:fun add_object<Key: copy + drop + store, Object: key + store>( self: &mut VenueConfig, key: Key, object: Object, )
 venue_config:package:fun object<Key: copy + drop + store, Object: key + store>( self: &VenueConfig, key: Key, ): &Object
 EOF
@@ -493,7 +493,7 @@ in_order \
     fail "vault splits must pay the round-up live Blast share and every recipient immediately, credit the three balances, burn the burn Meme and keep the burn Quote, keep nothing else, and emit FeesCollected last"
 # A buyback takes the whole burn Quote only under the buyback-admin role, and burns only Meme that
 # reaches the admin's minimum; what the pool did not take goes back to wait.
-[[ "$(vault_body take_buyback_quote)" == 'admin_witness.assert_role(blast_fun_domain::buyback_admin_role());assert!(self.burn_quote.value()>0,ENoBuybackQuote);self.burn_quote.withdraw_all()' ]] \
+[[ "$(vault_body take_buyback_quote)" == 'assert!(self.burn_quote.value()>0,ENoBuybackQuote);self.burn_quote.withdraw_all()' ]] \
     && in_order \
         'letmeme_burned=meme.value();' \
         'assert!(meme_burned>=min_meme_out,EBuybackBelowMinimum);' \
@@ -622,7 +622,7 @@ require_exact_count 'PackageVersion' 1 \
     "$VAULT_SOURCE"
 require_pattern "$VAULT_SOURCE" 'package_version::PackageVersion as MigratorsVersion' \
     'Migrators generation imported under its guard alias'
-require_exact_count '&AdminWitness<BLAST_FUN_DOMAIN>' 2 \
+require_exact_count '&AdminWitness<' 2 \
     "vault Launchpad authority must be exactly the protocol residual claim and the buyback" \
     <(production_section "$VAULT_SOURCE")
 require_errors "$VAULT_SOURCE" "vault must use sequential codes 0-5 for its residual, split, creator, liquidity, and buyback checks" <<'EOF'
@@ -686,7 +686,7 @@ in_order \
 [[ "$(awk -F'\t' '$1 == "FN" && $6 == 0 && index($10, "transfer::public_transfer(") > 0 { print $2 }' \
     <<<"$REWARDS_FACTS")" == 'claim' ]] || \
     fail "round funds must leave only by a proven claim"
-require_exact_count '&AdminWitness<BLAST_FUN_DOMAIN>' 1 \
+require_exact_count '&AdminWitness<' 1 \
     "holder-reward authority must be exactly round publication" \
     <(production_section "$REWARDS_SOURCE")
 require_errors "$REWARDS_SOURCE" "holder rewards must use sequential codes 0-8 for their round and claim checks" <<'EOF'
@@ -833,7 +833,7 @@ for entry in new migrate collect_fees settle_and_update_fee_split buyback_and_bu
         new) expected="( ticket: LaunchTicket<Meme>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, config: &LaunchConfig," ;;
         migrate) expected="( launch: &mut Launch<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, currency: &mut Currency<Meme>," ;;
         collect_fees) expected="( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, currency: &mut Currency<Meme>," ;;
-        buyback_and_burn) expected="( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, currency: &mut Currency<Meme>," ;;
+        buyback_and_burn) expected="( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>," ;;
         *) expected="( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, launch: &Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, currency: &mut Currency<Meme>," ;;
     esac
     [[ "$(awk -F'\t' -v name="$entry" '$1 == "FN" && $2 == name && $6 == 0 { print $9 }' \
@@ -1001,7 +1001,7 @@ for entry in new migrate_meme_a migrate_meme_b collect_fees_meme_a collect_fees_
         new) expected="( ticket: LaunchTicket<Meme>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, config: &LaunchConfig," ;;
         migrate*) expected="( launch: &mut Launch<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, currency: &mut Currency<Meme>," ;;
         collect*) expected="( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, currency: &mut Currency<Meme>," ;;
-        buyback*) expected="( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>, currency: &mut Currency<Meme>," ;;
+        buyback*) expected="( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>," ;;
         *) expected="( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, launch: &Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, currency: &mut Currency<Meme>," ;;
     esac
     [[ "$(awk -F'\t' -v name="$entry" '$1 == "FN" && $2 == name && $6 == 0 { print $9 }' \
@@ -1105,23 +1105,40 @@ fi
 
 # === Shared administration boundary ===
 #
-# Migrators reuses the Launchpad domain for membership only. It must never
-# reimplement the reusable ACL, generation arithmetic, or native custody, and it
-# must stop treating the Launchpad generation as its own.
+# Migrators takes the Launchpad's roles in the shared blast_admin ACL. It must never
+# reimplement the reusable ACL, declare a role of its own, reimplement generation arithmetic or
+# native custody, or treat the Launchpad generation as its own.
 
-for forbidden in acl.move; do
+for forbidden in acl.move blast_acl.move; do
     [[ -e "$SOURCE_DIR/$forbidden" ]] && \
         fail "Migrators must not define a local $forbidden"
 done
 
-if rg -n '^public struct (Authority|ProtocolAuthority|SuperAdminCap|AdminCap|AdminWitness)\b' \
+if rg -n '^public struct (ACL|Authority|ProtocolAuthority|SuperAdminCap|AdminCap|AdminWitness)\b' \
     "$SOURCE_DIR"; then
     fail "administration types must come from blast_admin, never from a local copy"
 fi
 
-if rg -n 'acl::new\(|fun (grant_admin|revoke_admin|sign_in)\(' "$SOURCE_DIR"; then
-    fail "Migrators must not create or manage its own administration domain"
+if rg -n 'fun (grant_admin|revoke_admin|sign_in)\(' "$SOURCE_DIR"; then
+    fail "Migrators must not manage administrators"
 fi
+
+# The roles are the Launchpad domain's ability-free role types, which the launchpad gate pins.
+LAUNCHPAD_ROLES="$(move_facts "$PACKAGE_DIR/../launchpad/sources/blast_fun_domain.move" \
+    | awk -F'\t' '$1 == "TYPE" && $5 == 0 { print $2 }' | paste -sd '|')"
+[[ -n "$LAUNCHPAD_ROLES" ]] || fail "the Launchpad role types must be readable"
+if rg -n "^public struct (${LAUNCHPAD_ROLES})\\b" "$SOURCE_DIR"; then
+    fail "Migrators must take the Launchpad's roles, never declare a same-named copy"
+fi
+# The witness type is each administrator action's role check, so every witness a source names is
+# borrowed and names one concrete Launchpad role; a generic or foreign role fails here.
+admin_witness_violations="$(for source in "$SOURCE_DIR"/*.move; do
+    move_norm "$source" | { rg -o '&?AdminWitness<[^>]*>' || true; } \
+        | { rg -v -x "&AdminWitness<(${LAUNCHPAD_ROLES})>" || true; } \
+        | sed "s|^|$(basename "$source"): |"
+done)"
+[[ -z "$admin_witness_violations" ]] || \
+    fail "every administrator witness must be a borrowed AdminWitness of one concrete Launchpad role: ${admin_witness_violations}"
 
 for required in blast_fun_migrators.move package_version.move package_admin.move; do
     [[ -f "$SOURCE_DIR/$required" ]] || \
@@ -1151,41 +1168,51 @@ if rg -U -n '^public fun [^(]+\([^)]*\): (&)?(Publisher|UpgradeCap)' \
     "$SOURCE_DIR/package_admin.move"; then
     fail "no custody path may release the sealed Publisher or UpgradeCap"
 fi
-CUSTODY_ROLE_ASSERTIONS="$(rg -c 'admin_witness\.assert_role\(blast_fun_domain::package_admin_role\(\)\);' \
+CUSTODY_ROLE_GATES="$(rg -c '^    _: &AdminWitness<UpgradeAdmin>,$' \
     "$SOURCE_DIR/package_admin.move" || true)"
-[[ "${CUSTODY_ROLE_ASSERTIONS:-0}" -eq 2 ]] || \
-    fail "every governed custody transition must assert Launchpad's exported role"
-# Upgrade authorization checks the current generation before the role, so a retired generation
-# cannot authorize, and the finalizer proves the exact next generation before the role.
+[[ "${CUSTODY_ROLE_GATES:-0}" -eq 2 ]] || \
+    fail "every governed custody transition must require Launchpad's upgrade-admin role"
+# Upgrade authorization checks the current generation first, so a retired generation cannot
+# authorize, and the finalizer proves the exact next generation first.
 [[ "$(move_facts "$SOURCE_DIR/package_admin.move" \
     | awk -F'\t' '$1 == "FN" && $2 == "authorize_upgrade" { print $10 }')" \
-    == 'package_version.assert_current(); admin_witness.assert_role(blast_fun_domain::package_admin_role());'* ]] || \
-    fail "authorize_upgrade must check the current generation before the role"
+    == 'package_version.assert_current();'* ]] || \
+    fail "authorize_upgrade must check the current generation first"
 [[ "$(move_facts "$SOURCE_DIR/package_admin.move" \
     | awk -F'\t' '$1 == "FN" && $2 == "commit_upgrade_and_advance" { print $10 }')" \
-    == 'package_version.assert_next(); admin_witness.assert_role(blast_fun_domain::package_admin_role());'* ]] || \
-    fail "commit_upgrade_and_advance must check the next generation before the role"
-# Every administrator action asserts exactly one role, the one pinned here, before any other check
-# but the generation, so no role reaches another role's action (ADR 0094). A new function that
-# takes the domain's witness fails until it is mapped deliberately.
-ADMIN_ROLES_READER="$(dirname "$MOVE_FACTS_READER")/admin_roles.awk"
+    == 'package_version.assert_next();'* ]] || \
+    fail "commit_upgrade_and_advance must check the next generation first"
+# Every administrator action takes exactly one role, the one pinned here, so no role reaches
+# another role's action. A new function that takes a witness fails until it is mapped
+# deliberately. The buybacks hand their witness to `take_buyback_quote`, whose bodies are pinned
+# above.
 admin_roles="$(for source in "$SOURCE_DIR"/*.move; do
-    move_facts "$source" | awk -F'\t' -v module="$(basename "$source" .move)" -f "$ADMIN_ROLES_READER"
+    move_facts "$source" | awk -F'\t' -v module="$(basename "$source" .move)" '
+        $1 == "FN" && $6 == 0 && index($9, "AdminWitness<") > 0 {
+            rest = $9
+            roles = ""
+            while (match(rest, /AdminWitness<[^>]*>/)) {
+                roles = roles (roles == "" ? "" : ",") substr(rest, RSTART + 13, RLENGTH - 14)
+                rest = substr(rest, RSTART + RLENGTH)
+            }
+            print module ":" $2 ":" roles
+        }
+    '
 done | LC_ALL=C sort)"
 require_text "$admin_roles" \
-    "every administrator action must assert exactly its pinned role right after the generation check" <<'ROLES'
-blast_holder_rewards:publish_round:rewards_admin_role
-bluefin:buyback_and_burn:via take_buyback_quote
-cetus:buyback_and_burn_meme_a:via take_buyback_quote
-cetus:buyback_and_burn_meme_b:via take_buyback_quote
-lp_fee_policy:clear_coin_shares:fee_admin_role
-lp_fee_policy:set_coin_shares:fee_admin_role
-lp_fee_policy:set_default_shares:fee_admin_role
-lp_fee_policy:set_protocol_destination:treasury_admin_role
-package_admin:authorize_upgrade:package_admin_role
-package_admin:commit_upgrade_and_advance:package_admin_role
-vault:claim_protocol_fees:treasury_admin_role
-vault:take_buyback_quote:buyback_admin_role
+    "every administrator action must take exactly its pinned role witness" <<'ROLES'
+blast_holder_rewards:publish_round:RewardsAdmin
+bluefin:buyback_and_burn:BuybackAdmin
+cetus:buyback_and_burn_meme_a:BuybackAdmin
+cetus:buyback_and_burn_meme_b:BuybackAdmin
+lp_fee_policy:clear_coin_shares:FeeAdmin
+lp_fee_policy:set_coin_shares:FeeAdmin
+lp_fee_policy:set_default_shares:FeeAdmin
+lp_fee_policy:set_protocol_destination:TreasuryAdmin
+package_admin:authorize_upgrade:UpgradeAdmin
+package_admin:commit_upgrade_and_advance:UpgradeAdmin
+vault:claim_protocol_fees:TreasuryAdmin
+vault:take_buyback_quote:BuybackAdmin
 ROLES
 # Venues gate callers by package version and launchpad cutovers advance its version, so this
 # package must always be able to relink (ADR 0088): nothing may destroy its UpgradeCap. Every

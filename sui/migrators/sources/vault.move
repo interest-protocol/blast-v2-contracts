@@ -68,11 +68,10 @@ public struct LpVault<phantom Meme, phantom Quote> has key {
 public fun claim_protocol_fees<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
+    _: &AdminWitness<TreasuryAdmin>,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
     migrators_version.assert_current();
-    admin_witness.assert_role(blast_fun_domain::treasury_admin_role());
     assert!(
         self.protocol_meme_residual.value() > 0 || self.protocol_quote_residual.value() > 0,
         ENothingClaimable,
@@ -267,9 +266,8 @@ public(package) fun split_fees<Meme, Quote>(
 /// Takes every Quote waiting to buy Meme back, under a live buyback admin.
 public(package) fun take_buyback_quote<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
+    _: &AdminWitness<BuybackAdmin>,
 ): Balance<Quote> {
-    admin_witness.assert_role(blast_fun_domain::buyback_admin_role());
     assert!(self.burn_quote.value() > 0, ENoBuybackQuote);
 
     self.burn_quote.withdraw_all()
@@ -541,11 +539,11 @@ public fun burn_quote_for_testing<Meme, Quote>(self: &LpVault<Meme, Quote>): u64
 
 // === Imports ===
 
-use blast_admin::acl::AdminWitness;
+use blast_admin::blast_acl::AdminWitness;
 
 use blast_fun::{
     allocation::FeeSplit,
-    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
+    blast_fun_domain::{BuybackAdmin, TreasuryAdmin},
     creator_authority::CurveFeeCap,
     launch::Launch,
 };

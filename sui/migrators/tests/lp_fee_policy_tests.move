@@ -12,10 +12,6 @@ const PUBLISHER: address = @0xA11CE;
 
 const PROTOCOL_ADMIN: address = @0xAD;
 
-const MAX_ADMINS: u64 = 16;
-
-const ROOT_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
-
 // === Test-Only Types ===
 
 public struct MemeA has drop {}
@@ -28,12 +24,9 @@ public struct InitFixture {
     policy: LpFeePolicy,
 }
 
-/// Live policy administration through the production ACL sign-in seam.
+/// Live policy administration under each setter's own role.
 public struct PolicyFixture {
     scenario: Scenario,
-    authority: Authority<BLAST_FUN_DOMAIN>,
-    root: SuperAdminCap<BLAST_FUN_DOMAIN>,
-    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     migrators_version: MigratorsVersion,
     policy: LpFeePolicy,
 }
@@ -82,7 +75,7 @@ fun admin_redirects_the_protocol_destination_and_emits_old_and_new() {
     let mut fixture = start_policy();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin = f.sign_in();
+        let admin = treasury_admin();
         f.policy.set_protocol_destination(&f.migrators_version, &admin, @0xCAFE);
 
         assert_eq!(f.policy.protocol_destination(), @0xCAFE);
@@ -106,7 +99,7 @@ fun unchanged_protocol_destination_is_rejected() {
     let mut fixture = start_policy();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin = f.sign_in();
+        let admin = treasury_admin();
         f.policy.set_protocol_destination(&f.migrators_version, &admin, PUBLISHER);
     });
 
@@ -122,7 +115,7 @@ fun zero_protocol_destination_is_rejected() {
     let mut fixture = start_policy();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin = f.sign_in();
+        let admin = treasury_admin();
         f.policy.set_protocol_destination(&f.migrators_version, &admin, @0x0);
     });
 
@@ -134,7 +127,7 @@ fun active_admin_changes_independent_defaults_and_all_event_fields() {
     let mut fixture = start_policy();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin = f.sign_in();
+        let admin = fee_admin();
         f.policy.set_default_shares(&f.migrators_version, &admin, bps::new(2_000), bps::new(7_000));
 
         f.assert_shares<MemeA>(2_000, 7_000);
@@ -159,7 +152,7 @@ fun changing_either_asset_alone_is_a_real_default_update() {
     let mut fixture = start_policy();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin = f.sign_in();
+        let admin = fee_admin();
         f.policy.set_default_shares(&f.migrators_version, &admin, bps::new(1), bps::new(0));
         f.policy.set_default_shares(&f.migrators_version, &admin, bps::new(1), bps::new(2));
 
@@ -192,7 +185,7 @@ fun coin_pair_create_update_clear_readd_preserves_original_type_keys_and_event_h
     let mut fixture = start_policy();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin = f.sign_in();
+        let admin = fee_admin();
         let version = &f.migrators_version;
         f.policy.set_default_shares(version, &admin, bps::new(11), bps::new(22));
         f.policy.set_coin_shares<MemeA>(version, &admin, bps::new(33), bps::new(44));
@@ -284,7 +277,7 @@ fun a_coin_pair_equal_to_the_defaults_is_real_and_skips_later_default_changes() 
     let mut fixture = start_policy();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin = f.sign_in();
+        let admin = fee_admin();
         let version = &f.migrators_version;
         f.policy.set_coin_shares<MemeA>(version, &admin, bps::new(0), bps::new(0));
         f.policy.set_default_shares(version, &admin, bps::new(1_234), bps::new(9_876));
@@ -311,7 +304,7 @@ fun default_shares_read_the_default_pair_whatever_coin_pairs_are_set() {
     let mut fixture = start_policy();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin = f.sign_in();
+        let admin = fee_admin();
         f.assert_default_shares(0, 0);
 
         f.policy.set_default_shares(&f.migrators_version, &admin, bps::new(1_234), bps::new(9_876));
@@ -334,7 +327,7 @@ fun a_coin_pair_and_every_default_change_apply_to_the_very_next_read() {
     let mut fixture = start_policy();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin = f.sign_in();
+        let admin = fee_admin();
         let version = &f.migrators_version;
         f.policy.set_coin_shares<MemeA>(version, &admin, bps::new(10_000), bps::new(1));
         f.assert_shares<MemeA>(10_000, 1);
@@ -365,7 +358,7 @@ fun both_assets_accept_zero_and_full_share_independently() {
     let mut fixture = start_policy();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin = f.sign_in();
+        let admin = fee_admin();
         let version = &f.migrators_version;
         f.policy.set_default_shares(version, &admin, bps::new(10_000), bps::new(0));
         f.assert_shares<MemeA>(10_000, 0);
@@ -398,7 +391,7 @@ fun unchanged_default_pair_is_rejected() {
     let mut fixture = start_policy();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin = f.sign_in();
+        let admin = fee_admin();
         f.policy.set_default_shares(&f.migrators_version, &admin, bps::new(0), bps::new(0));
     });
 
@@ -414,7 +407,7 @@ fun unchanged_coin_pair_is_rejected() {
     let mut fixture = start_policy();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin = f.sign_in();
+        let admin = fee_admin();
         let version = &f.migrators_version;
         f.policy.set_coin_shares<MemeA>(version, &admin, bps::new(23), bps::new(45));
         f.policy.set_coin_shares<MemeA>(version, &admin, bps::new(23), bps::new(45));
@@ -429,7 +422,7 @@ fun clearing_an_absent_coin_pair_is_rejected() {
     let mut fixture = start_policy();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin = f.sign_in();
+        let admin = fee_admin();
         f.policy.clear_coin_shares<MemeA>(&f.migrators_version, &admin);
     });
 
@@ -445,7 +438,7 @@ fun stale_version_precedes_destination_noop() {
     let mut fixture = start_policy();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin = f.sign_in();
+        let admin = treasury_admin();
         f.migrators_version.set_for_testing(2);
         f.policy.set_protocol_destination(&f.migrators_version, &admin, PUBLISHER);
     });
@@ -462,7 +455,7 @@ fun stale_version_precedes_default_noop() {
     let mut fixture = start_policy();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin = f.sign_in();
+        let admin = fee_admin();
         f.migrators_version.set_for_testing(2);
         f.policy.set_default_shares(&f.migrators_version, &admin, bps::new(0), bps::new(0));
     });
@@ -479,7 +472,7 @@ fun stale_version_precedes_coin_noop() {
     let mut fixture = start_policy();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin = f.sign_in();
+        let admin = fee_admin();
         f.policy.set_coin_shares<MemeA>(&f.migrators_version, &admin, bps::new(0), bps::new(0));
         f.migrators_version.set_for_testing(2);
         f.policy.set_coin_shares<MemeA>(&f.migrators_version, &admin, bps::new(0), bps::new(0));
@@ -497,70 +490,8 @@ fun stale_version_precedes_missing_coin_clear() {
     let mut fixture = start_policy();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin = f.sign_in();
+        let admin = fee_admin();
         f.migrators_version.set_for_testing(2);
-        f.policy.clear_coin_shares<MemeA>(&f.migrators_version, &admin);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(abort_code = blast_admin::errors::EInvalidAdminCap, location = blast_admin::acl)]
-fun revoked_admin_cannot_obtain_authority_to_mutate_policy() {
-    let mut fixture = start_policy();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        f.authority.revoke_admin(&f.root, f.admin_cap.admin_cap_id_for_testing());
-        let admin = f.sign_in();
-        f.policy.set_default_shares(&f.migrators_version, &admin, bps::new(1), bps::new(2));
-    });
-
-    fixture.end();
-}
-
-#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
-fun redirecting_the_protocol_destination_requires_the_treasury_admin_role() {
-    let mut fixture = start_policy_with_roles(blast_fun_domain::treasury_admin_role().bitwise_not());
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin = f.sign_in();
-        f.policy.set_protocol_destination(&f.migrators_version, &admin, @0xCAFE);
-    });
-
-    fixture.end();
-}
-
-#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
-fun changing_the_default_shares_requires_the_fee_admin_role() {
-    let mut fixture = start_policy_with_roles(blast_fun_domain::fee_admin_role().bitwise_not());
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin = f.sign_in();
-        f.policy.set_default_shares(&f.migrators_version, &admin, bps::new(2_000), bps::new(7_000));
-    });
-
-    fixture.end();
-}
-
-#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
-fun setting_a_coin_pair_requires_the_fee_admin_role() {
-    let mut fixture = start_policy_with_roles(blast_fun_domain::fee_admin_role().bitwise_not());
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin = f.sign_in();
-        f.policy.set_coin_shares<MemeA>(&f.migrators_version, &admin, bps::new(2_000), bps::new(7_000));
-    });
-
-    fixture.end();
-}
-
-#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
-fun clearing_a_coin_pair_requires_the_fee_admin_role() {
-    let mut fixture = start_policy_with_roles(blast_fun_domain::fee_admin_role().bitwise_not());
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin = f.sign_in();
         f.policy.clear_coin_shares<MemeA>(&f.migrators_version, &admin);
     });
 
@@ -598,32 +529,21 @@ fun start_init(): InitFixture {
     InitFixture { scenario, policy }
 }
 
-/// A fee and treasury administrator over a fresh policy.
+/// A fresh policy.
 fun start_policy(): PolicyFixture {
-    start_policy_with_roles(
-        blast_fun_domain::fee_admin_role() | blast_fun_domain::treasury_admin_role(),
-    )
-}
-
-fun start_policy_with_roles(roles: u64): PolicyFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let migrators_version = migrators_version::new_for_testing(scenario.ctx());
-    let (root, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(
-        MAX_ADMINS,
-        ROOT_TRANSFER_DELAY_MS,
-        scenario.ctx(),
-    );
-    authority.grant_admin(&root, roles, PROTOCOL_ADMIN, scenario.ctx());
     let policy = lp_fee_policy::new_for_testing(scenario.ctx());
 
-    scenario.next_tx(PROTOCOL_ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
-
-    PolicyFixture { scenario, authority, root, admin_cap, migrators_version, policy }
+    PolicyFixture { scenario, migrators_version, policy }
 }
 
-fun sign_in(self: &PolicyFixture): AdminWitness<BLAST_FUN_DOMAIN> {
-    self.authority.sign_in(&self.admin_cap)
+fun treasury_admin(): AdminWitness<TreasuryAdmin> {
+    blast_acl::witness_for_testing()
+}
+
+fun fee_admin(): AdminWitness<FeeAdmin> {
+    blast_acl::witness_for_testing()
 }
 
 fun policy_changes(): vector<blast_events::LpFeePolicyChanged> {
@@ -677,9 +597,9 @@ fun policy_end(self: PolicyFixture) {
 
 // === Imports ===
 
-use blast_admin::acl::{Self, Authority, SuperAdminCap, AdminCap, AdminWitness};
+use blast_admin::blast_acl::{Self, AdminWitness};
 
-use blast_fun::{blast_fun_domain::{Self, BLAST_FUN_DOMAIN}, bps};
+use blast_fun::{blast_fun_domain::{FeeAdmin, TreasuryAdmin}, bps};
 
 use blast_fun_migrators::{
     blast_events,

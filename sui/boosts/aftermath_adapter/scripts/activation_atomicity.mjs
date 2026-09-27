@@ -39,7 +39,7 @@ const PHASES = [
 // Tracked roles: every activation input, then every object the transaction
 // creates, wraps or deletes. Input roles name their builderInput object.
 const INPUT_ROLE_OBJECT = {
-    authority: 'authority',
+    acl: 'acl',
     admin_cap: 'adminCap',
     protocol: 'protocol',
     coin_registry: 'coinRegistry',
@@ -52,7 +52,7 @@ const INPUT_ROLE_OBJECT = {
     clock: 'clock',
 };
 const ROLE_POINTERS = {
-    authority: {},
+    acl: {},
     admin_cap: {},
     protocol: {},
     coin_registry: {},
@@ -93,7 +93,7 @@ const SELECTOR_VALUE_KIND = {
 const REQUIRED_TRACKED_ROLES = Object.keys(ROLE_SELECTORS);
 // What the successful activation does to each tracked object; null is untouched.
 const SUCCESS_EFFECT_BY_ROLE = {
-    authority: null,
+    acl: null,
     admin_cap: null,
     protocol: null,
     coin_registry: 'mutated',
@@ -491,11 +491,10 @@ function trackedObject(runConfig, role, path) {
 function assertTrackedTypeBindings(runConfig, path) {
     const input = runConfig.builderInput;
     const adapter = runConfig.packageId;
-    const domain = `${input.corePackage.toLowerCase()}::blast_boosts_core::BLAST_BOOSTS_CORE`;
     const boostType = `${adapter}::blast_boost::BlastBoost<${input.productType}>`;
     const exact = {
-        authority: `${input.adminPackage.toLowerCase()}::acl::Authority<${domain}>`,
-        admin_cap: `${input.adminPackage.toLowerCase()}::acl::AdminCap<${domain}>`,
+        acl: `${input.adminPackage.toLowerCase()}::blast_acl::ACL`,
+        admin_cap: `${input.adminPackage.toLowerCase()}::blast_acl::AdminCap`,
         protocol: `${adapter}::protocol::Protocol`,
         coin_registry: '0x2::coin_registry::CoinRegistry',
         collateral_currency: `0x2::coin_registry::Currency<${input.collateralType}>`,

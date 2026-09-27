@@ -26,15 +26,12 @@ public struct WrapFixture {
 public struct CustodyFixture {
     scenario: Scenario,
     package_admin: package_admin::PackageAdmin,
-    created: events::UpgradeCustodyCreated<BLAST_FUN>,
+    created: blast_admin_events::UpgradeCustodyCreated<BLAST_FUN>,
 }
 
-/// Admin-authorized upgrade and policy operations through the ACL sign-in seam.
+/// Upgrade-admin-authorized upgrade and policy operations.
 public struct UpgradeFixture {
     scenario: Scenario,
-    super_admin_cap: SuperAdminCap<BLAST_FUN_DOMAIN>,
-    authority: Authority<BLAST_FUN_DOMAIN>,
-    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     package_admin: package_admin::PackageAdmin,
     package_version: package_version::PackageVersion,
 }
@@ -166,51 +163,6 @@ fun the_version_container_rejects_generation_overflow() {
 
 #[test]
 #[expected_failure(
-    abort_code = errors::EAdminRoleNotGranted,
-    location = blast_admin::acl,
-)]
-/// A live zero-role administrator still cannot authorize a package upgrade.
-fun zero_role_admin_cannot_authorize_an_upgrade() {
-    let mut fixture = start_without_package_admin_role();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        let ticket = f.package_admin.authorize_upgrade(
-            &f.package_version,
-            &admin_witness,
-            package_digest(),
-        );
-
-        destroy(ticket);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EAdminRoleNotGranted,
-    location = blast_admin::acl,
-)]
-/// The upgrade finalizer checks the package-admin role before touching the receipt.
-fun zero_role_admin_cannot_commit_an_upgrade() {
-    let mut fixture = start_without_package_admin_role();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-        let (receipt, foreign_cap) = f.foreign_receipt();
-
-        f.package_admin.commit_upgrade_and_advance(&mut f.package_version, &admin_witness, receipt);
-
-        destroy(foreign_cap);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
     abort_code = errors::EOperationalVersionMismatch,
     location = blast_admin::operational_version,
 )]
@@ -219,53 +171,13 @@ fun commit_rejects_a_skipped_generation_before_the_native_cap_is_touched() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = upgrade_admin();
         let (receipt, foreign_cap) = f.foreign_receipt();
         f.package_version.set_for_testing(5);
 
         f.package_admin.commit_upgrade_and_advance(&mut f.package_version, &admin_witness, receipt);
 
         destroy(foreign_cap);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EOperationalVersionMismatch,
-    location = blast_admin::operational_version,
-)]
-/// The upgrade finalizer checks the generation before the package-admin role.
-fun commit_checks_the_generation_before_the_role() {
-    let mut fixture = start_without_package_admin_role();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-        let (receipt, foreign_cap) = f.foreign_receipt();
-        f.package_version.set_for_testing(5);
-
-        f.package_admin.commit_upgrade_and_advance(&mut f.package_version, &admin_witness, receipt);
-
-        destroy(foreign_cap);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EAdminRoleNotGranted,
-    location = blast_admin::acl,
-)]
-/// Only the exported package-admin role can permanently destroy native upgrade authority.
-fun zero_role_admin_cannot_make_the_package_immutable() {
-    let mut fixture = start_without_package_admin_role();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        f.package_admin.make_immutable(&f.package_version, &admin_witness);
     });
 
     fixture.end();
@@ -277,12 +189,14 @@ fun package_admin_can_permanently_destroy_native_upgrade_authority() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = upgrade_admin();
         let upgrade_cap_id = f.package_admin.upgrade_cap_id_for_testing();
 
         f.package_admin.make_immutable(&f.package_version, &admin_witness);
 
-        let destroyed = events::collect_one<events::UpgradeCapDestroyed<BLAST_FUN>>(0);
+        let destroyed = blast_admin_events::collect_one<
+            blast_admin_events::UpgradeCapDestroyed<BLAST_FUN>,
+        >(0);
         let (custodian_id, emitted_upgrade_cap_id, _, final_native_version, final_policy) =
             destroyed.upgrade_cap_destroyed_fields();
         assert_eq!(custodian_id, f.package_admin.id_for_testing());
@@ -305,9 +219,11 @@ fun authorization_is_rejected_after_immutability() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = upgrade_admin();
         f.package_admin.make_immutable(&f.package_version, &admin_witness);
-        let _ = events::collect_one<events::UpgradeCapDestroyed<BLAST_FUN>>(0);
+        let _ = blast_admin_events::collect_one<
+            blast_admin_events::UpgradeCapDestroyed<BLAST_FUN>,
+        >(0);
 
         let ticket = f.package_admin.authorize_upgrade(
             &f.package_version,
@@ -330,9 +246,11 @@ fun repeated_immutability_is_rejected() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = upgrade_admin();
         f.package_admin.make_immutable(&f.package_version, &admin_witness);
-        let _ = events::collect_one<events::UpgradeCapDestroyed<BLAST_FUN>>(0);
+        let _ = blast_admin_events::collect_one<
+            blast_admin_events::UpgradeCapDestroyed<BLAST_FUN>,
+        >(0);
 
         f.package_admin.make_immutable(&f.package_version, &admin_witness);
     });
@@ -349,7 +267,7 @@ fun authorization_rejects_non_digest_length() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = upgrade_admin();
 
         let ticket = f.package_admin.authorize_upgrade(
             &f.package_version,
@@ -368,44 +286,17 @@ fun authorization_rejects_non_digest_length() {
     abort_code = errors::EOperationalVersionMismatch,
     location = blast_admin::operational_version,
 )]
-fun stale_generation_rejects_package_admin_before_role_and_digest_validation() {
-    let mut fixture = start_without_package_admin_role();
+fun stale_generation_rejects_package_admin_before_digest_validation() {
+    let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = upgrade_admin();
         f.package_version.set_for_testing(2);
 
         let ticket = f.package_admin.authorize_upgrade(
             &f.package_version,
             &admin_witness,
             vector[],
-        );
-
-        destroy(ticket);
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EInvalidAdminCap,
-    location = blast_admin::acl,
-)]
-fun revoked_admin_cannot_reach_upgrade_authorization() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PUBLISHER, |f| {
-        f.authority.revoke_admin(&f.super_admin_cap, object::id(&f.admin_cap));
-    });
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        let ticket = f.package_admin.authorize_upgrade(
-            &f.package_version,
-            &admin_witness,
-            package_digest(),
         );
 
         destroy(ticket);
@@ -471,7 +362,9 @@ fun start_custody(): CustodyFixture {
         package::test_publish(PACKAGE_ID.to_id(), scenario.ctx()),
         scenario.ctx(),
     );
-    let created = events::collect_one<events::UpgradeCustodyCreated<BLAST_FUN>>(0);
+    let created = blast_admin_events::collect_one<
+        blast_admin_events::UpgradeCustodyCreated<BLAST_FUN>,
+    >(0);
 
     scenario.next_tx(PUBLISHER);
     let package_admin = scenario.take_shared<package_admin::PackageAdmin>();
@@ -480,36 +373,15 @@ fun start_custody(): CustodyFixture {
 }
 
 fun start(): UpgradeFixture {
-    start_with_roles(blast_fun_domain::package_admin_role())
-}
-
-/// A live administrator that holds no role at all, for role-gate rejections.
-fun start_without_package_admin_role(): UpgradeFixture {
-    start_with_roles(0)
-}
-
-fun start_with_roles(roles: u64): UpgradeFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
-    let (super_admin_cap, mut authority) = domain_fixture::new_authority(scenario.ctx());
-    authority.grant_admin(&super_admin_cap, roles, PROTOCOL_ADMIN, scenario.ctx());
     let package_admin = package_admin::new_for_testing(scenario.ctx());
 
-    scenario.next_tx(PROTOCOL_ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
-
-    UpgradeFixture {
-        scenario,
-        super_admin_cap,
-        authority,
-        admin_cap,
-        package_admin,
-        package_version,
-    }
+    UpgradeFixture { scenario, package_admin, package_version }
 }
 
-fun sign_in(self: &UpgradeFixture): AdminWitness<BLAST_FUN_DOMAIN> {
-    self.authority.sign_in(&self.admin_cap)
+fun upgrade_admin(): AdminWitness<UpgradeAdmin> {
+    blast_acl::witness_for_testing()
 }
 
 fun wrap_end(self: WrapFixture) {
@@ -540,13 +412,11 @@ fun foreign_receipt(self: &mut UpgradeFixture): (UpgradeReceipt, UpgradeCap) {
 
 // === Imports ===
 
-use blast_admin::{acl::{Authority, SuperAdminCap, AdminCap, AdminWitness}, errors, events};
+use blast_admin::{blast_acl::{Self, AdminWitness}, blast_admin_events, errors};
 
 use blast_fun::{
     blast_fun::{Self as marker, BLAST_FUN},
-    domain_fixture,
-    blast_fun_domain,
-    blast_fun_domain::BLAST_FUN_DOMAIN,
+    blast_fun_domain::UpgradeAdmin,
     package_admin,
     package_version,
 };

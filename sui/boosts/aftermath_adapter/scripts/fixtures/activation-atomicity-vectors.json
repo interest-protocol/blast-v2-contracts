@@ -5,17 +5,17 @@
   "baseline": {
     "objects": [
       {
-        "role": "authority",
+        "role": "acl",
         "exists": true,
         "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
         "version": "7",
-        "digest": "Baseline-authority",
+        "digest": "Baseline-acl",
         "owner": {
           "Shared": {
             "initial_shared_version": "1"
           }
         },
-        "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::Authority<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+        "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::ACL",
         "content": {
           "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
         },
@@ -30,7 +30,7 @@
         "owner": {
           "AddressOwner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         },
-        "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+        "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap",
         "content": {
           "id": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2"
         },
@@ -245,7 +245,7 @@
       "productType": "0x1111111111111111111111111111111111111111111111111111111111111111::fixture::SUI_BULL_2X",
       "collateralType": "0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC",
       "objects": {
-        "authority": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+        "acl": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
         "adminCap": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
         "protocol": "0x0202020202020202020202020202020202020202020202020202020202020202",
         "coinRegistry": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
@@ -295,10 +295,10 @@
     },
     "trackedObjects": [
       {
-        "role": "authority",
+        "role": "acl",
         "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
         "allowAbsent": false,
-        "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::Authority<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+        "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::ACL",
         "selectors": {},
         "binding": {
           "kind": "argument"
@@ -308,7 +308,7 @@
         "role": "admin_cap",
         "id": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
         "allowAbsent": false,
-        "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+        "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap",
         "selectors": {},
         "binding": {
           "kind": "argument"
@@ -501,7 +501,7 @@
       }
     ],
     "expectedFinal": {
-      "authority": {},
+      "acl": {},
       "admin_cap": {},
       "protocol": {},
       "coin_registry": {},
@@ -780,17 +780,17 @@
     "postState": {
       "objects": [
         {
-          "role": "authority",
+          "role": "acl",
           "exists": true,
           "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
           "version": "7",
-          "digest": "Baseline-authority",
+          "digest": "Baseline-acl",
           "owner": {
             "Shared": {
               "initial_shared_version": "1"
             }
           },
-          "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::Authority<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+          "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::ACL",
           "content": {
             "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
           },
@@ -805,7 +805,7 @@
           "owner": {
             "AddressOwner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
           },
-          "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+          "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap",
           "content": {
             "id": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2"
           },
@@ -1135,7 +1135,7 @@
           "productType": "0x7171717171717171717171717171717171717171717171717171717171717171::fixture::SUI_BULL_2X",
           "collateralType": "0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC",
           "objects": {
-            "authority": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+            "acl": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
             "adminCap": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
             "protocol": "0x8181818181818181818181818181818181818181818181818181818181818181",
             "coinRegistry": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
@@ -1185,10 +1185,10 @@
         },
         "trackedObjects": [
           {
-            "role": "authority",
+            "role": "acl",
             "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
             "allowAbsent": false,
-            "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::Authority<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+            "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::ACL",
             "selectors": {},
             "binding": {
               "kind": "argument"
@@ -1198,7 +1198,7 @@
             "role": "admin_cap",
             "id": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
             "allowAbsent": false,
-            "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+            "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap",
             "selectors": {},
             "binding": {
               "kind": "argument"
@@ -1399,17 +1399,17 @@
         "preState": {
           "objects": [
             {
-              "role": "authority",
+              "role": "acl",
               "exists": true,
               "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
               "version": "7",
-              "digest": "Baseline-authority",
+              "digest": "Baseline-acl",
               "owner": {
                 "Shared": {
                   "initial_shared_version": "1"
                 }
               },
-              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::Authority<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::ACL",
               "content": {
                 "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
               },
@@ -1424,7 +1424,7 @@
               "owner": {
                 "AddressOwner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
               },
-              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap",
               "content": {
                 "id": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2"
               },
@@ -1631,17 +1631,17 @@
         "postState": {
           "objects": [
             {
-              "role": "authority",
+              "role": "acl",
               "exists": true,
               "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
               "version": "7",
-              "digest": "Baseline-authority",
+              "digest": "Baseline-acl",
               "owner": {
                 "Shared": {
                   "initial_shared_version": "1"
                 }
               },
-              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::Authority<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::ACL",
               "content": {
                 "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
               },
@@ -1656,7 +1656,7 @@
               "owner": {
                 "AddressOwner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
               },
-              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap",
               "content": {
                 "id": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2"
               },
@@ -1882,7 +1882,7 @@
           "productType": "0x7272727272727272727272727272727272727272727272727272727272727272::fixture::SUI_BULL_2X",
           "collateralType": "0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC",
           "objects": {
-            "authority": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+            "acl": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
             "adminCap": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
             "protocol": "0x8282828282828282828282828282828282828282828282828282828282828282",
             "coinRegistry": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
@@ -1932,10 +1932,10 @@
         },
         "trackedObjects": [
           {
-            "role": "authority",
+            "role": "acl",
             "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
             "allowAbsent": false,
-            "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::Authority<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+            "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::ACL",
             "selectors": {},
             "binding": {
               "kind": "argument"
@@ -1945,7 +1945,7 @@
             "role": "admin_cap",
             "id": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
             "allowAbsent": false,
-            "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+            "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap",
             "selectors": {},
             "binding": {
               "kind": "argument"
@@ -2146,17 +2146,17 @@
         "preState": {
           "objects": [
             {
-              "role": "authority",
+              "role": "acl",
               "exists": true,
               "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
               "version": "7",
-              "digest": "Baseline-authority",
+              "digest": "Baseline-acl",
               "owner": {
                 "Shared": {
                   "initial_shared_version": "1"
                 }
               },
-              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::Authority<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::ACL",
               "content": {
                 "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
               },
@@ -2171,7 +2171,7 @@
               "owner": {
                 "AddressOwner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
               },
-              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap",
               "content": {
                 "id": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2"
               },
@@ -2378,17 +2378,17 @@
         "postState": {
           "objects": [
             {
-              "role": "authority",
+              "role": "acl",
               "exists": true,
               "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
               "version": "7",
-              "digest": "Baseline-authority",
+              "digest": "Baseline-acl",
               "owner": {
                 "Shared": {
                   "initial_shared_version": "1"
                 }
               },
-              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::Authority<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::ACL",
               "content": {
                 "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
               },
@@ -2403,7 +2403,7 @@
               "owner": {
                 "AddressOwner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
               },
-              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap",
               "content": {
                 "id": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2"
               },
@@ -2629,7 +2629,7 @@
           "productType": "0x7373737373737373737373737373737373737373737373737373737373737373::fixture::SUI_BULL_2X",
           "collateralType": "0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC",
           "objects": {
-            "authority": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+            "acl": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
             "adminCap": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
             "protocol": "0x8383838383838383838383838383838383838383838383838383838383838383",
             "coinRegistry": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
@@ -2679,10 +2679,10 @@
         },
         "trackedObjects": [
           {
-            "role": "authority",
+            "role": "acl",
             "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
             "allowAbsent": false,
-            "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::Authority<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+            "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::ACL",
             "selectors": {},
             "binding": {
               "kind": "argument"
@@ -2692,7 +2692,7 @@
             "role": "admin_cap",
             "id": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
             "allowAbsent": false,
-            "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+            "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap",
             "selectors": {},
             "binding": {
               "kind": "argument"
@@ -2893,17 +2893,17 @@
         "preState": {
           "objects": [
             {
-              "role": "authority",
+              "role": "acl",
               "exists": true,
               "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
               "version": "7",
-              "digest": "Baseline-authority",
+              "digest": "Baseline-acl",
               "owner": {
                 "Shared": {
                   "initial_shared_version": "1"
                 }
               },
-              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::Authority<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::ACL",
               "content": {
                 "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
               },
@@ -2918,7 +2918,7 @@
               "owner": {
                 "AddressOwner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
               },
-              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap",
               "content": {
                 "id": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2"
               },
@@ -3125,17 +3125,17 @@
         "postState": {
           "objects": [
             {
-              "role": "authority",
+              "role": "acl",
               "exists": true,
               "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
               "version": "7",
-              "digest": "Baseline-authority",
+              "digest": "Baseline-acl",
               "owner": {
                 "Shared": {
                   "initial_shared_version": "1"
                 }
               },
-              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::Authority<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::ACL",
               "content": {
                 "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
               },
@@ -3150,7 +3150,7 @@
               "owner": {
                 "AddressOwner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
               },
-              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap",
               "content": {
                 "id": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2"
               },
@@ -3376,7 +3376,7 @@
           "productType": "0x7474747474747474747474747474747474747474747474747474747474747474::fixture::SUI_BULL_2X",
           "collateralType": "0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC",
           "objects": {
-            "authority": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+            "acl": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
             "adminCap": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
             "protocol": "0x8484848484848484848484848484848484848484848484848484848484848484",
             "coinRegistry": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
@@ -3426,10 +3426,10 @@
         },
         "trackedObjects": [
           {
-            "role": "authority",
+            "role": "acl",
             "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
             "allowAbsent": false,
-            "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::Authority<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+            "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::ACL",
             "selectors": {},
             "binding": {
               "kind": "argument"
@@ -3439,7 +3439,7 @@
             "role": "admin_cap",
             "id": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
             "allowAbsent": false,
-            "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+            "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap",
             "selectors": {},
             "binding": {
               "kind": "argument"
@@ -3640,17 +3640,17 @@
         "preState": {
           "objects": [
             {
-              "role": "authority",
+              "role": "acl",
               "exists": true,
               "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
               "version": "7",
-              "digest": "Baseline-authority",
+              "digest": "Baseline-acl",
               "owner": {
                 "Shared": {
                   "initial_shared_version": "1"
                 }
               },
-              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::Authority<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::ACL",
               "content": {
                 "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
               },
@@ -3665,7 +3665,7 @@
               "owner": {
                 "AddressOwner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
               },
-              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap",
               "content": {
                 "id": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2"
               },
@@ -3872,17 +3872,17 @@
         "postState": {
           "objects": [
             {
-              "role": "authority",
+              "role": "acl",
               "exists": true,
               "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
               "version": "7",
-              "digest": "Baseline-authority",
+              "digest": "Baseline-acl",
               "owner": {
                 "Shared": {
                   "initial_shared_version": "1"
                 }
               },
-              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::Authority<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::ACL",
               "content": {
                 "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
               },
@@ -3897,7 +3897,7 @@
               "owner": {
                 "AddressOwner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
               },
-              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap",
               "content": {
                 "id": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2"
               },
@@ -4123,7 +4123,7 @@
           "productType": "0x7575757575757575757575757575757575757575757575757575757575757575::fixture::SUI_BULL_2X",
           "collateralType": "0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC",
           "objects": {
-            "authority": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+            "acl": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
             "adminCap": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
             "protocol": "0x8585858585858585858585858585858585858585858585858585858585858585",
             "coinRegistry": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
@@ -4173,10 +4173,10 @@
         },
         "trackedObjects": [
           {
-            "role": "authority",
+            "role": "acl",
             "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
             "allowAbsent": false,
-            "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::Authority<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+            "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::ACL",
             "selectors": {},
             "binding": {
               "kind": "argument"
@@ -4186,7 +4186,7 @@
             "role": "admin_cap",
             "id": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
             "allowAbsent": false,
-            "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+            "expectedType": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap",
             "selectors": {},
             "binding": {
               "kind": "argument"
@@ -4387,17 +4387,17 @@
         "preState": {
           "objects": [
             {
-              "role": "authority",
+              "role": "acl",
               "exists": true,
               "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
               "version": "7",
-              "digest": "Baseline-authority",
+              "digest": "Baseline-acl",
               "owner": {
                 "Shared": {
                   "initial_shared_version": "1"
                 }
               },
-              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::Authority<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::ACL",
               "content": {
                 "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
               },
@@ -4412,7 +4412,7 @@
               "owner": {
                 "AddressOwner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
               },
-              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap",
               "content": {
                 "id": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2"
               },
@@ -4619,17 +4619,17 @@
         "postState": {
           "objects": [
             {
-              "role": "authority",
+              "role": "acl",
               "exists": true,
               "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
               "version": "7",
-              "digest": "Baseline-authority",
+              "digest": "Baseline-acl",
               "owner": {
                 "Shared": {
                   "initial_shared_version": "1"
                 }
               },
-              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::Authority<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::ACL",
               "content": {
                 "id": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0"
               },
@@ -4644,7 +4644,7 @@
               "owner": {
                 "AddressOwner": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
               },
-              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+              "type": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap",
               "content": {
                 "id": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2"
               },

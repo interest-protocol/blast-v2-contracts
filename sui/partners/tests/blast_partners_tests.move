@@ -19,29 +19,10 @@ const BASIS_POINTS: u64 = 10_000;
 
 public struct Fixture {
     scenario: Scenario,
-    authority: Authority<BLAST_PARTNERS>,
-    super_admin_cap: SuperAdminCap<BLAST_PARTNERS>,
-    admin_cap: AdminCap<BLAST_PARTNERS>,
     clock: Clock,
 }
 
 // === Tests ===
-
-// --- Domain ---
-
-#[test]
-fun initialization_creates_the_partner_administration_domain() {
-    let mut scenario = test_scenario::begin(ROOT);
-    partners::init_for_testing(scenario.ctx());
-
-    scenario.next_tx(ROOT);
-    let authority = scenario.take_shared<Authority<BLAST_PARTNERS>>();
-    assert_eq!(authority.max_admins_for_testing(), 16);
-    assert_eq!(authority.root_transfer_delay_ms_for_testing(), 7 * 24 * 60 * 60 * 1_000);
-    test_scenario::return_shared(authority);
-
-    scenario.end();
-}
 
 #[test]
 /// The package is immutable, so this is the notice every partner is guaranteed.
@@ -118,17 +99,6 @@ fun registration_rejects_a_zero_recipient() {
 #[expected_failure(abort_code = partners::EInvalidRecipient, location = blast_partners::blast_partners)]
 fun a_zero_recipient_precedes_a_share_above_the_maximum() {
     let mut fixture = start();
-
-    partners::destroy_cap(fixture.register(@0x0, MAX_SHARE_BPS + 1));
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
-fun the_missing_role_precedes_an_invalid_registration() {
-    let mut fixture = start();
-    fixture.revoke_partner_admin_role();
 
     partners::destroy_cap(fixture.register(@0x0, MAX_SHARE_BPS + 1));
 
@@ -238,23 +208,6 @@ fun a_scheduled_share_one_above_the_maximum_is_refused() {
     fixture.end();
 }
 
-#[test]
-#[expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
-fun the_missing_role_precedes_an_invalid_share() {
-    let mut fixture = start();
-    let cap = fixture.register(RECIPIENT, 2_500);
-    fixture.revoke_partner_admin_role();
-
-    fixture.next_tx!(ADMIN, |fixture| {
-        let mut partner = fixture.take_partner();
-        fixture.schedule_share(&mut partner, MAX_SHARE_BPS + 1);
-        fixture.return_partner(partner);
-    });
-
-    partners::destroy_cap(cap);
-    fixture.end();
-}
-
 // --- Cap ---
 
 #[test]
@@ -346,44 +299,10 @@ fun a_superseded_reissue_never_goes_live() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
-fun reissuing_a_cap_requires_the_partner_admin_role() {
-    let mut fixture = start();
-    let old_cap = fixture.register(RECIPIENT, 2_500);
-    fixture.revoke_partner_admin_role();
-
-    fixture.next_tx!(ADMIN, |fixture| {
-        let mut partner = fixture.take_partner();
-        partners::destroy_cap(fixture.reissue_cap(&mut partner));
-        fixture.return_partner(partner);
-    });
-
-    partners::destroy_cap(old_cap);
-    fixture.end();
-}
-
-#[test]
 #[expected_failure(abort_code = partners::EUnchanged, location = blast_partners::blast_partners)]
 fun scheduling_the_pending_cap_again_is_refused() {
     let mut fixture = start();
     let cap = fixture.register(RECIPIENT, 2_500);
-
-    fixture.next_tx!(ADMIN, |fixture| {
-        let mut partner = fixture.take_partner();
-        fixture.schedule_cap(&mut partner, object::id(&cap));
-        fixture.return_partner(partner);
-    });
-
-    partners::destroy_cap(cap);
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
-fun the_missing_role_precedes_an_unchanged_cap() {
-    let mut fixture = start();
-    let cap = fixture.register(RECIPIENT, 2_500);
-    fixture.revoke_partner_admin_role();
 
     fixture.next_tx!(ADMIN, |fixture| {
         let mut partner = fixture.take_partner();
@@ -699,26 +618,15 @@ fun each_deal_is_paid_and_reported_at_its_own_share() {
 
 fun start(): Fixture {
     let mut scenario = test_scenario::begin(ROOT);
-    let (super_admin_cap, mut authority) = acl::new_for_testing<BLAST_PARTNERS>(16, delay(), scenario.ctx());
-    authority.grant_admin(
-        &super_admin_cap,
-        partners::partner_admin_role_for_testing(),
-        ADMIN,
-        scenario.ctx(),
-    );
     scenario.next_tx(ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_PARTNERS>>();
     let mut clock = clock::create_for_testing(scenario.ctx());
     clock.set_for_testing(START_MS);
 
-    Fixture { scenario, authority, super_admin_cap, admin_cap, clock }
+    Fixture { scenario, clock }
 }
 
 fun end(self: Fixture) {
-    let Fixture { scenario, authority, super_admin_cap, admin_cap, clock } = self;
-    destroy(authority);
-    destroy(super_admin_cap);
-    destroy(admin_cap);
+    let Fixture { scenario, clock } = self;
     clock.destroy_for_testing();
     scenario.end();
 }
@@ -765,12 +673,12 @@ fun register_under(self: &mut Fixture, cap: &PartnerCap, recipient: address, sha
 
 /// Registers a partner under any ID, a cap's or not.
 fun register_under_id(self: &mut Fixture, cap_id: ID, recipient: address, share_bps: u64) {
-    let witness = self.authority.sign_in(&self.admin_cap);
+    let witness = partner_admin();
     partners::register(&witness, cap_id, recipient, share_bps, self.ctx!());
 }
 
 fun schedule_share(self: &Fixture, partner: &mut Partner, share_bps: u64) {
-    let witness = self.authority.sign_in(&self.admin_cap);
+    let witness = partner_admin();
     partner.schedule_share(&witness, share_bps, &self.clock);
 }
 
@@ -782,7 +690,7 @@ fun reissue_cap(self: &mut Fixture, partner: &mut Partner): PartnerCap {
 }
 
 fun schedule_cap(self: &Fixture, partner: &mut Partner, cap_id: ID) {
-    let witness = self.authority.sign_in(&self.admin_cap);
+    let witness = partner_admin();
     partner.schedule_cap(&witness, cap_id, &self.clock);
 }
 
@@ -813,16 +721,15 @@ fun return_partner(_self: &mut Fixture, partner: Partner) {
     test_scenario::return_shared(partner);
 }
 
-fun revoke_partner_admin_role(self: &mut Fixture) {
-    let Fixture { authority, super_admin_cap, admin_cap, .. } = self;
-    authority.revoke_role(super_admin_cap, object::id(admin_cap), partners::partner_admin_role_for_testing());
+fun partner_admin(): AdminWitness<PartnerAdmin> {
+    blast_acl::witness_for_testing()
 }
 
 // === Imports ===
 
-use blast_admin::acl::{Self, Authority, AdminCap, SuperAdminCap};
+use blast_admin::blast_acl::{Self, AdminWitness};
 
-use blast_partners::blast_partners::{Self as partners, BLAST_PARTNERS, Partner, PartnerCap, PartnerPaid, PartnerUpdated};
+use blast_partners::blast_partners::{Self as partners, Partner, PartnerAdmin, PartnerCap, PartnerPaid, PartnerUpdated};
 
 use std::unit_test::{assert_eq, destroy};
 

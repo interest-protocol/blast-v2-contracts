@@ -22,12 +22,10 @@ public struct TEST_MEME() has drop;
 
 public struct OTHER_MEME() has drop;
 
-/// A runtime configuration whose signer is live, the ACL that rotates it, and a clock at `NOW_MS`.
+/// A runtime configuration whose signer is live and a clock at `NOW_MS`.
 public struct ClaimFixture {
     scenario: Scenario,
     package_version: PackageVersion,
-    authority: Authority<BLAST_FUN_DOMAIN>,
-    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     config: RuntimeConfig,
     clock: Clock,
 }
@@ -270,22 +268,11 @@ macro fun claim_ctx($fixture: &mut ClaimFixture): &mut TxContext {
 fun start(): ClaimFixture {
     let mut scenario = test_scenario::begin(ADMIN);
     let package_version = package_version::new_for_testing(scenario.ctx());
-    let (super_admin_cap, mut authority) = domain_fixture::new_authority(scenario.ctx());
-    authority.grant_admin(
-        &super_admin_cap,
-        blast_fun_domain::claim_signer_admin_role(),
-        ADMIN,
-        scenario.ctx(),
-    );
-    destroy(super_admin_cap);
     let config = runtime_config::new_for_testing(signer_public_key(), scenario.ctx());
     let mut clock = clock::create_for_testing(scenario.ctx());
     clock.set_for_testing(NOW_MS);
 
-    scenario.next_tx(ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
-
-    ClaimFixture { scenario, package_version, authority, admin_cap, config, clock }
+    ClaimFixture { scenario, package_version, config, clock }
 }
 
 /// Claims as the current sender with the live signer key and discards both caps.
@@ -307,7 +294,7 @@ fun claim_claim<Meme>(
 }
 
 fun claim_set_creator_claim_signer(self: &mut ClaimFixture, signer_public_key: vector<u8>) {
-    let admin_witness = self.authority.sign_in(&self.admin_cap);
+    let admin_witness = blast_acl::witness_for_testing<ClaimSignerAdmin>();
 
     self.config.set_creator_claim_signer(&self.package_version, &admin_witness, signer_public_key);
 }
@@ -339,12 +326,11 @@ fun signature(): vector<u8> {
 
 // === Imports ===
 
-use blast_admin::acl::{Authority, AdminCap};
+use blast_admin::blast_acl;
 
 use blast_fun::{
-    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
+    blast_fun_domain::ClaimSignerAdmin,
     creator_authority::{Self, CreatorRecipient},
-    domain_fixture,
     package_version::{Self, PackageVersion},
     runtime_config::{Self, RuntimeConfig},
 };

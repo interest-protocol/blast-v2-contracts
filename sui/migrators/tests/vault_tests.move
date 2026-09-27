@@ -20,10 +20,6 @@ const DESTINATION_B: address = @0xB;
 
 const POOL: address = @0x9001;
 
-const MAX_ADMINS: u64 = 16;
-
-const ROOT_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
-
 // === Test-Only Types ===
 
 /// This module's one-time witness stands in for a generated package's.
@@ -38,13 +34,9 @@ public struct OtherVenue() has drop;
 
 public struct TestPosition has key, store { id: UID }
 
-/// One owned launch whose fee split and Meme type every built vault copies, its currency, and a
-/// buyback admin.
+/// One owned launch whose fee split and Meme type every built vault copies, and its currency.
 public struct VaultFixture {
     scenario: Scenario,
-    root: SuperAdminCap<BLAST_FUN_DOMAIN>,
-    authority: Authority<BLAST_FUN_DOMAIN>,
-    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     migrators_version: MigratorsVersion,
     policy: LpFeePolicy,
     launch: Launch<VAULT_TESTS, QUOTE>,
@@ -311,31 +303,12 @@ fun an_auto_lp_position_is_sealed_to_its_venue() {
 // Protocol Residuals
 
 #[test]
-#[expected_failure(
-    abort_code = blast_admin::errors::EAdminRoleNotGranted,
-    location = blast_admin::acl,
-)]
-fun the_treasury_role_is_checked_before_the_residuals() {
-    let mut f = start(mixed_split());
-    let mut vault = f.new_vault(0, 0);
-    f.revoke_role(blast_fun_domain::treasury_admin_role());
-    let admin = f.sign_in();
-
-    let (meme, quote) = vault.claim_protocol_fees(&f.migrators_version, &admin, f.scenario.ctx());
-
-    destroy(meme);
-    destroy(quote);
-    destroy(vault);
-    f.end();
-}
-
-#[test]
 fun protocol_claim_pays_both_residuals_once_and_emits_the_exact_claim() {
     let mut f = start(mixed_split());
     let mut vault = f.new_vault(3, 4);
 
     f.scenario.next_tx(ADMIN);
-    let admin = f.sign_in();
+    let admin = treasury_admin();
     let (meme, quote) = vault.claim_protocol_fees(&f.migrators_version, &admin, f.scenario.ctx());
 
     assert_eq!(meme.value(), 3);
@@ -364,7 +337,7 @@ fun protocol_claim_pays_a_one_sided_residual() {
     let mut f = start(mixed_split());
     let mut vault = f.new_vault(5, 0);
 
-    let admin = f.sign_in();
+    let admin = treasury_admin();
     let (meme, quote) = vault.claim_protocol_fees(&f.migrators_version, &admin, f.scenario.ctx());
 
     assert_eq!(meme.value(), 5);
@@ -381,7 +354,7 @@ fun protocol_claim_rejects_a_vault_without_residuals() {
     let mut f = start(mixed_split());
     let mut vault = f.new_vault(0, 0);
 
-    let admin = f.sign_in();
+    let admin = treasury_admin();
     let (meme, quote) = vault.claim_protocol_fees(&f.migrators_version, &admin, f.scenario.ctx());
 
     destroy(meme);
@@ -395,7 +368,7 @@ fun protocol_claim_rejects_a_vault_without_residuals() {
 fun drained_residuals_cannot_be_claimed_again() {
     let mut f = start(mixed_split());
     let mut vault = f.new_vault(3, 4);
-    let admin = f.sign_in();
+    let admin = treasury_admin();
     let (meme, quote) = vault.claim_protocol_fees(&f.migrators_version, &admin, f.scenario.ctx());
     destroy(meme);
     destroy(quote);
@@ -416,7 +389,7 @@ fun drained_residuals_cannot_be_claimed_again() {
 fun a_stale_generation_rejects_the_protocol_claim_before_the_residual_check() {
     let mut f = start(mixed_split());
     let mut vault = f.new_vault(0, 0);
-    let admin = f.sign_in();
+    let admin = treasury_admin();
     f.migrators_version.set_for_testing(2);
 
     let (meme, quote) = vault.claim_protocol_fees(&f.migrators_version, &admin, f.scenario.ctx());
@@ -831,7 +804,7 @@ fun a_buyback_takes_every_burn_quote_then_burns_the_meme_and_keeps_the_unspent_q
     let supply = f.total_supply();
 
     f.scenario.next_tx(ADMIN);
-    let admin = f.sign_in();
+    let admin = buyback_admin();
     let mut quote = vault.take_buyback_quote(&admin);
     assert_eq!(quote.value(), 8);
     assert_eq!(vault.burn_quote_for_testing(), 0);
@@ -875,7 +848,7 @@ fun a_buyback_under_a_fixed_supply_sends_the_meme_to_the_zero_address() {
     let supply = f.total_supply();
 
     f.scenario.next_tx(ADMIN);
-    let admin = f.sign_in();
+    let admin = buyback_admin();
     let quote = vault.take_buyback_quote(&admin);
     vault.burn_buyback(
         &mut f.currency,
@@ -914,7 +887,7 @@ fun a_buyback_returning_less_than_the_minimum_meme_is_rejected() {
     let mut f = start(mixed_split());
     let mut vault = f.new_vault(0, 0);
     f.split(&mut vault, 0, 50);
-    let admin = f.sign_in();
+    let admin = buyback_admin();
     let quote = vault.take_buyback_quote(&admin);
 
     vault.burn_buyback(
@@ -931,30 +904,12 @@ fun a_buyback_returning_less_than_the_minimum_meme_is_rejected() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = blast_admin::errors::EAdminRoleNotGranted,
-    location = blast_admin::acl,
-)]
-fun the_buyback_role_is_checked_before_the_burn_quote() {
-    let mut f = start(mixed_split());
-    let mut vault = f.new_vault(0, 0);
-    f.revoke_role(blast_fun_domain::buyback_admin_role());
-    let admin = f.sign_in();
-
-    let quote = vault.take_buyback_quote(&admin);
-
-    destroy(quote);
-    destroy(vault);
-    f.end();
-}
-
-#[test]
 #[expected_failure(abort_code = vault::ENoBuybackQuote, location = blast_fun_migrators::vault)]
 fun a_buyback_with_no_burn_quote_waiting_is_rejected() {
     let mut f = start(mixed_split());
     let mut vault = f.new_vault(0, 0);
     f.split(&mut vault, 50, 0);
-    let admin = f.sign_in();
+    let admin = buyback_admin();
 
     let quote = vault.take_buyback_quote(&admin);
 
@@ -975,24 +930,16 @@ fun start_burnable(fee_split: FeeSplit): VaultFixture {
     start_with_supply(fee_split, true)
 }
 
-/// Opens the fixture launch under `ADMIN`, a buyback admin.
+/// Opens the fixture launch under `ADMIN`.
 fun start_with_supply(fee_split: FeeSplit, burnable: bool): VaultFixture {
     let mut scenario = test_scenario::begin(PROTOCOL);
     let version = package_version::new_for_testing(scenario.ctx());
     let migrators_version = migrators_version::new_for_testing(scenario.ctx());
-    let (root, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(
-        MAX_ADMINS,
-        ROOT_TRANSFER_DELAY_MS,
-        scenario.ctx(),
-    );
-    let roles = blast_fun_domain::buyback_admin_role() | launch_fixture::admit_roles();
-    authority.grant_admin(&root, roles, ADMIN, scenario.ctx());
     let policy = lp_fee_policy::new_for_testing(scenario.ctx());
     let mut config = launch_config::new_for_testing(scenario.ctx());
 
     scenario.next_tx(ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
-    launch_fixture::admit<QUOTE, TestVenue>(&mut config, &version, &authority.sign_in(&admin_cap));
+    launch_fixture::admit<QUOTE, TestVenue>(&mut config, &version);
     let (launch, currency) = launch_fixture::open_launch<_, QUOTE, _>(
         &mut scenario,
         test_utils::create_one_time_witness<VAULT_TESTS>(),
@@ -1007,9 +954,6 @@ fun start_with_supply(fee_split: FeeSplit, burnable: bool): VaultFixture {
 
     VaultFixture {
         scenario,
-        root,
-        authority,
-        admin_cap,
         migrators_version,
         policy,
         launch,
@@ -1134,24 +1078,21 @@ fun largest_remainder(weights: vector<u64>, total: u64): vector<u64> {
     parts
 }
 
-fun sign_in(self: &VaultFixture): AdminWitness<BLAST_FUN_DOMAIN> {
-    self.authority.sign_in(&self.admin_cap)
+fun treasury_admin(): AdminWitness<TreasuryAdmin> {
+    blast_acl::witness_for_testing()
 }
 
-/// Leaves `ADMIN` a member without `role`.
-fun revoke_role(self: &mut VaultFixture, role: u64) {
-    let admin_cap_id = acl::admin_cap_id_for_testing(&self.admin_cap);
-
-    self.authority.revoke_role(&self.root, admin_cap_id, role);
+fun buyback_admin(): AdminWitness<BuybackAdmin> {
+    blast_acl::witness_for_testing()
 }
 
-/// Runs one policy administration under a fresh sign-in and the live migrators generation.
-macro fun administer(
+/// Runs one policy administration under the live migrators generation, as the role `$fn` needs.
+macro fun administer<$Role>(
     $self: &mut VaultFixture,
-    $fn: |&mut LpFeePolicy, &MigratorsVersion, &AdminWitness<BLAST_FUN_DOMAIN>|,
+    $fn: |&mut LpFeePolicy, &MigratorsVersion, &AdminWitness<$Role>|,
 ) {
     let self = $self;
-    let admin = self.sign_in();
+    let admin = blast_acl::witness_for_testing<$Role>();
 
     $fn(&mut self.policy, &self.migrators_version, &admin);
 }
@@ -1278,11 +1219,11 @@ fun auto_lp_split(): FeeSplit {
 
 // === Imports ===
 
-use blast_admin::acl::{Self, Authority, AdminCap, AdminWitness, SuperAdminCap};
+use blast_admin::blast_acl::{Self, AdminWitness};
 
 use blast_fun::{
     allocation::{Self, FeeSplit, Route},
-    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
+    blast_fun_domain::{BuybackAdmin, TreasuryAdmin},
     bps,
     launch::Launch,
     launch_config,

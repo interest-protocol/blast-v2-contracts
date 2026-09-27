@@ -63,14 +63,14 @@ public struct MetadataKey<phantom Product>() has copy, drop, store;
 ///
 /// `Product` is the currency's identity: `Vault<Product, Collateral>` names the coin and
 /// Coin Registry admits each type once. Any non-primitive type may serve; the
-/// core issuer role is the only authority. The adapter generation and that
-/// role are checked before Coin Registry mutation. Package custody is not an
-/// input: `package_admin` seals a validated Publisher and UpgradeCap that no
-/// other object can hold, so re-reading those fields here would prove nothing
-/// this package does not already own.
+/// Vault issuer role is the only authority. The adapter generation is checked
+/// before Coin Registry mutation. Package custody is not an input:
+/// `package_admin` seals a validated Publisher and UpgradeCap that no other
+/// object can hold, so re-reading those fields here would prove nothing this
+/// package does not already own.
 public fun issue<Product, Collateral>(
     protocol: &Protocol,
-    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
+    admin_witness: &AdminWitness<VaultIssuer>,
     registry: &mut CoinRegistry,
     vault_policy: VaultPolicy,
     max_order_notional: u64,
@@ -108,11 +108,10 @@ public fun share<Product, Collateral>(self: Vault<Product, Collateral>) {
 public fun begin_shutdown<Product, Collateral>(
     self: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
-    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
+    _: &AdminWitness<ShutdownAdmin>,
     reason: ShutdownReason,
 ) {
     protocol.assert_current();
-    admin_witness.assert_role(domain::shutdown_admin_role());
 
     self.state.begin_shutdown();
 
@@ -155,13 +154,12 @@ public fun redeem_shutdown<Product, Collateral>(
 public fun set_fees<Product, Collateral>(
     self: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
-    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
+    _: &AdminWitness<RiskAdmin>,
     mint_fee_bps: u64,
     redeem_fee_bps: u64,
     admin_share_bps: u64,
 ) {
     protocol.assert_current();
-    admin_witness.assert_role(domain::risk_admin_role());
 
     let (previous_mint, previous_redeem, previous_admin) =
         self.state.set_fees(mint_fee_bps, redeem_fee_bps, admin_share_bps);
@@ -177,11 +175,10 @@ public fun set_fees<Product, Collateral>(
 public fun set_nav_cap<Product, Collateral>(
     self: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
-    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
+    _: &AdminWitness<RiskAdmin>,
     nav_cap: u64,
 ) {
     protocol.assert_current();
-    admin_witness.assert_role(domain::risk_admin_role());
 
     let previous = self.state.set_nav_cap(nav_cap);
 
@@ -198,11 +195,10 @@ public fun set_nav_cap<Product, Collateral>(
 public fun set_max_order_notional<Product, Collateral>(
     self: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
-    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
+    _: &AdminWitness<RiskAdmin>,
     max_order_notional: u64,
 ) {
     protocol.assert_current();
-    admin_witness.assert_role(domain::risk_admin_role());
 
     let previous = self.state.set_max_order_notional(max_order_notional);
 
@@ -216,14 +212,13 @@ public fun set_max_order_notional<Product, Collateral>(
 public fun update_metadata<Product, Collateral>(
     self: &Vault<Product, Collateral>,
     protocol: &Protocol,
-    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
+    _: &AdminWitness<VaultIssuer>,
     currency: &mut Currency<BlastBoost<Product>>,
     name: String,
     description: String,
     icon_url: String,
 ) {
     protocol.assert_current();
-    admin_witness.assert_role(domain::vault_issuer_role());
     assert!(
         currency.name() != name || currency.description() != description || currency.icon_url() != icon_url,
         blast_boosts_aftermath::errors::metadata_unchanged!(),
@@ -241,12 +236,11 @@ public fun update_metadata<Product, Collateral>(
 public fun withdraw_admin_fees<Product, Collateral>(
     self: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
-    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
+    _: &AdminWitness<RiskAdmin>,
     amount: u64,
     ctx: &mut TxContext,
 ): Coin<Collateral> {
     protocol.assert_current();
-    admin_witness.assert_role(domain::risk_admin_role());
     assert!(amount > 0, blast_boosts_aftermath::errors::zero_amount!());
 
     let available = self.admin_cash.value();
@@ -466,7 +460,7 @@ public fun is_unwinding_for_testing<Product, Collateral>(self: &Vault<Product, C
 
 // === Imports ===
 
-use blast_admin::acl::AdminWitness;
+use blast_admin::blast_acl::AdminWitness;
 
 use blast_boosts_aftermath::{
     blast_boost::{Self, BlastBoost},
@@ -479,7 +473,7 @@ use blast_boosts_aftermath::{
 use blast_boosts_core::{
     observation::PositionObservation,
     policy::VaultPolicy,
-    blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
+    blast_boosts_core::{RiskAdmin, ShutdownAdmin, VaultIssuer},
     lifecycle::ShutdownReason,
     state::{Self, ActivePosition, Issuance, State},
 };

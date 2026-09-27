@@ -20,8 +20,9 @@ module blast_partners::blast_partners;
 
 // === Public Types ===
 
-/// One-time witness naming the partner administration domain.
-public struct BLAST_PARTNERS() has drop;
+/// The one administrator role in the shared Blast ACL: register partners,
+/// schedule shares, move partners between caps.
+public struct PartnerAdmin()
 
 /// One Blast partner. Shared, and read by immutable reference on every trade that names it.
 public struct Partner has key {
@@ -53,12 +54,6 @@ public struct PartnerPaid<phantom T> has copy, drop {
     amount: u64,
 }
 
-// === Private Initialization ===
-
-fun init(otw: BLAST_PARTNERS, ctx: &mut TxContext) {
-    acl::new(otw, MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, ctx);
-}
-
 // === Public Functions ===
 
 /// Mints a cap. It controls nothing until Blast registers a partner under it,
@@ -70,13 +65,12 @@ public fun new_cap(ctx: &mut TxContext): PartnerCap {
 /// Registers and shares a partner managed by the cap `cap_id`, with its share
 /// and cap in force at once. Every later change to either waits `DELAY_MS`.
 public fun register(
-    admin_witness: &AdminWitness<BLAST_PARTNERS>,
+    _: &AdminWitness<PartnerAdmin>,
     cap_id: ID,
     recipient: address,
     share_bps: u64,
     ctx: &mut TxContext,
 ) {
-    admin_witness.assert_role(PARTNER_ADMIN_ROLE);
     assert!(recipient != @0x0, EInvalidRecipient);
     assert!(share_bps <= MAX_SHARE_BPS, EShareAboveMax);
 
@@ -96,11 +90,10 @@ public fun register(
 /// cancels a pending change.
 public fun schedule_share(
     self: &mut Partner,
-    admin_witness: &AdminWitness<BLAST_PARTNERS>,
+    _: &AdminWitness<PartnerAdmin>,
     share_bps: u64,
     clock: &Clock,
 ) {
-    admin_witness.assert_role(PARTNER_ADMIN_ROLE);
     assert!(share_bps <= MAX_SHARE_BPS, EShareAboveMax);
     assert!(share_bps != self.share_bps.scheduled(), EUnchanged);
 
@@ -115,11 +108,10 @@ public fun schedule_share(
 /// force cancels a pending change.
 public fun schedule_cap(
     self: &mut Partner,
-    admin_witness: &AdminWitness<BLAST_PARTNERS>,
+    _: &AdminWitness<PartnerAdmin>,
     cap_id: ID,
     clock: &Clock,
 ) {
-    admin_witness.assert_role(PARTNER_ADMIN_ROLE);
     assert!(cap_id != self.cap_id.scheduled(), EUnchanged);
 
     self.cap_id.schedule(cap_id, clock);
@@ -179,11 +171,6 @@ fun emit_updated(self: &Partner) {
 // === Test-Only Functions ===
 
 #[test_only]
-public fun init_for_testing(ctx: &mut TxContext) {
-    init(sui::test_utils::create_one_time_witness<BLAST_PARTNERS>(), ctx);
-}
-
-#[test_only]
 /// A partner whose share is already in force, for products' own tests.
 public fun new_for_testing(recipient: address, share_bps: u64, ctx: &mut TxContext): Partner {
     Partner {
@@ -212,11 +199,6 @@ public fun new_scheduled_for_testing(
 }
 
 #[test_only]
-public fun partner_admin_role_for_testing(): u64 {
-    PARTNER_ADMIN_ROLE
-}
-
-#[test_only]
 /// The partner's recipient, share in force and live cap at `clock`.
 public fun terms_for_testing(self: &Partner, clock: &Clock): (address, u64, ID) {
     (self.recipient, self.share_bps.value(clock), self.cap_id.value(clock))
@@ -233,15 +215,6 @@ public fun partner_updated_fields(self: &PartnerUpdated): (ID, address, Timelock
 }
 
 // === Constants ===
-
-/// Maximum number of simultaneously registered partner administrators.
-const MAX_ADMINS: u64 = 16;
-
-/// Fixed delay before a proposed super administrator may accept root custody.
-const ROOT_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
-
-/// The one administrator role: register partners, schedule shares, move partners between caps.
-const PARTNER_ADMIN_ROLE: u64 = 1;
 
 /// The forced delay before a share or a cap Blast schedules takes effect.
 const DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
@@ -268,7 +241,7 @@ const ENotLiveCap: vector<u8> = b"Only the partner's live cap may set its recipi
 
 // === Imports ===
 
-use blast_admin::acl::{Self, AdminWitness};
+use blast_admin::blast_acl::AdminWitness;
 
 use blast_fun_timelock::blast_fun_timelock::{Self as timelock, Timelocked};
 

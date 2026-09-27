@@ -28,11 +28,10 @@ fun init(ctx: &mut TxContext) {
 public fun set_creator_claim_signer(
     self: &mut RuntimeConfig,
     package_version: &PackageVersion,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
+    _: &AdminWitness<ClaimSignerAdmin>,
     signer_public_key: vector<u8>,
 ) {
     package_version.assert_current();
-    admin_witness.assert_role(blast_fun_domain::claim_signer_admin_role());
     assert!(
         signer_public_key.is_empty()
             || signer_public_key.length() == constants::ed25519_public_key_length!(),
@@ -48,11 +47,10 @@ public fun set_creator_claim_signer(
 public fun set_protocol_fee_share(
     self: &mut RuntimeConfig,
     package_version: &PackageVersion,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
+    _: &AdminWitness<FeeAdmin>,
     protocol_fee_share_bps: Bps,
 ) {
     package_version.assert_current();
-    admin_witness.assert_role(blast_fun_domain::fee_admin_role());
     assert!(protocol_fee_share_bps != self.protocol_fee_share_bps, blast_fun::errors::unchanged!());
 
     self.protocol_fee_share_bps = protocol_fee_share_bps;
@@ -103,10 +101,10 @@ public fun new_for_testing(signer_public_key: vector<u8>, ctx: &mut TxContext): 
 
 // === Imports ===
 
-use blast_admin::acl::AdminWitness;
+use blast_admin::blast_acl::AdminWitness;
 
 use blast_fun::{
-    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
+    blast_fun_domain::{ClaimSignerAdmin, FeeAdmin},
     bps::{Self, Bps},
     constants,
     events,

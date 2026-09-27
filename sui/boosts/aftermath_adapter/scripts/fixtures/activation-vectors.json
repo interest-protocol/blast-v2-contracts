@@ -14,7 +14,7 @@
     "productType": "0x1111111111111111111111111111111111111111111111111111111111111111::fixture::SUI_BULL_2X",
     "collateralType": "0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC",
     "objects": {
-      "authority": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+      "acl": "0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
       "adminCap": "0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
       "protocol": "0x0202020202020202020202020202020202020202020202020202020202020202",
       "coinRegistry": "0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
@@ -65,9 +65,9 @@
   "expectedPlan": {
     "commands": [
       {
-        "target": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::sign_in",
+        "target": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::sign_in",
         "typeArguments": [
-          "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE"
+          "0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::VaultIssuer"
         ],
         "arguments": [
           "@0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
@@ -183,8 +183,8 @@
     "mainnet",
     "ptb",
     "--move-call",
-    "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::sign_in",
-    "<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+    "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::sign_in",
+    "<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::VaultIssuer>",
     "@0xa0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
     "@0xa2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
     "--assign",
@@ -266,8 +266,8 @@
     "@0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   ],
   "objectTypes": {
-    "authority": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::Authority<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
-    "adminCap": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+    "acl": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::ACL",
+    "adminCap": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap",
     "protocol": "0x1111111111111111111111111111111111111111111111111111111111111111::protocol::Protocol",
     "coinRegistry": "0x0000000000000000000000000000000000000000000000000000000000000002::coin_registry::CoinRegistry",
     "currency": "0x0000000000000000000000000000000000000000000000000000000000000002::coin_registry::Currency<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
@@ -620,8 +620,8 @@
       }
     ],
     "objectTypes": {
-      "adminCap": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
-      "authority": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::acl::Authority<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::BLAST_BOOSTS_CORE>",
+      "acl": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::ACL",
+      "adminCap": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap",
       "baseOracle": "0x5555555555555555555555555555555555555555555555555555555555555555::price_feed_storage::PriceFeedStorage",
       "clearingHouse": "0x4444444444444444444444444444444444444444444444444444444444444444::clearing_house::ClearingHouse<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
       "clock": "0x0000000000000000000000000000000000000000000000000000000000000002::clock::Clock",

@@ -179,7 +179,7 @@ public fun settle_and_update_fee_split<Meme, Quote>(
 public fun buyback_and_burn<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
+    admin_witness: &AdminWitness<BuybackAdmin>,
     currency: &mut Currency<Meme>,
     bluefin_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
@@ -266,11 +266,11 @@ fun compound<Meme, Quote>(
 
 // === Imports ===
 
-use blast_admin::acl::AdminWitness;
+use blast_admin::blast_acl::AdminWitness;
 
 use blast_fun::{
     allocation::FeeSplit,
-    blast_fun_domain::BLAST_FUN_DOMAIN,
+    blast_fun_domain::BuybackAdmin,
     creator_authority::CurveFeeCap,
     launch::{Self, Launch, LaunchInitializer},
     launch_config::LaunchConfig,

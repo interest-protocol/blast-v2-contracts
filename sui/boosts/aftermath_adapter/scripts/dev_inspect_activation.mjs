@@ -28,7 +28,7 @@ const SUI_FRAMEWORK = `0x${'0'.repeat(63)}2`;
 // Every object the activation PTB takes as an input, in the order `initialize`
 // reads them after the issuer's admin objects and the Coin Registry.
 const OBJECT_ROLES = [
-    'authority',
+    'acl',
     'adminCap',
     'protocol',
     'coinRegistry',
@@ -331,14 +331,14 @@ function buildPlan(input) {
     const admin = input.adminPackage.toLowerCase();
     const core = input.corePackage.toLowerCase();
     const adapter = input.adapterPackage.toLowerCase();
-    const domain = `${core}::blast_boosts_core::BLAST_BOOSTS_CORE`;
+    const vaultIssuer = `${core}::blast_boosts_core::VaultIssuer`;
     const productArguments = [input.productType, input.collateralType];
     const object = (role) => `@${input.objects[role].toLowerCase()}`;
     const decimals = (record, keys) => keys.map((key) => record[key]);
 
     return {
         commands: [
-            call(`${admin}::acl::sign_in`, [domain], [object('authority'), object('adminCap')], 'admin_witness'),
+            call(`${admin}::blast_acl::sign_in`, [vaultIssuer], [object('acl'), object('adminCap')], 'admin_witness'),
             call(`${core}::policy::new_rebalance_policy`, [], decimals(input.rebalancePolicy, REBALANCE_POLICY_FIELDS), 'rebalance_policy'),
             call(`${core}::policy::new_price_policy`, [], decimals(input.pricePolicy, PRICE_POLICY_FIELDS), 'price_policy'),
             call(`${core}::policy::${input.side}`, [], [], 'side'),

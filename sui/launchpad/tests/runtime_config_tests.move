@@ -12,11 +12,9 @@ const PROTOCOL_ADMIN: address = @0xAD;
 
 // === Test-Only Types ===
 
-/// Live-settings administration through the ACL sign-in seam.
+/// Live-settings administration under each setter's own role.
 public struct ConfigFixture {
     scenario: Scenario,
-    authority: Authority<BLAST_FUN_DOMAIN>,
-    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     package_version: PackageVersion,
     config: RuntimeConfig,
 }
@@ -185,24 +183,6 @@ fun claim_signer_checks_the_version_before_the_key_length() {
     fixture.end();
 }
 
-#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
-fun setting_the_protocol_fee_share_requires_the_fee_admin_role() {
-    let mut fixture = start_with_roles(blast_fun_domain::fee_admin_role().bitwise_not());
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| f.set_protocol_fee_share(bps::new(7_000)));
-
-    fixture.end();
-}
-
-#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
-fun setting_the_claim_signer_requires_the_claim_signer_admin_role() {
-    let mut fixture = start_with_roles(blast_fun_domain::claim_signer_admin_role().bitwise_not());
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| f.set_creator_claim_signer(signer_public_key()));
-
-    fixture.end();
-}
-
 // === Test Helpers ===
 
 macro fun config_next_tx(
@@ -231,35 +211,23 @@ fun published_config(): (u64, vector<u8>, u64) {
     (events, signer_public_key, protocol_fee_share_bps)
 }
 
-/// A fee and claim-signer administrator over a configuration as package initialization leaves it.
+/// A configuration as package initialization leaves it.
 fun start(): ConfigFixture {
-    start_with_roles(
-        blast_fun_domain::fee_admin_role() | blast_fun_domain::claim_signer_admin_role(),
-    )
-}
-
-fun start_with_roles(roles: u64): ConfigFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
-    let (super_admin_cap, mut authority) = domain_fixture::new_authority(scenario.ctx());
-    authority.grant_admin(&super_admin_cap, roles, PROTOCOL_ADMIN, scenario.ctx());
-    destroy(super_admin_cap);
     let config = runtime_config::new_disabled_for_testing(scenario.ctx());
 
-    scenario.next_tx(PROTOCOL_ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
-
-    ConfigFixture { scenario, authority, admin_cap, package_version, config }
+    ConfigFixture { scenario, package_version, config }
 }
 
 fun config_set_protocol_fee_share(self: &mut ConfigFixture, protocol_fee_share_bps: Bps) {
-    let admin_witness = self.authority.sign_in(&self.admin_cap);
+    let admin_witness = blast_acl::witness_for_testing<FeeAdmin>();
 
     self.config.set_protocol_fee_share(&self.package_version, &admin_witness, protocol_fee_share_bps);
 }
 
 fun config_set_creator_claim_signer(self: &mut ConfigFixture, signer_public_key: vector<u8>) {
-    let admin_witness = self.authority.sign_in(&self.admin_cap);
+    let admin_witness = blast_acl::witness_for_testing<ClaimSignerAdmin>();
 
     self.config.set_creator_claim_signer(&self.package_version, &admin_witness, signer_public_key);
 }
@@ -284,13 +252,12 @@ fun collect_one<T: copy + drop>(): T {
 
 // === Imports ===
 
-use blast_admin::acl::{Authority, AdminCap};
+use blast_admin::blast_acl;
 
 use blast_fun::{
     blast_events::Event,
-    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
+    blast_fun_domain::{ClaimSignerAdmin, FeeAdmin},
     bps::{Self, Bps},
-    domain_fixture,
     events,
     package_version::{Self, PackageVersion},
     runtime_config::{Self, RuntimeConfig},

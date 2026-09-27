@@ -29,13 +29,10 @@ public struct WrapFixture {
     scenario: Scenario,
 }
 
-/// Sealed adapter custody under one live Series1 administrator.
+/// Sealed adapter custody, driven by the upgrade administrator.
 public struct Fixture {
     scenario: Scenario,
     protocol: Protocol,
-    authority: Authority<BLAST_BOOSTS_CORE>,
-    super_admin_cap: SuperAdminCap<BLAST_BOOSTS_CORE>,
-    admin_cap: AdminCap<BLAST_BOOSTS_CORE>,
     package_admin: PackageAdmin,
 }
 
@@ -55,8 +52,8 @@ fun canonical_capabilities_enter_adapter_custody() {
 
     // The creation fact belongs to the sealing transaction, so it is collected
     // before the shared object can be taken in the next one.
-    let created = blast_admin::events::collect_one<
-        blast_admin::events::UpgradeCustodyCreated<BLAST_BOOSTS_AFTERMATH>,
+    let created = blast_admin::blast_admin_events::collect_one<
+        blast_admin::blast_admin_events::UpgradeCustodyCreated<BLAST_BOOSTS_AFTERMATH>,
     >(0);
 
     fixture.next_tx!(ROOT, |fixture| {
@@ -123,13 +120,13 @@ fun an_upgrade_cap_for_another_package_is_rejected() {
 }
 
 #[test]
-/// A package administrator irreversibly narrows the policy in two steps.
-fun the_package_admin_role_can_irreversibly_restrict_the_adapter() {
-    let mut fixture = start(domain::package_admin_role());
+/// The upgrade administrator irreversibly narrows the policy in two steps.
+fun the_upgrade_admin_can_irreversibly_restrict_the_adapter() {
+    let mut fixture = start();
 
     fixture.restrict_to_additive();
-    let restricted = blast_admin::events::collect_one<
-        blast_admin::events::UpgradePolicyRestricted<BLAST_BOOSTS_AFTERMATH>,
+    let restricted = blast_admin::blast_admin_events::collect_one<
+        blast_admin::blast_admin_events::UpgradePolicyRestricted<BLAST_BOOSTS_AFTERMATH>,
     >(0);
     let (_, _, _, _, previous_policy, new_policy) =
         restricted.upgrade_policy_restricted_fields();
@@ -153,14 +150,14 @@ fun the_package_admin_role_can_irreversibly_restrict_the_adapter() {
 /// The second narrowing step emits its own policy fact, chained from the
 /// additive policy the first step installed.
 fun the_dependency_only_restriction_emits_the_policy_fact() {
-    let mut fixture = start(domain::package_admin_role());
+    let mut fixture = start();
     let upgrade_cap_id = fixture.package_admin.upgrade_cap_id_for_testing();
 
     fixture.restrict_to_additive();
     fixture.restrict_to_dependency_only();
 
     let mut restricted = sui::event::events_by_type<
-        blast_admin::events::UpgradePolicyRestricted<BLAST_BOOSTS_AFTERMATH>,
+        blast_admin::blast_admin_events::UpgradePolicyRestricted<BLAST_BOOSTS_AFTERMATH>,
     >();
     assert_eq!(restricted.length(), 2);
     let dependency_only = restricted.pop_back();
@@ -189,7 +186,7 @@ fun the_dependency_only_restriction_emits_the_policy_fact() {
     location = blast_admin::upgrade_custody,
 )]
 fun an_equal_policy_restriction_is_rejected_before_mutation() {
-    let mut fixture = start(domain::package_admin_role());
+    let mut fixture = start();
 
     fixture.restrict_to_additive();
     fixture.restrict_to_additive();
@@ -200,14 +197,14 @@ fun an_equal_policy_restriction_is_rejected_before_mutation() {
 #[test]
 /// Immutability destroys native upgrade authority while the final operational
 /// generation survives.
-fun the_package_admin_role_can_permanently_destroy_upgrade_authority() {
-    let mut fixture = start(domain::package_admin_role());
+fun the_upgrade_admin_can_permanently_destroy_upgrade_authority() {
+    let mut fixture = start();
     let upgrade_cap_id = fixture.package_admin.upgrade_cap_id_for_testing();
 
     fixture.make_immutable();
 
-    let destroyed = blast_admin::events::collect_one<
-        blast_admin::events::UpgradeCapDestroyed<BLAST_BOOSTS_AFTERMATH>,
+    let destroyed = blast_admin::blast_admin_events::collect_one<
+        blast_admin::blast_admin_events::UpgradeCapDestroyed<BLAST_BOOSTS_AFTERMATH>,
     >(0);
     let (custodian_id, emitted_upgrade_cap_id, _, final_native_version, final_policy) =
         destroyed.upgrade_cap_destroyed_fields();
@@ -227,7 +224,7 @@ fun the_package_admin_role_can_permanently_destroy_upgrade_authority() {
     location = blast_admin::upgrade_custody,
 )]
 fun policy_restriction_is_rejected_after_immutability() {
-    let mut fixture = start(domain::package_admin_role());
+    let mut fixture = start();
 
     fixture.make_immutable();
     fixture.restrict_to_additive();
@@ -242,49 +239,9 @@ fun policy_restriction_is_rejected_after_immutability() {
 )]
 /// Immutability destroys the cap, so a second application has nothing to destroy.
 fun immutability_cannot_be_applied_twice() {
-    let mut fixture = start(domain::package_admin_role());
+    let mut fixture = start();
 
     fixture.make_immutable();
-    fixture.make_immutable();
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_admin::errors::EAdminRoleNotGranted,
-    location = blast_admin::acl,
-)]
-/// A live zero-role administrator cannot reach adapter package custody.
-fun a_zero_role_admin_cannot_restrict_upgrade_policy() {
-    let mut fixture = start(0);
-
-    fixture.restrict_to_additive();
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_admin::errors::EAdminRoleNotGranted,
-    location = blast_admin::acl,
-)]
-fun a_zero_role_admin_cannot_restrict_to_dependency_only() {
-    let mut fixture = start(0);
-
-    fixture.restrict_to_dependency_only();
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_admin::errors::EAdminRoleNotGranted,
-    location = blast_admin::acl,
-)]
-fun a_zero_role_admin_cannot_make_the_adapter_immutable() {
-    let mut fixture = start(0);
-
     fixture.make_immutable();
 
     fixture.end();
@@ -295,10 +252,10 @@ fun a_zero_role_admin_cannot_make_the_adapter_immutable() {
     abort_code = blast_admin::errors::EOperationalVersionMismatch,
     location = blast_admin::operational_version,
 )]
-/// Immutability runs the generation guard before the role check, so stale
-/// bytecode is refused even before a zero-role administrator is.
-fun a_stale_generation_rejects_immutability_before_the_role_check() {
-    let mut fixture = start(0);
+/// Immutability runs the generation guard first, so stale bytecode never
+/// reaches the native call.
+fun a_stale_generation_rejects_immutability() {
+    let mut fixture = start();
     fixture.protocol.set_version_for_testing(3);
 
     fixture.make_immutable();
@@ -308,27 +265,12 @@ fun a_stale_generation_rejects_immutability_before_the_role_check() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_admin::errors::EAdminRoleNotGranted,
-    location = blast_admin::acl,
-)]
-/// Risk administration is a different Series1 role and does not reach custody.
-fun a_risk_only_admin_cannot_authorize_an_upgrade() {
-    let mut fixture = start(domain::risk_admin_role());
-
-    let ticket = fixture.authorize_upgrade(package_digest());
-
-    destroy(ticket);
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
     abort_code = blast_admin::errors::EOperationalVersionMismatch,
     location = blast_admin::operational_version,
 )]
-/// A stale generation aborts before the role check and before the native call.
-fun a_stale_generation_rejects_old_bytecode_before_the_role_check() {
-    let mut fixture = start(0);
+/// A stale generation aborts before the native call.
+fun a_stale_generation_rejects_old_bytecode() {
+    let mut fixture = start();
     fixture.protocol.set_version_for_testing(3);
 
     let ticket = fixture.authorize_upgrade(package_digest());
@@ -343,45 +285,11 @@ fun a_stale_generation_rejects_old_bytecode_before_the_role_check() {
     location = blast_admin::upgrade_custody,
 )]
 fun upgrade_authorization_rejects_a_non_digest_length() {
-    let mut fixture = start(domain::package_admin_role());
+    let mut fixture = start();
 
     let ticket = fixture.authorize_upgrade(vector[]);
 
     destroy(ticket);
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_admin::errors::EInvalidAdminCap,
-    location = blast_admin::acl,
-)]
-/// An administrator registered in another registry cannot sign in here.
-fun an_admin_from_another_registry_cannot_authorize_an_upgrade() {
-    let mut fixture = start(domain::package_admin_role());
-    let (foreign_super_admin_cap, foreign_authority) =
-        domain_fixture::new_authority(fixture.ctx!());
-
-    let ticket = fixture.authorize_upgrade_through(&foreign_authority, package_digest());
-
-    destroy(ticket);
-    destroy(foreign_super_admin_cap);
-    destroy(foreign_authority);
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_admin::errors::EInvalidAdminCap,
-    location = blast_admin::acl,
-)]
-/// One revocation in the shared Series1 registry blocks the next sign-in.
-fun a_revoked_administrator_can_no_longer_sign_in() {
-    let mut fixture = start(domain::package_admin_role());
-    fixture.revoke_admin();
-
-    fixture.restrict_to_additive();
-
     fixture.end();
 }
 
@@ -426,31 +334,14 @@ fun wrap_end(self: WrapFixture) {
 
 // --- Custody Fixture ---
 
-macro fun ctx($self: &mut Fixture): &mut TxContext {
-    let fixture = $self;
-
-    fixture.scenario.ctx()
-}
-
-fun start(roles: u64): Fixture {
+fun start(): Fixture {
     let mut scenario = test_scenario::begin(ROOT);
     let protocol = protocol::new_for_testing(scenario.ctx());
-    let (super_admin_cap, mut authority) =
-        domain_fixture::new_authority(scenario.ctx());
-    authority.grant_admin(&super_admin_cap, roles, PACKAGE_ADMIN, scenario.ctx());
     let package_admin = package_admin::new_for_testing(scenario.ctx());
 
     scenario.next_tx(PACKAGE_ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_BOOSTS_CORE>>();
 
-    Fixture {
-        scenario,
-        protocol,
-        authority,
-        super_admin_cap,
-        admin_cap,
-        package_admin,
-    }
+    Fixture { scenario, protocol, package_admin }
 }
 
 fun package_digest(): vector<u8> {
@@ -461,82 +352,44 @@ fun authorize_upgrade(
     self: &mut Fixture,
     digest: vector<u8>,
 ): UpgradeTicket {
-    let Fixture { protocol, authority, admin_cap, package_admin, .. } = self;
-    let admin_witness = authority.sign_in(admin_cap);
-
-    package_admin.authorize_upgrade(protocol, &admin_witness, digest)
-}
-
-/// Authorizes `digest` for an administrator signed in through `authority`
-/// rather than the registry this fixture registered it in.
-fun authorize_upgrade_through(
-    self: &mut Fixture,
-    authority: &Authority<BLAST_BOOSTS_CORE>,
-    digest: vector<u8>,
-): UpgradeTicket {
-    let Fixture { protocol, admin_cap, package_admin, .. } = self;
-    let admin_witness = authority.sign_in(admin_cap);
-
-    package_admin.authorize_upgrade(protocol, &admin_witness, digest)
+    self.package_admin.authorize_upgrade(&self.protocol, &upgrade_admin(), digest)
 }
 
 fun restrict_to_additive(self: &mut Fixture) {
-    let Fixture { protocol, authority, admin_cap, package_admin, .. } = self;
-    let admin_witness = authority.sign_in(admin_cap);
-
-    package_admin.restrict_to_additive(protocol, &admin_witness);
+    self.package_admin.restrict_to_additive(&self.protocol, &upgrade_admin());
 }
 
 fun restrict_to_dependency_only(self: &mut Fixture) {
-    let Fixture { protocol, authority, admin_cap, package_admin, .. } = self;
-    let admin_witness = authority.sign_in(admin_cap);
-
-    package_admin.restrict_to_dependency_only(protocol, &admin_witness);
+    self.package_admin.restrict_to_dependency_only(&self.protocol, &upgrade_admin());
 }
 
 fun make_immutable(self: &mut Fixture) {
-    let Fixture { protocol, authority, admin_cap, package_admin, .. } = self;
-    let admin_witness = authority.sign_in(admin_cap);
-
-    package_admin.make_immutable(protocol, &admin_witness);
-}
-
-fun revoke_admin(self: &mut Fixture) {
-    let Fixture { authority, super_admin_cap, admin_cap, .. } = self;
-
-    authority.revoke_admin(super_admin_cap, admin_cap.admin_cap_id_for_testing());
+    self.package_admin.make_immutable(&self.protocol, &upgrade_admin());
 }
 
 fun end(self: Fixture) {
-    let Fixture {
-        scenario,
-        protocol,
-        authority,
-        super_admin_cap,
-        admin_cap,
-        package_admin,
-    } = self;
+    let Fixture { scenario, protocol, package_admin } = self;
     destroy(protocol);
-    destroy(authority);
-    destroy(super_admin_cap);
-    destroy(admin_cap);
     destroy(package_admin);
     scenario.end();
 }
 
+fun upgrade_admin(): AdminWitness<UpgradeAdmin> {
+    blast_acl::witness_for_testing()
+}
+
 // === Imports ===
 
-use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
+use blast_admin::blast_acl::{Self, AdminWitness};
 
 use blast_boosts_aftermath::{
     blast_boosts_aftermath::{Self as marker, BLAST_BOOSTS_AFTERMATH},
-    domain_fixture,
     errors,
     package_admin::{Self, PackageAdmin},
     protocol::{Self, Protocol},
 };
 
-use blast_boosts_core::blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE};
+use blast_boosts_core::blast_boosts_core::UpgradeAdmin;
 
 use std::unit_test::{assert_eq, destroy};
 

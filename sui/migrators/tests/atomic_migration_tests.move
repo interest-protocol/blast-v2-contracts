@@ -55,8 +55,6 @@ public struct Fixture {
     migrators_version: MigratorsVersion,
     runtime: RuntimeConfig,
     clock: Clock,
-    authority: Authority<BLAST_FUN_DOMAIN>,
-    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     launch_id: ID,
 }
 
@@ -268,26 +266,32 @@ fun start(): Fixture {
     let mut scenario = test_scenario::begin(@0x0);
     let version = package_version::new_for_testing(scenario.ctx());
     let migrators_version = migrators_version::new_for_testing(scenario.ctx());
-    let (root, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(16, 1, scenario.ctx());
-    let roles = blast_fun_domain::treasury_admin_role()
-        | blast_fun_domain::fee_admin_role()
-        | blast_fun_domain::listing_admin_role_for_testing()
-        | blast_fun_domain::adapter_admin_role_for_testing();
-    authority.grant_admin(&root, roles, ADMIN, scenario.ctx());
-    destroy(root);
     launch_config::init_for_testing(scenario.ctx());
     lp_fee_policy::init_for_testing(scenario.ctx());
     let runtime = runtime_config::new_disabled_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
 
     scenario.next_tx(ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
-    let admin = authority.sign_in(&admin_cap);
     let mut config = scenario.take_shared<LaunchConfig>();
-    config.set_quote_allowed<QUOTE>(&version, &admin, true);
-    config.set_migration_witness_allowed<Venue>(&version, &admin, true);
-    config.set_trade_fees(&version, &admin, bps::new(100), bps::new(100));
-    config.set_protocol_allocation(&version, &admin, ADMIN, bps::new(0), bps::new(0));
+    config.set_quote_allowed<QUOTE>(&version, &blast_acl::witness_for_testing<ListingAdmin>(), true);
+    config.set_migration_witness_allowed<Venue>(
+        &version,
+        &blast_acl::witness_for_testing<AdapterAdmin>(),
+        true,
+    );
+    config.set_trade_fees(
+        &version,
+        &blast_acl::witness_for_testing<FeeAdmin>(),
+        bps::new(100),
+        bps::new(100),
+    );
+    config.set_protocol_allocation(
+        &version,
+        &blast_acl::witness_for_testing<TreasuryAdmin>(),
+        ADMIN,
+        bps::new(0),
+        bps::new(0),
+    );
     let launch_id = share_launch(&mut scenario, &version, &config, &clock);
     test_scenario::return_shared(config);
 
@@ -297,8 +301,6 @@ fun start(): Fixture {
         migrators_version,
         runtime,
         clock,
-        authority,
-        admin_cap,
         launch_id,
     }
 }
@@ -388,27 +390,23 @@ fun end(f: Fixture) {
         migrators_version,
         runtime,
         clock,
-        authority,
-        admin_cap,
         launch_id: _,
     } = f;
     destroy(version);
     destroy(migrators_version);
     destroy(runtime);
     clock.destroy_for_testing();
-    destroy(authority);
-    destroy(admin_cap);
     scenario.end();
 }
 
 // === Imports ===
 
-use blast_admin::acl::{Self, Authority, AdminCap};
+use blast_admin::blast_acl;
 
 use blast_fun::{
     allocation::{Self, FeeSplit},
     blast_events::Event as BlastEvent,
-    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
+    blast_fun_domain::{AdapterAdmin, FeeAdmin, ListingAdmin, TreasuryAdmin},
     bps,
     creator_authority,
     events,

@@ -48,11 +48,15 @@ function match_paren(open, opener, closer,   depth, index_, char_) {
     return 0
 }
 
+# A `)` that closes no visibility modifier also ends a declaration: an ability-free positional
+# struct has no trailing `;`.
 function modifiers_before(stop,   scan, char_, boundary, between) {
     boundary = 0
     for (scan = stop; scan >= 1; scan--) {
         char_ = substr(text, scan, 1)
         if (char_ == ";" || char_ == "}" || char_ == "]") { boundary = scan; break }
+        if (char_ == ")" && substr(text, scan - 14, 15) != "public(package)" \
+            && substr(text, scan - 13, 14) != "public(friend)") { boundary = scan; break }
     }
     attribute_text = ""
     if (boundary > 0 && substr(text, boundary, 1) == "]") collect_attributes(boundary)
@@ -255,9 +259,20 @@ END {
         }
         name = normalize(substr(text, cursor + RSTART - 1, RLENGTH))
 
+        # A positional struct ends at its field list unless abilities follow it.
         declaration_end = 0
         for (index_ = cursor; index_ <= text_length; index_++) {
             char_ = substr(text, index_, 1)
+            if (char_ == "(") {
+                fields_close = match_paren(index_, "(", ")")
+                if (fields_close == 0) fail(kind " " name " has unbalanced positional fields")
+                if (substr(text, fields_close + 1) ~ /^[ \t\n]+has[ \t\n]/) {
+                    index_ = fields_close
+                    continue
+                }
+                declaration_end = fields_close
+                break
+            }
             if (char_ == "{") {
                 declaration_end = match_paren(index_, "{", "}")
                 if (declaration_end == 0) fail(kind " " name " has an unbalanced body")

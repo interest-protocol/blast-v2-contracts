@@ -65,13 +65,16 @@ dependency_names="$(awk '
     print line
   }
 ' "$package_dir/Move.toml")"
-[[ "$dependency_names" == "Sui" ]] \
-  || fail "blast_admin may depend only on the pinned Sui framework."
+[[ "$dependency_names" == "$(printf '%s\n' Sui blast_fun_timelock)" ]] \
+  || fail "blast_admin may depend only on the pinned Sui framework and Blast timelock."
+expected_timelock_dependency='blast_fun_timelock = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/timelock", rev = "63b6cf86c0e1a74f699610fe182b1de8d8789a14" }'
+grep -Fqx "$expected_timelock_dependency" "$package_dir/Move.toml" \
+  || fail "blast_admin must pin the published immutable Blast timelock revision."
 if grep -qE '^\[dev-dependencies(\]|[.])' "$package_dir/Move.toml"; then
   fail "blast_admin may not add dev-only dependencies."
 fi
 
-for module in acl operational_version upgrade_custody errors events; do
+for module in blast_acl operational_version upgrade_custody errors blast_admin_events; do
   [[ -f "$package_dir/sources/$module.move" ]] \
     || fail "Missing required blast_admin module: $module.move"
 done
@@ -111,8 +114,8 @@ if grep -rniE '\b(fee|pause|migration|creator|pool|venue)\b' "$package_dir/sourc
   fail "Consumer product policy must not enter blast_admin production source."
 fi
 if grep -rn 'sui::event::emit' "$package_dir/sources" \
-  | grep -v "$package_dir/sources/events.move"; then
-  fail "Only events.move may emit shared administration events."
+  | grep -v "$package_dir/sources/blast_admin_events.move"; then
+  fail "Only blast_admin_events.move may emit shared administration events."
 fi
 if grep -rnE 'public(\(package\))?[[:space:]]+(entry[[:space:]]+)?fun[[:space:]]+[^ (]*(release|borrow|take|extract|transfer)[^ (]*' \
   "$package_dir/sources/upgrade_custody.move"; then
@@ -134,24 +137,26 @@ if production_lines "$package_dir/sources/upgrade_custody.move" \
   fail "Custody intake must have exactly one constructor path."
 fi
 
-acl_file="$package_dir/sources/acl.move"
+acl_file="$package_dir/sources/blast_acl.move"
 if grep -q 'operational_version\|OperationalVersion' "$acl_file"; then
   fail "ACL lifecycle must remain independent of consumer operational versions."
 fi
-grep -q '^public struct Authority<phantom Domain: drop> has key {$' "$acl_file" \
-  || fail "Authority must be compile-time domain separated."
-grep -q '^public struct SuperAdminCap<phantom Domain: drop> has key {$' "$acl_file" \
-  || fail "SuperAdminCap must not have store."
-grep -q '^public struct AdminCap<phantom Domain: drop> has key, store {$' "$acl_file" \
-  || fail "AdminCap must remain transferable and domain separated."
-grep -Fqx 'public struct AdminWitness<phantom Domain: drop>(u64) has drop;' "$acl_file" \
-  || fail "AdminWitness must be a drop-only domain-typed snapshot."
-grep -q 'admins: VecMap<ID, u64>,' "$acl_file" \
-  || fail "Authority must keep bounded u64 role bitmaps in VecMap."
-grep -q 'types::is_one_time_witness(&otw)' "$acl_file" \
-  || fail "The ACL constructor must authenticate a genuine domain OTW."
-if grep -q 'fun bootstrap' "$acl_file"; then
-  fail "The renamed ACL constructor must be the only production entry point."
+grep -Fqx 'public struct ACL has key {' "$acl_file" \
+  || fail "ACL must be one untyped shared singleton."
+grep -Fqx 'public struct SuperAdminCap has key {' "$acl_file" \
+  || fail "SuperAdminCap must be untyped and must not have store."
+grep -Fqx 'public struct AdminCap has key, store {' "$acl_file" \
+  || fail "AdminCap must remain transferable and untyped; roles live in the ACL."
+grep -Fqx 'public struct AdminWitness<phantom Role>() has drop;' "$acl_file" \
+  || fail "AdminWitness must be a drop-only, role-typed proof."
+grep -Fqx '    admins: VecMap<ID, VecSet<TypeName>>,' "$acl_file" \
+  || fail "ACL must list every live admin and its roles inline."
+grep -Fqx '    pending_super_admin: Timelocked<Option<address>>,' "$acl_file" \
+  || fail "A nominated super admin must wait out the timelock before it can accept."
+[[ "$(grep -c '^fun init(ctx: &mut TxContext) {$' "$acl_file")" -eq 1 ]] \
+  || fail "The singleton must be created only by package initialization."
+if grep -qE 'types::is_one_time_witness|fun new<' "$acl_file"; then
+  fail "The ACL must not be constructible per consumer domain."
 fi
 
 actual_acl_public="$({
@@ -159,14 +164,12 @@ actual_acl_public="$({
 } | sort)"
 expected_acl_public="$(printf '%s\n' \
   accept_super_admin_transfer \
-  assert_role \
   begin_super_admin_transfer \
   cancel_super_admin_transfer \
   destroy_admin_cap \
   destroy_retired_super_admin_cap \
   grant_admin \
   grant_role \
-  new \
   revoke_admin \
   revoke_role \
   sign_in \

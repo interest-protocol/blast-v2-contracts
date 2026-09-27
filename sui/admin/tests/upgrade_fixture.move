@@ -9,9 +9,9 @@ module blast_admin::upgrade_fixture;
 
 const COMPILED_GENERATION: u64 = 1;
 
-const PACKAGE_ADMIN_ROLE: u64 = 1;
-
 // === Test-Only Types ===
+
+public struct UpgradeAdmin()
 
 public struct PackageAdmin has key {
     id: UID,
@@ -48,22 +48,20 @@ public fun new(
 
 public fun authorize_upgrade(
     self: &mut PackageAdmin,
-    witness: &acl::AdminWitness<blast_admin::test_domain::TEST_DOMAIN>,
+    _: &AdminWitness<UpgradeAdmin>,
     digest: vector<u8>,
 ): UpgradeTicket {
     self.operational_version.assert_current(COMPILED_GENERATION);
-    witness.assert_role(PACKAGE_ADMIN_ROLE);
     let custodian_id = self.id.to_inner();
     self.custody.authorize_upgrade(custodian_id, digest)
 }
 
 public fun commit_and_advance(
     self: &mut PackageAdmin,
-    witness: &acl::AdminWitness<blast_admin::test_domain::TEST_DOMAIN>,
+    _: &AdminWitness<UpgradeAdmin>,
     receipt: UpgradeReceipt,
     next_compiled_generation: u64,
 ) {
-    witness.assert_role(PACKAGE_ADMIN_ROLE);
     self.operational_version.assert_next(next_compiled_generation);
     let custodian_id = self.id.to_inner();
 
@@ -91,6 +89,6 @@ public fun set_generation(self: &mut PackageAdmin, generation: u64) {
 
 use 0xa::package_marker;
 
-use blast_admin::{acl, operational_version, upgrade_custody};
+use blast_admin::{blast_acl::AdminWitness, operational_version, upgrade_custody};
 
 use sui::package::{Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};

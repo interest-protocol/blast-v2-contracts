@@ -5,8 +5,8 @@ as required by [`deployments/README.md`](../../deployments/README.md).
 
 1. Build, verify, and audit the candidate bytecode against the published ABI
    and stored layouts.
-2. In one PTB, sign in with a live routine `AdminCap` that holds this domain's
-   package-admin role, authorize the exact 32-byte package digest, execute the
+2. In one PTB, sign in as `blast_sui_domain::UpgradeAdmin` with a live `AdminCap`,
+   authorize the exact 32-byte package digest, execute the
    native upgrade, and pass the matching receipt to
    `package_admin::commit_upgrade_and_advance`.
 3. That finalizer commits the receipt into the same sealed cap **and** advances
@@ -20,8 +20,8 @@ as required by [`deployments/README.md`](../../deployments/README.md).
 5. Run the complete `scripts/verify.sh` gate and record the digest, policy,
    transaction, source verification, generation, and smoke-test evidence.
 
-Administration comes from the immutable `blast_admin` package through this
-package's own `BLAST_SUI_DOMAIN`. No Launchpad, DEX, or Series One capability
+Administration comes from the singleton Blast ACL in the immutable `blast_admin`
+package through this package's own `UpgradeAdmin` role. No other package's role
 can authorize any step above.
 
 Policy restriction is irreversible; this package deliberately exposes only the

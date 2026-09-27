@@ -375,7 +375,7 @@ the published venue packages above, in the orientation named by the route: the
 venue fork gate proves it locally, and a mainnet dry-run repeats it before
 deployment. No route may be skipped, and a skipped row is a release blocker, not
 a documentation footnote. Vault claim: `vault::claim_protocol_fees` pays the
-protocol migration residuals under `AdminWitness<BLAST_FUN_DOMAIN>` and this
+protocol migration residuals under `AdminWitness<TreasuryAdmin>` and this
 package's current generation. It touches neither the venue nor the position.
 
 Each fixture starts its launch through the adapter's `new` at a tier the venue

@@ -6,11 +6,10 @@
 #[allow(lint(abort_without_constant))]
 /// Permanent shared custody for the adapter Publisher and UpgradeCap.
 ///
-/// The adapter shares the Boosts core administration domain, so its governed
-/// transitions accept `AdminWitness<BLAST_BOOSTS_CORE>` and assert the role that
-/// core exports. Custody itself stays package-local: this adapter's
-/// generation advances without touching the core, which is immutable and has no
-/// generation of its own.
+/// Its governed transitions take `AdminWitness<UpgradeAdmin>`, the upgrade role
+/// the Boosts core declares for every adapter. Custody itself stays package-local:
+/// this adapter's generation advances without touching the core, which is
+/// immutable and has no generation of its own.
 module blast_boosts_aftermath::package_admin;
 
 // === Public Types ===
@@ -46,11 +45,10 @@ public fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxConte
 public fun authorize_upgrade(
     self: &mut PackageAdmin,
     protocol: &Protocol,
-    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
+    _: &AdminWitness<UpgradeAdmin>,
     digest: vector<u8>,
 ): UpgradeTicket {
     protocol.assert_current();
-    admin_witness.assert_role(domain::package_admin_role());
 
     self.custody.authorize_upgrade(self.id.to_inner(), digest)
 }
@@ -62,10 +60,9 @@ public fun authorize_upgrade(
 public fun commit_upgrade_and_advance(
     self: &mut PackageAdmin,
     protocol: &mut Protocol,
-    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
+    _: &AdminWitness<UpgradeAdmin>,
     receipt: UpgradeReceipt,
 ) {
-    admin_witness.assert_role(domain::package_admin_role());
     protocol.assert_next();
 
     self.custody.commit_upgrade(self.id.to_inner(), receipt);
@@ -76,10 +73,9 @@ public fun commit_upgrade_and_advance(
 public fun restrict_to_additive(
     self: &mut PackageAdmin,
     protocol: &Protocol,
-    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
+    _: &AdminWitness<UpgradeAdmin>,
 ) {
     protocol.assert_current();
-    admin_witness.assert_role(domain::package_admin_role());
 
     self.custody.restrict_to_additive(self.id.to_inner());
 }
@@ -88,10 +84,9 @@ public fun restrict_to_additive(
 public fun restrict_to_dependency_only(
     self: &mut PackageAdmin,
     protocol: &Protocol,
-    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
+    _: &AdminWitness<UpgradeAdmin>,
 ) {
     protocol.assert_current();
-    admin_witness.assert_role(domain::package_admin_role());
 
     self.custody.restrict_to_dependency_only(self.id.to_inner());
 }
@@ -100,10 +95,9 @@ public fun restrict_to_dependency_only(
 public fun make_immutable(
     self: &mut PackageAdmin,
     protocol: &Protocol,
-    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
+    _: &AdminWitness<UpgradeAdmin>,
 ) {
     protocol.assert_current();
-    admin_witness.assert_role(domain::package_admin_role());
 
     self.custody.make_immutable(self.id.to_inner());
 }
@@ -165,12 +159,12 @@ public fun policy_for_testing(self: &PackageAdmin): u8 {
 // === Imports ===
 
 use blast_admin::{
-    acl::AdminWitness,
+    blast_acl::AdminWitness,
     upgrade_custody::{Self, UpgradeCustody},
 };
 
 use blast_boosts_aftermath::{blast_boosts_aftermath::BLAST_BOOSTS_AFTERMATH, protocol::Protocol};
 
-use blast_boosts_core::blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE};
+use blast_boosts_core::blast_boosts_core::UpgradeAdmin;
 
 use sui::package::{Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};

@@ -8,7 +8,6 @@ module blast_admin::upgrade_custody_tests;
 // === Constants ===
 
 const ROOT: address = @0xA11CE;
-const ADMIN: address = @0xAD;
 const CUSTODIAN_ID: address = @0xC0570D1A;
 const OTHER_CUSTODIAN_ID: address = @0xBAD;
 
@@ -380,57 +379,18 @@ fun commit_is_rejected_after_immutability() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EAdminRoleNotGranted, location = blast_admin::acl)]
-fun consumer_wrapper_rejects_a_witness_without_the_package_admin_role() {
-    let mut scenario = test_scenario::begin(ROOT);
-    let (root, mut authority) = acl::new_for_testing<test_domain::TEST_DOMAIN>(
-        1,
-        1,
-        scenario.ctx(),
-    );
-    authority.grant_admin(&root, 2, ADMIN, scenario.ctx());
-    let publisher = canonical_publisher(scenario.ctx());
-    let upgrade_cap = canonical_upgrade_cap(scenario.ctx());
-    let mut package_admin = upgrade_fixture::new(publisher, upgrade_cap, scenario.ctx());
-    scenario.next_tx(ADMIN);
-    let admin_cap = scenario.take_from_sender<acl::AdminCap<test_domain::TEST_DOMAIN>>();
-    let witness = authority.sign_in(&admin_cap);
-
-    let ticket = package_admin.authorize_upgrade(&witness, digest());
-
-    destroy(scenario);
-    destroy(root);
-    destroy(authority);
-    destroy(admin_cap);
-    destroy(witness);
-    destroy(package_admin);
-    destroy(ticket);
-}
-
-#[test]
 #[expected_failure(abort_code = errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
 fun consumer_wrapper_rejects_stale_pre_upgrade_generation() {
     let mut scenario = test_scenario::begin(ROOT);
-    let (root, mut authority) = acl::new_for_testing<test_domain::TEST_DOMAIN>(
-        1,
-        1,
-        scenario.ctx(),
-    );
-    authority.grant_admin(&root, 1, ADMIN, scenario.ctx());
     let publisher = canonical_publisher(scenario.ctx());
     let upgrade_cap = canonical_upgrade_cap(scenario.ctx());
     let mut package_admin = upgrade_fixture::new(publisher, upgrade_cap, scenario.ctx());
     package_admin.set_generation(2);
-    scenario.next_tx(ADMIN);
-    let admin_cap = scenario.take_from_sender<acl::AdminCap<test_domain::TEST_DOMAIN>>();
-    let witness = authority.sign_in(&admin_cap);
+    let witness = blast_acl::witness_for_testing<UpgradeAdmin>();
 
     let ticket = package_admin.authorize_upgrade(&witness, digest());
 
     destroy(scenario);
-    destroy(root);
-    destroy(authority);
-    destroy(admin_cap);
     destroy(witness);
     destroy(package_admin);
     destroy(ticket);
@@ -439,18 +399,10 @@ fun consumer_wrapper_rejects_stale_pre_upgrade_generation() {
 #[test]
 fun fixture_commits_native_receipt_and_advances_generation_atomically() {
     let mut scenario = test_scenario::begin(ROOT);
-    let (root, mut authority) = acl::new_for_testing<test_domain::TEST_DOMAIN>(
-        1,
-        1,
-        scenario.ctx(),
-    );
-    authority.grant_admin(&root, 1, ADMIN, scenario.ctx());
     let publisher = canonical_publisher(scenario.ctx());
     let upgrade_cap = canonical_upgrade_cap(scenario.ctx());
     let mut package_admin = upgrade_fixture::new(publisher, upgrade_cap, scenario.ctx());
-    scenario.next_tx(ADMIN);
-    let admin_cap = scenario.take_from_sender<acl::AdminCap<test_domain::TEST_DOMAIN>>();
-    let witness = authority.sign_in(&admin_cap);
+    let witness = blast_acl::witness_for_testing<UpgradeAdmin>();
     let ticket = package_admin.authorize_upgrade(&witness, digest());
     let receipt = ticket.test_upgrade();
     let expected_package_id = receipt.package();
@@ -462,9 +414,6 @@ fun fixture_commits_native_receipt_and_advances_generation_atomically() {
     assert_eq!(package_admin.generation(), 2);
 
     destroy(scenario);
-    destroy(root);
-    destroy(authority);
-    destroy(admin_cap);
     destroy(witness);
     destroy(package_admin);
 }
@@ -473,27 +422,16 @@ fun fixture_commits_native_receipt_and_advances_generation_atomically() {
 #[expected_failure(abort_code = errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
 fun skipped_generation_rejects_before_the_fixture_commit() {
     let mut scenario = test_scenario::begin(ROOT);
-    let (root, mut authority) = acl::new_for_testing<test_domain::TEST_DOMAIN>(
-        1,
-        1,
-        scenario.ctx(),
-    );
-    authority.grant_admin(&root, 1, ADMIN, scenario.ctx());
     let publisher = canonical_publisher(scenario.ctx());
     let upgrade_cap = canonical_upgrade_cap(scenario.ctx());
     let mut package_admin = upgrade_fixture::new(publisher, upgrade_cap, scenario.ctx());
-    scenario.next_tx(ADMIN);
-    let admin_cap = scenario.take_from_sender<acl::AdminCap<test_domain::TEST_DOMAIN>>();
-    let witness = authority.sign_in(&admin_cap);
+    let witness = blast_acl::witness_for_testing<UpgradeAdmin>();
     let ticket = package_admin.authorize_upgrade(&witness, digest());
     let receipt = ticket.test_upgrade();
 
     package_admin.commit_and_advance(&witness, receipt, 3);
 
     destroy(scenario);
-    destroy(root);
-    destroy(authority);
-    destroy(admin_cap);
     destroy(witness);
     destroy(package_admin);
 }
@@ -502,18 +440,10 @@ fun skipped_generation_rejects_before_the_fixture_commit() {
 #[expected_failure(abort_code = errors::EOperationalVersionOverflow, location = blast_admin::operational_version)]
 fun generation_overflow_rejects_before_the_fixture_commit() {
     let mut scenario = test_scenario::begin(ROOT);
-    let (root, mut authority) = acl::new_for_testing<test_domain::TEST_DOMAIN>(
-        1,
-        1,
-        scenario.ctx(),
-    );
-    authority.grant_admin(&root, 1, ADMIN, scenario.ctx());
     let publisher = canonical_publisher(scenario.ctx());
     let upgrade_cap = canonical_upgrade_cap(scenario.ctx());
     let mut package_admin = upgrade_fixture::new(publisher, upgrade_cap, scenario.ctx());
-    scenario.next_tx(ADMIN);
-    let admin_cap = scenario.take_from_sender<acl::AdminCap<test_domain::TEST_DOMAIN>>();
-    let witness = authority.sign_in(&admin_cap);
+    let witness = blast_acl::witness_for_testing<UpgradeAdmin>();
     let ticket = package_admin.authorize_upgrade(&witness, digest());
     let receipt = ticket.test_upgrade();
     package_admin.set_generation(std::u64::max_value!());
@@ -521,9 +451,6 @@ fun generation_overflow_rejects_before_the_fixture_commit() {
     package_admin.commit_and_advance(&witness, receipt, 0);
 
     destroy(scenario);
-    destroy(root);
-    destroy(authority);
-    destroy(admin_cap);
     destroy(witness);
     destroy(package_admin);
 }
@@ -570,12 +497,11 @@ use 0xf::foreign_package_marker;
 use 0xa::{other_package_marker, package_marker};
 
 use blast_admin::{
-    acl,
+    blast_acl,
+    blast_admin_events as events,
     errors,
-    events,
-    test_domain,
     upgrade_custody,
-    upgrade_fixture,
+    upgrade_fixture::{Self, UpgradeAdmin},
 };
 
 use std::{type_name, unit_test::{assert_eq, destroy}};

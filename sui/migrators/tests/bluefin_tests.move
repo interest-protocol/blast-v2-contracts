@@ -36,8 +36,6 @@ public struct BluefinFixture {
     scenario: Scenario,
     version: PackageVersion,
     migrators_version: MigratorsVersion,
-    authority: Authority<BLAST_FUN_DOMAIN>,
-    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     config: LaunchConfig,
 }
 
@@ -173,30 +171,25 @@ fun start(): BluefinFixture {
     let mut scenario = test_scenario::begin(ADMIN);
     let version = package_version::new_for_testing(scenario.ctx());
     let migrators_version = migrators_package_version::new_for_testing(scenario.ctx());
-    let (root, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(16, 1, scenario.ctx());
-    let roles = blast_fun_domain::treasury_admin_role()
-        | blast_fun_domain::fee_admin_role()
-        | blast_fun_domain::listing_admin_role_for_testing()
-        | blast_fun_domain::adapter_admin_role_for_testing();
-    authority.grant_admin(&root, roles, ADMIN, scenario.ctx());
-    destroy(root);
     let mut config = launch_config::new_for_testing(scenario.ctx());
 
     scenario.next_tx(ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
-    let admin = authority.sign_in(&admin_cap);
-    config.set_quote_allowed<QUOTE>(&version, &admin, true);
-    config.set_trade_fees(&version, &admin, bps::new(100), bps::new(100));
-    config.set_protocol_allocation(&version, &admin, ADMIN, bps::new(0), bps::new(0));
+    config.set_quote_allowed<QUOTE>(&version, &blast_acl::witness_for_testing<ListingAdmin>(), true);
+    config.set_trade_fees(
+        &version,
+        &blast_acl::witness_for_testing<FeeAdmin>(),
+        bps::new(100),
+        bps::new(100),
+    );
+    config.set_protocol_allocation(
+        &version,
+        &blast_acl::witness_for_testing<TreasuryAdmin>(),
+        ADMIN,
+        bps::new(0),
+        bps::new(0),
+    );
 
-    BluefinFixture {
-        scenario,
-        version,
-        migrators_version,
-        authority,
-        admin_cap,
-        config,
-    }
+    BluefinFixture { scenario, version, migrators_version, config }
 }
 
 /// Starts a Bluefin launch at an out-of-bounds tier; the start must abort.
@@ -218,7 +211,7 @@ fun start_rejected_tier(tick_spacing: u32, fee_rate: u64) {
 }
 
 fun admit_bluefin(f: &mut BluefinFixture) {
-    let admin = f.authority.sign_in(&f.admin_cap);
+    let admin = blast_acl::witness_for_testing<AdapterAdmin>();
     f.config.set_migration_witness_allowed<bluefin::Witness>(&f.version, &admin, true);
 }
 
@@ -275,11 +268,11 @@ fun end(f: BluefinFixture) {
 
 // === Imports ===
 
-use blast_admin::acl::{Self, Authority, AdminCap};
+use blast_admin::blast_acl;
 
 use blast_fun::{
     allocation,
-    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
+    blast_fun_domain::{AdapterAdmin, FeeAdmin, ListingAdmin, TreasuryAdmin},
     bps,
     creator_authority,
     launch::Launch,

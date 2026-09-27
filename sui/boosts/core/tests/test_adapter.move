@@ -35,10 +35,6 @@ const MAX_ORDERS: u64 = 16;
 
 const ORACLE_LAG_MS: u64 = 1_000;
 
-const ROOT: address = @0xA;
-
-const ISSUER: address = @0xB;
-
 // === Errors ===
 
 /// The venue cannot serve a priced operation: paused, under margin, orders open, or drifted.
@@ -74,10 +70,6 @@ public struct Venue has copy, drop {
 public struct Issued {
     issuance: Issuance<Product>,
     venue: Venue,
-    authority: Authority<BLAST_BOOSTS_CORE>,
-    super_admin_cap: SuperAdminCap<BLAST_BOOSTS_CORE>,
-    admin_cap: AdminCap<BLAST_BOOSTS_CORE>,
-    scenario: Scenario,
 }
 
 /// A vault: the core state, the venue it is bound to, and the adapter's own books.
@@ -90,10 +82,6 @@ public struct Vault {
     terminal_cash: u64,
     /// Orders the most recent mint, redemption, rebalance or unwind placed.
     last_orders: u64,
-    authority: Authority<BLAST_BOOSTS_CORE>,
-    super_admin_cap: SuperAdminCap<BLAST_BOOSTS_CORE>,
-    admin_cap: AdminCap<BLAST_BOOSTS_CORE>,
-    scenario: Scenario,
 }
 
 // === Test Helpers ===
@@ -257,15 +245,10 @@ public fun issue(self: Venue): Issued {
 }
 
 public fun issue_with(self: Venue, vault_policy: VaultPolicy, max_order_notional: u64, nav_cap: u64): Issued {
-    let mut scenario = test_scenario::begin(ROOT);
-    let (super_admin_cap, mut authority) = domain_fixture::new_authority(scenario.ctx());
-    authority.grant_admin(&super_admin_cap, domain::vault_issuer_role(), ISSUER, scenario.ctx());
-    scenario.next_tx(ISSUER);
-    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_BOOSTS_CORE>>();
-    let witness = authority.sign_in(&admin_cap);
+    let witness = blast_acl::witness_for_testing<VaultIssuer>();
     let issuance = state::issue<Product>(&witness, vault_policy, max_order_notional, nav_cap, BASE_DECIMALS, COLLATERAL_DECIMALS);
 
-    Issued { issuance, venue: self, authority, super_admin_cap, admin_cap, scenario }
+    Issued { issuance, venue: self }
 }
 
 /// The standard policy: band 1.6x to 2.6x around 2x, 3x hard cap, 1% ordinary and
@@ -329,11 +312,6 @@ public fun leverage_bps(self: &Vault): u64 {
     ((self.venue.notional() as u128) * (BPS as u128)).div_ceil(self.nav() as u128) as u64
 }
 
-/// Signs in the issuer's live witness for administrative calls.
-public fun witness(self: &Vault): AdminWitness<BLAST_BOOSTS_CORE> {
-    self.authority.sign_in(&self.admin_cap)
-}
-
 // --- Activation ---
 
 /// Seeds the account, opens the target position in capped orders, and activates.
@@ -341,7 +319,7 @@ public fun witness(self: &Vault): AdminWitness<BLAST_BOOSTS_CORE> {
 /// Returns the seed's shareholder NAV; the locked supply is `SEED_SHARE_SCALE` times it.
 /// Seeds the venue, opens the target position in capped orders, and activates: the Vault exists from here on.
 public fun activate(self: Issued, seed: u64, seed_reserve: u64): Vault {
-    let Issued { issuance, mut venue, authority, super_admin_cap, admin_cap, scenario } = self;
+    let Issued { issuance, mut venue } = self;
     venue.deposit(seed);
     let (mut remaining, max_order_base, seed_position) = issuance.seed_terms(venue.observe(), seed_reserve);
 
@@ -357,10 +335,7 @@ public fun activate(self: Issued, seed: u64, seed_reserve: u64): Vault {
         issuance.activate(venue.observe(), seed_reserve, venue.now_ms);
     let locked = seed_nav * SEED_SHARE_SCALE;
 
-    Vault {
-        state, venue, supply: locked, locked, admin_cash: 0, terminal_cash: 0, last_orders: 0,
-        authority, super_admin_cap, admin_cap, scenario,
-    }
+    Vault { state, venue, supply: locked, locked, admin_cash: 0, terminal_cash: 0, last_orders: 0 }
 }
 
 // --- Mint ---
@@ -566,30 +541,18 @@ public fun claim(self: &mut Vault, shares: u64, minimum: u64): u64 {
 // --- Teardown ---
 
 public fun destroy(self: Vault) {
-    let Vault {
-        state, venue: _, supply: _, locked: _, admin_cash: _, terminal_cash: _, last_orders: _,
-        authority, super_admin_cap, admin_cap, scenario,
-    } = self;
+    let Vault { state, venue: _, supply: _, locked: _, admin_cash: _, terminal_cash: _, last_orders: _ } = self;
     state.destroy_for_testing();
-    unit_test::destroy(authority);
-    unit_test::destroy(super_admin_cap);
-    unit_test::destroy(admin_cap);
-    scenario.end();
 }
 
 // === Imports ===
 
-use blast_admin::acl::{AdminCap, AdminWitness, Authority, SuperAdminCap};
+use blast_admin::blast_acl;
 
 use blast_boosts_core::{
-    domain_fixture,
     observation::{Self, PositionObservation, PriceObservation},
     policy::{Self, PositionSide, VaultPolicy},
     rebalance_math,
-    blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
+    blast_boosts_core::VaultIssuer,
     state::{Self, Issuance, State},
 };
-
-use std::unit_test;
-
-use sui::test_scenario::{Self, Scenario};

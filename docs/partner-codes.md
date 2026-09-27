@@ -99,8 +99,8 @@ on Boosts and 8% on another product.
 
 ## For Blast's operators
 
-- **Registering a deal.** The partner administrator (its own role in the partner
-  domain) calls `register` with the company's cap ID, the recipient and the
+- **Registering a deal.** The partner administrator (the
+  `blast_partners::PartnerAdmin` role in the Blast ACL) calls `register` with the company's cap ID, the recipient and the
   share. For a new company, mint a cap with `new_cap` and send it to them, or
   use a cap they minted. `register` accepts any ID, so first check on chain that
   the ID is a `PartnerCap` the company holds: a wrong ID leaves the deal without
@@ -125,7 +125,7 @@ on Boosts and 8% on another product.
 - **At launch,** publish `blast_partners` immutable (the timelock it builds on
   is already published immutable) and commit its `Published.toml`, so the
   adapter's mainnet build links to it. Then publish the Boosts adapter fresh,
-  grant the partner administrator role, and add each Boosts deal. Also set each
+  grant `PartnerAdmin` on the Blast ACL, and add each Boosts deal. Also set each
   vault's admin share: while it is zero, as it is at activation, Blast earns
   nothing and so partners earn nothing.
 - **Deny lists.** If a recipient is blocked by the collateral's deny list, trades

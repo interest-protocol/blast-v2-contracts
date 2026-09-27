@@ -38,8 +38,6 @@ public struct CreateFixture {
 public struct VaultFixture {
     runner: TestRunner,
     version: PackageVersion,
-    authority: Authority<BLAST_SUI_DOMAIN>,
-    admin_cap: AdminCap<BLAST_SUI_DOMAIN>,
     vault: Option<Vault>,
     system_state: Option<SuiSystemState>,
 }
@@ -1503,7 +1501,7 @@ fun locked_backing_cannot_be_drained_by_user_redemptions() {
     let mut fixture = start_vault_with_deposit();
 
     fixture.next_tx!(OWNER, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = fee_admin();
         f.vault!().set_redeem_fee(
             &f.version,
             &admin_witness,
@@ -1921,7 +1919,7 @@ fun routine_admin_updates_the_fee_and_later_exits_use_and_retain_it() {
 
     fixture.next_tx!(OWNER, |f| {
         assert_eq!(f.vault!().redeem_fee_bps_for_testing(), constants::default_redeem_fee_bps!());
-        let admin_witness = f.sign_in();
+        let admin_witness = fee_admin();
         f.vault!().set_redeem_fee(
             &f.version,
             &admin_witness,
@@ -1953,7 +1951,7 @@ fun routine_admin_updates_the_fee_and_later_exits_use_and_retain_it() {
     assert!(blast_custody.pool_assets() >= assets_before - net);
 
     fixture.next_tx!(OWNER, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = fee_admin();
         f.vault!().set_redeem_fee(
             &f.version,
             &admin_witness,
@@ -1981,35 +1979,12 @@ fun routine_admin_updates_the_fee_and_later_exits_use_and_retain_it() {
 }
 
 #[test]
-#[expected_failure(
-    abort_code = blast_admin::errors::EInvalidAdminCap,
-    location = blast_admin::acl,
-)]
-fun admin_registered_in_another_registry_cannot_change_the_fee() {
-    let mut fixture = start_vault();
-
-    fixture.next_tx!(OWNER, |f| {
-        let (foreign_super_admin_cap, foreign_authority) = new_authority(f.ctx!());
-        let admin_witness = foreign_authority.sign_in(&f.admin_cap);
-        f.vault!().set_redeem_fee(
-            &f.version,
-            &admin_witness,
-            5,
-        );
-        destroy(foreign_super_admin_cap);
-        destroy(foreign_authority);
-    });
-
-    fixture.end();
-}
-
-#[test]
 #[expected_failure(abort_code = errors::ERedeemFeeAboveMaximum, location = blast_sui::vault)]
 fun fee_above_the_immutable_maximum_is_rejected() {
     let mut fixture = start_vault();
 
     fixture.next_tx!(OWNER, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = fee_admin();
         f.vault!().set_redeem_fee(
             &f.version,
             &admin_witness,
@@ -2026,7 +2001,7 @@ fun unchanged_fee_is_rejected() {
     let mut fixture = start_vault();
 
     fixture.next_tx!(OWNER, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = fee_admin();
         f.vault!().set_redeem_fee(
             &f.version,
             &admin_witness,
@@ -2046,7 +2021,7 @@ fun stale_package_version_rejects_fee_changes() {
     let mut fixture = start_vault();
 
     fixture.next_tx!(OWNER, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = fee_admin();
         f.version.set_for_testing(2);
         f.vault!().set_redeem_fee(
             &f.version,
@@ -2154,7 +2129,7 @@ fun fee_rate_replays_from_creation_and_change_facts() {
     let (shares, _) = fixture.mint_blast(DEPOSIT);
 
     fixture.next_tx!(OWNER, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = fee_admin();
         f.vault!().set_redeem_fee(
             &f.version,
             &admin_witness,
@@ -2377,15 +2352,11 @@ fun vault_end(self: VaultFixture) {
     let VaultFixture {
         runner,
         version,
-        authority,
-        admin_cap,
         vault,
         system_state,
     } = self;
 
     destroy(version);
-    destroy(authority);
-    destroy(admin_cap);
     vault.destroy_none();
     system_state.destroy_none();
     runner.finish();
@@ -2428,31 +2399,18 @@ fun create_vault(
 fun into_vault_fixture(self: CreateFixture): VaultFixture {
     let CreateFixture { mut runner, version, system_state } = self;
     system_state.destroy_none();
-    let (super_admin_cap, mut authority) = new_authority(runner.ctx());
-    authority.grant_admin(&super_admin_cap, 0, OWNER, runner.ctx());
     runner.set_sender(OWNER);
-    let admin_cap = runner.scenario_mut().take_from_sender<AdminCap<BLAST_SUI_DOMAIN>>();
-    destroy(super_admin_cap);
 
     VaultFixture {
         runner,
         version,
-        authority,
-        admin_cap,
         vault: option::none(),
         system_state: option::none(),
     }
 }
 
-fun sign_in(self: &VaultFixture): AdminWitness<BLAST_SUI_DOMAIN> {
-    self.authority.sign_in(&self.admin_cap)
-}
-
-/// Unshared Blast SUI authority state using this package's real constants.
-fun new_authority(
-    ctx: &mut TxContext,
-): (blast_admin::acl::SuperAdminCap<BLAST_SUI_DOMAIN>, Authority<BLAST_SUI_DOMAIN>) {
-    acl::new_for_testing<BLAST_SUI_DOMAIN>(16, 7 * 24 * 60 * 60 * 1_000, ctx)
+fun fee_admin(): AdminWitness<FeeAdmin> {
+    blast_acl::witness_for_testing()
 }
 
 fun take_fun_coin(self: &mut VaultFixture): Coin<FUN_SUI> {
@@ -2764,11 +2722,11 @@ fun assert_custody_matches(custody: &events::VaultCustody, vault: &Vault) {
 
 // === Imports ===
 
-use blast_admin::acl::{Self, Authority, AdminCap, AdminWitness};
+use blast_admin::blast_acl::{Self, AdminWitness};
 
 use blast_sui::{
     blast_sui::{Self as blast_coin, BLAST_SUI},
-    blast_sui_domain::BLAST_SUI_DOMAIN,
+    blast_sui_domain::FeeAdmin,
     constants,
     deposit_receipt::{Self, BlastSuiDepositReceipt},
     errors,

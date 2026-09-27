@@ -7,10 +7,6 @@ module blast_boosts_composition_tests::quote_composition_tests;
 
 // === Constants ===
 
-const MAX_ADMINS: u64 = 16;
-
-const ROOT_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
-
 const POOL_TICK_SPACING: u32 = 200;
 
 const POOL_FEE_RATE: u64 = 10_000;
@@ -51,26 +47,19 @@ fun admitting_long_does_not_admit_the_distinct_short_vault_quote() {
 fun quote_round_trip<Quote>(admit_exact: bool) {
     let mut scenario = test_scenario::begin(@0x0);
     let version = package_version::new_for_testing(scenario.ctx());
-    let (super_admin, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(
-        MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, scenario.ctx(),
-    );
-    // Exactly the three roles the LaunchConfig setters below assert.
-    let roles = blast_fun_domain::listing_admin_role_for_testing()
-        | blast_fun_domain::adapter_admin_role_for_testing()
-        | blast_fun_domain::treasury_admin_role();
-    authority.grant_admin(&super_admin, roles, @0xa, scenario.ctx());
     launch_config::init_for_testing(scenario.ctx());
     scenario.next_tx(@0xa);
-    let admin = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
-    let witness = authority.sign_in(&admin);
+    let listing_admin = blast_acl::witness_for_testing<ListingAdmin>();
+    let adapter_admin = blast_acl::witness_for_testing<AdapterAdmin>();
+    let treasury_admin = blast_acl::witness_for_testing<TreasuryAdmin>();
     let mut config = scenario.take_shared<LaunchConfig>();
     if (admit_exact) {
-        config.set_quote_allowed<Quote>(&version, &witness, true);
+        config.set_quote_allowed<Quote>(&version, &listing_admin, true);
     } else {
-        config.set_quote_allowed<BlastBoost<Long2x>>(&version, &witness, true);
+        config.set_quote_allowed<BlastBoost<Long2x>>(&version, &listing_admin, true);
     };
-    config.set_migration_witness_allowed<Migration>(&version, &witness, true);
-    config.set_protocol_allocation(&version, &witness, @0xa, bps::new(0), bps::new(0));
+    config.set_migration_witness_allowed<Migration>(&version, &adapter_admin, true);
+    config.set_protocol_allocation(&version, &treasury_admin, @0xa, bps::new(0), bps::new(0));
     let runtime = runtime_config::new_disabled_for_testing(scenario.ctx());
     let ticket = launch_ticket::new(
         test_utils::create_one_time_witness<QUOTE_COMPOSITION_TESTS>(), 9,
@@ -105,9 +94,6 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
     test_scenario::return_shared(market);
     clock.destroy_for_testing();
     destroy(runtime);
-    destroy(admin);
-    destroy(authority);
-    destroy(super_admin);
     destroy(version);
     scenario.end();
 }
@@ -145,7 +131,7 @@ public fun sell_and_redeem_shutdown<Product, Collateral, Meme>(
 /// abilities; requires the issuer's live objects to run.
 public fun issue_published_product<Collateral>(
     protocol: &Protocol,
-    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
+    admin_witness: &AdminWitness<VaultIssuer>,
     registry: &mut CoinRegistry,
     vault_policy: VaultPolicy,
     max_order_notional: u64,
@@ -210,17 +196,17 @@ public fun sell_and_redeem<Product, Collateral, Meme>(
 
 // === Imports ===
 
-use blast_admin::acl::{Self, AdminCap, AdminWitness};
+use blast_admin::blast_acl::{Self, AdminWitness};
 
 use blast_fun::{
     allocation::{Self as allocation, AllocationPlan}, bps, creator_authority, launch::{Self, Launch}, launch_config::{Self, LaunchConfig},
-    launch_ticket, blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
+    launch_ticket, blast_fun_domain::{AdapterAdmin, ListingAdmin, TreasuryAdmin},
     package_version::{Self, PackageVersion}, runtime_config::{Self, RuntimeConfig},
 };
 
 use blast_boosts_aftermath::{blast_boost::BlastBoost, operations, protocol::Protocol, vault::{Self, Vault, VaultIssuance}};
 
-use blast_boosts_core::{blast_boosts_core::BLAST_BOOSTS_CORE, policy::VaultPolicy};
+use blast_boosts_core::{blast_boosts_core::VaultIssuer, policy::VaultPolicy};
 
 use blast_boosts_products::blast_boosts_products::BTC_BULL_2X;
 

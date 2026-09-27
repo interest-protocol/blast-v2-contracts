@@ -133,8 +133,6 @@ public struct ReplayFixture {
     migrators_version: MigratorsVersion,
     runtime: RuntimeConfig,
     clock: Clock,
-    authority: Authority<BLAST_FUN_DOMAIN>,
-    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     replay: Replay,
 }
 
@@ -340,24 +338,11 @@ fun start(): ReplayFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let version = package_version::new_for_testing(scenario.ctx());
     let migrators_version = migrators_version::new_for_testing(scenario.ctx());
-    let (root, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(16, 1, scenario.ctx());
-    let roles = blast_fun_domain::creator_admin_role_for_testing()
-        | blast_fun_domain::buyback_admin_role()
-        | blast_fun_domain::treasury_admin_role()
-        | blast_fun_domain::fee_admin_role()
-        | blast_fun_domain::listing_admin_role_for_testing()
-        | blast_fun_domain::adapter_admin_role_for_testing()
-        | blast_fun_domain::rewards_admin_role();
-    authority.grant_admin(&root, roles, ADMIN, scenario.ctx());
-    destroy(root);
     launch_config::init_for_testing(scenario.ctx());
     lp_fee_policy::init_for_testing(scenario.ctx());
     let runtime = runtime_config::new_disabled_for_testing(scenario.ctx());
     let mut clock = clock::create_for_testing(scenario.ctx());
     clock.set_for_testing(PUBLIC_START_MS);
-
-    scenario.next_tx(ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
 
     ReplayFixture {
         scenario,
@@ -365,8 +350,6 @@ fun start(): ReplayFixture {
         migrators_version,
         runtime,
         clock,
-        authority,
-        admin_cap,
         replay: new_replay(PUBLISHER),
     }
 }
@@ -378,8 +361,6 @@ fun replay_end(self: ReplayFixture) {
         migrators_version,
         runtime,
         clock,
-        authority,
-        admin_cap,
         replay: _,
     } = self;
 
@@ -387,8 +368,6 @@ fun replay_end(self: ReplayFixture) {
     destroy(migrators_version);
     destroy(runtime);
     clock.destroy_for_testing();
-    destroy(authority);
-    destroy(admin_cap);
     scenario.end();
 }
 
@@ -398,26 +377,37 @@ fun replay_end(self: ReplayFixture) {
 /// and the first protocol destination.
 fun configure_policy(self: &mut ReplayFixture) {
     self.next_tx!(ADMIN, |f| {
-        let admin = f.authority.sign_in(&f.admin_cap);
+        let listing_admin = blast_acl::witness_for_testing<ListingAdmin>();
+        let fee_admin = blast_acl::witness_for_testing<FeeAdmin>();
+        let treasury_admin = blast_acl::witness_for_testing<TreasuryAdmin>();
         let mut config = f.scenario.take_shared<LaunchConfig>();
         let mut policy = f.take_policy();
 
-        config.set_quote_allowed<QUOTE>(&f.version, &admin, true);
-        config.set_migration_witness_allowed<Venue>(&f.version, &admin, true);
-        config.set_trade_fees(&f.version, &admin, bps::new(QUOTE_FEE_BPS), bps::new(MEME_FEE_BPS));
+        config.set_quote_allowed<QUOTE>(&f.version, &listing_admin, true);
+        config.set_migration_witness_allowed<Venue>(
+            &f.version,
+            &blast_acl::witness_for_testing<AdapterAdmin>(),
+            true,
+        );
+        config.set_trade_fees(
+            &f.version,
+            &fee_admin,
+            bps::new(QUOTE_FEE_BPS),
+            bps::new(MEME_FEE_BPS),
+        );
         config.set_protocol_allocation(
             &f.version,
-            &admin,
+            &treasury_admin,
             PROTOCOL_RECIPIENT,
             bps::new(500),
             bps::new(1_000),
         );
         let version = &f.migrators_version;
-        policy.set_default_shares(version, &admin, bps::new(1_000), bps::new(2_000));
-        policy.set_coin_shares<OtherMeme>(version, &admin, bps::new(9), bps::new(9));
-        policy.set_coin_shares<REPLAY_TESTS>(version, &admin, bps::new(1_500), bps::new(2_500));
-        policy.clear_coin_shares<OtherMeme>(version, &admin);
-        policy.set_protocol_destination(version, &admin, FIRST_PROTOCOL_DESTINATION);
+        policy.set_default_shares(version, &fee_admin, bps::new(1_000), bps::new(2_000));
+        policy.set_coin_shares<OtherMeme>(version, &fee_admin, bps::new(9), bps::new(9));
+        policy.set_coin_shares<REPLAY_TESTS>(version, &fee_admin, bps::new(1_500), bps::new(2_500));
+        policy.clear_coin_shares<OtherMeme>(version, &fee_admin);
+        policy.set_protocol_destination(version, &treasury_admin, FIRST_PROTOCOL_DESTINATION);
 
         test_scenario::return_shared(config);
         test_scenario::return_shared(policy);
@@ -612,7 +602,7 @@ fun settle_fee_split(self: &mut ReplayFixture, meme: u64, quote: u64) {
 /// the position and pays three Meme per Quote taken out of the position, at exactly the minimum.
 fun buy_back_and_burn(self: &mut ReplayFixture) {
     self.next_tx!(ADMIN, |f| {
-        let admin = f.authority.sign_in(&f.admin_cap);
+        let admin = blast_acl::witness_for_testing<BuybackAdmin>();
         let mut vault = f.take_vault();
         let mut currency = f.take_currency();
 
@@ -633,7 +623,7 @@ fun buy_back_and_burn(self: &mut ReplayFixture) {
 /// defaults.
 fun change_blast_share(self: &mut ReplayFixture) {
     self.next_tx!(ADMIN, |f| {
-        let admin = f.authority.sign_in(&f.admin_cap);
+        let admin = blast_acl::witness_for_testing<FeeAdmin>();
         let mut policy = f.take_policy();
 
         policy.clear_coin_shares<REPLAY_TESTS>(&f.migrators_version, &admin);
@@ -668,7 +658,7 @@ fun claim_creator_fees(self: &mut ReplayFixture) {
 /// Publishes round zero: one leaf paying Alice half of each rewards balance.
 fun publish_round(self: &mut ReplayFixture) {
     self.next_tx!(ADMIN, |f| {
-        let admin = f.authority.sign_in(&f.admin_cap);
+        let admin = blast_acl::witness_for_testing<RewardsAdmin>();
         let mut vault = f.take_vault();
         let (meme, quote) = vault.rewards_balances();
         let root = merkle::leaf(object::id(&vault), 0, 0, ALICE, meme / 2, quote / 2);
@@ -715,7 +705,7 @@ fun claim_reward(self: &mut ReplayFixture) {
 /// Redirects the live protocol share between two collections.
 fun redirect_protocol_share(self: &mut ReplayFixture, destination: address) {
     self.next_tx!(ADMIN, |f| {
-        let admin = f.authority.sign_in(&f.admin_cap);
+        let admin = blast_acl::witness_for_testing<TreasuryAdmin>();
         let mut policy = f.take_policy();
 
         policy.set_protocol_destination(&f.migrators_version, &admin, destination);
@@ -1778,12 +1768,19 @@ macro fun pair($balances: || -> (u64, u64)): Pair {
 
 // === Imports ===
 
-use blast_admin::acl::{Self, Authority, AdminCap};
+use blast_admin::blast_acl;
 
 use blast_fun::{
     allocation::{Self, AllocationPlan, FeeSplit, Route},
     blast_events::Event as BlastEvent,
-    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
+    blast_fun_domain::{
+        AdapterAdmin,
+        BuybackAdmin,
+        FeeAdmin,
+        ListingAdmin,
+        RewardsAdmin,
+        TreasuryAdmin,
+    },
     bps,
     creator_authority::{Self, CurveFeeCap},
     events,

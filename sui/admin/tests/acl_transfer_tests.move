@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
 #[test_only]
-/// Stateful tests for delayed typed root-capability transfer.
+/// Stateful tests for the singleton ACL's delayed root-capability transfer.
 module blast_admin::acl_transfer_tests;
 
 // === Constants ===
@@ -15,29 +15,74 @@ const OTHER: address = @0xDAD;
 
 const NOW_MS: u64 = 1_000;
 
-const DELAY_MS: u64 = 100;
+const DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 
 // === Test-Only Types ===
 
 public struct Fixture {
     scenario: Scenario,
-    authority: acl::Authority<test_domain::TEST_DOMAIN>,
-    root: Option<acl::SuperAdminCap<test_domain::TEST_DOMAIN>>,
+    acl: ACL,
+    root: Option<SuperAdminCap>,
     clock: Clock,
 }
 
 // === Tests ===
 
 #[test]
+fun the_transfer_delay_is_seven_days() {
+    assert_eq!(blast_acl::super_admin_transfer_delay_ms_for_testing(), DELAY_MS);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ENotPendingSuperAdminRecipient, location = blast_admin::blast_acl)]
+fun a_cancelled_transfer_cannot_be_accepted_even_after_its_delay() {
+    let mut fixture = start();
+    fixture.begin_transfer(NEW_ROOT);
+    fixture.clock.set_for_testing(NOW_MS + DELAY_MS);
+
+    fixture.cancel_transfer();
+    fixture.scenario.next_tx(NEW_ROOT);
+    fixture.accept_transfer();
+
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ENotPendingSuperAdminRecipient, location = blast_admin::blast_acl)]
+fun a_replaced_recipient_cannot_accept_even_after_its_delay() {
+    let mut fixture = start();
+    fixture.begin_transfer(NEW_ROOT);
+    fixture.clock.set_for_testing(NOW_MS + DELAY_MS);
+
+    fixture.begin_transfer(OTHER);
+    fixture.scenario.next_tx(NEW_ROOT);
+    fixture.accept_transfer();
+
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ENotPendingSuperAdminRecipient, location = blast_admin::blast_acl)]
+fun an_accepted_transfer_cannot_be_accepted_twice() {
+    let mut fixture = start();
+    fixture.begin_transfer(NEW_ROOT);
+    fixture.clock.set_for_testing(NOW_MS + DELAY_MS);
+    fixture.scenario.next_tx(NEW_ROOT);
+    fixture.accept_transfer();
+
+    fixture.accept_transfer();
+
+    destroy(fixture);
+}
+
+#[test]
 fun transfer_accepts_at_the_exact_deadline_and_old_root_can_then_be_destroyed() {
     let mut fixture = start();
-    let authority_id = fixture.authority.authority_id_for_testing();
     let previous_root_id = fixture.root.borrow().super_admin_cap_id_for_testing();
 
     fixture.begin_transfer(NEW_ROOT);
-    let started = events::collect_one<events::SuperAdminTransferStarted<test_domain::TEST_DOMAIN>>(0);
-    let (started_authority_id, recipient, execute_after_ms) = started.super_admin_transfer_started_fields();
-    assert_eq!(started_authority_id, authority_id);
+    let started = events::collect_one<events::SuperAdminTransferStarted>(0);
+    let (recipient, execute_after_ms) = started.super_admin_transfer_started_fields();
     assert_eq!(recipient, NEW_ROOT);
     assert_eq!(execute_after_ms, NOW_MS + DELAY_MS);
 
@@ -45,27 +90,19 @@ fun transfer_accepts_at_the_exact_deadline_and_old_root_can_then_be_destroyed() 
     fixture.scenario.next_tx(NEW_ROOT);
     fixture.accept_transfer();
 
-    let transferred = events::collect_one<events::SuperAdminTransferred<test_domain::TEST_DOMAIN>>(0);
-    let (emitted_authority_id, emitted_previous_id, new_root_id, emitted_recipient) =
+    let transferred = events::collect_one<events::SuperAdminTransferred>(0);
+    let (emitted_previous_id, new_root_id, emitted_recipient) =
         transferred.super_admin_transferred_fields();
-    assert_eq!(emitted_authority_id, authority_id);
     assert_eq!(emitted_previous_id, previous_root_id);
     assert_eq!(emitted_recipient, NEW_ROOT);
 
     fixture.scenario.next_tx(NEW_ROOT);
-    let new_root = fixture
-        .scenario
-        .take_from_sender<acl::SuperAdminCap<test_domain::TEST_DOMAIN>>();
+    let new_root = fixture.scenario.take_from_sender<SuperAdminCap>();
     assert_eq!(new_root.super_admin_cap_id_for_testing(), new_root_id);
-    assert_eq!(fixture.authority.active_super_admin_cap_id_for_testing(), new_root_id);
-    fixture.authority.destroy_retired_super_admin_cap(fixture.root.extract());
-    let destroyed = events::collect_one<
-        events::SuperAdminCapDestroyed<test_domain::TEST_DOMAIN>,
-    >(0);
-    let (emitted_authority_id, destroyed_root_id) =
-        destroyed.super_admin_cap_destroyed_fields();
-    assert_eq!(emitted_authority_id, authority_id);
-    assert_eq!(destroyed_root_id, previous_root_id);
+    assert_eq!(fixture.acl.active_super_admin_cap_id_for_testing(), new_root_id);
+    fixture.acl.destroy_retired_super_admin_cap(fixture.root.extract());
+    let destroyed = events::collect_one<events::SuperAdminCapDestroyed>(0);
+    assert_eq!(destroyed.super_admin_cap_destroyed_fields(), previous_root_id);
     fixture.root.fill(new_root);
 
     destroy(fixture);
@@ -79,12 +116,12 @@ fun replacement_cancels_the_previous_recipient_and_restarts_the_delay() {
     fixture.clock.set_for_testing(NOW_MS + 10);
     fixture.begin_transfer(OTHER);
 
-    let cancelled = events::collect_one<events::SuperAdminTransferCancelled<test_domain::TEST_DOMAIN>>(0);
-    let (_, recipient, execute_after_ms) = cancelled.super_admin_transfer_cancelled_fields();
+    let cancelled = events::collect_one<events::SuperAdminTransferCancelled>(0);
+    let (recipient, execute_after_ms) = cancelled.super_admin_transfer_cancelled_fields();
     assert_eq!(recipient, NEW_ROOT);
     assert_eq!(execute_after_ms, NOW_MS + DELAY_MS);
-    assert_eq!(fixture.authority.pending_recipient_for_testing(), OTHER);
-    assert_eq!(fixture.authority.pending_execute_after_ms_for_testing(), NOW_MS + 10 + DELAY_MS);
+    assert_eq!(fixture.acl.pending_recipient_for_testing(), OTHER);
+    assert_eq!(fixture.acl.pending_execute_after_ms_for_testing(), NOW_MS + 10 + DELAY_MS);
 
     destroy(fixture);
 }
@@ -96,18 +133,17 @@ fun current_root_can_cancel_a_pending_transfer() {
     fixture.begin_transfer(NEW_ROOT);
     fixture.cancel_transfer();
 
-    let cancelled = events::collect_one<events::SuperAdminTransferCancelled<test_domain::TEST_DOMAIN>>(0);
-    let (authority_id, recipient, execute_after_ms) = cancelled.super_admin_transfer_cancelled_fields();
-    assert_eq!(authority_id, fixture.authority.authority_id_for_testing());
+    let cancelled = events::collect_one<events::SuperAdminTransferCancelled>(0);
+    let (recipient, execute_after_ms) = cancelled.super_admin_transfer_cancelled_fields();
     assert_eq!(recipient, NEW_ROOT);
     assert_eq!(execute_after_ms, NOW_MS + DELAY_MS);
-    assert!(!fixture.authority.has_pending_transfer_for_testing());
+    assert!(!fixture.acl.has_pending_transfer_for_testing());
 
     destroy(fixture);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidSuperAdminRecipient, location = blast_admin::acl)]
+#[expected_failure(abort_code = errors::EInvalidSuperAdminRecipient, location = blast_admin::blast_acl)]
 fun transfer_rejects_zero_recipient() {
     let mut fixture = start();
 
@@ -117,7 +153,7 @@ fun transfer_rejects_zero_recipient() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidSuperAdminRecipient, location = blast_admin::acl)]
+#[expected_failure(abort_code = errors::EInvalidSuperAdminRecipient, location = blast_admin::blast_acl)]
 fun transfer_rejects_the_current_sender() {
     let mut fixture = start();
 
@@ -127,7 +163,7 @@ fun transfer_rejects_the_current_sender() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ESuperAdminTransferUnchanged, location = blast_admin::acl)]
+#[expected_failure(abort_code = errors::ESuperAdminTransferUnchanged, location = blast_admin::blast_acl)]
 fun transfer_rejects_an_unchanged_pending_recipient() {
     let mut fixture = start();
 
@@ -138,7 +174,7 @@ fun transfer_rejects_an_unchanged_pending_recipient() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ESuperAdminTransferNotReady, location = blast_admin::acl)]
+#[expected_failure(abort_code = errors::ESuperAdminTransferNotReady, location = blast_admin::blast_acl)]
 fun transfer_cannot_be_accepted_early() {
     let mut fixture = start();
 
@@ -150,7 +186,7 @@ fun transfer_cannot_be_accepted_early() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ENotPendingSuperAdminRecipient, location = blast_admin::acl)]
+#[expected_failure(abort_code = errors::ENotPendingSuperAdminRecipient, location = blast_admin::blast_acl)]
 fun transfer_rejects_the_wrong_sender_before_time_check() {
     let mut fixture = start();
 
@@ -162,7 +198,7 @@ fun transfer_rejects_the_wrong_sender_before_time_check() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ENoPendingSuperAdminTransfer, location = blast_admin::acl)]
+#[expected_failure(abort_code = errors::ENoPendingSuperAdminTransfer, location = blast_admin::blast_acl)]
 fun cancellation_requires_a_pending_transfer() {
     let mut fixture = start();
 
@@ -172,22 +208,11 @@ fun cancellation_requires_a_pending_transfer() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ESuperAdminTransferTimeOverflow, location = blast_admin::acl)]
-fun transfer_deadline_overflow_aborts_before_pending_state_changes() {
-    let mut fixture = start();
-    fixture.clock.set_for_testing(std::u64::max_value!());
-
-    fixture.begin_transfer(NEW_ROOT);
-
-    destroy(fixture);
-}
-
-#[test]
-#[expected_failure(abort_code = errors::ESuperAdminCapStillActive, location = blast_admin::acl)]
+#[expected_failure(abort_code = errors::ESuperAdminCapStillActive, location = blast_admin::blast_acl)]
 fun active_root_cap_cannot_be_destroyed() {
     let mut fixture = start();
 
-    fixture.authority.destroy_retired_super_admin_cap(fixture.root.extract());
+    fixture.acl.destroy_retired_super_admin_cap(fixture.root.extract());
 
     destroy(fixture);
 }
@@ -196,40 +221,40 @@ fun active_root_cap_cannot_be_destroyed() {
 
 fun start(): Fixture {
     let mut scenario = test_scenario::begin(ROOT);
-    let (root, authority) = acl::new_for_testing<test_domain::TEST_DOMAIN>(
-        2,
-        DELAY_MS,
-        scenario.ctx(),
-    );
+    let (root, acl) = blast_acl::new_for_testing(scenario.ctx());
     let mut clock = clock::create_for_testing(scenario.ctx());
     clock.set_for_testing(NOW_MS);
 
     Fixture {
         scenario,
-        authority,
+        acl,
         root: option::some(root),
         clock,
     }
 }
 
 fun begin_transfer(self: &mut Fixture, recipient: address) {
-    let Fixture { scenario, authority, root, clock } = self;
-    authority.begin_super_admin_transfer(root.borrow(), recipient, clock, scenario.ctx());
+    let Fixture { scenario, acl, root, clock } = self;
+    acl.begin_super_admin_transfer(root.borrow(), recipient, clock, scenario.ctx());
 }
 
 fun accept_transfer(self: &mut Fixture) {
-    let Fixture { scenario, authority, clock, .. } = self;
-    authority.accept_super_admin_transfer(clock, scenario.ctx());
+    let Fixture { scenario, acl, clock, .. } = self;
+    acl.accept_super_admin_transfer(clock, scenario.ctx());
 }
 
 fun cancel_transfer(self: &mut Fixture) {
-    let Fixture { authority, root, .. } = self;
-    authority.cancel_super_admin_transfer(root.borrow());
+    let Fixture { acl, root, .. } = self;
+    acl.cancel_super_admin_transfer(root.borrow());
 }
 
 // === Imports ===
 
-use blast_admin::{acl, errors, events, test_domain};
+use blast_admin::{
+    blast_acl::{Self, ACL, SuperAdminCap},
+    blast_admin_events as events,
+    errors,
+};
 
 use std::unit_test::{assert_eq, destroy};
 

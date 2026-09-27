@@ -19,15 +19,15 @@ identified only through its package marker; ADR 0085 records why.
 | Package | Role | Before | After |
 | --- | --- | --- | --- |
 | `blast_sui` | Publisher marker | `blast::BLAST` | `blast_sui_package::BLAST_SUI_PACKAGE` |
-| `blast_sui` | administration domain | `blast_sui_domain::BLAST_SUI_DOMAIN` | unchanged |
+| `blast_sui` | administration roles (ADR 0097) | `blast_sui_domain::BLAST_SUI_DOMAIN` | `blast_sui_domain::UpgradeAdmin`, `FeeAdmin` |
 | `blast_fun` (launchpad) | Publisher marker | `blast::BLAST` | `blast_fun::BLAST_FUN` |
-| `blast_fun` | administration domain, shared with migrators | `launchpad_domain::LAUNCHPAD_DOMAIN` | `blast_fun_domain::BLAST_FUN_DOMAIN` |
+| `blast_fun` | administration roles, shared with migrators (ADR 0097) | `blast_fun_domain::BLAST_FUN_DOMAIN` | `blast_fun_domain::UpgradeAdmin`, `CreatorAdmin`, `BuybackAdmin`, `TreasuryAdmin`, `FeeAdmin`, `ListingAdmin`, `AdapterAdmin`, `ClaimSignerAdmin`, `RewardsAdmin` |
 | `blast_fun_migrators` | Publisher marker | `package_marker::PACKAGE_MARKER` | `blast_fun_migrators::BLAST_FUN_MIGRATORS` |
 | `blast_boosts_aftermath` | Publisher marker | `aftermath::AFTERMATH` | `blast_boosts_aftermath::BLAST_BOOSTS_AFTERMATH` |
-| `blast_boosts_core` | administration domain and only OTW; no Publisher is claimed | `series_one_domain::SERIES_ONE_DOMAIN` | `blast_boosts_core::BLAST_BOOSTS_CORE` |
-| `blast_partners` | administration domain and only OTW; no Publisher is claimed | — | `blast_partners::BLAST_PARTNERS` (ADR 0095) |
+| `blast_boosts_core` | administration roles shared with the adapter; no one-time witness or Publisher (ADR 0097) | `blast_boosts_core::BLAST_BOOSTS_CORE` | `blast_boosts_core::VaultIssuer`, `RiskAdmin`, `ShutdownAdmin`, `UpgradeAdmin` |
+| `blast_partners` | administration role (ADR 0097); no one-time witness or Publisher | `blast_partners::BLAST_PARTNERS` (ADR 0095) | `blast_partners::PartnerAdmin` |
 | `blast_boosts_products` | Publisher marker (new package) | — | `blast_boosts_products::BLAST_BOOSTS_PRODUCTS` |
-| `blast_admin` | none: library package with no `init` | — | — |
+| `blast_admin` | `blast_acl` shares the singleton ACL from `init`; no one-time witness | — | — |
 | `meme_template` | generated package one-time witness | `meme::MEME` | unchanged name; the generated package's one-time witness, renamed per launch by the SDK template |
 
 The Publisher object shows `module_name` of the claiming module, and
@@ -48,9 +48,9 @@ every package-administration object.
 
 | Package | Type | After | Identified by |
 | --- | --- | --- | --- |
-| `blast_admin` | `acl::Authority<Domain>` | unchanged | `Domain` is a Blast domain witness |
-| `blast_admin` | `acl::SuperAdminCap<Domain>` | unchanged | `Domain` |
-| `blast_admin` | `acl::AdminCap<Domain>` | unchanged | `Domain` |
+| `blast_admin` | `acl::Authority<Domain>` | `blast_acl::ACL`, one shared singleton | module |
+| `blast_admin` | `acl::SuperAdminCap<Domain>` | `blast_acl::SuperAdminCap` | module |
+| `blast_admin` | `acl::AdminCap<Domain>` | `blast_acl::AdminCap`; its roles are listed in the ACL | module |
 | `blast_sui` | `vault::Vault` | unchanged | *residual*; package marker |
 | `blast_sui` | `deposit_receipt::BlastSuiDepositReceipt` | unchanged | struct |
 | `blast_sui` | `package_admin::PackageAdmin` | unchanged | holds `UpgradeCustody<BLAST_SUI_PACKAGE>` |
@@ -87,7 +87,7 @@ every package-administration object.
 | `blast_fun` | `events_wrapper::Event<events::X>` | `blast_events::Event<events::X>` | envelope module |
 | `blast_boosts_aftermath` | `events_wrapper::Event<events::X<Product>>` | `blast_events::Event<events::X<Product>>` | envelope module and `Product` |
 | `blast_fun_migrators` | `events::X` (direct emission) | `blast_events::X` | module |
-| `blast_admin` | `events::X<Domain>` | unchanged | `Domain` or `PackageMarker` is a Blast witness |
+| `blast_admin` | `events::X<Domain>` | `blast_admin_events::X`; custody and version events keep `<PackageMarker>` | module |
 | `blast_partners` | — | `blast_partners::PartnerUpdated` and `blast_partners::PartnerPaid<T>` (direct emission, ADR 0095) | module |
 | `blast_boosts_aftermath` | — | `blast_events::Event<events::PartnerAdded>` and `blast_events::Event<events::PartnerRemoved>` (ADR 0095; protocol-wide, no `Product`) | envelope module |
 
@@ -98,7 +98,7 @@ Payload struct names inside the envelopes (`Bought`, `Migrated`,
 
 | Package | Type | After | Note |
 | --- | --- | --- | --- |
-| `blast_admin` | `Domain` parameter of every ACL type | — | always a Blast domain witness above |
+| `blast_admin` | `Role` parameter of `AdminWitness` | — | always a role declared in a Blast `*_domain` module above |
 | `blast_admin` | `PackageMarker` parameter of `OperationalVersion` and `UpgradeCustody` | — | always a Blast marker above |
 | `blast_sui` | `vault::TreasuryKey<CoinType>`, `package_admin::CapabilityKey<Capability>` | unchanged | dynamic-field keys under `Vault` and `PackageAdmin` |
 | `blast_fun_migrators` | `cetus::Venue`, `bluefin::Venue` | unchanged | sealed venue witnesses used as `PositionKey<Venue>` and `TierKey<Venue>` keys inside Blast objects; the module names the venue the migrator targets |

@@ -176,11 +176,10 @@ public fun redeem<Product, Collateral>(
 /// partner whose removal is pending cancels the removal.
 public fun add_partner(
     protocol: &mut Protocol,
-    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
+    _: &AdminWitness<RiskAdmin>,
     partner: &Partner,
 ) {
     protocol.assert_current();
-    admin_witness.assert_role(domain::risk_admin_role());
 
     let partner_id = object::id(partner);
     protocol.add_partner(partner_id);
@@ -193,12 +192,11 @@ public fun add_partner(
 /// paid, for `blast_partners::delay_ms()`.
 public fun remove_partner(
     protocol: &mut Protocol,
-    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
+    _: &AdminWitness<RiskAdmin>,
     partner: &Partner,
     clock: &Clock,
 ) {
     protocol.assert_current();
-    admin_witness.assert_role(domain::risk_admin_role());
 
     let partner_id = object::id(partner);
     let now_ms = clock.timestamp_ms();
@@ -1172,7 +1170,7 @@ public fun complete_finalization_for_testing<Product, Collateral>(
 
 use authority_cap::authority::{ADMIN, AuthorityCap};
 
-use blast_admin::acl::AdminWitness;
+use blast_admin::blast_acl::AdminWitness;
 
 use blast_boosts_aftermath::{
     blast_boost::BlastBoost,
@@ -1210,7 +1208,7 @@ use fun snapshot::capture as Binding.capture;
 use fun snapshot::capture_checkpoint as Binding.capture_checkpoint;
 
 use blast_boosts_core::{
-    blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
+    blast_boosts_core::RiskAdmin,
     observation::{Self, PositionObservation},
     policy::{Self, PositionSide},
     state::{ActivePosition, Issuance, MintPlan, RebalancePlan, RedemptionPlan},

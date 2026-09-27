@@ -6,14 +6,12 @@
 ///
 /// The checked arithmetic and the replay event belong to
 /// `blast_admin::operational_version`. These tests prove only that this
-/// package's container carries the compiled constants it claims and that
-/// Series1 administration is independent of the adapter generation.
+/// package's container carries the compiled constants it claims.
 module blast_boosts_aftermath::protocol_tests;
 
 // === Constants ===
 
 const ROOT: address = @0xA11CE;
-const ADMIN: address = @0xAD;
 
 // === Test-Only Types ===
 
@@ -22,13 +20,10 @@ public struct InitFixture {
     scenario: Scenario,
 }
 
-/// An unshared adapter generation under one live Series1 administrator.
+/// An unshared adapter generation.
 public struct Fixture {
     scenario: Scenario,
     protocol: Protocol,
-    authority: Authority<BLAST_BOOSTS_CORE>,
-    super_admin_cap: SuperAdminCap<BLAST_BOOSTS_CORE>,
-    admin_cap: AdminCap<BLAST_BOOSTS_CORE>,
 }
 
 // === Tests ===
@@ -67,14 +62,14 @@ fun a_fresh_publish_of_this_bytecode_accepts_its_own_generation() {
 /// The container advances to exactly the generation this bytecode hands over
 /// to, and the shared package emits the only cutover fact.
 fun the_generation_advances_to_the_next_compiled_generation() {
-    let mut fixture = start(domain::package_admin_role());
+    let mut fixture = start();
 
     assert_eq!(fixture.protocol.version_for_testing(), 1);
 
     fixture.protocol.advance_for_testing();
 
-    let advanced = blast_admin::events::collect_one<
-        blast_admin::events::OperationalVersionAdvanced<BLAST_BOOSTS_AFTERMATH>,
+    let advanced = blast_admin::blast_admin_events::collect_one<
+        blast_admin::blast_admin_events::OperationalVersionAdvanced<BLAST_BOOSTS_AFTERMATH>,
     >(0);
     let (container_id, _, previous_generation, new_generation) =
         advanced.operational_version_advanced_fields();
@@ -89,7 +84,7 @@ fun the_generation_advances_to_the_next_compiled_generation() {
 #[test]
 /// The finalizer proves the exact next generation before it commits a receipt.
 fun the_finalizer_accepts_the_exact_next_generation_before_committing() {
-    let fixture = start(domain::package_admin_role());
+    let fixture = start();
 
     fixture.protocol.assert_next_for_testing();
 
@@ -104,7 +99,7 @@ fun the_finalizer_accepts_the_exact_next_generation_before_committing() {
     location = blast_admin::operational_version,
 )]
 fun the_finalizer_rejects_a_skipped_generation_before_committing() {
-    let mut fixture = start(domain::package_admin_role());
+    let mut fixture = start();
 
     fixture.protocol.set_version_for_testing(5);
 
@@ -121,7 +116,7 @@ fun the_finalizer_rejects_a_skipped_generation_before_committing() {
 /// Once the container already sits at the compiled cutover target, the
 /// finalizer's proof fails: the next generation would be three, not two.
 fun the_finalizer_rejects_an_already_advanced_generation_as_next() {
-    let mut fixture = start(domain::package_admin_role());
+    let mut fixture = start();
 
     fixture.protocol.set_version_for_testing(2);
 
@@ -136,7 +131,7 @@ fun the_finalizer_rejects_an_already_advanced_generation_as_next() {
     location = blast_admin::operational_version,
 )]
 fun the_cutover_rejects_a_skipped_generation() {
-    let mut fixture = start(domain::package_admin_role());
+    let mut fixture = start();
 
     fixture.protocol.set_version_for_testing(5);
 
@@ -151,7 +146,7 @@ fun the_cutover_rejects_a_skipped_generation() {
     location = blast_admin::operational_version,
 )]
 fun the_cutover_rejects_a_generation_overflow() {
-    let mut fixture = start(domain::package_admin_role());
+    let mut fixture = start();
 
     fixture.protocol.set_version_for_testing(std::u64::max_value!());
 
@@ -166,24 +161,11 @@ fun the_cutover_rejects_a_generation_overflow() {
     location = blast_admin::operational_version,
 )]
 fun a_stale_generation_rejects_this_bytecode() {
-    let mut fixture = start(domain::package_admin_role());
+    let mut fixture = start();
 
     fixture.protocol.set_version_for_testing(2);
 
     fixture.protocol.assert_current_for_testing();
-
-    fixture.end();
-}
-
-#[test]
-/// Series1 membership is shared state; the adapter generation is not. A stale
-/// adapter generation never blocks signing in or checking a Series1 role.
-fun series_domain_administration_does_not_depend_on_the_adapter_generation() {
-    let mut fixture = start(domain::package_admin_role());
-    fixture.protocol.set_version_for_testing(2);
-
-    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
-    admin_witness.assert_role(domain::package_admin_role());
 
     fixture.end();
 }
@@ -226,37 +208,22 @@ fun init_end(self: InitFixture) {
 
 // --- Generation Fixture ---
 
-fun start(roles: u64): Fixture {
+fun start(): Fixture {
     let mut scenario = test_scenario::begin(ROOT);
     let protocol = protocol::new_for_testing(scenario.ctx());
-    let (super_admin_cap, mut authority) =
-        domain_fixture::new_authority(scenario.ctx());
 
-    authority.grant_admin(&super_admin_cap, roles, ADMIN, scenario.ctx());
-    scenario.next_tx(ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_BOOSTS_CORE>>();
-
-    Fixture { scenario, protocol, authority, super_admin_cap, admin_cap }
+    Fixture { scenario, protocol }
 }
 
 fun end(self: Fixture) {
-    let Fixture { scenario, protocol, authority, super_admin_cap, admin_cap } = self;
+    let Fixture { scenario, protocol } = self;
     destroy(protocol);
-    destroy(authority);
-    destroy(super_admin_cap);
-    destroy(admin_cap);
     scenario.end();
 }
 
 // === Imports ===
 
-use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
-
-use blast_boosts_aftermath::{blast_boosts_aftermath::BLAST_BOOSTS_AFTERMATH, domain_fixture, protocol::{Self, Protocol}};
-
-use blast_boosts_core::{
-    blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
-};
+use blast_boosts_aftermath::{blast_boosts_aftermath::BLAST_BOOSTS_AFTERMATH, protocol::{Self, Protocol}};
 
 use std::unit_test::{assert_eq, destroy};
 

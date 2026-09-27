@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Mechanical boundary gate for the venue-neutral Boosts core and its shared domain.
+# Mechanical boundary gate for the venue-neutral Boosts core and its shared roles.
 # It pins what neither the compiler nor the Move tests check: immutable
-# publication, the single dependency, venue neutrality, the domain marker and
-# its role bits, the abilities of the sealed state and plan types, the one
-# place a witness is consumed, and the lifecycle construction rules. Layering,
+# publication, the single dependency, venue neutrality, the four role types
+# and the concrete role every witness names, the abilities of the sealed state
+# and plan types, the one place a witness is consumed, and the lifecycle
+# construction rules. Layering,
 # imports, the error registry and the test seams are checked by the adapter
 # gate, which covers both packages.
 set -euo pipefail
@@ -102,10 +103,10 @@ if grep -rniE 'AdapterRoot|AdapterDomain|adapter_witness|venue_handoff' \
   fail "The core must not carry adapter-family identity or handoff machinery."
 fi
 
-# The reusable ACL lifecycle belongs to the immutable blast_admin package. This
-# package may own only its domain marker, its governance constants, and the four
-# role values every Boost adapter shares.
-if grep -rnE '^public struct (ProtocolAuthority|Authority|SuperAdminCap|AdminCap|AdminWitness)\b' \
+# Administration is the shared blast_admin ACL. This package only names the
+# four roles every Boost adapter shares, and every administrator function takes
+# one of them as its witness type.
+if grep -rnE '^public struct (ACL|ProtocolAuthority|Authority|SuperAdminCap|AdminCap|AdminWitness)\b' \
   "$package_dir/sources"; then
   fail "Administration types must come from blast_admin, never from a local copy."
 fi
@@ -114,45 +115,33 @@ if grep -rnE '(grant|revoke)_(admin|role)|(begin|cancel|accept)_super_admin_tran
   fail "The core must not reimplement administrator membership or root rotation."
 fi
 
-grep -q '^public struct BLAST_BOOSTS_CORE() has drop;$' "$domain_file" \
-  || fail "blast_boosts_core.move must own the domain one-time witness."
-grep -q '^fun init(otw: BLAST_BOOSTS_CORE, ctx: &mut TxContext) {$' "$domain_file" \
-  || fail "The core domain must be created from its own one-time witness."
-grep -q '^    blast_admin::acl::new(otw, MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, ctx);$' \
-  "$domain_file" \
-  || fail "The core domain must be created through the shared ACL constructor."
-grep -q '^const MAX_ADMINS: u64 = 16;$' "$domain_file" \
-  || fail "The core domain must keep its bounded administrator registry."
-grep -q '^const ROOT_TRANSFER_DELAY_MS: u64 = 7 \* 24 \* 60 \* 60 \* 1_000;$' "$domain_file" \
-  || fail "The core domain must keep its seven-day root-transfer delay."
-
-# The four historical role meanings keep their exact bit values.
-grep -q '^const VAULT_ISSUER_ROLE: u64 = 1;$' "$domain_file" \
-  || fail "VAULT_ISSUER must remain role bit 1."
-grep -q '^const RISK_ADMIN_ROLE: u64 = 2;$' "$domain_file" \
-  || fail "RISK_ADMIN must remain role bit 2."
-grep -q '^const SHUTDOWN_ADMIN_ROLE: u64 = 8;$' "$domain_file" \
-  || fail "SHUTDOWN_ADMIN must remain role bit 8."
-grep -q '^const PACKAGE_ADMIN_ROLE: u64 = 16;$' "$domain_file" \
-  || fail "PACKAGE_ADMIN must remain role bit 16."
-
-actual_domain_public="$(
-  production "$domain_file" \
-    | sed -nE 's/^public[[:space:]]+fun[[:space:]]+([a-zA-Z0-9_]+).*/\1/p' \
-    | sort
+[[ "$(grep -E '^public struct ' "$domain_file" | sort)" == "$(printf '%s\n' \
+  'public struct RiskAdmin()' \
+  'public struct ShutdownAdmin()' \
+  'public struct UpgradeAdmin()' \
+  'public struct VaultIssuer()' | sort)" ]] \
+  || fail "blast_boosts_core.move must declare exactly the four reviewed ability-free roles."
+if sed -E 's://.*$::' "$domain_file" | grep -nE '(^|[[:space:]])fun[[:space:]]|^const[[:space:]]'; then
+  fail "blast_boosts_core.move declares only roles: no init, constant, or function; the shared ACL already exists."
+fi
+if grep -rnE 'struct (VaultIssuer|RiskAdmin|ShutdownAdmin|UpgradeAdmin)\b' "$package_dir/sources" \
+  | grep -vF "$domain_file:"; then
+  fail "Only blast_boosts_core.move may declare a Boosts role."
+fi
+if grep -rnE 'AdminWitness[[:space:]]+as[[:space:]]|[[:space:]]as[[:space:]]+(VaultIssuer|RiskAdmin|ShutdownAdmin|UpgradeAdmin)\b' \
+  "$package_dir/sources"; then
+  fail "Neither AdminWitness nor a Boosts role may be aliased around the role scanner."
+fi
+# Every AdminWitness outside a comment names one concrete role; a generic
+# `AdminWitness<Role>` would accept any role and must never compile here.
+foreign_admin_witnesses="$(
+  find "$package_dir/sources" -type f -name '*.move' -exec sed -E 's://.*$::' {} + \
+    | grep -oE 'AdminWitness[[:space:]]*<[^>]*>' \
+    | grep -vxE 'AdminWitness<(VaultIssuer|RiskAdmin|ShutdownAdmin|UpgradeAdmin)>' \
+    || true
 )"
-expected_domain_public="$(printf '%s\n' \
-  package_admin_role \
-  risk_admin_role \
-  shutdown_admin_role \
-  vault_issuer_role \
-  | sort)"
-[[ "$actual_domain_public" == "$expected_domain_public" ]] \
-  || fail "The core domain must export exactly its four role accessors."
-
-# Exactly one module may create the shared authority.
-[[ "$(grep -rlF 'acl::new(' "$package_dir/sources" | wc -l)" -eq 1 ]] \
-  || fail "Exactly one module may call the shared ACL constructor."
+[[ -z "$foreign_admin_witnesses" ]] \
+  || fail "Every administrator witness must name one concrete Boosts role: $foreign_admin_witnesses"
 
 # --- Sealed state and linear plans ---
 
@@ -167,18 +156,16 @@ for linear in Issuance MintPlan RedemptionPlan RebalancePlan; do
 done
 grep -q '^public fun issue<Product>($' "$state_file" \
   || fail "Issuance must be generic only over Product."
-grep -q 'admin_witness.assert_role(domain::vault_issuer_role());' "$state_file" \
-  || fail "Issuance must require VAULT_ISSUER."
 grep -q '^        lifecycle: lifecycle::active(),$' "$state_file" \
   || fail "Every activated state must start Active."
 grep -q '^public fun set_max_order_notional<Product>(' "$state_file" \
   || fail "Product state must own bounded maximum-order-notional mutation."
 grep -Fq 'public fun begin_shutdown<Product>(' "$state_file" \
   || fail "Product state must own the irreversible shutdown transition."
-grep -q '^use blast_admin::acl::AdminWitness;$' "$state_file" \
+grep -q '^use blast_admin::blast_acl::AdminWitness;$' "$state_file" \
   || fail "State must import the shared AdminWitness without an alias."
-grep -q 'admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,' "$state_file" \
-  || fail "Issuance must take the typed core-domain witness."
+grep -qx '    _: &AdminWitness<VaultIssuer>,' <<<"$(sed -n '/^public fun issue<Product>($/,/^)/p' "$state_file")" \
+  || fail "Issuance must take the Vault issuer's witness."
 if production_lines "$state_file" | grep -Eq 'AdminWitness[[:space:]]+as[[:space:]]'; then
   fail "State must not alias AdminWitness around the function scanner."
 fi
