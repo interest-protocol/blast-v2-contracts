@@ -65,8 +65,11 @@ dependency_names="$(awk '
     print line
   }
 ' "$package_dir/Move.toml")"
-[[ "$dependency_names" == "Sui" ]] \
-  || fail "blast_admin may depend only on the pinned Sui framework."
+[[ "$dependency_names" == "$(printf '%s\n' Sui blast_fun_timelock)" ]] \
+  || fail "blast_admin may depend only on the pinned Sui framework and Blast timelock."
+expected_timelock_dependency='blast_fun_timelock = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/timelock", rev = "63b6cf86c0e1a74f699610fe182b1de8d8789a14" }'
+grep -Fqx "$expected_timelock_dependency" "$package_dir/Move.toml" \
+  || fail "blast_admin must pin the published immutable Blast timelock revision."
 if grep -qE '^\[dev-dependencies(\]|[.])' "$package_dir/Move.toml"; then
   fail "blast_admin may not add dev-only dependencies."
 fi
@@ -142,12 +145,14 @@ grep -Fqx 'public struct ACL has key {' "$acl_file" \
   || fail "ACL must be one untyped shared singleton."
 grep -Fqx 'public struct SuperAdminCap has key {' "$acl_file" \
   || fail "SuperAdminCap must be untyped and must not have store."
-grep -Fqx 'public struct AdminCap<phantom Role> has key, store {' "$acl_file" \
-  || fail "AdminCap must remain transferable and carry exactly one role type."
+grep -Fqx 'public struct AdminCap has key, store {' "$acl_file" \
+  || fail "AdminCap must remain transferable and untyped; roles live in the ACL."
 grep -Fqx 'public struct AdminWitness<phantom Role>() has drop;' "$acl_file" \
   || fail "AdminWitness must be a drop-only, role-typed proof."
-grep -Fqx '    admins: VecMap<ID, TypeName>,' "$acl_file" \
-  || fail "ACL must list every live admin and its role inline."
+grep -Fqx '    admins: VecMap<ID, VecSet<TypeName>>,' "$acl_file" \
+  || fail "ACL must list every live admin and its roles inline."
+grep -Fqx '    super_admin_transfer_delay_ms: Timelocked<u64>,' "$acl_file" \
+  || fail "The super-admin transfer delay may change only through the timelock."
 [[ "$(grep -c '^fun init(ctx: &mut TxContext) {$' "$acl_file")" -eq 1 ]] \
   || fail "The singleton must be created only by package initialization."
 if grep -qE 'types::is_one_time_witness|fun new<' "$acl_file"; then
@@ -164,7 +169,10 @@ expected_acl_public="$(printf '%s\n' \
   destroy_admin_cap \
   destroy_retired_super_admin_cap \
   grant_admin \
+  grant_role \
   revoke_admin \
+  revoke_role \
+  schedule_super_admin_transfer_delay \
   sign_in \
   | sort)"
 [[ "$actual_acl_public" == "$expected_acl_public" ]] \

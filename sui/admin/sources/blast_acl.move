@@ -4,7 +4,7 @@
 // `blast_admin::errors` centralizes the immutable package's shared abort codes through
 // zero-cost macros. W04005 observes expanded literals, so suppress it at the raising module.
 #[allow(lint(abort_without_constant))]
-/// The one access-control list for every Blast package: one cold root and one-role admins.
+/// The one access-control list for every Blast package: one cold root and role-typed admins.
 ///
 /// A role is a type that its consumer package declares. `AdminWitness<Role>` in a function
 /// signature is that function's role check, and a role from one package can never satisfy
@@ -13,9 +13,12 @@ module blast_admin::blast_acl;
 
 // === Constants ===
 
-const MAX_ADMINS: u64 = 64;
+const MAX_ADMINS: u64 = 32;
 
-const ROOT_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
+const MAX_ROLES_PER_ADMIN: u64 = 32;
+
+/// The first super-admin transfer delay, and the fixed wait before any change to it applies.
+const DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 
 // === Public Types ===
 
@@ -25,25 +28,26 @@ public struct PendingSuperAdminTransfer has drop, store {
     execute_after_ms: u64,
 }
 
-/// The shared singleton that lists the active root and every live administrator's role.
+/// The shared singleton that lists the active root and every live administrator's roles.
 public struct ACL has key {
     id: UID,
     super_admin_cap_id: ID,
-    admins: VecMap<ID, TypeName>,
+    admins: VecMap<ID, VecSet<TypeName>>,
+    super_admin_transfer_delay_ms: Timelocked<u64>,
     pending_super_admin: Option<PendingSuperAdminTransfer>,
 }
 
-/// Cold root authority for membership and delayed root replacement only.
+/// Cold root authority for membership, roles, and delayed root replacement only.
 public struct SuperAdminCap has key {
     id: UID,
 }
 
-/// Transferable, live-registry-checked capability for exactly one `Role`.
-public struct AdminCap<phantom Role> has key, store {
+/// Transferable, live-registry-checked administrator capability holding any granted roles.
+public struct AdminCap has key, store {
     id: UID,
 }
 
-/// Transaction-local proof that a live `AdminCap<Role>` signed in.
+/// Transaction-local proof that a live `AdminCap` holding `Role` signed in.
 public struct AdminWitness<phantom Role>() has drop;
 
 // === Private Initialization ===
@@ -57,8 +61,8 @@ fun init(ctx: &mut TxContext) {
 
 // === Public Functions ===
 
-/// Creates and delivers one live administrator for exactly one `Role`.
-public fun grant_admin<Role>(
+/// Creates and delivers one live administrator that holds no role yet.
+public fun grant_admin(
     self: &mut ACL,
     root: &SuperAdminCap,
     recipient: address,
@@ -68,41 +72,91 @@ public fun grant_admin<Role>(
     assert!(recipient != @0x0, blast_admin::errors::invalid_admin_recipient!());
     assert!(self.admins.length() < MAX_ADMINS, blast_admin::errors::admin_capacity_reached!());
 
-    let admin_cap = AdminCap<Role> { id: object::new(ctx) };
+    let admin_cap = AdminCap { id: object::new(ctx) };
     let admin_cap_id = admin_cap.id.to_inner();
-    let role = type_name::with_defining_ids<Role>();
 
-    self.admins.insert(admin_cap_id, role);
+    self.admins.insert(admin_cap_id, vec_set::empty());
     transfer::public_transfer(admin_cap, recipient);
 
-    blast_admin_events::admin_granted(admin_cap_id, role, recipient);
+    blast_admin_events::admin_granted(admin_cap_id, recipient);
 }
 
-/// Revokes one live administrator without requiring possession of its cap.
+/// Revokes one live administrator and all its roles without requiring possession of its cap.
 public fun revoke_admin(self: &mut ACL, root: &SuperAdminCap, admin_cap_id: ID) {
     self.assert_super_admin(root);
     assert!(self.admins.contains(&admin_cap_id), blast_admin::errors::invalid_admin_cap!());
 
-    let (_, role) = self.admins.remove(&admin_cap_id);
+    let (_, roles) = self.admins.remove(&admin_cap_id);
 
-    blast_admin_events::admin_revoked(admin_cap_id, role);
+    blast_admin_events::admin_revoked(admin_cap_id, roles.into_keys());
 }
 
-/// Deletes an active or already-revoked administrator cap and reports whether it was live.
-public fun destroy_admin_cap<Role>(self: &mut ACL, admin_cap: AdminCap<Role>) {
+/// Adds `Role` to a live administrator.
+public fun grant_role<Role>(self: &mut ACL, root: &SuperAdminCap, admin_cap_id: ID) {
+    self.assert_super_admin(root);
+    assert!(self.admins.contains(&admin_cap_id), blast_admin::errors::invalid_admin_cap!());
+
+    let roles = &mut self.admins[&admin_cap_id];
+    let role = type_name::with_defining_ids<Role>();
+    assert!(!roles.contains(&role), blast_admin::errors::admin_role_already_granted!());
+    assert!(
+        roles.length() < MAX_ROLES_PER_ADMIN,
+        blast_admin::errors::admin_role_capacity_reached!(),
+    );
+
+    roles.insert(role);
+
+    blast_admin_events::admin_role_granted(admin_cap_id, role);
+}
+
+/// Removes `Role` from a live administrator; an administrator with no role signs in to nothing.
+public fun revoke_role<Role>(self: &mut ACL, root: &SuperAdminCap, admin_cap_id: ID) {
+    self.assert_super_admin(root);
+    assert!(self.admins.contains(&admin_cap_id), blast_admin::errors::invalid_admin_cap!());
+
+    let roles = &mut self.admins[&admin_cap_id];
+    let role = type_name::with_defining_ids<Role>();
+    assert!(roles.contains(&role), blast_admin::errors::admin_role_not_granted!());
+
+    roles.remove(&role);
+
+    blast_admin_events::admin_role_revoked(admin_cap_id, role);
+}
+
+/// Deletes an active or already-revoked administrator cap and reports what it still held.
+public fun destroy_admin_cap(self: &mut ACL, admin_cap: AdminCap) {
     let AdminCap { id } = admin_cap;
     let admin_cap_id = id.to_inner();
     let was_active = self.admins.contains(&admin_cap_id);
-
-    if (was_active) {
-        let (_, _) = self.admins.remove(&admin_cap_id);
+    let roles = if (was_active) {
+        let (_, roles) = self.admins.remove(&admin_cap_id);
+        roles.into_keys()
+    } else {
+        vector[]
     };
+
     id.delete();
 
-    blast_admin_events::admin_destroyed(
-        admin_cap_id,
-        type_name::with_defining_ids<Role>(),
-        was_active,
+    blast_admin_events::admin_destroyed(admin_cap_id, roles, was_active);
+}
+
+/// Schedules a new super-admin transfer delay; it applies only after the fixed timelock.
+///
+/// Scheduling the delay in force cancels a pending change.
+public fun schedule_super_admin_transfer_delay(
+    self: &mut ACL,
+    root: &SuperAdminCap,
+    delay_ms: u64,
+    clock: &Clock,
+) {
+    self.assert_super_admin(root);
+    assert!(delay_ms > 0, blast_admin::errors::invalid_super_admin_transfer_delay!());
+
+    self.super_admin_transfer_delay_ms.schedule(delay_ms, clock);
+
+    blast_admin_events::super_admin_transfer_delay_scheduled(
+        delay_ms,
+        self.super_admin_transfer_delay_ms.scheduled_at_ms(),
     );
 }
 
@@ -127,7 +181,7 @@ public fun begin_super_admin_transfer(
     };
     let execute_after_ms = clock
         .timestamp_ms()
-        .checked_add(ROOT_TRANSFER_DELAY_MS)
+        .checked_add(self.super_admin_transfer_delay_ms.value(clock))
         .destroy_or!(abort blast_admin::errors::super_admin_transfer_time_overflow!());
     let mut previous = if (self.pending_super_admin.is_some()) {
         option::some(self.pending_super_admin.extract())
@@ -211,11 +265,13 @@ public fun destroy_retired_super_admin_cap(self: &ACL, root: SuperAdminCap) {
     blast_admin_events::super_admin_cap_destroyed(super_admin_cap_id);
 }
 
-/// Proves that `admin_cap` is live; the witness type is the role each consumer requires.
-public fun sign_in<Role>(self: &ACL, admin_cap: &AdminCap<Role>): AdminWitness<Role> {
+/// Proves that `admin_cap` is live and holds `Role`; the witness type is what consumers require.
+public fun sign_in<Role>(self: &ACL, admin_cap: &AdminCap): AdminWitness<Role> {
+    let admin_cap_id = admin_cap.id.to_inner();
+    assert!(self.admins.contains(&admin_cap_id), blast_admin::errors::invalid_admin_cap!());
     assert!(
-        self.admins.contains(&admin_cap.id.to_inner()),
-        blast_admin::errors::invalid_admin_cap!(),
+        self.admins[&admin_cap_id].contains(&type_name::with_defining_ids<Role>()),
+        blast_admin::errors::admin_role_not_granted!(),
     );
 
     AdminWitness()
@@ -229,6 +285,7 @@ fun new(ctx: &mut TxContext): (SuperAdminCap, ACL) {
         id: object::new(ctx),
         super_admin_cap_id: root.id.to_inner(),
         admins: vec_map::empty(),
+        super_admin_transfer_delay_ms: blast_fun_timelock::new(DELAY_MS, DELAY_MS),
         pending_super_admin: option::none(),
     };
 
@@ -266,8 +323,18 @@ public fun max_admins_for_testing(): u64 {
 }
 
 #[test_only]
-public fun root_transfer_delay_ms_for_testing(): u64 {
-    ROOT_TRANSFER_DELAY_MS
+public fun max_roles_per_admin_for_testing(): u64 {
+    MAX_ROLES_PER_ADMIN
+}
+
+#[test_only]
+public fun delay_ms_for_testing(): u64 {
+    DELAY_MS
+}
+
+#[test_only]
+public fun super_admin_transfer_delay_ms_for_testing(self: &ACL, clock: &Clock): u64 {
+    self.super_admin_transfer_delay_ms.value(clock)
 }
 
 #[test_only]
@@ -276,7 +343,7 @@ public fun super_admin_cap_id_for_testing(self: &SuperAdminCap): ID {
 }
 
 #[test_only]
-public fun admin_cap_id_for_testing<Role>(self: &AdminCap<Role>): ID {
+public fun admin_cap_id_for_testing(self: &AdminCap): ID {
     self.id.to_inner()
 }
 
@@ -291,8 +358,8 @@ public fun admin_count_for_testing(self: &ACL): u64 {
 }
 
 #[test_only]
-public fun admin_role_for_testing(self: &ACL, admin_cap_id: ID): TypeName {
-    self.admins[&admin_cap_id]
+public fun admin_roles_for_testing(self: &ACL, admin_cap_id: ID): vector<TypeName> {
+    self.admins[&admin_cap_id].into_keys()
 }
 
 #[test_only]
@@ -314,6 +381,8 @@ public fun pending_execute_after_ms_for_testing(self: &ACL): u64 {
 
 use blast_admin::blast_admin_events;
 
+use blast_fun_timelock::blast_fun_timelock::{Self, Timelocked};
+
 use std::type_name::{Self, TypeName};
 
-use sui::{clock::Clock, vec_map::{Self, VecMap}};
+use sui::{clock::Clock, vec_map::{Self, VecMap}, vec_set::{Self, VecSet}};

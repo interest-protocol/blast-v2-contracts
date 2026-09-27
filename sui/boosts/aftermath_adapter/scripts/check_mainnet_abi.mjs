@@ -14,6 +14,8 @@ const AFTERMATH_GIT = 'https://github.com/AftermathFinance/move-interfaces.git';
 const AFTERMATH_REV = 'f62e74aa862ef65b8950a70d83aac8cb71c19837';
 const SUI_GIT = 'https://github.com/MystenLabs/sui.git';
 const SUI_REV = '06734f6ff0af45d8632a14a4dc4b100197f6b1a2';
+const UTIL_GIT = 'https://github.com/interest-protocol/blast-util-contracts.git';
+const TIMELOCK_REV = '63b6cf86c0e1a74f699610fe182b1de8d8789a14';
 const STD_ADDRESS = `0x${'0'.repeat(63)}1`;
 const SUI_ADDRESS = `0x${'0'.repeat(63)}2`;
 const PACKAGE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -174,6 +176,8 @@ const LOCK_SOURCES = {
     // The immutable shared administration package is a local, inward-only edge:
     // it pins the same framework revision and adds no venue dependency.
     blast_admin: DIRECT_DEPENDENCIES.blast_admin,
+    // The ACL's super-admin transfer delay is a timelock from the public util packages (ADR 0097).
+    blast_fun_timelock: { git: UTIL_GIT, subdir: 'sui/timelock', rev: TIMELOCK_REV },
     blast_boosts_aftermath: { root: true },
     blast_boosts_core: DIRECT_DEPENDENCIES.blast_boosts_core,
     ifixed: DIRECT_DEPENDENCIES.ifixed,
@@ -189,9 +193,10 @@ const LOCK_DEPS = {
     MoveStdlib: {},
     Sui: { MoveStdlib: 'MoveStdlib' },
     authority_cap: { std: 'MoveStdlib', sui: 'Sui' },
-    blast_admin: { Sui: 'Sui' },
+    blast_admin: { Sui: 'Sui', blast_fun_timelock: 'blast_fun_timelock' },
     blast_boosts_aftermath: { authority_cap: 'authority_cap', blast_admin: 'blast_admin', blast_boosts_core: 'blast_boosts_core', ifixed: 'ifixed', oracle_aggregator: 'oracle_aggregator', perpetuals: 'perpetuals', position: 'position', std: 'MoveStdlib', sui: 'Sui' },
     blast_boosts_core: { blast_admin: 'blast_admin', std: 'MoveStdlib', sui: 'Sui' },
+    blast_fun_timelock: { std: 'MoveStdlib', sui: 'Sui' },
     ifixed: { std: 'MoveStdlib', sui: 'Sui' },
     oracle_aggregator: { authority_cap: 'authority_cap', std: 'MoveStdlib', sui: 'Sui', vendor: 'vendor' },
     perpetuals: { authority_cap: 'authority_cap', control_flow: 'AftermathControlFlow', ifixed: 'ifixed', oracle_aggregator: 'oracle_aggregator', ordered_map: 'AftermathOrderedMap', position: 'position', std: 'MoveStdlib', sui: 'Sui', vendor: 'vendor' },

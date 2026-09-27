@@ -9,9 +9,9 @@ result in the format required by [`deployments/README.md`](../../deployments/REA
    `Currency` objects created during initialization.
 3. From the publication effects, verify the shared `PackageVersion`. On the
    singleton Blast ACL, have its `SuperAdminCap` holder grant
-   `AdminCap<blast_sui_domain::UpgradeAdmin>` to whoever attaches capabilities
-   and authorizes upgrades, and `AdminCap<blast_sui_domain::FeeAdmin>` to whoever
-   sets the redemption fee.
+   `blast_sui_domain::UpgradeAdmin` to the `AdminCap` that attaches capabilities
+   and authorizes upgrades, and `blast_sui_domain::FeeAdmin` to the one that sets
+   the redemption fee.
 4. In one PTB, sign in as `UpgradeAdmin`, create the deposit-receipt Display, create
    `PackageAdmin` with the original `Publisher` and `UpgradeCap`, attach both
    metadata capabilities and the Display capability, and share

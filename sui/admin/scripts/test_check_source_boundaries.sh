@@ -97,6 +97,15 @@ sed -i \
   "$case_dir/sources/blast_acl.move"
 expect_rejected "$case_dir"
 
+case_dir="$(new_case untimelocked_delay)"
+sed -i 's/^    super_admin_transfer_delay_ms: Timelocked<u64>,$/    super_admin_transfer_delay_ms: u64,/' \
+  "$case_dir/sources/blast_acl.move"
+expect_rejected "$case_dir"
+
+case_dir="$(new_case unpinned_timelock)"
+sed -i 's/rev = "63b6cf86c0e1a74f699610fe182b1de8d8789a14"/rev = "main"/' "$case_dir/Move.toml"
+expect_rejected "$case_dir"
+
 case_dir="$(new_case domain_typed_acl)"
 sed -i 's/^public struct ACL has key {$/public struct ACL<phantom Domain> has key {/' \
   "$case_dir/sources/blast_acl.move"

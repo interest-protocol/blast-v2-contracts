@@ -12,7 +12,7 @@ Every record must contain at least:
 - deployer, transaction digest, status, and the created shared/admin objects,
   including the `Publisher`, `UpgradeCap`/`PackageAdmin`, and
   operational-generation object IDs, and, for `blast_admin`, the singleton `ACL`
-  and its `SuperAdminCap`; each `AdminCap<Role>` granted with its role and holder;
+  and its `SuperAdminCap`; each `AdminCap` granted with its holder and roles;
 - constructor/init parameters and post-deploy verification results.
 
 Raw simulator or broadcast output stays generated and ignored. Public

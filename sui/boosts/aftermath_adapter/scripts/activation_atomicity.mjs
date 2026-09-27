@@ -491,11 +491,10 @@ function trackedObject(runConfig, role, path) {
 function assertTrackedTypeBindings(runConfig, path) {
     const input = runConfig.builderInput;
     const adapter = runConfig.packageId;
-    const vaultIssuer = `${input.corePackage.toLowerCase()}::blast_boosts_core::VaultIssuer`;
     const boostType = `${adapter}::blast_boost::BlastBoost<${input.productType}>`;
     const exact = {
         acl: `${input.adminPackage.toLowerCase()}::blast_acl::ACL`,
-        admin_cap: `${input.adminPackage.toLowerCase()}::blast_acl::AdminCap<${vaultIssuer}>`,
+        admin_cap: `${input.adminPackage.toLowerCase()}::blast_acl::AdminCap`,
         protocol: `${adapter}::protocol::Protocol`,
         coin_registry: '0x2::coin_registry::CoinRegistry',
         collateral_currency: `0x2::coin_registry::Currency<${input.collateralType}>`,

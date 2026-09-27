@@ -267,7 +267,7 @@
   ],
   "objectTypes": {
     "acl": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::ACL",
-    "adminCap": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::VaultIssuer>",
+    "adminCap": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap",
     "protocol": "0x1111111111111111111111111111111111111111111111111111111111111111::protocol::Protocol",
     "coinRegistry": "0x0000000000000000000000000000000000000000000000000000000000000002::coin_registry::CoinRegistry",
     "currency": "0x0000000000000000000000000000000000000000000000000000000000000002::coin_registry::Currency<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
@@ -621,7 +621,7 @@
     ],
     "objectTypes": {
       "acl": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::ACL",
-      "adminCap": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap<0xc0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0::blast_boosts_core::VaultIssuer>",
+      "adminCap": "0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1::blast_acl::AdminCap",
       "baseOracle": "0x5555555555555555555555555555555555555555555555555555555555555555::price_feed_storage::PriceFeedStorage",
       "clearingHouse": "0x4444444444444444444444444444444444444444444444444444444444444444::clearing_house::ClearingHouse<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
       "clock": "0x0000000000000000000000000000000000000000000000000000000000000002::clock::Clock",

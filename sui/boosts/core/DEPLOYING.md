@@ -24,8 +24,8 @@ verify from that digest that:
 
 Publication creates no administration state. Administrators authenticate against
 the singleton Blast ACL: its `SuperAdminCap` holder grants each
-`AdminCap<blast_boosts_core::Role>` to its own holder, and every Series1 adapter
-accepts only these four role types.
+`blast_boosts_core` role to the `AdminCap` that needs it, and every Series1
+adapter accepts only these four role types.
 
 Do not publish Series1 with `sui client publish`. Do not split publication and
 `make_immutable` across transactions. A failed or ambiguous verification

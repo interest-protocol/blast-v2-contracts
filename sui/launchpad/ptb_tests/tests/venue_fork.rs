@@ -89,7 +89,7 @@ const CREATOR_CAP_NOT_LIVE: u64 = 22;
 /// `blast_fun_migrators::vault` code.
 const BUYBACK_BELOW_MINIMUM: u64 = 5;
 
-/// The `blast_fun_domain` roles this world's administrator holds, one `AdminCap` each.
+/// The `blast_fun_domain` roles this world's one `AdminCap` holds.
 const ADMIN_ROLES: [&str; 7] =
     ["ListingAdmin", "AdapterAdmin", "FeeAdmin", "TreasuryAdmin", "CreatorAdmin", "BuybackAdmin", "RewardsAdmin"];
 
@@ -457,7 +457,7 @@ struct World {
     venue_config: ObjectID,
     policy: ObjectID,
     acl: ObjectID,
-    admin_caps: BTreeMap<&'static str, ObjectID>,
+    admin_cap: ObjectID,
     project: CompiledPackage,
     coins: u64,
     shares: (u64, u64),
@@ -502,19 +502,25 @@ impl World {
             &work,
         )?;
 
-        // Production admin path: the publisher's SuperAdminCap grants one AdminCap per role.
-        let mut admin_caps = BTreeMap::new();
+        // Production admin path: the publisher's SuperAdminCap grants one AdminCap, then each role.
+        let mut b = ProgrammableTransactionBuilder::new();
+        let acl_arg = b.obj(h.shared(acl, true))?;
+        let root_arg = b.obj(h.owned(root))?;
+        let recipient = b.pure(h.sender)?;
+        call(&mut b, admin, "blast_acl", "grant_admin", vec![], vec![acl_arg, root_arg, recipient]);
+        let granted = h.execute(b.finish())?;
+        granted.assert_success();
+        let admin_cap = one(&h, &granted, "blast_acl", "AdminCap");
+
+        let mut b = ProgrammableTransactionBuilder::new();
+        let acl_arg = b.obj(h.shared(acl, true))?;
+        let root_arg = b.obj(h.owned(root))?;
+        let admin_cap_id = b.pure(admin_cap)?;
         for role in ADMIN_ROLES {
-            let mut b = ProgrammableTransactionBuilder::new();
-            let acl_arg = b.obj(h.shared(acl, true))?;
-            let root_arg = b.obj(h.owned(root))?;
-            let recipient = b.pure(h.sender)?;
             let role_tag = tag(&format!("{blast}::blast_fun_domain::{role}"));
-            call(&mut b, admin, "blast_acl", "grant_admin", vec![role_tag], vec![acl_arg, root_arg, recipient]);
-            let granted = h.execute(b.finish())?;
-            granted.assert_success();
-            admin_caps.insert(role, one(&h, &granted, "blast_acl", "AdminCap"));
+            call(&mut b, admin, "blast_acl", "grant_role", vec![role_tag], vec![acl_arg, root_arg, admin_cap_id]);
         }
+        h.execute(b.finish())?.assert_success();
 
         let mut w = World {
             h,
@@ -531,7 +537,7 @@ impl World {
             venue_config,
             policy,
             acl,
-            admin_caps,
+            admin_cap,
             project,
             coins: 0,
             shares: DEFAULT_SHARES,
@@ -637,11 +643,11 @@ impl World {
         }
     }
 
-    /// Signs `role`'s AdminCap in to the ACL; the witness it returns authorizes only that role.
+    /// Signs the AdminCap in to the ACL as `role`; the witness it returns authorizes only that role.
     fn sign_in(&self, b: &mut ProgrammableTransactionBuilder, role: &str) -> Result<Argument> {
         let role_tag = tag(&format!("{}::blast_fun_domain::{role}", self.blast));
         let acl = b.obj(self.h.shared(self.acl, false))?;
-        let admin_cap = b.obj(self.h.owned(self.admin_caps[role]))?;
+        let admin_cap = b.obj(self.h.owned(self.admin_cap))?;
 
         Ok(call(b, self.admin, "blast_acl", "sign_in", vec![role_tag], vec![acl, admin_cap]))
     }
@@ -1631,8 +1637,7 @@ impl World {
         let owners = [self.h.sender, SuiAddress::ZERO];
         let refused = Expected::Abort { package: self.migrators, module: "vault", code: BUYBACK_BELOW_MINIMUM };
         let pt = self.buyback_pt(launch, m, m.pool, u64::MAX)?;
-        let buyback_admin = self.admin_caps["BuybackAdmin"];
-        self.h.assert_rolled_back(pt, refused, &[m.vault, m.pool, launch.currency, buyback_admin], &owners)?;
+        self.h.assert_rolled_back(pt, refused, &[m.vault, m.pool, launch.currency, self.admin_cap], &owners)?;
 
         let pt = self.buyback_pt(launch, m, m.pool, 1)?;
         let outcome = self.h.execute(pt)?;
@@ -1748,7 +1753,7 @@ impl World {
         self.h.assert_rolled_back(pt, expected, &watched, &[self.h.sender, LP_PROTOCOL.into()])?;
         let expected = Expected::Abort { package: self.migrators, module, code };
         let pt = self.buyback_pt(launch, m, other, 1)?;
-        let watched = [m.vault, other, launch.currency, self.admin_caps["BuybackAdmin"]];
+        let watched = [m.vault, other, launch.currency, self.admin_cap];
         self.h.assert_rolled_back(pt, expected, &watched, &[self.h.sender, SuiAddress::ZERO])?;
         self.report(format!(
             "collect and buyback against another {} pool {other}: EPositionPoolMismatch, rolled back",

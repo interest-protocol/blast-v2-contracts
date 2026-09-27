@@ -8,19 +8,33 @@ module blast_admin::blast_admin_events;
 
 public struct AdminGranted has copy, drop {
     admin_cap_id: ID,
-    role: TypeName,
     recipient: address,
 }
 
 public struct AdminRevoked has copy, drop {
+    admin_cap_id: ID,
+    roles: vector<TypeName>,
+}
+
+public struct AdminRoleGranted has copy, drop {
+    admin_cap_id: ID,
+    role: TypeName,
+}
+
+public struct AdminRoleRevoked has copy, drop {
     admin_cap_id: ID,
     role: TypeName,
 }
 
 public struct AdminDestroyed has copy, drop {
     admin_cap_id: ID,
-    role: TypeName,
+    roles: vector<TypeName>,
     was_active: bool,
+}
+
+public struct SuperAdminTransferDelayScheduled has copy, drop {
+    delay_ms: u64,
+    effective_at_ms: u64,
 }
 
 public struct SuperAdminTransferStarted has copy, drop {
@@ -96,16 +110,28 @@ public struct UpgradeCapDestroyed<phantom PackageMarker: drop> has copy, drop {
 
 // === Package Functions ===
 
-public(package) fun admin_granted(admin_cap_id: ID, role: TypeName, recipient: address) {
-    sui::event::emit(AdminGranted { admin_cap_id, role, recipient });
+public(package) fun admin_granted(admin_cap_id: ID, recipient: address) {
+    sui::event::emit(AdminGranted { admin_cap_id, recipient });
 }
 
-public(package) fun admin_revoked(admin_cap_id: ID, role: TypeName) {
-    sui::event::emit(AdminRevoked { admin_cap_id, role });
+public(package) fun admin_revoked(admin_cap_id: ID, roles: vector<TypeName>) {
+    sui::event::emit(AdminRevoked { admin_cap_id, roles });
 }
 
-public(package) fun admin_destroyed(admin_cap_id: ID, role: TypeName, was_active: bool) {
-    sui::event::emit(AdminDestroyed { admin_cap_id, role, was_active });
+public(package) fun admin_role_granted(admin_cap_id: ID, role: TypeName) {
+    sui::event::emit(AdminRoleGranted { admin_cap_id, role });
+}
+
+public(package) fun admin_role_revoked(admin_cap_id: ID, role: TypeName) {
+    sui::event::emit(AdminRoleRevoked { admin_cap_id, role });
+}
+
+public(package) fun admin_destroyed(admin_cap_id: ID, roles: vector<TypeName>, was_active: bool) {
+    sui::event::emit(AdminDestroyed { admin_cap_id, roles, was_active });
+}
+
+public(package) fun super_admin_transfer_delay_scheduled(delay_ms: u64, effective_at_ms: u64) {
+    sui::event::emit(SuperAdminTransferDelayScheduled { delay_ms, effective_at_ms });
 }
 
 public(package) fun super_admin_transfer_started(recipient: address, execute_after_ms: u64) {
@@ -244,18 +270,35 @@ public fun collect_one<Event: copy + drop>(abort_code: u64): Event {
 }
 
 #[test_only]
-public fun admin_granted_fields(self: &AdminGranted): (ID, TypeName, address) {
-    (self.admin_cap_id, self.role, self.recipient)
+public fun admin_granted_fields(self: &AdminGranted): (ID, address) {
+    (self.admin_cap_id, self.recipient)
 }
 
 #[test_only]
-public fun admin_revoked_fields(self: &AdminRevoked): (ID, TypeName) {
+public fun admin_revoked_fields(self: &AdminRevoked): (ID, vector<TypeName>) {
+    (self.admin_cap_id, self.roles)
+}
+
+#[test_only]
+public fun admin_role_granted_fields(self: &AdminRoleGranted): (ID, TypeName) {
     (self.admin_cap_id, self.role)
 }
 
 #[test_only]
-public fun admin_destroyed_fields(self: &AdminDestroyed): (ID, TypeName, bool) {
-    (self.admin_cap_id, self.role, self.was_active)
+public fun admin_role_revoked_fields(self: &AdminRoleRevoked): (ID, TypeName) {
+    (self.admin_cap_id, self.role)
+}
+
+#[test_only]
+public fun admin_destroyed_fields(self: &AdminDestroyed): (ID, vector<TypeName>, bool) {
+    (self.admin_cap_id, self.roles, self.was_active)
+}
+
+#[test_only]
+public fun super_admin_transfer_delay_scheduled_fields(
+    self: &SuperAdminTransferDelayScheduled,
+): (u64, u64) {
+    (self.delay_ms, self.effective_at_ms)
 }
 
 #[test_only]

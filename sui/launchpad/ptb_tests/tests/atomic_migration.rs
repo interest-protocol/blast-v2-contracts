@@ -522,26 +522,35 @@ fn world(work: &str) -> Result<World> {
     )?;
     let mut w = World { h, blast, adapter, version, runtime, config, project };
 
-    // Production admin path: the publisher's SuperAdminCap grants one AdminCap per role, and each
-    // setter takes the witness of its own role.
-    let mut admin_caps = Vec::new();
+    // Production admin path: the publisher's SuperAdminCap grants one AdminCap and each role the
+    // setters below take; the cap then signs in once per role.
+    let mut roles = Vec::new();
     for role in ["ListingAdmin", "AdapterAdmin", "FeeAdmin", "TreasuryAdmin"] {
-        let role = parse_sui_type_tag(&format!("{blast}::blast_fun_domain::{role}"))?;
-        let mut builder = ProgrammableTransactionBuilder::new();
-        let acl_arg = builder.obj(w.h.shared(acl, true))?;
-        let root_arg = builder.obj(w.h.owned(root))?;
-        let recipient = builder.pure(w.h.sender)?;
-        call(&mut builder, admin, "blast_acl", "grant_admin", vec![role.clone()], vec![acl_arg, root_arg, recipient]);
-        let granted = w.h.execute(builder.finish())?;
-        granted.assert_success();
-        admin_caps.push((role, granted.created(&w.h, "blast_acl", "AdminCap")[0]));
+        roles.push(parse_sui_type_tag(&format!("{blast}::blast_fun_domain::{role}"))?);
     }
+    let mut builder = ProgrammableTransactionBuilder::new();
+    let acl_arg = builder.obj(w.h.shared(acl, true))?;
+    let root_arg = builder.obj(w.h.owned(root))?;
+    let recipient = builder.pure(w.h.sender)?;
+    call(&mut builder, admin, "blast_acl", "grant_admin", vec![], vec![acl_arg, root_arg, recipient]);
+    let granted = w.h.execute(builder.finish())?;
+    granted.assert_success();
+    let admin_cap = granted.created(&w.h, "blast_acl", "AdminCap")[0];
+
+    let mut builder = ProgrammableTransactionBuilder::new();
+    let acl_arg = builder.obj(w.h.shared(acl, true))?;
+    let root_arg = builder.obj(w.h.owned(root))?;
+    let admin_cap_id = builder.pure(admin_cap)?;
+    for role in &roles {
+        call(&mut builder, admin, "blast_acl", "grant_role", vec![role.clone()], vec![acl_arg, root_arg, admin_cap_id]);
+    }
+    w.h.execute(builder.finish())?.assert_success();
 
     let mut builder = ProgrammableTransactionBuilder::new();
     let acl_arg = builder.obj(w.h.shared(acl, false))?;
+    let admin_cap = builder.obj(w.h.owned(admin_cap))?;
     let mut witnesses = Vec::new();
-    for (role, admin_cap) in admin_caps {
-        let admin_cap = builder.obj(w.h.owned(admin_cap))?;
+    for role in roles {
         witnesses.push(call(&mut builder, admin, "blast_acl", "sign_in", vec![role], vec![acl_arg, admin_cap]));
     }
     let [listing_admin, adapter_admin, fee_admin, treasury_admin]: [Argument; 4] =

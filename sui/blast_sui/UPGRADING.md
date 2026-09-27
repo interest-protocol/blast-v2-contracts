@@ -5,7 +5,7 @@ as required by [`deployments/README.md`](../../deployments/README.md).
 
 1. Build, verify, and audit the candidate bytecode against the published ABI
    and stored layouts.
-2. In one PTB, sign in with a live `AdminCap<blast_sui_domain::UpgradeAdmin>`,
+2. In one PTB, sign in as `blast_sui_domain::UpgradeAdmin` with a live `AdminCap`,
    authorize the exact 32-byte package digest, execute the
    native upgrade, and pass the matching receipt to
    `package_admin::commit_upgrade_and_advance`.

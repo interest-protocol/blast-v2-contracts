@@ -34,18 +34,28 @@ fourteen launchpad and migrator functions without one, and Blast SUI still had t
 
 **One ACL.** `blast_admin::blast_acl` creates one shared `ACL` and one
 `SuperAdminCap` in its `init` and sends the cap to the publisher. Nothing else
-can create either. The ACL lists every live `AdminCap` ID with its role's type
-name, up to 64, inline so an explorer shows every admin in one object. Root keeps
-its narrow powers: grant, revoke, and a 7-day delayed transfer of itself.
+can create either. The ACL lists every live `AdminCap` ID with its roles' type
+names, up to 32 admins of up to 32 roles each, inline so an explorer shows every
+admin in one object. Root keeps its narrow powers: grant and revoke admins and
+roles, schedule its own transfer delay, and transfer itself after that delay.
+
+**A timelocked transfer delay.** The super-admin transfer delay is a field, a
+`blast_fun_timelock::Timelocked<u64>` from the published immutable util package.
+It starts at 7 days. Root may schedule a new positive delay; the change applies
+only 7 days later, a wait fixed when the ACL is created, and scheduling the delay
+in force cancels a pending change. A transfer uses the delay in force when it
+begins.
 
 **A role is a type.** Each consumer package declares its roles as ability-free
 structs in its `*_domain` module, for example `blast_fun_domain::FeeAdmin`. The
 role's package address is part of its type, so `blast_fun_domain::FeeAdmin` and
 `blast_boosts_core::RiskAdmin` can never be confused.
 
-**One role per cap.** `grant_admin<Role>` mints `AdminCap<Role>`. An operator who
-needs three roles holds three caps. `sign_in<Role>` checks that the cap is live
-and returns `AdminWitness<Role>`.
+**Many roles per cap.** `grant_admin` mints a roleless `AdminCap`; root then adds
+or removes each role with `grant_role<Role>` and `revoke_role<Role>`.
+`sign_in<Role>` checks that the cap is live and holds `Role`, and returns
+`AdminWitness<Role>`. A transaction that uses several roles signs in once per
+role. A roleless cap signs in to nothing.
 
 **The signature is the check.** An administrator function takes
 `_: &AdminWitness<Role>` and has no `assert_role` line. A function cannot forget
@@ -63,9 +73,8 @@ SUI declares `UpgradeAdmin` for package custody, including capability intake, an
 
 **Names.** The package keeps the Move name `blast_admin`. Its ACL module is
 `blast_acl` and its event module is `blast_admin_events`. Explorers show
-`blast_acl::ACL`, `blast_acl::SuperAdminCap`,
-`blast_acl::AdminCap<blast_fun_domain::FeeAdmin>`, and
-`blast_admin_events::AdminGranted`. Events carry no ACL ID because there is one
+`blast_acl::ACL`, `blast_acl::SuperAdminCap`, `blast_acl::AdminCap`, and
+`blast_admin_events::AdminRoleGranted`, whose role field names the role type. Events carry no ACL ID because there is one
 ACL. Role fields hold the `with_defining_ids` type name, which never changes once
 the role's package introduces it. Initialization emits no event (ADR 0058).
 
@@ -80,8 +89,10 @@ package.
 package. This is the smallest consumer change, but it keeps the forgettable
 `assert_role` call and the gate maps.
 
-**Typed roles on multi-role caps.** The cap object would no longer say what it
-authorizes, and it needs grant-role and revoke-role functions.
+**One role per cap.** `AdminCap<Role>` would name its role in the wallet and
+need no role functions, but an operator with several concerns would hold one cap
+per role. The owner rejected it on 2026-09-27: an admin must be able to hold
+several roles.
 
 **Namespace by package address.** Coarser than a type, with the same runtime
 check as bitmaps.
@@ -94,11 +105,13 @@ function without adding safety.
 
 - There is one root cap to custody and one object to audit for every Blast
   package, including packages that do not exist yet.
-- Operators hold one cap per role. Deploy runbooks grant each concern to its own
-  holder.
+- One operator's cap may hold several roles; deploy runbooks still grant each
+  concern deliberately, by role.
 - Every consumer's public signatures name this ACL package's `AdminWitness`. A
   future ACL replacement means republishing consumers. Timelocked grants need no
   ACL change, because `AdminCap` has `store` and a custodian can hold it.
+- `blast_admin` now depends on the immutable `blast_fun_timelock`, pinned at the
+  same util revision the partners package uses.
 - The live Boosts core and adapter on mainnet stay on the old `blast_admin`
   (`0x247b…`) until the planned fresh Boosts redeploy. Boosts core is immutable,
   so that deployment cannot move.
@@ -107,8 +120,10 @@ function without adding safety.
 
 ## Verification
 
-- `blast_admin` tests cover init, grant, revoke, destroy, capacity, foreign ACL and
-  root rejection, and the root transfer. The boundary self-test rejects a typed
-  ACL, a storable root, a copyable witness, and a per-domain constructor.
+- `blast_admin` tests cover init, admin and role grant and revocation, roleless and
+  missing-role sign-in, both capacities, destroy, foreign ACL and root rejection,
+  the root transfer, and a delay change that applies only after its timelock. The
+  boundary self-test rejects a typed ACL, a storable root, a copyable witness, a
+  per-domain constructor, an untimelocked delay, and an unpinned timelock.
 - Each consumer's source gate pins its declared roles and rejects a witness naming
   any other type. Consumer tests use `blast_acl::witness_for_testing<Role>()`.

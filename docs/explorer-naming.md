@@ -49,7 +49,7 @@ every package-administration object.
 | --- | --- | --- | --- |
 | `blast_admin` | `acl::Authority<Domain>` | `blast_acl::ACL`, one shared singleton | module |
 | `blast_admin` | `acl::SuperAdminCap<Domain>` | `blast_acl::SuperAdminCap` | module |
-| `blast_admin` | `acl::AdminCap<Domain>` | `blast_acl::AdminCap<Role>` | module and `Role` |
+| `blast_admin` | `acl::AdminCap<Domain>` | `blast_acl::AdminCap`; its roles are listed in the ACL | module |
 | `blast_sui` | `vault::Vault` | unchanged | *residual*; package marker |
 | `blast_sui` | `deposit_receipt::BlastSuiDepositReceipt` | unchanged | struct |
 | `blast_sui` | `package_admin::PackageAdmin` | unchanged | holds `UpgradeCustody<BLAST_SUI_PACKAGE>` |
@@ -93,7 +93,7 @@ Payload struct names inside the envelopes (`Bought`, `Migrated`,
 
 | Package | Type | After | Note |
 | --- | --- | --- | --- |
-| `blast_admin` | `Role` parameter of `AdminCap` and `AdminWitness` | — | always a role declared in a Blast `*_domain` module above |
+| `blast_admin` | `Role` parameter of `AdminWitness` | — | always a role declared in a Blast `*_domain` module above |
 | `blast_admin` | `PackageMarker` parameter of `OperationalVersion` and `UpgradeCustody` | — | always a Blast marker above |
 | `blast_sui` | `vault::TreasuryKey<CoinType>`, `package_admin::CapabilityKey<Capability>` | unchanged | dynamic-field keys under `Vault` and `PackageAdmin` |
 | `blast_fun_migrators` | `cetus::Venue`, `bluefin::Venue` | unchanged | sealed venue witnesses used as `PositionKey<Venue>` and `TierKey<Venue>` keys inside Blast objects; the module names the venue the migrator targets |
