@@ -29,49 +29,43 @@ const EAdminRoleAlreadyGranted: u64 = 5;
 const EAdminRoleNotGranted: u64 = 6;
 
 #[test_only]
-const EInvalidSuperAdminTransferDelay: u64 = 7;
+const EInvalidSuperAdminRecipient: u64 = 7;
 
 #[test_only]
-const EInvalidSuperAdminRecipient: u64 = 8;
+const ESuperAdminTransferUnchanged: u64 = 8;
 
 #[test_only]
-const ESuperAdminTransferUnchanged: u64 = 9;
+const ENoPendingSuperAdminTransfer: u64 = 9;
 
 #[test_only]
-const ESuperAdminTransferTimeOverflow: u64 = 10;
+const ENotPendingSuperAdminRecipient: u64 = 10;
 
 #[test_only]
-const ENoPendingSuperAdminTransfer: u64 = 11;
+const ESuperAdminTransferNotReady: u64 = 11;
 
 #[test_only]
-const ENotPendingSuperAdminRecipient: u64 = 12;
+const ESuperAdminCapStillActive: u64 = 12;
 
 #[test_only]
-const ESuperAdminTransferNotReady: u64 = 13;
+const EOperationalVersionMismatch: u64 = 13;
 
 #[test_only]
-const ESuperAdminCapStillActive: u64 = 14;
+const EOperationalVersionOverflow: u64 = 14;
 
 #[test_only]
-const EOperationalVersionMismatch: u64 = 15;
+const EInvalidPackagePublisher: u64 = 15;
 
 #[test_only]
-const EOperationalVersionOverflow: u64 = 16;
+const EInvalidUpgradeCap: u64 = 16;
 
 #[test_only]
-const EInvalidPackagePublisher: u64 = 17;
+const EInvalidPackageDigest: u64 = 17;
 
 #[test_only]
-const EInvalidUpgradeCap: u64 = 18;
+const EUpgradeCapUnavailable: u64 = 18;
 
 #[test_only]
-const EInvalidPackageDigest: u64 = 19;
-
-#[test_only]
-const EUpgradeCapUnavailable: u64 = 20;
-
-#[test_only]
-const EUpgradePolicyNotMoreRestrictive: u64 = 21;
+const EUpgradePolicyNotMoreRestrictive: u64 = 19;
 
 macro public(package) fun invalid_super_admin_cap(): u64 { 0 }
 
@@ -87,32 +81,28 @@ macro public(package) fun admin_role_already_granted(): u64 { 5 }
 
 macro public(package) fun admin_role_not_granted(): u64 { 6 }
 
-macro public(package) fun invalid_super_admin_transfer_delay(): u64 { 7 }
+macro public(package) fun invalid_super_admin_recipient(): u64 { 7 }
 
-macro public(package) fun invalid_super_admin_recipient(): u64 { 8 }
+macro public(package) fun super_admin_transfer_unchanged(): u64 { 8 }
 
-macro public(package) fun super_admin_transfer_unchanged(): u64 { 9 }
+macro public(package) fun no_pending_super_admin_transfer(): u64 { 9 }
 
-macro public(package) fun super_admin_transfer_time_overflow(): u64 { 10 }
+macro public(package) fun not_pending_super_admin_recipient(): u64 { 10 }
 
-macro public(package) fun no_pending_super_admin_transfer(): u64 { 11 }
+macro public(package) fun super_admin_transfer_not_ready(): u64 { 11 }
 
-macro public(package) fun not_pending_super_admin_recipient(): u64 { 12 }
+macro public(package) fun super_admin_cap_still_active(): u64 { 12 }
 
-macro public(package) fun super_admin_transfer_not_ready(): u64 { 13 }
+macro public(package) fun operational_version_mismatch(): u64 { 13 }
 
-macro public(package) fun super_admin_cap_still_active(): u64 { 14 }
+macro public(package) fun operational_version_overflow(): u64 { 14 }
 
-macro public(package) fun operational_version_mismatch(): u64 { 15 }
+macro public(package) fun invalid_package_publisher(): u64 { 15 }
 
-macro public(package) fun operational_version_overflow(): u64 { 16 }
+macro public(package) fun invalid_upgrade_cap(): u64 { 16 }
 
-macro public(package) fun invalid_package_publisher(): u64 { 17 }
+macro public(package) fun invalid_package_digest(): u64 { 17 }
 
-macro public(package) fun invalid_upgrade_cap(): u64 { 18 }
+macro public(package) fun upgrade_cap_unavailable(): u64 { 18 }
 
-macro public(package) fun invalid_package_digest(): u64 { 19 }
-
-macro public(package) fun upgrade_cap_unavailable(): u64 { 20 }
-
-macro public(package) fun upgrade_policy_not_more_restrictive(): u64 { 21 }
+macro public(package) fun upgrade_policy_not_more_restrictive(): u64 { 19 }

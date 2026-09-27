@@ -151,8 +151,8 @@ grep -Fqx 'public struct AdminWitness<phantom Role>() has drop;' "$acl_file" \
   || fail "AdminWitness must be a drop-only, role-typed proof."
 grep -Fqx '    admins: VecMap<ID, VecSet<TypeName>>,' "$acl_file" \
   || fail "ACL must list every live admin and its roles inline."
-grep -Fqx '    super_admin_transfer_delay_ms: Timelocked<u64>,' "$acl_file" \
-  || fail "The super-admin transfer delay may change only through the timelock."
+grep -Fqx '    pending_super_admin: Timelocked<Option<address>>,' "$acl_file" \
+  || fail "A nominated super admin must wait out the timelock before it can accept."
 [[ "$(grep -c '^fun init(ctx: &mut TxContext) {$' "$acl_file")" -eq 1 ]] \
   || fail "The singleton must be created only by package initialization."
 if grep -qE 'types::is_one_time_witness|fun new<' "$acl_file"; then
@@ -172,7 +172,6 @@ expected_acl_public="$(printf '%s\n' \
   grant_role \
   revoke_admin \
   revoke_role \
-  schedule_super_admin_transfer_delay \
   sign_in \
   | sort)"
 [[ "$actual_acl_public" == "$expected_acl_public" ]] \

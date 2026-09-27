@@ -17,8 +17,6 @@ const NOW_MS: u64 = 1_000;
 
 const DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 
-const SHORT_DELAY_MS: u64 = 24 * 60 * 60 * 1_000;
-
 // === Test-Only Types ===
 
 public struct Fixture {
@@ -31,73 +29,50 @@ public struct Fixture {
 // === Tests ===
 
 #[test]
-fun the_first_transfer_delay_and_its_timelock_are_seven_days() {
-    let fixture = start();
-
-    assert_eq!(blast_acl::delay_ms_for_testing(), DELAY_MS);
-    assert_eq!(fixture.acl.super_admin_transfer_delay_ms_for_testing(&fixture.clock), DELAY_MS);
-
-    destroy(fixture);
+fun the_transfer_delay_is_seven_days() {
+    assert_eq!(blast_acl::super_admin_transfer_delay_ms_for_testing(), DELAY_MS);
 }
 
 #[test]
-fun a_new_delay_applies_only_after_the_timelock() {
+#[expected_failure(abort_code = errors::ENotPendingSuperAdminRecipient, location = blast_admin::blast_acl)]
+fun a_cancelled_transfer_cannot_be_accepted_even_after_its_delay() {
     let mut fixture = start();
-
-    fixture.schedule_delay(SHORT_DELAY_MS);
-    let scheduled = events::collect_one<events::SuperAdminTransferDelayScheduled>(0);
-    let (delay_ms, effective_at_ms) = scheduled.super_admin_transfer_delay_scheduled_fields();
-    assert_eq!(delay_ms, SHORT_DELAY_MS);
-    assert_eq!(effective_at_ms, NOW_MS + DELAY_MS);
-    fixture.clock.set_for_testing(effective_at_ms - 1);
     fixture.begin_transfer(NEW_ROOT);
-    assert_eq!(fixture.acl.pending_execute_after_ms_for_testing(), effective_at_ms - 1 + DELAY_MS);
-
-    fixture.clock.set_for_testing(effective_at_ms);
-    fixture.begin_transfer(OTHER);
-
-    assert_eq!(fixture.acl.pending_execute_after_ms_for_testing(), effective_at_ms + SHORT_DELAY_MS);
-
-    destroy(fixture);
-}
-
-#[test]
-fun scheduling_the_delay_in_force_cancels_a_pending_change() {
-    let mut fixture = start();
-    fixture.schedule_delay(SHORT_DELAY_MS);
-
-    fixture.schedule_delay(DELAY_MS);
     fixture.clock.set_for_testing(NOW_MS + DELAY_MS);
 
-    assert_eq!(fixture.acl.super_admin_transfer_delay_ms_for_testing(&fixture.clock), DELAY_MS);
+    fixture.cancel_transfer();
+    fixture.scenario.next_tx(NEW_ROOT);
+    fixture.accept_transfer();
 
     destroy(fixture);
 }
 
 #[test]
-#[expected_failure(
-    abort_code = errors::EInvalidSuperAdminTransferDelay,
-    location = blast_admin::blast_acl,
-)]
-fun a_zero_delay_is_rejected() {
+#[expected_failure(abort_code = errors::ENotPendingSuperAdminRecipient, location = blast_admin::blast_acl)]
+fun a_replaced_recipient_cannot_accept_even_after_its_delay() {
     let mut fixture = start();
+    fixture.begin_transfer(NEW_ROOT);
+    fixture.clock.set_for_testing(NOW_MS + DELAY_MS);
 
-    fixture.schedule_delay(0);
+    fixture.begin_transfer(OTHER);
+    fixture.scenario.next_tx(NEW_ROOT);
+    fixture.accept_transfer();
 
     destroy(fixture);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidSuperAdminCap, location = blast_admin::blast_acl)]
-fun a_root_from_another_acl_cannot_schedule_the_delay() {
+#[expected_failure(abort_code = errors::ENotPendingSuperAdminRecipient, location = blast_admin::blast_acl)]
+fun an_accepted_transfer_cannot_be_accepted_twice() {
     let mut fixture = start();
-    let (other_root, _other_acl) = blast_acl::new_for_testing(fixture.scenario.ctx());
+    fixture.begin_transfer(NEW_ROOT);
+    fixture.clock.set_for_testing(NOW_MS + DELAY_MS);
+    fixture.scenario.next_tx(NEW_ROOT);
+    fixture.accept_transfer();
 
-    let Fixture { acl, clock, .. } = &mut fixture;
+    fixture.accept_transfer();
 
-    acl.schedule_super_admin_transfer_delay(&other_root, SHORT_DELAY_MS, clock);
-
-    abort
+    destroy(fixture);
 }
 
 #[test]
@@ -233,17 +208,6 @@ fun cancellation_requires_a_pending_transfer() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ESuperAdminTransferTimeOverflow, location = blast_admin::blast_acl)]
-fun transfer_deadline_overflow_aborts_before_pending_state_changes() {
-    let mut fixture = start();
-    fixture.clock.set_for_testing(std::u64::max_value!());
-
-    fixture.begin_transfer(NEW_ROOT);
-
-    destroy(fixture);
-}
-
-#[test]
 #[expected_failure(abort_code = errors::ESuperAdminCapStillActive, location = blast_admin::blast_acl)]
 fun active_root_cap_cannot_be_destroyed() {
     let mut fixture = start();
@@ -277,11 +241,6 @@ fun begin_transfer(self: &mut Fixture, recipient: address) {
 fun accept_transfer(self: &mut Fixture) {
     let Fixture { scenario, acl, clock, .. } = self;
     acl.accept_super_admin_transfer(clock, scenario.ctx());
-}
-
-fun schedule_delay(self: &mut Fixture, delay_ms: u64) {
-    let Fixture { acl, root, clock, .. } = self;
-    acl.schedule_super_admin_transfer_delay(root.borrow(), delay_ms, clock);
 }
 
 fun cancel_transfer(self: &mut Fixture) {

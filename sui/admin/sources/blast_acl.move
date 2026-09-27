@@ -17,24 +17,18 @@ const MAX_ADMINS: u64 = 32;
 
 const MAX_ROLES_PER_ADMIN: u64 = 32;
 
-/// The first super-admin transfer delay, and the fixed wait before any change to it applies.
-const DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
+/// The wait before a nominated super admin may accept the root.
+const SUPER_ADMIN_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 
 // === Public Types ===
-
-/// One pending delayed replacement of the root capability.
-public struct PendingSuperAdminTransfer has drop, store {
-    recipient: address,
-    execute_after_ms: u64,
-}
 
 /// The shared singleton that lists the active root and every live administrator's roles.
 public struct ACL has key {
     id: UID,
     super_admin_cap_id: ID,
     admins: VecMap<ID, VecSet<TypeName>>,
-    super_admin_transfer_delay_ms: Timelocked<u64>,
-    pending_super_admin: Option<PendingSuperAdminTransfer>,
+    /// The nominated next super admin: none until the transfer delay passes.
+    pending_super_admin: Timelocked<Option<address>>,
 }
 
 /// Cold root authority for membership, roles, and delayed root replacement only.
@@ -140,27 +134,8 @@ public fun destroy_admin_cap(self: &mut ACL, admin_cap: AdminCap) {
     blast_admin_events::admin_destroyed(admin_cap_id, roles, was_active);
 }
 
-/// Schedules a new super-admin transfer delay; it applies only after the fixed timelock.
-///
-/// Scheduling the delay in force cancels a pending change.
-public fun schedule_super_admin_transfer_delay(
-    self: &mut ACL,
-    root: &SuperAdminCap,
-    delay_ms: u64,
-    clock: &Clock,
-) {
-    self.assert_super_admin(root);
-    assert!(delay_ms > 0, blast_admin::errors::invalid_super_admin_transfer_delay!());
-
-    self.super_admin_transfer_delay_ms.schedule(delay_ms, clock);
-
-    blast_admin_events::super_admin_transfer_delay_scheduled(
-        delay_ms,
-        self.super_admin_transfer_delay_ms.scheduled_at_ms(),
-    );
-}
-
-/// Starts or replaces a delayed transfer of the cold root authority.
+/// Nominates `recipient` as the next super admin; it may accept once the transfer delay
+/// passes. A new nomination replaces a pending one and restarts the delay.
 public fun begin_super_admin_transfer(
     self: &mut ACL,
     root: &SuperAdminCap,
@@ -173,81 +148,65 @@ public fun begin_super_admin_transfer(
         recipient != @0x0 && recipient != ctx.sender(),
         blast_admin::errors::invalid_super_admin_recipient!(),
     );
-    if (self.pending_super_admin.is_some()) {
-        assert!(
-            self.pending_super_admin.borrow().recipient != recipient,
-            blast_admin::errors::super_admin_transfer_unchanged!(),
-        );
-    };
-    let execute_after_ms = clock
-        .timestamp_ms()
-        .checked_add(self.super_admin_transfer_delay_ms.value(clock))
-        .destroy_or!(abort blast_admin::errors::super_admin_transfer_time_overflow!());
-    let mut previous = if (self.pending_super_admin.is_some()) {
-        option::some(self.pending_super_admin.extract())
-    } else {
-        option::none()
-    };
+    let previous = self.pending_super_admin;
+    assert!(
+        previous.scheduled() != option::some(recipient),
+        blast_admin::errors::super_admin_transfer_unchanged!(),
+    );
 
-    self.pending_super_admin = option::some(PendingSuperAdminTransfer {
-        recipient,
-        execute_after_ms,
-    });
+    let mut pending = no_pending_super_admin();
+    pending.schedule(option::some(recipient), clock);
+    self.pending_super_admin = pending;
 
-    if (previous.is_some()) {
-        let previous = previous.extract();
+    if (previous.scheduled().is_some()) {
         blast_admin_events::super_admin_transfer_cancelled(
-            previous.recipient,
-            previous.execute_after_ms,
+            previous.scheduled().destroy_some(),
+            previous.scheduled_at_ms(),
         );
     };
-    blast_admin_events::super_admin_transfer_started(recipient, execute_after_ms);
+    blast_admin_events::super_admin_transfer_started(recipient, pending.scheduled_at_ms());
 }
 
-/// Cancels one pending root transfer while the current root remains active.
+/// Cancels the pending root transfer at once, even after its delay has passed.
 public fun cancel_super_admin_transfer(self: &mut ACL, root: &SuperAdminCap) {
     self.assert_super_admin(root);
+    let previous = self.pending_super_admin;
     assert!(
-        self.pending_super_admin.is_some(),
+        previous.scheduled().is_some(),
         blast_admin::errors::no_pending_super_admin_transfer!(),
     );
 
-    let previous = self.pending_super_admin.extract();
+    self.pending_super_admin = no_pending_super_admin();
 
     blast_admin_events::super_admin_transfer_cancelled(
-        previous.recipient,
-        previous.execute_after_ms,
+        previous.scheduled().destroy_some(),
+        previous.scheduled_at_ms(),
     );
 }
 
 /// Accepts a ready root transfer as its nominated recipient and invalidates the old cap.
 public fun accept_super_admin_transfer(self: &mut ACL, clock: &Clock, ctx: &mut TxContext) {
+    let recipient = option::some(ctx.sender());
     assert!(
-        self.pending_super_admin.is_some(),
-        blast_admin::errors::no_pending_super_admin_transfer!(),
-    );
-    let pending = self.pending_super_admin.borrow();
-    assert!(
-        pending.recipient == ctx.sender(),
+        self.pending_super_admin.scheduled() == recipient,
         blast_admin::errors::not_pending_super_admin_recipient!(),
     );
     assert!(
-        clock.timestamp_ms() >= pending.execute_after_ms,
+        self.pending_super_admin.value(clock) == recipient,
         blast_admin::errors::super_admin_transfer_not_ready!(),
     );
 
-    let recipient = pending.recipient;
     let previous_super_admin_cap_id = self.super_admin_cap_id;
     let new_root = SuperAdminCap { id: object::new(ctx) };
     let new_super_admin_cap_id = new_root.id.to_inner();
-    let _ = self.pending_super_admin.extract();
     self.super_admin_cap_id = new_super_admin_cap_id;
-    transfer::transfer(new_root, recipient);
+    self.pending_super_admin = no_pending_super_admin();
+    transfer::transfer(new_root, ctx.sender());
 
     blast_admin_events::super_admin_transferred(
         previous_super_admin_cap_id,
         new_super_admin_cap_id,
-        recipient,
+        ctx.sender(),
     );
 }
 
@@ -285,11 +244,16 @@ fun new(ctx: &mut TxContext): (SuperAdminCap, ACL) {
         id: object::new(ctx),
         super_admin_cap_id: root.id.to_inner(),
         admins: vec_map::empty(),
-        super_admin_transfer_delay_ms: blast_fun_timelock::new(DELAY_MS, DELAY_MS),
-        pending_super_admin: option::none(),
+        pending_super_admin: no_pending_super_admin(),
     };
 
     (root, acl)
+}
+
+/// No nomination, in force at once: begin, cancel and accept each start from it, so a
+/// replaced or cancelled nominee can never accept.
+fun no_pending_super_admin(): Timelocked<Option<address>> {
+    blast_fun_timelock::new(option::none(), SUPER_ADMIN_TRANSFER_DELAY_MS)
 }
 
 fun assert_super_admin(self: &ACL, root: &SuperAdminCap) {
@@ -328,13 +292,8 @@ public fun max_roles_per_admin_for_testing(): u64 {
 }
 
 #[test_only]
-public fun delay_ms_for_testing(): u64 {
-    DELAY_MS
-}
-
-#[test_only]
-public fun super_admin_transfer_delay_ms_for_testing(self: &ACL, clock: &Clock): u64 {
-    self.super_admin_transfer_delay_ms.value(clock)
+public fun super_admin_transfer_delay_ms_for_testing(): u64 {
+    SUPER_ADMIN_TRANSFER_DELAY_MS
 }
 
 #[test_only]
@@ -364,17 +323,17 @@ public fun admin_roles_for_testing(self: &ACL, admin_cap_id: ID): vector<TypeNam
 
 #[test_only]
 public fun has_pending_transfer_for_testing(self: &ACL): bool {
-    self.pending_super_admin.is_some()
+    self.pending_super_admin.scheduled().is_some()
 }
 
 #[test_only]
 public fun pending_recipient_for_testing(self: &ACL): address {
-    self.pending_super_admin.borrow().recipient
+    self.pending_super_admin.scheduled().destroy_some()
 }
 
 #[test_only]
 public fun pending_execute_after_ms_for_testing(self: &ACL): u64 {
-    self.pending_super_admin.borrow().execute_after_ms
+    self.pending_super_admin.scheduled_at_ms()
 }
 
 // === Imports ===

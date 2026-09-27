@@ -37,14 +37,14 @@ fourteen launchpad and migrator functions without one, and Blast SUI still had t
 can create either. The ACL lists every live `AdminCap` ID with its roles' type
 names, up to 32 admins of up to 32 roles each, inline so an explorer shows every
 admin in one object. Root keeps its narrow powers: grant and revoke admins and
-roles, schedule its own transfer delay, and transfer itself after that delay.
+roles, and transfer itself after a delay.
 
-**A timelocked transfer delay.** The super-admin transfer delay is a field, a
-`blast_fun_timelock::Timelocked<u64>` from the published immutable util package.
-It starts at 7 days. Root may schedule a new positive delay; the change applies
-only 7 days later, a wait fixed when the ACL is created, and scheduling the delay
-in force cancels a pending change. A transfer uses the delay in force when it
-begins.
+**A timelocked root transfer.** The nominated next super admin is one field, a
+`blast_fun_timelock::Timelocked<Option<address>>` from the published immutable
+util package: none until 7 days after the nomination, then the nominee, who must
+accept. The 7 days is fixed in the timelock and cannot change. Beginning,
+cancelling, or accepting a transfer stores a fresh timelock, so a replaced or
+cancelled nominee can never accept, even after its delay has passed.
 
 **A role is a type.** Each consumer package declares its roles as ability-free
 structs in its `*_domain` module, for example `blast_fun_domain::FeeAdmin`. The
@@ -122,8 +122,9 @@ function without adding safety.
 
 - `blast_admin` tests cover init, admin and role grant and revocation, roleless and
   missing-role sign-in, both capacities, destroy, foreign ACL and root rejection,
-  the root transfer, and a delay change that applies only after its timelock. The
-  boundary self-test rejects a typed ACL, a storable root, a copyable witness, a
-  per-domain constructor, an untimelocked delay, and an unpinned timelock.
+  and the root transfer, including that a cancelled, replaced, or already accepted
+  nominee cannot accept after the delay. The boundary self-test rejects a typed
+  ACL, a storable root, a copyable witness, a per-domain constructor, an
+  untimelocked nominee, and an unpinned timelock.
 - Each consumer's source gate pins its declared roles and rejects a witness naming
   any other type. Consumer tests use `blast_acl::witness_for_testing<Role>()`.

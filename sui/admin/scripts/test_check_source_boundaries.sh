@@ -97,8 +97,8 @@ sed -i \
   "$case_dir/sources/blast_acl.move"
 expect_rejected "$case_dir"
 
-case_dir="$(new_case untimelocked_delay)"
-sed -i 's/^    super_admin_transfer_delay_ms: Timelocked<u64>,$/    super_admin_transfer_delay_ms: u64,/' \
+case_dir="$(new_case untimelocked_nominee)"
+sed -i 's/^    pending_super_admin: Timelocked<Option<address>>,$/    pending_super_admin: Option<address>,/' \
   "$case_dir/sources/blast_acl.move"
 expect_rejected "$case_dir"
 

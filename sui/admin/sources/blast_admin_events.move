@@ -32,11 +32,6 @@ public struct AdminDestroyed has copy, drop {
     was_active: bool,
 }
 
-public struct SuperAdminTransferDelayScheduled has copy, drop {
-    delay_ms: u64,
-    effective_at_ms: u64,
-}
-
 public struct SuperAdminTransferStarted has copy, drop {
     recipient: address,
     execute_after_ms: u64,
@@ -128,10 +123,6 @@ public(package) fun admin_role_revoked(admin_cap_id: ID, role: TypeName) {
 
 public(package) fun admin_destroyed(admin_cap_id: ID, roles: vector<TypeName>, was_active: bool) {
     sui::event::emit(AdminDestroyed { admin_cap_id, roles, was_active });
-}
-
-public(package) fun super_admin_transfer_delay_scheduled(delay_ms: u64, effective_at_ms: u64) {
-    sui::event::emit(SuperAdminTransferDelayScheduled { delay_ms, effective_at_ms });
 }
 
 public(package) fun super_admin_transfer_started(recipient: address, execute_after_ms: u64) {
@@ -292,13 +283,6 @@ public fun admin_role_revoked_fields(self: &AdminRoleRevoked): (ID, TypeName) {
 #[test_only]
 public fun admin_destroyed_fields(self: &AdminDestroyed): (ID, vector<TypeName>, bool) {
     (self.admin_cap_id, self.roles, self.was_active)
-}
-
-#[test_only]
-public fun super_admin_transfer_delay_scheduled_fields(
-    self: &SuperAdminTransferDelayScheduled,
-): (u64, u64) {
-    (self.delay_ms, self.effective_at_ms)
 }
 
 #[test_only]
