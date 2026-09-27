@@ -266,8 +266,9 @@ intentional semantic difference in an ADR and in shared differential vectors.
 Upgradeability is a product/security decision, not a default convenience.
 
 - Sui: Blast's canonical `Publisher` and raw `UpgradeCap` enter one shared
-  `PackageAdmin` after module/package provenance checks. A live `AdminWitness`
-  carrying the package-admin role authorizes an exact digest under the cap's compatible policy, which no path
+  `PackageAdmin` after module/package provenance checks. An
+  `AdminWitness<UpgradeAdmin>` signed in on the singleton Blast ACL (ADR 0097)
+  authorizes an exact digest under the cap's compatible policy, which no path
   narrows (ADR 0088); the native receipt then commits against the same cap and
   advances the generation, and `make_immutable` is the deliberate end of
   upgrades. A future governance design retires the routine-admin package path
