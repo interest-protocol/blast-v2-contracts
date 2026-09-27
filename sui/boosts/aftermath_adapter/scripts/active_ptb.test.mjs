@@ -86,6 +86,23 @@ test('mint and redemption bind public argument order and transfer only the retur
     }
 });
 
+test('naming a partner switches mint and redemption to the partner entry points, partner after protocol', () => {
+    for (const operation of ['mint', 'redeem']) {
+        const value = input(operation);
+        value.objects.partner = address(40);
+        const plan = buildActivePlan(value);
+        assert.equal(plan.commands[0].target, `${address(1)}::operations::${operation}_with_partner`);
+        assert.deepEqual(plan.commands[0].arguments, [
+            ...['vault', 'protocol', 'partner', 'account', 'registry', 'clearingHouse', 'baseOracle', 'collateralOracle']
+                .map((key) => `@${value.objects[key]}`),
+            `@${value.objects.inputCoin}`, '1', '100000', `@${value.objects.clock}`,
+        ]);
+        assert.throws(() => buildActivePlan({...value, objects: {...value.objects, partner: 'not-an-address'}}), /address/);
+    }
+    const rebalance = input('rebalance');
+    assert.throws(() => buildActivePlan({...rebalance, objects: {...rebalance.objects, partner: address(40)}}), /unexpected object field partner/);
+});
+
 test('rebalance contains only bound objects, not witness, trade side, size or fee choices', () => {
     const value = input('rebalance');
     const plan = buildActivePlan(value);

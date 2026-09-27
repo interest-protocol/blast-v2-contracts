@@ -41,6 +41,11 @@ Public active operations are `initialize`, `mint`, `redeem`, `rebalance`,
 `needs_rebalance`, `sync_health` and `donate`; Vault also exposes authorized
 fee, NAV-cap and order-cap settings, issuer-only coin metadata updates, and
 earned-admin cash withdrawal.
+`mint_with_partner` and `redeem_with_partner` run the plain operation for a
+Blast partner (`blast_partners::Partner`) and then pay it its share of the admin
+fee that operation retained, never the reserve fee, in the same transaction
+([ADR 0095](../../../docs/decisions/0095-partner-codes.md),
+[how it works](../../../docs/partner-codes.md)).
 Mint/redeem return ordinary native coins and finish atomically. Rebalance has
 no privileged keeper path, caller trade sizing or reward. An unresolved
 external change preserves the accepted economic checkpoint and emits

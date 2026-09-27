@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// Aftermath adapter operational generation.
+/// Aftermath adapter operational generation and the partners Boosts accepts.
 ///
 /// The generation value, its checked arithmetic, and its replay event belong to
-/// `blast_admin::operational_version`. This module owns only the shared
-/// container and the two compiled constants that identify this bytecode and the
-/// bytecode a governed upgrade cuts over to.
+/// `blast_admin::operational_version`. This module owns the shared container,
+/// the two compiled constants that identify this bytecode and the bytecode a
+/// governed upgrade cuts over to, and the list of accepted Blast partners, one
+/// dynamic field per partner so the container's layout never changes.
 module blast_boosts_aftermath::protocol;
 
 // === Constants ===
@@ -24,6 +25,10 @@ public struct Protocol has key {
     id: UID,
     generation: OperationalVersion<BLAST_BOOSTS_AFTERMATH>,
 }
+
+/// Dynamic-field key of a Blast partner Boosts accepts. Its value is the time
+/// the partner stops being accepted: `u64::MAX` until Blast removes it.
+public struct PartnerKey(ID) has copy, drop, store;
 
 // === Private Initialization ===
 
@@ -48,6 +53,44 @@ public(package) fun advance(self: &mut Protocol) {
     let container_id = self.id.to_inner();
 
     self.generation.advance(container_id, NEXT_PACKAGE_VERSION);
+}
+
+/// Accepts `partner_id` at once. Adding a partner whose removal is pending
+/// cancels the removal; adding a removed partner accepts it again.
+public(package) fun add_partner(self: &mut Protocol, partner_id: ID) {
+    let key = PartnerKey(partner_id);
+
+    if (self.id.exists_dynamic_field(key)) {
+        let accepted_until_ms: &mut u64 = self.id.borrow_dynamic_field_mut(key);
+        assert!(*accepted_until_ms != std::u64::max_value!(), errors::partner_unchanged!());
+        *accepted_until_ms = std::u64::max_value!();
+    } else {
+        self.id.add_dynamic_field(key, std::u64::max_value!());
+    }
+}
+
+/// Stops accepting `partner_id` from `accepted_until_ms`. The partner must be
+/// accepted at `now_ms` with no removal pending.
+public(package) fun remove_partner(
+    self: &mut Protocol,
+    partner_id: ID,
+    now_ms: u64,
+    accepted_until_ms: u64,
+) {
+    self.assert_partner(partner_id, now_ms);
+
+    let current: &mut u64 = self.id.borrow_dynamic_field_mut(PartnerKey(partner_id));
+    assert!(*current == std::u64::max_value!(), errors::partner_unchanged!());
+    *current = accepted_until_ms;
+}
+
+/// Aborts unless Boosts accepts `partner_id` at `now_ms`.
+public(package) fun assert_partner(self: &Protocol, partner_id: ID, now_ms: u64) {
+    let key = PartnerKey(partner_id);
+
+    assert!(self.id.exists_dynamic_field(key), errors::partner_not_accepted!());
+    let accepted_until_ms: u64 = *self.id.borrow_dynamic_field(key);
+    assert!(now_ms < accepted_until_ms, errors::partner_not_accepted!());
 }
 
 // === Private Functions ===
@@ -103,8 +146,21 @@ public fun assert_current_for_testing(self: &Protocol) {
     self.assert_current();
 }
 
+#[test_only]
+/// Exercises the guard every trade that names a partner runs first.
+public fun assert_partner_for_testing(self: &Protocol, partner_id: ID, now_ms: u64) {
+    self.assert_partner(partner_id, now_ms);
+}
+
 // === Imports ===
 
 use blast_admin::operational_version::{Self, OperationalVersion};
 
-use blast_boosts_aftermath::blast_boosts_aftermath::BLAST_BOOSTS_AFTERMATH;
+use blast_boosts_aftermath::{blast_boosts_aftermath::BLAST_BOOSTS_AFTERMATH, errors};
+
+use sui::dynamic_field;
+
+use fun dynamic_field::add as UID.add_dynamic_field;
+use fun dynamic_field::borrow as UID.borrow_dynamic_field;
+use fun dynamic_field::borrow_mut as UID.borrow_dynamic_field_mut;
+use fun dynamic_field::exists as UID.exists_dynamic_field;

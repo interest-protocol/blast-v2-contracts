@@ -335,7 +335,7 @@ public(package) fun seal_terminal_cash<Product, Collateral>(
     eligible: u64,
 ) {
     if (eligible == 0) {
-        self.retain_admin_cash(recovered);
+        self.retain_admin_cash(recovered.into_balance());
     } else {
         self.terminal_cash.join(recovered.into_balance());
     };
@@ -343,12 +343,21 @@ public(package) fun seal_terminal_cash<Product, Collateral>(
 
 // --- Admin Cash ---
 
-/// Retains an operation's already allocated admin coin without changing venue accounting.
+/// Adds collateral to Blast's admin cash without changing venue accounting.
 public(package) fun retain_admin_cash<Product, Collateral>(
     self: &mut Vault<Product, Collateral>,
-    cash: Coin<Collateral>,
+    cash: Balance<Collateral>,
 ) {
-    self.admin_cash.join(cash.into_balance());
+    self.admin_cash.join(cash);
+}
+
+/// Takes `amount` back out of Blast's admin cash, to pay a partner its share of
+/// the admin fee an operation just retained.
+public(package) fun take_admin_cash<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>,
+    amount: u64,
+): Balance<Collateral> {
+    self.admin_cash.split(amount)
 }
 
 /// Native cash is authoritative; no mirrored numerical admin ledger is stored.

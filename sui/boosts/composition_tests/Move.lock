@@ -43,8 +43,8 @@ deps = { Sui = "Sui", blast_fun_timelock = "blast_fun_timelock" }
 [pinned.mainnet.blast_boosts_aftermath]
 source = { local = "../aftermath_adapter" }
 use_environment = "mainnet"
-manifest_digest = "4D5BCF3996811575DE261E6C3BA931332DD8D9C4F28E540226F5E9368A14A500"
-deps = { authority_cap = "authority_cap", blast_admin = "blast_admin", blast_boosts_core = "blast_boosts_core", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", perpetuals = "perpetuals", position = "position", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "6B9FDC94DC8A6AAACF7D42FC225E2138B300E30449C91D67DB557568D609A8E4"
+deps = { authority_cap = "authority_cap", blast_admin = "blast_admin", blast_boosts_core = "blast_boosts_core", blast_partners = "blast_partners", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", perpetuals = "perpetuals", position = "position", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.blast_boosts_composition_tests]
 source = { root = true }
@@ -75,6 +75,12 @@ source = { git = "https://github.com/interest-protocol/blast-util-contracts.git"
 use_environment = "mainnet"
 manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
 deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.blast_partners]
+source = { local = "../../partners" }
+use_environment = "mainnet"
+manifest_digest = "D5CCB833332CD32F07926CDFF448E853BA674CB7110877E91BA125049FDB2026"
+deps = { blast_admin = "blast_admin", blast_fun_timelock = "blast_fun_timelock", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.ifixed]
 source = { local = "../aftermath_adapter/interfaces/aftermath/ifixed/ifixed" }
@@ -145,8 +151,8 @@ deps = { Sui = "Sui", blast_fun_timelock = "blast_fun_timelock" }
 [pinned.testnet.blast_boosts_aftermath]
 source = { local = "../aftermath_adapter" }
 use_environment = "testnet"
-manifest_digest = "EA2D0C160EFFDC573857307D0BA796039B5F0FAF8186477265CF7F6DAD81DEA6"
-deps = { authority_cap = "authority_cap", blast_admin = "blast_admin", blast_boosts_core = "blast_boosts_core", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", perpetuals = "perpetuals", position = "position", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "4E5B0AE51FC244620D7832F8687776D0F1C70CDEF5FCBEDDEB7BCEF433A2C2FE"
+deps = { authority_cap = "authority_cap", blast_admin = "blast_admin", blast_boosts_core = "blast_boosts_core", blast_partners = "blast_partners", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", perpetuals = "perpetuals", position = "position", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.blast_boosts_composition_tests]
 source = { root = true }
@@ -177,6 +183,12 @@ source = { git = "https://github.com/interest-protocol/blast-util-contracts.git"
 use_environment = "testnet"
 manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
 deps = { std = "MoveStdlib", sui = "Sui" }
+
+[pinned.testnet.blast_partners]
+source = { local = "../../partners" }
+use_environment = "testnet"
+manifest_digest = "8C0E43AF514B7DCD0420AB49466D733394BE7FB875344BC3A6105EE90407F358"
+deps = { blast_admin = "blast_admin", blast_fun_timelock = "blast_fun_timelock", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.testnet.ifixed]
 source = { local = "../aftermath_adapter/interfaces/aftermath/ifixed/ifixed" }

@@ -308,7 +308,7 @@ fun admin_fee_withdrawal_one_atom_above_earnings_is_rejected() {
     fixture.next_tx!(ISSUER, |fixture| {
         let mut vault = fixture.take_vault<Sui2x>();
         let admin_witness = risk_admin();
-        vault.retain_admin_cash(coin::mint_for_testing<SUI>(25, fixture.ctx!()));
+        vault.retain_admin_cash(sui::balance::create_for_testing<SUI>(25));
 
         destroy(vault.withdraw_admin_fees(&fixture.protocol, &admin_witness, 26, fixture.ctx!()));
 

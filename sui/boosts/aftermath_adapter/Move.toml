@@ -7,6 +7,7 @@ authors = ["Jose Cerqueira (jose@interestprotocol.com)"]
 [dependencies]
 blast_admin = { local = "../../admin" }
 blast_boosts_core = { local = "../core" }
+blast_partners = { local = "../../partners" }
 # Verbatim copy of AftermathFinance/move-interfaces at f62e74aa862ef65b8950a70d83aac8cb71c19837
 # (see interfaces/aftermath/README.md); check_mainnet_abi.mjs gates it against mainnet.
 perpetuals = { local = "interfaces/aftermath/iperps/perpetuals" }

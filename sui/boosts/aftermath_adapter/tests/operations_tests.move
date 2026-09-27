@@ -27,6 +27,7 @@ const ONE_FIXED: u256 = 1_000_000_000_000_000_000;
 /// rate move: a rise is a cost, a fall a credit.
 const RATE: u256 = 1_000_000_000_000_000_000;
 const REFERENCE_GAS_PRICE: u64 = 750;
+const PARTNER_PAYOUT: address = @0xFEE;
 
 // === Test-Only Types ===
 
@@ -345,7 +346,7 @@ fun terminal_claims_exclude_locked_seed_burn_native_shares_and_give_last_claiman
     let locked = vault.total_share_supply();
     let mut shares = vault.mint_shares(5, fixture.ctx!());
     let first = shares.split(2, fixture.ctx!());
-    vault.retain_admin_cash(sui::coin::mint_for_testing<Collateral>(7, fixture.ctx!()));
+    vault.retain_admin_cash(sui::balance::create_for_testing<Collateral>(7));
     let witness = shutdown_admin();
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     let recovered = sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!());
@@ -459,6 +460,8 @@ fun event_reducer_reconstructs_active_economics_for_two_product_types() {
     assert_eq!(events::collect<events::Redeemed<OtherProduct>>().length(), 1);
     assert_eq!(events::collect<events::Rebalanced<Product>>().length(), 1);
     assert_eq!(events::collect<events::Rebalanced<OtherProduct>>().length(), 1);
+    assert_eq!(events::collect<events::PartnerFeePaid<Product>>().length(), 2);
+    assert_eq!(events::collect<events::PartnerFeePaid<OtherProduct>>().length(), 2);
     destroy(first);
     destroy(second);
     fixture.end();
@@ -502,7 +505,7 @@ fun native_fee_allocations_preserve_historical_cash_through_redemption_and_rate_
     assert_eq!(plan.admin_fee(), 2);
     assert_eq!(plan.base_to_buy(), 19_980_000);
     vault.set_fees(&fixture.protocol, &witness, 0, 0, 0);
-    vault.retain_admin_cash(sui::coin::mint_for_testing<Collateral>(2, fixture.ctx!()));
+    vault.retain_admin_cash(sui::balance::create_for_testing<Collateral>(2));
     let shares = operations::complete_mint_for_testing<Product, Collateral>(
         &mut vault, plan, 10_000, active_position(10_997, 21_780), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!(),
     );
@@ -537,6 +540,275 @@ fun native_fee_allocations_preserve_historical_cash_through_redemption_and_rate_
     sui::transfer::public_transfer(earnings, ADMIN);
     destroy(vault);
     fixture.end();
+}
+
+#[test]
+/// A partner is paid only out of the admin fee the operation just retained: of a
+/// 30-atom fee a 50% share takes 15, earlier admin cash, the reserve and the
+/// supply do not move, and both the vault's and the partner package's events
+/// record the payment.
+fun a_partner_is_paid_only_out_of_the_admin_fee_its_operation_retained() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let clock = reference_clock(&mut fixture);
+    vault.retain_admin_cash(sui::balance::create_for_testing<Collateral>(100));
+    vault.retain_admin_cash(sui::balance::create_for_testing<Collateral>(30));
+    let (reserve, supply) = (vault.state().maintenance_reserve(), vault.total_share_supply());
+
+    operations::pay_partner_for_testing(&mut vault, &partner, 100, &clock);
+
+    assert_eq!(vault.admin_cash_balance<_, Collateral>(), 115);
+    assert_eq!(vector[vault.state().maintenance_reserve(), vault.total_share_supply()], vector[reserve, supply]);
+    let (vault_id, partner_id, admin_fee, partner_fee) =
+        events::collect_one<events::PartnerFeePaid<Product>>(0).partner_fee_paid_fields();
+    assert_eq!(vault_id, vault.id());
+    assert_eq!(partner_id, object::id(&partner));
+    assert_eq!(vector[admin_fee, partner_fee], vector[30, 15]);
+    let payments = sui::event::events_by_type<PartnerPaid<Collateral>>();
+    assert_eq!(payments.length(), 1);
+    let (paid_partner, amount) = payments[0].partner_paid_fields();
+    assert_eq!(paid_partner, object::id(&partner));
+    assert_eq!(amount, 15);
+    destroy(partner);
+    clock.destroy_for_testing();
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+/// An operation that retained no admin fee pays the partner nothing, sends
+/// nothing, and is still attributed to the partner.
+fun a_zero_admin_fee_pays_nothing_but_is_still_attributed() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let clock = reference_clock(&mut fixture);
+    vault.retain_admin_cash(sui::balance::create_for_testing<Collateral>(40));
+
+    operations::pay_partner_for_testing(&mut vault, &partner, 40, &clock);
+
+    let (_, partner_id, admin_fee, partner_fee) =
+        events::collect_one<events::PartnerFeePaid<Product>>(0).partner_fee_paid_fields();
+    assert_eq!(partner_id, object::id(&partner));
+    assert_eq!(vector[admin_fee, partner_fee], vector[0, 0]);
+    assert_eq!(vault.admin_cash_balance<_, Collateral>(), 40);
+    assert_eq!(sui::event::events_by_type<PartnerPaid<Collateral>>().length(), 0);
+    destroy(partner);
+    clock.destroy_for_testing();
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+/// At the maximum 80% share Blast still keeps a fifth of the admin fee.
+fun the_maximum_partner_share_leaves_blast_a_fifth_of_the_admin_fee() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 8_000, fixture.ctx!());
+    let clock = reference_clock(&mut fixture);
+    vault.retain_admin_cash(sui::balance::create_for_testing<Collateral>(30));
+
+    operations::pay_partner_for_testing(&mut vault, &partner, 0, &clock);
+
+    let (_, _, _, partner_fee) = events::collect_one<events::PartnerFeePaid<Product>>(0).partner_fee_paid_fields();
+    assert_eq!(vector[partner_fee, vault.admin_cash_balance<_, Collateral>()], vector[24, 6]);
+    destroy(partner);
+    clock.destroy_for_testing();
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+/// The share is read at the operation's own Clock: a share that switches one
+/// millisecond later pays nothing but the operation is still attributed to the
+/// partner; one that switches at the operation's time pays in full.
+fun a_partner_share_takes_effect_exactly_at_the_operations_clock() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
+    let pending = partners::new_scheduled_for_testing(PARTNER_PAYOUT, 0, 5_000, REFERENCE_TIME_MS + 1, fixture.ctx!());
+    let switched = partners::new_scheduled_for_testing(PARTNER_PAYOUT, 0, 5_000, REFERENCE_TIME_MS, fixture.ctx!());
+    let clock = reference_clock(&mut fixture);
+    vault.retain_admin_cash(sui::balance::create_for_testing<Collateral>(60));
+
+    operations::pay_partner_for_testing(&mut vault, &pending, 30, &clock);
+    operations::pay_partner_for_testing(&mut vault, &switched, 30, &clock);
+
+    let fees = events::collect<events::PartnerFeePaid<Product>>();
+    let (_, _, _, pending_fee) = fees[0].partner_fee_paid_fields();
+    let (_, _, _, switched_fee) = fees[1].partner_fee_paid_fields();
+    assert_eq!(vector[pending_fee, switched_fee], vector[0, 15]);
+    assert_eq!(vault.admin_cash_balance<_, Collateral>(), 45);
+    assert_eq!(sui::event::events_by_type<PartnerPaid<Collateral>>().length(), 1);
+    destroy(pending);
+    destroy(switched);
+    clock.destroy_for_testing();
+    destroy(vault);
+    fixture.end();
+}
+
+// --- Accepted partners ---
+
+#[test]
+/// An added partner is accepted at once; a removed one stays accepted, and
+/// paid, until the partner delay ends, and other partners are untouched.
+fun an_added_partner_is_accepted_at_once_and_a_removed_one_until_the_delay_ends() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let other = partners::new_for_testing(PARTNER_PAYOUT, 800, fixture.ctx!());
+    let mut clock = reference_clock(&mut fixture);
+    fixture.add_partner(&partner);
+    fixture.add_partner(&other);
+    fixture.protocol.assert_partner_for_testing(object::id(&partner), REFERENCE_TIME_MS);
+
+    fixture.remove_partner(&partner, &clock);
+
+    let accepted_until_ms = REFERENCE_TIME_MS + partners::delay_ms();
+    let added = events::collect<events::PartnerAdded>();
+    assert_eq!(added[0].partner_added_id(), object::id(&partner));
+    assert_eq!(added[1].partner_added_id(), object::id(&other));
+    let (removed_id, until) = events::collect_one<events::PartnerRemoved>(0).partner_removed_fields();
+    assert_eq!(removed_id, object::id(&partner));
+    assert_eq!(until, accepted_until_ms);
+    fixture.protocol.assert_partner_for_testing(object::id(&partner), accepted_until_ms - 1);
+    clock.set_for_testing(accepted_until_ms);
+    fixture.protocol.assert_partner_for_testing(object::id(&other), accepted_until_ms);
+    destroy(partner);
+    destroy(other);
+    clock.destroy_for_testing();
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EPartnerNotAccepted, location = blast_boosts_aftermath::protocol)]
+fun a_removed_partner_is_refused_from_the_end_of_the_delay() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let clock = reference_clock(&mut fixture);
+    fixture.add_partner(&partner);
+    fixture.remove_partner(&partner, &clock);
+
+    let accepted_until_ms = REFERENCE_TIME_MS + partners::delay_ms();
+    fixture.protocol.assert_partner_for_testing(object::id(&partner), accepted_until_ms);
+
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EPartnerNotAccepted, location = blast_boosts_aftermath::protocol)]
+fun a_partner_never_added_is_refused() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+
+    fixture.protocol.assert_partner_for_testing(object::id(&partner), REFERENCE_TIME_MS);
+
+    abort
+}
+
+#[test]
+/// Adding a partner whose removal is pending cancels it, and it can be removed again.
+fun adding_a_partner_being_removed_cancels_the_removal() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let clock = reference_clock(&mut fixture);
+    fixture.add_partner(&partner);
+    fixture.remove_partner(&partner, &clock);
+
+    fixture.add_partner(&partner);
+
+    assert_eq!(events::collect<events::PartnerAdded>().length(), 2);
+    fixture.protocol.assert_partner_for_testing(object::id(&partner), std::u64::max_value!() - 1);
+    fixture.remove_partner(&partner, &clock);
+    assert_eq!(events::collect<events::PartnerRemoved>().length(), 2);
+    destroy(partner);
+    clock.destroy_for_testing();
+    fixture.end();
+}
+
+#[test]
+/// A removed partner can be added again, accepted at once.
+fun a_removed_partner_added_again_is_accepted_at_once() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let mut clock = reference_clock(&mut fixture);
+    fixture.add_partner(&partner);
+    fixture.remove_partner(&partner, &clock);
+    clock.set_for_testing(REFERENCE_TIME_MS + partners::delay_ms());
+
+    fixture.add_partner(&partner);
+
+    fixture.protocol.assert_partner_for_testing(object::id(&partner), clock.timestamp_ms());
+    destroy(partner);
+    clock.destroy_for_testing();
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EPartnerUnchanged, location = blast_boosts_aftermath::protocol)]
+fun adding_an_accepted_partner_again_is_refused() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    fixture.add_partner(&partner);
+
+    fixture.add_partner(&partner);
+
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EPartnerUnchanged, location = blast_boosts_aftermath::protocol)]
+fun removing_a_partner_already_being_removed_is_refused() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let clock = reference_clock(&mut fixture);
+    fixture.add_partner(&partner);
+    fixture.remove_partner(&partner, &clock);
+
+    fixture.remove_partner(&partner, &clock);
+
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EPartnerNotAccepted, location = blast_boosts_aftermath::protocol)]
+fun removing_a_partner_never_added_is_refused() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let clock = reference_clock(&mut fixture);
+
+    fixture.remove_partner(&partner, &clock);
+
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EPartnerNotAccepted, location = blast_boosts_aftermath::protocol)]
+fun removing_a_removed_partner_is_refused() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let mut clock = reference_clock(&mut fixture);
+    fixture.add_partner(&partner);
+    fixture.remove_partner(&partner, &clock);
+    clock.set_for_testing(REFERENCE_TIME_MS + partners::delay_ms());
+
+    fixture.remove_partner(&partner, &clock);
+
+    abort
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+fun a_stale_adapter_version_rejects_adding_a_partner() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    fixture.protocol.set_version_for_testing(3);
+
+    fixture.add_partner(&partner);
+
+    abort
 }
 
 #[test]
@@ -1177,7 +1449,7 @@ fun earned_admin_cash_withdraws_without_venue_or_oracle_in_terminal_state() {
     let mut fixture = start();
     let initial = initial_checkpoint();
     let mut vault = issue_and_activate(&mut fixture, initial);
-    vault.retain_admin_cash(sui::coin::mint_for_testing<Collateral>(25, fixture.ctx!()));
+    vault.retain_admin_cash(sui::balance::create_for_testing<Collateral>(25));
     let witness = risk_admin();
     vault.set_unwinding_for_testing();
     let cash = vault.withdraw_admin_fees<_, Collateral>(
@@ -2618,6 +2890,23 @@ fun issue_and_activate(
     issue_and_activate_with_policy(fixture, checkpoint, standard_vault_policy())
 }
 
+/// A clock at the reference time the completion helpers price at.
+fun reference_clock(fixture: &mut Fixture): Clock {
+    let mut clock = sui::clock::create_for_testing(fixture.ctx!());
+    clock.set_for_testing(REFERENCE_TIME_MS);
+    clock
+}
+
+fun add_partner(self: &mut Fixture, partner: &Partner) {
+    let witness = risk_admin();
+    operations::add_partner(&mut self.protocol, &witness, partner);
+}
+
+fun remove_partner(self: &mut Fixture, partner: &Partner, clock: &Clock) {
+    let witness = risk_admin();
+    operations::remove_partner(&mut self.protocol, &witness, partner, clock);
+}
+
 fun issue_and_activate_with_policy(
     fixture: &mut Fixture,
     checkpoint: Checkpoint,
@@ -3022,7 +3311,7 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
     vault.set_fees(&fixture.protocol, &witness, 10, 10, 2_000);
     replay_fees(&mut replay, events::collect_one<events::FeesUpdated<Tag>>(0));
     let plan = vault.state().prepare_mint(position_observation_for_side(SEED_EQUITY, side), 10_000, vault.total_share_supply(), 9_989_000, REFERENCE_TIME_MS);
-    vault.retain_admin_cash(sui::coin::mint_for_testing<Collateral>(2, fixture.ctx!()));
+    vault.retain_admin_cash(sui::balance::create_for_testing<Collateral>(2));
     let mut shares = operations::complete_mint_for_testing<Tag, Collateral>(&mut vault, plan, 10_000,
         active_position_for_side(10_997, 21_780, side), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!());
     replay_mint(&mut replay, events::collect_one<events::Minted<Tag>>(0));
@@ -3100,15 +3389,22 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, C
     vault.set_fees(&fixture.protocol, &witness, 0, 0, 0);
     replay_fees(&mut replay, events::collect<events::FeesUpdated<Tag>>()[1]);
     assert_replay(&replay, vault);
-    vault.retain_admin_cash(sui::coin::mint_for_testing<Collateral>(2, fixture.ctx!()));
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let clock = reference_clock(fixture);
+    let admin_cash_before = vault.admin_cash_balance<_, Collateral>();
+    vault.retain_admin_cash(sui::balance::create_for_testing<Collateral>(2));
     let shares = operations::complete_mint_for_testing<Tag, Collateral>(vault, plan, 10_000,
         active_position(10_997, 21_780), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!());
     replay_mint(&mut replay, events::collect_one<events::Minted<Tag>>(0));
+    assert_replay(&replay, vault);
+    operations::pay_partner_for_testing(vault, &partner, admin_cash_before, &clock);
+    replay_partner_fee_paid(&mut replay, events::collect<events::PartnerFeePaid<Tag>>()[0]);
     assert_replay(&replay, vault);
 
     vault.set_fees(&fixture.protocol, &witness, 10, 10, 2_000);
     replay_fees(&mut replay, events::collect<events::FeesUpdated<Tag>>()[2]);
     assert_replay(&replay, vault);
+    let admin_cash_before = vault.admin_cash_balance<_, Collateral>();
     let plan = vault.state().prepare_redemption(active_position(10_997, 21_780), shares.value(), vault.total_share_supply(), 9_978, REFERENCE_TIME_MS);
     let (net, admin, fee, reserve_fee) = operations::settle_redemption_for_testing(vault, plan, &shares,
         active_position_with_base(10_996, 1_800_165), REFERENCE_TIME_MS);
@@ -3116,12 +3412,17 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, C
     let cash = operations::complete_redemption_for_testing(vault, shares, cash, net, admin, fee, reserve_fee, initial_checkpoint(), fixture.ctx!());
     replay_redemption(&mut replay, events::collect_one<events::Redeemed<Tag>>(0));
     assert_replay(&replay, vault);
+    operations::pay_partner_for_testing(vault, &partner, admin_cash_before, &clock);
+    replay_partner_fee_paid(&mut replay, events::collect<events::PartnerFeePaid<Tag>>()[1]);
+    assert_replay(&replay, vault);
     sui::transfer::public_transfer(cash, ADMIN);
+    destroy(partner);
+    clock.destroy_for_testing();
 
     vault.set_fees(&fixture.protocol, &witness, 0, 0, 0);
     replay_fees(&mut replay, events::collect<events::FeesUpdated<Tag>>()[3]);
     assert_replay(&replay, vault);
-    let cash = vault.withdraw_admin_fees<_, Collateral>(&fixture.protocol, &witness, 4, fixture.ctx!());
+    let cash = vault.withdraw_admin_fees<_, Collateral>(&fixture.protocol, &witness, 2, fixture.ctx!());
     let (id, amount, remaining) = events::collect_one<events::AdminFeesWithdrawn<Tag>>(0).admin_fees_withdrawn_fields();
     assert_eq!(id, replay.vault_id);
     assert_eq!(remaining, replay.admin_cash - amount);
@@ -3222,6 +3523,14 @@ fun replay_redemption<Tag>(replay: &mut ReplayState, event: events::Redeemed<Tag
     replay.admin_cash = amounts[6];
     replay.supply = amounts[7];
     replay.checkpoint = option::some(checkpoint);
+}
+
+// Follows the operation's own event, whose admin cash still includes the partner's fee.
+fun replay_partner_fee_paid<Tag>(replay: &mut ReplayState, event: events::PartnerFeePaid<Tag>) {
+    let (id, _, admin_fee, partner_fee) = event.partner_fee_paid_fields();
+    assert_eq!(id, replay.vault_id);
+    assert!(partner_fee > 0 && partner_fee <= admin_fee);
+    replay.admin_cash = replay.admin_cash - partner_fee;
 }
 
 fun assert_replay<Tag>(replay: &ReplayState, vault: &Vault<Tag, Collateral>) {
@@ -3371,6 +3680,8 @@ use blast_boosts_core::{
     blast_boosts_core::{RiskAdmin, ShutdownAdmin, VaultIssuer},
 };
 
+use blast_partners::blast_partners::{Self as partners, Partner, PartnerPaid};
+
 use perpetuals::authority::ACCOUNT;
 
 use std::{
@@ -3380,6 +3691,7 @@ use std::{
 };
 
 use sui::{
+    clock::Clock,
     coin::Coin,
     coin_registry::{Self, CoinRegistry},
     test_scenario::{Self, Scenario},
