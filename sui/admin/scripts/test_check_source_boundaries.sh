@@ -72,8 +72,8 @@ printf '\npublic fun activate<PackageMarker: drop>(self: &mut OperationalVersion
 expect_rejected "$case_dir"
 
 case_dir="$(new_case adds_acl_entry_path)"
-printf '\npublic entry fun rogue<Domain: drop>(self: &mut Authority<Domain>) {}\n' \
-  >> "$case_dir/sources/acl.move"
+printf '\npublic entry fun rogue(self: &mut ACL) {}\n' \
+  >> "$case_dir/sources/blast_acl.move"
 expect_rejected "$case_dir"
 
 case_dir="$(new_case adds_custody_entry_path)"
@@ -82,8 +82,8 @@ printf '\npublic entry fun rogue<PackageMarker: drop>(self: &mut UpgradeCustody<
 expect_rejected "$case_dir"
 
 case_dir="$(new_case adds_bare_acl_entry_path)"
-printf '\nentry fun rogue<Domain: drop>(self: &mut Authority<Domain>) {}\n' \
-  >> "$case_dir/sources/acl.move"
+printf '\nentry fun rogue(self: &mut ACL) {}\n' \
+  >> "$case_dir/sources/blast_acl.move"
 expect_rejected "$case_dir"
 
 case_dir="$(new_case adds_bare_custody_entry_path)"
@@ -91,10 +91,25 @@ printf '\nentry fun rogue<PackageMarker: drop>(self: &mut UpgradeCustody<Package
   >> "$case_dir/sources/upgrade_custody.move"
 expect_rejected "$case_dir"
 
-case_dir="$(new_case uses_named_admin_witness)"
+case_dir="$(new_case copyable_admin_witness)"
 sed -i \
-  's/public struct AdminWitness<phantom Domain: drop>(u64) has drop;/public struct AdminWitness<phantom Domain: drop> has drop { roles: u64 }/' \
-  "$case_dir/sources/acl.move"
+  's/public struct AdminWitness<phantom Role>() has drop;/public struct AdminWitness<phantom Role>() has copy, drop;/' \
+  "$case_dir/sources/blast_acl.move"
+expect_rejected "$case_dir"
+
+case_dir="$(new_case domain_typed_acl)"
+sed -i 's/^public struct ACL has key {$/public struct ACL<phantom Domain> has key {/' \
+  "$case_dir/sources/blast_acl.move"
+expect_rejected "$case_dir"
+
+case_dir="$(new_case storable_root)"
+sed -i 's/^public struct SuperAdminCap has key {$/public struct SuperAdminCap has key, store {/' \
+  "$case_dir/sources/blast_acl.move"
+expect_rejected "$case_dir"
+
+case_dir="$(new_case per_domain_constructor)"
+printf '\npublic fun new<Domain: drop>(otw: Domain, ctx: &mut TxContext) { abort 0 }\n' \
+  >> "$case_dir/sources/blast_acl.move"
 expect_rejected "$case_dir"
 
 printf 'blast_admin boundary checker self-tests passed\n'

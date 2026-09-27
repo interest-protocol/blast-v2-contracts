@@ -54,7 +54,7 @@ public fun advance<PackageMarker: drop>(
 
     self.generation = new_generation;
 
-    events::operational_version_advanced<PackageMarker>(
+    blast_admin_events::operational_version_advanced<PackageMarker>(
         container_id,
         type_name::original_id<PackageMarker>(),
         previous_generation,
@@ -98,6 +98,6 @@ public fun set_generation_for_testing<PackageMarker: drop>(
 
 // === Imports ===
 
-use blast_admin::events;
+use blast_admin::blast_admin_events;
 
 use std::type_name;

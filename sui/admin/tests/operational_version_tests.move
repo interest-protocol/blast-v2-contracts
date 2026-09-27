@@ -122,7 +122,7 @@ fun advance_rejects_overflow_before_mutation() {
 
 use 0xa::package_marker;
 
-use blast_admin::{errors, events, operational_version};
+use blast_admin::{blast_admin_events as events, errors, operational_version};
 
 use std::{type_name, unit_test::{assert_eq, destroy}};
 
