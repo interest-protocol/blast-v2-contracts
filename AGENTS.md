@@ -22,8 +22,9 @@ Use one declaration order across first-party Move sources and tests, omitting
 empty sections: Constants, Package Constants, Errors, Public Types, Private
 Initialization, Public Functions, Package Functions, Private Functions,
 Test-Only Types, Test-Only Functions, Tests, Test Helpers, Imports. A module
-may instead put Constants, Package Constants and Errors last, just before
-Imports (`blast_partners` does). Use `// === Title ===` headings. Keep imports
+may instead end with Events, Constants, Package Constants and Errors, just
+before Imports (`blast_partners` does); Events then holds every struct the
+module emits. Use `// === Title ===` headings. Keep imports
 and receiver aliases together at the end, overriding the generic skill's import
 placement. Keep domain subdivisions as ordinary comments within these sections.
 

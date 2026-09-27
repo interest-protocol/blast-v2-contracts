@@ -40,20 +40,6 @@ public struct PartnerCap has key, store {
     id: UID,
 }
 
-/// Emitted after every change to a partner, registration included: its complete terms.
-public struct PartnerUpdated has copy, drop {
-    partner_id: ID,
-    recipient: address,
-    share_bps: Timelocked<u64>,
-    cap_id: Timelocked<ID>,
-}
-
-/// Emitted whenever a partner is paid: `amount` of `T` sent to its recipient.
-public struct PartnerPaid<phantom T> has copy, drop {
-    partner_id: ID,
-    amount: u64,
-}
-
 // === Public Functions ===
 
 /// Mints a cap. It controls nothing until Blast registers a partner under it,
@@ -212,6 +198,22 @@ public fun partner_paid_fields<T>(self: &PartnerPaid<T>): (ID, u64) {
 #[test_only]
 public fun partner_updated_fields(self: &PartnerUpdated): (ID, address, Timelocked<u64>, Timelocked<ID>) {
     (self.partner_id, self.recipient, self.share_bps, self.cap_id)
+}
+
+// === Events ===
+
+/// Emitted after every change to a partner, registration included: its complete terms.
+public struct PartnerUpdated has copy, drop {
+    partner_id: ID,
+    recipient: address,
+    share_bps: Timelocked<u64>,
+    cap_id: Timelocked<ID>,
+}
+
+/// Emitted whenever a partner is paid: `amount` of `T` sent to its recipient.
+public struct PartnerPaid<phantom T> has copy, drop {
+    partner_id: ID,
+    amount: u64,
 }
 
 // === Constants ===

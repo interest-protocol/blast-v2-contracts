@@ -12,8 +12,8 @@ SECTIONS = [
     "Tests", "Test Helpers", "Imports",
 ]
 TRAILING = ["Constants", "Package Constants", "Errors"]
-# A module may instead keep its constants and errors last, just before Imports.
-TAIL_SECTIONS = [name for name in SECTIONS if name not in TRAILING + ["Imports"]] + TRAILING + ["Imports"]
+# A module may instead end with its events, constants and errors, just before Imports.
+TAIL_SECTIONS = [name for name in SECTIONS if name not in TRAILING + ["Imports"]] + ["Events"] + TRAILING + ["Imports"]
 ERROR_NAME = r"E[A-Z](?=[A-Za-z0-9]*[a-z])[A-Za-z0-9]*"
 
 
@@ -72,7 +72,7 @@ def declarations(source):
         yield start, kind, text[start:body], source[body:cursor]
 
 
-def section_for(path, test_module, kind, attributes, declaration):
+def section_for(path, test_module, kind, attributes, declaration, events):
     if kind == "use":
         return "Imports"
     if kind == "const":
@@ -82,7 +82,9 @@ def section_for(path, test_module, kind, attributes, declaration):
     if path.name == "constants.move" and "macro" in declaration.split("fun")[0]:
         return "Package Constants"
     if kind in ("struct", "enum"):
-        return "Test-Only Types" if test_module or "#[test_only]" in attributes else "Public Types"
+        if test_module or "#[test_only]" in attributes:
+            return "Test-Only Types"
+        return "Events" if re.search(r"\b(?:struct|enum)\s+(\w+)", declaration)[1] in events else "Public Types"
     if test_module:
         return "Tests" if re.search(r"#\[\s*test(?:\s*[,\]])", attributes) else "Test Helpers"
     if "#[test_only]" in attributes:
@@ -103,16 +105,20 @@ def check(path):
     test_module = "#[test_only]" in source[:module_start]
     headings = list(re.finditer(r"^// === (.*?) ===$", source, re.M))
     names = [heading[1] for heading in headings]
-    if any(name not in SECTIONS for name in names):
+    if any(name not in TAIL_SECTIONS for name in names):
         raise ValueError("use the section names in AGENTS.md")
-    in_order = lambda order: [order.index(name) for name in names] == sorted({order.index(name) for name in names})
+    in_order = lambda order: set(names) <= set(order) and (
+        [order.index(name) for name in names] == sorted({order.index(name) for name in names})
+    )
+    # A module with an Events section keeps every struct it emits there.
+    events = set(re.findall(r"event::emit\(\s*(\w+)", mask(source))) if "Events" in names else set()
     if not (in_order(SECTIONS) or in_order(TAIL_SECTIONS)):
         raise ValueError("sections must occur once, in the order in AGENTS.md")
     previous_kind = None
     constants_closed = False
     for start, kind, attributes, declaration in items:
         section = next((h[1] for h in reversed(headings) if h.start() < start), None)
-        expected = section_for(path, test_module, kind, attributes, declaration)
+        expected = section_for(path, test_module, kind, attributes, declaration, events)
         if section != expected:
             line = source[:start].count("\n") + 1
             raise ValueError(f"line {line}: declaration belongs under {expected}, found {section}")
