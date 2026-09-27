@@ -123,9 +123,11 @@ on Boosts and 8% on another product.
   seven days, one call per deal. A thief holding the old cap can redirect payouts
   until then, so tell integrators to stop naming those deals meanwhile.
 - **At launch,** publish `blast_partners` immutable (the timelock it builds on
-  is already published immutable), grant the partner administrator role, and add
-  each Boosts deal. Also set each vault's admin share: while it is zero, as it
-  is at activation, Blast earns nothing and so partners earn nothing.
+  is already published immutable) and commit its `Published.toml`, so the
+  adapter's mainnet build links to it. Then publish the Boosts adapter fresh,
+  grant the partner administrator role, and add each Boosts deal. Also set each
+  vault's admin share: while it is zero, as it is at activation, Blast earns
+  nothing and so partners earn nothing.
 - **Deny lists.** If a recipient is blocked by the collateral's deny list, trades
   naming that deal are expected to fail; the release rehearsal confirms it. The
   partner fixes it at once by setting a new recipient; until then integrators
