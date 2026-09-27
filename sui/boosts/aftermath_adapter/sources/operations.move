@@ -226,7 +226,6 @@ public fun mint_with_partner<Product, Collateral>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<BlastBoost<Product>> {
-    protocol.assert_current();
     protocol.assert_partner(object::id(partner), clock.timestamp_ms());
     let admin_cash_before = vault.admin_cash_balance<_, Collateral>();
 
@@ -257,7 +256,6 @@ public fun redeem_with_partner<Product, Collateral>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<Collateral> {
-    protocol.assert_current();
     protocol.assert_partner(object::id(partner), clock.timestamp_ms());
     let admin_cash_before = vault.admin_cash_balance<_, Collateral>();
 
