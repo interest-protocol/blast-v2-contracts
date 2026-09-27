@@ -20,23 +20,26 @@ if grep -rn "blast_fun" "$package_dir/sources" "$package_dir/tests"; then
   fail "blast_sui must not reference blast_fun."
 fi
 
-# 3. Administration is implemented only by blast_admin.
-if [ -e "$package_dir/sources/acl.move" ]; then
+# 3. Administration is the shared blast_admin ACL; this package only names its roles,
+#    and every administrator function takes one of them as its witness type.
+if [ -e "$package_dir/sources/acl.move" ] || [ -e "$package_dir/sources/blast_acl.move" ]; then
   fail "blast_sui must not define a local ACL implementation."
 fi
-if rg -n '^public struct (Authority|ProtocolAuthority|SuperAdminCap|AdminCap|AdminWitness)\b' \
+if rg -n '^public struct (ACL|Authority|ProtocolAuthority|SuperAdminCap|AdminCap|AdminWitness)\b' \
   "$package_dir/sources"; then
   fail "Administration types must come from blast_admin, never from a local copy."
 fi
-if [ "$(rg -c 'acl::new\(' "$package_dir/sources" | wc -l)" -ne 1 ]; then
-  fail "Exactly one module may create this package's administration domain."
+if rg -n 'fun init\(|acl::new\(' "$package_dir/sources/blast_sui_domain.move"; then
+  fail "blast_sui must not create administration state; the shared ACL already exists."
 fi
-rg -q 'public struct BLAST_SUI_DOMAIN has drop \{\}' \
-  "$package_dir/sources/blast_sui_domain.move" \
-  || fail "blast_sui must own one typed domain one-time witness."
-rg -q '^const PACKAGE_ADMIN_ROLE: u64 = 1;$' \
-  "$package_dir/sources/blast_sui_domain.move" \
-  || fail "blast_sui must export exactly one package-admin role bit."
+[ "$(rg '^public struct ' "$package_dir/sources/blast_sui_domain.move" | sort)" == "$(printf '%s\n' \
+  'public struct FeeAdmin()' \
+  'public struct UpgradeAdmin()' | sort)" ] \
+  || fail "blast_sui_domain must declare exactly the reviewed ability-free roles."
+if rg -n '^[^/]*AdminWitness<' "$package_dir/sources" \
+  | rg -v 'AdminWitness<(UpgradeAdmin|FeeAdmin)>|use blast_admin::blast_acl'; then
+  fail "Every administrator witness must name one concrete blast_sui role."
+fi
 
 # 4. Its generation container and custody hold the shared typed values, and no
 #    separate activation or capability escape survives.
@@ -66,11 +69,10 @@ fi
 if rg -n 'transfer::(public_)?transfer\(' <<<"$package_admin_production"; then
   fail "The framework UpgradeCap must never leave sealed custody."
 fi
-custody_role_assertions="$(rg -c \
-  'admin_witness\.assert_role\(blast_sui_domain::package_admin_role\(\)\);' \
+custody_role_gates="$(rg -c '^    _: &AdminWitness<UpgradeAdmin>,$' \
   "$package_dir/sources/package_admin.move" || true)"
-[ "${custody_role_assertions:-0}" -eq 4 ] \
-  || fail "Every governed custody transition must assert the exported role."
+[ "${custody_role_gates:-0}" -eq 5 ] \
+  || fail "Every governed custody transition must require the upgrade-admin role."
 
 # 5. Sharing still requires all three package-specific child capabilities.
 share_body="$(sed -n '/^public fun share(self: PackageAdmin) {/,/^}/p' \

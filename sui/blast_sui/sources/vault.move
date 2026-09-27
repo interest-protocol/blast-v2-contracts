@@ -337,7 +337,7 @@ public fun redeem_blast_sui(
 public fun set_redeem_fee(
     self: &mut Vault,
     package_version: &PackageVersion,
-    _: &AdminWitness<BLAST_SUI_DOMAIN>,
+    _: &AdminWitness<FeeAdmin>,
     redeem_fee_bps: u64,
 ) {
     package_version.assert_current();
@@ -674,11 +674,11 @@ public fun add_blast_layers_for_testing(
 
 // === Imports ===
 
-use blast_admin::acl::AdminWitness;
+use blast_admin::blast_acl::AdminWitness;
 
 use blast_sui::{
     blast_sui::BLAST_SUI,
-    blast_sui_domain::BLAST_SUI_DOMAIN,
+    blast_sui_domain::FeeAdmin,
     constants,
     custody::{Self, Custody},
     deposit_receipt::{Self, BlastSuiDepositReceipt},
