@@ -880,6 +880,50 @@ fun stale_adapter_version_precedes_the_partner_role_check() {
 }
 
 #[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+fun stale_adapter_version_precedes_the_partner_role_check_on_removal() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let clock = reference_clock(&mut fixture);
+    fixture.add_partner(&partner);
+    fixture.protocol.set_version_for_testing(3);
+    fixture.revoke_role(domain::risk_admin_role());
+
+    fixture.remove_partner(&partner, &clock);
+
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
+fun the_missing_role_precedes_adding_an_accepted_partner_again() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    fixture.add_partner(&partner);
+    fixture.revoke_role(domain::risk_admin_role());
+
+    fixture.add_partner(&partner);
+
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
+fun the_missing_role_precedes_removing_a_partner_never_added() {
+    let mut fixture = start();
+    let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
+    let clock = reference_clock(&mut fixture);
+    fixture.revoke_role(domain::risk_admin_role());
+
+    fixture.remove_partner(&partner, &clock);
+
+    abort
+}
+
+#[test]
 fun event_reducer_reconstructs_a_positive_funding_checkpoint() {
     let mut fixture = start();
     let initial = initial_checkpoint();

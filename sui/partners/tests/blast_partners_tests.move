@@ -43,6 +43,12 @@ fun initialization_creates_the_partner_administration_domain() {
     scenario.end();
 }
 
+#[test]
+/// The package is immutable, so this is the notice every partner is guaranteed.
+fun every_change_blast_makes_waits_seven_days() {
+    assert_eq!(partners::delay_ms(), 7 * 24 * 60 * 60 * 1_000);
+}
+
 // --- Registration ---
 
 #[test]
@@ -411,6 +417,41 @@ fun scheduling_the_live_cap_cancels_a_pending_move() {
     fixture.end();
 }
 
+#[test]
+/// A partner without a live cap, destroyed or never minted, strands nothing: it
+/// is still paid at its recipient, and Blast moves it to a new cap, which goes
+/// live after the delay.
+fun a_partner_without_a_live_cap_is_moved_to_a_new_one() {
+    let mut fixture = start();
+    partners::destroy_cap(fixture.register(RECIPIENT, 2_500));
+    let (destroyed_id, _, _, _) = fixture.last_update().partner_updated_fields();
+    fixture.register_under_id(@0xCAFE.to_id(), RECIPIENT, 2_500);
+    let (never_minted_id, _, _, _) = fixture.last_update().partner_updated_fields();
+
+    fixture.next_tx!(ADMIN, |fixture| {
+        let mut destroyed = fixture.take_partner_by_id(destroyed_id);
+        let mut never_minted = fixture.take_partner_by_id(never_minted_id);
+        let mut fee = balance::create_for_testing<SUI>(1_000);
+        assert_eq!(destroyed.pay(&mut fee, &fixture.clock), 250);
+        let new_cap = partners::new_cap(fixture.ctx!());
+        fixture.schedule_cap(&mut destroyed, object::id(&new_cap));
+        fixture.schedule_cap(&mut never_minted, object::id(&new_cap));
+        fixture.advance(delay());
+        fixture.set_recipient(&mut destroyed, &new_cap, NEW_RECIPIENT);
+        fixture.set_recipient(&mut never_minted, &new_cap, NEW_RECIPIENT);
+        let (destroyed_recipient, _, destroyed_cap) = destroyed.terms_for_testing(&fixture.clock);
+        let (never_minted_recipient, _, never_minted_cap) = never_minted.terms_for_testing(&fixture.clock);
+        assert_eq!(vector[destroyed_recipient, never_minted_recipient], vector[NEW_RECIPIENT, NEW_RECIPIENT]);
+        assert_eq!(vector[destroyed_cap, never_minted_cap], vector[object::id(&new_cap), object::id(&new_cap)]);
+        fee.destroy_for_testing();
+        partners::destroy_cap(new_cap);
+        fixture.return_partner(destroyed);
+        fixture.return_partner(never_minted);
+    });
+
+    fixture.end();
+}
+
 // --- One cap, many partners ---
 
 #[test]
@@ -719,8 +760,13 @@ fun register(self: &mut Fixture, recipient: address, share_bps: u64): PartnerCap
 
 /// Registers another partner under an existing cap.
 fun register_under(self: &mut Fixture, cap: &PartnerCap, recipient: address, share_bps: u64) {
+    self.register_under_id(object::id(cap), recipient, share_bps);
+}
+
+/// Registers a partner under any ID, a cap's or not.
+fun register_under_id(self: &mut Fixture, cap_id: ID, recipient: address, share_bps: u64) {
     let witness = self.authority.sign_in(&self.admin_cap);
-    partners::register(&witness, object::id(cap), recipient, share_bps, self.ctx!());
+    partners::register(&witness, cap_id, recipient, share_bps, self.ctx!());
 }
 
 fun schedule_share(self: &Fixture, partner: &mut Partner, share_bps: u64) {
