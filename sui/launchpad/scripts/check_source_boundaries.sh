@@ -292,103 +292,72 @@ if [[ ! -f sources/blast_fun.move ]] \
   failures=$((failures + 1))
 fi
 
-# The reusable ACL lifecycle belongs to the immutable blast_admin package. This
-# package may own only its domain marker, its governance constants, and the one
-# exported role value.
-if [[ -e sources/acl.move ]]; then
+# Administration is the shared blast_admin ACL. This package only declares its roles, one
+# ability-free type per administrator concern (ADR 0094), and creates no administration state.
+if [[ -e sources/acl.move || -e sources/blast_acl.move ]]; then
   echo 'Launchpad must not reintroduce a local ACL implementation.' >&2
   failures=$((failures + 1))
 fi
 
-if rg -n '^public struct (ProtocolAuthority|Authority|SuperAdminCap|AdminCap|AdminWitness)\b' \
+if rg -n '^public struct (ACL|Authority|ProtocolAuthority|SuperAdminCap|AdminCap|AdminWitness)\b' \
   sources --glob '*.move'; then
   echo 'Administration types must come from blast_admin, never from a local copy.' >&2
   failures=$((failures + 1))
 fi
 
-blast_fun_domain_facts="$(move_facts sources/blast_fun_domain.move)"
+launchpad_roles=(
+  UpgradeAdmin
+  CreatorAdmin
+  BuybackAdmin
+  TreasuryAdmin
+  FeeAdmin
+  ListingAdmin
+  AdapterAdmin
+  ClaimSignerAdmin
+  RewardsAdmin
+)
+launchpad_role_pattern="$(IFS='|'; echo "${launchpad_roles[*]}")"
 
-# The domain defines exactly nine distinct role bits, one per administrator concern (ADR 0094).
-# The roles the migrators assert are public; the rest stay package-internal.
 if [[ ! -f sources/blast_fun_domain.move ]] \
-  || [[ "$(move_production_type BLAST_FUN_DOMAIN <<<"$blast_fun_domain_facts")" \
-    != 'struct BLAST_FUN_DOMAIN() has drop;' ]] \
-  || [[ "$(move_production_functions <<<"$blast_fun_domain_facts")" \
-    != 'adapter_admin_role:package:0 buyback_admin_role:public:0 claim_signer_admin_role:package:0 creator_admin_role:package:0 fee_admin_role:public:0 init:private:0 listing_admin_role:package:0 package_admin_role:public:0 rewards_admin_role:public:0 treasury_admin_role:public:0 ' ]] \
-  || [[ "$(move_production_signature init <<<"$blast_fun_domain_facts")" \
-    != 'fun init(otw: BLAST_FUN_DOMAIN, ctx: &mut TxContext)' ]] \
-  || [[ "$(move_production_body init <<<"$blast_fun_domain_facts")" \
-    != 'blast_admin::acl::new(otw, MAX_ADMINS, ROOT_TRANSFER_DELAY_MS, ctx);' ]] \
-  || [[ "$(move_production_signature package_admin_role <<<"$blast_fun_domain_facts")" \
-    != 'fun package_admin_role(): u64' ]] \
-  || [[ "$(move_production_body package_admin_role <<<"$blast_fun_domain_facts")" \
-    != 'PACKAGE_ADMIN_ROLE' ]] \
-  || [[ "$(move_production_signature creator_admin_role <<<"$blast_fun_domain_facts")" \
-    != 'fun creator_admin_role(): u64' ]] \
-  || [[ "$(move_production_body creator_admin_role <<<"$blast_fun_domain_facts")" \
-    != 'CREATOR_ADMIN_ROLE' ]] \
-  || [[ "$(move_production_signature buyback_admin_role <<<"$blast_fun_domain_facts")" \
-    != 'fun buyback_admin_role(): u64' ]] \
-  || [[ "$(move_production_body buyback_admin_role <<<"$blast_fun_domain_facts")" \
-    != 'BUYBACK_ADMIN_ROLE' ]] \
-  || [[ "$(move_production_signature treasury_admin_role <<<"$blast_fun_domain_facts")" \
-    != 'fun treasury_admin_role(): u64' ]] \
-  || [[ "$(move_production_body treasury_admin_role <<<"$blast_fun_domain_facts")" \
-    != 'TREASURY_ADMIN_ROLE' ]] \
-  || [[ "$(move_production_signature fee_admin_role <<<"$blast_fun_domain_facts")" \
-    != 'fun fee_admin_role(): u64' ]] \
-  || [[ "$(move_production_body fee_admin_role <<<"$blast_fun_domain_facts")" \
-    != 'FEE_ADMIN_ROLE' ]] \
-  || [[ "$(move_production_signature listing_admin_role <<<"$blast_fun_domain_facts")" \
-    != 'fun listing_admin_role(): u64' ]] \
-  || [[ "$(move_production_body listing_admin_role <<<"$blast_fun_domain_facts")" \
-    != 'LISTING_ADMIN_ROLE' ]] \
-  || [[ "$(move_production_signature adapter_admin_role <<<"$blast_fun_domain_facts")" \
-    != 'fun adapter_admin_role(): u64' ]] \
-  || [[ "$(move_production_body adapter_admin_role <<<"$blast_fun_domain_facts")" \
-    != 'ADAPTER_ADMIN_ROLE' ]] \
-  || [[ "$(move_production_signature claim_signer_admin_role <<<"$blast_fun_domain_facts")" \
-    != 'fun claim_signer_admin_role(): u64' ]] \
-  || [[ "$(move_production_body claim_signer_admin_role <<<"$blast_fun_domain_facts")" \
-    != 'CLAIM_SIGNER_ADMIN_ROLE' ]] \
-  || [[ "$(move_production_signature rewards_admin_role <<<"$blast_fun_domain_facts")" \
-    != 'fun rewards_admin_role(): u64' ]] \
-  || [[ "$(move_production_body rewards_admin_role <<<"$blast_fun_domain_facts")" \
-    != 'REWARDS_ADMIN_ROLE' ]] \
-  || ! rg -q '^const MAX_ADMINS: u64 = 16;$' sources/blast_fun_domain.move \
-  || ! rg -q '^const ROOT_TRANSFER_DELAY_MS: u64 = 7 \* 24 \* 60 \* 60 \* 1_000;$' \
-    sources/blast_fun_domain.move \
-  || ! rg -q '^const PACKAGE_ADMIN_ROLE: u64 = 1;$' sources/blast_fun_domain.move \
-  || ! rg -q '^const CREATOR_ADMIN_ROLE: u64 = 2;$' sources/blast_fun_domain.move \
-  || ! rg -q '^const BUYBACK_ADMIN_ROLE: u64 = 4;$' sources/blast_fun_domain.move \
-  || ! rg -q '^const TREASURY_ADMIN_ROLE: u64 = 8;$' sources/blast_fun_domain.move \
-  || ! rg -q '^const FEE_ADMIN_ROLE: u64 = 16;$' sources/blast_fun_domain.move \
-  || ! rg -q '^const LISTING_ADMIN_ROLE: u64 = 32;$' sources/blast_fun_domain.move \
-  || ! rg -q '^const ADAPTER_ADMIN_ROLE: u64 = 64;$' sources/blast_fun_domain.move \
-  || ! rg -q '^const CLAIM_SIGNER_ADMIN_ROLE: u64 = 128;$' sources/blast_fun_domain.move \
-  || ! rg -q '^const REWARDS_ADMIN_ROLE: u64 = 256;$' sources/blast_fun_domain.move \
-  || [[ "$(rg -c '^const ' sources/blast_fun_domain.move)" != 11 ]]; then
-  echo 'blast_fun_domain.move must create exactly one typed domain from module constants and define the nine role bits, exporting only the roles the migrators assert.' >&2
+  || [[ "$(move_facts sources/blast_fun_domain.move | move_normalized_source)" \
+    != "module blast_fun::blast_fun_domain;$(printf ' public struct %s()' "${launchpad_roles[@]}")" ]]; then
+  echo 'blast_fun_domain.move must declare exactly the nine reviewed ability-free roles and nothing else: no init, constant, function, or import.' >&2
   failures=$((failures + 1))
 fi
 
-# Every administrator action asserts exactly one role, the one pinned here, before any other check
-# but the version, so no role reaches another role's action (ADR 0094). A new function that takes
-# the domain's witness fails until it is mapped deliberately.
+# The witness type is each administrator action's role check, so every witness a source names is
+# borrowed and names one concrete Launchpad role; a generic or foreign role fails here.
+admin_witness_violations="$(for file in "${source_files[@]}"; do
+  move_facts "$file" | move_normalized_source | { rg -o '&?AdminWitness<[^>]*>' || true; } \
+    | { rg -v -x "&AdminWitness<(${launchpad_role_pattern})>" || true; } | sed "s|^|  ${file}: |"
+done)"
+
+if [[ -n "$admin_witness_violations" ]]; then
+  printf '%s\n' "$admin_witness_violations"
+  echo 'Every administrator witness must be a borrowed AdminWitness of one concrete Launchpad role.' >&2
+  failures=$((failures + 1))
+fi
+
+# Every administrator action takes exactly one role, the one pinned here, so no role reaches
+# another role's action. A new function that takes a witness fails until it is mapped deliberately.
 admin_roles="$(for file in "${source_files[@]}"; do
-  move_facts "$file" | awk -F'\t' -v module="$(basename "$file" .move)" -f scripts/admin_roles.awk
+  move_facts "$file" | awk -F'\t' -v module="$(basename "$file" .move)" '
+    $1 == "FN" && $6 == 0 && index($9, "AdminWitness<") > 0 {
+      rest = $9
+      roles = ""
+      while (match(rest, /AdminWitness<[^>]*>/)) {
+        roles = roles (roles == "" ? "" : ",") substr(rest, RSTART + 13, RLENGTH - 14)
+        rest = substr(rest, RSTART + RLENGTH)
+      }
+      print module ":" $2 ":" roles
+    }
+  '
 done | LC_ALL=C sort | tr '\n' ' ')"
 
 if [[ "$admin_roles" != \
-  'launch:claim_protocol_fees:treasury_admin_role launch:reassign_curve_fee_cap:creator_admin_role launch:reassign_metadata_cap:creator_admin_role launch_config:set_meme_decimals_allowed:listing_admin_role launch_config:set_migration_witness_allowed:adapter_admin_role launch_config:set_protocol_allocation:treasury_admin_role launch_config:set_quote_allowed:listing_admin_role launch_config:set_trade_fees:fee_admin_role package_admin:authorize_upgrade:package_admin_role package_admin:commit_upgrade_and_advance:package_admin_role package_admin:make_immutable:package_admin_role runtime_config:set_creator_claim_signer:claim_signer_admin_role runtime_config:set_protocol_fee_share:fee_admin_role ' ]]; then
+  'launch:claim_protocol_fees:TreasuryAdmin launch:reassign_curve_fee_cap:CreatorAdmin launch:reassign_metadata_cap:CreatorAdmin launch_config:set_meme_decimals_allowed:ListingAdmin launch_config:set_migration_witness_allowed:AdapterAdmin launch_config:set_protocol_allocation:TreasuryAdmin launch_config:set_quote_allowed:ListingAdmin launch_config:set_trade_fees:FeeAdmin package_admin:authorize_upgrade:UpgradeAdmin package_admin:commit_upgrade_and_advance:UpgradeAdmin package_admin:make_immutable:UpgradeAdmin runtime_config:set_creator_claim_signer:ClaimSignerAdmin runtime_config:set_protocol_fee_share:FeeAdmin ' ]]; then
   printf '  %s\n' $admin_roles
-  echo 'Every administrator action must assert exactly its pinned role right after the version check.' >&2
-  failures=$((failures + 1))
-fi
-
-# Exactly one call site may create the shared authority.
-if [[ "$(rg -c 'acl::new\(' sources --glob '*.move' | wc -l)" != 1 ]]; then
-  echo 'Exactly one module may call the shared ACL constructor.' >&2
+  echo 'Every administrator action must take exactly its pinned role witness.' >&2
   failures=$((failures + 1))
 fi
 
@@ -412,33 +381,32 @@ if [[ ! -f sources/package_admin.move || -f sources/upgrade.move ]] \
   || [[ "$(rg -c '^public fun (wrap|authorize_upgrade|commit_upgrade_and_advance|make_immutable)\(' <<<"$package_admin_production")" != 4 ]] \
   || rg -n '^public\(package\) fun ' <<<"$package_admin_production" \
   || rg -n '^public fun commit_upgrade\(|^public fun activate' <<<"$package_admin_production" \
-  || [[ "$(rg -o 'admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>' <<<"$package_admin_production" | wc -l)" != 3 ]] \
+  || [[ "$(rg -o '_: &AdminWitness<UpgradeAdmin>' <<<"$package_admin_production" | wc -l)" != 3 ]] \
   || ! rg -U -q \
     'public fun wrap\(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext\)' \
     sources/package_admin.move \
   || ! rg -U -q \
-    'public fun authorize_upgrade\(\s*self: &mut PackageAdmin,\s*package_version: &PackageVersion,\s*admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,\s*digest: vector<u8>,\s*\): UpgradeTicket' \
+    'public fun authorize_upgrade\(\s*self: &mut PackageAdmin,\s*package_version: &PackageVersion,\s*_: &AdminWitness<UpgradeAdmin>,\s*digest: vector<u8>,\s*\): UpgradeTicket' \
     sources/package_admin.move \
   || ! rg -U -q \
-    'public fun commit_upgrade_and_advance\(\s*self: &mut PackageAdmin,\s*package_version: &mut PackageVersion,\s*admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,\s*receipt: UpgradeReceipt,\s*\)' \
+    'public fun commit_upgrade_and_advance\(\s*self: &mut PackageAdmin,\s*package_version: &mut PackageVersion,\s*_: &AdminWitness<UpgradeAdmin>,\s*receipt: UpgradeReceipt,\s*\)' \
     sources/package_admin.move; then
-  echo 'package_admin.move must expose only validated wrapping, role-gated native administration, and one atomic commit-and-advance finalizer.' >&2
+  echo 'package_admin.move must expose only validated wrapping, upgrade-admin native administration, and one atomic commit-and-advance finalizer.' >&2
   failures=$((failures + 1))
 fi
 
-# Every governed custody transition asserts the current generation, then the one
-# exported role, before it reaches the shared custody value. Commit-and-advance
-# is the post-upgrade finalizer and instead proves the exact next generation,
-# also before the role. No path narrows the upgrade policy: a narrowed cap could
-# never commit and advance again, which would end upgradeability silently.
+# Every governed custody transition asserts the current generation first, before
+# it reaches the shared custody value. Commit-and-advance is the post-upgrade
+# finalizer and instead proves the exact next generation first. No path narrows
+# the upgrade policy: a narrowed cap could never commit and advance again, which
+# would end upgradeability silently.
 # Wrapping delegates Publisher and UpgradeCap provenance wholly to shared custody.
 if [[ "$(move_production_body wrap <<<"$(move_facts sources/package_admin.move)")" \
     != 'let id = object::new(ctx); let custody = upgrade_custody::new<BLAST_FUN>(id.to_inner(), publisher, upgrade_cap); transfer::share_object(PackageAdmin { id, custody });' ]] \
   || [[ "$(rg -c 'package_version\.assert_current\(\);' <<<"$package_admin_production")" != 2 ]] \
-  || [[ "$(rg -c 'admin_witness\.assert_role\(blast_fun_domain::package_admin_role\(\)\);' <<<"$package_admin_production")" != 3 ]] \
   || [[ "$(move_facts sources/package_admin.move \
     | awk -F'\t' '$1 == "FN" && $2 == "commit_upgrade_and_advance" { print $10 }')" \
-    != 'package_version.assert_next(); admin_witness.assert_role(blast_fun_domain::package_admin_role());'* ]] \
+    != 'package_version.assert_next();'* ]] \
   || rg -n '\brestrict_to_' sources \
   || move_facts sources/package_admin.move | awk -F'\t' '$1 == "NORM"' | rg -q '\w as \w' \
   || ! rg -Fq 'self.custody.commit_upgrade(custodian_id, receipt);' sources/package_admin.move \
@@ -450,7 +418,7 @@ if [[ "$(move_production_body wrap <<<"$(move_facts sources/package_admin.move)"
     <<<"$package_admin_production" \
   || rg -n 'transfer::(public_)?transfer|burn_publisher' \
     <<<"$package_admin_production"; then
-  echo 'Package administration must seal custody, keep version-then-role guard order, and expose no capability escape.' >&2
+  echo 'Package administration must seal custody, check the version first, and expose no capability escape.' >&2
   failures=$((failures + 1))
 fi
 
@@ -776,7 +744,7 @@ if [[ ! -f sources/runtime_config.move ]] \
 fi
 
 # The two setters are the only RuntimeConfig transitions; each is version-gated first and
-# authorized by a borrowed AdminWitness, whose role the admin role map pins.
+# authorized by a borrowed AdminWitness of the role the admin role map pins.
 runtime_config_violations=''
 runtime_config_mutations="$(awk -F'\t' '
   $1 == "FN" && $6 == 0 && $10 ~ /self\.(creator_claim_signer_public_key|protocol_fee_share_bps) = / {
@@ -798,7 +766,7 @@ runtime_config_ungated="$(awk -F'\t' '
     if ($10 !~ /^package_version\.assert_current\(\);/) {
       print "  " $2 " must check the live package version as its first statement"
     }
-    if ($9 !~ /[(,] admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,/) {
+    if ($9 !~ /[(,] _: &AdminWitness<(ClaimSignerAdmin|FeeAdmin)>,/) {
       print "  " $2 " must be authorized by a borrowed AdminWitness"
     }
   }
@@ -833,7 +801,7 @@ fi
 if [[ -f sources/creator_claim_config.move || -f sources/trade_fee_config.move ]] \
   || rg -n '\b(CreatorClaimConfig|TradeFeeConfig)\b' sources tests \
   || [[ "$(rg -o 'transfer::share_object' sources --glob '*.move' --glob '!launch.move' | wc -l)" != 4 ]]; then
-  echo 'Core must keep exactly its four shared protocol singletons besides the launch terminal sink; the domain authority is shared by blast_admin.' >&2
+  echo 'Core must keep exactly its four shared protocol singletons besides the launch terminal sink; the ACL is shared by blast_admin.' >&2
   failures=$((failures + 1))
 fi
 
@@ -843,7 +811,7 @@ launch_config_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources
 
 # Blast's allocation is written once, leaving room for the curve and the pool.
 if [[ ! -f sources/launch_config.move ]] \
-  || [[ "$(move_production_function_contract set_protocol_allocation <<<"$launch_config_facts")" != 'public:0:0:fun set_protocol_allocation( self: &mut LaunchConfig, package_version: &PackageVersion, admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,'* ]] \
+  || [[ "$(move_production_function_contract set_protocol_allocation <<<"$launch_config_facts")" != 'public:0:0:fun set_protocol_allocation( self: &mut LaunchConfig, package_version: &PackageVersion, _: &AdminWitness<TreasuryAdmin>,'* ]] \
   || ! rg -Fq 'self.protocol_allocation.is_none() && meme_bps.value() <= 9_998 && quote_bps.value() <= 9_999' <<<"$launch_config_source" \
   || [[ "$(count_occurrences 'self\.protocol_allocation = ' <<<"$launch_config_source")" != 1 ]] \
   || rg -n '\b(set_graduation_defaults|GraduationDefaultsChanged|protocol_(quote_migration|meme_graduation)_fee_bps|meme_liquidity_provision_bps|QuoteParameters|QuoteParametersChanged|min_graduation_target|max_graduation_target)\b' \
@@ -1089,7 +1057,7 @@ if [[ "$(rg -l '\bnew_curve_fee_cap\b' sources | sort | tr '\n' ' ')" \
   || [[ "$(rg -l '\bnew_metadata_cap\b' sources | sort | tr '\n' ' ')" \
     != 'sources/creator_authority.move sources/launch.move ' ]] \
   || [[ "$(rg -l '\.claim_(creator|protocol)_fees\(ctx\)' sources | tr '\n' ' ')" != 'sources/launch.move ' ]] \
-  || [[ "$(move_production_signature claim_protocol_fees <<<"$launch_facts")" != *' admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,'* ]]; then
+  || [[ "$(move_production_signature claim_protocol_fees <<<"$launch_facts")" != *' _: &AdminWitness<TreasuryAdmin>,'* ]]; then
   launch_authority_violations+='  creator capability constructors or ledger claims are reachable outside creator_authority.move and launch.move, or the protocol claim lost its AdminWitness'$'\n'
 fi
 
@@ -1243,7 +1211,7 @@ receiver_syntax_violations="$(
       | move_normalized_source \
       | sed 's/ *:: */::/g; s/ *(/(/g' \
       | rg -o \
-        '\b(acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_creator_claim_signer|set_protocol_fee_share|creator_claim_signer|protocol_fee_share)|launch_config::(set_meme_decimals_allowed|set_quote_allowed|set_trade_fees|set_protocol_allocation|set_migration_witness_allowed|snapshot_for_launch|protocol_allocation|allowed_meme_decimals_count_for_testing|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|allocation::(recipients|apportion_fee_split|add_protocol|apportion_meme|apportion_quote|destinations|destination)|launch::(treasury_cap_mut|set_virtual_quote|set_graduation_target|set_allocation_plan|set_lp_fee_split|set_protection|finalize|share|pool_tier|lp_fee_split|claim_creator_caps|reassign_curve_fee_cap|reassign_metadata_cap|assert_curve_fee_cap|set_name|set_description|set_icon_url)|launch_ticket::(destroy|treasury_cap_mut|decimals)|fees::(accrue|claim_creator_fees|claim_protocol_fees)|package::test_upgrade|package_admin::(authorize_upgrade|commit_upgrade|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
+        '\b(blast_acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_creator_claim_signer|set_protocol_fee_share|creator_claim_signer|protocol_fee_share)|launch_config::(set_meme_decimals_allowed|set_quote_allowed|set_trade_fees|set_protocol_allocation|set_migration_witness_allowed|snapshot_for_launch|protocol_allocation|allowed_meme_decimals_count_for_testing|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|allocation::(recipients|apportion_fee_split|add_protocol|apportion_meme|apportion_quote|destinations|destination)|launch::(treasury_cap_mut|set_virtual_quote|set_graduation_target|set_allocation_plan|set_lp_fee_split|set_protection|finalize|share|pool_tier|lp_fee_split|claim_creator_caps|reassign_curve_fee_cap|reassign_metadata_cap|assert_curve_fee_cap|set_name|set_description|set_icon_url)|launch_ticket::(destroy|treasury_cap_mut|decimals)|fees::(accrue|claim_creator_fees|claim_protocol_fees)|package::test_upgrade|package_admin::(authorize_upgrade|commit_upgrade|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
       || true; } | sed "s|^|  ${move_file}: |"
   done
 )"
@@ -1262,13 +1230,6 @@ fi
 
 if rg -n '\bsui::tx_context::TxContext\b' sources tests; then
   echo 'Natural framework and private receivers must use implicit types and dot syntax.' >&2
-  failures=$((failures + 1))
-fi
-
-if rg -n \
-  'RuntimeConfig|ed25519|creator_claim_signer|verify_creator_claim|CreatorCap|CurveFeeCap|BlastMetadataCap|issue_creator_cap' \
-  sources/blast_fun_domain.move; then
-  echo 'blast_fun_domain.move must own only the domain marker, its constants, and its role.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1335,7 +1296,7 @@ creator_authority_source="$(move_normalized_source <<<"$creator_authority_facts"
 if rg -n '\b[a-z_]*claimed:[[:space:]]*bool|\bissue_creator_cap\b|\btransfer::' \
   <<<"$creator_authority_production" \
   || rg -q '\bMetadataCap\b|\bcoin_registry\b' <<<"$creator_authority_source" \
-  || rg -q '\b(AdminWitness|BLAST_FUN_DOMAIN|blast_fun_domain|PackageVersion|package_version|assert_role)\b' \
+  || rg -q '\b(AdminWitness|blast_fun_domain|PackageVersion|package_version)\b' \
     <<<"$creator_authority_source" \
   || rg -v -Fx 'use blast_fun::constants;' sources/creator_authority.move | rg -q '^use blast_fun::' \
   || [[ "$(move_production_function_contract claim_creator_caps <<<"$creator_authority_facts")" != 'package:0:0:fun claim_creator_caps<Meme>( recipient: CreatorRecipient, signer_public_key: &vector<u8>, attestation: Option<vector<u8>>, clock: &Clock, ctx: &mut TxContext, ): (CurveFeeCap<Meme>, BlastMetadataCap<Meme>)' ]] \

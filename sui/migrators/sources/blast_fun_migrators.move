@@ -4,8 +4,8 @@
 /// Canonical package provenance witness for the aggregate migrators package.
 ///
 /// This marker types the package's own operational generation and upgrade
-/// custody. It never names an administration domain: Migrators reuses the
-/// Launchpad domain for membership and owns only its package-local state.
+/// custody. It never declares an administration role: Migrators reuses the
+/// Launchpad's roles in the shared Blast ACL and owns only its package-local state.
 module blast_fun_migrators::blast_fun_migrators;
 
 // === Public Types ===

@@ -287,7 +287,7 @@ public fun settle_and_update_fee_split_meme_b<Meme, Quote>(
 public fun buyback_and_burn_meme_a<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
+    admin_witness: &AdminWitness<BuybackAdmin>,
     currency: &mut Currency<Meme>,
     cetus_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
@@ -311,7 +311,7 @@ public fun buyback_and_burn_meme_a<Meme, Quote>(
 public fun buyback_and_burn_meme_b<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
+    admin_witness: &AdminWitness<BuybackAdmin>,
     currency: &mut Currency<Meme>,
     cetus_config: &GlobalConfig,
     pool: &mut Pool<Quote, Meme>,
@@ -515,11 +515,11 @@ fun swap<A, B>(
 
 // === Imports ===
 
-use blast_admin::acl::AdminWitness;
+use blast_admin::blast_acl::AdminWitness;
 
 use blast_fun::{
     allocation::FeeSplit,
-    blast_fun_domain::BLAST_FUN_DOMAIN,
+    blast_fun_domain::BuybackAdmin,
     creator_authority::CurveFeeCap,
     launch::{Self, Launch, LaunchInitializer},
     launch_config::LaunchConfig,

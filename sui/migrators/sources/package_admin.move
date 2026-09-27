@@ -3,10 +3,10 @@
 
 /// Sealed custody for the migrators package's Publisher and UpgradeCap.
 ///
-/// Migrators shares the Launchpad administration domain, so its governed
-/// transitions accept `AdminWitness<BLAST_FUN_DOMAIN>` and assert the role that
-/// Launchpad exports. Custody itself stays package-local: advancing Migrators
-/// leaves Launchpad on its own generation.
+/// Migrators shares the Launchpad's administration roles, so its governed
+/// transitions take `AdminWitness<UpgradeAdmin>`, the role Launchpad declares.
+/// Custody itself stays package-local: advancing Migrators leaves Launchpad on
+/// its own generation.
 module blast_fun_migrators::package_admin;
 
 // === Public Types ===
@@ -38,11 +38,10 @@ public fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxConte
 public fun authorize_upgrade(
     self: &mut PackageAdmin,
     package_version: &PackageVersion,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
+    _: &AdminWitness<UpgradeAdmin>,
     digest: vector<u8>,
 ): UpgradeTicket {
     package_version.assert_current();
-    admin_witness.assert_role(blast_fun_domain::package_admin_role());
     let custodian_id = self.id.to_inner();
 
     self.custody.authorize_upgrade(custodian_id, digest)
@@ -56,11 +55,10 @@ public fun authorize_upgrade(
 public fun commit_upgrade_and_advance(
     self: &mut PackageAdmin,
     package_version: &mut PackageVersion,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
+    _: &AdminWitness<UpgradeAdmin>,
     receipt: UpgradeReceipt,
 ) {
     package_version.assert_next();
-    admin_witness.assert_role(blast_fun_domain::package_admin_role());
     let custodian_id = self.id.to_inner();
 
     self.custody.commit_upgrade(custodian_id, receipt);
@@ -87,11 +85,11 @@ public fun new_for_testing(ctx: &mut TxContext): PackageAdmin {
 // === Imports ===
 
 use blast_admin::{
-    acl::AdminWitness,
+    blast_acl::AdminWitness,
     upgrade_custody::{Self, UpgradeCustody},
 };
 
-use blast_fun::blast_fun_domain::{Self, BLAST_FUN_DOMAIN};
+use blast_fun::blast_fun_domain::UpgradeAdmin;
 
 use blast_fun_migrators::{blast_fun_migrators::BLAST_FUN_MIGRATORS, package_version::PackageVersion};
 

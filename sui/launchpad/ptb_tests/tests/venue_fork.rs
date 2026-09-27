@@ -89,6 +89,10 @@ const CREATOR_CAP_NOT_LIVE: u64 = 22;
 /// `blast_fun_migrators::vault` code.
 const BUYBACK_BELOW_MINIMUM: u64 = 5;
 
+/// The `blast_fun_domain` roles this world's administrator holds, one `AdminCap` each.
+const ADMIN_ROLES: [&str; 7] =
+    ["ListingAdmin", "AdapterAdmin", "FeeAdmin", "TreasuryAdmin", "CreatorAdmin", "BuybackAdmin", "RewardsAdmin"];
+
 /// Blast's default LP-fee share, then per-coin overrides for the forked Meme.
 const DEFAULT_SHARES: (u64, u64) = (1_000, 500);
 const COIN_SHARES: (u64, u64) = (2_500, 1_500);
@@ -452,8 +456,8 @@ struct World {
     config: ObjectID,
     venue_config: ObjectID,
     policy: ObjectID,
-    authority: ObjectID,
-    admin_cap: ObjectID,
+    acl: ObjectID,
+    admin_caps: BTreeMap<&'static str, ObjectID>,
     project: CompiledPackage,
     coins: u64,
     shares: (u64, u64),
@@ -472,15 +476,15 @@ impl World {
 
         let admin_dir = sui_dir.join("admin");
         let launchpad_dir = sui_dir.join("launchpad");
-        let (admin, _) = h.publish(build(&admin_dir, &[], &work)?)?;
+        let (admin, admin_published) = h.publish(build(&admin_dir, &[], &work)?)?;
         let (blast, published) = h.publish(build(&launchpad_dir, &[(&admin_dir, admin)], &work)?)?;
         let one = |h: &Harness, outcome: &Outcome, module: &str, name: &str| {
             let ids = outcome.created(h, module, name);
             assert_eq!(ids.len(), 1, "{module}::{name}");
             ids[0]
         };
-        let authority = one(&h, &published, "acl", "Authority");
-        let root = one(&h, &published, "acl", "SuperAdminCap");
+        let acl = one(&h, &admin_published, "blast_acl", "ACL");
+        let root = one(&h, &admin_published, "blast_acl", "SuperAdminCap");
         let config = one(&h, &published, "launch_config", "LaunchConfig");
         let version = one(&h, &published, "package_version", "PackageVersion");
         let runtime = one(&h, &published, "runtime_config", "RuntimeConfig");
@@ -498,15 +502,19 @@ impl World {
             &work,
         )?;
 
-        let domain = tag(&format!("{blast}::blast_fun_domain::BLAST_FUN_DOMAIN"));
-        let mut b = ProgrammableTransactionBuilder::new();
-        let authority_arg = b.obj(h.shared(authority, true))?;
-        let root = b.obj(h.owned(root))?;
-        let roles = b.pure(u64::MAX)?;
-        let recipient = b.pure(h.sender)?;
-        call(&mut b, admin, "acl", "grant_admin", vec![domain], vec![authority_arg, root, roles, recipient]);
-        h.execute(b.finish())?.assert_success();
-        let admin_cap = h.owned_of_type(h.sender, "acl", "AdminCap")[0];
+        // Production admin path: the publisher's SuperAdminCap grants one AdminCap per role.
+        let mut admin_caps = BTreeMap::new();
+        for role in ADMIN_ROLES {
+            let mut b = ProgrammableTransactionBuilder::new();
+            let acl_arg = b.obj(h.shared(acl, true))?;
+            let root_arg = b.obj(h.owned(root))?;
+            let recipient = b.pure(h.sender)?;
+            let role_tag = tag(&format!("{blast}::blast_fun_domain::{role}"));
+            call(&mut b, admin, "blast_acl", "grant_admin", vec![role_tag], vec![acl_arg, root_arg, recipient]);
+            let granted = h.execute(b.finish())?;
+            granted.assert_success();
+            admin_caps.insert(role, one(&h, &granted, "blast_acl", "AdminCap"));
+        }
 
         let mut w = World {
             h,
@@ -522,8 +530,8 @@ impl World {
             config,
             venue_config,
             policy,
-            authority,
-            admin_cap,
+            acl,
+            admin_caps,
             project,
             coins: 0,
             shares: DEFAULT_SHARES,
@@ -531,7 +539,10 @@ impl World {
         };
 
         let mut b = ProgrammableTransactionBuilder::new();
-        let signed_in = w.sign_in(&mut b)?;
+        let listing_admin = w.sign_in(&mut b, "ListingAdmin")?;
+        let adapter_admin = w.sign_in(&mut b, "AdapterAdmin")?;
+        let fee_admin = w.sign_in(&mut b, "FeeAdmin")?;
+        let treasury_admin = w.sign_in(&mut b, "TreasuryAdmin")?;
         let config = b.obj(w.h.shared(w.config, true))?;
         let version = b.obj(w.h.shared(w.version, false))?;
         let quote_allowed = b.pure(true)?;
@@ -541,7 +552,7 @@ impl World {
             "launch_config",
             "set_quote_allowed",
             vec![case.quote()],
-            vec![config, version, signed_in, quote_allowed],
+            vec![config, version, listing_admin, quote_allowed],
         );
         let witness = tag(&format!("{migrators}::{}::Witness", case.module()));
         let allowed = b.pure(true)?;
@@ -551,10 +562,10 @@ impl World {
             "launch_config",
             "set_migration_witness_allowed",
             vec![witness],
-            vec![config, version, signed_in, allowed],
+            vec![config, version, adapter_admin, allowed],
         );
         let fee = w.bps(&mut b, 100)?;
-        call(&mut b, blast, "launch_config", "set_trade_fees", vec![], vec![config, version, signed_in, fee, fee]);
+        call(&mut b, blast, "launch_config", "set_trade_fees", vec![], vec![config, version, fee_admin, fee, fee]);
         let share = w.bps(&mut b, ALLOCATION_BPS)?;
         let protocol = b.pure(SuiAddress::from(PROTOCOL))?;
         call(
@@ -563,7 +574,7 @@ impl World {
             "launch_config",
             "set_protocol_allocation",
             vec![],
-            vec![config, version, signed_in, protocol, share, share],
+            vec![config, version, treasury_admin, protocol, share, share],
         );
         // Blast's LP-fee share goes to its own destination at a nonzero default.
         let policy = b.obj(w.h.shared(w.policy, true))?;
@@ -575,7 +586,7 @@ impl World {
             "lp_fee_policy",
             "set_protocol_destination",
             vec![],
-            vec![policy, migrators_version, signed_in, destination],
+            vec![policy, migrators_version, treasury_admin, destination],
         );
         let meme_bps = w.bps(&mut b, DEFAULT_SHARES.0)?;
         let quote_bps = w.bps(&mut b, DEFAULT_SHARES.1)?;
@@ -585,7 +596,7 @@ impl World {
             "lp_fee_policy",
             "set_default_shares",
             vec![],
-            vec![policy, migrators_version, signed_in, meme_bps, quote_bps],
+            vec![policy, migrators_version, fee_admin, meme_bps, quote_bps],
         );
         w.h.execute(b.finish())?.assert_success();
 
@@ -626,12 +637,13 @@ impl World {
         }
     }
 
-    fn sign_in(&self, b: &mut ProgrammableTransactionBuilder) -> Result<Argument> {
-        let domain = tag(&format!("{}::blast_fun_domain::BLAST_FUN_DOMAIN", self.blast));
-        let authority = b.obj(self.h.shared(self.authority, false))?;
-        let admin_cap = b.obj(self.h.owned(self.admin_cap))?;
+    /// Signs `role`'s AdminCap in to the ACL; the witness it returns authorizes only that role.
+    fn sign_in(&self, b: &mut ProgrammableTransactionBuilder, role: &str) -> Result<Argument> {
+        let role_tag = tag(&format!("{}::blast_fun_domain::{role}", self.blast));
+        let acl = b.obj(self.h.shared(self.acl, false))?;
+        let admin_cap = b.obj(self.h.owned(self.admin_caps[role]))?;
 
-        Ok(call(b, self.admin, "acl", "sign_in", vec![domain], vec![authority, admin_cap]))
+        Ok(call(b, self.admin, "blast_acl", "sign_in", vec![role_tag], vec![acl, admin_cap]))
     }
 
     fn bps(&self, b: &mut ProgrammableTransactionBuilder, value: u64) -> Result<Argument> {
@@ -1450,7 +1462,7 @@ impl World {
 
     fn set_coin_shares(&mut self, launch: &Launch, shares: (u64, u64)) -> Result<()> {
         let mut b = ProgrammableTransactionBuilder::new();
-        let signed_in = self.sign_in(&mut b)?;
+        let signed_in = self.sign_in(&mut b, "FeeAdmin")?;
         let policy = self.shared(&mut b, self.policy, true)?;
         let migrators_version = self.shared(&mut b, self.migrators_version, false)?;
         let meme_bps = self.bps(&mut b, shares.0)?;
@@ -1552,7 +1564,7 @@ impl World {
         split: &FeeSplit,
     ) -> Result<()> {
         let mut b = ProgrammableTransactionBuilder::new();
-        let signed_in = self.sign_in(&mut b)?;
+        let signed_in = self.sign_in(&mut b, "CreatorAdmin")?;
         let launch_arg = self.shared(&mut b, launch.launch, true)?;
         let version = self.shared(&mut b, self.version, false)?;
         let recipient = b.pure(SuiAddress::from(CAP_HOLDER))?;
@@ -1589,7 +1601,7 @@ impl World {
         min_meme_out: u64,
     ) -> Result<ProgrammableTransaction> {
         let mut b = ProgrammableTransactionBuilder::new();
-        let signed_in = self.sign_in(&mut b)?;
+        let signed_in = self.sign_in(&mut b, "BuybackAdmin")?;
         let vault = self.shared(&mut b, m.vault, true)?;
         let migrators_version = self.shared(&mut b, self.migrators_version, false)?;
         let currency = self.shared(&mut b, launch.currency, true)?;
@@ -1619,7 +1631,8 @@ impl World {
         let owners = [self.h.sender, SuiAddress::ZERO];
         let refused = Expected::Abort { package: self.migrators, module: "vault", code: BUYBACK_BELOW_MINIMUM };
         let pt = self.buyback_pt(launch, m, m.pool, u64::MAX)?;
-        self.h.assert_rolled_back(pt, refused, &[m.vault, m.pool, launch.currency, self.admin_cap], &owners)?;
+        let buyback_admin = self.admin_caps["BuybackAdmin"];
+        self.h.assert_rolled_back(pt, refused, &[m.vault, m.pool, launch.currency, buyback_admin], &owners)?;
 
         let pt = self.buyback_pt(launch, m, m.pool, 1)?;
         let outcome = self.h.execute(pt)?;
@@ -1735,7 +1748,7 @@ impl World {
         self.h.assert_rolled_back(pt, expected, &watched, &[self.h.sender, LP_PROTOCOL.into()])?;
         let expected = Expected::Abort { package: self.migrators, module, code };
         let pt = self.buyback_pt(launch, m, other, 1)?;
-        let watched = [m.vault, other, launch.currency, self.admin_cap];
+        let watched = [m.vault, other, launch.currency, self.admin_caps["BuybackAdmin"]];
         self.h.assert_rolled_back(pt, expected, &watched, &[self.h.sender, SuiAddress::ZERO])?;
         self.report(format!(
             "collect and buyback against another {} pool {other}: EPositionPoolMismatch, rolled back",
@@ -1749,7 +1762,7 @@ impl World {
     fn claim_protocol_residuals(&mut self, launch: &Launch, m: &Migration) -> Result<()> {
         let before = self.vault(m)?;
         let mut b = ProgrammableTransactionBuilder::new();
-        let signed_in = self.sign_in(&mut b)?;
+        let signed_in = self.sign_in(&mut b, "TreasuryAdmin")?;
         let vault = self.shared(&mut b, m.vault, true)?;
         let migrators_version = self.shared(&mut b, self.migrators_version, false)?;
         let Argument::Result(claimed) = call(
@@ -1800,7 +1813,7 @@ impl World {
         let (start, end) = (1_000u64, 2_000u64);
 
         let mut b = ProgrammableTransactionBuilder::new();
-        let signed_in = self.sign_in(&mut b)?;
+        let signed_in = self.sign_in(&mut b, "RewardsAdmin")?;
         let vault = self.shared(&mut b, m.vault, true)?;
         let migrators_version = self.shared(&mut b, self.migrators_version, false)?;
         let args = vec![

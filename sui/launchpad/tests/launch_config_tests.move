@@ -64,11 +64,9 @@ public struct InitFixture {
     config: launch_config::LaunchConfig,
 }
 
-/// Cold-policy administration through the ACL sign-in seam.
+/// Cold-policy administration under each setter's own role.
 public struct ConfigFixture {
     scenario: Scenario,
-    authority: Authority<BLAST_FUN_DOMAIN>,
-    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     package_version: package_version::PackageVersion,
     config: launch_config::LaunchConfig,
 }
@@ -266,7 +264,7 @@ fun admin_removes_and_readds_decimal_precision_for_future_tickets() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = listing_admin();
 
         f.config.set_meme_decimals_allowed(&f.package_version, &admin_witness, 6, false);
 
@@ -295,7 +293,7 @@ fun allowing_an_admitted_decimal_rejects_the_unchanged_set() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = listing_admin();
 
         f.config.set_meme_decimals_allowed(&f.package_version, &admin_witness, 6, true);
     });
@@ -314,7 +312,7 @@ fun disallowing_an_unlisted_decimal_rejects_the_unchanged_set() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = listing_admin();
 
         f.config.set_meme_decimals_allowed(&f.package_version, &admin_witness, 8, false);
     });
@@ -333,7 +331,7 @@ fun stale_package_version_rejects_decimals_before_the_unchanged_check() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = listing_admin();
         f.package_version.set_for_testing(2);
 
         f.config.set_meme_decimals_allowed(&f.package_version, &admin_witness, 6, true);
@@ -353,10 +351,10 @@ fun launch_snapshot_rejects_disallowed_decimals() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = listing_admin();
 
         f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
-        f.allow_test_migration_witness(&admin_witness);
+        f.allow_test_migration_witness();
         f.config.set_meme_decimals_allowed(&f.package_version, &admin_witness, MEME_DECIMALS, false);
         let (_, _) = f.config.snapshot_for_launch<TEST_QUOTE>(test_witness(), MEME_DECIMALS);
     });
@@ -369,10 +367,10 @@ fun admin_allows_migration_witness_for_launch_snapshot() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = listing_admin();
 
         f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
-        f.allow_test_migration_witness(&admin_witness);
+        f.allow_test_migration_witness();
 
         let (quote_fee_bps, meme_fee_bps) = f
             .config
@@ -390,10 +388,10 @@ fun admin_allows_quote_for_launch_snapshot() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = listing_admin();
 
         f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
-        f.allow_test_migration_witness(&admin_witness);
+        f.allow_test_migration_witness();
 
         let (_, _) = f.config.snapshot_for_launch<TEST_QUOTE>(test_witness(), MEME_DECIMALS);
 
@@ -409,7 +407,7 @@ fun disallowing_a_quote_removes_it_from_future_launches() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = listing_admin();
 
         f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
         f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, false);
@@ -429,12 +427,12 @@ fun admin_can_readd_a_disallowed_quote() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = listing_admin();
 
         f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
         f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, false);
         f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
-        f.allow_test_migration_witness(&admin_witness);
+        f.allow_test_migration_witness();
 
         let (_, _) = f.config.snapshot_for_launch<TEST_QUOTE>(test_witness(), MEME_DECIMALS);
 
@@ -449,7 +447,7 @@ fun many_quotes_can_be_admitted() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = listing_admin();
 
         f.config.set_quote_allowed<QUOTE<Q0>>(&f.package_version, &admin_witness, true);
         f.config.set_quote_allowed<QUOTE<Q1>>(&f.package_version, &admin_witness, true);
@@ -486,7 +484,7 @@ fun allowing_an_admitted_quote_aborts() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = listing_admin();
 
         f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
         f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
@@ -506,7 +504,7 @@ fun disallowing_an_unlisted_quote_aborts() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = listing_admin();
 
         f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, false);
     });
@@ -525,7 +523,7 @@ fun stale_package_version_rejects_quote_before_the_set_update() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = listing_admin();
         f.package_version.set_for_testing(2);
 
         f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, false);
@@ -545,11 +543,11 @@ fun launch_snapshot_rejects_disallowed_quote() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = listing_admin();
 
         f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
         f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, false);
-        f.allow_test_migration_witness(&admin_witness);
+        f.allow_test_migration_witness();
         let (_, _) = f.config.snapshot_for_launch<TEST_QUOTE>(test_witness(), MEME_DECIMALS);
     });
 
@@ -561,15 +559,13 @@ fun admin_sets_trade_fees_for_future_launch_snapshots() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
-        f.allow_test_migration_witness(&admin_witness);
+        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &listing_admin(), true);
+        f.allow_test_migration_witness();
         f
             .config
             .set_trade_fees(
                 &f.package_version,
-                &admin_witness,
+                &fee_admin(),
                 bps::new(QUOTE_FEE_BPS),
                 bps::new(MEME_FEE_BPS),
             );
@@ -593,7 +589,7 @@ fun trade_fees_accept_zero_and_launch_ceiling_boundaries() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = fee_admin();
 
         f
             .config
@@ -627,7 +623,7 @@ fun trade_fees_reject_quote_rate_above_ceiling() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = fee_admin();
 
         f
             .config
@@ -653,7 +649,7 @@ fun trade_fees_reject_meme_rate_above_ceiling() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = fee_admin();
 
         f
             .config
@@ -679,7 +675,7 @@ fun trade_fees_reject_unchanged_pair() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = fee_admin();
 
         f.config.set_trade_fees(&f.package_version, &admin_witness, bps::new(0), bps::new(0));
     });
@@ -698,7 +694,7 @@ fun stale_package_version_rejects_trade_fees_before_their_bounds() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = fee_admin();
         f.package_version.set_for_testing(2);
 
         f
@@ -719,9 +715,7 @@ fun admin_allows_migration_witness_and_emits_its_original_type_name() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        f.allow_test_migration_witness(&admin_witness);
+        f.allow_test_migration_witness();
 
         let mut expected = bcs::to_bytes(&test_witness());
         expected.append(bcs::to_bytes(&true));
@@ -738,17 +732,15 @@ fun disallowing_migration_witness_does_not_change_an_existing_launch_snapshot() 
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
-        f.allow_test_migration_witness(&admin_witness);
+        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &listing_admin(), true);
+        f.allow_test_migration_witness();
         let (_, _) = f.config.snapshot_for_launch<TEST_QUOTE>(test_witness(), MEME_DECIMALS);
 
         f
             .config
             .set_migration_witness_allowed<TEST_MIGRATION_WITNESS>(
                 &f.package_version,
-                &admin_witness,
+                &adapter_admin(),
                 false,
             );
 
@@ -775,7 +767,7 @@ fun disallowing_migration_witness_rejects_unlisted_type() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = adapter_admin();
 
         f
             .config
@@ -800,10 +792,8 @@ fun allowing_migration_witness_rejects_duplicate_type() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        f.allow_test_migration_witness(&admin_witness);
-        f.allow_test_migration_witness(&admin_witness);
+        f.allow_test_migration_witness();
+        f.allow_test_migration_witness();
     });
 
     fixture.end();
@@ -820,7 +810,7 @@ fun allowing_migration_witness_rejects_a_primitive_type() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = adapter_admin();
 
         // Only module types have an origin package, so the framework rejects this one first.
         f.config.set_migration_witness_allowed<bool>(&f.package_version, &admin_witness, true);
@@ -840,7 +830,7 @@ fun allowing_migration_witness_rejects_a_vector_type() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = adapter_admin();
 
         // Only module types have an origin package, so the framework rejects this one first.
         f
@@ -866,7 +856,7 @@ fun allowing_migration_witness_rejects_a_standard_library_type() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = adapter_admin();
 
         f
             .config
@@ -891,7 +881,7 @@ fun allowing_migration_witness_rejects_a_sui_framework_type() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = adapter_admin();
 
         f
             .config
@@ -916,7 +906,7 @@ fun disallowing_a_framework_type_rejects_the_type_before_the_unchanged_check() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = adapter_admin();
 
         f
             .config
@@ -941,7 +931,7 @@ fun stale_package_version_rejects_migration_witness_before_its_type_check() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = adapter_admin();
         f.package_version.set_for_testing(2);
 
         f.config.set_migration_witness_allowed<bool>(&f.package_version, &admin_witness, true);
@@ -961,87 +951,10 @@ fun launch_snapshot_rejects_unlisted_migration_witness() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = listing_admin();
 
         f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
         let (_, _) = f.config.snapshot_for_launch<TEST_QUOTE>(test_witness(), MEME_DECIMALS);
-    });
-
-    fixture.end();
-}
-
-#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
-fun setting_the_protocol_allocation_requires_the_treasury_admin_role() {
-    let mut fixture = start_with_roles(blast_fun_domain::treasury_admin_role().bitwise_not());
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        f.set_protocol_allocation(PROTOCOL_ADMIN, 100, 100);
-    });
-
-    fixture.end();
-}
-
-#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
-fun setting_the_trade_fees_requires_the_fee_admin_role() {
-    let mut fixture = start_with_roles(blast_fun_domain::fee_admin_role().bitwise_not());
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        f.config.set_trade_fees(&f.package_version, &admin_witness, bps::new(1), bps::new(1));
-    });
-
-    fixture.end();
-}
-
-#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
-fun admitting_a_quote_requires_the_listing_admin_role() {
-    let mut fixture = start_with_roles(blast_fun_domain::listing_admin_role().bitwise_not());
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
-    });
-
-    fixture.end();
-}
-
-#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
-fun changing_the_meme_decimals_requires_the_listing_admin_role() {
-    let mut fixture = start_with_roles(blast_fun_domain::listing_admin_role().bitwise_not());
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        f.config.set_meme_decimals_allowed(&f.package_version, &admin_witness, 6, false);
-    });
-
-    fixture.end();
-}
-
-#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
-fun admitting_an_adapter_requires_the_adapter_admin_role() {
-    let mut fixture = start_with_roles(blast_fun_domain::adapter_admin_role().bitwise_not());
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-
-        f.allow_test_migration_witness(&admin_witness);
-    });
-
-    fixture.end();
-}
-
-#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
-fun a_config_setter_checks_the_version_before_the_role() {
-    let mut fixture = start_with_roles(0);
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
-        f.package_version.set_for_testing(2);
-
-        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, true);
     });
 
     fixture.end();
@@ -1106,43 +1019,39 @@ fun start_init(): InitFixture {
     InitFixture { scenario, config }
 }
 
-/// An administrator holding exactly the four roles LaunchConfig's setters assert.
+/// The shared configuration exactly as package initialization leaves it.
 fun start(): ConfigFixture {
-    start_with_roles(
-        blast_fun_domain::treasury_admin_role()
-            | blast_fun_domain::fee_admin_role()
-            | blast_fun_domain::listing_admin_role()
-            | blast_fun_domain::adapter_admin_role(),
-    )
-}
-
-fun start_with_roles(roles: u64): ConfigFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
-    let (super_admin_cap, mut authority) = domain_fixture::new_authority(scenario.ctx());
-    authority.grant_admin(&super_admin_cap, roles, PROTOCOL_ADMIN, scenario.ctx());
-    destroy(super_admin_cap);
     launch_config::init_for_testing(scenario.ctx());
 
     scenario.next_tx(PROTOCOL_ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
     let config = scenario.take_shared<launch_config::LaunchConfig>();
 
-    ConfigFixture { scenario, authority, admin_cap, package_version, config }
+    ConfigFixture { scenario, package_version, config }
 }
 
-fun sign_in(self: &ConfigFixture): AdminWitness<BLAST_FUN_DOMAIN> {
-    self.authority.sign_in(&self.admin_cap)
+fun listing_admin(): AdminWitness<ListingAdmin> {
+    blast_acl::witness_for_testing()
 }
 
-/// Signs in and sets Blast's allocation, so bound tests state only the destination and rates.
+fun fee_admin(): AdminWitness<FeeAdmin> {
+    blast_acl::witness_for_testing()
+}
+
+fun adapter_admin(): AdminWitness<AdapterAdmin> {
+    blast_acl::witness_for_testing()
+}
+
+/// Sets Blast's allocation as the treasury admin, so bound tests state only the destination and
+/// rates.
 fun set_protocol_allocation(
     self: &mut ConfigFixture,
     destination: address,
     meme_bps: u64,
     quote_bps: u64,
 ) {
-    let admin_witness = self.sign_in();
+    let admin_witness = blast_acl::witness_for_testing<TreasuryAdmin>();
 
     self
         .config
@@ -1155,15 +1064,13 @@ fun set_protocol_allocation(
         );
 }
 
-fun allow_test_migration_witness(
-    self: &mut ConfigFixture,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
-) {
+/// Admits the test adapter as the adapter admin.
+fun allow_test_migration_witness(self: &mut ConfigFixture) {
     self
         .config
         .set_migration_witness_allowed<TEST_MIGRATION_WITNESS>(
             &self.package_version,
-            admin_witness,
+            &adapter_admin(),
             true,
         );
 }
@@ -1178,15 +1085,14 @@ fun config_end(self: ConfigFixture) {
 
 // === Imports ===
 
-use blast_admin::acl::{Authority, AdminCap, AdminWitness};
+use blast_admin::blast_acl::{Self, AdminWitness};
 
 use blast_fun::{
     allocation,
     blast_events::Event,
-    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
+    blast_fun_domain::{AdapterAdmin, FeeAdmin, ListingAdmin, TreasuryAdmin},
     bps,
     constants,
-    domain_fixture,
     events,
     launch_config,
     package_version,

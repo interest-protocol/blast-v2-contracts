@@ -37,11 +37,9 @@ public struct TestVenue() has drop;
 
 public struct TestPosition has key, store { id: UID }
 
-/// One vault whose whole fee split funds holder rewards, and the Blast admin that publishes.
+/// One vault whose whole fee split funds holder rewards.
 public struct RewardsFixture {
     scenario: Scenario,
-    authority: Authority<BLAST_FUN_DOMAIN>,
-    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     migrators_version: MigratorsVersion,
     vault: LpVault<BLAST_HOLDER_REWARDS_TESTS, QUOTE>,
 }
@@ -334,20 +332,6 @@ fun a_stale_generation_rejects_publication_before_every_round_check() {
     f.end();
 }
 
-#[test]
-#[expected_failure(
-    abort_code = blast_admin::errors::EAdminRoleNotGranted,
-    location = blast_admin::acl,
-)]
-fun the_rewards_role_is_checked_before_every_round_check() {
-    let mut f = start_with_roles(blast_fun_domain::rewards_admin_role().bitwise_not());
-
-    f.scenario.next_tx(ADMIN);
-    f.publish(7, 10, 10, vector[], vector[], 0, 0, 0);
-
-    f.end();
-}
-
 // Claims
 
 #[test]
@@ -594,22 +578,14 @@ fun a_stale_generation_rejects_a_claim_before_every_claim_check() {
 /// Opens an owned launch whose whole fee split funds rewards, attaches its vault, and splits one
 /// collection into the rewards balance under the zero default Blast share.
 fun start(): RewardsFixture {
-    start_with_roles(blast_fun_domain::rewards_admin_role() | launch_fixture::admit_roles())
-}
-
-fun start_with_roles(roles: u64): RewardsFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let version = package_version::new_for_testing(scenario.ctx());
     let migrators_version = migrators_version::new_for_testing(scenario.ctx());
-    let (root, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(16, 1, scenario.ctx());
-    authority.grant_admin(&root, roles, ADMIN, scenario.ctx());
-    destroy(root);
     let policy = lp_fee_policy::new_for_testing(scenario.ctx());
     let mut config = launch_config::new_for_testing(scenario.ctx());
 
     scenario.next_tx(ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
-    launch_fixture::admit<QUOTE, TestVenue>(&mut config, &version, &authority.sign_in(&admin_cap));
+    launch_fixture::admit<QUOTE, TestVenue>(&mut config, &version);
     let (launch, mut currency) = launch_fixture::open_launch<_, QUOTE, _>(
         &mut scenario,
         test_utils::create_one_time_witness<BLAST_HOLDER_REWARDS_TESTS>(),
@@ -643,7 +619,7 @@ fun start_with_roles(roles: u64): RewardsFixture {
     destroy(version);
     destroy(policy);
 
-    RewardsFixture { scenario, authority, admin_cap, migrators_version, vault }
+    RewardsFixture { scenario, migrators_version, vault }
 }
 
 /// The leaf the fixture vault commits for one allocation.
@@ -658,7 +634,7 @@ fun leaf(
     merkle::leaf(object::id(&self.vault), round, index, beneficiary, meme, quote)
 }
 
-/// Publishes under a fresh admin sign-in in the current transaction.
+/// Publishes as the rewards admin in the current transaction.
 fun publish(
     self: &mut RewardsFixture,
     number: u64,
@@ -670,7 +646,7 @@ fun publish(
     meme_amount: u64,
     quote_amount: u64,
 ) {
-    let admin = self.authority.sign_in(&self.admin_cap);
+    let admin = blast_acl::witness_for_testing<RewardsAdmin>();
 
     blast_holder_rewards::publish_round(
         &mut self.vault,
@@ -793,11 +769,11 @@ fun end(self: RewardsFixture) {
 
 // === Imports ===
 
-use blast_admin::acl::{Self, Authority, AdminCap};
+use blast_admin::blast_acl;
 
 use blast_fun::{
     allocation,
-    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
+    blast_fun_domain::RewardsAdmin,
     bps,
     launch_config,
     package_version,

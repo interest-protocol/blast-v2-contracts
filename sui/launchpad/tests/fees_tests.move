@@ -19,8 +19,6 @@ public struct TEST_QUOTE() has drop;
 /// A live protocol fee share an administrator can change between accruals.
 public struct FeesFixture {
     scenario: Scenario,
-    authority: Authority<BLAST_FUN_DOMAIN>,
-    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     package_version: PackageVersion,
     runtime_config: RuntimeConfig,
 }
@@ -327,28 +325,17 @@ macro fun ctx($fixture: &mut FeesFixture): &mut TxContext {
     fixture.scenario.ctx()
 }
 
-/// A fee administrator over a runtime configuration with no protocol share.
+/// A runtime configuration with no protocol share.
 fun start(): FeesFixture {
     let mut scenario = test_scenario::begin(PROTOCOL_ADMIN);
     let package_version = package_version::new_for_testing(scenario.ctx());
-    let (super_admin_cap, mut authority) = domain_fixture::new_authority(scenario.ctx());
-    authority.grant_admin(
-        &super_admin_cap,
-        blast_fun_domain::fee_admin_role(),
-        PROTOCOL_ADMIN,
-        scenario.ctx(),
-    );
-    destroy(super_admin_cap);
     let runtime_config = runtime_config::new_disabled_for_testing(scenario.ctx());
 
-    scenario.next_tx(PROTOCOL_ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
-
-    FeesFixture { scenario, authority, admin_cap, package_version, runtime_config }
+    FeesFixture { scenario, package_version, runtime_config }
 }
 
 fun set_protocol_fee_share(self: &mut FeesFixture, protocol_fee_share_bps: u64) {
-    let admin_witness = self.authority.sign_in(&self.admin_cap);
+    let admin_witness = blast_acl::witness_for_testing<FeeAdmin>();
 
     self
         .runtime_config
@@ -365,12 +352,11 @@ fun end(self: FeesFixture) {
 
 // === Imports ===
 
-use blast_admin::acl::{Authority, AdminCap};
+use blast_admin::blast_acl;
 
 use blast_fun::{
-    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
+    blast_fun_domain::FeeAdmin,
     bps,
-    domain_fixture,
     fees::{Self, FeeLedger},
     package_version::{Self, PackageVersion},
     runtime_config::{Self, RuntimeConfig},

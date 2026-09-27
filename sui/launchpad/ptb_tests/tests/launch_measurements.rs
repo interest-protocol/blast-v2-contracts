@@ -194,18 +194,18 @@ impl World {
         let mut h = Harness::new()?;
         let admin_dir = sui_dir.join("admin");
         let launchpad_dir = sui_dir.join("launchpad");
-        let (admin, _) = h.publish(build(&admin_dir, &[], &work)?)?;
+        let (admin, admin_published) = h.publish(build(&admin_dir, &[], &work)?)?;
         let (blast, published) = h.publish(build(&launchpad_dir, &[(&admin_dir, admin)], &work)?)?;
-        let one = |module: &str, name: &str| {
-            let ids = published.created(&h, module, name);
+        let one = |outcome: &Outcome, module: &str, name: &str| {
+            let ids = outcome.created(&h, module, name);
             assert_eq!(ids.len(), 1, "{module}::{name}");
             ids[0]
         };
-        let authority = one("acl", "Authority");
-        let root = one("acl", "SuperAdminCap");
-        let config = one("launch_config", "LaunchConfig");
-        let version = one("package_version", "PackageVersion");
-        let runtime = one("runtime_config", "RuntimeConfig");
+        let acl = one(&admin_published, "blast_acl", "ACL");
+        let root = one(&admin_published, "blast_acl", "SuperAdminCap");
+        let config = one(&published, "launch_config", "LaunchConfig");
+        let version = one(&published, "package_version", "PackageVersion");
+        let runtime = one(&published, "runtime_config", "RuntimeConfig");
         let linked = [(admin_dir.as_path(), admin), (launchpad_dir.as_path(), blast)];
         let (adapter, _) = h.publish(build(&fixture.join("adapter"), &linked, &work)?)?;
         let mut templates = Vec::new();
@@ -235,28 +235,38 @@ impl World {
             environment,
             records: Vec::new(),
         };
-        let domain = parse_sui_type_tag(&format!("{blast}::blast_fun_domain::BLAST_FUN_DOMAIN"))?;
+
+        // Production admin path: the publisher's SuperAdminCap grants one AdminCap per role, and
+        // each setter takes the witness of its own role.
+        let mut admin_caps = Vec::new();
+        for role in ["ListingAdmin", "AdapterAdmin", "FeeAdmin", "TreasuryAdmin"] {
+            let role = parse_sui_type_tag(&format!("{blast}::blast_fun_domain::{role}"))?;
+            let mut builder = ProgrammableTransactionBuilder::new();
+            let acl_arg = builder.obj(w.h.shared(acl, true))?;
+            let root_arg = builder.obj(w.h.owned(root))?;
+            let recipient = builder.pure(w.h.sender)?;
+            call(
+                &mut builder,
+                admin,
+                "blast_acl",
+                "grant_admin",
+                vec![role.clone()],
+                vec![acl_arg, root_arg, recipient],
+            );
+            let granted = w.h.execute(builder.finish())?;
+            granted.assert_success();
+            admin_caps.push((role, granted.created(&w.h, "blast_acl", "AdminCap")[0]));
+        }
 
         let mut builder = ProgrammableTransactionBuilder::new();
-        let authority_arg = builder.obj(w.h.shared(authority, true))?;
-        let root = builder.obj(w.h.owned(root))?;
-        let roles = builder.pure(u64::MAX)?;
-        let recipient = builder.pure(w.h.sender)?;
-        call(
-            &mut builder,
-            admin,
-            "acl",
-            "grant_admin",
-            vec![domain.clone()],
-            vec![authority_arg, root, roles, recipient],
-        );
-        w.h.execute(builder.finish())?.assert_success();
-        let admin_cap = w.h.owned_of_type(w.h.sender, "acl", "AdminCap")[0];
-
-        let mut builder = ProgrammableTransactionBuilder::new();
-        let authority = builder.obj(w.h.shared(authority, false))?;
-        let admin_cap = builder.obj(w.h.owned(admin_cap))?;
-        let signed_in = call(&mut builder, admin, "acl", "sign_in", vec![domain], vec![authority, admin_cap]);
+        let acl_arg = builder.obj(w.h.shared(acl, false))?;
+        let mut witnesses = Vec::new();
+        for (role, admin_cap) in admin_caps {
+            let admin_cap = builder.obj(w.h.owned(admin_cap))?;
+            witnesses.push(call(&mut builder, admin, "blast_acl", "sign_in", vec![role], vec![acl_arg, admin_cap]));
+        }
+        let [listing_admin, adapter_admin, fee_admin, treasury_admin]: [Argument; 4] =
+            witnesses.try_into().expect("one witness per role");
         let config_arg = builder.obj(w.h.shared(config, true))?;
         let version_arg = builder.obj(w.h.shared(version, false))?;
         let quote_allowed = builder.pure(true)?;
@@ -266,7 +276,7 @@ impl World {
             "launch_config",
             "set_quote_allowed",
             vec![sui()],
-            vec![config_arg, version_arg, signed_in, quote_allowed],
+            vec![config_arg, version_arg, listing_admin, quote_allowed],
         );
         let witness = parse_sui_type_tag(&format!("{adapter}::mock_adapter::Venue"))?;
         let allowed = builder.pure(true)?;
@@ -276,7 +286,7 @@ impl World {
             "launch_config",
             "set_migration_witness_allowed",
             vec![witness],
-            vec![config_arg, version_arg, signed_in, allowed],
+            vec![config_arg, version_arg, adapter_admin, allowed],
         );
         let fee = w.bps(&mut builder, 100)?;
         call(
@@ -285,7 +295,7 @@ impl World {
             "launch_config",
             "set_trade_fees",
             vec![],
-            vec![config_arg, version_arg, signed_in, fee, fee],
+            vec![config_arg, version_arg, fee_admin, fee, fee],
         );
         let [meme_bps, quote_bps] = protocol;
         let destination = builder.pure(SuiAddress::from(PROTOCOL))?;
@@ -297,7 +307,7 @@ impl World {
             "launch_config",
             "set_protocol_allocation",
             vec![],
-            vec![config_arg, version_arg, signed_in, destination, meme_bps, quote_bps],
+            vec![config_arg, version_arg, treasury_admin, destination, meme_bps, quote_bps],
         );
         w.h.execute(builder.finish())?.assert_success();
 

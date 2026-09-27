@@ -59,7 +59,7 @@ public struct Round<phantom Meme, phantom Quote> has key {
 public fun publish_round<Meme, Quote>(
     vault: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
+    _: &AdminWitness<RewardsAdmin>,
     number: u64,
     start_checkpoint: u64,
     end_checkpoint: u64,
@@ -71,7 +71,6 @@ public fun publish_round<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    admin_witness.assert_role(blast_fun_domain::rewards_admin_role());
     assert!(number == vault.next_round(), EWrongRound);
     assert!(
         start_checkpoint < end_checkpoint
@@ -170,9 +169,9 @@ public fun is_claimed_for_testing<Meme, Quote>(self: &Round<Meme, Quote>, index:
 
 // === Imports ===
 
-use blast_admin::acl::AdminWitness;
+use blast_admin::blast_acl::AdminWitness;
 
-use blast_fun::blast_fun_domain::{Self, BLAST_FUN_DOMAIN};
+use blast_fun::blast_fun_domain::RewardsAdmin;
 
 use blast_fun_migrators::{
     blast_events,

@@ -692,47 +692,36 @@ macro fun next_tx(
 fun start(): OpeningRoundFixture {
     let mut scenario = test_scenario::begin(PROTOCOL_ADMIN);
     let package_version = package_version::new_for_testing(scenario.ctx());
-    let (super_admin_cap, mut authority) = domain_fixture::new_authority(scenario.ctx());
-    authority.grant_admin(
-        &super_admin_cap,
-        blast_fun_domain::treasury_admin_role()
-            | blast_fun_domain::fee_admin_role()
-            | blast_fun_domain::listing_admin_role()
-            | blast_fun_domain::adapter_admin_role(),
-        PROTOCOL_ADMIN,
-        scenario.ctx(),
-    );
-    destroy(super_admin_cap);
     launch_config::init_for_testing(scenario.ctx());
     let runtime_config = runtime_config::new_disabled_for_testing(scenario.ctx());
     let mut clock = clock::create_for_testing(scenario.ctx());
     clock.set_for_testing(PUBLIC_START_MS);
 
     scenario.next_tx(PROTOCOL_ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
     let mut config = scenario.take_shared<LaunchConfig>();
-    let admin_witness = authority.sign_in(&admin_cap);
-    config.set_quote_allowed<TEST_QUOTE>(&package_version, &admin_witness, true);
+    config.set_quote_allowed<TEST_QUOTE>(
+        &package_version,
+        &blast_acl::witness_for_testing<ListingAdmin>(),
+        true,
+    );
     config.set_migration_witness_allowed<TEST_MIGRATION_WITNESS>(
         &package_version,
-        &admin_witness,
+        &blast_acl::witness_for_testing<AdapterAdmin>(),
         true,
     );
     config.set_trade_fees(
         &package_version,
-        &admin_witness,
+        &blast_acl::witness_for_testing<FeeAdmin>(),
         bps::new(QUOTE_FEE_BPS),
         bps::new(MEME_FEE_BPS),
     );
     config.set_protocol_allocation(
         &package_version,
-        &admin_witness,
+        &blast_acl::witness_for_testing<TreasuryAdmin>(),
         PROTOCOL_ADMIN,
         bps::new(0),
         bps::new(0),
     );
-    destroy(admin_cap);
-    destroy(authority);
     scenario.next_tx(LAUNCHER);
 
     OpeningRoundFixture { scenario, package_version, config, runtime_config, clock }
@@ -952,16 +941,15 @@ fun end(self: OpeningRoundFixture) {
 
 // === Imports ===
 
-use blast_admin::acl::AdminCap;
+use blast_admin::blast_acl;
 
 use blast_fun::{
     allocation::{Self, AllocationPlan},
     blast_events::Event,
-    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
+    blast_fun_domain::{AdapterAdmin, FeeAdmin, ListingAdmin, TreasuryAdmin},
     bps,
     creator_authority,
     curve,
-    domain_fixture,
     events::{
         Bought,
         LaunchCreated,

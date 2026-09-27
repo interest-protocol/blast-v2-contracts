@@ -16,11 +16,10 @@ error inventory:
 - `scripts/check_mainnet_abi.mjs` for live compatibility;
 - [release gates](../../docs/testing.md) for repository-wide evidence.
 
-Administration is not implemented here. This package reuses the Launchpad
-administration domain for membership and imports the package-admin role that
-Launchpad exports; it never creates a second authority. It does own an
-independent operational generation and its own sealed `PackageAdmin`, so
-advancing this package leaves Launchpad on its generation.
+Administration is not implemented here. This package takes the Launchpad's role
+types from `blast_fun_domain` on the singleton Blast ACL and declares none of its
+own. It does own an independent operational generation and its own sealed
+`PackageAdmin`, so advancing this package leaves Launchpad on its generation.
 
 Every protected mutation checks **this** package's generation. The Launchpad
 generation is no longer treated as this package's own: a composed call that

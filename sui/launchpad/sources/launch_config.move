@@ -33,13 +33,12 @@ fun init(ctx: &mut TxContext) {
 public fun set_protocol_allocation(
     self: &mut LaunchConfig,
     package_version: &PackageVersion,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
+    _: &AdminWitness<TreasuryAdmin>,
     destination: address,
     meme_bps: Bps,
     quote_bps: Bps,
 ) {
     package_version.assert_current();
-    admin_witness.assert_role(blast_fun_domain::treasury_admin_role());
     assert!(
         self.protocol_allocation.is_none() && meme_bps.value() <= 9_998 && quote_bps.value() <= 9_999,
         blast_fun::errors::invalid_protocol_allocation!(),
@@ -53,12 +52,11 @@ public fun set_protocol_allocation(
 public fun set_meme_decimals_allowed(
     self: &mut LaunchConfig,
     package_version: &PackageVersion,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
+    _: &AdminWitness<ListingAdmin>,
     decimals: u8,
     allowed: bool,
 ) {
     package_version.assert_current();
-    admin_witness.assert_role(blast_fun_domain::listing_admin_role());
 
     if (allowed) self.meme_decimals.insert(decimals) else self.meme_decimals.remove(&decimals);
 
@@ -69,11 +67,10 @@ public fun set_meme_decimals_allowed(
 public fun set_quote_allowed<Quote>(
     self: &mut LaunchConfig,
     package_version: &PackageVersion,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
+    _: &AdminWitness<ListingAdmin>,
     allowed: bool,
 ) {
     package_version.assert_current();
-    admin_witness.assert_role(blast_fun_domain::listing_admin_role());
     let quote = type_name::with_original_ids<Quote>();
 
     if (allowed) self.quotes.add(quote, true) else { self.quotes.remove(quote); };
@@ -85,12 +82,11 @@ public fun set_quote_allowed<Quote>(
 public fun set_trade_fees(
     self: &mut LaunchConfig,
     package_version: &PackageVersion,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
+    _: &AdminWitness<FeeAdmin>,
     quote_fee_bps: Bps,
     meme_fee_bps: Bps,
 ) {
     package_version.assert_current();
-    admin_witness.assert_role(blast_fun_domain::fee_admin_role());
     assert!(
         quote_fee_bps.value() <= constants::max_launch_fee_bps!()
             && meme_fee_bps.value() <= constants::max_launch_fee_bps!(),
@@ -111,11 +107,10 @@ public fun set_trade_fees(
 public fun set_migration_witness_allowed<MigrationWitness: drop>(
     self: &mut LaunchConfig,
     package_version: &PackageVersion,
-    admin_witness: &AdminWitness<BLAST_FUN_DOMAIN>,
+    _: &AdminWitness<AdapterAdmin>,
     allowed: bool,
 ) {
     package_version.assert_current();
-    admin_witness.assert_role(blast_fun_domain::adapter_admin_role());
     let origin = type_name::original_id<MigrationWitness>();
     assert!(origin != @0x1 && origin != @0x2, blast_fun::errors::invalid_migration_witness_type!());
     let witness = type_name::with_original_ids<MigrationWitness>();
@@ -199,11 +194,11 @@ public fun allowed_migration_witness_count_for_testing(self: &LaunchConfig): u64
 
 // === Imports ===
 
-use blast_admin::acl::AdminWitness;
+use blast_admin::blast_acl::AdminWitness;
 
 use blast_fun::{
     allocation::{Self, Recipient},
-    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
+    blast_fun_domain::{AdapterAdmin, FeeAdmin, ListingAdmin, TreasuryAdmin},
     bps::{Self, Bps},
     constants,
     events,

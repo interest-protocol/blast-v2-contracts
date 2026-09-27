@@ -49,8 +49,6 @@ public struct MockPosition has key, store {
 /// One shared launch, whose creator claims the curve-fee cap, and the vault it migrated into.
 public struct FeeSplitFixture {
     scenario: Scenario,
-    authority: Authority<BLAST_FUN_DOMAIN>,
-    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     version: PackageVersion,
     migrators_version: MigratorsVersion,
     runtime: RuntimeConfig,
@@ -433,16 +431,11 @@ fun start(fee_split: FeeSplit): FeeSplitFixture {
     let migrators_version = migrators_version::new_for_testing(scenario.ctx());
     let runtime = runtime_config::new_disabled_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
-    let (root, mut authority) = acl::new_for_testing<BLAST_FUN_DOMAIN>(16, 1, scenario.ctx());
-    let roles = blast_fun_domain::creator_admin_role_for_testing() | launch_fixture::admit_roles();
-    authority.grant_admin(&root, roles, ADMIN, scenario.ctx());
-    destroy(root);
     let policy = lp_fee_policy::new_for_testing(scenario.ctx());
     let mut config = launch_config::new_for_testing(scenario.ctx());
 
     scenario.next_tx(ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
-    launch_fixture::admit<QUOTE, Venue>(&mut config, &version, &authority.sign_in(&admin_cap));
+    launch_fixture::admit<QUOTE, Venue>(&mut config, &version);
     let (launch, currency) = launch_fixture::open_launch<_, QUOTE, _>(
         &mut scenario,
         test_utils::create_one_time_witness<FEE_SPLIT_UPDATE_TESTS>(),
@@ -475,8 +468,6 @@ fun start(fee_split: FeeSplit): FeeSplitFixture {
 
     FeeSplitFixture {
         scenario,
-        authority,
-        admin_cap,
         version,
         migrators_version,
         runtime,
@@ -508,7 +499,7 @@ fun claim_curve_fee_cap(self: &mut FeeSplitFixture): CurveFeeCap<FEE_SPLIT_UPDAT
 /// Retires the live curve-fee cap and delivers a fresh one to the creator.
 fun reassign_curve_fee_cap(self: &mut FeeSplitFixture) {
     self.scenario.next_tx(ADMIN);
-    let admin = self.authority.sign_in(&self.admin_cap);
+    let admin = blast_acl::witness_for_testing<CreatorAdmin>();
     let mut launch = self.take_launch();
     launch.reassign_curve_fee_cap(
         &self.version,
@@ -683,11 +674,11 @@ fun auto_lp_only(): FeeSplit {
 
 // === Imports ===
 
-use blast_admin::acl::{Self, Authority, AdminCap};
+use blast_admin::blast_acl;
 
 use blast_fun::{
     allocation::{Self, FeeSplit},
-    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
+    blast_fun_domain::CreatorAdmin,
     bps,
     creator_authority::CurveFeeCap,
     launch::Launch,

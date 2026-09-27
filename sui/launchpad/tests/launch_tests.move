@@ -24,8 +24,6 @@ const BOB: address = @0xB0B;
 
 const NEW_CREATOR: address = @0xC7;
 
-const ROLE_LESS_ADMIN: address = @0xBAD;
-
 const MEME_DECIMALS: u8 = 9;
 
 const INITIAL_MEME_SUPPLY: u64 = 1_000_000_000__000_000_000;
@@ -85,8 +83,6 @@ public struct OTHER_MIGRATION_WITNESS() has drop;
 public struct LaunchFixture {
     scenario: Scenario,
     package_version: PackageVersion,
-    authority: Authority<BLAST_FUN_DOMAIN>,
-    admin_cap: AdminCap<BLAST_FUN_DOMAIN>,
     config: launch_config::LaunchConfig,
     runtime_config: runtime_config::RuntimeConfig,
     clock: Clock,
@@ -169,10 +165,8 @@ fun launch_snapshot_does_not_follow_later_config_updates() {
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let launch = f.new_default_launch(CREATOR);
-        let admin_witness = f.sign_in();
-
-        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &admin_witness, false);
-        f.config.set_trade_fees(&f.package_version, &admin_witness, bps::new(0), bps::new(0));
+        f.config.set_quote_allowed<TEST_QUOTE>(&f.package_version, &listing_admin(), false);
+        f.config.set_trade_fees(&f.package_version, &fee_admin(), bps::new(0), bps::new(0));
 
         launch.assert_snapshot();
 
@@ -464,7 +458,7 @@ fun intake_rejects_a_ticket_whose_decimals_are_no_longer_allowed() {
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let ticket = f.new_ticket_with_decimals(CREATOR, false, 6);
-        let admin_witness = f.sign_in();
+        let admin_witness = listing_admin();
 
         f.config.set_meme_decimals_allowed(&f.package_version, &admin_witness, 6, false);
 
@@ -521,7 +515,7 @@ fun intake_checks_the_decimals_before_the_symbol_length() {
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let ticket = f.new_ticket_with(CREATOR, false, 6, over_length_symbol());
-        let admin_witness = f.sign_in();
+        let admin_witness = listing_admin();
 
         f.config.set_meme_decimals_allowed(&f.package_version, &admin_witness, 6, false);
 
@@ -1043,7 +1037,7 @@ fun admin_reassigns_claimed_creator_and_the_new_cap_claims_prior_fees() {
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let mut launch = f.take_launch();
-        let admin_witness = f.sign_in();
+        let admin_witness = creator_admin();
         let retired_cap_id = launch.curve_fee_cap_id_for_testing().destroy_some();
 
         launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
@@ -1089,7 +1083,7 @@ fun retired_creator_cap_is_rejected_before_the_empty_fee_ledger_check() {
         let launch = f.new_default_launch(CREATOR);
         let mut launch = f.open_launch(launch);
         let (curve_fee_cap, metadata_cap) = f.claim(&mut launch);
-        let admin_witness = f.sign_in();
+        let admin_witness = creator_admin();
 
         launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
         let (meme_fees, quote_fees) = launch.claim_creator_fees(
@@ -1115,7 +1109,7 @@ fun admin_reassigns_an_unclaimed_creator_and_removes_the_pending_claim() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let launch = f.new_default_launch(CREATOR);
         let mut launch = f.open_launch(launch);
-        let admin_witness = f.sign_in();
+        let admin_witness = creator_admin();
 
         launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
 
@@ -1141,7 +1135,7 @@ fun reassignment_prevents_the_original_recipient_from_claiming() {
     fixture.next_tx!(CREATOR, |f| {
         let launch = f.new_default_launch(CREATOR);
         let mut launch = f.open_launch(launch);
-        let admin_witness = f.sign_in();
+        let admin_witness = creator_admin();
 
         launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
         let (curve_fee_cap, metadata_cap) = f.claim(&mut launch);
@@ -1161,72 +1155,10 @@ fun reassignment_rejects_the_zero_recipient() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         let launch = f.new_default_launch(CREATOR);
         let mut launch = f.open_launch(launch);
-        let admin_witness = f.sign_in();
+        let admin_witness = creator_admin();
 
         launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, @0x0, f.ctx!());
 
-        destroy(launch);
-    });
-
-    fixture.end();
-}
-
-#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
-fun reassignment_requires_the_creator_admin_role() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let launch = f.new_default_launch(CREATOR);
-        let mut launch = f.open_launch(launch);
-        let (authority, admin_cap) = f.new_admin_without(blast_fun_domain::creator_admin_role());
-        let admin_witness = authority.sign_in(&admin_cap);
-
-        launch.reassign_curve_fee_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
-
-        destroy(authority);
-        destroy(admin_cap);
-        destroy(launch);
-    });
-
-    fixture.end();
-}
-
-#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
-fun metadata_reassignment_requires_the_creator_admin_role() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let launch = f.new_default_launch(CREATOR);
-        let mut launch = f.open_launch(launch);
-        let (authority, admin_cap) = f.new_admin_without(blast_fun_domain::creator_admin_role());
-        let admin_witness = authority.sign_in(&admin_cap);
-
-        launch.reassign_metadata_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
-
-        destroy(authority);
-        destroy(admin_cap);
-        destroy(launch);
-    });
-
-    fixture.end();
-}
-
-#[test, expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
-fun claiming_protocol_fees_requires_the_treasury_admin_role() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let launch = f.new_default_launch(CREATOR);
-        let mut launch = f.open_launch(launch);
-        let (authority, admin_cap) = f.new_admin_without(blast_fun_domain::treasury_admin_role());
-        let admin_witness = authority.sign_in(&admin_cap);
-
-        let (meme, quote) = launch.claim_protocol_fees(&f.package_version, &admin_witness, f.ctx!());
-
-        destroy(meme);
-        destroy(quote);
-        destroy(authority);
-        destroy(admin_cap);
         destroy(launch);
     });
 
@@ -1331,7 +1263,7 @@ fun retired_metadata_cap_is_rejected_before_unchanged_metadata() {
         let mut launch = f.take_launch();
         let mut currency = f.take_currency();
         let (curve_fee_cap, metadata_cap) = f.claim(&mut launch);
-        let admin_witness = f.sign_in();
+        let admin_witness = creator_admin();
 
         launch.reassign_metadata_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
         launch.set_name(
@@ -1545,7 +1477,7 @@ fun zero_launch_trade_fees_sell_all_bought_meme_without_fee_balances() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
+        let admin_witness = fee_admin();
         f.config.set_trade_fees(&f.package_version, &admin_witness, bps::new(0), bps::new(0));
         let launch = f.new_default_launch(CREATOR);
         let mut launch = f.open_launch(launch);
@@ -1570,10 +1502,9 @@ fun live_protocol_share_routes_and_claims_launch_trade_fees() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        let admin_witness = f.sign_in();
         f
             .runtime_config
-            .set_protocol_fee_share(&f.package_version, &admin_witness, bps::new(2_500));
+            .set_protocol_fee_share(&f.package_version, &fee_admin(), bps::new(2_500));
         let launch = f.new_default_launch(CREATOR);
         let mut launch = f.open_launch(launch);
         let (meme, refund) = f.buy(&mut launch, 10_000_000, 1);
@@ -1587,7 +1518,7 @@ fun live_protocol_share_routes_and_claims_launch_trade_fees() {
 
         let (meme_fees, quote_fees) = launch.claim_protocol_fees(
             &f.package_version,
-            &admin_witness,
+            &treasury_admin(),
             f.ctx!(),
         );
 
@@ -2082,14 +2013,13 @@ fun stale_package_version_aborts_migration_before_lifecycle_and_witness_validati
 /// The fixture with Blast's protocol allocation set.
 fun start(): LaunchFixture {
     let mut fixture = start_unallocated();
-    let admin_witness = fixture.sign_in();
     let f = &mut fixture;
 
     f
         .config
         .set_protocol_allocation(
             &f.package_version,
-            &admin_witness,
+            &treasury_admin(),
             BLAST,
             bps::new(PROTOCOL_MEME_BPS),
             bps::new(PROTOCOL_QUOTE_BPS),
@@ -2102,36 +2032,22 @@ fun start(): LaunchFixture {
 fun start_unallocated(): LaunchFixture {
     let mut scenario = test_scenario::begin(@0x0);
     let package_version = package_version::new_for_testing(scenario.ctx());
-    let (super_admin_cap, mut authority) = domain_fixture::new_authority(scenario.ctx());
-    authority.grant_admin(
-        &super_admin_cap,
-        blast_fun_domain::creator_admin_role()
-            | blast_fun_domain::treasury_admin_role()
-            | blast_fun_domain::fee_admin_role()
-            | blast_fun_domain::listing_admin_role()
-            | blast_fun_domain::adapter_admin_role(),
-        PROTOCOL_ADMIN,
-        scenario.ctx(),
-    );
-    destroy(super_admin_cap);
     launch_config::init_for_testing(scenario.ctx());
     let runtime_config = runtime_config::new_disabled_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
 
     scenario.next_tx(PROTOCOL_ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
     let mut config = scenario.take_shared<launch_config::LaunchConfig>();
-    let admin_witness = authority.sign_in(&admin_cap);
 
-    config.set_quote_allowed<TEST_QUOTE>(&package_version, &admin_witness, true);
+    config.set_quote_allowed<TEST_QUOTE>(&package_version, &listing_admin(), true);
     config.set_migration_witness_allowed<TEST_MIGRATION_WITNESS>(
         &package_version,
-        &admin_witness,
+        &blast_acl::witness_for_testing<AdapterAdmin>(),
         true,
     );
     config.set_trade_fees(
         &package_version,
-        &admin_witness,
+        &fee_admin(),
         bps::new(QUOTE_FEE_BPS),
         bps::new(MEME_FEE_BPS),
     );
@@ -2139,8 +2055,6 @@ fun start_unallocated(): LaunchFixture {
     LaunchFixture {
         scenario,
         package_version,
-        authority,
-        admin_cap,
         config,
         runtime_config,
         clock,
@@ -2164,27 +2078,20 @@ macro fun launch_ctx($fixture: &mut LaunchFixture): &mut TxContext {
     fixture.scenario.ctx()
 }
 
-fun launch_sign_in(self: &LaunchFixture): AdminWitness<BLAST_FUN_DOMAIN> {
-    self.authority.sign_in(&self.admin_cap)
+fun creator_admin(): AdminWitness<CreatorAdmin> {
+    blast_acl::witness_for_testing()
 }
 
-/// Live administration holding every role except `role`.
-fun new_admin_without(
-    self: &mut LaunchFixture,
-    role: u64,
-): (Authority<BLAST_FUN_DOMAIN>, AdminCap<BLAST_FUN_DOMAIN>) {
-    let (super_admin_cap, mut authority) = domain_fixture::new_authority(self.scenario.ctx());
-    authority.grant_admin(
-        &super_admin_cap,
-        role.bitwise_not(),
-        ROLE_LESS_ADMIN,
-        self.scenario.ctx(),
-    );
-    destroy(super_admin_cap);
-    self.scenario.next_tx(ROLE_LESS_ADMIN);
-    let admin_cap = self.scenario.take_from_sender<AdminCap<BLAST_FUN_DOMAIN>>();
+fun treasury_admin(): AdminWitness<TreasuryAdmin> {
+    blast_acl::witness_for_testing()
+}
 
-    (authority, admin_cap)
+fun fee_admin(): AdminWitness<FeeAdmin> {
+    blast_acl::witness_for_testing()
+}
+
+fun listing_admin(): AdminWitness<ListingAdmin> {
+    blast_acl::witness_for_testing()
 }
 
 fun launch_end(self: LaunchFixture) {
@@ -2629,16 +2536,15 @@ fun u64_bytes(value: u64): vector<u8> {
 
 // === Imports ===
 
-use blast_admin::acl::{Authority, AdminCap, AdminWitness};
+use blast_admin::blast_acl::{Self, AdminWitness};
 
 use blast_fun::{
     allocation::{Self, AllocationPlan, FeeSplit},
     blast_events::Event,
-    blast_fun_domain::{Self, BLAST_FUN_DOMAIN},
+    blast_fun_domain::{AdapterAdmin, CreatorAdmin, FeeAdmin, ListingAdmin, TreasuryAdmin},
     bps,
     creator_authority::{Self, BlastMetadataCap, CurveFeeCap},
     curve,
-    domain_fixture,
     events,
     launch::{Self, Launch, LaunchInitializer},
     launch_config,
@@ -2664,8 +2570,6 @@ use fun launch_ctx as LaunchFixture.ctx;
 use fun launch_end as LaunchFixture.end;
 
 use fun launch_next_tx as LaunchFixture.next_tx;
-
-use fun launch_sign_in as LaunchFixture.sign_in;
 
 use fun launch_new_ticket as LaunchFixture.new_ticket;
 
