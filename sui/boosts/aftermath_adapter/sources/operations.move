@@ -172,6 +172,102 @@ public fun redeem<Product, Collateral>(
     cash
 }
 
+/// Adds `partner` to the Blast partners Boosts accepts, at once. Adding a
+/// partner whose removal is pending cancels the removal.
+public fun add_partner(
+    protocol: &mut Protocol,
+    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
+    partner: &Partner,
+) {
+    protocol.assert_current();
+    admin_witness.assert_role(domain::risk_admin_role());
+
+    let partner_id = object::id(partner);
+    protocol.add_partner(partner_id);
+
+    events::partner_added(partner_id);
+}
+
+/// Removes `partner` from the Blast partners Boosts accepts, with the same
+/// notice Blast gives for every change to a partner: it stays accepted, and
+/// paid, for `blast_partners::delay_ms()`.
+public fun remove_partner(
+    protocol: &mut Protocol,
+    admin_witness: &AdminWitness<BLAST_BOOSTS_CORE>,
+    partner: &Partner,
+    clock: &Clock,
+) {
+    protocol.assert_current();
+    admin_witness.assert_role(domain::risk_admin_role());
+
+    let partner_id = object::id(partner);
+    let now_ms = clock.timestamp_ms();
+    let accepted_until_ms = now_ms + partners::delay_ms();
+    protocol.remove_partner(partner_id, now_ms, accepted_until_ms);
+
+    events::partner_removed(partner_id, accepted_until_ms);
+}
+
+/// `mint`, naming a Blast partner Boosts accepts: the partner is paid its share
+/// of the admin fee this mint retained. Holders' shares and the reserve are
+/// exactly `mint`'s.
+public fun mint_with_partner<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>,
+    protocol: &Protocol,
+    partner: &Partner,
+    account: &mut Account<Collateral>,
+    registry: &Registry,
+    clearing_house: ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    cash: Coin<Collateral>,
+    minimum_shares: u64,
+    deadline_ms: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): Coin<BlastBoost<Product>> {
+    protocol.assert_partner(object::id(partner), clock.timestamp_ms());
+    let admin_cash_before = vault.admin_cash_balance<_, Collateral>();
+
+    let shares = mint(
+        vault, protocol, account, registry, clearing_house, base_oracle, collateral_oracle,
+        cash, minimum_shares, deadline_ms, clock, ctx,
+    );
+    pay_partner(vault, partner, admin_cash_before, clock);
+
+    shares
+}
+
+/// `redeem`, naming a Blast partner Boosts accepts: the partner is paid its
+/// share of the admin fee this redemption retained. The redeemer's payout is
+/// exactly `redeem`'s.
+public fun redeem_with_partner<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>,
+    protocol: &Protocol,
+    partner: &Partner,
+    account: &mut Account<Collateral>,
+    registry: &Registry,
+    clearing_house: ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    shares: Coin<BlastBoost<Product>>,
+    minimum_collateral: u64,
+    deadline_ms: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): Coin<Collateral> {
+    protocol.assert_partner(object::id(partner), clock.timestamp_ms());
+    let admin_cash_before = vault.admin_cash_balance<_, Collateral>();
+
+    let cash = redeem(
+        vault, protocol, account, registry, clearing_house, base_oracle, collateral_oracle,
+        shares, minimum_collateral, deadline_ms, clock, ctx,
+    );
+    pay_partner(vault, partner, admin_cash_before, clock);
+
+    cash
+}
+
 /// Permissionless, policy-sized maintenance with no caller reward or trade parameters.
 ///
 /// Holders pay its fills, so it runs only at the reference gas price.
@@ -527,7 +623,7 @@ fun fund_mint<Product, Collateral>(
     before: &Checkpoint,
     ctx: &mut TxContext,
 ): Checkpoint {
-    vault.retain_admin_cash(cash.split(admin_fee, ctx));
+    vault.retain_admin_cash(cash.split(admin_fee, ctx).into_balance());
     let venue_deposit = cash.value();
     vault.venue().deposit(account, registry, cash);
     vault.venue().allocate(account, clearing_house, venue_deposit);
@@ -611,7 +707,7 @@ fun complete_redemption<Product, Collateral>(
 ): Coin<Collateral> {
     assert!(cash.value() == net + admin, blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
 
-    vault.retain_admin_cash(cash.split(admin, ctx));
+    vault.retain_admin_cash(cash.split(admin, ctx).into_balance());
     let burned = vault.burn_redeemed_shares(shares);
     vault.venue_mut().replace_checkpoint(checkpoint);
 
@@ -621,6 +717,25 @@ fun complete_redemption<Product, Collateral>(
     );
 
     cash
+}
+
+/// Pays `partner` its share of the admin fee one mint or redeem just retained,
+/// the admin cash added since `admin_cash_before`, keeps the rest as Blast's
+/// admin cash, and records the payment against the vault. The reserve fee is
+/// never part of it.
+fun pay_partner<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>,
+    partner: &Partner,
+    admin_cash_before: u64,
+    clock: &Clock,
+) {
+    let admin_fee = vault.admin_cash_balance<_, Collateral>() - admin_cash_before;
+
+    let mut fee = vault.take_admin_cash(admin_fee);
+    let partner_fee = partner.pay(&mut fee, clock);
+    vault.retain_admin_cash(fee);
+
+    events::partner_fee_paid<Product>(vault.id(), object::id(partner), admin_fee, partner_fee);
 }
 
 /// Advances the sole economic checkpoint only after sealed maintenance has succeeded.
@@ -944,6 +1059,16 @@ public fun complete_redemption_for_testing<Product, Collateral>(
 }
 
 #[test_only]
+public fun pay_partner_for_testing<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>,
+    partner: &Partner,
+    admin_cash_before: u64,
+    clock: &Clock,
+) {
+    pay_partner(vault, partner, admin_cash_before, clock);
+}
+
+#[test_only]
 public fun complete_rebalance_for_testing<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     plan: RebalancePlan<Product>,
@@ -1047,6 +1172,8 @@ public fun complete_finalization_for_testing<Product, Collateral>(
 
 use authority_cap::authority::{ADMIN, AuthorityCap};
 
+use blast_admin::acl::AdminWitness;
+
 use blast_boosts_aftermath::{
     blast_boost::BlastBoost,
     checkpoint::{Checkpoint, CheckpointChange},
@@ -1083,10 +1210,13 @@ use fun snapshot::capture as Binding.capture;
 use fun snapshot::capture_checkpoint as Binding.capture_checkpoint;
 
 use blast_boosts_core::{
+    blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
     observation::{Self, PositionObservation},
     policy::{Self, PositionSide},
     state::{ActivePosition, Issuance, MintPlan, RebalancePlan, RedemptionPlan},
 };
+
+use blast_partners::blast_partners::{Self as partners, Partner};
 
 use ifixed::ifixed;
 

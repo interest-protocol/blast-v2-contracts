@@ -21,12 +21,13 @@ venue interfaces still follow their upstream ABI.
 Use one declaration order across first-party Move sources and tests, omitting
 empty sections: Constants, Package Constants, Errors, Public Types, Private
 Initialization, Public Functions, Package Functions, Private Functions,
-Test-Only Types, Test-Only Functions, Tests, Test Helpers, Imports. Use
-`// === Title ===` headings. Keep imports and receiver aliases together at the
-end, overriding the generic skill's import placement. Keep domain subdivisions
-as ordinary comments within these sections.
+Test-Only Types, Test-Only Functions, Tests, Test Helpers, Imports. A module
+may instead put Constants, Package Constants and Errors last, just before
+Imports (`blast_partners` does). Use `// === Title ===` headings. Keep imports
+and receiver aliases together at the end, overriding the generic skill's import
+placement. Keep domain subdivisions as ordinary comments within these sections.
 
-Group constants before functions. In error registries, put all `#[test_only]`
+Group all constants together. In error registries, put all `#[test_only]`
 constants first, then all `macro public(package) fun` declarations in matching
 numeric order. Keep invariant-owned local errors in their owning module.
 Run `python3 scripts/check_move_style.py` after editing Move files.

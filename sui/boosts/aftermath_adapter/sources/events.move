@@ -91,6 +91,34 @@ public struct Redeemed<phantom Product> has copy, drop {
     checkpoint: Checkpoint,
 }
 
+// --- Partners ---
+
+/// Emitted after a mint or redeem that named a partner, including a partner
+/// paid nothing because its share is zero or not yet in force. It follows that
+/// operation's `Minted` or `Redeemed` in the same transaction, whose
+/// `admin_cash_after` still includes `partner_fee`: Blast's admin cash is that
+/// minus `partner_fee`. `partner_fee` left `admin_fee`, the admin fee the
+/// operation retained.
+public struct PartnerFeePaid<phantom Product> has copy, drop {
+    vault_id: ID,
+    partner_id: ID,
+    admin_fee: u64,
+    partner_fee: u64,
+}
+
+/// Blast added a partner to the ones Boosts accepts, at once, or cancelled its
+/// pending removal.
+public struct PartnerAdded has copy, drop {
+    partner_id: ID,
+}
+
+/// Blast removed a partner: Boosts accepts it until `accepted_until_ms`, after
+/// which a mint or redeem that names it aborts.
+public struct PartnerRemoved has copy, drop {
+    partner_id: ID,
+    accepted_until_ms: u64,
+}
+
 // --- Rebalance ---
 
 /// Completed maintenance with actual equity/exposure effects and unchanged allocations.
@@ -340,6 +368,25 @@ public(package) fun redeemed<Product>(
     });
 }
 
+// --- Partners ---
+
+public(package) fun partner_fee_paid<Product>(
+    vault_id: ID,
+    partner_id: ID,
+    admin_fee: u64,
+    partner_fee: u64,
+) {
+    emit_event(PartnerFeePaid<Product> { vault_id, partner_id, admin_fee, partner_fee });
+}
+
+public(package) fun partner_added(partner_id: ID) {
+    emit_event(PartnerAdded { partner_id });
+}
+
+public(package) fun partner_removed(partner_id: ID, accepted_until_ms: u64) {
+    emit_event(PartnerRemoved { partner_id, accepted_until_ms });
+}
+
 // --- Rebalance ---
 
 /// The signed equity delta is the actual net execution effect at the fixed oracle pair.
@@ -573,6 +620,21 @@ public fun minted_amounts<Product>(self: &Minted<Product>): (u64, u64, u64, u64,
 #[test_only]
 public fun redeemed_checkpoint_fields<Product>(self: &Redeemed<Product>): (ID, Checkpoint) {
     (self.vault_id, self.checkpoint)
+}
+
+#[test_only]
+public fun partner_fee_paid_fields<Product>(self: &PartnerFeePaid<Product>): (ID, ID, u64, u64) {
+    (self.vault_id, self.partner_id, self.admin_fee, self.partner_fee)
+}
+
+#[test_only]
+public fun partner_added_id(self: &PartnerAdded): ID {
+    self.partner_id
+}
+
+#[test_only]
+public fun partner_removed_fields(self: &PartnerRemoved): (ID, u64) {
+    (self.partner_id, self.accepted_until_ms)
 }
 
 #[test_only]

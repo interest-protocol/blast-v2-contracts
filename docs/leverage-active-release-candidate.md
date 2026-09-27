@@ -75,7 +75,11 @@ are not BCS TransactionData: resolving live objects and running the generated un
 serialization command belong to the authorized rehearsal and remain unrun.
 
 Mint/redeem clients provide a native input coin, minimum output and inclusive
-deadline. They do not provide a fee ceiling: administrators set the live mint
+deadline. A client with a Blast partner code calls `mint_with_partner` or
+`redeem_with_partner` with its `blast_partners::Partner` instead
+([ADR 0095](decisions/0095-partner-codes.md)); a live partnered mint and redeem
+that reads the recipient's address balance, and a deny-listed recipient, remain
+to be rehearsed before release. Clients do not provide a fee ceiling: administrators set the live mint
 and redeem fee rates through `vault::set_fees`, subject to the immutable caps
 fixed at issuance. Clients must read and present those current rates when quoting,
 but execution enforces only the administrator-configured rate, the minimum output

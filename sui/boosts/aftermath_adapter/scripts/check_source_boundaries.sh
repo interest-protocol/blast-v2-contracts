@@ -87,7 +87,8 @@ done
 
 # --- Public surface ---
 # Callers see three modules: vault (issuance, administration, shutdown),
-# operations (the driver) and package_admin (upgrades). Everything else is
+# operations (the driver, and which Blast partners Boosts accepts) and
+# package_admin (upgrades). Everything else is
 # package-private, and no function is an entry point.
 
 for file in "$package_dir"/sources/*.move "$package_dir"/sources/lib/*.move; do
@@ -133,6 +134,20 @@ fi
   || fail "Only operations advances a checkpoint."
 [[ "$(grep -rlE '\.(complete_(mint|redemption|rebalance|donation)|finalize_shutdown)\(' "$package_dir/sources" | tr '\n' ' ')" == "$package_dir/sources/operations.move " ]] \
   || fail "Only operations completes a core plan."
+
+# --- Partner codes (ADR 0095) ---
+# blast_partners pays a partner out of the fee it is handed and knows nothing
+# of Boosts; operations alone hands it Blast's admin fee, and the adapter never
+# sends funds itself.
+
+if grep -q 'blast_boosts' "$package_dir/../../partners/Move.toml"; then
+  fail "blast_partners must never depend on a Boost package."
+fi
+[[ "$(grep -rl '\.pay(' "$package_dir/sources" | tr '\n' ' ')" == "$package_dir/sources/operations.move " ]] \
+  || fail "Only operations pays a partner."
+if grep -rn 'send_funds(' "$package_dir/sources"; then
+  fail "The adapter never sends funds itself; blast_partners pays partners."
+fi
 
 # --- Test seams ---
 # Tests reach production through #[test_only] wrappers under the Test-Only
