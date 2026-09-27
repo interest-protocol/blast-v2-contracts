@@ -22,11 +22,10 @@ verify from that digest that:
 5. the package ID, transaction digest, chain identifier, source commit, and
    source tree are recorded in the release evidence.
 
-Publication also creates the shared Series1 administration domain and delivers
-its root capability to the publishing address. Record that capability's object
-ID with the publication evidence and move it to its intended cold custody before
-granting any routine administrator, because every Series1 adapter authenticates
-against this one authority.
+Publication creates no administration state. Administrators authenticate against
+the singleton Blast ACL: its `SuperAdminCap` holder grants each
+`AdminCap<blast_boosts_core::Role>` to its own holder, and every Series1 adapter
+accepts only these four role types.
 
 Do not publish Series1 with `sui client publish`. Do not split publication and
 `make_immutable` across transactions. A failed or ambiguous verification

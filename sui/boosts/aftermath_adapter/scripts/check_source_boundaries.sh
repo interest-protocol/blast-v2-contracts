@@ -101,8 +101,32 @@ if grep -rnE '\bentry fun ' "$core_dir/sources" "$package_dir/sources"; then
   fail "Boost packages expose no entry functions; every call composes in a PTB."
 fi
 if grep -rnE 'AdapterRoot|AdapterDomain|venue_handoff|struct [A-Za-z0-9_]*AdminCap\b' "$package_dir/sources"; then
-  fail "The adapter must not reintroduce a per-adapter ACL root, handoff layer or AdminCap; administration is the core domain."
+  fail "The adapter must not reintroduce a per-adapter ACL root, handoff layer or AdminCap; administration is the shared ACL."
 fi
+
+# --- Administration roles ---
+# The core declares the four Boosts roles; every adapter witness names one of
+# them. A generic `AdminWitness<Role>` would accept any role and must fail here.
+
+if grep -rnE 'struct (VaultIssuer|RiskAdmin|ShutdownAdmin|UpgradeAdmin)\b' "$package_dir/sources"; then
+  fail "Boosts roles are declared once, in blast_boosts_core::blast_boosts_core."
+fi
+if grep -rnE 'AdminWitness[[:space:]]+as[[:space:]]|[[:space:]]as[[:space:]]+(VaultIssuer|RiskAdmin|ShutdownAdmin|UpgradeAdmin)\b' \
+  "$package_dir/sources"; then
+  fail "Neither AdminWitness nor a Boosts role may be aliased around the role scanner."
+fi
+foreign_admin_witnesses="$(
+  find "$package_dir/sources" -type f -name '*.move' -exec sed -E 's://.*$::' {} + \
+    | grep -oE 'AdminWitness[[:space:]]*<[^>]*>' \
+    | grep -vxE 'AdminWitness<(VaultIssuer|RiskAdmin|ShutdownAdmin|UpgradeAdmin)>' \
+    || true
+)"
+[[ -z "$foreign_admin_witnesses" ]] \
+  || fail "Every administrator witness must name one concrete Boosts role: $foreign_admin_witnesses"
+upgrade_role_gates="$(grep -c '^    _: &AdminWitness<UpgradeAdmin>,$' \
+  "$package_dir/sources/package_admin.move" || true)"
+[[ "${upgrade_role_gates:-0}" -eq 5 ]] \
+  || fail "Every package-custody transition must require the upgrade-admin role."
 
 # --- Currency and custody ownership ---
 
@@ -166,4 +190,4 @@ check_error_registry() {
 check_error_registry "$core_dir/sources/lib/errors.move"
 check_error_registry "$package_dir/sources/lib/errors.move"
 
-printf 'Source boundaries hold: hierarchy, surface, sole driver and test seams.\n'
+printf 'Source boundaries hold: hierarchy, surface, roles, sole driver and test seams.\n'

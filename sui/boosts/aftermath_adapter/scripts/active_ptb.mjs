@@ -90,7 +90,7 @@ export function renderUnsignedPtbArgs(input) {
 
 // Current terminal ABI. These plans are inert descriptions, not authorization or submission.
 export function buildTerminalPlan(input) {
-    const allowed = new Set(['operation', 'adapterPackage', 'corePackage', 'sender', 'network',
+    const allowed = new Set(['operation', 'adapterPackage', 'corePackage', 'adminPackage', 'sender', 'network',
         'productType', 'collateralType', 'objects', 'minimumOutput', 'deadlineMs', 'reason']);
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw Error('input object required');
     for (const key of Object.keys(input)) if (!allowed.has(key)) throw Error(`unexpected field ${key}`);
@@ -99,7 +99,7 @@ export function buildTerminalPlan(input) {
     const adapter = address(input.adapterPackage), product = type(input.productType);
     address(input.sender);
     if (!['testnet', 'mainnet'].includes(input.network)) throw Error('explicit network required');
-    const roles = operation === 'begin_shutdown' ? ['vault', 'protocol', 'authority', 'adminCap']
+    const roles = operation === 'begin_shutdown' ? ['vault', 'protocol', 'acl', 'adminCap']
         : operation === 'redeem_shutdown' ? ['vault', 'protocol', 'inputCoin', 'clock']
         : operation === 'finalize_shutdown' ? [...BOUND_OBJECTS.slice(0, 7), 'clock']
         : [...BOUND_OBJECTS, 'clock'];
@@ -108,12 +108,13 @@ export function buildTerminalPlan(input) {
     for (const key of Object.keys(objects)) if (!roles.includes(key)) throw Error(`unexpected object field ${key}`);
     const args = roles.map((role) => `@${address(objects[role])}`);
     if (operation === 'begin_shutdown') {
-        const core = address(input.corePackage);
+        const core = address(input.corePackage), admin = address(input.adminPackage);
         if (!['emergency', 'observed_venue_change'].includes(input.reason)) throw Error('explicit declared reason required');
         return {commands: [
-            call(`${core}::acl::sign_in`, [], args.slice(2), 'witness'),
+            call(`${admin}::blast_acl::sign_in`, [`${core}::blast_boosts_core::ShutdownAdmin`], args.slice(2), 'witness'),
             call(`${core}::lifecycle::${input.reason}_reason`, [], [], 'reason'),
-            call(`${adapter}::vault::begin_shutdown`, [product], [...args.slice(0, 2), 'witness', 'reason'], null),
+            call(`${adapter}::vault::begin_shutdown`, [product, type(input.collateralType)],
+                [...args.slice(0, 2), 'witness', 'reason'], null),
         ], transfers: []};
     }
     const types = [product, type(input.collateralType)];

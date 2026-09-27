@@ -2,15 +2,16 @@
 
 `blast_boosts_core` is the venue-neutral core shared by Series1
 adapters. It owns policy, lifecycle, accounting, observations, and the Series1
-administration domain; adapters own currencies, venue accounts, package
+administration roles; adapters own currencies, venue accounts, package
 capabilities, and outer `Vault<Product>` objects.
 
-The administration lifecycle itself belongs to the immutable `blast_admin`
-package. This package contributes only the domain one-time witness, its
-governance configuration, and the role meanings every Series1 adapter shares.
+Administration belongs to the singleton Blast ACL in the immutable `blast_admin`
+package. This package declares only the role types every Series1 adapter shares:
+`VaultIssuer`, `RiskAdmin`, `ShutdownAdmin`, and `UpgradeAdmin`
+([ADR 0097](../../../docs/decisions/0097-one-singleton-acl-with-typed-roles.md)).
 Series1 is published immutably, so it holds no operational generation, no
-package custody, and no surviving `UpgradeCap`; an adapter that reuses this
-domain still owns and advances its own generation.
+package custody, and no surviving `UpgradeCap`; an adapter that uses these roles
+still owns and advances its own generation.
 
 Read the accepted Series1 ADRs from the
 [decision index](../../../docs/decisions/README.md) and the

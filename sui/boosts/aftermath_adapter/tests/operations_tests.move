@@ -40,9 +40,6 @@ public struct Fixture {
     scenario: Scenario,
     registry: CoinRegistry,
     protocol: Protocol,
-    authority: Authority<BLAST_BOOSTS_CORE>,
-    super_admin_cap: SuperAdminCap<BLAST_BOOSTS_CORE>,
-    admin_cap: AdminCap<BLAST_BOOSTS_CORE>,
 }
 
 public struct ReplayState has drop {
@@ -98,19 +95,7 @@ fun shutdown_checks_version_before_an_authorized_transition() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     fixture.protocol.set_version_for_testing(3);
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
-    destroy(vault);
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
-fun revoked_shutdown_role_cannot_retire_a_vault() {
-    let mut fixture = start();
-    let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    revoke_role(&mut fixture, domain::shutdown_admin_role());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = shutdown_admin();
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     destroy(vault);
     fixture.end();
@@ -122,7 +107,7 @@ fun expired_terminal_claim_cannot_burn_shares_or_pay_cash() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let shares = vault.mint_shares(5, fixture.ctx!());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = shutdown_admin();
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     finalize_recovered(&mut vault, sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!()));
     let mut clock = sui::clock::create_for_testing(fixture.ctx!());
@@ -182,7 +167,7 @@ fun short_terminal_claims_allow_changed_order_and_split_merge_without_fees() {
     let first = shares.split(3, fixture.ctx!());
     let split = shares.split(1, fixture.ctx!());
     shares.join(split);
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = shutdown_admin();
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     finalize_recovered(&mut vault, sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!()));
     let clock = sui::clock::create_for_testing(fixture.ctx!());
@@ -220,7 +205,7 @@ fun terminal_zero_cash_burns_native_shares_and_returns_composable_zero_coin() {
     let mut shares = vault.mint_shares(5, fixture.ctx!());
     let split = shares.split(2, fixture.ctx!());
     shares.join(split);
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = shutdown_admin();
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     finalize_recovered(&mut vault, sui::coin::zero<Collateral>(fixture.ctx!()));
     let clock = sui::clock::create_for_testing(fixture.ctx!());
@@ -238,7 +223,7 @@ fun terminal_zero_cash_burns_native_shares_and_returns_composable_zero_coin() {
 fun shutdown_is_irreversible_even_for_the_same_authorized_witness() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = shutdown_admin();
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     destroy(vault);
@@ -250,7 +235,7 @@ fun shutdown_is_irreversible_even_for_the_same_authorized_witness() {
 fun finalization_cannot_recover_or_pay_the_seed_funder_twice() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = shutdown_admin();
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     finalize_recovered(&mut vault, sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!()));
     finalize_recovered(&mut vault, sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!()));
@@ -266,7 +251,7 @@ fun completed_direct_settlement_reports_actual_cash_and_no_market_order() {
     let after = checkpoint::checkpoint_for_testing(5, 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 1, false, 1, 1, 1);
     let mut vault = issue_and_activate(&mut fixture, before);
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = shutdown_admin();
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     operations::complete_unwind_for_testing(&mut vault, before, after, 0, option::none());
     let event = events::collect_one<events::UnwindProgress<Product>>(0);
@@ -340,7 +325,7 @@ fun unwind_normalization_rejects_a_base_beyond_u64_atoms() {
 fun insolvent_capture_still_supplies_fresh_close_only_valuation() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = shutdown_admin();
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     let captured = snapshot::captured_health_for_testing(initial_checkpoint(), 0, false, 0, true, true);
     let base = captured.base_price_observation();
@@ -361,7 +346,7 @@ fun terminal_claims_exclude_locked_seed_burn_native_shares_and_give_last_claiman
     let mut shares = vault.mint_shares(5, fixture.ctx!());
     let first = shares.split(2, fixture.ctx!());
     vault.retain_admin_cash(sui::coin::mint_for_testing<Collateral>(7, fixture.ctx!()));
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = shutdown_admin();
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     let recovered = sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!());
     finalize_recovered(&mut vault, recovered);
@@ -396,7 +381,7 @@ fun terminal_claims_exclude_locked_seed_burn_native_shares_and_give_last_claiman
 fun zero_eligible_supply_keeps_all_terminal_cash_as_admin_cash() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = shutdown_admin();
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::observed_venue_change_reason());
     fixture.next_tx!(@0xBEEF, |fixture| {
         let recovered = sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!());
@@ -430,7 +415,7 @@ fun terminal_claim_before_shutdown_rejects_lifecycle_before_missing_cash_field()
 fun finalization_rejects_a_short_actual_coin_even_when_the_venue_is_empty() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = shutdown_admin();
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     let before = checkpoint::checkpoint_for_testing(13, 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, false, 1, 1, 1);
@@ -446,7 +431,7 @@ fun finalization_rejects_a_short_actual_coin_even_when_the_venue_is_empty() {
 fun finalization_rejects_a_short_actual_coin_with_exact_sub_atomic_remainder() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = shutdown_admin();
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     let before = checkpoint::checkpoint_for_testing(12, 1_000_000_000_001, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, false, 1, 1, 1);
@@ -484,7 +469,7 @@ fun event_reducer_reconstructs_active_economics_for_two_product_types() {
 fun zero_admin_withdrawal_fails_before_empty_cash_lookup() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = risk_admin();
     let cash = vault.withdraw_admin_fees<_, Collateral>(&fixture.protocol, &witness, 0, fixture.ctx!());
     destroy(cash);
     destroy(vault);
@@ -507,36 +492,11 @@ fun mismatched_native_shares_fail_before_unwind_validation() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
-fun wrong_role_precedes_zero_admin_withdrawal() {
-    let mut fixture = start();
-    let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    revoke_role(&mut fixture, domain::risk_admin_role());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    let cash = vault.withdraw_admin_fees<_, Collateral>(&fixture.protocol, &witness, 0, fixture.ctx!());
-    destroy(cash);
-    destroy(vault);
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::acl)]
-fun wrong_role_precedes_invalid_fee_settings() {
-    let mut fixture = start();
-    let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    revoke_role(&mut fixture, domain::risk_admin_role());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
-    vault.set_fees(&fixture.protocol, &witness, 10_000, 10_000, 10_001);
-    destroy(vault);
-    fixture.end();
-}
-
-#[test]
 fun native_fee_allocations_preserve_historical_cash_through_redemption_and_rate_change() {
     let mut fixture = start();
     let mut vault = issue_and_activate_with_policy(&mut fixture, initial_checkpoint(),
         fee_capped_vault_policy_for_side(policy::long()));
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = risk_admin();
     vault.set_fees(&fixture.protocol, &witness, 10, 10, 2_000);
     let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 10_000, vault.total_share_supply(), 9_989_000, REFERENCE_TIME_MS);
     assert_eq!(plan.admin_fee(), 2);
@@ -565,7 +525,6 @@ fun native_fee_allocations_preserve_historical_cash_through_redemption_and_rate_
     assert_eq!(vault.admin_cash_balance<_, Collateral>(), 4);
     assert_eq!(events::collect_one<events::Redeemed<Product>>(0).redeemed_amounts(),
         vector[9_989_000, 9_978, 10, 2, 8, 116, 4, 900_000]);
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.set_fees(&fixture.protocol, &witness, 0, 0, 0);
     assert_eq!(vault.admin_cash_balance<_, Collateral>(), 4);
     assert_eq!(vault.state().maintenance_reserve(), 116);
@@ -923,7 +882,7 @@ fun terms_of_a_short_vault_open_with_an_ask_and_reduce_with_a_bid() {
 fun unwind_terms_close_a_long_with_an_ask_at_the_capped_size() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = shutdown_admin();
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     let checkpoint = checkpoint_with_market_imr(0, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
     let captured = snapshot::captured_health_for_testing(checkpoint, 0, false, 0, true, true);
@@ -944,7 +903,7 @@ fun unwind_terms_close_a_long_with_an_ask_at_the_capped_size() {
 fun unwind_terms_reject_a_checkpoint_with_resting_orders() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = shutdown_admin();
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     let resting = checkpoint::checkpoint_for_testing(
         0, ALLOCATED_FIXED, ONE_FIXED, 1, RATE, RATE, RATE, RATE, LOT_SIZE, 0, 0, 1, 0, false, 1, 1, 1,
@@ -1219,7 +1178,7 @@ fun earned_admin_cash_withdraws_without_venue_or_oracle_in_terminal_state() {
     let initial = initial_checkpoint();
     let mut vault = issue_and_activate(&mut fixture, initial);
     vault.retain_admin_cash(sui::coin::mint_for_testing<Collateral>(25, fixture.ctx!()));
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = risk_admin();
     vault.set_unwinding_for_testing();
     let cash = vault.withdraw_admin_fees<_, Collateral>(
         &fixture.protocol, &witness, 10, fixture.ctx!(),
@@ -1243,7 +1202,7 @@ fun earned_admin_cash_withdraws_without_venue_or_oracle_in_terminal_state() {
 fun admin_cash_withdrawal_cannot_spend_the_buffer_when_earnings_are_absent() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = risk_admin();
     let cash = vault.withdraw_admin_fees<_, Collateral>(
         &fixture.protocol, &witness, 1, fixture.ctx!(),
     );
@@ -2059,9 +2018,8 @@ fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
     let funding_before = funding_before_checkpoint(10, true);
     let funding = sync_change(&initial_checkpoint, &funding_before, &funded_checkpoint, ONE_FIXED);
     apply_connected_change(&mut vault, funded_checkpoint, funding);
-    let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
-    vault.set_max_order_notional(&fixture.protocol, &admin_witness, 300);
-    vault.begin_shutdown(&fixture.protocol, &admin_witness, blast_boosts_core::lifecycle::emergency_reason());
+    vault.set_max_order_notional(&fixture.protocol, &risk_admin(), 300);
+    vault.begin_shutdown(&fixture.protocol, &shutdown_admin(), blast_boosts_core::lifecycle::emergency_reason());
 
     let costed_rate = settled_rate(10, true);
     let final_checkpoint = checkpoint_with_market_imr(
@@ -2384,7 +2342,7 @@ fun completed_mint_is_rejected_after_shutdown_begins() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_TIME_MS);
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = shutdown_admin();
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     let shares = operations::complete_mint_for_testing<Product, Collateral>(
         &mut vault, plan, 1_000, active_position(1_998, 3_798), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!(),
@@ -2580,7 +2538,7 @@ fun reduced_checkpoint(): Checkpoint {
 /// An active vault at `checkpoint` whose shutdown has begun.
 fun issue_and_begin_shutdown(fixture: &mut Fixture, checkpoint: Checkpoint): Vault<Product, Collateral> {
     let mut vault = issue_and_activate(fixture, checkpoint);
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = shutdown_admin();
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     vault
 }
@@ -2624,12 +2582,9 @@ fun funding_binding(): Binding {
 }
 
 fun end(fixture: Fixture) {
-    let Fixture { scenario, registry, protocol, authority, super_admin_cap, admin_cap } = fixture;
+    let Fixture { scenario, registry, protocol } = fixture;
     destroy(registry);
     destroy(protocol);
-    destroy(authority);
-    destroy(super_admin_cap);
-    destroy(admin_cap);
     scenario.end();
 }
 
@@ -2639,26 +2594,21 @@ fun start(): Fixture {
         scenario.ctx(),
     );
     let protocol = protocol::new_for_testing(scenario.ctx());
-    let (super_admin_cap, mut authority) =
-        domain_fixture::new_authority(scenario.ctx());
-    authority.grant_admin(
-        &super_admin_cap,
-        domain::vault_issuer_role() | domain::risk_admin_role()
-            | domain::shutdown_admin_role(),
-        ADMIN,
-        scenario.ctx(),
-    );
     scenario.next_tx(ADMIN);
-    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_BOOSTS_CORE>>();
 
-    Fixture {
-        scenario,
-        registry,
-        protocol,
-        authority,
-        super_admin_cap,
-        admin_cap,
-    }
+    Fixture { scenario, registry, protocol }
+}
+
+fun vault_issuer(): AdminWitness<VaultIssuer> {
+    blast_acl::witness_for_testing()
+}
+
+fun risk_admin(): AdminWitness<RiskAdmin> {
+    blast_acl::witness_for_testing()
+}
+
+fun shutdown_admin(): AdminWitness<ShutdownAdmin> {
+    blast_acl::witness_for_testing()
 }
 
 fun issue_and_activate(
@@ -2666,11 +2616,6 @@ fun issue_and_activate(
     checkpoint: Checkpoint,
 ): Vault<Product, Collateral> {
     issue_and_activate_with_policy(fixture, checkpoint, standard_vault_policy())
-}
-
-fun revoke_role(fixture: &mut Fixture, role: u64) {
-    let Fixture { authority, super_admin_cap, admin_cap, .. } = fixture;
-    authority.revoke_role(super_admin_cap, object::id(admin_cap), role);
 }
 
 fun issue_and_activate_with_policy(
@@ -2697,18 +2642,10 @@ fun issue_and_activate_product_with_side<Tag: drop>(
     vault_policy: VaultPolicy,
     side: PositionSide,
 ): Vault<Tag, Collateral> {
-    let Fixture {
-        scenario,
-        registry,
-        protocol,
-        authority,
-        admin_cap,
-        ..
-    } = fixture;
-    let admin_witness = authority.sign_in(admin_cap);
+    let Fixture { scenario, registry, protocol } = fixture;
     let issuance = vault::issue<Tag, Collateral>(
         protocol,
-        &admin_witness,
+        &vault_issuer(),
         registry,
         vault_policy,
         250,
@@ -3081,7 +3018,7 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
     let mut vault = issue_and_activate_product_with_side(&mut fixture, product, initial_checkpoint(), vault_policy, side);
     let mut replay = replay_issued(events::collect_one<events::VaultIssued<Tag>>(0));
     replay_initialized(&mut replay, events::collect_one<events::VaultInitialized<Tag>>(0));
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = risk_admin();
     vault.set_fees(&fixture.protocol, &witness, 10, 10, 2_000);
     replay_fees(&mut replay, events::collect_one<events::FeesUpdated<Tag>>(0));
     let plan = vault.state().prepare_mint(position_observation_for_side(SEED_EQUITY, side), 10_000, vault.total_share_supply(), 9_989_000, REFERENCE_TIME_MS);
@@ -3093,7 +3030,7 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
         0, 0, 0, 1, false, 1, 1, 1);
     apply_connected_change(&mut vault, dirty, checkpoint::unexpected_change());
     replay_drift(&mut replay, events::collect<events::CheckpointDrifted<Tag>>()[0]);
-    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::observed_venue_change_reason());
+    vault.begin_shutdown(&fixture.protocol, &shutdown_admin(), blast_boosts_core::lifecycle::observed_venue_change_reason());
     let shutdown = events::collect_one<events::ShutdownBegun<Tag>>(0);
     assert_eq!(shutdown.shutdown_reason(), blast_boosts_core::lifecycle::observed_venue_change_reason());
     replay_shutdown(&mut replay, shutdown);
@@ -3154,7 +3091,7 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, C
     replay_initialized(&mut replay, events::collect_one<events::VaultInitialized<Tag>>(0));
     assert_replay(&replay, vault);
 
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = risk_admin();
     vault.set_fees(&fixture.protocol, &witness, 10, 10, 2_000);
     replay_fees(&mut replay, events::collect<events::FeesUpdated<Tag>>()[0]);
     assert_replay(&replay, vault);
@@ -3412,13 +3349,12 @@ fun replay_drift<Tag>(replay: &mut ReplayState, event: events::CheckpointDrifted
 
 use authority_cap::authority::{Self, ADMIN as AdminRole};
 
-use blast_admin::acl::{Authority, AdminCap, SuperAdminCap};
+use blast_admin::blast_acl::{Self, AdminWitness};
 
 use blast_boosts_aftermath::{
     blast_boost::BlastBoost,
     checkpoint::{Self, Checkpoint, CheckpointChange},
     constants,
-    domain_fixture,
     errors,
     events,
     operations,
@@ -3432,7 +3368,7 @@ use blast_boosts_aftermath::{
 use blast_boosts_core::{
     observation::{Self, PositionObservation},
     policy::{Self, PositionSide, VaultPolicy},
-    blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
+    blast_boosts_core::{RiskAdmin, ShutdownAdmin, VaultIssuer},
 };
 
 use perpetuals::authority::ACCOUNT;

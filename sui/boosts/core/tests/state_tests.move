@@ -7,8 +7,6 @@ module blast_boosts_core::state_tests;
 
 // === Constants ===
 
-const ROOT: address = @0xA11CE;
-const ISSUER: address = @0x1;
 const MAX_ORDER_NOTIONAL: u64 = 250;
 const REFERENCE_TIME_MS: u64 = 100_000;
 const SEED_RESERVE: u64 = 100_000;
@@ -26,13 +24,6 @@ const HEALTH_SHARE_SUPPLY: u64 = 1_000_000;
 // === Test-Only Types ===
 
 public struct Product {}
-
-public struct Fixture {
-    scenario: Scenario,
-    authority: Authority<BLAST_BOOSTS_CORE>,
-    super_admin_cap: SuperAdminCap<BLAST_BOOSTS_CORE>,
-    admin_cap: AdminCap<BLAST_BOOSTS_CORE>,
-}
 
 public struct ObservationSpec has copy, drop {
     venue_equity: u64,
@@ -52,9 +43,8 @@ public struct ObservationSpec has copy, drop {
 
 #[test]
 fun terminal_claim_quote_conserves_zero_dust_and_maximum_cash_for_both_sides() {
-    let fixture = start(domain::vault_issuer_role());
     vector[policy::long(), policy::short()].do!(|side| {
-        let mut state = initialized_state(&fixture, side);
+        let mut state = initialized_state(side);
         state.begin_shutdown();
         assert_eq!(state.finalize_shutdown(7, 2), 5);
         assert_eq!(state.shutdown_claim_quote(13, 7, 2, 2, 5), 5);
@@ -64,61 +54,51 @@ fun terminal_claim_quote_conserves_zero_dust_and_maximum_cash_for_both_sides() {
         assert_eq!(state.shutdown_claim_quote(maximum, maximum, 0, maximum, maximum), maximum);
         state.destroy_for_testing();
     });
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EZeroNetPayout, location = blast_boosts_core::state)]
 fun terminal_partial_dust_requires_combining_native_shares() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.begin_shutdown();
     state.finalize_shutdown(7, 2);
     state.shutdown_claim_quote(1, 7, 2, 1, 0);
     destroy(state);
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::ERedemptionOutputBelowMinimum, location = blast_boosts_core::state)]
 fun terminal_zero_pool_requires_explicit_zero_minimum() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::short());
+    let mut state = initialized_state(policy::short());
     state.begin_shutdown();
     state.finalize_shutdown(7, 2);
     state.shutdown_claim_quote(0, 7, 2, 5, 1);
     destroy(state);
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EInvalidShareAmount, location = blast_boosts_core::state)]
 fun terminal_claim_cannot_include_locked_seed() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.begin_shutdown();
     state.finalize_shutdown(7, 2);
     state.shutdown_claim_quote(13, 7, 2, 6, 0);
     destroy(state);
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EInvalidShareSupply, location = blast_boosts_core::state)]
 fun terminal_supply_below_locked_seed_fails_closed() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.begin_shutdown();
     state.finalize_shutdown(1, 2);
     destroy(state);
-    fixture.end();
 }
 
 #[test]
 fun unwind_uses_the_frozen_emergency_bound_without_a_nav_input_for_both_sides() {
-    let fixture = start(domain::vault_issuer_role());
     vector[policy::long(), policy::short()].do!(|side| {
-        let mut state = initialized_state(&fixture, side);
+        let mut state = initialized_state(side);
         state.begin_shutdown();
         let (actual_side, max_order_base, base_price, collateral_price) = state.unwind_constraints(
             observation::new_price(1_000_000_000, 0, REFERENCE_TIME_MS),
@@ -133,106 +113,88 @@ fun unwind_uses_the_frozen_emergency_bound_without_a_nav_input_for_both_sides() 
         state.assert_execution(true, 1_000_000_000, 950_000_000);
         state.destroy_for_testing();
     });
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EStalePrice, location = blast_boosts_core::policy)]
 fun ordinary_unwind_never_falls_back_to_a_stale_price() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::short());
+    let mut state = initialized_state(policy::short());
     state.begin_shutdown();
     state.unwind_constraints(observation::new_price(1_000_000_000, 0, 0),
         observation::new_price(1_000_000_000, 0, 0), LOT_SIZE, REFERENCE_TIME_MS);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun settled_cash_cannot_reopen_a_funding_buffer() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.begin_shutdown();
     state.finalize_shutdown(5, 2);
     state.settle_funding(observation::funding_credit(1));
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EVenueFeeUnusable, location = blast_boosts_core::state)]
 fun invalid_rebalance_fee_precedes_invalid_observation() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::long());
+    let state = initialized_state(policy::long());
     let invalid = standard_observation(policy::long()).with_observed_side(policy::short());
     destroy(state.prepare_rebalance(invalid.into_position_observation(), 10_001, REFERENCE_TIME_MS));
     destroy(state);
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EMintOutsideRebalanceBand, location = blast_boosts_core::state)]
 fun mint_outside_band_precedes_deposit_arithmetic() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::long());
+    let state = initialized_state(policy::long());
     let plan = state.prepare_mint(standard_observation(policy::long()).with_notional(1_000_000).into_position_observation(), 0, 1_000_000, 1, REFERENCE_TIME_MS);
     destroy(plan);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EActiveFillIncomplete, location = blast_boosts_core::state)]
 fun mint_completion_rejects_missing_attributable_fill() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     let plan = state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 1_000_000, 1_000_000, 1, REFERENCE_TIME_MS);
     state.complete_mint(plan, standard_observation(policy::long()).into_position_observation(), REFERENCE_TIME_MS);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::ERedemptionOutputBelowMinimum, location = blast_boosts_core::state)]
 fun redemption_rejects_output_one_above_net() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     let before = standard_observation(policy::long());
     let plan = state.prepare_redemption(before.into_position_observation(), 500_000, 1_000_000, 499_501, REFERENCE_TIME_MS);
     state.complete_redemption(plan, before.with_position_base(1_000_000_000).into_position_observation(), REFERENCE_TIME_MS);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::ESharesOutBelowMinimum, location = blast_boosts_core::accounting_math)]
 fun mint_amount_supply_swap_cannot_satisfy_the_original_minimum() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     let before = standard_observation(policy::long());
     let plan = state.prepare_mint(before.into_position_observation(), 1_000_000, 500_000, 600_000, REFERENCE_TIME_MS);
     state.complete_mint(plan, before.with_venue_equity(2_098_000).with_position_base(3_998_000_000).into_position_observation(), REFERENCE_TIME_MS);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EInvalidShareAmount, location = blast_boosts_core::accounting_math)]
 fun redemption_shares_supply_swap_is_rejected() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::long());
+    let state = initialized_state(policy::long());
     let plan = state.prepare_redemption(standard_observation(policy::long()).into_position_observation(), 1_000_000, 500_000, 1, REFERENCE_TIME_MS);
     destroy(plan);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EInvalidNavCap, location = blast_boosts_core::policy)]
 fun issuance_rejects_a_zero_nav_cap() {
-    let fixture = start(domain::vault_issuer_role());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = vault_issuer();
     destroy(state::issue<Product>(&witness, vault_policy(policy::long()), 2_000_000, 0, 9, 6));
     abort
 }
@@ -240,8 +202,7 @@ fun issuance_rejects_a_zero_nav_cap() {
 #[test]
 #[expected_failure(abort_code = errors::EInvalidNavCap, location = blast_boosts_core::policy)]
 fun issuance_rejects_a_nav_cap_whose_max_leverage_notional_overflows() {
-    let fixture = start(domain::vault_issuer_role());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = vault_issuer();
     destroy(state::issue<Product>(&witness, vault_policy(policy::long()), 2_000_000, std::u64::max_value!(), 9, 6));
     abort
 }
@@ -249,16 +210,14 @@ fun issuance_rejects_a_nav_cap_whose_max_leverage_notional_overflows() {
 #[test]
 #[expected_failure(abort_code = errors::EInvalidAssetDecimals, location = blast_boosts_core::state)]
 fun issuance_rejects_asset_decimals_above_the_maximum() {
-    let fixture = start(domain::vault_issuer_role());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = vault_issuer();
     destroy(state::issue<Product>(&witness, vault_policy(policy::long()), 2_000_000, NAV_CAP, 19, 6));
     abort
 }
 
 #[test]
 fun nav_cap_setter_replaces_the_initial_cap_and_returns_the_previous_one() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     assert_eq!(state.nav_cap_for_testing(), NAV_CAP);
     assert!(state.is_within_nav_cap_for_testing(NAV_CAP));
     assert!(!state.is_within_nav_cap_for_testing(NAV_CAP + 1));
@@ -268,14 +227,12 @@ fun nav_cap_setter_replaces_the_initial_cap_and_returns_the_previous_one() {
     assert_eq!(state.nav_cap_for_testing(), NAV_CAP / 2);
     assert!(!state.is_within_nav_cap_for_testing(NAV_CAP / 2 + 1));
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::ENavCapUnchanged, location = blast_boosts_core::state)]
 fun nav_cap_setter_rejects_an_unchanged_cap() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.set_nav_cap(NAV_CAP);
     abort
 }
@@ -283,8 +240,7 @@ fun nav_cap_setter_rejects_an_unchanged_cap() {
 #[test]
 #[expected_failure(abort_code = errors::EInvalidNavCap, location = blast_boosts_core::policy)]
 fun nav_cap_setter_rejects_zero() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.set_nav_cap(0);
     abort
 }
@@ -292,16 +248,14 @@ fun nav_cap_setter_rejects_zero() {
 #[test]
 #[expected_failure(abort_code = errors::EInvalidNavCap, location = blast_boosts_core::policy)]
 fun nav_cap_setter_rejects_a_cap_whose_max_leverage_notional_overflows() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.set_nav_cap(std::u64::max_value!());
     abort
 }
 
 #[test]
 fun live_fee_setter_accepts_each_exact_immutable_cap() {
-    let fixture = start(domain::vault_issuer_role());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = vault_issuer();
     let issuance: Issuance<Product> = state::issue(
         &witness, fee_capped_vault_policy(100, 200, 3_000), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6,
     );
@@ -310,15 +264,13 @@ fun live_fee_setter_accepts_each_exact_immutable_cap() {
     let (mint, redeem, admin) = state.fee_settings();
     assert_eq!(vector[mint, redeem, admin], vector[100, 200, 3_000]);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 fun active_mint_and_redemption_are_generic_for_long_and_short_2x_4x_6x() {
-    let fixture = start(domain::vault_issuer_role());
     vector[20_000, 40_000, 60_000].do!(|target| {
         vector[policy::long(), policy::short()].do!(|side| {
-            let witness = fixture.authority.sign_in(&fixture.admin_cap);
+            let witness = vault_issuer();
             let vault_policy = policy::new_vault_policy(
                 side, policy::new_rebalance_policy(target - 2_000, target, target + 2_000, target + 10_000, 100, 500, 10),
                 policy::new_price_policy(30_000, 2_000, 100, 500), 0, 0, 0, 0, 0, 100, MAX_RESERVE_BPS,
@@ -337,68 +289,56 @@ fun active_mint_and_redemption_are_generic_for_long_and_short_2x_4x_6x() {
             state.destroy_for_testing();
         });
     });
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EStalePrice, location = blast_boosts_core::policy)]
 fun active_redemption_rejects_a_stale_price() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::short());
+    let state = initialized_state(policy::short());
     let mut invalid = standard_observation(policy::short());
     invalid.base_publish_time_ms = 0;
     destroy(state.prepare_redemption(invalid.into_position_observation(), 500_000, HEALTH_SHARE_SUPPLY, 1, REFERENCE_TIME_MS));
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EFeeCapExceeded, location = blast_boosts_core::policy)]
 fun fee_update_cannot_raise_the_immutable_cap() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.set_fees(11, 10, 0);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EFeeSettingsUnchanged, location = blast_boosts_core::state)]
 fun fee_update_rejects_an_unchanged_tuple() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.set_fees(10, 10, 0);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::ENonpositiveContribution, location = blast_boosts_core::state)]
 fun mint_rejects_input_consumed_by_rounded_fee_before_sizing_exposure() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::long());
+    let state = initialized_state(policy::long());
     destroy(state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 1, HEALTH_SHARE_SUPPLY, 0, REFERENCE_TIME_MS));
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 fun a_rebalance_plan_reports_whether_it_buys_or_sells() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = rebalance_state(&fixture, policy::long());
+    let state = rebalance_state(policy::long());
     let buying = state.prepare_rebalance(rebalance_observation(1_100_000, 1_000_000, policy::long()), 10, REFERENCE_TIME_MS);
     let selling = state.prepare_rebalance(rebalance_observation(1_100_000, 3_000_000, policy::long()), 10, REFERENCE_TIME_MS);
     assert!(buying.is_increasing() && !selling.is_increasing());
     destroy(buying);
     destroy(selling);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 fun rebalance_increase_reserves_cost_and_keeps_buffer_unchanged() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = rebalance_state(&fixture, policy::long());
+    let state = rebalance_state(policy::long());
     let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 1_000_000, policy::long()), 10, REFERENCE_TIME_MS);
     let order = state.next_rebalance_order(&plan);
     assert_eq!(order.order_base(), 978_452_000);
@@ -414,7 +354,6 @@ fun rebalance_increase_reserves_cost_and_keeps_buffer_unchanged() {
     assert!(increased);
     assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 /// An emergency reduction ends the moment leverage is no longer above the hard
@@ -422,8 +361,7 @@ fun rebalance_increase_reserves_cost_and_keeps_buffer_unchanged() {
 /// revert the orders placed above it.
 #[test]
 fun rebalance_short_emergency_reduction_stops_once_leverage_is_below_the_cap() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = rebalance_state(&fixture, policy::short());
+    let state = rebalance_state(policy::short());
     let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_200_000, policy::short()), 10, REFERENCE_TIME_MS);
     let order = state.next_rebalance_order(&plan);
     assert_eq!(order.order_base(), 1_200_000_000);
@@ -436,7 +374,6 @@ fun rebalance_short_emergency_reduction_stops_once_leverage_is_below_the_cap() {
     state.complete_rebalance(plan);
     assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
@@ -449,59 +386,50 @@ fun rebalance_exact_upper_endpoint_rejects() { rebalance_endpoint(2_600_000); }
 
 #[test]
 fun rebalance_one_rational_atom_below_lower_is_not_hidden_by_report_rounding() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = rebalance_state(&fixture, policy::long());
+    let state = rebalance_state(policy::long());
     let mut plan = state.prepare_rebalance(rebalance_observation(1_100_001, 1_600_001, policy::long()), 10, REFERENCE_TIME_MS);
     let order = state.next_rebalance_order(&plan);
     assert!(order.order_base() > 0 && order.is_increase() && !order.is_emergency());
     state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_100_001, 1_600_002, policy::long()), 1_000, REFERENCE_TIME_MS);
     state.complete_rebalance(plan);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::ERebalanceNoProgress, location = blast_boosts_core::state)]
 fun rebalance_reduction_without_leverage_improvement_rejects() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = rebalance_state(&fixture, policy::long());
+    let state = rebalance_state(policy::long());
     let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_000_000, policy::long()), 10, REFERENCE_TIME_MS);
     let order = state.next_rebalance_order(&plan);
     state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_000_000, 2_700_000, policy::long()), 300_000_000, REFERENCE_TIME_MS);
     state.complete_rebalance(plan);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EActiveLeverageAboveCap, location = blast_boosts_core::state)]
 fun rebalance_increase_rejects_post_cost_target_overshoot() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = rebalance_state(&fixture, policy::long());
+    let state = rebalance_state(policy::long());
     let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 1_000_000, policy::long()), 10, REFERENCE_TIME_MS);
     let order = state.next_rebalance_order(&plan);
     state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_089_225, 1_978_452, policy::long()), 978_452_000, REFERENCE_TIME_MS);
     state.complete_rebalance(plan);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EExecutionOutsideMaxSlippage, location = blast_boosts_core::policy)]
 fun rebalance_hard_threshold_equality_does_not_enable_wide_tolerance() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = rebalance_state(&fixture, policy::long());
+    let state = rebalance_state(policy::long());
     let plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_000_000, policy::long()), 10, REFERENCE_TIME_MS);
     state.assert_execution(state.next_rebalance_order(&plan).is_emergency(), 100, 102);
     state.complete_rebalance(plan);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 fun a_flat_short_product_redeems_without_inventing_a_long_position() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::short());
+    let mut state = initialized_state(policy::short());
     let flat = standard_observation(policy::long())
         .with_position_base(0);
     let plan = state.prepare_redemption(flat.into_position_observation(), 500_000, 1_000_000, 499_500, REFERENCE_TIME_MS);
@@ -510,13 +438,11 @@ fun a_flat_short_product_redeems_without_inventing_a_long_position() {
     assert_eq!(vector[net, admin], vector[499_500, 0]);
     assert_eq!(fee, 500);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 fun redemption_keeps_remaining_nav_and_allocates_its_own_fee() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::short());
+    let mut state = initialized_state(policy::short());
     let plan = state.prepare_redemption(
         standard_observation(policy::short()).into_position_observation(),
         500_000, 1_000_000, 497_502, REFERENCE_TIME_MS,
@@ -536,15 +462,13 @@ fun redemption_keeps_remaining_nav_and_allocates_its_own_fee() {
     assert_eq!(state.maintenance_reserve(), 100_498);
     assert_eq!(final_equity - state.maintenance_reserve(), 500_000);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 /// A fill that raises NAV by more than the deposit net of the fee credits exactly
 /// `deposit - protocol_fee`; the 2,000-unit excess stays with existing holders.
 #[test]
 fun mint_credits_at_most_the_deposit_net_of_fee_when_the_fill_is_favorable() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     let plan = state.prepare_mint(
         standard_observation(policy::long()).into_position_observation(),
         1_000_000,
@@ -567,15 +491,13 @@ fun mint_credits_at_most_the_deposit_net_of_fee_when_the_fill_is_favorable() {
     let nav_after = 2_102_000 - state.maintenance_reserve();
     assert!((nav_after as u128) * (HEALTH_SHARE_SUPPLY as u128) > (SEED_NAV as u128) * ((HEALTH_SHARE_SUPPLY + shares) as u128));
     state.destroy_for_testing();
-    fixture.end();
 }
 
 /// A sell that leaves more NAV than the pre-sell reading pays exactly the
 /// proportional claim; the 2,000-unit gain stays with the remaining holders.
 #[test]
 fun redemption_pays_at_most_the_proportional_claim_when_the_sell_is_favorable() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     let plan = state.prepare_redemption(
         standard_observation(policy::long()).into_position_observation(),
         500_000, 1_000_000, 499_500, REFERENCE_TIME_MS,
@@ -596,13 +518,11 @@ fun redemption_pays_at_most_the_proportional_claim_when_the_sell_is_favorable() 
     // Remaining holders keep 502_000 over 500_000 shares, above the 500_000 proportional keep.
     assert_eq!(final_equity - state.maintenance_reserve(), 502_000);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 fun mint_prices_actual_contribution_after_the_attributable_cost() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     let plan = state.prepare_mint(
         standard_observation(policy::long()).into_position_observation(),
         1_000_000,
@@ -624,13 +544,11 @@ fun mint_prices_actual_contribution_after_the_attributable_cost() {
     assert_eq!(state.maintenance_reserve(), 101_000);
     assert!((1_997_000u128) * 1_000_000 >= 1_000_000u128 * (1_000_000 + shares as u128));
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 fun fee_updates_change_future_allocations_without_relabeling_the_buffer() {
-    let fixture = start(domain::vault_issuer_role());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = vault_issuer();
     let issuance: Issuance<Product> = state::issue(
         &witness, fee_capped_vault_policy(100, 100, 3_000), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6,
     );
@@ -645,23 +563,19 @@ fun fee_updates_change_future_allocations_without_relabeling_the_buffer() {
     assert_eq!(vector[fee, admin, buffer], vector[4_000, 1_200, 2_800]);
     assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 fun an_issuance_reads_the_frozen_side() {
-    let fixture = start(domain::vault_issuer_role());
-    let issuance = issued(&fixture, policy::short());
+    let issuance = issued(policy::short());
 
     assert_eq!(issuance.seed_side(), policy::short());
     destroy(issuance);
-    fixture.end();
 }
 
 #[test]
 fun flat_seed_preflight_returns_authenticated_order_inputs() {
-    let fixture = start(domain::vault_issuer_role());
-    let issuance = issued(&fixture, policy::short());
+    let issuance = issued(policy::short());
     let observation = standard_observation(policy::long()).with_position_base(0).into_position_observation();
 
     let (target_base, max_order_base, seed_position) = issuance.seed_terms(observation, SEED_RESERVE);
@@ -676,18 +590,15 @@ fun flat_seed_preflight_returns_authenticated_order_inputs() {
     assert_eq!(seed_position.base(), 0);
     assert_eq!(seed_position.notional(), 0);
     destroy(issuance);
-    fixture.end();
 }
 
 #[test]
 fun initialization_strict_execution_uses_the_frozen_tolerance() {
-    let fixture = start(domain::vault_issuer_role());
-    let issuance = issued(&fixture, policy::long());
+    let issuance = issued(policy::long());
 
     issuance.assert_seed_execution(1_000_000, 1_010_000);
 
     destroy(issuance);
-    fixture.end();
 }
 
 #[test]
@@ -695,19 +606,16 @@ fun initialization_strict_execution_uses_the_frozen_tolerance() {
     abort_code = errors::EExecutionOutsideMaxSlippage, location = blast_boosts_core::policy,
 )]
 fun initialization_strict_execution_rejects_one_unit_past_tolerance() {
-    let fixture = start(domain::vault_issuer_role());
-    let issuance = issued(&fixture, policy::long());
+    let issuance = issued(policy::long());
 
     issuance.assert_seed_execution(1_000_000, 1_010_001);
 
     destroy(issuance);
-    fixture.end();
 }
 
 #[test]
 fun an_authorized_issuance_activates_into_the_issued_terms() {
-    let fixture = start(domain::vault_issuer_role());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = vault_issuer();
     let expected_policy = standard_vault_policy();
     let (state, _) = activate_with(state::issue<Product>(&witness, expected_policy, MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6), standard_observation(policy::long()), SEED_RESERVE);
 
@@ -717,20 +625,6 @@ fun an_authorized_issuance_activates_into_the_issued_terms() {
     assert_eq!(state.max_order_notional_for_testing(), MAX_ORDER_NOTIONAL);
 
     state.destroy_for_testing();
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_admin::errors::EAdminRoleNotGranted,
-    location = blast_admin::acl,
-)]
-fun issuance_requires_the_vault_issuer_role() {
-    let fixture = start(domain::risk_admin_role());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
-
-    destroy(state::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6));
-    fixture.end();
 }
 
 #[test]
@@ -738,17 +632,14 @@ fun issuance_requires_the_vault_issuer_role() {
     abort_code = errors::EInvalidMaxOrderNotional, location = blast_boosts_core::state,
 )]
 fun max_order_notional_must_be_positive() {
-    let fixture = start(domain::vault_issuer_role());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = vault_issuer();
 
     destroy(state::issue<Product>(&witness, standard_vault_policy(), 0, NAV_CAP, 9, 6));
-    fixture.end();
 }
 
 #[test]
 fun max_order_notional_moves_both_directions_and_returns_the_previous_value() {
-    let fixture = start(domain::vault_issuer_role());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = vault_issuer();
     let (mut state, _) = activate_with(state::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6), standard_observation(policy::long()), SEED_RESERVE);
 
     assert_eq!(state.set_max_order_notional(1), MAX_ORDER_NOTIONAL);
@@ -756,7 +647,6 @@ fun max_order_notional_moves_both_directions_and_returns_the_previous_value() {
     assert_eq!(state.max_order_notional_for_testing(), std::u64::max_value!());
 
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
@@ -765,14 +655,12 @@ fun max_order_notional_moves_both_directions_and_returns_the_previous_value() {
     location = blast_boosts_core::state,
 )]
 fun max_order_notional_rejects_the_current_value() {
-    let fixture = start(domain::vault_issuer_role());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = vault_issuer();
     let (mut state, _) = activate_with(state::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6), standard_observation(policy::long()), SEED_RESERVE);
 
     state.set_max_order_notional(MAX_ORDER_NOTIONAL);
 
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
@@ -780,52 +668,44 @@ fun max_order_notional_rejects_the_current_value() {
     abort_code = errors::EInvalidMaxOrderNotional, location = blast_boosts_core::state,
 )]
 fun max_order_notional_rejects_zero() {
-    let fixture = start(domain::vault_issuer_role());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = vault_issuer();
     let (mut state, _) = activate_with(state::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6), standard_observation(policy::long()), SEED_RESERVE);
 
     state.set_max_order_notional(0);
 
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 fun active_state_begins_shutdown() {
-    let fixture = start(domain::vault_issuer_role());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = vault_issuer();
     let (mut state, _) = activate_with(state::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6), standard_observation(policy::long()), SEED_RESERVE);
 
     state.begin_shutdown();
 
     assert!(state.is_unwinding_for_testing());
     state.destroy_for_testing();
-    fixture.end();
 }
 
 // --- Initialization ---
 
 #[test]
 fun valid_long_seed_activates_and_records_only_the_reserve() {
-    let fixture = start(domain::vault_issuer_role());
-    let (state, seed_nav) = activate_with(issued(&fixture, policy::long()), standard_observation(policy::long()), SEED_RESERVE);
+    let (state, seed_nav) = activate_with(issued(policy::long()), standard_observation(policy::long()), SEED_RESERVE);
 
     assert_eq!(seed_nav, SEED_NAV);
     assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
     assert!(state.is_active_for_testing());
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 fun valid_short_seed_activates() {
-    let fixture = start(domain::vault_issuer_role());
-    let (state, seed_nav) = activate_with(issued(&fixture, policy::short()), standard_observation(policy::short()), SEED_RESERVE);
+    let (state, seed_nav) = activate_with(issued(policy::short()), standard_observation(policy::short()), SEED_RESERVE);
 
     assert_eq!(seed_nav, SEED_NAV);
     assert!(state.is_active_for_testing());
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
@@ -838,33 +718,29 @@ fun an_observation_with_a_partial_lot_cannot_be_built() {
 
 #[test]
 fun initialization_admits_nav_cap_equality() {
-    let fixture = start(domain::vault_issuer_role());
     let spec = standard_observation(policy::long())
         .with_venue_equity(NAV_CAP + SEED_RESERVE)
         .with_notional(2 * NAV_CAP);
 
-    let (state, seed_nav) = activate_with(issued(&fixture, policy::long()), spec, SEED_RESERVE);
+    let (state, seed_nav) = activate_with(issued(policy::long()), spec, SEED_RESERVE);
     assert_eq!(seed_nav, NAV_CAP);
 
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 fun initialization_admits_both_healthy_leverage_boundaries() {
-    let fixture = start(domain::vault_issuer_role());
     let (lower, _) = activate_with(
-        issued(&fixture, policy::long()), standard_observation(policy::long()).with_notional(1_600_000), SEED_RESERVE,
+        issued(policy::long()), standard_observation(policy::long()).with_notional(1_600_000), SEED_RESERVE,
     );
     let (upper, _) = activate_with(
-        issued(&fixture, policy::long()), standard_observation(policy::long()).with_notional(2_600_000), SEED_RESERVE,
+        issued(policy::long()), standard_observation(policy::long()).with_notional(2_600_000), SEED_RESERVE,
     );
 
     assert!(lower.is_active_for_testing());
     assert!(upper.is_active_for_testing());
     lower.destroy_for_testing();
     upper.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
@@ -1153,13 +1029,11 @@ fun initialization_guard_order_checks_leverage_before_minimum_exposure() {
 
 #[test]
 fun an_order_at_the_live_maximum_is_allowed() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::long());
+    let state = initialized_state(policy::long());
 
     state.assert_order_notional_allowed(MAX_ORDER_NOTIONAL);
 
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
@@ -1167,13 +1041,11 @@ fun an_order_at_the_live_maximum_is_allowed() {
     abort_code = errors::EOrderNotionalExceedsMaximum, location = blast_boosts_core::state,
 )]
 fun an_order_one_unit_above_the_live_maximum_is_rejected() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::long());
+    let state = initialized_state(policy::long());
 
     state.assert_order_notional_allowed(MAX_ORDER_NOTIONAL + 1);
 
     state.destroy_for_testing();
-    fixture.end();
 }
 
 // --- Funding Settlement ---
@@ -1228,8 +1100,7 @@ fun the_maximum_funding_cost_cannot_wrap() {
 /// 300_000.
 #[test]
 fun a_credit_repays_the_uncovered_deficit_before_rebuilding_the_reserve() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
 
     let (absorbed, uncovered, restored) = state.settle_funding(observation::funding_cost(150_000));
     assert_eq!(vector[absorbed, uncovered, restored], vector[SEED_RESERVE, 50_000, 0]);
@@ -1251,15 +1122,13 @@ fun a_credit_repays_the_uncovered_deficit_before_rebuilding_the_reserve() {
     assert_eq!(vector[state.maintenance_reserve(), state.uncovered_deficit()], vector[250_000, 0]);
 
     state.destroy_for_testing();
-    fixture.end();
 }
 
 /// Two exhausting costs accumulate one deficit, and an over-repaying credit
 /// splits between NAV and the reserve.
 #[test]
 fun deficits_accumulate_and_an_over_repaying_credit_splits() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
 
     let (absorbed, uncovered, restored) = state.settle_funding(observation::funding_cost(120_000));
     assert_eq!(vector[absorbed, uncovered, restored], vector[SEED_RESERVE, 20_000, 0]);
@@ -1272,7 +1141,6 @@ fun deficits_accumulate_and_an_over_repaying_credit_splits() {
     assert_eq!(vector[state.maintenance_reserve(), state.uncovered_deficit()], vector[15_000, 0]);
 
     state.destroy_for_testing();
-    fixture.end();
 }
 
 // --- Reserve Ceiling ---
@@ -1281,21 +1149,17 @@ fun deficits_accumulate_and_an_over_repaying_credit_splits() {
 #[test]
 #[expected_failure(abort_code = errors::ESeedReserveAboveCap, location = blast_boosts_core::state)]
 fun a_seed_reserve_above_the_ceiling_cannot_activate() {
-    let fixture = start(domain::vault_issuer_role());
-    let (state, _) = activate_with(capped_issuance(&fixture, 400), standard_observation(policy::long()), SEED_RESERVE);
+    let (state, _) = activate_with(capped_issuance(400), standard_observation(policy::long()), SEED_RESERVE);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 /// A seed reserve exactly at the ceiling activates; the ceiling is inclusive.
 #[test]
 fun a_seed_reserve_at_the_ceiling_activates() {
-    let fixture = start(domain::vault_issuer_role());
-    let (state, seed_nav) = activate_with(capped_issuance(&fixture, 500), standard_observation(policy::long()), SEED_RESERVE);
+    let (state, seed_nav) = activate_with(capped_issuance(500), standard_observation(policy::long()), SEED_RESERVE);
     assert_eq!(seed_nav, SEED_NAV);
     assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 /// A redemption that shrinks notional below what the reserve needs releases the
@@ -1303,8 +1167,7 @@ fun a_seed_reserve_at_the_ceiling_activates() {
 /// equity is unchanged because nothing moved, and NAV per share rises.
 #[test]
 fun redemption_releases_reserve_above_the_ceiling_for_the_smaller_position() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = capped_initialized_state(&fixture, 500);
+    let mut state = capped_initialized_state(500);
     let plan = state.prepare_redemption(
         standard_observation(policy::long()).into_position_observation(),
         500_000, 1_000_000, 499_500, REFERENCE_TIME_MS,
@@ -1324,7 +1187,6 @@ fun redemption_releases_reserve_above_the_ceiling_for_the_smaller_position() {
     assert_eq!(state.maintenance_reserve(), 50_000);
     assert_eq!(final_equity - state.maintenance_reserve(), 552_500);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 /// A reserve left above the ceiling by a funding credit is priced as released
@@ -1332,8 +1194,7 @@ fun redemption_releases_reserve_above_the_ceiling_for_the_smaller_position() {
 /// stays with the holders at the checkpoint.
 #[test]
 fun a_mint_prices_shares_after_releasing_reserve_above_the_ceiling() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = capped_initialized_state(&fixture, 500);
+    let mut state = capped_initialized_state(500);
     // Funding credits carry no observation, so the reserve grows past the 100_000 ceiling.
     state.settle_funding(observation::funding_credit(50_000));
     assert_eq!(state.maintenance_reserve(), 150_000);
@@ -1356,33 +1217,28 @@ fun a_mint_prices_shares_after_releasing_reserve_above_the_ceiling() {
     // The fee rebuilds the reserve from the ceiling, not from the stale 150_000.
     assert_eq!(state.maintenance_reserve(), 101_000);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 /// A donation is never rejected: the part above the ceiling counts as NAV.
 #[test]
 fun a_donation_above_the_ceiling_is_accepted_and_the_excess_is_nav() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = capped_initialized_state(&fixture, 500);
+    let mut state = capped_initialized_state(500);
     state.donate(
         standard_observation(policy::long()).with_venue_equity(SEED_VENUE_EQUITY + 70_000).into_position_observation(),
         70_000, REFERENCE_TIME_MS,
     );
     assert_eq!(state.maintenance_reserve(), 100_000);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 /// A flat position has nothing to size the ceiling against and keeps its reserve.
 #[test]
 fun a_flat_position_keeps_the_reserve_for_the_position_that_reopens() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = capped_initialized_state(&fixture, 500);
+    let mut state = capped_initialized_state(500);
     let flat = standard_observation(policy::long()).with_position_base(0);
     state.donate(flat.with_venue_equity(SEED_VENUE_EQUITY + 70_000).into_position_observation(), 70_000, REFERENCE_TIME_MS);
     assert_eq!(state.maintenance_reserve(), 170_000);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 // --- Invariant ---
@@ -1400,8 +1256,7 @@ fun a_diluting_transition_trips_the_invariant() {
 #[test]
 #[expected_failure(abort_code = errors::EInvalidAssetDecimals, location = blast_boosts_core::state)]
 fun issuance_rejects_collateral_decimals_above_the_maximum() {
-    let fixture = start(domain::vault_issuer_role());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = vault_issuer();
     destroy(state::issue<Product>(&witness, vault_policy(policy::long()), 2_000_000, NAV_CAP, 9, 19));
     abort
 }
@@ -1410,8 +1265,7 @@ fun issuance_rejects_collateral_decimals_above_the_maximum() {
 /// atom for atom with notional and the 250-atom order cap rounds below one lot.
 #[test]
 fun issuance_admits_both_decimals_at_the_maximum() {
-    let fixture = start(domain::vault_issuer_role());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = vault_issuer();
     let issuance = state::issue<Product>(&witness, vault_policy(policy::long()), MAX_ORDER_NOTIONAL, NAV_CAP, 18, 18);
     let flat = standard_observation(policy::long()).with_position_base(0).into_position_observation();
 
@@ -1420,14 +1274,12 @@ fun issuance_admits_both_decimals_at_the_maximum() {
     assert_eq!(target_base, SEED_NOTIONAL);
     assert_eq!(max_order_base, 0);
     destroy(issuance);
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::accounting_math)]
 fun seed_terms_reject_a_reserve_that_consumes_the_seed() {
-    let fixture = start(domain::vault_issuer_role());
-    let issuance = issued(&fixture, policy::long());
+    let issuance = issued(policy::long());
     let flat = standard_observation(policy::long()).with_position_base(0).with_venue_equity(SEED_RESERVE);
     issuance.seed_terms(flat.into_position_observation(), SEED_RESERVE);
     abort
@@ -1436,8 +1288,7 @@ fun seed_terms_reject_a_reserve_that_consumes_the_seed() {
 #[test]
 #[expected_failure(abort_code = errors::EMaintenanceReserveExceedsEquity, location = blast_boosts_core::accounting_math)]
 fun seed_terms_reject_a_reserve_above_the_seed() {
-    let fixture = start(domain::vault_issuer_role());
-    let issuance = issued(&fixture, policy::long());
+    let issuance = issued(policy::long());
     let flat = standard_observation(policy::long()).with_position_base(0).with_venue_equity(SEED_RESERVE - 1);
     issuance.seed_terms(flat.into_position_observation(), SEED_RESERVE);
     abort
@@ -1446,8 +1297,7 @@ fun seed_terms_reject_a_reserve_above_the_seed() {
 /// At a base price of 3 the target and the cap both leave a sub-lot remainder unopened.
 #[test]
 fun flat_seed_preflight_floors_the_order_cap_to_whole_lots() {
-    let fixture = start(domain::vault_issuer_role());
-    let issuance = issued(&fixture, policy::long());
+    let issuance = issued(policy::long());
     let flat = standard_observation(policy::long())
         .with_position_base(0)
         .with_base_price(3_000_000_000)
@@ -1461,25 +1311,21 @@ fun flat_seed_preflight_floors_the_order_cap_to_whole_lots() {
     assert_eq!(seed_position.equity(), SEED_VENUE_EQUITY);
     assert_eq!(seed_position.base_price(), 3_000_000_000);
     destroy(issuance);
-    fixture.end();
 }
 
 #[test]
 fun a_seed_order_at_the_maximum_is_allowed() {
-    let fixture = start(domain::vault_issuer_role());
-    let issuance = issued(&fixture, policy::long());
+    let issuance = issued(policy::long());
 
     issuance.assert_seed_order_notional_allowed(MAX_ORDER_NOTIONAL);
 
     destroy(issuance);
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EOrderNotionalExceedsMaximum, location = blast_boosts_core::state)]
 fun a_seed_order_one_unit_above_the_maximum_is_rejected() {
-    let fixture = start(domain::vault_issuer_role());
-    let issuance = issued(&fixture, policy::long());
+    let issuance = issued(policy::long());
     issuance.assert_seed_order_notional_allowed(MAX_ORDER_NOTIONAL + 1);
     abort
 }
@@ -1505,8 +1351,7 @@ fun a_flat_seed_cannot_activate() {
 
 #[test]
 fun activation_returns_the_priced_seed_position() {
-    let fixture = start(domain::vault_issuer_role());
-    let (state, seed_nav, seeded) = issued(&fixture, policy::long())
+    let (state, seed_nav, seeded) = issued(policy::long())
         .activate(standard_observation(policy::long()).into_position_observation(), SEED_RESERVE, REFERENCE_TIME_MS);
 
     assert_eq!(seed_nav, SEED_NAV);
@@ -1517,25 +1362,21 @@ fun activation_returns_the_priced_seed_position() {
     assert_eq!(seeded.base_price(), 1_000_000_000);
     assert_eq!(seeded.collateral_price(), 1_000_000_000);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 fun an_active_state_reads_the_frozen_side() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::short());
+    let state = initialized_state(policy::short());
 
     assert_eq!(state.side(), policy::short());
     state.destroy_for_testing();
-    fixture.end();
 }
 
 // --- Live Order Cap ---
 
 #[test]
 fun max_order_base_floors_the_live_cap_to_whole_lots() {
-    let fixture = start(domain::vault_issuer_role());
-    let (mut state, _, seeded) = issued(&fixture, policy::long()).activate(
+    let (mut state, _, seeded) = issued(policy::long()).activate(
         standard_observation(policy::long()).with_lot_size(4_000).into_position_observation(), SEED_RESERVE, REFERENCE_TIME_MS,
     );
 
@@ -1544,7 +1385,6 @@ fun max_order_base_floors_the_live_cap_to_whole_lots() {
     state.set_max_order_notional(1);
     assert_eq!(state.max_order_base(&seeded), 0);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 // --- Execution Bounds ---
@@ -1552,21 +1392,18 @@ fun max_order_base_floors_the_live_cap_to_whole_lots() {
 #[test]
 #[expected_failure(abort_code = errors::EExecutionOutsideMaxSlippage, location = blast_boosts_core::policy)]
 fun emergency_execution_rejects_one_unit_past_the_wide_bound() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::long());
+    let state = initialized_state(policy::long());
     state.assert_execution(true, 1_000_000_000, 1_050_000_001);
     abort
 }
 
 #[test]
 fun ordinary_execution_admits_the_exact_bound() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::long());
+    let state = initialized_state(policy::long());
 
     state.assert_execution(false, 1_000_000_000, 1_010_000_000);
 
     state.destroy_for_testing();
-    fixture.end();
 }
 
 // --- Mint Preparation ---
@@ -1574,8 +1411,7 @@ fun ordinary_execution_admits_the_exact_bound() {
 #[test]
 #[expected_failure(abort_code = errors::EInvalidShareSupply, location = blast_boosts_core::state)]
 fun mint_rejects_a_zero_share_supply() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::long());
+    let state = initialized_state(policy::long());
     destroy(state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 1_000_000, 0, 1, REFERENCE_TIME_MS));
     abort
 }
@@ -1583,8 +1419,7 @@ fun mint_rejects_a_zero_share_supply() {
 /// Both band edges admit a mint, and the order scales with the position at each.
 #[test]
 fun mint_admits_both_band_endpoints() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::long());
+    let state = initialized_state(policy::long());
 
     let lower = state.prepare_mint(
         standard_observation(policy::long()).with_notional(1_600_000).into_position_observation(),
@@ -1601,15 +1436,13 @@ fun mint_admits_both_band_endpoints() {
     destroy(lower);
     destroy(upper);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 /// A zero deposit dies in the fee allocation, before the contribution is sized.
 #[test]
 #[expected_failure(abort_code = errors::EZeroAmount, location = blast_boosts_core::accounting_math)]
 fun a_zero_deposit_mint_is_refused() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::long());
+    let state = initialized_state(policy::long());
     destroy(state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 0, HEALTH_SHARE_SUPPLY, 1, REFERENCE_TIME_MS));
     abort
 }
@@ -1619,8 +1452,7 @@ fun a_zero_deposit_mint_is_refused() {
 #[test]
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun mint_completion_is_refused_once_shutdown_began() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     let plan = standard_mint_plan(&state);
     state.begin_shutdown();
     state.complete_mint(plan, standard_mint_fill().into_position_observation(), REFERENCE_TIME_MS);
@@ -1630,8 +1462,7 @@ fun mint_completion_is_refused_once_shutdown_began() {
 #[test]
 #[expected_failure(abort_code = errors::EActiveCheckpointChanged, location = blast_boosts_core::state)]
 fun mint_completion_rejects_a_collateral_price_move() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     let plan = standard_mint_plan(&state);
     state.complete_mint(
         plan, standard_mint_fill().with_collateral_price(1_000_000_001).into_position_observation(), REFERENCE_TIME_MS,
@@ -1642,8 +1473,7 @@ fun mint_completion_rejects_a_collateral_price_move() {
 #[test]
 #[expected_failure(abort_code = errors::EActiveCheckpointChanged, location = blast_boosts_core::state)]
 fun mint_completion_rejects_a_lot_size_change() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     let plan = standard_mint_plan(&state);
     state.complete_mint(plan, standard_mint_fill().with_lot_size(2_000).into_position_observation(), REFERENCE_TIME_MS);
     abort
@@ -1652,8 +1482,7 @@ fun mint_completion_rejects_a_lot_size_change() {
 #[test]
 #[expected_failure(abort_code = errors::EActiveFillIncomplete, location = blast_boosts_core::state)]
 fun mint_completion_rejects_a_position_that_shrank() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     let plan = standard_mint_plan(&state);
     state.complete_mint(
         plan, standard_mint_fill().with_position_base(1_000_000_000).into_position_observation(), REFERENCE_TIME_MS,
@@ -1664,8 +1493,7 @@ fun mint_completion_rejects_a_position_that_shrank() {
 #[test]
 #[expected_failure(abort_code = errors::EActiveFillIncomplete, location = blast_boosts_core::state)]
 fun mint_completion_rejects_an_over_fill() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     let plan = standard_mint_plan(&state);
     state.complete_mint(
         plan, standard_mint_fill().with_position_base(3_999_000_000).into_position_observation(), REFERENCE_TIME_MS,
@@ -1676,8 +1504,7 @@ fun mint_completion_rejects_an_over_fill() {
 /// The standard fill leaves 2_098_000 of equity over a 101_000 reserve: NAV 1_997_000.
 #[test]
 fun a_mint_landing_exactly_on_the_nav_cap_is_accepted() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.set_nav_cap(1_997_000);
     let plan = standard_mint_plan(&state);
 
@@ -1686,14 +1513,12 @@ fun a_mint_landing_exactly_on_the_nav_cap_is_accepted() {
     assert_eq!(shares, 997_000);
     assert_eq!(state.maintenance_reserve(), 101_000);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = errors::ENavCapExceeded, location = blast_boosts_core::state)]
 fun a_mint_landing_one_atom_over_the_nav_cap_is_refused() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.set_nav_cap(1_996_999);
     let plan = standard_mint_plan(&state);
     state.complete_mint(plan, standard_mint_fill().into_position_observation(), REFERENCE_TIME_MS);
@@ -1706,8 +1531,7 @@ fun a_mint_landing_one_atom_over_the_nav_cap_is_refused() {
 #[test]
 #[expected_failure(abort_code = errors::EActiveLeverageAboveCap, location = blast_boosts_core::state)]
 fun mint_completion_rejects_post_fill_leverage_above_the_cap() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     let before = standard_observation(policy::long()).with_notional(2_600_000);
     let plan = state.prepare_mint(before.into_position_observation(), 1_000_000, HEALTH_SHARE_SUPPLY, 1, REFERENCE_TIME_MS);
     assert_eq!(plan.base_to_buy(), 2_597_400_000);
@@ -1724,8 +1548,7 @@ fun mint_completion_rejects_post_fill_leverage_above_the_cap() {
 /// the rest is NAV, priced into the shares the newcomer receives.
 #[test]
 fun a_mint_fee_above_the_ceiling_is_released_to_holders() {
-    let fixture = start(domain::vault_issuer_role());
-    let (mut state, seed_nav) = activate_with(capped_issuance(&fixture, 1), standard_observation(policy::long()), 200);
+    let (mut state, seed_nav) = activate_with(capped_issuance(1), standard_observation(policy::long()), 200);
     assert_eq!(seed_nav, 1_099_800);
     let plan = state.prepare_mint(
         standard_observation(policy::long()).into_position_observation(), 1_000_000, HEALTH_SHARE_SUPPLY, 1, REFERENCE_TIME_MS,
@@ -1749,7 +1572,6 @@ fun a_mint_fee_above_the_ceiling_is_released_to_holders() {
     let nav_after = 2_100_000 - state.maintenance_reserve();
     assert!((nav_after as u128) * (HEALTH_SHARE_SUPPLY as u128) >= (seed_nav as u128) * ((HEALTH_SHARE_SUPPLY + shares) as u128));
     state.destroy_for_testing();
-    fixture.end();
 }
 
 // --- Redemption Preparation ---
@@ -1758,8 +1580,7 @@ fun a_mint_fee_above_the_ceiling_is_released_to_holders() {
 #[test]
 #[expected_failure(abort_code = errors::EOrderBelowMinLots, location = blast_boosts_core::accounting_math)]
 fun a_dust_redemption_below_the_minimum_order_is_refused() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::long());
+    let state = initialized_state(policy::long());
     destroy(state.prepare_redemption(standard_observation(policy::long()).into_position_observation(), 1, HEALTH_SHARE_SUPPLY, 0, REFERENCE_TIME_MS));
     abort
 }
@@ -1769,8 +1590,7 @@ fun a_dust_redemption_below_the_minimum_order_is_refused() {
 #[test]
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun redemption_completion_is_refused_once_shutdown_began() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     let plan = standard_redemption_plan(&state);
     state.begin_shutdown();
     state.complete_redemption(plan, standard_redemption_fill().into_position_observation(), REFERENCE_TIME_MS);
@@ -1780,8 +1600,7 @@ fun redemption_completion_is_refused_once_shutdown_began() {
 #[test]
 #[expected_failure(abort_code = errors::EActiveCheckpointChanged, location = blast_boosts_core::state)]
 fun redemption_completion_rejects_a_price_move() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     let plan = standard_redemption_plan(&state);
     state.complete_redemption(
         plan, standard_redemption_fill().with_base_price(1_000_000_001).into_position_observation(), REFERENCE_TIME_MS,
@@ -1792,8 +1611,7 @@ fun redemption_completion_rejects_a_price_move() {
 #[test]
 #[expected_failure(abort_code = errors::EActiveFillIncomplete, location = blast_boosts_core::state)]
 fun redemption_completion_rejects_a_partial_sell() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     let plan = standard_redemption_plan(&state);
     state.complete_redemption(
         plan, standard_redemption_fill().with_position_base(1_500_000_000).into_position_observation(), REFERENCE_TIME_MS,
@@ -1804,8 +1622,7 @@ fun redemption_completion_rejects_a_partial_sell() {
 #[test]
 #[expected_failure(abort_code = errors::EActiveFillIncomplete, location = blast_boosts_core::state)]
 fun redemption_completion_rejects_a_position_that_grew() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     let plan = standard_redemption_plan(&state);
     state.complete_redemption(
         plan, standard_redemption_fill().with_position_base(3_000_000_000).into_position_observation(), REFERENCE_TIME_MS,
@@ -1816,8 +1633,7 @@ fun redemption_completion_rejects_a_position_that_grew() {
 /// Half of the 498 fee is admin cash, rounded down; the rest joins the reserve.
 #[test]
 fun a_redemption_with_an_admin_share_splits_the_fee() {
-    let fixture = start(domain::vault_issuer_role());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = vault_issuer();
     let issuance: Issuance<Product> = state::issue(
         &witness, fee_capped_vault_policy(10, 10, 5_000), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6,
     );
@@ -1832,7 +1648,6 @@ fun a_redemption_with_an_admin_share_splits_the_fee() {
     assert_eq!(vector[net, admin, fee, reserve_fee], vector[497_502, 249, 498, 249]);
     assert_eq!(state.maintenance_reserve(), SEED_RESERVE + 249);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 // --- Rebalance Preparation ---
@@ -1840,8 +1655,7 @@ fun a_redemption_with_an_admin_share_splits_the_fee() {
 /// A venue fee of the whole denominator is admitted; a reduction never sizes against it.
 #[test]
 fun a_venue_fee_of_exactly_the_denominator_is_usable() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = rebalance_state(&fixture, policy::long());
+    let state = rebalance_state(policy::long());
 
     let plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_000_000, policy::long()), 10_000, REFERENCE_TIME_MS);
 
@@ -1850,7 +1664,6 @@ fun a_venue_fee_of_exactly_the_denominator_is_usable() {
     assert!(!order.is_increase() && !order.is_emergency());
     destroy(plan);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 // --- Rebalance Orders ---
@@ -1861,8 +1674,7 @@ fun a_venue_fee_of_exactly_the_denominator_is_usable() {
 /// against a fresh observation, may carry the emergency bound.
 #[test]
 fun a_reduction_that_crosses_the_cap_mid_plan_keeps_the_ordinary_bound() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = rebalance_state(&fixture, policy::long());
+    let state = rebalance_state(policy::long());
     let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_000_000, policy::long()), 10, REFERENCE_TIME_MS);
     let order = state.next_rebalance_order(&plan);
     assert!(!order.is_emergency());
@@ -1879,7 +1691,6 @@ fun a_reduction_that_crosses_the_cap_mid_plan_keeps_the_ordinary_bound() {
     assert!(state.next_rebalance_order(&fresh).is_emergency());
     destroy(fresh);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
@@ -1930,8 +1741,7 @@ fun a_rebalance_fill_the_observation_disagrees_with_is_refused() {
 #[test]
 #[expected_failure(abort_code = errors::ERebalanceNoProgress, location = blast_boosts_core::state)]
 fun rebalance_completion_without_a_fill_is_refused() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = rebalance_state(&fixture, policy::long());
+    let state = rebalance_state(policy::long());
     let plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_000_000, policy::long()), 10, REFERENCE_TIME_MS);
     state.complete_rebalance(plan);
     abort
@@ -1941,8 +1751,7 @@ fun rebalance_completion_without_a_fill_is_refused() {
 #[test]
 #[expected_failure(abort_code = errors::ERebalanceNoProgress, location = blast_boosts_core::state)]
 fun rebalance_increase_whose_leverage_did_not_rise_is_refused() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = rebalance_state(&fixture, policy::long());
+    let state = rebalance_state(policy::long());
     let mut plan = state.prepare_rebalance(rebalance_observation(1_100_001, 1_600_001, policy::long()), 10, REFERENCE_TIME_MS);
     let order = state.next_rebalance_order(&plan);
     state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_200_000, 1_600_002, policy::long()), 1_000, REFERENCE_TIME_MS);
@@ -1954,8 +1763,7 @@ fun rebalance_increase_whose_leverage_did_not_rise_is_refused() {
 #[test]
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun rebalance_completion_is_refused_once_shutdown_began() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = rebalance_state(&fixture, policy::long());
+    let mut state = rebalance_state(policy::long());
     let plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_000_000, policy::long()), 10, REFERENCE_TIME_MS);
     state.begin_shutdown();
     state.complete_rebalance(plan);
@@ -1964,8 +1772,7 @@ fun rebalance_completion_is_refused_once_shutdown_began() {
 
 #[test]
 fun a_reduction_reaching_target_ends_the_plan() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = rebalance_state(&fixture, policy::long());
+    let state = rebalance_state(policy::long());
     let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_000_000, policy::long()), 10, REFERENCE_TIME_MS);
     let order = state.next_rebalance_order(&plan);
     assert_eq!(order.order_base(), 1_000_000_000);
@@ -1979,7 +1786,6 @@ fun a_reduction_reaching_target_ends_the_plan() {
     assert_eq!(vector[before_equity, after_equity, before_base, after_base], vector[1_100_000, 1_100_000, 3_000_000_000, 2_000_000_000]);
     assert!(!increased);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 // --- Funding Overflow ---
@@ -1987,8 +1793,7 @@ fun a_reduction_reaching_target_ends_the_plan() {
 #[test]
 #[expected_failure(abort_code = errors::EArithmeticOverflow, location = blast_boosts_core::state)]
 fun an_uncovered_deficit_cannot_wrap() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.settle_funding(observation::funding_cost(std::u64::max_value!()));
     assert_eq!(state.uncovered_deficit(), std::u64::max_value!() - SEED_RESERVE);
     state.settle_funding(observation::funding_cost(SEED_RESERVE + 1));
@@ -1998,8 +1803,7 @@ fun an_uncovered_deficit_cannot_wrap() {
 #[test]
 #[expected_failure(abort_code = errors::EArithmeticOverflow, location = blast_boosts_core::state)]
 fun the_maximum_funding_credit_cannot_wrap() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.settle_funding(observation::funding_credit(std::u64::max_value!()));
     abort
 }
@@ -2014,8 +1818,7 @@ fun a_zero_funding_credit_is_an_exact_no_op() {
 #[test]
 #[expected_failure(abort_code = errors::EZeroAmount, location = blast_boosts_core::state)]
 fun a_zero_donation_is_refused() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.donate(standard_observation(policy::long()).into_position_observation(), 0, REFERENCE_TIME_MS);
     abort
 }
@@ -2023,16 +1826,14 @@ fun a_zero_donation_is_refused() {
 #[test]
 #[expected_failure(abort_code = errors::EArithmeticOverflow, location = blast_boosts_core::state)]
 fun the_maximum_donation_cannot_wrap() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.donate(standard_observation(policy::long()).into_position_observation(), std::u64::max_value!(), REFERENCE_TIME_MS);
     abort
 }
 
 #[test]
 fun a_donation_under_the_ceiling_is_credited_in_full() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
 
     state.donate(
         standard_observation(policy::long()).with_venue_equity(SEED_VENUE_EQUITY + 70_000).into_position_observation(),
@@ -2041,7 +1842,6 @@ fun a_donation_under_the_ceiling_is_credited_in_full() {
 
     assert_eq!(state.maintenance_reserve(), 170_000);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 // --- Unwind ---
@@ -2049,8 +1849,7 @@ fun a_donation_under_the_ceiling_is_credited_in_full() {
 #[test]
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun an_ordinary_operation_is_refused_once_unwinding() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.set_unwinding_for_testing();
     state.assert_active();
     abort
@@ -2059,8 +1858,7 @@ fun an_ordinary_operation_is_refused_once_unwinding() {
 #[test]
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun unwind_is_refused_while_active() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::long());
+    let state = initialized_state(policy::long());
     state.assert_unwinding();
     abort
 }
@@ -2068,8 +1866,7 @@ fun unwind_is_refused_while_active() {
 #[test]
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun unwind_constraints_are_refused_while_active() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::long());
+    let state = initialized_state(policy::long());
     state.unwind_constraints(fresh_price(1_000_000_000), fresh_price(1_000_000_000), LOT_SIZE, REFERENCE_TIME_MS);
     abort
 }
@@ -2077,8 +1874,7 @@ fun unwind_constraints_are_refused_while_active() {
 #[test]
 #[expected_failure(abort_code = errors::EStalePrice, location = blast_boosts_core::policy)]
 fun unwind_rejects_a_stale_collateral_price() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.begin_shutdown();
     state.unwind_constraints(
         fresh_price(1_000_000_000), observation::new_price(1_000_000_000, 0, 0), LOT_SIZE, REFERENCE_TIME_MS,
@@ -2089,8 +1885,7 @@ fun unwind_rejects_a_stale_collateral_price() {
 #[test]
 #[expected_failure(abort_code = errors::EConfidenceExceedsBound, location = blast_boosts_core::policy)]
 fun unwind_rejects_a_low_confidence_base_price() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.begin_shutdown();
     state.unwind_constraints(
         observation::new_price(1_000_000_000, 10_000_001, REFERENCE_TIME_MS), fresh_price(1_000_000_000), LOT_SIZE, REFERENCE_TIME_MS,
@@ -2100,8 +1895,7 @@ fun unwind_rejects_a_low_confidence_base_price() {
 
 #[test]
 fun unwind_floors_the_order_cap_to_whole_lots() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.begin_shutdown();
 
     let (_, max_order_base, _, _) = state.unwind_constraints(
@@ -2110,7 +1904,6 @@ fun unwind_floors_the_order_cap_to_whole_lots() {
 
     assert_eq!(max_order_base, 248_000);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 // --- Settlement ---
@@ -2118,8 +1911,7 @@ fun unwind_floors_the_order_cap_to_whole_lots() {
 #[test]
 #[expected_failure(abort_code = errors::EInvalidLifecycleTransition, location = blast_boosts_core::lifecycle)]
 fun finalize_shutdown_is_refused_while_active() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.finalize_shutdown(7, 2);
     abort
 }
@@ -2127,8 +1919,7 @@ fun finalize_shutdown_is_refused_while_active() {
 #[test]
 #[expected_failure(abort_code = errors::EInvalidShareAmount, location = blast_boosts_core::state)]
 fun finalize_shutdown_with_only_the_seed_leaves_no_eligible_shares() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.begin_shutdown();
     assert_eq!(state.finalize_shutdown(7, 7), 0);
     state.shutdown_claim_quote(13, 7, 7, 1, 0);
@@ -2138,8 +1929,7 @@ fun finalize_shutdown_with_only_the_seed_leaves_no_eligible_shares() {
 #[test]
 #[expected_failure(abort_code = errors::EInvalidShareAmount, location = blast_boosts_core::state)]
 fun terminal_claim_of_zero_shares_is_refused() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.begin_shutdown();
     state.finalize_shutdown(7, 2);
     state.shutdown_claim_quote(13, 7, 2, 0, 0);
@@ -2149,8 +1939,7 @@ fun terminal_claim_of_zero_shares_is_refused() {
 #[test]
 #[expected_failure(abort_code = errors::EInvalidShareSupply, location = blast_boosts_core::state)]
 fun terminal_claim_against_a_supply_below_the_locked_seed_is_refused() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.begin_shutdown();
     state.finalize_shutdown(7, 2);
     state.shutdown_claim_quote(13, 1, 2, 1, 0);
@@ -2160,8 +1949,7 @@ fun terminal_claim_against_a_supply_below_the_locked_seed_is_refused() {
 #[test]
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun terminal_claim_before_settlement_is_refused() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.begin_shutdown();
     state.shutdown_claim_quote(13, 7, 2, 2, 0);
     abort
@@ -2172,8 +1960,7 @@ fun terminal_claim_before_settlement_is_refused() {
 #[test]
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun fee_updates_are_refused_after_shutdown_began() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.begin_shutdown();
     state.set_fees(5, 5, 0);
     abort
@@ -2181,8 +1968,7 @@ fun fee_updates_are_refused_after_shutdown_began() {
 
 #[test]
 fun a_fee_update_that_changes_only_the_admin_share_is_accepted() {
-    let fixture = start(domain::vault_issuer_role());
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+    let witness = vault_issuer();
     let issuance: Issuance<Product> = state::issue(
         &witness, fee_capped_vault_policy(10, 10, 3_000), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6,
     );
@@ -2194,28 +1980,24 @@ fun a_fee_update_that_changes_only_the_admin_share_is_accepted() {
     let (mint, redeem, admin) = state.fee_settings();
     assert_eq!(vector[mint, redeem, admin], vector[10, 10, 3_000]);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 #[test]
 fun max_order_notional_updates_in_every_lifecycle_state() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     state.begin_shutdown();
     assert_eq!(state.set_max_order_notional(500), MAX_ORDER_NOTIONAL);
     state.finalize_shutdown(7, 2);
     assert_eq!(state.set_max_order_notional(750), 500);
     assert_eq!(state.max_order_notional_for_testing(), 750);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 /// Lowering the cap under the live NAV is allowed and only blocks the next mint.
 #[test]
 #[expected_failure(abort_code = errors::ENavCapExceeded, location = blast_boosts_core::state)]
 fun nav_cap_may_be_lowered_below_the_live_nav() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
     assert_eq!(state.set_nav_cap(1), NAV_CAP);
     let plan = standard_mint_plan(&state);
     state.complete_mint(plan, standard_mint_fill().into_position_observation(), REFERENCE_TIME_MS);
@@ -2227,8 +2009,7 @@ fun nav_cap_may_be_lowered_below_the_live_nav() {
 #[test]
 #[expected_failure(abort_code = errors::EInvalidPositionObservation, location = blast_boosts_core::state)]
 fun an_active_operation_rejects_a_non_flat_observation_on_the_wrong_side() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::long());
+    let state = initialized_state(policy::long());
     state.needs_rebalance(standard_observation(policy::long()).with_observed_side(policy::short()).into_position_observation(), REFERENCE_TIME_MS);
     abort
 }
@@ -2236,8 +2017,7 @@ fun an_active_operation_rejects_a_non_flat_observation_on_the_wrong_side() {
 #[test]
 #[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::state)]
 fun an_active_operation_rejects_equity_equal_to_the_reserve() {
-    let fixture = start(domain::vault_issuer_role());
-    let state = initialized_state(&fixture, policy::long());
+    let state = initialized_state(policy::long());
     state.needs_rebalance(standard_observation(policy::long()).with_venue_equity(SEED_RESERVE).into_position_observation(), REFERENCE_TIME_MS);
     abort
 }
@@ -2248,8 +2028,7 @@ fun an_active_operation_rejects_equity_equal_to_the_reserve() {
 /// the excess back to the ceiling instead of locking holders out.
 #[test]
 fun a_priced_operation_admits_equity_that_covers_the_admitted_reserve() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = capped_initialized_state(&fixture, 500);
+    let mut state = capped_initialized_state(500);
     state.settle_funding(observation::funding_credit(50_000));
     assert_eq!(state.maintenance_reserve(), 150_000);
     let observation = standard_observation(policy::long()).with_venue_equity(140_000).into_position_observation();
@@ -2260,15 +2039,13 @@ fun a_priced_operation_admits_equity_that_covers_the_admitted_reserve() {
     assert!(net > 0);
     assert!(state.maintenance_reserve() <= 100_000);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 /// Equity at or below the admitted reserve is still refused.
 #[test]
 #[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::state)]
 fun a_priced_operation_is_refused_when_equity_only_covers_the_admitted_reserve() {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = capped_initialized_state(&fixture, 500);
+    let mut state = capped_initialized_state(500);
     state.settle_funding(observation::funding_credit(50_000));
     state.needs_rebalance(standard_observation(policy::long()).with_venue_equity(100_000).into_position_observation(), REFERENCE_TIME_MS);
     abort
@@ -2276,8 +2053,8 @@ fun a_priced_operation_is_refused_when_equity_only_covers_the_admitted_reserve()
 
 // === Test Helpers ===
 
-fun rebalance_state(fixture: &Fixture, side: PositionSide): State<Product> {
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+fun rebalance_state(side: PositionSide): State<Product> {
+    let witness = vault_issuer();
     let (state, _, _) = state::issue<Product>(&witness, vault_policy(side), 2_000_000, NAV_CAP, 9, 6)
         .activate(rebalance_observation(SEED_VENUE_EQUITY, SEED_NOTIONAL, side), SEED_RESERVE, REFERENCE_TIME_MS);
     state
@@ -2291,37 +2068,14 @@ fun rebalance_observation(equity: u64, notional: u64, side: PositionSide): Posit
 }
 
 fun rebalance_endpoint(notional: u64) {
-    let fixture = start(domain::vault_issuer_role());
-    let state = rebalance_state(&fixture, policy::long());
+    let state = rebalance_state(policy::long());
     let plan = state.prepare_rebalance(rebalance_observation(1_100_000, notional, policy::long()), 10, REFERENCE_TIME_MS);
     state.complete_rebalance(plan);
     state.destroy_for_testing();
-    fixture.end();
 }
 
-fun start(roles: u64): Fixture {
-    let mut scenario = test_scenario::begin(ROOT);
-    let (super_admin_cap, mut authority) =
-        domain_fixture::new_authority(scenario.ctx());
-    authority.grant_admin(
-        &super_admin_cap,
-        roles,
-        ISSUER,
-        scenario.ctx(),
-    );
-
-    scenario.next_tx(ISSUER);
-    let admin_cap = scenario.take_from_sender<AdminCap<BLAST_BOOSTS_CORE>>();
-
-    Fixture { scenario, authority, super_admin_cap, admin_cap }
-}
-
-fun end(self: Fixture) {
-    let Fixture { scenario, authority, super_admin_cap, admin_cap } = self;
-    destroy(authority);
-    destroy(super_admin_cap);
-    destroy(admin_cap);
-    scenario.end();
+fun vault_issuer(): AdminWitness<VaultIssuer> {
+    blast_acl::witness_for_testing()
 }
 
 fun standard_vault_policy(): VaultPolicy {
@@ -2368,8 +2122,8 @@ fun fee_capped_vault_policy(mint_fee_cap_bps: u64, redeem_fee_cap_bps: u64, admi
 }
 
 /// A long issuance whose reserve ceiling is `max_reserve_bps` of notional.
-fun capped_issuance(fixture: &Fixture, max_reserve_bps: u64): Issuance<Product> {
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+fun capped_issuance(max_reserve_bps: u64): Issuance<Product> {
+    let witness = vault_issuer();
     let vault_policy = policy::new_vault_policy(
         policy::long(),
         policy::new_rebalance_policy(16_000, 20_000, 26_000, 30_000, 100, 500, 10),
@@ -2386,13 +2140,13 @@ fun capped_issuance(fixture: &Fixture, max_reserve_bps: u64): Issuance<Product> 
     state::issue<Product>(&witness, vault_policy, MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6)
 }
 
-fun capped_initialized_state(fixture: &Fixture, max_reserve_bps: u64): State<Product> {
-    let (state, _) = activate_with(capped_issuance(fixture, max_reserve_bps), standard_observation(policy::long()), SEED_RESERVE);
+fun capped_initialized_state(max_reserve_bps: u64): State<Product> {
+    let (state, _) = activate_with(capped_issuance(max_reserve_bps), standard_observation(policy::long()), SEED_RESERVE);
     state
 }
 
-fun issued(fixture: &Fixture, side: PositionSide): Issuance<Product> {
-    let witness = fixture.authority.sign_in(&fixture.admin_cap);
+fun issued(side: PositionSide): Issuance<Product> {
+    let witness = vault_issuer();
 
     state::issue<Product>(&witness, vault_policy(side), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6)
 }
@@ -2403,19 +2157,17 @@ fun activate_with(self: Issuance<Product>, spec: ObservationSpec, seed_reserve: 
     (state, seed_nav)
 }
 
-fun initialized_state(fixture: &Fixture, side: PositionSide): State<Product> {
-    let (state, seed_nav) = activate_with(issued(fixture, side), standard_observation(side), SEED_RESERVE);
+fun initialized_state(side: PositionSide): State<Product> {
+    let (state, seed_nav) = activate_with(issued(side), standard_observation(side), SEED_RESERVE);
     assert_eq!(seed_nav, SEED_NAV);
 
     state
 }
 
 fun initialize_once(spec: ObservationSpec, side: PositionSide, seed_reserve: u64) {
-    let fixture = start(domain::vault_issuer_role());
-    let (state, _) = activate_with(issued(&fixture, side), spec, seed_reserve);
+    let (state, _) = activate_with(issued(side), spec, seed_reserve);
 
     state.destroy_for_testing();
-    fixture.end();
 }
 
 /// The standard 1_000_000 deposit against the seed: 999_000 of contribution buys 1_998_000_000 of base.
@@ -2454,8 +2206,7 @@ fun fresh_price(price: u64): PriceObservation {
 
 /// Opens the standard increase plan, whose first order is 978_452_000, and presents one fill.
 fun accept_increase_fill_once(after: PositionObservation, filled_base: u64) {
-    let fixture = start(domain::vault_issuer_role());
-    let state = rebalance_state(&fixture, policy::long());
+    let state = rebalance_state(policy::long());
     let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 1_000_000, policy::long()), 10, REFERENCE_TIME_MS);
     let order = state.next_rebalance_order(&plan);
     assert_eq!(order.order_base(), 978_452_000);
@@ -2464,7 +2215,6 @@ fun accept_increase_fill_once(after: PositionObservation, filled_base: u64) {
 
     destroy(plan);
     state.destroy_for_testing();
-    fixture.end();
 }
 
 fun assert_funding_settlement(
@@ -2473,8 +2223,7 @@ fun assert_funding_settlement(
     expected_uncovered: u64,
     expected_reserve: u64,
 ) {
-    let fixture = start(domain::vault_issuer_role());
-    let mut state = initialized_state(&fixture, policy::long());
+    let mut state = initialized_state(policy::long());
 
     let (absorbed, uncovered, restored) = state.settle_funding(settlement);
 
@@ -2485,7 +2234,6 @@ fun assert_funding_settlement(
     assert_eq!(state.maintenance_reserve(), expected_reserve);
     assert!(state.is_active_for_testing());
     state.destroy_for_testing();
-    fixture.end();
 }
 
 fun standard_observation(side: PositionSide): ObservationSpec {
@@ -2606,19 +2354,16 @@ fun with_mark_price(mut self: ObservationSpec, mark_price: u64): ObservationSpec
 
 // === Imports ===
 
-use blast_admin::acl::{Authority, SuperAdminCap, AdminCap};
+use blast_admin::blast_acl::{Self, AdminWitness};
 
 use blast_boosts_core::{
     accounting_math,
-    domain_fixture,
     errors,
     lifecycle,
     observation::{Self, FundingSettlement, PositionObservation, PriceObservation},
     policy::{Self, PositionSide, VaultPolicy},
-    blast_boosts_core::{Self as domain, BLAST_BOOSTS_CORE},
+    blast_boosts_core::VaultIssuer,
     state::{Self, Issuance, MintPlan, RedemptionPlan, State},
 };
 
 use std::unit_test::{assert_eq, destroy};
-
-use sui::test_scenario::{Self, Scenario};

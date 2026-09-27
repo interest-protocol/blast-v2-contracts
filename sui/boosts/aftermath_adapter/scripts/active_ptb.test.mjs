@@ -16,10 +16,11 @@ const input = (operation) => ({
 const terminal = (operation) => {
     const value = input(operation);
     value.corePackage = address(40);
+    value.adminPackage = address(43);
     value.reason = 'observed_venue_change';
-    value.objects.authority = address(41);
+    value.objects.acl = address(41);
     value.objects.adminCap = address(42);
-    const keys = operation === 'begin_shutdown' ? ['vault', 'protocol', 'authority', 'adminCap']
+    const keys = operation === 'begin_shutdown' ? ['vault', 'protocol', 'acl', 'adminCap']
         : operation === 'redeem_shutdown' ? ['vault', 'protocol', 'inputCoin', 'clock']
         : operation === 'finalize_shutdown' ? ['vault', 'protocol', 'account', 'registry', 'clearingHouse', 'baseOracle', 'collateralOracle', 'clock']
         : ['vault', 'protocol', 'account', 'registry', 'clearingHouse', 'baseOracle', 'collateralOracle', 'clock'];
@@ -27,12 +28,17 @@ const terminal = (operation) => {
     return value;
 };
 
-test('shutdown requires an explicit role witness and declared reason, without venue data', () => {
+test('shutdown requires the shutdown-admin witness and a declared reason, without venue data', () => {
     const value = terminal('begin_shutdown');
     const plan = buildTerminalPlan(value);
-    assert.deepEqual(plan.commands.map((command) => command.target.split('::').slice(1).join('::')),
-        ['acl::sign_in', 'lifecycle::observed_venue_change_reason', 'vault::begin_shutdown']);
+    assert.deepEqual(plan.commands.map((command) => command.target),
+        [`${address(43)}::blast_acl::sign_in`, `${address(40)}::lifecycle::observed_venue_change_reason`,
+            `${address(1)}::vault::begin_shutdown`]);
+    assert.deepEqual(plan.commands[0].typeArguments, [`${address(40)}::blast_boosts_core::ShutdownAdmin`]);
+    assert.deepEqual(plan.commands[0].arguments, [`@${value.objects.acl}`, `@${value.objects.adminCap}`]);
+    assert.deepEqual(plan.commands[2].typeArguments, [value.productType, value.collateralType]);
     assert.deepEqual(plan.commands[2].arguments, [`@${value.objects.vault}`, `@${value.objects.protocol}`, 'witness', 'reason']);
+    assert.throws(() => buildTerminalPlan({...value, adminPackage: undefined}), /address/);
     assert.throws(() => buildTerminalPlan({...value, reason: 'liquidation'}), /declared reason/);
 });
 
