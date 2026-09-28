@@ -1,6 +1,6 @@
 # 0098: A launch creation fee, and one partner per launch
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-09-27
 - Amends: [0095](0095-partner-codes.md), whose "The launchpad, later" paragraph this replaces
 
@@ -17,9 +17,10 @@ Asked to choose, the owner ruled that:
 
 - the partner's share of Blast's trade fees is paid when Blast claims them, so
   trades never take the `Partner` object;
-- "every fee" means the launchpad's fees: the creation fee and every curve trade
-  fee, the opening round's included. Blast's migration allocation is not a fee,
-  and Blast's LP-fee share after migration stays Blast's;
+- "every fee" means each fee held by the launch: the creation fee, every curve
+  trade fee (the opening round's included), and Blast's one-time Meme and Quote
+  migration fee. Venue residuals and recurring LP fees keep their existing
+  migrator-owned paths and are outside this decision (clarified 2026-09-28);
 - the creation fee and the accepted partners live in `LaunchConfig`, with the
   rest of what launch creation reads (2026-09-28, moved from `RuntimeConfig`);
 - the partner is named with a setter during creation, like every other creation
@@ -59,16 +60,30 @@ and no function writes that field again. Creation pays nobody, so `finalize` is
 the same with or without a partner. `LaunchCreated` gains `creation_fee` and
 `partner_id`.
 
+**Migration fee in the launch ledger.** Blast's one-time Meme and Quote shares
+are explicit fields of `AllocationPlan`, separate from the project-recipient
+vector. `launch::migrate` apportions both assets while it still owns every
+balance, joins Blast's shares directly into the launch's `FeeLedger`, and
+returns only the pool shares to the adapter. `ProtocolFeesAccrued` records that
+one-time fee. The adapter's venue residual and recurring LP-fee paths do not
+change.
+
+`LaunchConfig` always holds a concrete `ProtocolAllocation`, initialized to
+zero Meme and zero Quote BPS. `TreasuryAdmin` may update it for future launches,
+and every finalized launch snapshots the current value into its immutable
+allocation plan. There is no distinct unset state and no initialization call is
+required to launch with a zero protocol migration fee.
+
 **Paying the partner.** `buy`, `sell` and `settle_opening_round` are unchanged:
 Blast's share of each trade fee accrues in the launch's ledger as before, next
-to the creation fee. Because a launch has at most one partner, every protocol
-fee in its ledger is owed to that partner in part.
+to the creation fee and migration fee. Because a launch has at most one
+partner, every protocol fee in its ledger is owed to that partner in part.
 
 - `claim_protocol_fees` claims only from a launch without a partner.
 - `claim_protocol_fees_with_partner` claims from a launch naming exactly that
-  partner (`EPartnerMismatch` otherwise). It pays the partner its share of
-  Blast's Meme and Quote trade fees and of the creation fee, each rounded down,
-  and returns the rest to the treasury administrator.
+  partner (`EPartnerMismatch` otherwise). It pays the partner its share of all
+  Blast Meme, Quote, and SUI balances in the ledger, each rounded down, and
+  returns the rest to the treasury administrator.
 
 Both return a third coin, the SUI creation fee, and a ledger holding only that
 fee can be claimed. `ProtocolFeesClaimed` gains `sui_amount` and the partner's
@@ -91,12 +106,10 @@ fee compound: at 80% each, Blast would keep 4% of its cut, and a creator who is
 also the partner could fake volume almost for free. The owner chose one partner
 per launch.
 
-**Sharing only Blast's graduation allocation.** It pays only on coins that
-graduate. The owner chose every fee.
-
-**Sharing Blast's LP-fee share after migration.** That needs the partner on the
-migrators' vaults and a partner variant of every fee collection. It was
-deferred.
+**Sharing venue residuals and recurring LP fees.** Those amounts arise inside
+the migrators package after the launch hands off its pool balances. Moving them
+would broaden this change into post-migration fee routing. The owner limited
+this decision to the one-time fee charged by `launch::migrate`.
 
 **A creation fee in the launch's Quote.** One fee would then need an amount per
 Quote. A fixed SUI fee is one number.
@@ -130,8 +143,9 @@ from the timelock.
 
 ## Consequences
 
-- A partner is paid its share of every fee, the creation fee included, when
-  Blast claims them, not when the fee is charged. Blast cannot claim a partnered
+- A partner is paid its share of every fee in the launch ledger, including the
+  creation fee and one-time Meme/Quote migration fee, when Blast claims them,
+  not when they accrue. Blast cannot claim a partnered
   launch's fees without paying the partner in the same call. Blast's creation fee
   waits in each launch until claimed, like its trade fees. The share applied is the one in force at the claim,
   and any change Blast makes to it waits seven days.
@@ -148,16 +162,24 @@ from the timelock.
 - ABI:
   - `finalize` gains the creation-fee coin;
   - both protocol claims return a third coin, the SUI creation fee;
+  - the protocol migration fee becomes explicit in `AllocationPlan`, and
+    `set_protocol_allocation` no longer takes a payout destination; its policy
+    always exists, defaults to zero, and updates only future launches;
+  - `migrate` keeps its two-balance return and accrues Blast's fee before
+    returning the pool balances;
   - new functions: `set_partner`, `claim_protocol_fees_with_partner`,
     `set_creation_fee`, `add_partner` and `remove_partner`;
   - `LaunchCreated` and `ProtocolFeesClaimed` gain fields;
-  - new events: `CreationFeeChanged`, `PartnerAdded` and `PartnerRemoved`.
+  - new events: `CreationFeeChanged`, `PartnerAdded`, `PartnerRemoved`, and
+    `ProtocolFeesAccrued`.
 
   The SDK, the indexer reducers and the release PTB builder follow.
 
 ## Verification
 
 - `LaunchConfig` tests:
+  - the protocol allocation defaults to zero, updates future-launch policy,
+    rejects unchanged values, and preserves its curve and pool bounds;
   - the fee setter, its event, the unchanged guard, and the version check;
   - a partner accepted at once;
   - a removed partner accepted until one millisecond before its notice ends,
@@ -175,12 +197,16 @@ from the timelock.
   - a partnered claim paying the partner its rounded-down share of the Meme and
     Quote trade fees and of a 1,001 MIST creation fee (400, Blast keeping 601),
     leaving the creator's fees and agreeing with `PartnerPaid`;
+  - a partnered migrated launch paying the partner from the same totals after
+    the one-time Meme/Quote migration fee enters the launch ledger;
   - a zero-share partner paid nothing, with no `PartnerPaid`, while the claim
     still records it;
   - the plain claim refused on a partnered launch, and the partner claim refused
     for another partner (before the empty-ledger check) and for a launch without
     one.
-- The migrators' replay reducer decodes the new `LaunchCreated` fields.
+- Migration tests prove Blast's Meme and Quote fee enters the launch ledger
+  before only the pool remainder is returned, while venue residuals and
+  recurring LP fees retain their existing migrator behavior.
 - The Rust PTB harness publishes `blast_partners` before the launchpad, passes
   the new `finalize` arguments and decodes the new fields. `atomic_migration`,
   `launch_measurements` and the venue fork against mainnet Cetus and Bluefin

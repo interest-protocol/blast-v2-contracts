@@ -76,8 +76,8 @@ fun single_ptb_sealed_mock_adapter_keeps_principal_and_residuals_in_vault_custod
     let (_, quote_after, _, allocated_after) = launch.balances_for_testing();
     assert_eq!(quote_after, 0);
     assert_eq!(allocated_after, 0);
-    // Blast's zero allocation and the creator's are both reported.
-    assert_eq!(collect<events::MigrationAllocationPaid>().length(), 2);
+    // Only project recipients are reported; Blast's zero fee remains internal to the launch.
+    assert_eq!(collect<events::MigrationAllocationPaid>().length(), 1);
     assert_eq!(collect<events::Migrated>().length(), 1);
     assert_eq!(event::events_by_type<blast_events::VaultCreated>().length(), 1);
 
@@ -285,13 +285,6 @@ fun start(): Fixture {
         bps::new(100),
         bps::new(100),
     );
-    config.set_protocol_allocation(
-        &version,
-        &blast_acl::witness_for_testing<TreasuryAdmin>(),
-        ADMIN,
-        bps::new(0),
-        bps::new(0),
-    );
     let launch_id = share_launch(&mut scenario, &version, &config, &clock);
     test_scenario::return_shared(config);
 
@@ -407,7 +400,7 @@ use blast_admin::blast_acl;
 use blast_fun::{
     allocation::{Self, FeeSplit},
     blast_events::Event as BlastEvent,
-    blast_fun_domain::{AdapterAdmin, FeeAdmin, ListingAdmin, TreasuryAdmin},
+    blast_fun_domain::{AdapterAdmin, FeeAdmin, ListingAdmin},
     bps,
     creator_authority,
     events,

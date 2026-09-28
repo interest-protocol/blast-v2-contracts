@@ -102,7 +102,6 @@ const TINY_SHARES: (u64, u64) = (9_999, 1_500);
 
 // Addresses.
 const DESTINATION: ObjectID = address(&[0xD5]);
-const PROTOCOL: ObjectID = address(&[0xAD]);
 const LP_PROTOCOL: ObjectID = address(&[0xAD, 0x01]);
 const RECIPIENT_A: ObjectID = address(&[0xA1]);
 const RECIPIENT_B: ObjectID = address(&[0xB2]);
@@ -588,14 +587,13 @@ impl World {
         let fee = w.bps(&mut b, 100)?;
         call(&mut b, blast, "launch_config", "set_trade_fees", vec![], vec![config, version, fee_admin, fee, fee]);
         let share = w.bps(&mut b, ALLOCATION_BPS)?;
-        let protocol = b.pure(SuiAddress::from(PROTOCOL))?;
         call(
             &mut b,
             blast,
             "launch_config",
             "set_protocol_allocation",
             vec![],
-            vec![config, version, treasury_admin, protocol, share, share],
+            vec![config, version, treasury_admin, share, share],
         );
         // Blast's LP-fee share goes to its own destination at a nonzero default.
         let policy = b.obj(w.h.shared(w.policy, true))?;
@@ -1044,7 +1042,7 @@ impl World {
         } else {
             watched.push(self.venue("bluefin_global_config"));
         }
-        let owners = [self.h.sender, DESTINATION.into(), PROTOCOL.into()];
+        let owners = [self.h.sender, DESTINATION.into()];
         let mut b = ProgrammableTransactionBuilder::new();
         self.migrate_command(&mut b, launch, self.case, None)?;
         self.migrate_command(&mut b, launch, self.case, None)?;
@@ -1087,14 +1085,21 @@ impl World {
         ensure!(migrated.len() == 1 && migrated[0].launch_id == launch.launch);
         let migrated = &migrated[0];
         ensure!((migrated.meme, migrated.quote) == (LP_MEME, self.lp_quote()), "the hand-off is the pool share");
-        // Blast first, then the creator's recipient.
+        // Project recipients are paid directly; Blast's migration fee enters the launch ledger.
         let paid: Vec<MigrationAllocationPaid> = self.launchpad_events(&outcome, "MigrationAllocationPaid");
-        ensure!(paid.len() == 2);
-        for (paid, destination) in paid.iter().zip([PROTOCOL, DESTINATION]) {
-            ensure!(paid.destination == destination.into());
-            ensure!((paid.meme, paid.quote) == (ATOMIC_SUPPLY / 20, self.target() / 20));
-            ensure!(outcome.coins_created_for(&self.h, destination.into()) == self.coins(launch, paid.meme, paid.quote));
-        }
+        ensure!(paid.len() == 1 && paid[0].destination == DESTINATION.into());
+        ensure!((paid[0].meme, paid[0].quote) == (ATOMIC_SUPPLY / 20, self.target() / 20));
+        ensure!(
+            outcome.coins_created_for(&self.h, DESTINATION.into())
+                == self.coins(launch, paid[0].meme, paid[0].quote)
+        );
+        let accrued: Vec<ProtocolFeesAccrued> = self.launchpad_events(&outcome, "ProtocolFeesAccrued");
+        ensure!(
+            accrued.len() == 1
+                && accrued[0].launch_id == launch.launch
+                && (accrued[0].meme_amount, accrued[0].quote_amount)
+                    == (ATOMIC_SUPPLY / 20, self.target() / 20)
+        );
 
         let created: Vec<VaultCreated> = self.events(&outcome, "VaultCreated");
         ensure!(created.len() == 1 && created[0].fee_split == launch.split);
@@ -1928,7 +1933,8 @@ impl World {
     }
 
     /// The fixture plan: 70% of the Meme on the curve, 20% of the Meme and 90% of the Quote to
-    /// the pool, and 5% of each to `DESTINATION`; finalization adds Blast's 5% of each first.
+    /// the pool, and 5% of each to `DESTINATION`; finalization records Blast's separate 5%
+    /// migration fee for each asset.
     fn plan_arg(&self, b: &mut ProgrammableTransactionBuilder) -> Result<Argument> {
         let destination = b.pure(SuiAddress::from(DESTINATION))?;
         let share = self.bps(b, ALLOCATION_BPS)?;
@@ -2149,6 +2155,8 @@ struct LaunchCreated {
     _curve_meme_bps: u64,
     _lp_meme_bps: u64,
     _lp_quote_bps: u64,
+    _protocol_meme_bps: u64,
+    _protocol_quote_bps: u64,
     _allocation_recipients: Vec<(SuiAddress, u64, u64)>,
     _opening_round_ms: u64,
     _creation_fee: u64,
@@ -2170,6 +2178,13 @@ struct MigrationAllocationPaid {
     destination: SuiAddress,
     meme: u64,
     quote: u64,
+}
+
+#[derive(Deserialize)]
+struct ProtocolFeesAccrued {
+    launch_id: ObjectID,
+    meme_amount: u64,
+    quote_amount: u64,
 }
 
 #[derive(Deserialize)]

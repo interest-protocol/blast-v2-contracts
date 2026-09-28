@@ -15,9 +15,6 @@ const CREATOR: address = @0xC0FFEE;
 
 const PROTOCOL_ADMIN: address = @0xAD;
 
-/// Where Blast's migration allocation is paid.
-const BLAST: address = @0xB1A5;
-
 /// Where the fixture partner is paid.
 const PARTNER: address = @0x9A27;
 
@@ -50,7 +47,7 @@ const MEME_FEE_BPS: u64 = 250;
 
 const SELL_BURN_BPS: u64 = 1_000;
 
-/// Blast's allocation, set once in the launch configuration.
+/// Blast's allocation in the launch configuration.
 const PROTOCOL_MEME_BPS: u64 = 750;
 
 const PROTOCOL_QUOTE_BPS: u64 = 250;
@@ -342,11 +339,20 @@ fun finalize_requires_lp_fee_split() {
     fixture.end();
 }
 
-#[test, expected_failure(abort_code = std::option::EOPTION_NOT_SET, location = std::option)]
-fun finalize_requires_the_protocol_allocation() {
-    let mut fixture = start_unallocated();
+#[test]
+fun finalize_accepts_the_default_zero_protocol_allocation() {
+    let mut fixture = start_with_zero_protocol_allocation();
 
-    fixture.next_tx!(LAUNCHER, |f| destroy(f.new_default_launch(CREATOR)));
+    fixture.next_tx!(LAUNCHER, |f| {
+        let plan = allocation::plan(
+            bps::new(8_000),
+            bps::new(2_000),
+            bps::new(10_000),
+            vector[],
+        );
+
+        destroy(f.new_launch_with(MIGRATION_QUOTE_TARGET, plan));
+    });
 
     fixture.end();
 }
@@ -390,12 +396,12 @@ fun finalize_adds_blast_before_checking_the_quote_shares() {
 }
 
 #[test, expected_failure(abort_code = blast_fun::errors::ERecipientCapacityReached, location = blast_fun::allocation)]
-/// Sixteen creator recipients plus Blast exceed the sixteen-recipient bound.
+/// Seventeen creator recipients exceed the sixteen-recipient bound; Blast is tracked separately.
 fun finalize_rejects_a_seventeenth_recipient() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        destroy(f.new_launch_with(MIGRATION_QUOTE_TARGET, recipients_plan(16)));
+        destroy(f.new_launch_with(MIGRATION_QUOTE_TARGET, recipients_plan(17)));
     });
 
     fixture.end();
@@ -1685,8 +1691,12 @@ fun claim_protocol_fees_with_partner_pays_the_partner_its_share() {
         let (meme, refund) = f.buy(&mut launch, 10_000_000, 1);
         let (protocol_meme, creator_meme, protocol_quote, creator_quote) = launch
             .fee_totals_for_testing();
-        let partner_meme = protocol_meme * PARTNER_SHARE_BPS / 10_000;
-        let partner_quote = protocol_quote * PARTNER_SHARE_BPS / 10_000;
+        let partner_meme = (
+            (protocol_meme as u128) * (PARTNER_SHARE_BPS as u128) / 10_000
+        ) as u64;
+        let partner_quote = (
+            (protocol_quote as u128) * (PARTNER_SHARE_BPS as u128) / 10_000
+        ) as u64;
 
         let (meme_fees, quote_fees, sui_fees) = launch.claim_protocol_fees_with_partner(
             &f.package_version,
@@ -1736,6 +1746,77 @@ fun claim_protocol_fees_with_partner_pays_the_partner_its_share() {
         destroy(partner);
         destroy(meme);
         destroy(refund);
+        destroy(meme_fees);
+        destroy(quote_fees);
+        destroy(sui_fees);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test]
+/// Blast's one-time migration Meme and Quote fees enter the launch ledger, so the launch's partner
+/// receives its configured share when Blast claims them.
+fun claim_protocol_fees_with_partner_includes_migration_fees() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f
+            .runtime_config
+            .set_protocol_fee_share(&f.package_version, &fee_admin(), bps::new(2_500));
+        f.set_creation_fee(CREATION_FEE);
+        let partner = f.accepted_partner();
+        let partner_id = object::id(&partner);
+        let ticket = f.new_ticket(CREATOR);
+        let launch = f.intake_with_partner(ticket, &partner);
+        let mut launch = f.open_launch(launch);
+        f.graduate(&mut launch);
+
+        let mut currency = f.take_currency();
+        let (pool_meme, pool_quote) = launch
+            .migrate(&f.package_version, &mut currency, TEST_MIGRATION_WITNESS(), f.ctx!());
+
+        let (protocol_meme, creator_meme, protocol_quote, creator_quote) = launch
+            .fee_totals_for_testing();
+        let partner_meme = (
+            (protocol_meme as u128) * (PARTNER_SHARE_BPS as u128) / 10_000
+        ) as u64;
+        let partner_quote = (
+            (protocol_quote as u128) * (PARTNER_SHARE_BPS as u128) / 10_000
+        ) as u64;
+        let (meme_fees, quote_fees, sui_fees) = launch.claim_protocol_fees_with_partner(
+            &f.package_version,
+            &treasury_admin(),
+            &partner,
+            &f.clock,
+            f.ctx!(),
+        );
+
+        assert!(protocol_meme >= EXPECTED_PROTOCOL_MEME);
+        assert!(protocol_quote >= EXPECTED_PROTOCOL_QUOTE);
+        assert_eq!(meme_fees.value(), protocol_meme - partner_meme);
+        assert_eq!(quote_fees.value(), protocol_quote - partner_quote);
+        assert_eq!(sui_fees.value(), CREATION_FEE - 400);
+        let (protocol_meme_left, creator_meme_left, protocol_quote_left, creator_quote_left) = launch
+            .fee_totals_for_testing();
+        assert_eq!(protocol_meme_left, 0);
+        assert_eq!(creator_meme_left, creator_meme);
+        assert_eq!(protocol_quote_left, 0);
+        assert_eq!(creator_quote_left, creator_quote);
+        let (meme_partner_id, paid_meme) = event::events_by_type<PartnerPaid<LAUNCH_TESTS>>()[0]
+            .partner_paid_fields();
+        let (quote_partner_id, paid_quote) = event::events_by_type<PartnerPaid<TEST_QUOTE>>()[0]
+            .partner_paid_fields();
+        assert_eq!(meme_partner_id, partner_id);
+        assert_eq!(paid_meme, partner_meme);
+        assert_eq!(quote_partner_id, partner_id);
+        assert_eq!(paid_quote, partner_quote);
+
+        destroy(partner);
+        destroy(pool_meme);
+        destroy(pool_quote);
+        destroy(currency);
         destroy(meme_fees);
         destroy(quote_fees);
         destroy(sui_fees);
@@ -2023,9 +2104,9 @@ fun threshold_crossing_buy_closes_another_buy_before_curve_validation() {
 // --- Migration ---
 
 #[test]
-/// Blast is paid first, then each creator recipient in plan order; a zero share is reported
-/// but transfers nothing. The pool's share goes to the adapter.
-fun migration_pays_every_recipient_blast_first() {
+/// Creator recipients are paid in plan order; a zero share is reported but transfers nothing.
+/// Blast's allocation enters the fee ledger and the pool's share goes to the adapter.
+fun migration_pays_recipients_and_accrues_blast_allocation() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
@@ -2042,30 +2123,31 @@ fun migration_pays_every_recipient_blast_first() {
         let mut launch = f.take_launch();
         let launch_id = object::id(&launch);
         f.graduate(&mut launch);
+        let (protocol_meme_before, _, protocol_quote_before, _) = launch
+            .fee_totals_for_testing();
         let mut currency = f.take_currency();
-        let (meme, quote) = launch.migrate(&f.package_version, &mut currency, TEST_MIGRATION_WITNESS(), f.ctx!());
+        let (meme, quote) = launch
+            .migrate(&f.package_version, &mut currency, TEST_MIGRATION_WITNESS(), f.ctx!());
         let paid = collect<events::MigrationAllocationPaid>();
         let (curve, real_quote, pending_burn, allocated) = launch.balances_for_testing();
+        let (protocol_meme, _, protocol_quote, _) = launch.fee_totals_for_testing();
 
         assert_eq!(meme.value(), EXPECTED_POOL_MEME);
         assert_eq!(quote.value(), 22_500_000);
-        assert_eq!(paid.length(), 3);
+        assert_eq!(paid.length(), 2);
         assert_eq!(
             bcs::to_bytes(&paid[0]),
-            allocation_paid_bytes(
-                launch_id,
-                BLAST,
-                EXPECTED_PROTOCOL_MEME,
-                EXPECTED_PROTOCOL_QUOTE,
-            ),
-        );
-        assert_eq!(
-            bcs::to_bytes(&paid[1]),
             allocation_paid_bytes(launch_id, CREATOR, 0, 1_875_000),
         );
         assert_eq!(
-            bcs::to_bytes(&paid[2]),
+            bcs::to_bytes(&paid[1]),
             allocation_paid_bytes(launch_id, ALICE, 25_000_000__000_000_000, 0),
+        );
+        assert_eq!(protocol_meme, protocol_meme_before + EXPECTED_PROTOCOL_MEME);
+        assert_eq!(protocol_quote, protocol_quote_before + EXPECTED_PROTOCOL_QUOTE);
+        assert_eq!(
+            bcs::to_bytes(&collect_one<events::ProtocolFeesAccrued>()),
+            u64_payload(launch_id, vector[EXPECTED_PROTOCOL_MEME, EXPECTED_PROTOCOL_QUOTE]),
         );
         assert_eq!(curve + real_quote + pending_burn + allocated, 0);
         launch.assert_lifecycle(false, false, true);
@@ -2077,8 +2159,6 @@ fun migration_pays_every_recipient_blast_first() {
     });
 
     fixture.next_tx!(LAUNCHER, |f| {
-        assert_eq!(f.take_coin<LAUNCH_TESTS>(BLAST).burn_for_testing(), EXPECTED_PROTOCOL_MEME);
-        assert_eq!(f.take_coin<TEST_QUOTE>(BLAST).burn_for_testing(), EXPECTED_PROTOCOL_QUOTE);
         assert_eq!(f.take_coin<TEST_QUOTE>(CREATOR).burn_for_testing(), 1_875_000);
         assert_eq!(f.take_coin<LAUNCH_TESTS>(ALICE).burn_for_testing(), 25_000_000__000_000_000);
         assert!(!f.has_coin<LAUNCH_TESTS>(CREATOR));
@@ -2114,7 +2194,8 @@ fun migration_apportions_by_largest_remainder_and_conserves_both_assets() {
         let launch_id = object::id(&launch);
         let (bought, refund) = f.buy(&mut launch, 30_000_000, 1);
         let (curve, real_quote, pending_burn, allocated) = launch.balances_for_testing();
-        let (protocol_fee, creator_fee, _, _) = launch.fee_totals_for_testing();
+        let (protocol_fee, creator_fee, protocol_quote_fee, _) = launch
+            .fee_totals_for_testing();
 
         assert_eq!(real_quote, 25_000_007);
         assert_eq!(
@@ -2123,21 +2204,21 @@ fun migration_apportions_by_largest_remainder_and_conserves_both_assets() {
         );
 
         let mut currency = f.take_currency();
-        let (meme, quote) = launch.migrate(&f.package_version, &mut currency, TEST_MIGRATION_WITNESS(), f.ctx!());
+        let (meme, quote) = launch
+            .migrate(&f.package_version, &mut currency, TEST_MIGRATION_WITNESS(), f.ctx!());
         let paid = collect<events::MigrationAllocationPaid>();
+        let (protocol_meme, _, protocol_quote, _) = launch.fee_totals_for_testing();
 
         assert_eq!(
             bcs::to_bytes(&paid[0]),
-            allocation_paid_bytes(launch_id, BLAST, EXPECTED_PROTOCOL_MEME, 625_001),
-        );
-        assert_eq!(
-            bcs::to_bytes(&paid[1]),
             allocation_paid_bytes(launch_id, ALICE, 33_300_000__000_000_000, 2_777_501),
         );
         assert_eq!(
-            bcs::to_bytes(&paid[2]),
+            bcs::to_bytes(&paid[1]),
             allocation_paid_bytes(launch_id, BOB, 58_300_000__000_000_000, 2_155_000),
         );
+        assert_eq!(protocol_meme, protocol_fee + EXPECTED_PROTOCOL_MEME);
+        assert_eq!(protocol_quote, protocol_quote_fee + 625_001);
         assert_eq!(meme.value(), 233_300_000__000_000_000);
         assert_eq!(quote.value(), 19_442_505);
         assert_eq!(
@@ -2159,11 +2240,11 @@ fun migration_apportions_by_largest_remainder_and_conserves_both_assets() {
 }
 
 #[test]
-fun migration_pays_sixteen_recipients() {
+fun migration_pays_sixteen_project_recipients() {
     let mut fixture = start();
 
     fixture.next_tx!(LAUNCHER, |f| {
-        let launch = f.new_launch_with(MIGRATION_QUOTE_TARGET, recipients_plan(15));
+        let launch = f.new_launch_with(MIGRATION_QUOTE_TARGET, recipients_plan(16));
         f.share_launch(launch);
     });
 
@@ -2197,7 +2278,8 @@ fun fixed_supply_migration_sends_the_disposal_to_zero() {
         disposed_meme = f.reach_migration_after_sell(&mut launch);
         let mut currency = f.take_currency();
         let supply = currency.total_supply().destroy_some();
-        let (meme, quote) = launch.migrate(&f.package_version, &mut currency, TEST_MIGRATION_WITNESS(), f.ctx!());
+        let (meme, quote) = launch
+            .migrate(&f.package_version, &mut currency, TEST_MIGRATION_WITNESS(), f.ctx!());
 
         assert_eq!(meme.value(), EXPECTED_POOL_MEME);
         assert_eq!(currency.total_supply().destroy_some(), supply);
@@ -2245,7 +2327,8 @@ fun burn_only_migration_burns_the_disposal_from_native_supply() {
         let disposed_meme = f.reach_migration_after_sell(&mut launch);
         let mut currency = f.take_currency();
         let supply = currency.total_supply().destroy_some();
-        let (meme, quote) = launch.migrate(&f.package_version, &mut currency, TEST_MIGRATION_WITNESS(), f.ctx!());
+        let (meme, quote) = launch
+            .migrate(&f.package_version, &mut currency, TEST_MIGRATION_WITNESS(), f.ctx!());
 
         assert_eq!(currency.total_supply().destroy_some(), supply - disposed_meme);
         assert_eq!(
@@ -2381,7 +2464,7 @@ fun stale_package_version_aborts_migration_before_lifecycle_and_witness_validati
 
 /// The fixture with Blast's protocol allocation set.
 fun start(): LaunchFixture {
-    let mut fixture = start_unallocated();
+    let mut fixture = start_with_zero_protocol_allocation();
     let f = &mut fixture;
 
     f
@@ -2389,7 +2472,6 @@ fun start(): LaunchFixture {
         .set_protocol_allocation(
             &f.package_version,
             &treasury_admin(),
-            BLAST,
             bps::new(PROTOCOL_MEME_BPS),
             bps::new(PROTOCOL_QUOTE_BPS),
         );
@@ -2397,8 +2479,8 @@ fun start(): LaunchFixture {
     fixture
 }
 
-/// Configured launch policy without Blast's protocol allocation.
-fun start_unallocated(): LaunchFixture {
+/// Configured launch policy with Blast's default zero protocol allocation.
+fun start_with_zero_protocol_allocation(): LaunchFixture {
     let mut scenario = test_scenario::begin(@0x0);
     let package_version = package_version::new_for_testing(scenario.ctx());
     launch_config::init_for_testing(scenario.ctx());
@@ -2475,9 +2557,12 @@ fun default_plan_with_blast(): AllocationPlan {
         bps::new(CURVE_MEME_BPS),
         bps::new(LP_MEME_BPS),
         bps::new(LP_QUOTE_BPS),
-        vector[
-            allocation::recipient(BLAST, bps::new(PROTOCOL_MEME_BPS), bps::new(PROTOCOL_QUOTE_BPS)),
-        ],
+        vector[],
+    ).add_protocol(
+        allocation::protocol_allocation(
+            bps::new(PROTOCOL_MEME_BPS),
+            bps::new(PROTOCOL_QUOTE_BPS),
+        ),
     )
 }
 

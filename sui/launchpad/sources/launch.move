@@ -223,11 +223,11 @@ public fun finalize<Meme, Quote>(
         blast_fun::errors::meme_symbol_too_long!(),
     );
     // Trading closes with the reserve at the target, so the pool's share of it must be positive.
-    let (lp_quote, _) = allocation_plan.apportion_quote(graduation_target);
+    let (lp_quote, _, _) = allocation_plan.apportion_quote(graduation_target);
     assert!(lp_quote > 0, blast_fun::errors::invalid_graduation_target!());
     let ticket_id = ticket.id();
     let atomic_supply = launch_ticket::atomic_supply(ticket.decimals());
-    let (curve_meme, _, _) = allocation_plan.apportion_meme(atomic_supply);
+    let (curve_meme, _, _, _) = allocation_plan.apportion_meme(atomic_supply);
     let creation_fee_amount = creation_fee.value();
     let (mut meme, metadata_cap, creator, sell_burn_bps) = ticket.destroy(currency, atomic_supply);
 
@@ -650,8 +650,9 @@ public fun claim_protocol_fees_with_partner<Meme, Quote>(
     (meme, quote, sui)
 }
 
-/// Pays every recipient its allocation, burns the curve's unsold Meme and the pending sell-burn (or
-/// sends them to `@0x0` when the supply is fixed), and hands the pool's share to the stored adapter.
+/// Pays every project recipient, accrues Blast's one-time Meme and Quote fee in the launch ledger,
+/// burns the curve's unsold Meme and pending sell-burn (or sends them to `@0x0` when the supply is
+/// fixed), and returns the pool's share to the stored adapter.
 public fun migrate<Meme, Quote, Witness: drop>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
@@ -670,8 +671,10 @@ public fun migrate<Meme, Quote, Witness: drop>(
     );
 
     let plan = self.allocation_plan;
-    let (_, lp_meme, recipient_meme) = plan.apportion_meme(self.atomic_supply);
-    let (lp_quote, recipient_quote) = plan.apportion_quote(self.real_quote_reserve.value());
+    let (_, lp_meme, protocol_meme_amount, recipient_meme) = plan
+        .apportion_meme(self.atomic_supply);
+    let (lp_quote, protocol_quote_amount, recipient_quote) = plan
+        .apportion_quote(self.real_quote_reserve.value());
     let destinations = plan.destinations();
     destinations.length().do!(|i| {
         let (destination, meme, quote) = (destinations[i], recipient_meme[i], recipient_quote[i]);
@@ -686,6 +689,17 @@ public fun migrate<Meme, Quote, Witness: drop>(
         };
         events::migration_allocation_paid(self.id.to_inner(), destination, meme, quote);
     });
+    self.fee_ledger.accrue_protocol_fees(
+        self.allocated_meme.split(protocol_meme_amount),
+        self.real_quote_reserve.split(protocol_quote_amount),
+    );
+    if (protocol_meme_amount > 0 || protocol_quote_amount > 0) {
+        events::protocol_fees_accrued(
+            self.id.to_inner(),
+            protocol_meme_amount,
+            protocol_quote_amount,
+        );
+    };
     let meme = self.allocated_meme.withdraw_all();
     let quote = self.real_quote_reserve.withdraw_all();
 

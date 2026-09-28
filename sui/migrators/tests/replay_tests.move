@@ -35,8 +35,6 @@ const BIDDER: address = @0xB1;
 
 const KEEPER: address = @0xEE;
 
-const PROTOCOL_RECIPIENT: address = @0xA1;
-
 const TEAM: address = @0xA4;
 
 const ADVISOR: address = @0xA5;
@@ -141,7 +139,7 @@ public struct Replay has drop {
     default_shares: Shares,
     coin_shares: vector<CoinShares>,
     protocol_destination: address,
-    protocol_allocation: RecipientEntry,
+    protocol_allocation: Shares,
     ticket_id: ID,
     meme: String,
     decimals: u8,
@@ -223,6 +221,8 @@ public struct PlanEntry has copy, drop {
     curve_meme_bps: u64,
     lp_meme_bps: u64,
     lp_quote_bps: u64,
+    protocol_meme_bps: u64,
+    protocol_quote_bps: u64,
     recipients: vector<RecipientEntry>,
 }
 
@@ -398,7 +398,6 @@ fun configure_policy(self: &mut ReplayFixture) {
         config.set_protocol_allocation(
             &f.version,
             &treasury_admin,
-            PROTOCOL_RECIPIENT,
             bps::new(500),
             bps::new(1_000),
         );
@@ -870,6 +869,10 @@ fun reduce_transaction(self: &mut ReplayFixture, sender: address) {
         replay.migration_allocation_paid(bytes);
         reduced = reduced + 1;
     });
+    wrapped<events::ProtocolFeesAccrued>().do!(|bytes| {
+        replay.protocol_fees_accrued(bytes);
+        reduced = reduced + 1;
+    });
     wrapped<events::Migrated>().do!(|bytes| {
         replay.migrated(bytes);
         reduced = reduced + 1;
@@ -934,7 +937,7 @@ fun new_replay(publisher: address): Replay {
         default_shares: Shares { meme_bps: 0, quote_bps: 0 },
         coin_shares: vector[],
         protocol_destination: publisher,
-        protocol_allocation: RecipientEntry { destination: @0x0, meme_bps: 0, quote_bps: 0 },
+        protocol_allocation: Shares { meme_bps: 0, quote_bps: 0 },
         ticket_id: absent(),
         meme: b"".to_ascii_string(),
         decimals: 0,
@@ -953,7 +956,14 @@ fun new_replay(publisher: address): Replay {
         graduation_target: 0,
         quote_fee_bps: 0,
         meme_fee_bps: 0,
-        plan: PlanEntry { curve_meme_bps: 0, lp_meme_bps: 0, lp_quote_bps: 0, recipients: vector[] },
+        plan: PlanEntry {
+            curve_meme_bps: 0,
+            lp_meme_bps: 0,
+            lp_quote_bps: 0,
+            protocol_meme_bps: 0,
+            protocol_quote_bps: 0,
+            recipients: vector[],
+        },
         opening_round_ms: 0,
         opening_round_bids: 0,
         opening_round_quote: 0,
@@ -993,7 +1003,7 @@ fun new_replay(publisher: address): Replay {
 
 fun protocol_allocation_set(self: &mut Replay, bytes: vector<u8>) {
     let mut r = bcs::new(bytes);
-    let protocol_allocation = r.peel_recipient();
+    let protocol_allocation = Shares { meme_bps: r.peel_u64(), quote_bps: r.peel_u64() };
     r.assert_consumed();
 
     self.protocol_allocation = protocol_allocation;
@@ -1044,8 +1054,9 @@ fun launch_ticket_created(self: &mut Replay, bytes: vector<u8>) {
     self.total_supply = self.atomic_supply;
 }
 
-/// Finalization puts Blast's allocation first in the creator's plan, each asset sums to 10,000,
-/// and the curve starts with its apportioned Meme while the pool's and the recipients' wait.
+/// Finalization records Blast's migration fee separately from the creator's recipients, each
+/// asset sums to 10,000, and the curve starts with its apportioned Meme while every migration
+/// share waits.
 fun launch_created(self: &mut Replay, bytes: vector<u8>) {
     let mut r = bcs::new(bytes);
     self.launch_id = r.peel_id();
@@ -1069,8 +1080,7 @@ fun launch_created(self: &mut Replay, bytes: vector<u8>) {
     assert_eq!(creation_fee, 0);
     assert!(partner_id.is_none());
 
-    let recipients = self.plan.recipients;
-    assert_eq!(recipients[0], self.protocol_allocation);
+    assert_eq!(self.plan.protocol_shares(), self.protocol_allocation);
     assert_eq!(self.plan.meme_bps().total(), BASIS_POINTS);
     assert_eq!(self.plan.quote_bps().total(), BASIS_POINTS);
     let curve_meme = self.plan.meme_amounts(self.atomic_supply)[0];
@@ -1236,12 +1246,30 @@ fun migration_allocation_paid(self: &mut Replay, bytes: vector<u8>) {
     let i = self.recipients_paid;
     assert_eq!(self.lifecycle, MIGRATION_READY);
     assert_eq!(destination, self.plan.recipients[i].destination);
-    assert_eq!(meme, self.plan.meme_amounts(self.atomic_supply)[PROTOCOL_MEME_PART + i]);
-    assert_eq!(quote, self.plan.quote_amounts(self.real_quote_reserve)[PROTOCOL_QUOTE_PART + i]);
+    assert_eq!(meme, self.plan.meme_amounts(self.atomic_supply)[PROTOCOL_MEME_PART + 1 + i]);
+    assert_eq!(quote, self.plan.quote_amounts(self.real_quote_reserve)[PROTOCOL_QUOTE_PART + 1 + i]);
     self.recipients_paid = i + 1;
     self.allocated_meme_paid = self.allocated_meme_paid + meme;
     self.allocated_quote_paid = self.allocated_quote_paid + quote;
     self.credit(destination, meme, quote);
+}
+
+/// The one-time migration fee enters the launch ledger before the pool receives its remainder.
+fun protocol_fees_accrued(self: &Replay, bytes: vector<u8>) {
+    let mut r = bcs::new(bytes);
+    assert_eq!(r.peel_id(), self.launch_id);
+    let accrued = r.peel_pair();
+    r.assert_consumed();
+
+    assert_eq!(self.lifecycle, MIGRATION_READY);
+    assert_eq!(
+        accrued.meme,
+        self.plan.meme_amounts(self.atomic_supply)[PROTOCOL_MEME_PART],
+    );
+    assert_eq!(
+        accrued.quote,
+        self.plan.quote_amounts(self.real_quote_reserve)[PROTOCOL_QUOTE_PART],
+    );
 }
 
 /// After every recipient is paid, the adapter receives the pool's shares, which empty the
@@ -1259,8 +1287,10 @@ fun migrated(self: &mut Replay, bytes: vector<u8>) {
     assert_eq!(self.recipients_paid, self.plan.recipients.length());
     assert_eq!(meme, self.plan.meme_amounts(self.atomic_supply)[1]);
     assert_eq!(quote, self.plan.quote_amounts(self.real_quote_reserve)[0]);
-    assert_eq!(meme + self.allocated_meme_paid, self.allocated_meme);
-    assert_eq!(quote + self.allocated_quote_paid, self.real_quote_reserve);
+    let protocol_meme = self.plan.meme_amounts(self.atomic_supply)[PROTOCOL_MEME_PART];
+    let protocol_quote = self.plan.quote_amounts(self.real_quote_reserve)[PROTOCOL_QUOTE_PART];
+    assert_eq!(meme + protocol_meme + self.allocated_meme_paid, self.allocated_meme);
+    assert_eq!(quote + protocol_quote + self.allocated_quote_paid, self.real_quote_reserve);
     assert_eq!(disposed_meme, self.meme_reserve);
     assert_eq!(self.total_supply, self.atomic_supply - disposed_meme);
     self.lifecycle = MIGRATED;
@@ -1506,9 +1536,18 @@ fun peel_plan(r: &mut BCS): PlanEntry {
     let curve_meme_bps = r.peel_u64();
     let lp_meme_bps = r.peel_u64();
     let lp_quote_bps = r.peel_u64();
+    let protocol_meme_bps = r.peel_u64();
+    let protocol_quote_bps = r.peel_u64();
     let recipients = r.peel_vec!(|r| r.peel_recipient());
 
-    PlanEntry { curve_meme_bps, lp_meme_bps, lp_quote_bps, recipients }
+    PlanEntry {
+        curve_meme_bps,
+        lp_meme_bps,
+        lp_quote_bps,
+        protocol_meme_bps,
+        protocol_quote_bps,
+        recipients,
+    }
 }
 
 fun peel_recipient(r: &mut BCS): RecipientEntry {
@@ -1550,20 +1589,24 @@ fun assert_consumed(r: BCS) {
 
 // Reference Apportionment
 
-/// The Meme parts in apportionment order: the curve, the pool, then each recipient.
+/// The Meme parts in apportionment order: the curve, the pool, Blast, then each recipient.
 fun meme_bps(self: &PlanEntry): vector<u64> {
-    let mut bps = vector[self.curve_meme_bps, self.lp_meme_bps];
+    let mut bps = vector[self.curve_meme_bps, self.lp_meme_bps, self.protocol_meme_bps];
     self.recipients.do_ref!(|recipient| bps.push_back(recipient.meme_bps));
 
     bps
 }
 
-/// The Quote parts in apportionment order: the pool, then each recipient.
+/// The Quote parts in apportionment order: the pool, Blast, then each recipient.
 fun quote_bps(self: &PlanEntry): vector<u64> {
-    let mut bps = vector[self.lp_quote_bps];
+    let mut bps = vector[self.lp_quote_bps, self.protocol_quote_bps];
     self.recipients.do_ref!(|recipient| bps.push_back(recipient.quote_bps));
 
     bps
+}
+
+fun protocol_shares(self: &PlanEntry): Shares {
+    Shares { meme_bps: self.protocol_meme_bps, quote_bps: self.protocol_quote_bps }
 }
 
 fun meme_amounts(self: &PlanEntry, supply: u64): vector<u64> {
@@ -1702,6 +1745,9 @@ fun assert_launch(self: &Replay, launch: &Launch<REPLAY_TESTS, QUOTE>, currency:
                 bps::new(entry.meme_bps),
                 bps::new(entry.quote_bps),
             )),
+        ).add_protocol_for_testing(
+            bps::new(self.plan.protocol_meme_bps),
+            bps::new(self.plan.protocol_quote_bps),
         ),
     );
 
@@ -1744,7 +1790,7 @@ fun assert_vault(self: &Replay, vault: &mut LpVault<REPLAY_TESTS, QUOTE>) {
 /// Every payout event must equal the native coins its destination received.
 fun assert_native_payouts(self: &mut ReplayFixture) {
     self.next_tx!(KEEPER, |f| {
-        assert_eq!(f.replay.payouts.length(), 12);
+        assert_eq!(f.replay.payouts.length(), 11);
         f.replay.payouts.do_ref!(|payout| {
             assert_eq!(f.coin_total<REPLAY_TESTS>(payout.destination), payout.meme);
             assert_eq!(f.coin_total<QUOTE>(payout.destination), payout.quote);

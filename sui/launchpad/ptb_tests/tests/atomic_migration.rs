@@ -7,8 +7,9 @@
 //!
 //! Two independent one-time-witness launches reach MigrationReady through public PTBs. Every
 //! failing migration PTB must commit nothing (see `Harness::assert_rolled_back`): no allocation
-//! reaches Blast or the creator's recipient, and launch A stays migratable through the whole failure matrix before
-//! completing in one successful PTB. Every event travels in the launchpad envelope.
+//! reaches the launch ledger or the creator's recipient, and launch A stays migratable through the
+//! whole failure matrix before completing in one successful PTB. Every event travels in the
+//! launchpad envelope.
 //!
 //! A launch with an opening round shows the launch-owned bidder record the first bid creates, that
 //! nothing trades or pays out before settlement, that every failing round call commits nothing,
@@ -64,7 +65,6 @@ const OPENING_ROUND_NOT_ENDED: u64 = 19;
 const ZERO_OPENING_ROUND_BID: u64 = 34;
 
 const DESTINATION: ObjectID = address(&[0xD5]);
-const PROTOCOL: ObjectID = address(&[0xAD]);
 /// Blast's one-time share of both the Meme supply and the final Quote reserve.
 const BLAST_BPS: u64 = 500;
 
@@ -99,7 +99,7 @@ fn failed_migration_ptbs_commit_nothing_and_one_ptb_completes_atomically() -> Re
     let (mut w, a, b) = setup()?;
     let b_ready = w.h.snapshot(&[b.launch, b.currency], &[]);
     let watched = [a.launch, a.currency];
-    let owners = [w.h.sender, DESTINATION.into(), PROTOCOL.into()];
+    let owners = [w.h.sender, DESTINATION.into()];
 
     // An adapter abort after the launch migrated rolls the whole migration back.
     let pt = w.migrate(&a, &a, true)?;
@@ -149,14 +149,14 @@ fn failed_migration_ptbs_commit_nothing_and_one_ptb_completes_atomically() -> Re
     w.h.assert_rolled_back(pt, Expected::Error("InvalidUsageOfPureArg"), &watched, &owners)?;
     assert_eq!(w.launch_lifecycle(&a)?, LaunchLifecycle::MigrationReady);
 
-    // The complete migration succeeds in one PTB, pays Blast and then the creator's recipient,
-    // and leaves the caller with nothing.
+    // The complete migration succeeds in one PTB, pays the creator's recipient, settles Blast's
+    // Meme and Quote allocation into the launch ledger, and leaves the caller with nothing.
     let pt = w.migrate(&a, &a, false)?;
     let outcome = w.h.execute(pt)?;
     outcome.assert_success();
     assert_eq!(
         outcome.wrapped_payloads(w.blast),
-        ["MigrationAllocationPaid", "MigrationAllocationPaid", "Migrated"]
+        ["MigrationAllocationPaid", "ProtocolFeesAccrued", "Migrated"]
     );
     assert_eq!(w.launch_lifecycle(&a)?, LaunchLifecycle::Migrated);
     let migrated = outcome.events_of("events", "Migrated");
@@ -168,12 +168,16 @@ fn failed_migration_ptbs_commit_nothing_and_one_ptb_completes_atomically() -> Re
     assert_eq!(vaults.len(), 1);
     assert!(w.h.object(vaults[0]).is_shared());
     let paid = outcome.events_of("events", "MigrationAllocationPaid");
-    for (paid, destination) in paid.into_iter().zip([PROTOCOL, DESTINATION]) {
-        let paid: MigrationAllocationPaid = bcs::from_bytes(paid)?;
-        assert_eq!((paid.launch_id, paid.destination), (a.launch, destination.into()));
-        assert!(paid.meme > 0 && paid.quote > 0);
-        assert_eq!(outcome.coins_created_for(&w.h, destination.into()), w.coins(&a, paid.meme, paid.quote));
-    }
+    assert_eq!(paid.len(), 1);
+    let paid: MigrationAllocationPaid = bcs::from_bytes(paid[0])?;
+    assert_eq!((paid.launch_id, paid.destination), (a.launch, DESTINATION.into()));
+    assert!(paid.meme > 0 && paid.quote > 0);
+    assert_eq!(outcome.coins_created_for(&w.h, DESTINATION.into()), w.coins(&a, paid.meme, paid.quote));
+    let accrued = outcome.events_of("events", "ProtocolFeesAccrued");
+    assert_eq!(accrued.len(), 1);
+    let accrued: ProtocolFeesAccrued = bcs::from_bytes(accrued[0])?;
+    assert_eq!(accrued.launch_id, a.launch);
+    assert!(accrued.meme_amount > 0 && accrued.quote_amount > 0);
     assert!(
         outcome
             .effects
@@ -232,8 +236,14 @@ fn maximum_fee_split_fits_protocol_limits_at_creation_and_migration() -> Result<
         (launch_created.pool_tick_spacing, launch_created.pool_fee_rate),
         (POOL_TICK_SPACING, POOL_FEE_RATE),
     );
-    let blast_first = (SuiAddress::from(PROTOCOL), BLAST_BPS, BLAST_BPS);
-    assert_eq!(launch_created.allocation_plan.recipients, [blast_first, (DESTINATION.into(), 500, 500)]);
+    assert_eq!(
+        (
+            launch_created.allocation_plan.protocol_meme_bps,
+            launch_created.allocation_plan.protocol_quote_bps,
+        ),
+        (BLAST_BPS, BLAST_BPS),
+    );
+    assert_eq!(launch_created.allocation_plan.recipients, [(DESTINATION.into(), 500, 500)]);
     records.push(w.record(&a, "create_launch", "3 parts + 16 recipients", &created));
 
     // The launch carries the split unchanged to migration, which neither reads nor pays it.
@@ -242,7 +252,7 @@ fn maximum_fee_split_fits_protocol_limits_at_creation_and_migration() -> Result<
     migrated.assert_success();
     assert_eq!(
         migrated.wrapped_payloads(w.blast),
-        ["MigrationAllocationPaid", "MigrationAllocationPaid", "Migrated"]
+        ["MigrationAllocationPaid", "ProtocolFeesAccrued", "Migrated"]
     );
     records.push(w.record(&a, "migrate", "3 parts + 16 recipients", &migrated));
 
@@ -397,6 +407,8 @@ struct AllocationPlan {
     _curve_meme_bps: u64,
     _lp_meme_bps: u64,
     _lp_quote_bps: u64,
+    protocol_meme_bps: u64,
+    protocol_quote_bps: u64,
     recipients: Vec<(SuiAddress, u64, u64)>,
 }
 
@@ -472,6 +484,14 @@ struct MigrationAllocationPaid {
     destination: SuiAddress,
     meme: u64,
     quote: u64,
+}
+
+/// Mirrors `blast_fun::events::ProtocolFeesAccrued`.
+#[derive(Deserialize)]
+struct ProtocolFeesAccrued {
+    launch_id: ObjectID,
+    meme_amount: u64,
+    quote_amount: u64,
 }
 
 /// Two launches without an opening round at MigrationReady.
@@ -580,13 +600,11 @@ fn world(work: &str) -> Result<World> {
         fee,
         fee,
     ]);
-    let protocol = builder.pure(SuiAddress::from(PROTOCOL))?;
     let blast_bps = w.bps(&mut builder, BLAST_BPS)?;
     call(&mut builder, blast, "launch_config", "set_protocol_allocation", vec![], vec![
         config_arg,
         version_arg,
         treasury_admin,
-        protocol,
         blast_bps,
         blast_bps,
     ]);
@@ -860,7 +878,8 @@ impl World {
     }
 
     /// The fixture plan: 70% of the Meme on the curve, 20% of the Meme and 90% of the Quote to
-    /// the pool, and 5% of each to `DESTINATION`; finalization adds Blast's 5% of each first.
+    /// the pool, and 5% of each to `DESTINATION`; finalization records Blast's 5% of each as the
+    /// explicit protocol allocation.
     fn plan_arg(&self, builder: &mut ProgrammableTransactionBuilder) -> Result<Argument> {
         let destination = builder.pure(SuiAddress::from(DESTINATION))?;
         let share = self.bps(builder, 500)?;

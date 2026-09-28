@@ -206,7 +206,7 @@ assertEqual(
     "docs/decisions/0088-reusable-launch-accounting-and-atomic-migration.md",
   ].join(","),
 );
-assertEqual("policy.mutability", vectors.policy.mutability, "single-write");
+assertEqual("policy.mutability", vectors.policy.mutability, "future-launches");
 
 const expectedCases = [
   "recommended_sui_lane",
