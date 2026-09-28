@@ -285,12 +285,6 @@ fun start(): Fixture {
         bps::new(100),
         bps::new(100),
     );
-    config.set_protocol_allocation(
-        &version,
-        &blast_acl::witness_for_testing<TreasuryAdmin>(),
-        bps::new(0),
-        bps::new(0),
-    );
     let launch_id = share_launch(&mut scenario, &version, &config, &clock);
     test_scenario::return_shared(config);
 
@@ -406,7 +400,7 @@ use blast_admin::blast_acl;
 use blast_fun::{
     allocation::{Self, FeeSplit},
     blast_events::Event as BlastEvent,
-    blast_fun_domain::{AdapterAdmin, FeeAdmin, ListingAdmin, TreasuryAdmin},
+    blast_fun_domain::{AdapterAdmin, FeeAdmin, ListingAdmin},
     bps,
     creator_authority,
     events,

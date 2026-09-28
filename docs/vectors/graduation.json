@@ -27,9 +27,9 @@
   },
   "policy": {
     "owner": "LaunchConfig",
-    "mutability": "single-write",
-    "match": "Every launch plan must exactly match the configured protocol channel ID, destination, Meme BPS, and Quote BPS.",
-    "zero_policy": "A zero/zero protocol policy omits the protocol channel and both zero-weight entries from the plan."
+    "mutability": "future-launches",
+    "match": "Every finalized launch snapshots the configured protocol Meme and Quote BPS into its immutable allocation plan.",
+    "zero_policy": "A zero/zero protocol policy is always present and charges no protocol migration fee."
   },
   "formulas": {
     "terminal_curve_meme": "ceil(curve_meme * virtual_quote / (virtual_quote + graduation_target))",

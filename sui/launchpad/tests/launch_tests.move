@@ -47,7 +47,7 @@ const MEME_FEE_BPS: u64 = 250;
 
 const SELL_BURN_BPS: u64 = 1_000;
 
-/// Blast's allocation, set once in the launch configuration.
+/// Blast's allocation in the launch configuration.
 const PROTOCOL_MEME_BPS: u64 = 750;
 
 const PROTOCOL_QUOTE_BPS: u64 = 250;
@@ -339,11 +339,20 @@ fun finalize_requires_lp_fee_split() {
     fixture.end();
 }
 
-#[test, expected_failure(abort_code = std::option::EOPTION_NOT_SET, location = std::option)]
-fun finalize_requires_the_protocol_allocation() {
-    let mut fixture = start_unallocated();
+#[test]
+fun finalize_accepts_the_default_zero_protocol_allocation() {
+    let mut fixture = start_with_zero_protocol_allocation();
 
-    fixture.next_tx!(LAUNCHER, |f| destroy(f.new_default_launch(CREATOR)));
+    fixture.next_tx!(LAUNCHER, |f| {
+        let plan = allocation::plan(
+            bps::new(8_000),
+            bps::new(2_000),
+            bps::new(10_000),
+            vector[],
+        );
+
+        destroy(f.new_launch_with(MIGRATION_QUOTE_TARGET, plan));
+    });
 
     fixture.end();
 }
@@ -2455,7 +2464,7 @@ fun stale_package_version_aborts_migration_before_lifecycle_and_witness_validati
 
 /// The fixture with Blast's protocol allocation set.
 fun start(): LaunchFixture {
-    let mut fixture = start_unallocated();
+    let mut fixture = start_with_zero_protocol_allocation();
     let f = &mut fixture;
 
     f
@@ -2470,8 +2479,8 @@ fun start(): LaunchFixture {
     fixture
 }
 
-/// Configured launch policy without Blast's protocol allocation.
-fun start_unallocated(): LaunchFixture {
+/// Configured launch policy with Blast's default zero protocol allocation.
+fun start_with_zero_protocol_allocation(): LaunchFixture {
     let mut scenario = test_scenario::begin(@0x0);
     let package_version = package_version::new_for_testing(scenario.ctx());
     launch_config::init_for_testing(scenario.ctx());

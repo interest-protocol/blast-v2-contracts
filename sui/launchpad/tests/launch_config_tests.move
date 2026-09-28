@@ -92,13 +92,17 @@ fun package_init_creates_launch_config_with_six_and_nine_decimals() {
         assert_eq!(f.config.allowed_migration_witness_count_for_testing(), 0);
         assert_eq!(f.config.allowed_meme_decimals_count_for_testing(), 2);
         assert_eq!(f.config.creation_fee(), 0);
+        assert_eq!(
+            f.config.protocol_allocation(),
+            allocation::protocol_allocation(bps::new(0), bps::new(0)),
+        );
     });
 
     fixture.end();
 }
 
 #[test]
-fun protocol_allocation_is_set_once_and_emits_rates() {
+fun protocol_allocation_updates_and_emits_rates() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
@@ -122,6 +126,7 @@ fun protocol_allocation_accepts_zero_shares() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f.set_protocol_allocation(1, 1);
         f.set_protocol_allocation(0, 0);
 
         assert_eq!(
@@ -150,36 +155,28 @@ fun protocol_allocation_maxima_leave_one_unit_for_the_curve_and_the_pool() {
 }
 
 #[test]
-#[
-    expected_failure(
-        abort_code = std::option::EOPTION_NOT_SET,
-        location = std::option,
-    ),
-]
-fun unset_protocol_allocation_rejects_launch_intake() {
+fun protocol_allocation_can_be_updated_for_future_launches() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        f.config.protocol_allocation();
+        f.set_protocol_allocation(1, 1);
+        f.set_protocol_allocation(2, 3);
+
+        assert_eq!(
+            f.config.protocol_allocation(),
+            allocation::protocol_allocation(bps::new(2), bps::new(3)),
+        );
     });
 
     fixture.end();
 }
 
 #[test]
-#[
-    expected_failure(
-        abort_code = blast_fun::errors::EInvalidProtocolAllocation,
-        location = blast_fun::launch_config,
-    ),
-]
-fun protocol_allocation_cannot_be_reset() {
+#[expected_failure(abort_code = blast_fun::errors::EUnchanged, location = blast_fun::launch_config)]
+fun protocol_allocation_rejects_an_unchanged_value() {
     let mut fixture = start();
 
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        f.set_protocol_allocation(0, 0);
-        f.set_protocol_allocation(1, 1);
-    });
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| f.set_protocol_allocation(0, 0));
 
     fixture.end();
 }

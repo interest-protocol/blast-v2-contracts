@@ -68,6 +68,12 @@ returns only the pool shares to the adapter. `ProtocolFeesAccrued` records that
 one-time fee. The adapter's venue residual and recurring LP-fee paths do not
 change.
 
+`LaunchConfig` always holds a concrete `ProtocolAllocation`, initialized to
+zero Meme and zero Quote BPS. `TreasuryAdmin` may update it for future launches,
+and every finalized launch snapshots the current value into its immutable
+allocation plan. There is no distinct unset state and no initialization call is
+required to launch with a zero protocol migration fee.
+
 **Paying the partner.** `buy`, `sell` and `settle_opening_round` are unchanged:
 Blast's share of each trade fee accrues in the launch's ledger as before, next
 to the creation fee and migration fee. Because a launch has at most one
@@ -157,7 +163,8 @@ from the timelock.
   - `finalize` gains the creation-fee coin;
   - both protocol claims return a third coin, the SUI creation fee;
   - the protocol migration fee becomes explicit in `AllocationPlan`, and
-    `set_protocol_allocation` no longer takes a payout destination;
+    `set_protocol_allocation` no longer takes a payout destination; its policy
+    always exists, defaults to zero, and updates only future launches;
   - `migrate` keeps its two-balance return and accrues Blast's fee before
     returning the pool balances;
   - new functions: `set_partner`, `claim_protocol_fees_with_partner`,
@@ -171,6 +178,8 @@ from the timelock.
 ## Verification
 
 - `LaunchConfig` tests:
+  - the protocol allocation defaults to zero, updates future-launch policy,
+    rejects unchanged values, and preserves its curve and pool bounds;
   - the fee setter, its event, the unchanged guard, and the version check;
   - a partner accepted at once;
   - a removed partner accepted until one millisecond before its notice ends,

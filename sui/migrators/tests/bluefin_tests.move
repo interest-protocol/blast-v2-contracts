@@ -181,13 +181,6 @@ fun start(): BluefinFixture {
         bps::new(100),
         bps::new(100),
     );
-    config.set_protocol_allocation(
-        &version,
-        &blast_acl::witness_for_testing<TreasuryAdmin>(),
-        bps::new(0),
-        bps::new(0),
-    );
-
     BluefinFixture { scenario, version, migrators_version, config }
 }
 
@@ -272,7 +265,7 @@ use blast_admin::blast_acl;
 
 use blast_fun::{
     allocation,
-    blast_fun_domain::{AdapterAdmin, FeeAdmin, ListingAdmin, TreasuryAdmin},
+    blast_fun_domain::{AdapterAdmin, FeeAdmin, ListingAdmin},
     bps,
     creator_authority,
     launch::Launch,

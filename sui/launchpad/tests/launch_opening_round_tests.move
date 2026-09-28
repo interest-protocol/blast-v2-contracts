@@ -734,12 +734,6 @@ fun start(): OpeningRoundFixture {
         bps::new(QUOTE_FEE_BPS),
         bps::new(MEME_FEE_BPS),
     );
-    config.set_protocol_allocation(
-        &package_version,
-        &blast_acl::witness_for_testing<TreasuryAdmin>(),
-        bps::new(0),
-        bps::new(0),
-    );
     scenario.next_tx(LAUNCHER);
 
     OpeningRoundFixture { scenario, package_version, config, runtime_config, clock }
@@ -965,7 +959,7 @@ use blast_admin::blast_acl;
 use blast_fun::{
     allocation::{Self, AllocationPlan},
     blast_events::Event,
-    blast_fun_domain::{AdapterAdmin, FeeAdmin, ListingAdmin, TreasuryAdmin},
+    blast_fun_domain::{AdapterAdmin, FeeAdmin, ListingAdmin},
     bps,
     creator_authority,
     curve,

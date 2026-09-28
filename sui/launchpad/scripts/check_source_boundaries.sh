@@ -815,15 +815,20 @@ launch_config_facts="$(move_facts sources/launch_config.move)"
 launch_config_source="$(move_normalized_source <<<"$launch_config_facts")"
 launch_config_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/launch_config.move)"
 
-# Blast's allocation is written once, leaving room for the curve and the pool.
+# Blast's allocation always exists, starts at zero, and may change only for future launches while
+# leaving room for the curve and the pool.
 if [[ ! -f sources/launch_config.move ]] \
   || [[ "$(move_production_function_contract set_protocol_allocation <<<"$launch_config_facts")" != 'public:0:0:fun set_protocol_allocation( self: &mut LaunchConfig, package_version: &PackageVersion, _: &AdminWitness<TreasuryAdmin>,'* ]] \
-  || ! rg -Fq 'self.protocol_allocation.is_none() && meme_bps.value() <= 9_998 && quote_bps.value() <= 9_999' <<<"$launch_config_source" \
+  || ! rg -Fq 'protocol_allocation: ProtocolAllocation,' sources/launch_config.move \
+  || rg -Fq 'protocol_allocation: Option<' sources/launch_config.move \
+  || ! rg -Fq 'meme_bps.value() <= 9_998 && quote_bps.value() <= 9_999' <<<"$launch_config_source" \
+  || ! rg -Fq 'self.protocol_allocation != protocol_allocation' <<<"$launch_config_source" \
+  || ! rg -Fq 'protocol_allocation: allocation::protocol_allocation(bps::new(0), bps::new(0))' <<<"$launch_config_source" \
   || [[ "$(count_occurrences 'self\.protocol_allocation = ' <<<"$launch_config_source")" != 1 ]] \
   || rg -n '\b(set_graduation_defaults|GraduationDefaultsChanged|protocol_(quote_migration|meme_graduation)_fee_bps|meme_liquidity_provision_bps|QuoteParameters|QuoteParametersChanged|min_graduation_target|max_graduation_target)\b' \
     sources/launch_config.move sources/lib/events.move \
   || rg -n '\b(AdminCap|ProtocolAuthority|sequence|schema_version|action_tag|nonce)\b' <<<"$launch_config_production"; then
-  echo 'LaunchConfig must own only future-launch settings plus an AdminWitness-gated, single-write Blast allocation.' >&2
+  echo 'LaunchConfig must own only future-launch settings plus an AdminWitness-gated Blast allocation that always exists and defaults to zero.' >&2
   failures=$((failures + 1))
 fi
 
@@ -885,7 +890,7 @@ if [[ -z "$protocol_allocation_event_payload" ]] \
   || ! rg -q '^[[:space:]]+meme_bps: u64,' <<<"$protocol_allocation_event_payload" \
   || ! rg -q '^[[:space:]]+quote_bps: u64,' <<<"$protocol_allocation_event_payload" \
   || rg -n '\b(destination|config_id|sequence|schema_version|action_tag|nonce)\b' <<<"$protocol_allocation_event_payload"; then
-  echo 'The one-time Blast allocation policy must emit its complete primitive replay fact without singleton or ordering noise.' >&2
+  echo 'The Blast migration-fee allocation policy must emit its complete primitive replay fact without singleton or ordering noise.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1466,7 +1471,7 @@ if ! events_follow_mutations sources/launch_ticket.move new 'LaunchTicket{' 'eve
     'currency.burn_balance(' \
     'events::migrated(' \
   || ! events_follow_mutations sources/launch_config.move set_protocol_allocation \
-    'self.protocol_allocation = option::some(' 'events::protocol_allocation_set('; then
+    'self.protocol_allocation = protocol_allocation;' 'events::protocol_allocation_set('; then
   echo 'Every replay-schema success event must follow the state write or native transfer it records.' >&2
   failures=$((failures + 1))
 fi

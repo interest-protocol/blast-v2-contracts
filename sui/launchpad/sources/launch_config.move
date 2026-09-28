@@ -18,7 +18,7 @@ public struct LaunchConfig has key {
     quote_fee_bps: Bps,
     meme_fee_bps: Bps,
     migration_witnesses: VecSet<TypeName>,
-    protocol_allocation: Option<ProtocolAllocation>,
+    protocol_allocation: ProtocolAllocation,
     /// In MIST.
     creation_fee: u64,
 }
@@ -35,8 +35,8 @@ fun init(ctx: &mut TxContext) {
 
 // === Public Functions ===
 
-/// Sets, once and for good, Blast's fee share of every launch's Meme supply and final Quote
-/// reserve. The shares leave room for the curve and the pool.
+/// Sets Blast's fee share of future launches' Meme supply and final Quote reserve. The shares
+/// leave room for the curve and the pool; finalized launches keep their snapshotted shares.
 public fun set_protocol_allocation(
     self: &mut LaunchConfig,
     package_version: &PackageVersion,
@@ -46,11 +46,13 @@ public fun set_protocol_allocation(
 ) {
     package_version.assert_current();
     assert!(
-        self.protocol_allocation.is_none() && meme_bps.value() <= 9_998 && quote_bps.value() <= 9_999,
+        meme_bps.value() <= 9_998 && quote_bps.value() <= 9_999,
         blast_fun::errors::invalid_protocol_allocation!(),
     );
+    let protocol_allocation = allocation::protocol_allocation(meme_bps, quote_bps);
+    assert!(self.protocol_allocation != protocol_allocation, blast_fun::errors::unchanged!());
 
-    self.protocol_allocation = option::some(allocation::protocol_allocation(meme_bps, quote_bps));
+    self.protocol_allocation = protocol_allocation;
 
     events::protocol_allocation_set(meme_bps.value(), quote_bps.value());
 }
@@ -209,7 +211,7 @@ public(package) fun snapshot_for_launch<Quote>(
 }
 
 public(package) fun protocol_allocation(self: &LaunchConfig): ProtocolAllocation {
-    *self.protocol_allocation.borrow()
+    self.protocol_allocation
 }
 
 public(package) fun creation_fee(self: &LaunchConfig): u64 {
@@ -235,7 +237,7 @@ fun new(ctx: &mut TxContext): LaunchConfig {
         quote_fee_bps: bps::new(0),
         meme_fee_bps: bps::new(0),
         migration_witnesses: vec_set::empty(),
-        protocol_allocation: option::none(),
+        protocol_allocation: allocation::protocol_allocation(bps::new(0), bps::new(0)),
         creation_fee: 0,
     }
 }

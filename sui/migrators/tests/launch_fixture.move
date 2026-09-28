@@ -24,8 +24,8 @@ const POOL_FEE_RATE: u64 = 2_500;
 
 // === Test Helpers ===
 
-/// Admits `Quote` and the adapter's `Witness` with fixed trade fees and a zero Blast allocation,
-/// each under its own role.
+/// Admits `Quote` and the adapter's `Witness` with fixed trade fees. The launch configuration's
+/// default zero Blast allocation needs no initialization call.
 public fun admit<Quote, Witness: drop>(config: &mut LaunchConfig, version: &PackageVersion) {
     config.set_quote_allowed<Quote>(version, &blast_acl::witness_for_testing<ListingAdmin>(), true);
     config.set_migration_witness_allowed<Witness>(
@@ -38,12 +38,6 @@ public fun admit<Quote, Witness: drop>(config: &mut LaunchConfig, version: &Pack
         &blast_acl::witness_for_testing<FeeAdmin>(),
         bps::new(100),
         bps::new(100),
-    );
-    config.set_protocol_allocation(
-        version,
-        &blast_acl::witness_for_testing<TreasuryAdmin>(),
-        bps::new(0),
-        bps::new(0),
     );
 }
 
@@ -105,7 +99,7 @@ use blast_admin::blast_acl;
 
 use blast_fun::{
     allocation::{Self, FeeSplit},
-    blast_fun_domain::{AdapterAdmin, FeeAdmin, ListingAdmin, TreasuryAdmin},
+    blast_fun_domain::{AdapterAdmin, FeeAdmin, ListingAdmin},
     bps,
     creator_authority,
     launch::{Self, Launch},

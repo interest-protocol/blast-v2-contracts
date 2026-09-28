@@ -28,7 +28,7 @@ const EMigrationWitnessNotAllowed: u64 = 3;
 const EInvalidMigrationWitnessType: u64 = 4;
 
 #[test_only]
-/// Blast's allocation is already set or leaves no room for the curve and pool.
+/// Blast's allocation leaves no room for the curve or pool.
 const EInvalidProtocolAllocation: u64 = 5;
 
 #[test_only]

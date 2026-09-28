@@ -51,7 +51,6 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
     scenario.next_tx(@0xa);
     let listing_admin = blast_acl::witness_for_testing<ListingAdmin>();
     let adapter_admin = blast_acl::witness_for_testing<AdapterAdmin>();
-    let treasury_admin = blast_acl::witness_for_testing<TreasuryAdmin>();
     let mut config = scenario.take_shared<LaunchConfig>();
     if (admit_exact) {
         config.set_quote_allowed<Quote>(&version, &listing_admin, true);
@@ -59,7 +58,6 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
         config.set_quote_allowed<BlastBoost<Long2x>>(&version, &listing_admin, true);
     };
     config.set_migration_witness_allowed<Migration>(&version, &adapter_admin, true);
-    config.set_protocol_allocation(&version, &treasury_admin, @0xa, bps::new(0), bps::new(0));
     let runtime = runtime_config::new_disabled_for_testing(scenario.ctx());
     let ticket = launch_ticket::new(
         test_utils::create_one_time_witness<QUOTE_COMPOSITION_TESTS>(), 9,
@@ -201,7 +199,7 @@ use blast_admin::blast_acl::{Self, AdminWitness};
 
 use blast_fun::{
     allocation::{Self as allocation, AllocationPlan}, bps, creator_authority, launch::{Self, Launch}, launch_config::{Self, LaunchConfig},
-    launch_ticket, blast_fun_domain::{AdapterAdmin, ListingAdmin, TreasuryAdmin},
+    launch_ticket, blast_fun_domain::{AdapterAdmin, ListingAdmin},
     package_version::{Self, PackageVersion}, runtime_config::{Self, RuntimeConfig},
 };
 
