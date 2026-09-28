@@ -3,26 +3,30 @@
 
 // Package error macros preserve the ledger's abort location.
 #[allow(lint(abort_without_constant))]
-/// The protocol and creator trade-fee balances a launch holds.
+/// The protocol and creator fee balances a launch holds.
 module blast_fun::fees;
 
 // === Public Types ===
 
+/// Both parties' trade fees, and Blast's creation fee, which is SUI whatever the Quote.
 public struct FeeLedger<phantom Meme, phantom Quote> has store {
     protocol_meme: Balance<Meme>,
     creator_meme: Balance<Meme>,
     protocol_quote: Balance<Quote>,
     creator_quote: Balance<Quote>,
+    protocol_sui: Balance<SUI>,
 }
 
 // === Package Functions ===
 
-public(package) fun new<Meme, Quote>(): FeeLedger<Meme, Quote> {
+/// A ledger holding the launch's creation fee and no trade fees yet.
+public(package) fun new<Meme, Quote>(creation_fee: Balance<SUI>): FeeLedger<Meme, Quote> {
     FeeLedger {
         protocol_meme: balance::zero(),
         creator_meme: balance::zero(),
         protocol_quote: balance::zero(),
         creator_quote: balance::zero(),
+        protocol_sui: creation_fee,
     }
 }
 
@@ -67,19 +71,25 @@ public(package) fun claim_creator_fees<Meme, Quote>(
 public(package) fun claim_protocol_fees<Meme, Quote>(
     self: &mut FeeLedger<Meme, Quote>,
     ctx: &mut TxContext,
-): (Coin<Meme>, Coin<Quote>) {
+): (Coin<Meme>, Coin<Quote>, Coin<SUI>) {
     assert!(
-        self.protocol_meme.value() > 0 || self.protocol_quote.value() > 0,
+        self.protocol_meme.value() > 0 || self.protocol_quote.value() > 0 || self.protocol_sui.value() > 0,
         blast_fun::errors::nothing_accrued!(),
     );
 
     (
         self.protocol_meme.withdraw_all().into_coin(ctx),
         self.protocol_quote.withdraw_all().into_coin(ctx),
+        self.protocol_sui.withdraw_all().into_coin(ctx),
     )
 }
 
 // === Test-Only Functions ===
+
+#[test_only]
+public fun protocol_sui_for_testing<Meme, Quote>(self: &FeeLedger<Meme, Quote>): u64 {
+    self.protocol_sui.value()
+}
 
 #[test_only]
 public fun totals_for_testing<Meme, Quote>(self: &FeeLedger<Meme, Quote>): (u64, u64, u64, u64) {
@@ -95,4 +105,4 @@ public fun totals_for_testing<Meme, Quote>(self: &FeeLedger<Meme, Quote>): (u64,
 
 use blast_fun::bps::Bps;
 
-use sui::{balance::{Self, Balance}, coin::Coin};
+use sui::{balance::{Self, Balance}, coin::Coin, sui::SUI};

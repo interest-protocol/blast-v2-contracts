@@ -169,6 +169,8 @@ struct LaunchCreated {
     _lp_quote_bps: u64,
     plan_recipients: Vec<(SuiAddress, u64, u64)>,
     opening_round_ms: u64,
+    _creation_fee: u64,
+    _partner_id: Option<ObjectID>,
 }
 
 struct World {
@@ -199,8 +201,10 @@ impl World {
         let launchpad_dir = sui_dir.join("launchpad");
         let (timelock, _) = h.publish(build_timelock(&work)?)?;
         let (admin, admin_published) = h.publish(build(&admin_dir, &[(&timelock_dir, timelock)], &work)?)?;
-        let (blast, published) =
-            h.publish(build(&launchpad_dir, &[(&timelock_dir, timelock), (&admin_dir, admin)], &work)?)?;
+        let partners_dir = sui_dir.join("partners");
+        let (partners, _) = h.publish(build(&partners_dir, &[(&timelock_dir, timelock), (&admin_dir, admin)], &work)?)?;
+        let core = [(timelock_dir.as_path(), timelock), (admin_dir.as_path(), admin), (partners_dir.as_path(), partners)];
+        let (blast, published) = h.publish(build(&launchpad_dir, &core, &work)?)?;
         let one = |outcome: &Outcome, module: &str, name: &str| {
             let ids = outcome.created(&h, module, name);
             assert_eq!(ids.len(), 1, "{module}::{name}");
@@ -211,8 +215,7 @@ impl World {
         let config = one(&published, "launch_config", "LaunchConfig");
         let version = one(&published, "package_version", "PackageVersion");
         let runtime = one(&published, "runtime_config", "RuntimeConfig");
-        let linked =
-            [(timelock_dir.as_path(), timelock), (admin_dir.as_path(), admin), (launchpad_dir.as_path(), blast)];
+        let linked = [core[0], core[1], core[2], (launchpad_dir.as_path(), blast)];
         let (adapter, _) = h.publish(build(&fixture.join("adapter"), &linked, &work)?)?;
         let mut templates = Vec::new();
         for decimals in [6u8, 9] {
@@ -527,6 +530,7 @@ impl World {
             );
         }
         let currency = builder.obj(self.h.shared(ticket.currency, true))?;
+        let creation_fee = call(&mut builder, SUI_FRAMEWORK_PACKAGE_ID, "coin", "zero", vec![sui()], vec![]);
         let launch =
             call(
                 &mut builder,
@@ -534,7 +538,7 @@ impl World {
                 "launch",
                 "finalize",
                 pair.clone(),
-                vec![initializer, currency, config],
+                vec![initializer, currency, config, creation_fee],
             );
         let clock = builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?;
         if shape.creator_purchase && shape.opening_round_ms != NO_OPENING_ROUND {

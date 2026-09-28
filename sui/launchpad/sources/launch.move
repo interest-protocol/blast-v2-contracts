@@ -53,6 +53,9 @@ public struct Launch<phantom Meme, phantom Quote> has key {
     creator: Option<CreatorRecipient>,
     curve_fee_cap_id: Option<ID>,
     blast_metadata_cap_id: Option<ID>,
+    /// The Blast partner named at creation, paid its share of every fee Blast takes on this
+    /// launch. It never changes.
+    partner_id: Option<ID>,
 }
 
 /// Hot potato from `new` to `finalize`, collecting the creator's settings.
@@ -68,6 +71,7 @@ public struct LaunchInitializer<phantom Meme, phantom Quote> {
     allocation_plan: Option<AllocationPlan>,
     lp_fee_split: Option<FeeSplit>,
     opening_round_ms: u64,
+    partner_id: Option<ID>,
 }
 
 // === Public Functions ===
@@ -105,6 +109,7 @@ public fun new<Meme, Quote, Witness: drop>(
         allocation_plan: option::none(),
         lp_fee_split: option::none(),
         opening_round_ms: 0,
+        partner_id: option::none(),
     }
 }
 
@@ -160,13 +165,30 @@ public fun set_opening_round<Meme, Quote>(
     self.opening_round_ms = opening_round_ms;
 }
 
+/// Names the launch's Blast partner, one new launches may name. From `finalize` on it is the
+/// launch's partner for good, paid its share of every fee Blast takes on the launch when Blast
+/// claims them.
+public fun set_partner<Meme, Quote>(
+    self: &mut LaunchInitializer<Meme, Quote>,
+    config: &LaunchConfig,
+    partner: &Partner,
+    clock: &Clock,
+) {
+    let partner_id = object::id(partner);
+    config.assert_partner(partner_id, clock.timestamp_ms());
+
+    self.partner_id = option::some(partner_id);
+}
+
 /// Checks every setting, adds Blast's allocation to the plan, fixes the canonical supply in the
-/// Coin Registry, and splits the Meme into the curve reserve and the migration allocations. The
+/// Coin Registry, and splits the Meme into the curve reserve and the migration allocations.
+/// `creation_fee` must be exactly the configured fee; it joins Blast's fees on the launch. The
 /// initializer cannot leave the transaction whose `new` checked the package version.
 public fun finalize<Meme, Quote>(
     self: LaunchInitializer<Meme, Quote>,
     currency: &mut Currency<Meme>,
     config: &LaunchConfig,
+    creation_fee: Coin<SUI>,
     ctx: &mut TxContext,
 ): Launch<Meme, Quote> {
     let LaunchInitializer {
@@ -181,7 +203,10 @@ public fun finalize<Meme, Quote>(
         allocation_plan,
         lp_fee_split,
         opening_round_ms,
+        partner_id,
     } = self;
+    let creation_fee = creation_fee.into_balance();
+    assert!(creation_fee.value() == config.creation_fee(), blast_fun::errors::invalid_creation_fee!());
     let virtual_quote = virtual_quote.destroy_some();
     let graduation_target = graduation_target.destroy_some();
     let allocation_plan = allocation_plan.destroy_some().add_protocol(config.protocol_allocation());
@@ -203,6 +228,7 @@ public fun finalize<Meme, Quote>(
     let ticket_id = ticket.id();
     let atomic_supply = launch_ticket::atomic_supply(ticket.decimals());
     let (curve_meme, _, _) = allocation_plan.apportion_meme(atomic_supply);
+    let creation_fee_amount = creation_fee.value();
     let (mut meme, metadata_cap, creator, sell_burn_bps) = ticket.destroy(currency, atomic_supply);
 
     let launch = Launch {
@@ -228,11 +254,12 @@ public fun finalize<Meme, Quote>(
         pending_burn: balance::zero(),
         allocation_plan,
         allocated_meme: meme,
-        fee_ledger: fees::new(),
+        fee_ledger: fees::new(creation_fee),
         metadata_cap,
         creator: option::some(creator),
         curve_fee_cap_id: option::none(),
         blast_metadata_cap_id: option::none(),
+        partner_id,
     };
 
     events::launch_created<Quote>(
@@ -248,6 +275,8 @@ public fun finalize<Meme, Quote>(
         launch.meme_fee_bps.value(),
         launch.allocation_plan,
         launch.opening_round_ms,
+        creation_fee_amount,
+        partner_id,
     );
 
     launch
@@ -573,19 +602,52 @@ public fun claim_creator_fees<Meme, Quote>(
     (meme, quote)
 }
 
+/// Claims Blast's fees from a launch that names no partner: its trade fees and the creation fee.
 public fun claim_protocol_fees<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
     _: &AdminWitness<TreasuryAdmin>,
     ctx: &mut TxContext,
-): (Coin<Meme>, Coin<Quote>) {
+): (Coin<Meme>, Coin<Quote>, Coin<SUI>) {
     package_version.assert_current();
+    assert!(self.partner_id.is_none(), blast_fun::errors::partner_mismatch!());
 
-    let (meme, quote) = self.fee_ledger.claim_protocol_fees(ctx);
+    let (meme, quote, sui) = self.fee_ledger.claim_protocol_fees(ctx);
 
-    events::protocol_fees_claimed(self.id.to_inner(), meme.value(), quote.value());
+    events::protocol_fees_claimed(self.id.to_inner(), meme.value(), quote.value(), sui.value(), 0, 0, 0);
 
-    (meme, quote)
+    (meme, quote, sui)
+}
+
+/// Claims Blast's fees from a launch that names `partner`, paying the partner its share of each in
+/// the same call and returning the rest.
+public fun claim_protocol_fees_with_partner<Meme, Quote>(
+    self: &mut Launch<Meme, Quote>,
+    package_version: &PackageVersion,
+    _: &AdminWitness<TreasuryAdmin>,
+    partner: &Partner,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): (Coin<Meme>, Coin<Quote>, Coin<SUI>) {
+    package_version.assert_current();
+    assert!(self.partner_id.contains(&object::id(partner)), blast_fun::errors::partner_mismatch!());
+
+    let (mut meme, mut quote, mut sui) = self.fee_ledger.claim_protocol_fees(ctx);
+    let partner_meme = partner.pay(meme.balance_mut(), clock);
+    let partner_quote = partner.pay(quote.balance_mut(), clock);
+    let partner_sui = partner.pay(sui.balance_mut(), clock);
+
+    events::protocol_fees_claimed(
+        self.id.to_inner(),
+        meme.value(),
+        quote.value(),
+        sui.value(),
+        partner_meme,
+        partner_quote,
+        partner_sui,
+    );
+
+    (meme, quote, sui)
 }
 
 /// Pays every recipient its allocation, burns the curve's unsold Meme and the pending sell-burn (or
@@ -818,6 +880,11 @@ public fun fee_totals_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): (u64
 }
 
 #[test_only]
+public fun protocol_sui_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): u64 {
+    self.fee_ledger.protocol_sui_for_testing()
+}
+
+#[test_only]
 public fun public_start_ms_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): Option<u64> {
     self.public_start_ms
 }
@@ -872,6 +939,11 @@ public fun migration_witness_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>
     self.migration_witness
 }
 
+#[test_only]
+public fun partner_id_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): Option<ID> {
+    self.partner_id
+}
+
 // === Imports ===
 
 use blast_admin::blast_acl::AdminWitness;
@@ -891,6 +963,8 @@ use blast_fun::{
     runtime_config::RuntimeConfig,
 };
 
+use blast_partners::blast_partners::Partner;
+
 use std::{string::String, type_name::{Self, TypeName}};
 
 use sui::{
@@ -899,6 +973,7 @@ use sui::{
     coin::{Coin, TreasuryCap},
     coin_registry::{Currency, MetadataCap},
     dynamic_field,
+    sui::SUI,
 };
 
 use fun dynamic_field::add as UID.add_dynamic_field;

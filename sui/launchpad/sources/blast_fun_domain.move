@@ -22,7 +22,7 @@ public struct BuybackAdmin()
 /// Claims Blast's fees and chooses where Blast is paid.
 public struct TreasuryAdmin()
 
-/// Sets Blast's trade fees and fee shares.
+/// Sets Blast's creation and trade fees, its fee share, and the partners new launches may name.
 public struct FeeAdmin()
 
 /// Admits or removes the Quotes and Meme decimals new launches may use.

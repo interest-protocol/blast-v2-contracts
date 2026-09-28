@@ -5,6 +5,10 @@
 - Amended by: [0097](0097-one-singleton-acl-with-typed-roles.md): the partner
   administrator is the `blast_partners::PartnerAdmin` role in the singleton Blast
   ACL; the package no longer creates its own `BLAST_PARTNERS` domain
+- Amended by: [0098](0098-launch-creation-fee-and-partners.md): on the launchpad
+  a partner is set once per launch at creation, and is paid its share of the
+  creation fee and of Blast's trade fees when Blast claims them; `buy` and `sell`
+  gain no partner variants
 
 ## Sources
 

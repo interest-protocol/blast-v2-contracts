@@ -147,6 +147,18 @@ const EInvalidVirtualQuote: u64 = 33;
 /// An opening-round bid is zero.
 const EZeroOpeningRoundBid: u64 = 34;
 
+#[test_only]
+/// The creation fee paid is not exactly the configured one.
+const EInvalidCreationFee: u64 = 35;
+
+#[test_only]
+/// New launches may not name this Blast partner.
+const EPartnerNotAccepted: u64 = 36;
+
+#[test_only]
+/// The call does not name exactly the launch's partner.
+const EPartnerMismatch: u64 = 37;
+
 macro public(package) fun invalid_bps(): u64 { 0 }
 
 macro public(package) fun invalid_trade_fee_bps(): u64 { 1 }
@@ -216,3 +228,9 @@ macro public(package) fun quote_not_allowed(): u64 { 32 }
 macro public(package) fun invalid_virtual_quote(): u64 { 33 }
 
 macro public(package) fun zero_opening_round_bid(): u64 { 34 }
+
+macro public(package) fun invalid_creation_fee(): u64 { 35 }
+
+macro public(package) fun partner_not_accepted(): u64 { 36 }
+
+macro public(package) fun partner_mismatch(): u64 { 37 }

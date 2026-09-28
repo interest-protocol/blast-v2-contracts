@@ -96,6 +96,8 @@ fn payload_layout(payload: &StructTag) -> Layout {
             U64,
             plan(),
             U64,
+            U64,
+            Struct(vec![Vector(Box::new(id()))]),
         ]),
         "LaunchShared" => Struct(vec![id(), U64]),
         "MigrationAllocationPaid" => Struct(vec![id(), Address, U64, U64]),

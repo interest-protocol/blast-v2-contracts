@@ -448,7 +448,8 @@ fun create_launch(self: &mut ReplayFixture) {
         initializer.set_allocation_plan(plan());
         initializer.set_lp_fee_split(first_split());
         initializer.set_opening_round(OPENING_ROUND_MS);
-        let mut launch = initializer.finalize(&mut currency, &config, f.ctx!());
+        let creation_fee = coin::zero(f.ctx!());
+        let mut launch = initializer.finalize(&mut currency, &config, creation_fee, f.ctx!());
         launch.join_opening_round(
             &f.version,
             coin::mint_for_testing<QUOTE>(CREATOR_BID, f.ctx!()),
@@ -1060,7 +1061,13 @@ fun launch_created(self: &mut Replay, bytes: vector<u8>) {
     self.meme_fee_bps = r.peel_u64();
     self.plan = r.peel_plan();
     self.opening_round_ms = r.peel_u64();
+    let creation_fee = r.peel_u64();
+    let partner_id = r.peel_option!(|r| r.peel_id());
     r.assert_consumed();
+
+    // The fixture creates for free and names no partner.
+    assert_eq!(creation_fee, 0);
+    assert!(partner_id.is_none());
 
     let recipients = self.plan.recipients;
     assert_eq!(recipients[0], self.protocol_allocation);

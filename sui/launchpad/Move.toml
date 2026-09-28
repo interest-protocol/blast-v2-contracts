@@ -6,6 +6,7 @@ authors = ["Jose Cerqueira (jose@interestprotocol.com)"]
 
 [dependencies]
 blast_admin = { local = "../admin" }
+blast_partners = { local = "../partners" }
 
 [addresses]
 blast_fun = "0x0"

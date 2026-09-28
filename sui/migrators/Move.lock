@@ -217,8 +217,8 @@ deps = { Sui = "Sui_2", blast_fun_timelock = "blast_fun_timelock" }
 [pinned.testnet.blast_fun]
 source = { local = "../launchpad" }
 use_environment = "testnet"
-manifest_digest = "B9BC26466630CEB8A3C2BE1A745F7338CFDF92C219AC0FF7F363DA750C2676C3"
-deps = { blast_admin = "blast_admin", std = "MoveStdlib_2", sui = "Sui_2" }
+manifest_digest = "EE908CC089FB6F23A022483FB43C54274591972DE394B83C65C6F6174080AB1F"
+deps = { blast_admin = "blast_admin", blast_partners = "blast_partners", std = "MoveStdlib_2", sui = "Sui_2" }
 
 [pinned.testnet.blast_fun_migrators]
 source = { root = true }
@@ -231,3 +231,9 @@ source = { git = "https://github.com/interest-protocol/blast-util-contracts.git"
 use_environment = "testnet"
 manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
 deps = { std = "MoveStdlib_2", sui = "Sui_2" }
+
+[pinned.testnet.blast_partners]
+source = { local = "../partners" }
+use_environment = "testnet"
+manifest_digest = "8C0E43AF514B7DCD0420AB49466D733394BE7FB875344BC3A6105EE90407F358"
+deps = { blast_admin = "blast_admin", blast_fun_timelock = "blast_fun_timelock", std = "MoveStdlib_2", sui = "Sui_2" }
