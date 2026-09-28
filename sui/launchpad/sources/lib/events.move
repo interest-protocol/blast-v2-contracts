@@ -93,8 +93,8 @@ public struct LaunchTicketCreated has copy, drop {
 }
 
 /// A launch was created from `ticket_id` with these settings; a zero `opening_round_ms` has no
-/// opening round. The creator paid `creation_fee` SUI: `partner_fee` of it to the launch's
-/// partner, if it names one, and the rest to Blast.
+/// opening round. The creator paid `creation_fee` SUI, held with Blast's fees on the launch;
+/// `partner_id` is the launch's partner for good, if it names one.
 public struct LaunchCreated has copy, drop {
     launch_id: ID,
     ticket_id: ID,
@@ -111,7 +111,6 @@ public struct LaunchCreated has copy, drop {
     opening_round_ms: u64,
     creation_fee: u64,
     partner_id: Option<ID>,
-    partner_fee: u64,
 }
 
 public struct LaunchShared has copy, drop {
@@ -199,14 +198,17 @@ public struct CreatorFeesClaimed has copy, drop {
     quote_amount: u64,
 }
 
-/// Blast claimed `meme_amount` and `quote_amount` of its trade fees; the launch's partner, if it
-/// names one, was paid the partner amounts in the same claim.
+/// Blast claimed `meme_amount` and `quote_amount` of its trade fees and `sui_amount` of the
+/// creation fee; the launch's partner, if it names one, was paid the partner amounts in the same
+/// claim.
 public struct ProtocolFeesClaimed has copy, drop {
     launch_id: ID,
     meme_amount: u64,
     quote_amount: u64,
+    sui_amount: u64,
     partner_meme_amount: u64,
     partner_quote_amount: u64,
+    partner_sui_amount: u64,
 }
 
 // === Package Functions ===
@@ -313,7 +315,6 @@ public(package) fun launch_created<Quote>(
     opening_round_ms: u64,
     creation_fee: u64,
     partner_id: Option<ID>,
-    partner_fee: u64,
 ) {
     emit(LaunchCreated {
         launch_id,
@@ -331,7 +332,6 @@ public(package) fun launch_created<Quote>(
         opening_round_ms,
         creation_fee,
         partner_id,
-        partner_fee,
     });
 }
 
@@ -444,15 +444,19 @@ public(package) fun protocol_fees_claimed(
     launch_id: ID,
     meme_amount: u64,
     quote_amount: u64,
+    sui_amount: u64,
     partner_meme_amount: u64,
     partner_quote_amount: u64,
+    partner_sui_amount: u64,
 ) {
     emit(ProtocolFeesClaimed {
         launch_id,
         meme_amount,
         quote_amount,
+        sui_amount,
         partner_meme_amount,
         partner_quote_amount,
+        partner_sui_amount,
     });
 }
 

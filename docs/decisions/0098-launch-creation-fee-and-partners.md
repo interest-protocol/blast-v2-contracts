@@ -20,9 +20,13 @@ Asked to choose, the owner ruled that:
 - "every fee" means the launchpad's fees: the creation fee and every curve trade
   fee, the opening round's included. Blast's migration allocation is not a fee,
   and Blast's LP-fee share after migration stays Blast's;
-- the creation fee goes to Blast's allocation destination;
 - the creation fee and the accepted partners live in `LaunchConfig`, with the
-  rest of what launch creation reads (2026-09-28, moved from `RuntimeConfig`).
+  rest of what launch creation reads (2026-09-28, moved from `RuntimeConfig`);
+- the partner is named with a setter during creation, like every other creation
+  setting, and the creation fee joins Blast's fees on the launch, so the partner
+  is paid its share of it at Blast's claim with the rest (2026-09-28; the first
+  version paid it at creation through a `finalize_with_partner`, and sent Blast's
+  part to Blast's allocation destination).
 
 Before this change the launchpad charged nothing at creation, so a creation-time
 partner had nothing to be paid from.
@@ -34,9 +38,9 @@ initialization. The fee administrator (`FeeAdmin`) sets it with
 `set_creation_fee`, next to the trade fees, and it emits `CreationFeeChanged`.
 `launch::finalize` already reads `&LaunchConfig`; it now also takes a
 `Coin<SUI>` that must be exactly the configured fee (`EInvalidCreationFee`), so
-a creator never pays more than it signed for. Blast's
-part goes to its allocation destination, the first recipient of the plan. The fee
-is SUI whatever the launch's Quote, and a zero fee transfers nothing.
+a creator never pays more than it signed for. The fee joins Blast's fees on the
+launch: the fee ledger gains a `protocol_sui` balance beside Blast's Meme and
+Quote trade fees, since the fee is SUI whatever the launch's Quote.
 
 **Accepted partners.** `LaunchConfig` keeps the Blast partners new launches may
 name, with the same list and notice as Boosts. There is one dynamic field per
@@ -47,26 +51,29 @@ takes effect `blast_partners::delay_ms()` later. They emit `PartnerAdded` and
 `PartnerRemoved { partner_id, accepted_until_ms }`. Removal only stops new
 launches naming the partner.
 
-**Binding at creation.** `launch::finalize_with_partner` is `finalize` naming a
-`Partner` that new launches may name (`EPartnerNotAccepted`). It pays the partner
-its share of the creation fee at once through `blast_partners::pay`, rounded down,
-and sends Blast the rest. It records the partner's ID on the launch as
-`partner_id: Option<ID>`. No function writes that field again. `LaunchCreated`
-gains `creation_fee`, `partner_id` and `partner_fee`, the partner's part of the
-fee.
+**Binding at creation.** `launch::set_partner` names the launch's partner on the
+initializer, like the other creation settings. It takes the `Partner` and the
+`Clock` only to check that new launches may name it (`EPartnerNotAccepted`), and
+records its ID. `finalize` copies it to the launch as `partner_id: Option<ID>`,
+and no function writes that field again. Creation pays nobody, so `finalize` is
+the same with or without a partner. `LaunchCreated` gains `creation_fee` and
+`partner_id`.
 
-**Trade fees.** `buy`, `sell` and `settle_opening_round` are unchanged: Blast's
-share of each trade fee accrues in the launch's ledger as before. Because a
-launch has at most one partner, every protocol fee in its ledger is owed to that
-partner in part.
+**Paying the partner.** `buy`, `sell` and `settle_opening_round` are unchanged:
+Blast's share of each trade fee accrues in the launch's ledger as before, next
+to the creation fee. Because a launch has at most one partner, every protocol
+fee in its ledger is owed to that partner in part.
 
 - `claim_protocol_fees` claims only from a launch without a partner.
 - `claim_protocol_fees_with_partner` claims from a launch naming exactly that
   partner (`EPartnerMismatch` otherwise). It pays the partner its share of
-  Blast's Meme and Quote fees and returns the rest to the treasury administrator.
+  Blast's Meme and Quote trade fees and of the creation fee, each rounded down,
+  and returns the rest to the treasury administrator.
 
-`ProtocolFeesClaimed` gains `partner_meme_amount` and `partner_quote_amount`;
-its existing amounts are what Blast kept. Every payment also emits `blast_partners`'
+Both return a third coin, the SUI creation fee, and a ledger holding only that
+fee can be claimed. `ProtocolFeesClaimed` gains `sui_amount` and the partner's
+`partner_meme_amount`, `partner_quote_amount` and `partner_sui_amount`; the
+other amounts are what Blast kept. Every payment also emits `blast_partners`'
 own `PartnerPaid<T>`.
 
 ## Alternatives considered
@@ -99,8 +106,14 @@ there. `RuntimeConfig` holds what trades and creator claims read live, while
 only creation reads these two, and creation already reads `LaunchConfig`;
 keeping them apart made `finalize` take both objects.
 
-**A destination of its own for the fee.** This would add a setter and an event.
-The owner chose Blast's allocation destination, which is already set.
+**Paying the partner at creation** (the first version). A
+`finalize_with_partner` paid the partner its share of the creation fee at once
+and sent Blast the rest to its allocation destination. It took the `Partner`
+object at creation and duplicated `finalize` for a payment the claim already
+makes. Holding the fee in the ledger leaves one `finalize` and one payout path.
+
+**A destination of its own for the fee.** This would add a setter and an event;
+holding the fee in the ledger needs neither.
 
 **One claim function with an optional partner** (asked 2026-09-28). Not
 expressible: Move has no `Option<&Partner>`, since references cannot be type
@@ -117,9 +130,10 @@ from the timelock.
 
 ## Consequences
 
-- A partner is paid its share of trade fees when Blast claims them, not when the
-  trade happens. Blast cannot claim a partnered launch's fees without paying the
-  partner in the same call. The share applied is the one in force at the claim,
+- A partner is paid its share of every fee, the creation fee included, when
+  Blast claims them, not when the fee is charged. Blast cannot claim a partnered
+  launch's fees without paying the partner in the same call. Blast's creation fee
+  waits in each launch until claimed, like its trade fees. The share applied is the one in force at the claim,
   and any change Blast makes to it waits seven days.
 - The binding is permanent. To stop paying a bound partner, Blast schedules its
   share to zero in `blast_partners`, which affects that deal on every product.
@@ -132,8 +146,9 @@ from the timelock.
 - The launchpad now depends on `blast_partners`, so `blast_partners` is published
   before the launchpad's mainnet build.
 - ABI:
-  - `finalize` gains two parameters;
-  - new functions: `finalize_with_partner`, `claim_protocol_fees_with_partner`,
+  - `finalize` gains the creation-fee coin;
+  - both protocol claims return a third coin, the SUI creation fee;
+  - new functions: `set_partner`, `claim_protocol_fees_with_partner`,
     `set_creation_fee`, `add_partner` and `remove_partner`;
   - `LaunchCreated` and `ProtocolFeesClaimed` gain fields;
   - new events: `CreationFeeChanged`, `PartnerAdded` and `PartnerRemoved`.
@@ -150,13 +165,15 @@ from the timelock.
   - re-adding cancels a removal;
   - refusals for adding twice, removing twice, and removing an unknown partner;
   - the version check before the list.
+- Fee ledger tests: a ledger holding only the creation fee is claimed whole.
 - Launch tests:
-  - the creation fee paid to Blast and recorded;
+  - the creation fee held with Blast's fees, recorded, and claimed before any
+    trade;
   - a fee one MIST short refused;
-  - a partnered creation splitting a 1,001 MIST fee 400/601 (rounded down),
-    binding the partner, and emitting `LaunchCreated` and `PartnerPaid<SUI>`;
+  - `set_partner` binding the partner at creation and paying nobody yet;
   - an unaccepted partner refused;
-  - a partnered claim paying the partner its rounded-down share of both assets,
+  - a partnered claim paying the partner its rounded-down share of the Meme and
+    Quote trade fees and of a 1,001 MIST creation fee (400, Blast keeping 601),
     leaving the creator's fees and agreeing with `PartnerPaid`;
   - a zero-share partner paid nothing, with no `PartnerPaid`, while the claim
     still records it;

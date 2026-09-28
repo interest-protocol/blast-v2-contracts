@@ -1063,13 +1063,11 @@ fun launch_created(self: &mut Replay, bytes: vector<u8>) {
     self.opening_round_ms = r.peel_u64();
     let creation_fee = r.peel_u64();
     let partner_id = r.peel_option!(|r| r.peel_id());
-    let partner_fee = r.peel_u64();
     r.assert_consumed();
 
     // The fixture creates for free and names no partner.
     assert_eq!(creation_fee, 0);
     assert!(partner_id.is_none());
-    assert_eq!(partner_fee, 0);
 
     let recipients = self.plan.recipients;
     assert_eq!(recipients[0], self.protocol_allocation);

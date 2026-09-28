@@ -171,7 +171,6 @@ struct LaunchCreated {
     opening_round_ms: u64,
     _creation_fee: u64,
     _partner_id: Option<ObjectID>,
-    _partner_fee: u64,
 }
 
 struct World {

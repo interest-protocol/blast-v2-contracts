@@ -139,33 +139,34 @@ on Boosts and 8% on another product.
 
 Launching a coin costs a creation fee in SUI, which Blast sets. A launch can
 name one partner, and only when it is created; nothing can change it later.
-That partner is paid its share of every fee Blast takes on the launch:
+That partner is paid its share of every fee Blast takes on the launch, all at
+once, whenever Blast claims its fees from the launch:
 
-| Blast fee | When the partner is paid |
-| --- | --- |
-| The creation fee | in the creation transaction |
-| Blast's part of every curve trade fee, the opening round's included, in Meme and Quote | whenever Blast claims its fees from the launch, in the same call |
+- the creation fee;
+- Blast's part of every curve trade fee, the opening round's included, in Meme
+  and Quote.
 
 The creator's part of each trade fee, the sell burn, and Blast's migration
 allocation are never shared. Neither is Blast's LP-fee share after migration.
 
-- **Integrators** that create coins call `launch::finalize_with_partner` instead
-  of `launch::finalize`, passing the `Partner` object and the `Clock`. The
+- **Integrators** that create coins call `launch::set_partner` on the
+  initializer, passing the `Partner` object and the `Clock`, alongside the other
+  creation settings; `finalize` is the same with or without a partner. The
   creation fee must be exactly the one set in `LaunchConfig`. Trading never
   takes the partner: `buy`, `sell` and the opening round are the same on every
   launch.
-- **Partners** are paid when Blast claims, not on each trade. Blast cannot claim
-  a partnered launch's fees without paying the partner in the same call:
-  `claim_protocol_fees` refuses it, and `claim_protocol_fees_with_partner`
+- **Partners** are paid when Blast claims, not when each fee is charged. Blast
+  cannot claim a partnered launch's fees without paying the partner in the same
+  call: `claim_protocol_fees` refuses it, and `claim_protocol_fees_with_partner`
   pays the partner first. `ProtocolFeesClaimed` records both parts, and
-  `LaunchCreated` records the partner and its part of the creation fee.
+  `LaunchCreated` records the partner and the creation fee.
 - **Operators.** The fee administrator (`FeeAdmin`) sets the creation fee with
   `launch_config::set_creation_fee`. It also accepts deals with
   `launch_config::add_partner`, which applies at once, and ends them with
   `launch_config::remove_partner`, which applies seven days later. Removing a
   deal only stops new launches from naming it. Launches that already name it
-  keep paying it, unless its share is scheduled to zero. The creation fee goes
-  to Blast's allocation destination.
+  keep paying it, unless its share is scheduled to zero. The treasury
+  administrator claims the creation fee with each launch's trade fees.
 
 ## Guarantees
 
@@ -190,5 +191,5 @@ also rests on how each package is published:
    the launchpad fee administrator on the launchpad. A launch's partner never
    changes.
 6. On Boosts, Blast never holds partner money, and there is no claim step to
-   miss. On the launchpad, a partner's share of trade fees waits in the launch
+   miss. On the launchpad, a partner's share of Blast's fees waits in the launch
    until Blast claims, and Blast cannot claim without paying it in the same call.

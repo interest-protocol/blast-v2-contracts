@@ -894,10 +894,10 @@ fun buy(self: &mut OpeningRoundFixture, sender: address, quote_in: u64, min_meme
 }
 
 /// Checks this transaction's only `LaunchCreated` event names `launch_id` and `opening_round_ms`,
-/// which the free creation's fee (8 bytes), the absent partner (1) and its fee (8) follow.
+/// which the free creation's fee (8 bytes) and the absent partner (1) follow.
 fun assert_launch_created(launch_id: ID, opening_round_ms: u64) {
     let created = bcs::to_bytes(&only_event<LaunchCreated>());
-    let tail = created.length() - 25;
+    let tail = created.length() - 17;
 
     assert_eq!(vector::tabulate!(32, |i| created[i]), bcs::to_bytes(&launch_id));
     assert_eq!(vector::tabulate!(8, |i| created[tail + i]), bcs::to_bytes(&opening_round_ms));
