@@ -22,7 +22,9 @@ use std::{
 
 use anyhow::{Context, Result, ensure};
 use base64::Engine;
-use blast_launchpad_ptb_tests::{CompiledPackage, Expected, Harness, Outcome, build, call, sui_dir};
+use blast_launchpad_ptb_tests::{
+    CompiledPackage, Expected, Harness, Outcome, build, build_timelock, call, sui_dir, timelock_dir,
+};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sui_types::{
@@ -192,10 +194,13 @@ impl World {
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixture");
         let work = Path::new(env!("CARGO_TARGET_TMPDIR")).join(env!("CARGO_PKG_NAME")).join(label);
         let mut h = Harness::new()?;
+        let timelock_dir = timelock_dir()?;
         let admin_dir = sui_dir.join("admin");
         let launchpad_dir = sui_dir.join("launchpad");
-        let (admin, admin_published) = h.publish(build(&admin_dir, &[], &work)?)?;
-        let (blast, published) = h.publish(build(&launchpad_dir, &[(&admin_dir, admin)], &work)?)?;
+        let (timelock, _) = h.publish(build_timelock(&work)?)?;
+        let (admin, admin_published) = h.publish(build(&admin_dir, &[(&timelock_dir, timelock)], &work)?)?;
+        let (blast, published) =
+            h.publish(build(&launchpad_dir, &[(&timelock_dir, timelock), (&admin_dir, admin)], &work)?)?;
         let one = |outcome: &Outcome, module: &str, name: &str| {
             let ids = outcome.created(&h, module, name);
             assert_eq!(ids.len(), 1, "{module}::{name}");
@@ -206,7 +211,8 @@ impl World {
         let config = one(&published, "launch_config", "LaunchConfig");
         let version = one(&published, "package_version", "PackageVersion");
         let runtime = one(&published, "runtime_config", "RuntimeConfig");
-        let linked = [(admin_dir.as_path(), admin), (launchpad_dir.as_path(), blast)];
+        let linked =
+            [(timelock_dir.as_path(), timelock), (admin_dir.as_path(), admin), (launchpad_dir.as_path(), blast)];
         let (adapter, _) = h.publish(build(&fixture.join("adapter"), &linked, &work)?)?;
         let mut templates = Vec::new();
         for decimals in [6u8, 9] {

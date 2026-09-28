@@ -28,7 +28,7 @@ use std::{path::Path, time::Duration};
 
 use anyhow::Result;
 use blast_launchpad_ptb_tests::{
-    CompiledPackage, Expected, Harness, Outcome, build, call, sui_dir,
+    CompiledPackage, Expected, Harness, Outcome, build, build_timelock, call, sui_dir, timelock_dir,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -496,10 +496,13 @@ fn world(work: &str) -> Result<World> {
     let work = Path::new(env!("CARGO_TARGET_TMPDIR")).join(env!("CARGO_PKG_NAME")).join(work);
     let mut h = Harness::new()?;
 
+    let timelock_dir = timelock_dir()?;
     let admin_dir = sui_dir.join("admin");
     let launchpad_dir = sui_dir.join("launchpad");
-    let (admin, admin_published) = h.publish(build(&admin_dir, &[], &work)?)?;
-    let (blast, published) = h.publish(build(&launchpad_dir, &[(&admin_dir, admin)], &work)?)?;
+    let (timelock, _) = h.publish(build_timelock(&work)?)?;
+    let (admin, admin_published) = h.publish(build(&admin_dir, &[(&timelock_dir, timelock)], &work)?)?;
+    let (blast, published) =
+        h.publish(build(&launchpad_dir, &[(&timelock_dir, timelock), (&admin_dir, admin)], &work)?)?;
     let one = |outcome: &Outcome, module: &str, name: &str| {
         let ids = outcome.created(&h, module, name);
         assert_eq!(ids.len(), 1, "{module}::{name}");
@@ -510,16 +513,9 @@ fn world(work: &str) -> Result<World> {
     let config = one(&published, "launch_config", "LaunchConfig");
     let version = one(&published, "package_version", "PackageVersion");
     let runtime = one(&published, "runtime_config", "RuntimeConfig");
-    let (adapter, _) = h.publish(build(
-        &fixture.join("adapter"),
-        &[(&admin_dir, admin), (&launchpad_dir, blast)],
-        &work,
-    )?)?;
-    let project = build(
-        &fixture.join("project"),
-        &[(&admin_dir, admin), (&launchpad_dir, blast)],
-        &work,
-    )?;
+    let linked = [(timelock_dir.as_path(), timelock), (admin_dir.as_path(), admin), (launchpad_dir.as_path(), blast)];
+    let (adapter, _) = h.publish(build(&fixture.join("adapter"), &linked, &work)?)?;
+    let project = build(&fixture.join("project"), &linked, &work)?;
     let mut w = World { h, blast, adapter, version, runtime, config, project };
 
     // Production admin path: the publisher's SuperAdminCap grants one AdminCap and each role the

@@ -35,7 +35,8 @@ use std::{
 use anyhow::{Context, Result, bail, ensure};
 use blake2::{Blake2b, Digest, digest::consts::U32};
 use blast_launchpad_ptb_tests::{
-    CompiledPackage, Expected, Harness, Outcome, UnlinkedPackage, build, build_unlinked, call, sui_dir,
+    CompiledPackage, Expected, Harness, Outcome, UnlinkedPackage, build, build_timelock, build_unlinked, call, sui_dir,
+    timelock_dir,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sui_types::{
@@ -385,7 +386,8 @@ fn migrators() -> &'static UnlinkedPackage {
     static MIGRATORS: OnceLock<UnlinkedPackage> = OnceLock::new();
     MIGRATORS.get_or_init(|| {
         let work = Path::new(env!("CARGO_TARGET_TMPDIR")).join(env!("CARGO_PKG_NAME")).join("venue_fork");
-        build_unlinked(&sui_dir().join("migrators"), &["blast_admin", "blast_fun"], &work).expect("build the migrators")
+        build_unlinked(&sui_dir().join("migrators"), &["blast_fun_timelock", "blast_admin", "blast_fun"], &work)
+            .expect("build the migrators")
     })
 }
 
@@ -474,10 +476,13 @@ impl World {
         let mut h = Harness::new()?;
         let (checkpoint, venue) = insert_snapshot(&mut h)?;
 
+        let timelock_dir = timelock_dir()?;
         let admin_dir = sui_dir.join("admin");
         let launchpad_dir = sui_dir.join("launchpad");
-        let (admin, admin_published) = h.publish(build(&admin_dir, &[], &work)?)?;
-        let (blast, published) = h.publish(build(&launchpad_dir, &[(&admin_dir, admin)], &work)?)?;
+        let (timelock, _) = h.publish(build_timelock(&work)?)?;
+        let (admin, admin_published) = h.publish(build(&admin_dir, &[(&timelock_dir, timelock)], &work)?)?;
+        let (blast, published) =
+            h.publish(build(&launchpad_dir, &[(&timelock_dir, timelock), (&admin_dir, admin)], &work)?)?;
         let one = |h: &Harness, outcome: &Outcome, module: &str, name: &str| {
             let ids = outcome.created(h, module, name);
             assert_eq!(ids.len(), 1, "{module}::{name}");
@@ -489,16 +494,20 @@ impl World {
         let version = one(&h, &published, "package_version", "PackageVersion");
         let runtime = one(&h, &published, "runtime_config", "RuntimeConfig");
 
-        let mut dependencies = vec![ObjectID::from_single_byte(1), ObjectID::from_single_byte(2), admin, blast];
+        let mut dependencies =
+            vec![ObjectID::from_single_byte(1), ObjectID::from_single_byte(2), timelock, admin, blast];
         dependencies.extend(venue_dependencies(&h)?);
-        let linked = migrators().link(&[("blast_admin", admin), ("blast_fun", blast)], dependencies)?;
+        let linked = migrators().link(
+            &[("blast_fun_timelock", timelock), ("blast_admin", admin), ("blast_fun", blast)],
+            dependencies,
+        )?;
         let (migrators, published) = h.publish(linked)?;
         let migrators_version = one(&h, &published, "package_version", "PackageVersion");
         let venue_config = one(&h, &published, "venue_config", "VenueConfig");
         let policy = one(&h, &published, "lp_fee_policy", "LpFeePolicy");
         let project = build(
             &Path::new(env!("CARGO_MANIFEST_DIR")).join("fixture/project"),
-            &[(&admin_dir, admin), (&launchpad_dir, blast)],
+            &[(&timelock_dir, timelock), (&admin_dir, admin), (&launchpad_dir, blast)],
             &work,
         )?;
 

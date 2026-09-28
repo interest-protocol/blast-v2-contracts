@@ -96,8 +96,6 @@ fn payload_layout(payload: &StructTag) -> Layout {
             U64,
             plan(),
             U64,
-            U64,
-            U64,
         ]),
         "LaunchShared" => Struct(vec![id(), U64]),
         "MigrationAllocationPaid" => Struct(vec![id(), Address, U64, U64]),
@@ -112,6 +110,9 @@ fn payload_layout(payload: &StructTag) -> Layout {
             U64,
         ]),
         "Bought" => Struct(vec![id(), U64, U64, U64, U64, U64, U64, U64, U64, U64, U64]),
+        "OpeningRoundJoined" => Struct(vec![id(), U64, U64]),
+        "OpeningRoundSettled" => Struct(vec![id(), U64, U64, U64]),
+        "OpeningRoundDelivered" => Struct(vec![id(), Address, U64, U64, U64]),
         other => panic!("no layout for event payload {other}"),
     }
 }

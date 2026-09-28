@@ -520,3 +520,44 @@ pub fn call(
 pub fn sui_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().expect("sui directory")
 }
+
+/// `blast_admin`'s timelock dependency, a git package from blast-util-contracts, where the CLI
+/// checks it out. Pubfiles name it by this path, as they name local packages.
+pub fn timelock_dir() -> Result<PathBuf> {
+    let manifest = std::fs::read_to_string(sui_dir().join("admin/Move.toml"))?;
+    let dependency = manifest
+        .lines()
+        .find(|line| line.starts_with("blast_fun_timelock"))
+        .context("blast_admin's timelock dependency")?;
+    let field = |key: &str| -> Result<&str> {
+        let (_, rest) = dependency.split_once(&format!("{key} = \"")).with_context(|| format!("timelock {key}"))?;
+        Ok(rest.split('"').next().unwrap_or_default())
+    };
+    let move_home = match std::env::var("MOVE_HOME") {
+        Ok(home) => PathBuf::from(home),
+        Err(_) => PathBuf::from(std::env::var("HOME")?).join(".move"),
+    };
+    let checkout = format!("{}_{}", field("git")?.replace([':', '/', '.'], "_"), field("rev")?);
+    let dir = move_home.join("git").join(checkout).join(field("subdir")?);
+    ensure!(
+        dir.join("Move.toml").is_file(),
+        "{} is missing; `sui move build` in sui/admin fetches it",
+        dir.display(),
+    );
+
+    Ok(dir)
+}
+
+/// Compiles the timelock from a copy in `work`, so building never writes into the CLI's cache.
+pub fn build_timelock(work: &Path) -> Result<CompiledPackage> {
+    let source = timelock_dir()?;
+    let copy = work.join("blast_fun_timelock");
+    std::fs::create_dir_all(copy.join("sources"))?;
+    std::fs::copy(source.join("Move.toml"), copy.join("Move.toml"))?;
+    for entry in std::fs::read_dir(source.join("sources"))? {
+        let path = entry?.path();
+        std::fs::copy(&path, copy.join("sources").join(path.file_name().context("source name")?))?;
+    }
+
+    build(&copy, &[], work)
+}
