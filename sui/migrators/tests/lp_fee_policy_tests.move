@@ -2,8 +2,8 @@
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
 #[test_only]
-/// LP-fee policy administration: the default pair, original-type per-coin pairs, and the shares
-/// every collection reads live from them.
+/// LP-fee policy administration: the default pair, original-type per-coin pairs, the live protocol
+/// destination, and the shares every collection reads live from them.
 module blast_fun_migrators::lp_fee_policy_tests;
 
 // === Constants ===
@@ -54,6 +54,69 @@ fun publication_shares_one_eventless_zero_default_policy() {
         assert_eq!(default_meme_share.value(), 0);
         assert_eq!(default_quote_share.value(), 0);
         assert_eq!(f.policy.coin_count_for_testing(), 0);
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun publisher_is_the_initial_protocol_destination_until_redirected() {
+    let mut fixture = start_init();
+
+    fixture.next_tx!(PUBLISHER, |f| {
+        assert_eq!(f.policy.protocol_destination(), PUBLISHER);
+    });
+
+    fixture.end();
+}
+
+#[test]
+fun admin_redirects_the_protocol_destination_and_emits_old_and_new() {
+    let mut fixture = start_policy();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin = treasury_admin();
+        f.policy.set_protocol_destination(&f.migrators_version, &admin, @0xCAFE);
+
+        assert_eq!(f.policy.protocol_destination(), @0xCAFE);
+        let events = event::events_by_type<blast_events::LpFeeDestinationChanged>();
+        let publisher = PUBLISHER;
+        let mut expected = bcs::to_bytes(&publisher);
+        expected.append(bcs::to_bytes(&@0xCAFE));
+        assert_eq!(events.length(), 1);
+        assert_eq!(bcs::to_bytes(&events[0]), expected);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = lp_fee_policy::EProtocolDestinationUnchanged,
+    location = blast_fun_migrators::lp_fee_policy,
+)]
+fun unchanged_protocol_destination_is_rejected() {
+    let mut fixture = start_policy();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin = treasury_admin();
+        f.policy.set_protocol_destination(&f.migrators_version, &admin, PUBLISHER);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = lp_fee_policy::EProtocolDestinationUnchanged,
+    location = blast_fun_migrators::lp_fee_policy,
+)]
+fun zero_protocol_destination_is_rejected() {
+    let mut fixture = start_policy();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin = treasury_admin();
+        f.policy.set_protocol_destination(&f.migrators_version, &admin, @0x0);
     });
 
     fixture.end();
@@ -371,6 +434,23 @@ fun clearing_an_absent_coin_pair_is_rejected() {
     abort_code = blast_admin::errors::EOperationalVersionMismatch,
     location = blast_admin::operational_version,
 )]
+fun stale_version_precedes_destination_noop() {
+    let mut fixture = start_policy();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let admin = treasury_admin();
+        f.migrators_version.set_for_testing(2);
+        f.policy.set_protocol_destination(&f.migrators_version, &admin, PUBLISHER);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
 fun stale_version_precedes_default_noop() {
     let mut fixture = start_policy();
 
@@ -458,6 +538,10 @@ fun start_policy(): PolicyFixture {
     PolicyFixture { scenario, migrators_version, policy }
 }
 
+fun treasury_admin(): AdminWitness<TreasuryAdmin> {
+    blast_acl::witness_for_testing()
+}
+
 fun fee_admin(): AdminWitness<FeeAdmin> {
     blast_acl::witness_for_testing()
 }
@@ -515,7 +599,7 @@ fun policy_end(self: PolicyFixture) {
 
 use blast_admin::blast_acl::{Self, AdminWitness};
 
-use blast_fun::{blast_fun_domain::FeeAdmin, bps};
+use blast_fun::{blast_fun_domain::{FeeAdmin, TreasuryAdmin}, bps};
 
 use blast_fun_migrators::{
     blast_events,

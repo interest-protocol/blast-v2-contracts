@@ -693,7 +693,7 @@ check_fee_function accrue \
   'creator_meme.join creator_quote.join protocol_meme.join protocol_quote.join '
 
 check_fee_function accrue_protocol_fees \
-  'fun accrue_protocol_fees<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, meme: Balance<Meme>, quote: Balance<Quote>, ): (u64, u64)' \
+  'fun accrue_protocol_fees<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, meme: Balance<Meme>, quote: Balance<Quote>, )' \
   'protocol_meme.join protocol_quote.join '
 
 fees_accrue_body="$(move_production_body accrue <<<"$fees_facts")"
@@ -1394,22 +1394,22 @@ if [[ -e sources/fee_router.move || -e sources/lp_fee_policy.move ]] \
   failures=$((failures + 1))
 fi
 
-# T-010: one call under the stored adapter witness pays every project recipient, puts Blast's
-# allocation in a linear handoff, hands off exactly the pool share, disposes of the curve's unsold
-# Meme, and commits Migrated. Only order anchors are pinned.
-if [[ "$(launch_functions_containing 'self.migration_witness == type_name::with_original_ids<Witness>()')" != 'begin_protocol_fee_accrual migrate treasury_cap_mut ' ]] \
+# T-010: one call under the stored adapter witness pays every project recipient, accrues Blast's
+# one-time migration fee, hands off exactly the pool share, disposes of the curve's unsold Meme,
+# and commits Migrated. Only order anchors are pinned.
+if [[ "$(launch_functions_containing 'self.migration_witness == type_name::with_original_ids<Witness>()')" != 'migrate treasury_cap_mut ' ]] \
   || [[ "$(launch_functions_containing 'self.lifecycle = Lifecycle::Migrated;')" != 'migrate ' ]] \
   || [[ "$(move_production_type Migrated <<<"$events_facts")" != 'struct Migrated has copy, drop { launch_id: ID, meme: u64, quote: u64, disposed_meme: u64, total_supply_after: u64, }' ]] \
-  || [[ "$(move_production_type ProtocolFeeAccrual <<<"$launch_facts")" != 'struct ProtocolFeeAccrual<phantom Meme, phantom Quote, phantom Witness: drop> { launch_id: ID, meme: Balance<Meme>, quote: Balance<Quote>, }' ]] \
-  || [[ "$(move_production_signature migrate <<<"$launch_facts")" != 'fun migrate<Meme, Quote, Witness: drop>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, currency: &mut Currency<Meme>, _: Witness, ctx: &mut TxContext, ): (Balance<Meme>, Balance<Quote>, ProtocolFeeAccrual<Meme, Quote, Witness>)' ]] \
+  || [[ "$(move_production_signature migrate <<<"$launch_facts")" != 'fun migrate<Meme, Quote, Witness: drop>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, currency: &mut Currency<Meme>, _: Witness, ctx: &mut TxContext, ): (Balance<Meme>, Balance<Quote>)' ]] \
   || ! in_order \
     'package_version.assert_current();' \
     'Lifecycle::MigrationReady' \
     'self.migration_witness == type_name::with_original_ids<Witness>()' \
     'events::migration_allocation_paid(' \
-    'let protocol_fees = ProtocolFeeAccrual{' \
-    'meme: self.allocated_meme.split(protocol_meme)' \
-    'quote: self.real_quote_reserve.split(protocol_quote)' \
+    'self.fee_ledger.accrue_protocol_fees(' \
+    'self.allocated_meme.split(protocol_meme_amount)' \
+    'self.real_quote_reserve.split(protocol_quote_amount)' \
+    'events::protocol_fees_accrued(' \
     'self.allocated_meme.withdraw_all()' \
     'self.real_quote_reserve.withdraw_all()' \
     'self.pending_burn.withdraw_all()' \
@@ -1417,7 +1417,7 @@ if [[ "$(launch_functions_containing 'self.migration_witness == type_name::with_
     'self.lifecycle = Lifecycle::Migrated;' \
     'events::migrated(' \
     <<<"$(move_production_body migrate <<<"$launch_facts" | move_semantic_shape)"; then
-  echo 'T-010 must check the stored adapter witness, pay every project recipient, linearly hand Blast allocation to the adapter, hand off exactly the pool share, and dispose of the unsold Meme before committing Migrated.' >&2
+  echo 'T-010 must check the stored adapter witness, pay every project recipient, accrue Blast migration fees, hand off exactly the pool share, and dispose of the unsold Meme before committing Migrated.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1461,10 +1461,10 @@ if ! events_follow_mutations sources/launch_ticket.move new 'LaunchTicket{' 'eve
     'transfer::public_transfer(self.allocated_meme.split(meme).into_coin(ctx),destination);' \
     'transfer::public_transfer(self.real_quote_reserve.split(quote).into_coin(ctx),destination);' \
     'events::migration_allocation_paid(' \
+    'self.fee_ledger.accrue_protocol_fees(' \
+    'events::protocol_fees_accrued(' \
     'currency.burn_balance(' \
     'events::migrated(' \
-  || ! events_follow_mutations sources/launch.move settle_protocol_fee_accrual \
-    'self.fee_ledger.accrue_protocol_fees(' 'events::protocol_fees_accrued(' \
   || ! events_follow_mutations sources/launch_config.move set_protocol_allocation \
     'self.protocol_allocation = option::some(' 'events::protocol_allocation_set('; then
   echo 'Every replay-schema success event must follow the state write or native transfer it records.' >&2

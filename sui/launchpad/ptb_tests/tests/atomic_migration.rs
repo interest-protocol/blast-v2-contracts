@@ -156,7 +156,7 @@ fn failed_migration_ptbs_commit_nothing_and_one_ptb_completes_atomically() -> Re
     outcome.assert_success();
     assert_eq!(
         outcome.wrapped_payloads(w.blast),
-        ["MigrationAllocationPaid", "Migrated", "ProtocolFeesAccrued"]
+        ["MigrationAllocationPaid", "ProtocolFeesAccrued", "Migrated"]
     );
     assert_eq!(w.launch_lifecycle(&a)?, LaunchLifecycle::Migrated);
     let migrated = outcome.events_of("events", "Migrated");
@@ -252,7 +252,7 @@ fn maximum_fee_split_fits_protocol_limits_at_creation_and_migration() -> Result<
     migrated.assert_success();
     assert_eq!(
         migrated.wrapped_payloads(w.blast),
-        ["MigrationAllocationPaid", "Migrated", "ProtocolFeesAccrued"]
+        ["MigrationAllocationPaid", "ProtocolFeesAccrued", "Migrated"]
     );
     records.push(w.record(&a, "migrate", "3 parts + 16 recipients", &migrated));
 

@@ -55,11 +55,10 @@ public fun new<Meme, Quote>(
 /// The opening price derives from the handed-off balances. Meme is the fixed side when its atoms
 /// are at least the Quote atoms, and Quote otherwise: a full-range seed fixed on the fewer atoms
 /// can need slightly more of the other asset than was handed off. `creation_fee` is paid whole,
-/// and Bluefin aborts unless it is exactly the configured SUI fee. The position stays in a shared
-/// vault with no withdrawal path. The caller receives no object; Bluefin records it as the new
-/// pool's manager, a role limited to the pool's reward emissions and to handing the role on
-/// (ADR 0088). Blast's migration allocation and venue residuals settle into the launch fee ledger
-/// before the transaction can finish.
+/// and Bluefin aborts unless it is exactly the configured SUI fee. The position and the venue
+/// residuals stay in a shared vault with no withdrawal path. The caller receives no object;
+/// Bluefin records it as the new pool's manager, a role limited to the pool's reward emissions
+/// and to handing the role on (ADR 0088).
 public fun migrate<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     migrators_version: &MigratorsVersion,
@@ -81,8 +80,7 @@ public fun migrate<Meme, Quote>(
     pool_name.append(b"-");
     pool_name.append(quote_currency.symbol().into_bytes());
 
-    let (meme, quote, mut protocol_fees) = launch
-        .migrate(package_version, currency, Witness(), ctx);
+    let (meme, quote) = launch.migrate(package_version, currency, Witness(), ctx);
     let source_meme = meme.value();
     let source_quote = quote.value();
     let fix_meme = source_meme >= source_quote;
@@ -120,9 +118,16 @@ public fun migrate<Meme, Quote>(
         );
 
     let liquidity = position.liquidity();
-    protocol_fees.add_protocol_fees(residual_meme, residual_quote);
-    launch.settle_protocol_fee_accrual(package_version, protocol_fees);
-    vault::create(launch, &Venue(), position.pool_id(), position, liquidity, ctx);
+    vault::create(
+        launch,
+        &Venue(),
+        position.pool_id(),
+        position,
+        liquidity,
+        residual_meme,
+        residual_quote,
+        ctx,
+    );
     pool.share_pool_object();
 }
 
@@ -131,9 +136,7 @@ public fun migrate<Meme, Quote>(
 public fun collect_fees<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    package_version: &PackageVersion,
     policy: &LpFeePolicy,
-    launch: &mut Launch<Meme, Quote>,
     currency: &mut Currency<Meme>,
     bluefin_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
@@ -141,13 +144,9 @@ public fun collect_fees<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    let mut protocol_fees = launch.begin_protocol_fee_accrual(package_version, Witness());
     let (meme_fee, quote_fee) = self.collect_position_fees(bluefin_config, pool, clock);
 
-    let (protocol_meme, protocol_quote) = self
-        .split_fees(policy, currency, meme_fee, quote_fee, ctx);
-    protocol_fees.add_protocol_fees(protocol_meme, protocol_quote);
-    launch.settle_protocol_fee_accrual(package_version, protocol_fees);
+    self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
     self.compound(bluefin_config, pool, clock);
 }
 
@@ -155,9 +154,8 @@ public fun collect_fees<Meme, Quote>(
 public fun settle_and_update_fee_split<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    package_version: &PackageVersion,
     policy: &LpFeePolicy,
-    launch: &mut Launch<Meme, Quote>,
+    launch: &Launch<Meme, Quote>,
     curve_fee_cap: &CurveFeeCap<Meme>,
     currency: &mut Currency<Meme>,
     bluefin_config: &GlobalConfig,
@@ -167,14 +165,10 @@ public fun settle_and_update_fee_split<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    let mut protocol_fees = launch.begin_protocol_fee_accrual(package_version, Witness());
     self.assert_fee_split_update(launch, curve_fee_cap, proposed);
     let (meme_fee, quote_fee) = self.collect_position_fees(bluefin_config, pool, clock);
 
-    let (protocol_meme, protocol_quote) = self
-        .split_fees(policy, currency, meme_fee, quote_fee, ctx);
-    protocol_fees.add_protocol_fees(protocol_meme, protocol_quote);
-    launch.settle_protocol_fee_accrual(package_version, protocol_fees);
+    self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
     self.compound(bluefin_config, pool, clock);
     self.update_fee_split(proposed);
 }

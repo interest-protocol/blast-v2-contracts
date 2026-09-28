@@ -210,7 +210,7 @@ public struct ProtocolFeesClaimed has copy, drop {
     partner_sui_amount: u64,
 }
 
-/// Post-creation Meme and Quote fees joined the launch's protocol ledger.
+/// Blast's one-time migration Meme and Quote fee joined the launch's protocol ledger.
 public struct ProtocolFeesAccrued has copy, drop {
     launch_id: ID,
     meme_amount: u64,

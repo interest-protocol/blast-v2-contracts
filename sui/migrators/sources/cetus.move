@@ -121,8 +121,7 @@ public fun migrate_meme_a<Meme, Quote>(
     let (tick_spacing, _) = launch.pool_tier();
     let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
 
-    let (meme, quote, protocol_fees) = launch
-        .migrate(package_version, currency, Witness(), ctx);
+    let (meme, quote) = launch.migrate(package_version, currency, Witness(), ctx);
     let meme_amount = meme.value();
     let quote_amount = quote.value();
 
@@ -146,16 +145,7 @@ public fun migrate_meme_a<Meme, Quote>(
             ctx,
         );
 
-    burn_into_vault(
-        launch,
-        package_version,
-        protocol_fees,
-        burn_manager,
-        position,
-        residual_meme,
-        residual_quote,
-        ctx,
-    );
+    burn_into_vault(launch, burn_manager, position, residual_meme, residual_quote, ctx);
 }
 
 /// Migrates a MigrationReady launch whose Meme is Cetus coin B into vault custody.
@@ -178,8 +168,7 @@ public fun migrate_meme_b<Meme, Quote>(
     let (tick_spacing, _) = launch.pool_tier();
     let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
 
-    let (meme, quote, protocol_fees) = launch
-        .migrate(package_version, currency, Witness(), ctx);
+    let (meme, quote) = launch.migrate(package_version, currency, Witness(), ctx);
     let meme_amount = meme.value();
     let quote_amount = quote.value();
 
@@ -201,16 +190,7 @@ public fun migrate_meme_b<Meme, Quote>(
             ctx,
         );
 
-    burn_into_vault(
-        launch,
-        package_version,
-        protocol_fees,
-        burn_manager,
-        position,
-        residual_meme,
-        residual_quote,
-        ctx,
-    );
+    burn_into_vault(launch, burn_manager, position, residual_meme, residual_quote, ctx);
 }
 
 /// Collects the vault position's fees from its Meme-A pool, splits them, burns the burn share's
@@ -218,9 +198,7 @@ public fun migrate_meme_b<Meme, Quote>(
 public fun collect_fees_meme_a<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    package_version: &PackageVersion,
     policy: &LpFeePolicy,
-    launch: &mut Launch<Meme, Quote>,
     currency: &mut Currency<Meme>,
     cetus_config: &GlobalConfig,
     burn_manager: &BurnManager,
@@ -229,13 +207,9 @@ public fun collect_fees_meme_a<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    let mut protocol_fees = launch.begin_protocol_fee_accrual(package_version, Witness());
     let (meme_fee, quote_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
 
-    let (protocol_meme, protocol_quote) = self
-        .split_fees(policy, currency, meme_fee, quote_fee, ctx);
-    protocol_fees.add_protocol_fees(protocol_meme, protocol_quote);
-    launch.settle_protocol_fee_accrual(package_version, protocol_fees);
+    self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
     self.compound_meme_a(cetus_config, pool, clock, ctx);
 }
 
@@ -244,9 +218,7 @@ public fun collect_fees_meme_a<Meme, Quote>(
 public fun collect_fees_meme_b<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    package_version: &PackageVersion,
     policy: &LpFeePolicy,
-    launch: &mut Launch<Meme, Quote>,
     currency: &mut Currency<Meme>,
     cetus_config: &GlobalConfig,
     burn_manager: &BurnManager,
@@ -255,13 +227,9 @@ public fun collect_fees_meme_b<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    let mut protocol_fees = launch.begin_protocol_fee_accrual(package_version, Witness());
     let (quote_fee, meme_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
 
-    let (protocol_meme, protocol_quote) = self
-        .split_fees(policy, currency, meme_fee, quote_fee, ctx);
-    protocol_fees.add_protocol_fees(protocol_meme, protocol_quote);
-    launch.settle_protocol_fee_accrual(package_version, protocol_fees);
+    self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
     self.compound_meme_b(cetus_config, pool, clock, ctx);
 }
 
@@ -269,9 +237,8 @@ public fun collect_fees_meme_b<Meme, Quote>(
 public fun settle_and_update_fee_split_meme_a<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    package_version: &PackageVersion,
     policy: &LpFeePolicy,
-    launch: &mut Launch<Meme, Quote>,
+    launch: &Launch<Meme, Quote>,
     curve_fee_cap: &CurveFeeCap<Meme>,
     currency: &mut Currency<Meme>,
     cetus_config: &GlobalConfig,
@@ -282,14 +249,10 @@ public fun settle_and_update_fee_split_meme_a<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    let mut protocol_fees = launch.begin_protocol_fee_accrual(package_version, Witness());
     self.assert_fee_split_update(launch, curve_fee_cap, proposed);
     let (meme_fee, quote_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
 
-    let (protocol_meme, protocol_quote) = self
-        .split_fees(policy, currency, meme_fee, quote_fee, ctx);
-    protocol_fees.add_protocol_fees(protocol_meme, protocol_quote);
-    launch.settle_protocol_fee_accrual(package_version, protocol_fees);
+    self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
     self.compound_meme_a(cetus_config, pool, clock, ctx);
     self.update_fee_split(proposed);
 }
@@ -298,9 +261,8 @@ public fun settle_and_update_fee_split_meme_a<Meme, Quote>(
 public fun settle_and_update_fee_split_meme_b<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
-    package_version: &PackageVersion,
     policy: &LpFeePolicy,
-    launch: &mut Launch<Meme, Quote>,
+    launch: &Launch<Meme, Quote>,
     curve_fee_cap: &CurveFeeCap<Meme>,
     currency: &mut Currency<Meme>,
     cetus_config: &GlobalConfig,
@@ -311,14 +273,10 @@ public fun settle_and_update_fee_split_meme_b<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    let mut protocol_fees = launch.begin_protocol_fee_accrual(package_version, Witness());
     self.assert_fee_split_update(launch, curve_fee_cap, proposed);
     let (quote_fee, meme_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
 
-    let (protocol_meme, protocol_quote) = self
-        .split_fees(policy, currency, meme_fee, quote_fee, ctx);
-    protocol_fees.add_protocol_fees(protocol_meme, protocol_quote);
-    launch.settle_protocol_fee_accrual(package_version, protocol_fees);
+    self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
     self.compound_meme_b(cetus_config, pool, clock, ctx);
     self.update_fee_split(proposed);
 }
@@ -377,12 +335,9 @@ fun pool_creation_cap<Meme>(venue_config: &VenueConfig): &PoolCreationCap {
     venue_config.object(CreationCapKey<Meme>())
 }
 
-/// Burns the position, settles Blast's migration allocation and venue residuals into the launch
-/// ledger, and locks the burn proof in a new vault.
+/// Burns the position and locks its burn proof and the residuals in a new vault.
 fun burn_into_vault<Meme, Quote>(
-    launch: &mut Launch<Meme, Quote>,
-    package_version: &PackageVersion,
-    mut protocol_fees: ProtocolFeeAccrual<Meme, Quote, Witness>,
+    launch: &Launch<Meme, Quote>,
     burn_manager: &mut BurnManager,
     position: Position,
     residual_meme: Coin<Meme>,
@@ -392,9 +347,16 @@ fun burn_into_vault<Meme, Quote>(
     let pool_id = position.pool_id();
     let liquidity = position.liquidity();
     let burn_proof = lp_burn::burn_lp_v2(burn_manager, position, ctx);
-    protocol_fees.add_protocol_fees(residual_meme.into_balance(), residual_quote.into_balance());
-    launch.settle_protocol_fee_accrual(package_version, protocol_fees);
-    vault::create(launch, &Venue(), pool_id, burn_proof, liquidity, ctx);
+    vault::create(
+        launch,
+        &Venue(),
+        pool_id,
+        burn_proof,
+        liquidity,
+        residual_meme.into_balance(),
+        residual_quote.into_balance(),
+        ctx,
+    );
 }
 
 /// Collects the burned migration position's fees and, once it exists, the auto-LP position's fees
@@ -559,7 +521,7 @@ use blast_fun::{
     allocation::FeeSplit,
     blast_fun_domain::BuybackAdmin,
     creator_authority::CurveFeeCap,
-    launch::{Self, Launch, LaunchInitializer, ProtocolFeeAccrual},
+    launch::{Self, Launch, LaunchInitializer},
     launch_config::LaunchConfig,
     launch_ticket::LaunchTicket,
     package_version::PackageVersion,
@@ -597,3 +559,4 @@ use fun compound_meme_a as LpVault.compound_meme_a;
 use fun compound_meme_b as LpVault.compound_meme_b;
 
 use fun pool_creation_cap as VenueConfig.pool_creation_cap;
+

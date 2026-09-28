@@ -42,18 +42,18 @@ without returning to core for its post-conditions.
 | Package administration | validated `Publisher` and raw `UpgradeCap` custody, exact-digest authorization under the compatible policy, receipt commit that advances the generation, and deliberate `make_immutable` | ACL membership storage, feature configuration, or state migration |
 | Protocol ACL | root rotation and revocable routine-admin membership | feature configuration, backend keys, creator recipients, or fees |
 | Runtime config | one dedicated creator-claim backend key and the live bonding-curve trade protocol fee share | admin delegation, creator recipient or issuance, cold launch policy, accrued balances, total trade-fee rates, or claim authority |
-| LP fee policy | migrators-owned default and per-coin Blast shares per asset, read live at every collection | destinations, trade fee shares, the creator's split, accrued balances, or launch state |
+| LP fee policy | migrators-owned default and per-coin Blast shares per asset, read live at every collection, and the protocol destination every vault pays | trade fee shares, the creator's split, accrued balances, or launch state |
 | Launch config | a table of admitted Quote types (the creator picks each launch's virtual Quote reserve), mutable generated-Meme decimal admission, Quote/Meme trade-fee rates, one-time protocol allocation policy, and bounded external migrator witness admission that gates which adapter may start a launch | live launch repricing, per-launch project allocation choices, quote currency-registry objects, DEX costs or dependencies, user balances, derived valuations, or hot trade configuration |
 | Registry/config | global limits, other fee ceilings, emergency state | user balances or curve math |
 | Launch ticket | one-time-witness currency creation, exact supply mint, and pre-launch capability custody | adapter binding, decimal policy, trades, metadata updates, or migration |
 | Launch initializer | no-ability construction started by the adapter with its witness and the creator's tier; creator setters for target, plan, LP-fee split, and opening round; the adapter-only treasury-capability loan; `finalize` checks every invariant | persistence beyond its transaction or any post-migration behavior |
-| Launch | key-only top-level shared asset identity, lifecycle, reserves, the single protocol fee ledger and partner-aware claim path, transition guards, and the creator's immutable post-migration settings (adapter, pool tier, LP-fee split) | owned transfer, nesting, venue-specific migration code, or post-migration updates other than protocol-fee accrual |
+| Launch | key-only top-level shared asset identity, lifecycle, reserves, the partner-aware protocol fee ledger, transition guards, and the creator's immutable post-migration settings (adapter, pool tier, LP-fee split) | owned transfer, nesting, venue-specific migration code, or any post-migration update |
 | Basis-points unit | universal 0–10,000 rate validation, explicit up/down application, and complement math | domain ceilings, combined-rate policy, authority, storage ownership, or events |
 | Curve math | pure quote and reserve transition formulas | authority, storage, transfers |
 | Allocation math | the migration allocation plan, the LP-fee split, and their exact apportionment | lifecycle state, custody, claims, venue costs, transfers, or DEX dependencies |
 | Off-chain SDK | deterministic curve-release and native-Quote valuation previews from immutable launch facts | contract authority, balance mutation, migration permission, or a second source of truth |
-| Fees | creator/protocol curve-fee splitting and the launch's accrued accounting for every Blast-owned asset, including creation, migration, venue residual, and recurring LP fees; the embedding launch checks its live curve-fee capability or bound custodian | arbitrary recipient execution or referral attribution |
-| LP vault (migrators) | permanent position custody and the generation-versioned fee split; every permissionless collection returns Blast's live share for mandatory launch-ledger settlement, pays recipients, credits creator and rewards balances, burns the burn share's Meme and keeps its Quote, and adds the auto-LP share back to the position; creator claims and split updates under the launch's live curve-fee cap; buyback-and-burn of the burn Quote under the buyback-admin role | protocol balances or destinations, launch pricing, or pre-migration settings |
+| Fees | creator/protocol curve-fee splitting and the launch's accrued accounting for creation, curve, and one-time migration fees; the embedding launch checks its live curve-fee capability or bound custodian | recurring LP fees, venue residuals, arbitrary recipient execution, or referral attribution |
+| LP vault (migrators) | permanent position and venue-residual custody and the generation-versioned fee split; every permissionless collection pays Blast's live share and the recipients, credits the creator and rewards balances, burns the burn share's Meme and keeps its Quote, and adds the auto-LP share back to the position; creator claims and split updates under the launch's live curve-fee cap; buyback-and-burn of the burn Quote under the buyback-admin role | launch pricing or pre-migration settings |
 | Holder rewards (migrators) | Merkle rounds a Blast administrator funds from a vault's rewards balance, and one-time proof claims | holder accounting, which stays off-chain |
 | Migration interface | one-time liquidity handoff, linear migration value, and reconciled completion | DEX-specific object/storage details |
 | Adapter | start a launch at a venue-valid tier, prepare its venue, complete a migration, and collect the position's fees | changing core economics |
@@ -131,20 +131,17 @@ enters the launch's protocol fee ledger.
 Initial Meme is physically split at construction: the curve's share becomes the
 curve reserve and the rest is pooled in the launch. When migration begins, the
 terminal real-Quote reserve is apportioned by the same plan, every project
-recipient is paid its Meme and Quote as coins, and the pool's share plus a
-linear handoff containing Blast's allocation goes to the adapter. The adapter
-adds venue residuals and must settle the handoff into the launch's fee ledger
-before the transaction can finish. Later LP-fee collections return Blast's
-live Meme and Quote shares through the same kind of handoff. Migrator vaults
-therefore hold no Blast balance and have no independent Blast claim.
+recipient is paid its Meme and Quote as coins, Blast's Meme and Quote migration
+fee joins the launch's protocol fee ledger, and only the pool's share is handed
+to the adapter.
 Only a regulated Quote whose deny list names a destination can make that
 transfer fail, which strands the launch; the founder accepted that risk.
 `LaunchCreated` carries the complete plan, the pool tier, the LP-fee split,
 and the opening-round length, one `MigrationAllocationPaid` records each
-payout, `ProtocolFeesAccrued` records each Meme/Quote addition to the launch
-ledger, the migrators' `VaultCreated` records the vault, pool, and position
-identities with the split and position liquidity, and `Migrated` records the
-handoff and disposal amounts. Each LP-fee collection's `FeesCollected`
+payout, `ProtocolFeesAccrued` records Blast's one-time migration fee, the
+migrators' `VaultCreated` records the vault, pool, and position identities with
+the split, the residuals it keeps, and the position's liquidity, and `Migrated`
+records the handoff and disposal amounts. Each LP-fee collection's `FeesCollected`
 records Blast's share and every part of the split, `AutoLiquidityAdded`
 what went back into the position, and `BuybackBurned` each buyback. See
 [ADR 0088](decisions/0088-reusable-launch-accounting-and-atomic-migration.md) and

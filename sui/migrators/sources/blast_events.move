@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
 /// Typed replay facts for vault custody, the LP-fee policy and split, auto-LP, holder rewards,
-/// and Cetus pool reservations.
+/// Cetus pool reservations, and residual claims.
 module blast_fun_migrators::blast_events;
 
 // === Public Types ===
@@ -17,8 +17,15 @@ public struct LpFeePolicyChanged has copy, drop {
     new_quote_bps: Option<u64>,
 }
 
+/// The protocol share of every later collection pays a new address.
+public struct LpFeeDestinationChanged has copy, drop {
+    old_destination: address,
+    new_destination: address,
+}
+
 /// Records discovery and typed position custody for one completed vault: the position's
-/// `liquidity` and the creator's fee split it holds from migration (generation zero).
+/// `liquidity`, the handoff the venue returned as protocol residuals, and the creator's fee split
+/// it holds from migration (generation zero).
 public struct VaultCreated has copy, drop {
     vault_id: ID,
     pool_id: ID,
@@ -26,6 +33,8 @@ public struct VaultCreated has copy, drop {
     venue: TypeName,
     meme: TypeName,
     quote: TypeName,
+    residual_meme: u64,
+    residual_quote: u64,
     liquidity: u128,
     fee_split: FeeSplit,
 }
@@ -38,6 +47,7 @@ public struct FeesCollected has copy, drop {
     generation: u64,
     gross_meme: u64,
     gross_quote: u64,
+    protocol_destination: address,
     protocol_meme: u64,
     protocol_quote: u64,
     creator_meme: u64,
@@ -119,6 +129,16 @@ public struct RewardPaid has copy, drop {
     quote_remaining: u64,
 }
 
+/// Records a protocol migration-residual claim.
+public struct ProtocolFeesClaimed has copy, drop {
+    vault_id: ID,
+    meme: TypeName,
+    quote: TypeName,
+    claimant: address,
+    meme_amount: u64,
+    quote_amount: u64,
+}
+
 /// Records Cetus pool creation reserved for one pair at the tick spacing its migration uses.
 public struct CetusPoolReserved has copy, drop {
     meme: TypeName,
@@ -146,11 +166,18 @@ public(package) fun lp_fee_policy_changed(
     });
 }
 
+/// Emits the protocol share redirection.
+public(package) fun lp_fee_destination_changed(old_destination: address, new_destination: address) {
+    sui::event::emit(LpFeeDestinationChanged { old_destination, new_destination });
+}
+
 /// Emits creation of one venue-sealed LP vault, its attached position, and its fee split.
 public(package) fun vault_created<Meme, Quote, Venue>(
     vault_id: ID,
     pool_id: ID,
     position_id: ID,
+    residual_meme: u64,
+    residual_quote: u64,
     liquidity: u128,
     fee_split: FeeSplit,
 ) {
@@ -161,6 +188,8 @@ public(package) fun vault_created<Meme, Quote, Venue>(
         venue: type_name::with_original_ids<Venue>(),
         meme: type_name::with_original_ids<Meme>(),
         quote: type_name::with_original_ids<Quote>(),
+        residual_meme,
+        residual_quote,
         liquidity,
         fee_split,
     });
@@ -172,6 +201,7 @@ public(package) fun fees_collected(
     generation: u64,
     gross_meme: u64,
     gross_quote: u64,
+    protocol_destination: address,
     protocol_meme: u64,
     protocol_quote: u64,
     creator_meme: u64,
@@ -190,6 +220,7 @@ public(package) fun fees_collected(
         generation,
         gross_meme,
         gross_quote,
+        protocol_destination,
         protocol_meme,
         protocol_quote,
         creator_meme,
@@ -308,6 +339,23 @@ public(package) fun reward_paid(
         quote_amount,
         meme_remaining,
         quote_remaining,
+    });
+}
+
+/// Emits a protocol-owned migration-residual withdrawal.
+public(package) fun protocol_fees_claimed<Meme, Quote>(
+    vault_id: ID,
+    claimant: address,
+    meme_amount: u64,
+    quote_amount: u64,
+) {
+    sui::event::emit(ProtocolFeesClaimed {
+        vault_id,
+        meme: type_name::with_original_ids<Meme>(),
+        quote: type_name::with_original_ids<Quote>(),
+        claimant,
+        meme_amount,
+        quote_amount,
     });
 }
 

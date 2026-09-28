@@ -602,17 +602,17 @@ fun start(): RewardsFixture {
         object::id_from_address(POOL),
         position,
         1,
+        balance::zero(),
+        balance::zero(),
         scenario.ctx(),
     );
-    let (protocol_meme, protocol_quote) = vault.split_fees(
+    vault.split_fees(
         &policy,
         &mut currency,
         balance::create_for_testing(FUNDED_MEME),
         balance::create_for_testing(FUNDED_QUOTE),
         scenario.ctx(),
     );
-    protocol_meme.destroy_zero();
-    protocol_quote.destroy_zero();
     destroy(launch);
     destroy(currency);
     destroy(config);

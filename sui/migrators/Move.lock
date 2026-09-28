@@ -103,8 +103,8 @@ deps = { Sui = "Sui_2", blast_fun_timelock = "blast_fun_timelock" }
 [pinned.mainnet.blast_fun]
 source = { local = "../launchpad" }
 use_environment = "mainnet"
-manifest_digest = "E2577746AFF27E65313264EBF8DA126BE85E0CA5B00BD503983E8F7DE9806C5A"
-deps = { blast_admin = "blast_admin", blast_partners = "blast_partners", std = "MoveStdlib_2", sui = "Sui_2" }
+manifest_digest = "2EE0BE6CC23D1718E36913BC8AFF07AB623F8E972B9E6253C5BE9AFEE9962448"
+deps = { blast_admin = "blast_admin", std = "MoveStdlib_2", sui = "Sui_2" }
 
 [pinned.mainnet.blast_fun_migrators]
 source = { root = true }
@@ -117,12 +117,6 @@ source = { git = "https://github.com/interest-protocol/blast-util-contracts.git"
 use_environment = "mainnet"
 manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
 deps = { std = "MoveStdlib_2", sui = "Sui_2" }
-
-[pinned.mainnet.blast_partners]
-source = { local = "../partners" }
-use_environment = "mainnet"
-manifest_digest = "D5CCB833332CD32F07926CDFF448E853BA674CB7110877E91BA125049FDB2026"
-deps = { blast_admin = "blast_admin", blast_fun_timelock = "blast_fun_timelock", std = "MoveStdlib_2", sui = "Sui_2" }
 
 [pinned.testnet.BluefinSpot]
 source = { git = "https://github.com/fireflyprotocol/bluefin-spot-contract-interface.git", subdir = ".", rev = "91ce930575b2aa3decab9b7e129b8002deba80c1" }

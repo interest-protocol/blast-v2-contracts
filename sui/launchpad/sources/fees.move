@@ -8,8 +8,8 @@ module blast_fun::fees;
 
 // === Public Types ===
 
-/// Both parties' trade fees and every Blast fee for the launch. The creation fee is SUI whatever
-/// the Quote; migration and LP fees accrue in the Meme and Quote balances.
+/// Both parties' trade fees and every Blast fee held by the launch. The creation fee is SUI
+/// whatever the Quote; the one-time migration fee accrues in the Meme and Quote balances.
 public struct FeeLedger<phantom Meme, phantom Quote> has store {
     protocol_meme: Balance<Meme>,
     creator_meme: Balance<Meme>,
@@ -54,18 +54,14 @@ public(package) fun accrue<Meme, Quote>(
     (protocol_meme_amount, creator_meme_amount, protocol_quote_amount, creator_quote_amount)
 }
 
-/// Accrues Meme and Quote owned wholly by Blast, returning their amounts.
+/// Accrues Meme and Quote owned wholly by Blast.
 public(package) fun accrue_protocol_fees<Meme, Quote>(
     self: &mut FeeLedger<Meme, Quote>,
     meme: Balance<Meme>,
     quote: Balance<Quote>,
-): (u64, u64) {
-    let (meme_amount, quote_amount) = (meme.value(), quote.value());
-
+) {
     self.protocol_meme.join(meme);
     self.protocol_quote.join(quote);
-
-    (meme_amount, quote_amount)
 }
 
 public(package) fun claim_creator_fees<Meme, Quote>(

@@ -1,25 +1,28 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// Sealed dynamic-object custody for migration positions and the balances every LP-fee
-/// collection is split into.
+/// Sealed dynamic-object custody for migration positions, their protocol residuals, and the
+/// balances every LP-fee collection is split into.
 module blast_fun_migrators::vault;
 
 // === Errors ===
 
 #[error(code = 0)]
-const EFeeSplitUnchanged: vector<u8> = b"Fee split proposal must differ from the current split.";
+const ENothingClaimable: vector<u8> = b"No protocol migration residuals are available to claim.";
 
 #[error(code = 1)]
-const ENoCreatorFees: vector<u8> = b"No creator LP fees are available to claim.";
+const EFeeSplitUnchanged: vector<u8> = b"Fee split proposal must differ from the current split.";
 
 #[error(code = 2)]
-const EZeroLiquidity: vector<u8> = b"Migration position must hold liquidity.";
+const ENoCreatorFees: vector<u8> = b"No creator LP fees are available to claim.";
 
 #[error(code = 3)]
-const ENoBuybackQuote: vector<u8> = b"No burn Quote is waiting to buy Meme back.";
+const EZeroLiquidity: vector<u8> = b"Migration position must hold liquidity.";
 
 #[error(code = 4)]
+const ENoBuybackQuote: vector<u8> = b"No burn Quote is waiting to buy Meme back.";
+
+#[error(code = 5)]
 const EBuybackBelowMinimum: vector<u8> = b"Buyback must return at least the minimum Meme.";
 
 // === Public Types ===
@@ -31,11 +34,11 @@ public struct PositionKey<phantom Venue>() has copy, drop, store;
 /// position cannot receive more liquidity (Cetus burns it).
 public struct AutoLpPositionKey<phantom Venue>() has copy, drop, store;
 
-/// Shared per-launch custody for one position and the balances its LP fees are split into.
+/// Shared per-launch custody for one position, its protocol migration residuals, and the balances
+/// its LP fees are split into.
 ///
-/// Every collection returns Blast's live share from `LpFeePolicy` for mandatory settlement into
-/// the launch ledger, then splits the rest by the creator's `FeeSplit`: the creator share accrues
-/// here until the live curve-fee cap claims it,
+/// Every collection pays Blast's live share from `LpFeePolicy`, then splits the rest by the
+/// creator's `FeeSplit`: the creator share accrues here until the live curve-fee cap claims it,
 /// the auto-LP share goes back into the position in the same call (any part the pool does not
 /// take waits here for the next call), the rewards share funds holder-reward rounds, and every
 /// recipient is paid at once. The burn share's Meme is burned at once and its Quote waits here until
@@ -44,6 +47,8 @@ public struct AutoLpPositionKey<phantom Venue>() has copy, drop, store;
 public struct LpVault<phantom Meme, phantom Quote> has key {
     id: UID,
     pool_id: ID,
+    protocol_meme_residual: Balance<Meme>,
+    protocol_quote_residual: Balance<Quote>,
     generation: u64,
     fee_split: FeeSplit,
     creator_meme: Balance<Meme>,
@@ -58,6 +63,32 @@ public struct LpVault<phantom Meme, phantom Quote> has key {
 }
 
 // === Public Functions ===
+
+/// Claims the protocol-owned migration residuals under a treasury admin.
+public fun claim_protocol_fees<Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    migrators_version: &MigratorsVersion,
+    _: &AdminWitness<TreasuryAdmin>,
+    ctx: &mut TxContext,
+): (Coin<Meme>, Coin<Quote>) {
+    migrators_version.assert_current();
+    assert!(
+        self.protocol_meme_residual.value() > 0 || self.protocol_quote_residual.value() > 0,
+        ENothingClaimable,
+    );
+
+    let meme = self.protocol_meme_residual.withdraw_all().into_coin(ctx);
+    let quote = self.protocol_quote_residual.withdraw_all().into_coin(ctx);
+
+    blast_events::protocol_fees_claimed<Meme, Quote>(
+        self.id.to_inner(),
+        ctx.sender(),
+        meme.value(),
+        quote.value(),
+    );
+
+    (meme, quote)
+}
 
 /// Claims the creator's accrued LP-fee share with the launch's live curve-fee cap.
 public fun claim_creator_fees<Meme, Quote>(
@@ -81,17 +112,30 @@ public fun claim_creator_fees<Meme, Quote>(
 
 // === Package Functions ===
 
-/// Creates and shares the launch's vault, holding its fee split, with `position`, holding
-/// `liquidity` in pool `pool_id`, attached under the venue's sealed key.
+/// Creates and shares the launch's vault, holding its fee split and the protocol residuals, with
+/// `position`, holding `liquidity` in pool `pool_id`, attached under the venue's sealed key.
 public(package) fun create<Meme, Quote, Venue, Position: key + store>(
     launch: &Launch<Meme, Quote>,
     venue: &Venue,
     pool_id: ID,
     position: Position,
     liquidity: u128,
+    protocol_meme_residual: Balance<Meme>,
+    protocol_quote_residual: Balance<Quote>,
     ctx: &mut TxContext,
 ) {
-    transfer::share_object(new(launch, venue, pool_id, position, liquidity, ctx));
+    transfer::share_object(
+        new(
+            launch,
+            venue,
+            pool_id,
+            position,
+            liquidity,
+            protocol_meme_residual,
+            protocol_quote_residual,
+            ctx,
+        ),
+    );
 }
 
 /// Mutably borrows the venue position without providing a removal path. Another venue's key
@@ -154,10 +198,10 @@ public(package) fun auto_lp_position_mut<
     self.id.dynamic_object_field_mut(AutoLpPositionKey<Venue>())
 }
 
-/// Splits one collection of the position's fees: returns Blast's live share for mandatory launch
-/// ledger settlement, then puts the creator, auto-LP, and rewards shares into their balances,
-/// burns the burn share's Meme, keeps its Quote for buyback, and pays every recipient. A zero
-/// collection is valid, moves nothing, and emits nothing.
+/// Splits one collection of the position's fees: Blast's live share to the protocol destination,
+/// then the creator, auto-LP, and rewards shares into their balances, the burn share's Meme burned
+/// and its Quote kept for buyback, and every recipient paid. A zero collection is valid, moves
+/// nothing, and emits nothing.
 public(package) fun split_fees<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     policy: &LpFeePolicy,
@@ -165,7 +209,7 @@ public(package) fun split_fees<Meme, Quote>(
     mut meme: Balance<Meme>,
     mut quote: Balance<Quote>,
     ctx: &mut TxContext,
-): (Balance<Meme>, Balance<Quote>) {
+) {
     let gross_meme = meme.value();
     let gross_quote = quote.value();
     let (meme_share, quote_share) = policy.shares<Meme>();
@@ -177,10 +221,11 @@ public(package) fun split_fees<Meme, Quote>(
     let (creator_quote, auto_lp_quote, rewards_quote, burn_quote, recipient_quote) = self
         .fee_split
         .apportion_fee_split(gross_quote - protocol_quote);
+    let protocol_destination = policy.protocol_destination();
     let recipients = *self.fee_split.recipients();
 
-    let protocol_meme_balance = meme.split(protocol_meme);
-    let protocol_quote_balance = quote.split(protocol_quote);
+    meme.pay(protocol_meme, protocol_destination, ctx);
+    quote.pay(protocol_quote, protocol_destination, ctx);
     self.creator_meme.join(meme.split(creator_meme));
     self.creator_quote.join(quote.split(creator_quote));
     self.auto_lp_meme.join(meme.split(auto_lp_meme));
@@ -196,28 +241,26 @@ public(package) fun split_fees<Meme, Quote>(
     meme.destroy_zero();
     quote.destroy_zero();
 
-    if (gross_meme > 0 || gross_quote > 0) {
-        blast_events::fees_collected(
-            self.id.to_inner(),
-            self.generation,
-            gross_meme,
-            gross_quote,
-            protocol_meme,
-            protocol_quote,
-            creator_meme,
-            creator_quote,
-            auto_lp_meme,
-            auto_lp_quote,
-            rewards_meme,
-            rewards_quote,
-            burn_meme,
-            burn_quote,
-            recipient_meme,
-            recipient_quote,
-        );
-    };
-
-    (protocol_meme_balance, protocol_quote_balance)
+    if (gross_meme == 0 && gross_quote == 0) return;
+    blast_events::fees_collected(
+        self.id.to_inner(),
+        self.generation,
+        gross_meme,
+        gross_quote,
+        protocol_destination,
+        protocol_meme,
+        protocol_quote,
+        creator_meme,
+        creator_quote,
+        auto_lp_meme,
+        auto_lp_quote,
+        rewards_meme,
+        rewards_quote,
+        burn_meme,
+        burn_quote,
+        recipient_meme,
+        recipient_quote,
+    );
 }
 
 /// Takes every Quote waiting to buy Meme back, under a live buyback admin.
@@ -360,6 +403,8 @@ fun new<Meme, Quote, Venue, Position: key + store>(
     pool_id: ID,
     position: Position,
     liquidity: u128,
+    protocol_meme_residual: Balance<Meme>,
+    protocol_quote_residual: Balance<Quote>,
     ctx: &mut TxContext,
 ): LpVault<Meme, Quote> {
     assert!(liquidity > 0, EZeroLiquidity);
@@ -368,6 +413,8 @@ fun new<Meme, Quote, Venue, Position: key + store>(
     let mut vault = LpVault {
         id: object::new(ctx),
         pool_id,
+        protocol_meme_residual,
+        protocol_quote_residual,
         generation: 0,
         fee_split: launch.lp_fee_split(),
         creator_meme: balance::zero(),
@@ -386,6 +433,8 @@ fun new<Meme, Quote, Venue, Position: key + store>(
         vault.id.to_inner(),
         pool_id,
         position_id,
+        vault.protocol_meme_residual.value(),
+        vault.protocol_quote_residual.value(),
         liquidity,
         vault.fee_split,
     );
@@ -416,9 +465,20 @@ public fun new_for_testing<Meme, Quote, Venue, Position: key + store>(
     pool_id: ID,
     position: Position,
     liquidity: u128,
+    protocol_meme_residual: Balance<Meme>,
+    protocol_quote_residual: Balance<Quote>,
     ctx: &mut TxContext,
 ): LpVault<Meme, Quote> {
-    new(launch, venue, pool_id, position, liquidity, ctx)
+    new(
+        launch,
+        venue,
+        pool_id,
+        position,
+        liquidity,
+        protocol_meme_residual,
+        protocol_quote_residual,
+        ctx,
+    )
 }
 
 #[test_only]
@@ -433,6 +493,18 @@ public fun auto_lp_position_id_for_testing<Meme, Quote, Venue>(
     self: &LpVault<Meme, Quote>,
 ): Option<ID> {
     dynamic_object_field::id(&self.id, AutoLpPositionKey<Venue>())
+}
+
+#[test_only]
+/// Returns the unclaimed protocol-owned Meme residual that migration left in the vault.
+public fun protocol_meme_residual_for_testing<Meme, Quote>(self: &LpVault<Meme, Quote>): u64 {
+    self.protocol_meme_residual.value()
+}
+
+#[test_only]
+/// Returns the unclaimed protocol-owned Quote residual that migration left in the vault.
+public fun protocol_quote_residual_for_testing<Meme, Quote>(self: &LpVault<Meme, Quote>): u64 {
+    self.protocol_quote_residual.value()
 }
 
 #[test_only]
@@ -471,7 +543,7 @@ use blast_admin::blast_acl::AdminWitness;
 
 use blast_fun::{
     allocation::FeeSplit,
-    blast_fun_domain::BuybackAdmin,
+    blast_fun_domain::{BuybackAdmin, TreasuryAdmin},
     creator_authority::CurveFeeCap,
     launch::Launch,
 };

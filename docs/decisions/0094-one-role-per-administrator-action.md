@@ -1,9 +1,7 @@
 # 0094: One role per administrator action
 
 - Status: accepted; role bits, checks, and gate map superseded by
-  [0097](0097-one-singleton-acl-with-typed-roles.md), which keeps this grouping as types;
-  protocol fee custody and claims amended by
-  [0098](0098-launch-creation-fee-and-partners.md)
+  [0097](0097-one-singleton-acl-with-typed-roles.md), which keeps this grouping as types
 - Date: 2026-09-25
 - Amends: [0082](0082-revocable-creator-and-lp-fee-capabilities.md) and
   [0091](0091-fee-split-buyback-and-burn.md)

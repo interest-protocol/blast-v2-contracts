@@ -1747,9 +1747,9 @@ fun claim_protocol_fees_with_partner_pays_the_partner_its_share() {
 }
 
 #[test]
-/// The partner share applies equally to Blast's one-time migration allocation and later LP-fee
-/// accruals because both settle into the launch's single protocol ledger before claim.
-fun claim_protocol_fees_with_partner_includes_migration_and_lp_accruals() {
+/// Blast's one-time migration Meme and Quote fees enter the launch ledger, so the launch's partner
+/// receives its configured share when Blast claims them.
+fun claim_protocol_fees_with_partner_includes_migration_fees() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
@@ -1765,17 +1765,8 @@ fun claim_protocol_fees_with_partner_includes_migration_and_lp_accruals() {
         f.graduate(&mut launch);
 
         let mut currency = f.take_currency();
-        let (pool_meme, pool_quote, migration_fees) = launch
+        let (pool_meme, pool_quote) = launch
             .migrate(&f.package_version, &mut currency, TEST_MIGRATION_WITNESS(), f.ctx!());
-        launch.settle_protocol_fee_accrual(&f.package_version, migration_fees);
-
-        let mut lp_fees = launch
-            .begin_protocol_fee_accrual(&f.package_version, TEST_MIGRATION_WITNESS());
-        lp_fees.add_protocol_fees(
-            balance::create_for_testing(11),
-            balance::create_for_testing(13),
-        );
-        launch.settle_protocol_fee_accrual(&f.package_version, lp_fees);
 
         let (protocol_meme, creator_meme, protocol_quote, creator_quote) = launch
             .fee_totals_for_testing();
@@ -1793,8 +1784,8 @@ fun claim_protocol_fees_with_partner_includes_migration_and_lp_accruals() {
             f.ctx!(),
         );
 
-        assert!(protocol_meme >= EXPECTED_PROTOCOL_MEME + 11);
-        assert!(protocol_quote >= EXPECTED_PROTOCOL_QUOTE + 13);
+        assert!(protocol_meme >= EXPECTED_PROTOCOL_MEME);
+        assert!(protocol_quote >= EXPECTED_PROTOCOL_QUOTE);
         assert_eq!(meme_fees.value(), protocol_meme - partner_meme);
         assert_eq!(quote_fees.value(), protocol_quote - partner_quote);
         assert_eq!(sui_fees.value(), CREATION_FEE - 400);
@@ -2126,9 +2117,8 @@ fun migration_pays_recipients_and_accrues_blast_allocation() {
         let (protocol_meme_before, _, protocol_quote_before, _) = launch
             .fee_totals_for_testing();
         let mut currency = f.take_currency();
-        let (meme, quote, protocol_fees) = launch
+        let (meme, quote) = launch
             .migrate(&f.package_version, &mut currency, TEST_MIGRATION_WITNESS(), f.ctx!());
-        launch.settle_protocol_fee_accrual(&f.package_version, protocol_fees);
         let paid = collect<events::MigrationAllocationPaid>();
         let (curve, real_quote, pending_burn, allocated) = launch.balances_for_testing();
         let (protocol_meme, _, protocol_quote, _) = launch.fee_totals_for_testing();
@@ -2205,9 +2195,8 @@ fun migration_apportions_by_largest_remainder_and_conserves_both_assets() {
         );
 
         let mut currency = f.take_currency();
-        let (meme, quote, protocol_fees) = launch
+        let (meme, quote) = launch
             .migrate(&f.package_version, &mut currency, TEST_MIGRATION_WITNESS(), f.ctx!());
-        launch.settle_protocol_fee_accrual(&f.package_version, protocol_fees);
         let paid = collect<events::MigrationAllocationPaid>();
         let (protocol_meme, _, protocol_quote, _) = launch.fee_totals_for_testing();
 
@@ -2280,9 +2269,8 @@ fun fixed_supply_migration_sends_the_disposal_to_zero() {
         disposed_meme = f.reach_migration_after_sell(&mut launch);
         let mut currency = f.take_currency();
         let supply = currency.total_supply().destroy_some();
-        let (meme, quote, protocol_fees) = launch
+        let (meme, quote) = launch
             .migrate(&f.package_version, &mut currency, TEST_MIGRATION_WITNESS(), f.ctx!());
-        launch.settle_protocol_fee_accrual(&f.package_version, protocol_fees);
 
         assert_eq!(meme.value(), EXPECTED_POOL_MEME);
         assert_eq!(currency.total_supply().destroy_some(), supply);
@@ -2330,9 +2318,8 @@ fun burn_only_migration_burns_the_disposal_from_native_supply() {
         let disposed_meme = f.reach_migration_after_sell(&mut launch);
         let mut currency = f.take_currency();
         let supply = currency.total_supply().destroy_some();
-        let (meme, quote, protocol_fees) = launch
+        let (meme, quote) = launch
             .migrate(&f.package_version, &mut currency, TEST_MIGRATION_WITNESS(), f.ctx!());
-        launch.settle_protocol_fee_accrual(&f.package_version, protocol_fees);
 
         assert_eq!(currency.total_supply().destroy_some(), supply - disposed_meme);
         assert_eq!(
@@ -2363,13 +2350,12 @@ fun migration_rejects_a_live_launch_before_witness_validation() {
         let launch = f.new_default_launch(CREATOR);
         let mut launch = f.open_launch(launch);
         let mut currency = f.take_currency();
-        let (meme, quote, protocol_fees) = launch.migrate(
+        let (meme, quote) = launch.migrate(
             &f.package_version,
             &mut currency,
             OTHER_MIGRATION_WITNESS(),
             f.ctx!(),
         );
-        launch.settle_protocol_fee_accrual(&f.package_version, protocol_fees);
 
         destroy(meme);
         destroy(quote);
@@ -2389,22 +2375,20 @@ fun migration_cannot_be_repeated() {
         let mut launch = f.open_launch(launch);
         f.graduate(&mut launch);
         let mut currency = f.take_currency();
-        let (meme, quote, protocol_fees) = launch.migrate(
+        let (meme, quote) = launch.migrate(
             &f.package_version,
             &mut currency,
             TEST_MIGRATION_WITNESS(),
             f.ctx!(),
         );
-        launch.settle_protocol_fee_accrual(&f.package_version, protocol_fees);
         destroy(meme);
         destroy(quote);
-        let (meme, quote, protocol_fees) = launch.migrate(
+        let (meme, quote) = launch.migrate(
             &f.package_version,
             &mut currency,
             TEST_MIGRATION_WITNESS(),
             f.ctx!(),
         );
-        launch.settle_protocol_fee_accrual(&f.package_version, protocol_fees);
 
         destroy(meme);
         destroy(quote);
@@ -2424,13 +2408,12 @@ fun migration_rejects_a_witness_type_not_stored_at_launch() {
         let mut launch = f.open_launch(launch);
         f.graduate(&mut launch);
         let mut currency = f.take_currency();
-        let (meme, quote, protocol_fees) = launch.migrate(
+        let (meme, quote) = launch.migrate(
             &f.package_version,
             &mut currency,
             OTHER_MIGRATION_WITNESS(),
             f.ctx!(),
         );
-        launch.settle_protocol_fee_accrual(&f.package_version, protocol_fees);
 
         destroy(meme);
         destroy(quote);
@@ -2450,13 +2433,12 @@ fun stale_package_version_aborts_migration_before_lifecycle_and_witness_validati
         let mut launch = f.open_launch(launch);
         f.package_version.set_for_testing(2);
         let mut currency = f.take_currency();
-        let (meme, quote, protocol_fees) = launch.migrate(
+        let (meme, quote) = launch.migrate(
             &f.package_version,
             &mut currency,
             OTHER_MIGRATION_WITNESS(),
             f.ctx!(),
         );
-        launch.settle_protocol_fee_accrual(&f.package_version, protocol_fees);
 
         destroy(meme);
         destroy(quote);
@@ -2872,13 +2854,12 @@ fun launch_claim(
 /// Migrates as the stored adapter and discards the pool's share.
 fun migrate(self: &mut LaunchFixture, launch: &mut Launch<LAUNCH_TESTS, TEST_QUOTE>) {
     let mut currency = self.take_currency();
-    let (meme, quote, protocol_fees) = launch.migrate(
+    let (meme, quote) = launch.migrate(
         &self.package_version,
         &mut currency,
         TEST_MIGRATION_WITNESS(),
         self.scenario.ctx(),
     );
-    launch.settle_protocol_fee_accrual(&self.package_version, protocol_fees);
     destroy(meme);
     destroy(quote);
     destroy(currency);

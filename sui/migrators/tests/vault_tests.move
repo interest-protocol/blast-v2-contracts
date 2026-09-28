@@ -2,14 +2,14 @@
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
 #[test_only]
-/// Vault custody, every LP-fee collection split under Blast's live share and the fee split the
-/// vault holds from its launch, the auto-LP balances an adapter takes and keeps, and the burn
-/// share: its Meme burned at collection and its Quote spent by buybacks.
+/// Vault custody, protocol residual claims, every LP-fee collection split under Blast's live share
+/// and the fee split the vault holds from its launch, the auto-LP balances an adapter takes and
+/// keeps, and the burn share: its Meme burned at collection and its Quote spent by buybacks.
 module blast_fun_migrators::vault_tests;
 
 // === Constants ===
 
-/// Publishes the policy and starts each fixture.
+/// Publishes the policy, so it is the initial protocol destination.
 const PROTOCOL: address = @0xB1A57;
 
 const ADMIN: address = @0xAD;
@@ -41,8 +41,6 @@ public struct VaultFixture {
     policy: LpFeePolicy,
     launch: Launch<VAULT_TESTS, QUOTE>,
     currency: Currency<VAULT_TESTS>,
-    protocol_meme: u64,
-    protocol_quote: u64,
 }
 
 /// Independently encoded `VaultCreated` in ABI order.
@@ -53,6 +51,8 @@ public struct ExpectedVaultCreated has copy, drop {
     venue: TypeName,
     meme: TypeName,
     quote: TypeName,
+    residual_meme: u64,
+    residual_quote: u64,
     liquidity: u128,
     fee_split: FeeSplit,
 }
@@ -63,6 +63,7 @@ public struct Collection has copy, drop {
     generation: u64,
     gross_meme: u64,
     gross_quote: u64,
+    protocol_destination: address,
     protocol_meme: u64,
     protocol_quote: u64,
     creator_meme: u64,
@@ -105,11 +106,11 @@ public struct ExpectedBuybackBurned has copy, drop {
 // Custody
 
 #[test]
-fun attaching_announces_the_liquidity_and_launch_fee_split_at_generation_zero() {
+fun attaching_announces_the_residuals_liquidity_and_launch_fee_split_at_generation_zero() {
     let mut f = start(mixed_split());
 
     f.scenario.next_tx(ADMIN);
-    let vault = f.new_vault();
+    let vault = f.new_vault(3, 4);
 
     assert_eq!(vault.generation_for_testing(), 0);
     assert_eq!(vault.fee_split_for_testing(), f.launch.lp_fee_split());
@@ -132,6 +133,8 @@ fun attaching_announces_the_liquidity_and_launch_fee_split_at_generation_zero() 
                 venue: type_name::with_original_ids<TestVenue>(),
                 meme: type_name::with_original_ids<VAULT_TESTS>(),
                 quote: type_name::with_original_ids<QUOTE>(),
+                residual_meme: 3,
+                residual_quote: 4,
                 liquidity: 1,
                 fee_split: mixed_split(),
             },
@@ -154,6 +157,8 @@ fun create_shares_the_vault_it_announces_with_its_pool_and_position() {
         object::id_from_address(POOL),
         position,
         1,
+        balance::create_for_testing(3),
+        balance::create_for_testing(4),
         f.scenario.ctx(),
     );
 
@@ -171,6 +176,8 @@ fun create_shares_the_vault_it_announces_with_its_pool_and_position() {
                 venue: type_name::with_original_ids<TestVenue>(),
                 meme: type_name::with_original_ids<VAULT_TESTS>(),
                 quote: type_name::with_original_ids<QUOTE>(),
+                residual_meme: 3,
+                residual_quote: 4,
                 liquidity: 1,
                 fee_split: mixed_split(),
             },
@@ -179,6 +186,8 @@ fun create_shares_the_vault_it_announces_with_its_pool_and_position() {
     assert_eq!(shared.pool_id(), object::id_from_address(POOL));
     assert_eq!(shared.position_id_for_testing<_, _, TestVenue>(), option::some(position_id));
     assert_eq!(shared.auto_lp_position_id_for_testing<_, _, TestVenue>(), option::none());
+    assert_eq!(shared.protocol_meme_residual_for_testing(), 3);
+    assert_eq!(shared.protocol_quote_residual_for_testing(), 4);
     test_scenario::return_shared(shared);
 
     f.end();
@@ -187,7 +196,7 @@ fun create_shares_the_vault_it_announces_with_its_pool_and_position() {
 #[test]
 fun borrow_returns_the_attached_position() {
     let mut f = start(mixed_split());
-    let mut vault = f.new_vault();
+    let mut vault = f.new_vault(0, 0);
     let position_id = vault.position_id_for_testing<_, _, TestVenue>().destroy_some();
 
     let position = vault.position_mut<_, _, _, TestPosition>(&TestVenue());
@@ -202,7 +211,7 @@ fun borrow_returns_the_attached_position() {
 #[expected_failure(abort_code = dynamic_field::EFieldDoesNotExist, location = sui::dynamic_field)]
 fun wrong_venue_borrow_fails_closed() {
     let mut f = start(mixed_split());
-    let mut vault = f.new_vault();
+    let mut vault = f.new_vault(0, 0);
 
     vault.position_mut<_, _, _, TestPosition>(&OtherVenue());
 
@@ -215,7 +224,7 @@ fun wrong_venue_borrow_fails_closed() {
 #[test]
 fun the_auto_lp_position_attaches_once_announced_and_apart_from_the_main_position() {
     let mut f = start(mixed_split());
-    let mut vault = f.new_vault();
+    let mut vault = f.new_vault(0, 0);
     let main_id = vault.position_id_for_testing<_, _, TestVenue>().destroy_some();
     assert!(!vault.has_auto_lp_position(&TestVenue()));
     assert_eq!(vault.auto_lp_position_id_for_testing<_, _, TestVenue>(), option::none());
@@ -254,7 +263,7 @@ fun the_auto_lp_position_attaches_once_announced_and_apart_from_the_main_positio
 #[expected_failure(abort_code = dynamic_field::EFieldAlreadyExists, location = sui::dynamic_field)]
 fun a_second_auto_lp_position_cannot_replace_the_first() {
     let mut f = start(mixed_split());
-    let mut vault = f.new_vault();
+    let mut vault = f.new_vault(0, 0);
     let first = TestPosition { id: object::new(f.scenario.ctx()) };
     let second = TestPosition { id: object::new(f.scenario.ctx()) };
     vault.attach_auto_lp_position(&TestVenue(), first);
@@ -269,7 +278,7 @@ fun a_second_auto_lp_position_cannot_replace_the_first() {
 #[expected_failure(abort_code = dynamic_field::EFieldDoesNotExist, location = sui::dynamic_field)]
 fun an_absent_auto_lp_position_cannot_be_borrowed() {
     let mut f = start(mixed_split());
-    let mut vault = f.new_vault();
+    let mut vault = f.new_vault(0, 0);
 
     vault.auto_lp_position_mut<_, _, _, TestPosition>(&TestVenue());
 
@@ -281,12 +290,112 @@ fun an_absent_auto_lp_position_cannot_be_borrowed() {
 #[expected_failure(abort_code = dynamic_field::EFieldDoesNotExist, location = sui::dynamic_field)]
 fun an_auto_lp_position_is_sealed_to_its_venue() {
     let mut f = start(mixed_split());
-    let mut vault = f.new_vault();
+    let mut vault = f.new_vault(0, 0);
     let position = TestPosition { id: object::new(f.scenario.ctx()) };
     vault.attach_auto_lp_position(&TestVenue(), position);
 
     vault.auto_lp_position<_, _, _, TestPosition>(&OtherVenue());
 
+    destroy(vault);
+    f.end();
+}
+
+// Protocol Residuals
+
+#[test]
+fun protocol_claim_pays_both_residuals_once_and_emits_the_exact_claim() {
+    let mut f = start(mixed_split());
+    let mut vault = f.new_vault(3, 4);
+
+    f.scenario.next_tx(ADMIN);
+    let admin = treasury_admin();
+    let (meme, quote) = vault.claim_protocol_fees(&f.migrators_version, &admin, f.scenario.ctx());
+
+    assert_eq!(meme.value(), 3);
+    assert_eq!(quote.value(), 4);
+    assert_eq!(vault.protocol_meme_residual_for_testing(), 0);
+    assert_eq!(vault.protocol_quote_residual_for_testing(), 0);
+    let events = event::events_by_type<blast_events::ProtocolFeesClaimed>();
+    let mut expected = bcs::to_bytes(&object::id(&vault));
+    expected.append(bcs::to_bytes(&type_name::with_original_ids<VAULT_TESTS>()));
+    expected.append(bcs::to_bytes(&type_name::with_original_ids<QUOTE>()));
+    let claimant = ADMIN;
+    expected.append(bcs::to_bytes(&claimant));
+    expected.append(bcs::to_bytes(&3u64));
+    expected.append(bcs::to_bytes(&4u64));
+    assert_eq!(events.length(), 1);
+    assert_eq!(bcs::to_bytes(&events[0]), expected);
+
+    destroy(meme);
+    destroy(quote);
+    destroy(vault);
+    f.end();
+}
+
+#[test]
+fun protocol_claim_pays_a_one_sided_residual() {
+    let mut f = start(mixed_split());
+    let mut vault = f.new_vault(5, 0);
+
+    let admin = treasury_admin();
+    let (meme, quote) = vault.claim_protocol_fees(&f.migrators_version, &admin, f.scenario.ctx());
+
+    assert_eq!(meme.value(), 5);
+    assert_eq!(quote.value(), 0);
+    destroy(meme);
+    destroy(quote);
+    destroy(vault);
+    f.end();
+}
+
+#[test]
+#[expected_failure(abort_code = vault::ENothingClaimable, location = blast_fun_migrators::vault)]
+fun protocol_claim_rejects_a_vault_without_residuals() {
+    let mut f = start(mixed_split());
+    let mut vault = f.new_vault(0, 0);
+
+    let admin = treasury_admin();
+    let (meme, quote) = vault.claim_protocol_fees(&f.migrators_version, &admin, f.scenario.ctx());
+
+    destroy(meme);
+    destroy(quote);
+    destroy(vault);
+    f.end();
+}
+
+#[test]
+#[expected_failure(abort_code = vault::ENothingClaimable, location = blast_fun_migrators::vault)]
+fun drained_residuals_cannot_be_claimed_again() {
+    let mut f = start(mixed_split());
+    let mut vault = f.new_vault(3, 4);
+    let admin = treasury_admin();
+    let (meme, quote) = vault.claim_protocol_fees(&f.migrators_version, &admin, f.scenario.ctx());
+    destroy(meme);
+    destroy(quote);
+
+    let (meme, quote) = vault.claim_protocol_fees(&f.migrators_version, &admin, f.scenario.ctx());
+
+    destroy(meme);
+    destroy(quote);
+    destroy(vault);
+    f.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+fun a_stale_generation_rejects_the_protocol_claim_before_the_residual_check() {
+    let mut f = start(mixed_split());
+    let mut vault = f.new_vault(0, 0);
+    let admin = treasury_admin();
+    f.migrators_version.set_for_testing(2);
+
+    let (meme, quote) = vault.claim_protocol_fees(&f.migrators_version, &admin, f.scenario.ctx());
+
+    destroy(meme);
+    destroy(quote);
     destroy(vault);
     f.end();
 }
@@ -297,7 +406,7 @@ fun an_auto_lp_position_is_sealed_to_its_venue() {
 fun split_rounds_blast_up_then_credits_every_balance_and_pays_every_recipient_exactly() {
     let mut f = start(mixed_split());
     f.set_defaults(1_000, 2_500);
-    let mut vault = f.new_vault();
+    let mut vault = f.new_vault(0, 0);
 
     f.scenario.next_tx(ADMIN);
     f.split(&mut vault, 11, 7);
@@ -316,6 +425,7 @@ fun split_rounds_blast_up_then_credits_every_balance_and_pays_every_recipient_ex
                 generation: 0,
                 gross_meme: 11,
                 gross_quote: 7,
+                protocol_destination: PROTOCOL,
                 protocol_meme: 2,
                 protocol_quote: 2,
                 creator_meme: 2,
@@ -336,7 +446,7 @@ fun split_rounds_blast_up_then_credits_every_balance_and_pays_every_recipient_ex
     assert_balances!(|| vault.rewards_balances(), 1, 1);
     assert_eq!(vault.burn_quote_for_testing(), 0);
     assert_eq!(f.total_supply(), f.launch.atomic_supply_for_testing());
-    f.assert_protocol_accrued(2, 2);
+    f.assert_received(PROTOCOL, 2, 2);
     f.assert_received(DESTINATION_A, 1, 1);
     f.assert_received(DESTINATION_B, 2, 1);
     f.assert_received(@0x0, 1, 0);
@@ -349,7 +459,7 @@ fun split_rounds_blast_up_then_credits_every_balance_and_pays_every_recipient_ex
 fun blast_share_is_the_coins_own_pair_or_the_defaults_read_at_each_collection() {
     let mut f = start(mixed_split());
     f.set_defaults(1_000, 2_500);
-    let mut vault = f.new_vault();
+    let mut vault = f.new_vault(0, 0);
 
     f.scenario.next_tx(ADMIN);
     f.split(&mut vault, 100, 100);
@@ -387,9 +497,31 @@ fun blast_share_is_the_coins_own_pair_or_the_defaults_read_at_each_collection() 
 }
 
 #[test]
+fun protocol_destination_is_read_live_at_each_collection() {
+    let mut f = start(mixed_split());
+    f.set_defaults(10_000, 10_000);
+    let mut vault = f.new_vault(0, 0);
+
+    f.scenario.next_tx(ADMIN);
+    f.split(&mut vault, 3, 5);
+    f.administer!(|policy, version, admin| {
+        policy.set_protocol_destination(version, admin, @0xCAFE);
+    });
+    f.split(&mut vault, 7, 11);
+
+    assert_eq!(collection(0).protocol_destination, PROTOCOL);
+    assert_eq!(collection(1).protocol_destination, @0xCAFE);
+    f.assert_received(PROTOCOL, 3, 5);
+    f.assert_received(@0xCAFE, 7, 11);
+
+    destroy(vault);
+    f.end();
+}
+
+#[test]
 fun zero_collection_is_eventless_and_one_sided_collections_pay_only_the_nonzero_asset() {
     let mut f = start(mixed_split());
-    let mut vault = f.new_vault();
+    let mut vault = f.new_vault(0, 0);
 
     f.scenario.next_tx(ADMIN);
     f.split(&mut vault, 0, 0);
@@ -410,7 +542,7 @@ fun zero_collection_is_eventless_and_one_sided_collections_pay_only_the_nonzero_
     assert_eq!(vault.burn_quote_for_testing(), 1);
     f.assert_received(DESTINATION_A, 0, 1);
     f.assert_received(DESTINATION_B, 0, 2);
-    f.assert_protocol_accrued(0, 0);
+    f.assert_received(PROTOCOL, 0, 0);
     f.assert_received(@0x0, 0, 0);
 
     f.scenario.next_tx(ADMIN);
@@ -429,10 +561,10 @@ fun zero_collection_is_eventless_and_one_sided_collections_pay_only_the_nonzero_
 }
 
 #[test]
-fun full_blast_share_returns_only_protocol_balances() {
+fun full_blast_share_pays_only_the_protocol_destination() {
     let mut f = start(mixed_split());
     f.set_defaults(10_000, 10_000);
-    let mut vault = f.new_vault();
+    let mut vault = f.new_vault(0, 0);
 
     f.scenario.next_tx(ADMIN);
     f.split(&mut vault, 17, 19);
@@ -454,7 +586,7 @@ fun full_blast_share_returns_only_protocol_balances() {
     assert_balances!(|| vault.auto_lp_balances_for_testing(), 0, 0);
     assert_balances!(|| vault.rewards_balances(), 0, 0);
     assert_eq!(vault.burn_quote_for_testing(), 0);
-    f.assert_protocol_accrued(17, 19);
+    f.assert_received(PROTOCOL, 17, 19);
     f.assert_received(DESTINATION_A, 0, 0);
     f.assert_received(DESTINATION_B, 0, 0);
     f.assert_received(@0x0, 0, 0);
@@ -492,7 +624,7 @@ fun dense_small_totals_match_an_independent_oracle_at_the_full_share() {
 fun u64_max_collection_uses_wide_products_and_conserves_every_unit() {
     let mut f = start(mixed_split());
     f.set_defaults(1_000, 9_999);
-    let mut vault = f.new_vault();
+    let mut vault = f.new_vault(0, 0);
     let max = std::u64::max_value!();
 
     f.scenario.next_tx(ADMIN);
@@ -517,7 +649,7 @@ fun u64_max_collection_uses_wide_products_and_conserves_every_unit() {
     assert_balances!(|| vault.auto_lp_balances_for_testing(), paid.auto_lp_meme, paid.auto_lp_quote);
     assert_balances!(|| vault.rewards_balances(), paid.rewards_meme, paid.rewards_quote);
     assert_eq!(vault.burn_quote_for_testing(), paid.burn_quote);
-    f.assert_protocol_accrued(paid.protocol_meme, paid.protocol_quote);
+    f.assert_received(PROTOCOL, paid.protocol_meme, paid.protocol_quote);
     f.assert_received(DESTINATION_B, paid.recipient_meme[0], paid.recipient_quote[0]);
     f.assert_received(DESTINATION_A, paid.recipient_meme[1], paid.recipient_quote[1]);
     f.assert_received(@0x0, paid.burn_meme, 0);
@@ -538,7 +670,7 @@ fun sixteen_recipients_are_paid_in_the_split_order() {
         recipients,
     );
     let mut f = start(split);
-    let mut vault = f.new_vault();
+    let mut vault = f.new_vault(0, 0);
 
     f.scenario.next_tx(ADMIN);
     f.split(&mut vault, 17, 9);
@@ -572,7 +704,7 @@ fun sixteen_recipients_are_paid_in_the_split_order() {
 #[test]
 fun take_auto_lp_hands_over_every_waiting_unit_and_empties_the_balances() {
     let mut f = start(auto_lp_split());
-    let mut vault = f.new_vault();
+    let mut vault = f.new_vault(0, 0);
     f.split(&mut vault, 5, 7);
 
     let (meme, quote) = vault.take_auto_lp();
@@ -589,7 +721,7 @@ fun take_auto_lp_hands_over_every_waiting_unit_and_empties_the_balances() {
 #[test]
 fun kept_residuals_wait_for_the_next_collection_and_only_an_addition_is_announced() {
     let mut f = start(auto_lp_split());
-    let mut vault = f.new_vault();
+    let mut vault = f.new_vault(0, 0);
     f.split(&mut vault, 5, 7);
 
     f.scenario.next_tx(ADMIN);
@@ -633,7 +765,7 @@ fun kept_residuals_wait_for_the_next_collection_and_only_an_addition_is_announce
 #[test]
 fun a_burn_only_supply_burns_the_burn_meme_and_the_burn_quote_accrues_across_collections() {
     let mut f = start_burnable(mixed_split());
-    let mut vault = f.new_vault();
+    let mut vault = f.new_vault(0, 0);
     let supply = f.total_supply();
 
     f.scenario.next_tx(ADMIN);
@@ -666,7 +798,7 @@ fun a_zero_burn_share_sends_nothing_to_the_zero_address_under_a_fixed_supply() {
 #[test]
 fun a_buyback_takes_every_burn_quote_then_burns_the_meme_and_keeps_the_unspent_quote() {
     let mut f = start_burnable(mixed_split());
-    let mut vault = f.new_vault();
+    let mut vault = f.new_vault(0, 0);
     f.split(&mut vault, 0, 50);
     f.split(&mut vault, 0, 30);
     let supply = f.total_supply();
@@ -711,7 +843,7 @@ fun a_buyback_takes_every_burn_quote_then_burns_the_meme_and_keeps_the_unspent_q
 #[test]
 fun a_buyback_under_a_fixed_supply_sends_the_meme_to_the_zero_address() {
     let mut f = start(mixed_split());
-    let mut vault = f.new_vault();
+    let mut vault = f.new_vault(0, 0);
     f.split(&mut vault, 0, 50);
     let supply = f.total_supply();
 
@@ -753,7 +885,7 @@ fun a_buyback_under_a_fixed_supply_sends_the_meme_to_the_zero_address() {
 #[expected_failure(abort_code = vault::EBuybackBelowMinimum, location = blast_fun_migrators::vault)]
 fun a_buyback_returning_less_than_the_minimum_meme_is_rejected() {
     let mut f = start(mixed_split());
-    let mut vault = f.new_vault();
+    let mut vault = f.new_vault(0, 0);
     f.split(&mut vault, 0, 50);
     let admin = buyback_admin();
     let quote = vault.take_buyback_quote(&admin);
@@ -775,7 +907,7 @@ fun a_buyback_returning_less_than_the_minimum_meme_is_rejected() {
 #[expected_failure(abort_code = vault::ENoBuybackQuote, location = blast_fun_migrators::vault)]
 fun a_buyback_with_no_burn_quote_waiting_is_rejected() {
     let mut f = start(mixed_split());
-    let mut vault = f.new_vault();
+    let mut vault = f.new_vault(0, 0);
     f.split(&mut vault, 50, 0);
     let admin = buyback_admin();
 
@@ -826,13 +958,15 @@ fun start_with_supply(fee_split: FeeSplit, burnable: bool): VaultFixture {
         policy,
         launch,
         currency,
-        protocol_meme: 0,
-        protocol_quote: 0,
     }
 }
 
 /// Builds an unshared vault from the fixture launch with a position holding one unit of liquidity.
-fun new_vault(self: &mut VaultFixture): LpVault<VAULT_TESTS, QUOTE> {
+fun new_vault(
+    self: &mut VaultFixture,
+    protocol_meme_residual: u64,
+    protocol_quote_residual: u64,
+): LpVault<VAULT_TESTS, QUOTE> {
     let position = TestPosition { id: object::new(self.scenario.ctx()) };
 
     vault::new_for_testing(
@@ -841,6 +975,8 @@ fun new_vault(self: &mut VaultFixture): LpVault<VAULT_TESTS, QUOTE> {
         object::id_from_address(POOL),
         position,
         1,
+        balance::create_for_testing(protocol_meme_residual),
+        balance::create_for_testing(protocol_quote_residual),
         self.scenario.ctx(),
     )
 }
@@ -850,7 +986,7 @@ fun new_vault(self: &mut VaultFixture): LpVault<VAULT_TESTS, QUOTE> {
 fun dense_totals(share: u64) {
     let mut f = start(mixed_split());
     if (share != 0) f.set_defaults(share, share);
-    let mut vault = f.new_vault();
+    let mut vault = f.new_vault(0, 0);
     // Creator, auto-LP, rewards, burn, then B and A in the split's order.
     let weights = vector[2_000, 2_000, 1_000, 1_000, 2_500, 1_500];
     let mut sums = vector[0, 0, 0, 0, 0, 0, 0];
@@ -893,7 +1029,8 @@ fun dense_totals(share: u64) {
     assert_eq!(vault.burn_quote_for_testing(), sums[4]);
     assert_eq!(f.received<VAULT_TESTS>(@0x0), sums[4]);
     assert_eq!(f.received<QUOTE>(@0x0), 0);
-    f.assert_protocol_accrued(sums[0], sums[0]);
+    assert_eq!(f.received<VAULT_TESTS>(PROTOCOL), sums[0]);
+    assert_eq!(f.received<QUOTE>(PROTOCOL), sums[0]);
     assert_eq!(f.received<VAULT_TESTS>(DESTINATION_B), sums[5]);
     assert_eq!(f.received<QUOTE>(DESTINATION_B), sums[5]);
     assert_eq!(f.received<VAULT_TESTS>(DESTINATION_A), sums[6]);
@@ -907,7 +1044,7 @@ fun dense_totals(share: u64) {
 /// reaches `@0x0`.
 fun zero_burn_share(burnable: bool) {
     let mut f = start_with_supply(auto_lp_split(), burnable);
-    let mut vault = f.new_vault();
+    let mut vault = f.new_vault(0, 0);
     let supply = f.total_supply();
 
     f.scenario.next_tx(ADMIN);
@@ -941,6 +1078,10 @@ fun largest_remainder(weights: vector<u64>, total: u64): vector<u64> {
     parts
 }
 
+fun treasury_admin(): AdminWitness<TreasuryAdmin> {
+    blast_acl::witness_for_testing()
+}
+
 fun buyback_admin(): AdminWitness<BuybackAdmin> {
     blast_acl::witness_for_testing()
 }
@@ -969,15 +1110,13 @@ fun split(
     meme: u64,
     quote: u64,
 ) {
-    let (protocol_meme, protocol_quote) = vault.split_fees(
+    vault.split_fees(
         &self.policy,
         &mut self.currency,
         balance::create_for_testing(meme),
         balance::create_for_testing(quote),
         self.scenario.ctx(),
     );
-    self.protocol_meme = self.protocol_meme + protocol_meme.destroy_for_testing();
-    self.protocol_quote = self.protocol_quote + protocol_quote.destroy_for_testing();
 }
 
 /// Decodes the `index`th `FeesCollected` of this transaction, consuming every byte.
@@ -989,6 +1128,7 @@ fun collection(index: u64): Collection {
         generation: r.peel_u64(),
         gross_meme: r.peel_u64(),
         gross_quote: r.peel_u64(),
+        protocol_destination: r.peel_address(),
         protocol_meme: r.peel_u64(),
         protocol_quote: r.peel_u64(),
         creator_meme: r.peel_u64(),
@@ -1008,19 +1148,14 @@ fun collection(index: u64): Collection {
 }
 
 /// Asserts the Blast amounts of this transaction's only collection.
-fun assert_protocol_amounts(_self: &VaultFixture, meme: u64, quote: u64) {
+fun assert_protocol_amounts(self: &VaultFixture, meme: u64, quote: u64) {
     let events = event::events_by_type<blast_events::FeesCollected>();
     assert_eq!(events.length(), 1);
     let paid = collection(0);
 
+    assert_eq!(paid.protocol_destination, self.policy.protocol_destination());
     assert_eq!(paid.protocol_meme, meme);
     assert_eq!(paid.protocol_quote, quote);
-}
-
-/// Asserts the Blast balances every split has returned to the adapter so far.
-fun assert_protocol_accrued(self: &VaultFixture, meme: u64, quote: u64) {
-    assert_eq!(self.protocol_meme, meme);
-    assert_eq!(self.protocol_quote, quote);
 }
 
 /// The Meme supply the Coin Registry records.
@@ -1088,7 +1223,7 @@ use blast_admin::blast_acl::{Self, AdminWitness};
 
 use blast_fun::{
     allocation::{Self, FeeSplit, Route},
-    blast_fun_domain::BuybackAdmin,
+    blast_fun_domain::{BuybackAdmin, TreasuryAdmin},
     bps,
     launch::Launch,
     launch_config,

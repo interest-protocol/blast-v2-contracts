@@ -47,8 +47,7 @@ public fun migrate<Meme>(
     fail: bool,
     ctx: &mut TxContext,
 ) {
-    let (meme, quote, protocol_fees) = launch.migrate(version, currency, Venue(), ctx);
-    launch.settle_protocol_fee_accrual(version, protocol_fees);
+    let (meme, quote) = launch.migrate(version, currency, Venue(), ctx);
     transfer::share_object(MockVault { id: object::new(ctx), meme, quote });
     assert!(!fail, EAdapterFailure);
 }

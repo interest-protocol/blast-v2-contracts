@@ -1,7 +1,6 @@
 # 0089: One migrators package owns everything after migration and starts every launch
 
-- Status: accepted; protocol fee custody and claims amended by
-  [0098](0098-launch-creation-fee-and-partners.md)
+- Status: accepted
 - Date: 2026-09-24
 - Amends: [0076](0076-native-v2-and-auto-lp.md) (auto-LP),
   [0082](0082-revocable-creator-and-lp-fee-capabilities.md), and

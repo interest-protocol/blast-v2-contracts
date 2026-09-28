@@ -98,7 +98,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0050](0050-module-local-package-version-constant.md) | Module-local package-version constant | **accepted** |
 | [0051](0051-generated-meme-package-template.md) | Generated Meme package template | **accepted; publish-time immutability amended by 0088** |
 | [0053](0053-single-validator-funsui-and-blastsui.md) | Single-validator `funSUI` and `blastSUI` | **accepted** |
-| [0054](0054-v3-dex-migrators-and-locked-lp-fees.md) | V3 DEX migrators, exact seed pricing, and locked LP fees | **accepted; new-lineage admission and fee custody amended by 0088 and 0098** |
+| [0054](0054-v3-dex-migrators-and-locked-lp-fees.md) | V3 DEX migrators, exact seed pricing, and locked LP fees | **accepted; new-lineage admission and fee custody amended by 0088** |
 | [0056](0056-bounded-pending-stake-vector.md) | Bounded pending-stake vector in custody ledgers | **accepted** |
 | [0057](0057-admin-pinned-venue-tiers.md) | Admin-pinned venue tiers for permissionless migration | superseded by 0089 |
 | [0058](0058-eventless-package-initialization.md) | Eventless package initialization | **accepted** |
@@ -131,15 +131,15 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0086](0086-maintenance-reserve-ceiling.md) | Maintenance reserve ceiling: `max_reserve_bps` of notional, clamped credits, priced-after-release, no admin release | **accepted** |
 | [0087](0087-vault-issuance-activated-in-one-transaction.md) | Vault issuance activated in one transaction: `issue` returns a hot-potato issuance, `initialize` returns the Vault, no optional activation fields | **accepted** |
 | [0088](0088-reusable-launch-accounting-and-atomic-migration.md) | Reusable launch accounting and atomic migration | **accepted; amended by 0089, 0090, and 0093; rewritten in place 2026-09-22: push payouts, no digests, venue selection, or type-guaranteed ID bindings, one linear migration value, creator-selected target, one-time-witness Meme; amended the same day: upgradeable migrators, ticket-bound adapter with venue preparation, adapter-supplied pool ID; amended 2026-09-23: Aftermath, MMT, and Turbos adapters removed; venue-operator trust assumptions and the migrators upgrade-policy rule recorded** |
-| [0089](0089-migrators-own-post-migration-and-start-launches.md) | One migrators package owns everything after migration and starts every launch | **accepted; amended by 0090, 0091, and 0098** |
+| [0089](0089-migrators-own-post-migration-and-start-launches.md) | One migrators package owns everything after migration and starts every launch | **accepted; amended by 0090 and 0091** |
 | [0090](0090-minimal-launchpad-surface.md) | A minimal launchpad surface | **accepted; amended by 0092 and 0093** |
 | [0091](0091-fee-split-buyback-and-burn.md) | A burn part in the LP-fee split, bought back by a buyback administrator | **accepted; amended by 0094** |
 | [0092](0092-creator-picks-the-virtual-quote.md) | The creator picks the virtual Quote reserve; launch config only admits Quotes | **accepted** |
 | [0093](0093-optional-opening-round.md) | An optional opening round replaces purchase protection | **accepted** |
-| [0094](0094-one-role-per-administrator-action.md) | One role per administrator action | **accepted; role bits, checks, and gate map superseded by 0097; protocol fee custody amended by 0098** |
+| [0094](0094-one-role-per-administrator-action.md) | One role per administrator action | **accepted; role bits, checks, and gate map superseded by 0097** |
 | [0095](0095-partner-codes.md) | Partner codes in one immutable package: a share of Blast's fee paid to the named partner on every trade, with a forced seven-day delay on Blast's powers | proposed |
 | [0097](0097-one-singleton-acl-with-typed-roles.md) | One singleton ACL with typed roles | **proposed** |
-| [0098](0098-launch-creation-fee-and-partners.md) | One partner per launch shares every Blast-owned creation, curve, migration, residual, and LP-fee amount through the launch ledger | **accepted** |
+| [0098](0098-launch-creation-fee-and-partners.md) | One partner per launch shares the launch's creation, curve, and one-time Meme/Quote migration fees | **accepted** |
 
 ADRs 0013–0035, 0038–0056, 0058–0067, 0069, 0073, 0074, 0076–0080, 0082, and 0085–0089 are accepted subject to the amendments shown above; ADR 0088 supersedes 0036, 0068, 0081, and 0083, and ADR 0089 supersedes 0057 and 0075. ADR 0074 accepts the Aftermath dependency and raw-field normalization while retaining its live evidence gate; ADR 0037 is superseded by 0043, and ADRs 0070–0072 are superseded by 0073. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
@@ -161,10 +161,9 @@ cold `LaunchConfig` shared objects.
 ADR 0081 historically separated LP-fee shares into migrator policy; ADR 0088
 replaced that recurring path with a launchpad `FeeRouter`, and ADR 0089 moves
 the policy and the split back into the migrators: every permissionless
-collection returns Blast's live per-coin share for settlement into the launch
-ledger, then splits the rest by the launch's `FeeSplit` into the creator's
-claimable share, auto-LP added back to the position, holder rewards, and direct
-recipients. ADR 0098 makes that launch ledger the only protocol claim path.
+collection pays Blast's live per-coin share, then splits the rest by the
+launch's `FeeSplit` into the creator's claimable share, auto-LP added back to
+the position, holder rewards, and direct recipients.
 
 ADR 0080 separates the launcher from the designated creator recipient and
 replaces provider-specific social identity with an opaque Blast account
@@ -346,9 +345,8 @@ Its former five-venue route counts are historical: ADR 0088 narrows the
 replacement release surface to Cetus and Bluefin only.
 
 ADR 0068's creator/protocol LP-fee snapshot is superseded by ADR 0088. Position
-principal remains invariant, while the vault applies the current fee split with
-replay-complete per-part amounts (ADR 0089) and returns Blast's part to the
-launch ledger (ADR 0098).
+principal remains invariant, while recurring fees are paid by the vault's
+current fee split with replay-complete per-part amounts (ADR 0089).
 
 ADR 0069 removes the separate graduation helper module and puts its private
 balance partitions in `launch`. It also moves all seed-price, deviation,

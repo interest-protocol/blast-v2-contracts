@@ -9,9 +9,6 @@
 > Amended by [ADR 0081](0081-separate-lp-fee-share-policy.md), which splits LP
 > fees on a separate `LpFeePolicy` with per-project pins instead of the trade
 > share in `RuntimeConfig`.
-> Amended by [ADR 0098](0098-launch-creation-fee-and-partners.md), which routes
-> migration allocations, venue residuals, and recurring LP fees into the
-> launch's single partner-aware protocol fee ledger.
 > Amended by [ADR 0088](0088-reusable-launch-accounting-and-atomic-migration.md),
 > which plans only Cetus and Bluefin adapters for the replacement lineage,
 > replaces the old LP-fee ledger with the launch's fee router, and requires
@@ -23,9 +20,7 @@
 > paid in SUI at the exact configured amount; the venue-route table below is
 > historical for both.
 
-- Status: accepted; new-lineage admission and fee custody amended by
-  [0088](0088-reusable-launch-accounting-and-atomic-migration.md) and
-  [0098](0098-launch-creation-fee-and-partners.md)
+- Status: accepted; new-lineage admission and fee custody amended by [0088](0088-reusable-launch-accounting-and-atomic-migration.md)
 - Date: 2026-08-29
 - Amends: [0010](0010-migration-and-venue-adapters.md),
   [0011](0011-event-schema-and-replay.md),

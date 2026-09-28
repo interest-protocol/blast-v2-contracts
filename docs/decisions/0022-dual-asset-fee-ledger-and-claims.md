@@ -8,10 +8,10 @@
 > ADR 0079 removes initial zero fee totals and sender/type aliases from launch
 > events. Trade events retain the fee deltas and final totals needed for replay.
 >
-> ADR 0098 adds the SUI creation-fee balance and makes the same launch ledger
-> the sole custody and partner-aware claim path for Blast's migration allocation,
-> venue residuals, and recurring LP fees. The four-balance description below is
-> the trade-fee-only design accepted by this decision, not the final layout.
+> ADR 0098 adds the SUI creation-fee balance and puts Blast's one-time Meme and
+> Quote migration fee in the same partner-aware launch ledger. The four-balance
+> description below is the trade-fee-only design accepted by this decision, not
+> the final layout.
 
 ## Sources
 

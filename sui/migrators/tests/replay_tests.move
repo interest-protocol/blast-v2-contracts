@@ -13,8 +13,7 @@
 /// graduates the curve. After migration the mock adapter collects with auto-LP and burns the
 /// burn share's Meme, the creator settles a fee-split update and claims the creator balance, a
 /// buyback admin burns Meme bought with the burn Quote, Blast's live share changes between
-/// collections, and a holder-reward round is published and claimed. Every Blast-owned migration
-/// and LP-fee amount is replayed into the launch fee ledger.
+/// collections, and a holder-reward round is published and claimed.
 module blast_fun_migrators::replay_tests;
 
 // === Constants ===
@@ -48,6 +47,10 @@ const ROUTE_C: address = @0xD3;
 
 const ALICE: address = @0xA11CE;
 
+const FIRST_PROTOCOL_DESTINATION: address = @0xF1;
+
+const SECOND_PROTOCOL_DESTINATION: address = @0xF2;
+
 const DECIMALS: u8 = 6;
 
 const VIRTUAL_QUOTE: u64 = 5_000_000;
@@ -75,7 +78,8 @@ const BASIS_POINTS: u64 = 10_000;
 /// Whole tokens every generated Meme currency mints, at its decimals.
 const MEME_SUPPLY_WHOLE_TOKENS: u64 = 1_000_000_000;
 
-/// Blast's explicit allocation rounds up: part 2 of the Meme parts and part 1 of the Quote parts.
+/// Blast's allocation is always the first recipient and rounds up: part 2 of the Meme parts
+/// (curve, pool, recipients) and part 1 of the Quote parts (pool, recipients).
 const PROTOCOL_MEME_PART: u64 = 2;
 
 const PROTOCOL_QUOTE_PART: u64 = 1;
@@ -110,7 +114,8 @@ public struct Venue() has drop;
 
 public struct MockPool has key { id: UID }
 
-/// Venue position owning the supplied principal and every auto-LP addition.
+/// Venue position owning the supplied principal and every auto-LP addition; the vault owns the
+/// residuals.
 public struct MockPosition<phantom Meme, phantom Quote> has key, store {
     id: UID,
     pool_id: ID,
@@ -133,8 +138,8 @@ public struct ReplayFixture {
 public struct Replay has drop {
     default_shares: Shares,
     coin_shares: vector<CoinShares>,
+    protocol_destination: address,
     protocol_allocation: Shares,
-    protocol_fees: Pair,
     ticket_id: ID,
     meme: String,
     decimals: u8,
@@ -294,6 +299,7 @@ fun replayed_events_equal_every_getter_and_native_payout_across_the_lifecycle() 
     fixture.buy_back_and_burn();
     fixture.assert_state();
     fixture.change_blast_share();
+    fixture.redirect_protocol_share(SECOND_PROTOCOL_DESTINATION);
     fixture.collect(5, 12_345);
     fixture.assert_state();
     fixture.claim_creator_fees();
@@ -367,8 +373,8 @@ fun replay_end(self: ReplayFixture) {
 
 // Lifecycle Steps
 
-/// Launch intake policy, a default pair, this Meme's own pair, and another coin's pair set and
-/// cleared.
+/// Launch intake policy, a default pair, this Meme's own pair, another coin's pair set and cleared,
+/// and the first protocol destination.
 fun configure_policy(self: &mut ReplayFixture) {
     self.next_tx!(ADMIN, |f| {
         let listing_admin = blast_acl::witness_for_testing<ListingAdmin>();
@@ -400,6 +406,7 @@ fun configure_policy(self: &mut ReplayFixture) {
         policy.set_coin_shares<OtherMeme>(version, &fee_admin, bps::new(9), bps::new(9));
         policy.set_coin_shares<REPLAY_TESTS>(version, &fee_admin, bps::new(1_500), bps::new(2_500));
         policy.clear_coin_shares<OtherMeme>(version, &fee_admin);
+        policy.set_protocol_destination(version, &treasury_admin, FIRST_PROTOCOL_DESTINATION);
 
         test_scenario::return_shared(config);
         test_scenario::return_shared(policy);
@@ -546,22 +553,17 @@ fun collect(self: &mut ReplayFixture, meme: u64, quote: u64) {
     self.next_tx!(KEEPER, |f| {
         let mut vault = f.take_vault();
         let policy = f.take_policy();
-        let mut launch = f.take_launch();
         let mut currency = f.take_currency();
-        let mut protocol_fees = launch.begin_protocol_fee_accrual(&f.version, Venue());
 
-        let (protocol_meme, protocol_quote) = vault.split_fees(
+        vault.split_fees(
             &policy,
             &mut currency,
             balance::create_for_testing(meme),
             balance::create_for_testing(quote),
             f.ctx!(),
         );
-        protocol_fees.add_protocol_fees(protocol_meme, protocol_quote);
-        launch.settle_protocol_fee_accrual(&f.version, protocol_fees);
         compound(&mut vault);
 
-        test_scenario::return_shared(launch);
         test_scenario::return_shared(vault);
         test_scenario::return_shared(policy);
         test_scenario::return_to_address(COIN_REGISTRY, currency);
@@ -572,22 +574,19 @@ fun collect(self: &mut ReplayFixture, meme: u64, quote: u64) {
 fun settle_fee_split(self: &mut ReplayFixture, meme: u64, quote: u64) {
     self.next_tx!(CREATOR, |f| {
         let curve_fee_cap = f.scenario.take_from_sender<CurveFeeCap<REPLAY_TESTS>>();
-        let mut launch = f.take_launch();
+        let launch = f.take_launch();
         let mut vault = f.take_vault();
         let policy = f.take_policy();
         let mut currency = f.take_currency();
-        let mut protocol_fees = launch.begin_protocol_fee_accrual(&f.version, Venue());
         vault.assert_fee_split_update(&launch, &curve_fee_cap, next_split());
 
-        let (protocol_meme, protocol_quote) = vault.split_fees(
+        vault.split_fees(
             &policy,
             &mut currency,
             balance::create_for_testing(meme),
             balance::create_for_testing(quote),
             f.ctx!(),
         );
-        protocol_fees.add_protocol_fees(protocol_meme, protocol_quote);
-        launch.settle_protocol_fee_accrual(&f.version, protocol_fees);
         compound(&mut vault);
         vault.update_fee_split(next_split());
 
@@ -703,23 +702,32 @@ fun claim_reward(self: &mut ReplayFixture) {
     });
 }
 
-/// Migrate, accrue one residual unit per asset to the launch, attach the position, and share.
+/// Redirects the live protocol share between two collections.
+fun redirect_protocol_share(self: &mut ReplayFixture, destination: address) {
+    self.next_tx!(ADMIN, |f| {
+        let admin = blast_acl::witness_for_testing<TreasuryAdmin>();
+        let mut policy = f.take_policy();
+
+        policy.set_protocol_destination(&f.migrators_version, &admin, destination);
+
+        test_scenario::return_shared(policy);
+    });
+}
+
+/// Migrate, keep one residual unit per asset in the vault, attach the position, share.
 fun mock_adapter(
     launch: &mut Launch<REPLAY_TESTS, QUOTE>,
     version: &PackageVersion,
     currency: &mut Currency<REPLAY_TESTS>,
     ctx: &mut TxContext,
 ) {
-    let (mut meme, mut quote, mut protocol_fees) = launch
-        .migrate(version, currency, Venue(), ctx);
+    let (mut meme, mut quote) = launch.migrate(version, currency, Venue(), ctx);
     let residual_meme = meme.split(1);
     let residual_quote = quote.split(1);
     let pool = MockPool { id: object::new(ctx) };
     let pool_id = object::id(&pool);
     let position = MockPosition { id: object::new(ctx), pool_id, meme, quote, liquidity: 1 };
-    protocol_fees.add_protocol_fees(residual_meme, residual_quote);
-    launch.settle_protocol_fee_accrual(version, protocol_fees);
-    vault::create(launch, &Venue(), pool_id, position, 1, ctx);
+    vault::create(launch, &Venue(), pool_id, position, 1, residual_meme, residual_quote, ctx);
     transfer::share_object(pool);
 }
 
@@ -824,6 +832,10 @@ fun reduce_transaction(self: &mut ReplayFixture, sender: address) {
         replay.lp_fee_policy_changed(bytes);
         reduced = reduced + 1;
     });
+    direct<blast_events::LpFeeDestinationChanged>().do!(|bytes| {
+        replay.lp_fee_destination_changed(bytes);
+        reduced = reduced + 1;
+    });
     wrapped<events::LaunchTicketCreated>().do!(|bytes| {
         replay.launch_ticket_created(bytes);
         reduced = reduced + 1;
@@ -857,12 +869,12 @@ fun reduce_transaction(self: &mut ReplayFixture, sender: address) {
         replay.migration_allocation_paid(bytes);
         reduced = reduced + 1;
     });
-    wrapped<events::Migrated>().do!(|bytes| {
-        replay.migrated(bytes);
-        reduced = reduced + 1;
-    });
     wrapped<events::ProtocolFeesAccrued>().do!(|bytes| {
         replay.protocol_fees_accrued(bytes);
+        reduced = reduced + 1;
+    });
+    wrapped<events::Migrated>().do!(|bytes| {
+        replay.migrated(bytes);
         reduced = reduced + 1;
     });
     direct<blast_events::VaultCreated>().do!(|bytes| {
@@ -920,12 +932,12 @@ fun direct<T: copy + drop>(): vector<vector<u8>> {
     event::events_by_type<T>().map!(|payload| bcs::to_bytes(&payload))
 }
 
-fun new_replay(_publisher: address): Replay {
+fun new_replay(publisher: address): Replay {
     Replay {
         default_shares: Shares { meme_bps: 0, quote_bps: 0 },
         coin_shares: vector[],
+        protocol_destination: publisher,
         protocol_allocation: Shares { meme_bps: 0, quote_bps: 0 },
-        protocol_fees: Pair { meme: 0, quote: 0 },
         ticket_id: absent(),
         meme: b"".to_ascii_string(),
         decimals: 0,
@@ -1015,6 +1027,16 @@ fun lp_fee_policy_changed(self: &mut Replay, bytes: vector<u8>) {
     };
 }
 
+fun lp_fee_destination_changed(self: &mut Replay, bytes: vector<u8>) {
+    let mut r = bcs::new(bytes);
+    let old_destination = r.peel_address();
+    let new_destination = r.peel_address();
+    r.assert_consumed();
+
+    assert_eq!(old_destination, self.protocol_destination);
+    self.protocol_destination = new_destination;
+}
+
 /// The ticket fixes the canonical supply: one billion whole tokens at its decimals.
 fun launch_ticket_created(self: &mut Replay, bytes: vector<u8>) {
     let mut r = bcs::new(bytes);
@@ -1032,9 +1054,9 @@ fun launch_ticket_created(self: &mut Replay, bytes: vector<u8>) {
     self.total_supply = self.atomic_supply;
 }
 
-/// Finalization records Blast's allocation separately from the creator's recipients, each asset
-/// sums to 10,000, and the curve starts with its apportioned Meme while every migration share
-/// waits.
+/// Finalization records Blast's migration fee separately from the creator's recipients, each
+/// asset sums to 10,000, and the curve starts with its apportioned Meme while every migration
+/// share waits.
 fun launch_created(self: &mut Replay, bytes: vector<u8>) {
     let mut r = bcs::new(bytes);
     self.launch_id = r.peel_id();
@@ -1181,14 +1203,12 @@ fun bought(self: &mut Replay, bytes: vector<u8>) {
     );
     self.meme_reserve = meme_reserve;
     self.real_quote_reserve = real_quote_reserve;
-    self.protocol_fees = self
-        .protocol_fees
-        .plus(Pair { meme: protocol_meme_fee, quote: protocol_quote_fee });
     if (real_quote_reserve >= self.graduation_target) self.lifecycle = MIGRATION_READY;
 }
 
-/// Migration copies the creator's launch fee split into the custody `VaultCreated` announces at
-/// generation zero; protocol residuals have already been removed from the position hand-off.
+/// Migration copies the creator's launch fee split into the custody `VaultCreated` announces, at
+/// generation zero, and the residuals it keeps leave the rest of the hand-off in a position that
+/// holds liquidity.
 fun vault_created(self: &mut Replay, bytes: vector<u8>) {
     let mut r = bcs::new(bytes);
     self.binding.vault_id = r.peel_id();
@@ -1197,6 +1217,8 @@ fun vault_created(self: &mut Replay, bytes: vector<u8>) {
     self.venue = r.peel_type_name();
     assert_eq!(r.peel_type_name(), self.meme);
     assert_eq!(r.peel_type_name(), type_name::with_original_ids<QUOTE>().into_string());
+    self.residual_meme = r.peel_u64();
+    self.residual_quote = r.peel_u64();
     self.liquidity = r.peel_u128();
     let fee_split = r.peel_fee_split();
     r.assert_consumed();
@@ -1207,6 +1229,8 @@ fun vault_created(self: &mut Replay, bytes: vector<u8>) {
     assert_eq!(fee_split, self.launch_fee_split);
     self.generation = 0;
     self.fee_split = fee_split;
+    self.position_meme = self.position_meme - self.residual_meme;
+    self.position_quote = self.position_quote - self.residual_quote;
 }
 
 /// Recipients are paid in plan order, each its apportioned Meme and its apportioned share of the
@@ -1228,6 +1252,24 @@ fun migration_allocation_paid(self: &mut Replay, bytes: vector<u8>) {
     self.allocated_meme_paid = self.allocated_meme_paid + meme;
     self.allocated_quote_paid = self.allocated_quote_paid + quote;
     self.credit(destination, meme, quote);
+}
+
+/// The one-time migration fee enters the launch ledger before the pool receives its remainder.
+fun protocol_fees_accrued(self: &Replay, bytes: vector<u8>) {
+    let mut r = bcs::new(bytes);
+    assert_eq!(r.peel_id(), self.launch_id);
+    let accrued = r.peel_pair();
+    r.assert_consumed();
+
+    assert_eq!(self.lifecycle, MIGRATION_READY);
+    assert_eq!(
+        accrued.meme,
+        self.plan.meme_amounts(self.atomic_supply)[PROTOCOL_MEME_PART],
+    );
+    assert_eq!(
+        accrued.quote,
+        self.plan.quote_amounts(self.real_quote_reserve)[PROTOCOL_QUOTE_PART],
+    );
 }
 
 /// After every recipient is paid, the adapter receives the pool's shares, which empty the
@@ -1260,35 +1302,17 @@ fun migrated(self: &mut Replay, bytes: vector<u8>) {
     self.allocated_meme = 0;
 }
 
-/// One protocol-fee settlement enters the launch ledger. At migration it combines Blast's
-/// allocation with the venue residuals; later settlements contain one collection's protocol cut.
-fun protocol_fees_accrued(self: &mut Replay, bytes: vector<u8>) {
-    let mut r = bcs::new(bytes);
-    assert_eq!(r.peel_id(), self.launch_id);
-    let accrued = r.peel_pair();
-    r.assert_consumed();
-
-    assert!(accrued.meme > 0 || accrued.quote > 0);
-    if (self.lifecycle == MIGRATED && self.binding.vault_id == absent()) {
-        let protocol_meme = self.plan.meme_amounts(self.atomic_supply)[PROTOCOL_MEME_PART];
-        let protocol_quote = self.plan.quote_amounts(self.graduation_target)[PROTOCOL_QUOTE_PART];
-        self.residual_meme = accrued.meme - protocol_meme;
-        self.residual_quote = accrued.quote - protocol_quote;
-        self.position_meme = self.position_meme - self.residual_meme;
-        self.position_quote = self.position_quote - self.residual_quote;
-    };
-    self.protocol_fees = self.protocol_fees.plus(accrued);
-}
-
-/// Blast's live share for this Meme rounds up for launch-ledger settlement; the rest splits under
-/// the stamped generation into the creator, auto-LP, and rewards balances, the burned Meme and the
-/// waiting burn Quote, and one payment per recipient in the split's order, conserving each asset.
+/// Blast's live share for this Meme rounds up and pays the live destination; the rest splits
+/// under the stamped generation into the creator, auto-LP, and rewards balances, the burned Meme
+/// and the waiting burn Quote, and one payment per recipient in the split's order, conserving each
+/// asset.
 fun fees_collected(self: &mut Replay, bytes: vector<u8>) {
     let mut r = bcs::new(bytes);
     assert_eq!(r.peel_id(), self.binding.vault_id);
     assert_eq!(r.peel_u64(), self.generation);
     let gross_meme = r.peel_u64();
     let gross_quote = r.peel_u64();
+    let protocol_destination = r.peel_address();
     let protocol_meme = r.peel_u64();
     let protocol_quote = r.peel_u64();
     let creator = r.peel_pair();
@@ -1303,6 +1327,7 @@ fun fees_collected(self: &mut Replay, bytes: vector<u8>) {
     let recipients = self.fee_split.recipients;
     assert_eq!(self.lifecycle, MIGRATED);
     assert!(gross_meme > 0 || gross_quote > 0);
+    assert_eq!(protocol_destination, self.protocol_destination);
     assert_eq!(protocol_meme, bps::new(shares.meme_bps).apply_up(gross_meme));
     assert_eq!(protocol_quote, bps::new(shares.quote_bps).apply_up(gross_quote));
     assert_eq!(recipient_meme.length(), recipients.length());
@@ -1317,6 +1342,7 @@ fun fees_collected(self: &mut Replay, bytes: vector<u8>) {
             + recipient_quote.total(),
         gross_quote,
     );
+    self.credit(protocol_destination, protocol_meme, protocol_quote);
     self.creator_balance = self.creator_balance.plus(creator);
     self.auto_lp = self.auto_lp.plus(auto_lp);
     self.rewards = self.rewards.plus(rewards);
@@ -1664,6 +1690,7 @@ fun assert_policy(self: &Replay, policy: &LpFeePolicy) {
     let (default_meme_share, default_quote_share) = policy.default_shares_for_testing();
     assert_eq!(default_meme_share.value(), self.default_shares.meme_bps);
     assert_eq!(default_quote_share.value(), self.default_shares.quote_bps);
+    assert_eq!(policy.protocol_destination(), self.protocol_destination);
 
     assert_eq!(policy.coin_count_for_testing(), self.coin_shares.length());
     let (meme_share, quote_share) = policy.shares<REPLAY_TESTS>();
@@ -1723,8 +1750,6 @@ fun assert_launch(self: &Replay, launch: &Launch<REPLAY_TESTS, QUOTE>, currency:
             bps::new(self.plan.protocol_quote_bps),
         ),
     );
-    let (protocol_meme, _, protocol_quote, _) = launch.fee_totals_for_testing();
-    assert_eq!(Pair { meme: protocol_meme, quote: protocol_quote }, self.protocol_fees);
 
     // Native Coin Registry reads own decimals, supply, and the supply mode.
     assert_eq!(currency.decimals(), self.decimals);
@@ -1746,6 +1771,8 @@ fun assert_vault(self: &Replay, vault: &mut LpVault<REPLAY_TESTS, QUOTE>) {
     assert_eq!(vault.pool_id(), self.binding.pool_id);
     assert_eq!(vault.position_id_for_testing<_, _, Venue>(), option::some(self.binding.position_id));
     assert_eq!(self.venue, type_name::with_original_ids<Venue>().into_string());
+    assert_eq!(vault.protocol_meme_residual_for_testing(), self.residual_meme);
+    assert_eq!(vault.protocol_quote_residual_for_testing(), self.residual_quote);
     assert_eq!(vault.generation_for_testing(), self.generation);
     assert_eq!(split_entry(&vault.fee_split_for_testing()), self.fee_split);
     assert_eq!(pair!(|| vault.creator_balances_for_testing()), self.creator_balance);
@@ -1763,7 +1790,7 @@ fun assert_vault(self: &Replay, vault: &mut LpVault<REPLAY_TESTS, QUOTE>) {
 /// Every payout event must equal the native coins its destination received.
 fun assert_native_payouts(self: &mut ReplayFixture) {
     self.next_tx!(KEEPER, |f| {
-        assert_eq!(f.replay.payouts.length(), 9);
+        assert_eq!(f.replay.payouts.length(), 11);
         f.replay.payouts.do_ref!(|payout| {
             assert_eq!(f.coin_total<REPLAY_TESTS>(payout.destination), payout.meme);
             assert_eq!(f.coin_total<QUOTE>(payout.destination), payout.quote);
