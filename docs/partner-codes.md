@@ -2,12 +2,14 @@
 
 Partner codes let apps that build on Blast earn from the flow they bring. A
 partner is paid a share of the fee Blast charges on each trade that names it,
-straight to its address, in the same transaction. Holders never pay for it.
-Boosts supports it today; the launchpad will use the same partner codes later.
+straight to its address. Holders never pay for it. Boosts and the launchpad
+both support it; on the launchpad a partner is chosen once per launch, when the
+coin is created.
 
-The decision and its alternatives are recorded in
-[ADR 0095](decisions/0095-partner-codes.md). This page explains how the program
-works for integrators, partners and Blast's operators.
+The decisions and their alternatives are recorded in
+[ADR 0095](decisions/0095-partner-codes.md) and, for the launchpad,
+[ADR 0098](decisions/0098-launch-creation-fee-and-partners.md). This page
+explains how the program works for integrators, partners and Blast's operators.
 
 ## The idea in one example
 
@@ -133,15 +135,48 @@ on Boosts and 8% on another product.
   partner fixes it at once by setting a new recipient; until then integrators
   can call the plain entry points.
 
+## On the launchpad
+
+Launching a coin costs a creation fee in SUI, which Blast sets. A launch can
+name one partner, and only when it is created; nothing can change it later.
+That partner is paid its share of every fee Blast takes on the launch:
+
+| Blast fee | When the partner is paid |
+| --- | --- |
+| The creation fee | in the creation transaction |
+| Blast's part of every curve trade fee, the opening round's included, in Meme and Quote | whenever Blast claims its fees from the launch, in the same call |
+
+The creator's part of each trade fee, the sell burn, and Blast's migration
+allocation are never shared. Neither is Blast's LP-fee share after migration.
+
+- **Integrators** that create coins call `launch::finalize_with_partner` instead
+  of `launch::finalize`, passing the `Partner` object and the `Clock`. The
+  creation fee must be exactly the one set in `RuntimeConfig`. Trading never
+  takes the partner: `buy`, `sell` and the opening round are the same on every
+  launch.
+- **Partners** are paid when Blast claims, not on each trade. Blast cannot claim
+  a partnered launch's fees without paying the partner in the same call:
+  `claim_protocol_fees` refuses it, and `claim_protocol_fees_with_partner`
+  pays the partner first. `ProtocolFeesClaimed` records both parts, and
+  `LaunchCreated` records the partner and its part of the creation fee.
+- **Operators.** The fee administrator (`FeeAdmin`) sets the creation fee with
+  `runtime_config::set_creation_fee`. It also accepts deals with
+  `runtime_config::add_partner`, which applies at once, and ends them with
+  `runtime_config::remove_partner`, which applies seven days later. Removing a
+  deal only stops new launches from naming it. Launches that already name it
+  keep paying it, unless its share is scheduled to zero. The creation fee goes
+  to Blast's allocation destination.
+
 ## Guarantees
 
 These properties are enforced by the contracts and covered by tests; the fourth
 also rests on how each package is published:
 
 1. The reserve fee, the shares minted and the redemption payout are the same with
-   or without a partner.
-2. A partner is paid at most 80% of Blast's admin fee on the trade, rounded down;
-   Blast keeps the rest.
+   or without a partner. On the launchpad, trades, the creator's fees and the
+   sell burn are the same with or without a partner.
+2. A partner is paid at most 80% of Blast's fee, rounded down; Blast keeps the
+   rest.
 3. Minting and redeeming through your own code always costs at least as much as
    it pays back: the reserve fee and at least a fifth of Blast's fee are still
    charged.
@@ -151,5 +186,9 @@ also rests on how each package is published:
    long as the Boosts adapter, which is upgradeable, keeps it.
 5. Only the cap managing a deal can change its recipient; only Blast's partner
    administrator can register deals, schedule shares and move deals between caps;
-   only the Boosts risk administrator can add or remove deals on Boosts.
-6. Blast never holds partner money, and there is no claim step to miss.
+   only the Boosts risk administrator can add or remove deals on Boosts, and only
+   the launchpad fee administrator on the launchpad. A launch's partner never
+   changes.
+6. On Boosts, Blast never holds partner money, and there is no claim step to
+   miss. On the launchpad, a partner's share of trade fees waits in the launch
+   until Blast claims, and Blast cannot claim without paying it in the same call.

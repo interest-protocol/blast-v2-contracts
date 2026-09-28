@@ -53,6 +53,9 @@ public struct Launch<phantom Meme, phantom Quote> has key {
     creator: Option<CreatorRecipient>,
     curve_fee_cap_id: Option<ID>,
     blast_metadata_cap_id: Option<ID>,
+    /// The Blast partner named at creation, paid its share of every fee Blast takes on this
+    /// launch. It never changes.
+    partner_id: Option<ID>,
 }
 
 /// Hot potato from `new` to `finalize`, collecting the creator's settings.
@@ -160,97 +163,51 @@ public fun set_opening_round<Meme, Quote>(
     self.opening_round_ms = opening_round_ms;
 }
 
-/// Checks every setting, adds Blast's allocation to the plan, fixes the canonical supply in the
-/// Coin Registry, and splits the Meme into the curve reserve and the migration allocations. The
-/// initializer cannot leave the transaction whose `new` checked the package version.
+/// Checks every setting, charges the creation fee, adds Blast's allocation to the plan, fixes the
+/// canonical supply in the Coin Registry, and splits the Meme into the curve reserve and the
+/// migration allocations. `creation_fee` must be exactly the configured fee; it goes to Blast's
+/// allocation destination. The initializer cannot leave the transaction whose `new` checked the
+/// package version.
 public fun finalize<Meme, Quote>(
     self: LaunchInitializer<Meme, Quote>,
     currency: &mut Currency<Meme>,
     config: &LaunchConfig,
+    runtime_config: &RuntimeConfig,
+    creation_fee: Coin<SUI>,
     ctx: &mut TxContext,
 ): Launch<Meme, Quote> {
-    let LaunchInitializer {
-        ticket,
-        migration_witness,
-        pool_tick_spacing,
-        pool_fee_rate,
-        quote_fee_bps,
-        meme_fee_bps,
-        virtual_quote,
-        graduation_target,
-        allocation_plan,
-        lp_fee_split,
-        opening_round_ms,
-    } = self;
-    let virtual_quote = virtual_quote.destroy_some();
-    let graduation_target = graduation_target.destroy_some();
-    let allocation_plan = allocation_plan.destroy_some().add_protocol(config.protocol_allocation());
-    assert!(virtual_quote > 0, blast_fun::errors::invalid_virtual_quote!());
     assert!(
-        opening_round_ms == 0 || (
-            opening_round_ms >= constants::min_opening_round_ms!()
-                && opening_round_ms <= constants::max_opening_round_ms!()
-        ),
-        blast_fun::errors::invalid_opening_round!(),
+        creation_fee.value() == runtime_config.creation_fee(),
+        blast_fun::errors::invalid_creation_fee!(),
     );
+
+    self.finalize_launch(currency, config, creation_fee.into_balance(), option::none(), 0, ctx)
+}
+
+/// `finalize`, naming a Blast partner new launches may name. The partner is paid its share of the
+/// creation fee now and of Blast's trade fees whenever Blast claims them. It is the launch's
+/// partner for good.
+public fun finalize_with_partner<Meme, Quote>(
+    self: LaunchInitializer<Meme, Quote>,
+    currency: &mut Currency<Meme>,
+    config: &LaunchConfig,
+    runtime_config: &RuntimeConfig,
+    partner: &Partner,
+    creation_fee: Coin<SUI>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): Launch<Meme, Quote> {
+    let partner_id = object::id(partner);
+    runtime_config.assert_partner(partner_id, clock.timestamp_ms());
     assert!(
-        currency.symbol().length() <= constants::max_meme_symbol_length!(),
-        blast_fun::errors::meme_symbol_too_long!(),
-    );
-    // Trading closes with the reserve at the target, so the pool's share of it must be positive.
-    let (lp_quote, _) = allocation_plan.apportion_quote(graduation_target);
-    assert!(lp_quote > 0, blast_fun::errors::invalid_graduation_target!());
-    let ticket_id = ticket.id();
-    let atomic_supply = launch_ticket::atomic_supply(ticket.decimals());
-    let (curve_meme, _, _) = allocation_plan.apportion_meme(atomic_supply);
-    let (mut meme, metadata_cap, creator, sell_burn_bps) = ticket.destroy(currency, atomic_supply);
-
-    let launch = Launch {
-        id: object::new(ctx),
-        lifecycle: if (opening_round_ms == 0) Lifecycle::Live else Lifecycle::OpeningRound,
-        public_start_ms: option::none(),
-        opening_round_ms,
-        opening_round_bids: 0,
-        opening_round_quote: balance::zero(),
-        opening_round_meme: balance::zero(),
-        sell_burn_bps,
-        virtual_quote,
-        graduation_target,
-        quote_fee_bps,
-        meme_fee_bps,
-        migration_witness,
-        pool_tick_spacing,
-        pool_fee_rate,
-        lp_fee_split: lp_fee_split.destroy_some(),
-        atomic_supply,
-        meme_reserve: meme.split(curve_meme),
-        real_quote_reserve: balance::zero(),
-        pending_burn: balance::zero(),
-        allocation_plan,
-        allocated_meme: meme,
-        fee_ledger: fees::new(),
-        metadata_cap,
-        creator: option::some(creator),
-        curve_fee_cap_id: option::none(),
-        blast_metadata_cap_id: option::none(),
-    };
-
-    events::launch_created<Quote>(
-        launch.id.to_inner(),
-        ticket_id,
-        launch.migration_witness,
-        launch.pool_tick_spacing,
-        launch.pool_fee_rate,
-        launch.lp_fee_split,
-        launch.virtual_quote,
-        launch.graduation_target,
-        launch.quote_fee_bps.value(),
-        launch.meme_fee_bps.value(),
-        launch.allocation_plan,
-        launch.opening_round_ms,
+        creation_fee.value() == runtime_config.creation_fee(),
+        blast_fun::errors::invalid_creation_fee!(),
     );
 
-    launch
+    let mut creation_fee = creation_fee.into_balance();
+    let partner_fee = partner.pay(&mut creation_fee, clock);
+
+    self.finalize_launch(currency, config, creation_fee, option::some(partner_id), partner_fee, ctx)
 }
 
 /// Shares the launch. Public time starts now: trading, or the opening round, which ends
@@ -573,6 +530,7 @@ public fun claim_creator_fees<Meme, Quote>(
     (meme, quote)
 }
 
+/// Claims Blast's trade fees from a launch that names no partner.
 public fun claim_protocol_fees<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
@@ -580,10 +538,39 @@ public fun claim_protocol_fees<Meme, Quote>(
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
     package_version.assert_current();
+    assert!(self.partner_id.is_none(), blast_fun::errors::partner_mismatch!());
 
     let (meme, quote) = self.fee_ledger.claim_protocol_fees(ctx);
 
-    events::protocol_fees_claimed(self.id.to_inner(), meme.value(), quote.value());
+    events::protocol_fees_claimed(self.id.to_inner(), meme.value(), quote.value(), 0, 0);
+
+    (meme, quote)
+}
+
+/// Claims Blast's trade fees from a launch that names `partner`, paying the partner its share of
+/// them in the same call and returning the rest.
+public fun claim_protocol_fees_with_partner<Meme, Quote>(
+    self: &mut Launch<Meme, Quote>,
+    package_version: &PackageVersion,
+    _: &AdminWitness<TreasuryAdmin>,
+    partner: &Partner,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): (Coin<Meme>, Coin<Quote>) {
+    package_version.assert_current();
+    assert!(self.partner_id.contains(&object::id(partner)), blast_fun::errors::partner_mismatch!());
+
+    let (mut meme, mut quote) = self.fee_ledger.claim_protocol_fees(ctx);
+    let partner_meme = partner.pay(meme.balance_mut(), clock);
+    let partner_quote = partner.pay(quote.balance_mut(), clock);
+
+    events::protocol_fees_claimed(
+        self.id.to_inner(),
+        meme.value(),
+        quote.value(),
+        partner_meme,
+        partner_quote,
+    );
 
     (meme, quote)
 }
@@ -657,6 +644,110 @@ public fun assert_curve_fee_cap<Meme, Quote>(
 }
 
 // === Private Functions ===
+
+/// Builds the launch from the checked settings and sends Blast its part of the creation fee.
+/// `partner_fee` of the fee already went to the partner.
+fun finalize_launch<Meme, Quote>(
+    self: LaunchInitializer<Meme, Quote>,
+    currency: &mut Currency<Meme>,
+    config: &LaunchConfig,
+    blast_fee: Balance<SUI>,
+    partner_id: Option<ID>,
+    partner_fee: u64,
+    ctx: &mut TxContext,
+): Launch<Meme, Quote> {
+    let LaunchInitializer {
+        ticket,
+        migration_witness,
+        pool_tick_spacing,
+        pool_fee_rate,
+        quote_fee_bps,
+        meme_fee_bps,
+        virtual_quote,
+        graduation_target,
+        allocation_plan,
+        lp_fee_split,
+        opening_round_ms,
+    } = self;
+    let virtual_quote = virtual_quote.destroy_some();
+    let graduation_target = graduation_target.destroy_some();
+    let allocation_plan = allocation_plan.destroy_some().add_protocol(config.protocol_allocation());
+    assert!(virtual_quote > 0, blast_fun::errors::invalid_virtual_quote!());
+    assert!(
+        opening_round_ms == 0 || (
+            opening_round_ms >= constants::min_opening_round_ms!()
+                && opening_round_ms <= constants::max_opening_round_ms!()
+        ),
+        blast_fun::errors::invalid_opening_round!(),
+    );
+    assert!(
+        currency.symbol().length() <= constants::max_meme_symbol_length!(),
+        blast_fun::errors::meme_symbol_too_long!(),
+    );
+    // Trading closes with the reserve at the target, so the pool's share of it must be positive.
+    let (lp_quote, _) = allocation_plan.apportion_quote(graduation_target);
+    assert!(lp_quote > 0, blast_fun::errors::invalid_graduation_target!());
+    let ticket_id = ticket.id();
+    let atomic_supply = launch_ticket::atomic_supply(ticket.decimals());
+    let (curve_meme, _, _) = allocation_plan.apportion_meme(atomic_supply);
+    // `add_protocol` puts Blast's allocation first.
+    let blast_destination = allocation_plan.destinations()[0];
+    let creation_fee = blast_fee.value() + partner_fee;
+    let (mut meme, metadata_cap, creator, sell_burn_bps) = ticket.destroy(currency, atomic_supply);
+
+    let launch = Launch {
+        id: object::new(ctx),
+        lifecycle: if (opening_round_ms == 0) Lifecycle::Live else Lifecycle::OpeningRound,
+        public_start_ms: option::none(),
+        opening_round_ms,
+        opening_round_bids: 0,
+        opening_round_quote: balance::zero(),
+        opening_round_meme: balance::zero(),
+        sell_burn_bps,
+        virtual_quote,
+        graduation_target,
+        quote_fee_bps,
+        meme_fee_bps,
+        migration_witness,
+        pool_tick_spacing,
+        pool_fee_rate,
+        lp_fee_split: lp_fee_split.destroy_some(),
+        atomic_supply,
+        meme_reserve: meme.split(curve_meme),
+        real_quote_reserve: balance::zero(),
+        pending_burn: balance::zero(),
+        allocation_plan,
+        allocated_meme: meme,
+        fee_ledger: fees::new(),
+        metadata_cap,
+        creator: option::some(creator),
+        curve_fee_cap_id: option::none(),
+        blast_metadata_cap_id: option::none(),
+        partner_id,
+    };
+    if (blast_fee.value() > 0) transfer::public_transfer(blast_fee.into_coin(ctx), blast_destination)
+    else blast_fee.destroy_zero();
+
+    events::launch_created<Quote>(
+        launch.id.to_inner(),
+        ticket_id,
+        launch.migration_witness,
+        launch.pool_tick_spacing,
+        launch.pool_fee_rate,
+        launch.lp_fee_split,
+        launch.virtual_quote,
+        launch.graduation_target,
+        launch.quote_fee_bps.value(),
+        launch.meme_fee_bps.value(),
+        launch.allocation_plan,
+        launch.opening_round_ms,
+        creation_fee,
+        partner_id,
+        partner_fee,
+    );
+
+    launch
+}
 
 fun assert_metadata_update<Meme, Quote>(
     self: &Launch<Meme, Quote>,
@@ -872,6 +963,11 @@ public fun migration_witness_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>
     self.migration_witness
 }
 
+#[test_only]
+public fun partner_id_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): Option<ID> {
+    self.partner_id
+}
+
 // === Imports ===
 
 use blast_admin::blast_acl::AdminWitness;
@@ -891,6 +987,8 @@ use blast_fun::{
     runtime_config::RuntimeConfig,
 };
 
+use blast_partners::blast_partners::Partner;
+
 use std::{string::String, type_name::{Self, TypeName}};
 
 use sui::{
@@ -899,6 +997,7 @@ use sui::{
     coin::{Coin, TreasuryCap},
     coin_registry::{Currency, MetadataCap},
     dynamic_field,
+    sui::SUI,
 };
 
 use fun dynamic_field::add as UID.add_dynamic_field;

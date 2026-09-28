@@ -15,8 +15,17 @@ const CREATOR: address = @0xC0FFEE;
 
 const PROTOCOL_ADMIN: address = @0xAD;
 
-/// Where Blast's migration allocation is paid.
+/// Where Blast's migration allocation and creation fees are paid.
 const BLAST: address = @0xB1A5;
+
+/// Where the fixture partner is paid.
+const PARTNER: address = @0x9A27;
+
+/// The fixture partner's share of Blast's fees: 40%.
+const PARTNER_SHARE_BPS: u64 = 4_000;
+
+/// A creation fee whose partner share rounds down: 40% of it is 400.4 MIST.
+const CREATION_FEE: u64 = 1_001;
 
 const ALICE: address = @0xA11CE;
 
@@ -1526,9 +1535,307 @@ fun live_protocol_share_routes_and_claims_launch_trade_fees() {
         assert_eq!(quote_fees.value(), protocol_quote);
         assert_eq!(
             bcs::to_bytes(&collect_one<events::ProtocolFeesClaimed>()),
-            u64_payload(object::id(&launch), vector[protocol_meme, protocol_quote]),
+            u64_payload(object::id(&launch), vector[protocol_meme, protocol_quote, 0, 0]),
         );
 
+        destroy(meme);
+        destroy(refund);
+        destroy(meme_fees);
+        destroy(quote_fees);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+// --- Creation fee and partner ---
+
+#[test]
+fun finalize_pays_the_creation_fee_to_blast() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        f.set_creation_fee(CREATION_FEE);
+        let ticket = f.new_ticket(CREATOR);
+        let ticket_id = object::id(&ticket);
+        let launch = f.intake<TEST_QUOTE, _>(
+            ticket,
+            TEST_MIGRATION_WITNESS(),
+            MIGRATION_QUOTE_TARGET,
+            default_plan(),
+        );
+
+        assert_eq!(launch.partner_id_for_testing(), option::none());
+        assert_eq!(
+            bcs::to_bytes(&collect_one<events::LaunchCreated>()),
+            launch_created_bytes_with(
+                object::id(&launch),
+                ticket_id,
+                CREATION_FEE,
+                option::none(),
+                0,
+            ),
+        );
+
+        destroy(launch);
+    });
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let fee = f.take_coin<SUI>(BLAST);
+
+        assert_eq!(fee.value(), CREATION_FEE);
+
+        destroy(fee);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EInvalidCreationFee, location = blast_fun::launch)]
+fun finalize_rejects_a_creation_fee_other_than_the_configured_one() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        f.set_creation_fee(CREATION_FEE);
+        let ticket = f.new_ticket(CREATOR);
+        let initializer = f.configured_initializer(ticket);
+        let mut currency = f.take_currency();
+        let creation_fee = coin::mint_for_testing<SUI>(CREATION_FEE - 1, f.ctx!());
+
+        destroy(
+            initializer.finalize(
+                &mut currency,
+                &f.config,
+                &f.runtime_config,
+                creation_fee,
+                f.ctx!(),
+            ),
+        );
+        destroy(currency);
+    });
+
+    fixture.end();
+}
+
+#[test]
+/// The partner is paid its share of the creation fee, rounded down, and Blast the rest; the
+/// launch names the partner for good.
+fun finalize_with_partner_splits_the_creation_fee_and_binds_the_partner() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        f.set_creation_fee(CREATION_FEE);
+        let partner = f.accepted_partner();
+        let partner_id = object::id(&partner);
+        let ticket = f.new_ticket(CREATOR);
+        let ticket_id = object::id(&ticket);
+        let launch = f.intake_with_partner(ticket, &partner);
+
+        assert_eq!(launch.partner_id_for_testing(), option::some(partner_id));
+        assert_eq!(
+            bcs::to_bytes(&collect_one<events::LaunchCreated>()),
+            launch_created_bytes_with(
+                object::id(&launch),
+                ticket_id,
+                CREATION_FEE,
+                option::some(partner_id),
+                400,
+            ),
+        );
+        let paid = event::events_by_type<PartnerPaid<SUI>>();
+        let (paid_partner_id, paid_amount) = paid[0].partner_paid_fields();
+        assert_eq!(paid.length(), 1);
+        assert_eq!(paid_partner_id, partner_id);
+        assert_eq!(paid_amount, 400);
+
+        destroy(partner);
+        destroy(launch);
+    });
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let fee = f.take_coin<SUI>(BLAST);
+
+        assert_eq!(fee.value(), CREATION_FEE - 400);
+
+        destroy(fee);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EPartnerNotAccepted, location = blast_fun::runtime_config)]
+fun finalize_with_partner_rejects_a_partner_launches_may_not_name() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let partner = partners::new_for_testing(PARTNER, PARTNER_SHARE_BPS, f.ctx!());
+        let ticket = f.new_ticket(CREATOR);
+
+        destroy(f.intake_with_partner(ticket, &partner));
+        destroy(partner);
+    });
+
+    fixture.end();
+}
+
+#[test]
+/// Blast's claim pays the launch's partner its share of Blast's fee in both assets, rounded down,
+/// and returns the rest; the creator's fees are untouched.
+fun claim_protocol_fees_with_partner_pays_the_partner_its_share() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f
+            .runtime_config
+            .set_protocol_fee_share(&f.package_version, &fee_admin(), bps::new(2_500));
+        let partner = f.accepted_partner();
+        let partner_id = object::id(&partner);
+        let ticket = f.new_ticket(CREATOR);
+        let launch = f.intake_with_partner(ticket, &partner);
+        let mut launch = f.open_launch(launch);
+        let (meme, refund) = f.buy(&mut launch, 10_000_000, 1);
+        let (protocol_meme, creator_meme, protocol_quote, creator_quote) = launch
+            .fee_totals_for_testing();
+        let partner_meme = protocol_meme * PARTNER_SHARE_BPS / 10_000;
+        let partner_quote = protocol_quote * PARTNER_SHARE_BPS / 10_000;
+
+        let (meme_fees, quote_fees) = launch.claim_protocol_fees_with_partner(
+            &f.package_version,
+            &treasury_admin(),
+            &partner,
+            &f.clock,
+            f.ctx!(),
+        );
+
+        assert!(partner_meme > 0 && partner_quote > 0);
+        assert_eq!(meme_fees.value(), protocol_meme - partner_meme);
+        assert_eq!(quote_fees.value(), protocol_quote - partner_quote);
+        let (protocol_meme_left, creator_meme_left, protocol_quote_left, creator_quote_left) = launch
+            .fee_totals_for_testing();
+        assert_eq!(protocol_meme_left, 0);
+        assert_eq!(creator_meme_left, creator_meme);
+        assert_eq!(protocol_quote_left, 0);
+        assert_eq!(creator_quote_left, creator_quote);
+        assert_eq!(
+            bcs::to_bytes(&collect_one<events::ProtocolFeesClaimed>()),
+            u64_payload(
+                object::id(&launch),
+                vector[
+                    protocol_meme - partner_meme,
+                    protocol_quote - partner_quote,
+                    partner_meme,
+                    partner_quote,
+                ],
+            ),
+        );
+        let (meme_partner_id, paid_meme) = event::events_by_type<PartnerPaid<LAUNCH_TESTS>>()[0]
+            .partner_paid_fields();
+        let (quote_partner_id, paid_quote) = event::events_by_type<PartnerPaid<TEST_QUOTE>>()[0]
+            .partner_paid_fields();
+        assert_eq!(meme_partner_id, partner_id);
+        assert_eq!(paid_meme, partner_meme);
+        assert_eq!(quote_partner_id, partner_id);
+        assert_eq!(paid_quote, partner_quote);
+
+        destroy(partner);
+        destroy(meme);
+        destroy(refund);
+        destroy(meme_fees);
+        destroy(quote_fees);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EPartnerMismatch, location = blast_fun::launch)]
+fun claim_protocol_fees_rejects_a_launch_that_names_a_partner() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f
+            .runtime_config
+            .set_protocol_fee_share(&f.package_version, &fee_admin(), bps::new(2_500));
+        let partner = f.accepted_partner();
+        let ticket = f.new_ticket(CREATOR);
+        let launch = f.intake_with_partner(ticket, &partner);
+        let mut launch = f.open_launch(launch);
+        let (meme, refund) = f.buy(&mut launch, 10_000_000, 1);
+
+        let (meme_fees, quote_fees) = launch.claim_protocol_fees(
+            &f.package_version,
+            &treasury_admin(),
+            f.ctx!(),
+        );
+
+        destroy(partner);
+        destroy(meme);
+        destroy(refund);
+        destroy(meme_fees);
+        destroy(quote_fees);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EPartnerMismatch, location = blast_fun::launch)]
+fun claim_protocol_fees_with_partner_rejects_another_partner() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f
+            .runtime_config
+            .set_protocol_fee_share(&f.package_version, &fee_admin(), bps::new(2_500));
+        let partner = f.accepted_partner();
+        let other = f.accepted_partner();
+        let ticket = f.new_ticket(CREATOR);
+        let launch = f.intake_with_partner(ticket, &partner);
+        let mut launch = f.open_launch(launch);
+        let (meme, refund) = f.buy(&mut launch, 10_000_000, 1);
+
+        let (meme_fees, quote_fees) = launch.claim_protocol_fees_with_partner(
+            &f.package_version,
+            &treasury_admin(),
+            &other,
+            &f.clock,
+            f.ctx!(),
+        );
+
+        destroy(partner);
+        destroy(other);
+        destroy(meme);
+        destroy(refund);
+        destroy(meme_fees);
+        destroy(quote_fees);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EPartnerMismatch, location = blast_fun::launch)]
+fun claim_protocol_fees_with_partner_rejects_a_launch_without_one() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f
+            .runtime_config
+            .set_protocol_fee_share(&f.package_version, &fee_admin(), bps::new(2_500));
+        let partner = f.accepted_partner();
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
+        let (meme, refund) = f.buy(&mut launch, 10_000_000, 1);
+
+        let (meme_fees, quote_fees) = launch.claim_protocol_fees_with_partner(
+            &f.package_version,
+            &treasury_admin(),
+            &partner,
+            &f.clock,
+            f.ctx!(),
+        );
+
+        destroy(partner);
         destroy(meme);
         destroy(refund);
         destroy(meme_fees);
@@ -2261,16 +2568,76 @@ fun launch_start<Quote, MigrationWitness: drop>(
     )
 }
 
-/// Finalizes construction against the registered currency.
+/// Finalizes construction against the registered currency, paying the configured creation fee.
 fun launch_finalize<Quote>(
     self: &mut LaunchFixture,
     initializer: LaunchInitializer<LAUNCH_TESTS, Quote>,
 ): Launch<LAUNCH_TESTS, Quote> {
     let mut currency = self.take_currency();
-    let launch = initializer.finalize(&mut currency, &self.config, self.scenario.ctx());
+    let creation_fee = coin::mint_for_testing<SUI>(
+        self.runtime_config.creation_fee(),
+        self.scenario.ctx(),
+    );
+    let launch = initializer.finalize(
+        &mut currency,
+        &self.config,
+        &self.runtime_config,
+        creation_fee,
+        self.scenario.ctx(),
+    );
     test_scenario::return_to_address(COIN_REGISTRY, currency);
 
     launch
+}
+
+/// Starts a default launch in `TEST_QUOTE` and sets the default target, plan, and fee split.
+fun launch_configured_initializer(
+    self: &mut LaunchFixture,
+    ticket: LaunchTicket<LAUNCH_TESTS>,
+): LaunchInitializer<LAUNCH_TESTS, TEST_QUOTE> {
+    let mut initializer = self.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
+    initializer.set_virtual_quote(VIRTUAL_QUOTE);
+    initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
+    initializer.set_allocation_plan(default_plan());
+    initializer.set_lp_fee_split(default_fee_split());
+    initializer
+}
+
+/// A default launch naming `partner`, paying the configured creation fee.
+fun launch_intake_with_partner(
+    self: &mut LaunchFixture,
+    ticket: LaunchTicket<LAUNCH_TESTS>,
+    partner: &Partner,
+): Launch<LAUNCH_TESTS, TEST_QUOTE> {
+    let initializer = self.configured_initializer(ticket);
+    let mut currency = self.take_currency();
+    let creation_fee = coin::mint_for_testing<SUI>(
+        self.runtime_config.creation_fee(),
+        self.scenario.ctx(),
+    );
+    let launch = initializer.finalize_with_partner(
+        &mut currency,
+        &self.config,
+        &self.runtime_config,
+        partner,
+        creation_fee,
+        &self.clock,
+        self.scenario.ctx(),
+    );
+    test_scenario::return_to_address(COIN_REGISTRY, currency);
+
+    launch
+}
+
+/// A partner paid `PARTNER_SHARE_BPS` of Blast's fees, which new launches may name.
+fun launch_accepted_partner(self: &mut LaunchFixture): Partner {
+    let partner = partners::new_for_testing(PARTNER, PARTNER_SHARE_BPS, self.scenario.ctx());
+    self.runtime_config.add_partner(&self.package_version, &fee_admin(), &partner);
+    partner
+}
+
+fun launch_set_creation_fee(self: &mut LaunchFixture, creation_fee: u64) {
+    self.runtime_config.set_creation_fee(&self.package_version, &fee_admin(), creation_fee);
 }
 
 /// Mints one extra unit through the lent treasury cap, then finalizes.
@@ -2483,8 +2850,19 @@ fun ticket_created_bytes(ticket_id: ID, metadata_cap_id: ID, burnable: bool): ve
 }
 
 /// Expected `LaunchCreated` bytes for the fixture's cold policy, without an opening round, with Blast
-/// first.
+/// first, a free creation, and no partner.
 fun launch_created_bytes(launch_id: ID, ticket_id: ID): vector<u8> {
+    launch_created_bytes_with(launch_id, ticket_id, 0, option::none(), 0)
+}
+
+/// `launch_created_bytes` with this creation fee, partner, and partner's part of the fee.
+fun launch_created_bytes_with(
+    launch_id: ID,
+    ticket_id: ID,
+    creation_fee: u64,
+    partner_id: Option<ID>,
+    partner_fee: u64,
+): vector<u8> {
     let pool_tick_spacing = POOL_TICK_SPACING;
     let mut expected = bcs::to_bytes(&launch_id);
     expected.append(bcs::to_bytes(&ticket_id));
@@ -2499,6 +2877,9 @@ fun launch_created_bytes(launch_id: ID, ticket_id: ID): vector<u8> {
     expected.append(u64_bytes(MEME_FEE_BPS));
     expected.append(bcs::to_bytes(&default_plan_with_blast()));
     expected.append(u64_bytes(0));
+    expected.append(u64_bytes(creation_fee));
+    expected.append(bcs::to_bytes(&partner_id));
+    expected.append(u64_bytes(partner_fee));
     expected
 }
 
@@ -2553,6 +2934,8 @@ use blast_fun::{
     runtime_config,
 };
 
+use blast_partners::blast_partners::{Self as partners, Partner, PartnerPaid};
+
 use std::{bcs, type_name, unit_test::{assert_eq, destroy}};
 
 use sui::{
@@ -2561,6 +2944,7 @@ use sui::{
     coin::{Self, Coin},
     coin_registry::Currency,
     event,
+    sui::SUI,
     test_scenario::{Self, Scenario},
     test_utils,
 };
@@ -2588,6 +2972,14 @@ use fun launch_new_launch_with as LaunchFixture.new_launch_with;
 use fun launch_start as LaunchFixture.start_launch;
 
 use fun launch_finalize as LaunchFixture.finalize_launch;
+
+use fun launch_configured_initializer as LaunchFixture.configured_initializer;
+
+use fun launch_intake_with_partner as LaunchFixture.intake_with_partner;
+
+use fun launch_accepted_partner as LaunchFixture.accepted_partner;
+
+use fun launch_set_creation_fee as LaunchFixture.set_creation_fee;
 
 use fun launch_mint_extra_supply_and_finalize as LaunchFixture.mint_extra_supply_and_finalize;
 

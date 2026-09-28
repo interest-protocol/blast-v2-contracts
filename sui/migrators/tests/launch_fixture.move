@@ -89,7 +89,10 @@ public fun open_launch<Meme: drop, Quote, Witness: drop>(
         allocation::plan(bps::new(8_000), bps::new(2_000), bps::new(10_000), vector[]),
     );
     initializer.set_lp_fee_split(fee_split);
-    let launch = initializer.finalize(&mut currency, config, scenario.ctx());
+    let runtime = runtime_config::new_disabled_for_testing(scenario.ctx());
+    let creation_fee = coin::zero(scenario.ctx());
+    let launch = initializer.finalize(&mut currency, config, &runtime, creation_fee, scenario.ctx());
+    destroy(runtime);
 
     (launch, currency)
 }
@@ -112,6 +115,9 @@ use blast_fun::{
     launch_config::LaunchConfig,
     launch_ticket,
     package_version::PackageVersion,
+    runtime_config,
 };
 
-use sui::{coin_registry::Currency, test_scenario::Scenario};
+use std::unit_test::destroy;
+
+use sui::{coin, coin_registry::Currency, test_scenario::Scenario};

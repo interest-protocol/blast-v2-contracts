@@ -386,7 +386,11 @@ fn migrators() -> &'static UnlinkedPackage {
     static MIGRATORS: OnceLock<UnlinkedPackage> = OnceLock::new();
     MIGRATORS.get_or_init(|| {
         let work = Path::new(env!("CARGO_TARGET_TMPDIR")).join(env!("CARGO_PKG_NAME")).join("venue_fork");
-        build_unlinked(&sui_dir().join("migrators"), &["blast_fun_timelock", "blast_admin", "blast_fun"], &work)
+        build_unlinked(
+            &sui_dir().join("migrators"),
+            &["blast_fun_timelock", "blast_admin", "blast_partners", "blast_fun"],
+            &work,
+        )
             .expect("build the migrators")
     })
 }
@@ -481,8 +485,10 @@ impl World {
         let launchpad_dir = sui_dir.join("launchpad");
         let (timelock, _) = h.publish(build_timelock(&work)?)?;
         let (admin, admin_published) = h.publish(build(&admin_dir, &[(&timelock_dir, timelock)], &work)?)?;
-        let (blast, published) =
-            h.publish(build(&launchpad_dir, &[(&timelock_dir, timelock), (&admin_dir, admin)], &work)?)?;
+        let partners_dir = sui_dir.join("partners");
+        let (partners, _) = h.publish(build(&partners_dir, &[(&timelock_dir, timelock), (&admin_dir, admin)], &work)?)?;
+        let core = [(timelock_dir.as_path(), timelock), (admin_dir.as_path(), admin), (partners_dir.as_path(), partners)];
+        let (blast, published) = h.publish(build(&launchpad_dir, &core, &work)?)?;
         let one = |h: &Harness, outcome: &Outcome, module: &str, name: &str| {
             let ids = outcome.created(h, module, name);
             assert_eq!(ids.len(), 1, "{module}::{name}");
@@ -495,10 +501,10 @@ impl World {
         let runtime = one(&h, &published, "runtime_config", "RuntimeConfig");
 
         let mut dependencies =
-            vec![ObjectID::from_single_byte(1), ObjectID::from_single_byte(2), timelock, admin, blast];
+            vec![ObjectID::from_single_byte(1), ObjectID::from_single_byte(2), timelock, admin, partners, blast];
         dependencies.extend(venue_dependencies(&h)?);
         let linked = migrators().link(
-            &[("blast_fun_timelock", timelock), ("blast_admin", admin), ("blast_fun", blast)],
+            &[("blast_fun_timelock", timelock), ("blast_admin", admin), ("blast_partners", partners), ("blast_fun", blast)],
             dependencies,
         )?;
         let (migrators, published) = h.publish(linked)?;
@@ -507,7 +513,7 @@ impl World {
         let policy = one(&h, &published, "lp_fee_policy", "LpFeePolicy");
         let project = build(
             &Path::new(env!("CARGO_MANIFEST_DIR")).join("fixture/project"),
-            &[(&timelock_dir, timelock), (&admin_dir, admin), (&launchpad_dir, blast)],
+            &[core[0], core[1], core[2], (launchpad_dir.as_path(), blast)],
             &work,
         )?;
 
@@ -825,7 +831,15 @@ impl World {
         let split = self.fee_split_arg(&mut b, split)?;
         call(&mut b, self.blast, "launch", "set_lp_fee_split", pair.clone(), vec![initializer, split]);
         let currency = self.shared(&mut b, currency, true)?;
-        let launch = call(&mut b, self.blast, "launch", "finalize", pair.clone(), vec![initializer, currency, config]);
+        let runtime = self.shared(&mut b, self.runtime, false)?;
+        let creation_fee = call(&mut b, SUI_FRAMEWORK_PACKAGE_ID, "coin", "zero", vec![sui()], vec![]);
+        let launch = call(&mut b, self.blast, "launch", "finalize", pair.clone(), vec![
+            initializer,
+            currency,
+            config,
+            runtime,
+            creation_fee,
+        ]);
         let clock = self.clock(&mut b)?;
         call(&mut b, self.blast, "launch", "share", pair, vec![launch, clock]);
 
@@ -2139,6 +2153,9 @@ struct LaunchCreated {
     _lp_quote_bps: u64,
     _allocation_recipients: Vec<(SuiAddress, u64, u64)>,
     _opening_round_ms: u64,
+    _creation_fee: u64,
+    _partner_id: Option<ObjectID>,
+    _partner_fee: u64,
 }
 
 #[derive(Deserialize)]

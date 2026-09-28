@@ -209,9 +209,9 @@ core_import_roots="$(
     sources/launch.move sources/launch_config.move sources/lib/events.move \
     | rg -v ':use fun$' | sed 's/.*use //' | sort -u
 )"
-if [[ "$core_import_roots" != $'blast_admin\nblast_fun\nstd\nsui' ]] \
-  || [[ "$(sed -n '/^\[dependencies\]/,/^\[/p' Move.toml | rg -o '^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=' | sed 's/[[:space:]]*=//' | sort)" != 'blast_admin' ]]; then
-  echo 'Provider-neutral launch state, config, and events may import only local core, std, Sui, and blast_admin.' >&2
+if [[ "$core_import_roots" != $'blast_admin\nblast_fun\nblast_partners\nstd\nsui' ]] \
+  || [[ "$(sed -n '/^\[dependencies\]/,/^\[/p' Move.toml | rg -o '^[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=' | sed 's/[[:space:]]*=//' | sort)" != $'blast_admin\nblast_partners' ]]; then
+  echo 'Provider-neutral launch state, config, and events may import only local core, std, Sui, blast_admin, and blast_partners.' >&2
   failures=$((failures + 1))
 fi
 
@@ -355,7 +355,7 @@ admin_roles="$(for file in "${source_files[@]}"; do
 done | LC_ALL=C sort | tr '\n' ' ')"
 
 if [[ "$admin_roles" != \
-  'launch:claim_protocol_fees:TreasuryAdmin launch:reassign_curve_fee_cap:CreatorAdmin launch:reassign_metadata_cap:CreatorAdmin launch_config:set_meme_decimals_allowed:ListingAdmin launch_config:set_migration_witness_allowed:AdapterAdmin launch_config:set_protocol_allocation:TreasuryAdmin launch_config:set_quote_allowed:ListingAdmin launch_config:set_trade_fees:FeeAdmin package_admin:authorize_upgrade:UpgradeAdmin package_admin:commit_upgrade_and_advance:UpgradeAdmin package_admin:make_immutable:UpgradeAdmin runtime_config:set_creator_claim_signer:ClaimSignerAdmin runtime_config:set_protocol_fee_share:FeeAdmin ' ]]; then
+  'launch:claim_protocol_fees:TreasuryAdmin launch:claim_protocol_fees_with_partner:TreasuryAdmin launch:reassign_curve_fee_cap:CreatorAdmin launch:reassign_metadata_cap:CreatorAdmin launch_config:set_meme_decimals_allowed:ListingAdmin launch_config:set_migration_witness_allowed:AdapterAdmin launch_config:set_protocol_allocation:TreasuryAdmin launch_config:set_quote_allowed:ListingAdmin launch_config:set_trade_fees:FeeAdmin package_admin:authorize_upgrade:UpgradeAdmin package_admin:commit_upgrade_and_advance:UpgradeAdmin package_admin:make_immutable:UpgradeAdmin runtime_config:add_partner:FeeAdmin runtime_config:remove_partner:FeeAdmin runtime_config:set_creation_fee:FeeAdmin runtime_config:set_creator_claim_signer:ClaimSignerAdmin runtime_config:set_protocol_fee_share:FeeAdmin ' ]]; then
   printf '  %s\n' $admin_roles
   echo 'Every administrator action must take exactly its pinned role witness.' >&2
   failures=$((failures + 1))
@@ -733,33 +733,38 @@ runtime_config_source="$(move_normalized_source <<<"$runtime_config_facts")"
 
 if [[ ! -f sources/runtime_config.move ]] \
   || [[ "$(move_production_functions <<<"$runtime_config_facts")" \
-    != 'creator_claim_signer:package:0 init:private:0 new:private:0 protocol_fee_share:package:0 set_creator_claim_signer:public:0 set_protocol_fee_share:public:0 ' ]] \
+    != 'add_partner:public:0 assert_partner:package:0 creation_fee:package:0 creator_claim_signer:package:0 init:private:0 new:private:0 protocol_fee_share:package:0 remove_partner:public:0 set_creation_fee:public:0 set_creator_claim_signer:public:0 set_protocol_fee_share:public:0 ' ]] \
   || [[ "$(move_production_type RuntimeConfig <<<"$runtime_config_facts")" \
-    != 'struct RuntimeConfig has key { id: UID, creator_claim_signer_public_key: vector<u8>, protocol_fee_share_bps: Bps, }' ]] \
+    != 'struct RuntimeConfig has key { id: UID, creator_claim_signer_public_key: vector<u8>, protocol_fee_share_bps: Bps, creation_fee: u64, }' ]] \
+  || [[ "$(move_production_type PartnerKey <<<"$runtime_config_facts")" \
+    != 'struct PartnerKey(ID) has copy, drop, store;' ]] \
   || rg -q '\b(AdminCap|ProtocolAuthority|LaunchConfig|VecMap|VecSet|TypeName)\b' \
     <<<"$runtime_config_source" \
   || rg -q '\b(sequence|schema_version|action_tag|nonce)\b' <<<"$runtime_config_source"; then
-  echo 'runtime_config.move must own only the version-gated creator-claim signer and protocol fee share.' >&2
+  echo 'runtime_config.move must own only the version-gated creator-claim signer, protocol fee share, creation fee, and accepted partners.' >&2
   failures=$((failures + 1))
 fi
 
-# The two setters are the only RuntimeConfig transitions; each is version-gated first and
-# authorized by a borrowed AdminWitness of the role the admin role map pins.
+# The three setters and the partner list's add and remove are the only RuntimeConfig
+# transitions; each is version-gated first and authorized by a borrowed AdminWitness of the role
+# the admin role map pins.
 runtime_config_violations=''
 runtime_config_mutations="$(awk -F'\t' '
-  $1 == "FN" && $6 == 0 && $10 ~ /self\.(creator_claim_signer_public_key|protocol_fee_share_bps) = / {
+  $1 == "FN" && $6 == 0 \
+    && $10 ~ /self\.(creator_claim_signer_public_key|protocol_fee_share_bps|creation_fee) = |self\.id\.(add_dynamic_field|dynamic_field_mut)/ {
     print $2
   }
 ' <<<"$runtime_config_facts" | sort | tr '\n' ' ')"
 
 if [[ "$runtime_config_mutations" \
-  != 'set_creator_claim_signer set_protocol_fee_share ' ]]; then
-  runtime_config_violations+="  runtime state is mutated by '${runtime_config_mutations}' instead of the two setters"$'\n'
+  != 'add_partner remove_partner set_creation_fee set_creator_claim_signer set_protocol_fee_share ' ]]; then
+  runtime_config_violations+="  runtime state is mutated by '${runtime_config_mutations}' instead of the setters and the partner list"$'\n'
 fi
 
 runtime_config_ungated="$(awk -F'\t' '
   $1 == "FN" && $6 == 0 \
-    && ($2 == "set_creator_claim_signer" || $2 == "set_protocol_fee_share") {
+    && ($2 == "set_creator_claim_signer" || $2 == "set_protocol_fee_share" || $2 == "set_creation_fee" \
+      || $2 == "add_partner" || $2 == "remove_partner") {
     if ($9 !~ /[(,] package_version: &PackageVersion,/) {
       print "  " $2 " must take the shared PackageVersion under that exact name"
     }
@@ -786,10 +791,11 @@ events_facts="$(move_facts sources/lib/events.move)"
 
 runtime_config_mutation_event_payloads="$(awk -F'\t' '
   $1 == "TYPE" && $5 == 0 \
-    && ($2 == "ProtocolFeeShareChanged" || $2 == "CreatorClaimSignerSet") { print $8 }
+    && ($2 == "ProtocolFeeShareChanged" || $2 == "CreatorClaimSignerSet" || $2 == "CreationFeeChanged" \
+      || $2 == "PartnerAdded" || $2 == "PartnerRemoved") { print $8 }
 ' <<<"$events_facts")"
 
-if [[ "$(wc -l <<<"$runtime_config_mutation_event_payloads")" != 2 ]] \
+if [[ "$(wc -l <<<"$runtime_config_mutation_event_payloads")" != 5 ]] \
   || rg -q '\b(sequence|schema_version|action_tag|nonce)\b' \
     <<<"$runtime_config_mutation_event_payloads" \
   || rg -q '\bruntime_config_id\b' <<<"$runtime_config_mutation_event_payloads" \
@@ -964,14 +970,14 @@ launch_functions_containing() {
 # its setters, the starting adapter's treasury loan, and `finalize`, which checks every setting
 # before custody moves and keeps the native MetadataCap inline forever.
 launch_new_body="$(move_production_body new <<<"$launch_facts")"
-launch_finalize_body="$(move_production_body finalize <<<"$launch_facts")"
+launch_finalize_body="$(move_production_body finalize_launch <<<"$launch_facts")"
 launch_initializer_functions="$(awk -F'\t' '
   $1 == "FN" && $6 == 0 && $9 ~ /LaunchInitializer</ { print $2 ":" $3 }
 ' <<<"$launch_facts" | sort | tr '\n' ' ')"
 
 if [[ ! -f sources/launch.move ]] \
   || [[ "$(move_production_type LaunchInitializer <<<"$launch_facts")" != 'struct LaunchInitializer<phantom Meme, phantom Quote> {'* ]] \
-  || [[ "$launch_initializer_functions" != 'finalize:public new:public set_allocation_plan:public set_graduation_target:public set_lp_fee_split:public set_opening_round:public set_virtual_quote:public treasury_cap_mut:public ' ]] \
+  || [[ "$launch_initializer_functions" != 'finalize:public finalize_launch:private finalize_with_partner:public new:public set_allocation_plan:public set_graduation_target:public set_lp_fee_split:public set_opening_round:public set_virtual_quote:public treasury_cap_mut:public ' ]] \
   || [[ "$(move_production_function_contract new <<<"$launch_facts")" != 'public:0:0:fun new<Meme, Quote, Witness: drop>( ticket: LaunchTicket<Meme>, package_version: &PackageVersion, config: &LaunchConfig, _: Witness, pool_tick_spacing: u32, pool_fee_rate: u64, ): LaunchInitializer<Meme, Quote>' ]] \
   || ! in_order \
     'package_version.assert_current();' \
@@ -982,7 +988,12 @@ if [[ ! -f sources/launch.move ]] \
     <<<"$launch_new_body" \
   || [[ "$(move_production_function_contract treasury_cap_mut <<<"$launch_facts")" != 'public:0:0:fun treasury_cap_mut<Meme, Quote, Witness: drop>( self: &mut LaunchInitializer<Meme, Quote>, _: Witness, ): &mut TreasuryCap<Meme>' ]] \
   || [[ "$(move_production_body treasury_cap_mut <<<"$launch_facts")" != 'assert!( self.migration_witness == type_name::with_original_ids<Witness>(), blast_fun::errors::invalid_migration_witness!(), ); self.ticket.treasury_cap_mut()' ]] \
-  || [[ "$(move_production_function_contract finalize <<<"$launch_facts")" != 'public:0:0:fun finalize<Meme, Quote>( self: LaunchInitializer<Meme, Quote>, currency: &mut Currency<Meme>, config: &LaunchConfig, ctx: &mut TxContext, ): Launch<Meme, Quote>' ]] \
+  || [[ "$(move_production_function_contract finalize <<<"$launch_facts")" != 'public:0:0:fun finalize<Meme, Quote>( self: LaunchInitializer<Meme, Quote>, currency: &mut Currency<Meme>, config: &LaunchConfig, runtime_config: &RuntimeConfig, creation_fee: Coin<SUI>, ctx: &mut TxContext, ): Launch<Meme, Quote>' ]] \
+  || [[ "$(move_production_function_contract finalize_with_partner <<<"$launch_facts")" != 'public:0:0:fun finalize_with_partner<Meme, Quote>( self: LaunchInitializer<Meme, Quote>, currency: &mut Currency<Meme>, config: &LaunchConfig, runtime_config: &RuntimeConfig, partner: &Partner, creation_fee: Coin<SUI>, clock: &Clock, ctx: &mut TxContext, ): Launch<Meme, Quote>' ]] \
+  || ! in_order 'runtime_config.assert_partner(' 'invalid_creation_fee!()' 'partner.pay(' 'self.finalize_launch(' \
+    <<<"$(move_production_body finalize_with_partner <<<"$launch_facts")" \
+  || ! in_order 'invalid_creation_fee!()' 'self.finalize_launch(' \
+    <<<"$(move_production_body finalize <<<"$launch_facts")" \
   || [[ "$launch_finalize_body" == *'assert_current'* ]] \
   || [[ "$launch_finalize_body" == *'.is_some()'* ]] \
   || ! in_order \
@@ -997,7 +1008,7 @@ if [[ ! -f sources/launch.move ]] \
     'Launch {' \
     'lp_fee_split: lp_fee_split.destroy_some(),' \
     <<<"$launch_finalize_body" \
-  || [[ "$launch_finalize_body" != *'metadata_cap, creator: option::some(creator), curve_fee_cap_id: option::none(), blast_metadata_cap_id: option::none(), };'* ]] \
+  || [[ "$launch_finalize_body" != *'metadata_cap, creator: option::some(creator), curve_fee_cap_id: option::none(), blast_metadata_cap_id: option::none(), partner_id, };'* ]] \
   || [[ "$(count_occurrences 'self\.metadata_cap\b' <<<"$launch_source")" \
     != "$(count_occurrences '&self\.metadata_cap\b' <<<"$launch_source")" ]] \
   || rg -q '\bmetadata_cap\.(extract|swap|fill)\(|option::(some|none)\(metadata_cap\)|\bMetadataCap<Meme>\)' \
@@ -1035,11 +1046,13 @@ for authority_spec in \
   'self.creator.extract()|claim_creator_caps ' \
   'self.creator = |reassign_curve_fee_cap reassign_metadata_cap ' \
   'self.fee_ledger.claim_creator_fees(|claim_creator_fees ' \
-  'self.fee_ledger.claim_protocol_fees(|claim_protocol_fees ' \
+  'self.fee_ledger.claim_protocol_fees(|claim_protocol_fees claim_protocol_fees_with_partner ' \
+  'partner.pay(|claim_protocol_fees_with_partner finalize_with_partner ' \
+  'self.partner_id = |' \
   'self.assert_curve_fee_cap(|claim_creator_fees ' \
   'self.assert_metadata_update(|set_description set_icon_url set_name ' \
   '&self.metadata_cap|set_description set_icon_url set_name ' \
-  'transfer::public_transfer(|deliver_opening_round migrate reassign_curve_fee_cap reassign_metadata_cap '; do
+  'transfer::public_transfer(|deliver_opening_round finalize_launch migrate reassign_curve_fee_cap reassign_metadata_cap '; do
   authority_needle="${authority_spec%%|*}"
   authority_expected="${authority_spec#*|}"
   authority_actual="$(launch_functions_containing "$authority_needle")"
@@ -1080,7 +1093,7 @@ check_launch_needles() {
 # creator capabilities to the caller.
 check_launch_needles T-004 \
   'creator_authority::claim_creator_caps<|claim_creator_caps ' \
-  'clock.timestamp_ms()|has_opening_round_ended share ' \
+  'clock.timestamp_ms()|finalize_with_partner has_opening_round_ended share ' \
   'curve::cap_buy_quote_input(|buy_from_curve ' \
   'curve::quote_buy(|buy_from_curve ' \
   'transfer::share_object(self)|share ' \
@@ -1139,10 +1152,11 @@ if [[ "$launch_dynamic_field_aliases" != 'use fun dynamic_field::add as UID.add_
   launch_authority_violations+='  ADR 0093 must reach bid records only through the add, borrow_mut, exists, and remove aliases'$'\n'
 fi
 for move_file in "${source_files[@]}"; do
-  [[ "$move_file" == sources/launch.move ]] && continue
+  # ADR 0098 keeps the accepted partners as dynamic fields of RuntimeConfig.
+  [[ "$move_file" == sources/launch.move || "$move_file" == sources/runtime_config.move ]] && continue
 
   if move_facts "$move_file" | move_normalized_source | rg -q '\bdynamic_field\b'; then
-    launch_authority_violations+="  ADR 0093 ${move_file} must not name dynamic_field; only launch.move reaches bid records"$'\n'
+    launch_authority_violations+="  ADR 0093 ${move_file} must not name dynamic_field; only launch.move and runtime_config.move keep records"$'\n'
   fi
 done
 for move_file in "${source_files[@]}"; do
@@ -1389,7 +1403,16 @@ events_follow_mutations() {
 }
 
 if ! events_follow_mutations sources/launch_ticket.move new 'LaunchTicket{' 'events::launch_ticket_created<' \
-  || ! events_follow_mutations sources/launch.move finalize 'ticket.destroy(' 'Launch{' 'events::launch_created<' \
+  || ! events_follow_mutations sources/launch.move finalize_launch \
+    'ticket.destroy(' 'Launch{' 'transfer::public_transfer(' 'events::launch_created<' \
+  || ! events_follow_mutations sources/launch.move claim_protocol_fees_with_partner \
+    'self.fee_ledger.claim_protocol_fees(' 'events::protocol_fees_claimed(' \
+  || ! events_follow_mutations sources/runtime_config.move set_creation_fee \
+    'self.creation_fee = ' 'events::creation_fee_changed(' \
+  || ! events_follow_mutations sources/runtime_config.move add_partner \
+    '.add_dynamic_field(' 'events::partner_added(' \
+  || ! events_follow_mutations sources/runtime_config.move remove_partner \
+    '*current = ' 'events::partner_removed(' \
   || ! events_follow_mutations sources/launch.move buy_from_curve \
     'self.real_quote_reserve.join(' \
     'self.meme_reserve.split(' \

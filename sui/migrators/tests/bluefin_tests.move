@@ -256,7 +256,10 @@ fun open_launch(
     initializer.set_lp_fee_split(
         allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), bps::new(0), vector[]),
     );
-    let launch = initializer.finalize(&mut currency, &f.config, f.scenario.ctx());
+    let runtime = runtime_config::new_disabled_for_testing(f.scenario.ctx());
+    let creation_fee = coin::zero(f.scenario.ctx());
+    let launch = initializer.finalize(&mut currency, &f.config, &runtime, creation_fee, f.scenario.ctx());
+    destroy(runtime);
     test_scenario::return_to_address(COIN_REGISTRY, currency);
 
     launch
@@ -279,6 +282,7 @@ use blast_fun::{
     launch_config::{Self, LaunchConfig},
     launch_ticket::{Self, LaunchTicket},
     package_version::{Self, PackageVersion},
+    runtime_config,
 };
 
 use blast_fun_migrators::{
@@ -288,4 +292,4 @@ use blast_fun_migrators::{
 
 use std::{type_name, unit_test::{assert_eq, destroy}};
 
-use sui::{coin_registry::Currency, test_scenario::{Self, Scenario}, test_utils};
+use sui::{coin, coin_registry::Currency, test_scenario::{Self, Scenario}, test_utils};
