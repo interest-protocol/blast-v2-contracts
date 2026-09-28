@@ -172,14 +172,10 @@ public fun finalize<Meme, Quote>(
     self: LaunchInitializer<Meme, Quote>,
     currency: &mut Currency<Meme>,
     config: &LaunchConfig,
-    runtime_config: &RuntimeConfig,
     creation_fee: Coin<SUI>,
     ctx: &mut TxContext,
 ): Launch<Meme, Quote> {
-    assert!(
-        creation_fee.value() == runtime_config.creation_fee(),
-        blast_fun::errors::invalid_creation_fee!(),
-    );
+    assert!(creation_fee.value() == config.creation_fee(), blast_fun::errors::invalid_creation_fee!());
 
     self.finalize_launch(currency, config, creation_fee.into_balance(), option::none(), 0, ctx)
 }
@@ -191,18 +187,14 @@ public fun finalize_with_partner<Meme, Quote>(
     self: LaunchInitializer<Meme, Quote>,
     currency: &mut Currency<Meme>,
     config: &LaunchConfig,
-    runtime_config: &RuntimeConfig,
     partner: &Partner,
     creation_fee: Coin<SUI>,
     clock: &Clock,
     ctx: &mut TxContext,
 ): Launch<Meme, Quote> {
     let partner_id = object::id(partner);
-    runtime_config.assert_partner(partner_id, clock.timestamp_ms());
-    assert!(
-        creation_fee.value() == runtime_config.creation_fee(),
-        blast_fun::errors::invalid_creation_fee!(),
-    );
+    config.assert_partner(partner_id, clock.timestamp_ms());
+    assert!(creation_fee.value() == config.creation_fee(), blast_fun::errors::invalid_creation_fee!());
 
     let mut creation_fee = creation_fee.into_balance();
     let partner_fee = partner.pay(&mut creation_fee, clock);

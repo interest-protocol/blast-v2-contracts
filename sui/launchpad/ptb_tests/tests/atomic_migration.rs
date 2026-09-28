@@ -661,13 +661,11 @@ impl World {
             ]);
         }
         let currency = builder.obj(self.h.shared(currency, true))?;
-        let runtime = builder.obj(self.h.shared(self.runtime, false))?;
         let creation_fee = call(&mut builder, SUI_FRAMEWORK_PACKAGE_ID, "coin", "zero", vec![sui()], vec![]);
         let launch = call(&mut builder, self.blast, "launch", "finalize", pair.clone(), vec![
             initializer,
             currency,
             config,
-            runtime,
             creation_fee,
         ]);
         let clock = builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?;

@@ -1602,15 +1602,7 @@ fun finalize_rejects_a_creation_fee_other_than_the_configured_one() {
         let mut currency = f.take_currency();
         let creation_fee = coin::mint_for_testing<SUI>(CREATION_FEE - 1, f.ctx!());
 
-        destroy(
-            initializer.finalize(
-                &mut currency,
-                &f.config,
-                &f.runtime_config,
-                creation_fee,
-                f.ctx!(),
-            ),
-        );
+        destroy(initializer.finalize(&mut currency, &f.config, creation_fee, f.ctx!()));
         destroy(currency);
     });
 
@@ -1663,7 +1655,7 @@ fun finalize_with_partner_splits_the_creation_fee_and_binds_the_partner() {
     fixture.end();
 }
 
-#[test, expected_failure(abort_code = blast_fun::errors::EPartnerNotAccepted, location = blast_fun::runtime_config)]
+#[test, expected_failure(abort_code = blast_fun::errors::EPartnerNotAccepted, location = blast_fun::launch_config)]
 fun finalize_with_partner_rejects_a_partner_launches_may_not_name() {
     let mut fixture = start();
 
@@ -1740,6 +1732,81 @@ fun claim_protocol_fees_with_partner_pays_the_partner_its_share() {
         destroy(partner);
         destroy(meme);
         destroy(refund);
+        destroy(meme_fees);
+        destroy(quote_fees);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test]
+/// A partner whose share is zero is paid nothing and emits no `PartnerPaid`; the claim still
+/// records it, and Blast keeps its whole fee.
+fun claim_protocol_fees_with_a_zero_share_partner_pays_nothing() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f
+            .runtime_config
+            .set_protocol_fee_share(&f.package_version, &fee_admin(), bps::new(2_500));
+        let partner = partners::new_for_testing(PARTNER, 0, f.ctx!());
+        f.config.add_partner(&f.package_version, &fee_admin(), &partner);
+        let ticket = f.new_ticket(CREATOR);
+        let launch = f.intake_with_partner(ticket, &partner);
+        let mut launch = f.open_launch(launch);
+        let (meme, refund) = f.buy(&mut launch, 10_000_000, 1);
+        let (protocol_meme, _, protocol_quote, _) = launch.fee_totals_for_testing();
+
+        let (meme_fees, quote_fees) = launch.claim_protocol_fees_with_partner(
+            &f.package_version,
+            &treasury_admin(),
+            &partner,
+            &f.clock,
+            f.ctx!(),
+        );
+
+        assert_eq!(meme_fees.value(), protocol_meme);
+        assert_eq!(quote_fees.value(), protocol_quote);
+        assert_eq!(
+            bcs::to_bytes(&collect_one<events::ProtocolFeesClaimed>()),
+            u64_payload(object::id(&launch), vector[protocol_meme, protocol_quote, 0, 0]),
+        );
+        assert!(event::events_by_type<PartnerPaid<LAUNCH_TESTS>>().is_empty());
+        assert!(event::events_by_type<PartnerPaid<TEST_QUOTE>>().is_empty());
+
+        destroy(partner);
+        destroy(meme);
+        destroy(refund);
+        destroy(meme_fees);
+        destroy(quote_fees);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EPartnerMismatch, location = blast_fun::launch)]
+/// Naming the wrong partner is refused before the empty ledger is.
+fun claim_protocol_fees_with_partner_checks_the_partner_before_the_fees() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let partner = f.accepted_partner();
+        let other = f.accepted_partner();
+        let ticket = f.new_ticket(CREATOR);
+        let mut launch = f.intake_with_partner(ticket, &partner);
+
+        let (meme_fees, quote_fees) = launch.claim_protocol_fees_with_partner(
+            &f.package_version,
+            &treasury_admin(),
+            &other,
+            &f.clock,
+            f.ctx!(),
+        );
+
+        destroy(partner);
+        destroy(other);
         destroy(meme_fees);
         destroy(quote_fees);
         destroy(launch);
@@ -2574,17 +2641,8 @@ fun launch_finalize<Quote>(
     initializer: LaunchInitializer<LAUNCH_TESTS, Quote>,
 ): Launch<LAUNCH_TESTS, Quote> {
     let mut currency = self.take_currency();
-    let creation_fee = coin::mint_for_testing<SUI>(
-        self.runtime_config.creation_fee(),
-        self.scenario.ctx(),
-    );
-    let launch = initializer.finalize(
-        &mut currency,
-        &self.config,
-        &self.runtime_config,
-        creation_fee,
-        self.scenario.ctx(),
-    );
+    let creation_fee = coin::mint_for_testing<SUI>(self.config.creation_fee(), self.scenario.ctx());
+    let launch = initializer.finalize(&mut currency, &self.config, creation_fee, self.scenario.ctx());
     test_scenario::return_to_address(COIN_REGISTRY, currency);
 
     launch
@@ -2611,14 +2669,10 @@ fun launch_intake_with_partner(
 ): Launch<LAUNCH_TESTS, TEST_QUOTE> {
     let initializer = self.configured_initializer(ticket);
     let mut currency = self.take_currency();
-    let creation_fee = coin::mint_for_testing<SUI>(
-        self.runtime_config.creation_fee(),
-        self.scenario.ctx(),
-    );
+    let creation_fee = coin::mint_for_testing<SUI>(self.config.creation_fee(), self.scenario.ctx());
     let launch = initializer.finalize_with_partner(
         &mut currency,
         &self.config,
-        &self.runtime_config,
         partner,
         creation_fee,
         &self.clock,
@@ -2632,12 +2686,12 @@ fun launch_intake_with_partner(
 /// A partner paid `PARTNER_SHARE_BPS` of Blast's fees, which new launches may name.
 fun launch_accepted_partner(self: &mut LaunchFixture): Partner {
     let partner = partners::new_for_testing(PARTNER, PARTNER_SHARE_BPS, self.scenario.ctx());
-    self.runtime_config.add_partner(&self.package_version, &fee_admin(), &partner);
+    self.config.add_partner(&self.package_version, &fee_admin(), &partner);
     partner
 }
 
 fun launch_set_creation_fee(self: &mut LaunchFixture, creation_fee: u64) {
-    self.runtime_config.set_creation_fee(&self.package_version, &fee_admin(), creation_fee);
+    self.config.set_creation_fee(&self.package_version, &fee_admin(), creation_fee);
 }
 
 /// Mints one extra unit through the lent treasury cap, then finalizes.

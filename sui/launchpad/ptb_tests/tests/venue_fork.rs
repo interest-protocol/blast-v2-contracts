@@ -831,13 +831,11 @@ impl World {
         let split = self.fee_split_arg(&mut b, split)?;
         call(&mut b, self.blast, "launch", "set_lp_fee_split", pair.clone(), vec![initializer, split]);
         let currency = self.shared(&mut b, currency, true)?;
-        let runtime = self.shared(&mut b, self.runtime, false)?;
         let creation_fee = call(&mut b, SUI_FRAMEWORK_PACKAGE_ID, "coin", "zero", vec![sui()], vec![]);
         let launch = call(&mut b, self.blast, "launch", "finalize", pair.clone(), vec![
             initializer,
             currency,
             config,
-            runtime,
             creation_fee,
         ]);
         let clock = self.clock(&mut b)?;

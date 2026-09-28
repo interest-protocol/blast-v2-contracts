@@ -449,7 +449,7 @@ fun create_launch(self: &mut ReplayFixture) {
         initializer.set_lp_fee_split(first_split());
         initializer.set_opening_round(OPENING_ROUND_MS);
         let creation_fee = coin::zero(f.ctx!());
-        let mut launch = initializer.finalize(&mut currency, &config, &f.runtime, creation_fee, f.ctx!());
+        let mut launch = initializer.finalize(&mut currency, &config, creation_fee, f.ctx!());
         launch.join_opening_round(
             &f.version,
             coin::mint_for_testing<QUOTE>(CREATOR_BID, f.ctx!()),

@@ -16,6 +16,11 @@ const MEME_FEE_BPS: u64 = 250;
 
 const MEME_DECIMALS: u8 = 9;
 
+const PARTNER: address = @0x9A27;
+
+/// When the fixture clock removes a partner.
+const NOW_MS: u64 = 1_000;
+
 // === Test-Only Types ===
 
 public struct TEST_QUOTE() has drop;
@@ -69,6 +74,7 @@ public struct ConfigFixture {
     scenario: Scenario,
     package_version: package_version::PackageVersion,
     config: launch_config::LaunchConfig,
+    clock: Clock,
 }
 
 // === Tests ===
@@ -85,6 +91,7 @@ fun package_init_creates_launch_config_with_six_and_nine_decimals() {
         assert_eq!(f.config.allowed_quote_count_for_testing(), 0);
         assert_eq!(f.config.allowed_migration_witness_count_for_testing(), 0);
         assert_eq!(f.config.allowed_meme_decimals_count_for_testing(), 2);
+        assert_eq!(f.config.creation_fee(), 0);
     });
 
     fixture.end();
@@ -960,6 +967,203 @@ fun launch_snapshot_rejects_unlisted_migration_witness() {
     fixture.end();
 }
 
+// --- Creation fee ---
+
+#[test]
+fun admin_sets_the_creation_fee_and_it_emits_the_new_value() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f.set_creation_fee(2_000_000_000);
+
+        assert_eq!(f.config.creation_fee(), 2_000_000_000);
+        assert_eq!(
+            bcs::to_bytes(&collect_one<events::CreationFeeChanged>()),
+            bcs::to_bytes(&2_000_000_000u64),
+        );
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EUnchanged, location = blast_fun::launch_config)]
+fun creation_fee_rejects_the_current_value() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f.set_creation_fee(0);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+fun creation_fee_checks_the_version_before_the_current_value() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f.package_version.set_for_testing(2);
+
+        f.set_creation_fee(0);
+    });
+
+    fixture.end();
+}
+
+// --- Partners ---
+
+#[test]
+fun an_added_partner_is_accepted_at_once() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let partner = f.new_partner();
+
+        f.add_partner(&partner);
+
+        f.config.assert_partner(object::id(&partner), NOW_MS);
+        assert_eq!(
+            bcs::to_bytes(&collect_one<events::PartnerAdded>()),
+            bcs::to_bytes(&object::id(&partner)),
+        );
+        destroy(partner);
+    });
+
+    fixture.end();
+}
+
+#[test]
+/// A removed partner stays accepted for exactly the partner delay.
+fun a_removed_partner_stays_accepted_for_the_partner_delay() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let partner = f.new_partner();
+        let partner_id = object::id(&partner);
+        f.add_partner(&partner);
+
+        f.remove_partner(&partner);
+
+        f.config.assert_partner(partner_id, NOW_MS + partners::delay_ms() - 1);
+        let mut expected = bcs::to_bytes(&partner_id);
+        expected.append(bcs::to_bytes(&(NOW_MS + partners::delay_ms())));
+        assert_eq!(bcs::to_bytes(&collect_one<events::PartnerRemoved>()), expected);
+        destroy(partner);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EPartnerNotAccepted, location = blast_fun::launch_config)]
+fun a_removed_partner_is_refused_once_its_notice_ends() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let partner = f.new_partner();
+        f.add_partner(&partner);
+        f.remove_partner(&partner);
+
+        f.config.assert_partner(object::id(&partner), NOW_MS + partners::delay_ms());
+        destroy(partner);
+    });
+
+    fixture.end();
+}
+
+#[test]
+/// Adding a partner whose removal is pending cancels the removal.
+fun adding_a_removed_partner_accepts_it_again() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let partner = f.new_partner();
+        f.add_partner(&partner);
+        f.remove_partner(&partner);
+
+        f.add_partner(&partner);
+
+        f.config.assert_partner(object::id(&partner), std::u64::max_value!() - 1);
+        destroy(partner);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EUnchanged, location = blast_fun::launch_config)]
+fun adding_an_accepted_partner_aborts() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let partner = f.new_partner();
+        f.add_partner(&partner);
+
+        f.add_partner(&partner);
+        destroy(partner);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EUnchanged, location = blast_fun::launch_config)]
+fun removing_a_partner_twice_aborts() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let partner = f.new_partner();
+        f.add_partner(&partner);
+        f.remove_partner(&partner);
+
+        f.remove_partner(&partner);
+        destroy(partner);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EPartnerNotAccepted, location = blast_fun::launch_config)]
+fun removing_an_unknown_partner_aborts() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let partner = f.new_partner();
+
+        f.remove_partner(&partner);
+        destroy(partner);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+fun adding_a_partner_checks_the_version_first() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let partner = f.new_partner();
+        f.package_version.set_for_testing(2);
+
+        f.add_partner(&partner);
+        destroy(partner);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+fun removing_a_partner_checks_the_version_before_the_list() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let partner = f.new_partner();
+        f.package_version.set_for_testing(2);
+
+        f.remove_partner(&partner);
+        destroy(partner);
+    });
+
+    fixture.end();
+}
+
 // === Test Helpers ===
 
 /// The binding a ticket bound to the test adapter hands to launch intake.
@@ -1025,10 +1229,13 @@ fun start(): ConfigFixture {
     let package_version = package_version::new_for_testing(scenario.ctx());
     launch_config::init_for_testing(scenario.ctx());
 
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    clock.set_for_testing(NOW_MS);
+
     scenario.next_tx(PROTOCOL_ADMIN);
     let config = scenario.take_shared<launch_config::LaunchConfig>();
 
-    ConfigFixture { scenario, package_version, config }
+    ConfigFixture { scenario, package_version, config, clock }
 }
 
 fun listing_admin(): AdminWitness<ListingAdmin> {
@@ -1075,6 +1282,22 @@ fun allow_test_migration_witness(self: &mut ConfigFixture) {
         );
 }
 
+fun set_creation_fee(self: &mut ConfigFixture, creation_fee: u64) {
+    self.config.set_creation_fee(&self.package_version, &fee_admin(), creation_fee);
+}
+
+fun new_partner(self: &mut ConfigFixture): Partner {
+    partners::new_for_testing(PARTNER, 4_000, self.scenario.ctx())
+}
+
+fun add_partner(self: &mut ConfigFixture, partner: &Partner) {
+    self.config.add_partner(&self.package_version, &fee_admin(), partner);
+}
+
+fun remove_partner(self: &mut ConfigFixture, partner: &Partner) {
+    self.config.remove_partner(&self.package_version, &fee_admin(), partner, &self.clock);
+}
+
 fun init_end(self: InitFixture) {
     destroy(self);
 }
@@ -1098,9 +1321,11 @@ use blast_fun::{
     package_version,
 };
 
+use blast_partners::blast_partners::{Self as partners, Partner};
+
 use std::{bcs, type_name::{Self, TypeName}, unit_test::{assert_eq, destroy}};
 
-use sui::{event, test_scenario::{Self, Scenario}};
+use sui::{clock::{Self, Clock}, event, test_scenario::{Self, Scenario}};
 
 use fun config_end as ConfigFixture.end;
 

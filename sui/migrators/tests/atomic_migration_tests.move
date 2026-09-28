@@ -347,10 +347,8 @@ fun share_launch(
         ),
     );
     initializer.set_lp_fee_split(creator_split());
-    let runtime = runtime_config::new_disabled_for_testing(scenario.ctx());
     let creation_fee = coin::zero(scenario.ctx());
-    let launch = initializer.finalize(&mut currency, config, &runtime, creation_fee, scenario.ctx());
-    destroy(runtime);
+    let launch = initializer.finalize(&mut currency, config, creation_fee, scenario.ctx());
     let launch_id = object::id(&launch);
     launch.share(clock);
     test_scenario::return_to_address(COIN_REGISTRY, currency);

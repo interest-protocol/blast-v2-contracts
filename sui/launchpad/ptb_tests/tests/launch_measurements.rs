@@ -531,7 +531,6 @@ impl World {
             );
         }
         let currency = builder.obj(self.h.shared(ticket.currency, true))?;
-        let runtime = builder.obj(self.h.shared(self.runtime, false))?;
         let creation_fee = call(&mut builder, SUI_FRAMEWORK_PACKAGE_ID, "coin", "zero", vec![sui()], vec![]);
         let launch =
             call(
@@ -540,7 +539,7 @@ impl World {
                 "launch",
                 "finalize",
                 pair.clone(),
-                vec![initializer, currency, config, runtime, creation_fee],
+                vec![initializer, currency, config, creation_fee],
             );
         let clock = builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?;
         if shape.creator_purchase && shape.opening_round_ms != NO_OPENING_ROUND {

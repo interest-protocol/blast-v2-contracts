@@ -9,7 +9,7 @@
 On 2026-09-27 the owner asked for the partner codes of
 [0095](0095-partner-codes.md) on the launchpad, and set the model:
 
-- launching a coin costs a creation fee, kept in `RuntimeConfig`;
+- launching a coin costs a creation fee;
 - a launch's partner is set once, at creation, and can never be changed;
 - the partner earns a share of every fee Blast takes on that launch.
 
@@ -20,22 +20,25 @@ Asked to choose, the owner ruled that:
 - "every fee" means the launchpad's fees: the creation fee and every curve trade
   fee, the opening round's included. Blast's migration allocation is not a fee,
   and Blast's LP-fee share after migration stays Blast's;
-- the creation fee goes to Blast's allocation destination.
+- the creation fee goes to Blast's allocation destination;
+- the creation fee and the accepted partners live in `LaunchConfig`, with the
+  rest of what launch creation reads (2026-09-28, moved from `RuntimeConfig`).
 
 Before this change the launchpad charged nothing at creation, so a creation-time
 partner had nothing to be paid from.
 
 ## Decision
 
-**Creation fee.** `RuntimeConfig` holds `creation_fee`, in MIST, zero at
+**Creation fee.** `LaunchConfig` holds `creation_fee`, in MIST, zero at
 initialization. The fee administrator (`FeeAdmin`) sets it with
-`set_creation_fee`, which emits `CreationFeeChanged`. `launch::finalize` takes
-`&RuntimeConfig` and a `Coin<SUI>` that must be exactly the configured fee
-(`EInvalidCreationFee`), so a creator never pays more than it signed for. Blast's
+`set_creation_fee`, next to the trade fees, and it emits `CreationFeeChanged`.
+`launch::finalize` already reads `&LaunchConfig`; it now also takes a
+`Coin<SUI>` that must be exactly the configured fee (`EInvalidCreationFee`), so
+a creator never pays more than it signed for. Blast's
 part goes to its allocation destination, the first recipient of the plan. The fee
 is SUI whatever the launch's Quote, and a zero fee transfers nothing.
 
-**Accepted partners.** `RuntimeConfig` keeps the Blast partners new launches may
+**Accepted partners.** `LaunchConfig` keeps the Blast partners new launches may
 name, with the same list and notice as Boosts. There is one dynamic field per
 partner under `PartnerKey(ID)`, whose value is when the partner stops being
 accepted: `u64::MAX` until Blast removes it. `FeeAdmin` calls `add_partner`,
@@ -91,8 +94,22 @@ deferred.
 **A creation fee in the launch's Quote.** One fee would then need an amount per
 Quote. A fixed SUI fee is one number.
 
-**A destination of its own on `RuntimeConfig`.** This would add a setter and an
-event. The owner chose Blast's allocation destination, which is already set.
+**The fee and the partner list in `RuntimeConfig`.** The first version kept them
+there. `RuntimeConfig` holds what trades and creator claims read live, while
+only creation reads these two, and creation already reads `LaunchConfig`;
+keeping them apart made `finalize` take both objects.
+
+**A destination of its own for the fee.** This would add a setter and an event.
+The owner chose Blast's allocation destination, which is already set.
+
+**One claim function with an optional partner** (asked 2026-09-28). Not
+expressible: Move has no `Option<&Partner>`, since references cannot be type
+arguments, and the launchpad cannot take the key-only `Partner` by value, since
+it can neither drop, store, delete nor re-share another module's object. A
+receipt the caller settles with or without the partner, a zero-share house
+partner, or a permissionless pre-claim payout each add a struct, state or a
+forced object. The claim script must read the launch's `partner_id` to include
+the partner anyway, so two functions only name that branch.
 
 **Reading the partner's share at creation and storing it.** `blast_partners`
 exposes no share getter, only `pay`, by design: the share in force always comes
@@ -125,7 +142,7 @@ from the timelock.
 
 ## Verification
 
-- `RuntimeConfig` tests:
+- `LaunchConfig` tests:
   - the fee setter, its event, the unchanged guard, and the version check;
   - a partner accepted at once;
   - a removed partner accepted until one millisecond before its notice ends,
@@ -141,13 +158,16 @@ from the timelock.
   - an unaccepted partner refused;
   - a partnered claim paying the partner its rounded-down share of both assets,
     leaving the creator's fees and agreeing with `PartnerPaid`;
+  - a zero-share partner paid nothing, with no `PartnerPaid`, while the claim
+    still records it;
   - the plain claim refused on a partnered launch, and the partner claim refused
-    for another partner and for a launch without one.
+    for another partner (before the empty-ledger check) and for a launch without
+    one.
 - The migrators' replay reducer decodes the new `LaunchCreated` fields.
 - The Rust PTB harness publishes `blast_partners` before the launchpad, passes
   the new `finalize` arguments and decodes the new fields. `atomic_migration`,
   `launch_measurements` and the venue fork against mainnet Cetus and Bluefin
   bytecode all pass.
 - `sui/launchpad/scripts/check_source_boundaries.sh` pins the new dependency,
-  roles, `RuntimeConfig` layout and transitions, and the partner never changing
-  after creation.
+  roles, the `LaunchConfig` fee and partner writers, and the partner never
+  changing after creation.

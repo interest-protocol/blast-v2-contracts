@@ -151,7 +151,7 @@ allocation are never shared. Neither is Blast's LP-fee share after migration.
 
 - **Integrators** that create coins call `launch::finalize_with_partner` instead
   of `launch::finalize`, passing the `Partner` object and the `Clock`. The
-  creation fee must be exactly the one set in `RuntimeConfig`. Trading never
+  creation fee must be exactly the one set in `LaunchConfig`. Trading never
   takes the partner: `buy`, `sell` and the opening round are the same on every
   launch.
 - **Partners** are paid when Blast claims, not on each trade. Blast cannot claim
@@ -160,9 +160,9 @@ allocation are never shared. Neither is Blast's LP-fee share after migration.
   pays the partner first. `ProtocolFeesClaimed` records both parts, and
   `LaunchCreated` records the partner and its part of the creation fee.
 - **Operators.** The fee administrator (`FeeAdmin`) sets the creation fee with
-  `runtime_config::set_creation_fee`. It also accepts deals with
-  `runtime_config::add_partner`, which applies at once, and ends them with
-  `runtime_config::remove_partner`, which applies seven days later. Removing a
+  `launch_config::set_creation_fee`. It also accepts deals with
+  `launch_config::add_partner`, which applies at once, and ends them with
+  `launch_config::remove_partner`, which applies seven days later. Removing a
   deal only stops new launches from naming it. Launches that already name it
   keep paying it, unless its share is scheduled to zero. The creation fee goes
   to Blast's allocation destination.

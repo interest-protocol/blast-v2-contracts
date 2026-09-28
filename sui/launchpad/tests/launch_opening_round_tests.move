@@ -794,13 +794,7 @@ fun intake(
     );
     initializer.set_opening_round(opening_round_ms);
     let creation_fee = coin::zero(self.scenario.ctx());
-    let launch = initializer.finalize(
-        &mut currency,
-        &self.config,
-        &self.runtime_config,
-        creation_fee,
-        self.scenario.ctx(),
-    );
+    let launch = initializer.finalize(&mut currency, &self.config, creation_fee, self.scenario.ctx());
     test_scenario::return_to_address(COIN_REGISTRY, currency);
 
     launch

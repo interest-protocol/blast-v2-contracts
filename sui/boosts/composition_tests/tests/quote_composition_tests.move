@@ -77,7 +77,7 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
     initializer.set_allocation_plan(default_allocation_plan());
     initializer.set_lp_fee_split(default_fee_split());
     let creation_fee = coin::zero(scenario.ctx());
-    let market = initializer.finalize(&mut currency, &config, &runtime, creation_fee, scenario.ctx());
+    let market = initializer.finalize(&mut currency, &config, creation_fee, scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
     market.share(&clock);
     test_scenario::return_shared(config);
