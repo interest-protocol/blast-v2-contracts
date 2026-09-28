@@ -971,7 +971,7 @@ launch_initializer_functions="$(awk -F'\t' '
 
 if [[ ! -f sources/launch.move ]] \
   || [[ "$(move_production_type LaunchInitializer <<<"$launch_facts")" != 'struct LaunchInitializer<phantom Meme, phantom Quote> {'* ]] \
-  || [[ "$launch_initializer_functions" != 'finalize:public new:public set_allocation_plan:public set_graduation_target:public set_lp_fee_split:public set_protection:public set_virtual_quote:public treasury_cap_mut:public ' ]] \
+  || [[ "$launch_initializer_functions" != 'finalize:public new:public set_allocation_plan:public set_graduation_target:public set_lp_fee_split:public set_opening_round:public set_virtual_quote:public treasury_cap_mut:public ' ]] \
   || [[ "$(move_production_function_contract new <<<"$launch_facts")" != 'public:0:0:fun new<Meme, Quote, Witness: drop>( ticket: LaunchTicket<Meme>, package_version: &PackageVersion, config: &LaunchConfig, _: Witness, pool_tick_spacing: u32, pool_fee_rate: u64, ): LaunchInitializer<Meme, Quote>' ]] \
   || ! in_order \
     'package_version.assert_current();' \
@@ -988,7 +988,7 @@ if [[ ! -f sources/launch.move ]] \
   || ! in_order \
     'let graduation_target = graduation_target.destroy_some();' \
     'allocation_plan.destroy_some().add_protocol(config.protocol_allocation());' \
-    'invalid_protection!()' \
+    'invalid_opening_round!()' \
     'meme_symbol_too_long!()' \
     'invalid_graduation_target!()' \
     'let atomic_supply = launch_ticket::atomic_supply(ticket.decimals());' \
@@ -1002,9 +1002,7 @@ if [[ ! -f sources/launch.move ]] \
     != "$(count_occurrences '&self\.metadata_cap\b' <<<"$launch_source")" ]] \
   || rg -q '\bmetadata_cap\.(extract|swap|fill)\(|option::(some|none)\(metadata_cap\)|\bMetadataCap<Meme>\)' \
     <<<"$launch_source" \
-  || [[ "$(launch_functions_containing 'bps::new(')" != 'new ' ]] \
-  || [[ "$(count_occurrences 'bps::new\(' <<<"$launch_source")" != 2 ]] \
-  || [[ "$(count_occurrences 'bps::new\(0\)' <<<"$launch_source")" != 2 ]] \
+  || rg -q 'bps::new\(' <<<"$launch_source" \
   || ! rg -Fq 'let burnable = currency.is_supply_burn_only();' sources/launch.move \
   || rg -q '\b(MigrationChannelCap|LaunchMigrationCap|MigrationChannelBalance|VenueSelection|venue_selection)\b' <<<"$launch_source" \
   || rg -n 'max_launch_fee_bps|invalid_trade_fee_bps' sources/launch.move; then
@@ -1041,7 +1039,7 @@ for authority_spec in \
   'self.assert_curve_fee_cap(|claim_creator_fees ' \
   'self.assert_metadata_update(|set_description set_icon_url set_name ' \
   '&self.metadata_cap|set_description set_icon_url set_name ' \
-  'transfer::public_transfer(|migrate reassign_curve_fee_cap reassign_metadata_cap '; do
+  'transfer::public_transfer(|deliver_opening_round migrate reassign_curve_fee_cap reassign_metadata_cap '; do
   authority_needle="${authority_spec%%|*}"
   authority_expected="${authority_spec#*|}"
   authority_actual="$(launch_functions_containing "$authority_needle")"
@@ -1082,32 +1080,34 @@ check_launch_needles() {
 # creator capabilities to the caller.
 check_launch_needles T-004 \
   'creator_authority::claim_creator_caps<|claim_creator_caps ' \
-  'clock.timestamp_ms()|buy share ' \
-  'curve::cap_buy_quote_input(|buy ' \
-  'curve::quote_buy(|buy ' \
+  'clock.timestamp_ms()|has_opening_round_ended share ' \
+  'curve::cap_buy_quote_input(|buy_from_curve ' \
+  'curve::quote_buy(|buy_from_curve ' \
   'transfer::share_object(self)|share ' \
   'events::launch_shared(|share ' \
-  'events::bought(|buy '
+  'events::bought(|buy_from_curve '
 if ! in_order \
   'package_version.assert_current();' \
-  'self.protection_end_ms.is_some()' \
+  'self.public_start_ms.is_some()' \
   'self.creator.extract()' \
   <<<"$(move_production_body claim_creator_caps <<<"$launch_facts")"; then
   launch_authority_violations+='  T-004 claim_creator_caps must be version-gated and release the creator claim only after share'$'\n'
 fi
 
-# T-005 opens the protection window at share and keeps one sender record, written only by the
-# protected buy path.
-check_launch_needles T-005 \
-  'self.protection_end_ms = |share ' \
-  'self.record_protected_purchase(|buy ' \
-  '.add_dynamic_field(|record_protected_purchase ' \
-  '.dynamic_field_mut|record_protected_purchase ' \
+# ADR 0093 starts public time at share and keeps one opening-round bid record per bidder, written
+# only by joining and removed only by delivery; the whole pot buys through the one curve path.
+check_launch_needles 'ADR 0093' \
+  'self.public_start_ms = |share ' \
+  '.add_dynamic_field(|join_opening_round ' \
+  '.dynamic_field_mut|join_opening_round ' \
+  '.remove_dynamic_field|deliver_opening_round ' \
+  'self.buy_from_curve(|buy settle_opening_round ' \
   'dynamic_field::|'
 
 for setup_visibility in \
   T-004:share:public T-004:claim_creator_caps:public T-004:buy:public \
-  T-005:record_protected_purchase:private; do
+  'ADR 0093:join_opening_round:public' 'ADR 0093:settle_opening_round:public' \
+  'ADR 0093:deliver_opening_round:public' 'ADR 0093:buy_from_curve:private'; do
   setup_ticket="${setup_visibility%%:*}"
   setup_rest="${setup_visibility#*:}"
   setup_name="${setup_rest%%:*}"
@@ -1120,29 +1120,29 @@ done
 launch_owned_sinks="$(awk -F'\t' '
   $1 == "FN" && $6 == 0 && $9 ~ /[(,] ?(mut )?[A-Za-z_][A-Za-z0-9_]*: Launch</ { print $2 }
 ' <<<"$launch_facts" | sort | tr '\n' ' ')"
-launch_buy_body="$(move_semantic_shape <<<"$(move_production_body buy <<<"$launch_facts")")"
+launch_buy_body="$(move_semantic_shape <<<"$(move_production_body buy_from_curve <<<"$launch_facts")")"
 
 if [[ "$launch_owned_sinks" != 'share ' ]]; then
   launch_authority_violations+='  T-004 must share through one key-only sink'$'\n'
 fi
-if ! in_order 'slippage_exceeded!()' 'self.record_protected_purchase(' 'quote_in.into_balance()' \
+if ! in_order 'slippage_exceeded!()' 'self.real_quote_reserve.join(quote_in);' \
   <<<"$launch_buy_body"; then
-  launch_authority_violations+='  T-005 must check and record protected purchases after slippage and before custody'$'\n'
+  launch_authority_violations+='  ADR 0093 curve purchases must check slippage before custody'$'\n'
 fi
-# T-005 reaches sender records only through these module-local aliases (production bodies name
+# ADR 0093 reaches bid records only through these module-local aliases (production bodies name
 # no dynamic_field:: call, per the needle above), and launch.move is the only source naming
-# dynamic_field. With no remove alias or module alias, no launchpad path can delete a record.
+# dynamic_field. Only delivery removes a record, per the needle above.
 launch_dynamic_field_aliases="$(rg -o 'use fun [^;]*dynamic_field[^;]*;' <<<"$launch_source" \
   | LC_ALL=C sort | tr '\n' ' ')"
-if [[ "$launch_dynamic_field_aliases" != 'use fun dynamic_field::add as UID.add_dynamic_field; use fun dynamic_field::borrow_mut as UID.dynamic_field_mut; use fun dynamic_field::exists as UID.has_dynamic_field; ' ]] \
+if [[ "$launch_dynamic_field_aliases" != 'use fun dynamic_field::add as UID.add_dynamic_field; use fun dynamic_field::borrow_mut as UID.dynamic_field_mut; use fun dynamic_field::exists as UID.has_dynamic_field; use fun dynamic_field::remove as UID.remove_dynamic_field; ' ]] \
   || rg -q '\bdynamic_field as\b' <<<"$launch_source"; then
-  launch_authority_violations+='  T-005 must reach sender records only through the add, borrow_mut, and exists aliases'$'\n'
+  launch_authority_violations+='  ADR 0093 must reach bid records only through the add, borrow_mut, exists, and remove aliases'$'\n'
 fi
 for move_file in "${source_files[@]}"; do
   [[ "$move_file" == sources/launch.move ]] && continue
 
   if move_facts "$move_file" | move_normalized_source | rg -q '\bdynamic_field\b'; then
-    launch_authority_violations+="  T-005 ${move_file} must not name dynamic_field; only launch.move reaches sender records"$'\n'
+    launch_authority_violations+="  ADR 0093 ${move_file} must not name dynamic_field; only launch.move reaches bid records"$'\n'
   fi
 done
 for move_file in "${source_files[@]}"; do
@@ -1390,14 +1390,21 @@ events_follow_mutations() {
 
 if ! events_follow_mutations sources/launch_ticket.move new 'LaunchTicket{' 'events::launch_ticket_created<' \
   || ! events_follow_mutations sources/launch.move finalize 'ticket.destroy(' 'Launch{' 'events::launch_created<' \
-  || ! events_follow_mutations sources/launch.move buy \
+  || ! events_follow_mutations sources/launch.move buy_from_curve \
     'self.real_quote_reserve.join(' \
     'self.meme_reserve.split(' \
     'self.lifecycle = Lifecycle::MigrationReady;' \
     'self.fee_ledger.accrue(' \
     'events::bought(' \
   || ! events_follow_mutations sources/launch.move share \
-    'self.protection_end_ms = option::some(' 'events::launch_shared(' 'transfer::share_object(' \
+    'self.public_start_ms = option::some(' 'events::launch_shared(' 'transfer::share_object(' \
+  || ! events_follow_mutations sources/launch.move join_opening_round \
+    'self.opening_round_quote.join(' 'events::opening_round_joined(' \
+  || ! events_follow_mutations sources/launch.move settle_opening_round \
+    'self.lifecycle = Lifecycle::Live;' 'self.opening_round_quote.join(' 'events::opening_round_settled(' \
+  || ! events_follow_mutations sources/launch.move deliver_opening_round \
+    '.remove_dynamic_field' 'self.opening_round_bids = ' 'self.opening_round_quote.split(' \
+    'events::opening_round_delivered(' \
   || ! events_follow_mutations sources/launch.move migrate \
     'self.allocated_meme.split(' \
     'self.real_quote_reserve.split(' \

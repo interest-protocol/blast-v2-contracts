@@ -265,13 +265,13 @@ fun join_after_settlement_is_rejected() {
 fun creator_cannot_buy_before_share_with_an_opening_round() {
     let mut fixture = start();
     let mut launch = fixture.new_launch(MIN_ROUND_MS);
-    let quote = coin::mint_for_testing<TEST_QUOTE>(ALICE_BID, fixture.scenario.ctx());
+    let quote = coin::mint_for_testing<TEST_QUOTE>(ALICE_BID, fixture.ctx!());
     let (meme, refund) = launch.buy(
         &fixture.package_version,
         &fixture.runtime_config,
         quote,
         1,
-        fixture.scenario.ctx(),
+        fixture.ctx!(),
     );
 
     destroy(meme);
@@ -305,8 +305,8 @@ fun sell_during_the_round_is_rejected() {
     fixture.open(MIN_ROUND_MS);
     fixture.next_tx!(ALICE, |f| {
         let mut launch = f.take_launch();
-        let meme = coin::mint_for_testing<LAUNCH_OPENING_ROUND_TESTS>(1, f.scenario.ctx());
-        let quote = launch.sell(&f.package_version, &f.runtime_config, meme, 0, f.scenario.ctx());
+        let meme = coin::mint_for_testing<LAUNCH_OPENING_ROUND_TESTS>(1, f.ctx!());
+        let quote = launch.sell(&f.package_version, &f.runtime_config, meme, 0, f.ctx!());
 
         destroy(quote);
         launch.put_back();
@@ -461,7 +461,7 @@ fun pot_too_small_to_buy_is_refunded_whole() {
 
     fixture.deliver(KEEPER, ALICE);
     fixture.next_tx!(ALICE, |f| {
-        let refund = f.scenario.take_from_address<Coin<TEST_QUOTE>>(ALICE);
+        let refund = f.take_coin<TEST_QUOTE>(ALICE);
 
         assert_eq!(refund.value(), 1);
         assert!(!owns_meme(ALICE));
@@ -505,10 +505,10 @@ fun pot_past_the_target_graduates_and_refunds_the_excess_pro_rata() {
     fixture.deliver(KEEPER, ALICE);
     fixture.deliver(KEEPER, BOB);
     fixture.next_tx!(KEEPER, |f| {
-        let alice_meme = f.scenario.take_from_address<Coin<LAUNCH_OPENING_ROUND_TESTS>>(ALICE);
-        let alice_quote = f.scenario.take_from_address<Coin<TEST_QUOTE>>(ALICE);
-        let bob_meme = f.scenario.take_from_address<Coin<LAUNCH_OPENING_ROUND_TESTS>>(BOB);
-        let bob_quote = f.scenario.take_from_address<Coin<TEST_QUOTE>>(BOB);
+        let alice_meme = f.take_coin<LAUNCH_OPENING_ROUND_TESTS>(ALICE);
+        let alice_quote = f.take_coin<TEST_QUOTE>(ALICE);
+        let bob_meme = f.take_coin<LAUNCH_OPENING_ROUND_TESTS>(BOB);
+        let bob_quote = f.take_coin<TEST_QUOTE>(BOB);
         let launch = f.take_launch();
 
         assert_eq!(alice_meme.value(), meme_out_net / 4);
@@ -561,14 +561,14 @@ fun deliveries_pay_each_bidder_the_same_price_and_the_last_takes_the_remainder()
 
     fixture.deliver(KEEPER, BOB);
     fixture.next_tx!(KEEPER, |f| {
-        let alice = f.scenario.take_from_address<Coin<LAUNCH_OPENING_ROUND_TESTS>>(ALICE);
-        let bob = f.scenario.take_from_address<Coin<LAUNCH_OPENING_ROUND_TESTS>>(BOB);
+        let alice = f.take_coin<LAUNCH_OPENING_ROUND_TESTS>(ALICE);
+        let bob = f.take_coin<LAUNCH_OPENING_ROUND_TESTS>(BOB);
         let launch = f.take_launch();
 
         assert_eq!(alice.value(), alice_share);
         assert_eq!(bob.value(), meme - alice_share);
         assert!(bob.value() - 2 * alice.value() <= 2);
-        assert!(!test_scenario::has_most_recent_for_address<Coin<TEST_QUOTE>>(BOB));
+        assert!(!f.has_coin<TEST_QUOTE>(BOB));
         assert!(!owns_meme(KEEPER));
         assert_opening_round(&launch, 0, 0, 0);
         destroy(alice);
@@ -598,8 +598,8 @@ fun reversing_the_delivery_order_moves_at_most_rounding_dust() {
     fixture.deliver(KEEPER, BOB);
     fixture.deliver(KEEPER, ALICE);
     fixture.next_tx!(KEEPER, |f| {
-        let alice = f.scenario.take_from_address<Coin<LAUNCH_OPENING_ROUND_TESTS>>(ALICE);
-        let bob = f.scenario.take_from_address<Coin<LAUNCH_OPENING_ROUND_TESTS>>(BOB);
+        let alice = f.take_coin<LAUNCH_OPENING_ROUND_TESTS>(ALICE);
+        let bob = f.take_coin<LAUNCH_OPENING_ROUND_TESTS>(BOB);
 
         assert_eq!(bob.value(), meme * 2 / 3);
         assert_eq!(alice.value(), meme - meme * 2 / 3);
@@ -619,27 +619,16 @@ fun delivery_after_migration_still_pays_the_bidder() {
     fixture.settle(KEEPER);
     fixture.next_tx!(KEEPER, |f| {
         let mut launch = f.take_launch();
-        let mut currency = f
-            .scenario
-            .take_from_address<Currency<LAUNCH_OPENING_ROUND_TESTS>>(COIN_REGISTRY);
-        let (meme, quote) = launch.migrate(
-            &f.package_version,
-            &mut currency,
-            TEST_MIGRATION_WITNESS(),
-            f.scenario.ctx(),
-        );
+        f.migrate(&mut launch);
 
         assert!(launch.is_migrated_for_testing());
-        destroy(meme);
-        destroy(quote);
-        test_scenario::return_to_address(COIN_REGISTRY, currency);
         launch.put_back();
     });
 
     fixture.deliver(KEEPER, ALICE);
     fixture.next_tx!(KEEPER, |f| {
-        let meme = f.scenario.take_from_address<Coin<LAUNCH_OPENING_ROUND_TESTS>>(ALICE);
-        let quote = f.scenario.take_from_address<Coin<TEST_QUOTE>>(ALICE);
+        let meme = f.take_coin<LAUNCH_OPENING_ROUND_TESTS>(ALICE);
+        let quote = f.take_coin<TEST_QUOTE>(ALICE);
         let launch = f.take_launch();
 
         assert!(meme.value() > 0 && quote.value() > 0);
@@ -687,6 +676,36 @@ macro fun next_tx(
 
     fixture.scenario.next_tx($sender);
     $fn(fixture);
+}
+
+macro fun ctx($fixture: &mut OpeningRoundFixture): &mut TxContext {
+    let fixture = $fixture;
+
+    fixture.scenario.ctx()
+}
+
+fun take_coin<T>(self: &OpeningRoundFixture, owner: address): Coin<T> {
+    self.scenario.take_from_address(owner)
+}
+
+fun has_coin<T>(_: &OpeningRoundFixture, owner: address): bool {
+    test_scenario::has_most_recent_for_address<Coin<T>>(owner)
+}
+
+/// Migrates the launch as its stored adapter and discards the pool's share.
+fun migrate(self: &mut OpeningRoundFixture, launch: &mut Launch<LAUNCH_OPENING_ROUND_TESTS, TEST_QUOTE>) {
+    let mut currency = self
+        .scenario
+        .take_from_address<Currency<LAUNCH_OPENING_ROUND_TESTS>>(COIN_REGISTRY);
+    let (meme, quote) = launch.migrate(
+        &self.package_version,
+        &mut currency,
+        TEST_MIGRATION_WITNESS(),
+        self.scenario.ctx(),
+    );
+    destroy(meme);
+    destroy(quote);
+    test_scenario::return_to_address(COIN_REGISTRY, currency);
 }
 
 fun start(): OpeningRoundFixture {
