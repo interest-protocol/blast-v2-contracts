@@ -18,7 +18,7 @@ public struct LaunchConfig has key {
     quote_fee_bps: Bps,
     meme_fee_bps: Bps,
     migration_witnesses: VecSet<TypeName>,
-    protocol_allocation: Option<Recipient>,
+    protocol_allocation: Option<ProtocolAllocation>,
     /// In MIST.
     creation_fee: u64,
 }
@@ -35,13 +35,12 @@ fun init(ctx: &mut TxContext) {
 
 // === Public Functions ===
 
-/// Sets, once and for good, Blast's share of every launch's Meme supply and final Quote reserve.
-/// The shares leave room for the curve and the pool.
+/// Sets, once and for good, Blast's fee share of every launch's Meme supply and final Quote
+/// reserve. The shares leave room for the curve and the pool.
 public fun set_protocol_allocation(
     self: &mut LaunchConfig,
     package_version: &PackageVersion,
     _: &AdminWitness<TreasuryAdmin>,
-    destination: address,
     meme_bps: Bps,
     quote_bps: Bps,
 ) {
@@ -51,9 +50,9 @@ public fun set_protocol_allocation(
         blast_fun::errors::invalid_protocol_allocation!(),
     );
 
-    self.protocol_allocation = option::some(allocation::recipient(destination, meme_bps, quote_bps));
+    self.protocol_allocation = option::some(allocation::protocol_allocation(meme_bps, quote_bps));
 
-    events::protocol_allocation_set(destination, meme_bps.value(), quote_bps.value());
+    events::protocol_allocation_set(meme_bps.value(), quote_bps.value());
 }
 
 public fun set_meme_decimals_allowed(
@@ -209,7 +208,7 @@ public(package) fun snapshot_for_launch<Quote>(
     (self.quote_fee_bps, self.meme_fee_bps)
 }
 
-public(package) fun protocol_allocation(self: &LaunchConfig): Recipient {
+public(package) fun protocol_allocation(self: &LaunchConfig): ProtocolAllocation {
     *self.protocol_allocation.borrow()
 }
 
@@ -278,7 +277,7 @@ public fun allowed_migration_witness_count_for_testing(self: &LaunchConfig): u64
 use blast_admin::blast_acl::AdminWitness;
 
 use blast_fun::{
-    allocation::{Self, Recipient},
+    allocation::{Self, ProtocolAllocation},
     blast_fun_domain::{AdapterAdmin, FeeAdmin, ListingAdmin, TreasuryAdmin},
     bps::{Self, Bps},
     constants,

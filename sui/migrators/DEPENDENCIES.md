@@ -39,16 +39,17 @@ with their witnesses, local interfaces, and dependency pins.
   `vault::PositionKey<Venue>` name, with no removal, transfer, or public borrow
   path; adapters borrow it only through package-only `vault::position` and
   `position_mut`.
-- **Protocol residual custody.** Every venue residual stays in its per-launch
-  vault and is claimed only by the existing admin-gated protocol claim. No
-  adapter stores a payout address, burns a nonzero residual, or sends one to
-  `0x0`.
+- **One protocol ledger.** Every venue residual and Blast's migration allocation
+  settle into the launch's `FeeLedger` before migration can finish. No adapter
+  or vault stores a protocol payout address or protocol balance, burns a
+  nonzero residual, or sends one to `0x0`.
 - **Vault-split LP fees.** At migration the vault takes the launch's LP-fee
   split. An adapter's permissionless collection hands both collected balances to
-  `vault::split_fees`, which pays Blast's live per-coin share from
-  `lp_fee_policy::LpFeePolicy` and every recipient, and credits the creator,
-  auto-LP, and rewards balances; the adapter then adds the auto-LP balances
-  back to the position with the venue's own add-liquidity call. A split change
+  `vault::split_fees`, which returns Blast's live per-coin share from
+  `lp_fee_policy::LpFeePolicy` for mandatory launch-ledger settlement, pays
+  every recipient, and credits the creator, auto-LP, and rewards balances; the
+  adapter then adds the auto-LP balances back to the position with the venue's
+  own add-liquidity call. A split change
   first checks the launch's live `CurveFeeCap` and the proposal with
   `vault::assert_fee_split_update`, runs the same settlement, then commits with
   `vault::update_fee_split` (ADR 0089).
@@ -374,9 +375,9 @@ The release matrix is Cetus and Bluefin. Each row below is one fixture against
 the published venue packages above, in the orientation named by the route: the
 venue fork gate proves it locally, and a mainnet dry-run repeats it before
 deployment. No route may be skipped, and a skipped row is a release blocker, not
-a documentation footnote. Vault claim: `vault::claim_protocol_fees` pays the
-protocol migration residuals under `AdminWitness<TreasuryAdmin>` and this
-package's current generation. It touches neither the venue nor the position.
+a documentation footnote. There is no migrator-side Blast claim: migration
+allocation, venue residuals, and recurring Blast LP fees settle into the
+launch's protocol ledger under the launchpad version and adapter witness.
 
 Each fixture starts its launch through the adapter's `new` at a tier the venue
 accepts, and records that the launch stores that tier.
@@ -426,8 +427,8 @@ Each Cetus fixture must show:
   `factory::is_right_order` agrees with it, and creates the pool only with the
   reserved `PoolCreationCap` at the launch's tick spacing, never adopting one;
 - liquidity is seeded with the exact handed-off balances; whatever the venue does
-  not take stays in the vault as protocol residuals, and supplied principal plus
-  residual reconciles exactly with the hand-off;
+  not take settles into the launch ledger with Blast's allocation, and supplied
+  principal plus settled residual reconciles exactly with the hand-off;
 - the position is burned with `lp_burn::burn_lp_v2`, its `CetusLPBurnProof`
   enters the vault under `PositionKey<cetus::Venue>`, the vault is shared with
   the launch's fee split, and the caller receives no object;
@@ -462,9 +463,9 @@ Each Bluefin fixture must show:
   B's symbol, decimals, and icon, while the Meme side passes its symbol (at most
   32 bytes, bounded at launch intake) and an empty icon URL, so a Meme icon of
   about 256 KB still migrates;
-- liquidity is seeded with the exact handed-off balances, fixing Meme when its
-  atoms are at least the Quote atoms and Quote otherwise; whatever the venue does
-  not take stays in the vault as protocol residuals, with no utilization bound,
+- liquidity is seeded with the handed-off balances, fixing Meme when its atoms
+  are at least the Quote atoms and Quote otherwise; whatever the venue does not
+  take settles into the launch's protocol ledger, with no utilization bound,
   and supplied principal plus residual reconciles exactly with the hand-off;
 - the position enters the vault under `PositionKey<bluefin::Venue>`, the vault and
   the pool are shared, the vault holds the launch's fee split, and the caller

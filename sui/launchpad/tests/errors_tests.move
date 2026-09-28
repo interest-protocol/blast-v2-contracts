@@ -53,6 +53,7 @@ fun opening_round_error_registry_is_stable() {
 #[test]
 fun migration_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::invalid_migration_witness!(), 21);
+    assert_eq!(blast_fun::errors::protocol_fee_accrual_mismatch!(), 38);
 }
 
 #[test]

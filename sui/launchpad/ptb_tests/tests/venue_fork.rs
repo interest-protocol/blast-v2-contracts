@@ -88,7 +88,7 @@ const MIGRATED: u8 = 3;
 const INVALID_LAUNCH_LIFECYCLE: u64 = 15;
 const CREATOR_CAP_NOT_LIVE: u64 = 22;
 /// `blast_fun_migrators::vault` code.
-const BUYBACK_BELOW_MINIMUM: u64 = 5;
+const BUYBACK_BELOW_MINIMUM: u64 = 4;
 
 /// The `blast_fun_domain` roles this world's one `AdminCap` holds.
 const ADMIN_ROLES: [&str; 7] =
@@ -102,8 +102,6 @@ const TINY_SHARES: (u64, u64) = (9_999, 1_500);
 
 // Addresses.
 const DESTINATION: ObjectID = address(&[0xD5]);
-const PROTOCOL: ObjectID = address(&[0xAD]);
-const LP_PROTOCOL: ObjectID = address(&[0xAD, 0x01]);
 const RECIPIENT_A: ObjectID = address(&[0xA1]);
 const RECIPIENT_B: ObjectID = address(&[0xB2]);
 const RECIPIENT_C: ObjectID = address(&[0xC3]);
@@ -234,7 +232,6 @@ fn run(case: Case) -> Result<()> {
     w.claim_creator_fees(&launch, &m, cap)?;
     w.retired_cap_is_refused(&launch, &m, cap, &next)?;
     w.holder_rewards(&launch, &m)?;
-    w.claim_protocol_residuals(&launch, &m)?;
 
     w.print_report();
     Ok(())
@@ -588,27 +585,17 @@ impl World {
         let fee = w.bps(&mut b, 100)?;
         call(&mut b, blast, "launch_config", "set_trade_fees", vec![], vec![config, version, fee_admin, fee, fee]);
         let share = w.bps(&mut b, ALLOCATION_BPS)?;
-        let protocol = b.pure(SuiAddress::from(PROTOCOL))?;
         call(
             &mut b,
             blast,
             "launch_config",
             "set_protocol_allocation",
             vec![],
-            vec![config, version, treasury_admin, protocol, share, share],
+            vec![config, version, treasury_admin, share, share],
         );
-        // Blast's LP-fee share goes to its own destination at a nonzero default.
+        // Blast's LP-fee share settles into each launch's protocol ledger at a nonzero default.
         let policy = b.obj(w.h.shared(w.policy, true))?;
         let migrators_version = b.obj(w.h.shared(w.migrators_version, false))?;
-        let destination = b.pure(SuiAddress::from(LP_PROTOCOL))?;
-        call(
-            &mut b,
-            migrators,
-            "lp_fee_policy",
-            "set_protocol_destination",
-            vec![],
-            vec![policy, migrators_version, treasury_admin, destination],
-        );
         let meme_bps = w.bps(&mut b, DEFAULT_SHARES.0)?;
         let quote_bps = w.bps(&mut b, DEFAULT_SHARES.1)?;
         call(
@@ -1044,7 +1031,7 @@ impl World {
         } else {
             watched.push(self.venue("bluefin_global_config"));
         }
-        let owners = [self.h.sender, DESTINATION.into(), PROTOCOL.into()];
+        let owners = [self.h.sender, DESTINATION.into()];
         let mut b = ProgrammableTransactionBuilder::new();
         self.migrate_command(&mut b, launch, self.case, None)?;
         self.migrate_command(&mut b, launch, self.case, None)?;
@@ -1087,14 +1074,21 @@ impl World {
         ensure!(migrated.len() == 1 && migrated[0].launch_id == launch.launch);
         let migrated = &migrated[0];
         ensure!((migrated.meme, migrated.quote) == (LP_MEME, self.lp_quote()), "the hand-off is the pool share");
-        // Blast first, then the creator's recipient.
+        // The creator's recipient is paid directly; Blast's allocation and venue residual settle
+        // into the launch ledger together.
         let paid: Vec<MigrationAllocationPaid> = self.launchpad_events(&outcome, "MigrationAllocationPaid");
-        ensure!(paid.len() == 2);
-        for (paid, destination) in paid.iter().zip([PROTOCOL, DESTINATION]) {
-            ensure!(paid.destination == destination.into());
-            ensure!((paid.meme, paid.quote) == (ATOMIC_SUPPLY / 20, self.target() / 20));
-            ensure!(outcome.coins_created_for(&self.h, destination.into()) == self.coins(launch, paid.meme, paid.quote));
-        }
+        ensure!(paid.len() == 1 && paid[0].destination == DESTINATION.into());
+        ensure!((paid[0].meme, paid[0].quote) == (ATOMIC_SUPPLY / 20, self.target() / 20));
+        ensure!(
+            outcome.coins_created_for(&self.h, DESTINATION.into())
+                == self.coins(launch, paid[0].meme, paid[0].quote)
+        );
+        let accrued: Vec<ProtocolFeesAccrued> = self.launchpad_events(&outcome, "ProtocolFeesAccrued");
+        ensure!(accrued.len() == 1 && accrued[0].launch_id == launch.launch);
+        let residual = (
+            accrued[0].meme_amount - ATOMIC_SUPPLY / 20,
+            accrued[0].quote_amount - self.target() / 20,
+        );
 
         let created: Vec<VaultCreated> = self.events(&outcome, "VaultCreated");
         ensure!(created.len() == 1 && created[0].fee_split == launch.split);
@@ -1102,7 +1096,7 @@ impl World {
         ensure!(created.venue.ends_with(&format!("::{}::Venue", self.case.module())));
         let vault_id = created.vault_id;
         ensure!(self.h.object(vault_id).is_shared() && self.h.object(created.pool_id).is_shared());
-        let supplied = (migrated.meme - created.residual_meme, migrated.quote - created.residual_quote);
+        let supplied = (migrated.meme - residual.0, migrated.quote - residual.1);
         let m = Migration {
             pool: created.pool_id,
             vault: vault_id,
@@ -1112,10 +1106,6 @@ impl World {
         };
         let vault = self.vault(&m)?;
         ensure!(vault.pool_id == m.pool && vault.fee_split == launch.split && vault.generation == 0);
-        ensure!(
-            (vault.protocol_meme_residual, vault.protocol_quote_residual)
-                == (created.residual_meme, created.residual_quote)
-        );
         // The position (the burn proof on Cetus) is the vault's dynamic object field.
         let Owner::ObjectOwner(field) = self.h.object(m.position).owner().clone() else {
             bail!("position is not a child")
@@ -1193,16 +1183,18 @@ impl World {
         );
 
         self.report(format!(
-            "migrate{}: pool {} tier ({}, {}) ticks ({lower}, {upper}) sqrt_price {sqrt_price}; supplied=({}, {}) residual=({}, {}) liquidity {}; Blast and recipient allocations ({}, {}) each paid; {}",
+            "migrate{}: pool {} tier ({}, {}) ticks ({lower}, {upper}) sqrt_price {sqrt_price}; supplied=({}, {}) residual=({}, {}) liquidity {}; Blast allocation plus residual ({}, {}) accrued to the launch ledger; recipient allocation ({}, {}) paid; {}",
             self.case.suffix(),
             m.pool,
             if self.case.is_cetus() { CETUS_TICK_SPACING } else { BLUEFIN_TICK_SPACING },
             if self.case.is_cetus() { CETUS_FEE_RATE } else { BLUEFIN_FEE_RATE },
             supplied.0,
             supplied.1,
-            created.residual_meme,
-            created.residual_quote,
+            residual.0,
+            residual.1,
             m.liquidity,
+            accrued[0].meme_amount,
+            accrued[0].quote_amount,
             paid[0].meme,
             paid[0].quote,
             if self.case.is_cetus() { "position burned by LP Burn, proof in the vault, BurnManager record created" } else { "position in the vault" },
@@ -1312,10 +1304,11 @@ impl World {
         let mut b = ProgrammableTransactionBuilder::new();
         let vault = self.shared(&mut b, m.vault, true)?;
         let migrators_version = self.shared(&mut b, self.migrators_version, false)?;
+        let package_version = self.shared(&mut b, self.version, false)?;
         let policy = self.shared(&mut b, self.policy, false)?;
-        let mut args = vec![vault, migrators_version, policy];
+        let launch_arg = self.shared(&mut b, launch.launch, true)?;
+        let mut args = vec![vault, migrators_version, package_version, policy, launch_arg];
         if let Some((cap, _)) = update {
-            args.push(self.shared(&mut b, launch.launch, false)?);
             args.push(b.obj(self.h.owned(cap))?);
         }
         args.push(self.shared(&mut b, launch.currency, true)?);
@@ -1380,8 +1373,15 @@ impl World {
         // Blast's live share, rounded up, then the split apportioned exactly.
         let expected = expected_fees(&before, self.shares, venue_meme, venue_quote);
         ensure!(fees == expected, "FeesCollected {fees:?} != expected {expected:?}");
+        let accrued: Vec<ProtocolFeesAccrued> = self.launchpad_events(&outcome, "ProtocolFeesAccrued");
+        ensure!(
+            accrued.len() == 1
+                && accrued[0].launch_id == launch.launch
+                && (accrued[0].meme_amount, accrued[0].quote_amount)
+                    == (fees.protocol_meme, fees.protocol_quote),
+            "Blast's LP share settled into the launch ledger"
+        );
         let mut payees: BTreeMap<SuiAddress, (u64, u64)> = BTreeMap::new();
-        *payees.entry(LP_PROTOCOL.into()).or_default() = (fees.protocol_meme, fees.protocol_quote);
         // The fixture's supply is fixed, so the burn share's Meme goes to `@0x0`.
         *payees.entry(SuiAddress::ZERO).or_default() = (fees.burn_meme, 0);
         for (i, recipient) in before.fee_split.recipients.iter().enumerate() {
@@ -1605,13 +1605,18 @@ impl World {
         );
         self.h.execute(b.finish())?.assert_success();
 
-        let owners = [self.h.sender, LP_PROTOCOL.into(), RECIPIENT_C.into()];
+        let owners = [self.h.sender, RECIPIENT_C.into()];
         let refused = Expected::Abort { package: self.blast, module: "launch", code: CREATOR_CAP_NOT_LIVE };
         let mut next = split.clone();
         next.creator_bps -= 1_000;
         next.rewards_bps += 1_000;
         let pt = self.collect_pt(launch, m, m.pool, Some((cap, &next)))?;
-        self.h.assert_rolled_back(pt, refused, &[m.vault, m.pool, cap, launch.currency], &owners)?;
+        self.h.assert_rolled_back(
+            pt,
+            refused,
+            &[m.vault, m.pool, cap, launch.launch, launch.currency],
+            &owners,
+        )?;
         let refused = Expected::Abort { package: self.blast, module: "launch", code: CREATOR_CAP_NOT_LIVE };
         let pt = self.claim_creator_fees_pt(launch, m, cap)?;
         self.h.assert_rolled_back(pt, refused, &[m.vault, cap], &owners)?;
@@ -1770,8 +1775,8 @@ impl World {
         let code = if self.case.is_cetus() { 1 } else { 0 };
         let expected = Expected::Abort { package: self.migrators, module, code };
         let pt = self.collect_pt(launch, m, other, None)?;
-        let watched = [m.vault, other, launch.currency];
-        self.h.assert_rolled_back(pt, expected, &watched, &[self.h.sender, LP_PROTOCOL.into()])?;
+        let watched = [m.vault, other, launch.launch, launch.currency];
+        self.h.assert_rolled_back(pt, expected, &watched, &[self.h.sender])?;
         let expected = Expected::Abort { package: self.migrators, module, code };
         let pt = self.buyback_pt(launch, m, other, 1)?;
         let watched = [m.vault, other, launch.currency, self.admin_cap];
@@ -1780,43 +1785,6 @@ impl World {
             "collect and buyback against another {} pool {other}: EPositionPoolMismatch, rolled back",
             if self.case.is_cetus() { "Cetus Pool<A, B> at tick spacing 60" } else { "Bluefin Pool<Meme, SUI>" }
         ));
-
-        Ok(())
-    }
-
-    /// An administrator claims the migration residuals the venue did not take.
-    fn claim_protocol_residuals(&mut self, launch: &Launch, m: &Migration) -> Result<()> {
-        let before = self.vault(m)?;
-        let mut b = ProgrammableTransactionBuilder::new();
-        let signed_in = self.sign_in(&mut b, "TreasuryAdmin")?;
-        let vault = self.shared(&mut b, m.vault, true)?;
-        let migrators_version = self.shared(&mut b, self.migrators_version, false)?;
-        let Argument::Result(claimed) = call(
-            &mut b,
-            self.migrators,
-            "vault",
-            "claim_protocol_fees",
-            self.pair(launch),
-            vec![vault, migrators_version, signed_in],
-        ) else {
-            unreachable!()
-        };
-        b.transfer_args(self.h.sender, vec![Argument::NestedResult(claimed, 0), Argument::NestedResult(claimed, 1)]);
-        let outcome = self.h.execute(b.finish())?;
-        outcome.assert_success();
-        let residuals = (before.protocol_meme_residual, before.protocol_quote_residual);
-        let claimed: Vec<ProtocolFeesClaimed> = self.events(&outcome, "ProtocolFeesClaimed");
-        ensure!(claimed.len() == 1 && (claimed[0].meme_amount, claimed[0].quote_amount) == residuals);
-        // Both coins are returned, a zero-value one included.
-        let mut coins = vec![
-            (launch.meme.to_canonical_string(true), residuals.0),
-            (self.quote().to_canonical_string(true), residuals.1),
-        ];
-        coins.sort();
-        ensure!(outcome.coins_created_for(&self.h, self.h.sender) == coins);
-        let after = self.vault(m)?;
-        ensure!((after.protocol_meme_residual, after.protocol_quote_residual) == (0, 0));
-        self.report(format!("claim_protocol_fees pays the migration residuals {residuals:?}"));
 
         Ok(())
     }
@@ -1928,7 +1896,8 @@ impl World {
     }
 
     /// The fixture plan: 70% of the Meme on the curve, 20% of the Meme and 90% of the Quote to
-    /// the pool, and 5% of each to `DESTINATION`; finalization adds Blast's 5% of each first.
+    /// the pool, and 5% of each to `DESTINATION`; finalization records Blast's 5% of each as the
+    /// explicit protocol allocation.
     fn plan_arg(&self, b: &mut ProgrammableTransactionBuilder) -> Result<Argument> {
         let destination = b.pure(SuiAddress::from(DESTINATION))?;
         let share = self.bps(b, ALLOCATION_BPS)?;
@@ -2042,7 +2011,6 @@ fn expected_fees(vault: &Vault, shares: (u64, u64), gross_meme: u64, gross_quote
         generation: vault.generation,
         gross_meme,
         gross_quote,
-        protocol_destination: LP_PROTOCOL.into(),
         protocol_meme,
         protocol_quote,
         creator_meme: meme[0],
@@ -2118,8 +2086,6 @@ struct Recipient {
 struct Vault {
     id: ObjectID,
     pool_id: ObjectID,
-    protocol_meme_residual: u64,
-    protocol_quote_residual: u64,
     generation: u64,
     fee_split: FeeSplit,
     creator_meme: u64,
@@ -2149,6 +2115,8 @@ struct LaunchCreated {
     _curve_meme_bps: u64,
     _lp_meme_bps: u64,
     _lp_quote_bps: u64,
+    _protocol_meme_bps: u64,
+    _protocol_quote_bps: u64,
     _allocation_recipients: Vec<(SuiAddress, u64, u64)>,
     _opening_round_ms: u64,
     _creation_fee: u64,
@@ -2188,8 +2156,6 @@ struct VaultCreated {
     venue: String,
     _meme: String,
     _quote: String,
-    residual_meme: u64,
-    residual_quote: u64,
     liquidity: u128,
     fee_split: FeeSplit,
 }
@@ -2200,7 +2166,6 @@ struct FeesCollected {
     generation: u64,
     gross_meme: u64,
     gross_quote: u64,
-    protocol_destination: SuiAddress,
     protocol_meme: u64,
     protocol_quote: u64,
     creator_meme: u64,
@@ -2271,11 +2236,8 @@ struct RoundPublished {
 }
 
 #[derive(Deserialize)]
-struct ProtocolFeesClaimed {
-    _vault_id: ObjectID,
-    _meme: String,
-    _quote: String,
-    _claimant: SuiAddress,
+struct ProtocolFeesAccrued {
+    launch_id: ObjectID,
     meme_amount: u64,
     quote_amount: u64,
 }

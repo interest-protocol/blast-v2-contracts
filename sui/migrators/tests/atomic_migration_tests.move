@@ -40,7 +40,7 @@ public struct OtherVenue() has drop;
 
 public struct MockPool has key { id: UID }
 
-/// Venue position owns exactly the supplied principal; the vault separately owns residuals.
+/// Venue position owns exactly the supplied principal; protocol residuals settle to the launch.
 public struct MockPosition<phantom Meme, phantom Quote> has key, store {
     id: UID,
     pool_id: ID,
@@ -61,7 +61,7 @@ public struct Fixture {
 // === Tests ===
 
 #[test]
-fun single_ptb_sealed_mock_adapter_keeps_principal_and_residuals_in_vault_custody() {
+fun single_ptb_sealed_mock_adapter_keeps_principal_and_accrues_residuals_to_the_launch() {
     let mut f = start();
     reach_migration(&mut f);
 
@@ -76,10 +76,13 @@ fun single_ptb_sealed_mock_adapter_keeps_principal_and_residuals_in_vault_custod
     let (_, quote_after, _, allocated_after) = launch.balances_for_testing();
     assert_eq!(quote_after, 0);
     assert_eq!(allocated_after, 0);
-    // Blast's zero allocation and the creator's are both reported.
-    assert_eq!(collect<events::MigrationAllocationPaid>().length(), 2);
+    // Only the creator recipient is reported; Blast's zero allocation is kept out of that table.
+    assert_eq!(collect<events::MigrationAllocationPaid>().length(), 1);
     assert_eq!(collect<events::Migrated>().length(), 1);
     assert_eq!(event::events_by_type<blast_events::VaultCreated>().length(), 1);
+    let (protocol_meme, _, protocol_quote, _) = launch.fee_totals_for_testing();
+    assert_eq!(protocol_meme, 1);
+    assert_eq!(protocol_quote, 1);
 
     let fee_split = launch.lp_fee_split();
     test_scenario::return_shared(launch);
@@ -87,8 +90,6 @@ fun single_ptb_sealed_mock_adapter_keeps_principal_and_residuals_in_vault_custod
 
     f.scenario.next_tx(TESTER);
     let mut vault = f.scenario.take_shared<LpVault<ATOMIC_MIGRATION_TESTS, QUOTE>>();
-    assert_eq!(vault.protocol_meme_residual_for_testing(), 1);
-    assert_eq!(vault.protocol_quote_residual_for_testing(), 1);
     assert_eq!(vault.generation_for_testing(), 0);
     assert_eq!(vault.fee_split_for_testing(), fee_split);
     assert_eq!(fee_split, creator_split());
@@ -141,13 +142,15 @@ fun the_migrated_vault_splits_later_collections_and_updates_its_split_under_the_
     let mut vault = f.scenario.take_shared<LpVault<ATOMIC_MIGRATION_TESTS, QUOTE>>();
     let policy = f.scenario.take_shared<LpFeePolicy>();
     let mut currency = f.take_currency();
-    vault.split_fees(
+    let (protocol_meme, protocol_quote) = vault.split_fees(
         &policy,
         &mut currency,
         balance::create_for_testing(100),
         balance::create_for_testing(200),
         f.scenario.ctx(),
     );
+    protocol_meme.destroy_zero();
+    protocol_quote.destroy_zero();
     let next = allocation::fee_split(
         bps::new(0),
         bps::new(0),
@@ -157,13 +160,15 @@ fun the_migrated_vault_splits_later_collections_and_updates_its_split_under_the_
     );
     vault.assert_fee_split_update(&launch, &curve_fee_cap, next);
     vault.update_fee_split(next);
-    vault.split_fees(
+    let (protocol_meme, protocol_quote) = vault.split_fees(
         &policy,
         &mut currency,
         balance::create_for_testing(3),
         balance::create_for_testing(4),
         f.scenario.ctx(),
     );
+    protocol_meme.destroy_zero();
+    protocol_quote.destroy_zero();
     assert_eq!(vault.generation_for_testing(), 1);
     assert_eq!(vault.fee_split_for_testing(), next);
     let (creator_meme, creator_quote) = vault.creator_balances_for_testing();
@@ -203,7 +208,9 @@ fun another_adapter_cannot_migrate() {
     f.scenario.next_tx(TESTER);
     let mut launch = f.take_launch();
     let mut currency = f.take_currency();
-    let (_meme, _quote) = launch.migrate(&f.version, &mut currency, OtherVenue(), f.scenario.ctx());
+    let (_meme, _quote, protocol_fees) = launch
+        .migrate(&f.version, &mut currency, OtherVenue(), f.scenario.ctx());
+    launch.settle_protocol_fee_accrual(&f.version, protocol_fees);
     abort EUnexpectedSuccess
 }
 
@@ -234,8 +241,8 @@ public fun mock_adapter(
     mock_adapter_with(launch, version, currency, 1, ctx)
 }
 
-/// Migrate, seed a mock position holding `liquidity` with one residual unit per asset kept in the
-/// vault, attach it, then share the vault and pool.
+/// Migrate, seed a mock position holding `liquidity`, accrue one residual unit per asset to the
+/// launch, attach the position, then share the vault and pool.
 fun mock_adapter_with(
     launch: &mut Launch<ATOMIC_MIGRATION_TESTS, QUOTE>,
     version: &PackageVersion,
@@ -243,22 +250,16 @@ fun mock_adapter_with(
     liquidity: u128,
     ctx: &mut TxContext,
 ) {
-    let (mut meme, mut quote) = launch.migrate(version, currency, Venue(), ctx);
+    let (mut meme, mut quote, mut protocol_fees) = launch
+        .migrate(version, currency, Venue(), ctx);
     let residual_meme = meme.split(1);
     let residual_quote = quote.split(1);
     let pool = MockPool { id: object::new(ctx) };
     let pool_id = object::id(&pool);
     let position = MockPosition { id: object::new(ctx), pool_id, meme, quote, liquidity };
-    vault::create(
-        launch,
-        &Venue(),
-        pool_id,
-        position,
-        liquidity,
-        residual_meme,
-        residual_quote,
-        ctx,
-    );
+    protocol_fees.add_protocol_fees(residual_meme, residual_quote);
+    launch.settle_protocol_fee_accrual(version, protocol_fees);
+    vault::create(launch, &Venue(), pool_id, position, liquidity, ctx);
     transfer::share_object(pool);
 }
 
@@ -288,7 +289,6 @@ fun start(): Fixture {
     config.set_protocol_allocation(
         &version,
         &blast_acl::witness_for_testing<TreasuryAdmin>(),
-        ADMIN,
         bps::new(0),
         bps::new(0),
     );

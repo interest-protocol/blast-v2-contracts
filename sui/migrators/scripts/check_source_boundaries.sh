@@ -168,29 +168,27 @@ blast_events:package:fun buyback_burned( vault_id: ID, quote_spent: u64, meme_bu
 blast_events:package:fun cetus_pool_reserved<Meme, Quote>(pool_creation_cap_id: ID, tick_spacing: u32)
 blast_events:package:fun creator_fees_claimed(vault_id: ID, meme_amount: u64, quote_amount: u64)
 blast_events:package:fun fee_split_changed( vault_id: ID, old_generation: u64, new_generation: u64, old_fee_split: FeeSplit, new_fee_split: FeeSplit, )
-blast_events:package:fun fees_collected( vault_id: ID, generation: u64, gross_meme: u64, gross_quote: u64, protocol_destination: address, protocol_meme: u64, protocol_quote: u64, creator_meme: u64, creator_quote: u64, auto_lp_meme: u64, auto_lp_quote: u64, rewards_meme: u64, rewards_quote: u64, burn_meme: u64, burn_quote: u64, recipient_meme: vector<u64>, recipient_quote: vector<u64>, )
-blast_events:package:fun lp_fee_destination_changed(old_destination: address, new_destination: address)
+blast_events:package:fun fees_collected( vault_id: ID, generation: u64, gross_meme: u64, gross_quote: u64, protocol_meme: u64, protocol_quote: u64, creator_meme: u64, creator_quote: u64, auto_lp_meme: u64, auto_lp_quote: u64, rewards_meme: u64, rewards_quote: u64, burn_meme: u64, burn_quote: u64, recipient_meme: vector<u64>, recipient_quote: vector<u64>, )
 blast_events:package:fun lp_fee_policy_changed( meme: Option<TypeName>, old_meme_bps: Option<u64>, old_quote_bps: Option<u64>, new_meme_bps: Option<u64>, new_quote_bps: Option<u64>, )
-blast_events:package:fun protocol_fees_claimed<Meme, Quote>( vault_id: ID, claimant: address, meme_amount: u64, quote_amount: u64, )
 blast_events:package:fun reward_paid( round_id: ID, index: u64, beneficiary: address, meme_amount: u64, quote_amount: u64, meme_remaining: u64, quote_remaining: u64, )
 blast_events:package:fun round_published( vault_id: ID, round_id: ID, number: u64, start_checkpoint: u64, end_checkpoint: u64, root: vector<u8>, manifest_digest: vector<u8>, leaf_count: u64, meme_amount: u64, quote_amount: u64, meme_unallocated: u64, quote_unallocated: u64, )
-blast_events:package:fun vault_created<Meme, Quote, Venue>( vault_id: ID, pool_id: ID, position_id: ID, residual_meme: u64, residual_quote: u64, liquidity: u128, fee_split: FeeSplit, )
+blast_events:package:fun vault_created<Meme, Quote, Venue>( vault_id: ID, pool_id: ID, position_id: ID, liquidity: u128, fee_split: FeeSplit, )
 blast_holder_rewards:public:fun claim<Meme, Quote>( self: &mut Round<Meme, Quote>, migrators_version: &MigratorsVersion, index: u64, beneficiary: address, meme_amount: u64, quote_amount: u64, proof: vector<vector<u8>>, ctx: &mut TxContext, )
 blast_holder_rewards:public:fun publish_round<Meme, Quote>( vault: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, _: &AdminWitness<RewardsAdmin>, number: u64, start_checkpoint: u64, end_checkpoint: u64, root: vector<u8>, manifest_digest: vector<u8>, leaf_count: u64, meme_amount: u64, quote_amount: u64, ctx: &mut TxContext, )
 bluefin:public:fun buyback_and_burn<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>, bluefin_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, min_meme_out: u64, clock: &Clock, ctx: &mut TxContext, )
-bluefin:public:fun collect_fees<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, currency: &mut Currency<Meme>, bluefin_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, clock: &Clock, ctx: &mut TxContext, )
+bluefin:public:fun collect_fees<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, policy: &LpFeePolicy, launch: &mut Launch<Meme, Quote>, currency: &mut Currency<Meme>, bluefin_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, clock: &Clock, ctx: &mut TxContext, )
 bluefin:public:fun migrate<Meme, Quote>( launch: &mut Launch<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, currency: &mut Currency<Meme>, quote_currency: &Currency<Quote>, bluefin_config: &mut GlobalConfig, creation_fee: Coin<SUI>, clock: &Clock, ctx: &mut TxContext, )
 bluefin:public:fun new<Meme, Quote>( ticket: LaunchTicket<Meme>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, config: &LaunchConfig, tick_spacing: u32, fee_rate: u64, ): LaunchInitializer<Meme, Quote>
-bluefin:public:fun settle_and_update_fee_split<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, launch: &Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, currency: &mut Currency<Meme>, bluefin_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, proposed: FeeSplit, clock: &Clock, ctx: &mut TxContext, )
+bluefin:public:fun settle_and_update_fee_split<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, policy: &LpFeePolicy, launch: &mut Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, currency: &mut Currency<Meme>, bluefin_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, proposed: FeeSplit, clock: &Clock, ctx: &mut TxContext, )
 cetus:public:fun buyback_and_burn_meme_a<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, min_meme_out: u64, clock: &Clock, ctx: &mut TxContext, )
 cetus:public:fun buyback_and_burn_meme_b<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, pool: &mut Pool<Quote, Meme>, min_meme_out: u64, clock: &Clock, ctx: &mut TxContext, )
-cetus:public:fun collect_fees_meme_a<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, burn_manager: &BurnManager, pool: &mut Pool<Meme, Quote>, clock: &Clock, ctx: &mut TxContext, )
-cetus:public:fun collect_fees_meme_b<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, burn_manager: &BurnManager, pool: &mut Pool<Quote, Meme>, clock: &Clock, ctx: &mut TxContext, )
+cetus:public:fun collect_fees_meme_a<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, policy: &LpFeePolicy, launch: &mut Launch<Meme, Quote>, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, burn_manager: &BurnManager, pool: &mut Pool<Meme, Quote>, clock: &Clock, ctx: &mut TxContext, )
+cetus:public:fun collect_fees_meme_b<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, policy: &LpFeePolicy, launch: &mut Launch<Meme, Quote>, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, burn_manager: &BurnManager, pool: &mut Pool<Quote, Meme>, clock: &Clock, ctx: &mut TxContext, )
 cetus:public:fun migrate_meme_a<Meme, Quote>( launch: &mut Launch<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, currency: &mut Currency<Meme>, venue_config: &VenueConfig, cetus_config: &GlobalConfig, pools: &mut Pools, burn_manager: &mut BurnManager, clock: &Clock, ctx: &mut TxContext, )
 cetus:public:fun migrate_meme_b<Meme, Quote>( launch: &mut Launch<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, currency: &mut Currency<Meme>, venue_config: &VenueConfig, cetus_config: &GlobalConfig, pools: &mut Pools, burn_manager: &mut BurnManager, clock: &Clock, ctx: &mut TxContext, )
 cetus:public:fun new<Meme, Quote>( ticket: LaunchTicket<Meme>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, config: &LaunchConfig, venue_config: &mut VenueConfig, cetus_config: &GlobalConfig, pools: &mut Pools, tick_spacing: u32, ctx: &mut TxContext, ): LaunchInitializer<Meme, Quote>
-cetus:public:fun settle_and_update_fee_split_meme_a<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, launch: &Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, burn_manager: &BurnManager, pool: &mut Pool<Meme, Quote>, proposed: FeeSplit, clock: &Clock, ctx: &mut TxContext, )
-cetus:public:fun settle_and_update_fee_split_meme_b<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, launch: &Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, burn_manager: &BurnManager, pool: &mut Pool<Quote, Meme>, proposed: FeeSplit, clock: &Clock, ctx: &mut TxContext, )
+cetus:public:fun settle_and_update_fee_split_meme_a<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, policy: &LpFeePolicy, launch: &mut Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, burn_manager: &BurnManager, pool: &mut Pool<Meme, Quote>, proposed: FeeSplit, clock: &Clock, ctx: &mut TxContext, )
+cetus:public:fun settle_and_update_fee_split_meme_b<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, policy: &LpFeePolicy, launch: &mut Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, burn_manager: &BurnManager, pool: &mut Pool<Quote, Meme>, proposed: FeeSplit, clock: &Clock, ctx: &mut TxContext, )
 constants:package:fun auto_lp_margin(): u256
 constants:package:fun bluefin_max_fee_rate(): u64
 constants:package:fun bluefin_max_tick_spacing(): u32
@@ -201,12 +199,10 @@ constants:package:fun min_swap_sqrt_price(): u128
 constants:package:fun q128_shift(): u8
 constants:package:fun q64_shift(): u8
 constants:package:fun sqrt_upper_bound_shift(): u8
-lp_fee_policy:package:fun protocol_destination(self: &LpFeePolicy): address
 lp_fee_policy:package:fun shares<Meme>(self: &LpFeePolicy): (Bps, Bps)
 lp_fee_policy:public:fun clear_coin_shares<Meme>( self: &mut LpFeePolicy, migrators_version: &MigratorsVersion, _: &AdminWitness<FeeAdmin>, )
 lp_fee_policy:public:fun set_coin_shares<Meme>( self: &mut LpFeePolicy, migrators_version: &MigratorsVersion, _: &AdminWitness<FeeAdmin>, meme_bps: Bps, quote_bps: Bps, )
 lp_fee_policy:public:fun set_default_shares( self: &mut LpFeePolicy, migrators_version: &MigratorsVersion, _: &AdminWitness<FeeAdmin>, meme_bps: Bps, quote_bps: Bps, )
-lp_fee_policy:public:fun set_protocol_destination( self: &mut LpFeePolicy, migrators_version: &MigratorsVersion, _: &AdminWitness<TreasuryAdmin>, destination: address, )
 merkle:package:fun leaf( vault: ID, round: u64, index: u64, beneficiary: address, meme: u64, quote: u64, ): vector<u8>
 merkle:package:fun verify( root: vector<u8>, mut digest: vector<u8>, mut index: u64, leaves: u64, proof: &vector<vector<u8>>, ): bool
 migration_math:package:fun auto_lp_fixed_side( sqrt_lower: u128, sqrt_price: u128, sqrt_upper: u128, amount_a: u64, amount_b: u64, ): (bool, u64)
@@ -222,7 +218,7 @@ vault:package:fun attach_auto_lp_position<Meme, Quote, Venue, Position: key + st
 vault:package:fun auto_lp_position< Meme, Quote, Venue, Position: key + store, >( self: &LpVault<Meme, Quote>, _venue: &Venue, ): &Position
 vault:package:fun auto_lp_position_mut< Meme, Quote, Venue, Position: key + store, >( self: &mut LpVault<Meme, Quote>, _venue: &Venue, ): &mut Position
 vault:package:fun burn_buyback<Meme, Quote>( self: &mut LpVault<Meme, Quote>, currency: &mut Currency<Meme>, meme: Balance<Meme>, unspent_quote: Balance<Quote>, quote_in: u64, min_meme_out: u64, ctx: &mut TxContext, )
-vault:package:fun create<Meme, Quote, Venue, Position: key + store>( launch: &Launch<Meme, Quote>, venue: &Venue, pool_id: ID, position: Position, liquidity: u128, protocol_meme_residual: Balance<Meme>, protocol_quote_residual: Balance<Quote>, ctx: &mut TxContext, )
+vault:package:fun create<Meme, Quote, Venue, Position: key + store>( launch: &Launch<Meme, Quote>, venue: &Venue, pool_id: ID, position: Position, liquidity: u128, ctx: &mut TxContext, )
 vault:package:fun fund_round<Meme, Quote>( self: &mut LpVault<Meme, Quote>, end_checkpoint: u64, meme_amount: u64, quote_amount: u64, ): (Balance<Meme>, Balance<Quote>)
 vault:package:fun has_auto_lp_position<Meme, Quote, Venue>( self: &LpVault<Meme, Quote>, _venue: &Venue, ): bool
 vault:package:fun keep_auto_lp<Meme, Quote>( self: &mut LpVault<Meme, Quote>, added_meme: u64, added_quote: u64, meme: Balance<Meme>, quote: Balance<Quote>, )
@@ -231,12 +227,11 @@ vault:package:fun next_round<Meme, Quote>(self: &LpVault<Meme, Quote>): u64
 vault:package:fun pool_id<Meme, Quote>(self: &LpVault<Meme, Quote>): ID
 vault:package:fun position_mut< Meme, Quote, Venue, Position: key + store, >( self: &mut LpVault<Meme, Quote>, _venue: &Venue, ): &mut Position
 vault:package:fun rewards_balances<Meme, Quote>(self: &LpVault<Meme, Quote>): (u64, u64)
-vault:package:fun split_fees<Meme, Quote>( self: &mut LpVault<Meme, Quote>, policy: &LpFeePolicy, currency: &mut Currency<Meme>, mut meme: Balance<Meme>, mut quote: Balance<Quote>, ctx: &mut TxContext, )
+vault:package:fun split_fees<Meme, Quote>( self: &mut LpVault<Meme, Quote>, policy: &LpFeePolicy, currency: &mut Currency<Meme>, mut meme: Balance<Meme>, mut quote: Balance<Quote>, ctx: &mut TxContext, ): (Balance<Meme>, Balance<Quote>)
 vault:package:fun take_auto_lp<Meme, Quote>( self: &mut LpVault<Meme, Quote>, ): (Balance<Meme>, Balance<Quote>)
 vault:package:fun take_buyback_quote<Meme, Quote>( self: &mut LpVault<Meme, Quote>, _: &AdminWitness<BuybackAdmin>, ): Balance<Quote>
 vault:package:fun update_fee_split<Meme, Quote>( self: &mut LpVault<Meme, Quote>, proposed: FeeSplit, )
 vault:public:fun claim_creator_fees<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, launch: &Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)
-vault:public:fun claim_protocol_fees<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, _: &AdminWitness<TreasuryAdmin>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)
 venue_config:package:fun add_object<Key: copy + drop + store, Object: key + store>( self: &mut VenueConfig, key: Key, object: Object, )
 venue_config:package:fun object<Key: copy + drop + store, Object: key + store>( self: &VenueConfig, key: Key, ): &Object
 EOF
@@ -331,13 +326,14 @@ done
     && -z "$(find "$PACKAGE_DIR/interfaces" -mindepth 1 -maxdepth 1 -printf '%f\n' \
         | rg -v '^cetus(_[a-z_]+)?$')" ]] || \
     fail "only Cetus packages may have local venue interfaces; an excluded venue keeps no interface"
-# A sealed witness never leaves its adapter: no adapter function, whatever its visibility, names
-# the witness in its signature, so none returns it or fills a caller's container with it.
+# A sealed witness never leaves its adapter: no public or package function names the witness in
+# its signature, so none returns it or fills a caller's container with it. Private helpers may
+# carry the launchpad's linear protocol-fee accrual, whose witness type binds it to this adapter.
 for module in $matrix_witness_modules; do
     if move_facts "$SOURCE_DIR/${module}.move" | awk -F'\t' '
-        $1 == "FN" && $9 ~ /[^A-Za-z0-9_]Witness([^A-Za-z0-9_]|$)/ { found = 1 }
+        $1 == "FN" && $3 != "private" && $9 ~ /[^A-Za-z0-9_]Witness([^A-Za-z0-9_]|$)/ { found = 1 }
         END { exit !found }'; then
-        fail "${module}::Witness must never appear in any ${module} function signature"
+        fail "${module}::Witness must never appear in a public or package ${module} function signature"
     fi
 done
 
@@ -387,16 +383,16 @@ fi
 # Every replay fact is one direct, strongly typed payload with exactly one emitter function.
 [[ "$(move_facts "$EVENTS_SOURCE" | awk -F'\t' '$1 == "TYPE" && $5 == 0 { print $2 }' \
     | LC_ALL=C sort | tr '\n' ' ')" \
-    == 'AutoLiquidityAdded AutoLpPositionOpened BuybackBurned CetusPoolReserved CreatorFeesClaimed FeeSplitChanged FeesCollected LpFeeDestinationChanged LpFeePolicyChanged ProtocolFeesClaimed RewardPaid RoundPublished VaultCreated ' ]] || \
+    == 'AutoLiquidityAdded AutoLpPositionOpened BuybackBurned CetusPoolReserved CreatorFeesClaimed FeeSplitChanged FeesCollected LpFeePolicyChanged RewardPaid RoundPublished VaultCreated ' ]] || \
     fail "blast_events.move must declare exactly the pinned event payloads"
 for payload in AutoLiquidityAdded AutoLpPositionOpened BuybackBurned CetusPoolReserved CreatorFeesClaimed \
-    FeeSplitChanged FeesCollected LpFeeDestinationChanged LpFeePolicyChanged ProtocolFeesClaimed \
+    FeeSplitChanged FeesCollected LpFeePolicyChanged \
     RewardPaid RoundPublished VaultCreated; do
     [[ "$(rg -c "sui::event::emit\(${payload} \{" "$EVENTS_SOURCE" || true)" -eq 1 ]] || \
         fail "${payload} must be emitted directly by exactly one helper"
 done
-[[ "$(rg -o 'sui::event::emit' "$EVENTS_SOURCE" | wc -l)" -eq 13 ]] || \
-    fail "blast_events.move must emit exactly the thirteen pinned payloads"
+[[ "$(rg -o 'sui::event::emit' "$EVENTS_SOURCE" | wc -l)" -eq 11 ]] || \
+    fail "blast_events.move must emit exactly the eleven pinned payloads"
 if rg -q 'sui::event::emit' "$SOURCE_DIR" --glob '*.move' --glob '!blast_events.move'; then
     fail "state modules must emit only through typed events helpers"
 fi
@@ -411,8 +407,8 @@ if rg -q '\b(VenueTierUpdated|venue_tier_updated|RoutesChanged|routes_changed|Po
     fail "venue tiers and fee routes are launch settings and the Blast share is read live; no admin tier, route, or snapshot record may return"
 fi
 # Each replay fact has exactly one writer: the vault's split, buyback, auto-LP, split update,
-# custody, and claims; the holder-reward publication and claim; and the policy's destination and
-# share setters.
+# custody and creator claim; the holder-reward publication and claim; and the policy's share
+# setters. Blast fee accrual and claims are launchpad facts, not migrator facts.
 for emitter in \
     'fees_collected:vault:split_fees' \
     'buyback_burned:vault:burn_buyback' \
@@ -420,11 +416,9 @@ for emitter in \
     'auto_lp_position_opened:vault:attach_auto_lp_position' \
     'fee_split_changed:vault:update_fee_split' \
     'creator_fees_claimed:vault:claim_creator_fees' \
-    'protocol_fees_claimed<Meme, Quote>:vault:claim_protocol_fees' \
     'vault_created<Meme, Quote, Venue>:vault:new' \
     'round_published:blast_holder_rewards:publish_round' \
     'reward_paid:blast_holder_rewards:claim' \
-    'lp_fee_destination_changed:lp_fee_policy:set_protocol_destination' \
     'lp_fee_policy_changed:lp_fee_policy:clear_coin_shares set_coin_shares set_default_shares'; do
     event="${emitter%%:*}"
     rest="${emitter#*:}"
@@ -440,15 +434,15 @@ done
 
 # === Vault ===
 #
-# The vault custodies one position (and, on venues that need it, one auto-LP position), the
-# protocol migration residuals, and the balances every LP-fee collection is split into. Pinning the
-# whole layout, the constructor, the two public claims, the immutable-reference reads, and the
-# absence of any object-owned coin receipt keeps a new vault from carrying a second fee path.
+# The vault custodies one position (and, on venues that need it, one auto-LP position) and the
+# non-Blast balances every LP-fee collection is split into. Pinning the whole layout, constructor,
+# creator claim, immutable-reference reads, and absence of any object-owned coin receipt keeps a
+# new vault from carrying a second Blast fee path beside the launch ledger.
 VAULT_FACTS="$(move_facts "$VAULT_SOURCE")"
 [[ "$VAULT_FACTS" != *MALFORMED* ]] || fail "the Move reader rejected vault.move"
 [[ "$(move_production_type LpVault <<<"$VAULT_FACTS")" \
-    == 'struct LpVault<phantom Meme, phantom Quote> has key { id: UID, pool_id: ID, protocol_meme_residual: Balance<Meme>, protocol_quote_residual: Balance<Quote>, generation: u64, fee_split: FeeSplit, creator_meme: Balance<Meme>, creator_quote: Balance<Quote>, auto_lp_meme: Balance<Meme>, auto_lp_quote: Balance<Quote>, rewards_meme: Balance<Meme>, rewards_quote: Balance<Quote>, burn_quote: Balance<Quote>, next_round: u64, last_checkpoint: Option<u64>, }' ]] || \
-    fail "LpVault must hold only its position key space, the pool binding, the protocol residuals, its fee split and generation, the split balances, and the round cursor"
+    == 'struct LpVault<phantom Meme, phantom Quote> has key { id: UID, pool_id: ID, generation: u64, fee_split: FeeSplit, creator_meme: Balance<Meme>, creator_quote: Balance<Quote>, auto_lp_meme: Balance<Meme>, auto_lp_quote: Balance<Quote>, rewards_meme: Balance<Meme>, rewards_quote: Balance<Quote>, burn_quote: Balance<Quote>, next_round: u64, last_checkpoint: Option<u64>, }' ]] || \
+    fail "LpVault must hold only its position key space, pool binding, fee split and generation, non-Blast split balances, and round cursor"
 vault_body() {
     awk -F'\t' -v name="$1" '$1 == "FN" && $2 == name && $6 == 0 { print $10 }' <<<"$VAULT_FACTS" \
         | tr -d '[:space:]' | sed 's/,)/)/g'
@@ -457,19 +451,19 @@ vault_body() {
 # only shares what `new` builds, and `new` copies the launch's fee split at generation zero with
 # empty balances and no round.
 [[ "$(vault_body create)" \
-    == 'transfer::share_object(new(launch,venue,pool_id,position,liquidity,protocol_meme_residual,protocol_quote_residual,ctx));' ]] \
+    == 'transfer::share_object(new(launch,venue,pool_id,position,liquidity,ctx));' ]] \
     && [[ "$(vault_body new)" \
-    == 'assert!(liquidity>0,EZeroLiquidity);letposition_id=object::id(&position);letmutvault=LpVault{id:object::new(ctx),pool_id,protocol_meme_residual,protocol_quote_residual,generation:0,fee_split:launch.lp_fee_split(),creator_meme:balance::zero(),creator_quote:balance::zero(),auto_lp_meme:balance::zero(),auto_lp_quote:balance::zero(),rewards_meme:balance::zero(),rewards_quote:balance::zero(),burn_quote:balance::zero(),next_round:0,last_checkpoint:option::none(),};vault.id.add_dynamic_object_field(PositionKey<Venue>(),position);blast_events::vault_created<Meme,Quote,Venue>(vault.id.to_inner(),pool_id,position_id,vault.protocol_meme_residual.value(),vault.protocol_quote_residual.value(),liquidity,vault.fee_split);vault' ]] || \
+    == 'assert!(liquidity>0,EZeroLiquidity);letposition_id=object::id(&position);letmutvault=LpVault{id:object::new(ctx),pool_id,generation:0,fee_split:launch.lp_fee_split(),creator_meme:balance::zero(),creator_quote:balance::zero(),auto_lp_meme:balance::zero(),auto_lp_quote:balance::zero(),rewards_meme:balance::zero(),rewards_quote:balance::zero(),burn_quote:balance::zero(),next_round:0,last_checkpoint:option::none(),};vault.id.add_dynamic_object_field(PositionKey<Venue>(),position);blast_events::vault_created<Meme,Quote,Venue>(vault.id.to_inner(),pool_id,position_id,liquidity,vault.fee_split);vault' ]] || \
     fail "vault::create must share only what vault::new builds: the launch's fee split at generation zero, empty balances, no round, and the attached position"
 [[ "$(awk -F'\t' '$1 == "FN" && $3 == "public" && $6 == 0 { print $2 }' <<<"$VAULT_FACTS" \
     | LC_ALL=C sort | tr '\n' ' ')" \
-    == 'claim_creator_fees claim_protocol_fees ' ]] || \
-    fail "the protocol and creator claims must be the vault's only public functions"
+    == 'claim_creator_fees ' ]] || \
+    fail "the creator claim must be the vault's only public function"
 # Every collection is split exactly and at once: Blast's live share for this Meme rounds up and
-# pays the live destination, the rest is apportioned by the vault's fee split into the creator,
+# returns linearly for mandatory launch-ledger settlement; the rest is apportioned into the creator,
 # auto-LP, and rewards balances, the burn share's Meme is burned and its Quote kept for buyback,
-# every recipient is paid, nothing stays behind, and FeesCollected is the last fact of a nonzero
-# collection.
+# every recipient is paid, nothing stays behind, and FeesCollected precedes the returned Blast
+# balances for a nonzero collection.
 in_order \
     'letgross_meme=meme.value();letgross_quote=quote.value();' \
     'let(meme_share,quote_share)=policy.shares<Meme>();' \
@@ -477,20 +471,19 @@ in_order \
     'letprotocol_quote=quote_share.apply_up(gross_quote);' \
     'let(creator_meme,auto_lp_meme,rewards_meme,burn_meme,recipient_meme)=self.fee_split.apportion_fee_split(gross_meme-protocol_meme);' \
     'let(creator_quote,auto_lp_quote,rewards_quote,burn_quote,recipient_quote)=self.fee_split.apportion_fee_split(gross_quote-protocol_quote);' \
-    'letprotocol_destination=policy.protocol_destination();' \
-    'meme.pay(protocol_meme,protocol_destination,ctx);' \
-    'quote.pay(protocol_quote,protocol_destination,ctx);' \
+    'letprotocol_meme_balance=meme.split(protocol_meme);' \
+    'letprotocol_quote_balance=quote.split(protocol_quote);' \
     'self.creator_meme.join(meme.split(creator_meme));self.creator_quote.join(quote.split(creator_quote));' \
     'self.auto_lp_meme.join(meme.split(auto_lp_meme));self.auto_lp_quote.join(quote.split(auto_lp_quote));' \
     'self.rewards_meme.join(meme.split(rewards_meme));self.rewards_quote.join(quote.split(rewards_quote));' \
     'burn(currency,meme.split(burn_meme),ctx);self.burn_quote.join(quote.split(burn_quote));' \
     'meme.pay(recipient_meme[i],recipients[i].destination(),ctx);quote.pay(recipient_quote[i],recipients[i].destination(),ctx);' \
     'meme.destroy_zero();quote.destroy_zero();' \
-    'if(gross_meme==0&&gross_quote==0)return;' \
     'blast_events::fees_collected(' \
+    '(protocol_meme_balance,protocol_quote_balance)' \
     <<<"$(vault_body split_fees)" \
-    && [[ "$(vault_body split_fees)" =~ blast_events::fees_collected\([^\;]*\)\;$ ]] || \
-    fail "vault splits must pay the round-up live Blast share and every recipient immediately, credit the three balances, burn the burn Meme and keep the burn Quote, keep nothing else, and emit FeesCollected last"
+    && [[ "$(vault_body split_fees)" == *'(protocol_meme_balance,protocol_quote_balance)' ]] || \
+    fail "vault splits must return the round-up live Blast share, pay every recipient, credit the three balances, burn the burn Meme, keep the burn Quote, keep nothing else, and emit FeesCollected before returning"
 # A buyback takes the whole burn Quote only under the buyback-admin role, and burns only Meme that
 # reaches the admin's minimum; what the pool did not take goes back to wait.
 [[ "$(vault_body take_buyback_quote)" == 'assert!(self.burn_quote.value()>0,ENoBuybackQuote);self.burn_quote.withdraw_all()' ]] \
@@ -608,10 +601,6 @@ require_pattern "$VAULT_SOURCE" '_venue: &Venue' 'borrowed venue witness on posi
                 && $10 ~ /(attach_auto_lp_position|auto_lp_position(_mut)?|has_auto_lp_position)[<(]/ { print module ":" $2 }'
     done | LC_ALL=C sort | tr '\n' ' ')" == 'cetus:add_liquidity cetus:collect_position_fees ' ]] || \
     fail "only Cetus's auto-LP addition and collection may reach the vault's auto-LP slot"
-require_pattern "$VAULT_SOURCE" 'protocol_meme_residual\.withdraw_all' \
-    'protocol Meme residual claim'
-require_pattern "$VAULT_SOURCE" 'protocol_quote_residual\.withdraw_all' \
-    'protocol Quote residual claim'
 # T-013: VaultCreated is a direct event emitted only after the pool binding and position custody
 # it records are written.
 [[ "$(vault_body new)" == 'assert!(liquidity>0,EZeroLiquidity);'* ]] \
@@ -622,16 +611,15 @@ require_exact_count 'PackageVersion' 1 \
     "$VAULT_SOURCE"
 require_pattern "$VAULT_SOURCE" 'package_version::PackageVersion as MigratorsVersion' \
     'Migrators generation imported under its guard alias'
-require_exact_count '&AdminWitness<' 2 \
-    "vault Launchpad authority must be exactly the protocol residual claim and the buyback" \
+require_exact_count '&AdminWitness<' 1 \
+    "vault administrative authority must be exactly the buyback" \
     <(production_section "$VAULT_SOURCE")
-require_errors "$VAULT_SOURCE" "vault must use sequential codes 0-5 for its residual, split, creator, liquidity, and buyback checks" <<'EOF'
-0 ENothingClaimable No protocol migration residuals are available to claim.
-1 EFeeSplitUnchanged Fee split proposal must differ from the current split.
-2 ENoCreatorFees No creator LP fees are available to claim.
-3 EZeroLiquidity Migration position must hold liquidity.
-4 ENoBuybackQuote No burn Quote is waiting to buy Meme back.
-5 EBuybackBelowMinimum Buyback must return at least the minimum Meme.
+require_errors "$VAULT_SOURCE" "vault must use sequential codes 0-4 for its split, creator, liquidity, and buyback checks" <<'EOF'
+0 EFeeSplitUnchanged Fee split proposal must differ from the current split.
+1 ENoCreatorFees No creator LP fees are available to claim.
+2 EZeroLiquidity Migration position must hold liquidity.
+3 ENoBuybackQuote No burn Quote is waiting to buy Meme back.
+4 EBuybackBelowMinimum Buyback must return at least the minimum Meme.
 EOF
 
 # === Holder rewards ===
@@ -788,17 +776,19 @@ in_order \
     'creation_fee.into_balance()' \
     'pool::open_position(' \
     'pool::add_liquidity_with_fixed_amount(' \
-    'vault::create(launch,&Venue(),position.pool_id(),position,liquidity,residual_meme,residual_quote,ctx)' \
+    'protocol_fees.add_protocol_fees(residual_meme,residual_quote)' \
+    'launch.settle_protocol_fee_accrual(package_version,protocol_fees)' \
+    'vault::create(launch,&Venue(),position.pool_id(),position,liquidity,ctx)' \
     'pool.share_pool_object()' \
     <<<"$bluefin_migrate_body" || \
     fail "Bluefin migrate must migrate the launch, create and fund the pool, lock the position in a new vault, then share the pool"
 [[ "$bluefin_migrate_body" == *'letfix_meme=source_meme>=source_quote;'* \
     && "$bluefin_migrate_body" == *'if(fix_meme)source_memeelsesource_quote,fix_meme)'* ]] || \
     fail "Bluefin migrate must fix Meme when its atoms are at least the Quote atoms, else Quote"
-[[ "$(bluefin_body collect_fees)" == 'migrators_version.assert_current();let(meme_fee,quote_fee)=self.collect_position_fees(bluefin_config,pool,clock);self.split_fees(policy,currency,meme_fee,quote_fee,ctx);self.compound(bluefin_config,pool,clock);' ]] || \
-    fail "Bluefin collection must split the collected position's fees, then add the auto-LP share back"
-[[ "$(bluefin_body settle_and_update_fee_split)" == 'migrators_version.assert_current();self.assert_fee_split_update(launch,curve_fee_cap,proposed);let(meme_fee,quote_fee)=self.collect_position_fees(bluefin_config,pool,clock);self.split_fees(policy,currency,meme_fee,quote_fee,ctx);self.compound(bluefin_config,pool,clock);self.update_fee_split(proposed);' ]] || \
-    fail "Bluefin settled updates must check the cap and proposal before collecting, then split the accrued fees under the current split before committing a new one"
+[[ "$(bluefin_body collect_fees)" == 'migrators_version.assert_current();letmutprotocol_fees=launch.begin_protocol_fee_accrual(package_version,Witness());let(meme_fee,quote_fee)=self.collect_position_fees(bluefin_config,pool,clock);let(protocol_meme,protocol_quote)=self.split_fees(policy,currency,meme_fee,quote_fee,ctx);protocol_fees.add_protocol_fees(protocol_meme,protocol_quote);launch.settle_protocol_fee_accrual(package_version,protocol_fees);self.compound(bluefin_config,pool,clock);' ]] || \
+    fail "Bluefin collection must bind an accrual to the launch, split the collected fees, settle Blast's share to the launch ledger, then add the auto-LP share back"
+[[ "$(bluefin_body settle_and_update_fee_split)" == 'migrators_version.assert_current();letmutprotocol_fees=launch.begin_protocol_fee_accrual(package_version,Witness());self.assert_fee_split_update(launch,curve_fee_cap,proposed);let(meme_fee,quote_fee)=self.collect_position_fees(bluefin_config,pool,clock);let(protocol_meme,protocol_quote)=self.split_fees(policy,currency,meme_fee,quote_fee,ctx);protocol_fees.add_protocol_fees(protocol_meme,protocol_quote);launch.settle_protocol_fee_accrual(package_version,protocol_fees);self.compound(bluefin_config,pool,clock);self.update_fee_split(proposed);' ]] || \
+    fail "Bluefin settled updates must bind an accrual, check the cap and proposal, settle Blast's current share to the launch ledger, then commit the new split"
 [[ "$(bluefin_body buyback_and_burn)" == 'migrators_version.assert_current();assert!(self.pool_id()==object::id(pool),EPositionPoolMismatch);letquote=self.take_buyback_quote(admin_witness);letquote_in=quote.value();let(meme,quote)=pool::swap(clock,bluefin_config,pool,balance::zero(),quote,false,true,quote_in,0,constants::max_swap_sqrt_price!());self.burn_buyback(currency,meme,quote,quote_in,min_meme_out,ctx);' ]] || \
     fail "the Bluefin buyback must check the vault's pool, take the burn Quote under the buyback admin, swap all of it Quote-to-Meme, and let the vault check and burn"
 in_order \
@@ -826,15 +816,15 @@ require_errors "$BLUEFIN_SOURCE" "Bluefin must use codes 0-1 for its position-po
 1 EInvalidTier Bluefin tier needs a tick spacing in 1..=400 and a fee rate in 1..=20,000.
 EOF
 # Bluefin's public routes share one parameter order: the subject, this package's generation, the
-# launchpad generation where the launch is started or migrated, the LP-fee policy after
-# migration, and (for a settled update) the launch and its live curve-fee cap, then venue inputs.
+# launchpad generation wherever the launch is started, migrated, or receives Blast fees, the
+# LP-fee policy after migration, and the mutable launch before venue inputs.
 for entry in new migrate collect_fees settle_and_update_fee_split buyback_and_burn; do
     case "$entry" in
         new) expected="( ticket: LaunchTicket<Meme>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, config: &LaunchConfig," ;;
         migrate) expected="( launch: &mut Launch<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, currency: &mut Currency<Meme>," ;;
-        collect_fees) expected="( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, currency: &mut Currency<Meme>," ;;
+        collect_fees) expected="( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, policy: &LpFeePolicy, launch: &mut Launch<Meme, Quote>, currency: &mut Currency<Meme>," ;;
         buyback_and_burn) expected="( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>," ;;
-        *) expected="( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, launch: &Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, currency: &mut Currency<Meme>," ;;
+        *) expected="( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, policy: &LpFeePolicy, launch: &mut Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, currency: &mut Currency<Meme>," ;;
     esac
     [[ "$(awk -F'\t' -v name="$entry" '$1 == "FN" && $2 == name && $6 == 0 { print $9 }' \
         <<<"$bluefin_facts")" == *"$expected"* ]] || \
@@ -918,33 +908,35 @@ for side in a b; do
         "assert!(factory::is_right_order<${coin_order}>(),EInvalidCoinOrder);" \
         'let(tick_spacing,_)=launch.pool_tier();' \
         'let(tick_lower,tick_upper)=pool_creator::full_range_tick_range(tick_spacing);' \
-        'let(meme,quote)=launch.migrate(package_version,currency,Witness(),ctx);' \
+        'let(meme,quote,protocol_fees)=launch.migrate(package_version,currency,Witness(),ctx);' \
         'letmeme_amount=meme.value();letquote_amount=quote.value();' \
         "let(${outputs})=pool_creator::create_pool_v3_with_creation_cap<${coin_order}>(cetus_config,pools,venue_config.pool_creation_cap<Meme>(),tick_spacing,migration_math::sqrt_price_x64(meme_amount,quote_amount,${meme_is_coin_a}),b\"\".to_string(),tick_lower,tick_upper,${coins},${fix_coin_a},clock,ctx);" \
-        'burn_into_vault(launch,burn_manager,position,residual_meme,residual_quote,ctx);' \
+        'burn_into_vault(launch,package_version,protocol_fees,burn_manager,position,residual_meme,residual_quote,ctx);' \
         <<<"$(cetus_body "migrate_meme_${side}")" \
         && [[ "$(cetus_body "migrate_meme_${side}")" == 'migrators_version.assert_current();'*'ctx);' ]] || \
         fail "cetus::migrate_meme_${side} must create its own coin order's pool with the reserved cap at the launch's tick spacing, fix the side with more atoms, and burn into a vault"
-    [[ "$(cetus_body "collect_fees_meme_${side}")" == "migrators_version.assert_current();let(${fees})=self.collect_position_fees(cetus_config,burn_manager,pool,ctx);self.split_fees(policy,currency,meme_fee,quote_fee,ctx);self.compound_meme_${side}(cetus_config,pool,clock,ctx);" ]] || \
-        fail "cetus::collect_fees_meme_${side} must split the collected fees, then add the auto-LP share back"
-    [[ "$(cetus_body "settle_and_update_fee_split_meme_${side}")" == "migrators_version.assert_current();self.assert_fee_split_update(launch,curve_fee_cap,proposed);let(${fees})=self.collect_position_fees(cetus_config,burn_manager,pool,ctx);self.split_fees(policy,currency,meme_fee,quote_fee,ctx);self.compound_meme_${side}(cetus_config,pool,clock,ctx);self.update_fee_split(proposed);" ]] || \
-        fail "cetus::settle_and_update_fee_split_meme_${side} must check the cap and proposal before collecting, then split the accrued fees under the current split before committing a new one"
+    [[ "$(cetus_body "collect_fees_meme_${side}")" == "migrators_version.assert_current();letmutprotocol_fees=launch.begin_protocol_fee_accrual(package_version,Witness());let(${fees})=self.collect_position_fees(cetus_config,burn_manager,pool,ctx);let(protocol_meme,protocol_quote)=self.split_fees(policy,currency,meme_fee,quote_fee,ctx);protocol_fees.add_protocol_fees(protocol_meme,protocol_quote);launch.settle_protocol_fee_accrual(package_version,protocol_fees);self.compound_meme_${side}(cetus_config,pool,clock,ctx);" ]] || \
+        fail "cetus::collect_fees_meme_${side} must bind an accrual, split the collected fees, settle Blast's share to the launch ledger, then add the auto-LP share back"
+    [[ "$(cetus_body "settle_and_update_fee_split_meme_${side}")" == "migrators_version.assert_current();letmutprotocol_fees=launch.begin_protocol_fee_accrual(package_version,Witness());self.assert_fee_split_update(launch,curve_fee_cap,proposed);let(${fees})=self.collect_position_fees(cetus_config,burn_manager,pool,ctx);let(protocol_meme,protocol_quote)=self.split_fees(policy,currency,meme_fee,quote_fee,ctx);protocol_fees.add_protocol_fees(protocol_meme,protocol_quote);launch.settle_protocol_fee_accrual(package_version,protocol_fees);self.compound_meme_${side}(cetus_config,pool,clock,ctx);self.update_fee_split(proposed);" ]] || \
+        fail "cetus::settle_and_update_fee_split_meme_${side} must bind an accrual, check the cap and proposal, settle Blast's current share to the launch ledger, then commit the new split"
     [[ "$(cetus_body "buyback_and_burn_meme_${side}")" == "migrators_version.assert_current();assert!(self.pool_id()==object::id(pool),EPositionPoolMismatch);letquote=self.take_buyback_quote(admin_witness);letquote_in=quote.value();${swap}self.burn_buyback(currency,meme,quote,quote_in,min_meme_out,ctx);" ]] || \
         fail "cetus::buyback_and_burn_meme_${side} must check the vault's pool, take the burn Quote under the buyback admin, swap all of it Quote-to-Meme, and let the vault check and burn"
 done
 [[ "$(cetus_body compound_meme_a)" == 'let(meme,quote)=self.take_auto_lp();let(meme,quote,added_meme,added_quote)=self.add_liquidity(cetus_config,pool,meme,quote,clock,ctx);self.keep_auto_lp(added_meme,added_quote,meme,quote);' ]] \
     && [[ "$(cetus_body compound_meme_b)" == 'let(meme,quote)=self.take_auto_lp();let(quote,meme,added_quote,added_meme)=self.add_liquidity(cetus_config,pool,quote,meme,clock,ctx);self.keep_auto_lp(added_meme,added_quote,meme,quote);' ]] || \
     fail "Cetus auto-LP must take the waiting balances in its pool's coin order and keep what the pool did not take"
-# Migration burns the full-range position through Cetus LP Burn exactly once, before the vault
-# takes custody of the burn proof and the residuals.
+# Migration burns the full-range position through Cetus LP Burn exactly once, settles the launch
+# allocation and venue residuals to the launch ledger, then gives the vault the burn proof only.
 in_order \
     'letpool_id=position.pool_id();' \
     'letliquidity=position.liquidity();' \
     'letburn_proof=lp_burn::burn_lp_v2(burn_manager,position,ctx);' \
-    'vault::create(launch,&Venue(),pool_id,burn_proof,liquidity,residual_meme.into_balance(),residual_quote.into_balance(),ctx);' \
+    'protocol_fees.add_protocol_fees(residual_meme.into_balance(),residual_quote.into_balance());' \
+    'launch.settle_protocol_fee_accrual(package_version,protocol_fees);' \
+    'vault::create(launch,&Venue(),pool_id,burn_proof,liquidity,ctx);' \
     <<<"$(cetus_body burn_into_vault)" \
     && [[ "$(move_norm "$CETUS_SOURCE" | grep -o 'burn_lp_v2' | wc -l)" -eq 1 ]] || \
-    fail "Cetus migration must burn the position through LP Burn exactly once, then lock the burn proof and residuals in the vault"
+    fail "Cetus migration must burn the position through LP Burn exactly once, settle every Blast amount to the launch ledger, then lock only the burn proof in the vault"
 # Collection checks the vault's own pool first, collects the burn proof only through LP Burn, and
 # collects the auto-LP position only once it exists.
 [[ "$(cetus_body collect_position_fees)" == 'assert!(self.pool_id()==object::id(pool),EPositionPoolMismatch);letburn_proof=self.position_mut<_,_,_,CetusLPBurnProof>(&Venue());let(fee_x,fee_y)=lp_burn::collect_fee(burn_manager,cetus_config,pool,burn_proof,ctx);letmutfee_x=fee_x.into_balance();letmutfee_y=fee_y.into_balance();if(self.has_auto_lp_position(&Venue())){letposition=self.auto_lp_position<_,_,_,Position>(&Venue());let(auto_lp_x,auto_lp_y)=pool::collect_fee(cetus_config,pool,position,true);fee_x.join(auto_lp_x);fee_y.join(auto_lp_y);};(fee_x,fee_y)' ]] || \
@@ -1000,9 +992,9 @@ for entry in new migrate_meme_a migrate_meme_b collect_fees_meme_a collect_fees_
     case "$entry" in
         new) expected="( ticket: LaunchTicket<Meme>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, config: &LaunchConfig," ;;
         migrate*) expected="( launch: &mut Launch<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, currency: &mut Currency<Meme>," ;;
-        collect*) expected="( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, currency: &mut Currency<Meme>," ;;
+        collect*) expected="( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, policy: &LpFeePolicy, launch: &mut Launch<Meme, Quote>, currency: &mut Currency<Meme>," ;;
         buyback*) expected="( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>," ;;
-        *) expected="( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, launch: &Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, currency: &mut Currency<Meme>," ;;
+        *) expected="( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, policy: &LpFeePolicy, launch: &mut Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, currency: &mut Currency<Meme>," ;;
     esac
     [[ "$(awk -F'\t' -v name="$entry" '$1 == "FN" && $2 == name && $6 == 0 { print $9 }' \
         <<<"$cetus_facts")" == *"$expected"* ]] || \
@@ -1208,10 +1200,8 @@ cetus:buyback_and_burn_meme_b:BuybackAdmin
 lp_fee_policy:clear_coin_shares:FeeAdmin
 lp_fee_policy:set_coin_shares:FeeAdmin
 lp_fee_policy:set_default_shares:FeeAdmin
-lp_fee_policy:set_protocol_destination:TreasuryAdmin
 package_admin:authorize_upgrade:UpgradeAdmin
 package_admin:commit_upgrade_and_advance:UpgradeAdmin
-vault:claim_protocol_fees:TreasuryAdmin
 vault:take_buyback_quote:BuybackAdmin
 ROLES
 # Venues gate callers by package version and launchpad cutovers advance its version, so this

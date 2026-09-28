@@ -42,7 +42,6 @@ public fun admit<Quote, Witness: drop>(config: &mut LaunchConfig, version: &Pack
     config.set_protocol_allocation(
         version,
         &blast_acl::witness_for_testing<TreasuryAdmin>(),
-        CREATOR,
         bps::new(0),
         bps::new(0),
     );

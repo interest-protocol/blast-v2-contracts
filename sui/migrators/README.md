@@ -2,8 +2,9 @@
 
 This aggregate package starts every launch at the creator's venue tier,
 completes the launchpad's linear migration handoff into supported venue
-positions, keeps the LP principal and the protocol migration residuals in each
-launch's sealed `LpVault`, and owns everything after migration: the LP-fee
+positions, settles Blast's migration allocation and venue residuals into the
+launch's fee ledger, keeps the LP principal in each launch's sealed `LpVault`,
+and owns everything else after migration: the LP-fee
 policy, collection, auto-LP, holder rewards, and fee-split updates (ADR 0089). Venue code depends inward on the launchpad; the launchpad never
 imports this package.
 
@@ -29,8 +30,9 @@ only the transitions it implements.
 ## LP fees after migration
 
 Anyone can call a venue's `collect_fees`. In one transaction it collects the
-position's fees, pays Blast's live share for that coin to the protocol
-destination, and splits the rest by the launch's `FeeSplit`:
+position's fees, returns Blast's live Meme and Quote shares through an
+ability-less accrual that must settle into the launch's protocol fee ledger,
+and splits the rest by the launch's `FeeSplit`:
 
 | Part | Where it goes |
 | --- | --- |
@@ -50,7 +52,9 @@ for indexers.
 The curve-fee cap holder changes the split with `settle_and_update_fee_split`,
 which settles the fees accrued under the current split first. An administrator
 changes Blast's default or per-coin share in `LpFeePolicy`, from the next
-collection. Because auto-LP adds at the current price, a caller can move the
+collection. `LpFeePolicy` has no payout destination, and `LpVault` has no Blast
+balance or Blast claim; the launch's partner-aware claim is the only exit for
+those fees. Because auto-LP adds at the current price, a caller can move the
 price around a collection and skim part of that call's auto-LP amount; frequent
 collection keeps each slice small (ADR 0089).
 

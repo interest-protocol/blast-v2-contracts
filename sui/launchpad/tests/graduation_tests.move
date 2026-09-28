@@ -79,15 +79,15 @@ fun fixed_seed_random_shapes_are_dust_free() {
 }
 
 #[test]
-fun blast_is_first_and_creator_recipients_keep_their_order() {
+fun blast_is_separate_and_creator_recipients_keep_their_order() {
     let plan = allocation::plan(
         bps::new(7_000),
         bps::new(2_000),
         bps::new(8_000),
         vector[recipient(@0x7, 400, 1_000), recipient(@0x1, 100, 0)],
-    ).add_protocol(recipient(@0x1, 500, 1_000));
+    ).add_protocol(allocation::protocol_allocation(bps::new(500), bps::new(1_000)));
 
-    assert_eq!(plan.destinations(), vector[@0x1, @0x7, @0x1]);
+    assert_eq!(plan.destinations(), vector[@0x7, @0x1]);
     assert_eq!(meme_amounts(&plan, 10_000), vector[7_000, 2_000, 500, 400, 100]);
     assert_eq!(quote_amounts(&plan, 10_000), vector[8_000, 1_000, 1_000, 0]);
 }
@@ -105,7 +105,7 @@ fun zero_shares_receive_nothing() {
 #[test]
 fun one_and_sixteen_recipients_are_admitted() {
     let (meme, quote) = bounded(1);
-    assert_eq!(shaped(meme, quote).destinations(), vector[@0x1]);
+    assert_eq!(shaped(meme, quote).destinations(), vector[@0x2]);
 
     let (meme, quote) = bounded(16);
     assert_eq!(shaped(meme, quote).destinations().length(), 16);
@@ -220,7 +220,7 @@ fun shaped(meme: vector<u64>, quote: vector<u64>): AllocationPlan {
     );
 
     allocation::plan(bps::new(meme[0]), bps::new(meme[1]), bps::new(quote[0]), recipients)
-        .add_protocol(recipient(@0x1, meme[2], quote[1]))
+        .add_protocol(allocation::protocol_allocation(bps::new(meme[2]), bps::new(quote[1])))
 }
 
 /// A curve, a pool, and Blast holding `protocol` of both assets.
@@ -231,10 +231,10 @@ fun plan(protocol: u64, liquidity: u64): AllocationPlan {
     )
 }
 
-/// Shares for `count` recipients, Blast included, of one basis point of each asset.
+/// Shares for Blast and `count` recipients of one basis point of each asset.
 fun bounded(count: u64): (vector<u64>, vector<u64>) {
-    let mut meme = vector[10_000 - count - 1, 1];
-    let mut quote = vector[10_000 - count];
+    let mut meme = vector[10_000 - count - 2, 1, 1];
+    let mut quote = vector[10_000 - count - 1, 1];
     count.do!(|_| {
         meme.push_back(1);
         quote.push_back(1);
@@ -243,18 +243,20 @@ fun bounded(count: u64): (vector<u64>, vector<u64>) {
     (meme, quote)
 }
 
-/// The curve's, the pool's, then each recipient's Meme amount.
+/// The curve's, the pool's, Blast's, then each recipient's Meme amount.
 fun meme_amounts(plan: &AllocationPlan, supply: u64): vector<u64> {
-    let (curve, lp, mut amounts) = plan.apportion_meme(supply);
+    let (curve, lp, protocol, mut amounts) = plan.apportion_meme(supply);
+    amounts.insert(protocol, 0);
     amounts.insert(lp, 0);
     amounts.insert(curve, 0);
 
     amounts
 }
 
-/// The pool's, then each recipient's Quote amount.
+/// The pool's, Blast's, then each recipient's Quote amount.
 fun quote_amounts(plan: &AllocationPlan, reserve: u64): vector<u64> {
-    let (lp, mut amounts) = plan.apportion_quote(reserve);
+    let (lp, protocol, mut amounts) = plan.apportion_quote(reserve);
+    amounts.insert(protocol, 0);
     amounts.insert(lp, 0);
 
     amounts

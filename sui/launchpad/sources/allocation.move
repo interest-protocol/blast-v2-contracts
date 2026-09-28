@@ -21,7 +21,15 @@ public struct AllocationPlan has copy, drop, store {
     curve_meme_bps: Bps,
     lp_meme_bps: Bps,
     lp_quote_bps: Bps,
+    protocol_meme_bps: Bps,
+    protocol_quote_bps: Bps,
     recipients: vector<Recipient>,
+}
+
+/// Blast's one-time Meme and Quote shares, accrued as protocol fees at migration.
+public struct ProtocolAllocation has copy, drop, store {
+    meme_bps: Bps,
+    quote_bps: Bps,
 }
 
 /// One LP-fee recipient and its share.
@@ -58,7 +66,14 @@ public fun plan(
 ): AllocationPlan {
     assert!(curve_meme_bps.value() > 0 && lp_meme_bps.value() > 0, blast_fun::errors::invalid_shares!());
 
-    AllocationPlan { curve_meme_bps, lp_meme_bps, lp_quote_bps, recipients }
+    AllocationPlan {
+        curve_meme_bps,
+        lp_meme_bps,
+        lp_quote_bps,
+        protocol_meme_bps: bps::new(0),
+        protocol_quote_bps: bps::new(0),
+        recipients,
+    }
 }
 
 public fun route(destination: address, bps: Bps): Route {
@@ -109,20 +124,28 @@ public fun apportion_fee_split(self: &FeeSplit, total: u64): (u64, u64, u64, u64
 
 // === Package Functions ===
 
-/// Adds Blast's allocation as the first recipient and checks that each asset sums to 10,000.
-public(package) fun add_protocol(mut self: AllocationPlan, protocol: Recipient): AllocationPlan {
-    self.recipients.insert(protocol, 0);
+public(package) fun protocol_allocation(meme_bps: Bps, quote_bps: Bps): ProtocolAllocation {
+    ProtocolAllocation { meme_bps, quote_bps }
+}
+
+/// Adds Blast's fee allocation and checks that each asset sums to 10,000.
+public(package) fun add_protocol(
+    mut self: AllocationPlan,
+    protocol: ProtocolAllocation,
+): AllocationPlan {
     assert!(
         self.recipients.length() <= constants::max_recipients!(),
         blast_fun::errors::recipient_capacity_reached!(),
     );
+    self.protocol_meme_bps = protocol.meme_bps;
+    self.protocol_quote_bps = protocol.quote_bps;
     assert!(
         self.recipients.fold!(
-            self.curve_meme_bps.value() + self.lp_meme_bps.value(),
+            self.curve_meme_bps.value() + self.lp_meme_bps.value() + protocol.meme_bps.value(),
             |sum, recipient| sum + recipient.meme_bps.value(),
         ) == constants::basis_points_denominator!()
             && self.recipients.fold!(
-                self.lp_quote_bps.value(),
+                self.lp_quote_bps.value() + protocol.quote_bps.value(),
                 |sum, recipient| sum + recipient.quote_bps.value(),
             ) == constants::basis_points_denominator!(),
         blast_fun::errors::invalid_shares!(),
@@ -131,26 +154,32 @@ public(package) fun add_protocol(mut self: AllocationPlan, protocol: Recipient):
     self
 }
 
-/// Splits the Meme `supply` into the curve's, the pool's, and each recipient's amounts; Blast's
-/// comes first and rounds up.
-public(package) fun apportion_meme(self: &AllocationPlan, supply: u64): (u64, u64, vector<u64>) {
-    let mut bps = vector[self.curve_meme_bps, self.lp_meme_bps];
+/// Splits the Meme `supply` into the curve's, pool's, Blast's, and each recipient's amounts;
+/// Blast's rounds up.
+public(package) fun apportion_meme(
+    self: &AllocationPlan,
+    supply: u64,
+): (u64, u64, u64, vector<u64>) {
+    let mut bps = vector[self.curve_meme_bps, self.lp_meme_bps, self.protocol_meme_bps];
     self.recipients.do_ref!(|recipient| bps.push_back(recipient.meme_bps));
     let amounts = apportion(bps, supply, option::some(2));
+    let recipients = vector::tabulate!(amounts.length() - 3, |i| amounts[i + 3]);
+
+    (amounts[0], amounts[1], amounts[2], recipients)
+}
+
+/// Splits the final Quote `reserve` into the pool's, Blast's, and each recipient's amounts;
+/// Blast's rounds up.
+public(package) fun apportion_quote(
+    self: &AllocationPlan,
+    reserve: u64,
+): (u64, u64, vector<u64>) {
+    let mut bps = vector[self.lp_quote_bps, self.protocol_quote_bps];
+    self.recipients.do_ref!(|recipient| bps.push_back(recipient.quote_bps));
+    let amounts = apportion(bps, reserve, option::some(1));
     let recipients = vector::tabulate!(amounts.length() - 2, |i| amounts[i + 2]);
 
     (amounts[0], amounts[1], recipients)
-}
-
-/// Splits the final Quote `reserve` into the pool's and each recipient's amounts; Blast's comes
-/// first and rounds up.
-public(package) fun apportion_quote(self: &AllocationPlan, reserve: u64): (u64, vector<u64>) {
-    let mut bps = vector[self.lp_quote_bps];
-    self.recipients.do_ref!(|recipient| bps.push_back(recipient.quote_bps));
-    let amounts = apportion(bps, reserve, option::some(1));
-    let recipients = vector::tabulate!(amounts.length() - 1, |i| amounts[i + 1]);
-
-    (amounts[0], recipients)
 }
 
 public(package) fun destinations(self: &AllocationPlan): vector<address> {
@@ -184,6 +213,15 @@ fun apportion(bps: vector<Bps>, total: u64, rounded_up: Option<u64>): vector<u64
 // === Test-Only Functions ===
 
 #[test_only]
+public fun add_protocol_for_testing(
+    self: AllocationPlan,
+    meme_bps: Bps,
+    quote_bps: Bps,
+): AllocationPlan {
+    self.add_protocol(protocol_allocation(meme_bps, quote_bps))
+}
+
+#[test_only]
 public fun creator_bps_for_testing(self: &FeeSplit): Bps { self.creator_bps }
 
 #[test_only]
@@ -200,4 +238,4 @@ public fun route_bps_for_testing(self: &Route): u64 { self.bps.value() }
 
 // === Imports ===
 
-use blast_fun::{bps::Bps, constants};
+use blast_fun::{bps::{Self, Bps}, constants};

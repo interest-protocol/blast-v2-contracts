@@ -35,7 +35,7 @@ fun plan_leaves_the_share_sums_to_add_protocol() {
 fun a_recipient_without_shares_is_admitted_and_paid_nothing() {
     let plan = shaped(vector[7_000, 2_000, 1_000, 0], vector[9_000, 1_000, 0]);
 
-    assert_eq!(plan.destinations(), vector[@0x1, @0x2]);
+    assert_eq!(plan.destinations(), vector[@0x2]);
     assert_eq!(meme_amounts(&plan, 999), vector[699, 200, 100, 0]);
     assert_eq!(quote_amounts(&plan, 999), vector[899, 100, 0]);
 }
@@ -121,11 +121,11 @@ fun blast_amount_never_decreases_as_the_total_grows() {
     let (mut previous_meme, mut previous_quote) = (0, 0);
 
     256u64.do!(|total| {
-        let (_, _, meme) = plan.apportion_meme(total);
-        let (_, quote) = plan.apportion_quote(total);
+        let (_, _, meme, _) = plan.apportion_meme(total);
+        let (_, quote, _) = plan.apportion_quote(total);
 
-        assert!(meme[0] >= previous_meme && quote[0] >= previous_quote);
-        (previous_meme, previous_quote) = (meme[0], quote[0]);
+        assert!(meme >= previous_meme && quote >= previous_quote);
+        (previous_meme, previous_quote) = (meme, quote);
     });
 }
 
@@ -210,7 +210,7 @@ fun shaped(meme: vector<u64>, quote: vector<u64>): AllocationPlan {
     );
 
     allocation::plan(bps::new(meme[0]), bps::new(meme[1]), bps::new(quote[0]), recipients)
-        .add_protocol(recipient(@0x1, meme[2], quote[1]))
+        .add_protocol(allocation::protocol_allocation(bps::new(meme[2]), bps::new(quote[1])))
 }
 
 fun fee_split(parts: vector<u64>, routes: vector<Route>): FeeSplit {
@@ -235,19 +235,19 @@ fun split(shares: vector<u64>): FeeSplit {
     )
 }
 
-/// The curve's, the pool's, then each recipient's Meme amount.
+/// The curve's, the pool's, Blast's, then each recipient's Meme amount.
 fun meme_amounts(plan: &AllocationPlan, supply: u64): vector<u64> {
-    let (curve, lp, recipients) = plan.apportion_meme(supply);
-    let mut amounts = vector[curve, lp];
+    let (curve, lp, protocol, recipients) = plan.apportion_meme(supply);
+    let mut amounts = vector[curve, lp, protocol];
     amounts.append(recipients);
 
     amounts
 }
 
-/// The pool's, then each recipient's Quote amount.
+/// The pool's, Blast's, then each recipient's Quote amount.
 fun quote_amounts(plan: &AllocationPlan, reserve: u64): vector<u64> {
-    let (lp, recipients) = plan.apportion_quote(reserve);
-    let mut amounts = vector[lp];
+    let (lp, protocol, recipients) = plan.apportion_quote(reserve);
+    let mut amounts = vector[lp, protocol];
     amounts.append(recipients);
 
     amounts

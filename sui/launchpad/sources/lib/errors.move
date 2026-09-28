@@ -159,6 +159,10 @@ const EPartnerNotAccepted: u64 = 36;
 /// The call does not name exactly the launch's partner.
 const EPartnerMismatch: u64 = 37;
 
+#[test_only]
+/// A protocol-fee accrual belongs to another launch.
+const EProtocolFeeAccrualMismatch: u64 = 38;
+
 macro public(package) fun invalid_bps(): u64 { 0 }
 
 macro public(package) fun invalid_trade_fee_bps(): u64 { 1 }
@@ -234,3 +238,5 @@ macro public(package) fun invalid_creation_fee(): u64 { 35 }
 macro public(package) fun partner_not_accepted(): u64 { 36 }
 
 macro public(package) fun partner_mismatch(): u64 { 37 }
+
+macro public(package) fun protocol_fee_accrual_mismatch(): u64 { 38 }

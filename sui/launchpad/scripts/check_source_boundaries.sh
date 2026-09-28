@@ -640,7 +640,7 @@ fees_source="$(move_normalized_source <<<"$fees_facts")"
 
 if [[ ! -f sources/fees.move ]] \
   || [[ "$(move_production_functions <<<"$fees_facts")" \
-    != 'accrue:package:0 claim_creator_fees:package:0 claim_protocol_fees:package:0 new:package:0 ' ]] \
+    != 'accrue:package:0 accrue_protocol_fees:package:0 claim_creator_fees:package:0 claim_protocol_fees:package:0 new:package:0 ' ]] \
   || [[ "$(move_production_type FeeLedger <<<"$fees_facts")" \
     != 'struct FeeLedger<phantom Meme, phantom Quote> has store { protocol_meme: Balance<Meme>, creator_meme: Balance<Meme>, protocol_quote: Balance<Quote>, creator_quote: Balance<Quote>, protocol_sui: Balance<SUI>, }' ]] \
   || [[ "$(move_production_signature new <<<"$fees_facts")" \
@@ -649,7 +649,7 @@ if [[ ! -f sources/fees.move ]] \
   || rg -q '\b(creator_authority|CreatorCap|CurveFeeCap|BlastMetadataCap)\b' <<<"$fees_source" \
   || rg -q 'fee_balance_overflow|std::u64::max_value|max_balance' <<<"$fees_source" \
   || rg -q 'set_creator_fee_split|sui::event|events::' <<<"$fees_source"; then
-  echo 'fees.move must remain an embedded supply-conserved ledger of both parties' trade fees and Blast's creation fee, exposing only its four approved package functions to the embedding launch.' >&2
+  echo 'fees.move must remain an embedded supply-conserved ledger of both parties trade fees and every Blast fee, exposing only its five approved package functions to the embedding launch.' >&2
   failures=$((failures + 1))
 fi
 
@@ -662,7 +662,7 @@ if rg -q '(^| )use fun ' <<<"$fees_source" \
   || [[ "$(count_occurrences 'balance::[a-z_0-9]+\(' <<<"$fees_source")" \
     != "$(count_occurrences 'balance::zero\(\)' <<<"$fees_source")" ]] \
   || rg -q '\b(into_balance|borrow_mut|destroy_zero|withdraw)\(' <<<"$fees_source"; then
-  echo 'fees.move must reach its four stored balances only through the approved receiver-style operations, never through aliases, module-form calls, or destructuring.' >&2
+  echo 'fees.move must reach its five stored balances only through the approved receiver-style operations, never through aliases, module-form calls, or destructuring.' >&2
   failures=$((failures + 1))
 fi
 
@@ -691,6 +691,10 @@ check_fee_function claim_protocol_fees \
 check_fee_function accrue \
   'fun accrue<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, mut meme_fee: Balance<Meme>, mut quote_fee: Balance<Quote>, protocol_fee_share_bps: Bps, ): (u64, u64, u64, u64)' \
   'creator_meme.join creator_quote.join protocol_meme.join protocol_quote.join '
+
+check_fee_function accrue_protocol_fees \
+  'fun accrue_protocol_fees<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, meme: Balance<Meme>, quote: Balance<Quote>, ): (u64, u64)' \
+  'protocol_meme.join protocol_quote.join '
 
 fees_accrue_body="$(move_production_body accrue <<<"$fees_facts")"
 
@@ -878,10 +882,9 @@ fi
 protocol_allocation_event_payload="$(sed -n -e '/^public struct ProtocolAllocationSet/,/^}/p' sources/lib/events.move)"
 
 if [[ -z "$protocol_allocation_event_payload" ]] \
-  || ! rg -q '^[[:space:]]+destination: address,' <<<"$protocol_allocation_event_payload" \
   || ! rg -q '^[[:space:]]+meme_bps: u64,' <<<"$protocol_allocation_event_payload" \
   || ! rg -q '^[[:space:]]+quote_bps: u64,' <<<"$protocol_allocation_event_payload" \
-  || rg -n '\b(config_id|sequence|schema_version|action_tag|nonce)\b' <<<"$protocol_allocation_event_payload"; then
+  || rg -n '\b(destination|config_id|sequence|schema_version|action_tag|nonce)\b' <<<"$protocol_allocation_event_payload"; then
   echo 'The one-time Blast allocation policy must emit its complete primitive replay fact without singleton or ordering noise.' >&2
   failures=$((failures + 1))
 fi
@@ -962,18 +965,21 @@ allocation_source="$(move_normalized_source <<<"$allocation_facts")"
 launch_facts="$(move_facts sources/launch.move)"
 launch_source="$(move_normalized_source <<<"$launch_facts")"
 
-# The allocation module is pure validation and exact largest-remainder arithmetic: Blast is
-# inserted first, each asset sums to 10,000, and leftover units go to the largest remainders.
+# The allocation module is pure validation and exact largest-remainder arithmetic: Blast has an
+# explicit route, each asset sums to 10,000, and leftover units go to the largest remainders.
 if [[ ! -f sources/allocation.move ]] \
   || [[ "$(move_production_type Recipient <<<"$allocation_facts")" != 'struct Recipient has copy, drop, store { destination: address, meme_bps: Bps, quote_bps: Bps, }' ]] \
-  || [[ "$(move_production_type AllocationPlan <<<"$allocation_facts")" != 'struct AllocationPlan has copy, drop, store { curve_meme_bps: Bps, lp_meme_bps: Bps, lp_quote_bps: Bps, recipients: vector<Recipient>, }' ]] \
-  || [[ "$(move_production_body plan <<<"$allocation_facts")" != 'assert!(curve_meme_bps.value() > 0 && lp_meme_bps.value() > 0, blast_fun::errors::invalid_shares!()); AllocationPlan { curve_meme_bps, lp_meme_bps, lp_quote_bps, recipients }' ]] \
-  || ! rg -Fq 'self.recipients.insert(protocol, 0);' <<<"$allocation_source" \
+  || [[ "$(move_production_type ProtocolAllocation <<<"$allocation_facts")" != 'struct ProtocolAllocation has copy, drop, store { meme_bps: Bps, quote_bps: Bps, }' ]] \
+  || [[ "$(move_production_type AllocationPlan <<<"$allocation_facts")" != 'struct AllocationPlan has copy, drop, store { curve_meme_bps: Bps, lp_meme_bps: Bps, lp_quote_bps: Bps, protocol_meme_bps: Bps, protocol_quote_bps: Bps, recipients: vector<Recipient>, }' ]] \
+  || [[ "$(move_production_body plan <<<"$allocation_facts")" != 'assert!(curve_meme_bps.value() > 0 && lp_meme_bps.value() > 0, blast_fun::errors::invalid_shares!()); AllocationPlan { curve_meme_bps, lp_meme_bps, lp_quote_bps, protocol_meme_bps: bps::new(0), protocol_quote_bps: bps::new(0), recipients, }' ]] \
+  || ! rg -Fq 'self.protocol_meme_bps = protocol.meme_bps; self.protocol_quote_bps = protocol.quote_bps;' <<<"$allocation_source" \
+  || ! rg -Fq 'let amounts = apportion(bps, supply, option::some(2));' <<<"$allocation_source" \
+  || ! rg -Fq 'let amounts = apportion(bps, reserve, option::some(1));' <<<"$allocation_source" \
   || [[ "$(count_occurrences '\) == constants::basis_points_denominator!\(\)' <<<"$allocation_source")" != 3 ]] \
   || ! rg -Fq 'remainder_a > remainder_b || (remainder_a == remainder_b && *a <= *b)' <<<"$allocation_source" \
   || ! rg -Fq 'let leftover = total - amounts.fold!(0, |sum, amount| sum + amount);' <<<"$allocation_source" \
   || rg -q '\b(UID|Balance|Coin|TxContext|transfer::|object::)\b' <<<"$allocation_source"; then
-  echo 'allocation.move must validate bounded plans with Blast first and apportion exactly, without custody, cap, or transfer effects.' >&2
+  echo 'allocation.move must validate bounded plans with an explicit Blast route and apportion exactly, without custody, cap, or transfer effects.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1388,26 +1394,30 @@ if [[ -e sources/fee_router.move || -e sources/lp_fee_policy.move ]] \
   failures=$((failures + 1))
 fi
 
-# T-010: one call under the stored adapter witness pays every recipient, hands off exactly the
-# pool share, disposes of the curve's unsold Meme, and commits Migrated. Only order anchors are
-# pinned.
-if [[ "$(launch_functions_containing 'self.migration_witness == type_name::with_original_ids<Witness>()')" != 'migrate treasury_cap_mut ' ]] \
+# T-010: one call under the stored adapter witness pays every project recipient, puts Blast's
+# allocation in a linear handoff, hands off exactly the pool share, disposes of the curve's unsold
+# Meme, and commits Migrated. Only order anchors are pinned.
+if [[ "$(launch_functions_containing 'self.migration_witness == type_name::with_original_ids<Witness>()')" != 'begin_protocol_fee_accrual migrate treasury_cap_mut ' ]] \
   || [[ "$(launch_functions_containing 'self.lifecycle = Lifecycle::Migrated;')" != 'migrate ' ]] \
   || [[ "$(move_production_type Migrated <<<"$events_facts")" != 'struct Migrated has copy, drop { launch_id: ID, meme: u64, quote: u64, disposed_meme: u64, total_supply_after: u64, }' ]] \
-  || [[ "$(move_production_signature migrate <<<"$launch_facts")" != 'fun migrate<Meme, Quote, Witness: drop>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, currency: &mut Currency<Meme>, _: Witness, ctx: &mut TxContext, ): (Balance<Meme>, Balance<Quote>)' ]] \
+  || [[ "$(move_production_type ProtocolFeeAccrual <<<"$launch_facts")" != 'struct ProtocolFeeAccrual<phantom Meme, phantom Quote, phantom Witness: drop> { launch_id: ID, meme: Balance<Meme>, quote: Balance<Quote>, }' ]] \
+  || [[ "$(move_production_signature migrate <<<"$launch_facts")" != 'fun migrate<Meme, Quote, Witness: drop>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, currency: &mut Currency<Meme>, _: Witness, ctx: &mut TxContext, ): (Balance<Meme>, Balance<Quote>, ProtocolFeeAccrual<Meme, Quote, Witness>)' ]] \
   || ! in_order \
     'package_version.assert_current();' \
     'Lifecycle::MigrationReady' \
     'self.migration_witness == type_name::with_original_ids<Witness>()' \
-    'self.allocated_meme.split(' \
-    'self.real_quote_reserve.split(' \
+    'events::migration_allocation_paid(' \
+    'let protocol_fees = ProtocolFeeAccrual{' \
+    'meme: self.allocated_meme.split(protocol_meme)' \
+    'quote: self.real_quote_reserve.split(protocol_quote)' \
     'self.allocated_meme.withdraw_all()' \
+    'self.real_quote_reserve.withdraw_all()' \
     'self.pending_burn.withdraw_all()' \
     'self.meme_reserve.withdraw_all()' \
     'self.lifecycle = Lifecycle::Migrated;' \
     'events::migrated(' \
     <<<"$(move_production_body migrate <<<"$launch_facts" | move_semantic_shape)"; then
-  echo 'T-010 must check the stored adapter witness, pay every recipient, hand off exactly the pool share, and dispose of the unsold Meme before committing Migrated.' >&2
+  echo 'T-010 must check the stored adapter witness, pay every project recipient, linearly hand Blast allocation to the adapter, hand off exactly the pool share, and dispose of the unsold Meme before committing Migrated.' >&2
   failures=$((failures + 1))
 fi
 
@@ -1448,11 +1458,13 @@ if ! events_follow_mutations sources/launch_ticket.move new 'LaunchTicket{' 'eve
     '.remove_dynamic_field' 'self.opening_round_bids = ' 'self.opening_round_quote.split(' \
     'events::opening_round_delivered(' \
   || ! events_follow_mutations sources/launch.move migrate \
-    'self.allocated_meme.split(' \
-    'self.real_quote_reserve.split(' \
+    'transfer::public_transfer(self.allocated_meme.split(meme).into_coin(ctx),destination);' \
+    'transfer::public_transfer(self.real_quote_reserve.split(quote).into_coin(ctx),destination);' \
     'events::migration_allocation_paid(' \
     'currency.burn_balance(' \
     'events::migrated(' \
+  || ! events_follow_mutations sources/launch.move settle_protocol_fee_accrual \
+    'self.fee_ledger.accrue_protocol_fees(' 'events::protocol_fees_accrued(' \
   || ! events_follow_mutations sources/launch_config.move set_protocol_allocation \
     'self.protocol_allocation = option::some(' 'events::protocol_allocation_set('; then
   echo 'Every replay-schema success event must follow the state write or native transfer it records.' >&2

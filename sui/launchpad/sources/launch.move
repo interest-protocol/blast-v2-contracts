@@ -74,6 +74,14 @@ public struct LaunchInitializer<phantom Meme, phantom Quote> {
     partner_id: Option<ID>,
 }
 
+/// Linear handoff that makes an admitted adapter settle every Blast-owned Meme and Quote amount
+/// into its launch's protocol fee ledger before the transaction can finish.
+public struct ProtocolFeeAccrual<phantom Meme, phantom Quote, phantom Witness: drop> {
+    launch_id: ID,
+    meme: Balance<Meme>,
+    quote: Balance<Quote>,
+}
+
 // === Public Functions ===
 
 /// Starts a launch for the adapter that constructs `Witness`, at the creator's pool tier in that
@@ -223,11 +231,11 @@ public fun finalize<Meme, Quote>(
         blast_fun::errors::meme_symbol_too_long!(),
     );
     // Trading closes with the reserve at the target, so the pool's share of it must be positive.
-    let (lp_quote, _) = allocation_plan.apportion_quote(graduation_target);
+    let (lp_quote, _, _) = allocation_plan.apportion_quote(graduation_target);
     assert!(lp_quote > 0, blast_fun::errors::invalid_graduation_target!());
     let ticket_id = ticket.id();
     let atomic_supply = launch_ticket::atomic_supply(ticket.decimals());
-    let (curve_meme, _, _) = allocation_plan.apportion_meme(atomic_supply);
+    let (curve_meme, _, _, _) = allocation_plan.apportion_meme(atomic_supply);
     let creation_fee_amount = creation_fee.value();
     let (mut meme, metadata_cap, creator, sell_burn_bps) = ticket.destroy(currency, atomic_supply);
 
@@ -302,6 +310,59 @@ public fun pool_tier<Meme, Quote>(self: &Launch<Meme, Quote>): (u32, u64) {
 
 public fun lp_fee_split<Meme, Quote>(self: &Launch<Meme, Quote>): FeeSplit {
     self.lp_fee_split
+}
+
+/// Begins a post-migration protocol-fee accrual under the launch's selected adapter. The
+/// no-ability result must return to `settle_protocol_fee_accrual` in the same transaction.
+public fun begin_protocol_fee_accrual<Meme, Quote, Witness: drop>(
+    self: &Launch<Meme, Quote>,
+    package_version: &PackageVersion,
+    _: Witness,
+): ProtocolFeeAccrual<Meme, Quote, Witness> {
+    package_version.assert_current();
+    assert!(self.lifecycle == Lifecycle::Migrated, blast_fun::errors::invalid_launch_lifecycle!());
+    assert!(
+        self.migration_witness == type_name::with_original_ids<Witness>(),
+        blast_fun::errors::invalid_migration_witness!(),
+    );
+
+    ProtocolFeeAccrual {
+        launch_id: self.id.to_inner(),
+        meme: balance::zero(),
+        quote: balance::zero(),
+    }
+}
+
+/// Adds Blast-owned Meme and Quote to an adapter's linear accrual handoff.
+public fun add_protocol_fees<Meme, Quote, Witness: drop>(
+    self: &mut ProtocolFeeAccrual<Meme, Quote, Witness>,
+    meme: Balance<Meme>,
+    quote: Balance<Quote>,
+) {
+    self.meme.join(meme);
+    self.quote.join(quote);
+}
+
+/// Settles one adapter accrual into this launch's protocol ledger. Zero accruals consume the
+/// handoff without mutating state or emitting an event.
+public fun settle_protocol_fee_accrual<Meme, Quote, Witness: drop>(
+    self: &mut Launch<Meme, Quote>,
+    package_version: &PackageVersion,
+    accrual: ProtocolFeeAccrual<Meme, Quote, Witness>,
+) {
+    package_version.assert_current();
+    let ProtocolFeeAccrual { launch_id, meme, quote } = accrual;
+    assert!(launch_id == self.id.to_inner(), blast_fun::errors::protocol_fee_accrual_mismatch!());
+    let (meme_amount, quote_amount) = (meme.value(), quote.value());
+    if (meme_amount == 0 && quote_amount == 0) {
+        meme.destroy_zero();
+        quote.destroy_zero();
+        return
+    };
+
+    self.fee_ledger.accrue_protocol_fees(meme, quote);
+
+    events::protocol_fees_accrued(self.id.to_inner(), meme_amount, quote_amount);
 }
 
 /// Authenticates the creator recipient and issues both creator capabilities.
@@ -650,15 +711,17 @@ public fun claim_protocol_fees_with_partner<Meme, Quote>(
     (meme, quote, sui)
 }
 
-/// Pays every recipient its allocation, burns the curve's unsold Meme and the pending sell-burn (or
-/// sends them to `@0x0` when the supply is fixed), and hands the pool's share to the stored adapter.
+/// Pays every project recipient, puts Blast's allocation in a linear protocol-fee accrual, burns
+/// the curve's unsold Meme and pending sell-burn (or sends them to `@0x0` when the supply is fixed),
+/// and hands the pool's share to the stored adapter. The adapter must add any venue residuals and
+/// settle the accrual into this launch before its transaction can finish.
 public fun migrate<Meme, Quote, Witness: drop>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
     currency: &mut Currency<Meme>,
     _: Witness,
     ctx: &mut TxContext,
-): (Balance<Meme>, Balance<Quote>) {
+): (Balance<Meme>, Balance<Quote>, ProtocolFeeAccrual<Meme, Quote, Witness>) {
     package_version.assert_current();
     assert!(
         self.lifecycle == Lifecycle::MigrationReady,
@@ -670,8 +733,9 @@ public fun migrate<Meme, Quote, Witness: drop>(
     );
 
     let plan = self.allocation_plan;
-    let (_, lp_meme, recipient_meme) = plan.apportion_meme(self.atomic_supply);
-    let (lp_quote, recipient_quote) = plan.apportion_quote(self.real_quote_reserve.value());
+    let (_, lp_meme, protocol_meme, recipient_meme) = plan.apportion_meme(self.atomic_supply);
+    let (lp_quote, protocol_quote, recipient_quote) = plan
+        .apportion_quote(self.real_quote_reserve.value());
     let destinations = plan.destinations();
     destinations.length().do!(|i| {
         let (destination, meme, quote) = (destinations[i], recipient_meme[i], recipient_quote[i]);
@@ -686,6 +750,11 @@ public fun migrate<Meme, Quote, Witness: drop>(
         };
         events::migration_allocation_paid(self.id.to_inner(), destination, meme, quote);
     });
+    let protocol_fees = ProtocolFeeAccrual {
+        launch_id: self.id.to_inner(),
+        meme: self.allocated_meme.split(protocol_meme),
+        quote: self.real_quote_reserve.split(protocol_quote),
+    };
     let meme = self.allocated_meme.withdraw_all();
     let quote = self.real_quote_reserve.withdraw_all();
 
@@ -704,7 +773,7 @@ public fun migrate<Meme, Quote, Witness: drop>(
         currency.total_supply().destroy_some(),
     );
 
-    (meme, quote)
+    (meme, quote, protocol_fees)
 }
 
 /// Aborts unless `curve_fee_cap` is the curve-fee cap this launch currently honors.

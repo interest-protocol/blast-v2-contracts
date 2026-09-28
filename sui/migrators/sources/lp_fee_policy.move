@@ -5,26 +5,21 @@
 ///
 /// Bonding-curve trades read the launchpad's `RuntimeConfig`; migrated positions read this
 /// object instead, so the two policies change independently. Every collection reads it live:
-/// the coin's own pair when an administrator set one, otherwise the default pair, and the
-/// current payout destination.
+/// the coin's own pair when an administrator set one, otherwise the default pair. Blast's share
+/// accrues in the launch's protocol ledger.
 module blast_fun_migrators::lp_fee_policy;
 
 // === Errors ===
 
 #[error(code = 0)]
-const EProtocolDestinationUnchanged: vector<u8> = b"Protocol destination must be a new nonzero address.";
-
-#[error(code = 1)]
 const EProtocolFeeSharesUnchanged: vector<u8> = b"LP-fee share update must change the stored pair.";
 
 // === Public Types ===
 
-/// Shared singleton holding independent Meme/Quote Blast shares and the address every vault pays
-/// the protocol share to. Per-coin entries use original Meme type identity and require no
-/// iteration or cardinality cap.
+/// Shared singleton holding independent Meme/Quote Blast shares. Per-coin entries use original
+/// Meme type identity and require no iteration or cardinality cap.
 public struct LpFeePolicy has key {
     id: UID,
-    destination: address,
     defaults: SharePair,
     coins: Table<TypeName, SharePair>,
 }
@@ -42,25 +37,6 @@ fun init(ctx: &mut TxContext) {
 }
 
 // === Public Functions ===
-
-/// Redirects every later protocol share payout.
-public fun set_protocol_destination(
-    self: &mut LpFeePolicy,
-    migrators_version: &MigratorsVersion,
-    _: &AdminWitness<TreasuryAdmin>,
-    destination: address,
-) {
-    migrators_version.assert_current();
-    assert!(
-        destination != @0x0 && destination != self.destination,
-        EProtocolDestinationUnchanged,
-    );
-    let old_destination = self.destination;
-
-    self.destination = destination;
-
-    blast_events::lp_fee_destination_changed(old_destination, destination);
-}
 
 /// Changes both default shares for every coin without its own pair, from its next collection.
 public fun set_default_shares(
@@ -135,12 +111,7 @@ public fun clear_coin_shares<Meme>(
 
 // === Package Functions ===
 
-/// Returns the address paid the protocol share of every collection.
-public(package) fun protocol_destination(self: &LpFeePolicy): address {
-    self.destination
-}
-
-/// Returns the Meme and Quote shares a collection for `Meme` pays Blast now.
+/// Returns the Meme and Quote shares a collection for `Meme` accrues to Blast now.
 public(package) fun shares<Meme>(self: &LpFeePolicy): (Bps, Bps) {
     let meme = type_name::with_original_ids<Meme>();
     let shares = if (self.coins.contains(meme)) self.coins[meme] else self.defaults;
@@ -150,11 +121,9 @@ public(package) fun shares<Meme>(self: &LpFeePolicy): (Bps, Bps) {
 
 // === Private Functions ===
 
-/// The publisher receives the protocol share until an administrator redirects it.
 fun new(ctx: &mut TxContext): LpFeePolicy {
     LpFeePolicy {
         id: object::new(ctx),
-        destination: ctx.sender(),
         defaults: SharePair { meme_bps: bps::new(0), quote_bps: bps::new(0) },
         coins: table::new(ctx),
     }
@@ -190,7 +159,7 @@ public fun default_shares_for_testing(self: &LpFeePolicy): (Bps, Bps) {
 
 use blast_admin::blast_acl::AdminWitness;
 
-use blast_fun::{blast_fun_domain::{FeeAdmin, TreasuryAdmin}, bps::{Self, Bps}};
+use blast_fun::{blast_fun_domain::FeeAdmin, bps::{Self, Bps}};
 
 use blast_fun_migrators::{blast_events, package_version::PackageVersion as MigratorsVersion};
 

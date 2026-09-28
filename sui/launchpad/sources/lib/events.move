@@ -6,9 +6,8 @@ module blast_fun::events;
 
 // === Public Types ===
 
-/// Blast's one-time share of every launch's Meme supply and final Quote reserve.
+/// Blast's one-time fee share of every launch's Meme supply and final Quote reserve.
 public struct ProtocolAllocationSet has copy, drop {
-    destination: address,
     meme_bps: u64,
     quote_bps: u64,
 }
@@ -211,10 +210,17 @@ public struct ProtocolFeesClaimed has copy, drop {
     partner_sui_amount: u64,
 }
 
+/// Post-creation Meme and Quote fees joined the launch's protocol ledger.
+public struct ProtocolFeesAccrued has copy, drop {
+    launch_id: ID,
+    meme_amount: u64,
+    quote_amount: u64,
+}
+
 // === Package Functions ===
 
-public(package) fun protocol_allocation_set(destination: address, meme_bps: u64, quote_bps: u64) {
-    emit(ProtocolAllocationSet { destination, meme_bps, quote_bps });
+public(package) fun protocol_allocation_set(meme_bps: u64, quote_bps: u64) {
+    emit(ProtocolAllocationSet { meme_bps, quote_bps });
 }
 
 public(package) fun meme_decimals_set(decimals: u8, allowed: bool) {
@@ -458,6 +464,14 @@ public(package) fun protocol_fees_claimed(
         partner_quote_amount,
         partner_sui_amount,
     });
+}
+
+public(package) fun protocol_fees_accrued(
+    launch_id: ID,
+    meme_amount: u64,
+    quote_amount: u64,
+) {
+    emit(ProtocolFeesAccrued { launch_id, meme_amount, quote_amount });
 }
 
 // === Imports ===

@@ -697,12 +697,13 @@ fun migrate(self: &mut OpeningRoundFixture, launch: &mut Launch<LAUNCH_OPENING_R
     let mut currency = self
         .scenario
         .take_from_address<Currency<LAUNCH_OPENING_ROUND_TESTS>>(COIN_REGISTRY);
-    let (meme, quote) = launch.migrate(
+    let (meme, quote, protocol_fees) = launch.migrate(
         &self.package_version,
         &mut currency,
         TEST_MIGRATION_WITNESS(),
         self.scenario.ctx(),
     );
+    launch.settle_protocol_fee_accrual(&self.package_version, protocol_fees);
     destroy(meme);
     destroy(quote);
     test_scenario::return_to_address(COIN_REGISTRY, currency);
@@ -737,7 +738,6 @@ fun start(): OpeningRoundFixture {
     config.set_protocol_allocation(
         &package_version,
         &blast_acl::witness_for_testing<TreasuryAdmin>(),
-        PROTOCOL_ADMIN,
         bps::new(0),
         bps::new(0),
     );

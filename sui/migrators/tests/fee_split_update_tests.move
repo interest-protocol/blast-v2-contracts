@@ -14,7 +14,7 @@ module blast_fun_migrators::fee_split_update_tests;
 
 // === Constants ===
 
-/// Publishes the policy, so it is the protocol destination.
+/// Publishes the policy and starts each fixture.
 const PROTOCOL: address = @0xB1A57;
 
 const ADMIN: address = @0xAD;
@@ -65,7 +65,6 @@ public struct ExpectedCollection has copy, drop {
     generation: u64,
     gross_meme: u64,
     gross_quote: u64,
-    protocol_destination: address,
     protocol_meme: u64,
     protocol_quote: u64,
     creator_meme: u64,
@@ -125,7 +124,6 @@ fun settled_update_splits_accrued_fees_under_the_old_split_then_commits_the_next
             generation: 0,
             gross_meme: 10,
             gross_quote: 20,
-            protocol_destination: PROTOCOL,
             protocol_meme: 0,
             protocol_quote: 0,
             creator_meme: 5,
@@ -167,7 +165,6 @@ fun settled_update_splits_accrued_fees_under_the_old_split_then_commits_the_next
             generation: 1,
             gross_meme: 3,
             gross_quote: 4,
-            protocol_destination: PROTOCOL,
             protocol_meme: 0,
             protocol_quote: 0,
             creator_meme: 0,
@@ -459,8 +456,6 @@ fun start(fee_split: FeeSplit): FeeSplitFixture {
         object::id_from_address(POOL),
         position,
         1,
-        balance::zero(),
-        balance::zero(),
         scenario.ctx(),
     );
     launch.share(&clock);
@@ -530,7 +525,11 @@ fun collect_exact_position(self: &mut FeeSplitFixture) {
     let meme = position.fee_meme.withdraw_all();
     let quote = position.fee_quote.withdraw_all();
 
-    self.vault.split_fees(&self.policy, &mut self.currency, meme, quote, self.scenario.ctx());
+    let (protocol_meme, protocol_quote) = self
+        .vault
+        .split_fees(&self.policy, &mut self.currency, meme, quote, self.scenario.ctx());
+    protocol_meme.destroy_zero();
+    protocol_quote.destroy_zero();
     self.compound();
 }
 

@@ -184,7 +184,6 @@ fun start(): BluefinFixture {
     config.set_protocol_allocation(
         &version,
         &blast_acl::witness_for_testing<TreasuryAdmin>(),
-        ADMIN,
         bps::new(0),
         bps::new(0),
     );

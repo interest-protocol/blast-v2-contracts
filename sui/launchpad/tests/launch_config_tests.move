@@ -98,21 +98,19 @@ fun package_init_creates_launch_config_with_six_and_nine_decimals() {
 }
 
 #[test]
-fun protocol_allocation_is_set_once_and_emits_destination_and_rates() {
+fun protocol_allocation_is_set_once_and_emits_rates() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        f.set_protocol_allocation(PROTOCOL_ADMIN, 500, 250);
+        f.set_protocol_allocation(500, 250);
 
-        let destination = PROTOCOL_ADMIN;
-        let mut expected = bcs::to_bytes(&destination);
-        expected.append(u64_bytes(500));
+        let mut expected = u64_bytes(500);
         expected.append(u64_bytes(250));
 
         assert_eq!(bcs::to_bytes(&collect_one<events::ProtocolAllocationSet>()), expected);
         assert_eq!(
             f.config.protocol_allocation(),
-            allocation::recipient(PROTOCOL_ADMIN, bps::new(500), bps::new(250)),
+            allocation::protocol_allocation(bps::new(500), bps::new(250)),
         );
     });
 
@@ -124,11 +122,11 @@ fun protocol_allocation_accepts_zero_shares() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        f.set_protocol_allocation(PROTOCOL_ADMIN, 0, 0);
+        f.set_protocol_allocation(0, 0);
 
         assert_eq!(
             f.config.protocol_allocation(),
-            allocation::recipient(PROTOCOL_ADMIN, bps::new(0), bps::new(0)),
+            allocation::protocol_allocation(bps::new(0), bps::new(0)),
         );
     });
 
@@ -140,11 +138,11 @@ fun protocol_allocation_maxima_leave_one_unit_for_the_curve_and_the_pool() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        f.set_protocol_allocation(PROTOCOL_ADMIN, 9_998, 9_999);
+        f.set_protocol_allocation(9_998, 9_999);
 
         assert_eq!(
             f.config.protocol_allocation(),
-            allocation::recipient(PROTOCOL_ADMIN, bps::new(9_998), bps::new(9_999)),
+            allocation::protocol_allocation(bps::new(9_998), bps::new(9_999)),
         );
     });
 
@@ -179,24 +177,9 @@ fun protocol_allocation_cannot_be_reset() {
     let mut fixture = start();
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        f.set_protocol_allocation(PROTOCOL_ADMIN, 0, 0);
-        f.set_protocol_allocation(@0x123, 1, 1);
+        f.set_protocol_allocation(0, 0);
+        f.set_protocol_allocation(1, 1);
     });
-
-    fixture.end();
-}
-
-#[test]
-#[
-    expected_failure(
-        abort_code = blast_fun::errors::EInvalidDestination,
-        location = blast_fun::allocation,
-    ),
-]
-fun protocol_allocation_rejects_zero_destination() {
-    let mut fixture = start();
-
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| f.set_protocol_allocation(@0x0, 0, 0));
 
     fixture.end();
 }
@@ -211,7 +194,7 @@ fun protocol_allocation_rejects_zero_destination() {
 fun protocol_allocation_rejects_meme_9999() {
     let mut fixture = start();
 
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| f.set_protocol_allocation(PROTOCOL_ADMIN, 9_999, 0));
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| f.set_protocol_allocation(9_999, 0));
 
     fixture.end();
 }
@@ -227,7 +210,7 @@ fun protocol_allocation_rejects_meme_10000_at_policy_surface() {
     let mut fixture = start();
 
     // Bps admits 10,000 inclusively; the stricter allocation policy owns this abort.
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| f.set_protocol_allocation(PROTOCOL_ADMIN, 10_000, 0));
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| f.set_protocol_allocation(10_000, 0));
 
     fixture.end();
 }
@@ -242,7 +225,7 @@ fun protocol_allocation_rejects_meme_10000_at_policy_surface() {
 fun protocol_allocation_cannot_leave_no_pool_quote() {
     let mut fixture = start();
 
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| f.set_protocol_allocation(PROTOCOL_ADMIN, 0, 10_000));
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| f.set_protocol_allocation(0, 10_000));
 
     fixture.end();
 }
@@ -260,7 +243,7 @@ fun stale_package_version_rejects_protocol_allocation_before_its_bounds() {
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         f.package_version.set_for_testing(2);
 
-        f.set_protocol_allocation(PROTOCOL_ADMIN, 10_000, 10_000);
+        f.set_protocol_allocation(10_000, 10_000);
     });
 
     fixture.end();
@@ -1250,11 +1233,9 @@ fun adapter_admin(): AdminWitness<AdapterAdmin> {
     blast_acl::witness_for_testing()
 }
 
-/// Sets Blast's allocation as the treasury admin, so bound tests state only the destination and
-/// rates.
+/// Sets Blast's allocation as the treasury admin.
 fun set_protocol_allocation(
     self: &mut ConfigFixture,
-    destination: address,
     meme_bps: u64,
     quote_bps: u64,
 ) {
@@ -1265,7 +1246,6 @@ fun set_protocol_allocation(
         .set_protocol_allocation(
             &self.package_version,
             &admin_witness,
-            destination,
             bps::new(meme_bps),
             bps::new(quote_bps),
         );

@@ -56,7 +56,7 @@ const TARGET: u64 = 25_000_000;
 /// One atom over a round target gives every distinct Quote share a distinct remainder, so
 /// apportionment ranks them all.
 const MAXIMUM_TARGET: u64 = 25_000_001;
-/// Allocation recipients per launch, Blast's included.
+/// Project allocation recipients per launch.
 const MAX_PLAN_RECIPIENTS: usize = 16;
 const MAX_FEE_RECIPIENTS: usize = 16;
 const CURVE_BPS: u64 = 7_000;
@@ -72,7 +72,6 @@ const BID: u64 = 25_000;
 /// Far below the graduation target, so the creator's purchase before sharing refunds nothing.
 const BUY_BEFORE_SHARE: u64 = 1_000_000;
 
-const PROTOCOL: ObjectID = address(&[0xAD]);
 const BENEFICIARY: ObjectID = address(&[0xBE]);
 
 const fn address(suffix: &[u8]) -> ObjectID {
@@ -85,8 +84,8 @@ const fn address(suffix: &[u8]) -> ObjectID {
     ObjectID::new(bytes)
 }
 
-/// A zero Blast allocation: the Blast-only plan and sixteen recipients open, and a seventeenth
-/// aborts at the allocation capacity check, committing nothing.
+/// A zero Blast allocation: sixteen project recipients open, and a seventeenth aborts at the
+/// allocation capacity check, committing nothing.
 #[test]
 fn zero_blast_allocation_through_sixteen_recipients_and_maximum_shapes_fit_protocol_limits() -> Result<()> {
     let mut w = World::new("launch_measurements_zero_blast", [0, 0])?;
@@ -97,7 +96,7 @@ fn zero_blast_allocation_through_sixteen_recipients_and_maximum_shapes_fit_proto
     w.write()
 }
 
-/// The same matrix with a nonzero Blast allocation, which every plan pays first.
+/// The same matrix with a nonzero Blast allocation recorded separately from project recipients.
 #[test]
 fn blast_allocation_plans_and_maximum_shapes_fit_protocol_limits() -> Result<()> {
     let mut w = World::new("launch_measurements_blast", [500, 400])?;
@@ -111,7 +110,7 @@ fn blast_allocation_plans_and_maximum_shapes_fit_protocol_limits() -> Result<()>
 /// One launch-opening PTB.
 #[derive(Clone, Copy, Debug)]
 struct Shape {
-    /// Allocation recipients, Blast's included.
+    /// Project allocation recipients.
     plan_recipients: usize,
     fee_recipients: usize,
     target: u64,
@@ -167,6 +166,8 @@ struct LaunchCreated {
     _curve_meme_bps: u64,
     _lp_meme_bps: u64,
     _lp_quote_bps: u64,
+    protocol_meme_bps: u64,
+    protocol_quote_bps: u64,
     plan_recipients: Vec<(SuiAddress, u64, u64)>,
     opening_round_ms: u64,
     _creation_fee: u64,
@@ -309,7 +310,6 @@ impl World {
             vec![config_arg, version_arg, fee_admin, fee, fee],
         );
         let [meme_bps, quote_bps] = protocol;
-        let destination = builder.pure(SuiAddress::from(PROTOCOL))?;
         let meme_bps = w.bps(&mut builder, meme_bps)?;
         let quote_bps = w.bps(&mut builder, quote_bps)?;
         call(
@@ -318,7 +318,7 @@ impl World {
             "launch_config",
             "set_protocol_allocation",
             vec![],
-            vec![config_arg, version_arg, treasury_admin, destination, meme_bps, quote_bps],
+            vec![config_arg, version_arg, treasury_admin, meme_bps, quote_bps],
         );
         w.h.execute(builder.finish())?.assert_success();
 
@@ -327,8 +327,8 @@ impl World {
 
     /// Every boundary and maximum transaction at one precision.
     fn measure_family(&mut self, decimals: u8) -> Result<()> {
-        // A seventeenth recipient aborts when finalization adds Blast's allocation and commits
-        // nothing; the same ticket then opens the smallest valid plan.
+        // A seventeenth project recipient aborts and commits nothing; the same ticket then opens
+        // the smallest valid plan.
         let ticket = self.publish_template(decimals, Some("generated_package_published"))?;
         let over = Shape::maximum(MAX_PLAN_RECIPIENTS + 1);
         let pt = self.open(&ticket, over)?;
@@ -433,7 +433,11 @@ impl World {
         assert_eq!(created.opening_round_ms, shape.opening_round_ms, "{name}: opening round");
         assert_eq!(created.plan_recipients.len(), shape.plan_recipients, "{name}: plan recipients");
         let [meme_bps, quote_bps] = self.protocol;
-        assert_eq!(created.plan_recipients[0], (PROTOCOL.into(), meme_bps, quote_bps), "{name}: Blast first");
+        assert_eq!(
+            (created.protocol_meme_bps, created.protocol_quote_bps),
+            (meme_bps, quote_bps),
+            "{name}: Blast allocation",
+        );
         assert_eq!((created.pool_tick_spacing, created.pool_fee_rate), (POOL_TICK_SPACING, POOL_FEE_RATE), "{name}");
         let (creator_bps, auto_lp_bps, rewards_bps, burn_bps, recipients) = fee_split(shape.fee_recipients);
         assert_eq!(
@@ -587,18 +591,18 @@ impl World {
         Ok(builder.finish())
     }
 
-    /// Builds the creator's plan for `plan_recipients` recipients, Blast's included, which
-    /// finalization adds first: 70% of the Meme on the curve, and the pool and each creator
-    /// recipient sharing the rest of each asset with distinct weights rising in that order.
+    /// Builds the creator's plan for `plan_recipients` project recipients: 70% of the Meme on the
+    /// curve, and the pool and each creator recipient sharing the non-protocol remainder of each
+    /// asset with distinct weights rising in that order.
     fn plan(&self, builder: &mut ProgrammableTransactionBuilder, plan_recipients: usize) -> Result<Argument> {
         let [protocol_meme, protocol_quote] = self.protocol;
-        let meme = distinct_weights(plan_recipients, 10_000 - CURVE_BPS - protocol_meme);
-        let quote = distinct_weights(plan_recipients, 10_000 - protocol_quote);
+        let meme = distinct_weights(plan_recipients + 1, 10_000 - CURVE_BPS - protocol_meme);
+        let quote = distinct_weights(plan_recipients + 1, 10_000 - protocol_quote);
         let mut recipients = Vec::new();
-        for i in 1..plan_recipients {
+        for i in 0..plan_recipients {
             let destination = builder.pure(SuiAddress::from(address(&[0xC1, i as u8])))?;
-            let meme_bps = self.bps(builder, meme[i])?;
-            let quote_bps = self.bps(builder, quote[i])?;
+            let meme_bps = self.bps(builder, meme[i + 1])?;
+            let quote_bps = self.bps(builder, quote[i + 1])?;
             recipients.push(call(builder, self.blast, "allocation", "recipient", vec![], vec![
                 destination,
                 meme_bps,
