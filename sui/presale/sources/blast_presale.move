@@ -32,11 +32,15 @@ public struct PresaleCap has key, store {
     presale_id: ID,
 }
 
+/// One immutable share of the fixed token supply, paid only after migration.
+public struct RecipientAllocation has copy, drop, store {
+    recipient: address,
+    bps: u64,
+    amount: u64,
+}
+
 /// Dynamic-field name for one wallet's undelivered commitment.
 public struct CommitmentKey(address) has copy, drop, store;
-
-/// Type-derived name for the discoverable TreasuryCap held by one presale.
-public struct TreasuryCapKey() has copy, drop, store;
 
 /// One wallet's Quote commitment and immutable cap.
 public struct Commitment has copy, drop, store {
@@ -46,11 +50,10 @@ public struct Commitment has copy, drop, store {
 
 /// One standalone presale and its complete custody until migration or refund.
 ///
-/// The minted presale and LP allocations, the SaleToken TreasuryCap, and every
-/// commitment are escrowed. A funded migration releases exactly `raise_target`
-/// Quote and the LP allocation to the configured venue adapter, then opens
-/// proportional token and overflow-refund claims. If the raise is missed, or LP
-/// is not migrated by its deadline, every commitment is refunded.
+/// The complete fixed or burn-only token supply is apportioned at creation.
+/// Presale, LP, and additional recipient allocations stay escrowed until a
+/// funded migration atomically releases them. If the raise is missed, or LP is
+/// not migrated by its deadline, every commitment is refunded.
 public struct Presale<phantom SaleToken, phantom Quote> has key {
     id: UID,
     presale_cap_id: ID,
@@ -73,6 +76,8 @@ public struct Presale<phantom SaleToken, phantom Quote> has key {
     token_allocation: u64,
     sale_tokens: Balance<SaleToken>,
     liquidity_tokens: Balance<SaleToken>,
+    recipient_allocations: vector<RecipientAllocation>,
+    recipient_tokens: Balance<SaleToken>,
 }
 
 // === Public Functions ===
@@ -99,6 +104,13 @@ public fun allowlisted_eligibility(root: vector<u8>, leaf_count: u64): Eligibili
     );
 
     EligibilityPolicy::Allowlisted { root, leaf_count }
+}
+
+/// Configures one additional recipient's share of the fixed token supply.
+public fun recipient_allocation(recipient: address, bps: u64): RecipientAllocation {
+    assert!(recipient != @0x0 && bps > 0 && bps <= BASIS_POINTS, EInvalidTokenAllocation);
+
+    RecipientAllocation { recipient, bps, amount: 0 }
 }
 
 /// Shares a newly created presale and starts its fixed public window now.
@@ -259,50 +271,34 @@ public fun claim<SaleToken, Quote>(
     });
 }
 
-/// Returns the TreasuryCap to the creator authority after successful migration.
-public fun claim_treasury_cap<SaleToken, Quote>(
-    self: &mut Presale<SaleToken, Quote>,
-    cap: &PresaleCap,
-): TreasuryCap<SaleToken> {
-    assert!(self.lifecycle == Lifecycle::Migrated, EInvalidLifecycle);
-    self.assert_cap(cap);
-    let treasury_cap = self.remove_treasury_cap();
-
-    event::emit(TreasuryCapClaimed<SaleToken, Quote> {
-        presale_id: self.id.to_inner(),
-        treasury_cap_id: object::id(&treasury_cap),
-    });
-
-    treasury_cap
-}
-
-/// Recovers the TreasuryCap and every minted token allocation after
-/// cancellation. Quote is never returned here and remains reserved for refunds.
+/// Recovers every escrowed token allocation after cancellation. Quote is never
+/// returned here and remains reserved for participant refunds.
 public fun reclaim_cancelled_assets<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
     cap: &PresaleCap,
     ctx: &mut TxContext,
-): (TreasuryCap<SaleToken>, Coin<SaleToken>, Coin<SaleToken>) {
+): (Coin<SaleToken>, Coin<SaleToken>, Coin<SaleToken>) {
     assert!(self.lifecycle == Lifecycle::Cancelled, EInvalidLifecycle);
     self.assert_cap(cap);
     assert!(
         self.sale_tokens.value() > 0
-            || self.liquidity_tokens.value() > 0,
+            || self.liquidity_tokens.value() > 0
+            || self.recipient_tokens.value() > 0,
         ENothingToReclaim,
     );
 
-    let treasury_cap = self.remove_treasury_cap();
     let sale_tokens = self.sale_tokens.withdraw_all().into_coin(ctx);
     let liquidity_tokens = self.liquidity_tokens.withdraw_all().into_coin(ctx);
+    let recipient_tokens = self.recipient_tokens.withdraw_all().into_coin(ctx);
 
     event::emit(CancelledAssetsReclaimed<SaleToken, Quote> {
         presale_id: self.id.to_inner(),
-        treasury_cap_id: object::id(&treasury_cap),
         sale_tokens: sale_tokens.value(),
         liquidity_tokens: liquidity_tokens.value(),
+        recipient_tokens: recipient_tokens.value(),
     });
 
-    (treasury_cap, sale_tokens, liquidity_tokens)
+    (sale_tokens, liquidity_tokens, recipient_tokens)
 }
 
 /// Destroys the creator capability after a cancelled sale has returned every creator asset.
@@ -311,7 +307,8 @@ public fun destroy_cap<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, cap: 
     assert!(
         self.lifecycle == Lifecycle::Cancelled
             && self.sale_tokens.value() == 0
-            && self.liquidity_tokens.value() == 0,
+            && self.liquidity_tokens.value() == 0
+            && self.recipient_tokens.value() == 0,
         EInvalidLifecycle,
     );
 
@@ -321,14 +318,16 @@ public fun destroy_cap<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, cap: 
 
 // === Package Functions ===
 
-/// Requires a zero-supply SaleToken TreasuryCap, derives the presale and LP
-/// allocations from the configured token supply and BPS, and mints only those
-/// allocations into escrow.
+/// Mints and apportions the complete token supply, then irreversibly makes it
+/// fixed or burn-only before returning the presale.
 public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
     mut treasury_cap: TreasuryCap<SaleToken>,
+    currency: &mut Currency<SaleToken>,
     token_supply: u64,
     token_allocation_bps: u64,
     liquidity_token_allocation_bps: u64,
+    mut recipient_allocations: vector<RecipientAllocation>,
+    burnable: bool,
     raise_target: u64,
     duration_ms: u64,
     liquidity_window_ms: u64,
@@ -345,34 +344,65 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         EInvalidAssetPair,
     );
     assert!(treasury_cap.total_supply() == 0, EInitialSupplyNotZero);
+    assert!(
+        currency.treasury_cap_id().contains(&object::id(&treasury_cap)),
+        ETreasuryCapMismatch,
+    );
+    assert!(currency.total_supply().is_none(), EInvalidSupplyState);
     assert!(raise_target > 0, EInvalidRaiseTarget);
     assert!(
         token_supply > 0
             && token_allocation_bps > 0
             && token_allocation_bps <= BASIS_POINTS
             && liquidity_token_allocation_bps > 0
-            && liquidity_token_allocation_bps <= BASIS_POINTS - token_allocation_bps,
+            && recipient_allocations.length() <= MAX_RECIPIENTS,
+        EInvalidTokenAllocation,
+    );
+    recipient_allocations.do_ref!(|allocation| assert!(
+        allocation.recipient != @0x0
+            && allocation.bps > 0
+            && allocation.bps <= BASIS_POINTS
+            // ponytail: O(n²) duplicate validation is bounded by MAX_RECIPIENTS.
+            && recipient_allocations.count!(|other| other.recipient == allocation.recipient) == 1,
+        EInvalidTokenAllocation,
+    ));
+    assert!(
+        recipient_allocations.fold!(
+            token_allocation_bps + liquidity_token_allocation_bps,
+            |sum, allocation| sum + allocation.bps,
+        ) == BASIS_POINTS,
         EInvalidTokenAllocation,
     );
     assert!(creator_fee_bps <= BASIS_POINTS, EInvalidFeeSplit);
     assert!(rewards_fee_bps == BASIS_POINTS - creator_fee_bps, EInvalidFeeSplit);
     assert!(duration_ms > 0 && liquidity_window_ms > 0, EInvalidWindow);
 
-    let token_allocation = token_supply.mul_div(token_allocation_bps, BASIS_POINTS);
-    let liquidity_token_allocation = token_supply.mul_div(
-        liquidity_token_allocation_bps,
-        BASIS_POINTS,
-    );
+    let mut shares = vector[token_allocation_bps, liquidity_token_allocation_bps];
+    recipient_allocations.do_ref!(|allocation| shares.push_back(allocation.bps));
+    let amounts = apportion(shares, token_supply);
+    let token_allocation = amounts[0];
+    let liquidity_token_allocation = amounts[1];
     assert!(token_allocation > 0 && liquidity_token_allocation > 0, EInvalidTokenAllocation);
-    let sale_tokens = treasury_cap.mint_balance(token_allocation);
-    let liquidity_tokens = treasury_cap.mint_balance(liquidity_token_allocation);
+    let mut tokens = treasury_cap.mint_balance(token_supply);
+    let sale_tokens = tokens.split(token_allocation);
+    let liquidity_tokens = tokens.split(liquidity_token_allocation);
+    let mut i = 0;
+    recipient_allocations.do_mut!(|allocation| {
+        allocation.amount = amounts[i + 2];
+        assert!(allocation.amount > 0, EInvalidTokenAllocation);
+        i = i + 1;
+    });
+    let recipient_tokens = tokens;
     let treasury_cap_id = object::id(&treasury_cap);
+    if (burnable) currency.make_supply_burn_only(treasury_cap)
+    else currency.make_supply_fixed(treasury_cap);
     let id = object::new(ctx);
     let presale_id = id.to_inner();
     let cap = PresaleCap { id: object::new(ctx), presale_id };
     let presale_cap_id = cap.id.to_inner();
     let migration_witness = type_name::with_original_ids<MigrationWitness>();
-    let mut presale = Presale {
+    let recipient_count = recipient_allocations.length();
+    let presale = Presale {
         id,
         presale_cap_id,
         lifecycle: Lifecycle::Pending,
@@ -394,8 +424,9 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         token_allocation,
         sale_tokens,
         liquidity_tokens,
+        recipient_allocations,
+        recipient_tokens,
     };
-    presale.id.add_dynamic_object_field(TreasuryCapKey(), treasury_cap);
 
     event::emit(PresaleCreated<SaleToken, Quote> {
         presale_id,
@@ -404,6 +435,8 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         token_supply,
         token_allocation_bps,
         liquidity_token_allocation_bps,
+        recipient_count,
+        burnable,
         raise_target,
         duration_ms,
         liquidity_window_ms,
@@ -425,6 +458,7 @@ public(package) fun migrate<SaleToken, Quote, MigrationWitness: drop>(
     self: &mut Presale<SaleToken, Quote>,
     _: MigrationWitness,
     clock: &Clock,
+    ctx: &mut TxContext,
 ): (Balance<SaleToken>, Balance<Quote>) {
     assert!(self.lifecycle == Lifecycle::Funded, EInvalidLifecycle);
     assert!(clock.timestamp_ms() < self.liquidity_deadline_ms, ELiquidityDeadlinePassed);
@@ -435,6 +469,20 @@ public(package) fun migrate<SaleToken, Quote, MigrationWitness: drop>(
 
     let quote = self.quote.split(self.raise_target);
     let liquidity_tokens = self.liquidity_tokens.withdraw_all();
+    let recipient_tokens = self.recipient_tokens.value();
+    let mut i = 0;
+    while (i < self.recipient_allocations.length()) {
+        let RecipientAllocation { recipient, bps, amount } = self.recipient_allocations[i];
+        transfer::public_transfer(self.recipient_tokens.split(amount).into_coin(ctx), recipient);
+        event::emit(RecipientAllocated<SaleToken, Quote> {
+            presale_id: self.id.to_inner(),
+            recipient,
+            bps,
+            tokens: amount,
+        });
+        i = i + 1;
+    };
+    assert!(self.recipient_tokens.value() == 0, EInvalidTokenAllocation);
     self.lifecycle = Lifecycle::Migrated;
 
     event::emit(PresaleMigrated<SaleToken, Quote> {
@@ -442,6 +490,7 @@ public(package) fun migrate<SaleToken, Quote, MigrationWitness: drop>(
         migration_witness: self.migration_witness,
         quote: self.raise_target,
         liquidity_tokens: liquidity_tokens.value(),
+        recipient_tokens,
     });
 
     (liquidity_tokens, quote)
@@ -474,10 +523,23 @@ fun assert_open<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, clock: &Cloc
     assert!(clock.timestamp_ms() < self.end_ms, EPresaleEnded);
 }
 
-fun remove_treasury_cap<SaleToken, Quote>(
-    self: &mut Presale<SaleToken, Quote>,
-): TreasuryCap<SaleToken> {
-    self.id.remove_dynamic_object_field(TreasuryCapKey())
+/// Largest-remainder apportionment. Shares must sum to 10,000 BPS.
+fun apportion(shares: vector<u64>, total: u64): vector<u64> {
+    let denominator = BASIS_POINTS as u128;
+    let products = shares.map!(|share| (total as u128) * (share as u128));
+    let mut amounts = products.map_ref!(|product| (*product / denominator) as u64);
+    let mut order = vector::tabulate!(products.length(), |i| i);
+    order.insertion_sort_by!(|a, b| {
+        let (remainder_a, remainder_b) = (
+            products[*a] % denominator,
+            products[*b] % denominator,
+        );
+        remainder_a > remainder_b || (remainder_a == remainder_b && *a <= *b)
+    });
+    let leftover = total - amounts.fold!(0, |sum, amount| sum + amount);
+    leftover.do!(|i| *&mut amounts[order[i]] = amounts[order[i]] + 1);
+
+    amounts
 }
 
 fun record_commitment<SaleToken, Quote>(
@@ -611,7 +673,7 @@ public fun is_cancelled_for_testing<SaleToken, Quote>(self: &Presale<SaleToken, 
 #[test_only]
 public fun custody_for_testing<SaleToken, Quote>(
     self: &Presale<SaleToken, Quote>,
-): (u64, u64, u64, u64, u64, u64) {
+): (u64, u64, u64, u64, u64, u64, u64) {
     (
         self.total_commitments,
         self.remaining_commitments,
@@ -619,19 +681,8 @@ public fun custody_for_testing<SaleToken, Quote>(
         self.quote.value(),
         self.sale_tokens.value(),
         self.liquidity_tokens.value(),
+        self.recipient_tokens.value(),
     )
-}
-
-#[test_only]
-public fun treasury_cap_fields_for_testing<SaleToken, Quote>(
-    self: &Presale<SaleToken, Quote>,
-): (ID, u64) {
-    let treasury_cap: &TreasuryCap<SaleToken> = dynamic_object_field::borrow(
-        &self.id,
-        TreasuryCapKey(),
-    );
-
-    (object::id(treasury_cap), treasury_cap.total_supply())
 }
 
 #[test_only]
@@ -678,6 +729,13 @@ public fun created_migration_fields<SaleToken, Quote>(
 }
 
 #[test_only]
+public fun created_supply_fields<SaleToken, Quote>(
+    event: &PresaleCreated<SaleToken, Quote>,
+): (u64, bool) {
+    (event.recipient_count, event.burnable)
+}
+
+#[test_only]
 public fun opened_fields<SaleToken, Quote>(
     event: &PresaleOpened<SaleToken, Quote>,
 ): (ID, u64, u64, u64) {
@@ -720,12 +778,13 @@ public fun cancelled_fields<SaleToken, Quote>(
 #[test_only]
 public fun migrated_fields<SaleToken, Quote>(
     event: &PresaleMigrated<SaleToken, Quote>,
-): (ID, TypeName, u64, u64) {
+): (ID, TypeName, u64, u64, u64) {
     (
         event.presale_id,
         event.migration_witness,
         event.quote,
         event.liquidity_tokens,
+        event.recipient_tokens,
     )
 }
 
@@ -746,12 +805,12 @@ public fun claim_fields<SaleToken, Quote>(
 #[test_only]
 public fun reclaimed_fields<SaleToken, Quote>(
     event: &CancelledAssetsReclaimed<SaleToken, Quote>,
-): (ID, ID, u64, u64) {
+): (ID, u64, u64, u64) {
     (
         event.presale_id,
-        event.treasury_cap_id,
         event.sale_tokens,
         event.liquidity_tokens,
+        event.recipient_tokens,
     )
 }
 
@@ -765,6 +824,8 @@ public struct PresaleCreated<phantom SaleToken, phantom Quote> has copy, drop {
     token_supply: u64,
     token_allocation_bps: u64,
     liquidity_token_allocation_bps: u64,
+    recipient_count: u64,
+    burnable: bool,
     raise_target: u64,
     duration_ms: u64,
     liquidity_window_ms: u64,
@@ -815,12 +876,15 @@ public struct PresaleMigrated<phantom SaleToken, phantom Quote> has copy, drop {
     migration_witness: TypeName,
     quote: u64,
     liquidity_tokens: u64,
+    recipient_tokens: u64,
 }
 
-/// The creator authority recovered the migrated token's mint capability.
-public struct TreasuryCapClaimed<phantom SaleToken, phantom Quote> has copy, drop {
+/// One configured recipient received its immutable token allocation.
+public struct RecipientAllocated<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
-    treasury_cap_id: ID,
+    recipient: address,
+    bps: u64,
+    tokens: u64,
 }
 
 /// `participant` received its token allocation and Quote refund.
@@ -833,18 +897,20 @@ public struct Claimed<phantom SaleToken, phantom Quote> has copy, drop {
     remaining_commitments: u64,
 }
 
-/// The creator recovered the TreasuryCap and all token allocations after cancellation.
+/// The creator recovered all escrowed token allocations after cancellation.
 public struct CancelledAssetsReclaimed<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
-    treasury_cap_id: ID,
     sale_tokens: u64,
     liquidity_tokens: u64,
+    recipient_tokens: u64,
 }
 
 // === Constants ===
 
 /// Technical bound on the dynamic commitment records one presale may hold.
 const MAX_PARTICIPANTS: u64 = 65_536;
+
+const MAX_RECIPIENTS: u64 = 64;
 
 const BASIS_POINTS: u64 = 10_000;
 
@@ -859,7 +925,7 @@ const EInvalidAssetPair: vector<u8> = b"The sale token and Quote type must diffe
 const EInvalidRaiseTarget: vector<u8> = b"The raise target must be positive.";
 
 #[error(code = 2)]
-const EInvalidTokenAllocation: vector<u8> = b"Token supply and allocation BPS must produce positive allocations totaling at most 10,000 BPS.";
+const EInvalidTokenAllocation: vector<u8> = b"Token allocations must be unique, positive, bounded, and total exactly 10,000 BPS.";
 
 #[error(code = 3)]
 const EInvalidWindow: vector<u8> = b"Commitment and liquidity windows must be positive and fit in u64 milliseconds.";
@@ -918,6 +984,12 @@ const EInvalidFeeSplit: vector<u8> = b"Creator and holder-reward fee shares must
 #[error(code = 21)]
 const EWrongMigrationWitness: vector<u8> = b"The migrator does not match the venue fixed at presale creation.";
 
+#[error(code = 22)]
+const EInvalidSupplyState: vector<u8> = b"The SaleToken currency supply must still be unknown.";
+
+#[error(code = 23)]
+const ETreasuryCapMismatch: vector<u8> = b"The TreasuryCap does not belong to the supplied SaleToken currency.";
+
 // === Imports ===
 
 use blast_presale::merkle_tree;
@@ -928,8 +1000,8 @@ use sui::{
     balance::{Self, Balance},
     clock::Clock,
     coin::{Coin, TreasuryCap},
+    coin_registry::Currency,
     dynamic_field,
-    dynamic_object_field,
     event,
     hash,
 };
@@ -938,5 +1010,3 @@ use fun dynamic_field::add as UID.add_dynamic_field;
 use fun dynamic_field::borrow_mut as UID.dynamic_field_mut;
 use fun dynamic_field::exists as UID.has_dynamic_field;
 use fun dynamic_field::remove as UID.remove_dynamic_field;
-use fun dynamic_object_field::add as UID.add_dynamic_object_field;
-use fun dynamic_object_field::remove as UID.remove_dynamic_object_field;

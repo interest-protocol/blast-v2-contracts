@@ -24,16 +24,16 @@ Bluefin and Cetus adapters stay inside this package so core escrow release and
 venue creation are one atomic call without a second presale-adapter package.
 
 Each `Presale<SaleToken, Quote>` consumes a `TreasuryCap<SaleToken>` whose total
-supply is zero. The creator configures a token supply and two positive BPS
-allocations: one distributed to participants and one intended for LP. Their
-combined rate cannot exceed 10,000 BPS. Each atomic allocation is
-`floor(token_supply * allocation_bps / 10_000)` and must be positive. The
-contract mints exactly those allocations and holds them with the TreasuryCap,
-stored as a discoverable dynamic object child, while the sale is active. All
-other supply remains unminted. The remaining immutable per-sale configuration
-contains a positive Quote raise, a commitment duration, an LP-migration window,
-a sealed migration witness, venue tier, creator/reward LP-fee BPS totaling
-10,000, and an `EligibilityPolicy`:
+supply is zero and verifies it belongs to the supplied `Currency<SaleToken>`.
+The creator configures a token supply, positive participant and LP allocation
+BPS, and zero or more distinct recipient allocations. These BPS total exactly
+10,000. The contract mints the complete supply, uses largest-remainder
+apportionment so every atomic unit is assigned exactly once, and escrows every
+allocation. It then irreversibly consumes the TreasuryCap into the selected Coin
+Registry `Fixed` or `BurnOnly` supply state before commitments open. The remaining
+immutable per-sale configuration contains a positive Quote raise, a commitment
+duration, an LP-migration window, a sealed migration witness, venue tier,
+creator/reward LP-fee BPS totaling 10,000, and an `EligibilityPolicy`:
 
 - `Open` stores one wallet cap and a maximum participant count.
 - `Allowlisted` stores a positional Blake2b-256 Merkle root and leaf count.
@@ -67,14 +67,16 @@ The adapter alone holds the sealed witness needed to take exactly `R` Quote and
 the entire LP-token allocation from core. In the same call it creates the
 configured full-range pool and seals its position or burn proof in a
 `PresaleVault`. Claims open only after this call succeeds; a venue failure rolls
-back the complete transaction. The migration witness, tier, allocations, and
-fee split were fixed before commitments opened and cannot be supplied by the
-migration caller.
+back the complete transaction. That transaction also pays each configured
+recipient its distinct immutable token allocation. The migration witness, tier,
+allocations, and fee split were fixed before commitments opened and cannot be
+supplied by the migration caller.
 
 If a funded sale is not migrated by the deadline, anyone can cancel it. A sale
 first settled at or after that deadline cancels directly. Cancellation never
 releases Quote to the creator; participants receive full refunds, while the cap
-holder may recover the original TreasuryCap and both minted token allocations.
+holder may recover every escrowed token allocation. The consumed TreasuryCap is
+never recreated.
 
 After migration, participant `i` with commitment `c_i` receives:
 
@@ -94,8 +96,7 @@ to each asset: the creator share remains claimable with the transferable
 commits each reward round's beneficiaries and amounts with a Merkle root;
 anyone may relay a valid proof, but assets go only to its committed beneficiary.
 The same generic positional Blake2b-256 module verifies eligibility and rewards.
-The cap also claims migration residuals and recovers the TreasuryCap after
-successful migration.
+The cap also claims migration residuals.
 
 ## Alternatives considered
 
@@ -114,10 +115,10 @@ successful migration.
 - Raise sizes, time windows, allocations, eligibility, and wallet caps are all
   per-sale values; example numbers from product material are not protocol
   constants.
-- Token supply and the presale and LP allocation BPS are per-sale values. The
-  contract proves the supplied TreasuryCap starts at zero, derives both atomic
-  allocations with floor rounding, mints exactly those allocations, and
-  prevents further minting while the cap remains in presale custody.
+- Token supply; participant, LP, and recipient allocation BPS; recipient
+  addresses; and fixed-versus-burn-only mode are per-sale values. The contract
+  proves the matching TreasuryCap starts at zero, mints and apportions the
+  complete configured supply, and permanently removes mint authority.
 - The Merkle manifest and proof construction remain off chain, while the root,
   leaf count, commitments, custody, lifecycle, and payouts are canonical on chain.
   A proof attests only the committed wallet and cap; it does not prove that the
@@ -126,9 +127,8 @@ successful migration.
   presale custody and eliminates a presale package-administration surface.
 - The creator chooses the reward Merkle roots. Proofs enforce the published
   allocation but cannot prove that its off-chain holder methodology was fair.
-- The TreasuryCap is returned after migration or cancellation, so the creator can
-  mint additional supply afterward. Permanently fixed or burn-only supply
-  requires an explicit Coin Registry transition outside this package.
+- Cancellation returns every escrowed token allocation but cannot restore mint
+  authority or change the selected Coin Registry supply mode.
 - The generic package cannot remove a Quote issuer's deny, pause, or supply
   powers. Such controls can block an affected wallet's transfer, although an
   aborted claim leaves its on-chain commitment and escrow intact for retry.
@@ -137,8 +137,9 @@ successful migration.
 
 - Unit tests cover equal caps, tiered Merkle caps, cumulative cap enforcement,
   dynamic-record bounds, exact time boundaries, proportional fills, full
-  refunds, allocation recovery, migration witness enforcement, LP-fee splitting,
-  creator claims, generic Merkle proofs, and relayed holder rewards.
+  refunds, exact full-supply apportionment, distinct recipient payouts, fixed and
+  burn-only supply modes, allocation recovery, migration witness enforcement,
+  LP-fee splitting, creator claims, generic Merkle proofs, and relayed holder rewards.
 - The package gate builds both network environments, lints with warnings as
   errors, and runs Move tests.
 - Publication preview must show package publication and consumption of the

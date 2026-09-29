@@ -17,9 +17,12 @@ public struct Venue() has drop;
 /// Creates a presale irrevocably configured to migrate to Bluefin at this tier.
 public fun new<Meme, Quote>(
     treasury_cap: TreasuryCap<Meme>,
+    currency: &mut Currency<Meme>,
     token_supply: u64,
     token_allocation_bps: u64,
     liquidity_token_allocation_bps: u64,
+    recipient_allocations: vector<RecipientAllocation>,
+    burnable: bool,
     raise_target: u64,
     duration_ms: u64,
     liquidity_window_ms: u64,
@@ -40,9 +43,12 @@ public fun new<Meme, Quote>(
 
     presale::new(
         treasury_cap,
+        currency,
         token_supply,
         token_allocation_bps,
         liquidity_token_allocation_bps,
+        recipient_allocations,
+        burnable,
         raise_target,
         duration_ms,
         liquidity_window_ms,
@@ -68,7 +74,7 @@ public fun migrate<Meme, Quote>(
 ) {
     let (presale_id, presale_cap_id, tick_spacing, fee_rate, creator_fee_bps, rewards_fee_bps) = sale
         .migration_config();
-    let (meme, quote) = sale.migrate(Witness(), clock);
+    let (meme, quote) = sale.migrate(Witness(), clock, ctx);
     let source_meme = meme.value();
     let source_quote = quote.value();
     let fix_meme = source_meme >= source_quote;
@@ -157,7 +163,13 @@ const EInvalidTier: vector<u8> = b"Bluefin tier needs tick spacing 1..=400 and f
 // === Imports ===
 
 use blast_presale::{
-    blast_presale::{Self as presale, EligibilityPolicy, Presale, PresaleCap},
+    blast_presale::{
+        Self as presale,
+        EligibilityPolicy,
+        Presale,
+        PresaleCap,
+        RecipientAllocation,
+    },
     migration_math,
     presale_vault::{Self as vault, PresaleVault},
 };

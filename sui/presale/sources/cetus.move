@@ -20,9 +20,12 @@ public struct CreationCapKey<phantom Meme>() has copy, drop, store;
 /// Creates a presale configured for Cetus and reserves pool creation before Meme leaves custody.
 public fun new<Meme, Quote>(
     mut treasury_cap: TreasuryCap<Meme>,
+    currency: &mut Currency<Meme>,
     token_supply: u64,
     token_allocation_bps: u64,
     liquidity_token_allocation_bps: u64,
+    recipient_allocations: vector<RecipientAllocation>,
+    burnable: bool,
     raise_target: u64,
     duration_ms: u64,
     liquidity_window_ms: u64,
@@ -48,9 +51,12 @@ public fun new<Meme, Quote>(
 
     presale::new(
         treasury_cap,
+        currency,
         token_supply,
         token_allocation_bps,
         liquidity_token_allocation_bps,
+        recipient_allocations,
+        burnable,
         raise_target,
         duration_ms,
         liquidity_window_ms,
@@ -77,7 +83,7 @@ public fun migrate_meme_a<Meme, Quote>(
     assert!(factory::is_right_order<Meme, Quote>(), EInvalidCoinOrder);
     let (presale_id, cap_id, tick_spacing, _, creator_fee_bps, rewards_fee_bps) = sale
         .migration_config();
-    let (meme, quote) = sale.migrate(Witness(), clock);
+    let (meme, quote) = sale.migrate(Witness(), clock, ctx);
     let meme_amount = meme.value();
     let quote_amount = quote.value();
     let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
@@ -126,7 +132,7 @@ public fun migrate_meme_b<Meme, Quote>(
     assert!(factory::is_right_order<Quote, Meme>(), EInvalidCoinOrder);
     let (presale_id, cap_id, tick_spacing, _, creator_fee_bps, rewards_fee_bps) = sale
         .migration_config();
-    let (meme, quote) = sale.migrate(Witness(), clock);
+    let (meme, quote) = sale.migrate(Witness(), clock, ctx);
     let meme_amount = meme.value();
     let quote_amount = quote.value();
     let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
@@ -246,7 +252,13 @@ const EPositionPoolMismatch: vector<u8> = b"Pool must be the vault's migration p
 // === Imports ===
 
 use blast_presale::{
-    blast_presale::{Self as presale, EligibilityPolicy, Presale, PresaleCap},
+    blast_presale::{
+        Self as presale,
+        EligibilityPolicy,
+        Presale,
+        PresaleCap,
+        RecipientAllocation,
+    },
     migration_math,
     presale_vault::{Self as vault, PresaleVault},
     venue_config::VenueConfig,
@@ -262,6 +274,11 @@ use cetus_clmm::{
 
 use lp_burn::lp_burn::{Self, BurnManager, CetusLPBurnProof};
 
-use sui::{balance::Balance, clock::Clock, coin::{Coin, TreasuryCap}};
+use sui::{
+    balance::Balance,
+    clock::Clock,
+    coin::{Coin, TreasuryCap},
+    coin_registry::Currency,
+};
 
 use fun pool_creation_cap as VenueConfig.pool_creation_cap;
