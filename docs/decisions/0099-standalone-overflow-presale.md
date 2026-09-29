@@ -75,8 +75,9 @@ supplied by the migration caller.
 If a funded sale is not migrated by the deadline, anyone can cancel it. A sale
 first settled at or after that deadline cancels directly. Cancellation never
 releases Quote to the creator; participants receive full refunds, while the cap
-holder may recover every escrowed token allocation. The consumed TreasuryCap is
-never recreated.
+holder may destroy the now-useless `PresaleCap`. Every minted SaleToken
+allocation remains permanently locked in the cancelled presale, and the consumed
+TreasuryCap is never recreated.
 
 After migration, participant `i` with commitment `c_i` receives:
 
@@ -127,8 +128,9 @@ The cap also claims migration residuals.
   presale custody and eliminates a presale package-administration surface.
 - The creator chooses the reward Merkle roots. Proofs enforce the published
   allocation but cannot prove that its off-chain holder methodology was fair.
-- Cancellation returns every escrowed token allocation but cannot restore mint
-  authority or change the selected Coin Registry supply mode.
+- Cancellation refunds participant Quote but permanently locks every SaleToken
+  allocation. It cannot restore mint authority or change the selected Coin
+  Registry supply mode; a creator who retries must deploy a new coin type.
 - The generic package cannot remove a Quote issuer's deny, pause, or supply
   powers. Such controls can block an affected wallet's transfer, although an
   aborted claim leaves its on-chain commitment and escrow intact for retry.
@@ -138,7 +140,7 @@ The cap also claims migration residuals.
 - Unit tests cover equal caps, tiered Merkle caps, cumulative cap enforcement,
   dynamic-record bounds, exact time boundaries, proportional fills, full
   refunds, exact full-supply apportionment, distinct recipient payouts, fixed and
-  burn-only supply modes, allocation recovery, migration witness enforcement,
+  burn-only supply modes, cancelled-supply locking, migration witness enforcement,
   LP-fee splitting, creator claims, generic Merkle proofs, and relayed holder rewards.
 - The package gate builds both network environments, lints with warnings as
   errors, and runs Move tests.

@@ -271,46 +271,11 @@ public fun claim<SaleToken, Quote>(
     });
 }
 
-/// Recovers every escrowed token allocation after cancellation. Quote is never
-/// returned here and remains reserved for participant refunds.
-public fun reclaim_cancelled_assets<SaleToken, Quote>(
-    self: &mut Presale<SaleToken, Quote>,
-    cap: &PresaleCap,
-    ctx: &mut TxContext,
-): (Coin<SaleToken>, Coin<SaleToken>, Coin<SaleToken>) {
-    assert!(self.lifecycle == Lifecycle::Cancelled, EInvalidLifecycle);
-    self.assert_cap(cap);
-    assert!(
-        self.sale_tokens.value() > 0
-            || self.liquidity_tokens.value() > 0
-            || self.recipient_tokens.value() > 0,
-        ENothingToReclaim,
-    );
-
-    let sale_tokens = self.sale_tokens.withdraw_all().into_coin(ctx);
-    let liquidity_tokens = self.liquidity_tokens.withdraw_all().into_coin(ctx);
-    let recipient_tokens = self.recipient_tokens.withdraw_all().into_coin(ctx);
-
-    event::emit(CancelledAssetsReclaimed<SaleToken, Quote> {
-        presale_id: self.id.to_inner(),
-        sale_tokens: sale_tokens.value(),
-        liquidity_tokens: liquidity_tokens.value(),
-        recipient_tokens: recipient_tokens.value(),
-    });
-
-    (sale_tokens, liquidity_tokens, recipient_tokens)
-}
-
-/// Destroys the creator capability after a cancelled sale has returned every creator asset.
+/// Destroys the creator capability after cancellation. All minted SaleToken
+/// allocations remain permanently locked in the cancelled presale.
 public fun destroy_cap<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, cap: PresaleCap) {
     self.assert_cap(&cap);
-    assert!(
-        self.lifecycle == Lifecycle::Cancelled
-            && self.sale_tokens.value() == 0
-            && self.liquidity_tokens.value() == 0
-            && self.recipient_tokens.value() == 0,
-        EInvalidLifecycle,
-    );
+    assert!(self.lifecycle == Lifecycle::Cancelled, EInvalidLifecycle);
 
     let PresaleCap { id, presale_id: _ } = cap;
     id.delete();
@@ -802,18 +767,6 @@ public fun claim_fields<SaleToken, Quote>(
     )
 }
 
-#[test_only]
-public fun reclaimed_fields<SaleToken, Quote>(
-    event: &CancelledAssetsReclaimed<SaleToken, Quote>,
-): (ID, u64, u64, u64) {
-    (
-        event.presale_id,
-        event.sale_tokens,
-        event.liquidity_tokens,
-        event.recipient_tokens,
-    )
-}
-
 // === Events ===
 
 /// A presale was created with fully funded token allocations.
@@ -897,14 +850,6 @@ public struct Claimed<phantom SaleToken, phantom Quote> has copy, drop {
     remaining_commitments: u64,
 }
 
-/// The creator recovered all escrowed token allocations after cancellation.
-public struct CancelledAssetsReclaimed<phantom SaleToken, phantom Quote> has copy, drop {
-    presale_id: ID,
-    sale_tokens: u64,
-    liquidity_tokens: u64,
-    recipient_tokens: u64,
-}
-
 // === Constants ===
 
 /// Technical bound on the dynamic commitment records one presale may hold.
@@ -973,21 +918,18 @@ const ELiquidityDeadlinePassed: vector<u8> = b"The deadline to migrate liquidity
 const ELiquidityDeadlineNotReached: vector<u8> = b"The deadline to cancel an unlaunched funded presale has not arrived.";
 
 #[error(code = 18)]
-const ENothingToReclaim: vector<u8> = b"The cancelled presale has no token allocations left to reclaim.";
-
-#[error(code = 19)]
 const EInitialSupplyNotZero: vector<u8> = b"The supplied SaleToken TreasuryCap must have zero total supply.";
 
-#[error(code = 20)]
+#[error(code = 19)]
 const EInvalidFeeSplit: vector<u8> = b"Creator and holder-reward fee shares must total 10,000 BPS.";
 
-#[error(code = 21)]
+#[error(code = 20)]
 const EWrongMigrationWitness: vector<u8> = b"The migrator does not match the venue fixed at presale creation.";
 
-#[error(code = 22)]
+#[error(code = 21)]
 const EInvalidSupplyState: vector<u8> = b"The SaleToken currency supply must still be unknown.";
 
-#[error(code = 23)]
+#[error(code = 22)]
 const ETreasuryCapMismatch: vector<u8> = b"The TreasuryCap does not belong to the supplied SaleToken currency.";
 
 // === Imports ===

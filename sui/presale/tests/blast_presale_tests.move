@@ -122,7 +122,7 @@ fun commitments_lock_quote_in_presale_custody() {
     fixture.settle(KEEPER);
     fixture.claim(KEEPER, ALICE);
     fixture.take_quote(ALICE, 500);
-    fixture.reclaim_and_destroy_cap();
+    fixture.destroy_cancelled_cap();
     fixture.end();
 }
 
@@ -156,7 +156,7 @@ fun participants_cannot_withdraw_funded_commitments() {
 
 #[test]
 /// An underfunded sale releases no Quote and every wallet can recover its full commitment.
-fun underfunded_sale_refunds_every_commitment_and_returns_minted_allocations() {
+fun underfunded_sale_refunds_quote_and_locks_minted_supply_forever() {
     let mut fixture = start(
         RAISE_TARGET,
         presale::open_eligibility(WALLET_CAP, 2),
@@ -175,9 +175,10 @@ fun underfunded_sale_refunds_every_commitment_and_returns_minted_allocations() {
     assert_eq!(fixture.claim(KEEPER, ALICE), vector[500, 0, 500, 0]);
     fixture.take_quote(ALICE, 500);
     assert_eq!(
-        fixture.reclaim_and_destroy_cap(),
-        vector[TOKEN_ALLOCATION, LIQUIDITY_TOKENS, RECIPIENT_TOKENS],
+        fixture.custody(),
+        vector[500, 0, 1, 0, TOKEN_ALLOCATION, LIQUIDITY_TOKENS, RECIPIENT_TOKENS],
     );
+    fixture.destroy_cancelled_cap();
     fixture.end();
 }
 
@@ -198,7 +199,7 @@ fun missed_liquidity_deadline_turns_a_funded_sale_into_full_refunds() {
     assert!(fixture.is_cancelled());
     assert_eq!(fixture.claim(KEEPER, ALICE), vector[RAISE_TARGET, 0, RAISE_TARGET, 0]);
     fixture.take_quote(ALICE, RAISE_TARGET);
-    fixture.reclaim_and_destroy_cap();
+    fixture.destroy_cancelled_cap();
     fixture.end();
 }
 
@@ -229,7 +230,7 @@ fun allowlist_proofs_enforce_distinct_wallet_caps() {
     fixture.take_quote(ALICE, 500);
     fixture.claim(KEEPER, BOB);
     fixture.take_quote(BOB, 100);
-    fixture.reclaim_and_destroy_cap();
+    fixture.destroy_cancelled_cap();
     fixture.end();
 }
 
@@ -518,7 +519,7 @@ fun burnable_supply_is_locked_to_burn_only_at_creation() {
     );
     fixture.set_time(END_MS);
     fixture.settle(KEEPER);
-    fixture.reclaim_and_destroy_cap();
+    fixture.destroy_cancelled_cap();
     fixture.end();
 }
 
@@ -813,28 +814,13 @@ fun take_quote(self: &mut Fixture, participant: address, quote: u64) {
     });
 }
 
-fun reclaim_and_destroy_cap(self: &mut Fixture): vector<u64> {
-    let mut amounts = vector[];
+fun destroy_cancelled_cap(self: &mut Fixture) {
     self.next_tx!(CREATOR, |fixture| {
         let cap = fixture.scenario.take_from_sender<PresaleCap>();
-        let mut sale = fixture.take_presale();
-        let (sale_tokens, liquidity_tokens, recipient_tokens) = sale
-            .reclaim_cancelled_assets(&cap, fixture.ctx!());
-        amounts.push_back(sale_tokens.burn_for_testing());
-        amounts.push_back(liquidity_tokens.burn_for_testing());
-        amounts.push_back(recipient_tokens.burn_for_testing());
-        let (presale_id, reclaimed_sale, reclaimed_liquidity, reclaimed_recipients) = only_event<
-            CancelledAssetsReclaimed<BLAST_PRESALE_TESTS, QUOTE>,
-        >().reclaimed_fields();
-        assert_eq!(presale_id, fixture.presale_id);
-        assert_eq!(
-            vector[reclaimed_sale, reclaimed_liquidity, reclaimed_recipients],
-            vector[TOKEN_ALLOCATION, LIQUIDITY_TOKENS, RECIPIENT_TOKENS],
-        );
+        let sale = fixture.take_presale();
         sale.destroy_cap(cap);
         fixture.return_presale(sale);
     });
-    amounts
 }
 
 fun is_funded(self: &mut Fixture): bool {
@@ -905,7 +891,6 @@ fun only_event<Event: copy + drop>(): Event {
 
 use blast_presale::blast_presale::{
     Self as presale,
-    CancelledAssetsReclaimed,
     Claimed,
     Committed,
     EligibilityPolicy,

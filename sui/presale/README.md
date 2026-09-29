@@ -26,15 +26,16 @@ distinct allocations in that same transaction. Claims open only after success.
 
 Permissionless fee collection applies the immutable creation-time BPS split.
 The `PresaleCap` claims the creator share and migration residuals, publishes
-Merkle rounds funded from the holder-reward share, and recovers every escrowed
-token allocation after cancellation. Anyone may relay participant or reward claims, but payment
+Merkle rounds funded from the holder-reward share, and can be destroyed after
+cancellation. Anyone may relay participant or reward claims, but payment
 always goes to the committed beneficiary. Eligibility and rewards share the
 package's generic positional Blake2b-256 Merkle verifier.
 
 After minting, the contract consumes the matching TreasuryCap into Coin Registry
 `Fixed` or `BurnOnly` state. No mint authority remains after the presale is
-created. On cancellation the minted allocations return, but the supply mode
-cannot be reversed.
+created. On cancellation participant Quote is refundable, but every SaleToken
+allocation remains permanently locked in the presale and the supply mode cannot
+be reversed.
 
 Run `scripts/verify.sh`. Publish with
 `scripts/publish_immutable.sh <sui-environment> --preview` and repeat with
