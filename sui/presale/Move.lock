@@ -4,38 +4,194 @@
 [move]
 version = 4
 
+[pinned.mainnet.BluefinSpot]
+source = { git = "https://github.com/fireflyprotocol/bluefin-spot-contract-interface.git", subdir = ".", rev = "91ce930575b2aa3decab9b7e129b8002deba80c1" }
+use_environment = "mainnet"
+manifest_digest = "67D4E1B535FABDFEDB3819F51EB0C2B3DA218B2BBFC283417427867F4565AFFD"
+deps = { IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate", Sui = "Sui_1" }
+
+[pinned.mainnet.CetusClmm]
+source = { local = "../migrators/interfaces/cetus" }
+use_environment = "mainnet"
+manifest_digest = "54B7F4BFC60DEA96EA008E3E030DB14787B8F2B4736B40B0550A228917B2039C"
+deps = { IntegerMate = "IntegerMate_1", MoveSTL = "MoveSTL", Sui = "Sui_2" }
+
+[pinned.mainnet.CetusClmmVester]
+source = { local = "../migrators/interfaces/cetus_clmm_vester" }
+use_environment = "mainnet"
+manifest_digest = "7E72AD3396318EFE9642E1BD94F52744A5B5501E4651795A3F70D50B1DEA7C9D"
+deps = { CetusClmm = "CetusClmm", CetusToken = "CetusToken", IntegerMate = "IntegerMate_1", Sui = "Sui_2" }
+
+[pinned.mainnet.CetusLpBurn]
+source = { local = "../migrators/interfaces/cetus_lp_burn" }
+use_environment = "mainnet"
+manifest_digest = "F2C767C3EB1F932F5387124724FA2CDE9521D3215942FF210E277DEA5D8C75F8"
+deps = { CetusClmm = "CetusClmm", CetusClmmVester = "CetusClmmVester", CetusToken = "CetusToken", IntegerMate = "IntegerMate_1", Sui = "Sui_2" }
+
+[pinned.mainnet.CetusToken]
+source = { local = "../migrators/interfaces/cetus_token" }
+use_environment = "mainnet"
+manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
+deps = { Sui = "Sui_2" }
+
+[pinned.mainnet.IntegerLibrary]
+source = { git = "https://github.com/fireflyprotocol/integer-library.git", subdir = ".", rev = "8a534bd1c0b334cd3937c27987f3147a06ba6a18" }
+use_environment = "mainnet"
+manifest_digest = "7AF3E6BDD80570B066831AC1D2C79EC7DF74BB5F48F30183D9CE56C08F817641"
+deps = { Sui = "Sui" }
+
+[pinned.mainnet.IntegerMate]
+source = { git = "https://github.com/CetusProtocol/integer-mate.git", subdir = "sui", rev = "06660f704c4ac1d443ab62346a46b5b60d49df33" }
+use_environment = "mainnet"
+manifest_digest = "7AF3E6BDD80570B066831AC1D2C79EC7DF74BB5F48F30183D9CE56C08F817641"
+deps = { Sui = "Sui" }
+
+[pinned.mainnet.IntegerMate_1]
+source = { git = "https://github.com/CetusProtocol/integer-mate.git", subdir = ".", rev = "09a12d9b171122883d9350039d4ed6e8400033b9" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib_2", sui = "Sui_2" }
+
+[pinned.mainnet.MoveSTL]
+source = { git = "https://github.com/CetusProtocol/move-stl.git", subdir = ".", rev = "0681fec63a310ae753d03a06f7c05d3e2925bb09" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib_2", sui = "Sui_2" }
+
 [pinned.mainnet.MoveStdlib]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "17a9eb8e19146cac2f1fd8921c85911054d29e50" }
+use_environment = "mainnet"
+manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
+deps = {}
+
+[pinned.mainnet.MoveStdlib_1]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "4e46da89efd5c5e59fe2b8e877bd960896601ec9" }
+use_environment = "mainnet"
+manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
+deps = {}
+
+[pinned.mainnet.MoveStdlib_2]
 source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2" }
 use_environment = "mainnet"
 manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
 deps = {}
 
 [pinned.mainnet.Sui]
-source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2" }
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "17a9eb8e19146cac2f1fd8921c85911054d29e50" }
 use_environment = "mainnet"
 manifest_digest = "CD547CB1ACCE0880C835DAED2D8FFCB91D56C833AE5240D3AA5B918398263195"
 deps = { MoveStdlib = "MoveStdlib" }
 
+[pinned.mainnet.Sui_1]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "4e46da89efd5c5e59fe2b8e877bd960896601ec9" }
+use_environment = "mainnet"
+manifest_digest = "CD547CB1ACCE0880C835DAED2D8FFCB91D56C833AE5240D3AA5B918398263195"
+deps = { MoveStdlib = "MoveStdlib_1" }
+
+[pinned.mainnet.Sui_2]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2" }
+use_environment = "mainnet"
+manifest_digest = "CD547CB1ACCE0880C835DAED2D8FFCB91D56C833AE5240D3AA5B918398263195"
+deps = { MoveStdlib = "MoveStdlib_2" }
+
 [pinned.mainnet.blast_presale]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "294D98BBBEFA7E526C52FD7F30B5691CD30B86738DDC489AC065D612D0E5F9EF"
+manifest_digest = "4110CF64D9FB908417734EB421AA17669AE2287E066744C7A0824BF158E42D1E"
+deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2" }
+
+[pinned.testnet.BluefinSpot]
+source = { git = "https://github.com/fireflyprotocol/bluefin-spot-contract-interface.git", subdir = ".", rev = "91ce930575b2aa3decab9b7e129b8002deba80c1" }
+use_environment = "testnet"
+manifest_digest = "4B292678F1A2E238C5F1CEDEE1B2CD3D400B365365883184580DE43F16AF941F"
+deps = { IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate", Sui = "Sui_1" }
+
+[pinned.testnet.CetusClmm]
+source = { local = "../migrators/interfaces/cetus" }
+use_environment = "testnet"
+manifest_digest = "042D999A0B5CE153B367D86006C2F427B0EB6C1AE71D63AF9BBD4FBF3747A3F5"
+deps = { IntegerMate = "IntegerMate_1", MoveSTL = "MoveSTL", Sui = "Sui_2" }
+
+[pinned.testnet.CetusClmmVester]
+source = { local = "../migrators/interfaces/cetus_clmm_vester" }
+use_environment = "testnet"
+manifest_digest = "8CDC264AB1C58BB14454918D89FA67C77C0ECAAF75C9944B70062C97245400CF"
+deps = { CetusClmm = "CetusClmm", CetusToken = "CetusToken", IntegerMate = "IntegerMate_1", Sui = "Sui_2" }
+
+[pinned.testnet.CetusLpBurn]
+source = { local = "../migrators/interfaces/cetus_lp_burn" }
+use_environment = "testnet"
+manifest_digest = "78AE5DC1CD4B61F410278A5BFABC2ED66111CDAB87253645309EFCCC4AE83998"
+deps = { CetusClmm = "CetusClmm", CetusClmmVester = "CetusClmmVester", CetusToken = "CetusToken", IntegerMate = "IntegerMate_1", Sui = "Sui_2" }
+
+[pinned.testnet.CetusToken]
+source = { local = "../migrators/interfaces/cetus_token" }
+use_environment = "testnet"
+manifest_digest = "271408FC66479D0667DD522595BEB59E742B3EA9CD00ED7395433A07D5595564"
+deps = { Sui = "Sui_2" }
+
+[pinned.testnet.IntegerLibrary]
+source = { git = "https://github.com/fireflyprotocol/integer-library.git", subdir = ".", rev = "8a534bd1c0b334cd3937c27987f3147a06ba6a18" }
+use_environment = "testnet"
+manifest_digest = "2BC33E66793F939A8EC39025214D5DF5DD4B68E8111653C51FA3816FF49A6CDF"
 deps = { Sui = "Sui" }
 
+[pinned.testnet.IntegerMate]
+source = { git = "https://github.com/CetusProtocol/integer-mate.git", subdir = "sui", rev = "06660f704c4ac1d443ab62346a46b5b60d49df33" }
+use_environment = "testnet"
+manifest_digest = "2BC33E66793F939A8EC39025214D5DF5DD4B68E8111653C51FA3816FF49A6CDF"
+deps = { Sui = "Sui" }
+
+[pinned.testnet.IntegerMate_1]
+source = { git = "https://github.com/CetusProtocol/integer-mate.git", subdir = ".", rev = "09a12d9b171122883d9350039d4ed6e8400033b9" }
+use_environment = "testnet"
+manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
+deps = { std = "MoveStdlib_2", sui = "Sui_2" }
+
+[pinned.testnet.MoveSTL]
+source = { git = "https://github.com/CetusProtocol/move-stl.git", subdir = ".", rev = "0681fec63a310ae753d03a06f7c05d3e2925bb09" }
+use_environment = "testnet"
+manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
+deps = { std = "MoveStdlib_2", sui = "Sui_2" }
+
 [pinned.testnet.MoveStdlib]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "17a9eb8e19146cac2f1fd8921c85911054d29e50" }
+use_environment = "testnet"
+manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
+deps = {}
+
+[pinned.testnet.MoveStdlib_1]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "4e46da89efd5c5e59fe2b8e877bd960896601ec9" }
+use_environment = "testnet"
+manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
+deps = {}
+
+[pinned.testnet.MoveStdlib_2]
 source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2" }
 use_environment = "testnet"
 manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
 deps = {}
 
 [pinned.testnet.Sui]
-source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2" }
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "17a9eb8e19146cac2f1fd8921c85911054d29e50" }
 use_environment = "testnet"
 manifest_digest = "7AFB66695545775FBFBB2D3078ADFD084244D5002392E837FDE21D9EA1C6D01C"
 deps = { MoveStdlib = "MoveStdlib" }
 
+[pinned.testnet.Sui_1]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "4e46da89efd5c5e59fe2b8e877bd960896601ec9" }
+use_environment = "testnet"
+manifest_digest = "7AFB66695545775FBFBB2D3078ADFD084244D5002392E837FDE21D9EA1C6D01C"
+deps = { MoveStdlib = "MoveStdlib_1" }
+
+[pinned.testnet.Sui_2]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2" }
+use_environment = "testnet"
+manifest_digest = "7AFB66695545775FBFBB2D3078ADFD084244D5002392E837FDE21D9EA1C6D01C"
+deps = { MoveStdlib = "MoveStdlib_2" }
+
 [pinned.testnet.blast_presale]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "B7E2FC3044B807508BDB644524C4ABEA393A1871278966067F470AEAE602C62B"
-deps = { Sui = "Sui" }
+manifest_digest = "71185857526D4C22266630D8AA0200CE45392F29D2387772C5D6C9C4B9C9C074"
+deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2" }

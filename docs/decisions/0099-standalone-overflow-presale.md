@@ -12,14 +12,16 @@ wallet caps, and the eligible population vary per sale. This product is not a
 launchpad mode: it has separate custody, lifecycle, authority, deployment, and
 upgrade risk.
 
-The contract must also preserve participant exits if a raise is missed or the
-project does not add liquidity after a successful raise.
+The contract must also preserve participant exits if a raise is missed or
+liquidity migration does not complete after a successful raise. Migration must
+not depend on the creator remaining online.
 
 ## Decision
 
-Create the independent `blast_presale` package. It imports only the pinned Sui
-framework and is published immutable. It neither reads nor mutates launchpad
-state, and no launchpad package imports it.
+Create the independent `blast_presale` package and publish it immutable. It
+neither reads nor mutates launchpad state, and no launchpad package imports it.
+Bluefin and Cetus adapters stay inside this package so core escrow release and
+venue creation are one atomic call without a second presale-adapter package.
 
 Each `Presale<SaleToken, Quote>` consumes a `TreasuryCap<SaleToken>` whose total
 supply is zero. The creator configures a token supply and two positive BPS
@@ -29,8 +31,9 @@ combined rate cannot exceed 10,000 BPS. Each atomic allocation is
 contract mints exactly those allocations and holds them with the TreasuryCap,
 stored as a discoverable dynamic object child, while the sale is active. All
 other supply remains unminted. The remaining immutable per-sale configuration
-contains a positive Quote raise, a commitment duration, an LP-launch window,
-and an `EligibilityPolicy`:
+contains a positive Quote raise, a commitment duration, an LP-migration window,
+a sealed migration witness, venue tier, creator/reward LP-fee BPS totaling
+10,000, and an `EligibilityPolicy`:
 
 - `Open` stores one wallet cap and a maximum participant count.
 - `Allowlisted` stores a positional Blake2b-256 Merkle root and leaf count.
@@ -43,7 +46,7 @@ records. This is not a product eligibility count or raise-size constant.
 The shared-object lifecycle is:
 
 ```text
-Pending -> Open -> Funded -> Launched
+Pending -> Open -> Funded -> Migrated
                    |          claims stay open
                    v
                 Cancelled
@@ -54,26 +57,26 @@ wallet, and cannot exceed the policy cap. Each commitment consumes a
 `Coin<Quote>` and locks its full balance in that `Presale`, so recorded
 commitments are backed one-for-one by on-chain Quote custody. There is no
 voluntary withdrawal during `Open` or `Funded`: a cancellation returns the
-full commitment, while a launched sale returns only its calculated overflow.
+full commitment, while a migrated sale returns only its calculated overflow.
 At the exclusive end timestamp, anyone may settle. If total commitments `C`
 are below the raise `R`, the sale cancels and all Quote remains refundable.
 Otherwise the sale becomes funded and fixes one common fill rate `R / C`.
 
-Before the exclusive LP deadline, only the per-presale `PresaleCap` can call
-`launch`. That transition returns the original TreasuryCap, exactly `R` Quote,
-and the entire LP-token allocation; it opens claims and leaves all overflow
-Quote plus the participant token allocation in escrow. The
-caller must thread the LP assets into pool creation in the same programmable
-transaction; a later failure rolls back the whole transition. Core deliberately
-has no DEX dependency and therefore trusts the cap holder to route those assets
-to the announced LP rather than merely transfer them.
+Before the exclusive LP deadline, anyone may call the configured venue adapter.
+The adapter alone holds the sealed witness needed to take exactly `R` Quote and
+the entire LP-token allocation from core. In the same call it creates the
+configured full-range pool and seals its position or burn proof in a
+`PresaleVault`. Claims open only after this call succeeds; a venue failure rolls
+back the complete transaction. The migration witness, tier, allocations, and
+fee split were fixed before commitments opened and cannot be supplied by the
+migration caller.
 
-If a funded sale is not launched by the deadline, anyone can cancel it. A sale
+If a funded sale is not migrated by the deadline, anyone can cancel it. A sale
 first settled at or after that deadline cancels directly. Cancellation never
 releases Quote to the creator; participants receive full refunds, while the cap
 holder may recover the original TreasuryCap and both minted token allocations.
 
-After launch, participant `i` with commitment `c_i` receives:
+After migration, participant `i` with commitment `c_i` receives:
 
 ```text
 tokens_i = floor(token_allocation * c_i / C)
@@ -85,13 +88,24 @@ The final claim receives the bounded integer remainder of both balances, so
 all escrowed participant assets are conserved. Claim order changes only which
 wallet receives that documented sub-participant-count remainder.
 
+LP fee collection is permissionless. The vault applies the immutable BPS split
+to each asset: the creator share remains claimable with the transferable
+`PresaleCap`, while the remainder funds holder-reward rounds. The cap holder
+commits each reward round's beneficiaries and amounts with a Merkle root;
+anyone may relay a valid proof, but assets go only to its committed beneficiary.
+The same generic positional Blake2b-256 module verifies eligibility and rewards.
+The cap also claims migration residuals and recovers the TreasuryCap after
+successful migration.
+
 ## Alternatives considered
 
 - **Add a launchpad mode.** Rejected because presales are independently
-  deployed custody and do not require curve, migration, fee, or partner state.
-- **Import a DEX package in core.** Rejected because LP venues are an external
-  dependency boundary. Atomic PTB composition keeps the presale package
-  venue-neutral.
+  deployed custody and do not require curve, trade-fee, or partner state.
+- **Use the launchpad migrators package.** Rejected because it imports launchpad
+  types and would couple the independent presale product to that lifecycle.
+- **Let the cap holder release migration assets.** Rejected because the caller
+  could falsely attest migration or disappear; sealed adapters make completion
+  permissionless and atomic.
 - **Leave funded sales waiting forever.** Rejected because loss of the creator
   capability or operator availability would permanently lock participant Quote.
 
@@ -110,12 +124,11 @@ wallet receives that documented sub-participant-count remainder.
   off-chain rank or eligibility methodology was fair.
 - Immutable publication removes concurrent old-bytecode access to shared
   presale custody and eliminates a presale package-administration surface.
-- A malicious cap holder can falsely attest launch by transferring the returned
-  LP assets instead of adding liquidity. The contract makes that trust boundary
-  explicit; venue-specific enforcement requires a separate adapter package.
-- The TreasuryCap is returned on launch or cancellation, so the creator can
+- The creator chooses the reward Merkle roots. Proofs enforce the published
+  allocation but cannot prove that its off-chain holder methodology was fair.
+- The TreasuryCap is returned after migration or cancellation, so the creator can
   mint additional supply afterward. Permanently fixed or burn-only supply
-  requires an explicit Coin Registry transition outside this venue-neutral core.
+  requires an explicit Coin Registry transition outside this package.
 - The generic package cannot remove a Quote issuer's deny, pause, or supply
   powers. Such controls can block an affected wallet's transfer, although an
   aborted claim leaves its on-chain commitment and escrow intact for retry.
@@ -124,7 +137,8 @@ wallet receives that documented sub-participant-count remainder.
 
 - Unit tests cover equal caps, tiered Merkle caps, cumulative cap enforcement,
   dynamic-record bounds, exact time boundaries, proportional fills, full
-  refunds, allocation recovery, and the LP timeout.
+  refunds, allocation recovery, migration witness enforcement, LP-fee splitting,
+  creator claims, generic Merkle proofs, and relayed holder rewards.
 - The package gate builds both network environments, lints with warnings as
   errors, and runs Move tests.
 - Publication preview must show package publication and consumption of the

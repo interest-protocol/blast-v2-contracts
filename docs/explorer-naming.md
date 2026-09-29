@@ -77,6 +77,8 @@ every package-administration object.
 | `blast_partners` | `blast_partners::PartnerCap` | new (ADR 0095); wallet-held, one per company | module |
 | `blast_presale` | `blast_presale::Presale<SaleToken, Quote>` | new (ADR 0099) | module |
 | `blast_presale` | `blast_presale::PresaleCap` | new (ADR 0099); wallet-held, one per presale | module |
+| `blast_presale` | `presale_vault::PresaleVault<Meme, Quote>` | new (ADR 0099); shared, one per migrated presale | module |
+| `blast_presale` | `holder_rewards::Round<Meme, Quote>` | new (ADR 0099); shared, one per reward root | module |
 
 `blast_boosts_core` defines no `key` type; its `State<Product>` is a
 `store` value nested in the adapter Vault.
@@ -91,7 +93,7 @@ every package-administration object.
 | `blast_fun_migrators` | `events::X` (direct emission) | `blast_events::X` | module |
 | `blast_admin` | `events::X<Domain>` | `blast_admin_events::X`; custody and version events keep `<PackageMarker>` | module |
 | `blast_partners` | — | `blast_partners::PartnerUpdated` and `blast_partners::PartnerPaid<T>` (direct emission, ADR 0095) | module |
-| `blast_presale` | — | direct `blast_presale::PresaleCreated<…>`, `PresaleOpened<…>`, `Committed<…>`, settlement, launch, claim, and recovery events (ADR 0099) | module |
+| `blast_presale` | — | direct creation, commitment, settlement, migration, vault-fee, holder-reward, claim, and recovery events (ADR 0099) | module |
 | `blast_boosts_aftermath` | — | `blast_events::Event<events::PartnerAdded>` and `blast_events::Event<events::PartnerRemoved>` (ADR 0095; protocol-wide, no `Product`) | envelope module |
 
 Payload struct names inside the envelopes (`Bought`, `Migrated`,
@@ -108,6 +110,8 @@ Payload struct names inside the envelopes (`Bought`, `Migrated`,
 | `blast_fun_migrators` | `cetus::Witness`, `bluefin::Witness` | unchanged | the only migration witnesses; appear as `TypeName` values in `LaunchConfig` and events |
 | `blast_fun_migrators` | `cetus::CreationCapKey<Meme>` | unchanged | dynamic-object-field key under `VenueConfig` for the Meme type's Cetus `PoolCreationCap`; the cap keeps its own object ID |
 | `blast_fun_migrators` | `cetus::ReservationKey<Meme, Quote>` | unchanged | dynamic-field key under `VenueConfig` naming one reserved Meme/Quote pair; the value is its reserved tick spacing |
+| `blast_presale` | `cetus::Venue`, `bluefin::Venue` | new (ADR 0099) | sealed position keys under `PresaleVault` |
+| `blast_presale` | `cetus::Witness`, `bluefin::Witness` | new (ADR 0099) | sealed migration identities fixed before commitments open |
 | `blast_boosts_aftermath` | `vault::TreasuryKey<Product>`, `vault::MetadataKey<Product>`, `vault::AdminCashKey`, `vault::TerminalCashKey` | unchanged | dynamic-field keys under `Vault` |
 | `blast_boosts_aftermath` | `protocol::PartnerKey` | new (ADR 0095) | dynamic-field key under `Protocol`, one per Blast partner Boosts accepts; the value is the time it stops being accepted |
 | `blast_boosts_products` | `<TICKER>_<SIDE>_<LEVERAGE>` tags such as `NVDA_BULL_2X` | bull and bear 2X per Aftermath market | inner type of every Boost coin |

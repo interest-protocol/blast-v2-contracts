@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
 /// Standalone overflow presales with capped commitments, proportional fills,
-/// LP-gated claims, and full refunds when a sale does not launch.
+/// migration-gated claims, and full refunds when a sale does not migrate.
 module blast_presale::blast_presale;
 
 // === Public Types ===
@@ -22,7 +22,7 @@ public enum Lifecycle has copy, drop, store {
     Pending,
     Open,
     Funded,
-    Launched,
+    Migrated,
     Cancelled,
 }
 
@@ -44,15 +44,16 @@ public struct Commitment has copy, drop, store {
     wallet_cap: u64,
 }
 
-/// One standalone presale and its complete custody until launch or refund.
+/// One standalone presale and its complete custody until migration or refund.
 ///
 /// The minted presale and LP allocations, the SaleToken TreasuryCap, and every
-/// commitment are escrowed. A funded launch releases exactly `raise_target`
-/// Quote, the LP allocation, and the TreasuryCap, then opens proportional token
-/// and overflow-refund claims. If the raise is missed, or LP is not launched by
-/// its deadline, every commitment is refunded.
+/// commitment are escrowed. A funded migration releases exactly `raise_target`
+/// Quote and the LP allocation to the configured venue adapter, then opens
+/// proportional token and overflow-refund claims. If the raise is missed, or LP
+/// is not migrated by its deadline, every commitment is refunded.
 public struct Presale<phantom SaleToken, phantom Quote> has key {
     id: UID,
+    presale_cap_id: ID,
     lifecycle: Lifecycle,
     duration_ms: u64,
     liquidity_window_ms: u64,
@@ -60,6 +61,11 @@ public struct Presale<phantom SaleToken, phantom Quote> has key {
     liquidity_deadline_ms: u64,
     raise_target: u64,
     eligibility: EligibilityPolicy,
+    migration_witness: TypeName,
+    tick_spacing: u32,
+    fee_rate: u64,
+    creator_fee_bps: u64,
+    rewards_fee_bps: u64,
     total_commitments: u64,
     remaining_commitments: u64,
     participants: u64,
@@ -93,82 +99,6 @@ public fun allowlisted_eligibility(root: vector<u8>, leaf_count: u64): Eligibili
     );
 
     EligibilityPolicy::Allowlisted { root, leaf_count }
-}
-
-/// Requires a zero-supply SaleToken TreasuryCap, derives the presale and LP
-/// allocations from the configured token supply and BPS, and mints only those
-/// allocations into escrow.
-public fun new<SaleToken, Quote>(
-    mut treasury_cap: TreasuryCap<SaleToken>,
-    token_supply: u64,
-    token_allocation_bps: u64,
-    liquidity_token_allocation_bps: u64,
-    raise_target: u64,
-    duration_ms: u64,
-    liquidity_window_ms: u64,
-    eligibility: EligibilityPolicy,
-    ctx: &mut TxContext,
-): (Presale<SaleToken, Quote>, PresaleCap) {
-    assert!(
-        type_name::with_original_ids<SaleToken>() != type_name::with_original_ids<Quote>(),
-        EInvalidAssetPair,
-    );
-    assert!(treasury_cap.total_supply() == 0, EInitialSupplyNotZero);
-    assert!(raise_target > 0, EInvalidRaiseTarget);
-    assert!(
-        token_supply > 0
-            && token_allocation_bps > 0
-            && token_allocation_bps <= BASIS_POINTS
-            && liquidity_token_allocation_bps > 0
-            && liquidity_token_allocation_bps <= BASIS_POINTS - token_allocation_bps,
-        EInvalidTokenAllocation,
-    );
-    assert!(duration_ms > 0 && liquidity_window_ms > 0, EInvalidWindow);
-
-    let token_allocation = token_supply.mul_div(token_allocation_bps, BASIS_POINTS);
-    let liquidity_token_allocation = token_supply.mul_div(
-        liquidity_token_allocation_bps,
-        BASIS_POINTS,
-    );
-    assert!(token_allocation > 0 && liquidity_token_allocation > 0, EInvalidTokenAllocation);
-    let sale_tokens = treasury_cap.mint_balance(token_allocation);
-    let liquidity_tokens = treasury_cap.mint_balance(liquidity_token_allocation);
-    let treasury_cap_id = object::id(&treasury_cap);
-    let mut presale = Presale {
-        id: object::new(ctx),
-        lifecycle: Lifecycle::Pending,
-        duration_ms,
-        liquidity_window_ms,
-        end_ms: 0,
-        liquidity_deadline_ms: 0,
-        raise_target,
-        eligibility,
-        total_commitments: 0,
-        remaining_commitments: 0,
-        participants: 0,
-        quote: balance::zero(),
-        token_allocation,
-        sale_tokens,
-        liquidity_tokens,
-    };
-    presale.id.add_dynamic_object_field(TreasuryCapKey(), treasury_cap);
-    let presale_id = presale.id.to_inner();
-    let cap = PresaleCap { id: object::new(ctx), presale_id };
-
-    event::emit(PresaleCreated<SaleToken, Quote> {
-        presale_id,
-        presale_cap_id: cap.id.to_inner(),
-        treasury_cap_id,
-        token_supply,
-        token_allocation_bps,
-        liquidity_token_allocation_bps,
-        raise_target,
-        duration_ms,
-        liquidity_window_ms,
-        eligibility,
-    });
-
-    (presale, cap)
 }
 
 /// Shares a newly created presale and starts its fixed public window now.
@@ -260,35 +190,6 @@ public fun settle<SaleToken, Quote>(self: &mut Presale<SaleToken, Quote>, clock:
     };
 }
 
-/// Releases the TreasuryCap, exact raise, and LP-token allocation, then opens
-/// claims. The capability holder threads the LP assets into pool creation in
-/// the same programmable transaction; if that transaction aborts, this
-/// transition rolls back.
-public fun launch<SaleToken, Quote>(
-    self: &mut Presale<SaleToken, Quote>,
-    cap: &PresaleCap,
-    clock: &Clock,
-    ctx: &mut TxContext,
-): (TreasuryCap<SaleToken>, Coin<SaleToken>, Coin<Quote>) {
-    assert!(self.lifecycle == Lifecycle::Funded, EInvalidLifecycle);
-    self.assert_cap(cap);
-    assert!(clock.timestamp_ms() < self.liquidity_deadline_ms, ELiquidityDeadlinePassed);
-
-    let treasury_cap = self.remove_treasury_cap();
-    let quote = self.quote.split(self.raise_target).into_coin(ctx);
-    let liquidity_tokens = self.liquidity_tokens.withdraw_all().into_coin(ctx);
-    self.lifecycle = Lifecycle::Launched;
-
-    event::emit(PresaleLaunched<SaleToken, Quote> {
-        presale_id: self.id.to_inner(),
-        treasury_cap_id: object::id(&treasury_cap),
-        quote: self.raise_target,
-        liquidity_tokens: liquidity_tokens.value(),
-    });
-
-    (treasury_cap, liquidity_tokens, quote)
-}
-
 /// Cancels a funded presale whose LP deadline passed, preserving all Quote for refunds.
 public fun cancel_unlaunched<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
@@ -303,7 +204,7 @@ public fun cancel_unlaunched<SaleToken, Quote>(
     self.cancel();
 }
 
-/// Delivers one participant's pro-rata tokens and overflow Quote after launch,
+/// Delivers one participant's pro-rata tokens and overflow Quote after migration,
 /// or its full Quote after cancellation. Anyone may relay; the final claim
 /// receives the bounded integer-rounding remainder.
 public fun claim<SaleToken, Quote>(
@@ -312,7 +213,7 @@ public fun claim<SaleToken, Quote>(
     ctx: &mut TxContext,
 ) {
     assert!(
-        self.lifecycle == Lifecycle::Launched || self.lifecycle == Lifecycle::Cancelled,
+        self.lifecycle == Lifecycle::Migrated || self.lifecycle == Lifecycle::Cancelled,
         EInvalidLifecycle,
     );
     let key = CommitmentKey(participant);
@@ -322,7 +223,7 @@ public fun claim<SaleToken, Quote>(
         .id
         .remove_dynamic_field<_, Commitment>(key);
     let last = self.remaining_commitments == commitment;
-    let tokens = if (self.lifecycle == Lifecycle::Launched) {
+    let tokens = if (self.lifecycle == Lifecycle::Migrated) {
         if (last) {
             self.sale_tokens.value()
         } else {
@@ -358,6 +259,23 @@ public fun claim<SaleToken, Quote>(
     });
 }
 
+/// Returns the TreasuryCap to the creator authority after successful migration.
+public fun claim_treasury_cap<SaleToken, Quote>(
+    self: &mut Presale<SaleToken, Quote>,
+    cap: &PresaleCap,
+): TreasuryCap<SaleToken> {
+    assert!(self.lifecycle == Lifecycle::Migrated, EInvalidLifecycle);
+    self.assert_cap(cap);
+    let treasury_cap = self.remove_treasury_cap();
+
+    event::emit(TreasuryCapClaimed<SaleToken, Quote> {
+        presale_id: self.id.to_inner(),
+        treasury_cap_id: object::id(&treasury_cap),
+    });
+
+    treasury_cap
+}
+
 /// Recovers the TreasuryCap and every minted token allocation after
 /// cancellation. Quote is never returned here and remains reserved for refunds.
 public fun reclaim_cancelled_assets<SaleToken, Quote>(
@@ -387,16 +305,13 @@ public fun reclaim_cancelled_assets<SaleToken, Quote>(
     (treasury_cap, sale_tokens, liquidity_tokens)
 }
 
-/// Destroys the creator capability only after it can no longer strand creator assets.
+/// Destroys the creator capability after a cancelled sale has returned every creator asset.
 public fun destroy_cap<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, cap: PresaleCap) {
     self.assert_cap(&cap);
     assert!(
-        self.lifecycle == Lifecycle::Launched
-            || (
-                self.lifecycle == Lifecycle::Cancelled
-                    && self.sale_tokens.value() == 0
-                    && self.liquidity_tokens.value() == 0
-            ),
+        self.lifecycle == Lifecycle::Cancelled
+            && self.sale_tokens.value() == 0
+            && self.liquidity_tokens.value() == 0,
         EInvalidLifecycle,
     );
 
@@ -404,15 +319,159 @@ public fun destroy_cap<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, cap: 
     id.delete();
 }
 
+// === Package Functions ===
+
+/// Requires a zero-supply SaleToken TreasuryCap, derives the presale and LP
+/// allocations from the configured token supply and BPS, and mints only those
+/// allocations into escrow.
+public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
+    mut treasury_cap: TreasuryCap<SaleToken>,
+    token_supply: u64,
+    token_allocation_bps: u64,
+    liquidity_token_allocation_bps: u64,
+    raise_target: u64,
+    duration_ms: u64,
+    liquidity_window_ms: u64,
+    eligibility: EligibilityPolicy,
+    _: MigrationWitness,
+    tick_spacing: u32,
+    fee_rate: u64,
+    creator_fee_bps: u64,
+    rewards_fee_bps: u64,
+    ctx: &mut TxContext,
+): (Presale<SaleToken, Quote>, PresaleCap) {
+    assert!(
+        type_name::with_original_ids<SaleToken>() != type_name::with_original_ids<Quote>(),
+        EInvalidAssetPair,
+    );
+    assert!(treasury_cap.total_supply() == 0, EInitialSupplyNotZero);
+    assert!(raise_target > 0, EInvalidRaiseTarget);
+    assert!(
+        token_supply > 0
+            && token_allocation_bps > 0
+            && token_allocation_bps <= BASIS_POINTS
+            && liquidity_token_allocation_bps > 0
+            && liquidity_token_allocation_bps <= BASIS_POINTS - token_allocation_bps,
+        EInvalidTokenAllocation,
+    );
+    assert!(creator_fee_bps <= BASIS_POINTS, EInvalidFeeSplit);
+    assert!(rewards_fee_bps == BASIS_POINTS - creator_fee_bps, EInvalidFeeSplit);
+    assert!(duration_ms > 0 && liquidity_window_ms > 0, EInvalidWindow);
+
+    let token_allocation = token_supply.mul_div(token_allocation_bps, BASIS_POINTS);
+    let liquidity_token_allocation = token_supply.mul_div(
+        liquidity_token_allocation_bps,
+        BASIS_POINTS,
+    );
+    assert!(token_allocation > 0 && liquidity_token_allocation > 0, EInvalidTokenAllocation);
+    let sale_tokens = treasury_cap.mint_balance(token_allocation);
+    let liquidity_tokens = treasury_cap.mint_balance(liquidity_token_allocation);
+    let treasury_cap_id = object::id(&treasury_cap);
+    let id = object::new(ctx);
+    let presale_id = id.to_inner();
+    let cap = PresaleCap { id: object::new(ctx), presale_id };
+    let presale_cap_id = cap.id.to_inner();
+    let migration_witness = type_name::with_original_ids<MigrationWitness>();
+    let mut presale = Presale {
+        id,
+        presale_cap_id,
+        lifecycle: Lifecycle::Pending,
+        duration_ms,
+        liquidity_window_ms,
+        end_ms: 0,
+        liquidity_deadline_ms: 0,
+        raise_target,
+        eligibility,
+        migration_witness,
+        tick_spacing,
+        fee_rate,
+        creator_fee_bps,
+        rewards_fee_bps,
+        total_commitments: 0,
+        remaining_commitments: 0,
+        participants: 0,
+        quote: balance::zero(),
+        token_allocation,
+        sale_tokens,
+        liquidity_tokens,
+    };
+    presale.id.add_dynamic_object_field(TreasuryCapKey(), treasury_cap);
+
+    event::emit(PresaleCreated<SaleToken, Quote> {
+        presale_id,
+        presale_cap_id,
+        treasury_cap_id,
+        token_supply,
+        token_allocation_bps,
+        liquidity_token_allocation_bps,
+        raise_target,
+        duration_ms,
+        liquidity_window_ms,
+        eligibility,
+        migration_witness,
+        tick_spacing,
+        fee_rate,
+        creator_fee_bps,
+        rewards_fee_bps,
+    });
+
+    (presale, cap)
+}
+
+/// Releases the exact raise and LP-token allocation only to the configured
+/// migrator. Anyone may call that migrator; its pool creation remains atomic
+/// with this state transition.
+public(package) fun migrate<SaleToken, Quote, MigrationWitness: drop>(
+    self: &mut Presale<SaleToken, Quote>,
+    _: MigrationWitness,
+    clock: &Clock,
+): (Balance<SaleToken>, Balance<Quote>) {
+    assert!(self.lifecycle == Lifecycle::Funded, EInvalidLifecycle);
+    assert!(clock.timestamp_ms() < self.liquidity_deadline_ms, ELiquidityDeadlinePassed);
+    assert!(
+        self.migration_witness == type_name::with_original_ids<MigrationWitness>(),
+        EWrongMigrationWitness,
+    );
+
+    let quote = self.quote.split(self.raise_target);
+    let liquidity_tokens = self.liquidity_tokens.withdraw_all();
+    self.lifecycle = Lifecycle::Migrated;
+
+    event::emit(PresaleMigrated<SaleToken, Quote> {
+        presale_id: self.id.to_inner(),
+        migration_witness: self.migration_witness,
+        quote: self.raise_target,
+        liquidity_tokens: liquidity_tokens.value(),
+    });
+
+    (liquidity_tokens, quote)
+}
+
+public(package) fun assert_cap<SaleToken, Quote>(
+    self: &Presale<SaleToken, Quote>,
+    cap: &PresaleCap,
+) {
+    assert!(object::id(cap) == self.presale_cap_id, EWrongPresaleCap);
+}
+
+public(package) fun migration_config<SaleToken, Quote>(
+    self: &Presale<SaleToken, Quote>,
+): (ID, ID, u32, u64, u64, u64) {
+    (
+        self.id.to_inner(),
+        self.presale_cap_id,
+        self.tick_spacing,
+        self.fee_rate,
+        self.creator_fee_bps,
+        self.rewards_fee_bps,
+    )
+}
+
 // === Private Functions ===
 
 fun assert_open<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, clock: &Clock) {
     assert!(self.lifecycle == Lifecycle::Open, EInvalidLifecycle);
     assert!(clock.timestamp_ms() < self.end_ms, EPresaleEnded);
-}
-
-fun assert_cap<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, cap: &PresaleCap) {
-    assert!(cap.presale_id == self.id.to_inner(), EWrongPresaleCap);
 }
 
 fun remove_treasury_cap<SaleToken, Quote>(
@@ -488,7 +547,7 @@ fun verify_allowlisted(
         EligibilityPolicy::Allowlisted { root, leaf_count } => {
             assert!(index < leaf_count && wallet_cap > 0, EInvalidEligibilityProof);
             let digest = allowlist_leaf(index, wallet, wallet_cap);
-            assert!(verify(root, digest, index, leaf_count, proof), EInvalidEligibilityProof);
+            assert!(merkle_tree::verify(root, digest, index, leaf_count, proof), EInvalidEligibilityProof);
 
             leaf_count
         },
@@ -500,37 +559,6 @@ fun allowlist_leaf(index: u64, wallet: address, wallet_cap: u64): vector<u8> {
     bytes.append(bcs::to_bytes(&index));
     bytes.append(bcs::to_bytes(&wallet));
     bytes.append(bcs::to_bytes(&wallet_cap));
-    hash::blake2b256(&bytes)
-}
-
-fun verify(
-    root: vector<u8>,
-    mut digest: vector<u8>,
-    mut index: u64,
-    leaves: u64,
-    proof: &vector<vector<u8>>,
-): bool {
-    let mut width = leaves;
-    let mut depth = 0;
-    while (width > 1) {
-        width = width.div_ceil(2);
-        depth = depth + 1;
-    };
-    if (
-        proof.length() != depth
-            || !proof.all!(|sibling| sibling.length() == DIGEST_LENGTH)
-    ) return false;
-    proof.do_ref!(|sibling| {
-        digest = if (index % 2 == 0) merkle_node(digest, *sibling) else merkle_node(*sibling, digest);
-        index = index / 2;
-    });
-    digest == root
-}
-
-fun merkle_node(left: vector<u8>, right: vector<u8>): vector<u8> {
-    let mut bytes = vector[1u8];
-    bytes.append(left);
-    bytes.append(right);
     hash::blake2b256(&bytes)
 }
 
@@ -547,6 +575,11 @@ fun cancel<SaleToken, Quote>(self: &mut Presale<SaleToken, Quote>) {
 // === Test-Only Functions ===
 
 #[test_only]
+public fun cap_for_testing(presale_id: ID, ctx: &mut TxContext): PresaleCap {
+    PresaleCap { id: object::new(ctx), presale_id }
+}
+
+#[test_only]
 public fun allowlist_leaf_for_testing(
     index: u64,
     wallet: address,
@@ -557,12 +590,17 @@ public fun allowlist_leaf_for_testing(
 
 #[test_only]
 public fun merkle_node_for_testing(left: vector<u8>, right: vector<u8>): vector<u8> {
-    merkle_node(left, right)
+    merkle_tree::node(left, right)
 }
 
 #[test_only]
 public fun is_funded_for_testing<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): bool {
     self.lifecycle == Lifecycle::Funded
+}
+
+#[test_only]
+public fun is_migrated_for_testing<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): bool {
+    self.lifecycle == Lifecycle::Migrated
 }
 
 #[test_only]
@@ -627,6 +665,19 @@ public fun created_fields<SaleToken, Quote>(
 }
 
 #[test_only]
+public fun created_migration_fields<SaleToken, Quote>(
+    event: &PresaleCreated<SaleToken, Quote>,
+): (TypeName, u32, u64, u64, u64) {
+    (
+        event.migration_witness,
+        event.tick_spacing,
+        event.fee_rate,
+        event.creator_fee_bps,
+        event.rewards_fee_bps,
+    )
+}
+
+#[test_only]
 public fun opened_fields<SaleToken, Quote>(
     event: &PresaleOpened<SaleToken, Quote>,
 ): (ID, u64, u64, u64) {
@@ -667,12 +718,12 @@ public fun cancelled_fields<SaleToken, Quote>(
 }
 
 #[test_only]
-public fun launched_fields<SaleToken, Quote>(
-    event: &PresaleLaunched<SaleToken, Quote>,
-): (ID, ID, u64, u64) {
+public fun migrated_fields<SaleToken, Quote>(
+    event: &PresaleMigrated<SaleToken, Quote>,
+): (ID, TypeName, u64, u64) {
     (
         event.presale_id,
-        event.treasury_cap_id,
+        event.migration_witness,
         event.quote,
         event.liquidity_tokens,
     )
@@ -718,6 +769,11 @@ public struct PresaleCreated<phantom SaleToken, phantom Quote> has copy, drop {
     duration_ms: u64,
     liquidity_window_ms: u64,
     eligibility: EligibilityPolicy,
+    migration_witness: TypeName,
+    tick_spacing: u32,
+    fee_rate: u64,
+    creator_fee_bps: u64,
+    rewards_fee_bps: u64,
 }
 
 /// A presale's fixed commitment and liquidity windows began.
@@ -753,12 +809,18 @@ public struct PresaleCancelled<phantom SaleToken, phantom Quote> has copy, drop 
     refundable_quote: u64,
 }
 
-/// The exact raise and LP-token allocation left escrow and claims opened.
-public struct PresaleLaunched<phantom SaleToken, phantom Quote> has copy, drop {
+/// The exact raise and LP-token allocation entered the configured migrator.
+public struct PresaleMigrated<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
-    treasury_cap_id: ID,
+    migration_witness: TypeName,
     quote: u64,
     liquidity_tokens: u64,
+}
+
+/// The creator authority recovered the migrated token's mint capability.
+public struct TreasuryCapClaimed<phantom SaleToken, phantom Quote> has copy, drop {
+    presale_id: ID,
+    treasury_cap_id: ID,
 }
 
 /// `participant` received its token allocation and Quote refund.
@@ -839,7 +901,7 @@ const ENoCommitment: vector<u8> = b"The wallet has no undelivered presale commit
 const EWrongPresaleCap: vector<u8> = b"The creator capability belongs to a different presale.";
 
 #[error(code = 16)]
-const ELiquidityDeadlinePassed: vector<u8> = b"The deadline to launch liquidity has passed.";
+const ELiquidityDeadlinePassed: vector<u8> = b"The deadline to migrate liquidity has passed.";
 
 #[error(code = 17)]
 const ELiquidityDeadlineNotReached: vector<u8> = b"The deadline to cancel an unlaunched funded presale has not arrived.";
@@ -850,9 +912,17 @@ const ENothingToReclaim: vector<u8> = b"The cancelled presale has no token alloc
 #[error(code = 19)]
 const EInitialSupplyNotZero: vector<u8> = b"The supplied SaleToken TreasuryCap must have zero total supply.";
 
+#[error(code = 20)]
+const EInvalidFeeSplit: vector<u8> = b"Creator and holder-reward fee shares must total 10,000 BPS.";
+
+#[error(code = 21)]
+const EWrongMigrationWitness: vector<u8> = b"The migrator does not match the venue fixed at presale creation.";
+
 // === Imports ===
 
-use std::{bcs, type_name};
+use blast_presale::merkle_tree;
+
+use std::{bcs, type_name::{Self, TypeName}};
 
 use sui::{
     balance::{Self, Balance},

@@ -1,40 +1,38 @@
 # Blast presale
 
 `blast_presale` is a standalone, immutable Sui package for overflow presales.
-It does not import the launchpad, migrators, Blast administration, or partner
-packages.
+It does not import or mutate launchpad state. Its Bluefin and Cetus adapters,
+LP vault, and holder-reward rounds live in the same package.
 
-A creator supplies a zero-supply `TreasuryCap<SaleToken>` and configures the
-token supply, presale-allocation BPS, LP-allocation BPS, Quote raise,
-commitment window, LP window, and `EligibilityPolicy`. Each allocation is
+A creator supplies a zero-supply `TreasuryCap<SaleToken>` and configures token
+supply, presale-allocation BPS, LP-allocation BPS, Quote raise, commitment and
+migration windows, `EligibilityPolicy`, migration venue and tier, and
+creator/reward LP-fee BPS. Each token allocation is
 `floor(token_supply * allocation_bps / 10_000)`. Their combined rate cannot
-exceed 10,000 BPS, and both results must be positive. The contract mints only
-those two allocations, escrows them with the cap, and shares the `Presale`;
-all other supply remains unminted. The policy is either one open wallet cap or
-a Merkle allowlist whose leaves carry per-wallet caps for equal, tiered, or
-custom limits.
+exceed 10,000 BPS, both results must be positive, and only those allocations
+are minted. Eligibility is either one open wallet cap or a Merkle allowlist
+whose leaves carry per-wallet caps.
 
-Every commitment consumes a `Coin<Quote>` and joins its full balance into the
-shared `Presale`; recording an amount without locking the matching Quote is not
-an available contract path. A participant cannot withdraw during the open or
-funded states. Cancellation returns the full commitment; after launch, only the
-calculated overflow is refundable.
+Every commitment consumes and locks its full `Coin<Quote>`. Participants cannot
+withdraw while a sale is open or funded. Underfunded and timed-out sales refund
+every commitment; successfully migrated sales refund only overflow. One common
+fill rate applies to every wallet.
 
-After the window, an underfunded sale refunds every commitment. A funded sale
-uses one fill rate for every wallet. `launch` returns the exact raise,
-LP-token allocation, and original TreasuryCap while opening token and
-overflow-refund claims. The cap holder is responsible
-for threading the LP assets into pool creation in the same programmable
-transaction; the core package has no DEX dependency. If LP is not launched by
-the configured deadline, anyone can cancel and preserve all Quote for full
-refunds. The creator may then recover the TreasuryCap and both minted allocations.
-Claims are permissionlessly relayable, so a keeper can airdrop each wallet's
-tokens after launch while wallets can also claim directly.
+Anyone may call the configured Bluefin or Cetus migration before the deadline.
+It atomically takes the exact raise and LP allocation, creates the configured
+full-range pool, and seals the position or burn proof in a `PresaleVault`; a DEX
+failure rolls back the presale transition. Claims open only after success.
 
-Returning the TreasuryCap preserves the creator's mint authority after launch
-or cancellation. The presale guarantees a zero initial supply and prevents
-additional minting while the cap is in custody; it does not promise permanently
-fixed supply after the cap is returned.
+Permissionless fee collection applies the immutable creation-time BPS split.
+The `PresaleCap` claims the creator share and migration residuals, publishes
+Merkle rounds funded from the holder-reward share, and recovers the TreasuryCap
+after migration. Anyone may relay participant or reward claims, but payment
+always goes to the committed beneficiary. Eligibility and rewards share the
+package's generic positional Blake2b-256 Merkle verifier.
+
+Returning the TreasuryCap preserves the creator's mint authority after migration
+or cancellation. The presale proves zero initial supply and prevents additional
+minting while the cap is in custody; it does not promise permanently fixed supply.
 
 Run `scripts/verify.sh`. Publish with
 `scripts/publish_immutable.sh <sui-environment> --preview` and repeat with
