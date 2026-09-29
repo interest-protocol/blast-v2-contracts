@@ -18,8 +18,10 @@ const LIQUIDITY_WINDOW_MS: u64 = 50;
 const LIQUIDITY_DEADLINE_MS: u64 = END_MS + LIQUIDITY_WINDOW_MS;
 
 const RAISE_TARGET: u64 = 1_000;
+const TOTAL_SUPPLY: u64 = 20_000;
 const TOKEN_ALLOCATION: u64 = 10_000;
 const LIQUIDITY_TOKENS: u64 = 2_000;
+const CREATOR_TOKENS: u64 = TOTAL_SUPPLY - TOKEN_ALLOCATION - LIQUIDITY_TOKENS;
 const WALLET_CAP: u64 = 5_000;
 
 // === Test-Only Types ===
@@ -31,6 +33,7 @@ public struct Fixture {
     scenario: Scenario,
     clock: Clock,
     presale_id: ID,
+    treasury_cap_id: ID,
 }
 
 // === Tests ===
@@ -55,18 +58,25 @@ fun oversubscription_uses_one_fill_rate_and_refunds_the_rest() {
     assert_eq!(vector[commitments, accepted, refundable, tokens], vector[4_000, 1_000, 3_000, 10_000]);
     assert!(fixture.is_funded());
 
-    assert_eq!(fixture.launch(), vector[LIQUIDITY_TOKENS, RAISE_TARGET]);
-    let (presale_id, quote, liquidity_tokens) = only_event<
+    assert_eq!(
+        fixture.launch(),
+        vector[LIQUIDITY_TOKENS, CREATOR_TOKENS, RAISE_TARGET, TOTAL_SUPPLY],
+    );
+    let (presale_id, treasury_cap_id, quote, liquidity_tokens, creator_tokens) = only_event<
         PresaleLaunched<SALE_TOKEN, QUOTE>,
     >().launched_fields();
     assert_eq!(presale_id, fixture.presale_id);
-    assert_eq!(vector[quote, liquidity_tokens], vector[RAISE_TARGET, LIQUIDITY_TOKENS]);
+    assert_eq!(treasury_cap_id, fixture.treasury_cap_id);
+    assert_eq!(
+        vector[quote, liquidity_tokens, creator_tokens],
+        vector[RAISE_TARGET, LIQUIDITY_TOKENS, CREATOR_TOKENS],
+    );
 
     assert_eq!(fixture.claim(KEEPER, ALICE), vector[1_000, 2_500, 750, 3_000]);
     fixture.take_payout(ALICE, 2_500, 750);
     assert_eq!(fixture.claim(KEEPER, BOB), vector[3_000, 7_500, 2_250, 0]);
     fixture.take_payout(BOB, 7_500, 2_250);
-    assert_eq!(fixture.custody(), vector[4_000, 0, 2, 0, 0, 0]);
+    assert_eq!(fixture.custody(), vector[4_000, 0, 2, 0, 0, 0, 0]);
 
     fixture.destroy_cap();
     fixture.end();
@@ -83,12 +93,28 @@ fun commitments_lock_quote_in_presale_custody() {
     fixture.commit_open(ALICE, 400);
     assert_eq!(
         fixture.custody(),
-        vector[400, 400, 1, 400, TOKEN_ALLOCATION, LIQUIDITY_TOKENS],
+        vector[
+            400,
+            400,
+            1,
+            400,
+            TOKEN_ALLOCATION,
+            LIQUIDITY_TOKENS,
+            CREATOR_TOKENS,
+        ],
     );
     fixture.commit_open(ALICE, 100);
     assert_eq!(
         fixture.custody(),
-        vector[500, 500, 1, 500, TOKEN_ALLOCATION, LIQUIDITY_TOKENS],
+        vector[
+            500,
+            500,
+            1,
+            500,
+            TOKEN_ALLOCATION,
+            LIQUIDITY_TOKENS,
+            CREATOR_TOKENS,
+        ],
     );
 
     fixture.set_time(END_MS);
@@ -147,7 +173,10 @@ fun underfunded_sale_refunds_every_commitment_and_returns_creator_tokens() {
     assert!(fixture.is_cancelled());
     assert_eq!(fixture.claim(KEEPER, ALICE), vector[500, 0, 500, 0]);
     fixture.take_quote(ALICE, 500);
-    assert_eq!(fixture.reclaim_and_destroy_cap(), vector[TOKEN_ALLOCATION, LIQUIDITY_TOKENS]);
+    assert_eq!(
+        fixture.reclaim_and_destroy_cap(),
+        vector[TOKEN_ALLOCATION, LIQUIDITY_TOKENS, CREATOR_TOKENS, TOTAL_SUPPLY],
+    );
     fixture.end();
 }
 
@@ -283,9 +312,12 @@ fun another_presales_cap_cannot_release_escrow() {
     fixture.settle(KEEPER);
 
     fixture.next_tx!(CREATOR, |fixture| {
+        let treasury_cap = coin::create_treasury_cap_for_testing<SALE_TOKEN>(fixture.ctx!());
         let (other, other_cap) = presale::new<SALE_TOKEN, QUOTE>(
-            coin::mint_for_testing(TOKEN_ALLOCATION, fixture.ctx!()),
-            coin::mint_for_testing(LIQUIDITY_TOKENS, fixture.ctx!()),
+            treasury_cap,
+            TOTAL_SUPPLY,
+            TOKEN_ALLOCATION,
+            LIQUIDITY_TOKENS,
             RAISE_TARGET,
             DURATION_MS,
             LIQUIDITY_WINDOW_MS,
@@ -294,10 +326,13 @@ fun another_presales_cap_cannot_release_escrow() {
         );
         other.share(&fixture.clock);
         let mut sale = fixture.take_presale();
-        let (liquidity_tokens, quote) = sale.launch(&other_cap, &fixture.clock, fixture.ctx!());
+        let (treasury_cap, liquidity_tokens, creator_tokens, quote) = sale
+            .launch(&other_cap, &fixture.clock, fixture.ctx!());
         liquidity_tokens.burn_for_testing();
+        creator_tokens.burn_for_testing();
         quote.burn_for_testing();
         fixture.return_presale(sale);
+        transfer::public_transfer(treasury_cap, CREATOR);
         transfer::public_transfer(other_cap, CREATOR);
     });
     fixture.end();
@@ -322,10 +357,13 @@ fun sale_token_and_quote_types_must_differ() {
     let mut ctx = tx_context::dummy();
     let clock = clock::create_for_testing(&mut ctx);
     let policy = presale::open_eligibility(1, 1);
+    let treasury_cap = coin::create_treasury_cap_for_testing<QUOTE>(&mut ctx);
 
     let (sale, cap) = presale::new<QUOTE, QUOTE>(
-        coin::mint_for_testing(1, &mut ctx),
-        coin::mint_for_testing(1, &mut ctx),
+        treasury_cap,
+        2,
+        1,
+        1,
         1,
         1,
         1,
@@ -338,15 +376,69 @@ fun sale_token_and_quote_types_must_differ() {
     destroy(ctx);
 }
 
+#[test]
+#[expected_failure(abort_code = presale::EInitialSupplyNotZero, location = blast_presale::blast_presale)]
+fun treasury_cap_must_start_with_zero_supply() {
+    let mut ctx = tx_context::dummy();
+    let mut treasury_cap = coin::create_treasury_cap_for_testing<SALE_TOKEN>(&mut ctx);
+    let existing_supply = treasury_cap.mint(1, &mut ctx);
+
+    let (sale, cap) = presale::new<SALE_TOKEN, QUOTE>(
+        treasury_cap,
+        TOTAL_SUPPLY,
+        TOKEN_ALLOCATION,
+        LIQUIDITY_TOKENS,
+        RAISE_TARGET,
+        DURATION_MS,
+        LIQUIDITY_WINDOW_MS,
+        presale::open_eligibility(WALLET_CAP, 1),
+        &mut ctx,
+    );
+    existing_supply.burn_for_testing();
+    let clock = clock::create_for_testing(&mut ctx);
+    sale.share(&clock);
+    transfer::public_transfer(cap, CREATOR);
+    clock.destroy_for_testing();
+    destroy(ctx);
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidTokenSupply, location = blast_presale::blast_presale)]
+fun configured_total_supply_must_cover_both_sale_allocations() {
+    let mut ctx = tx_context::dummy();
+    let treasury_cap = coin::create_treasury_cap_for_testing<SALE_TOKEN>(&mut ctx);
+
+    let (sale, cap) = presale::new<SALE_TOKEN, QUOTE>(
+        treasury_cap,
+        TOKEN_ALLOCATION + LIQUIDITY_TOKENS - 1,
+        TOKEN_ALLOCATION,
+        LIQUIDITY_TOKENS,
+        RAISE_TARGET,
+        DURATION_MS,
+        LIQUIDITY_WINDOW_MS,
+        presale::open_eligibility(WALLET_CAP, 1),
+        &mut ctx,
+    );
+    let clock = clock::create_for_testing(&mut ctx);
+    sale.share(&clock);
+    transfer::public_transfer(cap, CREATOR);
+    clock.destroy_for_testing();
+    destroy(ctx);
+}
+
 // === Test Helpers ===
 
 fun start(raise_target: u64, eligibility: EligibilityPolicy): Fixture {
     let mut scenario = test_scenario::begin(CREATOR);
     let mut clock = clock::create_for_testing(scenario.ctx());
     clock.set_for_testing(START_MS);
+    let treasury_cap = coin::create_treasury_cap_for_testing<SALE_TOKEN>(scenario.ctx());
+    let treasury_cap_id = object::id(&treasury_cap);
     let (presale, cap) = presale::new<SALE_TOKEN, QUOTE>(
-        coin::mint_for_testing(TOKEN_ALLOCATION, scenario.ctx()),
-        coin::mint_for_testing(LIQUIDITY_TOKENS, scenario.ctx()),
+        treasury_cap,
+        TOTAL_SUPPLY,
+        TOKEN_ALLOCATION,
+        LIQUIDITY_TOKENS,
         raise_target,
         DURATION_MS,
         LIQUIDITY_WINDOW_MS,
@@ -357,28 +449,39 @@ fun start(raise_target: u64, eligibility: EligibilityPolicy): Fixture {
     let cap_id = object::id(&cap);
     let (
         created_id,
-        created_cap_id,
+        created_presale_cap_id,
+        created_treasury_cap_id,
+        created_total_supply,
         created_raise,
         created_tokens,
         created_liquidity_tokens,
+        created_creator_tokens,
         created_duration,
         created_liquidity_window,
         created_eligibility,
     ) = only_event<PresaleCreated<SALE_TOKEN, QUOTE>>().created_fields();
     assert_eq!(created_id, presale_id);
-    assert_eq!(created_cap_id, cap_id);
+    assert_eq!(created_presale_cap_id, cap_id);
+    assert_eq!(created_treasury_cap_id, treasury_cap_id);
+    let (held_treasury_cap_id, held_total_supply) = presale.treasury_cap_fields_for_testing();
+    assert_eq!(held_treasury_cap_id, treasury_cap_id);
+    assert_eq!(held_total_supply, TOTAL_SUPPLY);
     assert_eq!(
         vector[
+            created_total_supply,
             created_raise,
             created_tokens,
             created_liquidity_tokens,
+            created_creator_tokens,
             created_duration,
             created_liquidity_window,
         ],
         vector[
+            TOTAL_SUPPLY,
             raise_target,
             TOKEN_ALLOCATION,
             LIQUIDITY_TOKENS,
+            CREATOR_TOKENS,
             DURATION_MS,
             LIQUIDITY_WINDOW_MS,
         ],
@@ -392,11 +495,11 @@ fun start(raise_target: u64, eligibility: EligibilityPolicy): Fixture {
     assert_eq!(vector[start_ms, end_ms, deadline_ms], vector[START_MS, END_MS, LIQUIDITY_DEADLINE_MS]);
     transfer::public_transfer(cap, CREATOR);
 
-    Fixture { scenario, clock, presale_id }
+    Fixture { scenario, clock, presale_id, treasury_cap_id }
 }
 
 fun end(self: Fixture) {
-    let Fixture { scenario, clock, presale_id: _ } = self;
+    let Fixture { scenario, clock, presale_id: _, treasury_cap_id: _ } = self;
     clock.destroy_for_testing();
     scenario.end();
 }
@@ -485,10 +588,15 @@ fun launch(self: &mut Fixture): vector<u64> {
     self.next_tx!(CREATOR, |fixture| {
         let cap = fixture.scenario.take_from_sender<PresaleCap>();
         let mut sale = fixture.take_presale();
-        let (liquidity_tokens, quote) = sale.launch(&cap, &fixture.clock, fixture.ctx!());
+        let (treasury_cap, liquidity_tokens, creator_tokens, quote) = sale
+            .launch(&cap, &fixture.clock, fixture.ctx!());
+        assert_eq!(object::id(&treasury_cap), fixture.treasury_cap_id);
         amounts.push_back(liquidity_tokens.burn_for_testing());
+        amounts.push_back(creator_tokens.burn_for_testing());
         amounts.push_back(quote.burn_for_testing());
+        amounts.push_back(treasury_cap.total_supply());
         fixture.return_presale(sale);
+        transfer::public_transfer(treasury_cap, CREATOR);
         transfer::public_transfer(cap, CREATOR);
     });
     amounts
@@ -544,16 +652,31 @@ fun reclaim_and_destroy_cap(self: &mut Fixture): vector<u64> {
     self.next_tx!(CREATOR, |fixture| {
         let cap = fixture.scenario.take_from_sender<PresaleCap>();
         let mut sale = fixture.take_presale();
-        let (sale_tokens, liquidity_tokens) = sale.reclaim_cancelled_tokens(&cap, fixture.ctx!());
+        let (treasury_cap, sale_tokens, liquidity_tokens, creator_tokens) = sale
+            .reclaim_cancelled_assets(&cap, fixture.ctx!());
+        assert_eq!(object::id(&treasury_cap), fixture.treasury_cap_id);
         amounts.push_back(sale_tokens.burn_for_testing());
         amounts.push_back(liquidity_tokens.burn_for_testing());
-        let (presale_id, reclaimed_sale, reclaimed_liquidity) = only_event<
-            CancelledTokensReclaimed<SALE_TOKEN, QUOTE>,
+        amounts.push_back(creator_tokens.burn_for_testing());
+        amounts.push_back(treasury_cap.total_supply());
+        let (
+            presale_id,
+            treasury_cap_id,
+            reclaimed_sale,
+            reclaimed_liquidity,
+            reclaimed_creator,
+        ) = only_event<
+            CancelledAssetsReclaimed<SALE_TOKEN, QUOTE>,
         >().reclaimed_fields();
         assert_eq!(presale_id, fixture.presale_id);
-        assert_eq!(vector[reclaimed_sale, reclaimed_liquidity], amounts);
+        assert_eq!(treasury_cap_id, fixture.treasury_cap_id);
+        assert_eq!(
+            vector[reclaimed_sale, reclaimed_liquidity, reclaimed_creator],
+            vector[TOKEN_ALLOCATION, LIQUIDITY_TOKENS, CREATOR_TOKENS],
+        );
         sale.destroy_cap(cap);
         fixture.return_presale(sale);
+        transfer::public_transfer(treasury_cap, CREATOR);
     });
     amounts
 }
@@ -591,8 +714,24 @@ fun custody(self: &mut Fixture): vector<u64> {
     let mut values = vector[];
     self.next_tx!(KEEPER, |fixture| {
         let sale = fixture.take_presale();
-        let (total, remaining, participants, quote, sale_tokens, liquidity_tokens) = sale.custody_for_testing();
-        values.append(vector[total, remaining, participants, quote, sale_tokens, liquidity_tokens]);
+        let (
+            total,
+            remaining,
+            participants,
+            quote,
+            sale_tokens,
+            liquidity_tokens,
+            creator_tokens,
+        ) = sale.custody_for_testing();
+        values.append(vector[
+            total,
+            remaining,
+            participants,
+            quote,
+            sale_tokens,
+            liquidity_tokens,
+            creator_tokens,
+        ]);
         fixture.return_presale(sale);
     });
 
@@ -619,7 +758,7 @@ fun only_event<Event: copy + drop>(): Event {
 
 use blast_presale::blast_presale::{
     Self as presale,
-    CancelledTokensReclaimed,
+    CancelledAssetsReclaimed,
     Claimed,
     Committed,
     EligibilityPolicy,
@@ -636,7 +775,7 @@ use std::unit_test::{assert_eq, destroy};
 
 use sui::{
     clock::{Self, Clock},
-    coin::{Self, Coin},
+    coin::{Self, Coin, TreasuryCap},
     event,
     test_scenario::{Self, Scenario},
 };

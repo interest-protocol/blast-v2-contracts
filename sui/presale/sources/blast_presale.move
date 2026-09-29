@@ -35,6 +35,9 @@ public struct PresaleCap has key, store {
 /// Dynamic-field name for one wallet's undelivered commitment.
 public struct CommitmentKey(address) has copy, drop, store;
 
+/// Type-derived name for the discoverable TreasuryCap held by one presale.
+public struct TreasuryCapKey() has copy, drop, store;
+
 /// One wallet's Quote commitment and immutable cap.
 public struct Commitment has copy, drop, store {
     quote: u64,
@@ -43,8 +46,9 @@ public struct Commitment has copy, drop, store {
 
 /// One standalone presale and its complete custody until launch or refund.
 ///
-/// The presale allocation, LP tokens, and every commitment are escrowed. A
-/// funded launch releases exactly `raise_target` Quote and the LP allocation,
+/// The minted presale, LP, and creator allocations, the SaleToken TreasuryCap,
+/// and every commitment are escrowed. A funded launch releases exactly
+/// `raise_target` Quote, the LP and creator allocations, and the TreasuryCap,
 /// then opens proportional token and overflow-refund claims. If the raise is
 /// missed, or LP is not launched by its deadline, every commitment is refunded.
 public struct Presale<phantom SaleToken, phantom Quote> has key {
@@ -63,6 +67,7 @@ public struct Presale<phantom SaleToken, phantom Quote> has key {
     token_allocation: u64,
     sale_tokens: Balance<SaleToken>,
     liquidity_tokens: Balance<SaleToken>,
+    creator_tokens: Balance<SaleToken>,
 }
 
 // === Public Functions ===
@@ -91,11 +96,13 @@ public fun allowlisted_eligibility(root: vector<u8>, leaf_count: u64): Eligibili
     EligibilityPolicy::Allowlisted { root, leaf_count }
 }
 
-/// Escrows the full sale and LP token allocations and returns a key-only
-/// presale plus its per-presale creator capability.
+/// Requires a zero-supply SaleToken TreasuryCap, mints the configured total
+/// supply, and escrows the cap and every allocation until launch or cancellation.
 public fun new<SaleToken, Quote>(
-    sale_tokens: Coin<SaleToken>,
-    liquidity_tokens: Coin<SaleToken>,
+    mut treasury_cap: TreasuryCap<SaleToken>,
+    total_supply: u64,
+    token_allocation: u64,
+    liquidity_token_allocation: u64,
     raise_target: u64,
     duration_ms: u64,
     liquidity_window_ms: u64,
@@ -106,18 +113,24 @@ public fun new<SaleToken, Quote>(
         type_name::with_original_ids<SaleToken>() != type_name::with_original_ids<Quote>(),
         EInvalidAssetPair,
     );
+    assert!(treasury_cap.total_supply() == 0, EInitialSupplyNotZero);
     assert!(raise_target > 0, EInvalidRaiseTarget);
-    assert!(sale_tokens.value() > 0 && liquidity_tokens.value() > 0, EInvalidTokenAllocation);
+    assert!(
+        token_allocation > 0
+            && liquidity_token_allocation > 0
+            && token_allocation <= total_supply
+            && liquidity_token_allocation <= total_supply - token_allocation,
+        EInvalidTokenSupply,
+    );
     assert!(duration_ms > 0 && liquidity_window_ms > 0, EInvalidWindow);
 
-    let id = object::new(ctx);
-    let presale_id = id.to_inner();
-    let cap = PresaleCap { id: object::new(ctx), presale_id };
-    let cap_id = cap.id.to_inner();
-    let token_allocation = sale_tokens.value();
-    let liquidity_token_allocation = liquidity_tokens.value();
-    let presale = Presale {
-        id,
+    let mut minted_supply = treasury_cap.mint_balance(total_supply);
+    let sale_tokens = minted_supply.split(token_allocation);
+    let liquidity_tokens = minted_supply.split(liquidity_token_allocation);
+    let creator_token_allocation = minted_supply.value();
+    let treasury_cap_id = object::id(&treasury_cap);
+    let mut presale = Presale {
+        id: object::new(ctx),
         lifecycle: Lifecycle::Pending,
         duration_ms,
         liquidity_window_ms,
@@ -130,16 +143,23 @@ public fun new<SaleToken, Quote>(
         participants: 0,
         quote: balance::zero(),
         token_allocation,
-        sale_tokens: sale_tokens.into_balance(),
-        liquidity_tokens: liquidity_tokens.into_balance(),
+        sale_tokens,
+        liquidity_tokens,
+        creator_tokens: minted_supply,
     };
+    presale.id.add_dynamic_object_field(TreasuryCapKey(), treasury_cap);
+    let presale_id = presale.id.to_inner();
+    let cap = PresaleCap { id: object::new(ctx), presale_id };
 
     event::emit(PresaleCreated<SaleToken, Quote> {
         presale_id,
-        cap_id,
+        presale_cap_id: cap.id.to_inner(),
+        treasury_cap_id,
+        total_supply,
         raise_target,
         token_allocation,
         liquidity_token_allocation,
+        creator_token_allocation,
         duration_ms,
         liquidity_window_ms,
         eligibility,
@@ -237,30 +257,35 @@ public fun settle<SaleToken, Quote>(self: &mut Presale<SaleToken, Quote>, clock:
     };
 }
 
-/// Releases exactly the raise and LP-token allocation, then opens claims.
-/// The capability holder threads the returned coins into LP creation in the
-/// same programmable transaction; if that transaction aborts, this transition rolls back.
+/// Releases the TreasuryCap, creator allocation, exact raise, and LP-token
+/// allocation, then opens claims. The capability holder threads the LP assets
+/// into pool creation in the same programmable transaction; if that transaction
+/// aborts, this transition rolls back.
 public fun launch<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
     cap: &PresaleCap,
     clock: &Clock,
     ctx: &mut TxContext,
-): (Coin<SaleToken>, Coin<Quote>) {
+): (TreasuryCap<SaleToken>, Coin<SaleToken>, Coin<SaleToken>, Coin<Quote>) {
     assert!(self.lifecycle == Lifecycle::Funded, EInvalidLifecycle);
     self.assert_cap(cap);
     assert!(clock.timestamp_ms() < self.liquidity_deadline_ms, ELiquidityDeadlinePassed);
 
+    let treasury_cap = self.remove_treasury_cap();
     let quote = self.quote.split(self.raise_target).into_coin(ctx);
     let liquidity_tokens = self.liquidity_tokens.withdraw_all().into_coin(ctx);
+    let creator_tokens = self.creator_tokens.withdraw_all().into_coin(ctx);
     self.lifecycle = Lifecycle::Launched;
 
     event::emit(PresaleLaunched<SaleToken, Quote> {
         presale_id: self.id.to_inner(),
+        treasury_cap_id: object::id(&treasury_cap),
         quote: self.raise_target,
         liquidity_tokens: liquidity_tokens.value(),
+        creator_tokens: creator_tokens.value(),
     });
 
-    (liquidity_tokens, quote)
+    (treasury_cap, liquidity_tokens, creator_tokens, quote)
 }
 
 /// Cancels a funded presale whose LP deadline passed, preserving all Quote for refunds.
@@ -332,30 +357,36 @@ public fun claim<SaleToken, Quote>(
     });
 }
 
-/// Recovers both token allocations after cancellation. Quote is never returned
-/// here and remains reserved for participant refunds.
-public fun reclaim_cancelled_tokens<SaleToken, Quote>(
+/// Recovers the TreasuryCap and every minted token allocation after
+/// cancellation. Quote is never returned here and remains reserved for refunds.
+public fun reclaim_cancelled_assets<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
     cap: &PresaleCap,
     ctx: &mut TxContext,
-): (Coin<SaleToken>, Coin<SaleToken>) {
+): (TreasuryCap<SaleToken>, Coin<SaleToken>, Coin<SaleToken>, Coin<SaleToken>) {
     assert!(self.lifecycle == Lifecycle::Cancelled, EInvalidLifecycle);
     self.assert_cap(cap);
     assert!(
-        self.sale_tokens.value() > 0 || self.liquidity_tokens.value() > 0,
+        self.sale_tokens.value() > 0
+            || self.liquidity_tokens.value() > 0
+            || self.creator_tokens.value() > 0,
         ENothingToReclaim,
     );
 
+    let treasury_cap = self.remove_treasury_cap();
     let sale_tokens = self.sale_tokens.withdraw_all().into_coin(ctx);
     let liquidity_tokens = self.liquidity_tokens.withdraw_all().into_coin(ctx);
+    let creator_tokens = self.creator_tokens.withdraw_all().into_coin(ctx);
 
-    event::emit(CancelledTokensReclaimed<SaleToken, Quote> {
+    event::emit(CancelledAssetsReclaimed<SaleToken, Quote> {
         presale_id: self.id.to_inner(),
+        treasury_cap_id: object::id(&treasury_cap),
         sale_tokens: sale_tokens.value(),
         liquidity_tokens: liquidity_tokens.value(),
+        creator_tokens: creator_tokens.value(),
     });
 
-    (sale_tokens, liquidity_tokens)
+    (treasury_cap, sale_tokens, liquidity_tokens, creator_tokens)
 }
 
 /// Destroys the creator capability only after it can no longer strand creator assets.
@@ -367,6 +398,7 @@ public fun destroy_cap<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, cap: 
                 self.lifecycle == Lifecycle::Cancelled
                     && self.sale_tokens.value() == 0
                     && self.liquidity_tokens.value() == 0
+                    && self.creator_tokens.value() == 0
             ),
         EInvalidLifecycle,
     );
@@ -384,6 +416,12 @@ fun assert_open<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, clock: &Cloc
 
 fun assert_cap<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, cap: &PresaleCap) {
     assert!(cap.presale_id == self.id.to_inner(), EWrongPresaleCap);
+}
+
+fun remove_treasury_cap<SaleToken, Quote>(
+    self: &mut Presale<SaleToken, Quote>,
+): TreasuryCap<SaleToken> {
+    self.id.remove_dynamic_object_field(TreasuryCapKey())
 }
 
 fun record_commitment<SaleToken, Quote>(
@@ -538,7 +576,7 @@ public fun is_cancelled_for_testing<SaleToken, Quote>(self: &Presale<SaleToken, 
 #[test_only]
 public fun custody_for_testing<SaleToken, Quote>(
     self: &Presale<SaleToken, Quote>,
-): (u64, u64, u64, u64, u64, u64) {
+): (u64, u64, u64, u64, u64, u64, u64) {
     (
         self.total_commitments,
         self.remaining_commitments,
@@ -546,7 +584,20 @@ public fun custody_for_testing<SaleToken, Quote>(
         self.quote.value(),
         self.sale_tokens.value(),
         self.liquidity_tokens.value(),
+        self.creator_tokens.value(),
     )
+}
+
+#[test_only]
+public fun treasury_cap_fields_for_testing<SaleToken, Quote>(
+    self: &Presale<SaleToken, Quote>,
+): (ID, u64) {
+    let treasury_cap: &TreasuryCap<SaleToken> = dynamic_object_field::borrow(
+        &self.id,
+        TreasuryCapKey(),
+    );
+
+    (object::id(treasury_cap), treasury_cap.total_supply())
 }
 
 #[test_only]
@@ -564,13 +615,16 @@ public fun commitment_for_testing<SaleToken, Quote>(
 #[test_only]
 public fun created_fields<SaleToken, Quote>(
     event: &PresaleCreated<SaleToken, Quote>,
-): (ID, ID, u64, u64, u64, u64, u64, EligibilityPolicy) {
+): (ID, ID, ID, u64, u64, u64, u64, u64, u64, u64, EligibilityPolicy) {
     (
         event.presale_id,
-        event.cap_id,
+        event.presale_cap_id,
+        event.treasury_cap_id,
+        event.total_supply,
         event.raise_target,
         event.token_allocation,
         event.liquidity_token_allocation,
+        event.creator_token_allocation,
         event.duration_ms,
         event.liquidity_window_ms,
         event.eligibility,
@@ -620,8 +674,14 @@ public fun cancelled_fields<SaleToken, Quote>(
 #[test_only]
 public fun launched_fields<SaleToken, Quote>(
     event: &PresaleLaunched<SaleToken, Quote>,
-): (ID, u64, u64) {
-    (event.presale_id, event.quote, event.liquidity_tokens)
+): (ID, ID, u64, u64, u64) {
+    (
+        event.presale_id,
+        event.treasury_cap_id,
+        event.quote,
+        event.liquidity_tokens,
+        event.creator_tokens,
+    )
 }
 
 #[test_only]
@@ -640,9 +700,15 @@ public fun claim_fields<SaleToken, Quote>(
 
 #[test_only]
 public fun reclaimed_fields<SaleToken, Quote>(
-    event: &CancelledTokensReclaimed<SaleToken, Quote>,
-): (ID, u64, u64) {
-    (event.presale_id, event.sale_tokens, event.liquidity_tokens)
+    event: &CancelledAssetsReclaimed<SaleToken, Quote>,
+): (ID, ID, u64, u64, u64) {
+    (
+        event.presale_id,
+        event.treasury_cap_id,
+        event.sale_tokens,
+        event.liquidity_tokens,
+        event.creator_tokens,
+    )
 }
 
 // === Events ===
@@ -650,10 +716,13 @@ public fun reclaimed_fields<SaleToken, Quote>(
 /// A presale was created with fully funded token allocations.
 public struct PresaleCreated<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
-    cap_id: ID,
+    presale_cap_id: ID,
+    treasury_cap_id: ID,
+    total_supply: u64,
     raise_target: u64,
     token_allocation: u64,
     liquidity_token_allocation: u64,
+    creator_token_allocation: u64,
     duration_ms: u64,
     liquidity_window_ms: u64,
     eligibility: EligibilityPolicy,
@@ -695,8 +764,10 @@ public struct PresaleCancelled<phantom SaleToken, phantom Quote> has copy, drop 
 /// The exact raise and LP-token allocation left escrow and claims opened.
 public struct PresaleLaunched<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
+    treasury_cap_id: ID,
     quote: u64,
     liquidity_tokens: u64,
+    creator_tokens: u64,
 }
 
 /// `participant` received its token allocation and Quote refund.
@@ -709,11 +780,13 @@ public struct Claimed<phantom SaleToken, phantom Quote> has copy, drop {
     remaining_commitments: u64,
 }
 
-/// The creator recovered both token allocations from a cancelled presale.
-public struct CancelledTokensReclaimed<phantom SaleToken, phantom Quote> has copy, drop {
+/// The creator recovered the TreasuryCap and all token allocations after cancellation.
+public struct CancelledAssetsReclaimed<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
+    treasury_cap_id: ID,
     sale_tokens: u64,
     liquidity_tokens: u64,
+    creator_tokens: u64,
 }
 
 // === Constants ===
@@ -732,7 +805,7 @@ const EInvalidAssetPair: vector<u8> = b"The sale token and Quote type must diffe
 const EInvalidRaiseTarget: vector<u8> = b"The raise target must be positive.";
 
 #[error(code = 2)]
-const EInvalidTokenAllocation: vector<u8> = b"Sale and liquidity token allocations must both be positive.";
+const EInvalidTokenSupply: vector<u8> = b"Total supply must cover positive presale and liquidity allocations.";
 
 #[error(code = 3)]
 const EInvalidWindow: vector<u8> = b"Commitment and liquidity windows must be positive and fit in u64 milliseconds.";
@@ -782,6 +855,9 @@ const ELiquidityDeadlineNotReached: vector<u8> = b"The deadline to cancel an unl
 #[error(code = 18)]
 const ENothingToReclaim: vector<u8> = b"The cancelled presale has no creator tokens left to reclaim.";
 
+#[error(code = 19)]
+const EInitialSupplyNotZero: vector<u8> = b"The supplied SaleToken TreasuryCap must have zero total supply.";
+
 // === Imports ===
 
 use std::{bcs, type_name};
@@ -789,8 +865,9 @@ use std::{bcs, type_name};
 use sui::{
     balance::{Self, Balance},
     clock::Clock,
-    coin::Coin,
+    coin::{Coin, TreasuryCap},
     dynamic_field,
+    dynamic_object_field,
     event,
     hash,
 };
@@ -799,3 +876,5 @@ use fun dynamic_field::add as UID.add_dynamic_field;
 use fun dynamic_field::borrow_mut as UID.dynamic_field_mut;
 use fun dynamic_field::exists as UID.has_dynamic_field;
 use fun dynamic_field::remove as UID.remove_dynamic_field;
+use fun dynamic_object_field::add as UID.add_dynamic_object_field;
+use fun dynamic_object_field::remove as UID.remove_dynamic_object_field;
