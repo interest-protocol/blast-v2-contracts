@@ -10,6 +10,12 @@ shares the `Presale`. The policy is either one open wallet cap or a Merkle
 allowlist whose leaves carry per-wallet caps for equal, tiered, or custom
 limits.
 
+Every commitment consumes a `Coin<Quote>` and joins its full balance into the
+shared `Presale`; recording an amount without locking the matching Quote is not
+an available contract path. A participant cannot withdraw during the open or
+funded states. Cancellation returns the full commitment; after launch, only the
+calculated overflow is refundable.
+
 After the window, an underfunded sale refunds every commitment. A funded sale
 uses one fill rate for every wallet. `launch` returns only the exact raise and
 LP-token allocation while opening token and overflow-refund claims. The cap

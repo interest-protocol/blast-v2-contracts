@@ -44,10 +44,14 @@ Pending -> Open -> Funded -> Launched
 ```
 
 `share` starts the commitment window. Commitments are positive, cumulative per
-wallet, and cannot exceed the policy cap. At the exclusive end timestamp,
-anyone may settle. If total commitments `C` are below the raise `R`, the sale
-cancels and all Quote remains refundable. Otherwise the sale becomes funded
-and fixes one common fill rate `R / C`.
+wallet, and cannot exceed the policy cap. Each commitment consumes a
+`Coin<Quote>` and locks its full balance in that `Presale`, so recorded
+commitments are backed one-for-one by on-chain Quote custody. There is no
+voluntary withdrawal during `Open` or `Funded`: a cancellation returns the
+full commitment, while a launched sale returns only its calculated overflow.
+At the exclusive end timestamp, anyone may settle. If total commitments `C`
+are below the raise `R`, the sale cancels and all Quote remains refundable.
+Otherwise the sale becomes funded and fixes one common fill rate `R / C`.
 
 Before the exclusive LP deadline, only the per-presale `PresaleCap` can call
 `launch`. That transition returns exactly `R` Quote and the entire LP-token

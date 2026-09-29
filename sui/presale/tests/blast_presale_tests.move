@@ -73,6 +73,61 @@ fun oversubscription_uses_one_fill_rate_and_refunds_the_rest() {
 }
 
 #[test]
+/// A commitment is backed one-for-one by Quote held in the presale object.
+fun commitments_lock_quote_in_presale_custody() {
+    let mut fixture = start(
+        RAISE_TARGET,
+        presale::open_eligibility(WALLET_CAP, 1),
+    );
+
+    fixture.commit_open(ALICE, 400);
+    assert_eq!(
+        fixture.custody(),
+        vector[400, 400, 1, 400, TOKEN_ALLOCATION, LIQUIDITY_TOKENS],
+    );
+    fixture.commit_open(ALICE, 100);
+    assert_eq!(
+        fixture.custody(),
+        vector[500, 500, 1, 500, TOKEN_ALLOCATION, LIQUIDITY_TOKENS],
+    );
+
+    fixture.set_time(END_MS);
+    fixture.settle(KEEPER);
+    fixture.claim(KEEPER, ALICE);
+    fixture.take_quote(ALICE, 500);
+    fixture.reclaim_and_destroy_cap();
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidLifecycle, location = blast_presale::blast_presale)]
+fun participants_cannot_withdraw_open_commitments() {
+    let mut fixture = start(
+        RAISE_TARGET,
+        presale::open_eligibility(WALLET_CAP, 1),
+    );
+    fixture.commit_open(ALICE, 500);
+
+    fixture.claim(ALICE, ALICE);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidLifecycle, location = blast_presale::blast_presale)]
+fun participants_cannot_withdraw_funded_commitments() {
+    let mut fixture = start(
+        RAISE_TARGET,
+        presale::open_eligibility(WALLET_CAP, 1),
+    );
+    fixture.commit_open(ALICE, RAISE_TARGET);
+    fixture.set_time(END_MS);
+    fixture.settle(KEEPER);
+
+    fixture.claim(ALICE, ALICE);
+    fixture.end();
+}
+
+#[test]
 /// An underfunded sale releases no Quote and every wallet can recover its full commitment.
 fun underfunded_sale_refunds_every_commitment_and_returns_creator_tokens() {
     let mut fixture = start(

@@ -65,75 +65,6 @@ public struct Presale<phantom SaleToken, phantom Quote> has key {
     liquidity_tokens: Balance<SaleToken>,
 }
 
-/// A presale was created with fully funded token allocations.
-public struct PresaleCreated<phantom SaleToken, phantom Quote> has copy, drop {
-    presale_id: ID,
-    cap_id: ID,
-    raise_target: u64,
-    token_allocation: u64,
-    liquidity_token_allocation: u64,
-    duration_ms: u64,
-    liquidity_window_ms: u64,
-    eligibility: EligibilityPolicy,
-}
-
-/// A presale's fixed commitment and liquidity windows began.
-public struct PresaleOpened<phantom SaleToken, phantom Quote> has copy, drop {
-    presale_id: ID,
-    start_ms: u64,
-    end_ms: u64,
-    liquidity_deadline_ms: u64,
-}
-
-/// Quote joined a presale from the transaction sender.
-public struct Committed<phantom SaleToken, phantom Quote> has copy, drop {
-    presale_id: ID,
-    quote: u64,
-    wallet_commitment: u64,
-    total_commitments: u64,
-    participants: u64,
-}
-
-/// A funded presale closed with these fixed claim totals.
-public struct PresaleFunded<phantom SaleToken, phantom Quote> has copy, drop {
-    presale_id: ID,
-    commitments: u64,
-    accepted_quote: u64,
-    refundable_quote: u64,
-    token_allocation: u64,
-}
-
-/// A presale became fully refundable without releasing Quote.
-public struct PresaleCancelled<phantom SaleToken, phantom Quote> has copy, drop {
-    presale_id: ID,
-    commitments: u64,
-    refundable_quote: u64,
-}
-
-/// The exact raise and LP-token allocation left escrow and claims opened.
-public struct PresaleLaunched<phantom SaleToken, phantom Quote> has copy, drop {
-    presale_id: ID,
-    quote: u64,
-    liquidity_tokens: u64,
-}
-
-/// `participant` received its token allocation and Quote refund.
-public struct Claimed<phantom SaleToken, phantom Quote> has copy, drop {
-    presale_id: ID,
-    participant: address,
-    commitment: u64,
-    tokens: u64,
-    quote_refund: u64,
-    remaining_commitments: u64,
-}
-
-/// The creator recovered both token allocations from a cancelled presale.
-public struct CancelledTokensReclaimed<phantom SaleToken, phantom Quote> has copy, drop {
-    presale_id: ID,
-    sale_tokens: u64,
-    liquidity_tokens: u64,
-}
-
 // === Public Functions ===
 
 /// Creates one equal-cap policy with a bounded number of distinct wallets.
@@ -241,7 +172,8 @@ public fun share<SaleToken, Quote>(mut self: Presale<SaleToken, Quote>, clock: &
     transfer::share_object(self);
 }
 
-/// Adds Quote under an equal-cap, open eligibility policy.
+/// Consumes and locks the supplied `Coin<Quote>` in this presale under an
+/// equal-cap, open eligibility policy.
 public fun commit_open<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
     quote_in: Coin<Quote>,
@@ -256,7 +188,8 @@ public fun commit_open<SaleToken, Quote>(
     self.record_commitment(quote_in, wallet_cap, max_participants, ctx);
 }
 
-/// Adds Quote after verifying the sender's Merkle-committed wallet cap.
+/// Consumes and locks the supplied `Coin<Quote>` in this presale after
+/// verifying the sender's Merkle-committed wallet cap.
 public fun commit_allowlisted<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
     quote_in: Coin<Quote>,
@@ -710,6 +643,77 @@ public fun reclaimed_fields<SaleToken, Quote>(
     event: &CancelledTokensReclaimed<SaleToken, Quote>,
 ): (ID, u64, u64) {
     (event.presale_id, event.sale_tokens, event.liquidity_tokens)
+}
+
+// === Events ===
+
+/// A presale was created with fully funded token allocations.
+public struct PresaleCreated<phantom SaleToken, phantom Quote> has copy, drop {
+    presale_id: ID,
+    cap_id: ID,
+    raise_target: u64,
+    token_allocation: u64,
+    liquidity_token_allocation: u64,
+    duration_ms: u64,
+    liquidity_window_ms: u64,
+    eligibility: EligibilityPolicy,
+}
+
+/// A presale's fixed commitment and liquidity windows began.
+public struct PresaleOpened<phantom SaleToken, phantom Quote> has copy, drop {
+    presale_id: ID,
+    start_ms: u64,
+    end_ms: u64,
+    liquidity_deadline_ms: u64,
+}
+
+/// Quote joined a presale from the transaction sender.
+public struct Committed<phantom SaleToken, phantom Quote> has copy, drop {
+    presale_id: ID,
+    quote: u64,
+    wallet_commitment: u64,
+    total_commitments: u64,
+    participants: u64,
+}
+
+/// A funded presale closed with these fixed claim totals.
+public struct PresaleFunded<phantom SaleToken, phantom Quote> has copy, drop {
+    presale_id: ID,
+    commitments: u64,
+    accepted_quote: u64,
+    refundable_quote: u64,
+    token_allocation: u64,
+}
+
+/// A presale became fully refundable without releasing Quote.
+public struct PresaleCancelled<phantom SaleToken, phantom Quote> has copy, drop {
+    presale_id: ID,
+    commitments: u64,
+    refundable_quote: u64,
+}
+
+/// The exact raise and LP-token allocation left escrow and claims opened.
+public struct PresaleLaunched<phantom SaleToken, phantom Quote> has copy, drop {
+    presale_id: ID,
+    quote: u64,
+    liquidity_tokens: u64,
+}
+
+/// `participant` received its token allocation and Quote refund.
+public struct Claimed<phantom SaleToken, phantom Quote> has copy, drop {
+    presale_id: ID,
+    participant: address,
+    commitment: u64,
+    tokens: u64,
+    quote_refund: u64,
+    remaining_commitments: u64,
+}
+
+/// The creator recovered both token allocations from a cancelled presale.
+public struct CancelledTokensReclaimed<phantom SaleToken, phantom Quote> has copy, drop {
+    presale_id: ID,
+    sale_tokens: u64,
+    liquidity_tokens: u64,
 }
 
 // === Constants ===
