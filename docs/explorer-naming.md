@@ -75,6 +75,8 @@ every package-administration object.
 | `blast_boosts_aftermath` | `blast_boost::BlastBoost<Product>` | new; never instantiated | module and struct |
 | `blast_partners` | `blast_partners::Partner` | new (ADR 0095) | module |
 | `blast_partners` | `blast_partners::PartnerCap` | new (ADR 0095); wallet-held, one per company | module |
+| `blast_presale` | `blast_presale::Presale<SaleToken, Quote>` | new (ADR 0099) | module |
+| `blast_presale` | `blast_presale::PresaleCap` | new (ADR 0099); wallet-held, one per presale | module |
 
 `blast_boosts_core` defines no `key` type; its `State<Product>` is a
 `store` value nested in the adapter Vault.
@@ -89,6 +91,7 @@ every package-administration object.
 | `blast_fun_migrators` | `events::X` (direct emission) | `blast_events::X` | module |
 | `blast_admin` | `events::X<Domain>` | `blast_admin_events::X`; custody and version events keep `<PackageMarker>` | module |
 | `blast_partners` | — | `blast_partners::PartnerUpdated` and `blast_partners::PartnerPaid<T>` (direct emission, ADR 0095) | module |
+| `blast_presale` | — | direct `blast_presale::PresaleCreated<…>`, `PresaleOpened<…>`, `Committed<…>`, settlement, launch, claim, and recovery events (ADR 0099) | module |
 | `blast_boosts_aftermath` | — | `blast_events::Event<events::PartnerAdded>` and `blast_events::Event<events::PartnerRemoved>` (ADR 0095; protocol-wide, no `Product`) | envelope module |
 
 Payload struct names inside the envelopes (`Bought`, `Migrated`,

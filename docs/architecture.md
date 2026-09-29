@@ -19,6 +19,12 @@ by one of these boundaries:
 This keeps V2 smaller than the historical collection of interdependent packages
 without forcing unrelated dependencies into the trusted core.
 
+The immutable `blast_presale` package is a separate product boundary: it owns
+presale escrow, eligibility, proportional settlement, claims, and refund
+liveness without importing or mutating launchpad state. LP creation composes
+with its returned assets in a programmable transaction, so venue dependencies
+remain outside presale core. See [ADR 0099](decisions/0099-standalone-overflow-presale.md).
+
 The package boundaries are decided in
 [decisions/0001-sui-package-and-module-layout.md](decisions/0001-sui-package-and-module-layout.md):
 keep external dependencies and independently governed custody outside core.
@@ -57,6 +63,7 @@ without returning to core for its post-conditions.
 | Holder rewards (migrators) | Merkle rounds a Blast administrator funds from a vault's rewards balance, and one-time proof claims | holder accounting, which stays off-chain |
 | Migration interface | one-time liquidity handoff, linear migration value, and reconciled completion | DEX-specific object/storage details |
 | Adapter | start a launch at a venue-valid tier, prepare its venue, complete a migration, and collect the position's fees | changing core economics |
+| Standalone presale | escrow participant and LP token allocations plus Quote commitments; enforce per-sale eligibility and caps; settle one proportional fill; open claims or preserve full refunds | launchpad curves, launch migration, fees, partners, or venue dependencies |
 
 Modules may begin together in the single chain project. These are dependency
 directions, not a demand for seven packages.
