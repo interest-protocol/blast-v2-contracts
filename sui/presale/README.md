@@ -5,11 +5,14 @@ It does not import the launchpad, migrators, Blast administration, or partner
 packages.
 
 A creator supplies a zero-supply `TreasuryCap<SaleToken>` and configures the
-presale allocation, LP allocation, Quote raise, commitment window, LP window,
-and `EligibilityPolicy`. The contract mints exactly the two token allocations,
-escrows them with the cap, and shares the `Presale`. All other supply remains
-unminted. The policy is either one open wallet cap or a Merkle allowlist whose
-leaves carry per-wallet caps for equal, tiered, or custom limits.
+token supply, presale-allocation BPS, LP-allocation BPS, Quote raise,
+commitment window, LP window, and `EligibilityPolicy`. Each allocation is
+`floor(token_supply * allocation_bps / 10_000)`. Their combined rate cannot
+exceed 10,000 BPS, and both results must be positive. The contract mints only
+those two allocations, escrows them with the cap, and shares the `Presale`;
+all other supply remains unminted. The policy is either one open wallet cap or
+a Merkle allowlist whose leaves carry per-wallet caps for equal, tiered, or
+custom limits.
 
 Every commitment consumes a `Coin<Quote>` and joins its full balance into the
 shared `Presale`; recording an amount without locking the matching Quote is not

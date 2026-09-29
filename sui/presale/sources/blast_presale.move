@@ -95,12 +95,14 @@ public fun allowlisted_eligibility(root: vector<u8>, leaf_count: u64): Eligibili
     EligibilityPolicy::Allowlisted { root, leaf_count }
 }
 
-/// Requires a zero-supply SaleToken TreasuryCap, mints exactly the configured
-/// presale and LP allocations, and escrows them until launch or cancellation.
+/// Requires a zero-supply SaleToken TreasuryCap, derives the presale and LP
+/// allocations from the configured token supply and BPS, and mints only those
+/// allocations into escrow.
 public fun new<SaleToken, Quote>(
     mut treasury_cap: TreasuryCap<SaleToken>,
-    token_allocation: u64,
-    liquidity_token_allocation: u64,
+    token_supply: u64,
+    token_allocation_bps: u64,
+    liquidity_token_allocation_bps: u64,
     raise_target: u64,
     duration_ms: u64,
     liquidity_window_ms: u64,
@@ -114,13 +116,21 @@ public fun new<SaleToken, Quote>(
     assert!(treasury_cap.total_supply() == 0, EInitialSupplyNotZero);
     assert!(raise_target > 0, EInvalidRaiseTarget);
     assert!(
-        token_allocation > 0
-            && liquidity_token_allocation > 0
-            && token_allocation.checked_add(liquidity_token_allocation).is_some(),
+        token_supply > 0
+            && token_allocation_bps > 0
+            && token_allocation_bps <= BASIS_POINTS
+            && liquidity_token_allocation_bps > 0
+            && liquidity_token_allocation_bps <= BASIS_POINTS - token_allocation_bps,
         EInvalidTokenAllocation,
     );
     assert!(duration_ms > 0 && liquidity_window_ms > 0, EInvalidWindow);
 
+    let token_allocation = token_supply.mul_div(token_allocation_bps, BASIS_POINTS);
+    let liquidity_token_allocation = token_supply.mul_div(
+        liquidity_token_allocation_bps,
+        BASIS_POINTS,
+    );
+    assert!(token_allocation > 0 && liquidity_token_allocation > 0, EInvalidTokenAllocation);
     let sale_tokens = treasury_cap.mint_balance(token_allocation);
     let liquidity_tokens = treasury_cap.mint_balance(liquidity_token_allocation);
     let treasury_cap_id = object::id(&treasury_cap);
@@ -149,9 +159,10 @@ public fun new<SaleToken, Quote>(
         presale_id,
         presale_cap_id: cap.id.to_inner(),
         treasury_cap_id,
+        token_supply,
+        token_allocation_bps,
+        liquidity_token_allocation_bps,
         raise_target,
-        token_allocation,
-        liquidity_token_allocation,
         duration_ms,
         liquidity_window_ms,
         eligibility,
@@ -600,14 +611,15 @@ public fun commitment_for_testing<SaleToken, Quote>(
 #[test_only]
 public fun created_fields<SaleToken, Quote>(
     event: &PresaleCreated<SaleToken, Quote>,
-): (ID, ID, ID, u64, u64, u64, u64, u64, EligibilityPolicy) {
+): (ID, ID, ID, u64, u64, u64, u64, u64, u64, EligibilityPolicy) {
     (
         event.presale_id,
         event.presale_cap_id,
         event.treasury_cap_id,
+        event.token_supply,
+        event.token_allocation_bps,
+        event.liquidity_token_allocation_bps,
         event.raise_target,
-        event.token_allocation,
-        event.liquidity_token_allocation,
         event.duration_ms,
         event.liquidity_window_ms,
         event.eligibility,
@@ -699,9 +711,10 @@ public struct PresaleCreated<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
     presale_cap_id: ID,
     treasury_cap_id: ID,
+    token_supply: u64,
+    token_allocation_bps: u64,
+    liquidity_token_allocation_bps: u64,
     raise_target: u64,
-    token_allocation: u64,
-    liquidity_token_allocation: u64,
     duration_ms: u64,
     liquidity_window_ms: u64,
     eligibility: EligibilityPolicy,
@@ -771,6 +784,8 @@ public struct CancelledAssetsReclaimed<phantom SaleToken, phantom Quote> has cop
 /// Technical bound on the dynamic commitment records one presale may hold.
 const MAX_PARTICIPANTS: u64 = 65_536;
 
+const BASIS_POINTS: u64 = 10_000;
+
 const DIGEST_LENGTH: u64 = 32;
 
 // === Errors ===
@@ -782,7 +797,7 @@ const EInvalidAssetPair: vector<u8> = b"The sale token and Quote type must diffe
 const EInvalidRaiseTarget: vector<u8> = b"The raise target must be positive.";
 
 #[error(code = 2)]
-const EInvalidTokenAllocation: vector<u8> = b"Presale and liquidity allocations must be positive and fit in one supply counter.";
+const EInvalidTokenAllocation: vector<u8> = b"Token supply and allocation BPS must produce positive allocations totaling at most 10,000 BPS.";
 
 #[error(code = 3)]
 const EInvalidWindow: vector<u8> = b"Commitment and liquidity windows must be positive and fit in u64 milliseconds.";

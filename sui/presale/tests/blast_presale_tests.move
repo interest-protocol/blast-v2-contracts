@@ -18,6 +18,9 @@ const LIQUIDITY_WINDOW_MS: u64 = 50;
 const LIQUIDITY_DEADLINE_MS: u64 = END_MS + LIQUIDITY_WINDOW_MS;
 
 const RAISE_TARGET: u64 = 1_000;
+const TOKEN_SUPPLY: u64 = 20_001;
+const TOKEN_ALLOCATION_BPS: u64 = 5_000;
+const LIQUIDITY_TOKEN_ALLOCATION_BPS: u64 = 1_000;
 const TOKEN_ALLOCATION: u64 = 10_000;
 const LIQUIDITY_TOKENS: u64 = 2_000;
 const MINTED_SUPPLY: u64 = TOKEN_ALLOCATION + LIQUIDITY_TOKENS;
@@ -298,8 +301,9 @@ fun another_presales_cap_cannot_release_escrow() {
         let treasury_cap = coin::create_treasury_cap_for_testing<SALE_TOKEN>(fixture.ctx!());
         let (other, other_cap) = presale::new<SALE_TOKEN, QUOTE>(
             treasury_cap,
-            TOKEN_ALLOCATION,
-            LIQUIDITY_TOKENS,
+            TOKEN_SUPPLY,
+            TOKEN_ALLOCATION_BPS,
+            LIQUIDITY_TOKEN_ALLOCATION_BPS,
             RAISE_TARGET,
             DURATION_MS,
             LIQUIDITY_WINDOW_MS,
@@ -342,8 +346,9 @@ fun sale_token_and_quote_types_must_differ() {
 
     let (sale, cap) = presale::new<QUOTE, QUOTE>(
         treasury_cap,
-        1,
-        1,
+        TOKEN_SUPPLY,
+        TOKEN_ALLOCATION_BPS,
+        LIQUIDITY_TOKEN_ALLOCATION_BPS,
         1,
         1,
         1,
@@ -365,8 +370,9 @@ fun treasury_cap_must_start_with_zero_supply() {
 
     let (sale, cap) = presale::new<SALE_TOKEN, QUOTE>(
         treasury_cap,
-        TOKEN_ALLOCATION,
-        LIQUIDITY_TOKENS,
+        TOKEN_SUPPLY,
+        TOKEN_ALLOCATION_BPS,
+        LIQUIDITY_TOKEN_ALLOCATION_BPS,
         RAISE_TARGET,
         DURATION_MS,
         LIQUIDITY_WINDOW_MS,
@@ -383,13 +389,38 @@ fun treasury_cap_must_start_with_zero_supply() {
 
 #[test]
 #[expected_failure(abort_code = presale::EInvalidTokenAllocation, location = blast_presale::blast_presale)]
-fun configured_allocations_must_fit_the_supply_counter() {
+fun configured_allocation_bps_cannot_exceed_full_supply() {
     let mut ctx = tx_context::dummy();
     let treasury_cap = coin::create_treasury_cap_for_testing<SALE_TOKEN>(&mut ctx);
 
     let (sale, cap) = presale::new<SALE_TOKEN, QUOTE>(
         treasury_cap,
-        std::u64::max_value!(),
+        TOKEN_SUPPLY,
+        10_000,
+        1,
+        RAISE_TARGET,
+        DURATION_MS,
+        LIQUIDITY_WINDOW_MS,
+        presale::open_eligibility(WALLET_CAP, 1),
+        &mut ctx,
+    );
+    let clock = clock::create_for_testing(&mut ctx);
+    sale.share(&clock);
+    transfer::public_transfer(cap, CREATOR);
+    clock.destroy_for_testing();
+    destroy(ctx);
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidTokenAllocation, location = blast_presale::blast_presale)]
+fun configured_allocation_bps_must_produce_positive_atomic_amounts() {
+    let mut ctx = tx_context::dummy();
+    let treasury_cap = coin::create_treasury_cap_for_testing<SALE_TOKEN>(&mut ctx);
+
+    let (sale, cap) = presale::new<SALE_TOKEN, QUOTE>(
+        treasury_cap,
+        1,
+        1,
         1,
         RAISE_TARGET,
         DURATION_MS,
@@ -414,8 +445,9 @@ fun start(raise_target: u64, eligibility: EligibilityPolicy): Fixture {
     let treasury_cap_id = object::id(&treasury_cap);
     let (presale, cap) = presale::new<SALE_TOKEN, QUOTE>(
         treasury_cap,
-        TOKEN_ALLOCATION,
-        LIQUIDITY_TOKENS,
+        TOKEN_SUPPLY,
+        TOKEN_ALLOCATION_BPS,
+        LIQUIDITY_TOKEN_ALLOCATION_BPS,
         raise_target,
         DURATION_MS,
         LIQUIDITY_WINDOW_MS,
@@ -428,9 +460,10 @@ fun start(raise_target: u64, eligibility: EligibilityPolicy): Fixture {
         created_id,
         created_presale_cap_id,
         created_treasury_cap_id,
+        created_token_supply,
+        created_token_allocation_bps,
+        created_liquidity_token_allocation_bps,
         created_raise,
-        created_tokens,
-        created_liquidity_tokens,
         created_duration,
         created_liquidity_window,
         created_eligibility,
@@ -443,16 +476,18 @@ fun start(raise_target: u64, eligibility: EligibilityPolicy): Fixture {
     assert_eq!(held_total_supply, MINTED_SUPPLY);
     assert_eq!(
         vector[
+            created_token_supply,
+            created_token_allocation_bps,
+            created_liquidity_token_allocation_bps,
             created_raise,
-            created_tokens,
-            created_liquidity_tokens,
             created_duration,
             created_liquidity_window,
         ],
         vector[
+            TOKEN_SUPPLY,
+            TOKEN_ALLOCATION_BPS,
+            LIQUIDITY_TOKEN_ALLOCATION_BPS,
             raise_target,
-            TOKEN_ALLOCATION,
-            LIQUIDITY_TOKENS,
             DURATION_MS,
             LIQUIDITY_WINDOW_MS,
         ],

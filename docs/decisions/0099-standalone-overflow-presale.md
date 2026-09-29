@@ -22,12 +22,15 @@ framework and is published immutable. It neither reads nor mutates launchpad
 state, and no launchpad package imports it.
 
 Each `Presale<SaleToken, Quote>` consumes a `TreasuryCap<SaleToken>` whose total
-supply is zero. The creator configures two positive allocations: one distributed
-to participants and one intended for LP. The contract mints exactly those
-allocations and holds them with the TreasuryCap, stored as a discoverable dynamic
-object child, while the sale is active. All other supply remains unminted. The
-remaining immutable per-sale configuration contains a positive Quote raise, a
-commitment duration, an LP-launch window, and an `EligibilityPolicy`:
+supply is zero. The creator configures a token supply and two positive BPS
+allocations: one distributed to participants and one intended for LP. Their
+combined rate cannot exceed 10,000 BPS. Each atomic allocation is
+`floor(token_supply * allocation_bps / 10_000)` and must be positive. The
+contract mints exactly those allocations and holds them with the TreasuryCap,
+stored as a discoverable dynamic object child, while the sale is active. All
+other supply remains unminted. The remaining immutable per-sale configuration
+contains a positive Quote raise, a commitment duration, an LP-launch window,
+and an `EligibilityPolicy`:
 
 - `Open` stores one wallet cap and a maximum participant count.
 - `Allowlisted` stores a positional Blake2b-256 Merkle root and leaf count.
@@ -97,10 +100,10 @@ wallet receives that documented sub-participant-count remainder.
 - Raise sizes, time windows, allocations, eligibility, and wallet caps are all
   per-sale values; example numbers from product material are not protocol
   constants.
-- The presale and LP allocations are per-sale values. The contract proves the
-  supplied TreasuryCap starts at zero, verifies their sum fits the supply
-  counter, mints exactly those allocations, and prevents further minting while
-  the cap remains in presale custody.
+- Token supply and the presale and LP allocation BPS are per-sale values. The
+  contract proves the supplied TreasuryCap starts at zero, derives both atomic
+  allocations with floor rounding, mints exactly those allocations, and
+  prevents further minting while the cap remains in presale custody.
 - The Merkle manifest and proof construction remain off chain, while the root,
   leaf count, commitments, custody, lifecycle, and payouts are canonical on chain.
   A proof attests only the committed wallet and cap; it does not prove that the
