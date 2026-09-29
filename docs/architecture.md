@@ -63,7 +63,7 @@ without returning to core for its post-conditions.
 | Holder rewards (migrators) | Merkle rounds a Blast administrator funds from a vault's rewards balance, and one-time proof claims | holder accounting, which stays off-chain |
 | Migration interface | one-time liquidity handoff, linear migration value, and reconciled completion | DEX-specific object/storage details |
 | Adapter | start a launch at a venue-valid tier, prepare its venue, complete a migration, and collect the position's fees | changing core economics |
-| Standalone presale | require a zero-supply meme TreasuryCap; mint and escrow the configured supply; escrow Quote commitments; enforce per-sale eligibility and caps; settle one proportional fill; open claims or preserve full refunds | launchpad curves, launch migration, fixed-supply policy, fees, partners, or venue dependencies |
+| Standalone presale | require a zero-supply meme TreasuryCap; mint and escrow the configured presale and LP allocations; escrow Quote commitments; enforce per-sale eligibility and caps; settle one proportional fill; open claims or preserve full refunds | launchpad curves, launch migration, fixed-supply policy, fees, partners, or venue dependencies |
 
 Modules may begin together in the single chain project. These are dependency
 directions, not a demand for seven packages.

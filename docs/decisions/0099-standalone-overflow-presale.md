@@ -22,13 +22,12 @@ framework and is published immutable. It neither reads nor mutates launchpad
 state, and no launchpad package imports it.
 
 Each `Presale<SaleToken, Quote>` consumes a `TreasuryCap<SaleToken>` whose total
-supply is zero. The creator configures a total supply and two positive slices:
-the allocation distributed to participants and the allocation intended for LP.
-The contract mints the total supply once, escrows those slices, treats the
-remainder as the creator allocation, and holds the TreasuryCap as a discoverable
-dynamic object child while the sale is active. Its remaining immutable per-sale
-configuration contains a positive Quote raise, a commitment duration, an
-LP-launch window, and an `EligibilityPolicy`:
+supply is zero. The creator configures two positive allocations: one distributed
+to participants and one intended for LP. The contract mints exactly those
+allocations and holds them with the TreasuryCap, stored as a discoverable dynamic
+object child, while the sale is active. All other supply remains unminted. The
+remaining immutable per-sale configuration contains a positive Quote raise, a
+commitment duration, an LP-launch window, and an `EligibilityPolicy`:
 
 - `Open` stores one wallet cap and a maximum participant count.
 - `Allowlisted` stores a positional Blake2b-256 Merkle root and leaf count.
@@ -59,8 +58,8 @@ Otherwise the sale becomes funded and fixes one common fill rate `R / C`.
 
 Before the exclusive LP deadline, only the per-presale `PresaleCap` can call
 `launch`. That transition returns the original TreasuryCap, exactly `R` Quote,
-the entire LP-token allocation, and the creator allocation; it opens claims and
-leaves all overflow Quote plus the participant token allocation in escrow. The
+and the entire LP-token allocation; it opens claims and leaves all overflow
+Quote plus the participant token allocation in escrow. The
 caller must thread the LP assets into pool creation in the same programmable
 transaction; a later failure rolls back the whole transition. Core deliberately
 has no DEX dependency and therefore trusts the cap holder to route those assets
@@ -69,8 +68,7 @@ to the announced LP rather than merely transfer them.
 If a funded sale is not launched by the deadline, anyone can cancel it. A sale
 first settled at or after that deadline cancels directly. Cancellation never
 releases Quote to the creator; participants receive full refunds, while the cap
-holder may recover the original TreasuryCap and all three minted token
-allocations.
+holder may recover the original TreasuryCap and both minted token allocations.
 
 After launch, participant `i` with commitment `c_i` receives:
 
@@ -99,9 +97,10 @@ wallet receives that documented sub-participant-count remainder.
 - Raise sizes, time windows, allocations, eligibility, and wallet caps are all
   per-sale values; example numbers from product material are not protocol
   constants.
-- Total meme supply is also a per-sale value. The contract proves the supplied
-  TreasuryCap starts at zero, mints the requested total exactly once, and
-  prevents further minting while the cap remains in presale custody.
+- The presale and LP allocations are per-sale values. The contract proves the
+  supplied TreasuryCap starts at zero, verifies their sum fits the supply
+  counter, mints exactly those allocations, and prevents further minting while
+  the cap remains in presale custody.
 - The Merkle manifest and proof construction remain off chain, while the root,
   leaf count, commitments, custody, lifecycle, and payouts are canonical on chain.
   A proof attests only the committed wallet and cap; it does not prove that the
@@ -112,8 +111,8 @@ wallet receives that documented sub-participant-count remainder.
   LP assets instead of adding liquidity. The contract makes that trust boundary
   explicit; venue-specific enforcement requires a separate adapter package.
 - The TreasuryCap is returned on launch or cancellation, so the creator can
-  mint again afterward. Permanently fixed or burn-only supply requires an
-  explicit Coin Registry transition outside this venue-neutral core.
+  mint additional supply afterward. Permanently fixed or burn-only supply
+  requires an explicit Coin Registry transition outside this venue-neutral core.
 - The generic package cannot remove a Quote issuer's deny, pause, or supply
   powers. Such controls can block an affected wallet's transfer, although an
   aborted claim leaves its on-chain commitment and escrow intact for retry.
@@ -122,7 +121,7 @@ wallet receives that documented sub-participant-count remainder.
 
 - Unit tests cover equal caps, tiered Merkle caps, cumulative cap enforcement,
   dynamic-record bounds, exact time boundaries, proportional fills, full
-  refunds, creator-token recovery, and the LP timeout.
+  refunds, allocation recovery, and the LP timeout.
 - The package gate builds both network environments, lints with warnings as
   errors, and runs Move tests.
 - Publication preview must show package publication and consumption of the

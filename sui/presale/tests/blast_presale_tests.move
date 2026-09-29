@@ -18,10 +18,9 @@ const LIQUIDITY_WINDOW_MS: u64 = 50;
 const LIQUIDITY_DEADLINE_MS: u64 = END_MS + LIQUIDITY_WINDOW_MS;
 
 const RAISE_TARGET: u64 = 1_000;
-const TOTAL_SUPPLY: u64 = 20_000;
 const TOKEN_ALLOCATION: u64 = 10_000;
 const LIQUIDITY_TOKENS: u64 = 2_000;
-const CREATOR_TOKENS: u64 = TOTAL_SUPPLY - TOKEN_ALLOCATION - LIQUIDITY_TOKENS;
+const MINTED_SUPPLY: u64 = TOKEN_ALLOCATION + LIQUIDITY_TOKENS;
 const WALLET_CAP: u64 = 5_000;
 
 // === Test-Only Types ===
@@ -60,23 +59,23 @@ fun oversubscription_uses_one_fill_rate_and_refunds_the_rest() {
 
     assert_eq!(
         fixture.launch(),
-        vector[LIQUIDITY_TOKENS, CREATOR_TOKENS, RAISE_TARGET, TOTAL_SUPPLY],
+        vector[LIQUIDITY_TOKENS, RAISE_TARGET, MINTED_SUPPLY],
     );
-    let (presale_id, treasury_cap_id, quote, liquidity_tokens, creator_tokens) = only_event<
+    let (presale_id, treasury_cap_id, quote, liquidity_tokens) = only_event<
         PresaleLaunched<SALE_TOKEN, QUOTE>,
     >().launched_fields();
     assert_eq!(presale_id, fixture.presale_id);
     assert_eq!(treasury_cap_id, fixture.treasury_cap_id);
     assert_eq!(
-        vector[quote, liquidity_tokens, creator_tokens],
-        vector[RAISE_TARGET, LIQUIDITY_TOKENS, CREATOR_TOKENS],
+        vector[quote, liquidity_tokens],
+        vector[RAISE_TARGET, LIQUIDITY_TOKENS],
     );
 
     assert_eq!(fixture.claim(KEEPER, ALICE), vector[1_000, 2_500, 750, 3_000]);
     fixture.take_payout(ALICE, 2_500, 750);
     assert_eq!(fixture.claim(KEEPER, BOB), vector[3_000, 7_500, 2_250, 0]);
     fixture.take_payout(BOB, 7_500, 2_250);
-    assert_eq!(fixture.custody(), vector[4_000, 0, 2, 0, 0, 0, 0]);
+    assert_eq!(fixture.custody(), vector[4_000, 0, 2, 0, 0, 0]);
 
     fixture.destroy_cap();
     fixture.end();
@@ -93,28 +92,12 @@ fun commitments_lock_quote_in_presale_custody() {
     fixture.commit_open(ALICE, 400);
     assert_eq!(
         fixture.custody(),
-        vector[
-            400,
-            400,
-            1,
-            400,
-            TOKEN_ALLOCATION,
-            LIQUIDITY_TOKENS,
-            CREATOR_TOKENS,
-        ],
+        vector[400, 400, 1, 400, TOKEN_ALLOCATION, LIQUIDITY_TOKENS],
     );
     fixture.commit_open(ALICE, 100);
     assert_eq!(
         fixture.custody(),
-        vector[
-            500,
-            500,
-            1,
-            500,
-            TOKEN_ALLOCATION,
-            LIQUIDITY_TOKENS,
-            CREATOR_TOKENS,
-        ],
+        vector[500, 500, 1, 500, TOKEN_ALLOCATION, LIQUIDITY_TOKENS],
     );
 
     fixture.set_time(END_MS);
@@ -155,7 +138,7 @@ fun participants_cannot_withdraw_funded_commitments() {
 
 #[test]
 /// An underfunded sale releases no Quote and every wallet can recover its full commitment.
-fun underfunded_sale_refunds_every_commitment_and_returns_creator_tokens() {
+fun underfunded_sale_refunds_every_commitment_and_returns_minted_allocations() {
     let mut fixture = start(
         RAISE_TARGET,
         presale::open_eligibility(WALLET_CAP, 2),
@@ -175,7 +158,7 @@ fun underfunded_sale_refunds_every_commitment_and_returns_creator_tokens() {
     fixture.take_quote(ALICE, 500);
     assert_eq!(
         fixture.reclaim_and_destroy_cap(),
-        vector[TOKEN_ALLOCATION, LIQUIDITY_TOKENS, CREATOR_TOKENS, TOTAL_SUPPLY],
+        vector[TOKEN_ALLOCATION, LIQUIDITY_TOKENS, MINTED_SUPPLY],
     );
     fixture.end();
 }
@@ -315,7 +298,6 @@ fun another_presales_cap_cannot_release_escrow() {
         let treasury_cap = coin::create_treasury_cap_for_testing<SALE_TOKEN>(fixture.ctx!());
         let (other, other_cap) = presale::new<SALE_TOKEN, QUOTE>(
             treasury_cap,
-            TOTAL_SUPPLY,
             TOKEN_ALLOCATION,
             LIQUIDITY_TOKENS,
             RAISE_TARGET,
@@ -326,10 +308,9 @@ fun another_presales_cap_cannot_release_escrow() {
         );
         other.share(&fixture.clock);
         let mut sale = fixture.take_presale();
-        let (treasury_cap, liquidity_tokens, creator_tokens, quote) = sale
+        let (treasury_cap, liquidity_tokens, quote) = sale
             .launch(&other_cap, &fixture.clock, fixture.ctx!());
         liquidity_tokens.burn_for_testing();
-        creator_tokens.burn_for_testing();
         quote.burn_for_testing();
         fixture.return_presale(sale);
         transfer::public_transfer(treasury_cap, CREATOR);
@@ -361,7 +342,6 @@ fun sale_token_and_quote_types_must_differ() {
 
     let (sale, cap) = presale::new<QUOTE, QUOTE>(
         treasury_cap,
-        2,
         1,
         1,
         1,
@@ -385,7 +365,6 @@ fun treasury_cap_must_start_with_zero_supply() {
 
     let (sale, cap) = presale::new<SALE_TOKEN, QUOTE>(
         treasury_cap,
-        TOTAL_SUPPLY,
         TOKEN_ALLOCATION,
         LIQUIDITY_TOKENS,
         RAISE_TARGET,
@@ -403,16 +382,15 @@ fun treasury_cap_must_start_with_zero_supply() {
 }
 
 #[test]
-#[expected_failure(abort_code = presale::EInvalidTokenSupply, location = blast_presale::blast_presale)]
-fun configured_total_supply_must_cover_both_sale_allocations() {
+#[expected_failure(abort_code = presale::EInvalidTokenAllocation, location = blast_presale::blast_presale)]
+fun configured_allocations_must_fit_the_supply_counter() {
     let mut ctx = tx_context::dummy();
     let treasury_cap = coin::create_treasury_cap_for_testing<SALE_TOKEN>(&mut ctx);
 
     let (sale, cap) = presale::new<SALE_TOKEN, QUOTE>(
         treasury_cap,
-        TOKEN_ALLOCATION + LIQUIDITY_TOKENS - 1,
-        TOKEN_ALLOCATION,
-        LIQUIDITY_TOKENS,
+        std::u64::max_value!(),
+        1,
         RAISE_TARGET,
         DURATION_MS,
         LIQUIDITY_WINDOW_MS,
@@ -436,7 +414,6 @@ fun start(raise_target: u64, eligibility: EligibilityPolicy): Fixture {
     let treasury_cap_id = object::id(&treasury_cap);
     let (presale, cap) = presale::new<SALE_TOKEN, QUOTE>(
         treasury_cap,
-        TOTAL_SUPPLY,
         TOKEN_ALLOCATION,
         LIQUIDITY_TOKENS,
         raise_target,
@@ -451,11 +428,9 @@ fun start(raise_target: u64, eligibility: EligibilityPolicy): Fixture {
         created_id,
         created_presale_cap_id,
         created_treasury_cap_id,
-        created_total_supply,
         created_raise,
         created_tokens,
         created_liquidity_tokens,
-        created_creator_tokens,
         created_duration,
         created_liquidity_window,
         created_eligibility,
@@ -465,23 +440,19 @@ fun start(raise_target: u64, eligibility: EligibilityPolicy): Fixture {
     assert_eq!(created_treasury_cap_id, treasury_cap_id);
     let (held_treasury_cap_id, held_total_supply) = presale.treasury_cap_fields_for_testing();
     assert_eq!(held_treasury_cap_id, treasury_cap_id);
-    assert_eq!(held_total_supply, TOTAL_SUPPLY);
+    assert_eq!(held_total_supply, MINTED_SUPPLY);
     assert_eq!(
         vector[
-            created_total_supply,
             created_raise,
             created_tokens,
             created_liquidity_tokens,
-            created_creator_tokens,
             created_duration,
             created_liquidity_window,
         ],
         vector[
-            TOTAL_SUPPLY,
             raise_target,
             TOKEN_ALLOCATION,
             LIQUIDITY_TOKENS,
-            CREATOR_TOKENS,
             DURATION_MS,
             LIQUIDITY_WINDOW_MS,
         ],
@@ -588,11 +559,10 @@ fun launch(self: &mut Fixture): vector<u64> {
     self.next_tx!(CREATOR, |fixture| {
         let cap = fixture.scenario.take_from_sender<PresaleCap>();
         let mut sale = fixture.take_presale();
-        let (treasury_cap, liquidity_tokens, creator_tokens, quote) = sale
+        let (treasury_cap, liquidity_tokens, quote) = sale
             .launch(&cap, &fixture.clock, fixture.ctx!());
         assert_eq!(object::id(&treasury_cap), fixture.treasury_cap_id);
         amounts.push_back(liquidity_tokens.burn_for_testing());
-        amounts.push_back(creator_tokens.burn_for_testing());
         amounts.push_back(quote.burn_for_testing());
         amounts.push_back(treasury_cap.total_supply());
         fixture.return_presale(sale);
@@ -652,27 +622,20 @@ fun reclaim_and_destroy_cap(self: &mut Fixture): vector<u64> {
     self.next_tx!(CREATOR, |fixture| {
         let cap = fixture.scenario.take_from_sender<PresaleCap>();
         let mut sale = fixture.take_presale();
-        let (treasury_cap, sale_tokens, liquidity_tokens, creator_tokens) = sale
+        let (treasury_cap, sale_tokens, liquidity_tokens) = sale
             .reclaim_cancelled_assets(&cap, fixture.ctx!());
         assert_eq!(object::id(&treasury_cap), fixture.treasury_cap_id);
         amounts.push_back(sale_tokens.burn_for_testing());
         amounts.push_back(liquidity_tokens.burn_for_testing());
-        amounts.push_back(creator_tokens.burn_for_testing());
         amounts.push_back(treasury_cap.total_supply());
-        let (
-            presale_id,
-            treasury_cap_id,
-            reclaimed_sale,
-            reclaimed_liquidity,
-            reclaimed_creator,
-        ) = only_event<
+        let (presale_id, treasury_cap_id, reclaimed_sale, reclaimed_liquidity) = only_event<
             CancelledAssetsReclaimed<SALE_TOKEN, QUOTE>,
         >().reclaimed_fields();
         assert_eq!(presale_id, fixture.presale_id);
         assert_eq!(treasury_cap_id, fixture.treasury_cap_id);
         assert_eq!(
-            vector[reclaimed_sale, reclaimed_liquidity, reclaimed_creator],
-            vector[TOKEN_ALLOCATION, LIQUIDITY_TOKENS, CREATOR_TOKENS],
+            vector[reclaimed_sale, reclaimed_liquidity],
+            vector[TOKEN_ALLOCATION, LIQUIDITY_TOKENS],
         );
         sale.destroy_cap(cap);
         fixture.return_presale(sale);
@@ -721,7 +684,6 @@ fun custody(self: &mut Fixture): vector<u64> {
             quote,
             sale_tokens,
             liquidity_tokens,
-            creator_tokens,
         ) = sale.custody_for_testing();
         values.append(vector[
             total,
@@ -730,7 +692,6 @@ fun custody(self: &mut Fixture): vector<u64> {
             quote,
             sale_tokens,
             liquidity_tokens,
-            creator_tokens,
         ]);
         fixture.return_presale(sale);
     });

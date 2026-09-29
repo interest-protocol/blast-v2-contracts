@@ -4,13 +4,12 @@
 It does not import the launchpad, migrators, Blast administration, or partner
 packages.
 
-A creator supplies a zero-supply `TreasuryCap<SaleToken>` and chooses the total
-supply, presale allocation, LP allocation, Quote raise, commitment window, LP
-window, and `EligibilityPolicy`. The contract mints the total supply, escrows
-the cap and all three token balances, and shares the `Presale`. The unallocated
-remainder is the creator allocation. The policy is either one open wallet cap
-or a Merkle allowlist whose leaves carry per-wallet caps for equal, tiered, or
-custom limits.
+A creator supplies a zero-supply `TreasuryCap<SaleToken>` and configures the
+presale allocation, LP allocation, Quote raise, commitment window, LP window,
+and `EligibilityPolicy`. The contract mints exactly the two token allocations,
+escrows them with the cap, and shares the `Presale`. All other supply remains
+unminted. The policy is either one open wallet cap or a Merkle allowlist whose
+leaves carry per-wallet caps for equal, tiered, or custom limits.
 
 Every commitment consumes a `Coin<Quote>` and joins its full balance into the
 shared `Presale`; recording an amount without locking the matching Quote is not
@@ -19,13 +18,13 @@ funded states. Cancellation returns the full commitment; after launch, only the
 calculated overflow is refundable.
 
 After the window, an underfunded sale refunds every commitment. A funded sale
-uses one fill rate for every wallet. `launch` returns only the exact raise and
-LP-token allocation, plus the creator allocation and original TreasuryCap,
-while opening token and overflow-refund claims. The cap holder is responsible
+uses one fill rate for every wallet. `launch` returns the exact raise,
+LP-token allocation, and original TreasuryCap while opening token and
+overflow-refund claims. The cap holder is responsible
 for threading the LP assets into pool creation in the same programmable
 transaction; the core package has no DEX dependency. If LP is not launched by
 the configured deadline, anyone can cancel and preserve all Quote for full
-refunds. The creator may then recover the TreasuryCap and every minted token.
+refunds. The creator may then recover the TreasuryCap and both minted allocations.
 Claims are permissionlessly relayable, so a keeper can airdrop each wallet's
 tokens after launch while wallets can also claim directly.
 
