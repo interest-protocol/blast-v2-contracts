@@ -34,10 +34,16 @@ public struct PresaleCap has key, store {
     presale_id: ID,
 }
 
-/// One immutable share of the fixed token supply, paid only after migration.
+/// A creator-configured share of the fixed token supply, in BPS.
 public struct RecipientAllocation has copy, drop, store {
     recipient: address,
     bps: u64,
+}
+
+/// The exact tokens one recipient receives at migration, apportioned from its
+/// `RecipientAllocation` when the presale is created.
+public struct RecipientPayout has copy, drop, store {
+    recipient: address,
     amount: u64,
 }
 
@@ -87,7 +93,7 @@ public struct Presale<phantom SaleToken, phantom Quote> has key {
     token_allocation: u64,
     sale_tokens: Balance<SaleToken>,
     liquidity_tokens: Balance<SaleToken>,
-    recipient_allocations: vector<RecipientAllocation>,
+    recipient_payouts: vector<RecipientPayout>,
     recipient_tokens: Balance<SaleToken>,
 }
 
@@ -127,7 +133,7 @@ public fun allowlisted_eligibility(root: vector<u8>, leaf_count: u64): Eligibili
 public fun recipient_allocation(recipient: address, bps: u64): RecipientAllocation {
     assert!(recipient != @0x0 && bps > 0 && bps <= BASIS_POINTS, EInvalidTokenAllocation);
 
-    RecipientAllocation { recipient, bps, amount: 0 }
+    RecipientAllocation { recipient, bps }
 }
 
 /// Configures one address's share of every collected LP fee.
@@ -315,7 +321,7 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
     token_supply: u64,
     token_allocation_bps: u64,
     liquidity_token_allocation_bps: u64,
-    mut recipient_allocations: vector<RecipientAllocation>,
+    recipient_allocations: vector<RecipientAllocation>,
     burnable: bool,
     raise_target: u64,
     duration_ms: u64,
@@ -400,11 +406,10 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         EUnseedablePrice,
     );
 
-    let mut i = 0;
-    recipient_allocations.do_mut!(|allocation| {
-        allocation.amount = amounts[i + 2];
-        assert!(allocation.amount > 0, EInvalidTokenAllocation);
-        i = i + 1;
+    let recipient_payouts = vector::tabulate!(recipient_allocations.length(), |i| {
+        let amount = amounts[i + 2];
+        assert!(amount > 0, EInvalidTokenAllocation);
+        RecipientPayout { recipient: recipient_allocations[i].recipient, amount }
     });
 
     // Mint the complete supply once, then give up mint authority forever.
@@ -428,7 +433,8 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         token_supply,
         token_allocation_bps,
         liquidity_token_allocation_bps,
-        recipient_count: recipient_allocations.length(),
+        recipients: recipient_allocations.map_ref!(|allocation| allocation.recipient),
+        recipient_bps: recipient_allocations.map_ref!(|allocation| allocation.bps),
         burnable,
         raise_target,
         duration_ms,
@@ -465,7 +471,7 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
             token_allocation,
             sale_tokens,
             liquidity_tokens,
-            recipient_allocations,
+            recipient_payouts,
             recipient_tokens,
         },
         cap,
@@ -490,18 +496,15 @@ public(package) fun migrate<SaleToken, Quote, MigrationWitness: drop>(
     let liquidity_tokens = self.liquidity_tokens.withdraw_all();
     let recipient_tokens = self.recipient_tokens.value();
 
-    let mut i = 0;
-    while (i < self.recipient_allocations.length()) {
-        let RecipientAllocation { recipient, bps, amount } = self.recipient_allocations[i];
+    self.recipient_payouts.length().do!(|i| {
+        let RecipientPayout { recipient, amount } = self.recipient_payouts[i];
         transfer::public_transfer(self.recipient_tokens.split(amount).into_coin(ctx), recipient);
         event::emit(RecipientAllocated<SaleToken, Quote> {
             presale_id: self.id.to_inner(),
             recipient,
-            bps,
             tokens: amount,
         });
-        i = i + 1;
-    };
+    });
     assert!(self.recipient_tokens.value() == 0, EInvalidTokenAllocation);
 
     self.lifecycle = Lifecycle::Migrated;
@@ -794,8 +797,8 @@ public fun created_migration_fields<SaleToken, Quote>(
 #[test_only]
 public fun created_supply_fields<SaleToken, Quote>(
     event: &PresaleCreated<SaleToken, Quote>,
-): (u64, bool) {
-    (event.recipient_count, event.burnable)
+): (vector<address>, vector<u64>, bool) {
+    (event.recipients, event.recipient_bps, event.burnable)
 }
 
 #[test_only]
@@ -875,7 +878,8 @@ public struct PresaleCreated<phantom SaleToken, phantom Quote> has copy, drop {
     token_supply: u64,
     token_allocation_bps: u64,
     liquidity_token_allocation_bps: u64,
-    recipient_count: u64,
+    recipients: vector<address>,
+    recipient_bps: vector<u64>,
     burnable: bool,
     raise_target: u64,
     duration_ms: u64,
@@ -935,7 +939,6 @@ public struct PresaleMigrated<phantom SaleToken, phantom Quote> has copy, drop {
 public struct RecipientAllocated<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
     recipient: address,
-    bps: u64,
     tokens: u64,
 }
 

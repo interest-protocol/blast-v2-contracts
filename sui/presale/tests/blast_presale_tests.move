@@ -795,10 +795,11 @@ fun start_with_mode(
     assert_eq!(fee_recipients, vector[CREATOR, FEE_PARTNER]);
     assert_eq!(fee_recipient_bps, vector[CREATOR_FEE_BPS, FEE_PARTNER_BPS]);
     assert_eq!(rewards_fee_bps, REWARDS_FEE_BPS);
-    let (recipient_count, created_burnable) = only_event<
+    let (recipients, recipient_bps, created_burnable) = only_event<
         PresaleCreated<BLAST_PRESALE_TESTS, QUOTE>,
     >().created_supply_fields();
-    assert_eq!(recipient_count, 2);
+    assert_eq!(recipients, vector[RECIPIENT_A, RECIPIENT_B]);
+    assert_eq!(recipient_bps, vector[RECIPIENT_A_BPS, RECIPIENT_B_BPS]);
     assert_eq!(created_burnable, burnable);
     destroy(currency);
     presale.share(&clock);

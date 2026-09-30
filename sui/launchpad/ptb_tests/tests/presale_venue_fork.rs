@@ -800,9 +800,9 @@ impl World {
         ensure!(migrated[0].migration_witness.ends_with(&format!("::{}::Witness", self.route.module())));
         let allocated: Vec<RecipientAllocated> = self.events(&outcome, "blast_presale", "RecipientAllocated");
         ensure!(allocated.len() == terms.recipients.len());
-        for (((recipient, bps), amount), event) in terms.recipients.iter().zip(terms.recipient_tokens()).zip(&allocated) {
+        for (((recipient, _), amount), event) in terms.recipients.iter().zip(terms.recipient_tokens()).zip(&allocated) {
             let recipient = SuiAddress::from(*recipient);
-            ensure!((event.recipient, event.bps, event.tokens) == (recipient, *bps, amount));
+            ensure!((event.recipient, event.tokens) == (recipient, amount));
             ensure!(outcome.coins_created_for(&self.h, recipient) == self.coins(&sale.meme, amount, 0));
         }
 
@@ -1404,7 +1404,7 @@ struct PresaleState {
     token_allocation: u64,
     sale_tokens: u64,
     liquidity_tokens: u64,
-    recipient_allocations: Vec<(SuiAddress, u64, u64)>,
+    _recipient_payouts: Vec<(SuiAddress, u64)>,
     recipient_tokens: u64,
 }
 
@@ -1447,7 +1447,6 @@ struct PresaleMigrated {
 struct RecipientAllocated {
     _presale_id: ObjectID,
     recipient: SuiAddress,
-    bps: u64,
     tokens: u64,
 }
 
