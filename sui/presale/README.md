@@ -17,7 +17,12 @@ to exactly one allocation. Eligibility is either an open policy (wallet cap,
 participant bound, and a minimum commitment whose product with the bound must
 reach the raise) or a Merkle allowlist whose leaves carry per-wallet caps.
 
-Every commitment consumes and locks its full `Coin<Quote>`. Participants cannot
+An optional uncapped phase lifts wallet caps partway through the window, either
+for eligible wallets or for anyone, and either keeps overflow pro-rata or
+hard-caps at the raise, returning any excess Quote immediately. Part of the
+raise can also be allocated to recipients in BPS; the LP seeds with the rest.
+
+Every accepted commitment is locked in the presale's Quote custody. Participants cannot
 withdraw while a sale is open or funded. Underfunded sales, and funded sales
 cancelled after the LP deadline, refund every commitment; successfully migrated
 sales refund only overflow. One common fill rate applies to every wallet.

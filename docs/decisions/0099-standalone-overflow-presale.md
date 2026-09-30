@@ -75,6 +75,26 @@ holder-reward BPS; together they total exactly 10,000. The eligibility policy is
 Both policies are bounded by a technical ceiling of 65,536 dynamic commitment
 records. This is not a product eligibility count or raise-size constant.
 
+A sale may add an `UncappedPhase` starting `starts_after_ms` into the window,
+from which wallet caps no longer apply. Its access is either `Eligible` (only
+wallets the policy admits, through `commit_open` or `commit_allowlisted`) or
+`Anyone` (any wallet, also through `commit_uncapped`, with its own participant
+bound and minimum; the bound must be at least the policy's and
+`min_commitment * max_participants` must reach the raise). With `hard_cap`, a
+commitment in the phase accepts only what is left of the raise and returns the
+excess as a coin in the same call, the one commitment that exactly fills the
+raise may be below the minimum, and a full sale rejects further Quote
+(`EPresaleFilled`); commitments made before the phase keep their overflow.
+Without it, caps lift but the sale still overflows and fills pro-rata. Every
+commit function returns the Quote it did not accept, a zero coin outside a
+hard-capped phase.
+
+The creator may also give recipients shares of the raise (`raise_allocations`,
+in BPS of `R`, totalling strictly less than 10,000). They are apportioned into
+exact Quote payouts at creation, paid at migration, and the LP seeds with the
+rest, which is also the Quote the seedable-price check uses. A cancelled sale
+refunds every commitment in full.
+
 The shared-object lifecycle is:
 
 ```text
@@ -108,7 +128,8 @@ the entire LP-token allocation from core. In the same call it creates the
 configured full-range pool and seals its position or burn proof in a
 `PresaleVault`. Claims open only after this call succeeds; a venue failure rolls
 back the complete transaction. That transaction also pays each configured
-recipient its distinct immutable token allocation. The migration witness, tier,
+recipient its distinct immutable token allocation and each raise recipient its
+Quote payout. The migration witness, tier,
 allocations, and fee split were fixed before commitments opened and cannot be
 supplied by the migration caller.
 

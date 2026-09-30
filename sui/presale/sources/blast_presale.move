@@ -19,6 +19,26 @@ public enum EligibilityPolicy has copy, drop, store {
     Allowlisted { root: vector<u8>, leaf_count: u64 },
 }
 
+/// Who may commit once an uncapped phase lifts wallet caps.
+public enum UncappedAccess has copy, drop, store {
+    /// Only wallets the sale's eligibility policy admits, without their caps.
+    Eligible,
+    /// Any wallet, bounded like an open policy: `min_commitment * max_participants`
+    /// must reach the raise so dust cannot lock buyers out.
+    Anyone { max_participants: u64, min_commitment: u64 },
+}
+
+/// An optional closing phase, starting `starts_after_ms` into the commitment window,
+/// that lifts wallet caps. With `hard_cap`, commitments in the phase take only what is
+/// left of the raise and return the excess at once, and the sale stops accepting
+/// Quote when the raise is full; without it, the sale still overflows and every
+/// wallet is filled at one common rate.
+public struct UncappedPhase has copy, drop, store {
+    starts_after_ms: u64,
+    access: UncappedAccess,
+    hard_cap: bool,
+}
+
 /// The presale's one-way lifecycle.
 public enum Lifecycle has copy, drop, store {
     Pending,
@@ -81,6 +101,8 @@ public struct Presale<phantom SaleToken, phantom Quote> has key {
     liquidity_deadline_ms: u64,
     raise_target: u64,
     eligibility: EligibilityPolicy,
+    uncapped: Option<UncappedPhase>,
+    uncapped_from_ms: u64,
     migration_witness: TypeName,
     tick_spacing: u32,
     fee_rate: u64,
@@ -95,6 +117,7 @@ public struct Presale<phantom SaleToken, phantom Quote> has key {
     liquidity_tokens: Balance<SaleToken>,
     recipient_payouts: vector<RecipientPayout>,
     recipient_tokens: Balance<SaleToken>,
+    raise_payouts: vector<RecipientPayout>,
 }
 
 // === Public Functions ===
@@ -129,6 +152,31 @@ public fun allowlisted_eligibility(root: vector<u8>, leaf_count: u64): Eligibili
     EligibilityPolicy::Allowlisted { root, leaf_count }
 }
 
+/// Lifts wallet caps for eligible wallets `starts_after_ms` into the window.
+public fun uncapped_for_eligible(starts_after_ms: u64, hard_cap: bool): UncappedPhase {
+    UncappedPhase { starts_after_ms, access: UncappedAccess::Eligible, hard_cap }
+}
+
+/// Opens the sale to any wallet without caps `starts_after_ms` into the window, admitting
+/// at most `max_participants` wallets in total, each committing at least `min_commitment`.
+public fun uncapped_for_anyone(
+    starts_after_ms: u64,
+    max_participants: u64,
+    min_commitment: u64,
+    hard_cap: bool,
+): UncappedPhase {
+    assert!(
+        min_commitment > 0 && max_participants > 0 && max_participants <= MAX_PARTICIPANTS,
+        EInvalidUncappedPhase,
+    );
+
+    UncappedPhase {
+        starts_after_ms,
+        access: UncappedAccess::Anyone { max_participants, min_commitment },
+        hard_cap,
+    }
+}
+
 /// Configures one additional recipient's share of the fixed token supply.
 public fun recipient_allocation(recipient: address, bps: u64): RecipientAllocation {
     assert!(recipient != @0x0 && bps > 0 && bps <= BASIS_POINTS, EInvalidTokenAllocation);
@@ -152,35 +200,40 @@ public fun share<SaleToken, Quote>(mut self: Presale<SaleToken, Quote>, clock: &
     let liquidity_deadline_ms = end_ms
         .checked_add(self.liquidity_window_ms)
         .destroy_or!(abort EInvalidWindow);
+    // `new` bounds the offset below the duration, so this cannot overflow.
+    let uncapped_from_ms = self.uncapped.map_ref!(|phase| start_ms + phase.starts_after_ms).destroy_or!(end_ms);
 
     self.lifecycle = Lifecycle::Open;
     self.end_ms = end_ms;
     self.liquidity_deadline_ms = liquidity_deadline_ms;
+    self.uncapped_from_ms = uncapped_from_ms;
 
     event::emit(PresaleOpened<SaleToken, Quote> {
         presale_id: self.id.to_inner(),
         start_ms,
         end_ms,
         liquidity_deadline_ms,
+        uncapped_from_ms,
     });
 
     transfer::share_object(self);
 }
 
-/// Consumes and locks the supplied `Coin<Quote>` in this presale under an
-/// equal-cap, open eligibility policy.
+/// Locks the supplied `Coin<Quote>` in this presale under an equal-cap, open
+/// eligibility policy and returns whatever a hard-capped uncapped phase could not
+/// accept (a zero coin otherwise).
 public fun commit_open<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
     quote_in: Coin<Quote>,
     clock: &Clock,
     ctx: &mut TxContext,
-) {
+): Coin<Quote> {
     self.assert_open(clock);
     assert!(quote_in.value() > 0, EZeroCommitment);
 
     let (wallet_cap, max_participants, min_commitment) = open_limits(self.eligibility);
 
-    self.record_commitment(quote_in, wallet_cap, max_participants, min_commitment, ctx);
+    self.record_commitment(quote_in, wallet_cap, max_participants, min_commitment, clock, ctx)
 }
 
 /// Consumes and locks the supplied `Coin<Quote>` in this presale after
@@ -193,7 +246,7 @@ public fun commit_allowlisted<SaleToken, Quote>(
     proof: vector<vector<u8>>,
     clock: &Clock,
     ctx: &mut TxContext,
-) {
+): Coin<Quote> {
     self.assert_open(clock);
     assert!(quote_in.value() > 0, EZeroCommitment);
 
@@ -206,7 +259,29 @@ public fun commit_allowlisted<SaleToken, Quote>(
     );
 
     // Allowlisted wallets are few and named, so any positive commitment counts.
-    self.record_commitment(quote_in, wallet_cap, max_participants, 1, ctx);
+    self.record_commitment(quote_in, wallet_cap, max_participants, 1, clock, ctx)
+}
+
+/// Locks Quote from any wallet once an uncapped phase open to anyone has started,
+/// returning whatever a hard cap could not accept.
+public fun commit_uncapped<SaleToken, Quote>(
+    self: &mut Presale<SaleToken, Quote>,
+    quote_in: Coin<Quote>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): Coin<Quote> {
+    self.assert_open(clock);
+    assert!(quote_in.value() > 0, EZeroCommitment);
+    assert!(clock.timestamp_ms() >= self.uncapped_from_ms, EUncappedPhaseNotOpen);
+
+    let (max_participants, min_commitment) = match (self.uncapped.destroy_some()) {
+        UncappedPhase { access: UncappedAccess::Anyone { max_participants, min_commitment }, .. } => {
+            (max_participants, min_commitment)
+        },
+        _ => abort EUncappedPhaseNotOpen,
+    };
+
+    self.record_commitment(quote_in, std::u64::max_value!(), max_participants, min_commitment, clock, ctx)
 }
 
 /// Fixes the fill after the commitment window. Underfunded sales become fully
@@ -324,9 +399,11 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
     recipient_allocations: vector<RecipientAllocation>,
     burnable: bool,
     raise_target: u64,
+    raise_allocations: vector<RecipientAllocation>,
     duration_ms: u64,
     liquidity_window_ms: u64,
     eligibility: EligibilityPolicy,
+    uncapped: Option<UncappedPhase>,
     _: MigrationWitness,
     tick_spacing: u32,
     fee_rate: u64,
@@ -343,6 +420,19 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
     // supply fixed or burn-only consumes the cap, so holding it proves the supply is still unknown.
     assert!(treasury_cap.total_supply() == 0, EInitialSupplyNotZero);
     assert!(raise_target > 0, EInvalidRaiseTarget);
+
+    // Raise allocations: distinct recipients sharing strictly less than the whole raise.
+    assert!(raise_allocations.length() <= MAX_RECIPIENTS, EInvalidRaiseAllocation);
+    raise_allocations.do_ref!(|allocation| assert!(
+        allocation.recipient != @0x0
+            && allocation.bps > 0
+            && allocation.bps < BASIS_POINTS
+            // ponytail: O(n²) duplicate validation is bounded by MAX_RECIPIENTS.
+            && raise_allocations.count!(|other| other.recipient == allocation.recipient) == 1,
+        EInvalidRaiseAllocation,
+    ));
+    let raise_allocation_bps = raise_allocations.fold!(0, |sum, allocation| sum + allocation.bps);
+    assert!(raise_allocation_bps < BASIS_POINTS, EInvalidRaiseAllocation);
 
     // Token allocations: bounded shares totalling exactly 10,000 BPS.
     assert!(
@@ -391,6 +481,19 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
 
     assert!(duration_ms > 0 && liquidity_window_ms > 0, EInvalidWindow);
     assert!(eligibility.can_reach(raise_target), EUnreachableRaise);
+    uncapped.do_ref!(|phase| {
+        assert!(phase.starts_after_ms < duration_ms, EInvalidUncappedPhase);
+        match (phase.access) {
+            UncappedAccess::Anyone { max_participants, min_commitment } => {
+                assert!(max_participants >= eligibility.participant_bound(), EInvalidUncappedPhase);
+                assert!(
+                    (min_commitment as u128) * (max_participants as u128) >= (raise_target as u128),
+                    EUnreachableRaise,
+                );
+            },
+            UncappedAccess::Eligible => (),
+        }
+    });
 
     // Apportion the supply so every atomic unit belongs to exactly one allocation.
     let mut shares = vector[token_allocation_bps, liquidity_token_allocation_bps];
@@ -399,9 +502,20 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
     let token_allocation = amounts[0];
     let liquidity_token_allocation = amounts[1];
     assert!(token_allocation > 0 && liquidity_token_allocation > 0, EInvalidTokenAllocation);
+
+    // Apportion the raise the same way; the LP keeps the last share.
+    let mut raise_shares = raise_allocations.map_ref!(|allocation| allocation.bps);
+    raise_shares.push_back(BASIS_POINTS - raise_allocation_bps);
+    let raise_amounts = apportion(raise_shares, raise_target);
+    let liquidity_quote = raise_amounts[raise_allocations.length()];
+    assert!(raise_amounts.all!(|amount| *amount > 0), EInvalidRaiseAllocation);
+    let raise_payouts = vector::tabulate!(raise_allocations.length(), |i| RecipientPayout {
+        recipient: raise_allocations[i].recipient,
+        amount: raise_amounts[i],
+    });
     assert!(
         migration_math::is_seedable(
-            migration_math::sqrt_price_x64(liquidity_token_allocation, raise_target, true),
+            migration_math::sqrt_price_x64(liquidity_token_allocation, liquidity_quote, true),
         ),
         EUnseedablePrice,
     );
@@ -437,9 +551,12 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         recipient_bps: recipient_allocations.map_ref!(|allocation| allocation.bps),
         burnable,
         raise_target,
+        raise_recipients: raise_allocations.map_ref!(|allocation| allocation.recipient),
+        raise_recipient_bps: raise_allocations.map_ref!(|allocation| allocation.bps),
         duration_ms,
         liquidity_window_ms,
         eligibility,
+        uncapped,
         migration_witness,
         tick_spacing,
         fee_rate,
@@ -459,6 +576,8 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
             liquidity_deadline_ms: 0,
             raise_target,
             eligibility,
+            uncapped,
+            uncapped_from_ms: 0,
             migration_witness,
             tick_spacing,
             fee_rate,
@@ -473,6 +592,7 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
             liquidity_tokens,
             recipient_payouts,
             recipient_tokens,
+            raise_payouts,
         },
         cap,
     )
@@ -492,9 +612,19 @@ public(package) fun migrate<SaleToken, Quote, MigrationWitness: drop>(
         EWrongMigrationWitness,
     );
 
-    let quote = self.quote.split(self.raise_target);
+    let mut quote = self.quote.split(self.raise_target);
     let liquidity_tokens = self.liquidity_tokens.withdraw_all();
     let recipient_tokens = self.recipient_tokens.value();
+
+    self.raise_payouts.length().do!(|i| {
+        let RecipientPayout { recipient, amount } = self.raise_payouts[i];
+        transfer::public_transfer(quote.split(amount).into_coin(ctx), recipient);
+        event::emit(RaiseAllocated<SaleToken, Quote> {
+            presale_id: self.id.to_inner(),
+            recipient,
+            quote: amount,
+        });
+    });
 
     self.recipient_payouts.length().do!(|i| {
         let RecipientPayout { recipient, amount } = self.recipient_payouts[i];
@@ -512,7 +642,7 @@ public(package) fun migrate<SaleToken, Quote, MigrationWitness: drop>(
     event::emit(PresaleMigrated<SaleToken, Quote> {
         presale_id: self.id.to_inner(),
         migration_witness: self.migration_witness,
-        quote: self.raise_target,
+        quote: quote.value(),
         liquidity_tokens: liquidity_tokens.value(),
         recipient_tokens,
     });
@@ -595,13 +725,28 @@ fun apportion(shares: vector<u64>, total: u64): vector<u64> {
 
 fun record_commitment<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
-    quote_in: Coin<Quote>,
+    mut quote_in: Coin<Quote>,
     wallet_cap: u64,
     max_participants: u64,
     min_commitment: u64,
-    ctx: &TxContext,
-) {
-    let quote = quote_in.value();
+    clock: &Clock,
+    ctx: &mut TxContext,
+): Coin<Quote> {
+    let uncapped = clock.timestamp_ms() >= self.uncapped_from_ms;
+    let (max_participants, hard_cap) = if (uncapped) {
+        self.uncapped_limits(max_participants)
+    } else {
+        (max_participants, false)
+    };
+    // A hard-capped uncapped phase accepts only what is left of the raise.
+    let quote = if (hard_cap) {
+        assert!(self.total_commitments < self.raise_target, EPresaleFilled);
+        quote_in.value().min(self.raise_target - self.total_commitments)
+    } else {
+        quote_in.value()
+    };
+    let fills_raise = hard_cap && self.total_commitments + quote == self.raise_target;
+
     let key = CommitmentKey(ctx.sender());
     let exists = self.id.has_dynamic_field(key);
     let current = if (exists) {
@@ -610,10 +755,12 @@ fun record_commitment<SaleToken, Quote>(
         Commitment { quote: 0, wallet_cap }
     };
 
-    assert!(current.wallet_cap == wallet_cap, EInvalidEligibilityProof);
+    // Caps no longer apply once uncapped, so a record's cap need not match the caller's.
+    assert!(uncapped || current.wallet_cap == wallet_cap, EInvalidEligibilityProof);
     let wallet_commitment = current.quote.checked_add(quote).destroy_or!(abort EWalletCapExceeded);
-    assert!(wallet_commitment <= wallet_cap, EWalletCapExceeded);
-    assert!(wallet_commitment >= min_commitment, EBelowMinimumCommitment);
+    assert!(uncapped || wallet_commitment <= wallet_cap, EWalletCapExceeded);
+    // The commitment that exactly fills a hard cap may be smaller than the minimum.
+    assert!(wallet_commitment >= min_commitment || fills_raise, EBelowMinimumCommitment);
     if (!exists) {
         assert!(self.participants < max_participants, EParticipantCapacityReached);
     };
@@ -630,7 +777,7 @@ fun record_commitment<SaleToken, Quote>(
     };
     self.total_commitments = total_commitments;
     self.remaining_commitments = total_commitments;
-    self.quote.join(quote_in.into_balance());
+    self.quote.join(quote_in.split(quote, ctx).into_balance());
 
     event::emit(Committed<SaleToken, Quote> {
         presale_id: self.id.to_inner(),
@@ -639,6 +786,8 @@ fun record_commitment<SaleToken, Quote>(
         total_commitments,
         participants: self.participants,
     });
+
+    quote_in
 }
 
 fun open_limits(policy: EligibilityPolicy): (u64, u64, u64) {
@@ -647,6 +796,28 @@ fun open_limits(policy: EligibilityPolicy): (u64, u64, u64) {
             (wallet_cap, max_participants, min_commitment)
         },
         EligibilityPolicy::Allowlisted { .. } => abort EWrongEligibilityPolicy,
+    }
+}
+
+/// The participant bound and hard-cap flag once the uncapped phase has started.
+fun uncapped_limits<SaleToken, Quote>(
+    self: &Presale<SaleToken, Quote>,
+    policy_max_participants: u64,
+): (u64, bool) {
+    let UncappedPhase { access, hard_cap, .. } = self.uncapped.destroy_some();
+    let max_participants = match (access) {
+        UncappedAccess::Anyone { max_participants, .. } => max_participants,
+        UncappedAccess::Eligible => policy_max_participants,
+    };
+
+    (max_participants, hard_cap)
+}
+
+/// The number of distinct wallets the eligibility policy admits.
+fun participant_bound(self: EligibilityPolicy): u64 {
+    match (self) {
+        EligibilityPolicy::Open { max_participants, .. } => max_participants,
+        EligibilityPolicy::Allowlisted { leaf_count, .. } => leaf_count,
     }
 }
 
@@ -804,8 +975,14 @@ public fun created_supply_fields<SaleToken, Quote>(
 #[test_only]
 public fun opened_fields<SaleToken, Quote>(
     event: &PresaleOpened<SaleToken, Quote>,
-): (ID, u64, u64, u64) {
-    (event.presale_id, event.start_ms, event.end_ms, event.liquidity_deadline_ms)
+): (ID, u64, u64, u64, u64) {
+    (
+        event.presale_id,
+        event.start_ms,
+        event.end_ms,
+        event.liquidity_deadline_ms,
+        event.uncapped_from_ms,
+    )
 }
 
 #[test_only]
@@ -855,6 +1032,13 @@ public fun migrated_fields<SaleToken, Quote>(
 }
 
 #[test_only]
+public fun raise_allocated_fields<SaleToken, Quote>(
+    event: &RaiseAllocated<SaleToken, Quote>,
+): (ID, address, u64) {
+    (event.presale_id, event.recipient, event.quote)
+}
+
+#[test_only]
 public fun claim_fields<SaleToken, Quote>(
     event: &Claimed<SaleToken, Quote>,
 ): (ID, address, u64, u64, u64, u64) {
@@ -882,9 +1066,12 @@ public struct PresaleCreated<phantom SaleToken, phantom Quote> has copy, drop {
     recipient_bps: vector<u64>,
     burnable: bool,
     raise_target: u64,
+    raise_recipients: vector<address>,
+    raise_recipient_bps: vector<u64>,
     duration_ms: u64,
     liquidity_window_ms: u64,
     eligibility: EligibilityPolicy,
+    uncapped: Option<UncappedPhase>,
     migration_witness: TypeName,
     tick_spacing: u32,
     fee_rate: u64,
@@ -899,6 +1086,7 @@ public struct PresaleOpened<phantom SaleToken, phantom Quote> has copy, drop {
     start_ms: u64,
     end_ms: u64,
     liquidity_deadline_ms: u64,
+    uncapped_from_ms: u64,
 }
 
 /// Quote joined a presale from the transaction sender.
@@ -926,13 +1114,21 @@ public struct PresaleCancelled<phantom SaleToken, phantom Quote> has copy, drop 
     refundable_quote: u64,
 }
 
-/// The exact raise and LP-token allocation entered the configured migrator.
+/// The raise left after recipient allocations and the LP-token allocation entered the
+/// configured migrator.
 public struct PresaleMigrated<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
     migration_witness: TypeName,
     quote: u64,
     liquidity_tokens: u64,
     recipient_tokens: u64,
+}
+
+/// One configured recipient received its share of the raise.
+public struct RaiseAllocated<phantom SaleToken, phantom Quote> has copy, drop {
+    presale_id: ID,
+    recipient: address,
+    quote: u64,
 }
 
 /// One configured recipient received its immutable token allocation.
@@ -1037,6 +1233,18 @@ const EUnreachableRaise: vector<u8> = b"An open sale's minimum commitment times 
 
 #[error(code = 22)]
 const EUnseedablePrice: vector<u8> = b"The raise and LP-token allocation give a seed price the venues cannot pool.";
+
+#[error(code = 23)]
+const EInvalidUncappedPhase: vector<u8> = b"An uncapped phase must start inside the window, and an open-to-anyone phase needs a positive minimum and a participant bound at least the policy's.";
+
+#[error(code = 24)]
+const EUncappedPhaseNotOpen: vector<u8> = b"The presale has no uncapped phase open to any wallet, or it has not started.";
+
+#[error(code = 25)]
+const EPresaleFilled: vector<u8> = b"The hard-capped presale has already reached its raise.";
+
+#[error(code = 26)]
+const EInvalidRaiseAllocation: vector<u8> = b"Raise allocations must be unique, positive, bounded, leave the LP a positive share, and apportion to positive amounts.";
 
 // === Imports ===
 
