@@ -7,11 +7,13 @@ module blast_presale::holder_rewards;
 
 // === Public Types ===
 
-/// One independently claimable holder-reward allocation.
+/// One independently claimable holder-reward allocation. Claims stay open until someone
+/// closes the round after its deadline, which returns whatever is unclaimed to the vault.
 public struct Round<phantom Meme, phantom Quote> has key {
     id: UID,
     vault: ID,
     number: u64,
+    claim_deadline_ms: u64,
     root: vector<u8>,
     leaf_count: u64,
     claimed: vector<u256>,
@@ -33,6 +35,8 @@ public fun publish_round<Meme, Quote>(
     leaf_count: u64,
     meme_amount: u64,
     quote_amount: u64,
+    claim_deadline_ms: u64,
+    clock: &Clock,
     ctx: &mut TxContext,
 ) {
     assert!(number == vault.next_round(), EWrongRound);
@@ -47,12 +51,15 @@ public fun publish_round<Meme, Quote>(
     );
     assert!(leaf_count > 0 && leaf_count <= MAX_REWARD_LEAVES, EInvalidLeafCount);
     assert!(meme_amount > 0 || quote_amount > 0, EEmptyBudget);
+    assert!(claim_deadline_ms > clock.timestamp_ms(), EInvalidClaimDeadline);
+
     let vault_id = object::id(vault);
     let (meme, quote) = vault.fund_round(end_checkpoint, meme_amount, quote_amount);
     let round = Round {
         id: object::new(ctx),
         vault: vault_id,
         number,
+        claim_deadline_ms,
         root,
         leaf_count,
         claimed: vector::tabulate!(leaf_count.div_ceil(256), |_| 0u256),
@@ -61,6 +68,7 @@ public fun publish_round<Meme, Quote>(
     };
     let round_id = round.id.to_inner();
     let (meme_unallocated, quote_unallocated) = vault.rewards_balances();
+
     transfer::share_object(round);
 
     event::emit(RoundPublished<Meme, Quote> {
@@ -69,6 +77,7 @@ public fun publish_round<Meme, Quote>(
         number,
         start_checkpoint,
         end_checkpoint,
+        claim_deadline_ms,
         root,
         manifest_digest,
         leaf_count,
@@ -95,6 +104,7 @@ public fun claim<Meme, Quote>(
     assert!(self.claimed[word] & bit == 0, EAlreadyClaimed);
     assert!(beneficiary != @0x0, EInvalidBeneficiary);
     assert!(meme_amount > 0 || quote_amount > 0, EEmptyBudget);
+
     let leaf = leaf(self.vault, self.number, index, beneficiary, meme_amount, quote_amount);
     assert!(
         merkle_tree::verify(self.root, leaf, index, self.leaf_count, &proof),
@@ -102,6 +112,7 @@ public fun claim<Meme, Quote>(
     );
 
     *&mut self.claimed[word] = self.claimed[word] | bit;
+
     if (meme_amount > 0) {
         transfer::public_transfer(self.meme.split(meme_amount).into_coin(ctx), beneficiary);
     };
@@ -118,6 +129,32 @@ public fun claim<Meme, Quote>(
         meme_remaining: self.meme.value(),
         quote_remaining: self.quote.value(),
     });
+}
+
+/// Returns a round's unclaimed rewards to its vault's holder share once the claim deadline has
+/// passed. Anyone may close; the round is deleted, so an overcommitted or abandoned root can
+/// never strand funds.
+public fun close_round<Meme, Quote>(
+    self: Round<Meme, Quote>,
+    vault: &mut PresaleVault<Meme, Quote>,
+    clock: &Clock,
+) {
+    assert!(self.vault == object::id(vault), EWrongVault);
+    assert!(clock.timestamp_ms() >= self.claim_deadline_ms, EClaimsStillOpen);
+
+    let Round { id, vault: vault_id, number, meme, quote, .. } = self;
+    let (meme_returned, quote_returned) = (meme.value(), quote.value());
+    vault.restore_rewards(meme, quote);
+
+    event::emit(RoundClosed<Meme, Quote> {
+        vault_id,
+        round_id: id.to_inner(),
+        number,
+        meme_returned,
+        quote_returned,
+    });
+
+    id.delete();
 }
 
 // === Private Functions ===
@@ -146,6 +183,7 @@ fun leaf(
 public fun new_for_testing<Meme, Quote>(
     vault: ID,
     number: u64,
+    claim_deadline_ms: u64,
     root: vector<u8>,
     leaf_count: u64,
     meme: Balance<Meme>,
@@ -156,6 +194,7 @@ public fun new_for_testing<Meme, Quote>(
         id: object::new(ctx),
         vault,
         number,
+        claim_deadline_ms,
         root,
         leaf_count,
         claimed: vector::tabulate!(leaf_count.div_ceil(256), |_| 0u256),
@@ -170,6 +209,7 @@ public fun destroy_for_testing<Meme, Quote>(self: Round<Meme, Quote>) {
         id,
         vault: _,
         number: _,
+        claim_deadline_ms: _,
         root: _,
         leaf_count: _,
         claimed: _,
@@ -206,6 +246,7 @@ public struct RoundPublished<phantom Meme, phantom Quote> has copy, drop {
     number: u64,
     start_checkpoint: u64,
     end_checkpoint: u64,
+    claim_deadline_ms: u64,
     root: vector<u8>,
     manifest_digest: vector<u8>,
     leaf_count: u64,
@@ -213,6 +254,14 @@ public struct RoundPublished<phantom Meme, phantom Quote> has copy, drop {
     quote_amount: u64,
     meme_unallocated: u64,
     quote_unallocated: u64,
+}
+
+public struct RoundClosed<phantom Meme, phantom Quote> has copy, drop {
+    vault_id: ID,
+    round_id: ID,
+    number: u64,
+    meme_returned: u64,
+    quote_returned: u64,
 }
 
 public struct RewardClaimed<phantom Meme, phantom Quote> has copy, drop {
@@ -259,6 +308,15 @@ const EInvalidBeneficiary: vector<u8> = b"Beneficiary must not be the zero addre
 #[error(code = 8)]
 const EInvalidProof: vector<u8> = b"Proof must match the committed beneficiary and amounts.";
 
+#[error(code = 9)]
+const EInvalidClaimDeadline: vector<u8> = b"The claim deadline must be in the future.";
+
+#[error(code = 10)]
+const EWrongVault: vector<u8> = b"The round belongs to a different presale vault.";
+
+#[error(code = 11)]
+const EClaimsStillOpen: vector<u8> = b"The round's claim deadline has not passed.";
+
 // === Imports ===
 
 use blast_admin::blast_acl::AdminWitness;
@@ -267,4 +325,4 @@ use blast_presale::{blast_presale_domain::RewardsAdmin, merkle_tree, presale_vau
 
 use std::bcs;
 
-use sui::{balance::Balance, event, hash};
+use sui::{balance::Balance, clock::Clock, event, hash};

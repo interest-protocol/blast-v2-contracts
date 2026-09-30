@@ -76,13 +76,16 @@ public fun migrate<Meme, Quote>(
     let (presale_id, presale_cap_id, tick_spacing, fee_rate, fee_recipients, rewards_fee_bps) = sale
         .migration_config();
     let (meme, quote) = sale.migrate(Witness(), ctx);
+
     let source_meme = meme.value();
     let source_quote = quote.value();
-    let fix_meme = source_meme >= source_quote;
+
+    // Full range, with both bounds aligned inward to the pool's tick spacing.
     let (minimum_tick, maximum_tick) = bluefin_config.get_tick_range();
     let spacing = i32::from(tick_spacing);
-    let lower_tick = minimum_tick.div(spacing).mul(spacing).as_u32();
-    let upper_tick = maximum_tick.div(spacing).mul(spacing).as_u32();
+    let lower_tick = minimum_tick.div(spacing).mul(spacing);
+    let upper_tick = maximum_tick.div(spacing).mul(spacing);
+
     let mut pool_name = currency.symbol().into_bytes();
     pool_name.append(b"-");
     pool_name.append(quote_currency.symbol().into_bytes());
@@ -104,7 +107,30 @@ public fun migrate<Meme, Quote>(
         creation_fee.into_balance(),
         ctx,
     );
-    let mut position = pool::open_position(bluefin_config, &mut pool, lower_tick, upper_tick, ctx);
+
+    let mut position = pool::open_position(
+        bluefin_config,
+        &mut pool,
+        lower_tick.as_u32(),
+        upper_tick.as_u32(),
+        ctx,
+    );
+
+    // Fix the side with more atoms: a full-range position needs slightly more of the other side
+    // than the seed ratio, so that partner balance covers it. When both sides are nearly equal,
+    // rounding can still overdraw by one atom, so ask Bluefin's own math and fix the other side.
+    let prefer_meme = source_meme >= source_quote;
+    let (_, needed_meme, needed_quote) = pool::get_liquidity_by_amount(
+        lower_tick,
+        upper_tick,
+        pool.current_tick_index(),
+        pool.current_sqrt_price(),
+        if (prefer_meme) source_meme else source_quote,
+        prefer_meme,
+    );
+    let fix_meme = if (needed_meme <= source_meme && needed_quote <= source_quote) prefer_meme
+    else !prefer_meme;
+
     let (_, _, residual_meme, residual_quote) = pool::add_liquidity_with_fixed_amount(
         clock,
         bluefin_config,
@@ -115,6 +141,7 @@ public fun migrate<Meme, Quote>(
         if (fix_meme) source_meme else source_quote,
         fix_meme,
     );
+
     let pool_id = position.pool_id();
     let liquidity = position.liquidity();
 
@@ -131,6 +158,7 @@ public fun migrate<Meme, Quote>(
         residual_quote,
         ctx,
     );
+
     pool.share_pool_object();
 }
 
@@ -144,6 +172,7 @@ public fun collect_fees<Meme, Quote>(
 ) {
     let position = vault.position_mut<_, _, _, Position>(&Venue());
     assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
+
     let (_, _, meme, quote) = pool::collect_fee(clock, bluefin_config, pool, position);
 
     vault.split_fees(meme, quote, ctx);

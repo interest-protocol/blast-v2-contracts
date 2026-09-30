@@ -1,0 +1,7 @@
+[package]
+name = "ptb_presale_token"
+edition = "2024"
+license = "BUSL-1.1"
+
+[addresses]
+ptb_presale_token = "0x0"

@@ -30,6 +30,8 @@ public fun verify(
     ) {
         return false
     };
+
+    // A proof must carry exactly one sibling per level of the tree.
     let mut width = leaves;
     let mut depth = 0;
     while (width > 1) {
@@ -40,6 +42,7 @@ public fun verify(
         proof.length() != depth
             || !proof.all!(|sibling| sibling.length() == DIGEST_LENGTH)
     ) return false;
+
     proof.do_ref!(|sibling| {
         digest = if (index % 2 == 0) node(digest, *sibling) else node(*sibling, digest);
         index = index / 2;

@@ -58,7 +58,7 @@ public struct Fixture {
 fun oversubscription_uses_one_fill_rate_and_refunds_the_rest() {
     let mut fixture = start(
         RAISE_TARGET,
-        presale::open_eligibility(WALLET_CAP, 2),
+        presale::open_eligibility(WALLET_CAP, 2, RAISE_TARGET / 2),
     );
 
     assert_eq!(fixture.commit_open(ALICE, 1_000), vector[1_000, 1_000, 1]);
@@ -106,7 +106,7 @@ fun oversubscription_uses_one_fill_rate_and_refunds_the_rest() {
 fun commitments_lock_quote_in_presale_custody() {
     let mut fixture = start(
         RAISE_TARGET,
-        presale::open_eligibility(WALLET_CAP, 1),
+        presale::open_eligibility(WALLET_CAP, 1_000, 1),
     );
 
     fixture.commit_open(ALICE, 400);
@@ -133,7 +133,7 @@ fun commitments_lock_quote_in_presale_custody() {
 fun participants_cannot_withdraw_open_commitments() {
     let mut fixture = start(
         RAISE_TARGET,
-        presale::open_eligibility(WALLET_CAP, 1),
+        presale::open_eligibility(WALLET_CAP, 1_000, 1),
     );
     fixture.commit_open(ALICE, 500);
 
@@ -146,7 +146,7 @@ fun participants_cannot_withdraw_open_commitments() {
 fun participants_cannot_withdraw_funded_commitments() {
     let mut fixture = start(
         RAISE_TARGET,
-        presale::open_eligibility(WALLET_CAP, 1),
+        presale::open_eligibility(WALLET_CAP, 1, RAISE_TARGET),
     );
     fixture.commit_open(ALICE, RAISE_TARGET);
     fixture.set_time(END_MS);
@@ -161,7 +161,7 @@ fun participants_cannot_withdraw_funded_commitments() {
 fun underfunded_sale_refunds_quote_and_locks_minted_supply_forever() {
     let mut fixture = start(
         RAISE_TARGET,
-        presale::open_eligibility(WALLET_CAP, 2),
+        presale::open_eligibility(WALLET_CAP, 2, RAISE_TARGET / 2),
     );
     fixture.commit_open(ALICE, 500);
     fixture.set_time(END_MS);
@@ -189,7 +189,7 @@ fun underfunded_sale_refunds_quote_and_locks_minted_supply_forever() {
 fun missed_liquidity_deadline_turns_a_funded_sale_into_full_refunds() {
     let mut fixture = start(
         RAISE_TARGET,
-        presale::open_eligibility(WALLET_CAP, 1),
+        presale::open_eligibility(WALLET_CAP, 1, RAISE_TARGET),
     );
     fixture.commit_open(ALICE, RAISE_TARGET);
     fixture.set_time(END_MS);
@@ -254,7 +254,7 @@ fun an_allowlist_proof_cannot_change_its_wallet_cap() {
 fun cumulative_commitments_cannot_exceed_the_wallet_cap() {
     let mut fixture = start(
         RAISE_TARGET,
-        presale::open_eligibility(500, 2),
+        presale::open_eligibility(500, 4, RAISE_TARGET / 4),
     );
     fixture.commit_open(ALICE, 400);
 
@@ -267,12 +267,59 @@ fun cumulative_commitments_cannot_exceed_the_wallet_cap() {
 fun open_sales_bound_their_dynamic_commitment_records() {
     let mut fixture = start(
         RAISE_TARGET,
-        presale::open_eligibility(WALLET_CAP, 1),
+        presale::open_eligibility(WALLET_CAP, 1, RAISE_TARGET),
     );
-    fixture.commit_open(ALICE, 1);
+    fixture.commit_open(ALICE, RAISE_TARGET);
 
-    fixture.commit_open(BOB, 1);
+    fixture.commit_open(BOB, RAISE_TARGET);
     fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EBelowMinimumCommitment, location = blast_presale::blast_presale)]
+/// A dust commitment is rejected before it can occupy one of the sale's participant slots.
+fun a_commitment_below_the_minimum_is_rejected_before_taking_a_slot() {
+    let mut fixture = start(
+        RAISE_TARGET,
+        presale::open_eligibility(WALLET_CAP, 2, RAISE_TARGET / 2),
+    );
+
+    fixture.commit_open(ALICE, RAISE_TARGET / 2 - 1);
+    fixture.end();
+}
+
+#[test]
+/// Once a wallet meets the minimum, it may top up by any positive amount.
+fun a_wallet_above_the_minimum_may_top_up_by_any_amount() {
+    let mut fixture = start(
+        RAISE_TARGET,
+        presale::open_eligibility(WALLET_CAP, 2, RAISE_TARGET / 2),
+    );
+    fixture.commit_open(ALICE, RAISE_TARGET / 2);
+
+    assert_eq!(
+        fixture.commit_open(ALICE, 1),
+        vector[RAISE_TARGET / 2 + 1, RAISE_TARGET / 2 + 1, 1],
+    );
+    fixture.set_time(END_MS);
+    fixture.settle(KEEPER);
+    fixture.claim(KEEPER, ALICE);
+    fixture.take_quote(ALICE, RAISE_TARGET / 2 + 1);
+    fixture.destroy_cancelled_cap();
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EUnreachableRaise, location = blast_presale::blast_presale)]
+/// Filling every open slot at the minimum must fund the raise, or dust could block the sale.
+fun an_open_sale_whose_slots_cannot_reach_the_raise_is_rejected() {
+    start(RAISE_TARGET, presale::open_eligibility(WALLET_CAP, 2, RAISE_TARGET / 2 - 1)).end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidEligibilityPolicy, location = blast_presale::blast_presale)]
+fun the_minimum_commitment_cannot_exceed_the_wallet_cap() {
+    presale::open_eligibility(100, 20, 101);
 }
 
 #[test]
@@ -280,7 +327,7 @@ fun open_sales_bound_their_dynamic_commitment_records() {
 fun commitments_at_the_exact_end_are_rejected_before_amount_checks() {
     let mut fixture = start(
         RAISE_TARGET,
-        presale::open_eligibility(WALLET_CAP, 1),
+        presale::open_eligibility(WALLET_CAP, 1, RAISE_TARGET),
     );
     fixture.set_time(END_MS);
 
@@ -293,7 +340,7 @@ fun commitments_at_the_exact_end_are_rejected_before_amount_checks() {
 fun a_late_settled_sale_can_still_migrate_after_the_liquidity_deadline() {
     let mut fixture = start(
         RAISE_TARGET,
-        presale::open_eligibility(WALLET_CAP, 1),
+        presale::open_eligibility(WALLET_CAP, 1, RAISE_TARGET),
     );
     fixture.commit_open(ALICE, RAISE_TARGET);
     fixture.set_time(LIQUIDITY_DEADLINE_MS);
@@ -311,7 +358,7 @@ fun a_late_settled_sale_can_still_migrate_after_the_liquidity_deadline() {
 fun a_cancelled_unlaunched_sale_cannot_migrate() {
     let mut fixture = start(
         RAISE_TARGET,
-        presale::open_eligibility(WALLET_CAP, 1),
+        presale::open_eligibility(WALLET_CAP, 1, RAISE_TARGET),
     );
     fixture.commit_open(ALICE, RAISE_TARGET);
     fixture.set_time(END_MS);
@@ -328,7 +375,7 @@ fun a_cancelled_unlaunched_sale_cannot_migrate() {
 fun a_funded_sale_cannot_be_cancelled_before_the_liquidity_deadline() {
     let mut fixture = start(
         RAISE_TARGET,
-        presale::open_eligibility(WALLET_CAP, 1),
+        presale::open_eligibility(WALLET_CAP, 1, RAISE_TARGET),
     );
     fixture.commit_open(ALICE, RAISE_TARGET);
     fixture.set_time(END_MS);
@@ -344,7 +391,7 @@ fun a_funded_sale_cannot_be_cancelled_before_the_liquidity_deadline() {
 fun another_migrator_cannot_release_escrow() {
     let mut fixture = start(
         RAISE_TARGET,
-        presale::open_eligibility(WALLET_CAP, 1),
+        presale::open_eligibility(WALLET_CAP, 1, RAISE_TARGET),
     );
     fixture.commit_open(ALICE, RAISE_TARGET);
     fixture.set_time(END_MS);
@@ -381,7 +428,7 @@ fun the_open_commit_function_rejects_an_allowlist_policy() {
 fun sale_token_and_quote_types_must_differ() {
     let mut ctx = tx_context::dummy();
     let clock = clock::create_for_testing(&mut ctx);
-    let policy = presale::open_eligibility(1, 1);
+    let policy = presale::open_eligibility(1, 1, 1);
     let (treasury_cap, mut currency) = new_currency(&mut ctx);
 
     let (sale, cap) = presale::new<BLAST_PRESALE_TESTS, BLAST_PRESALE_TESTS, TEST_MIGRATOR>(
@@ -428,7 +475,7 @@ fun treasury_cap_must_start_with_zero_supply() {
         RAISE_TARGET,
         DURATION_MS,
         LIQUIDITY_WINDOW_MS,
-        presale::open_eligibility(WALLET_CAP, 1),
+        presale::open_eligibility(WALLET_CAP, 1, RAISE_TARGET),
         TEST_MIGRATOR(),
         TICK_SPACING,
         FEE_RATE,
@@ -462,7 +509,7 @@ fun configured_allocation_bps_cannot_exceed_full_supply() {
         RAISE_TARGET,
         DURATION_MS,
         LIQUIDITY_WINDOW_MS,
-        presale::open_eligibility(WALLET_CAP, 1),
+        presale::open_eligibility(WALLET_CAP, 1, RAISE_TARGET),
         TEST_MIGRATOR(),
         TICK_SPACING,
         FEE_RATE,
@@ -495,7 +542,7 @@ fun configured_allocation_bps_must_produce_positive_atomic_amounts() {
         RAISE_TARGET,
         DURATION_MS,
         LIQUIDITY_WINDOW_MS,
-        presale::open_eligibility(WALLET_CAP, 1),
+        presale::open_eligibility(WALLET_CAP, 1, RAISE_TARGET),
         TEST_MIGRATOR(),
         TICK_SPACING,
         FEE_RATE,
@@ -553,7 +600,7 @@ fun an_overflowing_liquidity_share_is_rejected_before_summing() {
         RAISE_TARGET,
         DURATION_MS,
         LIQUIDITY_WINDOW_MS,
-        presale::open_eligibility(WALLET_CAP, 1),
+        presale::open_eligibility(WALLET_CAP, 1, RAISE_TARGET),
         TEST_MIGRATOR(),
         TICK_SPACING,
         FEE_RATE,
@@ -606,10 +653,52 @@ fun bluefin_rejects_a_thirty_three_byte_meme_symbol() {
 }
 
 #[test]
+/// The seed price must sit at least a factor of two inside both venues' sqrt-price bounds.
+fun seed_prices_must_sit_inside_the_venue_bounds() {
+    assert!(migration_math::is_seedable(4295048016 * 2));
+    assert!(!migration_math::is_seedable(4295048016 * 2 - 1));
+    assert!(migration_math::is_seedable(79226673515401279992447579055 / 2));
+    assert!(!migration_math::is_seedable(79226673515401279992447579055 / 2 + 1));
+    assert!(migration_math::is_seedable(1 << 64));
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EUnseedablePrice, location = blast_presale::blast_presale)]
+/// A raise that dwarfs a one-token LP allocation would seed a price no venue can pool.
+fun a_sale_whose_seed_price_no_venue_can_pool_is_rejected() {
+    let mut ctx = tx_context::dummy();
+    let (treasury_cap, mut currency) = new_currency(&mut ctx);
+    let raise_target = std::u64::max_value!();
+
+    let (sale, cap) = presale::new<BLAST_PRESALE_TESTS, QUOTE, TEST_MIGRATOR>(
+        treasury_cap,
+        &mut currency,
+        10,
+        9_000,
+        1_000,
+        vector[],
+        false,
+        raise_target,
+        DURATION_MS,
+        LIQUIDITY_WINDOW_MS,
+        presale::open_eligibility(raise_target, 1, raise_target),
+        TEST_MIGRATOR(),
+        TICK_SPACING,
+        FEE_RATE,
+        fee_recipients(),
+        REWARDS_FEE_BPS,
+        &mut ctx,
+    );
+    destroy(sale);
+    destroy(cap);
+    abort
+}
+
+#[test]
 fun burnable_supply_is_locked_to_burn_only_at_creation() {
     let mut fixture = start_with_mode(
         RAISE_TARGET,
-        presale::open_eligibility(WALLET_CAP, 1),
+        presale::open_eligibility(WALLET_CAP, 1, RAISE_TARGET),
         true,
     );
     fixture.set_time(END_MS);
@@ -760,7 +849,7 @@ fun create_with_fee_split(fee_recipients: vector<FeeRecipient>, rewards_fee_bps:
         RAISE_TARGET,
         DURATION_MS,
         LIQUIDITY_WINDOW_MS,
-        presale::open_eligibility(WALLET_CAP, 1),
+        presale::open_eligibility(WALLET_CAP, 1, RAISE_TARGET),
         TEST_MIGRATOR(),
         TICK_SPACING,
         FEE_RATE,
@@ -802,7 +891,7 @@ fun create_bluefin_sale(symbol: vector<u8>) {
         RAISE_TARGET,
         DURATION_MS,
         LIQUIDITY_WINDOW_MS,
-        presale::open_eligibility(WALLET_CAP, 1),
+        presale::open_eligibility(WALLET_CAP, 1, RAISE_TARGET),
         fee_recipients(),
         REWARDS_FEE_BPS,
         TICK_SPACING,
@@ -1062,7 +1151,7 @@ fun only_event<Event: copy + drop>(): Event {
 
 // === Imports ===
 
-use blast_presale::{bluefin, blast_presale::{
+use blast_presale::{bluefin, migration_math, blast_presale::{
     Self as presale,
     Claimed,
     Committed,

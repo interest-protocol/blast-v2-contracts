@@ -9,6 +9,7 @@ module blast_presale::migration_rewards_tests;
 const CREATOR: address = @0xC0FFEE;
 const HOLDER: address = @0xA11CE;
 const PARTNER: address = @0xFEE;
+const CLAIM_DEADLINE_MS: u64 = 1_000;
 
 // === Test-Only Types ===
 
@@ -82,6 +83,7 @@ fun the_rewards_admin_publishes_holder_rounds_from_the_holder_share() {
         scenario.ctx(),
     );
 
+    let clock = clock::create_for_testing(scenario.ctx());
     rewards::publish_round(
         &mut vault,
         &blast_acl::witness_for_testing<RewardsAdmin>(),
@@ -93,8 +95,11 @@ fun the_rewards_admin_publishes_holder_rounds_from_the_holder_share() {
         1,
         40,
         5,
+        CLAIM_DEADLINE_MS,
+        &clock,
         scenario.ctx(),
     );
+    clock.destroy_for_testing();
 
     let (vault_meme, vault_quote) = vault.rewards_balances();
     assert_eq!(vector[vault_meme, vault_quote], vector[0, 0]);
@@ -177,6 +182,7 @@ fun a_holder_reward_cannot_be_claimed_twice() {
     let mut round = rewards::new_for_testing(
         vault_id,
         0,
+        CLAIM_DEADLINE_MS,
         root,
         1,
         coin::mint_for_testing<MEME>(40, scenario.ctx()).into_balance(),
@@ -199,6 +205,7 @@ fun a_holder_reward_cannot_be_redirected() {
     let mut round = rewards::new_for_testing(
         vault_id,
         0,
+        CLAIM_DEADLINE_MS,
         root,
         1,
         coin::mint_for_testing<MEME>(40, scenario.ctx()).into_balance(),
@@ -211,6 +218,76 @@ fun a_holder_reward_cannot_be_redirected() {
 }
 
 #[test]
+/// Once the claim deadline passes, anyone may return a round's unclaimed rewards to the vault.
+fun an_unclaimed_round_returns_to_the_vault_after_its_deadline() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let mut vault = funded_holder_vault(&mut scenario);
+    vault.publish(0, 0, 10, &mut scenario);
+    let (vault_meme, _) = vault.rewards_balances();
+    assert_eq!(vault_meme, 39);
+
+    vault.close_at(CLAIM_DEADLINE_MS, &mut scenario);
+
+    let (vault_meme, vault_quote) = vault.rewards_balances();
+    assert_eq!(vector[vault_meme, vault_quote], vector[40, 0]);
+    let (reward_meme, reward_quote) = vault.fund_round(20, 40, 0);
+    reward_meme.destroy_for_testing();
+    reward_quote.destroy_zero();
+    vault.destroy_for_testing();
+    scenario.end();
+}
+
+#[test]
+#[expected_failure(abort_code = rewards::EClaimsStillOpen, location = blast_presale::holder_rewards)]
+fun a_round_cannot_close_before_its_claim_deadline() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let mut vault = funded_holder_vault(&mut scenario);
+    vault.publish(0, 0, 10, &mut scenario);
+
+    vault.close_at(CLAIM_DEADLINE_MS - 1, &mut scenario);
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = rewards::EWrongVault, location = blast_presale::holder_rewards)]
+/// A round's leftovers can only return to the vault that funded it.
+fun a_round_cannot_close_into_another_vault() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let mut vault = funded_holder_vault(&mut scenario);
+    vault.publish(0, 0, 10, &mut scenario);
+    let mut other = new_vault(vector[], 10_000, &mut scenario);
+
+    other.close_at(CLAIM_DEADLINE_MS, &mut scenario);
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = rewards::EInvalidClaimDeadline, location = blast_presale::holder_rewards)]
+fun a_round_needs_a_future_claim_deadline() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let mut vault = funded_holder_vault(&mut scenario);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    clock.set_for_testing(CLAIM_DEADLINE_MS);
+
+    rewards::publish_round(
+        &mut vault,
+        &blast_acl::witness_for_testing<RewardsAdmin>(),
+        0,
+        0,
+        10,
+        hash::blake2b256(&b"root"),
+        hash::blake2b256(&b"manifest"),
+        1,
+        1,
+        0,
+        CLAIM_DEADLINE_MS,
+        &clock,
+        scenario.ctx(),
+    );
+    abort
+}
+
+#[test]
 fun anyone_can_relay_a_holder_reward_to_the_committed_holder() {
     let mut scenario = test_scenario::begin(CREATOR);
     let vault_id = object::id_from_address(@0xBEEF);
@@ -218,6 +295,7 @@ fun anyone_can_relay_a_holder_reward_to_the_committed_holder() {
     let mut round = rewards::new_for_testing(
         vault_id,
         0,
+        CLAIM_DEADLINE_MS,
         root,
         1,
         coin::mint_for_testing<MEME>(40, scenario.ctx()).into_balance(),
@@ -277,6 +355,7 @@ fun publish(
     end_checkpoint: u64,
     scenario: &mut Scenario,
 ) {
+    let clock = clock::create_for_testing(scenario.ctx());
     rewards::publish_round(
         self,
         &blast_acl::witness_for_testing<RewardsAdmin>(),
@@ -288,8 +367,22 @@ fun publish(
         1,
         1,
         0,
+        CLAIM_DEADLINE_MS,
+        &clock,
         scenario.ctx(),
     );
+    clock.destroy_for_testing();
+}
+
+fun close_at(self: &mut PresaleVault<MEME, QUOTE>, now_ms: u64, scenario: &mut Scenario) {
+    scenario.next_tx(CREATOR);
+    let round = scenario.take_shared<Round<MEME, QUOTE>>();
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    clock.set_for_testing(now_ms);
+
+    rewards::close_round(round, self, &clock);
+
+    clock.destroy_for_testing();
 }
 
 fun only_event<Event: copy + drop>(): Event {
@@ -313,6 +406,7 @@ use blast_presale::{
 
 use std::unit_test::{assert_eq, destroy};
 
-use sui::{balance, coin::{Self, Coin}, event, hash, test_scenario::{Self, Scenario}};
+use sui::{balance, clock, coin::{Self, Coin}, event, hash, test_scenario::{Self, Scenario}};
 
+use fun close_at as PresaleVault.close_at;
 use fun publish as PresaleVault.publish;

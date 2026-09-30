@@ -15,6 +15,9 @@ public struct Venue() has drop;
 /// Key for a Meme type's reserved Cetus pool-creation capability.
 public struct CreationCapKey<phantom Meme>() has copy, drop, store;
 
+/// Transient dynamic-field name `cast` uses to retype a coin or balance.
+public struct CastKey() has copy, drop, store;
+
 // === Public Functions ===
 
 /// Creates a presale configured for Cetus and reserves pool creation before Meme leaves custody.
@@ -39,6 +42,8 @@ public fun new<Meme, Quote>(
     ctx: &mut TxContext,
 ): (Presale<Meme, Quote>, PresaleCap) {
     let fee_rate = config::get_fee_rate(tick_spacing, cetus_config);
+
+    // Reserve the pair's Cetus pool creation before the Meme supply leaves the creator.
     let creation_cap = factory::mint_pool_creation_cap(cetus_config, pools, &mut treasury_cap, ctx);
     factory::register_permission_pair<Meme, Quote>(
         cetus_config,
@@ -70,8 +75,9 @@ public fun new<Meme, Quote>(
     )
 }
 
-/// Anyone may migrate when Meme is Cetus coin A.
-public fun migrate_meme_a<Meme, Quote>(
+/// Anyone may migrate a funded presale into its reserved Cetus pool. `CoinA` and `CoinB` name the
+/// presale's Meme and Quote in Cetus's canonical coin order.
+public fun migrate<Meme, Quote, CoinA, CoinB>(
     sale: &mut Presale<Meme, Quote>,
     venue_config: &VenueConfig,
     cetus_config: &GlobalConfig,
@@ -80,31 +86,58 @@ public fun migrate_meme_a<Meme, Quote>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    assert!(factory::is_right_order<Meme, Quote>(), EInvalidCoinOrder);
+    assert!(factory::is_right_order<CoinA, CoinB>(), EInvalidCoinOrder);
+    let meme_is_a = meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
+
     let (presale_id, cap_id, tick_spacing, _, fee_recipients, rewards_fee_bps) = sale
         .migration_config();
     let (meme, quote) = sale.migrate(Witness(), ctx);
+
     let meme_amount = meme.value();
     let quote_amount = quote.value();
     let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
-    let (position, residual_meme, residual_quote) = pool_creator::create_pool_v3_with_creation_cap<
-        Meme,
-        Quote,
+    let sqrt_price = migration_math::sqrt_price_x64(meme_amount, quote_amount, meme_is_a);
+    let fix_a = fixed_side_is_a(
+        tick_lower,
+        tick_upper,
+        sqrt_price,
+        if (meme_is_a) meme_amount else quote_amount,
+        if (meme_is_a) quote_amount else meme_amount,
+        (meme_amount >= quote_amount) == meme_is_a,
+    );
+
+    let mut scratch = object::new(ctx);
+    let (coin_a, coin_b) = if (meme_is_a) {
+        (scratch.cast<_, Balance<CoinA>>(meme), scratch.cast<_, Balance<CoinB>>(quote))
+    } else {
+        (scratch.cast<_, Balance<CoinA>>(quote), scratch.cast<_, Balance<CoinB>>(meme))
+    };
+
+    let (position, residual_a, residual_b) = pool_creator::create_pool_v3_with_creation_cap<
+        CoinA,
+        CoinB,
     >(
         cetus_config,
         pools,
         venue_config.pool_creation_cap<Meme>(),
         tick_spacing,
-        migration_math::sqrt_price_x64(meme_amount, quote_amount, true),
+        sqrt_price,
         b"".to_string(),
         tick_lower,
         tick_upper,
-        meme.into_coin(ctx),
-        quote.into_coin(ctx),
-        meme_amount >= quote_amount,
+        coin_a.into_coin(ctx),
+        coin_b.into_coin(ctx),
+        fix_a,
         clock,
         ctx,
     );
+
+    let (residual_meme, residual_quote) = if (meme_is_a) {
+        (scratch.cast<_, Coin<Meme>>(residual_a), scratch.cast<_, Coin<Quote>>(residual_b))
+    } else {
+        (scratch.cast<_, Coin<Meme>>(residual_b), scratch.cast<_, Coin<Quote>>(residual_a))
+    };
+    scratch.delete();
 
     burn_into_vault(
         presale_id,
@@ -119,80 +152,80 @@ public fun migrate_meme_a<Meme, Quote>(
     );
 }
 
-/// Anyone may migrate when Meme is Cetus coin B.
-public fun migrate_meme_b<Meme, Quote>(
-    sale: &mut Presale<Meme, Quote>,
-    venue_config: &VenueConfig,
+/// Anyone may collect LP fees from a migrated presale's Cetus position, paying each fee recipient
+/// and accruing the holder-reward share. `CoinA` and `CoinB` are the pool's coin order.
+public fun collect_fees<Meme, Quote, CoinA, CoinB>(
+    vault: &mut PresaleVault<Meme, Quote>,
     cetus_config: &GlobalConfig,
-    pools: &mut Pools,
-    burn_manager: &mut BurnManager,
-    clock: &Clock,
+    burn_manager: &BurnManager,
+    pool: &mut Pool<CoinA, CoinB>,
     ctx: &mut TxContext,
 ) {
-    assert!(factory::is_right_order<Quote, Meme>(), EInvalidCoinOrder);
-    let (presale_id, cap_id, tick_spacing, _, fee_recipients, rewards_fee_bps) = sale
-        .migration_config();
-    let (meme, quote) = sale.migrate(Witness(), ctx);
-    let meme_amount = meme.value();
-    let quote_amount = quote.value();
-    let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
-    let (position, residual_quote, residual_meme) = pool_creator::create_pool_v3_with_creation_cap<
-        Quote,
-        Meme,
-    >(
-        cetus_config,
-        pools,
-        venue_config.pool_creation_cap<Meme>(),
-        tick_spacing,
-        migration_math::sqrt_price_x64(meme_amount, quote_amount, false),
-        b"".to_string(),
-        tick_lower,
-        tick_upper,
-        quote.into_coin(ctx),
-        meme.into_coin(ctx),
-        meme_amount < quote_amount,
-        clock,
-        ctx,
-    );
+    let meme_is_a = meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
+    assert!(vault.pool_id() == object::id(pool), EPositionPoolMismatch);
 
-    burn_into_vault(
-        presale_id,
-        cap_id,
-        fee_recipients,
-        rewards_fee_bps,
+    let (fee_a, fee_b) = lp_burn::collect_fee(
         burn_manager,
-        position,
-        residual_meme,
-        residual_quote,
+        cetus_config,
+        pool,
+        vault.position_mut<_, _, _, CetusLPBurnProof>(&Venue()),
         ctx,
     );
-}
 
-/// Anyone may collect fees from a Meme-A Cetus migration position.
-public fun collect_fees_meme_a<Meme, Quote>(
-    vault: &mut PresaleVault<Meme, Quote>,
-    cetus_config: &GlobalConfig,
-    burn_manager: &BurnManager,
-    pool: &mut Pool<Meme, Quote>,
-    ctx: &mut TxContext,
-) {
-    let (meme, quote) = collect_position_fees(vault, cetus_config, burn_manager, pool, ctx);
-    vault.split_fees(meme, quote, ctx);
-}
+    let mut scratch = object::new(ctx);
+    let (meme, quote) = if (meme_is_a) {
+        (scratch.cast<_, Coin<Meme>>(fee_a), scratch.cast<_, Coin<Quote>>(fee_b))
+    } else {
+        (scratch.cast<_, Coin<Meme>>(fee_b), scratch.cast<_, Coin<Quote>>(fee_a))
+    };
+    scratch.delete();
 
-/// Anyone may collect fees from a Meme-B Cetus migration position.
-public fun collect_fees_meme_b<Meme, Quote>(
-    vault: &mut PresaleVault<Meme, Quote>,
-    cetus_config: &GlobalConfig,
-    burn_manager: &BurnManager,
-    pool: &mut Pool<Quote, Meme>,
-    ctx: &mut TxContext,
-) {
-    let (quote, meme) = collect_position_fees(vault, cetus_config, burn_manager, pool, ctx);
-    vault.split_fees(meme, quote, ctx);
+    vault.split_fees(meme.into_balance(), quote.into_balance(), ctx);
 }
 
 // === Private Functions ===
+
+/// Whether Meme is `CoinA`, after proving `(CoinA, CoinB)` is exactly the presale's pair.
+fun meme_is_coin_a<Meme, Quote, CoinA, CoinB>(): bool {
+    let (meme, quote) = (type_name::with_original_ids<Meme>(), type_name::with_original_ids<Quote>());
+    let (a, b) = (type_name::with_original_ids<CoinA>(), type_name::with_original_ids<CoinB>());
+    assert!((meme == a && quote == b) || (meme == b && quote == a), EWrongCoinPair);
+
+    meme == a
+}
+
+/// Chooses the side to fix, preferring the side with more atoms: a full-range position needs
+/// slightly more of the other side than the seed ratio, so that partner balance covers it. When
+/// both sides are nearly equal, rounding can still overdraw by one atom, so Cetus's own math
+/// decides and the other side is fixed instead. Any tick inside the full range selects Cetus's
+/// in-range branch; pool creation aborts anyway if the seed price lies outside it.
+fun fixed_side_is_a(
+    tick_lower: u32,
+    tick_upper: u32,
+    sqrt_price: u128,
+    amount_a: u64,
+    amount_b: u64,
+    prefer_a: bool,
+): bool {
+    let (_, needed_a, needed_b) = clmm_math::get_liquidity_by_amount(
+        i32::from_u32(tick_lower),
+        i32::from_u32(tick_upper),
+        i32::zero(),
+        sqrt_price,
+        if (prefer_a) amount_a else amount_b,
+        prefer_a,
+    );
+
+    if (needed_a <= amount_a && needed_b <= amount_b) prefer_a else !prefer_a
+}
+
+/// Retypes `value` as `To` through a dynamic field on `scratch`. Removal succeeds only under the
+/// stored type, so this aborts unless `From` and `To` are the same type; `meme_is_coin_a` has
+/// already proven that for every call.
+fun cast<From: store, To: store>(scratch: &mut UID, value: From): To {
+    scratch.add_dynamic_field(CastKey(), value);
+    scratch.remove_dynamic_field(CastKey())
+}
 
 fun pool_creation_cap<Meme>(self: &VenueConfig): &PoolCreationCap {
     self.object(CreationCapKey<Meme>())
@@ -212,6 +245,7 @@ fun burn_into_vault<Meme, Quote>(
     let pool_id = position.pool_id();
     let liquidity = position.liquidity();
     let burn_proof = lp_burn::burn_lp_v2(burn_manager, position, ctx);
+
     vault::create(
         presale_id,
         cap_id,
@@ -227,27 +261,28 @@ fun burn_into_vault<Meme, Quote>(
     );
 }
 
-fun collect_position_fees<X, Y, Meme, Quote>(
-    vault: &mut PresaleVault<Meme, Quote>,
-    cetus_config: &GlobalConfig,
-    burn_manager: &BurnManager,
-    pool: &mut Pool<X, Y>,
-    ctx: &mut TxContext,
-): (Balance<X>, Balance<Y>) {
-    assert!(vault.pool_id() == object::id(pool), EPositionPoolMismatch);
-    let burn_proof = vault.position_mut<_, _, _, CetusLPBurnProof>(&Venue());
-    let (fee_x, fee_y) = lp_burn::collect_fee(burn_manager, cetus_config, pool, burn_proof, ctx);
+// === Test-Only Functions ===
 
-    (fee_x.into_balance(), fee_y.into_balance())
+#[test_only]
+public fun meme_is_coin_a_for_testing<Meme, Quote, CoinA, CoinB>(): bool {
+    meme_is_coin_a<Meme, Quote, CoinA, CoinB>()
+}
+
+#[test_only]
+public fun cast_for_testing<From: store, To: store>(scratch: &mut UID, value: From): To {
+    scratch.cast(value)
 }
 
 // === Errors ===
 
 #[error(code = 0)]
-const EInvalidCoinOrder: vector<u8> = b"Migration route must match the Cetus coin order.";
+const EInvalidCoinOrder: vector<u8> = b"CoinA and CoinB must follow the Cetus coin order.";
 
 #[error(code = 1)]
 const EPositionPoolMismatch: vector<u8> = b"Pool must be the vault's migration pool.";
+
+#[error(code = 2)]
+const EWrongCoinPair: vector<u8> = b"CoinA and CoinB must be exactly the presale's Meme and Quote.";
 
 // === Imports ===
 
@@ -266,6 +301,7 @@ use blast_presale::{
 };
 
 use cetus_clmm::{
+    clmm_math,
     config::{Self, GlobalConfig},
     factory::{Self, PoolCreationCap, Pools},
     pool::Pool,
@@ -273,13 +309,21 @@ use cetus_clmm::{
     position::Position,
 };
 
+use integer_mate::i32;
+
 use lp_burn::lp_burn::{Self, BurnManager, CetusLPBurnProof};
+
+use std::type_name;
 
 use sui::{
     balance::Balance,
     clock::Clock,
     coin::{Coin, TreasuryCap},
     coin_registry::Currency,
+    dynamic_field,
 };
 
+use fun cast as UID.cast;
+use fun dynamic_field::add as UID.add_dynamic_field;
+use fun dynamic_field::remove as UID.remove_dynamic_field;
 use fun pool_creation_cap as VenueConfig.pool_creation_cap;
