@@ -62,7 +62,8 @@ At the exclusive end timestamp, anyone may settle. If total commitments `C`
 are below the raise `R`, the sale cancels and all Quote remains refundable.
 Otherwise the sale becomes funded and fixes one common fill rate `R / C`.
 
-Before the exclusive LP deadline, anyone may call the configured venue adapter.
+While the sale is `Funded`, anyone may call the configured venue adapter; the LP
+deadline does not close migration.
 The adapter alone holds the sealed witness needed to take exactly `R` Quote and
 the entire LP-token allocation from core. In the same call it creates the
 configured full-range pool and seals its position or burn proof in a
@@ -72,8 +73,11 @@ recipient its distinct immutable token allocation. The migration witness, tier,
 allocations, and fee split were fixed before commitments opened and cannot be
 supplied by the migration caller.
 
-If a funded sale is not migrated by the deadline, anyone can cancel it. A sale
-first settled at or after that deadline cancels directly. Cancellation never
+If a funded sale is not migrated by the deadline, anyone can cancel it from
+then on. Until someone does, migration stays open, so after the deadline the
+first of a migration or a cancellation wins. Settlement cancels only an
+underfunded sale; a sale that met its raise and is first settled after the
+deadline becomes funded and may still migrate or be cancelled. Cancellation never
 releases Quote to the creator; participants receive full refunds, while the cap
 holder may destroy the now-useless `PresaleCap`. Every minted SaleToken
 allocation remains permanently locked in the cancelled presale, and the consumed
