@@ -74,7 +74,7 @@ public fun migrate<Meme, Quote>(
 ) {
     let (presale_id, presale_cap_id, tick_spacing, fee_rate, creator_fee_bps, rewards_fee_bps) = sale
         .migration_config();
-    let (meme, quote) = sale.migrate(Witness(), clock, ctx);
+    let (meme, quote) = sale.migrate(Witness(), ctx);
     let source_meme = meme.value();
     let source_quote = quote.value();
     let fix_meme = source_meme >= source_quote;

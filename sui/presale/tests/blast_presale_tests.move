@@ -287,8 +287,26 @@ fun commitments_at_the_exact_end_are_rejected_before_amount_checks() {
 }
 
 #[test]
-#[expected_failure(abort_code = presale::ELiquidityDeadlinePassed, location = blast_presale::blast_presale)]
-fun migration_at_the_exact_liquidity_deadline_is_rejected() {
+/// The LP deadline only opens refunds; anyone may still migrate until someone cancels.
+fun a_late_settled_sale_can_still_migrate_after_the_liquidity_deadline() {
+    let mut fixture = start(
+        RAISE_TARGET,
+        presale::open_eligibility(WALLET_CAP, 1),
+    );
+    fixture.commit_open(ALICE, RAISE_TARGET);
+    fixture.set_time(LIQUIDITY_DEADLINE_MS);
+    fixture.settle(KEEPER);
+    assert!(fixture.is_funded());
+
+    assert_eq!(fixture.migrate(), vector[LIQUIDITY_TOKENS, RAISE_TARGET]);
+    fixture.take_recipient_allocations();
+    fixture.destroy_migrated_cap();
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidLifecycle, location = blast_presale::blast_presale)]
+fun a_cancelled_unlaunched_sale_cannot_migrate() {
     let mut fixture = start(
         RAISE_TARGET,
         presale::open_eligibility(WALLET_CAP, 1),
@@ -297,8 +315,25 @@ fun migration_at_the_exact_liquidity_deadline_is_rejected() {
     fixture.set_time(END_MS);
     fixture.settle(KEEPER);
     fixture.set_time(LIQUIDITY_DEADLINE_MS);
+    fixture.cancel_unlaunched(KEEPER);
 
     fixture.migrate();
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::ELiquidityDeadlineNotReached, location = blast_presale::blast_presale)]
+fun a_funded_sale_cannot_be_cancelled_before_the_liquidity_deadline() {
+    let mut fixture = start(
+        RAISE_TARGET,
+        presale::open_eligibility(WALLET_CAP, 1),
+    );
+    fixture.commit_open(ALICE, RAISE_TARGET);
+    fixture.set_time(END_MS);
+    fixture.settle(KEEPER);
+    fixture.set_time(LIQUIDITY_DEADLINE_MS - 1);
+
+    fixture.cancel_unlaunched(KEEPER);
     fixture.end();
 }
 
@@ -317,7 +352,6 @@ fun another_migrator_cannot_release_escrow() {
         let mut sale = fixture.take_presale();
         let (liquidity_tokens, quote) = sale.migrate(
             OTHER_MIGRATOR(),
-            &fixture.clock,
             fixture.ctx!(),
         );
         liquidity_tokens.destroy_zero();
@@ -740,7 +774,6 @@ fun migrate(self: &mut Fixture): vector<u64> {
         let mut sale = fixture.take_presale();
         let (liquidity_tokens, quote) = sale.migrate(
             TEST_MIGRATOR(),
-            &fixture.clock,
             fixture.ctx!(),
         );
         amounts.push_back(liquidity_tokens.into_coin(fixture.ctx!()).burn_for_testing());
