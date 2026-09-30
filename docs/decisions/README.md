@@ -102,7 +102,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0056](0056-bounded-pending-stake-vector.md) | Bounded pending-stake vector in custody ledgers | **accepted** |
 | [0057](0057-admin-pinned-venue-tiers.md) | Admin-pinned venue tiers for permissionless migration | superseded by 0089 |
 | [0058](0058-eventless-package-initialization.md) | Eventless package initialization | **accepted** |
-| [0059](0059-production-launchpad-abi-and-sdk-parity.md) | Production launchpad ABI and first SDK parity boundary | **accepted; amended by 0088** |
+| [0059](0059-production-launchpad-abi-and-sdk-parity.md) | Production launchpad ABI and first SDK parity boundary | **accepted; amended by 0088 and 0100** |
 | [0060](0060-blastsui-metadata-cap-custody.md) | Retain currency and receipt update capabilities in package-admin custody | **accepted** |
 | [0061](0061-blastsui-routine-admin-and-composable-package-custody.md) | Routine administration and composable package custody for blastSUI | **accepted** |
 | [0062](0062-table-backed-quote-registry.md) | Table-backed quote registry without a protocol cardinality cap | **accepted** |
@@ -133,7 +133,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0088](0088-reusable-launch-accounting-and-atomic-migration.md) | Reusable launch accounting and atomic migration | **accepted; amended by 0089, 0090, and 0093; rewritten in place 2026-09-22: push payouts, no digests, venue selection, or type-guaranteed ID bindings, one linear migration value, creator-selected target, one-time-witness Meme; amended the same day: upgradeable migrators, ticket-bound adapter with venue preparation, adapter-supplied pool ID; amended 2026-09-23: Aftermath, MMT, and Turbos adapters removed; venue-operator trust assumptions and the migrators upgrade-policy rule recorded** |
 | [0089](0089-migrators-own-post-migration-and-start-launches.md) | One migrators package owns everything after migration and starts every launch | **accepted; amended by 0090 and 0091** |
 | [0090](0090-minimal-launchpad-surface.md) | A minimal launchpad surface | **accepted; amended by 0092 and 0093** |
-| [0091](0091-fee-split-buyback-and-burn.md) | A burn part in the LP-fee split, bought back by a buyback administrator | **accepted; amended by 0094** |
+| [0091](0091-fee-split-buyback-and-burn.md) | A burn part in the LP-fee split, bought back by a buyback administrator | **accepted; amended by 0094 and 0100** |
 | [0092](0092-creator-picks-the-virtual-quote.md) | The creator picks the virtual Quote reserve; launch config only admits Quotes | **accepted** |
 | [0093](0093-optional-opening-round.md) | An optional opening round replaces purchase protection | **accepted** |
 | [0094](0094-one-role-per-administrator-action.md) | One role per administrator action | **accepted; role bits, checks, and gate map superseded by 0097** |
@@ -141,6 +141,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0097](0097-one-singleton-acl-with-typed-roles.md) | One singleton ACL with typed roles | **proposed** |
 | [0098](0098-launch-creation-fee-and-partners.md) | One partner per launch shares the launch's creation, curve, and one-time Meme/Quote migration fees | **accepted** |
 | [0099](0099-standalone-overflow-presale.md) | Standalone overflow presales with per-sale caps, proportional fills, LP-gated claims, and refund liveness | **accepted** |
+| [0100](0100-single-cetus-route-with-checked-retype.md) | One Cetus route per operation, generic over the pool's coin order, with a checked dynamic-field retype | **accepted** |
 
 ADRs 0013–0035, 0038–0056, 0058–0067, 0069, 0073, 0074, 0076–0080, 0082, and 0085–0089 are accepted subject to the amendments shown above; ADR 0088 supersedes 0036, 0068, 0081, and 0083, and ADR 0089 supersedes 0057 and 0075. ADR 0074 accepts the Aftermath dependency and raw-field normalization while retaining its live evidence gate; ADR 0037 is superseded by 0043, and ADRs 0070–0072 are superseded by 0073. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split

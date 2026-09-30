@@ -9,8 +9,9 @@
   [0066](0066-aftermath-dao-fee-pool.md), and
   [0067](0067-retire-full-sail-migrator.md),
   [0068](0068-compact-lp-fee-principal-snapshot.md), and
-  [0069](0069-consolidate-launch-graduation-and-move-migration-math.md), and
-  [0079](0079-compact-launch-state-and-events.md)
+  [0069](0069-consolidate-launch-graduation-and-move-migration-math.md),
+  [0079](0079-compact-launch-state-and-events.md), and
+  [0100](0100-single-cetus-route-with-checked-retype.md) (one generic Cetus route per operation)
 
 > ADR 0079 regenerates the pre-publication launchpad object and event ABI with
 > compact, replay-complete layouts.

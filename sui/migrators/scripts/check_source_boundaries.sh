@@ -182,15 +182,11 @@ bluefin:public:fun collect_fees<Meme, Quote>( self: &mut LpVault<Meme, Quote>, m
 bluefin:public:fun migrate<Meme, Quote>( launch: &mut Launch<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, currency: &mut Currency<Meme>, quote_currency: &Currency<Quote>, bluefin_config: &mut GlobalConfig, creation_fee: Coin<SUI>, clock: &Clock, ctx: &mut TxContext, )
 bluefin:public:fun new<Meme, Quote>( ticket: LaunchTicket<Meme>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, config: &LaunchConfig, tick_spacing: u32, fee_rate: u64, ): LaunchInitializer<Meme, Quote>
 bluefin:public:fun settle_and_update_fee_split<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, launch: &Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, currency: &mut Currency<Meme>, bluefin_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, proposed: FeeSplit, clock: &Clock, ctx: &mut TxContext, )
-cetus:public:fun buyback_and_burn_meme_a<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, min_meme_out: u64, clock: &Clock, ctx: &mut TxContext, )
-cetus:public:fun buyback_and_burn_meme_b<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, pool: &mut Pool<Quote, Meme>, min_meme_out: u64, clock: &Clock, ctx: &mut TxContext, )
-cetus:public:fun collect_fees_meme_a<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, burn_manager: &BurnManager, pool: &mut Pool<Meme, Quote>, clock: &Clock, ctx: &mut TxContext, )
-cetus:public:fun collect_fees_meme_b<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, burn_manager: &BurnManager, pool: &mut Pool<Quote, Meme>, clock: &Clock, ctx: &mut TxContext, )
-cetus:public:fun migrate_meme_a<Meme, Quote>( launch: &mut Launch<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, currency: &mut Currency<Meme>, venue_config: &VenueConfig, cetus_config: &GlobalConfig, pools: &mut Pools, burn_manager: &mut BurnManager, clock: &Clock, ctx: &mut TxContext, )
-cetus:public:fun migrate_meme_b<Meme, Quote>( launch: &mut Launch<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, currency: &mut Currency<Meme>, venue_config: &VenueConfig, cetus_config: &GlobalConfig, pools: &mut Pools, burn_manager: &mut BurnManager, clock: &Clock, ctx: &mut TxContext, )
+cetus:public:fun buyback_and_burn<Meme, Quote, CoinA, CoinB>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, pool: &mut Pool<CoinA, CoinB>, min_meme_out: u64, clock: &Clock, ctx: &mut TxContext, )
+cetus:public:fun collect_fees<Meme, Quote, CoinA, CoinB>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, burn_manager: &BurnManager, pool: &mut Pool<CoinA, CoinB>, clock: &Clock, ctx: &mut TxContext, )
+cetus:public:fun migrate<Meme, Quote, CoinA, CoinB>( launch: &mut Launch<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, currency: &mut Currency<Meme>, venue_config: &VenueConfig, cetus_config: &GlobalConfig, pools: &mut Pools, burn_manager: &mut BurnManager, clock: &Clock, ctx: &mut TxContext, )
 cetus:public:fun new<Meme, Quote>( ticket: LaunchTicket<Meme>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, config: &LaunchConfig, venue_config: &mut VenueConfig, cetus_config: &GlobalConfig, pools: &mut Pools, tick_spacing: u32, ctx: &mut TxContext, ): LaunchInitializer<Meme, Quote>
-cetus:public:fun settle_and_update_fee_split_meme_a<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, launch: &Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, burn_manager: &BurnManager, pool: &mut Pool<Meme, Quote>, proposed: FeeSplit, clock: &Clock, ctx: &mut TxContext, )
-cetus:public:fun settle_and_update_fee_split_meme_b<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, launch: &Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, burn_manager: &BurnManager, pool: &mut Pool<Quote, Meme>, proposed: FeeSplit, clock: &Clock, ctx: &mut TxContext, )
+cetus:public:fun settle_and_update_fee_split<Meme, Quote, CoinA, CoinB>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, launch: &Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, burn_manager: &BurnManager, pool: &mut Pool<CoinA, CoinB>, proposed: FeeSplit, clock: &Clock, ctx: &mut TxContext, )
 constants:package:fun auto_lp_margin(): u256
 constants:package:fun bluefin_max_fee_rate(): u64
 constants:package:fun bluefin_max_tick_spacing(): u32
@@ -261,8 +257,7 @@ bluefin: compound as LpVault.compound
 bluefin: package_version::PackageVersion as MigratorsVersion
 cetus: add_liquidity as LpVault.add_liquidity
 cetus: collect_position_fees as LpVault.collect_position_fees
-cetus: compound_meme_a as LpVault.compound_meme_a
-cetus: compound_meme_b as LpVault.compound_meme_b
+cetus: compound as LpVault.compound
 cetus: package_version::PackageVersion as MigratorsVersion
 cetus: pool_creation_cap as VenueConfig.pool_creation_cap
 lp_fee_policy: package_version::PackageVersion as MigratorsVersion
@@ -868,24 +863,27 @@ fi
 
 require_pattern "$CETUS_SOURCE" 'public struct Witness' 'sealed Cetus witness'
 require_pattern "$CETUS_SOURCE" 'public struct Venue' 'sealed Cetus venue marker'
-# Cetus has one launch start and one migrate, collection, settled-update, and buyback entry per
-# coin ordering. The start takes the fee rate Cetus registers for the creator's tick spacing, starts the
-# launch under the sealed witness, then reserves pool creation before any Meme can leave the
-# ticket: it mints the Meme type's cap from the initializer's treasury loan, registers the pair at
-# that tick spacing, and stores the cap. Each migrate route creates the pair's pool only with that
-# cap at the launch's tick spacing, prices it from the handed-off balances in its own coin order,
-# fixes Meme when its atoms are at least the Quote atoms (else Quote), burns the position through
-# Cetus LP Burn, and completes into a new vault holding the burn proof. Every fee exit collects
-# the burn proof's and the auto-LP position's fees, splits them through the vault, and adds the
-# auto-LP share to the auto-LP position. Each buyback swaps the vault's whole burn Quote for Meme in
-# the vault's own pool, repays exactly what Cetus asks, and hands the result to the vault, which
-# checks the admin's minimum and burns it.
+# Cetus has one launch start and one migrate, collection, settled-update, and buyback entry, each
+# serving both coin orders (ADR 0100). The start takes the fee rate Cetus registers for the
+# creator's tick spacing, starts the launch under the sealed witness, then reserves pool creation
+# before any Meme can leave the ticket: it mints the Meme type's cap from the initializer's treasury
+# loan, registers the pair at that tick spacing, and stores the cap. Every later route takes the
+# pool's coin types as `CoinA` and `CoinB`, checks this package's generation first, and then proves
+# `(CoinA, CoinB)` is exactly `{Meme, Quote}`; migration also requires Cetus's own coin order
+# before that. Migration creates the pair's pool only with the reserved cap at the launch's tick
+# spacing, prices it from the handed-off balances in the pool's coin order, fixes Meme when its
+# atoms are at least the Quote atoms (else Quote), burns the position through Cetus LP Burn, and
+# completes into a new vault holding the burn proof. Every fee exit collects the burn proof's and
+# the auto-LP position's fees, splits them through the vault, and adds the auto-LP share to the
+# auto-LP position. Each buyback checks the vault's own pool, swaps the vault's whole burn Quote for
+# Meme, repays exactly what Cetus asks, and hands the result to the vault, which checks the admin's
+# minimum and burns it.
 cetus_facts="$(move_facts "$CETUS_SOURCE")"
 [[ "$cetus_facts" != *MALFORMED* ]] || fail "the Move reader rejected cetus.move"
 cetus_public="$(awk -F'\t' '$1 == "FN" && $3 == "public" && $6 == 0 { print $2 }' <<<"$cetus_facts" \
     | LC_ALL=C sort | tr '\n' ' ')"
-[[ "$cetus_public" == 'buyback_and_burn_meme_a buyback_and_burn_meme_b collect_fees_meme_a collect_fees_meme_b migrate_meme_a migrate_meme_b new settle_and_update_fee_split_meme_a settle_and_update_fee_split_meme_b ' ]] || \
-    fail "Cetus must expose exactly new and one migrate, collect, settled-update, and buyback route per coin order"
+[[ "$cetus_public" == 'buyback_and_burn collect_fees migrate new settle_and_update_fee_split ' ]] || \
+    fail "Cetus must expose exactly new and one migrate, collect, settled-update, and buyback route for both coin orders"
 cetus_body() {
     awk -F'\t' -v name="$1" '$1 == "FN" && $2 == name && $6 == 0 { print $10 }' <<<"$cetus_facts" \
         | tr -d '[:space:]' | sed 's/,)/)/g'
@@ -903,38 +901,41 @@ in_order \
     && [[ "$(cetus_body new)" == 'migrators_version.assert_current();'*'tick_spacing);launch' ]] \
     && [[ "$(cetus_body pool_creation_cap)" == 'venue_config.object(CreationCapKey<Meme>())' ]] || \
     fail "cetus::new must take Cetus's fee rate for the tick spacing, start the launch, then mint the cap once, register the pair with it, and store it"
-for side in a b; do
-    if [[ "$side" == a ]]; then
-        coin_order='Meme,Quote' meme_is_coin_a='true' fix_coin_a='meme_amount>=quote_amount'
-        coins='meme.into_coin(ctx),quote.into_coin(ctx)' outputs='position,residual_meme,residual_quote'
-        fees='meme_fee,quote_fee' swap='let(meme,quote)=swap(cetus_config,pool,balance::zero(),quote,false,clock);'
-    else
-        coin_order='Quote,Meme' meme_is_coin_a='false' fix_coin_a='meme_amount<quote_amount'
-        coins='quote.into_coin(ctx),meme.into_coin(ctx)' outputs='position,residual_quote,residual_meme'
-        fees='quote_fee,meme_fee' swap='let(quote,meme)=swap(cetus_config,pool,quote,balance::zero(),true,clock);'
-    fi
-    in_order \
-        'migrators_version.assert_current();' \
-        "assert!(factory::is_right_order<${coin_order}>(),EInvalidCoinOrder);" \
+pair_proof='letmeme_is_a=meme_is_coin_a<Meme,Quote,CoinA,CoinB>();'
+[[ "$(cetus_body migrate)" == "migrators_version.assert_current();assert!(factory::is_right_order<CoinA,CoinB>(),EInvalidCoinOrder);${pair_proof}"* ]] \
+    && in_order \
         'let(tick_spacing,_)=launch.pool_tier();' \
         'let(tick_lower,tick_upper)=pool_creator::full_range_tick_range(tick_spacing);' \
         'let(meme,quote)=launch.migrate(package_version,currency,Witness(),ctx);' \
         'letmeme_amount=meme.value();letquote_amount=quote.value();' \
-        "let(${outputs})=pool_creator::create_pool_v3_with_creation_cap<${coin_order}>(cetus_config,pools,venue_config.pool_creation_cap<Meme>(),tick_spacing,migration_math::sqrt_price_x64(meme_amount,quote_amount,${meme_is_coin_a}),b\"\".to_string(),tick_lower,tick_upper,${coins},${fix_coin_a},clock,ctx);" \
+        'let(coin_a,coin_b)=reorder(meme.into_coin(ctx),quote.into_coin(ctx),meme_is_a,ctx);' \
+        'let(position,residual_a,residual_b)=pool_creator::create_pool_v3_with_creation_cap<CoinA,CoinB>(cetus_config,pools,venue_config.pool_creation_cap<Meme>(),tick_spacing,migration_math::sqrt_price_x64(meme_amount,quote_amount,meme_is_a),b"".to_string(),tick_lower,tick_upper,coin_a,coin_b,(meme_amount>=quote_amount)==meme_is_a,clock,ctx);' \
+        'let(residual_meme,residual_quote)=reorder(residual_a,residual_b,meme_is_a,ctx);' \
         'burn_into_vault(launch,burn_manager,position,residual_meme,residual_quote,ctx);' \
-        <<<"$(cetus_body "migrate_meme_${side}")" \
-        && [[ "$(cetus_body "migrate_meme_${side}")" == 'migrators_version.assert_current();'*'ctx);' ]] || \
-        fail "cetus::migrate_meme_${side} must create its own coin order's pool with the reserved cap at the launch's tick spacing, fix the side with more atoms, and burn into a vault"
-    [[ "$(cetus_body "collect_fees_meme_${side}")" == "migrators_version.assert_current();let(${fees})=self.collect_position_fees(cetus_config,burn_manager,pool,ctx);self.split_fees(policy,currency,meme_fee,quote_fee,ctx);self.compound_meme_${side}(cetus_config,pool,clock,ctx);" ]] || \
-        fail "cetus::collect_fees_meme_${side} must split the collected fees, then add the auto-LP share back"
-    [[ "$(cetus_body "settle_and_update_fee_split_meme_${side}")" == "migrators_version.assert_current();self.assert_fee_split_update(launch,curve_fee_cap,proposed);let(${fees})=self.collect_position_fees(cetus_config,burn_manager,pool,ctx);self.split_fees(policy,currency,meme_fee,quote_fee,ctx);self.compound_meme_${side}(cetus_config,pool,clock,ctx);self.update_fee_split(proposed);" ]] || \
-        fail "cetus::settle_and_update_fee_split_meme_${side} must check the cap and proposal before collecting, then split the accrued fees under the current split before committing a new one"
-    [[ "$(cetus_body "buyback_and_burn_meme_${side}")" == "migrators_version.assert_current();assert!(self.pool_id()==object::id(pool),EPositionPoolMismatch);letquote=self.take_buyback_quote(admin_witness);letquote_in=quote.value();${swap}self.burn_buyback(currency,meme,quote,quote_in,min_meme_out,ctx);" ]] || \
-        fail "cetus::buyback_and_burn_meme_${side} must check the vault's pool, take the burn Quote under the buyback admin, swap all of it Quote-to-Meme, and let the vault check and burn"
-done
-[[ "$(cetus_body compound_meme_a)" == 'let(meme,quote)=self.take_auto_lp();let(meme,quote,added_meme,added_quote)=self.add_liquidity(cetus_config,pool,meme,quote,clock,ctx);self.keep_auto_lp(added_meme,added_quote,meme,quote);' ]] \
-    && [[ "$(cetus_body compound_meme_b)" == 'let(meme,quote)=self.take_auto_lp();let(quote,meme,added_quote,added_meme)=self.add_liquidity(cetus_config,pool,quote,meme,clock,ctx);self.keep_auto_lp(added_meme,added_quote,meme,quote);' ]] || \
+        <<<"$(cetus_body migrate)" \
+    && [[ "$(cetus_body migrate)" == *'ctx);' ]] || \
+    fail "cetus::migrate must check the generation, Cetus's coin order, and the pair first, then create the pool in that order with the reserved cap at the launch's tick spacing, fix the side with more atoms, and burn into a vault"
+[[ "$(cetus_body collect_fees)" == "migrators_version.assert_current();${pair_proof}let(meme_fee,quote_fee)=self.collect_position_fees(cetus_config,burn_manager,pool,meme_is_a,ctx);self.split_fees(policy,currency,meme_fee,quote_fee,ctx);self.compound(cetus_config,pool,meme_is_a,clock,ctx);" ]] || \
+    fail "cetus::collect_fees must check the generation and the pair, split the collected fees, then add the auto-LP share back"
+[[ "$(cetus_body settle_and_update_fee_split)" == "migrators_version.assert_current();${pair_proof}self.assert_fee_split_update(launch,curve_fee_cap,proposed);let(meme_fee,quote_fee)=self.collect_position_fees(cetus_config,burn_manager,pool,meme_is_a,ctx);self.split_fees(policy,currency,meme_fee,quote_fee,ctx);self.compound(cetus_config,pool,meme_is_a,clock,ctx);self.update_fee_split(proposed);" ]] || \
+    fail "cetus::settle_and_update_fee_split must check the pair, cap, and proposal before collecting, then split the accrued fees under the current split before committing a new one"
+[[ "$(cetus_body buyback_and_burn)" == "migrators_version.assert_current();${pair_proof}assert!(self.pool_id()==object::id(pool),EPositionPoolMismatch);letquote=self.take_buyback_quote(admin_witness);letquote_in=quote.value();let(a,b)=reorder(balance::zero<Meme>(),quote,meme_is_a,ctx);let(a,b)=swap(cetus_config,pool,a,b,!meme_is_a,clock);let(meme,quote)=reorder(a,b,meme_is_a,ctx);self.burn_buyback(currency,meme,quote,quote_in,min_meme_out,ctx);" ]] || \
+    fail "cetus::buyback_and_burn must check the pair and the vault's pool, take the burn Quote under the buyback admin, swap all of it Quote-to-Meme, and let the vault check and burn"
+[[ "$(cetus_body compound)" == 'let(meme,quote)=self.take_auto_lp();let(a,b)=reorder(meme,quote,meme_is_a,ctx);let(a,b,added_a,added_b)=self.add_liquidity(cetus_config,pool,a,b,clock,ctx);let(meme,quote)=reorder(a,b,meme_is_a,ctx);let(added_meme,added_quote)=if(meme_is_a)(added_a,added_b)else(added_b,added_a);self.keep_auto_lp(added_meme,added_quote,meme,quote);' ]] || \
     fail "Cetus auto-LP must take the waiting balances in its pool's coin order and keep what the pool did not take"
+# The pair proof is pure and total: `(CoinA, CoinB)` must be exactly `{Meme, Quote}` by original
+# type name, in either order, and Meme's side is the answer. Every retype goes through one
+# dynamic-field round trip on a fresh transient UID that is deleted afterwards, so the framework's
+# `dynamic_field::remove` aborts unless the value keeps its exact type; nothing else in Cetus
+# touches a dynamic field or names `CastKey`.
+[[ "$(cetus_body meme_is_coin_a)" == 'let(meme,quote)=(type_name::with_original_ids<Meme>(),type_name::with_original_ids<Quote>());let(a,b)=(type_name::with_original_ids<CoinA>(),type_name::with_original_ids<CoinB>());assert!((meme==a&&quote==b)||(meme==b&&quote==a),EWrongCoinPair);meme==a' ]] \
+    && [[ "$(cetus_body reorder)" == 'letmutscratch=object::new(ctx);let(first,second)=if(meme_is_a){(cast(&mutscratch,x),cast(&mutscratch,y))}else{(cast(&mutscratch,y),cast(&mutscratch,x))};scratch.delete();(first,second)' ]] \
+    && [[ "$(cetus_body cast)" == 'dynamic_field::add(scratch,CastKey(),value);dynamic_field::remove(scratch,CastKey())' ]] \
+    && [[ "$(move_production_type CastKey <<<"$cetus_facts")" == 'struct CastKey() has copy, drop, store;' ]] \
+    && [[ "$(awk -F'\t' '$1 == "FN" && $6 == 0 && index($10, "dynamic_field::") > 0 { print $2 }' <<<"$cetus_facts")" == 'cast' ]] \
+    && [[ "$(awk -F'\t' '$1 == "FN" && $6 == 0 && $10 ~ /(^|[^A-Za-z0-9_])cast\(/ { print $2 }' <<<"$cetus_facts")" == 'reorder' ]] \
+    && [[ "$(awk -F'\t' '$1 == "FN" && $6 == 0 && index($10, "CastKey") > 0 { print $2 }' <<<"$cetus_facts")" == 'cast' ]] || \
+    fail "Cetus must prove the coin pair by type name and retype only through one checked dynamic-field round trip on a transient UID"
 # Migration burns the full-range position through Cetus LP Burn exactly once, before the vault
 # takes custody of the burn proof and the residuals.
 in_order \
@@ -947,7 +948,7 @@ in_order \
     fail "Cetus migration must burn the position through LP Burn exactly once, then lock the burn proof and residuals in the vault"
 # Collection checks the vault's own pool first, collects the burn proof only through LP Burn, and
 # collects the auto-LP position only once it exists.
-[[ "$(cetus_body collect_position_fees)" == 'assert!(self.pool_id()==object::id(pool),EPositionPoolMismatch);letburn_proof=self.position_mut<_,_,_,CetusLPBurnProof>(&Venue());let(fee_x,fee_y)=lp_burn::collect_fee(burn_manager,cetus_config,pool,burn_proof,ctx);letmutfee_x=fee_x.into_balance();letmutfee_y=fee_y.into_balance();if(self.has_auto_lp_position(&Venue())){letposition=self.auto_lp_position<_,_,_,Position>(&Venue());let(auto_lp_x,auto_lp_y)=pool::collect_fee(cetus_config,pool,position,true);fee_x.join(auto_lp_x);fee_y.join(auto_lp_y);};(fee_x,fee_y)' ]] || \
+[[ "$(cetus_body collect_position_fees)" == 'assert!(self.pool_id()==object::id(pool),EPositionPoolMismatch);letburn_proof=self.position_mut<_,_,_,CetusLPBurnProof>(&Venue());let(fee_a,fee_b)=lp_burn::collect_fee(burn_manager,cetus_config,pool,burn_proof,ctx);letmutfee_a=fee_a.into_balance();letmutfee_b=fee_b.into_balance();if(self.has_auto_lp_position(&Venue())){letposition=self.auto_lp_position<_,_,_,Position>(&Venue());let(auto_lp_a,auto_lp_b)=pool::collect_fee(cetus_config,pool,position,true);fee_a.join(auto_lp_a);fee_b.join(auto_lp_b);};reorder(fee_a,fee_b,meme_is_a,ctx)' ]] || \
     fail "Cetus collection must check the vault's pool first, collect the burn proof through LP Burn, and the auto-LP position only once it exists"
 # The burn proof leaves LP Burn only for the vault, and is borrowed only to collect its fees: the
 # vault's main slot is never read under another type or for any other call.
@@ -988,20 +989,19 @@ in_order \
     && [[ "$(constant_body max_swap_sqrt_price)" == '79_226_673_515_401_279_992_447_579_054' ]] \
     && [[ "$(move_norm "$CETUS_SOURCE" | grep -o 'flash_swap' | wc -l)" -eq 2 ]] || \
     fail "Cetus buybacks must swap through one flash swap at the widest limit and repay exactly the receipt"
-require_errors "$CETUS_SOURCE" "Cetus must use sequential codes 0-1 for coin order and vault-pool checks" <<'EOF'
-0 EInvalidCoinOrder Migration route must match the Cetus coin order of the pair.
+require_errors "$CETUS_SOURCE" "Cetus must use sequential codes 0-2 for coin order, vault-pool, and coin-pair checks" <<'EOF'
+0 EInvalidCoinOrder CoinA and CoinB must follow the Cetus coin order.
 1 EPositionPoolMismatch Pool must be the vault's own pool.
+2 EWrongCoinPair CoinA and CoinB must be exactly the launch's Meme and Quote.
 EOF
 # Cetus's public routes share Bluefin's parameter order, with the LP Burn manager among the venue
 # inputs.
-for entry in new migrate_meme_a migrate_meme_b collect_fees_meme_a collect_fees_meme_b \
-    settle_and_update_fee_split_meme_a settle_and_update_fee_split_meme_b \
-    buyback_and_burn_meme_a buyback_and_burn_meme_b; do
+for entry in new migrate collect_fees settle_and_update_fee_split buyback_and_burn; do
     case "$entry" in
         new) expected="( ticket: LaunchTicket<Meme>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, config: &LaunchConfig," ;;
-        migrate*) expected="( launch: &mut Launch<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, currency: &mut Currency<Meme>," ;;
-        collect*) expected="( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, currency: &mut Currency<Meme>," ;;
-        buyback*) expected="( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>," ;;
+        migrate) expected="( launch: &mut Launch<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, currency: &mut Currency<Meme>," ;;
+        collect_fees) expected="( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, currency: &mut Currency<Meme>," ;;
+        buyback_and_burn) expected="( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>," ;;
         *) expected="( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, launch: &Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, currency: &mut Currency<Meme>," ;;
     esac
     [[ "$(awk -F'\t' -v name="$entry" '$1 == "FN" && $2 == name && $6 == 0 { print $9 }' \
@@ -1028,8 +1028,8 @@ if [[ "$CETUS_PUBLIC_SIGNATURES" =~ (sqrt_price|orientation|meme_is|tick_spacing
 fi
 # Only the reserved capability creates the pool: never an unreserved creation or a released
 # reservation.
-[[ "$(rg -c 'pool_creator::create_pool_v3_with_creation_cap<' "$CETUS_SOURCE" || true)" -eq 2 ]] || \
-    fail "each Cetus migration route must create its pool with the reserved capability"
+[[ "$(rg -c 'pool_creator::create_pool_v3_with_creation_cap<' "$CETUS_SOURCE" || true)" -eq 1 ]] || \
+    fail "the Cetus migration route must create its pool with the reserved capability"
 if rg -q 'create_pool_v3[[:space:]]*[<(]|unregister_permission_pair|policy_mut' "$CETUS_SOURCE"; then
     fail "Cetus must neither create an unreserved pool nor release a reservation"
 fi
@@ -1040,8 +1040,11 @@ fi
 
 # === Package-wide custody rules ===
 
-reject_pattern 'dynamic(_object)?_field::(remove(_opt)?|replace)' \
-    'dynamic object-field removal or replacement is forbidden'
+# The one removal is Cetus's checked retype, pinned above, which removes only the value it added
+# to its own transient UID in the same call.
+[[ "$(rg -o 'dynamic(_object)?_field::(remove(_opt)?|replace)' "$SOURCE_DIR" | LC_ALL=C sort | tr '\n' ' ')" \
+    == "${CETUS_SOURCE}:dynamic_field::remove " ]] || \
+    fail "dynamic-field removal or replacement is forbidden outside Cetus's transient checked retype"
 reject_pattern 'events_wrapper|public struct Event<' \
     'generic adapter event envelopes are forbidden'
 reject_pattern 'protocol_treasury|residual_treasury' \
@@ -1203,8 +1206,7 @@ require_text "$admin_roles" \
     "every administrator action must take exactly its pinned role witness" <<'ROLES'
 blast_holder_rewards:publish_round:RewardsAdmin
 bluefin:buyback_and_burn:BuybackAdmin
-cetus:buyback_and_burn_meme_a:BuybackAdmin
-cetus:buyback_and_burn_meme_b:BuybackAdmin
+cetus:buyback_and_burn:BuybackAdmin
 lp_fee_policy:clear_coin_shares:FeeAdmin
 lp_fee_policy:set_coin_shares:FeeAdmin
 lp_fee_policy:set_default_shares:FeeAdmin

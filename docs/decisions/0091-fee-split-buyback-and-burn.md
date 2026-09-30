@@ -1,6 +1,7 @@
 # 0091: A burn part in the LP-fee split, bought back by a buyback administrator
 
-- Status: accepted
+- Status: accepted; amended by [0100](0100-single-cetus-route-with-checked-retype.md)
+  (Cetus has one buyback route for both coin orders)
 - Date: 2026-09-24
 - Amends: [0089](0089-migrators-own-post-migration-and-start-launches.md)
 
