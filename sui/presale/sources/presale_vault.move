@@ -1,0 +1,350 @@
+// SPDX-License-Identifier: BUSL-1.1
+// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
+
+/// Custody for one migrated LP position, its residuals, creator fees, and holder rewards.
+module blast_presale::presale_vault;
+
+// === Public Types ===
+
+/// Sealed field name binding one venue position type to a vault.
+public struct PositionKey<phantom Venue>() has copy, drop, store;
+
+/// Shared post-migration custody for one presale's immutable fee split.
+public struct PresaleVault<phantom Meme, phantom Quote> has key {
+    id: UID,
+    presale_id: ID,
+    presale_cap_id: ID,
+    pool_id: ID,
+    creator_fee_bps: u64,
+    rewards_fee_bps: u64,
+    migration_meme_residual: Balance<Meme>,
+    migration_quote_residual: Balance<Quote>,
+    creator_meme: Balance<Meme>,
+    creator_quote: Balance<Quote>,
+    rewards_meme: Balance<Meme>,
+    rewards_quote: Balance<Quote>,
+    next_round: u64,
+    last_checkpoint: Option<u64>,
+}
+
+// === Public Functions ===
+
+/// Claims the creator's accrued LP fees with the presale's transferable creator capability.
+public fun claim_creator_fees<Meme, Quote>(
+    self: &mut PresaleVault<Meme, Quote>,
+    cap: &PresaleCap,
+    ctx: &mut TxContext,
+): (Coin<Meme>, Coin<Quote>) {
+    self.assert_cap(cap);
+    assert!(self.creator_meme.value() > 0 || self.creator_quote.value() > 0, ENoCreatorFees);
+    let meme = self.creator_meme.withdraw_all().into_coin(ctx);
+    let quote = self.creator_quote.withdraw_all().into_coin(ctx);
+
+    event::emit(CreatorFeesClaimed<Meme, Quote> {
+        vault_id: self.id.to_inner(),
+        meme: meme.value(),
+        quote: quote.value(),
+    });
+
+    (meme, quote)
+}
+
+/// Claims the pool's one-time migration residuals with the creator capability.
+public fun claim_migration_residuals<Meme, Quote>(
+    self: &mut PresaleVault<Meme, Quote>,
+    cap: &PresaleCap,
+    ctx: &mut TxContext,
+): (Coin<Meme>, Coin<Quote>) {
+    self.assert_cap(cap);
+    assert!(
+        self.migration_meme_residual.value() > 0
+            || self.migration_quote_residual.value() > 0,
+        ENoMigrationResiduals,
+    );
+    let meme = self.migration_meme_residual.withdraw_all().into_coin(ctx);
+    let quote = self.migration_quote_residual.withdraw_all().into_coin(ctx);
+
+    event::emit(MigrationResidualsClaimed<Meme, Quote> {
+        vault_id: self.id.to_inner(),
+        meme: meme.value(),
+        quote: quote.value(),
+    });
+
+    (meme, quote)
+}
+
+// === Package Functions ===
+
+/// Creates and shares a vault with its venue position sealed as a dynamic object field.
+public(package) fun create<Meme, Quote, Venue, Position: key + store>(
+    presale_id: ID,
+    presale_cap_id: ID,
+    _venue: &Venue,
+    pool_id: ID,
+    position: Position,
+    liquidity: u128,
+    creator_fee_bps: u64,
+    rewards_fee_bps: u64,
+    migration_meme_residual: Balance<Meme>,
+    migration_quote_residual: Balance<Quote>,
+    ctx: &mut TxContext,
+) {
+    assert!(liquidity > 0, EZeroLiquidity);
+    assert!(
+        creator_fee_bps <= BASIS_POINTS
+            && rewards_fee_bps == BASIS_POINTS - creator_fee_bps,
+        EInvalidFeeSplit,
+    );
+    let position_id = object::id(&position);
+    let mut vault = PresaleVault {
+        id: object::new(ctx),
+        presale_id,
+        presale_cap_id,
+        pool_id,
+        creator_fee_bps,
+        rewards_fee_bps,
+        migration_meme_residual,
+        migration_quote_residual,
+        creator_meme: balance::zero(),
+        creator_quote: balance::zero(),
+        rewards_meme: balance::zero(),
+        rewards_quote: balance::zero(),
+        next_round: 0,
+        last_checkpoint: option::none(),
+    };
+    let vault_id = vault.id.to_inner();
+    let migration_meme_residual = vault.migration_meme_residual.value();
+    let migration_quote_residual = vault.migration_quote_residual.value();
+    vault.id.add_dynamic_object_field(PositionKey<Venue>(), position);
+    transfer::share_object(vault);
+
+    event::emit(PresaleVaultCreated<Meme, Quote, Venue> {
+        vault_id,
+        presale_id,
+        pool_id,
+        position_id,
+        liquidity,
+        creator_fee_bps,
+        rewards_fee_bps,
+        migration_meme_residual,
+        migration_quote_residual,
+    });
+}
+
+/// Borrows the custodied venue position without exposing a removal path.
+public(package) fun position_mut<Meme, Quote, Venue, Position: key + store>(
+    self: &mut PresaleVault<Meme, Quote>,
+    _venue: &Venue,
+): &mut Position {
+    self.id.dynamic_object_field_mut(PositionKey<Venue>())
+}
+
+/// Splits collected LP fees under the immutable creation-time BPS.
+public(package) fun split_fees<Meme, Quote>(
+    self: &mut PresaleVault<Meme, Quote>,
+    mut meme: Balance<Meme>,
+    mut quote: Balance<Quote>,
+) {
+    let gross_meme = meme.value();
+    let gross_quote = quote.value();
+    let creator_meme = gross_meme.mul_div(self.creator_fee_bps, BASIS_POINTS);
+    let creator_quote = gross_quote.mul_div(self.creator_fee_bps, BASIS_POINTS);
+    let rewards_meme = gross_meme - creator_meme;
+    let rewards_quote = gross_quote - creator_quote;
+
+    self.creator_meme.join(meme.split(creator_meme));
+    self.creator_quote.join(quote.split(creator_quote));
+    self.rewards_meme.join(meme);
+    self.rewards_quote.join(quote);
+
+    event::emit(FeesCollected<Meme, Quote> {
+        vault_id: self.id.to_inner(),
+        gross_meme,
+        gross_quote,
+        creator_meme,
+        creator_quote,
+        rewards_meme,
+        rewards_quote,
+    });
+}
+
+public(package) fun assert_cap<Meme, Quote>(
+    self: &PresaleVault<Meme, Quote>,
+    cap: &PresaleCap,
+) {
+    assert!(object::id(cap) == self.presale_cap_id, EWrongPresaleCap);
+}
+
+public(package) fun pool_id<Meme, Quote>(self: &PresaleVault<Meme, Quote>): ID {
+    self.pool_id
+}
+
+public(package) fun next_round<Meme, Quote>(self: &PresaleVault<Meme, Quote>): u64 {
+    self.next_round
+}
+
+public(package) fun last_checkpoint<Meme, Quote>(
+    self: &PresaleVault<Meme, Quote>,
+): Option<u64> {
+    self.last_checkpoint
+}
+
+public(package) fun rewards_balances<Meme, Quote>(
+    self: &PresaleVault<Meme, Quote>,
+): (u64, u64) {
+    (self.rewards_meme.value(), self.rewards_quote.value())
+}
+
+public(package) fun fund_round<Meme, Quote>(
+    self: &mut PresaleVault<Meme, Quote>,
+    end_checkpoint: u64,
+    meme_amount: u64,
+    quote_amount: u64,
+): (Balance<Meme>, Balance<Quote>) {
+    self.next_round = self.next_round + 1;
+    self.last_checkpoint = option::some(end_checkpoint);
+
+    (self.rewards_meme.split(meme_amount), self.rewards_quote.split(quote_amount))
+}
+
+// === Test-Only Functions ===
+
+#[test_only]
+public fun new_for_testing<Meme, Quote>(
+    presale_id: ID,
+    presale_cap_id: ID,
+    creator_fee_bps: u64,
+    rewards_fee_bps: u64,
+    ctx: &mut TxContext,
+): PresaleVault<Meme, Quote> {
+    PresaleVault {
+        id: object::new(ctx),
+        presale_id,
+        presale_cap_id,
+        pool_id: object::id_from_address(@0x1),
+        creator_fee_bps,
+        rewards_fee_bps,
+        migration_meme_residual: balance::zero(),
+        migration_quote_residual: balance::zero(),
+        creator_meme: balance::zero(),
+        creator_quote: balance::zero(),
+        rewards_meme: balance::zero(),
+        rewards_quote: balance::zero(),
+        next_round: 0,
+        last_checkpoint: option::none(),
+    }
+}
+
+#[test_only]
+public fun credit_fees_for_testing<Meme, Quote>(
+    self: &mut PresaleVault<Meme, Quote>,
+    meme: Balance<Meme>,
+    quote: Balance<Quote>,
+) {
+    self.split_fees(meme, quote)
+}
+
+#[test_only]
+public fun fee_balances_for_testing<Meme, Quote>(
+    self: &PresaleVault<Meme, Quote>,
+): (u64, u64, u64, u64) {
+    (
+        self.creator_meme.value(),
+        self.creator_quote.value(),
+        self.rewards_meme.value(),
+        self.rewards_quote.value(),
+    )
+}
+
+#[test_only]
+public fun destroy_for_testing<Meme, Quote>(self: PresaleVault<Meme, Quote>) {
+    let PresaleVault {
+        id,
+        presale_id: _,
+        presale_cap_id: _,
+        pool_id: _,
+        creator_fee_bps: _,
+        rewards_fee_bps: _,
+        migration_meme_residual,
+        migration_quote_residual,
+        creator_meme,
+        creator_quote,
+        rewards_meme,
+        rewards_quote,
+        next_round: _,
+        last_checkpoint: _,
+    } = self;
+    id.delete();
+    migration_meme_residual.destroy_zero();
+    migration_quote_residual.destroy_zero();
+    creator_meme.destroy_zero();
+    creator_quote.destroy_zero();
+    rewards_meme.destroy_zero();
+    rewards_quote.destroy_zero();
+}
+
+// === Events ===
+
+public struct PresaleVaultCreated<phantom Meme, phantom Quote, phantom Venue> has copy, drop {
+    vault_id: ID,
+    presale_id: ID,
+    pool_id: ID,
+    position_id: ID,
+    liquidity: u128,
+    creator_fee_bps: u64,
+    rewards_fee_bps: u64,
+    migration_meme_residual: u64,
+    migration_quote_residual: u64,
+}
+
+public struct FeesCollected<phantom Meme, phantom Quote> has copy, drop {
+    vault_id: ID,
+    gross_meme: u64,
+    gross_quote: u64,
+    creator_meme: u64,
+    creator_quote: u64,
+    rewards_meme: u64,
+    rewards_quote: u64,
+}
+
+public struct CreatorFeesClaimed<phantom Meme, phantom Quote> has copy, drop {
+    vault_id: ID,
+    meme: u64,
+    quote: u64,
+}
+
+public struct MigrationResidualsClaimed<phantom Meme, phantom Quote> has copy, drop {
+    vault_id: ID,
+    meme: u64,
+    quote: u64,
+}
+
+// === Constants ===
+
+const BASIS_POINTS: u64 = 10_000;
+
+// === Errors ===
+
+#[error(code = 0)]
+const ENoCreatorFees: vector<u8> = b"No creator LP fees are available to claim.";
+
+#[error(code = 1)]
+const ENoMigrationResiduals: vector<u8> = b"No migration residuals are available to claim.";
+
+#[error(code = 2)]
+const EZeroLiquidity: vector<u8> = b"Migration position must hold liquidity.";
+
+#[error(code = 3)]
+const EWrongPresaleCap: vector<u8> = b"The creator capability belongs to a different presale vault.";
+
+#[error(code = 4)]
+const EInvalidFeeSplit: vector<u8> = b"Creator and holder-reward fee shares must total 10,000 BPS.";
+
+// === Imports ===
+
+use blast_presale::blast_presale::PresaleCap;
+
+use sui::{balance::{Self, Balance}, coin::Coin, dynamic_object_field, event};
+
+use fun dynamic_object_field::add as UID.add_dynamic_object_field;
+use fun dynamic_object_field::borrow_mut as UID.dynamic_object_field_mut;

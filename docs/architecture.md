@@ -19,13 +19,20 @@ by one of these boundaries:
 This keeps V2 smaller than the historical collection of interdependent packages
 without forcing unrelated dependencies into the trusted core.
 
+The immutable `blast_presale` package is a separate product boundary: it owns
+presale escrow, eligibility, proportional settlement, permissionless Bluefin and
+Cetus migration, LP custody, and fee/reward distribution without importing or
+mutating launchpad state. Its adapters share the package with presale core so a
+sealed witness makes pool creation atomic with escrow release. See
+[ADR 0099](decisions/0099-standalone-overflow-presale.md).
+
 The package boundaries are decided in
 [decisions/0001-sui-package-and-module-layout.md](decisions/0001-sui-package-and-module-layout.md):
 keep external dependencies and independently governed custody outside core.
 
 ### Dependency direction
 
-**Core imports no venue package, at launch or at migration.** Core defines the
+**Launchpad core imports no venue package, at launch or at migration.** Core defines the
 neutral route and handoff types; every adapter depends inward on core. Composition
 between core and an adapter happens **in the programmable transaction block, not in
 core code**: a transaction threads core-defined values through an adapter call and
@@ -57,6 +64,7 @@ without returning to core for its post-conditions.
 | Holder rewards (migrators) | Merkle rounds a Blast administrator funds from a vault's rewards balance, and one-time proof claims | holder accounting, which stays off-chain |
 | Migration interface | one-time liquidity handoff, linear migration value, and reconciled completion | DEX-specific object/storage details |
 | Adapter | start a launch at a venue-valid tier, prepare its venue, complete a migration, and collect the position's fees | changing core economics |
+| Standalone presale | require a zero-supply meme TreasuryCap; derive and escrow BPS allocations; lock Quote commitments; settle one proportional fill; atomically migrate permissionlessly to the configured venue; custody LP; split collected fees between creator claims and Merkle holder rewards | launchpad curves or state, fixed-supply policy, partners, or post-creation economic changes |
 
 Modules may begin together in the single chain project. These are dependency
 directions, not a demand for seven packages.
