@@ -199,6 +199,7 @@ public fun accept_super_admin_transfer(self: &mut ACL, clock: &Clock, ctx: &mut 
     let previous_super_admin_cap_id = self.super_admin_cap_id;
     let new_root = SuperAdminCap { id: object::new(ctx) };
     let new_super_admin_cap_id = new_root.id.to_inner();
+
     self.super_admin_cap_id = new_super_admin_cap_id;
     self.pending_super_admin = no_pending_super_admin();
     transfer::transfer(new_root, ctx.sender());

@@ -40,6 +40,7 @@ public fun new<Meme: drop>(
         sell_burn_bps <= constants::max_sell_burn_bps!(),
         blast_fun::errors::invalid_sell_burn_bps!(),
     );
+
     let (initializer, mut treasury_cap) = coin_registry::new_currency_with_otw(
         otw,
         decimals,
@@ -110,6 +111,7 @@ public(package) fun destroy<Meme>(
         burnable,
         sell_burn_bps,
     } = self;
+
     assert!(
         meme.value() == atomic_supply && treasury_cap.total_supply() == atomic_supply,
         blast_fun::errors::invalid_initial_meme_supply!(),
@@ -118,6 +120,7 @@ public(package) fun destroy<Meme>(
         sell_burn_bps.value() <= constants::max_sell_burn_bps!(),
         blast_fun::errors::invalid_sell_burn_bps!(),
     );
+
     if (burnable) currency.make_supply_burn_only(treasury_cap)
     else currency.make_supply_fixed(treasury_cap);
     id.delete();

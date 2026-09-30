@@ -90,6 +90,7 @@ public fun create(
         redeem_fee_bps: constants::default_redeem_fee_bps!(),
         unwind_only: false,
     };
+
     self.add_treasury_cap(fun_cap);
     self.add_treasury_cap(blast_cap);
     self.fun_custody.deposit(fun_reserve);
@@ -97,7 +98,6 @@ public fun create(
     let vault_pool_id = self.pool_id;
     self.blast_custody.stake_idle(system_state, validator, &vault_pool_id, 0, ctx);
     let locked_coin = self.treasury_cap_mut<BLAST_SUI>().mint(bootstrap_sui, ctx);
-    let locked_blast_sui = locked_coin.value();
 
     events::vault_created(
         self.id.to_inner(),
@@ -105,10 +105,11 @@ public fun create(
         pool_id,
         fun_reserve_sui,
         bootstrap_sui,
-        locked_blast_sui,
+        locked_coin.value(),
         self.redeem_fee_bps,
         self.custody(),
     );
+
     transfer::public_transfer(locked_coin, @0x0);
     transfer::share_object(self);
 }
@@ -133,6 +134,7 @@ public fun mint_fun_sui(
     self.stake_idle(system_state, ctx);
 
     events::fun_sui_minted(amount, self.custody());
+
     fun_coin
 }
 
@@ -162,6 +164,7 @@ public fun redeem_fun_sui(
     self.assert_fun_backed();
 
     events::fun_sui_redeemed(amount, self.custody());
+
     sui_out.into_coin(ctx)
 }
 
@@ -203,6 +206,7 @@ public fun request_blast_sui(
         receipt.activation_epoch(),
         self.custody(),
     );
+
     receipt
 }
 
@@ -234,6 +238,7 @@ public fun claim_blast_sui(
         receipt.destroy(),
         ctx,
     );
+
     let pool_tokens = active_stake.value();
     let contributed_sui = math::sui_at_rate_down(
         pool_tokens,
@@ -264,6 +269,7 @@ public fun claim_blast_sui(
         blast_out,
         self.custody(),
     );
+
     blast_coin
 }
 
@@ -310,6 +316,7 @@ public fun redeem_blast_sui(
     let shares = blast_in.value();
     assert!(shares > 0, blast_sui::errors::zero_amount!());
     self.refresh(system_state, ctx);
+
     let (gross_sui, fee_sui, net_sui) = math::blast_redemption_quote(
         shares,
         self.blast_custody.assets(),
@@ -330,6 +337,7 @@ public fun redeem_blast_sui(
     self.stake_idle(system_state, ctx);
 
     events::blast_sui_redeemed(shares, gross_sui, fee_sui, net_sui, self.custody());
+
     sui_out.into_coin(ctx)
 }
 
@@ -457,6 +465,7 @@ fun resolve_fun_receipts(
         self.rate_sui,
         self.rate_pool_tokens,
     );
+
     loop {
         let fun_activation_epoch = self.fun_custody.oldest_pending_activation_epoch();
         if (fun_activation_epoch.is_none() || *fun_activation_epoch.borrow() > epoch) {
@@ -510,6 +519,7 @@ fun sweep_fun_yield(self: &mut Vault, ctx: &mut TxContext) {
     if (liquid_sui > 0) {
         self.fun_custody.transfer_liquid(&mut self.blast_custody, liquid_sui);
     };
+
     let pool_tokens = math::pool_tokens_at_rate_down(
         surplus - liquid_sui,
         self.rate_sui,
@@ -524,12 +534,12 @@ fun sweep_fun_yield(self: &mut Vault, ctx: &mut TxContext) {
             ctx,
         );
     };
+
     let swept_sui = liquid_sui + math::sui_at_rate_down(
         pool_tokens,
         self.rate_sui,
         self.rate_pool_tokens,
     );
-
     if (swept_sui > 0) {
         events::fun_yield_swept(liquid_sui, pool_tokens, swept_sui, self.custody());
     };
@@ -566,7 +576,6 @@ fun protect_fun_exit_liquidity(
 ) {
     let fun_supply = self.treasury_cap<FUN_SUI>().total_supply();
     if (fun_supply == 0 || self.fun_custody.active_pool_tokens() == 0) return;
-
     if (self.fun_backing_buffer() > constants::fun_exit_low_water_mist!()) return;
 
     self.fun_custody.unwind(system_state, ctx);

@@ -155,6 +155,7 @@ fun attach_capability<Capability: key + store>(
     );
     let capability_id = object::id(&capability);
     self.id.add_dynamic_object_field(CapabilityKey<Capability>(), capability);
+
     capability_id
 }
 

@@ -31,6 +31,7 @@ public(package) fun auto_lp_fixed_side(
     amount_b: u64,
 ): (bool, u64) {
     if (sqrt_price <= sqrt_lower || sqrt_price >= sqrt_upper) return (true, 0);
+
     let lower = sqrt_lower as u256;
     let price = sqrt_price as u256;
     let upper = sqrt_upper as u256;

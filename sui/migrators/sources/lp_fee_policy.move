@@ -55,8 +55,8 @@ public fun set_protocol_destination(
         destination != @0x0 && destination != self.destination,
         EProtocolDestinationUnchanged,
     );
-    let old_destination = self.destination;
 
+    let old_destination = self.destination;
     self.destination = destination;
 
     blast_events::lp_fee_destination_changed(old_destination, destination);
@@ -73,8 +73,8 @@ public fun set_default_shares(
     migrators_version.assert_current();
     let shares = SharePair { meme_bps, quote_bps };
     assert!(shares != self.defaults, EProtocolFeeSharesUnchanged);
-    let old = self.defaults;
 
+    let old = self.defaults;
     self.defaults = shares;
 
     blast_events::lp_fee_policy_changed(

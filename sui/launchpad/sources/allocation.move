@@ -137,8 +137,10 @@ public(package) fun add_protocol(
         self.recipients.length() <= constants::max_recipients!(),
         blast_fun::errors::recipient_capacity_reached!(),
     );
+
     self.protocol_meme_bps = protocol.meme_bps;
     self.protocol_quote_bps = protocol.quote_bps;
+
     assert!(
         self.recipients.fold!(
             self.curve_meme_bps.value() + self.lp_meme_bps.value() + protocol.meme_bps.value(),
@@ -198,12 +200,14 @@ fun apportion(bps: vector<Bps>, total: u64, rounded_up: Option<u64>): vector<u64
         if (rounded_up.contains(&i)) products[i].div_ceil(denominator) as u64
         else (products[i] / denominator) as u64
     });
+
     let mut order = vector::tabulate!(products.length(), |i| i)
         .filter!(|i| !rounded_up.contains(i));
     order.insertion_sort_by!(|a, b| {
         let (remainder_a, remainder_b) = (products[*a] % denominator, products[*b] % denominator);
         remainder_a > remainder_b || (remainder_a == remainder_b && *a <= *b)
     });
+
     let leftover = total - amounts.fold!(0, |sum, amount| sum + amount);
     leftover.do!(|i| *&mut amounts[order[i]] = amounts[order[i]] + 1);
 

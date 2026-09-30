@@ -79,6 +79,7 @@ public(package) fun claim_creator_caps<Meme>(
     ctx: &mut TxContext,
 ): (CurveFeeCap<Meme>, BlastMetadataCap<Meme>) {
     let claimant = ctx.sender();
+
     match (recipient) {
         CreatorRecipient::Address(recipient) => {
             assert!(attestation.is_none(), blast_fun::errors::invalid_creator_claim_attestation!());
@@ -88,6 +89,7 @@ public(package) fun claim_creator_caps<Meme>(
             let mut attestation = bcs::new(attestation.destroy_some());
             let expiry_ms = attestation.peel_u64();
             let signature = attestation.peel_vec_u8();
+
             assert!(
                 attestation.into_remainder_bytes().is_empty(),
                 blast_fun::errors::invalid_creator_claim_attestation!(),

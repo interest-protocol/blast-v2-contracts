@@ -77,6 +77,7 @@ public fun new<Meme, Quote>(
         tick_spacing,
         fee_rate,
     );
+
     let pool_creation_cap = factory::mint_pool_creation_cap(
         cetus_config,
         pools,
@@ -118,6 +119,7 @@ public fun migrate_meme_a<Meme, Quote>(
 ) {
     migrators_version.assert_current();
     assert!(factory::is_right_order<Meme, Quote>(), EInvalidCoinOrder);
+
     let (tick_spacing, _) = launch.pool_tier();
     let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
 
@@ -165,6 +167,7 @@ public fun migrate_meme_b<Meme, Quote>(
 ) {
     migrators_version.assert_current();
     assert!(factory::is_right_order<Quote, Meme>(), EInvalidCoinOrder);
+
     let (tick_spacing, _) = launch.pool_tier();
     let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
 
@@ -207,8 +210,8 @@ public fun collect_fees_meme_a<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    let (meme_fee, quote_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
 
+    let (meme_fee, quote_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
     self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
     self.compound_meme_a(cetus_config, pool, clock, ctx);
 }
@@ -227,8 +230,8 @@ public fun collect_fees_meme_b<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    let (quote_fee, meme_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
 
+    let (quote_fee, meme_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
     self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
     self.compound_meme_b(cetus_config, pool, clock, ctx);
 }
@@ -250,10 +253,11 @@ public fun settle_and_update_fee_split_meme_a<Meme, Quote>(
 ) {
     migrators_version.assert_current();
     self.assert_fee_split_update(launch, curve_fee_cap, proposed);
-    let (meme_fee, quote_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
 
+    let (meme_fee, quote_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
     self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
     self.compound_meme_a(cetus_config, pool, clock, ctx);
+
     self.update_fee_split(proposed);
 }
 
@@ -274,10 +278,11 @@ public fun settle_and_update_fee_split_meme_b<Meme, Quote>(
 ) {
     migrators_version.assert_current();
     self.assert_fee_split_update(launch, curve_fee_cap, proposed);
-    let (quote_fee, meme_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
 
+    let (quote_fee, meme_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
     self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
     self.compound_meme_b(cetus_config, pool, clock, ctx);
+
     self.update_fee_split(proposed);
 }
 
@@ -297,9 +302,9 @@ public fun buyback_and_burn_meme_a<Meme, Quote>(
 ) {
     migrators_version.assert_current();
     assert!(self.pool_id() == object::id(pool), EPositionPoolMismatch);
+
     let quote = self.take_buyback_quote(admin_witness);
     let quote_in = quote.value();
-
     let (meme, quote) = swap(cetus_config, pool, balance::zero(), quote, false, clock);
 
     self.burn_buyback(currency, meme, quote, quote_in, min_meme_out, ctx);
@@ -321,9 +326,9 @@ public fun buyback_and_burn_meme_b<Meme, Quote>(
 ) {
     migrators_version.assert_current();
     assert!(self.pool_id() == object::id(pool), EPositionPoolMismatch);
+
     let quote = self.take_buyback_quote(admin_witness);
     let quote_in = quote.value();
-
     let (quote, meme) = swap(cetus_config, pool, quote, balance::zero(), true, clock);
 
     self.burn_buyback(currency, meme, quote, quote_in, min_meme_out, ctx);
@@ -346,6 +351,7 @@ fun burn_into_vault<Meme, Quote>(
 ) {
     let pool_id = position.pool_id();
     let liquidity = position.liquidity();
+
     let burn_proof = lp_burn::burn_lp_v2(burn_manager, position, ctx);
     vault::create(
         launch,
@@ -374,6 +380,7 @@ fun collect_position_fees<X, Y, Meme, Quote>(
     let (fee_x, fee_y) = lp_burn::collect_fee(burn_manager, cetus_config, pool, burn_proof, ctx);
     let mut fee_x = fee_x.into_balance();
     let mut fee_y = fee_y.into_balance();
+
     if (self.has_auto_lp_position(&Venue())) {
         let position = self.auto_lp_position<_, _, _, Position>(&Venue());
         let (auto_lp_x, auto_lp_y) = pool::collect_fee(cetus_config, pool, position, true);
@@ -441,11 +448,13 @@ fun add_liquidity<A, B, Meme, Quote>(
     ctx: &mut TxContext,
 ): (Balance<A>, Balance<B>, u64, u64) {
     if (a.value() == 0 || b.value() == 0) return (a, b, 0, 0);
+
     if (!self.has_auto_lp_position(&Venue())) {
         let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(pool.tick_spacing());
         let position = pool::open_position(cetus_config, pool, tick_lower, tick_upper, ctx);
         self.attach_auto_lp_position(&Venue(), position);
     };
+
     let position = self.auto_lp_position_mut<_, _, _, Position>(&Venue());
     let (lower, upper) = position.tick_range();
     let tick = pool.current_tick_index();
@@ -466,6 +475,7 @@ fun add_liquidity<A, B, Meme, Quote>(
         b.value(),
         false,
     );
+
     let (fix_a, amount) = if (liquidity_a > 0 && needed_b <= b.value()) {
         (true, a.value())
     } else if (liquidity_b > 0 && needed_a <= a.value()) {
@@ -493,6 +503,7 @@ fun swap<A, B>(
 ): (Balance<A>, Balance<B>) {
     let (amount, sqrt_price_limit) = if (a2b) (a.value(), constants::min_swap_sqrt_price!())
     else (b.value(), constants::max_swap_sqrt_price!());
+
     let (out_a, out_b, receipt) = pool::flash_swap(
         cetus_config,
         pool,

@@ -71,11 +71,13 @@ public fun migrate<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
+
     let (tick_spacing, fee_rate) = launch.pool_tier();
     let (minimum_tick, maximum_tick) = bluefin_config.get_tick_range();
     let spacing = i32::from(tick_spacing);
     let lower_tick = minimum_tick.div(spacing).mul(spacing).as_u32();
     let upper_tick = maximum_tick.div(spacing).mul(spacing).as_u32();
+
     let mut pool_name = currency.symbol().into_bytes();
     pool_name.append(b"-");
     pool_name.append(quote_currency.symbol().into_bytes());
@@ -128,6 +130,7 @@ public fun migrate<Meme, Quote>(
         residual_quote,
         ctx,
     );
+
     pool.share_pool_object();
 }
 
@@ -144,8 +147,8 @@ public fun collect_fees<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    let (meme_fee, quote_fee) = self.collect_position_fees(bluefin_config, pool, clock);
 
+    let (meme_fee, quote_fee) = self.collect_position_fees(bluefin_config, pool, clock);
     self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
     self.compound(bluefin_config, pool, clock);
 }
@@ -166,10 +169,11 @@ public fun settle_and_update_fee_split<Meme, Quote>(
 ) {
     migrators_version.assert_current();
     self.assert_fee_split_update(launch, curve_fee_cap, proposed);
-    let (meme_fee, quote_fee) = self.collect_position_fees(bluefin_config, pool, clock);
 
+    let (meme_fee, quote_fee) = self.collect_position_fees(bluefin_config, pool, clock);
     self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
     self.compound(bluefin_config, pool, clock);
+
     self.update_fee_split(proposed);
 }
 
@@ -189,9 +193,9 @@ public fun buyback_and_burn<Meme, Quote>(
 ) {
     migrators_version.assert_current();
     assert!(self.pool_id() == object::id(pool), EPositionPoolMismatch);
+
     let quote = self.take_buyback_quote(admin_witness);
     let quote_in = quote.value();
-
     let (meme, quote) = pool::swap(
         clock,
         bluefin_config,
@@ -261,6 +265,7 @@ fun compound<Meme, Quote>(
     } else {
         (0, 0, meme, quote)
     };
+
     self.keep_auto_lp(added_meme, added_quote, meme, quote);
 }
 

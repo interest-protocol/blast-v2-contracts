@@ -84,8 +84,8 @@ public fun publish_round<Meme, Quote>(
     );
     assert!(leaf_count > 0 && leaf_count <= constants::max_reward_leaves!(), EInvalidLeafCount);
     assert!(meme_amount > 0 || quote_amount > 0, EEmptyBudget);
-    let vault_id = object::id(vault);
 
+    let vault_id = object::id(vault);
     let (meme, quote) = vault.fund_round(end_checkpoint, meme_amount, quote_amount);
     let round = Round {
         id: object::new(ctx),
@@ -97,6 +97,7 @@ public fun publish_round<Meme, Quote>(
         meme,
         quote,
     };
+
     let round_id = round.id.to_inner();
     let (meme_unallocated, quote_unallocated) = vault.rewards_balances();
     transfer::share_object(round);

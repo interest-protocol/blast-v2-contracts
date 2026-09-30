@@ -22,6 +22,7 @@ public(package) fun leaf(
     bytes.append(bcs::to_bytes(&beneficiary));
     bytes.append(bcs::to_bytes(&meme));
     bytes.append(bcs::to_bytes(&quote));
+
     hash::blake2b256(&bytes)
 }
 
@@ -40,14 +41,17 @@ public(package) fun verify(
         width = width.div_ceil(2);
         depth = depth + 1;
     };
+
     if (
         proof.length() != depth
             || !proof.all!(|sibling| sibling.length() == constants::digest_length!())
     ) return false;
+
     proof.do_ref!(|sibling| {
         digest = if (index % 2 == 0) node(digest, *sibling) else node(*sibling, digest);
         index = index / 2;
     });
+
     digest == root
 }
 
