@@ -309,17 +309,21 @@ impl World {
             vec![],
             vec![config_arg, version_arg, fee_admin, fee, fee],
         );
-        let [meme_bps, quote_bps] = protocol;
-        let meme_bps = w.bps(&mut builder, meme_bps)?;
-        let quote_bps = w.bps(&mut builder, quote_bps)?;
-        call(
-            &mut builder,
-            blast,
-            "launch_config",
-            "set_protocol_allocation",
-            vec![],
-            vec![config_arg, version_arg, treasury_admin, meme_bps, quote_bps],
-        );
+        // `LaunchConfig` starts with a zero protocol allocation and its setter rejects an unchanged
+        // value, so only a nonzero allocation is set.
+        if protocol != [0, 0] {
+            let [meme_bps, quote_bps] = protocol;
+            let meme_bps = w.bps(&mut builder, meme_bps)?;
+            let quote_bps = w.bps(&mut builder, quote_bps)?;
+            call(
+                &mut builder,
+                blast,
+                "launch_config",
+                "set_protocol_allocation",
+                vec![],
+                vec![config_arg, version_arg, treasury_admin, meme_bps, quote_bps],
+            );
+        }
         w.h.execute(builder.finish())?.assert_success();
 
         Ok(w)
