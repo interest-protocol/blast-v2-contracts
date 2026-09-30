@@ -76,13 +76,19 @@ public fun migrate<Meme, Quote>(
     let (presale_id, presale_cap_id, tick_spacing, fee_rate, fee_recipients, rewards_fee_bps) = sale
         .migration_config();
     let (meme, quote) = sale.migrate(Witness(), ctx);
+
     let source_meme = meme.value();
     let source_quote = quote.value();
+    // Fix the side with more atoms: the full-range position needs slightly more of the other
+    // side than the seed ratio, so this is the side whose partner balance always covers it.
     let fix_meme = source_meme >= source_quote;
+
+    // Full range, with both bounds aligned inward to the pool's tick spacing.
     let (minimum_tick, maximum_tick) = bluefin_config.get_tick_range();
     let spacing = i32::from(tick_spacing);
     let lower_tick = minimum_tick.div(spacing).mul(spacing).as_u32();
     let upper_tick = maximum_tick.div(spacing).mul(spacing).as_u32();
+
     let mut pool_name = currency.symbol().into_bytes();
     pool_name.append(b"-");
     pool_name.append(quote_currency.symbol().into_bytes());
@@ -104,6 +110,7 @@ public fun migrate<Meme, Quote>(
         creation_fee.into_balance(),
         ctx,
     );
+
     let mut position = pool::open_position(bluefin_config, &mut pool, lower_tick, upper_tick, ctx);
     let (_, _, residual_meme, residual_quote) = pool::add_liquidity_with_fixed_amount(
         clock,
@@ -115,6 +122,7 @@ public fun migrate<Meme, Quote>(
         if (fix_meme) source_meme else source_quote,
         fix_meme,
     );
+
     let pool_id = position.pool_id();
     let liquidity = position.liquidity();
 
@@ -131,6 +139,7 @@ public fun migrate<Meme, Quote>(
         residual_quote,
         ctx,
     );
+
     pool.share_pool_object();
 }
 
@@ -144,6 +153,7 @@ public fun collect_fees<Meme, Quote>(
 ) {
     let position = vault.position_mut<_, _, _, Position>(&Venue());
     assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
+
     let (_, _, meme, quote) = pool::collect_fee(clock, bluefin_config, pool, position);
 
     vault.split_fees(meme, quote, ctx);

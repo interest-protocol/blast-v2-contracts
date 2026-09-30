@@ -18,6 +18,8 @@ public(package) fun sqrt_price_x64(
         (meme_amount, quote_amount)
     };
     let ratio = ((numerator as u256) << 128) / (denominator as u256);
+
+    // Binary search for the integer square root of the Q128 ratio, which is the Q64 price.
     let mut low = 0u256;
     let mut high = 1u256 << 96;
 

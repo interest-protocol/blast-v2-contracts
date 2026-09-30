@@ -39,6 +39,8 @@ public fun new<Meme, Quote>(
     ctx: &mut TxContext,
 ): (Presale<Meme, Quote>, PresaleCap) {
     let fee_rate = config::get_fee_rate(tick_spacing, cetus_config);
+
+    // Reserve the pair's Cetus pool creation before the Meme supply leaves the creator.
     let creation_cap = factory::mint_pool_creation_cap(cetus_config, pools, &mut treasury_cap, ctx);
     factory::register_permission_pair<Meme, Quote>(
         cetus_config,
@@ -81,12 +83,15 @@ public fun migrate_meme_a<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     assert!(factory::is_right_order<Meme, Quote>(), EInvalidCoinOrder);
+
     let (presale_id, cap_id, tick_spacing, _, fee_recipients, rewards_fee_bps) = sale
         .migration_config();
     let (meme, quote) = sale.migrate(Witness(), ctx);
+
     let meme_amount = meme.value();
     let quote_amount = quote.value();
     let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
+
     let (position, residual_meme, residual_quote) = pool_creator::create_pool_v3_with_creation_cap<
         Meme,
         Quote,
@@ -130,12 +135,15 @@ public fun migrate_meme_b<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     assert!(factory::is_right_order<Quote, Meme>(), EInvalidCoinOrder);
+
     let (presale_id, cap_id, tick_spacing, _, fee_recipients, rewards_fee_bps) = sale
         .migration_config();
     let (meme, quote) = sale.migrate(Witness(), ctx);
+
     let meme_amount = meme.value();
     let quote_amount = quote.value();
     let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
+
     let (position, residual_quote, residual_meme) = pool_creator::create_pool_v3_with_creation_cap<
         Quote,
         Meme,
@@ -212,6 +220,7 @@ fun burn_into_vault<Meme, Quote>(
     let pool_id = position.pool_id();
     let liquidity = position.liquidity();
     let burn_proof = lp_burn::burn_lp_v2(burn_manager, position, ctx);
+
     vault::create(
         presale_id,
         cap_id,
@@ -235,6 +244,7 @@ fun collect_position_fees<X, Y, Meme, Quote>(
     ctx: &mut TxContext,
 ): (Balance<X>, Balance<Y>) {
     assert!(vault.pool_id() == object::id(pool), EPositionPoolMismatch);
+
     let burn_proof = vault.position_mut<_, _, _, CetusLPBurnProof>(&Venue());
     let (fee_x, fee_y) = lp_burn::collect_fee(burn_manager, cetus_config, pool, burn_proof, ctx);
 

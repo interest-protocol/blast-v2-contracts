@@ -47,6 +47,7 @@ public fun publish_round<Meme, Quote>(
     );
     assert!(leaf_count > 0 && leaf_count <= MAX_REWARD_LEAVES, EInvalidLeafCount);
     assert!(meme_amount > 0 || quote_amount > 0, EEmptyBudget);
+
     let vault_id = object::id(vault);
     let (meme, quote) = vault.fund_round(end_checkpoint, meme_amount, quote_amount);
     let round = Round {
@@ -61,6 +62,7 @@ public fun publish_round<Meme, Quote>(
     };
     let round_id = round.id.to_inner();
     let (meme_unallocated, quote_unallocated) = vault.rewards_balances();
+
     transfer::share_object(round);
 
     event::emit(RoundPublished<Meme, Quote> {
@@ -95,6 +97,7 @@ public fun claim<Meme, Quote>(
     assert!(self.claimed[word] & bit == 0, EAlreadyClaimed);
     assert!(beneficiary != @0x0, EInvalidBeneficiary);
     assert!(meme_amount > 0 || quote_amount > 0, EEmptyBudget);
+
     let leaf = leaf(self.vault, self.number, index, beneficiary, meme_amount, quote_amount);
     assert!(
         merkle_tree::verify(self.root, leaf, index, self.leaf_count, &proof),
@@ -102,6 +105,7 @@ public fun claim<Meme, Quote>(
     );
 
     *&mut self.claimed[word] = self.claimed[word] | bit;
+
     if (meme_amount > 0) {
         transfer::public_transfer(self.meme.split(meme_amount).into_coin(ctx), beneficiary);
     };

@@ -71,6 +71,7 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
     ctx: &mut TxContext,
 ) {
     assert!(liquidity > 0, EZeroLiquidity);
+
     let position_id = object::id(&position);
     let fee_recipient_addresses = presale::fee_recipient_addresses(&fee_recipients);
     let fee_recipient_bps = presale::fee_recipient_bps(&fee_recipients);
@@ -91,6 +92,7 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
     let vault_id = vault.id.to_inner();
     let migration_meme_residual = vault.migration_meme_residual.value();
     let migration_quote_residual = vault.migration_quote_residual.value();
+
     vault.id.add_dynamic_object_field(PositionKey<Venue>(), position);
     transfer::share_object(vault);
 
@@ -132,6 +134,7 @@ public(package) fun split_fees<Meme, Quote>(
         quote.destroy_zero();
         return
     };
+
     let mut recipient_meme = presale::apportion_fee(
         &self.fee_recipients,
         self.rewards_fee_bps,
