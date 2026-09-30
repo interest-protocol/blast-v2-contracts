@@ -8,11 +8,12 @@
 //! launchpad and the migrators linked to the real venue packages exactly as their manifests pin
 //! them. No transaction reaches a network.
 //!
-//! One test per route runs the whole lifecycle through public PTBs: Cetus with Meme as coin A
-//! (SUI Quote), Cetus with Meme as coin B (USDC Quote; both Quotes admitted at tick spacing 200 by
-//! Cetus's live allowlist), and Bluefin. Each shows that the adapter's `new` rejects a tier the
+//! One test per venue and coin order runs the whole lifecycle through public PTBs: Cetus with Meme
+//! as coin A (SUI Quote) and with Meme as coin B (USDC Quote; both Quotes admitted at tick spacing
+//! 200 by Cetus's live allowlist), each through Cetus's single routes that take the pool's coin
+//! types after the Meme and Quote (ADR 0100), and Bluefin. Each shows that the adapter's `new` rejects a tier the
 //! venue would refuse and then starts the launch at a valid one; a migration that aborts after
-//! pool creation commits nothing; one PTB migrates into a new pool at the launch's tier, burns
+//! pool creation commits nothing, and on Cetus reversed or foreign coin types are refused; one PTB migrates into a new pool at the launch's tier, burns
 //! the Cetus position through LP Burn, and pays the allocations; permissionless collections split
 //! real swap fees exactly by Blast's live share (default, then a per-coin override) and the fee
 //! split, skip auto-LP while its balances are one-sided or tiny, and otherwise add auto-LP back
@@ -76,6 +77,9 @@ const INVALID_LAUNCH_LIFECYCLE: u64 = 15;
 const CREATOR_CAP_NOT_LIVE: u64 = 22;
 /// `blast_fun_migrators::vault` code.
 const BUYBACK_BELOW_MINIMUM: u64 = 5;
+/// `blast_fun_migrators::cetus` codes.
+const INVALID_COIN_ORDER: u64 = 0;
+const WRONG_COIN_PAIR: u64 = 2;
 
 /// The `blast_fun_domain` roles this world's one `AdminCap` holds.
 const ADMIN_ROLES: [&str; 7] =
@@ -245,14 +249,6 @@ impl Case {
     /// Whether Meme is the pool's coin A.
     fn meme_is_a(self) -> bool {
         self != Case::CetusMemeB
-    }
-
-    fn suffix(self) -> &'static str {
-        match self {
-            Case::CetusMemeA => "_meme_a",
-            Case::CetusMemeB => "_meme_b",
-            Case::Bluefin => "",
-        }
     }
 
     fn module(self) -> &'static str {
@@ -540,6 +536,15 @@ impl World {
         } else {
             vec![self.quote(), launch.meme.clone()]
         }
+    }
+
+    /// A route's type arguments: Meme and Quote, then on Cetus the pool's coins in venue order.
+    fn route_types(&self, launch: &Launch) -> Vec<TypeTag> {
+        let mut types = self.pair(launch);
+        if self.case.is_cetus() {
+            types.extend(self.pool_pair(launch));
+        }
+        types
     }
 
     /// Signs the AdminCap in to the ACL as `role`; the witness it returns authorizes only that role.
@@ -847,12 +852,13 @@ impl World {
         Ok(())
     }
 
-    /// The route's migration call; Bluefin pays `creation_fee` SUI, or its live fee when none.
+    /// The migration call with `types` as its type arguments; Bluefin pays `creation_fee` SUI, or
+    /// its live fee when none.
     fn migrate_command(
         &self,
         b: &mut ProgrammableTransactionBuilder,
         launch: &Launch,
-        case: Case,
+        types: Vec<TypeTag>,
         creation_fee: Option<u64>,
     ) -> Result<()> {
         let launch_arg = self.shared(b, launch.launch, true)?;
@@ -860,7 +866,7 @@ impl World {
         let version = self.shared(b, self.version, false)?;
         let currency = self.shared(b, launch.currency, true)?;
         let clock = self.clock(b)?;
-        if case.is_cetus() {
+        if self.case.is_cetus() {
             let venue_config = self.shared(b, self.venue_config, false)?;
             let cetus_config = self.shared(b, self.venue("cetus_global_config"), false)?;
             let pools = self.shared(b, self.venue("cetus_pools"), true)?;
@@ -869,8 +875,8 @@ impl World {
                 b,
                 self.migrators,
                 "cetus",
-                &format!("migrate{}", case.suffix()),
-                self.pair(launch),
+                "migrate",
+                types,
                 vec![
                     launch_arg,
                     migrators_version,
@@ -895,7 +901,7 @@ impl World {
                 self.migrators,
                 "bluefin",
                 "migrate",
-                self.pair(launch),
+                types,
                 vec![
                     launch_arg,
                     migrators_version,
@@ -919,8 +925,8 @@ impl World {
         Ok(fee)
     }
 
-    /// A migration that aborts after the pool exists commits nothing, and on Cetus the other coin
-    /// order's route is refused.
+    /// A migration that aborts after the pool exists commits nothing, and on Cetus coin types in the
+    /// reversed order or naming another pair are refused.
     fn migration_failures_commit_nothing(&mut self, launch: &Launch) -> Result<()> {
         let mut watched = vec![launch.launch, launch.currency];
         if self.case.is_cetus() {
@@ -930,8 +936,8 @@ impl World {
         }
         let owners = [self.h.sender, DESTINATION.into()];
         let mut b = ProgrammableTransactionBuilder::new();
-        self.migrate_command(&mut b, launch, self.case, None)?;
-        self.migrate_command(&mut b, launch, self.case, None)?;
+        self.migrate_command(&mut b, launch, self.route_types(launch), None)?;
+        self.migrate_command(&mut b, launch, self.route_types(launch), None)?;
         let expected = Expected::Abort { package: self.blast, module: "launch", code: INVALID_LAUNCH_LIFECYCLE };
         self.h.assert_rolled_back(b.finish(), expected, &watched, &owners)?;
         ensure!(self.launch_lifecycle(launch) == MIGRATION_READY, "the launch stays MigrationReady");
@@ -941,17 +947,31 @@ impl World {
             // Bluefin charges exactly its configured SUI creation fee.
             let fee = self.bluefin_creation_fee()?;
             let mut b = ProgrammableTransactionBuilder::new();
-            self.migrate_command(&mut b, launch, self.case, Some(fee + 1))?;
+            self.migrate_command(&mut b, launch, self.route_types(launch), Some(fee + 1))?;
             let expected = Expected::Abort { package: id(BLUEFIN), module: "pool", code: 1039 };
             self.h.assert_rolled_back(b.finish(), expected, &watched, &owners)?;
             self.report(format!("migrate paying {} MIST against the live {fee} MIST creation fee: Bluefin pool aborts 1039, rolled back", fee + 1));
         } else {
-            let wrong = if self.case == Case::CetusMemeA { Case::CetusMemeB } else { Case::CetusMemeA };
+            let mut reversed = self.pool_pair(launch);
+            reversed.reverse();
             let mut b = ProgrammableTransactionBuilder::new();
-            self.migrate_command(&mut b, launch, wrong, None)?;
-            let expected = Expected::Abort { package: self.migrators, module: "cetus", code: 0 };
+            self.migrate_command(&mut b, launch, [self.pair(launch), reversed].concat(), None)?;
+            let expected = Expected::Abort { package: self.migrators, module: "cetus", code: INVALID_COIN_ORDER };
             self.h.assert_rolled_back(b.finish(), expected, &watched, &owners)?;
-            self.report(format!("migrate{} on this pair: EInvalidCoinOrder, rolled back", wrong.suffix()));
+            self.report("migrate with the pool's coin types reversed: EInvalidCoinOrder, rolled back".into());
+
+            // Another Quote, named in Cetus's own order, passes the order check but not the pair.
+            let other = if self.quote() == sui() { tag(USDC) } else { sui() };
+            let other_name = cetus_name(&other);
+            let mut foreign = vec![launch.meme.clone(), other];
+            if !meme_is_cetus_a(&foreign[0], &foreign[1]) {
+                foreign.reverse();
+            }
+            let mut b = ProgrammableTransactionBuilder::new();
+            self.migrate_command(&mut b, launch, [self.pair(launch), foreign].concat(), None)?;
+            let expected = Expected::Abort { package: self.migrators, module: "cetus", code: WRONG_COIN_PAIR };
+            self.h.assert_rolled_back(b.finish(), expected, &watched, &owners)?;
+            self.report(format!("migrate naming Meme with {other_name} in Cetus order: EWrongCoinPair, rolled back"));
         }
 
         Ok(())
@@ -959,7 +979,7 @@ impl World {
 
     fn migrate(&mut self, launch: &Launch) -> Result<Migration> {
         let mut b = ProgrammableTransactionBuilder::new();
-        self.migrate_command(&mut b, launch, self.case, None)?;
+        self.migrate_command(&mut b, launch, self.route_types(launch), None)?;
         let outcome = self.h.execute(b.finish())?;
         outcome.assert_success();
         ensure!(self.launch_lifecycle(launch) == MIGRATED, "the launch is Migrated");
@@ -1084,8 +1104,8 @@ impl World {
         );
 
         self.report(format!(
-            "migrate{}: pool {} tier ({}, {}) ticks ({lower}, {upper}) sqrt_price {sqrt_price}; supplied=({}, {}) residual=({}, {}) liquidity {}; Blast and recipient allocations ({}, {}) each paid; {}",
-            self.case.suffix(),
+            "migrate ({:?}): pool {} tier ({}, {}) ticks ({lower}, {upper}) sqrt_price {sqrt_price}; supplied=({}, {}) residual=({}, {}) liquidity {}; Blast and recipient allocations ({}, {}) each paid; {}",
+            self.case,
             m.pool,
             if self.case.is_cetus() { CETUS_TICK_SPACING } else { BLUEFIN_TICK_SPACING },
             if self.case.is_cetus() { CETUS_FEE_RATE } else { BLUEFIN_FEE_RATE },
@@ -1221,10 +1241,10 @@ impl World {
         }
         args.push(self.clock(&mut b)?);
         let function = match update {
-            Some(_) => format!("settle_and_update_fee_split{}", self.case.suffix()),
-            None => format!("collect_fees{}", self.case.suffix()),
+            Some(_) => "settle_and_update_fee_split",
+            None => "collect_fees",
         };
-        call(&mut b, self.migrators, self.case.module(), &function, self.pair(launch), args);
+        call(&mut b, self.migrators, self.case.module(), function, self.route_types(launch), args);
 
         Ok(b.finish())
     }
@@ -1531,8 +1551,8 @@ impl World {
             &mut b,
             self.migrators,
             self.case.module(),
-            &format!("buyback_and_burn{}", self.case.suffix()),
-            self.pair(launch),
+            "buyback_and_burn",
+            self.route_types(launch),
             vec![vault, migrators_version, signed_in, currency, config, pool, min_meme_out, clock],
         );
 
@@ -1574,9 +1594,9 @@ impl World {
             "a buyback touches only the burn Quote"
         );
         self.report(format!(
-            "buyback_and_burn{}: min above the pool's output aborts vault EBuybackBelowMinimum, rolled back; \
+            "buyback_and_burn ({:?}): min above the pool's output aborts vault EBuybackBelowMinimum, rolled back; \
              then {} Quote bought and burned {} Meme at @0x0",
-            self.case.suffix(),
+            self.case,
             burned.quote_spent,
             burned.meme_burned,
         ));

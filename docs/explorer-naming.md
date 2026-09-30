@@ -112,6 +112,7 @@ Payload struct names inside the envelopes (`Bought`, `Migrated`,
 | `blast_fun_migrators` | `cetus::Venue`, `bluefin::Venue` | unchanged | sealed venue witnesses used as `PositionKey<Venue>` and `TierKey<Venue>` keys inside Blast objects; the module names the venue the migrator targets |
 | `blast_fun_migrators` | `cetus::Witness`, `bluefin::Witness` | unchanged | the only migration witnesses; appear as `TypeName` values in `LaunchConfig` and events |
 | `blast_fun_migrators` | `cetus::CreationCapKey<Meme>` | unchanged | dynamic-object-field key under `VenueConfig` for the Meme type's Cetus `PoolCreationCap`; the cap keeps its own object ID |
+| `blast_fun_migrators` | `cetus::CastKey` | new (ADR 0100) | transient dynamic-field key on a UID created and deleted within one Cetus route call; retypes a coin or balance between Meme/Quote and pool coin order |
 | `blast_fun_migrators` | `cetus::ReservationKey<Meme, Quote>` | unchanged | dynamic-field key under `VenueConfig` naming one reserved Meme/Quote pair; the value is its reserved tick spacing |
 | `blast_presale` | `cetus::Venue`, `bluefin::Venue` | new (ADR 0099) | sealed position keys under `PresaleVault` |
 | `blast_presale` | `cetus::Witness`, `bluefin::Witness` | new (ADR 0099) | sealed migration identities fixed before commitments open |

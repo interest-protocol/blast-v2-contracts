@@ -410,10 +410,10 @@ disassemble`); the dev-inspect fixtures re-confirm it end to end:
 | Route | Orientation and authority |
 | --- | --- |
 | `new` | Starts a launch in `Quote` at the creator's tick spacing through the core and reserves the pair's Cetus pool creation; aborts unless `LaunchConfig` admits `cetus::Witness` and the Quote |
-| `migrate_meme_a`, `migrate_meme_b` | Permissionless; the route matching the pair's Cetus coin order; burns the position through the shared `BurnManager` |
-| `collect_fees_meme_a`, `collect_fees_meme_b` | Permissionless; splits the collection, burns the burn part's Meme, and adds the auto-LP share back through `add_liquidity_fix_coin` / `repay_add_liquidity`, fixing the side `clmm_math::get_liquidity_by_amount` says the other balance covers |
-| `settle_and_update_fee_split_meme_a`, `settle_and_update_fee_split_meme_b` | Under the launch's live `CurveFeeCap`; settles under the current split, then commits the proposed one |
-| `buyback_and_burn_meme_a`, `buyback_and_burn_meme_b` | Under the buyback-admin role (ADR 0091); swaps the vault's burn Quote for Meme in its own pool through `flash_swap` / `swap_pay_amount` / `repay_flash_swap` at the widest sqrt-price limit, then burns the Meme if it reaches the administrator's minimum |
+| `migrate` | Permissionless; type arguments `<Meme, Quote, CoinA, CoinB>` with the pool's coins in Cetus order (ADR 0100); burns the position through the shared `BurnManager` |
+| `collect_fees` | Permissionless; splits the collection, burns the burn part's Meme, and adds the auto-LP share back through `add_liquidity_fix_coin` / `repay_add_liquidity`, fixing the side `clmm_math::get_liquidity_by_amount` says the other balance covers |
+| `settle_and_update_fee_split` | Under the launch's live `CurveFeeCap`; settles under the current split, then commits the proposed one |
+| `buyback_and_burn` | Under the buyback-admin role (ADR 0091); swaps the vault's burn Quote for Meme in its own pool through `flash_swap` / `swap_pay_amount` / `repay_flash_swap` at the widest sqrt-price limit, then burns the Meme if it reaches the administrator's minimum |
 
 Each Cetus fixture must show:
 
@@ -422,9 +422,12 @@ Each Cetus fixture must show:
   lent treasury capability and keeps it as a `VenueConfig` dynamic object
   field, registers the pair at that tick spacing (aborting when Cetus refuses
   it), and emits `CetusPoolReserved`;
-- each migration route aborts with `EInvalidCoinOrder` unless Cetus's own
-  `factory::is_right_order` agrees with it, and creates the pool only with the
-  reserved `PoolCreationCap` at the launch's tick spacing, never adopting one;
+- every route after `new` takes the pool's coins as `CoinA` and `CoinB` and
+  aborts with `EWrongCoinPair` unless they are exactly the launch's Meme and
+  Quote; migration first aborts with `EInvalidCoinOrder` unless Cetus's own
+  `factory::is_right_order<CoinA, CoinB>` agrees with them, and creates the
+  pool only with the reserved `PoolCreationCap` at the launch's tick spacing,
+  never adopting one;
 - liquidity is seeded with the exact handed-off balances; whatever the venue does
   not take stays in the vault as protocol residuals, and supplied principal plus
   residual reconciles exactly with the hand-off;

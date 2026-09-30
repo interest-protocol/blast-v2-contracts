@@ -45,6 +45,11 @@ with a minimum Meme out set from an off-chain price: it swaps the waiting burn
 Quote for Meme in the vault's pool and burns it. The swap is not permissionless,
 because anyone could move the pool's price around it (ADR 0091).
 
+Cetus orders a pool's coins by type name, so its `migrate`, `collect_fees`,
+`settle_and_update_fee_split`, and `buyback_and_burn` take the pool's coins in
+that order as two extra type arguments, `<Meme, Quote, CoinA, CoinB>`, and
+reject any other pair (ADR 0100). Bluefin's routes take `<Meme, Quote>`.
+
 `FeesCollected`, `AutoLiquidityAdded`, and `BuybackBurned` break down every amount
 for indexers.
 The curve-fee cap holder changes the split with `settle_and_update_fee_split`,

@@ -18,17 +18,22 @@
 /// collect fees. A burned position cannot receive liquidity, so auto-LP adds to a second full-range
 /// position the vault opens on first use and keeps with no removal path.
 ///
-/// Cetus orders a pool's coin types by type name, so migration, collection, settled fee-split
-/// updates, and buybacks each exist once per ordering.
+/// Cetus orders a pool's coin types by type name. Each route after `new` takes the pool's coin
+/// types as `CoinA` and `CoinB` beside the launch's `Meme` and `Quote`, proves they are the same
+/// pair, and retypes balances between the two orders through a checked dynamic-field round trip
+/// (ADR 0100).
 module blast_fun_migrators::cetus;
 
 // === Errors ===
 
 #[error(code = 0)]
-const EInvalidCoinOrder: vector<u8> = b"Migration route must match the Cetus coin order of the pair.";
+const EInvalidCoinOrder: vector<u8> = b"CoinA and CoinB must follow the Cetus coin order.";
 
 #[error(code = 1)]
 const EPositionPoolMismatch: vector<u8> = b"Pool must be the vault's own pool.";
+
+#[error(code = 2)]
+const EWrongCoinPair: vector<u8> = b"CoinA and CoinB must be exactly the launch's Meme and Quote.";
 
 // === Public Types ===
 
@@ -43,6 +48,9 @@ public struct Venue() has drop;
 /// The capability is a dynamic object field, so it keeps the ID that Cetus's permission registry
 /// and every `CetusPoolReserved` event record, and stays readable by that ID.
 public struct CreationCapKey<phantom Meme>() has copy, drop, store;
+
+/// Transient dynamic-field name `cast` uses to retype a coin or balance.
+public struct CastKey() has copy, drop, store;
 
 // === Public Functions ===
 
@@ -99,13 +107,14 @@ public fun new<Meme, Quote>(
     launch
 }
 
-/// Migrates a MigrationReady launch whose Meme is Cetus coin A into vault custody.
+/// Migrates a MigrationReady launch into vault custody. `CoinA` and `CoinB` name the launch's
+/// Meme and Quote in Cetus's canonical coin order.
 ///
 /// Creates the pair's pool with the reserved capability at the launch's tick spacing, priced from
 /// the handed-off balances, seeds full-range liquidity with exactly those balances, and burns the
 /// position. Any Cetus refusal, including a tier Cetus no longer registers, aborts the whole
 /// migration and leaves the launch MigrationReady.
-public fun migrate_meme_a<Meme, Quote>(
+public fun migrate<Meme, Quote, CoinA, CoinB>(
     launch: &mut Launch<Meme, Quote>,
     migrators_version: &MigratorsVersion,
     package_version: &PackageVersion,
@@ -118,7 +127,8 @@ public fun migrate_meme_a<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    assert!(factory::is_right_order<Meme, Quote>(), EInvalidCoinOrder);
+    assert!(factory::is_right_order<CoinA, CoinB>(), EInvalidCoinOrder);
+    let meme_is_a = meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
 
     let (tick_spacing, _) = launch.pool_tier();
     let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
@@ -126,118 +136,63 @@ public fun migrate_meme_a<Meme, Quote>(
     let (meme, quote) = launch.migrate(package_version, currency, Witness(), ctx);
     let meme_amount = meme.value();
     let quote_amount = quote.value();
+    let (coin_a, coin_b) = reorder(meme.into_coin(ctx), quote.into_coin(ctx), meme_is_a, ctx);
 
     // Meme is the fixed side when its atoms are at least the Quote atoms, and Quote otherwise: a
     // full-range seed fixed on the fewer atoms can need slightly more of the other asset than was
     // handed off. Cetus returns what it does not take as residual.
-    let (position, residual_meme, residual_quote) =
-        pool_creator::create_pool_v3_with_creation_cap<Meme, Quote>(
+    let (position, residual_a, residual_b) =
+        pool_creator::create_pool_v3_with_creation_cap<CoinA, CoinB>(
             cetus_config,
             pools,
             venue_config.pool_creation_cap<Meme>(),
             tick_spacing,
-            migration_math::sqrt_price_x64(meme_amount, quote_amount, true),
+            migration_math::sqrt_price_x64(meme_amount, quote_amount, meme_is_a),
             b"".to_string(),
             tick_lower,
             tick_upper,
-            meme.into_coin(ctx),
-            quote.into_coin(ctx),
-            meme_amount >= quote_amount,
+            coin_a,
+            coin_b,
+            (meme_amount >= quote_amount) == meme_is_a,
             clock,
             ctx,
         );
+    let (residual_meme, residual_quote) = reorder(residual_a, residual_b, meme_is_a, ctx);
 
     burn_into_vault(launch, burn_manager, position, residual_meme, residual_quote, ctx);
 }
 
-/// Migrates a MigrationReady launch whose Meme is Cetus coin B into vault custody.
-///
-/// Identical to `migrate_meme_a` with Quote as coin A, so the price is Meme per Quote.
-public fun migrate_meme_b<Meme, Quote>(
-    launch: &mut Launch<Meme, Quote>,
-    migrators_version: &MigratorsVersion,
-    package_version: &PackageVersion,
-    currency: &mut Currency<Meme>,
-    venue_config: &VenueConfig,
-    cetus_config: &GlobalConfig,
-    pools: &mut Pools,
-    burn_manager: &mut BurnManager,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    migrators_version.assert_current();
-    assert!(factory::is_right_order<Quote, Meme>(), EInvalidCoinOrder);
-
-    let (tick_spacing, _) = launch.pool_tier();
-    let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
-
-    let (meme, quote) = launch.migrate(package_version, currency, Witness(), ctx);
-    let meme_amount = meme.value();
-    let quote_amount = quote.value();
-
-    // Quote is coin A here, so the same rule fixes coin A exactly when Meme has fewer atoms.
-    let (position, residual_quote, residual_meme) =
-        pool_creator::create_pool_v3_with_creation_cap<Quote, Meme>(
-            cetus_config,
-            pools,
-            venue_config.pool_creation_cap<Meme>(),
-            tick_spacing,
-            migration_math::sqrt_price_x64(meme_amount, quote_amount, false),
-            b"".to_string(),
-            tick_lower,
-            tick_upper,
-            quote.into_coin(ctx),
-            meme.into_coin(ctx),
-            meme_amount < quote_amount,
-            clock,
-            ctx,
-        );
-
-    burn_into_vault(launch, burn_manager, position, residual_meme, residual_quote, ctx);
-}
-
-/// Collects the vault position's fees from its Meme-A pool, splits them, burns the burn share's
-/// Meme, and adds the auto-LP share back to the position. Anyone may call it.
-public fun collect_fees_meme_a<Meme, Quote>(
+/// Collects the vault position's fees from its pool, splits them, burns the burn share's Meme, and
+/// adds the auto-LP share back to the position. Anyone may call it. `CoinA` and `CoinB` are the
+/// pool's coin order.
+public fun collect_fees<Meme, Quote, CoinA, CoinB>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
     policy: &LpFeePolicy,
     currency: &mut Currency<Meme>,
     cetus_config: &GlobalConfig,
     burn_manager: &BurnManager,
-    pool: &mut Pool<Meme, Quote>,
+    pool: &mut Pool<CoinA, CoinB>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
+    let meme_is_a = meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
 
-    let (meme_fee, quote_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
+    let (meme_fee, quote_fee) = self.collect_position_fees(
+        cetus_config,
+        burn_manager,
+        pool,
+        meme_is_a,
+        ctx,
+    );
     self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
-    self.compound_meme_a(cetus_config, pool, clock, ctx);
+    self.compound(cetus_config, pool, meme_is_a, clock, ctx);
 }
 
-/// Collects the vault position's fees from its Meme-B pool, splits them, burns the burn share's
-/// Meme, and adds the auto-LP share back to the position. Anyone may call it.
-public fun collect_fees_meme_b<Meme, Quote>(
-    self: &mut LpVault<Meme, Quote>,
-    migrators_version: &MigratorsVersion,
-    policy: &LpFeePolicy,
-    currency: &mut Currency<Meme>,
-    cetus_config: &GlobalConfig,
-    burn_manager: &BurnManager,
-    pool: &mut Pool<Quote, Meme>,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    migrators_version.assert_current();
-
-    let (quote_fee, meme_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
-    self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
-    self.compound_meme_b(cetus_config, pool, clock, ctx);
-}
-
-/// Settles the Meme-A position's accrued fees under the current split, then commits `proposed`.
-public fun settle_and_update_fee_split_meme_a<Meme, Quote>(
+/// Settles the position's accrued fees under the current split, then commits `proposed`. `CoinA`
+/// and `CoinB` are the pool's coin order.
+public fun settle_and_update_fee_split<Meme, Quote, CoinA, CoinB>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
     policy: &LpFeePolicy,
@@ -246,90 +201,52 @@ public fun settle_and_update_fee_split_meme_a<Meme, Quote>(
     currency: &mut Currency<Meme>,
     cetus_config: &GlobalConfig,
     burn_manager: &BurnManager,
-    pool: &mut Pool<Meme, Quote>,
+    pool: &mut Pool<CoinA, CoinB>,
     proposed: FeeSplit,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
+    let meme_is_a = meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
     self.assert_fee_split_update(launch, curve_fee_cap, proposed);
 
-    let (meme_fee, quote_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
+    let (meme_fee, quote_fee) = self.collect_position_fees(
+        cetus_config,
+        burn_manager,
+        pool,
+        meme_is_a,
+        ctx,
+    );
     self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
-    self.compound_meme_a(cetus_config, pool, clock, ctx);
+    self.compound(cetus_config, pool, meme_is_a, clock, ctx);
 
     self.update_fee_split(proposed);
 }
 
-/// Settles the Meme-B position's accrued fees under the current split, then commits `proposed`.
-public fun settle_and_update_fee_split_meme_b<Meme, Quote>(
-    self: &mut LpVault<Meme, Quote>,
-    migrators_version: &MigratorsVersion,
-    policy: &LpFeePolicy,
-    launch: &Launch<Meme, Quote>,
-    curve_fee_cap: &CurveFeeCap<Meme>,
-    currency: &mut Currency<Meme>,
-    cetus_config: &GlobalConfig,
-    burn_manager: &BurnManager,
-    pool: &mut Pool<Quote, Meme>,
-    proposed: FeeSplit,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    migrators_version.assert_current();
-    self.assert_fee_split_update(launch, curve_fee_cap, proposed);
-
-    let (quote_fee, meme_fee) = self.collect_position_fees(cetus_config, burn_manager, pool, ctx);
-    self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
-    self.compound_meme_b(cetus_config, pool, clock, ctx);
-
-    self.update_fee_split(proposed);
-}
-
-/// Swaps the vault's burn Quote for Meme in its Meme-A pool and burns it, under a buyback admin.
-/// Aborts unless the swap returns at least `min_meme_out`; the admin sets it from an off-chain
-/// price, since anyone can move the pool's price within a transaction.
-public fun buyback_and_burn_meme_a<Meme, Quote>(
+/// Swaps the vault's burn Quote for Meme in its pool and burns it, under a buyback admin. Aborts
+/// unless the swap returns at least `min_meme_out`; the admin sets it from an off-chain price,
+/// since anyone can move the pool's price within a transaction. `CoinA` and `CoinB` are the pool's
+/// coin order.
+public fun buyback_and_burn<Meme, Quote, CoinA, CoinB>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
     admin_witness: &AdminWitness<BuybackAdmin>,
     currency: &mut Currency<Meme>,
     cetus_config: &GlobalConfig,
-    pool: &mut Pool<Meme, Quote>,
+    pool: &mut Pool<CoinA, CoinB>,
     min_meme_out: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
+    let meme_is_a = meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
     assert!(self.pool_id() == object::id(pool), EPositionPoolMismatch);
 
     let quote = self.take_buyback_quote(admin_witness);
     let quote_in = quote.value();
-    let (meme, quote) = swap(cetus_config, pool, balance::zero(), quote, false, clock);
-
-    self.burn_buyback(currency, meme, quote, quote_in, min_meme_out, ctx);
-}
-
-/// Swaps the vault's burn Quote for Meme in its Meme-B pool and burns it, under a buyback admin.
-///
-/// Identical to `buyback_and_burn_meme_a` with Quote as coin A.
-public fun buyback_and_burn_meme_b<Meme, Quote>(
-    self: &mut LpVault<Meme, Quote>,
-    migrators_version: &MigratorsVersion,
-    admin_witness: &AdminWitness<BuybackAdmin>,
-    currency: &mut Currency<Meme>,
-    cetus_config: &GlobalConfig,
-    pool: &mut Pool<Quote, Meme>,
-    min_meme_out: u64,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    migrators_version.assert_current();
-    assert!(self.pool_id() == object::id(pool), EPositionPoolMismatch);
-
-    let quote = self.take_buyback_quote(admin_witness);
-    let quote_in = quote.value();
-    let (quote, meme) = swap(cetus_config, pool, quote, balance::zero(), true, clock);
+    let (a, b) = reorder(balance::zero<Meme>(), quote, meme_is_a, ctx);
+    let (a, b) = swap(cetus_config, pool, a, b, !meme_is_a, clock);
+    let (meme, quote) = reorder(a, b, meme_is_a, ctx);
 
     self.burn_buyback(currency, meme, quote, quote_in, min_meme_out, ctx);
 }
@@ -366,70 +283,47 @@ fun burn_into_vault<Meme, Quote>(
 }
 
 /// Collects the burned migration position's fees and, once it exists, the auto-LP position's fees
-/// from `pool`, which must be the vault's own pool.
-fun collect_position_fees<X, Y, Meme, Quote>(
+/// from `pool`, which must be the vault's own pool, and returns them as Meme and Quote.
+fun collect_position_fees<Meme, Quote, CoinA, CoinB>(
     self: &mut LpVault<Meme, Quote>,
     cetus_config: &GlobalConfig,
     burn_manager: &BurnManager,
-    pool: &mut Pool<X, Y>,
+    pool: &mut Pool<CoinA, CoinB>,
+    meme_is_a: bool,
     ctx: &mut TxContext,
-): (Balance<X>, Balance<Y>) {
+): (Balance<Meme>, Balance<Quote>) {
     assert!(self.pool_id() == object::id(pool), EPositionPoolMismatch);
 
     let burn_proof = self.position_mut<_, _, _, CetusLPBurnProof>(&Venue());
-    let (fee_x, fee_y) = lp_burn::collect_fee(burn_manager, cetus_config, pool, burn_proof, ctx);
-    let mut fee_x = fee_x.into_balance();
-    let mut fee_y = fee_y.into_balance();
+    let (fee_a, fee_b) = lp_burn::collect_fee(burn_manager, cetus_config, pool, burn_proof, ctx);
+    let mut fee_a = fee_a.into_balance();
+    let mut fee_b = fee_b.into_balance();
 
     if (self.has_auto_lp_position(&Venue())) {
         let position = self.auto_lp_position<_, _, _, Position>(&Venue());
-        let (auto_lp_x, auto_lp_y) = pool::collect_fee(cetus_config, pool, position, true);
-        fee_x.join(auto_lp_x);
-        fee_y.join(auto_lp_y);
+        let (auto_lp_a, auto_lp_b) = pool::collect_fee(cetus_config, pool, position, true);
+        fee_a.join(auto_lp_a);
+        fee_b.join(auto_lp_b);
     };
 
-    (fee_x, fee_y)
+    reorder(fee_a, fee_b, meme_is_a, ctx)
 }
 
-/// Adds the waiting auto-LP balances to the position in its Meme-A pool.
-fun compound_meme_a<Meme, Quote>(
+/// Adds the waiting auto-LP balances to the auto-LP position in the vault's pool.
+fun compound<Meme, Quote, CoinA, CoinB>(
     self: &mut LpVault<Meme, Quote>,
     cetus_config: &GlobalConfig,
-    pool: &mut Pool<Meme, Quote>,
+    pool: &mut Pool<CoinA, CoinB>,
+    meme_is_a: bool,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     let (meme, quote) = self.take_auto_lp();
-    let (meme, quote, added_meme, added_quote) = self.add_liquidity(
-        cetus_config,
-        pool,
-        meme,
-        quote,
-        clock,
-        ctx,
-    );
+    let (a, b) = reorder(meme, quote, meme_is_a, ctx);
+    let (a, b, added_a, added_b) = self.add_liquidity(cetus_config, pool, a, b, clock, ctx);
 
-    self.keep_auto_lp(added_meme, added_quote, meme, quote);
-}
-
-/// Adds the waiting auto-LP balances to the position in its Meme-B pool.
-fun compound_meme_b<Meme, Quote>(
-    self: &mut LpVault<Meme, Quote>,
-    cetus_config: &GlobalConfig,
-    pool: &mut Pool<Quote, Meme>,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    let (meme, quote) = self.take_auto_lp();
-    let (quote, meme, added_quote, added_meme) = self.add_liquidity(
-        cetus_config,
-        pool,
-        quote,
-        meme,
-        clock,
-        ctx,
-    );
-
+    let (meme, quote) = reorder(a, b, meme_is_a, ctx);
+    let (added_meme, added_quote) = if (meme_is_a) (added_a, added_b) else (added_b, added_a);
     self.keep_auto_lp(added_meme, added_quote, meme, quote);
 }
 
@@ -524,6 +418,60 @@ fun swap<A, B>(
     (a, b)
 }
 
+/// Whether Meme is `CoinA`, after proving `(CoinA, CoinB)` is exactly the launch's Meme and Quote.
+fun meme_is_coin_a<Meme, Quote, CoinA, CoinB>(): bool {
+    let (meme, quote) = (type_name::with_original_ids<Meme>(), type_name::with_original_ids<Quote>());
+    let (a, b) = (type_name::with_original_ids<CoinA>(), type_name::with_original_ids<CoinB>());
+    assert!((meme == a && quote == b) || (meme == b && quote == a), EWrongCoinPair);
+
+    meme == a
+}
+
+/// Retypes a pair between Meme-and-Quote order and the pool's coin order: it keeps `(x, y)` in
+/// place when Meme is coin A and swaps them otherwise, which maps either order onto the other.
+/// Each value moves through `cast`, so the framework aborts unless its type is unchanged.
+fun reorder<X: store, Y: store, First: store, Second: store>(
+    x: X,
+    y: Y,
+    meme_is_a: bool,
+    ctx: &mut TxContext,
+): (First, Second) {
+    let mut scratch = object::new(ctx);
+    let (first, second) = if (meme_is_a) {
+        (cast(&mut scratch, x), cast(&mut scratch, y))
+    } else {
+        (cast(&mut scratch, y), cast(&mut scratch, x))
+    };
+    scratch.delete();
+
+    (first, second)
+}
+
+/// Retypes `value` as `To` through a dynamic field on `scratch`. Removal succeeds only under the
+/// stored type, so this aborts with the framework's `EFieldTypeMismatch` unless `From` and `To` are
+/// the same type; `meme_is_coin_a` has already proven that for every call.
+fun cast<From: store, To: store>(scratch: &mut UID, value: From): To {
+    dynamic_field::add(scratch, CastKey(), value);
+    dynamic_field::remove(scratch, CastKey())
+}
+
+// === Test-Only Functions ===
+
+#[test_only]
+public fun meme_is_coin_a_for_testing<Meme, Quote, CoinA, CoinB>(): bool {
+    meme_is_coin_a<Meme, Quote, CoinA, CoinB>()
+}
+
+#[test_only]
+public fun reorder_for_testing<X: store, Y: store, First: store, Second: store>(
+    x: X,
+    y: Y,
+    meme_is_a: bool,
+    ctx: &mut TxContext,
+): (First, Second) {
+    reorder(x, y, meme_is_a, ctx)
+}
+
 // === Imports ===
 
 use blast_admin::blast_acl::AdminWitness;
@@ -559,15 +507,21 @@ use cetus_clmm::{
 
 use lp_burn::lp_burn::{Self, BurnManager, CetusLPBurnProof};
 
-use sui::{balance::{Self, Balance}, clock::Clock, coin::Coin, coin_registry::Currency};
+use std::type_name;
+
+use sui::{
+    balance::{Self, Balance},
+    clock::Clock,
+    coin::Coin,
+    coin_registry::Currency,
+    dynamic_field,
+};
 
 use fun add_liquidity as LpVault.add_liquidity;
 
 use fun collect_position_fees as LpVault.collect_position_fees;
 
-use fun compound_meme_a as LpVault.compound_meme_a;
-
-use fun compound_meme_b as LpVault.compound_meme_b;
+use fun compound as LpVault.compound;
 
 use fun pool_creation_cap as VenueConfig.pool_creation_cap;
 

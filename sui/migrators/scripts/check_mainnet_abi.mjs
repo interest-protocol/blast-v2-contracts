@@ -44,6 +44,7 @@ const INTEGER_MATE_GIT = 'https://github.com/CetusProtocol/integer-mate.git';
 const INTEGER_LIBRARY_GIT =
     'https://github.com/fireflyprotocol/integer-library.git';
 const MOVE_STL_GIT = 'https://github.com/CetusProtocol/move-stl.git';
+const BLAST_UTIL_GIT = 'https://github.com/interest-protocol/blast-util-contracts.git';
 
 /// Every Git revision the built graph is allowed to resolve to.
 const REV = {
@@ -55,6 +56,7 @@ const REV = {
     integerMateBluefin: '06660f704c4ac1d443ab62346a46b5b60d49df33',
     integerLibrary: '8a534bd1c0b334cd3937c27987f3147a06ba6a18',
     moveStl: '0681fec63a310ae753d03a06f7c05d3e2925bb09',
+    blastTimelock: '63b6cf86c0e1a74f699610fe182b1de8d8789a14',
 };
 
 /// The mainnet packages the pinned Git revisions of Cetus's libraries declare as `published-at`:
@@ -517,11 +519,30 @@ const LOCK_NODES = {
     // it pins the same framework revision and adds no venue dependency.
     blast_admin: {
         source: { local: '../admin' },
-        deps: { Sui: 'Sui_2' },
+        deps: { Sui: 'Sui_2', blast_fun_timelock: 'blast_fun_timelock' },
     },
     blast_fun: {
         source: { local: '../launchpad' },
-        deps: { blast_admin: 'blast_admin', std: 'MoveStdlib_2', sui: 'Sui_2' },
+        deps: {
+            blast_admin: 'blast_admin',
+            blast_partners: 'blast_partners',
+            std: 'MoveStdlib_2',
+            sui: 'Sui_2',
+        },
+    },
+    // The ACL's timelocked root transfer (ADR 0097) and launchpad partners (ADR 0098).
+    blast_fun_timelock: {
+        source: { git: BLAST_UTIL_GIT, subdir: 'sui/timelock', rev: REV.blastTimelock },
+        deps: { std: 'MoveStdlib_2', sui: 'Sui_2' },
+    },
+    blast_partners: {
+        source: { local: '../partners' },
+        deps: {
+            blast_admin: 'blast_admin',
+            blast_fun_timelock: 'blast_fun_timelock',
+            std: 'MoveStdlib_2',
+            sui: 'Sui_2',
+        },
     },
     blast_fun_migrators: {
         source: { root: true },
