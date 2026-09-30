@@ -26,6 +26,7 @@ identified only through its package marker; ADR 0085 records why.
 | `blast_boosts_aftermath` | Publisher marker | `aftermath::AFTERMATH` | `blast_boosts_aftermath::BLAST_BOOSTS_AFTERMATH` |
 | `blast_boosts_core` | administration roles shared with the adapter; no one-time witness or Publisher (ADR 0097) | `blast_boosts_core::BLAST_BOOSTS_CORE` | `blast_boosts_core::VaultIssuer`, `RiskAdmin`, `ShutdownAdmin`, `UpgradeAdmin` |
 | `blast_partners` | administration role (ADR 0097); no one-time witness or Publisher | `blast_partners::BLAST_PARTNERS` (ADR 0095) | `blast_partners::PartnerAdmin` |
+| `blast_presale` | administration role (ADR 0097, ADR 0099); no one-time witness or Publisher | — | `blast_presale_domain::RewardsAdmin` |
 | `blast_boosts_products` | Publisher marker (new package) | — | `blast_boosts_products::BLAST_BOOSTS_PRODUCTS` |
 | `blast_admin` | `blast_acl` shares the singleton ACL from `init`; no one-time witness | — | — |
 | `meme_template` | generated package one-time witness | `meme::MEME` | unchanged name; the generated package's one-time witness, renamed per launch by the SDK template |

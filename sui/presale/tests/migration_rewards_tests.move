@@ -8,6 +8,7 @@ module blast_presale::migration_rewards_tests;
 
 const CREATOR: address = @0xC0FFEE;
 const HOLDER: address = @0xA11CE;
+const PARTNER: address = @0xFEE;
 
 // === Test-Only Types ===
 
@@ -17,38 +18,93 @@ public struct QUOTE() has drop;
 // === Tests ===
 
 #[test]
-fun collected_fees_follow_the_creation_time_bps() {
-    let mut ctx = tx_context::dummy();
+/// Each collection pays every fee recipient at once, keeps the holder share, and
+/// assigns every atomic unit exactly once.
+fun collected_fees_pay_recipients_and_keep_the_holder_share() {
+    let mut scenario = test_scenario::begin(CREATOR);
     let presale_id = object::id_from_address(@0xCAFE);
-    let cap = presale::cap_for_testing(presale_id, &mut ctx);
+    let cap = presale::cap_for_testing(presale_id, scenario.ctx());
     let mut vault = vault::new_for_testing<MEME, QUOTE>(
         presale_id,
         object::id(&cap),
-        7_000,
+        vector[
+            presale::fee_recipient(CREATOR, 5_000),
+            presale::fee_recipient(PARTNER, 2_000),
+        ],
         3_000,
-        &mut ctx,
+        scenario.ctx(),
     );
+
     vault.credit_fees_for_testing(
-        coin::mint_for_testing<MEME>(100, &mut ctx).into_balance(),
-        coin::mint_for_testing<QUOTE>(10, &mut ctx).into_balance(),
-    );
-    let (creator_meme, creator_quote, reward_meme, reward_quote) = vault
-        .fee_balances_for_testing();
-    assert_eq!(
-        vector[creator_meme, creator_quote, reward_meme, reward_quote],
-        vector[70, 7, 30, 3],
+        coin::mint_for_testing<MEME>(101, scenario.ctx()).into_balance(),
+        coin::mint_for_testing<QUOTE>(10, scenario.ctx()).into_balance(),
+        scenario.ctx(),
     );
 
-    let (creator_meme_coin, creator_quote_coin) = vault.claim_creator_fees(&cap, &mut ctx);
-    assert_eq!(creator_meme_coin.burn_for_testing(), 70);
-    assert_eq!(creator_quote_coin.burn_for_testing(), 7);
+    let (_, _, recipients, recipient_meme, recipient_quote, rewards_meme, rewards_quote) =
+        only_event<FeesCollected<MEME, QUOTE>>().fees_collected_fields();
+    assert_eq!(recipients, vector[CREATOR, PARTNER]);
+    assert_eq!(recipient_meme, vector[51, 20]);
+    assert_eq!(recipient_quote, vector[5, 2]);
+    assert_eq!(vector[rewards_meme, rewards_quote], vector[30, 3]);
+    let (vault_meme, vault_quote) = vault.rewards_balances();
+    assert_eq!(vector[vault_meme, vault_quote], vector[30, 3]);
+    scenario.next_tx(CREATOR);
+    assert_eq!(scenario.take_from_sender<Coin<MEME>>().burn_for_testing(), 51);
+    assert_eq!(scenario.take_from_sender<Coin<QUOTE>>().burn_for_testing(), 5);
+    scenario.next_tx(PARTNER);
+    assert_eq!(scenario.take_from_sender<Coin<MEME>>().burn_for_testing(), 20);
+    assert_eq!(scenario.take_from_sender<Coin<QUOTE>>().burn_for_testing(), 2);
+
     let (reward_meme, reward_quote) = vault.fund_round(10, 30, 3);
-    assert_eq!(reward_meme.into_coin(&mut ctx).burn_for_testing(), 30);
-    assert_eq!(reward_quote.into_coin(&mut ctx).burn_for_testing(), 3);
-
+    reward_meme.destroy_for_testing();
+    reward_quote.destroy_for_testing();
     vault.destroy_for_testing();
     destroy(cap);
-    destroy(ctx);
+    scenario.end();
+}
+
+#[test]
+/// Blast's rewards administrator, not the presale creator, funds holder rounds.
+fun the_rewards_admin_publishes_holder_rounds_from_the_holder_share() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let presale_id = object::id_from_address(@0xCAFE);
+    let mut vault = vault::new_for_testing<MEME, QUOTE>(
+        presale_id,
+        object::id_from_address(@0xCA9),
+        vector[],
+        10_000,
+        scenario.ctx(),
+    );
+    vault.credit_fees_for_testing(
+        coin::mint_for_testing<MEME>(40, scenario.ctx()).into_balance(),
+        coin::mint_for_testing<QUOTE>(5, scenario.ctx()).into_balance(),
+        scenario.ctx(),
+    );
+
+    rewards::publish_round(
+        &mut vault,
+        &blast_acl::witness_for_testing<RewardsAdmin>(),
+        0,
+        0,
+        10,
+        hash::blake2b256(&b"root"),
+        hash::blake2b256(&b"manifest"),
+        1,
+        40,
+        5,
+        scenario.ctx(),
+    );
+
+    let (vault_meme, vault_quote) = vault.rewards_balances();
+    assert_eq!(vector[vault_meme, vault_quote], vector[0, 0]);
+    vault.destroy_for_testing();
+    scenario.next_tx(CREATOR);
+    let round = scenario.take_shared<Round<MEME, QUOTE>>();
+    let (round_meme, round_quote) = round.balances_for_testing();
+    assert_eq!(vector[round_meme, round_quote], vector[40, 5]);
+    test_scenario::return_shared(round);
+    scenario.end();
 }
 
 #[test]
@@ -85,15 +141,26 @@ fun generic_merkle_proofs_preserve_left_and_right_order() {
     assert!(!merkle_tree::verify(root, right, 2, 2, &vector[left]));
 }
 
+// === Test Helpers ===
+
+fun only_event<Event: copy + drop>(): Event {
+    let events = event::events_by_type<Event>();
+    assert_eq!(events.length(), 1);
+    events[0]
+}
+
 // === Imports ===
+
+use blast_admin::blast_acl;
 
 use blast_presale::{
     blast_presale as presale,
-    holder_rewards as rewards,
+    blast_presale_domain::RewardsAdmin,
+    holder_rewards::{Self as rewards, Round},
     merkle_tree,
-    presale_vault as vault,
+    presale_vault::{Self as vault, FeesCollected},
 };
 
 use std::unit_test::{assert_eq, destroy};
 
-use sui::{coin::{Self, Coin}, hash, test_scenario};
+use sui::{coin::{Self, Coin}, event, hash, test_scenario};

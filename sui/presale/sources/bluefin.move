@@ -27,7 +27,7 @@ public fun new<Meme, Quote>(
     duration_ms: u64,
     liquidity_window_ms: u64,
     eligibility: EligibilityPolicy,
-    creator_fee_bps: u64,
+    fee_recipients: vector<FeeRecipient>,
     rewards_fee_bps: u64,
     tick_spacing: u32,
     fee_rate: u64,
@@ -56,7 +56,7 @@ public fun new<Meme, Quote>(
         Witness(),
         tick_spacing,
         fee_rate,
-        creator_fee_bps,
+        fee_recipients,
         rewards_fee_bps,
         ctx,
     )
@@ -72,7 +72,7 @@ public fun migrate<Meme, Quote>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let (presale_id, presale_cap_id, tick_spacing, fee_rate, creator_fee_bps, rewards_fee_bps) = sale
+    let (presale_id, presale_cap_id, tick_spacing, fee_rate, fee_recipients, rewards_fee_bps) = sale
         .migration_config();
     let (meme, quote) = sale.migrate(Witness(), ctx);
     let source_meme = meme.value();
@@ -124,7 +124,7 @@ public fun migrate<Meme, Quote>(
         pool_id,
         position,
         liquidity,
-        creator_fee_bps,
+        fee_recipients,
         rewards_fee_bps,
         residual_meme,
         residual_quote,
@@ -133,18 +133,19 @@ public fun migrate<Meme, Quote>(
     pool.share_pool_object();
 }
 
-/// Anyone may collect LP fees into the configured creator and holder-reward shares.
+/// Anyone may collect LP fees, paying each fee recipient and accruing the holder-reward share.
 public fun collect_fees<Meme, Quote>(
     vault: &mut PresaleVault<Meme, Quote>,
     bluefin_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
     clock: &Clock,
+    ctx: &mut TxContext,
 ) {
     let position = vault.position_mut<_, _, _, Position>(&Venue());
     assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
     let (_, _, meme, quote) = pool::collect_fee(clock, bluefin_config, pool, position);
 
-    vault.split_fees(meme, quote);
+    vault.split_fees(meme, quote, ctx);
 }
 
 // === Constants ===
@@ -166,6 +167,7 @@ use blast_presale::{
     blast_presale::{
         Self as presale,
         EligibilityPolicy,
+        FeeRecipient,
         Presale,
         PresaleCap,
         RecipientAllocation,
