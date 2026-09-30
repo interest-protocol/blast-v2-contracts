@@ -45,9 +45,7 @@ public fun authorize_upgrade(
     _: &AdminWitness<UpgradeAdmin>,
     digest: vector<u8>,
 ): UpgradeTicket {
-    let custodian_id = self.id.to_inner();
-
-    self.custody.authorize_upgrade(custodian_id, digest)
+    self.custody.authorize_upgrade(self.id.to_inner(), digest)
 }
 
 /// Commits the native receipt into the same sealed cap that authorized it.
@@ -56,9 +54,7 @@ public fun commit_upgrade(
     _: &AdminWitness<UpgradeAdmin>,
     receipt: UpgradeReceipt,
 ) {
-    let custodian_id = self.id.to_inner();
-
-    self.custody.commit_upgrade(custodian_id, receipt);
+    self.custody.commit_upgrade(self.id.to_inner(), receipt);
 }
 
 // === Test-Only Functions ===

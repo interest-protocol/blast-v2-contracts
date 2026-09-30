@@ -245,8 +245,13 @@ fun collect_position_fees<X, Y, Meme, Quote>(
 ): (Balance<X>, Balance<Y>) {
     assert!(vault.pool_id() == object::id(pool), EPositionPoolMismatch);
 
-    let burn_proof = vault.position_mut<_, _, _, CetusLPBurnProof>(&Venue());
-    let (fee_x, fee_y) = lp_burn::collect_fee(burn_manager, cetus_config, pool, burn_proof, ctx);
+    let (fee_x, fee_y) = lp_burn::collect_fee(
+        burn_manager,
+        cetus_config,
+        pool,
+        vault.position_mut<_, _, _, CetusLPBurnProof>(&Venue()),
+        ctx,
+    );
 
     (fee_x.into_balance(), fee_y.into_balance())
 }

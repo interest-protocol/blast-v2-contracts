@@ -404,35 +404,6 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
     let cap = PresaleCap { id: object::new(ctx), presale_id };
     let presale_cap_id = cap.id.to_inner();
     let migration_witness = type_name::with_original_ids<MigrationWitness>();
-    let recipient_count = recipient_allocations.length();
-    let fee_recipient_addresses = fee_recipient_addresses(&fee_recipients);
-    let fee_recipient_bps = fee_recipient_bps(&fee_recipients);
-
-    let presale = Presale {
-        id,
-        presale_cap_id,
-        lifecycle: Lifecycle::Pending,
-        duration_ms,
-        liquidity_window_ms,
-        end_ms: 0,
-        liquidity_deadline_ms: 0,
-        raise_target,
-        eligibility,
-        migration_witness,
-        tick_spacing,
-        fee_rate,
-        fee_recipients,
-        rewards_fee_bps,
-        total_commitments: 0,
-        remaining_commitments: 0,
-        participants: 0,
-        quote: balance::zero(),
-        token_allocation,
-        sale_tokens,
-        liquidity_tokens,
-        recipient_allocations,
-        recipient_tokens,
-    };
 
     event::emit(PresaleCreated<SaleToken, Quote> {
         presale_id,
@@ -441,7 +412,7 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         token_supply,
         token_allocation_bps,
         liquidity_token_allocation_bps,
-        recipient_count,
+        recipient_count: recipient_allocations.length(),
         burnable,
         raise_target,
         duration_ms,
@@ -450,12 +421,39 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         migration_witness,
         tick_spacing,
         fee_rate,
-        fee_recipients: fee_recipient_addresses,
-        fee_recipient_bps,
+        fee_recipients: fee_recipient_addresses(&fee_recipients),
+        fee_recipient_bps: fee_recipient_bps(&fee_recipients),
         rewards_fee_bps,
     });
 
-    (presale, cap)
+    (
+        Presale {
+            id,
+            presale_cap_id,
+            lifecycle: Lifecycle::Pending,
+            duration_ms,
+            liquidity_window_ms,
+            end_ms: 0,
+            liquidity_deadline_ms: 0,
+            raise_target,
+            eligibility,
+            migration_witness,
+            tick_spacing,
+            fee_rate,
+            fee_recipients,
+            rewards_fee_bps,
+            total_commitments: 0,
+            remaining_commitments: 0,
+            participants: 0,
+            quote: balance::zero(),
+            token_allocation,
+            sale_tokens,
+            liquidity_tokens,
+            recipient_allocations,
+            recipient_tokens,
+        },
+        cap,
+    )
 }
 
 /// Releases the exact raise and LP-token allocation only to the configured
