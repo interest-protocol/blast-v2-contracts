@@ -35,15 +35,8 @@ public(package) fun verify(
     leaves: u64,
     proof: &vector<vector<u8>>,
 ): bool {
-    let mut width = leaves;
-    let mut depth = 0;
-    while (width > 1) {
-        width = width.div_ceil(2);
-        depth = depth + 1;
-    };
-
     if (
-        proof.length() != depth
+        proof.length() != proof_depth(leaves)
             || !proof.all!(|sibling| sibling.length() == constants::digest_length!())
     ) return false;
 
@@ -56,6 +49,18 @@ public(package) fun verify(
 }
 
 // === Private Functions ===
+
+/// Counts the levels a proof climbs over `leaves` leaves: an odd node at any level is promoted.
+fun proof_depth(leaves: u64): u64 {
+    let mut width = leaves;
+    let mut depth = 0;
+    while (width > 1) {
+        width = width.div_ceil(2);
+        depth = depth + 1;
+    };
+
+    depth
+}
 
 fun node(left: vector<u8>, right: vector<u8>): vector<u8> {
     let mut bytes = vector[1u8];

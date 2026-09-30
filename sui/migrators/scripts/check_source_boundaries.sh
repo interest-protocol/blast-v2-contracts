@@ -255,11 +255,13 @@ blast_holder_rewards: package_version::PackageVersion as MigratorsVersion
 bluefin: collect_position_fees as LpVault.collect_position_fees
 bluefin: compound as LpVault.compound
 bluefin: package_version::PackageVersion as MigratorsVersion
+bluefin: settle_fees as LpVault.settle_fees
 cetus: add_liquidity as LpVault.add_liquidity
 cetus: collect_position_fees as LpVault.collect_position_fees
 cetus: compound as LpVault.compound
 cetus: package_version::PackageVersion as MigratorsVersion
 cetus: pool_creation_cap as VenueConfig.pool_creation_cap
+cetus: settle_fees as LpVault.settle_fees
 lp_fee_policy: package_version::PackageVersion as MigratorsVersion
 vault: dynamic_object_field::add as UID.add_dynamic_object_field
 vault: dynamic_object_field::borrow as UID.dynamic_object_field
@@ -356,18 +358,17 @@ require_pattern "$MIGRATION_MATH_SOURCE" \
     'integer_sqrt\(ratio_q128\(meme_amount, quote_amount, meme_is_coin_a\)\)' \
     'exact Q128 price derivation'
 # Auto-LP side selection adds nothing unless the price is strictly inside the range, checked first
-# so every later subtraction is positive; an empty side yields zero liquidity or a need it cannot
-# meet, and whichever side it fixes leaves the pinned margin of the other unused.
-math_fixed_side_body="$(move_facts "$MIGRATION_MATH_SOURCE" \
-    | awk -F'\t' '$1 == "FN" && $2 == "auto_lp_fixed_side" { print $10 }' | tr -d '[:space:]')"
+# so every later subtraction is positive, and then prefers fixing coin A. Each side's check needs
+# positive liquidity (below 2^128 when fixing A) and leaves the pinned margin of the other unused;
+# an empty side yields zero liquidity or a need it cannot meet.
+math_body() {
+    move_facts "$MIGRATION_MATH_SOURCE" | awk -F'\t' -v name="$1" '$1 == "FN" && $2 == name { print $10 }' \
+        | tr -d '[:space:]'
+}
 [[ "$(constant_body auto_lp_margin)" == '2' ]] \
-    && [[ "$math_fixed_side_body" == 'if(sqrt_price<=sqrt_lower||sqrt_price>=sqrt_upper)return(true,0);'* ]] \
-    && in_order \
-        'if(sqrt_price<=sqrt_lower||sqrt_price>=sqrt_upper)return(true,0);' \
-        'if(needed_b+constants::auto_lp_margin!()<=(amount_basu256))return(true,amount_a);' \
-        'if(needed_a+constants::auto_lp_margin!()<=(amount_aasu256))return(false,amount_b);' \
-        <<<"$math_fixed_side_body" \
-    && [[ "$math_fixed_side_body" == *'(true,0)' ]] || \
+    && [[ "$(math_body auto_lp_fixed_side)" == 'if(sqrt_price<=sqrt_lower||sqrt_price>=sqrt_upper)return(true,0);let(lower,price,upper)=(sqrt_lowerasu256,sqrt_priceasu256,sqrt_upperasu256);if(can_fix_a(lower,price,upper,amount_a,amount_b))(true,amount_a)elseif(can_fix_b(lower,price,upper,amount_a,amount_b))(false,amount_b)else(true,0)' ]] \
+    && [[ "$(math_body can_fix_a)" == 'letone=1u256<<constants::q64_shift!();letliquidity=(amount_aasu256)*(price*upper/one)/(upper-price);if(liquidity==0||liquidity>=(1u256<<constants::q128_shift!()))returnfalse;letneeded_b=(liquidity*(price-lower)).div_ceil(one);needed_b+constants::auto_lp_margin!()<=(amount_basu256)' ]] \
+    && [[ "$(math_body can_fix_b)" == 'letliquidity=((amount_basu256)<<constants::q64_shift!())/(price-lower);if(liquidity==0)returnfalse;letneeded_a=(liquidity<<constants::q64_shift!()).div_ceil(price)-(liquidity<<constants::q64_shift!())/upper;needed_a+constants::auto_lp_margin!()<=(amount_aasu256)' ]] || \
     fail "auto-LP side selection must first skip out-of-range prices, prefer coin A, and keep a two-atom margin"
 if rg -q '\b(blast_fun::(constants|errors)|UID|key|Balance|Coin|TxContext|transfer::|blast_events::|RuntimeConfig)\b' \
     "$MIGRATION_MATH_SOURCE"; then
@@ -661,6 +662,7 @@ in_order \
 in_order \
     'migrators_version.assert_current();' \
     'assert!(index<self.leaf_count,EInvalidIndex);' \
+    'let(word,bit)=claim_bit(index);' \
     'assert!(self.claimed[word]&bit==0,EAlreadyClaimed);' \
     'assert!(beneficiary!=@0x0,EInvalidBeneficiary);' \
     'assert!(meme_amount>0||quote_amount>0,EEmptyBudget);' \
@@ -671,8 +673,9 @@ in_order \
     'transfer::public_transfer(self.quote.split(quote_amount).into_coin(ctx),beneficiary);' \
     'blast_events::reward_paid(' \
     <<<"$(rewards_body claim)" \
-    && [[ "$(rewards_body claim)" == 'migrators_version.assert_current();'* ]] || \
-    fail "claims must check the generation first, reject a used or invalid leaf before proof work, mark it, and pay only its beneficiary"
+    && [[ "$(rewards_body claim)" == 'migrators_version.assert_current();'* ]] \
+    && [[ "$(rewards_body claim_bit)" == '(index/256,1u256<<((index%256)asu8))' ]] || \
+    fail "claims must check the generation first, reject a used or invalid leaf before proof work, mark its own bitmap bit, and pay only its beneficiary"
 [[ "$(for source in "$SOURCE_DIR"/*.move; do
         move_facts "$source" | awk -F'\t' -v module="$(basename "$source" .move)" \
             '$1 == "FN" && $6 == 0 && index($10, "fund_round(") > 0 { print module ":" $2 }'
@@ -709,7 +712,9 @@ rg -q '^    let mut bytes = b"\\x00blast-holder-rewards-v1";$' "$MERKLE_SOURCE" 
     && [[ "$(move_facts "$MERKLE_SOURCE" | awk -F'\t' '$1 == "FN" && $2 == "node" { print $10 }' \
         | tr -d '[:space:]')" == 'letmutbytes=vector[1u8];bytes.append(left);bytes.append(right);hash::blake2b256(&bytes)' ]] \
     && [[ "$(move_facts "$MERKLE_SOURCE" | awk -F'\t' '$1 == "FN" && $2 == "verify" { print $10 }' \
-        | tr -d '[:space:]')" == 'letmutwidth=leaves;letmutdepth=0;while(width>1){width=width.div_ceil(2);depth=depth+1;};if(proof.length()!=depth||!proof.all!(|sibling|sibling.length()==constants::digest_length!()))returnfalse;proof.do_ref!(|sibling|{digest=if(index%2==0)node(digest,*sibling)elsenode(*sibling,digest);index=index/2;});digest==root' ]] \
+        | tr -d '[:space:]')" == 'if(proof.length()!=proof_depth(leaves)||!proof.all!(|sibling|sibling.length()==constants::digest_length!()))returnfalse;proof.do_ref!(|sibling|{digest=if(index%2==0)node(digest,*sibling)elsenode(*sibling,digest);index=index/2;});digest==root' ]] \
+    && [[ "$(move_facts "$MERKLE_SOURCE" | awk -F'\t' '$1 == "FN" && $2 == "proof_depth" { print $10 }' \
+        | tr -d '[:space:]')" == 'letmutwidth=leaves;letmutdepth=0;while(width>1){width=width.div_ceil(2);depth=depth+1;};depth' ]] \
     && ! move_facts "$MERKLE_SOURCE" | awk -F'\t' '$1 == "FN" && $3 == "public" && $6 == 0 { found = 1 }
         END { exit !found }' || \
     fail "merkle leaves must bind the vault-domain leaf fields under the leaf domain, nodes their own domain, with package-only verification of proof depth and sibling length"
@@ -764,35 +769,33 @@ bluefin_body() {
     && [[ "$(constant_body bluefin_max_fee_rate)" == '20_000' ]] || \
     fail "bluefin::new must bound the tier to Bluefin's 1..=400 tick spacing and 1..=20,000 fee rate, then only start the launch through the core"
 bluefin_migrate_body="$(bluefin_body migrate)"
+# Migration reads the tier from the launch and the full-range bounds from Bluefin's config, names
+# the pool, begins, creates the pool priced from the handed-off balances with the caller's whole
+# creation fee, opens and seeds a full-range position, completes once into a shared vault holding
+# the position, then shares the pool.
+[[ "$bluefin_migrate_body" == 'migrators_version.assert_current();let(tick_spacing,fee_rate)=launch.pool_tier();let(lower_tick,upper_tick)=full_range_tick_range(bluefin_config,tick_spacing);letpool_name=pool_name(currency,quote_currency);let(meme,quote)=launch.migrate(package_version,currency,Witness(),ctx);letmutpool=pool::create_pool_and_get_object<Meme,Quote,SUI>(clock,bluefin_config,pool_name,b"",currency.symbol().into_bytes(),currency.decimals(),b"",quote_currency.symbol().into_bytes(),quote_currency.decimals(),quote_currency.icon_url().into_bytes(),tick_spacing,fee_rate,migration_math::sqrt_price_x64(meme.value(),quote.value(),true),creation_fee.into_balance(),ctx);letmutposition=pool::open_position(bluefin_config,&mutpool,lower_tick,upper_tick,ctx);let(residual_meme,residual_quote)=seed(bluefin_config,&mutpool,&mutposition,meme,quote,clock);lock_into_vault(launch,position,residual_meme,residual_quote,ctx);pool.share_pool_object();' ]] \
+    && [[ "$(bluefin_body full_range_tick_range)" == 'let(minimum_tick,maximum_tick)=bluefin_config.get_tick_range();letspacing=i32::from(tick_spacing);(minimum_tick.div(spacing).mul(spacing).as_u32(),maximum_tick.div(spacing).mul(spacing).as_u32())' ]] \
+    && [[ "$(bluefin_body lock_into_vault)" == 'letliquidity=position.liquidity();vault::create(launch,&Venue(),position.pool_id(),position,liquidity,residual_meme,residual_quote,ctx);' ]] || \
+    fail "Bluefin migrate must migrate the launch, create and fund the pool, lock the position in a new vault, then share the pool"
 # The pool and the position record no Meme icon, as Cetus: the position stores the URL it is given,
 # and the metadata capability can lengthen the Meme icon URL past Sui's object size limit. The pool
 # name, which the position stores twice, is exactly the two symbols around a one-byte separator
 # (the reader masks string contents); launch intake bounds the Meme symbol, and no mutable Meme
 # metadata may join it.
-[[ "$bluefin_migrate_body" == *'letmutpool_name=currency.symbol().into_bytes();pool_name.append(b"_");pool_name.append(quote_currency.symbol().into_bytes());'* \
-    && "$bluefin_migrate_body" == *'pool::create_pool_and_get_object<Meme,Quote,SUI>(clock,bluefin_config,pool_name,b"",currency.symbol().into_bytes(),currency.decimals(),b"",quote_currency.symbol().into_bytes(),quote_currency.decimals(),quote_currency.icon_url().into_bytes(),'* \
-    && "$(grep -o 'pool_name' <<<"$bluefin_migrate_body" | wc -l)" -eq 4 \
+[[ "$(bluefin_body pool_name)" == 'letmutname=currency.symbol().into_bytes();name.append(b"_");name.append(quote_currency.symbol().into_bytes());name' \
+    && "$(grep -o 'pool_name' <<<"$bluefin_migrate_body" | wc -l)" -eq 3 \
     && "$(move_norm "$BLUEFIN_SOURCE" | grep -o 'create_pool_and_get_object' | wc -l)" -eq 1 \
-    && "$(grep -o 'icon_url()' <<<"$bluefin_migrate_body" | wc -l)" -eq 1 ]] || \
+    && "$(move_norm "$BLUEFIN_SOURCE" | grep -o 'icon_url()' | wc -l)" -eq 1 ]] || \
     fail "bluefin::migrate must name the pool by the two symbols and pass an empty Meme icon URL"
-in_order \
-    'migrators_version.assert_current();' \
-    'let(tick_spacing,fee_rate)=launch.pool_tier();' \
-    'launch.migrate(package_version,currency,Witness(),ctx)' \
-    'pool::create_pool_and_get_object<Meme,Quote,SUI>(' \
-    'creation_fee.into_balance()' \
-    'pool::open_position(' \
-    'pool::add_liquidity_with_fixed_amount(' \
-    'vault::create(launch,&Venue(),position.pool_id(),position,liquidity,residual_meme,residual_quote,ctx)' \
-    'pool.share_pool_object()' \
-    <<<"$bluefin_migrate_body" || \
-    fail "Bluefin migrate must migrate the launch, create and fund the pool, lock the position in a new vault, then share the pool"
-[[ "$bluefin_migrate_body" == *'letfix_meme=source_meme>=source_quote;'* \
-    && "$bluefin_migrate_body" == *'if(fix_meme)source_memeelsesource_quote,fix_meme)'* ]] || \
+[[ "$(bluefin_body seed)" == 'letfix_meme=meme.value()>=quote.value();letamount=if(fix_meme)meme.value()elsequote.value();let(_,_,residual_meme,residual_quote)=pool::add_liquidity_with_fixed_amount(clock,bluefin_config,pool,position,meme,quote,amount,fix_meme);(residual_meme,residual_quote)' ]] || \
     fail "Bluefin migrate must fix Meme when its atoms are at least the Quote atoms, else Quote"
-[[ "$(bluefin_body collect_fees)" == 'migrators_version.assert_current();let(meme_fee,quote_fee)=self.collect_position_fees(bluefin_config,pool,clock);self.split_fees(policy,currency,meme_fee,quote_fee,ctx);self.compound(bluefin_config,pool,clock);' ]] || \
+# Both fee exits settle through one helper: collect the position's fees, split them through the
+# vault, and add the auto-LP share back. A settled update checks the cap and proposal first and
+# commits the new split only after settling under the current one.
+[[ "$(bluefin_body settle_fees)" == 'let(meme_fee,quote_fee)=self.collect_position_fees(bluefin_config,pool,clock);self.split_fees(policy,currency,meme_fee,quote_fee,ctx);self.compound(bluefin_config,pool,clock);' ]] \
+    && [[ "$(bluefin_body collect_fees)" == 'migrators_version.assert_current();self.settle_fees(policy,currency,bluefin_config,pool,clock,ctx);' ]] || \
     fail "Bluefin collection must split the collected position's fees, then add the auto-LP share back"
-[[ "$(bluefin_body settle_and_update_fee_split)" == 'migrators_version.assert_current();self.assert_fee_split_update(launch,curve_fee_cap,proposed);let(meme_fee,quote_fee)=self.collect_position_fees(bluefin_config,pool,clock);self.split_fees(policy,currency,meme_fee,quote_fee,ctx);self.compound(bluefin_config,pool,clock);self.update_fee_split(proposed);' ]] || \
+[[ "$(bluefin_body settle_and_update_fee_split)" == 'migrators_version.assert_current();self.assert_fee_split_update(launch,curve_fee_cap,proposed);self.settle_fees(policy,currency,bluefin_config,pool,clock,ctx);self.update_fee_split(proposed);' ]] || \
     fail "Bluefin settled updates must check the cap and proposal before collecting, then split the accrued fees under the current split before committing a new one"
 [[ "$(bluefin_body buyback_and_burn)" == 'migrators_version.assert_current();assert!(self.pool_id()==object::id(pool),EPositionPoolMismatch);letquote=self.take_buyback_quote(admin_witness);letquote_in=quote.value();let(meme,quote)=pool::swap(clock,bluefin_config,pool,balance::zero(),quote,false,true,quote_in,0,constants::max_swap_sqrt_price!());self.burn_buyback(currency,meme,quote,quote_in,min_meme_out,ctx);' ]] || \
     fail "the Bluefin buyback must check the vault's pool, take the burn Quote under the buyback admin, swap all of it Quote-to-Meme, and let the vault check and burn"
@@ -805,16 +808,8 @@ in_order \
     fail "Bluefin collection must check the custodied position's pool once, before the venue call"
 # Auto-LP adds the waiting balances to the custodied position, fixing the side the shared
 # selection chooses from the pool's price and the position's own tick bounds, and keeps the rest.
-in_order \
-    'let(meme,quote)=self.take_auto_lp();' \
-    'letposition=self.position_mut<_,_,_,Position>(&Venue());' \
-    'letsqrt_lower=ticks.get_tick_from_manager(position.lower_tick()).sqrt_price();' \
-    'letsqrt_upper=ticks.get_tick_from_manager(position.upper_tick()).sqrt_price();' \
-    'let(fix_meme,amount)=migration_math::auto_lp_fixed_side(sqrt_lower,pool.current_sqrt_price(),sqrt_upper,meme.value(),quote.value());' \
-    'if(amount>0){pool::add_liquidity_with_fixed_amount(clock,bluefin_config,pool,position,meme,quote,amount,fix_meme)}else{(0,0,meme,quote)};' \
-    'self.keep_auto_lp(added_meme,added_quote,meme,quote);' \
-    <<<"$(bluefin_body compound)" \
-    && [[ "$(bluefin_body compound)" == *'self.keep_auto_lp(added_meme,added_quote,meme,quote);' ]] || \
+[[ "$(bluefin_body compound)" == 'let(meme,quote)=self.take_auto_lp();letposition=self.position_mut<_,_,_,Position>(&Venue());let(fix_meme,amount)=fixed_side(pool,position,meme.value(),quote.value());let(added_meme,added_quote,meme,quote)=if(amount>0){pool::add_liquidity_with_fixed_amount(clock,bluefin_config,pool,position,meme,quote,amount,fix_meme)}else{(0,0,meme,quote)};self.keep_auto_lp(added_meme,added_quote,meme,quote);' ]] \
+    && [[ "$(bluefin_body fixed_side)" == 'letticks=pool.get_tick_manager();letsqrt_lower=ticks.get_tick_from_manager(position.lower_tick()).sqrt_price();letsqrt_upper=ticks.get_tick_from_manager(position.upper_tick()).sqrt_price();migration_math::auto_lp_fixed_side(sqrt_lower,pool.current_sqrt_price(),sqrt_upper,meme_amount,quote_amount)' ]] || \
     fail "Bluefin auto-LP must add to the custodied position on the side the shared selection fixes and keep the rest"
 require_errors "$BLUEFIN_SOURCE" "Bluefin must use codes 0-1 for its position-pool and tier checks" <<'EOF'
 0 EPositionPoolMismatch Custodied position must belong to the supplied pool.
@@ -915,11 +910,13 @@ pair_proof='letmeme_is_a=meme_is_coin_a<Meme,Quote,CoinA,CoinB>();'
         <<<"$(cetus_body migrate)" \
     && [[ "$(cetus_body migrate)" == *'ctx);' ]] || \
     fail "cetus::migrate must check the generation, Cetus's coin order, and the pair first, then create the pool in that order with the reserved cap at the launch's tick spacing, fix the side with more atoms, and burn into a vault"
-[[ "$(cetus_body collect_fees)" == "migrators_version.assert_current();${pair_proof}let(meme_fee,quote_fee)=self.collect_position_fees(cetus_config,burn_manager,pool,meme_is_a,ctx);self.split_fees(policy,currency,meme_fee,quote_fee,ctx);self.compound(cetus_config,pool,meme_is_a,clock,ctx);" ]] || \
+[[ "$(cetus_body settle_fees)" == 'let(meme_fee,quote_fee)=self.collect_position_fees(cetus_config,burn_manager,pool,meme_is_a,ctx);self.split_fees(policy,currency,meme_fee,quote_fee,ctx);self.compound(cetus_config,pool,meme_is_a,clock,ctx);' ]] \
+    && [[ "$(cetus_body collect_fees)" == "migrators_version.assert_current();${pair_proof}self.settle_fees(policy,currency,cetus_config,burn_manager,pool,meme_is_a,clock,ctx);" ]] || \
     fail "cetus::collect_fees must check the generation and the pair, split the collected fees, then add the auto-LP share back"
-[[ "$(cetus_body settle_and_update_fee_split)" == "migrators_version.assert_current();${pair_proof}self.assert_fee_split_update(launch,curve_fee_cap,proposed);let(meme_fee,quote_fee)=self.collect_position_fees(cetus_config,burn_manager,pool,meme_is_a,ctx);self.split_fees(policy,currency,meme_fee,quote_fee,ctx);self.compound(cetus_config,pool,meme_is_a,clock,ctx);self.update_fee_split(proposed);" ]] || \
+[[ "$(cetus_body settle_and_update_fee_split)" == "migrators_version.assert_current();${pair_proof}self.assert_fee_split_update(launch,curve_fee_cap,proposed);self.settle_fees(policy,currency,cetus_config,burn_manager,pool,meme_is_a,clock,ctx);self.update_fee_split(proposed);" ]] || \
     fail "cetus::settle_and_update_fee_split must check the pair, cap, and proposal before collecting, then split the accrued fees under the current split before committing a new one"
-[[ "$(cetus_body buyback_and_burn)" == "migrators_version.assert_current();${pair_proof}assert!(self.pool_id()==object::id(pool),EPositionPoolMismatch);letquote=self.take_buyback_quote(admin_witness);letquote_in=quote.value();let(a,b)=reorder(balance::zero<Meme>(),quote,meme_is_a,ctx);let(a,b)=swap(cetus_config,pool,a,b,!meme_is_a,clock);let(meme,quote)=reorder(a,b,meme_is_a,ctx);self.burn_buyback(currency,meme,quote,quote_in,min_meme_out,ctx);" ]] || \
+[[ "$(cetus_body buyback_and_burn)" == "migrators_version.assert_current();${pair_proof}assert!(self.pool_id()==object::id(pool),EPositionPoolMismatch);letquote=self.take_buyback_quote(admin_witness);letquote_in=quote.value();let(meme,quote)=swap_quote_for_meme(cetus_config,pool,quote,meme_is_a,clock,ctx);self.burn_buyback(currency,meme,quote,quote_in,min_meme_out,ctx);" ]] \
+    && [[ "$(cetus_body swap_quote_for_meme)" == 'let(a,b)=reorder(balance::zero<Meme>(),quote,meme_is_a,ctx);let(a,b)=swap(cetus_config,pool,a,b,!meme_is_a,clock);reorder(a,b,meme_is_a,ctx)' ]] || \
     fail "cetus::buyback_and_burn must check the pair and the vault's pool, take the burn Quote under the buyback admin, swap all of it Quote-to-Meme, and let the vault check and burn"
 [[ "$(cetus_body compound)" == 'let(meme,quote)=self.take_auto_lp();let(a,b)=reorder(meme,quote,meme_is_a,ctx);let(a,b,added_a,added_b)=self.add_liquidity(cetus_config,pool,a,b,clock,ctx);let(meme,quote)=reorder(a,b,meme_is_a,ctx);let(added_meme,added_quote)=if(meme_is_a)(added_a,added_b)else(added_b,added_a);self.keep_auto_lp(added_meme,added_quote,meme,quote);' ]] || \
     fail "Cetus auto-LP must take the waiting balances in its pool's coin order and keep what the pool did not take"
@@ -960,18 +957,10 @@ in_order \
     && [[ "$(move_norm "$CETUS_SOURCE" | grep -o 'lp_burn::collect_fee' | wc -l)" -eq 1 ]] || \
     fail "the burn proof must be borrowed only to collect its fees through LP Burn"
 # Auto-LP opens at most one full-range position in the vault's pool, on first use, then adds with
-# Cetus's own fixed-coin math and repays exactly what the receipt asks.
-in_order \
-    'if(a.value()==0||b.value()==0)return(a,b,0,0);' \
-    'if(!self.has_auto_lp_position(&Venue())){let(tick_lower,tick_upper)=pool_creator::full_range_tick_range(pool.tick_spacing());letposition=pool::open_position(cetus_config,pool,tick_lower,tick_upper,ctx);self.attach_auto_lp_position(&Venue(),position);};' \
-    'letposition=self.auto_lp_position_mut<_,_,_,Position>(&Venue());' \
-    'clmm_math::get_liquidity_by_amount(lower,upper,tick,price,a.value(),true);' \
-    'clmm_math::get_liquidity_by_amount(lower,upper,tick,price,b.value(),false);' \
-    'letreceipt=pool::add_liquidity_fix_coin(cetus_config,pool,position,amount,fix_a,clock);' \
-    'let(paid_a,paid_b)=receipt.add_liquidity_pay_amount();' \
-    'pool::repay_add_liquidity(cetus_config,pool,a.split(paid_a),b.split(paid_b),receipt);' \
-    '(a,b,paid_a,paid_b)' \
-    <<<"$(cetus_body add_liquidity)" \
+# Cetus's own fixed-coin math, fixing coin A first when coin B covers it, and repays exactly what
+# the receipt asks.
+[[ "$(cetus_body add_liquidity)" == 'if(a.value()==0||b.value()==0)return(a,b,0,0);if(!self.has_auto_lp_position(&Venue())){let(tick_lower,tick_upper)=pool_creator::full_range_tick_range(pool.tick_spacing());letposition=pool::open_position(cetus_config,pool,tick_lower,tick_upper,ctx);self.attach_auto_lp_position(&Venue(),position);};letposition=self.auto_lp_position_mut<_,_,_,Position>(&Venue());let(fix_a,amount)=fixed_side(pool,position,a.value(),b.value());if(amount==0)return(a,b,0,0);letreceipt=pool::add_liquidity_fix_coin(cetus_config,pool,position,amount,fix_a,clock);let(paid_a,paid_b)=receipt.add_liquidity_pay_amount();pool::repay_add_liquidity(cetus_config,pool,a.split(paid_a),b.split(paid_b),receipt);(a,b,paid_a,paid_b)' ]] \
+    && [[ "$(cetus_body fixed_side)" == 'let(lower,upper)=position.tick_range();lettick=pool.current_tick_index();letprice=pool.current_sqrt_price();let(liquidity_a,_,needed_b)=clmm_math::get_liquidity_by_amount(lower,upper,tick,price,amount_a,true);let(liquidity_b,needed_a,_)=clmm_math::get_liquidity_by_amount(lower,upper,tick,price,amount_b,false);if(liquidity_a>0&&needed_b<=amount_b)(true,amount_a)elseif(liquidity_b>0&&needed_a<=amount_a)(false,amount_b)else(true,0)' ]] \
     && [[ "$(move_norm "$CETUS_SOURCE" | grep -o 'open_position' | wc -l)" -eq 1 ]] \
     && [[ "$(move_norm "$CETUS_SOURCE" | grep -o 'add_liquidity_fix_coin' | wc -l)" -eq 1 ]] || \
     fail "Cetus auto-LP must open at most one full-range auto-LP position, then add with the fixed-coin receipt and repay it exactly"
