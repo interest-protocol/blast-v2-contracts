@@ -73,20 +73,10 @@ public fun migrate<Meme, Quote>(
     migrators_version.assert_current();
 
     let (tick_spacing, fee_rate) = launch.pool_tier();
-    let (minimum_tick, maximum_tick) = bluefin_config.get_tick_range();
-    let spacing = i32::from(tick_spacing);
-    let lower_tick = minimum_tick.div(spacing).mul(spacing).as_u32();
-    let upper_tick = maximum_tick.div(spacing).mul(spacing).as_u32();
-
-    let mut pool_name = currency.symbol().into_bytes();
-    pool_name.append(b"-");
-    pool_name.append(quote_currency.symbol().into_bytes());
+    let (lower_tick, upper_tick) = full_range_tick_range(bluefin_config, tick_spacing);
+    let pool_name = pool_name(currency, quote_currency);
 
     let (meme, quote) = launch.migrate(package_version, currency, Witness(), ctx);
-    let source_meme = meme.value();
-    let source_quote = quote.value();
-    let fix_meme = source_meme >= source_quote;
-
     let mut pool = pool::create_pool_and_get_object<Meme, Quote, SUI>(
         clock,
         bluefin_config,
@@ -102,35 +92,21 @@ public fun migrate<Meme, Quote>(
         quote_currency.icon_url().into_bytes(),
         tick_spacing,
         fee_rate,
-        migration_math::sqrt_price_x64(source_meme, source_quote, true),
+        migration_math::sqrt_price_x64(meme.value(), quote.value(), true),
         creation_fee.into_balance(),
         ctx,
     );
     let mut position = pool::open_position(bluefin_config, &mut pool, lower_tick, upper_tick, ctx);
-    let (_, _, residual_meme, residual_quote) =
-        pool::add_liquidity_with_fixed_amount(
-            clock,
-            bluefin_config,
-            &mut pool,
-            &mut position,
-            meme,
-            quote,
-            if (fix_meme) source_meme else source_quote,
-            fix_meme,
-        );
-
-    let liquidity = position.liquidity();
-    vault::create(
-        launch,
-        &Venue(),
-        position.pool_id(),
-        position,
-        liquidity,
-        residual_meme,
-        residual_quote,
-        ctx,
+    let (residual_meme, residual_quote) = seed(
+        bluefin_config,
+        &mut pool,
+        &mut position,
+        meme,
+        quote,
+        clock,
     );
 
+    lock_into_vault(launch, position, residual_meme, residual_quote, ctx);
     pool.share_pool_object();
 }
 
@@ -148,9 +124,7 @@ public fun collect_fees<Meme, Quote>(
 ) {
     migrators_version.assert_current();
 
-    let (meme_fee, quote_fee) = self.collect_position_fees(bluefin_config, pool, clock);
-    self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
-    self.compound(bluefin_config, pool, clock);
+    self.settle_fees(policy, currency, bluefin_config, pool, clock, ctx);
 }
 
 /// Settles the custodied position's accrued fees under the current split, then commits `proposed`.
@@ -170,9 +144,7 @@ public fun settle_and_update_fee_split<Meme, Quote>(
     migrators_version.assert_current();
     self.assert_fee_split_update(launch, curve_fee_cap, proposed);
 
-    let (meme_fee, quote_fee) = self.collect_position_fees(bluefin_config, pool, clock);
-    self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
-    self.compound(bluefin_config, pool, clock);
+    self.settle_fees(policy, currency, bluefin_config, pool, clock, ctx);
 
     self.update_fee_split(proposed);
 }
@@ -214,6 +186,93 @@ public fun buyback_and_burn<Meme, Quote>(
 
 // === Private Functions ===
 
+/// Aligns Bluefin's configured tick bounds to `tick_spacing`, giving the widest range a position
+/// at that spacing can open.
+fun full_range_tick_range(bluefin_config: &GlobalConfig, tick_spacing: u32): (u32, u32) {
+    let (minimum_tick, maximum_tick) = bluefin_config.get_tick_range();
+    let spacing = i32::from(tick_spacing);
+
+    (
+        minimum_tick.div(spacing).mul(spacing).as_u32(),
+        maximum_tick.div(spacing).mul(spacing).as_u32(),
+    )
+}
+
+/// Names the pool by the two coin symbols around a one-byte separator.
+fun pool_name<Meme, Quote>(
+    currency: &Currency<Meme>,
+    quote_currency: &Currency<Quote>,
+): vector<u8> {
+    let mut name = currency.symbol().into_bytes();
+    name.append(b"-");
+    name.append(quote_currency.symbol().into_bytes());
+
+    name
+}
+
+/// Adds the handed-off balances to the new full-range position and returns the residuals. Meme is
+/// the fixed side when its atoms are at least the Quote atoms, and Quote otherwise: a full-range
+/// seed fixed on the fewer atoms can need slightly more of the other asset than was handed off.
+fun seed<Meme, Quote>(
+    bluefin_config: &GlobalConfig,
+    pool: &mut Pool<Meme, Quote>,
+    position: &mut Position,
+    meme: Balance<Meme>,
+    quote: Balance<Quote>,
+    clock: &Clock,
+): (Balance<Meme>, Balance<Quote>) {
+    let fix_meme = meme.value() >= quote.value();
+    let amount = if (fix_meme) meme.value() else quote.value();
+    let (_, _, residual_meme, residual_quote) = pool::add_liquidity_with_fixed_amount(
+        clock,
+        bluefin_config,
+        pool,
+        position,
+        meme,
+        quote,
+        amount,
+        fix_meme,
+    );
+
+    (residual_meme, residual_quote)
+}
+
+/// Locks the seeded position and the residuals in a new vault.
+fun lock_into_vault<Meme, Quote>(
+    launch: &Launch<Meme, Quote>,
+    position: Position,
+    residual_meme: Balance<Meme>,
+    residual_quote: Balance<Quote>,
+    ctx: &mut TxContext,
+) {
+    let liquidity = position.liquidity();
+    vault::create(
+        launch,
+        &Venue(),
+        position.pool_id(),
+        position,
+        liquidity,
+        residual_meme,
+        residual_quote,
+        ctx,
+    );
+}
+
+/// Collects the position's fees, splits them through the vault, and adds the auto-LP share back.
+fun settle_fees<Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    policy: &LpFeePolicy,
+    currency: &mut Currency<Meme>,
+    bluefin_config: &GlobalConfig,
+    pool: &mut Pool<Meme, Quote>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    let (meme_fee, quote_fee) = self.collect_position_fees(bluefin_config, pool, clock);
+    self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
+    self.compound(bluefin_config, pool, clock);
+}
+
 /// Collects the attached position's fees from `pool`, which must be the position's own pool.
 fun collect_position_fees<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
@@ -240,16 +299,7 @@ fun compound<Meme, Quote>(
 ) {
     let (meme, quote) = self.take_auto_lp();
     let position = self.position_mut<_, _, _, Position>(&Venue());
-    let ticks = pool.get_tick_manager();
-    let sqrt_lower = ticks.get_tick_from_manager(position.lower_tick()).sqrt_price();
-    let sqrt_upper = ticks.get_tick_from_manager(position.upper_tick()).sqrt_price();
-    let (fix_meme, amount) = migration_math::auto_lp_fixed_side(
-        sqrt_lower,
-        pool.current_sqrt_price(),
-        sqrt_upper,
-        meme.value(),
-        quote.value(),
-    );
+    let (fix_meme, amount) = fixed_side(pool, position, meme.value(), quote.value());
 
     let (added_meme, added_quote, meme, quote) = if (amount > 0) {
         pool::add_liquidity_with_fixed_amount(
@@ -267,6 +317,27 @@ fun compound<Meme, Quote>(
     };
 
     self.keep_auto_lp(added_meme, added_quote, meme, quote);
+}
+
+/// Chooses the side an auto-LP add fixes, and how much, from the pool's price and the position's
+/// bound sqrt prices; a zero amount means nothing can be added now.
+fun fixed_side<Meme, Quote>(
+    pool: &Pool<Meme, Quote>,
+    position: &Position,
+    meme_amount: u64,
+    quote_amount: u64,
+): (bool, u64) {
+    let ticks = pool.get_tick_manager();
+    let sqrt_lower = ticks.get_tick_from_manager(position.lower_tick()).sqrt_price();
+    let sqrt_upper = ticks.get_tick_from_manager(position.upper_tick()).sqrt_price();
+
+    migration_math::auto_lp_fixed_side(
+        sqrt_lower,
+        pool.current_sqrt_price(),
+        sqrt_upper,
+        meme_amount,
+        quote_amount,
+    )
 }
 
 // === Imports ===
@@ -300,3 +371,5 @@ use sui::{balance::{Self, Balance}, clock::Clock, coin::Coin, coin_registry::Cur
 use fun collect_position_fees as LpVault.collect_position_fees;
 
 use fun compound as LpVault.compound;
+
+use fun settle_fees as LpVault.settle_fees;
