@@ -547,7 +547,12 @@ impl World {
             recipients.push(call(&mut b, self.presale, "blast_presale", "recipient_allocation", vec![], args));
         }
         let allocation_type = self.presale_tag("blast_presale", "RecipientAllocation");
-        let recipients = b.command(Command::make_move_vec(Some(allocation_type), recipients));
+        let recipients = b.command(Command::make_move_vec(Some(allocation_type.clone()), recipients));
+        // No share of the raise goes to recipients, and there is no uncapped phase.
+        let raise_allocations = b.command(Command::make_move_vec(Some(allocation_type), vec![]));
+        let uncapped_type = self.presale_tag("blast_presale", "UncappedPhase");
+        let std = ObjectID::from_hex_literal("0x1")?;
+        let uncapped = call(&mut b, std, "option", "none", vec![uncapped_type], vec![]);
         let mut fee_recipients = Vec::new();
         for (recipient, bps) in [(CREATOR, FEE_BPS[0]), (FEE_B, FEE_BPS[1])] {
             let args = vec![b.pure(SuiAddress::from(recipient))?, b.pure(bps)?];
@@ -568,9 +573,11 @@ impl World {
             recipients,
             b.pure(false)?,
             b.pure(terms.raise)?,
+            raise_allocations,
             b.pure(DURATION_MS)?,
             b.pure(LIQUIDITY_WINDOW_MS)?,
             eligibility,
+            uncapped,
             fee_recipients,
             b.pure(REWARDS_BPS)?,
         ];
@@ -645,7 +652,8 @@ impl World {
         let presale = self.shared(&mut b, sale.presale, true)?;
         let coin = self.quote_coin(&mut b, terms.commitment)?;
         let clock = self.clock(&mut b)?;
-        call(&mut b, self.presale, "blast_presale", "commit_open", self.pair(&sale), vec![presale, coin, clock]);
+        let change = call(&mut b, self.presale, "blast_presale", "commit_open", self.pair(&sale), vec![presale, coin, clock]);
+        b.transfer_arg(self.h.sender, change);
         self.h.execute(b.finish())?.assert_success();
 
         self.h.sim.advance_clock(Duration::from_millis(DURATION_MS));
@@ -1379,6 +1387,21 @@ struct FeeRecipient {
     bps: u64,
 }
 
+/// Mirrors `blast_presale::blast_presale::UncappedPhase`.
+#[derive(Debug, Deserialize, PartialEq)]
+struct UncappedPhase {
+    _starts_after_ms: u64,
+    _access: UncappedAccess,
+    _hard_cap: bool,
+}
+
+/// Mirrors `blast_presale::blast_presale::UncappedAccess`.
+#[derive(Debug, Deserialize, PartialEq)]
+enum UncappedAccess {
+    _Eligible,
+    _Anyone { _max_participants: u64, _min_commitment: u64 },
+}
+
 /// Mirrors `blast_presale::blast_presale::Presale`; each `Balance` is one `u64` and the
 /// `TypeName` one string.
 #[derive(Debug, Deserialize, PartialEq)]
@@ -1392,6 +1415,8 @@ struct PresaleState {
     liquidity_deadline_ms: u64,
     raise_target: u64,
     eligibility: Eligibility,
+    _uncapped: Option<UncappedPhase>,
+    _uncapped_from_ms: u64,
     migration_witness: String,
     tick_spacing: u32,
     fee_rate: u64,
@@ -1406,6 +1431,7 @@ struct PresaleState {
     liquidity_tokens: u64,
     _recipient_payouts: Vec<(SuiAddress, u64)>,
     recipient_tokens: u64,
+    _raise_payouts: Vec<(SuiAddress, u64)>,
 }
 
 /// Mirrors `blast_presale::presale_vault::PresaleVault`.

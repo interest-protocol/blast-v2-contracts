@@ -56,22 +56,21 @@ public fun claim_migration_residuals<Meme, Quote>(
 
 // === Package Functions ===
 
-/// Creates and shares a vault with its venue position sealed as a dynamic object field.
+/// Creates and shares a migrated presale's vault, with its venue position sealed as a dynamic
+/// object field and the presale's immutable LP-fee split.
 public(package) fun create<Meme, Quote, Venue, Position: key + store>(
-    presale_id: ID,
-    presale_cap_id: ID,
+    sale: &Presale<Meme, Quote>,
     _venue: &Venue,
     pool_id: ID,
     position: Position,
     liquidity: u128,
-    fee_recipients: vector<FeeRecipient>,
-    rewards_fee_bps: u64,
     migration_meme_residual: Balance<Meme>,
     migration_quote_residual: Balance<Quote>,
     ctx: &mut TxContext,
 ) {
     assert!(liquidity > 0, EZeroLiquidity);
 
+    let (presale_id, presale_cap_id, fee_recipients, rewards_fee_bps) = sale.vault_config();
     let position_id = object::id(&position);
     let fee_recipient_addresses = presale::fee_recipient_addresses(&fee_recipients);
     let fee_recipient_bps = presale::fee_recipient_bps(&fee_recipients);
@@ -135,18 +134,8 @@ public(package) fun split_fees<Meme, Quote>(
         return
     };
 
-    let mut recipient_meme = presale::apportion_fee(
-        &self.fee_recipients,
-        self.rewards_fee_bps,
-        gross_meme,
-    );
-    let mut recipient_quote = presale::apportion_fee(
-        &self.fee_recipients,
-        self.rewards_fee_bps,
-        gross_quote,
-    );
-    let rewards_meme = recipient_meme.pop_back();
-    let rewards_quote = recipient_quote.pop_back();
+    let (recipient_meme, rewards_meme) = self.fee_shares(gross_meme);
+    let (recipient_quote, rewards_quote) = self.fee_shares(gross_quote);
     let recipients = presale::fee_recipient_addresses(&self.fee_recipients);
 
     recipients.length().do!(|i| {
@@ -218,9 +207,13 @@ public(package) fun restore_rewards<Meme, Quote>(
 
 // === Private Functions ===
 
-/// Transfers `amount` split from `self` to `recipient`, skipping empty shares.
-fun pay<T>(self: &mut Balance<T>, amount: u64, recipient: address, ctx: &mut TxContext) {
-    if (amount > 0) transfer::public_transfer(self.split(amount).into_coin(ctx), recipient);
+/// Splits `amount` under the creation-time BPS into each fee recipient's share and the
+/// holder-reward share.
+fun fee_shares<Meme, Quote>(self: &PresaleVault<Meme, Quote>, amount: u64): (vector<u64>, u64) {
+    let mut shares = presale::apportion_fee(&self.fee_recipients, self.rewards_fee_bps, amount);
+    let rewards = shares.pop_back();
+
+    (shares, rewards)
 }
 
 // === Test-Only Functions ===
@@ -341,11 +334,11 @@ const EWrongPresaleCap: vector<u8> = b"The creator capability belongs to a diffe
 
 // === Imports ===
 
-use blast_presale::blast_presale::{Self as presale, FeeRecipient, PresaleCap};
+use blast_presale::blast_presale::{Self as presale, FeeRecipient, Presale, PresaleCap};
 
 use sui::{balance::{Self, Balance}, coin::Coin, dynamic_object_field, event};
 
-use fun pay as Balance.pay;
+use fun presale::pay as Balance.pay;
 
 use fun dynamic_object_field::add as UID.add_dynamic_object_field;
 use fun dynamic_object_field::borrow_mut as UID.dynamic_object_field_mut;

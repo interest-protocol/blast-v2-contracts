@@ -24,9 +24,11 @@ public fun new<Meme, Quote>(
     recipient_allocations: vector<RecipientAllocation>,
     burnable: bool,
     raise_target: u64,
+    raise_allocations: vector<RecipientAllocation>,
     duration_ms: u64,
     liquidity_window_ms: u64,
     eligibility: EligibilityPolicy,
+    uncapped: Option<UncappedPhase>,
     fee_recipients: vector<FeeRecipient>,
     rewards_fee_bps: u64,
     tick_spacing: u32,
@@ -51,9 +53,11 @@ public fun new<Meme, Quote>(
         recipient_allocations,
         burnable,
         raise_target,
+        raise_allocations,
         duration_ms,
         liquidity_window_ms,
         eligibility,
+        uncapped,
         Witness(),
         tick_spacing,
         fee_rate,
@@ -73,27 +77,17 @@ public fun migrate<Meme, Quote>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let (presale_id, presale_cap_id, tick_spacing, fee_rate, fee_recipients, rewards_fee_bps) = sale
-        .migration_config();
+    let (tick_spacing, fee_rate) = sale.pool_tier();
     let (meme, quote) = sale.migrate(Witness(), ctx);
 
     let source_meme = meme.value();
     let source_quote = quote.value();
-
-    // Full range, with both bounds aligned inward to the pool's tick spacing.
-    let (minimum_tick, maximum_tick) = bluefin_config.get_tick_range();
-    let spacing = i32::from(tick_spacing);
-    let lower_tick = minimum_tick.div(spacing).mul(spacing);
-    let upper_tick = maximum_tick.div(spacing).mul(spacing);
-
-    let mut pool_name = currency.symbol().into_bytes();
-    pool_name.append(b"-");
-    pool_name.append(quote_currency.symbol().into_bytes());
+    let (lower_tick, upper_tick) = full_range(bluefin_config, tick_spacing);
 
     let mut pool = pool::create_pool_and_get_object<Meme, Quote, SUI>(
         clock,
         bluefin_config,
-        pool_name,
+        pool_name(currency, quote_currency),
         b"",
         currency.symbol().into_bytes(),
         currency.decimals(),
@@ -115,22 +109,7 @@ public fun migrate<Meme, Quote>(
         upper_tick.as_u32(),
         ctx,
     );
-
-    // Fix the side with more atoms: a full-range position needs slightly more of the other side
-    // than the seed ratio, so that partner balance covers it. When both sides are nearly equal,
-    // rounding can still overdraw by one atom, so ask Bluefin's own math and fix the other side.
-    let prefer_meme = source_meme >= source_quote;
-    let (_, needed_meme, needed_quote) = pool::get_liquidity_by_amount(
-        lower_tick,
-        upper_tick,
-        pool.current_tick_index(),
-        pool.current_sqrt_price(),
-        if (prefer_meme) source_meme else source_quote,
-        prefer_meme,
-    );
-    let fix_meme = if (needed_meme <= source_meme && needed_quote <= source_quote) prefer_meme
-    else !prefer_meme;
-
+    let fix_meme = fixes_meme(&pool, lower_tick, upper_tick, source_meme, source_quote);
     let (_, _, residual_meme, residual_quote) = pool::add_liquidity_with_fixed_amount(
         clock,
         bluefin_config,
@@ -142,18 +121,14 @@ public fun migrate<Meme, Quote>(
         fix_meme,
     );
 
-    let pool_id = position.pool_id();
     let liquidity = position.liquidity();
 
     vault::create(
-        presale_id,
-        presale_cap_id,
+        sale,
         &Venue(),
-        pool_id,
+        position.pool_id(),
         position,
         liquidity,
-        fee_recipients,
-        rewards_fee_bps,
         residual_meme,
         residual_quote,
         ctx,
@@ -176,6 +151,51 @@ public fun collect_fees<Meme, Quote>(
     let (_, _, meme, quote) = pool::collect_fee(clock, bluefin_config, pool, position);
 
     vault.split_fees(meme, quote, ctx);
+}
+
+// === Private Functions ===
+
+/// The full tick range, with both bounds aligned inward to the pool's tick spacing.
+fun full_range(bluefin_config: &GlobalConfig, tick_spacing: u32): (I32, I32) {
+    let (minimum_tick, maximum_tick) = bluefin_config.get_tick_range();
+    let spacing = i32::from(tick_spacing);
+
+    (minimum_tick.div(spacing).mul(spacing), maximum_tick.div(spacing).mul(spacing))
+}
+
+/// The pool name, `<Meme symbol>-<Quote symbol>`.
+fun pool_name<Meme, Quote>(
+    currency: &Currency<Meme>,
+    quote_currency: &Currency<Quote>,
+): vector<u8> {
+    let mut name = currency.symbol().into_bytes();
+    name.append(b"-");
+    name.append(quote_currency.symbol().into_bytes());
+    name
+}
+
+/// Whether to fix the Meme side when seeding. Fix the side with more atoms: a full-range position
+/// needs slightly more of the other side than the seed ratio, so that partner balance covers it.
+/// When both sides are nearly equal, rounding can still overdraw by one atom, so ask Bluefin's own
+/// math and fix the other side.
+fun fixes_meme<Meme, Quote>(
+    pool: &Pool<Meme, Quote>,
+    lower_tick: I32,
+    upper_tick: I32,
+    source_meme: u64,
+    source_quote: u64,
+): bool {
+    let prefer_meme = source_meme >= source_quote;
+    let (_, needed_meme, needed_quote) = pool::get_liquidity_by_amount(
+        lower_tick,
+        upper_tick,
+        pool.current_tick_index(),
+        pool.current_sqrt_price(),
+        if (prefer_meme) source_meme else source_quote,
+        prefer_meme,
+    );
+
+    if (needed_meme <= source_meme && needed_quote <= source_quote) prefer_meme else !prefer_meme
 }
 
 // === Constants ===
@@ -208,6 +228,7 @@ use blast_presale::{
         Presale,
         PresaleCap,
         RecipientAllocation,
+        UncappedPhase,
     },
     migration_math,
     presale_vault::{Self as vault, PresaleVault},
@@ -215,6 +236,6 @@ use blast_presale::{
 
 use bluefin_spot::{config::GlobalConfig, pool::{Self, Pool}, position::Position};
 
-use integer_mate::i32;
+use integer_mate::i32::{Self, I32};
 
 use sui::{clock::Clock, coin::{Coin, TreasuryCap}, coin_registry::Currency, sui::SUI};

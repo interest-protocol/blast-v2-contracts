@@ -30,9 +30,11 @@ public fun new<Meme, Quote>(
     recipient_allocations: vector<RecipientAllocation>,
     burnable: bool,
     raise_target: u64,
+    raise_allocations: vector<RecipientAllocation>,
     duration_ms: u64,
     liquidity_window_ms: u64,
     eligibility: EligibilityPolicy,
+    uncapped: Option<UncappedPhase>,
     fee_recipients: vector<FeeRecipient>,
     rewards_fee_bps: u64,
     venue_config: &mut VenueConfig,
@@ -63,9 +65,11 @@ public fun new<Meme, Quote>(
         recipient_allocations,
         burnable,
         raise_target,
+        raise_allocations,
         duration_ms,
         liquidity_window_ms,
         eligibility,
+        uncapped,
         Witness(),
         tick_spacing,
         fee_rate,
@@ -89,8 +93,7 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
     assert!(factory::is_right_order<CoinA, CoinB>(), EInvalidCoinOrder);
     let meme_is_a = meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
 
-    let (presale_id, cap_id, tick_spacing, _, fee_recipients, rewards_fee_bps) = sale
-        .migration_config();
+    let (tick_spacing, _) = sale.pool_tier();
     let (meme, quote) = sale.migrate(Witness(), ctx);
 
     let meme_amount = meme.value();
@@ -101,17 +104,17 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
         tick_lower,
         tick_upper,
         sqrt_price,
-        if (meme_is_a) meme_amount else quote_amount,
-        if (meme_is_a) quote_amount else meme_amount,
-        (meme_amount >= quote_amount) == meme_is_a,
+        meme_amount,
+        quote_amount,
+        meme_is_a,
     );
 
     let mut scratch = object::new(ctx);
-    let (coin_a, coin_b) = if (meme_is_a) {
-        (scratch.cast<_, Balance<CoinA>>(meme), scratch.cast<_, Balance<CoinB>>(quote))
-    } else {
-        (scratch.cast<_, Balance<CoinA>>(quote), scratch.cast<_, Balance<CoinB>>(meme))
-    };
+    let (coin_a, coin_b) = scratch.cast_pair<_, _, Balance<CoinA>, Balance<CoinB>>(
+        meme,
+        quote,
+        meme_is_a,
+    );
 
     let (position, residual_a, residual_b) = pool_creator::create_pool_v3_with_creation_cap<
         CoinA,
@@ -132,24 +135,14 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
         ctx,
     );
 
-    let (residual_meme, residual_quote) = if (meme_is_a) {
-        (scratch.cast<_, Coin<Meme>>(residual_a), scratch.cast<_, Coin<Quote>>(residual_b))
-    } else {
-        (scratch.cast<_, Coin<Meme>>(residual_b), scratch.cast<_, Coin<Quote>>(residual_a))
-    };
+    let (residual_meme, residual_quote) = scratch.cast_pair<_, _, Coin<Meme>, Coin<Quote>>(
+        residual_a,
+        residual_b,
+        meme_is_a,
+    );
     scratch.delete();
 
-    burn_into_vault(
-        presale_id,
-        cap_id,
-        fee_recipients,
-        rewards_fee_bps,
-        burn_manager,
-        position,
-        residual_meme,
-        residual_quote,
-        ctx,
-    );
+    burn_into_vault(sale, burn_manager, position, residual_meme, residual_quote, ctx);
 }
 
 /// Anyone may collect LP fees from a migrated presale's Cetus position, paying each fee recipient
@@ -173,11 +166,7 @@ public fun collect_fees<Meme, Quote, CoinA, CoinB>(
     );
 
     let mut scratch = object::new(ctx);
-    let (meme, quote) = if (meme_is_a) {
-        (scratch.cast<_, Coin<Meme>>(fee_a), scratch.cast<_, Coin<Quote>>(fee_b))
-    } else {
-        (scratch.cast<_, Coin<Meme>>(fee_b), scratch.cast<_, Coin<Quote>>(fee_a))
-    };
+    let (meme, quote) = scratch.cast_pair<_, _, Coin<Meme>, Coin<Quote>>(fee_a, fee_b, meme_is_a);
     scratch.delete();
 
     vault.split_fees(meme.into_balance(), quote.into_balance(), ctx);
@@ -194,19 +183,22 @@ fun meme_is_coin_a<Meme, Quote, CoinA, CoinB>(): bool {
     meme == a
 }
 
-/// Chooses the side to fix, preferring the side with more atoms: a full-range position needs
-/// slightly more of the other side than the seed ratio, so that partner balance covers it. When
-/// both sides are nearly equal, rounding can still overdraw by one atom, so Cetus's own math
-/// decides and the other side is fixed instead. Any tick inside the full range selects Cetus's
-/// in-range branch; pool creation aborts anyway if the seed price lies outside it.
+/// Chooses the side to fix, preferring the side with more atoms, Meme on a tie: a full-range
+/// position needs slightly more of the other side than the seed ratio, so that partner balance
+/// covers it. When both sides are nearly equal, rounding can still overdraw by one atom, so
+/// Cetus's own math decides and the other side is fixed instead. Any tick inside the full range
+/// selects Cetus's in-range branch; pool creation aborts anyway if the seed price lies outside it.
 fun fixed_side_is_a(
     tick_lower: u32,
     tick_upper: u32,
     sqrt_price: u128,
-    amount_a: u64,
-    amount_b: u64,
-    prefer_a: bool,
+    meme_amount: u64,
+    quote_amount: u64,
+    meme_is_a: bool,
 ): bool {
+    let (amount_a, amount_b) = if (meme_is_a) (meme_amount, quote_amount)
+    else (quote_amount, meme_amount);
+    let prefer_a = (meme_amount >= quote_amount) == meme_is_a;
     let (_, needed_a, needed_b) = clmm_math::get_liquidity_by_amount(
         i32::from_u32(tick_lower),
         i32::from_u32(tick_upper),
@@ -227,15 +219,25 @@ fun cast<From: store, To: store>(scratch: &mut UID, value: From): To {
     scratch.remove_dynamic_field(CastKey())
 }
 
+/// Retypes a Meme-and-Quote pair into Cetus's coin order, or a coin-order pair back, through
+/// `scratch`: in place when Meme is coin A, crossed otherwise.
+fun cast_pair<First: store, Second: store, ToFirst: store, ToSecond: store>(
+    scratch: &mut UID,
+    first: First,
+    second: Second,
+    meme_is_a: bool,
+): (ToFirst, ToSecond) {
+    if (meme_is_a) (scratch.cast(first), scratch.cast(second))
+    else (scratch.cast(second), scratch.cast(first))
+}
+
 fun pool_creation_cap<Meme>(self: &VenueConfig): &PoolCreationCap {
     self.object(CreationCapKey<Meme>())
 }
 
+/// Burns the LP position for its fee-claiming proof and seals the proof in the presale's vault.
 fun burn_into_vault<Meme, Quote>(
-    presale_id: ID,
-    cap_id: ID,
-    fee_recipients: vector<FeeRecipient>,
-    rewards_fee_bps: u64,
+    sale: &Presale<Meme, Quote>,
     burn_manager: &mut BurnManager,
     position: Position,
     residual_meme: Coin<Meme>,
@@ -247,14 +249,11 @@ fun burn_into_vault<Meme, Quote>(
     let burn_proof = lp_burn::burn_lp_v2(burn_manager, position, ctx);
 
     vault::create(
-        presale_id,
-        cap_id,
+        sale,
         &Venue(),
         pool_id,
         burn_proof,
         liquidity,
-        fee_recipients,
-        rewards_fee_bps,
         residual_meme.into_balance(),
         residual_quote.into_balance(),
         ctx,
@@ -294,6 +293,7 @@ use blast_presale::{
         Presale,
         PresaleCap,
         RecipientAllocation,
+        UncappedPhase,
     },
     migration_math,
     presale_vault::{Self as vault, PresaleVault},
@@ -324,6 +324,7 @@ use sui::{
 };
 
 use fun cast as UID.cast;
+use fun cast_pair as UID.cast_pair;
 use fun dynamic_field::add as UID.add_dynamic_field;
 use fun dynamic_field::remove as UID.remove_dynamic_field;
 use fun pool_creation_cap as VenueConfig.pool_creation_cap;
