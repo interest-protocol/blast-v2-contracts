@@ -26,44 +26,31 @@
 //!
 //! Run from `sui/launchpad/ptb_tests` with `cargo test --offline --test venue_fork`.
 
-use std::{
-    collections::BTreeMap,
-    path::{Path, PathBuf},
-    sync::OnceLock,
-};
+use std::{collections::BTreeMap, path::Path, sync::OnceLock};
 
 use anyhow::{Context, Result, bail, ensure};
 use blake2::{Blake2b, Digest, digest::consts::U32};
 use blast_launchpad_ptb_tests::{
-    CompiledPackage, Expected, Harness, Outcome, UnlinkedPackage, build, build_timelock, build_unlinked, call, sui_dir,
-    timelock_dir,
+    CompiledPackage, Expected, Harness, Outcome, UnlinkedPackage, build, build_timelock, build_unlinked, call,
+    fork::{
+        BLUEFIN, BLUEFIN_MAX_SQRT_PRICE, BLUEFIN_MIN_SQRT_PRICE, BluefinPoolCreated, BurnPosition, BurnProof,
+        BurnRecord, CETUS, CETUS_MAX_SQRT_PRICE, CETUS_MIN_SQRT_PRICE, CetusAddLiquidity, CetusCollectFee,
+        CetusOpenPosition, CetusPoolState, CetusPosition, CreatePool, LiquidityProvided, MintPoolCreationCap,
+        RegisterPermissionPair, USDC, UserFeeCollected, apportion, cetus_name, expected_sqrt_price, id,
+        insert_snapshot, meme_is_cetus_a, sui, tag, venue_dependencies, venue_events,
+    },
+    sui_dir, timelock_dir,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sui_types::{
     SUI_CLOCK_OBJECT_ID, SUI_COIN_REGISTRY_OBJECT_ID, SUI_FRAMEWORK_PACKAGE_ID, TypeTag,
-    base_types::{ObjectID, SequenceNumber, SuiAddress},
+    base_types::{ObjectID, SuiAddress},
     digests::TransactionDigest,
     effects::TransactionEffectsAPI,
-    move_package::MovePackage,
     object::{MoveObject, OBJECT_START_VERSION, Object, Owner},
-    parse_sui_type_tag,
     programmable_transaction_builder::ProgrammableTransactionBuilder,
     transaction::{Argument, Command, ObjectArg, ProgrammableTransaction},
 };
-
-// === Pinned venue packages (see `fork/fetch.py`) ===
-
-const CETUS: &str = "0x260693ec785a6e6c9d81d58c7d2ff72f1288ae0fa6a9725abe05a6478b11f084";
-const LP_BURN: &str = "0xc4aabc874f5060d3147d8f74c14e3a8a1f9f8d92edea138a51635395ed167cd9";
-const BLUEFIN: &str = "0xd075338d105482f1527cbfd363d6413558f184dec36d9138a70261e87f486e9c";
-const USDC: &str = "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC";
-
-/// Cetus's `tick_math` bounds, the price limits of a swap that runs to completion.
-const CETUS_MIN_SQRT_PRICE: u128 = 4_295_048_016;
-const CETUS_MAX_SQRT_PRICE: u128 = 79_226_673_515_401_279_992_447_579_055;
-/// Bluefin's `tick_math` bounds; a swap limit must lie strictly inside them (`pool` 1009).
-const BLUEFIN_MIN_SQRT_PRICE: u128 = 4_295_048_016;
-const BLUEFIN_MAX_SQRT_PRICE: u128 = 79_226_673_515_401_279_992_447_579_055;
 
 /// The one spacing Cetus's live allowlist admits for both SUI and USDC, at its registered 1%.
 const CETUS_TICK_SPACING: u32 = 200;
@@ -118,18 +105,6 @@ const fn address(suffix: &[u8]) -> ObjectID {
         index += 1;
     }
     ObjectID::new(bytes)
-}
-
-fn id(literal: &str) -> ObjectID {
-    ObjectID::from_hex_literal(literal).expect("object ID")
-}
-
-fn tag(literal: &str) -> TypeTag {
-    parse_sui_type_tag(literal).expect("type tag")
-}
-
-fn sui() -> TypeTag {
-    tag("0x2::sui::SUI")
 }
 
 // === Tests ===
@@ -289,95 +264,6 @@ impl Case {
 enum Side {
     QuoteIn,
     MemeIn,
-}
-
-// === Snapshot ===
-
-#[derive(Deserialize)]
-struct Manifest {
-    checkpoint: u64,
-    packages: Vec<ManifestEntry>,
-    objects: Vec<ManifestEntry>,
-}
-
-#[derive(Deserialize)]
-struct ManifestEntry {
-    #[serde(default)]
-    name: String,
-    id: String,
-    version: u64,
-    digest: String,
-    file: String,
-}
-
-fn snapshot_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("fork/snapshot")
-}
-
-/// Inserts every snapshot package and object at its real ID and returns the checkpoint and the
-/// objects by name. Each file must hash to its recorded digest. Mainnet packages link the framework
-/// at mainnet versions, so those linkage entries are repointed at the simulator's framework.
-fn insert_snapshot(h: &mut Harness) -> Result<(u64, BTreeMap<String, ObjectID>)> {
-    let dir = snapshot_dir();
-    let manifest: Manifest = serde_json::from_str(&std::fs::read_to_string(dir.join("manifest.json"))?)?;
-    let read = |entry: &ManifestEntry| -> Result<Object> {
-        let object: Object = bcs::from_bytes(&std::fs::read(dir.join(&entry.file))?)?;
-        ensure!(object.id() == id(&entry.id), "{} holds {}", entry.file, object.id());
-        ensure!(object.version().value() == entry.version, "{} version", entry.file);
-        ensure!(object.digest().to_string() == entry.digest, "{} does not match its digest", entry.file);
-        Ok(object)
-    };
-    for entry in &manifest.packages {
-        let object = read(entry)?;
-        let package = object.data.try_as_package().context("package")?;
-        let mut linkage = package.linkage_table().clone();
-        for framework in 1u8..=3 {
-            if let Some(info) = linkage.get_mut(&ObjectID::from_single_byte(framework)) {
-                info.upgraded_version = h.object(ObjectID::from_single_byte(framework)).version();
-            }
-        }
-        let package = MovePackage::new(
-            package.id(),
-            package.version(),
-            package.serialized_module_map().clone(),
-            u64::MAX,
-            package.type_origin_table().clone(),
-            linkage,
-        )?;
-        h.insert(Object::new_from_package(package, object.previous_transaction));
-    }
-    let mut objects = BTreeMap::new();
-    for entry in &manifest.objects {
-        let object = read(entry)?;
-        objects.insert(entry.name.clone(), object.id());
-        h.insert(object);
-    }
-
-    Ok((manifest.checkpoint, objects))
-}
-
-/// The venue packages the migrators link: Cetus, LP Burn, Bluefin, and every package in their
-/// linkage tables at the highest version any of them names, as publication requires.
-fn venue_dependencies(h: &Harness) -> Result<Vec<ObjectID>> {
-    let mut table: BTreeMap<ObjectID, (ObjectID, SequenceNumber)> = BTreeMap::new();
-    let mut add = |original: ObjectID, current: ObjectID, version: SequenceNumber| {
-        let entry = table.entry(original).or_insert((current, version));
-        if version > entry.1 {
-            *entry = (current, version);
-        }
-    };
-    for root in [CETUS, LP_BURN, BLUEFIN] {
-        let object = h.object(id(root));
-        let package = object.data.try_as_package().context("venue package")?;
-        add(package.original_package_id(), package.id(), package.version());
-        for (original, info) in package.linkage_table() {
-            if *original > ObjectID::from_single_byte(3) {
-                add(*original, info.upgraded_id, info.upgraded_version);
-            }
-        }
-    }
-
-    Ok(table.into_values().map(|(current, _)| current).collect())
 }
 
 /// The migrators compile once per test binary; each world links them to its own packages.
@@ -1225,8 +1111,7 @@ impl World {
     }
 
     fn cetus_pool(&self, m: &Migration) -> Result<CetusPoolState> {
-        let contents = self.h.contents(m.pool);
-        Ok(bcs::from_bytes::<CetusPoolState>(&contents[..96])?)
+        CetusPoolState::of(&self.h, m.pool)
     }
 
     /// Swaps `amount` into the pool from a fresh coin, all the way through.
@@ -1973,67 +1858,7 @@ impl World {
     }
 }
 
-// === Venue and Blast arithmetic ===
-
-/// Cetus orders a pool's coins by `type_name::with_defining_ids` (64 hex digits, no `0x`); a
-/// Meme is coin A exactly when its name sorts after the Quote's.
-fn cetus_name(coin: &TypeTag) -> String {
-    let TypeTag::Struct(coin) = coin else { panic!("struct type") };
-    format!("{}::{}::{}", coin.address.to_canonical_string(false), coin.module, coin.name)
-}
-
-fn meme_is_cetus_a(meme: &TypeTag, quote: &TypeTag) -> bool {
-    cetus_name(meme) > cetus_name(quote)
-}
-
-/// floor(sqrt(coin_b / coin_a) * 2^64) of the handed-off atoms, as `migration_math` derives it:
-/// the largest root whose square is at most `(numerator << 128) / denominator`.
-fn expected_sqrt_price(meme: u64, quote: u64, meme_is_a: bool) -> u128 {
-    let (numerator, denominator) = if meme_is_a { (quote, meme) } else { (meme, quote) };
-    // The Q128 ratio as (high, low) 128-bit limbs: (n / d) << 128 plus ((n % d) << 128) / d.
-    let (n, d) = (u128::from(numerator), u128::from(denominator));
-    let high = n / d;
-    let (mut remainder, mut low) = (n % d, 0u128);
-    for _ in 0..128 {
-        remainder <<= 1;
-        low <<= 1;
-        if remainder >= d {
-            remainder -= d;
-            low |= 1;
-        }
-    }
-    // root < 2^96, so its square splits exactly into (a^2 << 128) + (a*b << 65) + b^2 with
-    // a = root >> 64 and b the low 64 bits.
-    let square_at_most = |root: u128| {
-        let (a, b) = (root >> 64, root & u128::from(u64::MAX));
-        let (ab, b2) = (a * b, b * b);
-        let square_low = b2.wrapping_add(ab << 65);
-        let square_high = a * a + (ab >> 63) + u128::from(square_low < b2);
-        (square_high, square_low) <= (high, low)
-    };
-    let (mut lower, mut upper) = (0u128, 1u128 << 96);
-    while lower + 1 < upper {
-        let middle = (lower + upper) / 2;
-        if square_at_most(middle) { lower = middle } else { upper = middle }
-    }
-    lower
-}
-
-/// `allocation::apportion` with no protected entry: floors, then one unit each by descending
-/// remainder, ties in table order.
-fn apportion(weights: &[u64], total: u64) -> Vec<u64> {
-    let mut amounts: Vec<u64> = weights.iter().map(|bps| (total as u128 * *bps as u128 / 10_000) as u64).collect();
-    let mut ranked: Vec<usize> = (0..weights.len()).collect();
-    ranked.sort_by(|a, b| {
-        let remainder = |i: usize| total as u128 * weights[i] as u128 % 10_000;
-        remainder(*b).cmp(&remainder(*a)).then(a.cmp(b))
-    });
-    let residue = total - amounts.iter().sum::<u64>();
-    for i in 0..residue as usize {
-        amounts[ranked[i]] += 1;
-    }
-    amounts
-}
+// === Blast arithmetic ===
 
 fn expected_fees(vault: &Vault, shares: (u64, u64), gross_meme: u64, gross_quote: u64) -> FeesCollected {
     let protocol = |gross: u64, bps: u64| (gross as u128 * bps as u128).div_ceil(10_000) as u64;
@@ -2084,15 +1909,6 @@ fn merkle_node(left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
 }
 
 // === Event and object mirrors (BCS field order) ===
-
-fn venue_events<T: DeserializeOwned>(outcome: &Outcome, module: &str, name: &str) -> Vec<T> {
-    outcome
-        .events
-        .iter()
-        .filter(|event| event.type_.module.as_str() == module && event.type_.name.as_str() == name)
-        .map(|event| bcs::from_bytes(&event.contents).expect("venue event payload"))
-        .collect()
-}
 
 fn migrators_event_names(outcome: &Outcome, migrators: ObjectID) -> Vec<String> {
     outcome
@@ -2304,159 +2120,4 @@ struct RewardPaid {
     quote_amount: u64,
     meme_remaining: u64,
     quote_remaining: u64,
-}
-
-/// Mirrors `cetus_clmm::factory::RegisterPermissionPairEvent`.
-#[derive(Deserialize)]
-struct RegisterPermissionPair {
-    cap: ObjectID,
-    _pool_key: ObjectID,
-    coin_type: String,
-    coin_pair: String,
-    tick_spacing: u32,
-}
-
-#[derive(Deserialize)]
-struct MintPoolCreationCap {
-    _coin_type: String,
-    cap: ObjectID,
-}
-
-#[derive(Deserialize)]
-struct CreatePool {
-    pool_id: ObjectID,
-    _coin_type_a: String,
-    _coin_type_b: String,
-    tick_spacing: u32,
-}
-
-#[derive(Deserialize)]
-struct CetusOpenPosition {
-    _pool: ObjectID,
-    tick_lower: u32,
-    tick_upper: u32,
-    position: ObjectID,
-}
-
-#[derive(Deserialize)]
-struct CetusAddLiquidity {
-    _pool: ObjectID,
-    position: ObjectID,
-    _tick_lower: u32,
-    _tick_upper: u32,
-    liquidity: u128,
-    _after_liquidity: u128,
-    _current_sqrt_price: u128,
-    amount_a: u64,
-    amount_b: u64,
-}
-
-#[derive(Deserialize)]
-struct CetusCollectFee {
-    _position: ObjectID,
-    pool: ObjectID,
-    amount_a: u64,
-    amount_b: u64,
-}
-
-/// The fixed-size head of `cetus_clmm::pool::Pool`.
-#[derive(Deserialize)]
-struct CetusPoolState {
-    _id: ObjectID,
-    coin_a: u64,
-    coin_b: u64,
-    tick_spacing: u32,
-    fee_rate: u64,
-    liquidity: u128,
-    sqrt_price: u128,
-    _tick: u32,
-}
-
-#[derive(Deserialize)]
-struct CetusPosition {
-    id: ObjectID,
-    pool: ObjectID,
-    _index: u64,
-    _coin_type_a: String,
-    _coin_type_b: String,
-    _name: String,
-    _description: String,
-    _url: String,
-    _tick_lower: u32,
-    _tick_upper: u32,
-    liquidity: u128,
-}
-
-/// Mirrors `lp_burn::CetusLPBurnProof`.
-#[derive(Deserialize)]
-struct BurnProof {
-    _id: ObjectID,
-    _name: String,
-    _description: String,
-    _image_url: String,
-    position: CetusPosition,
-}
-
-#[derive(Deserialize)]
-struct BurnPosition {
-    position_id: ObjectID,
-    burned_position_id: ObjectID,
-    pool_id: ObjectID,
-}
-
-/// `dynamic_field::Field<ID, lp_burn::BurnedPositionInfo>` under the BurnManager's pool table.
-#[derive(Deserialize)]
-struct BurnRecord {
-    _id: ObjectID,
-    name: ObjectID,
-    burned_position_id: ObjectID,
-    position_id: ObjectID,
-    pool_id: ObjectID,
-}
-
-#[derive(Deserialize)]
-struct BluefinPoolCreated {
-    id: ObjectID,
-    _coin_a: String,
-    _coin_a_symbol: String,
-    _coin_a_decimals: u8,
-    _coin_a_url: String,
-    _coin_b: String,
-    _coin_b_symbol: String,
-    _coin_b_decimals: u8,
-    _coin_b_url: String,
-    current_sqrt_price: u128,
-    _current_tick_index: u32,
-    tick_spacing: u32,
-    fee_rate: u64,
-    _protocol_fee_share: u64,
-}
-
-#[derive(Deserialize)]
-struct LiquidityProvided {
-    _pool_id: ObjectID,
-    position_id: ObjectID,
-    coin_a_amount: u64,
-    coin_b_amount: u64,
-    pool_coin_a_amount: u64,
-    pool_coin_b_amount: u64,
-    liquidity: u128,
-    _before_liquidity: u128,
-    after_liquidity: u128,
-    _current_sqrt_price: u128,
-    _current_tick_index: u32,
-    lower_tick: u32,
-    upper_tick: u32,
-    _sequence_number: u128,
-}
-
-#[derive(Deserialize)]
-struct UserFeeCollected {
-    _pool_id: ObjectID,
-    position_id: ObjectID,
-    coin_a_amount: u64,
-    coin_b_amount: u64,
-    _pool_coin_a_amount: u64,
-    _pool_coin_b_amount: u64,
-    _sequence_number: u128,
 }

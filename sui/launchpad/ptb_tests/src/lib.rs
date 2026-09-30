@@ -7,8 +7,10 @@
 //! `cd sui/launchpad/ptb_tests && cargo test`.
 //!
 //! The venue-fork tests also insert a committed mainnet snapshot (`fork/`) of real venue
-//! packages and objects at their real IDs; see `tests/venue_fork.rs`.
+//! packages and objects at their real IDs; see `fork`, `tests/venue_fork.rs`, and
+//! `tests/presale_venue_fork.rs`.
 
+pub mod fork;
 pub mod measure;
 
 use std::{
