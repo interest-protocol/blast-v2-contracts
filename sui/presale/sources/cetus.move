@@ -30,7 +30,7 @@ public fun new<Meme, Quote>(
     duration_ms: u64,
     liquidity_window_ms: u64,
     eligibility: EligibilityPolicy,
-    creator_fee_bps: u64,
+    fee_recipients: vector<FeeRecipient>,
     rewards_fee_bps: u64,
     venue_config: &mut VenueConfig,
     cetus_config: &GlobalConfig,
@@ -64,7 +64,7 @@ public fun new<Meme, Quote>(
         Witness(),
         tick_spacing,
         fee_rate,
-        creator_fee_bps,
+        fee_recipients,
         rewards_fee_bps,
         ctx,
     )
@@ -81,7 +81,7 @@ public fun migrate_meme_a<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     assert!(factory::is_right_order<Meme, Quote>(), EInvalidCoinOrder);
-    let (presale_id, cap_id, tick_spacing, _, creator_fee_bps, rewards_fee_bps) = sale
+    let (presale_id, cap_id, tick_spacing, _, fee_recipients, rewards_fee_bps) = sale
         .migration_config();
     let (meme, quote) = sale.migrate(Witness(), ctx);
     let meme_amount = meme.value();
@@ -109,7 +109,7 @@ public fun migrate_meme_a<Meme, Quote>(
     burn_into_vault(
         presale_id,
         cap_id,
-        creator_fee_bps,
+        fee_recipients,
         rewards_fee_bps,
         burn_manager,
         position,
@@ -130,7 +130,7 @@ public fun migrate_meme_b<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     assert!(factory::is_right_order<Quote, Meme>(), EInvalidCoinOrder);
-    let (presale_id, cap_id, tick_spacing, _, creator_fee_bps, rewards_fee_bps) = sale
+    let (presale_id, cap_id, tick_spacing, _, fee_recipients, rewards_fee_bps) = sale
         .migration_config();
     let (meme, quote) = sale.migrate(Witness(), ctx);
     let meme_amount = meme.value();
@@ -158,7 +158,7 @@ public fun migrate_meme_b<Meme, Quote>(
     burn_into_vault(
         presale_id,
         cap_id,
-        creator_fee_bps,
+        fee_recipients,
         rewards_fee_bps,
         burn_manager,
         position,
@@ -177,7 +177,7 @@ public fun collect_fees_meme_a<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     let (meme, quote) = collect_position_fees(vault, cetus_config, burn_manager, pool, ctx);
-    vault.split_fees(meme, quote);
+    vault.split_fees(meme, quote, ctx);
 }
 
 /// Anyone may collect fees from a Meme-B Cetus migration position.
@@ -189,7 +189,7 @@ public fun collect_fees_meme_b<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     let (quote, meme) = collect_position_fees(vault, cetus_config, burn_manager, pool, ctx);
-    vault.split_fees(meme, quote);
+    vault.split_fees(meme, quote, ctx);
 }
 
 // === Private Functions ===
@@ -201,7 +201,7 @@ fun pool_creation_cap<Meme>(self: &VenueConfig): &PoolCreationCap {
 fun burn_into_vault<Meme, Quote>(
     presale_id: ID,
     cap_id: ID,
-    creator_fee_bps: u64,
+    fee_recipients: vector<FeeRecipient>,
     rewards_fee_bps: u64,
     burn_manager: &mut BurnManager,
     position: Position,
@@ -219,7 +219,7 @@ fun burn_into_vault<Meme, Quote>(
         pool_id,
         burn_proof,
         liquidity,
-        creator_fee_bps,
+        fee_recipients,
         rewards_fee_bps,
         residual_meme.into_balance(),
         residual_quote.into_balance(),
@@ -255,6 +255,7 @@ use blast_presale::{
     blast_presale::{
         Self as presale,
         EligibilityPolicy,
+        FeeRecipient,
         Presale,
         PresaleCap,
         RecipientAllocation,

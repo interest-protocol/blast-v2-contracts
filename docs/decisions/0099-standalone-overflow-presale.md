@@ -22,6 +22,8 @@ Create the independent `blast_presale` package and publish it immutable. It
 neither reads nor mutates launchpad state, and no launchpad package imports it.
 Bluefin and Cetus adapters stay inside this package so core escrow release and
 venue creation are one atomic call without a second presale-adapter package.
+Its only first-party dependency is the immutable `blast_admin` ACL, used solely
+to authorize holder-reward rounds.
 
 Each `Presale<SaleToken, Quote>` consumes a `TreasuryCap<SaleToken>` whose total
 supply is zero and verifies it belongs to the supplied `Currency<SaleToken>`.
@@ -32,8 +34,10 @@ apportionment so every atomic unit is assigned exactly once, and escrows every
 allocation. It then irreversibly consumes the TreasuryCap into the selected Coin
 Registry `Fixed` or `BurnOnly` supply state before commitments open. The remaining
 immutable per-sale configuration contains a positive Quote raise, a commitment
-duration, an LP-migration window, a sealed migration witness, venue tier,
-creator/reward LP-fee BPS totaling 10,000, and an `EligibilityPolicy`:
+duration, an LP-migration window, a sealed migration witness, venue tier, an
+LP-fee split, and an `EligibilityPolicy`. The fee split is up to 16 distinct
+`(recipient, bps)` fee recipients, the creator configured as one of them, and a
+holder-reward BPS; together they total exactly 10,000. The eligibility policy is:
 
 - `Open` stores one wallet cap and a maximum participant count.
 - `Allowlisted` stores a positional Blake2b-256 Merkle root and leaf count.
@@ -95,13 +99,16 @@ The final claim receives the bounded integer remainder of both balances, so
 all escrowed participant assets are conserved. Claim order changes only which
 wallet receives that documented sub-participant-count remainder.
 
-LP fee collection is permissionless. The vault applies the immutable BPS split
-to each asset: the creator share remains claimable with the transferable
-`PresaleCap`, while the remainder funds holder-reward rounds. The cap holder
-commits each reward round's beneficiaries and amounts with a Merkle root;
-anyone may relay a valid proof, but assets go only to its committed beneficiary.
-The same generic positional Blake2b-256 module verifies eligibility and rewards.
-The cap also claims migration residuals.
+LP fee collection is permissionless. The vault apportions each asset across
+the fee recipients and the holder-reward share with largest-remainder
+apportionment, pays every recipient in the same call, and keeps the holder
+share. Blast's `blast_presale_domain::RewardsAdmin` role in the shared Blast ACL
+(ADR 0097) commits each reward round's beneficiaries and amounts with a Merkle
+root and funds it from that share, so holder distribution runs on Blast's
+automated reward pipeline rather than the creator's availability. Anyone may
+relay a valid proof, but assets go only to its committed beneficiary. The same
+generic positional Blake2b-256 module verifies eligibility and rewards. The
+`PresaleCap` claims migration residuals.
 
 ## Alternatives considered
 
@@ -130,8 +137,12 @@ The cap also claims migration residuals.
   off-chain rank or eligibility methodology was fair.
 - Immutable publication removes concurrent old-bytecode access to shared
   presale custody and eliminates a presale package-administration surface.
-- The creator chooses the reward Merkle roots. Proofs enforce the published
-  allocation but cannot prove that its off-chain holder methodology was fair.
+- Blast's rewards administrator chooses the reward Merkle roots. Proofs enforce
+  the published allocation but cannot prove that its off-chain holder
+  methodology was fair. The creator cannot redirect the holder share.
+- Fee recipients are fixed addresses, not transferable claims: a recipient that
+  loses its key loses its future fee share. Pushing at collection keeps the
+  vault free of per-recipient balances and claim paths.
 - Cancellation refunds participant Quote but permanently locks every SaleToken
   allocation. It cannot restore mint authority or change the selected Coin
   Registry supply mode; a creator who retries must deploy a new coin type.
@@ -145,7 +156,9 @@ The cap also claims migration residuals.
   dynamic-record bounds, exact time boundaries, proportional fills, full
   refunds, exact full-supply apportionment, distinct recipient payouts, fixed and
   burn-only supply modes, cancelled-supply locking, migration witness enforcement,
-  LP-fee splitting, creator claims, generic Merkle proofs, and relayed holder rewards.
+  LP-fee splitting with direct recipient payouts, fee-split validation,
+  administrator-published holder rounds, generic Merkle proofs, and relayed
+  holder rewards.
 - The package gate builds both network environments, lints with warnings as
   errors, and runs Move tests.
 - Publication preview must show package publication and consumption of the

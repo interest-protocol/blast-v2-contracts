@@ -39,6 +39,13 @@ public struct RecipientAllocation has copy, drop, store {
     amount: u64,
 }
 
+/// One immutable share of every collected LP fee, paid to `recipient` as fees
+/// are collected. The creator is configured as an ordinary recipient.
+public struct FeeRecipient has copy, drop, store {
+    recipient: address,
+    bps: u64,
+}
+
 /// Dynamic-field name for one wallet's undelivered commitment.
 public struct CommitmentKey(address) has copy, drop, store;
 
@@ -69,7 +76,7 @@ public struct Presale<phantom SaleToken, phantom Quote> has key {
     migration_witness: TypeName,
     tick_spacing: u32,
     fee_rate: u64,
-    creator_fee_bps: u64,
+    fee_recipients: vector<FeeRecipient>,
     rewards_fee_bps: u64,
     total_commitments: u64,
     remaining_commitments: u64,
@@ -113,6 +120,13 @@ public fun recipient_allocation(recipient: address, bps: u64): RecipientAllocati
     assert!(recipient != @0x0 && bps > 0 && bps <= BASIS_POINTS, EInvalidTokenAllocation);
 
     RecipientAllocation { recipient, bps, amount: 0 }
+}
+
+/// Configures one address's share of every collected LP fee.
+public fun fee_recipient(recipient: address, bps: u64): FeeRecipient {
+    assert!(recipient != @0x0 && bps > 0 && bps <= BASIS_POINTS, EInvalidFeeSplit);
+
+    FeeRecipient { recipient, bps }
 }
 
 /// Shares a newly created presale and starts its fixed public window now.
@@ -299,7 +313,7 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
     _: MigrationWitness,
     tick_spacing: u32,
     fee_rate: u64,
-    creator_fee_bps: u64,
+    fee_recipients: vector<FeeRecipient>,
     rewards_fee_bps: u64,
     ctx: &mut TxContext,
 ): (Presale<SaleToken, Quote>, PresaleCap) {
@@ -337,8 +351,20 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         ) == BASIS_POINTS,
         EInvalidTokenAllocation,
     );
-    assert!(creator_fee_bps <= BASIS_POINTS, EInvalidFeeSplit);
-    assert!(rewards_fee_bps == BASIS_POINTS - creator_fee_bps, EInvalidFeeSplit);
+    assert!(fee_recipients.length() <= MAX_FEE_RECIPIENTS, EInvalidFeeSplit);
+    fee_recipients.do_ref!(|fee_recipient| assert!(
+        fee_recipient.recipient != @0x0
+            && fee_recipient.bps > 0
+            && fee_recipient.bps <= BASIS_POINTS
+            // ponytail: O(n²) duplicate validation is bounded by MAX_FEE_RECIPIENTS.
+            && fee_recipients.count!(|other| other.recipient == fee_recipient.recipient) == 1,
+        EInvalidFeeSplit,
+    ));
+    assert!(
+        fee_recipients.fold!(rewards_fee_bps, |sum, fee_recipient| sum + fee_recipient.bps)
+            == BASIS_POINTS,
+        EInvalidFeeSplit,
+    );
     assert!(duration_ms > 0 && liquidity_window_ms > 0, EInvalidWindow);
 
     let mut shares = vector[token_allocation_bps, liquidity_token_allocation_bps];
@@ -366,6 +392,7 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
     let presale_cap_id = cap.id.to_inner();
     let migration_witness = type_name::with_original_ids<MigrationWitness>();
     let recipient_count = recipient_allocations.length();
+    let (fee_recipient_addresses, fee_recipient_bps) = fee_recipient_fields(&fee_recipients);
     let presale = Presale {
         id,
         presale_cap_id,
@@ -379,7 +406,7 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         migration_witness,
         tick_spacing,
         fee_rate,
-        creator_fee_bps,
+        fee_recipients,
         rewards_fee_bps,
         total_commitments: 0,
         remaining_commitments: 0,
@@ -408,7 +435,8 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         migration_witness,
         tick_spacing,
         fee_rate,
-        creator_fee_bps,
+        fee_recipients: fee_recipient_addresses,
+        fee_recipient_bps,
         rewards_fee_bps,
     });
 
@@ -467,14 +495,36 @@ public(package) fun assert_cap<SaleToken, Quote>(
 
 public(package) fun migration_config<SaleToken, Quote>(
     self: &Presale<SaleToken, Quote>,
-): (ID, ID, u32, u64, u64, u64) {
+): (ID, ID, u32, u64, vector<FeeRecipient>, u64) {
     (
         self.id.to_inner(),
         self.presale_cap_id,
         self.tick_spacing,
         self.fee_rate,
-        self.creator_fee_bps,
+        self.fee_recipients,
         self.rewards_fee_bps,
+    )
+}
+
+/// Splits one fee amount into each recipient's share followed by the holder-reward
+/// share, assigning every atomic unit exactly once.
+public(package) fun apportion_fee(
+    fee_recipients: &vector<FeeRecipient>,
+    rewards_fee_bps: u64,
+    amount: u64,
+): vector<u64> {
+    let mut shares = fee_recipients.map_ref!(|fee_recipient| fee_recipient.bps);
+    shares.push_back(rewards_fee_bps);
+
+    apportion(shares, amount)
+}
+
+public(package) fun fee_recipient_fields(
+    fee_recipients: &vector<FeeRecipient>,
+): (vector<address>, vector<u64>) {
+    (
+        fee_recipients.map_ref!(|fee_recipient| fee_recipient.recipient),
+        fee_recipients.map_ref!(|fee_recipient| fee_recipient.bps),
     )
 }
 
@@ -680,12 +730,13 @@ public fun created_fields<SaleToken, Quote>(
 #[test_only]
 public fun created_migration_fields<SaleToken, Quote>(
     event: &PresaleCreated<SaleToken, Quote>,
-): (TypeName, u32, u64, u64, u64) {
+): (TypeName, u32, u64, vector<address>, vector<u64>, u64) {
     (
         event.migration_witness,
         event.tick_spacing,
         event.fee_rate,
-        event.creator_fee_bps,
+        event.fee_recipients,
+        event.fee_recipient_bps,
         event.rewards_fee_bps,
     )
 }
@@ -783,7 +834,8 @@ public struct PresaleCreated<phantom SaleToken, phantom Quote> has copy, drop {
     migration_witness: TypeName,
     tick_spacing: u32,
     fee_rate: u64,
-    creator_fee_bps: u64,
+    fee_recipients: vector<address>,
+    fee_recipient_bps: vector<u64>,
     rewards_fee_bps: u64,
 }
 
@@ -854,6 +906,9 @@ const MAX_PARTICIPANTS: u64 = 65_536;
 
 const MAX_RECIPIENTS: u64 = 64;
 
+/// Bounds the transfers one fee collection makes.
+const MAX_FEE_RECIPIENTS: u64 = 16;
+
 const BASIS_POINTS: u64 = 10_000;
 
 const DIGEST_LENGTH: u64 = 32;
@@ -915,7 +970,7 @@ const ELiquidityDeadlineNotReached: vector<u8> = b"The deadline to cancel an unl
 const EInitialSupplyNotZero: vector<u8> = b"The supplied SaleToken TreasuryCap must have zero total supply.";
 
 #[error(code = 18)]
-const EInvalidFeeSplit: vector<u8> = b"Creator and holder-reward fee shares must total 10,000 BPS.";
+const EInvalidFeeSplit: vector<u8> = b"Fee recipients must be unique, positive, bounded, and total 10,000 BPS with the holder-reward share.";
 
 #[error(code = 19)]
 const EWrongMigrationWitness: vector<u8> = b"The migrator does not match the venue fixed at presale creation.";

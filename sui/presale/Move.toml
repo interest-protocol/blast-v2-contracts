@@ -5,6 +5,7 @@ license = "BUSL-1.1"
 authors = ["Jose Cerqueira (jose@interestprotocol.com)"]
 
 [dependencies]
+blast_admin = { local = "../admin" }
 BluefinSpot = { git = "https://github.com/fireflyprotocol/bluefin-spot-contract-interface.git", rev = "91ce930575b2aa3decab9b7e129b8002deba80c1" }
 CetusClmm = { local = "../migrators/interfaces/cetus" }
 CetusLpBurn = { local = "../migrators/interfaces/cetus_lp_burn" }
