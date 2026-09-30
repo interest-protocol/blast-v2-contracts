@@ -85,6 +85,7 @@ public fun authorize_upgrade<PackageMarker: drop>(
     let package_id = cap.package();
     let native_version = cap.version();
     let policy = cap.policy();
+
     let ticket = cap.authorize(policy, digest);
 
     blast_admin_events::upgrade_authorized<PackageMarker>(
@@ -133,11 +134,11 @@ public fun restrict_to_additive<PackageMarker: drop>(
 
     let cap = self.upgrade_cap.borrow_mut();
     let previous_policy = cap.policy();
-    let new_policy = package::additive_policy();
     assert!(
-        new_policy > previous_policy,
+        package::additive_policy() > previous_policy,
         blast_admin::errors::upgrade_policy_not_more_restrictive!(),
     );
+
     let upgrade_cap_id = object::id(cap);
     let native_version = cap.version();
 
@@ -162,11 +163,11 @@ public fun restrict_to_dependency_only<PackageMarker: drop>(
 
     let cap = self.upgrade_cap.borrow_mut();
     let previous_policy = cap.policy();
-    let new_policy = package::dep_only_policy();
     assert!(
-        new_policy > previous_policy,
+        package::dep_only_policy() > previous_policy,
         blast_admin::errors::upgrade_policy_not_more_restrictive!(),
     );
+
     let upgrade_cap_id = object::id(cap);
     let native_version = cap.version();
 

@@ -68,6 +68,7 @@ public fun register(
     };
 
     partner.emit_updated();
+
     transfer::share_object(partner);
 }
 

@@ -91,6 +91,7 @@ public fun new<Meme, Quote, Witness: drop>(
         type_name::with_original_ids<Meme>() != type_name::with_original_ids<Quote>(),
         blast_fun::errors::invalid_meme_quote_pair!(),
     );
+
     let migration_witness = type_name::with_original_ids<Witness>();
     let (quote_fee_bps, meme_fee_bps) = config.snapshot_for_launch<Quote>(
         migration_witness,
@@ -205,8 +206,10 @@ public fun finalize<Meme, Quote>(
         opening_round_ms,
         partner_id,
     } = self;
+
     let creation_fee = creation_fee.into_balance();
     assert!(creation_fee.value() == config.creation_fee(), blast_fun::errors::invalid_creation_fee!());
+
     let virtual_quote = virtual_quote.destroy_some();
     let graduation_target = graduation_target.destroy_some();
     let allocation_plan = allocation_plan.destroy_some().add_protocol(config.protocol_allocation());
@@ -222,9 +225,11 @@ public fun finalize<Meme, Quote>(
         currency.symbol().length() <= constants::max_meme_symbol_length!(),
         blast_fun::errors::meme_symbol_too_long!(),
     );
+
     // Trading closes with the reserve at the target, so the pool's share of it must be positive.
     let (lp_quote, _, _) = allocation_plan.apportion_quote(graduation_target);
     assert!(lp_quote > 0, blast_fun::errors::invalid_graduation_target!());
+
     let ticket_id = ticket.id();
     let atomic_supply = launch_ticket::atomic_supply(ticket.decimals());
     let (curve_meme, _, _, _) = allocation_plan.apportion_meme(atomic_supply);
@@ -439,6 +444,7 @@ public fun join_opening_round<Meme, Quote>(
     if (!self.id.has_dynamic_field(key)) self.id.add_dynamic_field(key, 0u64);
     let bid = self.id.dynamic_field_mut<_, u64>(key);
     *bid = *bid + quote;
+
     self.opening_round_bids = self.opening_round_bids + quote;
     self.opening_round_quote.join(quote_in.into_balance());
 
@@ -493,6 +499,7 @@ public fun deliver_opening_round<Meme, Quote>(
     let bid = self.id.remove_dynamic_field<_, u64>(OpeningRoundBidKey(bidder));
     let meme = self.opening_round_meme.value().mul_div(bid, self.opening_round_bids);
     let quote = self.opening_round_quote.value().mul_div(bid, self.opening_round_bids);
+
     self.opening_round_bids = self.opening_round_bids - bid;
     if (meme > 0) {
         transfer::public_transfer(self.opening_round_meme.split(meme).into_coin(ctx), bidder);
@@ -564,6 +571,7 @@ public fun sell<Meme, Quote>(
     let meme_fee = meme_in.split(meme_fee);
     self.pending_burn.join(meme_in.split(pending_burn_delta));
     self.meme_reserve.join(meme_in);
+
     let mut quote_out = self.real_quote_reserve.split(quote_out_gross);
     let quote_fee = quote_out.split(quote_fee);
     let (protocol_meme, creator_meme, protocol_quote, creator_quote) = self
@@ -676,6 +684,7 @@ public fun migrate<Meme, Quote, Witness: drop>(
     let (lp_quote, protocol_quote_amount, recipient_quote) = plan
         .apportion_quote(self.real_quote_reserve.value());
     let destinations = plan.destinations();
+
     destinations.length().do!(|i| {
         let (destination, meme, quote) = (destinations[i], recipient_meme[i], recipient_quote[i]);
         if (meme > 0) {
@@ -689,6 +698,7 @@ public fun migrate<Meme, Quote, Witness: drop>(
         };
         events::migration_allocation_paid(self.id.to_inner(), destination, meme, quote);
     });
+
     self.fee_ledger.accrue_protocol_fees(
         self.allocated_meme.split(protocol_meme_amount),
         self.real_quote_reserve.split(protocol_quote_amount),
@@ -700,9 +710,11 @@ public fun migrate<Meme, Quote, Witness: drop>(
             protocol_quote_amount,
         );
     };
+
     let meme = self.allocated_meme.withdraw_all();
     let quote = self.real_quote_reserve.withdraw_all();
 
+    // Dispose of the unsold Meme and the pending sell-burn.
     let burnable = currency.is_supply_burn_only();
     let mut disposal = self.pending_burn.withdraw_all();
     let disposed_meme = disposal.join(self.meme_reserve.withdraw_all());
@@ -777,6 +789,7 @@ fun buy_from_curve<Meme, Quote>(
         self.quote_fee_bps,
         self.meme_fee_bps,
     );
+
     if (meme_out_net == 0) return (balance::zero(), quote_in);
     assert!(meme_out_net >= min_meme_out, blast_fun::errors::slippage_exceeded!());
 
@@ -785,6 +798,7 @@ fun buy_from_curve<Meme, Quote>(
     self.real_quote_reserve.join(quote_in);
     let mut meme_out = self.meme_reserve.split(meme_out_gross);
     let meme_fee = meme_out.split(meme_fee);
+
     if (self.real_quote_reserve.value() >= self.graduation_target) {
         self.lifecycle = Lifecycle::MigrationReady;
     };

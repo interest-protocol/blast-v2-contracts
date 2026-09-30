@@ -39,8 +39,10 @@ public fun cancel(
     let BlastSuiDepositReceipt { id, vault_id, staked_sui } = self;
     let receipt_id = id.to_inner();
     let principal_sui = staked_sui.amount();
+
     let sui_out = system_state.request_withdraw_stake_non_entry(staked_sui, ctx).into_coin(ctx);
     id.delete();
+
     events::blast_sui_deposit_cancelled(
         receipt_id,
         vault_id,
@@ -61,6 +63,7 @@ public fun create_display(
     ctx: &mut TxContext,
 ): DisplayCap<BlastSuiDepositReceipt> {
     package_version.assert_current();
+
     let (mut display, cap) = display_registry::new<BlastSuiDepositReceipt>(
         registry,
         internal::permit<BlastSuiDepositReceipt>(),

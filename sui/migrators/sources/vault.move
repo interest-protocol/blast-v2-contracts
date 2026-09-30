@@ -226,6 +226,7 @@ public(package) fun split_fees<Meme, Quote>(
 
     meme.pay(protocol_meme, protocol_destination, ctx);
     quote.pay(protocol_quote, protocol_destination, ctx);
+
     self.creator_meme.join(meme.split(creator_meme));
     self.creator_quote.join(quote.split(creator_quote));
     self.auto_lp_meme.join(meme.split(auto_lp_meme));
@@ -234,6 +235,7 @@ public(package) fun split_fees<Meme, Quote>(
     self.rewards_quote.join(quote.split(rewards_quote));
     burn(currency, meme.split(burn_meme), ctx);
     self.burn_quote.join(quote.split(burn_quote));
+
     recipients.length().do!(|i| {
         meme.pay(recipient_meme[i], recipients[i].destination(), ctx);
         quote.pay(recipient_quote[i], recipients[i].destination(), ctx);
@@ -286,8 +288,8 @@ public(package) fun burn_buyback<Meme, Quote>(
 ) {
     let meme_burned = meme.value();
     assert!(meme_burned >= min_meme_out, EBuybackBelowMinimum);
-    let quote_spent = quote_in - unspent_quote.value();
 
+    let quote_spent = quote_in - unspent_quote.value();
     burn(currency, meme, ctx);
     self.burn_quote.join(unspent_quote);
 
@@ -408,8 +410,8 @@ fun new<Meme, Quote, Venue, Position: key + store>(
     ctx: &mut TxContext,
 ): LpVault<Meme, Quote> {
     assert!(liquidity > 0, EZeroLiquidity);
-    let position_id = object::id(&position);
 
+    let position_id = object::id(&position);
     let mut vault = LpVault {
         id: object::new(ctx),
         pool_id,
@@ -449,8 +451,8 @@ fun pay<T>(balance: &mut Balance<T>, amount: u64, destination: address, ctx: &mu
 /// Burns `meme`, or sends it to `@0x0` when the supply is fixed, as migration does.
 fun burn<Meme>(currency: &mut Currency<Meme>, mut meme: Balance<Meme>, ctx: &mut TxContext) {
     if (currency.is_supply_burn_only()) return currency.burn_balance(meme);
-    let amount = meme.value();
 
+    let amount = meme.value();
     meme.pay(amount, @0x0, ctx);
     meme.destroy_zero();
 }

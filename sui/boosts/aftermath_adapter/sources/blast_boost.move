@@ -43,9 +43,8 @@ public(package) fun new_currency<Product>(
         icon_url,
         ctx,
     );
-    let metadata_cap = initializer.finalize(ctx);
 
-    (treasury_cap, metadata_cap)
+    (treasury_cap, initializer.finalize(ctx))
 }
 
 // === Imports ===

@@ -53,6 +53,7 @@ public(package) fun seed_position<Product, Collateral>(
     ctx: &TxContext,
 ): ClearingHouse<Collateral> {
     binding.update_funding_when_due(&mut clearing_house, base_oracle, clock);
+
     let (flat_observation, _) = binding.capture(
         account, registry, &clearing_house, base_oracle, collateral_oracle, clock,
     ).into_observation();
@@ -279,6 +280,7 @@ fun open_seed_position<Product, Collateral>(
         issuance.assert_seed_execution(reference_base_price, executed);
         let (_, filled_quote) = summary.filled_base_and_quote(aftermath_order_side);
         issuance.assert_seed_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
+
         events::order_filled<Product>(
             object::id(account), aftermath_order_side, false, false, order_base, order_base, filled_quote,
             reference_base_price, executed,
@@ -321,6 +323,7 @@ fun order_sizes(target_base: u64, max_order_base: u64): vector<u64> {
         target_base > 0 && max_order_base > 0,
         blast_boosts_aftermath::errors::invalid_initialization_order_size!(),
     );
+
     let order_count = initialization_order_count(target_base, max_order_base);
 
     let mut remaining = target_base;
@@ -417,6 +420,7 @@ fun place_order<Product, Collateral>(
     let (clearing_house, summary) = vault.venue().execute_order(
         account, clearing_house, base_oracle, collateral_oracle, is_ask, requested, reduce_only, clock, ctx,
     );
+
     let filled = active_fill(
         !is_ask, requested, lot_size,
         summary.base_filled_bid(), summary.base_filled_ask(),
@@ -427,6 +431,7 @@ fun place_order<Product, Collateral>(
     let executed = execution_price(summary.execution_price(is_ask), !is_ask);
     vault.state().assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
     vault.state().assert_execution(emergency, base_price, executed);
+
     events::order_filled<Product>(
         object::id(account), is_ask, reduce_only, emergency, requested, filled, filled_quote, base_price, executed,
     );

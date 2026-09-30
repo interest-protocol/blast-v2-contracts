@@ -49,6 +49,7 @@ public fun set_protocol_allocation(
         meme_bps.value() <= 9_998 && quote_bps.value() <= 9_999,
         blast_fun::errors::invalid_protocol_allocation!(),
     );
+
     let protocol_allocation = allocation::protocol_allocation(meme_bps, quote_bps);
     assert!(self.protocol_allocation != protocol_allocation, blast_fun::errors::unchanged!());
 
@@ -132,6 +133,7 @@ public fun add_partner(
     partner: &Partner,
 ) {
     package_version.assert_current();
+
     let partner_id = object::id(partner);
     let key = PartnerKey(partner_id);
 
@@ -156,6 +158,7 @@ public fun remove_partner(
     clock: &Clock,
 ) {
     package_version.assert_current();
+
     let partner_id = object::id(partner);
     let now_ms = clock.timestamp_ms();
     self.assert_partner(partner_id, now_ms);
@@ -181,6 +184,7 @@ public fun set_migration_witness_allowed<MigrationWitness: drop>(
     package_version.assert_current();
     let origin = type_name::original_id<MigrationWitness>();
     assert!(origin != @0x1 && origin != @0x2, blast_fun::errors::invalid_migration_witness_type!());
+
     let witness = type_name::with_original_ids<MigrationWitness>();
 
     if (allowed) self.migration_witnesses.insert(witness)

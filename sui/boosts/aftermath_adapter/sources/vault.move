@@ -86,12 +86,14 @@ public fun issue<Product, Collateral>(
         !type_name::with_original_ids<Product>().is_primitive(),
         blast_boosts_aftermath::errors::invalid_product_witness_type!(),
     );
+
     let issuance = state::issue<Product>(
         admin_witness, vault_policy, max_order_notional, nav_cap,
         constants::base_decimals!(), constants::collateral_decimals!(),
     );
     let (treasury_cap, metadata_cap) =
         blast_boost::new_currency<Product>(registry, symbol, name, description, icon_url, ctx);
+
     events::vault_issued<Product>(
         object::id(&treasury_cap), object::id(&metadata_cap), vault_policy, max_order_notional, nav_cap,
     );
@@ -138,10 +140,13 @@ public fun redeem_shutdown<Product, Collateral>(
 
     let burned = self.burn_redeemed_shares(shares);
     let output_coin = self.terminal_cash.split(output).into_coin(ctx);
-    let remaining = self.terminal_cash.value();
 
     events::shutdown_redeemed<Product>(
-        self.id.to_inner(), burned, output, remaining, self.total_share_supply() - self.locked_shares,
+        self.id.to_inner(),
+        burned,
+        output,
+        self.terminal_cash.value(),
+        self.total_share_supply() - self.locked_shares,
     );
 
     output_coin

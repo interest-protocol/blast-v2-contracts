@@ -201,6 +201,7 @@ public fun activate<Product>(
         collateral_unit,
         lifecycle: lifecycle::active(),
     };
+
     let venue_equity = observation.venue_equity();
     assert!(
         accounting_math::is_shareholder_nav_positive(venue_equity, seed_reserve),
@@ -512,6 +513,7 @@ public fun prepare_rebalance<Product>(
 public fun next_rebalance_order<Product>(self: &State<Product>, plan: &RebalancePlan<Product>): RebalanceOrder {
     let position = &plan.current;
     let nav = accounting_math::shareholder_nav(position.equity, plan.reserve_priced);
+
     if (plan.increase) {
         return RebalanceOrder { base: self.increase_order(position, nav, plan.venue_fee_bps), increase: true, emergency: false }
     };
@@ -624,11 +626,11 @@ public fun settle_funding<Product>(
     settlement: FundingSettlement,
 ): (u64, u64, u64) {
     self.lifecycle.assert_can_sync();
-    let is_cost = settlement.is_cost();
-    let amount = settlement.amount();
 
+    let amount = settlement.amount();
     let reserve_before = self.maintenance_reserve;
-    if (is_cost) {
+
+    if (settlement.is_cost()) {
         let (reserve_after, absorbed, uncovered) = accounting_math::absorb_funding_cost(reserve_before, amount);
 
         self.maintenance_reserve = reserve_after;
@@ -659,8 +661,8 @@ public fun donate<Product>(self: &mut State<Product>, observation: PositionObser
     assert!(amount > 0, blast_boosts_core::errors::zero_amount!());
 
     let after = validated_active_position(self, observation, now_ms);
-    let reserve_before = self.maintenance_reserve;
-    let reserve_funded = reserve_before.checked_add(amount)
+    let reserve_funded = self.maintenance_reserve
+        .checked_add(amount)
         .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
 
     self.maintenance_reserve = self.reserve_within_cap(reserve_funded, &after);
@@ -702,6 +704,7 @@ public fun unwind_constraints<Product>(
     let price_policy = self.vault_policy.price_policy();
     assert_oracle_admitted(&price_policy, &base_oracle, now_ms);
     assert_oracle_admitted(&price_policy, &collateral_oracle, now_ms);
+
     let (base_price, collateral_price) = (base_oracle.price(), collateral_oracle.price());
     let max_order_base = rebalance_math::base_for_notional_down(
         self.max_order_notional, base_price, collateral_price, lot_size, self.base_unit, self.collateral_unit,
@@ -802,6 +805,7 @@ public fun set_nav_cap<Product>(self: &mut State<Product>, nav_cap: u64): u64 {
     self.vault_policy.rebalance_policy().assert_nav_cap_valid(nav_cap);
 
     self.nav_cap = nav_cap;
+
     previous
 }
 
@@ -962,6 +966,7 @@ fun validated_active_position<Product>(
         observation.position_base() == 0 || observation.observed_side() == self.vault_policy.side(),
         blast_boosts_core::errors::invalid_position_observation!(),
     );
+
     let position = self.priced_position(observation);
     assert!(
         accounting_math::is_shareholder_nav_positive(position.equity, self.admitted_reserve(&position)),

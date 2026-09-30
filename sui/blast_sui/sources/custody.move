@@ -100,17 +100,22 @@ public(package) fun stake_idle(
 ) {
     let stakeable = self.liquid_sui.value().saturating_sub(retain_liquid);
     if (stakeable < constants::native_min_stake_mist!()) return;
+
     let receipt_count = self.pending_stakes.length();
     let joins_newest = receipt_count > 0
         && self.pending_stakes[receipt_count - 1].activation_epoch() == ctx.epoch() + 1;
     if (!joins_newest && receipt_count >= constants::max_pending_stakes!()) return;
 
-    let stake = self.liquid_sui.split(stakeable).into_coin(ctx);
-    let staked = system_state.request_add_stake_non_entry(stake, validator, ctx);
+    let staked = system_state.request_add_stake_non_entry(
+        self.liquid_sui.split(stakeable).into_coin(ctx),
+        validator,
+        ctx,
+    );
     assert!(
         staked.pool_id() == *expected_pool_id,
         blast_sui::errors::wrong_delegation_pool!(),
     );
+
     if (joins_newest) {
         self.pending_stakes[receipt_count - 1].join(staked);
     } else {
@@ -141,8 +146,10 @@ public(package) fun activate_oldest_pending(
     system_state: &mut SuiSystemState,
     ctx: &mut TxContext,
 ) {
-    let pending = self.pending_stakes.remove(0);
-    let converted = system_state.convert_to_fungible_staked_sui(pending, ctx);
+    let converted = system_state.convert_to_fungible_staked_sui(
+        self.pending_stakes.remove(0),
+        ctx,
+    );
     self.join_active(converted);
 }
 
@@ -202,6 +209,7 @@ public(package) fun withdraw_exact(
         let pending_deficit = amount - self.liquid_sui.value();
         self.withdraw_pending(system_state, pending_deficit, ctx);
     };
+
     if (self.liquid_sui.value() < amount && self.active_stake.is_some()) {
         let deficit = amount - self.liquid_sui.value();
         let tokens = math::pool_tokens_for_sui_up(
@@ -211,6 +219,7 @@ public(package) fun withdraw_exact(
         );
         self.redeem_active(system_state, tokens, rate_sui, rate_pool_tokens, ctx);
     };
+
     assert!(
         self.liquid_sui.value() >= amount,
         blast_sui::errors::insufficient_native_redemption!(),
@@ -304,6 +313,7 @@ fun withdraw_pending(
 ) {
     let minimum = constants::native_min_stake_mist!();
     let mut remaining = needed;
+
     while (remaining > 0 && !self.pending_stakes.is_empty()) {
         let newest = self.pending_stakes.length() - 1;
         let receipt_sui = self.pending_stakes[newest].amount();

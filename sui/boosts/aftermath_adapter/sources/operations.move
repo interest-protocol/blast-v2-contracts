@@ -54,6 +54,7 @@ public fun initialize<Product, Collateral>(
     ).into_observation();
     assert_position_imr_unchanged(&clearing_house, binding.account_number(), position_imr);
     let venue_account = venue_account::new(binding, checkpoint, admin_cap);
+
     // A1-A5: failpoint anchors for scripts/activation_atomicity.mjs (ADR 0087).
     // BLAST_ACTIVATION_BOUNDARY_A1
     let (vault, seed_nav, seeded) = issuance.activate(
@@ -115,6 +116,7 @@ public fun mint<Product, Collateral>(
     let (after, final_checkpoint) = binding.capture(
         account, registry, &clearing_house, base_oracle, collateral_oracle, clock,
     ).into_observation();
+
     let shares = complete_mint<Product, Collateral>(vault, plan, deposit, after, final_checkpoint, clock.timestamp_ms(), ctx);
     clearing_house.share();
 
@@ -159,6 +161,7 @@ public fun redeem<Product, Collateral>(
         account, registry, &clearing_house, base_oracle, collateral_oracle, clock,
     ).into_observation();
     let (net, admin, fee, reserve_fee) = settle_redemption(vault, plan, &shares, after_sell, clock.timestamp_ms());
+
     let cash = vault.venue().withdraw(
         account, registry, &mut clearing_house, base_oracle, collateral_oracle, net + admin, clock, ctx,
     );
@@ -166,6 +169,7 @@ public fun redeem<Product, Collateral>(
         account, registry, &clearing_house, base_oracle, collateral_oracle,
     );
     after_sell_checkpoint.assert_withdrawal_checkpoint(&final_checkpoint, net + admin);
+
     let cash = complete_redemption(vault, shares, cash, net, admin, fee, reserve_fee, final_checkpoint, ctx);
     clearing_house.share();
 
@@ -357,10 +361,12 @@ public fun donate<Product, Collateral>(
     );
 
     vault.venue().deposit(account, registry, cash);
+
     let binding = vault.venue().binding();
     let (after, checkpoint) = binding.capture(
         account, registry, clearing_house, base_oracle, collateral_oracle, clock,
     ).into_observation();
+
     complete_donation(vault, after, checkpoint, amount, clock.timestamp_ms());
 }
 
@@ -438,6 +444,7 @@ public fun finalize_shutdown<Product, Collateral>(
         account, registry, clearing_house, base_oracle, collateral_oracle,
     );
     let amount = before.recoverable_terminal_cash();
+
     let recovered = if (amount == 0) {
         sui::coin::zero(ctx)
     } else {
@@ -445,6 +452,7 @@ public fun finalize_shutdown<Product, Collateral>(
             account, registry, clearing_house, base_oracle, collateral_oracle, amount, clock, ctx,
         )
     };
+
     let after = binding.capture_checkpoint(
         account, registry, clearing_house, base_oracle, collateral_oracle,
     );
@@ -847,10 +855,10 @@ fun synchronize<Product, Collateral>(
     let post_capture = binding.capture(
         account, registry, clearing_house, base_oracle, collateral_oracle, clock,
     );
-    let stored_checkpoint = *vault.venue().checkpoint();
-    let (preexisting_change, local_change) = stored_checkpoint.classify_sync_changes(
+    let (preexisting_change, local_change) = vault.venue().checkpoint().classify_sync_changes(
         &pre_checkpoint, &post_capture.checkpoint(), collateral_price,
     );
+
     apply_post_capture(vault, post_capture.checkpoint(), preexisting_change.net_funding(local_change));
 
     post_capture
@@ -898,6 +906,7 @@ fun unwind_settlement<Product, Collateral>(
     assert_settlement_valuation(
         enabled, base_price, base_price.is_neg(), collateral_price, collateral_price.is_neg(),
     );
+
     let preexisting_change = vault.venue().checkpoint().classify_preexisting(&before);
     apply_post_capture(vault, before, preexisting_change);
 
