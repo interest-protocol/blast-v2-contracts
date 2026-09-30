@@ -52,8 +52,10 @@ public struct Commitment has copy, drop, store {
 ///
 /// The complete fixed or burn-only token supply is apportioned at creation.
 /// Presale, LP, and additional recipient allocations stay escrowed until a
-/// funded migration atomically releases them. If the raise is missed, or LP is
-/// not migrated by its deadline, every commitment is refunded.
+/// funded migration atomically releases them. If the raise is missed, every
+/// commitment is refunded. Anyone may migrate a funded sale until it is
+/// cancelled; once LP is still unmigrated at its deadline, anyone may cancel it
+/// so every commitment becomes refundable.
 public struct Presale<phantom SaleToken, phantom Quote> has key {
     id: UID,
     presale_cap_id: ID,
@@ -177,17 +179,13 @@ public fun commit_allowlisted<SaleToken, Quote>(
     self.record_commitment(quote_in, wallet_cap, max_participants, ctx);
 }
 
-/// Fixes the fill after the commitment window. Underfunded sales, and sales
-/// first settled after their LP deadline, become fully refundable. Anyone may settle.
+/// Fixes the fill after the commitment window. Underfunded sales become fully
+/// refundable. Anyone may settle.
 public fun settle<SaleToken, Quote>(self: &mut Presale<SaleToken, Quote>, clock: &Clock) {
     assert!(self.lifecycle == Lifecycle::Open, EInvalidLifecycle);
-    let now_ms = clock.timestamp_ms();
-    assert!(now_ms >= self.end_ms, EPresaleNotEnded);
+    assert!(clock.timestamp_ms() >= self.end_ms, EPresaleNotEnded);
 
-    if (
-        self.total_commitments < self.raise_target
-            || now_ms >= self.liquidity_deadline_ms
-    ) {
+    if (self.total_commitments < self.raise_target) {
         self.cancel();
     } else {
         self.lifecycle = Lifecycle::Funded;
@@ -202,7 +200,8 @@ public fun settle<SaleToken, Quote>(self: &mut Presale<SaleToken, Quote>, clock:
     };
 }
 
-/// Cancels a funded presale whose LP deadline passed, preserving all Quote for refunds.
+/// Cancels a funded presale still unmigrated at its LP deadline, preserving all
+/// Quote for refunds. Anyone may cancel.
 public fun cancel_unlaunched<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
     clock: &Clock,
@@ -417,16 +416,14 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
 }
 
 /// Releases the exact raise and LP-token allocation only to the configured
-/// migrator. Anyone may call that migrator; its pool creation remains atomic
-/// with this state transition.
+/// migrator. Anyone may call that migrator at any time until the sale is
+/// cancelled; its pool creation remains atomic with this state transition.
 public(package) fun migrate<SaleToken, Quote, MigrationWitness: drop>(
     self: &mut Presale<SaleToken, Quote>,
     _: MigrationWitness,
-    clock: &Clock,
     ctx: &mut TxContext,
 ): (Balance<SaleToken>, Balance<Quote>) {
     assert!(self.lifecycle == Lifecycle::Funded, EInvalidLifecycle);
-    assert!(clock.timestamp_ms() < self.liquidity_deadline_ms, ELiquidityDeadlinePassed);
     assert!(
         self.migration_witness == type_name::with_original_ids<MigrationWitness>(),
         EWrongMigrationWitness,
@@ -912,24 +909,21 @@ const ENoCommitment: vector<u8> = b"The wallet has no undelivered presale commit
 const EWrongPresaleCap: vector<u8> = b"The creator capability belongs to a different presale.";
 
 #[error(code = 16)]
-const ELiquidityDeadlinePassed: vector<u8> = b"The deadline to migrate liquidity has passed.";
-
-#[error(code = 17)]
 const ELiquidityDeadlineNotReached: vector<u8> = b"The deadline to cancel an unlaunched funded presale has not arrived.";
 
-#[error(code = 18)]
+#[error(code = 17)]
 const EInitialSupplyNotZero: vector<u8> = b"The supplied SaleToken TreasuryCap must have zero total supply.";
 
-#[error(code = 19)]
+#[error(code = 18)]
 const EInvalidFeeSplit: vector<u8> = b"Creator and holder-reward fee shares must total 10,000 BPS.";
 
-#[error(code = 20)]
+#[error(code = 19)]
 const EWrongMigrationWitness: vector<u8> = b"The migrator does not match the venue fixed at presale creation.";
 
-#[error(code = 21)]
+#[error(code = 20)]
 const EInvalidSupplyState: vector<u8> = b"The SaleToken currency supply must still be unknown.";
 
-#[error(code = 22)]
+#[error(code = 21)]
 const ETreasuryCapMismatch: vector<u8> = b"The TreasuryCap does not belong to the supplied SaleToken currency.";
 
 // === Imports ===

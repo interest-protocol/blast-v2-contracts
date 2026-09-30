@@ -83,7 +83,7 @@ public fun migrate_meme_a<Meme, Quote>(
     assert!(factory::is_right_order<Meme, Quote>(), EInvalidCoinOrder);
     let (presale_id, cap_id, tick_spacing, _, creator_fee_bps, rewards_fee_bps) = sale
         .migration_config();
-    let (meme, quote) = sale.migrate(Witness(), clock, ctx);
+    let (meme, quote) = sale.migrate(Witness(), ctx);
     let meme_amount = meme.value();
     let quote_amount = quote.value();
     let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
@@ -132,7 +132,7 @@ public fun migrate_meme_b<Meme, Quote>(
     assert!(factory::is_right_order<Quote, Meme>(), EInvalidCoinOrder);
     let (presale_id, cap_id, tick_spacing, _, creator_fee_bps, rewards_fee_bps) = sale
         .migration_config();
-    let (meme, quote) = sale.migrate(Witness(), clock, ctx);
+    let (meme, quote) = sale.migrate(Witness(), ctx);
     let meme_amount = meme.value();
     let quote_amount = quote.value();
     let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
