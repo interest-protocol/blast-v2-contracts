@@ -179,15 +179,7 @@ public fun collect_fees<Meme, Quote, CoinA, CoinB>(
     migrators_version.assert_current();
     let meme_is_a = meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
 
-    let (meme_fee, quote_fee) = self.collect_position_fees(
-        cetus_config,
-        burn_manager,
-        pool,
-        meme_is_a,
-        ctx,
-    );
-    self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
-    self.compound(cetus_config, pool, meme_is_a, clock, ctx);
+    self.settle_fees(policy, currency, cetus_config, burn_manager, pool, meme_is_a, clock, ctx);
 }
 
 /// Settles the position's accrued fees under the current split, then commits `proposed`. `CoinA`
@@ -210,15 +202,7 @@ public fun settle_and_update_fee_split<Meme, Quote, CoinA, CoinB>(
     let meme_is_a = meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
     self.assert_fee_split_update(launch, curve_fee_cap, proposed);
 
-    let (meme_fee, quote_fee) = self.collect_position_fees(
-        cetus_config,
-        burn_manager,
-        pool,
-        meme_is_a,
-        ctx,
-    );
-    self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
-    self.compound(cetus_config, pool, meme_is_a, clock, ctx);
+    self.settle_fees(policy, currency, cetus_config, burn_manager, pool, meme_is_a, clock, ctx);
 
     self.update_fee_split(proposed);
 }
@@ -244,9 +228,7 @@ public fun buyback_and_burn<Meme, Quote, CoinA, CoinB>(
 
     let quote = self.take_buyback_quote(admin_witness);
     let quote_in = quote.value();
-    let (a, b) = reorder(balance::zero<Meme>(), quote, meme_is_a, ctx);
-    let (a, b) = swap(cetus_config, pool, a, b, !meme_is_a, clock);
-    let (meme, quote) = reorder(a, b, meme_is_a, ctx);
+    let (meme, quote) = swap_quote_for_meme(cetus_config, pool, quote, meme_is_a, clock, ctx);
 
     self.burn_buyback(currency, meme, quote, quote_in, min_meme_out, ctx);
 }
@@ -280,6 +262,29 @@ fun burn_into_vault<Meme, Quote>(
         residual_quote.into_balance(),
         ctx,
     );
+}
+
+/// Collects the position's fees, splits them through the vault, and adds the auto-LP share back.
+fun settle_fees<Meme, Quote, CoinA, CoinB>(
+    self: &mut LpVault<Meme, Quote>,
+    policy: &LpFeePolicy,
+    currency: &mut Currency<Meme>,
+    cetus_config: &GlobalConfig,
+    burn_manager: &BurnManager,
+    pool: &mut Pool<CoinA, CoinB>,
+    meme_is_a: bool,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    let (meme_fee, quote_fee) = self.collect_position_fees(
+        cetus_config,
+        burn_manager,
+        pool,
+        meme_is_a,
+        ctx,
+    );
+    self.split_fees(policy, currency, meme_fee, quote_fee, ctx);
+    self.compound(cetus_config, pool, meme_is_a, clock, ctx);
 }
 
 /// Collects the burned migration position's fees and, once it exists, the auto-LP position's fees
@@ -350,6 +355,25 @@ fun add_liquidity<A, B, Meme, Quote>(
     };
 
     let position = self.auto_lp_position_mut<_, _, _, Position>(&Venue());
+    let (fix_a, amount) = fixed_side(pool, position, a.value(), b.value());
+    if (amount == 0) return (a, b, 0, 0);
+
+    let receipt = pool::add_liquidity_fix_coin(cetus_config, pool, position, amount, fix_a, clock);
+    let (paid_a, paid_b) = receipt.add_liquidity_pay_amount();
+    pool::repay_add_liquidity(cetus_config, pool, a.split(paid_a), b.split(paid_b), receipt);
+
+    (a, b, paid_a, paid_b)
+}
+
+/// Chooses the side an auto-LP add fixes, and how much: `a` when Cetus's own liquidity math says
+/// `amount_b` covers it, else `b` when `amount_a` covers that. A zero amount means neither side
+/// gives positive liquidity the other can cover, so nothing is added now.
+fun fixed_side<A, B>(
+    pool: &Pool<A, B>,
+    position: &Position,
+    amount_a: u64,
+    amount_b: u64,
+): (bool, u64) {
     let (lower, upper) = position.tick_range();
     let tick = pool.current_tick_index();
     let price = pool.current_sqrt_price();
@@ -358,7 +382,7 @@ fun add_liquidity<A, B, Meme, Quote>(
         upper,
         tick,
         price,
-        a.value(),
+        amount_a,
         true,
     );
     let (liquidity_b, needed_a, _) = clmm_math::get_liquidity_by_amount(
@@ -366,23 +390,29 @@ fun add_liquidity<A, B, Meme, Quote>(
         upper,
         tick,
         price,
-        b.value(),
+        amount_b,
         false,
     );
 
-    let (fix_a, amount) = if (liquidity_a > 0 && needed_b <= b.value()) {
-        (true, a.value())
-    } else if (liquidity_b > 0 && needed_a <= a.value()) {
-        (false, b.value())
-    } else {
-        return (a, b, 0, 0)
-    };
+    if (liquidity_a > 0 && needed_b <= amount_b) (true, amount_a)
+    else if (liquidity_b > 0 && needed_a <= amount_a) (false, amount_b)
+    else (true, 0)
+}
 
-    let receipt = pool::add_liquidity_fix_coin(cetus_config, pool, position, amount, fix_a, clock);
-    let (paid_a, paid_b) = receipt.add_liquidity_pay_amount();
-    pool::repay_add_liquidity(cetus_config, pool, a.split(paid_a), b.split(paid_b), receipt);
+/// Swaps all of `quote` for Meme through `pool` in the pool's coin order, returning the Meme bought
+/// and the Quote the pool did not take.
+fun swap_quote_for_meme<Meme, Quote, CoinA, CoinB>(
+    cetus_config: &GlobalConfig,
+    pool: &mut Pool<CoinA, CoinB>,
+    quote: Balance<Quote>,
+    meme_is_a: bool,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): (Balance<Meme>, Balance<Quote>) {
+    let (a, b) = reorder(balance::zero<Meme>(), quote, meme_is_a, ctx);
+    let (a, b) = swap(cetus_config, pool, a, b, !meme_is_a, clock);
 
-    (a, b, paid_a, paid_b)
+    reorder(a, b, meme_is_a, ctx)
 }
 
 /// Swaps all of the input side (`a` when `a2b`) through `pool` up to the widest price limit, pays
@@ -524,4 +554,6 @@ use fun collect_position_fees as LpVault.collect_position_fees;
 use fun compound as LpVault.compound;
 
 use fun pool_creation_cap as VenueConfig.pool_creation_cap;
+
+use fun settle_fees as LpVault.settle_fees;
 

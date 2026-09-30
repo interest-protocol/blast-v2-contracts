@@ -32,31 +32,36 @@ public(package) fun auto_lp_fixed_side(
 ): (bool, u64) {
     if (sqrt_price <= sqrt_lower || sqrt_price >= sqrt_upper) return (true, 0);
 
-    let lower = sqrt_lower as u256;
-    let price = sqrt_price as u256;
-    let upper = sqrt_upper as u256;
-    let one = 1u256 << constants::q64_shift!();
-
-    // Fixing A: L = a * P * U / (U - P), then B = ceil(L * (P - lower)).
-    let liquidity = (amount_a as u256) * (price * upper / one) / (upper - price);
-    if (liquidity > 0 && liquidity < (1u256 << constants::q128_shift!())) {
-        let needed_b = (liquidity * (price - lower)).div_ceil(one);
-        if (needed_b + constants::auto_lp_margin!() <= (amount_b as u256)) return (true, amount_a);
-    };
-
-    // Fixing B: L = b / (P - lower), then A = ceil(L / P) - floor(L / U).
-    let liquidity = ((amount_b as u256) << constants::q64_shift!()) / (price - lower);
-    if (liquidity > 0) {
-        let needed_a =
-            (liquidity << constants::q64_shift!()).div_ceil(price)
-                - (liquidity << constants::q64_shift!()) / upper;
-        if (needed_a + constants::auto_lp_margin!() <= (amount_a as u256)) return (false, amount_b);
-    };
-
-    (true, 0)
+    let (lower, price, upper) = (sqrt_lower as u256, sqrt_price as u256, sqrt_upper as u256);
+    if (can_fix_a(lower, price, upper, amount_a, amount_b)) (true, amount_a)
+    else if (can_fix_b(lower, price, upper, amount_a, amount_b)) (false, amount_b)
+    else (true, 0)
 }
 
 // === Private Functions ===
+
+/// Whether fixing all of `amount_a` gives positive liquidity whose B need, plus the margin,
+/// `amount_b` covers: L = a * P * U / (U - P), then B = ceil(L * (P - lower)).
+fun can_fix_a(lower: u256, price: u256, upper: u256, amount_a: u64, amount_b: u64): bool {
+    let one = 1u256 << constants::q64_shift!();
+    let liquidity = (amount_a as u256) * (price * upper / one) / (upper - price);
+    if (liquidity == 0 || liquidity >= (1u256 << constants::q128_shift!())) return false;
+
+    let needed_b = (liquidity * (price - lower)).div_ceil(one);
+    needed_b + constants::auto_lp_margin!() <= (amount_b as u256)
+}
+
+/// Whether fixing all of `amount_b` gives positive liquidity whose A need, plus the margin,
+/// `amount_a` covers: L = b / (P - lower), then A = ceil(L / P) - floor(L / U).
+fun can_fix_b(lower: u256, price: u256, upper: u256, amount_a: u64, amount_b: u64): bool {
+    let liquidity = ((amount_b as u256) << constants::q64_shift!()) / (price - lower);
+    if (liquidity == 0) return false;
+
+    let needed_a =
+        (liquidity << constants::q64_shift!()).div_ceil(price)
+            - (liquidity << constants::q64_shift!()) / upper;
+    needed_a + constants::auto_lp_margin!() <= (amount_a as u256)
+}
 
 fun ratio_q128(
     meme_amount: u64,

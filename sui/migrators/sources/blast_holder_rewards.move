@@ -131,8 +131,7 @@ public fun claim<Meme, Quote>(
 ) {
     migrators_version.assert_current();
     assert!(index < self.leaf_count, EInvalidIndex);
-    let word = index / 256;
-    let bit = 1u256 << ((index % 256) as u8);
+    let (word, bit) = claim_bit(index);
     assert!(self.claimed[word] & bit == 0, EAlreadyClaimed);
     assert!(beneficiary != @0x0, EInvalidBeneficiary);
     assert!(meme_amount > 0 || quote_amount > 0, EEmptyBudget);
@@ -156,6 +155,13 @@ public fun claim<Meme, Quote>(
     );
 }
 
+// === Private Functions ===
+
+/// Locates leaf `index` in the claim bitmap as its word and the bit within that word.
+fun claim_bit(index: u64): (u64, u256) {
+    (index / 256, 1u256 << ((index % 256) as u8))
+}
+
 // === Test-Only Functions ===
 
 #[test_only]
@@ -165,7 +171,8 @@ public fun round_balances_for_testing<Meme, Quote>(self: &Round<Meme, Quote>): (
 
 #[test_only]
 public fun is_claimed_for_testing<Meme, Quote>(self: &Round<Meme, Quote>, index: u64): bool {
-    self.claimed[index / 256] & (1u256 << ((index % 256) as u8)) != 0
+    let (word, bit) = claim_bit(index);
+    self.claimed[word] & bit != 0
 }
 
 // === Imports ===
