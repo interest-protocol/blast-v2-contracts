@@ -96,6 +96,16 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
     let meme_amount = meme.value();
     let quote_amount = quote.value();
     let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
+    let sqrt_price = migration_math::sqrt_price_x64(meme_amount, quote_amount, meme_is_a);
+    let fix_a = fixed_side_is_a(
+        tick_lower,
+        tick_upper,
+        sqrt_price,
+        if (meme_is_a) meme_amount else quote_amount,
+        if (meme_is_a) quote_amount else meme_amount,
+        (meme_amount >= quote_amount) == meme_is_a,
+    );
+
     let mut scratch = object::new(ctx);
     let (coin_a, coin_b) = if (meme_is_a) {
         (scratch.cast<_, Balance<CoinA>>(meme), scratch.cast<_, Balance<CoinB>>(quote))
@@ -103,7 +113,6 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
         (scratch.cast<_, Balance<CoinA>>(quote), scratch.cast<_, Balance<CoinB>>(meme))
     };
 
-    // Fix the side with more atoms, whichever of A or B the Meme is.
     let (position, residual_a, residual_b) = pool_creator::create_pool_v3_with_creation_cap<
         CoinA,
         CoinB,
@@ -112,13 +121,13 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
         pools,
         venue_config.pool_creation_cap<Meme>(),
         tick_spacing,
-        migration_math::sqrt_price_x64(meme_amount, quote_amount, meme_is_a),
+        sqrt_price,
         b"".to_string(),
         tick_lower,
         tick_upper,
         coin_a.into_coin(ctx),
         coin_b.into_coin(ctx),
-        (meme_amount >= quote_amount) == meme_is_a,
+        fix_a,
         clock,
         ctx,
     );
@@ -183,6 +192,31 @@ fun meme_is_coin_a<Meme, Quote, CoinA, CoinB>(): bool {
     assert!((meme == a && quote == b) || (meme == b && quote == a), EWrongCoinPair);
 
     meme == a
+}
+
+/// Chooses the side to fix, preferring the side with more atoms: a full-range position needs
+/// slightly more of the other side than the seed ratio, so that partner balance covers it. When
+/// both sides are nearly equal, rounding can still overdraw by one atom, so Cetus's own math
+/// decides and the other side is fixed instead. Any tick inside the full range selects Cetus's
+/// in-range branch; pool creation aborts anyway if the seed price lies outside it.
+fun fixed_side_is_a(
+    tick_lower: u32,
+    tick_upper: u32,
+    sqrt_price: u128,
+    amount_a: u64,
+    amount_b: u64,
+    prefer_a: bool,
+): bool {
+    let (_, needed_a, needed_b) = clmm_math::get_liquidity_by_amount(
+        i32::from_u32(tick_lower),
+        i32::from_u32(tick_upper),
+        i32::zero(),
+        sqrt_price,
+        if (prefer_a) amount_a else amount_b,
+        prefer_a,
+    );
+
+    if (needed_a <= amount_a && needed_b <= amount_b) prefer_a else !prefer_a
 }
 
 /// Retypes `value` as `To` through a dynamic field on `scratch`. Removal succeeds only under the
@@ -267,12 +301,15 @@ use blast_presale::{
 };
 
 use cetus_clmm::{
+    clmm_math,
     config::{Self, GlobalConfig},
     factory::{Self, PoolCreationCap, Pools},
     pool::Pool,
     pool_creator,
     position::Position,
 };
+
+use integer_mate::i32;
 
 use lp_burn::lp_burn::{Self, BurnManager, CetusLPBurnProof};
 

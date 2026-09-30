@@ -206,6 +206,16 @@ public(package) fun fund_round<Meme, Quote>(
     (self.rewards_meme.split(meme_amount), self.rewards_quote.split(quote_amount))
 }
 
+/// Returns a closed round's unclaimed rewards to the holder-reward balances.
+public(package) fun restore_rewards<Meme, Quote>(
+    self: &mut PresaleVault<Meme, Quote>,
+    meme: Balance<Meme>,
+    quote: Balance<Quote>,
+) {
+    self.rewards_meme.join(meme);
+    self.rewards_quote.join(quote);
+}
+
 // === Private Functions ===
 
 /// Transfers `amount` split from `self` to `recipient`, skipping empty shares.

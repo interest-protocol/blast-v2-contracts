@@ -30,3 +30,15 @@ public(package) fun sqrt_price_x64(
 
     low as u128
 }
+
+/// Whether both venues can seed a full-range pool at this price. Cetus v15 and Bluefin v17 share
+/// these `tick_math` sqrt-price bounds; halving the range keeps the price inside any full range
+/// aligned inward to a tick spacing. The bounds are reciprocal, so either coin order agrees.
+public(package) fun is_seedable(sqrt_price: u128): bool {
+    sqrt_price >= MIN_SQRT_PRICE_X64 * 2 && sqrt_price <= MAX_SQRT_PRICE_X64 / 2
+}
+
+// === Constants ===
+
+const MIN_SQRT_PRICE_X64: u128 = 4295048016;
+const MAX_SQRT_PRICE_X64: u128 = 79226673515401279992447579055;

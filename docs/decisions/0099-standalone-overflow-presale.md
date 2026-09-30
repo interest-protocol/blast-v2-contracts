@@ -48,7 +48,10 @@ the type has exactly one `TreasuryCap<SaleToken>`, and fixing or burn-only-ing t
 supply consumes that cap, so holding it proves the currency's supply is still
 unknown without a separate check. The Bluefin route also rejects a Meme symbol
 longer than 32 bytes: Bluefin stores the symbol-derived pool name twice in every
-`Position` (ADR 0088).
+`Position` (ADR 0088). Because the migration amounts are fixed at creation, the
+seed price `sqrt(raise / LP tokens)` must also sit a factor of two inside the
+sqrt-price bounds Cetus v15 and Bluefin v17 share (`4295048016` to
+`79226673515401279992447579055`), so no sale can raise funds it can never pool.
 The creator configures a token supply, positive participant and LP allocation
 BPS, and zero or more distinct recipient allocations. These BPS total exactly
 10,000. The contract mints the complete supply, uses largest-remainder
@@ -61,7 +64,10 @@ LP-fee split, and an `EligibilityPolicy`. The fee split is up to 16 distinct
 `(recipient, bps)` fee recipients, the creator configured as one of them, and a
 holder-reward BPS; together they total exactly 10,000. The eligibility policy is:
 
-- `Open` stores one wallet cap and a maximum participant count.
+- `Open` stores one wallet cap, a maximum participant count, and a minimum
+  cumulative commitment per wallet. Creation requires
+  `min_commitment * max_participants >= raise_target`, so whoever fills every
+  slot has funded the sale; dust commitments cannot lock real buyers out.
 - `Allowlisted` stores a positional Blake2b-256 Merkle root and leaf count.
   Each leaf binds `(index, wallet, wallet_cap)`, so one representation covers
   equal caps, rank tiers, and custom caps.
@@ -89,7 +95,14 @@ are below the raise `R`, the sale cancels and all Quote remains refundable.
 Otherwise the sale becomes funded and fixes one common fill rate `R / C`.
 
 While the sale is `Funded`, anyone may call the configured venue adapter; the LP
-deadline does not close migration.
+deadline does not close migration. Cetus pools order their coin types, so its
+single `migrate` and `collect_fees` routes take the caller-named
+`<CoinA, CoinB>` order beside `<Meme, Quote>`, prove the pair is exactly the
+presale's, and retype each balance through a transient dynamic field, which
+`dynamic_field::remove` returns only under its stored type. The full-range add
+fixes the side with more atoms and asks the venue's own `get_liquidity_by_amount`
+whether the other balance covers it, fixing the other side when rounding would
+overdraw by an atom at nearly equal amounts.
 The adapter alone holds the sealed witness needed to take exactly `R` Quote and
 the entire LP-token allocation from core. In the same call it creates the
 configured full-range pool and seals its position or burn proof in a
@@ -127,7 +140,10 @@ apportionment, pays every recipient in the same call, and keeps the holder
 share. Blast's `blast_presale_domain::RewardsAdmin` role in the shared Blast ACL
 (ADR 0097) commits each reward round's beneficiaries and amounts with a Merkle
 root and funds it from that share, so holder distribution runs on Blast's
-automated reward pipeline rather than the creator's availability. Anyone may
+automated reward pipeline rather than the creator's availability. Each round
+carries a future claim deadline; after it, anyone may close the round and return
+its unclaimed balances to the vault's holder share, so an overcommitted or
+abandoned root never strands funds. Anyone may
 relay a valid proof, but assets go only to its committed beneficiary. The same
 generic positional Blake2b-256 module verifies eligibility and rewards. The
 `PresaleCap` claims migration residuals.
@@ -173,7 +189,20 @@ generic positional Blake2b-256 module verifies eligibility and rewards. The
   Registry supply mode; a creator who retries must deploy a new coin type.
 - The generic package cannot remove a Quote issuer's deny, pause, or supply
   powers. Such controls can block an affected wallet's transfer, although an
-  aborted claim leaves its on-chain commitment and escrow intact for retry.
+  aborted claim leaves its on-chain commitment and escrow intact for retry. A
+  Quote issuer that lengthens its symbol or icon can also block Bluefin
+  migration, which then ends in cancellation and full refunds.
+- Venue operators are trusted for liveness, not custody: a Cetus deny-list
+  entry, a paused Bluefin pool, or a venue version bump blocks migration or fee
+  collection until an `UpgradeAdmin` relinks the package or, before migration,
+  the sale is cancelled for refunds.
+- Largest-remainder ties favour fee recipients over the holder share and earlier
+  recipients over later ones. Because collection is permissionless, anyone can
+  collect often to steer at most one atomic unit per share per asset per
+  collection toward the tie winner.
+- Deployment must seal custody before any upgrade: `upgrade_custody::new`
+  accepts only a never-upgraded cap, so a raw upgrade before `wrap` would leave
+  a compatible-policy cap that can never be sealed.
 
 ## Verification
 
@@ -182,8 +211,9 @@ generic positional Blake2b-256 module verifies eligibility and rewards. The
   refunds, exact full-supply apportionment, distinct recipient payouts, fixed and
   burn-only supply modes, cancelled-supply locking, migration witness enforcement,
   LP-fee splitting with direct recipient payouts, fee-split validation,
-  administrator-published holder rounds, generic Merkle proofs, and relayed
-  holder rewards.
+  administrator-published holder rounds, round deadlines and closing, minimum
+  commitments and reachable raises, seedable prices, Cetus coin-order routing
+  and checked retyping, generic Merkle proofs, and relayed holder rewards.
 - The package gate checks source boundaries (ACL roles and sealed
   dependency-only custody), builds both network environments, lints with
   warnings as errors, and runs Move tests.

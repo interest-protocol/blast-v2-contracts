@@ -9,11 +9,13 @@ module blast_presale::blast_presale;
 
 /// Who may commit and the maximum Quote each wallet may commit.
 ///
-/// `Open` gives every wallet the same cap. `Allowlisted` commits one cap per
-/// wallet in a positional Blake2b-256 Merkle tree, supporting equal, tiered,
-/// or fully custom caps.
+/// `Open` gives every wallet the same cap and minimum. The minimum times the
+/// participant bound must reach the raise, so filling every slot funds the sale
+/// and dust commitments cannot lock real buyers out. `Allowlisted` commits one
+/// cap per wallet in a positional Blake2b-256 Merkle tree, supporting equal,
+/// tiered, or fully custom caps.
 public enum EligibilityPolicy has copy, drop, store {
-    Open { wallet_cap: u64, max_participants: u64 },
+    Open { wallet_cap: u64, max_participants: u64, min_commitment: u64 },
     Allowlisted { root: vector<u8>, leaf_count: u64 },
 }
 
@@ -91,16 +93,22 @@ public struct Presale<phantom SaleToken, phantom Quote> has key {
 
 // === Public Functions ===
 
-/// Creates one equal-cap policy with a bounded number of distinct wallets.
-public fun open_eligibility(wallet_cap: u64, max_participants: u64): EligibilityPolicy {
+/// Creates one equal-cap policy with a bounded number of distinct wallets, each
+/// of which must commit at least `min_commitment` in total.
+public fun open_eligibility(
+    wallet_cap: u64,
+    max_participants: u64,
+    min_commitment: u64,
+): EligibilityPolicy {
     assert!(
-        wallet_cap > 0
+        min_commitment > 0
+            && min_commitment <= wallet_cap
             && max_participants > 0
             && max_participants <= MAX_PARTICIPANTS,
         EInvalidEligibilityPolicy,
     );
 
-    EligibilityPolicy::Open { wallet_cap, max_participants }
+    EligibilityPolicy::Open { wallet_cap, max_participants, min_commitment }
 }
 
 /// Creates one allowlist policy whose leaves are `(index, wallet, wallet_cap)`.
@@ -164,9 +172,9 @@ public fun commit_open<SaleToken, Quote>(
     self.assert_open(clock);
     assert!(quote_in.value() > 0, EZeroCommitment);
 
-    let (wallet_cap, max_participants) = open_limits(self.eligibility);
+    let (wallet_cap, max_participants, min_commitment) = open_limits(self.eligibility);
 
-    self.record_commitment(quote_in, wallet_cap, max_participants, ctx);
+    self.record_commitment(quote_in, wallet_cap, max_participants, min_commitment, ctx);
 }
 
 /// Consumes and locks the supplied `Coin<Quote>` in this presale after
@@ -191,7 +199,8 @@ public fun commit_allowlisted<SaleToken, Quote>(
         &proof,
     );
 
-    self.record_commitment(quote_in, wallet_cap, max_participants, ctx);
+    // Allowlisted wallets are few and named, so any positive commitment counts.
+    self.record_commitment(quote_in, wallet_cap, max_participants, 1, ctx);
 }
 
 /// Fixes the fill after the commitment window. Underfunded sales become fully
@@ -375,6 +384,7 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
     );
 
     assert!(duration_ms > 0 && liquidity_window_ms > 0, EInvalidWindow);
+    assert!(eligibility.can_reach(raise_target), EUnreachableRaise);
 
     // Apportion the supply so every atomic unit belongs to exactly one allocation.
     let mut shares = vector[token_allocation_bps, liquidity_token_allocation_bps];
@@ -383,6 +393,12 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
     let token_allocation = amounts[0];
     let liquidity_token_allocation = amounts[1];
     assert!(token_allocation > 0 && liquidity_token_allocation > 0, EInvalidTokenAllocation);
+    assert!(
+        migration_math::is_seedable(
+            migration_math::sqrt_price_x64(liquidity_token_allocation, raise_target, true),
+        ),
+        EUnseedablePrice,
+    );
 
     let mut i = 0;
     recipient_allocations.do_mut!(|allocation| {
@@ -579,6 +595,7 @@ fun record_commitment<SaleToken, Quote>(
     quote_in: Coin<Quote>,
     wallet_cap: u64,
     max_participants: u64,
+    min_commitment: u64,
     ctx: &TxContext,
 ) {
     let quote = quote_in.value();
@@ -593,6 +610,7 @@ fun record_commitment<SaleToken, Quote>(
     assert!(current.wallet_cap == wallet_cap, EInvalidEligibilityProof);
     let wallet_commitment = current.quote.checked_add(quote).destroy_or!(abort EWalletCapExceeded);
     assert!(wallet_commitment <= wallet_cap, EWalletCapExceeded);
+    assert!(wallet_commitment >= min_commitment, EBelowMinimumCommitment);
     if (!exists) {
         assert!(self.participants < max_participants, EParticipantCapacityReached);
     };
@@ -620,12 +638,23 @@ fun record_commitment<SaleToken, Quote>(
     });
 }
 
-fun open_limits(policy: EligibilityPolicy): (u64, u64) {
+fun open_limits(policy: EligibilityPolicy): (u64, u64, u64) {
     match (policy) {
-        EligibilityPolicy::Open { wallet_cap, max_participants } => {
-            (wallet_cap, max_participants)
+        EligibilityPolicy::Open { wallet_cap, max_participants, min_commitment } => {
+            (wallet_cap, max_participants, min_commitment)
         },
         EligibilityPolicy::Allowlisted { .. } => abort EWrongEligibilityPolicy,
+    }
+}
+
+/// Whether filling every open participant slot at the minimum commitment funds the raise.
+/// Allowlist caps are committed off chain, so only the open policy is checked.
+fun can_reach(self: EligibilityPolicy, raise_target: u64): bool {
+    match (self) {
+        EligibilityPolicy::Open { max_participants, min_commitment, .. } => {
+            (min_commitment as u128) * (max_participants as u128) >= (raise_target as u128)
+        },
+        EligibilityPolicy::Allowlisted { .. } => true,
     }
 }
 
@@ -997,9 +1026,18 @@ const EInvalidFeeSplit: vector<u8> = b"Fee recipients must be unique, positive, 
 const EWrongMigrationWitness: vector<u8> = b"The migrator does not match the venue fixed at presale creation.";
 
 
+#[error(code = 20)]
+const EBelowMinimumCommitment: vector<u8> = b"The wallet's total commitment is below the sale's minimum commitment.";
+
+#[error(code = 21)]
+const EUnreachableRaise: vector<u8> = b"An open sale's minimum commitment times its participant bound must reach the raise target.";
+
+#[error(code = 22)]
+const EUnseedablePrice: vector<u8> = b"The raise and LP-token allocation give a seed price the venues cannot pool.";
+
 // === Imports ===
 
-use blast_presale::merkle_tree;
+use blast_presale::{merkle_tree, migration_math};
 
 use std::{bcs, type_name::{Self, TypeName}};
 
