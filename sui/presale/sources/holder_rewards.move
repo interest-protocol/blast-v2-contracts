@@ -62,7 +62,7 @@ public fun publish_round<Meme, Quote>(
         claim_deadline_ms,
         root,
         leaf_count,
-        claimed: vector::tabulate!(leaf_count.div_ceil(256), |_| 0u256),
+        claimed: unclaimed(leaf_count),
         meme,
         quote,
     };
@@ -99,8 +99,7 @@ public fun claim<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     assert!(index < self.leaf_count, EInvalidIndex);
-    let word = index / 256;
-    let bit = 1u256 << ((index % 256) as u8);
+    let (word, bit) = claim_bit(index);
     assert!(self.claimed[word] & bit == 0, EAlreadyClaimed);
     assert!(beneficiary != @0x0, EInvalidBeneficiary);
     assert!(meme_amount > 0 || quote_amount > 0, EEmptyBudget);
@@ -112,13 +111,8 @@ public fun claim<Meme, Quote>(
     );
 
     *&mut self.claimed[word] = self.claimed[word] | bit;
-
-    if (meme_amount > 0) {
-        transfer::public_transfer(self.meme.split(meme_amount).into_coin(ctx), beneficiary);
-    };
-    if (quote_amount > 0) {
-        transfer::public_transfer(self.quote.split(quote_amount).into_coin(ctx), beneficiary);
-    };
+    self.meme.pay(meme_amount, beneficiary, ctx);
+    self.quote.pay(quote_amount, beneficiary, ctx);
 
     event::emit(RewardClaimed<Meme, Quote> {
         round_id: self.id.to_inner(),
@@ -159,6 +153,16 @@ public fun close_round<Meme, Quote>(
 
 // === Private Functions ===
 
+/// A claim bitmap with every leaf's bit clear, 256 leaves per word.
+fun unclaimed(leaf_count: u64): vector<u256> {
+    vector::tabulate!(leaf_count.div_ceil(256), |_| 0u256)
+}
+
+/// The bitmap word and bit recording leaf `index`'s claim.
+fun claim_bit(index: u64): (u64, u256) {
+    (index / 256, 1u256 << ((index % 256) as u8))
+}
+
 fun leaf(
     vault: ID,
     round: u64,
@@ -197,7 +201,7 @@ public fun new_for_testing<Meme, Quote>(
         claim_deadline_ms,
         root,
         leaf_count,
-        claimed: vector::tabulate!(leaf_count.div_ceil(256), |_| 0u256),
+        claimed: unclaimed(leaf_count),
         meme,
         quote,
     }
@@ -321,8 +325,15 @@ const EClaimsStillOpen: vector<u8> = b"The round's claim deadline has not passed
 
 use blast_admin::blast_acl::AdminWitness;
 
-use blast_presale::{blast_presale_domain::RewardsAdmin, merkle_tree, presale_vault::PresaleVault};
+use blast_presale::{
+    blast_presale,
+    blast_presale_domain::RewardsAdmin,
+    merkle_tree,
+    presale_vault::PresaleVault,
+};
 
 use std::bcs;
 
 use sui::{balance::Balance, clock::Clock, event, hash};
+
+use fun blast_presale::pay as Balance.pay;

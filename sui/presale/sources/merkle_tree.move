@@ -31,15 +31,8 @@ public fun verify(
         return false
     };
 
-    // A proof must carry exactly one sibling per level of the tree.
-    let mut width = leaves;
-    let mut depth = 0;
-    while (width > 1) {
-        width = width.div_ceil(2);
-        depth = depth + 1;
-    };
     if (
-        proof.length() != depth
+        proof.length() != proof_depth(leaves)
             || !proof.all!(|sibling| sibling.length() == DIGEST_LENGTH)
     ) return false;
 
@@ -49,6 +42,19 @@ public fun verify(
     });
 
     digest == root
+}
+
+// === Private Functions ===
+
+/// The number of tree levels above `leaves` leaves, one sibling each in a proof.
+fun proof_depth(leaves: u64): u64 {
+    let mut width = leaves;
+    let mut depth = 0;
+    while (width > 1) {
+        width = width.div_ceil(2);
+        depth = depth + 1;
+    };
+    depth
 }
 
 // === Constants ===
