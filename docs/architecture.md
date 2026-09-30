@@ -19,7 +19,7 @@ by one of these boundaries:
 This keeps V2 smaller than the historical collection of interdependent packages
 without forcing unrelated dependencies into the trusted core.
 
-The immutable `blast_presale` package is a separate product boundary: it owns
+The dependency-only upgradeable `blast_presale` package is a separate product boundary: it owns
 presale escrow, eligibility, proportional settlement, permissionless Bluefin and
 Cetus migration, LP custody, and fee/reward distribution without importing or
 mutating launchpad state. Its adapters share the package with presale core so a

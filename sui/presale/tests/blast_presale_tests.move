@@ -446,41 +446,6 @@ fun treasury_cap_must_start_with_zero_supply() {
 }
 
 #[test]
-#[expected_failure(abort_code = presale::ETreasuryCapMismatch, location = blast_presale::blast_presale)]
-fun treasury_cap_must_belong_to_the_supplied_currency() {
-    let mut ctx = tx_context::dummy();
-    let (treasury_cap, mut currency) = new_currency(&mut ctx);
-    let wrong_cap = coin::create_treasury_cap_for_testing<BLAST_PRESALE_TESTS>(&mut ctx);
-
-    let (sale, cap) = presale::new<BLAST_PRESALE_TESTS, QUOTE, TEST_MIGRATOR>(
-        wrong_cap,
-        &mut currency,
-        TOKEN_SUPPLY,
-        TOKEN_ALLOCATION_BPS,
-        LIQUIDITY_TOKEN_ALLOCATION_BPS,
-        recipient_allocations(),
-        false,
-        RAISE_TARGET,
-        DURATION_MS,
-        LIQUIDITY_WINDOW_MS,
-        presale::open_eligibility(WALLET_CAP, 1),
-        TEST_MIGRATOR(),
-        TICK_SPACING,
-        FEE_RATE,
-        fee_recipients(),
-        REWARDS_FEE_BPS,
-        &mut ctx,
-    );
-    let clock = clock::create_for_testing(&mut ctx);
-    sale.share(&clock);
-    transfer::public_transfer(cap, CREATOR);
-    destroy(treasury_cap);
-    destroy(currency);
-    clock.destroy_for_testing();
-    destroy(ctx);
-}
-
-#[test]
 #[expected_failure(abort_code = presale::EInvalidTokenAllocation, location = blast_presale::blast_presale)]
 fun configured_allocation_bps_cannot_exceed_full_supply() {
     let mut ctx = tx_context::dummy();
@@ -568,6 +533,76 @@ fun fee_recipients_must_be_distinct() {
 /// With no fee recipients every collected fee funds holder rewards.
 fun holders_may_receive_every_fee() {
     create_with_fee_split(vector[], 10_000);
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidTokenAllocation, location = blast_presale::blast_presale)]
+/// An out-of-range LP share is rejected by its own error before the BPS sum can overflow.
+fun an_overflowing_liquidity_share_is_rejected_before_summing() {
+    let mut ctx = tx_context::dummy();
+    let (treasury_cap, mut currency) = new_currency(&mut ctx);
+
+    let (sale, cap) = presale::new<BLAST_PRESALE_TESTS, QUOTE, TEST_MIGRATOR>(
+        treasury_cap,
+        &mut currency,
+        TOKEN_SUPPLY,
+        TOKEN_ALLOCATION_BPS,
+        std::u64::max_value!(),
+        recipient_allocations(),
+        false,
+        RAISE_TARGET,
+        DURATION_MS,
+        LIQUIDITY_WINDOW_MS,
+        presale::open_eligibility(WALLET_CAP, 1),
+        TEST_MIGRATOR(),
+        TICK_SPACING,
+        FEE_RATE,
+        fee_recipients(),
+        REWARDS_FEE_BPS,
+        &mut ctx,
+    );
+    destroy(sale);
+    destroy(cap);
+    destroy(currency);
+    destroy(ctx);
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidFeeSplit, location = blast_presale::blast_presale)]
+/// An out-of-range holder share is rejected by its own error before the BPS sum can overflow.
+fun an_overflowing_holder_share_is_rejected_before_summing() {
+    create_with_fee_split(fee_recipients(), std::u64::max_value!());
+}
+
+#[test]
+/// Sixteen distinct fee recipients fit one collection's transfer bound.
+fun sixteen_fee_recipients_are_accepted() {
+    create_with_fee_split(fee_recipient_set(16), 10_000 - 16 * 100);
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidFeeSplit, location = blast_presale::blast_presale)]
+fun a_seventeenth_fee_recipient_is_rejected() {
+    create_with_fee_split(fee_recipient_set(17), 10_000 - 17 * 100);
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidFeeSplit, location = blast_presale::blast_presale)]
+fun a_fee_recipient_cannot_be_the_zero_address() {
+    presale::fee_recipient(@0x0, 1);
+}
+
+#[test]
+/// Bluefin accepts a Meme symbol at the 32-byte bound.
+fun bluefin_accepts_a_thirty_two_byte_meme_symbol() {
+    create_bluefin_sale(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ012345");
+}
+
+#[test]
+#[expected_failure(abort_code = bluefin::ESymbolTooLong, location = blast_presale::bluefin)]
+/// A longer symbol would grow every Bluefin position past Sui's object size limit.
+fun bluefin_rejects_a_thirty_three_byte_meme_symbol() {
+    create_bluefin_sale(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456");
 }
 
 #[test]
@@ -731,6 +766,47 @@ fun create_with_fee_split(fee_recipients: vector<FeeRecipient>, rewards_fee_bps:
         FEE_RATE,
         fee_recipients,
         rewards_fee_bps,
+        &mut ctx,
+    );
+    destroy(sale);
+    destroy(cap);
+    destroy(currency);
+    destroy(ctx);
+}
+
+fun fee_recipient_set(count: u64): vector<FeeRecipient> {
+    vector::tabulate!(count, |i| presale::fee_recipient(sui::address::from_u256((i as u256) + 1), 100))
+}
+
+fun create_bluefin_sale(symbol: vector<u8>) {
+    let mut ctx = tx_context::dummy();
+    let (initializer, treasury_cap) = coin_registry::new_currency_with_otw(
+        test_utils::create_one_time_witness<BLAST_PRESALE_TESTS>(),
+        9,
+        symbol.to_string(),
+        b"Sale Token".to_string(),
+        b"Presale test token".to_string(),
+        b"".to_string(),
+        &mut ctx,
+    );
+    let mut currency = coin_registry::unwrap_for_testing(initializer);
+
+    let (sale, cap) = bluefin::new<BLAST_PRESALE_TESTS, QUOTE>(
+        treasury_cap,
+        &mut currency,
+        TOKEN_SUPPLY,
+        TOKEN_ALLOCATION_BPS,
+        LIQUIDITY_TOKEN_ALLOCATION_BPS,
+        recipient_allocations(),
+        false,
+        RAISE_TARGET,
+        DURATION_MS,
+        LIQUIDITY_WINDOW_MS,
+        presale::open_eligibility(WALLET_CAP, 1),
+        fee_recipients(),
+        REWARDS_FEE_BPS,
+        TICK_SPACING,
+        FEE_RATE,
         &mut ctx,
     );
     destroy(sale);
@@ -986,7 +1062,7 @@ fun only_event<Event: copy + drop>(): Event {
 
 // === Imports ===
 
-use blast_presale::blast_presale::{
+use blast_presale::{bluefin, blast_presale::{
     Self as presale,
     Claimed,
     Committed,
@@ -1000,7 +1076,7 @@ use blast_presale::blast_presale::{
     PresaleMigrated,
     PresaleOpened,
     RecipientAllocation,
-};
+}};
 
 use std::{type_name, unit_test::{assert_eq, destroy}};
 

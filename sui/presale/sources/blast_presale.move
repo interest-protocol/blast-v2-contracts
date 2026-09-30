@@ -321,18 +321,16 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         type_name::with_original_ids<SaleToken>() != type_name::with_original_ids<Quote>(),
         EInvalidAssetPair,
     );
+    // `Currency<SaleToken>` and `TreasuryCap<SaleToken>` are each unique per type, and making the
+    // supply fixed or burn-only consumes the cap, so holding it proves the supply is still unknown.
     assert!(treasury_cap.total_supply() == 0, EInitialSupplyNotZero);
-    assert!(
-        currency.treasury_cap_id().contains(&object::id(&treasury_cap)),
-        ETreasuryCapMismatch,
-    );
-    assert!(currency.total_supply().is_none(), EInvalidSupplyState);
     assert!(raise_target > 0, EInvalidRaiseTarget);
     assert!(
         token_supply > 0
             && token_allocation_bps > 0
             && token_allocation_bps <= BASIS_POINTS
             && liquidity_token_allocation_bps > 0
+            && liquidity_token_allocation_bps <= BASIS_POINTS
             && recipient_allocations.length() <= MAX_RECIPIENTS,
         EInvalidTokenAllocation,
     );
@@ -351,7 +349,10 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         ) == BASIS_POINTS,
         EInvalidTokenAllocation,
     );
-    assert!(fee_recipients.length() <= MAX_FEE_RECIPIENTS, EInvalidFeeSplit);
+    assert!(
+        fee_recipients.length() <= MAX_FEE_RECIPIENTS && rewards_fee_bps <= BASIS_POINTS,
+        EInvalidFeeSplit,
+    );
     fee_recipients.do_ref!(|fee_recipient| assert!(
         fee_recipient.recipient != @0x0
             && fee_recipient.bps > 0
@@ -392,7 +393,8 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
     let presale_cap_id = cap.id.to_inner();
     let migration_witness = type_name::with_original_ids<MigrationWitness>();
     let recipient_count = recipient_allocations.length();
-    let (fee_recipient_addresses, fee_recipient_bps) = fee_recipient_fields(&fee_recipients);
+    let fee_recipient_addresses = fee_recipient_addresses(&fee_recipients);
+    let fee_recipient_bps = fee_recipient_bps(&fee_recipients);
     let presale = Presale {
         id,
         presale_cap_id,
@@ -507,7 +509,9 @@ public(package) fun migration_config<SaleToken, Quote>(
 }
 
 /// Splits one fee amount into each recipient's share followed by the holder-reward
-/// share, assigning every atomic unit exactly once.
+/// share, assigning every atomic unit exactly once. Remainder units go to the largest
+/// fractional remainders; equal remainders favor the earlier share, so fee recipients
+/// win ties over the holder-reward share and earlier recipients over later ones.
 public(package) fun apportion_fee(
     fee_recipients: &vector<FeeRecipient>,
     rewards_fee_bps: u64,
@@ -519,13 +523,14 @@ public(package) fun apportion_fee(
     apportion(shares, amount)
 }
 
-public(package) fun fee_recipient_fields(
+public(package) fun fee_recipient_addresses(
     fee_recipients: &vector<FeeRecipient>,
-): (vector<address>, vector<u64>) {
-    (
-        fee_recipients.map_ref!(|fee_recipient| fee_recipient.recipient),
-        fee_recipients.map_ref!(|fee_recipient| fee_recipient.bps),
-    )
+): vector<address> {
+    fee_recipients.map_ref!(|fee_recipient| fee_recipient.recipient)
+}
+
+public(package) fun fee_recipient_bps(fee_recipients: &vector<FeeRecipient>): vector<u64> {
+    fee_recipients.map_ref!(|fee_recipient| fee_recipient.bps)
 }
 
 // === Private Functions ===
@@ -975,11 +980,6 @@ const EInvalidFeeSplit: vector<u8> = b"Fee recipients must be unique, positive, 
 #[error(code = 19)]
 const EWrongMigrationWitness: vector<u8> = b"The migrator does not match the venue fixed at presale creation.";
 
-#[error(code = 20)]
-const EInvalidSupplyState: vector<u8> = b"The SaleToken currency supply must still be unknown.";
-
-#[error(code = 21)]
-const ETreasuryCapMismatch: vector<u8> = b"The TreasuryCap does not belong to the supplied SaleToken currency.";
 
 // === Imports ===
 

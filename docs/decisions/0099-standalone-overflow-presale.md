@@ -18,15 +18,37 @@ not depend on the creator remaining online.
 
 ## Decision
 
-Create the independent `blast_presale` package and publish it immutable. It
-neither reads nor mutates launchpad state, and no launchpad package imports it.
-Bluefin and Cetus adapters stay inside this package so core escrow release and
-venue creation are one atomic call without a second presale-adapter package.
-Its only first-party dependency is the immutable `blast_admin` ACL, used solely
-to authorize holder-reward rounds.
+Create the independent `blast_presale` package. It neither reads nor mutates
+launchpad state, and no launchpad package imports it. Bluefin and Cetus adapters
+stay inside this package so core escrow release and venue creation are one
+atomic call without a second presale-adapter package. Its only first-party
+dependency is the immutable `blast_admin` package: the shared ACL authorizes
+holder-reward rounds and upgrades, and `upgrade_custody` seals the package's
+capabilities.
+
+The package stays relinkable but its logic never changes. Bluefin requires its
+callers to link its exact current version and Cetus rejects callers linked below
+its configured version (verified against mainnet bytecode: Bluefin
+`config::verify_version`, Cetus `config::checked_package_version` and LP Burn's
+`checked_package_version`). An immutable presale would therefore lose migration
+and LP-fee collection for every sale on a venue at that venue's next version
+bump. Publication claims the `Publisher` with the
+`blast_presale_package::BLAST_PRESALE_PACKAGE` witness, and the deployer then
+calls `package_admin::wrap`, which seals the `Publisher` and never-upgraded
+`UpgradeCap` in a shared `PackageAdmin` and narrows the cap to the
+dependency-only policy in the same call. The `blast_presale_domain::UpgradeAdmin`
+role authorizes and commits upgrades that only relink dependencies. Every
+callable generation therefore runs identical presale bytecode, so no operational
+version gate is needed, and no path can make the package immutable or widen the
+policy.
 
 Each `Presale<SaleToken, Quote>` consumes a `TreasuryCap<SaleToken>` whose total
-supply is zero and verifies it belongs to the supplied `Currency<SaleToken>`.
+supply is zero. The Coin Registry holds exactly one `Currency<SaleToken>` and
+the type has exactly one `TreasuryCap<SaleToken>`, and fixing or burn-only-ing the
+supply consumes that cap, so holding it proves the currency's supply is still
+unknown without a separate check. The Bluefin route also rejects a Meme symbol
+longer than 32 bytes: Bluefin stores the symbol-derived pool name twice in every
+`Position` (ADR 0088).
 The creator configures a token supply, positive participant and LP allocation
 BPS, and zero or more distinct recipient allocations. These BPS total exactly
 10,000. The contract mints the complete supply, uses largest-remainder
@@ -135,8 +157,11 @@ generic positional Blake2b-256 module verifies eligibility and rewards. The
   leaf count, commitments, custody, lifecycle, and payouts are canonical on chain.
   A proof attests only the committed wallet and cap; it does not prove that the
   off-chain rank or eligibility methodology was fair.
-- Immutable publication removes concurrent old-bytecode access to shared
-  presale custody and eliminates a presale package-administration surface.
+- Dependency-only custody keeps venue relinking possible while ruling out logic
+  changes: old and new generations run the same presale code, so concurrent
+  access to shared custody cannot bypass a guard. A compromised `UpgradeAdmin`
+  can relink dependencies only; the policy can never widen. Logic changes need a
+  new package and new sales.
 - Blast's rewards administrator chooses the reward Merkle roots. Proofs enforce
   the published allocation but cannot prove that its off-chain holder
   methodology was fair. The creator cannot redirect the holder share.
@@ -159,10 +184,12 @@ generic positional Blake2b-256 module verifies eligibility and rewards. The
   LP-fee splitting with direct recipient payouts, fee-split validation,
   administrator-published holder rounds, generic Merkle proofs, and relayed
   holder rewards.
-- The package gate builds both network environments, lints with warnings as
-  errors, and runs Move tests.
-- Publication preview must show package publication and consumption of the
-  resulting `UpgradeCap` by `0x2::package::make_immutable` in the same PTB.
+- The package gate checks source boundaries (ACL roles and sealed
+  dependency-only custody), builds both network environments, lints with
+  warnings as errors, and runs Move tests.
+- Deployment records the publish transaction and the `package_admin::wrap`
+  transaction, whose effects must show the shared `PackageAdmin` and an
+  `UpgradeCap` policy of dependency-only before any presale is created.
 
 ## Sources
 

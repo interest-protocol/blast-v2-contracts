@@ -41,9 +41,9 @@ fun collected_fees_pay_recipients_and_keep_the_holder_share() {
         scenario.ctx(),
     );
 
-    let (_, _, recipients, recipient_meme, recipient_quote, rewards_meme, rewards_quote) =
+    let (gross_meme, gross_quote, recipient_meme, recipient_quote, rewards_meme, rewards_quote) =
         only_event<FeesCollected<MEME, QUOTE>>().fees_collected_fields();
-    assert_eq!(recipients, vector[CREATOR, PARTNER]);
+    assert_eq!(vector[gross_meme, gross_quote], vector[101, 10]);
     assert_eq!(recipient_meme, vector[51, 20]);
     assert_eq!(recipient_quote, vector[5, 2]);
     assert_eq!(vector[rewards_meme, rewards_quote], vector[30, 3]);
@@ -108,6 +108,109 @@ fun the_rewards_admin_publishes_holder_rounds_from_the_holder_share() {
 }
 
 #[test]
+/// Equal fractional remainders favor the fee recipient over the holder-reward share.
+fun a_remainder_tie_goes_to_the_fee_recipient_before_holders() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let mut vault = new_vault(vector[presale::fee_recipient(CREATOR, 5_000)], 5_000, &mut scenario);
+
+    vault.credit_fees_for_testing(
+        coin::mint_for_testing<MEME>(3, scenario.ctx()).into_balance(),
+        balance::zero<QUOTE>(),
+        scenario.ctx(),
+    );
+
+    let (_, _, recipient_meme, _, rewards_meme, _) = only_event<FeesCollected<MEME, QUOTE>>()
+        .fees_collected_fields();
+    assert_eq!(recipient_meme, vector[2]);
+    assert_eq!(rewards_meme, 1);
+    let (reward_meme, reward_quote) = vault.fund_round(1, 1, 0);
+    reward_meme.destroy_for_testing();
+    reward_quote.destroy_zero();
+    vault.destroy_for_testing();
+    scenario.next_tx(CREATOR);
+    assert_eq!(scenario.take_from_sender<Coin<MEME>>().burn_for_testing(), 2);
+    scenario.end();
+}
+
+#[test]
+#[expected_failure(abort_code = vault::EWrongPresaleCap, location = blast_presale::presale_vault)]
+/// Only the presale's own creator capability reaches the migration residuals.
+fun another_presale_cap_cannot_claim_migration_residuals() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let mut vault = new_vault(vector[], 10_000, &mut scenario);
+    let other_cap = presale::cap_for_testing(object::id_from_address(@0xD1FF), scenario.ctx());
+
+    let (meme, quote) = vault.claim_migration_residuals(&other_cap, scenario.ctx());
+    destroy(meme);
+    destroy(quote);
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = rewards::EWrongRound, location = blast_presale::holder_rewards)]
+fun a_round_must_use_the_vaults_next_number() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let mut vault = funded_holder_vault(&mut scenario);
+
+    vault.publish(1, 0, 10, &mut scenario);
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = rewards::EInvalidInterval, location = blast_presale::holder_rewards)]
+/// Each round must start exactly where the previous round ended.
+fun a_round_cannot_skip_checkpoints() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let mut vault = funded_holder_vault(&mut scenario);
+    vault.publish(0, 0, 10, &mut scenario);
+
+    vault.publish(1, 11, 20, &mut scenario);
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = rewards::EAlreadyClaimed, location = blast_presale::holder_rewards)]
+fun a_holder_reward_cannot_be_claimed_twice() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let vault_id = object::id_from_address(@0xBEEF);
+    let root = rewards::leaf_for_testing(vault_id, 0, 0, HOLDER, 20, 0);
+    let mut round = rewards::new_for_testing(
+        vault_id,
+        0,
+        root,
+        1,
+        coin::mint_for_testing<MEME>(40, scenario.ctx()).into_balance(),
+        balance::zero<QUOTE>(),
+        scenario.ctx(),
+    );
+    rewards::claim(&mut round, 0, HOLDER, 20, 0, vector[], scenario.ctx());
+
+    rewards::claim(&mut round, 0, HOLDER, 20, 0, vector[], scenario.ctx());
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = rewards::EInvalidProof, location = blast_presale::holder_rewards)]
+/// A relayer cannot redirect a committed reward to another beneficiary.
+fun a_holder_reward_cannot_be_redirected() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let vault_id = object::id_from_address(@0xBEEF);
+    let root = rewards::leaf_for_testing(vault_id, 0, 0, HOLDER, 40, 0);
+    let mut round = rewards::new_for_testing(
+        vault_id,
+        0,
+        root,
+        1,
+        coin::mint_for_testing<MEME>(40, scenario.ctx()).into_balance(),
+        balance::zero<QUOTE>(),
+        scenario.ctx(),
+    );
+
+    rewards::claim(&mut round, 0, PARTNER, 40, 0, vector[], scenario.ctx());
+    abort
+}
+
+#[test]
 fun anyone_can_relay_a_holder_reward_to_the_committed_holder() {
     let mut scenario = test_scenario::begin(CREATOR);
     let vault_id = object::id_from_address(@0xBEEF);
@@ -143,6 +246,52 @@ fun generic_merkle_proofs_preserve_left_and_right_order() {
 
 // === Test Helpers ===
 
+fun new_vault(
+    fee_recipients: vector<FeeRecipient>,
+    rewards_fee_bps: u64,
+    scenario: &mut Scenario,
+): PresaleVault<MEME, QUOTE> {
+    vault::new_for_testing<MEME, QUOTE>(
+        object::id_from_address(@0xCAFE),
+        object::id_from_address(@0xCA9),
+        fee_recipients,
+        rewards_fee_bps,
+        scenario.ctx(),
+    )
+}
+
+fun funded_holder_vault(scenario: &mut Scenario): PresaleVault<MEME, QUOTE> {
+    let mut vault = new_vault(vector[], 10_000, scenario);
+    vault.credit_fees_for_testing(
+        coin::mint_for_testing<MEME>(40, scenario.ctx()).into_balance(),
+        balance::zero<QUOTE>(),
+        scenario.ctx(),
+    );
+    vault
+}
+
+fun publish(
+    self: &mut PresaleVault<MEME, QUOTE>,
+    number: u64,
+    start_checkpoint: u64,
+    end_checkpoint: u64,
+    scenario: &mut Scenario,
+) {
+    rewards::publish_round(
+        self,
+        &blast_acl::witness_for_testing<RewardsAdmin>(),
+        number,
+        start_checkpoint,
+        end_checkpoint,
+        hash::blake2b256(&b"root"),
+        hash::blake2b256(&b"manifest"),
+        1,
+        1,
+        0,
+        scenario.ctx(),
+    );
+}
+
 fun only_event<Event: copy + drop>(): Event {
     let events = event::events_by_type<Event>();
     assert_eq!(events.length(), 1);
@@ -158,9 +307,12 @@ use blast_presale::{
     blast_presale_domain::RewardsAdmin,
     holder_rewards::{Self as rewards, Round},
     merkle_tree,
-    presale_vault::{Self as vault, FeesCollected},
+    presale_vault::{Self as vault, FeesCollected, PresaleVault},
+    blast_presale::FeeRecipient,
 };
 
 use std::unit_test::{assert_eq, destroy};
 
-use sui::{coin::{Self, Coin}, event, hash, test_scenario};
+use sui::{balance, coin::{Self, Coin}, event, hash, test_scenario::{Self, Scenario}};
+
+use fun publish as PresaleVault.publish;

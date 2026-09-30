@@ -72,9 +72,8 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
 ) {
     assert!(liquidity > 0, EZeroLiquidity);
     let position_id = object::id(&position);
-    let (fee_recipient_addresses, fee_recipient_bps) = presale::fee_recipient_fields(
-        &fee_recipients,
-    );
+    let fee_recipient_addresses = presale::fee_recipient_addresses(&fee_recipients);
+    let fee_recipient_bps = presale::fee_recipient_bps(&fee_recipients);
     let mut vault = PresaleVault {
         id: object::new(ctx),
         presale_id,
@@ -145,7 +144,7 @@ public(package) fun split_fees<Meme, Quote>(
     );
     let rewards_meme = recipient_meme.pop_back();
     let rewards_quote = recipient_quote.pop_back();
-    let (recipients, _) = presale::fee_recipient_fields(&self.fee_recipients);
+    let recipients = presale::fee_recipient_addresses(&self.fee_recipients);
 
     recipients.length().do!(|i| {
         meme.pay(recipient_meme[i], recipients[i], ctx);
@@ -158,7 +157,6 @@ public(package) fun split_fees<Meme, Quote>(
         vault_id: self.id.to_inner(),
         gross_meme,
         gross_quote,
-        recipients,
         recipient_meme,
         recipient_quote,
         rewards_meme,
@@ -251,11 +249,10 @@ public fun credit_fees_for_testing<Meme, Quote>(
 #[test_only]
 public fun fees_collected_fields<Meme, Quote>(
     event: &FeesCollected<Meme, Quote>,
-): (u64, u64, vector<address>, vector<u64>, vector<u64>, u64, u64) {
+): (u64, u64, vector<u64>, vector<u64>, u64, u64) {
     (
         event.gross_meme,
         event.gross_quote,
-        event.recipients,
         event.recipient_meme,
         event.recipient_quote,
         event.rewards_meme,
@@ -305,7 +302,7 @@ public struct FeesCollected<phantom Meme, phantom Quote> has copy, drop {
     vault_id: ID,
     gross_meme: u64,
     gross_quote: u64,
-    recipients: vector<address>,
+    /// Aligned by index with the immutable recipients in `PresaleVaultCreated`.
     recipient_meme: vector<u64>,
     recipient_quote: vector<u64>,
     rewards_meme: u64,

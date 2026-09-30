@@ -10,5 +10,8 @@ module blast_presale::blast_presale_domain;
 
 // === Public Types ===
 
+/// Authorizes and commits dependency-only package upgrades that relink venue generations.
+public struct UpgradeAdmin()
+
 /// Publishes holder-reward rounds from presale vaults.
 public struct RewardsAdmin()
