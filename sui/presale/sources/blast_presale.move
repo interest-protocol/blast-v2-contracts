@@ -908,22 +908,22 @@ const ENoCommitment: vector<u8> = b"The wallet has no undelivered presale commit
 #[error(code = 15)]
 const EWrongPresaleCap: vector<u8> = b"The creator capability belongs to a different presale.";
 
-#[error(code = 17)]
+#[error(code = 16)]
 const ELiquidityDeadlineNotReached: vector<u8> = b"The deadline to cancel an unlaunched funded presale has not arrived.";
 
-#[error(code = 18)]
+#[error(code = 17)]
 const EInitialSupplyNotZero: vector<u8> = b"The supplied SaleToken TreasuryCap must have zero total supply.";
 
-#[error(code = 19)]
+#[error(code = 18)]
 const EInvalidFeeSplit: vector<u8> = b"Creator and holder-reward fee shares must total 10,000 BPS.";
 
-#[error(code = 20)]
+#[error(code = 19)]
 const EWrongMigrationWitness: vector<u8> = b"The migrator does not match the venue fixed at presale creation.";
 
-#[error(code = 21)]
+#[error(code = 20)]
 const EInvalidSupplyState: vector<u8> = b"The SaleToken currency supply must still be unknown.";
 
-#[error(code = 22)]
+#[error(code = 21)]
 const ETreasuryCapMismatch: vector<u8> = b"The TreasuryCap does not belong to the supplied SaleToken currency.";
 
 // === Imports ===
