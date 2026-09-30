@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// Merkle rounds funded from a migrated presale vault's holder-reward fee share.
+/// Merkle rounds Blast's rewards administrator funds from a migrated presale
+/// vault's holder-reward fee share.
 module blast_presale::holder_rewards;
 
 // === Public Types ===
@@ -20,10 +21,10 @@ public struct Round<phantom Meme, phantom Quote> has key {
 
 // === Public Functions ===
 
-/// Reserves rewards under a creator-published allocation and shares the round.
+/// Reserves rewards under a Blast-published holder allocation and shares the round.
 public fun publish_round<Meme, Quote>(
     vault: &mut PresaleVault<Meme, Quote>,
-    cap: &PresaleCap,
+    _: &AdminWitness<RewardsAdmin>,
     number: u64,
     start_checkpoint: u64,
     end_checkpoint: u64,
@@ -34,7 +35,6 @@ public fun publish_round<Meme, Quote>(
     quote_amount: u64,
     ctx: &mut TxContext,
 ) {
-    vault.assert_cap(cap);
     assert!(number == vault.next_round(), EWrongRound);
     assert!(
         start_checkpoint < end_checkpoint
@@ -261,11 +261,9 @@ const EInvalidProof: vector<u8> = b"Proof must match the committed beneficiary a
 
 // === Imports ===
 
-use blast_presale::{
-    blast_presale::PresaleCap,
-    merkle_tree,
-    presale_vault::PresaleVault,
-};
+use blast_admin::blast_acl::AdminWitness;
+
+use blast_presale::{blast_presale_domain::RewardsAdmin, merkle_tree, presale_vault::PresaleVault};
 
 use std::bcs;
 

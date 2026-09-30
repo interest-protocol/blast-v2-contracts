@@ -12,6 +12,7 @@ const BOB: address = @0xB0B;
 const KEEPER: address = @0x4EE9;
 const RECIPIENT_A: address = @0xA110C;
 const RECIPIENT_B: address = @0xB110C;
+const FEE_PARTNER: address = @0xFEE;
 
 const START_MS: u64 = 1_000;
 const DURATION_MS: u64 = 100;
@@ -33,7 +34,8 @@ const RECIPIENT_TOKENS: u64 = RECIPIENT_A_TOKENS + RECIPIENT_B_TOKENS;
 const WALLET_CAP: u64 = 5_000;
 const TICK_SPACING: u32 = 10;
 const FEE_RATE: u64 = 1_000;
-const CREATOR_FEE_BPS: u64 = 7_000;
+const CREATOR_FEE_BPS: u64 = 5_000;
+const FEE_PARTNER_BPS: u64 = 2_000;
 const REWARDS_FEE_BPS: u64 = 3_000;
 
 // === Test-Only Types ===
@@ -397,7 +399,7 @@ fun sale_token_and_quote_types_must_differ() {
         TEST_MIGRATOR(),
         TICK_SPACING,
         FEE_RATE,
-        CREATOR_FEE_BPS,
+        fee_recipients(),
         REWARDS_FEE_BPS,
         &mut ctx,
     );
@@ -430,7 +432,7 @@ fun treasury_cap_must_start_with_zero_supply() {
         TEST_MIGRATOR(),
         TICK_SPACING,
         FEE_RATE,
-        CREATOR_FEE_BPS,
+        fee_recipients(),
         REWARDS_FEE_BPS,
         &mut ctx,
     );
@@ -465,7 +467,7 @@ fun treasury_cap_must_belong_to_the_supplied_currency() {
         TEST_MIGRATOR(),
         TICK_SPACING,
         FEE_RATE,
-        CREATOR_FEE_BPS,
+        fee_recipients(),
         REWARDS_FEE_BPS,
         &mut ctx,
     );
@@ -499,7 +501,7 @@ fun configured_allocation_bps_cannot_exceed_full_supply() {
         TEST_MIGRATOR(),
         TICK_SPACING,
         FEE_RATE,
-        CREATOR_FEE_BPS,
+        fee_recipients(),
         REWARDS_FEE_BPS,
         &mut ctx,
     );
@@ -532,7 +534,7 @@ fun configured_allocation_bps_must_produce_positive_atomic_amounts() {
         TEST_MIGRATOR(),
         TICK_SPACING,
         FEE_RATE,
-        CREATOR_FEE_BPS,
+        fee_recipients(),
         REWARDS_FEE_BPS,
         &mut ctx,
     );
@@ -542,6 +544,30 @@ fun configured_allocation_bps_must_produce_positive_atomic_amounts() {
     destroy(currency);
     clock.destroy_for_testing();
     destroy(ctx);
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidFeeSplit, location = blast_presale::blast_presale)]
+fun fee_recipient_and_holder_shares_must_total_full_bps() {
+    create_with_fee_split(fee_recipients(), REWARDS_FEE_BPS - 1);
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidFeeSplit, location = blast_presale::blast_presale)]
+fun fee_recipients_must_be_distinct() {
+    create_with_fee_split(
+        vector[
+            presale::fee_recipient(CREATOR, CREATOR_FEE_BPS),
+            presale::fee_recipient(CREATOR, FEE_PARTNER_BPS),
+        ],
+        REWARDS_FEE_BPS,
+    );
+}
+
+#[test]
+/// With no fee recipients every collected fee funds holder rewards.
+fun holders_may_receive_every_fee() {
+    create_with_fee_split(vector[], 10_000);
 }
 
 #[test]
@@ -588,7 +614,7 @@ fun start_with_mode(
         TEST_MIGRATOR(),
         TICK_SPACING,
         FEE_RATE,
-        CREATOR_FEE_BPS,
+        fee_recipients(),
         REWARDS_FEE_BPS,
         scenario.ctx(),
     );
@@ -635,13 +661,15 @@ fun start_with_mode(
         migration_witness,
         tick_spacing,
         fee_rate,
-        creator_fee_bps,
+        fee_recipients,
+        fee_recipient_bps,
         rewards_fee_bps,
     ) = only_event<PresaleCreated<BLAST_PRESALE_TESTS, QUOTE>>().created_migration_fields();
     assert_eq!(migration_witness, type_name::with_original_ids<TEST_MIGRATOR>());
     assert_eq!(tick_spacing, TICK_SPACING);
     assert_eq!(fee_rate, FEE_RATE);
-    assert_eq!(creator_fee_bps, CREATOR_FEE_BPS);
+    assert_eq!(fee_recipients, vector[CREATOR, FEE_PARTNER]);
+    assert_eq!(fee_recipient_bps, vector[CREATOR_FEE_BPS, FEE_PARTNER_BPS]);
     assert_eq!(rewards_fee_bps, REWARDS_FEE_BPS);
     let (recipient_count, created_burnable) = only_event<
         PresaleCreated<BLAST_PRESALE_TESTS, QUOTE>,
@@ -680,6 +708,42 @@ fun new_currency(
     );
 
     (treasury_cap, coin_registry::unwrap_for_testing(initializer))
+}
+
+fun create_with_fee_split(fee_recipients: vector<FeeRecipient>, rewards_fee_bps: u64) {
+    let mut ctx = tx_context::dummy();
+    let (treasury_cap, mut currency) = new_currency(&mut ctx);
+
+    let (sale, cap) = presale::new<BLAST_PRESALE_TESTS, QUOTE, TEST_MIGRATOR>(
+        treasury_cap,
+        &mut currency,
+        TOKEN_SUPPLY,
+        TOKEN_ALLOCATION_BPS,
+        LIQUIDITY_TOKEN_ALLOCATION_BPS,
+        recipient_allocations(),
+        false,
+        RAISE_TARGET,
+        DURATION_MS,
+        LIQUIDITY_WINDOW_MS,
+        presale::open_eligibility(WALLET_CAP, 1),
+        TEST_MIGRATOR(),
+        TICK_SPACING,
+        FEE_RATE,
+        fee_recipients,
+        rewards_fee_bps,
+        &mut ctx,
+    );
+    destroy(sale);
+    destroy(cap);
+    destroy(currency);
+    destroy(ctx);
+}
+
+fun fee_recipients(): vector<FeeRecipient> {
+    vector[
+        presale::fee_recipient(CREATOR, CREATOR_FEE_BPS),
+        presale::fee_recipient(FEE_PARTNER, FEE_PARTNER_BPS),
+    ]
 }
 
 fun recipient_allocations(): vector<RecipientAllocation> {
@@ -927,6 +991,7 @@ use blast_presale::blast_presale::{
     Claimed,
     Committed,
     EligibilityPolicy,
+    FeeRecipient,
     Presale,
     PresaleCancelled,
     PresaleCap,
