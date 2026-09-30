@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Publishes blast_presale and consumes its UpgradeCap in the same PTB.
+# Publishes blast_presale. The sender receives the Publisher and UpgradeCap and must seal both
+# with scripts/wrap_package_admin.sh before any presale is created.
 set -euo pipefail
 
 package_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -13,13 +14,9 @@ fi
 
 execution_flag=()
 if [[ "$mode" == "--preview" ]]; then
-  execution_flag=(--preview)
+  execution_flag=(--dry-run)
 fi
 
-exec sui client --client.env "$environment" ptb \
-  --publish "$package_dir" \
-  --assign presale_upgrade_cap \
-  --move-call 0x2::package::make_immutable presale_upgrade_cap \
-  --warn-shadows \
+exec sui client --client.env "$environment" publish "$package_dir" \
   --json \
   "${execution_flag[@]}"

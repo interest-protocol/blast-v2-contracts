@@ -1,6 +1,8 @@
 # Blast presale
 
-`blast_presale` is a standalone, immutable Sui package for overflow presales.
+`blast_presale` is a standalone Sui package for overflow presales. Its
+`UpgradeCap` is sealed in a shared `PackageAdmin` restricted to dependency-only
+upgrades, so venue versions can be relinked but presale logic never changes.
 It does not import or mutate launchpad state. Its Bluefin and Cetus adapters,
 LP vault, and holder-reward rounds live in the same package.
 
@@ -41,8 +43,10 @@ created. On cancellation participant Quote is refundable, but every SaleToken
 allocation remains permanently locked in the presale and the supply mode cannot
 be reversed.
 
-Run `scripts/verify.sh`. Publish with
-`scripts/publish_immutable.sh <sui-environment> --preview` and repeat with
-`--execute` after reviewing the transaction.
+Run `scripts/verify.sh`. Publish with `scripts/publish.sh <sui-environment>
+--preview`, repeat with `--execute`, then seal the returned `Publisher` and
+`UpgradeCap` with `scripts/wrap_package_admin.sh <sui-environment> <package-id>
+<publisher-id> <upgrade-cap-id> --preview` and `--execute` before creating any
+presale.
 
 The accepted design is [ADR 0099](../../docs/decisions/0099-standalone-overflow-presale.md).

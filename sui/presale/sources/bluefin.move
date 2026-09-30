@@ -40,6 +40,7 @@ public fun new<Meme, Quote>(
             && fee_rate <= MAX_FEE_RATE,
         EInvalidTier,
     );
+    assert!(currency.symbol().length() <= MAX_MEME_SYMBOL_LENGTH, ESymbolTooLong);
 
     presale::new(
         treasury_cap,
@@ -65,7 +66,7 @@ public fun new<Meme, Quote>(
 /// Anyone may atomically migrate a funded presale into its configured Bluefin pool.
 public fun migrate<Meme, Quote>(
     sale: &mut Presale<Meme, Quote>,
-    currency: &mut Currency<Meme>,
+    currency: &Currency<Meme>,
     quote_currency: &Currency<Quote>,
     bluefin_config: &mut GlobalConfig,
     creation_fee: Coin<SUI>,
@@ -153,6 +154,10 @@ public fun collect_fees<Meme, Quote>(
 const MAX_TICK_SPACING: u32 = 400;
 const MAX_FEE_RATE: u64 = 20_000;
 
+/// Bluefin stores the pool name, built from this symbol, twice in every `Position`; the
+/// bound keeps a migrated position inside Sui's object size limit (ADR 0088).
+const MAX_MEME_SYMBOL_LENGTH: u64 = 32;
+
 // === Errors ===
 
 #[error(code = 0)]
@@ -160,6 +165,9 @@ const EPositionPoolMismatch: vector<u8> = b"Custodied position must belong to th
 
 #[error(code = 1)]
 const EInvalidTier: vector<u8> = b"Bluefin tier needs tick spacing 1..=400 and fee rate 1..=20,000.";
+
+#[error(code = 2)]
+const ESymbolTooLong: vector<u8> = b"The Meme symbol must be at most 32 bytes for Bluefin migration.";
 
 // === Imports ===
 
