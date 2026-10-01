@@ -360,6 +360,7 @@ struct World {
     venue: BTreeMap<String, ObjectID>,
     presale: ObjectID,
     venue_config: ObjectID,
+    fee_policy: ObjectID,
     token: CompiledPackage,
     coins: u64,
     lines: Vec<String>,
@@ -383,6 +384,8 @@ impl World {
         let (presale, published) = h.publish(linked)?;
         let venue_config = published.created(&h, "venue_config", "VenueConfig");
         ensure!(venue_config.len() == 1 && h.object(venue_config[0]).is_shared());
+        let fee_policy = published.created(&h, "fee_policy", "FeePolicy");
+        ensure!(fee_policy.len() == 1 && h.object(fee_policy[0]).is_shared());
         let token = build(&Path::new(env!("CARGO_MANIFEST_DIR")).join("fixture/presale_token"), &[], &work)?;
 
         Ok(World {
@@ -392,6 +395,7 @@ impl World {
             venue,
             presale,
             venue_config: venue_config[0],
+            fee_policy: fee_policy[0],
             token,
             coins: 0,
             lines: Vec::new(),
@@ -580,6 +584,7 @@ impl World {
             uncapped,
             fee_recipients,
             b.pure(REWARDS_BPS)?,
+            self.shared(&mut b, self.fee_policy, false)?,
         ];
         let (tick_spacing, fee_rate) = self.route.tier();
         if self.route.is_cetus() {
@@ -615,6 +620,7 @@ impl World {
 
         let state = self.sale_state(&sale)?;
         ensure!(state.lifecycle == Lifecycle::Open && state.presale_cap_id == sale.cap);
+        ensure!((state.protocol_quote, state.protocol_tokens) == (0, 0), "a zero-rate policy reserves Blast nothing");
         ensure!((state.tick_spacing, state.fee_rate) == self.route.tier(), "the sale records the venue's tier");
         ensure!(state.migration_witness.ends_with(&format!("::{}::Witness", self.route.module())));
         ensure!(
@@ -693,6 +699,7 @@ impl World {
             });
             let args = vec![
                 presale,
+                self.shared(b, self.fee_policy, false)?,
                 self.shared(b, self.venue_config, false)?,
                 self.shared(b, self.venue("cetus_global_config"), false)?,
                 self.shared(b, self.venue("cetus_pools"), true)?,
@@ -707,6 +714,7 @@ impl World {
             };
             let args = vec![
                 presale,
+                self.shared(b, self.fee_policy, false)?,
                 self.shared(b, sale.currency, false)?,
                 self.shared(b, self.venue("sui_currency"), false)?,
                 self.shared(b, self.venue("bluefin_global_config"), true)?,
@@ -829,6 +837,7 @@ impl World {
             created.fee_recipients == vec![SuiAddress::from(CREATOR), FEE_B.into()]
                 && created.fee_recipient_bps == FEE_BPS.to_vec()
                 && created.rewards_fee_bps == REWARDS_BPS
+                && (created.protocol_lp_meme_bps, created.protocol_lp_quote_bps) == (0, 0)
         );
         let residual = (created.migration_meme_residual, created.migration_quote_residual);
         let m = Migration {
@@ -1047,6 +1056,7 @@ impl World {
         if self.route.is_cetus() {
             let args = vec![
                 vault,
+                self.shared(&mut b, self.fee_policy, false)?,
                 self.shared(&mut b, self.venue("cetus_global_config"), false)?,
                 self.shared(&mut b, self.venue("cetus_burn_manager"), false)?,
                 self.shared(&mut b, pool, true)?,
@@ -1057,6 +1067,7 @@ impl World {
         } else {
             let args = vec![
                 vault,
+                self.shared(&mut b, self.fee_policy, false)?,
                 self.shared(&mut b, self.venue("bluefin_global_config"), false)?,
                 self.shared(&mut b, pool, true)?,
                 self.clock(&mut b)?,
@@ -1091,6 +1102,11 @@ impl World {
         ensure!(fees.len() == 1, "one FeesCollected");
         let fees = fees[0].clone();
         ensure!(fees.vault_id == m.vault && (fees.gross_meme, fees.gross_quote) == (gross_meme, gross_quote));
+        // The publisher's zero-rate policy takes no Blast share.
+        ensure!(
+            (fees.protocol_destination, fees.protocol_meme, fees.protocol_quote) == (self.h.sender, 0, 0),
+            "a zero-rate policy pays Blast nothing"
+        );
 
         let weights = [FEE_BPS[0], FEE_BPS[1], REWARDS_BPS];
         let meme = apportion(&weights, gross_meme);
@@ -1432,6 +1448,18 @@ struct PresaleState {
     _recipient_payouts: Vec<(SuiAddress, u64)>,
     recipient_tokens: u64,
     _raise_payouts: Vec<(SuiAddress, u64)>,
+    _protocol_fees: ProtocolFees,
+    protocol_quote: u64,
+    protocol_tokens: u64,
+}
+
+/// Mirrors `blast_presale::fee_policy::ProtocolFees`.
+#[derive(Debug, Deserialize, PartialEq)]
+struct ProtocolFees {
+    _raise_bps: u64,
+    _token_bps: u64,
+    _lp_meme_bps: u64,
+    _lp_quote_bps: u64,
 }
 
 /// Mirrors `blast_presale::presale_vault::PresaleVault`.
@@ -1443,6 +1471,7 @@ struct VaultState {
     pool_id: ObjectID,
     _fee_recipients: Vec<FeeRecipient>,
     _rewards_fee_bps: u64,
+    _protocol_fees: ProtocolFees,
     migration_meme_residual: u64,
     migration_quote_residual: u64,
     rewards_meme: u64,
@@ -1496,6 +1525,8 @@ struct VaultCreated {
     fee_recipients: Vec<SuiAddress>,
     fee_recipient_bps: Vec<u64>,
     rewards_fee_bps: u64,
+    protocol_lp_meme_bps: u64,
+    protocol_lp_quote_bps: u64,
     migration_meme_residual: u64,
     migration_quote_residual: u64,
 }
@@ -1505,6 +1536,9 @@ struct FeesCollected {
     vault_id: ObjectID,
     gross_meme: u64,
     gross_quote: u64,
+    protocol_destination: SuiAddress,
+    protocol_meme: u64,
+    protocol_quote: u64,
     recipient_meme: Vec<u64>,
     recipient_quote: Vec<u64>,
     rewards_meme: u64,

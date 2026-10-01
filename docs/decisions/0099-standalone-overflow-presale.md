@@ -2,6 +2,8 @@
 
 - Status: accepted
 - Date: 2026-09-29
+- Amended by: [0101](0101-presale-protocol-fees.md): Blast takes admin-set,
+  creation-snapshotted shares of the raise, the token supply, and LP fees
 
 ## Context
 

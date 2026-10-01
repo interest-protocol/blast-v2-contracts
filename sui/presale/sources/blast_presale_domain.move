@@ -15,3 +15,9 @@ public struct UpgradeAdmin()
 
 /// Publishes holder-reward rounds from presale vaults.
 public struct RewardsAdmin()
+
+/// Sets the protocol fee rates new presales snapshot.
+public struct FeeAdmin()
+
+/// Sets the address every protocol fee is paid to.
+public struct TreasuryAdmin()

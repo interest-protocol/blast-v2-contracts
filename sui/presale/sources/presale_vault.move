@@ -11,7 +11,8 @@ public struct PositionKey<phantom Venue>() has copy, drop, store;
 
 /// Shared post-migration custody for one presale's immutable fee split.
 ///
-/// Each collection pays every fee recipient its share at once; the holder-reward
+/// Each collection first pays Blast its snapshotted share of each asset, then
+/// pays every fee recipient its share of the rest at once; the holder-reward
 /// share accrues here until Blast's rewards administrator funds a round.
 public struct PresaleVault<phantom Meme, phantom Quote> has key {
     id: UID,
@@ -20,6 +21,7 @@ public struct PresaleVault<phantom Meme, phantom Quote> has key {
     pool_id: ID,
     fee_recipients: vector<FeeRecipient>,
     rewards_fee_bps: u64,
+    protocol_fees: ProtocolFees,
     migration_meme_residual: Balance<Meme>,
     migration_quote_residual: Balance<Quote>,
     rewards_meme: Balance<Meme>,
@@ -70,7 +72,8 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
 ) {
     assert!(liquidity > 0, EZeroLiquidity);
 
-    let (presale_id, presale_cap_id, fee_recipients, rewards_fee_bps) = sale.vault_config();
+    let (presale_id, presale_cap_id, fee_recipients, rewards_fee_bps, protocol_fees) = sale
+        .vault_config();
     let position_id = object::id(&position);
     let fee_recipient_addresses = presale::fee_recipient_addresses(&fee_recipients);
     let fee_recipient_bps = presale::fee_recipient_bps(&fee_recipients);
@@ -81,6 +84,7 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
         pool_id,
         fee_recipients,
         rewards_fee_bps,
+        protocol_fees,
         migration_meme_residual,
         migration_quote_residual,
         rewards_meme: balance::zero(),
@@ -104,6 +108,8 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
         fee_recipients: fee_recipient_addresses,
         fee_recipient_bps,
         rewards_fee_bps,
+        protocol_lp_meme_bps: protocol_fees.lp_meme_bps(),
+        protocol_lp_quote_bps: protocol_fees.lp_quote_bps(),
         migration_meme_residual,
         migration_quote_residual,
     });
@@ -117,11 +123,14 @@ public(package) fun position_mut<Meme, Quote, Venue, Position: key + store>(
     self.id.dynamic_object_field_mut(PositionKey<Venue>())
 }
 
-/// Splits collected LP fees under the immutable creation-time BPS: every fee
-/// recipient is paid at once and the holder-reward share stays in the vault. A
-/// zero collection is valid, moves nothing, and emits nothing.
+/// Splits collected LP fees under the immutable creation-time BPS: Blast's
+/// share, rounded up, goes to the current protocol destination, every fee
+/// recipient is paid its share of the rest at once, and the holder-reward share
+/// stays in the vault. A zero collection is valid, moves nothing, and emits
+/// nothing.
 public(package) fun split_fees<Meme, Quote>(
     self: &mut PresaleVault<Meme, Quote>,
+    fee_policy: &FeePolicy,
     mut meme: Balance<Meme>,
     mut quote: Balance<Quote>,
     ctx: &mut TxContext,
@@ -134,10 +143,15 @@ public(package) fun split_fees<Meme, Quote>(
         return
     };
 
-    let (recipient_meme, rewards_meme) = self.fee_shares(gross_meme);
-    let (recipient_quote, rewards_quote) = self.fee_shares(gross_quote);
+    let protocol_meme = gross_meme.mul_div_ceil(self.protocol_fees.lp_meme_bps(), BASIS_POINTS);
+    let protocol_quote = gross_quote.mul_div_ceil(self.protocol_fees.lp_quote_bps(), BASIS_POINTS);
+    let protocol_destination = fee_policy.destination();
+    let (recipient_meme, rewards_meme) = self.fee_shares(gross_meme - protocol_meme);
+    let (recipient_quote, rewards_quote) = self.fee_shares(gross_quote - protocol_quote);
     let recipients = presale::fee_recipient_addresses(&self.fee_recipients);
 
+    meme.pay(protocol_meme, protocol_destination, ctx);
+    quote.pay(protocol_quote, protocol_destination, ctx);
     recipients.length().do!(|i| {
         meme.pay(recipient_meme[i], recipients[i], ctx);
         quote.pay(recipient_quote[i], recipients[i], ctx);
@@ -149,6 +163,9 @@ public(package) fun split_fees<Meme, Quote>(
         vault_id: self.id.to_inner(),
         gross_meme,
         gross_quote,
+        protocol_destination,
+        protocol_meme,
+        protocol_quote,
         recipient_meme,
         recipient_quote,
         rewards_meme,
@@ -224,6 +241,7 @@ public fun new_for_testing<Meme, Quote>(
     presale_cap_id: ID,
     fee_recipients: vector<FeeRecipient>,
     rewards_fee_bps: u64,
+    protocol_fees: ProtocolFees,
     ctx: &mut TxContext,
 ): PresaleVault<Meme, Quote> {
     PresaleVault {
@@ -233,6 +251,7 @@ public fun new_for_testing<Meme, Quote>(
         pool_id: object::id_from_address(@0x1),
         fee_recipients,
         rewards_fee_bps,
+        protocol_fees,
         migration_meme_residual: balance::zero(),
         migration_quote_residual: balance::zero(),
         rewards_meme: balance::zero(),
@@ -245,11 +264,12 @@ public fun new_for_testing<Meme, Quote>(
 #[test_only]
 public fun credit_fees_for_testing<Meme, Quote>(
     self: &mut PresaleVault<Meme, Quote>,
+    fee_policy: &FeePolicy,
     meme: Balance<Meme>,
     quote: Balance<Quote>,
     ctx: &mut TxContext,
 ) {
-    self.split_fees(meme, quote, ctx)
+    self.split_fees(fee_policy, meme, quote, ctx)
 }
 
 #[test_only]
@@ -267,6 +287,13 @@ public fun fees_collected_fields<Meme, Quote>(
 }
 
 #[test_only]
+public fun fees_collected_protocol_fields<Meme, Quote>(
+    event: &FeesCollected<Meme, Quote>,
+): (address, u64, u64) {
+    (event.protocol_destination, event.protocol_meme, event.protocol_quote)
+}
+
+#[test_only]
 public fun destroy_for_testing<Meme, Quote>(self: PresaleVault<Meme, Quote>) {
     let PresaleVault {
         id,
@@ -275,6 +302,7 @@ public fun destroy_for_testing<Meme, Quote>(self: PresaleVault<Meme, Quote>) {
         pool_id: _,
         fee_recipients: _,
         rewards_fee_bps: _,
+        protocol_fees: _,
         migration_meme_residual,
         migration_quote_residual,
         rewards_meme,
@@ -300,6 +328,8 @@ public struct PresaleVaultCreated<phantom Meme, phantom Quote, phantom Venue> ha
     fee_recipients: vector<address>,
     fee_recipient_bps: vector<u64>,
     rewards_fee_bps: u64,
+    protocol_lp_meme_bps: u64,
+    protocol_lp_quote_bps: u64,
     migration_meme_residual: u64,
     migration_quote_residual: u64,
 }
@@ -308,6 +338,9 @@ public struct FeesCollected<phantom Meme, phantom Quote> has copy, drop {
     vault_id: ID,
     gross_meme: u64,
     gross_quote: u64,
+    protocol_destination: address,
+    protocol_meme: u64,
+    protocol_quote: u64,
     /// Aligned by index with the immutable recipients in `PresaleVaultCreated`.
     recipient_meme: vector<u64>,
     recipient_quote: vector<u64>,
@@ -320,6 +353,10 @@ public struct MigrationResidualsClaimed<phantom Meme, phantom Quote> has copy, d
     meme: u64,
     quote: u64,
 }
+
+// === Constants ===
+
+const BASIS_POINTS: u64 = 10_000;
 
 // === Errors ===
 
@@ -334,7 +371,10 @@ const EWrongPresaleCap: vector<u8> = b"The creator capability belongs to a diffe
 
 // === Imports ===
 
-use blast_presale::blast_presale::{Self as presale, FeeRecipient, Presale, PresaleCap};
+use blast_presale::{
+    blast_presale::{Self as presale, FeeRecipient, Presale, PresaleCap},
+    fee_policy::{FeePolicy, ProtocolFees},
+};
 
 use sui::{balance::{Self, Balance}, coin::Coin, dynamic_object_field, event};
 

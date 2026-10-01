@@ -22,6 +22,13 @@ for eligible wallets or for anyone, and either keeps overflow pro-rata or
 hard-caps at the raise, returning any excess Quote immediately. Part of the
 raise can also be allocated to recipients in BPS; the LP seeds with the rest.
 
+Blast's shared `FeePolicy` sets its shares of the raise, the token supply, and
+collected LP fees; each sale snapshots them at creation, every rate can be zero,
+and payouts go to the policy's current destination. Blast's token share counts
+toward the 10,000 allocation BPS, and its raise share is apportioned with the raise
+recipients'. Nothing is charged at creation, on commitment, on refund, or if a
+sale does not migrate.
+
 Every accepted commitment is locked in the presale's Quote custody. Participants cannot
 withdraw while a sale is open or funded. Underfunded sales, and funded sales
 cancelled after the LP deadline, refund every commitment; successfully migrated
@@ -30,13 +37,15 @@ sales refund only overflow. One common fill rate applies to every wallet.
 Anyone may call the configured Bluefin or Cetus migration at any time until the
 sale is cancelled. From the LP deadline onward, anyone may instead cancel an
 unmigrated funded sale; whichever transaction lands first wins. Migration
-atomically takes the exact raise and LP allocation, creates the configured
+atomically pays Blast its raise and token shares, takes the rest of the raise and
+the LP allocation, creates the configured
 full-range pool, and seals the position or burn proof in a `PresaleVault`; a DEX
 failure rolls back the presale transition. Configured recipients receive their
 distinct allocations in that same transaction. Claims open only after success.
 
-Permissionless fee collection applies the immutable creation-time split: every
-fee recipient is paid in the same transaction, and the holder-reward share stays
+Permissionless fee collection pays Blast its snapshotted share of each asset,
+then applies the immutable creation-time split to the rest: every fee recipient
+is paid in the same transaction, and the holder-reward share stays
 in the vault. Blast's `RewardsAdmin` in the shared Blast ACL publishes Merkle
 rounds funded from that share, each with a claim deadline after which anyone can
 return its unclaimed rewards to the vault. The `PresaleCap` claims migration residuals and
@@ -56,4 +65,5 @@ Run `scripts/verify.sh`. Publish with `scripts/publish.sh <sui-environment>
 <publisher-id> <upgrade-cap-id> --preview` and `--execute` before creating any
 presale.
 
-The accepted design is [ADR 0099](../../docs/decisions/0099-standalone-overflow-presale.md).
+The accepted design is [ADR 0099](../../docs/decisions/0099-standalone-overflow-presale.md);
+Blast's fees are proposed in [ADR 0101](../../docs/decisions/0101-presale-protocol-fees.md).

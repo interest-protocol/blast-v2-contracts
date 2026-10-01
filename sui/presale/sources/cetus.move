@@ -37,6 +37,7 @@ public fun new<Meme, Quote>(
     uncapped: Option<UncappedPhase>,
     fee_recipients: vector<FeeRecipient>,
     rewards_fee_bps: u64,
+    fee_policy: &FeePolicy,
     venue_config: &mut VenueConfig,
     cetus_config: &GlobalConfig,
     pools: &mut Pools,
@@ -75,6 +76,7 @@ public fun new<Meme, Quote>(
         fee_rate,
         fee_recipients,
         rewards_fee_bps,
+        fee_policy,
         ctx,
     )
 }
@@ -83,6 +85,7 @@ public fun new<Meme, Quote>(
 /// presale's Meme and Quote in Cetus's canonical coin order.
 public fun migrate<Meme, Quote, CoinA, CoinB>(
     sale: &mut Presale<Meme, Quote>,
+    fee_policy: &FeePolicy,
     venue_config: &VenueConfig,
     cetus_config: &GlobalConfig,
     pools: &mut Pools,
@@ -94,7 +97,7 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
     let meme_is_a = meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
 
     let (tick_spacing, _) = sale.pool_tier();
-    let (meme, quote) = sale.migrate(Witness(), ctx);
+    let (meme, quote) = sale.migrate(fee_policy, Witness(), ctx);
 
     let meme_amount = meme.value();
     let quote_amount = quote.value();
@@ -145,10 +148,11 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
     burn_into_vault(sale, burn_manager, position, residual_meme, residual_quote, ctx);
 }
 
-/// Anyone may collect LP fees from a migrated presale's Cetus position, paying each fee recipient
-/// and accruing the holder-reward share. `CoinA` and `CoinB` are the pool's coin order.
+/// Anyone may collect LP fees from a migrated presale's Cetus position, paying Blast and each fee
+/// recipient and accruing the holder-reward share. `CoinA` and `CoinB` are the pool's coin order.
 public fun collect_fees<Meme, Quote, CoinA, CoinB>(
     vault: &mut PresaleVault<Meme, Quote>,
+    fee_policy: &FeePolicy,
     cetus_config: &GlobalConfig,
     burn_manager: &BurnManager,
     pool: &mut Pool<CoinA, CoinB>,
@@ -169,7 +173,7 @@ public fun collect_fees<Meme, Quote, CoinA, CoinB>(
     let (meme, quote) = scratch.cast_pair<_, _, Coin<Meme>, Coin<Quote>>(fee_a, fee_b, meme_is_a);
     scratch.delete();
 
-    vault.split_fees(meme.into_balance(), quote.into_balance(), ctx);
+    vault.split_fees(fee_policy, meme.into_balance(), quote.into_balance(), ctx);
 }
 
 // === Private Functions ===
@@ -295,6 +299,7 @@ use blast_presale::{
         RecipientAllocation,
         UncappedPhase,
     },
+    fee_policy::FeePolicy,
     migration_math,
     presale_vault::{Self as vault, PresaleVault},
     venue_config::VenueConfig,
