@@ -20,7 +20,7 @@ public struct PresaleVault<phantom Meme, phantom Quote> has key {
     presale_cap_id: ID,
     pool_id: ID,
     fee_recipients: vector<FeeRecipient>,
-    rewards_fee_bps: u64,
+    rewards_fee_bps: Bps,
     protocol_fees: ProtocolFees,
     migration_meme_residual: Balance<Meme>,
     migration_quote_residual: Balance<Quote>,
@@ -107,9 +107,9 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
         liquidity,
         fee_recipients: fee_recipient_addresses,
         fee_recipient_bps,
-        rewards_fee_bps,
-        protocol_lp_meme_bps: protocol_fees.lp_meme_bps(),
-        protocol_lp_quote_bps: protocol_fees.lp_quote_bps(),
+        rewards_fee_bps: rewards_fee_bps.value(),
+        protocol_lp_meme_bps: protocol_fees.lp_meme_bps().value(),
+        protocol_lp_quote_bps: protocol_fees.lp_quote_bps().value(),
         migration_meme_residual,
         migration_quote_residual,
     });
@@ -143,8 +143,8 @@ public(package) fun split_fees<Meme, Quote>(
         return
     };
 
-    let protocol_meme = gross_meme.mul_div_ceil(self.protocol_fees.lp_meme_bps(), BASIS_POINTS);
-    let protocol_quote = gross_quote.mul_div_ceil(self.protocol_fees.lp_quote_bps(), BASIS_POINTS);
+    let protocol_meme = self.protocol_fees.lp_meme_bps().apply_up(gross_meme);
+    let protocol_quote = self.protocol_fees.lp_quote_bps().apply_up(gross_quote);
     let protocol_destination = fee_policy.destination();
     let (recipient_meme, rewards_meme) = self.fee_shares(gross_meme - protocol_meme);
     let (recipient_quote, rewards_quote) = self.fee_shares(gross_quote - protocol_quote);
@@ -240,7 +240,7 @@ public fun new_for_testing<Meme, Quote>(
     presale_id: ID,
     presale_cap_id: ID,
     fee_recipients: vector<FeeRecipient>,
-    rewards_fee_bps: u64,
+    rewards_fee_bps: Bps,
     protocol_fees: ProtocolFees,
     ctx: &mut TxContext,
 ): PresaleVault<Meme, Quote> {
@@ -354,10 +354,6 @@ public struct MigrationResidualsClaimed<phantom Meme, phantom Quote> has copy, d
     quote: u64,
 }
 
-// === Constants ===
-
-const BASIS_POINTS: u64 = 10_000;
-
 // === Errors ===
 
 #[error(code = 0)]
@@ -373,6 +369,7 @@ const EWrongPresaleCap: vector<u8> = b"The creator capability belongs to a diffe
 
 use blast_presale::{
     blast_presale::{Self as presale, FeeRecipient, Presale, PresaleCap},
+    bps::Bps,
     fee_policy::{FeePolicy, ProtocolFees},
 };
 

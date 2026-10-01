@@ -57,7 +57,7 @@ public struct PresaleCap has key, store {
 /// A creator-configured share of the fixed token supply, in BPS.
 public struct RecipientAllocation has copy, drop, store {
     recipient: address,
-    bps: u64,
+    bps: Bps,
 }
 
 /// The exact tokens one recipient receives at migration, apportioned from its
@@ -71,7 +71,7 @@ public struct RecipientPayout has copy, drop, store {
 /// are collected. The creator is configured as an ordinary recipient.
 public struct FeeRecipient has copy, drop, store {
     recipient: address,
-    bps: u64,
+    bps: Bps,
 }
 
 /// Dynamic-field name for one wallet's undelivered commitment.
@@ -108,7 +108,7 @@ public struct Presale<phantom SaleToken, phantom Quote> has key {
     tick_spacing: u32,
     fee_rate: u64,
     fee_recipients: vector<FeeRecipient>,
-    rewards_fee_bps: u64,
+    rewards_fee_bps: Bps,
     total_commitments: u64,
     remaining_commitments: u64,
     participants: u64,
@@ -182,15 +182,15 @@ public fun uncapped_for_anyone(
 }
 
 /// Configures one additional recipient's share of the fixed token supply.
-public fun recipient_allocation(recipient: address, bps: u64): RecipientAllocation {
-    assert!(recipient != @0x0 && bps > 0 && bps <= BASIS_POINTS, EInvalidTokenAllocation);
+public fun recipient_allocation(recipient: address, bps: Bps): RecipientAllocation {
+    assert!(recipient != @0x0 && bps.value() > 0, EInvalidTokenAllocation);
 
     RecipientAllocation { recipient, bps }
 }
 
 /// Configures one address's share of every collected LP fee.
-public fun fee_recipient(recipient: address, bps: u64): FeeRecipient {
-    assert!(recipient != @0x0 && bps > 0 && bps <= BASIS_POINTS, EInvalidFeeSplit);
+public fun fee_recipient(recipient: address, bps: Bps): FeeRecipient {
+    assert!(recipient != @0x0 && bps.value() > 0, EInvalidFeeSplit);
 
     FeeRecipient { recipient, bps }
 }
@@ -376,8 +376,8 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
     treasury_cap: TreasuryCap<SaleToken>,
     currency: &mut Currency<SaleToken>,
     token_supply: u64,
-    token_allocation_bps: u64,
-    liquidity_token_allocation_bps: u64,
+    token_allocation_bps: Bps,
+    liquidity_token_allocation_bps: Bps,
     recipient_allocations: vector<RecipientAllocation>,
     burnable: bool,
     raise_target: u64,
@@ -390,7 +390,7 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
     tick_spacing: u32,
     fee_rate: u64,
     fee_recipients: vector<FeeRecipient>,
-    rewards_fee_bps: u64,
+    rewards_fee_bps: Bps,
     fee_policy: &FeePolicy,
     ctx: &mut TxContext,
 ): (Presale<SaleToken, Quote>, PresaleCap) {
@@ -463,14 +463,14 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         presale_cap_id,
         treasury_cap_id,
         token_supply,
-        token_allocation_bps,
-        liquidity_token_allocation_bps,
+        token_allocation_bps: token_allocation_bps.value(),
+        liquidity_token_allocation_bps: liquidity_token_allocation_bps.value(),
         recipients: recipient_allocations.map_ref!(|allocation| allocation.recipient),
-        recipient_bps: recipient_allocations.map_ref!(|allocation| allocation.bps),
+        recipient_bps: recipient_allocations.map_ref!(|allocation| allocation.bps.value()),
         burnable,
         raise_target,
         raise_recipients: raise_allocations.map_ref!(|allocation| allocation.recipient),
-        raise_recipient_bps: raise_allocations.map_ref!(|allocation| allocation.bps),
+        raise_recipient_bps: raise_allocations.map_ref!(|allocation| allocation.bps.value()),
         duration_ms,
         liquidity_window_ms,
         eligibility,
@@ -480,7 +480,7 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         fee_rate,
         fee_recipients: fee_recipient_addresses(&fee_recipients),
         fee_recipient_bps: fee_recipient_bps(&fee_recipients),
-        rewards_fee_bps,
+        rewards_fee_bps: rewards_fee_bps.value(),
         protocol_fees,
         protocol_quote,
         protocol_tokens: protocol_token_allocation,
@@ -573,7 +573,7 @@ public(package) fun pool_tier<SaleToken, Quote>(self: &Presale<SaleToken, Quote>
 /// The presale and creator-capability IDs, the LP-fee split, and Blast's rates its vault inherits.
 public(package) fun vault_config<SaleToken, Quote>(
     self: &Presale<SaleToken, Quote>,
-): (ID, ID, vector<FeeRecipient>, u64, ProtocolFees) {
+): (ID, ID, vector<FeeRecipient>, Bps, ProtocolFees) {
     (
         self.id.to_inner(),
         self.presale_cap_id,
@@ -589,7 +589,7 @@ public(package) fun vault_config<SaleToken, Quote>(
 /// win ties over the holder-reward share and earlier recipients over later ones.
 public(package) fun apportion_fee(
     fee_recipients: &vector<FeeRecipient>,
-    rewards_fee_bps: u64,
+    rewards_fee_bps: Bps,
     amount: u64,
 ): vector<u64> {
     let mut shares = fee_recipients.map_ref!(|fee_recipient| fee_recipient.bps);
@@ -605,7 +605,7 @@ public(package) fun fee_recipient_addresses(
 }
 
 public(package) fun fee_recipient_bps(fee_recipients: &vector<FeeRecipient>): vector<u64> {
-    fee_recipients.map_ref!(|fee_recipient| fee_recipient.bps)
+    fee_recipients.map_ref!(|fee_recipient| fee_recipient.bps.value())
 }
 
 /// Transfers `amount` split from `self` to `recipient`, skipping empty shares.
@@ -626,9 +626,9 @@ fun assert_open<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, clock: &Cloc
 }
 
 /// Largest-remainder apportionment. Shares must sum to 10,000 BPS.
-fun apportion(shares: vector<u64>, total: u64): vector<u64> {
-    let denominator = BASIS_POINTS as u128;
-    let products = shares.map!(|share| (total as u128) * (share as u128));
+fun apportion(shares: vector<Bps>, total: u64): vector<u64> {
+    let denominator = bps::denominator() as u128;
+    let products = shares.map!(|share| (total as u128) * (share.value() as u128));
     let mut amounts = products.map_ref!(|product| (*product / denominator) as u64);
 
     // Hand out the leftover units to the largest remainders, earlier shares first on ties.
@@ -653,66 +653,62 @@ fun assert_raise_allocations(raise_allocations: &vector<RecipientAllocation>) {
     assert!(raise_allocations.length() <= MAX_RECIPIENTS, EInvalidRaiseAllocation);
     raise_allocations.do_ref!(|allocation| assert!(
         allocation.recipient != @0x0
-            && allocation.bps > 0
-            && allocation.bps < BASIS_POINTS
+            && allocation.bps.value() > 0
             // ponytail: O(n²) duplicate validation is bounded by MAX_RECIPIENTS.
             && raise_allocations.count!(|other| other.recipient == allocation.recipient) == 1,
         EInvalidRaiseAllocation,
     ));
-    assert!(allocated_bps(raise_allocations) < BASIS_POINTS, EInvalidRaiseAllocation);
+    assert!(allocated_bps(raise_allocations) < bps::denominator(), EInvalidRaiseAllocation);
 }
 
 /// Token allocations: bounded shares totalling exactly 10,000 BPS with Blast's share.
 fun assert_token_allocations(
     token_supply: u64,
-    token_allocation_bps: u64,
-    liquidity_token_allocation_bps: u64,
-    protocol_token_bps: u64,
+    token_allocation_bps: Bps,
+    liquidity_token_allocation_bps: Bps,
+    protocol_token_bps: Bps,
     recipient_allocations: &vector<RecipientAllocation>,
 ) {
     assert!(
         token_supply > 0
-            && token_allocation_bps > 0
-            && token_allocation_bps <= BASIS_POINTS
-            && liquidity_token_allocation_bps > 0
-            && liquidity_token_allocation_bps <= BASIS_POINTS
+            && token_allocation_bps.value() > 0
+            && liquidity_token_allocation_bps.value() > 0
             && recipient_allocations.length() <= MAX_RECIPIENTS,
         EInvalidTokenAllocation,
     );
     recipient_allocations.do_ref!(|allocation| assert!(
         allocation.recipient != @0x0
-            && allocation.bps > 0
-            && allocation.bps <= BASIS_POINTS
+            && allocation.bps.value() > 0
             // ponytail: O(n²) duplicate validation is bounded by MAX_RECIPIENTS.
             && recipient_allocations.count!(|other| other.recipient == allocation.recipient) == 1,
         EInvalidTokenAllocation,
     ));
     assert!(
         (*recipient_allocations).fold!(
-            token_allocation_bps + liquidity_token_allocation_bps + protocol_token_bps,
-            |sum, allocation| sum + allocation.bps,
-        ) == BASIS_POINTS,
+            token_allocation_bps.value()
+                + liquidity_token_allocation_bps.value()
+                + protocol_token_bps.value(),
+            |sum, allocation| sum + allocation.bps.value(),
+        ) == bps::denominator(),
         EInvalidTokenAllocation,
     );
 }
 
 /// LP-fee split: bounded recipients plus the holder share totalling exactly 10,000 BPS.
-fun assert_fee_split(fee_recipients: &vector<FeeRecipient>, rewards_fee_bps: u64) {
-    assert!(
-        fee_recipients.length() <= MAX_FEE_RECIPIENTS && rewards_fee_bps <= BASIS_POINTS,
-        EInvalidFeeSplit,
-    );
+fun assert_fee_split(fee_recipients: &vector<FeeRecipient>, rewards_fee_bps: Bps) {
+    assert!(fee_recipients.length() <= MAX_FEE_RECIPIENTS, EInvalidFeeSplit);
     fee_recipients.do_ref!(|fee_recipient| assert!(
         fee_recipient.recipient != @0x0
-            && fee_recipient.bps > 0
-            && fee_recipient.bps <= BASIS_POINTS
+            && fee_recipient.bps.value() > 0
             // ponytail: O(n²) duplicate validation is bounded by MAX_FEE_RECIPIENTS.
             && fee_recipients.count!(|other| other.recipient == fee_recipient.recipient) == 1,
         EInvalidFeeSplit,
     ));
     assert!(
-        (*fee_recipients).fold!(rewards_fee_bps, |sum, fee_recipient| sum + fee_recipient.bps)
-            == BASIS_POINTS,
+        (*fee_recipients).fold!(
+            rewards_fee_bps.value(),
+            |sum, fee_recipient| sum + fee_recipient.bps.value(),
+        ) == bps::denominator(),
         EInvalidFeeSplit,
     );
 }
@@ -762,9 +758,9 @@ fun can_reach(self: EligibilityPolicy, raise_target: u64): bool {
 /// payout.
 fun apportion_supply(
     token_supply: u64,
-    token_allocation_bps: u64,
-    liquidity_token_allocation_bps: u64,
-    protocol_token_bps: u64,
+    token_allocation_bps: Bps,
+    liquidity_token_allocation_bps: Bps,
+    protocol_token_bps: Bps,
     recipient_allocations: &vector<RecipientAllocation>,
 ): (u64, u64, u64, vector<RecipientPayout>) {
     let mut shares = vector[token_allocation_bps, liquidity_token_allocation_bps, protocol_token_bps];
@@ -780,15 +776,15 @@ fun apportion_supply(
 /// recipient and the LP must receive a positive amount.
 fun apportion_raise(
     raise_allocations: &vector<RecipientAllocation>,
-    protocol_raise_bps: u64,
+    protocol_raise_bps: Bps,
     raise_target: u64,
 ): (vector<RecipientPayout>, u64, u64) {
-    let allocated = allocated_bps(raise_allocations) + protocol_raise_bps;
-    assert!(allocated < BASIS_POINTS, EInvalidRaiseAllocation);
+    let allocated = allocated_bps(raise_allocations) + protocol_raise_bps.value();
+    assert!(allocated < bps::denominator(), EInvalidRaiseAllocation);
 
     let mut shares = raise_allocations.map_ref!(|allocation| allocation.bps);
     shares.push_back(protocol_raise_bps);
-    shares.push_back(BASIS_POINTS - allocated);
+    shares.push_back(bps::new(bps::denominator() - allocated));
     let amounts = apportion(shares, raise_target);
     let raise_payouts = payouts(raise_allocations, &amounts, 0);
     let liquidity_quote = amounts[raise_allocations.length() + 1];
@@ -802,7 +798,7 @@ fun apportion_raise(
 
 /// The BPS these allocations take in total.
 fun allocated_bps(allocations: &vector<RecipientAllocation>): u64 {
-    (*allocations).fold!(0, |sum, allocation| sum + allocation.bps)
+    (*allocations).fold!(0, |sum, allocation| sum + allocation.bps.value())
 }
 
 /// Pairs each allocation's recipient with its apportioned amount, read from `amounts` starting
@@ -1381,8 +1377,6 @@ const MAX_RECIPIENTS: u64 = 64;
 /// Bounds the transfers one fee collection makes.
 const MAX_FEE_RECIPIENTS: u64 = 16;
 
-const BASIS_POINTS: u64 = 10_000;
-
 const DIGEST_LENGTH: u64 = 32;
 
 // === Errors ===
@@ -1471,7 +1465,12 @@ const EInvalidRaiseAllocation: vector<u8> = b"Raise allocations must be unique, 
 
 // === Imports ===
 
-use blast_presale::{fee_policy::{FeePolicy, ProtocolFees}, merkle_tree, migration_math};
+use blast_presale::{
+    bps::{Self, Bps},
+    fee_policy::{FeePolicy, ProtocolFees},
+    merkle_tree,
+    migration_math,
+};
 
 use std::{bcs, type_name::{Self, TypeName}};
 

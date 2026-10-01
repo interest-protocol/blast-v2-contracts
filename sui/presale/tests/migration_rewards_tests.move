@@ -30,10 +30,10 @@ fun collected_fees_pay_recipients_and_keep_the_holder_share() {
         presale_id,
         object::id(&cap),
         vector[
-            presale::fee_recipient(CREATOR, 5_000),
-            presale::fee_recipient(PARTNER, 2_000),
+            presale::fee_recipient(CREATOR, bps::new(5_000)),
+            presale::fee_recipient(PARTNER, bps::new(2_000)),
         ],
-        3_000,
+        bps::new(3_000),
         no_protocol_fees(),
         scenario.ctx(),
     );
@@ -78,10 +78,10 @@ fun collected_fees_pay_blast_its_share_first() {
         object::id_from_address(@0xCAFE),
         object::id_from_address(@0xCA9),
         vector[
-            presale::fee_recipient(CREATOR, 5_000),
-            presale::fee_recipient(PARTNER, 2_000),
+            presale::fee_recipient(CREATOR, bps::new(5_000)),
+            presale::fee_recipient(PARTNER, bps::new(2_000)),
         ],
-        3_000,
+        bps::new(3_000),
         fee_policy::protocol_fees_for_testing(0, 0, 1_000, 2_500),
         scenario.ctx(),
     );
@@ -125,7 +125,7 @@ fun the_rewards_admin_publishes_holder_rounds_from_the_holder_share() {
         presale_id,
         object::id_from_address(@0xCA9),
         vector[],
-        10_000,
+        bps::new(10_000),
         no_protocol_fees(),
         scenario.ctx(),
     );
@@ -168,7 +168,7 @@ fun the_rewards_admin_publishes_holder_rounds_from_the_holder_share() {
 /// Equal fractional remainders favor the fee recipient over the holder-reward share.
 fun a_remainder_tie_goes_to_the_fee_recipient_before_holders() {
     let mut scenario = test_scenario::begin(CREATOR);
-    let mut vault = new_vault(vector[presale::fee_recipient(CREATOR, 5_000)], 5_000, &mut scenario);
+    let mut vault = new_vault(vector[presale::fee_recipient(CREATOR, bps::new(5_000))], 5_000, &mut scenario);
 
     vault.credit(
         coin::mint_for_testing<MEME>(3, scenario.ctx()).into_balance(),
@@ -385,7 +385,7 @@ fun new_vault(
         object::id_from_address(@0xCAFE),
         object::id_from_address(@0xCA9),
         fee_recipients,
-        rewards_fee_bps,
+        bps::new(rewards_fee_bps),
         no_protocol_fees(),
         scenario.ctx(),
     )
@@ -467,6 +467,7 @@ use blast_admin::blast_acl;
 use blast_presale::{
     blast_presale as presale,
     blast_presale_domain::{RewardsAdmin, TreasuryAdmin},
+    bps,
     fee_policy::{Self, ProtocolFees},
     holder_rewards::{Self as rewards, Round},
     merkle_tree,

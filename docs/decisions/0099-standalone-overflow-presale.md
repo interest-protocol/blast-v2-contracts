@@ -64,7 +64,14 @@ immutable per-sale configuration contains a positive Quote raise, a commitment
 duration, an LP-migration window, a sealed migration witness, venue tier, an
 LP-fee split, and an `EligibilityPolicy`. The fee split is up to 16 distinct
 `(recipient, bps)` fee recipients, the creator configured as one of them, and a
-holder-reward BPS; together they total exactly 10,000. The eligibility policy is:
+holder-reward BPS; together they total exactly 10,000.
+
+Every rate is a package-local `bps::Bps`, the ADR 0044 unit: callers build each
+rate with `bps::new`, which alone owns the `0..=10,000` range, and presale storage
+and fee arithmetic hold only validated values. Owner modules keep the stricter
+rules: positive shares, distinct recipients, exact or sub-whole totals, and
+Blast's fee ceilings. Events keep raw `u64` BPS. The package keeps its own copy
+because it must not import launchpad. The eligibility policy is:
 
 - `Open` stores one wallet cap, a maximum participant count, and a minimum
   cumulative commitment per wallet. Creation requires
