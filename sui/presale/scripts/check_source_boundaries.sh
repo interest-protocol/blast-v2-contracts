@@ -18,11 +18,13 @@ if rg -n 'fun init\(' "$sources/blast_presale_domain.move"; then
   fail "blast_presale_domain must not create administration state."
 fi
 [ "$(rg '^public struct ' "$sources/blast_presale_domain.move" | sort)" == "$(printf '%s\n' \
+  'public struct FeeAdmin()' \
   'public struct RewardsAdmin()' \
+  'public struct TreasuryAdmin()' \
   'public struct UpgradeAdmin()' | sort)" ] \
   || fail "blast_presale_domain must declare exactly the reviewed ability-free roles."
 if rg -n '^[^/]*AdminWitness<' "$sources" \
-  | rg -v 'AdminWitness<(RewardsAdmin|UpgradeAdmin)>|use blast_admin::'; then
+  | rg -v 'AdminWitness<(FeeAdmin|RewardsAdmin|TreasuryAdmin|UpgradeAdmin)>|use blast_admin::'; then
   fail "Every administrator witness must name one concrete blast_presale role."
 fi
 

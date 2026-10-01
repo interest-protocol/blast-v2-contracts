@@ -9,6 +9,7 @@ module blast_presale::migration_rewards_tests;
 const CREATOR: address = @0xC0FFEE;
 const HOLDER: address = @0xA11CE;
 const PARTNER: address = @0xFEE;
+const TREASURY: address = @0x7EA5;
 const CLAIM_DEADLINE_MS: u64 = 1_000;
 
 // === Test-Only Types ===
@@ -33,13 +34,14 @@ fun collected_fees_pay_recipients_and_keep_the_holder_share() {
             presale::fee_recipient(PARTNER, 2_000),
         ],
         3_000,
+        no_protocol_fees(),
         scenario.ctx(),
     );
 
-    vault.credit_fees_for_testing(
+    vault.credit(
         coin::mint_for_testing<MEME>(101, scenario.ctx()).into_balance(),
         coin::mint_for_testing<QUOTE>(10, scenario.ctx()).into_balance(),
-        scenario.ctx(),
+        &mut scenario,
     );
 
     let (gross_meme, gross_quote, recipient_meme, recipient_quote, rewards_meme, rewards_quote) =
@@ -66,6 +68,55 @@ fun collected_fees_pay_recipients_and_keep_the_holder_share() {
 }
 
 #[test]
+/// Blast's snapshotted LP share of each asset, rounded up, goes to the policy's current
+/// destination before the creator's split applies to the rest.
+fun collected_fees_pay_blast_its_share_first() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let mut policy = fee_policy::new_for_testing(scenario.ctx());
+    policy.set_destination(&blast_acl::witness_for_testing<TreasuryAdmin>(), TREASURY);
+    let mut vault = vault::new_for_testing<MEME, QUOTE>(
+        object::id_from_address(@0xCAFE),
+        object::id_from_address(@0xCA9),
+        vector[
+            presale::fee_recipient(CREATOR, 5_000),
+            presale::fee_recipient(PARTNER, 2_000),
+        ],
+        3_000,
+        fee_policy::protocol_fees_for_testing(0, 0, 1_000, 2_500),
+        scenario.ctx(),
+    );
+
+    vault.credit_fees_for_testing(
+        &policy,
+        coin::mint_for_testing<MEME>(101, scenario.ctx()).into_balance(),
+        coin::mint_for_testing<QUOTE>(10, scenario.ctx()).into_balance(),
+        scenario.ctx(),
+    );
+
+    let event = only_event<FeesCollected<MEME, QUOTE>>();
+    let (destination, protocol_meme, protocol_quote) = event.fees_collected_protocol_fields();
+    assert_eq!(destination, TREASURY);
+    // ceil(101 * 10%) = 11 and ceil(10 * 25%) = 3; the creator's split apportions 90 and 7.
+    assert_eq!(vector[protocol_meme, protocol_quote], vector[11, 3]);
+    let (gross_meme, gross_quote, recipient_meme, recipient_quote, rewards_meme, rewards_quote) =
+        event.fees_collected_fields();
+    assert_eq!(vector[gross_meme, gross_quote], vector[101, 10]);
+    assert_eq!(recipient_meme, vector[45, 18]);
+    assert_eq!(recipient_quote, vector[4, 1]);
+    assert_eq!(vector[rewards_meme, rewards_quote], vector[27, 2]);
+    scenario.next_tx(TREASURY);
+    assert_eq!(scenario.take_from_sender<Coin<MEME>>().burn_for_testing(), 11);
+    assert_eq!(scenario.take_from_sender<Coin<QUOTE>>().burn_for_testing(), 3);
+
+    let (reward_meme, reward_quote) = vault.fund_round(10, 27, 2);
+    reward_meme.destroy_for_testing();
+    reward_quote.destroy_for_testing();
+    vault.destroy_for_testing();
+    policy.destroy_for_testing();
+    scenario.end();
+}
+
+#[test]
 /// Blast's rewards administrator, not the presale creator, funds holder rounds.
 fun the_rewards_admin_publishes_holder_rounds_from_the_holder_share() {
     let mut scenario = test_scenario::begin(CREATOR);
@@ -75,12 +126,13 @@ fun the_rewards_admin_publishes_holder_rounds_from_the_holder_share() {
         object::id_from_address(@0xCA9),
         vector[],
         10_000,
+        no_protocol_fees(),
         scenario.ctx(),
     );
-    vault.credit_fees_for_testing(
+    vault.credit(
         coin::mint_for_testing<MEME>(40, scenario.ctx()).into_balance(),
         coin::mint_for_testing<QUOTE>(5, scenario.ctx()).into_balance(),
-        scenario.ctx(),
+        &mut scenario,
     );
 
     let clock = clock::create_for_testing(scenario.ctx());
@@ -118,10 +170,10 @@ fun a_remainder_tie_goes_to_the_fee_recipient_before_holders() {
     let mut scenario = test_scenario::begin(CREATOR);
     let mut vault = new_vault(vector[presale::fee_recipient(CREATOR, 5_000)], 5_000, &mut scenario);
 
-    vault.credit_fees_for_testing(
+    vault.credit(
         coin::mint_for_testing<MEME>(3, scenario.ctx()).into_balance(),
         balance::zero<QUOTE>(),
-        scenario.ctx(),
+        &mut scenario,
     );
 
     let (_, _, recipient_meme, _, rewards_meme, _) = only_event<FeesCollected<MEME, QUOTE>>()
@@ -334,16 +386,33 @@ fun new_vault(
         object::id_from_address(@0xCA9),
         fee_recipients,
         rewards_fee_bps,
+        no_protocol_fees(),
         scenario.ctx(),
     )
 }
 
+fun no_protocol_fees(): ProtocolFees {
+    fee_policy::protocol_fees_for_testing(0, 0, 0, 0)
+}
+
+/// Collects fees under a zero-rate policy, as every vault without a Blast LP share does.
+fun credit(
+    self: &mut PresaleVault<MEME, QUOTE>,
+    meme: Balance<MEME>,
+    quote: Balance<QUOTE>,
+    scenario: &mut Scenario,
+) {
+    let policy = fee_policy::new_for_testing(scenario.ctx());
+    self.credit_fees_for_testing(&policy, meme, quote, scenario.ctx());
+    policy.destroy_for_testing();
+}
+
 fun funded_holder_vault(scenario: &mut Scenario): PresaleVault<MEME, QUOTE> {
     let mut vault = new_vault(vector[], 10_000, scenario);
-    vault.credit_fees_for_testing(
+    vault.credit(
         coin::mint_for_testing<MEME>(40, scenario.ctx()).into_balance(),
         balance::zero<QUOTE>(),
-        scenario.ctx(),
+        scenario,
     );
     vault
 }
@@ -397,7 +466,8 @@ use blast_admin::blast_acl;
 
 use blast_presale::{
     blast_presale as presale,
-    blast_presale_domain::RewardsAdmin,
+    blast_presale_domain::{RewardsAdmin, TreasuryAdmin},
+    fee_policy::{Self, ProtocolFees},
     holder_rewards::{Self as rewards, Round},
     merkle_tree,
     presale_vault::{Self as vault, FeesCollected, PresaleVault},
@@ -406,7 +476,15 @@ use blast_presale::{
 
 use std::unit_test::{assert_eq, destroy};
 
-use sui::{balance, clock, coin::{Self, Coin}, event, hash, test_scenario::{Self, Scenario}};
+use sui::{
+    balance::{Self, Balance},
+    clock,
+    coin::{Self, Coin},
+    event,
+    hash,
+    test_scenario::{Self, Scenario},
+};
 
 use fun close_at as PresaleVault.close_at;
+use fun credit as PresaleVault.credit;
 use fun publish as PresaleVault.publish;

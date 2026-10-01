@@ -86,11 +86,12 @@ public struct Commitment has copy, drop, store {
 /// One standalone presale and its complete custody until migration or refund.
 ///
 /// The complete fixed or burn-only token supply is apportioned at creation.
-/// Presale, LP, and additional recipient allocations stay escrowed until a
-/// funded migration atomically releases them. If the raise is missed, every
-/// commitment is refunded. Anyone may migrate a funded sale until it is
-/// cancelled; once LP is still unmigrated at its deadline, anyone may cancel it
-/// so every commitment becomes refundable.
+/// Presale, LP, Blast, and additional recipient allocations stay escrowed until
+/// a funded migration atomically releases them. Blast's rates are snapshotted
+/// at creation, and its shares are paid only on migration. If the raise is
+/// missed, every commitment is refunded. Anyone may migrate a funded sale until
+/// it is cancelled; once LP is still unmigrated at its deadline, anyone may
+/// cancel it so every commitment becomes refundable.
 public struct Presale<phantom SaleToken, phantom Quote> has key {
     id: UID,
     presale_cap_id: ID,
@@ -118,6 +119,9 @@ public struct Presale<phantom SaleToken, phantom Quote> has key {
     recipient_payouts: vector<RecipientPayout>,
     recipient_tokens: Balance<SaleToken>,
     raise_payouts: vector<RecipientPayout>,
+    protocol_fees: ProtocolFees,
+    protocol_quote: u64,
+    protocol_tokens: Balance<SaleToken>,
 }
 
 // === Public Functions ===
@@ -387,8 +391,10 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
     fee_rate: u64,
     fee_recipients: vector<FeeRecipient>,
     rewards_fee_bps: u64,
+    fee_policy: &FeePolicy,
     ctx: &mut TxContext,
 ): (Presale<SaleToken, Quote>, PresaleCap) {
+    let protocol_fees = fee_policy.fees();
     assert!(
         type_name::with_original_ids<SaleToken>() != type_name::with_original_ids<Quote>(),
         EInvalidAssetPair,
@@ -402,6 +408,7 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         token_supply,
         token_allocation_bps,
         liquidity_token_allocation_bps,
+        protocol_fees.token_bps(),
         &recipient_allocations,
     );
     assert_fee_split(&fee_recipients, rewards_fee_bps);
@@ -409,13 +416,23 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
     assert!(eligibility.can_reach(raise_target), EUnreachableRaise);
     uncapped.do_ref!(|phase| assert_uncapped_phase(phase, duration_ms, eligibility, raise_target));
 
-    let (token_allocation, liquidity_token_allocation, recipient_payouts) = apportion_supply(
+    let (
+        token_allocation,
+        liquidity_token_allocation,
+        protocol_token_allocation,
+        recipient_payouts,
+    ) = apportion_supply(
         token_supply,
         token_allocation_bps,
         liquidity_token_allocation_bps,
+        protocol_fees.token_bps(),
         &recipient_allocations,
     );
-    let (raise_payouts, liquidity_quote) = apportion_raise(&raise_allocations, raise_target);
+    let (raise_payouts, protocol_quote, liquidity_quote) = apportion_raise(
+        &raise_allocations,
+        protocol_fees.raise_bps(),
+        raise_target,
+    );
     assert!(
         migration_math::is_seedable(
             migration_math::sqrt_price_x64(liquidity_token_allocation, liquidity_quote, true),
@@ -425,12 +442,13 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
     assert!(recipient_payouts.all!(|payout| payout.amount > 0), EInvalidTokenAllocation);
 
     let treasury_cap_id = object::id(&treasury_cap);
-    let (sale_tokens, liquidity_tokens, recipient_tokens) = mint_and_seal_supply(
+    let (sale_tokens, liquidity_tokens, protocol_tokens, recipient_tokens) = mint_and_seal_supply(
         treasury_cap,
         currency,
         token_supply,
         token_allocation,
         liquidity_token_allocation,
+        protocol_token_allocation,
         burnable,
     );
 
@@ -463,6 +481,9 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         fee_recipients: fee_recipient_addresses(&fee_recipients),
         fee_recipient_bps: fee_recipient_bps(&fee_recipients),
         rewards_fee_bps,
+        protocol_fees,
+        protocol_quote,
+        protocol_tokens: protocol_token_allocation,
     });
 
     (
@@ -493,16 +514,21 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
             recipient_payouts,
             recipient_tokens,
             raise_payouts,
+            protocol_fees,
+            protocol_quote,
+            protocol_tokens,
         },
         cap,
     )
 }
 
-/// Releases the exact raise and LP-token allocation only to the configured
+/// Pays Blast and the raise recipients their shares at once, then releases the
+/// rest of the raise and the LP-token allocation only to the configured
 /// migrator. Anyone may call that migrator at any time until the sale is
 /// cancelled; its pool creation remains atomic with this state transition.
 public(package) fun migrate<SaleToken, Quote, MigrationWitness: drop>(
     self: &mut Presale<SaleToken, Quote>,
+    fee_policy: &FeePolicy,
     _: MigrationWitness,
     ctx: &mut TxContext,
 ): (Balance<SaleToken>, Balance<Quote>) {
@@ -516,6 +542,7 @@ public(package) fun migrate<SaleToken, Quote, MigrationWitness: drop>(
     let liquidity_tokens = self.liquidity_tokens.withdraw_all();
     let recipient_tokens = self.recipient_tokens.value();
 
+    self.pay_protocol_fees(&mut quote, fee_policy.destination(), ctx);
     self.pay_raise_allocations(&mut quote, ctx);
     self.release_recipient_tokens(ctx);
     self.lifecycle = Lifecycle::Migrated;
@@ -543,11 +570,17 @@ public(package) fun pool_tier<SaleToken, Quote>(self: &Presale<SaleToken, Quote>
     (self.tick_spacing, self.fee_rate)
 }
 
-/// The presale and creator-capability IDs and the LP-fee split its vault inherits.
+/// The presale and creator-capability IDs, the LP-fee split, and Blast's rates its vault inherits.
 public(package) fun vault_config<SaleToken, Quote>(
     self: &Presale<SaleToken, Quote>,
-): (ID, ID, vector<FeeRecipient>, u64) {
-    (self.id.to_inner(), self.presale_cap_id, self.fee_recipients, self.rewards_fee_bps)
+): (ID, ID, vector<FeeRecipient>, u64, ProtocolFees) {
+    (
+        self.id.to_inner(),
+        self.presale_cap_id,
+        self.fee_recipients,
+        self.rewards_fee_bps,
+        self.protocol_fees,
+    )
 }
 
 /// Splits one fee amount into each recipient's share followed by the holder-reward
@@ -629,11 +662,12 @@ fun assert_raise_allocations(raise_allocations: &vector<RecipientAllocation>) {
     assert!(allocated_bps(raise_allocations) < BASIS_POINTS, EInvalidRaiseAllocation);
 }
 
-/// Token allocations: bounded shares totalling exactly 10,000 BPS.
+/// Token allocations: bounded shares totalling exactly 10,000 BPS with Blast's share.
 fun assert_token_allocations(
     token_supply: u64,
     token_allocation_bps: u64,
     liquidity_token_allocation_bps: u64,
+    protocol_token_bps: u64,
     recipient_allocations: &vector<RecipientAllocation>,
 ) {
     assert!(
@@ -655,7 +689,7 @@ fun assert_token_allocations(
     ));
     assert!(
         (*recipient_allocations).fold!(
-            token_allocation_bps + liquidity_token_allocation_bps,
+            token_allocation_bps + liquidity_token_allocation_bps + protocol_token_bps,
             |sum, allocation| sum + allocation.bps,
         ) == BASIS_POINTS,
         EInvalidTokenAllocation,
@@ -724,33 +758,46 @@ fun can_reach(self: EligibilityPolicy, raise_target: u64): bool {
 }
 
 /// Apportions the supply so every atomic unit belongs to exactly one allocation, returning the
-/// presale and LP allocations, which must be positive, and each recipient's payout.
+/// presale and LP allocations, which must be positive, Blast's allocation, and each recipient's
+/// payout.
 fun apportion_supply(
     token_supply: u64,
     token_allocation_bps: u64,
     liquidity_token_allocation_bps: u64,
+    protocol_token_bps: u64,
     recipient_allocations: &vector<RecipientAllocation>,
-): (u64, u64, vector<RecipientPayout>) {
-    let mut shares = vector[token_allocation_bps, liquidity_token_allocation_bps];
+): (u64, u64, u64, vector<RecipientPayout>) {
+    let mut shares = vector[token_allocation_bps, liquidity_token_allocation_bps, protocol_token_bps];
     recipient_allocations.do_ref!(|allocation| shares.push_back(allocation.bps));
     let amounts = apportion(shares, token_supply);
     assert!(amounts[0] > 0 && amounts[1] > 0, EInvalidTokenAllocation);
 
-    (amounts[0], amounts[1], payouts(recipient_allocations, &amounts, 2))
+    (amounts[0], amounts[1], amounts[2], payouts(recipient_allocations, &amounts, 3))
 }
 
-/// Apportions the raise the same way, the LP keeping the last share, and returns each
-/// recipient's payout and the LP's Quote. Every amount must be positive.
+/// Apportions the raise the same way among the recipients, Blast, and the LP, which keeps the
+/// last share, returning each recipient's payout, Blast's Quote, and the LP's Quote. Every
+/// recipient and the LP must receive a positive amount.
 fun apportion_raise(
     raise_allocations: &vector<RecipientAllocation>,
+    protocol_raise_bps: u64,
     raise_target: u64,
-): (vector<RecipientPayout>, u64) {
-    let mut shares = raise_allocations.map_ref!(|allocation| allocation.bps);
-    shares.push_back(BASIS_POINTS - allocated_bps(raise_allocations));
-    let amounts = apportion(shares, raise_target);
-    assert!(amounts.all!(|amount| *amount > 0), EInvalidRaiseAllocation);
+): (vector<RecipientPayout>, u64, u64) {
+    let allocated = allocated_bps(raise_allocations) + protocol_raise_bps;
+    assert!(allocated < BASIS_POINTS, EInvalidRaiseAllocation);
 
-    (payouts(raise_allocations, &amounts, 0), amounts[raise_allocations.length()])
+    let mut shares = raise_allocations.map_ref!(|allocation| allocation.bps);
+    shares.push_back(protocol_raise_bps);
+    shares.push_back(BASIS_POINTS - allocated);
+    let amounts = apportion(shares, raise_target);
+    let raise_payouts = payouts(raise_allocations, &amounts, 0);
+    let liquidity_quote = amounts[raise_allocations.length() + 1];
+    assert!(
+        raise_payouts.all!(|payout| payout.amount > 0) && liquidity_quote > 0,
+        EInvalidRaiseAllocation,
+    );
+
+    (raise_payouts, amounts[raise_allocations.length()], liquidity_quote)
 }
 
 /// The BPS these allocations take in total.
@@ -771,23 +818,25 @@ fun payouts(
     })
 }
 
-/// Mints the complete supply once, splits off the presale and LP allocations, then gives up
-/// mint authority forever by making the supply fixed or burn-only.
+/// Mints the complete supply once, splits off the presale, LP, and Blast allocations, then gives
+/// up mint authority forever by making the supply fixed or burn-only.
 fun mint_and_seal_supply<SaleToken>(
     mut treasury_cap: TreasuryCap<SaleToken>,
     currency: &mut Currency<SaleToken>,
     token_supply: u64,
     token_allocation: u64,
     liquidity_token_allocation: u64,
+    protocol_token_allocation: u64,
     burnable: bool,
-): (Balance<SaleToken>, Balance<SaleToken>, Balance<SaleToken>) {
+): (Balance<SaleToken>, Balance<SaleToken>, Balance<SaleToken>, Balance<SaleToken>) {
     let mut recipient_tokens = treasury_cap.mint_balance(token_supply);
     let sale_tokens = recipient_tokens.split(token_allocation);
     let liquidity_tokens = recipient_tokens.split(liquidity_token_allocation);
+    let protocol_tokens = recipient_tokens.split(protocol_token_allocation);
     if (burnable) currency.make_supply_burn_only(treasury_cap)
     else currency.make_supply_fixed(treasury_cap);
 
-    (sale_tokens, liquidity_tokens, recipient_tokens)
+    (sale_tokens, liquidity_tokens, protocol_tokens, recipient_tokens)
 }
 
 // Commitments
@@ -950,6 +999,26 @@ fun claim_payout<SaleToken, Quote>(
 
 // Migration
 
+/// Pays Blast its shares of the raise, out of `quote`, and of the supply at `destination`.
+fun pay_protocol_fees<SaleToken, Quote>(
+    self: &mut Presale<SaleToken, Quote>,
+    quote: &mut Balance<Quote>,
+    destination: address,
+    ctx: &mut TxContext,
+) {
+    let tokens = self.protocol_tokens.value();
+
+    quote.pay(self.protocol_quote, destination, ctx);
+    self.protocol_tokens.pay(tokens, destination, ctx);
+
+    event::emit(ProtocolFeesPaid<SaleToken, Quote> {
+        presale_id: self.id.to_inner(),
+        destination,
+        quote: self.protocol_quote,
+        tokens,
+    });
+}
+
 /// Pays each raise recipient its share out of `quote`, leaving the LP's share.
 fun pay_raise_allocations<SaleToken, Quote>(
     self: &Presale<SaleToken, Quote>,
@@ -1035,7 +1104,7 @@ public fun is_cancelled_for_testing<SaleToken, Quote>(self: &Presale<SaleToken, 
 #[test_only]
 public fun custody_for_testing<SaleToken, Quote>(
     self: &Presale<SaleToken, Quote>,
-): (u64, u64, u64, u64, u64, u64, u64) {
+): (u64, u64, u64, u64, u64, u64, u64, u64) {
     (
         self.total_commitments,
         self.remaining_commitments,
@@ -1044,6 +1113,7 @@ public fun custody_for_testing<SaleToken, Quote>(
         self.sale_tokens.value(),
         self.liquidity_tokens.value(),
         self.recipient_tokens.value(),
+        self.protocol_tokens.value(),
     )
 }
 
@@ -1096,6 +1166,13 @@ public fun created_supply_fields<SaleToken, Quote>(
     event: &PresaleCreated<SaleToken, Quote>,
 ): (vector<address>, vector<u64>, bool) {
     (event.recipients, event.recipient_bps, event.burnable)
+}
+
+#[test_only]
+public fun created_protocol_fields<SaleToken, Quote>(
+    event: &PresaleCreated<SaleToken, Quote>,
+): (ProtocolFees, u64, u64) {
+    (event.protocol_fees, event.protocol_quote, event.protocol_tokens)
 }
 
 #[test_only]
@@ -1165,6 +1242,13 @@ public fun raise_allocated_fields<SaleToken, Quote>(
 }
 
 #[test_only]
+public fun protocol_fees_paid_fields<SaleToken, Quote>(
+    event: &ProtocolFeesPaid<SaleToken, Quote>,
+): (ID, address, u64, u64) {
+    (event.presale_id, event.destination, event.quote, event.tokens)
+}
+
+#[test_only]
 public fun claim_fields<SaleToken, Quote>(
     event: &Claimed<SaleToken, Quote>,
 ): (ID, address, u64, u64, u64, u64) {
@@ -1204,6 +1288,11 @@ public struct PresaleCreated<phantom SaleToken, phantom Quote> has copy, drop {
     fee_recipients: vector<address>,
     fee_recipient_bps: vector<u64>,
     rewards_fee_bps: u64,
+    /// Blast's rates, snapshotted for this sale.
+    protocol_fees: ProtocolFees,
+    /// Blast's shares of the raise and of the supply, paid on migration.
+    protocol_quote: u64,
+    protocol_tokens: u64,
 }
 
 /// A presale's fixed commitment and liquidity windows began.
@@ -1240,14 +1329,22 @@ public struct PresaleCancelled<phantom SaleToken, phantom Quote> has copy, drop 
     refundable_quote: u64,
 }
 
-/// The raise left after recipient allocations and the LP-token allocation entered the
-/// configured migrator.
+/// The raise left after Blast's and the recipients' shares, and the LP-token allocation,
+/// entered the configured migrator.
 public struct PresaleMigrated<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
     migration_witness: TypeName,
     quote: u64,
     liquidity_tokens: u64,
     recipient_tokens: u64,
+}
+
+/// Blast received its shares of the raise and of the supply at `destination`.
+public struct ProtocolFeesPaid<phantom SaleToken, phantom Quote> has copy, drop {
+    presale_id: ID,
+    destination: address,
+    quote: u64,
+    tokens: u64,
 }
 
 /// One configured recipient received its share of the raise.
@@ -1297,7 +1394,7 @@ const EInvalidAssetPair: vector<u8> = b"The sale token and Quote type must diffe
 const EInvalidRaiseTarget: vector<u8> = b"The raise target must be positive.";
 
 #[error(code = 2)]
-const EInvalidTokenAllocation: vector<u8> = b"Token allocations must be unique, positive, bounded, and total exactly 10,000 BPS.";
+const EInvalidTokenAllocation: vector<u8> = b"Token allocations must be unique, positive, bounded, and total exactly 10,000 BPS with Blast's share.";
 
 #[error(code = 3)]
 const EInvalidWindow: vector<u8> = b"Commitment and liquidity windows must be positive and fit in u64 milliseconds.";
@@ -1370,11 +1467,11 @@ const EUncappedPhaseNotOpen: vector<u8> = b"The presale has no uncapped phase op
 const EPresaleFilled: vector<u8> = b"The hard-capped presale has already reached its raise.";
 
 #[error(code = 26)]
-const EInvalidRaiseAllocation: vector<u8> = b"Raise allocations must be unique, positive, bounded, leave the LP a positive share, and apportion to positive amounts.";
+const EInvalidRaiseAllocation: vector<u8> = b"Raise allocations must be unique, positive, bounded, leave the LP a positive share after Blast's, and apportion to positive amounts.";
 
 // === Imports ===
 
-use blast_presale::{merkle_tree, migration_math};
+use blast_presale::{fee_policy::{FeePolicy, ProtocolFees}, merkle_tree, migration_math};
 
 use std::{bcs, type_name::{Self, TypeName}};
 

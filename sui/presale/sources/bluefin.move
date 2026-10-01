@@ -31,6 +31,7 @@ public fun new<Meme, Quote>(
     uncapped: Option<UncappedPhase>,
     fee_recipients: vector<FeeRecipient>,
     rewards_fee_bps: u64,
+    fee_policy: &FeePolicy,
     tick_spacing: u32,
     fee_rate: u64,
     ctx: &mut TxContext,
@@ -63,6 +64,7 @@ public fun new<Meme, Quote>(
         fee_rate,
         fee_recipients,
         rewards_fee_bps,
+        fee_policy,
         ctx,
     )
 }
@@ -70,6 +72,7 @@ public fun new<Meme, Quote>(
 /// Anyone may atomically migrate a funded presale into its configured Bluefin pool.
 public fun migrate<Meme, Quote>(
     sale: &mut Presale<Meme, Quote>,
+    fee_policy: &FeePolicy,
     currency: &Currency<Meme>,
     quote_currency: &Currency<Quote>,
     bluefin_config: &mut GlobalConfig,
@@ -78,7 +81,7 @@ public fun migrate<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     let (tick_spacing, fee_rate) = sale.pool_tier();
-    let (meme, quote) = sale.migrate(Witness(), ctx);
+    let (meme, quote) = sale.migrate(fee_policy, Witness(), ctx);
 
     let source_meme = meme.value();
     let source_quote = quote.value();
@@ -137,9 +140,11 @@ public fun migrate<Meme, Quote>(
     pool.share_pool_object();
 }
 
-/// Anyone may collect LP fees, paying each fee recipient and accruing the holder-reward share.
+/// Anyone may collect LP fees, paying Blast and each fee recipient and accruing the
+/// holder-reward share.
 public fun collect_fees<Meme, Quote>(
     vault: &mut PresaleVault<Meme, Quote>,
+    fee_policy: &FeePolicy,
     bluefin_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
     clock: &Clock,
@@ -150,7 +155,7 @@ public fun collect_fees<Meme, Quote>(
 
     let (_, _, meme, quote) = pool::collect_fee(clock, bluefin_config, pool, position);
 
-    vault.split_fees(meme, quote, ctx);
+    vault.split_fees(fee_policy, meme, quote, ctx);
 }
 
 // === Private Functions ===
@@ -230,6 +235,7 @@ use blast_presale::{
         RecipientAllocation,
         UncappedPhase,
     },
+    fee_policy::FeePolicy,
     migration_math,
     presale_vault::{Self as vault, PresaleVault},
 };
