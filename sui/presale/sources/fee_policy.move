@@ -20,10 +20,10 @@ public struct FeePolicy has key {
 /// Blast's rates, in BPS: of the accepted raise, of the token supply, and of each collected
 /// LP-fee asset.
 public struct ProtocolFees has copy, drop, store {
-    raise_bps: u64,
-    token_bps: u64,
-    lp_meme_bps: u64,
-    lp_quote_bps: u64,
+    raise_bps: Bps,
+    token_bps: Bps,
+    lp_meme_bps: Bps,
+    lp_quote_bps: Bps,
 }
 
 // === Private Initialization ===
@@ -38,16 +38,13 @@ fun init(ctx: &mut TxContext) {
 public fun set_fees(
     self: &mut FeePolicy,
     _: &AdminWitness<FeeAdmin>,
-    raise_bps: u64,
-    token_bps: u64,
-    lp_meme_bps: u64,
-    lp_quote_bps: u64,
+    raise_bps: Bps,
+    token_bps: Bps,
+    lp_meme_bps: Bps,
+    lp_quote_bps: Bps,
 ) {
     assert!(
-        raise_bps < BASIS_POINTS
-            && token_bps <= MAX_TOKEN_BPS
-            && lp_meme_bps <= BASIS_POINTS
-            && lp_quote_bps <= BASIS_POINTS,
+        raise_bps.value() < bps::denominator() && token_bps.value() <= MAX_TOKEN_BPS,
         EInvalidFees,
     );
     let fees = ProtocolFees { raise_bps, token_bps, lp_meme_bps, lp_quote_bps };
@@ -55,7 +52,12 @@ public fun set_fees(
 
     self.fees = fees;
 
-    event::emit(FeesChanged { raise_bps, token_bps, lp_meme_bps, lp_quote_bps });
+    event::emit(FeesChanged {
+        raise_bps: raise_bps.value(),
+        token_bps: token_bps.value(),
+        lp_meme_bps: lp_meme_bps.value(),
+        lp_quote_bps: lp_quote_bps.value(),
+    });
 }
 
 /// Redirects every later protocol payout, including those of existing presales.
@@ -81,19 +83,19 @@ public(package) fun destination(self: &FeePolicy): address {
     self.destination
 }
 
-public(package) fun raise_bps(self: &ProtocolFees): u64 {
+public(package) fun raise_bps(self: &ProtocolFees): Bps {
     self.raise_bps
 }
 
-public(package) fun token_bps(self: &ProtocolFees): u64 {
+public(package) fun token_bps(self: &ProtocolFees): Bps {
     self.token_bps
 }
 
-public(package) fun lp_meme_bps(self: &ProtocolFees): u64 {
+public(package) fun lp_meme_bps(self: &ProtocolFees): Bps {
     self.lp_meme_bps
 }
 
-public(package) fun lp_quote_bps(self: &ProtocolFees): u64 {
+public(package) fun lp_quote_bps(self: &ProtocolFees): Bps {
     self.lp_quote_bps
 }
 
@@ -103,7 +105,12 @@ fun new(ctx: &mut TxContext): FeePolicy {
     FeePolicy {
         id: object::new(ctx),
         destination: ctx.sender(),
-        fees: ProtocolFees { raise_bps: 0, token_bps: 0, lp_meme_bps: 0, lp_quote_bps: 0 },
+        fees: ProtocolFees {
+            raise_bps: bps::new(0),
+            token_bps: bps::new(0),
+            lp_meme_bps: bps::new(0),
+            lp_quote_bps: bps::new(0),
+        },
     }
 }
 
@@ -126,7 +133,12 @@ public fun protocol_fees_for_testing(
     lp_meme_bps: u64,
     lp_quote_bps: u64,
 ): ProtocolFees {
-    ProtocolFees { raise_bps, token_bps, lp_meme_bps, lp_quote_bps }
+    ProtocolFees {
+        raise_bps: bps::new(raise_bps),
+        token_bps: bps::new(token_bps),
+        lp_meme_bps: bps::new(lp_meme_bps),
+        lp_quote_bps: bps::new(lp_quote_bps),
+    }
 }
 
 #[test_only]
@@ -162,15 +174,13 @@ public struct DestinationChanged has copy, drop {
 
 // === Constants ===
 
-const BASIS_POINTS: u64 = 10_000;
-
 /// The sale and LP allocations each keep at least one BPS of the supply.
 const MAX_TOKEN_BPS: u64 = 9_998;
 
 // === Errors ===
 
 #[error(code = 0)]
-const EInvalidFees: vector<u8> = b"Blast's raise share must be below 10,000 BPS, its token share at most 9,998, and each LP-fee share at most 10,000.";
+const EInvalidFees: vector<u8> = b"Blast's raise share must be below 10,000 BPS and its token share at most 9,998.";
 
 #[error(code = 1)]
 const EFeesUnchanged: vector<u8> = b"A fee update must change the stored rates.";
@@ -182,6 +192,6 @@ const EInvalidDestination: vector<u8> = b"The protocol destination must be a new
 
 use blast_admin::blast_acl::AdminWitness;
 
-use blast_presale::blast_presale_domain::{FeeAdmin, TreasuryAdmin};
+use blast_presale::{blast_presale_domain::{FeeAdmin, TreasuryAdmin}, bps::{Self, Bps}};
 
 use sui::event;

@@ -31,14 +31,20 @@ fun the_fee_admin_sets_maximum_and_zero_rates() {
     let mut ctx = tx_context::dummy();
     let mut policy = fee_policy::new_for_testing(&mut ctx);
 
-    policy.set_fees(&fee_admin(), 9_999, 9_998, 10_000, 10_000);
+    policy.set_fees(
+        &fee_admin(),
+        bps::new(9_999),
+        bps::new(9_998),
+        bps::new(10_000),
+        bps::new(10_000),
+    );
 
     assert_eq!(policy.fees(), fee_policy::protocol_fees_for_testing(9_999, 9_998, 10_000, 10_000));
     let (raise_bps, token_bps, lp_meme_bps, lp_quote_bps) = last_event<FeesChanged>()
         .fees_changed_fields();
     assert_eq!(vector[raise_bps, token_bps, lp_meme_bps, lp_quote_bps], vector[9_999, 9_998, 10_000, 10_000]);
 
-    policy.set_fees(&fee_admin(), 0, 0, 0, 0);
+    policy.set_fees(&fee_admin(), bps::new(0), bps::new(0), bps::new(0), bps::new(0));
 
     assert_eq!(policy.fees(), fee_policy::protocol_fees_for_testing(0, 0, 0, 0));
     policy.destroy_for_testing();
@@ -56,18 +62,6 @@ fun the_raise_share_must_stay_below_full() {
 /// The sale and LP allocations each need at least one BPS of the supply.
 fun the_token_share_must_leave_two_bps() {
     set_fees(0, 9_999, 0, 0);
-}
-
-#[test]
-#[expected_failure(abort_code = fee_policy::EInvalidFees, location = blast_presale::fee_policy)]
-fun the_lp_meme_share_cannot_exceed_full() {
-    set_fees(0, 0, 10_001, 0);
-}
-
-#[test]
-#[expected_failure(abort_code = fee_policy::EInvalidFees, location = blast_presale::fee_policy)]
-fun the_lp_quote_share_cannot_exceed_full() {
-    set_fees(0, 0, 0, 10_001);
 }
 
 #[test]
@@ -107,7 +101,13 @@ fun set_fees(raise_bps: u64, token_bps: u64, lp_meme_bps: u64, lp_quote_bps: u64
     let mut ctx = tx_context::dummy();
     let mut policy = fee_policy::new_for_testing(&mut ctx);
 
-    policy.set_fees(&fee_admin(), raise_bps, token_bps, lp_meme_bps, lp_quote_bps);
+    policy.set_fees(
+        &fee_admin(),
+        bps::new(raise_bps),
+        bps::new(token_bps),
+        bps::new(lp_meme_bps),
+        bps::new(lp_quote_bps),
+    );
 
     policy.destroy_for_testing();
 }
@@ -140,6 +140,7 @@ use blast_admin::blast_acl::{Self, AdminWitness};
 
 use blast_presale::{
     blast_presale_domain::{FeeAdmin, TreasuryAdmin},
+    bps,
     fee_policy::{Self, DestinationChanged, FeePolicy, FeesChanged},
 };
 
