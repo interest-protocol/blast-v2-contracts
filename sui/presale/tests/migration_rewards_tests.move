@@ -30,8 +30,8 @@ fun collected_fees_pay_recipients_and_keep_the_holder_share() {
         presale_id,
         object::id(&cap),
         vector[
-            presale::fee_recipient(CREATOR, bps::new(5_000)),
-            presale::fee_recipient(PARTNER, bps::new(2_000)),
+            presale::recipient_share(CREATOR, bps::new(5_000)),
+            presale::recipient_share(PARTNER, bps::new(2_000)),
         ],
         bps::new(3_000),
         no_protocol_fees(),
@@ -84,8 +84,8 @@ fun collected_fees_pay_blast_its_share_first() {
         object::id_from_address(@0xCAFE),
         object::id_from_address(@0xCA9),
         vector[
-            presale::fee_recipient(CREATOR, bps::new(5_000)),
-            presale::fee_recipient(PARTNER, bps::new(2_000)),
+            presale::recipient_share(CREATOR, bps::new(5_000)),
+            presale::recipient_share(PARTNER, bps::new(2_000)),
         ],
         bps::new(3_000),
         fee_policy::protocol_fees_for_testing(0, 0, 1_000, 2_500),
@@ -180,7 +180,7 @@ fun the_rewards_admin_publishes_holder_rounds_from_the_holder_share() {
 /// Equal fractional remainders favor the fee recipient over the holder-reward share.
 fun a_remainder_tie_goes_to_the_fee_recipient_before_holders() {
     let mut scenario = test_scenario::begin(CREATOR);
-    let mut vault = new_vault(vector[presale::fee_recipient(CREATOR, bps::new(5_000))], 5_000, &mut scenario);
+    let mut vault = new_vault(vector[presale::recipient_share(CREATOR, bps::new(5_000))], 5_000, &mut scenario);
 
     vault.credit(
         coin::mint_for_testing<MEME>(3, scenario.ctx()).into_balance(),
@@ -257,6 +257,28 @@ fun a_holder_reward_cannot_be_claimed_twice() {
     rewards::claim(&mut round, 0, HOLDER, 20, 0, vector[], scenario.ctx());
 
     rewards::claim(&mut round, 0, HOLDER, 20, 0, vector[], scenario.ctx());
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = rewards::EEmptyClaim, location = blast_presale::holder_rewards)]
+/// A claim leaf must pay something; an empty one is a claim error, not a round-budget one.
+fun a_holder_reward_claim_must_pay_a_positive_amount() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let vault_id = object::id_from_address(@0xBEEF);
+    let root = rewards::leaf_for_testing(vault_id, 0, 0, HOLDER, 0, 0);
+    let mut round = rewards::new_for_testing(
+        vault_id,
+        0,
+        CLAIM_DEADLINE_MS,
+        root,
+        1,
+        coin::mint_for_testing<MEME>(40, scenario.ctx()).into_balance(),
+        balance::zero<QUOTE>(),
+        scenario.ctx(),
+    );
+
+    rewards::claim(&mut round, 0, HOLDER, 0, 0, vector[], scenario.ctx());
     abort
 }
 
@@ -390,7 +412,7 @@ fun generic_merkle_proofs_preserve_left_and_right_order() {
 // === Test Helpers ===
 
 fun new_vault(
-    fee_recipients: vector<FeeRecipient>,
+    fee_recipients: vector<RecipientShare>,
     holder_rewards_bps: u64,
     scenario: &mut Scenario,
 ): PresaleVault<MEME, QUOTE> {
@@ -485,7 +507,7 @@ use blast_presale::{
     holder_rewards::{Self as rewards, Round},
     merkle_tree,
     presale_vault::{Self as vault, FeesCollected, PresaleVault},
-    blast_presale::FeeRecipient,
+    blast_presale::RecipientShare,
 };
 
 use std::unit_test::{assert_eq, destroy};

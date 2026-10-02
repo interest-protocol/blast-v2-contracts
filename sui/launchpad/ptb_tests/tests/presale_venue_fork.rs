@@ -616,9 +616,9 @@ impl World {
         let mut recipients = Vec::new();
         for (recipient, bps) in &terms.recipients {
             let args = vec![b.pure(SuiAddress::from(*recipient))?, self.bps(&mut b, *bps)?];
-            recipients.push(call(&mut b, self.presale, "blast_presale", "recipient_allocation", vec![], args));
+            recipients.push(call(&mut b, self.presale, "blast_presale", "recipient_share", vec![], args));
         }
-        let allocation_type = self.presale_tag("blast_presale", "RecipientAllocation");
+        let allocation_type = self.presale_tag("blast_presale", "RecipientShare");
         let recipients = b.command(Command::make_move_vec(Some(allocation_type.clone()), recipients));
         // No share of the raise goes to recipients, and there is no uncapped phase.
         let raise_allocations = b.command(Command::make_move_vec(Some(allocation_type), vec![]));
@@ -628,9 +628,9 @@ impl World {
         let mut fee_recipients = Vec::new();
         for (recipient, bps) in [(CREATOR, FEE_BPS[0]), (FEE_B, FEE_BPS[1])] {
             let args = vec![b.pure(SuiAddress::from(recipient))?, self.bps(&mut b, bps)?];
-            fee_recipients.push(call(&mut b, self.presale, "blast_presale", "fee_recipient", vec![], args));
+            fee_recipients.push(call(&mut b, self.presale, "blast_presale", "recipient_share", vec![], args));
         }
-        let fee_type = self.presale_tag("blast_presale", "FeeRecipient");
+        let fee_type = self.presale_tag("blast_presale", "RecipientShare");
         let fee_recipients = b.command(Command::make_move_vec(Some(fee_type), fee_recipients));
         let eligibility_args =
             vec![b.pure(terms.wallet_cap)?, b.pure(terms.max_participants)?, b.pure(terms.min_commitment)?];
@@ -1465,9 +1465,9 @@ enum Eligibility {
     Allowlisted { root: Vec<u8>, leaf_count: u64 },
 }
 
-/// Mirrors `blast_presale::blast_presale::FeeRecipient`.
+/// Mirrors `blast_presale::blast_presale::RecipientShare`.
 #[derive(Debug, Deserialize, PartialEq)]
-struct FeeRecipient {
+struct RecipientShare {
     recipient: SuiAddress,
     bps: u64,
 }
@@ -1505,7 +1505,7 @@ struct PresaleState {
     migration_witness: String,
     tick_spacing: u32,
     pool_fee_rate: u64,
-    fee_recipients: Vec<FeeRecipient>,
+    fee_recipients: Vec<RecipientShare>,
     holder_rewards_bps: u64,
     total_commitments: u64,
     remaining_commitments: u64,
@@ -1538,7 +1538,7 @@ struct VaultState {
     presale_id: ObjectID,
     presale_cap_id: ObjectID,
     pool_id: ObjectID,
-    _fee_recipients: Vec<FeeRecipient>,
+    _fee_recipients: Vec<RecipientShare>,
     _holder_rewards_bps: u64,
     _protocol_fees: ProtocolFees,
     migration_meme_residual: u64,
