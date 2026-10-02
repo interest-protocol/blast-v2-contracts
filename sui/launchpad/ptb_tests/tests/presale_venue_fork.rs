@@ -440,6 +440,13 @@ impl World {
         self.shared(b, SUI_CLOCK_OBJECT_ID, false)
     }
 
+    /// A `blast_presale::bps::Bps` built in the PTB, since a `Bps` cannot be a pure argument.
+    fn bps(&self, b: &mut ProgrammableTransactionBuilder, value: u64) -> Result<Argument> {
+        let value = b.pure(value)?;
+
+        Ok(call(b, self.presale, "bps", "new", vec![], vec![value]))
+    }
+
     fn presale_tag(&self, module: &str, name: &str) -> TypeTag {
         tag(&format!("{}::{module}::{name}", self.presale))
     }
@@ -547,7 +554,7 @@ impl World {
         let pair = vec![meme.clone(), self.quote()];
         let mut recipients = Vec::new();
         for (recipient, bps) in &terms.recipients {
-            let args = vec![b.pure(SuiAddress::from(*recipient))?, b.pure(*bps)?];
+            let args = vec![b.pure(SuiAddress::from(*recipient))?, self.bps(&mut b, *bps)?];
             recipients.push(call(&mut b, self.presale, "blast_presale", "recipient_allocation", vec![], args));
         }
         let allocation_type = self.presale_tag("blast_presale", "RecipientAllocation");
@@ -559,7 +566,7 @@ impl World {
         let uncapped = call(&mut b, std, "option", "none", vec![uncapped_type], vec![]);
         let mut fee_recipients = Vec::new();
         for (recipient, bps) in [(CREATOR, FEE_BPS[0]), (FEE_B, FEE_BPS[1])] {
-            let args = vec![b.pure(SuiAddress::from(recipient))?, b.pure(bps)?];
+            let args = vec![b.pure(SuiAddress::from(recipient))?, self.bps(&mut b, bps)?];
             fee_recipients.push(call(&mut b, self.presale, "blast_presale", "fee_recipient", vec![], args));
         }
         let fee_type = self.presale_tag("blast_presale", "FeeRecipient");
@@ -572,8 +579,8 @@ impl World {
             b.obj(self.h.owned(treasury_cap))?,
             self.shared(&mut b, currency, true)?,
             b.pure(terms.supply)?,
-            b.pure(terms.sale_bps)?,
-            b.pure(terms.lp_bps)?,
+            self.bps(&mut b, terms.sale_bps)?,
+            self.bps(&mut b, terms.lp_bps)?,
             recipients,
             b.pure(false)?,
             b.pure(terms.raise)?,
@@ -583,7 +590,7 @@ impl World {
             eligibility,
             uncapped,
             fee_recipients,
-            b.pure(HOLDER_REWARDS_BPS)?,
+            self.bps(&mut b, HOLDER_REWARDS_BPS)?,
             self.shared(&mut b, self.fee_policy, false)?,
         ];
         let (tick_spacing, fee_rate) = self.route.tier();
