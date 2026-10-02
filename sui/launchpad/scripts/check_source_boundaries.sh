@@ -280,15 +280,30 @@ fi
 
 blast_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/blast_fun.move)"
 
+# The marker module owns the BLAST_FUN witness, the Publisher claim, and the shared generation
+# container with its two compiled constants. The generation value, its checked arithmetic, and its
+# replay event belong to blast_admin, and only this module's init holds the witness that creates it.
 if [[ ! -f sources/blast_fun.move ]] \
   || ! rg -Fq 'public struct BLAST_FUN() has drop;' sources/blast_fun.move \
   || ! rg -U -q \
-    'fun init\(otw: BLAST_FUN, ctx: &mut TxContext\) \{\s*sui::package::claim_and_keep\(otw, ctx\);\s*\}' \
+    'public struct PackageVersion has key \{\s*id: UID,\s*generation: OperationalVersion<BLAST_FUN>,\s*\}' \
+    sources/blast_fun.move \
+  || ! rg -U -q \
+    'fun init\(otw: BLAST_FUN, ctx: &mut TxContext\) \{\s*transfer::share_object\(new\(&otw, ctx\)\);\s*sui::package::claim_and_keep\(otw, ctx\);\s*\}' \
     <<<"$blast_production" \
-  || [[ "$(rg -c '^(public struct|fun) ' <<<"$blast_production")" != 2 ]] \
+  || ! rg -q '^const PACKAGE_VERSION: u64 = 1;$' sources/blast_fun.move \
+  || ! rg -q '^const NEXT_PACKAGE_VERSION: u64 = 2;$' sources/blast_fun.move \
+  || [[ "$(rg -c '^(public struct|fun) ' <<<"$blast_production")" != 4 ]] \
   || [[ "$(rg -c '^fun init\(' <<<"$blast_production")" != 1 ]] \
-  || rg -n '^(public|entry|public\(package\)) fun ' <<<"$blast_production"; then
-  echo 'blast_fun.move must own only the package BLAST_FUN witness and private Publisher claim.' >&2
+  || [[ "$(rg -c '^public\(package\) fun (assert_current|assert_next|advance)\(' <<<"$blast_production")" != 3 ]] \
+  || rg -n '^(public|entry|public entry) fun ' <<<"$blast_production" \
+  || rg -n '^public\(package\) fun activate\(' <<<"$blast_production" \
+  || ! rg -Fq 'self.generation.assert_current(PACKAGE_VERSION);' sources/blast_fun.move \
+  || ! rg -Fq 'self.generation.assert_next(NEXT_PACKAGE_VERSION);' sources/blast_fun.move \
+  || ! rg -Fq 'self.generation.advance(&self.id, NEXT_PACKAGE_VERSION);' sources/blast_fun.move \
+  || ! rg -Fq 'generation: operational_version::new(otw),' sources/blast_fun.move \
+  || rg -n '\.checked_add\(|events::' <<<"$blast_production"; then
+  echo 'blast_fun.move must own only the BLAST_FUN witness, its Publisher claim, and the shared generation container with its two compiled constants.' >&2
   failures=$((failures + 1))
 fi
 
@@ -708,29 +723,6 @@ fi
 if [[ -n "$fee_ledger_violations" ]]; then
   printf '%s' "$fee_ledger_violations"
   echo "Fee state splits on the policy-issued protocol share and releases each owner's balances only through its own full claim." >&2
-  failures=$((failures + 1))
-fi
-
-package_version_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/package_version.move)"
-
-# The container owns only its compiled constants; the generation value, its
-# checked arithmetic, and its replay event belong to blast_admin.
-if [[ ! -f sources/package_version.move ]] \
-  || ! rg -U -q \
-    'public struct PackageVersion has key \{\s*id: UID,\s*generation: OperationalVersion<BLAST_FUN>,\s*\}' \
-    sources/package_version.move \
-  || ! rg -q '^const PACKAGE_VERSION: u64 = 1;$' sources/package_version.move \
-  || ! rg -q '^const NEXT_PACKAGE_VERSION: u64 = 2;$' sources/package_version.move \
-  || [[ "$(rg -c '^public\(package\) fun (assert_current|assert_next|advance)\(' <<<"$package_version_production")" != 3 ]] \
-  || rg -n '^(public|entry|public entry) fun ' <<<"$package_version_production" \
-  || rg -n '^public\(package\) fun activate\(' <<<"$package_version_production" \
-  || ! rg -Fq 'self.generation.assert_current(PACKAGE_VERSION);' sources/package_version.move \
-  || ! rg -Fq 'self.generation.assert_next(NEXT_PACKAGE_VERSION);' sources/package_version.move \
-  || ! rg -Fq 'self.generation.advance(container_id, NEXT_PACKAGE_VERSION);' \
-    sources/package_version.move \
-  || ! rg -Fq 'generation: operational_version::new(),' sources/package_version.move \
-  || rg -n '\.checked_add\(|events::' <<<"$package_version_production"; then
-  echo 'package_version.move must own only the shared generation container and its two compiled constants.' >&2
   failures=$((failures + 1))
 fi
 

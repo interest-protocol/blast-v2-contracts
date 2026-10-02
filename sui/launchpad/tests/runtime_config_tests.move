@@ -259,7 +259,7 @@ use blast_fun::{
     blast_fun_domain::{ClaimSignerAdmin, FeeAdmin},
     bps::{Self, Bps},
     events,
-    package_version::{Self, PackageVersion},
+    blast_fun::{Self as package_version, PackageVersion},
     runtime_config::{Self, RuntimeConfig},
 };
 

@@ -2733,7 +2733,7 @@ use blast_sui::{
     events,
     fun_sui::{Self, FUN_SUI},
     math,
-    package_version::{Self, PackageVersion},
+    blast_sui_package::{Self as package_version, PackageVersion},
     vault::{Self, Vault},
 };
 

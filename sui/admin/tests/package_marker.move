@@ -9,6 +9,11 @@ module 0xa::package_marker;
 
 public struct PACKAGE_MARKER has drop {}
 
+/// A key type from the marker's package, for provenance-gated feature tests such as Display.
+public struct Receipt has key {
+    id: UID,
+}
+
 // === Test Helpers ===
 
 public fun marker(): PACKAGE_MARKER {

@@ -1295,7 +1295,7 @@ use blast_fun::{
     constants,
     events,
     launch_config,
-    package_version,
+    blast_fun::{Self as package_version},
 };
 
 use blast_partners::blast_partners::{Self as partners, Partner};

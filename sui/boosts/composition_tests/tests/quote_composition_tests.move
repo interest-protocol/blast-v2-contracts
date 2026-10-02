@@ -198,12 +198,18 @@ public fun sell_and_redeem<Product, Collateral, Meme>(
 use blast_admin::blast_acl::{Self, AdminWitness};
 
 use blast_fun::{
-    allocation::{Self as allocation, AllocationPlan}, bps, creator_authority, launch::{Self, Launch}, launch_config::{Self, LaunchConfig},
-    launch_ticket, blast_fun_domain::{AdapterAdmin, ListingAdmin},
-    package_version::{Self, PackageVersion}, runtime_config::{Self, RuntimeConfig},
+    allocation::{Self, AllocationPlan},
+    bps,
+    creator_authority,
+    launch::{Self, Launch},
+    launch_config::{Self, LaunchConfig},
+    launch_ticket,
+    blast_fun_domain::{AdapterAdmin, ListingAdmin},
+    blast_fun::{Self as package_version, PackageVersion},
+    runtime_config::{Self, RuntimeConfig},
 };
 
-use blast_boosts_aftermath::{blast_boost::BlastBoost, operations, protocol::Protocol, vault::{Self, Vault, VaultIssuance}};
+use blast_boosts_aftermath::{blast_boost::BlastBoost, operations, blast_boosts_aftermath::Protocol, vault::{Self, Vault, VaultIssuance}};
 
 use blast_boosts_core::{blast_boosts_core::VaultIssuer, policy::VaultPolicy};
 

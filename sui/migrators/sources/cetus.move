@@ -553,7 +553,7 @@ use blast_fun::{
     launch::{Self, Launch, LaunchInitializer},
     launch_config::LaunchConfig,
     launch_ticket::LaunchTicket,
-    package_version::PackageVersion,
+    blast_fun::PackageVersion,
 };
 
 use blast_fun_migrators::{
@@ -561,7 +561,7 @@ use blast_fun_migrators::{
     constants,
     lp_fee_policy::LpFeePolicy,
     migration_math,
-    package_version::PackageVersion as MigratorsVersion,
+    blast_fun_migrators::PackageVersion as MigratorsVersion,
     vault::{Self, LpVault},
     venue_config::VenueConfig,
 };

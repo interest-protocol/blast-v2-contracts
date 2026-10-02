@@ -19,8 +19,14 @@ public struct OperationalVersion<phantom PackageMarker: drop> has store {
 
 // === Public Functions ===
 
-/// Creates the initial operational generation used by every upgradeable consumer.
-public fun new<PackageMarker: drop>(): OperationalVersion<PackageMarker> {
+/// Creates the initial operational generation from the consumer package's one-time witness, so
+/// the value can only come into existence inside that package's initializer.
+public fun new<PackageMarker: drop>(otw: &PackageMarker): OperationalVersion<PackageMarker> {
+    assert!(
+        sui::types::is_one_time_witness(otw),
+        blast_admin::errors::invalid_package_marker!(),
+    );
+
     OperationalVersion<PackageMarker> { generation: INITIAL_GENERATION }
 }
 
@@ -44,9 +50,12 @@ public fun assert_next<PackageMarker: drop>(
 }
 
 /// Advances only when the consumer's new compiled generation is exactly one greater.
+///
+/// `container` is the versioned object's own UID, so the emitted container ID is one the caller
+/// holds.
 public fun advance<PackageMarker: drop>(
     self: &mut OperationalVersion<PackageMarker>,
-    container_id: ID,
+    container: &UID,
     compiled_generation: u64,
 ) {
     let previous_generation = self.generation;
@@ -55,7 +64,7 @@ public fun advance<PackageMarker: drop>(
     self.generation = new_generation;
 
     blast_admin_events::operational_version_advanced<PackageMarker>(
-        container_id,
+        container.to_inner(),
         type_name::original_id<PackageMarker>(),
         previous_generation,
         new_generation,

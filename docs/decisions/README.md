@@ -76,7 +76,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0028](0028-hot-cold-runtime-configuration.md) | Hot/cold runtime configuration consolidation | **accepted** |
 | [0029](0029-composable-creator-identity.md) | Composable creator identity and protected linear authority | **accepted** |
 | [0030](0030-singleton-event-identity.md) | Singleton event identity without repeated object ids | **accepted** |
-| [0031](0031-package-witness-and-publisher-custody.md) | Package witness and Publisher custody | **accepted** |
+| [0031](0031-package-witness-and-publisher-custody.md) | Package witness and Publisher custody | **accepted; amended in place 2026-10-02: the marker also seeds the version singleton** |
 | [0032](0032-admin-authorized-upgrade-cap-custody.md) | Package administration custody and admin-authorized upgrades | **accepted; policy narrowing removed by 0088** |
 | [0033](0033-meme-liquidity-provision.md) | Meme liquidity provision for destination pools | **accepted** |
 | [0034](0034-remove-premature-governance-cutover.md) | Remove the premature governance cutover | **accepted; amended by 0088** |
@@ -95,7 +95,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0047](0047-coin-registry-authoritative-supply-mode.md) | Coin Registry authoritative supply mode | **accepted; supply-mode timing amended by 0088** |
 | [0048](0048-sui-package-workspace.md) | Sui package workspace | **accepted** |
 | [0049](0049-audit-hardened-package-version-and-launch-intake.md) | Audit-hardened package cutover and launch intake | **accepted** |
-| [0050](0050-module-local-package-version-constant.md) | Module-local package-version constant | **accepted** |
+| [0050](0050-module-local-package-version-constant.md) | Module-local package-version constant | **accepted; amended in place 2026-10-02: the constant lives in the marker module** |
 | [0051](0051-generated-meme-package-template.md) | Generated Meme package template | **accepted; publish-time immutability amended by 0088** |
 | [0053](0053-single-validator-funsui-and-blastsui.md) | Single-validator `funSUI` and `blastSUI` | **accepted** |
 | [0054](0054-v3-dex-migrators-and-locked-lp-fees.md) | V3 DEX migrators, exact seed pricing, and locked LP fees | **accepted; new-lineage admission and fee custody amended by 0088** |
@@ -138,7 +138,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0093](0093-optional-opening-round.md) | An optional opening round replaces purchase protection | **accepted** |
 | [0094](0094-one-role-per-administrator-action.md) | One role per administrator action | **accepted; role bits, checks, and gate map superseded by 0097** |
 | [0095](0095-partner-codes.md) | Partner codes in one immutable package: a share of Blast's fee paid to the named partner on every trade, with a forced seven-day delay on Blast's powers | proposed |
-| [0097](0097-one-singleton-acl-with-typed-roles.md) | One singleton ACL with typed roles | **proposed** |
+| [0097](0097-one-singleton-acl-with-typed-roles.md) | One singleton ACL with typed roles | **proposed; amended in place 2026-10-02: Publisher read, witness-seeded versions, publication-record gate** |
 | [0098](0098-launch-creation-fee-and-partners.md) | One partner per launch shares the launch's creation, curve, and one-time Meme/Quote migration fees | **accepted** |
 | [0099](0099-standalone-overflow-presale.md) | Standalone overflow presales with per-sale caps, proportional fills, LP-gated claims, and refund liveness | **accepted; amended by 0101 and 0102** |
 | [0100](0100-single-cetus-route-with-checked-retype.md) | One Cetus route per operation, generic over the pool's coin order, with a checked dynamic-field retype | **accepted** |

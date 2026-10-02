@@ -192,7 +192,7 @@ use blast_admin::blast_acl::AdminWitness;
 
 use blast_fun::{blast_fun_domain::{FeeAdmin, TreasuryAdmin}, bps::{Self, Bps}};
 
-use blast_fun_migrators::{blast_events, package_version::PackageVersion as MigratorsVersion};
+use blast_fun_migrators::{blast_events, blast_fun_migrators::PackageVersion as MigratorsVersion};
 
 use std::type_name::{Self, TypeName};
 

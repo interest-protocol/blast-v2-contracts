@@ -125,9 +125,8 @@ use blast_admin::{
 };
 
 use blast_fun::{
-    blast_fun::BLAST_FUN,
+    blast_fun::{BLAST_FUN, PackageVersion},
     blast_fun_domain::UpgradeAdmin,
-    package_version::PackageVersion,
 };
 
 use sui::package::{Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};

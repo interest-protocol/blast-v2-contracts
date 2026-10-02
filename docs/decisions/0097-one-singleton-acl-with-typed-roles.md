@@ -2,6 +2,8 @@
 
 - Status: proposed
 - Date: 2026-09-27
+- Amended in place: 2026-10-02 (admin package review) — Publisher read access,
+  UID-bound generation advance, and the publication-record gate
 - Supersedes: [0094](0094-one-role-per-administrator-action.md)'s role bits,
   checks, and gate map; keeps its role grouping
 - Amends: [0061](0061-blastsui-routine-admin-and-composable-package-custody.md),
@@ -79,9 +81,36 @@ ACL. Role fields hold the `with_defining_ids` type name, which never changes onc
 the role's package introduces it. Initialization emits no event (ADR 0058).
 
 **Publication.** The ACL package is published immutable, like the `blast_admin`
-it replaces, together with `upgrade_custody` and `operational_version`, which are
-unchanged. An upgradeable ACL would make its UpgradeCap a hidden root over every
-package.
+it replaces, together with `upgrade_custody` and `operational_version`. An
+upgradeable ACL would make its UpgradeCap a hidden root over every package.
+Because nothing can be added later, two seams were settled before publication
+(2026-10-02):
+
+- `upgrade_custody::publisher` borrows the sealed `Publisher`. Every framework
+  path that moves or burns a `Publisher` takes it by value, so the reference
+  cannot end custody, but it lets a consumer wrapper gate `Display`,
+  `TransferPolicy`, and other provenance-gated features behind a role instead
+  of losing them forever when it wraps. A consumer exposes it only when a
+  feature needs it.
+- `operational_version::new` takes a reference to the consumer package's
+  one-time witness and checks it with the framework's `is_one_time_witness`.
+  The Sui verifier lets that struct be packed only in its module's `init`, so
+  `OperationalVersion<M>` can exist only where `M`'s package was published and
+  `OperationalVersionAdvanced<M>` cannot be forged. `advance` takes the
+  versioned object's `&UID` instead of a caller-chosen `ID`, so `container_id`
+  is always an object the caller holds. Because the version module imports the
+  marker for its type, the marker's `init` cannot call it back; each package's
+  version singleton therefore lives in its marker module, which seeds it from
+  the witness and then claims the `Publisher` with the same witness
+  (`blast_fun::PackageVersion`, `blast_fun_migrators::PackageVersion`,
+  `blast_sui_package::PackageVersion`, `blast_boosts_aftermath::Protocol`).
+
+The `blast_admin` at `0x247b…` is the retired `acl::Authority<Domain>` lineage
+with different modules; the NVDA deployment record holds its publication.
+`Published.toml` carries no entry until this lineage is published, and the
+boundary gate then requires a deployment record whose `sourceDigest`
+(`scripts/source_digest.sh`) matches the published source, so a stale record
+can never again point consumers at the wrong package.
 
 ## Alternatives considered
 
@@ -120,6 +149,12 @@ function without adding safety.
 
 ## Verification
 
+- A custody test creates a `Display` from the sealed `Publisher`; a version test
+  rejects a marker that is not a one-time witness; the advance tests pin the
+  container UID in the emitted fact; the boundary self-test rejects a by-value
+  or mutable `Publisher` return, a generation constructor without the witness
+  check, and a `Published.toml` entry that no record carries or whose recorded
+  digest differs from the source.
 - `blast_admin` tests cover init, admin and role grant and revocation, roleless and
   missing-role sign-in, both capacities, destroy, foreign ACL and root rejection,
   and the root transfer, including that a cancelled, replaced, or already accepted

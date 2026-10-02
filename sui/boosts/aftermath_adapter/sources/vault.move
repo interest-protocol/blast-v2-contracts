@@ -471,7 +471,7 @@ use blast_boosts_aftermath::{
     blast_boost::{Self, BlastBoost},
     constants,
     events,
-    protocol::Protocol,
+    blast_boosts_aftermath::Protocol,
     venue_account::VenueAccount,
 };
 

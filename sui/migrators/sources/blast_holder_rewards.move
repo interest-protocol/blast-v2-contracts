@@ -189,7 +189,7 @@ use blast_fun_migrators::{
     blast_events,
     constants,
     merkle,
-    package_version::PackageVersion as MigratorsVersion,
+    blast_fun_migrators::PackageVersion as MigratorsVersion,
     vault::{Self, LpVault},
 };
 

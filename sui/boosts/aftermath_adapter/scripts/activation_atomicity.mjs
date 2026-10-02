@@ -495,7 +495,7 @@ function assertTrackedTypeBindings(runConfig, path) {
     const exact = {
         acl: `${input.adminPackage.toLowerCase()}::blast_acl::ACL`,
         admin_cap: `${input.adminPackage.toLowerCase()}::blast_acl::AdminCap`,
-        protocol: `${adapter}::protocol::Protocol`,
+        protocol: `${adapter}::blast_boosts_aftermath::Protocol`,
         coin_registry: '0x2::coin_registry::CoinRegistry',
         collateral_currency: `0x2::coin_registry::Currency<${input.collateralType}>`,
         seed_coin: `0x2::coin::Coin<${input.collateralType}>`,

@@ -20,14 +20,36 @@ new_case() {
   printf '%s\n' "$case_dir"
 }
 
+run_checker() {
+  local case_dir="$1"
+  BLAST_DEPLOYMENTS_DIR="$case_dir/deployments" bash "$checker" "$case_dir"
+}
+
 expect_rejected() {
   local case_dir="$1"
-  if bash "$checker" "$case_dir" >/dev/null 2>&1; then
+  if run_checker "$case_dir" >/dev/null 2>&1; then
     fail "Boundary checker accepted unsafe fixture: $case_dir"
   fi
 }
 
+expect_accepted() {
+  local case_dir="$1"
+  run_checker "$case_dir" >/dev/null 2>&1 \
+    || fail "Boundary checker rejected a safe fixture: $case_dir"
+}
+
+publish_record() {
+  local case_dir="$1"
+  local source_digest="$2"
+  printf '[published.mainnet]\npublished-at = "0x1"\noriginal-id = "0x1"\n' > "$case_dir/Published.toml"
+  mkdir -p "$case_dir/deployments/sui/mainnet"
+  printf '{"packages":{"admin":{"packageId":"0x1","sourceDigest":"%s"}}}\n' "$source_digest" \
+    > "$case_dir/deployments/sui/mainnet/record.json"
+}
+
 [[ -x "$checker" ]] || fail "Boundary checker must exist and be executable."
+[[ -x "$package_dir/scripts/source_digest.sh" ]] \
+  || fail "Source digest helper must exist and be executable."
 [[ -f "$package_dir/scripts/publish_immutable.sh" ]] \
   || fail "Immutable publication script must exist."
 
@@ -64,6 +86,32 @@ expect_rejected "$case_dir"
 case_dir="$(new_case exposes_capability_tuple)"
 printf '\n#[test_only]\npublic fun capabilities_for_testing<PackageMarker: drop>(self: UpgradeCustody<PackageMarker>): (Publisher, UpgradeCap) { abort 0 }\n' \
   >> "$case_dir/sources/upgrade_custody.move"
+expect_rejected "$case_dir"
+
+case_dir="$(new_case exposes_publisher_by_value)"
+printf '\n#[test_only]\npublic fun publisher_for_testing<PackageMarker: drop>(self: UpgradeCustody<PackageMarker>): Publisher { abort 0 }\n' \
+  >> "$case_dir/sources/upgrade_custody.move"
+expect_rejected "$case_dir"
+
+case_dir="$(new_case exposes_publisher_mutably)"
+printf '\n#[test_only]\npublic fun publisher_mut_for_testing<PackageMarker: drop>(self: &mut UpgradeCustody<PackageMarker>): &mut Publisher { &mut self.publisher }\n' \
+  >> "$case_dir/sources/upgrade_custody.move"
+expect_rejected "$case_dir"
+
+case_dir="$(new_case publication_without_record)"
+printf '[published.mainnet]\npublished-at = "0x1"\noriginal-id = "0x1"\n' > "$case_dir/Published.toml"
+expect_rejected "$case_dir"
+
+case_dir="$(new_case publication_with_stale_digest)"
+publish_record "$case_dir" "sha256:stale"
+expect_rejected "$case_dir"
+
+case_dir="$(new_case publication_with_matching_record)"
+publish_record "$case_dir" "$(bash "$package_dir/scripts/source_digest.sh" "$case_dir")"
+expect_accepted "$case_dir"
+
+case_dir="$(new_case unwitnessed_generation)"
+sed -i 's/sui::types::is_one_time_witness(otw)/true/' "$case_dir/sources/operational_version.move"
 expect_rejected "$case_dir"
 
 case_dir="$(new_case adds_activation_path)"

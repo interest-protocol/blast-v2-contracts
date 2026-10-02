@@ -52,6 +52,8 @@ public struct SuperAdminCapDestroyed has copy, drop {
     super_admin_cap_id: ID,
 }
 
+/// Emitted by a value that only its package's one-time witness could create; `container_id` is
+/// the UID the advancing module held.
 public struct OperationalVersionAdvanced<phantom PackageMarker: drop> has copy, drop {
     container_id: ID,
     package_id: address,

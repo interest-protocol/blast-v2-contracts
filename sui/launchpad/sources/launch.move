@@ -987,7 +987,7 @@ use blast_fun::{
     fees::{Self, FeeLedger},
     launch_config::LaunchConfig,
     launch_ticket::{Self, LaunchTicket},
-    package_version::PackageVersion,
+    blast_fun::PackageVersion,
     runtime_config::RuntimeConfig,
 };
 

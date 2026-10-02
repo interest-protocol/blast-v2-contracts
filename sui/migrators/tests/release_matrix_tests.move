@@ -62,7 +62,7 @@ use blast_admin::blast_acl;
 use blast_fun::{
     blast_fun_domain::AdapterAdmin,
     launch_config::{Self, LaunchConfig},
-    package_version::{Self, PackageVersion},
+    blast_fun::{Self as package_version, PackageVersion},
 };
 
 use blast_fun_migrators::{bluefin, cetus};
