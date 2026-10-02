@@ -66,7 +66,8 @@ const LP_BPS: u64 = 4_000;
 const FEE_BPS: [u64; 2] = [6_000, 2_500];
 const HOLDER_REWARDS_BPS: u64 = 1_500;
 const DURATION_MS: u64 = 3_600_000;
-const LIQUIDITY_WINDOW_MS: u64 = 86_400_000;
+/// The shortest LP window `blast_presale::new` accepts: seven days.
+const LIQUIDITY_WINDOW_MS: u64 = 604_800_000;
 
 /// Near-equal seed atoms from `fixside_sim.py`: fixing the larger side makes both venues demand
 /// `SMALL + 1` of the smaller side.
