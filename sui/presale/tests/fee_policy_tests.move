@@ -40,9 +40,12 @@ fun the_fee_admin_sets_maximum_and_zero_rates() {
     );
 
     assert_eq!(policy.fees(), fee_policy::protocol_fees_for_testing(9_999, 9_998, 10_000, 10_000));
-    let (raise_bps, token_bps, lp_meme_bps, lp_quote_bps) = last_event<FeesChanged>()
+    let (raise_bps, token_bps, lp_fee_meme_bps, lp_fee_quote_bps) = last_event<FeesChanged>()
         .fees_changed_fields();
-    assert_eq!(vector[raise_bps, token_bps, lp_meme_bps, lp_quote_bps], vector[9_999, 9_998, 10_000, 10_000]);
+    assert_eq!(
+        vector[raise_bps, token_bps, lp_fee_meme_bps, lp_fee_quote_bps],
+        vector[9_999, 9_998, 10_000, 10_000],
+    );
 
     policy.set_fees(&fee_admin(), bps::new(0), bps::new(0), bps::new(0), bps::new(0));
 
@@ -97,7 +100,7 @@ fun a_destination_update_must_change_the_address() {
 
 // === Test Helpers ===
 
-fun set_fees(raise_bps: u64, token_bps: u64, lp_meme_bps: u64, lp_quote_bps: u64) {
+fun set_fees(raise_bps: u64, token_bps: u64, lp_fee_meme_bps: u64, lp_fee_quote_bps: u64) {
     let mut ctx = tx_context::dummy();
     let mut policy = fee_policy::new_for_testing(&mut ctx);
 
@@ -105,8 +108,8 @@ fun set_fees(raise_bps: u64, token_bps: u64, lp_meme_bps: u64, lp_quote_bps: u64
         &fee_admin(),
         bps::new(raise_bps),
         bps::new(token_bps),
-        bps::new(lp_meme_bps),
-        bps::new(lp_quote_bps),
+        bps::new(lp_fee_meme_bps),
+        bps::new(lp_fee_quote_bps),
     );
 
     policy.destroy_for_testing();

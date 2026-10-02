@@ -22,8 +22,8 @@ public struct FeePolicy has key {
 public struct ProtocolFees has copy, drop, store {
     raise_bps: Bps,
     token_bps: Bps,
-    lp_meme_bps: Bps,
-    lp_quote_bps: Bps,
+    lp_fee_meme_bps: Bps,
+    lp_fee_quote_bps: Bps,
 }
 
 // === Private Initialization ===
@@ -40,14 +40,14 @@ public fun set_fees(
     _: &AdminWitness<FeeAdmin>,
     raise_bps: Bps,
     token_bps: Bps,
-    lp_meme_bps: Bps,
-    lp_quote_bps: Bps,
+    lp_fee_meme_bps: Bps,
+    lp_fee_quote_bps: Bps,
 ) {
     assert!(
         raise_bps.value() < bps::denominator() && token_bps.value() <= MAX_TOKEN_BPS,
         EInvalidFees,
     );
-    let fees = ProtocolFees { raise_bps, token_bps, lp_meme_bps, lp_quote_bps };
+    let fees = ProtocolFees { raise_bps, token_bps, lp_fee_meme_bps, lp_fee_quote_bps };
     assert!(fees != self.fees, EFeesUnchanged);
 
     self.fees = fees;
@@ -55,8 +55,8 @@ public fun set_fees(
     event::emit(FeesChanged {
         raise_bps: raise_bps.value(),
         token_bps: token_bps.value(),
-        lp_meme_bps: lp_meme_bps.value(),
-        lp_quote_bps: lp_quote_bps.value(),
+        lp_fee_meme_bps: lp_fee_meme_bps.value(),
+        lp_fee_quote_bps: lp_fee_quote_bps.value(),
     });
 }
 
@@ -91,12 +91,12 @@ public(package) fun token_bps(self: &ProtocolFees): Bps {
     self.token_bps
 }
 
-public(package) fun lp_meme_bps(self: &ProtocolFees): Bps {
-    self.lp_meme_bps
+public(package) fun lp_fee_meme_bps(self: &ProtocolFees): Bps {
+    self.lp_fee_meme_bps
 }
 
-public(package) fun lp_quote_bps(self: &ProtocolFees): Bps {
-    self.lp_quote_bps
+public(package) fun lp_fee_quote_bps(self: &ProtocolFees): Bps {
+    self.lp_fee_quote_bps
 }
 
 // === Private Functions ===
@@ -108,8 +108,8 @@ fun new(ctx: &mut TxContext): FeePolicy {
         fees: ProtocolFees {
             raise_bps: bps::new(0),
             token_bps: bps::new(0),
-            lp_meme_bps: bps::new(0),
-            lp_quote_bps: bps::new(0),
+            lp_fee_meme_bps: bps::new(0),
+            lp_fee_quote_bps: bps::new(0),
         },
     }
 }
@@ -130,14 +130,14 @@ public fun new_for_testing(ctx: &mut TxContext): FeePolicy {
 public fun protocol_fees_for_testing(
     raise_bps: u64,
     token_bps: u64,
-    lp_meme_bps: u64,
-    lp_quote_bps: u64,
+    lp_fee_meme_bps: u64,
+    lp_fee_quote_bps: u64,
 ): ProtocolFees {
     ProtocolFees {
         raise_bps: bps::new(raise_bps),
         token_bps: bps::new(token_bps),
-        lp_meme_bps: bps::new(lp_meme_bps),
-        lp_quote_bps: bps::new(lp_quote_bps),
+        lp_fee_meme_bps: bps::new(lp_fee_meme_bps),
+        lp_fee_quote_bps: bps::new(lp_fee_quote_bps),
     }
 }
 
@@ -149,7 +149,7 @@ public fun destroy_for_testing(self: FeePolicy) {
 
 #[test_only]
 public fun fees_changed_fields(event: &FeesChanged): (u64, u64, u64, u64) {
-    (event.raise_bps, event.token_bps, event.lp_meme_bps, event.lp_quote_bps)
+    (event.raise_bps, event.token_bps, event.lp_fee_meme_bps, event.lp_fee_quote_bps)
 }
 
 #[test_only]
@@ -163,8 +163,8 @@ public fun destination_changed_fields(event: &DestinationChanged): address {
 public struct FeesChanged has copy, drop {
     raise_bps: u64,
     token_bps: u64,
-    lp_meme_bps: u64,
-    lp_quote_bps: u64,
+    lp_fee_meme_bps: u64,
+    lp_fee_quote_bps: u64,
 }
 
 /// Every later protocol payout goes to `destination`.

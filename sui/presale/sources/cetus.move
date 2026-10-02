@@ -36,7 +36,8 @@ public fun new<Meme, Quote>(
     eligibility: EligibilityPolicy,
     uncapped: Option<UncappedPhase>,
     fee_recipients: vector<FeeRecipient>,
-    rewards_fee_bps: Bps,
+    holder_rewards_bps: Bps,
+    creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
     venue_config: &mut VenueConfig,
     cetus_config: &GlobalConfig,
@@ -44,7 +45,7 @@ public fun new<Meme, Quote>(
     tick_spacing: u32,
     ctx: &mut TxContext,
 ): (Presale<Meme, Quote>, PresaleCap) {
-    let fee_rate = config::get_fee_rate(tick_spacing, cetus_config);
+    let pool_fee_rate = config::get_fee_rate(tick_spacing, cetus_config);
 
     // Reserve the pair's Cetus pool creation before the Meme supply leaves the creator.
     let creation_cap = factory::mint_pool_creation_cap(cetus_config, pools, &mut treasury_cap, ctx);
@@ -73,9 +74,10 @@ public fun new<Meme, Quote>(
         uncapped,
         Witness(),
         tick_spacing,
-        fee_rate,
+        pool_fee_rate,
         fee_recipients,
-        rewards_fee_bps,
+        holder_rewards_bps,
+        creation_policy,
         fee_policy,
         ctx,
     )
@@ -300,6 +302,7 @@ use blast_presale::{
         UncappedPhase,
     },
     bps::Bps,
+    creation_policy::CreationPolicy,
     fee_policy::FeePolicy,
     migration_math,
     presale_vault::{Self as vault, PresaleVault},

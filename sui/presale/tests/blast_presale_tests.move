@@ -39,10 +39,10 @@ const RECIPIENT_B_TOKENS: u64 = 3_000;
 const RECIPIENT_TOKENS: u64 = RECIPIENT_A_TOKENS + RECIPIENT_B_TOKENS;
 const WALLET_CAP: u64 = 5_000;
 const TICK_SPACING: u32 = 10;
-const FEE_RATE: u64 = 1_000;
+const POOL_FEE_RATE: u64 = 1_000;
 const CREATOR_FEE_BPS: u64 = 5_000;
 const FEE_PARTNER_BPS: u64 = 2_000;
-const REWARDS_FEE_BPS: u64 = 3_000;
+const HOLDER_REWARDS_BPS: u64 = 3_000;
 const PROTOCOL_RAISE_BPS: u64 = 333;
 const PROTOCOL_TOKEN_BPS: u64 = 500;
 const PROTOCOL_TOKENS: u64 = 1_000;
@@ -683,6 +683,10 @@ fun sale_token_and_quote_types_must_differ() {
     let policy = presale::open_eligibility(1, 1, 1);
     let (treasury_cap, mut currency) = new_currency(&mut ctx);
     let fee_policy = fee_policy::new_for_testing(&mut ctx);
+    let creation_policy = creation_policy::allowing_for_testing<
+        BLAST_PRESALE_TESTS,
+        TEST_MIGRATOR,
+    >(&mut ctx);
 
     let (sale, cap) = presale::new<BLAST_PRESALE_TESTS, BLAST_PRESALE_TESTS, TEST_MIGRATOR>(
         treasury_cap,
@@ -700,9 +704,10 @@ fun sale_token_and_quote_types_must_differ() {
         option::none(),
         TEST_MIGRATOR(),
         TICK_SPACING,
-        FEE_RATE,
+        POOL_FEE_RATE,
         fee_recipients(),
-        bps::new(REWARDS_FEE_BPS),
+        bps::new(HOLDER_REWARDS_BPS),
+        &creation_policy,
         &fee_policy,
         &mut ctx,
     );
@@ -711,6 +716,7 @@ fun sale_token_and_quote_types_must_differ() {
     destroy(currency);
     clock.destroy_for_testing();
     destroy(fee_policy);
+    destroy(creation_policy);
     destroy(ctx);
 }
 
@@ -720,6 +726,7 @@ fun treasury_cap_must_start_with_zero_supply() {
     let mut ctx = tx_context::dummy();
     let (mut treasury_cap, mut currency) = new_currency(&mut ctx);
     let fee_policy = fee_policy::new_for_testing(&mut ctx);
+    let creation_policy = creation_policy::allowing_for_testing<QUOTE, TEST_MIGRATOR>(&mut ctx);
     let existing_supply = treasury_cap.mint(1, &mut ctx);
 
     let (sale, cap) = presale::new<BLAST_PRESALE_TESTS, QUOTE, TEST_MIGRATOR>(
@@ -738,9 +745,10 @@ fun treasury_cap_must_start_with_zero_supply() {
         option::none(),
         TEST_MIGRATOR(),
         TICK_SPACING,
-        FEE_RATE,
+        POOL_FEE_RATE,
         fee_recipients(),
-        bps::new(REWARDS_FEE_BPS),
+        bps::new(HOLDER_REWARDS_BPS),
+        &creation_policy,
         &fee_policy,
         &mut ctx,
     );
@@ -751,6 +759,7 @@ fun treasury_cap_must_start_with_zero_supply() {
     destroy(currency);
     clock.destroy_for_testing();
     destroy(fee_policy);
+    destroy(creation_policy);
     destroy(ctx);
 }
 
@@ -760,6 +769,7 @@ fun configured_allocation_bps_cannot_exceed_full_supply() {
     let mut ctx = tx_context::dummy();
     let (treasury_cap, mut currency) = new_currency(&mut ctx);
     let fee_policy = fee_policy::new_for_testing(&mut ctx);
+    let creation_policy = creation_policy::allowing_for_testing<QUOTE, TEST_MIGRATOR>(&mut ctx);
 
     let (sale, cap) = presale::new<BLAST_PRESALE_TESTS, QUOTE, TEST_MIGRATOR>(
         treasury_cap,
@@ -777,9 +787,10 @@ fun configured_allocation_bps_cannot_exceed_full_supply() {
         option::none(),
         TEST_MIGRATOR(),
         TICK_SPACING,
-        FEE_RATE,
+        POOL_FEE_RATE,
         fee_recipients(),
-        bps::new(REWARDS_FEE_BPS),
+        bps::new(HOLDER_REWARDS_BPS),
+        &creation_policy,
         &fee_policy,
         &mut ctx,
     );
@@ -789,6 +800,7 @@ fun configured_allocation_bps_cannot_exceed_full_supply() {
     destroy(currency);
     clock.destroy_for_testing();
     destroy(fee_policy);
+    destroy(creation_policy);
     destroy(ctx);
 }
 
@@ -798,6 +810,7 @@ fun configured_allocation_bps_must_produce_positive_atomic_amounts() {
     let mut ctx = tx_context::dummy();
     let (treasury_cap, mut currency) = new_currency(&mut ctx);
     let fee_policy = fee_policy::new_for_testing(&mut ctx);
+    let creation_policy = creation_policy::allowing_for_testing<QUOTE, TEST_MIGRATOR>(&mut ctx);
 
     let (sale, cap) = presale::new<BLAST_PRESALE_TESTS, QUOTE, TEST_MIGRATOR>(
         treasury_cap,
@@ -815,9 +828,10 @@ fun configured_allocation_bps_must_produce_positive_atomic_amounts() {
         option::none(),
         TEST_MIGRATOR(),
         TICK_SPACING,
-        FEE_RATE,
+        POOL_FEE_RATE,
         fee_recipients(),
-        bps::new(REWARDS_FEE_BPS),
+        bps::new(HOLDER_REWARDS_BPS),
+        &creation_policy,
         &fee_policy,
         &mut ctx,
     );
@@ -827,13 +841,14 @@ fun configured_allocation_bps_must_produce_positive_atomic_amounts() {
     destroy(currency);
     clock.destroy_for_testing();
     destroy(fee_policy);
+    destroy(creation_policy);
     destroy(ctx);
 }
 
 #[test]
 #[expected_failure(abort_code = presale::EInvalidFeeSplit, location = blast_presale::blast_presale)]
 fun fee_recipient_and_holder_shares_must_total_full_bps() {
-    create_with_fee_split(fee_recipients(), REWARDS_FEE_BPS - 1);
+    create_with_fee_split(fee_recipients(), HOLDER_REWARDS_BPS - 1);
 }
 
 #[test]
@@ -844,7 +859,7 @@ fun fee_recipients_must_be_distinct() {
             presale::fee_recipient(CREATOR, bps::new(CREATOR_FEE_BPS)),
             presale::fee_recipient(CREATOR, bps::new(FEE_PARTNER_BPS)),
         ],
-        REWARDS_FEE_BPS,
+        HOLDER_REWARDS_BPS,
     );
 }
 
@@ -861,6 +876,7 @@ fun an_overflowing_liquidity_share_cannot_be_constructed() {
     let mut ctx = tx_context::dummy();
     let (treasury_cap, mut currency) = new_currency(&mut ctx);
     let fee_policy = fee_policy::new_for_testing(&mut ctx);
+    let creation_policy = creation_policy::allowing_for_testing<QUOTE, TEST_MIGRATOR>(&mut ctx);
 
     let (sale, cap) = presale::new<BLAST_PRESALE_TESTS, QUOTE, TEST_MIGRATOR>(
         treasury_cap,
@@ -878,9 +894,10 @@ fun an_overflowing_liquidity_share_cannot_be_constructed() {
         option::none(),
         TEST_MIGRATOR(),
         TICK_SPACING,
-        FEE_RATE,
+        POOL_FEE_RATE,
         fee_recipients(),
-        bps::new(REWARDS_FEE_BPS),
+        bps::new(HOLDER_REWARDS_BPS),
+        &creation_policy,
         &fee_policy,
         &mut ctx,
     );
@@ -888,6 +905,7 @@ fun an_overflowing_liquidity_share_cannot_be_constructed() {
     destroy(cap);
     destroy(currency);
     destroy(fee_policy);
+    destroy(creation_policy);
     destroy(ctx);
 }
 
@@ -919,14 +937,34 @@ fun a_fee_recipient_cannot_be_the_zero_address() {
 #[test]
 /// Bluefin accepts a Meme symbol at the 32-byte bound.
 fun bluefin_accepts_a_thirty_two_byte_meme_symbol() {
-    create_bluefin_sale(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ012345");
+    create_bluefin_sale<QUOTE, bluefin::Witness>(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ012345");
 }
 
 #[test]
 #[expected_failure(abort_code = bluefin::ESymbolTooLong, location = blast_presale::bluefin)]
 /// A longer symbol would grow every Bluefin position past Sui's object size limit.
 fun bluefin_rejects_a_thirty_three_byte_meme_symbol() {
-    create_bluefin_sale(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456");
+    create_bluefin_sale<QUOTE, bluefin::Witness>(b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456");
+}
+
+#[test]
+#[expected_failure(
+    abort_code = creation_policy::EQuoteNotAllowed,
+    location = blast_presale::creation_policy,
+)]
+/// A venue cannot create a sale raising a Quote type Blast has not allowed.
+fun a_sale_cannot_raise_a_quote_blast_has_not_allowed() {
+    create_bluefin_sale<BLAST_PRESALE_TESTS, bluefin::Witness>(b"SALE");
+}
+
+#[test]
+#[expected_failure(
+    abort_code = creation_policy::EMigrationWitnessNotAllowed,
+    location = blast_presale::creation_policy,
+)]
+/// A venue cannot create a sale while Blast has not allowed its migration witness.
+fun a_sale_cannot_use_a_migrator_blast_has_not_allowed() {
+    create_bluefin_sale<QUOTE, cetus::Witness>(b"SALE");
 }
 
 #[test]
@@ -946,6 +984,7 @@ fun a_sale_whose_seed_price_no_venue_can_pool_is_rejected() {
     let mut ctx = tx_context::dummy();
     let (treasury_cap, mut currency) = new_currency(&mut ctx);
     let fee_policy = fee_policy::new_for_testing(&mut ctx);
+    let creation_policy = creation_policy::allowing_for_testing<QUOTE, TEST_MIGRATOR>(&mut ctx);
     let raise_target = std::u64::max_value!();
 
     let (sale, cap) = presale::new<BLAST_PRESALE_TESTS, QUOTE, TEST_MIGRATOR>(
@@ -964,9 +1003,10 @@ fun a_sale_whose_seed_price_no_venue_can_pool_is_rejected() {
         option::none(),
         TEST_MIGRATOR(),
         TICK_SPACING,
-        FEE_RATE,
+        POOL_FEE_RATE,
         fee_recipients(),
-        bps::new(REWARDS_FEE_BPS),
+        bps::new(HOLDER_REWARDS_BPS),
+        &creation_policy,
         &fee_policy,
         &mut ctx,
     );
@@ -1204,6 +1244,10 @@ fun start_with_fees(
     let mut clock = clock::create_for_testing(scenario.ctx());
     clock.set_for_testing(START_MS);
     let mut fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let creation_policy = creation_policy::allowing_for_testing<
+        QUOTE,
+        TEST_MIGRATOR,
+    >(scenario.ctx());
     fee_policy.set_destination(&blast_acl::witness_for_testing<TreasuryAdmin>(), TREASURY);
     if (protocol_raise_bps > 0 || protocol_token_bps > 0) fee_policy.set_fees(
         &blast_acl::witness_for_testing<FeeAdmin>(),
@@ -1233,12 +1277,14 @@ fun start_with_fees(
         uncapped,
         TEST_MIGRATOR(),
         TICK_SPACING,
-        FEE_RATE,
+        POOL_FEE_RATE,
         fee_recipients(),
-        bps::new(REWARDS_FEE_BPS),
+        bps::new(HOLDER_REWARDS_BPS),
+        &creation_policy,
         &fee_policy,
         scenario.ctx(),
     );
+    creation_policy.destroy_for_testing();
     let presale_id = object::id(&presale);
     let cap_id = object::id(&cap);
     let (
@@ -1281,17 +1327,17 @@ fun start_with_fees(
     let (
         migration_witness,
         tick_spacing,
-        fee_rate,
+        pool_fee_rate,
         fee_recipients,
         fee_recipient_bps,
-        rewards_fee_bps,
+        holder_rewards_bps,
     ) = only_event<PresaleCreated<BLAST_PRESALE_TESTS, QUOTE>>().created_migration_fields();
     assert_eq!(migration_witness, type_name::with_original_ids<TEST_MIGRATOR>());
     assert_eq!(tick_spacing, TICK_SPACING);
-    assert_eq!(fee_rate, FEE_RATE);
+    assert_eq!(pool_fee_rate, POOL_FEE_RATE);
     assert_eq!(fee_recipients, vector[CREATOR, FEE_PARTNER]);
     assert_eq!(fee_recipient_bps, vector[CREATOR_FEE_BPS, FEE_PARTNER_BPS]);
-    assert_eq!(rewards_fee_bps, REWARDS_FEE_BPS);
+    assert_eq!(holder_rewards_bps, HOLDER_REWARDS_BPS);
     let (recipients, recipient_bps, created_burnable) = only_event<
         PresaleCreated<BLAST_PRESALE_TESTS, QUOTE>,
     >().created_supply_fields();
@@ -1336,10 +1382,11 @@ fun new_currency(
     (treasury_cap, coin_registry::unwrap_for_testing(initializer))
 }
 
-fun create_with_fee_split(fee_recipients: vector<FeeRecipient>, rewards_fee_bps: u64) {
+fun create_with_fee_split(fee_recipients: vector<FeeRecipient>, holder_rewards_bps: u64) {
     let mut ctx = tx_context::dummy();
     let (treasury_cap, mut currency) = new_currency(&mut ctx);
     let fee_policy = fee_policy::new_for_testing(&mut ctx);
+    let creation_policy = creation_policy::allowing_for_testing<QUOTE, TEST_MIGRATOR>(&mut ctx);
 
     let (sale, cap) = presale::new<BLAST_PRESALE_TESTS, QUOTE, TEST_MIGRATOR>(
         treasury_cap,
@@ -1357,9 +1404,10 @@ fun create_with_fee_split(fee_recipients: vector<FeeRecipient>, rewards_fee_bps:
         option::none(),
         TEST_MIGRATOR(),
         TICK_SPACING,
-        FEE_RATE,
+        POOL_FEE_RATE,
         fee_recipients,
-        bps::new(rewards_fee_bps),
+        bps::new(holder_rewards_bps),
+        &creation_policy,
         &fee_policy,
         &mut ctx,
     );
@@ -1367,6 +1415,7 @@ fun create_with_fee_split(fee_recipients: vector<FeeRecipient>, rewards_fee_bps:
     destroy(cap);
     destroy(currency);
     destroy(fee_policy);
+    destroy(creation_policy);
     destroy(ctx);
 }
 
@@ -1374,7 +1423,9 @@ fun fee_recipient_set(count: u64): vector<FeeRecipient> {
     vector::tabulate!(count, |i| presale::fee_recipient(sui::address::from_u256((i as u256) + 1), bps::new(100)))
 }
 
-fun create_bluefin_sale(symbol: vector<u8>) {
+/// Creates a Bluefin sale under a creation policy that allows only `AllowedQuote` and
+/// `AllowedWitness`.
+fun create_bluefin_sale<AllowedQuote, AllowedWitness>(symbol: vector<u8>) {
     let mut ctx = tx_context::dummy();
     let (initializer, treasury_cap) = coin_registry::new_currency_with_otw(
         test_utils::create_one_time_witness<BLAST_PRESALE_TESTS>(),
@@ -1387,6 +1438,9 @@ fun create_bluefin_sale(symbol: vector<u8>) {
     );
     let mut currency = coin_registry::unwrap_for_testing(initializer);
     let fee_policy = fee_policy::new_for_testing(&mut ctx);
+    let creation_policy = creation_policy::allowing_for_testing<AllowedQuote, AllowedWitness>(
+        &mut ctx,
+    );
 
     let (sale, cap) = bluefin::new<BLAST_PRESALE_TESTS, QUOTE>(
         treasury_cap,
@@ -1403,16 +1457,18 @@ fun create_bluefin_sale(symbol: vector<u8>) {
         presale::open_eligibility(WALLET_CAP, 1, RAISE_TARGET),
         option::none(),
         fee_recipients(),
-        bps::new(REWARDS_FEE_BPS),
+        bps::new(HOLDER_REWARDS_BPS),
+        &creation_policy,
         &fee_policy,
         TICK_SPACING,
-        FEE_RATE,
+        POOL_FEE_RATE,
         &mut ctx,
     );
     destroy(sale);
     destroy(cap);
     destroy(currency);
     destroy(fee_policy);
+    destroy(creation_policy);
     destroy(ctx);
 }
 
@@ -1700,7 +1756,7 @@ fun only_event<Event: copy + drop>(): Event {
 
 // === Imports ===
 
-use blast_presale::{bluefin, migration_math, blast_presale::{
+use blast_presale::{bluefin, cetus, migration_math, blast_presale::{
     Self as presale,
     Claimed,
     Committed,
@@ -1724,6 +1780,7 @@ use blast_presale::{
     blast_presale::ProtocolFeesPaid,
     blast_presale_domain::{FeeAdmin, TreasuryAdmin},
     bps,
+    creation_policy,
     fee_policy::{Self, FeePolicy},
 };
 

@@ -106,9 +106,9 @@ public struct Presale<phantom SaleToken, phantom Quote> has key {
     uncapped_from_ms: u64,
     migration_witness: TypeName,
     tick_spacing: u32,
-    fee_rate: u64,
+    pool_fee_rate: u64,
     fee_recipients: vector<FeeRecipient>,
-    rewards_fee_bps: Bps,
+    holder_rewards_bps: Bps,
     total_commitments: u64,
     remaining_commitments: u64,
     participants: u64,
@@ -301,7 +301,7 @@ public fun settle<SaleToken, Quote>(self: &mut Presale<SaleToken, Quote>, clock:
 
         event::emit(PresaleFunded<SaleToken, Quote> {
             presale_id: self.id.to_inner(),
-            commitments: self.total_commitments,
+            total_commitments: self.total_commitments,
             accepted_quote: self.raise_target,
             refundable_quote: self.total_commitments - self.raise_target,
             token_allocation: self.token_allocation,
@@ -351,7 +351,7 @@ public fun claim<SaleToken, Quote>(
     event::emit(Claimed<SaleToken, Quote> {
         presale_id: self.id.to_inner(),
         participant,
-        commitment,
+        wallet_commitment: commitment,
         tokens,
         quote_refund,
         remaining_commitments: self.remaining_commitments,
@@ -388,12 +388,14 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
     uncapped: Option<UncappedPhase>,
     _: MigrationWitness,
     tick_spacing: u32,
-    fee_rate: u64,
+    pool_fee_rate: u64,
     fee_recipients: vector<FeeRecipient>,
-    rewards_fee_bps: Bps,
+    holder_rewards_bps: Bps,
+    creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
     ctx: &mut TxContext,
 ): (Presale<SaleToken, Quote>, PresaleCap) {
+    creation_policy.assert_allowed<Quote, MigrationWitness>();
     let protocol_fees = fee_policy.fees();
     assert!(
         type_name::with_original_ids<SaleToken>() != type_name::with_original_ids<Quote>(),
@@ -411,7 +413,7 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         protocol_fees.token_bps(),
         &recipient_allocations,
     );
-    assert_fee_split(&fee_recipients, rewards_fee_bps);
+    assert_fee_split(&fee_recipients, holder_rewards_bps);
     assert!(duration_ms > 0 && liquidity_window_ms > 0, EInvalidWindow);
     assert!(eligibility.can_reach(raise_target), EUnreachableRaise);
     uncapped.do_ref!(|phase| assert_uncapped_phase(phase, duration_ms, eligibility, raise_target));
@@ -477,10 +479,10 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         uncapped,
         migration_witness,
         tick_spacing,
-        fee_rate,
+        pool_fee_rate,
         fee_recipients: fee_recipient_addresses(&fee_recipients),
         fee_recipient_bps: fee_recipient_bps(&fee_recipients),
-        rewards_fee_bps: rewards_fee_bps.value(),
+        holder_rewards_bps: holder_rewards_bps.value(),
         protocol_fees,
         protocol_quote,
         protocol_tokens: protocol_token_allocation,
@@ -501,9 +503,9 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
             uncapped_from_ms: 0,
             migration_witness,
             tick_spacing,
-            fee_rate,
+            pool_fee_rate,
             fee_recipients,
-            rewards_fee_bps,
+            holder_rewards_bps,
             total_commitments: 0,
             remaining_commitments: 0,
             participants: 0,
@@ -550,7 +552,7 @@ public(package) fun migrate<SaleToken, Quote, MigrationWitness: drop>(
     event::emit(PresaleMigrated<SaleToken, Quote> {
         presale_id: self.id.to_inner(),
         migration_witness: self.migration_witness,
-        quote: quote.value(),
+        liquidity_quote: quote.value(),
         liquidity_tokens: liquidity_tokens.value(),
         recipient_tokens,
     });
@@ -567,7 +569,7 @@ public(package) fun assert_cap<SaleToken, Quote>(
 
 /// The tick spacing and fee rate of the pool migration creates.
 public(package) fun pool_tier<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): (u32, u64) {
-    (self.tick_spacing, self.fee_rate)
+    (self.tick_spacing, self.pool_fee_rate)
 }
 
 /// The presale and creator-capability IDs, the LP-fee split, and Blast's rates its vault inherits.
@@ -578,7 +580,7 @@ public(package) fun vault_config<SaleToken, Quote>(
         self.id.to_inner(),
         self.presale_cap_id,
         self.fee_recipients,
-        self.rewards_fee_bps,
+        self.holder_rewards_bps,
         self.protocol_fees,
     )
 }
@@ -589,11 +591,11 @@ public(package) fun vault_config<SaleToken, Quote>(
 /// win ties over the holder-reward share and earlier recipients over later ones.
 public(package) fun apportion_fee(
     fee_recipients: &vector<FeeRecipient>,
-    rewards_fee_bps: Bps,
+    holder_rewards_bps: Bps,
     amount: u64,
 ): vector<u64> {
     let mut shares = fee_recipients.map_ref!(|fee_recipient| fee_recipient.bps);
-    shares.push_back(rewards_fee_bps);
+    shares.push_back(holder_rewards_bps);
 
     apportion(shares, amount)
 }
@@ -695,7 +697,7 @@ fun assert_token_allocations(
 }
 
 /// LP-fee split: bounded recipients plus the holder share totalling exactly 10,000 BPS.
-fun assert_fee_split(fee_recipients: &vector<FeeRecipient>, rewards_fee_bps: Bps) {
+fun assert_fee_split(fee_recipients: &vector<FeeRecipient>, holder_rewards_bps: Bps) {
     assert!(fee_recipients.length() <= MAX_FEE_RECIPIENTS, EInvalidFeeSplit);
     fee_recipients.do_ref!(|fee_recipient| assert!(
         fee_recipient.recipient != @0x0
@@ -706,7 +708,7 @@ fun assert_fee_split(fee_recipients: &vector<FeeRecipient>, rewards_fee_bps: Bps
     ));
     assert!(
         (*fee_recipients).fold!(
-            rewards_fee_bps.value(),
+            holder_rewards_bps.value(),
             |sum, fee_recipient| sum + fee_recipient.bps.value(),
         ) == bps::denominator(),
         EInvalidFeeSplit,
@@ -1056,7 +1058,7 @@ fun cancel<SaleToken, Quote>(self: &mut Presale<SaleToken, Quote>) {
 
     event::emit(PresaleCancelled<SaleToken, Quote> {
         presale_id: self.id.to_inner(),
-        commitments: self.total_commitments,
+        total_commitments: self.total_commitments,
         refundable_quote: self.quote.value(),
     });
 }
@@ -1150,10 +1152,10 @@ public fun created_migration_fields<SaleToken, Quote>(
     (
         event.migration_witness,
         event.tick_spacing,
-        event.fee_rate,
+        event.pool_fee_rate,
         event.fee_recipients,
         event.fee_recipient_bps,
-        event.rewards_fee_bps,
+        event.holder_rewards_bps,
     )
 }
 
@@ -1203,7 +1205,7 @@ public fun funded_fields<SaleToken, Quote>(
 ): (ID, u64, u64, u64, u64) {
     (
         event.presale_id,
-        event.commitments,
+        event.total_commitments,
         event.accepted_quote,
         event.refundable_quote,
         event.token_allocation,
@@ -1214,7 +1216,7 @@ public fun funded_fields<SaleToken, Quote>(
 public fun cancelled_fields<SaleToken, Quote>(
     event: &PresaleCancelled<SaleToken, Quote>,
 ): (ID, u64, u64) {
-    (event.presale_id, event.commitments, event.refundable_quote)
+    (event.presale_id, event.total_commitments, event.refundable_quote)
 }
 
 #[test_only]
@@ -1224,7 +1226,7 @@ public fun migrated_fields<SaleToken, Quote>(
     (
         event.presale_id,
         event.migration_witness,
-        event.quote,
+        event.liquidity_quote,
         event.liquidity_tokens,
         event.recipient_tokens,
     )
@@ -1251,7 +1253,7 @@ public fun claim_fields<SaleToken, Quote>(
     (
         event.presale_id,
         event.participant,
-        event.commitment,
+        event.wallet_commitment,
         event.tokens,
         event.quote_refund,
         event.remaining_commitments,
@@ -1280,10 +1282,10 @@ public struct PresaleCreated<phantom SaleToken, phantom Quote> has copy, drop {
     uncapped: Option<UncappedPhase>,
     migration_witness: TypeName,
     tick_spacing: u32,
-    fee_rate: u64,
+    pool_fee_rate: u64,
     fee_recipients: vector<address>,
     fee_recipient_bps: vector<u64>,
-    rewards_fee_bps: u64,
+    holder_rewards_bps: u64,
     /// Blast's rates, snapshotted for this sale.
     protocol_fees: ProtocolFees,
     /// Blast's shares of the raise and of the supply, paid on migration.
@@ -1312,7 +1314,7 @@ public struct Committed<phantom SaleToken, phantom Quote> has copy, drop {
 /// A funded presale closed with these fixed claim totals.
 public struct PresaleFunded<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
-    commitments: u64,
+    total_commitments: u64,
     accepted_quote: u64,
     refundable_quote: u64,
     token_allocation: u64,
@@ -1321,7 +1323,7 @@ public struct PresaleFunded<phantom SaleToken, phantom Quote> has copy, drop {
 /// A presale became fully refundable without releasing Quote.
 public struct PresaleCancelled<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
-    commitments: u64,
+    total_commitments: u64,
     refundable_quote: u64,
 }
 
@@ -1330,7 +1332,7 @@ public struct PresaleCancelled<phantom SaleToken, phantom Quote> has copy, drop 
 public struct PresaleMigrated<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
     migration_witness: TypeName,
-    quote: u64,
+    liquidity_quote: u64,
     liquidity_tokens: u64,
     recipient_tokens: u64,
 }
@@ -1361,7 +1363,7 @@ public struct RecipientAllocated<phantom SaleToken, phantom Quote> has copy, dro
 public struct Claimed<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
     participant: address,
-    commitment: u64,
+    wallet_commitment: u64,
     tokens: u64,
     quote_refund: u64,
     remaining_commitments: u64,
@@ -1467,6 +1469,7 @@ const EInvalidRaiseAllocation: vector<u8> = b"Raise allocations must be unique, 
 
 use blast_presale::{
     bps::{Self, Bps},
+    creation_policy::CreationPolicy,
     fee_policy::{FeePolicy, ProtocolFees},
     merkle_tree,
     migration_math,

@@ -26,8 +26,8 @@ rates, zero at initialization, and the address Blast is paid at, initially the p
 | --- | --- | --- |
 | `raise_bps` | the accepted raise `R` | `< 10,000` |
 | `token_bps` | the complete token supply | `<= 9,998` |
-| `lp_meme_bps` | each collected Meme LP fee | `<= 10,000` |
-| `lp_quote_bps` | each collected Quote LP fee | `<= 10,000` |
+| `lp_fee_meme_bps` | each collected Meme LP fee | `<= 10,000` |
+| `lp_fee_quote_bps` | each collected Quote LP fee | `<= 10,000` |
 
 The token bound leaves one BPS each for the participant and LP allocations. Two new roles in the
 shared Blast ACL (ADR 0097) govern it: `FeeAdmin` calls `set_fees`, which replaces all four rates

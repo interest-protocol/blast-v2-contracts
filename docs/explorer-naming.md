@@ -82,6 +82,7 @@ every package-administration object.
 | `blast_presale` | `presale_vault::PresaleVault<Meme, Quote>` | new (ADR 0099); shared, one per migrated presale | module |
 | `blast_presale` | `holder_rewards::Round<Meme, Quote>` | new (ADR 0099); shared, one per reward root | module |
 | `blast_presale` | `package_admin::PackageAdmin` | new (ADR 0099); shared, one per package | module |
+| `blast_presale` | `creation_policy::CreationPolicy` | new (ADR 0102); shared, one per package | module |
 
 `blast_boosts_core` defines no `key` type; its `State<Product>` is a
 `store` value nested in the adapter Vault.

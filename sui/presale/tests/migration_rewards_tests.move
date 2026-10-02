@@ -44,13 +44,19 @@ fun collected_fees_pay_recipients_and_keep_the_holder_share() {
         &mut scenario,
     );
 
-    let (gross_meme, gross_quote, recipient_meme, recipient_quote, rewards_meme, rewards_quote) =
-        only_event<FeesCollected<MEME, QUOTE>>().fees_collected_fields();
+    let (
+        gross_meme,
+        gross_quote,
+        fee_recipient_meme,
+        fee_recipient_quote,
+        holder_rewards_meme,
+        holder_rewards_quote,
+    ) = only_event<FeesCollected<MEME, QUOTE>>().fees_collected_fields();
     assert_eq!(vector[gross_meme, gross_quote], vector[101, 10]);
-    assert_eq!(recipient_meme, vector[51, 20]);
-    assert_eq!(recipient_quote, vector[5, 2]);
-    assert_eq!(vector[rewards_meme, rewards_quote], vector[30, 3]);
-    let (vault_meme, vault_quote) = vault.rewards_balances();
+    assert_eq!(fee_recipient_meme, vector[51, 20]);
+    assert_eq!(fee_recipient_quote, vector[5, 2]);
+    assert_eq!(vector[holder_rewards_meme, holder_rewards_quote], vector[30, 3]);
+    let (vault_meme, vault_quote) = vault.holder_rewards_balances();
     assert_eq!(vector[vault_meme, vault_quote], vector[30, 3]);
     scenario.next_tx(CREATOR);
     assert_eq!(scenario.take_from_sender<Coin<MEME>>().burn_for_testing(), 51);
@@ -98,12 +104,18 @@ fun collected_fees_pay_blast_its_share_first() {
     assert_eq!(destination, TREASURY);
     // ceil(101 * 10%) = 11 and ceil(10 * 25%) = 3; the creator's split apportions 90 and 7.
     assert_eq!(vector[protocol_meme, protocol_quote], vector[11, 3]);
-    let (gross_meme, gross_quote, recipient_meme, recipient_quote, rewards_meme, rewards_quote) =
-        event.fees_collected_fields();
+    let (
+        gross_meme,
+        gross_quote,
+        fee_recipient_meme,
+        fee_recipient_quote,
+        holder_rewards_meme,
+        holder_rewards_quote,
+    ) = event.fees_collected_fields();
     assert_eq!(vector[gross_meme, gross_quote], vector[101, 10]);
-    assert_eq!(recipient_meme, vector[45, 18]);
-    assert_eq!(recipient_quote, vector[4, 1]);
-    assert_eq!(vector[rewards_meme, rewards_quote], vector[27, 2]);
+    assert_eq!(fee_recipient_meme, vector[45, 18]);
+    assert_eq!(fee_recipient_quote, vector[4, 1]);
+    assert_eq!(vector[holder_rewards_meme, holder_rewards_quote], vector[27, 2]);
     scenario.next_tx(TREASURY);
     assert_eq!(scenario.take_from_sender<Coin<MEME>>().burn_for_testing(), 11);
     assert_eq!(scenario.take_from_sender<Coin<QUOTE>>().burn_for_testing(), 3);
@@ -153,7 +165,7 @@ fun the_rewards_admin_publishes_holder_rounds_from_the_holder_share() {
     );
     clock.destroy_for_testing();
 
-    let (vault_meme, vault_quote) = vault.rewards_balances();
+    let (vault_meme, vault_quote) = vault.holder_rewards_balances();
     assert_eq!(vector[vault_meme, vault_quote], vector[0, 0]);
     vault.destroy_for_testing();
     scenario.next_tx(CREATOR);
@@ -176,10 +188,11 @@ fun a_remainder_tie_goes_to_the_fee_recipient_before_holders() {
         &mut scenario,
     );
 
-    let (_, _, recipient_meme, _, rewards_meme, _) = only_event<FeesCollected<MEME, QUOTE>>()
-        .fees_collected_fields();
-    assert_eq!(recipient_meme, vector[2]);
-    assert_eq!(rewards_meme, 1);
+    let (_, _, fee_recipient_meme, _, holder_rewards_meme, _) = only_event<
+        FeesCollected<MEME, QUOTE>,
+    >().fees_collected_fields();
+    assert_eq!(fee_recipient_meme, vector[2]);
+    assert_eq!(holder_rewards_meme, 1);
     let (reward_meme, reward_quote) = vault.fund_round(1, 1, 0);
     reward_meme.destroy_for_testing();
     reward_quote.destroy_zero();
@@ -275,12 +288,12 @@ fun an_unclaimed_round_returns_to_the_vault_after_its_deadline() {
     let mut scenario = test_scenario::begin(CREATOR);
     let mut vault = funded_holder_vault(&mut scenario);
     vault.publish(0, 0, 10, &mut scenario);
-    let (vault_meme, _) = vault.rewards_balances();
+    let (vault_meme, _) = vault.holder_rewards_balances();
     assert_eq!(vault_meme, 39);
 
     vault.close_at(CLAIM_DEADLINE_MS, &mut scenario);
 
-    let (vault_meme, vault_quote) = vault.rewards_balances();
+    let (vault_meme, vault_quote) = vault.holder_rewards_balances();
     assert_eq!(vector[vault_meme, vault_quote], vector[40, 0]);
     let (reward_meme, reward_quote) = vault.fund_round(20, 40, 0);
     reward_meme.destroy_for_testing();
@@ -378,14 +391,14 @@ fun generic_merkle_proofs_preserve_left_and_right_order() {
 
 fun new_vault(
     fee_recipients: vector<FeeRecipient>,
-    rewards_fee_bps: u64,
+    holder_rewards_bps: u64,
     scenario: &mut Scenario,
 ): PresaleVault<MEME, QUOTE> {
     vault::new_for_testing<MEME, QUOTE>(
         object::id_from_address(@0xCAFE),
         object::id_from_address(@0xCA9),
         fee_recipients,
-        bps::new(rewards_fee_bps),
+        bps::new(holder_rewards_bps),
         no_protocol_fees(),
         scenario.ctx(),
     )

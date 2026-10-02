@@ -64,7 +64,7 @@ const SALE_BPS: u64 = 4_000;
 const LP_BPS: u64 = 4_000;
 /// LP fees: two recipients (the creator is the first) and the holder-reward share.
 const FEE_BPS: [u64; 2] = [6_000, 2_500];
-const REWARDS_BPS: u64 = 1_500;
+const HOLDER_REWARDS_BPS: u64 = 1_500;
 const DURATION_MS: u64 = 3_600_000;
 const LIQUIDITY_WINDOW_MS: u64 = 86_400_000;
 
@@ -201,6 +201,61 @@ fn run_near_equal(route: Route) -> Result<()> {
     ));
 
     w.print_report();
+    Ok(())
+}
+
+/// Production admin path: the publisher's SuperAdminCap grants one AdminCap the presale
+/// `FeeAdmin` role, which allows the route's Quote type and migration witness for new presales.
+fn allow_route(
+    h: &mut Harness,
+    admin: ObjectID,
+    admin_published: &Outcome,
+    presale: ObjectID,
+    creation_policy: ObjectID,
+    route: Route,
+) -> Result<()> {
+    let acl = admin_published.created(h, "blast_acl", "ACL");
+    let root = admin_published.created(h, "blast_acl", "SuperAdminCap");
+    ensure!(acl.len() == 1 && root.len() == 1);
+    let (acl, root) = (acl[0], root[0]);
+
+    let mut b = ProgrammableTransactionBuilder::new();
+    let acl_arg = b.obj(h.shared(acl, true))?;
+    let root_arg = b.obj(h.owned(root))?;
+    let recipient = b.pure(h.sender)?;
+    call(&mut b, admin, "blast_acl", "grant_admin", vec![], vec![acl_arg, root_arg, recipient]);
+    let granted = h.execute(b.finish())?;
+    granted.assert_success();
+    let admin_cap = granted.created(h, "blast_acl", "AdminCap");
+    ensure!(admin_cap.len() == 1);
+    let admin_cap = admin_cap[0];
+
+    let fee_admin = tag(&format!("{presale}::blast_presale_domain::FeeAdmin"));
+    let mut b = ProgrammableTransactionBuilder::new();
+    let acl_arg = b.obj(h.shared(acl, true))?;
+    let root_arg = b.obj(h.owned(root))?;
+    let admin_cap_id = b.pure(admin_cap)?;
+    call(&mut b, admin, "blast_acl", "grant_role", vec![fee_admin.clone()], vec![acl_arg, root_arg, admin_cap_id]);
+    h.execute(b.finish())?.assert_success();
+
+    let mut b = ProgrammableTransactionBuilder::new();
+    let acl_arg = b.obj(h.shared(acl, false))?;
+    let admin_cap_arg = b.obj(h.owned(admin_cap))?;
+    let witness = call(&mut b, admin, "blast_acl", "sign_in", vec![fee_admin], vec![acl_arg, admin_cap_arg]);
+    let policy = b.obj(h.shared(creation_policy, true))?;
+    let allowed = b.pure(true)?;
+    call(&mut b, presale, "creation_policy", "set_quote_allowed", vec![route.quote()], vec![policy, witness, allowed]);
+    let migration_witness = tag(&format!("{presale}::{}::Witness", route.module()));
+    call(
+        &mut b,
+        presale,
+        "creation_policy",
+        "set_migration_witness_allowed",
+        vec![migration_witness],
+        vec![policy, witness, allowed],
+    );
+    h.execute(b.finish())?.assert_success();
+
     Ok(())
 }
 
@@ -360,6 +415,7 @@ struct World {
     venue: BTreeMap<String, ObjectID>,
     presale: ObjectID,
     venue_config: ObjectID,
+    creation_policy: ObjectID,
     fee_policy: ObjectID,
     token: CompiledPackage,
     coins: u64,
@@ -377,7 +433,8 @@ impl World {
 
         let timelock_dir = timelock_dir()?;
         let (timelock, _) = h.publish(build_timelock(&work)?)?;
-        let (admin, _) = h.publish(build(&sui_dir().join("admin"), &[(&timelock_dir, timelock)], &work)?)?;
+        let (admin, admin_published) =
+            h.publish(build(&sui_dir().join("admin"), &[(&timelock_dir, timelock)], &work)?)?;
         let mut dependencies = vec![ObjectID::from_single_byte(1), ObjectID::from_single_byte(2), timelock, admin];
         dependencies.extend(venue_dependencies(&h)?);
         let linked = presale().link(&[("blast_fun_timelock", timelock), ("blast_admin", admin)], dependencies)?;
@@ -386,6 +443,9 @@ impl World {
         ensure!(venue_config.len() == 1 && h.object(venue_config[0]).is_shared());
         let fee_policy = published.created(&h, "fee_policy", "FeePolicy");
         ensure!(fee_policy.len() == 1 && h.object(fee_policy[0]).is_shared());
+        let creation_policy = published.created(&h, "creation_policy", "CreationPolicy");
+        ensure!(creation_policy.len() == 1 && h.object(creation_policy[0]).is_shared());
+        allow_route(&mut h, admin, &admin_published, presale, creation_policy[0], route)?;
         let token = build(&Path::new(env!("CARGO_MANIFEST_DIR")).join("fixture/presale_token"), &[], &work)?;
 
         Ok(World {
@@ -395,6 +455,7 @@ impl World {
             venue,
             presale,
             venue_config: venue_config[0],
+            creation_policy: creation_policy[0],
             fee_policy: fee_policy[0],
             token,
             coins: 0,
@@ -438,6 +499,13 @@ impl World {
 
     fn clock(&self, b: &mut ProgrammableTransactionBuilder) -> Result<Argument> {
         self.shared(b, SUI_CLOCK_OBJECT_ID, false)
+    }
+
+    /// A `blast_presale::bps::Bps` built in the PTB, since a `Bps` cannot be a pure argument.
+    fn bps(&self, b: &mut ProgrammableTransactionBuilder, value: u64) -> Result<Argument> {
+        let value = b.pure(value)?;
+
+        Ok(call(b, self.presale, "bps", "new", vec![], vec![value]))
     }
 
     fn presale_tag(&self, module: &str, name: &str) -> TypeTag {
@@ -547,7 +615,7 @@ impl World {
         let pair = vec![meme.clone(), self.quote()];
         let mut recipients = Vec::new();
         for (recipient, bps) in &terms.recipients {
-            let args = vec![b.pure(SuiAddress::from(*recipient))?, b.pure(*bps)?];
+            let args = vec![b.pure(SuiAddress::from(*recipient))?, self.bps(&mut b, *bps)?];
             recipients.push(call(&mut b, self.presale, "blast_presale", "recipient_allocation", vec![], args));
         }
         let allocation_type = self.presale_tag("blast_presale", "RecipientAllocation");
@@ -559,7 +627,7 @@ impl World {
         let uncapped = call(&mut b, std, "option", "none", vec![uncapped_type], vec![]);
         let mut fee_recipients = Vec::new();
         for (recipient, bps) in [(CREATOR, FEE_BPS[0]), (FEE_B, FEE_BPS[1])] {
-            let args = vec![b.pure(SuiAddress::from(recipient))?, b.pure(bps)?];
+            let args = vec![b.pure(SuiAddress::from(recipient))?, self.bps(&mut b, bps)?];
             fee_recipients.push(call(&mut b, self.presale, "blast_presale", "fee_recipient", vec![], args));
         }
         let fee_type = self.presale_tag("blast_presale", "FeeRecipient");
@@ -572,8 +640,8 @@ impl World {
             b.obj(self.h.owned(treasury_cap))?,
             self.shared(&mut b, currency, true)?,
             b.pure(terms.supply)?,
-            b.pure(terms.sale_bps)?,
-            b.pure(terms.lp_bps)?,
+            self.bps(&mut b, terms.sale_bps)?,
+            self.bps(&mut b, terms.lp_bps)?,
             recipients,
             b.pure(false)?,
             b.pure(terms.raise)?,
@@ -583,7 +651,8 @@ impl World {
             eligibility,
             uncapped,
             fee_recipients,
-            b.pure(REWARDS_BPS)?,
+            self.bps(&mut b, HOLDER_REWARDS_BPS)?,
+            self.shared(&mut b, self.creation_policy, false)?,
             self.shared(&mut b, self.fee_policy, false)?,
         ];
         let (tick_spacing, fee_rate) = self.route.tier();
@@ -621,7 +690,7 @@ impl World {
         let state = self.sale_state(&sale)?;
         ensure!(state.lifecycle == Lifecycle::Open && state.presale_cap_id == sale.cap);
         ensure!((state.protocol_quote, state.protocol_tokens) == (0, 0), "a zero-rate policy reserves Blast nothing");
-        ensure!((state.tick_spacing, state.fee_rate) == self.route.tier(), "the sale records the venue's tier");
+        ensure!((state.tick_spacing, state.pool_fee_rate) == self.route.tier(), "the sale records the venue's tier");
         ensure!(state.migration_witness.ends_with(&format!("::{}::Witness", self.route.module())));
         ensure!(
             (state.sale_tokens, state.liquidity_tokens, state.recipient_tokens)
@@ -672,7 +741,7 @@ impl World {
         let funded: Vec<PresaleFunded> = self.events(&settled, "blast_presale", "PresaleFunded");
         ensure!(funded.len() == 1 && funded[0].presale_id == sale.presale);
         ensure!(
-            (funded[0].commitments, funded[0].accepted_quote, funded[0].refundable_quote, funded[0].token_allocation)
+            (funded[0].total_commitments, funded[0].accepted_quote, funded[0].refundable_quote, funded[0].token_allocation)
                 == (terms.commitment, terms.raise, terms.commitment - terms.raise, terms.sale_tokens())
         );
         ensure!(self.sale_state(&sale)?.lifecycle == Lifecycle::Funded);
@@ -810,7 +879,7 @@ impl World {
         ensure!(migrated.len() == 1 && migrated[0].presale_id == sale.presale);
         let recipient_total: u64 = terms.recipient_tokens().iter().sum();
         ensure!(
-            (migrated[0].quote, migrated[0].liquidity_tokens, migrated[0].recipient_tokens) == (raise, lp, recipient_total),
+            (migrated[0].liquidity_quote, migrated[0].liquidity_tokens, migrated[0].recipient_tokens) == (raise, lp, recipient_total),
             "the hand-off is the raise and the LP allocation"
         );
         ensure!(migrated[0].migration_witness.ends_with(&format!("::{}::Witness", self.route.module())));
@@ -836,8 +905,8 @@ impl World {
         ensure!(
             created.fee_recipients == vec![SuiAddress::from(CREATOR), FEE_B.into()]
                 && created.fee_recipient_bps == FEE_BPS.to_vec()
-                && created.rewards_fee_bps == REWARDS_BPS
-                && (created.protocol_lp_meme_bps, created.protocol_lp_quote_bps) == (0, 0)
+                && created.holder_rewards_bps == HOLDER_REWARDS_BPS
+                && (created.protocol_lp_fee_meme_bps, created.protocol_lp_fee_quote_bps) == (0, 0)
         );
         let residual = (created.migration_meme_residual, created.migration_quote_residual);
         let m = Migration {
@@ -853,7 +922,7 @@ impl World {
         ensure!(
             (vault.presale_id, vault.presale_cap_id, vault.pool_id) == (sale.presale, sale.cap, m.pool)
                 && (vault.migration_meme_residual, vault.migration_quote_residual) == residual
-                && (vault.rewards_meme, vault.rewards_quote, vault.next_round) == (0, 0, 0)
+                && (vault.holder_rewards_meme, vault.holder_rewards_quote, vault.next_round) == (0, 0, 0)
         );
         let Owner::ObjectOwner(field) = self.h.object(m.position).owner().clone() else {
             bail!("position is not a child")
@@ -960,7 +1029,7 @@ impl World {
         let refund = terms.commitment - terms.raise;
         ensure!(
             claimed.len() == 1
-                && (claimed[0].commitment, claimed[0].tokens, claimed[0].quote_refund, claimed[0].remaining_commitments)
+                && (claimed[0].wallet_commitment, claimed[0].tokens, claimed[0].quote_refund, claimed[0].remaining_commitments)
                     == (terms.commitment, terms.sale_tokens(), refund, 0)
         );
         ensure!(outcome.coins_created_for(&self.h, self.h.sender) == self.coins(&sale.meme, terms.sale_tokens(), refund));
@@ -1108,12 +1177,12 @@ impl World {
             "a zero-rate policy pays Blast nothing"
         );
 
-        let weights = [FEE_BPS[0], FEE_BPS[1], REWARDS_BPS];
+        let weights = [FEE_BPS[0], FEE_BPS[1], HOLDER_REWARDS_BPS];
         let meme = apportion(&weights, gross_meme);
         let quote = apportion(&weights, gross_quote);
         ensure!(
-            fees.recipient_meme == meme[..2] && fees.recipient_quote == quote[..2]
-                && (fees.rewards_meme, fees.rewards_quote) == (meme[2], quote[2]),
+            fees.fee_recipient_meme == meme[..2] && fees.fee_recipient_quote == quote[..2]
+                && (fees.holder_rewards_meme, fees.holder_rewards_quote) == (meme[2], quote[2]),
             "FeesCollected {fees:?} is the exact apportionment"
         );
         for (i, recipient) in [CREATOR, FEE_B].into_iter().enumerate() {
@@ -1124,11 +1193,11 @@ impl World {
         }
         let after = self.vault(m)?;
         ensure!(
-            (after.rewards_meme, after.rewards_quote)
-                == (before.rewards_meme + fees.rewards_meme, before.rewards_quote + fees.rewards_quote),
+            (after.holder_rewards_meme, after.holder_rewards_quote)
+                == (before.holder_rewards_meme + fees.holder_rewards_meme, before.holder_rewards_quote + fees.holder_rewards_quote),
             "the holder-reward share accrues in the vault"
         );
-        ensure!(after.rewards_meme + after.rewards_quote > before.rewards_meme + before.rewards_quote);
+        ensure!(after.holder_rewards_meme + after.holder_rewards_quote > before.holder_rewards_meme + before.holder_rewards_quote);
         ensure!(
             (after.migration_meme_residual, after.migration_quote_residual)
                 == (before.migration_meme_residual, before.migration_quote_residual)
@@ -1435,9 +1504,9 @@ struct PresaleState {
     _uncapped_from_ms: u64,
     migration_witness: String,
     tick_spacing: u32,
-    fee_rate: u64,
+    pool_fee_rate: u64,
     fee_recipients: Vec<FeeRecipient>,
-    rewards_fee_bps: u64,
+    holder_rewards_bps: u64,
     total_commitments: u64,
     remaining_commitments: u64,
     participants: u64,
@@ -1458,8 +1527,8 @@ struct PresaleState {
 struct ProtocolFees {
     _raise_bps: u64,
     _token_bps: u64,
-    _lp_meme_bps: u64,
-    _lp_quote_bps: u64,
+    _lp_fee_meme_bps: u64,
+    _lp_fee_quote_bps: u64,
 }
 
 /// Mirrors `blast_presale::presale_vault::PresaleVault`.
@@ -1470,12 +1539,12 @@ struct VaultState {
     presale_cap_id: ObjectID,
     pool_id: ObjectID,
     _fee_recipients: Vec<FeeRecipient>,
-    _rewards_fee_bps: u64,
+    _holder_rewards_bps: u64,
     _protocol_fees: ProtocolFees,
     migration_meme_residual: u64,
     migration_quote_residual: u64,
-    rewards_meme: u64,
-    rewards_quote: u64,
+    holder_rewards_meme: u64,
+    holder_rewards_quote: u64,
     next_round: u64,
     _last_checkpoint: Option<u64>,
 }
@@ -1483,7 +1552,7 @@ struct VaultState {
 #[derive(Deserialize)]
 struct PresaleFunded {
     presale_id: ObjectID,
-    commitments: u64,
+    total_commitments: u64,
     accepted_quote: u64,
     refundable_quote: u64,
     token_allocation: u64,
@@ -1493,7 +1562,7 @@ struct PresaleFunded {
 struct PresaleMigrated {
     presale_id: ObjectID,
     migration_witness: String,
-    quote: u64,
+    liquidity_quote: u64,
     liquidity_tokens: u64,
     recipient_tokens: u64,
 }
@@ -1509,7 +1578,7 @@ struct RecipientAllocated {
 struct Claimed {
     _presale_id: ObjectID,
     _participant: SuiAddress,
-    commitment: u64,
+    wallet_commitment: u64,
     tokens: u64,
     quote_refund: u64,
     remaining_commitments: u64,
@@ -1524,9 +1593,9 @@ struct VaultCreated {
     liquidity: u128,
     fee_recipients: Vec<SuiAddress>,
     fee_recipient_bps: Vec<u64>,
-    rewards_fee_bps: u64,
-    protocol_lp_meme_bps: u64,
-    protocol_lp_quote_bps: u64,
+    holder_rewards_bps: u64,
+    protocol_lp_fee_meme_bps: u64,
+    protocol_lp_fee_quote_bps: u64,
     migration_meme_residual: u64,
     migration_quote_residual: u64,
 }
@@ -1539,17 +1608,17 @@ struct FeesCollected {
     protocol_destination: SuiAddress,
     protocol_meme: u64,
     protocol_quote: u64,
-    recipient_meme: Vec<u64>,
-    recipient_quote: Vec<u64>,
-    rewards_meme: u64,
-    rewards_quote: u64,
+    fee_recipient_meme: Vec<u64>,
+    fee_recipient_quote: Vec<u64>,
+    holder_rewards_meme: u64,
+    holder_rewards_quote: u64,
 }
 
 impl FeesCollected {
     fn line(&self) -> String {
         format!(
             "gross=({}, {}) recipients=({:?}, {:?}) holder rewards=({}, {})",
-            self.gross_meme, self.gross_quote, self.recipient_meme, self.recipient_quote, self.rewards_meme, self.rewards_quote,
+            self.gross_meme, self.gross_quote, self.fee_recipient_meme, self.fee_recipient_quote, self.holder_rewards_meme, self.holder_rewards_quote,
         )
     }
 }
