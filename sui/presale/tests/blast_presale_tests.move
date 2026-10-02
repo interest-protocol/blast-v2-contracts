@@ -519,7 +519,7 @@ fun an_open_uncapped_phase_whose_slots_cannot_reach_the_raise_is_rejected() {
 fun raise_allocations_are_paid_at_migration_and_the_lp_takes_the_rest() {
     let mut fixture = start_configured(
         RAISE_TARGET,
-        vector[presale::recipient_allocation(RAISE_RECIPIENT, bps::new(2_000))],
+        vector[presale::recipient_share(RAISE_RECIPIENT, bps::new(2_000))],
         presale::open_eligibility(WALLET_CAP, 1, RAISE_TARGET),
         option::none(),
         false,
@@ -549,9 +549,22 @@ fun raise_allocations_must_leave_the_lp_a_share() {
     start_configured(
         RAISE_TARGET,
         vector[
-            presale::recipient_allocation(RAISE_RECIPIENT, bps::new(6_000)),
-            presale::recipient_allocation(CAROL, bps::new(4_000)),
+            presale::recipient_share(RAISE_RECIPIENT, bps::new(6_000)),
+            presale::recipient_share(CAROL, bps::new(4_000)),
         ],
+        presale::open_eligibility(WALLET_CAP, 1, RAISE_TARGET),
+        option::none(),
+        false,
+    ).end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidRaiseAllocation, location = blast_presale::blast_presale)]
+/// A zero share is a raise-allocation error, not a token-allocation one.
+fun a_raise_allocation_must_take_a_positive_share() {
+    start_configured(
+        RAISE_TARGET,
+        vector[presale::recipient_share(RAISE_RECIPIENT, bps::new(0))],
         presale::open_eligibility(WALLET_CAP, 1, RAISE_TARGET),
         option::none(),
         false,
@@ -564,8 +577,8 @@ fun raise_allocation_recipients_must_be_distinct() {
     start_configured(
         RAISE_TARGET,
         vector[
-            presale::recipient_allocation(RAISE_RECIPIENT, bps::new(1_000)),
-            presale::recipient_allocation(RAISE_RECIPIENT, bps::new(1_000)),
+            presale::recipient_share(RAISE_RECIPIENT, bps::new(1_000)),
+            presale::recipient_share(RAISE_RECIPIENT, bps::new(1_000)),
         ],
         presale::open_eligibility(WALLET_CAP, 1, RAISE_TARGET),
         option::none(),
@@ -856,8 +869,8 @@ fun fee_recipient_and_holder_shares_must_total_full_bps() {
 fun fee_recipients_must_be_distinct() {
     create_with_fee_split(
         vector[
-            presale::fee_recipient(CREATOR, bps::new(CREATOR_FEE_BPS)),
-            presale::fee_recipient(CREATOR, bps::new(FEE_PARTNER_BPS)),
+            presale::recipient_share(CREATOR, bps::new(CREATOR_FEE_BPS)),
+            presale::recipient_share(CREATOR, bps::new(FEE_PARTNER_BPS)),
         ],
         HOLDER_REWARDS_BPS,
     );
@@ -931,7 +944,10 @@ fun a_seventeenth_fee_recipient_is_rejected() {
 #[test]
 #[expected_failure(abort_code = presale::EInvalidFeeSplit, location = blast_presale::blast_presale)]
 fun a_fee_recipient_cannot_be_the_zero_address() {
-    presale::fee_recipient(@0x0, bps::new(1));
+    create_with_fee_split(
+        vector[presale::recipient_share(@0x0, bps::new(CREATOR_FEE_BPS + FEE_PARTNER_BPS))],
+        HOLDER_REWARDS_BPS,
+    );
 }
 
 #[test]
@@ -1035,7 +1051,7 @@ fun burnable_supply_is_locked_to_burn_only_at_creation() {
 fun migration_pays_blast_its_snapshotted_shares_at_the_current_destination() {
     let mut fixture = start_with_fees(
         RAISE_TARGET,
-        vector[presale::recipient_allocation(RAISE_RECIPIENT, bps::new(2_000))],
+        vector[presale::recipient_share(RAISE_RECIPIENT, bps::new(2_000))],
         presale::open_eligibility(WALLET_CAP, 2, RAISE_TARGET / 2),
         option::none(),
         false,
@@ -1043,13 +1059,10 @@ fun migration_pays_blast_its_snapshotted_shares_at_the_current_destination() {
         PROTOCOL_TOKEN_BPS,
         FEE_PAYING_RECIPIENT_B_BPS,
     );
-    let (protocol_fees, protocol_quote, protocol_tokens) = only_event<
+    let (protocol_bps, protocol_quote, protocol_tokens) = only_event<
         PresaleCreated<BLAST_PRESALE_TESTS, QUOTE>,
     >().created_protocol_fields();
-    assert_eq!(
-        protocol_fees,
-        fee_policy::protocol_fees_for_testing(PROTOCOL_RAISE_BPS, PROTOCOL_TOKEN_BPS, 0, 0),
-    );
+    assert_eq!(protocol_bps, vector[PROTOCOL_RAISE_BPS, PROTOCOL_TOKEN_BPS, 0, 0]);
     // 1,000 * [2,000, 333, 7,667] / 10,000 = [200, 33.3, 766.7]: the LP takes the leftover unit.
     assert_eq!(vector[protocol_quote, protocol_tokens], vector[33, PROTOCOL_TOKENS]);
     fixture.commit_open(ALICE, 1_000);
@@ -1183,7 +1196,7 @@ fun allocations_must_leave_room_for_blasts_token_share() {
 fun raise_allocations_must_leave_the_lp_a_share_after_blasts() {
     let fixture = start_with_fees(
         RAISE_TARGET,
-        vector[presale::recipient_allocation(RAISE_RECIPIENT, bps::new(10_000 - PROTOCOL_RAISE_BPS))],
+        vector[presale::recipient_share(RAISE_RECIPIENT, bps::new(10_000 - PROTOCOL_RAISE_BPS))],
         presale::open_eligibility(WALLET_CAP, 1, RAISE_TARGET),
         option::none(),
         false,
@@ -1210,7 +1223,7 @@ fun start_with_mode(
 
 fun start_configured(
     raise_target: u64,
-    raise_allocations: vector<RecipientAllocation>,
+    raise_allocations: vector<RecipientShare>,
     eligibility: EligibilityPolicy,
     uncapped: Option<UncappedPhase>,
     burnable: bool,
@@ -1231,7 +1244,7 @@ fun start_configured(
 /// B's share sized to leave room for Blast's.
 fun start_with_fees(
     raise_target: u64,
-    raise_allocations: vector<RecipientAllocation>,
+    raise_allocations: vector<RecipientShare>,
     eligibility: EligibilityPolicy,
     uncapped: Option<UncappedPhase>,
     burnable: bool,
@@ -1265,8 +1278,8 @@ fun start_with_fees(
         bps::new(TOKEN_ALLOCATION_BPS),
         bps::new(LIQUIDITY_TOKEN_ALLOCATION_BPS),
         vector[
-            presale::recipient_allocation(RECIPIENT_A, bps::new(RECIPIENT_A_BPS)),
-            presale::recipient_allocation(RECIPIENT_B, bps::new(recipient_b_bps)),
+            presale::recipient_share(RECIPIENT_A, bps::new(RECIPIENT_A_BPS)),
+            presale::recipient_share(RECIPIENT_B, bps::new(recipient_b_bps)),
         ],
         burnable,
         raise_target,
@@ -1382,7 +1395,7 @@ fun new_currency(
     (treasury_cap, coin_registry::unwrap_for_testing(initializer))
 }
 
-fun create_with_fee_split(fee_recipients: vector<FeeRecipient>, holder_rewards_bps: u64) {
+fun create_with_fee_split(fee_recipients: vector<RecipientShare>, holder_rewards_bps: u64) {
     let mut ctx = tx_context::dummy();
     let (treasury_cap, mut currency) = new_currency(&mut ctx);
     let fee_policy = fee_policy::new_for_testing(&mut ctx);
@@ -1419,8 +1432,8 @@ fun create_with_fee_split(fee_recipients: vector<FeeRecipient>, holder_rewards_b
     destroy(ctx);
 }
 
-fun fee_recipient_set(count: u64): vector<FeeRecipient> {
-    vector::tabulate!(count, |i| presale::fee_recipient(sui::address::from_u256((i as u256) + 1), bps::new(100)))
+fun fee_recipient_set(count: u64): vector<RecipientShare> {
+    vector::tabulate!(count, |i| presale::recipient_share(sui::address::from_u256((i as u256) + 1), bps::new(100)))
 }
 
 /// Creates a Bluefin sale under a creation policy that allows only `AllowedQuote` and
@@ -1472,17 +1485,17 @@ fun create_bluefin_sale<AllowedQuote, AllowedWitness>(symbol: vector<u8>) {
     destroy(ctx);
 }
 
-fun fee_recipients(): vector<FeeRecipient> {
+fun fee_recipients(): vector<RecipientShare> {
     vector[
-        presale::fee_recipient(CREATOR, bps::new(CREATOR_FEE_BPS)),
-        presale::fee_recipient(FEE_PARTNER, bps::new(FEE_PARTNER_BPS)),
+        presale::recipient_share(CREATOR, bps::new(CREATOR_FEE_BPS)),
+        presale::recipient_share(FEE_PARTNER, bps::new(FEE_PARTNER_BPS)),
     ]
 }
 
-fun recipient_allocations(): vector<RecipientAllocation> {
+fun recipient_allocations(): vector<RecipientShare> {
     vector[
-        presale::recipient_allocation(RECIPIENT_A, bps::new(RECIPIENT_A_BPS)),
-        presale::recipient_allocation(RECIPIENT_B, bps::new(RECIPIENT_B_BPS)),
+        presale::recipient_share(RECIPIENT_A, bps::new(RECIPIENT_A_BPS)),
+        presale::recipient_share(RECIPIENT_B, bps::new(RECIPIENT_B_BPS)),
     ]
 }
 
@@ -1761,7 +1774,6 @@ use blast_presale::{bluefin, cetus, migration_math, blast_presale::{
     Claimed,
     Committed,
     EligibilityPolicy,
-    FeeRecipient,
     RaiseAllocated,
     Presale,
     PresaleCancelled,
@@ -1770,7 +1782,7 @@ use blast_presale::{bluefin, cetus, migration_math, blast_presale::{
     PresaleFunded,
     PresaleMigrated,
     PresaleOpened,
-    RecipientAllocation,
+    RecipientShare,
     UncappedPhase,
 }};
 

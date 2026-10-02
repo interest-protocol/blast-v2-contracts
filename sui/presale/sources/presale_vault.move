@@ -19,7 +19,7 @@ public struct PresaleVault<phantom Meme, phantom Quote> has key {
     presale_id: ID,
     presale_cap_id: ID,
     pool_id: ID,
-    fee_recipients: vector<FeeRecipient>,
+    fee_recipients: vector<RecipientShare>,
     holder_rewards_bps: Bps,
     protocol_fees: ProtocolFees,
     migration_meme_residual: Balance<Meme>,
@@ -75,8 +75,8 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
     let (presale_id, presale_cap_id, fee_recipients, holder_rewards_bps, protocol_fees) = sale
         .vault_config();
     let position_id = object::id(&position);
-    let fee_recipient_addresses = presale::fee_recipient_addresses(&fee_recipients);
-    let fee_recipient_bps = presale::fee_recipient_bps(&fee_recipients);
+    let fee_recipient_addresses = presale::share_recipients(&fee_recipients);
+    let fee_recipient_bps = presale::share_bps(&fee_recipients);
     let mut vault = PresaleVault {
         id: object::new(ctx),
         presale_id,
@@ -148,7 +148,7 @@ public(package) fun split_fees<Meme, Quote>(
     let protocol_destination = fee_policy.destination();
     let (fee_recipient_meme, holder_rewards_meme) = self.fee_shares(gross_meme - protocol_meme);
     let (fee_recipient_quote, holder_rewards_quote) = self.fee_shares(gross_quote - protocol_quote);
-    let recipients = presale::fee_recipient_addresses(&self.fee_recipients);
+    let recipients = presale::share_recipients(&self.fee_recipients);
 
     meme.pay(protocol_meme, protocol_destination, ctx);
     quote.pay(protocol_quote, protocol_destination, ctx);
@@ -239,7 +239,7 @@ fun fee_shares<Meme, Quote>(self: &PresaleVault<Meme, Quote>, amount: u64): (vec
 public fun new_for_testing<Meme, Quote>(
     presale_id: ID,
     presale_cap_id: ID,
-    fee_recipients: vector<FeeRecipient>,
+    fee_recipients: vector<RecipientShare>,
     holder_rewards_bps: Bps,
     protocol_fees: ProtocolFees,
     ctx: &mut TxContext,
@@ -368,7 +368,7 @@ const EWrongPresaleCap: vector<u8> = b"The creator capability belongs to a diffe
 // === Imports ===
 
 use blast_presale::{
-    blast_presale::{Self as presale, FeeRecipient, Presale, PresaleCap},
+    blast_presale::{Self as presale, Presale, PresaleCap, RecipientShare},
     bps::Bps,
     fee_policy::{FeePolicy, ProtocolFees},
 };

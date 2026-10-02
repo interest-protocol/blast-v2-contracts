@@ -44,6 +44,13 @@ public fun verify(
     digest == root
 }
 
+// === Package Functions ===
+
+/// The byte length of every root, leaf digest, and proof sibling.
+public(package) fun digest_length(): u64 {
+    DIGEST_LENGTH
+}
+
 // === Private Functions ===
 
 /// The number of tree levels above `leaves` leaves, one sibling each in a proof.

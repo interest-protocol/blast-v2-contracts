@@ -46,7 +46,8 @@ public fun publish_round<Meme, Quote>(
         EInvalidInterval,
     );
     assert!(
-        root.length() == DIGEST_LENGTH && manifest_digest.length() == DIGEST_LENGTH,
+        root.length() == merkle_tree::digest_length()
+            && manifest_digest.length() == merkle_tree::digest_length(),
         EInvalidCommitment,
     );
     assert!(leaf_count > 0 && leaf_count <= MAX_REWARD_LEAVES, EInvalidLeafCount);
@@ -102,7 +103,7 @@ public fun claim<Meme, Quote>(
     let (word, bit) = claim_bit(index);
     assert!(self.claimed_bitmap[word] & bit == 0, EAlreadyClaimed);
     assert!(beneficiary != @0x0, EInvalidBeneficiary);
-    assert!(meme_amount > 0 || quote_amount > 0, EEmptyBudget);
+    assert!(meme_amount > 0 || quote_amount > 0, EEmptyClaim);
 
     let leaf = leaf(self.vault_id, self.number, index, beneficiary, meme_amount, quote_amount);
     assert!(
@@ -280,7 +281,6 @@ public struct RewardClaimed<phantom Meme, phantom Quote> has copy, drop {
 
 // === Constants ===
 
-const DIGEST_LENGTH: u64 = 32;
 const MAX_REWARD_LEAVES: u64 = 65_536;
 
 // === Errors ===
@@ -298,7 +298,7 @@ const EInvalidCommitment: vector<u8> = b"Root and manifest digest must contain 3
 const EInvalidLeafCount: vector<u8> = b"Round must contain between 1 and 65,536 leaves.";
 
 #[error(code = 4)]
-const EEmptyBudget: vector<u8> = b"At least one reward amount must be nonzero.";
+const EEmptyBudget: vector<u8> = b"A round must reserve a positive amount of at least one asset.";
 
 #[error(code = 5)]
 const EInvalidIndex: vector<u8> = b"Claim index must be less than the committed leaf count.";
@@ -320,6 +320,9 @@ const EWrongVault: vector<u8> = b"The round belongs to a different presale vault
 
 #[error(code = 11)]
 const EClaimsStillOpen: vector<u8> = b"The round's claim deadline has not passed.";
+
+#[error(code = 12)]
+const EEmptyClaim: vector<u8> = b"A reward claim must pay a positive amount of at least one asset.";
 
 // === Imports ===
 

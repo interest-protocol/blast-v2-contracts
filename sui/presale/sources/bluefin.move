@@ -21,15 +21,15 @@ public fun new<Meme, Quote>(
     token_supply: u64,
     token_allocation_bps: Bps,
     liquidity_token_allocation_bps: Bps,
-    recipient_allocations: vector<RecipientAllocation>,
+    recipient_allocations: vector<RecipientShare>,
     burnable: bool,
     raise_target: u64,
-    raise_allocations: vector<RecipientAllocation>,
+    raise_allocations: vector<RecipientShare>,
     duration_ms: u64,
     liquidity_window_ms: u64,
     eligibility: EligibilityPolicy,
     uncapped: Option<UncappedPhase>,
-    fee_recipients: vector<FeeRecipient>,
+    fee_recipients: vector<RecipientShare>,
     holder_rewards_bps: Bps,
     creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
@@ -152,8 +152,8 @@ public fun collect_fees<Meme, Quote>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    assert!(vault.pool_id() == object::id(pool), EPositionPoolMismatch);
     let position = vault.position_mut<_, _, _, Position>(&Venue());
-    assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
 
     let (_, _, meme, quote) = pool::collect_fee(clock, bluefin_config, pool, position);
 
@@ -217,7 +217,7 @@ const MAX_MEME_SYMBOL_LENGTH: u64 = 32;
 // === Errors ===
 
 #[error(code = 0)]
-const EPositionPoolMismatch: vector<u8> = b"Custodied position must belong to the supplied pool.";
+const EPositionPoolMismatch: vector<u8> = b"Pool must be the vault's migration pool.";
 
 #[error(code = 1)]
 const EInvalidTier: vector<u8> = b"Bluefin tier needs tick spacing 1..=400 and fee rate 1..=20,000.";
@@ -231,10 +231,9 @@ use blast_presale::{
     blast_presale::{
         Self as presale,
         EligibilityPolicy,
-        FeeRecipient,
         Presale,
         PresaleCap,
-        RecipientAllocation,
+        RecipientShare,
         UncappedPhase,
     },
     bps::Bps,
