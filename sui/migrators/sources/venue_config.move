@@ -53,5 +53,4 @@ public fun init_for_testing(ctx: &mut TxContext) {
 use sui::dynamic_object_field;
 
 use fun dynamic_object_field::add as UID.add_dynamic_object_field;
-
 use fun dynamic_object_field::borrow as UID.dynamic_object_field;

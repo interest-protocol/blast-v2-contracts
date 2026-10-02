@@ -111,8 +111,9 @@ public fun new<Meme, Quote>(
 /// Meme and Quote in Cetus's canonical coin order.
 ///
 /// Creates the pair's pool with the reserved capability at the launch's tick spacing, priced from
-/// the handed-off balances, seeds full-range liquidity with exactly those balances, and burns the
-/// position. Any Cetus refusal, including a tier Cetus no longer registers, aborts the whole
+/// the handed-off balances, seeds full-range liquidity with exactly those balances on the side
+/// `seed_fixes_a` chooses, and burns the position; Cetus returns what it does not take as
+/// residual. Any Cetus refusal, including a tier Cetus no longer registers, aborts the whole
 /// migration and leaves the launch MigrationReady.
 public fun migrate<Meme, Quote, CoinA, CoinB>(
     launch: &mut Launch<Meme, Quote>,
@@ -132,28 +133,34 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
 
     let (tick_spacing, _) = launch.pool_tier();
     let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
-
     let (meme, quote) = launch.migrate(package_version, currency, Witness(), ctx);
+
     let meme_amount = meme.value();
     let quote_amount = quote.value();
+    let sqrt_price = migration_math::sqrt_price_x64(meme_amount, quote_amount, meme_is_a);
+    let fix_a = seed_fixes_a(
+        tick_lower,
+        tick_upper,
+        sqrt_price,
+        meme_amount,
+        quote_amount,
+        meme_is_a,
+    );
     let (coin_a, coin_b) = reorder(meme.into_coin(ctx), quote.into_coin(ctx), meme_is_a, ctx);
 
-    // Meme is the fixed side when its atoms are at least the Quote atoms, and Quote otherwise: a
-    // full-range seed fixed on the fewer atoms can need slightly more of the other asset than was
-    // handed off. Cetus returns what it does not take as residual.
     let (position, residual_a, residual_b) =
         pool_creator::create_pool_v3_with_creation_cap<CoinA, CoinB>(
             cetus_config,
             pools,
             venue_config.pool_creation_cap<Meme>(),
             tick_spacing,
-            migration_math::sqrt_price_x64(meme_amount, quote_amount, meme_is_a),
+            sqrt_price,
             b"".to_string(),
             tick_lower,
             tick_upper,
             coin_a,
             coin_b,
-            (meme_amount >= quote_amount) == meme_is_a,
+            fix_a,
             clock,
             ctx,
         );
@@ -239,6 +246,34 @@ fun pool_creation_cap<Meme>(venue_config: &VenueConfig): &PoolCreationCap {
     venue_config.object(CreationCapKey<Meme>())
 }
 
+/// Whether the migration seed fixes coin A, preferring the side with more atoms, Meme on a tie: a
+/// full-range position needs slightly more of the other side than the seed ratio, so that partner
+/// balance covers it. When both sides are nearly equal, rounding can still overdraw by one atom,
+/// so Cetus's own math decides and the other side is fixed instead. Any tick inside the full range
+/// selects Cetus's in-range branch; pool creation aborts anyway if the seed price lies outside it.
+fun seed_fixes_a(
+    tick_lower: u32,
+    tick_upper: u32,
+    sqrt_price: u128,
+    meme_amount: u64,
+    quote_amount: u64,
+    meme_is_a: bool,
+): bool {
+    let (amount_a, amount_b) = if (meme_is_a) (meme_amount, quote_amount)
+    else (quote_amount, meme_amount);
+    let prefer_a = (meme_amount >= quote_amount) == meme_is_a;
+    let (_, needed_a, needed_b) = clmm_math::get_liquidity_by_amount(
+        i32::from_u32(tick_lower),
+        i32::from_u32(tick_upper),
+        i32::zero(),
+        sqrt_price,
+        if (prefer_a) amount_a else amount_b,
+        prefer_a,
+    );
+
+    if (needed_a <= amount_a && needed_b <= amount_b) prefer_a else !prefer_a
+}
+
 /// Burns the position and locks its burn proof and the residuals in a new vault.
 fun burn_into_vault<Meme, Quote>(
     launch: &Launch<Meme, Quote>,
@@ -299,8 +334,13 @@ fun collect_position_fees<Meme, Quote, CoinA, CoinB>(
 ): (Balance<Meme>, Balance<Quote>) {
     assert!(self.pool_id() == object::id(pool), EPositionPoolMismatch);
 
-    let burn_proof = self.position_mut<_, _, _, CetusLPBurnProof>(&Venue());
-    let (fee_a, fee_b) = lp_burn::collect_fee(burn_manager, cetus_config, pool, burn_proof, ctx);
+    let (fee_a, fee_b) = lp_burn::collect_fee(
+        burn_manager,
+        cetus_config,
+        pool,
+        self.position_mut<_, _, _, CetusLPBurnProof>(&Venue()),
+        ctx,
+    );
     let mut fee_a = fee_a.into_balance();
     let mut fee_b = fee_b.into_balance();
 
@@ -535,6 +575,8 @@ use cetus_clmm::{
     position::Position,
 };
 
+use integer_mate::i32;
+
 use lp_burn::lp_burn::{Self, BurnManager, CetusLPBurnProof};
 
 use std::type_name;
@@ -548,12 +590,8 @@ use sui::{
 };
 
 use fun add_liquidity as LpVault.add_liquidity;
-
 use fun collect_position_fees as LpVault.collect_position_fees;
-
 use fun compound as LpVault.compound;
-
-use fun pool_creation_cap as VenueConfig.pool_creation_cap;
-
 use fun settle_fees as LpVault.settle_fees;
 
+use fun pool_creation_cap as VenueConfig.pool_creation_cap;

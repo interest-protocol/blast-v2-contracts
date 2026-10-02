@@ -428,9 +428,12 @@ Each Cetus fixture must show:
   `factory::is_right_order<CoinA, CoinB>` agrees with them, and creates the
   pool only with the reserved `PoolCreationCap` at the launch's tick spacing,
   never adopting one;
-- liquidity is seeded with the exact handed-off balances; whatever the venue does
-  not take stays in the vault as protocol residuals, and supplied principal plus
-  residual reconciles exactly with the hand-off;
+- liquidity is seeded with the exact handed-off balances, fixing the side with
+  more atoms (Meme on a tie) unless `clmm_math::get_liquidity_by_amount` says it
+  would overdraw the other balance, which nearly equal amounts can do by one
+  atom; whatever the venue does not take stays in the vault as protocol
+  residuals, and supplied principal plus residual reconciles exactly with the
+  hand-off;
 - the position is burned with `lp_burn::burn_lp_v2`, its `CetusLPBurnProof`
   enters the vault under `PositionKey<cetus::Venue>`, the vault is shared with
   the launch's fee split, and the caller receives no object;
@@ -465,10 +468,12 @@ Each Bluefin fixture must show:
   B's symbol, decimals, and icon, while the Meme side passes its symbol (at most
   32 bytes, bounded at launch intake) and an empty icon URL, so a Meme icon of
   about 256 KB still migrates;
-- liquidity is seeded with the exact handed-off balances, fixing Meme when its
-  atoms are at least the Quote atoms and Quote otherwise; whatever the venue does
-  not take stays in the vault as protocol residuals, with no utilization bound,
-  and supplied principal plus residual reconciles exactly with the hand-off;
+- liquidity is seeded with the exact handed-off balances, fixing the side with
+  more atoms (Meme on a tie) unless Bluefin's `pool::get_liquidity_by_amount`
+  says it would overdraw the other balance, which nearly equal amounts can do by
+  one atom; whatever the venue does not take stays in the vault as protocol
+  residuals, with no utilization bound, and supplied principal plus residual
+  reconciles exactly with the hand-off;
 - the position enters the vault under `PositionKey<bluefin::Venue>`, the vault and
   the pool are shared, the vault holds the launch's fee split, and the caller
   receives no object; and
