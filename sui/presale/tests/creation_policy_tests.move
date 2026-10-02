@@ -27,8 +27,8 @@ public struct MIGRATOR() has drop;
 fun publication_shares_a_policy_that_allows_nothing() {
     let mut scenario = test_scenario::begin(PUBLISHER);
     creation_policy::init_for_testing(scenario.ctx());
-    scenario.next_tx(PUBLISHER);
 
+    scenario.next_tx(PUBLISHER);
     let policy = scenario.take_shared<CreationPolicy>();
 
     policy.assert_allowed<QUOTE, MIGRATOR>();
@@ -38,8 +38,7 @@ fun publication_shares_a_policy_that_allows_nothing() {
 #[test]
 /// The fee administrator allows a Quote type and a migrator, and each change emits its type.
 fun the_fee_admin_allows_a_quote_and_a_migrator() {
-    let mut ctx = tx_context::dummy();
-    let mut policy = creation_policy::new_for_testing(&mut ctx);
+    let mut policy = allowing_nothing();
 
     policy.set_quote_allowed<QUOTE>(&fee_admin(), true);
     policy.set_migration_witness_allowed<MIGRATOR>(&fee_admin(), true);
@@ -52,6 +51,7 @@ fun the_fee_admin_allows_a_quote_and_a_migrator() {
         .migration_witness_set_fields();
     assert_eq!(migration_witness, type_name<MIGRATOR>());
     assert_eq!(allowed, true);
+
     policy.destroy_for_testing();
 }
 
@@ -75,8 +75,7 @@ fun allowing_one_quote_allows_no_other() {
 )]
 /// An allowed Quote type is not enough without an allowed migrator.
 fun an_allowed_quote_still_needs_an_allowed_migrator() {
-    let mut ctx = tx_context::dummy();
-    let mut policy = creation_policy::new_for_testing(&mut ctx);
+    let mut policy = allowing_nothing();
     policy.set_quote_allowed<QUOTE>(&fee_admin(), true);
 
     policy.assert_allowed<QUOTE, MIGRATOR>();
@@ -162,14 +161,19 @@ fun an_allowed_migrator_cannot_be_allowed_again() {
     location = blast_presale::creation_policy,
 )]
 fun an_unlisted_migrator_cannot_be_disallowed() {
-    let mut ctx = tx_context::dummy();
-    let mut policy = creation_policy::new_for_testing(&mut ctx);
+    let mut policy = allowing_nothing();
 
     policy.set_migration_witness_allowed<MIGRATOR>(&fee_admin(), false);
     abort
 }
 
 // === Test Helpers ===
+
+fun allowing_nothing(): CreationPolicy {
+    let mut ctx = tx_context::dummy();
+
+    creation_policy::new_for_testing(&mut ctx)
+}
 
 fun allowing<Quote, MigrationWitness>(): CreationPolicy {
     let mut ctx = tx_context::dummy();

@@ -193,7 +193,10 @@ public fun share<SaleToken, Quote>(mut self: Presale<SaleToken, Quote>, clock: &
         .checked_add(self.liquidity_window_ms)
         .destroy_or!(abort EInvalidWindow);
     // `new` bounds the offset below the duration, so this cannot overflow.
-    let uncapped_from_ms = self.uncapped.map_ref!(|phase| start_ms + phase.starts_after_ms).destroy_or!(end_ms);
+    let uncapped_from_ms = self
+        .uncapped
+        .map_ref!(|phase| start_ms + phase.starts_after_ms)
+        .destroy_or!(end_ms);
 
     self.lifecycle = Lifecycle::Open;
     self.end_ms = end_ms;
@@ -266,14 +269,10 @@ public fun commit_uncapped<SaleToken, Quote>(
     assert!(quote_in.value() > 0, EZeroCommitment);
     assert!(clock.timestamp_ms() >= self.uncapped_from_ms, EUncappedPhaseNotOpen);
 
-    let (max_participants, min_commitment) = match (self.uncapped.destroy_some()) {
-        UncappedPhase { access: UncappedAccess::Anyone { max_participants, min_commitment }, .. } => {
-            (max_participants, min_commitment)
-        },
-        _ => abort EUncappedPhaseNotOpen,
-    };
+    let (max_participants, min_commitment) = anyone_limits(self.uncapped.destroy_some());
+    let no_wallet_cap = std::u64::max_value!();
 
-    self.record_commitment(quote_in, std::u64::max_value!(), max_participants, min_commitment, clock, ctx)
+    self.record_commitment(quote_in, no_wallet_cap, max_participants, min_commitment, clock, ctx)
 }
 
 /// Fixes the fill after the commitment window. Underfunded sales become fully
@@ -324,13 +323,13 @@ public fun claim<SaleToken, Quote>(
         self.lifecycle == Lifecycle::Migrated || self.lifecycle == Lifecycle::Cancelled,
         EInvalidLifecycle,
     );
+
     let key = CommitmentKey(participant);
     assert!(self.id.has_dynamic_field(key), ENoCommitment);
 
-    let Commitment { quote: commitment, wallet_cap: _ } = self
-        .id
-        .remove_dynamic_field<_, Commitment>(key);
-    let (tokens, quote_refund) = self.claim_payout(commitment);
+    let Commitment { quote: commitment, .. } = self.id.remove_dynamic_field<_, Commitment>(key);
+    let tokens = self.claimable_tokens(commitment);
+    let quote_refund = self.refundable_quote(commitment);
 
     self.remaining_commitments = self.remaining_commitments - commitment;
     self.sale_tokens.pay(tokens, participant, ctx);
@@ -384,7 +383,6 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
     ctx: &mut TxContext,
 ): (Presale<SaleToken, Quote>, PresaleCap) {
     creation_policy.assert_allowed<Quote, MigrationWitness>();
-    let protocol_fees = fee_policy.fees();
     assert!(
         type_name::with_original_ids<SaleToken>() != type_name::with_original_ids<Quote>(),
         EInvalidAssetPair,
@@ -392,6 +390,8 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
     // `Currency<SaleToken>` and `TreasuryCap<SaleToken>` are each unique per type, and making the
     // supply fixed or burn-only consumes the cap, so holding it proves the supply is still unknown.
     assert!(treasury_cap.total_supply() == 0, EInitialSupplyNotZero);
+
+    let protocol_fees = fee_policy.fees();
     assert!(raise_target > 0, EInvalidRaiseTarget);
     assert_raise_allocations(&raise_allocations, protocol_fees.raise_bps());
     assert_token_allocations(
@@ -402,6 +402,7 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         &recipient_allocations,
     );
     assert_fee_split(&fee_recipients, holder_rewards_bps);
+
     assert!(duration_ms > 0 && liquidity_window_ms >= MIN_LIQUIDITY_WINDOW_MS, EInvalidWindow);
     assert!(eligibility.can_reach(raise_target), EUnreachableRaise);
     uncapped.do_ref!(|phase| assert_uncapped_phase(phase, duration_ms, eligibility, raise_target));
@@ -423,6 +424,7 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         protocol_fees.raise_bps(),
         raise_target,
     );
+
     assert!(
         migration_math::is_seedable(
             migration_math::sqrt_price_x64(liquidity_token_allocation, liquidity_quote, true),
@@ -602,8 +604,8 @@ public(package) fun share_bps(shares: &vector<RecipientShare>): vector<u64> {
 }
 
 /// Transfers `amount` split from `self` to `recipient`, skipping empty shares.
-public(package) fun pay<T>(
-    self: &mut Balance<T>,
+public(package) fun pay<Asset>(
+    self: &mut Balance<Asset>,
     amount: u64,
     recipient: address,
     ctx: &mut TxContext,
@@ -621,20 +623,20 @@ fun assert_open<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, clock: &Cloc
 /// Largest-remainder apportionment. Shares must sum to 10,000 BPS.
 fun apportion(shares: vector<Bps>, total: u64): vector<u64> {
     let denominator = bps::denominator() as u128;
-    let products = shares.map!(|share| (total as u128) * (share.value() as u128));
-    let mut amounts = products.map_ref!(|product| (*product / denominator) as u64);
+    let scaled_shares = shares.map!(|share| (total as u128) * (share.value() as u128));
+    let mut amounts = scaled_shares.map_ref!(|scaled| (*scaled / denominator) as u64);
+    let remainders = scaled_shares.map!(|scaled| scaled % denominator);
 
     // Hand out the leftover units to the largest remainders, earlier shares first on ties.
-    let mut order = vector::tabulate!(products.length(), |i| i);
-    order.insertion_sort_by!(|a, b| {
-        let (remainder_a, remainder_b) = (
-            products[*a] % denominator,
-            products[*b] % denominator,
-        );
-        remainder_a > remainder_b || (remainder_a == remainder_b && *a <= *b)
+    let mut by_remainder = vector::tabulate!(remainders.length(), |i| i);
+    by_remainder.insertion_sort_by!(|a, b| {
+        remainders[*a] > remainders[*b] || (remainders[*a] == remainders[*b] && *a <= *b)
     });
     let leftover = total - amounts.fold!(0, |sum, amount| sum + amount);
-    leftover.do!(|i| *&mut amounts[order[i]] = amounts[order[i]] + 1);
+    leftover.do!(|rank| {
+        let amount = &mut amounts[by_remainder[rank]];
+        *amount = *amount + 1;
+    });
 
     amounts
 }
@@ -767,16 +769,21 @@ fun apportion_supply(
     protocol_token_bps: Bps,
     recipient_allocations: &vector<RecipientShare>,
 ): (u64, u64, u64, vector<RecipientPayout>) {
+    // Apportioned in this order: the presale, the LP, Blast, then each recipient.
     let mut shares = vector[token_allocation_bps, liquidity_token_allocation_bps, protocol_token_bps];
     recipient_allocations.do_ref!(|allocation| shares.push_back(allocation.bps));
     let amounts = apportion(shares, token_supply);
+
+    let (token_allocation, liquidity_token_allocation) = (amounts[0], amounts[1]);
     let recipient_payouts = payouts(recipient_allocations, &amounts, 3);
     assert!(
-        amounts[0] > 0 && amounts[1] > 0 && recipient_payouts.all!(|payout| payout.amount > 0),
+        token_allocation > 0
+            && liquidity_token_allocation > 0
+            && recipient_payouts.all!(|payout| payout.amount > 0),
         EInvalidTokenAllocation,
     );
 
-    (amounts[0], amounts[1], amounts[2], recipient_payouts)
+    (token_allocation, liquidity_token_allocation, amounts[2], recipient_payouts)
 }
 
 /// Apportions the raise the same way among the recipients, Blast, and the LP, which keeps the
@@ -787,19 +794,22 @@ fun apportion_raise(
     protocol_raise_bps: Bps,
     raise_target: u64,
 ): (vector<RecipientPayout>, u64, u64) {
-    let allocated = total_bps(raise_allocations) + protocol_raise_bps.value();
+    // Apportioned in this order: each recipient, Blast, then the LP, which keeps the rest.
+    let allocated_bps = total_bps(raise_allocations) + protocol_raise_bps.value();
     let mut shares = raise_allocations.map_ref!(|allocation| allocation.bps);
     shares.push_back(protocol_raise_bps);
-    shares.push_back(bps::new(bps::denominator() - allocated));
+    shares.push_back(bps::new(bps::denominator() - allocated_bps));
     let amounts = apportion(shares, raise_target);
+
     let raise_payouts = payouts(raise_allocations, &amounts, 0);
+    let protocol_quote = amounts[raise_allocations.length()];
     let liquidity_quote = amounts[raise_allocations.length() + 1];
     assert!(
         raise_payouts.all!(|payout| payout.amount > 0) && liquidity_quote > 0,
         EInvalidRaiseAllocation,
     );
 
-    (raise_payouts, amounts[raise_allocations.length()], liquidity_quote)
+    (raise_payouts, protocol_quote, liquidity_quote)
 }
 
 /// Pairs each allocation's recipient with its apportioned amount, read from `amounts` starting
@@ -830,6 +840,7 @@ fun mint_and_seal_supply<SaleToken>(
     let sale_tokens = recipient_tokens.split(token_allocation);
     let liquidity_tokens = recipient_tokens.split(liquidity_token_allocation);
     let protocol_tokens = recipient_tokens.split(protocol_token_allocation);
+
     if (burnable) currency.make_supply_burn_only(treasury_cap)
     else currency.make_supply_fixed(treasury_cap);
 
@@ -849,30 +860,34 @@ fun record_commitment<SaleToken, Quote>(
 ): Coin<Quote> {
     let uncapped = clock.timestamp_ms() >= self.uncapped_from_ms;
     let (max_participants, hard_cap) = self.participant_limits(uncapped, max_participants);
-    let quote = self.accepted_quote(quote_in.value(), hard_cap);
-    let fills_raise = hard_cap && self.total_commitments + quote == self.raise_target;
+    let accepted_quote = self.acceptable_quote(quote_in.value(), hard_cap);
+    let fills_raise = hard_cap && self.total_commitments + accepted_quote == self.raise_target;
 
     let key = CommitmentKey(ctx.sender());
-    let exists = self.id.has_dynamic_field(key);
-    let current = if (exists) *dynamic_field::borrow<_, Commitment>(&self.id, key)
-    else Commitment { quote: 0, wallet_cap };
-    let wallet_commitment = current.add_within_cap(quote, wallet_cap, uncapped);
+    let is_new_participant = !self.id.has_dynamic_field(key);
+    let wallet_commitment = self
+        .commitment_or_empty(key, wallet_cap)
+        .add_within_cap(accepted_quote, wallet_cap, uncapped);
+
     // The commitment that exactly fills a hard cap may be smaller than the minimum.
     assert!(wallet_commitment >= min_commitment || fills_raise, EBelowMinimumCommitment);
-    assert!(exists || self.participants < max_participants, EParticipantCapacityReached);
+    assert!(
+        !is_new_participant || self.participants < max_participants,
+        EParticipantCapacityReached,
+    );
     let total_commitments = self
         .total_commitments
-        .checked_add(quote)
+        .checked_add(accepted_quote)
         .destroy_or!(abort ETotalCommitmentOverflow);
 
     self.store_commitment(key, wallet_commitment, wallet_cap);
     self.total_commitments = total_commitments;
     self.remaining_commitments = total_commitments;
-    self.quote.join(quote_in.split(quote, ctx).into_balance());
+    self.quote.join(quote_in.split(accepted_quote, ctx).into_balance());
 
     event::emit(Committed<SaleToken, Quote> {
         presale_id: self.id.to_inner(),
-        quote,
+        quote: accepted_quote,
         wallet_commitment,
         total_commitments,
         participants: self.participants,
@@ -881,12 +896,23 @@ fun record_commitment<SaleToken, Quote>(
     quote_in
 }
 
+/// The wallet cap, participant bound, and minimum commitment of an open policy.
 fun open_limits(policy: EligibilityPolicy): (u64, u64, u64) {
     match (policy) {
         EligibilityPolicy::Open { wallet_cap, max_participants, min_commitment } => {
             (wallet_cap, max_participants, min_commitment)
         },
         EligibilityPolicy::Allowlisted { .. } => abort EWrongEligibilityPolicy,
+    }
+}
+
+/// The participant bound and minimum commitment of an uncapped phase open to anyone.
+fun anyone_limits(phase: UncappedPhase): (u64, u64) {
+    match (phase.access) {
+        UncappedAccess::Anyone { max_participants, min_commitment } => {
+            (max_participants, min_commitment)
+        },
+        UncappedAccess::Eligible => abort EUncappedPhaseNotOpen,
     }
 }
 
@@ -910,7 +936,7 @@ fun participant_limits<SaleToken, Quote>(
 
 /// The Quote a commitment of `offered` adds: all of it, except that a hard-capped uncapped
 /// phase accepts only what is left of the raise.
-fun accepted_quote<SaleToken, Quote>(
+fun acceptable_quote<SaleToken, Quote>(
     self: &Presale<SaleToken, Quote>,
     offered: u64,
     hard_cap: bool,
@@ -921,10 +947,21 @@ fun accepted_quote<SaleToken, Quote>(
     offered.min(self.raise_target - self.total_commitments)
 }
 
+/// The wallet's commitment so far, or an empty one under `wallet_cap` before its first commit.
+fun commitment_or_empty<SaleToken, Quote>(
+    self: &Presale<SaleToken, Quote>,
+    key: CommitmentKey,
+    wallet_cap: u64,
+): Commitment {
+    if (self.id.has_dynamic_field(key)) *dynamic_field::borrow(&self.id, key)
+    else Commitment { quote: 0, wallet_cap }
+}
+
 /// The wallet's total after adding `quote`, held to the caller's cap until the uncapped phase.
 fun add_within_cap(self: Commitment, quote: u64, wallet_cap: u64, uncapped: bool): u64 {
     // Caps no longer apply once uncapped, so a record's cap need not match the caller's.
     assert!(uncapped || self.wallet_cap == wallet_cap, EInvalidEligibilityProof);
+
     let wallet_commitment = self.quote.checked_add(quote).destroy_or!(abort EWalletCapExceeded);
     assert!(uncapped || wallet_commitment <= wallet_cap, EWalletCapExceeded);
 
@@ -946,6 +983,7 @@ fun store_commitment<SaleToken, Quote>(
     };
 }
 
+/// The allowlist's leaf count, after proving `wallet_cap` is `wallet`'s committed cap at `index`.
 fun verify_allowlisted(
     policy: EligibilityPolicy,
     index: u64,
@@ -966,6 +1004,7 @@ fun verify_allowlisted(
     }
 }
 
+/// The domain-separated digest of one allowlist leaf.
 fun allowlist_leaf(index: u64, wallet: address, wallet_cap: u64): vector<u8> {
     let mut bytes = b"\x00blast-presale-v1";
     bytes.append(bcs::to_bytes(&index));
@@ -976,22 +1015,31 @@ fun allowlist_leaf(index: u64, wallet: address, wallet_cap: u64): vector<u8> {
 
 // Claims
 
-/// One commitment's tokens, after migration only, and Quote refund, each its pro-rata share;
-/// the last claim instead takes everything left, absorbing the integer-rounding remainder.
-fun claim_payout<SaleToken, Quote>(
-    self: &Presale<SaleToken, Quote>,
-    commitment: u64,
-): (u64, u64) {
-    let last = self.remaining_commitments == commitment;
-    let tokens = if (self.lifecycle != Lifecycle::Migrated) 0
-    else if (last) self.sale_tokens.value()
-    else self.token_allocation.mul_div(commitment, self.total_commitments);
-    let refund_total = if (self.lifecycle == Lifecycle::Cancelled) self.total_commitments
-    else self.total_commitments - self.raise_target;
-    let quote_refund = if (last) self.quote.value()
-    else refund_total.mul_div(commitment, self.total_commitments);
+/// The sale tokens one commitment claims: none unless the sale migrated, otherwise its pro-rata
+/// share of the token allocation, or everything left on the last claim.
+fun claimable_tokens<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, commitment: u64): u64 {
+    if (self.lifecycle != Lifecycle::Migrated) return 0;
+    if (self.is_last_claim(commitment)) return self.sale_tokens.value();
 
-    (tokens, quote_refund)
+    self.token_allocation.mul_div(commitment, self.total_commitments)
+}
+
+/// The Quote one commitment gets back: its pro-rata share of every commitment after a
+/// cancellation, or of the overflow above the raise after a migration; everything left on the
+/// last claim.
+fun refundable_quote<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, commitment: u64): u64 {
+    if (self.is_last_claim(commitment)) return self.quote.value();
+
+    let refund_pool = if (self.lifecycle == Lifecycle::Cancelled) self.total_commitments
+    else self.total_commitments - self.raise_target;
+
+    refund_pool.mul_div(commitment, self.total_commitments)
+}
+
+/// Whether this is the final claim, which takes everything left so the integer-rounding
+/// remainder is never stranded.
+fun is_last_claim<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, commitment: u64): bool {
+    self.remaining_commitments == commitment
 }
 
 // Migration

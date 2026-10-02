@@ -67,14 +67,11 @@ public fun publish_round<Meme, Quote>(
         meme,
         quote,
     };
-    let round_id = round.id.to_inner();
     let (meme_unallocated, quote_unallocated) = vault.holder_rewards_balances();
-
-    transfer::share_object(round);
 
     event::emit(RoundPublished<Meme, Quote> {
         vault_id,
-        round_id,
+        round_id: round.id.to_inner(),
         number,
         start_checkpoint,
         end_checkpoint,
@@ -87,6 +84,8 @@ public fun publish_round<Meme, Quote>(
         meme_unallocated,
         quote_unallocated,
     });
+
+    transfer::share_object(round);
 }
 
 /// Pays one committed beneficiary; anyone may relay the proof.
@@ -100,18 +99,20 @@ public fun claim<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     assert!(index < self.leaf_count, EInvalidIndex);
+
     let (word, bit) = claim_bit(index);
     assert!(self.claimed_bitmap[word] & bit == 0, EAlreadyClaimed);
     assert!(beneficiary != @0x0, EInvalidBeneficiary);
     assert!(meme_amount > 0 || quote_amount > 0, EEmptyClaim);
 
-    let leaf = leaf(self.vault_id, self.number, index, beneficiary, meme_amount, quote_amount);
+    let digest = leaf(self.vault_id, self.number, index, beneficiary, meme_amount, quote_amount);
     assert!(
-        merkle_tree::verify(self.root, leaf, index, self.leaf_count, &proof),
+        merkle_tree::verify(self.root, digest, index, self.leaf_count, &proof),
         EInvalidProof,
     );
 
-    *&mut self.claimed_bitmap[word] = self.claimed_bitmap[word] | bit;
+    let claimed_word = &mut self.claimed_bitmap[word];
+    *claimed_word = *claimed_word | bit;
     self.meme.pay(meme_amount, beneficiary, ctx);
     self.quote.pay(quote_amount, beneficiary, ctx);
 
@@ -139,6 +140,7 @@ public fun close_round<Meme, Quote>(
 
     let Round { id, vault_id, number, meme, quote, .. } = self;
     let (meme_returned, quote_returned) = (meme.value(), quote.value());
+
     vault.restore_holder_rewards(meme, quote);
 
     event::emit(RoundClosed<Meme, Quote> {
@@ -164,6 +166,7 @@ fun claim_bit(index: u64): (u64, u256) {
     (index / 256, 1u256 << ((index % 256) as u8))
 }
 
+/// The domain-separated digest of one beneficiary's reward leaf.
 fun leaf(
     vault_id: ID,
     round: u64,

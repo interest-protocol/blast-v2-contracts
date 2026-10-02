@@ -153,9 +153,13 @@ public fun collect_fees<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     assert!(vault.pool_id() == object::id(pool), EPositionPoolMismatch);
-    let position = vault.position_mut<_, _, _, Position>(&Venue());
 
-    let (_, _, meme, quote) = pool::collect_fee(clock, bluefin_config, pool, position);
+    let (_, _, meme, quote) = pool::collect_fee(
+        clock,
+        bluefin_config,
+        pool,
+        vault.position_mut<_, _, _, Position>(&Venue()),
+    );
 
     vault.split_fees(fee_policy, meme, quote, ctx);
 }

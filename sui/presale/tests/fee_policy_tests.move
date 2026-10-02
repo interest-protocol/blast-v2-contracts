@@ -16,11 +16,12 @@ const TREASURY: address = @0x7EA5;
 fun publication_shares_a_zero_rate_policy_paying_the_publisher() {
     let mut scenario = test_scenario::begin(PUBLISHER);
     fee_policy::init_for_testing(scenario.ctx());
-    scenario.next_tx(PUBLISHER);
 
+    scenario.next_tx(PUBLISHER);
     let policy = scenario.take_shared<FeePolicy>();
     assert_eq!(policy.fees(), fee_policy::protocol_fees_for_testing(0, 0, 0, 0));
     assert_eq!(policy.destination(), PUBLISHER);
+
     test_scenario::return_shared(policy);
     scenario.end();
 }
@@ -28,8 +29,7 @@ fun publication_shares_a_zero_rate_policy_paying_the_publisher() {
 #[test]
 /// Every rate accepts its maximum and returns to zero.
 fun the_fee_admin_sets_maximum_and_zero_rates() {
-    let mut ctx = tx_context::dummy();
-    let mut policy = fee_policy::new_for_testing(&mut ctx);
+    let mut policy = new_policy();
 
     policy.set_fees(
         &fee_admin(),
@@ -50,6 +50,7 @@ fun the_fee_admin_sets_maximum_and_zero_rates() {
     policy.set_fees(&fee_admin(), bps::new(0), bps::new(0), bps::new(0), bps::new(0));
 
     assert_eq!(policy.fees(), fee_policy::protocol_fees_for_testing(0, 0, 0, 0));
+
     policy.destroy_for_testing();
 }
 
@@ -76,13 +77,13 @@ fun a_fee_update_must_change_the_rates() {
 #[test]
 /// The treasury administrator redirects every later payout.
 fun the_treasury_admin_sets_the_destination() {
-    let mut ctx = tx_context::dummy();
-    let mut policy = fee_policy::new_for_testing(&mut ctx);
+    let mut policy = new_policy();
 
     policy.set_destination(&treasury_admin(), TREASURY);
 
     assert_eq!(policy.destination(), TREASURY);
     assert_eq!(last_event<DestinationChanged>().destination_changed_fields(), TREASURY);
+
     policy.destroy_for_testing();
 }
 
@@ -100,9 +101,15 @@ fun a_destination_update_must_change_the_address() {
 
 // === Test Helpers ===
 
-fun set_fees(raise_bps: u64, token_bps: u64, lp_fee_meme_bps: u64, lp_fee_quote_bps: u64) {
+/// A fresh policy: zero rates, paying the dummy context's sender.
+fun new_policy(): FeePolicy {
     let mut ctx = tx_context::dummy();
-    let mut policy = fee_policy::new_for_testing(&mut ctx);
+
+    fee_policy::new_for_testing(&mut ctx)
+}
+
+fun set_fees(raise_bps: u64, token_bps: u64, lp_fee_meme_bps: u64, lp_fee_quote_bps: u64) {
+    let mut policy = new_policy();
 
     policy.set_fees(
         &fee_admin(),
@@ -116,8 +123,7 @@ fun set_fees(raise_bps: u64, token_bps: u64, lp_fee_meme_bps: u64, lp_fee_quote_
 }
 
 fun set_destination(destination: address) {
-    let mut ctx = tx_context::dummy();
-    let mut policy = fee_policy::new_for_testing(&mut ctx);
+    let mut policy = new_policy();
 
     policy.set_destination(&treasury_admin(), destination);
 
