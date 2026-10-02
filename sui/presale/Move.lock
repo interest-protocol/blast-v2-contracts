@@ -106,11 +106,17 @@ use_environment = "mainnet"
 manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
 deps = { std = "MoveStdlib_2", sui = "Sui_2" }
 
+[pinned.mainnet.blast_fun_vesting]
+source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/vesting", rev = "63b6cf86c0e1a74f699610fe182b1de8d8789a14" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib_2", sui = "Sui_2" }
+
 [pinned.mainnet.blast_presale]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "3B50C09F99EBE451C8E58FD4437AA2CFAF26E56339CB4705D58D4E393871F894"
-deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_admin = "blast_admin" }
+manifest_digest = "5E9ABE3CA05D39FAD4F45210F8F50FE54F120C7F1E3418B6575A95DDC3EFF011"
+deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_admin = "blast_admin", blast_fun_vesting = "blast_fun_vesting" }
 
 [pinned.testnet.BluefinSpot]
 source = { git = "https://github.com/fireflyprotocol/bluefin-spot-contract-interface.git", subdir = ".", rev = "91ce930575b2aa3decab9b7e129b8002deba80c1" }
@@ -214,8 +220,14 @@ use_environment = "testnet"
 manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
 deps = { std = "MoveStdlib_2", sui = "Sui_2" }
 
+[pinned.testnet.blast_fun_vesting]
+source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/vesting", rev = "63b6cf86c0e1a74f699610fe182b1de8d8789a14" }
+use_environment = "testnet"
+manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
+deps = { std = "MoveStdlib_2", sui = "Sui_2" }
+
 [pinned.testnet.blast_presale]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "4C182658E07106EDDFD3D7F33FBFAC5C90073C68A39FC4D1BEF7B7CCDEACBB81"
-deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_admin = "blast_admin" }
+manifest_digest = "7B5DF1DFBACC014B84EF5477D6A3011EAD4D26F8129C2957AAFC9009F86AC935"
+deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_admin = "blast_admin", blast_fun_vesting = "blast_fun_vesting" }

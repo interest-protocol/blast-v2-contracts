@@ -11,6 +11,9 @@
   open-to-anyone phase under an allowlist must reach the raise with the slots
   beyond the allowlist's leaves; venue incentive rewards are deliberately not
   collected; regulated Quote and sale coins are vetted off chain
+- Amended: 2026-10-02 (owner decision): token and raise recipient shares may
+  vest; migration locks each vesting share in an irrevocable
+  `blast_fun_vesting` linear schedule that starts at migration
 
 ## Context
 
@@ -115,6 +118,22 @@ in BPS of `R`, totalling strictly less than 10,000). They are apportioned into
 exact Quote payouts at creation, paid at migration, and the LP seeds with the
 rest, which is also the Quote the seedable-price check uses. A cancelled sale
 refunds every commitment in full.
+
+Any token or raise recipient share may carry `VestingTerms` (cliff, step
+period, and step count). The contract bounds the duration only technically,
+at 2^63 ms, so a schedule's end always fits in u64; product limits belong to
+creation tooling (owner, 2026-10-02). The terms are fixed
+at creation and emitted in `PresaleCreated`, so participants see every lockup
+before committing. At migration, instead of transferring a vesting share, the
+presale funds an irrevocable `blast_fun_linear_vesting` schedule for that
+recipient starting at the migration timestamp, shares it, and names it in the
+share's `RecipientAllocated` or `RaiseAllocated` event. The vesting package is
+the immutable util-contracts package `0x85fd…ec5c` (S2), so it cannot change
+under a live sale. Schedules have no cancellation authority: a cancel cap would
+let its holder take back what is still locked. Terms are validated at creation
+against every check the schedule constructor makes, so a vesting share can
+never make migration abort. Fee shares cannot vest; they are paid as fees are
+collected. Participant allocations do not vest.
 
 The shared-object lifecycle is:
 
@@ -257,6 +276,11 @@ generic positional Blake2b-256 module verifies eligibility and rewards. The
   recipients over later ones. Because collection is permissionless, anyone can
   collect often to steer at most one atomic unit per share per asset per
   collection toward the tie winner.
+- A vesting recipient claims from its own schedule; anyone may relay that
+  claim, and payment always goes to the recipient. The schedule is a separate
+  shared object per vesting share, so indexers join it to its presale through
+  the allocation event's `vesting_id`. A Quote issuer's deny list can stall a
+  vesting raise recipient's claims as it would a direct payout.
 - Deployment must seal custody before any upgrade: `upgrade_custody::new`
   accepts only a never-upgraded cap, so a raw upgrade before `wrap` would leave
   a compatible-policy cap that can never be sealed.
@@ -274,6 +298,11 @@ generic positional Blake2b-256 module verifies eligibility and rewards. The
 - Unit tests also pin the seven-day LP-window floor (one millisecond below it is
   rejected, and every fixture opens at the floor) and an allowlisted
   anyone-phase whose slots beyond the leaves cannot reach the raise.
+- Unit tests create vesting token and raise shares, check the creation and
+  allocation events and each schedule's beneficiary, start, terms, amount, and
+  missing cancellation authority, claim each schedule after migration (nothing
+  before the cliff counted from migration, half at the cliff, the rest at the
+  end), reject vesting fee shares, and pin every `VestingTerms` bound.
 - The package gate checks source boundaries (ACL roles and sealed
   dependency-only custody), builds both network environments, lints with
   warnings as errors, and runs Move tests.
@@ -286,3 +315,4 @@ generic positional Blake2b-256 module verifies eligibility and rewards. The
 | Ref | Source |
 | --- | --- |
 | S1 | [Sui framework at `06734f6ff0af45d8632a14a4dc4b100197f6b1a2`](https://github.com/MystenLabs/sui/tree/06734f6ff0af45d8632a14a4dc4b100197f6b1a2/crates/sui-framework/packages/sui-framework) |
+| S2 | [`blast_fun_vesting` at util-contracts `63b6cf86c0e1a74f699610fe182b1de8d8789a14`](https://github.com/interest-protocol/blast-util-contracts/tree/63b6cf86c0e1a74f699610fe182b1de8d8789a14/sui/vesting), published immutable on mainnet at `0x85fdb7e3d28162b99e0df758069a3d23cff874c400b2160fc0d4618aefd3ec5c` |

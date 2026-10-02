@@ -56,18 +56,29 @@ public struct PresaleCap has key, store {
     presale_id: ID,
 }
 
+/// Linear vesting from migration: nothing before `cliff_ms`, then the vested amount steps up
+/// every `period_ms` until all `periods` have elapsed.
+public struct VestingTerms has copy, drop, store {
+    cliff_ms: u64,
+    period_ms: u64,
+    periods: u64,
+}
+
 /// One recipient's share, in BPS, of the token supply, of the raise, or of every collected LP
-/// fee. The creator takes LP fees as an ordinary fee recipient.
+/// fee. The creator takes LP fees as an ordinary fee recipient. A token or raise share may vest;
+/// a fee share may not.
 public struct RecipientShare has copy, drop, store {
     recipient: address,
     bps: Bps,
+    vesting: Option<VestingTerms>,
 }
 
 /// The exact token or Quote amount one recipient receives at migration, apportioned from its
-/// `RecipientShare` when the presale is created.
+/// `RecipientShare` when the presale is created, and the terms it vests under, if any.
 public struct RecipientPayout has copy, drop, store {
     recipient: address,
     amount: u64,
+    vesting: Option<VestingTerms>,
 }
 
 /// Dynamic-field name for one wallet's undelivered commitment.
@@ -180,7 +191,31 @@ public fun uncapped_for_anyone(
 /// One recipient's share in BPS. Presale creation validates each list of shares under that
 /// list's own rules and error.
 public fun recipient_share(recipient: address, bps: Bps): RecipientShare {
-    RecipientShare { recipient, bps }
+    RecipientShare { recipient, bps, vesting: option::none() }
+}
+
+/// One recipient's token or raise share in BPS, locked at migration in an irrevocable linear
+/// schedule under `vesting` instead of paid out.
+public fun vested_recipient_share(
+    recipient: address,
+    bps: Bps,
+    vesting: VestingTerms,
+): RecipientShare {
+    RecipientShare { recipient, bps, vesting: option::some(vesting) }
+}
+
+/// Linear vesting terms. The steps and cliff must fit in `MAX_VESTING_DURATION_MS`, so migration
+/// can always create the schedule. Product limits on the duration belong to creation tooling.
+public fun vesting_terms(cliff_ms: u64, period_ms: u64, periods: u64): VestingTerms {
+    assert!(
+        period_ms > 0
+            && periods > 0
+            && period_ms <= MAX_VESTING_DURATION_MS / periods
+            && cliff_ms <= period_ms * periods,
+        EInvalidVestingTerms,
+    );
+
+    VestingTerms { cliff_ms, period_ms, periods }
 }
 
 /// Shares a newly created presale and starts its fixed public window now.
@@ -458,10 +493,12 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         liquidity_token_allocation_bps: liquidity_token_allocation_bps.value(),
         recipients: share_recipients(&recipient_allocations),
         recipient_bps: share_bps(&recipient_allocations),
+        recipient_vesting: share_vesting(&recipient_allocations),
         burnable,
         raise_target,
         raise_recipients: share_recipients(&raise_allocations),
         raise_recipient_bps: share_bps(&raise_allocations),
+        raise_recipient_vesting: share_vesting(&raise_allocations),
         duration_ms,
         liquidity_window_ms,
         eligibility,
@@ -517,7 +554,8 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
 }
 
 /// Pays Blast and the raise recipients their shares and releases every token
-/// recipient's tokens at once, then releases the rest of the raise and the
+/// recipient's tokens at once, locking each vesting share in its own shared irrevocable
+/// schedule starting now, then releases the rest of the raise and the
 /// LP-token allocation only to the configured migrator. Anyone may call that
 /// migrator at any time until the sale is cancelled; its pool creation remains
 /// atomic with this state transition.
@@ -525,6 +563,7 @@ public(package) fun migrate<SaleToken, Quote, MigrationWitness: drop>(
     self: &mut Presale<SaleToken, Quote>,
     fee_policy: &FeePolicy,
     _: MigrationWitness,
+    clock: &Clock,
     ctx: &mut TxContext,
 ): (Balance<SaleToken>, Balance<Quote>) {
     assert!(self.lifecycle == Lifecycle::Funded, EInvalidLifecycle);
@@ -538,8 +577,8 @@ public(package) fun migrate<SaleToken, Quote, MigrationWitness: drop>(
     let recipient_tokens = self.recipient_tokens.value();
 
     self.pay_protocol_fees(&mut quote, fee_policy.destination(), ctx);
-    self.pay_raise_allocations(&mut quote, ctx);
-    self.release_recipient_tokens(ctx);
+    self.pay_raise_allocations(&mut quote, clock, ctx);
+    self.release_recipient_tokens(clock, ctx);
     self.lifecycle = Lifecycle::Migrated;
 
     event::emit(PresaleMigrated<SaleToken, Quote> {
@@ -677,10 +716,11 @@ fun assert_token_allocations(
     );
 }
 
-/// LP-fee split: distinct recipients totalling exactly 10,000 BPS with the holder share.
+/// LP-fee split: distinct unvested recipients totalling exactly 10,000 BPS with the holder share.
 fun assert_fee_split(fee_recipients: &vector<RecipientShare>, holder_rewards_bps: Bps) {
     assert!(
         valid_shares(fee_recipients, MAX_FEE_RECIPIENTS)
+            && fee_recipients.all!(|share| share.vesting.is_none())
             && total_bps(fee_recipients) + holder_rewards_bps.value() == bps::denominator(),
         EInvalidFeeSplit,
     );
@@ -822,7 +862,13 @@ fun payouts(
     vector::tabulate!(allocations.length(), |i| RecipientPayout {
         recipient: allocations[i].recipient,
         amount: amounts[first + i],
+        vesting: allocations[i].vesting,
     })
+}
+
+/// Each share's vesting terms, `none` where it is paid out.
+fun share_vesting(shares: &vector<RecipientShare>): vector<Option<VestingTerms>> {
+    shares.map_ref!(|share| share.vesting)
 }
 
 /// Mints the complete supply once, splits off the presale, LP, and Blast allocations, then gives
@@ -1064,19 +1110,19 @@ fun pay_protocol_fees<SaleToken, Quote>(
     });
 }
 
-/// Pays each raise recipient its share out of `quote`, leaving the LP's share.
+/// Releases each raise recipient its share out of `quote`, leaving the LP's share.
 fun pay_raise_allocations<SaleToken, Quote>(
     self: &Presale<SaleToken, Quote>,
     quote: &mut Balance<Quote>,
+    clock: &Clock,
     ctx: &mut TxContext,
 ) {
     self.raise_payouts.do_ref!(|payout| {
-        let RecipientPayout { recipient, amount } = *payout;
-        quote.pay(amount, recipient, ctx);
         event::emit(RaiseAllocated<SaleToken, Quote> {
             presale_id: self.id.to_inner(),
-            recipient,
-            quote: amount,
+            recipient: payout.recipient,
+            quote: payout.amount,
+            vesting_id: quote.release(*payout, clock, ctx),
         });
     });
 }
@@ -1084,17 +1130,50 @@ fun pay_raise_allocations<SaleToken, Quote>(
 /// Releases every escrowed recipient token to its configured recipient.
 fun release_recipient_tokens<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
+    clock: &Clock,
     ctx: &mut TxContext,
 ) {
     self.recipient_payouts.length().do!(|i| {
-        let RecipientPayout { recipient, amount } = self.recipient_payouts[i];
-        self.recipient_tokens.pay(amount, recipient, ctx);
+        let payout = self.recipient_payouts[i];
         event::emit(RecipientAllocated<SaleToken, Quote> {
             presale_id: self.id.to_inner(),
-            recipient,
-            tokens: amount,
+            recipient: payout.recipient,
+            tokens: payout.amount,
+            vesting_id: self.recipient_tokens.release(payout, clock, ctx),
         });
     });
+}
+
+/// Pays one payout out of `self` to its recipient or, when it vests, locks it in a shared
+/// irrevocable linear schedule starting now and returns that schedule's ID.
+fun release<T>(
+    self: &mut Balance<T>,
+    payout: RecipientPayout,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): Option<ID> {
+    let RecipientPayout { recipient, amount, vesting } = payout;
+    if (vesting.is_none()) {
+        self.pay(amount, recipient, ctx);
+        return option::none()
+    };
+
+    let VestingTerms { cliff_ms, period_ms, periods } = vesting.destroy_some();
+    let schedule = linear_vesting::new_irrevocable(
+        self.split(amount).into_coin(ctx),
+        recipient,
+        clock.timestamp_ms(),
+        cliff_ms,
+        period_ms,
+        periods,
+        clock,
+        ctx,
+    );
+    let schedule_id = object::id(&schedule);
+
+    schedule.share();
+
+    option::some(schedule_id)
 }
 
 // Cancellation
@@ -1174,6 +1253,11 @@ public fun commitment_for_testing<SaleToken, Quote>(
 }
 
 #[test_only]
+public fun vesting_for_testing(share: &RecipientShare): Option<VestingTerms> {
+    share.vesting
+}
+
+#[test_only]
 public fun created_fields<SaleToken, Quote>(
     event: &PresaleCreated<SaleToken, Quote>,
 ): (ID, ID, ID, u64, u64, u64, u64, u64, u64, EligibilityPolicy) {
@@ -1226,6 +1310,13 @@ public fun created_protocol_fields<SaleToken, Quote>(
         event.protocol_quote,
         event.protocol_tokens,
     )
+}
+
+#[test_only]
+public fun created_vesting_fields<SaleToken, Quote>(
+    event: &PresaleCreated<SaleToken, Quote>,
+): (vector<Option<VestingTerms>>, vector<Option<VestingTerms>>) {
+    (event.recipient_vesting, event.raise_recipient_vesting)
 }
 
 #[test_only]
@@ -1295,6 +1386,27 @@ public fun raise_allocated_fields<SaleToken, Quote>(
 }
 
 #[test_only]
+public fun raise_allocated_vesting_id<SaleToken, Quote>(
+    event: &RaiseAllocated<SaleToken, Quote>,
+): Option<ID> {
+    event.vesting_id
+}
+
+#[test_only]
+public fun recipient_allocated_fields<SaleToken, Quote>(
+    event: &RecipientAllocated<SaleToken, Quote>,
+): (ID, address, u64) {
+    (event.presale_id, event.recipient, event.tokens)
+}
+
+#[test_only]
+public fun recipient_allocated_vesting_id<SaleToken, Quote>(
+    event: &RecipientAllocated<SaleToken, Quote>,
+): Option<ID> {
+    event.vesting_id
+}
+
+#[test_only]
 public fun protocol_fees_paid_fields<SaleToken, Quote>(
     event: &ProtocolFeesPaid<SaleToken, Quote>,
 ): (ID, address, u64, u64) {
@@ -1327,10 +1439,12 @@ public struct PresaleCreated<phantom SaleToken, phantom Quote> has copy, drop {
     liquidity_token_allocation_bps: u64,
     recipients: vector<address>,
     recipient_bps: vector<u64>,
+    recipient_vesting: vector<Option<VestingTerms>>,
     burnable: bool,
     raise_target: u64,
     raise_recipients: vector<address>,
     raise_recipient_bps: vector<u64>,
+    raise_recipient_vesting: vector<Option<VestingTerms>>,
     duration_ms: u64,
     liquidity_window_ms: u64,
     eligibility: EligibilityPolicy,
@@ -1403,18 +1517,22 @@ public struct ProtocolFeesPaid<phantom SaleToken, phantom Quote> has copy, drop 
     tokens: u64,
 }
 
-/// One configured recipient received its share of the raise.
+/// One configured recipient received its share of the raise, or the vesting schedule
+/// `vesting_id` that holds it.
 public struct RaiseAllocated<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
     recipient: address,
     quote: u64,
+    vesting_id: Option<ID>,
 }
 
-/// One configured recipient received its immutable token allocation.
+/// One configured recipient received its immutable token allocation, or the vesting schedule
+/// `vesting_id` that holds it.
 public struct RecipientAllocated<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
     recipient: address,
     tokens: u64,
+    vesting_id: Option<ID>,
 }
 
 /// `participant` received its token allocation and Quote refund.
@@ -1442,6 +1560,10 @@ const MAX_FEE_RECIPIENTS: u64 = 16;
 /// refund exit only after a week in which nobody migrated it, and a sale that nobody settled by
 /// its end cannot be settled and cancelled in one transaction inside that week.
 const MIN_LIQUIDITY_WINDOW_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
+
+/// A technical bound on a vesting schedule's duration: from any clock below 2^63 ms, about 292
+/// million years, the schedule's end still fits in u64, so migration cannot overflow creating it.
+const MAX_VESTING_DURATION_MS: u64 = 1 << 63;
 
 
 // === Errors ===
@@ -1501,7 +1623,7 @@ const ELiquidityDeadlineNotReached: vector<u8> = b"The deadline to cancel an unl
 const EInitialSupplyNotZero: vector<u8> = b"The supplied SaleToken TreasuryCap must have zero total supply.";
 
 #[error(code = 18)]
-const EInvalidFeeSplit: vector<u8> = b"Fee recipients must be unique, positive, bounded, and total 10,000 BPS with the holder-reward share.";
+const EInvalidFeeSplit: vector<u8> = b"Fee recipients must be unique, positive, unvested, bounded, and total 10,000 BPS with the holder-reward share.";
 
 #[error(code = 19)]
 const EWrongMigrationWitness: vector<u8> = b"The migrator does not match the venue fixed at presale creation.";
@@ -1528,7 +1650,12 @@ const EPresaleFilled: vector<u8> = b"The hard-capped presale has already reached
 #[error(code = 26)]
 const EInvalidRaiseAllocation: vector<u8> = b"Raise allocations must be unique, positive, bounded, leave the LP a share after Blast's, and apportion to positive amounts.";
 
+#[error(code = 27)]
+const EInvalidVestingTerms: vector<u8> = b"Vesting needs a positive period and period count, a cliff within its duration, and a duration of at most 2^63 milliseconds.";
+
 // === Imports ===
+
+use blast_fun_vesting::blast_fun_linear_vesting as linear_vesting;
 
 use blast_presale::{
     bps::{Self, Bps},
@@ -1551,6 +1678,7 @@ use sui::{
 };
 
 use fun pay as Balance.pay;
+use fun release as Balance.release;
 
 use fun dynamic_field::add as UID.add_dynamic_field;
 use fun dynamic_field::borrow_mut as UID.dynamic_field_mut;

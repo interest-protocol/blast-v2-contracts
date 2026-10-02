@@ -99,7 +99,7 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
     let meme_is_a = meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
 
     let (tick_spacing, _) = sale.pool_tier();
-    let (meme, quote) = sale.migrate(fee_policy, Witness(), ctx);
+    let (meme, quote) = sale.migrate(fee_policy, Witness(), clock, ctx);
 
     let meme_amount = meme.value();
     let quote_amount = quote.value();

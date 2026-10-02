@@ -83,7 +83,7 @@ public fun migrate<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     let (tick_spacing, pool_fee_rate) = sale.pool_tier();
-    let (meme, quote) = sale.migrate(fee_policy, Witness(), ctx);
+    let (meme, quote) = sale.migrate(fee_policy, Witness(), clock, ctx);
 
     let source_meme = meme.value();
     let source_quote = quote.value();
