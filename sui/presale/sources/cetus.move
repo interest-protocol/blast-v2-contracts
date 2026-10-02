@@ -37,6 +37,7 @@ public fun new<Meme, Quote>(
     uncapped: Option<UncappedPhase>,
     fee_recipients: vector<FeeRecipient>,
     holder_rewards_bps: Bps,
+    creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
     venue_config: &mut VenueConfig,
     cetus_config: &GlobalConfig,
@@ -76,6 +77,7 @@ public fun new<Meme, Quote>(
         pool_fee_rate,
         fee_recipients,
         holder_rewards_bps,
+        creation_policy,
         fee_policy,
         ctx,
     )
@@ -300,6 +302,7 @@ use blast_presale::{
         UncappedPhase,
     },
     bps::Bps,
+    creation_policy::CreationPolicy,
     fee_policy::FeePolicy,
     migration_math,
     presale_vault::{Self as vault, PresaleVault},

@@ -29,6 +29,10 @@ toward the 10,000 allocation BPS, and its raise share is apportioned with the ra
 recipients'. Nothing is charged at creation, on commitment, on refund, or if a
 sale does not migrate.
 
+Blast's shared `CreationPolicy` lists the Quote types and venue migration witnesses
+new presales may use; creation aborts for anything unlisted. It is checked only at
+creation, so delisting a type never affects a live sale.
+
 Every accepted commitment is locked in the presale's Quote custody. Participants cannot
 withdraw while a sale is open or funded. Underfunded sales, and funded sales
 cancelled after the LP deadline, refund every commitment; successfully migrated

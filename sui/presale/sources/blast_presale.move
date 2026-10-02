@@ -391,9 +391,11 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
     pool_fee_rate: u64,
     fee_recipients: vector<FeeRecipient>,
     holder_rewards_bps: Bps,
+    creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
     ctx: &mut TxContext,
 ): (Presale<SaleToken, Quote>, PresaleCap) {
+    creation_policy.assert_allowed<Quote, MigrationWitness>();
     let protocol_fees = fee_policy.fees();
     assert!(
         type_name::with_original_ids<SaleToken>() != type_name::with_original_ids<Quote>(),
@@ -1467,6 +1469,7 @@ const EInvalidRaiseAllocation: vector<u8> = b"Raise allocations must be unique, 
 
 use blast_presale::{
     bps::{Self, Bps},
+    creation_policy::CreationPolicy,
     fee_policy::{FeePolicy, ProtocolFees},
     merkle_tree,
     migration_math,

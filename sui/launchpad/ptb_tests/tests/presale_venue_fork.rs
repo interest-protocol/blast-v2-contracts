@@ -204,6 +204,61 @@ fn run_near_equal(route: Route) -> Result<()> {
     Ok(())
 }
 
+/// Production admin path: the publisher's SuperAdminCap grants one AdminCap the presale
+/// `FeeAdmin` role, which allows the route's Quote type and migration witness for new presales.
+fn allow_route(
+    h: &mut Harness,
+    admin: ObjectID,
+    admin_published: &Outcome,
+    presale: ObjectID,
+    creation_policy: ObjectID,
+    route: Route,
+) -> Result<()> {
+    let acl = admin_published.created(h, "blast_acl", "ACL");
+    let root = admin_published.created(h, "blast_acl", "SuperAdminCap");
+    ensure!(acl.len() == 1 && root.len() == 1);
+    let (acl, root) = (acl[0], root[0]);
+
+    let mut b = ProgrammableTransactionBuilder::new();
+    let acl_arg = b.obj(h.shared(acl, true))?;
+    let root_arg = b.obj(h.owned(root))?;
+    let recipient = b.pure(h.sender)?;
+    call(&mut b, admin, "blast_acl", "grant_admin", vec![], vec![acl_arg, root_arg, recipient]);
+    let granted = h.execute(b.finish())?;
+    granted.assert_success();
+    let admin_cap = granted.created(h, "blast_acl", "AdminCap");
+    ensure!(admin_cap.len() == 1);
+    let admin_cap = admin_cap[0];
+
+    let fee_admin = tag(&format!("{presale}::blast_presale_domain::FeeAdmin"));
+    let mut b = ProgrammableTransactionBuilder::new();
+    let acl_arg = b.obj(h.shared(acl, true))?;
+    let root_arg = b.obj(h.owned(root))?;
+    let admin_cap_id = b.pure(admin_cap)?;
+    call(&mut b, admin, "blast_acl", "grant_role", vec![fee_admin.clone()], vec![acl_arg, root_arg, admin_cap_id]);
+    h.execute(b.finish())?.assert_success();
+
+    let mut b = ProgrammableTransactionBuilder::new();
+    let acl_arg = b.obj(h.shared(acl, false))?;
+    let admin_cap_arg = b.obj(h.owned(admin_cap))?;
+    let witness = call(&mut b, admin, "blast_acl", "sign_in", vec![fee_admin], vec![acl_arg, admin_cap_arg]);
+    let policy = b.obj(h.shared(creation_policy, true))?;
+    let allowed = b.pure(true)?;
+    call(&mut b, presale, "creation_policy", "set_quote_allowed", vec![route.quote()], vec![policy, witness, allowed]);
+    let migration_witness = tag(&format!("{presale}::{}::Witness", route.module()));
+    call(
+        &mut b,
+        presale,
+        "creation_policy",
+        "set_migration_witness_allowed",
+        vec![migration_witness],
+        vec![policy, witness, allowed],
+    );
+    h.execute(b.finish())?.assert_success();
+
+    Ok(())
+}
+
 // === Routes and terms ===
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -360,6 +415,7 @@ struct World {
     venue: BTreeMap<String, ObjectID>,
     presale: ObjectID,
     venue_config: ObjectID,
+    creation_policy: ObjectID,
     fee_policy: ObjectID,
     token: CompiledPackage,
     coins: u64,
@@ -377,7 +433,8 @@ impl World {
 
         let timelock_dir = timelock_dir()?;
         let (timelock, _) = h.publish(build_timelock(&work)?)?;
-        let (admin, _) = h.publish(build(&sui_dir().join("admin"), &[(&timelock_dir, timelock)], &work)?)?;
+        let (admin, admin_published) =
+            h.publish(build(&sui_dir().join("admin"), &[(&timelock_dir, timelock)], &work)?)?;
         let mut dependencies = vec![ObjectID::from_single_byte(1), ObjectID::from_single_byte(2), timelock, admin];
         dependencies.extend(venue_dependencies(&h)?);
         let linked = presale().link(&[("blast_fun_timelock", timelock), ("blast_admin", admin)], dependencies)?;
@@ -386,6 +443,9 @@ impl World {
         ensure!(venue_config.len() == 1 && h.object(venue_config[0]).is_shared());
         let fee_policy = published.created(&h, "fee_policy", "FeePolicy");
         ensure!(fee_policy.len() == 1 && h.object(fee_policy[0]).is_shared());
+        let creation_policy = published.created(&h, "creation_policy", "CreationPolicy");
+        ensure!(creation_policy.len() == 1 && h.object(creation_policy[0]).is_shared());
+        allow_route(&mut h, admin, &admin_published, presale, creation_policy[0], route)?;
         let token = build(&Path::new(env!("CARGO_MANIFEST_DIR")).join("fixture/presale_token"), &[], &work)?;
 
         Ok(World {
@@ -395,6 +455,7 @@ impl World {
             venue,
             presale,
             venue_config: venue_config[0],
+            creation_policy: creation_policy[0],
             fee_policy: fee_policy[0],
             token,
             coins: 0,
@@ -591,6 +652,7 @@ impl World {
             uncapped,
             fee_recipients,
             self.bps(&mut b, HOLDER_REWARDS_BPS)?,
+            self.shared(&mut b, self.creation_policy, false)?,
             self.shared(&mut b, self.fee_policy, false)?,
         ];
         let (tick_spacing, fee_rate) = self.route.tier();
