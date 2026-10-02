@@ -726,7 +726,7 @@ if [[ ! -f sources/package_version.move ]] \
   || rg -n '^public\(package\) fun activate\(' <<<"$package_version_production" \
   || ! rg -Fq 'self.generation.assert_current(PACKAGE_VERSION);' sources/package_version.move \
   || ! rg -Fq 'self.generation.assert_next(NEXT_PACKAGE_VERSION);' sources/package_version.move \
-  || ! rg -Fq 'self.generation.advance(container_id, NEXT_PACKAGE_VERSION);' \
+  || ! rg -Fq 'self.generation.advance(&self.id, NEXT_PACKAGE_VERSION);' \
     sources/package_version.move \
   || ! rg -Fq 'generation: operational_version::new(),' sources/package_version.move \
   || rg -n '\.checked_add\(|events::' <<<"$package_version_production"; then
