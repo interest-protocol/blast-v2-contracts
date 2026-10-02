@@ -19,7 +19,8 @@ const NEW_TREASURY: address = @0x7EA6;
 const START_MS: u64 = 1_000;
 const DURATION_MS: u64 = 100;
 const END_MS: u64 = START_MS + DURATION_MS;
-const LIQUIDITY_WINDOW_MS: u64 = 50;
+/// The shortest window `new` accepts, so every fixture also pins the seven-day floor.
+const LIQUIDITY_WINDOW_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 const LIQUIDITY_DEADLINE_MS: u64 = END_MS + LIQUIDITY_WINDOW_MS;
 const UNCAPPED_AFTER_MS: u64 = 50;
 const UNCAPPED_FROM_MS: u64 = START_MS + UNCAPPED_AFTER_MS;
@@ -425,14 +426,15 @@ fun the_commitment_that_fills_a_hard_cap_may_be_below_the_minimum() {
 }
 
 #[test]
-/// An uncapped phase open to anyone admits wallets outside the allowlist.
+/// An uncapped phase open to anyone admits wallets outside the allowlist. Its four slots beyond
+/// the one leaf reach the raise at the minimum.
 fun an_uncapped_phase_open_to_anyone_admits_wallets_outside_the_allowlist() {
     let alice_leaf = presale::allowlist_leaf_for_testing(0, ALICE, 500);
     let mut fixture = start_configured(
         RAISE_TARGET,
         vector[],
         presale::allowlisted_eligibility(alice_leaf, 1),
-        option::some(presale::uncapped_for_anyone(UNCAPPED_AFTER_MS, 4, RAISE_TARGET / 4, false)),
+        option::some(presale::uncapped_for_anyone(UNCAPPED_AFTER_MS, 5, RAISE_TARGET / 4, false)),
         false,
     );
     fixture.commit_allowlisted(ALICE, 500, 0, 500, vector[]);
@@ -512,6 +514,35 @@ fun an_open_uncapped_phase_whose_slots_cannot_reach_the_raise_is_rejected() {
         option::some(presale::uncapped_for_anyone(UNCAPPED_AFTER_MS, 4, RAISE_TARGET / 4 - 1, false)),
         false,
     ).end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EUnreachableRaise, location = blast_presale::blast_presale)]
+/// Allowlisted wallets may commit any positive amount, so only the phase slots beyond the
+/// allowlist count toward reaching the raise: three slots at a quarter of it do not.
+fun an_open_uncapped_phase_counts_only_the_slots_beyond_the_allowlist() {
+    let alice_leaf = presale::allowlist_leaf_for_testing(0, ALICE, 500);
+
+    start_configured(
+        RAISE_TARGET,
+        vector[],
+        presale::allowlisted_eligibility(alice_leaf, 1),
+        option::some(presale::uncapped_for_anyone(UNCAPPED_AFTER_MS, 4, RAISE_TARGET / 4, false)),
+        false,
+    ).end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidWindow, location = blast_presale::blast_presale)]
+fun a_zero_commitment_window_is_rejected() {
+    create_with_windows(0, LIQUIDITY_WINDOW_MS);
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidWindow, location = blast_presale::blast_presale)]
+/// A shorter LP window would let one transaction settle and cancel a sale nobody settled in time.
+fun a_liquidity_window_below_seven_days_is_rejected() {
+    create_with_windows(DURATION_MS, LIQUIDITY_WINDOW_MS - 1);
 }
 
 #[test]
@@ -1420,6 +1451,43 @@ fun create_with_fee_split(fee_recipients: vector<RecipientShare>, holder_rewards
         POOL_FEE_RATE,
         fee_recipients,
         bps::new(holder_rewards_bps),
+        &creation_policy,
+        &fee_policy,
+        &mut ctx,
+    );
+    destroy(sale);
+    destroy(cap);
+    destroy(currency);
+    destroy(fee_policy);
+    destroy(creation_policy);
+    destroy(ctx);
+}
+
+fun create_with_windows(duration_ms: u64, liquidity_window_ms: u64) {
+    let mut ctx = tx_context::dummy();
+    let (treasury_cap, mut currency) = new_currency(&mut ctx);
+    let fee_policy = fee_policy::new_for_testing(&mut ctx);
+    let creation_policy = creation_policy::allowing_for_testing<QUOTE, TEST_MIGRATOR>(&mut ctx);
+
+    let (sale, cap) = presale::new<BLAST_PRESALE_TESTS, QUOTE, TEST_MIGRATOR>(
+        treasury_cap,
+        &mut currency,
+        TOKEN_SUPPLY,
+        bps::new(TOKEN_ALLOCATION_BPS),
+        bps::new(LIQUIDITY_TOKEN_ALLOCATION_BPS),
+        recipient_allocations(),
+        false,
+        RAISE_TARGET,
+        vector[],
+        duration_ms,
+        liquidity_window_ms,
+        presale::open_eligibility(WALLET_CAP, 1, RAISE_TARGET),
+        option::none(),
+        TEST_MIGRATOR(),
+        TICK_SPACING,
+        POOL_FEE_RATE,
+        fee_recipients(),
+        bps::new(HOLDER_REWARDS_BPS),
         &creation_policy,
         &fee_policy,
         &mut ctx,

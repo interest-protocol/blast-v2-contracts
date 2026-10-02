@@ -3,7 +3,14 @@
 - Status: accepted
 - Date: 2026-09-29
 - Amended by: [0101](0101-presale-protocol-fees.md): Blast takes admin-set,
-  creation-snapshotted shares of the raise, the token supply, and LP fees
+  creation-snapshotted shares of the raise, the token supply, and LP fees;
+  [0102](0102-presale-creation-allowlists.md): Blast allowlists the Quote types
+  and migrators new presales may use
+- Amended: 2026-10-02, after the pre-launch security review (owner rulings of
+  the same day): the LP-migration window has a seven-day floor; an
+  open-to-anyone phase under an allowlist must reach the raise with the slots
+  beyond the allowlist's leaves; venue incentive rewards are deliberately not
+  collected; regulated Quote and sale coins are vetted off chain
 
 ## Context
 
@@ -61,7 +68,8 @@ apportionment so every atomic unit is assigned exactly once, and escrows every
 allocation. It then irreversibly consumes the TreasuryCap into the selected Coin
 Registry `Fixed` or `BurnOnly` supply state before commitments open. The remaining
 immutable per-sale configuration contains a positive Quote raise, a commitment
-duration, an LP-migration window, a sealed migration witness, venue tier, an
+duration, an LP-migration window of at least seven days
+(`MIN_LIQUIDITY_WINDOW_MS`), a sealed migration witness, venue tier, an
 LP-fee split, and an `EligibilityPolicy`. The fee split is up to 16 distinct
 `(recipient, bps)` fee recipients, the creator configured as one of them, and a
 holder-reward BPS; together they total exactly 10,000.
@@ -88,8 +96,12 @@ A sale may add an `UncappedPhase` starting `starts_after_ms` into the window,
 from which wallet caps no longer apply. Its access is either `Eligible` (only
 wallets the policy admits, through `commit_open` or `commit_allowlisted`) or
 `Anyone` (any wallet, also through `commit_uncapped`, with its own participant
-bound and minimum; the bound must be at least the policy's and
-`min_commitment * max_participants` must reach the raise). With `hard_cap`, a
+bound and minimum; the bound must be at least the policy's, and the minimum
+must reach the raise over the slots held to it: every slot under an open
+policy, whose wallets already meet a minimum that reaches the raise, and only
+the slots beyond the leaf count under an allowlist, whose wallets may commit
+any positive amount, so a phase that admits no wallet beyond an allowlist is
+rejected). With `hard_cap`, a
 commitment in the phase accepts only what is left of the raise and returns the
 excess as a coin in the same call, the one commitment that exactly fills the
 raise may be below the minimum, and a full sale rejects further Quote
@@ -144,7 +156,12 @@ supplied by the migration caller.
 
 If a funded sale is not migrated by the deadline, anyone can cancel it from
 then on. Until someone does, migration stays open, so after the deadline the
-first of a migration or a cancellation wins. Settlement cancels only an
+first of a migration or a cancellation wins. The window is at least seven
+days, so a sale that nobody settled by its end can be settled and cancelled in
+one transaction only after a week in which nobody migrated or settled it
+(owner, 2026-10-02: a successful raise must not be cancellable through a short
+window, and the exit stays because a venue outage that outlasts a relink is the
+only way a funded sale cannot migrate). Settlement cancels only an
 underfunded sale; a sale that met its raise and is first settled after the
 deadline becomes funded and may still migrate or be cancelled. Cancellation never
 releases Quote to the creator; participants receive full refunds, while the cap
@@ -219,9 +236,19 @@ generic positional Blake2b-256 module verifies eligibility and rewards. The
   Registry supply mode; a creator who retries must deploy a new coin type.
 - The generic package cannot remove a Quote issuer's deny, pause, or supply
   powers. Such controls can block an affected wallet's transfer, although an
-  aborted claim leaves its on-chain commitment and escrow intact for retry. A
-  Quote issuer that lengthens its symbol or icon can also block Bluefin
-  migration, which then ends in cancellation and full refunds.
+  aborted claim leaves its on-chain commitment and escrow intact for retry.
+  Payouts are pushed, so a denied fee recipient blocks that vault's collection
+  and a denied raise recipient blocks migration until the LP deadline. A
+  regulated sale coin gives its creator the same power over participants'
+  post-migration claims. Blast therefore allowlists only Quote types whose
+  controls it accepts and vets each sale coin's `Currency` regulated state off
+  chain (owner, 2026-10-02). A Quote issuer that lengthens its icon can also
+  block Bluefin migration, which then ends in cancellation and full refunds;
+  the Coin Registry has no symbol setter.
+- Neither adapter collects venue incentive rewards credited to the custodied
+  position, as in the migrators (ADR 0088). Under dependency-only custody no
+  later generation can add a collection path, so such rewards stay with the
+  position.
 - Venue operators are trusted for liveness, not custody: a Cetus deny-list
   entry, a paused Bluefin pool, or a venue version bump blocks migration or fee
   collection until an `UpgradeAdmin` relinks the package or, before migration,
@@ -244,6 +271,9 @@ generic positional Blake2b-256 module verifies eligibility and rewards. The
   administrator-published holder rounds, round deadlines and closing, minimum
   commitments and reachable raises, seedable prices, Cetus coin-order routing
   and checked retyping, generic Merkle proofs, and relayed holder rewards.
+- Unit tests also pin the seven-day LP-window floor (one millisecond below it is
+  rejected, and every fixture opens at the floor) and an allowlisted
+  anyone-phase whose slots beyond the leaves cannot reach the raise.
 - The package gate checks source boundaries (ACL roles and sealed
   dependency-only custody), builds both network environments, lints with
   warnings as errors, and runs Move tests.

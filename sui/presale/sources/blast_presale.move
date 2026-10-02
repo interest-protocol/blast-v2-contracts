@@ -23,8 +23,10 @@ public enum EligibilityPolicy has copy, drop, store {
 public enum UncappedAccess has copy, drop, store {
     /// Only wallets the sale's eligibility policy admits, without their caps.
     Eligible,
-    /// Any wallet, bounded like an open policy: `min_commitment * max_participants`
-    /// must reach the raise so dust cannot lock buyers out.
+    /// Any wallet, bounded like an open policy: `min_commitment` over the slots held to it must
+    /// reach the raise so dust cannot lock buyers out. Every slot counts under an open policy;
+    /// under an allowlist only the slots beyond its leaves do, since allowlisted wallets may
+    /// commit any positive amount.
     Anyone { max_participants: u64, min_commitment: u64 },
 }
 
@@ -400,7 +402,7 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         &recipient_allocations,
     );
     assert_fee_split(&fee_recipients, holder_rewards_bps);
-    assert!(duration_ms > 0 && liquidity_window_ms > 0, EInvalidWindow);
+    assert!(duration_ms > 0 && liquidity_window_ms >= MIN_LIQUIDITY_WINDOW_MS, EInvalidWindow);
     assert!(eligibility.can_reach(raise_target), EUnreachableRaise);
     uncapped.do_ref!(|phase| assert_uncapped_phase(phase, duration_ms, eligibility, raise_target));
 
@@ -700,7 +702,7 @@ fun total_bps(shares: &vector<RecipientShare>): u64 {
 }
 
 /// The phase starts inside the window, and an open-to-anyone phase admits at least the
-/// policy's wallets while its minimum over its participant bound still reaches the raise.
+/// policy's wallets while its minimum over the slots held to it still reaches the raise.
 fun assert_uncapped_phase(
     phase: &UncappedPhase,
     duration_ms: u64,
@@ -711,7 +713,10 @@ fun assert_uncapped_phase(
     match (phase.access) {
         UncappedAccess::Anyone { max_participants, min_commitment } => {
             assert!(max_participants >= eligibility.participant_bound(), EInvalidUncappedPhase);
-            assert!(reaches(min_commitment, max_participants, raise_target), EUnreachableRaise);
+            assert!(
+                reaches(min_commitment, eligibility.slots_at_minimum(max_participants), raise_target),
+                EUnreachableRaise,
+            );
         },
         UncappedAccess::Eligible => (),
     }
@@ -722,6 +727,17 @@ fun participant_bound(self: EligibilityPolicy): u64 {
     match (self) {
         EligibilityPolicy::Open { max_participants, .. } => max_participants,
         EligibilityPolicy::Allowlisted { leaf_count, .. } => leaf_count,
+    }
+}
+
+/// The slots of an open-to-anyone phase whose commitments are held to the phase minimum: every
+/// slot under an open policy, whose wallets already meet a minimum that reaches the raise, and
+/// the slots beyond the leaf count under an allowlist, whose wallets may commit any positive
+/// amount. The phase bound is at least the policy's, so the subtraction cannot underflow.
+fun slots_at_minimum(self: EligibilityPolicy, max_participants: u64): u64 {
+    match (self) {
+        EligibilityPolicy::Open { .. } => max_participants,
+        EligibilityPolicy::Allowlisted { leaf_count, .. } => max_participants - leaf_count,
     }
 }
 
@@ -1374,6 +1390,11 @@ const MAX_RECIPIENTS: u64 = 64;
 /// Bounds the transfers one fee collection makes.
 const MAX_FEE_RECIPIENTS: u64 = 16;
 
+/// The shortest LP-migration window. Migration is permissionless, so a funded sale reaches its
+/// refund exit only after a week in which nobody migrated it, and a sale that nobody settled by
+/// its end cannot be settled and cancelled in one transaction inside that week.
+const MIN_LIQUIDITY_WINDOW_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
+
 
 // === Errors ===
 
@@ -1387,7 +1408,7 @@ const EInvalidRaiseTarget: vector<u8> = b"The raise target must be positive.";
 const EInvalidTokenAllocation: vector<u8> = b"The supply must be positive, and token allocations unique, positive, bounded, totalling exactly 10,000 BPS with Blast's share, and apportioning to positive amounts.";
 
 #[error(code = 3)]
-const EInvalidWindow: vector<u8> = b"Commitment and liquidity windows must be positive and fit in u64 milliseconds.";
+const EInvalidWindow: vector<u8> = b"The commitment window must be positive, the liquidity window at least seven days, and both must fit in u64 milliseconds.";
 
 #[error(code = 4)]
 const EInvalidEligibilityPolicy: vector<u8> = b"The eligibility policy has an invalid cap, participant bound, root, or leaf count.";
@@ -1442,7 +1463,7 @@ const EWrongMigrationWitness: vector<u8> = b"The migrator does not match the ven
 const EBelowMinimumCommitment: vector<u8> = b"The wallet's total commitment is below the sale's minimum commitment.";
 
 #[error(code = 21)]
-const EUnreachableRaise: vector<u8> = b"The minimum commitment times the participant bound of an open policy or an open-to-anyone phase must reach the raise target.";
+const EUnreachableRaise: vector<u8> = b"The minimum commitment times the slots held to it, the participant bound of an open policy or the open-to-anyone phase slots beyond any allowlist, must reach the raise target.";
 
 #[error(code = 22)]
 const EUnseedablePrice: vector<u8> = b"The raise and LP-token allocation give a seed price the venues cannot pool.";
