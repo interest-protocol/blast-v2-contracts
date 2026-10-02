@@ -17,6 +17,7 @@ fun wrapping_restricts_upgrades_to_dependency_relinks() {
     let admin = package_admin::new_for_testing(&mut ctx);
 
     assert_eq!(admin.policy_for_testing(), sui::package::dep_only_policy());
+
     admin.destroy_for_testing();
     destroy(ctx);
 }

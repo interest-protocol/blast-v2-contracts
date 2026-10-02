@@ -44,6 +44,7 @@ public fun claim_migration_residuals<Meme, Quote>(
             || self.migration_quote_residual.value() > 0,
         ENoMigrationResiduals,
     );
+
     let meme = self.migration_meme_residual.withdraw_all().into_coin(ctx);
     let quote = self.migration_quote_residual.withdraw_all().into_coin(ctx);
 
@@ -74,9 +75,6 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
 
     let (presale_id, presale_cap_id, fee_recipients, holder_rewards_bps, protocol_fees) = sale
         .vault_config();
-    let position_id = object::id(&position);
-    let fee_recipient_addresses = presale::share_recipients(&fee_recipients);
-    let fee_recipient_bps = presale::share_bps(&fee_recipients);
     let mut vault = PresaleVault {
         id: object::new(ctx),
         presale_id,
@@ -92,27 +90,24 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
         next_round: 0,
         last_checkpoint: option::none(),
     };
-    let vault_id = vault.id.to_inner();
-    let migration_meme_residual = vault.migration_meme_residual.value();
-    let migration_quote_residual = vault.migration_quote_residual.value();
-
-    vault.id.add_dynamic_object_field(PositionKey<Venue>(), position);
-    transfer::share_object(vault);
 
     event::emit(PresaleVaultCreated<Meme, Quote, Venue> {
-        vault_id,
+        vault_id: vault.id.to_inner(),
         presale_id,
         pool_id,
-        position_id,
+        position_id: object::id(&position),
         liquidity,
-        fee_recipients: fee_recipient_addresses,
-        fee_recipient_bps,
+        fee_recipients: presale::share_recipients(&vault.fee_recipients),
+        fee_recipient_bps: presale::share_bps(&vault.fee_recipients),
         holder_rewards_bps: holder_rewards_bps.value(),
         protocol_lp_fee_meme_bps: protocol_fees.lp_fee_meme_bps().value(),
         protocol_lp_fee_quote_bps: protocol_fees.lp_fee_quote_bps().value(),
-        migration_meme_residual,
-        migration_quote_residual,
+        migration_meme_residual: vault.migration_meme_residual.value(),
+        migration_quote_residual: vault.migration_quote_residual.value(),
     });
+
+    vault.id.add_dynamic_object_field(PositionKey<Venue>(), position);
+    transfer::share_object(vault);
 }
 
 /// Borrows the custodied venue position without exposing a removal path.

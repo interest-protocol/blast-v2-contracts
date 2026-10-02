@@ -44,6 +44,7 @@ fun a_cast_to_the_same_type_returns_the_value() {
     );
 
     assert_eq!(meme.destroy_for_testing(), 7);
+
     scratch.delete();
     destroy(ctx);
 }

@@ -105,7 +105,7 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
     let quote_amount = quote.value();
     let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
     let sqrt_price = migration_math::sqrt_price_x64(meme_amount, quote_amount, meme_is_a);
-    let fix_a = fixed_side_is_a(
+    let fix_coin_a = fixed_side_is_a(
         tick_lower,
         tick_upper,
         sqrt_price,
@@ -121,10 +121,7 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
         meme_is_a,
     );
 
-    let (position, residual_a, residual_b) = pool_creator::create_pool_v3_with_creation_cap<
-        CoinA,
-        CoinB,
-    >(
+    let (position, residual_a, residual_b) = pool_creator::create_pool_v3_with_creation_cap(
         cetus_config,
         pools,
         venue_config.pool_creation_cap<Meme>(),
@@ -135,7 +132,7 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
         tick_upper,
         coin_a.into_coin(ctx),
         coin_b.into_coin(ctx),
-        fix_a,
+        fix_coin_a,
         clock,
         ctx,
     );
@@ -183,10 +180,16 @@ public fun collect_fees<Meme, Quote, CoinA, CoinB>(
 /// Whether Meme is `CoinA`, after proving `(CoinA, CoinB)` is exactly the presale's pair.
 fun meme_is_coin_a<Meme, Quote, CoinA, CoinB>(): bool {
     let (meme, quote) = (type_name::with_original_ids<Meme>(), type_name::with_original_ids<Quote>());
-    let (a, b) = (type_name::with_original_ids<CoinA>(), type_name::with_original_ids<CoinB>());
-    assert!((meme == a && quote == b) || (meme == b && quote == a), EWrongCoinPair);
+    let (coin_a, coin_b) = (
+        type_name::with_original_ids<CoinA>(),
+        type_name::with_original_ids<CoinB>(),
+    );
+    assert!(
+        (meme == coin_a && quote == coin_b) || (meme == coin_b && quote == coin_a),
+        EWrongCoinPair,
+    );
 
-    meme == a
+    meme == coin_a
 }
 
 /// Chooses the side to fix, preferring the side with more atoms, Meme on a tie: a full-range
