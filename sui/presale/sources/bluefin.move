@@ -30,17 +30,17 @@ public fun new<Meme, Quote>(
     eligibility: EligibilityPolicy,
     uncapped: Option<UncappedPhase>,
     fee_recipients: vector<FeeRecipient>,
-    rewards_fee_bps: Bps,
+    holder_rewards_bps: Bps,
     fee_policy: &FeePolicy,
     tick_spacing: u32,
-    fee_rate: u64,
+    pool_fee_rate: u64,
     ctx: &mut TxContext,
 ): (Presale<Meme, Quote>, PresaleCap) {
     assert!(
         tick_spacing > 0
             && tick_spacing <= MAX_TICK_SPACING
-            && fee_rate > 0
-            && fee_rate <= MAX_FEE_RATE,
+            && pool_fee_rate > 0
+            && pool_fee_rate <= MAX_POOL_FEE_RATE,
         EInvalidTier,
     );
     assert!(currency.symbol().length() <= MAX_MEME_SYMBOL_LENGTH, ESymbolTooLong);
@@ -61,9 +61,9 @@ public fun new<Meme, Quote>(
         uncapped,
         Witness(),
         tick_spacing,
-        fee_rate,
+        pool_fee_rate,
         fee_recipients,
-        rewards_fee_bps,
+        holder_rewards_bps,
         fee_policy,
         ctx,
     )
@@ -80,7 +80,7 @@ public fun migrate<Meme, Quote>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let (tick_spacing, fee_rate) = sale.pool_tier();
+    let (tick_spacing, pool_fee_rate) = sale.pool_tier();
     let (meme, quote) = sale.migrate(fee_policy, Witness(), ctx);
 
     let source_meme = meme.value();
@@ -99,7 +99,7 @@ public fun migrate<Meme, Quote>(
         quote_currency.decimals(),
         quote_currency.icon_url().into_bytes(),
         tick_spacing,
-        fee_rate,
+        pool_fee_rate,
         migration_math::sqrt_price_x64(source_meme, source_quote, true),
         creation_fee.into_balance(),
         ctx,
@@ -206,7 +206,7 @@ fun fixes_meme<Meme, Quote>(
 // === Constants ===
 
 const MAX_TICK_SPACING: u32 = 400;
-const MAX_FEE_RATE: u64 = 20_000;
+const MAX_POOL_FEE_RATE: u64 = 20_000;
 
 /// Bluefin stores the pool name, built from this symbol, twice in every `Position`; the
 /// bound keeps a migrated position inside Sui's object size limit (ADR 0088).

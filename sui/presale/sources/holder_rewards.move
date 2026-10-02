@@ -11,12 +11,12 @@ module blast_presale::holder_rewards;
 /// closes the round after its deadline, which returns whatever is unclaimed to the vault.
 public struct Round<phantom Meme, phantom Quote> has key {
     id: UID,
-    vault: ID,
+    vault_id: ID,
     number: u64,
     claim_deadline_ms: u64,
     root: vector<u8>,
     leaf_count: u64,
-    claimed: vector<u256>,
+    claimed_bitmap: vector<u256>,
     meme: Balance<Meme>,
     quote: Balance<Quote>,
 }
@@ -57,17 +57,17 @@ public fun publish_round<Meme, Quote>(
     let (meme, quote) = vault.fund_round(end_checkpoint, meme_amount, quote_amount);
     let round = Round {
         id: object::new(ctx),
-        vault: vault_id,
+        vault_id,
         number,
         claim_deadline_ms,
         root,
         leaf_count,
-        claimed: unclaimed(leaf_count),
+        claimed_bitmap: unclaimed(leaf_count),
         meme,
         quote,
     };
     let round_id = round.id.to_inner();
-    let (meme_unallocated, quote_unallocated) = vault.rewards_balances();
+    let (meme_unallocated, quote_unallocated) = vault.holder_rewards_balances();
 
     transfer::share_object(round);
 
@@ -100,17 +100,17 @@ public fun claim<Meme, Quote>(
 ) {
     assert!(index < self.leaf_count, EInvalidIndex);
     let (word, bit) = claim_bit(index);
-    assert!(self.claimed[word] & bit == 0, EAlreadyClaimed);
+    assert!(self.claimed_bitmap[word] & bit == 0, EAlreadyClaimed);
     assert!(beneficiary != @0x0, EInvalidBeneficiary);
     assert!(meme_amount > 0 || quote_amount > 0, EEmptyBudget);
 
-    let leaf = leaf(self.vault, self.number, index, beneficiary, meme_amount, quote_amount);
+    let leaf = leaf(self.vault_id, self.number, index, beneficiary, meme_amount, quote_amount);
     assert!(
         merkle_tree::verify(self.root, leaf, index, self.leaf_count, &proof),
         EInvalidProof,
     );
 
-    *&mut self.claimed[word] = self.claimed[word] | bit;
+    *&mut self.claimed_bitmap[word] = self.claimed_bitmap[word] | bit;
     self.meme.pay(meme_amount, beneficiary, ctx);
     self.quote.pay(quote_amount, beneficiary, ctx);
 
@@ -133,12 +133,12 @@ public fun close_round<Meme, Quote>(
     vault: &mut PresaleVault<Meme, Quote>,
     clock: &Clock,
 ) {
-    assert!(self.vault == object::id(vault), EWrongVault);
+    assert!(self.vault_id == object::id(vault), EWrongVault);
     assert!(clock.timestamp_ms() >= self.claim_deadline_ms, EClaimsStillOpen);
 
-    let Round { id, vault: vault_id, number, meme, quote, .. } = self;
+    let Round { id, vault_id, number, meme, quote, .. } = self;
     let (meme_returned, quote_returned) = (meme.value(), quote.value());
-    vault.restore_rewards(meme, quote);
+    vault.restore_holder_rewards(meme, quote);
 
     event::emit(RoundClosed<Meme, Quote> {
         vault_id,
@@ -164,7 +164,7 @@ fun claim_bit(index: u64): (u64, u256) {
 }
 
 fun leaf(
-    vault: ID,
+    vault_id: ID,
     round: u64,
     index: u64,
     beneficiary: address,
@@ -172,7 +172,7 @@ fun leaf(
     quote: u64,
 ): vector<u8> {
     let mut bytes = b"\x00blast-presale-holder-rewards-v1";
-    bytes.append(bcs::to_bytes(&vault));
+    bytes.append(bcs::to_bytes(&vault_id));
     bytes.append(bcs::to_bytes(&round));
     bytes.append(bcs::to_bytes(&index));
     bytes.append(bcs::to_bytes(&beneficiary));
@@ -185,7 +185,7 @@ fun leaf(
 
 #[test_only]
 public fun new_for_testing<Meme, Quote>(
-    vault: ID,
+    vault_id: ID,
     number: u64,
     claim_deadline_ms: u64,
     root: vector<u8>,
@@ -196,12 +196,12 @@ public fun new_for_testing<Meme, Quote>(
 ): Round<Meme, Quote> {
     Round {
         id: object::new(ctx),
-        vault,
+        vault_id,
         number,
         claim_deadline_ms,
         root,
         leaf_count,
-        claimed: unclaimed(leaf_count),
+        claimed_bitmap: unclaimed(leaf_count),
         meme,
         quote,
     }
@@ -211,12 +211,12 @@ public fun new_for_testing<Meme, Quote>(
 public fun destroy_for_testing<Meme, Quote>(self: Round<Meme, Quote>) {
     let Round {
         id,
-        vault: _,
+        vault_id: _,
         number: _,
         claim_deadline_ms: _,
         root: _,
         leaf_count: _,
-        claimed: _,
+        claimed_bitmap: _,
         meme,
         quote,
     } = self;
@@ -227,14 +227,14 @@ public fun destroy_for_testing<Meme, Quote>(self: Round<Meme, Quote>) {
 
 #[test_only]
 public fun leaf_for_testing(
-    vault: ID,
+    vault_id: ID,
     round: u64,
     index: u64,
     beneficiary: address,
     meme: u64,
     quote: u64,
 ): vector<u8> {
-    leaf(vault, round, index, beneficiary, meme, quote)
+    leaf(vault_id, round, index, beneficiary, meme, quote)
 }
 
 #[test_only]

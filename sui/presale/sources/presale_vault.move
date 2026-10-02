@@ -20,12 +20,12 @@ public struct PresaleVault<phantom Meme, phantom Quote> has key {
     presale_cap_id: ID,
     pool_id: ID,
     fee_recipients: vector<FeeRecipient>,
-    rewards_fee_bps: Bps,
+    holder_rewards_bps: Bps,
     protocol_fees: ProtocolFees,
     migration_meme_residual: Balance<Meme>,
     migration_quote_residual: Balance<Quote>,
-    rewards_meme: Balance<Meme>,
-    rewards_quote: Balance<Quote>,
+    holder_rewards_meme: Balance<Meme>,
+    holder_rewards_quote: Balance<Quote>,
     next_round: u64,
     last_checkpoint: Option<u64>,
 }
@@ -72,7 +72,7 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
 ) {
     assert!(liquidity > 0, EZeroLiquidity);
 
-    let (presale_id, presale_cap_id, fee_recipients, rewards_fee_bps, protocol_fees) = sale
+    let (presale_id, presale_cap_id, fee_recipients, holder_rewards_bps, protocol_fees) = sale
         .vault_config();
     let position_id = object::id(&position);
     let fee_recipient_addresses = presale::fee_recipient_addresses(&fee_recipients);
@@ -83,12 +83,12 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
         presale_cap_id,
         pool_id,
         fee_recipients,
-        rewards_fee_bps,
+        holder_rewards_bps,
         protocol_fees,
         migration_meme_residual,
         migration_quote_residual,
-        rewards_meme: balance::zero(),
-        rewards_quote: balance::zero(),
+        holder_rewards_meme: balance::zero(),
+        holder_rewards_quote: balance::zero(),
         next_round: 0,
         last_checkpoint: option::none(),
     };
@@ -107,9 +107,9 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
         liquidity,
         fee_recipients: fee_recipient_addresses,
         fee_recipient_bps,
-        rewards_fee_bps: rewards_fee_bps.value(),
-        protocol_lp_meme_bps: protocol_fees.lp_meme_bps().value(),
-        protocol_lp_quote_bps: protocol_fees.lp_quote_bps().value(),
+        holder_rewards_bps: holder_rewards_bps.value(),
+        protocol_lp_fee_meme_bps: protocol_fees.lp_fee_meme_bps().value(),
+        protocol_lp_fee_quote_bps: protocol_fees.lp_fee_quote_bps().value(),
         migration_meme_residual,
         migration_quote_residual,
     });
@@ -143,21 +143,21 @@ public(package) fun split_fees<Meme, Quote>(
         return
     };
 
-    let protocol_meme = self.protocol_fees.lp_meme_bps().apply_up(gross_meme);
-    let protocol_quote = self.protocol_fees.lp_quote_bps().apply_up(gross_quote);
+    let protocol_meme = self.protocol_fees.lp_fee_meme_bps().apply_up(gross_meme);
+    let protocol_quote = self.protocol_fees.lp_fee_quote_bps().apply_up(gross_quote);
     let protocol_destination = fee_policy.destination();
-    let (recipient_meme, rewards_meme) = self.fee_shares(gross_meme - protocol_meme);
-    let (recipient_quote, rewards_quote) = self.fee_shares(gross_quote - protocol_quote);
+    let (fee_recipient_meme, holder_rewards_meme) = self.fee_shares(gross_meme - protocol_meme);
+    let (fee_recipient_quote, holder_rewards_quote) = self.fee_shares(gross_quote - protocol_quote);
     let recipients = presale::fee_recipient_addresses(&self.fee_recipients);
 
     meme.pay(protocol_meme, protocol_destination, ctx);
     quote.pay(protocol_quote, protocol_destination, ctx);
     recipients.length().do!(|i| {
-        meme.pay(recipient_meme[i], recipients[i], ctx);
-        quote.pay(recipient_quote[i], recipients[i], ctx);
+        meme.pay(fee_recipient_meme[i], recipients[i], ctx);
+        quote.pay(fee_recipient_quote[i], recipients[i], ctx);
     });
-    self.rewards_meme.join(meme);
-    self.rewards_quote.join(quote);
+    self.holder_rewards_meme.join(meme);
+    self.holder_rewards_quote.join(quote);
 
     event::emit(FeesCollected<Meme, Quote> {
         vault_id: self.id.to_inner(),
@@ -166,10 +166,10 @@ public(package) fun split_fees<Meme, Quote>(
         protocol_destination,
         protocol_meme,
         protocol_quote,
-        recipient_meme,
-        recipient_quote,
-        rewards_meme,
-        rewards_quote,
+        fee_recipient_meme,
+        fee_recipient_quote,
+        holder_rewards_meme,
+        holder_rewards_quote,
     });
 }
 
@@ -194,10 +194,10 @@ public(package) fun last_checkpoint<Meme, Quote>(
     self.last_checkpoint
 }
 
-public(package) fun rewards_balances<Meme, Quote>(
+public(package) fun holder_rewards_balances<Meme, Quote>(
     self: &PresaleVault<Meme, Quote>,
 ): (u64, u64) {
-    (self.rewards_meme.value(), self.rewards_quote.value())
+    (self.holder_rewards_meme.value(), self.holder_rewards_quote.value())
 }
 
 public(package) fun fund_round<Meme, Quote>(
@@ -209,17 +209,17 @@ public(package) fun fund_round<Meme, Quote>(
     self.next_round = self.next_round + 1;
     self.last_checkpoint = option::some(end_checkpoint);
 
-    (self.rewards_meme.split(meme_amount), self.rewards_quote.split(quote_amount))
+    (self.holder_rewards_meme.split(meme_amount), self.holder_rewards_quote.split(quote_amount))
 }
 
 /// Returns a closed round's unclaimed rewards to the holder-reward balances.
-public(package) fun restore_rewards<Meme, Quote>(
+public(package) fun restore_holder_rewards<Meme, Quote>(
     self: &mut PresaleVault<Meme, Quote>,
     meme: Balance<Meme>,
     quote: Balance<Quote>,
 ) {
-    self.rewards_meme.join(meme);
-    self.rewards_quote.join(quote);
+    self.holder_rewards_meme.join(meme);
+    self.holder_rewards_quote.join(quote);
 }
 
 // === Private Functions ===
@@ -227,7 +227,7 @@ public(package) fun restore_rewards<Meme, Quote>(
 /// Splits `amount` under the creation-time BPS into each fee recipient's share and the
 /// holder-reward share.
 fun fee_shares<Meme, Quote>(self: &PresaleVault<Meme, Quote>, amount: u64): (vector<u64>, u64) {
-    let mut shares = presale::apportion_fee(&self.fee_recipients, self.rewards_fee_bps, amount);
+    let mut shares = presale::apportion_fee(&self.fee_recipients, self.holder_rewards_bps, amount);
     let rewards = shares.pop_back();
 
     (shares, rewards)
@@ -240,7 +240,7 @@ public fun new_for_testing<Meme, Quote>(
     presale_id: ID,
     presale_cap_id: ID,
     fee_recipients: vector<FeeRecipient>,
-    rewards_fee_bps: Bps,
+    holder_rewards_bps: Bps,
     protocol_fees: ProtocolFees,
     ctx: &mut TxContext,
 ): PresaleVault<Meme, Quote> {
@@ -250,12 +250,12 @@ public fun new_for_testing<Meme, Quote>(
         presale_cap_id,
         pool_id: object::id_from_address(@0x1),
         fee_recipients,
-        rewards_fee_bps,
+        holder_rewards_bps,
         protocol_fees,
         migration_meme_residual: balance::zero(),
         migration_quote_residual: balance::zero(),
-        rewards_meme: balance::zero(),
-        rewards_quote: balance::zero(),
+        holder_rewards_meme: balance::zero(),
+        holder_rewards_quote: balance::zero(),
         next_round: 0,
         last_checkpoint: option::none(),
     }
@@ -279,10 +279,10 @@ public fun fees_collected_fields<Meme, Quote>(
     (
         event.gross_meme,
         event.gross_quote,
-        event.recipient_meme,
-        event.recipient_quote,
-        event.rewards_meme,
-        event.rewards_quote,
+        event.fee_recipient_meme,
+        event.fee_recipient_quote,
+        event.holder_rewards_meme,
+        event.holder_rewards_quote,
     )
 }
 
@@ -301,20 +301,20 @@ public fun destroy_for_testing<Meme, Quote>(self: PresaleVault<Meme, Quote>) {
         presale_cap_id: _,
         pool_id: _,
         fee_recipients: _,
-        rewards_fee_bps: _,
+        holder_rewards_bps: _,
         protocol_fees: _,
         migration_meme_residual,
         migration_quote_residual,
-        rewards_meme,
-        rewards_quote,
+        holder_rewards_meme,
+        holder_rewards_quote,
         next_round: _,
         last_checkpoint: _,
     } = self;
     id.delete();
     migration_meme_residual.destroy_zero();
     migration_quote_residual.destroy_zero();
-    rewards_meme.destroy_zero();
-    rewards_quote.destroy_zero();
+    holder_rewards_meme.destroy_zero();
+    holder_rewards_quote.destroy_zero();
 }
 
 // === Events ===
@@ -327,9 +327,9 @@ public struct PresaleVaultCreated<phantom Meme, phantom Quote, phantom Venue> ha
     liquidity: u128,
     fee_recipients: vector<address>,
     fee_recipient_bps: vector<u64>,
-    rewards_fee_bps: u64,
-    protocol_lp_meme_bps: u64,
-    protocol_lp_quote_bps: u64,
+    holder_rewards_bps: u64,
+    protocol_lp_fee_meme_bps: u64,
+    protocol_lp_fee_quote_bps: u64,
     migration_meme_residual: u64,
     migration_quote_residual: u64,
 }
@@ -342,10 +342,10 @@ public struct FeesCollected<phantom Meme, phantom Quote> has copy, drop {
     protocol_meme: u64,
     protocol_quote: u64,
     /// Aligned by index with the immutable recipients in `PresaleVaultCreated`.
-    recipient_meme: vector<u64>,
-    recipient_quote: vector<u64>,
-    rewards_meme: u64,
-    rewards_quote: u64,
+    fee_recipient_meme: vector<u64>,
+    fee_recipient_quote: vector<u64>,
+    holder_rewards_meme: u64,
+    holder_rewards_quote: u64,
 }
 
 public struct MigrationResidualsClaimed<phantom Meme, phantom Quote> has copy, drop {
