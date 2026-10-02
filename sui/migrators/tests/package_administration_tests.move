@@ -209,10 +209,9 @@ use blast_admin::blast_acl::{Self, AdminWitness};
 use blast_fun::{blast_fun_domain::{FeeAdmin, UpgradeAdmin}, bps};
 
 use blast_fun_migrators::{
-    blast_fun_migrators::BLAST_FUN_MIGRATORS,
+    blast_fun_migrators::{Self as package_version, BLAST_FUN_MIGRATORS, PackageVersion},
     lp_fee_policy::{Self, LpFeePolicy},
     package_admin::{Self, PackageAdmin},
-    package_version::{Self, PackageVersion},
 };
 
 use std::{type_name, unit_test::{assert_eq, destroy}};

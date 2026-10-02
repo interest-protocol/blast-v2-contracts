@@ -331,7 +331,7 @@ use blast_admin::blast_acl;
 use blast_fun::{
     blast_fun_domain::ClaimSignerAdmin,
     creator_authority::{Self, CreatorRecipient},
-    package_version::{Self, PackageVersion},
+    blast_fun::{Self as package_version, PackageVersion},
     runtime_config::{Self, RuntimeConfig},
 };
 

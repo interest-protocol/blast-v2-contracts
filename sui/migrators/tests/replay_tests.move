@@ -1826,21 +1826,14 @@ use blast_admin::blast_acl;
 use blast_fun::{
     allocation::{Self, AllocationPlan, FeeSplit, Route},
     blast_events::Event as BlastEvent,
-    blast_fun_domain::{
-        AdapterAdmin,
-        BuybackAdmin,
-        FeeAdmin,
-        ListingAdmin,
-        RewardsAdmin,
-        TreasuryAdmin,
-    },
+    blast_fun_domain::{AdapterAdmin, BuybackAdmin, FeeAdmin, ListingAdmin, RewardsAdmin, TreasuryAdmin},
     bps,
     creator_authority::{Self, CurveFeeCap},
     events,
     launch::{Self, Launch},
     launch_config::{Self, LaunchConfig},
     launch_ticket,
-    package_version::{Self, PackageVersion},
+    blast_fun::{Self as package_version, PackageVersion},
     runtime_config::{Self, RuntimeConfig},
 };
 
@@ -1849,7 +1842,7 @@ use blast_fun_migrators::{
     blast_holder_rewards::{Self, Round},
     lp_fee_policy::{Self, LpFeePolicy},
     merkle,
-    package_version::{Self as migrators_version, PackageVersion as MigratorsVersion},
+    blast_fun_migrators::{Self as migrators_version, PackageVersion as MigratorsVersion},
     vault::{Self, LpVault},
 };
 

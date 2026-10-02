@@ -41,7 +41,7 @@ public fun new(
 
     PackageAdmin {
         id,
-        operational_version: operational_version::new(),
+        operational_version: operational_version::new(&package_marker::marker()),
         custody,
     }
 }

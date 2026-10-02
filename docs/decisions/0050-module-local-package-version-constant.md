@@ -2,6 +2,8 @@
 
 - Status: accepted
 - Date: 2026-08-29
+- Amended in place: 2026-10-02 (ADR 0097) — the constant now lives in the marker
+  module beside the version container it validates
 - Amends: [0049](0049-audit-hardened-package-version-and-launch-intake.md)
 
 ## Context
@@ -16,9 +18,13 @@ responsibility is to initialize and validate the one `PackageVersion` singleton.
 
 ## Decision
 
-Declare private `const PACKAGE_VERSION: u64` in `package_version.move`. Use it
+Declare private `const PACKAGE_VERSION: u64` beside the version container. Use it
 for singleton initialization, the current-generation guard, and consecutive
 activation. Remove the package-visible accessor from `constants.move`.
+Since 2026-10-02 the container and the constant live in the package's marker
+module (`blast_fun.move`, `blast_fun_migrators.move`, `blast_sui_package.move`,
+`blast_boosts_aftermath.move`), because only that module's initializer holds the
+one-time witness the shared generation constructor requires.
 
 This is the sole exception to the shared constants-registry rule. It does not
 change the onchain `PackageVersion` layout, activation sequence, error behavior,

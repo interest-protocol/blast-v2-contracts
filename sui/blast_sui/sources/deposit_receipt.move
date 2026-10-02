@@ -176,7 +176,7 @@ public fun fields_for_testing(self: &BlastSuiDepositReceipt): (ID, ID, ID, u64, 
 
 // === Imports ===
 
-use blast_sui::{events, package_version::PackageVersion};
+use blast_sui::{events, blast_sui_package::PackageVersion};
 
 use std::string::String;
 

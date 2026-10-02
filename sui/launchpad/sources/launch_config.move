@@ -288,7 +288,7 @@ use blast_fun::{
     bps::{Self, Bps},
     constants,
     events,
-    package_version::PackageVersion,
+    blast_fun::PackageVersion,
 };
 
 use blast_partners::blast_partners::{Self as partners, Partner};

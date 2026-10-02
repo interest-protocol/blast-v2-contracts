@@ -41,7 +41,7 @@ require_module_exact() {
   fi
 }
 
-for module in blast_events events package_version blast_sui_package blast_sui \
+for module in blast_events events blast_sui_package blast_sui \
   fun_sui math custody vault; do
   require_module "$module"
 done

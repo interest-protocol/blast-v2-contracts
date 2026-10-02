@@ -604,7 +604,7 @@ use blast_fun::{blast_fun_domain::{FeeAdmin, TreasuryAdmin}, bps};
 use blast_fun_migrators::{
     blast_events,
     lp_fee_policy::{Self, LpFeePolicy},
-    package_version::{Self as migrators_version, PackageVersion as MigratorsVersion},
+    blast_fun_migrators::{Self as migrators_version, PackageVersion as MigratorsVersion},
 };
 
 use std::{bcs, type_name::{Self, TypeName}, unit_test::{assert_eq, destroy}};

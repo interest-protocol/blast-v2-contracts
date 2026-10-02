@@ -683,7 +683,7 @@ use blast_fun::{
     creator_authority::CurveFeeCap,
     launch::Launch,
     launch_config,
-    package_version::{Self, PackageVersion},
+    blast_fun::{Self as package_version, PackageVersion},
     runtime_config::{Self, RuntimeConfig},
 };
 
@@ -691,7 +691,7 @@ use blast_fun_migrators::{
     blast_events,
     launch_fixture,
     lp_fee_policy::{Self, LpFeePolicy},
-    package_version::{Self as migrators_version, PackageVersion as MigratorsVersion},
+    blast_fun_migrators::{Self as migrators_version, PackageVersion as MigratorsVersion},
     vault::{Self, LpVault},
 };
 

@@ -963,7 +963,7 @@ use blast_boosts_aftermath::{
     errors,
     events,
     operations,
-    protocol::{Self, Protocol},
+    blast_boosts_aftermath::{Self as protocol, Protocol},
     vault::{Self, Vault, VaultIssuance},
     checkpoint,
     venue_account::{Self, VenueAccount},

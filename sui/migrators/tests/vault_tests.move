@@ -1227,14 +1227,14 @@ use blast_fun::{
     bps,
     launch::Launch,
     launch_config,
-    package_version,
+    blast_fun::{Self as package_version},
 };
 
 use blast_fun_migrators::{
     blast_events,
     launch_fixture,
     lp_fee_policy::{Self, LpFeePolicy},
-    package_version::{Self as migrators_version, PackageVersion as MigratorsVersion},
+    blast_fun_migrators::{Self as migrators_version, PackageVersion as MigratorsVersion},
     vault::{Self, LpVault},
 };
 

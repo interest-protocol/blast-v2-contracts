@@ -3051,7 +3051,7 @@ use blast_fun::{
     launch::{Self, Launch, LaunchInitializer},
     launch_config,
     launch_ticket::{Self, LaunchTicket},
-    package_version::{Self, PackageVersion},
+    blast_fun::{Self as package_version, PackageVersion},
     runtime_config,
 };
 

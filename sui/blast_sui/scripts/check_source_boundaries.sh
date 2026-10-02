@@ -43,11 +43,11 @@ fi
 
 # 4. Its generation container and custody hold the shared typed values, and no
 #    separate activation or capability escape survives.
-rg -q 'generation: OperationalVersion<BLAST_SUI_PACKAGE>,' "$package_dir/sources/package_version.move" \
+rg -q 'generation: OperationalVersion<BLAST_SUI_PACKAGE>,' "$package_dir/sources/blast_sui_package.move" \
   || fail "The generation value must be the shared typed value."
-rg -q '^const NEXT_PACKAGE_VERSION: u64 = 2;$' "$package_dir/sources/package_version.move" \
+rg -q '^const NEXT_PACKAGE_VERSION: u64 = 2;$' "$package_dir/sources/blast_sui_package.move" \
   || fail "blast_sui must compile its cutover target constant."
-if rg -n '\.checked_add\(|fun activate\(' "$package_dir/sources/package_version.move"; then
+if rg -n '\.checked_add\(|fun activate\(' "$package_dir/sources/blast_sui_package.move"; then
   fail "Generation arithmetic and separate activation belong to blast_admin."
 fi
 rg -q 'custody: UpgradeCustody<BLAST_SUI_PACKAGE>,' "$package_dir/sources/package_admin.move" \

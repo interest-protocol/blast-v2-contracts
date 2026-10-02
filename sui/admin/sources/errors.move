@@ -67,6 +67,9 @@ const EUpgradeCapUnavailable: u64 = 18;
 #[test_only]
 const EUpgradePolicyNotMoreRestrictive: u64 = 19;
 
+#[test_only]
+const EInvalidPackageMarker: u64 = 20;
+
 macro public(package) fun invalid_super_admin_cap(): u64 { 0 }
 
 macro public(package) fun invalid_admin_cap(): u64 { 1 }
@@ -106,3 +109,5 @@ macro public(package) fun invalid_package_digest(): u64 { 17 }
 macro public(package) fun upgrade_cap_unavailable(): u64 { 18 }
 
 macro public(package) fun upgrade_policy_not_more_restrictive(): u64 { 19 }
+
+macro public(package) fun invalid_package_marker(): u64 { 20 }

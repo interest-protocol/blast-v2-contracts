@@ -91,6 +91,6 @@ use blast_admin::{
 
 use blast_fun::blast_fun_domain::UpgradeAdmin;
 
-use blast_fun_migrators::{blast_fun_migrators::BLAST_FUN_MIGRATORS, package_version::PackageVersion};
+use blast_fun_migrators::blast_fun_migrators::{BLAST_FUN_MIGRATORS, PackageVersion};
 
 use sui::package::{Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};

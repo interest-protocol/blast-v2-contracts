@@ -407,14 +407,14 @@ use blast_fun::{
     launch::{Self, Launch},
     launch_config::{Self, LaunchConfig},
     launch_ticket,
-    package_version::{Self, PackageVersion},
+    blast_fun::{Self as package_version, PackageVersion},
     runtime_config::{Self, RuntimeConfig},
 };
 
 use blast_fun_migrators::{
     blast_events,
     lp_fee_policy::{Self, LpFeePolicy},
-    package_version::{Self as migrators_version, PackageVersion as MigratorsVersion},
+    blast_fun_migrators::{Self as migrators_version, PackageVersion as MigratorsVersion},
     vault::{Self, LpVault},
 };
 

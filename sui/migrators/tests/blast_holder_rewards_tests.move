@@ -776,7 +776,7 @@ use blast_fun::{
     blast_fun_domain::RewardsAdmin,
     bps,
     launch_config,
-    package_version,
+    blast_fun::{Self as package_version},
 };
 
 use blast_fun_migrators::{
@@ -785,7 +785,7 @@ use blast_fun_migrators::{
     launch_fixture,
     lp_fee_policy,
     merkle,
-    package_version::{Self as migrators_version, PackageVersion as MigratorsVersion},
+    blast_fun_migrators::{Self as migrators_version, PackageVersion as MigratorsVersion},
     vault::{Self, LpVault},
 };
 

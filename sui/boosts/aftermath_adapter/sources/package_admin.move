@@ -163,7 +163,7 @@ use blast_admin::{
     upgrade_custody::{Self, UpgradeCustody},
 };
 
-use blast_boosts_aftermath::{blast_boosts_aftermath::BLAST_BOOSTS_AFTERMATH, protocol::Protocol};
+use blast_boosts_aftermath::blast_boosts_aftermath::{BLAST_BOOSTS_AFTERMATH, Protocol};
 
 use blast_boosts_core::blast_boosts_core::UpgradeAdmin;
 

@@ -33,7 +33,7 @@ public struct CustodyFixture {
 public struct UpgradeFixture {
     scenario: Scenario,
     package_admin: package_admin::PackageAdmin,
-    package_version: package_version::PackageVersion,
+    package_version: marker::PackageVersion,
 }
 
 // === Tests ===
@@ -113,7 +113,7 @@ fun wrap_checks_publisher_before_upgrade_cap_provenance() {
 /// The container advances to exactly the generation this bytecode hands over to.
 fun the_version_container_advances_to_the_next_compiled_generation() {
     let mut ctx = tx_context::dummy();
-    let mut package_version = package_version::new_for_testing(&mut ctx);
+    let mut package_version = marker::new_for_testing(&mut ctx);
 
     assert_eq!(package_version.version_for_testing(), 1);
     package_version.advance_for_testing();
@@ -130,7 +130,7 @@ fun the_version_container_advances_to_the_next_compiled_generation() {
 )]
 fun the_version_container_rejects_advancing_from_a_skipped_generation() {
     let mut ctx = tx_context::dummy();
-    let mut package_version = package_version::new_for_testing(&mut ctx);
+    let mut package_version = marker::new_for_testing(&mut ctx);
     package_version.set_for_testing(5);
 
     package_version.advance_for_testing();
@@ -146,7 +146,7 @@ fun the_version_container_rejects_advancing_from_a_skipped_generation() {
 )]
 fun the_version_container_rejects_generation_overflow() {
     let mut ctx = tx_context::dummy();
-    let mut package_version = package_version::new_for_testing(&mut ctx);
+    let mut package_version = marker::new_for_testing(&mut ctx);
     package_version.set_for_testing(std::u64::max_value!());
 
     package_version.advance_for_testing();
@@ -374,7 +374,7 @@ fun start_custody(): CustodyFixture {
 
 fun start(): UpgradeFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
-    let package_version = package_version::new_for_testing(scenario.ctx());
+    let package_version = marker::new_for_testing(scenario.ctx());
     let package_admin = package_admin::new_for_testing(scenario.ctx());
 
     UpgradeFixture { scenario, package_admin, package_version }
@@ -418,7 +418,6 @@ use blast_fun::{
     blast_fun::{Self as marker, BLAST_FUN},
     blast_fun_domain::UpgradeAdmin,
     package_admin,
-    package_version,
 };
 
 use 0xf::foreign_publisher;

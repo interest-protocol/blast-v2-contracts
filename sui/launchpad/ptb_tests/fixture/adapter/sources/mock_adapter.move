@@ -58,7 +58,7 @@ use blast_fun::{
     launch::{Self, Launch, LaunchInitializer},
     launch_config::LaunchConfig,
     launch_ticket::LaunchTicket,
-    package_version::PackageVersion,
+    blast_fun::PackageVersion,
 };
 
 use sui::{balance::Balance, coin_registry::Currency, sui::SUI};

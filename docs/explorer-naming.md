@@ -56,7 +56,7 @@ every package-administration object.
 | `blast_sui` | `vault::Vault` | unchanged | *residual*; package marker |
 | `blast_sui` | `deposit_receipt::BlastSuiDepositReceipt` | unchanged | struct |
 | `blast_sui` | `package_admin::PackageAdmin` | unchanged | holds `UpgradeCustody<BLAST_SUI_PACKAGE>` |
-| `blast_sui` | `package_version::PackageVersion` | unchanged | holds `OperationalVersion<BLAST_SUI_PACKAGE>` |
+| `blast_sui` | `package_version::PackageVersion` | `blast_sui_package::PackageVersion` | module; holds `OperationalVersion<BLAST_SUI_PACKAGE>` |
 | `blast_fun` | `launch::Launch<Meme, Quote>` | unchanged | *residual*; `Quote` is usually `fun_sui::FUN_SUI` |
 | `blast_fun` | `launch_config::LaunchConfig` | unchanged | *residual* |
 | `blast_fun` | `runtime_config::RuntimeConfig` | unchanged | *residual* |
@@ -64,15 +64,15 @@ every package-administration object.
 | `blast_fun` | `creator_authority::CurveFeeCap<Meme>` | unchanged | *residual*, wallet-held |
 | `blast_fun` | `creator_authority::BlastMetadataCap<Meme>` | unchanged | struct |
 | `blast_fun` | `package_admin::PackageAdmin` | unchanged | holds `UpgradeCustody<BLAST_FUN>` |
-| `blast_fun` | `package_version::PackageVersion` | unchanged | holds `OperationalVersion<BLAST_FUN>` |
+| `blast_fun` | `package_version::PackageVersion` | `blast_fun::PackageVersion` | module; holds `OperationalVersion<BLAST_FUN>` |
 | `blast_fun_migrators` | `vault::LpVault<Meme, Quote>` | unchanged | *residual* |
 | `blast_fun_migrators` | `venue_config::VenueConfig` | unchanged | *residual* |
 | `blast_fun_migrators` | `package_admin::PackageAdmin` | unchanged | holds `UpgradeCustody<BLAST_FUN_MIGRATORS>` |
-| `blast_fun_migrators` | `package_version::PackageVersion` | unchanged | holds `OperationalVersion<BLAST_FUN_MIGRATORS>` |
+| `blast_fun_migrators` | `package_version::PackageVersion` | `blast_fun_migrators::PackageVersion` | module; holds `OperationalVersion<BLAST_FUN_MIGRATORS>` |
 | `blast_fun_migrators` | `lp_fee_policy::LpFeePolicy` | unchanged | *residual* |
 | `blast_fun_migrators` | `blast_holder_rewards::Round<Meme, Quote>` | new | module |
 | `blast_boosts_aftermath` | `vault::Vault<Product>` (shared custody) | unchanged | `Product` is a `blast_boosts_products` tag |
-| `blast_boosts_aftermath` | `protocol::Protocol` | unchanged | holds `OperationalVersion<BLAST_BOOSTS_AFTERMATH>` |
+| `blast_boosts_aftermath` | `protocol::Protocol` | `blast_boosts_aftermath::Protocol` | module; holds `OperationalVersion<BLAST_BOOSTS_AFTERMATH>` |
 | `blast_boosts_aftermath` | `package_admin::PackageAdmin` | unchanged | holds `UpgradeCustody<BLAST_BOOSTS_AFTERMATH>` |
 | `blast_boosts_aftermath` | `blast_boost::BlastBoost<Product>` | new; never instantiated | module and struct |
 | `blast_partners` | `blast_partners::Partner` | new (ADR 0095) | module |
@@ -118,7 +118,7 @@ Payload struct names inside the envelopes (`Bought`, `Migrated`,
 | `blast_presale` | `cetus::Venue`, `bluefin::Venue` | new (ADR 0099) | sealed position keys under `PresaleVault` |
 | `blast_presale` | `cetus::Witness`, `bluefin::Witness` | new (ADR 0099) | sealed migration identities fixed before commitments open |
 | `blast_boosts_aftermath` | `vault::TreasuryKey<Product>`, `vault::MetadataKey<Product>`, `vault::AdminCashKey`, `vault::TerminalCashKey` | unchanged | dynamic-field keys under `Vault` |
-| `blast_boosts_aftermath` | `protocol::PartnerKey` | new (ADR 0095) | dynamic-field key under `Protocol`, one per Blast partner Boosts accepts; the value is the time it stops being accepted |
+| `blast_boosts_aftermath` | `protocol::PartnerKey` | `blast_boosts_aftermath::PartnerKey` (ADR 0095) | dynamic-field key under `Protocol`, one per Blast partner Boosts accepts; the value is the time it stops being accepted |
 | `blast_boosts_products` | `<TICKER>_<SIDE>_<LEVERAGE>` tags such as `NVDA_BULL_2X` | bull and bear 2X per Aftermath market | inner type of every Boost coin |
 
 ## Parked packages

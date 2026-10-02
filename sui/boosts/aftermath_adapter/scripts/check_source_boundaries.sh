@@ -43,8 +43,8 @@ declare -A core_layers=(
   [state]=3
 )
 declare -A adapter_layers=(
-  [errors]=0 [constants]=0 [blast_events]=0 [blast_boosts_aftermath]=0
-  [ifixed_math]=1 [blast_boost]=1 [protocol]=1
+  [errors]=0 [constants]=0 [blast_events]=0
+  [ifixed_math]=1 [blast_boost]=1 [blast_boosts_aftermath]=1
   [checkpoint]=2 [package_admin]=2
   [venue_account]=3
   [events]=4 [snapshot]=4
