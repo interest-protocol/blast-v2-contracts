@@ -84,12 +84,7 @@ fun integer_sqrt(value: u256): u128 {
 
     while (low + 1 < high) {
         let middle = (low + high) / 2;
-
-        if (middle * middle <= value) {
-            low = middle;
-        } else {
-            high = middle;
-        };
+        if (middle * middle <= value) low = middle else high = middle;
     };
 
     low as u128

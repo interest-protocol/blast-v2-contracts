@@ -93,13 +93,13 @@ public fun publish_round<Meme, Quote>(
         number,
         root,
         leaf_count,
-        claimed: vector::tabulate!(leaf_count.div_ceil(256), |_| 0u256),
+        claimed: unclaimed(leaf_count),
         meme,
         quote,
     };
-
     let round_id = round.id.to_inner();
     let (meme_unallocated, quote_unallocated) = vault.rewards_balances();
+
     transfer::share_object(round);
 
     blast_events::round_published(
@@ -135,14 +135,13 @@ public fun claim<Meme, Quote>(
     assert!(self.claimed[word] & bit == 0, EAlreadyClaimed);
     assert!(beneficiary != @0x0, EInvalidBeneficiary);
     assert!(meme_amount > 0 || quote_amount > 0, EEmptyBudget);
+
     let leaf = merkle::leaf(self.vault, self.number, index, beneficiary, meme_amount, quote_amount);
     assert!(merkle::verify(self.root, leaf, index, self.leaf_count, &proof), EInvalidProof);
 
     *&mut self.claimed[word] = self.claimed[word] | bit;
-    if (meme_amount > 0)
-        transfer::public_transfer(self.meme.split(meme_amount).into_coin(ctx), beneficiary);
-    if (quote_amount > 0)
-        transfer::public_transfer(self.quote.split(quote_amount).into_coin(ctx), beneficiary);
+    self.meme.pay(meme_amount, beneficiary, ctx);
+    self.quote.pay(quote_amount, beneficiary, ctx);
 
     blast_events::reward_paid(
         self.id.to_inner(),
@@ -156,6 +155,11 @@ public fun claim<Meme, Quote>(
 }
 
 // === Private Functions ===
+
+/// A claim bitmap with every leaf's bit clear, 256 leaves per word.
+fun unclaimed(leaf_count: u64): vector<u256> {
+    vector::tabulate!(leaf_count.div_ceil(256), |_| 0u256)
+}
 
 /// Locates leaf `index` in the claim bitmap as its word and the bit within that word.
 fun claim_bit(index: u64): (u64, u256) {
@@ -186,7 +190,9 @@ use blast_fun_migrators::{
     constants,
     merkle,
     package_version::PackageVersion as MigratorsVersion,
-    vault::LpVault,
+    vault::{Self, LpVault},
 };
 
 use sui::balance::Balance;
+
+use fun vault::pay as Balance.pay;

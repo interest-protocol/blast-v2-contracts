@@ -212,6 +212,12 @@ public(package) fun split_fees<Meme, Quote>(
 ) {
     let gross_meme = meme.value();
     let gross_quote = quote.value();
+    if (gross_meme == 0 && gross_quote == 0) {
+        meme.destroy_zero();
+        quote.destroy_zero();
+        return
+    };
+
     let (meme_share, quote_share) = policy.shares<Meme>();
     let protocol_meme = meme_share.apply_up(gross_meme);
     let protocol_quote = quote_share.apply_up(gross_quote);
@@ -243,7 +249,6 @@ public(package) fun split_fees<Meme, Quote>(
     meme.destroy_zero();
     quote.destroy_zero();
 
-    if (gross_meme == 0 && gross_quote == 0) return;
     blast_events::fees_collected(
         self.id.to_inner(),
         self.generation,
@@ -395,6 +400,16 @@ public(package) fun rewards_balances<Meme, Quote>(self: &LpVault<Meme, Quote>): 
     (self.rewards_meme.value(), self.rewards_quote.value())
 }
 
+/// Transfers `amount` split from `balance` to `destination`, skipping empty shares.
+public(package) fun pay<T>(
+    balance: &mut Balance<T>,
+    amount: u64,
+    destination: address,
+    ctx: &mut TxContext,
+) {
+    if (amount > 0) transfer::public_transfer(balance.split(amount).into_coin(ctx), destination);
+}
+
 // === Private Functions ===
 
 /// Builds the vault at generation zero with the launch's fee split and empty balances, attaches
@@ -442,10 +457,6 @@ fun new<Meme, Quote, Venue, Position: key + store>(
     );
 
     vault
-}
-
-fun pay<T>(balance: &mut Balance<T>, amount: u64, destination: address, ctx: &mut TxContext) {
-    if (amount > 0) transfer::public_transfer(balance.split(amount).into_coin(ctx), destination);
 }
 
 /// Burns `meme`, or sends it to `@0x0` when the supply is fixed, as migration does.
@@ -558,12 +569,9 @@ use blast_fun_migrators::{
 
 use sui::{balance::{Self, Balance}, coin::Coin, coin_registry::Currency, dynamic_object_field};
 
-use fun dynamic_object_field::add as UID.add_dynamic_object_field;
-
-use fun dynamic_object_field::borrow as UID.dynamic_object_field;
-
-use fun dynamic_object_field::borrow_mut as UID.dynamic_object_field_mut;
-
-use fun dynamic_object_field::exists as UID.has_dynamic_object_field;
-
 use fun pay as Balance.pay;
+
+use fun dynamic_object_field::add as UID.add_dynamic_object_field;
+use fun dynamic_object_field::borrow as UID.dynamic_object_field;
+use fun dynamic_object_field::borrow_mut as UID.dynamic_object_field_mut;
+use fun dynamic_object_field::exists as UID.has_dynamic_object_field;

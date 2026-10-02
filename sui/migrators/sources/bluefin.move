@@ -52,13 +52,11 @@ public fun new<Meme, Quote>(
 
 /// Migrates a MigrationReady launch into a new full-range pool at the launch's tier.
 ///
-/// The opening price derives from the handed-off balances. Meme is the fixed side when its atoms
-/// are at least the Quote atoms, and Quote otherwise: a full-range seed fixed on the fewer atoms
-/// can need slightly more of the other asset than was handed off. `creation_fee` is paid whole,
-/// and Bluefin aborts unless it is exactly the configured SUI fee. The position and the venue
-/// residuals stay in a shared vault with no withdrawal path. The caller receives no object;
-/// Bluefin records it as the new pool's manager, a role limited to the pool's reward emissions
-/// and to handing the role on (ADR 0088).
+/// The opening price derives from the handed-off balances, which seed the position on the side
+/// `seed_fixes_meme` chooses. `creation_fee` is paid whole, and Bluefin aborts unless it is
+/// exactly the configured SUI fee. The position and the venue residuals stay in a shared vault
+/// with no withdrawal path. The caller receives no object; Bluefin records it as the new pool's
+/// manager, a role limited to the pool's reward emissions and to handing the role on (ADR 0088).
 public fun migrate<Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
     migrators_version: &MigratorsVersion,
@@ -74,13 +72,12 @@ public fun migrate<Meme, Quote>(
 
     let (tick_spacing, fee_rate) = launch.pool_tier();
     let (lower_tick, upper_tick) = full_range_tick_range(bluefin_config, tick_spacing);
-    let pool_name = pool_name(currency, quote_currency);
-
     let (meme, quote) = launch.migrate(package_version, currency, Witness(), ctx);
+
     let mut pool = pool::create_pool_and_get_object<Meme, Quote, SUI>(
         clock,
         bluefin_config,
-        pool_name,
+        pool_name(currency, quote_currency),
         // No Meme icon, as Cetus: the metadata capability can grow the icon URL, and the position
         // stores it, so a long URL would make the position too large to create.
         b"",
@@ -210,9 +207,8 @@ fun pool_name<Meme, Quote>(
     name
 }
 
-/// Adds the handed-off balances to the new full-range position and returns the residuals. Meme is
-/// the fixed side when its atoms are at least the Quote atoms, and Quote otherwise: a full-range
-/// seed fixed on the fewer atoms can need slightly more of the other asset than was handed off.
+/// Adds the handed-off balances to the new full-range position, fixing the side `seed_fixes_meme`
+/// chooses, and returns the residuals.
 fun seed<Meme, Quote>(
     bluefin_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
@@ -221,7 +217,7 @@ fun seed<Meme, Quote>(
     quote: Balance<Quote>,
     clock: &Clock,
 ): (Balance<Meme>, Balance<Quote>) {
-    let fix_meme = meme.value() >= quote.value();
+    let fix_meme = seed_fixes_meme(pool, position, meme.value(), quote.value());
     let amount = if (fix_meme) meme.value() else quote.value();
     let (_, _, residual_meme, residual_quote) = pool::add_liquidity_with_fixed_amount(
         clock,
@@ -237,6 +233,29 @@ fun seed<Meme, Quote>(
     (residual_meme, residual_quote)
 }
 
+/// Whether the migration seed fixes Meme, preferring the side with more atoms: a full-range
+/// position needs slightly more of the other side than the seed ratio, so that partner balance
+/// covers it. When both sides are nearly equal, rounding can still overdraw by one atom, so
+/// Bluefin's own math decides and the other side is fixed instead.
+fun seed_fixes_meme<Meme, Quote>(
+    pool: &Pool<Meme, Quote>,
+    position: &Position,
+    meme_amount: u64,
+    quote_amount: u64,
+): bool {
+    let prefer_meme = meme_amount >= quote_amount;
+    let (_, needed_meme, needed_quote) = pool::get_liquidity_by_amount(
+        position.lower_tick(),
+        position.upper_tick(),
+        pool.current_tick_index(),
+        pool.current_sqrt_price(),
+        if (prefer_meme) meme_amount else quote_amount,
+        prefer_meme,
+    );
+
+    if (needed_meme <= meme_amount && needed_quote <= quote_amount) prefer_meme else !prefer_meme
+}
+
 /// Locks the seeded position and the residuals in a new vault.
 fun lock_into_vault<Meme, Quote>(
     launch: &Launch<Meme, Quote>,
@@ -246,6 +265,7 @@ fun lock_into_vault<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     let liquidity = position.liquidity();
+
     vault::create(
         launch,
         &Venue(),
@@ -369,7 +389,5 @@ use integer_mate::i32;
 use sui::{balance::{Self, Balance}, clock::Clock, coin::Coin, coin_registry::Currency, sui::SUI};
 
 use fun collect_position_fees as LpVault.collect_position_fees;
-
 use fun compound as LpVault.compound;
-
 use fun settle_fees as LpVault.settle_fees;
