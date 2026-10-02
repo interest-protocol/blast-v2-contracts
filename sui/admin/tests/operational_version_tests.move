@@ -5,10 +5,6 @@
 /// Boundary and transition tests for sealed operational generations.
 module blast_admin::operational_version_tests;
 
-// === Constants ===
-
-const CONTAINER_ID: address = @0xCAFE;
-
 // === Tests ===
 
 #[test]
@@ -44,10 +40,12 @@ fun next_assertion_rejects_overflow_before_mutation() {
 }
 
 #[test]
-fun exact_next_generation_advances_once_and_emits_complete_fact() {
+fun exact_next_generation_advances_once_and_emits_the_container_it_was_given() {
+    let mut ctx = tx_context::dummy();
+    let container = object::new(&mut ctx);
     let mut version = operational_version::new<package_marker::PACKAGE_MARKER>();
 
-    version.advance(CONTAINER_ID.to_id(), 2);
+    version.advance(&container, 2);
 
     assert_eq!(version.generation_for_testing(), 2);
     let advanced = events::collect_one<
@@ -55,7 +53,7 @@ fun exact_next_generation_advances_once_and_emits_complete_fact() {
     >(0);
     let (container_id, package_id, previous_generation, new_generation) =
         advanced.operational_version_advanced_fields();
-    assert_eq!(container_id, CONTAINER_ID.to_id());
+    assert_eq!(container_id, container.to_inner());
     assert_eq!(package_id, type_name::original_id<package_marker::PACKAGE_MARKER>());
     assert_eq!(previous_generation, 1);
     assert_eq!(new_generation, 2);
@@ -63,6 +61,8 @@ fun exact_next_generation_advances_once_and_emits_complete_fact() {
         events::OperationalVersionAdvanced<package_marker::PACKAGE_MARKER>,
     >().length(), 1);
 
+    container.delete();
+    destroy(ctx);
     destroy(version);
 }
 
@@ -79,42 +79,58 @@ fun current_assertion_rejects_stale_bytecode() {
 #[test]
 #[expected_failure(abort_code = errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
 fun advance_rejects_a_skipped_generation() {
+    let mut ctx = tx_context::dummy();
+    let container = object::new(&mut ctx);
     let mut version = operational_version::new<package_marker::PACKAGE_MARKER>();
 
-    version.advance(CONTAINER_ID.to_id(), 3);
+    version.advance(&container, 3);
 
+    container.delete();
+    destroy(ctx);
     destroy(version);
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
 fun advance_rejects_repeating_the_current_generation() {
+    let mut ctx = tx_context::dummy();
+    let container = object::new(&mut ctx);
     let mut version = operational_version::new<package_marker::PACKAGE_MARKER>();
 
-    version.advance(CONTAINER_ID.to_id(), 1);
+    version.advance(&container, 1);
 
+    container.delete();
+    destroy(ctx);
     destroy(version);
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
 fun advance_rejects_rollback() {
+    let mut ctx = tx_context::dummy();
+    let container = object::new(&mut ctx);
     let mut version = operational_version::new<package_marker::PACKAGE_MARKER>();
     version.set_generation_for_testing(3);
 
-    version.advance(CONTAINER_ID.to_id(), 2);
+    version.advance(&container, 2);
 
+    container.delete();
+    destroy(ctx);
     destroy(version);
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EOperationalVersionOverflow, location = blast_admin::operational_version)]
 fun advance_rejects_overflow_before_mutation() {
+    let mut ctx = tx_context::dummy();
+    let container = object::new(&mut ctx);
     let mut version = operational_version::new<package_marker::PACKAGE_MARKER>();
     version.set_generation_for_testing(std::u64::max_value!());
 
-    version.advance(CONTAINER_ID.to_id(), 0);
+    version.advance(&container, 0);
 
+    container.delete();
+    destroy(ctx);
     destroy(version);
 }
 

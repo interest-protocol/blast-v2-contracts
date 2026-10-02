@@ -52,6 +52,8 @@ public struct SuperAdminCapDestroyed has copy, drop {
     super_admin_cap_id: ID,
 }
 
+/// `container_id` is the UID the advancing module held; reduce this fact only for the container
+/// recorded at publication, since anyone can instantiate `OperationalVersion` for any marker.
 public struct OperationalVersionAdvanced<phantom PackageMarker: drop> has copy, drop {
     container_id: ID,
     package_id: address,

@@ -66,7 +66,7 @@ public fun commit_and_advance(
     let custodian_id = self.id.to_inner();
 
     self.custody.commit_upgrade(custodian_id, receipt);
-    self.operational_version.advance(custodian_id, next_compiled_generation);
+    self.operational_version.advance(&self.id, next_compiled_generation);
 }
 
 public fun custodian_id(self: &PackageAdmin): ID {

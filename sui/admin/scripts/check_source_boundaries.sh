@@ -74,6 +74,58 @@ if grep -qE '^\[dev-dependencies(\]|[.])' "$package_dir/Move.toml"; then
   fail "blast_admin may not add dev-only dependencies."
 fi
 
+# An immutable package is published once per lineage: every Published.toml entry must name a
+# deployment record whose recorded source digest is this source, or the entry is stale.
+published_manifest="$package_dir/Published.toml"
+deployments_dir="${BLAST_DEPLOYMENTS_DIR:-$package_dir/../../deployments}"
+if [[ -f "$published_manifest" ]]; then
+  source_digest="$(bash "$(dirname "${BASH_SOURCE[0]}")/source_digest.sh" "$package_dir")"
+  python3 - "$published_manifest" "$deployments_dir" "$source_digest" <<'PY' || exit 1
+import json, pathlib, sys
+
+manifest, deployments, digest = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), sys.argv[3]
+
+environment, entries = None, []
+for line in manifest.read_text().splitlines():
+    line = line.strip()
+    if line.startswith("[published.") and line.endswith("]"):
+        environment = line[len("[published."):-1]
+    elif environment and line.startswith("published-at"):
+        entries.append((environment, line.split("=", 1)[1].strip().strip('"').lower()))
+
+def packages(node):
+    if isinstance(node, dict):
+        if "packageId" in node:
+            yield node
+        for value in node.values():
+            yield from packages(value)
+    elif isinstance(node, list):
+        for value in node:
+            yield from packages(value)
+
+for environment, address in entries:
+    records = sorted((deployments / "sui" / environment).glob("*.json"))
+    recorded = [
+        package
+        for record in records
+        for package in packages(json.loads(record.read_text()))
+        if str(package["packageId"]).lower() == address
+    ]
+    if not recorded:
+        sys.exit(
+            f"Published.toml names {address} on {environment} but no deployments/sui/{environment} record "
+            "carries that packageId; record the publication (deployments/README.md) or remove the stale entry."
+        )
+    digests = {package.get("sourceDigest") for package in recorded}
+    if digests != {digest}:
+        sys.exit(
+            f"Published.toml names {address} on {environment}, whose recorded sourceDigest "
+            f"{sorted(map(str, digests))} is not this source's {digest}; an immutable package cannot be "
+            "upgraded, so remove the stale entry and publish a new lineage."
+        )
+PY
+fi
+
 for module in blast_acl operational_version upgrade_custody errors blast_admin_events; do
   [[ -f "$package_dir/sources/$module.move" ]] \
     || fail "Missing required blast_admin module: $module.move"
@@ -122,8 +174,8 @@ if grep -rnE 'public(\(package\))?[[:space:]]+(entry[[:space:]]+)?fun[[:space:]]
   fail "Upgrade custody must expose no capability release or borrow path."
 fi
 if function_declarations "$package_dir/sources/upgrade_custody.move" \
-  | grep -Eq '\)[[:space:]]*:[[:space:]]*[^{}]*(Publisher|UpgradeCap)([^A-Za-z0-9_]|$)'; then
-  fail "Production and test-only custody APIs must not return Publisher or UpgradeCap values."
+  | grep -Eq '\)[[:space:]]*:[[:space:]]*[^{}]*(UpgradeCap|(^|[^&])Publisher)([^A-Za-z0-9_]|$)'; then
+  fail "Custody APIs may return the Publisher only by immutable reference and never an UpgradeCap."
 fi
 if grep -nE 'transfer::(public_)?transfer|burn_publisher' "$package_dir/sources/upgrade_custody.move"; then
   fail "Sealed native capabilities must not leave UpgradeCustody."
@@ -198,6 +250,7 @@ expected_custody_public="$(printf '%s\n' \
   has_upgrade_cap \
   make_immutable \
   new \
+  publisher \
   restrict_to_additive \
   restrict_to_dependency_only \
   | sort)"

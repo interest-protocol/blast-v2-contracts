@@ -50,7 +50,7 @@ public(package) fun assert_next(self: &Protocol) {
 
 /// Advances the generation to the exact bytecode this upgrade installs.
 public(package) fun advance(self: &mut Protocol) {
-    self.generation.advance(self.id.to_inner(), NEXT_PACKAGE_VERSION);
+    self.generation.advance(&self.id, NEXT_PACKAGE_VERSION);
 }
 
 /// Accepts `partner_id` at once. Adding a partner whose removal is pending

@@ -15,7 +15,8 @@ const INITIAL_NATIVE_VERSION: u64 = 1;
 
 // === Public Types ===
 
-/// Storable custody value with no capability release or borrow path.
+/// Storable custody value whose capabilities never leave it: the Publisher is readable by
+/// reference and the UpgradeCap acts only through the named transitions below.
 public struct UpgradeCustody<phantom PackageMarker: drop> has store {
     publisher: Publisher,
     upgrade_cap: Option<UpgradeCap>,
@@ -66,6 +67,13 @@ public fun has_upgrade_cap<PackageMarker: drop>(
     self: &UpgradeCustody<PackageMarker>,
 ): bool {
     self.upgrade_cap.is_some()
+}
+
+/// Borrows the sealed Publisher for provenance-gated framework features such as Display and
+/// TransferPolicy. Every framework path that moves or burns a Publisher takes it by value, so a
+/// reference cannot end custody; the consumer wrapper decides who may call this.
+public fun publisher<PackageMarker: drop>(self: &UpgradeCustody<PackageMarker>): &Publisher {
+    &self.publisher
 }
 
 /// Authorizes exactly one 32-byte package digest under the cap's current policy.

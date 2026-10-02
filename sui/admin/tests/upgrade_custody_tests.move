@@ -55,6 +55,22 @@ fun canonical_capabilities_enter_sealed_custody_with_complete_identity() {
 }
 
 #[test]
+fun sealed_publisher_still_authorizes_provenance_gated_framework_features() {
+    let mut ctx = tx_context::dummy();
+    let custody = canonical_custody(&mut ctx);
+
+    let display = display::new<package_marker::Receipt>(custody.publisher(), &mut ctx);
+
+    assert_eq!(object::id(custody.publisher()), custody.publisher_id_for_testing());
+    assert!(custody.publisher().from_package<package_marker::PACKAGE_MARKER>());
+    assert!(custody.has_upgrade_cap());
+
+    destroy(ctx);
+    destroy(custody);
+    destroy(display);
+}
+
+#[test]
 #[expected_failure(abort_code = errors::EInvalidPackagePublisher, location = blast_admin::upgrade_custody)]
 fun intake_rejects_a_publisher_from_another_package_before_the_cap() {
     let mut ctx = tx_context::dummy();
@@ -506,4 +522,4 @@ use blast_admin::{
 
 use std::{type_name, unit_test::{assert_eq, destroy}};
 
-use sui::{event, package::{Self, Publisher, UpgradeCap}, test_scenario};
+use sui::{display, event, package::{Self, Publisher, UpgradeCap}, test_scenario};

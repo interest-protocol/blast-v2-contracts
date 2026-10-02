@@ -44,9 +44,13 @@ public fun assert_next<PackageMarker: drop>(
 }
 
 /// Advances only when the consumer's new compiled generation is exactly one greater.
+///
+/// `container` is the versioned object's own UID: the emitted container ID is one the caller
+/// holds, so a reducer keyed on the container recorded at publication cannot be fed a forged
+/// generation even though anyone can instantiate this value type for any marker.
 public fun advance<PackageMarker: drop>(
     self: &mut OperationalVersion<PackageMarker>,
-    container_id: ID,
+    container: &UID,
     compiled_generation: u64,
 ) {
     let previous_generation = self.generation;
@@ -55,7 +59,7 @@ public fun advance<PackageMarker: drop>(
     self.generation = new_generation;
 
     blast_admin_events::operational_version_advanced<PackageMarker>(
-        container_id,
+        container.to_inner(),
         type_name::original_id<PackageMarker>(),
         previous_generation,
         new_generation,

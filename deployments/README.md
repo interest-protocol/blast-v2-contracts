@@ -13,7 +13,11 @@ Every record must contain at least:
   including the `Publisher`, `UpgradeCap`/`PackageAdmin`, and
   operational-generation object IDs, and, for `blast_admin`, the singleton `ACL`
   and its `SuperAdminCap`; each `AdminCap` granted with its holder and roles;
-- constructor/init parameters and post-deploy verification results.
+- constructor/init parameters and post-deploy verification results;
+- for `blast_admin`, which is published immutably, the `sourceDigest` printed by
+  `sui/admin/scripts/source_digest.sh` at the published commit, beside the
+  package's `packageId`; its boundary gate refuses a `Published.toml` entry that
+  no record carries or whose recorded digest differs from the current source.
 
 Raw simulator or broadcast output stays generated and ignored. Public
 normalized records must not contain secrets.
