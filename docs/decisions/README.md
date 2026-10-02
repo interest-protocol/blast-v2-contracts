@@ -140,10 +140,11 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0095](0095-partner-codes.md) | Partner codes in one immutable package: a share of Blast's fee paid to the named partner on every trade, with a forced seven-day delay on Blast's powers | proposed |
 | [0097](0097-one-singleton-acl-with-typed-roles.md) | One singleton ACL with typed roles | **proposed; amended in place 2026-10-02: Publisher read, witness-seeded versions, publication-record gate** |
 | [0098](0098-launch-creation-fee-and-partners.md) | One partner per launch shares the launch's creation, curve, and one-time Meme/Quote migration fees | **accepted** |
-| [0099](0099-standalone-overflow-presale.md) | Standalone overflow presales with per-sale caps, proportional fills, LP-gated claims, and refund liveness | **accepted; amended by 0101 and 0102** |
+| [0099](0099-standalone-overflow-presale.md) | Standalone overflow presales with per-sale caps, proportional fills, LP-gated claims, and refund liveness | **accepted; amended by 0101, 0102, and 0103** |
 | [0100](0100-single-cetus-route-with-checked-retype.md) | One Cetus route per operation, generic over the pool's coin order, with a checked dynamic-field retype | **accepted** |
 | [0101](0101-presale-protocol-fees.md) | Admin-set presale fees on the raise, token supply, and LP fees, snapshotted at creation | **proposed** |
 | [0102](0102-presale-creation-allowlists.md) | Admin-set allowlists of the Quote types and migration witnesses new presales may use | **proposed** |
+| [0103](0103-shared-immutable-merkle-package.md) | Presale and migrators share the immutable `blast_fun_merkle` proof check from blast-util-contracts | **proposed** |
 
 ADRs 0013–0035, 0038–0056, 0058–0067, 0069, 0073, 0074, 0076–0080, 0082, and 0085–0089 are accepted subject to the amendments shown above; ADR 0088 supersedes 0036, 0068, 0081, and 0083, and ADR 0089 supersedes 0057 and 0075. ADR 0074 accepts the Aftermath dependency and raw-field normalization while retaining its live evidence gate; ADR 0037 is superseded by 0043, and ADRs 0070–0072 are superseded by 0073. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split

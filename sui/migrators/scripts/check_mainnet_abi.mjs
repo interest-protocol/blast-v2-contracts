@@ -57,6 +57,7 @@ const REV = {
     integerLibrary: '8a534bd1c0b334cd3937c27987f3147a06ba6a18',
     moveStl: '0681fec63a310ae753d03a06f7c05d3e2925bb09',
     blastTimelock: '63b6cf86c0e1a74f699610fe182b1de8d8789a14',
+    blastMerkle: 'cd1635acba1ed08d3b43fdbf438d95def11c7d8a',
 };
 
 /// The mainnet packages the pinned Git revisions of Cetus's libraries declare as `published-at`:
@@ -340,6 +341,7 @@ const MANIFESTS = [
         dependencies: {
             blast_admin: { local: '../admin' },
             blast_fun: { local: '../launchpad' },
+            blast_fun_merkle: { git: BLAST_UTIL_GIT, subdir: 'sui/merkle', rev: REV.blastMerkle },
             BluefinSpot: { git: BLUEFIN_GIT, rev: REV.bluefin },
             CetusClmm: { local: 'interfaces/cetus' },
             CetusLpBurn: { local: 'interfaces/cetus_lp_burn' },
@@ -535,6 +537,11 @@ const LOCK_NODES = {
         source: { git: BLAST_UTIL_GIT, subdir: 'sui/timelock', rev: REV.blastTimelock },
         deps: { std: 'MoveStdlib_2', sui: 'Sui_2' },
     },
+    // The immutable holder-reward proof check shared with the presale (ADR 0103).
+    blast_fun_merkle: {
+        source: { git: BLAST_UTIL_GIT, subdir: 'sui/merkle', rev: REV.blastMerkle },
+        deps: { std: 'MoveStdlib_2', sui: 'Sui_2' },
+    },
     blast_partners: {
         source: { local: '../partners' },
         deps: {
@@ -555,6 +562,7 @@ const LOCK_NODES = {
             Sui: 'Sui_2',
             blast_admin: 'blast_admin',
             blast_fun: 'blast_fun',
+            blast_fun_merkle: 'blast_fun_merkle',
         },
     },
 };

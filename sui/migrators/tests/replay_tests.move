@@ -661,7 +661,14 @@ fun publish_round(self: &mut ReplayFixture) {
         let admin = blast_acl::witness_for_testing<RewardsAdmin>();
         let mut vault = f.take_vault();
         let (meme, quote) = vault.rewards_balances();
-        let root = merkle::leaf(object::id(&vault), 0, 0, ALICE, meme / 2, quote / 2);
+        let root = blast_holder_rewards::leaf_for_testing(
+            object::id(&vault),
+            0,
+            0,
+            ALICE,
+            meme / 2,
+            quote / 2,
+        );
 
         blast_holder_rewards::publish_round(
             &mut vault,
@@ -1841,7 +1848,6 @@ use blast_fun_migrators::{
     blast_events,
     blast_holder_rewards::{Self, Round},
     lp_fee_policy::{Self, LpFeePolicy},
-    merkle,
     blast_fun_migrators::{Self as migrators_version, PackageVersion as MigratorsVersion},
     vault::{Self, LpVault},
 };

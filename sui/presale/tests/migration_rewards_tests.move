@@ -345,17 +345,6 @@ fun anyone_can_relay_a_holder_reward_to_the_committed_holder() {
     scenario.end();
 }
 
-#[test]
-fun generic_merkle_proofs_preserve_left_and_right_order() {
-    let left = hash::blake2b256(&b"left");
-    let right = hash::blake2b256(&b"right");
-    let root = merkle_tree::node(left, right);
-
-    assert!(merkle_tree::verify(root, left, 0, 2, &vector[right]));
-    assert!(merkle_tree::verify(root, right, 1, 2, &vector[left]));
-    assert!(!merkle_tree::verify(root, right, 2, 2, &vector[left]));
-}
-
 // === Test Helpers ===
 
 fun new_vault(
@@ -481,7 +470,6 @@ use blast_presale::{
     bps,
     fee_policy::{Self, ProtocolFees},
     holder_rewards::{Self as rewards, Round},
-    merkle_tree,
     presale_vault::{Self as vault, FeesCollected, PresaleVault},
     blast_presale::RecipientShare,
 };

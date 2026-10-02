@@ -143,7 +143,7 @@ public fun open_eligibility(
 /// Creates one allowlist policy whose leaves are `(index, wallet, wallet_cap)`.
 public fun allowlisted_eligibility(root: vector<u8>, leaf_count: u64): EligibilityPolicy {
     assert!(
-        root.length() == merkle_tree::digest_length()
+        root.length() == blast_fun_merkle::digest_length()
             && leaf_count > 0
             && leaf_count <= MAX_PARTICIPANTS,
         EInvalidEligibilityPolicy,
@@ -997,7 +997,10 @@ fun verify_allowlisted(
             assert!(wallet_cap > 0, EInvalidEligibilityProof);
 
             let digest = allowlist_leaf(index, wallet, wallet_cap);
-            assert!(merkle_tree::verify(root, digest, index, leaf_count, proof), EInvalidEligibilityProof);
+            assert!(
+                blast_fun_merkle::verify(root, digest, index, leaf_count, proof),
+                EInvalidEligibilityProof,
+            );
 
             leaf_count
         },
@@ -1123,11 +1126,6 @@ public fun allowlist_leaf_for_testing(
     wallet_cap: u64,
 ): vector<u8> {
     allowlist_leaf(index, wallet, wallet_cap)
-}
-
-#[test_only]
-public fun merkle_node_for_testing(left: vector<u8>, right: vector<u8>): vector<u8> {
-    merkle_tree::node(left, right)
 }
 
 #[test_only]
@@ -1530,11 +1528,12 @@ const EInvalidRaiseAllocation: vector<u8> = b"Raise allocations must be unique, 
 
 // === Imports ===
 
+use blast_fun_merkle::blast_fun_merkle;
+
 use blast_presale::{
     bps::{Self, Bps},
     creation_policy::CreationPolicy,
     fee_policy::{FeePolicy, ProtocolFees},
-    merkle_tree,
     migration_math,
 };
 

@@ -11,7 +11,6 @@ VENUE_CONFIG_SOURCE="$SOURCE_DIR/venue_config.move"
 LP_FEE_POLICY_SOURCE="$SOURCE_DIR/lp_fee_policy.move"
 MIGRATION_MATH_SOURCE="$SOURCE_DIR/migration_math.move"
 REWARDS_SOURCE="$SOURCE_DIR/blast_holder_rewards.move"
-MERKLE_SOURCE="$SOURCE_DIR/merkle.move"
 CONSTANTS_SOURCE="$SOURCE_DIR/constants.move"
 
 fail() {
@@ -132,7 +131,7 @@ require_errors() {
 # exact signatures, so no helper or type parameter can lend a witness, the reserved creation cap,
 # the custodied position, or vault balances to a new caller.
 [[ "$(find "$SOURCE_DIR" -mindepth 1 -printf '%P\n' | LC_ALL=C sort | tr '\n' ' ')" \
-    == 'blast_events.move blast_fun_migrators.move blast_holder_rewards.move bluefin.move cetus.move constants.move lp_fee_policy.move merkle.move migration_math.move package_admin.move vault.move venue_config.move ' ]] || \
+    == 'blast_events.move blast_fun_migrators.move blast_holder_rewards.move bluefin.move cetus.move constants.move lp_fee_policy.move migration_math.move package_admin.move vault.move venue_config.move ' ]] || \
     fail "sources must be exactly the pinned module set; a new module must extend this gate"
 for source in "$SOURCE_DIR"/*.move; do
     module="$(basename "$source" .move)"
@@ -193,7 +192,6 @@ cetus:public:fun settle_and_update_fee_split<Meme, Quote, CoinA, CoinB>( self: &
 constants:package:fun auto_lp_margin(): u256
 constants:package:fun bluefin_max_fee_rate(): u64
 constants:package:fun bluefin_max_tick_spacing(): u32
-constants:package:fun digest_length(): u64
 constants:package:fun max_reward_leaves(): u64
 constants:package:fun max_swap_sqrt_price(): u128
 constants:package:fun min_swap_sqrt_price(): u128
@@ -206,8 +204,6 @@ lp_fee_policy:public:fun clear_coin_shares<Meme>( self: &mut LpFeePolicy, migrat
 lp_fee_policy:public:fun set_coin_shares<Meme>( self: &mut LpFeePolicy, migrators_version: &MigratorsVersion, _: &AdminWitness<FeeAdmin>, meme_bps: Bps, quote_bps: Bps, )
 lp_fee_policy:public:fun set_default_shares( self: &mut LpFeePolicy, migrators_version: &MigratorsVersion, _: &AdminWitness<FeeAdmin>, meme_bps: Bps, quote_bps: Bps, )
 lp_fee_policy:public:fun set_protocol_destination( self: &mut LpFeePolicy, migrators_version: &MigratorsVersion, _: &AdminWitness<TreasuryAdmin>, destination: address, )
-merkle:package:fun leaf( vault: ID, round: u64, index: u64, beneficiary: address, meme: u64, quote: u64, ): vector<u8>
-merkle:package:fun verify( root: vector<u8>, mut digest: vector<u8>, mut index: u64, leaves: u64, proof: &vector<vector<u8>>, ): bool
 migration_math:package:fun auto_lp_fixed_side( sqrt_lower: u128, sqrt_price: u128, sqrt_upper: u128, amount_a: u64, amount_b: u64, ): (bool, u64)
 migration_math:package:fun sqrt_price_x64( meme_amount: u64, quote_amount: u64, meme_is_coin_a: bool, ): u128
 package_admin:public:fun authorize_upgrade( self: &mut PackageAdmin, package_version: &PackageVersion, _: &AdminWitness<UpgradeAdmin>, digest: vector<u8>, ): UpgradeTicket
@@ -649,7 +645,7 @@ in_order \
     'migrators_version.assert_current();' \
     'assert!(number==vault.next_round(),EWrongRound);' \
     'assert!(start_checkpoint<end_checkpoint&&vault.last_checkpoint().is_none_or!(|last|*last==start_checkpoint),EInvalidInterval);' \
-    'assert!(root.length()==constants::digest_length!()&&manifest_digest.length()==constants::digest_length!(),EInvalidCommitment);' \
+    'assert!(root.length()==blast_fun_merkle::digest_length()&&manifest_digest.length()==blast_fun_merkle::digest_length(),EInvalidCommitment);' \
     'assert!(leaf_count>0&&leaf_count<=constants::max_reward_leaves!(),EInvalidLeafCount);' \
     'assert!(meme_amount>0||quote_amount>0,EEmptyBudget);' \
     'let(meme,quote)=vault.fund_round(end_checkpoint,meme_amount,quote_amount);' \
@@ -659,7 +655,7 @@ in_order \
     <<<"$(rewards_body publish_round)" \
     && [[ "$(rewards_body publish_round)" == 'migrators_version.assert_current();'* ]] \
     && [[ "$(rewards_body unclaimed)" == 'vector::tabulate!(leaf_count.div_ceil(256),|_|0u256)' ]] \
-    && [[ "$(constant_body max_reward_leaves)" == '65_536' && "$(constant_body digest_length)" == '32' ]] || \
+    && [[ "$(constant_body max_reward_leaves)" == '65_536' ]] || \
     fail "publication must check the generation first, then the round number, interval, commitment, leaf count, and a nonzero budget, then reserve from the vault (whose split aborts past its balances) and share the round with every claim bit clear"
 in_order \
     'migrators_version.assert_current();' \
@@ -668,8 +664,8 @@ in_order \
     'assert!(self.claimed[word]&bit==0,EAlreadyClaimed);' \
     'assert!(beneficiary!=@0x0,EInvalidBeneficiary);' \
     'assert!(meme_amount>0||quote_amount>0,EEmptyBudget);' \
-    'letleaf=merkle::leaf(self.vault,self.number,index,beneficiary,meme_amount,quote_amount);' \
-    'assert!(merkle::verify(self.root,leaf,index,self.leaf_count,&proof),EInvalidProof);' \
+    'letdigest=leaf(self.vault,self.number,index,beneficiary,meme_amount,quote_amount);' \
+    'assert!(blast_fun_merkle::verify(self.root,digest,index,self.leaf_count,&proof),EInvalidProof);' \
     '*&mutself.claimed[word]=self.claimed[word]|bit;' \
     'self.meme.pay(meme_amount,beneficiary,ctx);' \
     'self.quote.pay(quote_amount,beneficiary,ctx);' \
@@ -702,26 +698,17 @@ require_errors "$REWARDS_SOURCE" "holder rewards must use sequential codes 0-8 f
 7 EInvalidBeneficiary Beneficiary must not be the zero address.
 8 EInvalidProof Proof must match the committed recipient, amounts and domain.
 EOF
-# Leaves and internal nodes hash under distinct domains, and every leaf binds the vault, round,
-# index, beneficiary, and both amounts. Verification rejects a proof whose depth does not match the
-# committed leaf count or whose siblings are not digests; the claim bounds the index first and
-# publication bounds the leaf count and root, so verification repeats neither.
-merkle_leaf_body="$(move_facts "$MERKLE_SOURCE" \
-    | awk -F'\t' '$1 == "FN" && $2 == "leaf" { print $10 }' | tr -d '[:space:]')"
-rg -q '^    let mut bytes = b"\\x00blast-holder-rewards-v1";$' "$MERKLE_SOURCE" \
+# Every leaf binds the vault, round, index, beneficiary, and both amounts under the leaf domain.
+# Proofs verify through the immutable `blast_fun_merkle` package, whose internal nodes hash under
+# their own domain and which rejects malformed digests, out-of-tree indexes, and wrong-depth proofs.
+rg -q '^    let mut bytes = b"\\x00blast-holder-rewards-v1";$' "$REWARDS_SOURCE" \
     && in_order 'bytes.append(bcs::to_bytes(&vault));' 'bytes.append(bcs::to_bytes(&round));' \
         'bytes.append(bcs::to_bytes(&index));' 'bytes.append(bcs::to_bytes(&beneficiary));' \
         'bytes.append(bcs::to_bytes(&meme));' 'bytes.append(bcs::to_bytes(&quote));' \
-        'hash::blake2b256(&bytes)' <<<"$merkle_leaf_body" \
-    && [[ "$(move_facts "$MERKLE_SOURCE" | awk -F'\t' '$1 == "FN" && $2 == "node" { print $10 }' \
-        | tr -d '[:space:]')" == 'letmutbytes=vector[1u8];bytes.append(left);bytes.append(right);hash::blake2b256(&bytes)' ]] \
-    && [[ "$(move_facts "$MERKLE_SOURCE" | awk -F'\t' '$1 == "FN" && $2 == "verify" { print $10 }' \
-        | tr -d '[:space:]')" == 'if(proof.length()!=proof_depth(leaves)||!proof.all!(|sibling|sibling.length()==constants::digest_length!()))returnfalse;proof.do_ref!(|sibling|{digest=if(index%2==0)node(digest,*sibling)elsenode(*sibling,digest);index=index/2;});digest==root' ]] \
-    && [[ "$(move_facts "$MERKLE_SOURCE" | awk -F'\t' '$1 == "FN" && $2 == "proof_depth" { print $10 }' \
-        | tr -d '[:space:]')" == 'letmutwidth=leaves;letmutdepth=0;while(width>1){width=width.div_ceil(2);depth=depth+1;};depth' ]] \
-    && ! move_facts "$MERKLE_SOURCE" | awk -F'\t' '$1 == "FN" && $3 == "public" && $6 == 0 { found = 1 }
-        END { exit !found }' || \
-    fail "merkle leaves must bind the vault-domain leaf fields under the leaf domain, nodes their own domain, with package-only verification of proof depth and sibling length"
+        'hash::blake2b256(&bytes)' <<<"$(rewards_body leaf)" \
+    && [[ "$(awk -F'\t' '$1 == "FN" && $2 == "leaf" && $6 == 0 { print $3 }' <<<"$REWARDS_FACTS")" \
+        == 'private' ]] || \
+    fail "reward leaves must stay private and bind every leaf field under the leaf domain"
 
 # === Venue config ===
 

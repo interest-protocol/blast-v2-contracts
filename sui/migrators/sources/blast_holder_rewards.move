@@ -78,8 +78,8 @@ public fun publish_round<Meme, Quote>(
         EInvalidInterval,
     );
     assert!(
-        root.length() == constants::digest_length!()
-            && manifest_digest.length() == constants::digest_length!(),
+        root.length() == blast_fun_merkle::digest_length()
+            && manifest_digest.length() == blast_fun_merkle::digest_length(),
         EInvalidCommitment,
     );
     assert!(leaf_count > 0 && leaf_count <= constants::max_reward_leaves!(), EInvalidLeafCount);
@@ -136,8 +136,11 @@ public fun claim<Meme, Quote>(
     assert!(beneficiary != @0x0, EInvalidBeneficiary);
     assert!(meme_amount > 0 || quote_amount > 0, EEmptyBudget);
 
-    let leaf = merkle::leaf(self.vault, self.number, index, beneficiary, meme_amount, quote_amount);
-    assert!(merkle::verify(self.root, leaf, index, self.leaf_count, &proof), EInvalidProof);
+    let digest = leaf(self.vault, self.number, index, beneficiary, meme_amount, quote_amount);
+    assert!(
+        blast_fun_merkle::verify(self.root, digest, index, self.leaf_count, &proof),
+        EInvalidProof,
+    );
 
     *&mut self.claimed[word] = self.claimed[word] | bit;
     self.meme.pay(meme_amount, beneficiary, ctx);
@@ -166,6 +169,27 @@ fun claim_bit(index: u64): (u64, u256) {
     (index / 256, 1u256 << ((index % 256) as u8))
 }
 
+/// The domain-separated digest of one beneficiary's reward leaf. The unique vault ID and the
+/// monotonically increasing round separate claims across vaults and rounds.
+fun leaf(
+    vault: ID,
+    round: u64,
+    index: u64,
+    beneficiary: address,
+    meme: u64,
+    quote: u64,
+): vector<u8> {
+    let mut bytes = b"\x00blast-holder-rewards-v1";
+    bytes.append(bcs::to_bytes(&vault));
+    bytes.append(bcs::to_bytes(&round));
+    bytes.append(bcs::to_bytes(&index));
+    bytes.append(bcs::to_bytes(&beneficiary));
+    bytes.append(bcs::to_bytes(&meme));
+    bytes.append(bcs::to_bytes(&quote));
+
+    hash::blake2b256(&bytes)
+}
+
 // === Test-Only Functions ===
 
 #[test_only]
@@ -179,6 +203,18 @@ public fun is_claimed_for_testing<Meme, Quote>(self: &Round<Meme, Quote>, index:
     self.claimed[word] & bit != 0
 }
 
+#[test_only]
+public fun leaf_for_testing(
+    vault: ID,
+    round: u64,
+    index: u64,
+    beneficiary: address,
+    meme: u64,
+    quote: u64,
+): vector<u8> {
+    leaf(vault, round, index, beneficiary, meme, quote)
+}
+
 // === Imports ===
 
 use blast_admin::blast_acl::AdminWitness;
@@ -188,11 +224,14 @@ use blast_fun::blast_fun_domain::RewardsAdmin;
 use blast_fun_migrators::{
     blast_events,
     constants,
-    merkle,
     blast_fun_migrators::PackageVersion as MigratorsVersion,
     vault::{Self, LpVault},
 };
 
-use sui::balance::Balance;
+use blast_fun_merkle::blast_fun_merkle;
+
+use std::bcs;
+
+use sui::{balance::Balance, hash};
 
 use fun vault::pay as Balance.pay;

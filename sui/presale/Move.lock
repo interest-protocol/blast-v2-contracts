@@ -100,6 +100,12 @@ use_environment = "mainnet"
 manifest_digest = "E26908079EDB3A11E96711E1FF8CDE5BBA0499612C6BF3BE67995DA6D8BED85B"
 deps = { Sui = "Sui_2", blast_fun_timelock = "blast_fun_timelock" }
 
+[pinned.mainnet.blast_fun_merkle]
+source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/merkle", rev = "cd1635acba1ed08d3b43fdbf438d95def11c7d8a" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib_2", sui = "Sui_2" }
+
 [pinned.mainnet.blast_fun_timelock]
 source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/timelock", rev = "63b6cf86c0e1a74f699610fe182b1de8d8789a14" }
 use_environment = "mainnet"
@@ -109,8 +115,8 @@ deps = { std = "MoveStdlib_2", sui = "Sui_2" }
 [pinned.mainnet.blast_presale]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "3B50C09F99EBE451C8E58FD4437AA2CFAF26E56339CB4705D58D4E393871F894"
-deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_admin = "blast_admin" }
+manifest_digest = "8728099CD16221C26A60E481D7BD962A4901972B7156E0D0C5111A319F34E125"
+deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_admin = "blast_admin", blast_fun_merkle = "blast_fun_merkle" }
 
 [pinned.testnet.BluefinSpot]
 source = { git = "https://github.com/fireflyprotocol/bluefin-spot-contract-interface.git", subdir = ".", rev = "91ce930575b2aa3decab9b7e129b8002deba80c1" }
@@ -208,6 +214,12 @@ use_environment = "testnet"
 manifest_digest = "315F80CAC6292FFBEFF0DD2E2E59B476F1834FC5B6D0443F001EC27204D0B30F"
 deps = { Sui = "Sui_2", blast_fun_timelock = "blast_fun_timelock" }
 
+[pinned.testnet.blast_fun_merkle]
+source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/merkle", rev = "cd1635acba1ed08d3b43fdbf438d95def11c7d8a" }
+use_environment = "testnet"
+manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
+deps = { std = "MoveStdlib_2", sui = "Sui_2" }
+
 [pinned.testnet.blast_fun_timelock]
 source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/timelock", rev = "63b6cf86c0e1a74f699610fe182b1de8d8789a14" }
 use_environment = "testnet"
@@ -217,5 +229,5 @@ deps = { std = "MoveStdlib_2", sui = "Sui_2" }
 [pinned.testnet.blast_presale]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "4C182658E07106EDDFD3D7F33FBFAC5C90073C68A39FC4D1BEF7B7CCDEACBB81"
-deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_admin = "blast_admin" }
+manifest_digest = "0BC2331DBD7E3FEFD60D76BF55A7406990D0C6BAEE58F3D104A5AAB47C75A672"
+deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_admin = "blast_admin", blast_fun_merkle = "blast_fun_merkle" }
