@@ -110,6 +110,10 @@ case_dir="$(new_case publication_with_matching_record)"
 publish_record "$case_dir" "$(bash "$package_dir/scripts/source_digest.sh" "$case_dir")"
 expect_accepted "$case_dir"
 
+case_dir="$(new_case unwitnessed_generation)"
+sed -i 's/sui::types::is_one_time_witness(otw)/true/' "$case_dir/sources/operational_version.move"
+expect_rejected "$case_dir"
+
 case_dir="$(new_case adds_activation_path)"
 printf '\npublic fun activate<PackageMarker: drop>(self: &mut OperationalVersion<PackageMarker>) {}\n' \
   >> "$case_dir/sources/operational_version.move"

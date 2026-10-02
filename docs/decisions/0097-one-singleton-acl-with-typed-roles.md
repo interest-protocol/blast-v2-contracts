@@ -92,11 +92,18 @@ Because nothing can be added later, two seams were settled before publication
   `TransferPolicy`, and other provenance-gated features behind a role instead
   of losing them forever when it wraps. A consumer exposes it only when a
   feature needs it.
-- `operational_version::advance` takes the versioned object's `&UID` instead of
-  a caller-chosen `ID`. Anyone can instantiate `OperationalVersion<M>` for any
-  marker, so the event type alone is forgeable; binding `container_id` to a UID
-  the caller holds means a reducer keyed on the container recorded in
-  publication effects (ADR 0058) cannot be fed a forged generation.
+- `operational_version::new` takes a reference to the consumer package's
+  one-time witness and checks it with the framework's `is_one_time_witness`.
+  The Sui verifier lets that struct be packed only in its module's `init`, so
+  `OperationalVersion<M>` can exist only where `M`'s package was published and
+  `OperationalVersionAdvanced<M>` cannot be forged. `advance` takes the
+  versioned object's `&UID` instead of a caller-chosen `ID`, so `container_id`
+  is always an object the caller holds. Because the version module imports the
+  marker for its type, the marker's `init` cannot call it back; each package's
+  version singleton therefore lives in its marker module, which seeds it from
+  the witness and then claims the `Publisher` with the same witness
+  (`blast_fun::PackageVersion`, `blast_fun_migrators::PackageVersion`,
+  `blast_sui_package::PackageVersion`, `blast_boosts_aftermath::Protocol`).
 
 The `blast_admin` at `0x247b…` is the retired `acl::Authority<Domain>` lineage
 with different modules; the NVDA deployment record holds its publication.
@@ -142,10 +149,12 @@ function without adding safety.
 
 ## Verification
 
-- A custody test creates a `Display` from the sealed `Publisher`; the advance tests
-  pin the container UID in the emitted fact; the boundary self-test rejects a
-  by-value or mutable `Publisher` return and a `Published.toml` entry that no
-  record carries or whose recorded digest differs from the source.
+- A custody test creates a `Display` from the sealed `Publisher`; a version test
+  rejects a marker that is not a one-time witness; the advance tests pin the
+  container UID in the emitted fact; the boundary self-test rejects a by-value
+  or mutable `Publisher` return, a generation constructor without the witness
+  check, and a `Published.toml` entry that no record carries or whose recorded
+  digest differs from the source.
 - `blast_admin` tests cover init, admin and role grant and revocation, roleless and
   missing-role sign-in, both capacities, destroy, foreign ACL and root rejection,
   and the root transfer, including that a cancelled, replaced, or already accepted

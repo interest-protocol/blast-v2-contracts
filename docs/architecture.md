@@ -45,7 +45,7 @@ without returning to core for its post-conditions.
 
 | Component | Responsibility | Must not own |
 | --- | --- | --- |
-| Package bootstrap | canonical OTW and one-time framework `Publisher` claim | protocol administration, feature state, or upgrade authority |
+| Package bootstrap | canonical OTW, the package's operational version singleton seeded from that witness, and the one-time framework `Publisher` claim | protocol administration, feature state beyond the version singleton, or upgrade authority |
 | Package administration | validated `Publisher` and raw `UpgradeCap` custody, exact-digest authorization under the compatible policy, receipt commit that advances the generation, and deliberate `make_immutable` | ACL membership storage, feature configuration, or state migration |
 | Protocol ACL | root rotation and revocable routine-admin membership | feature configuration, backend keys, creator recipients, or fees |
 | Runtime config | one dedicated creator-claim backend key and the live bonding-curve trade protocol fee share | admin delegation, creator recipient or issuance, cold launch policy, accrued balances, total trade-fee rates, or claim authority |

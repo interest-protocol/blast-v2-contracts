@@ -271,12 +271,12 @@ use blast_fun::{
     launch::Launch,
     launch_config::{Self, LaunchConfig},
     launch_ticket::{Self, LaunchTicket},
-    package_version::{Self, PackageVersion},
+    blast_fun::{Self as package_version, PackageVersion},
 };
 
 use blast_fun_migrators::{
     bluefin,
-    package_version::{Self as migrators_package_version, PackageVersion as MigratorsVersion},
+    blast_fun_migrators::{Self as migrators_package_version, PackageVersion as MigratorsVersion},
 };
 
 use std::{type_name, unit_test::{assert_eq, destroy}};

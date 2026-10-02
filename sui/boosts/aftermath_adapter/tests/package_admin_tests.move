@@ -336,7 +336,7 @@ fun wrap_end(self: WrapFixture) {
 
 fun start(): Fixture {
     let mut scenario = test_scenario::begin(ROOT);
-    let protocol = protocol::new_for_testing(scenario.ctx());
+    let protocol = marker::new_for_testing(scenario.ctx());
     let package_admin = package_admin::new_for_testing(scenario.ctx());
 
     scenario.next_tx(PACKAGE_ADMIN);
@@ -383,10 +383,9 @@ fun upgrade_admin(): AdminWitness<UpgradeAdmin> {
 use blast_admin::blast_acl::{Self, AdminWitness};
 
 use blast_boosts_aftermath::{
-    blast_boosts_aftermath::{Self as marker, BLAST_BOOSTS_AFTERMATH},
+    blast_boosts_aftermath::{Self as marker, BLAST_BOOSTS_AFTERMATH, Protocol},
     errors,
     package_admin::{Self, PackageAdmin},
-    protocol::{Self, Protocol},
 };
 
 use blast_boosts_core::blast_boosts_core::UpgradeAdmin;

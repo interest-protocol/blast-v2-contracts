@@ -963,17 +963,11 @@ use blast_fun::{
     bps,
     creator_authority,
     curve,
-    events::{
-        Bought,
-        LaunchCreated,
-        OpeningRoundDelivered,
-        OpeningRoundJoined,
-        OpeningRoundSettled,
-    },
+    events::{Bought, LaunchCreated, OpeningRoundDelivered, OpeningRoundJoined, OpeningRoundSettled},
     launch::{Self, Launch},
     launch_config::{Self, LaunchConfig},
     launch_ticket::{Self, LaunchTicket},
-    package_version::{Self, PackageVersion},
+    blast_fun::{Self as package_version, PackageVersion},
     runtime_config::{Self, RuntimeConfig},
 };
 

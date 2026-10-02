@@ -488,7 +488,7 @@ The package stays upgradeable (ADR 0088): venues gate callers by package
 version, so adapters must be able to relink after a venue upgrade, and its
 `UpgradeCap` is never destroyed. Every migrators upgrade uses the compatible
 policy, which no path narrows, and must bump both generation constants in
-`package_version.move`: `commit_upgrade_and_advance` always advances the stored
+`blast_fun_migrators.move`: `commit_upgrade_and_advance` always advances the stored
 generation, so a build that keeps the old constants fails every generation
 check, `authorize_upgrade` included, and freezes the package. Source omission
 does not make principal custody permanent while the package has an

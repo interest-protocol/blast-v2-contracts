@@ -680,7 +680,7 @@ fun an_added_partner_is_accepted_at_once_and_a_removed_one_until_the_delay_ends(
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EPartnerNotAccepted, location = blast_boosts_aftermath::protocol)]
+#[expected_failure(abort_code = errors::EPartnerNotAccepted, location = blast_boosts_aftermath::blast_boosts_aftermath)]
 fun a_removed_partner_is_refused_from_the_end_of_the_delay() {
     let mut fixture = start();
     let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
@@ -695,7 +695,7 @@ fun a_removed_partner_is_refused_from_the_end_of_the_delay() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EPartnerNotAccepted, location = blast_boosts_aftermath::protocol)]
+#[expected_failure(abort_code = errors::EPartnerNotAccepted, location = blast_boosts_aftermath::blast_boosts_aftermath)]
 fun a_partner_never_added_is_refused() {
     let mut fixture = start();
     let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
@@ -744,7 +744,7 @@ fun a_removed_partner_added_again_is_accepted_at_once() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EPartnerUnchanged, location = blast_boosts_aftermath::protocol)]
+#[expected_failure(abort_code = errors::EPartnerUnchanged, location = blast_boosts_aftermath::blast_boosts_aftermath)]
 fun adding_an_accepted_partner_again_is_refused() {
     let mut fixture = start();
     let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
@@ -756,7 +756,7 @@ fun adding_an_accepted_partner_again_is_refused() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EPartnerUnchanged, location = blast_boosts_aftermath::protocol)]
+#[expected_failure(abort_code = errors::EPartnerUnchanged, location = blast_boosts_aftermath::blast_boosts_aftermath)]
 fun removing_a_partner_already_being_removed_is_refused() {
     let mut fixture = start();
     let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
@@ -770,7 +770,7 @@ fun removing_a_partner_already_being_removed_is_refused() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EPartnerNotAccepted, location = blast_boosts_aftermath::protocol)]
+#[expected_failure(abort_code = errors::EPartnerNotAccepted, location = blast_boosts_aftermath::blast_boosts_aftermath)]
 fun removing_a_partner_never_added_is_refused() {
     let mut fixture = start();
     let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
@@ -782,7 +782,7 @@ fun removing_a_partner_never_added_is_refused() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EPartnerNotAccepted, location = blast_boosts_aftermath::protocol)]
+#[expected_failure(abort_code = errors::EPartnerNotAccepted, location = blast_boosts_aftermath::blast_boosts_aftermath)]
 fun removing_a_removed_partner_is_refused() {
     let mut fixture = start();
     let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
@@ -3685,9 +3685,9 @@ use blast_boosts_aftermath::{
     events,
     operations,
     orders,
-    protocol::{Self, Protocol},
+    blast_boosts_aftermath::{Self as protocol, Protocol},
     snapshot,
-    vault::{Self as vault, Vault},
+    vault::{Self, Vault},
     venue_account::{Self, Binding},
 };
 

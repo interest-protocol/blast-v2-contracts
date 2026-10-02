@@ -694,7 +694,7 @@ use blast_sui::{
     events,
     fun_sui::FUN_SUI,
     math,
-    package_version::PackageVersion,
+    blast_sui_package::PackageVersion,
 };
 
 use sui::{coin::{Coin, TreasuryCap}, dynamic_object_field, sui::SUI};

@@ -214,7 +214,7 @@ impl World {
         let acl = one(&admin_published, "blast_acl", "ACL");
         let root = one(&admin_published, "blast_acl", "SuperAdminCap");
         let config = one(&published, "launch_config", "LaunchConfig");
-        let version = one(&published, "package_version", "PackageVersion");
+        let version = one(&published, "blast_fun", "PackageVersion");
         let runtime = one(&published, "runtime_config", "RuntimeConfig");
         let linked = [core[0], core[1], core[2], (launchpad_dir.as_path(), blast)];
         let (adapter, _) = h.publish(build(&fixture.join("adapter"), &linked, &work)?)?;

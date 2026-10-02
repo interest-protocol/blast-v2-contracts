@@ -223,7 +223,7 @@ fun end(self: Fixture) {
 
 // === Imports ===
 
-use blast_boosts_aftermath::{blast_boosts_aftermath::BLAST_BOOSTS_AFTERMATH, protocol::{Self, Protocol}};
+use blast_boosts_aftermath::blast_boosts_aftermath::{Self as protocol, BLAST_BOOSTS_AFTERMATH, Protocol};
 
 use std::unit_test::{assert_eq, destroy};
 

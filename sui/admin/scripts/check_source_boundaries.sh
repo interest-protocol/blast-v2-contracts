@@ -233,6 +233,8 @@ version_file="$package_dir/sources/operational_version.move"
 if production_lines "$version_file" | grep -Eq 'fun[[:space:]]+(activate|set_generation|set_version)'; then
   fail "Operational generation must expose no separate activation or arbitrary setter."
 fi
+grep -Fq 'sui::types::is_one_time_witness(otw)' "$version_file" \
+  || fail "Operational generations must be created from the consumer package's one-time witness."
 actual_version_public="$({
   externally_callable_function_names "$version_file"
 } | sort)"

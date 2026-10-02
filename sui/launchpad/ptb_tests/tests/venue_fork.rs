@@ -378,7 +378,7 @@ impl World {
         let acl = one(&h, &admin_published, "blast_acl", "ACL");
         let root = one(&h, &admin_published, "blast_acl", "SuperAdminCap");
         let config = one(&h, &published, "launch_config", "LaunchConfig");
-        let version = one(&h, &published, "package_version", "PackageVersion");
+        let version = one(&h, &published, "blast_fun", "PackageVersion");
         let runtime = one(&h, &published, "runtime_config", "RuntimeConfig");
 
         let mut dependencies =
@@ -389,7 +389,7 @@ impl World {
             dependencies,
         )?;
         let (migrators, published) = h.publish(linked)?;
-        let migrators_version = one(&h, &published, "package_version", "PackageVersion");
+        let migrators_version = one(&h, &published, "blast_fun_migrators", "PackageVersion");
         let venue_config = one(&h, &published, "venue_config", "VenueConfig");
         let policy = one(&h, &published, "lp_fee_policy", "LpFeePolicy");
         let project = build(

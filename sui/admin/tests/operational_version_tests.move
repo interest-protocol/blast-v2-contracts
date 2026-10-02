@@ -5,11 +5,24 @@
 /// Boundary and transition tests for sealed operational generations.
 module blast_admin::operational_version_tests;
 
+// === Test-Only Types ===
+
+/// A droppable type that is not a one-time witness.
+public struct NotAWitness() has drop;
+
 // === Tests ===
 
 #[test]
+#[expected_failure(abort_code = errors::EInvalidPackageMarker, location = blast_admin::operational_version)]
+fun new_rejects_a_marker_that_is_not_a_one_time_witness() {
+    let version = operational_version::new(&NotAWitness());
+
+    destroy(version);
+}
+
+#[test]
 fun new_value_starts_at_generation_one_and_accepts_generation_one() {
-    let version = operational_version::new<package_marker::PACKAGE_MARKER>();
+    let version = new_version();
 
     version.assert_current(1);
     version.assert_next(2);
@@ -21,7 +34,7 @@ fun new_value_starts_at_generation_one_and_accepts_generation_one() {
 #[test]
 #[expected_failure(abort_code = errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
 fun next_assertion_rejects_a_skipped_generation_before_mutation() {
-    let version = operational_version::new<package_marker::PACKAGE_MARKER>();
+    let version = new_version();
 
     version.assert_next(3);
 
@@ -31,7 +44,7 @@ fun next_assertion_rejects_a_skipped_generation_before_mutation() {
 #[test]
 #[expected_failure(abort_code = errors::EOperationalVersionOverflow, location = blast_admin::operational_version)]
 fun next_assertion_rejects_overflow_before_mutation() {
-    let mut version = operational_version::new<package_marker::PACKAGE_MARKER>();
+    let mut version = new_version();
     version.set_generation_for_testing(std::u64::max_value!());
 
     version.assert_next(0);
@@ -43,7 +56,7 @@ fun next_assertion_rejects_overflow_before_mutation() {
 fun exact_next_generation_advances_once_and_emits_the_container_it_was_given() {
     let mut ctx = tx_context::dummy();
     let container = object::new(&mut ctx);
-    let mut version = operational_version::new<package_marker::PACKAGE_MARKER>();
+    let mut version = new_version();
 
     version.advance(&container, 2);
 
@@ -69,7 +82,7 @@ fun exact_next_generation_advances_once_and_emits_the_container_it_was_given() {
 #[test]
 #[expected_failure(abort_code = errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
 fun current_assertion_rejects_stale_bytecode() {
-    let version = operational_version::new<package_marker::PACKAGE_MARKER>();
+    let version = new_version();
 
     version.assert_current(0);
 
@@ -81,7 +94,7 @@ fun current_assertion_rejects_stale_bytecode() {
 fun advance_rejects_a_skipped_generation() {
     let mut ctx = tx_context::dummy();
     let container = object::new(&mut ctx);
-    let mut version = operational_version::new<package_marker::PACKAGE_MARKER>();
+    let mut version = new_version();
 
     version.advance(&container, 3);
 
@@ -95,7 +108,7 @@ fun advance_rejects_a_skipped_generation() {
 fun advance_rejects_repeating_the_current_generation() {
     let mut ctx = tx_context::dummy();
     let container = object::new(&mut ctx);
-    let mut version = operational_version::new<package_marker::PACKAGE_MARKER>();
+    let mut version = new_version();
 
     version.advance(&container, 1);
 
@@ -109,7 +122,7 @@ fun advance_rejects_repeating_the_current_generation() {
 fun advance_rejects_rollback() {
     let mut ctx = tx_context::dummy();
     let container = object::new(&mut ctx);
-    let mut version = operational_version::new<package_marker::PACKAGE_MARKER>();
+    let mut version = new_version();
     version.set_generation_for_testing(3);
 
     version.advance(&container, 2);
@@ -124,7 +137,7 @@ fun advance_rejects_rollback() {
 fun advance_rejects_overflow_before_mutation() {
     let mut ctx = tx_context::dummy();
     let container = object::new(&mut ctx);
-    let mut version = operational_version::new<package_marker::PACKAGE_MARKER>();
+    let mut version = new_version();
     version.set_generation_for_testing(std::u64::max_value!());
 
     version.advance(&container, 0);
@@ -134,11 +147,21 @@ fun advance_rejects_overflow_before_mutation() {
     destroy(version);
 }
 
+// === Test Helpers ===
+
+fun new_version(): OperationalVersion<package_marker::PACKAGE_MARKER> {
+    operational_version::new(&package_marker::marker())
+}
+
 // === Imports ===
 
 use 0xa::package_marker;
 
-use blast_admin::{blast_admin_events as events, errors, operational_version};
+use blast_admin::{
+    blast_admin_events as events,
+    errors,
+    operational_version::{Self, OperationalVersion},
+};
 
 use std::{type_name, unit_test::{assert_eq, destroy}};
 

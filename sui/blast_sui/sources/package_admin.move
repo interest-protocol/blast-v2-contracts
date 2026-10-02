@@ -271,13 +271,12 @@ use blast_admin::{
 };
 
 use blast_sui::{
-    blast_sui_package::BLAST_SUI_PACKAGE,
+    blast_sui_package::{BLAST_SUI_PACKAGE, PackageVersion},
     blast_sui::BLAST_SUI,
     blast_sui_domain::UpgradeAdmin,
     deposit_receipt::BlastSuiDepositReceipt,
     events,
     fun_sui::FUN_SUI,
-    package_version::PackageVersion,
 };
 
 use sui::{

@@ -1187,7 +1187,7 @@ use blast_boosts_aftermath::{
     constants,
     events,
     orders,
-    protocol::Protocol,
+    blast_boosts_aftermath::Protocol,
     snapshot::{Self, CapturedSnapshot},
     vault::{Vault, VaultIssuance},
     venue_account::{Self, Binding},

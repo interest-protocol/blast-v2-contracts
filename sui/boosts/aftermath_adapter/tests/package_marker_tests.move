@@ -4,9 +4,9 @@
 #[test_only]
 /// Tests for the adapter's canonical package marker.
 ///
-/// The marker's initializer claims this package's Publisher and keeps it with
-/// the publishing sender; the shared operational generation is created by
-/// `protocol::init` and is covered by `protocol_tests`.
+/// The marker's initializer seeds the shared operational generation from the
+/// witness, covered by `protocol_tests`, and then claims this package's
+/// Publisher and keeps it with the publishing sender.
 module blast_boosts_aftermath::package_marker_tests;
 
 // === Constants ===

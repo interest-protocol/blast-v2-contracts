@@ -564,7 +564,7 @@ use blast_fun::{
 use blast_fun_migrators::{
     blast_events,
     lp_fee_policy::LpFeePolicy,
-    package_version::PackageVersion as MigratorsVersion,
+    blast_fun_migrators::PackageVersion as MigratorsVersion,
 };
 
 use sui::{balance::{Self, Balance}, coin::Coin, coin_registry::Currency, dynamic_object_field};

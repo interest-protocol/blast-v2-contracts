@@ -105,7 +105,7 @@ use blast_fun::{
     launch::{Self, Launch},
     launch_config::LaunchConfig,
     launch_ticket,
-    package_version::PackageVersion,
+    blast_fun::PackageVersion,
 };
 
 use sui::{coin, coin_registry::Currency, test_scenario::Scenario};

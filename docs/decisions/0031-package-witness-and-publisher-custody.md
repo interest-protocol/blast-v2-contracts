@@ -2,6 +2,8 @@
 
 - Status: accepted
 - Date: 2026-08-25
+- Amended in place: 2026-10-02 (ADR 0097) — the marker module also seeds the
+  package's operational version from the same witness
 - Amends: [0001](0001-sui-package-and-module-layout.md), [0015](0015-protocol-authority-and-x-signer-state.md), [0018](0018-authority-module-separation.md), [0029](0029-composable-creator-identity.md)
 - Amended by: [0032](0032-admin-authorized-upgrade-cap-custody.md)
 
@@ -44,6 +46,14 @@ Add `blast_fun::blast` as the package-level module. It owns:
 - the canonical `BLAST` one-time witness; and
 - a private initializer that consumes `BLAST` through
   `sui::package::claim_and_keep`.
+
+Since 2026-10-02 the initializer first seeds the package's shared version
+singleton from a reference to the same witness: `blast_admin::operational_version::new`
+accepts only a one-time witness, which exists nowhere but in this initializer,
+so no other package can create this package's generation. The version container
+and its two compiled constants therefore live in the marker module rather than in
+a separate `package_version` module, which could not be called from here
+without a module cycle.
 
 The resulting owned `Publisher` is delivered to the package publisher as a
 deployment-time bridge. ADR 0032 then requires the publisher to move it, beside

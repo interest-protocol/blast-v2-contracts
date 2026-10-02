@@ -43,14 +43,14 @@ public struct CustodyFixture {
     blast_metadata_added: events::PackageCapabilityAdded,
     display_added: events::PackageCapabilityAdded,
     created: blast_admin::blast_admin_events::UpgradeCustodyCreated<BLAST_SUI_PACKAGE>,
-    package_version: package_version::PackageVersion,
+    package_version: blast_sui_package::PackageVersion,
 }
 
 /// Upgrade and version operations authorized by a routine admin witness.
 public struct UpgradeFixture {
     scenario: Scenario,
     package_admin: package_admin::PackageAdmin,
-    package_version: package_version::PackageVersion,
+    package_version: blast_sui_package::PackageVersion,
 }
 
 // === Tests ===
@@ -565,7 +565,7 @@ fun start_custody(): CustodyFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     scenario.create_system_objects();
     blast_sui_package::init_for_testing(scenario.ctx());
-    let package_version = package_version::new_for_testing(scenario.ctx());
+    let package_version = blast_sui_package::new_for_testing(scenario.ctx());
 
     scenario.next_tx(PUBLISHER);
     let publisher = scenario.take_from_sender<package::Publisher>();
@@ -622,7 +622,7 @@ fun start_custody(): CustodyFixture {
 fun start_upgrade(): UpgradeFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     scenario.create_system_objects();
-    package_version::init_for_testing(scenario.ctx());
+    blast_sui_package::init_for_testing(scenario.ctx());
 
     assert_eq!(event::num_events(), 0);
 
@@ -637,7 +637,7 @@ fun start_upgrade(): UpgradeFixture {
     );
 
     scenario.next_tx(ADMIN);
-    let package_version = scenario.take_shared<package_version::PackageVersion>();
+    let package_version = scenario.take_shared<blast_sui_package::PackageVersion>();
 
     UpgradeFixture {
         scenario,
@@ -682,7 +682,7 @@ fun new_display_cap(
     scenario: &mut Scenario,
 ): DisplayCap<BlastSuiDepositReceipt> {
     let mut registry = scenario.take_shared<DisplayRegistry>();
-    let package_version = package_version::new_for_testing(scenario.ctx());
+    let package_version = blast_sui_package::new_for_testing(scenario.ctx());
     let display_cap = deposit_receipt::create_display(
         &package_version,
         &mut registry,
@@ -706,7 +706,6 @@ use blast_sui::{
     events,
     fun_sui::{Self as fun_coin, FUN_SUI},
     package_admin,
-    package_version,
 };
 
 use std::{type_name, unit_test::{assert_eq, destroy}};

@@ -132,7 +132,7 @@ require_errors() {
 # exact signatures, so no helper or type parameter can lend a witness, the reserved creation cap,
 # the custodied position, or vault balances to a new caller.
 [[ "$(find "$SOURCE_DIR" -mindepth 1 -printf '%P\n' | LC_ALL=C sort | tr '\n' ' ')" \
-    == 'blast_events.move blast_fun_migrators.move blast_holder_rewards.move bluefin.move cetus.move constants.move lp_fee_policy.move merkle.move migration_math.move package_admin.move package_version.move vault.move venue_config.move ' ]] || \
+    == 'blast_events.move blast_fun_migrators.move blast_holder_rewards.move bluefin.move cetus.move constants.move lp_fee_policy.move merkle.move migration_math.move package_admin.move vault.move venue_config.move ' ]] || \
     fail "sources must be exactly the pinned module set; a new module must extend this gate"
 for source in "$SOURCE_DIR"/*.move; do
     module="$(basename "$source" .move)"
@@ -175,6 +175,9 @@ blast_events:package:fun protocol_fees_claimed<Meme, Quote>( vault_id: ID, claim
 blast_events:package:fun reward_paid( round_id: ID, index: u64, beneficiary: address, meme_amount: u64, quote_amount: u64, meme_remaining: u64, quote_remaining: u64, )
 blast_events:package:fun round_published( vault_id: ID, round_id: ID, number: u64, start_checkpoint: u64, end_checkpoint: u64, root: vector<u8>, manifest_digest: vector<u8>, leaf_count: u64, meme_amount: u64, quote_amount: u64, meme_unallocated: u64, quote_unallocated: u64, )
 blast_events:package:fun vault_created<Meme, Quote, Venue>( vault_id: ID, pool_id: ID, position_id: ID, residual_meme: u64, residual_quote: u64, liquidity: u128, fee_split: FeeSplit, )
+blast_fun_migrators:package:fun advance(self: &mut PackageVersion)
+blast_fun_migrators:package:fun assert_current(self: &PackageVersion)
+blast_fun_migrators:package:fun assert_next(self: &PackageVersion)
 blast_holder_rewards:public:fun claim<Meme, Quote>( self: &mut Round<Meme, Quote>, migrators_version: &MigratorsVersion, index: u64, beneficiary: address, meme_amount: u64, quote_amount: u64, proof: vector<vector<u8>>, ctx: &mut TxContext, )
 blast_holder_rewards:public:fun publish_round<Meme, Quote>( vault: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, _: &AdminWitness<RewardsAdmin>, number: u64, start_checkpoint: u64, end_checkpoint: u64, root: vector<u8>, manifest_digest: vector<u8>, leaf_count: u64, meme_amount: u64, quote_amount: u64, ctx: &mut TxContext, )
 bluefin:public:fun buyback_and_burn<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>, bluefin_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, min_meme_out: u64, clock: &Clock, ctx: &mut TxContext, )
@@ -210,9 +213,6 @@ migration_math:package:fun sqrt_price_x64( meme_amount: u64, quote_amount: u64, 
 package_admin:public:fun authorize_upgrade( self: &mut PackageAdmin, package_version: &PackageVersion, _: &AdminWitness<UpgradeAdmin>, digest: vector<u8>, ): UpgradeTicket
 package_admin:public:fun commit_upgrade_and_advance( self: &mut PackageAdmin, package_version: &mut PackageVersion, _: &AdminWitness<UpgradeAdmin>, receipt: UpgradeReceipt, )
 package_admin:public:fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext)
-package_version:package:fun advance(self: &mut PackageVersion)
-package_version:package:fun assert_current(self: &PackageVersion)
-package_version:package:fun assert_next(self: &PackageVersion)
 vault:package:fun assert_fee_split_update<Meme, Quote>( self: &LpVault<Meme, Quote>, launch: &Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, proposed: FeeSplit, )
 vault:package:fun attach_auto_lp_position<Meme, Quote, Venue, Position: key + store>( self: &mut LpVault<Meme, Quote>, _venue: &Venue, position: Position, )
 vault:package:fun auto_lp_position< Meme, Quote, Venue, Position: key + store, >( self: &LpVault<Meme, Quote>, _venue: &Venue, ): &Position
@@ -252,24 +252,24 @@ package_aliases="$(for source in "$SOURCE_DIR"/*.move; do
 done | LC_ALL=C sort)"
 require_text "$package_aliases" \
     "every rename and method alias in the package must be exactly the pinned set" <<'EOF'
-blast_holder_rewards: package_version::PackageVersion as MigratorsVersion
+blast_holder_rewards: blast_fun_migrators::PackageVersion as MigratorsVersion
 blast_holder_rewards: vault::pay as Balance.pay
+bluefin: blast_fun_migrators::PackageVersion as MigratorsVersion
 bluefin: collect_position_fees as LpVault.collect_position_fees
 bluefin: compound as LpVault.compound
-bluefin: package_version::PackageVersion as MigratorsVersion
 bluefin: settle_fees as LpVault.settle_fees
 cetus: add_liquidity as LpVault.add_liquidity
+cetus: blast_fun_migrators::PackageVersion as MigratorsVersion
 cetus: collect_position_fees as LpVault.collect_position_fees
 cetus: compound as LpVault.compound
-cetus: package_version::PackageVersion as MigratorsVersion
 cetus: pool_creation_cap as VenueConfig.pool_creation_cap
 cetus: settle_fees as LpVault.settle_fees
-lp_fee_policy: package_version::PackageVersion as MigratorsVersion
+lp_fee_policy: blast_fun_migrators::PackageVersion as MigratorsVersion
+vault: blast_fun_migrators::PackageVersion as MigratorsVersion
 vault: dynamic_object_field::add as UID.add_dynamic_object_field
 vault: dynamic_object_field::borrow as UID.dynamic_object_field
 vault: dynamic_object_field::borrow_mut as UID.dynamic_object_field_mut
 vault: dynamic_object_field::exists as UID.has_dynamic_object_field
-vault: package_version::PackageVersion as MigratorsVersion
 vault: pay as Balance.pay
 venue_config: dynamic_object_field::add as UID.add_dynamic_object_field
 venue_config: dynamic_object_field::borrow as UID.dynamic_object_field
@@ -278,7 +278,7 @@ EOF
 for module in lp_fee_policy vault blast_holder_rewards bluefin cetus; do
     [[ "$(move_norm "$SOURCE_DIR/${module}.move" | rg -o 'use [^;]*\bMigratorsVersion\b[^;]*;' \
         | rg -c '^use blast_fun_migrators::\{')" == 1 ]] || \
-        fail "${module}.move must import MigratorsVersion once, from this package's package_version"
+        fail "${module}.move must import MigratorsVersion once, from this package's marker module"
 done
 # Every source error is an explicitly coded constant, so the per-module code pins see them all.
 if rg -q '#\[error\]|\bconst E\w*\s*:\s*u(8|16|32|64|128|256)\b' "$SOURCE_DIR"; then
@@ -616,7 +616,7 @@ require_pattern "$VAULT_SOURCE" 'protocol_quote_residual\.withdraw_all' \
 require_exact_count 'PackageVersion' 1 \
     "vault must take only the Migrators generation, never a Launchpad PackageVersion" \
     "$VAULT_SOURCE"
-require_pattern "$VAULT_SOURCE" 'package_version::PackageVersion as MigratorsVersion' \
+require_pattern "$VAULT_SOURCE" 'blast_fun_migrators::PackageVersion as MigratorsVersion' \
     'Migrators generation imported under its guard alias'
 require_exact_count '&AdminWitness<' 2 \
     "vault Launchpad authority must be exactly the protocol residual claim and the buyback" \
@@ -1143,20 +1143,20 @@ done)"
 [[ -z "$admin_witness_violations" ]] || \
     fail "every administrator witness must be a borrowed AdminWitness of one concrete Launchpad role: ${admin_witness_violations}"
 
-for required in blast_fun_migrators.move package_version.move package_admin.move; do
+for required in blast_fun_migrators.move package_admin.move; do
     [[ -f "$SOURCE_DIR/$required" ]] || \
         fail "Migrators must own $required"
 done
 
-rg -q '^public struct PackageVersion has key \{$' "$SOURCE_DIR/package_version.move" || \
+rg -q '^public struct PackageVersion has key \{$' "$SOURCE_DIR/blast_fun_migrators.move" || \
     fail "Migrators must own one canonical generation container"
-rg -q 'generation: OperationalVersion<BLAST_FUN_MIGRATORS>,' "$SOURCE_DIR/package_version.move" || \
+rg -q 'generation: OperationalVersion<BLAST_FUN_MIGRATORS>,' "$SOURCE_DIR/blast_fun_migrators.move" || \
     fail "the generation value must be the shared typed value"
-rg -q '^const PACKAGE_VERSION: u64 = 1;$' "$SOURCE_DIR/package_version.move" || \
+rg -q '^const PACKAGE_VERSION: u64 = 1;$' "$SOURCE_DIR/blast_fun_migrators.move" || \
     fail "Migrators must compile its current generation constant"
-rg -q '^const NEXT_PACKAGE_VERSION: u64 = 2;$' "$SOURCE_DIR/package_version.move" || \
+rg -q '^const NEXT_PACKAGE_VERSION: u64 = 2;$' "$SOURCE_DIR/blast_fun_migrators.move" || \
     fail "Migrators must compile its cutover target constant"
-if rg -n '\.checked_add\(|fun activate\(' "$SOURCE_DIR/package_version.move"; then
+if rg -n '\.checked_add\(|fun activate\(' "$SOURCE_DIR/blast_fun_migrators.move"; then
     fail "generation arithmetic and separate activation belong to blast_admin"
 fi
 
