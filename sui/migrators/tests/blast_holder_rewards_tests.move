@@ -380,7 +380,7 @@ fun two_leaves_are_claimed_with_positional_proofs_and_leave_exact_remainders() {
     let mut f = start();
     let alice = f.leaf(0, 0, ALICE, 10, 0);
     let bob = f.leaf(0, 1, BOB, 5, 7);
-    let root = blast_fun_merkle::node(alice, bob);
+    let root = merkle_tree::node(alice, bob);
     f.scenario.next_tx(ADMIN);
     f.publish(0, 0, 10, root, digest(), 2, 15, 7);
     let round_id = published_round_id();
@@ -433,7 +433,7 @@ fun the_largest_round_claims_its_last_bitmap_bit() {
     let sibling = f.leaf(0, 0, ALICE, 1, 0);
     let proof = vector::tabulate!(16, |_| sibling);
     let mut root = leaf;
-    proof.do_ref!(|sibling| root = blast_fun_merkle::node(*sibling, root));
+    proof.do_ref!(|sibling| root = merkle_tree::node(*sibling, root));
     f.scenario.next_tx(ADMIN);
     f.publish(0, 0, 1, root, root, 65_536, 1, 0);
     let round_id = published_round_id();
@@ -795,7 +795,7 @@ use blast_fun_migrators::{
     vault::{Self, LpVault},
 };
 
-use blast_fun_merkle::blast_fun_merkle;
+use blast_presale::merkle_tree;
 
 use std::unit_test::{assert_eq, destroy};
 

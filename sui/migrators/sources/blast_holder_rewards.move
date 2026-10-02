@@ -78,8 +78,8 @@ public fun publish_round<Meme, Quote>(
         EInvalidInterval,
     );
     assert!(
-        root.length() == blast_fun_merkle::digest_length()
-            && manifest_digest.length() == blast_fun_merkle::digest_length(),
+        root.length() == constants::digest_length!()
+            && manifest_digest.length() == constants::digest_length!(),
         EInvalidCommitment,
     );
     assert!(leaf_count > 0 && leaf_count <= constants::max_reward_leaves!(), EInvalidLeafCount);
@@ -138,7 +138,7 @@ public fun claim<Meme, Quote>(
 
     let digest = leaf(self.vault, self.number, index, beneficiary, meme_amount, quote_amount);
     assert!(
-        blast_fun_merkle::verify(self.root, digest, index, self.leaf_count, &proof),
+        merkle_tree::verify(self.root, digest, index, self.leaf_count, &proof),
         EInvalidProof,
     );
 
@@ -228,7 +228,7 @@ use blast_fun_migrators::{
     vault::{Self, LpVault},
 };
 
-use blast_fun_merkle::blast_fun_merkle;
+use blast_presale::merkle_tree;
 
 use std::bcs;
 

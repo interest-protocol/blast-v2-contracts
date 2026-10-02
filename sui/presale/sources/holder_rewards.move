@@ -46,8 +46,8 @@ public fun publish_round<Meme, Quote>(
         EInvalidInterval,
     );
     assert!(
-        root.length() == blast_fun_merkle::digest_length()
-            && manifest_digest.length() == blast_fun_merkle::digest_length(),
+        root.length() == merkle_tree::digest_length()
+            && manifest_digest.length() == merkle_tree::digest_length(),
         EInvalidCommitment,
     );
     assert!(leaf_count > 0 && leaf_count <= MAX_REWARD_LEAVES, EInvalidLeafCount);
@@ -107,7 +107,7 @@ public fun claim<Meme, Quote>(
 
     let digest = leaf(self.vault_id, self.number, index, beneficiary, meme_amount, quote_amount);
     assert!(
-        blast_fun_merkle::verify(self.root, digest, index, self.leaf_count, &proof),
+        merkle_tree::verify(self.root, digest, index, self.leaf_count, &proof),
         EInvalidProof,
     );
 
@@ -331,9 +331,12 @@ const EEmptyClaim: vector<u8> = b"A reward claim must pay a positive amount of a
 
 use blast_admin::blast_acl::AdminWitness;
 
-use blast_fun_merkle::blast_fun_merkle;
-
-use blast_presale::{blast_presale, blast_presale_domain::RewardsAdmin, presale_vault::PresaleVault};
+use blast_presale::{
+    blast_presale,
+    blast_presale_domain::RewardsAdmin,
+    merkle_tree,
+    presale_vault::PresaleVault,
+};
 
 use std::bcs;
 

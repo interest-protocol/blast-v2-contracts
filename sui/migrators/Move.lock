@@ -106,17 +106,11 @@ use_environment = "mainnet"
 manifest_digest = "E2577746AFF27E65313264EBF8DA126BE85E0CA5B00BD503983E8F7DE9806C5A"
 deps = { blast_admin = "blast_admin", blast_partners = "blast_partners", std = "MoveStdlib_2", sui = "Sui_2" }
 
-[pinned.mainnet.blast_fun_merkle]
-source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/merkle", rev = "cd1635acba1ed08d3b43fdbf438d95def11c7d8a" }
-use_environment = "mainnet"
-manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
-deps = { std = "MoveStdlib_2", sui = "Sui_2" }
-
 [pinned.mainnet.blast_fun_migrators]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "79E2FF1DB8E2553934D43A79645551787E3DA7C3A99C329D065894BDDEB086CD"
-deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_admin = "blast_admin", blast_fun = "blast_fun", blast_fun_merkle = "blast_fun_merkle" }
+manifest_digest = "AF99830B6348590BA7F5318E056973CCA46312B583DC658A9173446A1FC88121"
+deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_admin = "blast_admin", blast_fun = "blast_fun", blast_presale = "blast_presale" }
 
 [pinned.mainnet.blast_fun_timelock]
 source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/timelock", rev = "63b6cf86c0e1a74f699610fe182b1de8d8789a14" }
@@ -129,6 +123,12 @@ source = { local = "../partners" }
 use_environment = "mainnet"
 manifest_digest = "D5CCB833332CD32F07926CDFF448E853BA674CB7110877E91BA125049FDB2026"
 deps = { blast_admin = "blast_admin", blast_fun_timelock = "blast_fun_timelock", std = "MoveStdlib_2", sui = "Sui_2" }
+
+[pinned.mainnet.blast_presale]
+source = { local = "../presale" }
+use_environment = "mainnet"
+manifest_digest = "3B50C09F99EBE451C8E58FD4437AA2CFAF26E56339CB4705D58D4E393871F894"
+deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_admin = "blast_admin" }
 
 [pinned.testnet.BluefinSpot]
 source = { git = "https://github.com/fireflyprotocol/bluefin-spot-contract-interface.git", subdir = ".", rev = "91ce930575b2aa3decab9b7e129b8002deba80c1" }
@@ -232,17 +232,11 @@ use_environment = "testnet"
 manifest_digest = "EE908CC089FB6F23A022483FB43C54274591972DE394B83C65C6F6174080AB1F"
 deps = { blast_admin = "blast_admin", blast_partners = "blast_partners", std = "MoveStdlib_2", sui = "Sui_2" }
 
-[pinned.testnet.blast_fun_merkle]
-source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/merkle", rev = "cd1635acba1ed08d3b43fdbf438d95def11c7d8a" }
-use_environment = "testnet"
-manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
-deps = { std = "MoveStdlib_2", sui = "Sui_2" }
-
 [pinned.testnet.blast_fun_migrators]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "87782565019A99D76771C07EB0FA4FC517B47F286091F7DDE3AFADCA13CF7DC5"
-deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_admin = "blast_admin", blast_fun = "blast_fun", blast_fun_merkle = "blast_fun_merkle" }
+manifest_digest = "40A32FD74A00F20DDA1481F774C8BC5B398C7463F813FE28A441489EC9D6D2C8"
+deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_admin = "blast_admin", blast_fun = "blast_fun", blast_presale = "blast_presale" }
 
 [pinned.testnet.blast_fun_timelock]
 source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/timelock", rev = "63b6cf86c0e1a74f699610fe182b1de8d8789a14" }
@@ -255,3 +249,9 @@ source = { local = "../partners" }
 use_environment = "testnet"
 manifest_digest = "8C0E43AF514B7DCD0420AB49466D733394BE7FB875344BC3A6105EE90407F358"
 deps = { blast_admin = "blast_admin", blast_fun_timelock = "blast_fun_timelock", std = "MoveStdlib_2", sui = "Sui_2" }
+
+[pinned.testnet.blast_presale]
+source = { local = "../presale" }
+use_environment = "testnet"
+manifest_digest = "4C182658E07106EDDFD3D7F33FBFAC5C90073C68A39FC4D1BEF7B7CCDEACBB81"
+deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_admin = "blast_admin" }

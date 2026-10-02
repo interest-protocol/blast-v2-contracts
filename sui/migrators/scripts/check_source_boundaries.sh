@@ -192,6 +192,7 @@ cetus:public:fun settle_and_update_fee_split<Meme, Quote, CoinA, CoinB>( self: &
 constants:package:fun auto_lp_margin(): u256
 constants:package:fun bluefin_max_fee_rate(): u64
 constants:package:fun bluefin_max_tick_spacing(): u32
+constants:package:fun digest_length(): u64
 constants:package:fun max_reward_leaves(): u64
 constants:package:fun max_swap_sqrt_price(): u128
 constants:package:fun min_swap_sqrt_price(): u128
@@ -645,7 +646,7 @@ in_order \
     'migrators_version.assert_current();' \
     'assert!(number==vault.next_round(),EWrongRound);' \
     'assert!(start_checkpoint<end_checkpoint&&vault.last_checkpoint().is_none_or!(|last|*last==start_checkpoint),EInvalidInterval);' \
-    'assert!(root.length()==blast_fun_merkle::digest_length()&&manifest_digest.length()==blast_fun_merkle::digest_length(),EInvalidCommitment);' \
+    'assert!(root.length()==constants::digest_length!()&&manifest_digest.length()==constants::digest_length!(),EInvalidCommitment);' \
     'assert!(leaf_count>0&&leaf_count<=constants::max_reward_leaves!(),EInvalidLeafCount);' \
     'assert!(meme_amount>0||quote_amount>0,EEmptyBudget);' \
     'let(meme,quote)=vault.fund_round(end_checkpoint,meme_amount,quote_amount);' \
@@ -655,7 +656,7 @@ in_order \
     <<<"$(rewards_body publish_round)" \
     && [[ "$(rewards_body publish_round)" == 'migrators_version.assert_current();'* ]] \
     && [[ "$(rewards_body unclaimed)" == 'vector::tabulate!(leaf_count.div_ceil(256),|_|0u256)' ]] \
-    && [[ "$(constant_body max_reward_leaves)" == '65_536' ]] || \
+    && [[ "$(constant_body max_reward_leaves)" == '65_536' && "$(constant_body digest_length)" == '32' ]] || \
     fail "publication must check the generation first, then the round number, interval, commitment, leaf count, and a nonzero budget, then reserve from the vault (whose split aborts past its balances) and share the round with every claim bit clear"
 in_order \
     'migrators_version.assert_current();' \
@@ -665,7 +666,7 @@ in_order \
     'assert!(beneficiary!=@0x0,EInvalidBeneficiary);' \
     'assert!(meme_amount>0||quote_amount>0,EEmptyBudget);' \
     'letdigest=leaf(self.vault,self.number,index,beneficiary,meme_amount,quote_amount);' \
-    'assert!(blast_fun_merkle::verify(self.root,digest,index,self.leaf_count,&proof),EInvalidProof);' \
+    'assert!(merkle_tree::verify(self.root,digest,index,self.leaf_count,&proof),EInvalidProof);' \
     '*&mutself.claimed[word]=self.claimed[word]|bit;' \
     'self.meme.pay(meme_amount,beneficiary,ctx);' \
     'self.quote.pay(quote_amount,beneficiary,ctx);' \
@@ -699,8 +700,9 @@ require_errors "$REWARDS_SOURCE" "holder rewards must use sequential codes 0-8 f
 8 EInvalidProof Proof must match the committed recipient, amounts and domain.
 EOF
 # Every leaf binds the vault, round, index, beneficiary, and both amounts under the leaf domain.
-# Proofs verify through the immutable `blast_fun_merkle` package, whose internal nodes hash under
-# their own domain and which rejects malformed digests, out-of-tree indexes, and wrong-depth proofs.
+# Proofs verify through the presale package's `merkle_tree`, whose logic cannot change, whose
+# internal nodes hash under their own domain, and which rejects malformed digests, out-of-tree
+# indexes, and wrong-depth proofs.
 rg -q '^    let mut bytes = b"\\x00blast-holder-rewards-v1";$' "$REWARDS_SOURCE" \
     && in_order 'bytes.append(bcs::to_bytes(&vault));' 'bytes.append(bcs::to_bytes(&round));' \
         'bytes.append(bcs::to_bytes(&index));' 'bytes.append(bcs::to_bytes(&beneficiary));' \

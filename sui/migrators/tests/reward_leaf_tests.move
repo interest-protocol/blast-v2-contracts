@@ -11,9 +11,9 @@ fun a_single_leaf_verifies_only_its_exact_beneficiary_and_amounts() {
     let vault = object::id_from_address(@0xD);
     let leaf = rewards::leaf_for_testing(vault, 0, 0, @0xA, 10, 20);
 
-    assert!(blast_fun_merkle::verify(leaf, leaf, 0, 1, &vector[]));
+    assert!(merkle_tree::verify(leaf, leaf, 0, 1, &vector[]));
     assert!(
-        !blast_fun_merkle::verify(
+        !merkle_tree::verify(
             leaf,
             rewards::leaf_for_testing(vault, 0, 0, @0xB, 10, 20),
             0,
@@ -21,6 +21,27 @@ fun a_single_leaf_verifies_only_its_exact_beneficiary_and_amounts() {
             &vector[],
         ),
     );
+}
+
+#[test]
+fun two_leaves_use_positional_proofs() {
+    let vault = object::id_from_address(@0xD);
+    let a = rewards::leaf_for_testing(vault, 0, 0, @0xA, 10, 20);
+    let b = rewards::leaf_for_testing(vault, 0, 1, @0xB, 30, 40);
+    let root = merkle_tree::node(a, b);
+
+    assert!(merkle_tree::verify(root, a, 0, 2, &vector[b]));
+    assert!(merkle_tree::verify(root, b, 1, 2, &vector[a]));
+    assert!(!merkle_tree::verify(root, b, 0, 2, &vector[a]));
+}
+
+#[test]
+fun proofs_of_the_wrong_depth_or_sibling_length_are_rejected() {
+    let leaf = rewards::leaf_for_testing(object::id_from_address(@0xD), 0, 0, @0xA, 1, 0);
+
+    assert!(!merkle_tree::verify(leaf, leaf, 0, 2, &vector[]));
+    assert!(!merkle_tree::verify(leaf, leaf, 0, 2, &vector[vector[1u8]]));
+    assert!(!merkle_tree::verify(leaf, leaf, 0, 1, &vector[leaf]));
 }
 
 #[test]
@@ -32,7 +53,7 @@ fun sdk_three_holder_vector_matches_move_hashes_and_odd_leaf_proof() {
 
     assert_eq!(leaf, x"18ba1db53bc0da39eb6f1f00df49fa5be0932e85ca8f8257f4d278edea7f1aa8");
     assert!(
-        blast_fun_merkle::verify(
+        merkle_tree::verify(
             root,
             leaf,
             0,
@@ -44,7 +65,7 @@ fun sdk_three_holder_vector_matches_move_hashes_and_odd_leaf_proof() {
         ),
     );
     assert!(
-        blast_fun_merkle::verify(
+        merkle_tree::verify(
             root,
             last,
             2,
@@ -67,13 +88,13 @@ fun every_leaf_field_is_bound_to_the_commitment() {
         rewards::leaf_for_testing(vault, 0, 0, @0xA, 10, 21),
     ];
 
-    altered.do!(|leaf| assert!(!blast_fun_merkle::verify(root, leaf, 0, 1, &vector[])));
+    altered.do!(|leaf| assert!(!merkle_tree::verify(root, leaf, 0, 1, &vector[])));
 }
 
 // === Imports ===
 
 use blast_fun_migrators::blast_holder_rewards as rewards;
 
-use blast_fun_merkle::blast_fun_merkle;
+use blast_presale::merkle_tree;
 
 use std::unit_test::assert_eq;

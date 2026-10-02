@@ -224,7 +224,7 @@ fun missed_liquidity_deadline_turns_a_funded_sale_into_full_refunds() {
 fun allowlist_proofs_enforce_distinct_wallet_caps() {
     let alice_leaf = presale::allowlist_leaf_for_testing(0, ALICE, 500);
     let bob_leaf = presale::allowlist_leaf_for_testing(1, BOB, 100);
-    let root = blast_fun_merkle::node(alice_leaf, bob_leaf);
+    let root = presale::merkle_node_for_testing(alice_leaf, bob_leaf);
     let mut fixture = start_sale(presale::allowlisted_eligibility(root, 2));
 
     assert_eq!(
@@ -1707,8 +1707,6 @@ fun only_event<Event: copy + drop>(): Event {
 }
 
 // === Imports ===
-
-use blast_fun_merkle::blast_fun_merkle;
 
 use blast_presale::{bluefin, cetus, migration_math, blast_presale::{
     Self as presale,
