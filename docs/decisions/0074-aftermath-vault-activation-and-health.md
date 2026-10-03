@@ -5,6 +5,10 @@ contract; local evidence does not establish publication or live release readines
 
 - Status: **accepted for dependency and raw-field normalization**
 - Date: 2026-09-04
+- Amended: 2026-10-03 (owner decision): Blast deploys to Sui mainnet only.
+  The testnet rehearsal tooling is removed and no release evidence depends on
+  a testnet or local-network transaction; see the
+  [mainnet-only amendment](#mainnet-only-amendment-2026-10-03).
 - Extends: [0064](0064-aftermath-backed-leverage-coins.md)
 - Preserves the package ownership decision in
   [0073](0073-series-one-adapter-owned-vaults.md)
@@ -44,9 +48,10 @@ The live checker first requires Sui mainnet chain identifier
 `4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S`. It then checks each original
 package, current package, version, digest, previous transaction, module bytecode
 hash, and every consumed normalized function signature. It rejects a newer
-lineage tip. It also parses `Move.toml` and both lock environments with a
-fail-closed reader. A mutable selector, changed repository or subdirectory,
-unknown table, dependency-edge drift, or unexpected lock node fails the gate.
+lineage tip. It also parses `Move.toml` and the mainnet lock environment with
+a fail-closed reader. A mutable selector, changed repository or subdirectory,
+unknown table, dependency-edge drift, or unexpected lock node, including any
+non-mainnet lock environment, fails the gate.
 
 ### IFixed convention
 
@@ -218,21 +223,23 @@ reserve, locked-share minting, cap/checkpoint sealing, VenueAccount
 installation, account and ClearingHouse sharing, and event emission. These
 tests do not prove transaction rollback. Move unit tests cannot catch an abort
 and then inspect the aborted transaction's object effects, and the official
-external ports abort locally. An authorized verifier must therefore prove
-activation atomicity with controlled submitted local or testnet transactions at every named phase
-boundary, in addition to one successful end-to-end activation.
+external ports abort locally. Rollback of an aborted activation rests on Sui's
+transaction atomicity: an abort reverts every object, supply, and event effect
+except gas. Blast does not rehearse it on testnet or a local network
+(2026-10-03 amendment); the evidence before the first funded mainnet
+activation is these local tests, the dev-inspect phase-order check, and the
+read-only mainnet dev-inspect of the reviewed PTB.
 
 ### Release evidence protocol
 
 Offline activation vectors exercise the same exact command-result, effect,
-event, checkpoint, final-state, case-classification, and rollback validators as
-the live gates. They are synthetic regression inputs and are never deployment
-or rollback evidence.
+event, and checkpoint validators as the live read-only gate. They are
+synthetic regression inputs and are never deployment or rollback evidence.
 
 The read-only gate serializes the reviewed PTB, then passes that exact base64
 `TransactionData` to the pinned Sui CLI's machine-readable `serialized-tx`
 surface with `--dev-inspect --json` on the exact mainnet chain. A committed fixture
-captured from that pinned surface fixes its schema; omitted optional result
+captured from that pinned surface on mainnet fixes its schema; omitted optional result
 arrays normalize to empty arrays. The gate consumes the standard transaction
 effects, raw typed `events_wrapper::Event<T>` values paired with `event_json`,
 changed objects, and command outputs. It authenticates every configured input
@@ -240,6 +247,15 @@ object type and requires one exact wrapped `VaultInitialized<Product>` schema.
 It does not accept a tool-specific normalized response or infer a return value
 from `initialize`, which returns nothing. Every live proof path rejects a Sui
 CLI version other than the pinned revision.
+
+### Controlled rehearsal gates (removed)
+
+*Removed on 2026-10-03 by the
+[mainnet-only amendment](#mainnet-only-amendment-2026-10-03). The controlled
+health gate, the controlled atomicity gate, the failpoint package and their
+offline vectors described in this subsection no longer exist; the text records
+what they checked. The reserve and funding accounting rules in the second
+paragraph remain the adapter's behavior and are pinned by its Move tests.*
 
 The controlled health gate submits configured production calls for all sixteen
 P16-P19 cases: long, short, flat, profit, loss, funding credit, funding cost,
@@ -324,11 +340,10 @@ not deployed venue execution. Release still requires:
 - Preserve independent local long, short, flat, PnL, funding, depeg,
   minimum-lot, width, and rounding regressions for this table.
 - An authorized verifier must compare the named interface results and funding
-  checkpoint effect against live inspection and controlled mutation fixtures. It must also
-  observe failed submitted local or testnet transactions at every activation
-  phase boundary and prove that no protocol-owned mutation, supply, custody,
-  or event effect survives; read-only mainnet dev-inspect is not rollback
-  evidence.
+  checkpoint effect against live mainnet inspection. Activation rollback is
+  not rehearsed on testnet or a local network (2026-10-03 amendment); it rests
+  on Sui transaction atomicity, and read-only mainnet dev-inspect remains
+  success-path evidence only, not rollback evidence.
 - The selected SUI-USDC market, registry, oracle objects, source IDs, lot size,
   IMR, MMR, pause/freeze behavior, and usable owned collateral remain deployment
   inputs that must be recorded and verified.
@@ -567,11 +582,11 @@ zero frequency as never due. The ABI gate pins `update_funding`,
 `funding_params`, `funding_last_upd_ms`, `is_time_to_update` and
 `next_funding_update_time`; the source-boundary gate pins that every
 `settle_position_funding` call site is preceded in its function by the guarded
-update, before the pre-settlement capture, with the base storage; the offline
-controlled-health matrix carries the `update_due_then_settlement` vector, a
-due update followed by one settlement whose post checkpoint carries the
-updated market rates. Live execution of the venue call remains part of the
-separately authorized verification stage.
+update, before the pre-settlement capture, with the base storage. The offline
+controlled-health matrix that carried the `update_due_then_settlement` vector
+was removed with the testnet rehearsal tooling on 2026-10-03. Live execution
+of the venue call remains part of the separately authorized verification
+stage.
 
 ### Terminal finality and event ABI amendment (2026-09-06)
 
@@ -651,6 +666,28 @@ is unfrozen (finding F5 of the venue bytecode record). The
 isolated funding checkpoint the market path used to prove separately is gone
 with it, and `UnwindProgress` carries the adopted before checkpoint, the after
 checkpoint, the market-order count and the optional filled quote.
+
+### Mainnet-only amendment (2026-10-03)
+
+Owner decision: Blast exists only on Sui mainnet, and no package or tool
+supports testnet. For Boosts this means:
+
+- Every Boosts package builds and pins only the `mainnet` environment; the
+  `testnet` lock pins and build lanes are deleted, and the vendored Aftermath
+  `Published.toml` files keep only their mainnet-chain sections. The ABI gate
+  accepts only the mainnet lock environment and rejects any other.
+- The controlled atomicity gate (`activation_atomicity.mjs`), the controlled
+  health matrix (`controlled_health_cases.mjs`), their offline vectors and PTB
+  parser, and the `BLAST_ACTIVATION_BOUNDARY` failpoint markers in
+  `operations::initialize` are deleted, not ported to mainnet: an instrumented
+  failpoint package and test-only scenario preparation have no place on
+  mainnet.
+- The read-only activation proof stays mainnet-only; its pinned
+  `serialized-tx --dev-inspect` surface fixture was recaptured on mainnet with
+  the pinned CLI. The active PTB planner accepts only `mainnet`.
+- Activation rollback rests on Sui transaction atomicity, and live health,
+  funding, and terminal behavior is observed on mainnet under the separately
+  authorized evidence stage (A-003), not rehearsed beforehand.
 
 ## Consequences
 

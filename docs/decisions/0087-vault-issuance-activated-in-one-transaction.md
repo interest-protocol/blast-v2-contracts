@@ -4,6 +4,9 @@
 - Date: 2026-09-18
 - Amends: [0073](0073-series-one-adapter-owned-vaults.md), [0074](0074-aftermath-vault-activation-and-health.md)
 - Reviewed with the founder and an independent model pass on 2026-09-18.
+- Amended: 2026-10-03 (owner decision): Blast deploys to Sui mainnet only.
+  The testnet rollback rehearsal and its `BLAST_ACTIVATION_BOUNDARY` failpoint
+  markers are removed (ADR 0074, mainnet-only amendment).
 
 ## Context
 
@@ -41,10 +44,11 @@ activation aborts the whole transaction and the currency registration with it.
 account, seeds it, opens the position, and then builds the Vault. The Vault
 is `key`-only, so the same transaction must pass it to `vault::share`.
 Because the issuance can only exist inside the issuer's transaction,
-activation is gated by the issuer role without a second check. Five
-`BLAST_ACTIVATION_BOUNDARY` markers remain: A1 venue account sealed, A2 Vault
-activated (core state, locked seed shares, object built), A3 account shared,
-A4 market re-shared, A5 event emitted.
+activation is gated by the issuer role without a second check. The phases
+run in a fixed order: venue account sealed, Vault activated (core state,
+locked seed shares, object built), account shared, market re-shared, event
+emitted. The five `BLAST_ACTIVATION_BOUNDARY` failpoint markers that named
+them were removed on 2026-10-03 with the testnet rollback rehearsal.
 
 ### D2a. The core has no uninitialized state
 
@@ -147,10 +151,12 @@ registry's constants.
   an input argument of the initializer. They were re-bound on 2026-09-20 to
   this layout: the dev-inspect proof builds the `issue → initialize → share`
   PTB from signatures, and the rollback proof tracks the Vault as an object
-  the transaction creates and shares, over the five boundaries A1–A5. Both
-  self-tests run on synthetic vectors; neither is chain evidence until the
-  testnet rehearsal records real effects, which will also fix the created
-  objects Coin Registry and the dynamic object fields add.
+  the transaction creates and shares, over the five boundaries A1–A5. On
+  2026-10-03 the rollback proof, its vectors and the markers were removed:
+  Blast deploys to mainnet only and has no testnet rehearsal. The dev-inspect
+  self-test still runs on synthetic vectors and is not chain evidence; the
+  created objects Coin Registry and the dynamic object fields add are first
+  observed by the read-only mainnet dev-inspect of the reviewed PTB.
 - The source-boundary gate no longer pins activation statement order, which
   the 0074 phase proofs bind themselves; it checks what neither the compiler
   nor the Move tests can: dependency direction, one linear module hierarchy

@@ -35,7 +35,7 @@ export function buildActivePlan(input) {
     if (!['mint', 'redeem', 'rebalance', 'mint_buy', 'sell_redeem'].includes(operation)) throw Error('unsupported active operation');
     const adapter = address(input.adapterPackage);
     address(input.sender);
-    if (!['testnet', 'mainnet'].includes(input.network)) throw Error('explicit network required');
+    if (input.network !== 'mainnet') throw Error('network must be mainnet');
     const product = type(input.productType), collateral = type(input.collateralType);
     const objects = input.objects;
     if (!objects || typeof objects !== 'object' || Array.isArray(objects)) throw Error('bound objects required');
@@ -104,7 +104,7 @@ export function buildTerminalPlan(input) {
     if (!['begin_shutdown', 'unwind', 'finalize_shutdown', 'redeem_shutdown'].includes(operation)) throw Error('unsupported terminal operation');
     const adapter = address(input.adapterPackage), product = type(input.productType);
     address(input.sender);
-    if (!['testnet', 'mainnet'].includes(input.network)) throw Error('explicit network required');
+    if (input.network !== 'mainnet') throw Error('network must be mainnet');
     const roles = operation === 'begin_shutdown' ? ['vault', 'protocol', 'acl', 'adminCap']
         : operation === 'redeem_shutdown' ? ['vault', 'protocol', 'inputCoin', 'clock']
         : operation === 'finalize_shutdown' ? [...BOUND_OBJECTS.slice(0, 7), 'clock']
