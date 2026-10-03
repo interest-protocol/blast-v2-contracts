@@ -45,19 +45,36 @@ done
 if rg -n 'SuperAdminCap' "$sources" | rg -v '^[^:]*blast_presale_admin\.move:'; then
   fail "The SuperAdminCap must have no power outside blast_presale_admin."
 fi
+# Every function of any visibility whose parameters name AdminCap, under any binding, must check
+# it against the AdminRegistry as its first statement, before it reads or changes anything.
 for file in "$sources"/*.move; do
   production "$file" | awk -v file="$(basename "$file")" '
-    /^public fun / { body = ""; inside = 1 }
-    inside { body = body $0 "\n" }
+    function parameters(signature,    i, depth, start) {
+      sub(/^public\(package\) /, "", signature)
+      start = index(signature, "(")
+      for (i = start; i <= length(signature); i++) {
+        if (substr(signature, i, 1) == "(") depth++
+        if (substr(signature, i, 1) == ")" && --depth == 0) return substr(signature, start, i - start + 1)
+      }
+      return signature
+    }
+    /^(public(\(package\))? )?(entry )?(macro )?fun / { inside = 1; in_signature = 1; signature = ""; first = "" }
+    inside && in_signature { signature = signature $0 "\n"; if ($0 ~ /\{$/) in_signature = 0; next }
+    inside && first == "" && $0 !~ /^[[:space:]]*$/ { first = $0 }
     inside && /^}/ {
       inside = 0
-      if (body ~ /admin_cap: &AdminCap,/ && body !~ /admin_registry\.assert_admin_cap\(admin_cap\);/) {
-        print file ": " substr(body, 1, index(body, "(") - 1)
+      takes = parameters(signature)
+      if (takes !~ /(^|[^A-Za-z0-9_])AdminCap([^A-Za-z0-9_]|$)/) next
+      if (file == "blast_presale_admin.move" && signature ~ /fun assert_admin_cap\(/) next
+      if (takes !~ /admin_registry: &AdminRegistry[,)]/ || takes !~ /admin_cap: &AdminCap[,)]/ \
+        || first !~ /^    admin_registry\.assert_admin_cap\(admin_cap\);$/) {
+        sub(/^public\(package\)/, "package", signature)
+        print file ": " substr(signature, 1, index(signature, "(") - 1)
         unchecked = 1
       }
     }
     END { exit unchecked }
-  ' || fail "Every AdminCap-gated function must check the cap against the AdminRegistry."
+  ' || fail "Every function taking an AdminCap must first check it against the AdminRegistry."
 done
 
 # 2. Upgrade custody stays sealed and dependency-only, so every generation runs identical logic.

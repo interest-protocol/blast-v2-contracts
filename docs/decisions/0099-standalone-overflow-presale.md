@@ -330,7 +330,8 @@ generic positional Blake2b-256 module verifies eligibility and rewards. The
 - The package gate checks source boundaries (no `blast_admin` dependency; the
   reviewed caps and registry; `SuperAdminCap` minted only at publication and
   used only to replace or revoke; `AdminCap` minted only at publication or by a
-  replacement; every gated function checking the registry; and sealed
+  replacement; every function taking an `AdminCap`, at any visibility,
+  checking it against the registry as its first statement; and sealed
   dependency-only custody whose transitions each require the `AdminCap`), builds both network environments, lints with
   warnings as errors, and runs Move tests.
 - Deployment records the publish transaction and the `package_admin::wrap`
