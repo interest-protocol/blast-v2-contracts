@@ -974,7 +974,7 @@ fun raise_allocations_must_leave_the_lp_a_share_after_blasts() {
 /// for its recipient from the migration time, and pays every unvested share at once.
 fun migration_locks_each_vesting_share_in_its_own_schedule() {
     let mut fixture = start_with_team_vesting(vector[
-        presale::vested_recipient_share(RAISE_RECIPIENT, bps::new(2_000), team_vesting()),
+        presale::vested_recipient_share(RAISE_RECIPIENT, bps::new(2_000), team_vesting_terms()),
         presale::recipient_share(CAROL, bps::new(1_000)),
     ]);
     fixture.commit_open(ALICE, RAISE_TARGET);
@@ -985,8 +985,8 @@ fun migration_locks_each_vesting_share_in_its_own_schedule() {
 
     let schedules = event::events_by_type<VestingCreated>();
     assert_eq!(schedules.length(), 2);
-    let raise_vesting_id = assert_team_schedule<QUOTE>(&schedules[0], RAISE_RECIPIENT, 200);
-    let token_vesting_id = assert_team_schedule<BLAST_PRESALE_TESTS>(
+    let raise_vesting_id = team_schedule_id<QUOTE>(&schedules[0], RAISE_RECIPIENT, 200);
+    let token_vesting_id = team_schedule_id<BLAST_PRESALE_TESTS>(
         &schedules[1],
         RECIPIENT_A,
         RECIPIENT_A_TOKENS,
@@ -1077,7 +1077,9 @@ fun vested_recipient_tokens_wait_for_the_cliff_after_migration() {
 /// the rest of the raise.
 fun vested_raise_allocations_lock_quote_in_a_schedule_from_migration() {
     let mut fixture = start_with_raise_allocations(
-        vector[presale::vested_recipient_share(RAISE_RECIPIENT, bps::new(2_000), team_vesting())],
+        vector[
+            presale::vested_recipient_share(RAISE_RECIPIENT, bps::new(2_000), team_vesting_terms()),
+        ],
     );
     fixture.commit_open(ALICE, RAISE_TARGET);
     fixture.set_time(END_MS);
@@ -1108,7 +1110,11 @@ fun vested_raise_allocations_lock_quote_in_a_schedule_from_migration() {
 fun fee_recipients_cannot_vest() {
     create_with_fee_split(
         vector[
-            presale::vested_recipient_share(CREATOR, bps::new(CREATOR_FEE_BPS), team_vesting()),
+            presale::vested_recipient_share(
+                CREATOR,
+                bps::new(CREATOR_FEE_BPS),
+                team_vesting_terms(),
+            ),
             presale::recipient_share(FEE_PARTNER, bps::new(FEE_PARTNER_BPS)),
         ],
         HOLDER_REWARDS_BPS,
@@ -1205,7 +1211,7 @@ fun start_with_raise_allocations(raise_allocations: vector<RecipientShare>): Fix
 }
 
 /// Starts the same sale as `start_with_raise_allocations`, but with recipient A's tokens vesting
-/// under `team_vesting`.
+/// under `team_vesting_terms`.
 fun start_with_team_vesting(raise_allocations: vector<RecipientShare>): Fixture {
     start_configured(
         raise_allocations,
@@ -1215,7 +1221,7 @@ fun start_with_team_vesting(raise_allocations: vector<RecipientShare>): Fixture 
         0,
         0,
         RECIPIENT_B_BPS,
-        option::some(team_vesting()),
+        option::some(team_vesting_terms()),
     )
 }
 
@@ -1272,7 +1278,7 @@ fun start_configured(
         TEST_MIGRATOR,
     >(scenario.ctx());
 
-    let raise_vesting = raise_allocations.map_ref!(|share| share.vesting_for_testing());
+    let raise_vesting = raise_allocations.map_ref!(|share| share.vesting_terms_for_testing());
 
     let mut terms = valid_sale_terms();
     terms.recipient_allocations = vector[
@@ -1412,8 +1418,8 @@ fun assert_created_event(
 }
 
 /// Asserts one `VestingCreated` event is an irrevocable `T` schedule paying `beneficiary`
-/// `total_amount` under `team_vesting` from the migration time, and returns its ID.
-fun assert_team_schedule<T>(created: &VestingCreated, beneficiary: address, total_amount: u64): ID {
+/// `total_amount` under `team_vesting_terms` from the migration time, and returns its ID.
+fun team_schedule_id<T>(created: &VestingCreated, beneficiary: address, total_amount: u64): ID {
     let (
         vesting_id,
         coin_type,
@@ -1671,7 +1677,7 @@ fun recipient_a_share(vesting: Option<VestingTerms>): RecipientShare {
         .destroy_or!(presale::recipient_share(RECIPIENT_A, bps::new(RECIPIENT_A_BPS)))
 }
 
-fun team_vesting(): VestingTerms {
+fun team_vesting_terms(): VestingTerms {
     presale::vesting_terms(VESTING_CLIFF_MS, VESTING_PERIOD_MS, VESTING_PERIODS)
 }
 

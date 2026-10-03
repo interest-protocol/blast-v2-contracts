@@ -493,12 +493,12 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         liquidity_token_allocation_bps: liquidity_token_allocation_bps.value(),
         recipients: recipients_of(&recipient_allocations),
         recipient_bps: bps_of(&recipient_allocations),
-        recipient_vesting: vesting_of(&recipient_allocations),
+        recipient_vesting: vesting_terms_of(&recipient_allocations),
         burnable,
         raise_target,
         raise_recipients: recipients_of(&raise_allocations),
         raise_recipient_bps: bps_of(&raise_allocations),
-        raise_recipient_vesting: vesting_of(&raise_allocations),
+        raise_recipient_vesting: vesting_terms_of(&raise_allocations),
         duration_ms,
         liquidity_window_ms,
         eligibility,
@@ -867,7 +867,7 @@ fun payouts(
 }
 
 /// Each share's vesting terms, in order; `none` where it is paid out.
-fun vesting_of(shares: &vector<RecipientShare>): vector<Option<VestingTerms>> {
+fun vesting_terms_of(shares: &vector<RecipientShare>): vector<Option<VestingTerms>> {
     shares.map_ref!(|share| share.vesting)
 }
 
@@ -1122,7 +1122,7 @@ fun pay_raise_allocations<SaleToken, Quote>(
             presale_id: self.id.to_inner(),
             recipient: payout.recipient,
             quote: payout.amount,
-            vesting_id: quote.release(*payout, clock, ctx),
+            vesting_id: quote.pay_or_vest(*payout, clock, ctx),
         });
     });
 }
@@ -1139,14 +1139,14 @@ fun release_recipient_tokens<SaleToken, Quote>(
             presale_id: self.id.to_inner(),
             recipient: payout.recipient,
             tokens: payout.amount,
-            vesting_id: self.recipient_tokens.release(payout, clock, ctx),
+            vesting_id: self.recipient_tokens.pay_or_vest(payout, clock, ctx),
         });
     });
 }
 
 /// Pays one payout out of `self` to its recipient or, when it vests, locks it in a shared
 /// irrevocable linear schedule starting now and returns that schedule's ID.
-fun release<T>(
+fun pay_or_vest<T>(
     self: &mut Balance<T>,
     payout: RecipientPayout,
     clock: &Clock,
@@ -1253,7 +1253,7 @@ public fun commitment_for_testing<SaleToken, Quote>(
 }
 
 #[test_only]
-public fun vesting_for_testing(share: &RecipientShare): Option<VestingTerms> {
+public fun vesting_terms_for_testing(share: &RecipientShare): Option<VestingTerms> {
     share.vesting
 }
 
@@ -1678,7 +1678,7 @@ use sui::{
 };
 
 use fun pay as Balance.pay;
-use fun release as Balance.release;
+use fun pay_or_vest as Balance.pay_or_vest;
 
 use fun dynamic_field::add as UID.add_dynamic_field;
 use fun dynamic_field::borrow_mut as UID.dynamic_field_mut;
