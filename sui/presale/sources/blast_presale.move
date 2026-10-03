@@ -491,14 +491,14 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         token_supply,
         token_allocation_bps: token_allocation_bps.value(),
         liquidity_token_allocation_bps: liquidity_token_allocation_bps.value(),
-        recipients: share_recipients(&recipient_allocations),
-        recipient_bps: share_bps(&recipient_allocations),
-        recipient_vesting: share_vesting(&recipient_allocations),
+        recipients: recipients_of(&recipient_allocations),
+        recipient_bps: bps_of(&recipient_allocations),
+        recipient_vesting: vesting_of(&recipient_allocations),
         burnable,
         raise_target,
-        raise_recipients: share_recipients(&raise_allocations),
-        raise_recipient_bps: share_bps(&raise_allocations),
-        raise_recipient_vesting: share_vesting(&raise_allocations),
+        raise_recipients: recipients_of(&raise_allocations),
+        raise_recipient_bps: bps_of(&raise_allocations),
+        raise_recipient_vesting: vesting_of(&raise_allocations),
         duration_ms,
         liquidity_window_ms,
         eligibility,
@@ -506,8 +506,8 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         migration_witness,
         tick_spacing,
         pool_fee_rate,
-        fee_recipients: share_recipients(&fee_recipients),
-        fee_recipient_bps: share_bps(&fee_recipients),
+        fee_recipients: recipients_of(&fee_recipients),
+        fee_recipient_bps: bps_of(&fee_recipients),
         holder_rewards_bps: holder_rewards_bps.value(),
         protocol_raise_bps: protocol_fees.raise_bps().value(),
         protocol_token_bps: protocol_fees.token_bps().value(),
@@ -633,12 +633,12 @@ public(package) fun apportion_fee(
 }
 
 /// Each share's recipient, in order.
-public(package) fun share_recipients(shares: &vector<RecipientShare>): vector<address> {
+public(package) fun recipients_of(shares: &vector<RecipientShare>): vector<address> {
     shares.map_ref!(|share| share.recipient)
 }
 
 /// Each share's BPS, in order.
-public(package) fun share_bps(shares: &vector<RecipientShare>): vector<u64> {
+public(package) fun bps_of(shares: &vector<RecipientShare>): vector<u64> {
     shares.map_ref!(|share| share.bps.value())
 }
 
@@ -866,8 +866,8 @@ fun payouts(
     })
 }
 
-/// Each share's vesting terms, `none` where it is paid out.
-fun share_vesting(shares: &vector<RecipientShare>): vector<Option<VestingTerms>> {
+/// Each share's vesting terms, in order; `none` where it is paid out.
+fun vesting_of(shares: &vector<RecipientShare>): vector<Option<VestingTerms>> {
     shares.map_ref!(|share| share.vesting)
 }
 

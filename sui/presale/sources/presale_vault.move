@@ -97,8 +97,8 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
         pool_id,
         position_id: object::id(&position),
         liquidity,
-        fee_recipients: presale::share_recipients(&vault.fee_recipients),
-        fee_recipient_bps: presale::share_bps(&vault.fee_recipients),
+        fee_recipients: presale::recipients_of(&vault.fee_recipients),
+        fee_recipient_bps: presale::bps_of(&vault.fee_recipients),
         holder_rewards_bps: holder_rewards_bps.value(),
         protocol_lp_fee_meme_bps: protocol_fees.lp_fee_meme_bps().value(),
         protocol_lp_fee_quote_bps: protocol_fees.lp_fee_quote_bps().value(),
@@ -143,7 +143,7 @@ public(package) fun split_fees<Meme, Quote>(
     let protocol_destination = fee_policy.destination();
     let (fee_recipient_meme, holder_rewards_meme) = self.fee_shares(gross_meme - protocol_meme);
     let (fee_recipient_quote, holder_rewards_quote) = self.fee_shares(gross_quote - protocol_quote);
-    let recipients = presale::share_recipients(&self.fee_recipients);
+    let recipients = presale::recipients_of(&self.fee_recipients);
 
     meme.pay(protocol_meme, protocol_destination, ctx);
     quote.pay(protocol_quote, protocol_destination, ctx);
