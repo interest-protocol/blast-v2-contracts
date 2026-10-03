@@ -848,19 +848,12 @@ fun migration_pays_blast_its_snapshotted_shares_at_the_current_destination() {
     fixture.set_time(END_MS);
     fixture.settle(KEEPER);
 
+    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(fixture.scenario.ctx());
     fixture
         .fee_policy
-        .set_fees(
-            &blast_acl::witness_for_testing<FeeAdmin>(),
-            bps::new(0),
-            bps::new(0),
-            bps::new(0),
-            bps::new(0),
-        );
-    fixture.fee_policy.set_destination(
-        &blast_acl::witness_for_testing<TreasuryAdmin>(),
-        NEW_TREASURY,
-    );
+        .set_fees(&admin_registry, &admin_cap, bps::new(0), bps::new(0), bps::new(0), bps::new(0));
+    fixture.fee_policy.set_destination(&admin_registry, &admin_cap, NEW_TREASURY);
+    admin_registry.destroy_for_testing(admin_cap);
 
     assert_eq!(fixture.migrate(), vector[LIQUIDITY_TOKENS, 767]);
 
@@ -1332,14 +1325,17 @@ fun treasury_fee_policy(
     ctx: &mut TxContext,
 ): FeePolicy {
     let mut fee_policy = fee_policy::new_for_testing(ctx);
-    fee_policy.set_destination(&blast_acl::witness_for_testing<TreasuryAdmin>(), TREASURY);
+    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(ctx);
+    fee_policy.set_destination(&admin_registry, &admin_cap, TREASURY);
     if (protocol_raise_bps > 0 || protocol_token_bps > 0) fee_policy.set_fees(
-        &blast_acl::witness_for_testing<FeeAdmin>(),
+        &admin_registry,
+        &admin_cap,
         bps::new(protocol_raise_bps),
         bps::new(protocol_token_bps),
         bps::new(0),
         bps::new(0),
     );
+    admin_registry.destroy_for_testing(admin_cap);
 
     fee_policy
 }
@@ -2033,13 +2029,11 @@ use blast_presale::{bluefin, cetus, migration_math, blast_presale::{
     VestingTerms,
 }};
 
-use blast_admin::blast_acl;
-
 use blast_fun_vesting::blast_fun_linear_vesting::{Vesting, VestingCreated};
 
 use blast_presale::{
     blast_presale::ProtocolFeesPaid,
-    blast_presale_domain::{FeeAdmin, TreasuryAdmin},
+    blast_presale_admin,
     bps,
     creation_policy::{Self, CreationPolicy},
     fee_policy::{Self, FeePolicy},

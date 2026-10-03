@@ -61,7 +61,7 @@ distinct allocations in that same transaction. Claims open only after success.
 Permissionless fee collection pays Blast its snapshotted share of each asset,
 then applies the immutable creation-time split to the rest: every fee recipient
 is paid in the same transaction, and the holder-reward share stays
-in the vault. Blast's `RewardsAdmin` in the shared Blast ACL publishes Merkle
+in the vault. The holder of the package's `AdminCap` publishes Merkle
 rounds funded from that share, each with a claim deadline after which anyone can
 return its unclaimed rewards to the vault. The `PresaleCap` claims migration residuals and
 can be destroyed after cancellation. Anyone may relay participant or reward claims, but payment
@@ -77,12 +77,16 @@ allocation remains permanently locked in the presale and the supply mode cannot
 be reversed.
 
 Run `scripts/verify.sh`. Publish with `scripts/publish.sh <sui-environment>
---preview`, repeat with `--execute`, then seal the returned `Publisher` and
-`UpgradeCap` with `scripts/wrap_package_admin.sh <sui-environment> <package-id>
-<publisher-id> <upgrade-cap-id> --preview` and `--execute` before creating any
-presale. [DEPLOYING.md](DEPLOYING.md) gives the complete order: custody is
-verified on chain before `FeeAdmin` allows any Quote type or migrator, so no
-presale can exist under an unsealed cap.
+--preview`, repeat with `--execute`, then seal the returned `UpgradeCap` with
+`scripts/wrap_package_admin.sh <sui-environment> <package-id> <upgrade-cap-id>
+--preview` and `--execute` before creating any presale. Publication also sends
+the publisher the package's single `AdminCap`, which sets Blast's fees and their
+destination, allows Quote types and migrators, publishes holder-reward rounds,
+and authorizes dependency-only upgrades while the shared `AdminRegistry` accepts
+it, and a key-only `SuperAdminCap` whose only power is to replace or revoke that
+cap. [DEPLOYING.md](DEPLOYING.md) gives the
+complete order: custody is verified on chain before the `AdminCap` allows any
+Quote type or migrator, so no presale can exist under an unsealed cap.
 
 The accepted design is [ADR 0099](../../docs/decisions/0099-standalone-overflow-presale.md);
 Blast's fees are proposed in [ADR 0101](../../docs/decisions/0101-presale-protocol-fees.md).

@@ -37,12 +37,14 @@ fun init(ctx: &mut TxContext) {
 /// Sets the rates presales created afterward snapshot; existing presales keep theirs.
 public fun set_fees(
     self: &mut FeePolicy,
-    _: &AdminWitness<FeeAdmin>,
+    admin_registry: &AdminRegistry,
+    admin_cap: &AdminCap,
     raise_bps: Bps,
     token_bps: Bps,
     lp_fee_meme_bps: Bps,
     lp_fee_quote_bps: Bps,
 ) {
+    admin_registry.assert_admin_cap(admin_cap);
     assert!(
         raise_bps.value() < bps::denominator() && token_bps.value() <= MAX_TOKEN_BPS,
         EInvalidFees,
@@ -63,9 +65,11 @@ public fun set_fees(
 /// Redirects every later protocol payout, including those of existing presales.
 public fun set_destination(
     self: &mut FeePolicy,
-    _: &AdminWitness<TreasuryAdmin>,
+    admin_registry: &AdminRegistry,
+    admin_cap: &AdminCap,
     destination: address,
 ) {
+    admin_registry.assert_admin_cap(admin_cap);
     assert!(destination != @0x0 && destination != self.destination, EInvalidDestination);
 
     self.destination = destination;
@@ -190,8 +194,6 @@ const EInvalidDestination: vector<u8> = b"The protocol destination must be a new
 
 // === Imports ===
 
-use blast_admin::blast_acl::AdminWitness;
-
-use blast_presale::{blast_presale_domain::{FeeAdmin, TreasuryAdmin}, bps::{Self, Bps}};
+use blast_presale::{blast_presale_admin::{AdminCap, AdminRegistry}, bps::{Self, Bps}};
 
 use sui::event;

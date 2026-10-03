@@ -36,12 +36,13 @@ fun publication_shares_a_policy_that_allows_nothing() {
 }
 
 #[test]
-/// The fee administrator allows a Quote type and a migrator, and each change emits its type.
-fun the_fee_admin_allows_a_quote_and_a_migrator() {
+/// The administrator allows a Quote type and a migrator, and each change emits its type.
+fun the_admin_allows_a_quote_and_a_migrator() {
     let mut policy = allowing_nothing();
+    let (admin_registry, admin_cap) = admin();
 
-    policy.set_quote_allowed<QUOTE>(&fee_admin(), true);
-    policy.set_migration_witness_allowed<MIGRATOR>(&fee_admin(), true);
+    policy.set_quote_allowed<QUOTE>(&admin_registry, &admin_cap, true);
+    policy.set_migration_witness_allowed<MIGRATOR>(&admin_registry, &admin_cap, true);
 
     policy.assert_allowed<QUOTE, MIGRATOR>();
     let (quote, allowed) = last_event<QuoteSet>().quote_set_fields();
@@ -53,6 +54,7 @@ fun the_fee_admin_allows_a_quote_and_a_migrator() {
     assert_eq!(allowed, true);
 
     policy.destroy_for_testing();
+    admin_registry.destroy_for_testing(admin_cap);
 }
 
 #[test]
@@ -76,7 +78,8 @@ fun allowing_one_quote_allows_no_other() {
 /// An allowed Quote type is not enough without an allowed migrator.
 fun an_allowed_quote_still_needs_an_allowed_migrator() {
     let mut policy = allowing_nothing();
-    policy.set_quote_allowed<QUOTE>(&fee_admin(), true);
+    let (admin_registry, admin_cap) = admin();
+    policy.set_quote_allowed<QUOTE>(&admin_registry, &admin_cap, true);
 
     policy.assert_allowed<QUOTE, MIGRATOR>();
     abort
@@ -90,8 +93,9 @@ fun an_allowed_quote_still_needs_an_allowed_migrator() {
 /// Disallowing a Quote type emits it and stops later creations from raising it.
 fun disallowing_a_quote_stops_later_creations() {
     let mut policy = allowing<QUOTE, MIGRATOR>();
+    let (admin_registry, admin_cap) = admin();
 
-    policy.set_quote_allowed<QUOTE>(&fee_admin(), false);
+    policy.set_quote_allowed<QUOTE>(&admin_registry, &admin_cap, false);
 
     let (quote, allowed) = last_event<QuoteSet>().quote_set_fields();
     assert_eq!(quote, type_name<QUOTE>());
@@ -108,8 +112,9 @@ fun disallowing_a_quote_stops_later_creations() {
 /// Disallowing a migrator emits it and stops later creations through it.
 fun disallowing_a_migrator_stops_later_creations() {
     let mut policy = allowing<QUOTE, MIGRATOR>();
+    let (admin_registry, admin_cap) = admin();
 
-    policy.set_migration_witness_allowed<MIGRATOR>(&fee_admin(), false);
+    policy.set_migration_witness_allowed<MIGRATOR>(&admin_registry, &admin_cap, false);
 
     let (migration_witness, allowed) = last_event<MigrationWitnessSet>()
         .migration_witness_set_fields();
@@ -126,8 +131,9 @@ fun disallowing_a_migrator_stops_later_creations() {
 )]
 fun an_allowed_quote_cannot_be_allowed_again() {
     let mut policy = allowing<QUOTE, MIGRATOR>();
+    let (admin_registry, admin_cap) = admin();
 
-    policy.set_quote_allowed<QUOTE>(&fee_admin(), true);
+    policy.set_quote_allowed<QUOTE>(&admin_registry, &admin_cap, true);
     abort
 }
 
@@ -138,8 +144,9 @@ fun an_allowed_quote_cannot_be_allowed_again() {
 )]
 fun an_unlisted_quote_cannot_be_disallowed() {
     let mut policy = allowing<QUOTE, MIGRATOR>();
+    let (admin_registry, admin_cap) = admin();
 
-    policy.set_quote_allowed<OTHER_QUOTE>(&fee_admin(), false);
+    policy.set_quote_allowed<OTHER_QUOTE>(&admin_registry, &admin_cap, false);
     abort
 }
 
@@ -150,8 +157,9 @@ fun an_unlisted_quote_cannot_be_disallowed() {
 )]
 fun an_allowed_migrator_cannot_be_allowed_again() {
     let mut policy = allowing<QUOTE, MIGRATOR>();
+    let (admin_registry, admin_cap) = admin();
 
-    policy.set_migration_witness_allowed<MIGRATOR>(&fee_admin(), true);
+    policy.set_migration_witness_allowed<MIGRATOR>(&admin_registry, &admin_cap, true);
     abort
 }
 
@@ -162,8 +170,9 @@ fun an_allowed_migrator_cannot_be_allowed_again() {
 )]
 fun an_unlisted_migrator_cannot_be_disallowed() {
     let mut policy = allowing_nothing();
+    let (admin_registry, admin_cap) = admin();
 
-    policy.set_migration_witness_allowed<MIGRATOR>(&fee_admin(), false);
+    policy.set_migration_witness_allowed<MIGRATOR>(&admin_registry, &admin_cap, false);
     abort
 }
 
@@ -181,8 +190,8 @@ fun allowing<Quote, MigrationWitness>(): CreationPolicy {
     creation_policy::allowing_for_testing<Quote, MigrationWitness>(&mut ctx)
 }
 
-fun fee_admin(): AdminWitness<FeeAdmin> {
-    blast_acl::witness_for_testing<FeeAdmin>()
+fun admin(): (AdminRegistry, AdminCap) {
+    blast_presale_admin::new_for_testing(&mut tx_context::dummy())
 }
 
 fun type_name<T>(): TypeName {
@@ -196,10 +205,8 @@ fun last_event<Event: copy + drop>(): Event {
 
 // === Imports ===
 
-use blast_admin::blast_acl::{Self, AdminWitness};
-
 use blast_presale::{
-    blast_presale_domain::FeeAdmin,
+    blast_presale_admin::{Self, AdminCap, AdminRegistry},
     creation_policy::{Self, CreationPolicy, MigrationWitnessSet, QuoteSet},
 };
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Structural gates for blast_presale administration and upgrade custody (ADR 0097, ADR 0099).
+# Structural gates for blast_presale administration and upgrade custody (ADR 0099).
 set -euo pipefail
 
 package_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -10,39 +10,73 @@ fail() {
   exit 1
 }
 
-# 1. Administration comes only from the shared Blast ACL.
-if rg -n '^public struct (ACL|Authority|SuperAdminCap|AdminCap|AdminWitness)\b' "$sources"; then
-  fail "Administration types must come from blast_admin, never from a local copy."
+production() {
+  sed '/^\/\/ === Test-Only Functions ===/,$d' "$1"
+}
+
+# 1. Package-local two-tier administration: a key-only SuperAdminCap that only replaces or revokes
+#    the one AdminCap the shared AdminRegistry accepts. No shared ACL or role types.
+if rg -n 'blast_admin|AdminWitness' "$package_dir/Move.toml" "$sources"; then
+  fail "Presale administration must not depend on the shared Blast ACL."
 fi
-if rg -n 'fun init\(' "$sources/blast_presale_domain.move"; then
-  fail "blast_presale_domain must not create administration state."
+admin_source="$sources/blast_presale_admin.move"
+admin_module="$(production "$admin_source")"
+[ "$(rg '^public struct ' "$admin_source" | rg -v 'has copy, drop \{$' | sort)" == "$(printf '%s\n' \
+  'public struct AdminCap has key, store {' \
+  'public struct AdminRegistry has key {' \
+  'public struct SuperAdminCap has key {' | sort)" ] \
+  || fail "blast_presale_admin must declare exactly the reviewed caps and registry."
+mints() {
+  for file in "$sources"/*.move; do
+    production "$file" | rg -c "$1" | sed "s|^|$(basename "$file"):|" || true
+  done
+}
+[ "$(mints '\bSuperAdminCap \{ id')" == "blast_presale_admin.move:1" ] \
+  && sed -n '/^fun init(/,/^}/p' <<<"$admin_module" | rg -q 'SuperAdminCap \{ id' \
+  || fail "Only init may mint the SuperAdminCap."
+[ "$(mints '\bAdminCap \{ id')" == "blast_presale_admin.move:2" ] \
+  && sed -n '/^fun init(/,/^}/p' <<<"$admin_module" | rg -q '\bAdminCap \{ id' \
+  && sed -n '/^public fun replace_admin_cap(/,/^}/p' <<<"$admin_module" | rg -q '\bAdminCap \{ id' \
+  || fail "Only init and replace_admin_cap may mint an AdminCap."
+for function in replace_admin_cap revoke_admin_cap; do
+  sed -n "/^public fun $function(/,/^}/p" <<<"$admin_module" | rg -q '_: &SuperAdminCap[,)]' \
+    || fail "$function must require the SuperAdminCap."
+done
+if rg -n 'SuperAdminCap' "$sources" | rg -v '^[^:]*blast_presale_admin\.move:'; then
+  fail "The SuperAdminCap must have no power outside blast_presale_admin."
 fi
-[ "$(rg '^public struct ' "$sources/blast_presale_domain.move" | sort)" == "$(printf '%s\n' \
-  'public struct FeeAdmin()' \
-  'public struct RewardsAdmin()' \
-  'public struct TreasuryAdmin()' \
-  'public struct UpgradeAdmin()' | sort)" ] \
-  || fail "blast_presale_domain must declare exactly the reviewed ability-free roles."
-if rg -n '^[^/]*AdminWitness<' "$sources" \
-  | rg -v 'AdminWitness<(FeeAdmin|RewardsAdmin|TreasuryAdmin|UpgradeAdmin)>|use blast_admin::'; then
-  fail "Every administrator witness must name one concrete blast_presale role."
-fi
+for file in "$sources"/*.move; do
+  production "$file" | awk -v file="$(basename "$file")" '
+    /^public fun / { body = ""; inside = 1 }
+    inside { body = body $0 "\n" }
+    inside && /^}/ {
+      inside = 0
+      if (body ~ /admin_cap: &AdminCap,/ && body !~ /admin_registry\.assert_admin_cap\(admin_cap\);/) {
+        print file ": " substr(body, 1, index(body, "(") - 1)
+        unchecked = 1
+      }
+    }
+    END { exit unchecked }
+  ' || fail "Every AdminCap-gated function must check the cap against the AdminRegistry."
+done
 
 # 2. Upgrade custody stays sealed and dependency-only, so every generation runs identical logic.
-admin_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' "$sources/package_admin.move")"
-wrap_body="$(sed -n '/^public fun wrap(/,/^}/p' <<<"$admin_production")"
-rg -q 'custody\.restrict_to_dependency_only\(custodian_id\);' <<<"$wrap_body" \
-  || fail "wrap must narrow the sealed cap to dependency-only upgrades before sharing it."
-if rg -n '\bmake_immutable\b|\brestrict_to_additive\b' "$sources"; then
+admin_production="$(production "$sources/package_admin.move")"
+seal_body="$(sed -n '/^fun seal_dependency_only(/,/^}/p' <<<"$admin_production")"
+rg -q 'upgrade_cap\.only_dep_upgrades\(\);' <<<"$seal_body" \
+  || fail "Sealing must narrow the cap to dependency-only upgrades before sharing it."
+rg -q 'transfer::share_object\(seal_dependency_only\(upgrade_cap, ctx\)\);' <<<"$admin_production" \
+  || fail "wrap must share only a cap sealed by seal_dependency_only."
+if rg -n '\bmake_immutable\b|\bonly_additive_upgrades\b' "$sources"; then
   fail "Presale custody must stay relinkable and dependency-only."
 fi
-if rg -U -n '^public fun [^(]+\([^)]*\): (&)?(Publisher|UpgradeCap)' <<<"$admin_production"; then
-  fail "No custody path may release the sealed Publisher or UpgradeCap."
+if rg -U -n '^public fun [^(]+\([^)]*\): (&)?(mut )?UpgradeCap' <<<"$admin_production"; then
+  fail "No custody path may release the sealed UpgradeCap."
 fi
 if rg -n 'transfer::(public_)?transfer\(' <<<"$admin_production"; then
   fail "The framework UpgradeCap must never leave sealed custody."
 fi
-[ "$(rg -c '^    _: &AdminWitness<UpgradeAdmin>,$' <<<"$admin_production")" -eq 2 ] \
-  || fail "Authorizing and committing an upgrade must each require the upgrade-admin role."
+[ "$(rg -c '^    admin_cap: &AdminCap,$' <<<"$admin_production")" -eq 2 ] \
+  || fail "Authorizing and committing an upgrade must each require the AdminCap."
 
 printf 'blast_presale source boundaries hold.\n'

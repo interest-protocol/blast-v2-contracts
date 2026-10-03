@@ -28,11 +28,13 @@ fun publication_shares_a_zero_rate_policy_paying_the_publisher() {
 
 #[test]
 /// Every rate accepts its maximum and returns to zero.
-fun the_fee_admin_sets_maximum_and_zero_rates() {
+fun the_admin_sets_maximum_and_zero_rates() {
     let mut policy = new_policy();
+    let (admin_registry, admin_cap) = admin();
 
     policy.set_fees(
-        &fee_admin(),
+        &admin_registry,
+        &admin_cap,
         bps::new(9_999),
         bps::new(9_998),
         bps::new(10_000),
@@ -47,11 +49,12 @@ fun the_fee_admin_sets_maximum_and_zero_rates() {
         vector[9_999, 9_998, 10_000, 10_000],
     );
 
-    policy.set_fees(&fee_admin(), bps::new(0), bps::new(0), bps::new(0), bps::new(0));
+    policy.set_fees(&admin_registry, &admin_cap, bps::new(0), bps::new(0), bps::new(0), bps::new(0));
 
     assert_eq!(policy.fees(), fee_policy::protocol_fees_for_testing(0, 0, 0, 0));
 
     policy.destroy_for_testing();
+    admin_registry.destroy_for_testing(admin_cap);
 }
 
 #[test]
@@ -75,16 +78,18 @@ fun a_fee_update_must_change_the_rates() {
 }
 
 #[test]
-/// The treasury administrator redirects every later payout.
-fun the_treasury_admin_sets_the_destination() {
+/// The administrator redirects every later payout.
+fun the_admin_sets_the_destination() {
     let mut policy = new_policy();
+    let (admin_registry, admin_cap) = admin();
 
-    policy.set_destination(&treasury_admin(), TREASURY);
+    policy.set_destination(&admin_registry, &admin_cap, TREASURY);
 
     assert_eq!(policy.destination(), TREASURY);
     assert_eq!(last_event<DestinationChanged>().destination_changed_fields(), TREASURY);
 
     policy.destroy_for_testing();
+    admin_registry.destroy_for_testing(admin_cap);
 }
 
 #[test]
@@ -110,9 +115,11 @@ fun new_policy(): FeePolicy {
 
 fun set_fees(raise_bps: u64, token_bps: u64, lp_fee_meme_bps: u64, lp_fee_quote_bps: u64) {
     let mut policy = new_policy();
+    let (admin_registry, admin_cap) = admin();
 
     policy.set_fees(
-        &fee_admin(),
+        &admin_registry,
+        &admin_cap,
         bps::new(raise_bps),
         bps::new(token_bps),
         bps::new(lp_fee_meme_bps),
@@ -120,22 +127,21 @@ fun set_fees(raise_bps: u64, token_bps: u64, lp_fee_meme_bps: u64, lp_fee_quote_
     );
 
     policy.destroy_for_testing();
+    admin_registry.destroy_for_testing(admin_cap);
 }
 
 fun set_destination(destination: address) {
     let mut policy = new_policy();
+    let (admin_registry, admin_cap) = admin();
 
-    policy.set_destination(&treasury_admin(), destination);
+    policy.set_destination(&admin_registry, &admin_cap, destination);
 
     policy.destroy_for_testing();
+    admin_registry.destroy_for_testing(admin_cap);
 }
 
-fun fee_admin(): AdminWitness<FeeAdmin> {
-    blast_acl::witness_for_testing<FeeAdmin>()
-}
-
-fun treasury_admin(): AdminWitness<TreasuryAdmin> {
-    blast_acl::witness_for_testing<TreasuryAdmin>()
+fun admin(): (AdminRegistry, AdminCap) {
+    blast_presale_admin::new_for_testing(&mut tx_context::dummy())
 }
 
 fun last_event<Event: copy + drop>(): Event {
@@ -145,10 +151,8 @@ fun last_event<Event: copy + drop>(): Event {
 
 // === Imports ===
 
-use blast_admin::blast_acl::{Self, AdminWitness};
-
 use blast_presale::{
-    blast_presale_domain::{FeeAdmin, TreasuryAdmin},
+    blast_presale_admin::{Self, AdminCap, AdminRegistry},
     bps,
     fee_policy::{Self, DestinationChanged, FeePolicy, FeesChanged},
 };
