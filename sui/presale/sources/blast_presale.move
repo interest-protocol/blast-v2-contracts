@@ -491,14 +491,14 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         token_supply,
         token_allocation_bps: token_allocation_bps.value(),
         liquidity_token_allocation_bps: liquidity_token_allocation_bps.value(),
-        recipients: recipients_of(&recipient_allocations),
-        recipient_bps: bps_of(&recipient_allocations),
-        recipient_vesting: vesting_terms_of(&recipient_allocations),
+        recipients: recipient_allocations.recipients(),
+        recipient_bps: recipient_allocations.bps(),
+        recipient_vesting: recipient_allocations.vesting_terms(),
         burnable,
         raise_target,
-        raise_recipients: recipients_of(&raise_allocations),
-        raise_recipient_bps: bps_of(&raise_allocations),
-        raise_recipient_vesting: vesting_terms_of(&raise_allocations),
+        raise_recipients: raise_allocations.recipients(),
+        raise_recipient_bps: raise_allocations.bps(),
+        raise_recipient_vesting: raise_allocations.vesting_terms(),
         duration_ms,
         liquidity_window_ms,
         eligibility,
@@ -506,8 +506,8 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         migration_witness,
         tick_spacing,
         pool_fee_rate,
-        fee_recipients: recipients_of(&fee_recipients),
-        fee_recipient_bps: bps_of(&fee_recipients),
+        fee_recipients: fee_recipients.recipients(),
+        fee_recipient_bps: fee_recipients.bps(),
         holder_rewards_bps: holder_rewards_bps.value(),
         protocol_raise_bps: protocol_fees.raise_bps().value(),
         protocol_token_bps: protocol_fees.token_bps().value(),
@@ -1679,6 +1679,10 @@ use sui::{
 
 use fun pay as Balance.pay;
 use fun pay_or_vest as Balance.pay_or_vest;
+
+use fun bps_of as vector.bps;
+use fun recipients_of as vector.recipients;
+use fun vesting_terms_of as vector.vesting_terms;
 
 use fun dynamic_field::add as UID.add_dynamic_field;
 use fun dynamic_field::borrow_mut as UID.dynamic_field_mut;
