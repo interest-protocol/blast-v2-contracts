@@ -67,8 +67,8 @@ deps = { Sui = "Sui" }
 [pinned.mainnet.blast_fun]
 source = { local = "../../launchpad" }
 use_environment = "mainnet"
-manifest_digest = "2EE0BE6CC23D1718E36913BC8AFF07AB623F8E972B9E6253C5BE9AFEE9962448"
-deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "E2577746AFF27E65313264EBF8DA126BE85E0CA5B00BD503983E8F7DE9806C5A"
+deps = { blast_admin = "blast_admin", blast_partners = "blast_partners", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.blast_fun_timelock]
 source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/timelock", rev = "63b6cf86c0e1a74f699610fe182b1de8d8789a14" }
@@ -110,112 +110,4 @@ deps = { control_flow = "AftermathControlFlow", ifixed = "ifixed", std = "MoveSt
 source = { local = "../aftermath_adapter/interfaces/aftermath/vendor/vendor" }
 use_environment = "mainnet"
 manifest_digest = "5AAF88D4918BE9A469E16737C8F5D9AEE925CAA6432331DCC4D3E46A73DC72C6"
-deps = { authority_cap = "authority_cap", std = "MoveStdlib", sui = "Sui" }
-
-[pinned.testnet.AftermathControlFlow]
-source = { local = "../aftermath_adapter/interfaces/aftermath/control-flow/control-flow" }
-use_environment = "testnet"
-manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
-deps = { std = "MoveStdlib", sui = "Sui" }
-
-[pinned.testnet.AftermathOrderedMap]
-source = { local = "../aftermath_adapter/interfaces/aftermath/ordered-map/ordered-map" }
-use_environment = "testnet"
-manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
-deps = { std = "MoveStdlib", sui = "Sui" }
-
-[pinned.testnet.MoveStdlib]
-source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2" }
-use_environment = "testnet"
-manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
-deps = {}
-
-[pinned.testnet.Sui]
-source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2" }
-use_environment = "testnet"
-manifest_digest = "7AFB66695545775FBFBB2D3078ADFD084244D5002392E837FDE21D9EA1C6D01C"
-deps = { MoveStdlib = "MoveStdlib" }
-
-[pinned.testnet.authority_cap]
-source = { local = "../aftermath_adapter/interfaces/aftermath/authority-cap/authority-cap" }
-use_environment = "testnet"
-manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
-deps = { std = "MoveStdlib", sui = "Sui" }
-
-[pinned.testnet.blast_admin]
-source = { local = "../../admin" }
-use_environment = "testnet"
-manifest_digest = "315F80CAC6292FFBEFF0DD2E2E59B476F1834FC5B6D0443F001EC27204D0B30F"
-deps = { Sui = "Sui", blast_fun_timelock = "blast_fun_timelock" }
-
-[pinned.testnet.blast_boosts_aftermath]
-source = { local = "../aftermath_adapter" }
-use_environment = "testnet"
-manifest_digest = "4E5B0AE51FC244620D7832F8687776D0F1C70CDEF5FCBEDDEB7BCEF433A2C2FE"
-deps = { authority_cap = "authority_cap", blast_admin = "blast_admin", blast_boosts_core = "blast_boosts_core", blast_partners = "blast_partners", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", perpetuals = "perpetuals", position = "position", std = "MoveStdlib", sui = "Sui" }
-
-[pinned.testnet.blast_boosts_composition_tests]
-source = { root = true }
-use_environment = "testnet"
-manifest_digest = "2353AF377146DD667DA2CF7BF529DCD9388899CD984AB966B6A98D698D95FDD0"
-deps = { blast_admin = "blast_admin", blast_boosts_aftermath = "blast_boosts_aftermath", blast_boosts_products = "blast_boosts_products", blast_fun = "blast_fun", std = "MoveStdlib", sui = "Sui" }
-
-[pinned.testnet.blast_boosts_core]
-source = { local = "../core" }
-use_environment = "testnet"
-manifest_digest = "D22569635345AD81636092AAA074AE3A61666325E24EA5D65B1CB4BFC9BCEE3F"
-deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
-
-[pinned.testnet.blast_boosts_products]
-source = { local = "../products" }
-use_environment = "testnet"
-manifest_digest = "B7E2FC3044B807508BDB644524C4ABEA393A1871278966067F470AEAE602C62B"
-deps = { Sui = "Sui" }
-
-[pinned.testnet.blast_fun]
-source = { local = "../../launchpad" }
-use_environment = "testnet"
-manifest_digest = "B9BC26466630CEB8A3C2BE1A745F7338CFDF92C219AC0FF7F363DA750C2676C3"
-deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
-
-[pinned.testnet.blast_fun_timelock]
-source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/timelock", rev = "63b6cf86c0e1a74f699610fe182b1de8d8789a14" }
-use_environment = "testnet"
-manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
-deps = { std = "MoveStdlib", sui = "Sui" }
-
-[pinned.testnet.blast_partners]
-source = { local = "../../partners" }
-use_environment = "testnet"
-manifest_digest = "8C0E43AF514B7DCD0420AB49466D733394BE7FB875344BC3A6105EE90407F358"
-deps = { blast_admin = "blast_admin", blast_fun_timelock = "blast_fun_timelock", std = "MoveStdlib", sui = "Sui" }
-
-[pinned.testnet.ifixed]
-source = { local = "../aftermath_adapter/interfaces/aftermath/ifixed/ifixed" }
-use_environment = "testnet"
-manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
-deps = { std = "MoveStdlib", sui = "Sui" }
-
-[pinned.testnet.oracle_aggregator]
-source = { local = "../aftermath_adapter/interfaces/aftermath/oracle-aggregator/oracle-aggregator" }
-use_environment = "testnet"
-manifest_digest = "1CB627750B3E184B53EE88A3E06B4EA7C36BD046DB22AC8D04FA0BFF3A2C215D"
-deps = { authority_cap = "authority_cap", std = "MoveStdlib", sui = "Sui", vendor = "vendor" }
-
-[pinned.testnet.perpetuals]
-source = { local = "../aftermath_adapter/interfaces/aftermath/iperps/perpetuals" }
-use_environment = "testnet"
-manifest_digest = "2F02BACBD59F790A285E3710B2E5A644F62B3839CFA4623187A754DB5F163919"
-deps = { authority_cap = "authority_cap", control_flow = "AftermathControlFlow", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", ordered_map = "AftermathOrderedMap", position = "position", std = "MoveStdlib", sui = "Sui", vendor = "vendor" }
-
-[pinned.testnet.position]
-source = { local = "../aftermath_adapter/interfaces/aftermath/iperps/position" }
-use_environment = "testnet"
-manifest_digest = "73B9AA235CF82D45B86D246566B3280A5A2E95D72A6CCB94CA259EC60B8564A7"
-deps = { control_flow = "AftermathControlFlow", ifixed = "ifixed", std = "MoveStdlib", sui = "Sui" }
-
-[pinned.testnet.vendor]
-source = { local = "../aftermath_adapter/interfaces/aftermath/vendor/vendor" }
-use_environment = "testnet"
-manifest_digest = "1E994F2D4B60FE973432B6C48C13A38F0D36C5F7AE82A6ECFF5AF2F9B3EA801E"
 deps = { authority_cap = "authority_cap", std = "MoveStdlib", sui = "Sui" }

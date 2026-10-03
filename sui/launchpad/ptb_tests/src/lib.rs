@@ -61,9 +61,9 @@ static BUILD_LOCK: Mutex<()> = Mutex::new(());
 pub fn build(package: &Path, published: &[(&Path, ObjectID)], work: &Path) -> Result<CompiledPackage> {
     let _build = BUILD_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let mut command = sui_move_build(package, work)?;
-    command.args(["--dump", "-e", "testnet", "--no-tree-shaking"]);
+    command.args(["--dump", "-e", "mainnet", "--no-tree-shaking"]);
     if !published.is_empty() {
-        let mut pubfile = String::from("build-env = \"testnet\"\nchain-id = \"4c78adac\"\n");
+        let mut pubfile = String::from("build-env = \"mainnet\"\nchain-id = \"35834a8a\"\n");
         for (source, id) in published {
             pubfile.push_str(&format!(
                 "\n[[published]]\nsource = {{ local = \"{}\" }}\npublished-at = \"{id}\"\noriginal-id = \"{id}\"\nversion = 1\n",
@@ -120,7 +120,7 @@ pub fn build_unlinked(package: &Path, local: &[&str], work: &Path) -> Result<Unl
         .and_then(|rest| rest.strip_suffix('"'))
         .context("package name")?;
     let mut command = sui_move_build(package, work)?;
-    let output = command.args(["-e", "testnet"]).output().context("run the sui CLI")?;
+    let output = command.args(["-e", "mainnet"]).output().context("run the sui CLI")?;
     if !output.status.success() {
         bail!("building {} failed:\n{}", package.display(), String::from_utf8_lossy(&output.stderr));
     }
@@ -193,7 +193,7 @@ fn sui_move_build(package: &Path, work: &Path) -> Result<Command> {
     let client = work.join("client.yaml");
     std::fs::write(
         &client,
-        "---\nkeystore:\n  File: ~\nenvs:\n  - alias: localnet\n    rpc: \"http://127.0.0.1:1\"\n    ws: ~\n    basic_auth: ~\nactive_env: localnet\nactive_address: \"0x0000000000000000000000000000000000000000000000000000000000000000\"\n",
+        "---\nkeystore:\n  File: ~\nenvs:\n  - alias: offline\n    rpc: \"http://127.0.0.1:1\"\n    ws: ~\n    basic_auth: ~\nactive_env: offline\nactive_address: \"0x0000000000000000000000000000000000000000000000000000000000000000\"\n",
     )?;
     let mut command = Command::new(&binary);
     command.arg("move").arg("--client.config").arg(&client).arg("build").arg("--path").arg(package);
@@ -523,16 +523,16 @@ pub fn sui_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().expect("sui directory")
 }
 
-/// `blast_admin`'s timelock dependency, a git package from blast-util-contracts, where the CLI
-/// checks it out. Pubfiles name it by this path, as they name local packages.
-pub fn timelock_dir() -> Result<PathBuf> {
-    let manifest = std::fs::read_to_string(sui_dir().join("admin/Move.toml"))?;
+/// Where the CLI checks out `name`, a git dependency of `sui/<package>` from blast-util-contracts.
+/// Pubfiles name it by this path, as they name local packages.
+fn git_dependency_dir(package: &str, name: &str) -> Result<PathBuf> {
+    let manifest = std::fs::read_to_string(sui_dir().join(package).join("Move.toml"))?;
     let dependency = manifest
         .lines()
-        .find(|line| line.starts_with("blast_fun_timelock"))
-        .context("blast_admin's timelock dependency")?;
+        .find(|line| line.starts_with(name))
+        .with_context(|| format!("{package}'s {name} dependency"))?;
     let field = |key: &str| -> Result<&str> {
-        let (_, rest) = dependency.split_once(&format!("{key} = \"")).with_context(|| format!("timelock {key}"))?;
+        let (_, rest) = dependency.split_once(&format!("{key} = \"")).with_context(|| format!("{name} {key}"))?;
         Ok(rest.split('"').next().unwrap_or_default())
     };
     let move_home = match std::env::var("MOVE_HOME") {
@@ -543,17 +543,35 @@ pub fn timelock_dir() -> Result<PathBuf> {
     let dir = move_home.join("git").join(checkout).join(field("subdir")?);
     ensure!(
         dir.join("Move.toml").is_file(),
-        "{} is missing; `sui move build` in sui/admin fetches it",
+        "{} is missing; `sui move build` in sui/{package} fetches it",
         dir.display(),
     );
 
     Ok(dir)
 }
 
+/// The cached checkout of `blast_fun_timelock`, which `blast_admin` links.
+pub fn timelock_dir() -> Result<PathBuf> {
+    git_dependency_dir("admin", "blast_fun_timelock")
+}
+
+/// The cached checkout of `blast_fun_vesting`, which `blast_presale` links.
+pub fn vesting_dir() -> Result<PathBuf> {
+    git_dependency_dir("presale", "blast_fun_vesting")
+}
+
 /// Compiles the timelock from a copy in `work`, so building never writes into the CLI's cache.
 pub fn build_timelock(work: &Path) -> Result<CompiledPackage> {
-    let source = timelock_dir()?;
-    let copy = work.join("blast_fun_timelock");
+    build_copy(&timelock_dir()?, "blast_fun_timelock", work)
+}
+
+/// Compiles the vesting package from a copy in `work`, unpublished, as the timelock is.
+pub fn build_vesting(work: &Path) -> Result<CompiledPackage> {
+    build_copy(&vesting_dir()?, "blast_fun_vesting", work)
+}
+
+fn build_copy(source: &Path, name: &str, work: &Path) -> Result<CompiledPackage> {
+    let copy = work.join(name);
     std::fs::create_dir_all(copy.join("sources"))?;
     std::fs::copy(source.join("Move.toml"), copy.join("Move.toml"))?;
     for entry in std::fs::read_dir(source.join("sources"))? {

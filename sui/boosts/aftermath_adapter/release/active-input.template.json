@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "status": "UNVALIDATED_TEMPLATE_NOT_FOR_SUBMISSION",
   "sourceRevision": null,
-  "network": null,
+  "network": "mainnet",
   "chainIdentifier": null,
   "suiCliVersion": null,
   "aftermathInterfacesRevision": "f62e74aa862ef65b8950a70d83aac8cb71c19837",

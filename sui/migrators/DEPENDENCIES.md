@@ -171,7 +171,8 @@ Each file is then bound to an exact expectation:
   package id, `[addresses]` must equal the original package id, and no table
   outside `package`, `dependencies`, and `addresses` may appear;
 - `Move.lock` must declare format version 4, exactly the 15 expected pinned nodes
-  in each of the `mainnet` and `testnet` environments, each node's exact `source`
+  in the `mainnet` environment and no other (Blast deploys to mainnet only), each
+  node's exact `source`
   record and exact resolved `deps` edges, and nothing else; every node's
   `manifest_digest` must be a string of 64 uppercase hex digits, the shape the
   Move CLI generates; and
@@ -277,8 +278,8 @@ built graph contains no mutable revision.
 
 ## Resolved graph
 
-`sui move build` for both the `mainnet` and `testnet` environments compiles
-exactly nine dependency nodes:
+`sui move build` for the `mainnet` environment compiles exactly nine dependency
+nodes:
 
 ```text
 BluefinSpot  CetusClmm  IntegerLibrary  IntegerMate_1  MoveSTL  MoveStdlib_2

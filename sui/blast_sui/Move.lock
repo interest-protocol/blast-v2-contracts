@@ -39,39 +39,3 @@ source = { root = true }
 use_environment = "mainnet"
 manifest_digest = "6BBE4B9458412776508081D986D639FC247EFB14EEA74422AC4E5A26D84A390C"
 deps = { SuiSystem = "SuiSystem", blast_admin = "blast_admin" }
-
-[pinned.testnet.MoveStdlib]
-source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2" }
-use_environment = "testnet"
-manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
-deps = {}
-
-[pinned.testnet.Sui]
-source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2" }
-use_environment = "testnet"
-manifest_digest = "7AFB66695545775FBFBB2D3078ADFD084244D5002392E837FDE21D9EA1C6D01C"
-deps = { MoveStdlib = "MoveStdlib" }
-
-[pinned.testnet.SuiSystem]
-source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-system", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2" }
-use_environment = "testnet"
-manifest_digest = "F1655B9F9B8ECE67FDBA648266DD75B48852F63BF2515856E822586882D1CA2A"
-deps = { MoveStdlib = "MoveStdlib", Sui = "Sui" }
-
-[pinned.testnet.blast_admin]
-source = { local = "../admin" }
-use_environment = "testnet"
-manifest_digest = "315F80CAC6292FFBEFF0DD2E2E59B476F1834FC5B6D0443F001EC27204D0B30F"
-deps = { Sui = "Sui", blast_fun_timelock = "blast_fun_timelock" }
-
-[pinned.testnet.blast_fun_timelock]
-source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/timelock", rev = "63b6cf86c0e1a74f699610fe182b1de8d8789a14" }
-use_environment = "testnet"
-manifest_digest = "5745706258F61D6CE210904B3E6AE87A73CE9D31A6F93BE4718C442529332A87"
-deps = { std = "MoveStdlib", sui = "Sui" }
-
-[pinned.testnet.blast_sui]
-source = { root = true }
-use_environment = "testnet"
-manifest_digest = "5825E6766C501A4AC4021055049AD8235E547DA10CBEAB924AC82CE7BDA81CA0"
-deps = { SuiSystem = "SuiSystem", blast_admin = "blast_admin" }

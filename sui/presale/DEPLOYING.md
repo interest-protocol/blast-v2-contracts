@@ -6,13 +6,13 @@ The order matters: a presale can exist only after the `AdminCap` allows a Quote
 type and a migrator, so custody is sealed and verified before any allowlisting, and no
 sale is ever created under an unsealed cap.
 
-1. Run the complete `scripts/verify.sh` gate, then `scripts/publish.sh <env>
-   --preview` and `--execute`. The sender receives the `SuperAdminCap`, the
+1. Run the complete `scripts/verify.sh` gate, then `scripts/publish.sh --preview`
+   and `--execute`, which publish to mainnet. The sender receives the `SuperAdminCap`, the
    `AdminCap` the shared `AdminRegistry` accepts, and the raw `UpgradeCap`. Do not upgrade the package before step 2:
    `package_admin::wrap` accepts only a never-upgraded cap, and a cap upgraded
    first can never be sealed.
-2. Seal custody with `scripts/wrap_package_admin.sh <env> <package-id>
-   <upgrade-cap-id> --preview` and `--execute`.
+2. Seal custody with `scripts/wrap_package_admin.sh <package-id> <upgrade-cap-id>
+   --preview` and `--execute`.
 3. From the effects of step 2, verify that `PackageAdmin` is shared and that the
    `UpgradeCap` is wrapped inside it, no longer address-owned, with its policy
    narrowed to dependency-only (`192`). From the publish effects, record the

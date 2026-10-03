@@ -3,14 +3,14 @@
   "fixtureKind": "sui-serialized-tx-dev-inspect",
   "provenance": {
     "suiVersion": "1.77.2-51d177ad7d65",
-    "environment": "testnet",
-    "capturedOutputSha256": "2ad66f247c5175f64e02861dc85af0f9ee1b9491f0e98267a7fde5c2cb19f8c8",
+    "environment": "mainnet",
+    "capturedOutputSha256": "d95e7a6cc44eea973f7aff23383b7eb40702276e4957d884da17f413d6c750f1",
     "serializedTransaction": "AAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgp0eF9jb250ZXh0BnNlbmRlcgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKEc4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKEc7oAwAAAAAAAAAgPYh5LQAAAA==",
     "command": [
       "sui",
       "client",
       "--client.env",
-      "testnet",
+      "mainnet",
       "serialized-tx",
       "AAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgp0eF9jb250ZXh0BnNlbmRlcgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKEc4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKEc7oAwAAAAAAAAAgPYh5LQAAAA==",
       "--dev-inspect",
@@ -51,7 +51,7 @@
       "effects": {
         "V2": {
           "status": "Success",
-          "executed_epoch": 1212,
+          "executed_epoch": 1269,
           "gas_used": {
             "computationCost": "1000000",
             "storageCost": "988000",
@@ -62,7 +62,7 @@
           "gas_object_index": 0,
           "events_digest": null,
           "dependencies": [
-            "J9ky3nueZ3Z9gqC6bGGrmwk8W8pPRas9q5M4SsX2g3vg"
+            "FzB9793r5XvxA6ZgReqQNU6fKikn7NA3uYsDB2qBsSph"
           ],
           "lamport_version": 2,
           "changed_objects": [

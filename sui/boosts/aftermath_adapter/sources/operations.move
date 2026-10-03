@@ -55,20 +55,14 @@ public fun initialize<Product, Collateral>(
     assert_position_imr_unchanged(&clearing_house, binding.account_number(), position_imr);
     let venue_account = venue_account::new(binding, checkpoint, admin_cap);
 
-    // A1-A5: failpoint anchors for scripts/activation_atomicity.mjs (ADR 0087).
-    // BLAST_ACTIVATION_BOUNDARY_A1
     let (vault, seed_nav, seeded) = issuance.activate(
         final_observation, seed_reserve, venue_account, clock.timestamp_ms(), ctx,
     );
-    // BLAST_ACTIVATION_BOUNDARY_A2
     account.consume_policy_and_share_account(share_policy);
-    // BLAST_ACTIVATION_BOUNDARY_A3
     clearing_house.share();
-    // BLAST_ACTIVATION_BOUNDARY_A4
     emit_vault_initialized<Product, Collateral>(
         &vault, seed_amount, seed_nav, seeded.equity(), seeded.base(), seeded.lot_size(), position_side, position_imr,
     );
-    // BLAST_ACTIVATION_BOUNDARY_A5
 
     vault
 }

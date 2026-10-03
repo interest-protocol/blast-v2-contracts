@@ -110,7 +110,7 @@ const CHECKPOINT_FIELDS = [
 ];
 // The activation statements, in order, per production module. `initialize`
 // is read between its signature and the next public entry; each helper is
-// read to its closing brace. Boundary markers must occur exactly once.
+// read to its closing brace.
 const PHASE_ORDER = [
     {
         path: OPERATIONS_PATH,
@@ -127,15 +127,10 @@ const PHASE_ORDER = [
             'binding.capture(',
             'assert_position_imr_unchanged(',
             'venue_account::new(',
-            '// BLAST_ACTIVATION_BOUNDARY_A1',
             'issuance.activate(',
-            '// BLAST_ACTIVATION_BOUNDARY_A2',
             'account.consume_policy_and_share_account(share_policy)',
-            '// BLAST_ACTIVATION_BOUNDARY_A3',
             'clearing_house.share()',
-            '// BLAST_ACTIVATION_BOUNDARY_A4',
             'emit_vault_initialized<Product, Collateral>(',
-            '// BLAST_ACTIVATION_BOUNDARY_A5',
             '\n    vault\n}',
         ],
     },
@@ -413,11 +408,11 @@ function renderPtbArgs(input, plan) {
     ];
 }
 
-function renderSerializedInspectArgs(environment, transactionData) {
+function renderSerializedInspectArgs(transactionData) {
     return [
         'client',
         '--client.env',
-        environment,
+        'mainnet',
         'serialized-tx',
         transactionData,
         '--dev-inspect',
@@ -437,8 +432,8 @@ function parseSerializedTransaction(output, path) {
     return value;
 }
 
-/// The activation statements appear once each, in order, in the production
-/// sources; a reordered or duplicated boundary fails here before any chain read.
+/// The activation statements appear in order in the production sources; a
+/// missing or reordered statement fails here before any chain read.
 function verifyProductionPhaseOrder() {
     const sources = new Map();
     for (const span of PHASE_ORDER) {
@@ -450,9 +445,6 @@ function verifyProductionPhaseOrder() {
         const body = source.slice(start, end);
         let cursor = 0;
         for (const marker of span.markers) {
-            if (marker.startsWith('// BLAST_') && body.split(marker).length !== 2) {
-                fail(`${span.path}: ${marker} must occur exactly once in ${span.from.trim()}`);
-            }
             const next = body.indexOf(marker, cursor);
             if (next < 0) fail(`${span.path}: activation phase missing or reordered at ${marker} in ${span.from.trim()}`);
             cursor = next + marker.length;
@@ -653,9 +645,9 @@ function validatePinnedSurfaceFixture(fixture) {
         'command',
     ]);
     if (fixture.provenance.suiVersion !== PINNED_SUI_VERSION
-        || fixture.provenance.environment !== 'testnet'
+        || fixture.provenance.environment !== 'mainnet'
         || fixture.provenance.capturedOutputSha256
-            !== '2ad66f247c5175f64e02861dc85af0f9ee1b9491f0e98267a7fde5c2cb19f8c8') {
+            !== 'd95e7a6cc44eea973f7aff23383b7eb40702276e4957d884da17f413d6c750f1') {
         fail('pinnedSurfaceFixture.provenance: pinned capture drift');
     }
     const capturedOutputSha256 = createHash('sha256')
@@ -673,7 +665,7 @@ function validatePinnedSurfaceFixture(fixture) {
     }
     assertEqual(
         fixture.provenance.command,
-        ['sui', ...renderSerializedInspectArgs('testnet', transactionData)],
+        ['sui', ...renderSerializedInspectArgs(transactionData)],
         'pinnedSurfaceFixture.provenance.command',
     );
     const standard = normalizeSimulationResponse(
@@ -897,7 +889,7 @@ function selfTest() {
     passed += 1;
 
     const transactionData = parseSerializedTransaction(PINNED_SURFACE_TRANSACTION, 'serializedTransaction');
-    const inspectArgs = renderSerializedInspectArgs('mainnet', transactionData);
+    const inspectArgs = renderSerializedInspectArgs(transactionData);
     assertEqual(inspectArgs[4], transactionData, 'serialized transaction handoff');
     passed += 1;
 
@@ -917,13 +909,19 @@ function selfTest() {
     changedTransaction.provenance.serializedTransaction = 'AA==';
     changedTransaction.provenance.command = [
         'sui',
-        ...renderSerializedInspectArgs('testnet', 'AA=='),
+        ...renderSerializedInspectArgs('AA=='),
     ];
     expectFailure('serialized TransactionData drift', () =>
         validatePinnedSurfaceFixture(changedTransaction));
     passed += 1;
 
-    process.stdout.write(`dev_inspect_activation self-test: PASS ${passed}/17 cases\n`);
+    const testnetCapture = readJson(PINNED_SURFACE_FIXTURE_PATH);
+    testnetCapture.provenance.environment = 'testnet';
+    expectFailure('pinned capture drift', () =>
+        validatePinnedSurfaceFixture(testnetCapture));
+    passed += 1;
+
+    process.stdout.write(`dev_inspect_activation self-test: PASS ${passed}/18 cases\n`);
 }
 
 function runSui(args) {
@@ -1022,7 +1020,7 @@ function live(configPath) {
         runSui(renderPtbArgs(config.builderInput, plan)),
         'serialized activation TransactionData',
     );
-    const inspectArgs = renderSerializedInspectArgs('mainnet', transactionData);
+    const inspectArgs = renderSerializedInspectArgs(transactionData);
     if (inspectArgs[4] !== transactionData) {
         fail('serialized activation TransactionData handoff changed');
     }

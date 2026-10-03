@@ -2,8 +2,8 @@
 //! Cetus CLMM, Cetus LP Burn, and Bluefin Spot mainnet bytecode, offline.
 //!
 //! Each world inserts the committed mainnet snapshot (`fork/`, see `blast_launchpad_ptb_tests::fork`)
-//! into the in-memory simulator at the real IDs, then publishes `blast_admin` and `blast_presale`
-//! linked to the real venue packages exactly as the presale manifest pins them. No transaction
+//! into the in-memory simulator at the real IDs, then publishes `blast_fun_vesting` and
+//! `blast_presale` linked to the real venue packages exactly as the presale manifest pins them. No transaction
 //! reaches a network.
 //!
 //! One lifecycle test per route runs through public PTBs: Cetus with Meme as coin A (SUI Quote),
@@ -29,7 +29,7 @@ use std::{collections::BTreeMap, path::Path, sync::OnceLock, time::Duration};
 
 use anyhow::{Context, Result, bail, ensure};
 use blast_launchpad_ptb_tests::{
-    CompiledPackage, Expected, Harness, Outcome, UnlinkedPackage, build, build_timelock, build_unlinked, call,
+    CompiledPackage, Expected, Harness, Outcome, UnlinkedPackage, build, build_unlinked, build_vesting, call,
     fork::{
         BLUEFIN, BLUEFIN_MAX_SQRT_PRICE, BLUEFIN_MIN_SQRT_PRICE, BluefinPoolCreated, BurnPosition, BurnProof,
         BurnRecord, CETUS, CETUS_MAX_SQRT_PRICE, CETUS_MIN_SQRT_PRICE, CetusCollectFee, CetusOpenPosition,
@@ -37,7 +37,7 @@ use blast_launchpad_ptb_tests::{
         UserFeeCollected, apportion, cetus_name, expected_sqrt_price, id, insert_snapshot, meme_is_cetus_a, sui, tag,
         venue_dependencies, venue_events,
     },
-    sui_dir, timelock_dir,
+    sui_dir,
 };
 use serde::{Deserialize, de::DeserializeOwned};
 use sui_types::{
@@ -205,56 +205,23 @@ fn run_near_equal(route: Route) -> Result<()> {
     Ok(())
 }
 
-/// Production admin path: the publisher's SuperAdminCap grants one AdminCap the presale
-/// `FeeAdmin` role, which allows the route's Quote type and migration witness for new presales.
-fn allow_route(
-    h: &mut Harness,
-    admin: ObjectID,
-    admin_published: &Outcome,
-    presale: ObjectID,
-    creation_policy: ObjectID,
-    route: Route,
-) -> Result<()> {
-    let acl = admin_published.created(h, "blast_acl", "ACL");
-    let root = admin_published.created(h, "blast_acl", "SuperAdminCap");
-    ensure!(acl.len() == 1 && root.len() == 1);
-    let (acl, root) = (acl[0], root[0]);
+/// Production admin path: the publisher's `AdminCap`, checked against the shared `AdminRegistry`,
+/// allows the route's Quote type and migration witness for new presales.
+fn allow_route(h: &mut Harness, presale: ObjectID, published: &Outcome, creation_policy: ObjectID, route: Route) -> Result<()> {
+    let admin_registry = published.created(h, "blast_presale_admin", "AdminRegistry");
+    let admin_cap = published.created(h, "blast_presale_admin", "AdminCap");
+    ensure!(admin_registry.len() == 1 && admin_cap.len() == 1);
+    ensure!(h.object(admin_registry[0]).is_shared());
 
     let mut b = ProgrammableTransactionBuilder::new();
-    let acl_arg = b.obj(h.shared(acl, true))?;
-    let root_arg = b.obj(h.owned(root))?;
-    let recipient = b.pure(h.sender)?;
-    call(&mut b, admin, "blast_acl", "grant_admin", vec![], vec![acl_arg, root_arg, recipient]);
-    let granted = h.execute(b.finish())?;
-    granted.assert_success();
-    let admin_cap = granted.created(h, "blast_acl", "AdminCap");
-    ensure!(admin_cap.len() == 1);
-    let admin_cap = admin_cap[0];
-
-    let fee_admin = tag(&format!("{presale}::blast_presale_domain::FeeAdmin"));
-    let mut b = ProgrammableTransactionBuilder::new();
-    let acl_arg = b.obj(h.shared(acl, true))?;
-    let root_arg = b.obj(h.owned(root))?;
-    let admin_cap_id = b.pure(admin_cap)?;
-    call(&mut b, admin, "blast_acl", "grant_role", vec![fee_admin.clone()], vec![acl_arg, root_arg, admin_cap_id]);
-    h.execute(b.finish())?.assert_success();
-
-    let mut b = ProgrammableTransactionBuilder::new();
-    let acl_arg = b.obj(h.shared(acl, false))?;
-    let admin_cap_arg = b.obj(h.owned(admin_cap))?;
-    let witness = call(&mut b, admin, "blast_acl", "sign_in", vec![fee_admin], vec![acl_arg, admin_cap_arg]);
     let policy = b.obj(h.shared(creation_policy, true))?;
+    let registry = b.obj(h.shared(admin_registry[0], false))?;
+    let cap = b.obj(h.owned(admin_cap[0]))?;
     let allowed = b.pure(true)?;
-    call(&mut b, presale, "creation_policy", "set_quote_allowed", vec![route.quote()], vec![policy, witness, allowed]);
+    let arguments = vec![policy, registry, cap, allowed];
+    call(&mut b, presale, "creation_policy", "set_quote_allowed", vec![route.quote()], arguments.clone());
     let migration_witness = tag(&format!("{presale}::{}::Witness", route.module()));
-    call(
-        &mut b,
-        presale,
-        "creation_policy",
-        "set_migration_witness_allowed",
-        vec![migration_witness],
-        vec![policy, witness, allowed],
-    );
+    call(&mut b, presale, "creation_policy", "set_migration_witness_allowed", vec![migration_witness], arguments);
     h.execute(b.finish())?.assert_success();
 
     Ok(())
@@ -384,7 +351,7 @@ fn presale() -> &'static UnlinkedPackage {
     static PRESALE: OnceLock<UnlinkedPackage> = OnceLock::new();
     PRESALE.get_or_init(|| {
         let work = Path::new(env!("CARGO_TARGET_TMPDIR")).join(env!("CARGO_PKG_NAME")).join("presale_venue_fork");
-        build_unlinked(&sui_dir().join("presale"), &["blast_fun_timelock", "blast_admin"], &work)
+        build_unlinked(&sui_dir().join("presale"), &["blast_fun_vesting"], &work)
             .expect("build the presale")
     })
 }
@@ -424,21 +391,18 @@ struct World {
 }
 
 impl World {
-    /// Inserts the snapshot and publishes the timelock, `blast_admin`, and `blast_presale` linked
-    /// to the real venue packages.
+    /// Inserts the snapshot and publishes `blast_fun_vesting` and `blast_presale` linked to the real
+    /// venue packages.
     fn new(route: Route) -> Result<Self> {
         let work =
             Path::new(env!("CARGO_TARGET_TMPDIR")).join(env!("CARGO_PKG_NAME")).join(format!("presale_fork_{route:?}"));
         let mut h = Harness::new()?;
         let (checkpoint, venue) = insert_snapshot(&mut h)?;
 
-        let timelock_dir = timelock_dir()?;
-        let (timelock, _) = h.publish(build_timelock(&work)?)?;
-        let (admin, admin_published) =
-            h.publish(build(&sui_dir().join("admin"), &[(&timelock_dir, timelock)], &work)?)?;
-        let mut dependencies = vec![ObjectID::from_single_byte(1), ObjectID::from_single_byte(2), timelock, admin];
+        let (vesting, _) = h.publish(build_vesting(&work)?)?;
+        let mut dependencies = vec![ObjectID::from_single_byte(1), ObjectID::from_single_byte(2), vesting];
         dependencies.extend(venue_dependencies(&h)?);
-        let linked = presale().link(&[("blast_fun_timelock", timelock), ("blast_admin", admin)], dependencies)?;
+        let linked = presale().link(&[("blast_fun_vesting", vesting)], dependencies)?;
         let (presale, published) = h.publish(linked)?;
         let venue_config = published.created(&h, "venue_config", "VenueConfig");
         ensure!(venue_config.len() == 1 && h.object(venue_config[0]).is_shared());
@@ -446,7 +410,7 @@ impl World {
         ensure!(fee_policy.len() == 1 && h.object(fee_policy[0]).is_shared());
         let creation_policy = published.created(&h, "creation_policy", "CreationPolicy");
         ensure!(creation_policy.len() == 1 && h.object(creation_policy[0]).is_shared());
-        allow_route(&mut h, admin, &admin_published, presale, creation_policy[0], route)?;
+        allow_route(&mut h, presale, &published, creation_policy[0], route)?;
         let token = build(&Path::new(env!("CARGO_MANIFEST_DIR")).join("fixture/presale_token"), &[], &work)?;
 
         Ok(World {
@@ -888,7 +852,7 @@ impl World {
         ensure!(allocated.len() == terms.recipients.len());
         for (((recipient, _), amount), event) in terms.recipients.iter().zip(terms.recipient_tokens()).zip(&allocated) {
             let recipient = SuiAddress::from(*recipient);
-            ensure!((event.recipient, event.tokens) == (recipient, amount));
+            ensure!((event.recipient, event.tokens, event.vesting_id) == (recipient, amount, None));
             ensure!(outcome.coins_created_for(&self.h, recipient) == self.coins(&sale.meme, amount, 0));
         }
 
@@ -1471,6 +1435,15 @@ enum Eligibility {
 struct RecipientShare {
     recipient: SuiAddress,
     bps: u64,
+    vesting: Option<VestingTerms>,
+}
+
+/// Mirrors `blast_presale::blast_presale::VestingTerms`.
+#[derive(Debug, Deserialize, PartialEq)]
+struct VestingTerms {
+    _cliff_ms: u64,
+    _period_ms: u64,
+    _periods: u64,
 }
 
 /// Mirrors `blast_presale::blast_presale::UncappedPhase`.
@@ -1515,9 +1488,9 @@ struct PresaleState {
     token_allocation: u64,
     sale_tokens: u64,
     liquidity_tokens: u64,
-    _recipient_payouts: Vec<(SuiAddress, u64)>,
+    _recipient_payouts: Vec<(SuiAddress, u64, Option<VestingTerms>)>,
     recipient_tokens: u64,
-    _raise_payouts: Vec<(SuiAddress, u64)>,
+    _raise_payouts: Vec<(SuiAddress, u64, Option<VestingTerms>)>,
     _protocol_fees: ProtocolFees,
     protocol_quote: u64,
     protocol_tokens: u64,
@@ -1573,6 +1546,7 @@ struct RecipientAllocated {
     _presale_id: ObjectID,
     recipient: SuiAddress,
     tokens: u64,
+    vesting_id: Option<ObjectID>,
 }
 
 #[derive(Deserialize)]

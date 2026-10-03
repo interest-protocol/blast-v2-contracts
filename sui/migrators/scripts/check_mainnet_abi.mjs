@@ -71,7 +71,8 @@ const MOVE_STL_PUBLISHED = '0x8569b7efebec65c73b9dc15c5ac2a9542870d286fa79a3feed
 /// The one Sui framework revision every local normalized interface must bind.
 const SUI_FRAMEWORK_REV = REV.sui;
 
-const LOCK_ENVIRONMENTS = ['mainnet', 'testnet'];
+/// Blast deploys to Sui mainnet only, so the lock pins no other environment.
+const LOCK_ENVIRONMENTS = ['mainnet'];
 
 const LOCK_VERSION = 4;
 
@@ -2196,8 +2197,8 @@ function selfTestCases() {
             run: lockCase(
                 mutateSource(
                     lock,
-                    `[pinned.testnet.Sui_2]\nsource = { git = "${SUI_GIT}", subdir = "${SUI_FRAMEWORK_SUBDIR}", rev = "${REV.sui}" }`,
-                    `[pinned.testnet.Sui_2]\nsource = { git = "${SUI_GIT}", subdir = "${SUI_FRAMEWORK_SUBDIR}", rev = "${REV.suiLegacy}" }`,
+                    `[pinned.mainnet.Sui_2]\nsource = { git = "${SUI_GIT}", subdir = "${SUI_FRAMEWORK_SUBDIR}", rev = "${REV.sui}" }`,
+                    `[pinned.mainnet.Sui_2]\nsource = { git = "${SUI_GIT}", subdir = "${SUI_FRAMEWORK_SUBDIR}", rev = "${REV.suiLegacy}" }`,
                 ),
             ),
         },
@@ -2243,7 +2244,13 @@ function selfTestCases() {
         },
         {
             name: 'missing lock node is rejected',
-            run: lockCase(lock.replace(/\[pinned\.testnet\.MoveSTL\][\s\S]*?\n\n/, '')),
+            run: lockCase(lock.replace(/\[pinned\.mainnet\.MoveSTL\][\s\S]*?\n\n/, '')),
+        },
+        {
+            name: 'lock testnet section is rejected',
+            run: lockCase(
+                `${lock}\n[pinned.testnet.Sui_2]\nsource = { git = "${SUI_GIT}", subdir = "${SUI_FRAMEWORK_SUBDIR}", rev = "${REV.sui}" }\nuse_environment = "testnet"\nmanifest_digest = "00"\ndeps = {}\n`,
+            ),
         },
         {
             name: 'rebound root dependency is rejected',

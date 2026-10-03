@@ -1,12 +1,14 @@
 # Publishing immutable Series1
 
 Series1 is a permanent policy package. It must never leave an `UpgradeCap`
-owned by an address, governance object, or another package. Publish it and
-consume the returned capability in the same programmable transaction block:
+owned by an address, governance object, or another package. Blast deploys only
+to Sui mainnet; the script always targets the `mainnet` client environment.
+Publish it and consume the returned capability in the same programmable
+transaction block:
 
 ```bash
-bash scripts/publish_immutable.sh testnet --preview
-bash scripts/publish_immutable.sh testnet --execute > series-one-publication.json
+bash scripts/publish_immutable.sh --preview
+bash scripts/publish_immutable.sh --execute > series-one-publication.json
 ```
 
 The preview is mandatory review evidence but is not publication evidence. The

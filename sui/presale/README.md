@@ -76,10 +76,10 @@ created. On cancellation participant Quote is refundable, but every SaleToken
 allocation remains permanently locked in the presale and the supply mode cannot
 be reversed.
 
-Run `scripts/verify.sh`. Publish with `scripts/publish.sh <sui-environment>
---preview`, repeat with `--execute`, then seal the returned `UpgradeCap` with
-`scripts/wrap_package_admin.sh <sui-environment> <package-id> <upgrade-cap-id>
---preview` and `--execute` before creating any presale. Publication also sends
+Run `scripts/verify.sh`. Publish to mainnet with `scripts/publish.sh --preview`,
+repeat with `--execute`, then seal the returned `UpgradeCap` with
+`scripts/wrap_package_admin.sh <package-id> <upgrade-cap-id> --preview` and
+`--execute` before creating any presale. Publication also sends
 the publisher the package's single `AdminCap`, which sets Blast's fees and their
 destination, allows Quote types and migrators, publishes holder-reward rounds,
 and authorizes dependency-only upgrades while the shared `AdminRegistry` accepts

@@ -4,7 +4,7 @@ import { buildActivePlan, buildTerminalPlan, emergencyDecision, renderUnsignedPt
 
 const address = (n) => `0x${n.toString(16).padStart(64, '0')}`;
 const input = (operation) => ({
-    operation, adapterPackage: address(1), sender: address(2), network: 'testnet',
+    operation, adapterPackage: address(1), sender: address(2), network: 'mainnet',
     productType: `${address(1)}::product::Product<${address(1)}::tags::Long2x>`,
     collateralType: `${address(3)}::usdc::USDC`,
     objects: Object.fromEntries(['vault', 'protocol', 'account', 'registry', 'clearingHouse',
@@ -138,6 +138,8 @@ test('builders reject unsafe or unrepresentable input instead of emitting submis
     assert.throws(() => buildActivePlan({...input('mint'), adapterPackage: '--gas-budget'}), /address/);
     assert.throws(() => buildActivePlan({...input('mint'), productType: 'type; injected'}), /type/);
     assert.throws(() => buildActivePlan({...input('shutdown')}), /operation/);
+    assert.throws(() => buildActivePlan({...input('mint'), network: 'testnet'}), /network must be mainnet/);
+    assert.throws(() => buildTerminalPlan({...terminal('unwind'), network: 'testnet'}), /network must be mainnet/);
 });
 
 test('keeper trigger uses exact rational endpoints and fails closed on missing economic validity', () => {

@@ -19,7 +19,7 @@ const TIMELOCK_REV = '63b6cf86c0e1a74f699610fe182b1de8d8789a14';
 const STD_ADDRESS = `0x${'0'.repeat(63)}1`;
 const SUI_ADDRESS = `0x${'0'.repeat(63)}2`;
 const PACKAGE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
-const ENVIRONMENTS = ['mainnet', 'testnet'];
+const ENVIRONMENT = 'mainnet';
 const REQUEST_TIMEOUT_MS = 30_000;
 const REQUEST_ATTEMPTS = 3;
 
@@ -449,25 +449,22 @@ function validateLockSource(source) {
     const tables = parseToml(source, label);
     equal(tables.get('move')?.get('version'), 4, `${label}: lock format version drift`);
     const expectedNames = Object.keys(LOCK_SOURCES).sort();
-    const allowedTables = new Set(['move']);
-    for (const environment of ENVIRONMENTS) for (const name of expectedNames) allowedTables.add(`pinned.${environment}.${name}`);
+    const prefix = `pinned.${ENVIRONMENT}.`;
+    const allowedTables = new Set(['move', ...expectedNames.map((name) => `${prefix}${name}`)]);
     const unexpected = [...tables.keys()].filter((name) => !allowedTables.has(name));
     if (unexpected.length > 0) fail(`${label}: unexpected pinned node ${unexpected[0]}`);
-    for (const environment of ENVIRONMENTS) {
-        const prefix = `pinned.${environment}.`;
-        const names = [...tables.keys()].filter((name) => name.startsWith(prefix)).map((name) => name.slice(prefix.length)).sort();
-        equal(names.join(','), expectedNames.join(','), `${label}: ${environment} pinned node set drift`);
-        for (const name of expectedNames) {
-            const nodeLabel = `${label}: ${prefix}${name}`;
-            const node = tables.get(`${prefix}${name}`);
-            equal([...node.keys()].sort().join(','), ['deps', 'manifest_digest', 'source', 'use_environment'].join(','), `${nodeLabel} key set drift`);
-            equal(node.get('use_environment'), environment, `${nodeLabel} environment drift`);
-            if (!/^[0-9A-F]{64}$/.test(node.get('manifest_digest'))) fail(`${nodeLabel} has malformed manifest_digest`);
-            validateRecord(`${nodeLabel} source`, node.get('source'), LOCK_SOURCES[name]);
-            const deps = node.get('deps');
-            if (!(deps instanceof Map)) fail(`${nodeLabel} deps is not a record`);
-            equal(recordString(deps), expectedRecordString(LOCK_DEPS[name]), `${nodeLabel} dependency edge drift`);
-        }
+    const names = [...tables.keys()].filter((name) => name.startsWith(prefix)).map((name) => name.slice(prefix.length)).sort();
+    equal(names.join(','), expectedNames.join(','), `${label}: ${ENVIRONMENT} pinned node set drift`);
+    for (const name of expectedNames) {
+        const nodeLabel = `${label}: ${prefix}${name}`;
+        const node = tables.get(`${prefix}${name}`);
+        equal([...node.keys()].sort().join(','), ['deps', 'manifest_digest', 'source', 'use_environment'].join(','), `${nodeLabel} key set drift`);
+        equal(node.get('use_environment'), ENVIRONMENT, `${nodeLabel} environment drift`);
+        if (!/^[0-9A-F]{64}$/.test(node.get('manifest_digest'))) fail(`${nodeLabel} has malformed manifest_digest`);
+        validateRecord(`${nodeLabel} source`, node.get('source'), LOCK_SOURCES[name]);
+        const deps = node.get('deps');
+        if (!(deps instanceof Map)) fail(`${nodeLabel} deps is not a record`);
+        equal(recordString(deps), expectedRecordString(LOCK_DEPS[name]), `${nodeLabel} dependency edge drift`);
     }
 }
 
@@ -618,6 +615,8 @@ function selfTest() {
     reject('mutable Git revision', 'Move.toml: perpetuals must pin an immutable 40-hex commit, got "main"', () => validateManifestSource(manifest));
     const lock = `${readFileSync(join(PACKAGE_DIR, 'Move.lock'), 'utf8')}\n[pinned.mainnet.Rogue]\nsource = { root = true }\nuse_environment = "mainnet"\nmanifest_digest = "${'A'.repeat(64)}"\ndeps = {}\n`;
     reject('unexpected lock node', 'Move.lock: unexpected pinned node pinned.mainnet.Rogue', () => validateLockSource(lock));
+    const testnetLock = `${readFileSync(join(PACKAGE_DIR, 'Move.lock'), 'utf8')}\n[pinned.testnet.Sui]\nsource = { git = "${SUI_GIT}", subdir = "crates/sui-framework/packages/sui-framework", rev = "${SUI_REV}" }\nuse_environment = "testnet"\nmanifest_digest = "${'A'.repeat(64)}"\ndeps = { MoveStdlib = "MoveStdlib" }\n`;
+    reject('testnet lock environment', 'Move.lock: unexpected pinned node pinned.testnet.Sui', () => validateLockSource(testnetLock));
     reject('malformed GraphQL response', 'GraphQL response: expected an object, got null', () => expectObject(null, 'GraphQL response', ['data']));
     let passed = 0;
     for (const test of tests) {
