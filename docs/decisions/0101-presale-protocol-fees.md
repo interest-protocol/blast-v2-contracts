@@ -29,10 +29,9 @@ rates, zero at initialization, and the address Blast is paid at, initially the p
 | `lp_fee_meme_bps` | each collected Meme LP fee | `<= 10,000` |
 | `lp_fee_quote_bps` | each collected Quote LP fee | `<= 10,000` |
 
-The token bound leaves one BPS each for the participant and LP allocations. Two new roles in the
-shared Blast ACL (ADR 0097) govern it: `FeeAdmin` calls `set_fees`, which replaces all four rates
-together and emits `FeesChanged`; `TreasuryAdmin` calls `set_destination`, which emits
-`DestinationChanged`. Each setter rejects a no-op update, and the destination must be nonzero.
+The token bound leaves one BPS each for the participant and LP allocations. The presale
+`AdminCap` (ADR 0099) governs it: `set_fees` replaces all four rates together and emits
+`FeesChanged`; `set_destination` emits `DestinationChanged`. Each setter rejects a no-op update, and the destination must be nonzero.
 
 **Snapshot at creation.** Every presale copies the four rates when it is created and never reads
 them again, so a sale's economics are fixed before commitments open, as all of ADR 0099's
@@ -80,9 +79,8 @@ records both LP rates, and `FeesCollected` records the destination and both amou
 - With all rates at zero, a sale behaves exactly as under ADR 0099.
 - The package keeps its dependency-only upgrade policy. Rates and destination change through the
   policy object, never through new logic.
-- A compromised `FeeAdmin` can set rates up to their bounds for future sales only. A compromised
-  `TreasuryAdmin` can redirect Blast's future payouts, but not any participant's, recipient's,
-  or holder's assets.
+- A compromised `AdminCap` can set rates up to their bounds for future sales only and redirect
+  Blast's future payouts, but not any participant's or recipient's assets.
 - Off-chain builders must read the current `FeePolicy` when building a creation transaction,
   because allocation BPS must sum to 10,000 with the current token share.
 
@@ -95,7 +93,5 @@ records both LP rates, and `FeesCollected` records the destination and both amou
   zero-rate sale paying nothing; no payout and locked tokens on cancellation; allocation sums
   that ignore Blast's share; and raise allocations that leave the LP nothing after Blast's.
 - Vault tests cover Blast's rounded-up LP share of both assets before the creator's split.
-- The source-boundary gate admits exactly the `FeeAdmin`, `RewardsAdmin`, `TreasuryAdmin`, and
-  `UpgradeAdmin` roles.
 - The presale venue fork runs both Cetus coin orders and Bluefin against mainnet bytecode with
   the published zero-rate policy, and decodes the new state and event layouts.

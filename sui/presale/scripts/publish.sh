@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Publishes blast_presale. The sender receives the Publisher and UpgradeCap and must seal both
-# with scripts/wrap_package_admin.sh before any presale is created.
+# Publishes blast_presale. The sender receives the AdminCap and the UpgradeCap, and must seal the
+# UpgradeCap with scripts/wrap_package_admin.sh before any presale is created.
 set -euo pipefail
 
 package_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

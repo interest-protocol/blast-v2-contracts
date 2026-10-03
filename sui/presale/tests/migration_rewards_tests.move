@@ -78,7 +78,8 @@ fun collected_fees_pay_recipients_and_keep_the_holder_share() {
 fun collected_fees_pay_blast_its_share_first() {
     let mut scenario = test_scenario::begin(CREATOR);
     let mut policy = fee_policy::new_for_testing(scenario.ctx());
-    policy.set_destination(&blast_acl::witness_for_testing<TreasuryAdmin>(), TREASURY);
+    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
+    policy.set_destination(&admin_registry, &admin_cap, TREASURY);
     let mut vault = vault::new_for_testing<MEME, QUOTE>(
         object::id_from_address(@0xCAFE),
         object::id_from_address(@0xCA9),
@@ -123,12 +124,13 @@ fun collected_fees_pay_blast_its_share_first() {
 
     vault.destroy_holding(27, 2);
     policy.destroy_for_testing();
+    admin_registry.destroy_for_testing(admin_cap);
     scenario.end();
 }
 
 #[test]
-/// Blast's rewards administrator, not the presale creator, funds holder rounds.
-fun the_rewards_admin_publishes_holder_rounds_from_the_holder_share() {
+/// Blast's administrator, not the presale creator, funds holder rounds.
+fun the_admin_publishes_holder_rounds_from_the_holder_share() {
     let mut scenario = test_scenario::begin(CREATOR);
     let mut vault = new_vault(vector[], 10_000, &mut scenario);
     vault.collect_fees(
@@ -137,10 +139,12 @@ fun the_rewards_admin_publishes_holder_rounds_from_the_holder_share() {
         &mut scenario,
     );
     let clock = clock::create_for_testing(scenario.ctx());
+    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
 
     rewards::publish_round(
         &mut vault,
-        &blast_acl::witness_for_testing<RewardsAdmin>(),
+        &admin_registry,
+        &admin_cap,
         0,
         0,
         10,
@@ -164,6 +168,7 @@ fun the_rewards_admin_publishes_holder_rounds_from_the_holder_share() {
 
     test_scenario::return_shared(round);
     clock.destroy_for_testing();
+    admin_registry.destroy_for_testing(admin_cap);
     vault.destroy_for_testing();
     scenario.end();
 }
@@ -311,10 +316,12 @@ fun a_round_needs_a_future_claim_deadline() {
     let mut vault = funded_holder_vault(&mut scenario);
     let mut clock = clock::create_for_testing(scenario.ctx());
     clock.set_for_testing(CLAIM_DEADLINE_MS);
+    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
 
     rewards::publish_round(
         &mut vault,
-        &blast_acl::witness_for_testing<RewardsAdmin>(),
+        &admin_registry,
+        &admin_cap,
         0,
         0,
         10,
@@ -409,9 +416,11 @@ fun publish_round(
     scenario: &mut Scenario,
 ) {
     let clock = clock::create_for_testing(scenario.ctx());
+    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
     rewards::publish_round(
         self,
-        &blast_acl::witness_for_testing<RewardsAdmin>(),
+        &admin_registry,
+        &admin_cap,
         number,
         start_checkpoint,
         end_checkpoint,
@@ -425,6 +434,7 @@ fun publish_round(
         scenario.ctx(),
     );
     clock.destroy_for_testing();
+    admin_registry.destroy_for_testing(admin_cap);
 }
 
 fun close_round_at(self: &mut PresaleVault<MEME, QUOTE>, now_ms: u64, scenario: &mut Scenario) {
@@ -473,11 +483,9 @@ fun only_event<Event: copy + drop>(): Event {
 
 // === Imports ===
 
-use blast_admin::blast_acl;
-
 use blast_presale::{
     blast_presale as presale,
-    blast_presale_domain::{RewardsAdmin, TreasuryAdmin},
+    blast_presale_admin,
     bps,
     fee_policy::{Self, ProtocolFees},
     holder_rewards::{Self as rewards, Round},

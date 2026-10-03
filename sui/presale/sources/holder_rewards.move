@@ -26,7 +26,8 @@ public struct Round<phantom Meme, phantom Quote> has key {
 /// Reserves rewards under a Blast-published holder allocation and shares the round.
 public fun publish_round<Meme, Quote>(
     vault: &mut PresaleVault<Meme, Quote>,
-    _: &AdminWitness<RewardsAdmin>,
+    admin_registry: &AdminRegistry,
+    admin_cap: &AdminCap,
     number: u64,
     start_checkpoint: u64,
     end_checkpoint: u64,
@@ -39,6 +40,7 @@ public fun publish_round<Meme, Quote>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    admin_registry.assert_admin_cap(admin_cap);
     assert!(number == vault.next_round(), EWrongRound);
     assert!(
         start_checkpoint < end_checkpoint
@@ -329,11 +331,9 @@ const EEmptyClaim: vector<u8> = b"A reward claim must pay a positive amount of a
 
 // === Imports ===
 
-use blast_admin::blast_acl::AdminWitness;
-
 use blast_presale::{
     blast_presale,
-    blast_presale_domain::RewardsAdmin,
+    blast_presale_admin::{AdminCap, AdminRegistry},
     merkle_tree,
     presale_vault::PresaleVault,
 };

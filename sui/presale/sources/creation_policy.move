@@ -28,9 +28,11 @@ fun init(ctx: &mut TxContext) {
 /// Allows or disallows `Quote` for presales created afterward; existing sales keep it.
 public fun set_quote_allowed<Quote>(
     self: &mut CreationPolicy,
-    _: &AdminWitness<FeeAdmin>,
+    admin_registry: &AdminRegistry,
+    admin_cap: &AdminCap,
     allowed: bool,
 ) {
+    admin_registry.assert_admin_cap(admin_cap);
     let quote = type_name::with_original_ids<Quote>();
     assert!(self.allowed_quotes.contains(&quote) != allowed, EAllowanceUnchanged);
 
@@ -43,9 +45,11 @@ public fun set_quote_allowed<Quote>(
 /// afterward; existing sales still migrate through it.
 public fun set_migration_witness_allowed<MigrationWitness: drop>(
     self: &mut CreationPolicy,
-    _: &AdminWitness<FeeAdmin>,
+    admin_registry: &AdminRegistry,
+    admin_cap: &AdminCap,
     allowed: bool,
 ) {
+    admin_registry.assert_admin_cap(admin_cap);
     let migration_witness = type_name::with_original_ids<MigrationWitness>();
     assert!(
         self.allowed_migration_witnesses.contains(&migration_witness) != allowed,
@@ -150,9 +154,7 @@ const EMigrationWitnessNotAllowed: vector<u8> = b"This migration witness is not 
 
 // === Imports ===
 
-use blast_admin::blast_acl::AdminWitness;
-
-use blast_presale::blast_presale_domain::FeeAdmin;
+use blast_presale::blast_presale_admin::{AdminCap, AdminRegistry};
 
 use std::type_name::{Self, TypeName};
 

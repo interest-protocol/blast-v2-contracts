@@ -19,7 +19,7 @@ keep theirs.
 
 **Policy.** The package shares one `creation_policy::CreationPolicy` at publication. It holds two
 sets of original-ID type names, both empty at initialization: `allowed_quotes` and
-`allowed_migration_witnesses`. `FeeAdmin` (ADR 0101) changes them with
+`allowed_migration_witnesses`. The presale `AdminCap` (ADR 0099) changes them with
 `set_quote_allowed<Quote>` and `set_migration_witness_allowed<MigrationWitness>`, each taking an
 `allowed` flag, rejecting a no-op (`EAllowanceUnchanged`), and emitting `QuoteSet` or
 `MigrationWitnessSet`. The names and shapes match the launchpad's.
@@ -38,8 +38,6 @@ switches those two venues on and off for new sales; it cannot admit a third.
 
 - **Store the sets in `FeePolicy`.** Rejected so the economic rates and the listing decision stay
   separate objects, each with its own events, as in the launchpad.
-- **A new `ListingAdmin` role.** Rejected for now; `FeeAdmin` already sets the terms of new sales.
-  A separate role can be split out later without changing the policy object.
 - **Also check at commitment.** Rejected because a delisting could then freeze an open sale with
   locked commitments, which ADR 0099's refund liveness rules out.
 - **Abort natively on a no-op, as the launchpad's `VecSet` setters do.** Rejected in favour of the
@@ -47,10 +45,10 @@ switches those two venues on and off for new sales; it cannot admit a third.
 
 ## Consequences
 
-- A freshly published package creates no presales until `FeeAdmin` allows at least one Quote type
-  and one migration witness.
+- A freshly published package creates no presales until the `AdminCap` allows at least one Quote
+  type and one migration witness.
 - Off-chain builders must pass the shared `CreationPolicy` to every venue's `new`.
-- A compromised `FeeAdmin` can block new presales or admit a Quote type Blast has not vetted; it
+- A compromised `AdminCap` can block new presales or admit a Quote type Blast has not vetted; it
   cannot touch an existing sale.
 
 ## Verification
@@ -59,5 +57,5 @@ switches those two venues on and off for new sales; it cannot admit a third.
   events, one type not implying another, and every no-op update.
 - Presale tests cover a venue's `new` rejecting an unlisted Quote type and an unlisted migration
   witness through the real Bluefin adapter.
-- The presale venue fork allows the route's Quote and witness through the production ACL path
+- The presale venue fork allows the route's Quote and witness with the published `AdminCap`
   before creating each sale.
