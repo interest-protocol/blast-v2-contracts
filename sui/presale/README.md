@@ -25,11 +25,11 @@ anyone must reach the raise at its minimum over the slots held to that minimum:
 all of them under an open policy, and only those beyond the allowlist's leaves
 under an allowlist, since allowlisted wallets may commit any positive amount.
 Part of the raise can also be allocated to recipients in BPS; the LP seeds with
-the rest. Any token or raise recipient share may vest: its cliff, step period,
-and step count are fixed at creation, and migration locks it in an irrevocable
+the rest. Any token recipient share may vest: its cliff, step period, and step
+count are fixed at creation, and migration locks it in an irrevocable
 [`blast_fun_vesting`](https://github.com/interest-protocol/blast-util-contracts/tree/main/sui/vesting)
-linear schedule that starts at migration instead of paying it out. Fee shares
-cannot vest.
+linear schedule that starts at migration instead of paying it out. Raise and fee
+shares cannot vest.
 
 Blast's shared `FeePolicy` sets its shares of the raise, the token supply, and
 collected LP fees; each sale snapshots them at creation, every rate can be zero,
