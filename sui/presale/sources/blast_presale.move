@@ -65,8 +65,8 @@ public struct VestingTerms has copy, drop, store {
 }
 
 /// One recipient's share, in BPS, of the token supply, of the raise, or of every collected LP
-/// fee. The creator takes LP fees as an ordinary fee recipient. Only a token share may vest; raise
-/// and fee shares are always paid out.
+/// fee. The creator takes LP fees as an ordinary fee recipient. A token or raise share may vest;
+/// a fee share may not.
 public struct RecipientShare has copy, drop, store {
     recipient: address,
     bps: Bps,
@@ -194,8 +194,8 @@ public fun recipient_share(recipient: address, bps: Bps): RecipientShare {
     RecipientShare { recipient, bps, vesting: option::none() }
 }
 
-/// One recipient's token share in BPS, locked at migration in an irrevocable linear schedule
-/// under `vesting` instead of paid out. Raise and fee allocations reject it.
+/// One recipient's token or raise share in BPS, locked at migration in an irrevocable linear
+/// schedule under `vesting` instead of paid out.
 public fun vested_recipient_share(
     recipient: address,
     bps: Bps,
@@ -498,6 +498,7 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         raise_target,
         raise_recipients: share_recipients(&raise_allocations),
         raise_recipient_bps: share_bps(&raise_allocations),
+        raise_recipient_vesting: share_vesting(&raise_allocations),
         duration_ms,
         liquidity_window_ms,
         eligibility,
@@ -553,7 +554,7 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
 }
 
 /// Pays Blast and the raise recipients their shares and releases every token
-/// recipient's tokens at once, locking each vesting token share in its own shared irrevocable
+/// recipient's tokens at once, locking each vesting share in its own shared irrevocable
 /// schedule starting now, then releases the rest of the raise and the
 /// LP-token allocation only to the configured migrator. Anyone may call that
 /// migrator at any time until the sale is cancelled; its pool creation remains
@@ -576,7 +577,7 @@ public(package) fun migrate<SaleToken, Quote, MigrationWitness: drop>(
     let recipient_tokens = self.recipient_tokens.value();
 
     self.pay_protocol_fees(&mut quote, fee_policy.destination(), ctx);
-    self.pay_raise_allocations(&mut quote, ctx);
+    self.pay_raise_allocations(&mut quote, clock, ctx);
     self.release_recipient_tokens(clock, ctx);
     self.lifecycle = Lifecycle::Migrated;
 
@@ -681,12 +682,10 @@ fun apportion(shares: vector<Bps>, total: u64): vector<u64> {
 
 // Presale creation
 
-/// Raise allocations: distinct unvested recipients that, with Blast's share, leave the LP part of
-/// the raise.
+/// Raise allocations: distinct recipients that, with Blast's share, leave the LP part of the raise.
 fun assert_raise_allocations(raise_allocations: &vector<RecipientShare>, protocol_raise_bps: Bps) {
     assert!(
         valid_shares(raise_allocations, MAX_RECIPIENTS)
-            && raise_allocations.all!(|share| share.vesting.is_none())
             && total_bps(raise_allocations) + protocol_raise_bps.value() < bps::denominator(),
         EInvalidRaiseAllocation,
     );
@@ -1111,19 +1110,19 @@ fun pay_protocol_fees<SaleToken, Quote>(
     });
 }
 
-/// Pays each raise recipient its share out of `quote`, leaving the LP's share.
+/// Releases each raise recipient its share out of `quote`, leaving the LP's share.
 fun pay_raise_allocations<SaleToken, Quote>(
     self: &Presale<SaleToken, Quote>,
     quote: &mut Balance<Quote>,
+    clock: &Clock,
     ctx: &mut TxContext,
 ) {
     self.raise_payouts.do_ref!(|payout| {
-        let RecipientPayout { recipient, amount, vesting: _ } = *payout;
-        quote.pay(amount, recipient, ctx);
         event::emit(RaiseAllocated<SaleToken, Quote> {
             presale_id: self.id.to_inner(),
-            recipient,
-            quote: amount,
+            recipient: payout.recipient,
+            quote: payout.amount,
+            vesting_id: quote.release(*payout, clock, ctx),
         });
     });
 }
@@ -1145,10 +1144,10 @@ fun release_recipient_tokens<SaleToken, Quote>(
     });
 }
 
-/// Pays one token payout out of `self` to its recipient or, when it vests, locks it in a shared
+/// Pays one payout out of `self` to its recipient or, when it vests, locks it in a shared
 /// irrevocable linear schedule starting now and returns that schedule's ID.
-fun release<SaleToken>(
-    self: &mut Balance<SaleToken>,
+fun release<T>(
+    self: &mut Balance<T>,
     payout: RecipientPayout,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -1254,6 +1253,11 @@ public fun commitment_for_testing<SaleToken, Quote>(
 }
 
 #[test_only]
+public fun vesting_for_testing(share: &RecipientShare): Option<VestingTerms> {
+    share.vesting
+}
+
+#[test_only]
 public fun created_fields<SaleToken, Quote>(
     event: &PresaleCreated<SaleToken, Quote>,
 ): (ID, ID, ID, u64, u64, u64, u64, u64, u64, EligibilityPolicy) {
@@ -1311,8 +1315,8 @@ public fun created_protocol_fields<SaleToken, Quote>(
 #[test_only]
 public fun created_vesting_fields<SaleToken, Quote>(
     event: &PresaleCreated<SaleToken, Quote>,
-): vector<Option<VestingTerms>> {
-    event.recipient_vesting
+): (vector<Option<VestingTerms>>, vector<Option<VestingTerms>>) {
+    (event.recipient_vesting, event.raise_recipient_vesting)
 }
 
 #[test_only]
@@ -1382,6 +1386,13 @@ public fun raise_allocated_fields<SaleToken, Quote>(
 }
 
 #[test_only]
+public fun raise_allocated_vesting_id<SaleToken, Quote>(
+    event: &RaiseAllocated<SaleToken, Quote>,
+): Option<ID> {
+    event.vesting_id
+}
+
+#[test_only]
 public fun recipient_allocated_fields<SaleToken, Quote>(
     event: &RecipientAllocated<SaleToken, Quote>,
 ): (ID, address, u64) {
@@ -1433,6 +1444,7 @@ public struct PresaleCreated<phantom SaleToken, phantom Quote> has copy, drop {
     raise_target: u64,
     raise_recipients: vector<address>,
     raise_recipient_bps: vector<u64>,
+    raise_recipient_vesting: vector<Option<VestingTerms>>,
     duration_ms: u64,
     liquidity_window_ms: u64,
     eligibility: EligibilityPolicy,
@@ -1505,11 +1517,13 @@ public struct ProtocolFeesPaid<phantom SaleToken, phantom Quote> has copy, drop 
     tokens: u64,
 }
 
-/// One configured recipient received its share of the raise.
+/// One configured recipient received its share of the raise, or the vesting schedule
+/// `vesting_id` that holds it.
 public struct RaiseAllocated<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
     recipient: address,
     quote: u64,
+    vesting_id: Option<ID>,
 }
 
 /// One configured recipient received its immutable token allocation, or the vesting schedule
@@ -1634,7 +1648,7 @@ const EUncappedPhaseNotOpen: vector<u8> = b"The presale has no uncapped phase op
 const EPresaleFilled: vector<u8> = b"The hard-capped presale has already reached its raise.";
 
 #[error(code = 26)]
-const EInvalidRaiseAllocation: vector<u8> = b"Raise allocations must be unique, positive, unvested, bounded, leave the LP a share after Blast's, and apportion to positive amounts.";
+const EInvalidRaiseAllocation: vector<u8> = b"Raise allocations must be unique, positive, bounded, leave the LP a share after Blast's, and apportion to positive amounts.";
 
 #[error(code = 27)]
 const EInvalidVestingTerms: vector<u8> = b"Vesting needs a positive period and period count, a cliff within its duration, and a duration of at most 2^63 milliseconds.";
