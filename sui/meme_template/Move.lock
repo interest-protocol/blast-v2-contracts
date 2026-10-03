@@ -45,33 +45,3 @@ source = { root = true }
 use_environment = "mainnet"
 manifest_digest = "CD78309C00EDF20275FAD0D0EFC40A8B35B1A60AA4E07202289540C01DF505B6"
 deps = { blast_fun = "blast_fun", std = "MoveStdlib", sui = "Sui" }
-
-[pinned.testnet.MoveStdlib]
-source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2" }
-use_environment = "testnet"
-manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
-deps = {}
-
-[pinned.testnet.Sui]
-source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2" }
-use_environment = "testnet"
-manifest_digest = "7AFB66695545775FBFBB2D3078ADFD084244D5002392E837FDE21D9EA1C6D01C"
-deps = { MoveStdlib = "MoveStdlib" }
-
-[pinned.testnet.blast_admin]
-source = { local = "../admin" }
-use_environment = "testnet"
-manifest_digest = "B7E2FC3044B807508BDB644524C4ABEA393A1871278966067F470AEAE602C62B"
-deps = { Sui = "Sui" }
-
-[pinned.testnet.blast_fun]
-source = { local = "../launchpad" }
-use_environment = "testnet"
-manifest_digest = "B9BC26466630CEB8A3C2BE1A745F7338CFDF92C219AC0FF7F363DA750C2676C3"
-deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
-
-[pinned.testnet.meme_template]
-source = { root = true }
-use_environment = "testnet"
-manifest_digest = "AF725ACDA2684A0E75470C38FBC4B71E174E4400A5E600E1E64B4CE9977075E3"
-deps = { blast_fun = "blast_fun", std = "MoveStdlib", sui = "Sui" }

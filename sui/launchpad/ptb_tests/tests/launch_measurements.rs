@@ -226,7 +226,7 @@ impl World {
         let environment = json!({
             "command": COMMAND,
             "sui_cli": sui_version()?,
-            "build": "sui move build --dump -e testnet --no-tree-shaking, linked offline to simulator IDs",
+            "build": "sui move build --dump -e mainnet --no-tree-shaking, linked offline to simulator IDs",
             "executor": "simulacrum in-memory chain at the pinned sui revision, no network",
             "host": format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
             "revision": source_revision(),

@@ -1,7 +1,7 @@
 # Deployment and release records
 
 Normalized, reviewable deployment records live under
-`deployments/<chain>/<network>/` (for example `deployments/sui/testnet/`).
+`deployments/sui/mainnet/`. Blast deploys to Sui mainnet only (ADR 0103).
 Console output and `latest` pointers are not records.
 
 Every record must contain at least:

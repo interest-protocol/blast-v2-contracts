@@ -133,7 +133,7 @@ done
 
 [[ -f "$publication_script" ]] \
   || fail "blast_admin must include its immutable publication builder."
-expected_client_line='exec sui client --client.env "$environment" ptb \'
+expected_client_line='exec sui client --client.env mainnet ptb \'
 grep -Fqx "$expected_client_line" "$publication_script" \
   || fail "Publication must use the reviewed Sui PTB command."
 client_invocation_count="$(grep -Ec '^[[:space:]]*(exec[[:space:]]+)?sui[[:space:]]+client([[:space:]]|$)' "$publication_script" || true)"

@@ -61,9 +61,9 @@ static BUILD_LOCK: Mutex<()> = Mutex::new(());
 pub fn build(package: &Path, published: &[(&Path, ObjectID)], work: &Path) -> Result<CompiledPackage> {
     let _build = BUILD_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let mut command = sui_move_build(package, work)?;
-    command.args(["--dump", "-e", "testnet", "--no-tree-shaking"]);
+    command.args(["--dump", "-e", "mainnet", "--no-tree-shaking"]);
     if !published.is_empty() {
-        let mut pubfile = String::from("build-env = \"testnet\"\nchain-id = \"4c78adac\"\n");
+        let mut pubfile = String::from("build-env = \"mainnet\"\nchain-id = \"35834a8a\"\n");
         for (source, id) in published {
             pubfile.push_str(&format!(
                 "\n[[published]]\nsource = {{ local = \"{}\" }}\npublished-at = \"{id}\"\noriginal-id = \"{id}\"\nversion = 1\n",
@@ -120,7 +120,7 @@ pub fn build_unlinked(package: &Path, local: &[&str], work: &Path) -> Result<Unl
         .and_then(|rest| rest.strip_suffix('"'))
         .context("package name")?;
     let mut command = sui_move_build(package, work)?;
-    let output = command.args(["-e", "testnet"]).output().context("run the sui CLI")?;
+    let output = command.args(["-e", "mainnet"]).output().context("run the sui CLI")?;
     if !output.status.success() {
         bail!("building {} failed:\n{}", package.display(), String::from_utf8_lossy(&output.stderr));
     }
@@ -193,7 +193,7 @@ fn sui_move_build(package: &Path, work: &Path) -> Result<Command> {
     let client = work.join("client.yaml");
     std::fs::write(
         &client,
-        "---\nkeystore:\n  File: ~\nenvs:\n  - alias: localnet\n    rpc: \"http://127.0.0.1:1\"\n    ws: ~\n    basic_auth: ~\nactive_env: localnet\nactive_address: \"0x0000000000000000000000000000000000000000000000000000000000000000\"\n",
+        "---\nkeystore:\n  File: ~\nenvs:\n  - alias: offline\n    rpc: \"http://127.0.0.1:1\"\n    ws: ~\n    basic_auth: ~\nactive_env: offline\nactive_address: \"0x0000000000000000000000000000000000000000000000000000000000000000\"\n",
     )?;
     let mut command = Command::new(&binary);
     command.arg("move").arg("--client.config").arg(&client).arg("build").arg("--path").arg(package);

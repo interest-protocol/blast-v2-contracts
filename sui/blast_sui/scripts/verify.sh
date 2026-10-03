@@ -6,7 +6,6 @@ package_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 case "${1:-all}" in
   build)
-    sui move build --path "$package_dir" --build-env testnet
     sui move build --path "$package_dir" --build-env mainnet
     ;;
   lint)
@@ -24,7 +23,6 @@ case "${1:-all}" in
     ;;
   all)
     bash "$package_dir/scripts/check_source_boundaries.sh"
-    sui move build --path "$package_dir" --build-env testnet
     sui move build --path "$package_dir" --build-env mainnet
     sui move lint --path "$package_dir" --warnings-are-errors
     sui move test --path "$package_dir" --lint --warnings-are-errors
