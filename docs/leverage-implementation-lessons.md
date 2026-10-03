@@ -206,10 +206,10 @@ Parse only documented Sui command results, effects, typed events, and canonical
 object JSON. Do not add a convenient normalized response shape and then test
 only that shape. A controlled economic matrix has fixed case names and exact
 expected lifecycle, checkpoint, classification, and event sets; configuration
-supplies calls and objects but cannot redefine the cases. Atomic rollback
-failpoints use unique standalone source markers, fixed abort identities, and a
-complete source-to-published-Blast provenance chain. Offline fixtures run the
-same validators but never count as network evidence. Upstream `abort 404` ABI
+supplies calls and objects but cannot redefine the cases. Offline fixtures run
+the same validators but never count as network evidence. Blast has no testnet
+(ADR 0103), so activation rollback rests on Sui transaction atomicity rather
+than an instrumented failpoint package. Upstream `abort 404` ABI
 ports remain the callable authority and are not mistaken for implementation
 source.
 

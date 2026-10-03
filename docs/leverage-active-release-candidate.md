@@ -88,15 +88,17 @@ the launchpad Quote, or consume launchpad's returned Quote directly in redeem.
 Exact Quote admission remains launchpad administration; neither module gains
 the other's custody authority. The consumer-only composition package compiles
 both chains and locally exercises native launchpad custody. Runtime venue fills
-and downstream rollback still require the submitted rehearsal below.
+are observed on mainnet under the authorized evidence stage below; downstream
+rollback rests on Sui transaction atomicity.
 
 ## Evidence and release rehearsal
 
 Package verification scripts define the local gates; the implementation handoff
 records their exact invocation and outcomes. Official pinned Aftermath ports
-abort 404 locally. Offline activation/health/atomicity fixtures are
-synthetic oracles/validators, not chain transaction evidence. The implementation
-handoff records exact commands, source revision, logs and limitations.
+abort 404 locally. The pinned dev-inspect surface fixture is a read-only
+mainnet capture, not transaction evidence. Blast deploys to mainnet only
+(ADR 0103), so there is no testnet rehearsal. The implementation handoff records
+exact commands, source revision, logs and limitations.
 
 An authorized combined T-001/T-002 verifier must populate every null input field
 and bind it to one stable revision and the exact dependency locks. Required
@@ -114,16 +116,15 @@ checked at initialization). The fourth, that Aftermath's feeds are Pyth Lazer wi
 (bound feed origins, the venue's own price functions; ADR 0074 oracle
 amendment).
 
-Run SC-001 through SC-013 on supported real isolated fixtures: both-direction
-activation and active flows; funding sign/net-order/replay cases; bad bindings,
-prices and ACL; competing keepers, partial fills and bounded costs; donations,
-fee changes/withdrawal and full buffer release; native Quote composition and
-downstream rollback; then T-002 emergency, multi-call unwind and final claims.
-Exercise failpoints after deposit, trade, fee allocation, cash withdrawal,
-mint/burn and before return, with exact source-to-failpoint provenance and only
-permitted gas effects on failure. Dev-inspect alone does not prove rollback.
-Do not publish mainnet or call the rehearsal complete while any required outcome
-is unresolved. AC-023/024/025 market/live/publication evidence remains unrun here.
+Observe SC-001 through SC-013 on mainnet under the authorized evidence stage
+(ADR 0074, A-003): both-direction activation and active flows; funding
+sign/net-order/replay cases; bad bindings, prices and ACL; competing keepers,
+partial fills and bounded costs; donations, fee changes/withdrawal and full
+buffer release; native Quote composition; then T-002 emergency, multi-call
+unwind and final claims. Activation rollback rests on Sui transaction atomicity;
+the testnet failpoint rehearsal was removed (ADR 0074 mainnet-only amendment).
+Do not call the evidence stage complete while any required outcome is
+unresolved. AC-023/024/025 market/live/publication evidence remains unrun here.
 
 ## Terminal handoff facts (T-002)
 
