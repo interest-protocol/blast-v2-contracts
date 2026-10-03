@@ -259,9 +259,10 @@ generic positional Blake2b-256 module verifies eligibility and rewards. The
 - One `AdminCap` holds every administrative power, so Blast keeps it in a
   multisig. Until the `SuperAdminCap` replaces it, a compromised cap can
   redirect future holder-reward shares and Blast's fee payouts, set future
-  sales' rates, change the creation allowlists, and relink dependencies; it
-  cannot reach any participant's commitment, any recipient's allocation, or a
-  live sale's terms. A compromised `SuperAdminCap` can take all of that by
+  sales' rates and any migrated sale's Blast LP-fee rates (ADR 0101), change
+  the creation allowlists, and relink dependencies; it cannot reach any
+  participant's commitment, any recipient's allocation, or any other live
+  sale term. A compromised `SuperAdminCap` can take all of that by
   issuing itself a cap, so it stays in a cold multisig and is used only to
   recover from a lost or compromised `AdminCap`.
 - Blast chooses the reward Merkle roots. Proofs enforce

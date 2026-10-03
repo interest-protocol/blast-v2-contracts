@@ -78,6 +78,16 @@ fun a_fee_update_must_change_the_rates() {
 }
 
 #[test]
+/// A vault's LP-rate change keeps the raise and token rates it was snapshotted with.
+fun lp_fee_rates_change_alone() {
+    assert_eq!(
+        fee_policy::protocol_fees_for_testing(100, 200, 300, 400)
+            .with_lp_fees(bps::new(0), bps::new(10_000)),
+        fee_policy::protocol_fees_for_testing(100, 200, 0, 10_000),
+    );
+}
+
+#[test]
 /// The administrator redirects every later payout.
 fun the_admin_sets_the_destination() {
     let mut policy = new_policy();

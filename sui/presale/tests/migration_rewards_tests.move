@@ -80,17 +80,7 @@ fun collected_fees_pay_blast_its_share_first() {
     let mut policy = fee_policy::new_for_testing(scenario.ctx());
     let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
     policy.set_destination(&admin_registry, &admin_cap, TREASURY);
-    let mut vault = vault::new_for_testing<MEME, QUOTE>(
-        object::id_from_address(@0xCAFE),
-        object::id_from_address(@0xCA9),
-        vector[
-            presale::recipient_share(CREATOR, bps::new(5_000)),
-            presale::recipient_share(PARTNER, bps::new(2_000)),
-        ],
-        bps::new(3_000),
-        fee_policy::protocol_fees_for_testing(0, 0, 1_000, 2_500),
-        scenario.ctx(),
-    );
+    let mut vault = vault_paying_blast(&mut scenario);
 
     vault.credit_fees_for_testing(
         &policy,
@@ -126,6 +116,78 @@ fun collected_fees_pay_blast_its_share_first() {
     policy.destroy_for_testing();
     admin_registry.destroy_for_testing(admin_cap);
     scenario.end();
+}
+
+#[test]
+/// The administrator changes one vault's LP rates, down to zero and up; its next collection pays
+/// Blast at the new rates, and the creator's split applies to the rest.
+fun the_admin_changes_a_vaults_lp_fee_rates() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let mut policy = fee_policy::new_for_testing(scenario.ctx());
+    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
+    policy.set_destination(&admin_registry, &admin_cap, TREASURY);
+    let mut vault = vault_paying_blast(&mut scenario);
+
+    vault.set_protocol_lp_fees(&admin_registry, &admin_cap, bps::new(0), bps::new(5_000));
+
+    let (vault_id, lp_fee_meme_bps, lp_fee_quote_bps) = only_event<
+        ProtocolLpFeesChanged<MEME, QUOTE>,
+    >().protocol_lp_fees_changed_fields();
+    assert_eq!(vault_id, object::id(&vault));
+    assert_eq!(vector[lp_fee_meme_bps, lp_fee_quote_bps], vector[0, 5_000]);
+
+    vault.credit_fees_for_testing(
+        &policy,
+        coin::mint_for_testing<MEME>(101, scenario.ctx()).into_balance(),
+        coin::mint_for_testing<QUOTE>(10, scenario.ctx()).into_balance(),
+        scenario.ctx(),
+    );
+
+    let event = only_event<FeesCollected<MEME, QUOTE>>();
+    let (_, protocol_meme, protocol_quote) = event.fees_collected_protocol_fields();
+    // Nothing of 101 Meme and ceil(10 * 50%) = 5 Quote; the creator's split apportions 101 and 5.
+    assert_eq!(vector[protocol_meme, protocol_quote], vector[0, 5]);
+    let (_, _, fee_recipient_meme, fee_recipient_quote, holder_rewards_meme, holder_rewards_quote) =
+        event.fees_collected_fields();
+    assert_eq!(fee_recipient_meme, vector[51, 20]);
+    assert_eq!(fee_recipient_quote, vector[3, 1]);
+    assert_eq!(vector[holder_rewards_meme, holder_rewards_quote], vector[30, 1]);
+
+    vault.destroy_holding(30, 1);
+    policy.destroy_for_testing();
+    admin_registry.destroy_for_testing(admin_cap);
+    scenario.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = vault::EProtocolLpFeesUnchanged,
+    location = blast_presale::presale_vault,
+)]
+fun a_vault_lp_fee_update_must_change_the_rates() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
+    let mut vault = vault_paying_blast(&mut scenario);
+
+    vault.set_protocol_lp_fees(&admin_registry, &admin_cap, bps::new(1_000), bps::new(2_500));
+    abort
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_presale_admin::EInvalidAdminCap,
+    location = blast_presale::blast_presale_admin,
+)]
+/// A replaced AdminCap cannot change a vault's LP rates.
+fun a_replaced_admin_cap_cannot_change_a_vaults_lp_fee_rates() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let (mut admin_registry, old_admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
+    let super_admin = blast_presale_admin::super_admin_for_testing(scenario.ctx());
+    let _new_admin_cap = admin_registry.replace_admin_cap(&super_admin, scenario.ctx());
+    let mut vault = vault_paying_blast(&mut scenario);
+
+    vault.set_protocol_lp_fees(&admin_registry, &old_admin_cap, bps::new(0), bps::new(0));
+    abort
 }
 
 #[test]
@@ -380,6 +442,22 @@ fun new_vault(
     )
 }
 
+/// A vault paying Blast 10% of Meme and 25% of Quote, then 50% and 20% to two recipients and
+/// 30% to holders.
+fun vault_paying_blast(scenario: &mut Scenario): PresaleVault<MEME, QUOTE> {
+    vault::new_for_testing<MEME, QUOTE>(
+        object::id_from_address(@0xCAFE),
+        object::id_from_address(@0xCA9),
+        vector[
+            presale::recipient_share(CREATOR, bps::new(5_000)),
+            presale::recipient_share(PARTNER, bps::new(2_000)),
+        ],
+        bps::new(3_000),
+        fee_policy::protocol_fees_for_testing(0, 0, 1_000, 2_500),
+        scenario.ctx(),
+    )
+}
+
 fun no_protocol_fees(): ProtocolFees {
     fee_policy::protocol_fees_for_testing(0, 0, 0, 0)
 }
@@ -490,7 +568,7 @@ use blast_presale::{
     fee_policy::{Self, ProtocolFees},
     holder_rewards::{Self as rewards, Round},
     merkle_tree,
-    presale_vault::{Self as vault, FeesCollected, PresaleVault},
+    presale_vault::{Self as vault, FeesCollected, PresaleVault, ProtocolLpFeesChanged},
     blast_presale::RecipientShare,
 };
 
