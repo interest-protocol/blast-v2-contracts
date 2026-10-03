@@ -11,7 +11,8 @@ public struct PositionKey<phantom Venue>() has copy, drop, store;
 
 /// Shared post-migration custody for one presale's immutable fee split.
 ///
-/// Each collection first pays Blast its snapshotted share of each asset, then
+/// Each collection first pays Blast its share of each asset at the vault's
+/// rates, snapshotted at creation and changeable only by the AdminCap, then
 /// pays every fee recipient its share of the rest at once; the holder-reward
 /// share accrues here until Blast's rewards administrator funds a round.
 public struct PresaleVault<phantom Meme, phantom Quote> has key {
@@ -57,10 +58,32 @@ public fun claim_migration_residuals<Meme, Quote>(
     (meme, quote)
 }
 
+/// Sets Blast's share of each asset in this vault's later LP-fee collections. Fees still in the
+/// pool are split at the new rates when collected; the creator's split of the rest is unchanged.
+public fun set_protocol_lp_fees<Meme, Quote>(
+    self: &mut PresaleVault<Meme, Quote>,
+    admin_registry: &AdminRegistry,
+    admin_cap: &AdminCap,
+    lp_fee_meme_bps: Bps,
+    lp_fee_quote_bps: Bps,
+) {
+    admin_registry.assert_admin_cap(admin_cap);
+    let protocol_fees = self.protocol_fees.with_lp_fees(lp_fee_meme_bps, lp_fee_quote_bps);
+    assert!(protocol_fees != self.protocol_fees, EProtocolLpFeesUnchanged);
+
+    self.protocol_fees = protocol_fees;
+
+    event::emit(ProtocolLpFeesChanged<Meme, Quote> {
+        vault_id: self.id.to_inner(),
+        protocol_lp_fee_meme_bps: lp_fee_meme_bps.value(),
+        protocol_lp_fee_quote_bps: lp_fee_quote_bps.value(),
+    });
+}
+
 // === Package Functions ===
 
 /// Creates and shares a migrated presale's vault, with its venue position sealed as a dynamic
-/// object field and the presale's immutable LP-fee split.
+/// object field, the presale's immutable LP-fee split, and its snapshotted Blast rates.
 public(package) fun create<Meme, Quote, Venue, Position: key + store>(
     sale: &Presale<Meme, Quote>,
     _venue: &Venue,
@@ -118,11 +141,11 @@ public(package) fun position_mut<Meme, Quote, Venue, Position: key + store>(
     self.id.dynamic_object_field_mut(PositionKey<Venue>())
 }
 
-/// Splits collected LP fees under the immutable creation-time BPS: Blast's
-/// share, rounded up, goes to the current protocol destination, every fee
-/// recipient is paid its share of the rest at once, and the holder-reward share
-/// stays in the vault. A zero collection is valid, moves nothing, and emits
-/// nothing.
+/// Splits collected LP fees: Blast's share at the vault's current rates, rounded
+/// up, goes to the current protocol destination; under the immutable
+/// creation-time BPS, every fee recipient is paid its share of the rest at once,
+/// and the holder-reward share stays in the vault. A zero collection is valid,
+/// moves nothing, and emits nothing.
 public(package) fun split_fees<Meme, Quote>(
     self: &mut PresaleVault<Meme, Quote>,
     fee_policy: &FeePolicy,
@@ -289,6 +312,13 @@ public fun fees_collected_protocol_fields<Meme, Quote>(
 }
 
 #[test_only]
+public fun protocol_lp_fees_changed_fields<Meme, Quote>(
+    event: &ProtocolLpFeesChanged<Meme, Quote>,
+): (ID, u64, u64) {
+    (event.vault_id, event.protocol_lp_fee_meme_bps, event.protocol_lp_fee_quote_bps)
+}
+
+#[test_only]
 public fun destroy_for_testing<Meme, Quote>(self: PresaleVault<Meme, Quote>) {
     let PresaleVault {
         id,
@@ -349,6 +379,13 @@ public struct MigrationResidualsClaimed<phantom Meme, phantom Quote> has copy, d
     quote: u64,
 }
 
+/// Every later collection from `vault_id` pays Blast at these rates.
+public struct ProtocolLpFeesChanged<phantom Meme, phantom Quote> has copy, drop {
+    vault_id: ID,
+    protocol_lp_fee_meme_bps: u64,
+    protocol_lp_fee_quote_bps: u64,
+}
+
 // === Errors ===
 
 #[error(code = 0)]
@@ -360,10 +397,14 @@ const EZeroLiquidity: vector<u8> = b"Migration position must hold liquidity.";
 #[error(code = 2)]
 const EWrongPresaleCap: vector<u8> = b"The creator capability belongs to a different presale vault.";
 
+#[error(code = 3)]
+const EProtocolLpFeesUnchanged: vector<u8> = b"An LP-fee update must change the vault's Blast rates.";
+
 // === Imports ===
 
 use blast_presale::{
     blast_presale::{Self as presale, Presale, PresaleCap, RecipientShare},
+    blast_presale_admin::{AdminCap, AdminRegistry},
     bps::Bps,
     fee_policy::{FeePolicy, ProtocolFees},
 };

@@ -3,6 +3,8 @@
 - Status: proposed
 - Date: 2026-10-01
 - Amends: [0099](0099-standalone-overflow-presale.md), which gave Blast no fee on presales
+- Amended: 2026-10-03 (owner decision): the `AdminCap` may change one migrated sale's LP-fee
+  rates on its vault
 
 ## Context
 
@@ -38,6 +40,14 @@ them again, so a sale's economics are fixed before commitments open, as all of A
 per-sale terms are. Rate changes apply only to later sales. Payouts read the policy's current
 destination.
 
+**Per-vault LP rates.** Migration copies the sale's rates into its `PresaleVault`. The presale
+`AdminCap` may then change that vault's two LP-fee rates, within the same `<= 10,000` bound, with
+`presale_vault::set_protocol_lp_fees`, which rejects a no-op update and emits
+`ProtocolLpFeesChanged`. The new rates apply to every later collection, including fees that
+accrued in the pool before the change; to settle those at the old rates, collect in the same
+transaction first. The creator's recipients and holder share keep their creation-time split of
+whatever Blast does not take. The policy's rates and every other vault are unaffected.
+
 **Tokens.** Blast's token share joins the supply apportionment: participant, LP, Blast, and
 recipient BPS total exactly 10,000, using the same largest-remainder apportionment. The creator
 therefore builds allocations against the current rate, and a rate change aborts a creation built
@@ -65,8 +75,9 @@ records both LP rates, and `FeesCollected` records the destination and both amou
 ## Alternatives considered
 
 - **Read the LP-fee rates live, as the launchpad's `LpFeePolicy` does.** Rejected for presales:
-  ADR 0099 fixes every economic term before commitments open, and a live rate would let Blast
-  raise its share of a creator's LP fees after the sale.
+  ADR 0099 fixes every economic term before commitments open, and one global live rate would move
+  every sale's LP fees at once. The 2026-10-03 amendment instead lets Blast change one vault's
+  rates deliberately, accepting that Blast can raise its share of that creator's later LP fees.
 - **Snapshot the destination.** Rejected because LP fees accrue for the life of the pool, and a
   rotated treasury must keep receiving them.
 - **Take Blast's tokens from the creator's recipient allocations.** Rejected because it would
@@ -79,8 +90,12 @@ records both LP rates, and `FeesCollected` records the destination and both amou
 - With all rates at zero, a sale behaves exactly as under ADR 0099.
 - The package keeps its dependency-only upgrade policy. Rates and destination change through the
   policy object, never through new logic.
-- A compromised `AdminCap` can set rates up to their bounds for future sales only and redirect
-  Blast's future payouts, but not any participant's or recipient's assets.
+- A compromised `AdminCap` can set rates up to their bounds for future sales, set any migrated
+  sale's LP-fee rates up to 10,000 BPS, and redirect Blast's future payouts. Together, those let
+  it take every later LP fee of every migrated sale, but not any participant's commitment, any
+  recipient's allocation, the vault's position, or fees already collected.
+- Creators and holders cannot rely on Blast's LP-fee rates staying at the snapshot after
+  migration; indexers must apply `ProtocolLpFeesChanged` to a vault's rates.
 - Off-chain builders must read the current `FeePolicy` when building a creation transaction,
   because allocation BPS must sum to 10,000 with the current token share.
 
@@ -92,6 +107,8 @@ records both LP rates, and `FeesCollected` records the destination and both amou
   rates change, apportioned with a raise recipient; unchanged participant fills and refunds; a
   zero-rate sale paying nothing; no payout and locked tokens on cancellation; allocation sums
   that ignore Blast's share; and raise allocations that leave the LP nothing after Blast's.
-- Vault tests cover Blast's rounded-up LP share of both assets before the creator's split.
+- Vault tests cover Blast's rounded-up LP share of both assets before the creator's split; the
+  `AdminCap` lowering one rate to zero and raising the other, with the next collection paying at
+  the new rates; no-op updates; and a replaced `AdminCap` being rejected.
 - The presale venue fork runs both Cetus coin orders and Bluefin against mainnet bytecode with
   the published zero-rate policy, and decodes the new state and event layouts.

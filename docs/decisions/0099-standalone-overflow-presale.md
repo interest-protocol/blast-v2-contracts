@@ -259,9 +259,10 @@ generic positional Blake2b-256 module verifies eligibility and rewards. The
 - One `AdminCap` holds every administrative power, so Blast keeps it in a
   multisig. Until the `SuperAdminCap` replaces it, a compromised cap can
   redirect future holder-reward shares and Blast's fee payouts, set future
-  sales' rates, change the creation allowlists, and relink dependencies; it
-  cannot reach any participant's commitment, any recipient's allocation, or a
-  live sale's terms. A compromised `SuperAdminCap` can take all of that by
+  sales' rates and any migrated sale's Blast LP-fee rates (ADR 0101), change
+  the creation allowlists, and relink dependencies; it cannot reach any
+  participant's commitment, any recipient's allocation, or any other live
+  sale term. A compromised `SuperAdminCap` can take all of that by
   issuing itself a cap, so it stays in a cold multisig and is used only to
   recover from a lost or compromised `AdminCap`.
 - Blast chooses the reward Merkle roots. Proofs enforce
@@ -329,7 +330,8 @@ generic positional Blake2b-256 module verifies eligibility and rewards. The
 - The package gate checks source boundaries (no `blast_admin` dependency; the
   reviewed caps and registry; `SuperAdminCap` minted only at publication and
   used only to replace or revoke; `AdminCap` minted only at publication or by a
-  replacement; every gated function checking the registry; and sealed
+  replacement; every function taking an `AdminCap`, at any visibility,
+  checking it against the registry as its first statement; and sealed
   dependency-only custody whose transitions each require the `AdminCap`), builds both network environments, lints with
   warnings as errors, and runs Move tests.
 - Deployment records the publish transaction and the `package_admin::wrap`

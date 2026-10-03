@@ -23,7 +23,7 @@ sale is ever created under an unsealed cap.
    `blast_presale_admin::transfer_super_admin`, and the `AdminCap` to the
    operations multisig. The `AdminCap` is the package's only administrator: it
    directs every vault's holder-reward share, sets the terms of every future
-   sale, redirects Blast's fee payouts, and authorizes dependency-only upgrades.
+   sale and Blast's LP-fee rates on every vault, redirects Blast's fee payouts, and authorizes dependency-only upgrades.
    Every one of those calls also takes the `AdminRegistry`. The `SuperAdminCap`
    can only `replace_admin_cap`, which mints a new cap and stops the old one at
    once, or `revoke_admin_cap`, which stops all administration until the next

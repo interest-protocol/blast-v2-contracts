@@ -4,10 +4,10 @@
 /// Positional Blake2b-256 proofs independent of the leaf's application domain.
 module blast_presale::merkle_tree;
 
-// === Public Functions ===
+// === Package Functions ===
 
 /// Hashes one ordered pair as an internal Merkle node.
-public fun node(left: vector<u8>, right: vector<u8>): vector<u8> {
+public(package) fun node(left: vector<u8>, right: vector<u8>): vector<u8> {
     let mut bytes = vector[1u8];
     bytes.append(left);
     bytes.append(right);
@@ -15,7 +15,7 @@ public fun node(left: vector<u8>, right: vector<u8>): vector<u8> {
 }
 
 /// Verifies a positional proof after rejecting the wrong depth or malformed digests.
-public fun verify(
+public(package) fun verify(
     root: vector<u8>,
     mut digest: vector<u8>,
     mut index: u64,
@@ -43,8 +43,6 @@ public fun verify(
 
     digest == root
 }
-
-// === Package Functions ===
 
 /// The byte length of every root, leaf digest, and proof sibling.
 public(package) fun digest_length(): u64 {

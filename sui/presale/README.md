@@ -33,7 +33,9 @@ cannot vest.
 
 Blast's shared `FeePolicy` sets its shares of the raise, the token supply, and
 collected LP fees; each sale snapshots them at creation, every rate can be zero,
-and payouts go to the policy's current destination. Blast's token share counts
+and payouts go to the policy's current destination. After migration the
+`AdminCap` can change one sale's LP-fee rates on its vault with
+`presale_vault::set_protocol_lp_fees`. Blast's token share counts
 toward the 10,000 allocation BPS, and its raise share is apportioned with the raise
 recipients'. Nothing is charged at creation, on commitment, on refund, or if a
 sale does not migrate.
@@ -58,8 +60,8 @@ full-range pool, and seals the position or burn proof in a `PresaleVault`; a DEX
 failure rolls back the presale transition. Configured recipients receive their
 distinct allocations in that same transaction. Claims open only after success.
 
-Permissionless fee collection pays Blast its snapshotted share of each asset,
-then applies the immutable creation-time split to the rest: every fee recipient
+Permissionless fee collection pays Blast its share of each asset at the vault's
+current rates, then applies the immutable creation-time split to the rest: every fee recipient
 is paid in the same transaction, and the holder-reward share stays
 in the vault. The holder of the package's `AdminCap` publishes Merkle
 rounds funded from that share, each with a claim deadline after which anyone can

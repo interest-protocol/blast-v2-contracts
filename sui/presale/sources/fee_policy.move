@@ -5,7 +5,8 @@
 /// every collected LP fee.
 ///
 /// Each presale snapshots the rates when it is created, so a sale's economics are fixed before
-/// commitments open. Every payout reads the current destination.
+/// commitments open. After migration the AdminCap may change one sale's LP-fee rates on its
+/// vault. Every payout reads the current destination.
 module blast_presale::fee_policy;
 
 // === Public Types ===
@@ -101,6 +102,17 @@ public(package) fun lp_fee_meme_bps(self: &ProtocolFees): Bps {
 
 public(package) fun lp_fee_quote_bps(self: &ProtocolFees): Bps {
     self.lp_fee_quote_bps
+}
+
+/// Returns these rates with both LP-fee rates replaced.
+public(package) fun with_lp_fees(
+    mut self: ProtocolFees,
+    lp_fee_meme_bps: Bps,
+    lp_fee_quote_bps: Bps,
+): ProtocolFees {
+    self.lp_fee_meme_bps = lp_fee_meme_bps;
+    self.lp_fee_quote_bps = lp_fee_quote_bps;
+    self
 }
 
 // === Private Functions ===

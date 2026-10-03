@@ -142,7 +142,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0098](0098-launch-creation-fee-and-partners.md) | One partner per launch shares the launch's creation, curve, and one-time Meme/Quote migration fees | **accepted** |
 | [0099](0099-standalone-overflow-presale.md) | Standalone overflow presales with per-sale caps, proportional fills, LP-gated claims, and refund liveness | **accepted; amended by 0101 and 0102** |
 | [0100](0100-single-cetus-route-with-checked-retype.md) | One Cetus route per operation, generic over the pool's coin order, with a checked dynamic-field retype | **accepted** |
-| [0101](0101-presale-protocol-fees.md) | Admin-set presale fees on the raise, token supply, and LP fees, snapshotted at creation | **proposed** |
+| [0101](0101-presale-protocol-fees.md) | Admin-set presale fees on the raise, token supply, and LP fees, snapshotted at creation; LP rates adjustable per vault | **proposed** |
 | [0102](0102-presale-creation-allowlists.md) | Admin-set allowlists of the Quote types and migration witnesses new presales may use | **proposed** |
 | [0103](0103-mainnet-only.md) | Mainnet only: no testnet builds, pins, scripts, harness environment, or rehearsals | **accepted** |
 
