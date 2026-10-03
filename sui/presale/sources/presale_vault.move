@@ -97,8 +97,8 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
         pool_id,
         position_id: object::id(&position),
         liquidity,
-        fee_recipients: presale::share_recipients(&vault.fee_recipients),
-        fee_recipient_bps: presale::share_bps(&vault.fee_recipients),
+        fee_recipients: vault.fee_recipients.recipients(),
+        fee_recipient_bps: vault.fee_recipients.bps(),
         holder_rewards_bps: holder_rewards_bps.value(),
         protocol_lp_fee_meme_bps: protocol_fees.lp_fee_meme_bps().value(),
         protocol_lp_fee_quote_bps: protocol_fees.lp_fee_quote_bps().value(),
@@ -143,7 +143,7 @@ public(package) fun split_fees<Meme, Quote>(
     let protocol_destination = fee_policy.destination();
     let (fee_recipient_meme, holder_rewards_meme) = self.fee_shares(gross_meme - protocol_meme);
     let (fee_recipient_quote, holder_rewards_quote) = self.fee_shares(gross_quote - protocol_quote);
-    let recipients = presale::share_recipients(&self.fee_recipients);
+    let recipients = self.fee_recipients.recipients();
 
     meme.pay(protocol_meme, protocol_destination, ctx);
     quote.pay(protocol_quote, protocol_destination, ctx);
@@ -371,6 +371,9 @@ use blast_presale::{
 use sui::{balance::{Self, Balance}, coin::Coin, dynamic_object_field, event};
 
 use fun presale::pay as Balance.pay;
+
+use fun presale::bps_of as vector.bps;
+use fun presale::recipients_of as vector.recipients;
 
 use fun dynamic_object_field::add as UID.add_dynamic_object_field;
 use fun dynamic_object_field::borrow_mut as UID.dynamic_object_field_mut;

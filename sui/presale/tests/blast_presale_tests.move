@@ -50,6 +50,12 @@ const PROTOCOL_TOKENS: u64 = 1_000;
 /// Recipient B's share when Blast takes `PROTOCOL_TOKEN_BPS` of the supply.
 const FEE_PAYING_RECIPIENT_B_BPS: u64 = 1_000;
 const FEE_PAYING_RECIPIENT_B_TOKENS: u64 = 2_000;
+/// Team vesting: half at the cliff, the rest over the following two steps.
+const VESTING_CLIFF_MS: u64 = 100;
+const VESTING_PERIOD_MS: u64 = 50;
+const VESTING_PERIODS: u64 = 4;
+const VESTING_DURATION_MS: u64 = VESTING_PERIOD_MS * VESTING_PERIODS;
+const MAX_VESTING_DURATION_MS: u64 = 1 << 63;
 
 // === Test-Only Types ===
 
@@ -619,6 +625,7 @@ fun another_migrator_cannot_release_escrow() {
         let (liquidity_tokens, quote) = sale.migrate(
             &fixture.fee_policy,
             OTHER_MIGRATOR(),
+            &fixture.clock,
             fixture.scenario.ctx(),
         );
         liquidity_tokens.destroy_zero();
@@ -962,21 +969,231 @@ fun raise_allocations_must_leave_the_lp_a_share_after_blasts() {
     ).end();
 }
 
+#[test]
+/// One migration locks each vesting token and raise share in its own shared irrevocable schedule
+/// for its recipient from the migration time, and pays every unvested share at once.
+fun migration_locks_each_vesting_share_in_its_own_schedule() {
+    let mut fixture = start_with_team_vesting(vector[
+        presale::vested_recipient_share(RAISE_RECIPIENT, bps::new(2_000), team_vesting_terms()),
+        presale::recipient_share(CAROL, bps::new(1_000)),
+    ]);
+    fixture.commit_open(ALICE, RAISE_TARGET);
+    fixture.set_time(END_MS);
+    fixture.settle(KEEPER);
+
+    assert_eq!(fixture.migrate(), vector[LIQUIDITY_TOKENS, 700]);
+
+    let schedules = event::events_by_type<VestingCreated>();
+    assert_eq!(schedules.length(), 2);
+    let raise_vesting_id = team_schedule_id<QUOTE>(&schedules[0], RAISE_RECIPIENT, 200);
+    let token_vesting_id = team_schedule_id<BLAST_PRESALE_TESTS>(
+        &schedules[1],
+        RECIPIENT_A,
+        RECIPIENT_A_TOKENS,
+    );
+    assert_eq!(
+        event::events_by_type<RaiseAllocated<BLAST_PRESALE_TESTS, QUOTE>>().map_ref!(
+            |allocated| allocated.raise_allocated_vesting_id(),
+        ),
+        vector[option::some(raise_vesting_id), option::none()],
+    );
+    assert_eq!(
+        event::events_by_type<RecipientAllocated<BLAST_PRESALE_TESTS, QUOTE>>().map_ref!(
+            |allocated| allocated.recipient_allocated_vesting_id(),
+        ),
+        vector[option::some(token_vesting_id), option::none()],
+    );
+
+    fixture.take_quote(CAROL, 100);
+    fixture.next_tx!(RECIPIENT_B, |fixture| assert_eq!(
+        fixture.scenario.take_from_sender<Coin<BLAST_PRESALE_TESTS>>().burn_for_testing(),
+        RECIPIENT_B_TOKENS,
+    ));
+    assert!(!test_scenario::has_most_recent_for_address<Coin<BLAST_PRESALE_TESTS>>(RECIPIENT_A));
+    assert!(!test_scenario::has_most_recent_for_address<Coin<QUOTE>>(RAISE_RECIPIENT));
+
+    fixture.destroy_migrated_cap();
+    fixture.end();
+}
+
+#[test]
+/// A vesting token recipient gets an irrevocable schedule that starts at migration, while the
+/// other recipient is paid at once.
+fun vested_recipient_tokens_lock_in_a_schedule_from_migration() {
+    let mut fixture = start_with_team_vesting(vector[]);
+    fixture.commit_open(ALICE, RAISE_TARGET);
+    fixture.set_time(END_MS);
+    fixture.settle(KEEPER);
+
+    fixture.migrate();
+
+    let allocations = event::events_by_type<RecipientAllocated<BLAST_PRESALE_TESTS, QUOTE>>();
+    let (_, vested_recipient, vested_tokens) = allocations[0].recipient_allocated_fields();
+    let (_, paid_recipient, paid_tokens) = allocations[1].recipient_allocated_fields();
+    assert_eq!(vector[vested_recipient, paid_recipient], vector[RECIPIENT_A, RECIPIENT_B]);
+    assert_eq!(vector[vested_tokens, paid_tokens], vector[RECIPIENT_A_TOKENS, RECIPIENT_B_TOKENS]);
+    assert!(allocations[1].recipient_allocated_vesting_id().is_none());
+    fixture.next_tx!(RECIPIENT_B, |fixture| assert_eq!(
+        fixture.scenario.take_from_sender<Coin<BLAST_PRESALE_TESTS>>().burn_for_testing(),
+        RECIPIENT_B_TOKENS,
+    ));
+    assert!(!test_scenario::has_most_recent_for_address<Coin<BLAST_PRESALE_TESTS>>(RECIPIENT_A));
+
+    let vesting_id = allocations[0].recipient_allocated_vesting_id().destroy_some();
+    fixture.claim_vesting<BLAST_PRESALE_TESTS>(vesting_id, END_MS + VESTING_CLIFF_MS);
+    fixture.take_tokens(RECIPIENT_A, RECIPIENT_A_TOKENS / 2);
+    fixture.claim_vesting<BLAST_PRESALE_TESTS>(vesting_id, END_MS + VESTING_DURATION_MS);
+    fixture.take_tokens(RECIPIENT_A, RECIPIENT_A_TOKENS / 2);
+
+    fixture.destroy_migrated_cap();
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_fun_vesting::blast_fun_linear_vesting::ENothingClaimable,
+    location = blast_fun_vesting::blast_fun_linear_vesting,
+)]
+/// Nothing vests before the cliff, counted from migration rather than from creation.
+fun vested_recipient_tokens_wait_for_the_cliff_after_migration() {
+    let mut fixture = start_with_team_vesting(vector[]);
+    fixture.commit_open(ALICE, RAISE_TARGET);
+    fixture.set_time(END_MS);
+    fixture.settle(KEEPER);
+    fixture.migrate();
+
+    fixture.claim_vesting<BLAST_PRESALE_TESTS>(
+        event::events_by_type<RecipientAllocated<BLAST_PRESALE_TESTS, QUOTE>>()[0]
+            .recipient_allocated_vesting_id()
+            .destroy_some(),
+        END_MS + VESTING_CLIFF_MS - 1,
+    );
+
+    fixture.end();
+}
+
+#[test]
+/// A vesting raise recipient's Quote is locked in a schedule from migration; the LP still takes
+/// the rest of the raise.
+fun vested_raise_allocations_lock_quote_in_a_schedule_from_migration() {
+    let mut fixture = start_with_raise_allocations(
+        vector[
+            presale::vested_recipient_share(RAISE_RECIPIENT, bps::new(2_000), team_vesting_terms()),
+        ],
+    );
+    fixture.commit_open(ALICE, RAISE_TARGET);
+    fixture.set_time(END_MS);
+    fixture.settle(KEEPER);
+
+    assert_eq!(fixture.migrate(), vector[LIQUIDITY_TOKENS, 800]);
+
+    let allocated = only_event<RaiseAllocated<BLAST_PRESALE_TESTS, QUOTE>>();
+    let (_, recipient, quote) = allocated.raise_allocated_fields();
+    assert_eq!(recipient, RAISE_RECIPIENT);
+    assert_eq!(quote, 200);
+    fixture.take_recipient_allocations();
+    assert!(!test_scenario::has_most_recent_for_address<Coin<QUOTE>>(RAISE_RECIPIENT));
+
+    fixture.claim_vesting<QUOTE>(
+        allocated.raise_allocated_vesting_id().destroy_some(),
+        END_MS + VESTING_DURATION_MS,
+    );
+    fixture.take_quote(RAISE_RECIPIENT, 200);
+
+    fixture.destroy_migrated_cap();
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidFeeSplit, location = blast_presale::blast_presale)]
+/// LP fees are paid as they are collected, so a fee share cannot vest.
+fun fee_recipients_cannot_vest() {
+    create_with_fee_split(
+        vector[
+            presale::vested_recipient_share(
+                CREATOR,
+                bps::new(CREATOR_FEE_BPS),
+                team_vesting_terms(),
+            ),
+            presale::recipient_share(FEE_PARTNER, bps::new(FEE_PARTNER_BPS)),
+        ],
+        HOLDER_REWARDS_BPS,
+    );
+}
+
+#[test]
+/// The longest schedule is the technical bound, with the cliff at most its whole duration.
+fun vesting_terms_accept_the_technical_bound_with_a_full_cliff() {
+    presale::vesting_terms(MAX_VESTING_DURATION_MS, MAX_VESTING_DURATION_MS, 1);
+    presale::vesting_terms(0, 1, MAX_VESTING_DURATION_MS);
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidVestingTerms, location = blast_presale::blast_presale)]
+fun vesting_terms_need_a_positive_period() {
+    presale::vesting_terms(0, 0, 1);
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidVestingTerms, location = blast_presale::blast_presale)]
+fun vesting_terms_need_a_positive_period_count() {
+    presale::vesting_terms(0, 1, 0);
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidVestingTerms, location = blast_presale::blast_presale)]
+fun vesting_terms_keep_the_cliff_within_the_duration() {
+    presale::vesting_terms(VESTING_DURATION_MS + 1, VESTING_PERIOD_MS, VESTING_PERIODS);
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidVestingTerms, location = blast_presale::blast_presale)]
+fun vesting_terms_stay_within_the_technical_bound() {
+    presale::vesting_terms(0, MAX_VESTING_DURATION_MS / 2 + 1, 2);
+}
+
 // === Test Helpers ===
 
 /// Starts a fee-free sale under `eligibility` with no raise allocations or uncapped phase.
 fun start_sale(eligibility: EligibilityPolicy): Fixture {
-    start_configured(vector[], eligibility, option::none(), false, 0, 0, RECIPIENT_B_BPS)
+    start_configured(
+        vector[],
+        eligibility,
+        option::none(),
+        false,
+        0,
+        0,
+        RECIPIENT_B_BPS,
+        option::none(),
+    )
 }
 
 /// Starts the same sale as `start_sale`, but with its supply locked to burn-only.
 fun start_burnable_sale(eligibility: EligibilityPolicy): Fixture {
-    start_configured(vector[], eligibility, option::none(), true, 0, 0, RECIPIENT_B_BPS)
+    start_configured(
+        vector[],
+        eligibility,
+        option::none(),
+        true,
+        0,
+        0,
+        RECIPIENT_B_BPS,
+        option::none(),
+    )
 }
 
 /// Starts a fee-free sale under `eligibility` whose window ends in `phase`.
 fun start_with_uncapped_phase(eligibility: EligibilityPolicy, phase: UncappedPhase): Fixture {
-    start_configured(vector[], eligibility, option::some(phase), false, 0, 0, RECIPIENT_B_BPS)
+    start_configured(
+        vector[],
+        eligibility,
+        option::some(phase),
+        false,
+        0,
+        0,
+        RECIPIENT_B_BPS,
+        option::none(),
+    )
 }
 
 /// Starts a fee-free single-wallet sale that pays `raise_allocations` out of the raise.
@@ -989,6 +1206,22 @@ fun start_with_raise_allocations(raise_allocations: vector<RecipientShare>): Fix
         0,
         0,
         RECIPIENT_B_BPS,
+        option::none(),
+    )
+}
+
+/// Starts the same sale as `start_with_raise_allocations`, but with recipient A's tokens vesting
+/// under `team_vesting_terms`.
+fun start_with_team_vesting(raise_allocations: vector<RecipientShare>): Fixture {
+    start_configured(
+        raise_allocations,
+        single_wallet_eligibility(),
+        option::none(),
+        false,
+        0,
+        0,
+        RECIPIENT_B_BPS,
+        option::some(team_vesting_terms()),
     )
 }
 
@@ -1009,6 +1242,7 @@ fun start_with_protocol_fees(
         protocol_raise_bps,
         protocol_token_bps,
         recipient_b_bps,
+        option::none(),
     )
 }
 
@@ -1024,7 +1258,7 @@ fun start_funded_sale(): Fixture {
 }
 
 /// Creates and opens a `RAISE_TARGET` sale at `START_MS`, asserting its creation and opening
-/// events, and hands the creator its cap.
+/// events, and hands the creator its cap. Recipient A's tokens vest under `recipient_a_vesting`.
 fun start_configured(
     raise_allocations: vector<RecipientShare>,
     eligibility: EligibilityPolicy,
@@ -1033,6 +1267,7 @@ fun start_configured(
     protocol_raise_bps: u64,
     protocol_token_bps: u64,
     recipient_b_bps: u64,
+    recipient_a_vesting: Option<VestingTerms>,
 ): Fixture {
     let mut scenario = test_scenario::begin(CREATOR);
     let mut clock = clock::create_for_testing(scenario.ctx());
@@ -1043,9 +1278,11 @@ fun start_configured(
         TEST_MIGRATOR,
     >(scenario.ctx());
 
+    let raise_vesting = raise_allocations.map_ref!(|share| share.vesting_terms_for_testing());
+
     let mut terms = valid_sale_terms();
     terms.recipient_allocations = vector[
-        presale::recipient_share(RECIPIENT_A, bps::new(RECIPIENT_A_BPS)),
+        recipient_a_share(recipient_a_vesting),
         presale::recipient_share(RECIPIENT_B, bps::new(recipient_b_bps)),
     ];
     terms.burnable = burnable;
@@ -1073,6 +1310,8 @@ fun start_configured(
         eligibility,
         burnable,
         recipient_b_bps,
+        vector[recipient_a_vesting, option::none()],
+        raise_vesting,
     );
     assert_eq!(currency.is_supply_fixed(), !burnable);
     assert_eq!(currency.is_supply_burn_only(), burnable);
@@ -1113,6 +1352,8 @@ fun assert_created_event(
     eligibility: EligibilityPolicy,
     burnable: bool,
     recipient_b_bps: u64,
+    recipient_vesting: vector<Option<VestingTerms>>,
+    raise_vesting: vector<Option<VestingTerms>>,
 ) {
     let created = only_event<PresaleCreated<BLAST_PRESALE_TESTS, QUOTE>>();
 
@@ -1170,6 +1411,37 @@ fun assert_created_event(
     assert_eq!(recipients, vector[RECIPIENT_A, RECIPIENT_B]);
     assert_eq!(recipient_bps, vector[RECIPIENT_A_BPS, recipient_b_bps]);
     assert_eq!(created_burnable, burnable);
+
+    let (created_recipient_vesting, created_raise_vesting) = created.created_vesting_fields();
+    assert_eq!(created_recipient_vesting, recipient_vesting);
+    assert_eq!(created_raise_vesting, raise_vesting);
+}
+
+/// Asserts one `VestingCreated` event is an irrevocable `T` schedule paying `beneficiary`
+/// `total_amount` under `team_vesting_terms` from the migration time, and returns its ID.
+fun team_schedule_id<T>(created: &VestingCreated, beneficiary: address, total_amount: u64): ID {
+    let (
+        vesting_id,
+        coin_type,
+        created_beneficiary,
+        refund_recipient,
+        cancel_cap_id,
+        created_total_amount,
+        start_ms,
+        cliff_ms,
+        period_ms,
+        periods,
+    ) = created.vesting_created_fields();
+    assert_eq!(coin_type, type_name::with_original_ids<T>());
+    assert_eq!(created_beneficiary, beneficiary);
+    assert!(refund_recipient.is_none());
+    assert!(cancel_cap_id.is_none());
+    assert_eq!(
+        vector[created_total_amount, start_ms, cliff_ms, period_ms, periods],
+        vector[total_amount, END_MS, VESTING_CLIFF_MS, VESTING_PERIOD_MS, VESTING_PERIODS],
+    );
+
+    vesting_id
 }
 
 /// Asserts the single `PresaleOpened` event fixes the fixture's window and uncapped start.
@@ -1396,6 +1668,19 @@ fun fee_recipients(): vector<RecipientShare> {
     ]
 }
 
+/// Recipient A's token share, vesting under `vesting` when it has terms.
+fun recipient_a_share(vesting: Option<VestingTerms>): RecipientShare {
+    vesting
+        .map!(|terms| {
+            presale::vested_recipient_share(RECIPIENT_A, bps::new(RECIPIENT_A_BPS), terms)
+        })
+        .destroy_or!(presale::recipient_share(RECIPIENT_A, bps::new(RECIPIENT_A_BPS)))
+}
+
+fun team_vesting_terms(): VestingTerms {
+    presale::vesting_terms(VESTING_CLIFF_MS, VESTING_PERIOD_MS, VESTING_PERIODS)
+}
+
 fun recipient_allocations(): vector<RecipientShare> {
     vector[
         presale::recipient_share(RECIPIENT_A, bps::new(RECIPIENT_A_BPS)),
@@ -1546,6 +1831,7 @@ fun migrate(self: &mut Fixture): vector<u64> {
         let (liquidity_tokens, quote) = sale.migrate(
             &fixture.fee_policy,
             TEST_MIGRATOR(),
+            &fixture.clock,
             fixture.scenario.ctx(),
         );
         released.push_back(liquidity_tokens.into_coin(fixture.ctx!()).burn_for_testing());
@@ -1606,6 +1892,15 @@ fun take_payout(self: &mut Fixture, participant: address, tokens: u64, quote: u6
         assert_eq!(
             fixture.scenario.take_from_sender<Coin<QUOTE>>().burn_for_testing(),
             quote,
+        );
+    });
+}
+
+fun take_tokens(self: &mut Fixture, participant: address, tokens: u64) {
+    self.next_tx!(participant, |fixture| {
+        assert_eq!(
+            fixture.scenario.take_from_sender<Coin<BLAST_PRESALE_TESTS>>().burn_for_testing(),
+            tokens,
         );
     });
 }
@@ -1700,6 +1995,17 @@ fun commitment(self: &mut Fixture, participant: address): u64 {
     commitment.pop_back()
 }
 
+/// Lets a keeper claim a presale-created vesting schedule at `timestamp_ms`; the vesting package
+/// pays its beneficiary.
+fun claim_vesting<T>(self: &mut Fixture, vesting_id: ID, timestamp_ms: u64) {
+    self.set_time(timestamp_ms);
+    self.next_tx!(KEEPER, |fixture| {
+        let mut vesting = fixture.scenario.take_shared_by_id<Vesting<T>>(vesting_id);
+        vesting.claim(&fixture.clock, fixture.ctx!());
+        test_scenario::return_shared(vesting);
+    });
+}
+
 fun only_event<Event: copy + drop>(): Event {
     let mut events = event::events_by_type<Event>();
     assert_eq!(events.length(), 1);
@@ -1714,6 +2020,7 @@ use blast_presale::{bluefin, cetus, migration_math, blast_presale::{
     Committed,
     EligibilityPolicy,
     RaiseAllocated,
+    RecipientAllocated,
     Presale,
     PresaleCancelled,
     PresaleCap,
@@ -1723,9 +2030,12 @@ use blast_presale::{bluefin, cetus, migration_math, blast_presale::{
     PresaleOpened,
     RecipientShare,
     UncappedPhase,
+    VestingTerms,
 }};
 
 use blast_admin::blast_acl;
+
+use blast_fun_vesting::blast_fun_linear_vesting::{Vesting, VestingCreated};
 
 use blast_presale::{
     blast_presale::ProtocolFeesPaid,
