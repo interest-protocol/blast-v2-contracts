@@ -95,16 +95,18 @@ public struct Commitment has copy, drop, store {
 /// The complete fixed or burn-only token supply is apportioned at creation.
 /// Presale, LP, Blast, and additional recipient allocations stay escrowed until
 /// a funded migration atomically releases them. Blast's rates are snapshotted
-/// at creation, and its shares are paid only on migration. If the raise is
-/// missed, every commitment is refunded. Anyone may migrate a funded sale until
-/// it is cancelled; once LP is still unmigrated at its deadline, anyone may
-/// cancel it so every commitment becomes refundable.
+/// at creation, the AdminCap may change them until the window starts, and its
+/// shares are paid only on migration. If the raise is missed, every commitment
+/// is refunded. Anyone may migrate a funded sale until it is cancelled; once LP
+/// is still unmigrated at its deadline, anyone may cancel it so every
+/// commitment becomes refundable.
 public struct Presale<phantom SaleToken, phantom Quote> has key {
     id: UID,
     presale_cap_id: ID,
     lifecycle: Lifecycle,
     duration_ms: u64,
     liquidity_window_ms: u64,
+    start_ms: u64,
     end_ms: u64,
     liquidity_deadline_ms: u64,
     raise_target: u64,
@@ -218,11 +220,17 @@ public fun vesting_terms(cliff_ms: u64, period_ms: u64, periods: u64): VestingTe
     VestingTerms { cliff_ms, period_ms, periods }
 }
 
-/// Shares a newly created presale and starts its fixed public window now.
-public fun share<SaleToken, Quote>(mut self: Presale<SaleToken, Quote>, clock: &Clock) {
+/// Shares a newly created presale and fixes its windows from `start_ms`, or from now once that
+/// has passed, so a sale can be created ahead of its start. Commitments open at the start; until
+/// then the AdminCap may change the sale's Blast rates.
+public fun share<SaleToken, Quote>(
+    mut self: Presale<SaleToken, Quote>,
+    start_ms: u64,
+    clock: &Clock,
+) {
     assert!(self.lifecycle == Lifecycle::Pending, EInvalidLifecycle);
 
-    let start_ms = clock.timestamp_ms();
+    let start_ms = start_ms.max(clock.timestamp_ms());
     let end_ms = start_ms.checked_add(self.duration_ms).destroy_or!(abort EInvalidWindow);
     let liquidity_deadline_ms = end_ms
         .checked_add(self.liquidity_window_ms)
@@ -234,6 +242,7 @@ public fun share<SaleToken, Quote>(mut self: Presale<SaleToken, Quote>, clock: &
         .destroy_or!(end_ms);
 
     self.lifecycle = Lifecycle::Open;
+    self.start_ms = start_ms;
     self.end_ms = end_ms;
     self.liquidity_deadline_ms = liquidity_deadline_ms;
     self.uncapped_from_ms = uncapped_from_ms;
@@ -247,6 +256,58 @@ public fun share<SaleToken, Quote>(mut self: Presale<SaleToken, Quote>, clock: &
     });
 
     transfer::share_object(self);
+}
+
+/// Replaces this sale's snapshot of Blast's rates before its window starts, while nobody can have
+/// committed. Blast's token share is reapportioned against the buyers' sale allocation and its
+/// raise share against the LP's Quote, each rounded down; every recipient keeps its amount.
+public fun set_protocol_fees<SaleToken, Quote>(
+    self: &mut Presale<SaleToken, Quote>,
+    admin_registry: &AdminRegistry,
+    admin_cap: &AdminCap,
+    raise_bps: Bps,
+    token_bps: Bps,
+    lp_fee_meme_bps: Bps,
+    lp_fee_quote_bps: Bps,
+    clock: &Clock,
+) {
+    admin_registry.assert_admin_cap(admin_cap);
+    assert!(self.lifecycle == Lifecycle::Open, EInvalidLifecycle);
+    assert!(clock.timestamp_ms() < self.start_ms, EPresaleStarted);
+    let protocol_fees = fee_policy::protocol_fees(
+        raise_bps,
+        token_bps,
+        lp_fee_meme_bps,
+        lp_fee_quote_bps,
+    );
+    assert!(protocol_fees != self.protocol_fees, EProtocolFeesUnchanged);
+
+    // Blast's Quote comes out of the raise left after the recipients', whose rest the LP keeps;
+    // its tokens come out of its own and the buyers' allocations, whose rest the buyers keep.
+    let unallocated_raise = self.raise_target - total_amount(&self.raise_payouts);
+    let unallocated_tokens = self.token_allocation + self.protocol_tokens.value();
+    let protocol_quote = self.raise_target.mul_div(raise_bps.value(), bps::denominator());
+    let protocol_tokens = self.token_supply().mul_div(token_bps.value(), bps::denominator());
+    assert!(protocol_quote < unallocated_raise, EInvalidRaiseAllocation);
+    assert!(protocol_tokens < unallocated_tokens, EInvalidTokenAllocation);
+    assert_seedable_price(self.liquidity_tokens.value(), unallocated_raise - protocol_quote);
+
+    self.sale_tokens.join(self.protocol_tokens.withdraw_all());
+    self.protocol_tokens.join(self.sale_tokens.split(protocol_tokens));
+    self.token_allocation = unallocated_tokens - protocol_tokens;
+    self.protocol_quote = protocol_quote;
+    self.protocol_fees = protocol_fees;
+
+    event::emit(ProtocolFeesChanged<SaleToken, Quote> {
+        presale_id: self.id.to_inner(),
+        protocol_raise_bps: raise_bps.value(),
+        protocol_token_bps: token_bps.value(),
+        protocol_lp_fee_meme_bps: lp_fee_meme_bps.value(),
+        protocol_lp_fee_quote_bps: lp_fee_quote_bps.value(),
+        protocol_quote,
+        protocol_tokens,
+        token_allocation: self.token_allocation,
+    });
 }
 
 /// Locks the supplied `Coin<Quote>` in this presale under an equal-cap, open
@@ -460,12 +521,7 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         raise_target,
     );
 
-    assert!(
-        migration_math::is_seedable(
-            migration_math::sqrt_price_x64(liquidity_token_allocation, liquidity_quote, true),
-        ),
-        EUnseedablePrice,
-    );
+    assert_seedable_price(liquidity_token_allocation, liquidity_quote);
 
     let treasury_cap_id = object::id(&treasury_cap);
     let (sale_tokens, liquidity_tokens, protocol_tokens, recipient_tokens) = mint_and_seal_supply(
@@ -524,6 +580,7 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
             lifecycle: Lifecycle::Pending,
             duration_ms,
             liquidity_window_ms,
+            start_ms: 0,
             end_ms: 0,
             liquidity_deadline_ms: 0,
             raise_target,
@@ -656,6 +713,7 @@ public(package) fun pay<Asset>(
 
 fun assert_open<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, clock: &Clock) {
     assert!(self.lifecycle == Lifecycle::Open, EInvalidLifecycle);
+    assert!(clock.timestamp_ms() >= self.start_ms, EPresaleNotStarted);
     assert!(clock.timestamp_ms() < self.end_ms, EPresaleEnded);
 }
 
@@ -743,6 +801,11 @@ fun total_bps(shares: &vector<RecipientShare>): u64 {
     (*shares).fold!(0, |sum, share| sum + share.bps.value())
 }
 
+/// The amount these payouts take in total.
+fun total_amount(payouts: &vector<RecipientPayout>): u64 {
+    (*payouts).fold!(0, |sum, payout| sum + payout.amount)
+}
+
 /// The phase starts inside the window, and an open-to-anyone phase admits at least the
 /// policy's wallets while its minimum over the slots held to it still reaches the raise.
 fun assert_uncapped_phase(
@@ -797,6 +860,16 @@ fun can_reach(self: EligibilityPolicy, raise_target: u64): bool {
 /// Whether `max_participants` wallets each committing `min_commitment` reach `raise_target`.
 fun reaches(min_commitment: u64, max_participants: u64, raise_target: u64): bool {
     (min_commitment as u128) * (max_participants as u128) >= (raise_target as u128)
+}
+
+/// The LP's tokens and Quote seed a price both venues can pool.
+fun assert_seedable_price(liquidity_tokens: u64, liquidity_quote: u64) {
+    assert!(
+        migration_math::is_seedable(
+            migration_math::sqrt_price_x64(liquidity_tokens, liquidity_quote, true),
+        ),
+        EUnseedablePrice,
+    );
 }
 
 /// Apportions the supply so every atomic unit belongs to exactly one allocation, returning the
@@ -891,6 +964,16 @@ fun mint_and_seal_supply<SaleToken>(
     else currency.make_supply_fixed(treasury_cap);
 
     (sale_tokens, liquidity_tokens, protocol_tokens, recipient_tokens)
+}
+
+// Fee changes
+
+/// The complete supply, all of it still escrowed before the window starts.
+fun token_supply<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): u64 {
+    self.sale_tokens.value()
+        + self.liquidity_tokens.value()
+        + self.recipient_tokens.value()
+        + self.protocol_tokens.value()
 }
 
 // Commitments
@@ -1320,6 +1403,24 @@ public fun created_vesting_fields<SaleToken, Quote>(
 }
 
 #[test_only]
+public fun protocol_fees_changed_fields<SaleToken, Quote>(
+    event: &ProtocolFeesChanged<SaleToken, Quote>,
+): (ID, vector<u64>, u64, u64, u64) {
+    (
+        event.presale_id,
+        vector[
+            event.protocol_raise_bps,
+            event.protocol_token_bps,
+            event.protocol_lp_fee_meme_bps,
+            event.protocol_lp_fee_quote_bps,
+        ],
+        event.protocol_quote,
+        event.protocol_tokens,
+        event.token_allocation,
+    )
+}
+
+#[test_only]
 public fun opened_fields<SaleToken, Quote>(
     event: &PresaleOpened<SaleToken, Quote>,
 ): (ID, u64, u64, u64, u64) {
@@ -1465,13 +1566,29 @@ public struct PresaleCreated<phantom SaleToken, phantom Quote> has copy, drop {
     protocol_tokens: u64,
 }
 
-/// A presale's fixed commitment and liquidity windows began.
+/// A presale was shared with these fixed commitment and liquidity windows. Commitments open at
+/// `start_ms`, which may be later than the share.
 public struct PresaleOpened<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
     start_ms: u64,
     end_ms: u64,
     liquidity_deadline_ms: u64,
     uncapped_from_ms: u64,
+}
+
+/// Before the window started, the AdminCap replaced this sale's Blast rates, moving Blast's tokens
+/// to or from the sale allocation and its Quote to or from the LP's.
+public struct ProtocolFeesChanged<phantom SaleToken, phantom Quote> has copy, drop {
+    presale_id: ID,
+    protocol_raise_bps: u64,
+    protocol_token_bps: u64,
+    protocol_lp_fee_meme_bps: u64,
+    protocol_lp_fee_quote_bps: u64,
+    /// Blast's shares of the raise and of the supply, paid on migration.
+    protocol_quote: u64,
+    protocol_tokens: u64,
+    /// The tokens buyers now share pro rata.
+    token_allocation: u64,
 }
 
 /// Quote joined a presale from the transaction sender.
@@ -1578,7 +1695,7 @@ const EInvalidRaiseTarget: vector<u8> = b"The raise target must be positive.";
 const EInvalidTokenAllocation: vector<u8> = b"The supply must be positive, and token allocations unique, positive, bounded, totalling exactly 10,000 BPS with Blast's share, and apportioning to positive amounts.";
 
 #[error(code = 3)]
-const EInvalidWindow: vector<u8> = b"The commitment window must be positive, the liquidity window at least seven days, and both must fit in u64 milliseconds.";
+const EInvalidWindow: vector<u8> = b"The commitment window must be positive, the liquidity window at least seven days, and both must end within u64 milliseconds.";
 
 #[error(code = 4)]
 const EInvalidEligibilityPolicy: vector<u8> = b"The eligibility policy has an invalid cap, participant bound, root, or leaf count.";
@@ -1653,14 +1770,24 @@ const EInvalidRaiseAllocation: vector<u8> = b"Raise allocations must be unique, 
 #[error(code = 27)]
 const EInvalidVestingTerms: vector<u8> = b"Vesting needs a positive period and period count, a cliff within its duration, and a duration of at most 2^63 milliseconds.";
 
+#[error(code = 28)]
+const EPresaleNotStarted: vector<u8> = b"The presale commitment window has not started.";
+
+#[error(code = 29)]
+const EPresaleStarted: vector<u8> = b"A presale's Blast rates can change only before its commitment window starts.";
+
+#[error(code = 30)]
+const EProtocolFeesUnchanged: vector<u8> = b"A presale fee update must change its stored rates.";
+
 // === Imports ===
 
 use blast_fun_vesting::blast_fun_linear_vesting as linear_vesting;
 
 use blast_presale::{
+    blast_presale_admin::{AdminCap, AdminRegistry},
     bps::{Self, Bps},
     creation_policy::CreationPolicy,
-    fee_policy::{FeePolicy, ProtocolFees},
+    fee_policy::{Self, FeePolicy, ProtocolFees},
     merkle_tree,
     migration_math,
 };

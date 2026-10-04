@@ -33,8 +33,11 @@ cannot vest.
 
 Blast's shared `FeePolicy` sets its shares of the raise, the token supply, and
 collected LP fees; each sale snapshots them at creation, every rate can be zero,
-and payouts go to the policy's current destination. After migration the
-`AdminCap` can change one sale's LP-fee rates on its vault with
+and payouts go to the policy's current destination. Until a sale's window starts,
+the `AdminCap` can change all four of its rates with
+`blast_presale::set_protocol_fees`; Blast's token difference moves to or from the
+buyers' sale allocation and its raise difference to or from the LP's Quote. After
+migration it can change one sale's LP-fee rates on its vault with
 `presale_vault::set_protocol_lp_fees`. Blast's token share counts
 toward the 10,000 allocation BPS, and its raise share is apportioned with the raise
 recipients'. Nothing is charged at creation, on commitment, on refund, or if a
@@ -43,6 +46,9 @@ sale does not migrate.
 Blast's shared `CreationPolicy` lists the Quote types and venue migration witnesses
 new presales may use; creation aborts for anything unlisted. It is checked only at
 creation, so delisting a type never affects a live sale.
+
+Sharing a sale fixes its windows from a start time, which may be ahead of the
+share so a sale can be published a day early; commitments open at the start.
 
 Every accepted commitment is locked in the presale's Quote custody. Participants cannot
 withdraw while a sale is open or funded. Underfunded sales, and funded sales

@@ -5,6 +5,8 @@
 - Amends: [0099](0099-standalone-overflow-presale.md), which gave Blast no fee on presales
 - Amended: 2026-10-03 (owner decision): the `AdminCap` may change one migrated sale's LP-fee
   rates on its vault
+- Amended: 2026-10-04 (owner decision): the `AdminCap` may change all four of one sale's rates
+  until its window starts
 
 ## Context
 
@@ -36,9 +38,20 @@ The token bound leaves one BPS each for the participant and LP allocations. The 
 `FeesChanged`; `set_destination` emits `DestinationChanged`. Each setter rejects a no-op update, and the destination must be nonzero.
 
 **Snapshot at creation.** Every presale copies the four rates when it is created and never reads
-them again, so a sale's economics are fixed before commitments open, as all of ADR 0099's
-per-sale terms are. Rate changes apply only to later sales. Payouts read the policy's current
-destination.
+the policy's rates again. Policy rate changes apply only to later sales. Payouts read the
+policy's current destination.
+
+**Per-sale rates before the start.** Until a sale's window starts (ADR 0099's `start_ms`), the
+presale `AdminCap` may replace all four of its rates with `blast_presale::set_protocol_fees`,
+within the policy's bounds. The update rejects a no-op and emits `ProtocolFeesChanged` with the
+new rates and amounts. Nobody can have committed yet, so a sale's economics are still fixed
+before commitments open. Blast's new token amount is its rate of the supply, rounded down. The
+difference moves to or from the buyers' sale allocation, which must keep at least one token
+(`EInvalidTokenAllocation`). Blast's new Quote amount is its rate of the raise, rounded down. The
+difference moves to or from the LP's Quote, which must stay positive (`EInvalidRaiseAllocation`)
+and still seed a poolable price (`EUnseedablePrice`). The LP's tokens, and every token and raise
+recipient's amount, are unchanged. Once the window starts the rates are fixed
+(`EPresaleStarted`) until migration copies them into the vault.
 
 **Per-vault LP rates.** Migration copies the sale's rates into its `PresaleVault`. The presale
 `AdminCap` may then change that vault's two LP-fee rates, within the same `<= 10,000` bound, with
@@ -74,6 +87,11 @@ records both LP rates, and `FeesCollected` records the destination and both amou
 
 ## Alternatives considered
 
+- **Let the `AdminCap` change a sale's rates until migration.** Rejected (owner, 2026-10-04):
+  buyers cannot withdraw a commitment, so a raise taken after they commit would come out of
+  their deal, and a compromised cap could take nearly all of every live sale's raise and tokens.
+- **Move Blast's token difference to or from the LP allocation.** Rejected (owner, 2026-10-04):
+  it would move the pool's opening price; the buyers' allocation instead takes a cut pro rata.
 - **Read the LP-fee rates live, as the launchpad's `LpFeePolicy` does.** Rejected for presales:
   ADR 0099 fixes every economic term before commitments open, and one global live rate would move
   every sale's LP fees at once. The 2026-10-03 amendment instead lets Blast change one vault's
@@ -90,12 +108,15 @@ records both LP rates, and `FeesCollected` records the destination and both amou
 - With all rates at zero, a sale behaves exactly as under ADR 0099.
 - The package keeps its dependency-only upgrade policy. Rates and destination change through the
   policy object, never through new logic.
-- A compromised `AdminCap` can set rates up to their bounds for future sales, set any migrated
-  sale's LP-fee rates up to 10,000 BPS, and redirect Blast's future payouts. Together, those let
+- A compromised `AdminCap` can set rates up to their bounds for future sales and for any sale
+  that has not started, set any migrated sale's LP-fee rates up to 10,000 BPS, and redirect
+  Blast's future payouts. Creators should check a scheduled sale's rates before its start. Together, those let
   it take every later LP fee of every migrated sale, but not any participant's commitment, any
   recipient's allocation, the vault's position, or fees already collected.
 - Creators and holders cannot rely on Blast's LP-fee rates staying at the snapshot after
-  migration; indexers must apply `ProtocolLpFeesChanged` to a vault's rates.
+  migration; indexers must apply `ProtocolLpFeesChanged` to a vault's rates. Before the start,
+  `PresaleCreated`'s Blast amounts and the sale allocation can also change; indexers must apply
+  `ProtocolFeesChanged` to a sale.
 - Off-chain builders must read the current `FeePolicy` when building a creation transaction,
   because allocation BPS must sum to 10,000 with the current token share.
 
@@ -107,6 +128,11 @@ records both LP rates, and `FeesCollected` records the destination and both amou
   rates change, apportioned with a raise recipient; unchanged participant fills and refunds; a
   zero-rate sale paying nothing; no payout and locked tokens on cancellation; allocation sums
   that ignore Blast's share; and raise allocations that leave the LP nothing after Blast's.
+- Presale tests cover the `AdminCap` cutting and raising a scheduled sale's rates, with the
+  difference moving to or from the sale allocation and the LP's Quote and migration and claims
+  using the new amounts; and rejecting a change after the start, on an unshared sale, without a
+  change, beyond the policy's bounds, leaving the LP no Quote or buyers no tokens, seeding an
+  unpoolable price, or with a replaced `AdminCap`.
 - Vault tests cover Blast's rounded-up LP share of both assets before the creator's split; the
   `AdminCap` lowering one rate to zero and raising the other, with the next collection paying at
   the new rates; no-op updates; and a replaced `AdminCap` being rejected.

@@ -15,7 +15,10 @@ const RECIPIENT_B: address = @0xB110C;
 const FEE_PARTNER: address = @0xFEE;
 const TREASURY: address = @0x7EA5;
 const NEW_TREASURY: address = @0x7EA6;
+const ADMIN: address = @0xAD;
 
+/// Scheduled sales are created and shared here, ahead of `START_MS`.
+const SCHEDULED_AT_MS: u64 = 400;
 const START_MS: u64 = 1_000;
 const DURATION_MS: u64 = 100;
 const END_MS: u64 = START_MS + DURATION_MS;
@@ -883,6 +886,295 @@ fun migration_pays_blast_its_snapshotted_shares_at_the_current_destination() {
 }
 
 #[test]
+/// A sale shared ahead of its start fixes its windows from that start and opens then.
+fun a_scheduled_sale_opens_at_its_start() {
+    let mut fixture = schedule_with_protocol_fees(vector[], 0, 0, RECIPIENT_B_BPS);
+    fixture.set_time(START_MS);
+
+    assert_eq!(fixture.commit_open(ALICE, RAISE_TARGET / 2), vector[RAISE_TARGET / 2, RAISE_TARGET / 2, 1]);
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EPresaleNotStarted, location = blast_presale::blast_presale)]
+fun commitments_before_the_start_are_rejected_before_amount_checks() {
+    let mut fixture = schedule_with_protocol_fees(vector[], 0, 0, RECIPIENT_B_BPS);
+    fixture.set_time(START_MS - 1);
+
+    fixture.commit_open(ALICE, 0);
+
+    fixture.end();
+}
+
+#[test]
+/// A start that has passed by the time the share executes opens the window at the share.
+fun a_start_that_has_passed_opens_the_window_at_the_share() {
+    assert_opened_event(share_new_sale(START_MS - 1, START_MS), END_MS);
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidWindow, location = blast_presale::blast_presale)]
+fun a_start_whose_windows_end_past_u64_milliseconds_is_rejected() {
+    share_new_sale(std::u64::max_value!() - DURATION_MS, START_MS);
+}
+
+#[test]
+/// Before the window starts, the AdminCap can replace one sale's rates. Blast's token share moves
+/// to or from the buyers' sale allocation and its raise share to or from the LP's Quote, each
+/// rounded down; the recipients keep their amounts, and migration and claims use the new terms.
+fun the_admin_can_replace_a_sales_rates_before_it_starts() {
+    let mut fixture = schedule_with_protocol_fees(
+        vector[presale::recipient_share(RAISE_RECIPIENT, bps::new(2_000))],
+        PROTOCOL_RAISE_BPS,
+        PROTOCOL_TOKEN_BPS,
+        FEE_PAYING_RECIPIENT_B_BPS,
+    );
+
+    fixture.set_protocol_fees(vector[1_000, 250, 100, 200]);
+
+    let (presale_id, rates, protocol_quote, protocol_tokens, token_allocation) = only_event<
+        ProtocolFeesChanged<BLAST_PRESALE_TESTS, QUOTE>,
+    >().protocol_fees_changed_fields();
+    assert_eq!(presale_id, fixture.presale_id);
+    assert_eq!(rates, vector[1_000, 250, 100, 200]);
+    // 1,000 * 1,000 / 10,000 = 100 Quote and 20,001 * 250 / 10,000 = 500.025 tokens, rounded
+    // down; the 500 tokens Blast gives up join the sale allocation of 10,001.
+    assert_eq!(vector[protocol_quote, protocol_tokens, token_allocation], vector[100, 500, 10_501]);
+    assert_eq!(fixture.protocol_rates(), vector[1_000, 250, 100, 200]);
+
+    fixture.set_time(START_MS);
+    fixture.commit_open(ALICE, 1_000);
+    fixture.commit_open(BOB, 3_000);
+    fixture.set_time(END_MS);
+    fixture.settle(KEEPER);
+
+    // The LP keeps the raise after the recipient's 200 and Blast's 100.
+    assert_eq!(fixture.migrate(), vector[LIQUIDITY_TOKENS, 700]);
+    fixture.take_payout(TREASURY, 500, 100);
+    fixture.take_quote(RAISE_RECIPIENT, 200);
+
+    // Alice gets 10,501 * 1,000 / 4,000 = 2,625.25, rounded down; Bob's last claim takes the rest.
+    assert_eq!(fixture.claim(KEEPER, ALICE), vector[1_000, 2_625, 750, 3_000]);
+    assert_eq!(fixture.claim(KEEPER, BOB), vector[3_000, 7_876, 2_250, 0]);
+    assert_eq!(fixture.custody(), vector[4_000, 0, 2, 0, 0, 0, 0, 0]);
+
+    fixture.destroy_migrated_cap();
+    fixture.end();
+}
+
+#[test]
+/// Raising Blast's rates before the start takes its extra tokens from the sale allocation and its
+/// extra Quote from the LP.
+fun a_rate_increase_before_the_start_takes_from_the_sale_allocation_and_the_lp() {
+    let mut fixture = schedule_with_protocol_fees(
+        vector[],
+        PROTOCOL_RAISE_BPS,
+        PROTOCOL_TOKEN_BPS,
+        FEE_PAYING_RECIPIENT_B_BPS,
+    );
+
+    fixture.set_protocol_fees(vector[1_000, 1_000, 0, 0]);
+
+    // 20,001 * 1,000 / 10,000 = 2,000.1 tokens: Blast's extra 1,000 leave the sale allocation.
+    assert_eq!(
+        fixture.custody(),
+        vector[
+            0,
+            0,
+            0,
+            0,
+            TOKEN_ALLOCATION - 1_000,
+            LIQUIDITY_TOKENS,
+            RECIPIENT_A_TOKENS + FEE_PAYING_RECIPIENT_B_TOKENS,
+            2_000,
+        ],
+    );
+
+    fixture.set_time(START_MS);
+    fixture.commit_open(ALICE, RAISE_TARGET);
+    fixture.set_time(END_MS);
+    fixture.settle(KEEPER);
+
+    assert_eq!(fixture.migrate(), vector[LIQUIDITY_TOKENS, 900]);
+    fixture.take_payout(TREASURY, 2_000, 100);
+    assert_eq!(fixture.claim(KEEPER, ALICE), vector[RAISE_TARGET, TOKEN_ALLOCATION - 1_000, 0, 0]);
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EPresaleStarted, location = blast_presale::blast_presale)]
+fun a_sales_rates_cannot_change_once_its_window_starts() {
+    let mut fixture = schedule_with_protocol_fees(vector[], 0, 0, RECIPIENT_B_BPS);
+    fixture.set_time(START_MS);
+
+    fixture.set_protocol_fees(vector[1_000, 0, 0, 0]);
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidLifecycle, location = blast_presale::blast_presale)]
+/// The AdminCap cannot reprice a sale that has not been shared and scheduled.
+fun an_unshared_sales_rates_cannot_change() {
+    let mut ctx = tx_context::dummy();
+    let clock = clock::create_for_testing(&mut ctx);
+    let (treasury_cap, mut currency) = new_currency(&mut ctx);
+    let fee_policy = fee_policy::new_for_testing(&mut ctx);
+    let creation_policy = creation_policy::allowing_for_testing<QUOTE, TEST_MIGRATOR>(&mut ctx);
+    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(&mut ctx);
+    let (mut sale, _cap) = new_presale<QUOTE>(
+        treasury_cap,
+        &mut currency,
+        valid_sale_terms(),
+        &creation_policy,
+        &fee_policy,
+        &mut ctx,
+    );
+
+    sale.set_protocol_fees(
+        &admin_registry,
+        &admin_cap,
+        bps::new(1_000),
+        bps::new(0),
+        bps::new(0),
+        bps::new(0),
+        &clock,
+    );
+
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EProtocolFeesUnchanged, location = blast_presale::blast_presale)]
+fun a_sale_fee_update_must_change_its_rates() {
+    let mut fixture = schedule_with_protocol_fees(
+        vector[],
+        PROTOCOL_RAISE_BPS,
+        PROTOCOL_TOKEN_BPS,
+        FEE_PAYING_RECIPIENT_B_BPS,
+    );
+
+    fixture.set_protocol_fees(vector[PROTOCOL_RAISE_BPS, PROTOCOL_TOKEN_BPS, 0, 0]);
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = fee_policy::EInvalidFees, location = blast_presale::fee_policy)]
+/// A sale's rates keep the policy's bounds: Blast's raise share stays below 10,000 BPS.
+fun a_sale_fee_update_keeps_the_policy_bounds() {
+    let mut fixture = schedule_with_protocol_fees(vector[], 0, 0, RECIPIENT_B_BPS);
+
+    fixture.set_protocol_fees(vector[10_000, 0, 0, 0]);
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidRaiseAllocation, location = blast_presale::blast_presale)]
+/// Blast's new raise share must still leave the LP Quote after the raise recipients'.
+fun a_raise_share_that_leaves_the_lp_nothing_is_rejected() {
+    let mut fixture = schedule_with_protocol_fees(
+        vector[presale::recipient_share(RAISE_RECIPIENT, bps::new(2_000))],
+        0,
+        0,
+        RECIPIENT_B_BPS,
+    );
+
+    fixture.set_protocol_fees(vector[8_000, 0, 0, 0]);
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidTokenAllocation, location = blast_presale::blast_presale)]
+/// Blast's new token share must leave buyers a token: 20,001 * 5,501 / 10,000 rounds down to
+/// 11,002, more than the 10,001 sale tokens and Blast's 1,000 together.
+fun a_token_share_that_leaves_buyers_nothing_is_rejected() {
+    let mut fixture = schedule_with_protocol_fees(
+        vector[],
+        0,
+        PROTOCOL_TOKEN_BPS,
+        FEE_PAYING_RECIPIENT_B_BPS,
+    );
+
+    fixture.set_protocol_fees(vector[0, 5_501, 0, 0]);
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EUnseedablePrice, location = blast_presale::blast_presale)]
+/// Cutting Blast's raise share hands the LP more Quote, which must still seed a poolable price.
+fun a_raise_share_cut_that_seeds_an_unpoolable_price_is_rejected() {
+    let raise_target = 1 << 63;
+    let mut scenario = test_scenario::begin(CREATOR);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    clock.set_for_testing(SCHEDULED_AT_MS);
+    // With one LP token, 40% of 2^63 Quote seeds a poolable price and all of it does not.
+    let fee_policy = treasury_fee_policy(6_000, 0, scenario.ctx());
+    let creation_policy = creation_policy::allowing_for_testing<
+        QUOTE,
+        TEST_MIGRATOR,
+    >(scenario.ctx());
+    let mut terms = valid_sale_terms();
+    terms.token_supply = 10;
+    terms.token_allocation_bps = 9_000;
+    terms.liquidity_token_allocation_bps = 1_000;
+    terms.recipient_allocations = vector[];
+    terms.raise_target = raise_target;
+    terms.eligibility = presale::open_eligibility(raise_target, 1, raise_target);
+    let (treasury_cap, mut currency) = new_currency(scenario.ctx());
+    let (presale, cap) = new_presale<QUOTE>(
+        treasury_cap,
+        &mut currency,
+        terms,
+        &creation_policy,
+        &fee_policy,
+        scenario.ctx(),
+    );
+    let presale_id = object::id(&presale);
+    presale.share(START_MS, &clock);
+    destroy(cap);
+    destroy(currency);
+    destroy(creation_policy);
+    let mut fixture = Fixture { scenario, clock, fee_policy, presale_id };
+
+    fixture.set_protocol_fees(vector[0, 0, 0, 0]);
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_presale_admin::EInvalidAdminCap,
+    location = blast_presale::blast_presale_admin,
+)]
+/// A replaced AdminCap cannot change a sale's rates.
+fun a_replaced_admin_cap_cannot_change_a_sales_rates() {
+    let mut fixture = schedule_with_protocol_fees(vector[], 0, 0, RECIPIENT_B_BPS);
+    fixture.scenario.next_tx(ADMIN);
+    let mut sale = fixture.take_presale();
+    let (mut admin_registry, old_admin_cap) = blast_presale_admin::new_for_testing(fixture.ctx!());
+    let super_admin = blast_presale_admin::super_admin_for_testing(fixture.ctx!());
+    let _new_admin_cap = admin_registry.replace_admin_cap(&super_admin, fixture.ctx!());
+
+    sale.set_protocol_fees(
+        &admin_registry,
+        &old_admin_cap,
+        bps::new(1_000),
+        bps::new(0),
+        bps::new(0),
+        bps::new(0),
+        &fixture.clock,
+    );
+
+    abort
+}
+
+#[test]
 /// With zero rates, migration pays Blast nothing and the whole raise reaches the LP.
 fun a_zero_rate_sale_pays_blast_nothing() {
     let mut fixture = start_funded_sale();
@@ -1150,6 +1442,7 @@ fun vesting_terms_stay_within_the_technical_bound() {
 /// Starts a fee-free sale under `eligibility` with no raise allocations or uncapped phase.
 fun start_sale(eligibility: EligibilityPolicy): Fixture {
     start_configured(
+        START_MS,
         vector[],
         eligibility,
         option::none(),
@@ -1164,6 +1457,7 @@ fun start_sale(eligibility: EligibilityPolicy): Fixture {
 /// Starts the same sale as `start_sale`, but with its supply locked to burn-only.
 fun start_burnable_sale(eligibility: EligibilityPolicy): Fixture {
     start_configured(
+        START_MS,
         vector[],
         eligibility,
         option::none(),
@@ -1178,6 +1472,7 @@ fun start_burnable_sale(eligibility: EligibilityPolicy): Fixture {
 /// Starts a fee-free sale under `eligibility` whose window ends in `phase`.
 fun start_with_uncapped_phase(eligibility: EligibilityPolicy, phase: UncappedPhase): Fixture {
     start_configured(
+        START_MS,
         vector[],
         eligibility,
         option::some(phase),
@@ -1192,6 +1487,7 @@ fun start_with_uncapped_phase(eligibility: EligibilityPolicy, phase: UncappedPha
 /// Starts a fee-free single-wallet sale that pays `raise_allocations` out of the raise.
 fun start_with_raise_allocations(raise_allocations: vector<RecipientShare>): Fixture {
     start_configured(
+        START_MS,
         raise_allocations,
         single_wallet_eligibility(),
         option::none(),
@@ -1207,6 +1503,7 @@ fun start_with_raise_allocations(raise_allocations: vector<RecipientShare>): Fix
 /// under `team_vesting_terms`.
 fun start_with_team_vesting(raise_allocations: vector<RecipientShare>): Fixture {
     start_configured(
+        START_MS,
         raise_allocations,
         single_wallet_eligibility(),
         option::none(),
@@ -1228,6 +1525,7 @@ fun start_with_protocol_fees(
     recipient_b_bps: u64,
 ): Fixture {
     start_configured(
+        START_MS,
         raise_allocations,
         eligibility,
         option::none(),
@@ -1237,6 +1535,56 @@ fun start_with_protocol_fees(
         recipient_b_bps,
         option::none(),
     )
+}
+
+/// Creates the same sale as `start_with_protocol_fees`, open to two wallets, at `SCHEDULED_AT_MS`
+/// and shares it to open at `START_MS`, leaving the clock before the start.
+fun schedule_with_protocol_fees(
+    raise_allocations: vector<RecipientShare>,
+    protocol_raise_bps: u64,
+    protocol_token_bps: u64,
+    recipient_b_bps: u64,
+): Fixture {
+    start_configured(
+        SCHEDULED_AT_MS,
+        raise_allocations,
+        presale::open_eligibility(WALLET_CAP, 2, RAISE_TARGET / 2),
+        option::none(),
+        false,
+        protocol_raise_bps,
+        protocol_token_bps,
+        recipient_b_bps,
+        option::none(),
+    )
+}
+
+/// Creates a fee-free sale at `now_ms`, shares it to start at `start_ms`, and returns its ID.
+fun share_new_sale(start_ms: u64, now_ms: u64): ID {
+    let mut ctx = tx_context::dummy();
+    let mut clock = clock::create_for_testing(&mut ctx);
+    clock.set_for_testing(now_ms);
+    let (treasury_cap, mut currency) = new_currency(&mut ctx);
+    let fee_policy = fee_policy::new_for_testing(&mut ctx);
+    let creation_policy = creation_policy::allowing_for_testing<QUOTE, TEST_MIGRATOR>(&mut ctx);
+    let (sale, cap) = new_presale<QUOTE>(
+        treasury_cap,
+        &mut currency,
+        valid_sale_terms(),
+        &creation_policy,
+        &fee_policy,
+        &mut ctx,
+    );
+    let presale_id = object::id(&sale);
+
+    sale.share(start_ms, &clock);
+
+    destroy(cap);
+    destroy(currency);
+    destroy(fee_policy);
+    destroy(creation_policy);
+    clock.destroy_for_testing();
+    destroy(ctx);
+    presale_id
 }
 
 /// Starts a single-wallet sale that Alice fills exactly and a keeper settles as funded at the
@@ -1250,9 +1598,11 @@ fun start_funded_sale(): Fixture {
     fixture
 }
 
-/// Creates and opens a `RAISE_TARGET` sale at `START_MS`, asserting its creation and opening
-/// events, and hands the creator its cap. Recipient A's tokens vest under `recipient_a_vesting`.
+/// Creates a `RAISE_TARGET` sale at `created_at_ms` and shares it to open at `START_MS`, asserting
+/// its creation and opening events, and hands the creator its cap. Recipient A's tokens vest
+/// under `recipient_a_vesting`.
 fun start_configured(
+    created_at_ms: u64,
     raise_allocations: vector<RecipientShare>,
     eligibility: EligibilityPolicy,
     uncapped: Option<UncappedPhase>,
@@ -1264,7 +1614,7 @@ fun start_configured(
 ): Fixture {
     let mut scenario = test_scenario::begin(CREATOR);
     let mut clock = clock::create_for_testing(scenario.ctx());
-    clock.set_for_testing(START_MS);
+    clock.set_for_testing(created_at_ms);
     let fee_policy = treasury_fee_policy(protocol_raise_bps, protocol_token_bps, scenario.ctx());
     let creation_policy = creation_policy::allowing_for_testing<
         QUOTE,
@@ -1311,7 +1661,7 @@ fun start_configured(
     assert_eq!(currency.total_supply().destroy_some(), TOKEN_SUPPLY);
     destroy(currency);
 
-    presale.share(&clock);
+    presale.share(START_MS, &clock);
     assert_opened_event(presale_id, if (uncapped.is_some()) UNCAPPED_FROM_MS else END_MS);
     transfer::public_transfer(cap, CREATOR);
 
@@ -1811,6 +2161,43 @@ fun commit_uncapped(self: &mut Fixture, sender: address, amount: u64): vector<u6
     vector[accepted, change[0]]
 }
 
+/// Has the AdminCap replace the sale's `[raise, token, LP-fee meme, LP-fee quote]` BPS rates.
+fun set_protocol_fees(self: &mut Fixture, rates: vector<u64>) {
+    self.next_tx!(ADMIN, |fixture| {
+        let mut sale = fixture.take_presale();
+        let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(fixture.ctx!());
+        sale.set_protocol_fees(
+            &admin_registry,
+            &admin_cap,
+            bps::new(rates[0]),
+            bps::new(rates[1]),
+            bps::new(rates[2]),
+            bps::new(rates[3]),
+            &fixture.clock,
+        );
+        admin_registry.destroy_for_testing(admin_cap);
+        fixture.return_presale(sale);
+    });
+}
+
+/// Returns the sale's `[raise, token, LP-fee meme, LP-fee quote]` BPS rates its vault inherits.
+fun protocol_rates(self: &mut Fixture): vector<u64> {
+    let mut rates = vector[];
+    self.next_tx!(KEEPER, |fixture| {
+        let sale = fixture.take_presale();
+        let (_, _, _, _, protocol_fees) = sale.vault_config();
+        rates.append(vector[
+            protocol_fees.raise_bps().value(),
+            protocol_fees.token_bps().value(),
+            protocol_fees.lp_fee_meme_bps().value(),
+            protocol_fees.lp_fee_quote_bps().value(),
+        ]);
+        fixture.return_presale(sale);
+    });
+
+    rates
+}
+
 fun settle(self: &mut Fixture, sender: address) {
     self.next_tx!(sender, |fixture| {
         let mut sale = fixture.take_presale();
@@ -2024,6 +2411,7 @@ use blast_presale::{bluefin, cetus, migration_math, blast_presale::{
     PresaleFunded,
     PresaleMigrated,
     PresaleOpened,
+    ProtocolFeesChanged,
     RecipientShare,
     UncappedPhase,
     VestingTerms,
