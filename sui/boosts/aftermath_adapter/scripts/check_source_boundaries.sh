@@ -36,35 +36,42 @@ fi
 # Every module names its layer; a module may import only modules of a strictly
 # lower layer of its own package, and a lib/ module only other lib/ modules.
 
-declare -A core_layers=(
-  [errors]=0 [constants]=0 [blast_boosts_core]=0
-  [lifecycle]=1 [policy]=1 [accounting_math]=1
-  [observation]=2 [rebalance_math]=2
-  [state]=3
-)
-declare -A adapter_layers=(
-  [errors]=0 [constants]=0 [blast_events]=0
-  [ifixed_math]=1 [blast_boost]=1 [blast_boosts_aftermath]=1
-  [checkpoint]=2 [package_admin]=2
-  [venue_account]=3
-  [events]=4 [snapshot]=4
-  [vault]=5
-  [orders]=6
-  [operations]=7
-)
+# Layer lookups are functions, not associative arrays, so the gate runs on the
+# bash 3.2 macOS ships. Each prints a module's layer, or fails for an unknown one.
+core_layer() {
+  case "$1" in
+    errors|constants|blast_boosts_core) echo 0 ;;
+    lifecycle|policy|accounting_math) echo 1 ;;
+    observation|rebalance_math) echo 2 ;;
+    state) echo 3 ;;
+    *) return 1 ;;
+  esac
+}
+adapter_layer() {
+  case "$1" in
+    errors|constants|blast_events) echo 0 ;;
+    ifixed_math|blast_boost|blast_boosts_aftermath) echo 1 ;;
+    checkpoint|package_admin) echo 2 ;;
+    venue_account) echo 3 ;;
+    events|snapshot) echo 4 ;;
+    vault) echo 5 ;;
+    orders) echo 6 ;;
+    operations) echo 7 ;;
+    *) return 1 ;;
+  esac
+}
 
 check_hierarchy() {
-  local package="$1" dir="$2"
-  local -n layers="$3"
-  local file module dep
+  local package="$1" dir="$2" layer_of="$3"
+  local file module dep module_layer dep_layer
   for file in "$dir"/sources/*.move "$dir"/sources/lib/*.move; do
     module="$(basename "$file" .move)"
-    [[ -v "layers[$module]" ]] \
+    module_layer="$("$layer_of" "$module")" \
       || fail "$package::$module has no layer; add it to the hierarchy table in this gate."
     for dep in $(imports "$file" | grep -E "^use (fun )?$package::" | sed "s/$package:://g" | grep -oE '[a-z_][a-z0-9_]*'); do
-      [[ -v "layers[$dep]" ]] || continue
-      (( layers[$dep] < layers[$module] )) \
-        || fail "$package::$module (layer ${layers[$module]}) imports $package::$dep (layer ${layers[$dep]}); modules build only on lower layers."
+      dep_layer="$("$layer_of" "$dep")" || continue
+      (( dep_layer < module_layer )) \
+        || fail "$package::$module (layer $module_layer) imports $package::$dep (layer $dep_layer); modules build only on lower layers."
       if [[ "$file" == */lib/* && ! -f "$dir/sources/lib/$dep.move" ]]; then
         fail "$package::$module lives in lib/ and may import only lib/ modules, not $dep."
       fi
@@ -72,8 +79,8 @@ check_hierarchy() {
   done
 }
 
-check_hierarchy blast_boosts_core "$core_dir" core_layers
-check_hierarchy blast_boosts_aftermath "$package_dir" adapter_layers
+check_hierarchy blast_boosts_core "$core_dir" core_layer
+check_hierarchy blast_boosts_aftermath "$package_dir" adapter_layer
 
 for file in "$core_dir"/sources/*.move "$core_dir"/sources/lib/*.move \
             "$package_dir"/sources/*.move "$package_dir"/sources/lib/*.move; do
@@ -199,7 +206,7 @@ check_error_registry() {
     || fail "$file: every error macro needs its #[test_only] const and nothing else."
   local consts
   consts="$(grep -oE '^const E[A-Za-z0-9]+: u64 = [0-9]+;$' "$file" | grep -oE '= [0-9]+' | cut -d' ' -f2 | tr '\n' ' ')"
-  [[ "$consts" == "$(seq -s ' ' 0 $((expected - 1))) " ]] \
+  [[ "$consts" == "$(seq 0 $((expected - 1)) | tr '\n' ' ')" ]] \
     || fail "$file: #[test_only] error consts must mirror the macro codes in order."
 }
 check_error_registry "$core_dir/sources/lib/errors.move"

@@ -9,6 +9,13 @@ trap 'rm -rf -- "$tmp_root"' EXIT
 
 fail() { printf '%s\n' "$1" >&2; exit 1; }
 
+# Portable in-place sed: GNU and BSD `sed -i` take incompatible arguments.
+edit() {
+  local script="$1" file="$2"
+  sed "$script" "$file" > "$file.next"
+  mv "$file.next" "$file"
+}
+
 new_case() {
   local name="$1"
   local case_dir="$tmp_root/$name"
@@ -56,21 +63,21 @@ publish_record() {
 bash "$checker" "$package_dir"
 
 case_dir="$(new_case leaves_cap_alive)"
-sed -i '/package::make_immutable/d' "$case_dir/scripts/publish_immutable.sh"
+edit '/package::make_immutable/d' "$case_dir/scripts/publish_immutable.sh"
 expect_rejected "$case_dir"
 
 case_dir="$(new_case publishes_twice)"
-sed -i '/^exec sui client/i sui client publish "$package_dir"' \
+edit $'/^exec sui client/i\\\nsui client publish "$package_dir"\n' \
   "$case_dir/scripts/publish_immutable.sh"
 expect_rejected "$case_dir"
 
 case_dir="$(new_case transfers_cap)"
-sed -i 's|--move-call 0x2::package::make_immutable admin_upgrade_cap|--transfer-objects "[admin_upgrade_cap]" @0x1|' \
+edit 's|--move-call 0x2::package::make_immutable admin_upgrade_cap|--transfer-objects "[admin_upgrade_cap]" @0x1|' \
   "$case_dir/scripts/publish_immutable.sh"
 expect_rejected "$case_dir"
 
 case_dir="$(new_case wraps_cap)"
-sed -i 's|--move-call 0x2::package::make_immutable admin_upgrade_cap|--move-call 0x2::transfer::public_transfer admin_upgrade_cap @0x1|' \
+edit 's|--move-call 0x2::package::make_immutable admin_upgrade_cap|--move-call 0x2::transfer::public_transfer admin_upgrade_cap @0x1|' \
   "$case_dir/scripts/publish_immutable.sh"
 expect_rejected "$case_dir"
 
@@ -111,7 +118,7 @@ publish_record "$case_dir" "$(bash "$package_dir/scripts/source_digest.sh" "$cas
 expect_accepted "$case_dir"
 
 case_dir="$(new_case unwitnessed_generation)"
-sed -i 's/sui::types::is_one_time_witness(otw)/true/' "$case_dir/sources/operational_version.move"
+edit 's/sui::types::is_one_time_witness(otw)/true/' "$case_dir/sources/operational_version.move"
 expect_rejected "$case_dir"
 
 case_dir="$(new_case adds_activation_path)"
@@ -140,27 +147,27 @@ printf '\nentry fun rogue<PackageMarker: drop>(self: &mut UpgradeCustody<Package
 expect_rejected "$case_dir"
 
 case_dir="$(new_case copyable_admin_witness)"
-sed -i \
+edit \
   's/public struct AdminWitness<phantom Role>() has drop;/public struct AdminWitness<phantom Role>() has copy, drop;/' \
   "$case_dir/sources/blast_acl.move"
 expect_rejected "$case_dir"
 
 case_dir="$(new_case untimelocked_nominee)"
-sed -i 's/^    pending_super_admin: Timelocked<Option<address>>,$/    pending_super_admin: Option<address>,/' \
+edit 's/^    pending_super_admin: Timelocked<Option<address>>,$/    pending_super_admin: Option<address>,/' \
   "$case_dir/sources/blast_acl.move"
 expect_rejected "$case_dir"
 
 case_dir="$(new_case unpinned_timelock)"
-sed -i 's/rev = "63b6cf86c0e1a74f699610fe182b1de8d8789a14"/rev = "main"/' "$case_dir/Move.toml"
+edit 's/rev = "63b6cf86c0e1a74f699610fe182b1de8d8789a14"/rev = "main"/' "$case_dir/Move.toml"
 expect_rejected "$case_dir"
 
 case_dir="$(new_case domain_typed_acl)"
-sed -i 's/^public struct ACL has key {$/public struct ACL<phantom Domain> has key {/' \
+edit 's/^public struct ACL has key {$/public struct ACL<phantom Domain> has key {/' \
   "$case_dir/sources/blast_acl.move"
 expect_rejected "$case_dir"
 
 case_dir="$(new_case storable_root)"
-sed -i 's/^public struct SuperAdminCap has key {$/public struct SuperAdminCap has key, store {/' \
+edit 's/^public struct SuperAdminCap has key {$/public struct SuperAdminCap has key, store {/' \
   "$case_dir/sources/blast_acl.move"
 expect_rejected "$case_dir"
 
