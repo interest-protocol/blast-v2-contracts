@@ -1,6 +1,6 @@
 # Presale mainnet end-to-end verification
 
-Status (2026-10-04): every ticket passed on mainnet except E2E-017's second phase, which
+Status (2026-10-04): every ticket passed on mainnet, including E2E-027 to 029, except E2E-017's second phase, which
 can run after 2026-10-11T16:08:32Z (`node e2e/presale-mainnet/run.ts e017 finish` in the SDK).
 E2E-023 is skipped by owner decision. Evidence:
 [`deployments/sui/mainnet/2026-10-04-blast-presale-e2e.json`](../deployments/sui/mainnet/2026-10-04-blast-presale-e2e.json).
@@ -19,6 +19,7 @@ the venues (Bluefin, Cetus), the vesting package, and the SDK builders work toge
 | D3 | The test Quote is `TEST_SUI` (symbol `TSUI`, 9 decimals), valued like SUI. |
 | D4 | Keep the current `AdminCap`; E2E-023 is skipped. |
 | D5 | Successful steps are real transactions; expected failures are simulated against mainnet state and must abort with the named module and code. |
+| D6 | Scale limits (64 token and 64 raise recipients, 16 fee recipients at once) are out of scope; every core path is tested end to end. |
 
 ## Layout
 
@@ -168,6 +169,19 @@ phase outside the window.
 
 **E2E-025 Delisting does not strand live sales.** Delist `TSUI` while E2E-013 is open; it still
 commits, settles, migrates, and collects. New `TSUI` sales abort `EQuoteNotAllowed`.
+
+**E2E-027 Open-to-anyone phase under a hard cap, Bluefin with real SUI.** Two SUI-quoted
+Bluefin sales (the launch configuration): an open policy and an allowlist, each with an
+open-to-anyone phase under a hard cap. New wallets commit at the phase minimum; the commit
+that fills the raise is partly accepted and its excess returned; the next is refused.
+
+**E2E-028 Holder rewards on a Cetus vault.** A round on the E2E-011 vault (SUI), funded from
+its LP fees: one claim paid, a double claim refused, the unclaimed rest returned on close.
+
+**E2E-029 Holder-reward distribution algorithm.** Real holding history on the E2E-027 vault (a
+transfer, a buy, a sell), replayed checkpoint by checkpoint through the SDK ledger from the
+token's registration, weighted from vault creation, cross-checked against an independent
+replay of the token's transactions, then allocated, published, and paid to every holder.
 
 ### Close-out
 
