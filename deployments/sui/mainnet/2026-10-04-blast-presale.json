@@ -2,6 +2,11 @@
   "schemaVersion": 1,
   "recordKind": "sui-package-deployment",
   "release": "blast-presale-v1",
+  "supersededBy": {
+    "record": "2026-10-04-blast-presale-scheduled-start.json",
+    "packageId": "0x76cb0508fc94234fddd910b5616248f8a42998048a28e55f5fe1cc89e7b98400",
+    "note": "Superseded before any Quote type or migrator was allowlisted, so no sale exists on this package. Do not allowlist, fund, or operate it."
+  },
   "network": {
     "chain": "sui",
     "environment": "mainnet",
