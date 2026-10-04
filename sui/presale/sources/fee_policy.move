@@ -4,9 +4,10 @@
 /// Blast's fees on presales: a share of every successful raise, of every token supply, and of
 /// every collected LP fee.
 ///
-/// Each presale snapshots the rates when it is created, so a sale's economics are fixed before
-/// commitments open. After migration the AdminCap may change one sale's LP-fee rates on its
-/// vault. Every payout reads the current destination.
+/// Each presale snapshots the rates when it is created. Until the sale's window starts, the
+/// AdminCap may change that sale's rates, so its economics are fixed before commitments open;
+/// after migration it may change the sale's LP-fee rates on its vault. Every payout reads the
+/// current destination.
 module blast_presale::fee_policy;
 
 // === Public Types ===
@@ -46,11 +47,7 @@ public fun set_fees(
     lp_fee_quote_bps: Bps,
 ) {
     admin_registry.assert_admin_cap(admin_cap);
-    assert!(
-        raise_bps.value() < bps::denominator() && token_bps.value() <= MAX_TOKEN_BPS,
-        EInvalidFees,
-    );
-    let fees = ProtocolFees { raise_bps, token_bps, lp_fee_meme_bps, lp_fee_quote_bps };
+    let fees = protocol_fees(raise_bps, token_bps, lp_fee_meme_bps, lp_fee_quote_bps);
     assert!(fees != self.fees, EFeesUnchanged);
 
     self.fees = fees;
@@ -79,6 +76,22 @@ public fun set_destination(
 }
 
 // === Package Functions ===
+
+/// Blast's rates, within the bounds every presale can apportion: a raise share below 10,000 BPS
+/// and a token share of at most 9,998.
+public(package) fun protocol_fees(
+    raise_bps: Bps,
+    token_bps: Bps,
+    lp_fee_meme_bps: Bps,
+    lp_fee_quote_bps: Bps,
+): ProtocolFees {
+    assert!(
+        raise_bps.value() < bps::denominator() && token_bps.value() <= MAX_TOKEN_BPS,
+        EInvalidFees,
+    );
+
+    ProtocolFees { raise_bps, token_bps, lp_fee_meme_bps, lp_fee_quote_bps }
+}
 
 public(package) fun fees(self: &FeePolicy): ProtocolFees {
     self.fees

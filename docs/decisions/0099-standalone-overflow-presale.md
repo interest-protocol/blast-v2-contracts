@@ -17,6 +17,8 @@
 - Amended: 2026-10-03 (owner decision): one package-local `AdminCap`, which a
   key-only `SuperAdminCap` can replace or revoke, replaces the shared Blast ACL
   roles, so presale no longer depends on `blast_admin`
+- Amended: 2026-10-04 (owner decision): `share` takes a start time, so a sale
+  can be created and shared ahead of its window; commitments open at the start
 
 ## Context
 
@@ -157,7 +159,12 @@ Pending -> Open -> Funded -> Migrated
                 Cancelled
 ```
 
-`share` starts the commitment window. Commitments are positive, cumulative per
+`share` fixes the windows from the creator's `start_ms`, or from the share
+itself once that time has passed, so a creator can publish a sale a day ahead
+and announce its start. The sale is `Open` from the share, but commitments
+abort until `start_ms`; the commitment and LP windows, and any uncapped phase,
+count from the start. Nothing bounds how far ahead the start may be: that is a
+product limit for creation tooling. Commitments are positive, cumulative per
 wallet, and cannot exceed the policy cap. Each commitment consumes a
 `Coin<Quote>` and locks its full balance in that `Presale`, so recorded
 commitments are backed one-for-one by on-chain Quote custody. There is no
@@ -319,6 +326,10 @@ generic positional Blake2b-256 module verifies eligibility and rewards. The
 - Unit tests also pin the seven-day LP-window floor (one millisecond below it is
   rejected, and every fixture opens at the floor) and an allowlisted
   anyone-phase whose slots beyond the leaves cannot reach the raise.
+- Unit tests share a sale ahead of its start, reject a commitment one
+  millisecond before it ahead of amount checks, open the window at the share
+  when the start has passed, and reject a start whose windows end past u64
+  milliseconds.
 - Unit tests create vesting token and raise shares, check the creation and
   allocation events and each schedule's beneficiary, start, terms, amount, and
   missing cancellation authority, claim each schedule after migration (nothing
