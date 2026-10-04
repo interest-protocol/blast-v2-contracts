@@ -24,19 +24,30 @@ fun sealing_restricts_upgrades_to_dependency_relinks() {
 }
 
 #[test]
-#[expected_failure(abort_code = sui::package::EAlreadyAuthorized, location = sui::package)]
-/// The accepted AdminCap reaches the sealed cap. A unit-test cap belongs to package `0x0`, which
-/// the framework reads as an authorization already in flight, so reaching the cap shows as the
-/// framework's own abort.
+/// The accepted AdminCap authorizes the exact digest under the sealed dependency-only policy. The
+/// cap names a fixed non-zero package: the framework reads package `0x0` as an authorization
+/// already in flight, and this package's ID is `0x0` until `Published.toml` assigns one.
 fun the_admin_cap_reaches_the_sealed_upgrade_cap() {
     let mut ctx = tx_context::dummy();
-    let upgrade_cap = presale_upgrade_cap(&mut ctx);
-    let mut package_admin = package_admin::seal_dependency_only_for_testing(upgrade_cap, &mut ctx);
+    let package = @0xB1A57.to_id();
+    let upgrade_cap = sui::package::test_publish(package, &mut ctx);
+    let mut package_admin = package_admin::seal_any_dependency_only_for_testing(
+        upgrade_cap,
+        &mut ctx,
+    );
     let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(&mut ctx);
 
     let ticket = package_admin.authorize_upgrade(&admin_registry, &admin_cap, DIGEST);
+
+    assert_eq!(ticket.ticket_package(), package);
+    assert_eq!(ticket.ticket_policy(), sui::package::dep_only_policy());
+    assert_eq!(*ticket.ticket_digest(), DIGEST);
+
     destroy(ticket);
-    abort
+    package_admin.destroy_for_testing();
+    destroy(admin_registry);
+    destroy(admin_cap);
+    destroy(ctx);
 }
 
 #[test]

@@ -77,6 +77,18 @@ public fun seal_dependency_only_for_testing(
 }
 
 #[test_only]
+/// Seals a cap for any package, so tests can authorize under a non-zero package ID whether or not
+/// `Published.toml` assigns this package its published address.
+public fun seal_any_dependency_only_for_testing(
+    mut upgrade_cap: UpgradeCap,
+    ctx: &mut TxContext,
+): PackageAdmin {
+    upgrade_cap.only_dep_upgrades();
+
+    PackageAdmin { id: object::new(ctx), upgrade_cap }
+}
+
+#[test_only]
 public fun policy_for_testing(self: &PackageAdmin): u8 {
     self.upgrade_cap.policy()
 }
