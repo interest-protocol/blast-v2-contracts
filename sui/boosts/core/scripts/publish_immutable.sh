@@ -21,4 +21,4 @@ exec sui client --client.env mainnet ptb \
   --move-call 0x2::package::make_immutable series_upgrade_cap \
   --warn-shadows \
   --json \
-  "${execution_flag[@]}"
+  ${execution_flag[@]+"${execution_flag[@]}"}

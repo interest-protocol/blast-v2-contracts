@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "sui-package-deployment",
+  "release": "blast-presale-v1",
+  "network": {
+    "chain": "sui",
+    "environment": "mainnet",
+    "chainIdentifierHex": "35834a8a",
+    "chainIdentifierBase58": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"
+  },
+  "timestampUtc": "2026-10-04T13:43:03.132Z",
+  "recordedAtUtc": "2026-10-04T13:45:57Z",
+  "repository": {
+    "commit": "2a654b93de6c7f0dec0247e1bacab3c8df40e4ba",
+    "workingTree": "clean",
+    "note": "Published from a clean checkout of this commit. scripts/publish.sh --execute aborted under macOS bash 3.2 before invoking sui (empty execution_flag array under set -u; fixed alongside this record), so the identical command it execs, `sui client --client.env mainnet publish sui/presale --json`, was run directly; package_admin::wrap was likewise run as the PTB wrap_package_admin.sh execs. Publication wrote sui/presale/Published.toml, committed with this record."
+  },
+  "toolchain": {
+    "suiCli": "sui 1.77.2-51d177ad7d65",
+    "moveToolchain": "1.77.2",
+    "moveEdition": "2024",
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+    "cargo": "cargo 1.98.1 (797e8a9bc 2026-08-05)",
+    "node": "v24.19.0"
+  },
+  "deployer": "0x1dd93b4bb9a733c30da8a3c4a49177ab3ab4ab4a602a89a72b24f63b68e53534",
+  "status": "success",
+  "transactions": {
+    "presalePackagePublication": {
+      "digest": "HhXTnM6KUJ33EDdKDX5f5qKwpctX4xkekcvAmoSQ2sd",
+      "checkpoint": "330192269",
+      "timestampUtc": "2026-10-04T13:43:03.132Z",
+      "status": "success",
+      "gasUsed": {
+        "computationCost": "566000",
+        "storageCost": "338701600",
+        "storageRebate": "978120",
+        "nonRefundableStorageFee": "9880"
+      }
+    },
+    "packageAdminWrap": {
+      "digest": "8Cu5pcywain1VZRL97KwfvdQtoPJea3z7v34LSQAhY8D",
+      "checkpoint": "330192426",
+      "timestampUtc": "2026-10-04T13:43:39.907Z",
+      "status": "success",
+      "gasUsed": {
+        "computationCost": "100000",
+        "storageCost": "2926000",
+        "storageRebate": "2595780",
+        "nonRefundableStorageFee": "26220"
+      }
+    }
+  },
+  "packages": {
+    "presale": {
+      "name": "blast_presale",
+      "originalPackageId": "0x663012c11fd49ce0c833e2e33e2d0ebd6af8fc5e632c9807290426fdd47a7fdc",
+      "currentPackageId": "0x663012c11fd49ce0c833e2e33e2d0ebd6af8fc5e632c9807290426fdd47a7fdc",
+      "version": "1",
+      "upgradePolicy": "dependency-only (192)",
+      "publisherId": null
+    }
+  },
+  "dependencyPackages": {
+    "moveStdlib": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "suiFramework": "0x0000000000000000000000000000000000000000000000000000000000000002",
+    "blastFunVesting": "0x85fdb7e3d28162b99e0df758069a3d23cff874c400b2160fc0d4618aefd3ec5c",
+    "bluefinSpot": "0xd075338d105482f1527cbfd363d6413558f184dec36d9138a70261e87f486e9c",
+    "cetusClmm": "0x260693ec785a6e6c9d81d58c7d2ff72f1288ae0fa6a9725abe05a6478b11f084",
+    "cetusClmmVester": "0x48dcc51091e692a0c8a64930fc839fb5a8e58de3590c084a8322b9cd34754c36",
+    "cetusLpBurn": "0xc4aabc874f5060d3147d8f74c14e3a8a1f9f8d92edea138a51635395ed167cd9",
+    "cetusToken": "0x06864a6f921804860930db6ddbe2e16acdf8504495ea7481637a1c8b9a8fe54b",
+    "integerLibrary": "0xab5e63352d0f05881bdfa1631cc0f7fc1669175a00d608828a924df481a9e4bd",
+    "integerMate": "0xdfaadf86be9af246900d1e3f3b996cf549e7948e662a9977bdd7646d8fa3a778",
+    "moveStl": "0x8569b7efebec65c73b9dc15c5ac2a9542870d286fa79a3feedffbaa94ed53002"
+  },
+  "sharedObjects": {
+    "adminRegistry": {
+      "objectId": "0x5946d78a6530ba28cdf8d7d50f08703518eb8221274a0f760ad4c0c417b4d48e",
+      "owner": "shared",
+      "initialSharedVersion": "986577437",
+      "createdByTransaction": "HhXTnM6KUJ33EDdKDX5f5qKwpctX4xkekcvAmoSQ2sd"
+    },
+    "feePolicy": {
+      "objectId": "0x6864092a326d4cb0fdc28d78e53bce769e253a5d719059755ac00d7a8236dd97",
+      "owner": "shared",
+      "initialSharedVersion": "986577437",
+      "createdByTransaction": "HhXTnM6KUJ33EDdKDX5f5qKwpctX4xkekcvAmoSQ2sd"
+    },
+    "creationPolicy": {
+      "objectId": "0xd9c659eedd634c469dfac1e48cfcb62bef05cda653e28a940f93b0dabc82dd40",
+      "owner": "shared",
+      "initialSharedVersion": "986577437",
+      "createdByTransaction": "HhXTnM6KUJ33EDdKDX5f5qKwpctX4xkekcvAmoSQ2sd"
+    },
+    "venueConfig": {
+      "objectId": "0x38b6b6185fca11f0e1ae1c2cf11ad2d7adb95c41da2cc0af0bb253612158c53a",
+      "owner": "shared",
+      "initialSharedVersion": "986577437",
+      "createdByTransaction": "HhXTnM6KUJ33EDdKDX5f5qKwpctX4xkekcvAmoSQ2sd"
+    },
+    "packageAdmin": {
+      "objectId": "0xf2a5c234cddf7bcc90ec519c3e9bb1b2d6fbd0596d21bc4160925ffcb1134db9",
+      "owner": "shared",
+      "initialSharedVersion": "986577438",
+      "createdByTransaction": "8Cu5pcywain1VZRL97KwfvdQtoPJea3z7v34LSQAhY8D"
+    }
+  },
+  "administration": {
+    "superAdminCap": {
+      "objectId": "0x51fb7b9f0015be703070bc02b918749b7a2402e7ce572d0392be055dd7cd68bd",
+      "owner": "0x1dd93b4bb9a733c30da8a3c4a49177ab3ab4ab4a602a89a72b24f63b68e53534",
+      "createdByTransaction": "HhXTnM6KUJ33EDdKDX5f5qKwpctX4xkekcvAmoSQ2sd",
+      "pendingTransfer": "Blast cold multisig (DEPLOYING.md step 4); held by the deployer until then (owner, 2026-10-04)."
+    },
+    "adminCap": {
+      "objectId": "0x9e5fa8e8f31987acfdf2cca1eedf9ad33fc260a44990c96010d85bde5c958c20",
+      "owner": "0x1dd93b4bb9a733c30da8a3c4a49177ab3ab4ab4a602a89a72b24f63b68e53534",
+      "createdByTransaction": "HhXTnM6KUJ33EDdKDX5f5qKwpctX4xkekcvAmoSQ2sd",
+      "pendingTransfer": "Operations multisig (DEPLOYING.md step 4); held by the deployer until then (owner, 2026-10-04)."
+    },
+    "upgradeCap": {
+      "objectId": "0xc8e30313c77a6dfd448adf1e24b7bee16c8bd8910fcb6056a49f1dcc9f271946",
+      "owner": "wrapped in packageAdmin",
+      "createdByTransaction": "HhXTnM6KUJ33EDdKDX5f5qKwpctX4xkekcvAmoSQ2sd",
+      "wrappedByTransaction": "8Cu5pcywain1VZRL97KwfvdQtoPJea3z7v34LSQAhY8D"
+    }
+  },
+  "initialState": {
+    "feePolicy": {
+      "destination": "0x1dd93b4bb9a733c30da8a3c4a49177ab3ab4ab4a602a89a72b24f63b68e53534",
+      "raiseBps": "0",
+      "tokenBps": "0",
+      "lpFeeMemeBps": "0",
+      "lpFeeQuoteBps": "0"
+    },
+    "creationPolicy": {
+      "allowedQuotes": [],
+      "allowedMigrationWitnesses": []
+    },
+    "pendingRunbookSteps": [
+      "4: transfer SuperAdminCap and AdminCap to the multisigs",
+      "5: fee_policy::set_destination (payouts go to the deployer until then); set_fees if launch rates are not zero",
+      "6: allow launch Quote types and the cetus/bluefin migration witnesses",
+      "7: operate the settle-and-migrate keeper"
+    ]
+  },
+  "postDeployVerification": [
+    {
+      "check": "pinned-toolchain gate",
+      "result": "pass",
+      "evidence": "sui/presale/scripts/verify.sh all at 2a654b9 with sui 1.77.2: source boundaries hold; build, lint, and 130/130 tests pass."
+    },
+    {
+      "check": "publish dry run",
+      "result": "pass",
+      "evidence": "scripts/publish.sh --preview succeeded at 2a654b9 with sui 1.77.2 before execution."
+    },
+    {
+      "check": "package published at version 1",
+      "result": "pass",
+      "evidence": "Transaction HhXTnM6KUJ33EDdKDX5f5qKwpctX4xkekcvAmoSQ2sd published 0x663012c11fd49ce0c833e2e33e2d0ebd6af8fc5e632c9807290426fdd47a7fdc and created the four shared singletons, the SuperAdminCap, the AdminCap, and the UpgradeCap recorded above; no Publisher is created."
+    },
+    {
+      "check": "custody sealed",
+      "result": "pass",
+      "evidence": "Transaction 8Cu5pcywain1VZRL97KwfvdQtoPJea3z7v34LSQAhY8D effects list UpgradeCap 0xc8e3\u20261946 as wrapped (not deleted); PackageAdmin 0xf2a5\u20264db9 is shared and holds it for package 0x663012c11fd49ce0c833e2e33e2d0ebd6af8fc5e632c9807290426fdd47a7fdc at version 1 with policy 192 (dependency-only); the UpgradeCap is no longer address-owned."
+    },
+    {
+      "check": "AdminRegistry records the AdminCap",
+      "result": "pass",
+      "evidence": "AdminRegistry 0x5946\u2026d48e admin_cap_id = 0x9e5fa8e8f31987acfdf2cca1eedf9ad33fc260a44990c96010d85bde5c958c20."
+    },
+    {
+      "check": "no sale can exist before allowlisting",
+      "result": "pass",
+      "evidence": "CreationPolicy allows no Quote type and no migration witness; FeePolicy rates are all zero and pay the deployer."
+    }
+  ]
+}
