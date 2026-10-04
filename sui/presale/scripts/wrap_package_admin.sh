@@ -21,4 +21,4 @@ fi
 exec sui client --client.env mainnet ptb \
   --move-call "$package_id::package_admin::wrap" "@$upgrade_cap_id" \
   --json \
-  "${execution_flag[@]}"
+  ${execution_flag[@]+"${execution_flag[@]}"}

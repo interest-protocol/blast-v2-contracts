@@ -18,4 +18,4 @@ fi
 
 exec sui client --client.env mainnet publish "$package_dir" \
   --json \
-  "${execution_flag[@]}"
+  ${execution_flag[@]+"${execution_flag[@]}"}
