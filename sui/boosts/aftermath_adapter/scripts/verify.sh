@@ -9,11 +9,11 @@ case "${1:-all}" in
     sui move build --path "$package_dir" --build-env mainnet
     ;;
   lint)
-    sui move lint --path "$package_dir" --warnings-are-errors
+    sui move lint --path "$package_dir" --build-env mainnet --warnings-are-errors
     ;;
   test)
     shift || true
-    sui move test --path "$package_dir" --lint --warnings-are-errors "$@"
+    sui move test --path "$package_dir" --build-env mainnet --lint --warnings-are-errors "$@"
     ;;
   boundaries)
     bash "$package_dir/scripts/check_source_boundaries.sh"
@@ -35,8 +35,8 @@ case "${1:-all}" in
     node "$package_dir/scripts/check_mainnet_abi.mjs" --self-test
     node "$package_dir/scripts/dev_inspect_activation.mjs" --self-test
     sui move build --path "$package_dir" --build-env mainnet
-    sui move lint --path "$package_dir" --warnings-are-errors
-    sui move test --path "$package_dir" --lint --warnings-are-errors
+    sui move lint --path "$package_dir" --build-env mainnet --warnings-are-errors
+    sui move test --path "$package_dir" --build-env mainnet --lint --warnings-are-errors
     ;;
   all)
     bash "$package_dir/scripts/verify.sh" local
