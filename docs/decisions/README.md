@@ -97,7 +97,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0049](0049-audit-hardened-package-version-and-launch-intake.md) | Audit-hardened package cutover and launch intake | **accepted** |
 | [0050](0050-module-local-package-version-constant.md) | Module-local package-version constant | **accepted; amended in place 2026-10-02: the constant lives in the marker module** |
 | [0051](0051-generated-meme-package-template.md) | Generated Meme package template | **accepted; publish-time immutability amended by 0088** |
-| [0053](0053-single-validator-funsui-and-blastsui.md) | Single-validator `funSUI` and `blastSUI` | **accepted** |
+| [0053](0053-single-validator-funsui-and-blastsui.md) | Single-validator `funSUI` and `blastSUI` | **accepted; authority and receipt `DisplayCap` custody amended by 0060, 0061, and 0097** |
 | [0054](0054-v3-dex-migrators-and-locked-lp-fees.md) | V3 DEX migrators, exact seed pricing, and locked LP fees | **accepted; new-lineage admission and fee custody amended by 0088** |
 | [0056](0056-bounded-pending-stake-vector.md) | Bounded pending-stake vector in custody ledgers | **accepted** |
 | [0057](0057-admin-pinned-venue-tiers.md) | Admin-pinned venue tiers for permissionless migration | superseded by 0089 |
@@ -285,9 +285,9 @@ ADR 0053 accepts the independent `blast_sui` package: a 1:1 `funSUI` ledger
 and a `blastSUI` share ledger with separate native positions on one immutable
 validator, a yield sweep from fun to blast custody behind a fixed rounding
 reserve, a seed `blastSUI` supply locked at `@0x0` so every redemption is a
-fee-paying partial exit, a bounded redemption fee, and one package-local
-package-local authority boundary for fee changes and upgrades, as amended by
-ADR 0061.
+fee-paying partial exit, a bounded redemption fee, and a package-local
+authority boundary for fee changes and upgrades, which ADRs 0061 and 0097
+replace with `blast_sui`'s typed roles in the shared `blast_admin` ACL.
 
 ADR 0054 accepts isolated V3 adapter packages, real-balance seed pricing, locked
 LP principal, and the operational recommended SUI lane. Its Memez, Raydium,

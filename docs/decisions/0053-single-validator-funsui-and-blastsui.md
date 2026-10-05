@@ -1,8 +1,26 @@
 # 0053: Single-validator `funSUI` and `blastSUI`
 
-- Status: accepted
+- Status: accepted; authority and receipt `DisplayCap` custody amended by 0060,
+  0061, and 0097
 - Date: 2026-08-29
-- Amended by: [0056](0056-bounded-pending-stake-vector.md), [0060](0060-blastsui-metadata-cap-custody.md), [0061](0061-blastsui-routine-admin-and-composable-package-custody.md), [0065](0065-discoverable-blastsui-treasury-caps.md)
+- Amended by: [0056](0056-bounded-pending-stake-vector.md), [0060](0060-blastsui-metadata-cap-custody.md), [0061](0061-blastsui-routine-admin-and-composable-package-custody.md), [0065](0065-discoverable-blastsui-treasury-caps.md), [0097](0097-one-singleton-acl-with-typed-roles.md)
+
+> Authority and display-custody update (2026-10-05): the sections below record
+> the original decision. [ADR 0060](0060-blastsui-metadata-cap-custody.md)
+> keeps the receipt `DisplayCap` instead of locking it at `@0x0`: the Display
+> creator returns it, and deployment seals it, with both currencies'
+> `MetadataCap`s, as a dynamic object child of the shared `PackageAdmin`, which
+> cannot be shared without all three.
+> [ADR 0061](0061-blastsui-routine-admin-and-composable-package-custody.md)
+> replaces `wrap` with construct, attach, then share, and
+> [ADR 0097](0097-one-singleton-acl-with-typed-roles.md) replaces the
+> package-local `acl` module, `ProtocolAuthority`, and `SuperAdminCap` with the
+> shared `blast_admin` ACL. Blast SUI declares two typed roles: `UpgradeAdmin`
+> authorizes every package-custody transition, including capability intake,
+> upgrade authorization, the commit that advances the package version, and
+> policy restriction; `FeeAdmin` sets the redemption fee. Root rotation and its
+> delay belong to `blast_admin`. Where this ADR gives a power to the
+> `SuperAdminCap` or a package-local authority, read the matching role.
 
 ## Sources
 

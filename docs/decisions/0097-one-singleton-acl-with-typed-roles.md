@@ -6,7 +6,8 @@
   UID-bound generation advance, and the publication-record gate
 - Supersedes: [0094](0094-one-role-per-administrator-action.md)'s role bits,
   checks, and gate map; keeps its role grouping
-- Amends: [0061](0061-blastsui-routine-admin-and-composable-package-custody.md),
+- Amends: [0053](0053-single-validator-funsui-and-blastsui.md),
+  [0061](0061-blastsui-routine-admin-and-composable-package-custody.md),
   [0073](0073-series-one-adapter-owned-vaults.md), and
   [0085](0085-explorer-visible-type-naming.md)
 
