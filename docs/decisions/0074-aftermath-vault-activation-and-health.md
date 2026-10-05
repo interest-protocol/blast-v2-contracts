@@ -9,6 +9,11 @@ contract; local evidence does not establish publication or live release readines
   The testnet rehearsal tooling is removed and no release evidence depends on
   a testnet or local-network transaction; see the
   [mainnet-only amendment](#mainnet-only-amendment-2026-10-03).
+- Amended: 2026-10-05: the text now matches the Boosts source. No seed funder
+  is recorded, drift is reported by `CheckpointDrifted` on every drifting sync
+  and never stored, and `rebalance` and `unwind` refuse a gas price above the
+  reference; see the
+  [source reconciliation amendment](#source-reconciliation-amendment-2026-10-05).
 - Extends: [0064](0064-aftermath-backed-leverage-coins.md)
 - Preserves the package ownership decision in
   [0073](0073-series-one-adapter-owned-vaults.md)
@@ -191,9 +196,10 @@ live cap before the next order begins. It then settles funding and captures the
 final observation.
 Only after strict execution and all Series1 activation gates pass does it mint
 the reserve-excluded seed NAV at the fixed 1,000 share scale, lock those shares
-at `@0x0`, retain that exact locked amount and the explicit nonzero seed funder,
-seal the sole admin capability and checkpoint into the Vault, share
-the account and returned clearing house through their defining modules, and
+at `@0x0`, retain that exact locked amount (no seed funder is recorded; source
+reconciliation amendment, 2026-10-05), seal the sole admin capability and
+checkpoint into the Vault, share the account and returned clearing house
+through their defining modules, and
 emit the replay-complete activation event. Any abort rolls back the complete
 transaction.
 
@@ -441,7 +447,8 @@ zero-net snapshot advancement is accepted and emitted once. Persisting the
 final accepted checkpoint makes the complete interval exactly once. Any
 unexplained collateral, exposure, order, or parameter mutation makes the
 synchronization unresolved: preserve the accepted checkpoint and reserve,
-and record only a distinct diagnostic fingerprint.
+and report the observed checkpoint in `CheckpointDrifted` without storing it
+(amended 2026-10-05).
 
 Any live lineage, bytecode, ABI, dependency, source-binding, conversion-vector,
 or checkpoint mismatch reopens this decision and blocks publication.
@@ -478,10 +485,12 @@ After authentication, synchronization has one fixed sequence:
    the split).
 6. Consume the final linear capture and extract its checkpoint without a
    lifecycle mutation. Accept the economic checkpoint only for a reconciled interval;
-   unresolved observations update only the diagnostic fingerprint.
-7. Emit accepted funding facts (including zero-net advancement) and new
-   unresolved/reconciled diagnostics after their mutations. Unchanged repeats
-   emit nothing.
+   an unresolved interval leaves the accepted checkpoint unchanged and stores
+   no diagnostic state (amended 2026-10-05).
+7. After their mutations, emit accepted funding facts (including zero-net
+   advancement) and `CheckpointDrifted` for every unresolved interval.
+   Identical clean repeats emit nothing; a repeated drift is reported again
+   (amended 2026-10-05).
 
 Stored-to-pre market-rate advancement is the expected precursor to local
 funding settlement. A permissionless settlement already completed before this
@@ -500,19 +509,22 @@ including a zero-net interval. It records the Vault, credit/cost direction,
 exact raw collateral-IFixed amount,
 conservative six-decimal amount, reserve absorption, uncovered cost, reserve
 after settlement, and both the previous and post checkpoints.
-`HealthSynchronized<Product>` reports reason `1` for a distinct unresolved
-observation and reason `2` when that diagnostic clears. It contains the Vault,
-reason and observed checkpoint, not a constant lifecycle-change flag. The
-diagnostic is distinct from the accepted economic checkpoint. Together with
+`CheckpointDrifted<Product>` carries the Vault and the observed checkpoint
+each time a synchronization cannot explain the interval. It is not
+deduplicated, and there is no recovery event: a later sync that explains the
+interval adopts its checkpoint like any clean sync. The observed checkpoint is
+reported, never stored; the accepted economic checkpoint is the only one the
+Vault holds (amended 2026-10-05; this replaces `HealthSynchronized` and its
+reason codes). Together with
 issuance, activation, active economic, fee-setting, order-limit, risk-module
 rotation and terminal lifecycle events, the stream reconstructs native
-supply, locked seed/funder, reserve, separate admin cash, settings, bindings,
-lifecycle, selected risk module and both checkpoint/reporting identities.
+supply, locked seed shares, reserve, separate admin cash, settings, bindings,
+lifecycle, selected risk module and the accepted checkpoint.
 
-One package-private production helper owns the complete Blast post-capture
-phase: aggregate funding normalization and reserve settlement, linear
-capture consumption, conditional accepted-checkpoint persistence,
-diagnostic novelty tracking and conditional event emission. Local connected tests
+One private production helper, `operations::apply_post_capture`, owns the
+Blast post-capture phase: reserve settlement of the netted funding,
+persistence of a clean interval's checkpoint, and the funding or drift event
+(amended 2026-10-05; it tracks no diagnostic novelty). Local connected tests
 invoke that same helper against real issued and Series-initialized Vault state;
 they do not duplicate
 the reserve, lifecycle, persistence, or event formulas.
@@ -626,21 +638,23 @@ events; there is no event-only replay guard or extra on-chain claim ledger:
   closed market has no invented order or quote fill (shutdown reconciliation
   amendment, 2026-09-20).
 - `ShutdownFinalized`: Vault, actual recovered atomic cash, eligible native
-  supply, optional recorded seed-funder payment beneficiary, final checkpoint,
-  and `unrecoverable_collateral_raw: u256`. The final primitive deliberately
-  reports the exact bounded raw residual also preserved in the checkpoint for
-  resynchronization and loss visibility. It is never counted as claim cash.
+  supply, final checkpoint, and `unrecoverable_collateral_raw: u256`. The
+  final primitive deliberately reports the exact bounded raw residual also
+  preserved in the checkpoint for resynchronization and loss visibility. It is
+  never counted as claim cash. The event names no seed-funder beneficiary
+  (source reconciliation amendment, 2026-10-05).
 - `ShutdownRedeemed`: Vault, burned native shares, paid and remaining atomic
   cash, and remaining eligible native supply. Claims charge no fee; the last
   eligible holder receives local rounding dust. Zero eligibility at finalization
-  instead transfers all recovered holder cash once to the recorded funder.
+  instead adds all recovered holder cash to Blast's admin cash (source
+  reconciliation amendment, 2026-10-05).
 
-Successful finalization clears a pending unresolved diagnostic through the
-existing reconciled event. It preserves the distinction between the accepted
-economic checkpoint and deduplicated diagnostic identity. Long and short local
-reducers include the raw residual, terminal cash, native supply, locked seed,
-recorded funder, and reconciliation. Local tests substitute only unavailable
-IFixed decoding outputs and venue facts; named ports still abort locally, so
+Successful finalization adopts the verified final checkpoint as the accepted
+checkpoint; no diagnostic state exists for it to clear (source reconciliation
+amendment, 2026-10-05). Long and short local reducers include the raw residual,
+terminal cash, native supply, locked seed, and reconciliation. Local tests
+substitute only unavailable IFixed decoding outputs and venue facts; named
+ports still abort locally, so
 they do not prove deployed deallocation, settlement, or transaction effects.
 Publication, live ABI, funded submissions and whole-feature rehearsal remain
 separately authorized evidence under A-003.
@@ -688,6 +702,39 @@ supports testnet. For Boosts this means:
 - Activation rollback rests on Sui transaction atomicity, and live health,
   funding, and terminal behavior is observed on mainnet under the separately
   authorized evidence stage (A-003), not rehearsed beforehand.
+
+### Source reconciliation amendment (2026-10-05)
+
+The Boosts source is authoritative. This amendment brings the text above in
+line with three decisions it had not caught up with; the first two were made
+with ADR 0087 D3 on 2026-09-18.
+
+- **No seed funder.** The seed is a permanent gift to the product: its shares
+  go to `@0x0` and are never redeemable. The Vault stores only
+  `locked_shares`, which `VaultInitialized` emits; activation takes no funder
+  and `ShutdownFinalized` names no beneficiary. With zero eligible supply,
+  `vault::seal_terminal_cash` adds the recovered cash to Blast's admin cash
+  instead of the claim balance, and `withdraw_admin_fees` spends it.
+- **Drift is reported, never stored.** No diagnostic fingerprint or digest
+  exists, and `HealthSynchronized` and its reason codes are gone.
+  `operations::apply_post_capture` emits `CheckpointDrifted` on every interval
+  the classifier cannot explain and leaves the accepted checkpoint unchanged.
+  The event is not deduplicated; a reader that wants distinct drifts
+  deduplicates them itself. Priced operations are refused by comparing their
+  capture with the accepted checkpoint, not by the event. A later sync that
+  explains the interval adopts its checkpoint like any clean sync, emitting
+  `FundingSettled` when the checkpoint advanced; there is no recovery event.
+  Finalization adopts its verified final checkpoint and has nothing to clear.
+- **Holder-paid trades run at the reference gas price.** Aftermath adds its
+  priority taker fee to every fill of a transaction whose gas price is
+  strictly above the reference gas price
+  ([venue bytecode record](../research/aftermath-venue-bytecode-2026-09-20.md),
+  session-path re-read of 2026-09-21). `rebalance` and `unwind`, whose fills
+  holders pay, abort above the reference gas price
+  (`operations::assert_gas_price`), so Aftermath's priority taker surcharge
+  never reaches holders, and `orders::live_venue_fee_bps` bounds the
+  rebalance fee budget by the market's ordinary taker fee alone. `mint` and
+  `redeem` have no gas-price check: their callers pay their own fills.
 
 ## Consequences
 
