@@ -80,7 +80,7 @@ Pending --share--> Open --settle (total >= raise)--> Funded --migrate--> Migrate
 
 | State | Exists | Allows |
 | --- | --- | --- |
-| `Pending` | Only inside the creation PTB, before `share` | `blast_presale::blast_presale::set_partner`, `blast_presale::blast_presale::share` |
+| `Pending` | Only inside the creation PTB, before `share` | `blast_presale::blast_presale::set_partner`, `blast_presale::blast_presale::set_protocol_fees` (admin, when the creation PTB also holds the `AdminCap`), `blast_presale::blast_presale::share` |
 | `Open` | From `share` until `settle` | Before `start_ms`: `blast_presale::blast_presale::set_protocol_fees` (admin). From `start_ms` until `end_ms`: commits. From `end_ms`: `blast_presale::blast_presale::settle` |
 | `Funded` | After a settle that met the raise | Migration at any time; `blast_presale::blast_presale::cancel_unlaunched` from the LP deadline |
 | `Migrated` | After migration | `blast_presale::blast_presale::claim` (tokens + overflow refund), `blast_presale::blast_presale::pay_protocol_fees_with_partner` once on a partnered sale |
@@ -413,7 +413,7 @@ the `AdminCap` (*Blast admin*), except the two `SuperAdminCap` calls (*Blast sup
 | --- | --- |
 | `fee_policy::set_fees` | Rates new sales snapshot. Raise rate < 10,000 BPS; token rate <= 9,998. Emits `fee_policy::FeesChanged`. |
 | `fee_policy::set_destination` | Redirects every later Blast payout, existing sales included. Emits `fee_policy::DestinationChanged`. |
-| `blast_presale::blast_presale::set_protocol_fees` | Replaces one sale's four rates while `Open` and before `start_ms`. Emits `blast_presale::blast_presale::ProtocolFeesChanged`. |
+| `blast_presale::blast_presale::set_protocol_fees` | Replaces one sale's four rates in its creation PTB before `share` (`Pending`), or while `Open` and before `start_ms`. Emits `blast_presale::blast_presale::ProtocolFeesChanged`. |
 | `presale_vault::set_protocol_lp_fees` | Replaces one vault's Blast LP-fee rates for later collections. Emits `presale_vault::ProtocolLpFeesChanged`. |
 | `creation_policy::set_quote_allowed` | Allows or disallows a Quote type for later sales. Emits `creation_policy::QuoteSet`. |
 | `creation_policy::set_migration_witness_allowed` | Allows or disallows a migrator witness for later sales; rejects primitives, vectors, and `0x1`/`0x2` types. Emits `creation_policy::MigrationWitnessSet`. |
@@ -528,8 +528,8 @@ All times are Unix milliseconds from `Clock`.
 - Commits: allowed for `start_ms <= now < end_ms`. Before the start: `EPresaleNotStarted`. At or
   after the end: `EPresaleEnded`.
 - Caps lift at `now >= uncapped start`.
-- `blast_presale::blast_presale::set_protocol_fees`: only while `now < start_ms`. A sale shared with a start in
-  the past has no such window.
+- `blast_presale::blast_presale::set_protocol_fees`: in the creation PTB before `share`, or after it while
+  `now < start_ms`. A sale shared with a start in the past can be repriced only in its creation PTB.
 - `blast_presale::blast_presale::settle`: from `now >= end_ms`, at any later time.
 - Migration: any time while `Funded`, including after the LP deadline, until someone cancels.
 - `blast_presale::blast_presale::cancel_unlaunched`: from `now >= LP deadline`. The 7-day minimum means a funded
@@ -738,8 +738,9 @@ Create (*cap holder*, `blast_aftermath_dao_presale::blast_aftermath_dao_presale:
    treasury 10,000 BPS and holders 0, sends the `PresaleCap` to the treasury, shares the
    `PoolCreation<Lp>`, emits `blast_aftermath_dao_presale::blast_aftermath_dao_presale::PoolCreationReserved`, and returns the
    unshared `Presale`.
-4. Optional `blast_presale::blast_presale::set_partner(...)`, then `blast_presale::blast_presale::share(presale, start_ms,
-   clock)`.
+4. Optional `blast_presale::blast_presale::set_partner(...)`; optional
+   `blast_presale::blast_presale::set_protocol_fees(...)` to change this sale's Blast rates, which needs Blast's
+   presale `AdminCap` in the same transaction; then `blast_presale::blast_presale::share(presale, start_ms, clock)`.
 
 Migrate (*anyone*, while `Funded`):
 
@@ -792,7 +793,8 @@ LP-fee rates. The raise and token fees are paid at migration; the LP-fee rates a
 collection, rounded up. Nothing is charged on commitments, refunds, or failed sales.
 
 **Can Blast or the creator change a sale after it opens?** The creator cannot. Blast's
-`AdminCap` can change the sale's four rates only before `start_ms`, can redirect the fee
+`AdminCap` can change the sale's four rates only before `start_ms` (including in its creation
+transaction, before `share`), can redirect the fee
 destination at any time, and after migration can change the vault's Blast LP-fee rates. Windows,
 recipients, eligibility, and the fee split never change.
 

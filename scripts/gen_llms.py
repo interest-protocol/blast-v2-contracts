@@ -14,6 +14,7 @@ resolve, or generation fails.
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import re
 import subprocess
@@ -524,7 +525,12 @@ def main() -> None:
             build_summaries(Path(tmp))
             text = generate(Path(tmp))
     if args.check:
-        if not OUTPUT.exists() or OUTPUT.read_text() != text:
+        current = OUTPUT.read_text() if OUTPUT.exists() else ""
+        if current != text:
+            diff = difflib.unified_diff(
+                current.splitlines(), text.splitlines(), "llms-full.txt (committed)", "llms-full.txt (generated)", lineterm=""
+            )
+            print("\n".join(list(diff)[:200]))
             sys.exit("llms-full.txt is stale: run python3 scripts/gen_llms.py")
         print("llms-full.txt is current.")
         return
