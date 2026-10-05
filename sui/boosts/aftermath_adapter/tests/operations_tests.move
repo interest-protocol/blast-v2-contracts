@@ -233,7 +233,7 @@ fun shutdown_is_irreversible_even_for_the_same_authorized_witness() {
 
 #[test]
 #[expected_failure(abort_code = blast_boosts_core::errors::EInvalidLifecycleTransition, location = blast_boosts_core::lifecycle)]
-fun finalization_cannot_recover_or_pay_the_seed_funder_twice() {
+fun finalization_cannot_recover_terminal_cash_twice() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let witness = shutdown_admin();

@@ -276,8 +276,8 @@ the adapter proves exact flat exposure, no orders, settled funding and
 liabilities, and complete cash withdrawal. Final claims use native treasury
 supply minus locked seed, not active shareholder NAV or a second supply ledger.
 They floor each remaining-cash fraction, charge no fee and give the final
-eligible claimant all remaining cash. No eligible supply sends all holder cash
-to the immutable seed funder. Admin collateral is separate and never enters
+eligible claimant all remaining cash. With no eligible supply, the adapter
+keeps all recovered cash as admin cash. Admin collateral is separate and never enters
 the holder pool.
 
 ### Priced-operation predicates and health synchronization
@@ -285,8 +285,8 @@ the holder pool.
 Reserve backing, positive shareholder NAV, price, and proportional exposure
 bounds are enforced by priced operations. Health synchronization consumes its
 authenticated capture inside the adapter and uses the checkpoint for aggregate
-funding settlement and unresolved/reconciled diagnostics. It does not construct
-a Series1 position observation or persist lifecycle degradation on temporary
+funding settlement; drift is reported by event, never stored. It does not
+construct a Series1 position observation or persist lifecycle degradation on temporary
 economic faults.
 
 A redemption whose proportional claim is smaller than its sell cost aborts
