@@ -176,13 +176,13 @@ allocation are never shared. Neither is Blast's LP-fee share after migration.
 ## On presales
 
 A presale can name one partner, and only when it is created; nothing can change
-it later. When the sale succeeds, that partner is paid its share of Blast's share
-of the raise, and of nothing else: Blast's token share and its share of the
-pool's LP fees after migration are never shared.
+it later. When the sale succeeds, that partner is paid its cut of Blast's fee on
+the raise, and of nothing else: Blast's token fee and its fees on the pool's LP
+fees after migration are never divided with a partner.
 
-Say a sale raises 100,000 USDC, Blast's raise share is 2%, and the partner's
-share is 40%. Blast's part of the raise is 2,000 USDC; the partner receives 800
-USDC and Blast keeps 1,200. Buyers, the creator, the raise recipients and the
+Say a sale raises 100,000 USDC, Blast's raise fee is 2%, and the partner's cut is
+40%. Blast's fee on the raise is 2,000 USDC; the partner receives 800 USDC and
+Blast keeps 1,200. Buyers, the creator, the raise recipients and the
 pool receive exactly what they would without a partner.
 
 - **Integrators** that create sales call `blast_presale::set_partner` on the new
@@ -191,8 +191,9 @@ pool receive exactly what they would without a partner.
   partner's own vendor package included. Commitments, claims and migration are
   the same on every sale.
 - **Partners** are paid after the sale migrates. A partnered sale's migration
-  holds Blast's shares in the sale, and `blast_presale::pay_partner` then pays
-  the partner its share in force of Blast's raise share and pays Blast the rest.
+  holds Blast's fees in the sale, and
+  `blast_presale::pay_protocol_fees_with_partner` then pays the partner its cut
+  in force of Blast's raise fee and pays Blast the rest.
   Anyone can call it, once, and the SDK adds it to the migration transaction.
   Nothing is paid if the sale is refunded. `ProtocolFeesPaid` records what Blast
   kept and the partner's `partner_quote`, and `PresaleOpened` records the

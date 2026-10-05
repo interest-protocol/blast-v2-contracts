@@ -47,9 +47,10 @@ sale does not migrate.
 
 A sale may name one Blast partner, which the creator sets with `set_partner`
 after `new` and before `share`; it never changes afterward. The partner earns its
-`blast_partners` share of Blast's raise share, and of nothing else. A partnered
-sale's migration holds Blast's shares, and anyone may then call `pay_partner`
-once to pay the partner its cut and Blast the rest
+`blast_partners` cut of Blast's raise fee, and of nothing else. A partnered
+sale's migration holds Blast's fees, and anyone may then call
+`pay_protocol_fees_with_partner` once to pay the partner its cut and Blast the
+rest
 ([ADR 0106](../../docs/decisions/0106-presale-partners.md)).
 
 Blast's shared `CreationPolicy` lists the Quote types, venue migration witnesses,
@@ -74,8 +75,9 @@ sale is cancelled. From the LP deadline onward, anyone may instead cancel an
 unmigrated funded sale; whichever transaction lands first wins. The LP window is
 at least seven days, so a funded sale reaches that exit only after a week in
 which nobody migrated it. Migration
-atomically pays Blast its raise and token shares, or holds them for `pay_partner`
-when the sale names a partner, takes the rest of the raise and
+atomically pays Blast its raise and token fees, or holds them for
+`pay_protocol_fees_with_partner` when the sale names a partner, takes the rest of
+the raise and
 the LP allocation, creates the configured
 full-range pool, and seals the position or burn proof in a `PresaleVault`; a DEX
 failure rolls back the presale transition. Configured recipients receive their

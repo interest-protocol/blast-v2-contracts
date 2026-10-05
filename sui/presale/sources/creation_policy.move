@@ -51,8 +51,8 @@ public fun set_quote_allowed<Quote>(
 ///
 /// `presale::new` and `presale::migrate` are public, so whoever can construct an allowed witness
 /// can open sales and release their liquidity. Allow only a struct whose defining module is the
-/// reviewed migrator and keeps its constructor private; a primitive or vector, which any caller can
-/// construct, is rejected.
+/// reviewed migrator and keeps its constructor private. A primitive, a vector, or a framework type,
+/// any of which a caller can construct, is rejected.
 public fun set_migration_witness_allowed<MigrationWitness: drop>(
     self: &mut CreationPolicy,
     admin_registry: &AdminRegistry,
@@ -61,7 +61,7 @@ public fun set_migration_witness_allowed<MigrationWitness: drop>(
 ) {
     admin_registry.assert_admin_cap(admin_cap);
     let migration_witness = type_name::with_original_ids<MigrationWitness>();
-    assert!(!allowed || !migration_witness.is_primitive(), EInvalidMigrationWitness);
+    assert!(!allowed || !is_constructible_by_anyone<MigrationWitness>(), EInvalidMigrationWitness);
     assert!(
         self.allowed_migration_witnesses.contains(&migration_witness) != allowed,
         EAllowanceUnchanged,
@@ -109,13 +109,13 @@ public fun remove_partner(
     let partner_id = object::id(partner);
     let now_ms = clock.timestamp_ms();
     self.assert_partner(partner_id, now_ms);
-    let accepted_until_ms = now_ms + partners::delay_ms();
+    let notice_ends_ms = now_ms + partners::delay_ms();
 
-    let current: &mut u64 = self.id.dynamic_field_mut(PartnerKey(partner_id));
-    assert!(*current == std::u64::max_value!(), EAllowanceUnchanged);
-    *current = accepted_until_ms;
+    let accepted_until_ms: &mut u64 = self.id.dynamic_field_mut(PartnerKey(partner_id));
+    assert!(*accepted_until_ms == std::u64::max_value!(), EAllowanceUnchanged);
+    *accepted_until_ms = notice_ends_ms;
 
-    event::emit(PartnerRemoved { partner_id, accepted_until_ms });
+    event::emit(PartnerRemoved { partner_id, accepted_until_ms: notice_ends_ms });
 }
 
 // === Package Functions ===
@@ -151,6 +151,16 @@ fun new(ctx: &mut TxContext): CreationPolicy {
         allowed_quotes: vec_set::empty(),
         allowed_migration_witnesses: vec_set::empty(),
     }
+}
+
+/// Whether any caller can construct `T`: a primitive, a vector, or a type defined at `0x1` or
+/// `0x2`, whose droppable structs, such as `TypeName`, `Option<T>`, and `ID`, have public
+/// constructors.
+fun is_constructible_by_anyone<T>(): bool {
+    if (type_name::with_original_ids<T>().is_primitive()) return true;
+
+    let defining_package = type_name::original_id<T>();
+    defining_package == @0x1 || defining_package == @0x2
 }
 
 // === Test-Only Functions ===
@@ -240,7 +250,7 @@ const EQuoteNotAllowed: vector<u8> = b"This Quote type is not allowed for new pr
 const EMigrationWitnessNotAllowed: vector<u8> = b"This migration witness is not allowed for new presales.";
 
 #[error(code = 3)]
-const EInvalidMigrationWitness: vector<u8> = b"A migration witness must be a struct, never a primitive or vector any caller can construct.";
+const EInvalidMigrationWitness: vector<u8> = b"A migration witness must be a non-framework struct, never a primitive, vector, or framework type any caller can construct.";
 
 #[error(code = 4)]
 const EPartnerNotAccepted: vector<u8> = b"New presales may not name this partner.";

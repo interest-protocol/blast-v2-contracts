@@ -81,8 +81,10 @@ public fun new<Lp, SaleToken, Quote>(
         Witness(),
         0,
         0,
-        vector[presale::recipient_share(TREASURY, bps::new(ALL_BPS))],
-        bps::new(0),
+        presale::fee_split(
+            vector[presale::recipient_share(TREASURY, bps::new(ALL_BPS))],
+            bps::new(0),
+        ),
         creation_policy,
         fee_policy,
         ctx,
@@ -208,13 +210,16 @@ fun create_pool<Lp, Coin1, Coin2>(
 /// Whether `A` comes before `B` in Aftermath's coin order: the byte order of their defining-ID type
 /// names, which its pool registry requires.
 fun sorts_before<A, B>(): bool {
-    let a = type_name::with_defining_ids<A>().into_string().into_bytes();
-    let b = type_name::with_defining_ids<B>().into_string().into_bytes();
-    let shared = a.length().min(b.length());
+    let a_name = type_name::with_defining_ids<A>().into_string().into_bytes();
+    let b_name = type_name::with_defining_ids<B>().into_string().into_bytes();
+    let prefix_length = a_name.length().min(b_name.length());
     let mut i = 0;
-    while (i < shared && a[i] == b[i]) i = i + 1;
+    while (i < prefix_length && a_name[i] == b_name[i]) i = i + 1;
 
-    if (i < shared) a[i] < b[i] else a.length() < b.length()
+    // The first differing byte decides; otherwise the shorter name is a prefix and comes first.
+    if (i < prefix_length) return a_name[i] < b_name[i];
+
+    a_name.length() < b_name.length()
 }
 
 // === Test-Only Functions ===

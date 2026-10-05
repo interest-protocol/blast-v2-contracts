@@ -22,6 +22,31 @@ extracting helpers, inlining locals, or changing pass-through parameters.
 - Name helpers for their domain phase. Generic `handle_*`, `process_*`,
   pass-through, and arbitrary line-count helpers do not establish ownership.
 
+## Flatten branching derivations
+
+A derivation is hard to read when one function computes several values through
+chained `if ... else if ... else` expressions that share conditions.
+
+- Give each derived value its own small helper, named for the value it returns.
+- Inside the helper, put each special case first as a guard clause with an early
+  `return`, then end with the general case:
+
+  ```move
+  fun claimable_amount(self: &Pool, share: u64): u64 {
+      if (!self.is_settled()) return 0;
+      if (self.is_final_claim(share)) return self.remaining.value();
+
+      self.total.mul_div(share, self.total_shares)
+  }
+  ```
+
+- Name a condition that several helpers share with its own predicate, such as
+  `is_final_claim`, instead of computing it once and passing a bare `bool`.
+- Call the helpers in the order the original expression evaluated them, before
+  any mutation that changes their inputs.
+- Use a `match` helper beside its sibling helpers when one call site would
+  otherwise destructure a nested enum variant inline.
+
 ## Keep meaningful locals
 
 A redundant single-use temporary merely names one pure expression for one later
@@ -53,5 +78,6 @@ argument, condition, arithmetic operand, or return.
   and document a non-obvious compatibility reason.
 
 The refactor is complete only when the owner function still exposes execution
-order, each helper owns one phase, every remaining local carries meaning or
-ordering, and no parameter is an accidental relay.
+order, each helper owns one phase, no derivation chains shared conditions across
+`else if` branches, every remaining local carries meaning or ordering, and no
+parameter is an accidental relay.

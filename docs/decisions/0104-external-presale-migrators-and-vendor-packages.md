@@ -5,6 +5,9 @@
 - Amends: [0099](0099-standalone-overflow-presale.md), which kept every presale
   adapter inside `blast_presale`, and [0102](0102-presale-creation-allowlists.md),
   whose witness allowlist could not admit a third venue
+- Amended: 2026-10-05 (owner decision, after the presale audit): the vendor
+  package is published immutable instead of sending a full `UpgradeCap` to its
+  treasury, and witness admission also rejects framework (`0x1`, `0x2`) types
 
 ## Context
 
@@ -26,10 +29,13 @@ caller, is the authority, and the presale `AdminCap` decides which migrators may
 open sales. Since this generation changes presale logic, it is a new publication
 of `blast_presale`, not a dependency-only upgrade.
 
-**Witness admission.** Any caller can construct a primitive or a vector of
-droppable values, so `set_migration_witness_allowed` rejects allowing one with
-`EInvalidMigrationWitness`. Before allowing a struct, the administrator verifies
-its module keeps the constructor private and is the reviewed migrator.
+**Witness admission.** Any caller can construct a primitive, a vector of
+droppable values, or a framework struct with a public constructor, such as
+`TypeName`, `Option<T>`, or `ID`. So `set_migration_witness_allowed` rejects
+allowing a primitive, a vector, or any type defined at `0x1` or `0x2`, with
+`EInvalidMigrationWitness`, as the launchpad's admission does. Before allowing
+any other struct, the administrator verifies its module keeps the constructor
+private and is the reviewed migrator.
 
 **Vendor packages.** One-off partner contracts live under `sui/vendors/<name>/`,
 each its own package with its own interface stubs, gates, and publish script, and
@@ -37,9 +43,9 @@ each depending inward on Blast packages.
 
 **First vendor: `blast_aftermath_dao_presale`.**
 
-- `init` sends the package's only `AdminCap` to the publisher. A compiled
-  `TREASURY` receives everything else the package hands out, starting with the
-  `UpgradeCap`, which the publish script sends it in the publish transaction.
+- `init` sends the package's only `AdminCap` to the publisher, and the publish
+  script makes the package immutable in the publish transaction. A compiled
+  `TREASURY` receives everything else the package hands out.
 - Its `new` takes the `AdminCap` and the `CreatePoolCapV2` of a fresh LP coin
   `Lp`. It creates the sale with its `Witness` and an LP-fee split naming the
   treasury as the only recipient, the true destination of the pool's fees, sends
@@ -76,6 +82,12 @@ each depending inward on Blast packages.
 - **Wrap the LP in a package object.** Rejected: owned by `0x0`, the bare coin is
   already as locked as any wrapper, and freezing a wrapper would leave it
   readable by reference, which a later upgrade could build on.
+- **Send the treasury the vendor's `UpgradeCap` (the first version).** Rejected
+  after the audit (owner, 2026-10-05): under the compatible policy an upgrade
+  could replace `migrate` and send a funded sale's raise and LP tokens anywhere,
+  while its participants cannot exit before the LP deadline. A dependency-only
+  cap would have kept relinking to new Aftermath versions; the owner chose
+  immutability.
 
 ## Consequences
 
@@ -85,20 +97,23 @@ each depending inward on Blast packages.
 - Vendor sales skip `PresaleVault`, so Blast's LP-fee rates and holder rewards do
   not apply to them; Blast's raise and token shares still do.
 - The treasury sets every vendor pool's DAO fee, from 0% to 100%, and its
-  recipient. As the vendor's `UpgradeCap` holder it also controls how unmigrated
-  sales reach the venue, but no upgrade can release a migrated pool's LP.
+  recipient. The vendor package is immutable, so nobody can change how a sale
+  migrates or release a migrated pool's LP. If Aftermath retires the AMM or
+  DAO-fee version it links to, its migrations abort and its sales refund at
+  their LP deadline; new sales then need a new vendor package.
 - The SDK classifies `new` and `migrate` as Move composition and builds
   `set_migration_witness_allowed` for any witness type.
 
 ## Verification
 
-- Presale tests: the new admission guard rejects a primitive and a vector,
-  disallowing either is an unchanged allowance, and the AdminCap check precedes
-  the type check.
+- Presale tests: the admission guard rejects a primitive, a vector, and
+  framework structs at `0x1` and `0x2`; disallowing a primitive is an unchanged
+  allowance; and the AdminCap check precedes the type check.
 - Vendor tests: the `AdminCap` delivered to the publisher; sale creation through
   the allowed witness, its fee split to the treasury, and its `PresaleCap`
   delivered there; the shared `PoolCreation` bound to its sale; `migrate`
-  rejecting another sale's `PoolCreation`; rejection of an unlisted witness; and
-  Aftermath's coin order.
+  rejecting another sale's `PoolCreation`; rejection of an unlisted witness;
+  Aftermath's coin order; and a vendor sale naming a Blast partner before its
+  share.
 - Release: the vendor's `check_mainnet_abi.mjs` live gate and a mainnet
   dev-inspect of `migrate` in both coin orders before the first sale migrates.

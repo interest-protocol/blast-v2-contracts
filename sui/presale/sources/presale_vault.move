@@ -20,8 +20,7 @@ public struct PresaleVault<phantom Meme, phantom Quote> has key {
     presale_id: ID,
     presale_cap_id: ID,
     pool_id: ID,
-    fee_recipients: vector<RecipientShare>,
-    holder_rewards_bps: Bps,
+    fee_split: FeeSplit,
     protocol_fees: ProtocolFees,
     migration_meme_residual: Balance<Meme>,
     migration_quote_residual: Balance<Quote>,
@@ -96,15 +95,13 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
 ) {
     assert!(liquidity > 0, EZeroLiquidity);
 
-    let (presale_id, presale_cap_id, fee_recipients, holder_rewards_bps, protocol_fees) = sale
-        .vault_config();
+    let (presale_id, presale_cap_id, fee_split, protocol_fees) = sale.vault_config();
     let mut vault = PresaleVault {
         id: object::new(ctx),
         presale_id,
         presale_cap_id,
         pool_id,
-        fee_recipients,
-        holder_rewards_bps,
+        fee_split,
         protocol_fees,
         migration_meme_residual,
         migration_quote_residual,
@@ -120,9 +117,9 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
         pool_id,
         position_id: object::id(&position),
         liquidity,
-        fee_recipients: vault.fee_recipients.recipients(),
-        fee_recipient_bps: vault.fee_recipients.bps(),
-        holder_rewards_bps: holder_rewards_bps.value(),
+        fee_recipients: fee_split.fee_recipients().recipients(),
+        fee_recipient_bps: fee_split.fee_recipients().bps(),
+        holder_rewards_bps: fee_split.holder_rewards_bps().value(),
         protocol_lp_fee_meme_bps: protocol_fees.lp_fee_meme_bps().value(),
         protocol_lp_fee_quote_bps: protocol_fees.lp_fee_quote_bps().value(),
         migration_meme_residual: vault.migration_meme_residual.value(),
@@ -164,9 +161,11 @@ public(package) fun split_fees<Meme, Quote>(
     let protocol_meme = self.protocol_fees.lp_fee_meme_bps().apply_up(gross_meme);
     let protocol_quote = self.protocol_fees.lp_fee_quote_bps().apply_up(gross_quote);
     let protocol_destination = fee_policy.destination();
-    let (fee_recipient_meme, holder_rewards_meme) = self.fee_shares(gross_meme - protocol_meme);
-    let (fee_recipient_quote, holder_rewards_quote) = self.fee_shares(gross_quote - protocol_quote);
-    let recipients = self.fee_recipients.recipients();
+    let (fee_recipient_meme, holder_rewards_meme) = self.fee_amounts(gross_meme - protocol_meme);
+    let (fee_recipient_quote, holder_rewards_quote) = self.fee_amounts(
+        gross_quote - protocol_quote,
+    );
+    let recipients = self.fee_split.fee_recipients().recipients();
 
     meme.pay(protocol_meme, protocol_destination, ctx);
     quote.pay(protocol_quote, protocol_destination, ctx);
@@ -242,13 +241,13 @@ public(package) fun restore_holder_rewards<Meme, Quote>(
 
 // === Private Functions ===
 
-/// Splits `amount` under the creation-time BPS into each fee recipient's share and the
-/// holder-reward share.
-fun fee_shares<Meme, Quote>(self: &PresaleVault<Meme, Quote>, amount: u64): (vector<u64>, u64) {
-    let mut shares = presale::apportion_fee(&self.fee_recipients, self.holder_rewards_bps, amount);
-    let rewards = shares.pop_back();
+/// Splits `amount` under the creation-time BPS into each fee recipient's amount and the
+/// holder-reward amount.
+fun fee_amounts<Meme, Quote>(self: &PresaleVault<Meme, Quote>, amount: u64): (vector<u64>, u64) {
+    let mut recipient_amounts = self.fee_split.apportion_fee(amount);
+    let holder_rewards = recipient_amounts.pop_back();
 
-    (shares, rewards)
+    (recipient_amounts, holder_rewards)
 }
 
 // === Test-Only Functions ===
@@ -257,8 +256,7 @@ fun fee_shares<Meme, Quote>(self: &PresaleVault<Meme, Quote>, amount: u64): (vec
 public fun new_for_testing<Meme, Quote>(
     presale_id: ID,
     presale_cap_id: ID,
-    fee_recipients: vector<RecipientShare>,
-    holder_rewards_bps: Bps,
+    fee_split: FeeSplit,
     protocol_fees: ProtocolFees,
     ctx: &mut TxContext,
 ): PresaleVault<Meme, Quote> {
@@ -267,8 +265,7 @@ public fun new_for_testing<Meme, Quote>(
         presale_id,
         presale_cap_id,
         pool_id: object::id_from_address(@0x1),
-        fee_recipients,
-        holder_rewards_bps,
+        fee_split,
         protocol_fees,
         migration_meme_residual: balance::zero(),
         migration_quote_residual: balance::zero(),
@@ -325,8 +322,7 @@ public fun destroy_for_testing<Meme, Quote>(self: PresaleVault<Meme, Quote>) {
         presale_id: _,
         presale_cap_id: _,
         pool_id: _,
-        fee_recipients: _,
-        holder_rewards_bps: _,
+        fee_split: _,
         protocol_fees: _,
         migration_meme_residual,
         migration_quote_residual,
@@ -403,7 +399,7 @@ const EProtocolLpFeesUnchanged: vector<u8> = b"An LP-fee update must change the 
 // === Imports ===
 
 use blast_presale::{
-    blast_presale::{Self as presale, Presale, PresaleCap, RecipientShare},
+    blast_presale::{Self as presale, FeeSplit, Presale, PresaleCap},
     blast_presale_admin::{AdminCap, AdminRegistry},
     bps::Bps,
     fee_policy::{FeePolicy, ProtocolFees},
