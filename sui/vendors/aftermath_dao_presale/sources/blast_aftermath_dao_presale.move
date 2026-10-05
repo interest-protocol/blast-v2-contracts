@@ -5,8 +5,8 @@
 /// the Aftermath pool-creation capability of its LP coin, which stays bound to that sale. Anyone
 /// may then migrate the funded sale into a 50/50 Aftermath weighted pool wrapped in Aftermath's
 /// DAO-fee pool, which pays a 2% fee on every swap, deposit, and withdrawal straight to the partner
-/// treasury. The treasury also receives each sale's `PresaleCap`, and each DAO-fee pool's owner
-/// cap, with which it may change that pool's fee or recipient, and the sale's locked LP.
+/// treasury. The treasury also receives each sale's `PresaleCap` and each DAO-fee pool's owner
+/// cap, with which it may change that pool's fee or recipient; the sale's LP is locked forever.
 module blast_aftermath_dao_presale::blast_aftermath_dao_presale;
 
 // === Public Types ===
@@ -29,8 +29,8 @@ public struct PoolCreation<phantom Lp> has key {
     create_pool_cap: CreatePoolCapV2,
 }
 
-/// One migrated sale's complete LP balance, sent to the treasury. The treasury may move it, but no
-/// function releases the LP, so the liquidity stays in the pool.
+/// One migrated sale's complete LP balance, sent to `BURN_ADDRESS`. No one can sign for that
+/// address, so the LP can never be withdrawn, even by an upgrade.
 public struct LockedLiquidity<phantom Lp> has key, store {
     id: UID,
     lp: Balance<Lp>,
@@ -115,8 +115,8 @@ public fun new<Lp, SaleToken, Quote>(
 // `dao_fee_pool::new` creates the shared pool in this transaction.
 /// Anyone may migrate a funded sale `new` created, consuming the `PoolCreation` bound to it: it
 /// seeds a 50/50 Aftermath pool with all of the sale's LP tokens and Quote, wraps it in a DAO-fee
-/// pool paying the treasury, shares that pool, and sends its owner cap and the locked LP to the
-/// treasury.
+/// pool paying the treasury, shares that pool, sends its owner cap to the treasury, and locks the
+/// LP at `BURN_ADDRESS`.
 #[allow(lint(share_owned))]
 public fun migrate<Lp, SaleToken, Quote>(
     sale: &mut Presale<SaleToken, Quote>,
@@ -184,7 +184,7 @@ public fun migrate<Lp, SaleToken, Quote>(
 
     transfer::public_share_object(dao_fee_pool);
     transfer::public_transfer(owner_cap, TREASURY);
-    transfer::public_transfer(liquidity, TREASURY);
+    transfer::public_transfer(liquidity, BURN_ADDRESS);
 }
 
 // === Private Functions ===
@@ -261,8 +261,8 @@ public struct PoolCreationReserved<phantom Lp, phantom SaleToken, phantom Quote>
 }
 
 /// A sale migrated into the Aftermath pool `pool_id`, which traders reach through the shared
-/// DAO-fee pool `dao_fee_pool_id`. The treasury holds that pool's owner cap `owner_cap_id` and
-/// `liquidity_id`, which locks the sale's `lp` units.
+/// DAO-fee pool `dao_fee_pool_id`. The treasury holds that pool's owner cap `owner_cap_id`, and
+/// `BURN_ADDRESS` holds `liquidity_id`, which locks the sale's `lp` units forever.
 public struct Migrated<phantom Lp, phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
     pool_id: ID,
@@ -274,8 +274,12 @@ public struct Migrated<phantom Lp, phantom SaleToken, phantom Quote> has copy, d
 
 // === Constants ===
 
-/// Receives every sale's `PresaleCap` and every pool's DAO fees, owner cap, and locked LP.
+/// Receives every sale's `PresaleCap` and every pool's DAO fees and owner cap.
 const TREASURY: address = @0x37cf46b499f740e653644bd2f7a8ed97f248e8b3c69d5d12c97d7845a54c0cd8;
+
+/// Owns every `LockedLiquidity`. No one can sign for the zero address, so nothing it owns can
+/// ever be used in a transaction again.
+const BURN_ADDRESS: address = @0x0;
 
 /// The DAO fee, 2%, that Aftermath sends to the treasury from every swap, deposit, and withdrawal
 /// until the owner cap changes it.
