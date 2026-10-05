@@ -5,7 +5,8 @@
 - Amends: [0099](0099-standalone-overflow-presale.md), which let a creator raise any Quote type
   through either venue
 - Amended by: [0104](0104-external-presale-migrators-and-vendor-packages.md): `presale::new` is
-  public, so the witness allowlist admits migrators in other packages and rejects primitive types
+  public, so the witness allowlist admits migrators in other packages and rejects primitive types;
+  [0106](0106-presale-partners.md): the policy also lists the Blast partners new presales may name
 
 ## Context
 

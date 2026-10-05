@@ -101,7 +101,7 @@ every package-administration object.
 | `blast_fun_migrators` | `events::X` (direct emission) | `blast_events::X` | module |
 | `blast_admin` | `events::X<Domain>` | `blast_admin_events::X`; custody and version events keep `<PackageMarker>` | module |
 | `blast_partners` | — | `blast_partners::PartnerUpdated` and `blast_partners::PartnerPaid<T>` (direct emission, ADR 0095) | module |
-| `blast_presale` | — | direct creation, commitment, settlement, migration, vault-fee, holder-reward, claim, and recovery events (ADR 0099) | module |
+| `blast_presale` | — | direct creation, commitment, settlement, migration, vault-fee, holder-reward, claim, and recovery events (ADR 0099); `creation_policy::PartnerAdded` and `PartnerRemoved` (ADR 0106) | module |
 | `blast_aftermath_dao_presale` | — | `blast_aftermath_dao_presale::PoolCreationReserved<Lp, SaleToken, Quote>` and `Migrated<Lp, SaleToken, Quote>` (direct emission, ADR 0104) | module |
 | `blast_boosts_aftermath` | — | `blast_events::Event<events::PartnerAdded>` and `blast_events::Event<events::PartnerRemoved>` (ADR 0095; protocol-wide, no `Product`) | envelope module |
 
@@ -123,6 +123,7 @@ Payload struct names inside the envelopes (`Bought`, `Migrated`,
 | `blast_presale` | `cetus::Venue`, `bluefin::Venue` | new (ADR 0099) | sealed position keys under `PresaleVault` |
 | `blast_presale` | `cetus::Witness`, `bluefin::Witness` | new (ADR 0099) | sealed migration identities fixed before commitments open |
 | `blast_aftermath_dao_presale` | `blast_aftermath_dao_presale::Witness` | new (ADR 0104) | sealed external migration identity a presale fixes at creation |
+| `blast_presale` | `creation_policy::PartnerKey` | new (ADR 0106) | dynamic-field key under `CreationPolicy`, one per Blast partner new presales may name; the value is the time it stops being accepted |
 | `blast_boosts_aftermath` | `vault::TreasuryKey<Product>`, `vault::MetadataKey<Product>`, `vault::AdminCashKey`, `vault::TerminalCashKey` | unchanged | dynamic-field keys under `Vault` |
 | `blast_boosts_aftermath` | `protocol::PartnerKey` | `blast_boosts_aftermath::PartnerKey` (ADR 0095) | dynamic-field key under `Protocol`, one per Blast partner Boosts accepts; the value is the time it stops being accepted |
 | `blast_boosts_products` | `<TICKER>_<SIDE>_<LEVERAGE>` tags such as `NVDA_BULL_2X` | bull and bear 2X per Aftermath market | inner type of every Boost coin |

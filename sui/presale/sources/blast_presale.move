@@ -97,7 +97,9 @@ public struct Commitment has copy, drop, store {
 /// Presale, LP, Blast, and additional recipient allocations stay escrowed until
 /// a funded migration atomically releases them. Blast's rates are snapshotted
 /// at creation, the AdminCap may change them until the window starts, and its
-/// shares are paid only on migration. If the raise is missed, every commitment
+/// shares are paid only on migration, or, when the sale names a Blast partner,
+/// held from migration until `pay_partner` pays the partner its cut of Blast's
+/// raise share. If the raise is missed, every commitment
 /// is refunded. Anyone may migrate a funded sale until it is cancelled; once LP
 /// is still unmigrated at its deadline, anyone may cancel it so every
 /// commitment becomes refundable. Under participant vesting, each claim locks the
@@ -134,6 +136,11 @@ public struct Presale<phantom SaleToken, phantom Quote> has key {
     protocol_fees: ProtocolFees,
     protocol_quote: u64,
     protocol_tokens: Balance<SaleToken>,
+    /// The Blast partner named at creation, paid its share of Blast's raise share. It never changes
+    /// once the sale is shared.
+    partner_id: Option<ID>,
+    /// Blast's raise share, held from a partnered sale's migration until `pay_partner` splits it.
+    unpaid_protocol_quote: Option<Balance<Quote>>,
 }
 
 // === Public Functions ===
@@ -383,9 +390,27 @@ public fun new<SaleToken, Quote, MigrationWitness: drop>(
             protocol_fees,
             protocol_quote,
             protocol_tokens,
+            partner_id: option::none(),
+            unpaid_protocol_quote: option::none(),
         },
         cap,
     )
+}
+
+/// Names the sale's Blast partner, one the `CreationPolicy` lets new presales name, before `share`
+/// fixes it for good. The partner earns its share of Blast's raise share, and of nothing else:
+/// migration holds Blast's shares, and `pay_partner` pays them.
+public fun set_partner<SaleToken, Quote>(
+    self: &mut Presale<SaleToken, Quote>,
+    creation_policy: &CreationPolicy,
+    partner: &Partner,
+    clock: &Clock,
+) {
+    assert!(self.lifecycle == Lifecycle::Pending, EInvalidLifecycle);
+    let partner_id = object::id(partner);
+    creation_policy.assert_partner(partner_id, clock.timestamp_ms());
+
+    self.partner_id = option::some(partner_id);
 }
 
 /// Shares a newly created presale and fixes its windows from `start_ms`, or from now once that
@@ -421,6 +446,7 @@ public fun share<SaleToken, Quote>(
         end_ms,
         liquidity_deadline_ms,
         uncapped_from_ms,
+        partner_id: self.partner_id,
     });
 
     transfer::share_object(self);
@@ -622,8 +648,9 @@ public fun claim<SaleToken, Quote>(
 /// recipient's tokens at once, locking each vesting share in its own shared irrevocable
 /// schedule starting now, then releases the rest of the raise and the
 /// LP-token allocation only to the configured migrator, the holder of the witness the sale was
-/// created with. Anyone may call that migrator at any time until the sale is cancelled; its pool
-/// creation remains atomic with this state transition.
+/// created with. A sale naming a Blast partner holds Blast's shares instead, for `pay_partner`.
+/// Anyone may call that migrator at any time until the sale is cancelled; its pool creation
+/// remains atomic with this state transition.
 public fun migrate<SaleToken, Quote, MigrationWitness: drop>(
     self: &mut Presale<SaleToken, Quote>,
     fee_policy: &FeePolicy,
@@ -638,10 +665,15 @@ public fun migrate<SaleToken, Quote, MigrationWitness: drop>(
     );
 
     let mut quote = self.quote.split(self.raise_target);
+    let protocol_quote = quote.split(self.protocol_quote);
     let liquidity_tokens = self.liquidity_tokens.withdraw_all();
     let recipient_tokens = self.recipient_tokens.value();
 
-    self.pay_protocol_fees(&mut quote, fee_policy.destination(), ctx);
+    if (self.partner_id.is_none()) {
+        self.pay_protocol_fees(protocol_quote, 0, fee_policy.destination(), ctx);
+    } else {
+        self.unpaid_protocol_quote.fill(protocol_quote);
+    };
     self.pay_raise_allocations(&mut quote, clock, ctx);
     self.release_recipient_tokens(clock, ctx);
     self.lifecycle = Lifecycle::Migrated;
@@ -655,6 +687,26 @@ public fun migrate<SaleToken, Quote, MigrationWitness: drop>(
     });
 
     (liquidity_tokens, quote)
+}
+
+/// Pays a migrated sale's Blast partner its share of Blast's raise share, rounded down so Blast
+/// keeps the remainder, and pays Blast the rest of it and its token share at the `FeePolicy`'s
+/// current destination. The partner's share is the one in force now. Anyone may call it once
+/// after migration: both recipients are fixed.
+public fun pay_partner<SaleToken, Quote>(
+    self: &mut Presale<SaleToken, Quote>,
+    fee_policy: &FeePolicy,
+    partner: &Partner,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    assert!(self.partner_id.contains(&object::id(partner)), EWrongPartner);
+    assert!(self.unpaid_protocol_quote.is_some(), ENoPartnerPayout);
+
+    let mut quote = self.unpaid_protocol_quote.extract();
+    let partner_quote = partner.pay(&mut quote, clock);
+
+    self.pay_protocol_fees(quote, partner_quote, fee_policy.destination(), ctx);
 }
 
 /// Destroys the creator capability after cancellation. All minted SaleToken
@@ -1193,23 +1245,28 @@ fun is_last_claim<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, commitment
 
 // Migration
 
-/// Pays Blast its shares of the raise, out of `quote`, and of the supply at `destination`.
+/// Pays Blast `quote`, what it keeps of its raise share after its partner's `partner_quote`, and
+/// its share of the supply at `destination`.
 fun pay_protocol_fees<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
-    quote: &mut Balance<Quote>,
+    mut quote: Balance<Quote>,
+    partner_quote: u64,
     destination: address,
     ctx: &mut TxContext,
 ) {
+    let quote_amount = quote.value();
     let tokens = self.protocol_tokens.value();
 
-    quote.pay(self.protocol_quote, destination, ctx);
+    quote.pay(quote_amount, destination, ctx);
+    quote.destroy_zero();
     self.protocol_tokens.pay(tokens, destination, ctx);
 
     event::emit(ProtocolFeesPaid<SaleToken, Quote> {
         presale_id: self.id.to_inner(),
         destination,
-        quote: self.protocol_quote,
+        quote: quote_amount,
         tokens,
+        partner_quote,
     });
 }
 
@@ -1442,6 +1499,13 @@ public fun protocol_fees_changed_fields<SaleToken, Quote>(
 }
 
 #[test_only]
+public fun opened_partner_id<SaleToken, Quote>(
+    event: &PresaleOpened<SaleToken, Quote>,
+): Option<ID> {
+    event.partner_id
+}
+
+#[test_only]
 public fun opened_fields<SaleToken, Quote>(
     event: &PresaleOpened<SaleToken, Quote>,
 ): (ID, u64, u64, u64, u64) {
@@ -1536,6 +1600,21 @@ public fun protocol_fees_paid_fields<SaleToken, Quote>(
 }
 
 #[test_only]
+public fun protocol_fees_paid_partner_quote<SaleToken, Quote>(
+    event: &ProtocolFeesPaid<SaleToken, Quote>,
+): u64 {
+    event.partner_quote
+}
+
+#[test_only]
+/// Blast's raise share a partnered migration holds for `pay_partner`, if it still does.
+public fun unpaid_protocol_quote_for_testing<SaleToken, Quote>(
+    self: &Presale<SaleToken, Quote>,
+): Option<u64> {
+    self.unpaid_protocol_quote.map_ref!(|quote| quote.value())
+}
+
+#[test_only]
 public fun claim_fields<SaleToken, Quote>(
     event: &Claimed<SaleToken, Quote>,
 ): (ID, address, u64, u64, u64, u64) {
@@ -1593,14 +1672,15 @@ public struct PresaleCreated<phantom SaleToken, phantom Quote> has copy, drop {
     protocol_tokens: u64,
 }
 
-/// A presale was shared with these fixed commitment and liquidity windows. Commitments open at
-/// `start_ms`, which may be later than the share.
+/// A presale was shared with these fixed commitment and liquidity windows and its Blast partner,
+/// if any. Commitments open at `start_ms`, which may be later than the share.
 public struct PresaleOpened<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
     start_ms: u64,
     end_ms: u64,
     liquidity_deadline_ms: u64,
     uncapped_from_ms: u64,
+    partner_id: Option<ID>,
 }
 
 /// Before the window started, the AdminCap replaced this sale's Blast rates, moving Blast's tokens
@@ -1653,12 +1733,14 @@ public struct PresaleMigrated<phantom SaleToken, phantom Quote> has copy, drop {
     recipient_tokens: u64,
 }
 
-/// Blast received its shares of the raise and of the supply at `destination`.
+/// Blast received `quote` of its raise share and its `tokens` at `destination`, after the sale's
+/// Blast partner took `partner_quote` of the raise share, which `PartnerPaid` also records.
 public struct ProtocolFeesPaid<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
     destination: address,
     quote: u64,
     tokens: u64,
+    partner_quote: u64,
 }
 
 /// One configured recipient received its share of the raise, or the vesting schedule
@@ -1808,9 +1890,17 @@ const EPresaleStarted: vector<u8> = b"A presale's Blast rates can change only be
 #[error(code = 30)]
 const EProtocolFeesUnchanged: vector<u8> = b"A presale fee update must change its stored rates.";
 
+#[error(code = 31)]
+const EWrongPartner: vector<u8> = b"The partner is not the one this presale named at creation.";
+
+#[error(code = 32)]
+const ENoPartnerPayout: vector<u8> = b"The presale holds no partner payout: it has not migrated, or its partner was already paid.";
+
 // === Imports ===
 
 use blast_fun_vesting::blast_fun_linear_vesting as linear_vesting;
+
+use blast_partners::blast_partners::Partner;
 
 use blast_presale::{
     blast_presale_admin::{AdminCap, AdminRegistry},

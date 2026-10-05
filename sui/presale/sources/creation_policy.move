@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// Blast's allowlists for new presales: the Quote coins a sale may raise and the migrators, in this
-/// package or another, that may create one.
+/// Blast's allowlists for new presales: the Quote coins a sale may raise, the migrators, in this
+/// package or another, that may create one, and the Blast partners a sale may name.
 ///
 /// A presale is checked once, when it is created. Later changes apply only to later sales, so a
-/// delisting never strands a live sale's commitments or blocks its migration.
+/// delisting never strands a live sale's commitments, blocks its migration, or stops paying its
+/// partner.
 module blast_presale::creation_policy;
 
 // === Public Types ===
@@ -16,6 +17,10 @@ public struct CreationPolicy has key {
     allowed_quotes: VecSet<TypeName>,
     allowed_migration_witnesses: VecSet<TypeName>,
 }
+
+/// Dynamic-field key of a Blast partner new presales may name. Its value is the time the partner
+/// stops being accepted: `u64::MAX` until Blast removes it.
+public struct PartnerKey(ID) has copy, drop, store;
 
 // === Private Initialization ===
 
@@ -68,6 +73,51 @@ public fun set_migration_witness_allowed<MigrationWitness: drop>(
     event::emit(MigrationWitnessSet { migration_witness, allowed });
 }
 
+/// Lets new presales name `partner`, at once. Adding a partner whose removal is pending cancels
+/// the removal; adding a removed partner accepts it again.
+public fun add_partner(
+    self: &mut CreationPolicy,
+    admin_registry: &AdminRegistry,
+    admin_cap: &AdminCap,
+    partner: &Partner,
+) {
+    admin_registry.assert_admin_cap(admin_cap);
+    let partner_id = object::id(partner);
+    let key = PartnerKey(partner_id);
+
+    if (self.id.has_dynamic_field(key)) {
+        let accepted_until_ms: &mut u64 = self.id.dynamic_field_mut(key);
+        assert!(*accepted_until_ms != std::u64::max_value!(), EAllowanceUnchanged);
+        *accepted_until_ms = std::u64::max_value!();
+    } else {
+        self.id.add_dynamic_field(key, std::u64::max_value!());
+    };
+
+    event::emit(PartnerAdded { partner_id });
+}
+
+/// Stops new presales naming `partner` after the notice Blast gives for every change to a
+/// partner, `blast_partners::delay_ms()`. Sales that already name it keep paying it.
+public fun remove_partner(
+    self: &mut CreationPolicy,
+    admin_registry: &AdminRegistry,
+    admin_cap: &AdminCap,
+    partner: &Partner,
+    clock: &Clock,
+) {
+    admin_registry.assert_admin_cap(admin_cap);
+    let partner_id = object::id(partner);
+    let now_ms = clock.timestamp_ms();
+    self.assert_partner(partner_id, now_ms);
+    let accepted_until_ms = now_ms + partners::delay_ms();
+
+    let current: &mut u64 = self.id.dynamic_field_mut(PartnerKey(partner_id));
+    assert!(*current == std::u64::max_value!(), EAllowanceUnchanged);
+    *current = accepted_until_ms;
+
+    event::emit(PartnerRemoved { partner_id, accepted_until_ms });
+}
+
 // === Package Functions ===
 
 /// Aborts unless a new presale may raise `Quote` and be created by `MigrationWitness`'s migrator.
@@ -82,6 +132,15 @@ public(package) fun assert_allowed<Quote, MigrationWitness>(self: &CreationPolic
             .contains(&type_name::with_original_ids<MigrationWitness>()),
         EMigrationWitnessNotAllowed,
     );
+}
+
+/// Aborts unless a new presale may name the partner `partner_id` at `now_ms`.
+public(package) fun assert_partner(self: &CreationPolicy, partner_id: ID, now_ms: u64) {
+    let key = PartnerKey(partner_id);
+
+    assert!(self.id.has_dynamic_field(key), EPartnerNotAccepted);
+    let accepted_until_ms: u64 = *self.id.dynamic_field(key);
+    assert!(now_ms < accepted_until_ms, EPartnerNotAccepted);
 }
 
 // === Private Functions ===
@@ -132,6 +191,16 @@ public fun migration_witness_set_fields(event: &MigrationWitnessSet): (TypeName,
     (event.migration_witness, event.allowed)
 }
 
+#[test_only]
+public fun partner_added_fields(event: &PartnerAdded): ID {
+    event.partner_id
+}
+
+#[test_only]
+public fun partner_removed_fields(event: &PartnerRemoved): (ID, u64) {
+    (event.partner_id, event.accepted_until_ms)
+}
+
 // === Events ===
 
 /// Presales created afterward may (`allowed`) or may not raise `quote`.
@@ -147,10 +216,22 @@ public struct MigrationWitnessSet has copy, drop {
     allowed: bool,
 }
 
+/// Presales created from now on may name the partner `partner_id`.
+public struct PartnerAdded has copy, drop {
+    partner_id: ID,
+}
+
+/// Presales created before `accepted_until_ms` may still name the partner `partner_id`; later ones
+/// may not.
+public struct PartnerRemoved has copy, drop {
+    partner_id: ID,
+    accepted_until_ms: u64,
+}
+
 // === Errors ===
 
 #[error(code = 0)]
-const EAllowanceUnchanged: vector<u8> = b"An allowlist update must change whether the type is allowed.";
+const EAllowanceUnchanged: vector<u8> = b"An allowlist update must change whether the type or partner is allowed.";
 
 #[error(code = 1)]
 const EQuoteNotAllowed: vector<u8> = b"This Quote type is not allowed for new presales.";
@@ -161,10 +242,20 @@ const EMigrationWitnessNotAllowed: vector<u8> = b"This migration witness is not 
 #[error(code = 3)]
 const EInvalidMigrationWitness: vector<u8> = b"A migration witness must be a struct, never a primitive or vector any caller can construct.";
 
+#[error(code = 4)]
+const EPartnerNotAccepted: vector<u8> = b"New presales may not name this partner.";
+
 // === Imports ===
+
+use blast_partners::blast_partners::{Self as partners, Partner};
 
 use blast_presale::blast_presale_admin::{AdminCap, AdminRegistry};
 
 use std::type_name::{Self, TypeName};
 
-use sui::{event, vec_set::{Self, VecSet}};
+use sui::{clock::Clock, dynamic_field, event, vec_set::{Self, VecSet}};
+
+use fun dynamic_field::add as UID.add_dynamic_field;
+use fun dynamic_field::borrow as UID.dynamic_field;
+use fun dynamic_field::borrow_mut as UID.dynamic_field_mut;
+use fun dynamic_field::exists as UID.has_dynamic_field;

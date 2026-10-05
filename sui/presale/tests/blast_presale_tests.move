@@ -60,6 +60,10 @@ const VESTING_PERIODS: u64 = 4;
 const VESTING_DURATION_MS: u64 = VESTING_PERIOD_MS * VESTING_PERIODS;
 const MAX_VESTING_DURATION_MS: u64 = 1 << 63;
 
+/// Where the Blast partner is paid, and its share of Blast's raise share: 40%.
+const PARTNER_RECIPIENT: address = @0x9A27;
+const PARTNER_SHARE_BPS: u64 = 4_000;
+
 // === Test-Only Types ===
 
 public struct BLAST_PRESALE_TESTS() has drop;
@@ -861,12 +865,12 @@ fun migration_pays_blast_its_snapshotted_shares_at_the_current_destination() {
 
     assert_eq!(fixture.migrate(), vector[LIQUIDITY_TOKENS, 767]);
 
-    let (presale_id, destination, paid_quote, paid_tokens) = only_event<
-        ProtocolFeesPaid<BLAST_PRESALE_TESTS, QUOTE>,
-    >().protocol_fees_paid_fields();
+    let paid = only_event<ProtocolFeesPaid<BLAST_PRESALE_TESTS, QUOTE>>();
+    let (presale_id, destination, paid_quote, paid_tokens) = paid.protocol_fees_paid_fields();
     assert_eq!(presale_id, fixture.presale_id);
     assert_eq!(destination, NEW_TREASURY);
     assert_eq!(vector[paid_quote, paid_tokens], vector[33, PROTOCOL_TOKENS]);
+    assert_eq!(paid.protocol_fees_paid_partner_quote(), 0);
 
     let (_, _, lp_quote, liquidity_tokens, recipient_tokens) = only_event<
         PresaleMigrated<BLAST_PRESALE_TESTS, QUOTE>,
@@ -875,6 +879,7 @@ fun migration_pays_blast_its_snapshotted_shares_at_the_current_destination() {
         vector[lp_quote, liquidity_tokens, recipient_tokens],
         vector[767, LIQUIDITY_TOKENS, RECIPIENT_A_TOKENS + FEE_PAYING_RECIPIENT_B_TOKENS],
     );
+    assert_eq!(fixture.unpaid_protocol_quote(), option::none());
     fixture.take_payout(NEW_TREASURY, PROTOCOL_TOKENS, 33);
     fixture.take_quote(RAISE_RECIPIENT, 200);
 
@@ -1574,6 +1579,186 @@ fun vesting_terms_stay_within_the_technical_bound() {
     presale::vesting_terms(0, MAX_VESTING_DURATION_MS / 2 + 1, 2);
 }
 
+#[test]
+/// A sale naming a Blast partner releases the same raise and LP as any sale, but its migration
+/// holds Blast's shares. `pay_partner` then pays the partner its cut of Blast's raise share only,
+/// and Blast the rest of it and its whole token share; claims are unchanged.
+fun a_partnered_sale_pays_its_partner_a_cut_of_blasts_raise_share_only() {
+    let mut ctx = tx_context::dummy();
+    let partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
+    let mut fixture = start_partnered_sale(&partner);
+
+    assert_eq!(fixture.migrate(), vector[LIQUIDITY_TOKENS, 767]);
+    assert!(event::events_by_type<ProtocolFeesPaid<BLAST_PRESALE_TESTS, QUOTE>>().is_empty());
+    assert_eq!(fixture.unpaid_protocol_quote(), option::some(33));
+    fixture.take_quote(RAISE_RECIPIENT, 200);
+    fixture.assert_treasury_received_nothing();
+
+    fixture.pay_partner(KEEPER, &partner);
+
+    // 40% of Blast's 33 Quote is 13.2: the partner takes 13 and Blast keeps 20 and every token.
+    let paid = only_event<ProtocolFeesPaid<BLAST_PRESALE_TESTS, QUOTE>>();
+    let (presale_id, destination, paid_quote, paid_tokens) = paid.protocol_fees_paid_fields();
+    assert_eq!(presale_id, fixture.presale_id);
+    assert_eq!(destination, TREASURY);
+    assert_eq!(vector[paid_quote, paid_tokens], vector[20, PROTOCOL_TOKENS]);
+    assert_eq!(paid.protocol_fees_paid_partner_quote(), 13);
+    let (partner_id, partner_quote) = only_event<PartnerPaid<QUOTE>>().partner_paid_fields();
+    assert_eq!(partner_id, object::id(&partner));
+    assert_eq!(partner_quote, 13);
+    assert!(event::events_by_type<PartnerPaid<BLAST_PRESALE_TESTS>>().is_empty());
+    fixture.take_payout(TREASURY, PROTOCOL_TOKENS, 20);
+    assert_eq!(fixture.unpaid_protocol_quote(), option::none());
+
+    assert_eq!(fixture.claim(KEEPER, ALICE), vector[1_000, 2_500, 750, 3_000]);
+    assert_eq!(fixture.claim(KEEPER, BOB), vector[3_000, 7_501, 2_250, 0]);
+    assert_eq!(fixture.custody(), vector[4_000, 0, 2, 0, 0, 0, 0, 0]);
+
+    destroy(partner);
+    fixture.destroy_migrated_cap();
+    fixture.end();
+}
+
+#[test]
+/// The partner is paid the share in force when `pay_partner` runs, not the one at creation.
+fun the_partner_is_paid_its_share_in_force_at_payment() {
+    let mut ctx = tx_context::dummy();
+    let partner = partners::new_scheduled_for_testing(
+        PARTNER_RECIPIENT,
+        PARTNER_SHARE_BPS,
+        8_000,
+        LIQUIDITY_DEADLINE_MS,
+        &mut ctx,
+    );
+    let mut fixture = start_partnered_sale(&partner);
+    fixture.migrate();
+    fixture.set_time(LIQUIDITY_DEADLINE_MS);
+
+    fixture.pay_partner(KEEPER, &partner);
+
+    // 80% of 33 is 26.4: the partner takes 26 and Blast keeps 7.
+    let paid = only_event<ProtocolFeesPaid<BLAST_PRESALE_TESTS, QUOTE>>();
+    let (_, _, paid_quote, _) = paid.protocol_fees_paid_fields();
+    assert_eq!(vector[paid_quote, paid.protocol_fees_paid_partner_quote()], vector[7, 26]);
+
+    destroy(partner);
+    fixture.end();
+}
+
+#[test]
+/// A partner whose share is zero is paid nothing and emits no `PartnerPaid`; Blast keeps its
+/// whole raise share.
+fun a_zero_share_partner_is_paid_nothing() {
+    let mut ctx = tx_context::dummy();
+    let partner = new_partner(0, &mut ctx);
+    let mut fixture = start_partnered_sale(&partner);
+    fixture.migrate();
+
+    fixture.pay_partner(KEEPER, &partner);
+
+    let paid = only_event<ProtocolFeesPaid<BLAST_PRESALE_TESTS, QUOTE>>();
+    let (_, _, paid_quote, paid_tokens) = paid.protocol_fees_paid_fields();
+    assert_eq!(vector[paid_quote, paid_tokens], vector[33, PROTOCOL_TOKENS]);
+    assert_eq!(paid.protocol_fees_paid_partner_quote(), 0);
+    assert!(event::events_by_type<PartnerPaid<QUOTE>>().is_empty());
+
+    destroy(partner);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = creation_policy::EPartnerNotAccepted,
+    location = blast_presale::creation_policy,
+)]
+/// A sale may name only a partner Blast accepts for new presales.
+fun a_sale_cannot_name_a_partner_blast_has_not_accepted() {
+    let mut ctx = tx_context::dummy();
+    let clock = clock::create_for_testing(&mut ctx);
+    let partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
+    let fee_policy = fee_policy::new_for_testing(&mut ctx);
+    let creation_policy = creation_policy::allowing_for_testing<QUOTE, TEST_MIGRATOR>(&mut ctx);
+    let (treasury_cap, mut currency) = new_currency(&mut ctx);
+    let (mut sale, _cap) = new_presale<QUOTE>(
+        treasury_cap,
+        &mut currency,
+        valid_sale_terms(),
+        &creation_policy,
+        &fee_policy,
+        &mut ctx,
+    );
+
+    sale.set_partner(&creation_policy, &partner, &clock);
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidLifecycle, location = blast_presale::blast_presale)]
+/// Sharing a sale fixes its partner: nobody can name or change one afterward.
+fun a_shared_sales_partner_cannot_change() {
+    let mut ctx = tx_context::dummy();
+    let partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
+    let mut fixture = start_partnered_sale(&partner);
+    fixture.scenario.next_tx(KEEPER);
+    let mut sale = fixture.take_presale();
+    let creation_policy = accepting_partner(&partner, fixture.scenario.ctx());
+
+    sale.set_partner(&creation_policy, &partner, &fixture.clock);
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = presale::ENoPartnerPayout, location = blast_presale::blast_presale)]
+/// A funded sale that has not migrated owes its partner nothing: it may still be refunded.
+fun a_partner_cannot_be_paid_before_migration() {
+    let mut ctx = tx_context::dummy();
+    let partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
+    let mut fixture = start_partnered_sale(&partner);
+
+    fixture.pay_partner(KEEPER, &partner);
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = presale::ENoPartnerPayout, location = blast_presale::blast_presale)]
+/// A partnered sale pays Blast and its partner once.
+fun a_partner_is_paid_once() {
+    let mut ctx = tx_context::dummy();
+    let partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
+    let mut fixture = start_partnered_sale(&partner);
+    fixture.migrate();
+    fixture.pay_partner(KEEPER, &partner);
+
+    fixture.pay_partner(KEEPER, &partner);
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EWrongPartner, location = blast_presale::blast_presale)]
+/// Only the partner the sale named is paid, checked before anything is owed.
+fun another_partner_cannot_be_paid() {
+    let mut ctx = tx_context::dummy();
+    let partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
+    let other_partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
+    let mut fixture = start_partnered_sale(&partner);
+
+    fixture.pay_partner(KEEPER, &other_partner);
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EWrongPartner, location = blast_presale::blast_presale)]
+/// A sale without a partner pays Blast at migration and never pays a partner.
+fun an_unpartnered_sale_pays_no_partner() {
+    let mut ctx = tx_context::dummy();
+    let partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
+    let mut fixture = start_funded_sale();
+    fixture.migrate();
+
+    fixture.pay_partner(KEEPER, &partner);
+    abort
+}
+
 // === Test Helpers ===
 
 /// Starts a fee-free sale under `eligibility` with no raise allocations or uncapped phase.
@@ -1832,6 +2017,65 @@ fun start_configured(
     Fixture { scenario, clock, fee_policy, presale_id }
 }
 
+/// Creates the sale `migration_pays_blast_its_snapshotted_shares_at_the_current_destination`
+/// creates, names `partner` before sharing it, then lets Alice and Bob overfill it and a keeper
+/// settle it as funded.
+fun start_partnered_sale(partner: &Partner): Fixture {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    clock.set_for_testing(START_MS);
+    let fee_policy = treasury_fee_policy(PROTOCOL_RAISE_BPS, PROTOCOL_TOKEN_BPS, scenario.ctx());
+    let creation_policy = accepting_partner(partner, scenario.ctx());
+    let mut terms = valid_sale_terms();
+    terms.recipient_allocations = vector[
+        recipient_a_share(option::none()),
+        presale::recipient_share(RECIPIENT_B, bps::new(FEE_PAYING_RECIPIENT_B_BPS)),
+    ];
+    terms.raise_allocations = vector[presale::recipient_share(RAISE_RECIPIENT, bps::new(2_000))];
+    terms.eligibility = presale::open_eligibility(WALLET_CAP, 2, RAISE_TARGET / 2);
+    let (treasury_cap, mut currency) = new_currency(scenario.ctx());
+    let (mut sale, cap) = new_presale<QUOTE>(
+        treasury_cap,
+        &mut currency,
+        terms,
+        &creation_policy,
+        &fee_policy,
+        scenario.ctx(),
+    );
+    let presale_id = object::id(&sale);
+
+    sale.set_partner(&creation_policy, partner, &clock);
+    sale.share(START_MS, &clock);
+
+    let opened = only_event<PresaleOpened<BLAST_PRESALE_TESTS, QUOTE>>();
+    assert_eq!(opened.opened_partner_id(), option::some(object::id(partner)));
+    transfer::public_transfer(cap, CREATOR);
+    destroy(currency);
+    creation_policy.destroy_for_testing();
+    let mut fixture = Fixture { scenario, clock, fee_policy, presale_id };
+    fixture.commit_open(ALICE, 1_000);
+    fixture.commit_open(BOB, 3_000);
+    fixture.set_time(END_MS);
+    fixture.settle(KEEPER);
+
+    fixture
+}
+
+/// A creation policy allowing the fixture's Quote and migrator that also accepts `partner`.
+fun accepting_partner(partner: &Partner, ctx: &mut TxContext): CreationPolicy {
+    let mut creation_policy = creation_policy::allowing_for_testing<QUOTE, TEST_MIGRATOR>(ctx);
+    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(ctx);
+    creation_policy.add_partner(&admin_registry, &admin_cap, partner);
+    admin_registry.destroy_for_testing(admin_cap);
+
+    creation_policy
+}
+
+/// A Blast partner paid at `PARTNER_RECIPIENT` whose `share_bps` is in force.
+fun new_partner(share_bps: u64, ctx: &mut TxContext): Partner {
+    partners::new_for_testing(PARTNER_RECIPIENT, share_bps, ctx)
+}
+
 /// A fee policy paying `TREASURY`, charging the given raise and token rates and no LP-fee share.
 fun treasury_fee_policy(
     protocol_raise_bps: u64,
@@ -1974,6 +2218,10 @@ fun assert_opened_event(presale_id: ID, uncapped_from_ms: u64) {
     assert_eq!(
         vector[start_ms, end_ms, deadline_ms, opened_uncapped_from_ms],
         vector[START_MS, END_MS, LIQUIDITY_DEADLINE_MS, uncapped_from_ms],
+    );
+    assert_eq!(
+        only_event<PresaleOpened<BLAST_PRESALE_TESTS, QUOTE>>().opened_partner_id(),
+        option::none(),
     );
 }
 
@@ -2405,6 +2653,27 @@ fun migrate(self: &mut Fixture): vector<u64> {
     released
 }
 
+/// Has `sender` pay the sale's partner and Blast the shares its migration held.
+fun pay_partner(self: &mut Fixture, sender: address, partner: &Partner) {
+    self.next_tx!(sender, |fixture| {
+        let mut sale = fixture.take_presale();
+        sale.pay_partner(&fixture.fee_policy, partner, &fixture.clock, fixture.ctx!());
+        fixture.return_presale(sale);
+    });
+}
+
+/// Blast's raise share the sale holds for `pay_partner`, if it still does.
+fun unpaid_protocol_quote(self: &mut Fixture): Option<u64> {
+    let mut unpaid = vector[];
+    self.next_tx!(KEEPER, |fixture| {
+        let sale = fixture.take_presale();
+        unpaid.push_back(sale.unpaid_protocol_quote_for_testing());
+        fixture.return_presale(sale);
+    });
+
+    unpaid.pop_back()
+}
+
 fun take_recipient_allocations(self: &mut Fixture) {
     self.next_tx!(RECIPIENT_A, |fixture| assert_eq!(
         fixture.scenario.take_from_sender<Coin<BLAST_PRESALE_TESTS>>().burn_for_testing(),
@@ -2611,6 +2880,8 @@ use blast_presale::{bluefin, cetus, migration_math, blast_presale::{
 }};
 
 use blast_fun_vesting::blast_fun_linear_vesting::{Vesting, VestingCreated};
+
+use blast_partners::blast_partners::{Self as partners, Partner, PartnerPaid};
 
 use blast_presale::{
     blast_presale::ProtocolFeesPaid,

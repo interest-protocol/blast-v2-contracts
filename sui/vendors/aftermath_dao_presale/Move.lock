@@ -106,11 +106,23 @@ use_environment = "mainnet"
 manifest_digest = "CD547CB1ACCE0880C835DAED2D8FFCB91D56C833AE5240D3AA5B918398263195"
 deps = { MoveStdlib = "MoveStdlib_2" }
 
+[pinned.mainnet.blast_admin]
+source = { local = "../../admin" }
+use_environment = "mainnet"
+manifest_digest = "E26908079EDB3A11E96711E1FF8CDE5BBA0499612C6BF3BE67995DA6D8BED85B"
+deps = { Sui = "Sui", blast_fun_timelock = "blast_fun_timelock" }
+
 [pinned.mainnet.blast_aftermath_dao_presale]
 source = { root = true }
 use_environment = "mainnet"
 manifest_digest = "E43A895D64C8BB88C9D250C4E140F4F5F12BFFD6EA18143E5DC986221F6063E0"
 deps = { AftermathAmm = "AftermathAmm", AftermathDaoFeePools = "AftermathDaoFeePools", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate", Sui = "Sui", blast_presale = "blast_presale" }
+
+[pinned.mainnet.blast_fun_timelock]
+source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/timelock", rev = "63b6cf86c0e1a74f699610fe182b1de8d8789a14" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.blast_fun_vesting]
 source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/vesting", rev = "63b6cf86c0e1a74f699610fe182b1de8d8789a14" }
@@ -118,8 +130,14 @@ use_environment = "mainnet"
 manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
 deps = { std = "MoveStdlib", sui = "Sui" }
 
+[pinned.mainnet.blast_partners]
+source = { local = "../../partners" }
+use_environment = "mainnet"
+manifest_digest = "D5CCB833332CD32F07926CDFF448E853BA674CB7110877E91BA125049FDB2026"
+deps = { blast_admin = "blast_admin", blast_fun_timelock = "blast_fun_timelock", std = "MoveStdlib", sui = "Sui" }
+
 [pinned.mainnet.blast_presale]
 source = { local = "../../presale" }
 use_environment = "mainnet"
-manifest_digest = "386D91D6D40EAFC991BE42B93B86F0320E7A64D2712AB854E24C747E3F3ABEE5"
-deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate", Sui = "Sui", blast_fun_vesting = "blast_fun_vesting" }
+manifest_digest = "F3A32C8A899FB4DFD11AFC588C778929D4AA3C8FD393E48493FF4304D0980A4D"
+deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate", Sui = "Sui", blast_fun_vesting = "blast_fun_vesting", blast_partners = "blast_partners" }
