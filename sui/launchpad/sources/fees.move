@@ -79,19 +79,19 @@ public(package) fun claim_creator_fees<Meme, Quote>(
     )
 }
 
+/// Withdraws every Blast balance for the launch to pay out.
 public(package) fun claim_protocol_fees<Meme, Quote>(
     self: &mut FeeLedger<Meme, Quote>,
-    ctx: &mut TxContext,
-): (Coin<Meme>, Coin<Quote>, Coin<SUI>) {
+): (Balance<Meme>, Balance<Quote>, Balance<SUI>) {
     assert!(
         self.protocol_meme.value() > 0 || self.protocol_quote.value() > 0 || self.protocol_sui.value() > 0,
         blast_fun::errors::nothing_accrued!(),
     );
 
     (
-        self.protocol_meme.withdraw_all().into_coin(ctx),
-        self.protocol_quote.withdraw_all().into_coin(ctx),
-        self.protocol_sui.withdraw_all().into_coin(ctx),
+        self.protocol_meme.withdraw_all(),
+        self.protocol_quote.withdraw_all(),
+        self.protocol_sui.withdraw_all(),
     )
 }
 

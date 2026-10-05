@@ -18,6 +18,9 @@ const PROTOCOL_ADMIN: address = @0xAD;
 /// Where the fixture partner is paid.
 const PARTNER: address = @0x9A27;
 
+/// Where the fixture pays Blast's fees.
+const TREASURY: address = @0x7EA5;
+
 /// The fixture partner's share of Blast's fees: 40%.
 const PARTNER_SHARE_BPS: u64 = 4_000;
 
@@ -1513,10 +1516,13 @@ fun zero_launch_trade_fees_sell_all_bought_meme_without_fee_balances() {
 }
 
 #[test]
-fun live_protocol_share_routes_and_claims_launch_trade_fees() {
+/// Anyone may claim Blast's trade fees: they go to the treasury, never to the sender, and the
+/// empty SUI balance sends nothing.
+fun anyone_claims_blasts_trade_fees_for_the_treasury() {
     let mut fixture = start();
+    let claimed;
 
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+    fixture.next_tx!(BOB, |f| {
         f
             .runtime_config
             .set_protocol_fee_share(&f.package_version, &fee_admin(), bps::new(2_500));
@@ -1531,25 +1537,103 @@ fun live_protocol_share_routes_and_claims_launch_trade_fees() {
         assert!(protocol_quote > 0);
         assert!(creator_quote > protocol_quote);
 
-        let (meme_fees, quote_fees, sui_fees) = launch.claim_protocol_fees(
-            &f.package_version,
-            &treasury_admin(),
-            f.ctx!(),
-        );
+        launch.claim_protocol_fees(&f.package_version, &f.runtime_config, f.ctx!());
 
-        assert_eq!(meme_fees.value(), protocol_meme);
-        assert_eq!(quote_fees.value(), protocol_quote);
-        assert_eq!(sui_fees.value(), 0);
+        let (protocol_meme_left, creator_meme_left, protocol_quote_left, creator_quote_left) = launch
+            .fee_totals_for_testing();
+        assert_eq!(protocol_meme_left, 0);
+        assert_eq!(creator_meme_left, creator_meme);
+        assert_eq!(protocol_quote_left, 0);
+        assert_eq!(creator_quote_left, creator_quote);
         assert_eq!(
             bcs::to_bytes(&collect_one<events::ProtocolFeesClaimed>()),
-            u64_payload(object::id(&launch), vector[protocol_meme, protocol_quote, 0, 0, 0, 0]),
+            protocol_fees_claimed_bytes(
+                object::id(&launch),
+                TREASURY,
+                vector[protocol_meme, protocol_quote, 0, 0, 0, 0],
+            ),
         );
+        claimed = vector[protocol_meme, protocol_quote];
 
         destroy(meme);
         destroy(refund);
-        destroy(meme_fees);
-        destroy(quote_fees);
-        destroy(sui_fees);
+        destroy(launch);
+    });
+
+    fixture.next_tx!(BOB, |f| {
+        f.assert_paid(TREASURY, claimed[0], claimed[1], 0);
+        f.assert_paid(BOB, 0, 0, 0);
+    });
+
+    fixture.end();
+}
+
+#[test]
+/// A treasury administrator redirects every later claim; the old treasury keeps what it was paid
+/// and receives nothing more.
+fun a_rotated_treasury_receives_every_later_claim() {
+    let mut fixture = start();
+    let claimed;
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f
+            .runtime_config
+            .set_protocol_fee_share(&f.package_version, &fee_admin(), bps::new(2_500));
+        f.set_creation_fee(CREATION_FEE);
+        let launch = f.new_default_launch(CREATOR);
+        let mut launch = f.open_launch(launch);
+        let launch_id = object::id(&launch);
+
+        launch.claim_protocol_fees(&f.package_version, &f.runtime_config, f.ctx!());
+        f.runtime_config.set_treasury(&f.package_version, &treasury_admin(), ALICE);
+        let (meme, refund) = f.buy(&mut launch, 10_000_000, 1);
+        let (protocol_meme, _, protocol_quote, _) = launch.fee_totals_for_testing();
+        launch.claim_protocol_fees(&f.package_version, &f.runtime_config, f.ctx!());
+
+        let claims = collect<events::ProtocolFeesClaimed>();
+        assert_eq!(claims.length(), 2);
+        assert_eq!(
+            bcs::to_bytes(&claims[0]),
+            protocol_fees_claimed_bytes(launch_id, TREASURY, vector[0, 0, CREATION_FEE, 0, 0, 0]),
+        );
+        assert_eq!(
+            bcs::to_bytes(&claims[1]),
+            protocol_fees_claimed_bytes(
+                launch_id,
+                ALICE,
+                vector[protocol_meme, protocol_quote, 0, 0, 0, 0],
+            ),
+        );
+        claimed = vector[protocol_meme, protocol_quote];
+
+        destroy(meme);
+        destroy(refund);
+        destroy(launch);
+    });
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f.assert_paid(TREASURY, 0, 0, CREATION_FEE);
+        f.assert_paid(ALICE, claimed[0], claimed[1], 0);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+/// A stale package is refused before the partner check, so old bytecode cannot claim.
+fun claim_protocol_fees_checks_the_version_before_the_partner() {
+    let mut fixture = start();
+
+    fixture.next_tx!(BOB, |f| {
+        f.set_creation_fee(CREATION_FEE);
+        let partner = f.accepted_partner();
+        let ticket = f.new_ticket(CREATOR);
+        let mut launch = f.intake_with_partner(ticket, &partner);
+        f.package_version.set_for_testing(2);
+
+        launch.claim_protocol_fees(&f.package_version, &f.runtime_config, f.ctx!());
+
+        destroy(partner);
         destroy(launch);
     });
 
@@ -1559,7 +1643,7 @@ fun live_protocol_share_routes_and_claims_launch_trade_fees() {
 // --- Creation fee and partner ---
 
 #[test]
-/// The creation fee joins Blast's fees on the launch, and Blast claims it before any trade.
+/// The creation fee joins Blast's fees on the launch, and the treasury is paid it before any trade.
 fun finalize_holds_the_creation_fee_for_blasts_claim() {
     let mut fixture = start();
 
@@ -1581,25 +1665,23 @@ fun finalize_holds_the_creation_fee_for_blasts_claim() {
             launch_created_bytes_with(object::id(&launch), ticket_id, CREATION_FEE, option::none()),
         );
 
-        let (meme_fees, quote_fees, sui_fees) = launch.claim_protocol_fees(
-            &f.package_version,
-            &treasury_admin(),
-            f.ctx!(),
-        );
+        launch.claim_protocol_fees(&f.package_version, &f.runtime_config, f.ctx!());
 
-        assert_eq!(meme_fees.value(), 0);
-        assert_eq!(quote_fees.value(), 0);
-        assert_eq!(sui_fees.value(), CREATION_FEE);
         assert_eq!(launch.protocol_sui_for_testing(), 0);
         assert_eq!(
             bcs::to_bytes(&collect_one<events::ProtocolFeesClaimed>()),
-            u64_payload(object::id(&launch), vector[0, 0, CREATION_FEE, 0, 0, 0]),
+            protocol_fees_claimed_bytes(
+                object::id(&launch),
+                TREASURY,
+                vector[0, 0, CREATION_FEE, 0, 0, 0],
+            ),
         );
 
-        destroy(meme_fees);
-        destroy(quote_fees);
-        destroy(sui_fees);
         destroy(launch);
+    });
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f.assert_paid(TREASURY, 0, 0, CREATION_FEE);
     });
 
     fixture.end();
@@ -1673,12 +1755,13 @@ fun set_partner_rejects_a_partner_launches_may_not_name() {
 }
 
 #[test]
-/// Blast's claim pays the launch's partner its share of the creation fee and of Blast's trade fees
-/// in both assets, each rounded down, and returns the rest; the creator's fees are untouched.
+/// The partner itself can claim: it is paid its share of the creation fee and of Blast's trade fees
+/// in both assets, each rounded down, and the treasury the rest; the creator's fees are untouched.
 fun claim_protocol_fees_with_partner_pays_the_partner_its_share() {
     let mut fixture = start();
+    let claimed;
 
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+    fixture.next_tx!(PARTNER, |f| {
         f
             .runtime_config
             .set_protocol_fee_share(&f.package_version, &fee_admin(), bps::new(2_500));
@@ -1698,18 +1781,15 @@ fun claim_protocol_fees_with_partner_pays_the_partner_its_share() {
             (protocol_quote as u128) * (PARTNER_SHARE_BPS as u128) / 10_000
         ) as u64;
 
-        let (meme_fees, quote_fees, sui_fees) = launch.claim_protocol_fees_with_partner(
+        launch.claim_protocol_fees_with_partner(
             &f.package_version,
-            &treasury_admin(),
+            &f.runtime_config,
             &partner,
             &f.clock,
             f.ctx!(),
         );
 
         assert!(partner_meme > 0 && partner_quote > 0);
-        assert_eq!(meme_fees.value(), protocol_meme - partner_meme);
-        assert_eq!(quote_fees.value(), protocol_quote - partner_quote);
-        assert_eq!(sui_fees.value(), CREATION_FEE - 400);
         let (protocol_meme_left, creator_meme_left, protocol_quote_left, creator_quote_left) = launch
             .fee_totals_for_testing();
         assert_eq!(protocol_meme_left, 0);
@@ -1718,8 +1798,9 @@ fun claim_protocol_fees_with_partner_pays_the_partner_its_share() {
         assert_eq!(creator_quote_left, creator_quote);
         assert_eq!(
             bcs::to_bytes(&collect_one<events::ProtocolFeesClaimed>()),
-            u64_payload(
+            protocol_fees_claimed_bytes(
                 object::id(&launch),
+                TREASURY,
                 vector[
                     protocol_meme - partner_meme,
                     protocol_quote - partner_quote,
@@ -1742,14 +1823,16 @@ fun claim_protocol_fees_with_partner_pays_the_partner_its_share() {
         assert_eq!(paid_quote, partner_quote);
         assert_eq!(sui_partner_id, partner_id);
         assert_eq!(paid_sui, 400);
+        claimed = vector[protocol_meme - partner_meme, protocol_quote - partner_quote];
 
         destroy(partner);
         destroy(meme);
         destroy(refund);
-        destroy(meme_fees);
-        destroy(quote_fees);
-        destroy(sui_fees);
         destroy(launch);
+    });
+
+    fixture.next_tx!(PARTNER, |f| {
+        f.assert_paid(TREASURY, claimed[0], claimed[1], CREATION_FEE - 400);
     });
 
     fixture.end();
@@ -1757,11 +1840,12 @@ fun claim_protocol_fees_with_partner_pays_the_partner_its_share() {
 
 #[test]
 /// Blast's one-time migration Meme and Quote fees enter the launch ledger, so the launch's partner
-/// receives its configured share when Blast claims them.
+/// receives its configured share of them at the claim and the treasury the rest.
 fun claim_protocol_fees_with_partner_includes_migration_fees() {
     let mut fixture = start();
+    let claimed;
 
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+    fixture.next_tx!(BOB, |f| {
         f
             .runtime_config
             .set_protocol_fee_share(&f.package_version, &fee_admin(), bps::new(2_500));
@@ -1785,9 +1869,9 @@ fun claim_protocol_fees_with_partner_includes_migration_fees() {
         let partner_quote = (
             (protocol_quote as u128) * (PARTNER_SHARE_BPS as u128) / 10_000
         ) as u64;
-        let (meme_fees, quote_fees, sui_fees) = launch.claim_protocol_fees_with_partner(
+        launch.claim_protocol_fees_with_partner(
             &f.package_version,
-            &treasury_admin(),
+            &f.runtime_config,
             &partner,
             &f.clock,
             f.ctx!(),
@@ -1795,9 +1879,6 @@ fun claim_protocol_fees_with_partner_includes_migration_fees() {
 
         assert!(protocol_meme >= EXPECTED_PROTOCOL_MEME);
         assert!(protocol_quote >= EXPECTED_PROTOCOL_QUOTE);
-        assert_eq!(meme_fees.value(), protocol_meme - partner_meme);
-        assert_eq!(quote_fees.value(), protocol_quote - partner_quote);
-        assert_eq!(sui_fees.value(), CREATION_FEE - 400);
         let (protocol_meme_left, creator_meme_left, protocol_quote_left, creator_quote_left) = launch
             .fee_totals_for_testing();
         assert_eq!(protocol_meme_left, 0);
@@ -1812,15 +1893,17 @@ fun claim_protocol_fees_with_partner_includes_migration_fees() {
         assert_eq!(paid_meme, partner_meme);
         assert_eq!(quote_partner_id, partner_id);
         assert_eq!(paid_quote, partner_quote);
+        claimed = vector[protocol_meme - partner_meme, protocol_quote - partner_quote];
 
         destroy(partner);
         destroy(pool_meme);
         destroy(pool_quote);
         destroy(currency);
-        destroy(meme_fees);
-        destroy(quote_fees);
-        destroy(sui_fees);
         destroy(launch);
+    });
+
+    fixture.next_tx!(BOB, |f| {
+        f.assert_paid(TREASURY, claimed[0], claimed[1], CREATION_FEE - 400);
     });
 
     fixture.end();
@@ -1828,11 +1911,12 @@ fun claim_protocol_fees_with_partner_includes_migration_fees() {
 
 #[test]
 /// A partner whose share is zero is paid nothing and emits no `PartnerPaid`; the claim still
-/// records it, and Blast keeps its whole fee.
+/// records it, and the treasury receives Blast's whole fee.
 fun claim_protocol_fees_with_a_zero_share_partner_pays_nothing() {
     let mut fixture = start();
+    let claimed;
 
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+    fixture.next_tx!(BOB, |f| {
         f
             .runtime_config
             .set_protocol_fee_share(&f.package_version, &fee_admin(), bps::new(2_500));
@@ -1845,32 +1929,35 @@ fun claim_protocol_fees_with_a_zero_share_partner_pays_nothing() {
         let (meme, refund) = f.buy(&mut launch, 10_000_000, 1);
         let (protocol_meme, _, protocol_quote, _) = launch.fee_totals_for_testing();
 
-        let (meme_fees, quote_fees, sui_fees) = launch.claim_protocol_fees_with_partner(
+        launch.claim_protocol_fees_with_partner(
             &f.package_version,
-            &treasury_admin(),
+            &f.runtime_config,
             &partner,
             &f.clock,
             f.ctx!(),
         );
 
-        assert_eq!(meme_fees.value(), protocol_meme);
-        assert_eq!(quote_fees.value(), protocol_quote);
-        assert_eq!(sui_fees.value(), CREATION_FEE);
         assert_eq!(
             bcs::to_bytes(&collect_one<events::ProtocolFeesClaimed>()),
-            u64_payload(object::id(&launch), vector[protocol_meme, protocol_quote, CREATION_FEE, 0, 0, 0]),
+            protocol_fees_claimed_bytes(
+                object::id(&launch),
+                TREASURY,
+                vector[protocol_meme, protocol_quote, CREATION_FEE, 0, 0, 0],
+            ),
         );
         assert!(event::events_by_type<PartnerPaid<LAUNCH_TESTS>>().is_empty());
         assert!(event::events_by_type<PartnerPaid<TEST_QUOTE>>().is_empty());
         assert!(event::events_by_type<PartnerPaid<SUI>>().is_empty());
+        claimed = vector[protocol_meme, protocol_quote];
 
         destroy(partner);
         destroy(meme);
         destroy(refund);
-        destroy(meme_fees);
-        destroy(quote_fees);
-        destroy(sui_fees);
         destroy(launch);
+    });
+
+    fixture.next_tx!(BOB, |f| {
+        f.assert_paid(TREASURY, claimed[0], claimed[1], CREATION_FEE);
     });
 
     fixture.end();
@@ -1881,15 +1968,15 @@ fun claim_protocol_fees_with_a_zero_share_partner_pays_nothing() {
 fun claim_protocol_fees_with_partner_checks_the_partner_before_the_fees() {
     let mut fixture = start();
 
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+    fixture.next_tx!(BOB, |f| {
         let partner = f.accepted_partner();
         let other = f.accepted_partner();
         let ticket = f.new_ticket(CREATOR);
         let mut launch = f.intake_with_partner(ticket, &partner);
 
-        let (meme_fees, quote_fees, sui_fees) = launch.claim_protocol_fees_with_partner(
+        launch.claim_protocol_fees_with_partner(
             &f.package_version,
-            &treasury_admin(),
+            &f.runtime_config,
             &other,
             &f.clock,
             f.ctx!(),
@@ -1897,9 +1984,6 @@ fun claim_protocol_fees_with_partner_checks_the_partner_before_the_fees() {
 
         destroy(partner);
         destroy(other);
-        destroy(meme_fees);
-        destroy(quote_fees);
-        destroy(sui_fees);
         destroy(launch);
     });
 
@@ -1907,25 +1991,19 @@ fun claim_protocol_fees_with_partner_checks_the_partner_before_the_fees() {
 }
 
 #[test, expected_failure(abort_code = blast_fun::errors::EPartnerMismatch, location = blast_fun::launch)]
+/// No one can claim a partnered launch's fees without paying its partner.
 fun claim_protocol_fees_rejects_a_launch_that_names_a_partner() {
     let mut fixture = start();
 
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+    fixture.next_tx!(BOB, |f| {
         f.set_creation_fee(CREATION_FEE);
         let partner = f.accepted_partner();
         let ticket = f.new_ticket(CREATOR);
         let mut launch = f.intake_with_partner(ticket, &partner);
 
-        let (meme_fees, quote_fees, sui_fees) = launch.claim_protocol_fees(
-            &f.package_version,
-            &treasury_admin(),
-            f.ctx!(),
-        );
+        launch.claim_protocol_fees(&f.package_version, &f.runtime_config, f.ctx!());
 
         destroy(partner);
-        destroy(meme_fees);
-        destroy(quote_fees);
-        destroy(sui_fees);
         destroy(launch);
     });
 
@@ -1936,16 +2014,16 @@ fun claim_protocol_fees_rejects_a_launch_that_names_a_partner() {
 fun claim_protocol_fees_with_partner_rejects_another_partner() {
     let mut fixture = start();
 
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+    fixture.next_tx!(BOB, |f| {
         f.set_creation_fee(CREATION_FEE);
         let partner = f.accepted_partner();
         let other = f.accepted_partner();
         let ticket = f.new_ticket(CREATOR);
         let mut launch = f.intake_with_partner(ticket, &partner);
 
-        let (meme_fees, quote_fees, sui_fees) = launch.claim_protocol_fees_with_partner(
+        launch.claim_protocol_fees_with_partner(
             &f.package_version,
-            &treasury_admin(),
+            &f.runtime_config,
             &other,
             &f.clock,
             f.ctx!(),
@@ -1953,9 +2031,6 @@ fun claim_protocol_fees_with_partner_rejects_another_partner() {
 
         destroy(partner);
         destroy(other);
-        destroy(meme_fees);
-        destroy(quote_fees);
-        destroy(sui_fees);
         destroy(launch);
     });
 
@@ -1966,23 +2041,20 @@ fun claim_protocol_fees_with_partner_rejects_another_partner() {
 fun claim_protocol_fees_with_partner_rejects_a_launch_without_one() {
     let mut fixture = start();
 
-    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+    fixture.next_tx!(BOB, |f| {
         f.set_creation_fee(CREATION_FEE);
         let partner = f.accepted_partner();
         let mut launch = f.new_default_launch(CREATOR);
 
-        let (meme_fees, quote_fees, sui_fees) = launch.claim_protocol_fees_with_partner(
+        launch.claim_protocol_fees_with_partner(
             &f.package_version,
-            &treasury_admin(),
+            &f.runtime_config,
             &partner,
             &f.clock,
             f.ctx!(),
         );
 
         destroy(partner);
-        destroy(meme_fees);
-        destroy(quote_fees);
-        destroy(sui_fees);
         destroy(launch);
     });
 
@@ -2479,16 +2551,18 @@ fun start(): LaunchFixture {
     fixture
 }
 
-/// Configured launch policy with Blast's default zero protocol allocation.
+/// Configured launch policy with Blast's default zero protocol allocation, paying `TREASURY`.
 fun start_with_zero_protocol_allocation(): LaunchFixture {
     let mut scenario = test_scenario::begin(@0x0);
     let package_version = package_version::new_for_testing(scenario.ctx());
     launch_config::init_for_testing(scenario.ctx());
-    let runtime_config = runtime_config::new_disabled_for_testing(scenario.ctx());
+    let mut runtime_config = runtime_config::new_disabled_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
 
     scenario.next_tx(PROTOCOL_ADMIN);
     let mut config = scenario.take_shared<launch_config::LaunchConfig>();
+
+    runtime_config.set_treasury(&package_version, &treasury_admin(), TREASURY);
 
     config.set_quote_allowed<TEST_QUOTE>(&package_version, &listing_admin(), true);
     config.set_migration_witness_allowed<TEST_MIGRATION_WITNESS>(
@@ -2889,6 +2963,18 @@ fun launch_has_coin<T>(_: &LaunchFixture, owner: address): bool {
     test_scenario::has_most_recent_for_address<Coin<T>>(owner)
 }
 
+/// Asserts what earlier transactions paid `owner`: one coin per positive amount, none otherwise.
+fun launch_assert_paid(self: &LaunchFixture, owner: address, meme: u64, quote: u64, sui: u64) {
+    self.assert_coin<LAUNCH_TESTS>(owner, meme);
+    self.assert_coin<TEST_QUOTE>(owner, quote);
+    self.assert_coin<SUI>(owner, sui);
+}
+
+fun launch_assert_coin<T>(self: &LaunchFixture, owner: address, amount: u64) {
+    if (amount == 0) assert!(!self.has_coin<T>(owner))
+    else assert_eq!(self.take_coin<T>(owner).burn_for_testing(), amount);
+}
+
 fun launch_take_shared(self: &LaunchFixture): Launch<LAUNCH_TESTS, TEST_QUOTE> {
     self.scenario.take_shared<Launch<LAUNCH_TESTS, TEST_QUOTE>>()
 }
@@ -2952,10 +3038,19 @@ fun collect_one<T: copy + drop>(): T {
 }
 
 /// Expected bytes of a payload whose fields after the launch ID are all `u64`: `Bought`, `Sold`,
-/// `LaunchShared`, and both fee claims.
+/// `LaunchShared`, `CreatorFeesClaimed`, and `ProtocolFeesAccrued`.
 fun u64_payload(launch_id: ID, fields: vector<u64>): vector<u8> {
     let mut expected = bcs::to_bytes(&launch_id);
     fields.do!(|field| expected.append(bcs::to_bytes(&field)));
+    expected
+}
+
+/// Expected `ProtocolFeesClaimed` bytes: the treasury paid, then Blast's three amounts and the
+/// partner's three.
+fun protocol_fees_claimed_bytes(launch_id: ID, treasury: address, amounts: vector<u64>): vector<u8> {
+    let mut expected = bcs::to_bytes(&launch_id);
+    expected.append(bcs::to_bytes(&treasury));
+    amounts.do!(|amount| expected.append(bcs::to_bytes(&amount)));
     expected
 }
 
@@ -3115,6 +3210,10 @@ use fun launch_take_currency as LaunchFixture.take_currency;
 use fun launch_take_coin as LaunchFixture.take_coin;
 
 use fun launch_has_coin as LaunchFixture.has_coin;
+
+use fun launch_assert_paid as LaunchFixture.assert_paid;
+
+use fun launch_assert_coin as LaunchFixture.assert_coin;
 
 use fun launch_take_shared as LaunchFixture.take_launch;
 

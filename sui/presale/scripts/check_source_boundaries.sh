@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Structural gates for blast_presale administration and upgrade custody (ADR 0099) and partner
-# binding (ADR 0105).
+# binding (ADR 0106).
 set -euo pipefail
 
 package_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -97,7 +97,7 @@ fi
 [ "$(rg -c '^    admin_cap: &AdminCap,$' <<<"$admin_production")" -eq 2 ] \
   || fail "Authorizing and committing an upgrade must each require the AdminCap."
 
-# 3. A sale's Blast partner is named only by set_partner, before the share fixes it (ADR 0105).
+# 3. A sale's Blast partner is named only by set_partner, before the share fixes it (ADR 0106).
 presale_production="$(production "$sources/blast_presale.move")"
 set_partner_body="$(sed -n '/^public fun set_partner</,/^}/p' <<<"$presale_production")"
 [ "$(rg -c 'self\.partner_id = ' <<<"$presale_production")" == 1 ] \

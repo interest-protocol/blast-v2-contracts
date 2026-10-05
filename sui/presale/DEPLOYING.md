@@ -64,4 +64,4 @@ rationale is [ADR 0099](../../docs/decisions/0099-standalone-overflow-presale.md
 with its amendments [0101](../../docs/decisions/0101-presale-protocol-fees.md),
 [0102](../../docs/decisions/0102-presale-creation-allowlists.md),
 [0104](../../docs/decisions/0104-external-presale-migrators-and-vendor-packages.md),
-and [0105](../../docs/decisions/0105-presale-partners.md).
+and [0106](../../docs/decisions/0106-presale-partners.md).

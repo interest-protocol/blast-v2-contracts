@@ -1,4 +1,4 @@
-# 0105: Presale partners
+# 0106: Presale partners
 
 - Status: proposed
 - Date: 2026-10-05
@@ -69,10 +69,11 @@ kept. `blast_partners` also emits `PartnerPaid<Quote>` for any nonzero payment.
   `migrate` and every migrator unchanged.
 - **Pay before migration.** A funded sale can still be cancelled and refunded
   in full, so Blast's raise share is not earned until migration.
-- **Blast's administrator claims, as on the launchpad.** Launch fees accrue over
-  many trades, so the launchpad holds them for a claim. A presale's raise share
-  is one amount with a fixed destination, so its payout needs no authority, and
-  a sale without a partner still pays at migration.
+- **Hold every sale's fees for a claim, as on the launchpad.** Launch fees
+  accrue over many trades, so the launchpad holds them for a permissionless
+  claim ([ADR 0105](0105-permissionless-launch-fee-claims.md)). A presale's raise
+  share is one amount at migration, so a sale without a partner still pays it
+  then, and only a partnered sale waits for its one payout.
 - **Pay Blast's tokens at migration and hold only the Quote.** Blast's payout
   would span two transactions and two events. Holding both keeps one
   `ProtocolFeesPaid` per sale; the tokens wait only until a payout anyone can

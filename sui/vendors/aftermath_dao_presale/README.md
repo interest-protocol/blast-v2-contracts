@@ -35,7 +35,7 @@ Blast still takes its raise and token shares when `blast_presale::migrate` runs.
 The `AdminCap` holder may name a Blast partner on the sale `new` returns, with
 `blast_presale::set_partner` before sharing it; the partner then earns its cut of
 Blast's raise share as on any presale
-([ADR 0105](../../../docs/decisions/0105-presale-partners.md)).
+([ADR 0106](../../../docs/decisions/0106-presale-partners.md)).
 
 ## Migration and custody
 

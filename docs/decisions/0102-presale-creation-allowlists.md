@@ -6,7 +6,7 @@
   through either venue
 - Amended by: [0104](0104-external-presale-migrators-and-vendor-packages.md): `presale::new` is
   public, so the witness allowlist admits migrators in other packages and rejects primitive types;
-  [0105](0105-presale-partners.md): the policy also lists the Blast partners new presales may name
+  [0106](0106-presale-partners.md): the policy also lists the Blast partners new presales may name
 
 ## Context
 

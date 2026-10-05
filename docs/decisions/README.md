@@ -67,7 +67,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0019](0019-consuming-creator-authority-and-cap-return.md) | Consuming creator authority and returning CreatorCap | **accepted** |
 | [0020](0020-admin-cap-self-destruction.md) | Admin-cap self-destruction and voluntary renunciation | **accepted** |
 | [0021](0021-pure-constant-product-curve-quotes.md) | Pure constant-product curve quotes | **accepted** |
-| [0022](0022-dual-asset-fee-ledger-and-claims.md) | Dual-asset fee ledger and capability claims | **accepted; amended by 0088 and 0098** |
+| [0022](0022-dual-asset-fee-ledger-and-claims.md) | Dual-asset fee ledger and capability claims | **accepted; amended by 0088, 0098, and 0105** |
 | [0023](0023-generated-coin-supply-and-metadata-custody.md) | Generated coin supply and metadata custody | **accepted** |
 | [0024](0024-generated-coin-launch-ticket.md) | Generated coin launch ticket | **accepted** |
 | [0025](0025-quote-whitelist-and-migration-targets.md) | Quote whitelist and migration targets | **accepted** |
@@ -137,16 +137,17 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0092](0092-creator-picks-the-virtual-quote.md) | The creator picks the virtual Quote reserve; launch config only admits Quotes | **accepted** |
 | [0093](0093-optional-opening-round.md) | An optional opening round replaces purchase protection | **accepted** |
 | [0094](0094-one-role-per-administrator-action.md) | One role per administrator action | **accepted; role bits, checks, and gate map superseded by 0097** |
-| [0095](0095-partner-codes.md) | Partner codes in one immutable package: a share of Blast's fee paid to the named partner on every trade, with a forced seven-day delay on Blast's powers | proposed; amended by 0105 |
+| [0095](0095-partner-codes.md) | Partner codes in one immutable package: a share of Blast's fee paid to the named partner on every trade, with a forced seven-day delay on Blast's powers | proposed; amended by 0106 |
 | [0097](0097-one-singleton-acl-with-typed-roles.md) | One singleton ACL with typed roles | **proposed; amended in place 2026-10-02: Publisher read, witness-seeded versions, publication-record gate** |
-| [0098](0098-launch-creation-fee-and-partners.md) | One partner per launch shares the launch's creation, curve, and one-time Meme/Quote migration fees | **accepted** |
+| [0098](0098-launch-creation-fee-and-partners.md) | One partner per launch shares the launch's creation, curve, and one-time Meme/Quote migration fees | **accepted; amended by 0105** |
 | [0099](0099-standalone-overflow-presale.md) | Standalone overflow presales with per-sale caps, proportional fills, LP-gated claims, and refund liveness | **accepted; amended by 0101, 0102, and 0104** |
 | [0100](0100-single-cetus-route-with-checked-retype.md) | One Cetus route per operation, generic over the pool's coin order, with a checked dynamic-field retype | **accepted** |
-| [0101](0101-presale-protocol-fees.md) | Admin-set presale fees on the raise, token supply, and LP fees, snapshotted at creation; LP rates adjustable per vault | **proposed; amended by 0105** |
-| [0102](0102-presale-creation-allowlists.md) | Admin-set allowlists of the Quote types and migration witnesses new presales may use | **proposed; amended by 0104 and 0105** |
+| [0101](0101-presale-protocol-fees.md) | Admin-set presale fees on the raise, token supply, and LP fees, snapshotted at creation; LP rates adjustable per vault | **proposed; amended by 0106** |
+| [0102](0102-presale-creation-allowlists.md) | Admin-set allowlists of the Quote types and migration witnesses new presales may use | **proposed; amended by 0104 and 0106** |
 | [0103](0103-mainnet-only.md) | Mainnet only: no testnet builds, pins, scripts, harness environment, or rehearsals | **accepted** |
 | [0104](0104-external-presale-migrators-and-vendor-packages.md) | Public presale creation and migration for external migrators; partner one-off packages under `sui/vendors` | **proposed** |
-| [0105](0105-presale-partners.md) | One partner per presale, named at creation, earns a share of Blast's raise share, paid permissionlessly after migration | **proposed** |
+| [0105](0105-permissionless-launch-fee-claims.md) | Permissionless launch fee claims paying the partner and a `RuntimeConfig` treasury the `TreasuryAdmin` rotates | **proposed** |
+| [0106](0106-presale-partners.md) | One partner per presale, named at creation, earns a share of Blast's raise share, paid permissionlessly after migration | **proposed** |
 
 ADRs 0013–0035, 0038–0056, 0058–0067, 0069, 0073, 0074, 0076–0080, 0082, and 0085–0089 are accepted subject to the amendments shown above; ADR 0088 supersedes 0036, 0068, 0081, and 0083, and ADR 0089 supersedes 0057 and 0075. ADR 0074 accepts the Aftermath dependency and raw-field normalization while retaining its live evidence gate; ADR 0037 is superseded by 0043, and ADRs 0070–0072 are superseded by 0073. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split

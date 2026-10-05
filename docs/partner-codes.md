@@ -9,7 +9,7 @@ when the coin or the sale is created.
 The decisions and their alternatives are recorded in
 [ADR 0095](decisions/0095-partner-codes.md), for the launchpad in
 [ADR 0098](decisions/0098-launch-creation-fee-and-partners.md), and for presales
-in [ADR 0105](decisions/0105-presale-partners.md). This page
+in [ADR 0106](decisions/0106-presale-partners.md). This page
 explains how the program works for integrators, partners and Blast's operators.
 
 ## The idea in one example
@@ -141,7 +141,7 @@ on Boosts and 8% on another product.
 Launching a coin costs a creation fee in SUI, which Blast sets. A launch can
 name one partner, and only when it is created; nothing can change it later.
 That partner is paid its share of every fee Blast takes on the launch, all at
-once, whenever Blast claims its fees from the launch:
+once, whenever anyone claims Blast's fees from the launch:
 
 - the creation fee;
 - Blast's part of every curve trade fee, the opening round's included, in Meme
@@ -156,10 +156,12 @@ allocation are never shared. Neither is Blast's LP-fee share after migration.
   creation fee must be exactly the one set in `LaunchConfig`. Trading never
   takes the partner: `buy`, `sell` and the opening round are the same on every
   launch.
-- **Partners** are paid when Blast claims, not when each fee is charged. Blast
-  cannot claim a partnered launch's fees without paying the partner in the same
-  call: `claim_protocol_fees` refuses it, and `claim_protocol_fees_with_partner`
-  pays the partner first. `ProtocolFeesClaimed` records both parts, and
+- **Partners** are paid at the claim, not when each fee is charged. Anyone may
+  claim, the partner included, and no caller chooses where the money goes
+  ([ADR 0105](decisions/0105-permissionless-launch-fee-claims.md)):
+  `claim_protocol_fees_with_partner` pays the partner its share and Blast's
+  treasury the rest, and `claim_protocol_fees` refuses a partnered launch.
+  `ProtocolFeesClaimed` records both parts and the treasury paid, and
   `LaunchCreated` records the partner and the creation fee.
 - **Operators.** The fee administrator (`FeeAdmin`) sets the creation fee with
   `launch_config::set_creation_fee`. It also accepts deals with
@@ -167,7 +169,9 @@ allocation are never shared. Neither is Blast's LP-fee share after migration.
   `launch_config::remove_partner`, which applies seven days later. Removing a
   deal only stops new launches from naming it. Launches that already name it
   keep paying it, unless its share is scheduled to zero. The treasury
-  administrator claims the creation fee with each launch's trade fees.
+  administrator (`TreasuryAdmin`) sets where Blast is paid with
+  `runtime_config::set_treasury`; every later claim pays that address the
+  creation fee with each launch's trade fees.
 
 ## On presales
 
@@ -225,7 +229,7 @@ also rests on how each package is published:
    `AdminCap` on presales. A launch's or a sale's partner never changes.
 6. On Boosts, Blast never holds partner money, and there is no claim step to
    miss. On the launchpad, a partner's share of Blast's fees waits in the launch
-   until Blast claims, and Blast cannot claim without paying it in the same call.
-   On presales, a partnered sale's Blast shares wait in the sale until anyone
-   pays them, and Blast cannot be paid without paying the partner in the same
-   call.
+   until anyone claims, the partner included, and no claim pays Blast without
+   paying the partner in the same call. On presales, a partnered sale's Blast
+   shares wait in the sale until anyone pays them, and Blast cannot be paid
+   without paying the partner in the same call.

@@ -50,7 +50,7 @@ after `new` and before `share`; it never changes afterward. The partner earns it
 `blast_partners` share of Blast's raise share, and of nothing else. A partnered
 sale's migration holds Blast's shares, and anyone may then call `pay_partner`
 once to pay the partner its cut and Blast the rest
-([ADR 0105](../../docs/decisions/0105-presale-partners.md)).
+([ADR 0106](../../docs/decisions/0106-presale-partners.md)).
 
 Blast's shared `CreationPolicy` lists the Quote types, venue migration witnesses,
 and Blast partners new presales may use; creation aborts for anything unlisted. It is checked only at
@@ -113,4 +113,4 @@ Quote type or migrator, so no presale can exist under an unsealed cap.
 
 The accepted design is [ADR 0099](../../docs/decisions/0099-standalone-overflow-presale.md);
 Blast's fees are proposed in [ADR 0101](../../docs/decisions/0101-presale-protocol-fees.md)
-and its presale partners in [ADR 0105](../../docs/decisions/0105-presale-partners.md).
+and its presale partners in [ADR 0106](../../docs/decisions/0106-presale-partners.md).

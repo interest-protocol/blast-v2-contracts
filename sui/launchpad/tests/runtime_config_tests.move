@@ -10,6 +10,8 @@ const PUBLISHER: address = @0xA11CE;
 
 const PROTOCOL_ADMIN: address = @0xAD;
 
+const TREASURY: address = @0x7EA5;
+
 // === Test-Only Types ===
 
 /// Live-settings administration under each setter's own role.
@@ -22,14 +24,15 @@ public struct ConfigFixture {
 // === Tests ===
 
 #[test]
-/// Package initialization shares a silent configuration with account claims disabled and no
-/// protocol share.
-fun package_init_shares_a_config_without_signer_or_protocol_share() {
-    let (events, signer_public_key, protocol_fee_share_bps) = published_config();
+/// Package initialization shares a silent configuration with account claims disabled, no
+/// protocol share, and Blast's fees paid to the publisher.
+fun package_init_shares_a_config_paying_the_publisher_without_signer_or_protocol_share() {
+    let (events, signer_public_key, protocol_fee_share_bps, treasury) = published_config();
 
     assert_eq!(events, 0);
     assert!(signer_public_key.is_empty());
     assert_eq!(protocol_fee_share_bps, 0);
+    assert_eq!(treasury, PUBLISHER);
 }
 
 // --- Protocol fee share ---
@@ -183,6 +186,70 @@ fun claim_signer_checks_the_version_before_the_key_length() {
     fixture.end();
 }
 
+// --- Treasury ---
+
+#[test]
+fun admin_sets_the_treasury_and_it_emits_the_new_address() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f.set_treasury(TREASURY);
+
+        assert_eq!(f.config.treasury(), TREASURY);
+        assert_eq!(
+            bcs::to_bytes(&collect_one<events::TreasuryChanged>()),
+            address_bytes(TREASURY),
+        );
+    });
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f.set_treasury(PUBLISHER);
+
+        assert_eq!(f.config.treasury(), PUBLISHER);
+        assert_eq!(
+            bcs::to_bytes(&collect_one<events::TreasuryChanged>()),
+            address_bytes(PUBLISHER),
+        );
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EInvalidDestination, location = blast_fun::runtime_config)]
+fun treasury_rejects_the_zero_address() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f.set_treasury(@0x0);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EUnchanged, location = blast_fun::runtime_config)]
+fun treasury_rejects_the_current_address() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f.set_treasury(PUBLISHER);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+fun treasury_checks_the_version_before_the_address() {
+    let mut fixture = start();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        f.package_version.set_for_testing(2);
+
+        f.set_treasury(@0x0);
+    });
+
+    fixture.end();
+}
+
 // === Test Helpers ===
 
 macro fun config_next_tx(
@@ -196,8 +263,9 @@ macro fun config_next_tx(
     $fn(fixture);
 }
 
-/// Package initialization's events, and its shared configuration's signer key and protocol share.
-fun published_config(): (u64, vector<u8>, u64) {
+/// Package initialization's events, and its shared configuration's signer key, protocol share,
+/// and treasury.
+fun published_config(): (u64, vector<u8>, u64, address) {
     let mut scenario = test_scenario::begin(PUBLISHER);
     runtime_config::init_for_testing(scenario.ctx());
 
@@ -205,10 +273,11 @@ fun published_config(): (u64, vector<u8>, u64) {
     let config = scenario.take_shared<RuntimeConfig>();
     let signer_public_key = *config.creator_claim_signer();
     let protocol_fee_share_bps = config.protocol_fee_share().value();
+    let treasury = config.treasury();
     test_scenario::return_shared(config);
     scenario.end();
 
-    (events, signer_public_key, protocol_fee_share_bps)
+    (events, signer_public_key, protocol_fee_share_bps, treasury)
 }
 
 /// A configuration as package initialization leaves it.
@@ -232,12 +301,23 @@ fun config_set_creator_claim_signer(self: &mut ConfigFixture, signer_public_key:
     self.config.set_creator_claim_signer(&self.package_version, &admin_witness, signer_public_key);
 }
 
+fun config_set_treasury(self: &mut ConfigFixture, treasury: address) {
+    let admin_witness = blast_acl::witness_for_testing<TreasuryAdmin>();
+
+    self.config.set_treasury(&self.package_version, &admin_witness, treasury);
+}
+
 fun config_end(self: ConfigFixture) {
     destroy(self);
 }
 
 fun signer_public_key(): vector<u8> {
     x"11223344556677889900aabbccddeeffffeeddccbbaa00998877665544332211"
+}
+
+/// Serializes one address constant by value, so no test borrows a constant in place.
+fun address_bytes(value: address): vector<u8> {
+    bcs::to_bytes(&value)
 }
 
 fun collect<T: copy + drop>(): vector<T> {
@@ -256,7 +336,7 @@ use blast_admin::blast_acl;
 
 use blast_fun::{
     blast_events::Event,
-    blast_fun_domain::{ClaimSignerAdmin, FeeAdmin},
+    blast_fun_domain::{ClaimSignerAdmin, FeeAdmin, TreasuryAdmin},
     bps::{Self, Bps},
     events,
     blast_fun::{Self as package_version, PackageVersion},
@@ -274,3 +354,5 @@ use fun config_next_tx as ConfigFixture.next_tx;
 use fun config_set_creator_claim_signer as ConfigFixture.set_creator_claim_signer;
 
 use fun config_set_protocol_fee_share as ConfigFixture.set_protocol_fee_share;
+
+use fun config_set_treasury as ConfigFixture.set_treasury;

@@ -7,7 +7,7 @@
   rates on its vault
 - Amended: 2026-10-04 (owner decision): the `AdminCap` may change all four of one sale's rates
   until its window starts
-- Amended by: [0105](0105-presale-partners.md): a sale naming a Blast partner holds Blast's
+- Amended by: [0106](0106-presale-partners.md): a sale naming a Blast partner holds Blast's
   shares from migration until a permissionless `pay_partner` pays the partner its cut of the
   raise share and Blast the rest
 
