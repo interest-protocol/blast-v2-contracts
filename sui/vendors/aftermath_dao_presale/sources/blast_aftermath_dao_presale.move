@@ -29,13 +29,6 @@ public struct PoolCreation<phantom Lp> has key {
     create_pool_cap: CreatePoolCapV2,
 }
 
-/// One migrated sale's complete LP balance, sent to `BURN_ADDRESS`. No one can sign for that
-/// address, so the LP can never be withdrawn, even by an upgrade.
-public struct LockedLiquidity<phantom Lp> has key, store {
-    id: UID,
-    lp: Balance<Lp>,
-}
-
 // === Private Initialization ===
 
 fun init(ctx: &mut TxContext) {
@@ -170,21 +163,18 @@ public fun migrate<Lp, SaleToken, Quote>(
         EDaoFeePoolMismatch,
     );
 
-    let dao_fee_pool_id = object::id(&dao_fee_pool);
-    let liquidity = LockedLiquidity { id: object::new(ctx), lp: lp.into_balance() };
-
     event::emit(Migrated<Lp, SaleToken, Quote> {
         presale_id: object::id(sale),
         pool_id,
-        dao_fee_pool_id,
+        dao_fee_pool_id: object::id(&dao_fee_pool),
         owner_cap_id: object::id(&owner_cap),
-        liquidity_id: object::id(&liquidity),
-        lp: liquidity.lp.value(),
+        lp_coin_id: object::id(&lp),
+        lp: lp.value(),
     });
 
     transfer::public_share_object(dao_fee_pool);
     transfer::public_transfer(owner_cap, TREASURY);
-    transfer::public_transfer(liquidity, BURN_ADDRESS);
+    transfer::public_transfer(lp, BURN_ADDRESS);
 }
 
 // === Private Functions ===
@@ -262,13 +252,13 @@ public struct PoolCreationReserved<phantom Lp, phantom SaleToken, phantom Quote>
 
 /// A sale migrated into the Aftermath pool `pool_id`, which traders reach through the shared
 /// DAO-fee pool `dao_fee_pool_id`. The treasury holds that pool's owner cap `owner_cap_id`, and
-/// `BURN_ADDRESS` holds `liquidity_id`, which locks the sale's `lp` units forever.
+/// `BURN_ADDRESS` holds the LP coin `lp_coin_id`, which locks the sale's `lp` units forever.
 public struct Migrated<phantom Lp, phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
     pool_id: ID,
     dao_fee_pool_id: ID,
     owner_cap_id: ID,
-    liquidity_id: ID,
+    lp_coin_id: ID,
     lp: u64,
 }
 
@@ -277,8 +267,8 @@ public struct Migrated<phantom Lp, phantom SaleToken, phantom Quote> has copy, d
 /// Receives every sale's `PresaleCap` and every pool's DAO fees and owner cap.
 const TREASURY: address = @0x37cf46b499f740e653644bd2f7a8ed97f248e8b3c69d5d12c97d7845a54c0cd8;
 
-/// Owns every `LockedLiquidity`. No one can sign for the zero address, so nothing it owns can
-/// ever be used in a transaction again.
+/// Owns every pool's LP coin. No one can sign for the zero address, so nothing it owns can ever
+/// be used in a transaction again.
 const BURN_ADDRESS: address = @0x0;
 
 /// The DAO fee, 2%, that Aftermath sends to the treasury from every swap, deposit, and withdrawal
@@ -292,7 +282,7 @@ const HALF_WEIGHT: u64 = 500_000_000_000_000_000;
 const FLATNESS: u64 = 0;
 
 /// Aftermath's minimum base swap-in fee, 0.01% in its `1e18` unit; it rejects zero. This part
-/// compounds into the locked liquidity.
+/// compounds into the locked LP.
 const BASE_SWAP_FEE: u64 = 100_000_000_000_000;
 
 const POOL_NAME: vector<u8> = b"Blast Presale Pool";
@@ -335,7 +325,6 @@ use dao_fee_amm::{pool as dao_fee_pool, version::Version};
 use std::type_name;
 
 use sui::{
-    balance::Balance,
     clock::Clock,
     coin::{Coin, TreasuryCap},
     coin_registry::Currency,

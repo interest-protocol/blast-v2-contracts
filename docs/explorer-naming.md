@@ -87,7 +87,6 @@ every package-administration object.
 | `blast_presale` | `creation_policy::CreationPolicy` | new (ADR 0102); shared, one per package | module |
 | `blast_aftermath_dao_presale` | `blast_aftermath_dao_presale::AdminCap` | new (ADR 0104); publisher-held, one per package | module |
 | `blast_aftermath_dao_presale` | `blast_aftermath_dao_presale::PoolCreation<Lp>` | new (ADR 0104); shared, one per unmigrated sale | module |
-| `blast_aftermath_dao_presale` | `blast_aftermath_dao_presale::LockedLiquidity<Lp>` | new (ADR 0104); owned by `0x0`, one per migrated sale | module |
 
 `blast_boosts_core` defines no `key` type; its `State<Product>` is a
 `store` value nested in the adapter Vault.

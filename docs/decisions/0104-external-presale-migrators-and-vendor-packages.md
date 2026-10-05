@@ -51,11 +51,11 @@ each depending inward on Blast packages.
   Aftermath pool from every LP token and Quote unit and checks the pool holds
   them. It wraps the pool in a DAO-fee pool charging a compiled 2% to the
   treasury and checks both values. It shares the DAO-fee pool, sends the
-  treasury the pool's `OwnerCap`, and sends a `LockedLiquidity` holding the
-  complete LP balance to `0x0`. The base pool keeps Aftermath's minimum 0.01%
+  treasury the pool's `OwnerCap`, and sends the LP coin Aftermath returned, the
+  complete LP balance, to `0x0`. The base pool keeps Aftermath's minimum 0.01%
   swap-in fee.
-- No one can sign for `0x0`, so no transaction, even after an upgrade, can use a
-  `LockedLiquidity`, and the LP is locked forever. With an `OwnerCap` the treasury
+- No one can sign for `0x0`, so no transaction, even after an upgrade, can use
+  that LP coin, and the LP is locked forever. With an `OwnerCap` the treasury
   changes its pool's DAO fee or recipient directly through Aftermath.
 
 ## Alternatives considered
@@ -71,12 +71,11 @@ each depending inward on Blast packages.
   `AdminCap` can move.** Rejected for this partner: the treasury holds every
   pool's `OwnerCap`, so it redirects a pool's fees itself, and a claim function
   and shared configuration add nothing.
-- **Give the treasury the locked liquidity.** Rejected: an upgrade by the
-  `UpgradeCap` holder could then add a way to release the LP. Owned by `0x0`, it
-  can never be used.
-- **Freeze the locked liquidity.** Also permanent, but a frozen object stays
-  readable by reference, which a later upgrade could build on. Sending it to
-  `0x0` leaves nothing to build on.
+- **Give the treasury the LP.** Rejected: the treasury could withdraw the
+  liquidity. Owned by `0x0`, the LP coin can never be used.
+- **Wrap the LP in a package object.** Rejected: owned by `0x0`, the bare coin is
+  already as locked as any wrapper, and freezing a wrapper would leave it
+  readable by reference, which a later upgrade could build on.
 
 ## Consequences
 

@@ -15,7 +15,7 @@ caller chooses them.
 - A 2% DAO fee on every swap, deposit, and withdrawal, paid as separate coins
   straight to the `TREASURY` compiled into the module.
 - Aftermath's minimum 0.01% base swap-in fee, which it requires and which
-  compounds into the locked liquidity, and no swap-out, deposit, or withdrawal fee.
+  compounds into the locked LP, and no swap-out, deposit, or withdrawal fee.
 
 ## Authority and fees
 
@@ -48,11 +48,11 @@ caller choose the LP coin. `migrate` takes the sale and its `PoolCreation`, and:
 3. creates the pool in Aftermath's coin order and checks it holds every unit;
 4. wraps it in a DAO-fee pool paying the treasury 2% and checks both values;
 5. shares the DAO-fee pool, the object traders use; and
-6. sends the treasury the pool's `OwnerCap`, and sends a `LockedLiquidity` holding
-   the complete LP balance to `0x0`.
+6. sends the treasury the pool's `OwnerCap`, and sends the LP coin Aftermath
+   returned, the complete LP balance, to `0x0`.
 
-No one can sign for `0x0`, so no transaction, even after an upgrade, can use a
-`LockedLiquidity`: the liquidity is locked in the pool forever. The `UpgradeCap`
+No one can sign for `0x0`, so no transaction, even after an upgrade, can use
+that LP coin: the liquidity is locked in the pool forever. The `UpgradeCap`
 holder can still upgrade this package, which changes how sales not yet migrated
 reach Aftermath. A `CreatePoolCapV2` for a different LP coin than `Lp` would
 make Aftermath abort the migration, so the treasury must bind the cap its `Lp`
