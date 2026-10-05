@@ -1085,7 +1085,11 @@ for authority_spec in \
   'self.assert_curve_fee_cap(|claim_creator_fees ' \
   'self.assert_metadata_update(|set_description set_icon_url set_name ' \
   '&self.metadata_cap|set_description set_icon_url set_name ' \
-  'transfer::public_transfer(|deliver_opening_round migrate pay_treasury reassign_curve_fee_cap reassign_metadata_cap '; do
+  'transfer::public_transfer(|migrate pay pay_treasury reassign_curve_fee_cap reassign_metadata_cap ' \
+  '.opening_round_meme.pay(|deliver_opening_round ' \
+  '.opening_round_quote.pay(|deliver_opening_round ' \
+  '.allocated_meme.pay(|migrate ' \
+  '.real_quote_reserve.pay(|migrate '; do
   authority_needle="${authority_spec%%|*}"
   authority_expected="${authority_spec#*|}"
   authority_actual="$(launch_functions_containing "$authority_needle")"
@@ -1111,6 +1115,10 @@ if [[ "$(move_production_signature claim_protocol_fees <<<"$launch_facts")" \
     != 'fun claim_protocol_fees<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, runtime_config: &RuntimeConfig, ctx: &mut TxContext, )' ]] \
   || [[ "$(move_production_signature claim_protocol_fees_with_partner <<<"$launch_facts")" \
     != 'fun claim_protocol_fees_with_partner<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, runtime_config: &RuntimeConfig, partner: &Partner, clock: &Clock, ctx: &mut TxContext, )' ]] \
+  || [[ "$(move_production_function_contract pay <<<"$launch_facts")" \
+    != 'private:0:0:fun pay<Asset>(self: &mut Balance<Asset>, amount: u64, recipient: address, ctx: &mut TxContext)' ]] \
+  || [[ "$(move_production_body pay <<<"$launch_facts")" \
+    != 'if (amount > 0) transfer::public_transfer(self.split(amount).into_coin(ctx), recipient);' ]] \
   || [[ "$(move_production_function_contract pay_treasury <<<"$launch_facts")" \
     != 'private:0:0:fun pay_treasury<T>(fee: Balance<T>, treasury: address, ctx: &mut TxContext)' ]] \
   || [[ "$(move_production_body pay_treasury <<<"$launch_facts")" \
@@ -1489,11 +1497,11 @@ if ! events_follow_mutations sources/launch_ticket.move new 'LaunchTicket{' 'eve
   || ! events_follow_mutations sources/launch.move settle_opening_round \
     'self.lifecycle = Lifecycle::Live;' 'self.opening_round_quote.join(' 'events::opening_round_settled(' \
   || ! events_follow_mutations sources/launch.move deliver_opening_round \
-    '.remove_dynamic_field' 'self.opening_round_bids = ' 'self.opening_round_quote.split(' \
+    '.remove_dynamic_field' 'self.opening_round_bids = ' 'self.opening_round_quote.pay(' \
     'events::opening_round_delivered(' \
   || ! events_follow_mutations sources/launch.move migrate \
-    'transfer::public_transfer(self.allocated_meme.split(meme).into_coin(ctx),destination);' \
-    'transfer::public_transfer(self.real_quote_reserve.split(quote).into_coin(ctx),destination);' \
+    'self.allocated_meme.pay(meme,destination,ctx);' \
+    'self.real_quote_reserve.pay(quote,destination,ctx);' \
     'events::migration_allocation_paid(' \
     'self.fee_ledger.accrue_protocol_fees(' \
     'events::protocol_fees_accrued(' \
