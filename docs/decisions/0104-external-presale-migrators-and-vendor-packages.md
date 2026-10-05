@@ -50,12 +50,13 @@ each depending inward on Blast packages.
   no economic input, not even the LP coin. It creates a 50/50, flatness-zero
   Aftermath pool from every LP token and Quote unit and checks the pool holds
   them. It wraps the pool in a DAO-fee pool charging a compiled 2% to the
-  treasury and checks both values. It shares the DAO-fee pool and sends the
-  treasury the pool's `OwnerCap` and a `LockedLiquidity` holding the complete LP
-  balance. The base pool keeps Aftermath's minimum 0.01% swap-in fee.
-- `LockedLiquidity` has `key` and `store`, so the treasury can move it, but no
-  function releases its LP. With an `OwnerCap` the treasury changes its pool's
-  DAO fee or recipient directly through Aftermath.
+  treasury and checks both values. It shares the DAO-fee pool, sends the
+  treasury the pool's `OwnerCap`, and sends a `LockedLiquidity` holding the
+  complete LP balance to `0x0`. The base pool keeps Aftermath's minimum 0.01%
+  swap-in fee.
+- No one can sign for `0x0`, so no transaction, even after an upgrade, can use a
+  `LockedLiquidity`, and the LP is locked forever. With an `OwnerCap` the treasury
+  changes its pool's DAO fee or recipient directly through Aftermath.
 
 ## Alternatives considered
 
@@ -70,9 +71,12 @@ each depending inward on Blast packages.
   `AdminCap` can move.** Rejected for this partner: the treasury holds every
   pool's `OwnerCap`, so it redirects a pool's fees itself, and a claim function
   and shared configuration add nothing.
-- **Freeze the locked liquidity.** Rejected for this partner, which wants to hold
-  its position object: freezing would make the LP unmovable even by an upgrade,
-  but no function releases it either way.
+- **Give the treasury the locked liquidity.** Rejected: an upgrade by the
+  `UpgradeCap` holder could then add a way to release the LP. Owned by `0x0`, it
+  can never be used.
+- **Freeze the locked liquidity.** Also permanent, but a frozen object stays
+  readable by reference, which a later upgrade could build on. Sending it to
+  `0x0` leaves nothing to build on.
 
 ## Consequences
 
@@ -83,7 +87,7 @@ each depending inward on Blast packages.
   not apply to them; Blast's raise and token shares still do.
 - The treasury sets every vendor pool's DAO fee, from 0% to 100%, and its
   recipient. As the vendor's `UpgradeCap` holder it also controls how unmigrated
-  sales reach the venue, and an upgrade could add a way to release the LP it holds.
+  sales reach the venue, but no upgrade can release a migrated pool's LP.
 - The SDK classifies `new` and `migrate` as Move composition and builds
   `set_migration_witness_allowed` for any witness type.
 

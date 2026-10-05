@@ -7,7 +7,7 @@ module blast_aftermath_dao_presale::blast_aftermath_dao_presale_tests;
 // === Constants ===
 
 /// The package's compiled treasury, which receives every sale's PresaleCap and every pool's DAO
-/// fees, owner cap, and locked LP.
+/// fees and owner cap.
 const TREASURY: address = @0x37cf46b499f740e653644bd2f7a8ed97f248e8b3c69d5d12c97d7845a54c0cd8;
 const PUBLISHER: address = @0xB1A57;
 const KEEPER: address = @0x4EE9;

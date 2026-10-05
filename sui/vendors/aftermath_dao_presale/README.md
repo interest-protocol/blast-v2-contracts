@@ -27,12 +27,11 @@ LP-fee recipient, which is where its fees go. The `PresaleCap` can only destroy
 itself after a cancellation, since these sales have no `PresaleVault` residuals
 to claim.
 
-Every migration sends the treasury that pool's DAO-fee `OwnerCap` and its
-`LockedLiquidity`. With an `OwnerCap` the treasury can change its pool's DAO fee,
-anywhere Aftermath allows from 0% to 100%, or the fee recipient, directly through
-Aftermath. No `PresaleVault` exists for these pools, so Blast's LP-fee rates and
-holder-reward rounds do not apply; Blast still takes its raise and token shares
-when `blast_presale::migrate` runs.
+Every migration sends the treasury that pool's DAO-fee `OwnerCap`. With it the
+treasury can change its pool's DAO fee, anywhere Aftermath allows from 0% to
+100%, or the fee recipient, directly through Aftermath. No `PresaleVault` exists
+for these pools, so Blast's LP-fee rates and holder-reward rounds do not apply;
+Blast still takes its raise and token shares when `blast_presale::migrate` runs.
 
 ## Migration and custody
 
@@ -49,16 +48,15 @@ caller choose the LP coin. `migrate` takes the sale and its `PoolCreation`, and:
 3. creates the pool in Aftermath's coin order and checks it holds every unit;
 4. wraps it in a DAO-fee pool paying the treasury 2% and checks both values;
 5. shares the DAO-fee pool, the object traders use; and
-6. sends the treasury the pool's `OwnerCap` and a `LockedLiquidity` holding the
-   complete LP balance.
+6. sends the treasury the pool's `OwnerCap`, and sends a `LockedLiquidity` holding
+   the complete LP balance to `0x0`.
 
-`LockedLiquidity` has `store`, so the treasury can move it, but no function
-releases its LP, so the liquidity stays in the pool. The `UpgradeCap` holder can
-upgrade this package, which could add such a function and changes how sales not
-yet migrated reach Aftermath. A `CreatePoolCapV2` for a different LP coin than
-`Lp` would make Aftermath abort the migration, so the treasury must bind the cap
-its `Lp` coin minted; a sale that cannot migrate becomes refundable at its LP
-deadline.
+No one can sign for `0x0`, so no transaction, even after an upgrade, can use a
+`LockedLiquidity`: the liquidity is locked in the pool forever. The `UpgradeCap`
+holder can still upgrade this package, which changes how sales not yet migrated
+reach Aftermath. A `CreatePoolCapV2` for a different LP coin than `Lp` would
+make Aftermath abort the migration, so the treasury must bind the cap its `Lp`
+coin minted; a sale that cannot migrate becomes refundable at its LP deadline.
 
 ## Deployment order
 
