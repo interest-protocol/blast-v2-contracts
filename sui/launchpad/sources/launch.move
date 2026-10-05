@@ -501,12 +501,8 @@ public fun deliver_opening_round<Meme, Quote>(
     let quote = self.opening_round_quote.value().mul_div(bid, self.opening_round_bids);
 
     self.opening_round_bids = self.opening_round_bids - bid;
-    if (meme > 0) {
-        transfer::public_transfer(self.opening_round_meme.split(meme).into_coin(ctx), bidder);
-    };
-    if (quote > 0) {
-        transfer::public_transfer(self.opening_round_quote.split(quote).into_coin(ctx), bidder);
-    };
+    self.opening_round_meme.pay(meme, bidder, ctx);
+    self.opening_round_quote.pay(quote, bidder, ctx);
 
     events::opening_round_delivered(self.id.to_inner(), bidder, bid, meme, quote);
 }
@@ -712,15 +708,8 @@ public fun migrate<Meme, Quote, Witness: drop>(
 
     destinations.length().do!(|i| {
         let (destination, meme, quote) = (destinations[i], recipient_meme[i], recipient_quote[i]);
-        if (meme > 0) {
-            transfer::public_transfer(self.allocated_meme.split(meme).into_coin(ctx), destination);
-        };
-        if (quote > 0) {
-            transfer::public_transfer(
-                self.real_quote_reserve.split(quote).into_coin(ctx),
-                destination,
-            );
-        };
+        self.allocated_meme.pay(meme, destination, ctx);
+        self.real_quote_reserve.pay(quote, destination, ctx);
         events::migration_allocation_paid(self.id.to_inner(), destination, meme, quote);
     });
 
@@ -846,6 +835,11 @@ fun buy_from_curve<Meme, Quote>(
     );
 
     (meme_out, quote_refund)
+}
+
+/// Transfers `amount` split from `self` to `recipient`; a zero amount sends nothing.
+fun pay<Asset>(self: &mut Balance<Asset>, amount: u64, recipient: address, ctx: &mut TxContext) {
+    if (amount > 0) transfer::public_transfer(self.split(amount).into_coin(ctx), recipient);
 }
 
 /// Sends one of Blast's claimed balances to the treasury; an empty balance sends nothing.
@@ -1043,3 +1037,5 @@ use fun dynamic_field::borrow_mut as UID.dynamic_field_mut;
 use fun dynamic_field::exists as UID.has_dynamic_field;
 
 use fun dynamic_field::remove as UID.remove_dynamic_field;
+
+use fun pay as Balance.pay;
