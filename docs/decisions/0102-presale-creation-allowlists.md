@@ -4,6 +4,8 @@
 - Date: 2026-10-02
 - Amends: [0099](0099-standalone-overflow-presale.md), which let a creator raise any Quote type
   through either venue
+- Amended by: [0104](0104-external-presale-migrators-and-vendor-packages.md): `presale::new` is
+  public, so the witness allowlist admits migrators in other packages and rejects primitive types
 
 ## Context
 

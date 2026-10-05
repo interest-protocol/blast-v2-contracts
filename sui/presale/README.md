@@ -47,7 +47,12 @@ sale does not migrate.
 
 Blast's shared `CreationPolicy` lists the Quote types and venue migration witnesses
 new presales may use; creation aborts for anything unlisted. It is checked only at
-creation, so delisting a type never affects a live sale.
+creation, so delisting a type never affects a live sale. `blast_presale::new` and
+`migrate` are public, so a migrator in another package, such as a partner's under
+[`sui/vendors`](../vendors/README.md), creates and migrates sales with its own sealed
+witness once the `AdminCap` allows it; a primitive or vector, which anyone can
+construct, is never allowed
+([ADR 0104](../../docs/decisions/0104-external-presale-migrators-and-vendor-packages.md)).
 
 Sharing a sale fixes its windows from a start time, which may be ahead of the
 share so a sale can be published a day early; commitments open at the start.

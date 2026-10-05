@@ -61,3 +61,4 @@ Load only the branch the task changes:
 - Package publication: `deployments/README.md`; for Blast SUI, also use
   `sui/blast_sui/DEPLOYING.md`.
 - Blast SUI upgrade: `sui/blast_sui/UPGRADING.md`.
+- Partner one-off contract: `sui/vendors/README.md` and ADR 0104.

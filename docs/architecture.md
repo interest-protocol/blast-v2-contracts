@@ -23,8 +23,11 @@ The dependency-only upgradeable `blast_presale` package is a separate product bo
 presale escrow, eligibility, proportional settlement, permissionless Bluefin and
 Cetus migration, LP custody, and fee/reward distribution without importing or
 mutating launchpad state. Its adapters share the package with presale core so a
-sealed witness makes pool creation atomic with escrow release. See
-[ADR 0099](decisions/0099-standalone-overflow-presale.md).
+sealed witness makes pool creation atomic with escrow release. Its public `new` and
+`migrate` take any migrator's sealed witness the `CreationPolicy` allows, so one-off
+partner migrators live in their own packages under `sui/vendors` and depend inward
+on it. See [ADR 0099](decisions/0099-standalone-overflow-presale.md) and
+[ADR 0104](decisions/0104-external-presale-migrators-and-vendor-packages.md).
 
 The package boundaries are decided in
 [decisions/0001-sui-package-and-module-layout.md](decisions/0001-sui-package-and-module-layout.md):
