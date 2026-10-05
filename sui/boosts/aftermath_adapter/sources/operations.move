@@ -457,12 +457,16 @@ public fun finalize_shutdown<Product, Collateral>(
 
 // === Private Functions ===
 
-/// Returns one authenticated, module-private product observation for `dev_inspect`.
+/// Returns one authenticated product observation without mutating state.
 ///
+/// Private, so no transaction or package can call it: only a simulation with
+/// transaction checks skipped (dev-inspect `skip_checks`) reaches it. With checks
+/// on, the call is rejected as a non-entry function, and a node may refuse to
+/// simulate with checks off.
 /// The adapter generation and the complete venue object graph are checked before
 /// returning the canonical capture, retained share supply, and clock reading.
-/// This function does not mutate state and its outputs are informational only;
-/// every state-changing operation repeats its own checks and capture.
+/// Its outputs are informational only; every state-changing operation repeats
+/// its own checks and capture.
 #[allow(unused_function)]
 fun observe<Product, Collateral>(
     vault: &Vault<Product, Collateral>,

@@ -33,10 +33,12 @@ base and the fixed canonical price pair, not historical entry quote.
 One Blast interval aggregates authenticated signed funding effects, including
 socialized debt carried by the same accumulator, before normalization. A net
 credit repays any uncovered deficit to `N` before increasing `R`; a net cost consumes `R` before `N`. Zero-net checkpoint
-advancement emits once. Identical repeats emit nothing. Unexplained external
-changes preserve the accepted checkpoint, block priced paths and produce one
-diagnostic per distinct observed fingerprint. Recovery emits reason 2 once;
-neither diagnosis nor a temporary data fault changes lifecycle.
+advancement emits `FundingSettled` once. Identical repeats emit nothing.
+Unexplained external changes preserve the accepted checkpoint and block priced
+paths. `CheckpointDrifted` is not deduplicated: every sync that finds drift
+emits it again. A later sync that explains the interval adopts its checkpoint
+like any clean sync; there is no separate recovery event. Neither drift nor a
+temporary data fault changes lifecycle.
 
 Protocol fee is ceiling-rounded; admin allocation is floor-rounded from that
 fee; the remainder credits `R`. Mint shares derive from actual incremental `N`
@@ -49,8 +51,10 @@ buffer release changes only `R`; fee withdrawal spends only `A` without prices.
 Rebalance uses exact rational outside-band comparisons. At the endpoints no
 maintenance is eligible. Direction and bounded whole-lot size derive on chain;
 each actual fill updates the next plan. Increase sizing reserves adverse-fill
-and taker-cost headroom. The priority/gas-price taker surcharge is **added** to
-ordinary taker fees, checked for width/range, then conservatively rounded. Wider
+and taker-cost headroom from the market's ordinary taker fee, range-checked and
+rounded up to basis points. Aftermath's priority taker surcharge is not priced
+in: `rebalance` and `unwind`, whose fills holders pay, abort above the reference
+gas price. `mint` and `redeem` have no gas-price check. Wider
 tolerance is available only for reduction strictly above the hard threshold;
 equality and every increase use strict tolerance. Costs reduce holder NAV and
 no protocol balance pays a bounty or caller gas.
@@ -60,7 +64,7 @@ no protocol balance pays a bounty or caller gas.
 An observer uses the accepted checkpoint, current authenticated valuation,
 native supply and immutable policy. Submit `operations::rebalance` only when
 Active, data/checkpoint/margin are valid and `V*10000 < N*lower` or
-`V*10000 > N*upper`. Submit the same public operation from any keeper or unrelated
+`V*10000 > N*upper`, at a gas price no higher than the reference gas price. Submit the same public operation from any keeper or unrelated
 caller; do not pass a direction, size, bounty or risk witness. The chain repeats
 every eligibility and sizing check, so an observer prediction is not authority.
 After a competing success, rebuild only from current objects. If submission is
@@ -128,12 +132,13 @@ unresolved. AC-023/024/025 market/live/publication evidence remains unrun here.
 
 ## Terminal handoff facts (T-002)
 
-Activation stores immutable `SeedFacts { locked_shares, funder }`, emits both,
-and transfers exactly the locked native shares to `@0x0`. Neither later mint nor
-settings can replace these facts. Native TreasuryCap supply includes locked
-shares. Terminal eligible-supply arithmetic must use that exact amount, not
-current supply or a recomputed seed estimate. The recorded funder is explicit
-and can differ from the activation sender. Local `A` is separate from venue
-cash and may be withdrawn without an oracle in terminal states. The accepted
-checkpoint and diagnostic fingerprint retain distinct economic/reporting roles.
+Activation stores the immutable `locked_shares` amount on the Vault, emits it in
+`VaultInitialized`, and transfers exactly those native shares to `@0x0`. No seed
+funder is recorded. Neither later mint nor settings can replace the amount.
+Native TreasuryCap supply includes locked shares. Terminal eligible-supply
+arithmetic must use that exact amount, not current supply or a recomputed seed
+estimate. With zero eligible supply, finalization keeps the recovered cash as
+`A`. Local `A` is separate from venue cash and may be withdrawn without an
+oracle in terminal states. The accepted checkpoint is the only stored
+checkpoint; drift is reported by event, never stored.
 This document adds no terminal operation or automatic-retirement path.
