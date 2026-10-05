@@ -19,12 +19,13 @@ caller chooses them.
 
 ## Authority and fees
 
-Publication sends the package's only `AdminCap` to `TREASURY`, and
-`scripts/publish.sh` sends the `UpgradeCap` there in the same transaction. The
-`AdminCap`'s one power is creating sales: `new` takes it, sends the treasury the
-sale's `PresaleCap`, and names the treasury as the sale's only LP-fee recipient,
-which is where its fees go. The `PresaleCap` can only destroy itself after a
-cancellation, since these sales have no `PresaleVault` residuals to claim.
+Publication sends the package's only `AdminCap` to the publisher, and
+`scripts/publish.sh` sends the `UpgradeCap` to `TREASURY` in the same
+transaction. The `AdminCap`'s one power is creating sales: `new` takes it, sends
+the treasury the sale's `PresaleCap`, and names the treasury as the sale's only
+LP-fee recipient, which is where its fees go. The `PresaleCap` can only destroy
+itself after a cancellation, since these sales have no `PresaleVault` residuals
+to claim.
 
 Every migration sends the treasury that pool's DAO-fee `OwnerCap` and its
 `LockedLiquidity`. With an `OwnerCap` the treasury can change its pool's DAO fee,

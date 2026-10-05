@@ -6,8 +6,8 @@ module blast_aftermath_dao_presale::blast_aftermath_dao_presale_tests;
 
 // === Constants ===
 
-/// The package's compiled treasury, which receives the AdminCap, every sale's PresaleCap, and
-/// every pool's DAO fees, owner cap, and locked LP.
+/// The package's compiled treasury, which receives every sale's PresaleCap and every pool's DAO
+/// fees, owner cap, and locked LP.
 const TREASURY: address = @0x37cf46b499f740e653644bd2f7a8ed97f248e8b3c69d5d12c97d7845a54c0cd8;
 const PUBLISHER: address = @0xB1A57;
 const KEEPER: address = @0x4EE9;
@@ -35,14 +35,14 @@ public struct AB() has drop;
 // === Tests ===
 
 #[test]
-/// Publication sends the only AdminCap to the treasury.
-fun publication_sends_the_admin_cap_to_the_treasury() {
+/// Publication sends the only AdminCap to the publisher.
+fun publication_sends_the_admin_cap_to_the_publisher() {
     let mut scenario = test_scenario::begin(PUBLISHER);
     migrator::init_for_testing(scenario.ctx());
 
     scenario.next_tx(PUBLISHER);
-    assert!(test_scenario::has_most_recent_for_address<AdminCap>(TREASURY));
-    assert!(!test_scenario::has_most_recent_for_address<AdminCap>(PUBLISHER));
+    assert!(test_scenario::has_most_recent_for_address<AdminCap>(PUBLISHER));
+    assert!(!test_scenario::has_most_recent_for_address<AdminCap>(TREASURY));
     scenario.end();
 }
 
@@ -101,7 +101,7 @@ fun migrate_rejects_another_sales_pool_creation() {
     let mut scenario = publish();
     let creation_policy = allowing<Witness>(scenario.ctx());
     let (_, first_pool_creation_id) = create_sale(&mut scenario, creation_policy);
-    scenario.next_tx(TREASURY);
+    scenario.next_tx(PUBLISHER);
     let creation_policy = allowing<Witness>(scenario.ctx());
     let (second_presale_id, _) = create_sale(&mut scenario, creation_policy);
 
@@ -155,11 +155,11 @@ fun coin_order_is_the_byte_order_of_type_names() {
 
 // === Test Helpers ===
 
-/// Runs `init`, then opens the treasury's next transaction.
+/// Runs `init`, then opens the publisher's next transaction.
 fun publish(): Scenario {
     let mut scenario = test_scenario::begin(PUBLISHER);
     migrator::init_for_testing(scenario.ctx());
-    scenario.next_tx(TREASURY);
+    scenario.next_tx(PUBLISHER);
 
     scenario
 }
@@ -169,7 +169,7 @@ fun allowing<MigrationWitness>(ctx: &mut TxContext): CreationPolicy {
     creation_policy::allowing_for_testing<QUOTE, MigrationWitness>(ctx)
 }
 
-/// The treasury's AdminCap creates and shares a sale whose pool creation is reserved for `LP`,
+/// The publisher's AdminCap creates and shares a sale whose pool creation is reserved for `LP`,
 /// returning the presale and pool-creation IDs.
 fun create_sale(scenario: &mut Scenario, creation_policy: CreationPolicy): (ID, ID) {
     let admin_cap = scenario.take_from_sender<AdminCap>();

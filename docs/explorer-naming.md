@@ -85,7 +85,7 @@ every package-administration object.
 | `blast_presale` | `blast_presale_admin::AdminRegistry` | new (ADR 0099); shared, one per package | module |
 | `blast_presale` | `package_admin::PackageAdmin` | new (ADR 0099); shared, one per package | module |
 | `blast_presale` | `creation_policy::CreationPolicy` | new (ADR 0102); shared, one per package | module |
-| `blast_aftermath_dao_presale` | `blast_aftermath_dao_presale::AdminCap` | new (ADR 0104); treasury-held, one per package | module |
+| `blast_aftermath_dao_presale` | `blast_aftermath_dao_presale::AdminCap` | new (ADR 0104); publisher-held, one per package | module |
 | `blast_aftermath_dao_presale` | `blast_aftermath_dao_presale::PoolCreation<Lp>` | new (ADR 0104); shared, one per unmigrated sale | module |
 | `blast_aftermath_dao_presale` | `blast_aftermath_dao_presale::LockedLiquidity<Lp>` | new (ADR 0104); treasury-held, one per migrated sale | module |
 
