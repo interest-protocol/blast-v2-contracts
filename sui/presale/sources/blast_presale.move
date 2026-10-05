@@ -82,6 +82,14 @@ public struct RecipientPayout has copy, drop, store {
     vesting: Option<VestingTerms>,
 }
 
+/// How every collected LP fee is split: each recipient's share, then the holder-reward share.
+/// Only `fee_split` builds one, so wherever a split is held its shares total exactly 10,000 BPS
+/// and every fee it apportions is assigned in full.
+public struct FeeSplit has copy, drop, store {
+    shares: vector<RecipientShare>,
+    holder_rewards_bps: Bps,
+}
+
 /// Dynamic-field name for one wallet's undelivered commitment.
 public struct CommitmentKey(address) has copy, drop, store;
 
@@ -110,20 +118,19 @@ public struct Presale<phantom SaleToken, phantom Quote> has key {
     lifecycle: Lifecycle,
     duration_ms: u64,
     liquidity_window_ms: u64,
+    /// When commitments open, fixed by `share`; zero until then. The window's end, the LP
+    /// deadline, and the uncapped start are derived from it and the lengths above.
     start_ms: u64,
-    end_ms: u64,
-    liquidity_deadline_ms: u64,
     raise_target: u64,
     eligibility: EligibilityPolicy,
     uncapped: Option<UncappedPhase>,
-    uncapped_from_ms: u64,
     migration_witness: TypeName,
     tick_spacing: u32,
     pool_fee_rate: u64,
-    fee_recipients: vector<RecipientShare>,
-    holder_rewards_bps: Bps,
+    fee_split: FeeSplit,
     total_commitments: u64,
-    remaining_commitments: u64,
+    /// The wallets holding an undelivered commitment: admitted by their first commitment and
+    /// released by their claim, so the claim that empties the sale is the last one.
     participants: u64,
     quote: Balance<Quote>,
     token_allocation: u64,
@@ -230,6 +237,20 @@ public fun vesting_terms(cliff_ms: u64, period_ms: u64, periods: u64): VestingTe
     VestingTerms { cliff_ms, period_ms, periods }
 }
 
+/// The LP-fee split a sale and its vault pay collected fees under: at most `MAX_FEE_RECIPIENTS`
+/// distinct unvested recipients whose shares total exactly 10,000 BPS with the holder-reward
+/// share. The creator takes its LP fees as one of the recipients.
+public fun fee_split(shares: vector<RecipientShare>, holder_rewards_bps: Bps): FeeSplit {
+    assert!(
+        valid_shares(&shares, MAX_FEE_RECIPIENTS)
+            && shares.all!(|share| share.vesting.is_none())
+            && total_bps(&shares) + holder_rewards_bps.value() == bps::denominator(),
+        EInvalidFeeSplit,
+    );
+
+    FeeSplit { shares, holder_rewards_bps }
+}
+
 /// Mints and apportions the complete token supply, then irreversibly makes it
 /// fixed or burn-only before returning the presale.
 ///
@@ -255,8 +276,7 @@ public fun new<SaleToken, Quote, MigrationWitness: drop>(
     _: MigrationWitness,
     tick_spacing: u32,
     pool_fee_rate: u64,
-    fee_recipients: vector<RecipientShare>,
-    holder_rewards_bps: Bps,
+    fee_split: FeeSplit,
     creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
     ctx: &mut TxContext,
@@ -280,7 +300,6 @@ public fun new<SaleToken, Quote, MigrationWitness: drop>(
         protocol_fees.token_bps(),
         &recipient_allocations,
     );
-    assert_fee_split(&fee_recipients, holder_rewards_bps);
 
     assert!(duration_ms > 0 && liquidity_window_ms >= MIN_LIQUIDITY_WINDOW_MS, EInvalidWindow);
     assert!(eligibility.can_reach(raise_target), EUnreachableRaise);
@@ -346,9 +365,9 @@ public fun new<SaleToken, Quote, MigrationWitness: drop>(
         migration_witness,
         tick_spacing,
         pool_fee_rate,
-        fee_recipients: fee_recipients.recipients(),
-        fee_recipient_bps: fee_recipients.bps(),
-        holder_rewards_bps: holder_rewards_bps.value(),
+        fee_recipients: fee_split.shares.recipients(),
+        fee_recipient_bps: fee_split.shares.bps(),
+        holder_rewards_bps: fee_split.holder_rewards_bps.value(),
         protocol_raise_bps: protocol_fees.raise_bps().value(),
         protocol_token_bps: protocol_fees.token_bps().value(),
         protocol_lp_fee_meme_bps: protocol_fees.lp_fee_meme_bps().value(),
@@ -365,19 +384,14 @@ public fun new<SaleToken, Quote, MigrationWitness: drop>(
             duration_ms,
             liquidity_window_ms,
             start_ms: 0,
-            end_ms: 0,
-            liquidity_deadline_ms: 0,
             raise_target,
             eligibility,
             uncapped,
-            uncapped_from_ms: 0,
             migration_witness,
             tick_spacing,
             pool_fee_rate,
-            fee_recipients,
-            holder_rewards_bps,
+            fee_split,
             total_commitments: 0,
-            remaining_commitments: 0,
             participants: 0,
             quote: balance::zero(),
             token_allocation,
@@ -423,29 +437,22 @@ public fun share<SaleToken, Quote>(
 ) {
     assert!(self.lifecycle == Lifecycle::Pending, EInvalidLifecycle);
 
+    // Every deadline is derived from the start, so the share proves each one fits in u64.
     let start_ms = start_ms.max(clock.timestamp_ms());
     let end_ms = start_ms.checked_add(self.duration_ms).destroy_or!(abort EInvalidWindow);
     let liquidity_deadline_ms = end_ms
         .checked_add(self.liquidity_window_ms)
         .destroy_or!(abort EInvalidWindow);
-    // `new` bounds the offset below the duration, so this cannot overflow.
-    let uncapped_from_ms = self
-        .uncapped
-        .map_ref!(|phase| start_ms + phase.starts_after_ms)
-        .destroy_or!(end_ms);
 
     self.lifecycle = Lifecycle::Open;
     self.start_ms = start_ms;
-    self.end_ms = end_ms;
-    self.liquidity_deadline_ms = liquidity_deadline_ms;
-    self.uncapped_from_ms = uncapped_from_ms;
 
     event::emit(PresaleOpened<SaleToken, Quote> {
         presale_id: self.id.to_inner(),
         start_ms,
         end_ms,
         liquidity_deadline_ms,
-        uncapped_from_ms,
+        uncapped_from_ms: self.uncapped_from_ms(),
         partner_id: self.partner_id,
     });
 
@@ -557,7 +564,7 @@ public fun commit_uncapped<SaleToken, Quote>(
 ): Coin<Quote> {
     self.assert_open(clock);
     assert!(quote_in.value() > 0, EZeroCommitment);
-    assert!(clock.timestamp_ms() >= self.uncapped_from_ms, EUncappedPhaseNotOpen);
+    assert!(clock.timestamp_ms() >= self.uncapped_from_ms(), EUncappedPhaseNotOpen);
 
     let (max_participants, min_commitment) = anyone_limits(self.uncapped.destroy_some());
     let no_wallet_cap = std::u64::max_value!();
@@ -569,7 +576,7 @@ public fun commit_uncapped<SaleToken, Quote>(
 /// refundable. Anyone may settle.
 public fun settle<SaleToken, Quote>(self: &mut Presale<SaleToken, Quote>, clock: &Clock) {
     assert!(self.lifecycle == Lifecycle::Open, EInvalidLifecycle);
-    assert!(clock.timestamp_ms() >= self.end_ms, EPresaleNotEnded);
+    assert!(clock.timestamp_ms() >= self.end_ms(), EPresaleNotEnded);
 
     if (self.total_commitments < self.raise_target) {
         self.cancel();
@@ -594,7 +601,7 @@ public fun cancel_unlaunched<SaleToken, Quote>(
 ) {
     assert!(self.lifecycle == Lifecycle::Funded, EInvalidLifecycle);
     assert!(
-        clock.timestamp_ms() >= self.liquidity_deadline_ms,
+        clock.timestamp_ms() >= self.liquidity_deadline_ms(),
         ELiquidityDeadlineNotReached,
     );
 
@@ -629,7 +636,7 @@ public fun claim<SaleToken, Quote>(
         vesting: self.participant_vesting,
     };
 
-    self.remaining_commitments = self.remaining_commitments - commitment;
+    self.participants = self.participants - 1;
     let vesting_id = self.sale_tokens.pay_or_vest(payout, clock, ctx);
     self.quote.pay(quote_refund, participant, ctx);
 
@@ -639,7 +646,7 @@ public fun claim<SaleToken, Quote>(
         wallet_commitment: commitment,
         tokens,
         quote_refund,
-        remaining_commitments: self.remaining_commitments,
+        remaining_participants: self.participants,
         vesting_id,
     });
 }
@@ -736,29 +743,29 @@ public(package) fun pool_tier<SaleToken, Quote>(self: &Presale<SaleToken, Quote>
 /// The presale and creator-capability IDs, the LP-fee split, and Blast's rates its vault inherits.
 public(package) fun vault_config<SaleToken, Quote>(
     self: &Presale<SaleToken, Quote>,
-): (ID, ID, vector<RecipientShare>, Bps, ProtocolFees) {
-    (
-        self.id.to_inner(),
-        self.presale_cap_id,
-        self.fee_recipients,
-        self.holder_rewards_bps,
-        self.protocol_fees,
-    )
+): (ID, ID, FeeSplit, ProtocolFees) {
+    (self.id.to_inner(), self.presale_cap_id, self.fee_split, self.protocol_fees)
 }
 
 /// Splits one fee amount into each recipient's share followed by the holder-reward
 /// share, assigning every atomic unit exactly once. Remainder units go to the largest
 /// fractional remainders; equal remainders favor the earlier share, so fee recipients
 /// win ties over the holder-reward share and earlier recipients over later ones.
-public(package) fun apportion_fee(
-    fee_recipients: &vector<RecipientShare>,
-    holder_rewards_bps: Bps,
-    amount: u64,
-): vector<u64> {
-    let mut shares = fee_recipients.map_ref!(|fee_recipient| fee_recipient.bps);
-    shares.push_back(holder_rewards_bps);
+public(package) fun apportion_fee(self: &FeeSplit, amount: u64): vector<u64> {
+    let mut shares = self.shares.map_ref!(|share| share.bps);
+    shares.push_back(self.holder_rewards_bps);
 
     apportion(shares, amount)
+}
+
+/// Each fee recipient's share, in payment order.
+public(package) fun shares(self: &FeeSplit): &vector<RecipientShare> {
+    &self.shares
+}
+
+/// The holder-reward share of every collected fee.
+public(package) fun holder_rewards_bps(self: &FeeSplit): Bps {
+    self.holder_rewards_bps
 }
 
 /// Each share's recipient, in order.
@@ -786,7 +793,25 @@ public(package) fun pay<Asset>(
 fun assert_open<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, clock: &Clock) {
     assert!(self.lifecycle == Lifecycle::Open, EInvalidLifecycle);
     assert!(clock.timestamp_ms() >= self.start_ms, EPresaleNotStarted);
-    assert!(clock.timestamp_ms() < self.end_ms, EPresaleEnded);
+    assert!(clock.timestamp_ms() < self.end_ms(), EPresaleEnded);
+}
+
+// Windows, derived from the start `share` fixed: it proved both sums below fit in u64.
+
+/// The exclusive end of the commitment window.
+fun end_ms<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): u64 {
+    self.start_ms + self.duration_ms
+}
+
+/// From when anyone may cancel a funded sale that has not migrated.
+fun liquidity_deadline_ms<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): u64 {
+    self.end_ms() + self.liquidity_window_ms
+}
+
+/// When wallet caps lift: the uncapped phase's offset into the window, which `new` bounds below
+/// the duration, or the end of a sale without one.
+fun uncapped_from_ms<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): u64 {
+    self.uncapped.map_ref!(|phase| self.start_ms + phase.starts_after_ms).destroy_or!(self.end_ms())
 }
 
 /// Largest-remainder apportionment. Shares must sum to 10,000 BPS.
@@ -843,16 +868,6 @@ fun assert_token_allocations(
             + liquidity_token_allocation_bps.value()
             + protocol_token_bps.value() == bps::denominator(),
         EInvalidTokenAllocation,
-    );
-}
-
-/// LP-fee split: distinct unvested recipients totalling exactly 10,000 BPS with the holder share.
-fun assert_fee_split(fee_recipients: &vector<RecipientShare>, holder_rewards_bps: Bps) {
-    assert!(
-        valid_shares(fee_recipients, MAX_FEE_RECIPIENTS)
-            && fee_recipients.all!(|share| share.vesting.is_none())
-            && total_bps(fee_recipients) + holder_rewards_bps.value() == bps::denominator(),
-        EInvalidFeeSplit,
     );
 }
 
@@ -1059,7 +1074,7 @@ fun record_commitment<SaleToken, Quote>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<Quote> {
-    let uncapped = clock.timestamp_ms() >= self.uncapped_from_ms;
+    let uncapped = clock.timestamp_ms() >= self.uncapped_from_ms();
     let (max_participants, hard_cap) = self.participant_limits(uncapped, max_participants);
     let accepted_quote = self.acceptable_quote(quote_in.value(), hard_cap);
     let fills_raise = hard_cap && self.total_commitments + accepted_quote == self.raise_target;
@@ -1083,7 +1098,6 @@ fun record_commitment<SaleToken, Quote>(
 
     self.store_commitment(key, wallet_commitment, wallet_cap);
     self.total_commitments = total_commitments;
-    self.remaining_commitments = total_commitments;
     self.quote.join(quote_in.split(accepted_quote, ctx).into_balance());
 
     event::emit(Committed<SaleToken, Quote> {
@@ -1220,7 +1234,7 @@ fun allowlist_leaf(index: u64, wallet: address, wallet_cap: u64): vector<u8> {
 /// share of the token allocation, or everything left on the last claim.
 fun claimable_tokens<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, commitment: u64): u64 {
     if (self.lifecycle != Lifecycle::Migrated) return 0;
-    if (self.is_last_claim(commitment)) return self.sale_tokens.value();
+    if (self.is_last_claim()) return self.sale_tokens.value();
 
     self.token_allocation.mul_div(commitment, self.total_commitments)
 }
@@ -1229,7 +1243,7 @@ fun claimable_tokens<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, commitm
 /// cancellation, or of the overflow above the raise after a migration; everything left on the
 /// last claim.
 fun refundable_quote<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, commitment: u64): u64 {
-    if (self.is_last_claim(commitment)) return self.quote.value();
+    if (self.is_last_claim()) return self.quote.value();
 
     let refund_pool = if (self.lifecycle == Lifecycle::Cancelled) self.total_commitments
     else self.total_commitments - self.raise_target;
@@ -1237,10 +1251,10 @@ fun refundable_quote<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, commitm
     refund_pool.mul_div(commitment, self.total_commitments)
 }
 
-/// Whether this is the final claim, which takes everything left so the integer-rounding
-/// remainder is never stranded.
-fun is_last_claim<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, commitment: u64): bool {
-    self.remaining_commitments == commitment
+/// Whether the claim in progress, whose record `claim` has already removed, is the final one: it
+/// takes everything left so the integer-rounding remainder is never stranded.
+fun is_last_claim<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): bool {
+    self.participants == 1
 }
 
 // Migration
@@ -1388,10 +1402,9 @@ public fun is_cancelled_for_testing<SaleToken, Quote>(self: &Presale<SaleToken, 
 #[test_only]
 public fun custody_for_testing<SaleToken, Quote>(
     self: &Presale<SaleToken, Quote>,
-): (u64, u64, u64, u64, u64, u64, u64, u64) {
+): (u64, u64, u64, u64, u64, u64, u64) {
     (
         self.total_commitments,
-        self.remaining_commitments,
         self.participants,
         self.quote.value(),
         self.sale_tokens.value(),
@@ -1624,7 +1637,7 @@ public fun claim_fields<SaleToken, Quote>(
         event.wallet_commitment,
         event.tokens,
         event.quote_refund,
-        event.remaining_commitments,
+        event.remaining_participants,
     )
 }
 
@@ -1762,14 +1775,14 @@ public struct RecipientAllocated<phantom SaleToken, phantom Quote> has copy, dro
 }
 
 /// `participant` received its token allocation, or the vesting schedule `vesting_id` that holds
-/// it, and its Quote refund.
+/// it, and its Quote refund, leaving `remaining_participants` wallets still to claim.
 public struct Claimed<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
     participant: address,
     wallet_commitment: u64,
     tokens: u64,
     quote_refund: u64,
-    remaining_commitments: u64,
+    remaining_participants: u64,
     vesting_id: Option<ID>,
 }
 

@@ -133,11 +133,33 @@ fun oversubscription_uses_one_fill_rate_and_refunds_the_rest() {
     );
     fixture.take_recipient_allocations();
 
-    assert_eq!(fixture.claim(KEEPER, ALICE), vector[1_000, 2_500, 750, 3_000]);
+    assert_eq!(fixture.claim(KEEPER, ALICE), vector[1_000, 2_500, 750, 1]);
     fixture.take_payout(ALICE, 2_500, 750);
     assert_eq!(fixture.claim(KEEPER, BOB), vector[3_000, 7_501, 2_250, 0]);
     fixture.take_payout(BOB, 7_501, 2_250);
-    assert_eq!(fixture.custody(), vector[4_000, 0, 2, 0, 0, 0, 0, 0]);
+    assert_eq!(fixture.custody(), vector[4_000, 0, 0, 0, 0, 0, 0]);
+
+    fixture.destroy_migrated_cap();
+    fixture.end();
+}
+
+#[test]
+/// The claim that empties the sale takes the integer remainder, whichever wallet makes it.
+fun claim_order_changes_only_who_takes_the_remainder() {
+    let mut fixture = start_sale(presale::open_eligibility(WALLET_CAP, 2, RAISE_TARGET / 2));
+    fixture.commit_open(ALICE, 1_000);
+    fixture.commit_open(BOB, 3_000);
+    fixture.set_time(END_MS);
+    fixture.settle(KEEPER);
+    fixture.migrate();
+    fixture.take_recipient_allocations();
+
+    // Bob's 10,001 * 3,000 / 4,000 = 7,500.75 rounds down; Alice's last claim takes the rest.
+    assert_eq!(fixture.claim(KEEPER, BOB), vector[3_000, 7_500, 2_250, 1]);
+    fixture.take_payout(BOB, 7_500, 2_250);
+    assert_eq!(fixture.claim(KEEPER, ALICE), vector[1_000, 2_501, 750, 0]);
+    fixture.take_payout(ALICE, 2_501, 750);
+    assert_eq!(fixture.custody(), vector[4_000, 0, 0, 0, 0, 0, 0]);
 
     fixture.destroy_migrated_cap();
     fixture.end();
@@ -151,13 +173,13 @@ fun commitments_lock_quote_in_presale_custody() {
     fixture.commit_open(ALICE, 400);
     assert_eq!(
         fixture.custody(),
-        vector[400, 400, 1, 400, TOKEN_ALLOCATION, LIQUIDITY_TOKENS, RECIPIENT_TOKENS, 0],
+        vector[400, 1, 400, TOKEN_ALLOCATION, LIQUIDITY_TOKENS, RECIPIENT_TOKENS, 0],
     );
 
     fixture.commit_open(ALICE, 100);
     assert_eq!(
         fixture.custody(),
-        vector[500, 500, 1, 500, TOKEN_ALLOCATION, LIQUIDITY_TOKENS, RECIPIENT_TOKENS, 0],
+        vector[500, 1, 500, TOKEN_ALLOCATION, LIQUIDITY_TOKENS, RECIPIENT_TOKENS, 0],
     );
 
     fixture.set_time(END_MS);
@@ -210,7 +232,7 @@ fun underfunded_sale_refunds_quote_and_locks_minted_supply_forever() {
     fixture.take_quote(ALICE, 500);
     assert_eq!(
         fixture.custody(),
-        vector[500, 0, 1, 0, TOKEN_ALLOCATION, LIQUIDITY_TOKENS, RECIPIENT_TOKENS, 0],
+        vector[500, 0, 0, TOKEN_ALLOCATION, LIQUIDITY_TOKENS, RECIPIENT_TOKENS, 0],
     );
 
     fixture.destroy_cancelled_cap();
@@ -883,9 +905,9 @@ fun migration_pays_blast_its_snapshotted_shares_at_the_current_destination() {
     fixture.take_payout(NEW_TREASURY, PROTOCOL_TOKENS, 33);
     fixture.take_quote(RAISE_RECIPIENT, 200);
 
-    assert_eq!(fixture.claim(KEEPER, ALICE), vector[1_000, 2_500, 750, 3_000]);
+    assert_eq!(fixture.claim(KEEPER, ALICE), vector[1_000, 2_500, 750, 1]);
     assert_eq!(fixture.claim(KEEPER, BOB), vector[3_000, 7_501, 2_250, 0]);
-    assert_eq!(fixture.custody(), vector[4_000, 0, 2, 0, 0, 0, 0, 0]);
+    assert_eq!(fixture.custody(), vector[4_000, 0, 0, 0, 0, 0, 0]);
 
     fixture.destroy_migrated_cap();
     fixture.end();
@@ -961,9 +983,9 @@ fun the_admin_can_replace_a_sales_rates_before_it_starts() {
     fixture.take_quote(RAISE_RECIPIENT, 200);
 
     // Alice gets 10,501 * 1,000 / 4,000 = 2,625.25, rounded down; Bob's last claim takes the rest.
-    assert_eq!(fixture.claim(KEEPER, ALICE), vector[1_000, 2_625, 750, 3_000]);
+    assert_eq!(fixture.claim(KEEPER, ALICE), vector[1_000, 2_625, 750, 1]);
     assert_eq!(fixture.claim(KEEPER, BOB), vector[3_000, 7_876, 2_250, 0]);
-    assert_eq!(fixture.custody(), vector[4_000, 0, 2, 0, 0, 0, 0, 0]);
+    assert_eq!(fixture.custody(), vector[4_000, 0, 0, 0, 0, 0, 0]);
 
     fixture.destroy_migrated_cap();
     fixture.end();
@@ -986,7 +1008,6 @@ fun a_rate_increase_before_the_start_takes_from_the_sale_allocation_and_the_lp()
     assert_eq!(
         fixture.custody(),
         vector[
-            0,
             0,
             0,
             0,
@@ -1220,7 +1241,6 @@ fun a_cancelled_sale_pays_blast_nothing() {
         vector[
             500,
             0,
-            1,
             0,
             TOKEN_ALLOCATION,
             LIQUIDITY_TOKENS,
@@ -1414,7 +1434,7 @@ fun claims_lock_participant_tokens_in_a_schedule_from_each_claim() {
     let alice_claimed_at_ms = END_MS + 10;
     fixture.set_time(alice_claimed_at_ms);
     let (claimed, alice_vesting_id) = fixture.claim_with_vesting(KEEPER, ALICE);
-    assert_eq!(claimed, vector[1_000, 2_500, 750, 3_000]);
+    assert_eq!(claimed, vector[1_000, 2_500, 750, 1]);
     let alice_vesting_id = alice_vesting_id.destroy_some();
     assert_eq!(
         team_schedule_id<BLAST_PRESALE_TESTS>(
@@ -1443,7 +1463,7 @@ fun claims_lock_participant_tokens_in_a_schedule_from_each_claim() {
         bob_vesting_id,
     );
     fixture.take_quote(BOB, 2_250);
-    assert_eq!(fixture.custody(), vector[4_000, 0, 2, 0, 0, 0, 0, 0]);
+    assert_eq!(fixture.custody(), vector[4_000, 0, 0, 0, 0, 0, 0]);
 
     fixture.claim_vesting<BLAST_PRESALE_TESTS>(
         alice_vesting_id,
@@ -1502,7 +1522,7 @@ fun a_participant_claim_without_tokens_creates_no_schedule() {
     fixture.settle(KEEPER);
     fixture.migrate();
 
-    assert_eq!(fixture.claim(KEEPER, ALICE), vector[1, 0, 0, 20_000]);
+    assert_eq!(fixture.claim(KEEPER, ALICE), vector[1, 0, 0, 1]);
     assert!(event::events_by_type<VestingCreated>().is_empty());
 
     let (claimed, vesting_id) = fixture.claim_with_vesting(KEEPER, BOB);
@@ -1610,9 +1630,9 @@ fun a_partnered_sale_pays_its_partner_a_cut_of_blasts_raise_share_only() {
     fixture.take_payout(TREASURY, PROTOCOL_TOKENS, 20);
     assert_eq!(fixture.unpaid_protocol_quote(), option::none());
 
-    assert_eq!(fixture.claim(KEEPER, ALICE), vector[1_000, 2_500, 750, 3_000]);
+    assert_eq!(fixture.claim(KEEPER, ALICE), vector[1_000, 2_500, 750, 1]);
     assert_eq!(fixture.claim(KEEPER, BOB), vector[3_000, 7_501, 2_250, 0]);
-    assert_eq!(fixture.custody(), vector[4_000, 0, 2, 0, 0, 0, 0, 0]);
+    assert_eq!(fixture.custody(), vector[4_000, 0, 0, 0, 0, 0, 0]);
 
     destroy(partner);
     fixture.destroy_migrated_cap();
@@ -2302,8 +2322,7 @@ fun new_presale<Quote>(
         TEST_MIGRATOR(),
         TICK_SPACING,
         POOL_FEE_RATE,
-        fee_recipients,
-        bps::new(holder_rewards_bps),
+        presale::fee_split(fee_recipients, bps::new(holder_rewards_bps)),
         creation_policy,
         fee_policy,
         ctx,
@@ -2387,8 +2406,7 @@ fun create_bluefin_sale<AllowedQuote, AllowedWitness>(symbol: vector<u8>) {
         LIQUIDITY_WINDOW_MS,
         single_wallet_eligibility(),
         option::none(),
-        fee_recipients(),
-        bps::new(HOLDER_REWARDS_BPS),
+        presale::fee_split(fee_recipients(), bps::new(HOLDER_REWARDS_BPS)),
         &creation_policy,
         &fee_policy,
         TICK_SPACING,
@@ -2612,7 +2630,7 @@ fun protocol_rates(self: &mut Fixture): vector<u64> {
     let mut rates = vector[];
     self.next_tx!(KEEPER, |fixture| {
         let sale = fixture.take_presale();
-        let (_, _, _, _, protocol_fees) = sale.vault_config();
+        let (_, _, _, protocol_fees) = sale.vault_config();
         rates.append(vector[
             protocol_fees.raise_bps().value(),
             protocol_fees.token_bps().value(),
@@ -2698,7 +2716,7 @@ fun cancel_unlaunched(self: &mut Fixture, sender: address) {
 }
 
 /// Claims for `participant` from a sale without participant vesting and returns
-/// `[commitment, tokens, quote_refund, remaining]`.
+/// `[commitment, tokens, quote_refund, remaining_participants]`.
 fun claim(self: &mut Fixture, sender: address, participant: address): vector<u64> {
     let (claimed, vesting_id) = self.claim_with_vesting(sender, participant);
     assert!(vesting_id.is_none());
@@ -2706,8 +2724,8 @@ fun claim(self: &mut Fixture, sender: address, participant: address): vector<u64
     claimed
 }
 
-/// Claims for `participant` and returns `[commitment, tokens, quote_refund, remaining]` with the
-/// vesting schedule the claim created, if any.
+/// Claims for `participant` and returns `[commitment, tokens, quote_refund,
+/// remaining_participants]` with the vesting schedule the claim created, if any.
 fun claim_with_vesting(
     self: &mut Fixture,
     sender: address,
@@ -2797,15 +2815,14 @@ fun is_cancelled(self: &mut Fixture): bool {
     cancelled.pop_back()
 }
 
-/// Returns `[total_commitments, remaining_commitments, participants, quote, sale_tokens,
-/// liquidity_tokens, recipient_tokens, protocol_tokens]`.
+/// Returns `[total_commitments, participants, quote, sale_tokens, liquidity_tokens,
+/// recipient_tokens, protocol_tokens]`, where `participants` are the wallets still to claim.
 fun custody(self: &mut Fixture): vector<u64> {
     let mut balances = vector[];
     self.next_tx!(KEEPER, |fixture| {
         let sale = fixture.take_presale();
         let (
             total_commitments,
-            remaining_commitments,
             participants,
             quote,
             sale_tokens,
@@ -2815,7 +2832,6 @@ fun custody(self: &mut Fixture): vector<u64> {
         ) = sale.custody_for_testing();
         balances.append(vector[
             total_commitments,
-            remaining_commitments,
             participants,
             quote,
             sale_tokens,

@@ -29,11 +29,13 @@ fun collected_fees_pay_recipients_and_keep_the_holder_share() {
     let mut vault = vault::new_for_testing<MEME, QUOTE>(
         presale_id,
         object::id(&presale_cap),
-        vector[
-            presale::recipient_share(CREATOR, bps::new(5_000)),
-            presale::recipient_share(PARTNER, bps::new(2_000)),
-        ],
-        bps::new(3_000),
+        presale::fee_split(
+            vector[
+                presale::recipient_share(CREATOR, bps::new(5_000)),
+                presale::recipient_share(PARTNER, bps::new(2_000)),
+            ],
+            bps::new(3_000),
+        ),
         no_protocol_fees(),
         scenario.ctx(),
     );
@@ -435,8 +437,7 @@ fun new_vault(
     vault::new_for_testing<MEME, QUOTE>(
         object::id_from_address(@0xCAFE),
         object::id_from_address(@0xCA9),
-        fee_recipients,
-        bps::new(holder_rewards_bps),
+        presale::fee_split(fee_recipients, bps::new(holder_rewards_bps)),
         no_protocol_fees(),
         scenario.ctx(),
     )
@@ -448,11 +449,13 @@ fun vault_paying_blast(scenario: &mut Scenario): PresaleVault<MEME, QUOTE> {
     vault::new_for_testing<MEME, QUOTE>(
         object::id_from_address(@0xCAFE),
         object::id_from_address(@0xCA9),
-        vector[
-            presale::recipient_share(CREATOR, bps::new(5_000)),
-            presale::recipient_share(PARTNER, bps::new(2_000)),
-        ],
-        bps::new(3_000),
+        presale::fee_split(
+            vector[
+                presale::recipient_share(CREATOR, bps::new(5_000)),
+                presale::recipient_share(PARTNER, bps::new(2_000)),
+            ],
+            bps::new(3_000),
+        ),
         fee_policy::protocol_fees_for_testing(0, 0, 1_000, 2_500),
         scenario.ctx(),
     )

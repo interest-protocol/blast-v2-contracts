@@ -81,8 +81,10 @@ public fun new<Lp, SaleToken, Quote>(
         Witness(),
         0,
         0,
-        vector[presale::recipient_share(TREASURY, bps::new(ALL_BPS))],
-        bps::new(0),
+        presale::fee_split(
+            vector[presale::recipient_share(TREASURY, bps::new(ALL_BPS))],
+            bps::new(0),
+        ),
         creation_policy,
         fee_policy,
         ctx,
