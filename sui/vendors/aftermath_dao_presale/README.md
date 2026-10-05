@@ -35,7 +35,11 @@ Blast still takes its raise and token shares when `blast_presale::migrate` runs.
 The `AdminCap` holder may name a Blast partner on the sale `new` returns, with
 `blast_presale::set_partner` before sharing it; the partner then earns its cut of
 Blast's raise fee as on any presale
-([ADR 0106](../../../docs/decisions/0106-presale-partners.md)).
+([ADR 0106](../../../docs/decisions/0106-presale-partners.md)). The presale
+`AdminCap` may also replace this one sale's Blast raise and token rates with
+`blast_presale::set_protocol_fees`, as on any presale: in the creation
+transaction before `blast_presale::share`, which needs both caps in one
+transaction, or afterward until the `start_ms` the share fixed.
 
 ## Migration and custody
 

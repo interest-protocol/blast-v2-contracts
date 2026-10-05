@@ -461,9 +461,10 @@ public fun share<SaleToken, Quote>(
 }
 
 /// Replaces this sale's snapshot of Blast's rates before its window starts, while nobody can have
-/// committed. A changed token rate reapportions Blast's tokens against the buyers' sale allocation
-/// and a changed raise rate its Quote against the LP's, each rounded down; an unchanged rate keeps
-/// its amount, and every recipient keeps its amount.
+/// committed: in its creation transaction before `share`, or once shared until its start. A
+/// changed token rate reapportions Blast's tokens against the buyers' sale allocation and a
+/// changed raise rate its Quote against the LP's, each rounded down; an unchanged rate keeps its
+/// amount, and every recipient keeps its amount.
 public fun set_protocol_fees<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
     admin_registry: &AdminRegistry,
@@ -475,8 +476,11 @@ public fun set_protocol_fees<SaleToken, Quote>(
     clock: &Clock,
 ) {
     admin_registry.assert_admin_cap(admin_cap);
-    assert!(self.lifecycle == Lifecycle::Open, EInvalidLifecycle);
-    assert!(clock.timestamp_ms() < self.start_ms, EPresaleStarted);
+    match (self.lifecycle) {
+        Lifecycle::Pending => (),
+        Lifecycle::Open => assert!(clock.timestamp_ms() < self.start_ms, EPresaleStarted),
+        _ => abort EInvalidLifecycle,
+    };
     let protocol_fees = fee_policy::protocol_fees(
         raise_bps,
         token_bps,

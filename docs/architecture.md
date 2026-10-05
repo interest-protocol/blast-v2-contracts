@@ -112,17 +112,20 @@ A launch pairs its generated meme coin with a quote `Coin<Quote>`. Stored rates
 and public fee-rate configuration inputs use the validated `Bps` unit; replay
 events use raw `u64` primitive values. Core admits
 new pairs through the Table-backed quote portion of `LaunchConfig`, keyed by the
-quote's original `TypeName`. Each entry supplies a nonzero virtual Quote
-reserve. Each launch chooses its own graduation target, and intake rejects a
-target whose pool Quote share rounds to zero. Launch state copies the
-virtual reserve, both administratively configured trade-fee rates, and the
-original `TypeName` of the starting adapter's witness. Both registries are
+quote's original `TypeName`; an entry only admits its Quote. The creator picks
+each launch's virtual Quote reserve and graduation target, and intake rejects a
+zero reserve and a target whose pool Quote share rounds to zero. Launch state
+stores the creator's reserve and target, snapshots both administratively
+configured trade-fee rates, and records the original `TypeName` of the starting
+adapter's witness. Both registries are
 admission decisions; the snapshot does not add a quote `Currency` shared-object
 dependency or a DEX package dependency. See
 [ADR 0025](decisions/0025-quote-whitelist-and-migration-targets.md) and
 [ADR 0027](decisions/0027-graduation-economics-and-migration-witnesses.md) and
 [ADR 0039](decisions/0039-deterministic-quote-valuations.md), and
-[ADR 0041](decisions/0041-launch-config-owned-trade-fees.md).
+[ADR 0041](decisions/0041-launch-config-owned-trade-fees.md); since
+[ADR 0092](decisions/0092-creator-picks-the-virtual-quote.md) the creator, not
+`LaunchConfig`, picks the virtual reserve.
 The shared unit and rounding boundary are fixed by
 [ADR 0044](decisions/0044-validated-basis-points-unit.md).
 

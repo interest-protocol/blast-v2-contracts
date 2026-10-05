@@ -18,7 +18,9 @@ signs in through the existing ACL, and supplies that witness to
 The planner emits inert call descriptions or unsigned-serialization arguments;
 it never reads RPC, signs, serializes live objects or submits.
 
-Normal `operations::unwind` derives configured direction and exact remaining
+Normal `operations::unwind` runs only at or below the reference gas price, so
+Aftermath's priority taker surcharge never reaches holders. It derives configured
+direction and exact remaining
 whole-lot base from the authenticated position, consumes fresh bound price
 observations, isolates funding, and executes at most sixteen reduce-only orders.
 Each requested and actual filled notional obeys the live bounded order cap;
@@ -50,8 +52,9 @@ units or synthetic recovered balance is accepted.
 Actual recovered holder cash occupies a private typed native Balance field,
 separate from earned admin cash. Finalization zeros the buffer book entry.
 Eligible shares are always native TreasuryCap supply minus immutable locked
-seed; there is no mutable numerical claim-supply ledger. With zero eligible
-supply, the recovered coin transfers once to the recorded nonzero seed funder.
+seed; there is no mutable numerical claim-supply ledger. No seed funder is
+recorded. With zero eligible supply, the recovered coin joins Blast's admin
+cash instead of the claim balance, and `withdraw_admin_fees` spends it.
 
 Claims burn the supplied native coin before returning its floor-rounded
 remaining-cash fraction. The last claimant gets dust. A partial rounded-zero
@@ -64,18 +67,18 @@ Completed events are ShutdownBegun (declared reason), UnwindProgress (the
 adopted before checkpoint, the after checkpoint, the market-order count and the
 actual market-fill quote when available; drift found at the start of a step is
 reported by CheckpointDrifted before it),
-ShutdownFinalized (actual recovered cash, eligible supply, optional seed-funder
-payment, final checkpoint and raw unrecoverable collateral remainder), and ShutdownRedeemed (burn, payout, remaining
-cash and eligible supply). Existing unresolved/reconciled diagnostics remain
-deduplicated; successful finalization reconciles a pending diagnostic. Local
-reducers consume same-transaction events and compare native supply, cash,
-checkpoint and diagnostic identity against actual Blast objects.
+ShutdownFinalized (actual recovered cash, eligible supply, final checkpoint and
+raw unrecoverable collateral remainder), and ShutdownRedeemed (burn, payout, remaining
+cash and eligible supply). CheckpointDrifted is not deduplicated: every sync or
+unwind step that finds drift emits it again, and no diagnostic state is stored
+for finalization to clear. Local reducers consume same-transaction events and
+compare native supply, cash and checkpoint against actual Blast objects.
 
 ## Verification boundary
 
 Move tests exercise the production Blast lifecycle, exact checkpoint guards,
-decoded dependency-port arithmetic, native TreasuryCap/coin burns, seed-funder
-custody, and completed events. Controlled fill tests use the exact sizing/fill
+decoded dependency-port arithmetic, native TreasuryCap/coin burns, zero-eligible
+admin-cash retention, and completed events. Controlled fill tests use the exact sizing/fill
 guards for long/short partial budgets, failed middle fills and retries. The
 composition package typechecks launch sell → local terminal claim; independent
 native Quote buy/sell tests continue unchanged.
