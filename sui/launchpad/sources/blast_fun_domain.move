@@ -19,7 +19,8 @@ public struct CreatorAdmin()
 /// Swaps a vault's burn Quote for Meme to burn.
 public struct BuybackAdmin()
 
-/// Claims Blast's fees and chooses where Blast is paid.
+/// Chooses where Blast is paid and Blast's share of future launches, and claims Blast's migration
+/// residuals from the migrators.
 public struct TreasuryAdmin()
 
 /// Sets Blast's creation and trade fees, its fee share, and the partners new launches may name.

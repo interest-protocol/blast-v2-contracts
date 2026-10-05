@@ -145,10 +145,13 @@ once, whenever anyone claims Blast's fees from the launch:
 
 - the creation fee;
 - Blast's part of every curve trade fee, the opening round's included, in Meme
-  and Quote.
+  and Quote;
+- Blast's one-time Meme and Quote migration fee, which joins the launch's fees
+  when it migrates.
 
-The creator's part of each trade fee, the sell burn, and Blast's migration
-allocation are never shared. Neither is Blast's LP-fee share after migration.
+The creator's part of each trade fee and the sell burn are never shared.
+Neither are the venue's migration residuals or Blast's LP-fee share after
+migration, which the migrators pay.
 
 - **Integrators** that create coins call `launch::set_partner` on the
   initializer, passing the `Partner` object and the `Clock`, alongside the other

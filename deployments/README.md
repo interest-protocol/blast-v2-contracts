@@ -27,3 +27,11 @@ Blast SUI uses its [deployment](../sui/blast_sui/DEPLOYING.md) and
 [upgrade](../sui/blast_sui/UPGRADING.md) runbooks. Other packages record the
 same normalized evidence while following their accepted ADRs and verification
 scripts.
+
+The launchpad and migrators pay Blast's fees to their publisher until a
+`TreasuryAdmin` points them elsewhere, and anyone may trigger those payouts. In
+the publication transaction's follow-up, before any launch exists, set the
+launch-fee treasury with `runtime_config::set_treasury`
+([ADR 0105](../docs/decisions/0105-permissionless-launch-fee-claims.md)) and
+the LP-fee destination with `lp_fee_policy::set_protocol_destination`; the
+post-deploy record names both addresses.
