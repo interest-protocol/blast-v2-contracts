@@ -460,8 +460,9 @@ public fun share<SaleToken, Quote>(
 }
 
 /// Replaces this sale's snapshot of Blast's rates before its window starts, while nobody can have
-/// committed. Blast's token share is reapportioned against the buyers' sale allocation and its
-/// raise share against the LP's Quote, each rounded down; every recipient keeps its amount.
+/// committed. A changed token rate reapportions Blast's tokens against the buyers' sale allocation
+/// and a changed raise rate its Quote against the LP's, each rounded down; an unchanged rate keeps
+/// its amount, and every recipient keeps its amount.
 public fun set_protocol_fees<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
     admin_registry: &AdminRegistry,
@@ -484,11 +485,17 @@ public fun set_protocol_fees<SaleToken, Quote>(
     assert!(protocol_fees != self.protocol_fees, EProtocolFeesUnchanged);
 
     // Blast's Quote comes out of the raise left after the recipients', whose rest the LP keeps;
-    // its tokens come out of its own and the buyers' allocations, whose rest the buyers keep.
+    // its tokens come out of its own and the buyers' allocations, whose rest the buyers keep. A
+    // rate that does not change keeps the amount creation apportioned for it.
     let unallocated_raise = self.raise_target - total_amount(&self.raise_payouts);
     let unallocated_tokens = self.token_allocation + self.protocol_tokens.value();
-    let protocol_quote = self.raise_target.mul_div(raise_bps.value(), bps::denominator());
-    let protocol_tokens = self.token_supply().mul_div(token_bps.value(), bps::denominator());
+    let protocol_quote = if (raise_bps == self.protocol_fees.raise_bps()) self.protocol_quote
+    else self.raise_target.mul_div(raise_bps.value(), bps::denominator());
+    let protocol_tokens = if (token_bps == self.protocol_fees.token_bps()) {
+        self.protocol_tokens.value()
+    } else {
+        self.token_supply().mul_div(token_bps.value(), bps::denominator())
+    };
     assert!(protocol_quote < unallocated_raise, EInvalidRaiseAllocation);
     assert!(protocol_tokens < unallocated_tokens, EInvalidTokenAllocation);
     assert_seedable_price(self.liquidity_tokens.value(), unallocated_raise - protocol_quote);
@@ -1806,7 +1813,6 @@ const MIN_LIQUIDITY_WINDOW_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 /// million years, the schedule's end still fits in u64, so migration cannot overflow creating it.
 const MAX_VESTING_DURATION_MS: u64 = 1 << 63;
 
-
 // === Errors ===
 
 #[error(code = 0)]
@@ -1868,7 +1874,6 @@ const EInvalidFeeSplit: vector<u8> = b"Fee recipients must be unique, positive, 
 
 #[error(code = 19)]
 const EWrongMigrationWitness: vector<u8> = b"The migrator does not match the venue fixed at presale creation.";
-
 
 #[error(code = 20)]
 const EBelowMinimumCommitment: vector<u8> = b"The wallet's total commitment is below the sale's minimum commitment.";

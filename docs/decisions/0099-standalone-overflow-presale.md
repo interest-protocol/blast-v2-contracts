@@ -25,7 +25,7 @@
 - Amended: 2026-10-05 (owner decision): a sale may make participant tokens
   vest; each claim locks the participant's tokens in an irrevocable
   `blast_fun_vesting` linear schedule that starts at that claim
-- Amended: 2026-10-05: a sale stores only what nothing else determines. The
+- Amended: 2026-10-05 (owner-requested cleanup): a sale stores only what nothing else determines. The
   share fixes the start, and the window's end, the LP deadline, and the
   uncapped start are derived from it and the creation-time lengths, which the
   share proves fit in u64; `PresaleOpened` still reports all four. The sale

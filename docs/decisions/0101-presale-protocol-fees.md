@@ -10,6 +10,8 @@
 - Amended by: [0106](0106-presale-partners.md): a sale naming a Blast partner holds Blast's
   shares from migration until a permissionless `pay_partner` pays the partner its cut of the
   raise share and Blast the rest
+- Amended: 2026-10-05 (presale audit): a per-sale update keeps Blast's raise or token amount when
+  that rate is unchanged, so an LP-fee-only update no longer re-rounds creation's apportionment
 
 ## Context
 
@@ -48,9 +50,11 @@ policy's current destination.
 presale `AdminCap` may replace all four of its rates with `blast_presale::set_protocol_fees`,
 within the policy's bounds. The update rejects a no-op and emits `ProtocolFeesChanged` with the
 new rates and amounts. Nobody can have committed yet, so a sale's economics are still fixed
-before commitments open. Blast's new token amount is its rate of the supply, rounded down. The
+before commitments open. A rate the update leaves unchanged keeps Blast's amount for it. Blast's
+new token amount for a changed token rate is its rate of the supply, rounded down. The
 difference moves to or from the buyers' sale allocation, which must keep at least one token
-(`EInvalidTokenAllocation`). Blast's new Quote amount is its rate of the raise, rounded down. The
+(`EInvalidTokenAllocation`). Blast's new Quote amount for a changed raise rate is its rate of the
+raise, rounded down. The
 difference moves to or from the LP's Quote, which must stay positive (`EInvalidRaiseAllocation`)
 and still seed a poolable price (`EUnseedablePrice`). The LP's tokens, and every token and raise
 recipient's amount, are unchanged. Once the window starts the rates are fixed

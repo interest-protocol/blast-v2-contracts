@@ -129,8 +129,11 @@ kept. `blast_partners` also emits `PartnerPaid<Quote>` for any nonzero payment.
   - a zero-share partner paid nothing, with no `PartnerPaid`;
   - an unaccepted partner refused at creation, and a shared sale's partner
     fixed;
-  - the payout refused before migration, a second time, for another partner
-    (checked first), and on a sale without a partner;
+  - the payout refused before migration, after a cancellation, a second time,
+    for another partner (checked first), and on a sale without a partner;
+  - a zero raise rate paying the partner nothing and Blast its held tokens;
+  - a rate set before the start being the one a partnered migration holds;
+  - a vendor sale naming a partner before its share;
   - a sale without a partner paying Blast at migration with `partner_quote`
     zero and its `PresaleOpened` naming none.
 - `sui/presale/scripts/check_source_boundaries.sh` pins that only
