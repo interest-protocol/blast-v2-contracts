@@ -6,10 +6,11 @@ module blast_aftermath_dao_presale::blast_aftermath_dao_presale_tests;
 
 // === Constants ===
 
-/// The package's compiled treasury, which receives every sale's PresaleCap and every pool's DAO
-/// fees, owner cap, and locked LP.
+/// The package's compiled treasury, which receives the AdminCap, every sale's PresaleCap, and
+/// every pool's DAO fees, owner cap, and locked LP.
 const TREASURY: address = @0x37cf46b499f740e653644bd2f7a8ed97f248e8b3c69d5d12c97d7845a54c0cd8;
-const CREATOR: address = @0xC0FFEE;
+const PUBLISHER: address = @0xB1A57;
+const KEEPER: address = @0x4EE9;
 
 const TOKEN_SUPPLY: u64 = 1_000_000_000;
 const RAISE_TARGET: u64 = 1_000_000;
@@ -22,6 +23,9 @@ public struct BLAST_AFTERMATH_DAO_PRESALE_TESTS() has drop;
 
 public struct QUOTE() has drop;
 
+/// The fresh Aftermath LP coin a sale's pool creation is reserved for.
+public struct LP() has drop;
+
 public struct OTHER_MIGRATOR() has drop;
 
 public struct A() has drop;
@@ -31,15 +35,25 @@ public struct AB() has drop;
 // === Tests ===
 
 #[test]
+/// Publication sends the only AdminCap to the treasury.
+fun publication_sends_the_admin_cap_to_the_treasury() {
+    let mut scenario = test_scenario::begin(PUBLISHER);
+    migrator::init_for_testing(scenario.ctx());
+
+    scenario.next_tx(PUBLISHER);
+    assert!(test_scenario::has_most_recent_for_address<AdminCap>(TREASURY));
+    assert!(!test_scenario::has_most_recent_for_address<AdminCap>(PUBLISHER));
+    scenario.end();
+}
+
+#[test]
 /// A sale created here names this migrator, pays its whole LP-fee split to the treasury, and sends
 /// the treasury its PresaleCap.
 fun new_creates_a_sale_for_the_treasury() {
-    let mut scenario = test_scenario::begin(CREATOR);
+    let mut scenario = publish();
+    let creation_policy = allowing<Witness>(scenario.ctx());
 
-    create_sale(
-        creation_policy::allowing_for_testing<QUOTE, Witness>(scenario.ctx()),
-        scenario.ctx(),
-    );
+    create_sale(&mut scenario, creation_policy);
 
     let (
         witness,
@@ -57,10 +71,60 @@ fun new_creates_a_sale_for_the_treasury() {
     assert_eq!(fee_recipient_bps, vector[10_000]);
     assert_eq!(holder_rewards_bps, 0);
 
-    scenario.next_tx(CREATOR);
+    scenario.next_tx(KEEPER);
     assert!(test_scenario::has_most_recent_for_address<PresaleCap>(TREASURY));
-    assert!(!test_scenario::has_most_recent_for_address<PresaleCap>(CREATOR));
     scenario.end();
+}
+
+#[test]
+/// `new` shares one pool creation for the LP coin, bound to the sale it created.
+fun new_binds_a_shared_pool_creation_to_its_sale() {
+    let mut scenario = publish();
+    let creation_policy = allowing<Witness>(scenario.ctx());
+
+    let (presale_id, pool_creation_id) = create_sale(&mut scenario, creation_policy);
+
+    scenario.next_tx(KEEPER);
+    let pool_creation = scenario.take_shared_by_id<PoolCreation<LP>>(pool_creation_id);
+    assert_eq!(pool_creation.pool_creation_presale_id_for_testing(), presale_id);
+    test_scenario::return_shared(pool_creation);
+    scenario.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = migrator::EWrongPresale,
+    location = blast_aftermath_dao_presale::blast_aftermath_dao_presale,
+)]
+/// A sale's migration cannot consume the pool creation reserved for another sale.
+fun migrate_rejects_another_sales_pool_creation() {
+    let mut scenario = publish();
+    let creation_policy = allowing<Witness>(scenario.ctx());
+    let (_, first_pool_creation_id) = create_sale(&mut scenario, creation_policy);
+    scenario.next_tx(TREASURY);
+    let creation_policy = allowing<Witness>(scenario.ctx());
+    let (second_presale_id, _) = create_sale(&mut scenario, creation_policy);
+
+    scenario.next_tx(KEEPER);
+    let mut sale = scenario.take_shared_by_id<Presale<BLAST_AFTERMATH_DAO_PRESALE_TESTS, QUOTE>>(
+        second_presale_id,
+    );
+    let pool_creation = scenario.take_shared_by_id<PoolCreation<LP>>(first_pool_creation_id);
+    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let mut pool_registry = pool_registry::new_for_testing(scenario.ctx());
+    let dao_fee_version = version::new_for_testing(scenario.ctx());
+    let clock = clock::create_for_testing(scenario.ctx());
+
+    migrator::migrate(
+        &mut sale,
+        pool_creation,
+        &fee_policy,
+        &mut pool_registry,
+        &dao_fee_version,
+        &clock,
+        scenario.ctx(),
+    );
+    abort
 }
 
 #[test]
@@ -70,12 +134,10 @@ fun new_creates_a_sale_for_the_treasury() {
 )]
 /// Blast must allow this migrator's witness before it can create a sale.
 fun new_needs_blast_to_allow_the_witness() {
-    let mut scenario = test_scenario::begin(CREATOR);
+    let mut scenario = publish();
+    let creation_policy = allowing<OTHER_MIGRATOR>(scenario.ctx());
 
-    create_sale(
-        creation_policy::allowing_for_testing<QUOTE, OTHER_MIGRATOR>(scenario.ctx()),
-        scenario.ctx(),
-    );
+    create_sale(&mut scenario, creation_policy);
     abort
 }
 
@@ -93,10 +155,26 @@ fun coin_order_is_the_byte_order_of_type_names() {
 
 // === Test Helpers ===
 
-/// Creates a sale through this migrator under `creation_policy` and shares it.
-fun create_sale(creation_policy: CreationPolicy, ctx: &mut TxContext) {
-    let fee_policy = fee_policy::new_for_testing(ctx);
-    let clock = clock::create_for_testing(ctx);
+/// Runs `init`, then opens the treasury's next transaction.
+fun publish(): Scenario {
+    let mut scenario = test_scenario::begin(PUBLISHER);
+    migrator::init_for_testing(scenario.ctx());
+    scenario.next_tx(TREASURY);
+
+    scenario
+}
+
+/// A creation policy that allows `QUOTE` and `MigrationWitness`.
+fun allowing<MigrationWitness>(ctx: &mut TxContext): CreationPolicy {
+    creation_policy::allowing_for_testing<QUOTE, MigrationWitness>(ctx)
+}
+
+/// The treasury's AdminCap creates and shares a sale whose pool creation is reserved for `LP`,
+/// returning the presale and pool-creation IDs.
+fun create_sale(scenario: &mut Scenario, creation_policy: CreationPolicy): (ID, ID) {
+    let admin_cap = scenario.take_from_sender<AdminCap>();
+    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let clock = clock::create_for_testing(scenario.ctx());
     let (initializer, treasury_cap) = coin_registry::new_currency_with_otw(
         test_utils::create_one_time_witness<BLAST_AFTERMATH_DAO_PRESALE_TESTS>(),
         9,
@@ -104,11 +182,13 @@ fun create_sale(creation_policy: CreationPolicy, ctx: &mut TxContext) {
         b"Sale Token".to_string(),
         b"Presale test token".to_string(),
         b"".to_string(),
-        ctx,
+        scenario.ctx(),
     );
     let mut currency = coin_registry::unwrap_for_testing(initializer);
+    let create_pool_cap = amm_pool::create_pool_cap_for_testing(scenario.ctx());
 
-    let sale = migrator::new<_, QUOTE>(
+    let sale = migrator::new<LP, _, QUOTE>(
+        &admin_cap,
         treasury_cap,
         &mut currency,
         TOKEN_SUPPLY,
@@ -123,16 +203,25 @@ fun create_sale(creation_policy: CreationPolicy, ctx: &mut TxContext) {
         LIQUIDITY_WINDOW_MS,
         presale::open_eligibility(RAISE_TARGET, 1, RAISE_TARGET),
         option::none(),
+        create_pool_cap,
         &creation_policy,
         &fee_policy,
-        ctx,
+        scenario.ctx(),
     );
 
+    let (presale_id, pool_creation_id) = last_event<
+        PoolCreationReserved<LP, BLAST_AFTERMATH_DAO_PRESALE_TESTS, QUOTE>,
+    >().pool_creation_reserved_fields();
+    assert_eq!(presale_id, object::id(&sale));
+
     sale.share(0, &clock);
+    scenario.return_to_sender(admin_cap);
     destroy(currency);
     destroy(clock);
     destroy(fee_policy);
     destroy(creation_policy);
+
+    (presale_id, pool_creation_id)
 }
 
 fun last_event<Event: copy + drop>(): Event {
@@ -142,19 +231,26 @@ fun last_event<Event: copy + drop>(): Event {
 
 // === Imports ===
 
+use amm::{pool as amm_pool, pool_registry};
+
 use blast_aftermath_dao_presale::blast_aftermath_dao_presale::{
     Self as migrator,
+    AdminCap,
+    PoolCreation,
+    PoolCreationReserved,
     Witness,
     sorts_before_for_testing,
 };
 
 use blast_presale::{
-    blast_presale::{Self as presale, PresaleCap, PresaleCreated},
+    blast_presale::{Self as presale, Presale, PresaleCap, PresaleCreated},
     bps,
     creation_policy::{Self, CreationPolicy},
     fee_policy,
 };
 
+use dao_fee_amm::version;
+
 use std::{type_name, unit_test::{assert_eq, destroy}};
 
-use sui::{clock, coin_registry, event, sui::SUI, test_scenario, test_utils};
+use sui::{clock, coin_registry, event, sui::SUI, test_scenario::{Self, Scenario}, test_utils};

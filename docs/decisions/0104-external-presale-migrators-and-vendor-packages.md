@@ -37,16 +37,20 @@ each depending inward on Blast packages.
 
 **First vendor: `blast_aftermath_dao_presale`.**
 
-- It has no administrator and no shared state. A compiled `TREASURY` receives
-  everything the package hands out; the publish script sends it the `UpgradeCap`
-  in the publish transaction.
-- Its `new` creates sales with its `Witness` and an LP-fee split naming the
-  treasury as the only recipient, the true destination of the pool's fees, and
-  sends the treasury each sale's `PresaleCap`.
-- Its permissionless `migrate` creates a 50/50, flatness-zero Aftermath pool from
-  every LP token and Quote unit, using the caller's fresh LP coin, and checks the
-  pool holds them. It wraps the pool in a DAO-fee pool charging a compiled 2% to
-  the treasury and checks both values. It shares the DAO-fee pool and sends the
+- A compiled `TREASURY` receives everything the package hands out: `init` sends
+  it the only `AdminCap`, and the publish script sends it the `UpgradeCap` in the
+  publish transaction.
+- Its `new` takes the `AdminCap` and the `CreatePoolCapV2` of a fresh LP coin
+  `Lp`. It creates the sale with its `Witness` and an LP-fee split naming the
+  treasury as the only recipient, the true destination of the pool's fees, sends
+  the treasury the sale's `PresaleCap`, and shares a key-only `PoolCreation<Lp>`
+  binding that cap to the new presale.
+- Its permissionless `migrate` takes the sale and its `PoolCreation`, checks the
+  binding (`EWrongPresale`), and consumes it, so the migration caller chooses
+  no economic input, not even the LP coin. It creates a 50/50, flatness-zero
+  Aftermath pool from every LP token and Quote unit and checks the pool holds
+  them. It wraps the pool in a DAO-fee pool charging a compiled 2% to the
+  treasury and checks both values. It shares the DAO-fee pool and sends the
   treasury the pool's `OwnerCap` and a `LockedLiquidity` holding the complete LP
   balance. The base pool keeps Aftermath's minimum 0.01% swap-in fee.
 - `LockedLiquidity` has `key` and `store`, so the treasury can move it, but no
@@ -59,10 +63,13 @@ each depending inward on Blast packages.
   a new presale generation and would widen core's dependency graph.
 - **Allow external witnesses without making `new` public.** Not possible: only
   package code can call a package function.
-- **Collect DAO fees in a shared `Config` that anyone forwards to a treasury an
+- **Let the migration caller supply the `CreatePoolCapV2`.** Rejected: whoever
+  migrates first would choose the LP coin, including its name and metadata, for
+  a pool the treasury then holds. Binding the cap at creation fixes it.
+- **Collect DAO fees in a shared `Config` that anyone forwards to a treasury the
   `AdminCap` can move.** Rejected for this partner: the treasury holds every
-  pool's `OwnerCap`, so it redirects a pool's fees itself, and a claim function,
-  admin capability, and shared object add nothing.
+  pool's `OwnerCap`, so it redirects a pool's fees itself, and a claim function
+  and shared configuration add nothing.
 - **Freeze the locked liquidity.** Rejected for this partner, which wants to hold
   its position object: freezing would make the LP unmovable even by an upgrade,
   but no function releases it either way.
@@ -85,8 +92,10 @@ each depending inward on Blast packages.
 - Presale tests: the new admission guard rejects a primitive and a vector,
   disallowing either is an unchanged allowance, and the AdminCap check precedes
   the type check.
-- Vendor tests: sale creation through the allowed witness, its fee split to the
-  treasury and its `PresaleCap` delivered there, rejection of an unlisted
-  witness, and Aftermath's coin order.
+- Vendor tests: the `AdminCap` delivered to the treasury; sale creation through
+  the allowed witness, its fee split to the treasury, and its `PresaleCap`
+  delivered there; the shared `PoolCreation` bound to its sale; `migrate`
+  rejecting another sale's `PoolCreation`; rejection of an unlisted witness; and
+  Aftermath's coin order.
 - Release: the vendor's `check_mainnet_abi.mjs` live gate and a mainnet
   dev-inspect of `migrate` in both coin orders before the first sale migrates.

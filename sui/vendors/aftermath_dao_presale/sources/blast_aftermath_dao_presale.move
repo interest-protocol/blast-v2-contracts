@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// A one-off `blast_presale` migrator built for a partner. A funded sale seeds a 50/50 Aftermath
-/// weighted pool wrapped in Aftermath's DAO-fee pool, which pays a 2% fee on every swap, deposit,
-/// and withdrawal straight to the partner treasury. The treasury also receives each sale's
-/// `PresaleCap`, and each DAO-fee pool's owner cap, with which it may change that pool's fee or
-/// recipient, and the sale's locked LP.
+/// A one-off `blast_presale` migrator built for a partner. The `AdminCap` creates each sale with
+/// the Aftermath pool-creation capability of its LP coin, which stays bound to that sale. Anyone
+/// may then migrate the funded sale into a 50/50 Aftermath weighted pool wrapped in Aftermath's
+/// DAO-fee pool, which pays a 2% fee on every swap, deposit, and withdrawal straight to the partner
+/// treasury. The treasury also receives each sale's `PresaleCap`, and each DAO-fee pool's owner
+/// cap, with which it may change that pool's fee or recipient, and the sale's locked LP.
 module blast_aftermath_dao_presale::blast_aftermath_dao_presale;
 
 // === Public Types ===
@@ -14,6 +15,20 @@ module blast_aftermath_dao_presale::blast_aftermath_dao_presale;
 /// only `migrate` can release that sale's liquidity.
 public struct Witness() has drop;
 
+/// The package's only administrator, sent to `TREASURY` at publication. Its one power is creating
+/// sales through `new`.
+public struct AdminCap has key, store {
+    id: UID,
+}
+
+/// Shared reservation of one sale's Aftermath pool creation: the `CreatePoolCapV2` of the fresh LP
+/// coin `Lp`, which only `migrate` of the sale `presale_id` can consume.
+public struct PoolCreation<phantom Lp> has key {
+    id: UID,
+    presale_id: ID,
+    create_pool_cap: CreatePoolCapV2,
+}
+
 /// One migrated sale's complete LP balance, sent to the treasury. The treasury may move it, but no
 /// function releases the LP, so the liquidity stays in the pool.
 public struct LockedLiquidity<phantom Lp> has key, store {
@@ -21,13 +36,21 @@ public struct LockedLiquidity<phantom Lp> has key, store {
     lp: Balance<Lp>,
 }
 
+// === Private Initialization ===
+
+fun init(ctx: &mut TxContext) {
+    transfer::public_transfer(AdminCap { id: object::new(ctx) }, TREASURY);
+}
+
 // === Public Functions ===
 
-/// Creates a presale that migrates through this module and sends its `PresaleCap` to the
-/// treasury. Every LP fee its pool pays reaches the treasury, so the sale's LP-fee split names the
-/// treasury as its only recipient; Aftermath pools have no CLMM tier, so the tick spacing and fee
-/// rate are zero. The `CreationPolicy` must allow `Witness`.
-public fun new<SaleToken, Quote>(
+/// Creates a presale that migrates through this module, sends its `PresaleCap` to the treasury, and
+/// shares a `PoolCreation` binding `create_pool_cap`, minted by the fresh LP coin `Lp`, to it.
+/// Every LP fee its pool pays reaches the treasury, so the sale's LP-fee split names the treasury
+/// as its only recipient; Aftermath pools have no CLMM tier, so the tick spacing and fee rate are
+/// zero. The `CreationPolicy` must allow `Witness`.
+public fun new<Lp, SaleToken, Quote>(
+    _: &AdminCap,
     treasury_cap: TreasuryCap<SaleToken>,
     currency: &mut Currency<SaleToken>,
     token_supply: u64,
@@ -42,6 +65,7 @@ public fun new<SaleToken, Quote>(
     liquidity_window_ms: u64,
     eligibility: EligibilityPolicy,
     uncapped: Option<UncappedPhase>,
+    create_pool_cap: CreatePoolCapV2,
     creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
     ctx: &mut TxContext,
@@ -71,26 +95,42 @@ public fun new<SaleToken, Quote>(
         ctx,
     );
 
+    let pool_creation = PoolCreation<Lp> {
+        id: object::new(ctx),
+        presale_id: object::id(&sale),
+        create_pool_cap,
+    };
+
+    event::emit(PoolCreationReserved<Lp, SaleToken, Quote> {
+        presale_id: pool_creation.presale_id,
+        pool_creation_id: object::id(&pool_creation),
+    });
+
     transfer::public_transfer(cap, TREASURY);
+    transfer::share_object(pool_creation);
 
     sale
 }
 
 // `dao_fee_pool::new` creates the shared pool in this transaction.
-/// Anyone may migrate a funded sale `new` created: it seeds a 50/50 Aftermath pool with all of the
-/// sale's LP tokens and Quote, wraps it in a DAO-fee pool paying the treasury, shares that pool,
-/// and sends its owner cap and the locked LP to the treasury. `Lp` is a fresh LP coin whose
-/// `CreatePoolCapV2` the caller published beforehand, as Aftermath's pool creation requires.
+/// Anyone may migrate a funded sale `new` created, consuming the `PoolCreation` bound to it: it
+/// seeds a 50/50 Aftermath pool with all of the sale's LP tokens and Quote, wraps it in a DAO-fee
+/// pool paying the treasury, shares that pool, and sends its owner cap and the locked LP to the
+/// treasury.
 #[allow(lint(share_owned))]
 public fun migrate<Lp, SaleToken, Quote>(
     sale: &mut Presale<SaleToken, Quote>,
+    pool_creation: PoolCreation<Lp>,
     fee_policy: &FeePolicy,
     pool_registry: &mut PoolRegistry,
-    create_pool_cap: CreatePoolCapV2,
     dao_fee_version: &Version,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    let PoolCreation { id, presale_id, create_pool_cap } = pool_creation;
+    assert!(presale_id == object::id(sale), EWrongPresale);
+    id.delete();
+
     let (tokens, quote) = sale.migrate(fee_policy, Witness(), clock, ctx);
     let (token_amount, quote_amount) = (tokens.value(), quote.value());
 
@@ -190,11 +230,35 @@ fun sorts_before<A, B>(): bool {
 // === Test-Only Functions ===
 
 #[test_only]
+public fun init_for_testing(ctx: &mut TxContext) {
+    init(ctx)
+}
+
+#[test_only]
 public fun sorts_before_for_testing<A, B>(): bool {
     sorts_before<A, B>()
 }
 
+#[test_only]
+public fun pool_creation_presale_id_for_testing<Lp>(self: &PoolCreation<Lp>): ID {
+    self.presale_id
+}
+
+#[test_only]
+public fun pool_creation_reserved_fields<Lp, SaleToken, Quote>(
+    event: &PoolCreationReserved<Lp, SaleToken, Quote>,
+): (ID, ID) {
+    (event.presale_id, event.pool_creation_id)
+}
+
 // === Events ===
+
+/// `new` reserved the sale `presale_id`'s Aftermath pool creation for the LP coin `Lp` in the
+/// shared `pool_creation_id`, which its migration consumes.
+public struct PoolCreationReserved<phantom Lp, phantom SaleToken, phantom Quote> has copy, drop {
+    presale_id: ID,
+    pool_creation_id: ID,
+}
 
 /// A sale migrated into the Aftermath pool `pool_id`, which traders reach through the shared
 /// DAO-fee pool `dao_fee_pool_id`. The treasury holds that pool's owner cap `owner_cap_id` and
@@ -210,7 +274,8 @@ public struct Migrated<phantom Lp, phantom SaleToken, phantom Quote> has copy, d
 
 // === Constants ===
 
-/// Receives every sale's `PresaleCap` and every pool's DAO fees, owner cap, and locked LP.
+/// Receives the `AdminCap`, every sale's `PresaleCap`, and every pool's DAO fees, owner cap, and
+/// locked LP.
 const TREASURY: address = @0x37cf46b499f740e653644bd2f7a8ed97f248e8b3c69d5d12c97d7845a54c0cd8;
 
 /// The DAO fee, 2%, that Aftermath sends to the treasury from every swap, deposit, and withdrawal
@@ -239,6 +304,9 @@ const EPoolMismatch: vector<u8> = b"The Aftermath pool must hold every sale toke
 
 #[error(code = 1)]
 const EDaoFeePoolMismatch: vector<u8> = b"The DAO-fee pool must charge this package's fee and pay the treasury.";
+
+#[error(code = 2)]
+const EWrongPresale: vector<u8> = b"The pool creation is bound to a different presale.";
 
 // === Imports ===
 

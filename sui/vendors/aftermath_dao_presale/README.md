@@ -19,38 +19,45 @@ caller chooses them.
 
 ## Authority and fees
 
-The package has no administrator and no shared state. `scripts/publish.sh` sends
-the `UpgradeCap` to `TREASURY` in the publish transaction, `new` sends the
-treasury each sale's `PresaleCap`, and every migration sends it that pool's
-DAO-fee `OwnerCap` and its `LockedLiquidity`. With
-an `OwnerCap` the treasury can change its pool's DAO fee, anywhere Aftermath
-allows from 0% to 100%, or the fee recipient, directly through Aftermath.
+Publication sends the package's only `AdminCap` to `TREASURY`, and
+`scripts/publish.sh` sends the `UpgradeCap` there in the same transaction. The
+`AdminCap`'s one power is creating sales: `new` takes it, sends the treasury the
+sale's `PresaleCap`, and names the treasury as the sale's only LP-fee recipient,
+which is where its fees go. The `PresaleCap` can only destroy itself after a
+cancellation, since these sales have no `PresaleVault` residuals to claim.
 
-A sale created here names the treasury as its only LP-fee recipient, which is
-where its fees go. Its `PresaleCap` only destroys itself after a cancellation,
-since these sales have no `PresaleVault` residuals to claim. No `PresaleVault` exists for these pools, so Blast's LP-fee
-rates and holder-reward rounds do not apply; Blast still takes its raise and
-token shares when `blast_presale::migrate` runs.
+Every migration sends the treasury that pool's DAO-fee `OwnerCap` and its
+`LockedLiquidity`. With an `OwnerCap` the treasury can change its pool's DAO fee,
+anywhere Aftermath allows from 0% to 100%, or the fee recipient, directly through
+Aftermath. No `PresaleVault` exists for these pools, so Blast's LP-fee rates and
+holder-reward rounds do not apply; Blast still takes its raise and token shares
+when `blast_presale::migrate` runs.
 
 ## Migration and custody
 
-Migration is permissionless, like every presale venue. Aftermath creates a pool
-only from a `CreatePoolCapV2` minted by a freshly published LP coin, so the caller
-first publishes one (Aftermath's `publish-lp-coin` transaction) and passes its
-type as `Lp`. `migrate` then:
+Aftermath creates a pool only from a `CreatePoolCapV2` minted by a freshly
+published LP coin. The treasury publishes one per sale (Aftermath's
+`publish-lp-coin` transaction) and passes its cap to `new`, which shares a
+`PoolCreation<Lp>` binding it to the new presale and emits
+`PoolCreationReserved`. Migration then stays permissionless without letting the
+caller choose the LP coin. `migrate` takes the sale and its `PoolCreation`, and:
 
-1. takes the sale's LP tokens and Quote from `blast_presale::migrate` with this
+1. checks the `PoolCreation` is bound to this sale, then consumes it;
+2. takes the sale's LP tokens and Quote from `blast_presale::migrate` with this
    package's `Witness`;
-2. creates the pool in Aftermath's coin order and checks it holds every unit;
-3. wraps it in a DAO-fee pool paying the treasury 2% and checks both values;
-4. shares the DAO-fee pool, the object traders use; and
-5. sends the treasury the pool's `OwnerCap` and a `LockedLiquidity` holding the
+3. creates the pool in Aftermath's coin order and checks it holds every unit;
+4. wraps it in a DAO-fee pool paying the treasury 2% and checks both values;
+5. shares the DAO-fee pool, the object traders use; and
+6. sends the treasury the pool's `OwnerCap` and a `LockedLiquidity` holding the
    complete LP balance.
 
 `LockedLiquidity` has `store`, so the treasury can move it, but no function
 releases its LP, so the liquidity stays in the pool. The `UpgradeCap` holder can
 upgrade this package, which could add such a function and changes how sales not
-yet migrated reach Aftermath.
+yet migrated reach Aftermath. A `CreatePoolCapV2` for a different LP coin than
+`Lp` would make Aftermath abort the migration, so the treasury must bind the cap
+its `Lp` coin minted; a sale that cannot migrate becomes refundable at its LP
+deadline.
 
 ## Deployment order
 

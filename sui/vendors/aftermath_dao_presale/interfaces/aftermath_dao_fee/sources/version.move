@@ -3,3 +3,8 @@ module dao_fee_amm::version;
 
 /// Shared package version gate.
 public struct Version has key { id: UID }
+
+#[test_only]
+public fun new_for_testing(ctx: &mut TxContext): Version {
+    Version { id: object::new(ctx) }
+}
