@@ -1640,6 +1640,35 @@ fun claim_protocol_fees_checks_the_version_before_the_partner() {
     fixture.end();
 }
 
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+/// A stale package is refused before the partner check, so old bytecode cannot pay a partner.
+fun claim_protocol_fees_with_partner_checks_the_version_before_the_partner() {
+    let mut fixture = start();
+
+    fixture.next_tx!(BOB, |f| {
+        f.set_creation_fee(CREATION_FEE);
+        let partner = f.accepted_partner();
+        let other = f.accepted_partner();
+        let ticket = f.new_ticket(CREATOR);
+        let mut launch = f.intake_with_partner(ticket, &partner);
+        f.package_version.set_for_testing(2);
+
+        launch.claim_protocol_fees_with_partner(
+            &f.package_version,
+            &f.runtime_config,
+            &other,
+            &f.clock,
+            f.ctx!(),
+        );
+
+        destroy(partner);
+        destroy(other);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
 // --- Creation fee and partner ---
 
 #[test]

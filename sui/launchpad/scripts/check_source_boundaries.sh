@@ -774,6 +774,13 @@ if [[ -n "$runtime_config_ungated" ]]; then
   runtime_config_violations+="${runtime_config_ungated}"$'\n'
 fi
 
+# Every claim pays the treasury live, so its setter refuses the zero address and a no-op before
+# the one write and its event.
+if [[ "$(move_production_body set_treasury <<<"$runtime_config_facts" | move_semantic_shape)" \
+  != 'package_version.assert_current();assert!(treasury != @0x0,blast_fun::errors::invalid_destination!());assert!(treasury != self.treasury,blast_fun::errors::unchanged!());self.treasury = treasury;events::treasury_changed(treasury);' ]]; then
+  runtime_config_violations+="  set_treasury must reject the zero and current addresses before it writes and records the treasury"$'\n'
+fi
+
 if [[ -n "$runtime_config_violations" ]]; then
   printf '%s' "$runtime_config_violations"
   echo 'RuntimeConfig must change only through its version-gated, AdminWitness-authorized setters.' >&2
@@ -1111,14 +1118,14 @@ if [[ "$(move_production_signature claim_protocol_fees <<<"$launch_facts")" \
   launch_authority_violations+='  a protocol fee claim takes a caller-chosen payee or authority, or the treasury payout changed'$'\n'
 fi
 
-for protocol_claim in claim_protocol_fees claim_protocol_fees_with_partner; do
-  protocol_claim_body="$(move_production_body "$protocol_claim" <<<"$launch_facts" | move_semantic_shape)"
-  if [[ "$(count_occurrences 'pay_treasury\(' <<<"$protocol_claim_body")" != 3 ]] \
-    || [[ "$(count_occurrences 'events::protocol_fees_claimed\(' <<<"$protocol_claim_body")" != 1 ]] \
-    || [[ "${protocol_claim_body#*events::protocol_fees_claimed(}" == *'pay_treasury('* ]]; then
-    launch_authority_violations+="  ${protocol_claim} must pay the treasury each of its three balances before it records the claim"$'\n'
-  fi
-done
+# Each claim body is pinned whole, so the payee of every payout is the RuntimeConfig treasury the
+# claim reads and records, never the sender or a constant, with all three payouts before the event.
+if [[ "$(move_production_body claim_protocol_fees <<<"$launch_facts" | move_semantic_shape)" \
+    != 'package_version.assert_current();assert!(self.partner_id.is_none(),blast_fun::errors::partner_mismatch!());let treasury = runtime_config.treasury();let(meme,quote,sui)= self.fee_ledger.claim_protocol_fees();let(meme_amount,quote_amount,sui_amount)=(meme.value(),quote.value(),sui.value());pay_treasury(meme,treasury,ctx);pay_treasury(quote,treasury,ctx);pay_treasury(sui,treasury,ctx);events::protocol_fees_claimed(self.id.to_inner(),treasury,meme_amount,quote_amount,sui_amount,0,0,0);' ]] \
+  || [[ "$(move_production_body claim_protocol_fees_with_partner <<<"$launch_facts" | move_semantic_shape)" \
+    != 'package_version.assert_current();assert!(self.partner_id.contains(&object::id(partner)),blast_fun::errors::partner_mismatch!());let treasury = runtime_config.treasury();let(mut meme,mut quote,mut sui)= self.fee_ledger.claim_protocol_fees();let partner_meme = partner.pay(&mut meme,clock);let partner_quote = partner.pay(&mut quote,clock);let partner_sui = partner.pay(&mut sui,clock);let(meme_amount,quote_amount,sui_amount)=(meme.value(),quote.value(),sui.value());pay_treasury(meme,treasury,ctx);pay_treasury(quote,treasury,ctx);pay_treasury(sui,treasury,ctx);events::protocol_fees_claimed(self.id.to_inner(),treasury,meme_amount,quote_amount,sui_amount,partner_meme,partner_quote,partner_sui);' ]]; then
+  launch_authority_violations+='  a protocol fee claim must pay each balance to the RuntimeConfig treasury it records, after the partner and before the claim event'$'\n'
+fi
 
 # Records a violation, labelled with its ticket, for every needle not used by exactly the
 # expected launch.move production functions.

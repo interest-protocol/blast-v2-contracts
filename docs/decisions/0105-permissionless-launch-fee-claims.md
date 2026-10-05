@@ -6,6 +6,8 @@
   partner" claims returned Blast's part to the treasury administrator, and
   [0022](0022-dual-asset-fee-ledger-and-claims.md), whose protocol claim was
   administrator-only
+- Amended: 2026-10-05 (owner decision): the treasury rotation stays instant;
+  the compromise consequence and the release gate are corrected
 
 ## Context
 
@@ -79,6 +81,13 @@ launches accrue fees.
 **Snapshotting the treasury per launch.** A rotated treasury must keep
 receiving every launch's fees, as ADR 0101 rules for presale LP fees.
 
+**A timelocked treasury rotation** (asked 2026-10-05). Scheduling each new
+treasury `blast_partners::delay_ms()` ahead, as Blast's partner changes are,
+would give the root administrator time to revoke a compromised `TreasuryAdmin`
+before accrued fees move. The owner chose an instant rotation, like the
+migrators' LP-fee destination and the presale fee destination: a delay only
+helps if a bad rotation is noticed and revoked within it.
+
 ## Consequences
 
 - Anyone, the partner included, can trigger a claim at any time. The caller
@@ -88,11 +97,16 @@ receiving every launch's fees, as ADR 0101 rules for presale LP fees.
   may claim, fees accrued before a scheduled share change can be settled at the
   old share by claiming before the change takes effect. Blast no longer chooses
   when a partner is paid.
-- A compromised `TreasuryAdmin` can redirect Blast's future launch fees, but can
-  no longer withdraw them to itself in one call. It cannot touch the partner's
-  share or the creator's fees.
+- A compromised `TreasuryAdmin` can still take every launch's accrued Blast
+  fees in one transaction: it rotates the treasury to itself, and the rotation
+  applies at once, then claims each launch. Its reach is unchanged from the
+  administrator claim it replaces; what changes is that every payout lands at
+  the address `TreasuryChanged` records, in plain view. It cannot touch the
+  partner's share or the creator's fees.
 - Each payout is a coin object sent to the treasury, observable in transaction
-  effects. The partner keeps `blast_partners`' address-balance payment.
+  effects; the partner keeps `blast_partners`' address-balance payment. Since
+  anyone may claim as often as fees accrue, the treasury can collect up to three
+  coins per claim, which it merges off chain.
 - ABI and indexing:
   - both claims drop the `AdminWitness<TreasuryAdmin>`, take `&RuntimeConfig`,
     and return nothing;
@@ -101,8 +115,9 @@ receiving every launch's fees, as ADR 0101 rules for presale LP fees.
   - `ProtocolFeesClaimed` gains `treasury`.
 
   The SDK builders, decoders and reducer follow.
-- Deployment: after publication, the treasury administrator sets the treasury
-  before the first launch's fees are claimed.
+- Deployment: until rotated the treasury is the publisher, so the treasury
+  administrator sets it before any launch exists
+  ([deployment records](../../deployments/README.md)).
 - Out of scope: the creator's curve-fee claim keeps its `CurveFeeCap`, and the
   migrators' `vault::claim_protocol_fees` for migration residuals keeps its
   `TreasuryAdmin` witness.
@@ -121,12 +136,21 @@ receiving every launch's fees, as ADR 0101 rules for presale LP fees.
   - the partner's own claim pays it its share and the treasury the rest,
     including the creation and migration fees;
   - a zero-share partner pays the treasury everything;
-  - the version check before the partner check, and the existing partner
-    refusals.
+  - the version check before the partner check, for both claims, and the
+    existing partner refusals.
 - `ProtocolFeesClaimed` bytes are pinned with the treasury in every claim test.
 - `scripts/check_source_boundaries.sh` pins:
   - the role map without the claims and with `set_treasury`;
-  - both claim signatures, so no caller chooses a payee;
+  - both claim signatures and both claim bodies whole, so every payout goes to
+    the `RuntimeConfig` treasury the claim records, after the partner and before
+    the event, and no caller chooses a payee;
   - the one `pay_treasury` helper and its zero-skip;
-  - three treasury payouts before the claim event;
+  - the `set_treasury` body, with its zero-address and no-op refusals;
   - the `RuntimeConfig` layout, setters and events.
+
+  A mutation paying the sender, paying a constant treasury, or dropping the
+  zero-address refusal fails the gate.
+- Still to run before release: Move tests cannot observe address balances, so a
+  live rehearsal of a permissionless partnered claim that reads the partner's
+  and the treasury's balances is a release gate, as ADR 0095 requires for
+  partner payments. The Rust PTB harness does not call either launch claim.
