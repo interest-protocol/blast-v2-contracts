@@ -740,11 +740,12 @@ public(package) fun pool_tier<SaleToken, Quote>(self: &Presale<SaleToken, Quote>
     (self.tick_spacing, self.pool_fee_rate)
 }
 
-/// The presale and creator-capability IDs, the LP-fee split, and Blast's rates its vault inherits.
+/// The presale and creator-capability IDs, the LP-fee split, Blast's rates, and the partner its
+/// vault inherits.
 public(package) fun vault_config<SaleToken, Quote>(
     self: &Presale<SaleToken, Quote>,
-): (ID, ID, FeeSplit, ProtocolFees) {
-    (self.id.to_inner(), self.presale_cap_id, self.fee_split, self.protocol_fees)
+): (ID, ID, FeeSplit, ProtocolFees, Option<ID>) {
+    (self.id.to_inner(), self.presale_cap_id, self.fee_split, self.protocol_fees, self.partner_id)
 }
 
 /// Splits one fee amount into each recipient's share followed by the holder-reward

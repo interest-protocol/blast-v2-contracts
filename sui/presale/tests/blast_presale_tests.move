@@ -970,6 +970,7 @@ fun the_admin_can_replace_a_sales_rates_before_it_starts() {
     // down; the 500 tokens Blast gives up join the sale allocation of 10,001.
     assert_eq!(vector[protocol_quote, protocol_tokens, token_allocation], vector[100, 500, 10_501]);
     assert_eq!(fixture.protocol_rates(), vector[1_000, 250, 100, 200]);
+    assert_eq!(fixture.vault_partner_id(), option::none());
 
     fixture.set_time(START_MS);
     fixture.commit_open(ALICE, 1_000);
@@ -1610,6 +1611,7 @@ fun a_partnered_sale_pays_its_partner_a_cut_of_blasts_raise_fee_only() {
 
     assert_eq!(fixture.migrate(), vector[LIQUIDITY_TOKENS, 767]);
     assert!(event::events_by_type<ProtocolFeesPaid<BLAST_PRESALE_TESTS, QUOTE>>().is_empty());
+    assert_eq!(fixture.vault_partner_id(), option::some(object::id(&partner)));
     assert_eq!(fixture.unpaid_protocol_quote(), option::some(33));
     fixture.take_quote(RAISE_RECIPIENT, 200);
     fixture.assert_treasury_received_nothing();
@@ -2743,7 +2745,7 @@ fun protocol_rates(self: &mut Fixture): vector<u64> {
     let mut rates = vector[];
     self.next_tx!(KEEPER, |fixture| {
         let sale = fixture.take_presale();
-        let (_, _, _, protocol_fees) = sale.vault_config();
+        let (_, _, _, protocol_fees, _) = sale.vault_config();
         rates.append(vector[
             protocol_fees.raise_bps().value(),
             protocol_fees.token_bps().value(),
@@ -2754,6 +2756,19 @@ fun protocol_rates(self: &mut Fixture): vector<u64> {
     });
 
     rates
+}
+
+/// Returns the partner the sale's vault inherits, which it pays a cut of Blast's LP fees.
+fun vault_partner_id(self: &mut Fixture): Option<ID> {
+    let mut partner_id = option::none();
+    self.next_tx!(KEEPER, |fixture| {
+        let sale = fixture.take_presale();
+        let (_, _, _, _, vault_partner_id) = sale.vault_config();
+        partner_id = vault_partner_id;
+        fixture.return_presale(sale);
+    });
+
+    partner_id
 }
 
 fun settle(self: &mut Fixture, sender: address) {
