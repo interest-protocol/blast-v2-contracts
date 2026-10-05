@@ -41,7 +41,8 @@ each depending inward on Blast packages.
   everything the package hands out; the publish script sends it the `UpgradeCap`
   in the publish transaction.
 - Its `new` creates sales with its `Witness` and an LP-fee split naming the
-  treasury as the only recipient, the true destination of the pool's fees.
+  treasury as the only recipient, the true destination of the pool's fees, and
+  sends the treasury each sale's `PresaleCap`.
 - Its permissionless `migrate` creates a 50/50, flatness-zero Aftermath pool from
   every LP token and Quote unit, using the caller's fresh LP coin, and checks the
   pool holds them. It wraps the pool in a DAO-fee pool charging a compiled 2% to
@@ -84,7 +85,8 @@ each depending inward on Blast packages.
 - Presale tests: the new admission guard rejects a primitive and a vector,
   disallowing either is an unchanged allowance, and the AdminCap check precedes
   the type check.
-- Vendor tests: sale creation through the allowed witness and its fee split to
-  the treasury, rejection of an unlisted witness, and Aftermath's coin order.
+- Vendor tests: sale creation through the allowed witness, its fee split to the
+  treasury and its `PresaleCap` delivered there, rejection of an unlisted
+  witness, and Aftermath's coin order.
 - Release: the vendor's `check_mainnet_abi.mjs` live gate and a mainnet
   dev-inspect of `migrate` in both coin orders before the first sale migrates.

@@ -20,13 +20,15 @@ caller chooses them.
 ## Authority and fees
 
 The package has no administrator and no shared state. `scripts/publish.sh` sends
-the `UpgradeCap` to `TREASURY` in the publish transaction, and every migration
-sends the treasury that pool's DAO-fee `OwnerCap` and its `LockedLiquidity`. With
+the `UpgradeCap` to `TREASURY` in the publish transaction, `new` sends the
+treasury each sale's `PresaleCap`, and every migration sends it that pool's
+DAO-fee `OwnerCap` and its `LockedLiquidity`. With
 an `OwnerCap` the treasury can change its pool's DAO fee, anywhere Aftermath
 allows from 0% to 100%, or the fee recipient, directly through Aftermath.
 
 A sale created here names the treasury as its only LP-fee recipient, which is
-where its fees go. No `PresaleVault` exists for these pools, so Blast's LP-fee
+where its fees go. Its `PresaleCap` only destroys itself after a cancellation,
+since these sales have no `PresaleVault` residuals to claim. No `PresaleVault` exists for these pools, so Blast's LP-fee
 rates and holder-reward rounds do not apply; Blast still takes its raise and
 token shares when `blast_presale::migrate` runs.
 

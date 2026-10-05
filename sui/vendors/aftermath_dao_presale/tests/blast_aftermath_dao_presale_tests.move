@@ -6,7 +6,8 @@ module blast_aftermath_dao_presale::blast_aftermath_dao_presale_tests;
 
 // === Constants ===
 
-/// The package's compiled treasury, which receives every pool's DAO fees, owner cap, and locked LP.
+/// The package's compiled treasury, which receives every sale's PresaleCap and every pool's DAO
+/// fees, owner cap, and locked LP.
 const TREASURY: address = @0x37cf46b499f740e653644bd2f7a8ed97f248e8b3c69d5d12c97d7845a54c0cd8;
 const CREATOR: address = @0xC0FFEE;
 
@@ -30,8 +31,9 @@ public struct AB() has drop;
 // === Tests ===
 
 #[test]
-/// A sale created here names this migrator and pays its whole LP-fee split to the treasury.
-fun new_creates_a_sale_whose_lp_fees_pay_the_treasury() {
+/// A sale created here names this migrator, pays its whole LP-fee split to the treasury, and sends
+/// the treasury its PresaleCap.
+fun new_creates_a_sale_for_the_treasury() {
     let mut scenario = test_scenario::begin(CREATOR);
 
     create_sale(
@@ -55,6 +57,9 @@ fun new_creates_a_sale_whose_lp_fees_pay_the_treasury() {
     assert_eq!(fee_recipient_bps, vector[10_000]);
     assert_eq!(holder_rewards_bps, 0);
 
+    scenario.next_tx(CREATOR);
+    assert!(test_scenario::has_most_recent_for_address<PresaleCap>(TREASURY));
+    assert!(!test_scenario::has_most_recent_for_address<PresaleCap>(CREATOR));
     scenario.end();
 }
 
@@ -103,7 +108,7 @@ fun create_sale(creation_policy: CreationPolicy, ctx: &mut TxContext) {
     );
     let mut currency = coin_registry::unwrap_for_testing(initializer);
 
-    let (sale, cap) = migrator::new<_, QUOTE>(
+    let sale = migrator::new<_, QUOTE>(
         treasury_cap,
         &mut currency,
         TOKEN_SUPPLY,
@@ -124,7 +129,6 @@ fun create_sale(creation_policy: CreationPolicy, ctx: &mut TxContext) {
     );
 
     sale.share(0, &clock);
-    transfer::public_transfer(cap, CREATOR);
     destroy(currency);
     destroy(clock);
     destroy(fee_policy);
@@ -145,7 +149,7 @@ use blast_aftermath_dao_presale::blast_aftermath_dao_presale::{
 };
 
 use blast_presale::{
-    blast_presale::{Self as presale, PresaleCreated},
+    blast_presale::{Self as presale, PresaleCap, PresaleCreated},
     bps,
     creation_policy::{Self, CreationPolicy},
     fee_policy,

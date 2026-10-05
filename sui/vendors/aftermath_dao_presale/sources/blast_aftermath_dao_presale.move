@@ -3,8 +3,9 @@
 
 /// A one-off `blast_presale` migrator built for a partner. A funded sale seeds a 50/50 Aftermath
 /// weighted pool wrapped in Aftermath's DAO-fee pool, which pays a 2% fee on every swap, deposit,
-/// and withdrawal straight to the partner treasury. The treasury also receives each DAO-fee pool's
-/// owner cap, with which it may change that pool's fee or recipient, and the sale's locked LP.
+/// and withdrawal straight to the partner treasury. The treasury also receives each sale's
+/// `PresaleCap`, and each DAO-fee pool's owner cap, with which it may change that pool's fee or
+/// recipient, and the sale's locked LP.
 module blast_aftermath_dao_presale::blast_aftermath_dao_presale;
 
 // === Public Types ===
@@ -22,10 +23,10 @@ public struct LockedLiquidity<phantom Lp> has key, store {
 
 // === Public Functions ===
 
-/// Creates a presale that migrates through this module. Every LP fee its pool pays reaches the
-/// treasury, so the sale's LP-fee split names the treasury as its only recipient; Aftermath pools
-/// have no CLMM tier, so the tick spacing and fee rate are zero. The `CreationPolicy` must allow
-/// `Witness`.
+/// Creates a presale that migrates through this module and sends its `PresaleCap` to the
+/// treasury. Every LP fee its pool pays reaches the treasury, so the sale's LP-fee split names the
+/// treasury as its only recipient; Aftermath pools have no CLMM tier, so the tick spacing and fee
+/// rate are zero. The `CreationPolicy` must allow `Witness`.
 public fun new<SaleToken, Quote>(
     treasury_cap: TreasuryCap<SaleToken>,
     currency: &mut Currency<SaleToken>,
@@ -44,8 +45,8 @@ public fun new<SaleToken, Quote>(
     creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
     ctx: &mut TxContext,
-): (Presale<SaleToken, Quote>, PresaleCap) {
-    presale::new(
+): Presale<SaleToken, Quote> {
+    let (sale, cap) = presale::new(
         treasury_cap,
         currency,
         token_supply,
@@ -68,7 +69,11 @@ public fun new<SaleToken, Quote>(
         creation_policy,
         fee_policy,
         ctx,
-    )
+    );
+
+    transfer::public_transfer(cap, TREASURY);
+
+    sale
 }
 
 // `dao_fee_pool::new` creates the shared pool in this transaction.
@@ -205,7 +210,7 @@ public struct Migrated<phantom Lp, phantom SaleToken, phantom Quote> has copy, d
 
 // === Constants ===
 
-/// Receives every pool's DAO fees, owner cap, and locked LP.
+/// Receives every sale's `PresaleCap` and every pool's DAO fees, owner cap, and locked LP.
 const TREASURY: address = @0x37cf46b499f740e653644bd2f7a8ed97f248e8b3c69d5d12c97d7845a54c0cd8;
 
 /// The DAO fee, 2%, that Aftermath sends to the treasury from every swap, deposit, and withdrawal
