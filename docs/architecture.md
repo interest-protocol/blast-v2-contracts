@@ -28,8 +28,9 @@ sealed witness makes pool creation atomic with escrow release. Its public `new` 
 partner migrators live in their own packages under `sui/vendors` and depend inward
 on it. It depends on the immutable `blast_partners` package only to pay a sale's
 Blast partner. See [ADR 0099](decisions/0099-standalone-overflow-presale.md),
-[ADR 0104](decisions/0104-external-presale-migrators-and-vendor-packages.md), and
-[ADR 0106](decisions/0106-presale-partners.md).
+[ADR 0104](decisions/0104-external-presale-migrators-and-vendor-packages.md),
+[ADR 0106](decisions/0106-presale-partners.md), and
+[ADR 0107](decisions/0107-partner-cut-of-lp-fees.md).
 
 The package boundaries are decided in
 [decisions/0001-sui-package-and-module-layout.md](decisions/0001-sui-package-and-module-layout.md):
@@ -65,11 +66,11 @@ without returning to core for its post-conditions.
 | Allocation math | the migration allocation plan, the LP-fee split, and their exact apportionment | lifecycle state, custody, claims, venue costs, transfers, or DEX dependencies |
 | Off-chain SDK | deterministic curve-release and native-Quote valuation previews from immutable launch facts | contract authority, balance mutation, migration permission, or a second source of truth |
 | Fees | creator/protocol curve-fee splitting and the launch's accrued accounting for creation, curve, and one-time migration fees; the embedding launch checks its live curve-fee capability or bound custodian | recurring LP fees, venue residuals, arbitrary recipient execution, or referral attribution |
-| LP vault (migrators) | permanent position and venue-residual custody and the generation-versioned fee split; every permissionless collection pays Blast's live share and the recipients, credits the creator and rewards balances, burns the burn share's Meme and keeps its Quote, and adds the auto-LP share back to the position; creator claims and split updates under the launch's live curve-fee cap; buyback-and-burn of the burn Quote under the buyback-admin role | launch pricing or pre-migration settings |
+| LP vault (migrators) | permanent position and venue-residual custody and the generation-versioned fee split; every permissionless collection pays Blast's live share, or holds it when the launch named a partner until a permissionless payout gives the partner its cut and Blast the rest, pays the recipients, credits the creator and rewards balances, burns the burn share's Meme and keeps its Quote, and adds the auto-LP share back to the position; creator claims and split updates under the launch's live curve-fee cap; buyback-and-burn of the burn Quote under the buyback-admin role | launch pricing or pre-migration settings |
 | Holder rewards (migrators) | Merkle rounds a Blast administrator funds from a vault's rewards balance, and one-time proof claims | holder accounting, which stays off-chain |
 | Migration interface | one-time liquidity handoff, linear migration value, and reconciled completion | DEX-specific object/storage details |
 | Adapter | start a launch at a venue-valid tier, prepare its venue, complete a migration, and collect the position's fees | changing core economics |
-| Standalone presale | require a zero-supply meme TreasuryCap; derive and escrow BPS allocations; lock Quote commitments; settle one proportional fill; atomically migrate permissionlessly to the configured venue; custody LP; pay collected fees to configured recipients and fund Blast-published Merkle holder rewards; pay the Blast partner named at creation its cut of Blast's raise fee | launchpad curves or state, fixed-supply policy, giving a partner a cut of Blast's token or LP fees, or post-creation economic changes |
+| Standalone presale | require a zero-supply meme TreasuryCap; derive and escrow BPS allocations; lock Quote commitments; settle one proportional fill; atomically migrate permissionlessly to the configured venue; custody LP; pay collected fees to configured recipients and fund Blast-published Merkle holder rewards; pay the Blast partner named at creation its cut of Blast's raise fee and, from its vault, of Blast's LP fees | launchpad curves or state, fixed-supply policy, giving a partner a cut of Blast's token fee, or post-creation economic changes |
 
 Modules may begin together in the single chain project. These are dependency
 directions, not a demand for seven packages.

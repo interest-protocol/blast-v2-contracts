@@ -33,9 +33,10 @@ public(package) fun auto_lp_fixed_side(
     if (sqrt_price <= sqrt_lower || sqrt_price >= sqrt_upper) return (true, 0);
 
     let (lower, price, upper) = (sqrt_lower as u256, sqrt_price as u256, sqrt_upper as u256);
-    if (can_fix_a(lower, price, upper, amount_a, amount_b)) (true, amount_a)
-    else if (can_fix_b(lower, price, upper, amount_a, amount_b)) (false, amount_b)
-    else (true, 0)
+    if (can_fix_a(lower, price, upper, amount_a, amount_b)) return (true, amount_a);
+    if (can_fix_b(lower, price, upper, amount_a, amount_b)) return (false, amount_b);
+
+    (true, 0)
 }
 
 // === Private Functions ===
@@ -63,6 +64,7 @@ fun can_fix_b(lower: u256, price: u256, upper: u256, amount_a: u64, amount_b: u6
     needed_a + constants::auto_lp_margin!() <= (amount_a as u256)
 }
 
+/// The Q128 price ratio of coin B to coin A: Quote/Meme when Meme is coin A, else Meme/Quote.
 fun ratio_q128(
     meme_amount: u64,
     quote_amount: u64,

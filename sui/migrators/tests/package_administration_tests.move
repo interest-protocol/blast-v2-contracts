@@ -10,17 +10,6 @@
 /// upgrade-admin role for its own custody.
 module blast_fun_migrators::package_administration_tests;
 
-// === Constants ===
-
-const PUBLISHER: address = @0xA11CE;
-
-const PROTOCOL_ADMIN: address = @0xAD;
-
-const OTHER_PACKAGE_ID: address = @0xBAD;
-
-/// Any 32-byte package digest; custody rejects every other length before the cap is reached.
-const DIGEST: vector<u8> = x"0000000000000000000000000000000000000000000000000000000000000000";
-
 // === Test-Only Types ===
 
 /// This package's own generation, custody, and LP-fee policy.
@@ -201,6 +190,17 @@ fun wrap_with_foreign_package_publisher(self: &mut AdminFixtureState) {
 fun admin_end(self: AdminFixtureState) {
     destroy(self);
 }
+
+// === Constants ===
+
+const PUBLISHER: address = @0xA11CE;
+
+const PROTOCOL_ADMIN: address = @0xAD;
+
+const OTHER_PACKAGE_ID: address = @0xBAD;
+
+/// Any 32-byte package digest; custody rejects every other length before the cap is reached.
+const DIGEST: vector<u8> = x"0000000000000000000000000000000000000000000000000000000000000000";
 
 // === Imports ===
 

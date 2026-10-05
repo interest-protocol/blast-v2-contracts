@@ -11,6 +11,8 @@
   gain no partner variants
 - Amended by: [0106](0106-presale-partners.md): a presale may name one partner at
   creation, which earns its share of Blast's raise share once the sale migrates
+- Amended by: [0107](0107-partner-cut-of-lp-fees.md): a launch's or a sale's partner also
+  earns its cut of Blast's LP fees on the vault it migrates into
 
 ## Sources
 

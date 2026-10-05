@@ -34,7 +34,7 @@ canonical order as `CoinA` and `CoinB`; the SDK computes that order as before.
   (`EInvalidCoinOrder`); the other routes take an existing `Pool<CoinA, CoinB>`,
   whose type Cetus already fixed in canonical order. Every route then runs the
   pure pair proof, and its existing checks follow in their former order.
-- **Pair proof.** `meme_is_coin_a` compares original type names and aborts with
+- **Pair proof.** `is_meme_coin_a` compares original type names and aborts with
   `EWrongCoinPair` unless `(CoinA, CoinB)` is exactly `(Meme, Quote)` or
   `(Quote, Meme)`; it returns which side is the Meme.
 - **Checked retype.** `reorder` moves a pair between Meme-and-Quote order and

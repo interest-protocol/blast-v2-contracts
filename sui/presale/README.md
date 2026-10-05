@@ -47,11 +47,14 @@ sale does not migrate.
 
 A sale may name one Blast partner, which the creator sets with `set_partner`
 after `new` and before `share`; it never changes afterward. The partner earns its
-`blast_partners` cut of Blast's raise fee, and of nothing else. A partnered
-sale's migration holds Blast's fees, and anyone may then call
-`pay_protocol_fees_with_partner` once to pay the partner its cut and Blast the
-rest
-([ADR 0106](../../docs/decisions/0106-presale-partners.md)).
+`blast_partners` cut of Blast's raise fee and, after migration, of Blast's LP
+fees; never of Blast's token fee. A partnered sale's migration holds Blast's
+fees, and anyone may then call `pay_protocol_fees_with_partner` once to pay the
+partner its cut and Blast the rest
+([ADR 0106](../../docs/decisions/0106-presale-partners.md)). Its vault inherits
+the partner and holds Blast's LP fees at each collection, until anyone calls
+`presale_vault::pay_protocol_lp_fees_with_partner`
+([ADR 0107](../../docs/decisions/0107-partner-cut-of-lp-fees.md)).
 
 Blast's shared `CreationPolicy` lists the Quote types, venue migration witnesses,
 and Blast partners new presales may use; creation aborts for anything unlisted. It is checked only at
@@ -84,7 +87,7 @@ failure rolls back the presale transition. Configured recipients receive their
 distinct allocations in that same transaction. Claims open only after success.
 
 Permissionless fee collection pays Blast its share of each asset at the vault's
-current rates, then applies the immutable creation-time split to the rest: every fee recipient
+current rates, or holds it for a partnered sale's partner payout, then applies the immutable creation-time split to the rest: every fee recipient
 is paid in the same transaction, and the holder-reward share stays
 in the vault. The holder of the package's `AdminCap` publishes Merkle
 rounds funded from that share, each with a claim deadline after which anyone can

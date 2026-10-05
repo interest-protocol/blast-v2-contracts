@@ -12,21 +12,6 @@
 /// by the source gate, not here.
 module blast_fun_migrators::fee_split_update_tests;
 
-// === Constants ===
-
-/// Publishes the policy, so it is the protocol destination.
-const PROTOCOL: address = @0xB1A57;
-
-const ADMIN: address = @0xAD;
-
-const KEEPER: address = @0xEE;
-
-const ROUTE_A: address = @0xD1;
-
-const ROUTE_B: address = @0xD2;
-
-const POOL: address = @0x9001;
-
 // === Test-Only Types ===
 
 /// This module's one-time witness stands in for a generated package's.
@@ -65,7 +50,7 @@ public struct ExpectedCollection has copy, drop {
     generation: u64,
     gross_meme: u64,
     gross_quote: u64,
-    protocol_destination: address,
+    protocol_destination: Option<address>,
     protocol_meme: u64,
     protocol_quote: u64,
     creator_meme: u64,
@@ -125,7 +110,7 @@ fun settled_update_splits_accrued_fees_under_the_old_split_then_commits_the_next
             generation: 0,
             gross_meme: 10,
             gross_quote: 20,
-            protocol_destination: PROTOCOL,
+            protocol_destination: option::some(PROTOCOL),
             protocol_meme: 0,
             protocol_quote: 0,
             creator_meme: 5,
@@ -167,7 +152,7 @@ fun settled_update_splits_accrued_fees_under_the_old_split_then_commits_the_next
             generation: 1,
             gross_meme: 3,
             gross_quote: 4,
-            protocol_destination: PROTOCOL,
+            protocol_destination: option::some(PROTOCOL),
             protocol_meme: 0,
             protocol_quote: 0,
             creator_meme: 0,
@@ -671,6 +656,21 @@ fun rewards_and_b(): FeeSplit {
 fun auto_lp_only(): FeeSplit {
     allocation::fee_split(bps::new(0), bps::new(10_000), bps::new(0), bps::new(0), vector[])
 }
+
+// === Constants ===
+
+/// Publishes the policy, so it is the protocol destination.
+const PROTOCOL: address = @0xB1A57;
+
+const ADMIN: address = @0xAD;
+
+const KEEPER: address = @0xEE;
+
+const ROUTE_A: address = @0xD1;
+
+const ROUTE_B: address = @0xD2;
+
+const POOL: address = @0x9001;
 
 // === Imports ===
 

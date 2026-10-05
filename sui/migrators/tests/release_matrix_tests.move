@@ -7,10 +7,6 @@
 /// proven by the migrator source gate, not by this test.
 module blast_fun_migrators::release_matrix_tests;
 
-// === Constants ===
-
-const ADMIN: address = @0xAD;
-
 // === Test-Only Types ===
 
 public struct MatrixFixture {
@@ -54,6 +50,10 @@ fun end(self: MatrixFixture) {
     destroy(version);
     scenario.end();
 }
+
+// === Constants ===
+
+const ADMIN: address = @0xAD;
 
 // === Imports ===
 

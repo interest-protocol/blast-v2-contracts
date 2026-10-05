@@ -24,17 +24,6 @@
 /// (ADR 0100).
 module blast_fun_migrators::cetus;
 
-// === Errors ===
-
-#[error(code = 0)]
-const EInvalidCoinOrder: vector<u8> = b"CoinA and CoinB must follow the Cetus coin order.";
-
-#[error(code = 1)]
-const EPositionPoolMismatch: vector<u8> = b"Pool must be the vault's own pool.";
-
-#[error(code = 2)]
-const EWrongCoinPair: vector<u8> = b"CoinA and CoinB must be exactly the launch's Meme and Quote.";
-
 // === Public Types ===
 
 /// Sealed adapter identity selected by a Blast launch.
@@ -112,7 +101,7 @@ public fun new<Meme, Quote>(
 ///
 /// Creates the pair's pool with the reserved capability at the launch's tick spacing, priced from
 /// the handed-off balances, seeds full-range liquidity with exactly those balances on the side
-/// `seed_fixes_a` chooses, and burns the position; Cetus returns what it does not take as
+/// `is_coin_a_seed_side` chooses, and burns the position; Cetus returns what it does not take as
 /// residual. Any Cetus refusal, including a tier Cetus no longer registers, aborts the whole
 /// migration and leaves the launch MigrationReady.
 public fun migrate<Meme, Quote, CoinA, CoinB>(
@@ -129,7 +118,7 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
 ) {
     migrators_version.assert_current();
     assert!(factory::is_right_order<CoinA, CoinB>(), EInvalidCoinOrder);
-    let meme_is_a = meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
+    let meme_is_a = is_meme_coin_a<Meme, Quote, CoinA, CoinB>();
 
     let (tick_spacing, _) = launch.pool_tier();
     let (tick_lower, tick_upper) = pool_creator::full_range_tick_range(tick_spacing);
@@ -138,7 +127,7 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
     let meme_amount = meme.value();
     let quote_amount = quote.value();
     let sqrt_price = migration_math::sqrt_price_x64(meme_amount, quote_amount, meme_is_a);
-    let fix_a = seed_fixes_a(
+    let fix_a = is_coin_a_seed_side(
         tick_lower,
         tick_upper,
         sqrt_price,
@@ -184,7 +173,7 @@ public fun collect_fees<Meme, Quote, CoinA, CoinB>(
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    let meme_is_a = meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
+    let meme_is_a = is_meme_coin_a<Meme, Quote, CoinA, CoinB>();
 
     self.settle_fees(policy, currency, cetus_config, burn_manager, pool, meme_is_a, clock, ctx);
 }
@@ -206,7 +195,7 @@ public fun settle_and_update_fee_split<Meme, Quote, CoinA, CoinB>(
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    let meme_is_a = meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
+    let meme_is_a = is_meme_coin_a<Meme, Quote, CoinA, CoinB>();
     self.assert_fee_split_update(launch, curve_fee_cap, proposed);
 
     self.settle_fees(policy, currency, cetus_config, burn_manager, pool, meme_is_a, clock, ctx);
@@ -230,7 +219,7 @@ public fun buyback_and_burn<Meme, Quote, CoinA, CoinB>(
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    let meme_is_a = meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
+    let meme_is_a = is_meme_coin_a<Meme, Quote, CoinA, CoinB>();
     assert!(self.pool_id() == object::id(pool), EPositionPoolMismatch);
 
     let quote = self.take_buyback_quote(admin_witness);
@@ -242,16 +231,18 @@ public fun buyback_and_burn<Meme, Quote, CoinA, CoinB>(
 
 // === Private Functions ===
 
+/// Borrows the Meme type's reserved Cetus `PoolCreationCap` from the venue config.
 fun pool_creation_cap<Meme>(venue_config: &VenueConfig): &PoolCreationCap {
     venue_config.object(CreationCapKey<Meme>())
 }
 
-/// Whether the migration seed fixes coin A, preferring the side with more atoms, Meme on a tie: a
-/// full-range position needs slightly more of the other side than the seed ratio, so that partner
-/// balance covers it. When both sides are nearly equal, rounding can still overdraw by one atom,
-/// so Cetus's own math decides and the other side is fixed instead. Any tick inside the full range
-/// selects Cetus's in-range branch; pool creation aborts anyway if the seed price lies outside it.
-fun seed_fixes_a(
+/// Whether coin A is the side the migration seed fixes, preferring the side with more atoms, Meme
+/// on a tie: a full-range position needs slightly more of the other side than the seed ratio, so
+/// that partner balance covers it. When both sides are nearly equal, rounding can still overdraw by
+/// one atom, so Cetus's own math decides and the other side is fixed instead. Any tick inside the
+/// full range selects Cetus's in-range branch; pool creation aborts anyway if the seed price lies
+/// outside it.
+fun is_coin_a_seed_side(
     tick_lower: u32,
     tick_upper: u32,
     sqrt_price: u128,
@@ -395,10 +386,17 @@ fun add_liquidity<A, B, Meme, Quote>(
     };
 
     let position = self.auto_lp_position_mut<_, _, _, Position>(&Venue());
-    let (fix_a, amount) = fixed_side(pool, position, a.value(), b.value());
-    if (amount == 0) return (a, b, 0, 0);
+    let (fix_a, fixed_amount) = fixed_side(pool, position, a.value(), b.value());
+    if (fixed_amount == 0) return (a, b, 0, 0);
 
-    let receipt = pool::add_liquidity_fix_coin(cetus_config, pool, position, amount, fix_a, clock);
+    let receipt = pool::add_liquidity_fix_coin(
+        cetus_config,
+        pool,
+        position,
+        fixed_amount,
+        fix_a,
+        clock,
+    );
     let (paid_a, paid_b) = receipt.add_liquidity_pay_amount();
     pool::repay_add_liquidity(cetus_config, pool, a.split(paid_a), b.split(paid_b), receipt);
 
@@ -434,9 +432,10 @@ fun fixed_side<A, B>(
         false,
     );
 
-    if (liquidity_a > 0 && needed_b <= amount_b) (true, amount_a)
-    else if (liquidity_b > 0 && needed_a <= amount_a) (false, amount_b)
-    else (true, 0)
+    if (liquidity_a > 0 && needed_b <= amount_b) return (true, amount_a);
+    if (liquidity_b > 0 && needed_a <= amount_a) return (false, amount_b);
+
+    (true, 0)
 }
 
 /// Swaps all of `quote` for Meme through `pool` in the pool's coin order, returning the Meme bought
@@ -465,7 +464,7 @@ fun swap<A, B>(
     a2b: bool,
     clock: &Clock,
 ): (Balance<A>, Balance<B>) {
-    let (amount, sqrt_price_limit) = if (a2b) (a.value(), constants::min_swap_sqrt_price!())
+    let (amount_in, sqrt_price_limit) = if (a2b) (a.value(), constants::min_swap_sqrt_price!())
     else (b.value(), constants::max_swap_sqrt_price!());
 
     let (out_a, out_b, receipt) = pool::flash_swap(
@@ -473,7 +472,7 @@ fun swap<A, B>(
         pool,
         a2b,
         true,
-        amount,
+        amount_in,
         sqrt_price_limit,
         clock,
     );
@@ -489,7 +488,7 @@ fun swap<A, B>(
 }
 
 /// Whether Meme is `CoinA`, after proving `(CoinA, CoinB)` is exactly the launch's Meme and Quote.
-fun meme_is_coin_a<Meme, Quote, CoinA, CoinB>(): bool {
+fun is_meme_coin_a<Meme, Quote, CoinA, CoinB>(): bool {
     let (meme, quote) = (type_name::with_original_ids<Meme>(), type_name::with_original_ids<Quote>());
     let (a, b) = (type_name::with_original_ids<CoinA>(), type_name::with_original_ids<CoinB>());
     assert!((meme == a && quote == b) || (meme == b && quote == a), EWrongCoinPair);
@@ -519,7 +518,7 @@ fun reorder<X: store, Y: store, First: store, Second: store>(
 
 /// Retypes `value` as `To` through a dynamic field on `scratch`. Removal succeeds only under the
 /// stored type, so this aborts with the framework's `EFieldTypeMismatch` unless `From` and `To` are
-/// the same type; `meme_is_coin_a` has already proven that for every call.
+/// the same type; `is_meme_coin_a` has already proven that for every call.
 fun cast<From: store, To: store>(scratch: &mut UID, value: From): To {
     dynamic_field::add(scratch, CastKey(), value);
     dynamic_field::remove(scratch, CastKey())
@@ -528,11 +527,13 @@ fun cast<From: store, To: store>(scratch: &mut UID, value: From): To {
 // === Test-Only Functions ===
 
 #[test_only]
-public fun meme_is_coin_a_for_testing<Meme, Quote, CoinA, CoinB>(): bool {
-    meme_is_coin_a<Meme, Quote, CoinA, CoinB>()
+/// Runs the pair proof: whether Meme is `CoinA`, aborting unless the pair is the launch's.
+public fun is_meme_coin_a_for_testing<Meme, Quote, CoinA, CoinB>(): bool {
+    is_meme_coin_a<Meme, Quote, CoinA, CoinB>()
 }
 
 #[test_only]
+/// Runs the checked retype between Meme-and-Quote order and the pool's coin order.
 public fun reorder_for_testing<X: store, Y: store, First: store, Second: store>(
     x: X,
     y: Y,
@@ -541,6 +542,17 @@ public fun reorder_for_testing<X: store, Y: store, First: store, Second: store>(
 ): (First, Second) {
     reorder(x, y, meme_is_a, ctx)
 }
+
+// === Errors ===
+
+#[error(code = 0)]
+const EInvalidCoinOrder: vector<u8> = b"CoinA and CoinB must follow the Cetus coin order.";
+
+#[error(code = 1)]
+const EPositionPoolMismatch: vector<u8> = b"Pool must be the vault's own pool.";
+
+#[error(code = 2)]
+const EWrongCoinPair: vector<u8> = b"CoinA and CoinB must be exactly the launch's Meme and Quote.";
 
 // === Imports ===
 

@@ -5,10 +5,6 @@
 /// Write-once venue entries: authority-bearing objects keyed by the venue module that adds them.
 module blast_fun_migrators::venue_config_tests;
 
-// === Constants ===
-
-const PUBLISHER: address = @0xA11CE;
-
 // === Test-Only Types ===
 
 /// A sealed key for an authority-bearing entry.
@@ -76,6 +72,10 @@ fun start(): (Scenario, VenueConfig) {
 
     (scenario, config)
 }
+
+// === Constants ===
+
+const PUBLISHER: address = @0xA11CE;
 
 // === Imports ===
 

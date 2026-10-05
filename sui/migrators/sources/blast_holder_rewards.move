@@ -8,37 +8,6 @@
 /// relay a proof afterwards; each leaf pays its committed beneficiary once.
 module blast_fun_migrators::blast_holder_rewards;
 
-// === Errors ===
-
-#[error(code = 0)]
-const EWrongRound: vector<u8> = b"Round number must match the vault's next round.";
-
-#[error(code = 1)]
-const EInvalidInterval: vector<u8> =
-    b"Checkpoint interval must be nonempty and contiguous with the previous round.";
-
-#[error(code = 2)]
-const EInvalidCommitment: vector<u8> =
-    b"Root and manifest digest must each contain exactly 32 bytes.";
-
-#[error(code = 3)]
-const EInvalidLeafCount: vector<u8> = b"Round must contain between 1 and 65,536 leaves.";
-
-#[error(code = 4)]
-const EEmptyBudget: vector<u8> = b"At least one reward amount must be nonzero.";
-
-#[error(code = 5)]
-const EInvalidIndex: vector<u8> = b"Claim index must be less than the committed leaf count.";
-
-#[error(code = 6)]
-const EAlreadyClaimed: vector<u8> = b"This allocation has already been paid.";
-
-#[error(code = 7)]
-const EInvalidBeneficiary: vector<u8> = b"Beneficiary must not be the zero address.";
-
-#[error(code = 8)]
-const EInvalidProof: vector<u8> = b"Proof must match the committed recipient, amounts and domain.";
-
 // === Public Types ===
 
 /// Independently funded claims that remain available without the vault or the administrator.
@@ -74,7 +43,7 @@ public fun publish_round<Meme, Quote>(
     assert!(number == vault.next_round(), EWrongRound);
     assert!(
         start_checkpoint < end_checkpoint
-            && vault.last_checkpoint().is_none_or!(|last| *last == start_checkpoint),
+            && vault.last_checkpoint().is_none_or!(|prior_end| *prior_end == start_checkpoint),
         EInvalidInterval,
     );
     assert!(
@@ -136,8 +105,9 @@ public fun claim<Meme, Quote>(
     assert!(beneficiary != @0x0, EInvalidBeneficiary);
     assert!(meme_amount > 0 || quote_amount > 0, EEmptyBudget);
 
-    let leaf = merkle::leaf(self.vault, self.number, index, beneficiary, meme_amount, quote_amount);
-    assert!(merkle::verify(self.root, leaf, index, self.leaf_count, &proof), EInvalidProof);
+    let leaf_digest =
+        merkle::leaf(self.vault, self.number, index, beneficiary, meme_amount, quote_amount);
+    assert!(merkle::verify(self.root, leaf_digest, index, self.leaf_count, &proof), EInvalidProof);
 
     *&mut self.claimed[word] = self.claimed[word] | bit;
     self.meme.pay(meme_amount, beneficiary, ctx);
@@ -169,15 +139,48 @@ fun claim_bit(index: u64): (u64, u256) {
 // === Test-Only Functions ===
 
 #[test_only]
+/// Returns the Meme and Quote the round still holds for unpaid leaves.
 public fun round_balances_for_testing<Meme, Quote>(self: &Round<Meme, Quote>): (u64, u64) {
     (self.meme.value(), self.quote.value())
 }
 
 #[test_only]
+/// Reports whether leaf `index` has been paid.
 public fun is_claimed_for_testing<Meme, Quote>(self: &Round<Meme, Quote>, index: u64): bool {
     let (word, bit) = claim_bit(index);
     self.claimed[word] & bit != 0
 }
+
+// === Errors ===
+
+#[error(code = 0)]
+const EWrongRound: vector<u8> = b"Round number must match the vault's next round.";
+
+#[error(code = 1)]
+const EInvalidInterval: vector<u8> =
+    b"Checkpoint interval must be nonempty and contiguous with the previous round.";
+
+#[error(code = 2)]
+const EInvalidCommitment: vector<u8> =
+    b"Root and manifest digest must each contain exactly 32 bytes.";
+
+#[error(code = 3)]
+const EInvalidLeafCount: vector<u8> = b"Round must contain between 1 and 65,536 leaves.";
+
+#[error(code = 4)]
+const EEmptyBudget: vector<u8> = b"At least one reward amount must be nonzero.";
+
+#[error(code = 5)]
+const EInvalidIndex: vector<u8> = b"Claim index must be less than the committed leaf count.";
+
+#[error(code = 6)]
+const EAlreadyClaimed: vector<u8> = b"This allocation has already been paid.";
+
+#[error(code = 7)]
+const EInvalidBeneficiary: vector<u8> = b"Beneficiary must not be the zero address.";
+
+#[error(code = 8)]
+const EInvalidProof: vector<u8> = b"Proof must match the committed recipient, amounts and domain.";
 
 // === Imports ===
 

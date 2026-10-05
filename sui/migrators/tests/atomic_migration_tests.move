@@ -2,29 +2,9 @@
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
 #[test_only]
+/// T-010 conformance: a sealed mock adapter migrates in one transaction and locks the position and
+/// the residuals in a shared vault that later splits collections under the launch's fee split.
 module blast_fun_migrators::atomic_migration_tests;
-
-// === Constants ===
-
-/// `sui::object::sui_coin_registry_address()`, where one-time-witness currencies are delivered.
-const COIN_REGISTRY: address = @0xc;
-
-const TESTER: address = @0xB1A57;
-
-const ADMIN: address = @0xAD;
-
-const CREATOR: address = @0xC0FFEE;
-
-const TARGET: u64 = 25_000_000;
-
-const POOL_TICK_SPACING: u32 = 60;
-
-const POOL_FEE_RATE: u64 = 2_500;
-
-// === Errors ===
-
-#[error]
-const EUnexpectedSuccess: vector<u8> = b"The guarded operation unexpectedly returned.";
 
 // === Test-Only Types ===
 
@@ -148,15 +128,15 @@ fun the_migrated_vault_splits_later_collections_and_updates_its_split_under_the_
         balance::create_for_testing(200),
         f.scenario.ctx(),
     );
-    let next = allocation::fee_split(
+    let next_split = allocation::fee_split(
         bps::new(0),
         bps::new(0),
         bps::new(0),
         bps::new(0),
         vector[allocation::route(ADMIN, bps::new(10_000))],
     );
-    vault.assert_fee_split_update(&launch, &curve_fee_cap, next);
-    vault.update_fee_split(next);
+    vault.assert_fee_split_update(&launch, &curve_fee_cap, next_split);
+    vault.update_fee_split(next_split);
     vault.split_fees(
         &policy,
         &mut currency,
@@ -165,7 +145,7 @@ fun the_migrated_vault_splits_later_collections_and_updates_its_split_under_the_
         f.scenario.ctx(),
     );
     assert_eq!(vault.generation_for_testing(), 1);
-    assert_eq!(vault.fee_split_for_testing(), next);
+    assert_eq!(vault.fee_split_for_testing(), next_split);
     let (creator_meme, creator_quote) = vault.creator_balances_for_testing();
     assert_eq!(creator_meme, 100);
     assert_eq!(creator_quote, 200);
@@ -392,6 +372,28 @@ fun end(f: Fixture) {
     clock.destroy_for_testing();
     scenario.end();
 }
+
+// === Constants ===
+
+/// `sui::object::sui_coin_registry_address()`, where one-time-witness currencies are delivered.
+const COIN_REGISTRY: address = @0xc;
+
+const TESTER: address = @0xB1A57;
+
+const ADMIN: address = @0xAD;
+
+const CREATOR: address = @0xC0FFEE;
+
+const TARGET: u64 = 25_000_000;
+
+const POOL_TICK_SPACING: u32 = 60;
+
+const POOL_FEE_RATE: u64 = 2_500;
+
+// === Errors ===
+
+#[error]
+const EUnexpectedSuccess: vector<u8> = b"The guarded operation unexpectedly returned.";
 
 // === Imports ===
 

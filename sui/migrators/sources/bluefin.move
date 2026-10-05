@@ -8,14 +8,6 @@
 /// always creates and expects `Pool<Meme, Quote>` with Meme as coin A.
 module blast_fun_migrators::bluefin;
 
-// === Errors ===
-
-#[error(code = 0)]
-const EPositionPoolMismatch: vector<u8> = b"Custodied position must belong to the supplied pool.";
-
-#[error(code = 1)]
-const EInvalidTier: vector<u8> = b"Bluefin tier needs a tick spacing in 1..=400 and a fee rate in 1..=20,000.";
-
 // === Public Types ===
 
 /// Sealed adapter identity selected by a Blast launch.
@@ -53,7 +45,7 @@ public fun new<Meme, Quote>(
 /// Migrates a MigrationReady launch into a new full-range pool at the launch's tier.
 ///
 /// The opening price derives from the handed-off balances, which seed the position on the side
-/// `seed_fixes_meme` chooses. `creation_fee` is paid whole, and Bluefin aborts unless it is
+/// `is_meme_seed_side` chooses. `creation_fee` is paid whole, and Bluefin aborts unless it is
 /// exactly the configured SUI fee. The position and the venue residuals stay in a shared vault
 /// with no withdrawal path. The caller receives no object; Bluefin records it as the new pool's
 /// manager, a role limited to the pool's reward emissions and to handing the role on (ADR 0088).
@@ -207,8 +199,8 @@ fun pool_name<Meme, Quote>(
     name
 }
 
-/// Adds the handed-off balances to the new full-range position, fixing the side `seed_fixes_meme`
-/// chooses, and returns the residuals.
+/// Adds the handed-off balances to the new full-range position, fixing the side
+/// `is_meme_seed_side` chooses, and returns the residuals.
 fun seed<Meme, Quote>(
     bluefin_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
@@ -217,8 +209,8 @@ fun seed<Meme, Quote>(
     quote: Balance<Quote>,
     clock: &Clock,
 ): (Balance<Meme>, Balance<Quote>) {
-    let fix_meme = seed_fixes_meme(pool, position, meme.value(), quote.value());
-    let amount = if (fix_meme) meme.value() else quote.value();
+    let fix_meme = is_meme_seed_side(pool, position, meme.value(), quote.value());
+    let fixed_amount = if (fix_meme) meme.value() else quote.value();
     let (_, _, residual_meme, residual_quote) = pool::add_liquidity_with_fixed_amount(
         clock,
         bluefin_config,
@@ -226,18 +218,18 @@ fun seed<Meme, Quote>(
         position,
         meme,
         quote,
-        amount,
+        fixed_amount,
         fix_meme,
     );
 
     (residual_meme, residual_quote)
 }
 
-/// Whether the migration seed fixes Meme, preferring the side with more atoms: a full-range
-/// position needs slightly more of the other side than the seed ratio, so that partner balance
-/// covers it. When both sides are nearly equal, rounding can still overdraw by one atom, so
+/// Whether Meme is the side the migration seed fixes, preferring the side with more atoms: a
+/// full-range position needs slightly more of the other side than the seed ratio, so that partner
+/// balance covers it. When both sides are nearly equal, rounding can still overdraw by one atom, so
 /// Bluefin's own math decides and the other side is fixed instead.
-fun seed_fixes_meme<Meme, Quote>(
+fun is_meme_seed_side<Meme, Quote>(
     pool: &Pool<Meme, Quote>,
     position: &Position,
     meme_amount: u64,
@@ -319,9 +311,9 @@ fun compound<Meme, Quote>(
 ) {
     let (meme, quote) = self.take_auto_lp();
     let position = self.position_mut<_, _, _, Position>(&Venue());
-    let (fix_meme, amount) = fixed_side(pool, position, meme.value(), quote.value());
+    let (fix_meme, fixed_amount) = fixed_side(pool, position, meme.value(), quote.value());
 
-    let (added_meme, added_quote, meme, quote) = if (amount > 0) {
+    let (added_meme, added_quote, meme, quote) = if (fixed_amount > 0) {
         pool::add_liquidity_with_fixed_amount(
             clock,
             bluefin_config,
@@ -329,7 +321,7 @@ fun compound<Meme, Quote>(
             position,
             meme,
             quote,
-            amount,
+            fixed_amount,
             fix_meme,
         )
     } else {
@@ -359,6 +351,14 @@ fun fixed_side<Meme, Quote>(
         quote_amount,
     )
 }
+
+// === Errors ===
+
+#[error(code = 0)]
+const EPositionPoolMismatch: vector<u8> = b"Custodied position must belong to the supplied pool.";
+
+#[error(code = 1)]
+const EInvalidTier: vector<u8> = b"Bluefin tier needs a tick spacing in 1..=400 and a fee rate in 1..=20,000.";
 
 // === Imports ===
 

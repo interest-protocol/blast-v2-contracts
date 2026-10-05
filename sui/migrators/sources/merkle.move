@@ -62,16 +62,19 @@ fun proof_depth(leaves: u64): u64 {
     depth
 }
 
+/// Hashes two child digests under the internal-node domain.
 fun node(left: vector<u8>, right: vector<u8>): vector<u8> {
     let mut bytes = vector[1u8];
     bytes.append(left);
     bytes.append(right);
+
     hash::blake2b256(&bytes)
 }
 
 // === Test-Only Functions ===
 
 #[test_only]
+/// Hashes two child digests under the internal-node domain, for building expected roots.
 public fun node_for_testing(left: vector<u8>, right: vector<u8>): vector<u8> { node(left, right) }
 
 // === Imports ===

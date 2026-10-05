@@ -17,21 +17,22 @@ public struct OTHER() has drop;
 #[test]
 /// One route serves both Cetus coin orders: it reports which side the Meme is on.
 fun the_route_locates_meme_in_either_coin_order() {
-    assert!(cetus::meme_is_coin_a_for_testing<MEME, QUOTE, MEME, QUOTE>());
-    assert!(!cetus::meme_is_coin_a_for_testing<MEME, QUOTE, QUOTE, MEME>());
+    assert!(cetus::is_meme_coin_a_for_testing<MEME, QUOTE, MEME, QUOTE>());
+    assert!(!cetus::is_meme_coin_a_for_testing<MEME, QUOTE, QUOTE, MEME>());
 }
 
 #[test]
 #[expected_failure(abort_code = cetus::EWrongCoinPair, location = blast_fun_migrators::cetus)]
 /// A pair that is not exactly the launch's Meme and Quote is rejected before any retype.
 fun the_route_rejects_a_foreign_coin_pair() {
-    cetus::meme_is_coin_a_for_testing<MEME, QUOTE, MEME, OTHER>();
+    cetus::is_meme_coin_a_for_testing<MEME, QUOTE, MEME, OTHER>();
 }
 
 #[test]
 #[expected_failure(abort_code = cetus::EWrongCoinPair, location = blast_fun_migrators::cetus)]
+/// Naming the Meme on both sides is not the launch's pair either.
 fun the_route_rejects_the_same_coin_twice() {
-    cetus::meme_is_coin_a_for_testing<MEME, QUOTE, MEME, MEME>();
+    cetus::is_meme_coin_a_for_testing<MEME, QUOTE, MEME, MEME>();
 }
 
 #[test]
@@ -40,23 +41,23 @@ fun the_route_rejects_the_same_coin_twice() {
 fun a_reorder_maps_either_coin_order_onto_the_other() {
     let mut ctx = tx_context::dummy();
 
-    let (a, b) = cetus::reorder_for_testing<_, _, Balance<MEME>, Balance<QUOTE>>(
+    let (coin_a, coin_b) = cetus::reorder_for_testing<_, _, Balance<MEME>, Balance<QUOTE>>(
         balance::create_for_testing<MEME>(7),
         balance::create_for_testing<QUOTE>(11),
         true,
         &mut ctx,
     );
-    assert_eq!(a.destroy_for_testing(), 7);
-    assert_eq!(b.destroy_for_testing(), 11);
+    assert_eq!(coin_a.destroy_for_testing(), 7);
+    assert_eq!(coin_b.destroy_for_testing(), 11);
 
-    let (a, b) = cetus::reorder_for_testing<_, _, Balance<QUOTE>, Balance<MEME>>(
+    let (coin_a, coin_b) = cetus::reorder_for_testing<_, _, Balance<QUOTE>, Balance<MEME>>(
         balance::create_for_testing<MEME>(7),
         balance::create_for_testing<QUOTE>(11),
         false,
         &mut ctx,
     );
-    assert_eq!(a.destroy_for_testing(), 11);
-    assert_eq!(b.destroy_for_testing(), 7);
+    assert_eq!(coin_a.destroy_for_testing(), 11);
+    assert_eq!(coin_b.destroy_for_testing(), 7);
 
     let (meme, quote) = cetus::reorder_for_testing<_, _, Balance<MEME>, Balance<QUOTE>>(
         balance::create_for_testing<QUOTE>(11),
@@ -74,14 +75,14 @@ fun a_reorder_maps_either_coin_order_onto_the_other() {
 fun a_reorder_to_another_type_aborts_in_the_framework() {
     let mut ctx = tx_context::dummy();
 
-    let (a, b) = cetus::reorder_for_testing<_, _, Balance<QUOTE>, Balance<MEME>>(
+    let (coin_a, coin_b) = cetus::reorder_for_testing<_, _, Balance<QUOTE>, Balance<MEME>>(
         balance::create_for_testing<MEME>(7),
         balance::create_for_testing<QUOTE>(11),
         true,
         &mut ctx,
     );
-    destroy(a);
-    destroy(b);
+    destroy(coin_a);
+    destroy(coin_b);
     abort
 }
 

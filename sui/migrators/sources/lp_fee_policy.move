@@ -9,14 +9,6 @@
 /// current payout destination.
 module blast_fun_migrators::lp_fee_policy;
 
-// === Errors ===
-
-#[error(code = 0)]
-const EProtocolDestinationUnchanged: vector<u8> = b"Protocol destination must be a new nonzero address.";
-
-#[error(code = 1)]
-const EProtocolFeeSharesUnchanged: vector<u8> = b"LP-fee share update must change the stored pair.";
-
 // === Public Types ===
 
 /// Shared singleton holding independent Meme/Quote Blast shares and the address every vault pays
@@ -71,16 +63,16 @@ public fun set_default_shares(
     quote_bps: Bps,
 ) {
     migrators_version.assert_current();
-    let shares = SharePair { meme_bps, quote_bps };
-    assert!(shares != self.defaults, EProtocolFeeSharesUnchanged);
+    let proposed = SharePair { meme_bps, quote_bps };
+    assert!(proposed != self.defaults, EProtocolFeeSharesUnchanged);
 
-    let old = self.defaults;
-    self.defaults = shares;
+    let old_defaults = self.defaults;
+    self.defaults = proposed;
 
     blast_events::lp_fee_policy_changed(
         option::none(),
-        option::some(old.meme_bps.value()),
-        option::some(old.quote_bps.value()),
+        option::some(old_defaults.meme_bps.value()),
+        option::some(old_defaults.quote_bps.value()),
         option::some(meme_bps.value()),
         option::some(quote_bps.value()),
     );
@@ -97,17 +89,17 @@ public fun set_coin_shares<Meme>(
 ) {
     migrators_version.assert_current();
     let meme = type_name::with_original_ids<Meme>();
-    let shares = SharePair { meme_bps, quote_bps };
-    let old = if (self.coins.contains(meme)) option::some(self.coins.remove(meme))
+    let proposed = SharePair { meme_bps, quote_bps };
+    let old_pair = if (self.coins.contains(meme)) option::some(self.coins.remove(meme))
     else option::none();
-    assert!(old != option::some(shares), EProtocolFeeSharesUnchanged);
+    assert!(old_pair != option::some(proposed), EProtocolFeeSharesUnchanged);
 
-    self.coins.add(meme, shares);
+    self.coins.add(meme, proposed);
 
     blast_events::lp_fee_policy_changed(
         option::some(meme),
-        old.map!(|pair| pair.meme_bps.value()),
-        old.map!(|pair| pair.quote_bps.value()),
+        old_pair.map!(|pair| pair.meme_bps.value()),
+        old_pair.map!(|pair| pair.quote_bps.value()),
         option::some(meme_bps.value()),
         option::some(quote_bps.value()),
     );
@@ -122,12 +114,12 @@ public fun clear_coin_shares<Meme>(
     migrators_version.assert_current();
     let meme = type_name::with_original_ids<Meme>();
 
-    let old = self.coins.remove(meme);
+    let old_pair = self.coins.remove(meme);
 
     blast_events::lp_fee_policy_changed(
         option::some(meme),
-        option::some(old.meme_bps.value()),
-        option::some(old.quote_bps.value()),
+        option::some(old_pair.meme_bps.value()),
+        option::some(old_pair.quote_bps.value()),
         option::none(),
         option::none(),
     );
@@ -143,9 +135,9 @@ public(package) fun protocol_destination(self: &LpFeePolicy): address {
 /// Returns the Meme and Quote shares a collection for `Meme` pays Blast now.
 public(package) fun shares<Meme>(self: &LpFeePolicy): (Bps, Bps) {
     let meme = type_name::with_original_ids<Meme>();
-    let shares = if (self.coins.contains(meme)) self.coins[meme] else self.defaults;
+    let live_pair = if (self.coins.contains(meme)) self.coins[meme] else self.defaults;
 
-    (shares.meme_bps, shares.quote_bps)
+    (live_pair.meme_bps, live_pair.quote_bps)
 }
 
 // === Private Functions ===
@@ -185,6 +177,14 @@ public fun coin_count_for_testing(self: &LpFeePolicy): u64 {
 public fun default_shares_for_testing(self: &LpFeePolicy): (Bps, Bps) {
     (self.defaults.meme_bps, self.defaults.quote_bps)
 }
+
+// === Errors ===
+
+#[error(code = 0)]
+const EProtocolDestinationUnchanged: vector<u8> = b"Protocol destination must be a new nonzero address.";
+
+#[error(code = 1)]
+const EProtocolFeeSharesUnchanged: vector<u8> = b"LP-fee share update must change the stored pair.";
 
 // === Imports ===
 

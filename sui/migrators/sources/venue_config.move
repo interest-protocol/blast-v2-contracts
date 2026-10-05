@@ -44,6 +44,7 @@ public(package) fun object<Key: copy + drop + store, Object: key + store>(
 // === Test-Only Functions ===
 
 #[test_only]
+/// Runs publication initialization under `test_scenario`.
 public fun init_for_testing(ctx: &mut TxContext) {
     init(ctx);
 }

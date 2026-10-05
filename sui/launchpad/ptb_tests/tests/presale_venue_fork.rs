@@ -1138,7 +1138,7 @@ impl World {
         ensure!(fees.vault_id == m.vault && (fees.gross_meme, fees.gross_quote) == (gross_meme, gross_quote));
         // The publisher's zero-rate policy takes no Blast share.
         ensure!(
-            (fees.protocol_destination, fees.protocol_meme, fees.protocol_quote) == (self.h.sender, 0, 0),
+            (fees.protocol_destination, fees.protocol_meme, fees.protocol_quote) == (Some(self.h.sender), 0, 0),
             "a zero-rate policy pays Blast nothing"
         );
 
@@ -1580,7 +1580,8 @@ struct FeesCollected {
     vault_id: ObjectID,
     gross_meme: u64,
     gross_quote: u64,
-    protocol_destination: SuiAddress,
+    /// None when a partnered vault holds Blast's LP fees for the partner payout.
+    protocol_destination: Option<SuiAddress>,
     protocol_meme: u64,
     protocol_quote: u64,
     fee_recipient_meme: Vec<u64>,

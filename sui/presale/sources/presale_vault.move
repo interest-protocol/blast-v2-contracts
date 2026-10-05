@@ -11,10 +11,12 @@ public struct PositionKey<phantom Venue>() has copy, drop, store;
 
 /// Shared post-migration custody for one presale's immutable fee split.
 ///
-/// Each collection first pays Blast its share of each asset at the vault's
+/// Each collection first takes Blast's LP fees of each asset at the vault's
 /// rates, snapshotted at creation and changeable only by the AdminCap, then
 /// pays every fee recipient its share of the rest at once; the holder-reward
 /// share accrues here until Blast's rewards administrator funds a round.
+/// Blast's LP fees go to the protocol destination at once, unless the sale named
+/// a partner: then they wait here for `pay_protocol_lp_fees_with_partner`.
 public struct PresaleVault<phantom Meme, phantom Quote> has key {
     id: UID,
     presale_id: ID,
@@ -22,6 +24,10 @@ public struct PresaleVault<phantom Meme, phantom Quote> has key {
     pool_id: ID,
     fee_split: FeeSplit,
     protocol_fees: ProtocolFees,
+    /// The Blast partner the sale named, paid its cut of Blast's LP fees. It never changes.
+    partner_id: Option<ID>,
+    unpaid_protocol_meme: Balance<Meme>,
+    unpaid_protocol_quote: Balance<Quote>,
     migration_meme_residual: Balance<Meme>,
     migration_quote_residual: Balance<Quote>,
     holder_rewards_meme: Balance<Meme>,
@@ -79,10 +85,45 @@ public fun set_protocol_lp_fees<Meme, Quote>(
     });
 }
 
+/// Pays the Blast LP fees this vault holds for its partner: the partner its cut of each asset in
+/// force now, rounded down, then the fee policy's current destination the rest. Anyone may call
+/// it, since both payees are fixed. Holding nothing is valid, moves nothing, and emits nothing,
+/// so it can follow any collection.
+public fun pay_protocol_lp_fees_with_partner<Meme, Quote>(
+    self: &mut PresaleVault<Meme, Quote>,
+    fee_policy: &FeePolicy,
+    partner: &Partner,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    assert!(self.partner_id.contains(&object::id(partner)), EWrongPartner);
+    if (self.unpaid_protocol_meme.value() == 0 && self.unpaid_protocol_quote.value() == 0) return;
+
+    let protocol_destination = fee_policy.destination();
+    let mut protocol_meme = self.unpaid_protocol_meme.withdraw_all();
+    let mut protocol_quote = self.unpaid_protocol_quote.withdraw_all();
+    let partner_meme = partner.pay(&mut protocol_meme, clock);
+    let partner_quote = partner.pay(&mut protocol_quote, clock);
+    let paid_meme = protocol_meme.value();
+    let paid_quote = protocol_quote.value();
+
+    protocol_meme.pay_all(protocol_destination, ctx);
+    protocol_quote.pay_all(protocol_destination, ctx);
+
+    event::emit(ProtocolLpFeesPaid<Meme, Quote> {
+        vault_id: self.id.to_inner(),
+        protocol_destination,
+        protocol_meme: paid_meme,
+        protocol_quote: paid_quote,
+        partner_meme,
+        partner_quote,
+    });
+}
+
 // === Package Functions ===
 
 /// Creates and shares a migrated presale's vault, with its venue position sealed as a dynamic
-/// object field, the presale's immutable LP-fee split, and its snapshotted Blast rates.
+/// object field, the presale's immutable LP-fee split and partner, and its snapshotted Blast rates.
 public(package) fun create<Meme, Quote, Venue, Position: key + store>(
     sale: &Presale<Meme, Quote>,
     _venue: &Venue,
@@ -95,7 +136,7 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
 ) {
     assert!(liquidity > 0, EZeroLiquidity);
 
-    let (presale_id, presale_cap_id, fee_split, protocol_fees) = sale.vault_config();
+    let (presale_id, presale_cap_id, fee_split, protocol_fees, partner_id) = sale.vault_config();
     let mut vault = PresaleVault {
         id: object::new(ctx),
         presale_id,
@@ -103,6 +144,9 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
         pool_id,
         fee_split,
         protocol_fees,
+        partner_id,
+        unpaid_protocol_meme: balance::zero(),
+        unpaid_protocol_quote: balance::zero(),
         migration_meme_residual,
         migration_quote_residual,
         holder_rewards_meme: balance::zero(),
@@ -138,11 +182,11 @@ public(package) fun position_mut<Meme, Quote, Venue, Position: key + store>(
     self.id.dynamic_object_field_mut(PositionKey<Venue>())
 }
 
-/// Splits collected LP fees: Blast's share at the vault's current rates, rounded
-/// up, goes to the current protocol destination; under the immutable
-/// creation-time BPS, every fee recipient is paid its share of the rest at once,
-/// and the holder-reward share stays in the vault. A zero collection is valid,
-/// moves nothing, and emits nothing.
+/// Splits collected LP fees: Blast's LP fees at the vault's current rates, rounded up, are paid
+/// to the current protocol destination or, on a partnered vault, held for
+/// `pay_protocol_lp_fees_with_partner`; under the immutable creation-time BPS, every fee recipient
+/// is paid its share of the rest at once, and the holder-reward share stays in the vault. A zero
+/// collection is valid, moves nothing, and emits nothing.
 public(package) fun split_fees<Meme, Quote>(
     self: &mut PresaleVault<Meme, Quote>,
     fee_policy: &FeePolicy,
@@ -160,15 +204,18 @@ public(package) fun split_fees<Meme, Quote>(
 
     let protocol_meme = self.protocol_fees.lp_fee_meme_bps().apply_up(gross_meme);
     let protocol_quote = self.protocol_fees.lp_fee_quote_bps().apply_up(gross_quote);
-    let protocol_destination = fee_policy.destination();
     let (fee_recipient_meme, holder_rewards_meme) = self.fee_amounts(gross_meme - protocol_meme);
     let (fee_recipient_quote, holder_rewards_quote) = self.fee_amounts(
         gross_quote - protocol_quote,
     );
     let recipients = self.fee_split.fee_recipients().recipients();
 
-    meme.pay(protocol_meme, protocol_destination, ctx);
-    quote.pay(protocol_quote, protocol_destination, ctx);
+    let protocol_destination = self.pay_or_hold_protocol_lp_fees(
+        meme.split(protocol_meme),
+        quote.split(protocol_quote),
+        fee_policy,
+        ctx,
+    );
     recipients.length().do!(|i| {
         meme.pay(fee_recipient_meme[i], recipients[i], ctx);
         quote.pay(fee_recipient_quote[i], recipients[i], ctx);
@@ -241,6 +288,34 @@ public(package) fun restore_holder_rewards<Meme, Quote>(
 
 // === Private Functions ===
 
+/// Pays Blast's LP fees to the fee policy's current destination and returns it, or, on a vault
+/// naming a partner, holds them for `pay_protocol_lp_fees_with_partner` and returns none.
+fun pay_or_hold_protocol_lp_fees<Meme, Quote>(
+    self: &mut PresaleVault<Meme, Quote>,
+    protocol_meme: Balance<Meme>,
+    protocol_quote: Balance<Quote>,
+    fee_policy: &FeePolicy,
+    ctx: &mut TxContext,
+): Option<address> {
+    if (self.partner_id.is_some()) {
+        self.unpaid_protocol_meme.join(protocol_meme);
+        self.unpaid_protocol_quote.join(protocol_quote);
+        return option::none()
+    };
+
+    let protocol_destination = fee_policy.destination();
+    protocol_meme.pay_all(protocol_destination, ctx);
+    protocol_quote.pay_all(protocol_destination, ctx);
+    option::some(protocol_destination)
+}
+
+/// Pays all of `balance` to `recipient`, sending no coin when it is empty.
+fun pay_all<Asset>(mut balance: Balance<Asset>, recipient: address, ctx: &mut TxContext) {
+    let amount = balance.value();
+    balance.pay(amount, recipient, ctx);
+    balance.destroy_zero();
+}
+
 /// Splits `amount` under the creation-time BPS into each fee recipient's amount and the
 /// holder-reward amount.
 fun fee_amounts<Meme, Quote>(self: &PresaleVault<Meme, Quote>, amount: u64): (vector<u64>, u64) {
@@ -258,6 +333,7 @@ public fun new_for_testing<Meme, Quote>(
     presale_cap_id: ID,
     fee_split: FeeSplit,
     protocol_fees: ProtocolFees,
+    partner_id: Option<ID>,
     ctx: &mut TxContext,
 ): PresaleVault<Meme, Quote> {
     PresaleVault {
@@ -267,6 +343,9 @@ public fun new_for_testing<Meme, Quote>(
         pool_id: object::id_from_address(@0x1),
         fee_split,
         protocol_fees,
+        partner_id,
+        unpaid_protocol_meme: balance::zero(),
+        unpaid_protocol_quote: balance::zero(),
         migration_meme_residual: balance::zero(),
         migration_quote_residual: balance::zero(),
         holder_rewards_meme: balance::zero(),
@@ -304,8 +383,29 @@ public fun fees_collected_fields<Meme, Quote>(
 #[test_only]
 public fun fees_collected_protocol_fields<Meme, Quote>(
     event: &FeesCollected<Meme, Quote>,
-): (address, u64, u64) {
+): (Option<address>, u64, u64) {
     (event.protocol_destination, event.protocol_meme, event.protocol_quote)
+}
+
+#[test_only]
+public fun protocol_lp_fees_paid_fields<Meme, Quote>(
+    event: &ProtocolLpFeesPaid<Meme, Quote>,
+): (ID, address, u64, u64, u64, u64) {
+    (
+        event.vault_id,
+        event.protocol_destination,
+        event.protocol_meme,
+        event.protocol_quote,
+        event.partner_meme,
+        event.partner_quote,
+    )
+}
+
+#[test_only]
+public fun unpaid_protocol_lp_fees_for_testing<Meme, Quote>(
+    self: &PresaleVault<Meme, Quote>,
+): (u64, u64) {
+    (self.unpaid_protocol_meme.value(), self.unpaid_protocol_quote.value())
 }
 
 #[test_only]
@@ -324,6 +424,9 @@ public fun destroy_for_testing<Meme, Quote>(self: PresaleVault<Meme, Quote>) {
         pool_id: _,
         fee_split: _,
         protocol_fees: _,
+        partner_id: _,
+        unpaid_protocol_meme,
+        unpaid_protocol_quote,
         migration_meme_residual,
         migration_quote_residual,
         holder_rewards_meme,
@@ -332,6 +435,8 @@ public fun destroy_for_testing<Meme, Quote>(self: PresaleVault<Meme, Quote>) {
         last_checkpoint: _,
     } = self;
     id.delete();
+    unpaid_protocol_meme.destroy_zero();
+    unpaid_protocol_quote.destroy_zero();
     migration_meme_residual.destroy_zero();
     migration_quote_residual.destroy_zero();
     holder_rewards_meme.destroy_zero();
@@ -359,7 +464,8 @@ public struct FeesCollected<phantom Meme, phantom Quote> has copy, drop {
     vault_id: ID,
     gross_meme: u64,
     gross_quote: u64,
-    protocol_destination: address,
+    /// Where Blast's LP fees were paid, or none when the vault holds them for its partner.
+    protocol_destination: Option<address>,
     protocol_meme: u64,
     protocol_quote: u64,
     /// Aligned by index with the immutable recipients in `PresaleVaultCreated`.
@@ -373,6 +479,17 @@ public struct MigrationResidualsClaimed<phantom Meme, phantom Quote> has copy, d
     vault_id: ID,
     meme: u64,
     quote: u64,
+}
+
+/// A partnered vault paid the Blast LP fees it held: `partner_meme` and `partner_quote` to the
+/// partner, and the rest, `protocol_meme` and `protocol_quote`, to `protocol_destination`.
+public struct ProtocolLpFeesPaid<phantom Meme, phantom Quote> has copy, drop {
+    vault_id: ID,
+    protocol_destination: address,
+    protocol_meme: u64,
+    protocol_quote: u64,
+    partner_meme: u64,
+    partner_quote: u64,
 }
 
 /// Every later collection from `vault_id` pays Blast at these rates.
@@ -396,7 +513,12 @@ const EWrongPresaleCap: vector<u8> = b"The creator capability belongs to a diffe
 #[error(code = 3)]
 const EProtocolLpFeesUnchanged: vector<u8> = b"An LP-fee update must change the vault's Blast rates.";
 
+#[error(code = 4)]
+const EWrongPartner: vector<u8> = b"The partner is not the one this vault's presale named at creation.";
+
 // === Imports ===
+
+use blast_partners::blast_partners::Partner;
 
 use blast_presale::{
     blast_presale::{Self as presale, FeeSplit, Presale, PresaleCap},
@@ -405,9 +527,10 @@ use blast_presale::{
     fee_policy::{FeePolicy, ProtocolFees},
 };
 
-use sui::{balance::{Self, Balance}, coin::Coin, dynamic_object_field, event};
+use sui::{balance::{Self, Balance}, clock::Clock, coin::Coin, dynamic_object_field, event};
 
 use fun presale::pay as Balance.pay;
+use fun pay_all as Balance.pay_all;
 
 use fun presale::bps_of as vector.bps;
 use fun presale::recipients_of as vector.recipients;

@@ -6,25 +6,6 @@
 /// Merkle claims that pay each committed beneficiary once.
 module blast_fun_migrators::blast_holder_rewards_tests;
 
-// === Constants ===
-
-const PUBLISHER: address = @0xB1A57;
-
-const ADMIN: address = @0xAD;
-
-const ALICE: address = @0xA;
-
-const BOB: address = @0xB0B;
-
-const BOT: address = @0xB07;
-
-const POOL: address = @0x9001;
-
-/// Rewards the fixture vault holds before any round.
-const FUNDED_MEME: u64 = 1_000;
-
-const FUNDED_QUOTE: u64 = 2_000;
-
 // === Test-Only Types ===
 
 /// This module's one-time witness stands in for a generated package's.
@@ -429,10 +410,10 @@ fun a_later_round_leaves_earlier_unclaimed_entitlements_intact() {
 #[test]
 fun the_largest_round_claims_its_last_bitmap_bit() {
     let mut f = start();
-    let leaf = f.leaf(0, 65_535, ALICE, 1, 0);
+    let alice_leaf = f.leaf(0, 65_535, ALICE, 1, 0);
     let sibling = f.leaf(0, 0, ALICE, 1, 0);
     let proof = vector::tabulate!(16, |_| sibling);
-    let mut root = leaf;
+    let mut root = alice_leaf;
     proof.do_ref!(|sibling| root = merkle::node_for_testing(*sibling, root));
     f.scenario.next_tx(ADMIN);
     f.publish(0, 0, 1, root, root, 65_536, 1, 0);
@@ -766,6 +747,25 @@ fun digest(): vector<u8> {
 fun end(self: RewardsFixture) {
     destroy(self);
 }
+
+// === Constants ===
+
+const PUBLISHER: address = @0xB1A57;
+
+const ADMIN: address = @0xAD;
+
+const ALICE: address = @0xA;
+
+const BOB: address = @0xB0B;
+
+const BOT: address = @0xB07;
+
+const POOL: address = @0x9001;
+
+/// Rewards the fixture vault holds before any round.
+const FUNDED_MEME: u64 = 1_000;
+
+const FUNDED_QUOTE: u64 = 2_000;
 
 // === Imports ===
 

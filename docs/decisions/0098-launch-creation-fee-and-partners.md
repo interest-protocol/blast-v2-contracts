@@ -1,6 +1,8 @@
 # 0098: A launch creation fee, and one partner per launch
 
-- Status: accepted; amended by [0105](0105-permissionless-launch-fee-claims.md)
+- Status: accepted; amended by [0105](0105-permissionless-launch-fee-claims.md) and
+  [0107](0107-partner-cut-of-lp-fees.md), under which the partner also earns its cut of
+  Blast's LP fees on the launch's vault
 - Date: 2026-09-27
 - Amends: [0095](0095-partner-codes.md), whose "The launchpad, later" paragraph this replaces
 

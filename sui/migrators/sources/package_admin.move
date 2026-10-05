@@ -68,6 +68,7 @@ public fun commit_upgrade_and_advance(
 // === Test-Only Functions ===
 
 #[test_only]
+/// Seals this package's test Publisher and a unit-test UpgradeCap, left unshared.
 public fun new_for_testing(ctx: &mut TxContext): PackageAdmin {
     let id = object::new(ctx);
     let custody = upgrade_custody::new<BLAST_FUN_MIGRATORS>(
