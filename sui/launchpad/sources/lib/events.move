@@ -40,6 +40,9 @@ public struct ProtocolFeeShareChanged(u64) has copy, drop;
 /// The account-claim signer's public key; empty when revoked.
 public struct CreatorClaimSignerSet(vector<u8>) has copy, drop;
 
+/// The address every later protocol fee claim pays Blast's share to.
+public struct TreasuryChanged(address) has copy, drop;
+
 /// The SUI, in MIST, every launch created afterward pays.
 public struct CreationFeeChanged(u64) has copy, drop;
 
@@ -197,11 +200,12 @@ public struct CreatorFeesClaimed has copy, drop {
     quote_amount: u64,
 }
 
-/// Blast claimed `meme_amount` and `quote_amount` of its trade fees and `sui_amount` of the
-/// creation fee; the launch's partner, if it names one, was paid the partner amounts in the same
-/// claim.
+/// `treasury` was paid Blast's `meme_amount` and `quote_amount` and the creation fee's
+/// `sui_amount`; the launch's partner, if it names one, was paid the partner amounts in the same
+/// claim. Anyone may claim, so the treasury need not be the sender.
 public struct ProtocolFeesClaimed has copy, drop {
     launch_id: ID,
+    treasury: address,
     meme_amount: u64,
     quote_amount: u64,
     sui_amount: u64,
@@ -248,6 +252,10 @@ public(package) fun protocol_fee_share_changed(protocol_fee_share_bps: u64) {
 
 public(package) fun creator_claim_signer_set(signer_public_key: vector<u8>) {
     emit(CreatorClaimSignerSet(signer_public_key));
+}
+
+public(package) fun treasury_changed(treasury: address) {
+    emit(TreasuryChanged(treasury));
 }
 
 public(package) fun creation_fee_changed(creation_fee: u64) {
@@ -448,6 +456,7 @@ public(package) fun creator_fees_claimed(launch_id: ID, meme_amount: u64, quote_
 
 public(package) fun protocol_fees_claimed(
     launch_id: ID,
+    treasury: address,
     meme_amount: u64,
     quote_amount: u64,
     sui_amount: u64,
@@ -457,6 +466,7 @@ public(package) fun protocol_fees_claimed(
 ) {
     emit(ProtocolFeesClaimed {
         launch_id,
+        treasury,
         meme_amount,
         quote_amount,
         sui_amount,

@@ -3,17 +3,18 @@
 
 // Package error macros preserve the configuration's abort location.
 #[allow(lint(abort_without_constant))]
-/// Settings every curve trade and creator claim reads live.
+/// Settings every curve trade, creator claim, and protocol fee claim reads live.
 module blast_fun::runtime_config;
 
 // === Public Types ===
 
-/// The backend key that signs account claims (empty when none may), and Blast's share of every
-/// curve trade fee.
+/// The backend key that signs account claims (empty when none may), Blast's share of every
+/// curve trade fee, and the treasury every launch pays Blast's fees to.
 public struct RuntimeConfig has key {
     id: UID,
     creator_claim_signer_public_key: vector<u8>,
     protocol_fee_share_bps: Bps,
+    treasury: address,
 }
 
 // === Private Initialization ===
@@ -58,6 +59,22 @@ public fun set_protocol_fee_share(
     events::protocol_fee_share_changed(protocol_fee_share_bps.value());
 }
 
+/// Redirects every later protocol fee claim to `treasury`.
+public fun set_treasury(
+    self: &mut RuntimeConfig,
+    package_version: &PackageVersion,
+    _: &AdminWitness<TreasuryAdmin>,
+    treasury: address,
+) {
+    package_version.assert_current();
+    assert!(treasury != @0x0, blast_fun::errors::invalid_destination!());
+    assert!(treasury != self.treasury, blast_fun::errors::unchanged!());
+
+    self.treasury = treasury;
+
+    events::treasury_changed(treasury);
+}
+
 // === Package Functions ===
 
 public(package) fun creator_claim_signer(self: &RuntimeConfig): &vector<u8> {
@@ -68,13 +85,19 @@ public(package) fun protocol_fee_share(self: &RuntimeConfig): Bps {
     self.protocol_fee_share_bps
 }
 
+public(package) fun treasury(self: &RuntimeConfig): address {
+    self.treasury
+}
+
 // === Private Functions ===
 
+/// The publisher is paid Blast's fees until a treasury administrator redirects them.
 fun new(ctx: &mut TxContext): RuntimeConfig {
     RuntimeConfig {
         id: object::new(ctx),
         creator_claim_signer_public_key: vector[],
         protocol_fee_share_bps: bps::new(0),
+        treasury: ctx.sender(),
     }
 }
 
@@ -96,6 +119,7 @@ public fun new_for_testing(signer_public_key: vector<u8>, ctx: &mut TxContext): 
         id: object::new(ctx),
         creator_claim_signer_public_key: signer_public_key,
         protocol_fee_share_bps: bps::new(0),
+        treasury: ctx.sender(),
     }
 }
 
@@ -104,7 +128,7 @@ public fun new_for_testing(signer_public_key: vector<u8>, ctx: &mut TxContext): 
 use blast_admin::blast_acl::AdminWitness;
 
 use blast_fun::{
-    blast_fun_domain::{ClaimSignerAdmin, FeeAdmin},
+    blast_fun_domain::{ClaimSignerAdmin, FeeAdmin, TreasuryAdmin},
     bps::{Self, Bps},
     constants,
     events,

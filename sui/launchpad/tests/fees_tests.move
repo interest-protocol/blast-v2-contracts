@@ -44,7 +44,7 @@ fun dual_asset_accrual_splits_and_claims_exactly() {
     assert_eq!(totals(&ledger), vector[7, 2, 7, 3]);
 
     let (creator_meme, creator_quote) = ledger.claim_creator_fees(&mut ctx);
-    let (protocol_meme, protocol_quote, protocol_sui) = ledger.claim_protocol_fees(&mut ctx);
+    let (protocol_meme, protocol_quote, protocol_sui) = ledger.claim_protocol_fees();
 
     assert_eq!(creator_meme.value(), 2);
     assert_eq!(creator_quote.value(), 3);
@@ -90,7 +90,7 @@ fun protocol_fee_share_boundaries_route_every_accrued_unit() {
     assert_eq!(creator_quote_delta, 0);
 
     let (creator_meme, creator_quote) = ledger.claim_creator_fees(&mut ctx);
-    let (protocol_meme, protocol_quote, protocol_sui) = ledger.claim_protocol_fees(&mut ctx);
+    let (protocol_meme, protocol_quote, protocol_sui) = ledger.claim_protocol_fees();
 
     assert_eq!(creator_meme.value(), 9);
     assert_eq!(creator_quote.value(), 10);
@@ -111,10 +111,9 @@ fun protocol_fee_share_boundaries_route_every_accrued_unit() {
     location = blast_fun::fees,
 )]
 fun protocol_cannot_claim_when_nothing_is_accrued() {
-    let mut ctx = tx_context::dummy();
     let mut ledger = fees::new<TEST_MEME, TEST_QUOTE>(balance::zero());
 
-    let (meme, quote, sui) = ledger.claim_protocol_fees(&mut ctx);
+    let (meme, quote, sui) = ledger.claim_protocol_fees();
 
     destroy(meme);
     destroy(quote);
@@ -125,10 +124,9 @@ fun protocol_cannot_claim_when_nothing_is_accrued() {
 #[test]
 /// The creation fee alone is enough to claim: Blast takes it before any trade.
 fun protocol_claims_the_creation_fee_before_any_trade() {
-    let mut ctx = tx_context::dummy();
     let mut ledger = fees::new<TEST_MEME, TEST_QUOTE>(balance::create_for_testing(1_001));
 
-    let (meme, quote, sui) = ledger.claim_protocol_fees(&mut ctx);
+    let (meme, quote, sui) = ledger.claim_protocol_fees();
 
     assert_eq!(meme.value(), 0);
     assert_eq!(quote.value(), 0);
@@ -207,7 +205,7 @@ fun maximum_u64_fees_match_the_committed_split_vector() {
     );
 
     let (creator_meme, creator_quote) = ledger.claim_creator_fees(&mut ctx);
-    let (protocol_meme, protocol_quote, protocol_sui) = ledger.claim_protocol_fees(&mut ctx);
+    let (protocol_meme, protocol_quote, protocol_sui) = ledger.claim_protocol_fees();
 
     assert_eq!(creator_meme.value(), 9_223_372_036_854_775_807);
     assert_eq!(creator_quote.value(), 9_223_372_036_854_775_807);
@@ -251,7 +249,7 @@ fun changed_protocol_fee_share_applies_to_the_next_accrual() {
         assert_eq!(creator_meme_delta, 1);
         assert_eq!(protocol_quote_delta, 5);
         assert_eq!(creator_quote_delta, 1);
-        let (protocol_meme, protocol_quote, protocol_sui) = ledger.claim_protocol_fees(f.ctx!());
+        let (protocol_meme, protocol_quote, protocol_sui) = ledger.claim_protocol_fees();
         let (creator_meme, creator_quote) = ledger.claim_creator_fees(f.ctx!());
 
         assert_eq!(protocol_meme.value(), 6);
@@ -278,7 +276,7 @@ fun meme_only_accrual_returns_zero_quote_coins() {
     accrue(&mut ledger, 3, 0, PROTOCOL_FEE_SHARE_BPS);
 
     let (creator_meme, creator_quote) = ledger.claim_creator_fees(&mut ctx);
-    let (protocol_meme, protocol_quote, protocol_sui) = ledger.claim_protocol_fees(&mut ctx);
+    let (protocol_meme, protocol_quote, protocol_sui) = ledger.claim_protocol_fees();
 
     assert_eq!(creator_meme.value(), 1);
     assert_eq!(creator_quote.value(), 0);
@@ -301,7 +299,7 @@ fun quote_only_accrual_returns_zero_meme_coins() {
     accrue(&mut ledger, 0, 4, PROTOCOL_FEE_SHARE_BPS);
 
     let (creator_meme, creator_quote) = ledger.claim_creator_fees(&mut ctx);
-    let (protocol_meme, protocol_quote, protocol_sui) = ledger.claim_protocol_fees(&mut ctx);
+    let (protocol_meme, protocol_quote, protocol_sui) = ledger.claim_protocol_fees();
 
     assert_eq!(creator_meme.value(), 0);
     assert_eq!(creator_quote.value(), 2);

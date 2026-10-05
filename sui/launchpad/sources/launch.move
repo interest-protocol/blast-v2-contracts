@@ -610,52 +610,69 @@ public fun claim_creator_fees<Meme, Quote>(
     (meme, quote)
 }
 
-/// Claims Blast's fees from a launch that names no partner: its trade fees and the creation fee.
+/// Pays the runtime configuration's treasury Blast's fees on a launch that names no partner: its
+/// trade fees, the creation fee, and the one-time migration fee. Anyone may claim.
 public fun claim_protocol_fees<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
-    _: &AdminWitness<TreasuryAdmin>,
+    runtime_config: &RuntimeConfig,
     ctx: &mut TxContext,
-): (Coin<Meme>, Coin<Quote>, Coin<SUI>) {
+) {
     package_version.assert_current();
     assert!(self.partner_id.is_none(), blast_fun::errors::partner_mismatch!());
 
-    let (meme, quote, sui) = self.fee_ledger.claim_protocol_fees(ctx);
-
-    events::protocol_fees_claimed(self.id.to_inner(), meme.value(), quote.value(), sui.value(), 0, 0, 0);
-
-    (meme, quote, sui)
-}
-
-/// Claims Blast's fees from a launch that names `partner`, paying the partner its share of each in
-/// the same call and returning the rest.
-public fun claim_protocol_fees_with_partner<Meme, Quote>(
-    self: &mut Launch<Meme, Quote>,
-    package_version: &PackageVersion,
-    _: &AdminWitness<TreasuryAdmin>,
-    partner: &Partner,
-    clock: &Clock,
-    ctx: &mut TxContext,
-): (Coin<Meme>, Coin<Quote>, Coin<SUI>) {
-    package_version.assert_current();
-    assert!(self.partner_id.contains(&object::id(partner)), blast_fun::errors::partner_mismatch!());
-
-    let (mut meme, mut quote, mut sui) = self.fee_ledger.claim_protocol_fees(ctx);
-    let partner_meme = partner.pay(meme.balance_mut(), clock);
-    let partner_quote = partner.pay(quote.balance_mut(), clock);
-    let partner_sui = partner.pay(sui.balance_mut(), clock);
+    let treasury = runtime_config.treasury();
+    let (meme, quote, sui) = self.fee_ledger.claim_protocol_fees();
+    let (meme_amount, quote_amount, sui_amount) = (meme.value(), quote.value(), sui.value());
+    pay_treasury(meme, treasury, ctx);
+    pay_treasury(quote, treasury, ctx);
+    pay_treasury(sui, treasury, ctx);
 
     events::protocol_fees_claimed(
         self.id.to_inner(),
-        meme.value(),
-        quote.value(),
-        sui.value(),
+        treasury,
+        meme_amount,
+        quote_amount,
+        sui_amount,
+        0,
+        0,
+        0,
+    );
+}
+
+/// Pays Blast's fees on a launch that names `partner`: the partner its share of each, then the
+/// runtime configuration's treasury the rest, in the same call. Anyone may claim.
+public fun claim_protocol_fees_with_partner<Meme, Quote>(
+    self: &mut Launch<Meme, Quote>,
+    package_version: &PackageVersion,
+    runtime_config: &RuntimeConfig,
+    partner: &Partner,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    package_version.assert_current();
+    assert!(self.partner_id.contains(&object::id(partner)), blast_fun::errors::partner_mismatch!());
+
+    let treasury = runtime_config.treasury();
+    let (mut meme, mut quote, mut sui) = self.fee_ledger.claim_protocol_fees();
+    let partner_meme = partner.pay(&mut meme, clock);
+    let partner_quote = partner.pay(&mut quote, clock);
+    let partner_sui = partner.pay(&mut sui, clock);
+    let (meme_amount, quote_amount, sui_amount) = (meme.value(), quote.value(), sui.value());
+    pay_treasury(meme, treasury, ctx);
+    pay_treasury(quote, treasury, ctx);
+    pay_treasury(sui, treasury, ctx);
+
+    events::protocol_fees_claimed(
+        self.id.to_inner(),
+        treasury,
+        meme_amount,
+        quote_amount,
+        sui_amount,
         partner_meme,
         partner_quote,
         partner_sui,
     );
-
-    (meme, quote, sui)
 }
 
 /// Pays every project recipient, accrues Blast's one-time Meme and Quote fee in the launch ledger,
@@ -823,6 +840,12 @@ fun buy_from_curve<Meme, Quote>(
     (meme_out, quote_refund)
 }
 
+/// Sends one of Blast's claimed balances to the treasury; an empty balance sends nothing.
+fun pay_treasury<T>(fee: Balance<T>, treasury: address, ctx: &mut TxContext) {
+    if (fee.value() > 0) transfer::public_transfer(fee.into_coin(ctx), treasury)
+    else fee.destroy_zero();
+}
+
 /// Whether the opening round has ended; never before share.
 fun has_opening_round_ended<Meme, Quote>(self: &Launch<Meme, Quote>, clock: &Clock): bool {
     let opening_round_ms = self.opening_round_ms;
@@ -978,7 +1001,7 @@ use blast_admin::blast_acl::AdminWitness;
 
 use blast_fun::{
     allocation::{AllocationPlan, FeeSplit},
-    blast_fun_domain::{CreatorAdmin, TreasuryAdmin},
+    blast_fun_domain::CreatorAdmin,
     bps::Bps,
     constants,
     creator_authority::{Self, BlastMetadataCap, CreatorRecipient, CurveFeeCap},
