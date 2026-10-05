@@ -49,6 +49,7 @@ assigned review scope; report inaccessible required guidance as a review gap.
 
 Load only the branch the task changes:
 
+- Explaining a package or routing a question about the contracts: `llms.txt`.
 - Package or contract/SDK boundary: `docs/architecture.md`.
 - Naming a module, one-time witness, coin, or event type that appears on an
   explorer: `docs/explorer-naming.md` and ADR 0085.
