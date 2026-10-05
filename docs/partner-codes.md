@@ -149,9 +149,17 @@ once, whenever anyone claims Blast's fees from the launch:
 - Blast's one-time Meme and Quote migration fee, which joins the launch's fees
   when it migrates.
 
-The creator's part of each trade fee and the sell burn are never shared.
-Neither are the venue's migration residuals or Blast's LP-fee share after
-migration, which the migrators pay.
+The creator's part of each trade fee and the sell burn are never divided with
+the partner, and neither are the venue's migration residuals.
+
+After migration the partner also earns its cut of Blast's LP fees on the
+launch's pool ([ADR 0107](decisions/0107-partner-cut-of-lp-fees.md)). The
+launch's LP vault inherits its partner, and each fee collection holds Blast's
+LP fees in that vault instead of paying them. Anyone may then call
+`vault::claim_protocol_lp_fees_with_partner`, which pays the partner its cut of
+each asset and the `LpFeePolicy` destination the rest; the SDK adds it to every
+collection on a partnered vault. Vaults of launches without a partner pay
+Blast at each collection, as before.
 
 - **Integrators** that create coins call `launch::set_partner` on the
   initializer, passing the `Partner` object and the `Clock`, alongside the other
@@ -180,8 +188,8 @@ migration, which the migrators pay.
 
 A presale can name one partner, and only when it is created; nothing can change
 it later. When the sale succeeds, that partner is paid its cut of Blast's fee on
-the raise, and of nothing else: Blast's token fee and its fees on the pool's LP
-fees after migration are never divided with a partner.
+the raise and, after migration, of Blast's LP fees on the sale's pool. Blast's
+token fee is never divided with a partner.
 
 Say a sale raises 100,000 USDC, Blast's raise fee is 2%, and the partner's cut is
 40%. Blast's fee on the raise is 2,000 USDC; the partner receives 800 USDC and
@@ -201,6 +209,13 @@ pool receive exactly what they would without a partner.
   Nothing is paid if the sale is refunded. `ProtocolFeesPaid` records what Blast
   kept and the partner's `partner_quote`, and `PresaleOpened` records the
   partner.
+- **After migration** the sale's vault inherits its partner, and each LP-fee
+  collection holds Blast's LP fees in the vault
+  ([ADR 0107](decisions/0107-partner-cut-of-lp-fees.md)). Anyone may then call
+  `presale_vault::pay_protocol_lp_fees_with_partner`, which pays the partner its
+  cut of each asset and the fee policy's destination the rest; the SDK adds it
+  to every collection on a partnered vault. `ProtocolLpFeesPaid` records both
+  parts.
 - **Operators.** The presale `AdminCap` accepts deals with
   `creation_policy::add_partner`, which applies at once, and ends them with
   `creation_policy::remove_partner`, which applies seven days later. Removing a
@@ -235,5 +250,7 @@ also rests on how each package is published:
    miss. On the launchpad, a partner's share of Blast's fees waits in the launch
    until anyone claims, the partner included, and no claim pays Blast without
    paying the partner in the same call. On presales, a partnered sale's Blast
-   shares wait in the sale until anyone pays them, and Blast cannot be paid
-   without paying the partner in the same call.
+   fees wait in the sale until anyone pays them, and Blast cannot be paid
+   without paying the partner in the same call. After migration, on both
+   products, a partnered vault's Blast LP fees wait in the vault on the same
+   terms.

@@ -1,6 +1,7 @@
 # 0089: One migrators package owns everything after migration and starts every launch
 
-- Status: accepted
+- Status: accepted; amended by [0107](0107-partner-cut-of-lp-fees.md): a partnered launch's
+  vault holds Blast's LP fees until anyone pays the partner its cut and Blast the rest
 - Date: 2026-09-24
 - Amends: [0076](0076-native-v2-and-auto-lp.md) (auto-LP),
   [0082](0082-revocable-creator-and-lp-fee-capabilities.md), and

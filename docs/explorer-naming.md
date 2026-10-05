@@ -98,10 +98,10 @@ every package-administration object.
 | `blast_sui` | `events_wrapper::Event<events::X>` | `blast_events::Event<events::X>` | envelope module |
 | `blast_fun` | `events_wrapper::Event<events::X>` | `blast_events::Event<events::X>` | envelope module |
 | `blast_boosts_aftermath` | `events_wrapper::Event<events::X<Product>>` | `blast_events::Event<events::X<Product>>` | envelope module and `Product` |
-| `blast_fun_migrators` | `events::X` (direct emission) | `blast_events::X` | module |
+| `blast_fun_migrators` | `events::X` (direct emission) | `blast_events::X`, `ProtocolLpFeesClaimed` included (ADR 0107) | module |
 | `blast_admin` | `events::X<Domain>` | `blast_admin_events::X`; custody and version events keep `<PackageMarker>` | module |
 | `blast_partners` | — | `blast_partners::PartnerUpdated` and `blast_partners::PartnerPaid<T>` (direct emission, ADR 0095) | module |
-| `blast_presale` | — | direct creation, commitment, settlement, migration, vault-fee, holder-reward, claim, and recovery events (ADR 0099); `creation_policy::PartnerAdded` and `PartnerRemoved` (ADR 0106) | module |
+| `blast_presale` | — | direct creation, commitment, settlement, migration, vault-fee, holder-reward, claim, and recovery events (ADR 0099); `creation_policy::PartnerAdded` and `PartnerRemoved` (ADR 0106); `presale_vault::ProtocolLpFeesPaid<Meme, Quote>` (ADR 0107) | module |
 | `blast_aftermath_dao_presale` | — | `blast_aftermath_dao_presale::PoolCreationReserved<Lp, SaleToken, Quote>` and `Migrated<Lp, SaleToken, Quote>` (direct emission, ADR 0104) | module |
 | `blast_boosts_aftermath` | — | `blast_events::Event<events::PartnerAdded>` and `blast_events::Event<events::PartnerRemoved>` (ADR 0095; protocol-wide, no `Product`) | envelope module |
 
