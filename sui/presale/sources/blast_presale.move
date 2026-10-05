@@ -56,8 +56,9 @@ public struct PresaleCap has key, store {
     presale_id: ID,
 }
 
-/// Linear vesting from migration: nothing before `cliff_ms`, then the vested amount steps up
-/// every `period_ms` until all `periods` have elapsed.
+/// Linear vesting from the schedule's start, migration for a recipient share and the claim for a
+/// participant: nothing before `cliff_ms`, then the vested amount steps up every `period_ms` until
+/// all `periods` have elapsed.
 public struct VestingTerms has copy, drop, store {
     cliff_ms: u64,
     period_ms: u64,
@@ -99,7 +100,8 @@ public struct Commitment has copy, drop, store {
 /// shares are paid only on migration. If the raise is missed, every commitment
 /// is refunded. Anyone may migrate a funded sale until it is cancelled; once LP
 /// is still unmigrated at its deadline, anyone may cancel it so every
-/// commitment becomes refundable.
+/// commitment becomes refundable. Under participant vesting, each claim locks the
+/// participant's tokens in its own schedule instead of paying them out.
 public struct Presale<phantom SaleToken, phantom Quote> has key {
     id: UID,
     presale_cap_id: ID,
@@ -123,6 +125,7 @@ public struct Presale<phantom SaleToken, phantom Quote> has key {
     participants: u64,
     quote: Balance<Quote>,
     token_allocation: u64,
+    participant_vesting: Option<VestingTerms>,
     sale_tokens: Balance<SaleToken>,
     liquidity_tokens: Balance<SaleToken>,
     recipient_payouts: vector<RecipientPayout>,
@@ -206,8 +209,8 @@ public fun vested_recipient_share(
     RecipientShare { recipient, bps, vesting: option::some(vesting) }
 }
 
-/// Linear vesting terms. The steps and cliff must fit in `MAX_VESTING_DURATION_MS`, so migration
-/// can always create the schedule. Product limits on the duration belong to creation tooling.
+/// Linear vesting terms. The steps and cliff must fit in `MAX_VESTING_DURATION_MS`, so migration and
+/// claims can always create the schedule. Product limits on the duration belong to creation tooling.
 public fun vesting_terms(cliff_ms: u64, period_ms: u64, periods: u64): VestingTerms {
     assert!(
         period_ms > 0
@@ -408,11 +411,14 @@ public fun cancel_unlaunched<SaleToken, Quote>(
 }
 
 /// Delivers one participant's pro-rata tokens and overflow Quote after migration,
-/// or its full Quote after cancellation. Anyone may relay; the final claim
-/// receives the bounded integer-rounding remainder.
+/// or its full Quote after cancellation. Under participant vesting, the tokens are
+/// locked in a shared irrevocable linear schedule starting at this claim instead of
+/// paid out; the Quote refund is always paid at once. Anyone may relay; the final
+/// claim receives the bounded integer-rounding remainder.
 public fun claim<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
     participant: address,
+    clock: &Clock,
     ctx: &mut TxContext,
 ) {
     assert!(
@@ -426,9 +432,14 @@ public fun claim<SaleToken, Quote>(
     let Commitment { quote: commitment, .. } = self.id.remove_dynamic_field<_, Commitment>(key);
     let tokens = self.claimable_tokens(commitment);
     let quote_refund = self.refundable_quote(commitment);
+    let payout = RecipientPayout {
+        recipient: participant,
+        amount: tokens,
+        vesting: self.participant_vesting,
+    };
 
     self.remaining_commitments = self.remaining_commitments - commitment;
-    self.sale_tokens.pay(tokens, participant, ctx);
+    let vesting_id = self.sale_tokens.pay_or_vest(payout, clock, ctx);
     self.quote.pay(quote_refund, participant, ctx);
 
     event::emit(Claimed<SaleToken, Quote> {
@@ -438,6 +449,7 @@ public fun claim<SaleToken, Quote>(
         tokens,
         quote_refund,
         remaining_commitments: self.remaining_commitments,
+        vesting_id,
     });
 }
 
@@ -460,6 +472,7 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
     currency: &mut Currency<SaleToken>,
     token_supply: u64,
     token_allocation_bps: Bps,
+    participant_vesting: Option<VestingTerms>,
     liquidity_token_allocation_bps: Bps,
     recipient_allocations: vector<RecipientShare>,
     burnable: bool,
@@ -546,6 +559,7 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
         treasury_cap_id,
         token_supply,
         token_allocation_bps: token_allocation_bps.value(),
+        participant_vesting,
         liquidity_token_allocation_bps: liquidity_token_allocation_bps.value(),
         recipients: recipient_allocations.recipients(),
         recipient_bps: recipient_allocations.bps(),
@@ -597,6 +611,7 @@ public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
             participants: 0,
             quote: balance::zero(),
             token_allocation,
+            participant_vesting,
             sale_tokens,
             liquidity_tokens,
             recipient_payouts,
@@ -1227,8 +1242,9 @@ fun release_recipient_tokens<SaleToken, Quote>(
     });
 }
 
-/// Pays one payout out of `self` to its recipient or, when it vests, locks it in a shared
-/// irrevocable linear schedule starting now and returns that schedule's ID.
+/// Pays one payout out of `self` to its recipient or, when a positive amount vests, locks it in a
+/// shared irrevocable linear schedule starting now and returns that schedule's ID. A schedule
+/// cannot hold nothing, so an empty payout creates none.
 fun pay_or_vest<T>(
     self: &mut Balance<T>,
     payout: RecipientPayout,
@@ -1236,7 +1252,7 @@ fun pay_or_vest<T>(
     ctx: &mut TxContext,
 ): Option<ID> {
     let RecipientPayout { recipient, amount, vesting } = payout;
-    if (vesting.is_none()) {
+    if (vesting.is_none() || amount == 0) {
         self.pay(amount, recipient, ctx);
         return option::none()
     };
@@ -1398,8 +1414,8 @@ public fun created_protocol_fields<SaleToken, Quote>(
 #[test_only]
 public fun created_vesting_fields<SaleToken, Quote>(
     event: &PresaleCreated<SaleToken, Quote>,
-): (vector<Option<VestingTerms>>, vector<Option<VestingTerms>>) {
-    (event.recipient_vesting, event.raise_recipient_vesting)
+): (Option<VestingTerms>, vector<Option<VestingTerms>>, vector<Option<VestingTerms>>) {
+    (event.participant_vesting, event.recipient_vesting, event.raise_recipient_vesting)
 }
 
 #[test_only]
@@ -1528,6 +1544,11 @@ public fun claim_fields<SaleToken, Quote>(
     )
 }
 
+#[test_only]
+public fun claimed_vesting_id<SaleToken, Quote>(event: &Claimed<SaleToken, Quote>): Option<ID> {
+    event.vesting_id
+}
+
 // === Events ===
 
 /// A presale was created with fully funded token allocations.
@@ -1537,6 +1558,7 @@ public struct PresaleCreated<phantom SaleToken, phantom Quote> has copy, drop {
     treasury_cap_id: ID,
     token_supply: u64,
     token_allocation_bps: u64,
+    participant_vesting: Option<VestingTerms>,
     liquidity_token_allocation_bps: u64,
     recipients: vector<address>,
     recipient_bps: vector<u64>,
@@ -1652,7 +1674,8 @@ public struct RecipientAllocated<phantom SaleToken, phantom Quote> has copy, dro
     vesting_id: Option<ID>,
 }
 
-/// `participant` received its token allocation and Quote refund.
+/// `participant` received its token allocation, or the vesting schedule `vesting_id` that holds
+/// it, and its Quote refund.
 public struct Claimed<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
     participant: address,
@@ -1660,6 +1683,7 @@ public struct Claimed<phantom SaleToken, phantom Quote> has copy, drop {
     tokens: u64,
     quote_refund: u64,
     remaining_commitments: u64,
+    vesting_id: Option<ID>,
 }
 
 // === Constants ===

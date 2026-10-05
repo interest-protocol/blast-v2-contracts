@@ -29,7 +29,9 @@ the rest. Any token or raise recipient share may vest: its cliff, step period,
 and step count are fixed at creation, and migration locks it in an irrevocable
 [`blast_fun_vesting`](https://github.com/interest-protocol/blast-util-contracts/tree/main/sui/vesting)
 linear schedule that starts at migration instead of paying it out. Fee shares
-cannot vest.
+cannot vest. Participant tokens may vest too, under terms fixed at creation:
+each claim then locks the participant's tokens in its own irrevocable schedule
+that starts at that claim, while its Quote refund is paid at once.
 
 Blast's shared `FeePolicy` sets its shares of the raise, the token supply, and
 collected LP fees; each sale snapshots them at creation, every rate can be zero,

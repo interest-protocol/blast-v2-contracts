@@ -19,6 +19,9 @@
   roles, so presale no longer depends on `blast_admin`
 - Amended: 2026-10-04 (owner decision): `share` takes a start time, so a sale
   can be created and shared ahead of its window; commitments open at the start
+- Amended: 2026-10-05 (owner decision): a sale may make participant tokens
+  vest; each claim locks the participant's tokens in an irrevocable
+  `blast_fun_vesting` linear schedule that starts at that claim
 
 ## Context
 
@@ -148,7 +151,19 @@ under a live sale. Schedules have no cancellation authority: a cancel cap would
 let its holder take back what is still locked. Terms are validated at creation
 against every check the schedule constructor makes, so a vesting share can
 never make migration abort. Fee shares cannot vest; they are paid as fees are
-collected. Participant allocations do not vest.
+collected.
+
+A sale may also set optional participant `VestingTerms`, built and bounded by
+the same `vesting_terms` constructor, fixed at creation, and emitted in
+`PresaleCreated`. Under them, each claim after migration funds an irrevocable
+`blast_fun_linear_vesting` schedule for the participant with its pro-rata
+tokens instead of transferring them, shares it, and names it in the claim's
+`Claimed` event; the Quote refund is still paid at once. The schedule is
+created when the participant claims, not at migration, because migration cannot
+iterate up to 65,536 participants and the vesting package rejects a start before
+the current clock, so each schedule starts at its own claim (owner,
+2026-10-05). A claim whose tokens round to zero creates no schedule, since a
+schedule cannot hold nothing. Cancellation pays no tokens, so it creates none.
 
 The shared-object lifecycle is:
 
@@ -215,7 +230,8 @@ tokens_i = floor(token_allocation * c_i / C)
 refund_i = floor((C - R) * c_i / C)
 ```
 
-Claims are permissionlessly relayable and always pay the committed wallet.
+Claims are permissionlessly relayable and always pay the committed wallet, or
+lock its tokens in a schedule for it under participant vesting.
 The final claim receives the bounded integer remainder of both balances, so
 all escrowed participant assets are conserved. Claim order changes only which
 wallet receives that documented sub-participant-count remainder.
@@ -304,8 +320,12 @@ generic positional Blake2b-256 module verifies eligibility and rewards. The
   recipients over later ones. Because collection is permissionless, anyone can
   collect often to steer at most one atomic unit per share per asset per
   collection toward the tie winner.
-- A vesting recipient claims from its own schedule; anyone may relay that
-  claim, and payment always goes to the recipient. The schedule is a separate
+- A participant's vesting starts at its claim, so a participant that claims
+  later unlocks later; since anyone may relay a claim, a keeper can claim for
+  every participant right after migration to start every schedule together.
+  Relaying funds a new shared object, so the relayer pays its storage.
+- A vesting recipient or participant claims from its own schedule; anyone may
+  relay that claim, and payment always goes to its beneficiary. The schedule is a separate
   shared object per vesting share, so indexers join it to its presale through
   the allocation event's `vesting_id`. A Quote issuer's deny list can stall a
   vesting raise recipient's claims as it would a direct payout.
@@ -335,6 +355,12 @@ generic positional Blake2b-256 module verifies eligibility and rewards. The
   missing cancellation authority, claim each schedule after migration (nothing
   before the cliff counted from migration, half at the cliff, the rest at the
   end), reject vesting fee shares, and pin every `VestingTerms` bound.
+- Unit tests lock each participant's claimed tokens in a schedule from its own
+  claim (its creation event's beneficiary, amount, start, and terms, the claim's
+  `vesting_id`, the Quote refund paid at once, the last claim's remainder), wait
+  for the cliff counted from the claim, create no schedule for a claim whose
+  tokens round to zero or for a cancelled sale's refunds, and record the terms
+  in `PresaleCreated`.
 - Unit tests cover publication's caps and registry, replacing and revoking the
   `AdminCap` with their events, a replaced or revoked cap being rejected, a
   replacement after a revocation, and the super administrator's transfer.
