@@ -21,7 +21,7 @@ Quote type and the venue's pool tier and calls `launch::new` with the adapter's
 own witness. `launch::new` checks that the Meme and Quote differ, that the
 Quote and the adapter are admitted, and the decimals against the admitted
 allowlist, and
-returns a `LaunchInitializer` holding the ticket. The creator configures the
+returns a `LaunchInitializer` holding the ticket. The publisher configures the
 launch on it, then `launch::finalize` consumes it with the registered currency:
 it checks the symbol against its 32-byte bound (so choose a symbol of at most
 32 bytes), the supply against the canonical amount, and the sell-burn rate
