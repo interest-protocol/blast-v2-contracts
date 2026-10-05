@@ -370,7 +370,7 @@ admin_roles="$(for file in "${source_files[@]}"; do
 done | LC_ALL=C sort | tr '\n' ' ')"
 
 if [[ "$admin_roles" != \
-  'launch:claim_protocol_fees:TreasuryAdmin launch:claim_protocol_fees_with_partner:TreasuryAdmin launch:reassign_curve_fee_cap:CreatorAdmin launch:reassign_metadata_cap:CreatorAdmin launch_config:add_partner:FeeAdmin launch_config:remove_partner:FeeAdmin launch_config:set_creation_fee:FeeAdmin launch_config:set_meme_decimals_allowed:ListingAdmin launch_config:set_migration_witness_allowed:AdapterAdmin launch_config:set_protocol_allocation:TreasuryAdmin launch_config:set_quote_allowed:ListingAdmin launch_config:set_trade_fees:FeeAdmin package_admin:authorize_upgrade:UpgradeAdmin package_admin:commit_upgrade_and_advance:UpgradeAdmin package_admin:make_immutable:UpgradeAdmin runtime_config:set_creator_claim_signer:ClaimSignerAdmin runtime_config:set_protocol_fee_share:FeeAdmin ' ]]; then
+  'launch:reassign_curve_fee_cap:CreatorAdmin launch:reassign_metadata_cap:CreatorAdmin launch_config:add_partner:FeeAdmin launch_config:remove_partner:FeeAdmin launch_config:set_creation_fee:FeeAdmin launch_config:set_meme_decimals_allowed:ListingAdmin launch_config:set_migration_witness_allowed:AdapterAdmin launch_config:set_protocol_allocation:TreasuryAdmin launch_config:set_quote_allowed:ListingAdmin launch_config:set_trade_fees:FeeAdmin package_admin:authorize_upgrade:UpgradeAdmin package_admin:commit_upgrade_and_advance:UpgradeAdmin package_admin:make_immutable:UpgradeAdmin runtime_config:set_creator_claim_signer:ClaimSignerAdmin runtime_config:set_protocol_fee_share:FeeAdmin runtime_config:set_treasury:TreasuryAdmin ' ]]; then
   printf '  %s\n' $admin_roles
   echo 'Every administrator action must take exactly its pinned role witness.' >&2
   failures=$((failures + 1))
@@ -700,7 +700,7 @@ check_fee_function claim_creator_fees \
   'creator_meme.value creator_meme.withdraw_all creator_quote.value creator_quote.withdraw_all '
 
 check_fee_function claim_protocol_fees \
-  'fun claim_protocol_fees<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>, Coin<SUI>)' \
+  'fun claim_protocol_fees<Meme, Quote>( self: &mut FeeLedger<Meme, Quote>, ): (Balance<Meme>, Balance<Quote>, Balance<SUI>)' \
   'protocol_meme.value protocol_meme.withdraw_all protocol_quote.value protocol_quote.withdraw_all protocol_sui.value protocol_sui.withdraw_all '
 
 check_fee_function accrue \
@@ -731,40 +731,40 @@ runtime_config_source="$(move_normalized_source <<<"$runtime_config_facts")"
 
 if [[ ! -f sources/runtime_config.move ]] \
   || [[ "$(move_production_functions <<<"$runtime_config_facts")" \
-    != 'creator_claim_signer:package:0 init:private:0 new:private:0 protocol_fee_share:package:0 set_creator_claim_signer:public:0 set_protocol_fee_share:public:0 ' ]] \
+    != 'creator_claim_signer:package:0 init:private:0 new:private:0 protocol_fee_share:package:0 set_creator_claim_signer:public:0 set_protocol_fee_share:public:0 set_treasury:public:0 treasury:package:0 ' ]] \
   || [[ "$(move_production_type RuntimeConfig <<<"$runtime_config_facts")" \
-    != 'struct RuntimeConfig has key { id: UID, creator_claim_signer_public_key: vector<u8>, protocol_fee_share_bps: Bps, }' ]] \
+    != 'struct RuntimeConfig has key { id: UID, creator_claim_signer_public_key: vector<u8>, protocol_fee_share_bps: Bps, treasury: address, }' ]] \
   || rg -q '\b(AdminCap|ProtocolAuthority|LaunchConfig|VecMap|VecSet|TypeName)\b' \
     <<<"$runtime_config_source" \
   || rg -q '\b(sequence|schema_version|action_tag|nonce)\b' <<<"$runtime_config_source"; then
-  echo 'runtime_config.move must own only the version-gated creator-claim signer and protocol fee share.' >&2
+  echo 'runtime_config.move must own only the version-gated creator-claim signer, protocol fee share, and treasury.' >&2
   failures=$((failures + 1))
 fi
 
-# The two setters are the only RuntimeConfig transitions; each is version-gated first and
+# The three setters are the only RuntimeConfig transitions; each is version-gated first and
 # authorized by a borrowed AdminWitness of the role the admin role map pins.
 runtime_config_violations=''
 runtime_config_mutations="$(awk -F'\t' '
-  $1 == "FN" && $6 == 0 && $10 ~ /self\.(creator_claim_signer_public_key|protocol_fee_share_bps) = / {
+  $1 == "FN" && $6 == 0 && $10 ~ /self\.(creator_claim_signer_public_key|protocol_fee_share_bps|treasury) = / {
     print $2
   }
 ' <<<"$runtime_config_facts" | sort | tr '\n' ' ')"
 
 if [[ "$runtime_config_mutations" \
-  != 'set_creator_claim_signer set_protocol_fee_share ' ]]; then
-  runtime_config_violations+="  runtime state is mutated by '${runtime_config_mutations}' instead of the two setters"$'\n'
+  != 'set_creator_claim_signer set_protocol_fee_share set_treasury ' ]]; then
+  runtime_config_violations+="  runtime state is mutated by '${runtime_config_mutations}' instead of the three setters"$'\n'
 fi
 
 runtime_config_ungated="$(awk -F'\t' '
   $1 == "FN" && $6 == 0 \
-    && ($2 == "set_creator_claim_signer" || $2 == "set_protocol_fee_share") {
+    && ($2 == "set_creator_claim_signer" || $2 == "set_protocol_fee_share" || $2 == "set_treasury") {
     if ($9 !~ /[(,] package_version: &PackageVersion,/) {
       print "  " $2 " must take the shared PackageVersion under that exact name"
     }
     if ($10 !~ /^package_version\.assert_current\(\);/) {
       print "  " $2 " must check the live package version as its first statement"
     }
-    if ($9 !~ /[(,] _: &AdminWitness<(ClaimSignerAdmin|FeeAdmin)>,/) {
+    if ($9 !~ /[(,] _: &AdminWitness<(ClaimSignerAdmin|FeeAdmin|TreasuryAdmin)>,/) {
       print "  " $2 " must be authorized by a borrowed AdminWitness"
     }
   }
@@ -784,10 +784,12 @@ events_facts="$(move_facts sources/lib/events.move)"
 
 runtime_config_mutation_event_payloads="$(awk -F'\t' '
   $1 == "TYPE" && $5 == 0 \
-    && ($2 == "ProtocolFeeShareChanged" || $2 == "CreatorClaimSignerSet") { print $8 }
+    && ($2 == "ProtocolFeeShareChanged" || $2 == "CreatorClaimSignerSet" || $2 == "TreasuryChanged") {
+      print $8
+    }
 ' <<<"$events_facts")"
 
-if [[ "$(wc -l <<<"$runtime_config_mutation_event_payloads")" != 2 ]] \
+if [[ "$(wc -l <<<"$runtime_config_mutation_event_payloads")" != 3 ]] \
   || rg -q '\b(sequence|schema_version|action_tag|nonce)\b' \
     <<<"$runtime_config_mutation_event_payloads" \
   || rg -q '\bruntime_config_id\b' <<<"$runtime_config_mutation_event_payloads" \
@@ -1070,11 +1072,13 @@ for authority_spec in \
   'self.fee_ledger.claim_creator_fees(|claim_creator_fees ' \
   'self.fee_ledger.claim_protocol_fees(|claim_protocol_fees claim_protocol_fees_with_partner ' \
   'partner.pay(|claim_protocol_fees_with_partner ' \
+  'runtime_config.treasury()|claim_protocol_fees claim_protocol_fees_with_partner ' \
+  'pay_treasury(|claim_protocol_fees claim_protocol_fees_with_partner ' \
   'self.partner_id = |set_partner ' \
   'self.assert_curve_fee_cap(|claim_creator_fees ' \
   'self.assert_metadata_update(|set_description set_icon_url set_name ' \
   '&self.metadata_cap|set_description set_icon_url set_name ' \
-  'transfer::public_transfer(|deliver_opening_round migrate reassign_curve_fee_cap reassign_metadata_cap '; do
+  'transfer::public_transfer(|deliver_opening_round migrate pay_treasury reassign_curve_fee_cap reassign_metadata_cap '; do
   authority_needle="${authority_spec%%|*}"
   authority_expected="${authority_spec#*|}"
   authority_actual="$(launch_functions_containing "$authority_needle")"
@@ -1089,10 +1093,32 @@ if [[ "$(rg -l '\bnew_curve_fee_cap\b' sources | sort | tr '\n' ' ')" \
     != 'sources/creator_authority.move sources/launch.move ' ]] \
   || [[ "$(rg -l '\bnew_metadata_cap\b' sources | sort | tr '\n' ' ')" \
     != 'sources/creator_authority.move sources/launch.move ' ]] \
-  || [[ "$(rg -l '\.claim_(creator|protocol)_fees\(ctx\)' sources | tr '\n' ' ')" != 'sources/launch.move ' ]] \
-  || [[ "$(move_production_signature claim_protocol_fees <<<"$launch_facts")" != *' _: &AdminWitness<TreasuryAdmin>,'* ]]; then
-  launch_authority_violations+='  creator capability constructors or ledger claims are reachable outside creator_authority.move and launch.move, or the protocol claim lost its AdminWitness'$'\n'
+  || [[ "$(rg -l '\.claim_(creator|protocol)_fees\((ctx)?\)' sources | tr '\n' ' ')" != 'sources/launch.move ' ]]; then
+  launch_authority_violations+='  creator capability constructors or ledger claims are reachable outside creator_authority.move and launch.move'$'\n'
 fi
+
+# Blast's fee claims are permissionless, so no caller input may choose the payee: each pays the
+# partner the launch names and the RuntimeConfig treasury, through one helper that sends only
+# positive balances, three payouts before the claim event (ADR 0105).
+if [[ "$(move_production_signature claim_protocol_fees <<<"$launch_facts")" \
+    != 'fun claim_protocol_fees<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, runtime_config: &RuntimeConfig, ctx: &mut TxContext, )' ]] \
+  || [[ "$(move_production_signature claim_protocol_fees_with_partner <<<"$launch_facts")" \
+    != 'fun claim_protocol_fees_with_partner<Meme, Quote>( self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, runtime_config: &RuntimeConfig, partner: &Partner, clock: &Clock, ctx: &mut TxContext, )' ]] \
+  || [[ "$(move_production_function_contract pay_treasury <<<"$launch_facts")" \
+    != 'private:0:0:fun pay_treasury<T>(fee: Balance<T>, treasury: address, ctx: &mut TxContext)' ]] \
+  || [[ "$(move_production_body pay_treasury <<<"$launch_facts")" \
+    != 'if (fee.value() > 0) transfer::public_transfer(fee.into_coin(ctx), treasury) else fee.destroy_zero();' ]]; then
+  launch_authority_violations+='  a protocol fee claim takes a caller-chosen payee or authority, or the treasury payout changed'$'\n'
+fi
+
+for protocol_claim in claim_protocol_fees claim_protocol_fees_with_partner; do
+  protocol_claim_body="$(move_production_body "$protocol_claim" <<<"$launch_facts" | move_semantic_shape)"
+  if [[ "$(count_occurrences 'pay_treasury\(' <<<"$protocol_claim_body")" != 3 ]] \
+    || [[ "$(count_occurrences 'events::protocol_fees_claimed\(' <<<"$protocol_claim_body")" != 1 ]] \
+    || [[ "${protocol_claim_body#*events::protocol_fees_claimed(}" == *'pay_treasury('* ]]; then
+    launch_authority_violations+="  ${protocol_claim} must pay the treasury each of its three balances before it records the claim"$'\n'
+  fi
+done
 
 # Records a violation, labelled with its ticket, for every needle not used by exactly the
 # expected launch.move production functions.
@@ -1247,7 +1273,7 @@ receiver_syntax_violations="$(
       | move_normalized_source \
       | sed 's/ *:: */::/g; s/ *(/(/g' \
       | rg -o \
-        '\b(blast_acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_creator_claim_signer|set_protocol_fee_share|creator_claim_signer|protocol_fee_share)|launch_config::(set_meme_decimals_allowed|set_quote_allowed|set_trade_fees|set_protocol_allocation|set_migration_witness_allowed|snapshot_for_launch|protocol_allocation|allowed_meme_decimals_count_for_testing|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|allocation::(recipients|apportion_fee_split|add_protocol|apportion_meme|apportion_quote|destinations|destination)|launch::(treasury_cap_mut|set_virtual_quote|set_graduation_target|set_allocation_plan|set_lp_fee_split|set_protection|finalize|share|pool_tier|lp_fee_split|claim_creator_caps|reassign_curve_fee_cap|reassign_metadata_cap|assert_curve_fee_cap|set_name|set_description|set_icon_url)|launch_ticket::(destroy|treasury_cap_mut|decimals)|fees::(accrue|claim_creator_fees|claim_protocol_fees)|package::test_upgrade|package_admin::(authorize_upgrade|commit_upgrade|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
+        '\b(blast_acl::(grant_admin|revoke_admin|destroy_admin_cap|begin_super_admin_transfer|cancel_super_admin_transfer|accept_super_admin_transfer|destroy_retired_super_admin_cap|sign_in)|runtime_config::(set_creator_claim_signer|set_protocol_fee_share|set_treasury|creator_claim_signer|protocol_fee_share|treasury)|launch_config::(set_meme_decimals_allowed|set_quote_allowed|set_trade_fees|set_protocol_allocation|set_migration_witness_allowed|snapshot_for_launch|protocol_allocation|allowed_meme_decimals_count_for_testing|allowed_quote_count_for_testing|allowed_migration_witness_count_for_testing)|allocation::(recipients|apportion_fee_split|add_protocol|apportion_meme|apportion_quote|destinations|destination)|launch::(treasury_cap_mut|set_virtual_quote|set_graduation_target|set_allocation_plan|set_lp_fee_split|set_protection|finalize|share|pool_tier|lp_fee_split|claim_creator_caps|reassign_curve_fee_cap|reassign_metadata_cap|assert_curve_fee_cap|set_name|set_description|set_icon_url)|launch_ticket::(destroy|treasury_cap_mut|decimals)|fees::(accrue|claim_creator_fees|claim_protocol_fees)|package::test_upgrade|package_admin::(authorize_upgrade|commit_upgrade|publisher_id_for_testing|upgrade_cap_id_for_testing|package_id_for_testing|version_for_testing|policy_for_testing))(<[^>]+>)?\(' \
       || true; } | sed "s|^|  ${move_file}: |"
   done
 )"
@@ -1431,8 +1457,12 @@ events_follow_mutations() {
 if ! events_follow_mutations sources/launch_ticket.move new 'LaunchTicket{' 'events::launch_ticket_created<' \
   || ! events_follow_mutations sources/launch.move finalize \
     'ticket.destroy(' 'Launch{' 'events::launch_created<' \
+  || ! events_follow_mutations sources/launch.move claim_protocol_fees \
+    'self.fee_ledger.claim_protocol_fees(' 'events::protocol_fees_claimed(' \
   || ! events_follow_mutations sources/launch.move claim_protocol_fees_with_partner \
     'self.fee_ledger.claim_protocol_fees(' 'events::protocol_fees_claimed(' \
+  || ! events_follow_mutations sources/runtime_config.move set_treasury \
+    'self.treasury = treasury;' 'events::treasury_changed(' \
   || ! events_follow_mutations sources/launch_config.move set_creation_fee \
     'self.creation_fee = ' 'events::creation_fee_changed(' \
   || ! events_follow_mutations sources/launch_config.move add_partner \
