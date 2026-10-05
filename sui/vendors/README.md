@@ -1,7 +1,7 @@
 # Vendor contracts
 
 One-off Move packages built for a specific partner's custom demands. Each lives in
-its own directory here, is published and upgraded on its own, and depends inward
+its own directory here, is published on its own, and depends inward
 on the Blast packages it extends; no core package imports a vendor package.
 
 A vendor package that creates `blast_presale` sales does so through the public

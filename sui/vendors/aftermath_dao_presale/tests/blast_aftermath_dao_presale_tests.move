@@ -11,6 +11,7 @@ module blast_aftermath_dao_presale::blast_aftermath_dao_presale_tests;
 const TREASURY: address = @0x37cf46b499f740e653644bd2f7a8ed97f248e8b3c69d5d12c97d7845a54c0cd8;
 const PUBLISHER: address = @0xB1A57;
 const KEEPER: address = @0x4EE9;
+const PARTNER_RECIPIENT: address = @0x9A27;
 
 const TOKEN_SUPPLY: u64 = 1_000_000_000;
 const RAISE_TARGET: u64 = 1_000_000;
@@ -88,6 +89,29 @@ fun new_binds_a_shared_pool_creation_to_its_sale() {
     let pool_creation = scenario.take_shared_by_id<PoolCreation<LP>>(pool_creation_id);
     assert_eq!(pool_creation.pool_creation_presale_id_for_testing(), presale_id);
     test_scenario::return_shared(pool_creation);
+    scenario.end();
+}
+
+#[test]
+/// The AdminCap holder may name a Blast partner on the sale `new` returns, before sharing it.
+fun a_vendor_sale_can_name_a_partner_before_its_share() {
+    let mut scenario = publish();
+    let partner = partners::new_for_testing(PARTNER_RECIPIENT, 4_000, scenario.ctx());
+    let mut creation_policy = allowing<Witness>(scenario.ctx());
+    let (admin_registry, presale_admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
+    creation_policy.add_partner(&admin_registry, &presale_admin_cap, &partner);
+    admin_registry.destroy_for_testing(presale_admin_cap);
+    let clock = clock::create_for_testing(scenario.ctx());
+
+    let (mut sale, _) = new_sale(&mut scenario, &creation_policy);
+    sale.set_partner(&creation_policy, &partner, &clock);
+    sale.share(0, &clock);
+
+    let opened = last_event<PresaleOpened<BLAST_AFTERMATH_DAO_PRESALE_TESTS, QUOTE>>();
+    assert_eq!(opened.opened_partner_id(), option::some(object::id(&partner)));
+    destroy(partner);
+    destroy(clock);
+    destroy(creation_policy);
     scenario.end();
 }
 
@@ -172,9 +196,25 @@ fun allowing<MigrationWitness>(ctx: &mut TxContext): CreationPolicy {
 /// The publisher's AdminCap creates and shares a sale whose pool creation is reserved for `LP`,
 /// returning the presale and pool-creation IDs.
 fun create_sale(scenario: &mut Scenario, creation_policy: CreationPolicy): (ID, ID) {
+    let clock = clock::create_for_testing(scenario.ctx());
+    let (sale, pool_creation_id) = new_sale(scenario, &creation_policy);
+    let presale_id = object::id(&sale);
+
+    sale.share(0, &clock);
+    destroy(clock);
+    destroy(creation_policy);
+
+    (presale_id, pool_creation_id)
+}
+
+/// The publisher's AdminCap creates a sale whose pool creation is reserved for `LP`, returning
+/// the unshared sale and its pool-creation ID.
+fun new_sale(
+    scenario: &mut Scenario,
+    creation_policy: &CreationPolicy,
+): (Presale<BLAST_AFTERMATH_DAO_PRESALE_TESTS, QUOTE>, ID) {
     let admin_cap = scenario.take_from_sender<AdminCap>();
     let fee_policy = fee_policy::new_for_testing(scenario.ctx());
-    let clock = clock::create_for_testing(scenario.ctx());
     let (initializer, treasury_cap) = coin_registry::new_currency_with_otw(
         test_utils::create_one_time_witness<BLAST_AFTERMATH_DAO_PRESALE_TESTS>(),
         9,
@@ -204,7 +244,7 @@ fun create_sale(scenario: &mut Scenario, creation_policy: CreationPolicy): (ID, 
         presale::open_eligibility(RAISE_TARGET, 1, RAISE_TARGET),
         option::none(),
         create_pool_cap,
-        &creation_policy,
+        creation_policy,
         &fee_policy,
         scenario.ctx(),
     );
@@ -214,14 +254,11 @@ fun create_sale(scenario: &mut Scenario, creation_policy: CreationPolicy): (ID, 
     >().pool_creation_reserved_fields();
     assert_eq!(presale_id, object::id(&sale));
 
-    sale.share(0, &clock);
     scenario.return_to_sender(admin_cap);
     destroy(currency);
-    destroy(clock);
     destroy(fee_policy);
-    destroy(creation_policy);
 
-    (presale_id, pool_creation_id)
+    (sale, pool_creation_id)
 }
 
 fun last_event<Event: copy + drop>(): Event {
@@ -242,8 +279,11 @@ use blast_aftermath_dao_presale::blast_aftermath_dao_presale::{
     sorts_before_for_testing,
 };
 
+use blast_partners::blast_partners as partners;
+
 use blast_presale::{
-    blast_presale::{Self as presale, Presale, PresaleCap, PresaleCreated},
+    blast_presale::{Self as presale, Presale, PresaleCap, PresaleCreated, PresaleOpened},
+    blast_presale_admin,
     bps,
     creation_policy::{Self, CreationPolicy},
     fee_policy,

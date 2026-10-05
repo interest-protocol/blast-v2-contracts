@@ -213,6 +213,49 @@ fun a_vector_cannot_be_allowed_as_a_migrator() {
 
 #[test]
 #[expected_failure(
+    abort_code = creation_policy::EInvalidMigrationWitness,
+    location = blast_presale::creation_policy,
+)]
+/// Any caller can make `TypeName` with `type_name::with_original_ids`, so a stdlib type is rejected.
+fun a_stdlib_type_cannot_be_allowed_as_a_migrator() {
+    let mut policy = allowing_nothing();
+    let (admin_registry, admin_cap) = admin();
+
+    policy.set_migration_witness_allowed<TypeName>(&admin_registry, &admin_cap, true);
+    abort
+}
+
+#[test]
+#[expected_failure(
+    abort_code = creation_policy::EInvalidMigrationWitness,
+    location = blast_presale::creation_policy,
+)]
+/// Any caller can make an `Option<MIGRATOR>` with `option::none`, so a generic stdlib type wrapping
+/// a reviewed witness is rejected too.
+fun an_option_of_a_witness_cannot_be_allowed_as_a_migrator() {
+    let mut policy = allowing_nothing();
+    let (admin_registry, admin_cap) = admin();
+
+    policy.set_migration_witness_allowed<Option<MIGRATOR>>(&admin_registry, &admin_cap, true);
+    abort
+}
+
+#[test]
+#[expected_failure(
+    abort_code = creation_policy::EInvalidMigrationWitness,
+    location = blast_presale::creation_policy,
+)]
+/// Any caller can make an `ID` with `object::id_from_address`, so a Sui framework type is rejected.
+fun a_sui_framework_type_cannot_be_allowed_as_a_migrator() {
+    let mut policy = allowing_nothing();
+    let (admin_registry, admin_cap) = admin();
+
+    policy.set_migration_witness_allowed<ID>(&admin_registry, &admin_cap, true);
+    abort
+}
+
+#[test]
+#[expected_failure(
     abort_code = creation_policy::EAllowanceUnchanged,
     location = blast_presale::creation_policy,
 )]

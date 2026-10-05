@@ -20,8 +20,8 @@ caller chooses them.
 ## Authority and fees
 
 Publication sends the package's only `AdminCap` to the publisher, and
-`scripts/publish.sh` sends the `UpgradeCap` to `TREASURY` in the same
-transaction. The `AdminCap`'s one power is creating sales: `new` takes it, sends
+`scripts/publish_immutable.sh` makes the package immutable in the same
+transaction, so no one can change how a funded sale migrates. The `AdminCap`'s one power is creating sales: `new` takes it, sends
 the treasury the sale's `PresaleCap`, and names the treasury as the sale's only
 LP-fee recipient, which is where its fees go. The `PresaleCap` can only destroy
 itself after a cancellation, since these sales have no `PresaleVault` residuals
@@ -55,21 +55,24 @@ caller choose the LP coin. `migrate` takes the sale and its `PoolCreation`, and:
 6. sends the treasury the pool's `OwnerCap`, and sends the LP coin Aftermath
    returned, the complete LP balance, to `0x0`.
 
-No one can sign for `0x0`, so no transaction, even after an upgrade, can use
-that LP coin: the liquidity is locked in the pool forever. The `UpgradeCap`
-holder can still upgrade this package, which changes how sales not yet migrated
-reach Aftermath. A `CreatePoolCapV2` for a different LP coin than `Lp` would
+No one can sign for `0x0`, so no transaction can use that LP coin: the
+liquidity is locked in the pool forever. The package is immutable, so neither
+the treasury nor Blast can redirect a funded sale's raise or LP tokens. If
+Aftermath retires the AMM or DAO-fee version this package links to, its
+migrations abort, its sales refund at their LP deadline, and new sales need a new
+vendor package. A `CreatePoolCapV2` for a different LP coin than `Lp` would
 make Aftermath abort the migration, so the treasury must bind the cap its `Lp`
 coin minted; a sale that cannot migrate becomes refundable at its LP deadline.
 
 ## Deployment order
 
-1. Publish the `blast_presale` generation whose `new` and `migrate` are public;
-   the live dependency-only generation cannot gain them. Its `Published.toml`
-   then names the address this package links to.
+1. Publish the `blast_presale` generation whose `new` and `migrate` are public,
+   following its [runbook](../../presale/DEPLOYING.md), which retires the live
+   dependency-only generation's `Published.toml` entry first. The new entry then
+   names the address this package links to.
 2. Run `scripts/verify.sh` and `node scripts/check_mainnet_abi.mjs`. The ABI
    gate fails on any newer Aftermath revision until it is reviewed.
-3. Run `scripts/publish.sh --preview`, then `--execute`.
+3. Run `scripts/publish_immutable.sh --preview`, then `--execute`.
 4. With the presale `AdminCap`, call `creation_policy::set_migration_witness_allowed`
    for `<package>::blast_aftermath_dao_presale::Witness`, and allow the sale's
    Quote type.
