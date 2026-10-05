@@ -15,6 +15,8 @@
   and Blast the rest
 - Amended: 2026-10-05 (presale audit): a per-sale update keeps Blast's raise or token amount when
   that rate is unchanged, so an LP-fee-only update no longer re-rounds creation's apportionment
+- Amended: 2026-10-05 (owner decision): the `AdminCap` may also change one sale's rates in its
+  creation transaction, before `share`
 
 ## Context
 
@@ -51,8 +53,10 @@ policy's current destination.
 
 **Per-sale rates before the start.** Until a sale's window starts (ADR 0099's `start_ms`), the
 presale `AdminCap` may replace all four of its rates with `blast_presale::set_protocol_fees`,
-within the policy's bounds. The update rejects a no-op and emits `ProtocolFeesChanged` with the
-new rates and amounts. Nobody can have committed yet, so a sale's economics are still fixed
+within the policy's bounds. That includes the sale's creation transaction, before `share`: a
+transaction holding both the creator's inputs and the `AdminCap` can open a sale at once on rates
+other than the policy's, which a shared sale could only take by starting later. The update
+rejects a no-op and emits `ProtocolFeesChanged` with the new rates and amounts. Nobody can have committed yet, so a sale's economics are still fixed
 before commitments open. A rate the update leaves unchanged keeps Blast's amount for it. Blast's
 new token amount for a changed token rate is its rate of the supply, rounded down. The
 difference moves to or from the buyers' sale allocation, which must keep at least one token
@@ -140,9 +144,10 @@ records both LP rates, and `FeesCollected` records the destination and both amou
   that ignore Blast's share; and raise allocations that leave the LP nothing after Blast's.
 - Presale tests cover the `AdminCap` cutting and raising a scheduled sale's rates, with the
   difference moving to or from the sale allocation and the LP's Quote and migration and claims
-  using the new amounts; and rejecting a change after the start, on an unshared sale, without a
-  change, beyond the policy's bounds, leaving the LP no Quote or buyers no tokens, seeding an
-  unpoolable price, or with a replaced `AdminCap`.
+  using the new amounts; the `AdminCap` repricing a sale before its share, which then opens on the
+  new amounts; and rejecting a change after the start, on a funded sale, without a change, beyond
+  the policy's bounds, leaving the LP no Quote or buyers no tokens, seeding an unpoolable price, or
+  with a replaced `AdminCap`.
 - Vault tests cover Blast's rounded-up LP share of both assets before the creator's split; the
   `AdminCap` lowering one rate to zero and raising the other, with the next collection paying at
   the new rates; no-op updates; and a replaced `AdminCap` being rejected.

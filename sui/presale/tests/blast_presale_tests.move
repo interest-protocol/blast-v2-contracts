@@ -1043,16 +1043,16 @@ fun a_sales_rates_cannot_change_once_its_window_starts() {
 }
 
 #[test]
-#[expected_failure(abort_code = presale::EInvalidLifecycle, location = blast_presale::blast_presale)]
-/// The AdminCap cannot reprice a sale that has not been shared and scheduled.
-fun an_unshared_sales_rates_cannot_change() {
+/// In a sale's creation transaction, the AdminCap can replace its rates before `share`, which
+/// then opens the sale on the new amounts.
+fun an_unshared_sales_rates_can_change_before_its_share() {
     let mut ctx = tx_context::dummy();
     let clock = clock::create_for_testing(&mut ctx);
     let (treasury_cap, mut currency) = new_currency(&mut ctx);
     let fee_policy = fee_policy::new_for_testing(&mut ctx);
     let creation_policy = creation_policy::allowing_for_testing<QUOTE, TEST_MIGRATOR>(&mut ctx);
     let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(&mut ctx);
-    let (mut sale, _cap) = new_presale<QUOTE>(
+    let (mut sale, cap) = new_presale<QUOTE>(
         treasury_cap,
         &mut currency,
         valid_sale_terms(),
@@ -1060,18 +1060,53 @@ fun an_unshared_sales_rates_cannot_change() {
         &fee_policy,
         &mut ctx,
     );
+    let presale_id = object::id(&sale);
 
     sale.set_protocol_fees(
         &admin_registry,
         &admin_cap,
         bps::new(1_000),
-        bps::new(0),
-        bps::new(0),
-        bps::new(0),
+        bps::new(500),
+        bps::new(100),
+        bps::new(200),
         &clock,
     );
 
-    abort
+    let (changed_presale_id, rates, protocol_quote, protocol_tokens, token_allocation) = only_event<
+        ProtocolFeesChanged<BLAST_PRESALE_TESTS, QUOTE>,
+    >().protocol_fees_changed_fields();
+    assert_eq!(changed_presale_id, presale_id);
+    assert_eq!(rates, vector[1_000, 500, 100, 200]);
+    // 1,000 * 1,000 / 10,000 = 100 Quote and 20,001 * 500 / 10,000 = 1,000.05 tokens, rounded
+    // down; Blast's 1,000 tokens leave the sale allocation of 10,001.
+    assert_eq!(vector[protocol_quote, protocol_tokens, token_allocation], vector[100, 1_000, 9_001]);
+    let (_, _, _, sale_tokens, liquidity_tokens, recipient_tokens, escrowed_protocol_tokens) = sale
+        .custody_for_testing();
+    assert_eq!(
+        vector[sale_tokens, liquidity_tokens, recipient_tokens, escrowed_protocol_tokens],
+        vector[9_001, LIQUIDITY_TOKENS, RECIPIENT_TOKENS, 1_000],
+    );
+
+    sale.share(START_MS, &clock);
+    assert_opened_event(presale_id, END_MS);
+
+    admin_registry.destroy_for_testing(admin_cap);
+    destroy(cap);
+    destroy(currency);
+    destroy(fee_policy);
+    destroy(creation_policy);
+    clock.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidLifecycle, location = blast_presale::blast_presale)]
+/// Past `Open`, the lifecycle alone fixes a sale's rates: a funded sale cannot be repriced.
+fun a_funded_sales_rates_cannot_change() {
+    let mut fixture = start_funded_sale();
+
+    fixture.set_protocol_fees(vector[1_000, 0, 0, 0]);
+
+    fixture.end();
 }
 
 #[test]

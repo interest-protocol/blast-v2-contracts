@@ -36,9 +36,9 @@ that starts at that claim, while its Quote refund is paid at once.
 Blast's shared `FeePolicy` sets its shares of the raise, the token supply, and
 collected LP fees; each sale snapshots them at creation, every rate can be zero,
 and payouts go to the policy's current destination. Until a sale's window starts,
-the `AdminCap` can change all four of its rates with
-`blast_presale::set_protocol_fees`; Blast's token difference moves to or from the
-buyers' sale allocation and its raise difference to or from the LP's Quote. After
+including in its creation transaction before `share`, the `AdminCap` can change
+all four of its rates with `blast_presale::set_protocol_fees`; Blast's token
+difference moves to or from the buyers' sale allocation and its raise difference to or from the LP's Quote. After
 migration it can change one sale's LP-fee rates on its vault with
 `presale_vault::set_protocol_lp_fees`. Blast's token share counts
 toward the 10,000 allocation BPS, and its raise share is apportioned with the raise
