@@ -1520,7 +1520,7 @@ fun zero_launch_trade_fees_sell_all_bought_meme_without_fee_balances() {
 /// empty SUI balance sends nothing.
 fun anyone_claims_blasts_trade_fees_for_the_treasury() {
     let mut fixture = start();
-    let claimed;
+    let (treasury_meme, treasury_quote);
 
     fixture.next_tx!(BOB, |f| {
         f
@@ -1553,7 +1553,7 @@ fun anyone_claims_blasts_trade_fees_for_the_treasury() {
                 vector[protocol_meme, protocol_quote, 0, 0, 0, 0],
             ),
         );
-        claimed = vector[protocol_meme, protocol_quote];
+        (treasury_meme, treasury_quote) = (protocol_meme, protocol_quote);
 
         destroy(meme);
         destroy(refund);
@@ -1561,7 +1561,7 @@ fun anyone_claims_blasts_trade_fees_for_the_treasury() {
     });
 
     fixture.next_tx!(BOB, |f| {
-        f.burn_paid(TREASURY, claimed[0], claimed[1], 0);
+        f.burn_paid(TREASURY, treasury_meme, treasury_quote, 0);
         f.burn_paid(BOB, 0, 0, 0);
     });
 
@@ -1573,7 +1573,7 @@ fun anyone_claims_blasts_trade_fees_for_the_treasury() {
 /// and receives nothing more.
 fun a_rotated_treasury_receives_every_later_claim() {
     let mut fixture = start();
-    let claimed;
+    let (treasury_meme, treasury_quote);
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         f
@@ -1604,7 +1604,7 @@ fun a_rotated_treasury_receives_every_later_claim() {
                 vector[protocol_meme, protocol_quote, 0, 0, 0, 0],
             ),
         );
-        claimed = vector[protocol_meme, protocol_quote];
+        (treasury_meme, treasury_quote) = (protocol_meme, protocol_quote);
 
         destroy(meme);
         destroy(refund);
@@ -1613,57 +1613,7 @@ fun a_rotated_treasury_receives_every_later_claim() {
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
         f.burn_paid(TREASURY, 0, 0, CREATION_FEE);
-        f.burn_paid(ALICE, claimed[0], claimed[1], 0);
-    });
-
-    fixture.end();
-}
-
-#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
-/// A stale package is refused before the partner check, so old bytecode cannot claim.
-fun claim_protocol_fees_checks_the_version_before_the_partner() {
-    let mut fixture = start();
-
-    fixture.next_tx!(BOB, |f| {
-        f.set_creation_fee(CREATION_FEE);
-        let partner = f.accepted_partner();
-        let ticket = f.new_ticket(CREATOR);
-        let mut launch = f.intake_with_partner(ticket, &partner);
-        f.package_version.set_for_testing(2);
-
-        launch.claim_protocol_fees(&f.package_version, &f.runtime_config, f.ctx!());
-
-        destroy(partner);
-        destroy(launch);
-    });
-
-    fixture.end();
-}
-
-#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
-/// A stale package is refused before the partner check, so old bytecode cannot pay a partner.
-fun claim_protocol_fees_with_partner_checks_the_version_before_the_partner() {
-    let mut fixture = start();
-
-    fixture.next_tx!(BOB, |f| {
-        f.set_creation_fee(CREATION_FEE);
-        let partner = f.accepted_partner();
-        let other = f.accepted_partner();
-        let ticket = f.new_ticket(CREATOR);
-        let mut launch = f.intake_with_partner(ticket, &partner);
-        f.package_version.set_for_testing(2);
-
-        launch.claim_protocol_fees_with_partner(
-            &f.package_version,
-            &f.runtime_config,
-            &other,
-            &f.clock,
-            f.ctx!(),
-        );
-
-        destroy(partner);
-        destroy(other);
-        destroy(launch);
+        f.burn_paid(ALICE, treasury_meme, treasury_quote, 0);
     });
 
     fixture.end();
@@ -1788,7 +1738,7 @@ fun set_partner_rejects_a_partner_launches_may_not_name() {
 /// in both assets, each rounded down, and the treasury the rest; the creator's fees are untouched.
 fun claim_protocol_fees_with_partner_pays_the_partner_its_share() {
     let mut fixture = start();
-    let claimed;
+    let (treasury_meme, treasury_quote);
 
     fixture.next_tx!(PARTNER, |f| {
         f
@@ -1852,7 +1802,8 @@ fun claim_protocol_fees_with_partner_pays_the_partner_its_share() {
         assert_eq!(paid_quote, partner_quote);
         assert_eq!(sui_partner_id, partner_id);
         assert_eq!(paid_sui, 400);
-        claimed = vector[protocol_meme - partner_meme, protocol_quote - partner_quote];
+        (treasury_meme, treasury_quote) =
+            (protocol_meme - partner_meme, protocol_quote - partner_quote);
 
         destroy(partner);
         destroy(meme);
@@ -1861,7 +1812,7 @@ fun claim_protocol_fees_with_partner_pays_the_partner_its_share() {
     });
 
     fixture.next_tx!(PARTNER, |f| {
-        f.burn_paid(TREASURY, claimed[0], claimed[1], CREATION_FEE - 400);
+        f.burn_paid(TREASURY, treasury_meme, treasury_quote, CREATION_FEE - 400);
     });
 
     fixture.end();
@@ -1872,7 +1823,7 @@ fun claim_protocol_fees_with_partner_pays_the_partner_its_share() {
 /// receives its configured share of them at the claim and the treasury the rest.
 fun claim_protocol_fees_with_partner_includes_migration_fees() {
     let mut fixture = start();
-    let claimed;
+    let (treasury_meme, treasury_quote);
 
     fixture.next_tx!(BOB, |f| {
         f
@@ -1922,7 +1873,8 @@ fun claim_protocol_fees_with_partner_includes_migration_fees() {
         assert_eq!(paid_meme, partner_meme);
         assert_eq!(quote_partner_id, partner_id);
         assert_eq!(paid_quote, partner_quote);
-        claimed = vector[protocol_meme - partner_meme, protocol_quote - partner_quote];
+        (treasury_meme, treasury_quote) =
+            (protocol_meme - partner_meme, protocol_quote - partner_quote);
 
         destroy(partner);
         destroy(pool_meme);
@@ -1932,7 +1884,7 @@ fun claim_protocol_fees_with_partner_includes_migration_fees() {
     });
 
     fixture.next_tx!(BOB, |f| {
-        f.burn_paid(TREASURY, claimed[0], claimed[1], CREATION_FEE - 400);
+        f.burn_paid(TREASURY, treasury_meme, treasury_quote, CREATION_FEE - 400);
     });
 
     fixture.end();
@@ -1943,7 +1895,7 @@ fun claim_protocol_fees_with_partner_includes_migration_fees() {
 /// records it, and the treasury receives Blast's whole fee.
 fun claim_protocol_fees_with_a_zero_share_partner_pays_nothing() {
     let mut fixture = start();
-    let claimed;
+    let (treasury_meme, treasury_quote);
 
     fixture.next_tx!(BOB, |f| {
         f
@@ -1977,7 +1929,7 @@ fun claim_protocol_fees_with_a_zero_share_partner_pays_nothing() {
         assert!(event::events_by_type<PartnerPaid<LAUNCH_TESTS>>().is_empty());
         assert!(event::events_by_type<PartnerPaid<TEST_QUOTE>>().is_empty());
         assert!(event::events_by_type<PartnerPaid<SUI>>().is_empty());
-        claimed = vector[protocol_meme, protocol_quote];
+        (treasury_meme, treasury_quote) = (protocol_meme, protocol_quote);
 
         destroy(partner);
         destroy(meme);
@@ -1986,7 +1938,57 @@ fun claim_protocol_fees_with_a_zero_share_partner_pays_nothing() {
     });
 
     fixture.next_tx!(BOB, |f| {
-        f.burn_paid(TREASURY, claimed[0], claimed[1], CREATION_FEE);
+        f.burn_paid(TREASURY, treasury_meme, treasury_quote, CREATION_FEE);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+/// A stale package is refused before the partner check, so old bytecode cannot claim.
+fun claim_protocol_fees_checks_the_version_before_the_partner() {
+    let mut fixture = start();
+
+    fixture.next_tx!(BOB, |f| {
+        f.set_creation_fee(CREATION_FEE);
+        let partner = f.accepted_partner();
+        let ticket = f.new_ticket(CREATOR);
+        let mut launch = f.intake_with_partner(ticket, &partner);
+        f.package_version.set_for_testing(2);
+
+        launch.claim_protocol_fees(&f.package_version, &f.runtime_config, f.ctx!());
+
+        destroy(partner);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+/// A stale package is refused before the partner check, so old bytecode cannot pay a partner.
+fun claim_protocol_fees_with_partner_checks_the_version_before_the_partner() {
+    let mut fixture = start();
+
+    fixture.next_tx!(BOB, |f| {
+        f.set_creation_fee(CREATION_FEE);
+        let partner = f.accepted_partner();
+        let other = f.accepted_partner();
+        let ticket = f.new_ticket(CREATOR);
+        let mut launch = f.intake_with_partner(ticket, &partner);
+        f.package_version.set_for_testing(2);
+
+        launch.claim_protocol_fees_with_partner(
+            &f.package_version,
+            &f.runtime_config,
+            &other,
+            &f.clock,
+            f.ctx!(),
+        );
+
+        destroy(partner);
+        destroy(other);
+        destroy(launch);
     });
 
     fixture.end();
@@ -2992,18 +2994,18 @@ fun launch_has_coin<T>(_: &LaunchFixture, owner: address): bool {
     test_scenario::has_most_recent_for_address<Coin<T>>(owner)
 }
 
-/// Takes and burns what earlier transactions paid `owner`: one coin of exactly each positive
-/// amount, and no coin where the amount is zero.
+/// Takes and burns what earlier transactions paid `owner`: exactly one coin of each positive
+/// amount, holding that amount, and no coin of an asset paid zero.
 fun launch_burn_paid(self: &LaunchFixture, owner: address, meme: u64, quote: u64, sui: u64) {
     self.burn_paid_coin<LAUNCH_TESTS>(owner, meme);
     self.burn_paid_coin<TEST_QUOTE>(owner, quote);
     self.burn_paid_coin<SUI>(owner, sui);
 }
 
-fun launch_burn_paid_coin<T>(self: &LaunchFixture, owner: address, amount: u64) {
-    if (amount == 0) return assert!(!self.has_coin<T>(owner));
+fun launch_burn_paid_coin<T>(self: &LaunchFixture, owner: address, paid: u64) {
+    if (paid > 0) assert_eq!(self.take_coin<T>(owner).burn_for_testing(), paid);
 
-    assert_eq!(self.take_coin<T>(owner).burn_for_testing(), amount);
+    assert!(!self.has_coin<T>(owner));
 }
 
 fun launch_take_shared(self: &LaunchFixture): Launch<LAUNCH_TESTS, TEST_QUOTE> {
