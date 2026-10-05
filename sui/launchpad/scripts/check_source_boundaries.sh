@@ -1114,16 +1114,16 @@ if [[ "$(move_production_signature claim_protocol_fees <<<"$launch_facts")" \
   || [[ "$(move_production_function_contract pay_treasury <<<"$launch_facts")" \
     != 'private:0:0:fun pay_treasury<T>(fee: Balance<T>, treasury: address, ctx: &mut TxContext)' ]] \
   || [[ "$(move_production_body pay_treasury <<<"$launch_facts")" \
-    != 'if (fee.value() > 0) transfer::public_transfer(fee.into_coin(ctx), treasury) else fee.destroy_zero();' ]]; then
+    != 'if (fee.value() == 0) return fee.destroy_zero(); transfer::public_transfer(fee.into_coin(ctx), treasury);' ]]; then
   launch_authority_violations+='  a protocol fee claim takes a caller-chosen payee or authority, or the treasury payout changed'$'\n'
 fi
 
 # Each claim body is pinned whole, so the payee of every payout is the RuntimeConfig treasury the
 # claim reads and records, never the sender or a constant, with all three payouts before the event.
 if [[ "$(move_production_body claim_protocol_fees <<<"$launch_facts" | move_semantic_shape)" \
-    != 'package_version.assert_current();assert!(self.partner_id.is_none(),blast_fun::errors::partner_mismatch!());let treasury = runtime_config.treasury();let(meme,quote,sui)= self.fee_ledger.claim_protocol_fees();let(meme_amount,quote_amount,sui_amount)=(meme.value(),quote.value(),sui.value());pay_treasury(meme,treasury,ctx);pay_treasury(quote,treasury,ctx);pay_treasury(sui,treasury,ctx);events::protocol_fees_claimed(self.id.to_inner(),treasury,meme_amount,quote_amount,sui_amount,0,0,0);' ]] \
+    != 'package_version.assert_current();assert!(self.partner_id.is_none(),blast_fun::errors::partner_mismatch!());let blast_treasury = runtime_config.treasury();let(meme_fees,quote_fees,sui_fees)= self.fee_ledger.claim_protocol_fees();let(treasury_meme,treasury_quote,treasury_sui)=(meme_fees.value(),quote_fees.value(),sui_fees.value());pay_treasury(meme_fees,blast_treasury,ctx);pay_treasury(quote_fees,blast_treasury,ctx);pay_treasury(sui_fees,blast_treasury,ctx);events::protocol_fees_claimed(self.id.to_inner(),blast_treasury,treasury_meme,treasury_quote,treasury_sui,0,0,0);' ]] \
   || [[ "$(move_production_body claim_protocol_fees_with_partner <<<"$launch_facts" | move_semantic_shape)" \
-    != 'package_version.assert_current();assert!(self.partner_id.contains(&object::id(partner)),blast_fun::errors::partner_mismatch!());let treasury = runtime_config.treasury();let(mut meme,mut quote,mut sui)= self.fee_ledger.claim_protocol_fees();let partner_meme = partner.pay(&mut meme,clock);let partner_quote = partner.pay(&mut quote,clock);let partner_sui = partner.pay(&mut sui,clock);let(meme_amount,quote_amount,sui_amount)=(meme.value(),quote.value(),sui.value());pay_treasury(meme,treasury,ctx);pay_treasury(quote,treasury,ctx);pay_treasury(sui,treasury,ctx);events::protocol_fees_claimed(self.id.to_inner(),treasury,meme_amount,quote_amount,sui_amount,partner_meme,partner_quote,partner_sui);' ]]; then
+    != 'package_version.assert_current();assert!(self.partner_id.contains(&object::id(partner)),blast_fun::errors::partner_mismatch!());let blast_treasury = runtime_config.treasury();let(mut meme_fees,mut quote_fees,mut sui_fees)= self.fee_ledger.claim_protocol_fees();let partner_meme = partner.pay(&mut meme_fees,clock);let partner_quote = partner.pay(&mut quote_fees,clock);let partner_sui = partner.pay(&mut sui_fees,clock);let(treasury_meme,treasury_quote,treasury_sui)=(meme_fees.value(),quote_fees.value(),sui_fees.value());pay_treasury(meme_fees,blast_treasury,ctx);pay_treasury(quote_fees,blast_treasury,ctx);pay_treasury(sui_fees,blast_treasury,ctx);events::protocol_fees_claimed(self.id.to_inner(),blast_treasury,treasury_meme,treasury_quote,treasury_sui,partner_meme,partner_quote,partner_sui);' ]]; then
   launch_authority_violations+='  a protocol fee claim must pay each balance to the RuntimeConfig treasury it records, after the partner and before the claim event'$'\n'
 fi
 

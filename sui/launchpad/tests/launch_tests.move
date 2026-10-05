@@ -1561,8 +1561,8 @@ fun anyone_claims_blasts_trade_fees_for_the_treasury() {
     });
 
     fixture.next_tx!(BOB, |f| {
-        f.assert_paid(TREASURY, claimed[0], claimed[1], 0);
-        f.assert_paid(BOB, 0, 0, 0);
+        f.burn_paid(TREASURY, claimed[0], claimed[1], 0);
+        f.burn_paid(BOB, 0, 0, 0);
     });
 
     fixture.end();
@@ -1612,8 +1612,8 @@ fun a_rotated_treasury_receives_every_later_claim() {
     });
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        f.assert_paid(TREASURY, 0, 0, CREATION_FEE);
-        f.assert_paid(ALICE, claimed[0], claimed[1], 0);
+        f.burn_paid(TREASURY, 0, 0, CREATION_FEE);
+        f.burn_paid(ALICE, claimed[0], claimed[1], 0);
     });
 
     fixture.end();
@@ -1710,7 +1710,7 @@ fun finalize_holds_the_creation_fee_for_blasts_claim() {
     });
 
     fixture.next_tx!(PROTOCOL_ADMIN, |f| {
-        f.assert_paid(TREASURY, 0, 0, CREATION_FEE);
+        f.burn_paid(TREASURY, 0, 0, CREATION_FEE);
     });
 
     fixture.end();
@@ -1861,7 +1861,7 @@ fun claim_protocol_fees_with_partner_pays_the_partner_its_share() {
     });
 
     fixture.next_tx!(PARTNER, |f| {
-        f.assert_paid(TREASURY, claimed[0], claimed[1], CREATION_FEE - 400);
+        f.burn_paid(TREASURY, claimed[0], claimed[1], CREATION_FEE - 400);
     });
 
     fixture.end();
@@ -1932,7 +1932,7 @@ fun claim_protocol_fees_with_partner_includes_migration_fees() {
     });
 
     fixture.next_tx!(BOB, |f| {
-        f.assert_paid(TREASURY, claimed[0], claimed[1], CREATION_FEE - 400);
+        f.burn_paid(TREASURY, claimed[0], claimed[1], CREATION_FEE - 400);
     });
 
     fixture.end();
@@ -1986,7 +1986,7 @@ fun claim_protocol_fees_with_a_zero_share_partner_pays_nothing() {
     });
 
     fixture.next_tx!(BOB, |f| {
-        f.assert_paid(TREASURY, claimed[0], claimed[1], CREATION_FEE);
+        f.burn_paid(TREASURY, claimed[0], claimed[1], CREATION_FEE);
     });
 
     fixture.end();
@@ -2992,16 +2992,18 @@ fun launch_has_coin<T>(_: &LaunchFixture, owner: address): bool {
     test_scenario::has_most_recent_for_address<Coin<T>>(owner)
 }
 
-/// Asserts what earlier transactions paid `owner`: one coin per positive amount, none otherwise.
-fun launch_assert_paid(self: &LaunchFixture, owner: address, meme: u64, quote: u64, sui: u64) {
-    self.assert_coin<LAUNCH_TESTS>(owner, meme);
-    self.assert_coin<TEST_QUOTE>(owner, quote);
-    self.assert_coin<SUI>(owner, sui);
+/// Takes and burns what earlier transactions paid `owner`: one coin of exactly each positive
+/// amount, and no coin where the amount is zero.
+fun launch_burn_paid(self: &LaunchFixture, owner: address, meme: u64, quote: u64, sui: u64) {
+    self.burn_paid_coin<LAUNCH_TESTS>(owner, meme);
+    self.burn_paid_coin<TEST_QUOTE>(owner, quote);
+    self.burn_paid_coin<SUI>(owner, sui);
 }
 
-fun launch_assert_coin<T>(self: &LaunchFixture, owner: address, amount: u64) {
-    if (amount == 0) assert!(!self.has_coin<T>(owner))
-    else assert_eq!(self.take_coin<T>(owner).burn_for_testing(), amount);
+fun launch_burn_paid_coin<T>(self: &LaunchFixture, owner: address, amount: u64) {
+    if (amount == 0) return assert!(!self.has_coin<T>(owner));
+
+    assert_eq!(self.take_coin<T>(owner).burn_for_testing(), amount);
 }
 
 fun launch_take_shared(self: &LaunchFixture): Launch<LAUNCH_TESTS, TEST_QUOTE> {
@@ -3240,9 +3242,9 @@ use fun launch_take_coin as LaunchFixture.take_coin;
 
 use fun launch_has_coin as LaunchFixture.has_coin;
 
-use fun launch_assert_paid as LaunchFixture.assert_paid;
+use fun launch_burn_paid as LaunchFixture.burn_paid;
 
-use fun launch_assert_coin as LaunchFixture.assert_coin;
+use fun launch_burn_paid_coin as LaunchFixture.burn_paid_coin;
 
 use fun launch_take_shared as LaunchFixture.take_launch;
 

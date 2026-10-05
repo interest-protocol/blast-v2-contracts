@@ -621,19 +621,23 @@ public fun claim_protocol_fees<Meme, Quote>(
     package_version.assert_current();
     assert!(self.partner_id.is_none(), blast_fun::errors::partner_mismatch!());
 
-    let treasury = runtime_config.treasury();
-    let (meme, quote, sui) = self.fee_ledger.claim_protocol_fees();
-    let (meme_amount, quote_amount, sui_amount) = (meme.value(), quote.value(), sui.value());
-    pay_treasury(meme, treasury, ctx);
-    pay_treasury(quote, treasury, ctx);
-    pay_treasury(sui, treasury, ctx);
+    let blast_treasury = runtime_config.treasury();
+    let (meme_fees, quote_fees, sui_fees) = self.fee_ledger.claim_protocol_fees();
+    let (treasury_meme, treasury_quote, treasury_sui) = (
+        meme_fees.value(),
+        quote_fees.value(),
+        sui_fees.value(),
+    );
+    pay_treasury(meme_fees, blast_treasury, ctx);
+    pay_treasury(quote_fees, blast_treasury, ctx);
+    pay_treasury(sui_fees, blast_treasury, ctx);
 
     events::protocol_fees_claimed(
         self.id.to_inner(),
-        treasury,
-        meme_amount,
-        quote_amount,
-        sui_amount,
+        blast_treasury,
+        treasury_meme,
+        treasury_quote,
+        treasury_sui,
         0,
         0,
         0,
@@ -653,22 +657,26 @@ public fun claim_protocol_fees_with_partner<Meme, Quote>(
     package_version.assert_current();
     assert!(self.partner_id.contains(&object::id(partner)), blast_fun::errors::partner_mismatch!());
 
-    let treasury = runtime_config.treasury();
-    let (mut meme, mut quote, mut sui) = self.fee_ledger.claim_protocol_fees();
-    let partner_meme = partner.pay(&mut meme, clock);
-    let partner_quote = partner.pay(&mut quote, clock);
-    let partner_sui = partner.pay(&mut sui, clock);
-    let (meme_amount, quote_amount, sui_amount) = (meme.value(), quote.value(), sui.value());
-    pay_treasury(meme, treasury, ctx);
-    pay_treasury(quote, treasury, ctx);
-    pay_treasury(sui, treasury, ctx);
+    let blast_treasury = runtime_config.treasury();
+    let (mut meme_fees, mut quote_fees, mut sui_fees) = self.fee_ledger.claim_protocol_fees();
+    let partner_meme = partner.pay(&mut meme_fees, clock);
+    let partner_quote = partner.pay(&mut quote_fees, clock);
+    let partner_sui = partner.pay(&mut sui_fees, clock);
+    let (treasury_meme, treasury_quote, treasury_sui) = (
+        meme_fees.value(),
+        quote_fees.value(),
+        sui_fees.value(),
+    );
+    pay_treasury(meme_fees, blast_treasury, ctx);
+    pay_treasury(quote_fees, blast_treasury, ctx);
+    pay_treasury(sui_fees, blast_treasury, ctx);
 
     events::protocol_fees_claimed(
         self.id.to_inner(),
-        treasury,
-        meme_amount,
-        quote_amount,
-        sui_amount,
+        blast_treasury,
+        treasury_meme,
+        treasury_quote,
+        treasury_sui,
         partner_meme,
         partner_quote,
         partner_sui,
@@ -842,8 +850,9 @@ fun buy_from_curve<Meme, Quote>(
 
 /// Sends one of Blast's claimed balances to the treasury; an empty balance sends nothing.
 fun pay_treasury<T>(fee: Balance<T>, treasury: address, ctx: &mut TxContext) {
-    if (fee.value() > 0) transfer::public_transfer(fee.into_coin(ctx), treasury)
-    else fee.destroy_zero();
+    if (fee.value() == 0) return fee.destroy_zero();
+
+    transfer::public_transfer(fee.into_coin(ctx), treasury);
 }
 
 /// Whether the opening round has ended; never before share.
