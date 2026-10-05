@@ -7,26 +7,6 @@
 /// keeps, and the burn share: its Meme burned at collection and its Quote spent by buybacks.
 module blast_fun_migrators::vault_tests;
 
-// === Constants ===
-
-/// Publishes the policy, so it is the initial protocol destination.
-const PROTOCOL: address = @0xB1A57;
-
-const ADMIN: address = @0xAD;
-
-const DESTINATION_A: address = @0xA;
-
-const DESTINATION_B: address = @0xB;
-
-const POOL: address = @0x9001;
-
-const PARTNER_RECIPIENT: address = @0x9A27;
-
-const KEEPER: address = @0x4EE9;
-
-/// The partner's cut of Blast's LP fees: 40%.
-const PARTNER_CUT_BPS: u64 = 4_000;
-
 // === Test-Only Types ===
 
 /// This module's one-time witness stands in for a generated package's.
@@ -551,11 +531,11 @@ fun zero_collection_is_eventless_and_one_sided_collections_pay_only_the_nonzero_
     assert_balances!(|| vault.rewards_balances(), 0, 0);
     f.split(&mut vault, 0, 9);
 
-    let quote = collection(0);
-    assert_eq!(quote.gross_meme, 0);
-    assert_eq!(quote.gross_quote, 9);
-    assert_eq!(quote.recipient_meme, vector[0, 0]);
-    assert_eq!(quote.recipient_quote, vector[2, 1]);
+    let quote_only = collection(0);
+    assert_eq!(quote_only.gross_meme, 0);
+    assert_eq!(quote_only.gross_quote, 9);
+    assert_eq!(quote_only.recipient_meme, vector[0, 0]);
+    assert_eq!(quote_only.recipient_quote, vector[2, 1]);
     assert_balances!(|| vault.creator_balances_for_testing(), 0, 2);
     assert_balances!(|| vault.auto_lp_balances_for_testing(), 0, 2);
     assert_balances!(|| vault.rewards_balances(), 0, 1);
@@ -567,9 +547,9 @@ fun zero_collection_is_eventless_and_one_sided_collections_pay_only_the_nonzero_
 
     f.scenario.next_tx(ADMIN);
     f.split(&mut vault, 9, 0);
-    let meme = collection(0);
-    assert_eq!(meme.recipient_meme, vector[2, 1]);
-    assert_eq!(meme.recipient_quote, vector[0, 0]);
+    let meme_only = collection(0);
+    assert_eq!(meme_only.recipient_meme, vector[2, 1]);
+    assert_eq!(meme_only.recipient_quote, vector[0, 0]);
     assert_balances!(|| vault.creator_balances_for_testing(), 2, 2);
     assert_eq!(vault.burn_quote_for_testing(), 1);
     f.assert_received(DESTINATION_A, 1, 0);
@@ -1006,12 +986,12 @@ fun a_burn_only_supply_burns_the_burn_meme_and_the_burn_quote_accrues_across_col
 
 #[test]
 fun a_zero_burn_share_leaves_a_burn_only_supply_whole() {
-    zero_burn_share(true);
+    zero_burn_bps(true);
 }
 
 #[test]
 fun a_zero_burn_share_sends_nothing_to_the_zero_address_under_a_fixed_supply() {
-    zero_burn_share(false);
+    zero_burn_bps(false);
 }
 
 // Buyback
@@ -1228,11 +1208,11 @@ fun new_vault(
     )
 }
 
-/// Splits totals 1 through 32 of both assets at `share` for both, comparing every part with an
-/// independent largest-remainder oracle, and finally every balance and paid coin with the sums.
-fun dense_totals(share: u64) {
+/// Splits totals 1 through 32 of both assets at `protocol_bps` for both, comparing every part with
+/// an independent largest-remainder oracle, and finally every balance and paid coin with the sums.
+fun dense_totals(protocol_bps: u64) {
     let mut f = start(mixed_split());
-    if (share != 0) f.set_defaults(share, share);
+    if (protocol_bps != 0) f.set_defaults(protocol_bps, protocol_bps);
     let mut vault = f.new_vault(0, 0);
     // Creator, auto-LP, rewards, burn, then B and A in the split's order.
     let weights = vector[2_000, 2_000, 1_000, 1_000, 2_500, 1_500];
@@ -1243,7 +1223,7 @@ fun dense_totals(share: u64) {
         f.scenario.next_tx(ADMIN);
         f.split(&mut vault, total, total);
 
-        let protocol = (((total as u128) * (share as u128) + 9_999) / 10_000) as u64;
+        let protocol = (((total as u128) * (protocol_bps as u128) + 9_999) / 10_000) as u64;
         let parts = largest_remainder(weights, total - protocol);
         let paid = collection(0);
         assert_eq!(paid.protocol_meme, protocol);
@@ -1289,7 +1269,7 @@ fun dense_totals(share: u64) {
 
 /// Splits one collection under a split without a burn part: the supply stays whole and nothing
 /// reaches `@0x0`.
-fun zero_burn_share(burnable: bool) {
+fun zero_burn_bps(burnable: bool) {
     let mut f = start_with_supply(auto_lp_split(), burnable);
     let mut vault = f.new_vault(0, 0);
     let supply = f.total_supply();
@@ -1484,6 +1464,26 @@ fun mixed_split(): FeeSplit {
 fun auto_lp_split(): FeeSplit {
     allocation::fee_split(bps::new(0), bps::new(10_000), bps::new(0), bps::new(0), vector[])
 }
+
+// === Constants ===
+
+/// Publishes the policy, so it is the initial protocol destination.
+const PROTOCOL: address = @0xB1A57;
+
+const ADMIN: address = @0xAD;
+
+const DESTINATION_A: address = @0xA;
+
+const DESTINATION_B: address = @0xB;
+
+const POOL: address = @0x9001;
+
+const PARTNER_RECIPIENT: address = @0x9A27;
+
+const KEEPER: address = @0x4EE9;
+
+/// The partner's cut of Blast's LP fees: 40%.
+const PARTNER_CUT_BPS: u64 = 4_000;
 
 // === Imports ===
 

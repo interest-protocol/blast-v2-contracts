@@ -12,14 +12,6 @@
 /// package checks only the transitions it implements.
 module blast_fun_migrators::blast_fun_migrators;
 
-// === Constants ===
-
-/// Current package generation accepted by every protected mutation.
-const PACKAGE_VERSION: u64 = 1;
-
-/// The generation this bytecode hands over to in a governed upgrade.
-const NEXT_PACKAGE_VERSION: u64 = 2;
-
 // === Public Types ===
 
 /// One-time witness: it seeds the package generation and claims this package's Publisher.
@@ -33,6 +25,7 @@ public struct PackageVersion has key {
 
 // === Private Initialization ===
 
+/// Shares the generation seeded from the one-time witness, then claims the Publisher with it.
 fun init(otw: BLAST_FUN_MIGRATORS, ctx: &mut TxContext) {
     transfer::share_object(new(&otw, ctx));
     sui::package::claim_and_keep(otw, ctx);
@@ -57,6 +50,7 @@ public(package) fun advance(self: &mut PackageVersion) {
 
 // === Private Functions ===
 
+/// Builds the unshared generation singleton at the one-time witness's seed generation.
 fun new(otw: &BLAST_FUN_MIGRATORS, ctx: &mut TxContext): PackageVersion {
     PackageVersion {
         id: object::new(ctx),
@@ -103,6 +97,14 @@ public fun advance_for_testing(self: &mut PackageVersion) {
 public fun publisher_for_testing(ctx: &mut TxContext): sui::package::Publisher {
     sui::package::test_claim(BLAST_FUN_MIGRATORS {}, ctx)
 }
+
+// === Constants ===
+
+/// Current package generation accepted by every protected mutation.
+const PACKAGE_VERSION: u64 = 1;
+
+/// The generation this bytecode hands over to in a governed upgrade.
+const NEXT_PACKAGE_VERSION: u64 = 2;
 
 // === Imports ===
 

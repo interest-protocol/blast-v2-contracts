@@ -7,22 +7,6 @@
 /// harness instead.
 module blast_fun_migrators::bluefin_tests;
 
-// === Constants ===
-
-/// `sui::object::sui_coin_registry_address()`, where one-time-witness currencies are delivered.
-const COIN_REGISTRY: address = @0xc;
-
-const ADMIN: address = @0xAD;
-
-const CREATOR: address = @0xC0FFEE;
-
-const TARGET: u64 = 25_000_000;
-
-// === Errors ===
-
-#[error]
-const EUnexpectedSuccess: vector<u8> = b"The guarded operation unexpectedly returned.";
-
 // === Test-Only Types ===
 
 /// This module's one-time witness stands in for a generated package's.
@@ -258,6 +242,22 @@ fun open_launch(
 fun end(f: BluefinFixture) {
     destroy(f);
 }
+
+// === Constants ===
+
+/// `sui::object::sui_coin_registry_address()`, where one-time-witness currencies are delivered.
+const COIN_REGISTRY: address = @0xc;
+
+const ADMIN: address = @0xAD;
+
+const CREATOR: address = @0xC0FFEE;
+
+const TARGET: u64 = 25_000_000;
+
+// === Errors ===
+
+#[error]
+const EUnexpectedSuccess: vector<u8> = b"The guarded operation unexpectedly returned.";
 
 // === Imports ===
 

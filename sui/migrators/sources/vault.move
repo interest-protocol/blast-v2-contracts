@@ -5,29 +5,6 @@
 /// balances every LP-fee collection is split into.
 module blast_fun_migrators::vault;
 
-// === Errors ===
-
-#[error(code = 0)]
-const ENothingClaimable: vector<u8> = b"No protocol migration residuals are available to claim.";
-
-#[error(code = 1)]
-const EFeeSplitUnchanged: vector<u8> = b"Fee split proposal must differ from the current split.";
-
-#[error(code = 2)]
-const ENoCreatorFees: vector<u8> = b"No creator LP fees are available to claim.";
-
-#[error(code = 3)]
-const EZeroLiquidity: vector<u8> = b"Migration position must hold liquidity.";
-
-#[error(code = 4)]
-const ENoBuybackQuote: vector<u8> = b"No burn Quote is waiting to buy Meme back.";
-
-#[error(code = 5)]
-const EBuybackBelowMinimum: vector<u8> = b"Buyback must return at least the minimum Meme.";
-
-#[error(code = 6)]
-const EPartnerMismatch: vector<u8> = b"The partner is not the one the vault's launch named at creation.";
-
 // === Public Types ===
 
 /// A sealed field name that binds one venue position type to one vault.
@@ -265,9 +242,9 @@ public(package) fun split_fees<Meme, Quote>(
         return
     };
 
-    let (meme_share, quote_share) = policy.shares<Meme>();
-    let protocol_meme = meme_share.apply_up(gross_meme);
-    let protocol_quote = quote_share.apply_up(gross_quote);
+    let (protocol_meme_bps, protocol_quote_bps) = policy.shares<Meme>();
+    let protocol_meme = protocol_meme_bps.apply_up(gross_meme);
+    let protocol_quote = protocol_quote_bps.apply_up(gross_quote);
     let (creator_meme, auto_lp_meme, rewards_meme, burn_meme, recipient_meme) = self
         .fee_split
         .apportion_fee_split(gross_meme - protocol_meme);
@@ -544,8 +521,8 @@ fun new<Meme, Quote, Venue, Position: key + store>(
 fun burn<Meme>(currency: &mut Currency<Meme>, mut meme: Balance<Meme>, ctx: &mut TxContext) {
     if (currency.is_supply_burn_only()) return currency.burn_balance(meme);
 
-    let amount = meme.value();
-    meme.pay(amount, @0x0, ctx);
+    let meme_amount = meme.value();
+    meme.pay(meme_amount, @0x0, ctx);
     meme.destroy_zero();
 }
 
@@ -644,6 +621,29 @@ public fun unpaid_protocol_lp_fees_for_testing<Meme, Quote>(
 public fun burn_quote_for_testing<Meme, Quote>(self: &LpVault<Meme, Quote>): u64 {
     self.burn_quote.value()
 }
+
+// === Errors ===
+
+#[error(code = 0)]
+const ENothingClaimable: vector<u8> = b"No protocol migration residuals are available to claim.";
+
+#[error(code = 1)]
+const EFeeSplitUnchanged: vector<u8> = b"Fee split proposal must differ from the current split.";
+
+#[error(code = 2)]
+const ENoCreatorFees: vector<u8> = b"No creator LP fees are available to claim.";
+
+#[error(code = 3)]
+const EZeroLiquidity: vector<u8> = b"Migration position must hold liquidity.";
+
+#[error(code = 4)]
+const ENoBuybackQuote: vector<u8> = b"No burn Quote is waiting to buy Meme back.";
+
+#[error(code = 5)]
+const EBuybackBelowMinimum: vector<u8> = b"Buyback must return at least the minimum Meme.";
+
+#[error(code = 6)]
+const EPartnerMismatch: vector<u8> = b"The partner is not the one the vault's launch named at creation.";
 
 // === Imports ===
 

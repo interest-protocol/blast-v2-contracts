@@ -6,22 +6,6 @@
 /// policy and one unprotected launch that a test adapter starts for its own witness.
 module blast_fun_migrators::launch_fixture;
 
-// === Constants ===
-
-/// `sui::object::sui_coin_registry_address()`, where one-time-witness currencies are delivered.
-const COIN_REGISTRY: address = @0xc;
-
-/// The ticket's creator recipient, who claims the launch's creator capabilities.
-const CREATOR: address = @0xC0FFEE;
-
-const VIRTUAL_QUOTE: u64 = 5_000_000;
-
-const TARGET: u64 = 25_000_000;
-
-const POOL_TICK_SPACING: u32 = 60;
-
-const POOL_FEE_RATE: u64 = 2_500;
-
 // === Test Helpers ===
 
 /// Admits `Quote` and the adapter's `Witness` with fixed trade fees. The launch configuration's
@@ -93,11 +77,6 @@ public fun open_partnered_launch<Meme: drop, Quote, Witness: drop>(
     finalize_launch(initializer, currency, config, scenario)
 }
 
-/// Returns the creator recipient of every fixture launch.
-public fun creator(): address {
-    CREATOR
-}
-
 /// Mints the ticket and starts the launch with every fixture setting, once the Coin Registry holds
 /// the currency.
 fun start_launch<Meme: drop, Quote, Witness: drop>(
@@ -154,6 +133,27 @@ fun finalize_launch<Meme, Quote>(
 
     (launch, currency)
 }
+
+/// Returns the creator recipient of every fixture launch.
+public fun creator(): address {
+    CREATOR
+}
+
+// === Constants ===
+
+/// `sui::object::sui_coin_registry_address()`, where one-time-witness currencies are delivered.
+const COIN_REGISTRY: address = @0xc;
+
+/// The ticket's creator recipient, who claims the launch's creator capabilities.
+const CREATOR: address = @0xC0FFEE;
+
+const VIRTUAL_QUOTE: u64 = 5_000_000;
+
+const TARGET: u64 = 25_000_000;
+
+const POOL_TICK_SPACING: u32 = 60;
+
+const POOL_FEE_RATE: u64 = 2_500;
 
 // === Imports ===
 

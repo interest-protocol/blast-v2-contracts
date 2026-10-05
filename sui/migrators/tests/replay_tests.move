@@ -16,89 +16,6 @@
 /// collections, and a holder-reward round is published and claimed.
 module blast_fun_migrators::replay_tests;
 
-// === Constants ===
-
-/// `sui::object::sui_coin_registry_address()`, where one-time-witness currencies are delivered.
-const COIN_REGISTRY: address = @0xc;
-
-const PUBLISHER: address = @0xB0B;
-
-const ADMIN: address = @0xAD;
-
-const LAUNCHER: address = @0x1A;
-
-const CREATOR: address = @0xC0FFEE;
-
-const BUYER: address = @0xB0;
-
-const BIDDER: address = @0xB1;
-
-const KEEPER: address = @0xEE;
-
-const TEAM: address = @0xA4;
-
-const ADVISOR: address = @0xA5;
-
-const ROUTE_A: address = @0xD1;
-
-const ROUTE_B: address = @0xD2;
-
-const ROUTE_C: address = @0xD3;
-
-const ALICE: address = @0xA11CE;
-
-const FIRST_PROTOCOL_DESTINATION: address = @0xF1;
-
-const SECOND_PROTOCOL_DESTINATION: address = @0xF2;
-
-const DECIMALS: u8 = 6;
-
-const VIRTUAL_QUOTE: u64 = 5_000_000;
-
-const TARGET: u64 = 25_000_000;
-
-const QUOTE_FEE_BPS: u64 = 100;
-
-const MEME_FEE_BPS: u64 = 200;
-
-const PUBLIC_START_MS: u64 = 1_234;
-
-const POOL_TICK_SPACING: u32 = 60;
-
-const POOL_FEE_RATE: u64 = 2_500;
-
-const OPENING_ROUND_MS: u64 = 60_000;
-
-const CREATOR_BID: u64 = 1_000_000;
-
-const BIDDER_BID: u64 = 2_000_000;
-
-const BASIS_POINTS: u64 = 10_000;
-
-/// Whole tokens every generated Meme currency mints, at its decimals.
-const MEME_SUPPLY_WHOLE_TOKENS: u64 = 1_000_000_000;
-
-/// Blast's allocation is always the first recipient and rounds up: part 2 of the Meme parts
-/// (curve, pool, recipients) and part 1 of the Quote parts (pool, recipients).
-const PROTOCOL_MEME_PART: u64 = 2;
-
-const PROTOCOL_QUOTE_PART: u64 = 1;
-
-/// `launch::Lifecycle` tags in declaration order.
-const OPENING_ROUND: u8 = 0;
-
-const LIVE: u8 = 1;
-
-const MIGRATION_READY: u8 = 2;
-
-const MIGRATED: u8 = 3;
-
-/// Model lifecycle before any launch exists.
-const UNCREATED: u8 = 255;
-
-/// `creator_authority::CreatorRecipient::Address` tag.
-const CREATOR_ADDRESS_TAG: u32 = 0;
-
 // === Test-Only Types ===
 
 /// This module's one-time witness stands in for a generated package's.
@@ -1012,18 +929,18 @@ fun protocol_allocation_set(self: &mut Replay, bytes: vector<u8>) {
 fun lp_fee_policy_changed(self: &mut Replay, bytes: vector<u8>) {
     let mut r = bcs::new(bytes);
     let coin = r.peel_option!(|r| r.peel_type_name());
-    let old = r.peel_shares();
-    let new = r.peel_shares();
+    let old_pair = r.peel_shares();
+    let new_pair = r.peel_shares();
     r.assert_consumed();
 
     if (coin.is_none()) {
-        assert_eq!(old, option::some(self.default_shares));
-        self.default_shares = new.destroy_some();
+        assert_eq!(old_pair, option::some(self.default_shares));
+        self.default_shares = new_pair.destroy_some();
     } else {
         let meme = coin.destroy_some();
-        assert_eq!(old, self.own_shares(meme));
+        assert_eq!(old_pair, self.own_shares(meme));
         self.coin_shares = self.coin_shares.filter!(|entry| entry.meme != meme);
-        new.do!(|shares| self.coin_shares.push_back(CoinShares { meme, shares }));
+        new_pair.do!(|shares| self.coin_shares.push_back(CoinShares { meme, shares }));
     };
 }
 
@@ -1688,20 +1605,20 @@ fun assert_state(self: &mut ReplayFixture) {
 }
 
 fun assert_policy(self: &Replay, policy: &LpFeePolicy) {
-    let (default_meme_share, default_quote_share) = policy.default_shares_for_testing();
-    assert_eq!(default_meme_share.value(), self.default_shares.meme_bps);
-    assert_eq!(default_quote_share.value(), self.default_shares.quote_bps);
+    let (default_meme_bps, default_quote_bps) = policy.default_shares_for_testing();
+    assert_eq!(default_meme_bps.value(), self.default_shares.meme_bps);
+    assert_eq!(default_quote_bps.value(), self.default_shares.quote_bps);
     assert_eq!(policy.protocol_destination(), self.protocol_destination);
 
     assert_eq!(policy.coin_count_for_testing(), self.coin_shares.length());
-    let (meme_share, quote_share) = policy.shares<REPLAY_TESTS>();
+    let (live_meme_bps, live_quote_bps) = policy.shares<REPLAY_TESTS>();
     let own = self.own_shares(type_name::with_original_ids<REPLAY_TESTS>().into_string());
     let live = own.destroy_or!(self.default_shares);
-    assert_eq!(Shares { meme_bps: meme_share.value(), quote_bps: quote_share.value() }, live);
-    let (meme_share, quote_share) = policy.shares<OtherMeme>();
+    assert_eq!(Shares { meme_bps: live_meme_bps.value(), quote_bps: live_quote_bps.value() }, live);
+    let (other_meme_bps, other_quote_bps) = policy.shares<OtherMeme>();
     assert!(self.own_shares(type_name::with_original_ids<OtherMeme>().into_string()).is_none());
-    assert_eq!(meme_share.value(), self.default_shares.meme_bps);
-    assert_eq!(quote_share.value(), self.default_shares.quote_bps);
+    assert_eq!(other_meme_bps.value(), self.default_shares.meme_bps);
+    assert_eq!(other_quote_bps.value(), self.default_shares.quote_bps);
 }
 
 fun assert_launch(self: &Replay, launch: &Launch<REPLAY_TESTS, QUOTE>, currency: &Currency<REPLAY_TESTS>) {
@@ -1819,6 +1736,89 @@ macro fun pair($balances: || -> (u64, u64)): Pair {
 
     Pair { meme, quote }
 }
+
+// === Constants ===
+
+/// `sui::object::sui_coin_registry_address()`, where one-time-witness currencies are delivered.
+const COIN_REGISTRY: address = @0xc;
+
+const PUBLISHER: address = @0xB0B;
+
+const ADMIN: address = @0xAD;
+
+const LAUNCHER: address = @0x1A;
+
+const CREATOR: address = @0xC0FFEE;
+
+const BUYER: address = @0xB0;
+
+const BIDDER: address = @0xB1;
+
+const KEEPER: address = @0xEE;
+
+const TEAM: address = @0xA4;
+
+const ADVISOR: address = @0xA5;
+
+const ROUTE_A: address = @0xD1;
+
+const ROUTE_B: address = @0xD2;
+
+const ROUTE_C: address = @0xD3;
+
+const ALICE: address = @0xA11CE;
+
+const FIRST_PROTOCOL_DESTINATION: address = @0xF1;
+
+const SECOND_PROTOCOL_DESTINATION: address = @0xF2;
+
+const DECIMALS: u8 = 6;
+
+const VIRTUAL_QUOTE: u64 = 5_000_000;
+
+const TARGET: u64 = 25_000_000;
+
+const QUOTE_FEE_BPS: u64 = 100;
+
+const MEME_FEE_BPS: u64 = 200;
+
+const PUBLIC_START_MS: u64 = 1_234;
+
+const POOL_TICK_SPACING: u32 = 60;
+
+const POOL_FEE_RATE: u64 = 2_500;
+
+const OPENING_ROUND_MS: u64 = 60_000;
+
+const CREATOR_BID: u64 = 1_000_000;
+
+const BIDDER_BID: u64 = 2_000_000;
+
+const BASIS_POINTS: u64 = 10_000;
+
+/// Whole tokens every generated Meme currency mints, at its decimals.
+const MEME_SUPPLY_WHOLE_TOKENS: u64 = 1_000_000_000;
+
+/// Blast's allocation is always the first recipient and rounds up: part 2 of the Meme parts
+/// (curve, pool, recipients) and part 1 of the Quote parts (pool, recipients).
+const PROTOCOL_MEME_PART: u64 = 2;
+
+const PROTOCOL_QUOTE_PART: u64 = 1;
+
+/// `launch::Lifecycle` tags in declaration order.
+const OPENING_ROUND: u8 = 0;
+
+const LIVE: u8 = 1;
+
+const MIGRATION_READY: u8 = 2;
+
+const MIGRATED: u8 = 3;
+
+/// Model lifecycle before any launch exists.
+const UNCREATED: u8 = 255;
+
+/// `creator_authority::CreatorRecipient::Address` tag.
+const CREATOR_ADDRESS_TAG: u32 = 0;
 
 // === Imports ===
 

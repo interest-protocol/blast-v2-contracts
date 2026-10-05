@@ -371,7 +371,7 @@ math_body() {
         | tr -d '[:space:]'
 }
 [[ "$(constant_body auto_lp_margin)" == '2' ]] \
-    && [[ "$(math_body auto_lp_fixed_side)" == 'if(sqrt_price<=sqrt_lower||sqrt_price>=sqrt_upper)return(true,0);let(lower,price,upper)=(sqrt_lowerasu256,sqrt_priceasu256,sqrt_upperasu256);if(can_fix_a(lower,price,upper,amount_a,amount_b))(true,amount_a)elseif(can_fix_b(lower,price,upper,amount_a,amount_b))(false,amount_b)else(true,0)' ]] \
+    && [[ "$(math_body auto_lp_fixed_side)" == 'if(sqrt_price<=sqrt_lower||sqrt_price>=sqrt_upper)return(true,0);let(lower,price,upper)=(sqrt_lowerasu256,sqrt_priceasu256,sqrt_upperasu256);if(can_fix_a(lower,price,upper,amount_a,amount_b))return(true,amount_a);if(can_fix_b(lower,price,upper,amount_a,amount_b))return(false,amount_b);(true,0)' ]] \
     && [[ "$(math_body can_fix_a)" == 'letone=1u256<<constants::q64_shift!();letliquidity=(amount_aasu256)*(price*upper/one)/(upper-price);if(liquidity==0||liquidity>=(1u256<<constants::q128_shift!()))returnfalse;letneeded_b=(liquidity*(price-lower)).div_ceil(one);needed_b+constants::auto_lp_margin!()<=(amount_basu256)' ]] \
     && [[ "$(math_body can_fix_b)" == 'letliquidity=((amount_basu256)<<constants::q64_shift!())/(price-lower);if(liquidity==0)returnfalse;letneeded_a=(liquidity<<constants::q64_shift!()).div_ceil(price)-(liquidity<<constants::q64_shift!())/upper;needed_a+constants::auto_lp_margin!()<=(amount_aasu256)' ]] || \
     fail "auto-LP side selection must first skip out-of-range prices, prefer coin A, and keep a two-atom margin"
@@ -474,9 +474,9 @@ vault_body() {
 # collection returns before anything moves or is announced.
 in_order \
     'letgross_meme=meme.value();letgross_quote=quote.value();if(gross_meme==0&&gross_quote==0){meme.destroy_zero();quote.destroy_zero();return};' \
-    'let(meme_share,quote_share)=policy.shares<Meme>();' \
-    'letprotocol_meme=meme_share.apply_up(gross_meme);' \
-    'letprotocol_quote=quote_share.apply_up(gross_quote);' \
+    'let(protocol_meme_bps,protocol_quote_bps)=policy.shares<Meme>();' \
+    'letprotocol_meme=protocol_meme_bps.apply_up(gross_meme);' \
+    'letprotocol_quote=protocol_quote_bps.apply_up(gross_quote);' \
     'let(creator_meme,auto_lp_meme,rewards_meme,burn_meme,recipient_meme)=self.fee_split.apportion_fee_split(gross_meme-protocol_meme);' \
     'let(creator_quote,auto_lp_quote,rewards_quote,burn_quote,recipient_quote)=self.fee_split.apportion_fee_split(gross_quote-protocol_quote);' \
     'letprotocol_destination=self.pay_or_hold_protocol_lp_fees(meme.split(protocol_meme),quote.split(protocol_quote),policy,ctx);' \
@@ -522,7 +522,7 @@ in_order \
         'self.burn_quote.join(unspent_quote);' \
         'blast_events::buyback_burned(' \
         <<<"$(vault_body burn_buyback)" \
-    && [[ "$(vault_body burn)" == 'if(currency.is_supply_burn_only())returncurrency.burn_balance(meme);letamount=meme.value();meme.pay(amount,@0x0,ctx);meme.destroy_zero();' ]] || \
+    && [[ "$(vault_body burn)" == 'if(currency.is_supply_burn_only())returncurrency.burn_balance(meme);letmeme_amount=meme.value();meme.pay(meme_amount,@0x0,ctx);meme.destroy_zero();' ]] || \
     fail "buybacks must require the buyback-admin role and a nonzero burn Quote, burn only Meme at or above the minimum, and keep the unspent Quote"
 [[ "$(vault_body take_auto_lp)" == '(self.auto_lp_meme.withdraw_all(),self.auto_lp_quote.withdraw_all())' ]] \
     && [[ "$(vault_body keep_auto_lp)" == 'self.auto_lp_meme.join(meme);self.auto_lp_quote.join(quote);if(added_meme==0&&added_quote==0)return;blast_events::auto_liquidity_added(self.id.to_inner(),added_meme,added_quote,self.auto_lp_meme.value(),self.auto_lp_quote.value());' ]] || \
@@ -673,7 +673,7 @@ rewards_body() {
 in_order \
     'migrators_version.assert_current();' \
     'assert!(number==vault.next_round(),EWrongRound);' \
-    'assert!(start_checkpoint<end_checkpoint&&vault.last_checkpoint().is_none_or!(|last|*last==start_checkpoint),EInvalidInterval);' \
+    'assert!(start_checkpoint<end_checkpoint&&vault.last_checkpoint().is_none_or!(|prior_end|*prior_end==start_checkpoint),EInvalidInterval);' \
     'assert!(root.length()==constants::digest_length!()&&manifest_digest.length()==constants::digest_length!(),EInvalidCommitment);' \
     'assert!(leaf_count>0&&leaf_count<=constants::max_reward_leaves!(),EInvalidLeafCount);' \
     'assert!(meme_amount>0||quote_amount>0,EEmptyBudget);' \
@@ -693,8 +693,8 @@ in_order \
     'assert!(self.claimed[word]&bit==0,EAlreadyClaimed);' \
     'assert!(beneficiary!=@0x0,EInvalidBeneficiary);' \
     'assert!(meme_amount>0||quote_amount>0,EEmptyBudget);' \
-    'letleaf=merkle::leaf(self.vault,self.number,index,beneficiary,meme_amount,quote_amount);' \
-    'assert!(merkle::verify(self.root,leaf,index,self.leaf_count,&proof),EInvalidProof);' \
+    'letleaf_digest=merkle::leaf(self.vault,self.number,index,beneficiary,meme_amount,quote_amount);' \
+    'assert!(merkle::verify(self.root,leaf_digest,index,self.leaf_count,&proof),EInvalidProof);' \
     '*&mutself.claimed[word]=self.claimed[word]|bit;' \
     'self.meme.pay(meme_amount,beneficiary,ctx);' \
     'self.quote.pay(quote_amount,beneficiary,ctx);' \
@@ -819,8 +819,8 @@ bluefin_migrate_body="$(bluefin_body migrate)"
 # The seed prefers to fix the side with more atoms, Meme on a tie, and fixes the other side when
 # Bluefin's own liquidity math, at the position's bounds and the new pool's price, says the
 # preferred side would overdraw its partner; nearly equal amounts can do that by one atom.
-[[ "$(bluefin_body seed)" == 'letfix_meme=seed_fixes_meme(pool,position,meme.value(),quote.value());letamount=if(fix_meme)meme.value()elsequote.value();let(_,_,residual_meme,residual_quote)=pool::add_liquidity_with_fixed_amount(clock,bluefin_config,pool,position,meme,quote,amount,fix_meme);(residual_meme,residual_quote)' ]] \
-    && [[ "$(bluefin_body seed_fixes_meme)" == 'letprefer_meme=meme_amount>=quote_amount;let(_,needed_meme,needed_quote)=pool::get_liquidity_by_amount(position.lower_tick(),position.upper_tick(),pool.current_tick_index(),pool.current_sqrt_price(),if(prefer_meme)meme_amountelsequote_amount,prefer_meme);if(needed_meme<=meme_amount&&needed_quote<=quote_amount)prefer_memeelse!prefer_meme' ]] || \
+[[ "$(bluefin_body seed)" == 'letfix_meme=is_meme_seed_side(pool,position,meme.value(),quote.value());letfixed_amount=if(fix_meme)meme.value()elsequote.value();let(_,_,residual_meme,residual_quote)=pool::add_liquidity_with_fixed_amount(clock,bluefin_config,pool,position,meme,quote,fixed_amount,fix_meme);(residual_meme,residual_quote)' ]] \
+    && [[ "$(bluefin_body is_meme_seed_side)" == 'letprefer_meme=meme_amount>=quote_amount;let(_,needed_meme,needed_quote)=pool::get_liquidity_by_amount(position.lower_tick(),position.upper_tick(),pool.current_tick_index(),pool.current_sqrt_price(),if(prefer_meme)meme_amountelsequote_amount,prefer_meme);if(needed_meme<=meme_amount&&needed_quote<=quote_amount)prefer_memeelse!prefer_meme' ]] || \
     fail "Bluefin migrate must fix the larger side, Meme on a tie, unless Bluefin's own math says it overdraws the other side"
 # Both fee exits settle through one helper: collect the position's fees, split them through the
 # vault, and add the auto-LP share back. A settled update checks the cap and proposal first and
@@ -841,7 +841,7 @@ in_order \
     fail "Bluefin collection must check the custodied position's pool once, before the venue call"
 # Auto-LP adds the waiting balances to the custodied position, fixing the side the shared
 # selection chooses from the pool's price and the position's own tick bounds, and keeps the rest.
-[[ "$(bluefin_body compound)" == 'let(meme,quote)=self.take_auto_lp();letposition=self.position_mut<_,_,_,Position>(&Venue());let(fix_meme,amount)=fixed_side(pool,position,meme.value(),quote.value());let(added_meme,added_quote,meme,quote)=if(amount>0){pool::add_liquidity_with_fixed_amount(clock,bluefin_config,pool,position,meme,quote,amount,fix_meme)}else{(0,0,meme,quote)};self.keep_auto_lp(added_meme,added_quote,meme,quote);' ]] \
+[[ "$(bluefin_body compound)" == 'let(meme,quote)=self.take_auto_lp();letposition=self.position_mut<_,_,_,Position>(&Venue());let(fix_meme,fixed_amount)=fixed_side(pool,position,meme.value(),quote.value());let(added_meme,added_quote,meme,quote)=if(fixed_amount>0){pool::add_liquidity_with_fixed_amount(clock,bluefin_config,pool,position,meme,quote,fixed_amount,fix_meme)}else{(0,0,meme,quote)};self.keep_auto_lp(added_meme,added_quote,meme,quote);' ]] \
     && [[ "$(bluefin_body fixed_side)" == 'letticks=pool.get_tick_manager();letsqrt_lower=ticks.get_tick_from_manager(position.lower_tick()).sqrt_price();letsqrt_upper=ticks.get_tick_from_manager(position.upper_tick()).sqrt_price();migration_math::auto_lp_fixed_side(sqrt_lower,pool.current_sqrt_price(),sqrt_upper,meme_amount,quote_amount)' ]] || \
     fail "Bluefin auto-LP must add to the custodied position on the side the shared selection fixes and keep the rest"
 require_errors "$BLUEFIN_SOURCE" "Bluefin must use codes 0-1 for its position-pool and tier checks" <<'EOF'
@@ -863,7 +863,7 @@ for entry in new migrate collect_fees settle_and_update_fee_split buyback_and_bu
         <<<"$bluefin_facts")" == *"$expected"* ]] || \
         fail "bluefin::${entry} must take the shared adapter parameter order"
 done
-if rg -q 'fun [a-z_]*_meme_b\b|meme_is_coin_a' "$BLUEFIN_SOURCE"; then
+if rg -q 'fun [a-z_]*_meme_b\b|meme_is_coin_a|is_meme_coin_a' "$BLUEFIN_SOURCE"; then
     fail "Bluefin must use only the deterministic Meme-A/Quote-B orientation"
 fi
 BLUEFIN_COMPACT_SOURCE="$(tr -d '[:space:]' < "$BLUEFIN_SOURCE")"
@@ -929,7 +929,7 @@ in_order \
     && [[ "$(cetus_body new)" == 'migrators_version.assert_current();'*'tick_spacing);launch' ]] \
     && [[ "$(cetus_body pool_creation_cap)" == 'venue_config.object(CreationCapKey<Meme>())' ]] || \
     fail "cetus::new must take Cetus's fee rate for the tick spacing, start the launch, then mint the cap once, register the pair with it, and store it"
-pair_proof='letmeme_is_a=meme_is_coin_a<Meme,Quote,CoinA,CoinB>();'
+pair_proof='letmeme_is_a=is_meme_coin_a<Meme,Quote,CoinA,CoinB>();'
 [[ "$(cetus_body migrate)" == "migrators_version.assert_current();assert!(factory::is_right_order<CoinA,CoinB>(),EInvalidCoinOrder);${pair_proof}"* ]] \
     && in_order \
         'let(tick_spacing,_)=launch.pool_tier();' \
@@ -937,14 +937,14 @@ pair_proof='letmeme_is_a=meme_is_coin_a<Meme,Quote,CoinA,CoinB>();'
         'let(meme,quote)=launch.migrate(package_version,currency,Witness(),ctx);' \
         'letmeme_amount=meme.value();letquote_amount=quote.value();' \
         'letsqrt_price=migration_math::sqrt_price_x64(meme_amount,quote_amount,meme_is_a);' \
-        'letfix_a=seed_fixes_a(tick_lower,tick_upper,sqrt_price,meme_amount,quote_amount,meme_is_a);' \
+        'letfix_a=is_coin_a_seed_side(tick_lower,tick_upper,sqrt_price,meme_amount,quote_amount,meme_is_a);' \
         'let(coin_a,coin_b)=reorder(meme.into_coin(ctx),quote.into_coin(ctx),meme_is_a,ctx);' \
         'let(position,residual_a,residual_b)=pool_creator::create_pool_v3_with_creation_cap<CoinA,CoinB>(cetus_config,pools,venue_config.pool_creation_cap<Meme>(),tick_spacing,sqrt_price,b"".to_string(),tick_lower,tick_upper,coin_a,coin_b,fix_a,clock,ctx);' \
         'let(residual_meme,residual_quote)=reorder(residual_a,residual_b,meme_is_a,ctx);' \
         'burn_into_vault(launch,burn_manager,position,residual_meme,residual_quote,ctx);' \
         <<<"$(cetus_body migrate)" \
     && [[ "$(cetus_body migrate)" == *'ctx);' ]] \
-    && [[ "$(cetus_body seed_fixes_a)" == 'let(amount_a,amount_b)=if(meme_is_a)(meme_amount,quote_amount)else(quote_amount,meme_amount);letprefer_a=(meme_amount>=quote_amount)==meme_is_a;let(_,needed_a,needed_b)=clmm_math::get_liquidity_by_amount(i32::from_u32(tick_lower),i32::from_u32(tick_upper),i32::zero(),sqrt_price,if(prefer_a)amount_aelseamount_b,prefer_a);if(needed_a<=amount_a&&needed_b<=amount_b)prefer_aelse!prefer_a' ]] || \
+    && [[ "$(cetus_body is_coin_a_seed_side)" == 'let(amount_a,amount_b)=if(meme_is_a)(meme_amount,quote_amount)else(quote_amount,meme_amount);letprefer_a=(meme_amount>=quote_amount)==meme_is_a;let(_,needed_a,needed_b)=clmm_math::get_liquidity_by_amount(i32::from_u32(tick_lower),i32::from_u32(tick_upper),i32::zero(),sqrt_price,if(prefer_a)amount_aelseamount_b,prefer_a);if(needed_a<=amount_a&&needed_b<=amount_b)prefer_aelse!prefer_a' ]] || \
     fail "cetus::migrate must check the generation, Cetus's coin order, and the pair first, then create the pool in that order with the reserved cap at the launch's tick spacing, fix the larger side (Meme on a tie) unless Cetus's own math says it overdraws the other, and burn into a vault"
 [[ "$(cetus_body settle_fees)" == 'let(meme_fee,quote_fee)=self.collect_position_fees(cetus_config,burn_manager,pool,meme_is_a,ctx);self.split_fees(policy,currency,meme_fee,quote_fee,ctx);self.compound(cetus_config,pool,meme_is_a,clock,ctx);' ]] \
     && [[ "$(cetus_body collect_fees)" == "migrators_version.assert_current();${pair_proof}self.settle_fees(policy,currency,cetus_config,burn_manager,pool,meme_is_a,clock,ctx);" ]] || \
@@ -961,7 +961,7 @@ pair_proof='letmeme_is_a=meme_is_coin_a<Meme,Quote,CoinA,CoinB>();'
 # dynamic-field round trip on a fresh transient UID that is deleted afterwards, so the framework's
 # `dynamic_field::remove` aborts unless the value keeps its exact type; nothing else in Cetus
 # touches a dynamic field or names `CastKey`.
-[[ "$(cetus_body meme_is_coin_a)" == 'let(meme,quote)=(type_name::with_original_ids<Meme>(),type_name::with_original_ids<Quote>());let(a,b)=(type_name::with_original_ids<CoinA>(),type_name::with_original_ids<CoinB>());assert!((meme==a&&quote==b)||(meme==b&&quote==a),EWrongCoinPair);meme==a' ]] \
+[[ "$(cetus_body is_meme_coin_a)" == 'let(meme,quote)=(type_name::with_original_ids<Meme>(),type_name::with_original_ids<Quote>());let(a,b)=(type_name::with_original_ids<CoinA>(),type_name::with_original_ids<CoinB>());assert!((meme==a&&quote==b)||(meme==b&&quote==a),EWrongCoinPair);meme==a' ]] \
     && [[ "$(cetus_body reorder)" == 'letmutscratch=object::new(ctx);let(first,second)=if(meme_is_a){(cast(&mutscratch,x),cast(&mutscratch,y))}else{(cast(&mutscratch,y),cast(&mutscratch,x))};scratch.delete();(first,second)' ]] \
     && [[ "$(cetus_body cast)" == 'dynamic_field::add(scratch,CastKey(),value);dynamic_field::remove(scratch,CastKey())' ]] \
     && [[ "$(move_production_type CastKey <<<"$cetus_facts")" == 'struct CastKey() has copy, drop, store;' ]] \
@@ -995,16 +995,16 @@ in_order \
 # Auto-LP opens at most one full-range position in the vault's pool, on first use, then adds with
 # Cetus's own fixed-coin math, fixing coin A first when coin B covers it, and repays exactly what
 # the receipt asks.
-[[ "$(cetus_body add_liquidity)" == 'if(a.value()==0||b.value()==0)return(a,b,0,0);if(!self.has_auto_lp_position(&Venue())){let(tick_lower,tick_upper)=pool_creator::full_range_tick_range(pool.tick_spacing());letposition=pool::open_position(cetus_config,pool,tick_lower,tick_upper,ctx);self.attach_auto_lp_position(&Venue(),position);};letposition=self.auto_lp_position_mut<_,_,_,Position>(&Venue());let(fix_a,amount)=fixed_side(pool,position,a.value(),b.value());if(amount==0)return(a,b,0,0);letreceipt=pool::add_liquidity_fix_coin(cetus_config,pool,position,amount,fix_a,clock);let(paid_a,paid_b)=receipt.add_liquidity_pay_amount();pool::repay_add_liquidity(cetus_config,pool,a.split(paid_a),b.split(paid_b),receipt);(a,b,paid_a,paid_b)' ]] \
-    && [[ "$(cetus_body fixed_side)" == 'let(lower,upper)=position.tick_range();lettick=pool.current_tick_index();letprice=pool.current_sqrt_price();let(liquidity_a,_,needed_b)=clmm_math::get_liquidity_by_amount(lower,upper,tick,price,amount_a,true);let(liquidity_b,needed_a,_)=clmm_math::get_liquidity_by_amount(lower,upper,tick,price,amount_b,false);if(liquidity_a>0&&needed_b<=amount_b)(true,amount_a)elseif(liquidity_b>0&&needed_a<=amount_a)(false,amount_b)else(true,0)' ]] \
+[[ "$(cetus_body add_liquidity)" == 'if(a.value()==0||b.value()==0)return(a,b,0,0);if(!self.has_auto_lp_position(&Venue())){let(tick_lower,tick_upper)=pool_creator::full_range_tick_range(pool.tick_spacing());letposition=pool::open_position(cetus_config,pool,tick_lower,tick_upper,ctx);self.attach_auto_lp_position(&Venue(),position);};letposition=self.auto_lp_position_mut<_,_,_,Position>(&Venue());let(fix_a,fixed_amount)=fixed_side(pool,position,a.value(),b.value());if(fixed_amount==0)return(a,b,0,0);letreceipt=pool::add_liquidity_fix_coin(cetus_config,pool,position,fixed_amount,fix_a,clock);let(paid_a,paid_b)=receipt.add_liquidity_pay_amount();pool::repay_add_liquidity(cetus_config,pool,a.split(paid_a),b.split(paid_b),receipt);(a,b,paid_a,paid_b)' ]] \
+    && [[ "$(cetus_body fixed_side)" == 'let(lower,upper)=position.tick_range();lettick=pool.current_tick_index();letprice=pool.current_sqrt_price();let(liquidity_a,_,needed_b)=clmm_math::get_liquidity_by_amount(lower,upper,tick,price,amount_a,true);let(liquidity_b,needed_a,_)=clmm_math::get_liquidity_by_amount(lower,upper,tick,price,amount_b,false);if(liquidity_a>0&&needed_b<=amount_b)return(true,amount_a);if(liquidity_b>0&&needed_a<=amount_a)return(false,amount_b);(true,0)' ]] \
     && [[ "$(move_norm "$CETUS_SOURCE" | grep -o 'open_position' | wc -l)" -eq 1 ]] \
     && [[ "$(move_norm "$CETUS_SOURCE" | grep -o 'add_liquidity_fix_coin' | wc -l)" -eq 1 ]] || \
     fail "Cetus auto-LP must open at most one full-range auto-LP position, then add with the fixed-coin receipt and repay it exactly"
 # A swap runs all of its input to the widest price limit, since the admin's minimum is the
 # protection, and repays exactly what the receipt asks.
 in_order \
-    'let(amount,sqrt_price_limit)=if(a2b)(a.value(),constants::min_swap_sqrt_price!())else(b.value(),constants::max_swap_sqrt_price!());' \
-    'let(out_a,out_b,receipt)=pool::flash_swap(cetus_config,pool,a2b,true,amount,sqrt_price_limit,clock);' \
+    'let(amount_in,sqrt_price_limit)=if(a2b)(a.value(),constants::min_swap_sqrt_price!())else(b.value(),constants::max_swap_sqrt_price!());' \
+    'let(out_a,out_b,receipt)=pool::flash_swap(cetus_config,pool,a2b,true,amount_in,sqrt_price_limit,clock);' \
     'letpaid=receipt.swap_pay_amount();' \
     'let(pay_a,pay_b)=if(a2b)(a.split(paid),balance::zero())else(balance::zero(),b.split(paid));' \
     'pool::repay_flash_swap(cetus_config,pool,pay_a,pay_b,receipt);' \

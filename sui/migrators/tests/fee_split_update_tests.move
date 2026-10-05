@@ -12,21 +12,6 @@
 /// by the source gate, not here.
 module blast_fun_migrators::fee_split_update_tests;
 
-// === Constants ===
-
-/// Publishes the policy, so it is the protocol destination.
-const PROTOCOL: address = @0xB1A57;
-
-const ADMIN: address = @0xAD;
-
-const KEEPER: address = @0xEE;
-
-const ROUTE_A: address = @0xD1;
-
-const ROUTE_B: address = @0xD2;
-
-const POOL: address = @0x9001;
-
 // === Test-Only Types ===
 
 /// This module's one-time witness stands in for a generated package's.
@@ -671,6 +656,21 @@ fun rewards_and_b(): FeeSplit {
 fun auto_lp_only(): FeeSplit {
     allocation::fee_split(bps::new(0), bps::new(10_000), bps::new(0), bps::new(0), vector[])
 }
+
+// === Constants ===
+
+/// Publishes the policy, so it is the protocol destination.
+const PROTOCOL: address = @0xB1A57;
+
+const ADMIN: address = @0xAD;
+
+const KEEPER: address = @0xEE;
+
+const ROUTE_A: address = @0xD1;
+
+const ROUTE_B: address = @0xD2;
+
+const POOL: address = @0x9001;
 
 // === Imports ===
 

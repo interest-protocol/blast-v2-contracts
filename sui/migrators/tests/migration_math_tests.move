@@ -6,21 +6,6 @@
 /// of the Uniswap v3 liquidity formulas.
 module blast_fun_migrators::migration_math_tests;
 
-// === Constants ===
-
-/// 1.0 in Q64.64.
-const ONE: u128 = 1 << 64;
-
-/// Cetus's and Bluefin's full-range sqrt-price bounds.
-const MIN_SQRT_PRICE: u128 = 4_295_048_016;
-
-const MAX_SQRT_PRICE: u128 = 79_226_673_515_401_279_992_447_579_055;
-
-/// Atoms of the other asset the selection must leave unused beyond the exact requirement.
-const MARGIN: u256 = 2;
-
-const U64_MAX: u64 = 18_446_744_073_709_551_615;
-
 // === Tests ===
 
 #[test]
@@ -151,8 +136,8 @@ fun extreme_prices_and_u64_max_amounts_never_abort_and_the_other_side_always_fit
     ];
     let amounts = vector[1, 3, 12_345, 1_000_000_000_000, U64_MAX - 2, U64_MAX];
     prices.do!(|price| {
-        amounts.do_ref!(|a| amounts.do_ref!(|b| {
-            assert_fits(MIN_SQRT_PRICE, price, MAX_SQRT_PRICE, *a, *b);
+        amounts.do_ref!(|amount_a| amounts.do_ref!(|amount_b| {
+            assert_fits(MIN_SQRT_PRICE, price, MAX_SQRT_PRICE, *amount_a, *amount_b);
         }));
     });
     // Just below the upper bound nothing but coin B can be fixed, and all of it is used.
@@ -182,8 +167,8 @@ fun every_selection_on_a_grid_fits_and_prefers_coin_a_whenever_it_fits() {
     let prices = vector[ONE / 2 + 1, ONE * 3 / 4, ONE, ONE * 3 / 2, ONE * 2 - 1];
     let amounts = vector[1, 2, 3, 5, 100, 1_000, 1_000_000, 1_000_000_000_000, U64_MAX];
     prices.do!(|price| {
-        amounts.do_ref!(|a| amounts.do_ref!(|b| {
-            assert_fits(ONE / 2, price, ONE * 2, *a, *b);
+        amounts.do_ref!(|amount_a| amounts.do_ref!(|amount_b| {
+            assert_fits(ONE / 2, price, ONE * 2, *amount_a, *amount_b);
         }));
     });
 }
@@ -197,8 +182,8 @@ fun assert_selects(
     upper: u128,
     amount_a: u64,
     amount_b: u64,
-    fix_a: bool,
-    amount: u64,
+    expected_fix_a: bool,
+    expected_amount: u64,
 ) {
     let (selected_fix_a, selected_amount) = migration_math::auto_lp_fixed_side(
         lower,
@@ -208,8 +193,8 @@ fun assert_selects(
         amount_b,
     );
 
-    assert_eq!(selected_fix_a, fix_a);
-    assert_eq!(selected_amount, amount);
+    assert_eq!(selected_fix_a, expected_fix_a);
+    assert_eq!(selected_amount, expected_amount);
     assert_fits(lower, price, upper, amount_a, amount_b);
 }
 
@@ -217,7 +202,7 @@ fun assert_selects(
 /// Uniswap v3 formulas and asserts the requirement plus the margin fits the other balance. Coin A
 /// must be chosen whenever it fits, and nothing when the price is outside or a side is empty.
 fun assert_fits(lower: u128, price: u128, upper: u128, amount_a: u64, amount_b: u64) {
-    let (fix_a, amount) = migration_math::auto_lp_fixed_side(
+    let (fix_a, fixed_amount) = migration_math::auto_lp_fixed_side(
         lower,
         price,
         upper,
@@ -225,23 +210,23 @@ fun assert_fits(lower: u128, price: u128, upper: u128, amount_a: u64, amount_b: 
         amount_b,
     );
     let (lower, price, upper) = (lower as u256, price as u256, upper as u256);
-    let (a, b) = (amount_a as u256, amount_b as u256);
-    let in_range = lower < price && price < upper && a > 0 && b > 0;
-    let liquidity_a = if (in_range) liquidity_for_a(price, upper, a) else 0;
-    let a_fits = liquidity_a > 0 && liquidity_a < (1 << 128)
-        && amount_b_up(lower, price, liquidity_a) + MARGIN <= b;
+    let (available_a, available_b) = (amount_a as u256, amount_b as u256);
+    let is_in_range = lower < price && price < upper && available_a > 0 && available_b > 0;
+    let liquidity_a = if (is_in_range) liquidity_for_a(price, upper, available_a) else 0;
+    let can_fix_a = liquidity_a > 0 && liquidity_a < (1 << 128)
+        && amount_b_up(lower, price, liquidity_a) + MARGIN <= available_b;
 
-    if (a_fits) {
+    if (can_fix_a) {
         assert!(fix_a);
-        assert_eq!(amount, amount_a);
-    } else if (amount == 0) {
+        assert_eq!(fixed_amount, amount_a);
+    } else if (fixed_amount == 0) {
         assert!(fix_a);
     } else {
-        assert!(in_range && !fix_a);
-        assert_eq!(amount, amount_b);
-        let liquidity_b = liquidity_for_b(lower, price, b);
+        assert!(is_in_range && !fix_a);
+        assert_eq!(fixed_amount, amount_b);
+        let liquidity_b = liquidity_for_b(lower, price, available_b);
         assert!(liquidity_b > 0);
-        assert!(amount_a_up(price, upper, liquidity_b) + MARGIN <= a);
+        assert!(amount_a_up(price, upper, liquidity_b) + MARGIN <= available_a);
     };
 }
 
@@ -305,6 +290,21 @@ fun mul_div_remainder(x: u256, y: u256, divisor: u256): (u256, u256) {
 
     (x / divisor * y + quotient, remainder)
 }
+
+// === Constants ===
+
+/// 1.0 in Q64.64.
+const ONE: u128 = 1 << 64;
+
+/// Cetus's and Bluefin's full-range sqrt-price bounds.
+const MIN_SQRT_PRICE: u128 = 4_295_048_016;
+
+const MAX_SQRT_PRICE: u128 = 79_226_673_515_401_279_992_447_579_055;
+
+/// Atoms of the other asset the selection must leave unused beyond the exact requirement.
+const MARGIN: u256 = 2;
+
+const U64_MAX: u64 = 18_446_744_073_709_551_615;
 
 // === Imports ===
 

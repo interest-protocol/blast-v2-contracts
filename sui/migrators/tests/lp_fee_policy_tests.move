@@ -6,12 +6,6 @@
 /// destination, and the shares every collection reads live from them.
 module blast_fun_migrators::lp_fee_policy_tests;
 
-// === Constants ===
-
-const PUBLISHER: address = @0xA11CE;
-
-const PROTOCOL_ADMIN: address = @0xAD;
-
 // === Test-Only Types ===
 
 public struct MemeA has drop {}
@@ -47,12 +41,12 @@ fun publication_shares_one_eventless_zero_default_policy() {
     let mut fixture = start_init();
 
     fixture.next_tx!(PUBLISHER, |f| {
-        let (meme_share, quote_share) = f.policy.shares<MemeA>();
-        assert_eq!(meme_share.value(), 0);
-        assert_eq!(quote_share.value(), 0);
-        let (default_meme_share, default_quote_share) = f.policy.default_shares_for_testing();
-        assert_eq!(default_meme_share.value(), 0);
-        assert_eq!(default_quote_share.value(), 0);
+        let (live_meme_bps, live_quote_bps) = f.policy.shares<MemeA>();
+        assert_eq!(live_meme_bps.value(), 0);
+        assert_eq!(live_quote_bps.value(), 0);
+        let (default_meme_bps, default_quote_bps) = f.policy.default_shares_for_testing();
+        assert_eq!(default_meme_bps.value(), 0);
+        assert_eq!(default_quote_bps.value(), 0);
         assert_eq!(f.policy.coin_count_for_testing(), 0);
     });
 
@@ -552,17 +546,18 @@ fun policy_changes(): vector<blast_events::LpFeePolicyChanged> {
 
 /// Asserts the pair a collection for `Meme` pays Blast right now.
 fun assert_shares<Meme>(self: &PolicyFixture, meme_bps: u64, quote_bps: u64) {
-    let (meme_share, quote_share) = self.policy.shares<Meme>();
+    let (live_meme_bps, live_quote_bps) = self.policy.shares<Meme>();
 
-    assert_eq!(meme_share.value(), meme_bps);
-    assert_eq!(quote_share.value(), quote_bps);
+    assert_eq!(live_meme_bps.value(), meme_bps);
+    assert_eq!(live_quote_bps.value(), quote_bps);
 }
 
+/// Asserts the pair every coin without its own pair pays Blast right now.
 fun assert_default_shares(self: &PolicyFixture, meme_bps: u64, quote_bps: u64) {
-    let (meme_share, quote_share) = self.policy.default_shares_for_testing();
+    let (default_meme_bps, default_quote_bps) = self.policy.default_shares_for_testing();
 
-    assert_eq!(meme_share.value(), meme_bps);
-    assert_eq!(quote_share.value(), quote_bps);
+    assert_eq!(default_meme_bps.value(), meme_bps);
+    assert_eq!(default_quote_bps.value(), quote_bps);
 }
 
 fun assert_change(
@@ -594,6 +589,12 @@ fun init_end(self: InitFixture) {
 fun policy_end(self: PolicyFixture) {
     destroy(self);
 }
+
+// === Constants ===
+
+const PUBLISHER: address = @0xA11CE;
+
+const PROTOCOL_ADMIN: address = @0xAD;
 
 // === Imports ===
 
