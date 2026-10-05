@@ -37,19 +37,20 @@ each depending inward on Blast packages.
 
 **First vendor: `blast_aftermath_dao_presale`.**
 
-- Publication shares a `Config` whose treasury starts at a compiled `TREASURY`,
-  and sends the package's only `AdminCap` there; the publish script sends the
-  `UpgradeCap` there in the same transaction.
-- Its `new` creates sales with its `Witness` and an LP-fee split naming `Config`
-  as the only recipient, the true destination of the pool's fees.
+- It has no administrator and no shared state. A compiled `TREASURY` receives
+  everything the package hands out; the publish script sends it the `UpgradeCap`
+  in the publish transaction.
+- Its `new` creates sales with its `Witness` and an LP-fee split naming the
+  treasury as the only recipient, the true destination of the pool's fees.
 - Its permissionless `migrate` creates a 50/50, flatness-zero Aftermath pool from
   every LP token and Quote unit, using the caller's fresh LP coin, and checks the
   pool holds them. It wraps the pool in a DAO-fee pool charging a compiled 2% to
-  `Config`'s address and checks both values. It shares the DAO-fee pool and
-  freezes the LP balance with the DAO pool's `OwnerCap`. The base pool keeps
-  Aftermath's minimum 0.01% swap-in fee.
-- Anyone may `claim_fees`, which receives fee coins at `Config` and pays the
-  treasury; the `AdminCap` changes the treasury with `set_treasury`.
+  the treasury and checks both values. It shares the DAO-fee pool and sends the
+  treasury the pool's `OwnerCap` and a `LockedLiquidity` holding the complete LP
+  balance. The base pool keeps Aftermath's minimum 0.01% swap-in fee.
+- `LockedLiquidity` has `key` and `store`, so the treasury can move it, but no
+  function releases its LP. With an `OwnerCap` the treasury changes its pool's
+  DAO fee or recipient directly through Aftermath.
 
 ## Alternatives considered
 
@@ -57,11 +58,13 @@ each depending inward on Blast packages.
   a new presale generation and would widen core's dependency graph.
 - **Allow external witnesses without making `new` public.** Not possible: only
   package code can call a package function.
-- **Send DAO fees straight to the treasury.** Rejected: moving the treasury would
-  then need every pool's `OwnerCap`. Fees wait at `Config` and the open claim
-  forwards them.
-- **Share the locked liquidity.** Rejected: a later upgrade could withdraw shared
-  LP. A frozen object never moves, while its `OwnerCap` stays readable by reference.
+- **Collect DAO fees in a shared `Config` that anyone forwards to a treasury an
+  `AdminCap` can move.** Rejected for this partner: the treasury holds every
+  pool's `OwnerCap`, so it redirects a pool's fees itself, and a claim function,
+  admin capability, and shared object add nothing.
+- **Freeze the locked liquidity.** Rejected for this partner, which wants to hold
+  its position object: freezing would make the LP unmovable even by an upgrade,
+  but no function releases it either way.
 
 ## Consequences
 
@@ -70,8 +73,9 @@ each depending inward on Blast packages.
   as it could already admit an unvetted Quote type, but cannot touch a live sale.
 - Vendor sales skip `PresaleVault`, so Blast's LP-fee rates and holder rewards do
   not apply to them; Blast's raise and token shares still do.
-- The vendor's `UpgradeCap` holder controls how its unmigrated sales reach the
-  venue and, by reference to the frozen cap, its pools' DAO fee and recipient.
+- The treasury sets every vendor pool's DAO fee, from 0% to 100%, and its
+  recipient. As the vendor's `UpgradeCap` holder it also controls how unmigrated
+  sales reach the venue, and an upgrade could add a way to release the LP it holds.
 - The SDK classifies `new` and `migrate` as Move composition and builds
   `set_migration_witness_allowed` for any witness type.
 
@@ -80,8 +84,7 @@ each depending inward on Blast packages.
 - Presale tests: the new admission guard rejects a primitive and a vector,
   disallowing either is an unchanged allowance, and the AdminCap check precedes
   the type check.
-- Vendor tests: publication custody, open fee claims to the current treasury,
-  treasury rotation and its guards, sale creation through the allowed witness and
-  its fee split, rejection of an unlisted witness, and Aftermath's coin order.
+- Vendor tests: sale creation through the allowed witness and its fee split to
+  the treasury, rejection of an unlisted witness, and Aftermath's coin order.
 - Release: the vendor's `check_mainnet_abi.mjs` live gate and a mainnet
   dev-inspect of `migrate` in both coin orders before the first sale migrates.

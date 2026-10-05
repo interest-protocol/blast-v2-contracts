@@ -12,26 +12,23 @@ Every pool gets the same compiled terms; neither the creator nor the migration
 caller chooses them.
 
 - 50/50 weights and flatness zero, Aftermath's uncorrelated weighted-product curve.
-- A 2% DAO fee on every swap, deposit, and withdrawal, paid as separate coins to
-  the shared `Config` object's address.
+- A 2% DAO fee on every swap, deposit, and withdrawal, paid as separate coins
+  straight to the `TREASURY` compiled into the module.
 - Aftermath's minimum 0.01% base swap-in fee, which it requires and which
   compounds into the locked liquidity, and no swap-out, deposit, or withdrawal fee.
 
 ## Authority and fees
 
-Publication shares one `Config` holding the treasury, initially the `TREASURY`
-constant, and sends the package's only `AdminCap` to that address.
-`scripts/publish.sh` sends the `UpgradeCap` there in the publish transaction.
+The package has no administrator and no shared state. `scripts/publish.sh` sends
+the `UpgradeCap` to `TREASURY` in the publish transaction, and every migration
+sends the treasury that pool's DAO-fee `OwnerCap` and its `LockedLiquidity`. With
+an `OwnerCap` the treasury can change its pool's DAO fee, anywhere Aftermath
+allows from 0% to 100%, or the fee recipient, directly through Aftermath.
 
-- `claim_fees<CoinType>` is open to anyone: it receives the fee coins waiting at
-  `Config` and pays them to the current treasury as one coin.
-- `set_treasury` takes the `AdminCap` and moves where every later claim goes,
-  including fees already waiting.
-
-A sale created here names `Config` as its only LP-fee recipient, which is where
-its fees go. No `PresaleVault` exists for these pools, so Blast's LP-fee rates and
-holder-reward rounds do not apply; Blast still takes its raise and token shares
-when `blast_presale::migrate` runs.
+A sale created here names the treasury as its only LP-fee recipient, which is
+where its fees go. No `PresaleVault` exists for these pools, so Blast's LP-fee
+rates and holder-reward rounds do not apply; Blast still takes its raise and
+token shares when `blast_presale::migrate` runs.
 
 ## Migration and custody
 
@@ -43,14 +40,15 @@ type as `Lp`. `migrate` then:
 1. takes the sale's LP tokens and Quote from `blast_presale::migrate` with this
    package's `Witness`;
 2. creates the pool in Aftermath's coin order and checks it holds every unit;
-3. wraps it in a DAO-fee pool paying `Config` at 2% and checks both values;
+3. wraps it in a DAO-fee pool paying the treasury 2% and checks both values;
 4. shares the DAO-fee pool, the object traders use; and
-5. freezes the complete LP balance and the DAO pool's `OwnerCap` in a
-   `LockedLiquidity`, so the liquidity can never be withdrawn.
+5. sends the treasury the pool's `OwnerCap` and a `LockedLiquidity` holding the
+   complete LP balance.
 
-The `UpgradeCap` holder can upgrade this package. An upgrade cannot move frozen
-LP, but it could read the frozen `OwnerCap` by reference to change a pool's DAO
-fee or recipient, and it changes how sales not yet migrated reach Aftermath.
+`LockedLiquidity` has `store`, so the treasury can move it, but no function
+releases its LP, so the liquidity stays in the pool. The `UpgradeCap` holder can
+upgrade this package, which could add such a function and changes how sales not
+yet migrated reach Aftermath.
 
 ## Deployment order
 

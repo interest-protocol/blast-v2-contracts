@@ -3,8 +3,8 @@
 
 /// A one-off `blast_presale` migrator built for a partner. A funded sale seeds a 50/50 Aftermath
 /// weighted pool wrapped in Aftermath's DAO-fee pool, which pays a 2% fee on every swap, deposit,
-/// and withdrawal to this package's shared `Config`. Anyone may forward those fees to the treasury
-/// the `AdminCap` sets.
+/// and withdrawal straight to the partner treasury. The treasury also receives each DAO-fee pool's
+/// owner cap, with which it may change that pool's fee or recipient, and the sale's locked LP.
 module blast_aftermath_dao_presale::blast_aftermath_dao_presale;
 
 // === Public Types ===
@@ -13,40 +13,18 @@ module blast_aftermath_dao_presale::blast_aftermath_dao_presale;
 /// only `migrate` can release that sale's liquidity.
 public struct Witness() has drop;
 
-/// Shared singleton. Its object address is every pool's DAO-fee recipient, and `claim_fees` pays
-/// whatever reaches it to `treasury`.
-public struct Config has key {
-    id: UID,
-    treasury: address,
-}
-
-/// The package's only administrator, sent to `TREASURY` at publication. Its one power is moving the
-/// treasury.
-public struct AdminCap has key, store {
-    id: UID,
-}
-
-/// One migrated sale's complete LP balance and its DAO-fee pool's owner cap. `migrate` freezes it,
-/// so the liquidity can never be withdrawn; the cap stays readable by reference, so only an upgrade
-/// of this package could change the pool's DAO fee or recipient.
-public struct LockedLiquidity<phantom Lp> has key {
+/// One migrated sale's complete LP balance, sent to the treasury. The treasury may move it, but no
+/// function releases the LP, so the liquidity stays in the pool.
+public struct LockedLiquidity<phantom Lp> has key, store {
     id: UID,
     lp: Balance<Lp>,
-    owner_cap: OwnerCap<Lp>,
-}
-
-// === Private Initialization ===
-
-fun init(ctx: &mut TxContext) {
-    transfer::share_object(Config { id: object::new(ctx), treasury: TREASURY });
-    transfer::public_transfer(AdminCap { id: object::new(ctx) }, TREASURY);
 }
 
 // === Public Functions ===
 
-/// Creates a presale that migrates through this module. Every LP fee its pool pays reaches
-/// `Config`, so the sale's LP-fee split names `Config` as its only recipient; Aftermath pools have
-/// no CLMM tier, so the tick spacing and fee rate are zero. The `CreationPolicy` must allow
+/// Creates a presale that migrates through this module. Every LP fee its pool pays reaches the
+/// treasury, so the sale's LP-fee split names the treasury as its only recipient; Aftermath pools
+/// have no CLMM tier, so the tick spacing and fee rate are zero. The `CreationPolicy` must allow
 /// `Witness`.
 public fun new<SaleToken, Quote>(
     treasury_cap: TreasuryCap<SaleToken>,
@@ -65,7 +43,6 @@ public fun new<SaleToken, Quote>(
     uncapped: Option<UncappedPhase>,
     creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
-    config: &Config,
     ctx: &mut TxContext,
 ): (Presale<SaleToken, Quote>, PresaleCap) {
     presale::new(
@@ -86,7 +63,7 @@ public fun new<SaleToken, Quote>(
         Witness(),
         0,
         0,
-        vector[presale::recipient_share(config.fee_recipient(), bps::new(ALL_BPS))],
+        vector[presale::recipient_share(TREASURY, bps::new(ALL_BPS))],
         bps::new(0),
         creation_policy,
         fee_policy,
@@ -94,17 +71,15 @@ public fun new<SaleToken, Quote>(
     )
 }
 
-// `dao_fee_pool::new` creates the shared pool in this transaction, and freezing the owner cap with
-// the LP is what keeps the pool's fee and recipient fixed.
+// `dao_fee_pool::new` creates the shared pool in this transaction.
 /// Anyone may migrate a funded sale `new` created: it seeds a 50/50 Aftermath pool with all of the
-/// sale's LP tokens and Quote, wraps it in a DAO-fee pool paying `Config`, shares that pool, and
-/// freezes the LP and the pool's owner cap. `Lp` is a fresh LP coin whose `CreatePoolCapV2` the
-/// caller published beforehand, as Aftermath's pool creation requires.
-#[allow(lint(share_owned, freeze_wrapped))]
+/// sale's LP tokens and Quote, wraps it in a DAO-fee pool paying the treasury, shares that pool,
+/// and sends its owner cap and the locked LP to the treasury. `Lp` is a fresh LP coin whose
+/// `CreatePoolCapV2` the caller published beforehand, as Aftermath's pool creation requires.
+#[allow(lint(share_owned))]
 public fun migrate<Lp, SaleToken, Quote>(
     sale: &mut Presale<SaleToken, Quote>,
     fee_policy: &FeePolicy,
-    config: &Config,
     pool_registry: &mut PoolRegistry,
     create_pool_cap: CreatePoolCapV2,
     dao_fee_version: &Version,
@@ -138,68 +113,36 @@ public fun migrate<Lp, SaleToken, Quote>(
     );
 
     let pool_id = object::id(&pool);
-    let fee_recipient = config.fee_recipient();
     let (dao_fee_pool, owner_cap) = dao_fee_pool::new(
         pool,
         dao_fee_version,
         DAO_FEE_BPS,
-        fee_recipient,
+        TREASURY,
         ctx,
     );
     assert!(
-        dao_fee_pool.fee_bps() == DAO_FEE_BPS && dao_fee_pool.fee_recipient() == fee_recipient,
+        dao_fee_pool.fee_bps() == DAO_FEE_BPS && dao_fee_pool.fee_recipient() == TREASURY,
         EDaoFeePoolMismatch,
     );
 
     let dao_fee_pool_id = object::id(&dao_fee_pool);
-    let liquidity = LockedLiquidity { id: object::new(ctx), lp: lp.into_balance(), owner_cap };
+    let liquidity = LockedLiquidity { id: object::new(ctx), lp: lp.into_balance() };
 
     event::emit(Migrated<Lp, SaleToken, Quote> {
         presale_id: object::id(sale),
         pool_id,
         dao_fee_pool_id,
+        owner_cap_id: object::id(&owner_cap),
         liquidity_id: object::id(&liquidity),
         lp: liquidity.lp.value(),
     });
 
     transfer::public_share_object(dao_fee_pool);
-    transfer::freeze_object(liquidity);
-}
-
-/// Pays every `Coin<CoinType>` sent to `Config`, such as DAO fees, to the treasury as one coin.
-/// Anyone may claim; the coins can go nowhere else.
-public fun claim_fees<CoinType>(
-    self: &mut Config,
-    fees: vector<Receiving<Coin<CoinType>>>,
-    ctx: &mut TxContext,
-) {
-    assert!(!fees.is_empty(), ENoFees);
-
-    let mut claimed = balance::zero<CoinType>();
-    fees.do!(|fee| claimed.join(transfer::public_receive(&mut self.id, fee).into_balance()));
-    let amount = claimed.value();
-
-    transfer::public_transfer(claimed.into_coin(ctx), self.treasury);
-
-    event::emit(FeesClaimed<CoinType> { treasury: self.treasury, amount });
-}
-
-/// Sends every later claim, including fees already waiting at `Config`, to `treasury`.
-public fun set_treasury(self: &mut Config, _: &AdminCap, treasury: address) {
-    assert!(treasury != @0x0, EZeroTreasury);
-    assert!(treasury != self.treasury, ETreasuryUnchanged);
-
-    self.treasury = treasury;
-
-    event::emit(TreasuryChanged { treasury });
+    transfer::public_transfer(owner_cap, TREASURY);
+    transfer::public_transfer(liquidity, TREASURY);
 }
 
 // === Private Functions ===
-
-/// The address every DAO-fee pool pays: `Config`'s own, so the fees wait there until claimed.
-fun fee_recipient(self: &Config): address {
-    self.id.to_address()
-}
 
 /// Creates the 50/50 pool from both coins, which must be in Aftermath's coin order.
 fun create_pool<Lp, Coin1, Coin2>(
@@ -242,59 +185,31 @@ fun sorts_before<A, B>(): bool {
 // === Test-Only Functions ===
 
 #[test_only]
-public fun init_for_testing(ctx: &mut TxContext) {
-    init(ctx)
-}
-
-#[test_only]
-public fun treasury_for_testing(self: &Config): address {
-    self.treasury
-}
-
-#[test_only]
 public fun sorts_before_for_testing<A, B>(): bool {
     sorts_before<A, B>()
-}
-
-#[test_only]
-public fun fees_claimed_fields<CoinType>(event: &FeesClaimed<CoinType>): (address, u64) {
-    (event.treasury, event.amount)
-}
-
-#[test_only]
-public fun treasury_changed_fields(event: &TreasuryChanged): address {
-    event.treasury
 }
 
 // === Events ===
 
 /// A sale migrated into the Aftermath pool `pool_id`, which traders reach through the shared
-/// DAO-fee pool `dao_fee_pool_id`; its `lp` units are frozen in `liquidity_id`.
+/// DAO-fee pool `dao_fee_pool_id`. The treasury holds that pool's owner cap `owner_cap_id` and
+/// `liquidity_id`, which locks the sale's `lp` units.
 public struct Migrated<phantom Lp, phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
     pool_id: ID,
     dao_fee_pool_id: ID,
+    owner_cap_id: ID,
     liquidity_id: ID,
     lp: u64,
 }
 
-/// Anyone forwarded `amount` of `CoinType` from `Config` to `treasury`.
-public struct FeesClaimed<phantom CoinType> has copy, drop {
-    treasury: address,
-    amount: u64,
-}
-
-/// The `AdminCap` sent every later claim to `treasury`.
-public struct TreasuryChanged has copy, drop {
-    treasury: address,
-}
-
 // === Constants ===
 
-/// Receives the `AdminCap` and, until the cap moves it, every claimed fee.
+/// Receives every pool's DAO fees, owner cap, and locked LP.
 const TREASURY: address = @0x37cf46b499f740e653644bd2f7a8ed97f248e8b3c69d5d12c97d7845a54c0cd8;
 
-/// The DAO fee, 2%, that Aftermath sends to `Config` from every swap, deposit, and withdrawal.
+/// The DAO fee, 2%, that Aftermath sends to the treasury from every swap, deposit, and withdrawal
+/// until the owner cap changes it.
 const DAO_FEE_BPS: u16 = 200;
 
 /// Each coin's weight: half of Aftermath's `1e18` fixed-point one.
@@ -304,12 +219,12 @@ const HALF_WEIGHT: u64 = 500_000_000_000_000_000;
 const FLATNESS: u64 = 0;
 
 /// Aftermath's minimum base swap-in fee, 0.01% in its `1e18` unit; it rejects zero. This part
-/// compounds into the frozen liquidity.
+/// compounds into the locked liquidity.
 const BASE_SWAP_FEE: u64 = 100_000_000_000_000;
 
 const POOL_NAME: vector<u8> = b"Blast Presale Pool";
 
-/// The whole LP-fee split, which `Config` takes.
+/// The whole LP-fee split, which the treasury takes.
 const ALL_BPS: u64 = 10_000;
 
 // === Errors ===
@@ -318,16 +233,7 @@ const ALL_BPS: u64 = 10_000;
 const EPoolMismatch: vector<u8> = b"The Aftermath pool must hold every sale token and Quote unit the presale released.";
 
 #[error(code = 1)]
-const EDaoFeePoolMismatch: vector<u8> = b"The DAO-fee pool must charge this package's fee and pay Config.";
-
-#[error(code = 2)]
-const ENoFees: vector<u8> = b"A fee claim must receive at least one coin.";
-
-#[error(code = 3)]
-const EZeroTreasury: vector<u8> = b"The treasury cannot be the zero address.";
-
-#[error(code = 4)]
-const ETreasuryUnchanged: vector<u8> = b"A treasury update must change the treasury.";
+const EDaoFeePoolMismatch: vector<u8> = b"The DAO-fee pool must charge this package's fee and pay the treasury.";
 
 // === Imports ===
 
@@ -348,15 +254,14 @@ use blast_presale::{
     fee_policy::FeePolicy,
 };
 
-use dao_fee_amm::{pool::{Self as dao_fee_pool, OwnerCap}, version::Version};
+use dao_fee_amm::{pool as dao_fee_pool, version::Version};
 
 use std::type_name;
 
 use sui::{
-    balance::{Self, Balance},
+    balance::Balance,
     clock::Clock,
     coin::{Coin, TreasuryCap},
     coin_registry::Currency,
     event,
-    transfer::Receiving,
 };

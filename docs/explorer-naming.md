@@ -85,9 +85,7 @@ every package-administration object.
 | `blast_presale` | `blast_presale_admin::AdminRegistry` | new (ADR 0099); shared, one per package | module |
 | `blast_presale` | `package_admin::PackageAdmin` | new (ADR 0099); shared, one per package | module |
 | `blast_presale` | `creation_policy::CreationPolicy` | new (ADR 0102); shared, one per package | module |
-| `blast_aftermath_dao_presale` | `blast_aftermath_dao_presale::Config` | new (ADR 0104); shared, one per package; receives its pools' DAO fees | module |
-| `blast_aftermath_dao_presale` | `blast_aftermath_dao_presale::AdminCap` | new (ADR 0104); wallet-held, one per package | module |
-| `blast_aftermath_dao_presale` | `blast_aftermath_dao_presale::LockedLiquidity<Lp>` | new (ADR 0104); frozen, one per migrated sale | module |
+| `blast_aftermath_dao_presale` | `blast_aftermath_dao_presale::LockedLiquidity<Lp>` | new (ADR 0104); treasury-held, one per migrated sale | module |
 
 `blast_boosts_core` defines no `key` type; its `State<Product>` is a
 `store` value nested in the adapter Vault.
@@ -103,7 +101,7 @@ every package-administration object.
 | `blast_admin` | `events::X<Domain>` | `blast_admin_events::X`; custody and version events keep `<PackageMarker>` | module |
 | `blast_partners` | — | `blast_partners::PartnerUpdated` and `blast_partners::PartnerPaid<T>` (direct emission, ADR 0095) | module |
 | `blast_presale` | — | direct creation, commitment, settlement, migration, vault-fee, holder-reward, claim, and recovery events (ADR 0099) | module |
-| `blast_aftermath_dao_presale` | — | `blast_aftermath_dao_presale::Migrated<Lp, SaleToken, Quote>`, `FeesClaimed<CoinType>`, and `TreasuryChanged` (direct emission, ADR 0104) | module |
+| `blast_aftermath_dao_presale` | — | `blast_aftermath_dao_presale::Migrated<Lp, SaleToken, Quote>` (direct emission, ADR 0104) | module |
 | `blast_boosts_aftermath` | — | `blast_events::Event<events::PartnerAdded>` and `blast_events::Event<events::PartnerRemoved>` (ADR 0095; protocol-wide, no `Product`) | envelope module |
 
 Payload struct names inside the envelopes (`Bought`, `Migrated`,

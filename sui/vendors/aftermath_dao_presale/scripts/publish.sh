@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Publishes blast_aftermath_dao_presale and, in the same PTB, sends its UpgradeCap to the TREASURY
-# compiled into the module, which init also sends the AdminCap.
+# compiled into the module, which also receives every pool's DAO fees, OwnerCap, and locked LP.
 set -euo pipefail
 
 package_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
