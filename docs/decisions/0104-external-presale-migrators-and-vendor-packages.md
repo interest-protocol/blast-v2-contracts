@@ -37,9 +37,9 @@ each depending inward on Blast packages.
 
 **First vendor: `blast_aftermath_dao_presale`.**
 
-- A compiled `TREASURY` receives everything the package hands out: `init` sends
-  it the only `AdminCap`, and the publish script sends it the `UpgradeCap` in the
-  publish transaction.
+- `init` sends the package's only `AdminCap` to the publisher. A compiled
+  `TREASURY` receives everything else the package hands out, starting with the
+  `UpgradeCap`, which the publish script sends it in the publish transaction.
 - Its `new` takes the `AdminCap` and the `CreatePoolCapV2` of a fresh LP coin
   `Lp`. It creates the sale with its `Witness` and an LP-fee split naming the
   treasury as the only recipient, the true destination of the pool's fees, sends
@@ -92,7 +92,7 @@ each depending inward on Blast packages.
 - Presale tests: the new admission guard rejects a primitive and a vector,
   disallowing either is an unchanged allowance, and the AdminCap check precedes
   the type check.
-- Vendor tests: the `AdminCap` delivered to the treasury; sale creation through
+- Vendor tests: the `AdminCap` delivered to the publisher; sale creation through
   the allowed witness, its fee split to the treasury, and its `PresaleCap`
   delivered there; the shared `PoolCreation` bound to its sale; `migrate`
   rejecting another sale's `PoolCreation`; rejection of an unlisted witness; and

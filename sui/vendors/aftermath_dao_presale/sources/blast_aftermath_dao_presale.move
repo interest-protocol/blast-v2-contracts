@@ -15,8 +15,8 @@ module blast_aftermath_dao_presale::blast_aftermath_dao_presale;
 /// only `migrate` can release that sale's liquidity.
 public struct Witness() has drop;
 
-/// The package's only administrator, sent to `TREASURY` at publication. Its one power is creating
-/// sales through `new`.
+/// The package's only administrator, sent to the publisher at publication. Its one power is
+/// creating sales through `new`.
 public struct AdminCap has key, store {
     id: UID,
 }
@@ -39,7 +39,7 @@ public struct LockedLiquidity<phantom Lp> has key, store {
 // === Private Initialization ===
 
 fun init(ctx: &mut TxContext) {
-    transfer::public_transfer(AdminCap { id: object::new(ctx) }, TREASURY);
+    transfer::public_transfer(AdminCap { id: object::new(ctx) }, ctx.sender());
 }
 
 // === Public Functions ===
@@ -274,8 +274,7 @@ public struct Migrated<phantom Lp, phantom SaleToken, phantom Quote> has copy, d
 
 // === Constants ===
 
-/// Receives the `AdminCap`, every sale's `PresaleCap`, and every pool's DAO fees, owner cap, and
-/// locked LP.
+/// Receives every sale's `PresaleCap` and every pool's DAO fees, owner cap, and locked LP.
 const TREASURY: address = @0x37cf46b499f740e653644bd2f7a8ed97f248e8b3c69d5d12c97d7845a54c0cd8;
 
 /// The DAO fee, 2%, that Aftermath sends to the treasury from every swap, deposit, and withdrawal
