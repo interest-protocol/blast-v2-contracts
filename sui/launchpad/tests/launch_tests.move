@@ -1637,7 +1637,7 @@ fun finalize_holds_the_creation_fee_for_blasts_claim() {
             default_plan(),
         );
 
-        assert_eq!(launch.partner_id_for_testing(), option::none());
+        assert_eq!(launch.partner_id(), option::none());
         assert_eq!(launch.protocol_sui_for_testing(), CREATION_FEE);
         assert_eq!(
             bcs::to_bytes(&collect_one<events::LaunchCreated>()),
@@ -1698,7 +1698,7 @@ fun set_partner_binds_the_partner_at_creation() {
         let ticket_id = object::id(&ticket);
         let launch = f.intake_with_partner(ticket, &partner);
 
-        assert_eq!(launch.partner_id_for_testing(), option::some(partner_id));
+        assert_eq!(launch.partner_id(), option::some(partner_id));
         assert_eq!(launch.protocol_sui_for_testing(), CREATION_FEE);
         assert_eq!(
             bcs::to_bytes(&collect_one<events::LaunchCreated>()),

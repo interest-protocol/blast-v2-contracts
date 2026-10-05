@@ -309,6 +309,11 @@ public fun lp_fee_split<Meme, Quote>(self: &Launch<Meme, Quote>): FeeSplit {
     self.lp_fee_split
 }
 
+/// Returns the Blast partner named at creation, which the launch's LP vault inherits.
+public fun partner_id<Meme, Quote>(self: &Launch<Meme, Quote>): Option<ID> {
+    self.partner_id
+}
+
 /// Authenticates the creator recipient and issues both creator capabilities.
 public fun claim_creator_caps<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
@@ -991,11 +996,6 @@ public fun virtual_quote_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): u
 #[test_only]
 public fun migration_witness_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): TypeName {
     self.migration_witness
-}
-
-#[test_only]
-public fun partner_id_for_testing<Meme, Quote>(self: &Launch<Meme, Quote>): Option<ID> {
-    self.partner_id
 }
 
 // === Imports ===
