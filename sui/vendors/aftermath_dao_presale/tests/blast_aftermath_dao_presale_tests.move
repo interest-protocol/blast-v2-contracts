@@ -116,6 +116,45 @@ fun a_vendor_sale_can_name_a_partner_before_its_share() {
 }
 
 #[test]
+/// In the transaction that creates a sale, the presale AdminCap can replace that sale's Blast rates
+/// before sharing it, without touching any other sale.
+fun a_vendor_sale_can_change_its_blast_rates_before_its_share() {
+    let mut scenario = publish();
+    let creation_policy = allowing<Witness>(scenario.ctx());
+    let (admin_registry, presale_admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
+    let clock = clock::create_for_testing(scenario.ctx());
+
+    let (mut sale, _) = new_sale(&mut scenario, &creation_policy);
+    sale.set_protocol_fees(
+        &admin_registry,
+        &presale_admin_cap,
+        bps::new(1_000),
+        bps::new(100),
+        bps::new(0),
+        bps::new(0),
+        &clock,
+    );
+
+    let (presale_id, rates, protocol_quote, protocol_tokens, token_allocation) = last_event<
+        ProtocolFeesChanged<BLAST_AFTERMATH_DAO_PRESALE_TESTS, QUOTE>,
+    >().protocol_fees_changed_fields();
+    assert_eq!(presale_id, object::id(&sale));
+    assert_eq!(rates, vector[1_000, 100, 0, 0]);
+    // 1,000,000 * 1,000 / 10,000 = 100,000 Quote out of the LP's, and 1,000,000,000 * 100 / 10,000
+    // = 10,000,000 tokens out of the buyers' 500,000,000.
+    assert_eq!(
+        vector[protocol_quote, protocol_tokens, token_allocation],
+        vector[100_000, 10_000_000, 490_000_000],
+    );
+
+    sale.share(0, &clock);
+    admin_registry.destroy_for_testing(presale_admin_cap);
+    destroy(clock);
+    destroy(creation_policy);
+    scenario.end();
+}
+
+#[test]
 #[expected_failure(
     abort_code = migrator::EWrongPresale,
     location = blast_aftermath_dao_presale::blast_aftermath_dao_presale,
@@ -282,7 +321,14 @@ use blast_aftermath_dao_presale::blast_aftermath_dao_presale::{
 use blast_partners::blast_partners as partners;
 
 use blast_presale::{
-    blast_presale::{Self as presale, Presale, PresaleCap, PresaleCreated, PresaleOpened},
+    blast_presale::{
+        Self as presale,
+        Presale,
+        PresaleCap,
+        PresaleCreated,
+        PresaleOpened,
+        ProtocolFeesChanged,
+    },
     blast_presale_admin,
     bps,
     creation_policy::{Self, CreationPolicy},
