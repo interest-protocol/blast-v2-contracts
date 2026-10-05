@@ -45,8 +45,15 @@ toward the 10,000 allocation BPS, and its raise share is apportioned with the ra
 recipients'. Nothing is charged at creation, on commitment, on refund, or if a
 sale does not migrate.
 
-Blast's shared `CreationPolicy` lists the Quote types and venue migration witnesses
-new presales may use; creation aborts for anything unlisted. It is checked only at
+A sale may name one Blast partner, which the creator sets with `set_partner`
+after `new` and before `share`; it never changes afterward. The partner earns its
+`blast_partners` share of Blast's raise share, and of nothing else. A partnered
+sale's migration holds Blast's shares, and anyone may then call `pay_partner`
+once to pay the partner its cut and Blast the rest
+([ADR 0105](../../docs/decisions/0105-presale-partners.md)).
+
+Blast's shared `CreationPolicy` lists the Quote types, venue migration witnesses,
+and Blast partners new presales may use; creation aborts for anything unlisted. It is checked only at
 creation, so delisting a type never affects a live sale. `blast_presale::new` and
 `migrate` are public, so a migrator in another package, such as a partner's under
 [`sui/vendors`](../vendors/README.md), creates and migrates sales with its own sealed
@@ -67,7 +74,8 @@ sale is cancelled. From the LP deadline onward, anyone may instead cancel an
 unmigrated funded sale; whichever transaction lands first wins. The LP window is
 at least seven days, so a funded sale reaches that exit only after a week in
 which nobody migrated it. Migration
-atomically pays Blast its raise and token shares, takes the rest of the raise and
+atomically pays Blast its raise and token shares, or holds them for `pay_partner`
+when the sale names a partner, takes the rest of the raise and
 the LP allocation, creates the configured
 full-range pool, and seals the position or burn proof in a `PresaleVault`; a DEX
 failure rolls back the presale transition. Configured recipients receive their
@@ -96,7 +104,7 @@ repeat with `--execute`, then seal the returned `UpgradeCap` with
 `scripts/wrap_package_admin.sh <package-id> <upgrade-cap-id> --preview` and
 `--execute` before creating any presale. Publication also sends
 the publisher the package's single `AdminCap`, which sets Blast's fees and their
-destination, allows Quote types and migrators, publishes holder-reward rounds,
+destination, allows Quote types, migrators, and partners, publishes holder-reward rounds,
 and authorizes dependency-only upgrades while the shared `AdminRegistry` accepts
 it, and a key-only `SuperAdminCap` whose only power is to replace or revoke that
 cap. [DEPLOYING.md](DEPLOYING.md) gives the
@@ -104,4 +112,5 @@ complete order: custody is verified on chain before the `AdminCap` allows any
 Quote type or migrator, so no presale can exist under an unsealed cap.
 
 The accepted design is [ADR 0099](../../docs/decisions/0099-standalone-overflow-presale.md);
-Blast's fees are proposed in [ADR 0101](../../docs/decisions/0101-presale-protocol-fees.md).
+Blast's fees are proposed in [ADR 0101](../../docs/decisions/0101-presale-protocol-fees.md)
+and its presale partners in [ADR 0105](../../docs/decisions/0105-presale-partners.md).

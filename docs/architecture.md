@@ -26,8 +26,10 @@ mutating launchpad state. Its adapters share the package with presale core so a
 sealed witness makes pool creation atomic with escrow release. Its public `new` and
 `migrate` take any migrator's sealed witness the `CreationPolicy` allows, so one-off
 partner migrators live in their own packages under `sui/vendors` and depend inward
-on it. See [ADR 0099](decisions/0099-standalone-overflow-presale.md) and
-[ADR 0104](decisions/0104-external-presale-migrators-and-vendor-packages.md).
+on it. It depends on the immutable `blast_partners` package only to pay a sale's
+Blast partner. See [ADR 0099](decisions/0099-standalone-overflow-presale.md),
+[ADR 0104](decisions/0104-external-presale-migrators-and-vendor-packages.md), and
+[ADR 0105](decisions/0105-presale-partners.md).
 
 The package boundaries are decided in
 [decisions/0001-sui-package-and-module-layout.md](decisions/0001-sui-package-and-module-layout.md):
@@ -67,7 +69,7 @@ without returning to core for its post-conditions.
 | Holder rewards (migrators) | Merkle rounds a Blast administrator funds from a vault's rewards balance, and one-time proof claims | holder accounting, which stays off-chain |
 | Migration interface | one-time liquidity handoff, linear migration value, and reconciled completion | DEX-specific object/storage details |
 | Adapter | start a launch at a venue-valid tier, prepare its venue, complete a migration, and collect the position's fees | changing core economics |
-| Standalone presale | require a zero-supply meme TreasuryCap; derive and escrow BPS allocations; lock Quote commitments; settle one proportional fill; atomically migrate permissionlessly to the configured venue; custody LP; pay collected fees to configured recipients and fund Blast-published Merkle holder rewards | launchpad curves or state, fixed-supply policy, partners, or post-creation economic changes |
+| Standalone presale | require a zero-supply meme TreasuryCap; derive and escrow BPS allocations; lock Quote commitments; settle one proportional fill; atomically migrate permissionlessly to the configured venue; custody LP; pay collected fees to configured recipients and fund Blast-published Merkle holder rewards; pay the Blast partner named at creation its share of Blast's raise share | launchpad curves or state, fixed-supply policy, sharing Blast's token or LP-fee shares with a partner, or post-creation economic changes |
 
 Modules may begin together in the single chain project. These are dependency
 directions, not a demand for seven packages.

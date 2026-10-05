@@ -2,13 +2,14 @@
 
 Partner codes let apps that build on Blast earn from the flow they bring. A
 partner is paid a share of the fee Blast charges on each trade that names it,
-straight to its address. Holders never pay for it. Boosts and the launchpad
-both support it; on the launchpad a partner is chosen once per launch, when the
-coin is created.
+straight to its address. Holders never pay for it. Boosts, the launchpad and
+presales support it; on the launchpad and on presales a partner is chosen once,
+when the coin or the sale is created.
 
 The decisions and their alternatives are recorded in
-[ADR 0095](decisions/0095-partner-codes.md) and, for the launchpad,
-[ADR 0098](decisions/0098-launch-creation-fee-and-partners.md). This page
+[ADR 0095](decisions/0095-partner-codes.md), for the launchpad in
+[ADR 0098](decisions/0098-launch-creation-fee-and-partners.md), and for presales
+in [ADR 0105](decisions/0105-presale-partners.md). This page
 explains how the program works for integrators, partners and Blast's operators.
 
 ## The idea in one example
@@ -168,6 +169,36 @@ allocation are never shared. Neither is Blast's LP-fee share after migration.
   keep paying it, unless its share is scheduled to zero. The treasury
   administrator claims the creation fee with each launch's trade fees.
 
+## On presales
+
+A presale can name one partner, and only when it is created; nothing can change
+it later. When the sale succeeds, that partner is paid its share of Blast's share
+of the raise, and of nothing else: Blast's token share and its share of the
+pool's LP fees after migration are never shared.
+
+Say a sale raises 100,000 USDC, Blast's raise share is 2%, and the partner's
+share is 40%. Blast's part of the raise is 2,000 USDC; the partner receives 800
+USDC and Blast keeps 1,200. Buyers, the creator, the raise recipients and the
+pool receive exactly what they would without a partner.
+
+- **Integrators** that create sales call `blast_presale::set_partner` on the new
+  sale, passing the presale `CreationPolicy`, the `Partner` object and the
+  `Clock`, after `new` and before `share`. Every migrator supports it, a
+  partner's own vendor package included. Commitments, claims and migration are
+  the same on every sale.
+- **Partners** are paid after the sale migrates. A partnered sale's migration
+  holds Blast's shares in the sale, and `blast_presale::pay_partner` then pays
+  the partner its share in force of Blast's raise share and pays Blast the rest.
+  Anyone can call it, once, and the SDK adds it to the migration transaction.
+  Nothing is paid if the sale is refunded. `ProtocolFeesPaid` records what Blast
+  kept and the partner's `partner_quote`, and `PresaleOpened` records the
+  partner.
+- **Operators.** The presale `AdminCap` accepts deals with
+  `creation_policy::add_partner`, which applies at once, and ends them with
+  `creation_policy::remove_partner`, which applies seven days later. Removing a
+  deal only stops new sales from naming it; sales that already name it keep
+  paying it, unless its share is scheduled to zero.
+
 ## Guarantees
 
 These properties are enforced by the contracts and covered by tests; the fourth
@@ -175,7 +206,9 @@ also rests on how each package is published:
 
 1. The reserve fee, the shares minted and the redemption payout are the same with
    or without a partner. On the launchpad, trades, the creator's fees and the
-   sell burn are the same with or without a partner.
+   sell burn are the same with or without a partner. On presales, what buyers,
+   the creator, the recipients and the pool receive is the same with or without
+   a partner.
 2. A partner is paid at most 80% of Blast's fee, rounded down; Blast keeps the
    rest.
 3. Minting and redeeming through your own code always costs at least as much as
@@ -187,9 +220,12 @@ also rests on how each package is published:
    long as the Boosts adapter, which is upgradeable, keeps it.
 5. Only the cap managing a deal can change its recipient; only Blast's partner
    administrator can register deals, schedule shares and move deals between caps;
-   only the Boosts risk administrator can add or remove deals on Boosts, and only
-   the launchpad fee administrator on the launchpad. A launch's partner never
-   changes.
+   only the Boosts risk administrator can add or remove deals on Boosts, only
+   the launchpad fee administrator on the launchpad, and only the presale
+   `AdminCap` on presales. A launch's or a sale's partner never changes.
 6. On Boosts, Blast never holds partner money, and there is no claim step to
    miss. On the launchpad, a partner's share of Blast's fees waits in the launch
    until Blast claims, and Blast cannot claim without paying it in the same call.
+   On presales, a partnered sale's Blast shares wait in the sale until anyone
+   pays them, and Blast cannot be paid without paying the partner in the same
+   call.

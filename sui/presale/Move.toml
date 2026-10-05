@@ -6,6 +6,7 @@ authors = ["Jose Cerqueira (jose@interestprotocol.com)"]
 
 [dependencies]
 blast_fun_vesting = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/vesting", rev = "63b6cf86c0e1a74f699610fe182b1de8d8789a14" }
+blast_partners = { local = "../partners" }
 BluefinSpot = { git = "https://github.com/fireflyprotocol/bluefin-spot-contract-interface.git", rev = "91ce930575b2aa3decab9b7e129b8002deba80c1" }
 CetusClmm = { local = "../migrators/interfaces/cetus" }
 CetusLpBurn = { local = "../migrators/interfaces/cetus_lp_burn" }

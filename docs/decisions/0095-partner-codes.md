@@ -9,6 +9,8 @@
   a partner is set once per launch at creation, and is paid its share of the
   creation fee and of Blast's trade fees when Blast claims them; `buy` and `sell`
   gain no partner variants
+- Amended by: [0105](0105-presale-partners.md): a presale may name one partner at
+  creation, which earns its share of Blast's raise share once the sale migrates
 
 ## Sources
 
