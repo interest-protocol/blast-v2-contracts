@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// Blast's allowlists for new presales: the Quote coins a sale may raise and the migrators that
-/// may create one.
+/// Blast's allowlists for new presales: the Quote coins a sale may raise and the migrators, in this
+/// package or another, that may create one.
 ///
 /// A presale is checked once, when it is created. Later changes apply only to later sales, so a
 /// delisting never strands a live sale's commitments or blocks its migration.
@@ -43,6 +43,11 @@ public fun set_quote_allowed<Quote>(
 
 /// Allows or disallows the migrator identified by `MigrationWitness` to create presales
 /// afterward; existing sales still migrate through it.
+///
+/// `presale::new` and `presale::migrate` are public, so whoever can construct an allowed witness
+/// can open sales and release their liquidity. Allow only a struct whose defining module is the
+/// reviewed migrator and keeps its constructor private; a primitive or vector, which any caller can
+/// construct, is rejected.
 public fun set_migration_witness_allowed<MigrationWitness: drop>(
     self: &mut CreationPolicy,
     admin_registry: &AdminRegistry,
@@ -51,6 +56,7 @@ public fun set_migration_witness_allowed<MigrationWitness: drop>(
 ) {
     admin_registry.assert_admin_cap(admin_cap);
     let migration_witness = type_name::with_original_ids<MigrationWitness>();
+    assert!(!allowed || !migration_witness.is_primitive(), EInvalidMigrationWitness);
     assert!(
         self.allowed_migration_witnesses.contains(&migration_witness) != allowed,
         EAllowanceUnchanged,
@@ -151,6 +157,9 @@ const EQuoteNotAllowed: vector<u8> = b"This Quote type is not allowed for new pr
 
 #[error(code = 2)]
 const EMigrationWitnessNotAllowed: vector<u8> = b"This migration witness is not allowed for new presales.";
+
+#[error(code = 3)]
+const EInvalidMigrationWitness: vector<u8> = b"A migration witness must be a struct, never a primitive or vector any caller can construct.";
 
 // === Imports ===
 

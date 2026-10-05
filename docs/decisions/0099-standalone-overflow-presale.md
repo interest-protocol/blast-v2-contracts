@@ -6,6 +6,9 @@
   creation-snapshotted shares of the raise, the token supply, and LP fees;
   [0102](0102-presale-creation-allowlists.md): Blast allowlists the Quote types
   and migrators new presales may use
+  [0104](0104-external-presale-migrators-and-vendor-packages.md): `new` and
+  `migrate` are public, so an allowed migrator in another package can create and
+  migrate sales
 - Amended: 2026-10-02, after the pre-launch security review (owner rulings of
   the same day): the LP-migration window has a seven-day floor; an
   open-to-anyone phase under an allowlist must reach the raise with the slots

@@ -8,3 +8,6 @@ Core packages do not import venue adapters. Adapters depend inward on the
 smallest required core surface. See the repository
 [architecture](../docs/architecture.md) and [decision index](../docs/decisions/README.md)
 for the durable boundaries.
+
+One-off partner packages live under [`vendors/`](vendors/README.md), one
+directory per contract.

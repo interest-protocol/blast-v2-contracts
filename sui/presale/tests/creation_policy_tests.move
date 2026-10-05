@@ -176,6 +176,67 @@ fun an_unlisted_migrator_cannot_be_disallowed() {
     abort
 }
 
+#[test]
+#[expected_failure(
+    abort_code = creation_policy::EInvalidMigrationWitness,
+    location = blast_presale::creation_policy,
+)]
+/// Any caller can make a primitive, so allowing one would let anyone create and migrate sales.
+fun a_primitive_cannot_be_allowed_as_a_migrator() {
+    let mut policy = allowing_nothing();
+    let (admin_registry, admin_cap) = admin();
+
+    policy.set_migration_witness_allowed<u64>(&admin_registry, &admin_cap, true);
+    abort
+}
+
+#[test]
+#[expected_failure(
+    abort_code = creation_policy::EInvalidMigrationWitness,
+    location = blast_presale::creation_policy,
+)]
+/// Any caller can make a vector of droppable values, so it is rejected like a primitive.
+fun a_vector_cannot_be_allowed_as_a_migrator() {
+    let mut policy = allowing_nothing();
+    let (admin_registry, admin_cap) = admin();
+
+    policy.set_migration_witness_allowed<vector<MIGRATOR>>(&admin_registry, &admin_cap, true);
+    abort
+}
+
+#[test]
+#[expected_failure(
+    abort_code = creation_policy::EAllowanceUnchanged,
+    location = blast_presale::creation_policy,
+)]
+/// Disallowing never needs the struct check: a primitive can never have been allowed.
+fun disallowing_a_primitive_is_an_unchanged_allowance() {
+    let mut policy = allowing_nothing();
+    let (admin_registry, admin_cap) = admin();
+
+    policy.set_migration_witness_allowed<u64>(&admin_registry, &admin_cap, false);
+    abort
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_presale_admin::EInvalidAdminCap,
+    location = blast_presale::blast_presale_admin,
+)]
+/// The AdminCap is checked before the witness type.
+fun a_foreign_admin_cap_is_rejected_before_the_witness_type() {
+    let mut ctx = tx_context::dummy();
+    let mut policy = creation_policy::new_for_testing(&mut ctx);
+    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(&mut ctx);
+    let (other_registry, other_cap) = blast_presale_admin::new_for_testing(&mut ctx);
+
+    policy.set_migration_witness_allowed<u64>(&admin_registry, &other_cap, true);
+
+    policy.destroy_for_testing();
+    admin_registry.destroy_for_testing(admin_cap);
+    other_registry.destroy_for_testing(other_cap);
+}
+
 // === Test Helpers ===
 
 fun allowing_nothing(): CreationPolicy {

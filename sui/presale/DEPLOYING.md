@@ -33,7 +33,8 @@ sale is ever created under an unsealed cap.
    zero.
 6. Only now, with the `AdminCap`, allow the launch Quote types with
    `creation_policy::set_quote_allowed` and the venues with
-   `set_migration_witness_allowed<cetus::Witness>` and `<bluefin::Witness>`. Allow
+   `set_migration_witness_allowed<cetus::Witness>` and `<bluefin::Witness>`, plus
+   any reviewed external migrator's witness, such as a vendor package's. Allow
    only Quote types whose deny-list and pause controls Blast accepts (owner,
    2026-10-02): payouts are pushed, so a denied fee recipient blocks that vault's
    collection and a denied raise recipient blocks migration until the LP deadline.

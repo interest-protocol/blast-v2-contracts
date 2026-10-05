@@ -223,6 +223,171 @@ public fun vesting_terms(cliff_ms: u64, period_ms: u64, periods: u64): VestingTe
     VestingTerms { cliff_ms, period_ms, periods }
 }
 
+/// Mints and apportions the complete token supply, then irreversibly makes it
+/// fixed or burn-only before returning the presale.
+///
+/// A migrator in this or any other package creates its sales here with its own `MigrationWitness`,
+/// which only its defining module can construct. The `CreationPolicy` must allow that witness, so
+/// Blast decides which migrators may open sales; the sale then releases its liquidity only to
+/// `migrate` called with the same witness.
+public fun new<SaleToken, Quote, MigrationWitness: drop>(
+    treasury_cap: TreasuryCap<SaleToken>,
+    currency: &mut Currency<SaleToken>,
+    token_supply: u64,
+    token_allocation_bps: Bps,
+    participant_vesting: Option<VestingTerms>,
+    liquidity_token_allocation_bps: Bps,
+    recipient_allocations: vector<RecipientShare>,
+    burnable: bool,
+    raise_target: u64,
+    raise_allocations: vector<RecipientShare>,
+    duration_ms: u64,
+    liquidity_window_ms: u64,
+    eligibility: EligibilityPolicy,
+    uncapped: Option<UncappedPhase>,
+    _: MigrationWitness,
+    tick_spacing: u32,
+    pool_fee_rate: u64,
+    fee_recipients: vector<RecipientShare>,
+    holder_rewards_bps: Bps,
+    creation_policy: &CreationPolicy,
+    fee_policy: &FeePolicy,
+    ctx: &mut TxContext,
+): (Presale<SaleToken, Quote>, PresaleCap) {
+    creation_policy.assert_allowed<Quote, MigrationWitness>();
+    assert!(
+        type_name::with_original_ids<SaleToken>() != type_name::with_original_ids<Quote>(),
+        EInvalidAssetPair,
+    );
+    // `Currency<SaleToken>` and `TreasuryCap<SaleToken>` are each unique per type, and making the
+    // supply fixed or burn-only consumes the cap, so holding it proves the supply is still unknown.
+    assert!(treasury_cap.total_supply() == 0, EInitialSupplyNotZero);
+
+    let protocol_fees = fee_policy.fees();
+    assert!(raise_target > 0, EInvalidRaiseTarget);
+    assert_raise_allocations(&raise_allocations, protocol_fees.raise_bps());
+    assert_token_allocations(
+        token_supply,
+        token_allocation_bps,
+        liquidity_token_allocation_bps,
+        protocol_fees.token_bps(),
+        &recipient_allocations,
+    );
+    assert_fee_split(&fee_recipients, holder_rewards_bps);
+
+    assert!(duration_ms > 0 && liquidity_window_ms >= MIN_LIQUIDITY_WINDOW_MS, EInvalidWindow);
+    assert!(eligibility.can_reach(raise_target), EUnreachableRaise);
+    uncapped.do_ref!(|phase| assert_uncapped_phase(phase, duration_ms, eligibility, raise_target));
+
+    let (
+        token_allocation,
+        liquidity_token_allocation,
+        protocol_token_allocation,
+        recipient_payouts,
+    ) = apportion_supply(
+        token_supply,
+        token_allocation_bps,
+        liquidity_token_allocation_bps,
+        protocol_fees.token_bps(),
+        &recipient_allocations,
+    );
+    let (raise_payouts, protocol_quote, liquidity_quote) = apportion_raise(
+        &raise_allocations,
+        protocol_fees.raise_bps(),
+        raise_target,
+    );
+
+    assert_seedable_price(liquidity_token_allocation, liquidity_quote);
+
+    let treasury_cap_id = object::id(&treasury_cap);
+    let (sale_tokens, liquidity_tokens, protocol_tokens, recipient_tokens) = mint_and_seal_supply(
+        treasury_cap,
+        currency,
+        token_supply,
+        token_allocation,
+        liquidity_token_allocation,
+        protocol_token_allocation,
+        burnable,
+    );
+
+    let id = object::new(ctx);
+    let presale_id = id.to_inner();
+    let cap = PresaleCap { id: object::new(ctx), presale_id };
+    let presale_cap_id = cap.id.to_inner();
+    let migration_witness = type_name::with_original_ids<MigrationWitness>();
+
+    event::emit(PresaleCreated<SaleToken, Quote> {
+        presale_id,
+        presale_cap_id,
+        treasury_cap_id,
+        token_supply,
+        token_allocation_bps: token_allocation_bps.value(),
+        participant_vesting,
+        liquidity_token_allocation_bps: liquidity_token_allocation_bps.value(),
+        recipients: recipient_allocations.recipients(),
+        recipient_bps: recipient_allocations.bps(),
+        recipient_vesting: recipient_allocations.vesting_terms(),
+        burnable,
+        raise_target,
+        raise_recipients: raise_allocations.recipients(),
+        raise_recipient_bps: raise_allocations.bps(),
+        raise_recipient_vesting: raise_allocations.vesting_terms(),
+        duration_ms,
+        liquidity_window_ms,
+        eligibility,
+        uncapped,
+        migration_witness,
+        tick_spacing,
+        pool_fee_rate,
+        fee_recipients: fee_recipients.recipients(),
+        fee_recipient_bps: fee_recipients.bps(),
+        holder_rewards_bps: holder_rewards_bps.value(),
+        protocol_raise_bps: protocol_fees.raise_bps().value(),
+        protocol_token_bps: protocol_fees.token_bps().value(),
+        protocol_lp_fee_meme_bps: protocol_fees.lp_fee_meme_bps().value(),
+        protocol_lp_fee_quote_bps: protocol_fees.lp_fee_quote_bps().value(),
+        protocol_quote,
+        protocol_tokens: protocol_token_allocation,
+    });
+
+    (
+        Presale {
+            id,
+            presale_cap_id,
+            lifecycle: Lifecycle::Pending,
+            duration_ms,
+            liquidity_window_ms,
+            start_ms: 0,
+            end_ms: 0,
+            liquidity_deadline_ms: 0,
+            raise_target,
+            eligibility,
+            uncapped,
+            uncapped_from_ms: 0,
+            migration_witness,
+            tick_spacing,
+            pool_fee_rate,
+            fee_recipients,
+            holder_rewards_bps,
+            total_commitments: 0,
+            remaining_commitments: 0,
+            participants: 0,
+            quote: balance::zero(),
+            token_allocation,
+            participant_vesting,
+            sale_tokens,
+            liquidity_tokens,
+            recipient_payouts,
+            recipient_tokens,
+            raise_payouts,
+            protocol_fees,
+            protocol_quote,
+            protocol_tokens,
+        },
+        cap,
+    )
+}
+
 /// Shares a newly created presale and fixes its windows from `start_ms`, or from now once that
 /// has passed, so a sale can be created ahead of its start. Commitments open at the start; until
 /// then the AdminCap may change the sale's Blast rates.
@@ -453,185 +618,13 @@ public fun claim<SaleToken, Quote>(
     });
 }
 
-/// Destroys the creator capability after cancellation. All minted SaleToken
-/// allocations remain permanently locked in the cancelled presale.
-public fun destroy_cap<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, cap: PresaleCap) {
-    self.assert_cap(&cap);
-    assert!(self.lifecycle == Lifecycle::Cancelled, EInvalidLifecycle);
-
-    let PresaleCap { id, presale_id: _ } = cap;
-    id.delete();
-}
-
-// === Package Functions ===
-
-/// Mints and apportions the complete token supply, then irreversibly makes it
-/// fixed or burn-only before returning the presale.
-public(package) fun new<SaleToken, Quote, MigrationWitness: drop>(
-    treasury_cap: TreasuryCap<SaleToken>,
-    currency: &mut Currency<SaleToken>,
-    token_supply: u64,
-    token_allocation_bps: Bps,
-    participant_vesting: Option<VestingTerms>,
-    liquidity_token_allocation_bps: Bps,
-    recipient_allocations: vector<RecipientShare>,
-    burnable: bool,
-    raise_target: u64,
-    raise_allocations: vector<RecipientShare>,
-    duration_ms: u64,
-    liquidity_window_ms: u64,
-    eligibility: EligibilityPolicy,
-    uncapped: Option<UncappedPhase>,
-    _: MigrationWitness,
-    tick_spacing: u32,
-    pool_fee_rate: u64,
-    fee_recipients: vector<RecipientShare>,
-    holder_rewards_bps: Bps,
-    creation_policy: &CreationPolicy,
-    fee_policy: &FeePolicy,
-    ctx: &mut TxContext,
-): (Presale<SaleToken, Quote>, PresaleCap) {
-    creation_policy.assert_allowed<Quote, MigrationWitness>();
-    assert!(
-        type_name::with_original_ids<SaleToken>() != type_name::with_original_ids<Quote>(),
-        EInvalidAssetPair,
-    );
-    // `Currency<SaleToken>` and `TreasuryCap<SaleToken>` are each unique per type, and making the
-    // supply fixed or burn-only consumes the cap, so holding it proves the supply is still unknown.
-    assert!(treasury_cap.total_supply() == 0, EInitialSupplyNotZero);
-
-    let protocol_fees = fee_policy.fees();
-    assert!(raise_target > 0, EInvalidRaiseTarget);
-    assert_raise_allocations(&raise_allocations, protocol_fees.raise_bps());
-    assert_token_allocations(
-        token_supply,
-        token_allocation_bps,
-        liquidity_token_allocation_bps,
-        protocol_fees.token_bps(),
-        &recipient_allocations,
-    );
-    assert_fee_split(&fee_recipients, holder_rewards_bps);
-
-    assert!(duration_ms > 0 && liquidity_window_ms >= MIN_LIQUIDITY_WINDOW_MS, EInvalidWindow);
-    assert!(eligibility.can_reach(raise_target), EUnreachableRaise);
-    uncapped.do_ref!(|phase| assert_uncapped_phase(phase, duration_ms, eligibility, raise_target));
-
-    let (
-        token_allocation,
-        liquidity_token_allocation,
-        protocol_token_allocation,
-        recipient_payouts,
-    ) = apportion_supply(
-        token_supply,
-        token_allocation_bps,
-        liquidity_token_allocation_bps,
-        protocol_fees.token_bps(),
-        &recipient_allocations,
-    );
-    let (raise_payouts, protocol_quote, liquidity_quote) = apportion_raise(
-        &raise_allocations,
-        protocol_fees.raise_bps(),
-        raise_target,
-    );
-
-    assert_seedable_price(liquidity_token_allocation, liquidity_quote);
-
-    let treasury_cap_id = object::id(&treasury_cap);
-    let (sale_tokens, liquidity_tokens, protocol_tokens, recipient_tokens) = mint_and_seal_supply(
-        treasury_cap,
-        currency,
-        token_supply,
-        token_allocation,
-        liquidity_token_allocation,
-        protocol_token_allocation,
-        burnable,
-    );
-
-    let id = object::new(ctx);
-    let presale_id = id.to_inner();
-    let cap = PresaleCap { id: object::new(ctx), presale_id };
-    let presale_cap_id = cap.id.to_inner();
-    let migration_witness = type_name::with_original_ids<MigrationWitness>();
-
-    event::emit(PresaleCreated<SaleToken, Quote> {
-        presale_id,
-        presale_cap_id,
-        treasury_cap_id,
-        token_supply,
-        token_allocation_bps: token_allocation_bps.value(),
-        participant_vesting,
-        liquidity_token_allocation_bps: liquidity_token_allocation_bps.value(),
-        recipients: recipient_allocations.recipients(),
-        recipient_bps: recipient_allocations.bps(),
-        recipient_vesting: recipient_allocations.vesting_terms(),
-        burnable,
-        raise_target,
-        raise_recipients: raise_allocations.recipients(),
-        raise_recipient_bps: raise_allocations.bps(),
-        raise_recipient_vesting: raise_allocations.vesting_terms(),
-        duration_ms,
-        liquidity_window_ms,
-        eligibility,
-        uncapped,
-        migration_witness,
-        tick_spacing,
-        pool_fee_rate,
-        fee_recipients: fee_recipients.recipients(),
-        fee_recipient_bps: fee_recipients.bps(),
-        holder_rewards_bps: holder_rewards_bps.value(),
-        protocol_raise_bps: protocol_fees.raise_bps().value(),
-        protocol_token_bps: protocol_fees.token_bps().value(),
-        protocol_lp_fee_meme_bps: protocol_fees.lp_fee_meme_bps().value(),
-        protocol_lp_fee_quote_bps: protocol_fees.lp_fee_quote_bps().value(),
-        protocol_quote,
-        protocol_tokens: protocol_token_allocation,
-    });
-
-    (
-        Presale {
-            id,
-            presale_cap_id,
-            lifecycle: Lifecycle::Pending,
-            duration_ms,
-            liquidity_window_ms,
-            start_ms: 0,
-            end_ms: 0,
-            liquidity_deadline_ms: 0,
-            raise_target,
-            eligibility,
-            uncapped,
-            uncapped_from_ms: 0,
-            migration_witness,
-            tick_spacing,
-            pool_fee_rate,
-            fee_recipients,
-            holder_rewards_bps,
-            total_commitments: 0,
-            remaining_commitments: 0,
-            participants: 0,
-            quote: balance::zero(),
-            token_allocation,
-            participant_vesting,
-            sale_tokens,
-            liquidity_tokens,
-            recipient_payouts,
-            recipient_tokens,
-            raise_payouts,
-            protocol_fees,
-            protocol_quote,
-            protocol_tokens,
-        },
-        cap,
-    )
-}
-
 /// Pays Blast and the raise recipients their shares and releases every token
 /// recipient's tokens at once, locking each vesting share in its own shared irrevocable
 /// schedule starting now, then releases the rest of the raise and the
-/// LP-token allocation only to the configured migrator. Anyone may call that
-/// migrator at any time until the sale is cancelled; its pool creation remains
-/// atomic with this state transition.
-public(package) fun migrate<SaleToken, Quote, MigrationWitness: drop>(
+/// LP-token allocation only to the configured migrator, the holder of the witness the sale was
+/// created with. Anyone may call that migrator at any time until the sale is cancelled; its pool
+/// creation remains atomic with this state transition.
+public fun migrate<SaleToken, Quote, MigrationWitness: drop>(
     self: &mut Presale<SaleToken, Quote>,
     fee_policy: &FeePolicy,
     _: MigrationWitness,
@@ -663,6 +656,18 @@ public(package) fun migrate<SaleToken, Quote, MigrationWitness: drop>(
 
     (liquidity_tokens, quote)
 }
+
+/// Destroys the creator capability after cancellation. All minted SaleToken
+/// allocations remain permanently locked in the cancelled presale.
+public fun destroy_cap<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, cap: PresaleCap) {
+    self.assert_cap(&cap);
+    assert!(self.lifecycle == Lifecycle::Cancelled, EInvalidLifecycle);
+
+    let PresaleCap { id, presale_id: _ } = cap;
+    id.delete();
+}
+
+// === Package Functions ===
 
 public(package) fun assert_cap<SaleToken, Quote>(
     self: &Presale<SaleToken, Quote>,
