@@ -55,8 +55,11 @@ decisions.
    returns in execution order. This pass is complete when every reachable path
    preserves its invariants and every applicable economic identity reconciles.
 4. Apply source style to the affected production and test code. Preserve
-   observable ordering and published compatibility while simplifying. This pass
-   is complete when every changed declaration and function has been checked.
+   observable ordering and published compatibility while simplifying. Flag a
+   function name that omits or misstates a mutation, custody movement, object
+   operation, emission, or its return value as a defect, not a style
+   preference; its failure path is the misuse or misreview the name invites. This pass is complete when every changed
+   declaration and function has been checked.
 5. Apply architecture's event guidance and source style's error guidance to
    emitted facts, replay, payload necessity, abort ownership, diagnostic
    identity, precedence, and compatibility. This pass is complete when every
