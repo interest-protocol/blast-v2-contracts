@@ -191,7 +191,7 @@ pool receive exactly what they would without a partner.
   partner's own vendor package included. Commitments, claims and migration are
   the same on every sale.
 - **Partners** are paid after the sale migrates. A partnered sale's migration
-  holds Blast's shares in the sale, and `blast_presale::pay_partner` then pays
+  holds Blast's shares in the sale, and `blast_presale::pay_protocol_fees_with_partner` then pays
   the partner its share in force of Blast's raise share and pays Blast the rest.
   Anyone can call it, once, and the SDK adds it to the migration transaction.
   Nothing is paid if the sale is refunded. `ProtocolFeesPaid` records what Blast

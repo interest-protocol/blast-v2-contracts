@@ -1601,7 +1601,7 @@ fun vesting_terms_stay_within_the_technical_bound() {
 
 #[test]
 /// A sale naming a Blast partner releases the same raise and LP as any sale, but its migration
-/// holds Blast's shares. `pay_partner` then pays the partner its cut of Blast's raise share only,
+/// holds Blast's shares. `pay_protocol_fees_with_partner` then pays the partner its cut of Blast's raise share only,
 /// and Blast the rest of it and its whole token share; claims are unchanged.
 fun a_partnered_sale_pays_its_partner_a_cut_of_blasts_raise_share_only() {
     let mut ctx = tx_context::dummy();
@@ -1614,7 +1614,7 @@ fun a_partnered_sale_pays_its_partner_a_cut_of_blasts_raise_share_only() {
     fixture.take_quote(RAISE_RECIPIENT, 200);
     fixture.assert_treasury_received_nothing();
 
-    fixture.pay_partner(KEEPER, &partner);
+    fixture.pay_protocol_fees_with_partner(KEEPER, &partner);
 
     // 40% of Blast's 33 Quote is 13.2: the partner takes 13 and Blast keeps 20 and every token.
     let paid = only_event<ProtocolFeesPaid<BLAST_PRESALE_TESTS, QUOTE>>();
@@ -1640,7 +1640,7 @@ fun a_partnered_sale_pays_its_partner_a_cut_of_blasts_raise_share_only() {
 }
 
 #[test]
-/// The partner is paid the share in force when `pay_partner` runs, not the one at creation.
+/// The partner is paid the share in force when `pay_protocol_fees_with_partner` runs, not the one at creation.
 fun the_partner_is_paid_its_share_in_force_at_payment() {
     let mut ctx = tx_context::dummy();
     let partner = partners::new_scheduled_for_testing(
@@ -1654,7 +1654,7 @@ fun the_partner_is_paid_its_share_in_force_at_payment() {
     fixture.migrate();
     fixture.set_time(LIQUIDITY_DEADLINE_MS);
 
-    fixture.pay_partner(KEEPER, &partner);
+    fixture.pay_protocol_fees_with_partner(KEEPER, &partner);
 
     // 80% of 33 is 26.4: the partner takes 26 and Blast keeps 7.
     let paid = only_event<ProtocolFeesPaid<BLAST_PRESALE_TESTS, QUOTE>>();
@@ -1674,7 +1674,7 @@ fun a_zero_share_partner_is_paid_nothing() {
     let mut fixture = start_partnered_sale(&partner);
     fixture.migrate();
 
-    fixture.pay_partner(KEEPER, &partner);
+    fixture.pay_protocol_fees_with_partner(KEEPER, &partner);
 
     let paid = only_event<ProtocolFeesPaid<BLAST_PRESALE_TESTS, QUOTE>>();
     let (_, _, paid_quote, paid_tokens) = paid.protocol_fees_paid_fields();
@@ -1735,7 +1735,7 @@ fun a_partner_cannot_be_paid_before_migration() {
     let partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
     let mut fixture = start_partnered_sale(&partner);
 
-    fixture.pay_partner(KEEPER, &partner);
+    fixture.pay_protocol_fees_with_partner(KEEPER, &partner);
     abort
 }
 
@@ -1747,9 +1747,9 @@ fun a_partner_is_paid_once() {
     let partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
     let mut fixture = start_partnered_sale(&partner);
     fixture.migrate();
-    fixture.pay_partner(KEEPER, &partner);
+    fixture.pay_protocol_fees_with_partner(KEEPER, &partner);
 
-    fixture.pay_partner(KEEPER, &partner);
+    fixture.pay_protocol_fees_with_partner(KEEPER, &partner);
     abort
 }
 
@@ -1762,7 +1762,7 @@ fun another_partner_cannot_be_paid() {
     let other_partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
     let mut fixture = start_partnered_sale(&partner);
 
-    fixture.pay_partner(KEEPER, &other_partner);
+    fixture.pay_protocol_fees_with_partner(KEEPER, &other_partner);
     abort
 }
 
@@ -1775,7 +1775,7 @@ fun an_unpartnered_sale_pays_no_partner() {
     let mut fixture = start_funded_sale();
     fixture.migrate();
 
-    fixture.pay_partner(KEEPER, &partner);
+    fixture.pay_protocol_fees_with_partner(KEEPER, &partner);
     abort
 }
 
@@ -1792,7 +1792,7 @@ fun a_cancelled_partnered_sale_pays_no_partner() {
     assert_eq!(fixture.unpaid_protocol_quote(), option::none());
     assert_eq!(fixture.custody()[6], PROTOCOL_TOKENS);
 
-    fixture.pay_partner(KEEPER, &partner);
+    fixture.pay_protocol_fees_with_partner(KEEPER, &partner);
     abort
 }
 
@@ -1802,14 +1802,14 @@ fun a_cancelled_partnered_sale_pays_no_partner() {
 fun a_zero_raise_rate_partnered_sale_pays_blast_its_tokens() {
     let mut ctx = tx_context::dummy();
     let partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
-    let mut fixture = create_partnered_sale(&partner, START_MS, 0);
+    let mut fixture = share_partnered_sale(&partner, START_MS, 0);
     fixture.fund_partnered_sale();
 
     // The LP takes the raise after the recipient's 200.
     assert_eq!(fixture.migrate(), vector[LIQUIDITY_TOKENS, 800]);
     assert_eq!(fixture.unpaid_protocol_quote(), option::some(0));
 
-    fixture.pay_partner(KEEPER, &partner);
+    fixture.pay_protocol_fees_with_partner(KEEPER, &partner);
 
     let paid = only_event<ProtocolFeesPaid<BLAST_PRESALE_TESTS, QUOTE>>();
     let (_, _, paid_quote, paid_tokens) = paid.protocol_fees_paid_fields();
@@ -1828,7 +1828,7 @@ fun a_zero_raise_rate_partnered_sale_pays_blast_its_tokens() {
 fun a_partnered_sale_holds_the_rates_set_before_its_start() {
     let mut ctx = tx_context::dummy();
     let partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
-    let mut fixture = create_partnered_sale(&partner, SCHEDULED_AT_MS, PROTOCOL_RAISE_BPS);
+    let mut fixture = share_partnered_sale(&partner, SCHEDULED_AT_MS, PROTOCOL_RAISE_BPS);
     fixture.set_protocol_fees(vector[1_000, 250, 0, 0]);
     fixture.fund_partnered_sale();
 
@@ -1836,7 +1836,7 @@ fun a_partnered_sale_holds_the_rates_set_before_its_start() {
     assert_eq!(fixture.migrate(), vector[LIQUIDITY_TOKENS, 700]);
     assert_eq!(fixture.unpaid_protocol_quote(), option::some(100));
 
-    fixture.pay_partner(KEEPER, &partner);
+    fixture.pay_protocol_fees_with_partner(KEEPER, &partner);
 
     // 40% of 100 is 40; Blast keeps 60 and its 500 tokens.
     let paid = only_event<ProtocolFeesPaid<BLAST_PRESALE_TESTS, QUOTE>>();
@@ -2140,7 +2140,7 @@ fun start_configured(
 /// creates, names `partner` before sharing it, then lets Alice and Bob overfill it and a keeper
 /// settle it as funded.
 fun start_partnered_sale(partner: &Partner): Fixture {
-    let mut fixture = create_partnered_sale(partner, START_MS, PROTOCOL_RAISE_BPS);
+    let mut fixture = share_partnered_sale(partner, START_MS, PROTOCOL_RAISE_BPS);
     fixture.fund_partnered_sale();
 
     fixture
@@ -2148,7 +2148,7 @@ fun start_partnered_sale(partner: &Partner): Fixture {
 
 /// Creates that sale at `created_at_ms` under Blast's `protocol_raise_bps`, names `partner`, and
 /// shares it to open at `START_MS`.
-fun create_partnered_sale(partner: &Partner, created_at_ms: u64, protocol_raise_bps: u64): Fixture {
+fun share_partnered_sale(partner: &Partner, created_at_ms: u64, protocol_raise_bps: u64): Fixture {
     let mut scenario = test_scenario::begin(CREATOR);
     let mut clock = clock::create_for_testing(scenario.ctx());
     clock.set_for_testing(created_at_ms);
@@ -2783,15 +2783,15 @@ fun migrate(self: &mut Fixture): vector<u64> {
 }
 
 /// Has `sender` pay the sale's partner and Blast the shares its migration held.
-fun pay_partner(self: &mut Fixture, sender: address, partner: &Partner) {
+fun pay_protocol_fees_with_partner(self: &mut Fixture, sender: address, partner: &Partner) {
     self.next_tx!(sender, |fixture| {
         let mut sale = fixture.take_presale();
-        sale.pay_partner(&fixture.fee_policy, partner, &fixture.clock, fixture.ctx!());
+        sale.pay_protocol_fees_with_partner(&fixture.fee_policy, partner, &fixture.clock, fixture.ctx!());
         fixture.return_presale(sale);
     });
 }
 
-/// Blast's raise share the sale holds for `pay_partner`, if it still does.
+/// Blast's raise share the sale holds for `pay_protocol_fees_with_partner`, if it still does.
 fun unpaid_protocol_quote(self: &mut Fixture): Option<u64> {
     let mut unpaid = vector[];
     self.next_tx!(KEEPER, |fixture| {

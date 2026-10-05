@@ -20,6 +20,9 @@ compiler when it differs.
   `market::new(...)`, `curve::quote_buy(...)`.
 - Add a module-local `use fun dependency::function as Type.method` when a pinned
   dependency exposes a natural receiver without receiver form.
+- When a module projects a value from a prelude collection of its own type, such
+  as `vector<RecipientShare>`, name the free function `<value>_of` and alias it
+  module-locally: `use fun bps_of as vector.bps` reads as `shares.bps()`.
 - Keep dependency-type aliases module-local. `public use fun` is legal only in
   the type's defining module; use it there only when it clarifies the external
   API materially.

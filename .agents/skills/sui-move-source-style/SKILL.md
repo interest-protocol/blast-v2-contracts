@@ -68,7 +68,8 @@ Format function bodies as logical paragraphs, with one blank line between valida
 - **Function shape:** Read
   [Function shape and locals](references/function-shape-and-locals.md)
   completely before splitting or simplifying a multi-phase function, extracting
-  helpers, inlining locals, or changing pass-through parameters.
+  helpers, inlining locals, flattening chained `else if` derivations, or
+  changing pass-through parameters.
 
 Read every matching reference; keep the loaded set to the triggered branches.
 Follow the target package's pinned edition and compiler when a reference
@@ -77,6 +78,10 @@ example differs.
 ## Name by domain meaning
 
 - Use lower snake case for packages, modules, files, functions, variables, and package macros.
+- Name locals for their domain role, such as `accepted_amount`, `is_new_member`,
+  or `refund_pool`, not for their type or position, such as `amount`, `exists`,
+  `current`, `last`, `a`, or `tmp`. A local must not reuse the name of a function
+  it calls, as in `let leaf = leaf(...)`.
 - Use UpperCamelCase for structs and enums.
 - Use uppercase snake case for ordinary constants.
 - Use `EUpperCamelCase` for named error constants.
@@ -133,7 +138,22 @@ When a returned object has `key` but not `store`, provide its consuming sink in 
 
 - Use `new` for the module's primary constructor.
 - Use descriptive constructors when variants matter: `new_cancelable`, `new_irrevocable`, `new_kinked`.
-- Name reads exactly for the domain value returned.
+- Leave no ambiguity in a function name about any effect it performs or the
+  value it returns. Effects are mutation, custody movement, object operations,
+  and emission; a guard that only aborts is identified by its error, not the
+  name.
+- Name a read or projection for the exact domain value returned. Do not reuse a
+  type's name for a value of a different type: `vesting_terms` returns
+  `VestingTerms`, while `vesting` reads as a `Vesting`.
+- Reserve Sui object verbs such as `share`, `transfer`, `freeze`, and `wrap`
+  for functions that perform that operation on the value they receive. Name a
+  recipient share's basis points `bps_of`, not `share_bps`: the `share_` prefix
+  reads as publishing shared state.
+- Name every alternative effect: `pay_or_vest` either transfers a coin or creates
+  and shares a vesting schedule; `release` names neither.
+- Name a check-and-return helper for its result, such as `schedule_id` for a
+  test helper that checks the emitted event and returns the schedule ID it
+  carries. Reserve `assert_*` for helpers that return nothing.
 - Use `is_*` and `has_*` for predicates.
 - Reserve `into_*` for a real type conversion and name its destination.
 - Use `destroy` when a consuming wrapper deletes itself and releases contents.

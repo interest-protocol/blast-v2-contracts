@@ -47,17 +47,18 @@ the creator calls `set_partner` before `share`.
 **Paying the partner.** `migrate` of a sale without a partner pays Blast as
 before. A partnered sale's migration pays the raise recipients and releases the
 LP exactly as before, but holds Blast's raise share in the sale and leaves its
-token share in escrow. Anyone may then call `pay_partner` once. It checks the
-partner is the sale's (`EWrongPartner`) and that Blast's shares are still held
-(`ENoPartnerPayout`: before migration, after a cancellation, or after the
-payout). It pays the partner its share in force of the held Quote, rounded down
+token share in escrow. Anyone may then call `pay_protocol_fees_with_partner`
+once; its name, like the launchpad's `claim_protocol_fees_with_partner`, says it
+pays Blast too. It checks the partner is the sale's (`EWrongPartner`) and that
+Blast's shares are still held (`ENoPartnerPayout`: before migration, after a
+cancellation, or after the payout). It pays the partner its share in force of the held Quote, rounded down
 through `blast_partners::pay`, then pays Blast the rest and all its tokens at the
 `FeePolicy`'s current destination. Both recipients are fixed, so the call needs
 no authority; the SDK appends it to the migration transaction.
 
 **Events.** `ProtocolFeesPaid` gains `partner_quote`. It is emitted once per
 migrated sale: at migration for a sale without a partner, with
-`partner_quote` zero, and at `pay_partner` for a partnered sale, with what Blast
+`partner_quote` zero, and at `pay_protocol_fees_with_partner` for a partnered sale, with what Blast
 kept. `blast_partners` also emits `PartnerPaid<Quote>` for any nonzero payment.
 
 ## Alternatives considered
@@ -91,18 +92,18 @@ kept. `blast_partners` also emits `PartnerPaid<Quote>` for any nonzero payment.
 - Participants, the creator, the recipients, and the LP receive exactly what
   they would without a partner. Only Blast's raise share is divided.
 - A partnered sale's Blast shares stay in the sale until someone calls
-  `pay_partner`, and nothing else can move them. The partner's share is the one
+  `pay_protocol_fees_with_partner`, and nothing else can move them. The partner's share is the one
   in force at the payout, and any change Blast makes to it waits seven days.
 - The binding is permanent. To stop paying a bound partner, Blast schedules its
   share to zero in `blast_partners`, which affects that deal on every product.
-- A Quote deny list blocking the partner's recipient makes `pay_partner` abort
+- A Quote deny list blocking the partner's recipient makes `pay_protocol_fees_with_partner` abort
   until the partner sets a new recipient, as on the launchpad; Blast's shares
   stay held meanwhile.
 - `blast_presale` depends on `blast_partners`, and through it on `blast_admin`;
   presale administration still does not use the Blast ACL. `blast_partners` is
   published before the presale generation ADR 0104 already requires.
 - ABI:
-  - new functions: `blast_presale::set_partner` and `pay_partner`, and
+  - new functions: `blast_presale::set_partner` and `pay_protocol_fees_with_partner`, and
     `creation_policy::add_partner` and `remove_partner`;
   - `PresaleOpened` gains `partner_id` and `ProtocolFeesPaid` gains
     `partner_quote`;

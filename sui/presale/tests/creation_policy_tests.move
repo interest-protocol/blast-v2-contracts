@@ -294,7 +294,7 @@ fun a_foreign_admin_cap_is_rejected_before_the_witness_type() {
 fun an_added_partner_is_accepted_at_once() {
     let mut ctx = tx_context::dummy();
     let (mut policy, admin_registry, admin_cap) = admin_with_policy(&mut ctx);
-    let partner = partner(&mut ctx);
+    let partner = new_partner(&mut ctx);
 
     policy.add_partner(&admin_registry, &admin_cap, &partner);
 
@@ -314,7 +314,7 @@ fun an_added_partner_is_accepted_at_once() {
 fun an_unlisted_partner_is_not_accepted() {
     let mut ctx = tx_context::dummy();
     let policy = creation_policy::new_for_testing(&mut ctx);
-    let partner = partner(&mut ctx);
+    let partner = new_partner(&mut ctx);
 
     policy.assert_partner(object::id(&partner), 0);
     abort
@@ -329,7 +329,7 @@ fun an_unlisted_partner_is_not_accepted() {
 /// is refused from then on.
 fun a_removed_partner_is_accepted_until_its_notice_ends() {
     let mut ctx = tx_context::dummy();
-    let (policy, partner_id) = removed_partner(&mut ctx);
+    let (policy, partner_id) = policy_with_removed_partner(&mut ctx);
     let accepted_until_ms = REMOVED_AT_MS + partners::delay_ms();
 
     let (removed_id, removed_until_ms) = last_event<PartnerRemoved>().partner_removed_fields();
@@ -346,7 +346,7 @@ fun a_removed_partner_is_accepted_until_its_notice_ends() {
 fun re_adding_a_partner_cancels_its_removal() {
     let mut ctx = tx_context::dummy();
     let (mut policy, admin_registry, admin_cap) = admin_with_policy(&mut ctx);
-    let partner = partner(&mut ctx);
+    let partner = new_partner(&mut ctx);
     let clock = clock_at(REMOVED_AT_MS, &mut ctx);
     policy.add_partner(&admin_registry, &admin_cap, &partner);
     policy.remove_partner(&admin_registry, &admin_cap, &partner, &clock);
@@ -365,7 +365,7 @@ fun re_adding_a_partner_cancels_its_removal() {
 fun re_adding_a_removed_partner_accepts_it_again() {
     let mut ctx = tx_context::dummy();
     let (mut policy, admin_registry, admin_cap) = admin_with_policy(&mut ctx);
-    let partner = partner(&mut ctx);
+    let partner = new_partner(&mut ctx);
     let mut clock = clock_at(REMOVED_AT_MS, &mut ctx);
     policy.add_partner(&admin_registry, &admin_cap, &partner);
     policy.remove_partner(&admin_registry, &admin_cap, &partner, &clock);
@@ -388,7 +388,7 @@ fun re_adding_a_removed_partner_accepts_it_again() {
 fun an_accepted_partner_cannot_be_added_again() {
     let mut ctx = tx_context::dummy();
     let (mut policy, admin_registry, admin_cap) = admin_with_policy(&mut ctx);
-    let partner = partner(&mut ctx);
+    let partner = new_partner(&mut ctx);
     policy.add_partner(&admin_registry, &admin_cap, &partner);
 
     policy.add_partner(&admin_registry, &admin_cap, &partner);
@@ -404,7 +404,7 @@ fun an_accepted_partner_cannot_be_added_again() {
 fun a_removed_partner_cannot_be_removed_again() {
     let mut ctx = tx_context::dummy();
     let (mut policy, admin_registry, admin_cap) = admin_with_policy(&mut ctx);
-    let partner = partner(&mut ctx);
+    let partner = new_partner(&mut ctx);
     let clock = clock_at(REMOVED_AT_MS, &mut ctx);
     policy.add_partner(&admin_registry, &admin_cap, &partner);
     policy.remove_partner(&admin_registry, &admin_cap, &partner, &clock);
@@ -421,7 +421,7 @@ fun a_removed_partner_cannot_be_removed_again() {
 fun an_unlisted_partner_cannot_be_removed() {
     let mut ctx = tx_context::dummy();
     let (mut policy, admin_registry, admin_cap) = admin_with_policy(&mut ctx);
-    let partner = partner(&mut ctx);
+    let partner = new_partner(&mut ctx);
     let clock = clock_at(REMOVED_AT_MS, &mut ctx);
 
     policy.remove_partner(&admin_registry, &admin_cap, &partner, &clock);
@@ -438,7 +438,7 @@ fun a_foreign_admin_cap_cannot_add_a_partner() {
     let mut ctx = tx_context::dummy();
     let (mut policy, admin_registry, _admin_cap) = admin_with_policy(&mut ctx);
     let (_other_registry, other_cap) = blast_presale_admin::new_for_testing(&mut ctx);
-    let partner = partner(&mut ctx);
+    let partner = new_partner(&mut ctx);
 
     policy.add_partner(&admin_registry, &other_cap, &partner);
     abort
@@ -471,7 +471,7 @@ fun admin_with_policy(ctx: &mut TxContext): (CreationPolicy, AdminRegistry, Admi
 }
 
 /// A registered Blast partner whose share is in force.
-fun partner(ctx: &mut TxContext): Partner {
+fun new_partner(ctx: &mut TxContext): Partner {
     partners::new_for_testing(PARTNER, PARTNER_SHARE_BPS, ctx)
 }
 
@@ -484,9 +484,9 @@ fun clock_at(timestamp_ms: u64, ctx: &mut TxContext): Clock {
 
 /// A policy whose administrator added a partner and removed it at `REMOVED_AT_MS`, and the
 /// partner's ID.
-fun removed_partner(ctx: &mut TxContext): (CreationPolicy, ID) {
+fun policy_with_removed_partner(ctx: &mut TxContext): (CreationPolicy, ID) {
     let (mut policy, admin_registry, admin_cap) = admin_with_policy(ctx);
-    let partner = partner(ctx);
+    let partner = new_partner(ctx);
     let clock = clock_at(REMOVED_AT_MS, ctx);
     let partner_id = object::id(&partner);
     policy.add_partner(&admin_registry, &admin_cap, &partner);

@@ -57,7 +57,7 @@ sale is ever created under an unsealed cap.
    post-migration claims. Accept each presale partner deal, once it is registered
    in `blast_partners`, with `creation_policy::add_partner`.
 8. Operate a keeper that calls `settle` and the venue's `migrate` in one PTB as
-   soon as a sale's `end_ms` passes, followed by `blast_presale::pay_partner` for
+   soon as a sale's `end_ms` passes, followed by `blast_presale::pay_protocol_fees_with_partner` for
    a sale that names a partner, which pays the partner and Blast the shares its
    migration held. The seven-day LP-window floor keeps a
    successful raise from being settled and cancelled in one transaction, but a

@@ -61,7 +61,7 @@ public fun set_migration_witness_allowed<MigrationWitness: drop>(
 ) {
     admin_registry.assert_admin_cap(admin_cap);
     let migration_witness = type_name::with_original_ids<MigrationWitness>();
-    assert!(!allowed || !anyone_can_construct<MigrationWitness>(), EInvalidMigrationWitness);
+    assert!(!allowed || !is_constructible_by_anyone<MigrationWitness>(), EInvalidMigrationWitness);
     assert!(
         self.allowed_migration_witnesses.contains(&migration_witness) != allowed,
         EAllowanceUnchanged,
@@ -109,13 +109,13 @@ public fun remove_partner(
     let partner_id = object::id(partner);
     let now_ms = clock.timestamp_ms();
     self.assert_partner(partner_id, now_ms);
-    let accepted_until_ms = now_ms + partners::delay_ms();
+    let notice_ends_ms = now_ms + partners::delay_ms();
 
-    let current: &mut u64 = self.id.dynamic_field_mut(PartnerKey(partner_id));
-    assert!(*current == std::u64::max_value!(), EAllowanceUnchanged);
-    *current = accepted_until_ms;
+    let accepted_until_ms: &mut u64 = self.id.dynamic_field_mut(PartnerKey(partner_id));
+    assert!(*accepted_until_ms == std::u64::max_value!(), EAllowanceUnchanged);
+    *accepted_until_ms = notice_ends_ms;
 
-    event::emit(PartnerRemoved { partner_id, accepted_until_ms });
+    event::emit(PartnerRemoved { partner_id, accepted_until_ms: notice_ends_ms });
 }
 
 // === Package Functions ===
@@ -156,11 +156,11 @@ fun new(ctx: &mut TxContext): CreationPolicy {
 /// Whether any caller can construct `T`: a primitive, a vector, or a type defined at `0x1` or
 /// `0x2`, whose droppable structs, such as `TypeName`, `Option<T>`, and `ID`, have public
 /// constructors.
-fun anyone_can_construct<T>(): bool {
-    type_name::with_original_ids<T>().is_primitive() || {
-        let origin = type_name::original_id<T>();
-        origin == @0x1 || origin == @0x2
-    }
+fun is_constructible_by_anyone<T>(): bool {
+    if (type_name::with_original_ids<T>().is_primitive()) return true;
+
+    let defining_package = type_name::original_id<T>();
+    defining_package == @0x1 || defining_package == @0x2
 }
 
 // === Test-Only Functions ===

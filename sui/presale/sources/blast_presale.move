@@ -106,7 +106,7 @@ public struct Commitment has copy, drop, store {
 /// a funded migration atomically releases them. Blast's rates are snapshotted
 /// at creation, the AdminCap may change them until the window starts, and its
 /// shares are paid only on migration, or, when the sale names a Blast partner,
-/// held from migration until `pay_partner` pays the partner its cut of Blast's
+/// held from migration until `pay_protocol_fees_with_partner` pays the partner its cut of Blast's
 /// raise share. If the raise is missed, every commitment
 /// is refunded. Anyone may migrate a funded sale until it is cancelled; once LP
 /// is still unmigrated at its deadline, anyone may cancel it so every
@@ -146,7 +146,7 @@ public struct Presale<phantom SaleToken, phantom Quote> has key {
     /// The Blast partner named at creation, paid its share of Blast's raise share. It never changes
     /// once the sale is shared.
     partner_id: Option<ID>,
-    /// Blast's raise share, held from a partnered sale's migration until `pay_partner` splits it.
+    /// Blast's raise share, held from a partnered sale's migration until `pay_protocol_fees_with_partner` splits it.
     unpaid_protocol_quote: Option<Balance<Quote>>,
 }
 
@@ -413,7 +413,7 @@ public fun new<SaleToken, Quote, MigrationWitness: drop>(
 
 /// Names the sale's Blast partner, one the `CreationPolicy` lets new presales name, before `share`
 /// fixes it for good. The partner earns its share of Blast's raise share, and of nothing else:
-/// migration holds Blast's shares, and `pay_partner` pays them.
+/// migration holds Blast's shares, and `pay_protocol_fees_with_partner` pays them.
 public fun set_partner<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
     creation_policy: &CreationPolicy,
@@ -489,13 +489,8 @@ public fun set_protocol_fees<SaleToken, Quote>(
     // rate that does not change keeps the amount creation apportioned for it.
     let unallocated_raise = self.raise_target - total_amount(&self.raise_payouts);
     let unallocated_tokens = self.token_allocation + self.protocol_tokens.value();
-    let protocol_quote = if (raise_bps == self.protocol_fees.raise_bps()) self.protocol_quote
-    else self.raise_target.mul_div(raise_bps.value(), bps::denominator());
-    let protocol_tokens = if (token_bps == self.protocol_fees.token_bps()) {
-        self.protocol_tokens.value()
-    } else {
-        self.token_supply().mul_div(token_bps.value(), bps::denominator())
-    };
+    let protocol_quote = self.protocol_quote_at(raise_bps);
+    let protocol_tokens = self.protocol_tokens_at(token_bps);
     assert!(protocol_quote < unallocated_raise, EInvalidRaiseAllocation);
     assert!(protocol_tokens < unallocated_tokens, EInvalidTokenAllocation);
     assert_seedable_price(self.liquidity_tokens.value(), unallocated_raise - protocol_quote);
@@ -662,7 +657,7 @@ public fun claim<SaleToken, Quote>(
 /// recipient's tokens at once, locking each vesting share in its own shared irrevocable
 /// schedule starting now, then releases the rest of the raise and the
 /// LP-token allocation only to the configured migrator, the holder of the witness the sale was
-/// created with. A sale naming a Blast partner holds Blast's shares instead, for `pay_partner`.
+/// created with. A sale naming a Blast partner holds Blast's shares instead, for `pay_protocol_fees_with_partner`.
 /// Anyone may call that migrator at any time until the sale is cancelled; its pool creation
 /// remains atomic with this state transition.
 public fun migrate<SaleToken, Quote, MigrationWitness: drop>(
@@ -683,11 +678,7 @@ public fun migrate<SaleToken, Quote, MigrationWitness: drop>(
     let liquidity_tokens = self.liquidity_tokens.withdraw_all();
     let recipient_tokens = self.recipient_tokens.value();
 
-    if (self.partner_id.is_none()) {
-        self.pay_protocol_fees(protocol_quote, 0, fee_policy.destination(), ctx);
-    } else {
-        self.unpaid_protocol_quote.fill(protocol_quote);
-    };
+    self.pay_or_hold_protocol_fees(protocol_quote, fee_policy.destination(), ctx);
     self.pay_raise_allocations(&mut quote, clock, ctx);
     self.release_recipient_tokens(clock, ctx);
     self.lifecycle = Lifecycle::Migrated;
@@ -707,7 +698,7 @@ public fun migrate<SaleToken, Quote, MigrationWitness: drop>(
 /// keeps the remainder, and pays Blast the rest of it and its token share at the `FeePolicy`'s
 /// current destination. The partner's share is the one in force now. Anyone may call it once
 /// after migration: both recipients are fixed.
-public fun pay_partner<SaleToken, Quote>(
+public fun pay_protocol_fees_with_partner<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
     fee_policy: &FeePolicy,
     partner: &Partner,
@@ -717,10 +708,10 @@ public fun pay_partner<SaleToken, Quote>(
     assert!(self.partner_id.contains(&object::id(partner)), EWrongPartner);
     assert!(self.unpaid_protocol_quote.is_some(), ENoPartnerPayout);
 
-    let mut quote = self.unpaid_protocol_quote.extract();
-    let partner_quote = partner.pay(&mut quote, clock);
+    let mut protocol_quote = self.unpaid_protocol_quote.extract();
+    let partner_quote = partner.pay(&mut protocol_quote, clock);
 
-    self.pay_protocol_fees(quote, partner_quote, fee_policy.destination(), ctx);
+    self.pay_protocol_fees(protocol_quote, partner_quote, fee_policy.destination(), ctx);
 }
 
 /// Destroys the creator capability after cancellation. All minted SaleToken
@@ -1062,6 +1053,22 @@ fun mint_and_seal_supply<SaleToken>(
 
 // Fee changes
 
+/// Blast's Quote under the raise rate `raise_bps`: the amount creation apportioned while the rate
+/// is unchanged, otherwise its rate of the raise, rounded down.
+fun protocol_quote_at<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, raise_bps: Bps): u64 {
+    if (raise_bps == self.protocol_fees.raise_bps()) return self.protocol_quote;
+
+    self.raise_target.mul_div(raise_bps.value(), bps::denominator())
+}
+
+/// Blast's tokens under the token rate `token_bps`: the amount creation apportioned while the
+/// rate is unchanged, otherwise its rate of the supply, rounded down.
+fun protocol_tokens_at<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, token_bps: Bps): u64 {
+    if (token_bps == self.protocol_fees.token_bps()) return self.protocol_tokens.value();
+
+    self.token_supply().mul_div(token_bps.value(), bps::denominator())
+}
+
 /// The complete supply, all of it still escrowed before the window starts.
 fun token_supply<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): u64 {
     self.sale_tokens.value()
@@ -1266,27 +1273,40 @@ fun is_last_claim<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): bool {
 
 // Migration
 
-/// Pays Blast `quote`, what it keeps of its raise share after its partner's `partner_quote`, and
-/// its share of the supply at `destination`.
+/// Pays Blast its raise share at `destination` now, or, when the sale names a partner, holds it
+/// and Blast's tokens for `pay_protocol_fees_with_partner`.
+fun pay_or_hold_protocol_fees<SaleToken, Quote>(
+    self: &mut Presale<SaleToken, Quote>,
+    protocol_quote: Balance<Quote>,
+    destination: address,
+    ctx: &mut TxContext,
+) {
+    if (self.partner_id.is_some()) return self.unpaid_protocol_quote.fill(protocol_quote);
+
+    self.pay_protocol_fees(protocol_quote, 0, destination, ctx)
+}
+
+/// Pays Blast `protocol_quote`, what it keeps of its raise share after its partner's
+/// `partner_quote`, and its share of the supply at `destination`.
 fun pay_protocol_fees<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
-    mut quote: Balance<Quote>,
+    mut protocol_quote: Balance<Quote>,
     partner_quote: u64,
     destination: address,
     ctx: &mut TxContext,
 ) {
-    let quote_amount = quote.value();
-    let tokens = self.protocol_tokens.value();
+    let paid_quote = protocol_quote.value();
+    let paid_tokens = self.protocol_tokens.value();
 
-    quote.pay(quote_amount, destination, ctx);
-    quote.destroy_zero();
-    self.protocol_tokens.pay(tokens, destination, ctx);
+    protocol_quote.pay(paid_quote, destination, ctx);
+    protocol_quote.destroy_zero();
+    self.protocol_tokens.pay(paid_tokens, destination, ctx);
 
     event::emit(ProtocolFeesPaid<SaleToken, Quote> {
         presale_id: self.id.to_inner(),
         destination,
-        quote: quote_amount,
-        tokens,
+        quote: paid_quote,
+        tokens: paid_tokens,
         partner_quote,
     });
 }
@@ -1627,7 +1647,7 @@ public fun protocol_fees_paid_partner_quote<SaleToken, Quote>(
 }
 
 #[test_only]
-/// Blast's raise share a partnered migration holds for `pay_partner`, if it still does.
+/// Blast's raise share a partnered migration holds for `pay_protocol_fees_with_partner`, if it still does.
 public fun unpaid_protocol_quote_for_testing<SaleToken, Quote>(
     self: &Presale<SaleToken, Quote>,
 ): Option<u64> {
