@@ -25,6 +25,9 @@ const ENoBuybackQuote: vector<u8> = b"No burn Quote is waiting to buy Meme back.
 #[error(code = 5)]
 const EBuybackBelowMinimum: vector<u8> = b"Buyback must return at least the minimum Meme.";
 
+#[error(code = 6)]
+const EPartnerMismatch: vector<u8> = b"The partner is not the one the vault's launch named at creation.";
+
 // === Public Types ===
 
 /// A sealed field name that binds one venue position type to one vault.
@@ -43,12 +46,18 @@ public struct AutoLpPositionKey<phantom Venue>() has copy, drop, store;
 /// take waits here for the next call), the rewards share funds holder-reward rounds, and every
 /// recipient is paid at once. The burn share's Meme is burned at once and its Quote waits here until
 /// a buyback admin swaps it for Meme to burn. The split changes only after the fees accrued under
-/// the current one are settled, so each fee follows the split it accrued under.
+/// the current one are settled, so each fee follows the split it accrued under. When the launch
+/// named a partner, Blast's live share waits here instead, until
+/// `claim_protocol_lp_fees_with_partner` pays the partner its cut and Blast the rest.
 public struct LpVault<phantom Meme, phantom Quote> has key {
     id: UID,
     pool_id: ID,
+    /// The Blast partner the launch named, paid its cut of Blast's LP fees. It never changes.
+    partner_id: Option<ID>,
     protocol_meme_residual: Balance<Meme>,
     protocol_quote_residual: Balance<Quote>,
+    unpaid_protocol_meme: Balance<Meme>,
+    unpaid_protocol_quote: Balance<Quote>,
     generation: u64,
     fee_split: FeeSplit,
     creator_meme: Balance<Meme>,
@@ -88,6 +97,43 @@ public fun claim_protocol_fees<Meme, Quote>(
     );
 
     (meme, quote)
+}
+
+/// Pays the Blast LP fees this vault holds for its launch's partner: the partner its cut of each
+/// asset in force now, rounded down, then the `LpFeePolicy`'s current protocol destination the
+/// rest. Anyone may claim, since both payees are fixed. Holding nothing is valid, moves nothing,
+/// and emits nothing, so a claim can follow any collection.
+public fun claim_protocol_lp_fees_with_partner<Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    migrators_version: &MigratorsVersion,
+    policy: &LpFeePolicy,
+    partner: &Partner,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    migrators_version.assert_current();
+    assert!(self.partner_id.contains(&object::id(partner)), EPartnerMismatch);
+    if (self.unpaid_protocol_meme.value() == 0 && self.unpaid_protocol_quote.value() == 0) return;
+
+    let protocol_destination = policy.protocol_destination();
+    let mut protocol_meme = self.unpaid_protocol_meme.withdraw_all();
+    let mut protocol_quote = self.unpaid_protocol_quote.withdraw_all();
+    let partner_meme = partner.pay(&mut protocol_meme, clock);
+    let partner_quote = partner.pay(&mut protocol_quote, clock);
+    let paid_meme = protocol_meme.value();
+    let paid_quote = protocol_quote.value();
+
+    protocol_meme.pay_all(protocol_destination, ctx);
+    protocol_quote.pay_all(protocol_destination, ctx);
+
+    blast_events::protocol_lp_fees_claimed(
+        self.id.to_inner(),
+        protocol_destination,
+        paid_meme,
+        paid_quote,
+        partner_meme,
+        partner_quote,
+    );
 }
 
 /// Claims the creator's accrued LP-fee share with the launch's live curve-fee cap.
@@ -199,7 +245,8 @@ public(package) fun auto_lp_position_mut<
 }
 
 /// Splits one collection of the position's fees: Blast's live share to the protocol destination,
-/// then the creator, auto-LP, and rewards shares into their balances, the burn share's Meme burned
+/// or, when the launch named a partner, held for `claim_protocol_lp_fees_with_partner`; then the
+/// creator, auto-LP, and rewards shares into their balances, the burn share's Meme burned
 /// and its Quote kept for buyback, and every recipient paid. A zero collection is valid, moves
 /// nothing, and emits nothing.
 public(package) fun split_fees<Meme, Quote>(
@@ -227,11 +274,14 @@ public(package) fun split_fees<Meme, Quote>(
     let (creator_quote, auto_lp_quote, rewards_quote, burn_quote, recipient_quote) = self
         .fee_split
         .apportion_fee_split(gross_quote - protocol_quote);
-    let protocol_destination = policy.protocol_destination();
     let recipients = *self.fee_split.recipients();
 
-    meme.pay(protocol_meme, protocol_destination, ctx);
-    quote.pay(protocol_quote, protocol_destination, ctx);
+    let protocol_destination = self.pay_or_hold_protocol_lp_fees(
+        meme.split(protocol_meme),
+        quote.split(protocol_quote),
+        policy,
+        ctx,
+    );
 
     self.creator_meme.join(meme.split(creator_meme));
     self.creator_quote.join(quote.split(creator_quote));
@@ -412,6 +462,34 @@ public(package) fun pay<T>(
 
 // === Private Functions ===
 
+/// Pays Blast's LP fees to the policy's protocol destination and returns it, or, on a vault whose
+/// launch named a partner, holds them for `claim_protocol_lp_fees_with_partner` and returns none.
+fun pay_or_hold_protocol_lp_fees<Meme, Quote>(
+    self: &mut LpVault<Meme, Quote>,
+    protocol_meme: Balance<Meme>,
+    protocol_quote: Balance<Quote>,
+    policy: &LpFeePolicy,
+    ctx: &mut TxContext,
+): Option<address> {
+    if (self.partner_id.is_some()) {
+        self.unpaid_protocol_meme.join(protocol_meme);
+        self.unpaid_protocol_quote.join(protocol_quote);
+        return option::none()
+    };
+
+    let protocol_destination = policy.protocol_destination();
+    protocol_meme.pay_all(protocol_destination, ctx);
+    protocol_quote.pay_all(protocol_destination, ctx);
+    option::some(protocol_destination)
+}
+
+/// Pays all of `balance` to `destination`, sending no coin when it is empty.
+fun pay_all<T>(mut balance: Balance<T>, destination: address, ctx: &mut TxContext) {
+    let amount = balance.value();
+    balance.pay(amount, destination, ctx);
+    balance.destroy_zero();
+}
+
 /// Builds the vault at generation zero with the launch's fee split and empty balances, attaches
 /// `position`, and announces the custody.
 fun new<Meme, Quote, Venue, Position: key + store>(
@@ -430,8 +508,11 @@ fun new<Meme, Quote, Venue, Position: key + store>(
     let mut vault = LpVault {
         id: object::new(ctx),
         pool_id,
+        partner_id: launch.partner_id(),
         protocol_meme_residual,
         protocol_quote_residual,
+        unpaid_protocol_meme: balance::zero(),
+        unpaid_protocol_quote: balance::zero(),
         generation: 0,
         fee_split: launch.lp_fee_split(),
         creator_meme: balance::zero(),
@@ -545,6 +626,20 @@ public fun auto_lp_balances_for_testing<Meme, Quote>(self: &LpVault<Meme, Quote>
 }
 
 #[test_only]
+/// Returns the partner the vault inherited from its launch.
+public fun partner_id_for_testing<Meme, Quote>(self: &LpVault<Meme, Quote>): Option<ID> {
+    self.partner_id
+}
+
+#[test_only]
+/// Returns Blast's Meme and Quote LP fees held for the partner claim.
+public fun unpaid_protocol_lp_fees_for_testing<Meme, Quote>(
+    self: &LpVault<Meme, Quote>,
+): (u64, u64) {
+    (self.unpaid_protocol_meme.value(), self.unpaid_protocol_quote.value())
+}
+
+#[test_only]
 /// Returns the Quote waiting to buy Meme back.
 public fun burn_quote_for_testing<Meme, Quote>(self: &LpVault<Meme, Quote>): u64 {
     self.burn_quote.value()
@@ -567,9 +662,18 @@ use blast_fun_migrators::{
     blast_fun_migrators::PackageVersion as MigratorsVersion,
 };
 
-use sui::{balance::{Self, Balance}, coin::Coin, coin_registry::Currency, dynamic_object_field};
+use blast_partners::blast_partners::Partner;
+
+use sui::{
+    balance::{Self, Balance},
+    clock::Clock,
+    coin::Coin,
+    coin_registry::Currency,
+    dynamic_object_field,
+};
 
 use fun pay as Balance.pay;
+use fun pay_all as Balance.pay_all;
 
 use fun dynamic_object_field::add as UID.add_dynamic_object_field;
 use fun dynamic_object_field::borrow as UID.dynamic_object_field;

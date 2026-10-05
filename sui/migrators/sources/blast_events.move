@@ -47,7 +47,8 @@ public struct FeesCollected has copy, drop {
     generation: u64,
     gross_meme: u64,
     gross_quote: u64,
-    protocol_destination: address,
+    /// Where Blast's share was paid, or none when a partnered vault holds it for the partner claim.
+    protocol_destination: Option<address>,
     protocol_meme: u64,
     protocol_quote: u64,
     creator_meme: u64,
@@ -139,6 +140,17 @@ public struct ProtocolFeesClaimed has copy, drop {
     quote_amount: u64,
 }
 
+/// A partnered vault paid the Blast LP fees it held: `partner_meme` and `partner_quote` to the
+/// launch's partner, and the rest, `protocol_meme` and `protocol_quote`, to `protocol_destination`.
+public struct ProtocolLpFeesClaimed has copy, drop {
+    vault_id: ID,
+    protocol_destination: address,
+    protocol_meme: u64,
+    protocol_quote: u64,
+    partner_meme: u64,
+    partner_quote: u64,
+}
+
 /// Records Cetus pool creation reserved for one pair at the tick spacing its migration uses.
 public struct CetusPoolReserved has copy, drop {
     meme: TypeName,
@@ -201,7 +213,7 @@ public(package) fun fees_collected(
     generation: u64,
     gross_meme: u64,
     gross_quote: u64,
-    protocol_destination: address,
+    protocol_destination: Option<address>,
     protocol_meme: u64,
     protocol_quote: u64,
     creator_meme: u64,
@@ -356,6 +368,25 @@ public(package) fun protocol_fees_claimed<Meme, Quote>(
         claimant,
         meme_amount,
         quote_amount,
+    });
+}
+
+/// Emits a partnered vault's claim of the Blast LP fees it held.
+public(package) fun protocol_lp_fees_claimed(
+    vault_id: ID,
+    protocol_destination: address,
+    protocol_meme: u64,
+    protocol_quote: u64,
+    partner_meme: u64,
+    partner_quote: u64,
+) {
+    sui::event::emit(ProtocolLpFeesClaimed {
+        vault_id,
+        protocol_destination,
+        protocol_meme,
+        protocol_quote,
+        partner_meme,
+        partner_quote,
     });
 }
 

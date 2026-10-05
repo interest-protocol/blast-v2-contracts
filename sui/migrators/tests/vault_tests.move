@@ -20,6 +20,13 @@ const DESTINATION_B: address = @0xB;
 
 const POOL: address = @0x9001;
 
+const PARTNER_RECIPIENT: address = @0x9A27;
+
+const KEEPER: address = @0x4EE9;
+
+/// The partner's cut of Blast's LP fees: 40%.
+const PARTNER_CUT_BPS: u64 = 4_000;
+
 // === Test-Only Types ===
 
 /// This module's one-time witness stands in for a generated package's.
@@ -34,13 +41,16 @@ public struct OtherVenue() has drop;
 
 public struct TestPosition has key, store { id: UID }
 
-/// One owned launch whose fee split and Meme type every built vault copies, and its currency.
+/// One owned launch whose fee split, partner, and Meme type every built vault copies, its currency,
+/// and a Blast partner the launch names only when the fixture opened it partnered.
 public struct VaultFixture {
     scenario: Scenario,
     migrators_version: MigratorsVersion,
     policy: LpFeePolicy,
     launch: Launch<VAULT_TESTS, QUOTE>,
     currency: Currency<VAULT_TESTS>,
+    partner: Partner,
+    clock: Clock,
 }
 
 /// Independently encoded `VaultCreated` in ABI order.
@@ -63,7 +73,7 @@ public struct Collection has copy, drop {
     generation: u64,
     gross_meme: u64,
     gross_quote: u64,
-    protocol_destination: address,
+    protocol_destination: Option<address>,
     protocol_meme: u64,
     protocol_quote: u64,
     creator_meme: u64,
@@ -76,6 +86,16 @@ public struct Collection has copy, drop {
     burn_quote: u64,
     recipient_meme: vector<u64>,
     recipient_quote: vector<u64>,
+}
+
+/// Independently encoded `ProtocolLpFeesClaimed` in ABI order.
+public struct ExpectedProtocolLpFeesClaimed has copy, drop {
+    vault_id: ID,
+    protocol_destination: address,
+    protocol_meme: u64,
+    protocol_quote: u64,
+    partner_meme: u64,
+    partner_quote: u64,
 }
 
 /// Independently encoded `AutoLpPositionOpened` in ABI order.
@@ -425,7 +445,7 @@ fun split_rounds_blast_up_then_credits_every_balance_and_pays_every_recipient_ex
                 generation: 0,
                 gross_meme: 11,
                 gross_quote: 7,
-                protocol_destination: PROTOCOL,
+                protocol_destination: option::some(PROTOCOL),
                 protocol_meme: 2,
                 protocol_quote: 2,
                 creator_meme: 2,
@@ -509,8 +529,8 @@ fun protocol_destination_is_read_live_at_each_collection() {
     });
     f.split(&mut vault, 7, 11);
 
-    assert_eq!(collection(0).protocol_destination, PROTOCOL);
-    assert_eq!(collection(1).protocol_destination, @0xCAFE);
+    assert_eq!(collection(0).protocol_destination, option::some(PROTOCOL));
+    assert_eq!(collection(1).protocol_destination, option::some(@0xCAFE));
     f.assert_received(PROTOCOL, 3, 5);
     f.assert_received(@0xCAFE, 7, 11);
 
@@ -697,6 +717,207 @@ fun sixteen_recipients_are_paid_in_the_split_order() {
 
     destroy(vault);
     f.end();
+}
+
+// Partner Claim
+
+#[test]
+fun a_vault_inherits_the_partner_its_launch_named() {
+    let mut f = start_partnered(mixed_split(), PARTNER_CUT_BPS);
+    let vault = f.new_vault(0, 0);
+
+    assert_eq!(vault.partner_id_for_testing(), option::some(object::id(&f.partner)));
+
+    destroy(vault);
+    f.end();
+}
+
+#[test]
+fun a_partnered_collection_holds_blasts_share_and_splits_the_rest_as_before() {
+    let mut f = start_partnered(mixed_split(), PARTNER_CUT_BPS);
+    f.set_defaults(1_000, 2_500);
+    let mut vault = f.new_vault(0, 0);
+
+    f.scenario.next_tx(ADMIN);
+    f.split(&mut vault, 11, 7);
+
+    // The split is the one a vault without a partner makes, but Blast's 2 Meme and 2 Quote stay in
+    // the vault and no destination is recorded.
+    let events = event::events_by_type<blast_events::FeesCollected>();
+    assert_eq!(events.length(), 1);
+    assert_eq!(
+        bcs::to_bytes(&events[0]),
+        bcs::to_bytes(
+            &Collection {
+                vault_id: object::id(&vault),
+                generation: 0,
+                gross_meme: 11,
+                gross_quote: 7,
+                protocol_destination: option::none(),
+                protocol_meme: 2,
+                protocol_quote: 2,
+                creator_meme: 2,
+                creator_quote: 1,
+                auto_lp_meme: 2,
+                auto_lp_quote: 1,
+                rewards_meme: 1,
+                rewards_quote: 1,
+                burn_meme: 1,
+                burn_quote: 0,
+                recipient_meme: vector[2, 1],
+                recipient_quote: vector[1, 1],
+            },
+        ),
+    );
+    assert_balances!(|| vault.unpaid_protocol_lp_fees_for_testing(), 2, 2);
+    assert_balances!(|| vault.creator_balances_for_testing(), 2, 1);
+    assert_balances!(|| vault.auto_lp_balances_for_testing(), 2, 1);
+    assert_balances!(|| vault.rewards_balances(), 1, 1);
+    f.assert_received(PROTOCOL, 0, 0);
+    f.assert_received(DESTINATION_A, 1, 1);
+    f.assert_received(DESTINATION_B, 2, 1);
+    f.assert_received(@0x0, 1, 0);
+
+    destroy(vault);
+    f.end();
+}
+
+#[test]
+fun anyone_claims_the_partners_cut_of_held_lp_fees_and_pays_blast_the_rest() {
+    let mut f = start_partnered(mixed_split(), PARTNER_CUT_BPS);
+    f.set_defaults(5_000, 5_000);
+    let mut vault = f.new_vault(0, 0);
+    f.scenario.next_tx(ADMIN);
+    f.split(&mut vault, 100, 30);
+    f.split(&mut vault, 100, 31);
+    // 50 Meme twice, and ceil(15) + ceil(15.5) = 31 Quote.
+    assert_balances!(|| vault.unpaid_protocol_lp_fees_for_testing(), 100, 31);
+
+    f.scenario.next_tx(KEEPER);
+    f.claim_lp_fees_with_partner(&mut vault);
+
+    // 40% of 100 Meme and 31 Quote is 40 and 12.4: the partner takes 40 and 12, Blast 60 and 19.
+    let events = event::events_by_type<blast_events::ProtocolLpFeesClaimed>();
+    assert_eq!(events.length(), 1);
+    assert_eq!(
+        bcs::to_bytes(&events[0]),
+        bcs::to_bytes(
+            &ExpectedProtocolLpFeesClaimed {
+                vault_id: object::id(&vault),
+                protocol_destination: PROTOCOL,
+                protocol_meme: 60,
+                protocol_quote: 19,
+                partner_meme: 40,
+                partner_quote: 12,
+            },
+        ),
+    );
+    assert_eq!(f.partner_paid<VAULT_TESTS>(), 40);
+    assert_eq!(f.partner_paid<QUOTE>(), 12);
+    assert_balances!(|| vault.unpaid_protocol_lp_fees_for_testing(), 0, 0);
+    f.assert_received(PROTOCOL, 60, 19);
+    f.assert_received(KEEPER, 0, 0);
+
+    destroy(vault);
+    f.end();
+}
+
+#[test]
+fun held_lp_fees_go_to_the_destination_in_force_at_the_claim() {
+    let mut f = start_partnered(mixed_split(), PARTNER_CUT_BPS);
+    f.set_defaults(5_000, 5_000);
+    let mut vault = f.new_vault(0, 0);
+    f.scenario.next_tx(ADMIN);
+    f.split(&mut vault, 10, 0);
+
+    f.administer!(|policy, version, admin| {
+        policy.set_protocol_destination(version, admin, @0xCAFE);
+    });
+    f.claim_lp_fees_with_partner(&mut vault);
+
+    // 40% of the 5 Meme held is 2: the new destination gets 3, the old one nothing.
+    assert_eq!(f.partner_paid<VAULT_TESTS>(), 2);
+    f.assert_received(@0xCAFE, 3, 0);
+    f.assert_received(PROTOCOL, 0, 0);
+
+    destroy(vault);
+    f.end();
+}
+
+#[test]
+fun a_zero_cut_partner_is_paid_nothing_and_blast_every_held_fee() {
+    let mut f = start_partnered(mixed_split(), 0);
+    f.set_defaults(5_000, 5_000);
+    let mut vault = f.new_vault(0, 0);
+    f.scenario.next_tx(ADMIN);
+    f.split(&mut vault, 10, 10);
+
+    f.claim_lp_fees_with_partner(&mut vault);
+
+    assert!(event::events_by_type<PartnerPaid<VAULT_TESTS>>().is_empty());
+    assert!(event::events_by_type<PartnerPaid<QUOTE>>().is_empty());
+    f.assert_received(PROTOCOL, 5, 5);
+
+    destroy(vault);
+    f.end();
+}
+
+#[test]
+fun a_claim_with_nothing_held_moves_and_emits_nothing() {
+    let mut f = start_partnered(mixed_split(), PARTNER_CUT_BPS);
+    let mut vault = f.new_vault(0, 0);
+
+    f.claim_lp_fees_with_partner(&mut vault);
+
+    assert!(event::events_by_type<blast_events::ProtocolLpFeesClaimed>().is_empty());
+    f.assert_received(PROTOCOL, 0, 0);
+
+    destroy(vault);
+    f.end();
+}
+
+#[test]
+#[expected_failure(abort_code = vault::EPartnerMismatch, location = blast_fun_migrators::vault)]
+fun a_vault_claims_only_for_the_partner_its_launch_named() {
+    let mut f = start_partnered(mixed_split(), PARTNER_CUT_BPS);
+    let mut vault = f.new_vault(0, 0);
+    let other = blast_partners::new_for_testing(KEEPER, PARTNER_CUT_BPS, f.scenario.ctx());
+
+    vault.claim_protocol_lp_fees_with_partner(
+        &f.migrators_version,
+        &f.policy,
+        &other,
+        &f.clock,
+        f.scenario.ctx(),
+    );
+
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = vault::EPartnerMismatch, location = blast_fun_migrators::vault)]
+fun a_vault_without_a_partner_has_no_partner_claim() {
+    let mut f = start(mixed_split());
+    let mut vault = f.new_vault(0, 0);
+
+    f.claim_lp_fees_with_partner(&mut vault);
+
+    abort
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+fun a_stale_generation_rejects_the_partner_claim_before_the_partner_check() {
+    let mut f = start(mixed_split());
+    let mut vault = f.new_vault(0, 0);
+    f.migrators_version.set_for_testing(2);
+
+    f.claim_lp_fees_with_partner(&mut vault);
+
+    abort
 }
 
 // Auto-LP
@@ -930,19 +1151,43 @@ fun start_burnable(fee_split: FeeSplit): VaultFixture {
     start_with_supply(fee_split, true)
 }
 
-/// Opens the fixture launch under `ADMIN`.
+/// Opens the fixture launch under `ADMIN`, naming no partner.
 fun start_with_supply(fee_split: FeeSplit, burnable: bool): VaultFixture {
+    open_fixture(fee_split, burnable, PARTNER_CUT_BPS, false)
+}
+
+/// Opens the fixed-supply fixture launch naming the fixture's partner, whose cut is `cut_bps`.
+fun start_partnered(fee_split: FeeSplit, cut_bps: u64): VaultFixture {
+    open_fixture(fee_split, false, cut_bps, true)
+}
+
+/// Opens the fixture launch under `ADMIN` with a partner whose cut is `cut_bps`, which the launch
+/// names when `names_partner`.
+fun open_fixture(fee_split: FeeSplit, burnable: bool, cut_bps: u64, names_partner: bool): VaultFixture {
     let mut scenario = test_scenario::begin(PROTOCOL);
     let version = package_version::new_for_testing(scenario.ctx());
     let migrators_version = migrators_version::new_for_testing(scenario.ctx());
     let policy = lp_fee_policy::new_for_testing(scenario.ctx());
     let mut config = launch_config::new_for_testing(scenario.ctx());
+    let partner = blast_partners::new_for_testing(PARTNER_RECIPIENT, cut_bps, scenario.ctx());
+    let clock = clock::create_for_testing(scenario.ctx());
 
     scenario.next_tx(ADMIN);
     launch_fixture::admit<QUOTE, TestVenue>(&mut config, &version);
-    let (launch, currency) = launch_fixture::open_launch<_, QUOTE, _>(
+    let otw = test_utils::create_one_time_witness<VAULT_TESTS>();
+    let (launch, currency) = if (names_partner) launch_fixture::open_partnered_launch<_, QUOTE, _>(
         &mut scenario,
-        test_utils::create_one_time_witness<VAULT_TESTS>(),
+        otw,
+        &version,
+        &mut config,
+        TestVenue(),
+        fee_split,
+        burnable,
+        &partner,
+        &clock,
+    ) else launch_fixture::open_launch<_, QUOTE, _>(
+        &mut scenario,
+        otw,
         &version,
         &config,
         TestVenue(),
@@ -958,6 +1203,8 @@ fun start_with_supply(fee_split: FeeSplit, burnable: bool): VaultFixture {
         policy,
         launch,
         currency,
+        partner,
+        clock,
     }
 }
 
@@ -1119,6 +1366,27 @@ fun split(
     );
 }
 
+/// Claims the vault's held Blast LP fees with the fixture's partner.
+fun claim_lp_fees_with_partner(self: &mut VaultFixture, vault: &mut LpVault<VAULT_TESTS, QUOTE>) {
+    vault.claim_protocol_lp_fees_with_partner(
+        &self.migrators_version,
+        &self.policy,
+        &self.partner,
+        &self.clock,
+        self.scenario.ctx(),
+    );
+}
+
+/// The amount of this transaction's only `PartnerPaid<T>`, which must pay the fixture's partner.
+fun partner_paid<T>(self: &VaultFixture): u64 {
+    let events = event::events_by_type<PartnerPaid<T>>();
+    assert_eq!(events.length(), 1);
+    let (partner_id, amount) = events[0].partner_paid_fields();
+    assert_eq!(partner_id, object::id(&self.partner));
+
+    amount
+}
+
 /// Decodes the `index`th `FeesCollected` of this transaction, consuming every byte.
 fun collection(index: u64): Collection {
     let events = event::events_by_type<blast_events::FeesCollected>();
@@ -1128,7 +1396,7 @@ fun collection(index: u64): Collection {
         generation: r.peel_u64(),
         gross_meme: r.peel_u64(),
         gross_quote: r.peel_u64(),
-        protocol_destination: r.peel_address(),
+        protocol_destination: r.peel_option_address(),
         protocol_meme: r.peel_u64(),
         protocol_quote: r.peel_u64(),
         creator_meme: r.peel_u64(),
@@ -1153,7 +1421,7 @@ fun assert_protocol_amounts(self: &VaultFixture, meme: u64, quote: u64) {
     assert_eq!(events.length(), 1);
     let paid = collection(0);
 
-    assert_eq!(paid.protocol_destination, self.policy.protocol_destination());
+    assert_eq!(paid.protocol_destination, option::some(self.policy.protocol_destination()));
     assert_eq!(paid.protocol_meme, meme);
     assert_eq!(paid.protocol_quote, quote);
 }
@@ -1238,11 +1506,14 @@ use blast_fun_migrators::{
     vault::{Self, LpVault},
 };
 
+use blast_partners::blast_partners::{Self, Partner, PartnerPaid};
+
 use std::{type_name::{Self, TypeName}, unit_test::{assert_eq, destroy}};
 
 use sui::{
     balance,
     bcs,
+    clock::{Self, Clock},
     coin::Coin,
     coin_registry::Currency,
     dynamic_field,

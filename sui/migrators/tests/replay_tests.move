@@ -1312,7 +1312,8 @@ fun fees_collected(self: &mut Replay, bytes: vector<u8>) {
     assert_eq!(r.peel_u64(), self.generation);
     let gross_meme = r.peel_u64();
     let gross_quote = r.peel_u64();
-    let protocol_destination = r.peel_address();
+    // Replayed launches name no partner, so every collection pays Blast at once.
+    let protocol_destination = r.peel_option_address().destroy_some();
     let protocol_meme = r.peel_u64();
     let protocol_quote = r.peel_u64();
     let creator = r.peel_pair();

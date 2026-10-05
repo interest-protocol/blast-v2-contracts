@@ -168,10 +168,11 @@ blast_events:package:fun buyback_burned( vault_id: ID, quote_spent: u64, meme_bu
 blast_events:package:fun cetus_pool_reserved<Meme, Quote>(pool_creation_cap_id: ID, tick_spacing: u32)
 blast_events:package:fun creator_fees_claimed(vault_id: ID, meme_amount: u64, quote_amount: u64)
 blast_events:package:fun fee_split_changed( vault_id: ID, old_generation: u64, new_generation: u64, old_fee_split: FeeSplit, new_fee_split: FeeSplit, )
-blast_events:package:fun fees_collected( vault_id: ID, generation: u64, gross_meme: u64, gross_quote: u64, protocol_destination: address, protocol_meme: u64, protocol_quote: u64, creator_meme: u64, creator_quote: u64, auto_lp_meme: u64, auto_lp_quote: u64, rewards_meme: u64, rewards_quote: u64, burn_meme: u64, burn_quote: u64, recipient_meme: vector<u64>, recipient_quote: vector<u64>, )
+blast_events:package:fun fees_collected( vault_id: ID, generation: u64, gross_meme: u64, gross_quote: u64, protocol_destination: Option<address>, protocol_meme: u64, protocol_quote: u64, creator_meme: u64, creator_quote: u64, auto_lp_meme: u64, auto_lp_quote: u64, rewards_meme: u64, rewards_quote: u64, burn_meme: u64, burn_quote: u64, recipient_meme: vector<u64>, recipient_quote: vector<u64>, )
 blast_events:package:fun lp_fee_destination_changed(old_destination: address, new_destination: address)
 blast_events:package:fun lp_fee_policy_changed( meme: Option<TypeName>, old_meme_bps: Option<u64>, old_quote_bps: Option<u64>, new_meme_bps: Option<u64>, new_quote_bps: Option<u64>, )
 blast_events:package:fun protocol_fees_claimed<Meme, Quote>( vault_id: ID, claimant: address, meme_amount: u64, quote_amount: u64, )
+blast_events:package:fun protocol_lp_fees_claimed( vault_id: ID, protocol_destination: address, protocol_meme: u64, protocol_quote: u64, partner_meme: u64, partner_quote: u64, )
 blast_events:package:fun reward_paid( round_id: ID, index: u64, beneficiary: address, meme_amount: u64, quote_amount: u64, meme_remaining: u64, quote_remaining: u64, )
 blast_events:package:fun round_published( vault_id: ID, round_id: ID, number: u64, start_checkpoint: u64, end_checkpoint: u64, root: vector<u8>, manifest_digest: vector<u8>, leaf_count: u64, meme_amount: u64, quote_amount: u64, meme_unallocated: u64, quote_unallocated: u64, )
 blast_events:package:fun vault_created<Meme, Quote, Venue>( vault_id: ID, pool_id: ID, position_id: ID, residual_meme: u64, residual_quote: u64, liquidity: u128, fee_split: FeeSplit, )
@@ -234,6 +235,7 @@ vault:package:fun take_buyback_quote<Meme, Quote>( self: &mut LpVault<Meme, Quot
 vault:package:fun update_fee_split<Meme, Quote>( self: &mut LpVault<Meme, Quote>, proposed: FeeSplit, )
 vault:public:fun claim_creator_fees<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, launch: &Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)
 vault:public:fun claim_protocol_fees<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, _: &AdminWitness<TreasuryAdmin>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)
+vault:public:fun claim_protocol_lp_fees_with_partner<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, partner: &Partner, clock: &Clock, ctx: &mut TxContext, )
 venue_config:package:fun add_object<Key: copy + drop + store, Object: key + store>( self: &mut VenueConfig, key: Key, object: Object, )
 venue_config:package:fun object<Key: copy + drop + store, Object: key + store>( self: &VenueConfig, key: Key, ): &Object
 EOF
@@ -271,6 +273,7 @@ vault: dynamic_object_field::borrow as UID.dynamic_object_field
 vault: dynamic_object_field::borrow_mut as UID.dynamic_object_field_mut
 vault: dynamic_object_field::exists as UID.has_dynamic_object_field
 vault: pay as Balance.pay
+vault: pay_all as Balance.pay_all
 venue_config: dynamic_object_field::add as UID.add_dynamic_object_field
 venue_config: dynamic_object_field::borrow as UID.dynamic_object_field
 EOF
@@ -385,16 +388,16 @@ fi
 # Every replay fact is one direct, strongly typed payload with exactly one emitter function.
 [[ "$(move_facts "$EVENTS_SOURCE" | awk -F'\t' '$1 == "TYPE" && $5 == 0 { print $2 }' \
     | LC_ALL=C sort | tr '\n' ' ')" \
-    == 'AutoLiquidityAdded AutoLpPositionOpened BuybackBurned CetusPoolReserved CreatorFeesClaimed FeeSplitChanged FeesCollected LpFeeDestinationChanged LpFeePolicyChanged ProtocolFeesClaimed RewardPaid RoundPublished VaultCreated ' ]] || \
+    == 'AutoLiquidityAdded AutoLpPositionOpened BuybackBurned CetusPoolReserved CreatorFeesClaimed FeeSplitChanged FeesCollected LpFeeDestinationChanged LpFeePolicyChanged ProtocolFeesClaimed ProtocolLpFeesClaimed RewardPaid RoundPublished VaultCreated ' ]] || \
     fail "blast_events.move must declare exactly the pinned event payloads"
 for payload in AutoLiquidityAdded AutoLpPositionOpened BuybackBurned CetusPoolReserved CreatorFeesClaimed \
     FeeSplitChanged FeesCollected LpFeeDestinationChanged LpFeePolicyChanged ProtocolFeesClaimed \
-    RewardPaid RoundPublished VaultCreated; do
+    ProtocolLpFeesClaimed RewardPaid RoundPublished VaultCreated; do
     [[ "$(rg -c "sui::event::emit\(${payload} \{" "$EVENTS_SOURCE" || true)" -eq 1 ]] || \
         fail "${payload} must be emitted directly by exactly one helper"
 done
-[[ "$(rg -o 'sui::event::emit' "$EVENTS_SOURCE" | wc -l)" -eq 13 ]] || \
-    fail "blast_events.move must emit exactly the thirteen pinned payloads"
+[[ "$(rg -o 'sui::event::emit' "$EVENTS_SOURCE" | wc -l)" -eq 14 ]] || \
+    fail "blast_events.move must emit exactly the fourteen pinned payloads"
 if rg -q 'sui::event::emit' "$SOURCE_DIR" --glob '*.move' --glob '!blast_events.move'; then
     fail "state modules must emit only through typed events helpers"
 fi
@@ -409,7 +412,7 @@ if rg -q '\b(VenueTierUpdated|venue_tier_updated|RoutesChanged|routes_changed|Po
     fail "venue tiers and fee routes are launch settings and the Blast share is read live; no admin tier, route, or snapshot record may return"
 fi
 # Each replay fact has exactly one writer: the vault's split, buyback, auto-LP, split update,
-# custody, and claims; the holder-reward publication and claim; and the policy's destination and
+# custody, and claims (the partner claim included); the holder-reward publication and claim; and the policy's destination and
 # share setters.
 for emitter in \
     'fees_collected:vault:split_fees' \
@@ -419,6 +422,7 @@ for emitter in \
     'fee_split_changed:vault:update_fee_split' \
     'creator_fees_claimed:vault:claim_creator_fees' \
     'protocol_fees_claimed<Meme, Quote>:vault:claim_protocol_fees' \
+    'protocol_lp_fees_claimed:vault:claim_protocol_lp_fees_with_partner' \
     'vault_created<Meme, Quote, Venue>:vault:new' \
     'round_published:blast_holder_rewards:publish_round' \
     'reward_paid:blast_holder_rewards:claim' \
@@ -445,8 +449,8 @@ done
 VAULT_FACTS="$(move_facts "$VAULT_SOURCE")"
 [[ "$VAULT_FACTS" != *MALFORMED* ]] || fail "the Move reader rejected vault.move"
 [[ "$(move_production_type LpVault <<<"$VAULT_FACTS")" \
-    == 'struct LpVault<phantom Meme, phantom Quote> has key { id: UID, pool_id: ID, protocol_meme_residual: Balance<Meme>, protocol_quote_residual: Balance<Quote>, generation: u64, fee_split: FeeSplit, creator_meme: Balance<Meme>, creator_quote: Balance<Quote>, auto_lp_meme: Balance<Meme>, auto_lp_quote: Balance<Quote>, rewards_meme: Balance<Meme>, rewards_quote: Balance<Quote>, burn_quote: Balance<Quote>, next_round: u64, last_checkpoint: Option<u64>, }' ]] || \
-    fail "LpVault must hold only its position key space, the pool binding, the protocol residuals, its fee split and generation, the split balances, and the round cursor"
+    == 'struct LpVault<phantom Meme, phantom Quote> has key { id: UID, pool_id: ID, partner_id: Option<ID>, protocol_meme_residual: Balance<Meme>, protocol_quote_residual: Balance<Quote>, unpaid_protocol_meme: Balance<Meme>, unpaid_protocol_quote: Balance<Quote>, generation: u64, fee_split: FeeSplit, creator_meme: Balance<Meme>, creator_quote: Balance<Quote>, auto_lp_meme: Balance<Meme>, auto_lp_quote: Balance<Quote>, rewards_meme: Balance<Meme>, rewards_quote: Balance<Quote>, burn_quote: Balance<Quote>, next_round: u64, last_checkpoint: Option<u64>, }' ]] || \
+    fail "LpVault must hold only its position key space, the pool binding, the launch's partner, the protocol residuals, Blast's LP fees held for the partner, its fee split and generation, the split balances, and the round cursor"
 vault_body() {
     awk -F'\t' -v name="$1" '$1 == "FN" && $2 == name && $6 == 0 { print $10 }' <<<"$VAULT_FACTS" \
         | tr -d '[:space:]' | sed 's/,)/)/g'
@@ -457,14 +461,14 @@ vault_body() {
 [[ "$(vault_body create)" \
     == 'transfer::share_object(new(launch,venue,pool_id,position,liquidity,protocol_meme_residual,protocol_quote_residual,ctx));' ]] \
     && [[ "$(vault_body new)" \
-    == 'assert!(liquidity>0,EZeroLiquidity);letposition_id=object::id(&position);letmutvault=LpVault{id:object::new(ctx),pool_id,protocol_meme_residual,protocol_quote_residual,generation:0,fee_split:launch.lp_fee_split(),creator_meme:balance::zero(),creator_quote:balance::zero(),auto_lp_meme:balance::zero(),auto_lp_quote:balance::zero(),rewards_meme:balance::zero(),rewards_quote:balance::zero(),burn_quote:balance::zero(),next_round:0,last_checkpoint:option::none(),};vault.id.add_dynamic_object_field(PositionKey<Venue>(),position);blast_events::vault_created<Meme,Quote,Venue>(vault.id.to_inner(),pool_id,position_id,vault.protocol_meme_residual.value(),vault.protocol_quote_residual.value(),liquidity,vault.fee_split);vault' ]] || \
-    fail "vault::create must share only what vault::new builds: the launch's fee split at generation zero, empty balances, no round, and the attached position"
+    == 'assert!(liquidity>0,EZeroLiquidity);letposition_id=object::id(&position);letmutvault=LpVault{id:object::new(ctx),pool_id,partner_id:launch.partner_id(),protocol_meme_residual,protocol_quote_residual,unpaid_protocol_meme:balance::zero(),unpaid_protocol_quote:balance::zero(),generation:0,fee_split:launch.lp_fee_split(),creator_meme:balance::zero(),creator_quote:balance::zero(),auto_lp_meme:balance::zero(),auto_lp_quote:balance::zero(),rewards_meme:balance::zero(),rewards_quote:balance::zero(),burn_quote:balance::zero(),next_round:0,last_checkpoint:option::none(),};vault.id.add_dynamic_object_field(PositionKey<Venue>(),position);blast_events::vault_created<Meme,Quote,Venue>(vault.id.to_inner(),pool_id,position_id,vault.protocol_meme_residual.value(),vault.protocol_quote_residual.value(),liquidity,vault.fee_split);vault' ]] || \
+    fail "vault::create must share only what vault::new builds: the launch's partner and fee split at generation zero, empty balances, no round, and the attached position"
 [[ "$(awk -F'\t' '$1 == "FN" && $3 == "public" && $6 == 0 { print $2 }' <<<"$VAULT_FACTS" \
     | LC_ALL=C sort | tr '\n' ' ')" \
-    == 'claim_creator_fees claim_protocol_fees ' ]] || \
-    fail "the protocol and creator claims must be the vault's only public functions"
+    == 'claim_creator_fees claim_protocol_fees claim_protocol_lp_fees_with_partner ' ]] || \
+    fail "the protocol, partner, and creator claims must be the vault's only public functions"
 # Every collection is split exactly and at once: Blast's live share for this Meme rounds up and
-# pays the live destination, the rest is apportioned by the vault's fee split into the creator,
+# pays the live destination, or waits for the partner claim when the launch named a partner; the rest is apportioned by the vault's fee split into the creator,
 # auto-LP, and rewards balances, the burn share's Meme is burned and its Quote kept for buyback,
 # every recipient is paid, nothing stays behind, and FeesCollected is the last fact. A zero
 # collection returns before anything moves or is announced.
@@ -475,9 +479,7 @@ in_order \
     'letprotocol_quote=quote_share.apply_up(gross_quote);' \
     'let(creator_meme,auto_lp_meme,rewards_meme,burn_meme,recipient_meme)=self.fee_split.apportion_fee_split(gross_meme-protocol_meme);' \
     'let(creator_quote,auto_lp_quote,rewards_quote,burn_quote,recipient_quote)=self.fee_split.apportion_fee_split(gross_quote-protocol_quote);' \
-    'letprotocol_destination=policy.protocol_destination();' \
-    'meme.pay(protocol_meme,protocol_destination,ctx);' \
-    'quote.pay(protocol_quote,protocol_destination,ctx);' \
+    'letprotocol_destination=self.pay_or_hold_protocol_lp_fees(meme.split(protocol_meme),quote.split(protocol_quote),policy,ctx);' \
     'self.creator_meme.join(meme.split(creator_meme));self.creator_quote.join(quote.split(creator_quote));' \
     'self.auto_lp_meme.join(meme.split(auto_lp_meme));self.auto_lp_quote.join(quote.split(auto_lp_quote));' \
     'self.rewards_meme.join(meme.split(rewards_meme));self.rewards_quote.join(quote.split(rewards_quote));' \
@@ -486,7 +488,29 @@ in_order \
     'meme.destroy_zero();quote.destroy_zero();blast_events::fees_collected(' \
     <<<"$(vault_body split_fees)" \
     && [[ "$(vault_body split_fees)" =~ blast_events::fees_collected\([^\;]*\)\;$ ]] || \
-    fail "vault splits must pay the round-up live Blast share and every recipient immediately, credit the three balances, burn the burn Meme and keep the burn Quote, keep nothing else, and emit FeesCollected last"
+    fail "vault splits must pay (or hold for the partner) the round-up live Blast share and every recipient immediately, credit the three balances, burn the burn Meme and keep the burn Quote, keep nothing else, and emit FeesCollected last"
+# Blast's share goes to the live destination at once, unless the launch named a partner: then it
+# waits in the vault, and nothing but the claim below takes it out. The claim needs no authority,
+# since both payees are fixed: after the generation and the launch's partner, it pays the partner
+# its cut in force and the live destination the rest, leaving nothing held. Holding nothing, it
+# returns before anything moves or is announced. The vault's partner is the launch's, for good.
+[[ "$(vault_body pay_or_hold_protocol_lp_fees)" \
+    == 'if(self.partner_id.is_some()){self.unpaid_protocol_meme.join(protocol_meme);self.unpaid_protocol_quote.join(protocol_quote);returnoption::none()};letprotocol_destination=policy.protocol_destination();protocol_meme.pay_all(protocol_destination,ctx);protocol_quote.pay_all(protocol_destination,ctx);option::some(protocol_destination)' ]] \
+    && [[ "$(vault_body pay_all)" == 'letamount=balance.value();balance.pay(amount,destination,ctx);balance.destroy_zero();' ]] \
+    && in_order \
+        'migrators_version.assert_current();' \
+        'assert!(self.partner_id.contains(&object::id(partner)),EPartnerMismatch);' \
+        'if(self.unpaid_protocol_meme.value()==0&&self.unpaid_protocol_quote.value()==0)return;' \
+        'letprotocol_destination=policy.protocol_destination();' \
+        'letmutprotocol_meme=self.unpaid_protocol_meme.withdraw_all();letmutprotocol_quote=self.unpaid_protocol_quote.withdraw_all();' \
+        'letpartner_meme=partner.pay(&mutprotocol_meme,clock);letpartner_quote=partner.pay(&mutprotocol_quote,clock);' \
+        'protocol_meme.pay_all(protocol_destination,ctx);protocol_quote.pay_all(protocol_destination,ctx);' \
+        'blast_events::protocol_lp_fees_claimed(self.id.to_inner(),protocol_destination,paid_meme,paid_quote,partner_meme,partner_quote);' \
+        <<<"$(vault_body claim_protocol_lp_fees_with_partner)" \
+    && [[ "$(awk -F'\t' '$1 == "FN" && $6 == 0 && index($10, "self.unpaid_protocol_") > 0 { print $2 }' <<<"$VAULT_FACTS" \
+        | LC_ALL=C sort | tr '\n' ' ')" == 'claim_protocol_lp_fees_with_partner pay_or_hold_protocol_lp_fees ' ]] \
+    && ! rg -q '\.partner_id\s*=' "$VAULT_SOURCE" || \
+    fail "Blast's share must wait only on a partnered vault, and only the permissionless partner claim may pay it: the partner its cut, then the live destination the rest"
 # A buyback takes the whole burn Quote only under the buyback-admin role, and burns only Meme that
 # reaches the admin's minimum; what the pool did not take goes back to wait.
 [[ "$(vault_body take_buyback_quote)" == 'assert!(self.burn_quote.value()>0,ENoBuybackQuote);self.burn_quote.withdraw_all()' ]] \
@@ -621,13 +645,14 @@ require_pattern "$VAULT_SOURCE" 'blast_fun_migrators::PackageVersion as Migrator
 require_exact_count '&AdminWitness<' 2 \
     "vault Launchpad authority must be exactly the protocol residual claim and the buyback" \
     <(production_section "$VAULT_SOURCE")
-require_errors "$VAULT_SOURCE" "vault must use sequential codes 0-5 for its residual, split, creator, liquidity, and buyback checks" <<'EOF'
+require_errors "$VAULT_SOURCE" "vault must use sequential codes 0-6 for its residual, split, creator, liquidity, buyback, and partner checks" <<'EOF'
 0 ENothingClaimable No protocol migration residuals are available to claim.
 1 EFeeSplitUnchanged Fee split proposal must differ from the current split.
 2 ENoCreatorFees No creator LP fees are available to claim.
 3 EZeroLiquidity Migration position must hold liquidity.
 4 ENoBuybackQuote No burn Quote is waiting to buy Meme back.
 5 EBuybackBelowMinimum Buyback must return at least the minimum Meme.
+6 EPartnerMismatch The partner is not the one the vault's launch named at creation.
 EOF
 
 # === Holder rewards ===

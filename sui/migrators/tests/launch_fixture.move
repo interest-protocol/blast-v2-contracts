@@ -53,6 +53,62 @@ public fun open_launch<Meme: drop, Quote, Witness: drop>(
     fee_split: FeeSplit,
     burnable: bool,
 ): (Launch<Meme, Quote>, Currency<Meme>) {
+    let (initializer, currency) = start_launch(
+        scenario,
+        otw,
+        version,
+        config,
+        witness,
+        fee_split,
+        burnable,
+    );
+
+    finalize_launch(initializer, currency, config, scenario)
+}
+
+/// Opens the fixture launch as `open_launch` does, naming `partner`, which `config` first accepts.
+public fun open_partnered_launch<Meme: drop, Quote, Witness: drop>(
+    scenario: &mut Scenario,
+    otw: Meme,
+    version: &PackageVersion,
+    config: &mut LaunchConfig,
+    witness: Witness,
+    fee_split: FeeSplit,
+    burnable: bool,
+    partner: &Partner,
+    clock: &Clock,
+): (Launch<Meme, Quote>, Currency<Meme>) {
+    config.add_partner(version, &blast_acl::witness_for_testing<FeeAdmin>(), partner);
+    let (mut initializer, currency) = start_launch(
+        scenario,
+        otw,
+        version,
+        config,
+        witness,
+        fee_split,
+        burnable,
+    );
+    initializer.set_partner(config, partner, clock);
+
+    finalize_launch(initializer, currency, config, scenario)
+}
+
+/// Returns the creator recipient of every fixture launch.
+public fun creator(): address {
+    CREATOR
+}
+
+/// Mints the ticket and starts the launch with every fixture setting, once the Coin Registry holds
+/// the currency.
+fun start_launch<Meme: drop, Quote, Witness: drop>(
+    scenario: &mut Scenario,
+    otw: Meme,
+    version: &PackageVersion,
+    config: &LaunchConfig,
+    witness: Witness,
+    fee_split: FeeSplit,
+    burnable: bool,
+): (LaunchInitializer<Meme, Quote>, Currency<Meme>) {
     let ticket = launch_ticket::new(
         otw,
         9,
@@ -67,7 +123,7 @@ public fun open_launch<Meme: drop, Quote, Witness: drop>(
     );
     let sender = scenario.sender();
     scenario.next_tx(sender);
-    let mut currency = scenario.take_from_address<Currency<Meme>>(COIN_REGISTRY);
+    let currency = scenario.take_from_address<Currency<Meme>>(COIN_REGISTRY);
     let mut initializer = launch::new<Meme, Quote, _>(
         ticket,
         version,
@@ -82,15 +138,21 @@ public fun open_launch<Meme: drop, Quote, Witness: drop>(
         allocation::plan(bps::new(8_000), bps::new(2_000), bps::new(10_000), vector[]),
     );
     initializer.set_lp_fee_split(fee_split);
+
+    (initializer, currency)
+}
+
+/// Finalizes the launch for the fixture's zero creation fee.
+fun finalize_launch<Meme, Quote>(
+    initializer: LaunchInitializer<Meme, Quote>,
+    mut currency: Currency<Meme>,
+    config: &LaunchConfig,
+    scenario: &mut Scenario,
+): (Launch<Meme, Quote>, Currency<Meme>) {
     let creation_fee = coin::zero(scenario.ctx());
     let launch = initializer.finalize(&mut currency, config, creation_fee, scenario.ctx());
 
     (launch, currency)
-}
-
-/// Returns the creator recipient of every fixture launch.
-public fun creator(): address {
-    CREATOR
 }
 
 // === Imports ===
@@ -102,10 +164,12 @@ use blast_fun::{
     blast_fun_domain::{AdapterAdmin, FeeAdmin, ListingAdmin},
     bps,
     creator_authority,
-    launch::{Self, Launch},
+    launch::{Self, Launch, LaunchInitializer},
     launch_config::LaunchConfig,
     launch_ticket,
     blast_fun::PackageVersion,
 };
 
-use sui::{coin, coin_registry::Currency, test_scenario::Scenario};
+use blast_partners::blast_partners::Partner;
+
+use sui::{clock::Clock, coin, coin_registry::Currency, test_scenario::Scenario};

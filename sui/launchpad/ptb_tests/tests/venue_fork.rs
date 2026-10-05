@@ -1893,7 +1893,7 @@ fn expected_fees(vault: &Vault, shares: (u64, u64), gross_meme: u64, gross_quote
         generation: vault.generation,
         gross_meme,
         gross_quote,
-        protocol_destination: LP_PROTOCOL.into(),
+        protocol_destination: Some(LP_PROTOCOL.into()),
         protocol_meme,
         protocol_quote,
         creator_meme: meme[0],
@@ -2051,7 +2051,8 @@ struct FeesCollected {
     generation: u64,
     gross_meme: u64,
     gross_quote: u64,
-    protocol_destination: SuiAddress,
+    /// None when a partnered vault holds Blast's share for the partner claim.
+    protocol_destination: Option<SuiAddress>,
     protocol_meme: u64,
     protocol_quote: u64,
     creator_meme: u64,
