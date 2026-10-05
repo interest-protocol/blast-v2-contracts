@@ -8,9 +8,9 @@ module blast_presale::creation_policy_tests;
 
 const PUBLISHER: address = @0xB1A57;
 
-/// Where the test partner is paid, and its share of Blast's fee: 40%.
+/// Where the test partner is paid, and its cut of Blast's fee: 40%.
 const PARTNER: address = @0x9A27;
-const PARTNER_SHARE_BPS: u64 = 4_000;
+const PARTNER_CUT_BPS: u64 = 4_000;
 
 /// When the administrator removes a partner in the removal tests.
 const REMOVED_AT_MS: u64 = 1_000;
@@ -470,9 +470,9 @@ fun admin_with_policy(ctx: &mut TxContext): (CreationPolicy, AdminRegistry, Admi
     (policy, admin_registry, admin_cap)
 }
 
-/// A registered Blast partner whose share is in force.
+/// A registered Blast partner whose cut of Blast's fee is in force.
 fun new_partner(ctx: &mut TxContext): Partner {
-    partners::new_for_testing(PARTNER, PARTNER_SHARE_BPS, ctx)
+    partners::new_for_testing(PARTNER, PARTNER_CUT_BPS, ctx)
 }
 
 fun clock_at(timestamp_ms: u64, ctx: &mut TxContext): Clock {

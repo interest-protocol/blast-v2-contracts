@@ -83,10 +83,10 @@ public struct RecipientPayout has copy, drop, store {
 }
 
 /// How every collected LP fee is split: each recipient's share, then the holder-reward share.
-/// Only `fee_split` builds one, so wherever a split is held its shares total exactly 10,000 BPS
-/// and every fee it apportions is assigned in full.
+/// Only `fee_split` builds one, so wherever a split is held its rates total exactly 10,000 BPS and
+/// every fee it apportions is assigned in full.
 public struct FeeSplit has copy, drop, store {
-    shares: vector<RecipientShare>,
+    fee_recipients: vector<RecipientShare>,
     holder_rewards_bps: Bps,
 }
 
@@ -105,9 +105,9 @@ public struct Commitment has copy, drop, store {
 /// Presale, LP, Blast, and additional recipient allocations stay escrowed until
 /// a funded migration atomically releases them. Blast's rates are snapshotted
 /// at creation, the AdminCap may change them until the window starts, and its
-/// shares are paid only on migration, or, when the sale names a Blast partner,
+/// fees are paid only on migration, or, when the sale names a Blast partner,
 /// held from migration until `pay_protocol_fees_with_partner` pays the partner its cut of Blast's
-/// raise share. If the raise is missed, every commitment
+/// raise fee. If the raise is missed, every commitment
 /// is refunded. Anyone may migrate a funded sale until it is cancelled; once LP
 /// is still unmigrated at its deadline, anyone may cancel it so every
 /// commitment becomes refundable. Under participant vesting, each claim locks the
@@ -143,10 +143,11 @@ public struct Presale<phantom SaleToken, phantom Quote> has key {
     protocol_fees: ProtocolFees,
     protocol_quote: u64,
     protocol_tokens: Balance<SaleToken>,
-    /// The Blast partner named at creation, paid its share of Blast's raise share. It never changes
+    /// The Blast partner named at creation, paid its cut of Blast's raise fee. It never changes
     /// once the sale is shared.
     partner_id: Option<ID>,
-    /// Blast's raise share, held from a partnered sale's migration until `pay_protocol_fees_with_partner` splits it.
+    /// Blast's raise fee, held from a partnered sale's migration until
+    /// `pay_protocol_fees_with_partner` splits it.
     unpaid_protocol_quote: Option<Balance<Quote>>,
 }
 
@@ -240,15 +241,15 @@ public fun vesting_terms(cliff_ms: u64, period_ms: u64, periods: u64): VestingTe
 /// The LP-fee split a sale and its vault pay collected fees under: at most `MAX_FEE_RECIPIENTS`
 /// distinct unvested recipients whose shares total exactly 10,000 BPS with the holder-reward
 /// share. The creator takes its LP fees as one of the recipients.
-public fun fee_split(shares: vector<RecipientShare>, holder_rewards_bps: Bps): FeeSplit {
+public fun fee_split(fee_recipients: vector<RecipientShare>, holder_rewards_bps: Bps): FeeSplit {
     assert!(
-        valid_shares(&shares, MAX_FEE_RECIPIENTS)
-            && shares.all!(|share| share.vesting.is_none())
-            && total_bps(&shares) + holder_rewards_bps.value() == bps::denominator(),
+        valid_shares(&fee_recipients, MAX_FEE_RECIPIENTS)
+            && fee_recipients.all!(|fee_recipient| fee_recipient.vesting.is_none())
+            && total_bps(&fee_recipients) + holder_rewards_bps.value() == bps::denominator(),
         EInvalidFeeSplit,
     );
 
-    FeeSplit { shares, holder_rewards_bps }
+    FeeSplit { fee_recipients, holder_rewards_bps }
 }
 
 /// Mints and apportions the complete token supply, then irreversibly makes it
@@ -365,8 +366,8 @@ public fun new<SaleToken, Quote, MigrationWitness: drop>(
         migration_witness,
         tick_spacing,
         pool_fee_rate,
-        fee_recipients: fee_split.shares.recipients(),
-        fee_recipient_bps: fee_split.shares.bps(),
+        fee_recipients: fee_split.fee_recipients.recipients(),
+        fee_recipient_bps: fee_split.fee_recipients.bps(),
         holder_rewards_bps: fee_split.holder_rewards_bps.value(),
         protocol_raise_bps: protocol_fees.raise_bps().value(),
         protocol_token_bps: protocol_fees.token_bps().value(),
@@ -412,8 +413,8 @@ public fun new<SaleToken, Quote, MigrationWitness: drop>(
 }
 
 /// Names the sale's Blast partner, one the `CreationPolicy` lets new presales name, before `share`
-/// fixes it for good. The partner earns its share of Blast's raise share, and of nothing else:
-/// migration holds Blast's shares, and `pay_protocol_fees_with_partner` pays them.
+/// fixes it for good. The partner earns its cut of Blast's raise fee, and of nothing else:
+/// migration holds Blast's fees, and `pay_protocol_fees_with_partner` pays them.
 public fun set_partner<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
     creation_policy: &CreationPolicy,
@@ -657,7 +658,8 @@ public fun claim<SaleToken, Quote>(
 /// recipient's tokens at once, locking each vesting share in its own shared irrevocable
 /// schedule starting now, then releases the rest of the raise and the
 /// LP-token allocation only to the configured migrator, the holder of the witness the sale was
-/// created with. A sale naming a Blast partner holds Blast's shares instead, for `pay_protocol_fees_with_partner`.
+/// created with. A sale naming a Blast partner holds Blast's fees instead, for
+/// `pay_protocol_fees_with_partner`.
 /// Anyone may call that migrator at any time until the sale is cancelled; its pool creation
 /// remains atomic with this state transition.
 public fun migrate<SaleToken, Quote, MigrationWitness: drop>(
@@ -694,10 +696,10 @@ public fun migrate<SaleToken, Quote, MigrationWitness: drop>(
     (liquidity_tokens, quote)
 }
 
-/// Pays a migrated sale's Blast partner its share of Blast's raise share, rounded down so Blast
-/// keeps the remainder, and pays Blast the rest of it and its token share at the `FeePolicy`'s
-/// current destination. The partner's share is the one in force now. Anyone may call it once
-/// after migration: both recipients are fixed.
+/// Pays a migrated sale's Blast partner its cut of Blast's raise fee, rounded down so Blast keeps
+/// the remainder, and pays Blast the rest of it and its token fee at the `FeePolicy`'s current
+/// destination. The cut is the partner's `blast_partners` rate in force now. Anyone may call it
+/// once after migration: both recipients are fixed.
 public fun pay_protocol_fees_with_partner<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
     fee_policy: &FeePolicy,
@@ -750,15 +752,15 @@ public(package) fun vault_config<SaleToken, Quote>(
 /// fractional remainders; equal remainders favor the earlier share, so fee recipients
 /// win ties over the holder-reward share and earlier recipients over later ones.
 public(package) fun apportion_fee(self: &FeeSplit, amount: u64): vector<u64> {
-    let mut shares = self.shares.map_ref!(|share| share.bps);
-    shares.push_back(self.holder_rewards_bps);
+    let mut split_bps = self.fee_recipients.map_ref!(|fee_recipient| fee_recipient.bps);
+    split_bps.push_back(self.holder_rewards_bps);
 
-    apportion(shares, amount)
+    apportion(split_bps, amount)
 }
 
-/// Each fee recipient's share, in payment order.
-public(package) fun shares(self: &FeeSplit): &vector<RecipientShare> {
-    &self.shares
+/// Each fee recipient and its rate, in payment order.
+public(package) fun fee_recipients(self: &FeeSplit): &vector<RecipientShare> {
+    &self.fee_recipients
 }
 
 /// The holder-reward share of every collected fee.
@@ -1273,8 +1275,8 @@ fun is_last_claim<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): bool {
 
 // Migration
 
-/// Pays Blast its raise share at `destination` now, or, when the sale names a partner, holds it
-/// and Blast's tokens for `pay_protocol_fees_with_partner`.
+/// Pays Blast its raise fee at `destination` now, or, when the sale names a partner, holds it and
+/// Blast's tokens for `pay_protocol_fees_with_partner`.
 fun pay_or_hold_protocol_fees<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
     protocol_quote: Balance<Quote>,
@@ -1286,8 +1288,8 @@ fun pay_or_hold_protocol_fees<SaleToken, Quote>(
     self.pay_protocol_fees(protocol_quote, 0, destination, ctx)
 }
 
-/// Pays Blast `protocol_quote`, what it keeps of its raise share after its partner's
-/// `partner_quote`, and its share of the supply at `destination`.
+/// Pays Blast `protocol_quote`, what it keeps of its raise fee after its partner's
+/// `partner_quote`, and its token fee at `destination`.
 fun pay_protocol_fees<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
     mut protocol_quote: Balance<Quote>,
@@ -1647,7 +1649,8 @@ public fun protocol_fees_paid_partner_quote<SaleToken, Quote>(
 }
 
 #[test_only]
-/// Blast's raise share a partnered migration holds for `pay_protocol_fees_with_partner`, if it still does.
+/// Blast's raise fee a partnered migration holds for `pay_protocol_fees_with_partner`, if it
+/// still does.
 public fun unpaid_protocol_quote_for_testing<SaleToken, Quote>(
     self: &Presale<SaleToken, Quote>,
 ): Option<u64> {
@@ -1773,8 +1776,8 @@ public struct PresaleMigrated<phantom SaleToken, phantom Quote> has copy, drop {
     recipient_tokens: u64,
 }
 
-/// Blast received `quote` of its raise share and its `tokens` at `destination`, after the sale's
-/// Blast partner took `partner_quote` of the raise share, which `PartnerPaid` also records.
+/// Blast received `quote` of its raise fee and its `tokens` at `destination`, after the sale's
+/// Blast partner took `partner_quote` of the raise fee, which `PartnerPaid` also records.
 public struct ProtocolFeesPaid<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
     destination: address,

@@ -60,9 +60,9 @@ const VESTING_PERIODS: u64 = 4;
 const VESTING_DURATION_MS: u64 = VESTING_PERIOD_MS * VESTING_PERIODS;
 const MAX_VESTING_DURATION_MS: u64 = 1 << 63;
 
-/// Where the Blast partner is paid, and its share of Blast's raise share: 40%.
+/// Where the Blast partner is paid, and its cut of Blast's raise fee: 40%.
 const PARTNER_RECIPIENT: address = @0x9A27;
-const PARTNER_SHARE_BPS: u64 = 4_000;
+const PARTNER_CUT_BPS: u64 = 4_000;
 
 // === Test-Only Types ===
 
@@ -1601,11 +1601,11 @@ fun vesting_terms_stay_within_the_technical_bound() {
 
 #[test]
 /// A sale naming a Blast partner releases the same raise and LP as any sale, but its migration
-/// holds Blast's shares. `pay_protocol_fees_with_partner` then pays the partner its cut of Blast's raise share only,
-/// and Blast the rest of it and its whole token share; claims are unchanged.
-fun a_partnered_sale_pays_its_partner_a_cut_of_blasts_raise_share_only() {
+/// holds Blast's fees. `pay_protocol_fees_with_partner` then pays the partner its cut of Blast's
+/// raise fee only, and Blast the rest of it and its whole token fee; claims are unchanged.
+fun a_partnered_sale_pays_its_partner_a_cut_of_blasts_raise_fee_only() {
     let mut ctx = tx_context::dummy();
-    let partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
+    let partner = new_partner(PARTNER_CUT_BPS, &mut ctx);
     let mut fixture = start_partnered_sale(&partner);
 
     assert_eq!(fixture.migrate(), vector[LIQUIDITY_TOKENS, 767]);
@@ -1640,12 +1640,13 @@ fun a_partnered_sale_pays_its_partner_a_cut_of_blasts_raise_share_only() {
 }
 
 #[test]
-/// The partner is paid the share in force when `pay_protocol_fees_with_partner` runs, not the one at creation.
-fun the_partner_is_paid_its_share_in_force_at_payment() {
+/// The partner is paid the cut in force when `pay_protocol_fees_with_partner` runs, not the one at
+/// creation.
+fun the_partner_is_paid_its_cut_in_force_at_payment() {
     let mut ctx = tx_context::dummy();
     let partner = partners::new_scheduled_for_testing(
         PARTNER_RECIPIENT,
-        PARTNER_SHARE_BPS,
+        PARTNER_CUT_BPS,
         8_000,
         LIQUIDITY_DEADLINE_MS,
         &mut ctx,
@@ -1666,9 +1667,9 @@ fun the_partner_is_paid_its_share_in_force_at_payment() {
 }
 
 #[test]
-/// A partner whose share is zero is paid nothing and emits no `PartnerPaid`; Blast keeps its
-/// whole raise share.
-fun a_zero_share_partner_is_paid_nothing() {
+/// A partner whose cut is zero is paid nothing and emits no `PartnerPaid`; Blast keeps its whole
+/// raise fee.
+fun a_zero_cut_partner_is_paid_nothing() {
     let mut ctx = tx_context::dummy();
     let partner = new_partner(0, &mut ctx);
     let mut fixture = start_partnered_sale(&partner);
@@ -1695,7 +1696,7 @@ fun a_zero_share_partner_is_paid_nothing() {
 fun a_sale_cannot_name_a_partner_blast_has_not_accepted() {
     let mut ctx = tx_context::dummy();
     let clock = clock::create_for_testing(&mut ctx);
-    let partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
+    let partner = new_partner(PARTNER_CUT_BPS, &mut ctx);
     let fee_policy = fee_policy::new_for_testing(&mut ctx);
     let creation_policy = creation_policy::allowing_for_testing<QUOTE, TEST_MIGRATOR>(&mut ctx);
     let (treasury_cap, mut currency) = new_currency(&mut ctx);
@@ -1717,7 +1718,7 @@ fun a_sale_cannot_name_a_partner_blast_has_not_accepted() {
 /// Sharing a sale fixes its partner: nobody can name or change one afterward.
 fun a_shared_sales_partner_cannot_change() {
     let mut ctx = tx_context::dummy();
-    let partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
+    let partner = new_partner(PARTNER_CUT_BPS, &mut ctx);
     let mut fixture = start_partnered_sale(&partner);
     fixture.scenario.next_tx(KEEPER);
     let mut sale = fixture.take_presale();
@@ -1732,7 +1733,7 @@ fun a_shared_sales_partner_cannot_change() {
 /// A funded sale that has not migrated owes its partner nothing: it may still be refunded.
 fun a_partner_cannot_be_paid_before_migration() {
     let mut ctx = tx_context::dummy();
-    let partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
+    let partner = new_partner(PARTNER_CUT_BPS, &mut ctx);
     let mut fixture = start_partnered_sale(&partner);
 
     fixture.pay_protocol_fees_with_partner(KEEPER, &partner);
@@ -1744,7 +1745,7 @@ fun a_partner_cannot_be_paid_before_migration() {
 /// A partnered sale pays Blast and its partner once.
 fun a_partner_is_paid_once() {
     let mut ctx = tx_context::dummy();
-    let partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
+    let partner = new_partner(PARTNER_CUT_BPS, &mut ctx);
     let mut fixture = start_partnered_sale(&partner);
     fixture.migrate();
     fixture.pay_protocol_fees_with_partner(KEEPER, &partner);
@@ -1758,8 +1759,8 @@ fun a_partner_is_paid_once() {
 /// Only the partner the sale named is paid, checked before anything is owed.
 fun another_partner_cannot_be_paid() {
     let mut ctx = tx_context::dummy();
-    let partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
-    let other_partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
+    let partner = new_partner(PARTNER_CUT_BPS, &mut ctx);
+    let other_partner = new_partner(PARTNER_CUT_BPS, &mut ctx);
     let mut fixture = start_partnered_sale(&partner);
 
     fixture.pay_protocol_fees_with_partner(KEEPER, &other_partner);
@@ -1771,7 +1772,7 @@ fun another_partner_cannot_be_paid() {
 /// A sale without a partner pays Blast at migration and never pays a partner.
 fun an_unpartnered_sale_pays_no_partner() {
     let mut ctx = tx_context::dummy();
-    let partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
+    let partner = new_partner(PARTNER_CUT_BPS, &mut ctx);
     let mut fixture = start_funded_sale();
     fixture.migrate();
 
@@ -1785,7 +1786,7 @@ fun an_unpartnered_sale_pays_no_partner() {
 /// refundable and Blast's tokens stay locked with the rest of the supply.
 fun a_cancelled_partnered_sale_pays_no_partner() {
     let mut ctx = tx_context::dummy();
-    let partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
+    let partner = new_partner(PARTNER_CUT_BPS, &mut ctx);
     let mut fixture = start_partnered_sale(&partner);
     fixture.set_time(LIQUIDITY_DEADLINE_MS);
     fixture.cancel_unlaunched(KEEPER);
@@ -1797,11 +1798,11 @@ fun a_cancelled_partnered_sale_pays_no_partner() {
 }
 
 #[test]
-/// Under a zero raise rate the partner has nothing to share, but the payout still releases Blast's
+/// Under a zero raise rate the partner has nothing to take, but the payout still releases Blast's
 /// tokens, which the partnered migration held.
 fun a_zero_raise_rate_partnered_sale_pays_blast_its_tokens() {
     let mut ctx = tx_context::dummy();
-    let partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
+    let partner = new_partner(PARTNER_CUT_BPS, &mut ctx);
     let mut fixture = share_partnered_sale(&partner, START_MS, 0);
     fixture.fund_partnered_sale();
 
@@ -1824,10 +1825,10 @@ fun a_zero_raise_rate_partnered_sale_pays_blast_its_tokens() {
 
 #[test]
 /// A rate the AdminCap sets before the start is the one a partnered migration holds: the partner
-/// is paid its cut of Blast's new raise share.
+/// is paid its cut of Blast's new raise fee.
 fun a_partnered_sale_holds_the_rates_set_before_its_start() {
     let mut ctx = tx_context::dummy();
-    let partner = new_partner(PARTNER_SHARE_BPS, &mut ctx);
+    let partner = new_partner(PARTNER_CUT_BPS, &mut ctx);
     let mut fixture = share_partnered_sale(&partner, SCHEDULED_AT_MS, PROTOCOL_RAISE_BPS);
     fixture.set_protocol_fees(vector[1_000, 250, 0, 0]);
     fixture.fund_partnered_sale();
@@ -1859,9 +1860,10 @@ fun an_lp_rate_change_keeps_blasts_raise_and_token_amounts() {
         PROTOCOL_TOKEN_BPS,
         FEE_PAYING_RECIPIENT_B_BPS,
     );
-    // 1,000 * [335, 9,665] / 10,000 = [33.5, 966.5]: the tie gives Blast, the earlier share, 34.
-    let (_, created_quote, created_tokens) = only_event<PresaleCreated<BLAST_PRESALE_TESTS, QUOTE>>()
-        .created_protocol_fields();
+    // 1,000 * [335, 9,665] / 10,000 = [33.5, 966.5]: the tie gives Blast, the earlier rate, 34.
+    let (_, created_quote, created_tokens) = only_event<
+        PresaleCreated<BLAST_PRESALE_TESTS, QUOTE>,
+    >().created_protocol_fields();
     assert_eq!(vector[created_quote, created_tokens], vector[34, PROTOCOL_TOKENS]);
 
     fixture.set_protocol_fees(vector[335, PROTOCOL_TOKEN_BPS, 100, 0]);
@@ -2202,9 +2204,9 @@ fun accepting_partner(partner: &Partner, ctx: &mut TxContext): CreationPolicy {
     creation_policy
 }
 
-/// A Blast partner paid at `PARTNER_RECIPIENT` whose `share_bps` is in force.
-fun new_partner(share_bps: u64, ctx: &mut TxContext): Partner {
-    partners::new_for_testing(PARTNER_RECIPIENT, share_bps, ctx)
+/// A Blast partner paid at `PARTNER_RECIPIENT` whose cut, `cut_bps` of Blast's fee, is in force.
+fun new_partner(cut_bps: u64, ctx: &mut TxContext): Partner {
+    partners::new_for_testing(PARTNER_RECIPIENT, cut_bps, ctx)
 }
 
 /// A fee policy paying `TREASURY`, charging the given raise and token rates and no LP-fee share.
@@ -2782,16 +2784,21 @@ fun migrate(self: &mut Fixture): vector<u64> {
     released
 }
 
-/// Has `sender` pay the sale's partner and Blast the shares its migration held.
+/// Has `sender` pay the sale's partner and Blast the fees its migration held.
 fun pay_protocol_fees_with_partner(self: &mut Fixture, sender: address, partner: &Partner) {
     self.next_tx!(sender, |fixture| {
         let mut sale = fixture.take_presale();
-        sale.pay_protocol_fees_with_partner(&fixture.fee_policy, partner, &fixture.clock, fixture.ctx!());
+        sale.pay_protocol_fees_with_partner(
+            &fixture.fee_policy,
+            partner,
+            &fixture.clock,
+            fixture.ctx!(),
+        );
         fixture.return_presale(sale);
     });
 }
 
-/// Blast's raise share the sale holds for `pay_protocol_fees_with_partner`, if it still does.
+/// Blast's raise fee the sale holds for `pay_protocol_fees_with_partner`, if it still does.
 fun unpaid_protocol_quote(self: &mut Fixture): Option<u64> {
     let mut unpaid = vector[];
     self.next_tx!(KEEPER, |fixture| {

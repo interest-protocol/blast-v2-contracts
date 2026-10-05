@@ -117,8 +117,8 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
         pool_id,
         position_id: object::id(&position),
         liquidity,
-        fee_recipients: fee_split.shares().recipients(),
-        fee_recipient_bps: fee_split.shares().bps(),
+        fee_recipients: fee_split.fee_recipients().recipients(),
+        fee_recipient_bps: fee_split.fee_recipients().bps(),
         holder_rewards_bps: fee_split.holder_rewards_bps().value(),
         protocol_lp_fee_meme_bps: protocol_fees.lp_fee_meme_bps().value(),
         protocol_lp_fee_quote_bps: protocol_fees.lp_fee_quote_bps().value(),
@@ -161,9 +161,11 @@ public(package) fun split_fees<Meme, Quote>(
     let protocol_meme = self.protocol_fees.lp_fee_meme_bps().apply_up(gross_meme);
     let protocol_quote = self.protocol_fees.lp_fee_quote_bps().apply_up(gross_quote);
     let protocol_destination = fee_policy.destination();
-    let (fee_recipient_meme, holder_rewards_meme) = self.fee_shares(gross_meme - protocol_meme);
-    let (fee_recipient_quote, holder_rewards_quote) = self.fee_shares(gross_quote - protocol_quote);
-    let recipients = self.fee_split.shares().recipients();
+    let (fee_recipient_meme, holder_rewards_meme) = self.fee_amounts(gross_meme - protocol_meme);
+    let (fee_recipient_quote, holder_rewards_quote) = self.fee_amounts(
+        gross_quote - protocol_quote,
+    );
+    let recipients = self.fee_split.fee_recipients().recipients();
 
     meme.pay(protocol_meme, protocol_destination, ctx);
     quote.pay(protocol_quote, protocol_destination, ctx);
@@ -239,13 +241,13 @@ public(package) fun restore_holder_rewards<Meme, Quote>(
 
 // === Private Functions ===
 
-/// Splits `amount` under the creation-time BPS into each fee recipient's share and the
-/// holder-reward share.
-fun fee_shares<Meme, Quote>(self: &PresaleVault<Meme, Quote>, amount: u64): (vector<u64>, u64) {
-    let mut shares = self.fee_split.apportion_fee(amount);
-    let rewards = shares.pop_back();
+/// Splits `amount` under the creation-time BPS into each fee recipient's amount and the
+/// holder-reward amount.
+fun fee_amounts<Meme, Quote>(self: &PresaleVault<Meme, Quote>, amount: u64): (vector<u64>, u64) {
+    let mut recipient_amounts = self.fee_split.apportion_fee(amount);
+    let holder_rewards = recipient_amounts.pop_back();
 
-    (shares, rewards)
+    (recipient_amounts, holder_rewards)
 }
 
 // === Test-Only Functions ===

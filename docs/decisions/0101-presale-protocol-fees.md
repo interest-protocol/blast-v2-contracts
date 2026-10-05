@@ -8,8 +8,8 @@
 - Amended: 2026-10-04 (owner decision): the `AdminCap` may change all four of one sale's rates
   until its window starts
 - Amended by: [0106](0106-presale-partners.md): a sale naming a Blast partner holds Blast's
-  shares from migration until a permissionless `pay_protocol_fees_with_partner` pays the partner
-  its cut of the raise share and Blast the rest
+  fees from migration until a permissionless `pay_protocol_fees_with_partner` pays the partner
+  its cut of the raise fee and Blast the rest
 - Amended: 2026-10-05 (presale audit): a per-sale update keeps Blast's raise or token amount when
   that rate is unchanged, so an LP-fee-only update no longer re-rounds creation's apportionment
 
