@@ -7,7 +7,7 @@ module blast_aftermath_dao_presale::blast_aftermath_dao_presale_tests;
 // === Constants ===
 
 /// The package's compiled treasury, which receives the AdminCap at publication.
-const TREASURY: address = @0x1dd93b4bb9a733c30da8a3c4a49177ab3ab4ab4a602a89a72b24f63b68e53534;
+const TREASURY: address = @0x37cf46b499f740e653644bd2f7a8ed97f248e8b3c69d5d12c97d7845a54c0cd8;
 const NEW_TREASURY: address = @0x7EA6;
 const PUBLISHER: address = @0xB1A57;
 const POOL: address = @0xF00;

@@ -57,14 +57,13 @@ fee or recipient, and it changes how sales not yet migrated reach Aftermath.
 1. Publish the `blast_presale` generation whose `new` and `migrate` are public;
    the live dependency-only generation cannot gain them. Its `Published.toml`
    then names the address this package links to.
-2. Confirm `TREASURY` in `sources/blast_aftermath_dao_presale.move`.
-3. Run `scripts/verify.sh` and `node scripts/check_mainnet_abi.mjs`. The ABI
+2. Run `scripts/verify.sh` and `node scripts/check_mainnet_abi.mjs`. The ABI
    gate fails on any newer Aftermath revision until it is reviewed.
-4. Run `scripts/publish.sh --preview`, then `--execute`.
-5. With the presale `AdminCap`, call `creation_policy::set_migration_witness_allowed`
+3. Run `scripts/publish.sh --preview`, then `--execute`.
+4. With the presale `AdminCap`, call `creation_policy::set_migration_witness_allowed`
    for `<package>::blast_aftermath_dao_presale::Witness`, and allow the sale's
    Quote type.
-6. Before the first sale migrates, prove a mainnet dev-inspect of `migrate` with a
+5. Before the first sale migrates, prove a mainnet dev-inspect of `migrate` with a
    fresh LP coin for both coin orders: the local stubs prove types, not behavior.
 
 `migrate` takes Aftermath's shared `PoolRegistry`

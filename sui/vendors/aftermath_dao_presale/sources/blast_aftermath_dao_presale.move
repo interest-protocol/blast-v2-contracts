@@ -292,7 +292,7 @@ public struct TreasuryChanged has copy, drop {
 // === Constants ===
 
 /// Receives the `AdminCap` and, until the cap moves it, every claimed fee.
-const TREASURY: address = @0x1dd93b4bb9a733c30da8a3c4a49177ab3ab4ab4a602a89a72b24f63b68e53534;
+const TREASURY: address = @0x37cf46b499f740e653644bd2f7a8ed97f248e8b3c69d5d12c97d7845a54c0cd8;
 
 /// The DAO fee, 2%, that Aftermath sends to `Config` from every swap, deposit, and withdrawal.
 const DAO_FEE_BPS: u16 = 200;
