@@ -199,8 +199,8 @@ Shared singletons, created once at deployment (`PackageAdmin` by
 - `fee_policy::FeePolicy`: Blast's current rates (`raise_bps`, `token_bps`, `lp_fee_meme_bps`,
   `lp_fee_quote_bps`, held in a `fee_policy::ProtocolFees`) that new sales snapshot, and the
   `destination` address every Blast payout goes to.
-- `creation_policy::CreationPolicy`: the allowlists checked once, when a sale is created: Quote
-  types, migrator witnesses, and Blast partners a sale may name.
+- `creation_policy::CreationPolicy`: the allowlists checked once, when a sale, or a vault without
+  a presale, is created: Quote types, migrator witnesses, and Blast partners a sale may name.
 - `blast_presale_admin::AdminRegistry`: records the one `blast_presale_admin::AdminCap` the package
   accepts.
 - `blast_presale::venue_config::VenueConfig`: holds each Cetus sale's reserved pool-creation
@@ -5115,7 +5115,7 @@ public fun collect_fees<Meme, Quote, CoinA, CoinB>(
 
 ### `blast_presale::creation_policy`
 
-Blast's allowlists for new presales: the Quote coins a sale may raise, the migrators, in this package or another, that may create one, and the Blast partners a sale may name.  A presale is checked once, when it is created. Later changes apply only to later sales, so a delisting never strands a live sale's commitments, blocks its migration, or stops paying its partner.
+Blast's allowlists for new presales and new vaults without a presale: the Quote coins a sale may raise or a vault may hold, the migrators, in this package or another, that may create a sale or, for this package's venues, such a vault, and the Blast partners a sale may name.  A presale or vault is checked once, when it is created. Later changes apply only to later sales, so a delisting never strands a live sale's commitments, blocks its migration, or stops paying its partner.
 
 Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/presale/sources/creation_policy.move
 
@@ -5137,7 +5137,8 @@ public struct PartnerKey(ID) has copy, drop, store;
 #### Functions
 
 ```move
-/// Allows or disallows `Quote` for presales created afterward; existing sales keep it.
+/// Allows or disallows `Quote` for presales and vaults without a presale created afterward;
+/// existing ones keep it.
 public fun set_quote_allowed<Quote>(
     self: &mut CreationPolicy,
     admin_registry: &blast_presale_admin::AdminRegistry,
@@ -5145,8 +5146,8 @@ public fun set_quote_allowed<Quote>(
     allowed: bool,
 )
 
-/// Allows or disallows the migrator identified by `MigrationWitness` to create presales
-/// afterward; existing sales still migrate through it.
+/// Allows or disallows the migrator identified by `MigrationWitness` to create presales, and its
+/// venue vaults without a presale, afterward; existing sales still migrate through it.
 ///
 /// `presale::new` and `presale::migrate` are public, so whoever can construct an allowed witness
 /// can open sales and release their liquidity. Allow only a struct whose defining module is the

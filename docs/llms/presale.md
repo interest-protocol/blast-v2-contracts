@@ -29,8 +29,8 @@ Shared singletons, created once at deployment (`PackageAdmin` by
 - `fee_policy::FeePolicy`: Blast's current rates (`raise_bps`, `token_bps`, `lp_fee_meme_bps`,
   `lp_fee_quote_bps`, held in a `fee_policy::ProtocolFees`) that new sales snapshot, and the
   `destination` address every Blast payout goes to.
-- `creation_policy::CreationPolicy`: the allowlists checked once, when a sale is created: Quote
-  types, migrator witnesses, and Blast partners a sale may name.
+- `creation_policy::CreationPolicy`: the allowlists checked once, when a sale, or a vault without
+  a presale, is created: Quote types, migrator witnesses, and Blast partners a sale may name.
 - `blast_presale_admin::AdminRegistry`: records the one `blast_presale_admin::AdminCap` the package
   accepts.
 - `blast_presale::venue_config::VenueConfig`: holds each Cetus sale's reserved pool-creation
