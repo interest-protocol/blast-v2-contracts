@@ -2,12 +2,12 @@
 
 > Everything an integrator needs to understand and call Blast's Sui Move contracts: a bonding-curve launchpad whose graduated coins migrate into Cetus or Bluefin pools, standalone overflow presales, partner fee codes, Boost leverage coins on Aftermath perpetuals, and the funSUI/blastSUI staking vault. Sui mainnet only.
 
-This file is self-contained. Give it to an AI agent and ask it anything about Blast's contracts.
+This file is self-contained. Give it to an AI agent and ask it anything about Blast's contracts. An agent that needs one product can take that product's smaller file instead: [Presale](https://github.com/interest-protocol/blast-v2-contracts/blob/main/llms/presale.txt), [Launchpad](https://github.com/interest-protocol/blast-v2-contracts/blob/main/llms/launchpad.txt), [Partner codes](https://github.com/interest-protocol/blast-v2-contracts/blob/main/llms/partners.txt), [Boosts](https://github.com/interest-protocol/blast-v2-contracts/blob/main/llms/boosts.txt), [blastSUI and funSUI](https://github.com/interest-protocol/blast-v2-contracts/blob/main/llms/blast-sui.txt), [Administration](https://github.com/interest-protocol/blast-v2-contracts/blob/main/llms/admin.txt).
 
 How it is organized:
 
-1. **Packages and deployment status**: every package, whether it is live on Sui mainnet, and its IDs.
-2. **Guides**: how each product works end to end, starting with the calling conventions every product shares. Use them for behavior, flows, economics, and pitfalls.
+1. **Packages and deployment status**: each package, whether it is live on Sui mainnet, and its IDs.
+2. **Guides**: how each product works end to end, starting with the calling conventions every product shares. Each product guide opens with its deployment status. Use them for behavior, flows, economics, and pitfalls.
 3. **API reference**: generated from the Move source. Every public function and type with its doc comment, every event, every abort code, and the package constants. Use it for exact signatures and field layouts.
 
 When the guides and the reference disagree, the reference is right: it is generated from the source on every change. When this file does not say a behavior exists, treat it as unsupported. Source for every module is linked from the reference ([repository](https://github.com/interest-protocol/blast-v2-contracts)).
@@ -167,6 +167,8 @@ test address. Try a transaction with a mainnet simulation (dev-inspect or dry
 run) before signing it.
 
 ## Presale
+
+> **Deployment status:** `blast_presale` is live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package. `blast_aftermath_dao_presale` is not yet published on mainnet; its interface may change before publication.
 
 ### What it is
 
@@ -987,6 +989,8 @@ cannot change. On the Aftermath vendor route, the LP coin is sent to `0x0`.
 
 ## Launchpad
 
+> **Deployment status:** `blast_fun` is not yet published on mainnet; its interface may change before publication.
+
 ### What it is
 
 The Blast launchpad (package `blast_fun`) launches a new coin on a bonding curve. A creator
@@ -1694,6 +1698,8 @@ never reaches its target stays `Live`, and holders exit by selling to the curve.
 
 ## Migration and LP vaults
 
+> **Deployment status:** `blast_fun_migrators` is not yet published on mainnet; its interface may change before publication.
+
 ### What it is
 
 A Blast launch trades on a bonding curve until the curve fills and the launch becomes
@@ -2379,6 +2385,8 @@ its share in force at that moment, rounded down, and Blast's destination the res
 
 ## Partner codes
 
+> **Deployment status:** `blast_partners` is not yet published on mainnet; its interface may change before publication.
+
 ### What it is
 
 A partner code lets an app that brings flow to Blast earn a share of the fee
@@ -2676,6 +2684,8 @@ your own fee in your own PTB commands (split it from the user's coin and send it
 where you like); Blast takes no cut of it.
 
 ## Boosts
+
+> **Deployment status:** `blast_boosts_core`, `blast_boosts_products` and `blast_boosts_aftermath` are live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package.
 
 ### What it is
 
@@ -3461,6 +3471,8 @@ holders can claim what remains.
 
 ## blastSUI and funSUI
 
+> **Deployment status:** `blast_sui` is not yet published on mainnet; its interface may change before publication.
+
 ### What it is
 
 Package `blast_sui` is a liquid-staking vault that delegates its SUI to the
@@ -3893,6 +3905,8 @@ event snapshot or a dev-inspected `sync`.
 and those shares keep their pro-rata part of the vault forever.
 
 ## Administration
+
+> **Deployment status:** `blast_admin` is not yet published on mainnet; its interface may change before publication.
 
 ### What it is
 

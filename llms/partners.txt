@@ -1,0 +1,930 @@
+# Blast contracts: Partner codes integrator reference
+
+> Everything an integrator needs to understand and call partner codes on Sui: an app registers a code and earns a share of Blast's fee on the launchpad, presale, and Boost flow it brings. Sui mainnet only.
+
+This file is self-contained: give it to an AI agent and ask it anything about Partner codes. It also covers the packages its calls depend on: `blast_admin`. Other products are in [llms-full.txt](https://github.com/interest-protocol/blast-v2-contracts/blob/main/llms-full.txt), which joins every product in one file.
+
+How it is organized:
+
+1. **Packages and deployment status**: each package, whether it is live on Sui mainnet, and its IDs.
+2. **Guides**: how each product works end to end, starting with the calling conventions every product shares. Each product guide opens with its deployment status. Use them for behavior, flows, economics, and pitfalls.
+3. **API reference**: generated from the Move source. Every public function and type with its doc comment, every event, every abort code, and the package constants. Use it for exact signatures and field layouts.
+
+When the guides and the reference disagree, the reference is right: it is generated from the source on every change. When this file does not say a behavior exists, treat it as unsupported. Source for every module is linked from the reference ([repository](https://github.com/interest-protocol/blast-v2-contracts)).
+
+Conventions: amounts are atomic units of the coin named; rates are basis points (BPS) out of 10,000; times are Unix milliseconds from Sui's shared `Clock` at `0x6`. Types are written as Move: `module::Type` names a type in another module of the same package, `package::module::Type` one in another Blast package, and well-known Sui framework types appear bare.
+
+## Packages and deployment status
+
+Call a live package at its package ID (`published-at`). Types and events are named by the package that first defined them (`original-id`), which stays the same across upgrades.
+
+| Package | Product | Status | Package ID (`published-at`) | Type origin (`original-id`) |
+| --- | --- | --- | --- | --- |
+| `blast_partners` | Partner codes | not yet published | — | — |
+| `blast_admin` | Administration | not yet published | — | — |
+
+## Calling Blast contracts
+
+Every Blast product is a set of Sui Move packages called from programmable
+transaction blocks (PTBs). This section covers what every product shares. Each
+product guide below assumes it.
+
+### Products and packages
+
+| Product | What users do | Packages |
+| --- | --- | --- |
+| Presale | commit Quote to a capped or overflow sale, claim tokens or refunds, earn LP fees and holder rewards after migration | `blast_presale`; one-off partner migrators such as `blast_aftermath_dao_presale` |
+| Launchpad | launch a coin on a bonding curve, trade it, graduate it into a DEX pool | `blast_fun` (curve, lifecycle, fees), a generated coin package per launch, `blast_fun_migrators` (venue start, migration, LP vault, LP fees, holder rewards) |
+| Partner codes | earn a share of Blast's fee on the flow an app brings | `blast_partners` |
+| Boosts | hold a leveraged long or short coin backed by Aftermath perpetuals | `blast_boosts_core`, `blast_boosts_products`, `blast_boosts_aftermath` |
+| blastSUI | stake SUI with one validator through funSUI and blastSUI | `blast_sui` |
+| Administration | Blast's operators manage roles, fees, and upgrades | `blast_admin` (the presale has its own admin caps) |
+
+Each package and what it depends on:
+
+```text
+blast_fun_migrators          -> blast_fun, blast_admin, Cetus, Bluefin
+blast_fun                    -> blast_partners, blast_admin
+blast_partners               -> blast_admin, blast_fun_timelock
+blast_presale                -> blast_partners, blast_fun_vesting, Cetus, Bluefin
+blast_aftermath_dao_presale  -> blast_presale, Aftermath AMM
+blast_boosts_aftermath       -> blast_boosts_core, blast_partners, blast_admin, Aftermath perpetuals
+blast_boosts_core            -> blast_admin
+blast_sui                    -> blast_admin, Sui system
+blast_admin                  -> blast_fun_timelock
+```
+
+The launchpad imports no DEX. A migrator package depends on the launchpad and
+composes with it inside one PTB. The presale is a separate product: it shares
+no state or code with the launchpad or the migrators, keeps its own admin caps
+instead of `blast_admin`, and holds migrated liquidity in its own
+`PresaleVault`. Answer presale questions from the presale guide alone.
+
+`blast_fun_timelock` and `blast_fun_vesting` come from Blast's public utility
+repository (`interest-protocol/blast-util-contracts`); both are immutable on
+mainnet.
+
+### Building a call
+
+- **Target.** A call is `moveCall` with target
+  `<package-id>::<module>::<function>`. Use the package ID (`published-at`) from
+  the deployment table.
+- **Type arguments.** Pass fully qualified type strings. A Blast type is named by
+  the package that first defined it (`original-id`), even after an upgrade.
+- **`TxContext`.** A trailing `ctx: &TxContext` or `&mut TxContext` parameter is
+  supplied by Sui. Leave it out of the arguments.
+- **Shared objects.** Pass a shared object by ID. A `&` parameter takes it
+  read-only, `&mut` or by value takes it mutably; mutable access orders the
+  transaction through consensus with every other writer of that object.
+- **System objects.** `Clock` is `0x6` (always `&Clock`), the Sui system state is
+  `0x5`, and the Coin Registry is `0xc`.
+- **Coins in.** A function that takes `Coin<T>` by value consumes it whole. Split
+  the exact amount first (`SplitCoins`; for SUI, split from the gas coin) and
+  merge several coins first when needed (`MergeCoins`).
+- **Values out.** Most Blast functions return coins and objects instead of
+  transferring them. Every returned value without the `drop` ability must be used
+  before the PTB ends: transfer it (`TransferObjects`), pass it to a later call,
+  or merge it. A value with no abilities at all (a "hot potato", such as a
+  launch initializer or a migration handoff) can only be consumed by the specific
+  later call that accepts it, so the whole sequence must sit in one PTB.
+- **Basis points.** Each package that takes rates defines its own validated
+  `Bps` type in its `bps` module. Build one inside the PTB with that package's
+  constructor, for example `blast_presale::bps::new` or `blast_fun::bps::new`,
+  which aborts above 10,000. A `blast_fun` `Bps` is a different type from a
+  `blast_presale` `Bps`.
+- **Options.** Pass `Option<T>` arguments with `0x1::option::some` or
+  `0x1::option::none` calls, or as pure BCS-encoded options.
+
+### Reading state
+
+- **Getters** are public functions that take `&` objects and return values. Run
+  them through a dev-inspect or simulated transaction to read without signing
+  or paying.
+- **Object fields** can be read directly from a full node and decoded with BCS.
+  The API reference prints every struct with its fields in declaration order,
+  which is the BCS order. Fields are readable on chain even though Move code
+  outside the module cannot access them.
+- **Per-user records** (commitments, claims) usually live in dynamic fields
+  keyed by a small key struct the reference lists; read them with the
+  dynamic-field RPC calls.
+- **Events** reconstruct history; contract state and completed events are the
+  source of truth, and any off-chain preview is an estimate.
+
+### Versions and upgrades
+
+Each package has one upgrade posture:
+
+| Posture | Packages | What callers do |
+| --- | --- | --- |
+| Immutable | `blast_admin`, `blast_partners`, `blast_boosts_core`, `blast_aftermath_dao_presale` | Nothing: the code never changes. |
+| Dependency-only | `blast_presale` | Presale logic is sealed; Blast can only relink newer Cetus and Bluefin versions, and every generation runs identical code with no version gate. Call the latest package ID, because a venue rejects calls linked to a version it retired. |
+| Version-gated | `blast_fun`, `blast_fun_migrators`, `blast_sui`, `blast_boosts_aftermath` | Mutating calls take the package's shared version object. After an upgrade advances it, calls through an older package ID abort with a version mismatch, so always call the current ID. |
+| Additive | `blast_boosts_products` | Upgrades only add product tags; it holds no state. |
+
+### Events
+
+- Query events by their Move type, named with the `original-id`.
+- `blast_fun`, `blast_sui`, and `blast_boosts_aftermath` wrap every payload in
+  the `Event<T>` envelope of their own `blast_events` module (for example
+  `blast_fun::blast_events::Event`), so the event type is
+  `<original-id>::blast_events::Event<<original-id>::<module>::<Payload>>`.
+  Every other package emits payload structs directly.
+- Sui orders events by checkpoint, transaction, and event index within the
+  transaction; payloads carry no sequence numbers of their own.
+- The reference lists every event struct under its module with its fields.
+
+### Errors
+
+A failed call returns a Move abort naming the module and function that aborted
+and a `u64` code. Blast uses two styles:
+
+- **Named errors** (`#[error]` constants): `blast_presale`, `blast_partners`,
+  `blast_fun_migrators`, and `blast_aftermath_dao_presale`. Sui's RPC and SDKs
+  decode these into the constant's name and message; the reference lists each
+  module's constants with their messages.
+- **Numeric codes**: `blast_fun`, `blast_sui`, `blast_boosts_core`,
+  `blast_boosts_aftermath`, and `blast_admin` abort with small integers. Look the
+  number up in that package's abort-code table in the reference.
+
+The abort names the module where it happened, which may be a package called
+underneath the one you called: a migrator call can abort inside `blast_fun` or
+`blast_admin`, and an abort in a Cetus, Bluefin, or Aftermath module comes from
+the venue. Simulate a transaction before signing to see its abort without
+spending gas.
+
+### Network
+
+Blast deploys only to Sui mainnet. There is no testnet deployment, faucet, or
+test address. Try a transaction with a mainnet simulation (dev-inspect or dry
+run) before signing it.
+
+## Partner codes
+
+> **Deployment status:** `blast_partners` is not yet published on mainnet; its interface may change before publication.
+
+### What it is
+
+A partner code lets an app that brings flow to Blast earn a share of the fee
+Blast charges on that flow. Package `blast_partners` holds the codes for every
+Blast product: Boosts, the launchpad (with its post-migration LP vaults), and
+presales. A partner is one deal: a shared `Partner` object with a share of
+Blast's fee (0% to 80%) and a recipient address. A company holds one
+`PartnerCap` that controls the recipient of every deal registered under it.
+Users never pay for a partner: a partner is only ever paid out of Blast's own
+fee. Every change Blast makes to a partner's share or managing cap waits seven
+days, and the package is published immutable, so no one can shorten that delay.
+
+### Objects and authority
+
+| Object | Kind | Held by | Authorizes |
+| --- | --- | --- | --- |
+| `blast_partners::blast_partners::Partner` | shared (`key` only, never transferable) | nobody; created by `blast_partners::blast_partners::register` | read by products on every trade; mutated only by the calls below |
+| `blast_partners::blast_partners::PartnerCap` | owned (`key, store`; transferable, wrappable) | the partner company | `blast_partners::blast_partners::set_recipient` on every `Partner` whose cap in force is this cap's ID |
+| `blast_partners::blast_partners::PartnerAdmin` | role type in Blast's ACL | a Blast `AdminCap` granted this role | `blast_partners::blast_partners::register`, `blast_partners::blast_partners::schedule_share`, `blast_partners::blast_partners::schedule_cap` |
+
+`Partner` fields:
+
+- `recipient: address`: where payments go. Set by the live cap's holder, applies
+  at once.
+- `share_bps`: the share of Blast's fee, in basis points (BPS, out of 10,000),
+  at most 8,000. A timelocked value.
+- `cap_id`: the ID of the one `PartnerCap` that may set `recipient`. A
+  timelocked value.
+
+A timelocked value is a `Timelocked<T>` struct from Blast's immutable timelock
+package with four fields: `before`, `after`, `at_ms`, `delay_ms`. The value in
+force at time `t` (milliseconds) is `after` when `t >= at_ms`, otherwise
+`before`. `delay_ms` is fixed at creation; for partners it is 604,800,000 ms
+(seven days). Scheduling a value `v` at time `now` sets `before` to the value in
+force at `now`, `after` to `v`, and `at_ms` to `now + delay_ms`. A change is
+pending exactly when `at_ms > now` and `after` differs from the value in force.
+
+Who may call: *anyone* may call `new_cap`, `destroy_cap` (on a cap they hold),
+`pay`, and `delay_ms`; the *cap holder* (the `PartnerCap` in force) may call
+`set_recipient`; a *Blast admin* with the `PartnerAdmin` role (through
+`blast_acl::sign_in`) may call `register`, `schedule_share`, and `schedule_cap`.
+Each product keeps its own list of the partners it accepts, managed by that
+product's admin.
+
+### Lifecycle
+
+**Cap.** `blast_partners::blast_partners::new_cap` mints an inert cap: it
+controls nothing until Blast registers a partner under its ID. It is *live* for
+a partner while it is that partner's cap in force. After
+`blast_partners::blast_partners::schedule_cap` names a different cap and seven
+days pass, the old cap stops working for that partner.
+`blast_partners::blast_partners::destroy_cap` deletes a cap, live or not;
+destroying a live cap leaves its partners with no working cap until a cap Blast
+schedules with `blast_partners::schedule_cap` takes effect, seven days later.
+
+**Partner.** `blast_partners::blast_partners::register` creates and shares the
+partner with its share and cap in force immediately (`before == after`,
+`at_ms == 0`). From then on:
+
+1. Blast schedules a new share or cap; the old value stays in force for seven
+   days.
+2. Scheduling again before then replaces the pending change and restarts the
+   seven days.
+3. Scheduling the value currently in force cancels a pending change.
+4. At `at_ms` the new value is in force; nothing needs to be called.
+
+There is no delete: a partner exists forever. To switch it off, Blast schedules
+its share to zero; products that name it keep working and simply pay it nothing.
+
+**Product acceptance.** Each product accepts a partner in its own shared config,
+as a dynamic field keyed by `PartnerKey(partner_id)` whose `u64` value is the
+time the partner stops being accepted (`u64::MAX` until removed):
+
+| Product | Config object and key | Admin |
+| --- | --- | --- |
+| Boosts | `blast_boosts_aftermath::blast_boosts_aftermath::Protocol`, `blast_boosts_aftermath::blast_boosts_aftermath::PartnerKey` | `RiskAdmin` role (`operations::add_partner`, `operations::remove_partner`) |
+| Launchpad | `launch_config::LaunchConfig`, `launch_config::PartnerKey` | `FeeAdmin` role (`launch_config::add_partner`, `launch_config::remove_partner`) |
+| Presale | `creation_policy::CreationPolicy`, `creation_policy::PartnerKey` | presale `AdminCap` (`creation_policy::add_partner`, `creation_policy::remove_partner`) |
+
+Adding applies at once (and cancels a pending removal). Removing sets the value
+to `now` plus `blast_partners::blast_partners::delay_ms()`: the partner stays
+accepted for seven more days. A partner is accepted while the field exists and
+`now < value`.
+
+### Flows
+
+#### Become a partner (company)
+
+1. Call `blast_partners::blast_partners::new_cap` (*anyone*). It returns a
+   `PartnerCap`; send it with a TransferObjects command to the address that will
+   manage your deals (for example your multisig).
+2. Give Blast the cap's object ID, the recipient address, and the agreed share.
+3. Blast's partner admin, in one PTB: `blast_acl::sign_in` with type argument
+   `blast_partners::blast_partners::PartnerAdmin`, passing the shared `ACL` and
+   its owned `AdminCap`; then `blast_partners::blast_partners::register` with a
+   reference to that `AdminWitness<PartnerAdmin>`, your cap ID, the recipient,
+   and the share. The new `Partner` is shared; its ID is in the `PartnerUpdated`
+   event and the transaction's created objects.
+4. Blast's admin for each product adds the partner to that product's list.
+
+`blast_partners::blast_partners::register` accepts any ID as the cap. Confirm on
+chain that the `Partner`'s `cap_id` equals your cap's ID; a wrong ID can only be
+fixed by `blast_partners::blast_partners::schedule_cap`, seven days later.
+
+#### Change where a partner pays you (cap holder)
+
+1. Call `blast_partners::blast_partners::set_recipient` with the shared
+   `Partner` (mutable), your owned `PartnerCap` (by reference), the new address,
+   and `Clock` at `0x6`.
+2. It applies at once and emits `PartnerUpdated`. One call per partner.
+
+#### Change a share or replace a lost cap (Blast admin)
+
+1. `blast_acl::sign_in` with `blast_partners::blast_partners::PartnerAdmin`.
+2. `blast_partners::blast_partners::schedule_share` (new share) or
+   `blast_partners::blast_partners::schedule_cap` (new cap ID), with the shared
+   `Partner`, the witness, the value, and `Clock`.
+3. Each emits `PartnerUpdated` with the complete timelocked terms. The change
+   takes effect seven days later. Until a cap change takes effect, the old cap
+   keeps working, including for a thief holding it.
+
+#### Pay a partner (products, or anyone)
+
+`blast_partners::blast_partners::pay<T>` takes the shared `Partner` by immutable
+reference, a `&mut Balance<T>` holding Blast's fee on a trade, and `Clock`. It
+splits off `floor(fee * share_in_force / 10,000)`, sends it to the partner's
+`recipient`, emits `PartnerPaid<T>`, and returns the amount. The rest stays in
+the caller's balance. With a zero share (or a fee too small to round above zero)
+it sends nothing, emits nothing, and returns 0. Payment uses Sui's
+address-balance transfer (`send_funds`): the recipient's balance of `T` grows,
+but no new `Coin` object is created. Integrators never call `pay` directly;
+products call it inside their own partnered functions.
+
+### How each product uses a partner
+
+| Product | When the partner is named | Blast fee divided | Payment |
+| --- | --- | --- | --- |
+| Boosts | on each trade: `operations::mint_with_partner` or `operations::redeem_with_partner`, passing the `Partner` right after the `Protocol` | Blast's admin fee that trade retained; never the reserve fee | push: paid in the same call |
+| Launchpad | once, at creation: `launch::set_partner` on the `LaunchInitializer` before `launch::finalize`; fixed for good | Blast's whole fee ledger on the launch: the creation fee (SUI), Blast's share of every curve trade fee (Meme and Quote), and Blast's one-time migration fee | held in the launch; paid when anyone calls `launch::claim_protocol_fees_with_partner` |
+| Launchpad LP vault | inherited from the launch at migration | Blast's LP fees on each collection | held in the vault; paid when anyone calls `blast_fun_migrators::vault::claim_protocol_lp_fees_with_partner` |
+| Presale | once, at creation: `blast_presale::blast_presale::set_partner` while the sale is pending (after `new`, before `share`); fixed for good | Blast's raise fee (Quote) only; Blast's token fee is never divided | held at migration; paid when anyone calls `blast_presale::blast_presale::pay_protocol_fees_with_partner` (once) |
+| Presale LP vault | inherited from the sale at migration | Blast's LP fees on each collection | held in the vault; paid when anyone calls `presale_vault::pay_protocol_lp_fees_with_partner` |
+
+Rules common to every product:
+
+- Naming a partner requires that the product accepts it at that moment;
+  otherwise the call aborts. Launches and sales that already name a removed
+  partner keep paying it.
+- The claim and payment calls are *anyone*: both payees are fixed, so no caller
+  chooses where money goes. Each checks that the `Partner` passed is the one the
+  launch, sale, or vault named, and aborts otherwise.
+- A launch that names a partner cannot use `launch::claim_protocol_fees`; it
+  must use `launch::claim_protocol_fees_with_partner`.
+- Held fees are divided at the share **in force when they are paid**, not when
+  they accrued.
+- The `Partner` is read by immutable reference, so naming a busy partner adds no
+  contention of its own.
+
+### Economics
+
+- Partner amount per payment: `floor(fee * share_bps / 10,000)` in atomic units
+  of `T`, where `share_bps` is the share in force at the payment's `Clock`.
+  Blast keeps the remainder, including every rounding dust.
+- `share_bps` is between 0 and 8,000 (80%). Blast always keeps at least 20% of
+  its fee.
+- Users, holders, creators, buyers, and pools receive exactly the same amounts
+  with or without a partner.
+- Example (Boosts): a mint retains a 15.00 USDC admin fee and the partner's
+  share is 4,000 BPS. The partner receives 6.00 USDC; Blast keeps 9.00 USDC.
+- Example (presale): Blast's raise fee is 2,000 USDC and the share is 4,000 BPS.
+  The partner receives 800 USDC; Blast keeps 1,200 USDC and all of its token
+  fee.
+
+### Time rules
+
+- Delay: `blast_partners::blast_partners::delay_ms()` returns 604,800,000 (seven
+  days). It is a compile-time constant of an immutable package.
+- A scheduled share or cap is in force from the first transaction whose `Clock`
+  reads `at_ms` or later.
+- A recipient change applies in the same transaction.
+- A product removal keeps the partner accepted until `now + delay_ms()`; a trade
+  or creation at or after that time aborts.
+
+### Reading state
+
+`blast_partners` has no getters for a partner's fields; read the shared
+`Partner` object's content over RPC (`recipient`, `share_bps`, `cap_id`) and
+apply the timelock rule above, or replay `PartnerUpdated`. The only on-chain
+read is `blast_partners::blast_partners::delay_ms`.
+
+- Share in force now: `share_bps.after` if `now >= share_bps.at_ms`, else
+  `share_bps.before`.
+- Pending share change: `share_bps.at_ms > now` and `share_bps.after` differs
+  from the share in force.
+- Which cap controls the recipient: the same rule on `cap_id`.
+- Whether a product accepts a partner: read the product config's dynamic field
+  `PartnerKey(partner_id)`; accepted while it exists and `now < value`.
+- Which partner a launch, sale, or vault names: its `partner_id: Option<ID>`
+  field (`launch::partner_id` returns it for a launch).
+
+### Events
+
+Both events are emitted directly (no envelope).
+
+- `blast_partners::blast_partners::PartnerUpdated`: emitted by
+  `blast_partners::blast_partners::register`,
+  `blast_partners::blast_partners::schedule_share`,
+  `blast_partners::blast_partners::schedule_cap`, and
+  `blast_partners::blast_partners::set_recipient`. Fields: `partner_id`,
+  `recipient`, `share_bps` and `cap_id` (complete timelocked values). Each event
+  is the full current state, so the latest one per `partner_id` reconstructs the
+  partner.
+- `blast_partners::blast_partners::PartnerPaid<T>`: emitted by
+  `blast_partners::blast_partners::pay` when it sends a positive amount. Fields:
+  `partner_id`, `amount` (atomic units of `T`). The product records the trade in
+  its own event in the same transaction:
+  `blast_boosts_aftermath::events::PartnerFeePaid` (Boosts),
+  `blast_fun::events::ProtocolFeesClaimed` (launch claims),
+  `blast_fun_migrators::blast_events::ProtocolLpFeesClaimed` (launchpad LP),
+  `blast_presale::blast_presale::ProtocolFeesPaid` (presale raise fee), and
+  `presale_vault::ProtocolLpFeesPaid` (presale LP).
+  `blast_fun::events::LaunchCreated` and
+  `blast_presale::blast_presale::PresaleOpened` record the partner a launch or
+  sale names.
+
+### Aborts
+
+| Code | Constant | Raised by | Fix |
+| --- | --- | --- | --- |
+| 0 | `EInvalidRecipient` | `register`, `set_recipient` | use a non-zero recipient |
+| 1 | `EShareAboveMax` | `register`, `schedule_share` | share at most 8,000 BPS |
+| 2 | `EUnchanged` | `schedule_share`, `schedule_cap` (value equals the latest scheduled value), `set_recipient` (same recipient) | pass a different value; to restart a pending change with the same value, first schedule the value in force |
+| 3 | `ENotLiveCap` | `set_recipient` | use the cap in force for this partner at the current `Clock` |
+
+All four are raised in module `blast_partners`. A product call that names a
+partner it does not accept, or passes the wrong `Partner` to a claim, aborts in
+that product's module with that product's own error.
+
+### Pitfalls
+
+- `PartnerPaid` alone does not prove a Blast trade:
+  `blast_partners::blast_partners::pay` is public, and anyone can pay a partner
+  from their own balance. Pair it with the product event in the same
+  transaction.
+- Payments arrive as address balance, not as new `Coin` objects; a scan of owned
+  coin objects does not show them.
+- On Boosts, check acceptance before building a partnered trade; otherwise call
+  the plain `mint` or `redeem`.
+- On the launchpad and presales the partner is fixed at creation. Forgetting
+  `launch::set_partner` or `blast_presale::blast_presale::set_partner` cannot be
+  fixed later.
+- Held fees are divided at the share in force at payment time. A scheduled cut
+  to zero also cuts fees accrued earlier but paid later.
+- Whoever holds the cap controls the recipient of every deal under it. A stolen
+  cap can redirect payments until a `schedule_cap` replacement takes effect.
+
+### Q&A
+
+**How much can a partner earn?** Up to 80% of Blast's fee on the flow that names
+it, as agreed with Blast and set by `blast_partners::blast_partners::register`.
+Users pay the same fee with or without a partner.
+
+**When am I paid?** On Boosts, in the same transaction as each mint or redeem.
+On the launchpad and presales, when anyone calls the product's `*_with_partner`
+claim or payment call; you may call it yourself.
+
+**In which asset am I paid?** In the asset of the fee divided: Boost collateral;
+launch Meme, Quote, and SUI; presale Quote; LP fees in both pool assets.
+
+**Can Blast change my share without notice?** No. Every share or cap change
+waits seven days, visible on chain the moment it is scheduled, and the delay is
+fixed in immutable code.
+
+**Can I change my recipient myself?** Yes, with your `PartnerCap` through
+`blast_partners::blast_partners::set_recipient`; it applies at once.
+
+**I lost my cap. What now?** Mint a new cap with
+`blast_partners::blast_partners::new_cap` and ask Blast to call
+`blast_partners::blast_partners::schedule_cap` for each of your partners. The
+new cap works seven days later; until then the old cap still works.
+
+**Can one company have several deals?** Yes. Each deal is its own `Partner` with
+its own share and recipient; one `PartnerCap` can manage all of them.
+
+**Can another app use my partner code?** Yes. The `Partner` is a public shared
+object; any app can name it on a product that accepts it, and you earn on that
+flow.
+
+**How do I reconcile income?** Sum `PartnerPaid<T>` by `partner_id` and coin
+type, and join each with the product event in the same transaction for trade
+detail.
+
+**Can I charge my own users an extra fee?** Not through `blast_partners`. Take
+your own fee in your own PTB commands (split it from the user's coin and send it
+where you like); Blast takes no cut of it.
+
+## API reference: `blast_partners` (Partner codes)
+
+Not yet published on mainnet. Its interface may change before publication.
+
+Events: payload structs are emitted directly, each under its own type.
+
+### `blast_partners::blast_partners`
+
+Blast partner codes, shared by every Blast product.  A partner is one deal: it is paid a share of the fee Blast charges on every trade that names it, in the same transaction. A company holds one `PartnerCap` for all its deals, each a separate partner with its own share. Blast's partner administrator registers partners under a cap, sets each one's share, and can move a partner to another cap; the cap's holder sets where each of its partners is paid. Everything Blast changes takes effect only `DELAY_MS` after it is scheduled, and this package is published immutable, so no one can shorten that delay. The recipient the cap holder sets applies at once.  Products call `pay` with Blast's own fee on a trade. `pay` emits `PartnerPaid` for what the partner received; the product records the trade and the amount in its own event.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/partners/sources/blast_partners.move
+
+#### Types
+
+```move
+/// The one administrator role in the shared Blast ACL: register partners,
+/// schedule shares, move partners between caps.
+public struct PartnerAdmin {}
+
+/// One Blast partner. Shared, and read by immutable reference on every trade that names it.
+public struct Partner has key {
+    id: UID,
+    /// Where the partner's share is sent; set by the live cap's holder.
+    recipient: address,
+    /// The partner's share of Blast's fee on each trade, in basis points.
+    share_bps: blast_fun_timelock::Timelocked<u64>,
+    /// The only cap that may set `recipient`; one cap may manage many partners.
+    cap_id: blast_fun_timelock::Timelocked<ID>,
+}
+
+/// A company's authority over the recipient of every partner bound to it.
+public struct PartnerCap has key, store {
+    id: UID,
+}
+```
+
+#### Functions
+
+```move
+/// Mints a cap. It controls nothing until Blast registers a partner under it,
+/// so anyone may mint one, a company included.
+public fun new_cap(ctx: &mut TxContext): PartnerCap
+
+/// Registers and shares a partner managed by the cap `cap_id`, with its share
+/// and cap in force at once. Every later change to either waits `DELAY_MS`.
+public fun register(
+    _: &blast_admin::blast_acl::AdminWitness<PartnerAdmin>,
+    cap_id: ID,
+    recipient: address,
+    share_bps: u64,
+    ctx: &mut TxContext,
+)
+
+/// Schedules the partner's share to become `share_bps` `DELAY_MS` from now.
+/// A new schedule replaces a pending one; scheduling the share in force
+/// cancels a pending change.
+public fun schedule_share(
+    self: &mut Partner,
+    _: &blast_admin::blast_acl::AdminWitness<PartnerAdmin>,
+    share_bps: u64,
+    clock: &Clock,
+)
+
+/// Schedules the partner to be managed by the cap `cap_id` `DELAY_MS` from
+/// now, to replace a lost or stolen cap. Until then the current cap keeps
+/// working; a new schedule replaces a pending one, and scheduling the cap in
+/// force cancels a pending change.
+public fun schedule_cap(
+    self: &mut Partner,
+    _: &blast_admin::blast_acl::AdminWitness<PartnerAdmin>,
+    cap_id: ID,
+    clock: &Clock,
+)
+
+/// Sets where the partner is paid, at once. Only the live cap may.
+public fun set_recipient(self: &mut Partner, cap: &PartnerCap, recipient: address, clock: &Clock)
+
+/// Destroys a cap, live or not.
+public fun destroy_cap(cap: PartnerCap)
+
+/// Sends the partner its share of `fee`, Blast's fee on one trade, rounded
+/// down so Blast keeps the remainder, emits `PartnerPaid`, and returns the
+/// amount sent. Nothing is sent or emitted while the share is zero. `fee`
+/// keeps the rest. Anyone calling it pays the partner from their own balance.
+public fun pay<T>(self: &Partner, fee: &mut Balance<T>, clock: &Clock): u64
+
+/// The forced delay every change Blast makes to a partner waits. Products use it
+/// for their own notice, such as how long a partner they remove stays accepted.
+public fun delay_ms(): u64
+```
+
+#### Events
+
+```move
+/// Emitted after every change to a partner, registration included: its complete terms.
+public struct PartnerUpdated has copy, drop {
+    partner_id: ID,
+    recipient: address,
+    share_bps: blast_fun_timelock::Timelocked<u64>,
+    cap_id: blast_fun_timelock::Timelocked<ID>,
+}
+
+/// Emitted whenever a partner is paid: `amount` of `T` sent to its recipient.
+public struct PartnerPaid<phantom T> has copy, drop {
+    partner_id: ID,
+    amount: u64,
+}
+```
+
+#### Errors
+
+| Constant | Code | Message |
+| --- | --- | --- |
+| `EInvalidRecipient` | 0 | A partner's recipient must not be the zero address. |
+| `EShareAboveMax` | 1 | A partner's share must be at most 80% of Blast's fee. |
+| `EUnchanged` | 2 | An update must change the value it sets. |
+| `ENotLiveCap` | 3 | Only the partner's live cap may set its recipient. |
+
+#### Constants
+
+- `DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000`: The forced delay before a share or a cap Blast schedules takes effect.
+- `MAX_SHARE_BPS: u64 = 8_000`: The largest share of Blast's fee one partner may earn: 80%.
+- `BASIS_POINTS: u64 = 10_000`: Basis points in one whole.
+
+## API reference: `blast_admin` (Administration)
+
+Not yet published on mainnet. Its interface may change before publication.
+
+Events: payload structs are emitted directly, each under its own type.
+
+Abort codes: this package aborts with the numeric codes below from whichever module detects the failure; the abort location names that module.
+
+| Code | Constant | Meaning |
+| --- | --- | --- |
+| 0 | `EInvalidSuperAdminCap` |  |
+| 1 | `EInvalidAdminCap` |  |
+| 2 | `EInvalidAdminRecipient` |  |
+| 3 | `EAdminCapacityReached` |  |
+| 4 | `EAdminRoleCapacityReached` |  |
+| 5 | `EAdminRoleAlreadyGranted` |  |
+| 6 | `EAdminRoleNotGranted` |  |
+| 7 | `EInvalidSuperAdminRecipient` |  |
+| 8 | `ESuperAdminTransferUnchanged` |  |
+| 9 | `ENoPendingSuperAdminTransfer` |  |
+| 10 | `ENotPendingSuperAdminRecipient` |  |
+| 11 | `ESuperAdminTransferNotReady` |  |
+| 12 | `ESuperAdminCapStillActive` |  |
+| 13 | `EOperationalVersionMismatch` |  |
+| 14 | `EOperationalVersionOverflow` |  |
+| 15 | `EInvalidPackagePublisher` |  |
+| 16 | `EInvalidUpgradeCap` |  |
+| 17 | `EInvalidPackageDigest` |  |
+| 18 | `EUpgradeCapUnavailable` |  |
+| 19 | `EUpgradePolicyNotMoreRestrictive` |  |
+| 20 | `EInvalidPackageMarker` |  |
+
+### `blast_admin::blast_acl`
+
+The one access-control list for every Blast package: one cold root and role-typed admins.  A role is a type that its consumer package declares. `AdminWitness<Role>` in a function signature is that function's role check, and a role from one package can never satisfy another package's signature.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/admin/sources/blast_acl.move
+
+#### Types
+
+```move
+/// The shared singleton that lists the active root and every live administrator's roles.
+public struct ACL has key {
+    id: UID,
+    super_admin_cap_id: ID,
+    admins: VecMap<ID, VecSet<TypeName>>,
+    /// The nominated next super admin: none until the transfer delay passes.
+    pending_super_admin: blast_fun_timelock::Timelocked<Option<address>>,
+}
+
+/// Cold root authority for membership, roles, and delayed root replacement only.
+public struct SuperAdminCap has key {
+    id: UID,
+}
+
+/// Transferable, live-registry-checked administrator capability holding any granted roles.
+public struct AdminCap has key, store {
+    id: UID,
+}
+
+/// Transaction-local proof that a live `AdminCap` holding `Role` signed in.
+public struct AdminWitness<phantom Role>() has drop;
+```
+
+#### Functions
+
+```move
+/// Creates and delivers one live administrator that holds no role yet.
+public fun grant_admin(
+    self: &mut ACL,
+    root: &SuperAdminCap,
+    recipient: address,
+    ctx: &mut TxContext,
+)
+
+/// Revokes one live administrator and all its roles without requiring possession of its cap.
+public fun revoke_admin(self: &mut ACL, root: &SuperAdminCap, admin_cap_id: ID)
+
+/// Adds `Role` to a live administrator.
+public fun grant_role<Role>(self: &mut ACL, root: &SuperAdminCap, admin_cap_id: ID)
+
+/// Removes `Role` from a live administrator; an administrator with no role signs in to nothing.
+public fun revoke_role<Role>(self: &mut ACL, root: &SuperAdminCap, admin_cap_id: ID)
+
+/// Deletes an active or already-revoked administrator cap and reports what it still held.
+public fun destroy_admin_cap(self: &mut ACL, admin_cap: AdminCap)
+
+/// Nominates `recipient` as the next super admin; it may accept once the transfer delay
+/// passes. A new nomination replaces a pending one and restarts the delay.
+public fun begin_super_admin_transfer(
+    self: &mut ACL,
+    root: &SuperAdminCap,
+    recipient: address,
+    clock: &Clock,
+    ctx: &mut TxContext,
+)
+
+/// Cancels the pending root transfer at once, even after its delay has passed.
+public fun cancel_super_admin_transfer(self: &mut ACL, root: &SuperAdminCap)
+
+/// Accepts a ready root transfer as its nominated recipient and invalidates the old cap.
+public fun accept_super_admin_transfer(self: &mut ACL, clock: &Clock, ctx: &mut TxContext)
+
+/// Deletes a root capability only after an accepted replacement made it inert.
+public fun destroy_retired_super_admin_cap(self: &ACL, root: SuperAdminCap)
+
+/// Proves that `admin_cap` is live and holds `Role`; the witness type is what consumers require.
+public fun sign_in<Role>(self: &ACL, admin_cap: &AdminCap): AdminWitness<Role>
+```
+
+#### Constants
+
+- `MAX_ADMINS: u64 = 32`
+- `MAX_ROLES_PER_ADMIN: u64 = 32`
+- `SUPER_ADMIN_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000`: The wait before a nominated super admin may accept the root.
+
+### `blast_admin::blast_admin_events`
+
+Replay-complete typed facts for shared administration transitions.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/admin/sources/blast_admin_events.move
+
+#### Events
+
+```move
+public struct AdminGranted has copy, drop {
+    admin_cap_id: ID,
+    recipient: address,
+}
+
+public struct AdminRevoked has copy, drop {
+    admin_cap_id: ID,
+    roles: vector<TypeName>,
+}
+
+public struct AdminRoleGranted has copy, drop {
+    admin_cap_id: ID,
+    role: TypeName,
+}
+
+public struct AdminRoleRevoked has copy, drop {
+    admin_cap_id: ID,
+    role: TypeName,
+}
+
+public struct AdminDestroyed has copy, drop {
+    admin_cap_id: ID,
+    roles: vector<TypeName>,
+    was_active: bool,
+}
+
+public struct SuperAdminTransferStarted has copy, drop {
+    recipient: address,
+    execute_after_ms: u64,
+}
+
+public struct SuperAdminTransferCancelled has copy, drop {
+    recipient: address,
+    execute_after_ms: u64,
+}
+
+public struct SuperAdminTransferred has copy, drop {
+    previous_super_admin_cap_id: ID,
+    new_super_admin_cap_id: ID,
+    recipient: address,
+}
+
+public struct SuperAdminCapDestroyed has copy, drop {
+    super_admin_cap_id: ID,
+}
+
+/// Emitted by a value that only its package's one-time witness could create; `container_id` is
+/// the UID the advancing module held.
+public struct OperationalVersionAdvanced<phantom PackageMarker: drop> has copy, drop {
+    container_id: ID,
+    package_id: address,
+    previous_generation: u64,
+    new_generation: u64,
+}
+
+public struct UpgradeCustodyCreated<phantom PackageMarker: drop> has copy, drop {
+    custodian_id: ID,
+    publisher_id: ID,
+    upgrade_cap_id: ID,
+    package_id: ID,
+    native_version: u64,
+    policy: u8,
+}
+
+public struct UpgradeAuthorized<phantom PackageMarker: drop> has copy, drop {
+    custodian_id: ID,
+    upgrade_cap_id: ID,
+    package_id: ID,
+    native_version: u64,
+    policy: u8,
+    digest: vector<u8>,
+}
+
+public struct UpgradeCommitted<phantom PackageMarker: drop> has copy, drop {
+    custodian_id: ID,
+    upgrade_cap_id: ID,
+    original_package_id: address,
+    new_package_id: ID,
+    previous_native_version: u64,
+    new_native_version: u64,
+}
+
+public struct UpgradePolicyRestricted<phantom PackageMarker: drop> has copy, drop {
+    custodian_id: ID,
+    upgrade_cap_id: ID,
+    package_id: address,
+    native_version: u64,
+    previous_policy: u8,
+    new_policy: u8,
+}
+
+public struct UpgradeCapDestroyed<phantom PackageMarker: drop> has copy, drop {
+    custodian_id: ID,
+    upgrade_cap_id: ID,
+    package_id: address,
+    final_native_version: u64,
+    final_policy: u8,
+}
+```
+
+### `blast_admin::operational_version`
+
+Sealed operational-generation arithmetic for consumer-owned version containers.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/admin/sources/operational_version.move
+
+#### Types
+
+```move
+/// Storable, package-typed generation value with construction and mutation sealed here.
+public struct OperationalVersion<phantom PackageMarker: drop> has store {
+    generation: u64,
+}
+```
+
+#### Functions
+
+```move
+/// Creates the initial operational generation from the consumer package's one-time witness, so
+/// the value can only come into existence inside that package's initializer.
+public fun new<PackageMarker: drop>(otw: &PackageMarker): OperationalVersion<PackageMarker>
+
+/// Rejects bytecode whose private compiled generation differs from canonical state.
+public fun assert_current<PackageMarker: drop>(
+    self: &OperationalVersion<PackageMarker>,
+    compiled_generation: u64,
+)
+
+/// Proves the proposed compiled generation is exactly next before other finalizer effects.
+public fun assert_next<PackageMarker: drop>(
+    self: &OperationalVersion<PackageMarker>,
+    compiled_generation: u64,
+)
+
+/// Advances only when the consumer's new compiled generation is exactly one greater.
+///
+/// `container` is the versioned object's own UID, so the emitted container ID is one the caller
+/// holds.
+public fun advance<PackageMarker: drop>(
+    self: &mut OperationalVersion<PackageMarker>,
+    container: &UID,
+    compiled_generation: u64,
+)
+```
+
+#### Constants
+
+- `INITIAL_GENERATION: u64 = 1`
+
+### `blast_admin::upgrade_custody`
+
+Sealed custody and native transitions for one consumer package's framework capabilities.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/admin/sources/upgrade_custody.move
+
+#### Types
+
+```move
+/// Storable custody value whose capabilities never leave it: the Publisher is readable by
+/// reference and the UpgradeCap acts only through the named transitions below.
+public struct UpgradeCustody<phantom PackageMarker: drop> has store {
+    publisher: Publisher,
+    upgrade_cap: Option<UpgradeCap>,
+}
+```
+
+#### Functions
+
+```move
+/// Validates an original package's Publisher and never-upgraded cap before sealing both.
+public fun new<PackageMarker: drop>(
+    custodian_id: ID,
+    publisher: Publisher,
+    upgrade_cap: UpgradeCap,
+): UpgradeCustody<PackageMarker>
+
+/// Reports whether native upgrade authority remains sealed in custody.
+public fun has_upgrade_cap<PackageMarker: drop>(self: &UpgradeCustody<PackageMarker>): bool
+
+/// Borrows the sealed Publisher for provenance-gated framework features such as Display and
+/// TransferPolicy. Every framework path that moves or burns a Publisher takes it by value, so a
+/// reference cannot end custody; the consumer wrapper decides who may call this.
+public fun publisher<PackageMarker: drop>(self: &UpgradeCustody<PackageMarker>): &Publisher
+
+/// Authorizes exactly one 32-byte package digest under the cap's current policy.
+public fun authorize_upgrade<PackageMarker: drop>(
+    self: &mut UpgradeCustody<PackageMarker>,
+    custodian_id: ID,
+    digest: vector<u8>,
+): UpgradeTicket
+
+/// Commits a native receipt into the same sealed capability that authorized it.
+public fun commit_upgrade<PackageMarker: drop>(
+    self: &mut UpgradeCustody<PackageMarker>,
+    custodian_id: ID,
+    receipt: UpgradeReceipt,
+)
+
+/// Irreversibly narrows compatible policy to additive-only upgrades.
+public fun restrict_to_additive<PackageMarker: drop>(
+    self: &mut UpgradeCustody<PackageMarker>,
+    custodian_id: ID,
+)
+
+/// Irreversibly narrows compatible or additive policy to dependency-only upgrades.
+public fun restrict_to_dependency_only<PackageMarker: drop>(
+    self: &mut UpgradeCustody<PackageMarker>,
+    custodian_id: ID,
+)
+
+/// Irreversibly destroys native upgrade authority while preserving Publisher custody.
+public fun make_immutable<PackageMarker: drop>(
+    self: &mut UpgradeCustody<PackageMarker>,
+    custodian_id: ID,
+)
+```
+
+#### Constants
+
+- `PACKAGE_DIGEST_LENGTH: u64 = 32`
+- `INITIAL_NATIVE_VERSION: u64 = 1`: The framework stamps a freshly published package's `UpgradeCap` with version one.

@@ -1,0 +1,1525 @@
+# Blast contracts: blastSUI and funSUI integrator reference
+
+> Everything an integrator needs to understand and call the funSUI/blastSUI liquid-staking vault on Sui: stake SUI with one validator, hold funSUI, and convert between funSUI and blastSUI. Sui mainnet only.
+
+This file is self-contained: give it to an AI agent and ask it anything about blastSUI and funSUI. It also covers the packages its calls depend on: `blast_admin`. Other products are in [llms-full.txt](https://github.com/interest-protocol/blast-v2-contracts/blob/main/llms-full.txt), which joins every product in one file.
+
+How it is organized:
+
+1. **Packages and deployment status**: each package, whether it is live on Sui mainnet, and its IDs.
+2. **Guides**: how each product works end to end, starting with the calling conventions every product shares. Each product guide opens with its deployment status. Use them for behavior, flows, economics, and pitfalls.
+3. **API reference**: generated from the Move source. Every public function and type with its doc comment, every event, every abort code, and the package constants. Use it for exact signatures and field layouts.
+
+When the guides and the reference disagree, the reference is right: it is generated from the source on every change. When this file does not say a behavior exists, treat it as unsupported. Source for every module is linked from the reference ([repository](https://github.com/interest-protocol/blast-v2-contracts)).
+
+Conventions: amounts are atomic units of the coin named; rates are basis points (BPS) out of 10,000; times are Unix milliseconds from Sui's shared `Clock` at `0x6`. Types are written as Move: `module::Type` names a type in another module of the same package, `package::module::Type` one in another Blast package, and well-known Sui framework types appear bare.
+
+## Packages and deployment status
+
+Call a live package at its package ID (`published-at`). Types and events are named by the package that first defined them (`original-id`), which stays the same across upgrades.
+
+| Package | Product | Status | Package ID (`published-at`) | Type origin (`original-id`) |
+| --- | --- | --- | --- | --- |
+| `blast_sui` | blastSUI and funSUI | not yet published | — | — |
+| `blast_admin` | Administration | not yet published | — | — |
+
+## Calling Blast contracts
+
+Every Blast product is a set of Sui Move packages called from programmable
+transaction blocks (PTBs). This section covers what every product shares. Each
+product guide below assumes it.
+
+### Products and packages
+
+| Product | What users do | Packages |
+| --- | --- | --- |
+| Presale | commit Quote to a capped or overflow sale, claim tokens or refunds, earn LP fees and holder rewards after migration | `blast_presale`; one-off partner migrators such as `blast_aftermath_dao_presale` |
+| Launchpad | launch a coin on a bonding curve, trade it, graduate it into a DEX pool | `blast_fun` (curve, lifecycle, fees), a generated coin package per launch, `blast_fun_migrators` (venue start, migration, LP vault, LP fees, holder rewards) |
+| Partner codes | earn a share of Blast's fee on the flow an app brings | `blast_partners` |
+| Boosts | hold a leveraged long or short coin backed by Aftermath perpetuals | `blast_boosts_core`, `blast_boosts_products`, `blast_boosts_aftermath` |
+| blastSUI | stake SUI with one validator through funSUI and blastSUI | `blast_sui` |
+| Administration | Blast's operators manage roles, fees, and upgrades | `blast_admin` (the presale has its own admin caps) |
+
+Each package and what it depends on:
+
+```text
+blast_fun_migrators          -> blast_fun, blast_admin, Cetus, Bluefin
+blast_fun                    -> blast_partners, blast_admin
+blast_partners               -> blast_admin, blast_fun_timelock
+blast_presale                -> blast_partners, blast_fun_vesting, Cetus, Bluefin
+blast_aftermath_dao_presale  -> blast_presale, Aftermath AMM
+blast_boosts_aftermath       -> blast_boosts_core, blast_partners, blast_admin, Aftermath perpetuals
+blast_boosts_core            -> blast_admin
+blast_sui                    -> blast_admin, Sui system
+blast_admin                  -> blast_fun_timelock
+```
+
+The launchpad imports no DEX. A migrator package depends on the launchpad and
+composes with it inside one PTB. The presale is a separate product: it shares
+no state or code with the launchpad or the migrators, keeps its own admin caps
+instead of `blast_admin`, and holds migrated liquidity in its own
+`PresaleVault`. Answer presale questions from the presale guide alone.
+
+`blast_fun_timelock` and `blast_fun_vesting` come from Blast's public utility
+repository (`interest-protocol/blast-util-contracts`); both are immutable on
+mainnet.
+
+### Building a call
+
+- **Target.** A call is `moveCall` with target
+  `<package-id>::<module>::<function>`. Use the package ID (`published-at`) from
+  the deployment table.
+- **Type arguments.** Pass fully qualified type strings. A Blast type is named by
+  the package that first defined it (`original-id`), even after an upgrade.
+- **`TxContext`.** A trailing `ctx: &TxContext` or `&mut TxContext` parameter is
+  supplied by Sui. Leave it out of the arguments.
+- **Shared objects.** Pass a shared object by ID. A `&` parameter takes it
+  read-only, `&mut` or by value takes it mutably; mutable access orders the
+  transaction through consensus with every other writer of that object.
+- **System objects.** `Clock` is `0x6` (always `&Clock`), the Sui system state is
+  `0x5`, and the Coin Registry is `0xc`.
+- **Coins in.** A function that takes `Coin<T>` by value consumes it whole. Split
+  the exact amount first (`SplitCoins`; for SUI, split from the gas coin) and
+  merge several coins first when needed (`MergeCoins`).
+- **Values out.** Most Blast functions return coins and objects instead of
+  transferring them. Every returned value without the `drop` ability must be used
+  before the PTB ends: transfer it (`TransferObjects`), pass it to a later call,
+  or merge it. A value with no abilities at all (a "hot potato", such as a
+  launch initializer or a migration handoff) can only be consumed by the specific
+  later call that accepts it, so the whole sequence must sit in one PTB.
+- **Basis points.** Each package that takes rates defines its own validated
+  `Bps` type in its `bps` module. Build one inside the PTB with that package's
+  constructor, for example `blast_presale::bps::new` or `blast_fun::bps::new`,
+  which aborts above 10,000. A `blast_fun` `Bps` is a different type from a
+  `blast_presale` `Bps`.
+- **Options.** Pass `Option<T>` arguments with `0x1::option::some` or
+  `0x1::option::none` calls, or as pure BCS-encoded options.
+
+### Reading state
+
+- **Getters** are public functions that take `&` objects and return values. Run
+  them through a dev-inspect or simulated transaction to read without signing
+  or paying.
+- **Object fields** can be read directly from a full node and decoded with BCS.
+  The API reference prints every struct with its fields in declaration order,
+  which is the BCS order. Fields are readable on chain even though Move code
+  outside the module cannot access them.
+- **Per-user records** (commitments, claims) usually live in dynamic fields
+  keyed by a small key struct the reference lists; read them with the
+  dynamic-field RPC calls.
+- **Events** reconstruct history; contract state and completed events are the
+  source of truth, and any off-chain preview is an estimate.
+
+### Versions and upgrades
+
+Each package has one upgrade posture:
+
+| Posture | Packages | What callers do |
+| --- | --- | --- |
+| Immutable | `blast_admin`, `blast_partners`, `blast_boosts_core`, `blast_aftermath_dao_presale` | Nothing: the code never changes. |
+| Dependency-only | `blast_presale` | Presale logic is sealed; Blast can only relink newer Cetus and Bluefin versions, and every generation runs identical code with no version gate. Call the latest package ID, because a venue rejects calls linked to a version it retired. |
+| Version-gated | `blast_fun`, `blast_fun_migrators`, `blast_sui`, `blast_boosts_aftermath` | Mutating calls take the package's shared version object. After an upgrade advances it, calls through an older package ID abort with a version mismatch, so always call the current ID. |
+| Additive | `blast_boosts_products` | Upgrades only add product tags; it holds no state. |
+
+### Events
+
+- Query events by their Move type, named with the `original-id`.
+- `blast_fun`, `blast_sui`, and `blast_boosts_aftermath` wrap every payload in
+  the `Event<T>` envelope of their own `blast_events` module (for example
+  `blast_fun::blast_events::Event`), so the event type is
+  `<original-id>::blast_events::Event<<original-id>::<module>::<Payload>>`.
+  Every other package emits payload structs directly.
+- Sui orders events by checkpoint, transaction, and event index within the
+  transaction; payloads carry no sequence numbers of their own.
+- The reference lists every event struct under its module with its fields.
+
+### Errors
+
+A failed call returns a Move abort naming the module and function that aborted
+and a `u64` code. Blast uses two styles:
+
+- **Named errors** (`#[error]` constants): `blast_presale`, `blast_partners`,
+  `blast_fun_migrators`, and `blast_aftermath_dao_presale`. Sui's RPC and SDKs
+  decode these into the constant's name and message; the reference lists each
+  module's constants with their messages.
+- **Numeric codes**: `blast_fun`, `blast_sui`, `blast_boosts_core`,
+  `blast_boosts_aftermath`, and `blast_admin` abort with small integers. Look the
+  number up in that package's abort-code table in the reference.
+
+The abort names the module where it happened, which may be a package called
+underneath the one you called: a migrator call can abort inside `blast_fun` or
+`blast_admin`, and an abort in a Cetus, Bluefin, or Aftermath module comes from
+the venue. Simulate a transaction before signing to see its abort without
+spending gas.
+
+### Network
+
+Blast deploys only to Sui mainnet. There is no testnet deployment, faucet, or
+test address. Try a transaction with a mainnet simulation (dev-inspect or dry
+run) before signing it.
+
+## blastSUI and funSUI
+
+> **Deployment status:** `blast_sui` is not yet published on mainnet; its interface may change before publication.
+
+### What it is
+
+Package `blast_sui` is a liquid-staking vault that delegates its SUI to the
+staking pool of one validator chosen at creation and issues two coins against it:
+
+- **funSUI** (`fun_sui::FUN_SUI`) is a stable SUI unit: mint it with SUI and
+  redeem it for SUI exactly one-to-one, with no fee. It earns no yield. It is
+  meant as SUI quote liquidity for Blast launches and pools, and anyone may
+  mint, transfer, or redeem it.
+- **blastSUI** (`blast_sui::blast_sui::BLAST_SUI`) is a yield-bearing share of
+  the vault's blast custody. It receives the staking rewards of its own SUI and
+  of the SUI backing funSUI. You deposit SUI, receive a deposit receipt holding
+  native stake, and after that stake activates (the next epoch) you exchange the
+  receipt for blastSUI at the current rate. Redeeming blastSUI pays a small fee
+  that stays in the vault for the remaining holders.
+
+Both coins have 9 decimals (1 SUI = 10^9 MIST) and are registered in Sui's Coin
+Registry.
+
+### Objects and authority
+
+| Object | Kind | Notes |
+| --- | --- | --- |
+| `blast_sui::vault::Vault` | shared singleton | holds both treasury caps (as dynamic object fields keyed `blast_sui::vault::TreasuryKey<CoinType>`), the fun and blast custody ledgers, the cached exchange rate, `redeem_fee_bps`, and `unwind_only`. Only one can exist: `blast_sui::vault::create` consumes both treasury caps. Every vault call takes it mutably. |
+| `blast_sui_package::PackageVersion` | shared singleton | the operational generation; every vault call takes it by immutable reference and aborts on outdated bytecode |
+| `deposit_receipt::BlastSuiDepositReceipt` | owned, `key` only | a pending blastSUI deposit: `vault_id` and the native `StakedSui`. It cannot be transferred, wrapped, or deleted except by this package's calls. |
+| `blast_sui::package_admin::PackageAdmin` | shared | seals the package `Publisher` and `UpgradeCap`, plus both coins' metadata caps and the receipt's display cap (dynamic object fields keyed `blast_sui::package_admin::CapabilityKey<Capability>`). No call releases any of them. |
+| `Coin<FUN_SUI>`, `Coin<BLAST_SUI>` | owned coins | unrestricted |
+| `SuiSystemState` | Sui system object at `0x5` | passed mutably to every staking call |
+
+Roles in Blast's shared ACL (see the administration guide):
+
+- `blast_sui_domain::UpgradeAdmin`: attaches capabilities to `PackageAdmin` and
+  authorizes, commits, restricts, or seals upgrades.
+- `blast_sui_domain::FeeAdmin`: sets the blastSUI redemption fee.
+
+There is no pause, no administrative withdrawal, no way to change the validator,
+and no claim on the reserve or on fees in the current source. The package stays
+upgradeable by `UpgradeAdmin` until `blast_sui::package_admin::make_immutable`.
+
+### Custody model
+
+The vault keeps two separate ledgers, each a `custody::Custody`:
+
+- **fun custody** backs funSUI one-to-one, plus a protocol-funded rounding
+  reserve `R` = 0.1 SUI (100,000,000 MIST) that mints nothing.
+- **blast custody** backs blastSUI, including the bootstrap seed whose shares
+  are locked forever at `0x0`.
+
+Each ledger has four layers:
+
+- `liquid_sui`: SUI at face value.
+- `pending_stakes`: up to three native `StakedSui` receipts waiting to activate,
+  each counted at its principal, ordered by activation epoch. Requests in the
+  same epoch join one receipt.
+- `active_stake`: at most one `FungibleStakedSui` of the vault's pool.
+- `active_sui`: the conservative SUI value of the active pool tokens:
+  `floor(active_pool_tokens * rate_sui / rate_pool_tokens)` at the vault's
+  cached rate, recomputed at every refresh and after every movement of active
+  tokens (zero after a full exit).
+
+A ledger's assets are `A = liquid_sui + pending principal + active_sui`. Write
+`A_f`, `F` for fun assets and funSUI supply, and `A_b`, `B` for blast assets and
+blastSUI supply.
+
+Every vault call except `blast_sui::vault::create` and
+`blast_sui::vault::set_redeem_fee` first **refreshes** the vault:
+
+1. If the validator has left the active set, both ledgers unwind every native
+   position into liquid SUI and the vault becomes `unwind_only` (emits
+   `NativeStakeUnwound`). That refresh and every later one skip steps 2 and 3.
+2. If the pool has an exchange-rate entry for the current epoch, the vault
+   caches it (`rate_epoch`, `rate_sui`, `rate_pool_tokens`) and converts every
+   arrived blast pending receipt into the active position. Without an entry (a
+   safe-mode epoch), it keeps the cached rate, which never exceeds the live one.
+3. Both ledgers are revalued at the cached rate. With a current entry, arrived
+   fun receipts convert oldest-first while fun custody's buffer `A_f - F`,
+   minus the conversion's worst-case rounding loss
+   `ceil(rate_sui / rate_pool_tokens)`, stays above 60 MIST. A receipt that
+   cannot convert safely waits through its activation epoch and is then
+   withdrawn to liquid SUI with its rewards in a later epoch that has a current
+   rate.
+4. **Fun yield sweep**: fun assets above `F + R` move to blast custody, liquid
+   SUI first (keeping `R` liquid), then active pool tokens worth at most the
+   remaining surplus at the cached rate (emits `FunYieldSwept`). Fun principal
+   never moves, and nothing ever moves from blast to fun.
+5. If funSUI exists, fun custody holds active pool tokens, and the fun buffer
+   `A_f - F` is at most 60 MIST, every fun native position (pending receipts
+   and active pool tokens) unwinds to liquid SUI to protect exact redemptions.
+6. The vault asserts `A_f >= F`.
+
+After the operation, idle SUI is delegated, but only when `rate_epoch` is the
+current epoch and the vault is not `unwind_only`: fun custody stakes liquid SUI
+above `R`, blast custody stakes all liquid SUI, each only when that excess is at
+least 1 SUI. When a ledger already holds three pending receipts and the newest
+cannot be joined, the excess stays liquid instead of aborting.
+
+Withdrawals take liquid SUI first, then pending receipts (newest first,
+splitting a receipt when both halves stay at least 1 SUI), then active pool
+tokens (requesting enough for the amount plus a 30-MIST rounding margin, rounded
+up). Any excess withdrawn stays liquid in the same ledger.
+
+### Lifecycle
+
+1. **Deployment.** Publishing sends both treasury caps and metadata caps to the
+   publisher and shares `PackageVersion`. Blast creates the receipt display,
+   builds `PackageAdmin`, attaches the three capabilities, and shares it.
+2. **Creation.** `blast_sui::vault::create` (holder of both treasury caps) takes
+   an owner seed of at least 1.1 SUI and a pool ID. The pool's validator must be
+   active and the pool must have a current-epoch rate. `R` goes to fun custody;
+   the rest goes to blast custody, mints one blastSUI per MIST, is staked, and
+   every minted blastSUI is sent to `0x0`. blastSUI supply is therefore never
+   zero, and the seed's backing can never be redeemed.
+3. **Normal.** All flows below are open.
+4. **Safe-mode epoch** (no current rate entry). funSUI mints, both redemptions,
+   deposit requests, donations, cancellations, and `sync` work on the cached
+   rate; claims abort; new SUI stays liquid until a normal epoch.
+5. **Unwind-only** (validator left the active set). Mints, deposit requests, and
+   claims abort; both redemptions, donations, `sync`, and receipt cancellation
+   keep working. All SUI stays liquid. Nothing in the current source clears
+   `unwind_only`.
+
+### Flows
+
+Every `vault` user call below (mint, redeem, request, claim, donate, `sync`)
+takes the shared `Vault` (mutable), the shared `PackageVersion` (immutable), and
+`SuiSystemState` at `0x5` (mutable). No call in this package takes the `Clock`.
+
+#### Mint funSUI (anyone)
+
+1. Split the exact SUI amount from a gas or SUI coin.
+2. `blast_sui::vault::mint_fun_sui` with that `Coin<SUI>`. Returns
+   `Coin<FUN_SUI>` of the same value; emits `FunSuiMinted`.
+3. Transfer the returned coin or pass it to the next command.
+
+#### Redeem funSUI (anyone)
+
+1. `blast_sui::vault::redeem_fun_sui` with a `Coin<FUN_SUI>` (positive value).
+   Returns `Coin<SUI>` of exactly the same value; emits `FunSuiRedeemed`. No
+   fee, no minimum-out parameter. Works in safe mode and unwind-only.
+
+#### Deposit SUI for blastSUI (anyone)
+
+Transaction 1, epoch `E`:
+
+1. Split at least 1 SUI (1,000,000,000 MIST) from a SUI coin. The whole coin is
+   staked; no change is returned.
+2. `blast_sui::vault::request_blast_sui` with that coin. It delegates the SUI to
+   the vault's validator immediately and returns a `BlastSuiDepositReceipt`
+   whose stake activates at epoch `E + 1`. Emits `BlastSuiDepositRequested` with
+   `receipt_id`, `principal_sui`, and `activation_epoch`.
+3. `deposit_receipt::keep` with the receipt: it moves to the sender's account.
+   The receipt has no `store`, so a TransferObjects command cannot move it;
+   `keep` is the only way to hold it, and only for the sender.
+
+Transaction 2, any epoch from `activation_epoch` on with a current rate entry:
+
+1. `blast_sui::vault::claim_blast_sui` with the owned receipt (by value) and
+   `min_blast_out`. Returns `Coin<BLAST_SUI>`; emits `BlastSuiDepositClaimed`.
+   The receipt is consumed and its stake joins blast custody.
+
+The receipt's own stake keeps earning rewards until you claim, and the claim
+values it at the current rate, so waiting loses nothing. Rewards that existing
+holders earned before your stake activated stay with them.
+
+#### Cancel a deposit (receipt owner)
+
+1. `deposit_receipt::cancel` with the owned receipt and `SuiSystemState`. It
+   needs neither the vault nor `PackageVersion`. Returns `Coin<SUI>`: the
+   principal before activation, principal plus rewards after. Emits
+   `BlastSuiDepositCancelled`. Works at any time, including in safe mode, in
+   unwind-only, and after the validator is removed.
+
+#### Redeem blastSUI (anyone)
+
+1. Optionally dev-inspect the same call with `min_sui_out = 0` to read the exact
+   payout.
+2. `blast_sui::vault::redeem_blast_sui` with a `Coin<BLAST_SUI>` and
+   `min_sui_out`. Returns `Coin<SUI>`; emits `BlastSuiRedeemed` with
+   `gross_sui`, `fee_sui`, and `net_sui`. Works in safe mode (on the cached
+   rate) and unwind-only.
+
+#### Donate SUI to blastSUI holders (anyone)
+
+1. `blast_sui::vault::donate_sui` with a positive `Coin<SUI>`. It joins blast
+   custody, mints nothing, and raises the value of every blastSUI share,
+   including the locked seed shares. Emits `BlastSuiDonated`. The donor gets
+   nothing back.
+
+#### Sync (anyone)
+
+1. `blast_sui::vault::sync`. Runs the refresh, then delegates idle SUI. Emits
+   `VaultSynced` with the full custody snapshot. Use it to observe a departed
+   validator, convert arrived stake, or get a fresh snapshot (dev-inspect).
+
+#### Set the redemption fee (Blast admin, `FeeAdmin`)
+
+1. `blast_acl::sign_in` with type argument `blast_sui_domain::FeeAdmin`.
+2. `blast_sui::vault::set_redeem_fee` with the vault, `PackageVersion`, the
+   witness, and the new BPS (0 to 100, different from the current one). Applies
+   to every later redemption; emits `RedeemFeeChanged`.
+
+#### Package custody and upgrades (Blast admin, `UpgradeAdmin`)
+
+- `blast_sui::package_admin::new` (holder of the original `Publisher` and
+  never-upgraded `UpgradeCap`) returns a `PackageAdmin`. In the same PTB,
+  `blast_sui::package_admin::add_capability` (`UpgradeAdmin`) attaches
+  `MetadataCap<FUN_SUI>`, `MetadataCap<BLAST_SUI>`, and
+  `DisplayCap<BlastSuiDepositReceipt>`, then `blast_sui::package_admin::share`
+  shares it; `share` aborts unless all three are attached.
+- `deposit_receipt::create_display` (*anyone*, once per type) creates the
+  receipt's Display and returns its `DisplayCap`.
+- Upgrade, in one PTB: sign in as `UpgradeAdmin`,
+  `blast_sui::package_admin::authorize_upgrade` with the 32-byte digest, the
+  native `Upgrade` command, then
+  `blast_sui::package_admin::commit_upgrade_and_advance` with the receipt. The
+  generation advances in the same transaction.
+- `blast_sui::package_admin::restrict_to_additive` (irreversible; the strictest
+  policy this package exposes) and `blast_sui::package_admin::make_immutable`
+  (irreversible; the capabilities stay sealed).
+
+### Economics
+
+All amounts are atomic units (MIST for SUI, 10^-9 of a coin for funSUI and
+blastSUI). BPS are out of 10,000.
+
+- **funSUI**: mint `x` SUI → `x` funSUI; redeem `x` funSUI → `x` SUI. No fee, no
+  rounding. funSUI earns nothing.
+- **blastSUI value**: one blastSUI is worth `A_b / B` SUI at the conservative
+  valuation.
+- **Claim**: the receipt's stake converts natively to `pool_tokens`; then
+  `contributed_sui = floor(pool_tokens * rate_sui / rate_pool_tokens)` and
+  `blast_out = floor(contributed_sui * B / A_b)`, with `A_b` and `B` measured
+  after the refresh and before the deposit joins. `blast_out` must be positive
+  and at least `min_blast_out`.
+- **Redemption** of `s` blastSUI: `gross = floor(s * A_b / B)`,
+  `fee = ceil(gross * redeem_fee_bps / 10,000)`, `net = gross - fee`. `net`
+  must be positive and at least `min_sui_out`. The fee stays in blast custody.
+  Because the seed shares are never presented, every redemption is partial and
+  pays the fee.
+- **Redemption fee**: default 2 BPS, maximum 100 BPS (1%), set by `FeeAdmin`.
+  Zero is the only fee-free setting.
+- **Rate fallback**: when a cached rate component is zero, one pool token counts
+  as one MIST.
+- **Dust**: every rounding favors the vault's remaining holders: share minting
+  rounds down, redemption gross rounds down, the fee rounds up, and pool-token
+  valuations round down. Over-withdrawn SUI stays liquid in the ledger.
+- **Yield**: blast custody keeps its own staking rewards, every redemption fee,
+  and every donation, and receives fun custody's yield above `F + R`. The locked
+  seed shares earn their pro-rata part forever.
+- Example: `A_b` = 1,050 SUI, `B` = 1,000 blastSUI, fee 2 BPS. Redeeming 10
+  blastSUI gives `gross` = 10,500,000,000 MIST, `fee` = 2,100,000 MIST, `net` =
+  10,497,900,000 MIST.
+
+### Time rules
+
+- Native stake requested in epoch `E` activates at `E + 1`. A receipt can be
+  claimed when `activation_epoch <= current epoch`.
+- A claim also needs the vault's cached rate to be the current epoch's
+  (`rate_epoch == current epoch`), which the claim's own refresh provides in any
+  normal epoch. In a safe-mode epoch the claim aborts; retry in the next normal
+  epoch.
+- `blast_sui::vault::create` requires the pool to have a current-epoch rate
+  entry.
+- New SUI is delegated only in an epoch with a current rate; in a safe-mode
+  epoch it stays liquid (still counted at face value) until a later call.
+- Cancellation has no time limit and no epoch requirement.
+
+### Reading state
+
+The vault has no public getters; read object content over RPC, or use events.
+The only public read function is `blast_sui::package_admin::has_upgrade_cap`.
+
+- Vault fields: `pool_id` (the fixed staking pool), `fun_custody` and
+  `blast_custody` (`liquid_sui`, `pending_stakes`, `active_stake`,
+  `active_sui`), `rate_epoch`, `rate_sui`, `rate_pool_tokens`, `redeem_fee_bps`,
+  `unwind_only`.
+- Supplies: the `total_supply` of the treasury caps under the vault's dynamic
+  object fields `TreasuryKey<FUN_SUI>` and `TreasuryKey<BLAST_SUI>`, or
+  `fun_supply` and `blast_supply` in the latest event snapshot.
+- blastSUI price: `A_b / B`, from the latest `custody` snapshot: the sum of
+  `blast_custody.liquid_sui`, `blast_custody.pending_sui`, and
+  `blast_custody.active_sui`, over `blast_supply`.
+- Fresh numbers: dev-inspect `blast_sui::vault::sync` and read its
+  `VaultSynced`; or dev-inspect the exact claim or redemption with a zero
+  minimum.
+- Validator: derive it from `pool_id` through the Sui system state;
+  `VaultCreated` records it at creation.
+- A receipt: `vault_id` and `staked_sui` (`pool_id`, `stake_activation_epoch`,
+  `principal`).
+- Locked seed: `VaultCreated.locked_blast_sui`.
+
+### Events
+
+Every event is wrapped in the envelope `blast_sui::blast_events::Event<T>`;
+filter on the envelope type with the payload as its type argument.
+
+Snapshot types embedded in most events:
+
+- `blast_sui::events::VaultCustody`: `fun_custody`, `blast_custody`,
+  `exchange_rate`, `fun_supply`, `blast_supply`.
+- `blast_sui::events::PoolCustody`: `liquid_sui`, `pending_sui`,
+  `active_pool_tokens`, `active_sui`. The ledger's assets are
+  `liquid_sui + pending_sui + active_sui`.
+- `blast_sui::events::ExchangeRate`: `epoch`, `sui_amount`, `pool_token_amount`,
+  the rate entry applied; `epoch` may trail the transaction's epoch after a
+  safe-mode epoch.
+
+| Event | Emitted by | Key fields |
+| --- | --- | --- |
+| `blast_sui::events::VaultCreated` | `create` | `vault_id`, `validator`, `pool_id`, `fun_reserve_sui`, `bootstrap_sui`, `locked_blast_sui`, `redeem_fee_bps`, `custody` |
+| `blast_sui::events::FunSuiMinted` | `mint_fun_sui` | `sui_in`, `custody` |
+| `blast_sui::events::FunSuiRedeemed` | `redeem_fun_sui` | `fun_in`, `custody` |
+| `blast_sui::events::BlastSuiDepositRequested` | `request_blast_sui` | `receipt_id`, `vault_id`, `pool_id`, `principal_sui`, `activation_epoch`, `custody` |
+| `blast_sui::events::BlastSuiDepositClaimed` | `claim_blast_sui` | `receipt_id`, `principal_sui`, `contributed_sui`, `pool_tokens`, `blast_out`, `custody` |
+| `blast_sui::events::BlastSuiDepositCancelled` | `deposit_receipt::cancel` | `receipt_id`, `vault_id`, `principal_sui`, `returned_sui` (no snapshot: the vault is untouched) |
+| `blast_sui::events::BlastSuiDonated` | `donate_sui` | `sui_in`, `custody` |
+| `blast_sui::events::BlastSuiRedeemed` | `redeem_blast_sui` | `blast_in`, `gross_sui`, `fee_sui`, `net_sui`, `custody` |
+| `blast_sui::events::FunYieldSwept` | any refresh that moves yield | `liquid_sui`, `pool_tokens`, `swept_sui`, `custody` at that point |
+| `blast_sui::events::NativeStakeUnwound` | the refresh that observes a departed validator | `custody` |
+| `blast_sui::events::VaultSynced` | `sync` | `custody` |
+| `blast_sui::events::RedeemFeeChanged` | `set_redeem_fee` | `old_redeem_fee_bps`, `new_redeem_fee_bps` |
+| `blast_sui::events::PackageCapabilityAdded` | `add_capability` | `package_admin_id`, `capability_id`, `capability_type` |
+
+Upgrade events (`UpgradeAuthorized`, `UpgradeCommitted`,
+`OperationalVersionAdvanced`, and others) come from `blast_admin` without an
+envelope. An indexer gets the vault's full state after each transition from the
+last snapshot in the transaction, and links a deposit's request, claim, or
+cancellation by `receipt_id`.
+
+### Aborts
+
+Codes are plain `u64` values, raised in the `blast_sui` module that detects them
+(`vault`, `custody`, `math`, `deposit_receipt`, or `package_admin`).
+
+| Code | Name | Typical flow | Fix |
+| --- | --- | --- | --- |
+| 0 | `EZeroAmount` | any mint, redeem, donation | pass a positive coin |
+| 1 | `EInvalidShareAmount` | redeem blastSUI | cannot exceed supply (unreachable in practice) |
+| 2 | `EZeroBlastShares` | claim | the deposit rounded to zero shares |
+| 3 | `EZeroSuiRedemption` | redeem blastSUI | redeem more shares |
+| 4 | `EInvalidPackagePublisher` | `blast_sui::package_admin::new` | pass this package's `Publisher` from module `blast_sui_package` |
+| 5 | `EUnwindOnly` | mint funSUI, request, claim | the validator left; redeem or cancel instead |
+| 6 | `EValidatorNotActive` | create | choose an active validator |
+| 7 | `ENonzeroInitialSupply` | create | treasury caps must have zero supply |
+| 8 | `ESlippageExceeded` | claim, redeem blastSUI | lower the minimum or retry |
+| 9 | `EInsufficientNativeRedemption` | redemptions | native output fell short of the valuation; the vault fails closed |
+| 10 | `EBlastAssetsDepleted` | claim, redeem blastSUI | blast custody holds nothing to price shares |
+| 11 | `EBootstrapBelowNativeMinimum` | create | seed at least 1.1 SUI |
+| 12 | `ERedeemFeeAboveMaximum` | set fee | at most 100 BPS |
+| 13 | `ERedeemFeeUnchanged` | set fee | pass a different rate |
+| 14 | `EFunBackingBelowSupply` | any refresh, funSUI mint or redeem | fun custody fell below supply; the vault fails closed |
+| 15 | `EStaleExchangeRate` | claim, create | safe-mode epoch; retry in the next normal epoch |
+| 16 | `EBlastDepositBelowNativeMinimum` | request | deposit at least 1 SUI |
+| 17 | `EBlastDepositNotActive` | claim | wait for `activation_epoch` |
+| 18 | `EWrongReceiptVault` | claim | the receipt belongs to another vault |
+| 19 | `EWrongReceiptPool` | claim | the receipt's stake is from another pool |
+| 20 | `EZeroSuiAfterFee` | redeem blastSUI | the fee consumed the payout; redeem more |
+| 21 | `EWrongDelegationPool` | request, or any call that stakes | the validator address now runs a different pool than the vault's; deposits stay closed, redeem or cancel instead |
+| 22 | `EMissingPackageCapability` | `blast_sui::package_admin::share` | attach all three capabilities first |
+| 23 | `EPackageCapabilityAlreadyExists` | `blast_sui::package_admin::add_capability` | each capability type is attached once |
+
+Calls into outdated bytecode after an upgrade abort with code 13 from
+`blast_admin`'s `operational_version` module: rebuild the PTB against the latest
+package version. A role failure in `blast_acl::sign_in` aborts with
+`blast_admin` code 1 or 6.
+
+### Pitfalls
+
+- `blast_sui::vault::request_blast_sui` stakes the whole coin. Split the exact
+  amount first; the minimum is 1 SUI.
+- Call `deposit_receipt::keep` in the same PTB as the request. A TransferObjects
+  command on the receipt fails, and an unconsumed receipt aborts the PTB.
+- A receipt cannot be given to another account; only the requesting account can
+  claim or cancel it.
+- A claim in the request's epoch or in a safe-mode epoch aborts (codes 17, 15).
+- funSUI does not earn yield; blastSUI does.
+- The blastSUI price uses a conservative valuation at the cached rate. Always
+  set `min_sui_out` and `min_blast_out`, ideally from a dev-inspect of the same
+  call.
+- The fee applies to every blastSUI redemption, however small or large.
+- Every vault call takes the shared `Vault` mutably, so vault transactions are
+  sequenced through consensus.
+- After an upgrade, PTBs pinned to the old package ID abort (code 13 from
+  `operational_version`).
+
+### Q&A
+
+**What is the difference between funSUI and blastSUI?** funSUI is always worth
+exactly 1 SUI and earns nothing. blastSUI is a share of blast custody whose SUI
+value grows with staking rewards, including the rewards on the SUI backing
+funSUI.
+
+**How long until my deposit becomes blastSUI?** Your SUI is staked at once and
+activates at the next epoch. From then on, in any normal epoch, call
+`blast_sui::vault::claim_blast_sui` with your receipt. Until you claim, your
+stake keeps earning and is counted in your claim.
+
+**Can I get my SUI back before claiming?** Yes. `deposit_receipt::cancel`
+returns your principal, plus rewards once active, at any time, without touching
+the vault.
+
+**What does redeeming blastSUI cost?** `ceil(gross * redeem_fee_bps / 10,000)`
+MIST, where the fee starts at 2 BPS and can never exceed 100 BPS. The fee stays
+in the vault for the remaining holders.
+
+**Is funSUI always redeemable one-to-one?** Yes: redemption returns exactly one
+MIST per unit with no fee, from fun custody only. The vault checks fun custody
+covers the funSUI supply after every operation; if it ever did not, the call
+would abort rather than underpay.
+
+**Which validator does the vault use, and can it change?** The staking pool set
+at creation (`pool_id`). No call changes it.
+
+**What happens if the validator leaves the active set?** The next refresh
+unwinds all stake to liquid SUI and the vault becomes unwind-only: redemptions,
+donations, and cancellations work; mints, deposits, and claims abort.
+
+**Can Blast pause the vault or take user funds?** The current source has no
+pause and no withdrawal path for anyone but coin holders and receipt owners.
+Blast's `UpgradeAdmin` can upgrade the package until it is made immutable; check
+`blast_sui::package_admin::has_upgrade_cap`.
+
+**How do I compute the blastSUI to SUI rate?** Divide blast custody's assets
+(`liquid_sui + pending_sui + active_sui`) by `blast_supply`, from the latest
+event snapshot or a dev-inspected `sync`.
+
+**Why can't blastSUI supply reach zero?** Creation sends the bootstrap shares to
+`0x0`, where no one can redeem them. This removes every empty-vault edge case,
+and those shares keep their pro-rata part of the vault forever.
+
+## API reference: `blast_sui` (blastSUI and funSUI)
+
+Not yet published on mainnet. Its interface may change before publication.
+
+Events: every payload is emitted inside `blast_sui::blast_events::Event<T>`; filter on that type.
+
+Abort codes: this package aborts with the numeric codes below from whichever module detects the failure; the abort location names that module.
+
+| Code | Constant | Meaning |
+| --- | --- | --- |
+| 0 | `EZeroAmount` | An operation requires a positive atomic coin amount. |
+| 1 | `EInvalidShareAmount` | The number of shares exceeds the live blastSUI supply. |
+| 2 | `EZeroBlastShares` | A positive SUI deposit rounded down to zero blastSUI shares. |
+| 3 | `EZeroSuiRedemption` | A positive blastSUI redemption rounded down to zero SUI. |
+| 4 | `EInvalidPackagePublisher` | The supplied Publisher was not claimed by this package's canonical module. |
+| 5 | `EUnwindOnly` | The validator left the active set, so the vault accepts redemptions only. |
+| 6 | `EValidatorNotActive` | The fixed validator is not in the active validator set. |
+| 7 | `ENonzeroInitialSupply` | A treasury cap entering vault custody already has supply. |
+| 8 | `ESlippageExceeded` | The output is below the caller's minimum. |
+| 9 | `EInsufficientNativeRedemption` | Native redemption returned less SUI than the custody ledger's conservative valuation. |
+| 10 | `EBlastAssetsDepleted` | blastSUI shares exist but blast custody holds no assets to price them. |
+| 11 | `EBootstrapBelowNativeMinimum` | The protocol bootstrap deposit is below the native one-SUI stake minimum. |
+| 12 | `ERedeemFeeAboveMaximum` | The requested redemption fee exceeds the immutable maximum. |
+| 13 | `ERedeemFeeUnchanged` | The requested redemption fee equals the live rate. |
+| 14 | `EFunBackingBelowSupply` | Fun custody's conservative assets fell below the funSUI supply. |
+| 15 | `EStaleExchangeRate` | The staking pool has no exchange-rate entry for the current epoch. |
+| 16 | `EBlastDepositBelowNativeMinimum` | A blastSUI deposit is below the native one-SUI staking minimum. |
+| 17 | `EBlastDepositNotActive` | A blastSUI deposit receipt has not reached its native activation epoch. |
+| 18 | `EWrongReceiptVault` | A blastSUI deposit receipt belongs to another vault. |
+| 19 | `EWrongReceiptPool` | A blastSUI deposit receipt contains stake from another validator pool. |
+| 20 | `EZeroSuiAfterFee` | The blastSUI redemption fee consumed the complete atomic payout. |
+| 21 | `EWrongDelegationPool` | Native delegation returned stake from a pool other than the vault's immutable pool. |
+| 22 | `EMissingPackageCapability` | PackageAdmin cannot be shared before every required capability is attached. |
+| 23 | `EPackageCapabilityAlreadyExists` | PackageAdmin already owns a capability object of this exact type. |
+
+### `blast_sui::blast_events`
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/blast_sui/sources/lib/blast_events.move
+
+#### Types
+
+```move
+/// Stable package-wide envelope for every Blast SUI protocol event payload.
+public struct Event<T: copy + drop>(T) has copy, drop;
+```
+
+### `blast_sui::blast_sui`
+
+The unrestricted residual-share LST that receives all vault staking rewards.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/blast_sui/sources/blast_sui.move
+
+#### Types
+
+```move
+/// One-time witness and coin type for blastSUI.
+public struct BLAST_SUI() has drop;
+```
+
+### `blast_sui::blast_sui_domain`
+
+Blast SUI's administration roles in the shared Blast ACL.  A role is a type. An `AdminCap` holding `Role` signs in to `AdminWitness<Role>`, and a function's witness parameter names the one role it accepts, so a role from any other package is a different type and cannot reach these operations.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/blast_sui/sources/blast_sui_domain.move
+
+#### Types
+
+```move
+/// Attaches package capabilities and authorizes, cuts over, restricts, or seals an upgrade.
+public struct UpgradeAdmin {}
+
+/// Sets the blastSUI redemption fee.
+public struct FeeAdmin {}
+```
+
+### `blast_sui::blast_sui_package`
+
+Canonical package provenance witness and the shared cutover that prevents stale package generations from mutating protocol state.  The generation value, its checked arithmetic, and its replay event belong to `blast_admin::operational_version`; `init` seeds the value from the one-time witness before claiming the Publisher with it, so no other package can create this package's generation. This module owns only the canonical shared container and the two compiled constants that identify this bytecode and the bytecode a governed upgrade cuts over to.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/blast_sui/sources/blast_sui_package.move
+
+#### Types
+
+```move
+/// One-time witness: it seeds the package generation and claims this package's Publisher.
+public struct BLAST_SUI_PACKAGE() has drop;
+
+/// Singleton operational package generation.
+public struct PackageVersion has key {
+    id: UID,
+    generation: blast_admin::operational_version::OperationalVersion<BLAST_SUI_PACKAGE>,
+}
+```
+
+#### Constants
+
+- `PACKAGE_VERSION: u64 = 1`: Current package generation accepted by every protected mutation.
+- `NEXT_PACKAGE_VERSION: u64 = 2`: The generation this bytecode hands over to in a governed upgrade.
+
+### `blast_sui::constants`
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/blast_sui/sources/lib/constants.move
+
+#### Constants
+
+- `basis_points_denominator: u64 = 10_000`: Denominator for protocol rates expressed in basis points.
+- `default_redeem_fee_bps: u64 = 2`: blastSUI redemption fee a new vault starts with.
+- `max_redeem_fee_bps: u64 = 100`: Immutable ceiling for the blastSUI redemption fee.
+- `package_digest_length: u64 = 32`: Exact byte length of a Sui package digest.
+- `native_min_stake_mist: u64 = 1_000_000_000`: Smallest SUI amount the native validator set accepts as one new stake request.  It is also the minimum protocol bootstrap deposit: a smaller bootstrap could not be delegated and would leave blast custody idle.
+- `max_pending_stakes: u64 = 3`: Most pending native receipts one custody ledger holds at once.  Same-epoch requests join the newest receipt, refresh drains every arrived receipt at the first current-rate epoch, and delegation is gated by that same current-rate proof, so at most two receipts — one buffer-deferred and one current-epoch — can coexist. Three carries one slot of slack, and `stake_idle` skips delegation instead of aborting when the ledger is full, so an unexpected third receipt costs deferred yield, never a user abort.
+- `native_redemption_rounding_margin: u64 = 30`: Extra MIST requested from one native FungibleStakedSui redemption.  Native redemption floors the pool's total SUI value, then floors the principal and reward portions separately, so redeeming `v` pool tokens returns at least `floor(v * sui / tokens) - 3` MIST at the current rate. Requesting ceil pool tokens for `amount + 3` therefore funds `amount`. The constant carries ten times that proven bound: the vault calls the live system package, and headroom keeps exact redemption alive if a system upgrade drifts native rounding by a few MIST. Over-requested residue stays liquid in custody. An unbounded rate decrease is not a rounding drift and still fails closed.
+- `fun_rounding_reserve_mist: u64 = 100_000_000`: Protocol-funded fun exit and rounding reserve, in MIST.  Native conversion floors pool tokens and a full active-position redemption loses up to the redemption margin, so fun custody can fall a few MIST below the funSUI supply between rewarded epochs. The reserve absorbs those losses so exact 1:1 redemption never needs blast custody. One tenth of a SUI also makes adversarial depletion through repeated native rounding impractical.
+- `fun_exit_low_water_mist: u64 = 2 * native_redemption_rounding_margin!()`: Buffer at which active fun stake is unwound before another redemption can exhaust backing.  One redemption can lose at most the native margin. Keeping twice that amount lets a partial redemption and the protective unwind each absorb it.
+
+### `blast_sui::custody`
+
+One ledger of native SUI custody delegated to the vault's fixed staking pool.  A ledger holds liquid SUI, up to `max_pending_stakes` pending `StakedSui` receipts — each worth exactly its principal until conversion, ordered by strictly increasing activation epoch because same-epoch requests join — and at most one active `FungibleStakedSui` of the fixed pool. `active_sui` is the conservative SUI valuation of the active tokens: the floor value at the last applied pool exchange rate, reduced by exact native output between refreshes. The vault owns the applied rate; a ledger never reads the pool.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/blast_sui/sources/custody.move
+
+#### Types
+
+```move
+/// One internal native-asset ledger with liquid, pending, and active stake layers.
+public struct Custody has store {
+    liquid_sui: Balance<sui::SUI>,
+    pending_stakes: vector<staking_pool::StakedSui>,
+    active_stake: Option<staking_pool::FungibleStakedSui>,
+    active_sui: u64,
+}
+```
+
+### `blast_sui::deposit_receipt`
+
+Self-custodial native stake waiting to enter blast custody after activation.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/blast_sui/sources/deposit_receipt.move
+
+#### Types
+
+```move
+/// An owned blastSUI deposit that has not entered vault custody or coin supply.
+///
+/// `key` is the only ability. The receipt cannot be generically transferred,
+/// wrapped, or deleted. Callers can compose with the returned object, then use
+/// `keep` to place it in the transaction sender's account.
+public struct BlastSuiDepositReceipt has key {
+    id: UID,
+    vault_id: ID,
+    staked_sui: staking_pool::StakedSui,
+}
+```
+
+#### Functions
+
+```move
+/// Keeps a returned receipt in the transaction sender's account.
+public fun keep(self: BlastSuiDepositReceipt, ctx: &mut TxContext)
+
+/// Cancels an unclaimed deposit and returns its native principal plus any earned rewards.
+///
+/// This exit deliberately needs neither the shared vault nor its package-version
+/// object. Native withdrawal works before activation and after validator removal.
+public fun cancel(
+    self: BlastSuiDepositReceipt,
+    system_state: &mut sui_system::SuiSystemState,
+    ctx: &mut TxContext,
+): Coin<sui::SUI>
+
+/// Creates the receipt Display V2 and returns its update cap for package custody.
+///
+/// This is a permissionless deployment step. The system registry derives one
+/// canonical display per type and rejects every later creation attempt.
+public fun create_display(
+    package_version: &blast_sui_package::PackageVersion,
+    registry: &mut display_registry::DisplayRegistry,
+    ctx: &mut TxContext,
+): display_registry::DisplayCap<BlastSuiDepositReceipt>
+```
+
+### `blast_sui::events`
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/blast_sui/sources/lib/events.move
+
+#### Types
+
+```move
+/// Final native custody buckets of one ledger after a completed transition.
+///
+/// Conservative ledger backing is `liquid_sui + pending_sui + active_sui`, where
+/// `active_sui` is the floor valuation of `active_pool_tokens` at the last
+/// applied exchange rate less exact native output since.
+public struct PoolCustody has copy, drop {
+    liquid_sui: u64,
+    pending_sui: u64,
+    active_pool_tokens: u64,
+    active_sui: u64,
+}
+
+/// The pool exchange-rate entry the vault last observed and applies to both ledgers.
+///
+/// `epoch` is the entry's table key; `sui_amount` and `pool_token_amount` are
+/// the native primitives. A refresh in an epoch without an entry (safe mode)
+/// keeps the previous entry, so `epoch` may trail the transaction epoch.
+public struct ExchangeRate has copy, drop {
+    epoch: u64,
+    sui_amount: u64,
+    pool_token_amount: u64,
+}
+
+/// Final custody and supply snapshot of both ledgers after a completed transition.
+public struct VaultCustody has copy, drop {
+    fun_custody: PoolCustody,
+    blast_custody: PoolCustody,
+    exchange_rate: ExchangeRate,
+    fun_supply: u64,
+    blast_supply: u64,
+}
+```
+
+#### Events
+
+```move
+/// Emitted after an active admin attaches one capability object to PackageAdmin.
+public struct PackageCapabilityAdded has copy, drop {
+    package_admin_id: ID,
+    capability_id: ID,
+    capability_type: TypeName,
+}
+
+/// Emitted after the single-validator vault is created from the owner seed.
+///
+/// `fun_reserve_sui` is the protocol-funded fun safety reserve and
+/// `bootstrap_sui` the blast bootstrap; their sum is the owner seed.
+/// `locked_blast_sui` is the blastSUI minted one per bootstrap MIST and
+/// transferred to `@0x0` in the same transaction: those shares can never be
+/// redeemed, so their backing stays in blast custody permanently. No stored
+/// field duplicates it; the treasury total supply and this fact are sufficient.
+public struct VaultCreated has copy, drop {
+    vault_id: ID,
+    validator: address,
+    pool_id: ID,
+    fun_reserve_sui: u64,
+    bootstrap_sui: u64,
+    locked_blast_sui: u64,
+    redeem_fee_bps: u64,
+    custody: VaultCustody,
+}
+
+/// Emitted after SUI enters fun custody one-to-one for funSUI.
+public struct FunSuiMinted has copy, drop {
+    sui_in: u64,
+    custody: VaultCustody,
+}
+
+/// Emitted after funSUI is burned one-to-one for SUI from fun custody.
+public struct FunSuiRedeemed has copy, drop {
+    fun_in: u64,
+    custody: VaultCustody,
+}
+
+/// Emitted after native stake is placed in a key-only blastSUI deposit receipt.
+public struct BlastSuiDepositRequested has copy, drop {
+    receipt_id: ID,
+    vault_id: ID,
+    pool_id: ID,
+    principal_sui: u64,
+    activation_epoch: u64,
+    custody: VaultCustody,
+}
+
+/// Emitted after an activated receipt enters blast custody and mints blastSUI.
+public struct BlastSuiDepositClaimed has copy, drop {
+    receipt_id: ID,
+    vault_id: ID,
+    principal_sui: u64,
+    contributed_sui: u64,
+    pool_tokens: u64,
+    blast_out: u64,
+    custody: VaultCustody,
+}
+
+/// Emitted after a receipt is cancelled directly back to native SUI.
+public struct BlastSuiDepositCancelled has copy, drop {
+    receipt_id: ID,
+    vault_id: ID,
+    principal_sui: u64,
+    returned_sui: u64,
+}
+
+/// Emitted after external SUI enters blast custody without minting blastSUI.
+public struct BlastSuiDonated has copy, drop {
+    sui_in: u64,
+    custody: VaultCustody,
+}
+
+/// Emitted after blastSUI shares are burned for their share of blast custody less the retained fee.
+public struct BlastSuiRedeemed has copy, drop {
+    blast_in: u64,
+    gross_sui: u64,
+    fee_sui: u64,
+    net_sui: u64,
+    custody: VaultCustody,
+}
+
+/// Emitted after fun yield above the funSUI claim and reserve moved into blast custody.
+public struct FunYieldSwept has copy, drop {
+    liquid_sui: u64,
+    pool_tokens: u64,
+    swept_sui: u64,
+    custody: VaultCustody,
+}
+
+/// Emitted after the `FeeAdmin` changes the blastSUI redemption fee.
+public struct RedeemFeeChanged has copy, drop {
+    old_redeem_fee_bps: u64,
+    new_redeem_fee_bps: u64,
+}
+
+/// Emitted after a permissionless refresh, sweep, and idle delegation pass.
+public struct VaultSynced has copy, drop {
+    custody: VaultCustody,
+}
+
+/// Emitted after both ledgers withdrew every native position because the validator left the active set.
+public struct NativeStakeUnwound has copy, drop {
+    custody: VaultCustody,
+}
+```
+
+### `blast_sui::fun_sui`
+
+The unrestricted 1:1 SUI quote coin used by Blast liquidity.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/blast_sui/sources/fun_sui.move
+
+#### Types
+
+```move
+/// One-time witness and coin type for funSUI.
+public struct FUN_SUI() has drop;
+```
+
+### `blast_sui::package_admin`
+
+Permanent shared custody for package capabilities.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/blast_sui/sources/package_admin.move
+
+#### Types
+
+```move
+/// Shared, non-releasable custody for package and update authority.
+///
+/// The reusable Publisher/UpgradeCap seal is the shared custody value; the
+/// package-specific metadata and display capabilities remain dynamic object
+/// children of this wrapper.
+public struct PackageAdmin has key {
+    id: UID,
+    custody: blast_admin::upgrade_custody::UpgradeCustody<blast_sui_package::BLAST_SUI_PACKAGE>,
+}
+
+/// Type-derived key for a capability owned as a dynamic object field.
+public struct CapabilityKey<phantom Capability>() has copy, drop, store;
+```
+
+#### Functions
+
+```move
+/// Validates the fixed package capabilities and returns composable custody.
+///
+/// Deployment must call this before any raw-cap upgrade. The returned key-only
+/// object must receive its required child capabilities before `share`.
+public fun new(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext): PackageAdmin
+
+/// Attaches one exact capability type under upgrade-admin authority.
+public fun add_capability<Capability: key + store>(
+    self: &mut PackageAdmin,
+    package_version: &blast_sui_package::PackageVersion,
+    _: &blast_admin::blast_acl::AdminWitness<blast_sui_domain::UpgradeAdmin>,
+    capability: Capability,
+)
+
+/// Verifies required bootstrap capabilities and irreversibly shares custody.
+public fun share(self: PackageAdmin)
+
+/// Authorizes the exact package digest under the wrapped cap's current policy.
+public fun authorize_upgrade(
+    self: &mut PackageAdmin,
+    package_version: &blast_sui_package::PackageVersion,
+    _: &blast_admin::blast_acl::AdminWitness<blast_sui_domain::UpgradeAdmin>,
+    digest: vector<u8>,
+): UpgradeTicket
+
+/// Commits the native receipt and advances one operational generation at once.
+///
+/// This is the only upgrade finalizer. Both mutations belong to the same
+/// transaction, so a failure at either step rolls back the whole upgrade.
+public fun commit_upgrade_and_advance(
+    self: &mut PackageAdmin,
+    package_version: &mut blast_sui_package::PackageVersion,
+    _: &blast_admin::blast_acl::AdminWitness<blast_sui_domain::UpgradeAdmin>,
+    receipt: UpgradeReceipt,
+)
+
+/// Irreversibly narrows upgrades to additive changes.
+///
+/// Additive is the strictest exposed policy. A dependency-only restriction
+/// is deliberately not exposed: it would foreclose adding a rescue entry
+/// point if a defensive invariant abort ever froze the vault, while
+/// additive still permits new code beside the frozen path.
+public fun restrict_to_additive(
+    self: &mut PackageAdmin,
+    package_version: &blast_sui_package::PackageVersion,
+    _: &blast_admin::blast_acl::AdminWitness<blast_sui_domain::UpgradeAdmin>,
+)
+
+/// Irreversibly destroys native upgrade authority for this package.
+///
+/// Publisher custody and every sealed child capability survive, so metadata and
+/// display administration continue at the final operational generation.
+public fun make_immutable(
+    self: &mut PackageAdmin,
+    package_version: &blast_sui_package::PackageVersion,
+    _: &blast_admin::blast_acl::AdminWitness<blast_sui_domain::UpgradeAdmin>,
+)
+
+/// Reports whether native upgrade authority remains sealed in custody.
+public fun has_upgrade_cap(self: &PackageAdmin): bool
+```
+
+### `blast_sui::vault`
+
+Single-validator custody of the 1:1 funSUI ledger and the blastSUI share ledger.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/blast_sui/sources/vault.move
+
+#### Types
+
+```move
+/// Shared owner of both treasury-cap child objects and the two native custody ledgers.
+///
+/// `fun_custody` backs only funSUI plus the protocol-funded rounding reserve,
+/// and `blast_custody` backs only blastSUI, including the seed shares locked
+/// at `@0x0` by `create`; both delegate only through `pool_id`.
+/// blastSUI supply is therefore never zero after creation. `rate_epoch`,
+/// `rate_sui`, and `rate_pool_tokens` cache the pool exchange-rate entry last
+/// observed for a current epoch; a refresh in an epoch without an entry keeps
+/// this conservative rate instead of scanning the table. `unwind_only` records
+/// that the validator left the active set.
+public struct Vault has key {
+    id: UID,
+    pool_id: ID,
+    fun_custody: custody::Custody,
+    blast_custody: custody::Custody,
+    rate_epoch: u64,
+    rate_sui: u64,
+    rate_pool_tokens: u64,
+    redeem_fee_bps: u64,
+    unwind_only: bool,
+}
+
+/// Type-derived key for a treasury cap owned as a discoverable child object.
+public struct TreasuryKey<phantom CoinType>() has copy, drop, store;
+```
+
+#### Functions
+
+```move
+/// Creates and shares the vault from the owner seed, locking every seed share.
+///
+/// Both treasury caps must be empty. The pool's canonical validator must be
+/// active and the pool must have an exchange-rate entry for the current epoch.
+/// The seed must cover the fun rounding reserve plus a blast bootstrap of at
+/// least the native minimum stake: the reserve enters fun custody as liquid
+/// protocol capital that mints nothing, and the remainder enters blast custody,
+/// mints one blastSUI share per MIST, and is delegated in this transaction.
+/// The complete minted `Coin<BLAST_SUI>` is transferred to `@0x0` here, so
+/// blastSUI supply stays permanently positive and the bootstrap backing can
+/// never be redeemed. Nothing is returned; the treasury total supply and the
+/// `VaultCreated` fact record the locked amount.
+public fun create(
+    package_version: &blast_sui_package::PackageVersion,
+    system_state: &mut sui_system::SuiSystemState,
+    fun_cap: TreasuryCap<fun_sui::FUN_SUI>,
+    blast_cap: TreasuryCap<blast_sui::BLAST_SUI>,
+    owner_seed: Coin<sui::SUI>,
+    pool_id: ID,
+    ctx: &mut TxContext,
+)
+
+/// Mints funSUI one-to-one for SUI held in fun custody.
+public fun mint_fun_sui(
+    self: &mut Vault,
+    package_version: &blast_sui_package::PackageVersion,
+    system_state: &mut sui_system::SuiSystemState,
+    sui_in: Coin<sui::SUI>,
+    ctx: &mut TxContext,
+): Coin<fun_sui::FUN_SUI>
+
+/// Burns funSUI and returns exactly one MIST per unit from fun custody.
+public fun redeem_fun_sui(
+    self: &mut Vault,
+    package_version: &blast_sui_package::PackageVersion,
+    system_state: &mut sui_system::SuiSystemState,
+    fun_in: Coin<fun_sui::FUN_SUI>,
+    ctx: &mut TxContext,
+): Coin<sui::SUI>
+
+/// Delegates SUI into a key-only receipt that remains outside vault custody.
+///
+/// The receipt is returned for transaction composition. It can be claimed for
+/// blastSUI from its activation epoch, cancelled for native SUI at any time, or
+/// placed in the caller's account through `deposit_receipt::keep`.
+public fun request_blast_sui(
+    self: &mut Vault,
+    package_version: &blast_sui_package::PackageVersion,
+    system_state: &mut sui_system::SuiSystemState,
+    sui_in: Coin<sui::SUI>,
+    ctx: &mut TxContext,
+): deposit_receipt::BlastSuiDepositReceipt
+
+/// Consumes an activated receipt and mints blastSUI at the current fair rate.
+///
+/// The receipt's native stake is external to blast custody until this call.
+/// Existing holders therefore keep every reward earned before its activation.
+public fun claim_blast_sui(
+    self: &mut Vault,
+    package_version: &blast_sui_package::PackageVersion,
+    system_state: &mut sui_system::SuiSystemState,
+    receipt: deposit_receipt::BlastSuiDepositReceipt,
+    min_blast_out: u64,
+    ctx: &mut TxContext,
+): Coin<blast_sui::BLAST_SUI>
+
+/// Adds external SUI rewards to blast custody without minting blastSUI.
+///
+/// The donation increases assets per existing share, including the permanently
+/// locked bootstrap shares. Anyone may donate; the caller receives no receipt,
+/// shares, or withdrawal authority. Idle donations are delegated when a current
+/// rate proves the pool is active and remain liquid otherwise.
+public fun donate_sui(
+    self: &mut Vault,
+    package_version: &blast_sui_package::PackageVersion,
+    system_state: &mut sui_system::SuiSystemState,
+    sui_in: Coin<sui::SUI>,
+    ctx: &mut TxContext,
+)
+
+/// Burns blastSUI for its pro-rata share of blast custody less the retained fee.
+///
+/// Every redemption is partial against the total supply because the locked
+/// seed shares can never be presented, so every redemption pays the current
+/// `redeem_fee_bps`, which stays in blast custody. The quote uses the cached
+/// conservative valuation, so the caller's `min_sui_out` is its protection
+/// during a safe-mode epoch.
+public fun redeem_blast_sui(
+    self: &mut Vault,
+    package_version: &blast_sui_package::PackageVersion,
+    system_state: &mut sui_system::SuiSystemState,
+    blast_in: Coin<blast_sui::BLAST_SUI>,
+    min_sui_out: u64,
+    ctx: &mut TxContext,
+): Coin<sui::SUI>
+
+/// Sets the blastSUI redemption fee for every later redemption.
+public fun set_redeem_fee(
+    self: &mut Vault,
+    package_version: &blast_sui_package::PackageVersion,
+    _: &blast_admin::blast_acl::AdminWitness<blast_sui_domain::FeeAdmin>,
+    redeem_fee_bps: u64,
+)
+
+/// Permissionless refresh: unwinds an inactive validator, converts activated
+/// stake, revalues both ledgers, sweeps fun yield, and delegates idle SUI.
+public fun sync(
+    self: &mut Vault,
+    package_version: &blast_sui_package::PackageVersion,
+    system_state: &mut sui_system::SuiSystemState,
+    ctx: &mut TxContext,
+)
+```
+
+## API reference: `blast_admin` (Administration)
+
+Not yet published on mainnet. Its interface may change before publication.
+
+Events: payload structs are emitted directly, each under its own type.
+
+Abort codes: this package aborts with the numeric codes below from whichever module detects the failure; the abort location names that module.
+
+| Code | Constant | Meaning |
+| --- | --- | --- |
+| 0 | `EInvalidSuperAdminCap` |  |
+| 1 | `EInvalidAdminCap` |  |
+| 2 | `EInvalidAdminRecipient` |  |
+| 3 | `EAdminCapacityReached` |  |
+| 4 | `EAdminRoleCapacityReached` |  |
+| 5 | `EAdminRoleAlreadyGranted` |  |
+| 6 | `EAdminRoleNotGranted` |  |
+| 7 | `EInvalidSuperAdminRecipient` |  |
+| 8 | `ESuperAdminTransferUnchanged` |  |
+| 9 | `ENoPendingSuperAdminTransfer` |  |
+| 10 | `ENotPendingSuperAdminRecipient` |  |
+| 11 | `ESuperAdminTransferNotReady` |  |
+| 12 | `ESuperAdminCapStillActive` |  |
+| 13 | `EOperationalVersionMismatch` |  |
+| 14 | `EOperationalVersionOverflow` |  |
+| 15 | `EInvalidPackagePublisher` |  |
+| 16 | `EInvalidUpgradeCap` |  |
+| 17 | `EInvalidPackageDigest` |  |
+| 18 | `EUpgradeCapUnavailable` |  |
+| 19 | `EUpgradePolicyNotMoreRestrictive` |  |
+| 20 | `EInvalidPackageMarker` |  |
+
+### `blast_admin::blast_acl`
+
+The one access-control list for every Blast package: one cold root and role-typed admins.  A role is a type that its consumer package declares. `AdminWitness<Role>` in a function signature is that function's role check, and a role from one package can never satisfy another package's signature.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/admin/sources/blast_acl.move
+
+#### Types
+
+```move
+/// The shared singleton that lists the active root and every live administrator's roles.
+public struct ACL has key {
+    id: UID,
+    super_admin_cap_id: ID,
+    admins: VecMap<ID, VecSet<TypeName>>,
+    /// The nominated next super admin: none until the transfer delay passes.
+    pending_super_admin: blast_fun_timelock::Timelocked<Option<address>>,
+}
+
+/// Cold root authority for membership, roles, and delayed root replacement only.
+public struct SuperAdminCap has key {
+    id: UID,
+}
+
+/// Transferable, live-registry-checked administrator capability holding any granted roles.
+public struct AdminCap has key, store {
+    id: UID,
+}
+
+/// Transaction-local proof that a live `AdminCap` holding `Role` signed in.
+public struct AdminWitness<phantom Role>() has drop;
+```
+
+#### Functions
+
+```move
+/// Creates and delivers one live administrator that holds no role yet.
+public fun grant_admin(
+    self: &mut ACL,
+    root: &SuperAdminCap,
+    recipient: address,
+    ctx: &mut TxContext,
+)
+
+/// Revokes one live administrator and all its roles without requiring possession of its cap.
+public fun revoke_admin(self: &mut ACL, root: &SuperAdminCap, admin_cap_id: ID)
+
+/// Adds `Role` to a live administrator.
+public fun grant_role<Role>(self: &mut ACL, root: &SuperAdminCap, admin_cap_id: ID)
+
+/// Removes `Role` from a live administrator; an administrator with no role signs in to nothing.
+public fun revoke_role<Role>(self: &mut ACL, root: &SuperAdminCap, admin_cap_id: ID)
+
+/// Deletes an active or already-revoked administrator cap and reports what it still held.
+public fun destroy_admin_cap(self: &mut ACL, admin_cap: AdminCap)
+
+/// Nominates `recipient` as the next super admin; it may accept once the transfer delay
+/// passes. A new nomination replaces a pending one and restarts the delay.
+public fun begin_super_admin_transfer(
+    self: &mut ACL,
+    root: &SuperAdminCap,
+    recipient: address,
+    clock: &Clock,
+    ctx: &mut TxContext,
+)
+
+/// Cancels the pending root transfer at once, even after its delay has passed.
+public fun cancel_super_admin_transfer(self: &mut ACL, root: &SuperAdminCap)
+
+/// Accepts a ready root transfer as its nominated recipient and invalidates the old cap.
+public fun accept_super_admin_transfer(self: &mut ACL, clock: &Clock, ctx: &mut TxContext)
+
+/// Deletes a root capability only after an accepted replacement made it inert.
+public fun destroy_retired_super_admin_cap(self: &ACL, root: SuperAdminCap)
+
+/// Proves that `admin_cap` is live and holds `Role`; the witness type is what consumers require.
+public fun sign_in<Role>(self: &ACL, admin_cap: &AdminCap): AdminWitness<Role>
+```
+
+#### Constants
+
+- `MAX_ADMINS: u64 = 32`
+- `MAX_ROLES_PER_ADMIN: u64 = 32`
+- `SUPER_ADMIN_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000`: The wait before a nominated super admin may accept the root.
+
+### `blast_admin::blast_admin_events`
+
+Replay-complete typed facts for shared administration transitions.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/admin/sources/blast_admin_events.move
+
+#### Events
+
+```move
+public struct AdminGranted has copy, drop {
+    admin_cap_id: ID,
+    recipient: address,
+}
+
+public struct AdminRevoked has copy, drop {
+    admin_cap_id: ID,
+    roles: vector<TypeName>,
+}
+
+public struct AdminRoleGranted has copy, drop {
+    admin_cap_id: ID,
+    role: TypeName,
+}
+
+public struct AdminRoleRevoked has copy, drop {
+    admin_cap_id: ID,
+    role: TypeName,
+}
+
+public struct AdminDestroyed has copy, drop {
+    admin_cap_id: ID,
+    roles: vector<TypeName>,
+    was_active: bool,
+}
+
+public struct SuperAdminTransferStarted has copy, drop {
+    recipient: address,
+    execute_after_ms: u64,
+}
+
+public struct SuperAdminTransferCancelled has copy, drop {
+    recipient: address,
+    execute_after_ms: u64,
+}
+
+public struct SuperAdminTransferred has copy, drop {
+    previous_super_admin_cap_id: ID,
+    new_super_admin_cap_id: ID,
+    recipient: address,
+}
+
+public struct SuperAdminCapDestroyed has copy, drop {
+    super_admin_cap_id: ID,
+}
+
+/// Emitted by a value that only its package's one-time witness could create; `container_id` is
+/// the UID the advancing module held.
+public struct OperationalVersionAdvanced<phantom PackageMarker: drop> has copy, drop {
+    container_id: ID,
+    package_id: address,
+    previous_generation: u64,
+    new_generation: u64,
+}
+
+public struct UpgradeCustodyCreated<phantom PackageMarker: drop> has copy, drop {
+    custodian_id: ID,
+    publisher_id: ID,
+    upgrade_cap_id: ID,
+    package_id: ID,
+    native_version: u64,
+    policy: u8,
+}
+
+public struct UpgradeAuthorized<phantom PackageMarker: drop> has copy, drop {
+    custodian_id: ID,
+    upgrade_cap_id: ID,
+    package_id: ID,
+    native_version: u64,
+    policy: u8,
+    digest: vector<u8>,
+}
+
+public struct UpgradeCommitted<phantom PackageMarker: drop> has copy, drop {
+    custodian_id: ID,
+    upgrade_cap_id: ID,
+    original_package_id: address,
+    new_package_id: ID,
+    previous_native_version: u64,
+    new_native_version: u64,
+}
+
+public struct UpgradePolicyRestricted<phantom PackageMarker: drop> has copy, drop {
+    custodian_id: ID,
+    upgrade_cap_id: ID,
+    package_id: address,
+    native_version: u64,
+    previous_policy: u8,
+    new_policy: u8,
+}
+
+public struct UpgradeCapDestroyed<phantom PackageMarker: drop> has copy, drop {
+    custodian_id: ID,
+    upgrade_cap_id: ID,
+    package_id: address,
+    final_native_version: u64,
+    final_policy: u8,
+}
+```
+
+### `blast_admin::operational_version`
+
+Sealed operational-generation arithmetic for consumer-owned version containers.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/admin/sources/operational_version.move
+
+#### Types
+
+```move
+/// Storable, package-typed generation value with construction and mutation sealed here.
+public struct OperationalVersion<phantom PackageMarker: drop> has store {
+    generation: u64,
+}
+```
+
+#### Functions
+
+```move
+/// Creates the initial operational generation from the consumer package's one-time witness, so
+/// the value can only come into existence inside that package's initializer.
+public fun new<PackageMarker: drop>(otw: &PackageMarker): OperationalVersion<PackageMarker>
+
+/// Rejects bytecode whose private compiled generation differs from canonical state.
+public fun assert_current<PackageMarker: drop>(
+    self: &OperationalVersion<PackageMarker>,
+    compiled_generation: u64,
+)
+
+/// Proves the proposed compiled generation is exactly next before other finalizer effects.
+public fun assert_next<PackageMarker: drop>(
+    self: &OperationalVersion<PackageMarker>,
+    compiled_generation: u64,
+)
+
+/// Advances only when the consumer's new compiled generation is exactly one greater.
+///
+/// `container` is the versioned object's own UID, so the emitted container ID is one the caller
+/// holds.
+public fun advance<PackageMarker: drop>(
+    self: &mut OperationalVersion<PackageMarker>,
+    container: &UID,
+    compiled_generation: u64,
+)
+```
+
+#### Constants
+
+- `INITIAL_GENERATION: u64 = 1`
+
+### `blast_admin::upgrade_custody`
+
+Sealed custody and native transitions for one consumer package's framework capabilities.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/admin/sources/upgrade_custody.move
+
+#### Types
+
+```move
+/// Storable custody value whose capabilities never leave it: the Publisher is readable by
+/// reference and the UpgradeCap acts only through the named transitions below.
+public struct UpgradeCustody<phantom PackageMarker: drop> has store {
+    publisher: Publisher,
+    upgrade_cap: Option<UpgradeCap>,
+}
+```
+
+#### Functions
+
+```move
+/// Validates an original package's Publisher and never-upgraded cap before sealing both.
+public fun new<PackageMarker: drop>(
+    custodian_id: ID,
+    publisher: Publisher,
+    upgrade_cap: UpgradeCap,
+): UpgradeCustody<PackageMarker>
+
+/// Reports whether native upgrade authority remains sealed in custody.
+public fun has_upgrade_cap<PackageMarker: drop>(self: &UpgradeCustody<PackageMarker>): bool
+
+/// Borrows the sealed Publisher for provenance-gated framework features such as Display and
+/// TransferPolicy. Every framework path that moves or burns a Publisher takes it by value, so a
+/// reference cannot end custody; the consumer wrapper decides who may call this.
+public fun publisher<PackageMarker: drop>(self: &UpgradeCustody<PackageMarker>): &Publisher
+
+/// Authorizes exactly one 32-byte package digest under the cap's current policy.
+public fun authorize_upgrade<PackageMarker: drop>(
+    self: &mut UpgradeCustody<PackageMarker>,
+    custodian_id: ID,
+    digest: vector<u8>,
+): UpgradeTicket
+
+/// Commits a native receipt into the same sealed capability that authorized it.
+public fun commit_upgrade<PackageMarker: drop>(
+    self: &mut UpgradeCustody<PackageMarker>,
+    custodian_id: ID,
+    receipt: UpgradeReceipt,
+)
+
+/// Irreversibly narrows compatible policy to additive-only upgrades.
+public fun restrict_to_additive<PackageMarker: drop>(
+    self: &mut UpgradeCustody<PackageMarker>,
+    custodian_id: ID,
+)
+
+/// Irreversibly narrows compatible or additive policy to dependency-only upgrades.
+public fun restrict_to_dependency_only<PackageMarker: drop>(
+    self: &mut UpgradeCustody<PackageMarker>,
+    custodian_id: ID,
+)
+
+/// Irreversibly destroys native upgrade authority while preserving Publisher custody.
+public fun make_immutable<PackageMarker: drop>(
+    self: &mut UpgradeCustody<PackageMarker>,
+    custodian_id: ID,
+)
+```
+
+#### Constants
+
+- `PACKAGE_DIGEST_LENGTH: u64 = 32`
+- `INITIAL_NATIVE_VERSION: u64 = 1`: The framework stamps a freshly published package's `UpgradeCap` with version one.

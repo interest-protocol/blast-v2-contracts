@@ -3,9 +3,9 @@ name: llms
 on:
   push:
     branches: [main]
-    paths: ['sui/**', 'docs/llms/**', 'deployments/**', 'scripts/gen_llms.py', 'llms-full.txt', '.github/workflows/llms.yml']
+    paths: ['sui/**', 'docs/llms/**', 'deployments/**', 'scripts/gen_llms.py', 'llms-full.txt', 'llms/**', '.github/workflows/llms.yml']
   pull_request:
-    paths: ['sui/**', 'docs/llms/**', 'deployments/**', 'scripts/gen_llms.py', 'llms-full.txt', '.github/workflows/llms.yml']
+    paths: ['sui/**', 'docs/llms/**', 'deployments/**', 'scripts/gen_llms.py', 'llms-full.txt', 'llms/**', '.github/workflows/llms.yml']
 
 jobs:
   check:
@@ -25,5 +25,5 @@ jobs:
           mkdir -p "$HOME/.local/bin"
           tar -xzf sui.tgz -C "$HOME/.local/bin" ./sui
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - name: Check llms-full.txt is current
+      - name: Check llms-full.txt and llms/ are current
         run: python3 scripts/gen_llms.py --check

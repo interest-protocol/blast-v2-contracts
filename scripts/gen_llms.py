@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Generate llms-full.txt: the integrator guides plus an API reference of every first-party package.
+"""Generate the integrator references: the guides plus an API reference of the first-party packages.
 
-The reference comes from `sui move summary` (types, functions, docs) and the Move source (events,
+`llms-full.txt` holds every product; each file under `llms/` holds one product with the shared
+basics and what that product's calls depend on. The reference comes from `sui move summary` (types, functions, docs) and the Move source (events,
 errors, constants). Deployment status comes from each package's Published.toml and the matching
 record under deployments/sui/mainnet/. Every first-party name a guide writes in backticks must
 resolve, or generation fails.
 
-    python3 scripts/gen_llms.py            # rebuild summaries and write llms-full.txt
-    python3 scripts/gen_llms.py --check    # fail when llms-full.txt is stale
+    python3 scripts/gen_llms.py            # rebuild summaries and write every reference
+    python3 scripts/gen_llms.py --check    # fail when a committed reference is stale
     python3 scripts/gen_llms.py --summaries DIR   # reuse summaries from an earlier run
 """
 
@@ -22,10 +23,12 @@ import sys
 import tempfile
 import tomllib
 from dataclasses import dataclass, field
+from functools import cache
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUT = ROOT / "llms-full.txt"
+PRODUCT_DIR = ROOT / "llms"
 GUIDES_DIR = ROOT / "docs" / "llms"
 REPO_URL = "https://github.com/interest-protocol/blast-v2-contracts/blob/main"
 
@@ -42,15 +45,85 @@ PACKAGES = [
     ("sui/admin", "Administration"),
     ("sui/vendors/aftermath_dao_presale", "Aftermath DAO-pool presale migrator"),
 ]
+# Each guide with the packages whose deployment status it opens with.
 GUIDES = [
-    "basics.md",
-    "presale.md",
-    "launchpad.md",
-    "migrators.md",
-    "partners.md",
-    "boosts.md",
-    "blast-sui.md",
-    "admin.md",
+    ("basics.md", []),
+    ("presale.md", ["sui/presale", "sui/vendors/aftermath_dao_presale"]),
+    ("launchpad.md", ["sui/launchpad"]),
+    ("migrators.md", ["sui/migrators"]),
+    ("partners.md", ["sui/partners"]),
+    ("boosts.md", ["sui/boosts/core", "sui/boosts/products", "sui/boosts/aftermath_adapter"]),
+    ("blast-sui.md", ["sui/blast_sui"]),
+    ("admin.md", ["sui/admin"]),
+]
+
+
+@dataclass
+class Product:
+    slug: str
+    title: str
+    summary: str
+    guides: list[str]
+    packages: list[str]
+    # Packages the product's signatures, fees, and aborts name, referenced after its own.
+    depends: list[str] = field(default_factory=list)
+
+
+# One file per product under llms/. Every file opens with basics.md.
+PRODUCTS = [
+    Product(
+        "presale",
+        "Presale",
+        "standalone overflow presales on Sui: commit Quote to a capped or overflow sale, claim tokens or "
+        "refunds, migrate into Cetus or Bluefin, and earn LP fees and holder rewards after migration",
+        ["presale.md", "partners.md"],
+        ["sui/presale", "sui/vendors/aftermath_dao_presale"],
+        ["sui/partners"],
+    ),
+    Product(
+        "launchpad",
+        "Launchpad",
+        "bonding-curve coin launches on Sui: launch a coin, trade it on the curve, graduate it into a "
+        "Cetus or Bluefin pool, and collect LP fees and holder rewards from the LP vault",
+        ["launchpad.md", "migrators.md", "partners.md"],
+        ["sui/launchpad", "sui/migrators"],
+        ["sui/partners", "sui/admin"],
+    ),
+    Product(
+        "partners",
+        "Partner codes",
+        "partner codes on Sui: an app registers a code and earns a share of Blast's fee on the "
+        "launchpad, presale, and Boost flow it brings",
+        ["partners.md"],
+        ["sui/partners"],
+        ["sui/admin"],
+    ),
+    Product(
+        "boosts",
+        "Boosts",
+        "Boost leverage coins on Sui: mint and redeem leveraged long or short coins backed by "
+        "Aftermath perpetuals",
+        ["boosts.md", "partners.md"],
+        ["sui/boosts/core", "sui/boosts/products", "sui/boosts/aftermath_adapter"],
+        ["sui/partners", "sui/admin"],
+    ),
+    Product(
+        "blast-sui",
+        "blastSUI and funSUI",
+        "the funSUI/blastSUI liquid-staking vault on Sui: stake SUI with one validator, hold funSUI, "
+        "and convert between funSUI and blastSUI",
+        ["blast-sui.md"],
+        ["sui/blast_sui"],
+        ["sui/admin"],
+    ),
+    Product(
+        "admin",
+        "Administration",
+        "Blast's administration on Sui: the shared ACL with typed roles, operational versions, and "
+        "upgrade custody that Blast's operators use",
+        ["admin.md"],
+        ["sui/admin"],
+    ),
 ]
 
 # Framework types an integrator recognizes without a module prefix.
@@ -84,12 +157,22 @@ HEADER = """\
 
 > Everything an integrator needs to understand and call Blast's Sui Move contracts: a bonding-curve launchpad whose graduated coins migrate into Cetus or Bluefin pools, standalone overflow presales, partner fee codes, Boost leverage coins on Aftermath perpetuals, and the funSUI/blastSUI staking vault. Sui mainnet only.
 
-This file is self-contained. Give it to an AI agent and ask it anything about Blast's contracts.
+This file is self-contained. Give it to an AI agent and ask it anything about Blast's contracts. An agent that needs one product can take that product's smaller file instead: {products}.
+"""
 
+PRODUCT_HEADER = """\
+# Blast contracts: {title} integrator reference
+
+> Everything an integrator needs to understand and call {summary}. Sui mainnet only.
+
+This file is self-contained: give it to an AI agent and ask it anything about {title}.{depends} Other products are in [llms-full.txt]({site}/llms-full.txt), which joins every product in one file.
+"""
+
+LAYOUT = """\
 How it is organized:
 
-1. **Packages and deployment status**: every package, whether it is live on Sui mainnet, and its IDs.
-2. **Guides**: how each product works end to end, starting with the calling conventions every product shares. Use them for behavior, flows, economics, and pitfalls.
+1. **Packages and deployment status**: each package, whether it is live on Sui mainnet, and its IDs.
+2. **Guides**: how each product works end to end, starting with the calling conventions every product shares. Each product guide opens with its deployment status. Use them for behavior, flows, economics, and pitfalls.
 3. **API reference**: generated from the Move source. Every public function and type with its doc comment, every event, every abort code, and the package constants. Use it for exact signatures and field layouts.
 
 When the guides and the reference disagree, the reference is right: it is generated from the source on every change. When this file does not say a behavior exists, treat it as unsupported. Source for every module is linked from the reference ([repository]({repo})).
@@ -313,6 +396,7 @@ def constants(source: str) -> list[tuple[str, str, str, str]]:
 # --- Deployment status ------------------------------------------------------------------------------
 
 
+@cache
 def deployment(path: str) -> dict:
     published = ROOT / path / "Published.toml"
     if not published.exists():
@@ -350,6 +434,38 @@ def status_text(info: dict) -> str:
             "changed since; until it is republished, confirm signatures against the live package."
         )
     return "Live on mainnet."
+
+
+GUIDE_STATUS = {
+    "unpublished": "not yet published on mainnet; {its} interface may change before publication.",
+    "changed": (
+        "live on mainnet, published from an earlier revision; the source described here has changed since, "
+        "so confirm signatures against the live package."
+    ),
+    "live": "live on mainnet.",
+}
+
+
+def status_key(info: dict) -> str:
+    if not info["live"]:
+        return "unpublished"
+    return "changed" if info["matches"] is False else "live"
+
+
+def with_status(guide: str, pkgs: list[Package]) -> str:
+    """Opens a product guide with the deployment status of its packages, below its heading."""
+    if not pkgs:
+        return guide
+    groups: dict[str, list[str]] = {}
+    for p in pkgs:
+        groups.setdefault(status_key(deployment(p.path)), []).append(f"`{p.name}`")
+    sentences = []
+    for key, names in groups.items():
+        subject = names[0] if len(names) == 1 else ", ".join(names[:-1]) + f" and {names[-1]}"
+        verb, its = ("is", "its") if len(names) == 1 else ("are", "their")
+        sentences.append(f"{subject} {verb} " + GUIDE_STATUS[key].format(its=its))
+    heading, _, body = guide.partition("\n")
+    return f"{heading}\n\n> **Deployment status:** {' '.join(sentences)}\n{body}"
 
 
 # --- Assembly ---------------------------------------------------------------------------------------
@@ -495,47 +611,87 @@ def check_guides(guides: dict[str, str], pkgs: list[Package]) -> list[str]:
 # --- Main -------------------------------------------------------------------------------------------
 
 
-def generate(summaries: Path) -> str:
-    pkgs = [load_package(path, title, summaries) for path, title in PACKAGES]
-    first_party = {p.name for p in pkgs}
-    guides = {g: (GUIDES_DIR / g).read_text().strip() for g in GUIDES if (GUIDES_DIR / g).exists()}
-    missing = [g for g in GUIDES if g not in guides]
-    if missing:
-        sys.exit(f"missing guides: {', '.join(missing)}")
-    problems = check_guides(guides, pkgs)
-    if problems:
-        sys.exit("guides name members that do not resolve:\n  " + "\n  ".join(problems))
-    out = [HEADER.format(repo=REPO_URL.rsplit("/blob/", 1)[0]), *status_table(pkgs)]
-    for g in GUIDES:
+def assemble(header: str, guide_names: list[str], pkgs: list[Package], guides: dict[str, str], first_party: set[str]) -> str:
+    repo = REPO_URL.rsplit("/blob/", 1)[0]
+    out = [header, LAYOUT.format(repo=repo), *status_table(pkgs)]
+    for g in guide_names:
         out += [guides[g], ""]
     for pkg in pkgs:
         out += package_reference(pkg, first_party)
     return "\n".join(out).rstrip() + "\n"
 
 
+def generate(summaries: Path) -> dict[Path, str]:
+    """Every reference this script owns, by output path."""
+    pkgs = {path: load_package(path, title, summaries) for path, title in PACKAGES}
+    first_party = {p.name for p in pkgs.values()}
+    raw = {g: (GUIDES_DIR / g).read_text().strip() for g, _ in GUIDES if (GUIDES_DIR / g).exists()}
+    missing = [g for g, _ in GUIDES if g not in raw]
+    if missing:
+        sys.exit(f"missing guides: {', '.join(missing)}")
+    problems = check_guides(raw, list(pkgs.values()))
+    if problems:
+        sys.exit("guides name members that do not resolve:\n  " + "\n  ".join(problems))
+    guides = {g: with_status(raw[g], [pkgs[p] for p in paths]) for g, paths in GUIDES}
+    unknown = [p for product in PRODUCTS for p in product.packages + product.depends if p not in pkgs]
+    unknown += [g for product in PRODUCTS for g in product.guides if g not in guides]
+    if unknown:
+        sys.exit(f"products name unknown packages or guides: {', '.join(unknown)}")
+
+    products = ", ".join(f"[{p.title}]({REPO_URL}/llms/{p.slug}.txt)" for p in PRODUCTS)
+    basics = GUIDES[0][0]
+    files = {
+        OUTPUT: assemble(
+            HEADER.format(products=products), [g for g, _ in GUIDES], list(pkgs.values()), guides, first_party
+        )
+    }
+    for product in PRODUCTS:
+        depends = [f"`{pkgs[p].name}`" for p in product.depends]
+        header = PRODUCT_HEADER.format(
+            title=product.title,
+            summary=product.summary,
+            site=REPO_URL,
+            depends=f" It also covers the packages its calls depend on: {', '.join(depends)}." if depends else "",
+        )
+        refs = [pkgs[p] for p in product.packages + product.depends]
+        files[PRODUCT_DIR / f"{product.slug}.txt"] = assemble(header, [basics, *product.guides], refs, guides, first_party)
+    return files
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--check", action="store_true", help="fail when llms-full.txt is stale")
+    parser.add_argument("--check", action="store_true", help="fail when a committed reference is stale")
     parser.add_argument("--summaries", type=Path, help="reuse `sui move summary` output from this directory")
     args = parser.parse_args()
     if args.summaries:
-        text = generate(args.summaries)
+        files = generate(args.summaries)
     else:
         with tempfile.TemporaryDirectory() as tmp:
             build_summaries(Path(tmp))
-            text = generate(Path(tmp))
+            files = generate(Path(tmp))
+    extra = sorted(set(PRODUCT_DIR.glob("*.txt")) - set(files))
     if args.check:
-        current = OUTPUT.read_text() if OUTPUT.exists() else ""
-        if current != text:
-            diff = difflib.unified_diff(
-                current.splitlines(), text.splitlines(), "llms-full.txt (committed)", "llms-full.txt (generated)", lineterm=""
-            )
-            print("\n".join(list(diff)[:200]))
-            sys.exit("llms-full.txt is stale: run python3 scripts/gen_llms.py")
-        print("llms-full.txt is current.")
+        stale = []
+        for path, text in files.items():
+            name = str(path.relative_to(ROOT))
+            current = path.read_text() if path.exists() else ""
+            if current != text:
+                diff = difflib.unified_diff(
+                    current.splitlines(), text.splitlines(), f"{name} (committed)", f"{name} (generated)", lineterm=""
+                )
+                print("\n".join(list(diff)[:200]))
+                stale.append(name)
+        stale += [f"{p.relative_to(ROOT)} (no longer generated)" for p in extra]
+        if stale:
+            sys.exit(f"stale: {', '.join(stale)}: run python3 scripts/gen_llms.py")
+        print("llms-full.txt and llms/ are current.")
         return
-    OUTPUT.write_text(text)
-    print(f"wrote {OUTPUT.relative_to(ROOT)} ({len(text.splitlines())} lines)")
+    PRODUCT_DIR.mkdir(exist_ok=True)
+    for path in extra:
+        path.unlink()
+    for path, text in files.items():
+        path.write_text(text)
+        print(f"wrote {path.relative_to(ROOT)} ({len(text.splitlines())} lines)")
 
 
 if __name__ == "__main__":
