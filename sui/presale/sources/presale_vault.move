@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// Custody for one migrated or fair-launch LP position, its residuals, and its holder-reward fee
-/// share.
+/// Custody for one LP position, migrated from a presale or provided directly, its residuals, and its
+/// holder-reward fee share.
 module blast_presale::presale_vault;
 
 // === Public Types ===
@@ -10,8 +10,8 @@ module blast_presale::presale_vault;
 /// Sealed field name binding one venue position type to a vault.
 public struct PositionKey<phantom Venue>() has copy, drop, store;
 
-/// Shared post-migration custody for one presale's immutable fee split, or a fair launch's: a
-/// creator's own position locked here directly, with zero presale and creator-capability IDs.
+/// Shared custody for one LP position and its immutable fee split: a presale's, after migration, or
+/// an owner's own position locked here directly, with zero presale and creator-capability IDs.
 ///
 /// Each collection first takes Blast's LP fees of each asset at the vault's
 /// rates, snapshotted at creation and changeable only by the AdminCap, then
@@ -19,7 +19,7 @@ public struct PositionKey<phantom Venue>() has copy, drop, store;
 /// share accrues here until Blast's rewards administrator funds a round.
 /// Blast's LP fees go to the protocol destination at once, unless the sale named
 /// a partner: then they wait here for `pay_protocol_lp_fees_with_partner`.
-public struct PresaleVault<phantom Meme, phantom Quote> has key {
+public struct Vault<phantom Meme, phantom Quote> has key {
     id: UID,
     presale_id: ID,
     presale_cap_id: ID,
@@ -42,7 +42,7 @@ public struct PresaleVault<phantom Meme, phantom Quote> has key {
 
 /// Claims the pool's one-time migration residuals with the creator capability.
 public fun claim_migration_residuals<Meme, Quote>(
-    self: &mut PresaleVault<Meme, Quote>,
+    self: &mut Vault<Meme, Quote>,
     cap: &PresaleCap,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
@@ -68,7 +68,7 @@ public fun claim_migration_residuals<Meme, Quote>(
 /// Sets Blast's share of each asset in this vault's later LP-fee collections. Fees still in the
 /// pool are split at the new rates when collected; the creator's split of the rest is unchanged.
 public fun set_protocol_lp_fees<Meme, Quote>(
-    self: &mut PresaleVault<Meme, Quote>,
+    self: &mut Vault<Meme, Quote>,
     admin_registry: &AdminRegistry,
     admin_cap: &AdminCap,
     lp_fee_meme_bps: Bps,
@@ -92,7 +92,7 @@ public fun set_protocol_lp_fees<Meme, Quote>(
 /// it, since both payees are fixed. Holding nothing is valid, moves nothing, and emits nothing,
 /// so it can follow any collection.
 public fun pay_protocol_lp_fees_with_partner<Meme, Quote>(
-    self: &mut PresaleVault<Meme, Quote>,
+    self: &mut Vault<Meme, Quote>,
     fee_policy: &FeePolicy,
     partner: &Partner,
     clock: &Clock,
@@ -154,11 +154,11 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
     );
 }
 
-/// Creates and shares a fair launch's vault: a vault with no presale, so its presale and
+/// Creates and shares a vault for a position its owner provides directly, with no presale, so its presale and
 /// creator-capability IDs are zero, no `PresaleCap` matches it, and it holds no residuals. Its
 /// position is sealed for good, its LP-fee split is immutable, and Blast's rates are the
 /// `FeePolicy`'s now.
-public(package) fun create_fair_launch<Meme, Quote, Venue, Position: key + store>(
+public(package) fun create_without_presale<Meme, Quote, Venue, Position: key + store>(
     fee_split: FeeSplit,
     fee_policy: &FeePolicy,
     venue: &Venue,
@@ -185,7 +185,7 @@ public(package) fun create_fair_launch<Meme, Quote, Venue, Position: key + store
 
 /// Borrows the custodied venue position without exposing a removal path.
 public(package) fun position_mut<Meme, Quote, Venue, Position: key + store>(
-    self: &mut PresaleVault<Meme, Quote>,
+    self: &mut Vault<Meme, Quote>,
     _venue: &Venue,
 ): &mut Position {
     self.id.dynamic_object_field_mut(PositionKey<Venue>())
@@ -197,7 +197,7 @@ public(package) fun position_mut<Meme, Quote, Venue, Position: key + store>(
 /// is paid its share of the rest at once, and the holder-reward share stays in the vault. A zero
 /// collection is valid, moves nothing, and emits nothing.
 public(package) fun split_fees<Meme, Quote>(
-    self: &mut PresaleVault<Meme, Quote>,
+    self: &mut Vault<Meme, Quote>,
     fee_policy: &FeePolicy,
     mut meme: Balance<Meme>,
     mut quote: Balance<Quote>,
@@ -247,34 +247,34 @@ public(package) fun split_fees<Meme, Quote>(
 }
 
 public(package) fun assert_cap<Meme, Quote>(
-    self: &PresaleVault<Meme, Quote>,
+    self: &Vault<Meme, Quote>,
     cap: &PresaleCap,
 ) {
     assert!(object::id(cap) == self.presale_cap_id, EWrongPresaleCap);
 }
 
-public(package) fun pool_id<Meme, Quote>(self: &PresaleVault<Meme, Quote>): ID {
+public(package) fun pool_id<Meme, Quote>(self: &Vault<Meme, Quote>): ID {
     self.pool_id
 }
 
-public(package) fun next_round<Meme, Quote>(self: &PresaleVault<Meme, Quote>): u64 {
+public(package) fun next_round<Meme, Quote>(self: &Vault<Meme, Quote>): u64 {
     self.next_round
 }
 
 public(package) fun last_checkpoint<Meme, Quote>(
-    self: &PresaleVault<Meme, Quote>,
+    self: &Vault<Meme, Quote>,
 ): Option<u64> {
     self.last_checkpoint
 }
 
 public(package) fun holder_rewards_balances<Meme, Quote>(
-    self: &PresaleVault<Meme, Quote>,
+    self: &Vault<Meme, Quote>,
 ): (u64, u64) {
     (self.holder_rewards_meme.value(), self.holder_rewards_quote.value())
 }
 
 public(package) fun fund_round<Meme, Quote>(
-    self: &mut PresaleVault<Meme, Quote>,
+    self: &mut Vault<Meme, Quote>,
     end_checkpoint: u64,
     meme_amount: u64,
     quote_amount: u64,
@@ -287,7 +287,7 @@ public(package) fun fund_round<Meme, Quote>(
 
 /// Returns a closed round's unclaimed rewards to the holder-reward balances.
 public(package) fun restore_holder_rewards<Meme, Quote>(
-    self: &mut PresaleVault<Meme, Quote>,
+    self: &mut Vault<Meme, Quote>,
     meme: Balance<Meme>,
     quote: Balance<Quote>,
 ) {
@@ -313,7 +313,7 @@ fun share_new<Meme, Quote, Venue, Position: key + store>(
 ) {
     assert!(liquidity > 0, EZeroLiquidity);
 
-    let mut vault = PresaleVault {
+    let mut vault = Vault {
         id: object::new(ctx),
         presale_id,
         presale_cap_id,
@@ -331,7 +331,7 @@ fun share_new<Meme, Quote, Venue, Position: key + store>(
         last_checkpoint: option::none(),
     };
 
-    event::emit(PresaleVaultCreated<Meme, Quote, Venue> {
+    event::emit(VaultCreated<Meme, Quote, Venue> {
         vault_id: vault.id.to_inner(),
         presale_id,
         pool_id,
@@ -353,7 +353,7 @@ fun share_new<Meme, Quote, Venue, Position: key + store>(
 /// Pays Blast's LP fees to the fee policy's current destination and returns it, or, on a vault
 /// naming a partner, holds them for `pay_protocol_lp_fees_with_partner` and returns none.
 fun pay_or_hold_protocol_lp_fees<Meme, Quote>(
-    self: &mut PresaleVault<Meme, Quote>,
+    self: &mut Vault<Meme, Quote>,
     protocol_meme: Balance<Meme>,
     protocol_quote: Balance<Quote>,
     fee_policy: &FeePolicy,
@@ -380,7 +380,7 @@ fun pay_all<Asset>(mut balance: Balance<Asset>, recipient: address, ctx: &mut Tx
 
 /// Splits `amount` under the creation-time BPS into each fee recipient's amount and the
 /// holder-reward amount.
-fun fee_amounts<Meme, Quote>(self: &PresaleVault<Meme, Quote>, amount: u64): (vector<u64>, u64) {
+fun fee_amounts<Meme, Quote>(self: &Vault<Meme, Quote>, amount: u64): (vector<u64>, u64) {
     let mut recipient_amounts = self.fee_split.apportion_fee(amount);
     let holder_rewards = recipient_amounts.pop_back();
 
@@ -397,8 +397,8 @@ public fun new_for_testing<Meme, Quote>(
     protocol_fees: ProtocolFees,
     partner_id: Option<ID>,
     ctx: &mut TxContext,
-): PresaleVault<Meme, Quote> {
-    PresaleVault {
+): Vault<Meme, Quote> {
+    Vault {
         id: object::new(ctx),
         presale_id,
         presale_cap_id,
@@ -419,7 +419,7 @@ public fun new_for_testing<Meme, Quote>(
 
 #[test_only]
 public fun credit_fees_for_testing<Meme, Quote>(
-    self: &mut PresaleVault<Meme, Quote>,
+    self: &mut Vault<Meme, Quote>,
     fee_policy: &FeePolicy,
     meme: Balance<Meme>,
     quote: Balance<Quote>,
@@ -465,7 +465,7 @@ public fun protocol_lp_fees_paid_fields<Meme, Quote>(
 
 #[test_only]
 public fun unpaid_protocol_lp_fees_for_testing<Meme, Quote>(
-    self: &PresaleVault<Meme, Quote>,
+    self: &Vault<Meme, Quote>,
 ): (u64, u64) {
     (self.unpaid_protocol_meme.value(), self.unpaid_protocol_quote.value())
 }
@@ -478,8 +478,8 @@ public fun protocol_lp_fees_changed_fields<Meme, Quote>(
 }
 
 #[test_only]
-public fun destroy_for_testing<Meme, Quote>(self: PresaleVault<Meme, Quote>) {
-    let PresaleVault {
+public fun destroy_for_testing<Meme, Quote>(self: Vault<Meme, Quote>) {
+    let Vault {
         id,
         presale_id: _,
         presale_cap_id: _,
@@ -507,9 +507,9 @@ public fun destroy_for_testing<Meme, Quote>(self: PresaleVault<Meme, Quote>) {
 
 // === Events ===
 
-public struct PresaleVaultCreated<phantom Meme, phantom Quote, phantom Venue> has copy, drop {
+public struct VaultCreated<phantom Meme, phantom Quote, phantom Venue> has copy, drop {
     vault_id: ID,
-    /// Zero for a fair launch's vault.
+    /// Zero for a vault created without a presale.
     presale_id: ID,
     pool_id: ID,
     position_id: ID,
@@ -531,7 +531,7 @@ public struct FeesCollected<phantom Meme, phantom Quote> has copy, drop {
     protocol_destination: Option<address>,
     protocol_meme: u64,
     protocol_quote: u64,
-    /// Aligned by index with the immutable recipients in `PresaleVaultCreated`.
+    /// Aligned by index with the immutable recipients in `VaultCreated`.
     fee_recipient_meme: vector<u64>,
     fee_recipient_quote: vector<u64>,
     holder_rewards_meme: u64,

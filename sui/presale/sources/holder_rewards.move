@@ -25,7 +25,7 @@ public struct Round<phantom Meme, phantom Quote> has key {
 
 /// Reserves rewards under a Blast-published holder allocation and shares the round.
 public fun publish_round<Meme, Quote>(
-    vault: &mut PresaleVault<Meme, Quote>,
+    vault: &mut Vault<Meme, Quote>,
     admin_registry: &AdminRegistry,
     admin_cap: &AdminCap,
     number: u64,
@@ -134,7 +134,7 @@ public fun claim<Meme, Quote>(
 /// never strand funds.
 public fun close_round<Meme, Quote>(
     self: Round<Meme, Quote>,
-    vault: &mut PresaleVault<Meme, Quote>,
+    vault: &mut Vault<Meme, Quote>,
     clock: &Clock,
 ) {
     assert!(self.vault_id == object::id(vault), EWrongVault);
@@ -335,7 +335,7 @@ use blast_presale::{
     blast_presale,
     blast_presale_admin::{AdminCap, AdminRegistry},
     merkle_tree,
-    presale_vault::PresaleVault,
+    presale_vault::Vault,
 };
 
 use std::bcs;

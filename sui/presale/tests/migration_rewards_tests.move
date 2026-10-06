@@ -467,17 +467,17 @@ fun another_presale_cap_cannot_claim_migration_residuals() {
 }
 
 #[test]
-/// A fair launch's vault names no presale, seals its position on its pool, and pays Blast the
+/// A vault created without a presale names none, seals its position on its pool, and pays Blast the
 /// policy's current LP-fee rates before the creator's split.
-fun a_fair_launch_vault_takes_the_policys_lp_rates() {
+fun a_vault_without_a_presale_takes_the_policys_lp_rates() {
     let mut scenario = test_scenario::begin(CREATOR);
     let policy = policy_with_lp_fees(1_000, 2_500, &mut scenario);
     let pool_id = object::id_from_address(@0x9001);
 
-    create_fair_launch_vault(&policy, 7, &mut scenario);
+    new_vault_without_presale(&policy, 7, &mut scenario);
 
     scenario.next_tx(CREATOR);
-    let mut vault = scenario.take_shared<PresaleVault<MEME, QUOTE>>();
+    let mut vault = scenario.take_shared<Vault<MEME, QUOTE>>();
     assert_eq!(vault.pool_id(), pool_id);
 
     vault.credit_fees_for_testing(
@@ -498,13 +498,13 @@ fun a_fair_launch_vault_takes_the_policys_lp_rates() {
 
 #[test]
 #[expected_failure(abort_code = vault::EWrongPresaleCap, location = blast_presale::presale_vault)]
-/// A fair launch's vault has no creator capability, so no `PresaleCap` reaches it.
-fun no_presale_cap_reaches_a_fair_launch_vault() {
+/// A vault created without a presale has no creator capability, so no `PresaleCap` reaches it.
+fun no_presale_cap_reaches_a_vault_without_a_presale() {
     let mut scenario = test_scenario::begin(CREATOR);
     let policy = fee_policy::new_for_testing(scenario.ctx());
-    create_fair_launch_vault(&policy, 7, &mut scenario);
+    new_vault_without_presale(&policy, 7, &mut scenario);
     scenario.next_tx(CREATOR);
-    let mut vault = scenario.take_shared<PresaleVault<MEME, QUOTE>>();
+    let mut vault = scenario.take_shared<Vault<MEME, QUOTE>>();
     let cap = presale::cap_for_testing(object::id_from_address(@0x0), scenario.ctx());
 
     let (meme, quote) = vault.claim_migration_residuals(&cap, scenario.ctx());
@@ -515,11 +515,11 @@ fun no_presale_cap_reaches_a_fair_launch_vault() {
 
 #[test]
 #[expected_failure(abort_code = vault::EZeroLiquidity, location = blast_presale::presale_vault)]
-fun a_fair_launch_position_must_hold_liquidity() {
+fun a_vault_without_a_presale_needs_liquidity() {
     let mut scenario = test_scenario::begin(CREATOR);
     let policy = fee_policy::new_for_testing(scenario.ctx());
 
-    create_fair_launch_vault(&policy, 0, &mut scenario);
+    new_vault_without_presale(&policy, 0, &mut scenario);
     abort
 }
 
@@ -680,7 +680,7 @@ fun new_vault(
     fee_recipients: vector<RecipientShare>,
     holder_rewards_bps: u64,
     scenario: &mut Scenario,
-): PresaleVault<MEME, QUOTE> {
+): Vault<MEME, QUOTE> {
     vault::new_for_testing<MEME, QUOTE>(
         object::id_from_address(@0xCAFE),
         object::id_from_address(@0xCA9),
@@ -693,7 +693,7 @@ fun new_vault(
 
 /// A vault paying Blast 10% of Meme and 25% of Quote, then 50% and 20% to two recipients and
 /// 30% to holders, for a sale that named `partner_id`.
-fun vault_paying_blast(partner_id: Option<ID>, scenario: &mut Scenario): PresaleVault<MEME, QUOTE> {
+fun vault_paying_blast(partner_id: Option<ID>, scenario: &mut Scenario): Vault<MEME, QUOTE> {
     vault::new_for_testing<MEME, QUOTE>(
         object::id_from_address(@0xCAFE),
         object::id_from_address(@0xCA9),
@@ -716,7 +716,7 @@ fun no_protocol_fees(): ProtocolFees {
 
 /// Collects fees under a zero-rate policy, as every vault without a Blast LP share does.
 fun collect_fees(
-    self: &mut PresaleVault<MEME, QUOTE>,
+    self: &mut Vault<MEME, QUOTE>,
     meme: Balance<MEME>,
     quote: Balance<QUOTE>,
     scenario: &mut Scenario,
@@ -728,7 +728,7 @@ fun collect_fees(
 
 /// Pays the vault's held Blast LP fees to `partner` and to a fee policy paying `destination`.
 fun pay_held_lp_fees(
-    self: &mut PresaleVault<MEME, QUOTE>,
+    self: &mut Vault<MEME, QUOTE>,
     partner: &Partner,
     destination: address,
     scenario: &mut Scenario,
@@ -745,10 +745,10 @@ fun pay_held_lp_fees(
     admin_registry.destroy_for_testing(admin_cap);
 }
 
-/// Seals a `liquidity` position on pool `@0x9001` in a fair launch's vault, paying half of
+/// Seals a `liquidity` position on pool `@0x9001` in a vault without a presale, paying half of
 /// every fee to `CREATOR` and half to holders.
-fun create_fair_launch_vault(policy: &FeePolicy, liquidity: u128, scenario: &mut Scenario) {
-    vault::create_fair_launch<MEME, QUOTE, _, _>(
+fun new_vault_without_presale(policy: &FeePolicy, liquidity: u128, scenario: &mut Scenario) {
+    vault::create_without_presale<MEME, QUOTE, _, _>(
         presale::fee_split(
             vector[presale::recipient_share(CREATOR, bps::new(5_000))],
             bps::new(5_000),
@@ -779,7 +779,7 @@ fun policy_with_lp_fees(meme_bps: u64, quote_bps: u64, scenario: &mut Scenario):
 }
 
 /// A vault whose holder share is 40 Meme and no Quote.
-fun funded_holder_vault(scenario: &mut Scenario): PresaleVault<MEME, QUOTE> {
+fun funded_holder_vault(scenario: &mut Scenario): Vault<MEME, QUOTE> {
     let mut vault = new_vault(vector[], 10_000, scenario);
     vault.collect_fees(
         coin::mint_for_testing<MEME>(40, scenario.ctx()).into_balance(),
@@ -791,7 +791,7 @@ fun funded_holder_vault(scenario: &mut Scenario): PresaleVault<MEME, QUOTE> {
 
 /// Publishes a one-leaf round that pays 1 Meme from the holder share.
 fun publish_round(
-    self: &mut PresaleVault<MEME, QUOTE>,
+    self: &mut Vault<MEME, QUOTE>,
     number: u64,
     start_checkpoint: u64,
     end_checkpoint: u64,
@@ -819,7 +819,7 @@ fun publish_round(
     admin_registry.destroy_for_testing(admin_cap);
 }
 
-fun close_round_at(self: &mut PresaleVault<MEME, QUOTE>, now_ms: u64, scenario: &mut Scenario) {
+fun close_round_at(self: &mut Vault<MEME, QUOTE>, now_ms: u64, scenario: &mut Scenario) {
     scenario.next_tx(CREATOR);
     let round = scenario.take_shared<Round<MEME, QUOTE>>();
     let mut clock = clock::create_for_testing(scenario.ctx());
@@ -850,7 +850,7 @@ fun round_owing_holder(meme: u64, quote: u64, scenario: &mut Scenario): Round<ME
 
 /// Pays out the holder share as a round would, so destruction aborts unless the share is
 /// exactly `meme` and `quote`.
-fun destroy_holding(mut self: PresaleVault<MEME, QUOTE>, meme: u64, quote: u64) {
+fun destroy_holding(mut self: Vault<MEME, QUOTE>, meme: u64, quote: u64) {
     let (round_meme, round_quote) = self.fund_round(0, meme, quote);
     round_meme.destroy_for_testing();
     round_quote.destroy_for_testing();
@@ -877,7 +877,7 @@ use blast_presale::{
     presale_vault::{
         Self as vault,
         FeesCollected,
-        PresaleVault,
+        Vault,
         ProtocolLpFeesChanged,
         ProtocolLpFeesPaid,
     },
@@ -895,8 +895,8 @@ use sui::{
     test_scenario::{Self, Scenario},
 };
 
-use fun close_round_at as PresaleVault.close_round_at;
-use fun collect_fees as PresaleVault.collect_fees;
-use fun destroy_holding as PresaleVault.destroy_holding;
-use fun pay_held_lp_fees as PresaleVault.pay_held_lp_fees;
-use fun publish_round as PresaleVault.publish_round;
+use fun close_round_at as Vault.close_round_at;
+use fun collect_fees as Vault.collect_fees;
+use fun destroy_holding as Vault.destroy_holding;
+use fun pay_held_lp_fees as Vault.pay_held_lp_fees;
+use fun publish_round as Vault.publish_round;

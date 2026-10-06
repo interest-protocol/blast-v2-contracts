@@ -21,7 +21,7 @@ launch, the creation, curve and one-time migration fees in the launch's ledger
 migration each product custodies its pool position in an LP vault, and every
 fee collection pays Blast's LP fees at once to a destination Blast sets:
 `blast_fun_migrators::vault::LpVault` at the `LpFeePolicy` rates for launches,
-and `blast_presale::presale_vault::PresaleVault` at its own rates for presales.
+and `blast_presale::presale_vault::Vault` at its own rates for presales.
 Collection is permissionless and lives in each venue adapter: Cetus and Bluefin
 `collect_fees`, and on the launchpad also `settle_and_update_fee_split` and
 auto-LP.
@@ -105,7 +105,7 @@ payment. The vault-creation events are unchanged: `LaunchCreated` and
   notice Blast gives before changing either.
 - **Divide the protocol migration residuals too.** They are what the venue did
   not take when the pool was seeded, not fees; ADR 0098 already left them out.
-- **Record the partner in `VaultCreated` and `PresaleVaultCreated`.** The
+- **Record the partner in `VaultCreated` and `presale_vault::VaultCreated`.** The
   creation events of the launch and the sale already carry it, and the vault
   links to them.
 - **A sentinel destination, such as `@0x0`, for held fees.** `Option` says
@@ -132,7 +132,7 @@ payment. The vault-creation events are unchanged: `LaunchCreated` and
   - new functions: `launch::partner_id`,
     `vault::claim_protocol_lp_fees_with_partner`, and
     `presale_vault::pay_protocol_lp_fees_with_partner`;
-  - `LpVault` and `PresaleVault` gain `partner_id`, `unpaid_protocol_meme`
+  - `LpVault` and `presale_vault::Vault` gain `partner_id`, `unpaid_protocol_meme`
     and `unpaid_protocol_quote`;
   - both `FeesCollected` events make `protocol_destination` an
     `Option<address>`;

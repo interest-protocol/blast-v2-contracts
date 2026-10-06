@@ -147,10 +147,10 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
     burn_into_vault(sale, burn_manager, position, residual_meme, residual_quote, ctx);
 }
 
-/// Burns a fair launch's own Cetus position in `pool` for its fee-claiming proof and seals the proof
+/// Burns the caller's own Cetus position in `pool` for its fee-claiming proof and seals the proof
 /// in a new shared vault splitting its LP fees by `fee_split`, after Blast's current rates. The
 /// liquidity is locked for good. Blast must allow Quote and this migrator, as for a presale.
-public fun create_fair_launch_vault<Meme, Quote, CoinA, CoinB>(
+public fun new_vault<Meme, Quote, CoinA, CoinB>(
     position: Position,
     fee_split: FeeSplit,
     creation_policy: &CreationPolicy,
@@ -165,7 +165,7 @@ public fun create_fair_launch_vault<Meme, Quote, CoinA, CoinB>(
 
     let liquidity = position.liquidity();
 
-    vault::create_fair_launch<Meme, Quote, _, _>(
+    vault::create_without_presale<Meme, Quote, _, _>(
         fee_split,
         fee_policy,
         &Venue(),
@@ -179,7 +179,7 @@ public fun create_fair_launch_vault<Meme, Quote, CoinA, CoinB>(
 /// Anyone may collect LP fees from a migrated presale's Cetus position, paying Blast and each fee
 /// recipient and accruing the holder-reward share. `CoinA` and `CoinB` are the pool's coin order.
 public fun collect_fees<Meme, Quote, CoinA, CoinB>(
-    vault: &mut PresaleVault<Meme, Quote>,
+    vault: &mut Vault<Meme, Quote>,
     fee_policy: &FeePolicy,
     cetus_config: &GlobalConfig,
     burn_manager: &BurnManager,
@@ -338,7 +338,7 @@ use blast_presale::{
     creation_policy::CreationPolicy,
     fee_policy::FeePolicy,
     migration_math,
-    presale_vault::{Self as vault, PresaleVault},
+    presale_vault::{Self as vault, Vault},
     venue_config::VenueConfig,
 };
 

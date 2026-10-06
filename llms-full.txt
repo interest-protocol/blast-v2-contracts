@@ -66,7 +66,7 @@ The launchpad imports no DEX. A migrator package depends on the launchpad and
 composes with it inside one PTB. The presale is a separate product: it shares
 no state or code with the launchpad or the migrators, keeps its own admin caps
 instead of `blast_admin`, and holds migrated liquidity in its own
-`PresaleVault`. Answer presale questions from the presale guide alone.
+`presale_vault::Vault`. Answer presale questions from the presale guide alone.
 
 `blast_fun_timelock` and `blast_fun_vesting` come from Blast's public utility
 repository (`interest-protocol/blast-util-contracts`); both are immutable on
@@ -181,7 +181,7 @@ new full-range Cetus or Bluefin pool; the same transaction pays Blast (or, on a 
 partner, holds Blast's fees for a later pay call), the raise recipients, and the token recipients.
 Buyers then claim their tokens and overflow refund. A sale that misses its raise, or that someone
 cancels once its liquidity deadline passes unmigrated, refunds every commitment in full. After a
-Cetus or Bluefin migration a `presale_vault::PresaleVault` holds the LP position (for Cetus, its
+Cetus or Bluefin migration a `presale_vault::Vault` holds the LP position (for Cetus, its
 LP-burn proof) and splits its trading fees between Blast, the creator's fee recipients, and
 holder-reward rounds.
 
@@ -215,8 +215,8 @@ Per-sale objects:
 - `blast_presale::blast_presale::PresaleCap`: owned by the creator (key, store). It claims the vault's migration
   residuals and can be destroyed after a cancellation. It cannot change any sale term or move
   any commitment.
-- `presale_vault::PresaleVault<Meme, Quote>`: shared, created by a Cetus or Bluefin migration or
-  a fair launch (see "Fair launch: locking your own position"). It
+- `presale_vault::Vault<Meme, Quote>`: shared, created by a Cetus or Bluefin migration or
+  directly from its owner's position (see "Locking your own position without a presale"). It
   holds the LP position (Bluefin) or the Cetus LP-burn proof (Cetus), the migration residuals,
   the holder-reward share of collected fees, and Blast's held LP fees on partnered sales.
 - `holder_rewards::Round<Meme, Quote>`: shared, one per published holder-reward round.
@@ -443,7 +443,7 @@ Migration calls `blast_presale::blast_presale::migrate`, which pays Blast (or ho
 sale), pays or vests each raise recipient, pays or vests each token recipient, and returns the
 LP's tokens and Quote. The adapter creates the pool with the reserved `PoolCreationCap` at the
 sale's tick spacing, seeds a full-range position at the price the LP balances imply, burns the
-position through Cetus LP-burn for its fee-claiming proof, and shares a new `PresaleVault` holding
+position through Cetus LP-burn for its fee-claiming proof, and shares a new `Vault` holding
 that proof and whatever the pool did not take. Nothing returns to the caller. Any venue failure
 rolls the whole transition back.
 
@@ -463,25 +463,25 @@ Who may call: *anyone*, while `Funded`, until someone cancels.
 
 The adapter creates the pool `Pool<Meme, Quote>` (Meme is always coin A) named
 `<Meme symbol>-<Quote symbol>` at the sale's tier, opens a full-range position aligned inward to
-the tick spacing, adds the LP balances, moves the position into a new shared `PresaleVault`, and
+the tick spacing, adds the LP balances, moves the position into a new shared `Vault`, and
 shares the pool.
 
-#### Fair launch: locking your own position
+#### Locking your own position without a presale
 
 Who may call: *anyone*, with their own position. A team that adds liquidity to Cetus or Bluefin
-itself, without a presale, can lock that position for good in a `PresaleVault`, which then splits
+itself, without a presale, can lock that position for good in a `Vault`, which then splits
 its LP fees exactly as a migrated sale's vault does: Blast's LP-fee share first, then the team's
 `FeeSplit` between its fee recipients and holder-reward rounds.
 
 1. Create the pool and open and fund the position with the venue's own calls; keep whatever the
    venue did not take.
 2. `fee_split = blast_presale::blast_presale::fee_split(...)`, as for a presale.
-3. Cetus: `blast_presale::cetus::create_fair_launch_vault<Meme, Quote, CoinA, CoinB>(position,
+3. Cetus: `blast_presale::cetus::new_vault<Meme, Quote, CoinA, CoinB>(position,
    fee_split, creation_policy, fee_policy, pool, burn_manager)`, where `pool` is the
    `Pool<CoinA, CoinB>` holding the position (read) and `CoinA` and `CoinB` are Meme and Quote in
    the pool's order. The position is burned through Cetus LP-burn for its fee-claiming proof,
    which Cetus's `BurnManager` (mutable) issues only for positions it accepts.
-   Bluefin: `blast_presale::bluefin::create_fair_launch_vault<Meme, Quote>(position, fee_split,
+   Bluefin: `blast_presale::bluefin::new_vault<Meme, Quote>(position, fee_split,
    creation_policy, fee_policy, pool)`, where `pool` is the `Pool<Meme, Quote>` holding the
    position (read); a pool whose first coin is not Meme is not supported.
 
@@ -779,7 +779,7 @@ Other objects:
   `creation_policy::PartnerKey` (the partner's ID) whose `u64` value is the time the partner stops
   being accepted (the maximum u64 while accepted).
 - `AdminRegistry`: `admin_cap_id`.
-- `PresaleVault`: `presale_id`, `presale_cap_id`, `pool_id`, `fee_split`, `protocol_fees`
+- `Vault`: `presale_id`, `presale_cap_id`, `pool_id`, `fee_split`, `protocol_fees`
   (current LP rates), `partner_id`, `unpaid_protocol_meme`, `unpaid_protocol_quote`,
   `migration_meme_residual`, `migration_quote_residual`, `holder_rewards_meme`,
   `holder_rewards_quote` (unallocated holder share), `next_round`, `last_checkpoint`. The position
@@ -789,8 +789,8 @@ Other objects:
 - `Vesting<T>`: `balance`, `beneficiary`, `start_ms`, `cliff_ms`, `period_ms`, `periods`,
   `released`.
 
-To find a sale's vault, read `presale_vault::PresaleVaultCreated` for its `presale_id`; a fair
-launch's vault has the zero `presale_id`.
+To find a sale's vault, read `presale_vault::VaultCreated` for its `presale_id`; a vault
+created without a presale has the zero `presale_id`.
 
 ### Events
 
@@ -805,12 +805,12 @@ directly (no envelope).
 | Per-sale rates | `blast_presale::blast_presale::ProtocolFeesChanged` | New rates, Blast amounts, and new buyer `token_allocation`. |
 | Commit | `blast_presale::blast_presale::Committed` | `quote` accepted, `wallet_commitment` (new total), `total_commitments`, `participants`. It has no wallet field: the wallet is the transaction sender. |
 | Settle | `blast_presale::blast_presale::PresaleFunded` / `blast_presale::blast_presale::PresaleCancelled` | Funded: `accepted_quote`, `refundable_quote`, `token_allocation`. Cancelled: total refundable. |
-| Migrate | `blast_presale::blast_presale::ProtocolFeesPaid` (unpartnered), `blast_presale::blast_presale::RaiseAllocated` (per raise recipient), `blast_presale::blast_presale::RecipientAllocated` (per token recipient), `blast_presale::blast_presale::PresaleMigrated`, then `presale_vault::PresaleVaultCreated` | Payouts with `vesting_id`; LP amounts; vault, pool, and position IDs. The vault event's third type argument is `blast_presale::cetus::Venue` or `blast_presale::bluefin::Venue`. |
+| Migrate | `blast_presale::blast_presale::ProtocolFeesPaid` (unpartnered), `blast_presale::blast_presale::RaiseAllocated` (per raise recipient), `blast_presale::blast_presale::RecipientAllocated` (per token recipient), `blast_presale::blast_presale::PresaleMigrated`, then `presale_vault::VaultCreated` | Payouts with `vesting_id`; LP amounts; vault, pool, and position IDs. The vault event's third type argument is `blast_presale::cetus::Venue` or `blast_presale::bluefin::Venue`. |
 | Partner pay | `blast_partners::blast_partners::PartnerPaid`, `blast_presale::blast_presale::ProtocolFeesPaid` | `partner_quote` is the partner's cut. |
 | Claim | `blast_presale::blast_presale::Claimed` | `tokens`, `quote_refund`, `remaining_participants`, `vesting_id`. |
 | Collect | `presale_vault::FeesCollected` | Gross, Blast's part, per-recipient amounts aligned with the vault's recipients, holder share. `protocol_destination` is `none` when held for a partner. |
 | Vault partner pay | `presale_vault::ProtocolLpFeesPaid` | Partner and Blast amounts per asset. |
-| Fair launch | `presale_vault::PresaleVaultCreated` | Zero `presale_id` and residuals; pool, position, liquidity, fee split, and Blast's rates. |
+| Vault without a presale | `presale_vault::VaultCreated` | Zero `presale_id` and residuals; pool, position, liquidity, fee split, and Blast's rates. |
 | Residuals | `presale_vault::MigrationResidualsClaimed` | Amounts claimed. |
 | Rounds | `holder_rewards::RoundPublished`, `holder_rewards::RewardClaimed`, `holder_rewards::RoundClosed` | Budgets, unallocated holder balances, per-claim payouts, returns. |
 | Vesting | `VestingCreated`, `VestingClaimed` (from `blast_fun_vesting`) | Schedule terms and releases. |
@@ -907,7 +907,7 @@ token recipients exactly as for Cetus and Bluefin, then returns the LP's `(Balan
 Balance<Quote>)`, which the migrator must put into its venue in the same call. Blast must first
 allow the witness with `creation_policy::set_migration_witness_allowed`; delisting it later never
 blocks existing sales. Only the package's own Cetus and Bluefin adapters create a
-`PresaleVault`, so a vendor sale has no vault: no Blast LP fees, no holder-reward rounds, and no
+`Vault`, so a vendor sale has no vault: no Blast LP fees, no holder-reward rounds, and no
 residual claims. Every other sale rule (eligibility, claims, refunds, LP deadline, the seed-price
 check) applies unchanged.
 
@@ -4944,10 +4944,10 @@ public fun migrate<Meme, Quote>(
     ctx: &mut TxContext,
 )
 
-/// Seals a fair launch's own Bluefin position in `pool`, whose first coin must be Meme, in a new
+/// Seals the caller's own Bluefin position in `pool`, whose first coin must be Meme, in a new
 /// shared vault splitting its LP fees by `fee_split`, after Blast's current rates. The liquidity is
 /// locked for good. Blast must allow Quote and this migrator, as for a presale.
-public fun create_fair_launch_vault<Meme, Quote>(
+public fun new_vault<Meme, Quote>(
     position: position::Position,
     fee_split: blast_presale::FeeSplit,
     creation_policy: &creation_policy::CreationPolicy,
@@ -4959,7 +4959,7 @@ public fun create_fair_launch_vault<Meme, Quote>(
 /// Anyone may collect LP fees, paying Blast and each fee recipient and accruing the
 /// holder-reward share.
 public fun collect_fees<Meme, Quote>(
-    vault: &mut presale_vault::PresaleVault<Meme, Quote>,
+    vault: &mut presale_vault::Vault<Meme, Quote>,
     fee_policy: &fee_policy::FeePolicy,
     bluefin_config: &config::GlobalConfig,
     pool: &mut pool::Pool<Meme, Quote>,
@@ -5080,10 +5080,10 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
     ctx: &mut TxContext,
 )
 
-/// Burns a fair launch's own Cetus position in `pool` for its fee-claiming proof and seals the proof
+/// Burns the caller's own Cetus position in `pool` for its fee-claiming proof and seals the proof
 /// in a new shared vault splitting its LP fees by `fee_split`, after Blast's current rates. The
 /// liquidity is locked for good. Blast must allow Quote and this migrator, as for a presale.
-public fun create_fair_launch_vault<Meme, Quote, CoinA, CoinB>(
+public fun new_vault<Meme, Quote, CoinA, CoinB>(
     position: position::Position,
     fee_split: blast_presale::FeeSplit,
     creation_policy: &creation_policy::CreationPolicy,
@@ -5096,7 +5096,7 @@ public fun create_fair_launch_vault<Meme, Quote, CoinA, CoinB>(
 /// Anyone may collect LP fees from a migrated presale's Cetus position, paying Blast and each fee
 /// recipient and accruing the holder-reward share. `CoinA` and `CoinB` are the pool's coin order.
 public fun collect_fees<Meme, Quote, CoinA, CoinB>(
-    vault: &mut presale_vault::PresaleVault<Meme, Quote>,
+    vault: &mut presale_vault::Vault<Meme, Quote>,
     fee_policy: &fee_policy::FeePolicy,
     cetus_config: &config::GlobalConfig,
     burn_manager: &lp_burn::BurnManager,
@@ -5325,7 +5325,7 @@ public struct Round<phantom Meme, phantom Quote> has key {
 ```move
 /// Reserves rewards under a Blast-published holder allocation and shares the round.
 public fun publish_round<Meme, Quote>(
-    vault: &mut presale_vault::PresaleVault<Meme, Quote>,
+    vault: &mut presale_vault::Vault<Meme, Quote>,
     admin_registry: &blast_presale_admin::AdminRegistry,
     admin_cap: &blast_presale_admin::AdminCap,
     number: u64,
@@ -5357,7 +5357,7 @@ public fun claim<Meme, Quote>(
 /// never strand funds.
 public fun close_round<Meme, Quote>(
     self: Round<Meme, Quote>,
-    vault: &mut presale_vault::PresaleVault<Meme, Quote>,
+    vault: &mut presale_vault::Vault<Meme, Quote>,
     clock: &Clock,
 )
 ```
@@ -5496,7 +5496,7 @@ public fun commit_upgrade(
 
 ### `blast_presale::presale_vault`
 
-Custody for one migrated or fair-launch LP position, its residuals, and its holder-reward fee share.
+Custody for one LP position, migrated from a presale or provided directly, its residuals, and its holder-reward fee share.
 
 Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/presale/sources/presale_vault.move
 
@@ -5506,8 +5506,8 @@ Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/pr
 /// Sealed field name binding one venue position type to a vault.
 public struct PositionKey<phantom Venue>() has copy, drop, store;
 
-/// Shared post-migration custody for one presale's immutable fee split, or a fair launch's: a
-/// creator's own position locked here directly, with zero presale and creator-capability IDs.
+/// Shared custody for one LP position and its immutable fee split: a presale's, after migration, or
+/// an owner's own position locked here directly, with zero presale and creator-capability IDs.
 ///
 /// Each collection first takes Blast's LP fees of each asset at the vault's
 /// rates, snapshotted at creation and changeable only by the AdminCap, then
@@ -5515,7 +5515,7 @@ public struct PositionKey<phantom Venue>() has copy, drop, store;
 /// share accrues here until Blast's rewards administrator funds a round.
 /// Blast's LP fees go to the protocol destination at once, unless the sale named
 /// a partner: then they wait here for `pay_protocol_lp_fees_with_partner`.
-public struct PresaleVault<phantom Meme, phantom Quote> has key {
+public struct Vault<phantom Meme, phantom Quote> has key {
     id: UID,
     presale_id: ID,
     presale_cap_id: ID,
@@ -5540,7 +5540,7 @@ public struct PresaleVault<phantom Meme, phantom Quote> has key {
 ```move
 /// Claims the pool's one-time migration residuals with the creator capability.
 public fun claim_migration_residuals<Meme, Quote>(
-    self: &mut PresaleVault<Meme, Quote>,
+    self: &mut Vault<Meme, Quote>,
     cap: &blast_presale::PresaleCap,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>)
@@ -5548,7 +5548,7 @@ public fun claim_migration_residuals<Meme, Quote>(
 /// Sets Blast's share of each asset in this vault's later LP-fee collections. Fees still in the
 /// pool are split at the new rates when collected; the creator's split of the rest is unchanged.
 public fun set_protocol_lp_fees<Meme, Quote>(
-    self: &mut PresaleVault<Meme, Quote>,
+    self: &mut Vault<Meme, Quote>,
     admin_registry: &blast_presale_admin::AdminRegistry,
     admin_cap: &blast_presale_admin::AdminCap,
     lp_fee_meme_bps: bps::Bps,
@@ -5560,7 +5560,7 @@ public fun set_protocol_lp_fees<Meme, Quote>(
 /// it, since both payees are fixed. Holding nothing is valid, moves nothing, and emits nothing,
 /// so it can follow any collection.
 public fun pay_protocol_lp_fees_with_partner<Meme, Quote>(
-    self: &mut PresaleVault<Meme, Quote>,
+    self: &mut Vault<Meme, Quote>,
     fee_policy: &fee_policy::FeePolicy,
     partner: &blast_partners::blast_partners::Partner,
     clock: &Clock,
@@ -5571,9 +5571,9 @@ public fun pay_protocol_lp_fees_with_partner<Meme, Quote>(
 #### Events
 
 ```move
-public struct PresaleVaultCreated<phantom Meme, phantom Quote, phantom Venue> has copy, drop {
+public struct VaultCreated<phantom Meme, phantom Quote, phantom Venue> has copy, drop {
     vault_id: ID,
-    /// Zero for a fair launch's vault.
+    /// Zero for a vault created without a presale.
     presale_id: ID,
     pool_id: ID,
     position_id: ID,
@@ -5595,7 +5595,7 @@ public struct FeesCollected<phantom Meme, phantom Quote> has copy, drop {
     protocol_destination: Option<address>,
     protocol_meme: u64,
     protocol_quote: u64,
-    /// Aligned by index with the immutable recipients in `PresaleVaultCreated`.
+    /// Aligned by index with the immutable recipients in `VaultCreated`.
     fee_recipient_meme: vector<u64>,
     fee_recipient_quote: vector<u64>,
     holder_rewards_meme: u64,

@@ -213,7 +213,7 @@ overdraw by an atom at nearly equal amounts.
 The adapter alone holds the sealed witness needed to take exactly `R` Quote and
 the entire LP-token allocation from core. In the same call it creates the
 configured full-range pool and seals its position or burn proof in a
-`PresaleVault`. Claims open only after this call succeeds; a venue failure rolls
+`Vault`. Claims open only after this call succeeds; a venue failure rolls
 back the complete transaction. That transaction also pays each configured
 recipient its distinct immutable token allocation and each raise recipient its
 Quote payout. The migration witness, tier,

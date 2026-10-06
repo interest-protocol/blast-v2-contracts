@@ -142,10 +142,10 @@ public fun migrate<Meme, Quote>(
     pool.share_pool_object();
 }
 
-/// Seals a fair launch's own Bluefin position in `pool`, whose first coin must be Meme, in a new
+/// Seals the caller's own Bluefin position in `pool`, whose first coin must be Meme, in a new
 /// shared vault splitting its LP fees by `fee_split`, after Blast's current rates. The liquidity is
 /// locked for good. Blast must allow Quote and this migrator, as for a presale.
-public fun create_fair_launch_vault<Meme, Quote>(
+public fun new_vault<Meme, Quote>(
     position: Position,
     fee_split: FeeSplit,
     creation_policy: &CreationPolicy,
@@ -158,7 +158,7 @@ public fun create_fair_launch_vault<Meme, Quote>(
 
     let liquidity = position.liquidity();
 
-    vault::create_fair_launch<Meme, Quote, _, _>(
+    vault::create_without_presale<Meme, Quote, _, _>(
         fee_split,
         fee_policy,
         &Venue(),
@@ -172,7 +172,7 @@ public fun create_fair_launch_vault<Meme, Quote>(
 /// Anyone may collect LP fees, paying Blast and each fee recipient and accruing the
 /// holder-reward share.
 public fun collect_fees<Meme, Quote>(
-    vault: &mut PresaleVault<Meme, Quote>,
+    vault: &mut Vault<Meme, Quote>,
     fee_policy: &FeePolicy,
     bluefin_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
@@ -273,7 +273,7 @@ use blast_presale::{
     creation_policy::CreationPolicy,
     fee_policy::FeePolicy,
     migration_math,
-    presale_vault::{Self as vault, PresaleVault},
+    presale_vault::{Self as vault, Vault},
 };
 
 use bluefin_spot::{config::GlobalConfig, pool::{Self, Pool}, position::Position};
