@@ -1,10 +1,12 @@
 {
-  "schema_version": 2,
-  "description": "Constant-product bonding curve with virtual quote liquidity: buys, sells, creator-selected fixed sell-side burn, terminal disposition burn, threshold crossing, and boundary cases.",
+  "schema_version": 3,
+  "description": "Constant-product bonding curve with virtual quote liquidity: buys, sells, creator-selected fixed sell-side burn, terminal disposition burn, a threshold crossing capped at the graduation target with its excess Quote refunded, and boundary cases.",
   "source_decisions": [
     "docs/decisions/0021-pure-constant-product-curve-quotes.md",
     "docs/decisions/0026-deferred-sell-burn.md",
+    "docs/decisions/0039-deterministic-quote-valuations.md",
     "docs/decisions/0041-launch-config-owned-trade-fees.md",
+    "docs/decisions/0043-versioned-launch-trading-and-atomic-migration.md",
     "docs/decisions/0006-fees-and-launch-paths.md",
     "docs/decisions/0077-fixed-creator-selected-sell-burn.md"
   ],
@@ -14,6 +16,8 @@
     "quote": "atomic units, 9 decimals in these cases",
     "bps": "basis points, 10000 = 100%",
     "rounding": {
+      "quote_in_gross": "ceil - when T caps a buy, the smallest gross input whose post-fee Quote reaches T exactly",
+      "quote_refund": "the supplied Quote above quote_in_gross, returned whole to the buyer",
       "meme_out_gross": "floor - curve payout rounds down",
       "meme_fee": "ceil - protocol fee rounds up",
       "meme_out_net": "gross meme output minus meme fee",
@@ -21,11 +25,12 @@
       "quote_fee": "ceil - protocol fee rounds up",
       "progress_bps": "floor - never overstates progress",
       "burn_bps": "the immutable creator-selected rate applied to post-fee Meme input",
-      "meme_pending_burn": "ceil - seller obligation rounds up"
+      "meme_pending_burn": "ceil - seller obligation rounds up",
+      "migration_fee": "ceil - protocol fee rounds up"
     }
   },
   "parameters": {
-    "note": "Deployment values remain proposed. The fixed sell-burn formula and hard 5,000 bps creator ceiling are accepted by docs/decisions/0077-fixed-creator-selected-sell-burn.md. Changing an economic input invalidates every affected case below.",
+    "note": "Deployment values remain proposed. The fixed sell-burn formula and hard 5,000 bps creator ceiling are accepted by docs/decisions/0077-fixed-creator-selected-sell-burn.md. Changing an economic input invalidates every affected case below; regenerate with python3 docs/vectors/generate_curve.py.",
     "meme_total_supply_atomic": 1000000000000000000,
     "curve_meme_inventory_M0_atomic": 800000000000000000,
     "virtual_quote_V_atomic": 1000000000000,
@@ -37,8 +42,9 @@
     "migration_fee_ceiling_bps": 300
   },
   "formulas": {
-    "buy": "quote_fee=ceil(q*quote_fee_bps/10000); q_net=q-quote_fee; meme_gross=floor(M*q_net/(V+Q+q_net)); meme_fee=ceil(meme_gross*meme_fee_bps/10000); meme_net=meme_gross-meme_fee; M'=M-meme_gross; Q'=Q+q_net",
-    "sell": "meme_fee=ceil(m*meme_fee_bps/10000); m_after_fee=m-meme_fee; progress_bps=min(floor(Q*10000/T),10000) as telemetry; burn_bps=sell_burn_bps; burned=ceil(m_after_fee*burn_bps/10000); eff=m_after_fee-burned; gross=floor((V+Q)*eff/(M+eff)); quote_fee=ceil(gross*quote_fee_bps/10000); net=gross-quote_fee; M'=M+eff; Q'=Q-gross"
+    "buy": "q=quote_supplied; q_gross=q if q-ceil(q*quote_fee_bps/10000)<=T-Q else ceil((T-Q)*10000/(10000-quote_fee_bps)); quote_refund=q-q_gross; quote_fee=ceil(q_gross*quote_fee_bps/10000); q_net=q_gross-quote_fee; meme_gross=floor(M*q_net/(V+Q+q_net)); meme_fee=ceil(meme_gross*meme_fee_bps/10000); meme_net=meme_gross-meme_fee; M'=M-meme_gross; Q'=Q+q_net; crossed_threshold=Q'>=T",
+    "sell": "meme_fee=ceil(m*meme_fee_bps/10000); m_after_fee=m-meme_fee; progress_bps=min(floor(Q*10000/T),10000) as telemetry; burn_bps=sell_burn_bps; burned=ceil(m_after_fee*burn_bps/10000); eff=m_after_fee-burned; gross=floor((V+Q)*eff/(M+eff)); quote_fee=ceil(gross*quote_fee_bps/10000); net=gross-quote_fee; M'=M+eff; Q'=Q-gross",
+    "migration": "migration_fee=ceil(Q*migration_fee_bps/10000); quote_to_liquidity=Q-migration_fee"
   },
   "cases": [
     {
@@ -47,9 +53,11 @@
       "given": {
         "meme_reserve": 800000000000000000,
         "real_quote": 0,
-        "quote_in_gross": 1000000000
+        "quote_supplied": 1000000000
       },
       "expect": {
+        "quote_in_gross": 1000000000,
+        "quote_refund": 0,
         "quote_fee": 10000000,
         "quote_in_net": 990000000,
         "meme_out_gross": 791216695471483,
@@ -67,11 +75,13 @@
       "given": {
         "meme_reserve": 800000000000000000,
         "real_quote": 0,
-        "quote_in_gross": 1000000000,
+        "quote_supplied": 1000000000,
         "quote_fee_bps": 0,
         "meme_fee_bps": 100
       },
       "expect": {
+        "quote_in_gross": 1000000000,
+        "quote_refund": 0,
         "quote_fee": 0,
         "quote_in_net": 1000000000,
         "meme_out_gross": 799200799200799,
@@ -89,11 +99,13 @@
       "given": {
         "meme_reserve": 800000000000000000,
         "real_quote": 0,
-        "quote_in_gross": 1000000000,
+        "quote_supplied": 1000000000,
         "quote_fee_bps": 100,
         "meme_fee_bps": 100
       },
       "expect": {
+        "quote_in_gross": 1000000000,
+        "quote_refund": 0,
         "quote_fee": 10000000,
         "quote_in_net": 990000000,
         "meme_out_gross": 791216695471483,
@@ -111,9 +123,11 @@
       "given": {
         "meme_reserve": 799208783304528517,
         "real_quote": 990000000,
-        "quote_in_gross": 500000000000
+        "quote_supplied": 500000000000
       },
       "expect": {
+        "quote_in_gross": 500000000000,
+        "quote_refund": 0,
         "quote_fee": 5000000000,
         "quote_in_net": 495000000000,
         "meme_out_gross": 264445850397222986,
@@ -210,9 +224,11 @@
       "given": {
         "meme_reserve": 800000000000000000,
         "real_quote": 0,
-        "quote_in_gross": 2500000000000
+        "quote_supplied": 2500000000000
       },
       "expect": {
+        "quote_in_gross": 2500000000000,
+        "quote_refund": 0,
         "quote_fee": 25000000000,
         "quote_in_net": 2475000000000,
         "meme_out_gross": 569784172661870503,
@@ -230,26 +246,28 @@
       "given": {
         "meme_reserve": 230215827338129497,
         "real_quote": 2475000000000,
-        "quote_in_gross": 600000000000
+        "quote_supplied": 600000000000
       },
       "expect": {
-        "quote_fee": 6000000000,
-        "quote_in_net": 594000000000,
-        "meme_out_gross": 33607324020361003,
+        "quote_in_gross": 530303030304,
+        "quote_refund": 69696969696,
+        "quote_fee": 5303030304,
+        "quote_in_net": 525000000000,
+        "meme_out_gross": 30215827338129496,
         "meme_fee": 0,
-        "meme_out_net": 33607324020361003,
-        "meme_reserve_after": 196608503317768494,
-        "real_quote_after": 3069000000000,
+        "meme_out_net": 30215827338129496,
+        "meme_reserve_after": 200000000000000001,
+        "real_quote_after": 3000000000000,
         "crossed_threshold": true
       },
-      "notes": "Crossing happens on a buy only. Terminal state feeds the migration price."
+      "notes": "Continues from buy_to_below_threshold. The supplied Quote would carry the reserve past T, so the buy charges only ceil((T - Q) * 10000 / (10000 - quote_fee_bps)), the smallest gross input whose post-fee Quote reaches T exactly, and refunds the rest; the refund never enters the curve, the fees, or migration principal. Crossing happens on a buy only. The terminal state feeds the migration price."
     },
     {
       "name": "sell_at_full_progress_unreachable",
       "kind": "sell",
       "given": {
-        "meme_reserve": 196608503317768494,
-        "real_quote": 3069000000000,
+        "meme_reserve": 200000000000000001,
+        "real_quote": 3000000000000,
         "meme_in": 1000000000000000
       },
       "expect": {
@@ -259,15 +277,15 @@
         "burn_bps": 100,
         "meme_pending_burn": 10000000000000,
         "meme_in_effective": 990000000000000,
-        "quote_out_gross": 20386338622,
-        "quote_fee": 203863387,
-        "quote_out_net": 20182475235,
-        "meme_reserve_after": 197598503317768494,
-        "real_quote_after": 3048613661378,
+        "quote_out_gross": 19702472759,
+        "quote_fee": 197024728,
+        "quote_out_net": 19505448031,
+        "meme_reserve_after": 200990000000000001,
+        "real_quote_after": 2980297527241,
         "clamp_would_bind": false,
         "abort": "EUnreachableByConstruction"
       },
-      "notes": "Pure-math boundary, UNREACHABLE through the lifecycle. progress_bps reaches 10000 only when real_quote >= T, and crossing T closes trading. The fixed burn remains 100 bps; progress is telemetry only."
+      "notes": "Pure-math boundary, UNREACHABLE through the lifecycle. progress_bps reaches 10000 only at real_quote = T, and the capped crossing buy that reaches T closes trading. The fixed burn remains 100 bps; progress is telemetry only."
     },
     {
       "name": "sell_at_max_live_progress",
@@ -291,7 +309,7 @@
         "real_quote_after": 2980297527240,
         "clamp_would_bind": false
       },
-      "notes": "At real_quote = T-1, progress telemetry is 9999 while the creator-selected burn remains exactly 100 bps."
+      "notes": "At real_quote = T-1, the state a fee-free buy of T-1 Quote leaves, progress telemetry is 9999 while the creator-selected burn remains exactly 100 bps."
     },
     {
       "name": "sell_round_trip_immediately_after_first_buy",
@@ -323,7 +341,7 @@
       "given": {
         "meme_reserve": 800000000000000000,
         "real_quote": 0,
-        "quote_in_gross": 1
+        "quote_supplied": 1
       },
       "expect": {
         "abort": "EZeroOutput",
@@ -352,17 +370,17 @@
       "name": "terminal_disposition",
       "kind": "migration",
       "given": {
-        "meme_reserve": 196608503317768494,
-        "real_quote": 3069000000000,
+        "meme_reserve": 200000000000000001,
+        "real_quote": 3000000000000,
         "migration_fee_bps": 100
       },
       "expect": {
-        "migration_fee": 30690000000,
-        "quote_to_liquidity": 3038310000000,
-        "meme_available_for_liquidity": 196608503317768494,
+        "migration_fee": 30000000000,
+        "quote_to_liquidity": 2970000000000,
+        "meme_available_for_liquidity": 200000000000000001,
         "burn_moment_2_rule": "meme_available_for_liquidity minus meme actually deployed by the venue adapter is burned in one accounted step before the supply state is locked to BurnOnly"
       },
-      "notes": "Burn moment 2. The exact burned amount depends on how much meme the venue consumes at the derived price, so the rule is asserted rather than a fixed number."
+      "notes": "Burn moment 2. The capped crossing leaves the real Quote reserve at exactly T, so the fee is ADR 0039's ceil(T * F / 10000). The exact burned amount depends on how much meme the venue consumes at the derived price, so the rule is asserted rather than a fixed number."
     }
   ],
   "properties": [
@@ -383,7 +401,8 @@
     },
     {
       "name": "conservation_quote_atomic_units",
-      "statement": "quote_in_total = quote_out_total + Q + accrued_fees_quote + quote_named_claims + migration_fee_quote + quote_deployed_to_venue"
+      "statement": "quote_in_total = quote_out_total + Q + accrued_fees_quote + quote_named_claims + migration_fee_quote + quote_deployed_to_venue",
+      "note": "quote_in_total sums each buy's quote_in_gross; a capped buy's quote_refund never enters it."
     },
     {
       "name": "sell_burn_is_progress_independent",

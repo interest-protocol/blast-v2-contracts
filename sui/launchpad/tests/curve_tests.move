@@ -250,6 +250,12 @@ fun consecutive_buys_match_mid_and_threshold_vectors() {
     assert_eq!(real_quote_mid, 495_990_000_000);
     assert!(!crossed_mid);
 
+    let (quote_in_gross, quote_refund) = cap_buy_quote_input(
+        2_475_000_000_000,
+        TERMINAL_THRESHOLD,
+        600_000_000_000,
+        QUOTE_FEE_BPS,
+    );
     let (
         quote_fee,
         quote_in_net,
@@ -264,16 +270,18 @@ fun consecutive_buys_match_mid_and_threshold_vectors() {
         2_475_000_000_000,
         VIRTUAL_QUOTE,
         TERMINAL_THRESHOLD,
-        600_000_000_000,
+        quote_in_gross,
         QUOTE_FEE_BPS,
         0,
     );
 
-    assert_eq!(quote_fee, 6_000_000_000);
-    assert_eq!(quote_in_net, 594_000_000_000);
-    assert_eq!(meme_out_crossing, 33_607_324_020_361_003);
-    assert_eq!(meme_reserve_after, 196_608_503_317_768_494);
-    assert_eq!(real_quote_after, 3_069_000_000_000);
+    assert_eq!(quote_in_gross, 530_303_030_304);
+    assert_eq!(quote_refund, 69_696_969_696);
+    assert_eq!(quote_fee, 5_303_030_304);
+    assert_eq!(quote_in_net, 525_000_000_000);
+    assert_eq!(meme_out_crossing, 30_215_827_338_129_496);
+    assert_eq!(meme_reserve_after, 200_000_000_000_000_001);
+    assert_eq!(real_quote_after, TERMINAL_THRESHOLD);
     assert!(crossed_threshold);
 }
 
@@ -546,8 +554,8 @@ fun sell_burn_is_fixed_across_progress_boundaries() {
         _,
         full_real_quote_after,
     ) = quote_sell(
-        196_608_503_317_768_494,
-        3_069_000_000_000,
+        200_000_000_000_000_001,
+        TERMINAL_THRESHOLD,
         VIRTUAL_QUOTE,
         TERMINAL_THRESHOLD,
         1_000_000_000_000_000,
@@ -559,9 +567,9 @@ fun sell_burn_is_fixed_across_progress_boundaries() {
     assert_eq!(full_progress_bps, 10_000);
     assert_eq!(full_burn_bps, 100);
     assert_eq!(full_meme_pending_burn, 10_000_000_000_000);
-    assert_eq!(full_quote_out_gross, 20_386_338_622);
-    assert_eq!(full_quote_out_net, 20_182_475_235);
-    assert_eq!(full_real_quote_after, 3_048_613_661_378);
+    assert_eq!(full_quote_out_gross, 19_702_472_759);
+    assert_eq!(full_quote_out_net, 19_505_448_031);
+    assert_eq!(full_real_quote_after, 2_980_297_527_241);
 
     let (
         _,

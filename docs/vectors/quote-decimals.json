@@ -32,16 +32,16 @@
       "given": {
         "meme_decimals": 9,
         "quote_decimals": 9,
-        "meme_atomic": 196608503317768494,
-        "quote_atomic": 3038310000000
+        "meme_atomic": 200000000000000001,
+        "quote_atomic": 2970000000000
       },
       "expect": {
-        "sqrt_price_x64_meme_is_coin_a": 72516129429223843,
-        "sqrt_price_x64_meme_is_coin_b": 4692505923844928806099,
+        "sqrt_price_x64_meme_is_coin_a": 71085815383773548,
+        "sqrt_price_x64_meme_is_coin_b": 4786923594866905679395,
         "both_in_venue_range": true,
         "display_factor_exponent": 0,
-        "display_price_quote_per_meme_exact_rational": "506385000000/32768083886294749",
-        "display_price_quote_per_meme_decimal_34sf": "0.0000154536042374999999597047269507",
+        "display_price_quote_per_meme_exact_rational": "990000000000/66666666666666667",
+        "display_price_quote_per_meme_decimal_34sf": "0.0000148499999999999999257500000000",
         "display_price_is_a_derived_presentation_value": true
       },
       "notes": "MEME/SUI. Raw ratio and display price coincide only because the decimals are equal."
@@ -51,16 +51,16 @@
       "given": {
         "meme_decimals": 9,
         "quote_decimals": 6,
-        "meme_atomic": 196608503317768494,
-        "quote_atomic": 3038310000
+        "meme_atomic": 200000000000000001,
+        "quote_atomic": 2970000000
       },
       "expect": {
-        "sqrt_price_x64_meme_is_coin_a": 2293161360959133,
-        "sqrt_price_x64_meme_is_coin_b": 148390066531826006806777,
+        "sqrt_price_x64_meme_is_coin_a": 2247930859429608,
+        "sqrt_price_x64_meme_is_coin_b": 151375815449805255005138,
         "both_in_venue_range": true,
         "display_factor_exponent": 3,
-        "display_price_quote_per_meme_exact_rational": "506385000000/32768083886294749",
-        "display_price_quote_per_meme_decimal_34sf": "0.0000154536042374999999597047269507",
+        "display_price_quote_per_meme_exact_rational": "990000000000/66666666666666667",
+        "display_price_quote_per_meme_decimal_34sf": "0.0000148499999999999999257500000000",
         "display_price_is_a_derived_presentation_value": true
       },
       "notes": "MEME/USDC. Raw ratio is 1000x smaller than the 9-decimal case, yet the display price is identical."
@@ -70,16 +70,16 @@
       "given": {
         "meme_decimals": 9,
         "quote_decimals": 8,
-        "meme_atomic": 196608503317768494,
-        "quote_atomic": 303831000000
+        "meme_atomic": 200000000000000001,
+        "quote_atomic": 297000000000
       },
       "expect": {
-        "sqrt_price_x64_meme_is_coin_a": 22931613609591333,
-        "sqrt_price_x64_meme_is_coin_b": 14839006653182600680677,
+        "sqrt_price_x64_meme_is_coin_a": 22479308594296080,
+        "sqrt_price_x64_meme_is_coin_b": 15137581544980525500513,
         "both_in_venue_range": true,
         "display_factor_exponent": 1,
-        "display_price_quote_per_meme_exact_rational": "506385000000/32768083886294749",
-        "display_price_quote_per_meme_decimal_34sf": "0.0000154536042374999999597047269507",
+        "display_price_quote_per_meme_exact_rational": "990000000000/66666666666666667",
+        "display_price_quote_per_meme_decimal_34sf": "0.0000148499999999999999257500000000",
         "display_price_is_a_derived_presentation_value": true
       },
       "notes": "MEME/sSUI-style liquid staking token at 8 decimals."
@@ -89,16 +89,16 @@
       "given": {
         "meme_decimals": 6,
         "quote_decimals": 9,
-        "meme_atomic": 196608503317768,
-        "quote_atomic": 3038310000000
+        "meme_atomic": 200000000000000,
+        "quote_atomic": 2970000000000
       },
       "expect": {
-        "sqrt_price_x64_meme_is_coin_a": 2293161360959136182,
-        "sqrt_price_x64_meme_is_coin_b": 148390066531825820383,
+        "sqrt_price_x64_meme_is_coin_a": 2247930859429608031,
+        "sqrt_price_x64_meme_is_coin_b": 151375815449805254626,
         "both_in_venue_range": true,
         "display_factor_exponent": -3,
-        "display_price_quote_per_meme_exact_rational": "379788750/24576062914721",
-        "display_price_quote_per_meme_decimal_34sf": "0.0000154536042375000387885466361251",
+        "display_price_quote_per_meme_exact_rational": "297/20000000",
+        "display_price_quote_per_meme_decimal_34sf": "0.0000148500000000000000000000000000",
         "display_price_is_a_derived_presentation_value": true
       },
       "notes": "Non-9-decimal meme. Present specifically so no formula may depend on the meme having 9 decimals."
@@ -107,8 +107,8 @@
   "properties": [
     {
       "name": "no_decimal_correction_on_chain",
-      "statement": "For a FIXED reserve state, changing the quote's decimals scales the raw atomic ratio by exactly 10^(meme_decimals - quote_decimals) and leaves the display price EXACTLY unchanged. Cases sui_like_9dec_quote, usdc_like_6dec_quote and lst_like_8dec_quote share the identical exact rational 506385000000/32768083886294749, which is the proof. The on-chain raw-ratio calculation therefore applies no decimal correction; only the display conversion does.",
-      "caveat": "meme_6dec_quote_9dec is a DIFFERENT reserve state, not a rescaling: a 6-decimal token cannot represent 196608503317768494 nine-decimal atomic units, so its meme reserve is truncated to 196608503317768. Its exact display price 379788750/24576062914721 therefore differs from the other three and agrees only to 12 significant digits. Stating this prevents the false claim that all four are exactly equal.",
+      "statement": "For a FIXED reserve state, changing the quote's decimals scales the raw atomic ratio by exactly 10^(meme_decimals - quote_decimals) and leaves the display price EXACTLY unchanged. Cases sui_like_9dec_quote, usdc_like_6dec_quote and lst_like_8dec_quote share the identical exact rational 990000000000/66666666666666667, which is the proof. The on-chain raw-ratio calculation therefore applies no decimal correction; only the display conversion does.",
+      "caveat": "meme_6dec_quote_9dec is a DIFFERENT reserve state, not a rescaling: a 6-decimal token cannot represent 200000000000000001 nine-decimal atomic units, so its meme reserve is truncated to 200000000000000. Its exact display price 297/20000000 therefore differs from the other three, and the two round alike only to 17 significant digits. Stating this prevents the false claim that all four are exactly equal.",
       "reproduce": "display = Fraction(quote_atomic, 10**quote_decimals) / Fraction(meme_atomic, 10**meme_decimals)"
     },
     {
@@ -125,7 +125,7 @@
     },
     {
       "name": "display_price_is_not_terminating",
-      "statement": "The exact display price is a non-terminating rational: 32768083886294749 has prime factors other than 2 and 5. Any decimal rendering is therefore a rounded presentation value, never the exact quantity. The exact rational is authoritative; the 34-significant-figure decimal is provided for human comparison only and must not be used as a test oracle."
+      "statement": "The exact display price the three nine-decimal-meme cases share is a non-terminating rational: 66666666666666667 has prime factors other than 2 and 5. Any decimal rendering is therefore a rounded presentation value, never the exact quantity. The exact rational is authoritative; the decimal rounded to 34 places is provided for human comparison only and must not be used as a test oracle."
     }
   ]
 }
