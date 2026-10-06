@@ -3,8 +3,9 @@
 Source, tests, manifests, and lockfiles own executable facts. Documentation
 records decisions and task-specific operations; it must not mirror module,
 error, command, version, dependency, or implementation-status inventories.
-The one exception is `llms-full.txt`, the integrator reference that
-`scripts/gen_llms.py` generates from source; CI fails when it is stale.
+The one exception is the integrator references, `llms-full.txt` and the
+per-product files under `llms/`, that `scripts/gen_llms.py` generates from
+source; CI fails when they are stale.
 
 Add or amend an ADR only when a change settles a durable protocol, authority,
 storage, ABI, upgrade, dependency, deployment, or cross-package decision.
@@ -54,7 +55,7 @@ Load only the branch the task changes:
 - Explaining a package or routing a question about the contracts: `llms.txt`.
 - Changing a public function, type, event, error, fee, or flow:
   `docs/llms/AUTHORING.md`; update the affected guide in `docs/llms/` and
-  regenerate `llms-full.txt` with `python3 scripts/gen_llms.py`.
+  regenerate `llms-full.txt` and `llms/` with `python3 scripts/gen_llms.py`.
 - Package or contract/SDK boundary: `docs/architecture.md`.
 - Naming a module, one-time witness, coin, or event type that appears on an
   explorer: `docs/explorer-naming.md` and ADR 0085.

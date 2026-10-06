@@ -1,14 +1,18 @@
 # Writing the integrator guides
 
-The files in this directory are the hand-written half of `llms-full.txt`, the
-single self-contained file Blast hands to integrators, who give it to their AI
-agent and ask it anything. `scripts/gen_llms.py` joins these guides with an API
-reference it generates from the Move packages (every public function, type,
-event, and error) and checks every function these guides name.
+The files in this directory are the hand-written half of the integrator
+references Blast hands to integrators, who give one to their AI agent and ask it
+anything. `scripts/gen_llms.py` joins these guides with an API reference it
+generates from the Move packages (every public function, type, event, and
+error) and checks every function these guides name. It writes one file per
+product under `llms/` and `llms-full.txt`, which joins them all. Its `PRODUCTS`
+list says which guides and packages each product file holds; every product file
+opens with `basics.md`, and the generator opens each product guide with its
+packages' deployment status.
 
 ## Reader
 
-An integrator's AI agent that may see only `llms-full.txt`. It must be able to explain any behavior, build a working
+An integrator's AI agent that may see only its product's file under `llms/`. It must be able to explain any behavior, build a working
 programmable transaction block (PTB), decode an event or an abort, and say
 honestly when something is not supported.
 
@@ -66,6 +70,8 @@ below it. Cover, in this order, omitting what does not apply:
 ## Regenerating
 
 After editing a guide or any public Move interface, run
-`python3 scripts/gen_llms.py` and commit `llms-full.txt` with the change. CI
-runs it with `--check` and fails when the committed file is stale or a guide
-names a member that no longer resolves.
+`python3 scripts/gen_llms.py` and commit `llms-full.txt` and `llms/` with the
+change. CI runs it with `--check` and fails when a committed file is stale or a
+guide names a member that no longer resolves. A guide that relies on another
+product's behavior either summarizes it or adds that guide to its product's
+entry in `PRODUCTS`.

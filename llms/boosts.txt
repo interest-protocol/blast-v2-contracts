@@ -1,0 +1,3620 @@
+# Blast contracts: Boosts integrator reference
+
+> Everything an integrator needs to understand and call Boost leverage coins on Sui: mint and redeem leveraged long or short coins backed by Aftermath perpetuals. Sui mainnet only.
+
+This file is self-contained: give it to an AI agent and ask it anything about Boosts. It also covers the packages its calls depend on: `blast_partners`, `blast_admin`. Other products are in [llms-full.txt](https://github.com/interest-protocol/blast-v2-contracts/blob/main/llms-full.txt), which joins every product in one file.
+
+How it is organized:
+
+1. **Packages and deployment status**: each package, whether it is live on Sui mainnet, and its IDs.
+2. **Guides**: how each product works end to end, starting with the calling conventions every product shares. Each product guide opens with its deployment status. Use them for behavior, flows, economics, and pitfalls.
+3. **API reference**: generated from the Move source. Every public function and type with its doc comment, every event, every abort code, and the package constants. Use it for exact signatures and field layouts.
+
+When the guides and the reference disagree, the reference is right: it is generated from the source on every change. When this file does not say a behavior exists, treat it as unsupported. Source for every module is linked from the reference ([repository](https://github.com/interest-protocol/blast-v2-contracts)).
+
+Conventions: amounts are atomic units of the coin named; rates are basis points (BPS) out of 10,000; times are Unix milliseconds from Sui's shared `Clock` at `0x6`. Types are written as Move: `module::Type` names a type in another module of the same package, `package::module::Type` one in another Blast package, and well-known Sui framework types appear bare.
+
+## Packages and deployment status
+
+Call a live package at its package ID (`published-at`). Types and events are named by the package that first defined them (`original-id`), which stays the same across upgrades.
+
+| Package | Product | Status | Package ID (`published-at`) | Type origin (`original-id`) |
+| --- | --- | --- | --- | --- |
+| `blast_boosts_core` | Boosts core | live; source has changed since | `0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe` | `0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe` |
+| `blast_boosts_products` | Boost product tags | live; source has changed since | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` |
+| `blast_boosts_aftermath` | Boosts Aftermath adapter | live; source has changed since | `0x04f46747d8cb5ea590953ff1847301dfe5a287519d32c1610b35810aab082e50` | `0x04f46747d8cb5ea590953ff1847301dfe5a287519d32c1610b35810aab082e50` |
+| `blast_partners` | Partner codes | not yet published | — | — |
+| `blast_admin` | Administration | not yet published | — | — |
+
+## Calling Blast contracts
+
+Every Blast product is a set of Sui Move packages called from programmable
+transaction blocks (PTBs). This section covers what every product shares. Each
+product guide below assumes it.
+
+### Products and packages
+
+| Product | What users do | Packages |
+| --- | --- | --- |
+| Presale | commit Quote to a capped or overflow sale, claim tokens or refunds, earn LP fees and holder rewards after migration | `blast_presale`; one-off partner migrators such as `blast_aftermath_dao_presale` |
+| Launchpad | launch a coin on a bonding curve, trade it, graduate it into a DEX pool | `blast_fun` (curve, lifecycle, fees), a generated coin package per launch, `blast_fun_migrators` (venue start, migration, LP vault, LP fees, holder rewards) |
+| Partner codes | earn a share of Blast's fee on the flow an app brings | `blast_partners` |
+| Boosts | hold a leveraged long or short coin backed by Aftermath perpetuals | `blast_boosts_core`, `blast_boosts_products`, `blast_boosts_aftermath` |
+| blastSUI | stake SUI with one validator through funSUI and blastSUI | `blast_sui` |
+| Administration | Blast's operators manage roles, fees, and upgrades | `blast_admin` (the presale has its own admin caps) |
+
+Each package and what it depends on:
+
+```text
+blast_fun_migrators          -> blast_fun, blast_admin, Cetus, Bluefin
+blast_fun                    -> blast_partners, blast_admin
+blast_partners               -> blast_admin, blast_fun_timelock
+blast_presale                -> blast_partners, blast_fun_vesting, Cetus, Bluefin
+blast_aftermath_dao_presale  -> blast_presale, Aftermath AMM
+blast_boosts_aftermath       -> blast_boosts_core, blast_partners, blast_admin, Aftermath perpetuals
+blast_boosts_core            -> blast_admin
+blast_sui                    -> blast_admin, Sui system
+blast_admin                  -> blast_fun_timelock
+```
+
+The launchpad imports no DEX. A migrator package depends on the launchpad and
+composes with it inside one PTB. The presale is a separate product: it shares
+no state or code with the launchpad or the migrators, keeps its own admin caps
+instead of `blast_admin`, and holds migrated liquidity in its own
+`PresaleVault`. Answer presale questions from the presale guide alone.
+
+`blast_fun_timelock` and `blast_fun_vesting` come from Blast's public utility
+repository (`interest-protocol/blast-util-contracts`); both are immutable on
+mainnet.
+
+### Building a call
+
+- **Target.** A call is `moveCall` with target
+  `<package-id>::<module>::<function>`. Use the package ID (`published-at`) from
+  the deployment table.
+- **Type arguments.** Pass fully qualified type strings. A Blast type is named by
+  the package that first defined it (`original-id`), even after an upgrade.
+- **`TxContext`.** A trailing `ctx: &TxContext` or `&mut TxContext` parameter is
+  supplied by Sui. Leave it out of the arguments.
+- **Shared objects.** Pass a shared object by ID. A `&` parameter takes it
+  read-only, `&mut` or by value takes it mutably; mutable access orders the
+  transaction through consensus with every other writer of that object.
+- **System objects.** `Clock` is `0x6` (always `&Clock`), the Sui system state is
+  `0x5`, and the Coin Registry is `0xc`.
+- **Coins in.** A function that takes `Coin<T>` by value consumes it whole. Split
+  the exact amount first (`SplitCoins`; for SUI, split from the gas coin) and
+  merge several coins first when needed (`MergeCoins`).
+- **Values out.** Most Blast functions return coins and objects instead of
+  transferring them. Every returned value without the `drop` ability must be used
+  before the PTB ends: transfer it (`TransferObjects`), pass it to a later call,
+  or merge it. A value with no abilities at all (a "hot potato", such as a
+  launch initializer or a migration handoff) can only be consumed by the specific
+  later call that accepts it, so the whole sequence must sit in one PTB.
+- **Basis points.** Each package that takes rates defines its own validated
+  `Bps` type in its `bps` module. Build one inside the PTB with that package's
+  constructor, for example `blast_presale::bps::new` or `blast_fun::bps::new`,
+  which aborts above 10,000. A `blast_fun` `Bps` is a different type from a
+  `blast_presale` `Bps`.
+- **Options.** Pass `Option<T>` arguments with `0x1::option::some` or
+  `0x1::option::none` calls, or as pure BCS-encoded options.
+
+### Reading state
+
+- **Getters** are public functions that take `&` objects and return values. Run
+  them through a dev-inspect or simulated transaction to read without signing
+  or paying.
+- **Object fields** can be read directly from a full node and decoded with BCS.
+  The API reference prints every struct with its fields in declaration order,
+  which is the BCS order. Fields are readable on chain even though Move code
+  outside the module cannot access them.
+- **Per-user records** (commitments, claims) usually live in dynamic fields
+  keyed by a small key struct the reference lists; read them with the
+  dynamic-field RPC calls.
+- **Events** reconstruct history; contract state and completed events are the
+  source of truth, and any off-chain preview is an estimate.
+
+### Versions and upgrades
+
+Each package has one upgrade posture:
+
+| Posture | Packages | What callers do |
+| --- | --- | --- |
+| Immutable | `blast_admin`, `blast_partners`, `blast_boosts_core`, `blast_aftermath_dao_presale` | Nothing: the code never changes. |
+| Dependency-only | `blast_presale` | Presale logic is sealed; Blast can only relink newer Cetus and Bluefin versions, and every generation runs identical code with no version gate. Call the latest package ID, because a venue rejects calls linked to a version it retired. |
+| Version-gated | `blast_fun`, `blast_fun_migrators`, `blast_sui`, `blast_boosts_aftermath` | Mutating calls take the package's shared version object. After an upgrade advances it, calls through an older package ID abort with a version mismatch, so always call the current ID. |
+| Additive | `blast_boosts_products` | Upgrades only add product tags; it holds no state. |
+
+### Events
+
+- Query events by their Move type, named with the `original-id`.
+- `blast_fun`, `blast_sui`, and `blast_boosts_aftermath` wrap every payload in
+  the `Event<T>` envelope of their own `blast_events` module (for example
+  `blast_fun::blast_events::Event`), so the event type is
+  `<original-id>::blast_events::Event<<original-id>::<module>::<Payload>>`.
+  Every other package emits payload structs directly.
+- Sui orders events by checkpoint, transaction, and event index within the
+  transaction; payloads carry no sequence numbers of their own.
+- The reference lists every event struct under its module with its fields.
+
+### Errors
+
+A failed call returns a Move abort naming the module and function that aborted
+and a `u64` code. Blast uses two styles:
+
+- **Named errors** (`#[error]` constants): `blast_presale`, `blast_partners`,
+  `blast_fun_migrators`, and `blast_aftermath_dao_presale`. Sui's RPC and SDKs
+  decode these into the constant's name and message; the reference lists each
+  module's constants with their messages.
+- **Numeric codes**: `blast_fun`, `blast_sui`, `blast_boosts_core`,
+  `blast_boosts_aftermath`, and `blast_admin` abort with small integers. Look the
+  number up in that package's abort-code table in the reference.
+
+The abort names the module where it happened, which may be a package called
+underneath the one you called: a migrator call can abort inside `blast_fun` or
+`blast_admin`, and an abort in a Cetus, Bluefin, or Aftermath module comes from
+the venue. Simulate a transaction before signing to see its abort without
+spending gas.
+
+### Network
+
+Blast deploys only to Sui mainnet. There is no testnet deployment, faucet, or
+test address. Try a transaction with a mainnet simulation (dev-inspect or dry
+run) before signing it.
+
+## Boosts
+
+> **Deployment status:** `blast_boosts_core`, `blast_boosts_products` and `blast_boosts_aftermath` are live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package.
+
+### What it is
+
+A Boost is a leveraged coin. Each Boost is one Sui coin type,
+`Coin<BlastBoost<Product>>`, backed by a single isolated Aftermath perpetuals
+position that targets a fixed leverage, for example 2x long NVDA. A user mints
+by paying collateral (a six-decimal coin, USDC at launch) and receives shares;
+the Vault opens the matching extra position in the same transaction. A user
+redeems by burning shares; the Vault closes the proportional position and pays
+collateral in the same transaction. Leverage drifts as the price moves; once it
+leaves a public band, anyone may call a permissionless rebalance that trades
+back toward target. Holders pay all trading costs and funding, a maintenance
+reserve inside the venue account absorbs funding costs first, and Blast may
+shut a Boost down, after which holders claim the recovered cash pro rata.
+Boosts can lose value quickly, and the venue position can be liquidated.
+
+Three packages implement it:
+
+- `blast_boosts_products`: one empty struct per product tag, for example
+  `blast_boosts_products::blast_boosts_products::NVDA_BULL_2X`. No state, no
+  authority.
+- `blast_boosts_core`: venue-neutral policy, lifecycle and accounting
+  (`state`, `policy`, `lifecycle`, `observation`). Integrators never call it
+  directly; its `State` lives inside the adapter's Vault and only the adapter
+  can reach it.
+- `blast_boosts_aftermath`: the Aftermath adapter. It owns the share currency,
+  the shared `Vault`, the venue account, and every function integrators call
+  (the `operations` module and the adapter's `vault` module).
+
+### Objects and authority
+
+#### Product tags and the share coin
+
+- Product tag: an empty struct named `<TICKER>_<SIDE>_<LEVERAGE>` in
+  `blast_boosts_products`, for example `NVDA_BULL_2X`, `BTC_BEAR_2X`,
+  `XAUT_BULL_2X`. `BULL` means the Vault holds a perp long; `BEAR` means it
+  holds a perp short (the inverse). The ticker is the Aftermath base asset
+  without its USD suffix. A bull and a bear 2X tag exist for every Aftermath
+  market listed on 2026-09-18 (crypto, equities, commodities). A declared tag
+  is not a live product until Blast issues its currency.
+- Share coin: `Coin<BlastBoost<Product>>`, where `blast_boost::BlastBoost` is
+  defined in the adapter. Wallets show it as
+  `…::blast_boost::BlastBoost<…::blast_boosts_products::NVDA_BULL_2X>`.
+  Shares have **9 decimals**. They are ordinary coins: transferable, splittable,
+  usable in any later PTB command. Coin Registry admits one currency per tag.
+- The tag name is a label. The Vault's immutable `VaultPolicy` is what fixes
+  the side (`policy::PositionSide`, `Long` or `Short`) and the target leverage.
+  Read those from the Vault, not from the name.
+
+#### Shared objects
+
+| Object | Type | Created by | Role |
+| --- | --- | --- | --- |
+| Vault | `blast_boosts_aftermath::vault::Vault<Product, Collateral>` | Blast issuer, once per product | Custody of the core `State`, the bound venue account, the share `TreasuryCap` and `MetadataCap` (dynamic object fields under `TreasuryKey<Product>` and `MetadataKey<Product>`), the locked seed count, earned admin cash, and post-shutdown holder cash. |
+| Protocol | `blast_boosts_aftermath::blast_boosts_aftermath::Protocol` | package publish | The adapter's operational generation (every call that takes it checks it) and the accepted partners, one dynamic field per partner keyed by `blast_boosts_aftermath::blast_boosts_aftermath::PartnerKey`. |
+| PackageAdmin | `blast_boosts_aftermath::package_admin::PackageAdmin` | deployment | Sealed Publisher and UpgradeCap of the adapter. |
+| Blast ACL | `blast_acl::ACL` | `blast_admin` | Role membership for every Blast admin. |
+
+`Vault` fields: `state` (core `state::State<Product>`), `venue_account`
+(`venue_account::VenueAccount`: the immutable `binding`, the last accepted
+`checkpoint`, and the Aftermath account admin cap, which never leaves),
+`locked_shares`, `admin_cash` (`Balance<Collateral>`), `terminal_cash`
+(`Balance<Collateral>`).
+
+#### Aftermath objects a PTB must supply
+
+These are Aftermath's shared objects, not Blast code. Every venue-touching
+call takes all of them, and the adapter aborts unless each is exactly the
+object bound at activation (see `venue_account::Binding`):
+
+| Argument | Aftermath type (package `perpetuals` or `oracle_aggregator`) | Binding field |
+| --- | --- | --- |
+| `account` | `Account<Collateral>`, the Vault's own isolated Aftermath account, created and shared at activation | `account_object_id`, `account_number` |
+| `registry` | Aftermath perpetuals `Registry` | `registry_id` |
+| `clearing_house` | `ClearingHouse<Collateral>`, the market | `clearing_house_id` |
+| `base_oracle` | `PriceFeedStorage` holding the market's base price feed | `base_oracle_id`, `base_feed_id` |
+| `collateral_oracle` | `PriceFeedStorage` holding the collateral price feed | `collateral_oracle_id`, `collateral_feed_id` |
+
+Pass the shared `ClearingHouse` as a normal shared-object input. Several
+functions take it by value and re-share it before returning. Also pass the
+`Clock` (`0x6`) everywhere a call takes one.
+
+#### Roles
+
+Admin roles are types in `blast_boosts_core`. A Blast admin holding a
+`blast_acl::AdminCap` that the ACL granted the role calls
+`blast_acl::sign_in<Role>` and passes the returned `blast_acl::AdminWitness<Role>`
+to the call. Integrators cannot obtain these witnesses.
+
+| Role | Authorizes |
+| --- | --- |
+| `blast_boosts_core::blast_boosts_core::VaultIssuer` | `blast_boosts_aftermath::vault::issue` (new Boost), `blast_boosts_aftermath::vault::update_metadata` |
+| `blast_boosts_core::blast_boosts_core::RiskAdmin` | `blast_boosts_aftermath::vault::set_fees`, `blast_boosts_aftermath::vault::set_nav_cap`, `blast_boosts_aftermath::vault::set_max_order_notional`, `blast_boosts_aftermath::vault::withdraw_admin_fees`, `operations::add_partner`, `operations::remove_partner` |
+| `blast_boosts_core::blast_boosts_core::ShutdownAdmin` | `blast_boosts_aftermath::vault::begin_shutdown` |
+| `blast_boosts_core::blast_boosts_core::UpgradeAdmin` | adapter upgrades through `blast_boosts_aftermath::package_admin` |
+
+Everything else (mint, redeem, rebalance, donate, sync, unwind, finalize,
+shutdown claims) is *anyone*. No keeper role, keeper reward, or caller-chosen
+trade size exists anywhere.
+
+#### Policy (immutable per Vault)
+
+`policy::VaultPolicy`, fixed at issuance:
+
+- `side`: `Long` or `Short`.
+- `rebalance_policy` (`policy::RebalancePolicy`), leverage fields in leverage
+  basis points where 10,000 = 1x: `rebalance_below_bps < target_leverage_bps <
+  rebalance_above_bps < max_leverage_bps <= 1,000,000`; `max_slippage_bps`
+  (ordinary execution bound, in bps of the oracle price)
+  `<= emergency_max_slippage_bps < 10,000`;
+  `min_leverage_improvement_bps > 0`. A zero `rebalance_below_bps` disables
+  increase-rebalancing.
+- `price_policy` (`policy::PricePolicy`): `max_price_age_ms > 0`,
+  `max_price_ahead_ms <= max_price_age_ms`, `max_confidence_bps < 10,000`,
+  `max_mark_divergence_bps < 10,000`.
+- Fees: `initial_mint_fee_bps <= mint_fee_cap_bps < 10,000`,
+  `initial_redeem_fee_bps <= redeem_fee_cap_bps < 10,000`,
+  `admin_share_cap_bps <= 10,000`.
+- `min_order_lots`: 1 to 1,000,000; the minimum proportional order in venue lots.
+- `max_reserve_bps`: 1 to 10,000; ceiling on the reserve as a share of notional.
+
+Live, adjustable values in `State`: `mint_fee_bps`, `redeem_fee_bps`,
+`admin_share_bps` (starts at **0** at activation), `nav_cap`,
+`max_order_notional`. Other `State` fields: `maintenance_reserve`,
+`uncovered_deficit`, `base_unit` (`10^9`), `collateral_unit` (`10^6`),
+`lifecycle`.
+
+### Lifecycle
+
+`lifecycle::Lifecycle` has three states and only moves forward. A Vault exists
+only from activation, so it is born `Active`.
+
+| State | Entered by | Allowed |
+| --- | --- | --- |
+| `Active` | `operations::initialize` | mint, redeem (plain and partner), rebalance, `needs_rebalance`, donate, `sync_health`, all admin settings, `begin_shutdown` |
+| `Unwinding` | `blast_boosts_aftermath::vault::begin_shutdown` (ShutdownAdmin) | `operations::unwind`, `operations::sync_health`, `operations::finalize_shutdown`, `set_nav_cap`, `set_max_order_notional`, `update_metadata`, `withdraw_admin_fees` |
+| `Settled` | `operations::finalize_shutdown` (anyone) | `blast_boosts_aftermath::vault::redeem_shutdown`, `set_nav_cap`, `set_max_order_notional`, `update_metadata`, `withdraw_admin_fees` |
+
+`set_fees` works only in `Active`. Nothing reopens a Vault. Health reporting
+(`sync_health`, `CheckpointDrifted`) never changes lifecycle; only the
+ShutdownAdmin moves `Active` to `Unwinding`.
+
+### Flows
+
+#### Issue and activate a Boost (Blast admin: VaultIssuer)
+
+One PTB, signed by the issuer. `VaultIssuance` has no abilities, so issuance
+and activation succeed or fail together.
+
+1. `blast_acl::sign_in` with type argument `VaultIssuer`, the shared `ACL` and
+   the issuer's owned `AdminCap` returns the witness.
+2. `policy::new_rebalance_policy(...)`, `policy::new_price_policy(...)`, and
+   `policy::long()` or `policy::short()` build the parts;
+   `policy::new_vault_policy(side, rebalance_policy, price_policy,
+   initial_mint_fee_bps, initial_redeem_fee_bps, mint_fee_cap_bps,
+   redeem_fee_cap_bps, admin_share_cap_bps, min_order_lots, max_reserve_bps)`
+   returns the `VaultPolicy`.
+3. `blast_boosts_aftermath::vault::issue<Product, Collateral>` takes `Protocol`,
+   the witness, the Coin Registry (`0xc`), the policy, `max_order_notional`,
+   `nav_cap`, and the coin's `symbol`, `name`, `description`, `icon_url`.
+   `Product` must be a non-primitive type. It registers the 9-decimal currency,
+   emits `VaultIssued`, and returns a `VaultIssuance<Product, Collateral>`.
+4. Split the seed `Coin<Collateral>`.
+5. `operations::initialize<Product, Collateral>` takes the issuance, `Protocol`,
+   the collateral's Coin Registry `Currency<Collateral>`, the Aftermath
+   `Registry` (mutable), the `ClearingHouse`, both `PriceFeedStorage` objects,
+   the seed coin, `seed_reserve` (atoms of the seed kept as reserve; must be
+   below the seed), `position_imr` (the Aftermath position initial margin
+   ratio, a nonnegative IFixed `u256`), and the `Clock`. It creates and binds
+   the Aftermath account, deposits and allocates the whole seed, sets the
+   margin ratio, buys or sells whole lots until the position reaches target
+   leverage on the seed NAV (at most 16 orders, each filled completely within
+   the ordinary slippage bound and the order cap), settles funding, checks the
+   activation invariants (positive NAV, fresh prices, matching side, NAV at or
+   under `nav_cap`, leverage inside the band, reserve at or under its ceiling,
+   base above `lot_size * min_order_lots`), mints the locked seed shares to
+   `0x0`, shares the account and the market, and returns the `Vault`. Emits
+   `OrderFilled` per seed order and `VaultInitialized`.
+6. `blast_boosts_aftermath::vault::share(vault)` shares the Vault.
+
+Locked seed shares: `locked_shares = seed_shareholder_nav * 1,000` (six-decimal
+NAV atoms scaled to nine-decimal share atoms), so the opening price is exactly
+1 collateral unit per whole share. They sit at `0x0` forever, count in total
+supply, and never redeem.
+
+#### Mint (anyone)
+
+PTB:
+
+1. `SplitCoins` the user's `Coin<Collateral>` into the deposit `cash` (any
+   positive amount).
+2. `operations::mint<Product, Collateral>(vault, protocol, account, registry,
+   clearing_house, base_oracle, collateral_oracle, cash, minimum_shares,
+   deadline_ms, clock)`. Objects: `Vault` (shared, mutable), `Protocol`
+   (shared, read), `Account<Collateral>` (shared, mutable), `Registry` (shared,
+   read), `ClearingHouse<Collateral>` (shared, by value), both
+   `PriceFeedStorage` (shared, read), `Clock`. Returns
+   `Coin<BlastBoost<Product>>`.
+3. `TransferObjects` the shares to the user, or pass them to the next command.
+   The coin cannot be dropped.
+
+Parameters: `minimum_shares` is the share floor in share atoms (0 disables it;
+set it). `deadline_ms` is inclusive against `Clock`.
+
+What happens, in order, all atomic:
+
+1. Generation, `Active`, positive deposit, and deadline checks.
+2. Synchronize: refresh Aftermath's cumulative funding if due, settle the
+   position's funding, book it to the reserve (see Funding), and require that
+   the venue still matches the accepted checkpoint. Any unexplained change
+   aborts (adapter code 32).
+3. Price the position at the bound oracle pair; reject stale, future-dated or
+   divergent prices, unsafe margin, resting orders, or a paused or frozen
+   market.
+4. Require leverage **inside** the band (core code 49 otherwise).
+5. Fee: `fee = ceil(deposit * mint_fee_bps / 10,000)`,
+   `admin_fee = floor(fee * admin_share_bps / 10,000)`,
+   `reserve_fee = fee - admin_fee`. Expected contribution
+   `C_exp = deposit - fee`.
+6. Size the order: `base_to_buy = floor(base * C_exp / N0)` rounded down to
+   whole lots, where `base` is the current absolute position and `N0` the
+   shareholder NAV. The unrounded figure must be at least
+   `lot_size * min_order_lots` (core code 12).
+7. Keep `admin_fee` as Vault admin cash; deposit and allocate the rest
+   (`deposit - admin_fee`) to the position.
+8. Place market orders in the Vault's direction until exactly `base_to_buy` is
+   filled: each order at most the whole-lot base worth `max_order_notional` at
+   the oracle pair, at most 16 orders, each fill checked for no resting order,
+   no liquidation, whole lots, actual collateral notional at or under
+   `max_order_notional`, and execution price within `max_slippage_bps` of the
+   oracle price.
+9. Re-price at the same oracle pair and credit shares (see Economics). Check
+   `shares >= minimum_shares`, post-mint NAV at or under `nav_cap`, post-mint
+   leverage (rounded up to whole bps) strictly under `max_leverage_bps`, and
+   that existing holders' NAV per share did not fall.
+10. Mint shares, store the new checkpoint, emit `Minted`.
+
+#### Redeem (anyone)
+
+PTB:
+
+1. Select the `Coin<BlastBoost<Product>>` to burn (split or merge first; any
+   positive amount below total supply).
+2. `operations::redeem<Product, Collateral>(vault, protocol, account, registry,
+   clearing_house, base_oracle, collateral_oracle, shares, minimum_collateral,
+   deadline_ms, clock)`. Returns `Coin<Collateral>`.
+3. `TransferObjects` the collateral to the user.
+
+What happens: the same generation, lifecycle, deadline, synchronize and price
+checks as mint (no band check: redemptions work outside the band). The Vault
+sells the proportional position reduce-only:
+`max_final_base = floor(base * (S - x) / S)`,
+`required = base - max_final_base` (at least `lot_size * min_order_lots`
+unless `max_final_base` is 0), and `base_to_sell = min(required rounded up to
+whole lots, base)`. Fills face the ordinary slippage bound and the order cap.
+It then prices the payout (see Economics), checks `net >= minimum_collateral`,
+withdraws `net + admin_fee` from the venue (free collateral first, then
+deallocation), keeps `admin_fee` as admin cash, burns the shares, emits
+`Redeemed`, and returns `net`.
+
+#### Mint or redeem with a partner code (anyone)
+
+`operations::mint_with_partner` and `operations::redeem_with_partner` take the
+same arguments as `mint` and `redeem`, plus the partner's shared
+`blast_partners::blast_partners::Partner` object (read only) placed right after
+`Protocol`:
+`(vault, protocol, partner, account, registry, clearing_house, base_oracle,
+collateral_oracle, coin, minimum, deadline_ms, clock)`.
+
+1. The call first requires the partner to be accepted by Boosts at
+   `Clock` time (adapter code 38 otherwise).
+2. It runs the plain operation unchanged: same shares, same payout, same
+   reserve fee.
+3. It then pays the partner from the admin fee this operation just retained:
+   `partner_fee = floor(admin_fee * share_bps / 10,000)`, where `share_bps` is
+   the partner's share in force (at most 8,000), through
+   `blast_partners::blast_partners::pay`, which sends it to the partner's
+   recipient address and emits `blast_partners::blast_partners::PartnerPaid`
+   when nonzero. Blast keeps the rest as admin cash. Emits `PartnerFeePaid`
+   (even when the payment is zero).
+
+Before building a partner trade, check acceptance: read the `Protocol`
+dynamic field with name `PartnerKey(partner_id)`. The partner is accepted
+while the field exists and `now_ms < value` (the value is `u64::MAX` until
+Blast removes the partner). Otherwise use the plain calls. While a Vault's
+`admin_share_bps` is 0 the partner earns nothing.
+
+#### Rebalance (anyone; keepers)
+
+`operations::rebalance<Product, Collateral>(vault, protocol, account, registry,
+clearing_house, base_oracle, collateral_oracle, clock)`. No return value, no
+reward, no direction or size argument. Submit it at a gas price **at or below
+the reference gas price** (adapter code 37 otherwise), because Aftermath adds
+a priority taker fee above it and holders pay every fill.
+
+1. Generation, `Active`, gas price; synchronize as in mint.
+2. Require leverage strictly outside the band (core code 54 otherwise):
+   `notional * 10,000 < N * rebalance_below_bps` (increase) or
+   `notional * 10,000 > N * rebalance_above_bps` (reduce). Band edges are
+   healthy.
+3. Read the market taker fee, rounded up to whole bps (rebates count as zero).
+4. Up to 16 orders. Increase: each order is the largest whole-lot buy that
+   keeps post-cost leverage at or under target, reserving adverse slippage
+   (`max_slippage_bps`) and the taker fee on it, capped at
+   `max_order_notional`; each fill must leave leverage at or under target and
+   under max. Reduce: each order sells toward the target base, capped per
+   order, rounded down to lots. A reduction that started above
+   `max_leverage_bps` uses `emergency_max_slippage_bps` and stops once leverage
+   is no longer above max; every other order uses `max_slippage_bps`.
+5. Require progress: at least one fill; an increase must raise base and
+   leverage; a reduction must lower base and either move leverage at least
+   `min_leverage_improvement_bps` toward target or land within one lot of
+   target without moving away (core code 55).
+6. Store the checkpoint; emit `Rebalanced`. Reserve, supply and admin cash do
+   not change; execution cost lowers NAV.
+
+Dry run: `operations::needs_rebalance<Product, Collateral>(vault, protocol,
+account, registry, clearing_house, base_oracle, collateral_oracle, clock)`
+takes every object by immutable reference and returns `bool`. Run it with
+dev-inspect. It aborts where `rebalance` would abort before its first order
+(unexplained drift, refused prices, venue not ready). It does not settle
+funding first, so a due settlement can shift the answer slightly.
+
+Keeper loop: when dev-inspect returns `true`, submit `rebalance` at the
+reference gas price. If another keeper already brought leverage back inside the
+band, the call aborts with core code 54; rebuild from current objects. Resolve
+an uncertain digest before retrying.
+
+#### Sync health (anyone)
+
+`operations::sync_health<Product, Collateral>(vault, protocol, account,
+registry, clearing_house, base_oracle, collateral_oracle, clock)` with the
+`ClearingHouse` by mutable reference. Works in `Active` and `Unwinding`.
+
+It refreshes due funding, settles the position's funding, and reconciles with
+the accepted checkpoint without pricing anything. An explainable change books
+funding to the reserve, adopts the new checkpoint and emits `FundingSettled`
+(once per distinct checkpoint; an identical retry emits nothing). Anything
+else leaves the accepted checkpoint in place and emits `CheckpointDrifted`;
+every drifted sync emits it again. Blast adds no price, margin or drift check
+to this call; a binding mismatch aborts.
+
+#### Donate (anyone)
+
+`operations::donate<Product, Collateral>(vault, protocol, account, registry,
+clearing_house, base_oracle, collateral_oracle, cash, clock)`, `Active` only,
+`cash` positive. It synchronizes (drift aborts), deposits the coin into the
+Vault's Aftermath account as free collateral, proves the exact deposit, and
+adds it to the maintenance reserve clamped to the reserve ceiling. Any excess
+over the ceiling raises shareholder NAV. No shares, no fees. Emits `Donated`.
+
+#### Shutdown
+
+1. **Begin** (Blast admin: ShutdownAdmin).
+   `blast_boosts_aftermath::vault::begin_shutdown(vault, protocol, witness,
+   reason)` with `reason` from `lifecycle::emergency_reason()` or
+   `lifecycle::observed_venue_change_reason()` (an operator's label, never an
+   on-chain liquidation verdict). Needs no venue or oracle object. Moves
+   `Active` to `Unwinding`, emits `ShutdownBegun`. Mint, redeem, rebalance and
+   donate stop.
+2. **Unwind** (anyone, repeat until flat). `operations::unwind<Product,
+   Collateral>(vault, protocol, account, registry, clearing_house, base_oracle,
+   collateral_oracle, clock)`, at or below the reference gas price, refused
+   while the clearing house is frozen (adapter code 35).
+   - Live market: synchronize (drift is reported with `CheckpointDrifted` and
+     the live venue state is adopted anyway), price at fresh oracles, then up
+     to 16 reduce-only orders under `emergency_max_slippage_bps` and the order
+     cap. Emits `OrderFilled` per order and `UnwindProgress`. Positive NAV and
+     the reserve do not gate it. A flat position aborts (adapter code 34): go
+     to finalize.
+   - Market paused by Aftermath: once Aftermath has enabled positive
+     settlement prices, the step closes the position at those prices without a
+     market order (`UnwindProgress` with `market_orders = 0`,
+     `filled_quote = none`). Before that it aborts (adapter code 33).
+3. **Finalize** (anyone). `operations::finalize_shutdown<Product,
+   Collateral>(vault, protocol, account, registry, clearing_house, base_oracle,
+   collateral_oracle, clock)`. Requires exactly zero base and quote, no orders,
+   position funding snapshots equal to the market's (funding fully settled),
+   and nonnegative allocated collateral. It withdraws all free collateral plus
+   the whole-atom floor of allocated collateral, leaving only a raw remainder
+   below one atom at the venue. It sets `Settled`, zeroes the reserve book
+   entry, and seals the recovered coin as `terminal_cash` (or as admin cash if
+   no eligible share exists). Emits `ShutdownFinalized`. If position funding is
+   not fully settled it aborts with adapter code 33; on a live market, settle
+   it first, for example with `operations::sync_health` earlier in the same
+   PTB.
+4. **Claim** (any holder). `blast_boosts_aftermath::vault::redeem_shutdown<Product,
+   Collateral>(vault, protocol, shares, minimum_collateral, deadline_ms,
+   clock)` returns `Coin<Collateral>`. No venue, oracle or fee. Emits
+   `ShutdownRedeemed`.
+
+#### Admin settings (Blast admin)
+
+Each needs `Protocol` and the role witness; none needs venue objects or prices.
+
+| Call | Role | Effect | Event |
+| --- | --- | --- | --- |
+| `blast_boosts_aftermath::vault::set_fees(vault, protocol, witness, mint_fee_bps, redeem_fee_bps, admin_share_bps)` | RiskAdmin | Sets all three live rates within the policy caps; at least one must change; `Active` only. Affects only future operations. | `FeesUpdated` |
+| `blast_boosts_aftermath::vault::set_nav_cap(vault, protocol, witness, nav_cap)` | RiskAdmin | Replaces the NAV cap (positive, changed, and `nav_cap * max_leverage_bps / 10,000` fits in `u64`); may be set below current NAV, which only blocks mints. Any lifecycle. | `NavCapUpdated` |
+| `blast_boosts_aftermath::vault::set_max_order_notional(vault, protocol, witness, max_order_notional)` | RiskAdmin | Replaces the per-order collateral notional cap (positive, changed). Any lifecycle, no cooldown. | `MaxOrderNotionalUpdated` |
+| `blast_boosts_aftermath::vault::withdraw_admin_fees(vault, protocol, witness, amount)` | RiskAdmin | Returns `Coin<Collateral>` from admin cash only. Any lifecycle. | `AdminFeesWithdrawn` |
+| `blast_boosts_aftermath::vault::update_metadata(vault, protocol, witness, currency, name, description, icon_url)` | VaultIssuer | Updates the share coin's name, description and icon in its Coin Registry `Currency<BlastBoost<Product>>`; the symbol is fixed. At least one must change. | `MetadataUpdated` |
+| `operations::add_partner(protocol, witness, partner)` | RiskAdmin | Accepts a `Partner` at once, or cancels its pending removal. | `PartnerAdded` |
+| `operations::remove_partner(protocol, witness, partner, clock)` | RiskAdmin | Partner stays accepted until `now + blast_partners::blast_partners::delay_ms()` (seven days). | `PartnerRemoved` |
+
+Upgrades: at deployment, the holder of the adapter's Publisher and UpgradeCap
+calls `blast_boosts_aftermath::package_admin::wrap` to seal them into the shared
+`PackageAdmin`. Then, with the UpgradeAdmin witness,
+`blast_boosts_aftermath::package_admin::authorize_upgrade` returns an
+`UpgradeTicket` for one digest;
+`blast_boosts_aftermath::package_admin::commit_upgrade_and_advance` commits the
+receipt and advances `Protocol` to the next generation in the same
+transaction; `blast_boosts_aftermath::package_admin::restrict_to_additive`,
+`blast_boosts_aftermath::package_admin::restrict_to_dependency_only` and
+`blast_boosts_aftermath::package_admin::make_immutable` narrow upgrades
+irreversibly. The core package is immutable.
+
+### Economics
+
+Units: collateral amounts in collateral atoms (six decimals; 1 USDC =
+1,000,000). Shares in share atoms (nine decimals). Base in base atoms
+normalized to nine decimals. Oracle prices normalized to nine decimals. Rates
+in basis points out of 10,000; leverage in basis points where 10,000 = 1x.
+
+#### NAV
+
+- `E`, venue equity: free collateral in the Vault's Aftermath account, plus
+  collateral allocated to the position, plus unrealized PnL at the base oracle
+  price, converted at the collateral oracle price. Assets round down,
+  liabilities round up.
+- `notional = ceil(base * base_price * 10^6 / (collateral_price * 10^9))`,
+  the absolute position valued at the oracle pair (never the venue mark).
+- Admitted reserve `R* = min(maintenance_reserve, floor(notional *
+  max_reserve_bps / 10,000))`; when the position is flat, `R*` is the whole
+  stored reserve.
+- Shareholder NAV `N = E - R*`. Every priced operation requires `N > 0`.
+- Leverage `= notional / N`. Band comparisons and the rebalance max and target
+  checks cross-multiply exactly, without rounding; the post-mint max check
+  rounds leverage up to whole bps first.
+- NAV per share `= N / S`, where `S` is total share supply including the
+  locked seed. A whole share is worth `N * 10^9 / S` collateral atoms.
+
+#### Mint math
+
+```text
+fee          = ceil(deposit * mint_fee_bps / 10_000)
+admin_fee    = floor(fee * admin_share_bps / 10_000)
+reserve_fee  = fee - admin_fee
+C_exp        = deposit - fee
+R1           = min(R0* + reserve_fee, reserve ceiling at the new notional)
+N1           = E1 - R1                    (after the fills, same oracle pair)
+contribution = min(N1 - N0, C_exp)        (N1 <= N0 aborts, code 5)
+shares       = floor(S0 * contribution / N0)   (zero aborts, code 6)
+```
+
+The depositor pays the venue's taker fees and slippage through a smaller
+`N1 - N0`. A fill better than the oracle credits at most `C_exp`; the excess
+stays with existing holders. Share rounding goes to existing holders.
+
+Example (illustrative rates): deposit 1,000 USDC (1,000,000,000 atoms),
+`mint_fee_bps = 30`, `admin_share_bps = 2,000`. Fee = 3,000,000; admin fee =
+600,000 (kept by the Vault); reserve fee = 2,400,000 (deposited, credited to
+the reserve); `C_exp` = 997,000,000. If execution costs 1,000,000, the
+contribution is 996,000,000 and `shares = floor(S0 * 996,000,000 / N0)`.
+
+#### Redemption math
+
+```text
+keep   = ceil(N0 * (S0 - x) / S0)
+Nu     = E_after_sell - R0*
+gross  = min(Nu, N0) - keep               (<= 0 aborts, code 7)
+fee    = ceil(gross * redeem_fee_bps / 10_000)
+net    = gross - fee                      (0 aborts, code 8)
+admin  = floor(fee * admin_share_bps / 10_000)
+reserve after = min(R0* + fee - admin, reserve ceiling at the new notional)
+```
+
+The Vault withdraws exactly `net + admin`. The redeemer pays the sell's cost;
+a sell better than the oracle pays at most the proportional claim `N0 - keep`,
+and the gain stays with remaining holders. The reserve fee stays in the venue
+account.
+
+#### Fees and who receives them
+
+- Reserve fee: stays in the venue account as maintenance reserve. It protects
+  holders and is never paid to anyone during normal operation.
+- Admin fee: kept as native `admin_cash` in the Vault, never sent to the
+  venue. Only RiskAdmin withdraws it. With a partner code, up to 80% of each
+  operation's admin fee goes to the partner, rounded down; Blast keeps the
+  dust.
+- Rounding: fees round up; the admin share rounds down, so the reserve gets
+  the remainder.
+- The user passes no fee argument. Execution uses the live rates; read them
+  from the Vault before quoting.
+- Fee ceilings: the live rates never exceed the policy caps set at issuance.
+
+#### Funding and the maintenance reserve
+
+Funding is booked only from authenticated Aftermath settlement. Each sync
+classifies what moved since the accepted checkpoint: funding someone else
+settled (permissionless on Aftermath) plus the settlement the Vault just ran,
+netted into one credit or cost. Costs round up to atoms; credits round down.
+
+```text
+cost:   absorbed = min(reserve, cost); reserve -= absorbed;
+        uncovered_deficit += cost - absorbed   (holders bore it)
+credit: restored = min(credit, uncovered_deficit); uncovered_deficit -= restored;
+        reserve += credit - restored           (restored stays in NAV)
+```
+
+A credit may lift the stored reserve above its ceiling; priced operations
+value shares against the admitted reserve `R*`, so the excess counts as NAV
+from the next priced operation on. Mint, redeem and donate store the clamped
+value. Trading losses, slippage, liquidation, ADL and socialized loss are never
+treated as funding. The reserve is bookkeeping inside the margin account, not
+separate custody: a non-funding loss can impair it, and a priced operation
+refuses an account whose equity does not exceed the admitted reserve.
+
+#### Caps
+
+- NAV cap: post-mint `N1 <= nav_cap` (inclusive). Only mints check it; profit
+  can carry NAV above it, which blocks mints until NAV falls or RiskAdmin
+  raises the cap.
+- Order cap: each Aftermath order is sized to at most the whole-lot base worth
+  `max_order_notional` at the oracle pair, and each fill's actual collateral
+  notional must stay at or under `max_order_notional`. With 16 orders per call,
+  one mint can add at most about `16 * max_order_notional` of notional, so the
+  largest single mint is roughly `16 * max_order_notional / leverage`.
+- Minimum size: a mint or a non-flat redemption must move at least
+  `lot_size * min_order_lots` of base.
+
+#### Shutdown payouts
+
+```text
+eligible = total_supply - locked_shares
+payout   = floor(terminal_cash * shares / eligible)
+```
+
+No fee. The last claimant (shares equal to all eligible supply) receives all
+remaining cash, dust included. A partial claim that rounds to zero while cash
+remains aborts; combine shares. If `terminal_cash` is zero, a burn with
+`minimum_collateral = 0` succeeds and returns a zero coin. If no eligible
+shares remain at finalization, recovered cash becomes admin cash. The reserve
+book entry is consumed at finalization, so recovered reserve cash belongs to
+holders. Admin cash never enters the holder pool.
+
+### Time rules
+
+- `deadline_ms` (mint, redeem, partner variants, `redeem_shutdown`):
+  inclusive; `Clock` time greater than it aborts (adapter code 28).
+- Price freshness: each oracle's publish time must lie in
+  `[now - max_price_age_ms, now + max_price_ahead_ms]`, inclusive. Older aborts
+  with core code 27; further ahead aborts with core code 28. The confidence
+  gate always passes because Aftermath feeds carry no confidence interval. The
+  venue mark must be within `max_mark_divergence_bps` of the base oracle price
+  (core code 31) for priced operations; unwind skips the mark check.
+- Same oracle pair: every order and the final pricing of one operation use the
+  oracle pair captured at its start; a change of pair or lot between plan and
+  completion aborts (core code 50).
+- Funding refresh: before settling, the adapter calls Aftermath's funding
+  update only when the market's funding period has elapsed.
+- Partner removal: accepted while `now_ms < accepted_until_ms`, where
+  `accepted_until_ms = removal time + 7 days`
+  (`blast_partners::blast_partners::delay_ms`).
+  Partner share changes follow `blast_partners` timelocks.
+- Admin settings have no cooldown. Shutdown has no timer: unwind and finalize
+  run whenever the venue allows.
+
+### Reading state
+
+There is no public getter on the Vault; read object fields over RPC and use
+events and dry runs.
+
+| Question | Where |
+| --- | --- |
+| Which objects to pass | `VaultInitialized.vault_id` and `VaultInitialized.binding`, or the Vault's `venue_account.binding` (`account_object_id`, `registry_id`, `clearing_house_id`, `base_oracle_id`, `collateral_oracle_id`). |
+| Side, target, band, max leverage, slippage | Vault `state.vault_policy` (`side`, `rebalance_policy.*`), also in `VaultIssued.vault_policy`. |
+| Live fees | Vault `state.mint_fee_bps`, `state.redeem_fee_bps`, `state.admin_share_bps`; changes in `FeesUpdated`. |
+| Fee caps, price policy, `min_order_lots`, `max_reserve_bps` | Vault `state.vault_policy`. |
+| NAV cap, order cap | Vault `state.nav_cap`, `state.max_order_notional`. |
+| Reserve and uncovered deficit | Vault `state.maintenance_reserve`, `state.uncovered_deficit`; `reserve_after` in `Minted`, `Redeemed`, `Rebalanced`, `FundingSettled`, `Donated`. |
+| Lifecycle | Vault `state.lifecycle` variant (`Active`, `Unwinding`, `Settled`). |
+| Total supply | `total_supply` of the `TreasuryCap` stored as a dynamic object field of the Vault under `TreasuryKey<Product>`; also `supply_after` in `Minted`, `Redeemed`, `Rebalanced`. |
+| Locked seed | Vault `locked_shares`; `VaultInitialized.locked_shares`. |
+| Admin cash, holder cash after shutdown | Vault `admin_cash`, `terminal_cash`. |
+| Last accepted venue state | Vault `venue_account.checkpoint` (`checkpoint::Checkpoint`). |
+| Is a partner accepted | `Protocol` dynamic field `PartnerKey(partner_id)` holding `accepted_until_ms`. |
+| Coin name, symbol, decimals | Coin Registry `Currency<BlastBoost<Product>>` (9 decimals). |
+| Needs rebalance | dev-inspect `operations::needs_rebalance`. |
+| Exact quote | dry-run the mint or redeem PTB with `minimum_shares` or `minimum_collateral` set to 0 and read `Minted.shares` or `Redeemed.net`. |
+
+NAV is not stored. Compute it off chain from the Aftermath account and
+position at the oracle prices (formulas in Economics) or take it from a dry
+run. The `Checkpoint` holds raw Aftermath values: `free_collateral` (atoms),
+`allocated_collateral`, `signed_base`, `signed_quote_notional`, the position's
+`funding_snapshot_long` and `funding_snapshot_short`, the market's
+`market_funding_long` and `market_funding_short`, `lot_size`,
+`pending_ask_base`, `pending_bid_base`, `pending_order_count`,
+`market_pause_mode`, `market_frozen`, `position_initial_margin_ratio`,
+`market_initial_margin_ratio`, `market_maintenance_margin_ratio`. The `u256`
+values are Aftermath IFixed (18 decimals, two's-complement sign).
+
+### Events
+
+Every adapter event is wrapped in the envelope
+`blast_boosts_aftermath::blast_events::Event<T>`; the payload `T` is one of the
+types below from the adapter's `events` module (for example
+`blast_boosts_aftermath::events::Minted`), generic over `Product` except
+`PartnerAdded` and `PartnerRemoved`. An aborted transaction emits nothing.
+
+| Event | Emitted by | Use |
+| --- | --- | --- |
+| `VaultIssued` | `issue` | Policy, initial caps, treasury and metadata cap IDs. No Vault ID yet. |
+| `VaultInitialized` | `initialize` | Vault ID, binding, seed amount, seed equity, reserve and NAV, locked shares, opening base and lot, side, IMR, first checkpoint. |
+| `OrderFilled` | every Aftermath order (seed, mint, redeem, rebalance, unwind) | `account_object_id` (map to the Vault through the binding), side, reduce-only, emergency, requested and filled base, raw quote, 9-decimal reference and executed prices. |
+| `Minted` | `mint` | deposit, shares, contribution, fee, admin and reserve fee, reserve, admin cash and supply after, checkpoint. |
+| `Redeemed` | `redeem` | shares burned, net paid, fee split, reserve, admin cash and supply after, checkpoint. |
+| `PartnerFeePaid` | partner variants, after `Minted` or `Redeemed` | partner ID, the operation's admin fee, the partner's cut. `admin_cash_after` in the preceding event still includes the cut. |
+| `PartnerAdded`, `PartnerRemoved` | partner list changes | `accepted_until_ms` on removal. |
+| `Rebalanced` | `rebalance` | equity and base before and after, direction. Equity change is the execution cost (or gain) at the fixed pair. |
+| `FundingSettled` | any synchronization (`sync_health`, mint, redeem, rebalance, donate, unwind) that adopts a changed checkpoint | cost or credit, raw IFixed and atom amounts (atoms may be 0), absorbed, uncovered, restored, reserve after, previous and new checkpoint. |
+| `CheckpointDrifted` | `sync_health` or `unwind` that finds unexplained venue state | After `sync_health` the accepted checkpoint stands and priced operations abort until a sync finds the venue explainable again; `unwind` then adopts the live state and closes it. |
+| `Donated` | `donate` | amount, reserve after. |
+| `ShutdownBegun` | `begin_shutdown` | declared reason. |
+| `UnwindProgress` | `unwind` | adopted before checkpoint, after checkpoint, market orders, filled quote (`none` for settlement-price closes). |
+| `ShutdownFinalized` | `finalize_shutdown` | recovered cash, eligible supply, final checkpoint, raw unrecoverable remainder (below one atom). |
+| `ShutdownRedeemed` | `redeem_shutdown` | shares, cash paid, cash and eligible supply remaining. |
+| `FeesUpdated`, `NavCapUpdated`, `MaxOrderNotionalUpdated` | admin calls | previous and new values. |
+| `MetadataUpdated` | `update_metadata` | the new name, description and icon URL. |
+| `AdminFeesWithdrawn` | `withdraw_admin_fees` | amount withdrawn and admin cash remaining. |
+
+An indexer can rebuild supply, reserve and admin cash from the `*_after`
+fields plus `FundingSettled`, `Donated`, `PartnerFeePaid`,
+`AdminFeesWithdrawn`, `ShutdownFinalized` and `ShutdownRedeemed`, execution
+prices from `OrderFilled`, and approximate NAV per share at each mint as
+`contribution / shares` (rounding makes it slightly high).
+
+### Aborts
+
+Codes repeat across packages. Decode by the aborting module: modules
+`state`, `accounting_math`, `rebalance_math`, `policy`, `lifecycle`,
+`observation` belong to `blast_boosts_core`; `operations`, `vault`, `orders`,
+`checkpoint`, `snapshot`, `venue_account`, `blast_boosts_aftermath`,
+`package_admin` belong to `blast_boosts_aftermath`. A call through an
+outdated adapter package aborts in the `operational_version` module of the
+`blast_admin` package with code 13.
+
+#### Adapter (`blast_boosts_aftermath`)
+
+| Code | Meaning | Fix |
+| --- | --- | --- |
+| 0-2, 13-20 | Deployment, issuance, activation input or seed problems | Issuer only. |
+| 3-10 | An Aftermath object (account, registry, clearing house, oracle storage or feed) is not the bound one | Pass the objects from the Vault's binding. |
+| 11 | The venue's price is not the bound feed's | Same; use the bound feed storage. |
+| 12 | A venue value cannot be represented (for example negative equity) | The account is underwater; wait or expect shutdown. |
+| 21 | Zero coin or amount | Pass a positive coin. |
+| 22 | Admin withdrawal above admin cash | Lower the amount. |
+| 23 | A cash move did not match the venue exactly | Retry; the venue changed mid-transaction. |
+| 24, 25, 26 | Fill not whole-lot, a resting order left, or a liquidation during the order | Retry later; the book or margin did not support the order. |
+| 27 | The operation needed more than 16 orders | Trade a smaller amount or wait for a larger order cap. |
+| 28 | Deadline passed | Use a later `deadline_ms`. |
+| 29 | A fill changed venue fields it should not | Retry. |
+| 31 | The market's taker fee is not a usable rate (rebalance) | Wait; venue configuration. |
+| 32 | Venue state the Vault cannot explain since its checkpoint | Call `sync_health` and check for `CheckpointDrifted`; priced operations stay blocked until the venue is explainable. |
+| 33 | Terminal step not possible: orders open, funding unsettled, settlement prices not enabled, or wrong order count | Settle funding with `sync_health` first, or wait for Aftermath. |
+| 34 | Unwind found no lot-aligned position on the bound side (for example already flat) | Call `finalize_shutdown`. |
+| 35 | Venue not ready: resting orders, unsafe margin, paused market or frozen clearing house | Wait. |
+| 36, 39 | Metadata or partner list update changes nothing | Admin only. |
+| 37 | Rebalance or unwind above the reference gas price | Submit at the reference gas price. |
+| 38 | Partner not accepted | Use the plain call. |
+
+#### Core (`blast_boosts_core`)
+
+| Code | Meaning | Fix |
+| --- | --- | --- |
+| 2 | Shareholder NAV not positive | Equity does not exceed the admitted reserve; operations are blocked. |
+| 4 | Redeem amount at or above supply, or a shutdown claim of zero or above eligible supply | Redeem or claim a positive amount within supply. |
+| 5 | Contribution not positive (deposit consumed by fee, or no NAV rise) | Deposit more. |
+| 6 | Deposit too small for one share atom | Deposit more. |
+| 7, 8 | Redemption claim below the sell cost, or fee consumes it; 8 also for a shutdown claim that rounds to zero | Redeem or claim more shares. |
+| 12 | Order below `lot_size * min_order_lots` | Mint or redeem a larger amount. |
+| 13, 14, 19, 20 | Final base outside the proportional range | Retry; fills did not match the plan. |
+| 16 | Reserve exceeds equity after the sell | Redeem less or retry later. |
+| 18 | Operation not allowed in this lifecycle | Check `state.lifecycle`. |
+| 27, 28 | Oracle price stale or future-dated | Retry after the Aftermath feed updates. |
+| 31 | Venue mark too far from the oracle | Retry later. |
+| 35 | Fewer shares than `minimum_shares` | Re-quote; raise slippage tolerance. |
+| 36 | Post-mint NAV above `nav_cap` | Mint less or wait. |
+| 37 | A fill's price outside the slippage bound | Trade smaller or wait for depth. |
+| 43 | A fill's actual notional above `max_order_notional` | Trade smaller. |
+| 49 | Mint while leverage is outside the band | Call `rebalance` (anyone), then mint. |
+| 50, 51 | Oracle pair or fills changed within the operation | Retry. |
+| 52 | Leverage after a mint at or above `max_leverage_bps` (rounded up), or a rebalance buy left leverage above target or at or above max | Mint less; for rebalance, retry later. |
+| 53 | Payout below `minimum_collateral` | Re-quote. |
+| 54 | Rebalance while inside the band | Nothing to do. |
+| 55 | Rebalance made no admissible progress | Wait for depth or a better price. |
+| 17, 23, 39, 40, 47, 48, 58 | Admin transition or setting rejected (wrong state, invalid, above cap, unchanged) | Admin only. |
+
+### Pitfalls
+
+- Passing an Aftermath object other than the bound one. Always read the binding.
+- Setting `minimum_shares` or `minimum_collateral` to 0 in production. The
+  mint floors shares and execution costs vary; set a floor from a fresh dry run.
+- Expecting to mint at any time. Mints abort while leverage is outside the band
+  (49), above the NAV cap (36), or while the checkpoint is drifted (32).
+- Tiny trades. Mints and redemptions below `lot_size * min_order_lots` of base
+  abort (12); shutdown claims that round to zero abort (8).
+- Large trades. More than 16 orders, a fill outside `max_slippage_bps`, or a
+  full-size buy order filling above the oracle (actual notional over the cap)
+  aborts the whole transaction.
+- Submitting `rebalance` or `unwind` with a priority gas price (37). For mint
+  and redeem a higher gas price is allowed, but Aftermath then adds its
+  priority taker fee to every fill, which the user pays through fewer shares or
+  a lower payout.
+- Reading `CheckpointDrifted` from a failed mint: aborted transactions emit
+  nothing. Only `sync_health` and `unwind` record drift. Drift from a
+  lasting venue change (a liquidation, an ADL, or a change to the market's
+  margin ratios or lot size) does not clear on its own; Blast's ShutdownAdmin
+  may then shut the Boost down.
+- Decoding an abort by code alone. Core and adapter codes overlap.
+- Calling an old adapter package after an upgrade (blast_admin code 13). Types
+  keep their original package IDs; calls must target the current package.
+- Treating the tag name as the policy. `NVDA_BULL_2X` is a label; read `side`
+  and `target_leverage_bps` from the Vault.
+- Assuming NAV per share starts anywhere but 1. The seed mints exactly
+  1 whole share per collateral unit of seed NAV.
+- Counting locked shares as claimable. They count in total supply for mint and
+  redeem math but are excluded from shutdown claims.
+- Expecting partner revenue at activation: `admin_share_bps` starts at 0.
+
+### Q&A
+
+**How do I mint a Boost?** Split a collateral coin and call `operations::mint`
+with the Vault, `Protocol`, the five bound Aftermath objects, the coin, a
+`minimum_shares` floor, an inclusive `deadline_ms`, and the `Clock`. Transfer
+the returned `Coin<BlastBoost<Product>>`. With a partner code call
+`operations::mint_with_partner` and put the `Partner` after `Protocol`.
+
+**How many shares will I get?** `floor(S * contribution / N)`, where
+`contribution` is your deposit minus the mint fee, reduced by any execution
+cost, and `N` is shareholder NAV before your mint. The exact figure depends on
+fills, so dry-run the PTB and set `minimum_shares` just below the result.
+
+**What fees do I pay?** The live mint or redeem fee, rounded up, plus Aftermath
+taker fees and slippage on the Vault's orders. The fee splits into a reserve
+part (stays in the Vault for holders) and Blast's admin part. A partner code
+changes nothing for the user.
+
+**Why did my mint abort with code 49 in `state`?** The Vault's leverage is
+outside the rebalance band, and mints are allowed only inside it. Anyone can call
+`operations::rebalance`; once it succeeds, mint again.
+
+**Who rebalances, and is there a reward?** Anyone, through
+`operations::rebalance`, at or below the reference gas price. There is no
+reward, no role and no size argument; the chain derives direction and size and
+holders pay the fills. Use `operations::needs_rebalance` in dev-inspect to
+decide when to submit.
+
+**How do I read NAV and leverage?** NAV is not stored. Compute
+`N = E - min(maintenance_reserve, notional * max_reserve_bps / 10,000)` from
+the Aftermath position at the oracle prices, and leverage as `notional / N`.
+For an exact quote, dry-run the mint or redeem and read `Minted` or
+`Redeemed`.
+
+**What does the maintenance reserve do?** It is collateral in the venue account
+that share pricing excludes. Funding costs consume it before holders bear
+them, mint and redeem reserve fees refill it, and donations add to it. It is
+capped at `max_reserve_bps` of notional; anything above counts as holder NAV.
+
+**What happens on shutdown?** Blast's ShutdownAdmin calls `begin_shutdown`;
+anyone then calls `operations::unwind` until flat and
+`operations::finalize_shutdown`. Holders call
+`blast_boosts_aftermath::vault::redeem_shutdown` for a fee-free pro-rata share
+of the recovered cash, excluding the locked seed; the last claimant gets the
+dust.
+
+**Can a Boost be liquidated?** The Aftermath position can be. The Vault never
+declares liquidation on chain; a liquidation appears as `CheckpointDrifted`,
+priced operations stop, and Blast's ShutdownAdmin may shut the Boost down so
+holders can claim what remains.
+
+**Is there a testnet deployment?** No. Blast deploys Boosts on Sui mainnet only.
+
+## Partner codes
+
+> **Deployment status:** `blast_partners` is not yet published on mainnet; its interface may change before publication.
+
+### What it is
+
+A partner code lets an app that brings flow to Blast earn a share of the fee
+Blast charges on that flow. Package `blast_partners` holds the codes for every
+Blast product: Boosts, the launchpad (with its post-migration LP vaults), and
+presales. A partner is one deal: a shared `Partner` object with a share of
+Blast's fee (0% to 80%) and a recipient address. A company holds one
+`PartnerCap` that controls the recipient of every deal registered under it.
+Users never pay for a partner: a partner is only ever paid out of Blast's own
+fee. Every change Blast makes to a partner's share or managing cap waits seven
+days, and the package is published immutable, so no one can shorten that delay.
+
+### Objects and authority
+
+| Object | Kind | Held by | Authorizes |
+| --- | --- | --- | --- |
+| `blast_partners::blast_partners::Partner` | shared (`key` only, never transferable) | nobody; created by `blast_partners::blast_partners::register` | read by products on every trade; mutated only by the calls below |
+| `blast_partners::blast_partners::PartnerCap` | owned (`key, store`; transferable, wrappable) | the partner company | `blast_partners::blast_partners::set_recipient` on every `Partner` whose cap in force is this cap's ID |
+| `blast_partners::blast_partners::PartnerAdmin` | role type in Blast's ACL | a Blast `AdminCap` granted this role | `blast_partners::blast_partners::register`, `blast_partners::blast_partners::schedule_share`, `blast_partners::blast_partners::schedule_cap` |
+
+`Partner` fields:
+
+- `recipient: address`: where payments go. Set by the live cap's holder, applies
+  at once.
+- `share_bps`: the share of Blast's fee, in basis points (BPS, out of 10,000),
+  at most 8,000. A timelocked value.
+- `cap_id`: the ID of the one `PartnerCap` that may set `recipient`. A
+  timelocked value.
+
+A timelocked value is a `Timelocked<T>` struct from Blast's immutable timelock
+package with four fields: `before`, `after`, `at_ms`, `delay_ms`. The value in
+force at time `t` (milliseconds) is `after` when `t >= at_ms`, otherwise
+`before`. `delay_ms` is fixed at creation; for partners it is 604,800,000 ms
+(seven days). Scheduling a value `v` at time `now` sets `before` to the value in
+force at `now`, `after` to `v`, and `at_ms` to `now + delay_ms`. A change is
+pending exactly when `at_ms > now` and `after` differs from the value in force.
+
+Who may call: *anyone* may call `new_cap`, `destroy_cap` (on a cap they hold),
+`pay`, and `delay_ms`; the *cap holder* (the `PartnerCap` in force) may call
+`set_recipient`; a *Blast admin* with the `PartnerAdmin` role (through
+`blast_acl::sign_in`) may call `register`, `schedule_share`, and `schedule_cap`.
+Each product keeps its own list of the partners it accepts, managed by that
+product's admin.
+
+### Lifecycle
+
+**Cap.** `blast_partners::blast_partners::new_cap` mints an inert cap: it
+controls nothing until Blast registers a partner under its ID. It is *live* for
+a partner while it is that partner's cap in force. After
+`blast_partners::blast_partners::schedule_cap` names a different cap and seven
+days pass, the old cap stops working for that partner.
+`blast_partners::blast_partners::destroy_cap` deletes a cap, live or not;
+destroying a live cap leaves its partners with no working cap until a cap Blast
+schedules with `blast_partners::schedule_cap` takes effect, seven days later.
+
+**Partner.** `blast_partners::blast_partners::register` creates and shares the
+partner with its share and cap in force immediately (`before == after`,
+`at_ms == 0`). From then on:
+
+1. Blast schedules a new share or cap; the old value stays in force for seven
+   days.
+2. Scheduling again before then replaces the pending change and restarts the
+   seven days.
+3. Scheduling the value currently in force cancels a pending change.
+4. At `at_ms` the new value is in force; nothing needs to be called.
+
+There is no delete: a partner exists forever. To switch it off, Blast schedules
+its share to zero; products that name it keep working and simply pay it nothing.
+
+**Product acceptance.** Each product accepts a partner in its own shared config,
+as a dynamic field keyed by `PartnerKey(partner_id)` whose `u64` value is the
+time the partner stops being accepted (`u64::MAX` until removed):
+
+| Product | Config object and key | Admin |
+| --- | --- | --- |
+| Boosts | `blast_boosts_aftermath::blast_boosts_aftermath::Protocol`, `blast_boosts_aftermath::blast_boosts_aftermath::PartnerKey` | `RiskAdmin` role (`operations::add_partner`, `operations::remove_partner`) |
+| Launchpad | `launch_config::LaunchConfig`, `launch_config::PartnerKey` | `FeeAdmin` role (`launch_config::add_partner`, `launch_config::remove_partner`) |
+| Presale | `creation_policy::CreationPolicy`, `creation_policy::PartnerKey` | presale `AdminCap` (`creation_policy::add_partner`, `creation_policy::remove_partner`) |
+
+Adding applies at once (and cancels a pending removal). Removing sets the value
+to `now` plus `blast_partners::blast_partners::delay_ms()`: the partner stays
+accepted for seven more days. A partner is accepted while the field exists and
+`now < value`.
+
+### Flows
+
+#### Become a partner (company)
+
+1. Call `blast_partners::blast_partners::new_cap` (*anyone*). It returns a
+   `PartnerCap`; send it with a TransferObjects command to the address that will
+   manage your deals (for example your multisig).
+2. Give Blast the cap's object ID, the recipient address, and the agreed share.
+3. Blast's partner admin, in one PTB: `blast_acl::sign_in` with type argument
+   `blast_partners::blast_partners::PartnerAdmin`, passing the shared `ACL` and
+   its owned `AdminCap`; then `blast_partners::blast_partners::register` with a
+   reference to that `AdminWitness<PartnerAdmin>`, your cap ID, the recipient,
+   and the share. The new `Partner` is shared; its ID is in the `PartnerUpdated`
+   event and the transaction's created objects.
+4. Blast's admin for each product adds the partner to that product's list.
+
+`blast_partners::blast_partners::register` accepts any ID as the cap. Confirm on
+chain that the `Partner`'s `cap_id` equals your cap's ID; a wrong ID can only be
+fixed by `blast_partners::blast_partners::schedule_cap`, seven days later.
+
+#### Change where a partner pays you (cap holder)
+
+1. Call `blast_partners::blast_partners::set_recipient` with the shared
+   `Partner` (mutable), your owned `PartnerCap` (by reference), the new address,
+   and `Clock` at `0x6`.
+2. It applies at once and emits `PartnerUpdated`. One call per partner.
+
+#### Change a share or replace a lost cap (Blast admin)
+
+1. `blast_acl::sign_in` with `blast_partners::blast_partners::PartnerAdmin`.
+2. `blast_partners::blast_partners::schedule_share` (new share) or
+   `blast_partners::blast_partners::schedule_cap` (new cap ID), with the shared
+   `Partner`, the witness, the value, and `Clock`.
+3. Each emits `PartnerUpdated` with the complete timelocked terms. The change
+   takes effect seven days later. Until a cap change takes effect, the old cap
+   keeps working, including for a thief holding it.
+
+#### Pay a partner (products, or anyone)
+
+`blast_partners::blast_partners::pay<T>` takes the shared `Partner` by immutable
+reference, a `&mut Balance<T>` holding Blast's fee on a trade, and `Clock`. It
+splits off `floor(fee * share_in_force / 10,000)`, sends it to the partner's
+`recipient`, emits `PartnerPaid<T>`, and returns the amount. The rest stays in
+the caller's balance. With a zero share (or a fee too small to round above zero)
+it sends nothing, emits nothing, and returns 0. Payment uses Sui's
+address-balance transfer (`send_funds`): the recipient's balance of `T` grows,
+but no new `Coin` object is created. Integrators never call `pay` directly;
+products call it inside their own partnered functions.
+
+### How each product uses a partner
+
+| Product | When the partner is named | Blast fee divided | Payment |
+| --- | --- | --- | --- |
+| Boosts | on each trade: `operations::mint_with_partner` or `operations::redeem_with_partner`, passing the `Partner` right after the `Protocol` | Blast's admin fee that trade retained; never the reserve fee | push: paid in the same call |
+| Launchpad | once, at creation: `launch::set_partner` on the `LaunchInitializer` before `launch::finalize`; fixed for good | Blast's whole fee ledger on the launch: the creation fee (SUI), Blast's share of every curve trade fee (Meme and Quote), and Blast's one-time migration fee | held in the launch; paid when anyone calls `launch::claim_protocol_fees_with_partner` |
+| Launchpad LP vault | inherited from the launch at migration | Blast's LP fees on each collection | held in the vault; paid when anyone calls `blast_fun_migrators::vault::claim_protocol_lp_fees_with_partner` |
+| Presale | once, at creation: `blast_presale::blast_presale::set_partner` while the sale is pending (after `new`, before `share`); fixed for good | Blast's raise fee (Quote) only; Blast's token fee is never divided | held at migration; paid when anyone calls `blast_presale::blast_presale::pay_protocol_fees_with_partner` (once) |
+| Presale LP vault | inherited from the sale at migration | Blast's LP fees on each collection | held in the vault; paid when anyone calls `presale_vault::pay_protocol_lp_fees_with_partner` |
+
+Rules common to every product:
+
+- Naming a partner requires that the product accepts it at that moment;
+  otherwise the call aborts. Launches and sales that already name a removed
+  partner keep paying it.
+- The claim and payment calls are *anyone*: both payees are fixed, so no caller
+  chooses where money goes. Each checks that the `Partner` passed is the one the
+  launch, sale, or vault named, and aborts otherwise.
+- A launch that names a partner cannot use `launch::claim_protocol_fees`; it
+  must use `launch::claim_protocol_fees_with_partner`.
+- Held fees are divided at the share **in force when they are paid**, not when
+  they accrued.
+- The `Partner` is read by immutable reference, so naming a busy partner adds no
+  contention of its own.
+
+### Economics
+
+- Partner amount per payment: `floor(fee * share_bps / 10,000)` in atomic units
+  of `T`, where `share_bps` is the share in force at the payment's `Clock`.
+  Blast keeps the remainder, including every rounding dust.
+- `share_bps` is between 0 and 8,000 (80%). Blast always keeps at least 20% of
+  its fee.
+- Users, holders, creators, buyers, and pools receive exactly the same amounts
+  with or without a partner.
+- Example (Boosts): a mint retains a 15.00 USDC admin fee and the partner's
+  share is 4,000 BPS. The partner receives 6.00 USDC; Blast keeps 9.00 USDC.
+- Example (presale): Blast's raise fee is 2,000 USDC and the share is 4,000 BPS.
+  The partner receives 800 USDC; Blast keeps 1,200 USDC and all of its token
+  fee.
+
+### Time rules
+
+- Delay: `blast_partners::blast_partners::delay_ms()` returns 604,800,000 (seven
+  days). It is a compile-time constant of an immutable package.
+- A scheduled share or cap is in force from the first transaction whose `Clock`
+  reads `at_ms` or later.
+- A recipient change applies in the same transaction.
+- A product removal keeps the partner accepted until `now + delay_ms()`; a trade
+  or creation at or after that time aborts.
+
+### Reading state
+
+`blast_partners` has no getters for a partner's fields; read the shared
+`Partner` object's content over RPC (`recipient`, `share_bps`, `cap_id`) and
+apply the timelock rule above, or replay `PartnerUpdated`. The only on-chain
+read is `blast_partners::blast_partners::delay_ms`.
+
+- Share in force now: `share_bps.after` if `now >= share_bps.at_ms`, else
+  `share_bps.before`.
+- Pending share change: `share_bps.at_ms > now` and `share_bps.after` differs
+  from the share in force.
+- Which cap controls the recipient: the same rule on `cap_id`.
+- Whether a product accepts a partner: read the product config's dynamic field
+  `PartnerKey(partner_id)`; accepted while it exists and `now < value`.
+- Which partner a launch, sale, or vault names: its `partner_id: Option<ID>`
+  field (`launch::partner_id` returns it for a launch).
+
+### Events
+
+Both events are emitted directly (no envelope).
+
+- `blast_partners::blast_partners::PartnerUpdated`: emitted by
+  `blast_partners::blast_partners::register`,
+  `blast_partners::blast_partners::schedule_share`,
+  `blast_partners::blast_partners::schedule_cap`, and
+  `blast_partners::blast_partners::set_recipient`. Fields: `partner_id`,
+  `recipient`, `share_bps` and `cap_id` (complete timelocked values). Each event
+  is the full current state, so the latest one per `partner_id` reconstructs the
+  partner.
+- `blast_partners::blast_partners::PartnerPaid<T>`: emitted by
+  `blast_partners::blast_partners::pay` when it sends a positive amount. Fields:
+  `partner_id`, `amount` (atomic units of `T`). The product records the trade in
+  its own event in the same transaction:
+  `blast_boosts_aftermath::events::PartnerFeePaid` (Boosts),
+  `blast_fun::events::ProtocolFeesClaimed` (launch claims),
+  `blast_fun_migrators::blast_events::ProtocolLpFeesClaimed` (launchpad LP),
+  `blast_presale::blast_presale::ProtocolFeesPaid` (presale raise fee), and
+  `presale_vault::ProtocolLpFeesPaid` (presale LP).
+  `blast_fun::events::LaunchCreated` and
+  `blast_presale::blast_presale::PresaleOpened` record the partner a launch or
+  sale names.
+
+### Aborts
+
+| Code | Constant | Raised by | Fix |
+| --- | --- | --- | --- |
+| 0 | `EInvalidRecipient` | `register`, `set_recipient` | use a non-zero recipient |
+| 1 | `EShareAboveMax` | `register`, `schedule_share` | share at most 8,000 BPS |
+| 2 | `EUnchanged` | `schedule_share`, `schedule_cap` (value equals the latest scheduled value), `set_recipient` (same recipient) | pass a different value; to restart a pending change with the same value, first schedule the value in force |
+| 3 | `ENotLiveCap` | `set_recipient` | use the cap in force for this partner at the current `Clock` |
+
+All four are raised in module `blast_partners`. A product call that names a
+partner it does not accept, or passes the wrong `Partner` to a claim, aborts in
+that product's module with that product's own error.
+
+### Pitfalls
+
+- `PartnerPaid` alone does not prove a Blast trade:
+  `blast_partners::blast_partners::pay` is public, and anyone can pay a partner
+  from their own balance. Pair it with the product event in the same
+  transaction.
+- Payments arrive as address balance, not as new `Coin` objects; a scan of owned
+  coin objects does not show them.
+- On Boosts, check acceptance before building a partnered trade; otherwise call
+  the plain `mint` or `redeem`.
+- On the launchpad and presales the partner is fixed at creation. Forgetting
+  `launch::set_partner` or `blast_presale::blast_presale::set_partner` cannot be
+  fixed later.
+- Held fees are divided at the share in force at payment time. A scheduled cut
+  to zero also cuts fees accrued earlier but paid later.
+- Whoever holds the cap controls the recipient of every deal under it. A stolen
+  cap can redirect payments until a `schedule_cap` replacement takes effect.
+
+### Q&A
+
+**How much can a partner earn?** Up to 80% of Blast's fee on the flow that names
+it, as agreed with Blast and set by `blast_partners::blast_partners::register`.
+Users pay the same fee with or without a partner.
+
+**When am I paid?** On Boosts, in the same transaction as each mint or redeem.
+On the launchpad and presales, when anyone calls the product's `*_with_partner`
+claim or payment call; you may call it yourself.
+
+**In which asset am I paid?** In the asset of the fee divided: Boost collateral;
+launch Meme, Quote, and SUI; presale Quote; LP fees in both pool assets.
+
+**Can Blast change my share without notice?** No. Every share or cap change
+waits seven days, visible on chain the moment it is scheduled, and the delay is
+fixed in immutable code.
+
+**Can I change my recipient myself?** Yes, with your `PartnerCap` through
+`blast_partners::blast_partners::set_recipient`; it applies at once.
+
+**I lost my cap. What now?** Mint a new cap with
+`blast_partners::blast_partners::new_cap` and ask Blast to call
+`blast_partners::blast_partners::schedule_cap` for each of your partners. The
+new cap works seven days later; until then the old cap still works.
+
+**Can one company have several deals?** Yes. Each deal is its own `Partner` with
+its own share and recipient; one `PartnerCap` can manage all of them.
+
+**Can another app use my partner code?** Yes. The `Partner` is a public shared
+object; any app can name it on a product that accepts it, and you earn on that
+flow.
+
+**How do I reconcile income?** Sum `PartnerPaid<T>` by `partner_id` and coin
+type, and join each with the product event in the same transaction for trade
+detail.
+
+**Can I charge my own users an extra fee?** Not through `blast_partners`. Take
+your own fee in your own PTB commands (split it from the user's coin and send it
+where you like); Blast takes no cut of it.
+
+## API reference: `blast_boosts_core` (Boosts core)
+
+Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
+
+Events: payload structs are emitted directly, each under its own type.
+
+Abort codes: this package aborts with the numeric codes below from whichever module detects the failure; the abort location names that module.
+
+| Code | Constant | Meaning |
+| --- | --- | --- |
+| 0 | `EZeroAmount` | A fee calculation requires a positive atomic collateral amount. |
+| 1 | `EInvalidFeeBps` | A fee rate must be below the full basis-point denominator. |
+| 2 | `EInvalidNav` | A priced operation requires positive shareholder NAV. |
+| 3 | `EInvalidShareSupply` | A priced operation requires positive share supply. |
+| 4 | `EInvalidShareAmount` | Presented shares must be positive and below the live supply. |
+| 5 | `ENonpositiveContribution` | A mint requires a positive shareholder NAV contribution. |
+| 6 | `EZeroSharesOut` | A positive credited contribution rounded down to zero shares. |
+| 7 | `ENonpositiveGross` | Post-unwind NAV does not exceed the equity kept for remaining shares. |
+| 8 | `EZeroNetPayout` | The redemption fee consumed the complete gross claim. |
+| 9 | `EInvalidTargetLeverageBps` | A target leverage rate must be positive. |
+| 10 | `EInvalidLotSize` | A venue lot size must be positive. |
+| 11 | `EInvalidBase` | A proportional mint requires positive pre-mint absolute base. |
+| 12 | `EOrderBelowMinLots` | A proportional mint or redemption order is below the required minimum lot multiple. |
+| 13 | `ERedemptionUnderReduced` | The final absolute base exceeds the proportional remaining base. |
+| 14 | `ERedemptionOverReduced` | The final absolute base is more than one lot below the proportional remaining base without reaching flat. |
+| 15 | `EArithmeticOverflow` | An arithmetic result exceeds the supported u64 range. |
+| 16 | `EMaintenanceReserveExceedsEquity` | The maintenance reserve exceeds the venue equity that backs it. |
+| 17 | `EInvalidLifecycleTransition` | The lifecycle cannot make the requested transition. |
+| 18 | `EOperationNotPermittedInLifecycle` | The lifecycle does not permit the requested operation. |
+| 19 | `EMintBaseAboveBound` | The final absolute base exceeds the pre-mint base plus the planned proportional order. |
+| 20 | `EMintBaseBelowBound` | The final absolute base is below the pre-mint base plus the proportional order funded by the actual credited contribution. |
+| 21 | `EInvalidMinOrderLots` | A minimum order lot multiple must be positive. |
+| 22 | `EInvalidRebalancePolicy` | Rebalance thresholds are not strictly ordered. |
+| 23 | `EInvalidNavCap` | A NAV cap must be positive and admit a target notional at max leverage. |
+| 24 | `EInvalidMaxPriceAge` | A price maximum age must be positive. |
+| 25 | `EInvalidMaxConfidenceBps` | A confidence bound must be below the basis-point denominator. |
+| 26 | `EInvalidMaxMarkDivergenceBps` | A mark-divergence bound must be below the basis-point denominator. |
+| 27 | `EStalePrice` | A price is older than its freshness budget. |
+| 28 | `EFuturePrice` | A price is too far ahead of the reference time. |
+| 29 | `EInvalidPrice` | A price used for pricing or gating is zero. |
+| 30 | `EConfidenceExceedsBound` | Confidence exceeds its relative bound. |
+| 31 | `EMarkOracleDivergenceExceedsBound` | Venue mark diverges too far from its oracle. |
+| 32 | `EInvalidMaxSlippageBps` | Strict max slippage must be below the basis-point denominator. |
+| 33 | `EInvalidEmergencyMaxSlippageBps` | Emergency slippage must include max slippage and remain below the denominator. |
+| 34 | `EInvalidMinLeverageImprovementBps` | Minimum leverage improvement must be positive. |
+| 35 | `ESharesOutBelowMinimum` | A mint produced fewer shares than the caller's stated minimum. |
+| 36 | `ENavCapExceeded` | Shareholder NAV exceeds the Vault NAV cap. |
+| 37 | `EExecutionOutsideMaxSlippage` | An executed value diverges from its reference beyond the max slippage. |
+| 38 | `EInvalidFreshnessWindow` | Forward clock skew must not exceed the staleness budget. |
+| 39 | `EInvalidMaxOrderNotional` | The maximum order notional must be positive. |
+| 40 | `EMaxOrderNotionalUnchanged` | A maximum-order-notional update repeated the current setting. |
+| 41 | `EInvalidObservationLotSize` | A normalized position observation must use a positive venue lot size. |
+| 42 | `EInvalidPositionObservation` | A normalized position must be flat or use positive, lot-aligned base and notional. |
+| 43 | `EOrderNotionalExceedsMaximum` | An order exceeds the live per-order maximum notional. |
+| 44 | `EInvalidInitializationObservation` | A seed observation's position side differs from the immutable product side. |
+| 45 | `EInitializationLeverageUnhealthy` | Seed activation leverage lies outside the immutable healthy band. |
+| 46 | `EInitializationBaseBelowMinOrder` | Seed activation position cannot support the immutable minimum operation. |
+| 47 | `EFeeCapExceeded` | A live fee or allocation exceeds its immutable issuance ceiling. |
+| 48 | `EFeeSettingsUnchanged` | A fee update must change at least one live setting. |
+| 49 | `EMintOutsideRebalanceBand` | Post-mint leverage lies outside the rebalance band. |
+| 50 | `EActiveCheckpointChanged` | The observation pair changed between plan and completion. |
+| 51 | `EActiveFillIncomplete` | The venue fill does not match the planned base order. |
+| 52 | `EActiveLeverageAboveCap` | Post-operation leverage exceeds the policy maximum. |
+| 53 | `ERedemptionOutputBelowMinimum` | The redemption pays less than the holder's stated minimum. |
+| 54 | `ERebalanceInsideBand` | An active rebalance was requested at or inside the one rebalance band. |
+| 55 | `ERebalanceNoProgress` | No admissible whole-lot rebalance progress was completed. |
+| 56 | `EVenueFeeUnusable` | A venue fee or execution bound cannot be represented conservatively. |
+| 57 | `EInvalidAssetDecimals` | An asset precision exceeds the widest the notional formulas support. |
+| 58 | `ENavCapUnchanged` | A NAV cap update must change the cap. |
+| 59 | `EInvalidMaxReserveBps` | The reserve ceiling must be a positive share of notional, at most 100%. |
+| 60 | `ESeedReserveAboveCap` | A seed reserve exceeds the policy ceiling for the opening notional. |
+| 61 | `EInvariantViolated` | A mutation left the state in violation of an accounting invariant that must hold by construction. |
+
+### `blast_boosts_core::blast_boosts_core`
+
+Boosts administration roles in the shared Blast ACL, used by every leverage adapter.  A role is a type. An `AdminCap` holding `Role` signs in to `AdminWitness<Role>`, and a function's witness parameter names the one role it accepts, so a role from any other package is a different type and cannot reach these operations.  The core package is published immutably, so `UpgradeAdmin` governs adapter package custody rather than any transition in this package.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/boosts/core/sources/blast_boosts_core.move
+
+#### Types
+
+```move
+/// Issues an adapter Vault and its share currency, and updates that currency's metadata.
+public struct VaultIssuer {}
+
+/// Sets a Vault's fees, NAV cap and maximum order notional, and withdraws its admin fees.
+public struct RiskAdmin {}
+
+/// Irreversibly begins a Vault's shutdown.
+public struct ShutdownAdmin {}
+
+/// Authorizes, cuts over, restricts, or seals an adapter package upgrade.
+public struct UpgradeAdmin {}
+```
+
+### `blast_boosts_core::constants`
+
+Package-wide immutable core numeric constants.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/boosts/core/sources/lib/constants.move
+
+#### Constants
+
+- `basis_points_denominator: u64 = 10_000`: Returns the denominator for one basis-point rate.
+- `leverage_ceiling_bps: u64 = 100 * basis_points_denominator!()`: Structural ceiling on any leverage threshold: 100x in leverage basis points.  No leveraged coin in this protocol targets more than a small multiple, and the mint-contribution allowance scales with target leverage, so an unbounded threshold would let a transposed or mistyped policy admit almost any contribution. The ceiling is a sanity fence, not a selected product value.
+- `max_min_order_lots: u64 = 1_000_000`: Structural ceiling on the minimum operation size in live venue lots.  The minimum exists so a small holder can still exit; a million lots can never be small in collateral terms. The fence also catches a policy that swaps `min_order_lots` with an atomic-collateral value such as the NAV cap, which would otherwise brick every mint of an immutable policy.
+- `max_asset_decimals: u8 = 18`: Widest asset precision the notional formulas support without overflow.
+
+### `blast_boosts_core::lifecycle`
+
+Irreversible lifecycle and operation permissions for one Vault.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/boosts/core/sources/lifecycle.move
+
+#### Types
+
+```move
+/// A Vault is born active; only authenticated shutdown moves it forward.
+public enum Lifecycle has drop, store {
+    Active,
+    Unwinding,
+    Settled,
+}
+
+/// Administrator-declared operational reason, never an on-chain liquidation verdict.
+public enum ShutdownReason has copy, drop {
+    Emergency,
+    ObservedVenueChange,
+}
+```
+
+#### Functions
+
+```move
+/// Declares an administrator's emergency decision, without an objective venue verdict.
+public fun emergency_reason(): ShutdownReason
+
+/// Declares an off-chain venue-change observation, including liquidation or ADL.
+public fun observed_venue_change_reason(): ShutdownReason
+```
+
+### `blast_boosts_core::observation`
+
+Operation-scoped observations supplied by a venue adapter.  These values prove neither source identity nor caller authority. The adapter authenticates its venue and oracle sources before it constructs them; the core reads them during the enclosing operation and never stores one.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/boosts/core/sources/observation.move
+
+#### Types
+
+```move
+/// One normalized price and its source confidence and publication time.
+///
+/// Constructors require a positive price for priced operations.
+public struct PriceObservation has drop {
+    price: u64,
+    confidence: u64,
+    publish_time_ms: u64,
+}
+
+/// The external facts one operation prices against: the venue position and
+/// the oracle pair, as the adapter authenticated them.
+///
+/// The adapter has already refused a venue that is paused, under margin or
+/// carrying orders; the core values what it is given.
+public struct PositionObservation has drop {
+    venue_equity: u64,
+    /// Unsigned position size in base-asset atoms; direction is `observed_side`.
+    position_base: u64,
+    lot_size: u64,
+    observed_side: policy::PositionSide,
+    base_oracle: PriceObservation,
+    collateral_oracle: PriceObservation,
+    mark_price: u64,
+}
+
+/// The normalized result of one isolated funding settlement.
+public enum FundingSettlement has drop {
+    Credit(u64),
+    Cost(u64),
+}
+```
+
+#### Functions
+
+```move
+/// Creates one positive normalized price observation.
+public fun new_price(price: u64, confidence: u64, publish_time_ms: u64): PriceObservation
+
+/// Creates one position observation; base is whole lots and the mark is positive.
+///
+/// `observed_side` retains the venue's direction; it has no meaning while flat.
+public fun new_position(
+    venue_equity: u64,
+    position_base: u64,
+    lot_size: u64,
+    observed_side: policy::PositionSide,
+    base_oracle: PriceObservation,
+    collateral_oracle: PriceObservation,
+    mark_price: u64,
+): PositionObservation
+
+/// Creates a credit funding outcome.
+public fun funding_credit(amount: u64): FundingSettlement
+
+/// Creates a cost funding outcome.
+public fun funding_cost(amount: u64): FundingSettlement
+```
+
+### `blast_boosts_core::policy`
+
+Immutable core policy values and pure policy gates.  This slice selects no production value, authenticates no price source, and owns no Vault or venue state.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/boosts/core/sources/policy.move
+
+#### Types
+
+```move
+/// Immutable venue position direction.
+///
+/// Contract code uses Long and Short. Bull and Bear remain display names only.
+public enum PositionSide has copy, drop, store {
+    Long,
+    Short,
+}
+
+/// Immutable rebalance thresholds and execution constraints for one Vault.
+///
+/// Values use leverage basis points, where 10,000 means 1x. Construction
+/// validates only relationships that are independent of simulation; this
+/// module does not select production values.
+public struct RebalancePolicy has copy, drop, store {
+    rebalance_below_bps: u64,
+    target_leverage_bps: u64,
+    rebalance_above_bps: u64,
+    max_leverage_bps: u64,
+    max_slippage_bps: u64,
+    emergency_max_slippage_bps: u64,
+    min_leverage_improvement_bps: u64,
+}
+
+/// Locally validated bounds for the price gates of one Vault.
+///
+/// Millisecond bounds use the on-chain clock scale. Relative bounds use the
+/// package's 10,000 basis-point denominator. A future core transition will
+/// verify the bound oracle source directly; the adapter owns venue observations.
+/// Freshness and confidence gate each share-pricing source; mark divergence gates venue
+/// margin safety only and never supplies shareholder-NAV or accounting inputs.
+/// Every bound is inclusive, freshness arithmetic branches to avoid underflow,
+/// and relative comparisons cross-multiply through `u128`.
+///
+/// This value cannot prove that observations came from the bound source or one
+/// operation-scoped price pair. Those remain core and adapter obligations.
+public struct PricePolicy has copy, drop, store {
+    max_price_age_ms: u64,
+    max_price_ahead_ms: u64,
+    max_confidence_bps: u64,
+    max_mark_divergence_bps: u64,
+}
+
+/// The immutable rule-set one Vault is issued with.
+///
+/// Fee rates are the values the Vault starts with; the admin may move them
+/// later inside the caps recorded here.
+public struct VaultPolicy has copy, drop, store {
+    side: PositionSide,
+    rebalance_policy: RebalancePolicy,
+    price_policy: PricePolicy,
+    /// Fee rates the Vault starts with; `State` holds the live, adjustable rates.
+    initial_mint_fee_bps: u64,
+    initial_redeem_fee_bps: u64,
+    mint_fee_cap_bps: u64,
+    redeem_fee_cap_bps: u64,
+    admin_share_cap_bps: u64,
+    min_order_lots: u64,
+    /// Ceiling on the maintenance reserve as basis points of position notional.
+    max_reserve_bps: u64,
+}
+```
+
+#### Functions
+
+```move
+/// Returns the long position direction.
+public fun long(): PositionSide
+
+/// Returns the short position direction.
+public fun short(): PositionSide
+
+/// Creates one immutable rebalance policy from structurally valid values.
+///
+/// Thresholds must satisfy `rebalance_below < target < rebalance_above < max_leverage`,
+/// and max leverage must not exceed the
+/// structural `leverage_ceiling_bps` ceiling, which bounds every threshold below
+/// it and so bounds the mint-contribution allowance. A zero rebalance-below
+/// threshold is valid and means no caller may rebalance from below; leverage
+/// can never be below zero, so the lower public trigger is then unreachable by
+/// design. Max slippage must stay below 10,000 bps. Emergency max slippage
+/// must be at least max slippage and below 10,000 bps. Minimum leverage improvement
+/// must be positive.
+public fun new_rebalance_policy(
+    rebalance_below_bps: u64,
+    target_leverage_bps: u64,
+    rebalance_above_bps: u64,
+    max_leverage_bps: u64,
+    max_slippage_bps: u64,
+    emergency_max_slippage_bps: u64,
+    min_leverage_improvement_bps: u64,
+): RebalancePolicy
+
+/// Creates immutable price policy from proposed structural bounds.
+///
+/// `max_price_age_ms` must be positive because the structural policy requires
+/// a nonzero historical-age slippage. This check alone does not prove that a
+/// selected value supports the deployed source cadence; that remains a live
+/// integration and simulation gate. `max_price_ahead_ms` may be zero; zero is
+/// the strictest clock-skew policy and rejects the first millisecond after the
+/// reference time. It must not exceed `max_price_age_ms`: clock skew is never
+/// larger than a staleness budget, and the rule catches a transposed pair
+/// that would otherwise reject every aged update and admit future-dated ones.
+///
+/// Both relative bounds may be zero, which demands an exact price and an exact
+/// mark, and both must stay below the 10,000 basis-point denominator. At or
+/// above the denominator a confidence interval may span the complete price and
+/// a divergence bound admits a zero mark, so the gate would stop constraining
+/// the observation at all.
+///
+/// No upper millisecond bound is structural. The deployed source cadence,
+/// keeper latency, venue margin parameters, and simulation select every value
+/// here; this package compiles none of them and validates no value against
+/// live venue state.
+public fun new_price_policy(
+    max_price_age_ms: u64,
+    max_price_ahead_ms: u64,
+    max_confidence_bps: u64,
+    max_mark_divergence_bps: u64,
+): PricePolicy
+
+/// Composes one complete immutable policy for one future Vault.
+///
+/// The initial fee rates seed the live `State` rates; each stays at or below
+/// its cap, and both caps stay below 10,000 bps. `admin_share_cap_bps` bounds
+/// the share of future collected fees the admin may take and may equal
+/// 10,000; the Vault starts with an admin share of zero.
+/// `min_order_lots` is positive and at most `max_min_order_lots`.
+/// `max_reserve_bps` is positive and at most 10,000: the maintenance reserve
+/// may hold at most that share of position notional, and every reserve
+/// credit is clamped to it so the excess stays with holders as NAV.
+/// The NAV cap is not part of the policy: it is a live `State` value the
+/// admin may move, supplied to `state::issue` directly.
+public fun new_vault_policy(
+    side: PositionSide,
+    rebalance_policy: RebalancePolicy,
+    price_policy: PricePolicy,
+    initial_mint_fee_bps: u64,
+    initial_redeem_fee_bps: u64,
+    mint_fee_cap_bps: u64,
+    redeem_fee_cap_bps: u64,
+    admin_share_cap_bps: u64,
+    min_order_lots: u64,
+    max_reserve_bps: u64,
+): VaultPolicy
+```
+
+### `blast_boosts_core::state`
+
+Venue-neutral state for one core leveraged product.  The selected adapter stores this value inside its own shared Vault. Only functions in this module can inspect or change the private core fields. Currency, venue custody, ACL routing, and versioning belong to the adapter. The core reads no clock: every `now_ms` is the adapter's `Clock::timestamp_ms()` for the transaction, and oracle freshness is judged against it.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/boosts/core/sources/state.move
+
+#### Types
+
+```move
+/// An issued product before its seed position exists: the immutable policy
+/// and the two live knobs the issuer set.
+///
+/// The adapter opens the seed position under these terms, then `activate`
+/// turns them and the seeded observation into the `State`. The value has no
+/// abilities, so an issuance that is not activated cannot be stored: a
+/// product is either live or never existed.
+public struct Issuance<phantom Product> {
+    vault_policy: policy::VaultPolicy,
+    max_order_notional: u64,
+    nav_cap: u64,
+    /// `10^decimals` of the venue's base asset and of the bound collateral:
+    /// facts about the assets, fixed here so the seed orders and the live
+    /// state price base the same way.
+    base_unit: u64,
+    collateral_unit: u64,
+}
+
+/// Sealed core state stored inside one adapter-owned Vault.
+///
+/// The value can be stored but cannot be copied or dropped. `Product`
+/// separates independent leveraged products at the type level.
+public struct State<phantom Product> has store {
+    vault_policy: policy::VaultPolicy,
+    /// Largest atomic-collateral notional of one adapter order, adjustable by
+    /// the selected risk module. Execution slippage is bounded separately by
+    /// the immutable rebalance policy, so this value only paces orders.
+    max_order_notional: u64,
+    /// Collateral inside the venue account that share pricing excludes. Every
+    /// credit is clamped to the policy ceiling for the live notional, so the
+    /// reserve can never grow past the share of the position it protects.
+    maintenance_reserve: u64,
+    /// Funding cost holders bore while the reserve was exhausted; later credits
+    /// repay it to NAV before any credit rebuilds the reserve.
+    uncovered_deficit: u64,
+    /// `10^decimals` of the venue's base asset, fixed at initialization.
+    base_unit: u64,
+    /// `10^decimals` of the bound collateral, fixed at initialization.
+    collateral_unit: u64,
+    lifecycle: lifecycle::Lifecycle,
+    mint_fee_bps: u64,
+    redeem_fee_bps: u64,
+    admin_share_bps: u64,
+    /// Inclusive ceiling on post-mint shareholder NAV, adjustable by the admin.
+    /// Only mints check it: NAV may exceed it through position profit, which
+    /// just blocks further mints until NAV falls back under or the cap is raised.
+    nav_cap: u64,
+}
+
+/// The position priced at one oracle pair: equity, base, base valued at the
+/// pair, the lot, and the pair itself. Sealed into every plan and reported
+/// back to the adapter; never persisted as a second ledger.
+public struct ActivePosition has copy, drop {
+    equity: u64,
+    base: u64,
+    notional: u64,
+    lot_size: u64,
+    base_price: u64,
+    collateral_price: u64,
+}
+
+/// Linear, transaction-local mint terms. Only State can construct or finish them.
+public struct MintPlan<phantom Product> {
+    before: ActivePosition,
+    expected_contribution: u64,
+    reserve_fee: u64,
+    admin_fee: u64,
+    total_share_supply: u64,
+    minimum_shares: u64,
+    base_to_buy: u64,
+}
+
+/// Linear terms for one proportional redemption, before any payout or fee credit.
+public struct RedemptionPlan<phantom Product> {
+    before: ActivePosition,
+    shares_to_redeem: u64,
+    total_share_supply: u64,
+    minimum_collateral_out: u64,
+    fee_bps: u64,
+    admin_share_bps: u64,
+    base_to_sell: u64,
+}
+
+/// Linear maintenance intent, advanced only by accepted fixed-pair fills.
+public struct RebalancePlan<phantom Product> {
+    before: ActivePosition,
+    current: ActivePosition,
+    /// The reserve as the ceiling admits it against `before`; every NAV in the plan uses it.
+    reserve_priced: u64,
+    increase: bool,
+    /// Whether the plan began above the hard cap and so may use the emergency
+    /// slippage bound. Such a reduction stops at the cap: below it only the
+    /// ordinary bound applies, and a market that cannot fill within it must
+    /// not revert the progress already made.
+    emergency: bool,
+    venue_fee_bps: u64,
+    steps: u64,
+}
+
+/// The next whole-lot order a rebalance places: its size, direction, and
+/// whether the position is still above the hard cap so the emergency
+/// slippage bound applies. A zero size ends the plan.
+public struct RebalanceOrder has drop {
+    base: u64,
+    increase: bool,
+    emergency: bool,
+}
+```
+
+#### Functions
+
+```move
+/// Issues one product. The caller signs in as a Vault issuer; `nav_cap` must
+/// satisfy `RebalancePolicy::assert_nav_cap_valid` and stays adjustable through
+/// `set_nav_cap`. The asset decimals fix the units every base valuation of this
+/// product uses.
+public fun issue<Product>(
+    _: &blast_admin::blast_acl::AdminWitness<blast_boosts_core::VaultIssuer>,
+    vault_policy: policy::VaultPolicy,
+    max_order_notional: u64,
+    nav_cap: u64,
+    base_decimals: u8,
+    collateral_decimals: u8,
+): Issuance<Product>
+
+/// Sizes the opening position from a flat seed observation: the whole-lot
+/// target base, the whole-lot base one order may carry, and the priced flat
+/// seed whose pair and lot the orders are placed under.
+///
+/// Sizing only. Every guard runs in `activate` against the position actually
+/// filled, in the same transaction; a copy here could not refuse a state that
+/// `activate` admits.
+public fun seed_terms<Product>(
+    self: &Issuance<Product>,
+    observation: observation::PositionObservation,
+    seed_reserve: u64,
+): (u64, u64, ActivePosition)
+
+/// Turns the issuance and the observation the adapter took after the seed
+/// position opened into the live state.
+///
+/// Returns the state, the seed's reserve-excluded shareholder NAV in atomic
+/// collateral units, and the priced seed position. Every price, capacity,
+/// leverage and minimum-order guard runs before the state exists.
+public fun activate<Product>(
+    self: Issuance<Product>,
+    observation: observation::PositionObservation,
+    seed_reserve: u64,
+    now_ms: u64,
+): (State<Product>, u64, ActivePosition)
+
+/// The immutable direction every seed order takes.
+public fun seed_side<Product>(self: &Issuance<Product>): policy::PositionSide
+
+/// Rejects one seed order above the per-order notional cap.
+public fun assert_seed_order_notional_allowed<Product>(
+    self: &Issuance<Product>,
+    order_notional: u64,
+)
+
+/// Rejects a seed fill outside the ordinary slippage bound; opening a position
+/// always increases risk, so the emergency bound never applies here.
+public fun assert_seed_execution<Product>(
+    self: &Issuance<Product>,
+    reference_price: u64,
+    executed_price: u64,
+)
+
+/// The immutable direction every order of this product takes.
+public fun side<Product>(self: &State<Product>): policy::PositionSide
+
+/// The whole-lot base one order may carry at `position`'s sealed oracle pair.
+public fun max_order_base<Product>(self: &State<Product>, position: &ActivePosition): u64
+
+/// Rejects one adapter order above the live atomic-collateral notional limit.
+public fun assert_order_notional_allowed<Product>(self: &State<Product>, order_notional: u64)
+
+/// Rejects a fill whose price diverges from the reference beyond the bound the
+/// order was placed under: the ordinary one, or the wider emergency one for a
+/// reduction placed above the hard cap and for shutdown.
+public fun assert_execution<Product>(
+    self: &State<Product>,
+    emergency: bool,
+    reference_price: u64,
+    executed_price: u64,
+)
+
+/// Seals a proportional increase from reserve-excluded NAV and the user's limits.
+/// The adapter must authenticate the observation and the total share supply.
+public fun prepare_mint<Product>(
+    self: &State<Product>,
+    observation: observation::PositionObservation,
+    collateral_deposit: u64,
+    total_share_supply: u64,
+    minimum_shares: u64,
+    now_ms: u64,
+): MintPlan<Product>
+
+/// Returns the entire required whole-lot increase, not caller-selected sizing.
+public fun base_to_buy<Product>(self: &MintPlan<Product>): u64
+
+/// Returns the admin cash the adapter must retain before depositing collateral.
+public fun admin_fee<Product>(self: &MintPlan<Product>): u64
+
+/// Returns the sealed input for completed adapter accounting facts.
+/// The position the mint was priced against; the adapter trades at its pair and lot.
+public fun mint_position<Product>(self: &MintPlan<Product>): ActivePosition
+
+/// Completes a full proportional fill and credits only its reserve allocation.
+/// The credited contribution is capped at the deposit net of the whole fee, so
+/// a favorable fill accrues to existing holders (ADR 0084 D3).
+/// The returned shares are minted through the adapter's native share authority.
+/// Returns shares, contribution, fee, admin, reserve and the two sealed rates.
+public fun complete_mint<Product>(
+    self: &mut State<Product>,
+    plan: MintPlan<Product>,
+    observation: observation::PositionObservation,
+    now_ms: u64,
+): (u64, u64, u64, u64, u64)
+
+/// Seals a rounded-up attributable close and the redeemer's output floor.
+public fun prepare_redemption<Product>(
+    self: &State<Product>,
+    observation: observation::PositionObservation,
+    shares_to_redeem: u64,
+    total_share_supply: u64,
+    minimum_collateral_out: u64,
+    now_ms: u64,
+): RedemptionPlan<Product>
+
+/// Returns the full reduce-only order amount; flat redemptions require no order.
+public fun base_to_sell<Product>(self: &RedemptionPlan<Product>): u64
+
+/// The position the redemption was priced against.
+public fun redemption_position<Product>(self: &RedemptionPlan<Product>): ActivePosition
+
+/// Shares the redeemer must burn.
+public fun redemption_shares<Product>(self: &RedemptionPlan<Product>): u64
+
+/// Computes the payout after the sell and credits the fee once, excluding admin cash.
+/// The gross is capped at the proportional claim, so a favorable sell accrues
+/// to the remaining holders (ADR 0084 D3).
+/// Returns the user payout, the admin cash, the fee, and the fee's reserve share.
+/// The adapter withdraws exactly payout plus admin cash and proves that on the checkpoint.
+public fun complete_redemption<Product>(
+    self: &mut State<Product>,
+    plan: RedemptionPlan<Product>,
+    observation: observation::PositionObservation,
+    now_ms: u64,
+): (u64, u64, u64, u64)
+
+/// Whether a rebalance would be admitted against this observation: the position,
+/// priced against the admitted reserve, sits outside the band. A keeper's dry
+/// run; `prepare_rebalance` asks the same question and aborts on `false`.
+public fun needs_rebalance<Product>(
+    self: &State<Product>,
+    observation: observation::PositionObservation,
+    now_ms: u64,
+): bool
+
+/// Derives public maintenance intent from exact outside-band ratios, never caller orders.
+public fun prepare_rebalance<Product>(
+    self: &State<Product>,
+    observation: observation::PositionObservation,
+    venue_fee_bps: u64,
+    now_ms: u64,
+): RebalancePlan<Product>
+
+/// The next order toward the band, sized from the position the last fill left.
+///
+/// A zero size ends the plan; the adapter bounds the number of orders. An
+/// emergency reduction ends as soon as leverage is no longer above the hard
+/// cap, so the emergency bound never covers an order placed below it and a wide
+/// market cannot revert the orders placed above it.
+public fun next_rebalance_order<Product>(
+    self: &State<Product>,
+    plan: &RebalancePlan<Product>,
+): RebalanceOrder
+
+/// The position the rebalance was priced against.
+public fun rebalance_position<Product>(self: &RebalancePlan<Product>): ActivePosition
+
+/// Whether the plan buys toward the target rather than sells.
+public fun is_increasing<Product>(self: &RebalancePlan<Product>): bool
+
+public fun order_base(self: &RebalanceOrder): u64
+
+public fun is_increase(self: &RebalanceOrder): bool
+
+public fun is_emergency(self: &RebalanceOrder): bool
+
+/// Advances the plan by one accepted whole-lot fill of `order` under the fixed oracle pair.
+public fun accept_rebalance_fill<Product>(
+    self: &State<Product>,
+    plan: &mut RebalancePlan<Product>,
+    order: RebalanceOrder,
+    observation: observation::PositionObservation,
+    filled_base: u64,
+    now_ms: u64,
+)
+
+/// Completes holder-funded maintenance without changing reserve, supply or admin cash.
+/// Returns authenticated before/after equity and base for one completed event.
+public fun complete_rebalance<Product>(
+    self: &State<Product>,
+    plan: RebalancePlan<Product>,
+): (u64, u64, u64, u64, bool)
+
+/// Applies one adapter-authenticated funding classification to the reserve.
+///
+/// Returns `(absorbed_by_reserve, uncovered_cost, restored_to_holders)` in
+/// atomic collateral units. A cost consumes the reserve first; what it cannot
+/// cover is borne by holder NAV and recorded as the uncovered deficit. A credit
+/// repays that deficit first, by staying in NAV, and only its remainder
+/// rebuilds the reserve. The adapter owns exact-once funding checkpoint
+/// authentication; the core stores no venue cursor and never infers funding
+/// from an equity change.
+public fun settle_funding<Product>(
+    self: &mut State<Product>,
+    settlement: observation::FundingSettlement,
+): (u64, u64, u64)
+
+/// Credits an exact donation to the reserve, clamped to the ceiling, without
+/// creating supply or an admin entitlement. The adapter proves the venue took
+/// exactly `amount` on the raw checkpoint; the core prices the position it left.
+public fun donate<Product>(
+    self: &mut State<Product>,
+    observation: observation::PositionObservation,
+    amount: u64,
+    now_ms: u64,
+)
+
+/// Rejects an ordinary operation outside Active, before the adapter touches the venue.
+public fun assert_active<Product>(self: &State<Product>)
+
+/// Rejects venue synchronization after the local cash pool has been sealed.
+public fun assert_can_sync<Product>(self: &State<Product>)
+
+/// Irreversibly stops ordinary operations. The owning adapter authenticates shutdown authority.
+public fun begin_shutdown<Product>(self: &mut State<Product>)
+
+/// Authorizes only close-only venue progress before finalization.
+public fun assert_unwinding<Product>(self: &State<Product>)
+
+/// Prices a close-only order and sizes the per-order cap in whole lots at that
+/// price; insolvency and the reserve do not gate an exit.
+public fun unwind_constraints<Product>(
+    self: &State<Product>,
+    base_oracle: observation::PriceObservation,
+    collateral_oracle: observation::PriceObservation,
+    lot_size: u64,
+    now_ms: u64,
+): (policy::PositionSide, u64, u64, u64)
+
+/// Consumes the reserve book entry only after the adapter proves complete local cash recovery.
+public fun finalize_shutdown<Product>(
+    self: &mut State<Product>,
+    total_share_supply: u64,
+    locked_shares: u64,
+): u64
+
+/// Rejects terminal claims before any adapter cash-field access.
+public fun assert_settled<Product>(self: &State<Product>)
+
+/// Fee-free claim against current cash and total share supply, excluding the immutable seed.
+public fun shutdown_claim_quote<Product>(
+    self: &State<Product>,
+    recovered_cash: u64,
+    total_share_supply: u64,
+    locked_shares: u64,
+    shares_to_claim: u64,
+    minimum_collateral_out: u64,
+): u64
+
+/// Updates future fee collections under immutable issuance caps.
+/// Adapter custody owns authentication; no assets or past allocations move.
+public fun set_fees<Product>(
+    self: &mut State<Product>,
+    mint_fee_bps: u64,
+    redeem_fee_bps: u64,
+    admin_share_bps: u64,
+): (u64, u64, u64)
+
+/// Updates the live per-call maximum order notional.
+///
+/// This value limits the absolute atomic-USDC notional of one adapter order.
+/// It does not limit a user's deposit or the Vault's total open position.
+/// Adapter custody of `State<Product>` determines who can present mutable
+/// access. The adapter must authenticate its currently selected risk module
+/// before calling this function. Updates are available in every lifecycle
+/// state because they change only the size of later calls, not the live position.
+public fun set_max_order_notional<Product>(self: &mut State<Product>, max_order_notional: u64): u64
+
+/// Replaces the NAV cap and returns the previous one.
+///
+/// Adapter custody owns authentication. The new cap must satisfy the same
+/// bound issuance applies; it may be lowered below the current NAV, which
+/// only blocks further mints.
+public fun set_nav_cap<Product>(self: &mut State<Product>, nav_cap: u64): u64
+
+/// Returns the authoritative funding-only maintenance reserve.
+///
+/// Adapter operations use this value only for replay-complete post-state
+/// events. Reserve mutation remains exclusive to core transitions.
+public fun maintenance_reserve<Product>(self: &State<Product>): u64
+
+public fun equity(self: &ActivePosition): u64
+
+public fun base(self: &ActivePosition): u64
+
+public fun notional(self: &ActivePosition): u64
+
+public fun lot_size(self: &ActivePosition): u64
+
+public fun base_price(self: &ActivePosition): u64
+
+public fun collateral_price(self: &ActivePosition): u64
+```
+
+## API reference: `blast_boosts_products` (Boost product tags)
+
+Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
+
+Events: payload structs are emitted directly, each under its own type.
+
+### `blast_boosts_products::blast_boosts_products`
+
+Blast-owned product tags for Series1 Boost currencies.  A Boost currency is `blast_boost::BlastBoost<Product>` in the issuing adapter, and its `Product` argument is what a holder reads inside the coin type. Declaring every tag in this module keeps that inner type under the Blast name: `blast_boosts_products::NVDA_BULL_2X`.  Each product is one empty struct with no abilities named `<TICKER>_<SIDE>_<LEVERAGE>`, for example `public struct NVDA_BULL_2X {}`. `BULL` tracks the perp long and `BEAR` the inverse; the ticker is the Aftermath base asset without its USD suffix. A tag carries no authority and no state: Coin Registry admits one currency per tag type, and the Series1 issuer role is the only authority that can issue it. Adding a tag is a compatible upgrade of this package; nothing here is ever removed. A declared tag is not a live product until an adapter issues its currency.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/boosts/products/sources/blast_boosts_products.move
+
+#### Types
+
+```move
+public struct NVDA_BULL_2X {}
+
+/// One-time witness used only to claim this package's Publisher.
+public struct BLAST_BOOSTS_PRODUCTS() has drop;
+
+public struct BTC_BULL_2X {}
+
+public struct BTC_BEAR_2X {}
+
+public struct CARDS_BULL_2X {}
+
+public struct CARDS_BEAR_2X {}
+
+public struct CHIP_BULL_2X {}
+
+public struct CHIP_BEAR_2X {}
+
+public struct ETH_BULL_2X {}
+
+public struct ETH_BEAR_2X {}
+
+public struct HYPE_BULL_2X {}
+
+public struct HYPE_BEAR_2X {}
+
+public struct LIT_BULL_2X {}
+
+public struct LIT_BEAR_2X {}
+
+public struct MON_BULL_2X {}
+
+public struct MON_BEAR_2X {}
+
+public struct NEAR_BULL_2X {}
+
+public struct NEAR_BEAR_2X {}
+
+public struct PUMP_BULL_2X {}
+
+public struct PUMP_BEAR_2X {}
+
+public struct SOL_BULL_2X {}
+
+public struct SOL_BEAR_2X {}
+
+public struct SUI_BULL_2X {}
+
+public struct SUI_BEAR_2X {}
+
+public struct UNI_BULL_2X {}
+
+public struct UNI_BEAR_2X {}
+
+public struct XMR_BULL_2X {}
+
+public struct XMR_BEAR_2X {}
+
+public struct XRP_BULL_2X {}
+
+public struct XRP_BEAR_2X {}
+
+public struct ZEC_BULL_2X {}
+
+public struct ZEC_BEAR_2X {}
+
+public struct AMC_BULL_2X {}
+
+public struct AMC_BEAR_2X {}
+
+public struct CRCL_BULL_2X {}
+
+public struct CRCL_BEAR_2X {}
+
+public struct CYPH_BULL_2X {}
+
+public struct CYPH_BEAR_2X {}
+
+public struct DRAM_BULL_2X {}
+
+public struct DRAM_BEAR_2X {}
+
+public struct GOOGL_BULL_2X {}
+
+public struct GOOGL_BEAR_2X {}
+
+public struct INTC_BULL_2X {}
+
+public struct INTC_BEAR_2X {}
+
+public struct IOVA_BULL_2X {}
+
+public struct IOVA_BEAR_2X {}
+
+public struct LLY_BULL_2X {}
+
+public struct LLY_BEAR_2X {}
+
+public struct META_BULL_2X {}
+
+public struct META_BEAR_2X {}
+
+public struct MRVL_BULL_2X {}
+
+public struct MRVL_BEAR_2X {}
+
+public struct MU_BULL_2X {}
+
+public struct MU_BEAR_2X {}
+
+public struct NVDA_BEAR_2X {}
+
+public struct SAMSUNG_BULL_2X {}
+
+public struct SAMSUNG_BEAR_2X {}
+
+public struct SKHYNIX_BULL_2X {}
+
+public struct SKHYNIX_BEAR_2X {}
+
+public struct SNDK_BULL_2X {}
+
+public struct SNDK_BEAR_2X {}
+
+public struct SPCX_BULL_2X {}
+
+public struct SPCX_BEAR_2X {}
+
+public struct TSLA_BULL_2X {}
+
+public struct TSLA_BEAR_2X {}
+
+public struct US500_BULL_2X {}
+
+public struct US500_BEAR_2X {}
+
+public struct BRENT_BULL_2X {}
+
+public struct BRENT_BEAR_2X {}
+
+public struct WTI_BULL_2X {}
+
+public struct WTI_BEAR_2X {}
+
+public struct XAG_BULL_2X {}
+
+public struct XAG_BEAR_2X {}
+
+public struct XAUT_BULL_2X {}
+
+public struct XAUT_BEAR_2X {}
+```
+
+## API reference: `blast_boosts_aftermath` (Boosts Aftermath adapter)
+
+Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
+
+Events: every payload is emitted inside `blast_boosts_aftermath::blast_events::Event<T>`; filter on that type.
+
+Abort codes: this package aborts with the numeric codes below from whichever module detects the failure; the abort location names that module.
+
+| Code | Constant | Meaning |
+| --- | --- | --- |
+| 0 | `EInvalidPackagePublisher` | A Publisher was not claimed by the canonical adapter module. |
+| 1 | `EInvalidProductWitnessType` | A product witness is primitive and cannot identify a sealed product module. |
+| 2 | `EAdminCapAccountMismatch` | An Aftermath admin capability is bound to another account object. |
+| 3 | `EAccountObjectMismatch` | An Aftermath account object does not match the immutable binding. |
+| 4 | `EAccountNumberMismatch` | An Aftermath account number does not match the immutable binding. |
+| 5 | `ERegistryMismatch` | An Aftermath Registry does not match the immutable binding. |
+| 6 | `EClearingHouseMismatch` | An Aftermath ClearingHouse does not match the immutable binding. |
+| 7 | `EBaseOracleMismatch` | A base oracle object does not match the immutable binding. |
+| 8 | `ECollateralOracleMismatch` | A collateral oracle object does not match the immutable binding. |
+| 9 | `EOracleStorageMismatch` | An oracle storage id differs from the bound market parameter. |
+| 10 | `EOracleFeedMismatch` | A market feed does not originate from the object bound at activation. |
+| 11 | `EOracleObservationMismatch` | The venue's named price is not the bound feed's price. |
+| 12 | `ENormalizationOverflow` | A normalized venue value cannot fit its declared atomic unit. |
+| 13 | `EInvalidCollateralDecimals` | Initialization collateral, and the market's collateral scale, must be six atomic decimals. |
+| 14 | `EInvalidSeed` | Initialization seed collateral must be positive. |
+| 15 | `EInvalidSeedReserve` | The maintenance reserve must leave positive seed shareholder NAV. |
+| 16 | `EInvalidInitializationOrderSize` | The target or order cap cannot fund one complete base lot. |
+| 17 | `EInitializationFillMismatch` | Initialization did not fill the exact planned base on the required side. |
+| 18 | `EInitializationImrMismatch` | The selected IMR is negative or the final position IMR differs from it. |
+| 19 | `ELockedSharesOverflow` | Scaling seed NAV into nine-decimal locked shares overflowed `u64`. |
+| 20 | `EInitializationOrderCountExceeded` | Atomic initialization requires more venue orders than the adapter permits. |
+| 21 | `EZeroAmount` | A collateral input or withdrawal must be positive. |
+| 22 | `EInsufficientAdminCash` | Earned local admin collateral cannot cover this withdrawal. |
+| 23 | `ECashCheckpointMismatch` | A cash operation changed more or less than its exact authenticated collateral delta. |
+| 24 | `EFillMismatch` | A market session failed to make a positive whole-lot fill on the selected side. |
+| 25 | `EOrdersPosted` | A market session left posted orders. |
+| 26 | `ELiquidation` | A market session reported liquidation or bad debt. |
+| 27 | `EActiveOrderCountExceeded` | The active atomic operation exhausted its market-session bound. |
+| 28 | `EDeadlineExpired` | The caller's deadline has passed. |
+| 29 | `EActiveCheckpointMismatch` | An active venue session changed a field outside its authenticated execution. |
+| 30 | `ERedemptionShareMismatch` | The held native share coin differs from the sealed redemption amount. |
+| 31 | `EVenueFeeUnusable` | The market's taker fee exceeds a representable rate. |
+| 32 | `EUnresolvedCheckpoint` | A financial operation observed a venue change not reconciled into the accepted checkpoint. |
+| 33 | `ETerminalVenueUnsettled` | Terminal recovery requires exact flat exposure, settled liabilities and integral cash. |
+| 34 | `EInvalidUnwindExposure` | A close requires positive exact whole-lot base in the bound product direction. |
+| 35 | `EVenueNotReady` | The venue cannot serve the operation: open orders, unsafe margin, a paused market, or a frozen clearing house. |
+| 36 | `EMetadataUnchanged` | A metadata update must change the name, the description, or the icon. |
+| 37 | `EPriorityGasPrice` | A permissionless venue trade paid a gas price above the reference gas price. |
+| 38 | `EPartnerNotAccepted` | Boosts does not accept this partner: Blast never added it, or its removal took effect. |
+| 39 | `EPartnerUnchanged` | Adding or removing a partner must change the list: it is already accepted, or already being removed. |
+
+### `blast_boosts_aftermath::blast_boost`
+
+The share currency type of every Boost this adapter issues.  Wallets, explorers, and indexers identify a coin by its type argument, so `Coin<BlastBoost<Product>>` is the name a holder reads. The shared `vault::Vault<Product>` custodies the product; it is not the currency.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/boosts/aftermath_adapter/sources/blast_boost.move
+
+#### Types
+
+```move
+/// Currency marker for one Boost's share coin.
+///
+/// No value of this type is ever constructed. It carries `key` only because
+/// Coin Registry admits a non-OTW currency solely on a `key` type defined by
+/// the registering module, and it names the product so the currency reads as
+/// a Blast Boost on every surface that shows the type.
+public struct BlastBoost<phantom Product> has key {
+    id: UID,
+}
+```
+
+### `blast_boosts_aftermath::blast_boosts_aftermath`
+
+Canonical package marker for this adapter, its operational generation, and the partners Boosts accepts.  The generation value, its checked arithmetic, and its replay event belong to `blast_admin::operational_version`; `init` seeds the value from the one-time witness before claiming the Publisher with it, so no other package can create this adapter's generation. This module owns the shared container, the two compiled constants that identify this bytecode and the bytecode a governed upgrade cuts over to, and the list of accepted Blast partners, one dynamic field per partner so the container's layout never changes.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/boosts/aftermath_adapter/sources/blast_boosts_aftermath.move
+
+#### Types
+
+```move
+/// One-time witness: it seeds the adapter generation and claims this package's Publisher.
+public struct BLAST_BOOSTS_AFTERMATH() has drop;
+
+/// Shared operational generation for the Aftermath adapter package.
+public struct Protocol has key {
+    id: UID,
+    generation: blast_admin::operational_version::OperationalVersion<BLAST_BOOSTS_AFTERMATH>,
+}
+
+/// Dynamic-field key of a Blast partner Boosts accepts. Its value is the time
+/// the partner stops being accepted: `u64::MAX` until Blast removes it.
+public struct PartnerKey(ID) has copy, drop, store;
+```
+
+#### Constants
+
+- `PACKAGE_VERSION: u64 = 1`: Current adapter generation accepted by every protected mutation.
+- `NEXT_PACKAGE_VERSION: u64 = 2`: The generation this bytecode hands over to in a governed upgrade.
+
+### `blast_boosts_aftermath::blast_events`
+
+Stable event envelope for the Aftermath adapter package.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/boosts/aftermath_adapter/sources/lib/blast_events.move
+
+#### Types
+
+```move
+/// Stable package-wide envelope for every adapter event payload.
+public struct Event<T: copy + drop>(T) has copy, drop;
+```
+
+### `blast_boosts_aftermath::checkpoint`
+
+The raw venue checkpoint the adapter proves every venue mutation against: how one is read, what may change between two, and what each operation must leave behind.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/boosts/aftermath_adapter/sources/checkpoint.move
+
+#### Types
+
+```move
+/// Raw Aftermath state captured at one authenticated mutation boundary.
+public struct Checkpoint has copy, drop, store {
+    free_collateral: u64,
+    allocated_collateral: u256,
+    signed_base: u256,
+    signed_quote_notional: u256,
+    funding_snapshot_long: u256,
+    funding_snapshot_short: u256,
+    market_funding_long: u256,
+    market_funding_short: u256,
+    lot_size: u64,
+    pending_ask_base: u256,
+    pending_bid_base: u256,
+    pending_order_count: u64,
+    market_pause_mode: u8,
+    market_frozen: bool,
+    position_initial_margin_ratio: u256,
+    market_initial_margin_ratio: u256,
+    market_maintenance_margin_ratio: u256,
+}
+
+/// What moved between the checkpoint last accepted and the one just captured:
+/// nothing, one funding settlement carrying its raw signed collateral delta, or
+/// anything else, which no priced operation may build on and which shutdown
+/// adopts only after reporting it.
+public enum CheckpointChange has drop {
+    Unchanged,
+    FundingCredit(u256),
+    FundingCost(u256),
+    Unexpected,
+}
+```
+
+### `blast_boosts_aftermath::constants`
+
+Package-wide immutable adapter constants.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/boosts/aftermath_adapter/sources/lib/constants.move
+
+#### Constants
+
+- `share_decimals: u8 = 9`: Fixed decimals for every Boost currency issued by this adapter.
+- `base_decimals: u8 = 9`: Decimals this adapter normalizes every venue base amount to.
+- `collateral_decimals: u8 = 6`: Decimals of the only collateral this adapter admits.
+- `ifixed_one: u256 = 1_000_000_000_000_000_000`: One in IFixed: `10^18`.
+- `ifixed_per_basis_point: u256 = 100_000_000_000_000`: One basis point in IFixed: `10^18 / 10_000`.
+- `base_atom_to_ifixed_scale: u256 = 1_000_000_000`: Raw IFixed units in one base atom: `10^(18 - 9)`.
+- `collateral_atom_to_ifixed_scale: u256 = 1_000_000_000_000`: Raw IFixed units in one collateral atom: `10^(18 - 6)`.
+- `collateral_to_base_scale: u256 = 1_000`: Base atoms per collateral atom at a unit price: `10^(9 - 6)`.
+- `max_initialization_orders: u64 = 16`: Maximum market-order calls permitted in one atomic initialization session.
+- `max_active_orders: u64 = 16`: Hard ceiling on venue market calls in one active atomic operation.
+
+### `blast_boosts_aftermath::events`
+
+Replay-complete Aftermath adapter events.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/boosts/aftermath_adapter/sources/events.move
+
+#### Events
+
+```move
+/// Emitted when one leverage currency is issued, before its Vault exists; the
+/// `Product` type names the currency for good and `VaultInitialized` follows in
+/// the same transaction with the Vault id.
+public struct VaultIssued<phantom Product> has copy, drop {
+    treasury_cap_id: ID,
+    metadata_cap_id: ID,
+    vault_policy: blast_boosts_core::policy::VaultPolicy,
+    max_order_notional: u64,
+    nav_cap: u64,
+}
+
+/// Emitted after one atomic seed activates a bound Aftermath Vault.
+public struct VaultInitialized<phantom Product> has copy, drop {
+    vault_id: ID,
+    binding: venue_account::Binding,
+    seed_amount: u64,
+    seed_venue_equity: u64,
+    seed_reserve: u64,
+    seed_shareholder_nav: u64,
+    locked_shares: u64,
+    position_base: u64,
+    lot_size: u64,
+    position_side: blast_boosts_core::policy::PositionSide,
+    position_imr: u256,
+    checkpoint: checkpoint::Checkpoint,
+}
+
+/// Emitted once per venue market order the adapter places, seed orders
+/// included, after the fill passed the cap and slippage checks. The account is
+/// the bound venue account (`VaultInitialized.binding` maps it to the Vault);
+/// seed orders run before the Vault id exists. Prices are 9-decimal; the quote
+/// is the raw IFixed amount the session moved.
+public struct OrderFilled<phantom Product> has copy, drop {
+    account_object_id: ID,
+    is_ask: bool,
+    reduce_only: bool,
+    emergency: bool,
+    requested_base: u64,
+    filled_base: u64,
+    filled_quote: u256,
+    reference_price: u64,
+    executed_price: u64,
+}
+
+/// Emitted after an active mint, including its actual contribution and both fee allocations.
+public struct Minted<phantom Product> has copy, drop {
+    vault_id: ID,
+    deposit: u64,
+    shares: u64,
+    contribution: u64,
+    fee: u64,
+    admin_fee: u64,
+    reserve_fee: u64,
+    reserve_after: u64,
+    admin_cash_after: u64,
+    supply_after: u64,
+    checkpoint: checkpoint::Checkpoint,
+}
+
+/// Completed native share burn and exact collateral payout after attributable unwind.
+public struct Redeemed<phantom Product> has copy, drop {
+    vault_id: ID,
+    shares: u64,
+    net: u64,
+    fee: u64,
+    admin_fee: u64,
+    reserve_fee: u64,
+    reserve_after: u64,
+    admin_cash_after: u64,
+    supply_after: u64,
+    checkpoint: checkpoint::Checkpoint,
+}
+
+/// Emitted after a mint or redeem that named a partner, including a partner
+/// paid nothing because its share is zero or not yet in force. It follows that
+/// operation's `Minted` or `Redeemed` in the same transaction, whose
+/// `admin_cash_after` still includes `partner_fee`: Blast's admin cash is that
+/// minus `partner_fee`. `partner_fee` left `admin_fee`, the admin fee the
+/// operation retained.
+public struct PartnerFeePaid<phantom Product> has copy, drop {
+    vault_id: ID,
+    partner_id: ID,
+    admin_fee: u64,
+    partner_fee: u64,
+}
+
+/// Blast added a partner to the ones Boosts accepts, at once, or cancelled its
+/// pending removal.
+public struct PartnerAdded has copy, drop {
+    partner_id: ID,
+}
+
+/// Blast removed a partner: Boosts accepts it until `accepted_until_ms`, after
+/// which a mint or redeem that names it aborts.
+public struct PartnerRemoved has copy, drop {
+    partner_id: ID,
+    accepted_until_ms: u64,
+}
+
+/// Completed maintenance with actual equity/exposure effects and unchanged allocations.
+public struct Rebalanced<phantom Product> has copy, drop {
+    vault_id: ID,
+    equity_before: u64,
+    equity_after: u64,
+    base_before: u64,
+    base_after: u64,
+    increase: bool,
+    reserve_after: u64,
+    admin_cash_after: u64,
+    supply_after: u64,
+    checkpoint: checkpoint::Checkpoint,
+}
+
+/// Emitted after one nonzero isolated funding change is reconciled.
+public struct FundingSettled<phantom Product> has copy, drop {
+    vault_id: ID,
+    is_cost: bool,
+    raw_amount: u256,
+    amount: u64,
+    absorbed_by_reserve: u64,
+    uncovered_cost: u64,
+    restored_to_holders: u64,
+    reserve_after: u64,
+    previous_checkpoint: checkpoint::Checkpoint,
+    checkpoint: checkpoint::Checkpoint,
+}
+
+/// A sync found the venue in a state no vault operation explains. The accepted
+/// checkpoint stands and priced operations are refused until a later sync
+/// finds the venue explainable again; every such sync emits this event. An
+/// unwind step that finds such a venue emits it too, then adopts the live
+/// state and closes what the venue holds.
+public struct CheckpointDrifted<phantom Product> has copy, drop {
+    vault_id: ID,
+    checkpoint: checkpoint::Checkpoint,
+}
+
+/// Completed venue cash deposit allocated entirely to the funding buffer.
+public struct Donated<phantom Product> has copy, drop {
+    vault_id: ID,
+    amount: u64,
+    reserve_after: u64,
+    checkpoint: checkpoint::Checkpoint,
+}
+
+/// Emitted after shutdown-role authorization permanently stops ordinary operations.
+public struct ShutdownBegun<phantom Product> has copy, drop {
+    vault_id: ID,
+    reason: blast_boosts_core::lifecycle::ShutdownReason,
+}
+
+/// Completed close-only progress with exact raw venue effects: the checkpoint
+/// the step adopted after reconciling the stored one, the checkpoint the close
+/// left, the market orders placed and the quote they filled. The venue's
+/// settlement of a closed market places no order and fills no quote.
+public struct UnwindProgress<phantom Product> has copy, drop {
+    vault_id: ID,
+    before: checkpoint::Checkpoint,
+    after: checkpoint::Checkpoint,
+    market_orders: u64,
+    filled_quote: Option<u256>,
+}
+
+/// Actual recovered holder cash and fixed eligible supply after venue finality.
+public struct ShutdownFinalized<phantom Product> has copy, drop {
+    vault_id: ID,
+    recovered_cash: u64,
+    eligible_supply: u64,
+    checkpoint: checkpoint::Checkpoint,
+    unrecoverable_collateral_raw: u256,
+}
+
+/// Completed native share burn and fee-free local collateral payout.
+public struct ShutdownRedeemed<phantom Product> has copy, drop {
+    vault_id: ID,
+    shares: u64,
+    cash_paid: u64,
+    cash_remaining: u64,
+    eligible_remaining: u64,
+}
+
+/// Completed live-setting update; immutable caps and existing balances do not change.
+public struct FeesUpdated<phantom Product> has copy, drop {
+    vault_id: ID,
+    previous_mint_bps: u64,
+    previous_redeem_bps: u64,
+    previous_admin_bps: u64,
+    mint_bps: u64,
+    redeem_bps: u64,
+    admin_share_bps: u64,
+}
+
+/// Completed NAV cap update; existing NAV and balances do not change.
+public struct NavCapUpdated<phantom Product> has copy, drop {
+    vault_id: ID,
+    previous_nav_cap: u64,
+    nav_cap: u64,
+}
+
+/// Emitted after the active risk module changes the live maximum order notional.
+public struct MaxOrderNotionalUpdated<phantom Product> has copy, drop {
+    vault_id: ID,
+    previous: u64,
+    max_order_notional: u64,
+}
+
+/// Completed Coin Registry metadata update; the symbol and supply are untouched.
+public struct MetadataUpdated<phantom Product> has copy, drop {
+    vault_id: ID,
+    name: String,
+    description: String,
+    icon_url: String,
+}
+
+/// Completed withdrawal from native admin cash; no holder or buffer claim is created.
+public struct AdminFeesWithdrawn<phantom Product> has copy, drop {
+    vault_id: ID,
+    amount: u64,
+    remaining: u64,
+}
+```
+
+### `blast_boosts_aftermath::operations`
+
+Atomic Aftermath operations for adapter-owned leverage Vaults.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/boosts/aftermath_adapter/sources/operations.move
+
+#### Functions
+
+```move
+/// Seeds one issuance on the venue and returns its activated Vault, which the
+/// same transaction must pass to `vault::share`.
+///
+/// Direction and size come only from the immutable core policy; the caller
+/// chooses no order parameter.
+/// Every external value is either retained in the Vault, shared, or consumed.
+/// Only the issuer's transaction can reach this: the issuance has no abilities,
+/// so it cannot be stored, shared, or handed to another signer.
+public fun initialize<Product, Collateral>(
+    issuance: vault::VaultIssuance<Product, Collateral>,
+    protocol: &blast_boosts_aftermath::Protocol,
+    currency: &Currency<Collateral>,
+    registry: &mut registry::Registry,
+    clearing_house: clearing_house::ClearingHouse<Collateral>,
+    base_oracle: &price_feed_storage::PriceFeedStorage,
+    collateral_oracle: &price_feed_storage::PriceFeedStorage,
+    seed: Coin<Collateral>,
+    seed_reserve: u64,
+    position_imr: u256,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): vault::Vault<Product, Collateral>
+
+/// Exchanges exact bound collateral for native leverage shares in one atomic operation.
+/// Policy fixes direction and whole-lot size; partial sessions must complete the aggregate.
+public fun mint<Product, Collateral>(
+    vault: &mut vault::Vault<Product, Collateral>,
+    protocol: &blast_boosts_aftermath::Protocol,
+    account: &mut account::Account<Collateral>,
+    registry: &registry::Registry,
+    clearing_house: clearing_house::ClearingHouse<Collateral>,
+    base_oracle: &price_feed_storage::PriceFeedStorage,
+    collateral_oracle: &price_feed_storage::PriceFeedStorage,
+    cash: Coin<Collateral>,
+    minimum_shares: u64,
+    deadline_ms: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): Coin<blast_boost::BlastBoost<Product>>
+
+/// Burns native shares only after their proportional close and exact collateral payout.
+/// Entry-quote and realized PnL use authenticated post-session state, never an invented formula.
+public fun redeem<Product, Collateral>(
+    vault: &mut vault::Vault<Product, Collateral>,
+    protocol: &blast_boosts_aftermath::Protocol,
+    account: &mut account::Account<Collateral>,
+    registry: &registry::Registry,
+    clearing_house: clearing_house::ClearingHouse<Collateral>,
+    base_oracle: &price_feed_storage::PriceFeedStorage,
+    collateral_oracle: &price_feed_storage::PriceFeedStorage,
+    shares: Coin<blast_boost::BlastBoost<Product>>,
+    minimum_collateral: u64,
+    deadline_ms: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): Coin<Collateral>
+
+/// Adds `partner` to the Blast partners Boosts accepts, at once. Adding a
+/// partner whose removal is pending cancels the removal.
+public fun add_partner(
+    protocol: &mut blast_boosts_aftermath::Protocol,
+    _: &blast_admin::blast_acl::AdminWitness<blast_boosts_core::blast_boosts_core::RiskAdmin>,
+    partner: &blast_partners::blast_partners::Partner,
+)
+
+/// Removes `partner` from the Blast partners Boosts accepts, with the same
+/// notice Blast gives for every change to a partner: it stays accepted, and
+/// paid, for `blast_partners::delay_ms()`.
+public fun remove_partner(
+    protocol: &mut blast_boosts_aftermath::Protocol,
+    _: &blast_admin::blast_acl::AdminWitness<blast_boosts_core::blast_boosts_core::RiskAdmin>,
+    partner: &blast_partners::blast_partners::Partner,
+    clock: &Clock,
+)
+
+/// `mint`, naming a Blast partner Boosts accepts: the partner is paid its share
+/// of the admin fee this mint retained. Holders' shares and the reserve are
+/// exactly `mint`'s.
+public fun mint_with_partner<Product, Collateral>(
+    vault: &mut vault::Vault<Product, Collateral>,
+    protocol: &blast_boosts_aftermath::Protocol,
+    partner: &blast_partners::blast_partners::Partner,
+    account: &mut account::Account<Collateral>,
+    registry: &registry::Registry,
+    clearing_house: clearing_house::ClearingHouse<Collateral>,
+    base_oracle: &price_feed_storage::PriceFeedStorage,
+    collateral_oracle: &price_feed_storage::PriceFeedStorage,
+    cash: Coin<Collateral>,
+    minimum_shares: u64,
+    deadline_ms: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): Coin<blast_boost::BlastBoost<Product>>
+
+/// `redeem`, naming a Blast partner Boosts accepts: the partner is paid its
+/// share of the admin fee this redemption retained. The redeemer's payout is
+/// exactly `redeem`'s.
+public fun redeem_with_partner<Product, Collateral>(
+    vault: &mut vault::Vault<Product, Collateral>,
+    protocol: &blast_boosts_aftermath::Protocol,
+    partner: &blast_partners::blast_partners::Partner,
+    account: &mut account::Account<Collateral>,
+    registry: &registry::Registry,
+    clearing_house: clearing_house::ClearingHouse<Collateral>,
+    base_oracle: &price_feed_storage::PriceFeedStorage,
+    collateral_oracle: &price_feed_storage::PriceFeedStorage,
+    shares: Coin<blast_boost::BlastBoost<Product>>,
+    minimum_collateral: u64,
+    deadline_ms: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): Coin<Collateral>
+
+/// Permissionless, policy-sized maintenance with no caller reward or trade parameters.
+///
+/// Holders pay its fills, so it runs only at the reference gas price.
+public fun rebalance<Product, Collateral>(
+    vault: &mut vault::Vault<Product, Collateral>,
+    protocol: &blast_boosts_aftermath::Protocol,
+    account: &mut account::Account<Collateral>,
+    registry: &registry::Registry,
+    clearing_house: clearing_house::ClearingHouse<Collateral>,
+    base_oracle: &price_feed_storage::PriceFeedStorage,
+    collateral_oracle: &price_feed_storage::PriceFeedStorage,
+    clock: &Clock,
+    ctx: &mut TxContext,
+)
+
+/// A keeper's dry run of `rebalance`: whether the live position sits outside the band.
+///
+/// Reads everything `rebalance` reads and asks the core the same question, so it
+/// aborts where `rebalance` would abort before its first order: an interval
+/// since the stored checkpoint that the classifier cannot explain, or an
+/// observation the price policy refuses. It does not settle funding first, so a
+/// due settlement can move the answer by that amount when the real call runs;
+/// intended for `dev_inspect`, not for on-chain gating.
+public fun needs_rebalance<Product, Collateral>(
+    vault: &vault::Vault<Product, Collateral>,
+    protocol: &blast_boosts_aftermath::Protocol,
+    account: &account::Account<Collateral>,
+    registry: &registry::Registry,
+    clearing_house: &clearing_house::ClearingHouse<Collateral>,
+    base_oracle: &price_feed_storage::PriceFeedStorage,
+    collateral_oracle: &price_feed_storage::PriceFeedStorage,
+    clock: &Clock,
+): bool
+
+/// Deposits configured collateral into the active funding buffer without shares or fees.
+public fun donate<Product, Collateral>(
+    vault: &mut vault::Vault<Product, Collateral>,
+    protocol: &blast_boosts_aftermath::Protocol,
+    account: &mut account::Account<Collateral>,
+    registry: &registry::Registry,
+    clearing_house: &mut clearing_house::ClearingHouse<Collateral>,
+    base_oracle: &price_feed_storage::PriceFeedStorage,
+    collateral_oracle: &price_feed_storage::PriceFeedStorage,
+    cash: Coin<Collateral>,
+    clock: &Clock,
+)
+
+/// Settles due funding and reconciles the stored checkpoint with the venue,
+/// with no priced operation attached and no lifecycle move. Any caller may
+/// submit the bound objects; a binding failure aborts. An explainable funding
+/// move is booked and emitted, and an interval the classifier cannot explain
+/// leaves the accepted checkpoint standing and emits `CheckpointDrifted`.
+public fun sync_health<Product, Collateral>(
+    vault: &mut vault::Vault<Product, Collateral>,
+    protocol: &blast_boosts_aftermath::Protocol,
+    account: &mut account::Account<Collateral>,
+    registry: &registry::Registry,
+    clearing_house: &mut clearing_house::ClearingHouse<Collateral>,
+    base_oracle: &price_feed_storage::PriceFeedStorage,
+    collateral_oracle: &price_feed_storage::PriceFeedStorage,
+    clock: &Clock,
+)
+
+/// Permissionless bounded close-only progress, never caller-sized or dependent
+/// on positive NAV. A live market is closed by market orders; a market the
+/// venue has paused only by the venue's own settlement, once it has closed the
+/// market and enabled settlement prices; a frozen clearing house aborts every
+/// venue call on its version check, so it is refused here until unfrozen.
+/// Holders pay its fills, so it runs only at the reference gas price.
+public fun unwind<Product, Collateral>(
+    vault: &mut vault::Vault<Product, Collateral>,
+    protocol: &blast_boosts_aftermath::Protocol,
+    account: &mut account::Account<Collateral>,
+    registry: &registry::Registry,
+    clearing_house: clearing_house::ClearingHouse<Collateral>,
+    base_oracle: &price_feed_storage::PriceFeedStorage,
+    collateral_oracle: &price_feed_storage::PriceFeedStorage,
+    clock: &Clock,
+    ctx: &mut TxContext,
+)
+
+/// Recovers all actual holder collateral only from an exactly settled bound account.
+public fun finalize_shutdown<Product, Collateral>(
+    vault: &mut vault::Vault<Product, Collateral>,
+    protocol: &blast_boosts_aftermath::Protocol,
+    account: &mut account::Account<Collateral>,
+    registry: &registry::Registry,
+    clearing_house: &mut clearing_house::ClearingHouse<Collateral>,
+    base_oracle: &price_feed_storage::PriceFeedStorage,
+    collateral_oracle: &price_feed_storage::PriceFeedStorage,
+    clock: &Clock,
+    ctx: &mut TxContext,
+)
+```
+
+### `blast_boosts_aftermath::orders`
+
+Order placement for one operation: the sealed terms, the whole-lot sizing, each market session, and the proof of every fill against the checkpoint.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/boosts/aftermath_adapter/sources/orders.move
+
+#### Types
+
+```move
+/// The sealed terms every order of one operation is placed and proved under.
+/// Package-internal; Move has no private structs.
+public struct OrderTerms has copy, drop {
+    is_ask: bool,
+    reduce_only: bool,
+    /// The whole-lot base one order may carry, sized by the core at the sealed pair.
+    max_order_base: u64,
+    lot_size: u64,
+    base_price: u64,
+    collateral_price: u64,
+}
+
+/// What one whole-lot market order proved: the base atoms filled and the raw
+/// quote the session moved, already checked against the cap, the lot and the
+/// slippage bound.
+public struct Fill has drop {
+    filled: u64,
+    filled_quote: u256,
+}
+```
+
+### `blast_boosts_aftermath::package_admin`
+
+Permanent shared custody for the adapter Publisher and UpgradeCap.  Its governed transitions take `AdminWitness<UpgradeAdmin>`, the upgrade role the Boosts core declares for every adapter. Custody itself stays package-local: this adapter's generation advances without touching the core, which is immutable and has no generation of its own.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/boosts/aftermath_adapter/sources/package_admin.move
+
+#### Types
+
+```move
+/// Shared, non-releasable adapter package authority.
+public struct PackageAdmin has key {
+    id: UID,
+    custody: blast_admin::upgrade_custody::UpgradeCustody<blast_boosts_aftermath::BLAST_BOOSTS_AFTERMATH>,
+}
+```
+
+#### Functions
+
+```move
+/// Validates the canonical adapter capabilities and seals them into custody.
+///
+/// `upgrade_custody::new` owns the complete provenance check: the Publisher must
+/// belong to this package and the cap must be this package's never-upgraded one.
+/// No later call re-reads those fields, because the sealed value cannot hold
+/// anything else.
+public fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext)
+
+/// Authorizes one exact adapter digest under the sealed cap's current policy.
+public fun authorize_upgrade(
+    self: &mut PackageAdmin,
+    protocol: &blast_boosts_aftermath::Protocol,
+    _: &blast_admin::blast_acl::AdminWitness<blast_boosts_core::blast_boosts_core::UpgradeAdmin>,
+    digest: vector<u8>,
+): UpgradeTicket
+
+/// Commits the native receipt and advances one operational generation at once.
+///
+/// This is the only upgrade finalizer. Both mutations belong to the same
+/// transaction, so a failure at either step rolls back the whole upgrade.
+public fun commit_upgrade_and_advance(
+    self: &mut PackageAdmin,
+    protocol: &mut blast_boosts_aftermath::Protocol,
+    _: &blast_admin::blast_acl::AdminWitness<blast_boosts_core::blast_boosts_core::UpgradeAdmin>,
+    receipt: UpgradeReceipt,
+)
+
+/// Irreversibly narrows adapter upgrades to additive changes.
+public fun restrict_to_additive(
+    self: &mut PackageAdmin,
+    protocol: &blast_boosts_aftermath::Protocol,
+    _: &blast_admin::blast_acl::AdminWitness<blast_boosts_core::blast_boosts_core::UpgradeAdmin>,
+)
+
+/// Irreversibly narrows adapter upgrades to dependency-only changes.
+public fun restrict_to_dependency_only(
+    self: &mut PackageAdmin,
+    protocol: &blast_boosts_aftermath::Protocol,
+    _: &blast_admin::blast_acl::AdminWitness<blast_boosts_core::blast_boosts_core::UpgradeAdmin>,
+)
+
+/// Irreversibly destroys native upgrade authority for this adapter.
+public fun make_immutable(
+    self: &mut PackageAdmin,
+    protocol: &blast_boosts_aftermath::Protocol,
+    _: &blast_admin::blast_acl::AdminWitness<blast_boosts_core::blast_boosts_core::UpgradeAdmin>,
+)
+```
+
+### `blast_boosts_aftermath::snapshot`
+
+Authenticated Aftermath capture: proves every source is the bound one, reads the raw checkpoint, and normalizes prices and equity into the adapter's units.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/boosts/aftermath_adapter/sources/snapshot.move
+
+#### Types
+
+```move
+/// One authenticated capture: the raw checkpoint, both oracle legs, the mark,
+/// the position's economics, and whether the venue can serve a priced
+/// operation. A priced caller consumes it through `into_observation`; a health
+/// caller reads only its checkpoint.
+public struct CapturedSnapshot has drop {
+    venue_equity: u64,
+    position_base: u64,
+    lot_size: u64,
+    side: blast_boosts_core::policy::PositionSide,
+    pending_order_count: u64,
+    margin_safe: bool,
+    venue_operational: bool,
+    economics_valid: bool,
+    base_price: u64,
+    base_timestamp: u64,
+    collateral_price: u64,
+    collateral_timestamp: u64,
+    mark_price: u64,
+    checkpoint: checkpoint::Checkpoint,
+    collateral_fixed: u256,
+}
+```
+
+### `blast_boosts_aftermath::vault`
+
+Adapter-owned Vault: custody of the core state, the venue account, the share currency and the retained cash, plus the public surface that needs no venue object (issuance, shutdown begin and claim, administration). Every venue-touching operation is driven by `operations`; this module never reads the venue, advances a checkpoint or completes a core plan.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/boosts/aftermath_adapter/sources/vault.move
+
+#### Types
+
+```move
+/// One issued Boost currency before its venue account exists.
+///
+/// `issue` creates it and `operations::initialize` must consume it in the same
+/// transaction: it has no abilities, so an issuance that is not activated cannot
+/// be stored or shared, and a failed activation rolls the currency back too.
+public struct VaultIssuance<phantom Product, phantom Collateral> {
+    issuance: blast_boosts_core::state::Issuance<Product>,
+    treasury_cap: TreasuryCap<blast_boost::BlastBoost<Product>>,
+    metadata_cap: MetadataCap<blast_boost::BlastBoost<Product>>,
+}
+
+/// Shared adapter custody for one Boost currency, its core state and its venue account.
+///
+/// This adapter defines `Vault<Product, Collateral>`, so it can issue the corresponding
+/// non-OTW currency through Coin Registry. The nested core state has private
+/// fields and can change only through core mutation functions. A Vault exists
+/// only from activation on, so every field below is always present; the share
+/// caps hang off `id` as dynamic object fields.
+public struct Vault<phantom Product, phantom Collateral> has key {
+    id: UID,
+    state: blast_boosts_core::state::State<Product>,
+    /// The bound account's identity, last accepted checkpoint and admin authority.
+    venue_account: venue_account::VenueAccount,
+    /// The seed shares minted to the burn address at activation; never redeemable.
+    locked_shares: u64,
+    /// Earned admin fee collateral, held natively and never sent to the venue.
+    admin_cash: Balance<Collateral>,
+    /// Recovered holder collateral after finalization, never mixed with admin cash.
+    terminal_cash: Balance<Collateral>,
+}
+
+/// Dynamic-object-field key for one Vault's share mint authority.
+public struct TreasuryKey<phantom Product>() has copy, drop, store;
+
+/// Dynamic-object-field key for one Vault's metadata authority.
+public struct MetadataKey<phantom Product>() has copy, drop, store;
+```
+
+#### Functions
+
+```move
+/// Issues one leverage currency and the issuance that `operations::initialize`
+/// turns into its Vault in the same transaction.
+///
+/// `Product` is the currency's identity: `Vault<Product, Collateral>` names the coin and
+/// Coin Registry admits each type once. Any non-primitive type may serve; the
+/// Vault issuer role is the only authority. The adapter generation is checked
+/// before Coin Registry mutation. Package custody is not an input:
+/// `package_admin` seals a validated Publisher and UpgradeCap that no other
+/// object can hold, so re-reading those fields here would prove nothing this
+/// package does not already own.
+public fun issue<Product, Collateral>(
+    protocol: &blast_boosts_aftermath::Protocol,
+    admin_witness: &blast_admin::blast_acl::AdminWitness<blast_boosts_core::blast_boosts_core::VaultIssuer>,
+    registry: &mut CoinRegistry,
+    vault_policy: blast_boosts_core::policy::VaultPolicy,
+    max_order_notional: u64,
+    nav_cap: u64,
+    symbol: String,
+    name: String,
+    description: String,
+    icon_url: String,
+    ctx: &mut TxContext,
+): VaultIssuance<Product, Collateral>
+
+/// Shares one activated adapter Vault.
+public fun share<Product, Collateral>(self: Vault<Product, Collateral>)
+
+/// Irreversibly stops ordinary operations without requiring venue or oracle availability.
+public fun begin_shutdown<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>,
+    protocol: &blast_boosts_aftermath::Protocol,
+    _: &blast_admin::blast_acl::AdminWitness<blast_boosts_core::blast_boosts_core::ShutdownAdmin>,
+    reason: blast_boosts_core::lifecycle::ShutdownReason,
+)
+
+/// Burns native eligible shares for local terminal collateral; no venue or oracle access.
+public fun redeem_shutdown<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>,
+    protocol: &blast_boosts_aftermath::Protocol,
+    shares: Coin<blast_boost::BlastBoost<Product>>,
+    minimum_collateral: u64,
+    deadline_ms: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): Coin<Collateral>
+
+/// Updates only future fee collections under the immutable issuance caps.
+/// This local administrative edge requires neither venue objects nor prices.
+public fun set_fees<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>,
+    protocol: &blast_boosts_aftermath::Protocol,
+    _: &blast_admin::blast_acl::AdminWitness<blast_boosts_core::blast_boosts_core::RiskAdmin>,
+    mint_fee_bps: u64,
+    redeem_fee_bps: u64,
+    admin_share_bps: u64,
+)
+
+/// Replaces the NAV cap that bounds post-mint shareholder NAV.
+/// This local administrative edge requires neither venue objects nor prices.
+public fun set_nav_cap<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>,
+    protocol: &blast_boosts_aftermath::Protocol,
+    _: &blast_admin::blast_acl::AdminWitness<blast_boosts_core::blast_boosts_core::RiskAdmin>,
+    nav_cap: u64,
+)
+
+/// Changes the live per-call maximum order notional.
+///
+/// This value limits the absolute atomic-USDC notional of one Aftermath order.
+/// It does not limit a user's deposit or the Vault's total open position.
+/// The risk administrator may raise or lower the current value without a
+/// cooldown. This transition changes no live position exposure and therefore
+/// remains available in every lifecycle state.
+public fun set_max_order_notional<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>,
+    protocol: &blast_boosts_aftermath::Protocol,
+    _: &blast_admin::blast_acl::AdminWitness<blast_boosts_core::blast_boosts_core::RiskAdmin>,
+    max_order_notional: u64,
+)
+
+/// Replaces the Boost currency's display name, description and icon in Coin
+/// Registry. The symbol is fixed at issuance; the registry has no setter for it.
+/// At least one of the three must change, so every emitted update is a real one.
+/// This local administrative edge requires neither venue objects nor prices.
+public fun update_metadata<Product, Collateral>(
+    self: &Vault<Product, Collateral>,
+    protocol: &blast_boosts_aftermath::Protocol,
+    _: &blast_admin::blast_acl::AdminWitness<blast_boosts_core::blast_boosts_core::VaultIssuer>,
+    currency: &mut Currency<blast_boost::BlastBoost<Product>>,
+    name: String,
+    description: String,
+    icon_url: String,
+)
+
+/// Returns only earned local admin collateral, including during venue/oracle outages.
+public fun withdraw_admin_fees<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>,
+    protocol: &blast_boosts_aftermath::Protocol,
+    _: &blast_admin::blast_acl::AdminWitness<blast_boosts_core::blast_boosts_core::RiskAdmin>,
+    amount: u64,
+    ctx: &mut TxContext,
+): Coin<Collateral>
+```
+
+#### Constants
+
+- `SEED_SHARE_SCALE: u64 = 1_000`: Converts six-decimal seed NAV atoms to nine-decimal share atoms: `10^(share_decimals - collateral_decimals)` for the two precisions this adapter fixes.
+
+### `blast_boosts_aftermath::venue_account`
+
+Exact Aftermath account custody under its immutable venue binding: every deposit, allocation, order and withdrawal the Vault makes goes through here.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/boosts/aftermath_adapter/sources/venue_account.move
+
+#### Types
+
+```move
+/// Immutable external object graph for one Aftermath leverage account. The
+/// two feed ids are the origin objects (`PriceFeed.from`) of the feeds the
+/// market priced with at activation.
+public struct Binding has copy, drop, store {
+    account_object_id: ID,
+    account_number: u64,
+    registry_id: ID,
+    clearing_house_id: ID,
+    base_oracle_id: ID,
+    collateral_oracle_id: ID,
+    base_feed_id: ID,
+    collateral_feed_id: ID,
+}
+
+/// The bound Aftermath account as the adapter knows it: its identity, the last
+/// raw state it accepted, and the sole admin authority over it, paired once at
+/// construction. Every venue mutation goes through this module's guarded
+/// functions; the cap never leaves.
+public struct VenueAccount has store {
+    binding: Binding,
+    checkpoint: checkpoint::Checkpoint,
+    admin_cap: authority::AuthorityCap<authority::ACCOUNT, authority::ADMIN>,
+}
+```
+
+## API reference: `blast_partners` (Partner codes)
+
+Not yet published on mainnet. Its interface may change before publication.
+
+Events: payload structs are emitted directly, each under its own type.
+
+### `blast_partners::blast_partners`
+
+Blast partner codes, shared by every Blast product.  A partner is one deal: it is paid a share of the fee Blast charges on every trade that names it, in the same transaction. A company holds one `PartnerCap` for all its deals, each a separate partner with its own share. Blast's partner administrator registers partners under a cap, sets each one's share, and can move a partner to another cap; the cap's holder sets where each of its partners is paid. Everything Blast changes takes effect only `DELAY_MS` after it is scheduled, and this package is published immutable, so no one can shorten that delay. The recipient the cap holder sets applies at once.  Products call `pay` with Blast's own fee on a trade. `pay` emits `PartnerPaid` for what the partner received; the product records the trade and the amount in its own event.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/partners/sources/blast_partners.move
+
+#### Types
+
+```move
+/// The one administrator role in the shared Blast ACL: register partners,
+/// schedule shares, move partners between caps.
+public struct PartnerAdmin {}
+
+/// One Blast partner. Shared, and read by immutable reference on every trade that names it.
+public struct Partner has key {
+    id: UID,
+    /// Where the partner's share is sent; set by the live cap's holder.
+    recipient: address,
+    /// The partner's share of Blast's fee on each trade, in basis points.
+    share_bps: blast_fun_timelock::Timelocked<u64>,
+    /// The only cap that may set `recipient`; one cap may manage many partners.
+    cap_id: blast_fun_timelock::Timelocked<ID>,
+}
+
+/// A company's authority over the recipient of every partner bound to it.
+public struct PartnerCap has key, store {
+    id: UID,
+}
+```
+
+#### Functions
+
+```move
+/// Mints a cap. It controls nothing until Blast registers a partner under it,
+/// so anyone may mint one, a company included.
+public fun new_cap(ctx: &mut TxContext): PartnerCap
+
+/// Registers and shares a partner managed by the cap `cap_id`, with its share
+/// and cap in force at once. Every later change to either waits `DELAY_MS`.
+public fun register(
+    _: &blast_admin::blast_acl::AdminWitness<PartnerAdmin>,
+    cap_id: ID,
+    recipient: address,
+    share_bps: u64,
+    ctx: &mut TxContext,
+)
+
+/// Schedules the partner's share to become `share_bps` `DELAY_MS` from now.
+/// A new schedule replaces a pending one; scheduling the share in force
+/// cancels a pending change.
+public fun schedule_share(
+    self: &mut Partner,
+    _: &blast_admin::blast_acl::AdminWitness<PartnerAdmin>,
+    share_bps: u64,
+    clock: &Clock,
+)
+
+/// Schedules the partner to be managed by the cap `cap_id` `DELAY_MS` from
+/// now, to replace a lost or stolen cap. Until then the current cap keeps
+/// working; a new schedule replaces a pending one, and scheduling the cap in
+/// force cancels a pending change.
+public fun schedule_cap(
+    self: &mut Partner,
+    _: &blast_admin::blast_acl::AdminWitness<PartnerAdmin>,
+    cap_id: ID,
+    clock: &Clock,
+)
+
+/// Sets where the partner is paid, at once. Only the live cap may.
+public fun set_recipient(self: &mut Partner, cap: &PartnerCap, recipient: address, clock: &Clock)
+
+/// Destroys a cap, live or not.
+public fun destroy_cap(cap: PartnerCap)
+
+/// Sends the partner its share of `fee`, Blast's fee on one trade, rounded
+/// down so Blast keeps the remainder, emits `PartnerPaid`, and returns the
+/// amount sent. Nothing is sent or emitted while the share is zero. `fee`
+/// keeps the rest. Anyone calling it pays the partner from their own balance.
+public fun pay<T>(self: &Partner, fee: &mut Balance<T>, clock: &Clock): u64
+
+/// The forced delay every change Blast makes to a partner waits. Products use it
+/// for their own notice, such as how long a partner they remove stays accepted.
+public fun delay_ms(): u64
+```
+
+#### Events
+
+```move
+/// Emitted after every change to a partner, registration included: its complete terms.
+public struct PartnerUpdated has copy, drop {
+    partner_id: ID,
+    recipient: address,
+    share_bps: blast_fun_timelock::Timelocked<u64>,
+    cap_id: blast_fun_timelock::Timelocked<ID>,
+}
+
+/// Emitted whenever a partner is paid: `amount` of `T` sent to its recipient.
+public struct PartnerPaid<phantom T> has copy, drop {
+    partner_id: ID,
+    amount: u64,
+}
+```
+
+#### Errors
+
+| Constant | Code | Message |
+| --- | --- | --- |
+| `EInvalidRecipient` | 0 | A partner's recipient must not be the zero address. |
+| `EShareAboveMax` | 1 | A partner's share must be at most 80% of Blast's fee. |
+| `EUnchanged` | 2 | An update must change the value it sets. |
+| `ENotLiveCap` | 3 | Only the partner's live cap may set its recipient. |
+
+#### Constants
+
+- `DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000`: The forced delay before a share or a cap Blast schedules takes effect.
+- `MAX_SHARE_BPS: u64 = 8_000`: The largest share of Blast's fee one partner may earn: 80%.
+- `BASIS_POINTS: u64 = 10_000`: Basis points in one whole.
+
+## API reference: `blast_admin` (Administration)
+
+Not yet published on mainnet. Its interface may change before publication.
+
+Events: payload structs are emitted directly, each under its own type.
+
+Abort codes: this package aborts with the numeric codes below from whichever module detects the failure; the abort location names that module.
+
+| Code | Constant | Meaning |
+| --- | --- | --- |
+| 0 | `EInvalidSuperAdminCap` |  |
+| 1 | `EInvalidAdminCap` |  |
+| 2 | `EInvalidAdminRecipient` |  |
+| 3 | `EAdminCapacityReached` |  |
+| 4 | `EAdminRoleCapacityReached` |  |
+| 5 | `EAdminRoleAlreadyGranted` |  |
+| 6 | `EAdminRoleNotGranted` |  |
+| 7 | `EInvalidSuperAdminRecipient` |  |
+| 8 | `ESuperAdminTransferUnchanged` |  |
+| 9 | `ENoPendingSuperAdminTransfer` |  |
+| 10 | `ENotPendingSuperAdminRecipient` |  |
+| 11 | `ESuperAdminTransferNotReady` |  |
+| 12 | `ESuperAdminCapStillActive` |  |
+| 13 | `EOperationalVersionMismatch` |  |
+| 14 | `EOperationalVersionOverflow` |  |
+| 15 | `EInvalidPackagePublisher` |  |
+| 16 | `EInvalidUpgradeCap` |  |
+| 17 | `EInvalidPackageDigest` |  |
+| 18 | `EUpgradeCapUnavailable` |  |
+| 19 | `EUpgradePolicyNotMoreRestrictive` |  |
+| 20 | `EInvalidPackageMarker` |  |
+
+### `blast_admin::blast_acl`
+
+The one access-control list for every Blast package: one cold root and role-typed admins.  A role is a type that its consumer package declares. `AdminWitness<Role>` in a function signature is that function's role check, and a role from one package can never satisfy another package's signature.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/admin/sources/blast_acl.move
+
+#### Types
+
+```move
+/// The shared singleton that lists the active root and every live administrator's roles.
+public struct ACL has key {
+    id: UID,
+    super_admin_cap_id: ID,
+    admins: VecMap<ID, VecSet<TypeName>>,
+    /// The nominated next super admin: none until the transfer delay passes.
+    pending_super_admin: blast_fun_timelock::Timelocked<Option<address>>,
+}
+
+/// Cold root authority for membership, roles, and delayed root replacement only.
+public struct SuperAdminCap has key {
+    id: UID,
+}
+
+/// Transferable, live-registry-checked administrator capability holding any granted roles.
+public struct AdminCap has key, store {
+    id: UID,
+}
+
+/// Transaction-local proof that a live `AdminCap` holding `Role` signed in.
+public struct AdminWitness<phantom Role>() has drop;
+```
+
+#### Functions
+
+```move
+/// Creates and delivers one live administrator that holds no role yet.
+public fun grant_admin(
+    self: &mut ACL,
+    root: &SuperAdminCap,
+    recipient: address,
+    ctx: &mut TxContext,
+)
+
+/// Revokes one live administrator and all its roles without requiring possession of its cap.
+public fun revoke_admin(self: &mut ACL, root: &SuperAdminCap, admin_cap_id: ID)
+
+/// Adds `Role` to a live administrator.
+public fun grant_role<Role>(self: &mut ACL, root: &SuperAdminCap, admin_cap_id: ID)
+
+/// Removes `Role` from a live administrator; an administrator with no role signs in to nothing.
+public fun revoke_role<Role>(self: &mut ACL, root: &SuperAdminCap, admin_cap_id: ID)
+
+/// Deletes an active or already-revoked administrator cap and reports what it still held.
+public fun destroy_admin_cap(self: &mut ACL, admin_cap: AdminCap)
+
+/// Nominates `recipient` as the next super admin; it may accept once the transfer delay
+/// passes. A new nomination replaces a pending one and restarts the delay.
+public fun begin_super_admin_transfer(
+    self: &mut ACL,
+    root: &SuperAdminCap,
+    recipient: address,
+    clock: &Clock,
+    ctx: &mut TxContext,
+)
+
+/// Cancels the pending root transfer at once, even after its delay has passed.
+public fun cancel_super_admin_transfer(self: &mut ACL, root: &SuperAdminCap)
+
+/// Accepts a ready root transfer as its nominated recipient and invalidates the old cap.
+public fun accept_super_admin_transfer(self: &mut ACL, clock: &Clock, ctx: &mut TxContext)
+
+/// Deletes a root capability only after an accepted replacement made it inert.
+public fun destroy_retired_super_admin_cap(self: &ACL, root: SuperAdminCap)
+
+/// Proves that `admin_cap` is live and holds `Role`; the witness type is what consumers require.
+public fun sign_in<Role>(self: &ACL, admin_cap: &AdminCap): AdminWitness<Role>
+```
+
+#### Constants
+
+- `MAX_ADMINS: u64 = 32`
+- `MAX_ROLES_PER_ADMIN: u64 = 32`
+- `SUPER_ADMIN_TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000`: The wait before a nominated super admin may accept the root.
+
+### `blast_admin::blast_admin_events`
+
+Replay-complete typed facts for shared administration transitions.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/admin/sources/blast_admin_events.move
+
+#### Events
+
+```move
+public struct AdminGranted has copy, drop {
+    admin_cap_id: ID,
+    recipient: address,
+}
+
+public struct AdminRevoked has copy, drop {
+    admin_cap_id: ID,
+    roles: vector<TypeName>,
+}
+
+public struct AdminRoleGranted has copy, drop {
+    admin_cap_id: ID,
+    role: TypeName,
+}
+
+public struct AdminRoleRevoked has copy, drop {
+    admin_cap_id: ID,
+    role: TypeName,
+}
+
+public struct AdminDestroyed has copy, drop {
+    admin_cap_id: ID,
+    roles: vector<TypeName>,
+    was_active: bool,
+}
+
+public struct SuperAdminTransferStarted has copy, drop {
+    recipient: address,
+    execute_after_ms: u64,
+}
+
+public struct SuperAdminTransferCancelled has copy, drop {
+    recipient: address,
+    execute_after_ms: u64,
+}
+
+public struct SuperAdminTransferred has copy, drop {
+    previous_super_admin_cap_id: ID,
+    new_super_admin_cap_id: ID,
+    recipient: address,
+}
+
+public struct SuperAdminCapDestroyed has copy, drop {
+    super_admin_cap_id: ID,
+}
+
+/// Emitted by a value that only its package's one-time witness could create; `container_id` is
+/// the UID the advancing module held.
+public struct OperationalVersionAdvanced<phantom PackageMarker: drop> has copy, drop {
+    container_id: ID,
+    package_id: address,
+    previous_generation: u64,
+    new_generation: u64,
+}
+
+public struct UpgradeCustodyCreated<phantom PackageMarker: drop> has copy, drop {
+    custodian_id: ID,
+    publisher_id: ID,
+    upgrade_cap_id: ID,
+    package_id: ID,
+    native_version: u64,
+    policy: u8,
+}
+
+public struct UpgradeAuthorized<phantom PackageMarker: drop> has copy, drop {
+    custodian_id: ID,
+    upgrade_cap_id: ID,
+    package_id: ID,
+    native_version: u64,
+    policy: u8,
+    digest: vector<u8>,
+}
+
+public struct UpgradeCommitted<phantom PackageMarker: drop> has copy, drop {
+    custodian_id: ID,
+    upgrade_cap_id: ID,
+    original_package_id: address,
+    new_package_id: ID,
+    previous_native_version: u64,
+    new_native_version: u64,
+}
+
+public struct UpgradePolicyRestricted<phantom PackageMarker: drop> has copy, drop {
+    custodian_id: ID,
+    upgrade_cap_id: ID,
+    package_id: address,
+    native_version: u64,
+    previous_policy: u8,
+    new_policy: u8,
+}
+
+public struct UpgradeCapDestroyed<phantom PackageMarker: drop> has copy, drop {
+    custodian_id: ID,
+    upgrade_cap_id: ID,
+    package_id: address,
+    final_native_version: u64,
+    final_policy: u8,
+}
+```
+
+### `blast_admin::operational_version`
+
+Sealed operational-generation arithmetic for consumer-owned version containers.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/admin/sources/operational_version.move
+
+#### Types
+
+```move
+/// Storable, package-typed generation value with construction and mutation sealed here.
+public struct OperationalVersion<phantom PackageMarker: drop> has store {
+    generation: u64,
+}
+```
+
+#### Functions
+
+```move
+/// Creates the initial operational generation from the consumer package's one-time witness, so
+/// the value can only come into existence inside that package's initializer.
+public fun new<PackageMarker: drop>(otw: &PackageMarker): OperationalVersion<PackageMarker>
+
+/// Rejects bytecode whose private compiled generation differs from canonical state.
+public fun assert_current<PackageMarker: drop>(
+    self: &OperationalVersion<PackageMarker>,
+    compiled_generation: u64,
+)
+
+/// Proves the proposed compiled generation is exactly next before other finalizer effects.
+public fun assert_next<PackageMarker: drop>(
+    self: &OperationalVersion<PackageMarker>,
+    compiled_generation: u64,
+)
+
+/// Advances only when the consumer's new compiled generation is exactly one greater.
+///
+/// `container` is the versioned object's own UID, so the emitted container ID is one the caller
+/// holds.
+public fun advance<PackageMarker: drop>(
+    self: &mut OperationalVersion<PackageMarker>,
+    container: &UID,
+    compiled_generation: u64,
+)
+```
+
+#### Constants
+
+- `INITIAL_GENERATION: u64 = 1`
+
+### `blast_admin::upgrade_custody`
+
+Sealed custody and native transitions for one consumer package's framework capabilities.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/admin/sources/upgrade_custody.move
+
+#### Types
+
+```move
+/// Storable custody value whose capabilities never leave it: the Publisher is readable by
+/// reference and the UpgradeCap acts only through the named transitions below.
+public struct UpgradeCustody<phantom PackageMarker: drop> has store {
+    publisher: Publisher,
+    upgrade_cap: Option<UpgradeCap>,
+}
+```
+
+#### Functions
+
+```move
+/// Validates an original package's Publisher and never-upgraded cap before sealing both.
+public fun new<PackageMarker: drop>(
+    custodian_id: ID,
+    publisher: Publisher,
+    upgrade_cap: UpgradeCap,
+): UpgradeCustody<PackageMarker>
+
+/// Reports whether native upgrade authority remains sealed in custody.
+public fun has_upgrade_cap<PackageMarker: drop>(self: &UpgradeCustody<PackageMarker>): bool
+
+/// Borrows the sealed Publisher for provenance-gated framework features such as Display and
+/// TransferPolicy. Every framework path that moves or burns a Publisher takes it by value, so a
+/// reference cannot end custody; the consumer wrapper decides who may call this.
+public fun publisher<PackageMarker: drop>(self: &UpgradeCustody<PackageMarker>): &Publisher
+
+/// Authorizes exactly one 32-byte package digest under the cap's current policy.
+public fun authorize_upgrade<PackageMarker: drop>(
+    self: &mut UpgradeCustody<PackageMarker>,
+    custodian_id: ID,
+    digest: vector<u8>,
+): UpgradeTicket
+
+/// Commits a native receipt into the same sealed capability that authorized it.
+public fun commit_upgrade<PackageMarker: drop>(
+    self: &mut UpgradeCustody<PackageMarker>,
+    custodian_id: ID,
+    receipt: UpgradeReceipt,
+)
+
+/// Irreversibly narrows compatible policy to additive-only upgrades.
+public fun restrict_to_additive<PackageMarker: drop>(
+    self: &mut UpgradeCustody<PackageMarker>,
+    custodian_id: ID,
+)
+
+/// Irreversibly narrows compatible or additive policy to dependency-only upgrades.
+public fun restrict_to_dependency_only<PackageMarker: drop>(
+    self: &mut UpgradeCustody<PackageMarker>,
+    custodian_id: ID,
+)
+
+/// Irreversibly destroys native upgrade authority while preserving Publisher custody.
+public fun make_immutable<PackageMarker: drop>(
+    self: &mut UpgradeCustody<PackageMarker>,
+    custodian_id: ID,
+)
+```
+
+#### Constants
+
+- `PACKAGE_DIGEST_LENGTH: u64 = 32`
+- `INITIAL_NATIVE_VERSION: u64 = 1`: The framework stamps a freshly published package's `UpgradeCap` with version one.
