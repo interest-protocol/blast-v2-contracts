@@ -142,7 +142,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0098](0098-launch-creation-fee-and-partners.md) | One partner per launch shares the launch's creation, curve, and one-time Meme/Quote migration fees | **accepted; amended by 0105 and 0107** |
 | [0099](0099-standalone-overflow-presale.md) | Standalone overflow presales with per-sale caps, proportional fills, LP-gated claims, and refund liveness | **accepted; amended by 0101, 0102, and 0104** |
 | [0100](0100-single-cetus-route-with-checked-retype.md) | One Cetus route per operation, generic over the pool's coin order, with a checked dynamic-field retype | **accepted** |
-| [0101](0101-presale-protocol-fees.md) | Admin-set presale fees on the raise, token supply, and LP fees, snapshotted at creation; LP rates adjustable per vault | **proposed; amended by 0106 and 0107** |
+| [0101](0101-presale-protocol-fees.md) | Admin-set presale fees on the raise, token supply, and LP fees, snapshotted at creation; LP rates adjustable per vault | **proposed; amended by 0106, 0107, and 0109** |
 | [0102](0102-presale-creation-allowlists.md) | Admin-set allowlists of the Quote types and migration witnesses new presales may use | **proposed; amended by 0104 and 0106** |
 | [0103](0103-mainnet-only.md) | Mainnet only: no testnet builds, pins, scripts, harness environment, or rehearsals | **accepted** |
 | [0104](0104-external-presale-migrators-and-vendor-packages.md) | Public presale creation and migration for external migrators; partner one-off packages under `sui/vendors` | **proposed** |
@@ -150,6 +150,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0106](0106-presale-partners.md) | One partner per presale, named at creation, earns a share of Blast's raise share, paid permissionlessly after migration | **proposed; amended by 0107** |
 | [0107](0107-partner-cut-of-lp-fees.md) | A launch's or a sale's partner earns its cut of Blast's LP fees, held in the vault on collection and paid permissionlessly | **proposed** |
 | [0108](0108-standalone-coin-template.md) | A standalone coin template with creator-chosen supply, supply mode, and capability recipients; `meme_template` becomes `launch_ticket_template` | **proposed** |
+| [0109](0109-fair-launch-vaults.md) | A team that adds its own liquidity locks the position in a `PresaleVault` with zero presale IDs, for the same fee split, Blast LP fees, and holder rewards | **proposed** |
 
 ADRs 0013–0035, 0038–0056, 0058–0067, 0069, 0073, 0074, 0076–0080, 0082, and 0085–0089 are accepted subject to the amendments shown above; ADR 0088 supersedes 0036, 0068, 0081, and 0083, and ADR 0089 supersedes 0057 and 0075. ADR 0074 accepts the Aftermath dependency and raw-field normalization while retaining its live evidence gate; ADR 0037 is superseded by 0043, and ADRs 0070–0072 are superseded by 0073. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split

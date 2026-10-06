@@ -13,6 +13,8 @@
 - Amended by: [0107](0107-partner-cut-of-lp-fees.md): a partnered sale's vault holds Blast's
   LP fees until a permissionless `pay_protocol_lp_fees_with_partner` pays the partner its cut
   and Blast the rest
+- Amended by: [0109](0109-fair-launch-vaults.md): a fair launch's own position may be locked
+  in a vault with no presale, snapshotting the `FeePolicy`'s LP rates at creation
 - Amended: 2026-10-05 (presale audit): a per-sale update keeps Blast's raise or token amount when
   that rate is unchanged, so an LP-fee-only update no longer re-rounds creation's apportionment
 - Amended: 2026-10-05 (owner decision): the `AdminCap` may also change one sale's rates in its

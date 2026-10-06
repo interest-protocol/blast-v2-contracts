@@ -142,6 +142,33 @@ public fun migrate<Meme, Quote>(
     pool.share_pool_object();
 }
 
+/// Seals a fair launch's own Bluefin position in `pool`, whose first coin must be Meme, in a new
+/// shared vault splitting its LP fees by `fee_split`, after Blast's current rates. The liquidity is
+/// locked for good. Blast must allow Quote and this migrator, as for a presale.
+public fun create_fair_launch_vault<Meme, Quote>(
+    position: Position,
+    fee_split: FeeSplit,
+    creation_policy: &CreationPolicy,
+    fee_policy: &FeePolicy,
+    pool: &Pool<Meme, Quote>,
+    ctx: &mut TxContext,
+) {
+    creation_policy.assert_allowed<Quote, Witness>();
+    assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
+
+    let liquidity = position.liquidity();
+
+    vault::create_fair_launch<Meme, Quote, _, _>(
+        fee_split,
+        fee_policy,
+        &Venue(),
+        object::id(pool),
+        position,
+        liquidity,
+        ctx,
+    );
+}
+
 /// Anyone may collect LP fees, paying Blast and each fee recipient and accruing the
 /// holder-reward share.
 public fun collect_fees<Meme, Quote>(
@@ -221,7 +248,7 @@ const MAX_MEME_SYMBOL_LENGTH: u64 = 32;
 // === Errors ===
 
 #[error(code = 0)]
-const EPositionPoolMismatch: vector<u8> = b"Pool must be the vault's migration pool.";
+const EPositionPoolMismatch: vector<u8> = b"Pool must be the one holding the position.";
 
 #[error(code = 1)]
 const EInvalidTier: vector<u8> = b"Bluefin tier needs tick spacing 1..=400 and fee rate 1..=20,000.";

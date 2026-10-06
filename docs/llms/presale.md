@@ -45,7 +45,8 @@ Per-sale objects:
 - `blast_presale::blast_presale::PresaleCap`: owned by the creator (key, store). It claims the vault's migration
   residuals and can be destroyed after a cancellation. It cannot change any sale term or move
   any commitment.
-- `presale_vault::PresaleVault<Meme, Quote>`: shared, created by a Cetus or Bluefin migration. It
+- `presale_vault::PresaleVault<Meme, Quote>`: shared, created by a Cetus or Bluefin migration or
+  a fair launch (see "Fair launch: locking your own position"). It
   holds the LP position (Bluefin) or the Cetus LP-burn proof (Cetus), the migration residuals,
   the holder-reward share of collected fees, and Blast's held LP fees on partnered sales.
 - `holder_rewards::Round<Meme, Quote>`: shared, one per published holder-reward round.
@@ -294,6 +295,33 @@ The adapter creates the pool `Pool<Meme, Quote>` (Meme is always coin A) named
 `<Meme symbol>-<Quote symbol>` at the sale's tier, opens a full-range position aligned inward to
 the tick spacing, adds the LP balances, moves the position into a new shared `PresaleVault`, and
 shares the pool.
+
+#### Fair launch: locking your own position
+
+Who may call: *anyone*, with their own position. A team that adds liquidity to Cetus or Bluefin
+itself, without a presale, can lock that position for good in a `PresaleVault`, which then splits
+its LP fees exactly as a migrated sale's vault does: Blast's LP-fee share first, then the team's
+`FeeSplit` between its fee recipients and holder-reward rounds.
+
+1. Create the pool and open and fund the position with the venue's own calls; keep whatever the
+   venue did not take.
+2. `fee_split = blast_presale::blast_presale::fee_split(...)`, as for a presale.
+3. Cetus: `blast_presale::cetus::create_fair_launch_vault<Meme, Quote, CoinA, CoinB>(position,
+   fee_split, creation_policy, fee_policy, pool, burn_manager)`, where `pool` is the
+   `Pool<CoinA, CoinB>` holding the position (read) and `CoinA` and `CoinB` are Meme and Quote in
+   the pool's order. The position is burned through Cetus LP-burn for its fee-claiming proof,
+   which Cetus's `BurnManager` (mutable) issues only for positions it accepts.
+   Bluefin: `blast_presale::bluefin::create_fair_launch_vault<Meme, Quote>(position, fee_split,
+   creation_policy, fee_policy, pool)`, where `pool` is the `Pool<Meme, Quote>` holding the
+   position (read); a pool whose first coin is not Meme is not supported.
+
+The `CreationPolicy` must allow Quote and the venue's migrator witness, the same check a presale
+passes. The vault snapshots the `FeePolicy`'s current LP-fee rates. It names no presale: its
+`presale_id` and `presale_cap_id` are the zero ID, so no `PresaleCap` claims from it, and it holds
+no residuals. It names no partner. A position from another pool aborts with
+`blast_presale::cetus::EPositionPoolMismatch` or `blast_presale::bluefin::EPositionPoolMismatch`;
+a position with no liquidity aborts with `presale_vault::EZeroLiquidity`. Fees are then collected
+with the venue's `collect_fees`, and holder-reward rounds work as for any vault.
 
 #### Paying a partnered sale's Blast fees
 
@@ -591,7 +619,8 @@ Other objects:
 - `Vesting<T>`: `balance`, `beneficiary`, `start_ms`, `cliff_ms`, `period_ms`, `periods`,
   `released`.
 
-To find a sale's vault, read `presale_vault::PresaleVaultCreated` for its `presale_id`.
+To find a sale's vault, read `presale_vault::PresaleVaultCreated` for its `presale_id`; a fair
+launch's vault has the zero `presale_id`.
 
 ### Events
 
@@ -611,6 +640,7 @@ directly (no envelope).
 | Claim | `blast_presale::blast_presale::Claimed` | `tokens`, `quote_refund`, `remaining_participants`, `vesting_id`. |
 | Collect | `presale_vault::FeesCollected` | Gross, Blast's part, per-recipient amounts aligned with the vault's recipients, holder share. `protocol_destination` is `none` when held for a partner. |
 | Vault partner pay | `presale_vault::ProtocolLpFeesPaid` | Partner and Blast amounts per asset. |
+| Fair launch | `presale_vault::PresaleVaultCreated` | Zero `presale_id` and residuals; pool, position, liquidity, fee split, and Blast's rates. |
 | Residuals | `presale_vault::MigrationResidualsClaimed` | Amounts claimed. |
 | Rounds | `holder_rewards::RoundPublished`, `holder_rewards::RewardClaimed`, `holder_rewards::RoundClosed` | Budgets, unallocated holder balances, per-claim payouts, returns. |
 | Vesting | `VestingCreated`, `VestingClaimed` (from `blast_fun_vesting`) | Schedule terms and releases. |

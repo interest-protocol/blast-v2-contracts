@@ -18,6 +18,8 @@ const CLAIM_DEADLINE_MS: u64 = 1_000;
 
 public struct MEME() has drop;
 public struct QUOTE() has drop;
+public struct Venue() has drop;
+public struct Position has key, store { id: UID }
 
 // === Tests ===
 
@@ -465,6 +467,63 @@ fun another_presale_cap_cannot_claim_migration_residuals() {
 }
 
 #[test]
+/// A fair launch's vault names no presale, seals its position on its pool, and pays Blast the
+/// policy's current LP-fee rates before the creator's split.
+fun a_fair_launch_vault_takes_the_policys_lp_rates() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let policy = policy_with_lp_fees(1_000, 2_500, &mut scenario);
+    let pool_id = object::id_from_address(@0x9001);
+
+    create_fair_launch_vault(&policy, 7, &mut scenario);
+
+    scenario.next_tx(CREATOR);
+    let mut vault = scenario.take_shared<PresaleVault<MEME, QUOTE>>();
+    assert_eq!(vault.pool_id(), pool_id);
+
+    vault.credit_fees_for_testing(
+        &policy,
+        balance::create_for_testing<MEME>(100),
+        balance::create_for_testing<QUOTE>(100),
+        scenario.ctx(),
+    );
+
+    let (_, protocol_meme, protocol_quote) = only_event<FeesCollected<MEME, QUOTE>>()
+        .fees_collected_protocol_fields();
+    assert_eq!(vector[protocol_meme, protocol_quote], vector[10, 25]);
+
+    test_scenario::return_shared(vault);
+    policy.destroy_for_testing();
+    scenario.end();
+}
+
+#[test]
+#[expected_failure(abort_code = vault::EWrongPresaleCap, location = blast_presale::presale_vault)]
+/// A fair launch's vault has no creator capability, so no `PresaleCap` reaches it.
+fun no_presale_cap_reaches_a_fair_launch_vault() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let policy = fee_policy::new_for_testing(scenario.ctx());
+    create_fair_launch_vault(&policy, 7, &mut scenario);
+    scenario.next_tx(CREATOR);
+    let mut vault = scenario.take_shared<PresaleVault<MEME, QUOTE>>();
+    let cap = presale::cap_for_testing(object::id_from_address(@0x0), scenario.ctx());
+
+    let (meme, quote) = vault.claim_migration_residuals(&cap, scenario.ctx());
+    destroy(meme);
+    destroy(quote);
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = vault::EZeroLiquidity, location = blast_presale::presale_vault)]
+fun a_fair_launch_position_must_hold_liquidity() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let policy = fee_policy::new_for_testing(scenario.ctx());
+
+    create_fair_launch_vault(&policy, 0, &mut scenario);
+    abort
+}
+
+#[test]
 #[expected_failure(abort_code = rewards::EWrongRound, location = blast_presale::holder_rewards)]
 fun a_round_must_use_the_vaults_next_number() {
     let mut scenario = test_scenario::begin(CREATOR);
@@ -686,6 +745,39 @@ fun pay_held_lp_fees(
     admin_registry.destroy_for_testing(admin_cap);
 }
 
+/// Seals a `liquidity` position on pool `@0x9001` in a fair launch's vault, paying half of
+/// every fee to `CREATOR` and half to holders.
+fun create_fair_launch_vault(policy: &FeePolicy, liquidity: u128, scenario: &mut Scenario) {
+    vault::create_fair_launch<MEME, QUOTE, _, _>(
+        presale::fee_split(
+            vector[presale::recipient_share(CREATOR, bps::new(5_000))],
+            bps::new(5_000),
+        ),
+        policy,
+        &Venue(),
+        object::id_from_address(@0x9001),
+        Position { id: object::new(scenario.ctx()) },
+        liquidity,
+        scenario.ctx(),
+    );
+}
+
+/// A fee policy whose new vaults pay Blast these LP-fee rates.
+fun policy_with_lp_fees(meme_bps: u64, quote_bps: u64, scenario: &mut Scenario): FeePolicy {
+    let mut policy = fee_policy::new_for_testing(scenario.ctx());
+    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
+    policy.set_fees(
+        &admin_registry,
+        &admin_cap,
+        bps::new(0),
+        bps::new(0),
+        bps::new(meme_bps),
+        bps::new(quote_bps),
+    );
+    admin_registry.destroy_for_testing(admin_cap);
+    policy
+}
+
 /// A vault whose holder share is 40 Meme and no Quote.
 fun funded_holder_vault(scenario: &mut Scenario): PresaleVault<MEME, QUOTE> {
     let mut vault = new_vault(vector[], 10_000, scenario);
@@ -779,7 +871,7 @@ use blast_presale::{
     blast_presale as presale,
     blast_presale_admin,
     bps,
-    fee_policy::{Self, ProtocolFees},
+    fee_policy::{Self, FeePolicy, ProtocolFees},
     holder_rewards::{Self as rewards, Round},
     merkle_tree,
     presale_vault::{
