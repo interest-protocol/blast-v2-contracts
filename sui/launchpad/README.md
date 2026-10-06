@@ -22,7 +22,7 @@ Use these sources instead of a duplicated module inventory:
 - [decision index](../../docs/decisions/README.md) for accepted protocol rules;
 - [test vectors](../../docs/vectors/README.md) and
   [release gates](../../docs/testing.md) for verification;
-- [`../meme_template/`](../meme_template/) for generated-coin publication.
+- [`../launch_ticket_template/`](../launch_ticket_template/) for generated-coin publication.
 
 Move source and tests are authoritative for the current ABI, storage, events,
 errors, and behavior; `sources/lib/errors.move` is the sole error registry.

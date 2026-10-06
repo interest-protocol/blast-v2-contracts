@@ -2,7 +2,7 @@
 //! boundary, maximum launch creation with terminal share, the creator's purchase or bid before
 //! sharing, and the first and a later bid, settlement, delivery, and the first buy after it.
 //!
-//! Every Meme comes from the actual `meme_template` source with only its decimals substituted, as
+//! Every Meme comes from the actual `launch_ticket_template` source with only its decimals substituted, as
 //! the generator does, at both admitted precisions. Each launch is opened by one PTB composed from
 //! the public launchpad calls and measured by `Harness::resources` against the simulator's protocol
 //! limits. Maximum shapes give every creator share a distinct weight rising with its position and
@@ -778,7 +778,7 @@ impl World {
             "status": "measured",
             "environment": self.environment,
             "fixture": {
-                "meme": "actual meme_template with DECIMALS substituted",
+                "meme": "actual launch_ticket_template with DECIMALS substituted",
                 "decimals": decimals,
                 "protocol_allocation_bps": json!({ "meme": self.protocol[0], "quote": self.protocol[1] }),
                 "launch": shape.map(|shape| json!({
@@ -860,20 +860,20 @@ fn collect_margins(value: &Value, path: String, margins: &mut serde_json::Map<St
 
 /// Copies the actual template with only `DECIMALS` substituted, as the generator does.
 fn generate_template(work: &Path, decimals: u8) -> Result<PathBuf> {
-    let template = sui_dir().join("meme_template");
+    let template = sui_dir().join("launch_ticket_template");
     let source = std::fs::read_to_string(template.join("sources/meme.move"))?;
     let constant = "const DECIMALS: u8 = 9;";
     ensure!(source.matches(constant).count() == 1, "the template no longer declares {constant}");
-    let dir = work.join(format!("meme_template_{decimals}"));
+    let dir = work.join(format!("launch_ticket_template_{decimals}"));
     std::fs::create_dir_all(dir.join("sources"))?;
     std::fs::write(
         dir.join("sources/meme.move"),
         source.replace(constant, &format!("const DECIMALS: u8 = {decimals};")),
     )?;
     let manifest = format!(
-        "[package]\nname = \"meme_template\"\nedition = \"2024\"\n\n\
+        "[package]\nname = \"launch_ticket_template\"\nedition = \"2024\"\n\n\
          [dependencies]\nblast_fun = {{ local = \"{}\" }}\n\n\
-         [addresses]\nmeme_template = \"0x0\"\n",
+         [addresses]\nlaunch_ticket_template = \"0x0\"\n",
         sui_dir().join("launchpad").display(),
     );
     std::fs::write(dir.join("Move.toml"), manifest)?;

@@ -40,7 +40,7 @@ use_environment = "mainnet"
 manifest_digest = "D5CCB833332CD32F07926CDFF448E853BA674CB7110877E91BA125049FDB2026"
 deps = { blast_admin = "blast_admin", blast_fun_timelock = "blast_fun_timelock", std = "MoveStdlib", sui = "Sui" }
 
-[pinned.mainnet.meme_template]
+[pinned.mainnet.launch_ticket_template]
 source = { root = true }
 use_environment = "mainnet"
 manifest_digest = "CD78309C00EDF20275FAD0D0EFC40A8B35B1A60AA4E07202289540C01DF505B6"

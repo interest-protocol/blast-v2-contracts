@@ -29,7 +29,8 @@ identified only through its package marker; ADR 0085 records why.
 | `blast_presale` | administrator capabilities (ADR 0099); no one-time witness or Publisher | — | `blast_presale_admin::SuperAdminCap`, `AdminCap` |
 | `blast_boosts_products` | Publisher marker (new package) | — | `blast_boosts_products::BLAST_BOOSTS_PRODUCTS` |
 | `blast_admin` | `blast_acl` shares the singleton ACL from `init`; no one-time witness | — | — |
-| `meme_template` | generated package one-time witness | `meme::MEME` | unchanged name; the generated package's one-time witness, renamed per launch by the SDK template |
+| `launch_ticket_template` | generated package one-time witness | `meme::MEME` | unchanged name; the generated package's one-time witness, renamed per launch by the SDK template |
+| `coin_template` | generated package one-time witness (ADR 0108) | — | `my_coin::MY_COIN`; renamed per coin by the SDK template |
 
 The Publisher object shows `module_name` of the claiming module, and
 `PackageAdmin`/`PackageVersion` show `UpgradeCustody<Marker>` and
@@ -43,7 +44,8 @@ every package-administration object.
 | `blast_sui` | `blast_sui::BLAST_SUI` | unchanged | module and struct |
 | `blast_sui` | `fun_sui::FUN_SUI` | unchanged | ticker `funSUI`, the blast.fun quote coin |
 | `blast_boosts_aftermath` | `vault::Vault<Product>` | `blast_boost::BlastBoost<Product>` | module and struct; `Product` is a `blast_boosts_products` tag |
-| `meme_template` | `meme::MEME` | unchanged | module and struct; the generated package one-time witness |
+| `launch_ticket_template` | `meme::MEME` | unchanged | module and struct; the generated package one-time witness |
+| `coin_template` | — | `my_coin::MY_COIN` | module and struct; the generated package one-time witness, not a Blast type |
 
 ## Key objects
 
