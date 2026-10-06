@@ -3,6 +3,10 @@
 - Status: **accepted**
 - Date: 2026-09-04
 - Active-contract amendment: 2026-09-06 (pre-publication source contract)
+- Amended: 2026-10-05: the text now matches the Boosts source. No seed funder
+  is recorded ([0087](0087-vault-issuance-activated-in-one-transaction.md)
+  removed it), and with zero eligible supply at finalization the recovered
+  cash becomes admin cash.
 - Supersedes the package-boundary, versioning, issuance, and adapter-handoff
   portions of [0064](0064-aftermath-backed-leverage-coins.md),
   [0070](0070-series-one-versioning-and-role-administration.md),
@@ -39,7 +43,8 @@ Each product has one immutable public maintenance band, target, and hard
 threshold. There is no privileged inner band. Fee and admin-allocation ceilings
 are immutable; authorized future settings remain within those ceilings. The
 adapter retains native TreasuryCap supply, separate native admin collateral,
-and the immutable locked-share amount and nonzero seed funder. Core State does
+and the immutable locked-share amount; no seed funder is recorded (amended
+2026-10-05). Core State does
 not duplicate these native balances.
 
 Only State construction accepts an `AdminWitness`. After construction, the
@@ -157,8 +162,8 @@ The adapter retains terminal holder cash in a private typed native `Balance`,
 separate from admin cash. Finalization removes the reserve book entry and seals
 Settled once. Native TreasuryCap supply minus immutable locked seed determines
 eligible supply; no parallel mutable claim ledger exists. If eligibility is
-zero at finalization, all recovered holder cash transfers once to the nonzero
-seed funder recorded at activation. Otherwise claims burn native shares and pay
+zero at finalization, all recovered holder cash becomes admin cash (amended
+2026-10-05). Otherwise claims burn native shares and pay
 the floor-rounded fraction of remaining local cash without fees or venue/oracle
 access; the last eligible claimant receives dust. Retirement neither freezes
 coin transfers nor controls external Quote markets.
