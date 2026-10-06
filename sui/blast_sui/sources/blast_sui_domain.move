@@ -3,7 +3,7 @@
 
 /// Blast SUI's administration roles in the shared Blast ACL.
 ///
-/// A role is a type. The ACL's `AdminCap<Role>` signs in to `AdminWitness<Role>`,
+/// A role is a type. An `AdminCap` holding `Role` signs in to `AdminWitness<Role>`,
 /// and a function's witness parameter names the one role it accepts, so a role
 /// from any other package is a different type and cannot reach these operations.
 module blast_sui::blast_sui_domain;

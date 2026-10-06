@@ -3,7 +3,7 @@
 
 /// blast.fun's administration roles in the shared Blast ACL, shared with the migrators.
 ///
-/// A role is a type. The ACL's `AdminCap<Role>` signs in to `AdminWitness<Role>`, and a
+/// A role is a type. An `AdminCap` holding `Role` signs in to `AdminWitness<Role>`, and a
 /// function's witness parameter names the one role it accepts, so no role authorizes another's
 /// actions and a role from any other package cannot reach these operations.
 module blast_fun::blast_fun_domain;

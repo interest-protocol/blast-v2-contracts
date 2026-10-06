@@ -3,8 +3,9 @@
 Sui Move contracts for Blast V2. Each directory containing a `Move.toml` is an
 independently built package; the `sui/` directory itself is only a workspace.
 
-Start with [AGENTS.md](AGENTS.md) for task routing. Load deeper documentation
-only when the task requires it:
+Agents start with [llms.txt](llms.txt), the map of every package and where each
+question is answered; changes to the contracts follow [AGENTS.md](AGENTS.md).
+Load deeper documentation only when the task requires it:
 
 - [architecture](docs/architecture.md)
 - [product scope](docs/protocol-scope.md)

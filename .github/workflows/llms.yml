@@ -1,0 +1,29 @@
+name: llms
+
+on:
+  push:
+    branches: [main]
+    paths: ['sui/**', 'docs/llms/**', 'deployments/**', 'scripts/gen_llms.py', 'llms-full.txt', '.github/workflows/llms.yml']
+  pull_request:
+    paths: ['sui/**', 'docs/llms/**', 'deployments/**', 'scripts/gen_llms.py', 'llms-full.txt', '.github/workflows/llms.yml']
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SUI_RELEASE: mainnet-v1.77.2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Deployment status compares each package with the commit it was published from.
+          fetch-depth: 0
+      - name: Install pinned Sui CLI
+        run: |
+          curl -fsSL -o sui.tgz \
+            "https://github.com/MystenLabs/sui/releases/download/${SUI_RELEASE}/sui-${SUI_RELEASE}-ubuntu-x86_64.tgz"
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf sui.tgz -C "$HOME/.local/bin" ./sui
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Check llms-full.txt is current
+        run: python3 scripts/gen_llms.py --check

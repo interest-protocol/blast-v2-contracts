@@ -127,7 +127,7 @@ public struct FunYieldSwept has copy, drop {
     custody: VaultCustody,
 }
 
-/// Emitted after the super-admin changes the blastSUI redemption fee.
+/// Emitted after the `FeeAdmin` changes the blastSUI redemption fee.
 public struct RedeemFeeChanged has copy, drop {
     old_redeem_fee_bps: u64,
     new_redeem_fee_bps: u64,

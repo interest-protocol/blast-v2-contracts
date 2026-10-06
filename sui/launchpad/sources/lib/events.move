@@ -23,7 +23,7 @@ public struct LaunchTradeFeesChanged has copy, drop {
     meme_fee_bps: u64,
 }
 
-/// A Quote's virtual reserve for future launches; zero means disallowed.
+/// A Quote type was admitted to (`allowed`) or removed from new launches.
 public struct QuoteSet has copy, drop {
     quote: TypeName,
     allowed: bool,
