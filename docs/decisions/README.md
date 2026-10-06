@@ -96,7 +96,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0048](0048-sui-package-workspace.md) | Sui package workspace | **accepted** |
 | [0049](0049-audit-hardened-package-version-and-launch-intake.md) | Audit-hardened package cutover and launch intake | **accepted** |
 | [0050](0050-module-local-package-version-constant.md) | Module-local package-version constant | **accepted; amended in place 2026-10-02: the constant lives in the marker module** |
-| [0051](0051-generated-meme-package-template.md) | Generated Meme package template | **accepted; publish-time immutability amended by 0088** |
+| [0051](0051-generated-meme-package-template.md) | Generated Meme package template | **accepted; publish-time immutability amended by 0088; package renamed by 0108** |
 | [0053](0053-single-validator-funsui-and-blastsui.md) | Single-validator `funSUI` and `blastSUI` | **accepted; authority and receipt `DisplayCap` custody amended by 0060, 0061, and 0097** |
 | [0054](0054-v3-dex-migrators-and-locked-lp-fees.md) | V3 DEX migrators, exact seed pricing, and locked LP fees | **accepted; new-lineage admission and fee custody amended by 0088** |
 | [0056](0056-bounded-pending-stake-vector.md) | Bounded pending-stake vector in custody ledgers | **accepted** |
@@ -149,6 +149,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0105](0105-permissionless-launch-fee-claims.md) | Permissionless launch fee claims paying the partner and a `RuntimeConfig` treasury the `TreasuryAdmin` rotates | **proposed** |
 | [0106](0106-presale-partners.md) | One partner per presale, named at creation, earns a share of Blast's raise share, paid permissionlessly after migration | **proposed; amended by 0107** |
 | [0107](0107-partner-cut-of-lp-fees.md) | A launch's or a sale's partner earns its cut of Blast's LP fees, held in the vault on collection and paid permissionlessly | **proposed** |
+| [0108](0108-standalone-coin-template.md) | A standalone coin template with creator-chosen supply, supply mode, and capability recipients; `meme_template` becomes `launch_ticket_template` | **proposed** |
 
 ADRs 0013–0035, 0038–0056, 0058–0067, 0069, 0073, 0074, 0076–0080, 0082, and 0085–0089 are accepted subject to the amendments shown above; ADR 0088 supersedes 0036, 0068, 0081, and 0083, and ADR 0089 supersedes 0057 and 0075. ADR 0074 accepts the Aftermath dependency and raw-field normalization while retaining its live evidence gate; ADR 0037 is superseded by 0043, and ADRs 0070–0072 are superseded by 0073. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split

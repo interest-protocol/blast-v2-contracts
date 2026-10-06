@@ -1,7 +1,9 @@
-# Generated Meme package template
+# Launch ticket template
 
 This compiler-input package creates one Blast `LaunchTicket` when it is
-published. Its one-time witness names the coin type, so each generated
+published. It is the only way to create a coin that can launch on Blast; a
+coin that will not launch comes from the standalone
+[coin template](../coin_template/README.md) instead. Its one-time witness names the coin type, so each generated
 package's currency is its own `<package>::<module>::<WITNESS>` and the Coin
 Registry proves at creation that no other instance of it can exist. The SDK
 does not fork this source for each launch. It patches the compiled module: it
@@ -28,7 +30,8 @@ it checks the symbol against its 32-byte bound (so choose a symbol of at most
 against the current ceiling, then fixes the supply as fixed or burn-only.
 
 The publication boundary is defined by
-[ADR 0051](../../docs/decisions/0051-generated-meme-package-template.md), the
+[ADR 0051](../../docs/decisions/0051-generated-meme-package-template.md) (this
+package's name by [ADR 0108](../../docs/decisions/0108-standalone-coin-template.md)), the
 adapter-started launch by
 [ADR 0089](../../docs/decisions/0089-migrators-own-post-migration-and-start-launches.md),
 and the coin lifecycle by the related accepted ADRs in the

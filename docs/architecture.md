@@ -214,6 +214,12 @@ The ticket records its decimals and sell-burn policy; launch intake recomputes
 the canonical supply. Terminal migration reads the authoritative supply mode
 from Coin Registry.
 
+A coin that will not launch comes from the separate `coin_template` package,
+which has no Blast dependency: its initializer delivers the creator-chosen
+supply, `TreasuryCap` or supply mode, and `MetadataCap` straight to the
+creator's recipients, and it can never produce a `LaunchTicket`
+([ADR 0108](decisions/0108-standalone-coin-template.md)).
+
 ## Lifecycle
 
 The common lifecycle is intentionally small:

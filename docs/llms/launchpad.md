@@ -132,7 +132,7 @@ creates.
 
 #### Flow 1: publish the generated coin package (anyone; the publisher receives the ticket)
 
-The coin is a one-module package built from the `meme_template` template. Its only code is an
+The coin is a one-module package built from the `launch_ticket_template` template. Its only code is an
 initializer that runs at publish: it builds the creator recipient and calls `launch_ticket::new`
 with the package's one-time witness, then transfers the ticket to the publisher. It exposes no
 public functions. Patch these constants in the compiled template:

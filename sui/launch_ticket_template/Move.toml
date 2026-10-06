@@ -1,0 +1,11 @@
+[package]
+name = "launch_ticket_template"
+edition = "2024"
+license = "BUSL-1.1"
+authors = ["Jose Cerqueira (jose@interestprotocol.com)"]
+
+[dependencies]
+blast_fun = { local = "../launchpad" }
+
+[addresses]
+launch_ticket_template = "0x0"

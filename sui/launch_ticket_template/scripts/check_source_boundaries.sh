@@ -42,4 +42,4 @@ if rg -n '\b(TreasuryCap|MetadataCap|mint|make_supply_[a-z_]*|finalize)\b' "$sou
   exit 1
 fi
 
-echo 'meme_template source boundaries: OK'
+echo 'launch_ticket_template source boundaries: OK'

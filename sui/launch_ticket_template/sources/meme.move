@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
 /// Generated Meme package whose one-time witness creates its Blast launch ticket at publication.
-module meme_template::meme;
+module launch_ticket_template::meme;
 
 // === Constants ===
 
