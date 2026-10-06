@@ -7,7 +7,7 @@ chain implementation. An unexplained numeric difference is a release blocker.
 
 | File | Covers | Owning decision |
 | --- | --- | --- |
-| [`curve.json`](curve.json) | buy, sell, threshold crossing, both burn moments, boundaries, round trip | [`../decisions/0004-bonding-curve.md`](../decisions/0004-bonding-curve.md), [`../decisions/0003-treasury-cap-lifetime-and-burn.md`](../decisions/0003-treasury-cap-lifetime-and-burn.md) |
+| [`curve.json`](curve.json) | buy, sell, capped threshold crossing, both burn moments, boundaries, round trip | [`../decisions/0004-bonding-curve.md`](../decisions/0004-bonding-curve.md), [`../decisions/0003-treasury-cap-lifetime-and-burn.md`](../decisions/0003-treasury-cap-lifetime-and-burn.md), [`../decisions/0039-deterministic-quote-valuations.md`](../decisions/0039-deterministic-quote-valuations.md) |
 | [`dex-fees.json`](dex-fees.json) | integrated volume fees, full-width bounds, exponential decay and cadence | [`../decisions/0076-native-v2-and-auto-lp.md`](../decisions/0076-native-v2-and-auto-lp.md) |
 | [`fees.json`](fees.json) | configurable protocol/creator shares, rounding, update sequences, maximum width | [`../decisions/0022-dual-asset-fee-ledger-and-claims.md`](../decisions/0022-dual-asset-fee-ledger-and-claims.md) |
 | [`quote-decimals.json`](quote-decimals.json) | decimal combinations, both pair orientations, `sqrt_price_x64`, display price | [`../decisions/0005-quote-asset-generalisation.md`](../decisions/0005-quote-asset-generalisation.md), [`../decisions/0010-migration-and-venue-adapters.md`](../decisions/0010-migration-and-venue-adapters.md) |
@@ -22,8 +22,9 @@ chain implementation. An unexplained numeric difference is a release blocker.
    arithmetic — floor division, ceiling division, integer square root — and is a valid test oracle. Any
    field whose name ends `_decimal_*` or is flagged
    `display_price_is_a_derived_presentation_value` is a **rounded presentation value** and must never be
-   used as an oracle; the accompanying `*_exact_rational` field is authoritative. The display price in
-   `quote-decimals.json` is a non-terminating rational, so no finite decimal represents it exactly.
+   used as an oracle; the accompanying `*_exact_rational` field is authoritative. The display price the
+   nine-decimal-meme cases in `quote-decimals.json` share is a non-terminating rational, so no finite
+   decimal represents it exactly.
 3. **Every division names its direction.** Each case records the rounding direction applied and, where
    value moves, who receives the remainder.
 4. **Parameter status follows its owning ADR.** The fee-rate ceiling and global split bounds in
@@ -79,6 +80,12 @@ sqrt_price_x64 = isqrt( (numerator_atomic << 128) / denominator_atomic )
 ```
 
 where the numerator is the asset that is coin B and the denominator the asset that is coin A.
+
+Regenerate `curve.json` and `quote-decimals.json` together with `python3 docs/vectors/generate_curve.py`
+from the repository root. Its buys apply the graduation cap first: a buy whose post-fee Quote would pass
+`T` is charged `ceil((T - Q) * 10_000 / (10_000 - quote_fee_bps))` and refunds the rest
+([`../decisions/0039-deterministic-quote-valuations.md`](../decisions/0039-deterministic-quote-valuations.md)).
+The migration prices start from the terminal state that the capped crossing buy reaches.
 
 Regenerate the native DEX cases with `python3 docs/vectors/generate_dex_fees.py`
 from the repository root. The generator checks every fractional half-life

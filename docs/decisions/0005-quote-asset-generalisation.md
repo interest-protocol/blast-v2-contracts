@@ -122,7 +122,7 @@ display_price_quote_per_meme = (quote_atomic / 10^quote_decimals) / (meme_atomic
 
 [`../vectors/quote-decimals.json`](../vectors/quote-decimals.json) demonstrates the point: across four
 decimal combinations the raw ratio differs by three orders of magnitude in each direction while the
-display price is identical at `0.000015453604` quote per meme. That is why both decimals are captured in
+display price is identical at `0.000014850000` quote per meme. That is why both decimals are captured in
 the snapshot and emitted — an indexer never has to fetch them separately or guess.
 
 ### Venue support is a property of the adapter, not of core

@@ -163,8 +163,9 @@ use checked `u64` arithmetic. Helpers are named by rounding direction.
 
 **Every value above is proposed, not accepted.** They exist so the vectors are concrete and reviewable.
 
-At these parameters the terminal state is `M_T = 196_608_503_317_768_494` meme atomic and
-`Q_T = 3_069_000_000_000` quote atomic for the vectored buy sequence.
+At these parameters the terminal state is `M_T = 200_000_000_000_000_001` meme atomic and
+`Q_T = 3_000_000_000_000` quote atomic for the vectored buy sequence: its final buy is capped at `T`
+and refunds the excess Quote ([ADR 0039](0039-deterministic-quote-valuations.md)).
 
 ## Alternatives considered
 
