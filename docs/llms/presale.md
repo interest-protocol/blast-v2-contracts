@@ -11,7 +11,7 @@ new full-range Cetus or Bluefin pool; the same transaction pays Blast (or, on a 
 partner, holds Blast's fees for a later pay call), the raise recipients, and the token recipients.
 Buyers then claim their tokens and overflow refund. A sale that misses its raise, or that someone
 cancels once its liquidity deadline passes unmigrated, refunds every commitment in full. After a
-Cetus or Bluefin migration a `presale_vault::PresaleVault` holds the LP position (for Cetus, its
+Cetus or Bluefin migration a `presale_vault::Vault` holds the LP position (for Cetus, its
 LP-burn proof) and splits its trading fees between Blast, the creator's fee recipients, and
 holder-reward rounds.
 
@@ -29,8 +29,8 @@ Shared singletons, created once at deployment (`PackageAdmin` by
 - `fee_policy::FeePolicy`: Blast's current rates (`raise_bps`, `token_bps`, `lp_fee_meme_bps`,
   `lp_fee_quote_bps`, held in a `fee_policy::ProtocolFees`) that new sales snapshot, and the
   `destination` address every Blast payout goes to.
-- `creation_policy::CreationPolicy`: the allowlists checked once, when a sale is created: Quote
-  types, migrator witnesses, and Blast partners a sale may name.
+- `creation_policy::CreationPolicy`: the allowlists checked once, when a sale, or a vault without
+  a presale, is created: Quote types, migrator witnesses, and Blast partners a sale may name.
 - `blast_presale_admin::AdminRegistry`: records the one `blast_presale_admin::AdminCap` the package
   accepts.
 - `blast_presale::venue_config::VenueConfig`: holds each Cetus sale's reserved pool-creation
@@ -45,7 +45,8 @@ Per-sale objects:
 - `blast_presale::blast_presale::PresaleCap`: owned by the creator (key, store). It claims the vault's migration
   residuals and can be destroyed after a cancellation. It cannot change any sale term or move
   any commitment.
-- `presale_vault::PresaleVault<Meme, Quote>`: shared, created by a Cetus or Bluefin migration. It
+- `presale_vault::Vault<Meme, Quote>`: shared, created by a Cetus or Bluefin migration or
+  directly from its owner's position (see "Locking your own position without a presale"). It
   holds the LP position (Bluefin) or the Cetus LP-burn proof (Cetus), the migration residuals,
   the holder-reward share of collected fees, and Blast's held LP fees on partnered sales.
 - `holder_rewards::Round<Meme, Quote>`: shared, one per published holder-reward round.
@@ -272,7 +273,7 @@ Migration calls `blast_presale::blast_presale::migrate`, which pays Blast (or ho
 sale), pays or vests each raise recipient, pays or vests each token recipient, and returns the
 LP's tokens and Quote. The adapter creates the pool with the reserved `PoolCreationCap` at the
 sale's tick spacing, seeds a full-range position at the price the LP balances imply, burns the
-position through Cetus LP-burn for its fee-claiming proof, and shares a new `PresaleVault` holding
+position through Cetus LP-burn for its fee-claiming proof, and shares a new `Vault` holding
 that proof and whatever the pool did not take. Nothing returns to the caller. Any venue failure
 rolls the whole transition back.
 
@@ -292,8 +293,38 @@ Who may call: *anyone*, while `Funded`, until someone cancels.
 
 The adapter creates the pool `Pool<Meme, Quote>` (Meme is always coin A) named
 `<Meme symbol>-<Quote symbol>` at the sale's tier, opens a full-range position aligned inward to
-the tick spacing, adds the LP balances, moves the position into a new shared `PresaleVault`, and
+the tick spacing, adds the LP balances, moves the position into a new shared `Vault`, and
 shares the pool.
+
+#### Locking your own position without a presale
+
+Who may call: *anyone*, with their own position. A team that adds liquidity to Cetus or Bluefin
+itself, without a presale, can lock that position for good in a `Vault`, which then splits
+its LP fees exactly as a migrated sale's vault does: Blast's LP-fee share first, then the team's
+`FeeSplit` between its fee recipients and holder-reward rounds.
+
+1. Create the pool and open and fund the position with the venue's own calls; keep whatever the
+   venue did not take.
+2. `fee_split = blast_presale::blast_presale::fee_split(...)`, as for a presale.
+3. Cetus: `blast_presale::cetus::new_vault<Meme, Quote, CoinA, CoinB>(position,
+   fee_split, partner_id, creation_policy, fee_policy, pool, burn_manager, clock)`, where `pool` is the
+   `Pool<CoinA, CoinB>` holding the position (read) and `CoinA` and `CoinB` are Meme and Quote in
+   the pool's order. The position is burned through Cetus LP-burn for its fee-claiming proof,
+   which Cetus's `BurnManager` (mutable) issues only for positions it accepts.
+   Bluefin: `blast_presale::bluefin::new_vault<Meme, Quote>(position, fee_split, partner_id,
+   creation_policy, fee_policy, pool, clock)`, where `pool` is the `Pool<Meme, Quote>` holding the
+   position (read); a pool whose first coin is not Meme is not supported.
+
+The `CreationPolicy` must allow Quote and the venue's migrator witness, the same check a presale
+passes. The vault snapshots the `FeePolicy`'s current LP-fee rates. It names no presale: its
+`presale_id` and `presale_cap_id` are the zero ID, so no `PresaleCap` claims from it, and it holds
+no residuals. `partner_id` (an `Option<ID>`) optionally names a Blast partner, which the
+`CreationPolicy` must accept now (`creation_policy::EPartnerNotAccepted` otherwise) and the vault
+keeps for good; Blast's LP fees are then held for `presale_vault::pay_protocol_lp_fees_with_partner`,
+as on a partnered sale's vault, and the partner earns only its cut of them. A position from another pool aborts with
+`blast_presale::cetus::EPositionPoolMismatch` or `blast_presale::bluefin::EPositionPoolMismatch`;
+a position with no liquidity aborts with `presale_vault::EZeroLiquidity`. Fees are then collected
+with the venue's `collect_fees`, and holder-reward rounds work as for any vault.
 
 #### Paying a partnered sale's Blast fees
 
@@ -581,7 +612,7 @@ Other objects:
   `creation_policy::PartnerKey` (the partner's ID) whose `u64` value is the time the partner stops
   being accepted (the maximum u64 while accepted).
 - `AdminRegistry`: `admin_cap_id`.
-- `PresaleVault`: `presale_id`, `presale_cap_id`, `pool_id`, `fee_split`, `protocol_fees`
+- `Vault`: `presale_id`, `presale_cap_id`, `pool_id`, `fee_split`, `protocol_fees`
   (current LP rates), `partner_id`, `unpaid_protocol_meme`, `unpaid_protocol_quote`,
   `migration_meme_residual`, `migration_quote_residual`, `holder_rewards_meme`,
   `holder_rewards_quote` (unallocated holder share), `next_round`, `last_checkpoint`. The position
@@ -591,7 +622,8 @@ Other objects:
 - `Vesting<T>`: `balance`, `beneficiary`, `start_ms`, `cliff_ms`, `period_ms`, `periods`,
   `released`.
 
-To find a sale's vault, read `presale_vault::PresaleVaultCreated` for its `presale_id`.
+To find a sale's vault, read `presale_vault::VaultCreated` for its `presale_id`; a vault
+created without a presale has the zero `presale_id`.
 
 ### Events
 
@@ -606,11 +638,12 @@ directly (no envelope).
 | Per-sale rates | `blast_presale::blast_presale::ProtocolFeesChanged` | New rates, Blast amounts, and new buyer `token_allocation`. |
 | Commit | `blast_presale::blast_presale::Committed` | `quote` accepted, `wallet_commitment` (new total), `total_commitments`, `participants`. It has no wallet field: the wallet is the transaction sender. |
 | Settle | `blast_presale::blast_presale::PresaleFunded` / `blast_presale::blast_presale::PresaleCancelled` | Funded: `accepted_quote`, `refundable_quote`, `token_allocation`. Cancelled: total refundable. |
-| Migrate | `blast_presale::blast_presale::ProtocolFeesPaid` (unpartnered), `blast_presale::blast_presale::RaiseAllocated` (per raise recipient), `blast_presale::blast_presale::RecipientAllocated` (per token recipient), `blast_presale::blast_presale::PresaleMigrated`, then `presale_vault::PresaleVaultCreated` | Payouts with `vesting_id`; LP amounts; vault, pool, and position IDs. The vault event's third type argument is `blast_presale::cetus::Venue` or `blast_presale::bluefin::Venue`. |
+| Migrate | `blast_presale::blast_presale::ProtocolFeesPaid` (unpartnered), `blast_presale::blast_presale::RaiseAllocated` (per raise recipient), `blast_presale::blast_presale::RecipientAllocated` (per token recipient), `blast_presale::blast_presale::PresaleMigrated`, then `presale_vault::VaultCreated` | Payouts with `vesting_id`; LP amounts; vault, pool, and position IDs. The vault event's third type argument is `blast_presale::cetus::Venue` or `blast_presale::bluefin::Venue`. |
 | Partner pay | `blast_partners::blast_partners::PartnerPaid`, `blast_presale::blast_presale::ProtocolFeesPaid` | `partner_quote` is the partner's cut. |
 | Claim | `blast_presale::blast_presale::Claimed` | `tokens`, `quote_refund`, `remaining_participants`, `vesting_id`. |
 | Collect | `presale_vault::FeesCollected` | Gross, Blast's part, per-recipient amounts aligned with the vault's recipients, holder share. `protocol_destination` is `none` when held for a partner. |
 | Vault partner pay | `presale_vault::ProtocolLpFeesPaid` | Partner and Blast amounts per asset. |
+| Vault without a presale | `presale_vault::VaultCreated` | Zero `presale_id` and residuals; pool, position, liquidity, fee split, and Blast's rates. |
 | Residuals | `presale_vault::MigrationResidualsClaimed` | Amounts claimed. |
 | Rounds | `holder_rewards::RoundPublished`, `holder_rewards::RewardClaimed`, `holder_rewards::RoundClosed` | Budgets, unallocated holder balances, per-claim payouts, returns. |
 | Vesting | `VestingCreated`, `VestingClaimed` (from `blast_fun_vesting`) | Schedule terms and releases. |
@@ -707,7 +740,7 @@ token recipients exactly as for Cetus and Bluefin, then returns the LP's `(Balan
 Balance<Quote>)`, which the migrator must put into its venue in the same call. Blast must first
 allow the witness with `creation_policy::set_migration_witness_allowed`; delisting it later never
 blocks existing sales. Only the package's own Cetus and Bluefin adapters create a
-`PresaleVault`, so a vendor sale has no vault: no Blast LP fees, no holder-reward rounds, and no
+`Vault`, so a vendor sale has no vault: no Blast LP fees, no holder-reward rounds, and no
 residual claims. Every other sale rule (eligibility, claims, refunds, LP deadline, the seed-price
 check) applies unchanged.
 

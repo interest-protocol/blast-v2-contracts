@@ -142,10 +142,43 @@ public fun migrate<Meme, Quote>(
     pool.share_pool_object();
 }
 
+/// Seals the caller's own Bluefin position in `pool`, whose first coin must be Meme, in a new
+/// shared vault splitting its LP fees by `fee_split`, after Blast's current rates. The liquidity is
+/// locked for good. Blast must allow Quote and this migrator, as for a presale,
+/// and accept the partner, if one is named.
+public fun new_vault<Meme, Quote>(
+    position: Position,
+    fee_split: FeeSplit,
+    partner_id: Option<ID>,
+    creation_policy: &CreationPolicy,
+    fee_policy: &FeePolicy,
+    pool: &Pool<Meme, Quote>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    creation_policy.assert_allowed<Quote, Witness>();
+    assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
+
+    let liquidity = position.liquidity();
+
+    vault::create_without_presale<Meme, Quote, _, _>(
+        fee_split,
+        partner_id,
+        creation_policy,
+        fee_policy,
+        clock,
+        &Venue(),
+        object::id(pool),
+        position,
+        liquidity,
+        ctx,
+    );
+}
+
 /// Anyone may collect LP fees, paying Blast and each fee recipient and accruing the
 /// holder-reward share.
 public fun collect_fees<Meme, Quote>(
-    vault: &mut PresaleVault<Meme, Quote>,
+    vault: &mut Vault<Meme, Quote>,
     fee_policy: &FeePolicy,
     bluefin_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
@@ -221,7 +254,7 @@ const MAX_MEME_SYMBOL_LENGTH: u64 = 32;
 // === Errors ===
 
 #[error(code = 0)]
-const EPositionPoolMismatch: vector<u8> = b"Pool must be the vault's migration pool.";
+const EPositionPoolMismatch: vector<u8> = b"Pool must be the one holding the position.";
 
 #[error(code = 1)]
 const EInvalidTier: vector<u8> = b"Bluefin tier needs tick spacing 1..=400 and fee rate 1..=20,000.";
@@ -246,7 +279,7 @@ use blast_presale::{
     creation_policy::CreationPolicy,
     fee_policy::FeePolicy,
     migration_math,
-    presale_vault::{Self as vault, PresaleVault},
+    presale_vault::{Self as vault, Vault},
 };
 
 use bluefin_spot::{config::GlobalConfig, pool::{Self, Pool}, position::Position};

@@ -12,7 +12,7 @@
 //! aborting after pool creation commits nothing, that Cetus refuses the reversed coin order and a
 //! foreign pair, and that Bluefin charges exactly its configured creation fee. One PTB then
 //! migrates into a new full-range pool at the configured tier, pays the recipient allocations, and
-//! seals the position (the LP Burn proof on Cetus) in a shared `PresaleVault`; supplied plus
+//! seals the position (the LP Burn proof on Cetus) in a shared `Vault`; supplied plus
 //! residual reconciles exactly with the hand-off. The participant claims its tokens and overflow,
 //! real swaps accrue fees, permissionless collections pay every fee recipient and grow the vault's
 //! holder-reward share by the exact apportionment, collection against another pool of the same type
@@ -857,13 +857,13 @@ impl World {
         }
 
         // The vault holds the position as a dynamic object field and the residuals.
-        let created: Vec<VaultCreated> = self.events(&outcome, "presale_vault", "PresaleVaultCreated");
+        let created: Vec<VaultCreated> = self.events(&outcome, "presale_vault", "VaultCreated");
         ensure!(created.len() == 1 && created[0].presale_id == sale.presale);
         let created = &created[0];
         let venue_marker = outcome
             .events
             .iter()
-            .find(|event| event.type_.name.as_str() == "PresaleVaultCreated")
+            .find(|event| event.type_.name.as_str() == "VaultCreated")
             .and_then(|event| event.type_.type_params.get(2).cloned())
             .context("vault venue marker")?;
         ensure!(venue_marker == self.presale_tag(self.route.module(), "Venue"), "venue marker {venue_marker}");
@@ -1505,7 +1505,7 @@ struct ProtocolFees {
     _lp_fee_quote_bps: u64,
 }
 
-/// Mirrors `blast_presale::presale_vault::PresaleVault`.
+/// Mirrors `blast_presale::presale_vault::Vault`.
 #[derive(Debug, Deserialize)]
 struct VaultState {
     _id: ObjectID,

@@ -94,7 +94,7 @@ each depending inward on Blast packages.
 - Blast can admit a partner's migrator without republishing the presale package;
   a compromised presale `AdminCap` can now admit a hostile migrator for new sales,
   as it could already admit an unvetted Quote type, but cannot touch a live sale.
-- Vendor sales skip `PresaleVault`, so Blast's LP-fee rates and holder rewards do
+- Vendor sales skip `presale_vault::Vault`, so Blast's LP-fee rates and holder rewards do
   not apply to them; Blast's raise and token shares still do.
 - The treasury sets every vendor pool's DAO fee, from 0% to 100%, and its
   recipient. The vendor package is immutable, so nobody can change how a sale

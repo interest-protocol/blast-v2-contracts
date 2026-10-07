@@ -13,6 +13,8 @@
 - Amended by: [0107](0107-partner-cut-of-lp-fees.md): a partnered sale's vault holds Blast's
   LP fees until a permissionless `pay_protocol_lp_fees_with_partner` pays the partner its cut
   and Blast the rest
+- Amended by: [0109](0109-vaults-without-a-presale.md): an owner's own position may be locked
+  in a vault with no presale, snapshotting the `FeePolicy`'s LP rates at creation
 - Amended: 2026-10-05 (presale audit): a per-sale update keeps Blast's raise or token amount when
   that rate is unchanged, so an LP-fee-only update no longer re-rounds creation's apportionment
 - Amended: 2026-10-05 (owner decision): the `AdminCap` may also change one sale's rates in its
@@ -67,7 +69,7 @@ and still seed a poolable price (`EUnseedablePrice`). The LP's tokens, and every
 recipient's amount, are unchanged. Once the window starts the rates are fixed
 (`EPresaleStarted`) until migration copies them into the vault.
 
-**Per-vault LP rates.** Migration copies the sale's rates into its `PresaleVault`. The presale
+**Per-vault LP rates.** Migration copies the sale's rates into its `Vault`. The presale
 `AdminCap` may then change that vault's two LP-fee rates, within the same `<= 10,000` bound, with
 `presale_vault::set_protocol_lp_fees`, which rejects a no-op update and emits
 `ProtocolLpFeesChanged`. The new rates apply to every later collection, including fees that
@@ -96,7 +98,7 @@ ADR 0099. Every Cetus and Bluefin migration and collection entry takes `&FeePoli
 has no constructor outside the package initializer, so a caller cannot substitute another.
 
 **Events.** `PresaleCreated` records the snapshotted rates and Blast's Quote and token amounts.
-`ProtocolFeesPaid` records the destination and both amounts migration paid. `PresaleVaultCreated`
+`ProtocolFeesPaid` records the destination and both amounts migration paid. `VaultCreated`
 records both LP rates, and `FeesCollected` records the destination and both amounts paid.
 
 ## Alternatives considered

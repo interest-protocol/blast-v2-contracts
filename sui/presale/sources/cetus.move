@@ -147,10 +147,45 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
     burn_into_vault(sale, burn_manager, position, residual_meme, residual_quote, ctx);
 }
 
+/// Burns the caller's own Cetus position in `pool` for its fee-claiming proof and seals the proof
+/// in a new shared vault splitting its LP fees by `fee_split`, after Blast's current rates. The
+/// liquidity is locked for good. Blast must allow Quote and this migrator, as for a presale,
+/// and accept the partner, if one is named.
+public fun new_vault<Meme, Quote, CoinA, CoinB>(
+    position: Position,
+    fee_split: FeeSplit,
+    partner_id: Option<ID>,
+    creation_policy: &CreationPolicy,
+    fee_policy: &FeePolicy,
+    pool: &Pool<CoinA, CoinB>,
+    burn_manager: &mut BurnManager,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    creation_policy.assert_allowed<Quote, Witness>();
+    meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
+    assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
+
+    let liquidity = position.liquidity();
+
+    vault::create_without_presale<Meme, Quote, _, _>(
+        fee_split,
+        partner_id,
+        creation_policy,
+        fee_policy,
+        clock,
+        &Venue(),
+        object::id(pool),
+        lp_burn::burn_lp_v2(burn_manager, position, ctx),
+        liquidity,
+        ctx,
+    );
+}
+
 /// Anyone may collect LP fees from a migrated presale's Cetus position, paying Blast and each fee
 /// recipient and accruing the holder-reward share. `CoinA` and `CoinB` are the pool's coin order.
 public fun collect_fees<Meme, Quote, CoinA, CoinB>(
-    vault: &mut PresaleVault<Meme, Quote>,
+    vault: &mut Vault<Meme, Quote>,
     fee_policy: &FeePolicy,
     cetus_config: &GlobalConfig,
     burn_manager: &BurnManager,
@@ -287,7 +322,7 @@ public fun cast_for_testing<From: store, To: store>(scratch: &mut UID, value: Fr
 const EInvalidCoinOrder: vector<u8> = b"CoinA and CoinB must follow the Cetus coin order.";
 
 #[error(code = 1)]
-const EPositionPoolMismatch: vector<u8> = b"Pool must be the vault's migration pool.";
+const EPositionPoolMismatch: vector<u8> = b"Pool must be the one holding the position.";
 
 #[error(code = 2)]
 const EWrongCoinPair: vector<u8> = b"CoinA and CoinB must be exactly the presale's Meme and Quote.";
@@ -309,7 +344,7 @@ use blast_presale::{
     creation_policy::CreationPolicy,
     fee_policy::FeePolicy,
     migration_math,
-    presale_vault::{Self as vault, PresaleVault},
+    presale_vault::{Self as vault, Vault},
     venue_config::VenueConfig,
 };
 

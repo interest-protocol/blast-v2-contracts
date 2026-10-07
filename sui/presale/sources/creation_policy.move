@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// Blast's allowlists for new presales: the Quote coins a sale may raise, the migrators, in this
-/// package or another, that may create one, and the Blast partners a sale may name.
+/// Blast's allowlists for new presales and new vaults without a presale: the Quote coins a sale may
+/// raise or a vault may hold, the migrators, in this package or another, that may create a sale or,
+/// for this package's venues, such a vault, and the Blast partners a sale may name.
 ///
-/// A presale is checked once, when it is created. Later changes apply only to later sales, so a
+/// A presale or vault is checked once, when it is created. Later changes apply only to later sales, so a
 /// delisting never strands a live sale's commitments, blocks its migration, or stops paying its
 /// partner.
 module blast_presale::creation_policy;
@@ -30,7 +31,8 @@ fun init(ctx: &mut TxContext) {
 
 // === Public Functions ===
 
-/// Allows or disallows `Quote` for presales created afterward; existing sales keep it.
+/// Allows or disallows `Quote` for presales and vaults without a presale created afterward;
+/// existing ones keep it.
 public fun set_quote_allowed<Quote>(
     self: &mut CreationPolicy,
     admin_registry: &AdminRegistry,
@@ -46,8 +48,8 @@ public fun set_quote_allowed<Quote>(
     event::emit(QuoteSet { quote, allowed });
 }
 
-/// Allows or disallows the migrator identified by `MigrationWitness` to create presales
-/// afterward; existing sales still migrate through it.
+/// Allows or disallows the migrator identified by `MigrationWitness` to create presales, and its
+/// venue vaults without a presale, afterward; existing sales still migrate through it.
 ///
 /// `presale::new` and `presale::migrate` are public, so whoever can construct an allowed witness
 /// can open sales and release their liquidity. Allow only a struct whose defining module is the
@@ -120,7 +122,8 @@ public fun remove_partner(
 
 // === Package Functions ===
 
-/// Aborts unless a new presale may raise `Quote` and be created by `MigrationWitness`'s migrator.
+/// Aborts unless a new presale, or a new vault without a presale, may use `Quote` and be created
+/// by `MigrationWitness`'s migrator.
 public(package) fun assert_allowed<Quote, MigrationWitness>(self: &CreationPolicy) {
     assert!(
         self.allowed_quotes.contains(&type_name::with_original_ids<Quote>()),

@@ -24,12 +24,12 @@ Publication sends the package's only `AdminCap` to the publisher, and
 transaction, so no one can change how a funded sale migrates. The `AdminCap`'s one power is creating sales: `new` takes it, sends
 the treasury the sale's `PresaleCap`, and names the treasury as the sale's only
 LP-fee recipient, which is where its fees go. The `PresaleCap` can only destroy
-itself after a cancellation, since these sales have no `PresaleVault` residuals
+itself after a cancellation, since these sales have no `presale_vault::Vault` residuals
 to claim.
 
 Every migration sends the treasury that pool's DAO-fee `OwnerCap`. With it the
 treasury can change its pool's DAO fee, anywhere Aftermath allows from 0% to
-100%, or the fee recipient, directly through Aftermath. No `PresaleVault` exists
+100%, or the fee recipient, directly through Aftermath. No `presale_vault::Vault` exists
 for these pools, so Blast's LP-fee rates and holder-reward rounds do not apply;
 Blast still takes its raise and token shares when `blast_presale::migrate` runs.
 The `AdminCap` holder may name a Blast partner on the sale `new` returns, with

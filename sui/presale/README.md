@@ -82,7 +82,7 @@ atomically pays Blast its raise and token fees, or holds them for
 `pay_protocol_fees_with_partner` when the sale names a partner, takes the rest of
 the raise and
 the LP allocation, creates the configured
-full-range pool, and seals the position or burn proof in a `PresaleVault`; a DEX
+full-range pool, and seals the position or burn proof in a `Vault`; a DEX
 failure rolls back the presale transition. Configured recipients receive their
 distinct allocations in that same transaction. Claims open only after success.
 

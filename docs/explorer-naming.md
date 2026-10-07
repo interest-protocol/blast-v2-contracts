@@ -80,7 +80,7 @@ every package-administration object.
 | `blast_partners` | `blast_partners::PartnerCap` | new (ADR 0095); wallet-held, one per company | module |
 | `blast_presale` | `blast_presale::Presale<SaleToken, Quote>` | new (ADR 0099) | module |
 | `blast_presale` | `blast_presale::PresaleCap` | new (ADR 0099); wallet-held, one per presale | module |
-| `blast_presale` | `presale_vault::PresaleVault<Meme, Quote>` | new (ADR 0099); shared, one per migrated presale | module |
+| `blast_presale` | `presale_vault::Vault<Meme, Quote>` | new (ADR 0099); shared, one per migrated presale | module |
 | `blast_presale` | `holder_rewards::Round<Meme, Quote>` | new (ADR 0099); shared, one per reward root | module |
 | `blast_presale` | `blast_presale_admin::SuperAdminCap` | new (ADR 0099); wallet-held, one per package | module |
 | `blast_presale` | `blast_presale_admin::AdminCap` | new (ADR 0099); wallet-held, one accepted at a time | module |
@@ -122,7 +122,7 @@ Payload struct names inside the envelopes (`Bought`, `Migrated`,
 | `blast_fun_migrators` | `cetus::CreationCapKey<Meme>` | unchanged | dynamic-object-field key under `VenueConfig` for the Meme type's Cetus `PoolCreationCap`; the cap keeps its own object ID |
 | `blast_fun_migrators` | `cetus::CastKey` | new (ADR 0100) | transient dynamic-field key on a UID created and deleted within one Cetus route call; retypes a coin or balance between Meme/Quote and pool coin order |
 | `blast_fun_migrators` | `cetus::ReservationKey<Meme, Quote>` | unchanged | dynamic-field key under `VenueConfig` naming one reserved Meme/Quote pair; the value is its reserved tick spacing |
-| `blast_presale` | `cetus::Venue`, `bluefin::Venue` | new (ADR 0099) | sealed position keys under `PresaleVault` |
+| `blast_presale` | `cetus::Venue`, `bluefin::Venue` | new (ADR 0099) | sealed position keys under `Vault` |
 | `blast_presale` | `cetus::Witness`, `bluefin::Witness` | new (ADR 0099) | sealed migration identities fixed before commitments open |
 | `blast_aftermath_dao_presale` | `blast_aftermath_dao_presale::Witness` | new (ADR 0104) | sealed external migration identity a presale fixes at creation |
 | `blast_presale` | `creation_policy::PartnerKey` | new (ADR 0106) | dynamic-field key under `CreationPolicy`, one per Blast partner new presales may name; the value is the time it stops being accepted |
