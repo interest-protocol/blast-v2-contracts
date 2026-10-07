@@ -33,7 +33,13 @@ seals the position itself. Either way no path removes it.
   which the `AdminCap` may change per vault as for any vault. The
   `CreationPolicy` must allow `Quote` and the venue's migrator witness, the same
   check a presale passes, so Blast's Quote allowlist and venue switches cover
-  these vaults too. No partner: `partner_id` is none.
+  these vaults too.
+- **Optional partner.** The caller may name a partner by ID; it must be one the
+  `CreationPolicy` accepts at creation, the same check `set_partner` makes for
+  a presale, and the vault keeps it for good. As on a partnered sale's vault
+  (ADR 0107), Blast's LP fees are then held until
+  `pay_protocol_lp_fees_with_partner` pays the partner its cut. There is no
+  raise fee, so the LP-fee cut is all the partner earns.
 - **Permissionless.** Anyone may lock their own position. Holder-reward rounds
   still need the `AdminCap`, so Blast decides which vaults get rounds.
 

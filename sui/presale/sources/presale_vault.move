@@ -154,25 +154,30 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
     );
 }
 
-/// Creates and shares a vault for a position its owner provides directly, with no presale, so its presale and
-/// creator-capability IDs are zero, no `PresaleCap` matches it, and it holds no residuals. Its
-/// position is sealed for good, its LP-fee split is immutable, and Blast's rates are the
-/// `FeePolicy`'s now.
+/// Creates and shares a vault for a position its owner provides directly, with no presale, so its
+/// presale and creator-capability IDs are zero, no `PresaleCap` matches it, and it holds no
+/// residuals. Its position is sealed for good, its LP-fee split and partner are immutable, and
+/// Blast's rates are the `FeePolicy`'s now. A partner must be one the `CreationPolicy` accepts now.
 public(package) fun create_without_presale<Meme, Quote, Venue, Position: key + store>(
     fee_split: FeeSplit,
+    partner_id: Option<ID>,
+    creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
+    clock: &Clock,
     venue: &Venue,
     pool_id: ID,
     position: Position,
     liquidity: u128,
     ctx: &mut TxContext,
 ) {
+    partner_id.do_ref!(|id| creation_policy.assert_partner(*id, clock.timestamp_ms()));
+
     share_new<Meme, Quote, _, _>(
         object::id_from_address(@0x0),
         object::id_from_address(@0x0),
         fee_split,
         fee_policy.fees(),
-        option::none(),
+        partner_id,
         venue,
         pool_id,
         position,
@@ -587,6 +592,7 @@ use blast_presale::{
     blast_presale::{Self as presale, FeeSplit, Presale, PresaleCap},
     blast_presale_admin::{AdminCap, AdminRegistry},
     bps::Bps,
+    creation_policy::CreationPolicy,
     fee_policy::{FeePolicy, ProtocolFees},
 };
 

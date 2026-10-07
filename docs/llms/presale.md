@@ -307,18 +307,21 @@ its LP fees exactly as a migrated sale's vault does: Blast's LP-fee share first,
    venue did not take.
 2. `fee_split = blast_presale::blast_presale::fee_split(...)`, as for a presale.
 3. Cetus: `blast_presale::cetus::new_vault<Meme, Quote, CoinA, CoinB>(position,
-   fee_split, creation_policy, fee_policy, pool, burn_manager)`, where `pool` is the
+   fee_split, partner_id, creation_policy, fee_policy, pool, burn_manager, clock)`, where `pool` is the
    `Pool<CoinA, CoinB>` holding the position (read) and `CoinA` and `CoinB` are Meme and Quote in
    the pool's order. The position is burned through Cetus LP-burn for its fee-claiming proof,
    which Cetus's `BurnManager` (mutable) issues only for positions it accepts.
-   Bluefin: `blast_presale::bluefin::new_vault<Meme, Quote>(position, fee_split,
-   creation_policy, fee_policy, pool)`, where `pool` is the `Pool<Meme, Quote>` holding the
+   Bluefin: `blast_presale::bluefin::new_vault<Meme, Quote>(position, fee_split, partner_id,
+   creation_policy, fee_policy, pool, clock)`, where `pool` is the `Pool<Meme, Quote>` holding the
    position (read); a pool whose first coin is not Meme is not supported.
 
 The `CreationPolicy` must allow Quote and the venue's migrator witness, the same check a presale
 passes. The vault snapshots the `FeePolicy`'s current LP-fee rates. It names no presale: its
 `presale_id` and `presale_cap_id` are the zero ID, so no `PresaleCap` claims from it, and it holds
-no residuals. It names no partner. A position from another pool aborts with
+no residuals. `partner_id` (an `Option<ID>`) optionally names a Blast partner, which the
+`CreationPolicy` must accept now (`creation_policy::EPartnerNotAccepted` otherwise) and the vault
+keeps for good; Blast's LP fees are then held for `presale_vault::pay_protocol_lp_fees_with_partner`,
+as on a partnered sale's vault, and the partner earns only its cut of them. A position from another pool aborts with
 `blast_presale::cetus::EPositionPoolMismatch` or `blast_presale::bluefin::EPositionPoolMismatch`;
 a position with no liquidity aborts with `presale_vault::EZeroLiquidity`. Fees are then collected
 with the venue's `collect_fees`, and holder-reward rounds work as for any vault.

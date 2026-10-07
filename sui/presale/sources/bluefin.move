@@ -144,13 +144,16 @@ public fun migrate<Meme, Quote>(
 
 /// Seals the caller's own Bluefin position in `pool`, whose first coin must be Meme, in a new
 /// shared vault splitting its LP fees by `fee_split`, after Blast's current rates. The liquidity is
-/// locked for good. Blast must allow Quote and this migrator, as for a presale.
+/// locked for good. Blast must allow Quote and this migrator, as for a presale,
+/// and accept the partner, if one is named.
 public fun new_vault<Meme, Quote>(
     position: Position,
     fee_split: FeeSplit,
+    partner_id: Option<ID>,
     creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
     pool: &Pool<Meme, Quote>,
+    clock: &Clock,
     ctx: &mut TxContext,
 ) {
     creation_policy.assert_allowed<Quote, Witness>();
@@ -160,7 +163,10 @@ public fun new_vault<Meme, Quote>(
 
     vault::create_without_presale<Meme, Quote, _, _>(
         fee_split,
+        partner_id,
+        creation_policy,
         fee_policy,
+        clock,
         &Venue(),
         object::id(pool),
         position,

@@ -149,14 +149,17 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
 
 /// Burns the caller's own Cetus position in `pool` for its fee-claiming proof and seals the proof
 /// in a new shared vault splitting its LP fees by `fee_split`, after Blast's current rates. The
-/// liquidity is locked for good. Blast must allow Quote and this migrator, as for a presale.
+/// liquidity is locked for good. Blast must allow Quote and this migrator, as for a presale,
+/// and accept the partner, if one is named.
 public fun new_vault<Meme, Quote, CoinA, CoinB>(
     position: Position,
     fee_split: FeeSplit,
+    partner_id: Option<ID>,
     creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
     pool: &Pool<CoinA, CoinB>,
     burn_manager: &mut BurnManager,
+    clock: &Clock,
     ctx: &mut TxContext,
 ) {
     creation_policy.assert_allowed<Quote, Witness>();
@@ -167,7 +170,10 @@ public fun new_vault<Meme, Quote, CoinA, CoinB>(
 
     vault::create_without_presale<Meme, Quote, _, _>(
         fee_split,
+        partner_id,
+        creation_policy,
         fee_policy,
+        clock,
         &Venue(),
         object::id(pool),
         lp_burn::burn_lp_v2(burn_manager, position, ctx),
