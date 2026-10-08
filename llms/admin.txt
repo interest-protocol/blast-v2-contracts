@@ -183,7 +183,7 @@ own `AdminCap` and `SuperAdminCap`, covered in the presale guide.
 | Object | Kind | Held by | Authorizes |
 | --- | --- | --- | --- |
 | `blast_acl::ACL` | shared singleton, created once in `init` | nobody | stores the root cap ID, every live `AdminCap` ID with its roles, and the pending root transfer |
-| `blast_acl::SuperAdminCap` | owned, `key` only (cannot be transferred or wrapped by anyone) | Blast's cold root | grant and revoke admins and roles; start and cancel a root transfer |
+| `blast_acl::SuperAdminCap` | owned, `key` only (cannot be transferred or wrapped by anyone) | Blast's cold root: `init` delivers it to the `blast_acl_root` address in `Move.toml`, not the publisher | grant and revoke admins and roles; start and cancel a root transfer |
 | `blast_acl::AdminCap` | owned, `key, store` (transferable, wrappable) | a Blast operator | nothing by itself; `blast_acl::sign_in` turns it into a role witness |
 | `blast_acl::AdminWitness<Role>` | transaction-local value, `drop` only | the PTB that signed in | the one role `Role` in every consumer call that takes `&AdminWitness<Role>` |
 | `operational_version::OperationalVersion<M>` | `store` value inside a consumer's shared version object | the consumer package | the generation check behind every protected call |
@@ -420,7 +420,7 @@ Codes are plain `u64` values raised in the `blast_admin` module named.
 | 4 | `EAdminRoleCapacityReached` | `blast_acl` | the cap already holds 32 roles |
 | 5 | `EAdminRoleAlreadyGranted` | `blast_acl` | the cap already holds the role |
 | 6 | `EAdminRoleNotGranted` | `blast_acl` | `sign_in` or `revoke_role` for a role the cap does not hold; grant it first or use the right role type |
-| 7 | `EInvalidSuperAdminRecipient` | `blast_acl` | nominee is `0x0` or the sender |
+| 7 | `EInvalidSuperAdminRecipient` | `blast_acl` | nominee is `0x0` or the sender; or publish with `blast_acl_root` left at `0x0` |
 | 8 | `ESuperAdminTransferUnchanged` | `blast_acl` | that address is already the nominee |
 | 9 | `ENoPendingSuperAdminTransfer` | `blast_acl` | cancel with nothing pending |
 | 10 | `ENotPendingSuperAdminRecipient` | `blast_acl` | accept from an address that is not the nominee |

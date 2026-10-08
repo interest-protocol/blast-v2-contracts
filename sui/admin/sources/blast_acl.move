@@ -46,11 +46,15 @@ public struct AdminWitness<phantom Role>() has drop;
 
 // === Private Initialization ===
 
+/// Delivers the root to `blast_acl_root` from `Move.toml`, not the publisher; an unset
+/// (`0x0`) recipient aborts the publish rather than burn the root.
 fun init(ctx: &mut TxContext) {
+    assert!(@blast_acl_root != @0x0, blast_admin::errors::invalid_super_admin_recipient!());
+
     let (root, acl) = new(ctx);
 
     transfer::share_object(acl);
-    transfer::transfer(root, ctx.sender());
+    transfer::transfer(root, @blast_acl_root);
 }
 
 // === Public Functions ===
