@@ -196,9 +196,9 @@ Say a sale raises 100,000 USDC, Blast's raise fee is 2%, and the partner's cut i
 Blast keeps 1,200. Buyers, the creator, the raise recipients and the
 pool receive exactly what they would without a partner.
 
-- **Integrators** that create sales call `blast_presale::set_partner` on the new
-  sale, passing the presale `CreationPolicy`, the `Partner` object and the
-  `Clock`, after `new` and before `share`. Every migrator supports it, a
+- **Integrators** that create sales call `blast_presale::set_partner` on the
+  sale's `PresaleInitializer`, passing the presale `CreationPolicy`, the
+  `Partner` object and the `Clock`, after `new` and before `finalize`. Every migrator supports it, a
   partner's own vendor package included. Commitments, claims and migration are
   the same on every sale.
 - **Partners** are paid after the sale migrates. A partnered sale's migration

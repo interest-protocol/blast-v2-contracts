@@ -11,18 +11,20 @@ module blast_aftermath_dao_presale::blast_aftermath_dao_presale;
 
 // === Public Types ===
 
-/// Sealed migrator identity a sale fixes when `new` creates it. Only this module constructs it, so
+/// Sealed migrator identity a sale fixes when `new` starts it. Only this module constructs it, so
 /// only `migrate` can release that sale's liquidity.
 public struct Witness() has drop;
 
 /// The package's only administrator, sent to the publisher at publication. Its one power is
-/// creating sales through `new`.
+/// creating sales through `new` and `finalize`.
 public struct AdminCap has key, store {
     id: UID,
 }
 
 /// Shared reservation of one sale's Aftermath pool creation: the `CreatePoolCapV2` of the fresh LP
-/// coin `Lp`, which only `migrate` of the sale `presale_id` can consume.
+/// coin `Lp`, which only `migrate` of the sale `presale_id` can consume. A sale `new` started but
+/// finalized directly in `blast_presale` has none, so it can never migrate and refunds after its
+/// LP deadline.
 public struct PoolCreation<phantom Lp> has key {
     id: UID,
     presale_id: ID,
@@ -37,58 +39,40 @@ fun init(ctx: &mut TxContext) {
 
 // === Public Functions ===
 
-/// Creates a presale that migrates through this module, sends its `PresaleCap` to the treasury, and
-/// shares a `PoolCreation` binding `create_pool_cap`, minted by the fresh LP coin `Lp`, to it.
-/// Every LP fee its pool pays reaches the treasury, so the sale's LP-fee split names the treasury
-/// as its only recipient; Aftermath pools have no CLMM tier, so the tick spacing and fee rate are
-/// zero. The `CreationPolicy` must allow `Witness`.
-public fun new<Lp, SaleToken, Quote>(
+/// Starts a presale that migrates through this module. Aftermath pools have no CLMM tier, so the
+/// tick spacing and fee rate are zero. The sale is set like any other, then finalized only through
+/// this module's `finalize`, which reserves its pool creation. The `CreationPolicy` must allow
+/// `Witness`.
+public fun new<SaleToken, Quote>(
     _: &AdminCap,
     treasury_cap: TreasuryCap<SaleToken>,
-    currency: &mut Currency<SaleToken>,
-    token_supply: u64,
-    token_allocation_bps: Bps,
-    participant_vesting: Option<VestingTerms>,
-    liquidity_token_allocation_bps: Bps,
-    recipient_allocations: vector<RecipientShare>,
-    burnable: bool,
-    raise_target: u64,
-    raise_allocations: vector<RecipientShare>,
-    duration_ms: u64,
-    liquidity_window_ms: u64,
-    eligibility: EligibilityPolicy,
-    uncapped: Option<UncappedPhase>,
-    create_pool_cap: CreatePoolCapV2,
     creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
+): PresaleInitializer<SaleToken, Quote> {
+    presale::new(treasury_cap, Witness(), creation_policy, fee_policy, 0, 0)
+}
+
+/// Finalizes a sale `new` started, sends its `PresaleCap` to the treasury, and shares a
+/// `PoolCreation` binding `create_pool_cap`, minted by the fresh LP coin `Lp`, to it. Every LP fee
+/// its pool pays reaches the treasury, so this sets the sale's LP-fee split to name the treasury as
+/// its only recipient. The initializer must be one `new` started: another migrator's sale could
+/// never consume the pool creation.
+public fun finalize<Lp, SaleToken, Quote>(
+    _: &AdminCap,
+    mut initializer: PresaleInitializer<SaleToken, Quote>,
+    currency: &mut Currency<SaleToken>,
+    create_pool_cap: CreatePoolCapV2,
     ctx: &mut TxContext,
 ): Presale<SaleToken, Quote> {
-    let (sale, cap) = presale::new(
-        treasury_cap,
-        currency,
-        token_supply,
-        token_allocation_bps,
-        participant_vesting,
-        liquidity_token_allocation_bps,
-        recipient_allocations,
-        burnable,
-        raise_target,
-        raise_allocations,
-        duration_ms,
-        liquidity_window_ms,
-        eligibility,
-        uncapped,
-        Witness(),
-        0,
-        0,
+    assert!(initializer.migration_witness() == type_name::with_original_ids<Witness>(), EWrongMigrator);
+
+    initializer.set_fee_split(
         presale::fee_split(
             vector[presale::recipient_share(TREASURY, bps::new(ALL_BPS))],
             bps::new(0),
         ),
-        creation_policy,
-        fee_policy,
-        ctx,
     );
+    let (sale, cap) = initializer.finalize(currency, ctx);
 
     let pool_creation = PoolCreation<Lp> {
         id: object::new(ctx),
@@ -108,7 +92,7 @@ public fun new<Lp, SaleToken, Quote>(
 }
 
 // `dao_fee_pool::new` creates the shared pool in this transaction.
-/// Anyone may migrate a funded sale `new` created, consuming the `PoolCreation` bound to it: it
+/// Anyone may migrate a funded sale `finalize` created, consuming the `PoolCreation` bound to it: it
 /// seeds a 50/50 Aftermath pool with all of the sale's LP tokens and Quote, wraps it in a DAO-fee
 /// pool paying the treasury, shares that pool, sends its owner cap to the treasury, and locks the
 /// LP at `BURN_ADDRESS`.
@@ -248,7 +232,7 @@ public fun pool_creation_reserved_fields<Lp, SaleToken, Quote>(
 
 // === Events ===
 
-/// `new` reserved the sale `presale_id`'s Aftermath pool creation for the LP coin `Lp` in the
+/// `finalize` reserved the sale `presale_id`'s Aftermath pool creation for the LP coin `Lp` in the
 /// shared `pool_creation_id`, which its migration consumes.
 public struct PoolCreationReserved<phantom Lp, phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
@@ -306,21 +290,16 @@ const EDaoFeePoolMismatch: vector<u8> = b"The DAO-fee pool must charge this pack
 #[error(code = 2)]
 const EWrongPresale: vector<u8> = b"The pool creation is bound to a different presale.";
 
+#[error(code = 3)]
+const EWrongMigrator: vector<u8> = b"Only a sale this package's `new` started can be finalized here.";
+
 // === Imports ===
 
 use amm::{pool::{CreatePoolCapV2, Pool}, pool_factory, pool_registry::PoolRegistry};
 
 use blast_presale::{
-    blast_presale::{
-        Self as presale,
-        EligibilityPolicy,
-        Presale,
-        PresaleCap,
-        RecipientShare,
-        UncappedPhase,
-        VestingTerms,
-    },
-    bps::{Self, Bps},
+    blast_presale::{Self as presale, Presale, PresaleInitializer},
+    bps,
     creation_policy::CreationPolicy,
     fee_policy::FeePolicy,
 };

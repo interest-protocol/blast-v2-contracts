@@ -5,7 +5,7 @@ its own directory here, is published on its own, and depends inward
 on the Blast packages it extends; no core package imports a vendor package.
 
 A vendor package that creates `blast_presale` sales does so through the public
-`blast_presale::new` and `migrate` with its own sealed witness, which the presale
+`blast_presale::new`, `finalize`, and `migrate` with its own sealed witness, which the presale
 `AdminCap` must allow in the shared `CreationPolicy` before the package can open a
 sale ([ADR 0104](../../docs/decisions/0104-external-presale-migrators-and-vendor-packages.md)).
 

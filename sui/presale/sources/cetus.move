@@ -20,23 +20,10 @@ public struct CastKey() has copy, drop, store;
 
 // === Public Functions ===
 
-/// Creates a presale configured for Cetus and reserves pool creation before Meme leaves custody.
+/// Starts a presale that migrates to Cetus at `tick_spacing`, and reserves the pair's pool
+/// creation before the supply is minted.
 public fun new<Meme, Quote>(
     mut treasury_cap: TreasuryCap<Meme>,
-    currency: &mut Currency<Meme>,
-    token_supply: u64,
-    token_allocation_bps: Bps,
-    participant_vesting: Option<VestingTerms>,
-    liquidity_token_allocation_bps: Bps,
-    recipient_allocations: vector<RecipientShare>,
-    burnable: bool,
-    raise_target: u64,
-    raise_allocations: vector<RecipientShare>,
-    duration_ms: u64,
-    liquidity_window_ms: u64,
-    eligibility: EligibilityPolicy,
-    uncapped: Option<UncappedPhase>,
-    fee_split: FeeSplit,
     creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
     venue_config: &mut VenueConfig,
@@ -44,10 +31,7 @@ public fun new<Meme, Quote>(
     pools: &mut Pools,
     tick_spacing: u32,
     ctx: &mut TxContext,
-): (Presale<Meme, Quote>, PresaleCap) {
-    let pool_fee_rate = config::get_fee_rate(tick_spacing, cetus_config);
-
-    // Reserve the pair's Cetus pool creation before the Meme supply leaves the creator.
+): PresaleInitializer<Meme, Quote> {
     let creation_cap = factory::mint_pool_creation_cap(cetus_config, pools, &mut treasury_cap, ctx);
     factory::register_permission_pair<Meme, Quote>(
         cetus_config,
@@ -60,26 +44,11 @@ public fun new<Meme, Quote>(
 
     presale::new(
         treasury_cap,
-        currency,
-        token_supply,
-        token_allocation_bps,
-        participant_vesting,
-        liquidity_token_allocation_bps,
-        recipient_allocations,
-        burnable,
-        raise_target,
-        raise_allocations,
-        duration_ms,
-        liquidity_window_ms,
-        eligibility,
-        uncapped,
         Witness(),
-        tick_spacing,
-        pool_fee_rate,
-        fee_split,
         creation_policy,
         fee_policy,
-        ctx,
+        tick_spacing,
+        config::get_fee_rate(tick_spacing, cetus_config),
     )
 }
 
@@ -330,17 +299,7 @@ const EWrongCoinPair: vector<u8> = b"CoinA and CoinB must be exactly the presale
 // === Imports ===
 
 use blast_presale::{
-    blast_presale::{
-        Self as presale,
-        EligibilityPolicy,
-        FeeSplit,
-        Presale,
-        PresaleCap,
-        RecipientShare,
-        UncappedPhase,
-        VestingTerms,
-    },
-    bps::Bps,
+    blast_presale::{Self as presale, FeeSplit, Presale, PresaleInitializer},
     creation_policy::CreationPolicy,
     fee_policy::FeePolicy,
     migration_math,
@@ -363,13 +322,7 @@ use lp_burn::lp_burn::{Self, BurnManager, CetusLPBurnProof};
 
 use std::type_name;
 
-use sui::{
-    balance::Balance,
-    clock::Clock,
-    coin::{Coin, TreasuryCap},
-    coin_registry::Currency,
-    dynamic_field,
-};
+use sui::{balance::Balance, clock::Clock, coin::{Coin, TreasuryCap}, dynamic_field};
 
 use fun cast as UID.cast;
 use fun cast_pair as UID.cast_pair;

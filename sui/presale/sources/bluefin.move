@@ -14,29 +14,15 @@ public struct Venue() has drop;
 
 // === Public Functions ===
 
-/// Creates a presale irrevocably configured to migrate to Bluefin at this tier.
+/// Starts a presale irrevocably configured to migrate to Bluefin at this tier.
 public fun new<Meme, Quote>(
     treasury_cap: TreasuryCap<Meme>,
-    currency: &mut Currency<Meme>,
-    token_supply: u64,
-    token_allocation_bps: Bps,
-    participant_vesting: Option<VestingTerms>,
-    liquidity_token_allocation_bps: Bps,
-    recipient_allocations: vector<RecipientShare>,
-    burnable: bool,
-    raise_target: u64,
-    raise_allocations: vector<RecipientShare>,
-    duration_ms: u64,
-    liquidity_window_ms: u64,
-    eligibility: EligibilityPolicy,
-    uncapped: Option<UncappedPhase>,
-    fee_split: FeeSplit,
+    currency: &Currency<Meme>,
     creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
     tick_spacing: u32,
     pool_fee_rate: u64,
-    ctx: &mut TxContext,
-): (Presale<Meme, Quote>, PresaleCap) {
+): PresaleInitializer<Meme, Quote> {
     assert!(
         tick_spacing > 0
             && tick_spacing <= MAX_TICK_SPACING
@@ -46,29 +32,7 @@ public fun new<Meme, Quote>(
     );
     assert!(currency.symbol().length() <= MAX_MEME_SYMBOL_LENGTH, ESymbolTooLong);
 
-    presale::new(
-        treasury_cap,
-        currency,
-        token_supply,
-        token_allocation_bps,
-        participant_vesting,
-        liquidity_token_allocation_bps,
-        recipient_allocations,
-        burnable,
-        raise_target,
-        raise_allocations,
-        duration_ms,
-        liquidity_window_ms,
-        eligibility,
-        uncapped,
-        Witness(),
-        tick_spacing,
-        pool_fee_rate,
-        fee_split,
-        creation_policy,
-        fee_policy,
-        ctx,
-    )
+    presale::new(treasury_cap, Witness(), creation_policy, fee_policy, tick_spacing, pool_fee_rate)
 }
 
 /// Anyone may atomically migrate a funded presale into its configured Bluefin pool.
@@ -265,17 +229,7 @@ const ESymbolTooLong: vector<u8> = b"The Meme symbol must be at most 32 bytes fo
 // === Imports ===
 
 use blast_presale::{
-    blast_presale::{
-        Self as presale,
-        EligibilityPolicy,
-        FeeSplit,
-        Presale,
-        PresaleCap,
-        RecipientShare,
-        UncappedPhase,
-        VestingTerms,
-    },
-    bps::Bps,
+    blast_presale::{Self as presale, FeeSplit, Presale, PresaleInitializer},
     creation_policy::CreationPolicy,
     fee_policy::FeePolicy,
     migration_math,
