@@ -93,8 +93,8 @@ fun new_binds_a_shared_pool_creation_to_its_sale() {
 }
 
 #[test]
-/// The AdminCap holder may name a Blast partner on the sale `new` returns, before sharing it.
-fun a_vendor_sale_can_name_a_partner_before_its_share() {
+/// The AdminCap holder may name a Blast partner on the sale `new` starts, before finalizing it.
+fun a_vendor_sale_can_name_a_partner_before_it_is_finalized() {
     let mut scenario = publish();
     let partner = partners::new_for_testing(PARTNER_RECIPIENT, 4_000, scenario.ctx());
     let mut creation_policy = allowing<Witness>(scenario.ctx());
@@ -103,12 +103,15 @@ fun a_vendor_sale_can_name_a_partner_before_its_share() {
     admin_registry.destroy_for_testing(presale_admin_cap);
     let clock = clock::create_for_testing(scenario.ctx());
 
-    let (mut sale, _) = new_sale(&mut scenario, &creation_policy);
-    sale.set_partner(&creation_policy, &partner, &clock);
+    let admin_cap = scenario.take_from_sender<AdminCap>();
+    let (mut initializer, currency) = start_sale(&mut scenario, &admin_cap, &creation_policy);
+    initializer.set_partner(&creation_policy, &partner, &clock);
+    let (sale, _) = finalize_sale(&mut scenario, &admin_cap, initializer, currency);
     sale.share(0, &clock);
 
     let opened = last_event<PresaleOpened<BLAST_AFTERMATH_DAO_PRESALE_TESTS, QUOTE>>();
     assert_eq!(opened.opened_partner_id(), option::some(object::id(&partner)));
+    scenario.return_to_sender(admin_cap);
     destroy(partner);
     destroy(clock);
     destroy(creation_policy);
@@ -191,6 +194,30 @@ fun migrate_rejects_another_sales_pool_creation() {
 }
 
 #[test]
+/// The vendor's `finalize` pays the whole LP-fee split to the treasury, whatever split was set.
+fun finalize_overrides_any_lp_fee_split() {
+    let mut scenario = publish();
+    let creation_policy = allowing<Witness>(scenario.ctx());
+
+    let admin_cap = scenario.take_from_sender<AdminCap>();
+    let (mut initializer, currency) = start_sale(&mut scenario, &admin_cap, &creation_policy);
+    initializer.set_fee_split(
+        presale::fee_split(vector[presale::recipient_share(KEEPER, bps::new(10_000))], bps::new(0)),
+    );
+    let (sale, _) = finalize_sale(&mut scenario, &admin_cap, initializer, currency);
+
+    let (_, _, _, fee_recipients, fee_recipient_bps, _) = last_event<
+        PresaleCreated<BLAST_AFTERMATH_DAO_PRESALE_TESTS, QUOTE>,
+    >().created_migration_fields();
+    assert_eq!(fee_recipients, vector[TREASURY]);
+    assert_eq!(fee_recipient_bps, vector[10_000]);
+    scenario.return_to_sender(admin_cap);
+    destroy(sale);
+    destroy(creation_policy);
+    scenario.end();
+}
+
+#[test]
 #[expected_failure(
     abort_code = creation_policy::EMigrationWitnessNotAllowed,
     location = blast_presale::creation_policy,
@@ -253,8 +280,25 @@ fun new_sale(
     creation_policy: &CreationPolicy,
 ): (Presale<BLAST_AFTERMATH_DAO_PRESALE_TESTS, QUOTE>, ID) {
     let admin_cap = scenario.take_from_sender<AdminCap>();
+    let (initializer, currency) = start_sale(scenario, &admin_cap, creation_policy);
+    let (sale, pool_creation_id) = finalize_sale(scenario, &admin_cap, initializer, currency);
+
+    scenario.return_to_sender(admin_cap);
+    (sale, pool_creation_id)
+}
+
+/// The publisher's AdminCap starts a single-wallet sale and sets everything but its LP-fee split,
+/// returning it with the sale token's currency.
+fun start_sale(
+    scenario: &mut Scenario,
+    admin_cap: &AdminCap,
+    creation_policy: &CreationPolicy,
+): (
+    PresaleInitializer<BLAST_AFTERMATH_DAO_PRESALE_TESTS, QUOTE>,
+    Currency<BLAST_AFTERMATH_DAO_PRESALE_TESTS>,
+) {
     let fee_policy = fee_policy::new_for_testing(scenario.ctx());
-    let (initializer, treasury_cap) = coin_registry::new_currency_with_otw(
+    let (currency_initializer, treasury_cap) = coin_registry::new_currency_with_otw(
         test_utils::create_one_time_witness<BLAST_AFTERMATH_DAO_PRESALE_TESTS>(),
         9,
         b"SALE".to_string(),
@@ -263,28 +307,39 @@ fun new_sale(
         b"".to_string(),
         scenario.ctx(),
     );
-    let mut currency = coin_registry::unwrap_for_testing(initializer);
-    let create_pool_cap = amm_pool::create_pool_cap_for_testing(scenario.ctx());
 
-    let sale = migrator::new<LP, _, QUOTE>(
-        &admin_cap,
+    let mut initializer = migrator::new<_, QUOTE>(
+        admin_cap,
         treasury_cap,
-        &mut currency,
-        TOKEN_SUPPLY,
-        bps::new(5_000),
-        option::none(),
-        bps::new(5_000),
-        vector[],
-        false,
-        RAISE_TARGET,
-        vector[],
-        DURATION_MS,
-        LIQUIDITY_WINDOW_MS,
-        presale::open_eligibility(RAISE_TARGET, 1, RAISE_TARGET),
-        option::none(),
-        create_pool_cap,
         creation_policy,
         &fee_policy,
+    );
+    initializer.set_supply(TOKEN_SUPPLY, false);
+    initializer.set_token_allocations(bps::new(5_000), bps::new(5_000), vector[]);
+    initializer.set_raise(RAISE_TARGET, vector[]);
+    initializer.set_windows(DURATION_MS, LIQUIDITY_WINDOW_MS);
+    initializer.set_eligibility(presale::open_eligibility(RAISE_TARGET, 1, RAISE_TARGET));
+
+    destroy(fee_policy);
+
+    (initializer, coin_registry::unwrap_for_testing(currency_initializer))
+}
+
+/// The publisher's AdminCap finalizes `initializer` with a pool creation reserved for `LP`,
+/// returning the unshared sale and its pool-creation ID.
+fun finalize_sale(
+    scenario: &mut Scenario,
+    admin_cap: &AdminCap,
+    initializer: PresaleInitializer<BLAST_AFTERMATH_DAO_PRESALE_TESTS, QUOTE>,
+    mut currency: Currency<BLAST_AFTERMATH_DAO_PRESALE_TESTS>,
+): (Presale<BLAST_AFTERMATH_DAO_PRESALE_TESTS, QUOTE>, ID) {
+    let create_pool_cap = amm_pool::create_pool_cap_for_testing(scenario.ctx());
+
+    let sale = migrator::finalize<LP, _, _>(
+        admin_cap,
+        initializer,
+        &mut currency,
+        create_pool_cap,
         scenario.ctx(),
     );
 
@@ -293,9 +348,7 @@ fun new_sale(
     >().pool_creation_reserved_fields();
     assert_eq!(presale_id, object::id(&sale));
 
-    scenario.return_to_sender(admin_cap);
     destroy(currency);
-    destroy(fee_policy);
 
     (sale, pool_creation_id)
 }
@@ -326,6 +379,7 @@ use blast_presale::{
         Presale,
         PresaleCap,
         PresaleCreated,
+        PresaleInitializer,
         PresaleOpened,
         ProtocolFeesChanged,
     },
@@ -339,4 +393,4 @@ use dao_fee_amm::version;
 
 use std::{type_name, unit_test::{assert_eq, destroy}};
 
-use sui::{clock, coin_registry, event, sui::SUI, test_scenario::{Self, Scenario}, test_utils};
+use sui::{clock, coin_registry::{Self, Currency}, event, sui::SUI, test_scenario::{Self, Scenario}, test_utils};

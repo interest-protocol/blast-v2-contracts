@@ -1,13 +1,17 @@
 # Blast presale
 
-`blast_presale` is a standalone Sui package for overflow presales. Its
+`blast_presale` is a standalone Sui package for presales that overflow pro rata or
+fill first come up to a hard cap. Its
 `UpgradeCap` is sealed in a shared `PackageAdmin` restricted to dependency-only
 upgrades, so venue versions can be relinked but presale logic never changes.
 It does not import or mutate launchpad state. Its Bluefin and Cetus adapters,
 LP vault, and holder-reward rounds live in the same package.
 
-A creator supplies a zero-supply `TreasuryCap<SaleToken>` with its matching
-`Currency<SaleToken>` and configures token supply; presale, LP, and per-recipient
+A creator starts a sale through a venue's `new` with a zero-supply
+`TreasuryCap<SaleToken>`, sets its terms on the returned `PresaleInitializer`, and
+`finalize` checks them together and mints the supply with its matching
+`Currency<SaleToken>` ([ADR 0110](../../docs/decisions/0110-presale-initializer-and-early-close.md)).
+The terms are token supply; presale, LP, and per-recipient
 allocation BPS; fixed or burn-only supply; Quote raise; commitment and migration
 windows (the migration window is at least seven days); `EligibilityPolicy`;
 migration venue and tier; and the LP-fee split:
@@ -19,8 +23,12 @@ participant bound, and a minimum commitment whose product with the bound must
 reach the raise) or a Merkle allowlist whose leaves carry per-wallet caps.
 
 An optional uncapped phase lifts wallet caps partway through the window, either
-for eligible wallets or for anyone, and either keeps overflow pro-rata or
-hard-caps at the raise, returning any excess Quote immediately. A phase open to
+for eligible wallets or for anyone. An optional hard cap, from the start or from
+a later point in the window, holds commitments to the raise first come, first
+served, returning any excess Quote immediately; before it the sale overflows
+pro rata. A sale whose hard cap closes it when filled may be settled by anyone as
+soon as its raise is full, and its LP deadline then counts from that close;
+otherwise every sale runs its full window. A phase open to
 anyone must reach the raise at its minimum over the slots held to that minimum:
 all of them under an open policy, and only those beyond the allowlist's leaves
 under an allowlist, since allowlisted wallets may commit any positive amount.
@@ -45,8 +53,8 @@ toward the 10,000 allocation BPS, and its raise share is apportioned with the ra
 recipients'. Nothing is charged at creation, on commitment, on refund, or if a
 sale does not migrate.
 
-A sale may name one Blast partner, which the creator sets with `set_partner`
-after `new` and before `share`; it never changes afterward. The partner earns its
+A sale may name one Blast partner, which the creator sets with `set_partner` on
+the initializer before `finalize`; it never changes afterward. The partner earns its
 `blast_partners` cut of Blast's raise fee and, after migration, of Blast's LP
 fees; never of Blast's token fee. A partnered sale's migration holds Blast's
 fees, and anyone may then call `pay_protocol_fees_with_partner` once to pay the
@@ -58,8 +66,8 @@ the partner and holds Blast's LP fees at each collection, until anyone calls
 
 Blast's shared `CreationPolicy` lists the Quote types, venue migration witnesses,
 and Blast partners new presales may use; creation aborts for anything unlisted. It is checked only at
-creation, so delisting a type never affects a live sale. `blast_presale::new` and
-`migrate` are public, so a migrator in another package, such as a partner's under
+creation, so delisting a type never affects a live sale. `blast_presale::new`,
+`finalize`, and `migrate` are public, so a migrator in another package, such as a partner's under
 [`sui/vendors`](../vendors/README.md), creates and migrates sales with its own sealed
 witness once the `AdminCap` allows it; a primitive or vector, which anyone can
 construct, is never allowed
@@ -118,4 +126,6 @@ Quote type or migrator, so no presale can exist under an unsealed cap.
 
 The accepted design is [ADR 0099](../../docs/decisions/0099-standalone-overflow-presale.md);
 Blast's fees are proposed in [ADR 0101](../../docs/decisions/0101-presale-protocol-fees.md)
-and its presale partners in [ADR 0106](../../docs/decisions/0106-presale-partners.md).
+and its presale partners in [ADR 0106](../../docs/decisions/0106-presale-partners.md);
+creation through the initializer, the sale-level hard cap, and early close are proposed in
+[ADR 0110](../../docs/decisions/0110-presale-initializer-and-early-close.md).

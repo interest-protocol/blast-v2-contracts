@@ -78,7 +78,7 @@ public struct Fixture {
     presale_id: ID,
 }
 
-/// The creator-chosen terms `presale::new` takes, named so a test can change one field of
+/// The creator-chosen terms the initializer's setters take, named so a test can change one field of
 /// `valid_sale_terms` and show exactly which input a creation guard rejects.
 public struct SaleTerms has drop {
     token_supply: u64,
@@ -93,8 +93,15 @@ public struct SaleTerms has drop {
     liquidity_window_ms: u64,
     eligibility: EligibilityPolicy,
     uncapped: Option<UncappedPhase>,
+    hard_cap: Option<HardCapTerms>,
     fee_recipients: vector<RecipientShare>,
     holder_rewards_bps: u64,
+}
+
+/// The arguments of `set_hard_cap`.
+public struct HardCapTerms has copy, drop {
+    starts_after_ms: u64,
+    closes_when_filled: bool,
 }
 
 // === Tests ===
@@ -118,6 +125,7 @@ fun oversubscription_uses_one_fill_rate_and_refunds_the_rest() {
         vector[commitments, accepted, refundable, tokens],
         vector[4_000, 1_000, 3_000, TOKEN_ALLOCATION],
     );
+    assert_eq!(fixture.funded_deadlines(), vector[END_MS, LIQUIDITY_DEADLINE_MS]);
     assert!(fixture.is_funded());
 
     assert_eq!(fixture.migrate(), vector[LIQUIDITY_TOKENS, RAISE_TARGET]);
@@ -368,7 +376,7 @@ fun the_minimum_commitment_cannot_exceed_the_wallet_cap() {
 fun wallet_caps_hold_until_the_uncapped_phase_starts() {
     let mut fixture = start_with_uncapped_phase(
         presale::open_eligibility(500, 4, RAISE_TARGET / 4),
-        presale::uncapped_for_eligible(UNCAPPED_AFTER_MS, false),
+        presale::uncapped_for_eligible(UNCAPPED_AFTER_MS),
     );
     fixture.set_time(UNCAPPED_FROM_MS - 1);
 
@@ -382,7 +390,7 @@ fun wallet_caps_hold_until_the_uncapped_phase_starts() {
 fun an_uncapped_phase_without_a_hard_cap_lifts_caps_and_overflows() {
     let mut fixture = start_with_uncapped_phase(
         presale::open_eligibility(500, 4, RAISE_TARGET / 4),
-        presale::uncapped_for_eligible(UNCAPPED_AFTER_MS, false),
+        presale::uncapped_for_eligible(UNCAPPED_AFTER_MS),
     );
     fixture.commit_open(ALICE, 500);
     fixture.set_time(UNCAPPED_FROM_MS);
@@ -397,11 +405,12 @@ fun an_uncapped_phase_without_a_hard_cap_lifts_caps_and_overflows() {
 }
 
 #[test]
-/// A hard-capped uncapped phase takes only what is left of the raise and returns the rest.
+/// A hard cap from the uncapped phase takes only what is left of the raise and returns the rest.
 fun a_hard_capped_uncapped_phase_fills_the_raise_and_returns_the_excess() {
-    let mut fixture = start_with_uncapped_phase(
+    let mut fixture = start_with_hard_cap(
         presale::open_eligibility(500, 4, RAISE_TARGET / 4),
-        presale::uncapped_for_eligible(UNCAPPED_AFTER_MS, true),
+        option::some(presale::uncapped_for_eligible(UNCAPPED_AFTER_MS)),
+        hard_cap_at(UNCAPPED_AFTER_MS, false),
     );
     fixture.commit_open(ALICE, 400);
     fixture.set_time(UNCAPPED_FROM_MS);
@@ -415,9 +424,10 @@ fun a_hard_capped_uncapped_phase_fills_the_raise_and_returns_the_excess() {
 #[test]
 #[expected_failure(abort_code = presale::EPresaleFilled, location = blast_presale::blast_presale)]
 fun a_full_hard_capped_sale_accepts_no_more_quote() {
-    let mut fixture = start_with_uncapped_phase(
+    let mut fixture = start_with_hard_cap(
         presale::open_eligibility(500, 4, RAISE_TARGET / 4),
-        presale::uncapped_for_eligible(UNCAPPED_AFTER_MS, true),
+        option::some(presale::uncapped_for_eligible(UNCAPPED_AFTER_MS)),
+        hard_cap_at(UNCAPPED_AFTER_MS, false),
     );
     fixture.set_time(UNCAPPED_FROM_MS);
     fixture.commit_open_for_change(ALICE, RAISE_TARGET);
@@ -430,9 +440,10 @@ fun a_full_hard_capped_sale_accepts_no_more_quote() {
 #[test]
 /// The commitment that exactly fills a hard cap may fall below the per-wallet minimum.
 fun the_commitment_that_fills_a_hard_cap_may_be_below_the_minimum() {
-    let mut fixture = start_with_uncapped_phase(
+    let mut fixture = start_with_hard_cap(
         presale::open_eligibility(1_000, 4, RAISE_TARGET / 4),
-        presale::uncapped_for_eligible(UNCAPPED_AFTER_MS, true),
+        option::some(presale::uncapped_for_eligible(UNCAPPED_AFTER_MS)),
+        hard_cap_at(UNCAPPED_AFTER_MS, false),
     );
     fixture.set_time(UNCAPPED_FROM_MS);
     fixture.commit_open_for_change(ALICE, 900);
@@ -443,13 +454,289 @@ fun the_commitment_that_fills_a_hard_cap_may_be_below_the_minimum() {
 }
 
 #[test]
+/// A hard cap from the start keeps wallet caps: wallets fill the raise first come, first served
+/// within their caps, and the last commitment takes only what is left.
+fun a_hard_cap_from_the_start_fills_first_come_within_wallet_caps() {
+    let mut fixture = start_with_hard_cap(
+        presale::open_eligibility(500, 4, RAISE_TARGET / 4),
+        option::none(),
+        hard_cap_at(0, false),
+    );
+
+    assert_eq!(fixture.commit_open_for_change(ALICE, 400), vector[400, 0]);
+    assert_eq!(fixture.commit_open_for_change(BOB, 500), vector[500, 0]);
+    assert_eq!(fixture.commit_open_for_change(CAROL, 500), vector[100, 400]);
+    assert_eq!(fixture.commitment(CAROL), 100);
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EWalletCapExceeded, location = blast_presale::blast_presale)]
+/// A hard cap does not lift wallet caps; only an uncapped phase does.
+fun a_hard_cap_keeps_wallet_caps() {
+    let mut fixture = start_with_hard_cap(
+        presale::open_eligibility(500, 4, RAISE_TARGET / 4),
+        option::none(),
+        hard_cap_at(0, false),
+    );
+
+    fixture.commit_open_for_change(ALICE, 501);
+
+    fixture.end();
+}
+
+#[test]
+/// A sale whose hard cap closes it when filled settles as soon as its raise is full, ending its
+/// window then: its LP deadline counts from the close, and it migrates at once.
+fun a_sale_that_closes_when_filled_settles_once_its_raise_is_full() {
+    let closed_at_ms = START_MS + 10;
+    let mut fixture = start_with_hard_cap(
+        presale::open_eligibility(500, 4, RAISE_TARGET / 4),
+        option::none(),
+        hard_cap_at(0, true),
+    );
+    fixture.set_time(closed_at_ms);
+    fixture.commit_open(ALICE, 500);
+    fixture.commit_open(BOB, 500);
+
+    fixture.settle(KEEPER);
+
+    let (presale_id, commitments, accepted, refundable, tokens) = only_event<
+        PresaleFunded<BLAST_PRESALE_TESTS, QUOTE>,
+    >().funded_fields();
+    assert_eq!(presale_id, fixture.presale_id);
+    assert_eq!(
+        vector[commitments, accepted, refundable, tokens],
+        vector[RAISE_TARGET, RAISE_TARGET, 0, TOKEN_ALLOCATION],
+    );
+    assert_eq!(
+        fixture.funded_deadlines(),
+        vector[closed_at_ms, closed_at_ms + LIQUIDITY_WINDOW_MS],
+    );
+    assert!(fixture.is_funded());
+    assert_eq!(fixture.migrate(), vector[LIQUIDITY_TOKENS, RAISE_TARGET]);
+
+    fixture.end();
+}
+
+#[test]
+/// An early close brings the refund exit forward: a sale nobody migrates within the LP window
+/// after its close can be cancelled before its original deadline.
+fun an_early_closed_sale_can_be_cancelled_one_lp_window_after_its_close() {
+    let closed_at_ms = START_MS + 10;
+    let mut fixture = start_with_hard_cap(
+        single_wallet_eligibility(),
+        option::none(),
+        hard_cap_at(0, true),
+    );
+    fixture.set_time(closed_at_ms);
+    fixture.commit_open(ALICE, RAISE_TARGET);
+    fixture.settle(KEEPER);
+    fixture.set_time(closed_at_ms + LIQUIDITY_WINDOW_MS);
+
+    fixture.cancel_unlaunched(KEEPER);
+
+    assert!(fixture.is_cancelled());
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = presale::ELiquidityDeadlineNotReached,
+    location = blast_presale::blast_presale,
+)]
+fun an_early_closed_sale_cannot_be_cancelled_inside_its_lp_window() {
+    let closed_at_ms = START_MS + 10;
+    let mut fixture = start_with_hard_cap(
+        single_wallet_eligibility(),
+        option::none(),
+        hard_cap_at(0, true),
+    );
+    fixture.set_time(closed_at_ms);
+    fixture.commit_open(ALICE, RAISE_TARGET);
+    fixture.settle(KEEPER);
+    fixture.set_time(closed_at_ms + LIQUIDITY_WINDOW_MS - 1);
+
+    fixture.cancel_unlaunched(KEEPER);
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EPresaleNotEnded, location = blast_presale::blast_presale)]
+/// A full sale whose hard cap does not close it when filled runs to its end.
+fun a_full_sale_that_does_not_close_when_filled_waits_for_its_end() {
+    let mut fixture = start_with_hard_cap(
+        single_wallet_eligibility(),
+        option::none(),
+        hard_cap_at(0, false),
+    );
+    fixture.commit_open(ALICE, RAISE_TARGET);
+    fixture.set_time(END_MS - 1);
+
+    fixture.settle(KEEPER);
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EPresaleNotEnded, location = blast_presale::blast_presale)]
+/// A hard-capped sale whose raise is not full yet can still take Quote, so it cannot close.
+fun a_hard_capped_sale_short_of_its_raise_cannot_close_early() {
+    let mut fixture = start_with_hard_cap(
+        presale::open_eligibility(500, 4, RAISE_TARGET / 4),
+        option::none(),
+        hard_cap_at(0, true),
+    );
+    fixture.commit_open(ALICE, 500);
+    fixture.commit_open(BOB, 499);
+
+    fixture.settle(KEEPER);
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EPresaleNotEnded, location = blast_presale::blast_presale)]
+/// A sale without a hard cap overflows for its whole window, so reaching the raise never closes
+/// it: later wallets may still join at the common fill rate.
+fun an_overflowing_sale_cannot_close_early() {
+    let mut fixture = start_sale(presale::open_eligibility(WALLET_CAP, 2, RAISE_TARGET / 2));
+    fixture.commit_open(ALICE, 3_000);
+
+    fixture.settle(KEEPER);
+
+    fixture.end();
+}
+
+#[test]
+/// Commitments overfilling the raise before the hard cap starts keep their overflow, and the
+/// sale may close once the hard cap starts, since it can take no more Quote.
+fun a_sale_overfilled_before_its_hard_cap_closes_when_the_hard_cap_starts() {
+    let mut fixture = start_with_hard_cap(
+        presale::open_eligibility(500, 4, RAISE_TARGET / 4),
+        option::some(presale::uncapped_for_eligible(UNCAPPED_AFTER_MS)),
+        hard_cap_at(UNCAPPED_AFTER_MS, true),
+    );
+    fixture.commit_open(ALICE, 500);
+    fixture.commit_open(BOB, 500);
+    fixture.commit_open(CAROL, 500);
+    fixture.set_time(UNCAPPED_FROM_MS);
+
+    fixture.settle(KEEPER);
+
+    let (_, commitments, accepted, refundable, _) = only_event<
+        PresaleFunded<BLAST_PRESALE_TESTS, QUOTE>,
+    >().funded_fields();
+    assert_eq!(vector[commitments, accepted, refundable], vector[1_500, RAISE_TARGET, 500]);
+    assert_eq!(
+        fixture.funded_deadlines(),
+        vector[UNCAPPED_FROM_MS, UNCAPPED_FROM_MS + LIQUIDITY_WINDOW_MS],
+    );
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EPresaleNotEnded, location = blast_presale::blast_presale)]
+/// Before its hard cap starts, an overfilled sale still overflows, so it cannot close.
+fun a_sale_overfilled_before_its_hard_cap_cannot_close_before_the_hard_cap_starts() {
+    let mut fixture = start_with_hard_cap(
+        presale::open_eligibility(500, 4, RAISE_TARGET / 4),
+        option::some(presale::uncapped_for_eligible(UNCAPPED_AFTER_MS)),
+        hard_cap_at(UNCAPPED_AFTER_MS, true),
+    );
+    fixture.commit_open(ALICE, 500);
+    fixture.commit_open(BOB, 500);
+    fixture.commit_open(CAROL, 500);
+    fixture.set_time(UNCAPPED_FROM_MS - 1);
+
+    fixture.settle(KEEPER);
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidLifecycle, location = blast_presale::blast_presale)]
+/// An early close ends commitments.
+fun a_sale_closed_early_takes_no_more_commitments() {
+    let mut fixture = start_with_hard_cap(
+        presale::open_eligibility(500, 4, RAISE_TARGET / 4),
+        option::none(),
+        hard_cap_at(0, true),
+    );
+    fixture.commit_open(ALICE, 500);
+    fixture.commit_open(BOB, 500);
+    fixture.settle(KEEPER);
+
+    fixture.commit_open(CAROL, 500);
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidHardCap, location = blast_presale::blast_presale)]
+fun a_hard_cap_must_start_inside_the_window() {
+    start_with_hard_cap(
+        single_wallet_eligibility(),
+        option::none(),
+        hard_cap_at(DURATION_MS, true),
+    ).end();
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EMissingSetting, location = blast_presale::blast_presale)]
+fun a_sale_cannot_be_finalized_without_an_eligibility_policy() {
+    let mut ctx = tx_context::dummy();
+    let (treasury_cap, mut currency) = new_currency(&mut ctx);
+    let fee_policy = fee_policy::new_for_testing(&mut ctx);
+    let creation_policy = creation_policy::allowing_for_testing<QUOTE, TEST_MIGRATOR>(&mut ctx);
+    let mut initializer = bare_initializer(treasury_cap, &creation_policy, &fee_policy);
+    initializer.set_fee_split(presale::fee_split(fee_recipients(), bps::new(HOLDER_REWARDS_BPS)));
+
+    let (_sale, _cap) = initializer.finalize(&mut currency, &mut ctx);
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EMissingSetting, location = blast_presale::blast_presale)]
+fun a_sale_cannot_be_finalized_without_an_lp_fee_split() {
+    let mut ctx = tx_context::dummy();
+    let (treasury_cap, mut currency) = new_currency(&mut ctx);
+    let fee_policy = fee_policy::new_for_testing(&mut ctx);
+    let creation_policy = creation_policy::allowing_for_testing<QUOTE, TEST_MIGRATOR>(&mut ctx);
+    let mut initializer = bare_initializer(treasury_cap, &creation_policy, &fee_policy);
+    initializer.set_eligibility(single_wallet_eligibility());
+
+    let (_sale, _cap) = initializer.finalize(&mut currency, &mut ctx);
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = presale::EInvalidRaiseTarget, location = blast_presale::blast_presale)]
+/// A sale whose raise was never set has a zero raise target.
+fun a_sale_cannot_be_finalized_without_a_raise() {
+    let mut ctx = tx_context::dummy();
+    let (treasury_cap, mut currency) = new_currency(&mut ctx);
+    let fee_policy = fee_policy::new_for_testing(&mut ctx);
+    let creation_policy = creation_policy::allowing_for_testing<QUOTE, TEST_MIGRATOR>(&mut ctx);
+    let mut initializer = bare_initializer(treasury_cap, &creation_policy, &fee_policy);
+    initializer.set_eligibility(single_wallet_eligibility());
+    initializer.set_fee_split(presale::fee_split(fee_recipients(), bps::new(HOLDER_REWARDS_BPS)));
+
+    let (_sale, _cap) = initializer.finalize(&mut currency, &mut ctx);
+    abort
+}
+
+#[test]
 /// An uncapped phase open to anyone admits wallets outside the allowlist. Its four slots beyond
 /// the one leaf reach the raise at the minimum.
 fun an_uncapped_phase_open_to_anyone_admits_wallets_outside_the_allowlist() {
     let alice_leaf = presale::allowlist_leaf_for_testing(0, ALICE, 500);
     let mut fixture = start_with_uncapped_phase(
         presale::allowlisted_eligibility(alice_leaf, 1),
-        presale::uncapped_for_anyone(UNCAPPED_AFTER_MS, 5, RAISE_TARGET / 4, false),
+        presale::uncapped_for_anyone(UNCAPPED_AFTER_MS, 5, RAISE_TARGET / 4),
     );
     fixture.commit_allowlisted(ALICE, 500, 0, 500, vector[]);
     fixture.set_time(UNCAPPED_FROM_MS);
@@ -465,7 +752,7 @@ fun an_uncapped_phase_open_to_anyone_admits_wallets_outside_the_allowlist() {
 fun the_open_uncapped_route_waits_for_its_phase() {
     let mut fixture = start_with_uncapped_phase(
         presale::open_eligibility(500, 4, RAISE_TARGET / 4),
-        presale::uncapped_for_anyone(UNCAPPED_AFTER_MS, 4, RAISE_TARGET / 4, false),
+        presale::uncapped_for_anyone(UNCAPPED_AFTER_MS, 4, RAISE_TARGET / 4),
     );
     fixture.set_time(UNCAPPED_FROM_MS - 1);
 
@@ -480,7 +767,7 @@ fun the_open_uncapped_route_waits_for_its_phase() {
 fun an_eligible_only_phase_rejects_the_open_uncapped_route() {
     let mut fixture = start_with_uncapped_phase(
         presale::open_eligibility(500, 4, RAISE_TARGET / 4),
-        presale::uncapped_for_eligible(UNCAPPED_AFTER_MS, false),
+        presale::uncapped_for_eligible(UNCAPPED_AFTER_MS),
     );
     fixture.set_time(UNCAPPED_FROM_MS);
 
@@ -494,7 +781,7 @@ fun an_eligible_only_phase_rejects_the_open_uncapped_route() {
 fun an_uncapped_phase_must_start_inside_the_window() {
     start_with_uncapped_phase(
         presale::open_eligibility(500, 4, RAISE_TARGET / 4),
-        presale::uncapped_for_eligible(DURATION_MS, false),
+        presale::uncapped_for_eligible(DURATION_MS),
     ).end();
 }
 
@@ -504,7 +791,7 @@ fun an_uncapped_phase_must_start_inside_the_window() {
 fun an_open_uncapped_phase_cannot_admit_fewer_wallets_than_the_policy() {
     start_with_uncapped_phase(
         presale::open_eligibility(500, 4, RAISE_TARGET / 4),
-        presale::uncapped_for_anyone(UNCAPPED_AFTER_MS, 3, RAISE_TARGET, false),
+        presale::uncapped_for_anyone(UNCAPPED_AFTER_MS, 3, RAISE_TARGET),
     ).end();
 }
 
@@ -514,7 +801,7 @@ fun an_open_uncapped_phase_cannot_admit_fewer_wallets_than_the_policy() {
 fun an_open_uncapped_phase_whose_slots_cannot_reach_the_raise_is_rejected() {
     start_with_uncapped_phase(
         presale::open_eligibility(500, 4, RAISE_TARGET / 4),
-        presale::uncapped_for_anyone(UNCAPPED_AFTER_MS, 4, RAISE_TARGET / 4 - 1, false),
+        presale::uncapped_for_anyone(UNCAPPED_AFTER_MS, 4, RAISE_TARGET / 4 - 1),
     ).end();
 }
 
@@ -527,7 +814,7 @@ fun an_open_uncapped_phase_counts_only_the_slots_beyond_the_allowlist() {
 
     start_with_uncapped_phase(
         presale::allowlisted_eligibility(alice_leaf, 1),
-        presale::uncapped_for_anyone(UNCAPPED_AFTER_MS, 4, RAISE_TARGET / 4, false),
+        presale::uncapped_for_anyone(UNCAPPED_AFTER_MS, 4, RAISE_TARGET / 4),
     ).end();
 }
 
@@ -938,7 +1225,7 @@ fun commitments_before_the_start_are_rejected_before_amount_checks() {
 #[test]
 /// A start that has passed by the time the share executes opens the window at the share.
 fun a_start_that_has_passed_opens_the_window_at_the_share() {
-    assert_opened_event(share_new_sale(START_MS - 1, START_MS), END_MS);
+    assert_opened_event(share_new_sale(START_MS - 1, START_MS), END_MS, option::none());
 }
 
 #[test]
@@ -1088,7 +1375,7 @@ fun an_unshared_sales_rates_can_change_before_its_share() {
     );
 
     sale.share(START_MS, &clock);
-    assert_opened_event(presale_id, END_MS);
+    assert_opened_event(presale_id, END_MS, option::none());
 
     admin_registry.destroy_for_testing(admin_cap);
     destroy(cap);
@@ -1736,32 +2023,15 @@ fun a_sale_cannot_name_a_partner_blast_has_not_accepted() {
     let partner = new_partner(PARTNER_CUT_BPS, &mut ctx);
     let fee_policy = fee_policy::new_for_testing(&mut ctx);
     let creation_policy = creation_policy::allowing_for_testing<QUOTE, TEST_MIGRATOR>(&mut ctx);
-    let (treasury_cap, mut currency) = new_currency(&mut ctx);
-    let (mut sale, _cap) = new_presale<QUOTE>(
+    let (treasury_cap, _currency) = new_currency(&mut ctx);
+    let mut initializer = new_initializer<QUOTE>(
         treasury_cap,
-        &mut currency,
         valid_sale_terms(),
         &creation_policy,
         &fee_policy,
-        &mut ctx,
     );
 
-    sale.set_partner(&creation_policy, &partner, &clock);
-    abort
-}
-
-#[test]
-#[expected_failure(abort_code = presale::EInvalidLifecycle, location = blast_presale::blast_presale)]
-/// Sharing a sale fixes its partner: nobody can name or change one afterward.
-fun a_shared_sales_partner_cannot_change() {
-    let mut ctx = tx_context::dummy();
-    let partner = new_partner(PARTNER_CUT_BPS, &mut ctx);
-    let mut fixture = start_partnered_sale(&partner);
-    fixture.scenario.next_tx(KEEPER);
-    let mut sale = fixture.take_presale();
-    let creation_policy = accepting_partner(&partner, fixture.scenario.ctx());
-
-    sale.set_partner(&creation_policy, &partner, &fixture.clock);
+    initializer.set_partner(&creation_policy, &partner, &clock);
     abort
 }
 
@@ -1926,6 +2196,7 @@ fun start_sale(eligibility: EligibilityPolicy): Fixture {
         vector[],
         eligibility,
         option::none(),
+        option::none(),
         false,
         0,
         0,
@@ -1941,6 +2212,7 @@ fun start_burnable_sale(eligibility: EligibilityPolicy): Fixture {
         START_MS,
         vector[],
         eligibility,
+        option::none(),
         option::none(),
         true,
         0,
@@ -1958,6 +2230,29 @@ fun start_with_uncapped_phase(eligibility: EligibilityPolicy, phase: UncappedPha
         vector[],
         eligibility,
         option::some(phase),
+        option::none(),
+        false,
+        0,
+        0,
+        RECIPIENT_B_BPS,
+        option::none(),
+        option::none(),
+    )
+}
+
+/// Starts a fee-free sale under `eligibility`, with `uncapped` if any, held to its raise by
+/// `hard_cap`.
+fun start_with_hard_cap(
+    eligibility: EligibilityPolicy,
+    uncapped: Option<UncappedPhase>,
+    hard_cap: HardCapTerms,
+): Fixture {
+    start_configured(
+        START_MS,
+        vector[],
+        eligibility,
+        uncapped,
+        option::some(hard_cap),
         false,
         0,
         0,
@@ -1973,6 +2268,7 @@ fun start_with_raise_allocations(raise_allocations: vector<RecipientShare>): Fix
         START_MS,
         raise_allocations,
         single_wallet_eligibility(),
+        option::none(),
         option::none(),
         false,
         0,
@@ -1991,6 +2287,7 @@ fun start_with_team_vesting(raise_allocations: vector<RecipientShare>): Fixture 
         raise_allocations,
         single_wallet_eligibility(),
         option::none(),
+        option::none(),
         false,
         0,
         0,
@@ -2007,6 +2304,7 @@ fun start_with_participant_vesting(eligibility: EligibilityPolicy): Fixture {
         START_MS,
         vector[],
         eligibility,
+        option::none(),
         option::none(),
         false,
         0,
@@ -2031,6 +2329,7 @@ fun start_with_protocol_fees(
         raise_allocations,
         eligibility,
         option::none(),
+        option::none(),
         false,
         protocol_raise_bps,
         protocol_token_bps,
@@ -2052,6 +2351,7 @@ fun schedule_with_protocol_fees(
         SCHEDULED_AT_MS,
         raise_allocations,
         presale::open_eligibility(WALLET_CAP, 2, RAISE_TARGET / 2),
+        option::none(),
         option::none(),
         false,
         protocol_raise_bps,
@@ -2110,6 +2410,7 @@ fun start_configured(
     raise_allocations: vector<RecipientShare>,
     eligibility: EligibilityPolicy,
     uncapped: Option<UncappedPhase>,
+    hard_cap: Option<HardCapTerms>,
     burnable: bool,
     protocol_raise_bps: u64,
     protocol_token_bps: u64,
@@ -2137,6 +2438,7 @@ fun start_configured(
     terms.raise_allocations = raise_allocations;
     terms.eligibility = eligibility;
     terms.uncapped = uncapped;
+    terms.hard_cap = hard_cap;
     terms.participant_vesting = participant_vesting;
 
     let (treasury_cap, mut currency) = new_currency(scenario.ctx());
@@ -2162,6 +2464,7 @@ fun start_configured(
         participant_vesting,
         vector[recipient_a_vesting, option::none()],
         raise_vesting,
+        hard_cap,
     );
     assert_eq!(currency.is_supply_fixed(), !burnable);
     assert_eq!(currency.is_supply_burn_only(), burnable);
@@ -2169,7 +2472,11 @@ fun start_configured(
     destroy(currency);
 
     presale.share(START_MS, &clock);
-    assert_opened_event(presale_id, if (uncapped.is_some()) UNCAPPED_FROM_MS else END_MS);
+    assert_opened_event(
+        presale_id,
+        if (uncapped.is_some()) UNCAPPED_FROM_MS else END_MS,
+        hard_cap.map!(|cap| START_MS + cap.starts_after_ms),
+    );
     transfer::public_transfer(cap, CREATOR);
 
     Fixture { scenario, clock, fee_policy, presale_id }
@@ -2201,17 +2508,11 @@ fun share_partnered_sale(partner: &Partner, created_at_ms: u64, protocol_raise_b
     terms.raise_allocations = vector[presale::recipient_share(RAISE_RECIPIENT, bps::new(2_000))];
     terms.eligibility = presale::open_eligibility(WALLET_CAP, 2, RAISE_TARGET / 2);
     let (treasury_cap, mut currency) = new_currency(scenario.ctx());
-    let (mut sale, cap) = new_presale<QUOTE>(
-        treasury_cap,
-        &mut currency,
-        terms,
-        &creation_policy,
-        &fee_policy,
-        scenario.ctx(),
-    );
-    let presale_id = object::id(&sale);
+    let mut initializer = new_initializer<QUOTE>(treasury_cap, terms, &creation_policy, &fee_policy);
 
-    sale.set_partner(&creation_policy, partner, &clock);
+    initializer.set_partner(&creation_policy, partner, &clock);
+    let (sale, cap) = initializer.finalize(&mut currency, scenario.ctx());
+    let presale_id = object::id(&sale);
     sale.share(START_MS, &clock);
 
     let opened = only_event<PresaleOpened<BLAST_PRESALE_TESTS, QUOTE>>();
@@ -2279,6 +2580,7 @@ fun assert_created_event(
     participant_vesting: Option<VestingTerms>,
     recipient_vesting: vector<Option<VestingTerms>>,
     raise_vesting: vector<Option<VestingTerms>>,
+    hard_cap: Option<HardCapTerms>,
 ) {
     let created = only_event<PresaleCreated<BLAST_PRESALE_TESTS, QUOTE>>();
 
@@ -2345,6 +2647,10 @@ fun assert_created_event(
     assert_eq!(created_participant_vesting, participant_vesting);
     assert_eq!(created_recipient_vesting, recipient_vesting);
     assert_eq!(created_raise_vesting, raise_vesting);
+    assert_eq!(
+        created.created_hard_cap(),
+        hard_cap.map!(|cap| presale::hard_cap_for_testing(cap.starts_after_ms, cap.closes_when_filled)),
+    );
 }
 
 /// Asserts one `VestingCreated` event is an irrevocable `T` schedule paying `beneficiary`
@@ -2379,8 +2685,9 @@ fun team_schedule_id<T>(
     vesting_id
 }
 
-/// Asserts the single `PresaleOpened` event fixes the fixture's window and uncapped start.
-fun assert_opened_event(presale_id: ID, uncapped_from_ms: u64) {
+/// Asserts the single `PresaleOpened` event fixes the fixture's window and its uncapped and
+/// hard-cap starts.
+fun assert_opened_event(presale_id: ID, uncapped_from_ms: u64, hard_cap_from_ms: Option<u64>) {
     let (opened_presale_id, start_ms, end_ms, deadline_ms, opened_uncapped_from_ms) = only_event<
         PresaleOpened<BLAST_PRESALE_TESTS, QUOTE>,
     >().opened_fields();
@@ -2388,6 +2695,10 @@ fun assert_opened_event(presale_id: ID, uncapped_from_ms: u64) {
     assert_eq!(
         vector[start_ms, end_ms, deadline_ms, opened_uncapped_from_ms],
         vector[START_MS, END_MS, LIQUIDITY_DEADLINE_MS, uncapped_from_ms],
+    );
+    assert_eq!(
+        only_event<PresaleOpened<BLAST_PRESALE_TESTS, QUOTE>>().opened_hard_cap_from_ms(),
+        hard_cap_from_ms,
     );
     assert_eq!(
         only_event<PresaleOpened<BLAST_PRESALE_TESTS, QUOTE>>().opened_partner_id(),
@@ -2418,9 +2729,31 @@ fun valid_sale_terms(): SaleTerms {
         liquidity_window_ms: LIQUIDITY_WINDOW_MS,
         eligibility: single_wallet_eligibility(),
         uncapped: option::none(),
+        hard_cap: option::none(),
         fee_recipients: fee_recipients(),
         holder_rewards_bps: HOLDER_REWARDS_BPS,
     }
+}
+
+/// A hard cap from `starts_after_ms` into the window.
+fun hard_cap_at(starts_after_ms: u64, closes_when_filled: bool): HardCapTerms {
+    HardCapTerms { starts_after_ms, closes_when_filled }
+}
+
+/// A sale started for the fixture's migrator and pool tier with nothing set.
+fun bare_initializer(
+    treasury_cap: TreasuryCap<BLAST_PRESALE_TESTS>,
+    creation_policy: &CreationPolicy,
+    fee_policy: &FeePolicy,
+): PresaleInitializer<BLAST_PRESALE_TESTS, QUOTE> {
+    presale::new<BLAST_PRESALE_TESTS, QUOTE, TEST_MIGRATOR>(
+        treasury_cap,
+        TEST_MIGRATOR(),
+        creation_policy,
+        fee_policy,
+        TICK_SPACING,
+        POOL_FEE_RATE,
+    )
 }
 
 /// One wallet slot whose minimum is the whole raise, so a single commitment funds the sale.
@@ -2428,7 +2761,7 @@ fun single_wallet_eligibility(): EligibilityPolicy {
     presale::open_eligibility(WALLET_CAP, 1, RAISE_TARGET)
 }
 
-/// Calls `presale::new` with `terms` and the fixture's migrator, pool tier, and BPS wrappers.
+/// Finalizes `new_initializer`'s sale.
 fun new_presale<Quote>(
     treasury_cap: TreasuryCap<BLAST_PRESALE_TESTS>,
     currency: &mut Currency<BLAST_PRESALE_TESTS>,
@@ -2437,6 +2770,16 @@ fun new_presale<Quote>(
     fee_policy: &FeePolicy,
     ctx: &mut TxContext,
 ): (Presale<BLAST_PRESALE_TESTS, Quote>, PresaleCap) {
+    new_initializer<Quote>(treasury_cap, terms, creation_policy, fee_policy).finalize(currency, ctx)
+}
+
+/// Starts a sale with the fixture's migrator and pool tier and sets every one of `terms`.
+fun new_initializer<Quote>(
+    treasury_cap: TreasuryCap<BLAST_PRESALE_TESTS>,
+    terms: SaleTerms,
+    creation_policy: &CreationPolicy,
+    fee_policy: &FeePolicy,
+): PresaleInitializer<BLAST_PRESALE_TESTS, Quote> {
     let SaleTerms {
         token_supply,
         token_allocation_bps,
@@ -2450,33 +2793,34 @@ fun new_presale<Quote>(
         liquidity_window_ms,
         eligibility,
         uncapped,
+        hard_cap,
         fee_recipients,
         holder_rewards_bps,
     } = terms;
-
-    presale::new<BLAST_PRESALE_TESTS, Quote, TEST_MIGRATOR>(
+    let mut initializer = presale::new<BLAST_PRESALE_TESTS, Quote, TEST_MIGRATOR>(
         treasury_cap,
-        currency,
-        token_supply,
-        bps::new(token_allocation_bps),
-        participant_vesting,
-        bps::new(liquidity_token_allocation_bps),
-        recipient_allocations,
-        burnable,
-        raise_target,
-        raise_allocations,
-        duration_ms,
-        liquidity_window_ms,
-        eligibility,
-        uncapped,
         TEST_MIGRATOR(),
-        TICK_SPACING,
-        POOL_FEE_RATE,
-        presale::fee_split(fee_recipients, bps::new(holder_rewards_bps)),
         creation_policy,
         fee_policy,
-        ctx,
-    )
+        TICK_SPACING,
+        POOL_FEE_RATE,
+    );
+
+    initializer.set_supply(token_supply, burnable);
+    initializer.set_token_allocations(
+        bps::new(token_allocation_bps),
+        bps::new(liquidity_token_allocation_bps),
+        recipient_allocations,
+    );
+    participant_vesting.do!(|vesting| initializer.set_participant_vesting(vesting));
+    initializer.set_raise(raise_target, raise_allocations);
+    initializer.set_windows(duration_ms, liquidity_window_ms);
+    initializer.set_eligibility(eligibility);
+    uncapped.do!(|phase| initializer.set_uncapped_phase(phase));
+    hard_cap.do!(|cap| initializer.set_hard_cap(cap.starts_after_ms, cap.closes_when_filled));
+    initializer.set_fee_split(presale::fee_split(fee_recipients, bps::new(holder_rewards_bps)));
+
+    initializer
 }
 
 /// Creates a sale raising `Quote` under `terms` with a fresh treasury, then discards it.
@@ -2541,28 +2885,25 @@ fun create_bluefin_sale<AllowedQuote, AllowedWitness>(symbol: vector<u8>) {
         &mut ctx,
     );
 
-    let (sale, cap) = bluefin::new<BLAST_PRESALE_TESTS, QUOTE>(
+    let mut initializer = bluefin::new<BLAST_PRESALE_TESTS, QUOTE>(
         treasury_cap,
-        &mut currency,
-        TOKEN_SUPPLY,
-        bps::new(TOKEN_ALLOCATION_BPS),
-        option::none(),
-        bps::new(LIQUIDITY_TOKEN_ALLOCATION_BPS),
-        recipient_allocations(),
-        false,
-        RAISE_TARGET,
-        vector[],
-        DURATION_MS,
-        LIQUIDITY_WINDOW_MS,
-        single_wallet_eligibility(),
-        option::none(),
-        presale::fee_split(fee_recipients(), bps::new(HOLDER_REWARDS_BPS)),
+        &currency,
         &creation_policy,
         &fee_policy,
         TICK_SPACING,
         POOL_FEE_RATE,
-        &mut ctx,
     );
+    initializer.set_supply(TOKEN_SUPPLY, false);
+    initializer.set_token_allocations(
+        bps::new(TOKEN_ALLOCATION_BPS),
+        bps::new(LIQUIDITY_TOKEN_ALLOCATION_BPS),
+        recipient_allocations(),
+    );
+    initializer.set_raise(RAISE_TARGET, vector[]);
+    initializer.set_windows(DURATION_MS, LIQUIDITY_WINDOW_MS);
+    initializer.set_eligibility(single_wallet_eligibility());
+    initializer.set_fee_split(presale::fee_split(fee_recipients(), bps::new(HOLDER_REWARDS_BPS)));
+    let (sale, cap) = initializer.finalize(&mut currency, &mut ctx);
 
     destroy(sale);
     destroy(cap);
@@ -2804,6 +3145,15 @@ fun vault_partner_id(self: &mut Fixture): Option<ID> {
     });
 
     partner_id
+}
+
+/// The window end and LP deadline the sale's `PresaleFunded` event records.
+fun funded_deadlines(_self: &Fixture): vector<u64> {
+    let (end_ms, liquidity_deadline_ms) = only_event<
+        PresaleFunded<BLAST_PRESALE_TESTS, QUOTE>,
+    >().funded_deadlines();
+
+    vector[end_ms, liquidity_deadline_ms]
 }
 
 fun settle(self: &mut Fixture, sender: address) {
@@ -3053,6 +3403,7 @@ use blast_presale::{bluefin, cetus, migration_math, blast_presale::{
     Presale,
     PresaleCancelled,
     PresaleCap,
+    PresaleInitializer,
     PresaleCreated,
     PresaleFunded,
     PresaleMigrated,

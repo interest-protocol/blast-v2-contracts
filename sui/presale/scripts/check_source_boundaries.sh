@@ -97,14 +97,15 @@ fi
 [ "$(rg -c '^    admin_cap: &AdminCap,$' <<<"$admin_production")" -eq 2 ] \
   || fail "Authorizing and committing an upgrade must each require the AdminCap."
 
-# 3. A sale's Blast partner is named only by set_partner, before the share fixes it (ADR 0106),
-#    and its vault keeps that partner for good (ADR 0107).
+# 3. A sale's Blast partner is named only by set_partner on its initializer, so `finalize` fixes it
+#    before the sale exists (ADRs 0106 and 0110), and its vault keeps that partner for good
+#    (ADR 0107).
 presale_production="$(production "$sources/blast_presale.move")"
 set_partner_body="$(sed -n '/^public fun set_partner</,/^}/p' <<<"$presale_production")"
 [ "$(rg -c 'self\.partner_id = ' <<<"$presale_production")" == 1 ] \
-  && rg -q '^    assert!\(self\.lifecycle == Lifecycle::Pending, EInvalidLifecycle\);$' <<<"$set_partner_body" \
+  && rg -q '^    self: &mut PresaleInitializer<SaleToken, Quote>,$' <<<"$set_partner_body" \
   && rg -q '^    self\.partner_id = option::some\(partner_id\);$' <<<"$set_partner_body" \
-  || fail "Only set_partner, before the share, may name a sale's partner."
+  || fail "Only set_partner, on the initializer, may name a sale's partner."
 vault_production="$(production "$sources/presale_vault.move")"
 if rg -q '\.partner_id = ' <<<"$vault_production"; then
   fail "A presale vault's partner is the sale's, fixed when the vault is created."

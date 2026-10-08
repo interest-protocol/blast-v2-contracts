@@ -1,7 +1,9 @@
 # 0106: Presale partners
 
 - Status: proposed; amended by [0107](0107-partner-cut-of-lp-fees.md): the partner also earns
-  its cut of Blast's LP fees on the sale's vault
+  its cut of Blast's LP fees on the sale's vault; amended by
+  [0110](0110-presale-initializer-and-early-close.md): `set_partner` acts on the
+  `PresaleInitializer`, so `finalize` fixes the partner before the sale exists
 - Date: 2026-10-05
 - Amends: [0095](0095-partner-codes.md), whose partners earned only on Boosts and
   the launchpad; [0101](0101-presale-protocol-fees.md), which paid Blast's fees

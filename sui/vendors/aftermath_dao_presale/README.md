@@ -1,7 +1,7 @@
 # Aftermath DAO-pool presale migrator
 
 `blast_aftermath_dao_presale` is a one-off partner package. A `blast_presale` sale
-created through its `new` migrates into a fresh Aftermath weighted pool wrapped in
+started through its `new` and finalized through its `finalize` migrates into a fresh Aftermath weighted pool wrapped in
 Aftermath's DAO-fee pool, and the DAO fee reaches the partner treasury. The design
 is recorded in
 [ADR 0104](../../../docs/decisions/0104-external-presale-migrators-and-vendor-packages.md).
@@ -21,9 +21,13 @@ caller chooses them.
 
 Publication sends the package's only `AdminCap` to the publisher, and
 `scripts/publish_immutable.sh` makes the package immutable in the same
-transaction, so no one can change how a funded sale migrates. The `AdminCap`'s one power is creating sales: `new` takes it, sends
-the treasury the sale's `PresaleCap`, and names the treasury as the sale's only
-LP-fee recipient, which is where its fees go. The `PresaleCap` can only destroy
+transaction, so no one can change how a funded sale migrates. The `AdminCap`'s one power is creating sales: `new` takes it and returns the
+sale's `PresaleInitializer`, whose terms are set as for any presale; `finalize`
+takes it again, names the treasury as the sale's only LP-fee recipient, which is
+where its fees go, binds the sale's `PoolCreation`, and sends the treasury the
+sale's `PresaleCap`. A sale `new` started but finalized directly in
+`blast_presale` has no `PoolCreation`, so it cannot migrate and refunds after its
+LP deadline. The `PresaleCap` can only destroy
 itself after a cancellation, since these sales have no `presale_vault::Vault` residuals
 to claim.
 
@@ -32,8 +36,8 @@ treasury can change its pool's DAO fee, anywhere Aftermath allows from 0% to
 100%, or the fee recipient, directly through Aftermath. No `presale_vault::Vault` exists
 for these pools, so Blast's LP-fee rates and holder-reward rounds do not apply;
 Blast still takes its raise and token shares when `blast_presale::migrate` runs.
-The `AdminCap` holder may name a Blast partner on the sale `new` returns, with
-`blast_presale::set_partner` before sharing it; the partner then earns its cut of
+The `AdminCap` holder may name a Blast partner on the initializer `new` returns,
+with `blast_presale::set_partner` before `finalize`; the partner then earns its cut of
 Blast's raise fee as on any presale
 ([ADR 0106](../../../docs/decisions/0106-presale-partners.md)). The presale
 `AdminCap` may also replace this one sale's Blast raise and token rates with

@@ -2,11 +2,13 @@
 
 ### What it is
 
-`blast_presale` runs standalone overflow presales on Sui mainnet. A creator brings a new coin
+`blast_presale` runs standalone presales on Sui mainnet. A creator brings a new coin
 with zero supply. The sale mints the whole supply once, splits it between buyers, the launch
 pool, Blast, and named recipients, and gives up mint authority forever. Buyers commit a Quote coin
-(for example SUI) during a fixed window. Commitments may exceed the raise target: everyone is then
-filled at one common rate and the excess is refunded. Anyone can migrate a funded sale into a
+(for example SUI) during a commitment window. By default commitments may exceed the raise target:
+everyone is then filled at one common rate and the excess is refunded. A creator may instead
+hard-cap the sale, from the start or from a later point in the window, so it takes Quote first
+come, first served only up to the raise; such a sale may also close as soon as its raise is full. Anyone can migrate a funded sale into a
 new full-range Cetus or Bluefin pool; the same transaction pays Blast (or, on a sale that names a
 partner, holds Blast's fees for a later pay call), the raise recipients, and the token recipients.
 Buyers then claim their tokens and overflow refund. A sale that misses its raise, or that someone
@@ -81,8 +83,8 @@ Pending --share--> Open --settle (total >= raise)--> Funded --migrate--> Migrate
 
 | State | Exists | Allows |
 | --- | --- | --- |
-| `Pending` | Only inside the creation PTB, before `share` | `blast_presale::blast_presale::set_partner`, `blast_presale::blast_presale::set_protocol_fees` (admin, when the creation PTB also holds the `AdminCap`), `blast_presale::blast_presale::share` |
-| `Open` | From `share` until `settle` | Before `start_ms`: `blast_presale::blast_presale::set_protocol_fees` (admin). From `start_ms` until `end_ms`: commits. From `end_ms`: `blast_presale::blast_presale::settle` |
+| `Pending` | Only inside the creation PTB, between `finalize` and `share` | `blast_presale::blast_presale::set_protocol_fees` (admin, when the creation PTB also holds the `AdminCap`), `blast_presale::blast_presale::share` |
+| `Open` | From `share` until `settle` | Before `start_ms`: `blast_presale::blast_presale::set_protocol_fees` (admin). From `start_ms` until `end_ms`: commits. From `end_ms`, or earlier once the raise is full under a hard cap that closes the sale when filled: `blast_presale::blast_presale::settle` |
 | `Funded` | After a settle that met the raise | Migration at any time; `blast_presale::blast_presale::cancel_unlaunched` from the LP deadline |
 | `Migrated` | After migration | `blast_presale::blast_presale::claim` (tokens + overflow refund), `blast_presale::blast_presale::pay_protocol_fees_with_partner` once on a partnered sale |
 | `Cancelled` | After an underfunded settle or `cancel_unlaunched` | `blast_presale::blast_presale::claim` (full refund), `blast_presale::blast_presale::destroy_cap` |
@@ -94,79 +96,112 @@ wins. Nobody can withdraw a commitment while the sale is `Open` or `Funded`.
 
 PTB conventions used below: `Clock` is the shared object `0x6`. Values such as `Bps`,
 `RecipientShare`, and `EligibilityPolicy` are structs, so build them with Move calls and pass the
-results; plain numbers, booleans, addresses, and `vector<u8>` go in as pure inputs. Build an
-`Option<VestingTerms>` or `Option<UncappedPhase>` with the Move standard library's `option`
-module (`some` or `none`, with the struct type as type argument). Build a `vector<RecipientShare>`
-with the PTB `MakeMoveVec` command (it may be empty).
+results; plain numbers, booleans, addresses, and `vector<u8>` go in as pure inputs. Build a
+`vector<RecipientShare>` with the PTB `MakeMoveVec` command (it may be empty).
 
 #### Creating a sale
+
+A sale is created in one PTB in three stages, the same shape as the launchpad's
+`LaunchInitializer`: a venue migrator's `new` starts it and returns a
+`blast_presale::blast_presale::PresaleInitializer<Meme, Quote>`; setters on the initializer record
+the creator's terms; `blast_presale::blast_presale::finalize` checks them all together, mints the
+supply, and returns the pending `Presale`, which `share` publishes. The initializer has no
+abilities: `finalize` is the only way to consume it, so the PTB must finalize it.
 
 Creators call a venue migrator's `new`, never `blast_presale::blast_presale::new` directly: that call needs the
 migrator's witness, which only the migrator's module can construct. The venue is fixed for good
 at creation. Who may call: *anyone* who owns a zero-supply `TreasuryCap<SaleToken>` and the
 matching shared Coin Registry `Currency<SaleToken>`, for a Quote type and migrator the
-`CreationPolicy` allows.
+`CreationPolicy` allows. Every setter and `finalize` take the initializer value from that PTB, so
+only its creator can call them.
 
-Steps 1 to 6 are pure value constructors that *anyone* may call.
+Value constructors (*anyone*, pure):
 
-1. Build each rate with `blast_presale::bps::new(value)`; it aborts with
-   `blast_presale::bps::EInvalidBps` above 10,000.
-2. Optional vesting: `blast_presale::blast_presale::vesting_terms(cliff_ms, period_ms, periods)` returns a
-   `blast_presale::blast_presale::VestingTerms`.
-3. Shares: `blast_presale::blast_presale::recipient_share(recipient, bps)` or
-   `blast_presale::blast_presale::vested_recipient_share(recipient, bps, terms)`. Gather them with `MakeMoveVec`
-   into three lists: token recipients, raise recipients, and LP-fee recipients.
-4. Eligibility: `blast_presale::blast_presale::open_eligibility(wallet_cap, max_participants, min_commitment)` or
-   `blast_presale::blast_presale::allowlisted_eligibility(root, leaf_count)`.
-5. Optional uncapped phase: `blast_presale::blast_presale::uncapped_for_eligible(starts_after_ms, hard_cap)` or
-   `blast_presale::blast_presale::uncapped_for_anyone(starts_after_ms, max_participants, min_commitment,
-   hard_cap)`, wrapped in `some`; otherwise `none`.
-6. Fee split: `blast_presale::blast_presale::fee_split(fee_recipients, holder_rewards_bps)`.
-7. Create, with type arguments `<Meme, Quote>`:
-   - Cetus: `blast_presale::cetus::new(treasury_cap, currency, token_supply, token_allocation_bps,
-     participant_vesting, liquidity_token_allocation_bps, recipient_allocations, burnable,
-     raise_target, raise_allocations, duration_ms, liquidity_window_ms, eligibility, uncapped,
-     fee_split, creation_policy, fee_policy, venue_config, cetus_config, pools, tick_spacing)`. It reads Cetus's fee rate for `tick_spacing`, mints the coin's Cetus
-     `PoolCreationCap` from the treasury cap, registers the `<Meme, Quote>` pair at that tick
-     spacing, and stores the cap in `VenueConfig` under `blast_presale::cetus::CreationCapKey`.
-     Cetus aborts if it has no fee tier for the tick spacing or refuses the pair (the Quote must
-     be in Cetus's permission-pair allowlist at that tick spacing).
-   - Bluefin: `blast_presale::bluefin::new(treasury_cap, currency, ..., uncapped, fee_split,
-     creation_policy, fee_policy, tick_spacing, pool_fee_rate)`. Tick spacing must be 1..=400 and
-     the fee rate 1..=20,000 in Bluefin's fee unit (`blast_presale::bluefin::EInvalidTier`); the
-     coin's symbol must be at most 32 bytes (`blast_presale::bluefin::ESymbolTooLong`).
+- `blast_presale::bps::new(value)` builds each rate; it aborts with
+  `blast_presale::bps::EInvalidBps` above 10,000.
+- `blast_presale::blast_presale::vesting_terms(cliff_ms, period_ms, periods)` returns a
+  `blast_presale::blast_presale::VestingTerms`.
+- `blast_presale::blast_presale::recipient_share(recipient, bps)` or
+  `blast_presale::blast_presale::vested_recipient_share(recipient, bps, terms)` build one share. Gather them with
+  `MakeMoveVec` into three lists: token recipients, raise recipients, and LP-fee recipients.
+- `blast_presale::blast_presale::open_eligibility(wallet_cap, max_participants, min_commitment)` or
+  `blast_presale::blast_presale::allowlisted_eligibility(root, leaf_count)` build the eligibility policy.
+- `blast_presale::blast_presale::uncapped_for_eligible(starts_after_ms)` or
+  `blast_presale::blast_presale::uncapped_for_anyone(starts_after_ms, max_participants, min_commitment)` build an
+  uncapped phase.
+- `blast_presale::blast_presale::fee_split(fee_recipients, holder_rewards_bps)` builds the LP-fee split.
 
-   Both return `(Presale<Meme, Quote>, PresaleCap)` and emit `blast_presale::blast_presale::PresaleCreated`.
-   The supply is minted and the `TreasuryCap` consumed: the Coin Registry supply becomes `Fixed`,
-   or `BurnOnly` when `burnable` is true.
-8. Optional partner: `blast_presale::blast_presale::set_partner(presale, creation_policy, partner,
-   clock)` names a `blast_partners::blast_partners::Partner` the `CreationPolicy` currently
-   accepts. Only possible here, before `share`. Who may call: the holder of the unshared
-   `Presale` value, that is, the creator in this PTB.
-9. `blast_presale::blast_presale::share(presale, start_ms, clock)`, same caller, fixes the windows
-   and shares the sale. The
-   start is `max(start_ms, now)`, so a sale can be published ahead of its start. Emits
+Steps, type arguments `<Meme, Quote>` throughout:
+
+1. Start the sale:
+   - Cetus: `blast_presale::cetus::new(treasury_cap, creation_policy, fee_policy, venue_config,
+     cetus_config, pools, tick_spacing)`. It reads Cetus's fee rate for `tick_spacing`, mints the
+     coin's Cetus `PoolCreationCap` from the treasury cap, registers the `<Meme, Quote>` pair at
+     that tick spacing, and stores the cap in `VenueConfig` under
+     `blast_presale::cetus::CreationCapKey`. Cetus aborts if it has no fee tier for the tick spacing
+     or refuses the pair (the Quote must be in Cetus's permission-pair allowlist at that tick
+     spacing).
+   - Bluefin: `blast_presale::bluefin::new(treasury_cap, currency, creation_policy, fee_policy,
+     tick_spacing, pool_fee_rate)`. Tick spacing must be 1..=400 and the fee rate 1..=20,000 in
+     Bluefin's fee unit (`blast_presale::bluefin::EInvalidTier`); the coin's symbol must be at most 32
+     bytes (`blast_presale::bluefin::ESymbolTooLong`).
+
+   Both check the `CreationPolicy`, that the sale coin differs from Quote, and that the treasury
+   cap has minted nothing; snapshot Blast's current rates from the `FeePolicy`; and return the
+   `PresaleInitializer`.
+2. Required setters, each taking the initializer by mutable reference:
+   - `blast_presale::blast_presale::set_supply(initializer, token_supply, burnable)`.
+   - `blast_presale::blast_presale::set_token_allocations(initializer, token_allocation_bps,
+     liquidity_token_allocation_bps, recipient_allocations)`.
+   - `blast_presale::blast_presale::set_raise(initializer, raise_target, raise_allocations)`.
+   - `blast_presale::blast_presale::set_windows(initializer, duration_ms, liquidity_window_ms)`.
+   - `blast_presale::blast_presale::set_eligibility(initializer, eligibility)`.
+   - `blast_presale::blast_presale::set_fee_split(initializer, fee_split)`.
+3. Optional setters:
+   - `blast_presale::blast_presale::set_participant_vesting(initializer, vesting)`: each buyer's tokens vest from
+     that buyer's claim. Without it, claims pay tokens out at once.
+   - `blast_presale::blast_presale::set_uncapped_phase(initializer, phase)`: lifts wallet caps from the phase's
+     start. Without it, caps hold for the whole window.
+   - `blast_presale::blast_presale::set_hard_cap(initializer, starts_after_ms, closes_when_filled)`: holds the
+     sale to its raise from that point (below). Without it, the sale overflows for its whole window.
+   - `blast_presale::blast_presale::set_partner(initializer, creation_policy, partner, clock)`: names a
+     `blast_partners::blast_partners::Partner` the `CreationPolicy` currently accepts. This is the only
+     time a partner can be named.
+
+   A setter called twice keeps its last value.
+4. `blast_presale::blast_presale::finalize(initializer, currency)` checks every setting together, mints the supply,
+   consumes the `TreasuryCap`, and returns `(Presale<Meme, Quote>, PresaleCap)`. The Coin Registry
+   supply becomes `Fixed`, or `BurnOnly` when `burnable` is true. Emits
+   `blast_presale::blast_presale::PresaleCreated`.
+5. Optional, Blast admin only: `blast_presale::blast_presale::set_protocol_fees` on the pending sale.
+6. `blast_presale::blast_presale::share(presale, start_ms, clock)`, same caller, fixes the windows and shares the
+   sale. The start is `max(start_ms, now)`, so a sale can be published ahead of its start. Emits
    `blast_presale::blast_presale::PresaleOpened`.
-10. `TransferObjects([presale_cap], creator)`.
+7. `TransferObjects([presale_cap], creator)`.
 
-`new` arguments:
+Settings:
 
-| Argument | Meaning and rule |
+| Setting | Meaning and rule |
 | --- | --- |
-| `token_supply` | Whole supply in atomic units, > 0. The `TreasuryCap` must have minted nothing (`EInitialSupplyNotZero`). |
+| `token_supply` | Whole supply in atomic units, > 0. |
+| `burnable` | `true`: supply becomes burn-only; `false`: fixed. |
 | `token_allocation_bps` | Buyers' share of the supply, > 0. |
-| `participant_vesting` | `Option<VestingTerms>`: when set, each buyer's tokens vest from that buyer's claim. |
 | `liquidity_token_allocation_bps` | Tokens seeded into the pool, > 0. |
 | `recipient_allocations` | Up to 64 token recipients, distinct nonzero addresses, each > 0 BPS, optionally vested. Buyers + LP + Blast's token rate + recipients = exactly 10,000 BPS. |
-| `burnable` | `true`: supply becomes burn-only; `false`: fixed. |
+| `participant_vesting` | Optional `VestingTerms` for every buyer's tokens. |
 | `raise_target` | Quote the sale must raise, atomic units, > 0. |
 | `raise_allocations` | Up to 64 raise recipients paid in Quote at migration, optionally vested. Their BPS plus Blast's raise rate must stay below 10,000; the LP keeps the rest. |
 | `duration_ms` | Commitment window length, > 0. |
 | `liquidity_window_ms` | Time after the window before anyone may cancel an unmigrated funded sale; at least 7 days. |
 | `eligibility` | `EligibilityPolicy::Open` or `EligibilityPolicy::Allowlisted` (below). |
-| `uncapped` | Optional `blast_presale::blast_presale::UncappedPhase` (below). |
+| uncapped phase | Optional `blast_presale::blast_presale::UncappedPhase` (below). |
+| hard cap | Optional `starts_after_ms` and `closes_when_filled` (below). |
 | `fee_split` | `blast_presale::blast_presale::FeeSplit`: up to 16 unvested, distinct LP-fee recipients plus a holder-reward share, totalling exactly 10,000 BPS. The creator takes LP fees by listing itself as a recipient. An empty list with 10,000 holder BPS is valid. |
-| `tick_spacing`, `pool_fee_rate` | Pool tier. Cetus derives the fee rate from the tick spacing. |
+| `tick_spacing`, `pool_fee_rate` | Pool tier, given to the venue's `new`. Cetus derives the fee rate from the tick spacing. |
+
+A setting never set is zero (supply, raise, window lengths, token BPS), so `finalize` rejects it
+with that setting's error. A missing eligibility policy or LP-fee split aborts with
+`EMissingSetting`.
 
 Eligibility policies (`blast_presale::blast_presale::EligibilityPolicy`):
 
@@ -180,6 +215,7 @@ Eligibility policies (`blast_presale::blast_presale::EligibilityPolicy`):
 
 Uncapped phase (`blast_presale::blast_presale::UncappedPhase`): it starts `starts_after_ms` into the window
 (must be below `duration_ms`; zero means from the start) and lifts wallet caps until the end.
+Whether the sale then overflows or stops at its raise is the hard cap's job.
 
 - `uncapped_for_eligible`: only wallets the policy admits, with the policy's participant bound
   and, for an open policy, its minimum.
@@ -187,11 +223,24 @@ Uncapped phase (`blast_presale::blast_presale::UncappedPhase`): it starts `start
   must be at least the policy's bound (its `max_participants`, or the allowlist's `leaf_count`)
   and at most 65,536. `min_commitment` times the slots held to it must reach the raise: all slots
   under an open policy, only the slots beyond `leaf_count` under an allowlist.
-- `hard_cap = true`: during the phase a commitment takes only what is left of the raise and
-  returns the excess at once; when the raise is full, commitments abort with `EPresaleFilled`.
-  `hard_cap = false`: the sale keeps overflowing and fills pro rata.
 
-The creation call aborts unless the LP's tokens and Quote give a seed price both venues can pool
+Hard cap (`blast_presale::blast_presale::HardCap`): from `starts_after_ms` into the window (must be below
+`duration_ms`, `EInvalidHardCap`), a commitment takes only what is left of the raise and returns
+the excess at once; when the raise is full, commitments abort with `EPresaleFilled`. Before that
+point the sale overflows. It does not lift wallet caps. Common shapes:
+
+| Shape | Settings |
+| --- | --- |
+| Overflow for the whole window, pro-rata fill | No hard cap |
+| First come, first served within wallet caps | Hard cap at `0` |
+| First come, first served without caps | Uncapped phase and hard cap both at `0` |
+| Capped overflow round, then a first-come uncapped round | Uncapped phase and hard cap at the same offset |
+
+With `closes_when_filled`, anyone may settle the sale as soon as its raise is full under the hard
+cap, without waiting for the window's end (see Settling). Without it, a full sale runs to its
+end, so the pool can open at an announced time.
+
+`finalize` aborts unless the LP's tokens and Quote give a seed price both venues can pool
 (`EUnseedablePrice`; see Economics).
 
 #### Committing
@@ -248,10 +297,23 @@ and puts that sibling in the proof. The `wallet` in the leaf must be the transac
 
 #### Settling
 
-Who may call: *anyone*. `blast_presale::blast_presale::settle(presale, clock)` once `now >= end_ms` while `Open`.
+Who may call: *anyone*. `blast_presale::blast_presale::settle(presale, clock)` while `Open`, once either:
+
+- `now >= end_ms`; or
+- the sale closes early: its hard cap has `closes_when_filled`, the hard cap is in force
+  (`now >= start_ms + hard cap starts_after_ms`), and `total_commitments >= raise_target`. The
+  sale can then take no more Quote.
+
 If total commitments reach the raise the sale becomes `Funded` and emits
 `blast_presale::blast_presale::PresaleFunded`; otherwise it becomes `Cancelled` and emits
-`blast_presale::blast_presale::PresaleCancelled`.
+`blast_presale::blast_presale::PresaleCancelled`. Closing early ends the window at the settle: the
+stored `duration_ms` becomes the time the sale ran, so `end_ms` and the LP deadline count from the
+close. `PresaleFunded` carries both. A sale without a hard cap never closes early.
+
+Closing early and migrating can run in one PTB: `settle`, then the venue's `migrate`. Because
+migration is permissionless, the wallet whose commitment fills the raise can also commit, settle,
+migrate, and buy from the new pool in one transaction. The pool's seed price is the same either
+way; creators who want a public start choose `closes_when_filled = false`.
 
 #### Migrating to Cetus
 
@@ -498,9 +560,9 @@ remainder is the largest). Raise 1,000; Alice commits 1,000 and Bob 3,000, so `T
 claims first: `floor(10,001 × 1,000 / 4,000) = 2,500` tokens and `floor(3,000 × 1,000 / 4,000) =
 750` Quote. Bob claims last and takes the rest: 7,501 tokens and 2,250 Quote.
 
-When a hard-capped phase fills the raise, `T` equals `R` and every refund is zero. If the sale
-already overflowed before the phase started, the phase accepts nothing (`EPresaleFilled`) and the
-earlier overflow fills pro rata as usual.
+When the raise fills under a hard cap, `T` equals `R` and every refund is zero. If the sale
+already overflowed before its hard cap started, the hard cap accepts nothing (`EPresaleFilled`)
+and the earlier overflow fills pro rata as usual.
 
 #### Blast's fees
 
@@ -555,18 +617,22 @@ All times are Unix milliseconds from `Clock`.
 
 - `start_ms = max(requested start, time of share)`; `end_ms = start_ms + duration_ms`; LP deadline
   `= end_ms + liquidity_window_ms`; uncapped phase from `start_ms + starts_after_ms`, or `end_ms`
-  when the sale has none. `share` aborts with `EInvalidWindow` if these overflow u64.
+  when the sale has none; hard cap from `start_ms + starts_after_ms`. `share` aborts with
+  `EInvalidWindow` if these overflow u64. An early close sets `end_ms` to the settle time, which
+  moves the LP deadline forward too.
 - Commits: allowed for `start_ms <= now < end_ms`. Before the start: `EPresaleNotStarted`. At or
   after the end: `EPresaleEnded`.
 - Caps lift at `now >= uncapped start`.
 - `blast_presale::blast_presale::set_protocol_fees`: in the creation PTB before `share`, or after it while
   `now < start_ms`. A sale shared with a start in the past can be repriced only in its creation PTB.
-- `blast_presale::blast_presale::settle`: from `now >= end_ms`, at any later time.
+- `blast_presale::blast_presale::settle`: from `now >= end_ms`, at any later time, or earlier once the sale can close
+  early.
 - Migration: any time while `Funded`, including after the LP deadline, until someone cancels.
 - `blast_presale::blast_presale::cancel_unlaunched`: from `now >= LP deadline`. The 7-day minimum means a funded
   sale stays migratable for at least a week after its end.
 - Vesting starts at migration for recipients and at each claim for participants.
 - `blast_presale::blast_presale::set_partner` needs `now < accepted_until_ms` for that partner.
+- Hard cap: commitments are held to the raise from `now >= hard cap start`.
 - Holder rounds: the deadline must be in the future at publish; claims work until close; close
   needs `now >= claim_deadline_ms`.
 
@@ -577,8 +643,9 @@ The package exposes no public read functions on its objects. Read object fields 
 
 `Presale<SaleToken, Quote>` fields:
 
-- Lifecycle and timing: `lifecycle`, `start_ms` (zero until shared), `duration_ms`,
-  `liquidity_window_ms`, `uncapped` (with `starts_after_ms`, `access`, `hard_cap`).
+- Lifecycle and timing: `lifecycle`, `start_ms` (zero until shared), `duration_ms` (the time the
+  sale ran, once it closed early), `liquidity_window_ms`, `uncapped` (with `starts_after_ms`,
+  `access`), `hard_cap` (with `starts_after_ms`, `closes_when_filled`).
 - Raise progress: `raise_target`, `total_commitments`, `participants` (wallets that have
   committed and not yet claimed), `quote` (Quote held).
 - Terms: `eligibility`, `token_allocation` (buyers' tokens), `participant_vesting`,
@@ -633,11 +700,11 @@ directly (no envelope).
 
 | Flow | Event | Indexer use |
 | --- | --- | --- |
-| Create | `blast_presale::blast_presale::PresaleCreated` | All terms: supply split (BPS), recipients and vesting, raise split (BPS), window lengths, eligibility, uncapped phase, `migration_witness`, tier, fee split, Blast's snapshot rates and amounts, `treasury_cap_id`, `presale_cap_id`. |
-| Share | `blast_presale::blast_presale::PresaleOpened` | `start_ms`, `end_ms`, `liquidity_deadline_ms`, `uncapped_from_ms`, `partner_id`. |
+| Create | `blast_presale::blast_presale::PresaleCreated` | All terms: supply split (BPS), recipients and vesting, raise split (BPS), window lengths, eligibility, uncapped phase, hard cap, `migration_witness`, tier, fee split, Blast's snapshot rates and amounts, `treasury_cap_id`, `presale_cap_id`. |
+| Share | `blast_presale::blast_presale::PresaleOpened` | `start_ms`, scheduled `end_ms` and `liquidity_deadline_ms`, `uncapped_from_ms`, `hard_cap_from_ms` (`none` without a hard cap), `partner_id`. |
 | Per-sale rates | `blast_presale::blast_presale::ProtocolFeesChanged` | New rates, Blast amounts, and new buyer `token_allocation`. |
 | Commit | `blast_presale::blast_presale::Committed` | `quote` accepted, `wallet_commitment` (new total), `total_commitments`, `participants`. It has no wallet field: the wallet is the transaction sender. |
-| Settle | `blast_presale::blast_presale::PresaleFunded` / `blast_presale::blast_presale::PresaleCancelled` | Funded: `accepted_quote`, `refundable_quote`, `token_allocation`. Cancelled: total refundable. |
+| Settle | `blast_presale::blast_presale::PresaleFunded` / `blast_presale::blast_presale::PresaleCancelled` | Funded: `accepted_quote`, `refundable_quote`, `token_allocation`, and the actual `end_ms` and `liquidity_deadline_ms`, earlier than `PresaleOpened`'s after an early close. Cancelled: total refundable. |
 | Migrate | `blast_presale::blast_presale::ProtocolFeesPaid` (unpartnered), `blast_presale::blast_presale::RaiseAllocated` (per raise recipient), `blast_presale::blast_presale::RecipientAllocated` (per token recipient), `blast_presale::blast_presale::PresaleMigrated`, then `presale_vault::VaultCreated` | Payouts with `vesting_id`; LP amounts; vault, pool, and position IDs. The vault event's third type argument is `blast_presale::cetus::Venue` or `blast_presale::bluefin::Venue`. |
 | Partner pay | `blast_partners::blast_partners::PartnerPaid`, `blast_presale::blast_presale::ProtocolFeesPaid` | `partner_quote` is the partner's cut. |
 | Claim | `blast_presale::blast_presale::Claimed` | `tokens`, `quote_refund`, `remaining_participants`, `vesting_id`. |
@@ -655,23 +722,26 @@ Admin events are listed in "Blast admin operations".
 Errors are Move clever errors: the abort names the module and constant, and the message explains
 it. Common ones by flow (module `blast_presale` unless named):
 
-- Create: `creation_policy::EQuoteNotAllowed` / `creation_policy::EMigrationWitnessNotAllowed`
+- Start (`new`): `creation_policy::EQuoteNotAllowed` / `creation_policy::EMigrationWitnessNotAllowed`
   (ask Blast to list it); `EInvalidAssetPair` (sale coin equals Quote); `EInitialSupplyNotZero`;
-  `EInvalidTokenAllocation` (BPS not exactly 10,000 with Blast's token rate, duplicate or zero
+  `blast_presale::bluefin::EInvalidTier`; `blast_presale::bluefin::ESymbolTooLong`.
+- Finalize: `EMissingSetting` (no eligibility policy or LP-fee split); `EInvalidRaiseTarget`
+  (raise unset or zero); `EInvalidTokenAllocation` (BPS not exactly 10,000 with Blast's token rate, duplicate or zero
   recipient, more than 64, or a zero apportioned amount); `EInvalidRaiseAllocation` (no LP share
   left after Blast, duplicates, zero amounts); `EInvalidWindow` (zero duration or LP window under
   7 days); `EUnreachableRaise` (minimum × slots below raise); `EInvalidEligibilityPolicy`;
-  `EInvalidUncappedPhase`; `EInvalidFeeSplit`; `EInvalidVestingTerms`; `EUnseedablePrice`;
-  `blast_presale::bluefin::EInvalidTier`; `blast_presale::bluefin::ESymbolTooLong`.
-- Partner and share: `creation_policy::EPartnerNotAccepted`; `EInvalidLifecycle` (already shared);
-  `EInvalidWindow`.
+  `EInvalidUncappedPhase`; `EInvalidHardCap` (hard cap starts at or after the window's end);
+  `EInvalidFeeSplit`; `EInvalidVestingTerms`; `EUnseedablePrice`.
+- Partner: `creation_policy::EPartnerNotAccepted`.
+- Share: `EInvalidLifecycle` (already shared); `EInvalidWindow`.
 - Commit: `EPresaleNotStarted`, `EPresaleEnded` (check the window); `EZeroCommitment`;
   `EWrongEligibilityPolicy` (wrong commit function for the policy); `EInvalidEligibilityProof`
   (wrong index, cap, proof, sender, or a different cap than the wallet's first commit);
   `EWalletCapExceeded` (lower the amount, or wait for the uncapped phase);
   `EBelowMinimumCommitment` (first commit must reach the minimum); `EParticipantCapacityReached`;
   `EUncappedPhaseNotOpen` (no anyone-phase, or not started); `EPresaleFilled` (hard cap reached).
-- Settle: `EPresaleNotEnded`; `EInvalidLifecycle` (already settled).
+- Settle: `EPresaleNotEnded` (the window has not ended and the sale cannot close early);
+  `EInvalidLifecycle` (already settled).
 - Migrate: `EInvalidLifecycle` (not `Funded`: unsettled, underfunded, cancelled, or migrated);
   `EWrongMigrationWitness` (wrong venue); `blast_presale::cetus::EInvalidCoinOrder` (swap
   `CoinA`/`CoinB`); `blast_presale::cetus::EWrongCoinPair`; venue aborts (Bluefin creation fee
@@ -698,8 +768,11 @@ it. Common ones by flow (module `blast_presale` unless named):
 
 ### Pitfalls
 
-- Create, optionally `set_partner`, and `share` in one PTB. The `Presale` cannot be transferred,
-  so a PTB that does not share it fails. The partner cannot be added later.
+- Start, set, `finalize`, and `share` in one PTB. The `PresaleInitializer` must be finalized and
+  the `Presale` cannot be transferred, so a PTB that skips either step fails. The partner can be
+  named only on the initializer.
+- An early close needs a hard cap with `closes_when_filled`. A sale without a hard cap always
+  runs to `end_ms`, even when it reached its raise on day one.
 - Every commit returns a coin. Transfer it back to the sender, even when it is zero.
 - Commits always credit the sender. Sponsored transactions work (the user stays the sender), but
   take Quote from the user's coins, not the sponsor's gas coin.
@@ -754,7 +827,7 @@ Objects:
 
 - `blast_aftermath_dao_presale::blast_aftermath_dao_presale::Witness`: the sealed migrator witness.
 - `blast_aftermath_dao_presale::blast_aftermath_dao_presale::AdminCap`: the vendor's own admin, sent to the publisher. Its one
-  power is creating sales. It is not Blast's `blast_presale_admin::AdminCap`.
+  power is creating sales, through `new` and `finalize`. It is not Blast's `blast_presale_admin::AdminCap`.
 - `blast_aftermath_dao_presale::blast_aftermath_dao_presale::PoolCreation<Lp>`: shared; binds one sale to the Aftermath
   `CreatePoolCapV2` of a freshly published LP coin `Lp`.
 
@@ -763,17 +836,21 @@ Create (*cap holder*, `blast_aftermath_dao_presale::blast_aftermath_dao_presale:
 1. Beforehand, in its own transaction, publish a fresh Aftermath LP coin `Lp` (one per sale); its
    publication yields the `CreatePoolCapV2` that the `AdminCap` holder passes in.
 2. Build the arguments as for any sale (no fee split or tier).
-3. `blast_aftermath_dao_presale::blast_aftermath_dao_presale::new<Lp, SaleToken, Quote>(admin_cap, treasury_cap, currency,
-   token_supply, token_allocation_bps, participant_vesting, liquidity_token_allocation_bps,
-   recipient_allocations, burnable, raise_target, raise_allocations, duration_ms,
-   liquidity_window_ms, eligibility, uncapped, create_pool_cap, creation_policy, fee_policy)`.
-   It calls `blast_presale::blast_presale::new` with tick spacing and fee rate zero and a fee split giving the
-   treasury 10,000 BPS and holders 0, sends the `PresaleCap` to the treasury, shares the
-   `PoolCreation<Lp>`, emits `blast_aftermath_dao_presale::blast_aftermath_dao_presale::PoolCreationReserved`, and returns the
-   unshared `Presale`.
-4. Optional `blast_presale::blast_presale::set_partner(...)`; optional
-   `blast_presale::blast_presale::set_protocol_fees(...)` to change this sale's Blast rates, which needs Blast's
-   presale `AdminCap` in the same transaction; then `blast_presale::blast_presale::share(presale, start_ms, clock)`.
+3. `blast_aftermath_dao_presale::blast_aftermath_dao_presale::new<SaleToken, Quote>(admin_cap, treasury_cap,
+   creation_policy, fee_policy)` calls `blast_presale::blast_presale::new` with tick spacing and fee rate zero
+   and returns the `PresaleInitializer`.
+4. The `blast_presale::blast_presale` setters as for any sale (no LP-fee split needed), including the optional
+   `blast_presale::blast_presale::set_partner`.
+5. `blast_aftermath_dao_presale::blast_aftermath_dao_presale::finalize<Lp, SaleToken, Quote>(admin_cap, initializer,
+   currency, create_pool_cap)` sets a fee split giving the treasury 10,000 BPS and holders 0
+   (replacing any split set earlier), runs `blast_presale::blast_presale::finalize`, sends the `PresaleCap` to the
+   treasury, shares the `PoolCreation<Lp>`, emits
+   `blast_aftermath_dao_presale::blast_aftermath_dao_presale::PoolCreationReserved`, and returns the unshared `Presale`. A
+   vendor sale finalized with `blast_presale::blast_presale::finalize` directly has no `PoolCreation`, so it
+   can never migrate and refunds after its LP deadline.
+6. Optional `blast_presale::blast_presale::set_protocol_fees(...)` to change this sale's Blast rates, which needs
+   Blast's presale `AdminCap` in the same transaction; then
+   `blast_presale::blast_presale::share(presale, start_ms, clock)`.
 
 Migrate (*anyone*, while `Funded`):
 
@@ -812,6 +889,11 @@ remainder.
 `Funded`. It comes back only as the overflow refund after migration, or in full after a
 cancellation.
 
+**Can a sale end before its window does?** Only a hard-capped sale whose hard cap has
+`closes_when_filled`, once its raise is full under the hard cap. Anyone may then call
+`blast_presale::blast_presale::settle`, and the LP deadline counts from that moment. An overflowing sale always
+runs its full window, since later wallets can still join at the common fill rate.
+
 **What happens if the raise is not met?** From `end_ms` anyone calls `blast_presale::blast_presale::settle`,
 which cancels the sale. Each wallet (or a relayer) then calls `blast_presale::blast_presale::claim` for a full
 refund. Blast charges nothing, and the minted tokens stay locked forever.
@@ -840,8 +922,8 @@ transaction sender.
 Anyone calls `blast_fun_linear_vesting::claim` on it, and newly vested value goes to the fixed
 beneficiary. Nothing vests before the cliff; after it, whole periods since the start count.
 
-**How does a partner get paid?** The creator names it with `blast_presale::blast_presale::set_partner` before
-`share`. After migration, anyone calls `blast_presale::blast_presale::pay_protocol_fees_with_partner` once. After
+**How does a partner get paid?** The creator names it with `blast_presale::blast_presale::set_partner` on the
+initializer, before `finalize`. After migration, anyone calls `blast_presale::blast_presale::pay_protocol_fees_with_partner` once. After
 each fee collection, anyone calls `presale_vault::pay_protocol_lp_fees_with_partner`. The partner
 receives its current share of Blast's raise and LP fees, never of the token fee.
 

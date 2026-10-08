@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// Standalone overflow presales with capped commitments, proportional fills,
+/// Standalone presales with capped commitments, proportional fills or a first-come hard cap,
 /// migration-gated claims, and full refunds when a sale does not migrate.
 module blast_presale::blast_presale;
 
@@ -31,14 +31,21 @@ public enum UncappedAccess has copy, drop, store {
 }
 
 /// An optional closing phase, starting `starts_after_ms` into the commitment window,
-/// that lifts wallet caps. With `hard_cap`, commitments in the phase take only what is
-/// left of the raise and return the excess at once, and the sale stops accepting
-/// Quote when the raise is full; without it, the sale still overflows and every
-/// wallet is filled at one common rate.
+/// that lifts wallet caps. Whether the sale then overflows or stops at its raise is the
+/// sale's `HardCap`, not the phase's.
 public struct UncappedPhase has copy, drop, store {
     starts_after_ms: u64,
     access: UncappedAccess,
-    hard_cap: bool,
+}
+
+/// From `starts_after_ms` into the commitment window, the sale takes Quote only up to its
+/// raise, first come, first served: a commitment takes what is left and returns the excess at
+/// once, and the sale stops accepting Quote when the raise is full. Before then it overflows,
+/// filling every wallet at one common rate. With `closes_when_filled`, a sale whose raise is full
+/// under its hard cap may settle at once instead of waiting for the window's end.
+public struct HardCap has copy, drop, store {
+    starts_after_ms: u64,
+    closes_when_filled: bool,
 }
 
 /// The presale's one-way lifecycle.
@@ -99,6 +106,33 @@ public struct Commitment has copy, drop, store {
     wallet_cap: u64,
 }
 
+/// Hot potato from `new` to `finalize`, collecting the creator's settings. Only `finalize`
+/// consumes it, so every sale is finalized in the transaction whose `new` checked the creation
+/// policy and snapshotted Blast's rates. `finalize` validates the settings together; the supply,
+/// token allocations, raise, windows, eligibility policy, and LP-fee split must all be set.
+public struct PresaleInitializer<phantom SaleToken, phantom Quote> {
+    treasury_cap: TreasuryCap<SaleToken>,
+    migration_witness: TypeName,
+    tick_spacing: u32,
+    pool_fee_rate: u64,
+    protocol_fees: ProtocolFees,
+    token_supply: u64,
+    burnable: bool,
+    token_allocation_bps: Bps,
+    liquidity_token_allocation_bps: Bps,
+    recipient_allocations: vector<RecipientShare>,
+    participant_vesting: Option<VestingTerms>,
+    raise_target: u64,
+    raise_allocations: vector<RecipientShare>,
+    duration_ms: u64,
+    liquidity_window_ms: u64,
+    eligibility: Option<EligibilityPolicy>,
+    uncapped: Option<UncappedPhase>,
+    hard_cap: Option<HardCap>,
+    fee_split: Option<FeeSplit>,
+    partner_id: Option<ID>,
+}
+
 /// One standalone presale and its complete custody until migration or refund.
 ///
 /// The complete fixed or burn-only token supply is apportioned at creation.
@@ -116,14 +150,17 @@ public struct Presale<phantom SaleToken, phantom Quote> has key {
     id: UID,
     presale_cap_id: ID,
     lifecycle: Lifecycle,
+    /// The commitment window's length: as created until the sale closes early, then the time it
+    /// ran.
     duration_ms: u64,
     liquidity_window_ms: u64,
     /// When commitments open, fixed by `share`; zero until then. The window's end, the LP
-    /// deadline, and the uncapped start are derived from it and the lengths above.
+    /// deadline, and the uncapped and hard-cap starts are derived from it and the lengths above.
     start_ms: u64,
     raise_target: u64,
     eligibility: EligibilityPolicy,
     uncapped: Option<UncappedPhase>,
+    hard_cap: Option<HardCap>,
     migration_witness: TypeName,
     tick_spacing: u32,
     pool_fee_rate: u64,
@@ -184,8 +221,8 @@ public fun allowlisted_eligibility(root: vector<u8>, leaf_count: u64): Eligibili
 }
 
 /// Lifts wallet caps for eligible wallets `starts_after_ms` into the window.
-public fun uncapped_for_eligible(starts_after_ms: u64, hard_cap: bool): UncappedPhase {
-    UncappedPhase { starts_after_ms, access: UncappedAccess::Eligible, hard_cap }
+public fun uncapped_for_eligible(starts_after_ms: u64): UncappedPhase {
+    UncappedPhase { starts_after_ms, access: UncappedAccess::Eligible }
 }
 
 /// Opens the sale to any wallet without caps `starts_after_ms` into the window, admitting
@@ -194,7 +231,6 @@ public fun uncapped_for_anyone(
     starts_after_ms: u64,
     max_participants: u64,
     min_commitment: u64,
-    hard_cap: bool,
 ): UncappedPhase {
     assert!(
         min_commitment > 0 && max_participants > 0 && max_participants <= MAX_PARTICIPANTS,
@@ -204,7 +240,6 @@ public fun uncapped_for_anyone(
     UncappedPhase {
         starts_after_ms,
         access: UncappedAccess::Anyone { max_participants, min_commitment },
-        hard_cap,
     }
 }
 
@@ -252,36 +287,21 @@ public fun fee_split(fee_recipients: vector<RecipientShare>, holder_rewards_bps:
     FeeSplit { fee_recipients, holder_rewards_bps }
 }
 
-/// Mints and apportions the complete token supply, then irreversibly makes it
-/// fixed or burn-only before returning the presale.
+/// Starts a presale of `SaleToken` raising `Quote` for the migrator that constructs
+/// `MigrationWitness`, at the pool tier it creates, and snapshots Blast's rates.
 ///
-/// A migrator in this or any other package creates its sales here with its own `MigrationWitness`,
+/// A migrator in this or any other package starts its sales here with its own `MigrationWitness`,
 /// which only its defining module can construct. The `CreationPolicy` must allow that witness, so
 /// Blast decides which migrators may open sales; the sale then releases its liquidity only to
 /// `migrate` called with the same witness.
 public fun new<SaleToken, Quote, MigrationWitness: drop>(
     treasury_cap: TreasuryCap<SaleToken>,
-    currency: &mut Currency<SaleToken>,
-    token_supply: u64,
-    token_allocation_bps: Bps,
-    participant_vesting: Option<VestingTerms>,
-    liquidity_token_allocation_bps: Bps,
-    recipient_allocations: vector<RecipientShare>,
-    burnable: bool,
-    raise_target: u64,
-    raise_allocations: vector<RecipientShare>,
-    duration_ms: u64,
-    liquidity_window_ms: u64,
-    eligibility: EligibilityPolicy,
-    uncapped: Option<UncappedPhase>,
     _: MigrationWitness,
-    tick_spacing: u32,
-    pool_fee_rate: u64,
-    fee_split: FeeSplit,
     creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
-    ctx: &mut TxContext,
-): (Presale<SaleToken, Quote>, PresaleCap) {
+    tick_spacing: u32,
+    pool_fee_rate: u64,
+): PresaleInitializer<SaleToken, Quote> {
     creation_policy.assert_allowed<Quote, MigrationWitness>();
     assert!(
         type_name::with_original_ids<SaleToken>() != type_name::with_original_ids<Quote>(),
@@ -291,7 +311,170 @@ public fun new<SaleToken, Quote, MigrationWitness: drop>(
     // supply fixed or burn-only consumes the cap, so holding it proves the supply is still unknown.
     assert!(treasury_cap.total_supply() == 0, EInitialSupplyNotZero);
 
-    let protocol_fees = fee_policy.fees();
+    PresaleInitializer {
+        treasury_cap,
+        migration_witness: type_name::with_original_ids<MigrationWitness>(),
+        tick_spacing,
+        pool_fee_rate,
+        protocol_fees: fee_policy.fees(),
+        token_supply: 0,
+        burnable: false,
+        token_allocation_bps: bps::new(0),
+        liquidity_token_allocation_bps: bps::new(0),
+        recipient_allocations: vector[],
+        participant_vesting: option::none(),
+        raise_target: 0,
+        raise_allocations: vector[],
+        duration_ms: 0,
+        liquidity_window_ms: 0,
+        eligibility: option::none(),
+        uncapped: option::none(),
+        hard_cap: option::none(),
+        fee_split: option::none(),
+        partner_id: option::none(),
+    }
+}
+
+/// Sets the complete supply `finalize` mints, and whether it then becomes burn-only rather than
+/// fixed.
+public fun set_supply<SaleToken, Quote>(
+    self: &mut PresaleInitializer<SaleToken, Quote>,
+    token_supply: u64,
+    burnable: bool,
+) {
+    self.token_supply = token_supply;
+    self.burnable = burnable;
+}
+
+/// Splits the supply in BPS between the buyers, the LP, and each recipient. With Blast's token
+/// rate the shares must total exactly 10,000 BPS.
+public fun set_token_allocations<SaleToken, Quote>(
+    self: &mut PresaleInitializer<SaleToken, Quote>,
+    token_allocation_bps: Bps,
+    liquidity_token_allocation_bps: Bps,
+    recipient_allocations: vector<RecipientShare>,
+) {
+    self.token_allocation_bps = token_allocation_bps;
+    self.liquidity_token_allocation_bps = liquidity_token_allocation_bps;
+    self.recipient_allocations = recipient_allocations;
+}
+
+/// Locks each participant's claimed tokens in its own schedule under `vesting`, starting at its
+/// claim, instead of paying them out. Without it, claims pay tokens out at once.
+public fun set_participant_vesting<SaleToken, Quote>(
+    self: &mut PresaleInitializer<SaleToken, Quote>,
+    vesting: VestingTerms,
+) {
+    self.participant_vesting = option::some(vesting);
+}
+
+/// Sets the Quote the sale raises and each recipient's share of it, paid at migration. The LP
+/// keeps what Blast's and the recipients' shares leave.
+public fun set_raise<SaleToken, Quote>(
+    self: &mut PresaleInitializer<SaleToken, Quote>,
+    raise_target: u64,
+    raise_allocations: vector<RecipientShare>,
+) {
+    self.raise_target = raise_target;
+    self.raise_allocations = raise_allocations;
+}
+
+/// Sets how long commitments stay open from the start, and how long after the window anyone may
+/// migrate a funded sale before anyone may cancel it: at least seven days.
+public fun set_windows<SaleToken, Quote>(
+    self: &mut PresaleInitializer<SaleToken, Quote>,
+    duration_ms: u64,
+    liquidity_window_ms: u64,
+) {
+    self.duration_ms = duration_ms;
+    self.liquidity_window_ms = liquidity_window_ms;
+}
+
+/// Sets who may commit and each wallet's cap.
+public fun set_eligibility<SaleToken, Quote>(
+    self: &mut PresaleInitializer<SaleToken, Quote>,
+    eligibility: EligibilityPolicy,
+) {
+    self.eligibility = option::some(eligibility);
+}
+
+/// Adds a closing phase that lifts wallet caps. Without one, caps hold for the whole window.
+public fun set_uncapped_phase<SaleToken, Quote>(
+    self: &mut PresaleInitializer<SaleToken, Quote>,
+    uncapped: UncappedPhase,
+) {
+    self.uncapped = option::some(uncapped);
+}
+
+/// Hard-caps the sale at its raise from `starts_after_ms` into the window: zero for the whole
+/// window, or the uncapped phase's offset to keep an overflowing capped phase before it. With
+/// `closes_when_filled`, anyone may settle the sale once its raise is full under the hard cap;
+/// without it, a full sale waits for the window's end. Without a hard cap, the sale overflows
+/// for the whole window and always runs to its end.
+public fun set_hard_cap<SaleToken, Quote>(
+    self: &mut PresaleInitializer<SaleToken, Quote>,
+    starts_after_ms: u64,
+    closes_when_filled: bool,
+) {
+    self.hard_cap = option::some(HardCap { starts_after_ms, closes_when_filled });
+}
+
+/// Sets how the sale's vault splits every collected LP fee.
+public fun set_fee_split<SaleToken, Quote>(
+    self: &mut PresaleInitializer<SaleToken, Quote>,
+    fee_split: FeeSplit,
+) {
+    self.fee_split = option::some(fee_split);
+}
+
+/// Names the sale's Blast partner, one the `CreationPolicy` lets new presales name; from
+/// `finalize` on it is the sale's partner for good. The partner earns its cut of Blast's raise
+/// fee, and of nothing else: migration holds Blast's fees, and `pay_protocol_fees_with_partner`
+/// pays them.
+public fun set_partner<SaleToken, Quote>(
+    self: &mut PresaleInitializer<SaleToken, Quote>,
+    creation_policy: &CreationPolicy,
+    partner: &Partner,
+    clock: &Clock,
+) {
+    let partner_id = object::id(partner);
+    creation_policy.assert_partner(partner_id, clock.timestamp_ms());
+
+    self.partner_id = option::some(partner_id);
+}
+
+/// Checks every setting together, then mints and apportions the complete token supply and
+/// irreversibly makes it fixed or burn-only before returning the presale for `share`.
+public fun finalize<SaleToken, Quote>(
+    self: PresaleInitializer<SaleToken, Quote>,
+    currency: &mut Currency<SaleToken>,
+    ctx: &mut TxContext,
+): (Presale<SaleToken, Quote>, PresaleCap) {
+    let PresaleInitializer {
+        treasury_cap,
+        migration_witness,
+        tick_spacing,
+        pool_fee_rate,
+        protocol_fees,
+        token_supply,
+        burnable,
+        token_allocation_bps,
+        liquidity_token_allocation_bps,
+        recipient_allocations,
+        participant_vesting,
+        raise_target,
+        raise_allocations,
+        duration_ms,
+        liquidity_window_ms,
+        eligibility,
+        uncapped,
+        hard_cap,
+        fee_split,
+        partner_id,
+    } = self;
+
+    let eligibility = eligibility.destroy_or!(abort EMissingSetting);
+    let fee_split = fee_split.destroy_or!(abort EMissingSetting);
     assert!(raise_target > 0, EInvalidRaiseTarget);
     assert_raise_allocations(&raise_allocations, protocol_fees.raise_bps());
     assert_token_allocations(
@@ -301,10 +484,10 @@ public fun new<SaleToken, Quote, MigrationWitness: drop>(
         protocol_fees.token_bps(),
         &recipient_allocations,
     );
-
     assert!(duration_ms > 0 && liquidity_window_ms >= MIN_LIQUIDITY_WINDOW_MS, EInvalidWindow);
     assert!(eligibility.can_reach(raise_target), EUnreachableRaise);
     uncapped.do_ref!(|phase| assert_uncapped_phase(phase, duration_ms, eligibility, raise_target));
+    hard_cap.do_ref!(|cap| assert!(cap.starts_after_ms < duration_ms, EInvalidHardCap));
 
     let (
         token_allocation,
@@ -341,7 +524,6 @@ public fun new<SaleToken, Quote, MigrationWitness: drop>(
     let presale_id = id.to_inner();
     let cap = PresaleCap { id: object::new(ctx), presale_id };
     let presale_cap_id = cap.id.to_inner();
-    let migration_witness = type_name::with_original_ids<MigrationWitness>();
 
     event::emit(PresaleCreated<SaleToken, Quote> {
         presale_id,
@@ -363,6 +545,7 @@ public fun new<SaleToken, Quote, MigrationWitness: drop>(
         liquidity_window_ms,
         eligibility,
         uncapped,
+        hard_cap,
         migration_witness,
         tick_spacing,
         pool_fee_rate,
@@ -388,6 +571,7 @@ public fun new<SaleToken, Quote, MigrationWitness: drop>(
             raise_target,
             eligibility,
             uncapped,
+            hard_cap,
             migration_witness,
             tick_spacing,
             pool_fee_rate,
@@ -405,27 +589,11 @@ public fun new<SaleToken, Quote, MigrationWitness: drop>(
             protocol_fees,
             protocol_quote,
             protocol_tokens,
-            partner_id: option::none(),
+            partner_id,
             unpaid_protocol_quote: option::none(),
         },
         cap,
     )
-}
-
-/// Names the sale's Blast partner, one the `CreationPolicy` lets new presales name, before `share`
-/// fixes it for good. The partner earns its cut of Blast's raise fee, and of nothing else:
-/// migration holds Blast's fees, and `pay_protocol_fees_with_partner` pays them.
-public fun set_partner<SaleToken, Quote>(
-    self: &mut Presale<SaleToken, Quote>,
-    creation_policy: &CreationPolicy,
-    partner: &Partner,
-    clock: &Clock,
-) {
-    assert!(self.lifecycle == Lifecycle::Pending, EInvalidLifecycle);
-    let partner_id = object::id(partner);
-    creation_policy.assert_partner(partner_id, clock.timestamp_ms());
-
-    self.partner_id = option::some(partner_id);
 }
 
 /// Shares a newly created presale and fixes its windows from `start_ms`, or from now once that
@@ -438,7 +606,8 @@ public fun share<SaleToken, Quote>(
 ) {
     assert!(self.lifecycle == Lifecycle::Pending, EInvalidLifecycle);
 
-    // Every deadline is derived from the start, so the share proves each one fits in u64.
+    // Every deadline is derived from the start, so the share proves each one fits in u64. Closing
+    // early only brings the end and the LP deadline forward.
     let start_ms = start_ms.max(clock.timestamp_ms());
     let end_ms = start_ms.checked_add(self.duration_ms).destroy_or!(abort EInvalidWindow);
     let liquidity_deadline_ms = end_ms
@@ -454,6 +623,7 @@ public fun share<SaleToken, Quote>(
         end_ms,
         liquidity_deadline_ms,
         uncapped_from_ms: self.uncapped_from_ms(),
+        hard_cap_from_ms: self.hard_cap_from_ms(),
         partner_id: self.partner_id,
     });
 
@@ -579,11 +749,16 @@ public fun commit_uncapped<SaleToken, Quote>(
     self.record_commitment(quote_in, no_wallet_cap, max_participants, min_commitment, clock, ctx)
 }
 
-/// Fixes the fill after the commitment window. Underfunded sales become fully
-/// refundable. Anyone may settle.
+/// Fixes the fill after the commitment window, or as soon as the raise is full under a hard cap
+/// that closes the sale when filled; closing early ends the window now, so the LP deadline counts
+/// from now. Underfunded sales become fully refundable. Anyone may settle.
 public fun settle<SaleToken, Quote>(self: &mut Presale<SaleToken, Quote>, clock: &Clock) {
     assert!(self.lifecycle == Lifecycle::Open, EInvalidLifecycle);
-    assert!(clock.timestamp_ms() >= self.end_ms(), EPresaleNotEnded);
+    let now_ms = clock.timestamp_ms();
+    assert!(now_ms >= self.end_ms() || self.can_close_early(now_ms), EPresaleNotEnded);
+
+    // A sale closing early ends now, so its LP deadline counts from now.
+    if (now_ms < self.end_ms()) self.duration_ms = now_ms - self.start_ms;
 
     if (self.total_commitments < self.raise_target) {
         self.cancel();
@@ -596,6 +771,8 @@ public fun settle<SaleToken, Quote>(self: &mut Presale<SaleToken, Quote>, clock:
             accepted_quote: self.raise_target,
             refundable_quote: self.total_commitments - self.raise_target,
             token_allocation: self.token_allocation,
+            end_ms: self.end_ms(),
+            liquidity_deadline_ms: self.liquidity_deadline_ms(),
         });
     };
 }
@@ -813,10 +990,29 @@ fun liquidity_deadline_ms<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): u
     self.end_ms() + self.liquidity_window_ms
 }
 
-/// When wallet caps lift: the uncapped phase's offset into the window, which `new` bounds below
-/// the duration, or the end of a sale without one.
+/// When wallet caps lift: the uncapped phase's offset into the window, which `finalize` bounds
+/// below the duration, or the end of a sale without one.
 fun uncapped_from_ms<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): u64 {
     self.uncapped.map_ref!(|phase| self.start_ms + phase.starts_after_ms).destroy_or!(self.end_ms())
+}
+
+/// When the hard cap takes hold: its offset into the window, which `finalize` bounds below the
+/// duration; none for a sale that overflows for its whole window.
+fun hard_cap_from_ms<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): Option<u64> {
+    self.hard_cap.map_ref!(|cap| self.start_ms + cap.starts_after_ms)
+}
+
+/// Whether the hard cap holds the sale's commitments to its raise at `now_ms`.
+fun is_hard_capped<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, now_ms: u64): bool {
+    self.hard_cap_from_ms().is_some_and!(|from_ms| now_ms >= *from_ms)
+}
+
+/// Whether the sale may settle before its window ends: its raise is full under a hard cap that
+/// closes the sale when filled, so it can take no more Quote.
+fun can_close_early<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, now_ms: u64): bool {
+    self.hard_cap.is_some_and!(|cap| cap.closes_when_filled)
+        && self.is_hard_capped(now_ms)
+        && self.total_commitments >= self.raise_target
 }
 
 /// Largest-remainder apportionment. Shares must sum to 10,000 BPS.
@@ -1096,9 +1292,10 @@ fun record_commitment<SaleToken, Quote>(
     ctx: &mut TxContext,
 ): Coin<Quote> {
     let uncapped = clock.timestamp_ms() >= self.uncapped_from_ms();
-    let (max_participants, hard_cap) = self.participant_limits(uncapped, max_participants);
-    let accepted_quote = self.acceptable_quote(quote_in.value(), hard_cap);
-    let fills_raise = hard_cap && self.total_commitments + accepted_quote == self.raise_target;
+    let hard_capped = self.is_hard_capped(clock.timestamp_ms());
+    let max_participants = self.participant_limit(uncapped, max_participants);
+    let accepted_quote = self.acceptable_quote(quote_in.value(), hard_capped);
+    let fills_raise = hard_capped && self.total_commitments + accepted_quote == self.raise_target;
 
     let key = CommitmentKey(ctx.sender());
     let is_new_participant = !self.id.has_dynamic_field(key);
@@ -1152,32 +1349,29 @@ fun anyone_limits(phase: UncappedPhase): (u64, u64) {
     }
 }
 
-/// The participant bound and hard-cap flag that apply now: the policy's bound without a hard
-/// cap until the uncapped phase starts, then the phase's own.
-fun participant_limits<SaleToken, Quote>(
+/// The participant bound that applies now: the policy's until the uncapped phase starts, then
+/// the phase's own.
+fun participant_limit<SaleToken, Quote>(
     self: &Presale<SaleToken, Quote>,
     uncapped: bool,
     policy_max_participants: u64,
-): (u64, bool) {
-    if (!uncapped) return (policy_max_participants, false);
+): u64 {
+    if (!uncapped) return policy_max_participants;
 
-    let UncappedPhase { access, hard_cap, .. } = self.uncapped.destroy_some();
-    let max_participants = match (access) {
+    match (self.uncapped.destroy_some().access) {
         UncappedAccess::Anyone { max_participants, .. } => max_participants,
         UncappedAccess::Eligible => policy_max_participants,
-    };
-
-    (max_participants, hard_cap)
+    }
 }
 
-/// The Quote a commitment of `offered` adds: all of it, except that a hard-capped uncapped
-/// phase accepts only what is left of the raise.
+/// The Quote a commitment of `offered` adds: all of it, except that under the hard cap the sale
+/// accepts only what is left of the raise.
 fun acceptable_quote<SaleToken, Quote>(
     self: &Presale<SaleToken, Quote>,
     offered: u64,
-    hard_cap: bool,
+    hard_capped: bool,
 ): u64 {
-    if (!hard_cap) return offered;
+    if (!hard_capped) return offered;
 
     assert!(self.total_commitments < self.raise_target, EPresaleFilled);
     offered.min(self.raise_target - self.total_commitments)
@@ -1546,6 +1740,25 @@ public fun protocol_fees_changed_fields<SaleToken, Quote>(
 }
 
 #[test_only]
+public fun hard_cap_for_testing(starts_after_ms: u64, closes_when_filled: bool): HardCap {
+    HardCap { starts_after_ms, closes_when_filled }
+}
+
+#[test_only]
+public fun created_hard_cap<SaleToken, Quote>(
+    event: &PresaleCreated<SaleToken, Quote>,
+): Option<HardCap> {
+    event.hard_cap
+}
+
+#[test_only]
+public fun opened_hard_cap_from_ms<SaleToken, Quote>(
+    event: &PresaleOpened<SaleToken, Quote>,
+): Option<u64> {
+    event.hard_cap_from_ms
+}
+
+#[test_only]
 public fun opened_partner_id<SaleToken, Quote>(
     event: &PresaleOpened<SaleToken, Quote>,
 ): Option<ID> {
@@ -1589,6 +1802,11 @@ public fun funded_fields<SaleToken, Quote>(
         event.refundable_quote,
         event.token_allocation,
     )
+}
+
+#[test_only]
+public fun funded_deadlines<SaleToken, Quote>(event: &PresaleFunded<SaleToken, Quote>): (u64, u64) {
+    (event.end_ms, event.liquidity_deadline_ms)
 }
 
 #[test_only]
@@ -1704,6 +1922,7 @@ public struct PresaleCreated<phantom SaleToken, phantom Quote> has copy, drop {
     liquidity_window_ms: u64,
     eligibility: EligibilityPolicy,
     uncapped: Option<UncappedPhase>,
+    hard_cap: Option<HardCap>,
     migration_witness: TypeName,
     tick_spacing: u32,
     pool_fee_rate: u64,
@@ -1720,14 +1939,16 @@ public struct PresaleCreated<phantom SaleToken, phantom Quote> has copy, drop {
     protocol_tokens: u64,
 }
 
-/// A presale was shared with these fixed commitment and liquidity windows and its Blast partner,
-/// if any. Commitments open at `start_ms`, which may be later than the share.
+/// A presale was shared with these commitment and liquidity windows and its Blast partner, if
+/// any. Commitments open at `start_ms`, which may be later than the share. A sale whose hard cap
+/// closes it when filled may end earlier; `PresaleFunded` records when it did.
 public struct PresaleOpened<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
     start_ms: u64,
     end_ms: u64,
     liquidity_deadline_ms: u64,
     uncapped_from_ms: u64,
+    hard_cap_from_ms: Option<u64>,
     partner_id: Option<ID>,
 }
 
@@ -1755,13 +1976,17 @@ public struct Committed<phantom SaleToken, phantom Quote> has copy, drop {
     participants: u64,
 }
 
-/// A funded presale closed with these fixed claim totals.
+/// A funded presale closed at `end_ms` with these fixed claim totals; anyone may cancel it once
+/// it is still unmigrated at `liquidity_deadline_ms`. Both are earlier than `PresaleOpened`'s
+/// when the sale closed early.
 public struct PresaleFunded<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
     total_commitments: u64,
     accepted_quote: u64,
     refundable_quote: u64,
     token_allocation: u64,
+    end_ms: u64,
+    liquidity_deadline_ms: u64,
 }
 
 /// A presale became fully refundable without releasing Quote.
@@ -1865,7 +2090,7 @@ const EInvalidLifecycle: vector<u8> = b"The presale is not in the lifecycle requ
 const EPresaleEnded: vector<u8> = b"The presale commitment window has ended.";
 
 #[error(code = 7)]
-const EPresaleNotEnded: vector<u8> = b"The presale commitment window has not ended.";
+const EPresaleNotEnded: vector<u8> = b"The presale commitment window has not ended, and the sale cannot close early: its raise is not full under a hard cap that closes it when filled.";
 
 #[error(code = 8)]
 const EZeroCommitment: vector<u8> = b"A presale commitment must be positive.";
@@ -1919,7 +2144,7 @@ const EInvalidUncappedPhase: vector<u8> = b"An uncapped phase must start inside 
 const EUncappedPhaseNotOpen: vector<u8> = b"The presale has no uncapped phase open to any wallet, or it has not started.";
 
 #[error(code = 25)]
-const EPresaleFilled: vector<u8> = b"The hard-capped presale has already reached its raise.";
+const EPresaleFilled: vector<u8> = b"The presale has already reached its raise under its hard cap.";
 
 #[error(code = 26)]
 const EInvalidRaiseAllocation: vector<u8> = b"Raise allocations must be unique, positive, bounded, leave the LP a share after Blast's, and apportion to positive amounts.";
@@ -1941,6 +2166,12 @@ const EWrongPartner: vector<u8> = b"The partner is not the one this presale name
 
 #[error(code = 32)]
 const ENoPartnerPayout: vector<u8> = b"The presale holds no partner payout: it has not migrated, or its partner was already paid.";
+
+#[error(code = 33)]
+const EInvalidHardCap: vector<u8> = b"A hard cap must start inside the commitment window.";
+
+#[error(code = 34)]
+const EMissingSetting: vector<u8> = b"A presale needs its eligibility policy and LP-fee split set before it is finalized.";
 
 // === Imports ===
 

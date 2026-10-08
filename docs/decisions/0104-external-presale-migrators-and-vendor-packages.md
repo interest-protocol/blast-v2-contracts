@@ -8,6 +8,9 @@
 - Amended: 2026-10-05 (owner decision, after the presale audit): the vendor
   package is published immutable instead of sending a full `UpgradeCap` to its
   treasury, and witness admission also rejects framework (`0x1`, `0x2`) types
+- Amended by: [0110](0110-presale-initializer-and-early-close.md): `new` returns a
+  `PresaleInitializer`, and the vendor creates a sale through its own `new` and
+  `finalize`
 
 ## Context
 
