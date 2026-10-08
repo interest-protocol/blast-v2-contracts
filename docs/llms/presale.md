@@ -597,8 +597,9 @@ poolable price.
 
 #### Partners
 
-A sale may name one `blast_partners::blast_partners::Partner`, fixed at `share`. The partner earns a cut of
-Blast's raise fee and of Blast's LP fees, never of Blast's token fee. The cut is
+A sale may name one `blast_partners::blast_partners::Partner`, named on the initializer and fixed
+at `finalize`. The partner earns a cut of Blast's raise fee and of Blast's LP fees, never of Blast's
+token fee. The cut is
 `floor(fee × share_bps / 10,000)` using the partner's share in force when paid (at most 8,000
 BPS; Blast's changes to it take effect 7 days after being scheduled). Blast keeps the rest. On a
 partnered sale, migration holds Blast's raise fee and tokens in the sale, and each collection
