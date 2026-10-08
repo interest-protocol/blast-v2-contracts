@@ -23,18 +23,18 @@ The pool tier belongs to the venue.
 
 - **Presale.** `blast_presale::new` drops `tick_spacing` and `pool_fee_rate`. `Presale` and
   `PresaleCreated` lose both fields, and `pool_tier` is removed.
-- **Cetus.** `cetus::new` still takes the creator's `tick_spacing`. It records it in the shared
-  `VenueConfig` under `cetus::TickSpacingKey<Meme>`, next to the pool-creation capability it
-  already reserves there. It then emits `cetus::PoolTierReserved<Meme, Quote>` with the tick
-  spacing and the fee rate Cetus sets for it. `cetus::migrate` reads the tick spacing back.
+- **One record and one event.** `venue_config::add_pool_tier<Meme, Quote, Venue>` records a
+  `venue_config::PoolTier { tick_spacing, pool_fee_rate }` under
+  `venue_config::PoolTierKey<Meme>`. It emits `venue_config::PoolTierReserved<Meme, Quote, Venue>`.
+  It takes a reference to the venue's sealed `Venue` marker, so only that venue's module can
+  record, and the event's third type argument names the venue, as `VaultCreated` does.
+  `VenueConfig` stays write-once: nothing removes or replaces a tier.
+- **Cetus.** `cetus::new` still takes the creator's `tick_spacing` and records it with the fee
+  rate Cetus sets for it. `cetus::migrate` reads the tick spacing back.
 - **Bluefin.** `bluefin::new` still takes the creator's `tick_spacing` and `pool_fee_rate`,
-  checked against Bluefin's bounds as before. It now also takes `&mut VenueConfig`, records a
-  `bluefin::PoolTier` under `bluefin::PoolTierKey<Meme>`, and emits
-  `bluefin::PoolTierReserved<Meme, Quote>`. `bluefin::migrate` takes `&VenueConfig` and reads the
-  tier back.
+  checked against Bluefin's bounds as before. It now also takes `&mut VenueConfig` to record
+  them. `bluefin::migrate` takes `&VenueConfig` and reads them back.
 - **Vendors.** A vendor whose venue has no tier passes none.
-- **`VenueConfig`.** It gains package-only `add_value` and `value` for plain dynamic fields beside
-  its object fields. It stays write-once: nothing removes or replaces a value.
 
 The tier is keyed by the sale token's type alone. A sale token has exactly one sale: `new`
 requires a zero-supply `TreasuryCap`, and `finalize` seals the supply. The launchpad migrators
@@ -47,6 +47,8 @@ already key Cetus reservations the same way, under their own `VenueConfig`.
   again. Rejected.
 - **A tier object owned by the sale.** This adds an object and a lifecycle for two numbers. The
   shared `VenueConfig` already holds each Cetus reservation. Rejected.
+- **A key and an event per venue.** This duplicates the record in each venue module and gives
+  indexers two event types for one fact. Rejected.
 
 ## Consequences
 
@@ -59,8 +61,8 @@ already key Cetus reservations the same way, under their own `VenueConfig`.
 
 ## Verification
 
-- The `blast_presale` unit tests check that `bluefin::new` emits its tier and records it in
-  `VenueConfig`.
+- The `blast_presale` unit tests check that `bluefin::new` emits `PoolTierReserved` with
+  `bluefin::Venue` and records the tier in `VenueConfig`.
 - They check that `PresaleCreated` carries no tier.
 - `cetus::new` and `cetus::migrate` need live Cetus objects, so the mainnet E2E rerun on the
   fresh publication covers the recorded tick spacing. E2E-011 migrates a Cetus sale.

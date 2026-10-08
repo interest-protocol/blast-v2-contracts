@@ -2906,13 +2906,11 @@ fun create_bluefin_sale<AllowedQuote, AllowedWitness>(symbol: vector<u8>) {
         POOL_FEE_RATE,
     );
     let (reserved_tick_spacing, reserved_fee_rate) = only_event<
-        bluefin::PoolTierReserved<BLAST_PRESALE_TESTS, QUOTE>,
+        PoolTierReserved<BLAST_PRESALE_TESTS, QUOTE, bluefin::Venue>,
     >().pool_tier_reserved_fields();
     assert_eq!(reserved_tick_spacing, TICK_SPACING);
     assert_eq!(reserved_fee_rate, POOL_FEE_RATE);
-    let (stored_tick_spacing, stored_fee_rate) = bluefin::pool_tier_for_testing<
-        BLAST_PRESALE_TESTS,
-    >(&venue_config);
+    let (stored_tick_spacing, stored_fee_rate) = venue_config.pool_tier<BLAST_PRESALE_TESTS>();
     assert_eq!(stored_tick_spacing, TICK_SPACING);
     assert_eq!(stored_fee_rate, POOL_FEE_RATE);
     initializer.set_supply(TOKEN_SUPPLY, false);
@@ -3447,7 +3445,7 @@ use blast_presale::{
     bps,
     creation_policy::{Self, CreationPolicy},
     fee_policy::{Self, FeePolicy},
-    venue_config,
+    venue_config::{Self, PoolTierReserved},
 };
 
 use std::{type_name, unit_test::{assert_eq, destroy}};

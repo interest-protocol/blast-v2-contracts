@@ -15,8 +15,6 @@ public struct Venue() has drop;
 /// Key for a Meme type's reserved Cetus pool-creation capability.
 public struct CreationCapKey<phantom Meme>() has copy, drop, store;
 
-/// Key for the tick spacing of a Meme type's reserved Cetus pool, which its migration creates.
-public struct TickSpacingKey<phantom Meme>() has copy, drop, store;
 
 /// Transient dynamic-field name `cast` uses to retype a coin or balance.
 public struct CastKey() has copy, drop, store;
@@ -45,12 +43,11 @@ public fun new<Meme, Quote>(
         ctx,
     );
     venue_config.add_object(CreationCapKey<Meme>(), creation_cap);
-    venue_config.add_value(TickSpacingKey<Meme>(), tick_spacing);
-
-    event::emit(PoolTierReserved<Meme, Quote> {
+    venue_config.add_pool_tier<Meme, Quote, _>(
+        &Venue(),
         tick_spacing,
-        pool_fee_rate: config::get_fee_rate(tick_spacing, cetus_config),
-    });
+        config::get_fee_rate(tick_spacing, cetus_config),
+    );
 
     presale::new(treasury_cap, Witness(), creation_policy, fee_policy)
 }
@@ -70,7 +67,7 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
     assert!(factory::is_right_order<CoinA, CoinB>(), EInvalidCoinOrder);
     let meme_is_a = meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
 
-    let tick_spacing = venue_config.tick_spacing<Meme>();
+    let (tick_spacing, _) = venue_config.pool_tier<Meme>();
     let (meme, quote) = sale.migrate(fee_policy, Witness(), clock, ctx);
 
     let meme_amount = meme.value();
@@ -251,11 +248,6 @@ fun pool_creation_cap<Meme>(self: &VenueConfig): &PoolCreationCap {
     self.object(CreationCapKey<Meme>())
 }
 
-/// The tick spacing `new` reserved for the Meme type's pool.
-fun tick_spacing<Meme>(self: &VenueConfig): u32 {
-    *self.value(TickSpacingKey<Meme>())
-}
-
 /// Burns the LP position for its fee-claiming proof and seals the proof in the presale's vault.
 fun burn_into_vault<Meme, Quote>(
     sale: &Presale<Meme, Quote>,
@@ -291,22 +283,6 @@ public fun meme_is_coin_a_for_testing<Meme, Quote, CoinA, CoinB>(): bool {
 #[test_only]
 public fun cast_for_testing<From: store, To: store>(scratch: &mut UID, value: From): To {
     scratch.cast(value)
-}
-
-#[test_only]
-public fun pool_tier_reserved_fields<Meme, Quote>(
-    event: &PoolTierReserved<Meme, Quote>,
-): (u32, u64) {
-    (event.tick_spacing, event.pool_fee_rate)
-}
-
-// === Events ===
-
-/// `new` reserved the `<Meme, Quote>` sale's Cetus pool at this tier: the pool its migration
-/// creates has `tick_spacing` and the fee rate Cetus set for it then.
-public struct PoolTierReserved<phantom Meme, phantom Quote> has copy, drop {
-    tick_spacing: u32,
-    pool_fee_rate: u64,
 }
 
 // === Errors ===
@@ -346,11 +322,10 @@ use lp_burn::lp_burn::{Self, BurnManager, CetusLPBurnProof};
 
 use std::type_name;
 
-use sui::{balance::Balance, clock::Clock, coin::{Coin, TreasuryCap}, dynamic_field, event};
+use sui::{balance::Balance, clock::Clock, coin::{Coin, TreasuryCap}, dynamic_field};
 
 use fun cast as UID.cast;
 use fun cast_pair as UID.cast_pair;
 use fun dynamic_field::add as UID.add_dynamic_field;
 use fun dynamic_field::remove as UID.remove_dynamic_field;
 use fun pool_creation_cap as VenueConfig.pool_creation_cap;
-use fun tick_spacing as VenueConfig.tick_spacing;

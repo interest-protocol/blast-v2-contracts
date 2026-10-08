@@ -12,15 +12,6 @@ public struct Witness() has drop;
 /// Sealed marker for the Bluefin position held by a presale vault.
 public struct Venue() has drop;
 
-/// Key for the tier of a Meme type's Bluefin pool, which its migration creates.
-public struct PoolTierKey<phantom Meme>() has copy, drop, store;
-
-/// A Bluefin pool tier: its tick spacing and its fee rate in Bluefin's fee unit.
-public struct PoolTier has copy, drop, store {
-    tick_spacing: u32,
-    pool_fee_rate: u64,
-}
-
 // === Public Functions ===
 
 /// Starts a presale irrevocably configured to migrate to a Bluefin pool at this tier. Every sale
@@ -43,9 +34,7 @@ public fun new<Meme, Quote>(
     );
     assert!(currency.symbol().length() <= MAX_MEME_SYMBOL_LENGTH, ESymbolTooLong);
 
-    venue_config.add_value(PoolTierKey<Meme>(), PoolTier { tick_spacing, pool_fee_rate });
-
-    event::emit(PoolTierReserved<Meme, Quote> { tick_spacing, pool_fee_rate });
+    venue_config.add_pool_tier<Meme, Quote, _>(&Venue(), tick_spacing, pool_fee_rate);
 
     presale::new(treasury_cap, Witness(), creation_policy, fee_policy)
 }
@@ -62,7 +51,7 @@ public fun migrate<Meme, Quote>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let PoolTier { tick_spacing, pool_fee_rate } = *venue_config.value(PoolTierKey<Meme>());
+    let (tick_spacing, pool_fee_rate) = venue_config.pool_tier<Meme>();
     let (meme, quote) = sale.migrate(fee_policy, Witness(), clock, ctx);
 
     let source_meme = meme.value();
@@ -222,30 +211,6 @@ fun fixes_meme<Meme, Quote>(
     if (needed_meme <= source_meme && needed_quote <= source_quote) prefer_meme else !prefer_meme
 }
 
-// === Test-Only Functions ===
-
-#[test_only]
-public fun pool_tier_for_testing<Meme>(venue_config: &VenueConfig): (u32, u64) {
-    let PoolTier { tick_spacing, pool_fee_rate } = *venue_config.value(PoolTierKey<Meme>());
-    (tick_spacing, pool_fee_rate)
-}
-
-#[test_only]
-public fun pool_tier_reserved_fields<Meme, Quote>(
-    event: &PoolTierReserved<Meme, Quote>,
-): (u32, u64) {
-    (event.tick_spacing, event.pool_fee_rate)
-}
-
-// === Events ===
-
-/// `new` reserved the `<Meme, Quote>` sale's Bluefin pool at this tier, which its migration
-/// creates.
-public struct PoolTierReserved<phantom Meme, phantom Quote> has copy, drop {
-    tick_spacing: u32,
-    pool_fee_rate: u64,
-}
-
 // === Constants ===
 
 const MAX_TICK_SPACING: u32 = 400;
@@ -281,4 +246,4 @@ use bluefin_spot::{config::GlobalConfig, pool::{Self, Pool}, position::Position}
 
 use integer_mate::i32::{Self, I32};
 
-use sui::{clock::Clock, coin::{Coin, TreasuryCap}, coin_registry::Currency, event, sui::SUI};
+use sui::{clock::Clock, coin::{Coin, TreasuryCap}, coin_registry::Currency, sui::SUI};
