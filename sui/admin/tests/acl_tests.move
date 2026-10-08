@@ -9,6 +9,8 @@ module blast_admin::acl_tests;
 
 const ROOT: address = @0xA11CE;
 
+const PUBLISHER: address = @0xDE91;
+
 const ADMIN: address = @0xAD;
 
 const OTHER_ADMIN: address = @0xB0B;
@@ -34,14 +36,15 @@ public struct Fixture {
 // === Tests ===
 
 #[test]
-fun init_shares_one_acl_and_delivers_its_root_without_events() {
-    let mut scenario = test_scenario::begin(ROOT);
+fun init_shares_one_acl_and_delivers_its_root_to_the_configured_address_without_events() {
+    let mut scenario = test_scenario::begin(PUBLISHER);
 
     blast_acl::init_for_testing(scenario.ctx());
 
-    let effects = scenario.next_tx(ROOT);
+    let effects = scenario.next_tx(@blast_acl_root);
     assert_eq!(effects.shared().length(), 1);
     assert_eq!(effects.num_user_events(), 0);
+    assert_eq!(test_scenario::ids_for_address<SuperAdminCap>(PUBLISHER).length(), 0);
     let root = scenario.take_from_sender<SuperAdminCap>();
     let acl = scenario.take_shared<ACL>();
     assert_eq!(acl.active_super_admin_cap_id_for_testing(), root.super_admin_cap_id_for_testing());
