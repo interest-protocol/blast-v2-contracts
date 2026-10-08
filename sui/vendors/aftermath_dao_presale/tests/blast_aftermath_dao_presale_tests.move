@@ -58,16 +58,12 @@ fun finalize_creates_a_sale_for_the_treasury() {
 
     let (
         witness,
-        tick_spacing,
-        pool_fee_rate,
         fee_recipients,
         fee_recipient_bps,
         holder_rewards_bps,
     ) = last_event<PresaleCreated<BLAST_AFTERMATH_DAO_PRESALE_TESTS, QUOTE>>()
         .created_migration_fields();
     assert_eq!(witness, type_name::with_original_ids<Witness>());
-    assert_eq!(tick_spacing, 0);
-    assert_eq!(pool_fee_rate, 0);
     assert_eq!(fee_recipients, vector[TREASURY]);
     assert_eq!(fee_recipient_bps, vector[10_000]);
     assert_eq!(holder_rewards_bps, 0);
@@ -206,7 +202,7 @@ fun finalize_overrides_any_lp_fee_split() {
     );
     let (sale, _) = finalize_sale(&mut scenario, &admin_cap, initializer, currency);
 
-    let (_, _, _, fee_recipients, fee_recipient_bps, _) = last_event<
+    let (_, fee_recipients, fee_recipient_bps, _) = last_event<
         PresaleCreated<BLAST_AFTERMATH_DAO_PRESALE_TESTS, QUOTE>,
     >().created_migration_fields();
     assert_eq!(fee_recipients, vector[TREASURY]);
@@ -235,8 +231,6 @@ fun finalize_rejects_another_migrators_sale() {
         OTHER_MIGRATOR(),
         &creation_policy,
         &fee_policy,
-        0,
-        0,
     );
 
     let _sale = migrator::finalize<LP, _, _>(

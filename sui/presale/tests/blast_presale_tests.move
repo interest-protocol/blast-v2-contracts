@@ -2639,15 +2639,11 @@ fun assert_created_event(
 
     let (
         migration_witness,
-        tick_spacing,
-        pool_fee_rate,
         fee_recipients,
         fee_recipient_bps,
         holder_rewards_bps,
     ) = created.created_migration_fields();
     assert_eq!(migration_witness, type_name::with_original_ids<TEST_MIGRATOR>());
-    assert_eq!(tick_spacing, TICK_SPACING);
-    assert_eq!(pool_fee_rate, POOL_FEE_RATE);
     assert_eq!(fee_recipients, vector[CREATOR, FEE_PARTNER]);
     assert_eq!(fee_recipient_bps, vector[CREATOR_FEE_BPS, FEE_PARTNER_BPS]);
     assert_eq!(holder_rewards_bps, HOLDER_REWARDS_BPS);
@@ -2758,7 +2754,7 @@ fun hard_cap_at(starts_after_ms: u64, closes_when_filled: bool): HardCapTerms {
     HardCapTerms { starts_after_ms, closes_when_filled }
 }
 
-/// A sale started for the fixture's migrator and pool tier with nothing set.
+/// A sale started for the fixture's migrator with nothing set.
 fun bare_initializer(
     treasury_cap: TreasuryCap<BLAST_PRESALE_TESTS>,
     creation_policy: &CreationPolicy,
@@ -2769,8 +2765,6 @@ fun bare_initializer(
         TEST_MIGRATOR(),
         creation_policy,
         fee_policy,
-        TICK_SPACING,
-        POOL_FEE_RATE,
     )
 }
 
@@ -2791,7 +2785,7 @@ fun new_presale<Quote>(
     new_initializer<Quote>(treasury_cap, terms, creation_policy, fee_policy).finalize(currency, ctx)
 }
 
-/// Starts a sale with the fixture's migrator and pool tier and sets every one of `terms`.
+/// Starts a sale with the fixture's migrator and sets every one of `terms`.
 fun new_initializer<Quote>(
     treasury_cap: TreasuryCap<BLAST_PRESALE_TESTS>,
     terms: SaleTerms,
@@ -2820,8 +2814,6 @@ fun new_initializer<Quote>(
         TEST_MIGRATOR(),
         creation_policy,
         fee_policy,
-        TICK_SPACING,
-        POOL_FEE_RATE,
     );
 
     initializer.set_supply(token_supply, burnable);
@@ -2894,7 +2886,7 @@ fun create_with_windows(duration_ms: u64, liquidity_window_ms: u64) {
 }
 
 /// Creates a Bluefin sale under a creation policy that allows only `AllowedQuote` and
-/// `AllowedWitness`.
+/// `AllowedWitness`, and checks the pool tier it reserved.
 fun create_bluefin_sale<AllowedQuote, AllowedWitness>(symbol: vector<u8>) {
     let mut ctx = tx_context::dummy();
     let (treasury_cap, mut currency) = new_currency_with_symbol(symbol, &mut ctx);
@@ -2902,15 +2894,27 @@ fun create_bluefin_sale<AllowedQuote, AllowedWitness>(symbol: vector<u8>) {
     let creation_policy = creation_policy::allowing_for_testing<AllowedQuote, AllowedWitness>(
         &mut ctx,
     );
+    let mut venue_config = venue_config::new_for_testing(&mut ctx);
 
     let mut initializer = bluefin::new<BLAST_PRESALE_TESTS, QUOTE>(
         treasury_cap,
         &currency,
         &creation_policy,
         &fee_policy,
+        &mut venue_config,
         TICK_SPACING,
         POOL_FEE_RATE,
     );
+    let (reserved_tick_spacing, reserved_fee_rate) = only_event<
+        bluefin::PoolTierReserved<BLAST_PRESALE_TESTS, QUOTE>,
+    >().pool_tier_reserved_fields();
+    assert_eq!(reserved_tick_spacing, TICK_SPACING);
+    assert_eq!(reserved_fee_rate, POOL_FEE_RATE);
+    let (stored_tick_spacing, stored_fee_rate) = bluefin::pool_tier_for_testing<
+        BLAST_PRESALE_TESTS,
+    >(&venue_config);
+    assert_eq!(stored_tick_spacing, TICK_SPACING);
+    assert_eq!(stored_fee_rate, POOL_FEE_RATE);
     initializer.set_supply(TOKEN_SUPPLY, false);
     initializer.set_token_allocations(
         bps::new(TOKEN_ALLOCATION_BPS),
@@ -2928,6 +2932,7 @@ fun create_bluefin_sale<AllowedQuote, AllowedWitness>(symbol: vector<u8>) {
     destroy(currency);
     destroy(fee_policy);
     destroy(creation_policy);
+    destroy(venue_config);
     destroy(ctx);
 }
 
@@ -3442,6 +3447,7 @@ use blast_presale::{
     bps,
     creation_policy::{Self, CreationPolicy},
     fee_policy::{Self, FeePolicy},
+    venue_config,
 };
 
 use std::{type_name, unit_test::{assert_eq, destroy}};

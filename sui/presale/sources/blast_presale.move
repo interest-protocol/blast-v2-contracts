@@ -113,8 +113,6 @@ public struct Commitment has copy, drop, store {
 public struct PresaleInitializer<phantom SaleToken, phantom Quote> {
     treasury_cap: TreasuryCap<SaleToken>,
     migration_witness: TypeName,
-    tick_spacing: u32,
-    pool_fee_rate: u64,
     protocol_fees: ProtocolFees,
     token_supply: u64,
     burnable: bool,
@@ -162,8 +160,6 @@ public struct Presale<phantom SaleToken, phantom Quote> has key {
     uncapped: Option<UncappedPhase>,
     hard_cap: Option<HardCap>,
     migration_witness: TypeName,
-    tick_spacing: u32,
-    pool_fee_rate: u64,
     fee_split: FeeSplit,
     total_commitments: u64,
     /// The wallets holding an undelivered commitment: admitted by their first commitment and
@@ -288,7 +284,8 @@ public fun fee_split(fee_recipients: vector<RecipientShare>, holder_rewards_bps:
 }
 
 /// Starts a presale of `SaleToken` raising `Quote` for the migrator that constructs
-/// `MigrationWitness`, at the pool tier it creates, and snapshots Blast's rates.
+/// `MigrationWitness`, and snapshots Blast's rates. The venue's pool terms, such as a CLMM tier,
+/// belong to the migrator, which records any it needs before calling this.
 ///
 /// A migrator in this or any other package starts its sales here with its own `MigrationWitness`,
 /// which only its defining module can construct. The `CreationPolicy` must allow that witness, so
@@ -299,8 +296,6 @@ public fun new<SaleToken, Quote, MigrationWitness: drop>(
     _: MigrationWitness,
     creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
-    tick_spacing: u32,
-    pool_fee_rate: u64,
 ): PresaleInitializer<SaleToken, Quote> {
     creation_policy.assert_allowed<Quote, MigrationWitness>();
     assert!(
@@ -314,8 +309,6 @@ public fun new<SaleToken, Quote, MigrationWitness: drop>(
     PresaleInitializer {
         treasury_cap,
         migration_witness: type_name::with_original_ids<MigrationWitness>(),
-        tick_spacing,
-        pool_fee_rate,
         protocol_fees: fee_policy.fees(),
         token_supply: 0,
         burnable: false,
@@ -461,8 +454,6 @@ public fun finalize<SaleToken, Quote>(
     let PresaleInitializer {
         treasury_cap,
         migration_witness,
-        tick_spacing,
-        pool_fee_rate,
         protocol_fees,
         token_supply,
         burnable,
@@ -555,8 +546,6 @@ public fun finalize<SaleToken, Quote>(
         uncapped,
         hard_cap,
         migration_witness,
-        tick_spacing,
-        pool_fee_rate,
         fee_recipients: fee_split.fee_recipients.recipients(),
         fee_recipient_bps: fee_split.fee_recipients.bps(),
         holder_rewards_bps: fee_split.holder_rewards_bps.value(),
@@ -581,8 +570,6 @@ public fun finalize<SaleToken, Quote>(
             uncapped,
             hard_cap,
             migration_witness,
-            tick_spacing,
-            pool_fee_rate,
             fee_split,
             total_commitments: 0,
             participants: 0,
@@ -922,11 +909,6 @@ public(package) fun assert_cap<SaleToken, Quote>(
     cap: &PresaleCap,
 ) {
     assert!(object::id(cap) == self.presale_cap_id, EWrongPresaleCap);
-}
-
-/// The tick spacing and fee rate of the pool migration creates.
-public(package) fun pool_tier<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): (u32, u64) {
-    (self.tick_spacing, self.pool_fee_rate)
 }
 
 /// The presale and creator-capability IDs, the LP-fee split, Blast's rates, and the partner its
@@ -1689,11 +1671,9 @@ public fun created_fields<SaleToken, Quote>(
 #[test_only]
 public fun created_migration_fields<SaleToken, Quote>(
     event: &PresaleCreated<SaleToken, Quote>,
-): (TypeName, u32, u64, vector<address>, vector<u64>, u64) {
+): (TypeName, vector<address>, vector<u64>, u64) {
     (
         event.migration_witness,
-        event.tick_spacing,
-        event.pool_fee_rate,
         event.fee_recipients,
         event.fee_recipient_bps,
         event.holder_rewards_bps,
@@ -1933,8 +1913,6 @@ public struct PresaleCreated<phantom SaleToken, phantom Quote> has copy, drop {
     uncapped: Option<UncappedPhase>,
     hard_cap: Option<HardCap>,
     migration_witness: TypeName,
-    tick_spacing: u32,
-    pool_fee_rate: u64,
     fee_recipients: vector<address>,
     fee_recipient_bps: vector<u64>,
     holder_rewards_bps: u64,

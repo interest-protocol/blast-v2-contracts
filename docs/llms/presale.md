@@ -135,19 +135,25 @@ Steps, type arguments `<Meme, Quote>` throughout:
 
 1. Start the sale:
    - Cetus: `blast_presale::cetus::new(treasury_cap, creation_policy, fee_policy, venue_config,
-     cetus_config, pools, tick_spacing)`. It reads Cetus's fee rate for `tick_spacing`, mints the
-     coin's Cetus `PoolCreationCap` from the treasury cap, registers the `<Meme, Quote>` pair at
-     that tick spacing, and stores the cap in `VenueConfig` under
-     `blast_presale::cetus::CreationCapKey`. Cetus aborts if it has no fee tier for the tick spacing
-     or refuses the pair (the Quote must be in Cetus's permission-pair allowlist at that tick
-     spacing).
+     cetus_config, pools, tick_spacing)`. It mints the coin's Cetus `PoolCreationCap` from the
+     treasury cap, registers the `<Meme, Quote>` pair at `tick_spacing`, and stores the cap and the
+     tick spacing in `VenueConfig` under `blast_presale::cetus::CreationCapKey` and
+     `blast_presale::cetus::TickSpacingKey`. It emits `blast_presale::cetus::PoolTierReserved` with
+     the tick spacing and the fee rate Cetus sets for it. Cetus aborts if it has no fee tier for
+     the tick spacing or refuses the pair (the Quote must be in Cetus's permission-pair allowlist
+     at that tick spacing).
    - Bluefin: `blast_presale::bluefin::new(treasury_cap, currency, creation_policy, fee_policy,
-     tick_spacing, pool_fee_rate)`. Tick spacing must be 1..=400 and the fee rate 1..=20,000 in
-     Bluefin's fee unit (`blast_presale::bluefin::EInvalidTier`); the coin's symbol must be at most 32
-     bytes (`blast_presale::bluefin::ESymbolTooLong`).
+     venue_config, tick_spacing, pool_fee_rate)`. Tick spacing must be 1..=400 and the fee rate
+     1..=20,000 in Bluefin's fee unit (`blast_presale::bluefin::EInvalidTier`); the coin's symbol
+     must be at most 32 bytes (`blast_presale::bluefin::ESymbolTooLong`). It stores the tier in
+     `VenueConfig` under `blast_presale::bluefin::PoolTierKey` and emits
+     `blast_presale::bluefin::PoolTierReserved`.
 
-   Both check the `CreationPolicy`, that the sale coin differs from Quote, and that the treasury
-   cap has minted nothing; snapshot Blast's current rates from the `FeePolicy`; and return the
+   The pool tier belongs to the venue, not the sale: the `Presale` and `PresaleCreated` carry
+   none, and a venue without a tier, such as a vendor's weighted pool, passes none. Each sale
+   token has exactly one sale, so the tier is keyed by the sale token's type. Both then check the
+   `CreationPolicy`, that the sale coin differs from Quote, and that the treasury cap has minted
+   nothing; snapshot Blast's current rates from the `FeePolicy`; and return the
    `PresaleInitializer`.
 2. Required setters, each taking the initializer by mutable reference:
    - `blast_presale::blast_presale::set_supply(initializer, token_supply, burnable)`.
@@ -197,7 +203,7 @@ Settings:
 | uncapped phase | Optional `blast_presale::blast_presale::UncappedPhase` (below). |
 | hard cap | Optional `starts_after_ms` and `closes_when_filled` (below). |
 | `fee_split` | `blast_presale::blast_presale::FeeSplit`: up to 16 unvested, distinct LP-fee recipients plus a holder-reward share, totalling exactly 10,000 BPS. The creator takes LP fees by listing itself as a recipient. An empty list with 10,000 holder BPS is valid. |
-| `tick_spacing`, `pool_fee_rate` | Pool tier, given to the venue's `new`. Cetus derives the fee rate from the tick spacing. |
+| `tick_spacing`, `pool_fee_rate` | Pool tier, given to the venue's `new` and kept in `VenueConfig`. Cetus derives the fee rate from the tick spacing. |
 
 A setting never set is zero (supply, raise, window lengths, token BPS), so `finalize` rejects it
 with that setting's error. A missing eligibility policy or LP-fee split aborts with
@@ -334,7 +340,7 @@ Who may call: *anyone*, while `Funded`, until someone cancels. Usually one keepe
 Migration calls `blast_presale::blast_presale::migrate`, which pays Blast (or holds its fees on a partnered
 sale), pays or vests each raise recipient, pays or vests each token recipient, and returns the
 LP's tokens and Quote. The adapter creates the pool with the reserved `PoolCreationCap` at the
-sale's tick spacing, seeds a full-range position at the price the LP balances imply, burns the
+tick spacing `new` recorded in `VenueConfig`, seeds a full-range position at the price the LP balances imply, burns the
 position through Cetus LP-burn for its fee-claiming proof, and shares a new `Vault` holding
 that proof and whatever the pool did not take. Nothing returns to the caller. Any venue failure
 rolls the whole transition back.
@@ -347,14 +353,15 @@ Who may call: *anyone*, while `Funded`, until someone cancels.
 2. `creation_fee = SplitCoins(GasCoin, [amount])`, where `amount` is the fee amount (the `u64` in
    the `(bool, u64)` pair) that Bluefin's `get_pool_creation_fee_amount<SUI>` (its `config`
    module) returns at submission time; Bluefin rejects another amount.
-3. `blast_presale::bluefin::migrate<Meme, Quote>(sale, fee_policy, currency, quote_currency,
-   bluefin_config, creation_fee, clock)`. `currency` and `quote_currency` are the shared Coin
-   Registry `Currency<Meme>` and `Currency<Quote>` (read for both symbols and decimals and the
-   Quote's icon URL); the Bluefin `GlobalConfig` (`bluefin_config`) is mutable.
+3. `blast_presale::bluefin::migrate<Meme, Quote>(sale, fee_policy, venue_config, currency,
+   quote_currency, bluefin_config, creation_fee, clock)`. `venue_config` is the shared
+   `VenueConfig` (read for the tier `new` recorded). `currency` and `quote_currency` are the
+   shared Coin Registry `Currency<Meme>` and `Currency<Quote>` (read for both symbols and decimals
+   and the Quote's icon URL); the Bluefin `GlobalConfig` (`bluefin_config`) is mutable.
 4. On a partnered sale, `blast_presale::blast_presale::pay_protocol_fees_with_partner(...)`.
 
 The adapter creates the pool `Pool<Meme, Quote>` (Meme is always coin A) named
-`<Meme symbol>-<Quote symbol>` at the sale's tier, opens a full-range position aligned inward to
+`<Meme symbol>-<Quote symbol>` at the recorded tier, opens a full-range position aligned inward to
 the tick spacing, adds the LP balances, moves the position into a new shared `Vault`, and
 shares the pool.
 
@@ -650,7 +657,7 @@ The package exposes no public read functions on its objects. Read object fields 
   committed and not yet claimed), `quote` (Quote held).
 - Terms: `eligibility`, `token_allocation` (buyers' tokens), `participant_vesting`,
   `recipient_payouts` and `raise_payouts` (each recipient's exact amount and vesting),
-  `fee_split`, `tick_spacing`, `pool_fee_rate`, `migration_witness` (the venue: the type name of
+  `fee_split`, `migration_witness` (the venue: the type name of
   `blast_presale::cetus::Witness`, `blast_presale::bluefin::Witness`, or a vendor migrator's
   witness).
 - Blast: `protocol_fees` (the snapshot), `protocol_quote`, `protocol_tokens`, `partner_id`,
@@ -700,7 +707,7 @@ directly (no envelope).
 
 | Flow | Event | Indexer use |
 | --- | --- | --- |
-| Create | `blast_presale::blast_presale::PresaleCreated` | All terms: supply split (BPS), recipients and vesting, raise split (BPS), window lengths, eligibility, uncapped phase, hard cap, `migration_witness`, tier, fee split, Blast's snapshot rates and amounts, `treasury_cap_id`, `presale_cap_id`. |
+| Create | `blast_presale::cetus::PoolTierReserved` / `blast_presale::bluefin::PoolTierReserved`, then `blast_presale::blast_presale::PresaleCreated` | The venue's pool tier (`tick_spacing`, `pool_fee_rate`), typed by the sale's `<Meme, Quote>`; then all terms: supply split (BPS), recipients and vesting, raise split (BPS), window lengths, eligibility, uncapped phase, hard cap, `migration_witness`, fee split, Blast's snapshot rates and amounts, `treasury_cap_id`, `presale_cap_id`. |
 | Share | `blast_presale::blast_presale::PresaleOpened` | `start_ms`, scheduled `end_ms` and `liquidity_deadline_ms`, `uncapped_from_ms`, `hard_cap_from_ms` (`none` without a hard cap), `partner_id`. |
 | Per-sale rates | `blast_presale::blast_presale::ProtocolFeesChanged` | New rates, Blast amounts, and new buyer `token_allocation`. |
 | Commit | `blast_presale::blast_presale::Committed` | `quote` accepted, `wallet_commitment` (new total), `total_commitments`, `participants`. It has no wallet field: the wallet is the transaction sender. |
@@ -837,8 +844,8 @@ Create (*cap holder*, `blast_aftermath_dao_presale::blast_aftermath_dao_presale:
    publication yields the `CreatePoolCapV2` that the `AdminCap` holder passes in.
 2. Build the arguments as for any sale (no fee split or tier).
 3. `blast_aftermath_dao_presale::blast_aftermath_dao_presale::new<SaleToken, Quote>(admin_cap, treasury_cap,
-   creation_policy, fee_policy)` calls `blast_presale::blast_presale::new` with tick spacing and fee rate zero
-   and returns the `PresaleInitializer`.
+   creation_policy, fee_policy)` calls `blast_presale::blast_presale::new` and returns the `PresaleInitializer`.
+   Its pool's weights and fees are the module's constants, so it records no tier.
 4. The `blast_presale::blast_presale` setters as for any sale (no LP-fee split needed), including the optional
    `blast_presale::blast_presale::set_partner`.
 5. `blast_aftermath_dao_presale::blast_aftermath_dao_presale::finalize<Lp, SaleToken, Quote>(admin_cap, initializer,
