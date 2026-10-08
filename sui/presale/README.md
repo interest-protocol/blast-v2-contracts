@@ -14,7 +14,8 @@ A creator starts a sale through a venue's `new` with a zero-supply
 The terms are token supply; presale, LP, and per-recipient
 allocation BPS; fixed or burn-only supply; Quote raise; commitment and migration
 windows (the migration window is at least seven days); `EligibilityPolicy`;
-migration venue and tier; and the LP-fee split:
+migration venue (Cetus and Bluefin also take a pool tier, which they keep in
+`VenueConfig`, not in the sale); and the LP-fee split:
 up to 16 distinct fee recipients (the creator is one of them) and a holder-reward
 share, whose BPS total 10,000. Allocation BPS must total 10,000. The contract mints the complete
 supply once and uses largest-remainder apportionment so every atomic unit belongs

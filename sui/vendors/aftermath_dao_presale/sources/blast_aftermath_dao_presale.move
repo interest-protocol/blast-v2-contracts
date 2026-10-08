@@ -39,17 +39,17 @@ fun init(ctx: &mut TxContext) {
 
 // === Public Functions ===
 
-/// Starts a presale that migrates through this module. Aftermath pools have no CLMM tier, so the
-/// tick spacing and fee rate are zero. The sale is set like any other, then finalized only through
-/// this module's `finalize`, which reserves its pool creation. The `CreationPolicy` must allow
-/// `Witness`.
+/// Starts a presale that migrates through this module. Its pool's weights and fees are this
+/// module's constants, so the sale carries no pool terms. The sale is set like any other, then
+/// finalized only through this module's `finalize`, which reserves its pool creation. The
+/// `CreationPolicy` must allow `Witness`.
 public fun new<SaleToken, Quote>(
     _: &AdminCap,
     treasury_cap: TreasuryCap<SaleToken>,
     creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
 ): PresaleInitializer<SaleToken, Quote> {
-    presale::new(treasury_cap, Witness(), creation_policy, fee_policy, 0, 0)
+    presale::new(treasury_cap, Witness(), creation_policy, fee_policy)
 }
 
 /// Finalizes a sale `new` started, sends its `PresaleCap` to the treasury, and shares a

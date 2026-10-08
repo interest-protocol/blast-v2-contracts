@@ -1,6 +1,7 @@
 # 0110: Presale initializer, sale-level hard cap, and early close
 
-- Status: proposed
+- Status: proposed; amended by [0111](0111-venue-owned-presale-pool-tiers.md): `new` takes no
+  pool tier
 - Date: 2026-10-08
 - Amends: [0099](0099-standalone-overflow-presale.md), whose sales were created by one
   `new` call, hard-capped only inside the uncapped phase, and always ran their full window;

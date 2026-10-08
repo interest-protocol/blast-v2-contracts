@@ -15,13 +15,15 @@ public struct Venue() has drop;
 /// Key for a Meme type's reserved Cetus pool-creation capability.
 public struct CreationCapKey<phantom Meme>() has copy, drop, store;
 
+
 /// Transient dynamic-field name `cast` uses to retype a coin or balance.
 public struct CastKey() has copy, drop, store;
 
 // === Public Functions ===
 
-/// Starts a presale that migrates to Cetus at `tick_spacing`, and reserves the pair's pool
-/// creation before the supply is minted.
+/// Starts a presale that migrates to a Cetus pool at `tick_spacing`, whose fee rate Cetus derives
+/// from it, and reserves the pair's pool creation at that tier before the supply is minted. Every
+/// sale token has one sale, so the tier is recorded under its type.
 public fun new<Meme, Quote>(
     mut treasury_cap: TreasuryCap<Meme>,
     creation_policy: &CreationPolicy,
@@ -41,15 +43,13 @@ public fun new<Meme, Quote>(
         ctx,
     );
     venue_config.add_object(CreationCapKey<Meme>(), creation_cap);
-
-    presale::new(
-        treasury_cap,
-        Witness(),
-        creation_policy,
-        fee_policy,
+    venue_config.add_pool_tier<Meme, Quote, _>(
+        &Venue(),
         tick_spacing,
         config::get_fee_rate(tick_spacing, cetus_config),
-    )
+    );
+
+    presale::new(treasury_cap, Witness(), creation_policy, fee_policy)
 }
 
 /// Anyone may migrate a funded presale into its reserved Cetus pool. `CoinA` and `CoinB` name the
@@ -67,7 +67,7 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
     assert!(factory::is_right_order<CoinA, CoinB>(), EInvalidCoinOrder);
     let meme_is_a = meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
 
-    let (tick_spacing, _) = sale.pool_tier();
+    let (tick_spacing, _) = venue_config.pool_tier<Meme>();
     let (meme, quote) = sale.migrate(fee_policy, Witness(), clock, ctx);
 
     let meme_amount = meme.value();

@@ -14,12 +14,14 @@ public struct Venue() has drop;
 
 // === Public Functions ===
 
-/// Starts a presale irrevocably configured to migrate to Bluefin at this tier.
+/// Starts a presale irrevocably configured to migrate to a Bluefin pool at this tier. Every sale
+/// token has one sale, so the tier is recorded under its type.
 public fun new<Meme, Quote>(
     treasury_cap: TreasuryCap<Meme>,
     currency: &Currency<Meme>,
     creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
+    venue_config: &mut VenueConfig,
     tick_spacing: u32,
     pool_fee_rate: u64,
 ): PresaleInitializer<Meme, Quote> {
@@ -32,13 +34,16 @@ public fun new<Meme, Quote>(
     );
     assert!(currency.symbol().length() <= MAX_MEME_SYMBOL_LENGTH, ESymbolTooLong);
 
-    presale::new(treasury_cap, Witness(), creation_policy, fee_policy, tick_spacing, pool_fee_rate)
+    venue_config.add_pool_tier<Meme, Quote, _>(&Venue(), tick_spacing, pool_fee_rate);
+
+    presale::new(treasury_cap, Witness(), creation_policy, fee_policy)
 }
 
 /// Anyone may atomically migrate a funded presale into its configured Bluefin pool.
 public fun migrate<Meme, Quote>(
     sale: &mut Presale<Meme, Quote>,
     fee_policy: &FeePolicy,
+    venue_config: &VenueConfig,
     currency: &Currency<Meme>,
     quote_currency: &Currency<Quote>,
     bluefin_config: &mut GlobalConfig,
@@ -46,7 +51,7 @@ public fun migrate<Meme, Quote>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let (tick_spacing, pool_fee_rate) = sale.pool_tier();
+    let (tick_spacing, pool_fee_rate) = venue_config.pool_tier<Meme>();
     let (meme, quote) = sale.migrate(fee_policy, Witness(), clock, ctx);
 
     let source_meme = meme.value();
@@ -234,6 +239,7 @@ use blast_presale::{
     fee_policy::FeePolicy,
     migration_math,
     presale_vault::{Self as vault, Vault},
+    venue_config::VenueConfig,
 };
 
 use bluefin_spot::{config::GlobalConfig, pool::{Self, Pool}, position::Position};

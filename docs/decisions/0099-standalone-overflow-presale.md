@@ -12,7 +12,9 @@
   [0110](0110-presale-initializer-and-early-close.md): sales are created through a
   `PresaleInitializer`, the hard cap is a sale setting rather than the uncapped
   phase's, and a sale whose hard cap closes it when filled settles once its raise
-  is full
+  is full;
+  [0111](0111-venue-owned-presale-pool-tiers.md): the pool tier belongs to the
+  venue, not the sale
 - Amended: 2026-10-02, after the pre-launch security review (owner rulings of
   the same day): the LP-migration window has a seven-day floor; an
   open-to-anyone phase under an allowlist must reach the raise with the slots
