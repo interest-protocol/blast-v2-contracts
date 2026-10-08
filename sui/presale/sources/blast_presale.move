@@ -136,7 +136,7 @@ public struct PresaleInitializer<phantom SaleToken, phantom Quote> {
 /// The complete fixed or burn-only token supply is apportioned at creation.
 /// Presale, LP, Blast, and additional recipient allocations stay escrowed until
 /// a funded migration atomically releases them. Blast's rates are snapshotted
-/// at creation, the AdminCap may change them until the window starts, and its
+/// at creation, Blast's `FeeAdmin` may change them until the window starts, and its
 /// fees are paid only on migration, or, when the sale names a Blast partner,
 /// held from migration until `pay_protocol_fees_with_partner` pays the partner its cut of Blast's
 /// raise fee. If the raise is missed, every commitment
@@ -594,7 +594,7 @@ public fun finalize<SaleToken, Quote>(
 
 /// Shares a newly created presale and fixes its windows from `start_ms`, or from now once that
 /// has passed, so a sale can be created ahead of its start. Commitments open at the start; until
-/// then the AdminCap may change the sale's Blast rates.
+/// then Blast's `FeeAdmin` may change the sale's Blast rates.
 public fun share<SaleToken, Quote>(
     mut self: Presale<SaleToken, Quote>,
     start_ms: u64,
@@ -633,15 +633,13 @@ public fun share<SaleToken, Quote>(
 /// amount, and every recipient keeps its amount.
 public fun set_protocol_fees<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
-    admin_registry: &AdminRegistry,
-    admin_cap: &AdminCap,
+    _: &AdminWitness<FeeAdmin>,
     raise_bps: Bps,
     token_bps: Bps,
     lp_fee_meme_bps: Bps,
     lp_fee_quote_bps: Bps,
     clock: &Clock,
 ) {
-    admin_registry.assert_admin_cap(admin_cap);
     match (self.lifecycle) {
         Lifecycle::Pending => (),
         Lifecycle::Open => assert!(clock.timestamp_ms() < self.start_ms, EPresaleStarted),
@@ -1940,7 +1938,7 @@ public struct PresaleOpened<phantom SaleToken, phantom Quote> has copy, drop {
     partner_id: Option<ID>,
 }
 
-/// Before the window started, the AdminCap replaced this sale's Blast rates, moving Blast's tokens
+/// Before the window started, Blast's `FeeAdmin` replaced this sale's Blast rates, moving Blast's tokens
 /// to or from the sale allocation and its Quote to or from the LP's.
 public struct ProtocolFeesChanged<phantom SaleToken, phantom Quote> has copy, drop {
     presale_id: ID,
@@ -2163,12 +2161,14 @@ const EMissingSetting: vector<u8> = b"A presale needs its eligibility policy and
 
 // === Imports ===
 
+use blast_admin::blast_acl::AdminWitness;
+
 use blast_fun_vesting::blast_fun_linear_vesting as linear_vesting;
 
 use blast_partners::blast_partners::Partner;
 
 use blast_presale::{
-    blast_presale_admin::{AdminCap, AdminRegistry},
+    blast_presale_domain::FeeAdmin,
     bps::{Self, Bps},
     creation_policy::CreationPolicy,
     fee_policy::{Self, FeePolicy, ProtocolFees},

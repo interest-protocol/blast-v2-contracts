@@ -20,9 +20,9 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 
 | Package | Product | Status | Package ID (`published-at`) | Type origin (`original-id`) |
 | --- | --- | --- | --- | --- |
-| `blast_boosts_core` | Boosts core | live; source has changed since | `0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe` | `0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe` |
-| `blast_boosts_products` | Boost product tags | live; source has changed since | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` |
-| `blast_boosts_aftermath` | Boosts Aftermath adapter | live; source has changed since | `0x04f46747d8cb5ea590953ff1847301dfe5a287519d32c1610b35810aab082e50` | `0x04f46747d8cb5ea590953ff1847301dfe5a287519d32c1610b35810aab082e50` |
+| `blast_boosts_core` | Boosts core | live | `0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe` | `0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe` |
+| `blast_boosts_products` | Boost product tags | live | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` |
+| `blast_boosts_aftermath` | Boosts Aftermath adapter | live | `0x04f46747d8cb5ea590953ff1847301dfe5a287519d32c1610b35810aab082e50` | `0x04f46747d8cb5ea590953ff1847301dfe5a287519d32c1610b35810aab082e50` |
 | `blast_partners` | Partner codes | not yet published | — | — |
 | `blast_admin` | Administration | not yet published | — | — |
 
@@ -163,7 +163,7 @@ run) before signing it.
 
 ## Boosts
 
-> **Deployment status:** `blast_boosts_core`, `blast_boosts_products` and `blast_boosts_aftermath` are live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package.
+> **Deployment status:** `blast_boosts_core`, `blast_boosts_products` and `blast_boosts_aftermath` are live on mainnet.
 
 ### What it is
 
@@ -1028,7 +1028,7 @@ time the partner stops being accepted (`u64::MAX` until removed):
 | --- | --- | --- |
 | Boosts | `blast_boosts_aftermath::blast_boosts_aftermath::Protocol`, `blast_boosts_aftermath::blast_boosts_aftermath::PartnerKey` | `RiskAdmin` role (`operations::add_partner`, `operations::remove_partner`) |
 | Launchpad | `launch_config::LaunchConfig`, `launch_config::PartnerKey` | `FeeAdmin` role (`launch_config::add_partner`, `launch_config::remove_partner`) |
-| Presale | `creation_policy::CreationPolicy`, `creation_policy::PartnerKey` | presale `AdminCap` (`creation_policy::add_partner`, `creation_policy::remove_partner`) |
+| Presale | `creation_policy::CreationPolicy`, `creation_policy::PartnerKey` | presale `FeeAdmin` role (`creation_policy::add_partner`, `creation_policy::remove_partner`) |
 
 Adding applies at once (and cancels a pending removal). Removing sets the value
 to `now` plus `blast_partners::blast_partners::delay_ms()`: the partner stays
@@ -1249,7 +1249,7 @@ where you like); Blast takes no cut of it.
 
 ## API reference: `blast_boosts_core` (Boosts core)
 
-Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
+Live on mainnet.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -2040,7 +2040,7 @@ public fun collateral_price(self: &ActivePosition): u64
 
 ## API reference: `blast_boosts_products` (Boost product tags)
 
-Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
+Live on mainnet.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -2207,7 +2207,7 @@ public struct XAUT_BEAR_2X {}
 
 ## API reference: `blast_boosts_aftermath` (Boosts Aftermath adapter)
 
-Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
+Live on mainnet.
 
 Events: every payload is emitted inside `blast_boosts_aftermath::blast_events::Event<T>`; filter on that type.
 

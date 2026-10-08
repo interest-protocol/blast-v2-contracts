@@ -1183,12 +1183,10 @@ fun migration_pays_blast_its_snapshotted_shares_at_the_current_destination() {
     fixture.set_time(END_MS);
     fixture.settle(KEEPER);
 
-    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(fixture.scenario.ctx());
     fixture
         .fee_policy
-        .set_fees(&admin_registry, &admin_cap, bps::new(0), bps::new(0), bps::new(0), bps::new(0));
-    fixture.fee_policy.set_destination(&admin_registry, &admin_cap, NEW_TREASURY);
-    admin_registry.destroy_for_testing(admin_cap);
+        .set_fees(&fee_admin(), bps::new(0), bps::new(0), bps::new(0), bps::new(0));
+    fixture.fee_policy.set_destination(&treasury_admin(), NEW_TREASURY);
 
     assert_eq!(fixture.migrate(), vector[LIQUIDITY_TOKENS, 767]);
 
@@ -1356,7 +1354,6 @@ fun an_unshared_sales_rates_can_change_before_its_share() {
     let (treasury_cap, mut currency) = new_currency(&mut ctx);
     let fee_policy = fee_policy::new_for_testing(&mut ctx);
     let creation_policy = creation_policy::allowing_for_testing<QUOTE, TEST_MIGRATOR>(&mut ctx);
-    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(&mut ctx);
     let (mut sale, cap) = new_presale<QUOTE>(
         treasury_cap,
         &mut currency,
@@ -1368,8 +1365,7 @@ fun an_unshared_sales_rates_can_change_before_its_share() {
     let presale_id = object::id(&sale);
 
     sale.set_protocol_fees(
-        &admin_registry,
-        &admin_cap,
+        &fee_admin(),
         bps::new(1_000),
         bps::new(500),
         bps::new(100),
@@ -1395,7 +1391,6 @@ fun an_unshared_sales_rates_can_change_before_its_share() {
     sale.share(START_MS, &clock);
     assert_opened_event(presale_id, END_MS, option::none());
 
-    admin_registry.destroy_for_testing(admin_cap);
     destroy(cap);
     destroy(currency);
     destroy(fee_policy);
@@ -1513,33 +1508,6 @@ fun a_raise_share_cut_that_seeds_an_unpoolable_price_is_rejected() {
     fixture.set_protocol_fees(vector[0, 0, 0, 0]);
 
     fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_presale_admin::EInvalidAdminCap,
-    location = blast_presale::blast_presale_admin,
-)]
-/// A replaced AdminCap cannot change a sale's rates.
-fun a_replaced_admin_cap_cannot_change_a_sales_rates() {
-    let mut fixture = schedule_with_protocol_fees(vector[], 0, 0, RECIPIENT_B_BPS);
-    fixture.scenario.next_tx(ADMIN);
-    let mut sale = fixture.take_presale();
-    let (mut admin_registry, old_admin_cap) = blast_presale_admin::new_for_testing(fixture.ctx!());
-    let super_admin = blast_presale_admin::super_admin_for_testing(fixture.ctx!());
-    let _new_admin_cap = admin_registry.replace_admin_cap(&super_admin, fixture.ctx!());
-
-    sale.set_protocol_fees(
-        &admin_registry,
-        &old_admin_cap,
-        bps::new(1_000),
-        bps::new(0),
-        bps::new(0),
-        bps::new(0),
-        &fixture.clock,
-    );
-
-    abort
 }
 
 #[test]
@@ -2553,9 +2521,7 @@ fun fund_partnered_sale(self: &mut Fixture) {
 /// A creation policy allowing the fixture's Quote and migrator that also accepts `partner`.
 fun accepting_partner(partner: &Partner, ctx: &mut TxContext): CreationPolicy {
     let mut creation_policy = creation_policy::allowing_for_testing<QUOTE, TEST_MIGRATOR>(ctx);
-    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(ctx);
-    creation_policy.add_partner(&admin_registry, &admin_cap, partner);
-    admin_registry.destroy_for_testing(admin_cap);
+    creation_policy.add_partner(&fee_admin(), partner);
 
     creation_policy
 }
@@ -2572,17 +2538,14 @@ fun treasury_fee_policy(
     ctx: &mut TxContext,
 ): FeePolicy {
     let mut fee_policy = fee_policy::new_for_testing(ctx);
-    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(ctx);
-    fee_policy.set_destination(&admin_registry, &admin_cap, TREASURY);
+    fee_policy.set_destination(&treasury_admin(), TREASURY);
     if (protocol_raise_bps > 0 || protocol_token_bps > 0) fee_policy.set_fees(
-        &admin_registry,
-        &admin_cap,
+        &fee_admin(),
         bps::new(protocol_raise_bps),
         bps::new(protocol_token_bps),
         bps::new(0),
         bps::new(0),
     );
-    admin_registry.destroy_for_testing(admin_cap);
 
     fee_policy
 }
@@ -3122,17 +3085,14 @@ fun commit_uncapped(self: &mut Fixture, sender: address, amount: u64): vector<u6
 fun set_protocol_fees(self: &mut Fixture, rates: vector<u64>) {
     self.next_tx!(ADMIN, |fixture| {
         let mut sale = fixture.take_presale();
-        let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(fixture.ctx!());
         sale.set_protocol_fees(
-            &admin_registry,
-            &admin_cap,
+            &fee_admin(),
             bps::new(rates[0]),
             bps::new(rates[1]),
             bps::new(rates[2]),
             bps::new(rates[3]),
             &fixture.clock,
         );
-        admin_registry.destroy_for_testing(admin_cap);
         fixture.return_presale(sale);
     });
 }
@@ -3412,7 +3372,17 @@ fun only_event<Event: copy + drop>(): Event {
     events.pop_back()
 }
 
+fun fee_admin(): AdminWitness<FeeAdmin> {
+    blast_acl::witness_for_testing()
+}
+
+fun treasury_admin(): AdminWitness<TreasuryAdmin> {
+    blast_acl::witness_for_testing()
+}
+
 // === Imports ===
+
+use blast_admin::blast_acl::{Self, AdminWitness};
 
 use blast_presale::{bluefin, cetus, migration_math, blast_presale::{
     Self as presale,
@@ -3441,7 +3411,7 @@ use blast_partners::blast_partners::{Self as partners, Partner, PartnerPaid};
 
 use blast_presale::{
     blast_presale::ProtocolFeesPaid,
-    blast_presale_admin,
+    blast_presale_domain::{FeeAdmin, TreasuryAdmin},
     bps,
     creation_policy::{Self, CreationPolicy},
     fee_policy::{Self, FeePolicy},

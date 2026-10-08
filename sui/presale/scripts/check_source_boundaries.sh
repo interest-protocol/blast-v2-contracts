@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Structural gates for blast_presale administration and upgrade custody (ADR 0099) and partner
+# Structural gates for blast_presale administration (ADR 0097), upgrade custody (ADR 0099), and partner
 # binding (ADRs 0106 and 0107).
 set -euo pipefail
 
@@ -15,68 +15,55 @@ production() {
   sed '/^\/\/ === Test-Only Functions ===/,$d' "$1"
 }
 
-# 1. Package-local two-tier administration: a key-only SuperAdminCap that only replaces or revokes
-#    the one AdminCap the shared AdminRegistry accepts. No shared ACL or role types.
-if rg -n 'blast_admin|AdminWitness' "$package_dir/Move.toml" "$sources"; then
-  fail "Presale administration must not depend on the shared Blast ACL."
+# 1. Administration comes only from the shared Blast ACL (ADR 0097): the package declares its
+#    ability-free roles, and each administrator action takes exactly the one role pinned here.
+if rg -n '^public struct (ACL|Authority|SuperAdminCap|AdminCap|AdminRegistry|AdminWitness)\b' "$sources"; then
+  fail "Administration types must come from blast_admin, never from a local copy."
 fi
-admin_source="$sources/blast_presale_admin.move"
-admin_module="$(production "$admin_source")"
-[ "$(rg '^public struct ' "$admin_source" | rg -v 'has copy, drop \{$' | sort)" == "$(printf '%s\n' \
-  'public struct AdminCap has key, store {' \
-  'public struct AdminRegistry has key {' \
-  'public struct SuperAdminCap has key {' | sort)" ] \
-  || fail "blast_presale_admin must declare exactly the reviewed caps and registry."
-mints() {
-  for file in "$sources"/*.move; do
-    production "$file" | rg -c "$1" | sed "s|^|$(basename "$file"):|" || true
-  done
-}
-[ "$(mints '\bSuperAdminCap \{ id')" == "blast_presale_admin.move:1" ] \
-  && sed -n '/^fun init(/,/^}/p' <<<"$admin_module" | rg -q 'SuperAdminCap \{ id' \
-  || fail "Only init may mint the SuperAdminCap."
-[ "$(mints '\bAdminCap \{ id')" == "blast_presale_admin.move:2" ] \
-  && sed -n '/^fun init(/,/^}/p' <<<"$admin_module" | rg -q '\bAdminCap \{ id' \
-  && sed -n '/^public fun replace_admin_cap(/,/^}/p' <<<"$admin_module" | rg -q '\bAdminCap \{ id' \
-  || fail "Only init and replace_admin_cap may mint an AdminCap."
-for function in replace_admin_cap revoke_admin_cap; do
-  sed -n "/^public fun $function(/,/^}/p" <<<"$admin_module" | rg -q '_: &SuperAdminCap[,)]' \
-    || fail "$function must require the SuperAdminCap."
-done
-if rg -n 'SuperAdminCap' "$sources" | rg -v '^[^:]*blast_presale_admin\.move:'; then
-  fail "The SuperAdminCap must have no power outside blast_presale_admin."
+domain_source="$sources/blast_presale_domain.move"
+if rg -n 'fun ' "$domain_source"; then
+  fail "blast_presale_domain must only declare roles."
 fi
-# Every function of any visibility whose parameters name AdminCap, under any binding, must check
-# it against the AdminRegistry as its first statement, before it reads or changes anything.
+[ "$(rg '^public struct ' "$domain_source" | sort)" == "$(printf '%s\n' \
+  'public struct AdapterAdmin()' \
+  'public struct FeeAdmin()' \
+  'public struct ListingAdmin()' \
+  'public struct RewardsAdmin()' \
+  'public struct TreasuryAdmin()' \
+  'public struct UpgradeAdmin()' | sort)" ] \
+  || fail "blast_presale_domain must declare exactly the reviewed ability-free roles."
+presale_roles='AdapterAdmin|FeeAdmin|ListingAdmin|RewardsAdmin|TreasuryAdmin|UpgradeAdmin'
 for file in "$sources"/*.move; do
-  production "$file" | awk -v file="$(basename "$file")" '
-    function parameters(signature,    i, depth, start) {
-      sub(/^public\(package\) /, "", signature)
-      start = index(signature, "(")
-      for (i = start; i <= length(signature); i++) {
-        if (substr(signature, i, 1) == "(") depth++
-        if (substr(signature, i, 1) == ")" && --depth == 0) return substr(signature, start, i - start + 1)
-      }
-      return signature
+  production "$file" | { rg -n '^[^/]*AdminWitness<' || true; } \
+    | { rg -v "^[0-9]+:    _: &AdminWitness<($presale_roles)>,\$" || true; } \
+    | sed "s|^|$(basename "$file"):|"
+done | { ! rg .; } \
+  || fail "Every administrator witness must be a borrowed, unused AdminWitness of one presale role."
+admin_roles="$(for file in "$sources"/*.move; do
+  production "$file" | awk -v module="$(basename "$file" .move)" '
+    /^(public(\(package\))? )?(entry )?fun / {
+      name = $0
+      sub(/^.*fun /, "", name)
+      sub(/[<(].*$/, "", name)
     }
-    /^(public(\(package\))? )?(entry )?(macro )?fun / { inside = 1; in_signature = 1; signature = ""; first = "" }
-    inside && in_signature { signature = signature $0 "\n"; if ($0 ~ /\{$/) in_signature = 0; next }
-    inside && first == "" && $0 !~ /^[[:space:]]*$/ { first = $0 }
-    inside && /^}/ {
-      inside = 0
-      takes = parameters(signature)
-      if (takes !~ /(^|[^A-Za-z0-9_])AdminCap([^A-Za-z0-9_]|$)/) next
-      if (file == "blast_presale_admin.move" && signature ~ /fun assert_admin_cap\(/) next
-      if (takes !~ /admin_registry: &AdminRegistry[,)]/ || takes !~ /admin_cap: &AdminCap[,)]/ \
-        || first !~ /^    admin_registry\.assert_admin_cap\(admin_cap\);$/) {
-        sub(/^public\(package\)/, "package", signature)
-        print file ": " substr(signature, 1, index(signature, "(") - 1)
-        unchecked = 1
-      }
+    /^[^/]*AdminWitness</ && match($0, /AdminWitness<[A-Za-z]+>/) {
+      print module ":" name ":" substr($0, RSTART + 13, RLENGTH - 14)
     }
-    END { exit unchecked }
-  ' || fail "Every function taking an AdminCap must first check it against the AdminRegistry."
-done
+  '
+done | sort)"
+[ "$admin_roles" == "$(printf '%s\n' \
+  'blast_presale:set_protocol_fees:FeeAdmin' \
+  'creation_policy:add_partner:FeeAdmin' \
+  'creation_policy:remove_partner:FeeAdmin' \
+  'creation_policy:set_migration_witness_allowed:AdapterAdmin' \
+  'creation_policy:set_quote_allowed:ListingAdmin' \
+  'fee_policy:set_destination:TreasuryAdmin' \
+  'fee_policy:set_fees:FeeAdmin' \
+  'holder_rewards:publish_round:RewardsAdmin' \
+  'package_admin:authorize_upgrade:UpgradeAdmin' \
+  'package_admin:commit_upgrade:UpgradeAdmin' \
+  'presale_vault:set_protocol_lp_fees:FeeAdmin' | sort)" ] \
+  || { printf '%s\n' "$admin_roles" >&2; fail "Every administrator action must take exactly its pinned presale role."; }
 
 # 2. Upgrade custody stays sealed and dependency-only, so every generation runs identical logic.
 admin_production="$(production "$sources/package_admin.move")"
@@ -94,8 +81,8 @@ fi
 if rg -n 'transfer::(public_)?transfer\(' <<<"$admin_production"; then
   fail "The framework UpgradeCap must never leave sealed custody."
 fi
-[ "$(rg -c '^    admin_cap: &AdminCap,$' <<<"$admin_production")" -eq 2 ] \
-  || fail "Authorizing and committing an upgrade must each require the AdminCap."
+[ "$(rg -c '^    _: &AdminWitness<UpgradeAdmin>,$' <<<"$admin_production")" -eq 2 ] \
+  || fail "Authorizing and committing an upgrade must each require the UpgradeAdmin role."
 
 # 3. A sale's Blast partner is named only by set_partner on its initializer, so `finalize` fixes it
 #    before the sale exists (ADRs 0106 and 0110), and its vault keeps that partner for good

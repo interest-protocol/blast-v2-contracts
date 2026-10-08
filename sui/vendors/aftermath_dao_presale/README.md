@@ -40,11 +40,12 @@ Blast still takes its raise and token shares when `blast_presale::migrate` runs.
 The `AdminCap` holder may name a Blast partner on the initializer `new` returns,
 with `blast_presale::set_partner` before `finalize`; the partner then earns its cut of
 Blast's raise fee as on any presale
-([ADR 0106](../../../docs/decisions/0106-presale-partners.md)). The presale
-`AdminCap` may also replace this one sale's Blast raise and token rates with
+([ADR 0106](../../../docs/decisions/0106-presale-partners.md)). Blast's presale
+`FeeAdmin` may also replace this one sale's Blast raise and token rates with
 `blast_presale::set_protocol_fees`, as on any presale: in the creation
-transaction before `blast_presale::share`, which needs both caps in one
-transaction, or afterward until the `start_ms` the share fixed.
+transaction before `blast_presale::share`, which needs the vendor's `AdminCap`
+and a `FeeAdmin` sign-in in one transaction, or afterward until the `start_ms`
+the share fixed.
 
 ## Migration and custody
 
@@ -82,9 +83,9 @@ coin minted; a sale that cannot migrate becomes refundable at its LP deadline.
 2. Run `scripts/verify.sh` and `node scripts/check_mainnet_abi.mjs`. The ABI
    gate fails on any newer Aftermath revision until it is reviewed.
 3. Run `scripts/publish_immutable.sh --preview`, then `--execute`.
-4. With the presale `AdminCap`, call `creation_policy::set_migration_witness_allowed`
-   for `<package>::blast_aftermath_dao_presale::Witness`, and allow the sale's
-   Quote type.
+4. As Blast's presale `AdapterAdmin`, call `creation_policy::set_migration_witness_allowed`
+   for `<package>::blast_aftermath_dao_presale::Witness`, and as `ListingAdmin`
+   allow the sale's Quote type.
 5. Before the first sale migrates, prove a mainnet dev-inspect of `migrate` with a
    fresh LP coin for both coin orders: the local stubs prove types, not behavior.
 

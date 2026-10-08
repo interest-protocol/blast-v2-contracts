@@ -5,7 +5,7 @@
 /// every collected LP fee.
 ///
 /// Each presale snapshots the rates when it is created. Until the sale's window starts, the
-/// AdminCap may change that sale's rates, so its economics are fixed before commitments open;
+/// `FeeAdmin` may change that sale's rates, so its economics are fixed before commitments open;
 /// after migration it may change the sale's LP-fee rates on its vault. Every payout reads the
 /// current destination.
 module blast_presale::fee_policy;
@@ -39,14 +39,12 @@ fun init(ctx: &mut TxContext) {
 /// Sets the rates presales created afterward snapshot; existing presales keep theirs.
 public fun set_fees(
     self: &mut FeePolicy,
-    admin_registry: &AdminRegistry,
-    admin_cap: &AdminCap,
+    _: &AdminWitness<FeeAdmin>,
     raise_bps: Bps,
     token_bps: Bps,
     lp_fee_meme_bps: Bps,
     lp_fee_quote_bps: Bps,
 ) {
-    admin_registry.assert_admin_cap(admin_cap);
     let fees = protocol_fees(raise_bps, token_bps, lp_fee_meme_bps, lp_fee_quote_bps);
     assert!(fees != self.fees, EFeesUnchanged);
 
@@ -63,11 +61,9 @@ public fun set_fees(
 /// Redirects every later protocol payout, including those of existing presales.
 public fun set_destination(
     self: &mut FeePolicy,
-    admin_registry: &AdminRegistry,
-    admin_cap: &AdminCap,
+    _: &AdminWitness<TreasuryAdmin>,
     destination: address,
 ) {
-    admin_registry.assert_admin_cap(admin_cap);
     assert!(destination != @0x0 && destination != self.destination, EInvalidDestination);
 
     self.destination = destination;
@@ -219,6 +215,8 @@ const EInvalidDestination: vector<u8> = b"The protocol destination must be a new
 
 // === Imports ===
 
-use blast_presale::{blast_presale_admin::{AdminCap, AdminRegistry}, bps::{Self, Bps}};
+use blast_admin::blast_acl::AdminWitness;
+
+use blast_presale::{blast_presale_domain::{FeeAdmin, TreasuryAdmin}, bps::{Self, Bps}};
 
 use sui::event;

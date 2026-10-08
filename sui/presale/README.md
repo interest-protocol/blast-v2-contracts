@@ -45,7 +45,7 @@ that starts at that claim, while its Quote refund is paid at once.
 Blast's shared `FeePolicy` sets its shares of the raise, the token supply, and
 collected LP fees; each sale snapshots them at creation, every rate can be zero,
 and payouts go to the policy's current destination. Until a sale's window starts,
-including in its creation transaction before `share`, the `AdminCap` can change
+including in its creation transaction before `share`, Blast's `FeeAdmin` can change
 all four of its rates with `blast_presale::set_protocol_fees`; Blast's token
 difference moves to or from the buyers' sale allocation and its raise difference to or from the LP's Quote. After
 migration it can change one sale's LP-fee rates on its vault with
@@ -70,7 +70,7 @@ and Blast partners new presales may use; creation aborts for anything unlisted. 
 creation, so delisting a type never affects a live sale. `blast_presale::new`,
 `finalize`, and `migrate` are public, so a migrator in another package, such as a partner's under
 [`sui/vendors`](../vendors/README.md), creates and migrates sales with its own sealed
-witness once the `AdminCap` allows it; a primitive or vector, which anyone can
+witness once Blast's `AdapterAdmin` allows it; a primitive or vector, which anyone can
 construct, is never allowed
 ([ADR 0104](../../docs/decisions/0104-external-presale-migrators-and-vendor-packages.md)).
 
@@ -98,7 +98,7 @@ distinct allocations in that same transaction. Claims open only after success.
 Permissionless fee collection pays Blast its share of each asset at the vault's
 current rates, or holds it for a partnered sale's partner payout, then applies the immutable creation-time split to the rest: every fee recipient
 is paid in the same transaction, and the holder-reward share stays
-in the vault. The holder of the package's `AdminCap` publishes Merkle
+in the vault. Blast's `RewardsAdmin` publishes Merkle
 rounds funded from that share, each with a claim deadline after which anyone can
 return its unclaimed rewards to the vault. The `PresaleCap` claims migration residuals and
 can be destroyed after cancellation. Anyone may relay participant or reward claims, but payment
@@ -116,14 +116,17 @@ be reversed.
 Run `scripts/verify.sh`. Publish to mainnet with `scripts/publish.sh --preview`,
 repeat with `--execute`, then seal the returned `UpgradeCap` with
 `scripts/wrap_package_admin.sh <package-id> <upgrade-cap-id> --preview` and
-`--execute` before creating any presale. Publication also sends
-the publisher the package's single `AdminCap`, which sets Blast's fees and their
-destination, allows Quote types, migrators, and partners, publishes holder-reward rounds,
-and authorizes dependency-only upgrades while the shared `AdminRegistry` accepts
-it, and a key-only `SuperAdminCap` whose only power is to replace or revoke that
-cap. [DEPLOYING.md](DEPLOYING.md) gives the
-complete order: custody is verified on chain before the `AdminCap` allows any
-Quote type or migrator, so no presale can exist under an unsealed cap.
+`--execute` before creating any presale. The package mints no administrator
+capability: Blast administers it through the one shared Blast ACL
+(`blast_admin`, [ADR 0097](../../docs/decisions/0097-one-singleton-acl-with-typed-roles.md)),
+which it already links through `blast_partners`. `blast_presale_domain` declares
+six roles: `FeeAdmin` sets Blast's rates and the partners new sales may name,
+`TreasuryAdmin` their destination, `ListingAdmin` and `AdapterAdmin` the Quote
+types and migrators new sales may use, `RewardsAdmin` publishes holder-reward
+rounds, and `UpgradeAdmin` authorizes dependency-only upgrades.
+[DEPLOYING.md](DEPLOYING.md) gives the complete order: custody is verified on
+chain before any Quote type or migrator is allowed, so no presale can exist
+under an unsealed cap.
 
 The accepted design is [ADR 0099](../../docs/decisions/0099-standalone-overflow-presale.md);
 Blast's fees are proposed in [ADR 0101](../../docs/decisions/0101-presale-protocol-fees.md)

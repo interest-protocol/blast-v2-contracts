@@ -94,9 +94,7 @@ fun a_vendor_sale_can_name_a_partner_before_it_is_finalized() {
     let mut scenario = publish();
     let partner = partners::new_for_testing(PARTNER_RECIPIENT, 4_000, scenario.ctx());
     let mut creation_policy = allowing<Witness>(scenario.ctx());
-    let (admin_registry, presale_admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
-    creation_policy.add_partner(&admin_registry, &presale_admin_cap, &partner);
-    admin_registry.destroy_for_testing(presale_admin_cap);
+    creation_policy.add_partner(&fee_admin(), &partner);
     let clock = clock::create_for_testing(scenario.ctx());
 
     let admin_cap = scenario.take_from_sender<AdminCap>();
@@ -115,18 +113,16 @@ fun a_vendor_sale_can_name_a_partner_before_it_is_finalized() {
 }
 
 #[test]
-/// In the transaction that creates a sale, the presale AdminCap can replace that sale's Blast rates
+/// In the transaction that creates a sale, Blast's presale `FeeAdmin` can replace that sale's Blast rates
 /// before sharing it, without touching any other sale.
 fun a_vendor_sale_can_change_its_blast_rates_before_its_share() {
     let mut scenario = publish();
     let creation_policy = allowing<Witness>(scenario.ctx());
-    let (admin_registry, presale_admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
 
     let (mut sale, _) = new_sale(&mut scenario, &creation_policy);
     sale.set_protocol_fees(
-        &admin_registry,
-        &presale_admin_cap,
+        &fee_admin(),
         bps::new(1_000),
         bps::new(100),
         bps::new(0),
@@ -147,7 +143,6 @@ fun a_vendor_sale_can_change_its_blast_rates_before_its_share() {
     );
 
     sale.share(0, &clock);
-    admin_registry.destroy_for_testing(presale_admin_cap);
     destroy(clock);
     destroy(creation_policy);
     scenario.end();
@@ -393,9 +388,15 @@ fun last_event<Event: copy + drop>(): Event {
     events.pop_back()
 }
 
+fun fee_admin(): AdminWitness<FeeAdmin> {
+    blast_acl::witness_for_testing()
+}
+
 // === Imports ===
 
 use amm::{pool as amm_pool, pool_registry};
+
+use blast_admin::blast_acl::{Self, AdminWitness};
 
 use blast_aftermath_dao_presale::blast_aftermath_dao_presale::{
     Self as migrator,
@@ -418,7 +419,7 @@ use blast_presale::{
         PresaleOpened,
         ProtocolFeesChanged,
     },
-    blast_presale_admin,
+    blast_presale_domain::FeeAdmin,
     bps,
     creation_policy::{Self, CreationPolicy},
     fee_policy,

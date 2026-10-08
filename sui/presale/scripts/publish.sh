@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Publishes blast_presale. The sender receives the AdminCap and the UpgradeCap, and must seal the
+# Publishes blast_presale. The sender receives the UpgradeCap, and must seal the
 # UpgradeCap with scripts/wrap_package_admin.sh before any presale is created.
 set -euo pipefail
 

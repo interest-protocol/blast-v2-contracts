@@ -85,8 +85,7 @@ fun collected_fees_pay_recipients_and_keep_the_holder_share() {
 fun collected_fees_pay_blast_its_share_first() {
     let mut scenario = test_scenario::begin(CREATOR);
     let mut policy = fee_policy::new_for_testing(scenario.ctx());
-    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
-    policy.set_destination(&admin_registry, &admin_cap, TREASURY);
+    policy.set_destination(&treasury_admin(), TREASURY);
     let mut vault = vault_paying_blast(option::none(), &mut scenario);
 
     vault.credit_fees_for_testing(
@@ -121,7 +120,6 @@ fun collected_fees_pay_blast_its_share_first() {
 
     vault.destroy_holding(27, 2);
     policy.destroy_for_testing();
-    admin_registry.destroy_for_testing(admin_cap);
     scenario.end();
 }
 
@@ -210,8 +208,7 @@ fun held_lp_fees_go_to_the_destination_in_force_at_payout() {
     let partner = partners::new_for_testing(PARTNER_RECIPIENT, PARTNER_CUT_BPS, scenario.ctx());
     let mut vault = vault_paying_blast(option::some(object::id(&partner)), &mut scenario);
     let mut policy = fee_policy::new_for_testing(scenario.ctx());
-    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
-    policy.set_destination(&admin_registry, &admin_cap, TREASURY);
+    policy.set_destination(&treasury_admin(), TREASURY);
     vault.credit_fees_for_testing(
         &policy,
         coin::mint_for_testing<MEME>(101, scenario.ctx()).into_balance(),
@@ -231,7 +228,6 @@ fun held_lp_fees_go_to_the_destination_in_force_at_payout() {
 
     vault.destroy_holding(27, 2);
     policy.destroy_for_testing();
-    admin_registry.destroy_for_testing(admin_cap);
     destroy(partner);
     scenario.end();
 }
@@ -316,11 +312,10 @@ fun a_vault_without_a_partner_has_no_partner_payout() {
 fun the_admin_changes_a_vaults_lp_fee_rates() {
     let mut scenario = test_scenario::begin(CREATOR);
     let mut policy = fee_policy::new_for_testing(scenario.ctx());
-    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
-    policy.set_destination(&admin_registry, &admin_cap, TREASURY);
+    policy.set_destination(&treasury_admin(), TREASURY);
     let mut vault = vault_paying_blast(option::none(), &mut scenario);
 
-    vault.set_protocol_lp_fees(&admin_registry, &admin_cap, bps::new(0), bps::new(5_000));
+    vault.set_protocol_lp_fees(&fee_admin(), bps::new(0), bps::new(5_000));
 
     let (vault_id, lp_fee_meme_bps, lp_fee_quote_bps) = only_event<
         ProtocolLpFeesChanged<MEME, QUOTE>,
@@ -347,7 +342,6 @@ fun the_admin_changes_a_vaults_lp_fee_rates() {
 
     vault.destroy_holding(30, 1);
     policy.destroy_for_testing();
-    admin_registry.destroy_for_testing(admin_cap);
     scenario.end();
 }
 
@@ -358,27 +352,9 @@ fun the_admin_changes_a_vaults_lp_fee_rates() {
 )]
 fun a_vault_lp_fee_update_must_change_the_rates() {
     let mut scenario = test_scenario::begin(CREATOR);
-    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
     let mut vault = vault_paying_blast(option::none(), &mut scenario);
 
-    vault.set_protocol_lp_fees(&admin_registry, &admin_cap, bps::new(1_000), bps::new(2_500));
-    abort
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_presale_admin::EInvalidAdminCap,
-    location = blast_presale::blast_presale_admin,
-)]
-/// A replaced AdminCap cannot change a vault's LP rates.
-fun a_replaced_admin_cap_cannot_change_a_vaults_lp_fee_rates() {
-    let mut scenario = test_scenario::begin(CREATOR);
-    let (mut admin_registry, old_admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
-    let super_admin = blast_presale_admin::super_admin_for_testing(scenario.ctx());
-    let _new_admin_cap = admin_registry.replace_admin_cap(&super_admin, scenario.ctx());
-    let mut vault = vault_paying_blast(option::none(), &mut scenario);
-
-    vault.set_protocol_lp_fees(&admin_registry, &old_admin_cap, bps::new(0), bps::new(0));
+    vault.set_protocol_lp_fees(&fee_admin(), bps::new(1_000), bps::new(2_500));
     abort
 }
 
@@ -393,12 +369,10 @@ fun the_admin_publishes_holder_rounds_from_the_holder_share() {
         &mut scenario,
     );
     let clock = clock::create_for_testing(scenario.ctx());
-    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
 
     rewards::publish_round(
         &mut vault,
-        &admin_registry,
-        &admin_cap,
+        &rewards_admin(),
         0,
         0,
         10,
@@ -422,7 +396,6 @@ fun the_admin_publishes_holder_rounds_from_the_holder_share() {
 
     test_scenario::return_shared(round);
     clock.destroy_for_testing();
-    admin_registry.destroy_for_testing(admin_cap);
     vault.destroy_for_testing();
     scenario.end();
 }
@@ -535,8 +508,7 @@ fun a_vault_without_a_presale_pays_its_partner_its_cut_of_blasts_lp_fees() {
     let policy = policy_with_lp_fees(1_000, 2_500, &mut scenario);
     let partner = partners::new_for_testing(PARTNER_RECIPIENT, PARTNER_CUT_BPS, scenario.ctx());
     let mut creation_policy = creation_policy::new_for_testing(scenario.ctx());
-    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
-    creation_policy.add_partner(&admin_registry, &admin_cap, &partner);
+    creation_policy.add_partner(&fee_admin(), &partner);
 
     new_vault_without_presale(
         &policy,
@@ -567,7 +539,6 @@ fun a_vault_without_a_presale_pays_its_partner_its_cut_of_blasts_lp_fees() {
     test_scenario::return_shared(vault);
     policy.destroy_for_testing();
     creation_policy.destroy_for_testing();
-    admin_registry.destroy_for_testing(admin_cap);
     destroy(partner);
     scenario.end();
 }
@@ -697,12 +668,10 @@ fun a_round_needs_a_future_claim_deadline() {
     let mut vault = funded_holder_vault(&mut scenario);
     let mut clock = clock::create_for_testing(scenario.ctx());
     clock.set_for_testing(CLAIM_DEADLINE_MS);
-    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
 
     rewards::publish_round(
         &mut vault,
-        &admin_registry,
-        &admin_cap,
+        &rewards_admin(),
         0,
         0,
         10,
@@ -804,15 +773,13 @@ fun pay_held_lp_fees(
     scenario: &mut Scenario,
 ) {
     let mut policy = fee_policy::new_for_testing(scenario.ctx());
-    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
-    policy.set_destination(&admin_registry, &admin_cap, destination);
+    policy.set_destination(&treasury_admin(), destination);
     let clock = clock::create_for_testing(scenario.ctx());
 
     vault::pay_protocol_lp_fees_with_partner(self, &policy, partner, &clock, scenario.ctx());
 
     clock.destroy_for_testing();
     policy.destroy_for_testing();
-    admin_registry.destroy_for_testing(admin_cap);
 }
 
 /// Seals a `liquidity` position on pool `@0x9001` in a vault without a presale, paying half of
@@ -848,16 +815,13 @@ fun new_vault_without_presale(
 /// A fee policy whose new vaults pay Blast these LP-fee rates.
 fun policy_with_lp_fees(meme_bps: u64, quote_bps: u64, scenario: &mut Scenario): FeePolicy {
     let mut policy = fee_policy::new_for_testing(scenario.ctx());
-    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
     policy.set_fees(
-        &admin_registry,
-        &admin_cap,
+        &fee_admin(),
         bps::new(0),
         bps::new(0),
         bps::new(meme_bps),
         bps::new(quote_bps),
     );
-    admin_registry.destroy_for_testing(admin_cap);
     policy
 }
 
@@ -881,11 +845,9 @@ fun publish_round(
     scenario: &mut Scenario,
 ) {
     let clock = clock::create_for_testing(scenario.ctx());
-    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(scenario.ctx());
     rewards::publish_round(
         self,
-        &admin_registry,
-        &admin_cap,
+        &rewards_admin(),
         number,
         start_checkpoint,
         end_checkpoint,
@@ -899,7 +861,6 @@ fun publish_round(
         scenario.ctx(),
     );
     clock.destroy_for_testing();
-    admin_registry.destroy_for_testing(admin_cap);
 }
 
 fun close_round_at(self: &mut Vault<MEME, QUOTE>, now_ms: u64, scenario: &mut Scenario) {
@@ -946,13 +907,27 @@ fun only_event<Event: copy + drop>(): Event {
     events[0]
 }
 
+fun fee_admin(): AdminWitness<FeeAdmin> {
+    blast_acl::witness_for_testing()
+}
+
+fun rewards_admin(): AdminWitness<RewardsAdmin> {
+    blast_acl::witness_for_testing()
+}
+
+fun treasury_admin(): AdminWitness<TreasuryAdmin> {
+    blast_acl::witness_for_testing()
+}
+
 // === Imports ===
+
+use blast_admin::blast_acl::{Self, AdminWitness};
 
 use blast_partners::blast_partners::{Self as partners, Partner, PartnerPaid};
 
 use blast_presale::{
     blast_presale as presale,
-    blast_presale_admin,
+    blast_presale_domain::{FeeAdmin, RewardsAdmin, TreasuryAdmin},
     bps,
     creation_policy::{Self, CreationPolicy},
     fee_policy::{Self, FeePolicy, ProtocolFees},
