@@ -55,7 +55,8 @@ public fun new<SaleToken, Quote>(
 /// Finalizes a sale `new` started, sends its `PresaleCap` to the treasury, and shares a
 /// `PoolCreation` binding `create_pool_cap`, minted by the fresh LP coin `Lp`, to it. Every LP fee
 /// its pool pays reaches the treasury, so this sets the sale's LP-fee split to name the treasury as
-/// its only recipient.
+/// its only recipient. The initializer must be one `new` started: another migrator's sale could
+/// never consume the pool creation.
 public fun finalize<Lp, SaleToken, Quote>(
     _: &AdminCap,
     mut initializer: PresaleInitializer<SaleToken, Quote>,
@@ -63,6 +64,8 @@ public fun finalize<Lp, SaleToken, Quote>(
     create_pool_cap: CreatePoolCapV2,
     ctx: &mut TxContext,
 ): Presale<SaleToken, Quote> {
+    assert!(initializer.migration_witness() == type_name::with_original_ids<Witness>(), EWrongMigrator);
+
     initializer.set_fee_split(
         presale::fee_split(
             vector[presale::recipient_share(TREASURY, bps::new(ALL_BPS))],
@@ -286,6 +289,9 @@ const EDaoFeePoolMismatch: vector<u8> = b"The DAO-fee pool must charge this pack
 
 #[error(code = 2)]
 const EWrongPresale: vector<u8> = b"The pool creation is bound to a different presale.";
+
+#[error(code = 3)]
+const EWrongMigrator: vector<u8> = b"Only a sale this package's `new` started can be finalized here.";
 
 // === Imports ===
 

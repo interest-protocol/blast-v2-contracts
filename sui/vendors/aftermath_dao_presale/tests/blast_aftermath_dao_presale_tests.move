@@ -50,7 +50,7 @@ fun publication_sends_the_admin_cap_to_the_publisher() {
 #[test]
 /// A sale created here names this migrator, pays its whole LP-fee split to the treasury, and sends
 /// the treasury its PresaleCap.
-fun new_creates_a_sale_for_the_treasury() {
+fun finalize_creates_a_sale_for_the_treasury() {
     let mut scenario = publish();
     let creation_policy = allowing<Witness>(scenario.ctx());
 
@@ -78,8 +78,8 @@ fun new_creates_a_sale_for_the_treasury() {
 }
 
 #[test]
-/// `new` shares one pool creation for the LP coin, bound to the sale it created.
-fun new_binds_a_shared_pool_creation_to_its_sale() {
+/// `finalize` shares one pool creation for the LP coin, bound to the sale it created.
+fun finalize_binds_a_shared_pool_creation_to_its_sale() {
     let mut scenario = publish();
     let creation_policy = allowing<Witness>(scenario.ctx());
 
@@ -219,6 +219,38 @@ fun finalize_overrides_any_lp_fee_split() {
 
 #[test]
 #[expected_failure(
+    abort_code = migrator::EWrongMigrator,
+    location = blast_aftermath_dao_presale::blast_aftermath_dao_presale,
+)]
+/// The vendor finalizes only sales its own `new` started: another migrator's sale could never
+/// consume the pool creation.
+fun finalize_rejects_another_migrators_sale() {
+    let mut scenario = publish();
+    let creation_policy = allowing<OTHER_MIGRATOR>(scenario.ctx());
+    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let admin_cap = scenario.take_from_sender<AdminCap>();
+    let (treasury_cap, mut currency) = new_currency(&mut scenario);
+    let initializer = presale::new<_, QUOTE, _>(
+        treasury_cap,
+        OTHER_MIGRATOR(),
+        &creation_policy,
+        &fee_policy,
+        0,
+        0,
+    );
+
+    let _sale = migrator::finalize<LP, _, _>(
+        &admin_cap,
+        initializer,
+        &mut currency,
+        amm_pool::create_pool_cap_for_testing(scenario.ctx()),
+        scenario.ctx(),
+    );
+    abort
+}
+
+#[test]
+#[expected_failure(
     abort_code = creation_policy::EMigrationWitnessNotAllowed,
     location = blast_presale::creation_policy,
 )]
@@ -298,15 +330,7 @@ fun start_sale(
     Currency<BLAST_AFTERMATH_DAO_PRESALE_TESTS>,
 ) {
     let fee_policy = fee_policy::new_for_testing(scenario.ctx());
-    let (currency_initializer, treasury_cap) = coin_registry::new_currency_with_otw(
-        test_utils::create_one_time_witness<BLAST_AFTERMATH_DAO_PRESALE_TESTS>(),
-        9,
-        b"SALE".to_string(),
-        b"Sale Token".to_string(),
-        b"Presale test token".to_string(),
-        b"".to_string(),
-        scenario.ctx(),
-    );
+    let (treasury_cap, currency) = new_currency(scenario);
 
     let mut initializer = migrator::new<_, QUOTE>(
         admin_cap,
@@ -322,7 +346,24 @@ fun start_sale(
 
     destroy(fee_policy);
 
-    (initializer, coin_registry::unwrap_for_testing(currency_initializer))
+    (initializer, currency)
+}
+
+/// A fresh sale token's zero-supply treasury cap and currency.
+fun new_currency(
+    scenario: &mut Scenario,
+): (TreasuryCap<BLAST_AFTERMATH_DAO_PRESALE_TESTS>, Currency<BLAST_AFTERMATH_DAO_PRESALE_TESTS>) {
+    let (currency_initializer, treasury_cap) = coin_registry::new_currency_with_otw(
+        test_utils::create_one_time_witness<BLAST_AFTERMATH_DAO_PRESALE_TESTS>(),
+        9,
+        b"SALE".to_string(),
+        b"Sale Token".to_string(),
+        b"Presale test token".to_string(),
+        b"".to_string(),
+        scenario.ctx(),
+    );
+
+    (treasury_cap, coin_registry::unwrap_for_testing(currency_initializer))
 }
 
 /// The publisher's AdminCap finalizes `initializer` with a pool creation reserved for `LP`,
@@ -393,4 +434,4 @@ use dao_fee_amm::version;
 
 use std::{type_name, unit_test::{assert_eq, destroy}};
 
-use sui::{clock, coin_registry::{Self, Currency}, event, sui::SUI, test_scenario::{Self, Scenario}, test_utils};
+use sui::{clock, coin::TreasuryCap, coin_registry::{Self, Currency}, event, sui::SUI, test_scenario::{Self, Scenario}, test_utils};

@@ -110,5 +110,14 @@ vault_production="$(production "$sources/presale_vault.move")"
 if rg -q '\.partner_id = ' <<<"$vault_production"; then
   fail "A presale vault's partner is the sale's, fixed when the vault is created."
 fi
+# 4. A sale's window is fixed by `finalize` from its initializer, and only settle, closing it
+#    early, shortens it (ADR 0110).
+set_windows_body="$(sed -n '/^public fun set_windows</,/^}/p' <<<"$presale_production")"
+settle_body="$(sed -n '/^public fun settle</,/^}/p' <<<"$presale_production")"
+[ "$(rg -c 'self\.duration_ms = ' <<<"$presale_production")" == 2 ] \
+  && rg -q '^    self: &mut PresaleInitializer<SaleToken, Quote>,$' <<<"$set_windows_body" \
+  && rg -q '^    self\.duration_ms = duration_ms;$' <<<"$set_windows_body" \
+  && rg -q 'self\.duration_ms = now_ms - self\.start_ms;$' <<<"$settle_body" \
+  || fail "Only settle, closing a sale early, may shorten its window."
 
 printf 'blast_presale source boundaries hold.\n'

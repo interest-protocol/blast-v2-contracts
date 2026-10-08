@@ -55,7 +55,9 @@ The Aftermath vendor splits into `new`, which returns the initializer, and `fina
 - binds the `PoolCreation`;
 - sends the `PresaleCap` to the treasury.
 
-Both functions need its `AdminCap`. A vendor sale finalized directly in `blast_presale` has no
+Both functions need its `AdminCap`. The vendor's `finalize` rejects an initializer another
+migrator started (`EWrongMigrator`), reading `blast_presale::migration_witness`, the initializer's
+only public projection. A vendor sale finalized directly in `blast_presale` has no
 `PoolCreation`, so it cannot migrate and refunds after its LP deadline.
 
 **Sale-level hard cap.** `HardCap { starts_after_ms, closes_when_filled }` is a sale setting
@@ -125,9 +127,11 @@ The `blast_presale` unit tests cover:
 - the abort for an overflowing sale;
 - a sale overfilled before its hard cap, which closes at the hard-cap start and not a
   millisecond before;
+- a sale filled at its very start, which closes with a zero-length window;
 - commitments rejected after a close;
 - the hard-cap bound;
 - the missing-setting aborts.
 
-The vendor tests cover the split `new` and `finalize` and the overridden LP-fee split. The source
-boundary gate pins `set_partner` to the initializer.
+The vendor tests cover the split `new` and `finalize`, the overridden LP-fee split, and the
+rejected foreign initializer. The source boundary gate pins `set_partner` to the initializer and
+lets only `settle` shorten a sale's window.

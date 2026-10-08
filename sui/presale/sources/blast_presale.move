@@ -443,6 +443,14 @@ public fun set_partner<SaleToken, Quote>(
     self.partner_id = option::some(partner_id);
 }
 
+/// The witness type of the migrator that started the sale, so a migrator finalizing an
+/// initializer it is handed can confirm the sale is its own.
+public fun migration_witness<SaleToken, Quote>(
+    self: &PresaleInitializer<SaleToken, Quote>,
+): TypeName {
+    self.migration_witness
+}
+
 /// Checks every setting together, then mints and apportions the complete token supply and
 /// irreversibly makes it fixed or burn-only before returning the presale for `share`.
 public fun finalize<SaleToken, Quote>(
@@ -991,13 +999,14 @@ fun liquidity_deadline_ms<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): u
 }
 
 /// When wallet caps lift: the uncapped phase's offset into the window, which `finalize` bounds
-/// below the duration, or the end of a sale without one.
+/// below the duration, or the end of a sale without one. Read only while the sale is open, before
+/// an early close can shorten the duration below it.
 fun uncapped_from_ms<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): u64 {
     self.uncapped.map_ref!(|phase| self.start_ms + phase.starts_after_ms).destroy_or!(self.end_ms())
 }
 
 /// When the hard cap takes hold: its offset into the window, which `finalize` bounds below the
-/// duration; none for a sale that overflows for its whole window.
+/// duration as created; none for a sale that overflows for its whole window.
 fun hard_cap_from_ms<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): Option<u64> {
     self.hard_cap.map_ref!(|cap| self.start_ms + cap.starts_after_ms)
 }

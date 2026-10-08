@@ -8,8 +8,7 @@ E2E-023 is skipped by owner decision. Evidence:
 The run above targeted the ABI before
 [ADR 0110](decisions/0110-presale-initializer-and-early-close.md). The rerun on the fresh
 publication creates every sale through a venue's `new`, the initializer setters, and `finalize`.
-Each `hard_cap = true` phase below becomes `set_hard_cap` at the phase's offset, and each
-`hard_cap = false` is dropped. Two tickets are added:
+The ticket bodies below use the new calls. Two tickets are added:
 
 - **E2E-030 First come within wallet caps, closed when filled.** Open policy, `set_hard_cap(0,
   true)`. Wallets commit within their caps until the raise fills. The filling commit is partly
@@ -90,8 +89,8 @@ unlisted Quote (`EQuoteNotAllowed`) and, after delisting one witness, with that 
 
 ### Sale scenarios (Bluefin with TSUI unless noted)
 
-**E2E-010 Open sale with a hard cap.** Open policy plus `uncapped_for_eligible(half the window,
-hard_cap = true)`. Before the phase: commits within caps; over cap aborts `EWalletCapExceeded`;
+**E2E-010 Open sale with a hard cap.** Open policy plus `uncapped_for_eligible(half the window)`
+and `set_hard_cap(half the window, false)`. Before the phase: commits within caps; over cap aborts `EWalletCapExceeded`;
 below minimum aborts `EBelowMinimumCommitment`; a new wallet past `max_participants` aborts
 `EParticipantCapacityReached`; zero aborts `EZeroCommitment`; `commit_allowlisted` aborts
 `EWrongEligibilityPolicy`. In the phase: a commit larger than what is left is partly accepted and
@@ -108,7 +107,7 @@ refund, one relayed by the relayer (payment still goes to the participant), a se
 `PresaleCap` (wrong cap aborts `EWrongPresaleCap`; second call aborts `ENoMigrationResiduals`).
 
 **E2E-012 Allowlist with a hard cap, wallets topping up.** Merkle allowlist of tiered caps built
-by the SDK, plus `uncapped_for_eligible(..., hard_cap = true)`. Wallets commit in several steps
+by the SDK, plus `uncapped_for_eligible(starts_after)` and `set_hard_cap(starts_after, false)`. Wallets commit in several steps
 up to their cap. Aborts: wrong proof, wrong index, wrong cap, unlisted wallet
 (`EInvalidEligibilityProof`); top-up quoting a different cap than the first commit
 (`EInvalidEligibilityProof`); over cap (`EWalletCapExceeded`); `commit_open` and
@@ -116,7 +115,7 @@ up to their cap. Aborts: wrong proof, wrong index, wrong cap, unlisted wallet
 wallets exceed their caps up to the hard cap. Migrate and claim.
 
 **E2E-013 Allowlist that opens to anyone after a deadline.** Allowlist plus
-`uncapped_for_anyone(starts_after, max_participants, min, hard_cap = false)`. Before the phase an
+`uncapped_for_anyone(starts_after, max_participants, min)` and no hard cap. Before the phase an
 unlisted wallet's `commit_uncapped` aborts `EUncappedPhaseNotOpen`; after it, unlisted wallets
 commit at least the minimum (below aborts `EBelowMinimumCommitment`) up to the phase's participant
 bound (`EParticipantCapacityReached`). Ends in overflow; claims at one common fill rate.

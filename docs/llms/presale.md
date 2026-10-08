@@ -847,7 +847,9 @@ Create (*cap holder*, `blast_aftermath_dao_presale::blast_aftermath_dao_presale:
    treasury, shares the `PoolCreation<Lp>`, emits
    `blast_aftermath_dao_presale::blast_aftermath_dao_presale::PoolCreationReserved`, and returns the unshared `Presale`. A
    vendor sale finalized with `blast_presale::blast_presale::finalize` directly has no `PoolCreation`, so it
-   can never migrate and refunds after its LP deadline.
+   can never migrate and refunds after its LP deadline. It aborts with
+   `blast_aftermath_dao_presale::blast_aftermath_dao_presale::EWrongMigrator` when the initializer was started by another
+   migrator (it reads `blast_presale::blast_presale::migration_witness`).
 6. Optional `blast_presale::blast_presale::set_protocol_fees(...)` to change this sale's Blast rates, which needs
    Blast's presale `AdminCap` in the same transaction; then
    `blast_presale::blast_presale::share(presale, start_ms, clock)`.

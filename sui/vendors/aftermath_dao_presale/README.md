@@ -25,7 +25,8 @@ transaction, so no one can change how a funded sale migrates. The `AdminCap`'s o
 sale's `PresaleInitializer`, whose terms are set as for any presale; `finalize`
 takes it again, names the treasury as the sale's only LP-fee recipient, which is
 where its fees go, binds the sale's `PoolCreation`, and sends the treasury the
-sale's `PresaleCap`. A sale `new` started but finalized directly in
+sale's `PresaleCap`. It refuses an initializer another migrator started. A sale
+`new` started but finalized directly in
 `blast_presale` has no `PoolCreation`, so it cannot migrate and refunds after its
 LP deadline. The `PresaleCap` can only destroy
 itself after a cancellation, since these sales have no `presale_vault::Vault` residuals

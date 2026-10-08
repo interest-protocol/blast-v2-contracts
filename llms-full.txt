@@ -1017,7 +1017,9 @@ Create (*cap holder*, `blast_aftermath_dao_presale::blast_aftermath_dao_presale:
    treasury, shares the `PoolCreation<Lp>`, emits
    `blast_aftermath_dao_presale::blast_aftermath_dao_presale::PoolCreationReserved`, and returns the unshared `Presale`. A
    vendor sale finalized with `blast_presale::blast_presale::finalize` directly has no `PoolCreation`, so it
-   can never migrate and refunds after its LP deadline.
+   can never migrate and refunds after its LP deadline. It aborts with
+   `blast_aftermath_dao_presale::blast_aftermath_dao_presale::EWrongMigrator` when the initializer was started by another
+   migrator (it reads `blast_presale::blast_presale::migration_witness`).
 6. Optional `blast_presale::blast_presale::set_protocol_fees(...)` to change this sale's Blast rates, which needs
    Blast's presale `AdminCap` in the same transaction; then
    `blast_presale::blast_presale::share(presale, start_ms, clock)`.
@@ -4705,6 +4707,12 @@ public fun set_partner<SaleToken, Quote>(
     partner: &blast_partners::blast_partners::Partner,
     clock: &Clock,
 )
+
+/// The witness type of the migrator that started the sale, so a migrator finalizing an
+/// initializer it is handed can confirm the sale is its own.
+public fun migration_witness<SaleToken, Quote>(
+    self: &PresaleInitializer<SaleToken, Quote>,
+): TypeName
 
 /// Checks every setting together, then mints and apportions the complete token supply and
 /// irreversibly makes it fixed or burn-only before returning the presale for `share`.
@@ -10668,7 +10676,8 @@ public fun new<SaleToken, Quote>(
 /// Finalizes a sale `new` started, sends its `PresaleCap` to the treasury, and shares a
 /// `PoolCreation` binding `create_pool_cap`, minted by the fresh LP coin `Lp`, to it. Every LP fee
 /// its pool pays reaches the treasury, so this sets the sale's LP-fee split to name the treasury as
-/// its only recipient.
+/// its only recipient. The initializer must be one `new` started: another migrator's sale could
+/// never consume the pool creation.
 public fun finalize<Lp, SaleToken, Quote>(
     _: &AdminCap,
     initializer: blast_presale::blast_presale::PresaleInitializer<SaleToken, Quote>,
@@ -10722,6 +10731,7 @@ public struct Migrated<phantom Lp, phantom SaleToken, phantom Quote> has copy, d
 | `EPoolMismatch` | 0 | The Aftermath pool must hold every sale token and Quote unit the presale released. |
 | `EDaoFeePoolMismatch` | 1 | The DAO-fee pool must charge this package's fee and pay the treasury. |
 | `EWrongPresale` | 2 | The pool creation is bound to a different presale. |
+| `EWrongMigrator` | 3 | Only a sale this package's `new` started can be finalized here. |
 
 #### Constants
 

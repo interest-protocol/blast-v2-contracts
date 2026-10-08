@@ -521,6 +521,24 @@ fun a_sale_that_closes_when_filled_settles_once_its_raise_is_full() {
 }
 
 #[test]
+/// A sale filled at its very start under a hard cap from the start closes with a zero-length
+/// window: it ends at its start, and its LP deadline is one LP window later.
+fun a_sale_filled_at_its_start_closes_with_a_zero_length_window() {
+    let mut fixture = start_with_hard_cap(
+        single_wallet_eligibility(),
+        option::none(),
+        hard_cap_at(0, true),
+    );
+    fixture.commit_open(ALICE, RAISE_TARGET);
+
+    fixture.settle(KEEPER);
+
+    assert_eq!(fixture.funded_deadlines(), vector[START_MS, START_MS + LIQUIDITY_WINDOW_MS]);
+    assert!(fixture.is_funded());
+    fixture.end();
+}
+
+#[test]
 /// An early close brings the refund exit forward: a sale nobody migrates within the LP window
 /// after its close can be cancelled before its original deadline.
 fun an_early_closed_sale_can_be_cancelled_one_lp_window_after_its_close() {
