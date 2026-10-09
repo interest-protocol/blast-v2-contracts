@@ -24,10 +24,10 @@ fun sealing_restricts_upgrades_to_dependency_relinks() {
 }
 
 #[test]
-/// The accepted AdminCap authorizes the exact digest under the sealed dependency-only policy. The
+/// The upgrade administrator authorizes the exact digest under the sealed dependency-only policy. The
 /// cap names a fixed non-zero package: the framework reads package `0x0` as an authorization
 /// already in flight, and this package's ID is `0x0` until `Published.toml` assigns one.
-fun the_admin_cap_reaches_the_sealed_upgrade_cap() {
+fun the_upgrade_admin_reaches_the_sealed_upgrade_cap() {
     let mut ctx = tx_context::dummy();
     let package = @0xB1A57.to_id();
     let upgrade_cap = sui::package::test_publish(package, &mut ctx);
@@ -35,9 +35,8 @@ fun the_admin_cap_reaches_the_sealed_upgrade_cap() {
         upgrade_cap,
         &mut ctx,
     );
-    let (admin_registry, admin_cap) = blast_presale_admin::new_for_testing(&mut ctx);
 
-    let ticket = package_admin.authorize_upgrade(&admin_registry, &admin_cap, DIGEST);
+    let ticket = package_admin.authorize_upgrade(&upgrade_admin(), DIGEST);
 
     assert_eq!(ticket.ticket_package(), package);
     assert_eq!(ticket.ticket_policy(), sui::package::dep_only_policy());
@@ -45,27 +44,7 @@ fun the_admin_cap_reaches_the_sealed_upgrade_cap() {
 
     destroy(ticket);
     package_admin.destroy_for_testing();
-    destroy(admin_registry);
-    destroy(admin_cap);
     destroy(ctx);
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_presale_admin::EInvalidAdminCap,
-    location = blast_presale::blast_presale_admin,
-)]
-/// An AdminCap the registry no longer accepts cannot authorize an upgrade.
-fun a_replaced_admin_cap_cannot_authorize_an_upgrade() {
-    let mut ctx = tx_context::dummy();
-    let upgrade_cap = presale_upgrade_cap(&mut ctx);
-    let mut package_admin = package_admin::seal_dependency_only_for_testing(upgrade_cap, &mut ctx);
-    let (admin_registry, _accepted_admin_cap) = blast_presale_admin::new_for_testing(&mut ctx);
-    let (_other_registry, stale_admin_cap) = blast_presale_admin::new_for_testing(&mut ctx);
-
-    let ticket = package_admin.authorize_upgrade(&admin_registry, &stale_admin_cap, DIGEST);
-    destroy(ticket);
-    abort
 }
 
 #[test]
@@ -89,9 +68,15 @@ fun presale_upgrade_cap(ctx: &mut TxContext): UpgradeCap {
     sui::package::test_publish(type_name::original_id<PackageAdmin>().to_id(), ctx)
 }
 
+fun upgrade_admin(): AdminWitness<UpgradeAdmin> {
+    blast_acl::witness_for_testing()
+}
+
 // === Imports ===
 
-use blast_presale::{blast_presale_admin, package_admin::{Self, PackageAdmin}};
+use blast_admin::blast_acl::{Self, AdminWitness};
+
+use blast_presale::{blast_presale_domain::UpgradeAdmin, package_admin::{Self, PackageAdmin}};
 
 use std::{type_name, unit_test::{assert_eq, destroy}};
 

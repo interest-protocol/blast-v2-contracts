@@ -40,6 +40,9 @@
   The LP-fee split is one sealed `FeeSplit` value, validated where the creator
   builds it and copied into the vault, so no holder of a split can bypass its
   10,000-BPS total
+- Amended: 2026-10-08 (owner decision): presale administration returns to the
+  shared Blast ACL. `blast_presale_domain` declares six roles, and the
+  package-local `AdminCap`, `SuperAdminCap`, and `AdminRegistry` are deleted
 
 ## Context
 
@@ -59,21 +62,33 @@ not depend on the creator remaining online.
 Create the independent `blast_presale` package. It neither reads nor mutates
 launchpad state, and no launchpad package imports it. Bluefin and Cetus adapters
 stay inside this package so core escrow release and venue creation are one
-atomic call without a second presale-adapter package. It does not depend on
-`blast_admin`; `blast_presale_admin` replaces the shared Blast ACL's four
-presale roles (ADR 0097) because the admin package was not yet audited when
-presale was readied for launch, and presale logic can never change after
-publication, so a presale that depended on it could never take a fix to it
-(owner, 2026-10-03). Publication sends the publisher one `AdminCap`, the
-package's only administrator, gating Blast's fee rates and destination
-(ADR 0101), the creation allowlists (ADR 0102), holder-reward rounds, and
-upgrades. A shared `AdminRegistry` records the one cap ID it accepts, and every
-gated function checks the presented cap against it. A Sui owned object cannot be
-taken from its owner, so a lost or leaked cap is removed through that record:
-publication also sends a key-only `SuperAdminCap`, held cold, whose only powers
-are `replace_admin_cap`, which mints a new cap and stops the old one in the same
-transaction, and `revoke_admin_cap`, which stops all administration until the
-next replacement. Without `store` it moves only through `transfer_super_admin`.
+atomic call without a second presale-adapter package.
+
+**Administration is the shared Blast ACL** (ADR 0097). On 2026-10-03 the owner
+gave presale its own two-tier `AdminCap` and `SuperAdminCap` so that it would
+not depend on the then-unaudited `blast_admin`. Presale partners (ADR 0106)
+made that dependency unavoidable: `blast_partners` takes the ACL's
+`AdminWitness`, so every presale publication already links `blast_admin` and
+Blast deploys and custodies its root regardless. A second, presale-only root
+added a cold cap to custody and a registry to audit without removing that
+dependency (owner, 2026-10-08). `blast_presale_domain` declares six ability-free
+roles, grouped as the launchpad's are (ADR 0094), so that whoever sets Blast's
+rates cannot move its money and an admitted migrator, which receives every
+raise it migrates, is admitted separately from Quote types:
+
+| Role | Actions |
+| --- | --- |
+| `FeeAdmin` | Blast's rates for new sales (ADR 0101), one sale's rates before its start, one vault's LP-fee rates, and the partners new sales may name (ADR 0106) |
+| `TreasuryAdmin` | the address every Blast payout goes to |
+| `ListingAdmin` | the Quote types new sales may use (ADR 0102) |
+| `AdapterAdmin` | the migrators that may create sales (ADRs 0102, 0104) |
+| `RewardsAdmin` | holder-reward rounds |
+| `UpgradeAdmin` | dependency-only upgrades |
+
+Each gated function takes `_: &AdminWitness<Role>` for exactly its role, so the
+signature is the check. The ACL root grants and revokes roles, and revoking an
+administrator removes a lost or leaked cap at once. The package mints no
+capability of its own.
 
 The package stays relinkable but its logic never changes. Bluefin requires its
 callers to link its exact current version and Cetus rejects callers linked below
@@ -84,7 +99,7 @@ and LP-fee collection for every sale on a venue at that venue's next version
 bump. After publication the deployer calls `package_admin::wrap`, which accepts
 only this package's never-upgraded `UpgradeCap`, narrows it to the
 dependency-only policy, and seals it in a shared `PackageAdmin` in the same call.
-The `AdminCap` authorizes and commits upgrades that only relink dependencies.
+The `UpgradeAdmin` authorizes and commits upgrades that only relink dependencies.
 The package claims no `Publisher`. Every
 callable generation therefore runs identical presale bytecode, so no operational
 version gate is needed, and no path can make the package immutable or widen the
@@ -257,7 +272,7 @@ wallet receives that documented sub-participant-count remainder.
 LP fee collection is permissionless. The vault apportions each asset across
 the fee recipients and the holder-reward share with largest-remainder
 apportionment, pays every recipient in the same call, and keeps the holder
-share. Blast, holding the `AdminCap`, commits each reward round's beneficiaries and amounts with a Merkle
+share. Blast's `RewardsAdmin` commits each reward round's beneficiaries and amounts with a Merkle
 root and funds it from that share, so holder distribution runs on Blast's
 automated reward pipeline rather than the creator's availability. Each round
 carries a future claim deadline; after it, anyone may close the round and return
@@ -294,19 +309,20 @@ generic positional Blake2b-256 module verifies eligibility and rewards. The
   off-chain rank or eligibility methodology was fair.
 - Dependency-only custody keeps venue relinking possible while ruling out logic
   changes: old and new generations run the same presale code, so concurrent
-  access to shared custody cannot bypass a guard. A compromised `AdminCap` can
-  relink dependencies only; the policy can never widen. Logic changes need a
+  access to shared custody cannot bypass a guard. A compromised `UpgradeAdmin`
+  can relink dependencies only; the policy can never widen. Logic changes need a
   new package and new sales.
-- One `AdminCap` holds every administrative power, so Blast keeps it in a
-  multisig. Until the `SuperAdminCap` replaces it, a compromised cap can
-  redirect future holder-reward shares and Blast's fee payouts, set future
-  sales' rates and any migrated sale's Blast LP-fee rates (ADR 0101), change
-  the creation allowlists, and relink dependencies; it cannot reach any
-  participant's commitment, any recipient's allocation, or any other live
-  sale term. A compromised `SuperAdminCap` can take all of that by
-  issuing itself a cap, so it stays in a cold multisig and is used only to
-  recover from a lost or compromised `AdminCap`.
-- Blast chooses the reward Merkle roots. Proofs enforce
+- A compromised role reaches only its own actions until the ACL root revokes
+  it: holder-reward shares (`RewardsAdmin`), Blast's fee payouts
+  (`TreasuryAdmin`), future sales' rates and any migrated sale's Blast LP-fee
+  rates (`FeeAdmin`, ADR 0101), the creation allowlists (`ListingAdmin`,
+  `AdapterAdmin`), or dependency relinks (`UpgradeAdmin`). None can reach any
+  participant's commitment, any recipient's allocation, or any other live sale
+  term. The ACL's root can grant itself all of that through an administrator,
+  as it can on every Blast package.
+- `blast_admin` is immutable and presale logic never changes, so a fix to the
+  ACL needs a new presale publication, as a logic change already does.
+- Blast's `RewardsAdmin` chooses the reward Merkle roots. Proofs enforce
   the published allocation but cannot prove that its off-chain holder
   methodology was fair. The creator cannot redirect the holder share.
 - Fee recipients are fixed addresses, not transferable claims: a recipient that
@@ -332,7 +348,7 @@ generic positional Blake2b-256 module verifies eligibility and rewards. The
   position.
 - Venue operators are trusted for liveness, not custody: a Cetus deny-list
   entry, a paused Bluefin pool, or a venue version bump blocks migration or fee
-  collection until the `AdminCap` holder relinks the package or, before migration,
+  collection until an `UpgradeAdmin` relinks the package or, before migration,
   the sale is cancelled for refunds.
 - Largest-remainder ties favour fee recipients over the holder share and earlier
   recipients over later ones. Because collection is permissionless, anyone can
@@ -379,16 +395,14 @@ generic positional Blake2b-256 module verifies eligibility and rewards. The
   for the cliff counted from the claim, create no schedule for a claim whose
   tokens round to zero or for a cancelled sale's refunds, and record the terms
   in `PresaleCreated`.
-- Unit tests cover publication's caps and registry, replacing and revoking the
-  `AdminCap` with their events, a replaced or revoked cap being rejected, a
-  replacement after a revocation, and the super administrator's transfer.
-- The package gate checks source boundaries (no `blast_admin` dependency; the
-  reviewed caps and registry; `SuperAdminCap` minted only at publication and
-  used only to replace or revoke; `AdminCap` minted only at publication or by a
-  replacement; every function taking an `AdminCap`, at any visibility,
-  checking it against the registry as its first statement; and sealed
-  dependency-only custody whose transitions each require the `AdminCap`), builds both network environments, lints with
-  warnings as errors, and runs Move tests.
+- Unit tests take each role through the real ACL (granted, signed in, and
+  calling its actions), and reject a sign-in by an administrator holding every
+  other presale role and the partners role, and by a revoked administrator.
+- The package gate checks source boundaries (no local administration types; the
+  six reviewed ability-free roles; every administrator witness borrowed and
+  naming one presale role; the pinned function-to-role map; and sealed
+  dependency-only custody whose transitions each require `UpgradeAdmin`),
+  builds, lints with warnings as errors, and runs Move tests.
 - Deployment records the publish transaction and the `package_admin::wrap`
   transaction, whose effects must show the shared `PackageAdmin` and an
   `UpgradeCap` policy of dependency-only before any presale is created.

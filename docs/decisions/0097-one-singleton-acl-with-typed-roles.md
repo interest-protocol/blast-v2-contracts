@@ -72,7 +72,8 @@ package's declared roles.
 the launchpad's roles. Boosts core declares `VaultIssuer`, `RiskAdmin`,
 `ShutdownAdmin`, and `UpgradeAdmin`, which the Aftermath adapter also uses. Blast
 SUI declares `UpgradeAdmin` for package custody, including capability intake, and
-`FeeAdmin` for the redemption fee. Both used to accept any live admin.
+`FeeAdmin` for the redemption fee. Both used to accept any live admin. Presale
+declares six roles in `blast_presale_domain` (ADR 0099).
 
 **Names.** The package keeps the Move name `blast_admin`. Its ACL module is
 `blast_acl` and its event module is `blast_admin_events`. Explorers show

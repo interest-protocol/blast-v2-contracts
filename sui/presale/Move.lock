@@ -121,5 +121,5 @@ deps = { blast_admin = "blast_admin", blast_fun_timelock = "blast_fun_timelock",
 [pinned.mainnet.blast_presale]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "F3A32C8A899FB4DFD11AFC588C778929D4AA3C8FD393E48493FF4304D0980A4D"
-deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_fun_vesting = "blast_fun_vesting", blast_partners = "blast_partners" }
+manifest_digest = "B374BF155D6540C858A93166B73723BAB708759135F507334AFF4C4CCC0E0B0A"
+deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_admin = "blast_admin", blast_fun_vesting = "blast_fun_vesting", blast_partners = "blast_partners" }

@@ -35,11 +35,9 @@ fun init(ctx: &mut TxContext) {
 /// existing ones keep it.
 public fun set_quote_allowed<Quote>(
     self: &mut CreationPolicy,
-    admin_registry: &AdminRegistry,
-    admin_cap: &AdminCap,
+    _: &AdminWitness<ListingAdmin>,
     allowed: bool,
 ) {
-    admin_registry.assert_admin_cap(admin_cap);
     let quote = type_name::with_original_ids<Quote>();
     assert!(self.allowed_quotes.contains(&quote) != allowed, EAllowanceUnchanged);
 
@@ -57,11 +55,9 @@ public fun set_quote_allowed<Quote>(
 /// any of which a caller can construct, is rejected.
 public fun set_migration_witness_allowed<MigrationWitness: drop>(
     self: &mut CreationPolicy,
-    admin_registry: &AdminRegistry,
-    admin_cap: &AdminCap,
+    _: &AdminWitness<AdapterAdmin>,
     allowed: bool,
 ) {
-    admin_registry.assert_admin_cap(admin_cap);
     let migration_witness = type_name::with_original_ids<MigrationWitness>();
     assert!(!allowed || !is_constructible_by_anyone<MigrationWitness>(), EInvalidMigrationWitness);
     assert!(
@@ -79,11 +75,9 @@ public fun set_migration_witness_allowed<MigrationWitness: drop>(
 /// the removal; adding a removed partner accepts it again.
 public fun add_partner(
     self: &mut CreationPolicy,
-    admin_registry: &AdminRegistry,
-    admin_cap: &AdminCap,
+    _: &AdminWitness<FeeAdmin>,
     partner: &Partner,
 ) {
-    admin_registry.assert_admin_cap(admin_cap);
     let partner_id = object::id(partner);
     let key = PartnerKey(partner_id);
 
@@ -102,12 +96,10 @@ public fun add_partner(
 /// partner, `blast_partners::delay_ms()`. Sales that already name it keep paying it.
 public fun remove_partner(
     self: &mut CreationPolicy,
-    admin_registry: &AdminRegistry,
-    admin_cap: &AdminCap,
+    _: &AdminWitness<FeeAdmin>,
     partner: &Partner,
     clock: &Clock,
 ) {
-    admin_registry.assert_admin_cap(admin_cap);
     let partner_id = object::id(partner);
     let now_ms = clock.timestamp_ms();
     self.assert_partner(partner_id, now_ms);
@@ -260,9 +252,11 @@ const EPartnerNotAccepted: vector<u8> = b"New presales may not name this partner
 
 // === Imports ===
 
+use blast_admin::blast_acl::AdminWitness;
+
 use blast_partners::blast_partners::{Self as partners, Partner};
 
-use blast_presale::blast_presale_admin::{AdminCap, AdminRegistry};
+use blast_presale::blast_presale_domain::{AdapterAdmin, FeeAdmin, ListingAdmin};
 
 use std::type_name::{Self, TypeName};
 

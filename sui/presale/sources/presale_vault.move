@@ -14,7 +14,7 @@ public struct PositionKey<phantom Venue>() has copy, drop, store;
 /// an owner's own position locked here directly, with zero presale and creator-capability IDs.
 ///
 /// Each collection first takes Blast's LP fees of each asset at the vault's
-/// rates, snapshotted at creation and changeable only by the AdminCap, then
+/// rates, snapshotted at creation and changeable only by Blast's `FeeAdmin`, then
 /// pays every fee recipient its share of the rest at once; the holder-reward
 /// share accrues here until Blast's rewards administrator funds a round.
 /// Blast's LP fees go to the protocol destination at once, unless the sale named
@@ -69,12 +69,10 @@ public fun claim_migration_residuals<Meme, Quote>(
 /// pool are split at the new rates when collected; the creator's split of the rest is unchanged.
 public fun set_protocol_lp_fees<Meme, Quote>(
     self: &mut Vault<Meme, Quote>,
-    admin_registry: &AdminRegistry,
-    admin_cap: &AdminCap,
+    _: &AdminWitness<FeeAdmin>,
     lp_fee_meme_bps: Bps,
     lp_fee_quote_bps: Bps,
 ) {
-    admin_registry.assert_admin_cap(admin_cap);
     let protocol_fees = self.protocol_fees.with_lp_fees(lp_fee_meme_bps, lp_fee_quote_bps);
     assert!(protocol_fees != self.protocol_fees, EProtocolLpFeesUnchanged);
 
@@ -586,11 +584,13 @@ const EWrongPartner: vector<u8> = b"The partner is not the one this vault's pres
 
 // === Imports ===
 
+use blast_admin::blast_acl::AdminWitness;
+
 use blast_partners::blast_partners::Partner;
 
 use blast_presale::{
     blast_presale::{Self as presale, FeeSplit, Presale, PresaleCap},
-    blast_presale_admin::{AdminCap, AdminRegistry},
+    blast_presale_domain::FeeAdmin,
     bps::Bps,
     creation_policy::CreationPolicy,
     fee_policy::{FeePolicy, ProtocolFees},

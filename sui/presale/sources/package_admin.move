@@ -30,11 +30,9 @@ public fun wrap(upgrade_cap: UpgradeCap, ctx: &mut TxContext) {
 /// Authorizes the exact package digest under the sealed cap's dependency-only policy.
 public fun authorize_upgrade(
     self: &mut PackageAdmin,
-    admin_registry: &AdminRegistry,
-    admin_cap: &AdminCap,
+    _: &AdminWitness<UpgradeAdmin>,
     digest: vector<u8>,
 ): UpgradeTicket {
-    admin_registry.assert_admin_cap(admin_cap);
     let policy = self.upgrade_cap.policy();
 
     self.upgrade_cap.authorize(policy, digest)
@@ -43,12 +41,9 @@ public fun authorize_upgrade(
 /// Commits the native receipt into the same sealed cap that authorized it.
 public fun commit_upgrade(
     self: &mut PackageAdmin,
-    admin_registry: &AdminRegistry,
-    admin_cap: &AdminCap,
+    _: &AdminWitness<UpgradeAdmin>,
     receipt: UpgradeReceipt,
 ) {
-    admin_registry.assert_admin_cap(admin_cap);
-
     self.upgrade_cap.commit(receipt);
 }
 
@@ -110,7 +105,9 @@ const EInvalidUpgradeCap: vector<u8> = b"Only this package's never-upgraded Upgr
 
 // === Imports ===
 
-use blast_presale::blast_presale_admin::{AdminCap, AdminRegistry};
+use blast_admin::blast_acl::AdminWitness;
+
+use blast_presale::blast_presale_domain::UpgradeAdmin;
 
 use std::type_name;
 

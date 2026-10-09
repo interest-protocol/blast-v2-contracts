@@ -174,9 +174,8 @@ outdated bytecode, and an upgrade custody that seals a package's `Publisher` and
 `blast_admin` immutable (its `UpgradeCap` is destroyed in the publish
 transaction), so none of these rules can change. The launchpad (`blast_fun`),
 migrators (`blast_fun_migrators`), Blast SUI (`blast_sui`), Boosts
-(`blast_boosts_core` and `blast_boosts_aftermath`), and partners
-(`blast_partners`) use it. Presales (`blast_presale`) do not: they have their
-own `AdminCap` and `SuperAdminCap`, covered in the presale guide.
+(`blast_boosts_core` and `blast_boosts_aftermath`), partners
+(`blast_partners`), and presales (`blast_presale`) use it.
 
 ### Objects and authority
 
@@ -211,6 +210,7 @@ Same-named roles in different packages are different types.
 | `blast_boosts_core` | `blast_boosts_core` | `blast_boosts_core::blast_boosts_core::VaultIssuer` (issue a Vault and its share currency, update its metadata), `blast_boosts_core::blast_boosts_core::RiskAdmin` (fees, NAV cap, max order notional, withdraw admin fees, accepted partners), `blast_boosts_core::blast_boosts_core::ShutdownAdmin` (begin a Vault's shutdown), `blast_boosts_core::blast_boosts_core::UpgradeAdmin` (adapter package upgrades) |
 | `blast_boosts_aftermath` | declares none | uses the four Boosts core roles |
 | `blast_partners` | `blast_partners` | `blast_partners::blast_partners::PartnerAdmin` (register partners, schedule shares and caps) |
+| `blast_presale` | `blast_presale_domain` | `blast_presale_domain::UpgradeAdmin` (authorize and commit dependency-only upgrades), `blast_presale_domain::TreasuryAdmin` (where Blast's presale fees go), `blast_presale_domain::FeeAdmin` (rates for new sales, one sale before its start, and one vault; partners new sales may name), `blast_presale_domain::ListingAdmin` (Quotes new sales may use), `blast_presale_domain::AdapterAdmin` (migrators that may create sales), `blast_presale_domain::RewardsAdmin` (publish holder-reward rounds) |
 
 ### Lifecycle
 
@@ -449,12 +449,10 @@ PTB built against an old package ID after an upgrade.
 - After any upgrade of `blast_fun`, `blast_fun_migrators`, `blast_sui`, or
   `blast_boosts_aftermath`, PTBs pinned to the old package ID abort with code
   13.
-- Presales use a separate admin system; nothing in this guide applies to
-  `blast_presale`.
 
 ### Q&A
 
-**Who can change Blast's fees or settings?** Outside presales, only an
+**Who can change Blast's fees or settings?** Only an
 `AdminCap` listed in `ACL.admins` with that package's specific role, signed in
 within the same transaction. The root cannot act on any package directly.
 
@@ -492,8 +490,8 @@ digest, `UpgradeCommitted` with the new package ID, and
 be created with `M`'s one-time witness inside `M`'s package `init`, and only the
 module holding it can advance it.
 
-**Does the presale use this ACL?** No. `blast_presale` has its own `AdminCap`
-and `SuperAdminCap`; see the presale guide.
+**Does the presale use this ACL?** Yes. `blast_presale_domain` declares six
+presale roles, granted like any other package's.
 
 ## API reference: `blast_admin` (Administration)
 

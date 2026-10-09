@@ -28,8 +28,8 @@ A migrator in any package calls them with its own `drop` witness. `new` already
 aborts unless the shared `CreationPolicy` allows that witness, and a sale releases
 its liquidity only to `migrate` called with the witness stored at creation. A
 struct's constructor is private to its defining module, so the witness, not the
-caller, is the authority, and the presale `AdminCap` decides which migrators may
-open sales. Since this generation changes presale logic, it is a new publication
+caller, is the authority, and Blast's presale `AdapterAdmin` decides which
+migrators may open sales. Since this generation changes presale logic, it is a new publication
 of `blast_presale`, not a dependency-only upgrade.
 
 **Witness admission.** Any caller can construct a primitive, a vector of
@@ -95,7 +95,7 @@ each depending inward on Blast packages.
 ## Consequences
 
 - Blast can admit a partner's migrator without republishing the presale package;
-  a compromised presale `AdminCap` can now admit a hostile migrator for new sales,
+  a compromised presale `AdapterAdmin` can now admit a hostile migrator for new sales,
   as it could already admit an unvetted Quote type, but cannot touch a live sale.
 - Vendor sales skip `presale_vault::Vault`, so Blast's LP-fee rates and holder rewards do
   not apply to them; Blast's raise and token shares still do.
@@ -111,7 +111,7 @@ each depending inward on Blast packages.
 
 - Presale tests: the admission guard rejects a primitive, a vector, and
   framework structs at `0x1` and `0x2`; disallowing a primitive is an unchanged
-  allowance; and the AdminCap check precedes the type check.
+  allowance.
 - Vendor tests: the `AdminCap` delivered to the publisher; sale creation through
   the allowed witness, its fee split to the treasury, and its `PresaleCap`
   delivered there; the shared `PoolCreation` bound to its sale; `migrate`

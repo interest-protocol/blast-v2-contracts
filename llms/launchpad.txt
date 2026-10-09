@@ -1637,7 +1637,7 @@ time the partner stops being accepted (`u64::MAX` until removed):
 | --- | --- | --- |
 | Boosts | `blast_boosts_aftermath::blast_boosts_aftermath::Protocol`, `blast_boosts_aftermath::blast_boosts_aftermath::PartnerKey` | `RiskAdmin` role (`operations::add_partner`, `operations::remove_partner`) |
 | Launchpad | `launch_config::LaunchConfig`, `launch_config::PartnerKey` | `FeeAdmin` role (`launch_config::add_partner`, `launch_config::remove_partner`) |
-| Presale | `creation_policy::CreationPolicy`, `creation_policy::PartnerKey` | presale `AdminCap` (`creation_policy::add_partner`, `creation_policy::remove_partner`) |
+| Presale | `creation_policy::CreationPolicy`, `creation_policy::PartnerKey` | presale `FeeAdmin` role (`creation_policy::add_partner`, `creation_policy::remove_partner`) |
 
 Adding applies at once (and cancels a pending removal). Removing sets the value
 to `now` plus `blast_partners::blast_partners::delay_ms()`: the partner stays

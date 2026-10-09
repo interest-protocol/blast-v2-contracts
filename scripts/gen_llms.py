@@ -78,7 +78,7 @@ PRODUCTS = [
         "refunds, migrate into Cetus or Bluefin, and earn LP fees and holder rewards after migration",
         ["presale.md", "partners.md"],
         ["sui/presale", "sui/vendors/aftermath_dao_presale"],
-        ["sui/partners"],
+        ["sui/partners", "sui/admin"],
     ),
     Product(
         "launchpad",

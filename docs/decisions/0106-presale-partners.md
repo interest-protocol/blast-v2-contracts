@@ -33,7 +33,7 @@ fee and LP fees are never divided with a partner.
 **Accepted partners.** The `CreationPolicy` keeps the Blast partners new
 presales may name, with the launchpad's list and notice. There is one dynamic
 field per partner under `PartnerKey(ID)`, whose value is when the partner stops
-being accepted: `u64::MAX` until Blast removes it. The presale `AdminCap` calls
+being accepted: `u64::MAX` until Blast removes it. Blast's presale `FeeAdmin` calls
 `add_partner`, which applies at once, cancels a pending removal, and accepts a
 removed partner again, and `remove_partner`, which takes effect
 `blast_partners::delay_ms()` later. They emit `PartnerAdded` and
@@ -110,9 +110,9 @@ payment.
 - A Quote deny list blocking the partner's recipient makes
   `pay_protocol_fees_with_partner` abort until the partner sets a new
   recipient, as on the launchpad; Blast's fees stay held meanwhile.
-- `blast_presale` depends on `blast_partners`, and through it on `blast_admin`;
-  presale administration still does not use the Blast ACL. `blast_partners` is
-  published before the presale generation ADR 0104 already requires.
+- `blast_presale` depends on `blast_partners` and on `blast_admin`, whose ACL
+  administers it (ADR 0099). `blast_partners` is published before the presale
+  generation ADR 0104 already requires.
 - ABI:
   - new functions: `blast_presale::set_partner` and
     `pay_protocol_fees_with_partner`, and `creation_policy::add_partner` and
@@ -131,8 +131,7 @@ payment.
   - a removed partner accepted until one millisecond before its notice ends,
     and refused from then on;
   - re-adding cancels a pending removal, and accepts a removed partner again;
-  - refusals for adding twice, removing twice, removing an unknown partner, and
-    a foreign `AdminCap`.
+  - refusals for adding twice, removing twice, and removing an unknown partner.
 - Presale tests:
   - a partnered sale releasing the same raise and LP while holding Blast's
     fees, then paying the partner 13 of Blast's 33 Quote at a 40% cut (13.2

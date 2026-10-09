@@ -216,7 +216,7 @@ pool receive exactly what they would without a partner.
   cut of each asset and the fee policy's destination the rest; the SDK adds it
   to every collection on a partnered vault. `ProtocolLpFeesPaid` records both
   parts.
-- **Operators.** The presale `AdminCap` accepts deals with
+- **Operators.** The presale `FeeAdmin` accepts deals with
   `creation_policy::add_partner`, which applies at once, and ends them with
   `creation_policy::remove_partner`, which applies seven days later. Removing a
   deal only stops new sales from naming it; sales that already name it keep
@@ -245,7 +245,7 @@ also rests on how each package is published:
    administrator can register deals, schedule shares and move deals between caps;
    only the Boosts risk administrator can add or remove deals on Boosts, only
    the launchpad fee administrator on the launchpad, and only the presale
-   `AdminCap` on presales. A launch's or a sale's partner never changes.
+   fee administrator on presales. A launch's or a sale's partner never changes.
 6. On Boosts, Blast never holds partner money, and there is no claim step to
    miss. On the launchpad, a partner's share of Blast's fees waits in the launch
    until anyone claims, the partner included, and no claim pays Blast without

@@ -33,8 +33,6 @@ Shared singletons, created once at deployment (`PackageAdmin` by
   `destination` address every Blast payout goes to.
 - `creation_policy::CreationPolicy`: the allowlists checked once, when a sale, or a vault without
   a presale, is created: Quote types, migrator witnesses, and Blast partners a sale may name.
-- `blast_presale_admin::AdminRegistry`: records the one `blast_presale_admin::AdminCap` the package
-  accepts.
 - `blast_presale::venue_config::VenueConfig`: holds each Cetus sale's reserved pool-creation
   capability. Migration only borrows it; nothing removes it.
 - `blast_presale::package_admin::PackageAdmin`: holds the package's dependency-only upgrade cap.
@@ -59,14 +57,27 @@ Capabilities and who holds them:
 
 | Object | Held by | Authorizes |
 | --- | --- | --- |
-| `blast_presale_admin::AdminCap` | Blast operations | Blast's rates and destination, per-sale rates before start, vault LP-fee rates, the creation allowlists, holder-reward rounds, dependency-only upgrades. Accepted only while `AdminRegistry` records its ID. |
-| `blast_presale_admin::SuperAdminCap` | Blast cold storage | Only `blast_presale_admin::replace_admin_cap`, `blast_presale_admin::revoke_admin_cap`, and `blast_presale_admin::transfer_super_admin`. Key-only, so it moves only through that last call. |
+| `blast_acl::AdminCap` granted a presale role | Blast operations | The calls of each role it holds; see the table below. |
 | `blast_presale::blast_presale::PresaleCap` | Sale creator (or a vendor treasury) | `presale_vault::claim_migration_residuals`, `blast_presale::blast_presale::destroy_cap`. |
 | `blast_partners::blast_partners::Partner` | Shared, managed in `blast_partners` | Read by the presale to pay a partner its cut of Blast's fees. |
 
-Every `AdminCap` call also takes the shared `AdminRegistry` and aborts with
-`blast_presale_admin::EInvalidAdminCap` unless the registry accepts that cap. The admin cannot
-pause a sale, cancel it, move commitments, change windows, recipients, or the fee split. Its
+Blast administers presales through the one shared Blast access-control list
+(`blast_admin::blast_acl`), as it does its other packages. `blast_presale_domain` declares the presale's roles; an operator's
+`blast_acl::AdminCap` granted a role calls `blast_acl::sign_in<Role>` with the shared
+`blast_acl::ACL` in the same PTB and passes the returned `blast_acl::AdminWitness<Role>` by
+reference. Each admin call names exactly one role in its signature:
+
+| Role | Calls |
+| --- | --- |
+| `blast_presale_domain::FeeAdmin` | `fee_policy::set_fees`, `blast_presale::blast_presale::set_protocol_fees`, `presale_vault::set_protocol_lp_fees`, `creation_policy::add_partner`, `creation_policy::remove_partner` |
+| `blast_presale_domain::TreasuryAdmin` | `fee_policy::set_destination` |
+| `blast_presale_domain::ListingAdmin` | `creation_policy::set_quote_allowed` |
+| `blast_presale_domain::AdapterAdmin` | `creation_policy::set_migration_witness_allowed` |
+| `blast_presale_domain::RewardsAdmin` | `holder_rewards::publish_round` |
+| `blast_presale_domain::UpgradeAdmin` | `blast_presale::package_admin::authorize_upgrade`, `blast_presale::package_admin::commit_upgrade` |
+
+A role from another package, such as `blast_fun_domain::FeeAdmin`, is a different type and
+cannot reach these calls. No admin can pause a sale, cancel it, move commitments, change windows, recipients, or the fee split. Its
 power over a live sale is limited to: its Blast rates before the window starts, its vault's Blast
 LP-fee rates (anything from 0 to 10,000 BPS), the fee destination, and how the vault's
 holder-reward share is distributed.
@@ -83,7 +94,7 @@ Pending --share--> Open --settle (total >= raise)--> Funded --migrate--> Migrate
 
 | State | Exists | Allows |
 | --- | --- | --- |
-| `Pending` | Only inside the creation PTB, between `finalize` and `share` | `blast_presale::blast_presale::set_protocol_fees` (admin, when the creation PTB also holds the `AdminCap`), `blast_presale::blast_presale::share` |
+| `Pending` | Only inside the creation PTB, between `finalize` and `share` | `blast_presale::blast_presale::set_protocol_fees` (admin, when the creation PTB also signs in as `FeeAdmin`), `blast_presale::blast_presale::share` |
 | `Open` | From `share` until `settle` | Before `start_ms`: `blast_presale::blast_presale::set_protocol_fees` (admin). From `start_ms` until `end_ms`: commits. From `end_ms`, or earlier once the raise is full under a hard cap that closes the sale when filled: `blast_presale::blast_presale::settle` |
 | `Funded` | After a settle that met the raise | Migration at any time; `blast_presale::blast_presale::cancel_unlaunched` from the LP deadline |
 | `Migrated` | After migration | `blast_presale::blast_presale::claim` (tokens + overflow refund), `blast_presale::blast_presale::pay_protocol_fees_with_partner` once on a partnered sale |
@@ -180,7 +191,7 @@ Steps, type arguments `<Meme, Quote>` throughout:
    consumes the `TreasuryCap`, and returns `(Presale<Meme, Quote>, PresaleCap)`. The Coin Registry
    supply becomes `Fixed`, or `BurnOnly` when `burnable` is true. Emits
    `blast_presale::blast_presale::PresaleCreated`.
-5. Optional, Blast admin only: `blast_presale::blast_presale::set_protocol_fees` on the pending sale.
+5. Optional, Blast admin only (`FeeAdmin`): `blast_presale::blast_presale::set_protocol_fees` on the pending sale.
 6. `blast_presale::blast_presale::share(presale, start_ms, clock)`, same caller, fixes the windows and shares the
    sale. The start is `max(start_ms, now)`, so a sale can be published ahead of its start. Emits
    `blast_presale::blast_presale::PresaleOpened`.
@@ -478,9 +489,9 @@ nothing is valid and emits nothing, so it can follow every collection.
 
 The holder-reward share of LP fees accrues in the vault. Blast decides off chain who receives it.
 
-1. Publish: `holder_rewards::publish_round(vault, admin_registry, admin_cap, number,
-   start_checkpoint, end_checkpoint, root, manifest_digest, leaf_count, meme_amount, quote_amount,
-   claim_deadline_ms, clock)`. *Blast admin* (`AdminCap`). `number` must be the vault's next round
+1. Publish: `holder_rewards::publish_round(vault, admin_witness, number, start_checkpoint,
+   end_checkpoint, root, manifest_digest, leaf_count, meme_amount, quote_amount, claim_deadline_ms,
+   clock)`. *Blast admin* (`RewardsAdmin`). `number` must be the vault's next round
    (starting at 0); the checkpoint interval must be non-empty and start where the previous
    round ended; `root` and `manifest_digest` are 32 bytes; 1..=65,536 leaves; a positive budget
    of at least one asset, taken from the vault's holder-reward balances; a future deadline.
@@ -506,9 +517,8 @@ Claims carry no deadline check: they work until someone closes the round.
 
 #### Blast admin operations
 
-Integrators cannot call these; they explain state changes. Each takes the `AdminRegistry` and
-the `AdminCap` (*Blast admin*), except the two `SuperAdminCap` calls (*Blast super admin*).
-`blast_presale_admin::transfer_super_admin` moves the `SuperAdminCap` itself.
+Integrators cannot call these; they explain state changes. Each takes the
+`blast_acl::AdminWitness` of the role listed in "Objects and authority" (*Blast admin*).
 
 | Call | Effect |
 | --- | --- |
@@ -522,8 +532,6 @@ the `AdminCap` (*Blast admin*), except the two `SuperAdminCap` calls (*Blast sup
 | `creation_policy::remove_partner` | New sales may still name the partner for `blast_partners::blast_partners::delay_ms` (7 days). Sales that already name it keep paying it. Emits `creation_policy::PartnerRemoved`. |
 | `holder_rewards::publish_round` | See above. |
 | `blast_presale::package_admin::authorize_upgrade`, `blast_presale::package_admin::commit_upgrade` | Dependency-only upgrades. |
-| `blast_presale_admin::replace_admin_cap` | `SuperAdminCap`: mints a new `AdminCap` (returned; transfer it) and stops the old one at once. Emits `blast_presale_admin::AdminCapReplaced`. |
-| `blast_presale_admin::revoke_admin_cap` | `SuperAdminCap`: clears the accepted cap, stopping all admin calls. Emits `blast_presale_admin::AdminCapRevoked`. |
 
 `blast_presale::package_admin::wrap` seals the never-upgraded publication cap once, at deployment.
 
@@ -687,7 +695,6 @@ Other objects:
   original package IDs); accepted partners are dynamic fields keyed by
   `creation_policy::PartnerKey` (the partner's ID) whose `u64` value is the time the partner stops
   being accepted (the maximum u64 while accepted).
-- `AdminRegistry`: `admin_cap_id`.
 - `Vault`: `presale_id`, `presale_cap_id`, `pool_id`, `fee_split`, `protocol_fees`
   (current LP rates), `partner_id`, `unpaid_protocol_meme`, `unpaid_protocol_quote`,
   `migration_meme_residual`, `migration_quote_residual`, `holder_rewards_meme`,
@@ -768,7 +775,8 @@ it. Common ones by flow (module `blast_presale` unless named):
   `holder_rewards::EInvalidBeneficiary`, `holder_rewards::EWrongVault`,
   `holder_rewards::EClaimsStillOpen`. An overcommitted root aborts in the framework's balance
   split when the round runs out.
-- Admin-only: `blast_presale_admin::EInvalidAdminCap`, `EPresaleStarted`,
+- Admin-only: `blast_acl::sign_in` aborts for a revoked `AdminCap` or one without the role;
+  then `EPresaleStarted`,
   `EProtocolFeesUnchanged`, `fee_policy::EInvalidFees`, `fee_policy::EFeesUnchanged`,
   `fee_policy::EInvalidDestination`, `presale_vault::EProtocolLpFeesUnchanged`,
   `creation_policy::EAllowanceUnchanged`, `creation_policy::EInvalidMigrationWitness`, and the
@@ -836,7 +844,7 @@ Objects:
 
 - `blast_aftermath_dao_presale::blast_aftermath_dao_presale::Witness`: the sealed migrator witness.
 - `blast_aftermath_dao_presale::blast_aftermath_dao_presale::AdminCap`: the vendor's own admin, sent to the publisher. Its one
-  power is creating sales, through `new` and `finalize`. It is not Blast's `blast_presale_admin::AdminCap`.
+  power is creating sales, through `new` and `finalize`. It is not Blast's `blast_acl::AdminCap`.
 - `blast_aftermath_dao_presale::blast_aftermath_dao_presale::PoolCreation<Lp>`: shared; binds one sale to the Aftermath
   `CreatePoolCapV2` of a freshly published LP coin `Lp`.
 
@@ -860,7 +868,7 @@ Create (*cap holder*, `blast_aftermath_dao_presale::blast_aftermath_dao_presale:
    `blast_aftermath_dao_presale::blast_aftermath_dao_presale::EWrongMigrator` when the initializer was started by another
    migrator (it reads `blast_presale::blast_presale::migration_witness`).
 6. Optional `blast_presale::blast_presale::set_protocol_fees(...)` to change this sale's Blast rates, which needs
-   Blast's presale `AdminCap` in the same transaction; then
+   Blast's presale `FeeAdmin` signed in within the same transaction; then
    `blast_presale::blast_presale::share(presale, start_ms, clock)`.
 
 Migrate (*anyone*, while `Funded`):
@@ -919,7 +927,7 @@ LP-fee rates. The raise and token fees are paid at migration; the LP-fee rates a
 collection, rounded up. Nothing is charged on commitments, refunds, or failed sales.
 
 **Can Blast or the creator change a sale after it opens?** The creator cannot. Blast's
-`AdminCap` can change the sale's four rates only before `start_ms` (including in its creation
+`FeeAdmin` can change the sale's four rates only before `start_ms` (including in its creation
 transaction, before `share`), can redirect the fee
 destination at any time, and after migration can change the vault's Blast LP-fee rates. Windows,
 recipients, eligibility, and the fee split never change.
