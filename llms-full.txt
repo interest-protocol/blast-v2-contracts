@@ -20,16 +20,16 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 
 | Package | Product | Status | Package ID (`published-at`) | Type origin (`original-id`) |
 | --- | --- | --- | --- | --- |
-| `blast_presale` | Presale | live; source has changed since | `0x76cb0508fc94234fddd910b5616248f8a42998048a28e55f5fe1cc89e7b98400` | `0x76cb0508fc94234fddd910b5616248f8a42998048a28e55f5fe1cc89e7b98400` |
+| `blast_presale` | Presale | live | `0x33897a946e231652f00d712834665831ada3e3ffb3cd3ef11f4a449058ab43c6` | `0x2d300f3d8819c6e09fd1558e518c2ffab97b324479843d4f94b561b10a441fd0` |
 | `blast_fun` | Launchpad | not yet published | — | — |
 | `blast_fun_migrators` | Migration and LP vaults | not yet published | — | — |
-| `blast_partners` | Partner codes | not yet published | — | — |
+| `blast_partners` | Partner codes | live | `0x96fbe2db7337dea5ef6926203d32cf602e527d5e2dcae176fbbc3e3d2a30d94f` | `0x96fbe2db7337dea5ef6926203d32cf602e527d5e2dcae176fbbc3e3d2a30d94f` |
 | `blast_boosts_core` | Boosts core | live; source has changed since | `0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe` | `0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe` |
 | `blast_boosts_products` | Boost product tags | live; source has changed since | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` |
 | `blast_boosts_aftermath` | Boosts Aftermath adapter | live; source has changed since | `0x04f46747d8cb5ea590953ff1847301dfe5a287519d32c1610b35810aab082e50` | `0x04f46747d8cb5ea590953ff1847301dfe5a287519d32c1610b35810aab082e50` |
 | `blast_sui` | blastSUI and funSUI | not yet published | — | — |
-| `blast_admin` | Administration | not yet published | — | — |
-| `blast_aftermath_dao_presale` | Aftermath DAO-pool presale migrator | not yet published | — | — |
+| `blast_admin` | Administration | live | `0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9` | `0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9` |
+| `blast_aftermath_dao_presale` | Aftermath DAO-pool presale migrator | live | `0xac58d338925ac96304ca573a4dab80d442df6f2427291bcddbea7fc65279678e` | `0xac58d338925ac96304ca573a4dab80d442df6f2427291bcddbea7fc65279678e` |
 
 ## Calling Blast contracts
 
@@ -168,7 +168,7 @@ run) before signing it.
 
 ## Presale
 
-> **Deployment status:** `blast_presale` is live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package. `blast_aftermath_dao_presale` is not yet published on mainnet; its interface may change before publication.
+> **Deployment status:** `blast_presale` and `blast_aftermath_dao_presale` are live on mainnet.
 
 ### What it is
 
@@ -2519,7 +2519,7 @@ its share in force at that moment, rounded down, and Blast's destination the res
 
 ## Partner codes
 
-> **Deployment status:** `blast_partners` is not yet published on mainnet; its interface may change before publication.
+> **Deployment status:** `blast_partners` is live on mainnet.
 
 ### What it is
 
@@ -4040,7 +4040,7 @@ and those shares keep their pro-rata part of the vault forever.
 
 ## Administration
 
-> **Deployment status:** `blast_admin` is not yet published on mainnet; its interface may change before publication.
+> **Deployment status:** `blast_admin` is live on mainnet.
 
 ### What it is
 
@@ -4376,7 +4376,7 @@ presale roles, granted like any other package's.
 
 ## API reference: `blast_presale` (Presale)
 
-Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
+Live on mainnet. This reference matches the published source.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -7654,7 +7654,7 @@ public struct VenueConfig has key {
 
 ## API reference: `blast_partners` (Partner codes)
 
-Not yet published on mainnet. Its interface may change before publication.
+Live on mainnet. This reference matches the published source.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -10263,7 +10263,7 @@ public fun sync(
 
 ## API reference: `blast_admin` (Administration)
 
-Not yet published on mainnet. Its interface may change before publication.
+Live on mainnet. This reference matches the published source.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -10610,7 +10610,7 @@ public fun make_immutable<PackageMarker: drop>(
 
 ## API reference: `blast_aftermath_dao_presale` (Aftermath DAO-pool presale migrator)
 
-Not yet published on mainnet. Its interface may change before publication.
+Live on mainnet. This reference matches the published source.
 
 Events: payload structs are emitted directly, each under its own type.
 

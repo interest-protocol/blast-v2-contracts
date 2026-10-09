@@ -1,0 +1,645 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "sui-presale-e2e-verification",
+  "network": {
+    "chain": "sui",
+    "environment": "mainnet",
+    "chainIdentifierHex": "35834a8a"
+  },
+  "date": "2026-10-09",
+  "package": "0x2d300f3d8819c6e09fd1558e518c2ffab97b324479843d4f94b561b10a441fd0",
+  "currentPackage": "0x33897a946e231652f00d712834665831ada3e3ffb3cd3ef11f4a449058ab43c6",
+  "deployment": "2026-10-09-blast-presale.json",
+  "plan": "docs/presale-mainnet-e2e.md",
+  "runner": "interest-protocol/blast-v2-sdk e2e/presale-mainnet (branch e2e/presale-acl-redeploy)",
+  "method": "Successful steps are real mainnet transactions. Expected failures are simulated against live mainnet state and must abort in the named module with the named error code. Counts cover every attempt; a scenario stopped by a runner bug was fixed and resumed, never by changing the contracts.",
+  "testkit": {
+    "package": "0x68c51220e3e5037f63c5f3c928f25f178ddb4ae991619a14de52cce7f5e8e9d5",
+    "testSui": {
+      "type": "0x68c51220e3e5037f63c5f3c928f25f178ddb4ae991619a14de52cce7f5e8e9d5::test_sui::TEST_SUI",
+      "currency": "0xeb115d2c31dda1d448f1d318a5dce4b52c61d6432b33bb673002a441c6d4c917",
+      "faucet": "0x7dc46953280a3f6de17b15e4d046803c6aa1351b61ab79229123f2de4ff503d8",
+      "decimals": 9
+    }
+  },
+  "testMigrator": {
+    "package": "0x7043851f585e6ec63c63159c8ffd40b8787ed0181745e298a363901f363d5de4",
+    "note": "test-only presale_test_migrator; delisted again in E2E-035"
+  },
+  "aftermathLpCoins": {
+    "a": "0x67ecfcd15a2c921b8ae26bdf48245c8dae8d2280a61a9182904408ffba9632d7::af_lp_a::AF_LP_A",
+    "b": "0x66f6e5bc4974932455e18a1a8d2ec7b2b43117416eed2942910482ac379a2cf0::af_lp_b::AF_LP_B"
+  },
+  "findings": [
+    {
+      "id": "F-1",
+      "severity": "low",
+      "area": "sui/presale/sources/bluefin.move migrate",
+      "detail": "Since ADR 0111 the venue reads venue_config::pool_tier<Meme>() before blast_presale::migrate checks the migration witness. Bluefin's migrate on a sale another migrator started (an external migrator's or the Aftermath vendor's) therefore aborts in sui::dynamic_field::borrow_child_object, not EWrongMigrationWitness. The sale is still refused; only the error is opaque. Observed in E2E-035 and E2E-040."
+    },
+    {
+      "id": "F-2",
+      "severity": "medium",
+      "area": "sui/vendors/aftermath_dao_presale/scripts/publish_immutable.sh",
+      "detail": "The interface stubs declare no dependencies, so sui client omits the Aftermath AMM and DAO-fee packages' own linkage and the publish fails with PublishUpgradeMissingDependency. Publication needs those six packages added (see the deployment record's aftermathTransitiveDependencies)."
+    },
+    {
+      "id": "F-3",
+      "severity": "info",
+      "area": "sui/presale/sources/cetus.move:135",
+      "detail": "sui move lint --warnings-are-errors fails on main (EL02013: discarded meme_is_coin_a result in cetus::new_vault), so scripts/verify.sh all fails. GitHub Actions did not run after contracts #80 (billing), so CI did not catch it."
+    }
+  ],
+  "totals": {
+    "transactions": 263,
+    "checks": 456,
+    "simulatedAborts": 186,
+    "simulatedSuccesses": 5,
+    "spentMist": "1584605825"
+  },
+  "scenarios": {
+    "e010": {
+      "name": "E2E-010 open sale, uncapped phase, sale-level hard cap, Bluefin",
+      "status": "pass",
+      "attempts": 2,
+      "transactions": 12,
+      "checks": 22,
+      "simulatedAborts": 12,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "HynavNBvPmNUqg14XtnTnUrLKCiZQWkebVd31bLCFVAH",
+        "cMv4BBb3URbJKTHcSbPe9HB6HEbq6WqeAYowGbHhF2m",
+        "HiCGgwMYqqJYHVMMrHvd9S4C882Tm6GhwK6J7zweXpb4",
+        "FzPPCLmoezDftXiBkwNR67pgNxyfcdqCqAXfKnqjGKsP",
+        "FgboVMTLfcXg6ofgy8KtPXXdXc1AKMeN6Qe9AstWcXQC",
+        "9hperrfH3ABPdztzC92Ysg8Gq9yF9P7Y3R2FBNeBsnBM",
+        "21SRpEbYj1hPZUYsuuz8Kccc9DcXCYcvBSLLJRFAvNC3",
+        "7a4y6ZDaBFCrNcCXdMLJWd8cY3eahv2y9huMwj4ioDCv",
+        "EN9iqtPju5p5xBSDHQoPNA1mwRqNd5jVv1oko7pd5ijB",
+        "JBEzsqcQ4CCgLvJQGJ7hkAaG86eD2iVvWrGE8r347KbB",
+        "BMu3Dqs1Fu8pMC4L421vMb6STSHCjoogun8AedbnLd2B",
+        "4AA6LgvkuybqwjjHu9rHbNW7rSZUFqDo43ebKrq3tRaR"
+      ]
+    },
+    "e011": {
+      "name": "E2E-011 open sale, overflow, Cetus (SUI)",
+      "status": "pass",
+      "attempts": 1,
+      "transactions": 11,
+      "checks": 16,
+      "simulatedAborts": 6,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "922XQvNzUQQ5JVSJFjnoZ2kS1hb9txG4YJFDqF4k57Yd",
+        "S3ueB432AriP4yQaVRLfyYEKooVBKutUkFGxKiNhFGm",
+        "CR7JMUfxvzBySaVHp6g2PQ8uY9oM2DoVid5cSYSGxHuK",
+        "Fzsoa2NX3zyHYbKdt8dfFbKHXoz5rTx5XyyuWRPVRtCv",
+        "CxdGyWJ3gLDrvv7eueHqXevs4cNmN5MxSf9Fo96gk4ve",
+        "AckQ2mnDFz1gw53u99vbSMXjCUazRPBbiX6eEd6JP9k7",
+        "53rwvktFwuEynZV1Jcn91mE3cAtTR1BU294aAKU1u8br",
+        "AEhrxrZgYUh8DHv2Ko51eVrcVtMzpJZ1teC6RSTDZPEc",
+        "cm68CfpdU61RHaUf2TqCAYYZBBpDeqEMag8cFUkweCa",
+        "5mNsdyaaDbKhrXLqX9rqpLFzty7UcnJ1nr8yxR6iR5tj",
+        "342kuJxEUE6wkn92DT2yj7KhJSKPPCCn4jVFfqGqcqY7"
+      ]
+    },
+    "e012": {
+      "name": "E2E-012 allowlist with a hard cap, top-ups",
+      "status": "pass",
+      "attempts": 1,
+      "transactions": 12,
+      "checks": 16,
+      "simulatedAborts": 9,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "8vqvm6oXmjMbytH8UEfJKXTLCA6zGV3MLoyP6r8jTGbN",
+        "ACGDpobqhGgFMebfzJiZz46u87ZahPYLB5admNN5Qdpq",
+        "CnLaVJEVw3fRx9etK8CDiyKhYGbHtFpduYBCWx9HRC98",
+        "Abw1VLW4uwCbrHHrrSXaXnJJtfkRcWZgtuacsWGNF4tW",
+        "5k3mS5L6Fu5G5S9GN6bUS6LE2u2AZGwfVgUzMrPT5dqz",
+        "3uxNZhvCYHZpGQyC4SiGdHLquKftbvo2rEwfjqDWVY6f",
+        "4cJRkYt3e5V889sLXwzCqWxxZjW2jDgoAT7RqaWoJHJa",
+        "Bme8gF4yCNMPZKg8RYK4r2VVejjnGYxhLWA32TFDtV2i",
+        "FVjUZhUMwEHX8HjcqKPancqLGzcgyV2QcBkvrMURGHWq",
+        "7PewhS3stS82hGU3LRQ7X5Du3Lq29NNpNB5erJPkEBPo",
+        "MBuSPnGeLB9zE5k7amEyriaiX4TCV7usehZspEgWQow",
+        "HU9ZjY6VTFmUoCFe1wXoSUB86J93cnJjSNFHhyq5XjAz"
+      ]
+    },
+    "e013": {
+      "name": "E2E-013 allowlist opening to anyone; E2E-025 delisting mid-sale",
+      "status": "pass",
+      "attempts": 1,
+      "transactions": 12,
+      "checks": 15,
+      "simulatedAborts": 5,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "A1vqKQdjoD4UrYWDKjn2UfHdmfVTCu1ZsnpJsgm8Z51a",
+        "4v3BrpkUe1sMcyjJuoXEo5uNAVHkXUh4dRSoTzKCXsQG",
+        "915E8phBT9ojvkMtiFh1yUsHMe9HHmyZuwiPTZuVahRw",
+        "BPULejSxSDoSSdFeVnq3rbfrqeMaqNi6yLivZy3J2HVP",
+        "HvvgUuKSgipzeRwqaZhW9AH9pnumJCSnj8XJPrfTeLee",
+        "AdM4ZDfiJSU1Kyk4s1egdBuqxGBejYDvW4vXvb3ZKoh8",
+        "2uctFRzmz5sCrt8XfrUsKENf9XkdxhKoFxdu8wCGPgCG",
+        "G4m34qPhdPasaojyUB1zKp28uwKi2WZ6EqsnTB1XU6rU",
+        "73JPAEwsYSrtB3wifQGyhtzdHbfUrgg4Dz4SgZfMqTCe",
+        "LZB8u3pqnkQLCXXnLjFicZU4szrBGjsN3hvubUoBeXo",
+        "Av4wGrDWCCU8T84qRxKFWoWcuNMEG4UaB3g8poecNNoh",
+        "3PK1FjtndfPJMjJv2KM4qifXvBA9k8QXpLJb1u8sFx2c"
+      ]
+    },
+    "e014": {
+      "name": "E2E-014 scheduled start and per-sale fee update",
+      "status": "pass",
+      "attempts": 1,
+      "transactions": 7,
+      "checks": 16,
+      "simulatedAborts": 6,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "Ej7Sg1dyYQEFxX9F4Rz2PNtGcNTSvNMqTzrzXwi59FKf",
+        "AVKjbV79FGUyDEjq47Yn65TsM75Vw1oNaEb5PKkpLD1c",
+        "CLxbStwVDRY5HkDVimrhzVrTAC1SUzUwod1g7qFLmTzu",
+        "Fhcmssc2ZN3JwApSnk3KKrGu53Pix61gL62X2t2WMD8Z",
+        "E957z9Hd4pVRAHtMR38hwfv1st3RWSXtivubbUnLP78c",
+        "92tYACA9JMiUMa3MHmMEU8C8Gw5WiLWGePjjDWyX9VX7",
+        "DHEkjeebx3FC7yGNMNV1aPvRtWRvzYTLQDY63BFa2LTR"
+      ]
+    },
+    "e015": {
+      "name": "E2E-015 global fee policy and destination",
+      "status": "pass",
+      "attempts": 1,
+      "transactions": 14,
+      "checks": 19,
+      "simulatedAborts": 5,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "FeTaweLmdiqQJ3TRgW1UbfypBjTDgEaaTDK2m6Zmazc8",
+        "2ZDEGqCYecXg33TfMUiiuQ3ynyhnu9KRZLkp8vHXhxNi",
+        "A8Mu9o3Siujzn5fWPupPftqce5TnKh22fGTxP9U4ZNG5",
+        "Ag5ob1gy2K8EQFi8iPSrtVKsbiLibcVCDGWStxnaZwo7",
+        "HQLzzzS52eTuyr65nkRzfaLPSVxYurRQicb7VKsXY7kJ",
+        "9ezM71eUZL4koAHcrtwG7rehZodMKZUCk46bHFSFQUZ9",
+        "3235MzZJPr3XPZAuiqSQTc9LzoP1jZF5pNxUgVBUjCxs",
+        "HvwMMHGNdjcUkB1TyAG37VqCW38e3NWWaHyzATGJnYtn",
+        "HSJxSqm4LZMxM8cR9YfjJhwJx3ufYvKVRLyfu6XKMab6",
+        "AqQzPbetNwBqhQL3gW6rHZrEd84rHU8eBdB6rSKwk6ND",
+        "54hEnfkx1PAHSDH5JkasvHEadfGQWHVkq1xAMqFuWuVJ",
+        "2e6HrCGoMFq772w77uwqX993JNNwXSnbwpU6NWYSNGqT",
+        "8WsjBD7RDd3jA4XBuyfqnfHecxkRNpoamAS4Wwt7YCRw",
+        "HSFmeQH9284TdYRoRecyiFc22Mxq1XVGtrUF9TXvuCK2"
+      ]
+    },
+    "e016": {
+      "name": "E2E-016 underfunded sale",
+      "status": "pass",
+      "attempts": 1,
+      "transactions": 8,
+      "checks": 11,
+      "simulatedAborts": 5,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "EsejnmkpVDP52afSDttJ7duz2feSRC4WrvszgLxerGiU",
+        "4tizAH7JY7QRA2cdtA6J35VR8y3ryYv2hk9i2tYzan7y",
+        "hvDRpC6cVcJ9S3uxSpo7Qqhbq75UZkYLnyoT7L7CvMB",
+        "7JYiW4AiJH6oiq6pHwTenJmHuT4MnteGk4UQKQhXcLgG",
+        "Hfw4AqUNv8uyNREHMCRMq7tWybo2xr7BPkAbnSek1dcY",
+        "AmYdxhaoK24mp1fvhQ8VwPKQHzKjHPJF9jrky5QT3Lhs",
+        "9KEB9BGUAvp2dSBvZsqnxvkRMtVH5ZackHsK96GT2in9",
+        "4tWyD5yXWnMcmsY3DYoHYrythEz8tsGBVe1wqABijMse"
+      ]
+    },
+    "e017": {
+      "name": "E2E-017 funded, never migrated (start phase; finish after the 7-day LP deadline)",
+      "status": "pass",
+      "attempts": 1,
+      "transactions": 5,
+      "checks": 7,
+      "simulatedAborts": 4,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "3wgDyMV8ETpx1VnnX1cN7xMm86sSkBRfztfnNL56uecR",
+        "7AS1enQF6YyBhfaFHqkuBbGuTEv9J8fqtvLvdhaxog3o",
+        "DBEzsLVCGwvoMpZSvJrTveiRi92CfUF6VAFyp27YMwKX",
+        "B1PK6issF12aQaarRiaAFDRJmwMjDCMCMWHVtitFYkzy",
+        "HA6oUrAjydf8aGii3rYVN18V5LsqmorfUNzKvVjuW1jN"
+      ]
+    },
+    "e018": {
+      "name": "E2E-018 vesting",
+      "status": "pass",
+      "attempts": 1,
+      "transactions": 10,
+      "checks": 19,
+      "simulatedAborts": 5,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "EQ12hK4foPZPPBZ8f5qHzS2hVZPYCfWkD5H1yJEuit7k",
+        "6oHXt3on6Wa1JdhqEwCKXrsGw7qrkhJpduAKuPHPo1v7",
+        "FWJi6FFCVwZgYNu582M7w3ZaE535P5ewMc3VaSshVrqh",
+        "FshgezN3HTzFYxqDqiBnEmjggQtHYmhtefDeNCW8PuRQ",
+        "5Y3zBiPSSbnGZjyBLJmd9UATehTPW1sLTsr7FAxV2obT",
+        "8TbiHxb8R1i9RUQ7oVTAchGdPKPvS1pRL4RpRn1RfHwh",
+        "3abaSXc73SrwxqrCCibHY7KcPmE8RymcS5emyZY3hp4h",
+        "6EqzVBRSnDe7s59DTHggHYUZ1BvNUfggDunkD9ZNtrZ3",
+        "4UG3SxqnsymWVWTdzmgMWLW5aCaiJiMoskLUWbPUJJdf",
+        "Gsmc1QmTiXeD9xRc53JHtMuAGbA3h2sDzGeagvFDZYaC"
+      ]
+    },
+    "e019": {
+      "name": "E2E-019 Bluefin specifics",
+      "status": "pass",
+      "attempts": 1,
+      "transactions": 7,
+      "checks": 4,
+      "simulatedAborts": 8,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "56Su3M28hP68Vo1jCToGkoYZrbmBJQB2Ysd3aYTkDwpy",
+        "CpczVr8AYGjbQBTRakDvygVv6qNoMQuPBNxhH4xU1mAe",
+        "AfwpVJYMBFprXYQTNwBGwZfg2NZn982bAvMi3U6dBo6d",
+        "BH3dWYYtnCeGPm7bbK4PDnE4sXmFTiPGtvCBStRERJHZ",
+        "4TSLFotnx6g5uD9ffCmX4BAmRMWFc1a5vVybEMFakkum",
+        "GPKQ2tAtVLaq1sntxUAqZ2JP8CaAtfeyck1DBHjYNuAQ",
+        "64e67fUnKapSvn5dGWA9sffF7S3iccYBqAYxZxvDcEgc"
+      ]
+    },
+    "e020": {
+      "name": "E2E-020/021 swaps, LP-fee split, vault LP rates",
+      "status": "pass",
+      "attempts": 1,
+      "transactions": 11,
+      "checks": 37,
+      "simulatedAborts": 1,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "DkdGr4uWPnZdsjR6uCAcZUE4tqyTNrTVSRq2X2stnBzU",
+        "5nMrii1TAhNMf8GnMPAoBfsNdy77Ud9Fc7zR77LEmyRc",
+        "2U6BYNUvX7DWzqsNy2FXSkH2cs3R7HmY69TqEWiUhy69",
+        "GNP8F5xacQ1AbY5wqB9VKCjWjbu6FxHsgtXAdYJmJuEE",
+        "2b1ReK88cSrNTtahsBXPaFgm7mu9Efhzr3RsiFdrdKPd",
+        "7BFTYDYg3WdBGDbNbBDVcrbact56aRrrCgMfjM7DJimA",
+        "FmvkWyHR1gnL1dDhvpkBgUjkYckyF7bGLv2gkoudgpBt",
+        "8Fvq5JAbeG1JCCUUCVEEZAJo8Re8LAMxsZyQJCBdtZUw",
+        "CsD8SVDEiJWxbHkzeS5zVoLJtydrAzVcPJxoBhJj5La3",
+        "6Gjxs8twbdxv7FP5YjryJeBWidaTTx3RNWsrEXyx3utL",
+        "EbZFB5YdWu4Zj9PyWukf8PLNJFZxvMtTjhkUeHRbJdYB"
+      ]
+    },
+    "e022": {
+      "name": "E2E-022 holder rewards",
+      "status": "pass",
+      "attempts": 1,
+      "transactions": 5,
+      "checks": 8,
+      "simulatedAborts": 11,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "GsfcDBtMZcx3EAHoifsVLRZDfnAon5uX5ptHQgb4JEYf",
+        "7uqpTJ7htT9F86NGepbuxgxpeKv3c8BpzF22obMRRTPR",
+        "GaRwZJ5QHmTe1zMoCBLHZtZJE3rustC2N2aZJcA1uJ9C",
+        "2cRzWdNE2w1if4CtGDWTJJwNgjHezMMUwy5gZhCajeDy",
+        "tcdMrzRtU6N4BpAmUETfvrt2KoQwQkehgEBxwjMbJQt"
+      ]
+    },
+    "e023": {
+      "name": "E2E-023 ACL authority, root nomination, package custody, dependency-only upgrade",
+      "status": "pass",
+      "attempts": 2,
+      "transactions": 10,
+      "checks": 13,
+      "simulatedAborts": 18,
+      "simulatedSuccesses": 1,
+      "digests": [
+        "FfVZ2uDpfNEFpKyRMiuKJZREQtDr8x5aDnQjE1wjhb9Z",
+        "7DvrffYTz2HSvLvHJuNymFZDm7JhwWxpPAFRQucaEjE",
+        "E2brNGPtJgrPKm8NegNjqGj31wMrG8huqMahSs4R9Mc2",
+        "6MCThfANQNvozetoZxRv1zwBkYDsjmG4UJ1y1Yn3ss1w",
+        "C1EKBT2rL8Phs4Dts8aLtg3ck2zXi9E91n3KjbxD95RW",
+        "HN2JwdF2AHN5GV7XLJAiwhK6gkiPDthK5kdiTrM2zNJU",
+        "Di7k7S2FZMhgZw7KmisN4G6HvyJwSkZzkiLuGBxH81xL",
+        "EKEdDGb36mKSnPwwP3nBjfepxCWjmaUquJyQZM56uwVT",
+        "2xWYkhw1W5UySMHV5gK9T6L9qXez5JTHRsm2WcnXQERm",
+        "E7hHkQNhF89uQZzML2WLShbf3g257jQ5CyYCpN5jvES5"
+      ]
+    },
+    "e024": {
+      "name": "E2E-024 creation validation through the initializer",
+      "status": "pass",
+      "attempts": 2,
+      "transactions": 2,
+      "checks": 0,
+      "simulatedAborts": 25,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "4CbF5qKSSKCJwyDk1TtHz7dG2BBuLGFeK2DgAhjwC7Q4",
+        "E5Fz2j3c1kP9qgbACKBdh6yxw2e2AcSuzDQCEAJBpKWA"
+      ]
+    },
+    "e027": {
+      "name": "E2E-027 open-to-anyone phase under a hard cap, Bluefin SUI",
+      "status": "pass",
+      "attempts": 2,
+      "transactions": 25,
+      "checks": 40,
+      "simulatedAborts": 13,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "79UoiJs4P8b2QwzVm4mGE8n9Fd1gNraJ7iAGVYACC8W1",
+        "8AEbnub5f1Ag9DJJUpJGeDzRHF7QnpQT2JRJQmYLBE8B",
+        "AyjGZjwbDdrUGJvqpRq3FMbUfRxJQR5bDnk9rDKErvdM",
+        "6bKLea7dceeSS3yNXQ7MCTrNhyzw1RrvKJTLqfrQ9qoU",
+        "12ep1Ya1xxNXw6UheHjMZE9QEi2vbFZXRWeVCdFGMShh",
+        "6DG2CFKnK33sNu6DmSenrKjNcEWf1oNNFzcZ7R7gi27h",
+        "9oneocwoxg4h7z8EhY6ddZvuSpebiSxxUziW1vH9r8r6",
+        "A96SZW7DHhFqvZpzKePMWhYJbGhqmVfhLPWVQe6cd6Xu",
+        "DEDc5KMvaU8dvDES5ZFH5pwmV3gUx2MME5XbT3Rwpz6e",
+        "3AD6yDxTEkgwhaLnf2gPTnCxXdpp5C8C8yMbPiVoSXbr",
+        "Gs6f2vgwsggHySrdWod1ZhznPEzycQsGWbJZQJZyyJzE",
+        "GYVgzbmEgEeSbiaiCGGw5SpEbUn5btJBh2BZpve2MeKH",
+        "FokzzhLuPZnhbhfKwdYK6MAAMbyoQJ3vM1ck1rK2Lpwv",
+        "AJyE97otF8dMCZJARQbquP7Lf9XviaNArGBHtJT9kGSU",
+        "Hn5iBEUdu5iaZDgvjUYkv1Eufpcmk5e11BbhzG8mXTuu",
+        "2KN4pxu6BEhPEFCtoV8P8ho2trAz13acGMi8dSni1kZn",
+        "6P1aXCKCkS5kMySBN72Z2AnkvcqT8G3ZNEg8Hnpje8nc",
+        "5WYrLTfC1S7EovoannpQuTEYUhAuKUGQ9cgWGJyNLVpe",
+        "B3iF9BJWn4RHVtahi8odEfUSJhLnCHfvt6jKGRbiZo1z",
+        "GsrDaRdwegjYYJJxRjpm1KrxYTDPmsLtd94bmp4RjUKU",
+        "C7F3WBfYwasQGdcSS2UMf5DRaww9PCPAuhmy6svfBdYE",
+        "98m2DV4UdHcbeH5hepkgBuyfJsuiekaasM6C5mwcvzxL",
+        "4Z8aiU6f6D52AvAtUEBbpgie7AZkugxCsW1rAVy3LGtm",
+        "6JMLA6pErM5xesV3GGeHkwBZqUtarpT63re3w8AZb36p",
+        "EQ8SkWj6THkCyo6ePAi4aCHpDTfq1Mac75wrV1kyGc6S"
+      ]
+    },
+    "e028": {
+      "name": "E2E-028 holder rewards on a Cetus vault",
+      "status": "pass",
+      "attempts": 1,
+      "transactions": 3,
+      "checks": 5,
+      "simulatedAborts": 1,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "9ewrnLjd2rfKkSTLoJt3UDi9BfDe5vJvvemSoMXm3K5D",
+        "HPMGYh2y3fDUwdQfmGi9kbTPS8GM2q8jvEKjtUyJtHiU",
+        "Hrx9NbuBAJtPqEns2jP46hDBdBcoB3ufTX4CNLwDnUbU"
+      ]
+    },
+    "e029": {
+      "name": "E2E-029 holder-reward distribution algorithm",
+      "status": "pass",
+      "attempts": 2,
+      "transactions": 6,
+      "checks": 23,
+      "simulatedAborts": 0,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "G1aX7GeEEQ2UA8cifD1fGLRQ9iQuhyKYTi7kqxUjqCPe",
+        "nv4xU2sYJbQwUpQzj9GKCjN8x9nSQsbpFeZegxBgqzW",
+        "CHwihm5HYzHTu1hBB2uSp3vhynz3oAnVPdBwWucsKc1e",
+        "HYYY16dWmty2wk6Xe7A2gSHhCq6BSecY9paAJdf5375L",
+        "5EzHUKc1vGhEsfM25HwBuVLcaZAipi2T876VrHJqbG8n",
+        "DUd9LEo9TXHTXawJNMgFUBPbWgwkyL1SzQ7KQkuLBSkf"
+      ]
+    },
+    "e030": {
+      "name": "E2E-030 teardown",
+      "status": "pass",
+      "attempts": 2,
+      "transactions": 1,
+      "checks": 7,
+      "simulatedAborts": 0,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "EQvLXJ9BqxVVuj2SxTifBietrheAmDFzFXDaYJXgqsca"
+      ]
+    },
+    "e031": {
+      "name": "E2E-031 partnered sale",
+      "status": "pass",
+      "attempts": 1,
+      "transactions": 15,
+      "checks": 26,
+      "simulatedAborts": 10,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "4R2WnGX9tYyxXKpHzcMMphsRPfxsdMKj1N7oNRq5e3pC",
+        "GRgiM2DjK1kFaRR8WEdQzG6j5uNFHLVKc6ZuWaPFcXCi",
+        "HFjuyx8kres3hRiLh4shixnbQ5BWuXxKvcThedVUe6Yn",
+        "Hzso5neu1MBJPVHf4JHuJZ92p7Bftngi5JRJA1ncgSz1",
+        "ChKd15YTBvHrXuwjEY9L61TESkWqWp5p7cUmezcwLwVY",
+        "46iWVL1waWdEM7GUX5xzXhg7U5Dd9DKKe9VpAkUQP4vq",
+        "3ra2nk7NtmNii49UfqmfDPmNDFPYRaZdmtuGURvDtaMQ",
+        "BrEg4gemq4Pa34XukAa4ULEKsgMXc35YAEdhweTRWEP6",
+        "7t812YhuphzQAa7BEriEwyhriys7h65sPsY67rXkWTj1",
+        "GhhLk7bYM8bnCm1XZormRtdqNf5HGD2NAzNtmsSVBE2T",
+        "2M16SwUjWVwUpJ435fAPPxwfSeX8Hn6vAH7tF86t7AED",
+        "6rNm2xRe9AscmJKcV8VMn9EQkPUi8E9JE4sEikTQcMG4",
+        "GTeSrFDNWnYevkoaMPkofKbyxaihLyccKk8zQgYdq8Wp",
+        "6GvLbXrFDZn2Go4K7AwMVX5WHYbzbTL4ZDUWYsLpJcz3",
+        "78sgT8dZf6Xv8okwUXbEipBVKLVscTd5dUAqEoTqgLQ3"
+      ]
+    },
+    "e032": {
+      "name": "E2E-032 partnered vault LP fees",
+      "status": "pass",
+      "attempts": 1,
+      "transactions": 13,
+      "checks": 30,
+      "simulatedAborts": 7,
+      "simulatedSuccesses": 1,
+      "digests": [
+        "9BHHh9kFvUyPJv4TzEJuTwGn8Dzjhce8SGnQihDQpXCg",
+        "968iN5CpaukroDEnXcjGBdddpAoz2qfjuA3v5saigDpt",
+        "8h45PgCVJW2QsySMkbGNRpxVyPjMCXD3PRqmV64zas68",
+        "AVfJHvNMaAqjozdSzYXsKsu7SixF2UBfXF1wSVuq3bDb",
+        "315SJTyggo2QSrn2FELcP6REysLmokZtBtYustcMW7dV",
+        "GVGeBYW5uyueJmGAZzCwBhuaME9zqTvgGQsESbJxTUdC",
+        "7CWYoow2nNBQtaYF7LewQ1gbp2ZvTN3bn6eGKH3egQkz",
+        "58wqGqTwR61zcDDbcrhE8KyDucEqfoAzqoH9YRMQW6ac",
+        "8fcPmHsWS8rqdrTRuEFr4fHqtjME1Rm1mZe4vFn2Cr18",
+        "2rnj3cuAEMvc5bm6d6uG7VhzZjBxNZRvNNvRpyMsDcxH",
+        "5UKd3h99PbWSsPeyofi9TmG4hf7HhW3KxgvCdEvXUMTv",
+        "DRe8TVE3cSFv97ZUimNAVUGBtzH9m6SLcH4Sj1EFL4gy",
+        "AwWErLgvqR4SrgmWkHaAtutE2Mww6qWr6nAb83FXsm9i"
+      ]
+    },
+    "e033": {
+      "name": "E2E-033 participant vesting",
+      "status": "pass",
+      "attempts": 1,
+      "transactions": 16,
+      "checks": 44,
+      "simulatedAborts": 1,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "RNExXH5XyxVRu9WNpBNBrpWHtXWZDwXxADQZa8xu834",
+        "35aoqueuLDKcFN8gXGZ1Txxpzmewyd36YX4Wkvtzk2KP",
+        "4DVinDG1SpK3Yx97JAwRNuGxRAgGyWMJ8n258T3dtn63",
+        "AJZLzr7hvA3XRf3uTLYzAUpE4KB2nnT3URBVSRKosren",
+        "HaGKpsAdh3cGUbCHVyrqWXe7s6pEtuacjPnGav48FAer",
+        "BdfqbhpY5a2CJA5zki4K12NXkNcXktpWhennGqVMYU7G",
+        "AfYu4ytyj4ViJHFPk6X4TZ4PXyL44Tj4PVeXXBXcaPo6",
+        "DB13UrEgV2kJhXJ6NcQVNK92YkueNhc5UZEUMgEq9Lwm",
+        "2rAygYdA5iEb6PcjM7xHPtcakctSAwyTc2CnzRiuWYNw",
+        "EkrKmQz4GbYZAFp4K5frDp2gQv78ewEnBV6G7EwD8KnE",
+        "8oVm3TbCp5PQM2vRUX1wPdpNqhNLFoass8ugo99PTehs",
+        "29HzVUBH82mRik1DhsguFqTt5yrsbZsbhuEWNc84tboS",
+        "Gx5vyKEgFMy2P5iGQLUEW7A8rvKDbu7VTgTCmAFWuuVJ",
+        "CEHUCp2gnC8BixL36xjwMvWnnzuTd8VgeVWuKnznRf2J",
+        "5Sfm4wmNbQC2DrrXSkz1rMVAqz13dJKyyvLygom9Whyb",
+        "Gd5Zh5gEzN6GtKQ8oopQ8rbCGvUWJD7qUfba8cXoe7Wu"
+      ]
+    },
+    "e035": {
+      "name": "E2E-035 external migrator",
+      "status": "pass",
+      "attempts": 2,
+      "transactions": 9,
+      "checks": 5,
+      "simulatedAborts": 7,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "8kwXYhYcAvPWZAg7TiARDYZffKXjmHkgiZqcHUQefs2a",
+        "CUqxon3KpWDCaatnB52GNRX7YcJBfuwrEAB3EEpDE3Ai",
+        "D3AwiMRuMddRpVxNdcSBSKnRFTBFiU4LDgezXZCioDyt",
+        "95X6PvVVBEReM3VhqiRXdnoUV8ukriJk4yqiyXJBNfrA",
+        "5dEX3NBT5t1S8Z6Q4XbTciwpffpzPyjbTtku6bJbdebs",
+        "4PEdPcLawzo9CdS9E6QcAybVnBJrASCPskzKSbDR6KRX",
+        "J7LqcAkjMFNaREPGktsSZnuzLq6LjMkyEwm9Xv7bumGr",
+        "78QhLVV4AspEEX2H2TSASHU2SZfnmWKQwrExLFnkPCet",
+        "91EYCtHLdqtNF9LC8y3gq5grokmEU2vkG1qfznTFn5we"
+      ]
+    },
+    "e036": {
+      "name": "E2E-036 first come within wallet caps, closed when filled (early close)",
+      "status": "pass",
+      "attempts": 3,
+      "transactions": 7,
+      "checks": 18,
+      "simulatedAborts": 3,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "2CUsmhqDwS1dXp79WTwWNkXL47XT5wE4wf2D4jdCMQb8",
+        "GckeFKyUxjno6fYug2YREWDcs2q6Eu5PVCdB7rDFYxX8",
+        "2dywKzuQFKM3FRm5wXwjSjEiBPmE9QxmYWUAXZDNLncA",
+        "43guqV33fuWucp3p4C7mac1XCtsAUwy5NqJYgyCcyz2d",
+        "BXAuq6EPDoMFEzsscN11xWG3hJwSEiQBUzWzLRjiCsXK",
+        "52SbJ2ZMmMqCAGspVxRRPgd8bChSmNv6fF9X1zdVs55G",
+        "FKmgSnLzWfuhrSonMJJBa5AWiAfv2Nyapn5uLccZ2yc1"
+      ]
+    },
+    "e037": {
+      "name": "E2E-037 full sale held to its end",
+      "status": "pass",
+      "attempts": 1,
+      "transactions": 6,
+      "checks": 8,
+      "simulatedAborts": 2,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "J6vP6SYotehy5jNmA2AkN1iP2X4ALXRKQwpJhDRhekNf",
+        "BqghDJzxtkgx3oRtGpnimbCtvdFydzvhpD5KVZwHwndA",
+        "9tq1oCWiYAnPRoZgY6BM6YX6oPenuLTjnbLsUyNMXDmd",
+        "4rP362q1pdgnGBTZsRoPHNUQL3oCCMXUBfv7TPrnXy9k",
+        "45EoxjvicGvHnDNsExdkS3T799jYo3Ls7FCgx5jTMm4J",
+        "A9JaxsBCJg1trpEE4MtLvrEUUA8QUQkPuZDNKLDCtcg4"
+      ]
+    },
+    "e038": {
+      "name": "E2E-038 overflow until the hard cap starts, then early close",
+      "status": "pass",
+      "attempts": 1,
+      "transactions": 6,
+      "checks": 10,
+      "simulatedAborts": 2,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "FLyx8xANvkbMMrYeYEuHsNhPxjyyDwUu74z7DQmmm1V9",
+        "8gLesD6EtPggcCMJtQBc9Cibs8s9n5p5btPVLhYRB5p3",
+        "DK3UMK8bzQDLpJVQp5aPpuAvPXnMcpEgAMAZQo3bVeou",
+        "3bgBzRs2yK9N59rvd6oUaGLFQG8kD7kStzMo5YHM7tKB",
+        "HRu2FnPKwtWyCiqK6hhoouy7aJR7LN8ofVbz4KBCJdug",
+        "C1RVhKT4jX4PQqPFTZMar1UTE6qTKvfcwdz5awVDytq2"
+      ]
+    },
+    "e039": {
+      "name": "E2E-039 PresaleInitializer gates and the vendor's foreign-initializer refusal",
+      "status": "pass",
+      "attempts": 1,
+      "transactions": 1,
+      "checks": 0,
+      "simulatedAborts": 7,
+      "simulatedSuccesses": 2,
+      "digests": [
+        "FP3ikbtUStyJZsZaMGwn7dsKkgWvk1FmPQADd7aNaKJn"
+      ]
+    },
+    "e040": {
+      "name": "E2E-040 Aftermath DAO-pool vendor sales, both coin orders",
+      "status": "pass",
+      "attempts": 1,
+      "transactions": 15,
+      "checks": 24,
+      "simulatedAborts": 2,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "5xdD4S5QYuxT1Kr9E2drYAjCFaeGpGcEaeDQWZjPDwB1",
+        "Gvd3GNFDvpqdqiar7fqiAcNaRLyW4h6KGhTik3mpa2qa",
+        "GyDx6JjNF8HDZ83K2bX3eWPH87WDW4G5xYTEL7J8zfg7",
+        "6KnbQHB9gYYkv2CFVoHndJBepz6muvMyoX26fwa4psSN",
+        "FWQc6n2gz8SrZy8rdrH8ChDTz5ECEkf9SCHZ1Nfet2ud",
+        "HQAJ7WWFoLgjBkCrsCNq6b2PzFTnuFTEpybCkvxjjS5Z",
+        "Giu7s1MZJwFKBLAQsHrecp2iC1snsvf7v18HHw7B6wcT",
+        "6MGdjG3XaE2upmYu2RzFpLfnBDLhsKVcwJw88MpK2GxP",
+        "BR73CBQcgpBmULbPCsPNNvAWo6L7VQ5zfDaKiqxtH7Y2",
+        "GxLYKy8VpwZ9r1kzWNKKTKEwySJfhss7xvxXJxuzmKan",
+        "HHoMDzWdnbMDUdyUApYQCaRntZPTHijZUmuqoFutaKyy",
+        "DtTFTFmZKac3xb31uHS7Zi9ArtZ13jWiYkusSJgTy55i",
+        "7pfwWL2GBqXY3ZmDVuRGQ5zwptgqHQx9YYKyaqy2miiz",
+        "4TYfw8wLeNSrnv162UxcFrzt6Ss2nBq9GGPE4suN3AM7",
+        "CcDnFcHfWzMcuKgsNRpuEv1w6issxqBCTXjZ3Kh6sfRk"
+      ]
+    },
+    "e041": {
+      "name": "E2E-041 vault without a presale (Bluefin position)",
+      "status": "pass",
+      "attempts": 2,
+      "transactions": 4,
+      "checks": 11,
+      "simulatedAborts": 3,
+      "simulatedSuccesses": 0,
+      "digests": [
+        "9E99ba6sJUh5vvJku9nVRtoeEh7En8n8QdmGXAL9ktaX",
+        "DySgg69HWE8J6KXQsAz1GBisPdGkStdARBiogqpepZ4L",
+        "Dgv2334uBkvp8R92TEaQvqKGjpmR15tTU2gGBhPwYuqD",
+        "7MKzYEwvwocsZs1nCLbPGSiTJ6PGQmmJkw3M9YL2wXXs"
+      ]
+    },
+    "setup": {
+      "name": "Setup: run wallets, ACL bootstrap (AdminCap + six presale roles), E2E-004 listing gates",
+      "status": "pass",
+      "attempts": 2,
+      "transactions": 10,
+      "checks": 2,
+      "simulatedAborts": 8,
+      "simulatedSuccesses": 1,
+      "digests": [
+        "88ffmwEoqqNKSmMP5sJod3e3mvjJeUxTqUQi9b1621qN",
+        "6UofcQcuSZYb2B3T2gaNjsX1JcSGZyS9xxBThAVponLx",
+        "5Mmkx9bQEi7LWpbogxiTCdaZkwXMtF8EhK65ezAr2LKX",
+        "Di6qbWodDLA6TrEMuaTmo7tqGfXra9xV2qBwH4LtcZ6n",
+        "47U45Jr4srKLt6WUjVnBoYXMXvJejxqFaSfpjY64q2Sd",
+        "2UqSARZCC8Pvrp1NzYRwNRvJ6qk5YZRwJquL8EZPnTy6",
+        "H3bBzYPAosVoeQDLBbXNPraUhnEU67KZJMbsW11bCD6g",
+        "9PiSRdB774ZFZ9wzZM2GfBHMyE1HZR7SZh4xKRxesre8",
+        "2ofnFPH6vhfGc4bSjEcJRFgztvKr53CsuntgiBcLP7qr",
+        "3kHqbEAJpRKd5PXsEL4QkJsPkk5Xd6PEngPP72rUdHiU"
+      ]
+    }
+  },
+  "pending": "node e2e/presale-mainnet/run.ts e017 finish after 2026-10-16T00:46:38Z"
+}

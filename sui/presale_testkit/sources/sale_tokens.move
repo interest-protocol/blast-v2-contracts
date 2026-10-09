@@ -75,6 +75,102 @@ public struct SALE_P has key {
 }
 
 /// A sale token whose 33-byte symbol exceeds Bluefin's bound.
+public struct SALE_Q has key {
+    id: UID,
+}
+
+public struct SALE_R has key {
+    id: UID,
+}
+
+public struct SALE_S has key {
+    id: UID,
+}
+
+public struct SALE_T has key {
+    id: UID,
+}
+
+public struct SALE_U has key {
+    id: UID,
+}
+
+public struct SALE_V has key {
+    id: UID,
+}
+
+public struct SALE_W has key {
+    id: UID,
+}
+
+public struct SALE_X has key {
+    id: UID,
+}
+
+public struct SALE_Y has key {
+    id: UID,
+}
+
+public struct SALE_Z has key {
+    id: UID,
+}
+
+public struct SALE_AA has key {
+    id: UID,
+}
+
+public struct SALE_AB has key {
+    id: UID,
+}
+
+public struct SALE_AC has key {
+    id: UID,
+}
+
+public struct SALE_AD has key {
+    id: UID,
+}
+
+public struct SALE_AE has key {
+    id: UID,
+}
+
+public struct SALE_AF has key {
+    id: UID,
+}
+
+public struct SALE_AG has key {
+    id: UID,
+}
+
+public struct SALE_AH has key {
+    id: UID,
+}
+
+public struct SALE_AI has key {
+    id: UID,
+}
+
+public struct SALE_AJ has key {
+    id: UID,
+}
+
+public struct SALE_AK has key {
+    id: UID,
+}
+
+public struct SALE_AL has key {
+    id: UID,
+}
+
+public struct SALE_AM has key {
+    id: UID,
+}
+
+public struct SALE_AN has key {
+    id: UID,
+}
+
 public struct SALE_LONG_SYMBOL has key {
     id: UID,
 }
@@ -143,6 +239,102 @@ public fun new_sale_o(registry: &mut CoinRegistry, ctx: &mut TxContext): Treasur
 
 public fun new_sale_p(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_P> {
     new!<SALE_P>(registry, b"BPTP", ctx)
+}
+
+public fun new_sale_q(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_Q> {
+    new!<SALE_Q>(registry, b"BPTQ", ctx)
+}
+
+public fun new_sale_r(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_R> {
+    new!<SALE_R>(registry, b"BPTR", ctx)
+}
+
+public fun new_sale_s(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_S> {
+    new!<SALE_S>(registry, b"BPTS", ctx)
+}
+
+public fun new_sale_t(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_T> {
+    new!<SALE_T>(registry, b"BPTT", ctx)
+}
+
+public fun new_sale_u(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_U> {
+    new!<SALE_U>(registry, b"BPTU", ctx)
+}
+
+public fun new_sale_v(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_V> {
+    new!<SALE_V>(registry, b"BPTV", ctx)
+}
+
+public fun new_sale_w(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_W> {
+    new!<SALE_W>(registry, b"BPTW", ctx)
+}
+
+public fun new_sale_x(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_X> {
+    new!<SALE_X>(registry, b"BPTX", ctx)
+}
+
+public fun new_sale_y(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_Y> {
+    new!<SALE_Y>(registry, b"BPTY", ctx)
+}
+
+public fun new_sale_z(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_Z> {
+    new!<SALE_Z>(registry, b"BPTZ", ctx)
+}
+
+public fun new_sale_aa(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_AA> {
+    new!<SALE_AA>(registry, b"BPTAA", ctx)
+}
+
+public fun new_sale_ab(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_AB> {
+    new!<SALE_AB>(registry, b"BPTAB", ctx)
+}
+
+public fun new_sale_ac(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_AC> {
+    new!<SALE_AC>(registry, b"BPTAC", ctx)
+}
+
+public fun new_sale_ad(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_AD> {
+    new!<SALE_AD>(registry, b"BPTAD", ctx)
+}
+
+public fun new_sale_ae(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_AE> {
+    new!<SALE_AE>(registry, b"BPTAE", ctx)
+}
+
+public fun new_sale_af(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_AF> {
+    new!<SALE_AF>(registry, b"BPTAF", ctx)
+}
+
+public fun new_sale_ag(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_AG> {
+    new!<SALE_AG>(registry, b"BPTAG", ctx)
+}
+
+public fun new_sale_ah(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_AH> {
+    new!<SALE_AH>(registry, b"BPTAH", ctx)
+}
+
+public fun new_sale_ai(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_AI> {
+    new!<SALE_AI>(registry, b"BPTAI", ctx)
+}
+
+public fun new_sale_aj(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_AJ> {
+    new!<SALE_AJ>(registry, b"BPTAJ", ctx)
+}
+
+public fun new_sale_ak(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_AK> {
+    new!<SALE_AK>(registry, b"BPTAK", ctx)
+}
+
+public fun new_sale_al(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_AL> {
+    new!<SALE_AL>(registry, b"BPTAL", ctx)
+}
+
+public fun new_sale_am(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_AM> {
+    new!<SALE_AM>(registry, b"BPTAM", ctx)
+}
+
+public fun new_sale_an(registry: &mut CoinRegistry, ctx: &mut TxContext): TreasuryCap<SALE_AN> {
+    new!<SALE_AN>(registry, b"BPTAN", ctx)
 }
 
 public fun new_sale_long_symbol(

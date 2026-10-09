@@ -22,8 +22,8 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 | --- | --- | --- | --- | --- |
 | `blast_fun` | Launchpad | not yet published | — | — |
 | `blast_fun_migrators` | Migration and LP vaults | not yet published | — | — |
-| `blast_partners` | Partner codes | not yet published | — | — |
-| `blast_admin` | Administration | not yet published | — | — |
+| `blast_partners` | Partner codes | live | `0x96fbe2db7337dea5ef6926203d32cf602e527d5e2dcae176fbbc3e3d2a30d94f` | `0x96fbe2db7337dea5ef6926203d32cf602e527d5e2dcae176fbbc3e3d2a30d94f` |
+| `blast_admin` | Administration | live | `0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9` | `0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9` |
 
 ## Calling Blast contracts
 
@@ -1558,7 +1558,7 @@ its share in force at that moment, rounded down, and Blast's destination the res
 
 ## Partner codes
 
-> **Deployment status:** `blast_partners` is not yet published on mainnet; its interface may change before publication.
+> **Deployment status:** `blast_partners` is live on mainnet.
 
 ### What it is
 
@@ -3692,7 +3692,7 @@ public struct VenueConfig has key {
 
 ## API reference: `blast_partners` (Partner codes)
 
-Not yet published on mainnet. Its interface may change before publication.
+Live on mainnet. This reference matches the published source.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -3816,7 +3816,7 @@ public struct PartnerPaid<phantom T> has copy, drop {
 
 ## API reference: `blast_admin` (Administration)
 
-Not yet published on mainnet. Its interface may change before publication.
+Live on mainnet. This reference matches the published source.
 
 Events: payload structs are emitted directly, each under its own type.
 

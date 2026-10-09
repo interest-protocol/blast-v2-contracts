@@ -1,0 +1,274 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "sui-package-deployment",
+  "release": "blast-presale-v2",
+  "network": {
+    "chain": "sui",
+    "environment": "mainnet",
+    "chainIdentifierHex": "35834a8a",
+    "chainIdentifierBase58": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"
+  },
+  "timestampUtc": "2026-10-09T00:22:52.113Z",
+  "recordedAtUtc": "2026-10-09T01:39:42Z",
+  "repository": {
+    "commit": "acad02ecd6c1b4be70f7b9c611c8d23cb318e9e5",
+    "workingTree": "clean",
+    "note": "Published from main d2a5bf6 with blast_acl_root set to the deployer, which is this commit. Fresh publication of the presale stack that signs in through the shared blast_admin ACL (contracts #80). blast_admin and blast_partners were published with sui/{admin,partners}/scripts/publish_immutable.sh; blast_presale with sui/presale/scripts/publish.sh and sealed with wrap_package_admin.sh. The Aftermath vendor's publish_immutable.sh failed on chain with PublishUpgradeMissingDependency (digest 3rzskkSq\u2026, gas only): its interface stubs declare no dependencies, so the CLI omitted the Aftermath AMM and DAO-fee packages' own linkage. It was published from its --dump-bytecode-as-base64 build with that linkage added (aftermathTransitiveDependencies) and made immutable in the same PTB."
+  },
+  "toolchain": {
+    "suiCli": "sui 1.77.2-51d177ad7d65",
+    "moveToolchain": "1.77.2",
+    "moveEdition": "2024",
+    "node": "v24.18.0"
+  },
+  "deployer": "0x612fa27ba229021c5a1c32022fd6341ffbd58a87ac928a0dc32d8d6d1dba9fed",
+  "status": "success",
+  "preDeployGates": {
+    "blast_admin": "sui move test: 70/70",
+    "blast_partners": "sui move test: 29/29",
+    "blast_presale": "check_source_boundaries.sh pass; sui move test --build-env mainnet: 196/196; sui move lint --warnings-are-errors FAILS on main at sources/cetus.move:135 (EL02013, discarded meme_is_coin_a result in cetus::new_vault): lint only, behaviour unaffected",
+    "blast_aftermath_dao_presale": "sui move test: 10/10; check_mainnet_abi.mjs: PASS 2 packages"
+  },
+  "transactions": {
+    "adminPublication": {
+      "digest": "9QFxu2nCYpcxx2Br3REW9RwvMs3QdVFdZgZcTXT6odie",
+      "checkpoint": "331858878",
+      "timestampUtc": "2026-10-09T00:22:52.113Z",
+      "status": "success",
+      "gasUsed": {
+        "computationCost": "100000",
+        "storageCost": "78728400",
+        "storageRebate": "0",
+        "nonRefundableStorageFee": "0"
+      },
+      "note": "publish + package::make_immutable"
+    },
+    "partnersPublication": {
+      "digest": "3YgqjBtUk99KZ2anVApX1U9fNUzBuJvRJDJvYixw8RLo",
+      "checkpoint": "331859048",
+      "timestampUtc": "2026-10-09T00:23:30.204Z",
+      "status": "success",
+      "gasUsed": {
+        "computationCost": "100000",
+        "storageCost": "19919600",
+        "storageRebate": "0",
+        "nonRefundableStorageFee": "0"
+      },
+      "note": "publish + package::make_immutable"
+    },
+    "presalePackagePublication": {
+      "digest": "9nfBY38rpi3LwnXQpsXzxgFpqwDQbFAMUiBCzK3wzygN",
+      "checkpoint": "331859629",
+      "timestampUtc": "2026-10-09T00:25:41.091Z",
+      "status": "success",
+      "gasUsed": {
+        "computationCost": "638000",
+        "storageCost": "389614000",
+        "storageRebate": "0",
+        "nonRefundableStorageFee": "0"
+      }
+    },
+    "packageAdminWrap": {
+      "digest": "4NYbL7srobHm4uVLGbivRAxBve93QuS8qT95oXZyE4p6",
+      "checkpoint": "331859665",
+      "timestampUtc": "2026-10-09T00:25:49.163Z",
+      "status": "success",
+      "gasUsed": {
+        "computationCost": "100000",
+        "storageCost": "1938000",
+        "storageRebate": "1633837",
+        "nonRefundableStorageFee": "163"
+      }
+    },
+    "aftermathVendorPublicationFailed": {
+      "digest": "3rzskkSqHHoMA5cTckgWrhsj7MiSBaTD3YnkRBxsbqvG",
+      "checkpoint": "331859743",
+      "timestampUtc": "2026-10-09T00:26:06.748Z",
+      "status": "failure",
+      "gasUsed": {
+        "computationCost": "465000",
+        "storageCost": "0",
+        "storageRebate": "0",
+        "nonRefundableStorageFee": "0"
+      },
+      "note": "PublishUpgradeMissingDependency; see repository.note"
+    },
+    "aftermathVendorPublication": {
+      "digest": "E3S6pEQ7PiDpbJHtREYrGmTPX7MdJyBkvFaQa8krbWkQ",
+      "checkpoint": "331860088",
+      "timestampUtc": "2026-10-09T00:27:24.567Z",
+      "status": "success",
+      "gasUsed": {
+        "computationCost": "539000",
+        "storageCost": "44042000",
+        "storageRebate": "0",
+        "nonRefundableStorageFee": "0"
+      },
+      "note": "publish + package::make_immutable"
+    },
+    "aclAdminGrant": {
+      "digest": "5Mmkx9bQEi7LWpbogxiTCdaZkwXMtF8EhK65ezAr2LKX",
+      "checkpoint": "331864824",
+      "timestampUtc": "2026-10-09T00:45:06.332Z",
+      "status": "success",
+      "gasUsed": {
+        "computationCost": "100000",
+        "storageCost": "4605600",
+        "storageRebate": "3032097",
+        "nonRefundableStorageFee": "303"
+      }
+    },
+    "aclPresaleRolesGrant": {
+      "digest": "Di6qbWodDLA6TrEMuaTmo7tqGfXra9xV2qBwH4LtcZ6n",
+      "checkpoint": "331864834",
+      "timestampUtc": "2026-10-09T00:45:08.489Z",
+      "status": "success",
+      "gasUsed": {
+        "computationCost": "100000",
+        "storageCost": "7866000",
+        "storageRebate": "3282872",
+        "nonRefundableStorageFee": "328"
+      }
+    },
+    "presaleDependencyOnlyUpgrade": {
+      "digest": "E7hHkQNhF89uQZzML2WLShbf3g257jQ5CyYCpN5jvES5",
+      "checkpoint": "331878047",
+      "timestampUtc": "2026-10-09T01:35:04.318Z",
+      "status": "success",
+      "gasUsed": {
+        "computationCost": "716000",
+        "storageCost": "386619600",
+        "storageRebate": "3260074",
+        "nonRefundableStorageFee": "326"
+      },
+      "note": "E2E-023: identical modules, authorized and committed through PackageAdmin signed in as UpgradeAdmin"
+    }
+  },
+  "packages": {
+    "admin": {
+      "name": "blast_admin",
+      "packageId": "0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9",
+      "version": "1",
+      "upgradePolicy": "immutable",
+      "sourceDigest": "sha256:089a7db2da8cf7d1a8ef78372a58298f1c18352e560af4d63cc06d45c5f5a13a",
+      "constructorParameters": {
+        "blast_acl_root": "0x612fa27ba229021c5a1c32022fd6341ffbd58a87ac928a0dc32d8d6d1dba9fed"
+      }
+    },
+    "partners": {
+      "name": "blast_partners",
+      "packageId": "0x96fbe2db7337dea5ef6926203d32cf602e527d5e2dcae176fbbc3e3d2a30d94f",
+      "version": "1",
+      "upgradePolicy": "immutable"
+    },
+    "presale": {
+      "name": "blast_presale",
+      "originalPackageId": "0x2d300f3d8819c6e09fd1558e518c2ffab97b324479843d4f94b561b10a441fd0",
+      "currentPackageId": "0x33897a946e231652f00d712834665831ada3e3ffb3cd3ef11f4a449058ab43c6",
+      "version": "2",
+      "upgradePolicy": "dependency-only (192)",
+      "publisherId": null,
+      "versions": {
+        "1": "0x2d300f3d8819c6e09fd1558e518c2ffab97b324479843d4f94b561b10a441fd0",
+        "2": "0x33897a946e231652f00d712834665831ada3e3ffb3cd3ef11f4a449058ab43c6"
+      }
+    },
+    "aftermathDaoPresale": {
+      "name": "blast_aftermath_dao_presale",
+      "packageId": "0xac58d338925ac96304ca573a4dab80d442df6f2427291bcddbea7fc65279678e",
+      "version": "1",
+      "upgradePolicy": "immutable",
+      "treasury": "0x37cf46b499f740e653644bd2f7a8ed97f248e8b3c69d5d12c97d7845a54c0cd8"
+    }
+  },
+  "aftermathTransitiveDependencies": [
+    "0x2d9316f1f1a95f6d7c85a4e690ef7c359e6649773ef2c37ad7d9857adb6bef06",
+    "0x64213b0e4a52bac468d4ac3f140242f70714381653a1919a6d57cd49c628207a",
+    "0xbc7b2c577ad9362fbb0dba397d17f3bcc81bf7aa916559f99a77eaee05d0947c",
+    "0x73baa782c55003b3a359dec04b189312565d18e7309d4a51f5f112f891e3b2ab",
+    "0xa6baab1e668c7868991c1c3c11e144100f5734c407d020f72a01b9d1a8bcb97f",
+    "0xc66fabf1a9253e43c70f1cc02d40a1d18db183140ecaae2a3f58fa6b66c55acf"
+  ],
+  "dependencyPackages": {
+    "moveStdlib": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "suiFramework": "0x0000000000000000000000000000000000000000000000000000000000000002",
+    "blastFunTimelock": "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d",
+    "blastFunVesting": "0x85fdb7e3d28162b99e0df758069a3d23cff874c400b2160fc0d4618aefd3ec5c",
+    "bluefinSpot": "0xd075338d105482f1527cbfd363d6413558f184dec36d9138a70261e87f486e9c",
+    "cetusClmm": "0x260693ec785a6e6c9d81d58c7d2ff72f1288ae0fa6a9725abe05a6478b11f084",
+    "cetusClmmVester": "0x48dcc51091e692a0c8a64930fc839fb5a8e58de3590c084a8322b9cd34754c36",
+    "cetusLpBurn": "0xc4aabc874f5060d3147d8f74c14e3a8a1f9f8d92edea138a51635395ed167cd9",
+    "cetusToken": "0x06864a6f921804860930db6ddbe2e16acdf8504495ea7481637a1c8b9a8fe54b",
+    "integerLibrary": "0xab5e63352d0f05881bdfa1631cc0f7fc1669175a00d608828a924df481a9e4bd",
+    "integerMate": "0xdfaadf86be9af246900d1e3f3b996cf549e7948e662a9977bdd7646d8fa3a778",
+    "moveStl": "0x8569b7efebec65c73b9dc15c5ac2a9542870d286fa79a3feedffbaa94ed53002",
+    "aftermathAmm": "0xf948935b111990c2b604900c9b2eeb8f24dcf9868a45d1ea1653a5f282c10e29",
+    "aftermathDaoFeePools": "0x5ad6890968efcf3d20899e0cec735214f1067b96e77e77d86408989998468bb2"
+  },
+  "sharedObjects": {
+    "acl": {
+      "type": "blast_acl::ACL",
+      "objectId": "0xc9fbcfc4eda38626d7daad17902cc145b4008beb20470135438298aa7a005a6d",
+      "initialSharedVersion": "1"
+    },
+    "venueConfig": {
+      "objectId": "0x5399abde7eeb48fec9d38d048d9faebe2a51a82df03f35ae8feb52e7d9ef32dc",
+      "initialSharedVersion": "1"
+    },
+    "creationPolicy": {
+      "objectId": "0xe5a202e29aa436e75d64af0eb286572bf32e35e0ce0f39ddf3ac4154d47d93a5",
+      "initialSharedVersion": "1"
+    },
+    "feePolicy": {
+      "objectId": "0xe9eccc8b1281998240372a113b494ecfc7f57f47d3545880988ae3c05624c348",
+      "initialSharedVersion": "1"
+    },
+    "packageAdmin": {
+      "objectId": "0x9b2ba3f63b16897612287eac59c793094e0ce19dba716940f6db008ffba988e9",
+      "initialSharedVersion": "2",
+      "wrappedUpgradeCap": "0xa9280e96498df47a2a07466238cd82358cc044749ec6ea8932a1c20f68a73e1a"
+    }
+  },
+  "adminObjects": {
+    "superAdminCap": {
+      "objectId": "0x6187ad51c17dee9f288ebbf7f7655b0a7185d7697a5aa23e96f8c66169aa2b2c",
+      "holder": "0x612fa27ba229021c5a1c32022fd6341ffbd58a87ac928a0dc32d8d6d1dba9fed"
+    },
+    "adminCaps": [
+      {
+        "objectId": "0xf9b3674eb89193afa58e096868fa9623217c1a8bb2bb9981c48be1741d33146c",
+        "holder": "0x612fa27ba229021c5a1c32022fd6341ffbd58a87ac928a0dc32d8d6d1dba9fed",
+        "roles": [
+          "0x2d300f3d8819c6e09fd1558e518c2ffab97b324479843d4f94b561b10a441fd0::blast_presale_domain::UpgradeAdmin",
+          "0x2d300f3d8819c6e09fd1558e518c2ffab97b324479843d4f94b561b10a441fd0::blast_presale_domain::TreasuryAdmin",
+          "0x2d300f3d8819c6e09fd1558e518c2ffab97b324479843d4f94b561b10a441fd0::blast_presale_domain::FeeAdmin",
+          "0x2d300f3d8819c6e09fd1558e518c2ffab97b324479843d4f94b561b10a441fd0::blast_presale_domain::ListingAdmin",
+          "0x2d300f3d8819c6e09fd1558e518c2ffab97b324479843d4f94b561b10a441fd0::blast_presale_domain::AdapterAdmin",
+          "0x2d300f3d8819c6e09fd1558e518c2ffab97b324479843d4f94b561b10a441fd0::blast_presale_domain::RewardsAdmin"
+        ]
+      }
+    ],
+    "aftermathVendorAdminCap": {
+      "objectId": "0x82b136db6a91b6a858b6eaebc4b2992c05f75c0ad40219f02fc246bb1b0d2d02",
+      "holder": "0x612fa27ba229021c5a1c32022fd6341ffbd58a87ac928a0dc32d8d6d1dba9fed"
+    }
+  },
+  "postDeployConfiguration": {
+    "allowedQuotes": [
+      "0x2::sui::SUI"
+    ],
+    "allowedMigrators": [
+      "0x2d300f3d8819c6e09fd1558e518c2ffab97b324479843d4f94b561b10a441fd0::bluefin::Witness",
+      "0x2d300f3d8819c6e09fd1558e518c2ffab97b324479843d4f94b561b10a441fd0::cetus::Witness",
+      "0xac58d338925ac96304ca573a4dab80d442df6f2427291bcddbea7fc65279678e::blast_aftermath_dao_presale::Witness"
+    ],
+    "feePolicy": {
+      "destination": "0x612fa27ba229021c5a1c32022fd6341ffbd58a87ac928a0dc32d8d6d1dba9fed",
+      "rates": "0/0/0/0"
+    },
+    "note": "TEST_SUI was listed for the E2E run and delisted in E2E-030. The E2E partner scenarios registered partner A in blast_partners and accepted it on the CreationPolicy; see the e2e record."
+  },
+  "verification": {
+    "endToEnd": "2026-10-09-blast-presale-e2e.json"
+  }
+}
