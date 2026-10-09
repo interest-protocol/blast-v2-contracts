@@ -1,25 +1,18 @@
 # Presale mainnet end-to-end verification
 
-Status (2026-10-04): every ticket passed on mainnet, including E2E-027 to 029, except E2E-017's second phase, which
-can run after 2026-10-11T16:08:32Z (`node e2e/presale-mainnet/run.ts e017 finish` in the SDK).
-E2E-023 is skipped by owner decision. Evidence:
-[`deployments/sui/mainnet/2026-10-04-blast-presale-e2e.json`](../deployments/sui/mainnet/2026-10-04-blast-presale-e2e.json).
-
-The run above targeted the ABI before
-[ADR 0110](decisions/0110-presale-initializer-and-early-close.md). The rerun on the fresh
-publication creates every sale through a venue's `new`, the initializer setters, and `finalize`.
-The ticket bodies below use the new calls. Two tickets are added:
-
-- **E2E-030 First come within wallet caps, closed when filled.** Open policy, `set_hard_cap(0,
-  true)`. Wallets commit within their caps until the raise fills. The filling commit is partly
-  accepted and its excess returned, and the next commit aborts `EPresaleFilled`. Settle well
-  before `end_ms`; `PresaleFunded` reports the settle time as `end_ms`. Migrate and claim in the
-  same PTB as the settle.
-- **E2E-031 Full sale held to its end.** The same sale with `closes_when_filled = false`. A settle
-  before `end_ms` aborts `EPresaleNotEnded`; at `end_ms` it settles.
+Status (2026-10-09): every ticket passed on the fresh publication `0x2d30…1fd0`, which signs in
+through the shared `blast_admin` ACL, except E2E-017's second phase, which can run after
+2026-10-16T00:46:38Z (`node e2e/presale-mainnet/run.ts e017 finish` in the SDK, branch
+`e2e/presale-acl-redeploy`). The run added E2E-036 to E2E-041: early close when filled, a full sale
+held to its end, overflow until the hard cap starts, the `PresaleInitializer` gates, Aftermath
+DAO-pool vendor sales in both coin orders, and a vault without a presale. E2E-023 now exercises
+the ACL and a real dependency-only upgrade. Evidence and findings:
+[`deployments/sui/mainnet/2026-10-09-blast-presale-e2e.json`](../deployments/sui/mainnet/2026-10-09-blast-presale-e2e.json).
+The 2026-10-04 run on `0x76cb…8400` is
+[`2026-10-04-blast-presale-e2e.json`](../deployments/sui/mainnet/2026-10-04-blast-presale-e2e.json).
 
 Goal: exercise every public `blast_presale` function and every abort condition users can hit,
-on the real mainnet package `0x76cb0508fc94234fddd910b5616248f8a42998048a28e55f5fe1cc89e7b98400`,
+on the real mainnet package (the deployment record each run names),
 with real transactions. Unit tests already cover the math; this run proves the deployed bytecode,
 the venues (Bluefin, Cetus), the vesting package, and the SDK builders work together on chain.
 

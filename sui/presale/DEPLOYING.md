@@ -6,13 +6,13 @@ The order matters: a presale can exist only after Blast's `ListingAdmin` and
 `AdapterAdmin` allow a Quote type and a migrator, so custody is sealed and verified before any allowlisting, and no
 sale is ever created under an unsealed cap.
 
-1. Retire the previous generation's link. The live package at
-   `0x76cb0508fc94234fddd910b5616248f8a42998048a28e55f5fe1cc89e7b98400` is
-   sealed dependency-only and can never gain the logic this source adds, so this
-   is a new publication, not an upgrade
+1. Retire the previous generation's link when a release changes presale logic.
+   The live package, recorded in
+   `deployments/sui/mainnet/2026-10-09-blast-presale.json`, is sealed
+   dependency-only and can never gain new logic, so such a release is a new
+   publication, not an upgrade
    ([ADR 0104](../../docs/decisions/0104-external-presale-migrators-and-vendor-packages.md)).
-   Its record stays in
-   `deployments/sui/mainnet/2026-10-04-blast-presale.json`. Delete its
+   Its record stays. Delete its
    `[published.mainnet]` entry from `Published.toml` before publishing, so this
    build publishes a new package rather than resolving to the old one, and commit
    the entry the new publication writes: vendor packages link to it.

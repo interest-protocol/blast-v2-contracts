@@ -2,6 +2,11 @@
   "schemaVersion": 1,
   "recordKind": "sui-package-deployment",
   "release": "blast-presale-v2",
+  "supersededBy": {
+    "record": "2026-10-09-blast-presale.json",
+    "packageId": "0x2d300f3d8819c6e09fd1558e518c2ffab97b324479843d4f94b561b10a441fd0",
+    "note": "Superseded by the fresh publication that administers the presale through the shared blast_admin ACL and creates sales through PresaleInitializer (ADR 0110). This package's sales are E2E test sales only; do not list new Quotes or migrators on it."
+  },
   "network": {
     "chain": "sui",
     "environment": "mainnet",
