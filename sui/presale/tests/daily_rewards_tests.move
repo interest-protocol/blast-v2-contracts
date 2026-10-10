@@ -96,11 +96,13 @@ macro fun daily_rewards_ctx($self: &mut DailyRewardsFixture): &mut TxContext {
 
 fun publish(self: &mut DailyRewardsFixture, number: u64, start: u64, end: u64) {
     let root = rewards::leaf_for_testing(object::id(&self.vault), number, 0, HOLDER, 0, 10);
+    let policy = fee_policy::new_for_testing(self.scenario.ctx());
     rewards::publish_round(
-        &mut self.vault, &blast_acl::witness_for_testing<RewardsAdmin>(), number, start, end,
+        &mut self.vault, &blast_acl::witness_for_testing<RewardsAdmin>(), &policy, number, start, end,
         root, hash::blake2b256(&b"manifest"), 1, 0, 10,
-        self.clock.timestamp_ms() + CLAIM_WINDOW_MS, &self.clock, self.scenario.ctx(),
+        0, self.clock.timestamp_ms() + CLAIM_WINDOW_MS, &self.clock, self.scenario.ctx(),
     );
+    policy.destroy_for_testing();
 }
 
 fun claim(self: &mut DailyRewardsFixture) {

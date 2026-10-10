@@ -60,18 +60,54 @@ fun close_returns_unsettled_reserve_and_unclaimed_holders_without_an_admin() {
 }
 
 #[test]
-fun zero_reserve_settles_once_without_a_payment() {
+fun zero_reserve_disables_reimbursement_and_allows_claim_and_close() {
+    let mut fixture = start_reserve_rewards();
+    fixture.publish(0);
+    fixture.next_tx!(HOLDER, |f| {
+        let round = f.take_round();
+        let (_, quote, reserve) = round.reserve_balances_for_testing();
+        assert_eq!(quote, 970);
+        assert_eq!(reserve, option::none());
+        f.return_round(round);
+    });
+    fixture.next_tx!(HOLDER, |f| f.claim());
+    fixture.next_tx!(HOLDER, |f| f.assert_payment(970));
+    assert_eq!(fixture.vault_balances(), vector[0, 30]);
+    fixture.next_tx!(HOLDER, |f| f.close());
+    assert_eq!(fixture.vault_balances(), vector[0, 30]);
+    fixture.end();
+}
+
+#[test]
+fun blast_can_cover_gas_and_fund_the_entire_holder_quote_budget() {
+    let mut fixture = start_reserve_rewards();
+    fixture.publish_budget(1_000, 0);
+    assert_eq!(fixture.vault_balances(), vector[0, 0]);
+    fixture.next_tx!(HOLDER, |f| {
+        let mut round = f.take_round();
+        rewards::claim(&mut round, 0, HOLDER, 0, 1_000, vector[], f.ctx!());
+        let (_, quote, reserve) = round.reserve_balances_for_testing();
+        assert_eq!(quote, 0);
+        assert_eq!(reserve, option::none());
+        f.return_round(round);
+    });
+    fixture.next_tx!(HOLDER, |f| f.assert_payment(1_000));
+    fixture.next_tx!(HOLDER, |f| f.close());
+    assert_eq!(fixture.vault_balances(), vector[0, 0]);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = rewards::EReserveSettled, location = blast_presale::holder_rewards)]
+fun disabled_reimbursement_cannot_be_settled() {
     let mut fixture = start_reserve_rewards();
     fixture.publish(0);
     fixture.next_tx!(OWNER, |f| {
         let mut round = f.take_round();
         f.settle(&mut round, 0);
-        f.return_round(round);
+        abort
     });
-    assert_eq!(fixture.vault_balances(), vector[0, 30]);
-    fixture.next_tx!(HOLDER, |f| f.close());
-    assert_eq!(fixture.vault_balances(), vector[0, 1_000]);
-    fixture.end();
+    abort
 }
 
 #[test]
@@ -117,7 +153,7 @@ fun close_rejects_the_millisecond_before_the_deadline() {
     fixture.next_tx!(OWNER, |f| {
         let round = f.take_round();
         f.clock.set_for_testing(DEADLINE_MS - 1);
-        rewards::close_reserve_round(round, &mut f.vault, &f.clock);
+        rewards::close_round(round, &mut f.vault, &f.clock);
         abort
     });
     abort
@@ -145,39 +181,12 @@ fun settlement_rejects_another_vault_before_its_amount_check() {
 }
 
 #[test]
-fun collection_routes_only_new_holder_meme_and_reconciliation_preserves_funded_leaves() {
+fun collection_routes_holder_meme_and_preserves_holder_quote() {
     let mut fixture = start_reserve_rewards();
-    fixture.seed_legacy_meme(20);
-    fixture.publish_legacy();
     fixture.collect_holder_fees();
-    assert_eq!(fixture.vault_balances(), vector[10, 1_010]);
-    fixture.reconcile(10);
     assert_eq!(fixture.vault_balances(), vector[0, 1_010]);
-    fixture.next_tx!(TREASURY, |f| f.assert_meme_payment(110));
-    fixture.next_tx!(HOLDER, |f| f.claim_legacy());
-    fixture.next_tx!(HOLDER, |f| f.assert_meme_payment(10));
-    fixture.next_tx!(OWNER, |f| f.close_legacy());
-    assert_eq!(fixture.vault_balances(), vector[0, 1_010]);
+    fixture.next_tx!(TREASURY, |f| f.assert_meme_payment(100));
     fixture.end();
-}
-
-#[test]
-#[expected_failure(abort_code = vault::ELegacyMemeMismatch, location = blast_presale::presale_vault)]
-fun legacy_reconciliation_rejects_a_changed_balance() {
-    let mut fixture = start_reserve_rewards();
-    fixture.seed_legacy_meme(20);
-    fixture.reconcile(19);
-    abort
-}
-
-#[test]
-#[expected_failure(abort_code = vault::ELegacyMemeMismatch, location = blast_presale::presale_vault)]
-fun legacy_reconciliation_cannot_replay_after_the_transfer() {
-    let mut fixture = start_reserve_rewards();
-    fixture.seed_legacy_meme(20);
-    fixture.reconcile(20);
-    fixture.reconcile(20);
-    abort
 }
 
 #[test]
@@ -206,7 +215,7 @@ fun reserve_holder_payment_cannot_be_redirected() {
     fixture.publish(30);
     fixture.next_tx!(OWNER, |f| {
         let mut round = f.take_round();
-        rewards::claim_reserve_round(&mut round, 0, OWNER, 0, 970, vector[], f.ctx!());
+        rewards::claim(&mut round, 0, OWNER, 0, 970, vector[], f.ctx!());
         abort
     });
     abort
@@ -243,13 +252,17 @@ macro fun reserve_ctx($self: &mut ReserveFixture): &mut TxContext {
 }
 
 fun publish(self: &mut ReserveFixture, reserve: u64) {
-    let root = rewards::leaf_for_testing(object::id(&self.vault), 0, 0, HOLDER, 0, 970);
-    rewards::publish_reserve_round(
+    self.publish_budget(970, reserve);
+}
+
+fun publish_budget(self: &mut ReserveFixture, holder_quote: u64, reserve: u64) {
+    let root = rewards::leaf_for_testing(object::id(&self.vault), 0, 0, HOLDER, 0, holder_quote);
+    rewards::publish_round(
         &mut self.vault, &blast_acl::witness_for_testing<RewardsAdmin>(), &self.policy,
-        0, 0, 10, root, hash::blake2b256(&b"manifest"), 1, 0, 970, reserve,
+        0, 0, 10, root, hash::blake2b256(&b"manifest"), 1, 0, holder_quote, reserve,
         DEADLINE_MS, &self.clock, self.scenario.ctx(),
     );
-    let payload = only_event<BlastRoundPublished<MEME, QUOTE>>();
+    let payload = only_event<RoundPublished<MEME, QUOTE>>();
     let round_id = payload.reserve_published_id();
     let (meme_unallocated, quote_unallocated) = self.vault.holder_rewards_balances();
     let deadline_ms = DEADLINE_MS;
@@ -265,7 +278,7 @@ fun publish(self: &mut ReserveFixture, reserve: u64) {
     expected.append(bcs::to_bytes(&(hash::blake2b256(&b"manifest"))));
     expected.append(bcs::to_bytes(&(1u64)));
     expected.append(bcs::to_bytes(&(0u64)));
-    expected.append(bcs::to_bytes(&(970u64)));
+    expected.append(bcs::to_bytes(&(holder_quote)));
     expected.append(bcs::to_bytes(&(meme_unallocated)));
     expected.append(bcs::to_bytes(&(quote_unallocated)));
     expected.append(bcs::to_bytes(&(treasury)));
@@ -273,15 +286,15 @@ fun publish(self: &mut ReserveFixture, reserve: u64) {
     assert_eq!(payload.reserve_published_bytes(), expected);
 }
 
-fun take_round(self: &ReserveFixture): BlastRewardRound<MEME, QUOTE> {
+fun take_round(self: &ReserveFixture): Round<MEME, QUOTE> {
     self.scenario.take_shared()
 }
 
-fun return_round(_self: &ReserveFixture, round: BlastRewardRound<MEME, QUOTE>) {
+fun return_round(_self: &ReserveFixture, round: Round<MEME, QUOTE>) {
     test_scenario::return_shared(round);
 }
 
-fun settle(self: &mut ReserveFixture, round: &mut BlastRewardRound<MEME, QUOTE>, amount: u64) {
+fun settle(self: &mut ReserveFixture, round: &mut Round<MEME, QUOTE>, amount: u64) {
     let (_, _, reserve) = round.reserve_balances_for_testing();
     let reserve_amount = reserve.destroy_or!(0);
     rewards::settle_gas_reserve(
@@ -304,8 +317,8 @@ fun settle(self: &mut ReserveFixture, round: &mut BlastRewardRound<MEME, QUOTE>,
 
 fun claim(self: &mut ReserveFixture) {
     let mut round = self.take_round();
-    rewards::claim_reserve_round(&mut round, 0, HOLDER, 0, 970, vector[], self.ctx!());
-    let payload = only_event<BlastRewardClaimed<MEME, QUOTE>>();
+    rewards::claim(&mut round, 0, HOLDER, 0, 970, vector[], self.ctx!());
+    let payload = only_event<RewardClaimed<MEME, QUOTE>>();
     let holder = HOLDER;
     let mut expected = vector[];
     expected.append(bcs::to_bytes(&(object::id(&round))));
@@ -324,8 +337,8 @@ fun close(self: &mut ReserveFixture) {
     self.clock.set_for_testing(DEADLINE_MS);
     let round_id = object::id(&round);
     let (meme, quote, reserve) = round.reserve_balances_for_testing();
-    rewards::close_reserve_round(round, &mut self.vault, &self.clock);
-    let payload = only_event<BlastRoundClosed<MEME, QUOTE>>();
+    rewards::close_round(round, &mut self.vault, &self.clock);
+    let payload = only_event<RoundClosed<MEME, QUOTE>>();
     let mut expected = vector[];
     expected.append(bcs::to_bytes(&(object::id(&self.vault))));
     expected.append(bcs::to_bytes(&(round_id)));
@@ -357,45 +370,18 @@ fun end(mut self: ReserveFixture) {
     scenario.end();
 }
 
-fun seed_legacy_meme(self: &mut ReserveFixture, amount: u64) {
-    self.vault.credit_legacy_holder_for_testing(balance::create_for_testing<MEME>(amount), balance::zero());
-}
-
-fun publish_legacy(self: &mut ReserveFixture) {
-    let root = rewards::leaf_for_testing(object::id(&self.vault), 0, 0, HOLDER, 10, 0);
-    rewards::publish_round(
-        &mut self.vault, &blast_acl::witness_for_testing<RewardsAdmin>(), 0, 0, 10,
-        root, hash::blake2b256(&b"legacy"), 1, 10, 0, DEADLINE_MS,
-        &self.clock, self.scenario.ctx(),
-    );
-}
-
 fun collect_holder_fees(self: &mut ReserveFixture) {
     self.vault.credit_fees_for_testing(
         &self.policy, balance::create_for_testing<MEME>(100),
         balance::create_for_testing<QUOTE>(10), self.scenario.ctx(),
     );
-    let payload = only_event<BlastHolderMemePaid<MEME, QUOTE>>();
+    let payload = only_event<HolderMemePaid<MEME, QUOTE>>();
     let treasury = TREASURY;
     let mut expected = bcs::to_bytes(&object::id(&self.vault));
     expected.append(bcs::to_bytes(&treasury));
     expected.append(bcs::to_bytes(&100u64));
-    expected.append(bcs::to_bytes(&10u64));
-    assert_eq!(payload.holder_meme_paid_bytes(), expected);
-}
-
-fun reconcile(self: &mut ReserveFixture, amount: u64) {
-    self.vault.reconcile_unallocated_meme(
-        &blast_acl::witness_for_testing<RewardsAdmin>(), &self.policy,
-        amount, self.scenario.ctx(),
-    );
-    let payload = only_event<BlastUnallocatedMemeReconciled<MEME, QUOTE>>();
-    let treasury = TREASURY;
-    let mut expected = bcs::to_bytes(&object::id(&self.vault));
-    expected.append(bcs::to_bytes(&treasury));
-    expected.append(bcs::to_bytes(&amount));
     expected.append(bcs::to_bytes(&0u64));
-    assert_eq!(payload.unallocated_meme_reconciled_bytes(), expected);
+    assert_eq!(payload.holder_meme_paid_bytes(), expected);
 }
 
 fun assert_meme_payment(self: &ReserveFixture, amount: u64) {
@@ -404,18 +390,6 @@ fun assert_meme_payment(self: &ReserveFixture, amount: u64) {
         total = total + self.scenario.take_from_sender<Coin<MEME>>().burn_for_testing();
     };
     assert_eq!(total, amount);
-}
-
-fun claim_legacy(self: &mut ReserveFixture) {
-    let mut round = self.scenario.take_shared<Round<MEME, QUOTE>>();
-    rewards::claim(&mut round, 0, HOLDER, 10, 0, vector[], self.ctx!());
-    test_scenario::return_shared(round);
-}
-
-fun close_legacy(self: &mut ReserveFixture) {
-    let round = self.scenario.take_shared<Round<MEME, QUOTE>>();
-    self.clock.set_for_testing(DEADLINE_MS);
-    rewards::close_round(round, &mut self.vault, &self.clock);
 }
 
 fun settle_without_role(self: &mut ReserveFixture) {
@@ -443,8 +417,8 @@ use blast_presale::{
     blast_presale_domain::{RewardsAdmin, TreasuryAdmin},
     bps,
     fee_policy::{Self, FeePolicy},
-    holder_rewards::{Self as rewards, BlastRewardRound, BlastRoundPublished, BlastRewardClaimed, GasReserveSettled, BlastRoundClosed, Round},
-    presale_vault::{Self as vault, Vault, BlastHolderMemePaid, BlastUnallocatedMemeReconciled},
+    holder_rewards::{Self as rewards, Round, RoundPublished, RewardClaimed, GasReserveSettled, RoundClosed},
+    presale_vault::{Self as vault, Vault, HolderMemePaid},
 };
 use std::{bcs, unit_test::assert_eq};
 use sui::{balance, clock::{Self, Clock}, coin::Coin, event, hash, test_scenario::{Self, Scenario}};

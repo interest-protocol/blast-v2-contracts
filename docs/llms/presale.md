@@ -469,9 +469,9 @@ and every fee recipient at once. It pays the holder Meme remainder to the govern
   pool, clock)` where `pool` is the vault's `Pool<Meme, Quote>`
   (`blast_presale::bluefin::EPositionPoolMismatch` otherwise).
 
-Emits `presale_vault::FeesCollected`, followed by `presale_vault::BlastHolderMemePaid`
+Emits `presale_vault::FeesCollected`, followed by `presale_vault::HolderMemePaid`
 when the holder Meme remainder is positive. The former records allocation; the latter
-records payment and the remaining legacy unallocated Meme. A collection of zero is valid and emits nothing. Neither
+records payment and the remaining unallocated Meme. A collection of zero is valid and emits nothing. Neither
 adapter collects venue incentive rewards.
 
 On a partnered vault, follow with `presale_vault::pay_protocol_lp_fees_with_partner(vault,
@@ -490,19 +490,27 @@ nothing is valid and emits nothing, so it can follow every collection.
 
 #### Holder-reward rounds
 
-The holder Quote share of LP fees accrues in the vault. Previously accrued Meme may
-still fund existing commitments. Blast decides off chain who receives holder assets.
+The holder Quote share of LP fees accrues in the vault. Blast decides off chain
+who receives holder assets and whether each round reimburses gas. A single
+`holder_rewards::Round` holds its holder balances separately from its optional
+Quote gas reserve.
 
-1. Publish: `holder_rewards::publish_round(vault, admin_witness, number, start_checkpoint,
-   end_checkpoint, root, manifest_digest, leaf_count, meme_amount, quote_amount, claim_deadline_ms,
-   clock)`. *Blast admin* (`RewardsAdmin`). `number` must be the vault's next round
-   (starting at 0); the checkpoint interval must be non-empty and start at or after the previous
-   round ended; skipped holding periods need no funded round or round number; `root` and `manifest_digest` are 32 bytes; 1..=65,536 leaves; a positive budget
-   of at least one asset, taken from the vault's holder-reward balances; a future deadline.
-   Shares a `holder_rewards::Round` and emits `holder_rewards::RoundPublished`.
-2. Claim: `holder_rewards::claim(round, index, beneficiary, meme_amount, quote_amount, proof)`.
-   *Anyone* may relay; payment goes to `beneficiary`. Each index pays once (a bitmap records it).
-   Emits `holder_rewards::RewardClaimed`. Leaf:
+1. `holder_rewards::publish_round`: *Blast admin* (`RewardsAdmin`). It takes the
+   mutable shared vault, shared governed `FeePolicy`, interval and commitments,
+   exact holder Meme/Quote amounts, an explicit gas reserve amount, future
+   deadline and Clock. The number is the vault's next round (starting at zero).
+   The checkpoint interval is nonempty and starts at or after the previous
+   round ended; skipped periods need no funded round or number. Root and
+   manifest digest are 32 bytes, with 1..=65,536 leaves and a positive holder
+   budget. Holder funding plus reserve must fit available balances. It snapshots
+   the treasury and emits `holder_rewards::RoundPublished`. Zero reserve
+   disables reimbursement for this round and requires no settlement. A positive
+   reserve creates separate pending custody. Blast may cover gas and allocate
+   the entire holder Quote budget to holder leaves.
+2. `holder_rewards::claim`: *anyone* may relay. It takes the mutable shared
+   round and beneficiary/amount proof and pays that beneficiary only, once
+   per index. It emits `holder_rewards::RewardClaimed` and leaves gas custody
+   untouched. Leaf:
 
    ```
    blake2b256( b"\x00blast-presale-holder-rewards-v1"
@@ -512,47 +520,21 @@ still fund existing commitments. Blast decides off chain who receives holder ass
                || bcs(meme_amount: u64) || bcs(quote_amount: u64) )
    ```
 
-   The proof follows the allowlist rules above (same node hash, positional order, exact depth).
-3. Close: `holder_rewards::close_round(round, vault, clock)`. *Anyone*, once `now >=
-   claim_deadline_ms`. Takes the shared round by value, returns its unclaimed balances to the
-   vault's holder share, deletes it, and emits `holder_rewards::RoundClosed`.
-
-Claims carry no deadline check: they work until someone closes the round.
-
-#### Holder rounds with a gas reserve
-
-This source introduces `holder_rewards::BlastRewardRound`, separate from the published
-`holder_rewards::Round`. Its holder balances use the same leaf domain and bitmap.
-The deployed dependency-only package cannot add this type or change collectors.
-A new publication and verified custody handoff are required before activation;
-existing roots keep their original claims and close exits.
-
-1. `holder_rewards::publish_reserve_round`: *Blast admin* (`RewardsAdmin`). It takes
-   the mutable shared vault, the shared governed `FeePolicy`, interval and commitment,
-   exact holder Meme/Quote amounts, separate Quote reserve, future deadline and Clock.
-   Holder funding plus reserve must fit available balances. It snapshots the treasury,
-   advances number/end once, shares the new round and emits `holder_rewards::BlastRoundPublished`.
-2. `holder_rewards::claim_reserve_round`: *anyone*. It takes the mutable shared new
-   round and the unchanged beneficiary/amount proof. It pays only holder balances and
-   emits `holder_rewards::BlastRewardClaimed`. No deadline check; claims last until close.
-3. `holder_rewards::settle_gas_reserve`: *Blast admin* (`RewardsAdmin`). It takes the
-   mutable shared new round and its mutable shared vault and a reimbursement amount
-   from zero through reserve. It pays the publication-time treasury, returns all unused
-   Quote to the vault and consumes settlement once, including for a zero reserve.
-   `holder_rewards::GasReserveSettled` records payment, return and remaining vault Quote.
-   The contract bounds custody; off-chain verified effects determine eligible actual cost.
-4. `holder_rewards::close_reserve_round`: *anyone*, at or after the fixed deadline.
-   It consumes the shared new round and returns unclaimed holder assets and any unsettled
-   reserve to the correct mutable vault. It emits `holder_rewards::BlastRoundClosed` and
-   deletes the object. Missing settlement authority cannot strand reserve. Elapsed time
-   alone moves nothing. Closing before reimbursement leaves that cost with Blast.
-
-`presale_vault::reconcile_unallocated_meme`: *Blast admin* (`RewardsAdmin`). It binds
-an exact positive legacy unallocated balance on the mutable vault and pays it to the
-shared governed fee policy's current destination. It emits
-`presale_vault::BlastUnallocatedMemeReconciled`. It touches no already-funded root,
-protocol, partner, creator or residual balance. Financial evidence must reconcile
-unresolved obligations before this restricted operation is prepared.
+   The proof follows the allowlist rules above (same node hash, positional
+   order, exact depth). Claims have no deadline check: they last until close.
+3. `holder_rewards::settle_gas_reserve`: *Blast admin* (`RewardsAdmin`). It takes
+   the mutable shared round and its mutable shared vault and an amount from
+   zero through an enabled reserve. It pays the publication-time treasury,
+   returns all unused Quote to the vault and consumes settlement once.
+   `holder_rewards::GasReserveSettled` records payment, return and remaining
+   vault Quote. Disabled reimbursement and repeated settlement abort. The
+   contract bounds custody; verified off-chain effects determine actual cost.
+4. `holder_rewards::close_round`: *anyone*, once `now >= claim_deadline_ms`.
+   It consumes the shared round and returns unclaimed holder assets and any
+   unsettled reserve to the correct mutable vault. It emits
+   `holder_rewards::RoundClosed` and deletes the round. Missing settlement
+   authority cannot strand reserve. Elapsed time alone moves nothing.
+   Closing before reimbursement leaves that cost with Blast.
 
 #### Blast admin operations
 
@@ -569,8 +551,7 @@ Integrators cannot call these; they explain state changes. Each takes the
 | `creation_policy::set_migration_witness_allowed` | Allows or disallows a migrator witness for later sales; rejects primitives, vectors, and `0x1`/`0x2` types. Emits `creation_policy::MigrationWitnessSet`. |
 | `creation_policy::add_partner` | Lets new sales name a partner at once (also cancels a pending removal). Emits `creation_policy::PartnerAdded`. |
 | `creation_policy::remove_partner` | New sales may still name the partner for `blast_partners::blast_partners::delay_ms` (7 days). Sales that already name it keep paying it. Emits `creation_policy::PartnerRemoved`. |
-| `holder_rewards::publish_round`, `holder_rewards::publish_reserve_round`, `holder_rewards::settle_gas_reserve` | See above. |
-| `presale_vault::reconcile_unallocated_meme` | Exact positive legacy unallocated Meme disposition; see above. |
+| `holder_rewards::publish_round`, `holder_rewards::settle_gas_reserve` | See above. |
 | `blast_presale::package_admin::authorize_upgrade`, `blast_presale::package_admin::commit_upgrade` | Dependency-only upgrades. |
 
 `blast_presale::package_admin::wrap` seals the never-upgraded publication cap once, at deployment.
@@ -741,10 +722,10 @@ Other objects:
   `migration_meme_residual`, `migration_quote_residual`, `holder_rewards_meme`,
   `holder_rewards_quote` (unallocated holder share), `next_round`, `last_checkpoint`. The position
   is a dynamic object field keyed by `presale_vault::PositionKey`.
-- `BlastRewardRound`: the holder fields below plus `treasury` and `gas_reserve`.
-  A present gas balance, including zero, is unsettled; `none` is terminal settlement.
 - `Round`: `vault_id`, `number`, `claim_deadline_ms`, `root`, `leaf_count`, `meme`, `quote`,
-  `claimed_bitmap` (leaf `i` is bit `i % 256` of word `i / 256`).
+  `claimed_bitmap` (leaf `i` is bit `i % 256` of word `i / 256`), `treasury`,
+  and `gas_reserve`. A present gas balance is pending; `none` means disabled
+  reimbursement or completed settlement. Publication and settlement events distinguish them.
 - `Vesting<T>`: `balance`, `beneficiary`, `start_ms`, `cliff_ms`, `period_ms`, `periods`,
   `released`.
 
@@ -767,13 +748,11 @@ directly (no envelope).
 | Migrate | `blast_presale::blast_presale::ProtocolFeesPaid` (unpartnered), `blast_presale::blast_presale::RaiseAllocated` (per raise recipient), `blast_presale::blast_presale::RecipientAllocated` (per token recipient), `blast_presale::blast_presale::PresaleMigrated`, then `presale_vault::VaultCreated` | Payouts with `vesting_id`; LP amounts; vault, pool, and position IDs. The vault event's third type argument is `blast_presale::cetus::Venue` or `blast_presale::bluefin::Venue`. |
 | Partner pay | `blast_partners::blast_partners::PartnerPaid`, `blast_presale::blast_presale::ProtocolFeesPaid` | `partner_quote` is the partner's cut. |
 | Claim | `blast_presale::blast_presale::Claimed` | `tokens`, `quote_refund`, `remaining_participants`, `vesting_id`. |
-| Collect | `presale_vault::FeesCollected`, `presale_vault::BlastHolderMemePaid` | Gross, Blast's part, per-recipient amounts aligned with the vault's recipients, holder share. `protocol_destination` is `none` when held for a partner. |
+| Collect | `presale_vault::FeesCollected`, `presale_vault::HolderMemePaid` | Gross, Blast's part, per-recipient amounts aligned with the vault's recipients, holder share. `protocol_destination` is `none` when held for a partner. |
 | Vault partner pay | `presale_vault::ProtocolLpFeesPaid` | Partner and Blast amounts per asset. |
 | Vault without a presale | `presale_vault::VaultCreated` | Zero `presale_id` and residuals; pool, position, liquidity, fee split, and Blast's rates. |
 | Residuals | `presale_vault::MigrationResidualsClaimed` | Amounts claimed. |
-| Rounds | `holder_rewards::RoundPublished`, `holder_rewards::RewardClaimed`, `holder_rewards::RoundClosed` | Legacy budgets, unallocated holder balances, per-claim payouts, returns. |
-| Reserve rounds | `holder_rewards::BlastRoundPublished`, `holder_rewards::BlastRewardClaimed`, `holder_rewards::GasReserveSettled`, `holder_rewards::BlastRoundClosed` | Holder funding separate from gas reserve, snapshotted treasury, exact reimbursement and returns; settlement is terminal. |
-| Legacy Meme | `presale_vault::BlastUnallocatedMemeReconciled` | Exact treasury payment and remaining unallocated balance. |
+| Rounds | `holder_rewards::RoundPublished`, `holder_rewards::RewardClaimed`, `holder_rewards::GasReserveSettled`, `holder_rewards::RoundClosed` | Holder funding separate from optional gas reserve, snapshotted treasury, exact reimbursement and returns; zero reserve disables reimbursement. |
 | Vesting | `VestingCreated`, `VestingClaimed` (from `blast_fun_vesting`) | Schedule terms and releases. |
 
 Admin events are listed in "Blast admin operations".

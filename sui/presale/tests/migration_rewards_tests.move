@@ -363,14 +363,15 @@ fun a_vault_lp_fee_update_must_change_the_rates() {
 fun the_admin_publishes_holder_rounds_from_the_holder_share() {
     let mut scenario = test_scenario::begin(CREATOR);
     let mut vault = new_vault(vector[], 10_000, &mut scenario);
-    vault.credit_legacy_holder_for_testing(
+    vault.credit_holder_for_testing(
         balance::create_for_testing<MEME>(40), balance::create_for_testing<QUOTE>(5),
     );
     let clock = clock::create_for_testing(scenario.ctx());
 
+    let policy = fee_policy::new_for_testing(scenario.ctx());
     rewards::publish_round(
         &mut vault,
-        &rewards_admin(),
+        &rewards_admin(), &policy,
         0,
         0,
         10,
@@ -379,10 +380,12 @@ fun the_admin_publishes_holder_rounds_from_the_holder_share() {
         1,
         40,
         5,
+        0,
         CLAIM_DEADLINE_MS,
         &clock,
         scenario.ctx(),
     );
+    policy.destroy_for_testing();
 
     let (vault_meme, vault_quote) = vault.holder_rewards_balances();
     assert_eq!(vector[vault_meme, vault_quote], vector[0, 0]);
@@ -667,9 +670,10 @@ fun a_round_needs_a_future_claim_deadline() {
     let mut clock = clock::create_for_testing(scenario.ctx());
     clock.set_for_testing(CLAIM_DEADLINE_MS);
 
+    let policy = fee_policy::new_for_testing(scenario.ctx());
     rewards::publish_round(
         &mut vault,
-        &rewards_admin(),
+        &rewards_admin(), &policy,
         0,
         0,
         10,
@@ -678,10 +682,12 @@ fun a_round_needs_a_future_claim_deadline() {
         1,
         1,
         0,
+        0,
         CLAIM_DEADLINE_MS,
         &clock,
         scenario.ctx(),
     );
+    policy.destroy_for_testing();
     abort
 }
 
@@ -827,7 +833,7 @@ fun policy_with_lp_fees(meme_bps: u64, quote_bps: u64, scenario: &mut Scenario):
 /// A vault whose holder share is 40 Meme and no Quote.
 fun funded_holder_vault(scenario: &mut Scenario): Vault<MEME, QUOTE> {
     let mut vault = new_vault(vector[], 10_000, scenario);
-    vault.credit_legacy_holder_for_testing(
+    vault.credit_holder_for_testing(
         balance::create_for_testing<MEME>(40), balance::zero<QUOTE>(),
     );
     vault
@@ -842,9 +848,10 @@ fun publish_round(
     scenario: &mut Scenario,
 ) {
     let clock = clock::create_for_testing(scenario.ctx());
+    let policy = fee_policy::new_for_testing(scenario.ctx());
     rewards::publish_round(
         self,
-        &rewards_admin(),
+        &rewards_admin(), &policy,
         number,
         start_checkpoint,
         end_checkpoint,
@@ -853,10 +860,12 @@ fun publish_round(
         1,
         1,
         0,
+        0,
         CLAIM_DEADLINE_MS,
         &clock,
         scenario.ctx(),
     );
+    policy.destroy_for_testing();
     clock.destroy_for_testing();
 }
 

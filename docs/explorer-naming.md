@@ -82,7 +82,6 @@ every package-administration object.
 | `blast_presale` | `blast_presale::PresaleCap` | new (ADR 0099); wallet-held, one per presale | module |
 | `blast_presale` | `presale_vault::Vault<Meme, Quote>` | new (ADR 0099); shared, one per migrated presale | module |
 | `blast_presale` | `holder_rewards::Round<Meme, Quote>` | new (ADR 0099); shared, one per reward root | module |
-| `blast_presale` | `holder_rewards::BlastRewardRound<Meme, Quote>` | new (ADR 0113); shared holder funds and distinct gas custody | struct |
 | `blast_presale` | `package_admin::PackageAdmin` | new (ADR 0099); shared, one per package | module |
 | `blast_presale` | `creation_policy::CreationPolicy` | new (ADR 0102); shared, one per package | module |
 | `blast_aftermath_dao_presale` | `blast_aftermath_dao_presale::AdminCap` | new (ADR 0104); publisher-held, one per package | module |
