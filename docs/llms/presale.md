@@ -492,8 +492,8 @@ The holder-reward share of LP fees accrues in the vault. Blast decides off chain
 1. Publish: `holder_rewards::publish_round(vault, admin_witness, number, start_checkpoint,
    end_checkpoint, root, manifest_digest, leaf_count, meme_amount, quote_amount, claim_deadline_ms,
    clock)`. *Blast admin* (`RewardsAdmin`). `number` must be the vault's next round
-   (starting at 0); the checkpoint interval must be non-empty and start where the previous
-   round ended; `root` and `manifest_digest` are 32 bytes; 1..=65,536 leaves; a positive budget
+   (starting at 0); the checkpoint interval must be non-empty and start at or after the previous
+   round ended; skipped holding periods need no funded round or round number; `root` and `manifest_digest` are 32 bytes; 1..=65,536 leaves; a positive budget
    of at least one asset, taken from the vault's holder-reward balances; a future deadline.
    Shares a `holder_rewards::Round` and emits `holder_rewards::RoundPublished`.
 2. Claim: `holder_rewards::claim(round, index, beneficiary, meme_amount, quote_amount, proof)`.

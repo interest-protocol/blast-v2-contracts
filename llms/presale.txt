@@ -20,7 +20,7 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 
 | Package | Product | Status | Package ID (`published-at`) | Type origin (`original-id`) |
 | --- | --- | --- | --- | --- |
-| `blast_presale` | Presale | live | `0x33897a946e231652f00d712834665831ada3e3ffb3cd3ef11f4a449058ab43c6` | `0x2d300f3d8819c6e09fd1558e518c2ffab97b324479843d4f94b561b10a441fd0` |
+| `blast_presale` | Presale | live; source has changed since | `0x33897a946e231652f00d712834665831ada3e3ffb3cd3ef11f4a449058ab43c6` | `0x2d300f3d8819c6e09fd1558e518c2ffab97b324479843d4f94b561b10a441fd0` |
 | `blast_aftermath_dao_presale` | Aftermath DAO-pool presale migrator | live | `0xac58d338925ac96304ca573a4dab80d442df6f2427291bcddbea7fc65279678e` | `0xac58d338925ac96304ca573a4dab80d442df6f2427291bcddbea7fc65279678e` |
 | `blast_partners` | Partner codes | live | `0x96fbe2db7337dea5ef6926203d32cf602e527d5e2dcae176fbbc3e3d2a30d94f` | `0x96fbe2db7337dea5ef6926203d32cf602e527d5e2dcae176fbbc3e3d2a30d94f` |
 | `blast_admin` | Administration | live | `0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9` | `0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9` |
@@ -162,7 +162,7 @@ run) before signing it.
 
 ## Presale
 
-> **Deployment status:** `blast_presale` and `blast_aftermath_dao_presale` are live on mainnet.
+> **Deployment status:** `blast_presale` is live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package. `blast_aftermath_dao_presale` is live on mainnet.
 
 ### What it is
 
@@ -656,8 +656,8 @@ The holder-reward share of LP fees accrues in the vault. Blast decides off chain
 1. Publish: `holder_rewards::publish_round(vault, admin_witness, number, start_checkpoint,
    end_checkpoint, root, manifest_digest, leaf_count, meme_amount, quote_amount, claim_deadline_ms,
    clock)`. *Blast admin* (`RewardsAdmin`). `number` must be the vault's next round
-   (starting at 0); the checkpoint interval must be non-empty and start where the previous
-   round ended; `root` and `manifest_digest` are 32 bytes; 1..=65,536 leaves; a positive budget
+   (starting at 0); the checkpoint interval must be non-empty and start at or after the previous
+   round ended; skipped holding periods need no funded round or round number; `root` and `manifest_digest` are 32 bytes; 1..=65,536 leaves; a positive budget
    of at least one asset, taken from the vault's holder-reward balances; a future deadline.
    Shares a `holder_rewards::Round` and emits `holder_rewards::RoundPublished`.
 2. Claim: `holder_rewards::claim(round, index, beneficiary, meme_amount, quote_amount, proof)`.
@@ -1417,7 +1417,7 @@ where you like); Blast takes no cut of it.
 
 ## API reference: `blast_presale` (Presale)
 
-Live on mainnet. This reference matches the published source.
+Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -2596,7 +2596,7 @@ public struct RewardClaimed<phantom Meme, phantom Quote> has copy, drop {
 | Constant | Code | Message |
 | --- | --- | --- |
 | `EWrongRound` | 0 | Round number must match the vault's next round. |
-| `EInvalidInterval` | 1 | Checkpoint interval must be nonempty and contiguous. |
+| `EInvalidInterval` | 1 | Checkpoint interval must be nonempty and must not overlap a previous round. |
 | `EInvalidCommitment` | 2 | Root and manifest digest must contain 32 bytes. |
 | `EInvalidLeafCount` | 3 | Round must contain between 1 and 65,536 leaves. |
 | `EEmptyBudget` | 4 | A round must reserve a positive amount of at least one asset. |

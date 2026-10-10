@@ -576,13 +576,13 @@ fun a_round_must_use_the_vaults_next_number() {
 
 #[test]
 #[expected_failure(abort_code = rewards::EInvalidInterval, location = blast_presale::holder_rewards)]
-/// Each round must start exactly where the previous round ended.
-fun a_round_cannot_skip_checkpoints() {
+/// A new daily interval may skip checkpoints but cannot overlap a funded round.
+fun a_round_cannot_overlap_checkpoints() {
     let mut scenario = test_scenario::begin(CREATOR);
     let mut vault = funded_holder_vault(&mut scenario);
     vault.publish_round(0, 0, 10, &mut scenario);
 
-    vault.publish_round(1, 11, 20, &mut scenario);
+    vault.publish_round(1, 9, 20, &mut scenario);
     abort
 }
 

@@ -153,6 +153,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0109](0109-vaults-without-a-presale.md) | A team that adds its own liquidity locks the position in a `Vault` with zero presale IDs, for the same fee split, Blast LP fees, and holder rewards; `Vault` becomes `Vault` | **proposed** |
 | [0110](0110-presale-initializer-and-early-close.md) | Presales are created through a `PresaleInitializer` hot potato; the hard cap is a sale setting independent of the uncapped phase, and a sale whose hard cap closes it when filled settles as soon as its raise is full | **proposed; amended by 0111** |
 | [0111](0111-venue-owned-presale-pool-tiers.md) | A presale's pool tier belongs to its venue: Cetus and Bluefin record it in `VenueConfig` and emit `venue_config::PoolTierReserved<Meme, Quote, Venue>`; the sale and `PresaleCreated` carry none | **proposed** |
+| [0112](0112-daily-holder-reward-intervals.md) | Daily holder-reward intervals | **accepted** |
 
 ADRs 0013–0035, 0038–0056, 0058–0067, 0069, 0073, 0074, 0076–0080, 0082, and 0085–0089 are accepted subject to the amendments shown above; ADR 0088 supersedes 0036, 0068, 0081, and 0083, and ADR 0089 supersedes 0057 and 0075. ADR 0074 accepts the Aftermath dependency and raw-field normalization while retaining its live evidence gate; ADR 0037 is superseded by 0043, and ADRs 0070–0072 are superseded by 0073. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
