@@ -60,9 +60,12 @@ done | sort)"
   'fee_policy:set_destination:TreasuryAdmin' \
   'fee_policy:set_fees:FeeAdmin' \
   'holder_rewards:publish_round:RewardsAdmin' \
+  'holder_rewards:publish_reserve_round:RewardsAdmin' \
+  'holder_rewards:settle_gas_reserve:RewardsAdmin' \
   'package_admin:authorize_upgrade:UpgradeAdmin' \
   'package_admin:commit_upgrade:UpgradeAdmin' \
-  'presale_vault:set_protocol_lp_fees:FeeAdmin' | sort)" ] \
+  'presale_vault:set_protocol_lp_fees:FeeAdmin' \
+  'presale_vault:reconcile_unallocated_meme:RewardsAdmin' | sort)" ] \
   || { printf '%s\n' "$admin_roles" >&2; fail "Every administrator action must take exactly its pinned presale role."; }
 
 # 2. Upgrade custody stays sealed and dependency-only, so every generation runs identical logic.

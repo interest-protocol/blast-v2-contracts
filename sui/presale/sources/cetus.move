@@ -152,7 +152,7 @@ public fun new_vault<Meme, Quote, CoinA, CoinB>(
 }
 
 /// Anyone may collect LP fees from a migrated presale's Cetus position, paying Blast and each fee
-/// recipient and accruing the holder-reward share. `CoinA` and `CoinB` are the pool's coin order.
+/// recipient and accruing the holder Quote and paying holder Meme to the governed treasury. `CoinA` and `CoinB` are the pool's coin order.
 public fun collect_fees<Meme, Quote, CoinA, CoinB>(
     vault: &mut Vault<Meme, Quote>,
     fee_policy: &FeePolicy,

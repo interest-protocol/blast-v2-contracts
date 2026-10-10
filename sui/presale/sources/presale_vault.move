@@ -16,7 +16,8 @@ public struct PositionKey<phantom Venue>() has copy, drop, store;
 /// Each collection first takes Blast's LP fees of each asset at the vault's
 /// rates, snapshotted at creation and changeable only by Blast's `FeeAdmin`, then
 /// pays every fee recipient its share of the rest at once; the holder-reward
-/// share accrues here until Blast's rewards administrator funds a round.
+/// Quote share accrues here until Blast's rewards administrator funds a round.
+/// Its holder Meme remainder is paid to the current governed fee destination.
 /// Blast's LP fees go to the protocol destination at once, unless the sale named
 /// a partner: then they wait here for `pay_protocol_lp_fees_with_partner`.
 public struct Vault<phantom Meme, phantom Quote> has key {
@@ -120,6 +121,29 @@ public fun pay_protocol_lp_fees_with_partner<Meme, Quote>(
     });
 }
 
+/// RewardsAdmin reconciles only the exact unallocated legacy Meme balance.
+/// Funded leaves and protocol, partner, creator and residual custody stay intact.
+/// The governed fee policy determines the recipient; callers cannot redirect it.
+public fun reconcile_unallocated_meme<Meme, Quote>(
+    self: &mut Vault<Meme, Quote>,
+    _: &AdminWitness<RewardsAdmin>,
+    fee_policy: &FeePolicy,
+    expected_meme_amount: u64,
+    ctx: &mut TxContext,
+) {
+    assert!(
+        expected_meme_amount > 0 && self.holder_rewards_meme.value() == expected_meme_amount,
+        ELegacyMemeMismatch,
+    );
+
+    let treasury = fee_policy.destination();
+    self.holder_rewards_meme.withdraw_all().pay_all(treasury, ctx);
+    event::emit(BlastUnallocatedMemeReconciled<Meme, Quote> {
+        vault_id: self.id.to_inner(), treasury, meme_amount: expected_meme_amount,
+        unallocated_meme_remaining: self.holder_rewards_meme.value(),
+    });
+}
+
 // === Package Functions ===
 
 /// Creates and shares a migrated presale's vault, with its venue position sealed as a dynamic
@@ -197,7 +221,8 @@ public(package) fun position_mut<Meme, Quote, Venue, Position: key + store>(
 /// Splits collected LP fees: Blast's LP fees at the vault's current rates, rounded up, are paid
 /// to the current protocol destination or, on a partnered vault, held for
 /// `pay_protocol_lp_fees_with_partner`; under the immutable creation-time BPS, every fee recipient
-/// is paid its share of the rest at once, and the holder-reward share stays in the vault. A zero
+/// is paid its share of the rest at once. Holder Meme goes to the governed treasury;
+/// holder Quote stays in the vault. A zero
 /// collection is valid, moves nothing, and emits nothing.
 public(package) fun split_fees<Meme, Quote>(
     self: &mut Vault<Meme, Quote>,
@@ -232,7 +257,8 @@ public(package) fun split_fees<Meme, Quote>(
         meme.pay(fee_recipient_meme[i], recipients[i], ctx);
         quote.pay(fee_recipient_quote[i], recipients[i], ctx);
     });
-    self.holder_rewards_meme.join(meme);
+    let treasury = fee_policy.destination();
+    meme.pay_all(treasury, ctx);
     self.holder_rewards_quote.join(quote);
 
     event::emit(FeesCollected<Meme, Quote> {
@@ -247,6 +273,12 @@ public(package) fun split_fees<Meme, Quote>(
         holder_rewards_meme,
         holder_rewards_quote,
     });
+    if (holder_rewards_meme > 0) {
+        event::emit(BlastHolderMemePaid<Meme, Quote> {
+            vault_id: self.id.to_inner(), treasury, meme_amount: holder_rewards_meme,
+            unallocated_meme_remaining: self.holder_rewards_meme.value(),
+        });
+    };
 }
 
 public(package) fun assert_cap<Meme, Quote>(
@@ -508,6 +540,25 @@ public fun destroy_for_testing<Meme, Quote>(self: Vault<Meme, Quote>) {
     holder_rewards_quote.destroy_zero();
 }
 
+/// Seeds an already-accrued legacy obligation without using the new collector.
+#[test_only]
+public fun credit_legacy_holder_for_testing<Meme, Quote>(
+    self: &mut Vault<Meme, Quote>, meme: Balance<Meme>, quote: Balance<Quote>,
+) {
+    self.holder_rewards_meme.join(meme);
+    self.holder_rewards_quote.join(quote);
+}
+
+#[test_only]
+public fun holder_meme_paid_bytes<Meme, Quote>(payload: &BlastHolderMemePaid<Meme, Quote>): vector<u8> {
+    std::bcs::to_bytes(payload)
+}
+
+#[test_only]
+public fun unallocated_meme_reconciled_bytes<Meme, Quote>(payload: &BlastUnallocatedMemeReconciled<Meme, Quote>): vector<u8> {
+    std::bcs::to_bytes(payload)
+}
+
 // === Events ===
 
 public struct VaultCreated<phantom Meme, phantom Quote, phantom Venue> has copy, drop {
@@ -565,6 +616,22 @@ public struct ProtocolLpFeesChanged<phantom Meme, phantom Quote> has copy, drop 
     protocol_lp_fee_quote_bps: u64,
 }
 
+/// The holder Meme allocation in `FeesCollected` was paid rather than accrued.
+public struct BlastHolderMemePaid<phantom Meme, phantom Quote> has copy, drop {
+    vault_id: ID,
+    treasury: address,
+    meme_amount: u64,
+    unallocated_meme_remaining: u64,
+}
+
+/// Restricted disposition of previously unallocated Meme, excluding funded rounds.
+public struct BlastUnallocatedMemeReconciled<phantom Meme, phantom Quote> has copy, drop {
+    vault_id: ID,
+    treasury: address,
+    meme_amount: u64,
+    unallocated_meme_remaining: u64,
+}
+
 // === Errors ===
 
 #[error(code = 0)]
@@ -582,6 +649,9 @@ const EProtocolLpFeesUnchanged: vector<u8> = b"An LP-fee update must change the 
 #[error(code = 4)]
 const EWrongPartner: vector<u8> = b"The partner is not the one this vault's presale named at creation.";
 
+#[error(code = 5)]
+const ELegacyMemeMismatch: vector<u8> = b"Reconciliation must match the exact positive unallocated Meme balance.";
+
 // === Imports ===
 
 use blast_admin::blast_acl::AdminWitness;
@@ -590,7 +660,7 @@ use blast_partners::blast_partners::Partner;
 
 use blast_presale::{
     blast_presale::{Self as presale, FeeSplit, Presale, PresaleCap},
-    blast_presale_domain::FeeAdmin,
+    blast_presale_domain::{FeeAdmin, RewardsAdmin},
     bps::Bps,
     creation_policy::CreationPolicy,
     fee_policy::{FeePolicy, ProtocolFees},

@@ -21,6 +21,22 @@ public struct Round<phantom Meme, phantom Quote> has key {
     quote: Balance<Quote>,
 }
 
+/// A holder round with independent, one-shot gas custody. An old `Round` close
+/// cannot accept this type. Claims do not touch its gas reserve.
+public struct BlastRewardRound<phantom Meme, phantom Quote> has key {
+    id: UID,
+    vault_id: ID,
+    number: u64,
+    claim_deadline_ms: u64,
+    root: vector<u8>,
+    leaf_count: u64,
+    claimed_bitmap: vector<u256>,
+    meme: Balance<Meme>,
+    quote: Balance<Quote>,
+    treasury: address,
+    gas_reserve: Option<Balance<Quote>>,
+}
+
 // === Public Functions ===
 
 /// Reserves rewards under a Blast-published holder allocation and shares the round.
@@ -154,6 +170,146 @@ public fun close_round<Meme, Quote>(
     id.delete();
 }
 
+/// Atomically funds holder leaves and separate gas custody under the governed
+/// treasury at publication. USD eligibility and gas attribution remain off chain.
+public fun publish_reserve_round<Meme, Quote>(
+    vault: &mut Vault<Meme, Quote>,
+    _: &AdminWitness<RewardsAdmin>,
+    fee_policy: &FeePolicy,
+    number: u64,
+    start_checkpoint: u64,
+    end_checkpoint: u64,
+    root: vector<u8>,
+    manifest_digest: vector<u8>,
+    leaf_count: u64,
+    meme_amount: u64,
+    quote_amount: u64,
+    gas_reserve_amount: u64,
+    claim_deadline_ms: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    assert!(number == vault.next_round(), EWrongRound);
+    assert!(
+        start_checkpoint < end_checkpoint
+            && vault.last_checkpoint().is_none_or!(|last| *last <= start_checkpoint),
+        EInvalidInterval,
+    );
+    assert!(
+        root.length() == merkle_tree::digest_length()
+            && manifest_digest.length() == merkle_tree::digest_length(),
+        EInvalidCommitment,
+    );
+    assert!(leaf_count > 0 && leaf_count <= MAX_REWARD_LEAVES, EInvalidLeafCount);
+    assert!(meme_amount > 0 || quote_amount > 0, EEmptyBudget);
+    assert!(claim_deadline_ms > clock.timestamp_ms(), EInvalidClaimDeadline);
+    let (available_meme, available_quote) = vault.holder_rewards_balances();
+    assert!(
+        meme_amount <= available_meme && quote_amount <= available_quote
+            && gas_reserve_amount <= available_quote - quote_amount,
+        EInsufficientBudget,
+    );
+
+    let vault_id = object::id(vault);
+    let treasury = fee_policy.destination();
+    let (meme, mut quote) = vault.fund_round(
+        end_checkpoint, meme_amount, quote_amount + gas_reserve_amount,
+    );
+    let gas_reserve = option::some(quote.split(gas_reserve_amount));
+    let round = BlastRewardRound {
+        id: object::new(ctx), vault_id, number, claim_deadline_ms, root,
+        leaf_count, claimed_bitmap: unclaimed(leaf_count), meme, quote,
+        treasury, gas_reserve,
+    };
+    let (meme_unallocated, quote_unallocated) = vault.holder_rewards_balances();
+
+    event::emit(BlastRoundPublished<Meme, Quote> {
+        vault_id, round_id: round.id.to_inner(), number, start_checkpoint,
+        end_checkpoint, claim_deadline_ms, root, manifest_digest, leaf_count,
+        meme_amount, quote_amount, meme_unallocated, quote_unallocated,
+        treasury, gas_reserve_amount,
+    });
+    transfer::share_object(round);
+}
+
+/// Pays only the committed holder balances; anyone may relay an unchanged proof.
+public fun claim_reserve_round<Meme, Quote>(
+    self: &mut BlastRewardRound<Meme, Quote>,
+    index: u64,
+    beneficiary: address,
+    meme_amount: u64,
+    quote_amount: u64,
+    proof: vector<vector<u8>>,
+    ctx: &mut TxContext,
+) {
+    assert!(index < self.leaf_count, EInvalidIndex);
+    let (word, bit) = claim_bit(index);
+    assert!(self.claimed_bitmap[word] & bit == 0, EAlreadyClaimed);
+    assert!(beneficiary != @0x0, EInvalidBeneficiary);
+    assert!(meme_amount > 0 || quote_amount > 0, EEmptyClaim);
+    let digest = leaf(self.vault_id, self.number, index, beneficiary, meme_amount, quote_amount);
+    assert!(
+        merkle_tree::verify(self.root, digest, index, self.leaf_count, &proof),
+        EInvalidProof,
+    );
+
+    let claimed_word = &mut self.claimed_bitmap[word];
+    *claimed_word = *claimed_word | bit;
+    self.meme.pay(meme_amount, beneficiary, ctx);
+    self.quote.pay(quote_amount, beneficiary, ctx);
+    event::emit(BlastRewardClaimed<Meme, Quote> {
+        round_id: self.id.to_inner(), index, beneficiary, meme_amount,
+        quote_amount, meme_remaining: self.meme.value(), quote_remaining: self.quote.value(),
+    });
+}
+
+/// RewardsAdmin settles a measured, capped reimbursement once. The committed
+/// treasury receives it; all unused reserve immediately returns to this vault.
+public fun settle_gas_reserve<Meme, Quote>(
+    self: &mut BlastRewardRound<Meme, Quote>,
+    _: &AdminWitness<RewardsAdmin>,
+    vault: &mut Vault<Meme, Quote>,
+    reimbursement_amount: u64,
+    ctx: &mut TxContext,
+) {
+    assert!(self.vault_id == object::id(vault), EWrongVault);
+    assert!(self.gas_reserve.is_some(), EReserveSettled);
+    assert!(reimbursement_amount <= self.gas_reserve.borrow().value(), EOverReserve);
+
+    let mut reserve = self.gas_reserve.extract();
+    let reserve_returned = reserve.value() - reimbursement_amount;
+    reserve.pay(reimbursement_amount, self.treasury, ctx);
+    vault.restore_holder_rewards(balance::zero(), reserve);
+    let (_, quote_unallocated) = vault.holder_rewards_balances();
+    event::emit(GasReserveSettled<Meme, Quote> {
+        vault_id: self.vault_id, round_id: self.id.to_inner(), number: self.number,
+        treasury: self.treasury, reimbursement_amount, reserve_returned, quote_unallocated,
+    });
+}
+
+/// Anyone can close at the deadline, returning all unclaimed holder funds and
+/// any unsettled reserve. Missing settlement authority cannot strand custody.
+public fun close_reserve_round<Meme, Quote>(
+    self: BlastRewardRound<Meme, Quote>,
+    vault: &mut Vault<Meme, Quote>,
+    clock: &Clock,
+) {
+    assert!(self.vault_id == object::id(vault), EWrongVault);
+    assert!(clock.timestamp_ms() >= self.claim_deadline_ms, EClaimsStillOpen);
+
+    let BlastRewardRound { id, vault_id, number, meme, mut quote, gas_reserve, .. } = self;
+    let (meme_returned, quote_returned) = (meme.value(), quote.value());
+    let reserve = gas_reserve.destroy_or!(balance::zero());
+    let gas_reserve_returned = reserve.value();
+    quote.join(reserve);
+    vault.restore_holder_rewards(meme, quote);
+    event::emit(BlastRoundClosed<Meme, Quote> {
+        vault_id, round_id: id.to_inner(), number, meme_returned,
+        quote_returned, gas_reserve_returned,
+    });
+    id.delete();
+}
+
 // === Private Functions ===
 
 /// A claim bitmap with every leaf's bit clear, 256 leaves per word.
@@ -246,6 +402,36 @@ public fun balances_for_testing<Meme, Quote>(self: &Round<Meme, Quote>): (u64, u
     (self.meme.value(), self.quote.value())
 }
 
+#[test_only]
+public fun reserve_balances_for_testing<Meme, Quote>(self: &BlastRewardRound<Meme, Quote>): (u64, u64, Option<u64>) {
+    (self.meme.value(), self.quote.value(), self.gas_reserve.map_ref!(|reserve| reserve.value()))
+}
+
+#[test_only]
+public fun reserve_published_id<Meme, Quote>(payload: &BlastRoundPublished<Meme, Quote>): ID {
+    payload.round_id
+}
+
+#[test_only]
+public fun reserve_published_bytes<Meme, Quote>(payload: &BlastRoundPublished<Meme, Quote>): vector<u8> {
+    bcs::to_bytes(payload)
+}
+
+#[test_only]
+public fun reserve_claimed_bytes<Meme, Quote>(payload: &BlastRewardClaimed<Meme, Quote>): vector<u8> {
+    bcs::to_bytes(payload)
+}
+
+#[test_only]
+public fun reserve_settled_bytes<Meme, Quote>(payload: &GasReserveSettled<Meme, Quote>): vector<u8> {
+    bcs::to_bytes(payload)
+}
+
+#[test_only]
+public fun reserve_closed_bytes<Meme, Quote>(payload: &BlastRoundClosed<Meme, Quote>): vector<u8> {
+    bcs::to_bytes(payload)
+}
+
 // === Events ===
 
 public struct RoundPublished<phantom Meme, phantom Quote> has copy, drop {
@@ -280,6 +466,53 @@ public struct RewardClaimed<phantom Meme, phantom Quote> has copy, drop {
     quote_amount: u64,
     meme_remaining: u64,
     quote_remaining: u64,
+}
+
+public struct BlastRoundPublished<phantom Meme, phantom Quote> has copy, drop {
+    vault_id: ID,
+    round_id: ID,
+    number: u64,
+    start_checkpoint: u64,
+    end_checkpoint: u64,
+    claim_deadline_ms: u64,
+    root: vector<u8>,
+    manifest_digest: vector<u8>,
+    leaf_count: u64,
+    meme_amount: u64,
+    quote_amount: u64,
+    meme_unallocated: u64,
+    quote_unallocated: u64,
+    treasury: address,
+    gas_reserve_amount: u64,
+}
+
+public struct BlastRewardClaimed<phantom Meme, phantom Quote> has copy, drop {
+    round_id: ID,
+    index: u64,
+    beneficiary: address,
+    meme_amount: u64,
+    quote_amount: u64,
+    meme_remaining: u64,
+    quote_remaining: u64,
+}
+
+public struct GasReserveSettled<phantom Meme, phantom Quote> has copy, drop {
+    vault_id: ID,
+    round_id: ID,
+    number: u64,
+    treasury: address,
+    reimbursement_amount: u64,
+    reserve_returned: u64,
+    quote_unallocated: u64,
+}
+
+public struct BlastRoundClosed<phantom Meme, phantom Quote> has copy, drop {
+    vault_id: ID,
+    round_id: ID,
+    number: u64,
+    meme_returned: u64,
+    quote_returned: u64,
+    gas_reserve_returned: u64,
 }
 
 // === Constants ===
@@ -327,6 +560,15 @@ const EClaimsStillOpen: vector<u8> = b"The round's claim deadline has not passed
 #[error(code = 12)]
 const EEmptyClaim: vector<u8> = b"A reward claim must pay a positive amount of at least one asset.";
 
+#[error(code = 13)]
+const EInsufficientBudget: vector<u8> = b"Holder funding and gas reserve must fit the vault's available balances.";
+
+#[error(code = 14)]
+const EReserveSettled: vector<u8> = b"The gas reserve has already been settled.";
+
+#[error(code = 15)]
+const EOverReserve: vector<u8> = b"Reimbursement must not exceed the bound gas reserve.";
+
 // === Imports ===
 
 use blast_admin::blast_acl::AdminWitness;
@@ -334,12 +576,13 @@ use blast_admin::blast_acl::AdminWitness;
 use blast_presale::{
     blast_presale,
     blast_presale_domain::RewardsAdmin,
+    fee_policy::FeePolicy,
     merkle_tree,
     presale_vault::Vault,
 };
 
 use std::bcs;
 
-use sui::{balance::Balance, clock::Clock, event, hash};
+use sui::{balance::{Self, Balance}, clock::Clock, event, hash};
 
 use fun blast_presale::pay as Balance.pay;
