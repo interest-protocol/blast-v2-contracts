@@ -42,7 +42,7 @@ public fun publish_round<Meme, Quote>(
     assert!(number == vault.next_round(), EWrongRound);
     assert!(
         start_checkpoint < end_checkpoint
-            && vault.last_checkpoint().is_none_or!(|last| *last == start_checkpoint),
+            && vault.last_checkpoint().is_none_or!(|last| *last <= start_checkpoint),
         EInvalidInterval,
     );
     assert!(
@@ -292,7 +292,7 @@ const MAX_REWARD_LEAVES: u64 = 65_536;
 const EWrongRound: vector<u8> = b"Round number must match the vault's next round.";
 
 #[error(code = 1)]
-const EInvalidInterval: vector<u8> = b"Checkpoint interval must be nonempty and contiguous.";
+const EInvalidInterval: vector<u8> = b"Checkpoint interval must be nonempty and must not overlap a previous round.";
 
 #[error(code = 2)]
 const EInvalidCommitment: vector<u8> = b"Root and manifest digest must contain 32 bytes.";
