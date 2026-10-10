@@ -27,11 +27,13 @@ public struct Round<phantom Meme, phantom Quote> has key {
 
 /// Atomically funds holder leaves and separate gas custody under the governed
 /// treasury at publication. A zero reserve disables reimbursement for this round.
+/// The signed expected treasury must still match the governed destination.
 /// USD eligibility and gas attribution remain off chain.
 public fun publish_round<Meme, Quote>(
     vault: &mut Vault<Meme, Quote>,
     _: &AdminWitness<RewardsAdmin>,
     fee_policy: &FeePolicy,
+    expected_treasury: address,
     number: u64,
     start_checkpoint: u64,
     end_checkpoint: u64,
@@ -45,6 +47,8 @@ public fun publish_round<Meme, Quote>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    let treasury = fee_policy.destination();
+    assert!(treasury == expected_treasury, ETreasuryChanged);
     assert!(number == vault.next_round(), EWrongRound);
     assert!(
         start_checkpoint < end_checkpoint
@@ -67,7 +71,6 @@ public fun publish_round<Meme, Quote>(
     );
 
     let vault_id = object::id(vault);
-    let treasury = fee_policy.destination();
     let (meme, mut quote) = vault.fund_round(
         end_checkpoint, meme_amount, quote_amount + gas_reserve_amount,
     );
@@ -396,6 +399,9 @@ const EReserveSettled: vector<u8> = b"Gas reimbursement is disabled or its reser
 
 #[error(code = 15)]
 const EOverReserve: vector<u8> = b"Reimbursement must not exceed the bound gas reserve.";
+
+#[error(code = 16)]
+const ETreasuryChanged: vector<u8> = b"The governed treasury must match the publication commitment.";
 
 // === Imports ===
 

@@ -25,6 +25,52 @@ public struct ReserveFixture {
 // === Tests ===
 
 #[test]
+#[expected_failure(abort_code = rewards::ETreasuryChanged, location = blast_presale::holder_rewards)]
+fun a_policy_change_after_planning_blocks_publication_with_gas_reimbursement() {
+    let mut fixture = start_reserve_rewards();
+    fixture.next_tx!(OWNER, |f| {
+        f.policy.set_destination(&blast_acl::witness_for_testing<TreasuryAdmin>(), @0xD);
+    });
+    fixture.publish(30);
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = rewards::ETreasuryChanged, location = blast_presale::holder_rewards)]
+fun a_policy_change_after_planning_blocks_publication_without_gas_reimbursement() {
+    let mut fixture = start_reserve_rewards();
+    fixture.next_tx!(OWNER, |f| {
+        f.policy.set_destination(&blast_acl::witness_for_testing<TreasuryAdmin>(), @0xD);
+    });
+    fixture.publish_budget(1_000, 0);
+    abort
+}
+
+#[test]
+#[expected_failure(abort_code = rewards::ETreasuryChanged, location = blast_presale::holder_rewards)]
+fun a_changed_treasury_is_rejected_before_an_overcommitted_budget() {
+    let mut fixture = start_reserve_rewards();
+    fixture.next_tx!(OWNER, |f| {
+        f.policy.set_destination(&blast_acl::witness_for_testing<TreasuryAdmin>(), @0xD);
+    });
+    fixture.publish(31);
+    abort
+}
+
+#[test]
+fun publication_accepts_a_new_plan_bound_to_the_changed_treasury() {
+    let mut fixture = start_reserve_rewards();
+    fixture.next_tx!(OWNER, |f| {
+        f.policy.set_destination(&blast_acl::witness_for_testing<TreasuryAdmin>(), @0xD);
+    });
+    fixture.publish_budget_to(970, 30, @0xD);
+    assert_eq!(fixture.vault_balances(), vector[0, 0]);
+    fixture.next_tx!(HOLDER, |f| f.close());
+    assert_eq!(fixture.vault_balances(), vector[0, 1_000]);
+    fixture.end();
+}
+
+#[test]
 fun settlement_pays_measured_cost_returns_unused_reserve_and_preserves_holder_custody() {
     let mut fixture = start_reserve_rewards();
     fixture.publish(30);
@@ -256,9 +302,13 @@ fun publish(self: &mut ReserveFixture, reserve: u64) {
 }
 
 fun publish_budget(self: &mut ReserveFixture, holder_quote: u64, reserve: u64) {
+    self.publish_budget_to(holder_quote, reserve, TREASURY);
+}
+
+fun publish_budget_to(self: &mut ReserveFixture, holder_quote: u64, reserve: u64, expected_treasury: address) {
     let root = rewards::leaf_for_testing(object::id(&self.vault), 0, 0, HOLDER, 0, holder_quote);
     rewards::publish_round(
-        &mut self.vault, &blast_acl::witness_for_testing<RewardsAdmin>(), &self.policy,
+        &mut self.vault, &blast_acl::witness_for_testing<RewardsAdmin>(), &self.policy, expected_treasury,
         0, 0, 10, root, hash::blake2b256(&b"manifest"), 1, 0, holder_quote, reserve,
         DEADLINE_MS, &self.clock, self.scenario.ctx(),
     );
@@ -266,7 +316,7 @@ fun publish_budget(self: &mut ReserveFixture, holder_quote: u64, reserve: u64) {
     let round_id = payload.reserve_published_id();
     let (meme_unallocated, quote_unallocated) = self.vault.holder_rewards_balances();
     let deadline_ms = DEADLINE_MS;
-    let treasury = TREASURY;
+    let treasury = expected_treasury;
     let mut expected = vector[];
     expected.append(bcs::to_bytes(&(object::id(&self.vault))));
     expected.append(bcs::to_bytes(&(round_id)));

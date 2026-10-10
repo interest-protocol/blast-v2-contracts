@@ -496,14 +496,17 @@ who receives holder assets and whether each round reimburses gas. A single
 Quote gas reserve.
 
 1. `holder_rewards::publish_round`: *Blast admin* (`RewardsAdmin`). It takes the
-   mutable shared vault, shared governed `FeePolicy`, interval and commitments,
+   mutable shared vault, shared governed `FeePolicy`, expected treasury address,
+   interval and commitments,
    exact holder Meme/Quote amounts, an explicit gas reserve amount, future
    deadline and Clock. The number is the vault's next round (starting at zero).
    The checkpoint interval is nonempty and starts at or after the previous
    round ended; skipped periods need no funded round or number. Root and
    manifest digest are 32 bytes, with 1..=65,536 leaves and a positive holder
-   budget. Holder funding plus reserve must fit available balances. It snapshots
-   the treasury and emits `holder_rewards::RoundPublished`. Zero reserve
+   budget. Before funding, the expected treasury must equal the governed
+   destination; `holder_rewards::ETreasuryChanged` rejects a policy change after
+   planning or signing. Holder funding plus reserve must fit available balances.
+   It snapshots the checked treasury and emits `holder_rewards::RoundPublished`. Zero reserve
    disables reimbursement for this round and requires no settlement. A positive
    reserve creates separate pending custody. Blast may cover gas and allocate
    the entire holder Quote budget to holder leaves.

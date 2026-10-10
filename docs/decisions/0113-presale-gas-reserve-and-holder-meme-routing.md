@@ -13,6 +13,12 @@ and holding end. The administrator explicitly supplies the reserve amount for
 each round. Zero disables reimbursement and stores no pending reserve; a
 positive amount enables it. There is no deployment-wide default.
 
+Publication binds the administrator's expected treasury address in the signed
+transaction and requires it to equal the governed destination at execution,
+before funding. A treasury change after planning or signing aborts the stale
+publication. It never rewrites the frozen round's recipient commitment. This
+binding also applies when reimbursement is disabled.
+
 RewardsAdmin settles an enabled reserve exactly once: reimburse a chosen amount
 no larger than reserve, then return the entire remainder. The contract bounds
 custody; trusted off-chain evidence determines eligible actual gas cost.

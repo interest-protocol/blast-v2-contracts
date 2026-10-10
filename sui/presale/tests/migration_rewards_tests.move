@@ -371,7 +371,7 @@ fun the_admin_publishes_holder_rounds_from_the_holder_share() {
     let policy = fee_policy::new_for_testing(scenario.ctx());
     rewards::publish_round(
         &mut vault,
-        &rewards_admin(), &policy,
+        &rewards_admin(), &policy, policy.destination(),
         0,
         0,
         10,
@@ -673,7 +673,7 @@ fun a_round_needs_a_future_claim_deadline() {
     let policy = fee_policy::new_for_testing(scenario.ctx());
     rewards::publish_round(
         &mut vault,
-        &rewards_admin(), &policy,
+        &rewards_admin(), &policy, policy.destination(),
         0,
         0,
         10,
@@ -851,7 +851,7 @@ fun publish_round(
     let policy = fee_policy::new_for_testing(scenario.ctx());
     rewards::publish_round(
         self,
-        &rewards_admin(), &policy,
+        &rewards_admin(), &policy, policy.destination(),
         number,
         start_checkpoint,
         end_checkpoint,
