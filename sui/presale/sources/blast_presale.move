@@ -886,7 +886,7 @@ public fun pay_protocol_fees_with_partner<SaleToken, Quote>(
     assert!(self.unpaid_protocol_quote.is_some(), ENoPartnerPayout);
 
     let mut protocol_quote = self.unpaid_protocol_quote.extract();
-    let partner_quote = partner.pay(&mut protocol_quote, clock);
+    let partner_quote = partner.pay(&mut protocol_quote, clock, ctx);
 
     self.pay_protocol_fees(protocol_quote, partner_quote, fee_policy.destination(), ctx);
 }

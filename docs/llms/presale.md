@@ -413,8 +413,8 @@ Who may call: *anyone*, once, after migration. `blast_presale::blast_presale::pa
 fee_policy, partner, clock)` takes the Blast raise fee the migration held, pays the partner its
 cut through `blast_partners::blast_partners::pay`, then pays Blast the rest of the raise fee and its whole token
 fee at the `FeePolicy`'s current destination. Emits `blast_partners::blast_partners::PartnerPaid` (when the cut is
-positive) and `blast_presale::blast_presale::ProtocolFeesPaid`. The partner is paid into its recipient's address
-balance (the framework's `send_funds`), not as a coin object.
+positive) and `blast_presale::blast_presale::ProtocolFeesPaid`. The partner is paid as an owned coin at its
+recipient address using `public_transfer`.
 
 #### Claiming tokens and refunds
 

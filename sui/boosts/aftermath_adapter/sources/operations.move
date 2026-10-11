@@ -229,7 +229,7 @@ public fun mint_with_partner<Product, Collateral>(
         vault, protocol, account, registry, clearing_house, base_oracle, collateral_oracle,
         cash, minimum_shares, deadline_ms, clock, ctx,
     );
-    pay_partner(vault, partner, admin_cash_before, clock);
+    pay_partner(vault, partner, admin_cash_before, clock, ctx);
 
     shares
 }
@@ -259,7 +259,7 @@ public fun redeem_with_partner<Product, Collateral>(
         vault, protocol, account, registry, clearing_house, base_oracle, collateral_oracle,
         shares, minimum_collateral, deadline_ms, clock, ctx,
     );
-    pay_partner(vault, partner, admin_cash_before, clock);
+    pay_partner(vault, partner, admin_cash_before, clock, ctx);
 
     cash
 }
@@ -732,11 +732,12 @@ fun pay_partner<Product, Collateral>(
     partner: &Partner,
     admin_cash_before: u64,
     clock: &Clock,
+    ctx: &mut TxContext,
 ) {
     let admin_fee = vault.admin_cash_balance<_, Collateral>() - admin_cash_before;
 
     let mut fee = vault.take_admin_cash(admin_fee);
-    let partner_fee = partner.pay(&mut fee, clock);
+    let partner_fee = partner.pay(&mut fee, clock, ctx);
     vault.retain_admin_cash(fee);
 
     events::partner_fee_paid<Product>(vault.id(), object::id(partner), admin_fee, partner_fee);
@@ -1069,8 +1070,9 @@ public fun pay_partner_for_testing<Product, Collateral>(
     partner: &Partner,
     admin_cash_before: u64,
     clock: &Clock,
+    ctx: &mut TxContext,
 ) {
-    pay_partner(vault, partner, admin_cash_before, clock);
+    pay_partner(vault, partner, admin_cash_before, clock, ctx);
 }
 
 #[test_only]

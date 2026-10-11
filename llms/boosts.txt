@@ -23,7 +23,7 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 | `blast_boosts_core` | Boosts core | live; source has changed since | `0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe` | `0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe` |
 | `blast_boosts_products` | Boost product tags | live; source has changed since | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` |
 | `blast_boosts_aftermath` | Boosts Aftermath adapter | live; source has changed since | `0x04f46747d8cb5ea590953ff1847301dfe5a287519d32c1610b35810aab082e50` | `0x04f46747d8cb5ea590953ff1847301dfe5a287519d32c1610b35810aab082e50` |
-| `blast_partners` | Partner codes | live | `0x96fbe2db7337dea5ef6926203d32cf602e527d5e2dcae176fbbc3e3d2a30d94f` | `0x96fbe2db7337dea5ef6926203d32cf602e527d5e2dcae176fbbc3e3d2a30d94f` |
+| `blast_partners` | Partner codes | live; source has changed since | `0x96fbe2db7337dea5ef6926203d32cf602e527d5e2dcae176fbbc3e3d2a30d94f` | `0x96fbe2db7337dea5ef6926203d32cf602e527d5e2dcae176fbbc3e3d2a30d94f` |
 | `blast_admin` | Administration | live | `0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9` | `0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9` |
 
 ## Calling Blast contracts
@@ -949,7 +949,7 @@ holders can claim what remains.
 
 ## Partner codes
 
-> **Deployment status:** `blast_partners` is live on mainnet.
+> **Deployment status:** `blast_partners` is live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package.
 
 ### What it is
 
@@ -1075,14 +1075,13 @@ fixed by `blast_partners::blast_partners::schedule_cap`, seven days later.
 #### Pay a partner (products, or anyone)
 
 `blast_partners::blast_partners::pay<T>` takes the shared `Partner` by immutable
-reference, a `&mut Balance<T>` holding Blast's fee on a trade, and `Clock`. It
-splits off `floor(fee * share_in_force / 10,000)`, sends it to the partner's
+reference, a `&mut Balance<T>` holding Blast's fee on a trade, `Clock`, and the
+transaction context. It splits off `floor(fee * share_in_force / 10,000)`, sends it to the partner's
 `recipient`, emits `PartnerPaid<T>`, and returns the amount. The rest stays in
 the caller's balance. With a zero share (or a fee too small to round above zero)
-it sends nothing, emits nothing, and returns 0. Payment uses Sui's
-address-balance transfer (`send_funds`): the recipient's balance of `T` grows,
-but no new `Coin` object is created. Integrators never call `pay` directly;
-products call it inside their own partnered functions.
+it sends nothing, emits nothing, and returns 0. Each positive payment creates
+a `Coin<T>` and transfers it to the recipient with `public_transfer`. Integrators
+never call `pay` directly; products call it inside their own partnered functions.
 
 ### How each product uses a partner
 
@@ -1195,8 +1194,8 @@ that product's module with that product's own error.
   `blast_partners::blast_partners::pay` is public, and anyone can pay a partner
   from their own balance. Pair it with the product event in the same
   transaction.
-- Payments arrive as address balance, not as new `Coin` objects; a scan of owned
-  coin objects does not show them.
+- Each positive payment arrives as an owned `Coin<T>` at the recipient address.
+  Repeated payouts produce separate coins that the recipient can merge.
 - On Boosts, check acceptance before building a partnered trade; otherwise call
   the plain `mint` or `redeem`.
 - On the launchpad and presales the partner is fixed at creation. Forgetting
@@ -3150,7 +3149,7 @@ public struct VenueAccount has store {
 
 ## API reference: `blast_partners` (Partner codes)
 
-Live on mainnet. This reference matches the published source.
+Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -3228,11 +3227,11 @@ public fun set_recipient(self: &mut Partner, cap: &PartnerCap, recipient: addres
 /// Destroys a cap, live or not.
 public fun destroy_cap(cap: PartnerCap)
 
-/// Sends the partner its share of `fee`, Blast's fee on one trade, rounded
-/// down so Blast keeps the remainder, emits `PartnerPaid`, and returns the
+/// Transfers the partner its share of `fee` (Blast's fee on one trade) as a coin,
+/// rounded down so Blast keeps the remainder, emits `PartnerPaid`, and returns the
 /// amount sent. Nothing is sent or emitted while the share is zero. `fee`
 /// keeps the rest. Anyone calling it pays the partner from their own balance.
-public fun pay<T>(self: &Partner, fee: &mut Balance<T>, clock: &Clock): u64
+public fun pay<T>(self: &Partner, fee: &mut Balance<T>, clock: &Clock, ctx: &mut TxContext): u64
 
 /// The forced delay every change Blast makes to a partner waits. Products use it
 /// for their own notice, such as how long a partner they remove stays accepted.
