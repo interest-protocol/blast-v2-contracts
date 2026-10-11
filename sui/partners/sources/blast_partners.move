@@ -123,15 +123,15 @@ public fun destroy_cap(cap: PartnerCap) {
     id.delete();
 }
 
-/// Sends the partner its share of `fee`, Blast's fee on one trade, rounded
-/// down so Blast keeps the remainder, emits `PartnerPaid`, and returns the
+/// Transfers the partner its share of `fee` (Blast's fee on one trade) as a coin,
+/// rounded down so Blast keeps the remainder, emits `PartnerPaid`, and returns the
 /// amount sent. Nothing is sent or emitted while the share is zero. `fee`
 /// keeps the rest. Anyone calling it pays the partner from their own balance.
-public fun pay<T>(self: &Partner, fee: &mut Balance<T>, clock: &Clock): u64 {
+public fun pay<T>(self: &Partner, fee: &mut Balance<T>, clock: &Clock, ctx: &mut TxContext): u64 {
     let amount = fee.value().mul_div(self.share_bps.value(clock), BASIS_POINTS);
 
     if (amount > 0) {
-        fee.split(amount).send_funds(self.recipient);
+        transfer::public_transfer(fee.split(amount).into_coin(ctx), self.recipient);
         event::emit(PartnerPaid<T> { partner_id: self.id.to_inner(), amount });
     };
 

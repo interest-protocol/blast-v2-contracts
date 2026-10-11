@@ -145,7 +145,7 @@ public fun new_vault<Meme, Quote>(
 }
 
 /// Anyone may collect LP fees, paying Blast and each fee recipient and accruing the
-/// holder-reward share.
+/// holder Quote and paying holder Meme to the governed treasury.
 public fun collect_fees<Meme, Quote>(
     vault: &mut Vault<Meme, Quote>,
     fee_policy: &FeePolicy,

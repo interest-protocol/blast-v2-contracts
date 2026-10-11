@@ -503,7 +503,7 @@ in_order \
         'if(self.unpaid_protocol_meme.value()==0&&self.unpaid_protocol_quote.value()==0)return;' \
         'letprotocol_destination=policy.protocol_destination();' \
         'letmutprotocol_meme=self.unpaid_protocol_meme.withdraw_all();letmutprotocol_quote=self.unpaid_protocol_quote.withdraw_all();' \
-        'letpartner_meme=partner.pay(&mutprotocol_meme,clock);letpartner_quote=partner.pay(&mutprotocol_quote,clock);' \
+        'letpartner_meme=partner.pay(&mutprotocol_meme,clock,ctx);letpartner_quote=partner.pay(&mutprotocol_quote,clock,ctx);' \
         'protocol_meme.pay_all(protocol_destination,ctx);protocol_quote.pay_all(protocol_destination,ctx);' \
         'blast_events::protocol_lp_fees_claimed(self.id.to_inner(),protocol_destination,paid_meme,paid_quote,partner_meme,partner_quote);' \
         <<<"$(vault_body claim_protocol_lp_fees_with_partner)" \

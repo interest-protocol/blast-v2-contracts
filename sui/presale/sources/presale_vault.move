@@ -16,7 +16,8 @@ public struct PositionKey<phantom Venue>() has copy, drop, store;
 /// Each collection first takes Blast's LP fees of each asset at the vault's
 /// rates, snapshotted at creation and changeable only by Blast's `FeeAdmin`, then
 /// pays every fee recipient its share of the rest at once; the holder-reward
-/// share accrues here until Blast's rewards administrator funds a round.
+/// Quote share accrues here until Blast's rewards administrator funds a round.
+/// Its holder Meme remainder is paid to the current governed fee destination.
 /// Blast's LP fees go to the protocol destination at once, unless the sale named
 /// a partner: then they wait here for `pay_protocol_lp_fees_with_partner`.
 public struct Vault<phantom Meme, phantom Quote> has key {
@@ -102,8 +103,8 @@ public fun pay_protocol_lp_fees_with_partner<Meme, Quote>(
     let protocol_destination = fee_policy.destination();
     let mut protocol_meme = self.unpaid_protocol_meme.withdraw_all();
     let mut protocol_quote = self.unpaid_protocol_quote.withdraw_all();
-    let partner_meme = partner.pay(&mut protocol_meme, clock);
-    let partner_quote = partner.pay(&mut protocol_quote, clock);
+    let partner_meme = partner.pay(&mut protocol_meme, clock, ctx);
+    let partner_quote = partner.pay(&mut protocol_quote, clock, ctx);
     let paid_meme = protocol_meme.value();
     let paid_quote = protocol_quote.value();
 
@@ -197,7 +198,8 @@ public(package) fun position_mut<Meme, Quote, Venue, Position: key + store>(
 /// Splits collected LP fees: Blast's LP fees at the vault's current rates, rounded up, are paid
 /// to the current protocol destination or, on a partnered vault, held for
 /// `pay_protocol_lp_fees_with_partner`; under the immutable creation-time BPS, every fee recipient
-/// is paid its share of the rest at once, and the holder-reward share stays in the vault. A zero
+/// is paid its share of the rest at once. Holder Meme goes to the governed treasury;
+/// holder Quote stays in the vault. A zero
 /// collection is valid, moves nothing, and emits nothing.
 public(package) fun split_fees<Meme, Quote>(
     self: &mut Vault<Meme, Quote>,
@@ -232,7 +234,8 @@ public(package) fun split_fees<Meme, Quote>(
         meme.pay(fee_recipient_meme[i], recipients[i], ctx);
         quote.pay(fee_recipient_quote[i], recipients[i], ctx);
     });
-    self.holder_rewards_meme.join(meme);
+    let treasury = fee_policy.destination();
+    meme.pay_all(treasury, ctx);
     self.holder_rewards_quote.join(quote);
 
     event::emit(FeesCollected<Meme, Quote> {
@@ -247,6 +250,12 @@ public(package) fun split_fees<Meme, Quote>(
         holder_rewards_meme,
         holder_rewards_quote,
     });
+    if (holder_rewards_meme > 0) {
+        event::emit(HolderMemePaid<Meme, Quote> {
+            vault_id: self.id.to_inner(), treasury, meme_amount: holder_rewards_meme,
+            unallocated_meme_remaining: self.holder_rewards_meme.value(),
+        });
+    };
 }
 
 public(package) fun assert_cap<Meme, Quote>(
@@ -508,6 +517,21 @@ public fun destroy_for_testing<Meme, Quote>(self: Vault<Meme, Quote>) {
     holder_rewards_quote.destroy_zero();
 }
 
+/// Seeds holder balances directly to exercise Merkle custody in tests.
+#[test_only]
+public fun credit_holder_for_testing<Meme, Quote>(
+    self: &mut Vault<Meme, Quote>, meme: Balance<Meme>, quote: Balance<Quote>,
+) {
+    self.holder_rewards_meme.join(meme);
+    self.holder_rewards_quote.join(quote);
+}
+
+#[test_only]
+public fun holder_meme_paid_bytes<Meme, Quote>(payload: &HolderMemePaid<Meme, Quote>): vector<u8> {
+    std::bcs::to_bytes(payload)
+}
+
+
 // === Events ===
 
 public struct VaultCreated<phantom Meme, phantom Quote, phantom Venue> has copy, drop {
@@ -563,6 +587,14 @@ public struct ProtocolLpFeesChanged<phantom Meme, phantom Quote> has copy, drop 
     vault_id: ID,
     protocol_lp_fee_meme_bps: u64,
     protocol_lp_fee_quote_bps: u64,
+}
+
+/// The holder Meme allocation in `FeesCollected` was paid rather than accrued.
+public struct HolderMemePaid<phantom Meme, phantom Quote> has copy, drop {
+    vault_id: ID,
+    treasury: address,
+    meme_amount: u64,
+    unallocated_meme_remaining: u64,
 }
 
 // === Errors ===

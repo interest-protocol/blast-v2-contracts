@@ -26,5 +26,5 @@ public struct ListingAdmin()
 /// Admits or removes the migrators that may create sales and vaults.
 public struct AdapterAdmin()
 
-/// Publishes holder-reward rounds from presale vaults.
+/// Publishes holder-reward rounds and settles capped gas reserves.
 public struct RewardsAdmin()

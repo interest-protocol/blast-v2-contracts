@@ -95,8 +95,8 @@ public fun claim_protocol_lp_fees_with_partner<Meme, Quote>(
     let protocol_destination = policy.protocol_destination();
     let mut protocol_meme = self.unpaid_protocol_meme.withdraw_all();
     let mut protocol_quote = self.unpaid_protocol_quote.withdraw_all();
-    let partner_meme = partner.pay(&mut protocol_meme, clock);
-    let partner_quote = partner.pay(&mut protocol_quote, clock);
+    let partner_meme = partner.pay(&mut protocol_meme, clock, ctx);
+    let partner_quote = partner.pay(&mut protocol_quote, clock, ctx);
     let paid_meme = protocol_meme.value();
     let paid_quote = protocol_quote.value();
 

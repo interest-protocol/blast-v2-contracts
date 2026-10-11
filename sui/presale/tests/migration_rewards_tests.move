@@ -24,9 +24,9 @@ public struct Position has key, store { id: UID }
 // === Tests ===
 
 #[test]
-/// Each collection pays every fee recipient at once, keeps the holder share, and
-/// assigns every atomic unit exactly once.
-fun collected_fees_pay_recipients_and_keep_the_holder_share() {
+/// Each collection pays every fee recipient and routes holder Meme at once,
+/// retains holder Quote, and assigns every atomic unit exactly once.
+fun collected_fees_pay_recipients_and_route_only_holder_meme() {
     let mut scenario = test_scenario::begin(CREATOR);
     let presale_id = object::id_from_address(@0xCAFE);
     let presale_cap = presale::cap_for_testing(presale_id, scenario.ctx());
@@ -64,7 +64,7 @@ fun collected_fees_pay_recipients_and_keep_the_holder_share() {
     assert_eq!(fee_recipient_quote, vector[5, 2]);
     assert_eq!(vector[holder_rewards_meme, holder_rewards_quote], vector[30, 3]);
     let (vault_meme, vault_quote) = vault.holder_rewards_balances();
-    assert_eq!(vector[vault_meme, vault_quote], vector[30, 3]);
+    assert_eq!(vector[vault_meme, vault_quote], vector[0, 3]);
 
     scenario.next_tx(CREATOR);
     assert_eq!(scenario.take_from_sender<Coin<MEME>>().burn_for_testing(), 51);
@@ -74,7 +74,7 @@ fun collected_fees_pay_recipients_and_keep_the_holder_share() {
     assert_eq!(scenario.take_from_sender<Coin<MEME>>().burn_for_testing(), 20);
     assert_eq!(scenario.take_from_sender<Coin<QUOTE>>().burn_for_testing(), 2);
 
-    vault.destroy_holding(30, 3);
+    vault.destroy_holding(0, 3);
     destroy(presale_cap);
     scenario.end();
 }
@@ -115,10 +115,10 @@ fun collected_fees_pay_blast_its_share_first() {
     assert_eq!(vector[holder_rewards_meme, holder_rewards_quote], vector[27, 2]);
 
     scenario.next_tx(TREASURY);
-    assert_eq!(scenario.take_from_sender<Coin<MEME>>().burn_for_testing(), 11);
+    assert_eq!(scenario.sender_total_meme(), 38);
     assert_eq!(scenario.take_from_sender<Coin<QUOTE>>().burn_for_testing(), 3);
 
-    vault.destroy_holding(27, 2);
+    vault.destroy_holding(0, 2);
     policy.destroy_for_testing();
     scenario.end();
 }
@@ -157,7 +157,7 @@ fun a_partnered_vault_holds_blasts_lp_fees_for_its_partner() {
     assert!(!scenario.has_most_recent_for_sender<Coin<QUOTE>>());
 
     vault.pay_held_lp_fees(&partner, TREASURY, &mut scenario);
-    vault.destroy_holding(27, 2);
+    vault.destroy_holding(0, 2);
     destroy(partner);
     scenario.end();
 }
@@ -192,10 +192,10 @@ fun anyone_pays_the_partner_its_cut_of_blasts_lp_fees_and_blast_the_rest() {
     assert_eq!(vector[unpaid_meme, unpaid_quote], vector[0, 0]);
 
     scenario.next_tx(TREASURY);
-    assert_eq!(scenario.take_from_sender<Coin<MEME>>().burn_for_testing(), 14);
+    assert_eq!(scenario.sender_total_meme(), 68);
     assert_eq!(scenario.take_from_sender<Coin<QUOTE>>().burn_for_testing(), 4);
 
-    vault.destroy_holding(54, 4);
+    vault.destroy_holding(0, 4);
     destroy(partner);
     scenario.end();
 }
@@ -223,10 +223,10 @@ fun held_lp_fees_go_to_the_destination_in_force_at_payout() {
     assert_eq!(scenario.take_from_sender<Coin<MEME>>().burn_for_testing(), 7);
     assert_eq!(scenario.take_from_sender<Coin<QUOTE>>().burn_for_testing(), 2);
     scenario.next_tx(TREASURY);
-    assert!(!scenario.has_most_recent_for_sender<Coin<MEME>>());
+    assert_eq!(scenario.sender_total_meme(), 27);
     assert!(!scenario.has_most_recent_for_sender<Coin<QUOTE>>());
 
-    vault.destroy_holding(27, 2);
+    vault.destroy_holding(0, 2);
     policy.destroy_for_testing();
     destroy(partner);
     scenario.end();
@@ -254,7 +254,7 @@ fun a_zero_cut_partner_leaves_blast_every_held_lp_fee() {
     assert!(event::events_by_type<PartnerPaid<MEME>>().is_empty());
     assert!(event::events_by_type<PartnerPaid<QUOTE>>().is_empty());
 
-    vault.destroy_holding(27, 2);
+    vault.destroy_holding(0, 2);
     destroy(partner);
     scenario.end();
 }
@@ -340,7 +340,7 @@ fun the_admin_changes_a_vaults_lp_fee_rates() {
     assert_eq!(fee_recipient_quote, vector[3, 1]);
     assert_eq!(vector[holder_rewards_meme, holder_rewards_quote], vector[30, 1]);
 
-    vault.destroy_holding(30, 1);
+    vault.destroy_holding(0, 1);
     policy.destroy_for_testing();
     scenario.end();
 }
@@ -363,16 +363,15 @@ fun a_vault_lp_fee_update_must_change_the_rates() {
 fun the_admin_publishes_holder_rounds_from_the_holder_share() {
     let mut scenario = test_scenario::begin(CREATOR);
     let mut vault = new_vault(vector[], 10_000, &mut scenario);
-    vault.collect_fees(
-        coin::mint_for_testing<MEME>(40, scenario.ctx()).into_balance(),
-        coin::mint_for_testing<QUOTE>(5, scenario.ctx()).into_balance(),
-        &mut scenario,
+    vault.credit_holder_for_testing(
+        balance::create_for_testing<MEME>(40), balance::create_for_testing<QUOTE>(5),
     );
     let clock = clock::create_for_testing(scenario.ctx());
 
+    let policy = fee_policy::new_for_testing(scenario.ctx());
     rewards::publish_round(
         &mut vault,
-        &rewards_admin(),
+        &rewards_admin(), &policy, policy.destination(),
         0,
         0,
         10,
@@ -381,10 +380,12 @@ fun the_admin_publishes_holder_rounds_from_the_holder_share() {
         1,
         40,
         5,
+        0,
         CLAIM_DEADLINE_MS,
         &clock,
         scenario.ctx(),
     );
+    policy.destroy_for_testing();
 
     let (vault_meme, vault_quote) = vault.holder_rewards_balances();
     assert_eq!(vector[vault_meme, vault_quote], vector[0, 0]);
@@ -421,7 +422,7 @@ fun a_remainder_tie_goes_to_the_fee_recipient_before_holders() {
     scenario.next_tx(CREATOR);
     assert_eq!(scenario.take_from_sender<Coin<MEME>>().burn_for_testing(), 2);
 
-    vault.destroy_holding(1, 0);
+    vault.destroy_holding(0, 0);
     scenario.end();
 }
 
@@ -669,9 +670,10 @@ fun a_round_needs_a_future_claim_deadline() {
     let mut clock = clock::create_for_testing(scenario.ctx());
     clock.set_for_testing(CLAIM_DEADLINE_MS);
 
+    let policy = fee_policy::new_for_testing(scenario.ctx());
     rewards::publish_round(
         &mut vault,
-        &rewards_admin(),
+        &rewards_admin(), &policy, policy.destination(),
         0,
         0,
         10,
@@ -680,10 +682,12 @@ fun a_round_needs_a_future_claim_deadline() {
         1,
         1,
         0,
+        0,
         CLAIM_DEADLINE_MS,
         &clock,
         scenario.ctx(),
     );
+    policy.destroy_for_testing();
     abort
 }
 
@@ -760,7 +764,8 @@ fun collect_fees(
     quote: Balance<QUOTE>,
     scenario: &mut Scenario,
 ) {
-    let policy = fee_policy::new_for_testing(scenario.ctx());
+    let mut policy = fee_policy::new_for_testing(scenario.ctx());
+    policy.set_destination(&treasury_admin(), TREASURY);
     self.credit_fees_for_testing(&policy, meme, quote, scenario.ctx());
     policy.destroy_for_testing();
 }
@@ -828,10 +833,8 @@ fun policy_with_lp_fees(meme_bps: u64, quote_bps: u64, scenario: &mut Scenario):
 /// A vault whose holder share is 40 Meme and no Quote.
 fun funded_holder_vault(scenario: &mut Scenario): Vault<MEME, QUOTE> {
     let mut vault = new_vault(vector[], 10_000, scenario);
-    vault.collect_fees(
-        coin::mint_for_testing<MEME>(40, scenario.ctx()).into_balance(),
-        balance::zero<QUOTE>(),
-        scenario,
+    vault.credit_holder_for_testing(
+        balance::create_for_testing<MEME>(40), balance::zero<QUOTE>(),
     );
     vault
 }
@@ -845,9 +848,10 @@ fun publish_round(
     scenario: &mut Scenario,
 ) {
     let clock = clock::create_for_testing(scenario.ctx());
+    let policy = fee_policy::new_for_testing(scenario.ctx());
     rewards::publish_round(
         self,
-        &rewards_admin(),
+        &rewards_admin(), &policy, policy.destination(),
         number,
         start_checkpoint,
         end_checkpoint,
@@ -856,10 +860,12 @@ fun publish_round(
         1,
         1,
         0,
+        0,
         CLAIM_DEADLINE_MS,
         &clock,
         scenario.ctx(),
     );
+    policy.destroy_for_testing();
     clock.destroy_for_testing();
 }
 
@@ -919,6 +925,14 @@ fun treasury_admin(): AdminWitness<TreasuryAdmin> {
     blast_acl::witness_for_testing()
 }
 
+fun sender_total_meme(self: &Scenario): u64 {
+    let mut total = 0;
+    while (self.has_most_recent_for_sender<Coin<MEME>>()) {
+        total = total + self.take_from_sender<Coin<MEME>>().burn_for_testing();
+    };
+    total
+}
+
 // === Imports ===
 
 use blast_admin::blast_acl::{Self, AdminWitness};
@@ -959,3 +973,5 @@ use fun collect_fees as Vault.collect_fees;
 use fun destroy_holding as Vault.destroy_holding;
 use fun pay_held_lp_fees as Vault.pay_held_lp_fees;
 use fun publish_round as Vault.publish_round;
+
+use fun sender_total_meme as Scenario.sender_total_meme;

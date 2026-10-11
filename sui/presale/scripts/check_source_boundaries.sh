@@ -60,6 +60,7 @@ done | sort)"
   'fee_policy:set_destination:TreasuryAdmin' \
   'fee_policy:set_fees:FeeAdmin' \
   'holder_rewards:publish_round:RewardsAdmin' \
+  'holder_rewards:settle_gas_reserve:RewardsAdmin' \
   'package_admin:authorize_upgrade:UpgradeAdmin' \
   'package_admin:commit_upgrade:UpgradeAdmin' \
   'presale_vault:set_protocol_lp_fees:FeeAdmin' | sort)" ] \

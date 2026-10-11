@@ -108,17 +108,20 @@ controls nothing until Blast registers a partner under it, so anyone may mint on
   once.
 - `destroy_cap` destroys a cap, live or not.
 
-**Payment.** `pay(partner, fee, clock)` takes a product's own fee on one trade,
-sends the partner `floor(fee × share / 10_000)` with `balance::send_funds`
-(`sui@06734f6:crates/sui-framework/packages/sui-framework/sources/balance.move:102`),
-the address-balance accumulator that needs no object input, leaves the rest in
-`fee`, and returns the amount. DeepBook Predict pays builder codes the same way
-(`deepbook@a60c1ee:packages/predict/sources/expiry_market.move:1623`). Every
-payment emits `PartnerPaid<T> { partner_id, amount }`; a zero share sends and
-emits nothing. Anyone calling `pay` pays the partner from their own balance, so
+**Payment.** `pay(partner, fee, clock, ctx)` takes a product's own fee on one trade,
+sends the partner `floor(fee × share / 10_000)` as a `Coin<T>` with
+`transfer::public_transfer`, leaves the rest in `fee`, and returns the amount.
+Each positive payment creates one owned coin at the partner's recipient address;
+zero payments create no coin, keeping payouts visible to tools that scan owned coins.
+The transaction context is used to create the coin. Every positive payment emits
+`PartnerPaid<T> { partner_id, amount }`; a zero share sends and emits nothing. Anyone calling `pay` pays the partner from their own balance, so
 the event always records money the partner really received. `PartnerUpdated`
 carries a partner's complete terms, both timelocked values included, after
 registration and after every change.
+
+The deployed partner package is immutable. This payout change requires a fresh
+partner publication and relinking its consumer packages; the existing mainnet
+package keeps its original payout behavior.
 
 **Boosts.** `operations::mint` and `operations::redeem` are unchanged.
 `mint_with_partner` and `redeem_with_partner` take `&Partner` after the
@@ -130,7 +133,8 @@ admin_fee, partner_fee }` records the payment against the vault, also when the
 partner is paid nothing, so the flow stays attributed. It carries no admin-cash
 total: it follows the operation's `Minted` or `Redeemed` in the same transaction,
 and Blast's admin cash is that event's `admin_cash_after` minus `partner_fee`. The adapter
-never calls `send_funds` itself, and only `operations` calls `pay` (source gate).
+keeps partner delivery in the shared partner package, and only `operations` calls
+`pay` (source gate).
 
 **Each product accepts its own partners** (owner, 2026-09-26). A deal is priced
 for one product, so a product pays only the partners it accepts: otherwise a 50%
@@ -212,7 +216,7 @@ on Hyperliquid.
   vault's admin share at once, and partners earn nothing while it is zero, its
   value at activation.
 - A recipient the collateral's deny list blocks is expected to make partner
-  trades abort, since Sui checks deny lists for address-balance deposits; the
+  trades abort, since Sui checks deny lists for coin transfers; the
   release rehearsal confirms it. The partner fixes it instantly with its cap, or
   integrators call the plain entry points.
 - Codes are public: anyone can name any partner a product accepts. The partner earns on that flow;
@@ -267,8 +271,8 @@ on Hyperliquid.
   and `Redeemed` and matches the vault's admin cash.
 - Gates: the util coverage script, `sui/partners/scripts/verify.sh`, the adapter's
   `verify.sh local` and boundary gate, the composition tests, the style check.
-- Still to run before release: Move tests cannot observe address balances, so a
-  live rehearsal of a partnered mint and redeem that reads the recipient's balance,
+- Still to run before release: a live rehearsal of a partnered mint and redeem
+  that verifies the recipient's transferred coins,
   and a deny-listed recipient, is a release gate that has not been run. The
   partner entry points cannot run locally against the Aftermath stubs, so the
   rehearsal also covers `mint_with_partner` and `redeem_with_partner` end to end,

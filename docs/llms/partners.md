@@ -124,14 +124,13 @@ fixed by `blast_partners::blast_partners::schedule_cap`, seven days later.
 #### Pay a partner (products, or anyone)
 
 `blast_partners::blast_partners::pay<T>` takes the shared `Partner` by immutable
-reference, a `&mut Balance<T>` holding Blast's fee on a trade, and `Clock`. It
-splits off `floor(fee * share_in_force / 10,000)`, sends it to the partner's
+reference, a `&mut Balance<T>` holding Blast's fee on a trade, `Clock`, and the
+transaction context. It splits off `floor(fee * share_in_force / 10,000)`, sends it to the partner's
 `recipient`, emits `PartnerPaid<T>`, and returns the amount. The rest stays in
 the caller's balance. With a zero share (or a fee too small to round above zero)
-it sends nothing, emits nothing, and returns 0. Payment uses Sui's
-address-balance transfer (`send_funds`): the recipient's balance of `T` grows,
-but no new `Coin` object is created. Integrators never call `pay` directly;
-products call it inside their own partnered functions.
+it sends nothing, emits nothing, and returns 0. Each positive payment creates
+a `Coin<T>` and transfers it to the recipient with `public_transfer`. Integrators
+never call `pay` directly; products call it inside their own partnered functions.
 
 ### How each product uses a partner
 
@@ -244,8 +243,8 @@ that product's module with that product's own error.
   `blast_partners::blast_partners::pay` is public, and anyone can pay a partner
   from their own balance. Pair it with the product event in the same
   transaction.
-- Payments arrive as address balance, not as new `Coin` objects; a scan of owned
-  coin objects does not show them.
+- Each positive payment arrives as an owned `Coin<T>` at the recipient address.
+  Repeated payouts produce separate coins that the recipient can merge.
 - On Boosts, check acceptance before building a partnered trade; otherwise call
   the plain `mint` or `redeem`.
 - On the launchpad and presales the partner is fixed at creation. Forgetting

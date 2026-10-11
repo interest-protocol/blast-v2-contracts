@@ -351,7 +351,7 @@ fun a_partner_without_a_live_cap_is_moved_to_a_new_one() {
         let mut destroyed = fixture.take_partner_by_id(destroyed_id);
         let mut never_minted = fixture.take_partner_by_id(never_minted_id);
         let mut fee = balance::create_for_testing<SUI>(1_000);
-        assert_eq!(destroyed.pay(&mut fee, &fixture.clock), 250);
+        assert_eq!(fixture.pay_fee(&destroyed, &mut fee), 250);
         let new_cap = partners::new_cap(fixture.ctx!());
         fixture.schedule_cap(&mut destroyed, object::id(&new_cap));
         fixture.schedule_cap(&mut never_minted, object::id(&new_cap));
@@ -497,6 +497,34 @@ fun the_current_recipient_is_refused() {
 // --- Payment ---
 
 #[test]
+fun payment_transfers_one_coin_to_the_recipient_and_skips_dust() {
+    let mut fixture = start();
+    let cap = fixture.register(RECIPIENT, 5_000);
+
+    fixture.next_tx!(ADMIN, |fixture| {
+        let partner = fixture.take_partner();
+        let mut fee = balance::create_for_testing<SUI>(1_001);
+        assert_eq!(fixture.pay_fee(&partner, &mut fee), 500);
+        assert_eq!(fee.value(), 501);
+        let mut dust = balance::create_for_testing<SUI>(1);
+        assert_eq!(fixture.pay_fee(&partner, &mut dust), 0);
+        assert_eq!(dust.value(), 1);
+        fee.destroy_for_testing();
+        dust.destroy_for_testing();
+        fixture.return_partner(partner);
+    });
+
+    fixture.next_tx!(RECIPIENT, |fixture| {
+        let payment = fixture.take_payment();
+        assert_eq!(payment.value(), 500);
+        payment.burn_for_testing();
+    });
+
+    partners::destroy_cap(cap);
+    fixture.end();
+}
+
+#[test]
 /// A partner is paid its registered share at once; a scheduled share pays only
 /// once it takes effect.
 fun a_partner_is_paid_its_share_from_registration_and_a_new_one_only_once_in_force() {
@@ -506,12 +534,12 @@ fun a_partner_is_paid_its_share_from_registration_and_a_new_one_only_once_in_for
     fixture.next_tx!(ADMIN, |fixture| {
         let mut partner = fixture.take_partner();
         let mut fee = balance::create_for_testing<SUI>(1_000);
-        assert_eq!(partner.pay(&mut fee, &fixture.clock), 500);
+        assert_eq!(fixture.pay_fee(&partner, &mut fee), 500);
         fixture.schedule_share(&mut partner, MAX_SHARE_BPS);
         fixture.set_time(START_MS + delay() - 1);
-        assert_eq!(partner.pay(&mut fee, &fixture.clock), 250);
+        assert_eq!(fixture.pay_fee(&partner, &mut fee), 250);
         fixture.set_time(START_MS + delay());
-        assert_eq!(partner.pay(&mut fee, &fixture.clock), 200);
+        assert_eq!(fixture.pay_fee(&partner, &mut fee), 200);
         assert_eq!(fee.value(), 50);
         fee.destroy_for_testing();
         fixture.return_partner(partner);
@@ -535,7 +563,7 @@ fun payment_matches_the_rounded_down_reference() {
         201u64.do!(|amount| {
             let mut fee = balance::create_for_testing<SUI>(amount);
             let expected = ((amount as u128) * (*share_bps as u128) / (BASIS_POINTS as u128)) as u64;
-            assert_eq!(partner.pay(&mut fee, &clock), expected);
+            assert_eq!(partner.pay(&mut fee, &clock, &mut ctx), expected);
             assert_eq!(fee.value(), amount - expected);
             fee.destroy_for_testing();
         });
@@ -554,7 +582,7 @@ fun payment_of_the_largest_fee_at_the_maximum_share_does_not_overflow() {
     let max = std::u64::max_value!();
     let mut fee = balance::create_for_testing<SUI>(max);
 
-    let paid = partner.pay(&mut fee, &clock);
+    let paid = partner.pay(&mut fee, &clock, &mut ctx);
 
     assert_eq!(paid, ((max as u128) * (MAX_SHARE_BPS as u128) / (BASIS_POINTS as u128)) as u64);
     assert_eq!(fee.value(), max - paid);
@@ -572,9 +600,9 @@ fun every_payment_emits_what_the_partner_received() {
     let partner = partners::new_for_testing(RECIPIENT, 5_000, &mut ctx);
     let mut fee = balance::create_for_testing<SUI>(1_001);
 
-    assert_eq!(partner.pay(&mut fee, &clock), 500);
+    assert_eq!(partner.pay(&mut fee, &clock, &mut ctx), 500);
     let mut dust = balance::create_for_testing<SUI>(1);
-    assert_eq!(partner.pay(&mut dust, &clock), 0);
+    assert_eq!(partner.pay(&mut dust, &clock, &mut ctx), 0);
 
     let payments = event::events_by_type<PartnerPaid<SUI>>();
     assert_eq!(payments.length(), 1);
@@ -598,8 +626,8 @@ fun each_deal_is_paid_and_reported_at_its_own_share() {
     let mut boosts_fee = balance::create_for_testing<SUI>(1_000);
     let mut other_fee = balance::create_for_testing<SUI>(1_000);
 
-    assert_eq!(boosts.pay(&mut boosts_fee, &clock), 500);
-    assert_eq!(other.pay(&mut other_fee, &clock), 80);
+    assert_eq!(boosts.pay(&mut boosts_fee, &clock, &mut ctx), 500);
+    assert_eq!(other.pay(&mut other_fee, &clock, &mut ctx), 80);
 
     let payments = event::events_by_type<PartnerPaid<SUI>>();
     let (first_id, first_amount) = payments[0].partner_paid_fields();
@@ -640,6 +668,16 @@ macro fun next_tx($self: &mut Fixture, $sender: address, $body: |&mut Fixture|) 
 macro fun ctx($self: &mut Fixture): &mut TxContext {
     let fixture = $self;
     fixture.scenario.ctx()
+}
+
+fun pay_fee(self: &mut Fixture, partner: &Partner, fee: &mut balance::Balance<SUI>): u64 {
+    partner.pay(fee, &self.clock, self.scenario.ctx())
+}
+
+fun take_payment(self: &Fixture): sui::coin::Coin<SUI> {
+    assert_eq!(test_scenario::ids_for_address<sui::coin::Coin<SUI>>(RECIPIENT).length(), 1);
+    assert_eq!(test_scenario::ids_for_address<sui::coin::Coin<SUI>>(ADMIN).length(), 0);
+    self.scenario.take_from_address(RECIPIENT)
 }
 
 fun delay(): u64 {
