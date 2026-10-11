@@ -69,7 +69,8 @@
       "modules": [
         "blast_partners"
       ],
-      "transactionDigest": "29YWUufKBFUQq5x2uLYkcDf1jJPuJKCkg8V2jgRVcBEi"
+      "transactionDigest": "29YWUufKBFUQq5x2uLYkcDf1jJPuJKCkg8V2jgRVcBEi",
+      "publicationReason": "Partner pay now transfers a Coin with public_transfer and adds TxContext; fresh presale calls that new signature. Existing immutable Partners package is unchanged."
     },
     "presale": {
       "packageId": "0xf9c404c0368cf014b44cac79dc5037da2aa34e16952673433d1c87ae3d2f8ca4",
@@ -160,7 +161,13 @@
     "packageAdmin": {
       "objectId": "0xbea1b6227c157f3ffa9afa9925ae1bd0013692ca0c55d02558a2b18945c8f083",
       "initialSharedVersion": "2",
-      "upgradePolicy": 192
+      "upgradePolicy": 192,
+      "wrappedUpgradeCap": {
+        "objectId": "0xbd2537fb118c1f4da04ae897f24fc8f6543983055172e3874371a254b050cc96",
+        "packageId": "0xf9c404c0368cf014b44cac79dc5037da2aa34e16952673433d1c87ae3d2f8ca4",
+        "version": "1",
+        "policy": 192
+      }
     }
   },
   "adminObjects": {
@@ -244,6 +251,8 @@
     "feeDestinationAndAllRatesReadBack": true,
     "newRewardsCapOwnerVerified": true,
     "sdkCheck": "426 tests, ABI, formatting, typecheck, build, package PASS",
-    "rewardExperiment": "not started"
+    "rewardExperiment": "not started",
+    "wrappedUpgradeCapPolicyReadBack": true,
+    "allOperatorRolesAndRewardsRoleSignInDryRuns": true
   }
 }
