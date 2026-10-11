@@ -1,0 +1,249 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "sui-package-deployment",
+  "release": "blast-presale-day-zero-testing",
+  "network": {
+    "chain": "sui",
+    "environment": "mainnet",
+    "chainIdentifierHex": "35834a8a",
+    "chainIdentifierBase58": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"
+  },
+  "timestampUtc": "2026-10-11T18:34:51.158000+00:00",
+  "recordedAtUtc": "2026-10-11T18:50:37.499678+00:00",
+  "repository": {
+    "commit": "4b170eef84a8f29b3aed91f035bbe23490adb0bd",
+    "workingTree": "clean Move source; removed publication metadata in disposable copy",
+    "note": "Fresh independent publications; no upgrade. Frozen source commit remains the canonical ABI identity."
+  },
+  "toolchain": {
+    "suiCli": "1.77.2-51d177ad7d65",
+    "moveEdition": "2024",
+    "node": "24.18.0"
+  },
+  "deployer": "0x612fa27ba229021c5a1c32022fd6341ffbd58a87ac928a0dc32d8d6d1dba9fed",
+  "status": "success",
+  "transactions": {
+    "partners-publish": {
+      "digest": "29YWUufKBFUQq5x2uLYkcDf1jJPuJKCkg8V2jgRVcBEi",
+      "checkpoint": "332900671",
+      "status": "success",
+      "timestampMs": "1791743624932"
+    },
+    "presale-publish": {
+      "digest": "4AgQkLkh6CUGe1ZYKrn4LZTgQ1uXwRtQKYQZVW8SCmrq",
+      "checkpoint": "332900953",
+      "status": "success",
+      "timestampMs": "1791743691158"
+    },
+    "presale-seal": {
+      "digest": "By9ePYQQkB82ixCVXRs2rrCdvrqzze4h96iK6dpHqdwe",
+      "checkpoint": "332901043",
+      "status": "success",
+      "timestampMs": "1791743712438"
+    },
+    "vendor-publish": {
+      "digest": "5PposrxuEwPVrqczWZyBCaHrPqEwHM3CqtwYZK5SRH1u",
+      "checkpoint": "332901311",
+      "status": "success",
+      "timestampMs": "1791743776382"
+    },
+    "roles-configure": {
+      "digest": "6DbKdgHfgoULuhp8bxWwyEFdvpjKVHC52umaGezdXjoG",
+      "checkpoint": "332901460",
+      "status": "success",
+      "timestampMs": "1791743811437"
+    },
+    "policy-configure": {
+      "digest": "HbiG4ToVM29jB6AvwPUMjRozZC5KsTEy6CzvbiFWsNwp",
+      "checkpoint": "332901615",
+      "status": "success",
+      "timestampMs": "1791743846861"
+    }
+  },
+  "packages": {
+    "partners": {
+      "packageId": "0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd",
+      "originalPackageId": "0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd",
+      "version": 1,
+      "immutable": true,
+      "modules": [
+        "blast_partners"
+      ],
+      "transactionDigest": "29YWUufKBFUQq5x2uLYkcDf1jJPuJKCkg8V2jgRVcBEi"
+    },
+    "presale": {
+      "packageId": "0xf9c404c0368cf014b44cac79dc5037da2aa34e16952673433d1c87ae3d2f8ca4",
+      "originalPackageId": "0xf9c404c0368cf014b44cac79dc5037da2aa34e16952673433d1c87ae3d2f8ca4",
+      "version": 1,
+      "immutable": false,
+      "modules": [
+        "blast_presale",
+        "blast_presale_domain",
+        "bluefin",
+        "bps",
+        "cetus",
+        "creation_policy",
+        "fee_policy",
+        "holder_rewards",
+        "merkle_tree",
+        "migration_math",
+        "package_admin",
+        "presale_vault",
+        "venue_config"
+      ],
+      "transactionDigest": "4AgQkLkh6CUGe1ZYKrn4LZTgQ1uXwRtQKYQZVW8SCmrq"
+    },
+    "aftermathDaoPresale": {
+      "packageId": "0x2fe674f6c42f49b7647be760a10f89f843396b9294af8fab5bfbc929fb7aab01",
+      "originalPackageId": "0x2fe674f6c42f49b7647be760a10f89f843396b9294af8fab5bfbc929fb7aab01",
+      "version": 1,
+      "immutable": true,
+      "modules": [
+        "blast_aftermath_dao_presale"
+      ],
+      "transactionDigest": "5PposrxuEwPVrqczWZyBCaHrPqEwHM3CqtwYZK5SRH1u"
+    },
+    "admin": {
+      "name": "blast_admin",
+      "packageId": "0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9",
+      "version": "1",
+      "upgradePolicy": "immutable",
+      "sourceDigest": "sha256:089a7db2da8cf7d1a8ef78372a58298f1c18352e560af4d63cc06d45c5f5a13a",
+      "constructorParameters": {
+        "blast_acl_root": "0x612fa27ba229021c5a1c32022fd6341ffbd58a87ac928a0dc32d8d6d1dba9fed"
+      },
+      "reused": true
+    }
+  },
+  "publishCheckpoint": "332900953",
+  "dependencyPackages": {
+    "moveStdlib": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "suiFramework": "0x0000000000000000000000000000000000000000000000000000000000000002",
+    "blastFunTimelock": "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d",
+    "blastFunVesting": "0x85fdb7e3d28162b99e0df758069a3d23cff874c400b2160fc0d4618aefd3ec5c",
+    "bluefinSpot": "0xd075338d105482f1527cbfd363d6413558f184dec36d9138a70261e87f486e9c",
+    "cetusClmm": "0x260693ec785a6e6c9d81d58c7d2ff72f1288ae0fa6a9725abe05a6478b11f084",
+    "cetusClmmVester": "0x48dcc51091e692a0c8a64930fc839fb5a8e58de3590c084a8322b9cd34754c36",
+    "cetusLpBurn": "0xc4aabc874f5060d3147d8f74c14e3a8a1f9f8d92edea138a51635395ed167cd9",
+    "cetusToken": "0x06864a6f921804860930db6ddbe2e16acdf8504495ea7481637a1c8b9a8fe54b",
+    "integerLibrary": "0xab5e63352d0f05881bdfa1631cc0f7fc1669175a00d608828a924df481a9e4bd",
+    "integerMate": "0xdfaadf86be9af246900d1e3f3b996cf549e7948e662a9977bdd7646d8fa3a778",
+    "moveStl": "0x8569b7efebec65c73b9dc15c5ac2a9542870d286fa79a3feedffbaa94ed53002",
+    "aftermathAmm": "0xf948935b111990c2b604900c9b2eeb8f24dcf9868a45d1ea1653a5f282c10e29",
+    "aftermathDaoFeePools": "0x5ad6890968efcf3d20899e0cec735214f1067b96e77e77d86408989998468bb2"
+  },
+  "aftermathTransitiveDependencies": [
+    "0x2d9316f1f1a95f6d7c85a4e690ef7c359e6649773ef2c37ad7d9857adb6bef06",
+    "0x64213b0e4a52bac468d4ac3f140242f70714381653a1919a6d57cd49c628207a",
+    "0xbc7b2c577ad9362fbb0dba397d17f3bcc81bf7aa916559f99a77eaee05d0947c",
+    "0x73baa782c55003b3a359dec04b189312565d18e7309d4a51f5f112f891e3b2ab",
+    "0xa6baab1e668c7868991c1c3c11e144100f5734c407d020f72a01b9d1a8bcb97f",
+    "0xc66fabf1a9253e43c70f1cc02d40a1d18db183140ecaae2a3f58fa6b66c55acf"
+  ],
+  "sharedObjects": {
+    "acl": {
+      "objectId": "0xc9fbcfc4eda38626d7daad17902cc145b4008beb20470135438298aa7a005a6d",
+      "initialSharedVersion": "1"
+    },
+    "venueConfig": {
+      "objectId": "0xebfd4e31f8fddf1b8d5b4a45835c7397156f6f62eeefef46b7b1b42aa29c6d39",
+      "initialSharedVersion": "1"
+    },
+    "creationPolicy": {
+      "objectId": "0x4ce001c53e9da536fc7d04a87383e90ca76e27492b3cad92cf9e167af0dc83d8",
+      "initialSharedVersion": "1"
+    },
+    "feePolicy": {
+      "objectId": "0x3da5bfd3275991b70a445a2022e07925ce9a927dd47d7c3fd583563089a9afae",
+      "initialSharedVersion": "1"
+    },
+    "packageAdmin": {
+      "objectId": "0xbea1b6227c157f3ffa9afa9925ae1bd0013692ca0c55d02558a2b18945c8f083",
+      "initialSharedVersion": "2",
+      "upgradePolicy": 192
+    }
+  },
+  "adminObjects": {
+    "superAdminCap": {
+      "objectId": "0x6187ad51c17dee9f288ebbf7f7655b0a7185d7697a5aa23e96f8c66169aa2b2c",
+      "holder": "0x612fa27ba229021c5a1c32022fd6341ffbd58a87ac928a0dc32d8d6d1dba9fed",
+      "reused": true
+    },
+    "adminCaps": [
+      {
+        "objectId": "0xf9b3674eb89193afa58e096868fa9623217c1a8bb2bb9981c48be1741d33146c",
+        "holder": "0x612fa27ba229021c5a1c32022fd6341ffbd58a87ac928a0dc32d8d6d1dba9fed",
+        "roles": [
+          "0xf9c404c0368cf014b44cac79dc5037da2aa34e16952673433d1c87ae3d2f8ca4::blast_presale_domain::UpgradeAdmin",
+          "0xf9c404c0368cf014b44cac79dc5037da2aa34e16952673433d1c87ae3d2f8ca4::blast_presale_domain::TreasuryAdmin",
+          "0xf9c404c0368cf014b44cac79dc5037da2aa34e16952673433d1c87ae3d2f8ca4::blast_presale_domain::FeeAdmin",
+          "0xf9c404c0368cf014b44cac79dc5037da2aa34e16952673433d1c87ae3d2f8ca4::blast_presale_domain::ListingAdmin",
+          "0xf9c404c0368cf014b44cac79dc5037da2aa34e16952673433d1c87ae3d2f8ca4::blast_presale_domain::AdapterAdmin",
+          "0xf9c404c0368cf014b44cac79dc5037da2aa34e16952673433d1c87ae3d2f8ca4::blast_presale_domain::RewardsAdmin",
+          "0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd::blast_partners::PartnerAdmin"
+        ]
+      },
+      {
+        "objectId": "0x071dde1d9a221aff8878e75363365d4b3482a27cf3b3eeeed976aec3c99ec376",
+        "holder": "0x6c0bd3e93f303b550245a55e1d92245d1a8776bfe37e1083186686a148626dff",
+        "roles": [
+          "0xf9c404c0368cf014b44cac79dc5037da2aa34e16952673433d1c87ae3d2f8ca4::blast_presale_domain::RewardsAdmin"
+        ]
+      }
+    ],
+    "aftermathVendorAdminCap": {
+      "objectId": "0xc6f09630117dbd29ff521e1b1f524f32a67d5227d51c57e960e91982b5b8353a",
+      "holder": "0x612fa27ba229021c5a1c32022fd6341ffbd58a87ac928a0dc32d8d6d1dba9fed"
+    }
+  },
+  "constructorParameters": {
+    "presaleFeePolicy": "initial zero rates and publisher destination; immediately configured before any sale",
+    "creationPolicy": "empty allowlists; SUI and three new witnesses configured before any sale",
+    "vendorDaoTreasury": "0x37cf46b499f740e653644bd2f7a8ed97f248e8b3c69d5d12c97d7845a54c0cd8"
+  },
+  "postDeployConfiguration": {
+    "feePolicy": {
+      "destination": "0x9420f27f4c8b33563eade002658e4c6dbe9437bd5ae1bececd61f8e91dc2c951",
+      "fees": {
+        "lp_fee_meme_bps": {
+          "pos0": "2500"
+        },
+        "lp_fee_quote_bps": {
+          "pos0": "2500"
+        },
+        "raise_bps": {
+          "pos0": "200"
+        },
+        "token_bps": {
+          "pos0": "100"
+        }
+      },
+      "id": "0x3da5bfd3275991b70a445a2022e07925ce9a927dd47d7c3fd583563089a9afae"
+    },
+    "creationPolicy": {
+      "allowed_migration_witnesses": {
+        "contents": [
+          "f9c404c0368cf014b44cac79dc5037da2aa34e16952673433d1c87ae3d2f8ca4::cetus::Witness",
+          "f9c404c0368cf014b44cac79dc5037da2aa34e16952673433d1c87ae3d2f8ca4::bluefin::Witness",
+          "2fe674f6c42f49b7647be760a10f89f843396b9294af8fab5bfbc929fb7aab01::blast_aftermath_dao_presale::Witness"
+        ]
+      },
+      "allowed_quotes": {
+        "contents": [
+          "0000000000000000000000000000000000000000000000000000000000000002::sui::SUI"
+        ]
+      },
+      "id": "0x4ce001c53e9da536fc7d04a87383e90ca76e27492b3cad92cf9e167af0dc83d8"
+    },
+    "venueConfig": {
+      "id": "0xebfd4e31f8fddf1b8d5b4a45835c7397156f6f62eeefef46b7b1b42aa29c6d39"
+    }
+  },
+  "verification": {
+    "successfulExactTransactionDryRuns": true,
+    "feeDestinationAndAllRatesReadBack": true,
+    "newRewardsCapOwnerVerified": true,
+    "sdkCheck": "426 tests, ABI, formatting, typecheck, build, package PASS",
+    "rewardExperiment": "not started"
+  }
+}
