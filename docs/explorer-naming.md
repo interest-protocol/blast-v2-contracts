@@ -66,6 +66,7 @@ every package-administration object.
 | `blast_fun` | `creator_authority::BlastMetadataCap<Meme>` | unchanged | struct |
 | `blast_fun` | `package_admin::PackageAdmin` | unchanged | holds `UpgradeCustody<BLAST_FUN>` |
 | `blast_fun` | `package_version::PackageVersion` | `blast_fun::PackageVersion` | module; holds `OperationalVersion<BLAST_FUN>` |
+| `blast_fun` | `blast_fun::Bootstrap` | new (ADR 0114); deployer-owned until custody intake | module |
 | `blast_fun_migrators` | `vault::LpVault<Meme, Quote>` | unchanged | *residual* |
 | `blast_fun_migrators` | `venue_config::VenueConfig` | unchanged | *residual* |
 | `blast_fun_migrators` | `package_admin::PackageAdmin` | unchanged | holds `UpgradeCustody<BLAST_FUN_MIGRATORS>` |

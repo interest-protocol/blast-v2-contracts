@@ -300,7 +300,10 @@ Upgradeability is a product/security decision, not a default convenience.
   upgrades. A future governance design retires the routine-admin package path
   through the mandatory shared-object version gate after installing replacement
   authorization (ADR 0034); no pre-planted cutover flag exists.
-  One dedicated shared `PackageVersion` gates every mutable core shared object.
+  The launchpad's OTW retains its Publisher and initial generation in an owned
+  `Bootstrap`. Only validated capability wrapping consumes it and creates the
+  shared `PackageVersion` required by launch creation and configuration setters
+  ([ADR 0114](decisions/0114-launchpad-custody-before-activation.md)).
   The only upgrade finalizer commits the native receipt and advances the
   operational version to the exact next compiled generation in the same call;
   there is no separate activation step.

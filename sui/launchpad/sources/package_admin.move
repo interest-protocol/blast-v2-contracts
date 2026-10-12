@@ -16,12 +16,14 @@ public struct PackageAdmin has key {
 
 // === Public Functions ===
 
-/// Wraps this package's Publisher and UpgradeCap in shared custody for good.
-public fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext) {
+/// Consumes publication bootstrap, seals native custody, and enables the initial generation.
+public fun wrap(bootstrap: Bootstrap, upgrade_cap: UpgradeCap, ctx: &mut TxContext) {
+    let (publisher, generation) = bootstrap.destroy();
     let id = object::new(ctx);
     let custody = upgrade_custody::new<BLAST_FUN>(id.to_inner(), publisher, upgrade_cap);
 
     transfer::share_object(PackageAdmin { id, custody });
+    generation.share_version(ctx);
 }
 
 /// Authorizes the exact package digest under the wrapped cap's current policy.
@@ -121,12 +123,15 @@ public fun has_upgrade_cap_for_testing(self: &PackageAdmin): bool {
 
 use blast_admin::{
     blast_acl::AdminWitness,
+    operational_version::OperationalVersion,
     upgrade_custody::{Self, UpgradeCustody},
 };
 
 use blast_fun::{
-    blast_fun::{BLAST_FUN, PackageVersion},
+    blast_fun::{BLAST_FUN, Bootstrap, PackageVersion},
     blast_fun_domain::UpgradeAdmin,
 };
 
-use sui::package::{Publisher, UpgradeCap, UpgradeReceipt, UpgradeTicket};
+use sui::package::{UpgradeCap, UpgradeReceipt, UpgradeTicket};
+
+use fun blast_fun::blast_fun::share_version as OperationalVersion.share_version;

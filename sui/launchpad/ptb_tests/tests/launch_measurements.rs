@@ -214,8 +214,8 @@ impl World {
         let acl = one(&admin_published, "blast_acl", "ACL");
         let root = one(&admin_published, "blast_acl", "SuperAdminCap");
         let config = one(&published, "launch_config", "LaunchConfig");
-        let version = one(&published, "blast_fun", "PackageVersion");
         let runtime = one(&published, "runtime_config", "RuntimeConfig");
+        let version = h.wrap_launchpad(blast, &published)?;
         let linked = [core[0], core[1], core[2], (launchpad_dir.as_path(), blast)];
         let (adapter, _) = h.publish(build(&fixture.join("adapter"), &linked, &work)?)?;
         let mut templates = Vec::new();
@@ -246,7 +246,7 @@ impl World {
             records: Vec::new(),
         };
 
-        // Production admin path: the publisher's SuperAdminCap grants one AdminCap and each role the
+        // Production admin path: the configured root owner's SuperAdminCap grants one AdminCap and each role the
         // setters below take; the cap then signs in once per role.
         let mut roles = Vec::new();
         for role in ["ListingAdmin", "AdapterAdmin", "FeeAdmin", "TreasuryAdmin"] {
@@ -257,7 +257,7 @@ impl World {
         let root_arg = builder.obj(w.h.owned(root))?;
         let recipient = builder.pure(w.h.sender)?;
         call(&mut builder, admin, "blast_acl", "grant_admin", vec![], vec![acl_arg, root_arg, recipient]);
-        let granted = w.h.execute(builder.finish())?;
+        let granted = w.h.impersonate_cap_owner(root, builder.finish())?;
         granted.assert_success();
         let admin_cap = granted.created(&w.h, "blast_acl", "AdminCap")[0];
 
@@ -268,7 +268,7 @@ impl World {
         for role in &roles {
             call(&mut builder, admin, "blast_acl", "grant_role", vec![role.clone()], vec![acl_arg, root_arg, admin_cap_id]);
         }
-        w.h.execute(builder.finish())?.assert_success();
+        w.h.impersonate_cap_owner(root, builder.finish())?.assert_success();
 
         let mut builder = ProgrammableTransactionBuilder::new();
         let acl_arg = builder.obj(w.h.shared(acl, false))?;

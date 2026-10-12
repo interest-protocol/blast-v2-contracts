@@ -18,6 +18,8 @@ generation. There is no separate activation step.
 
 Use these sources instead of a duplicated module inventory:
 
+- [deployment procedure](DEPLOYING.md) for mandatory capability wrapping and
+  custody verification before launch activity;
 - [architecture](../../docs/architecture.md) for package and SDK boundaries;
 - [decision index](../../docs/decisions/README.md) for accepted protocol rules;
 - [test vectors](../../docs/vectors/README.md) and

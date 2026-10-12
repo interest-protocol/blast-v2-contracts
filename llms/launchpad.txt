@@ -22,7 +22,7 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 | --- | --- | --- | --- | --- |
 | `blast_fun` | Launchpad | not yet published | — | — |
 | `blast_fun_migrators` | Migration and LP vaults | not yet published | — | — |
-| `blast_partners` | Partner codes | live; source has changed since | `0x96fbe2db7337dea5ef6926203d32cf602e527d5e2dcae176fbbc3e3d2a30d94f` | `0x96fbe2db7337dea5ef6926203d32cf602e527d5e2dcae176fbbc3e3d2a30d94f` |
+| `blast_partners` | Partner codes | live | `0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd` | `0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd` |
 | `blast_admin` | Administration | live | `0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9` | `0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9` |
 
 ## Calling Blast contracts
@@ -189,18 +189,26 @@ collection, auto-LP, buyback, and holder rewards are in the migrators guide.
 
 | Object | Created | Holds | Who writes it |
 | --- | --- | --- | --- |
-| `blast_fun::blast_fun::PackageVersion` | package publish | the active package generation | upgrade admin only |
+| `blast_fun::blast_fun::PackageVersion` | `blast_fun::package_admin::wrap` | the active package generation | upgrade admin only |
 | `launch_config::LaunchConfig` | package publish | policy that new launches snapshot: admitted Meme decimals, admitted Quote types, trade fees, admitted adapters, Blast's migration allocation, the creation fee, accepted partners | Blast admins |
 | `runtime_config::RuntimeConfig` | package publish | settings read live: the account-claim signer key, Blast's share of every trade fee, the treasury address | Blast admins |
 | `launch::Launch<Meme, Quote>` | `launch::finalize`, shared by `launch::share` | one launch: lifecycle, curve reserves, settings, fee ledger, opening-round pot, migration allocations | trades, claims, migration |
 | `blast_fun::package_admin::PackageAdmin` | `blast_fun::package_admin::wrap` | the package's `Publisher` and `UpgradeCap` | upgrade admin only |
 | `Currency<Meme>` | `0x2::coin_registry::finalize_registration` | the coin's name, symbol, decimals, description, icon URL, and supply state (Sui Coin Registry) | the launch, through its internal `MetadataCap<Meme>` |
 
-`launch::new` and every call that changes a shared launchpad object take the shared
-`PackageVersion` and abort when the caller links old bytecode after an upgrade (see Aborts).
+`launch::new` and configuration setters require the shared `PackageVersion`. It does not exist
+until `blast_fun::package_admin::wrap` consumes the publication bootstrap and the matching,
+never-upgraded native UpgradeCap. That transaction seals both native capabilities in
+`PackageAdmin` and creates `PackageVersion` atomically. A rejected wrap leaves the bootstrap
+intact and the launchpad inactive. After activation, version-guarded calls abort when the caller
+links old bytecode after an upgrade (see Aborts).
 
 #### Owned objects and capabilities
 
+- `blast_fun::blast_fun::Bootstrap` (`key` only): created once at package publication and sent
+  to the deployer. It holds the canonical Publisher and initial operational generation. Its
+  only production consumer is `blast_fun::package_admin::wrap`; it cannot be transferred by
+  another package, shared, or used in place of `PackageVersion`.
 - `launch_ticket::LaunchTicket<Meme>` (`key, store`): created when the generated coin package is
   published and sent to the publisher. It holds the whole supply as a `Balance<Meme>`, the
   `TreasuryCap<Meme>`, the `MetadataCap<Meme>`, the creator recipient, the decimals, the supply
@@ -1558,7 +1566,7 @@ its share in force at that moment, rounded down, and Blast's destination the res
 
 ## Partner codes
 
-> **Deployment status:** `blast_partners` is live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package.
+> **Deployment status:** `blast_partners` is live on mainnet.
 
 ### What it is
 
@@ -2001,7 +2009,7 @@ public struct Event<T: copy + drop>(T) has copy, drop;
 
 ### `blast_fun::blast_fun`
 
-Canonical package provenance witness named after the package, and the shared package version every entry point checks so old bytecode stops after an upgrade.  Both come from the one-time witness: `init` seeds the generation from it and then claims the Publisher with it, so no other package can ever create this package's generation.
+Canonical package provenance, publication bootstrap, and operational generation.  The one-time witness seeds the generation and claims the Publisher. Both stay in owned bootstrap custody until package administration seals the native capabilities.
 
 Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/launchpad/sources/blast_fun.move
 
@@ -2010,6 +2018,13 @@ Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/la
 ```move
 /// One-time witness: it seeds the package generation and claims this package's Publisher.
 public struct BLAST_FUN() has drop;
+
+/// Publication-only custody; it cannot supply the PackageVersion required by launch activity.
+public struct Bootstrap has key {
+    id: UID,
+    publisher: Publisher,
+    generation: blast_admin::operational_version::OperationalVersion<BLAST_FUN>,
+}
 
 /// Singleton operational package generation.
 public struct PackageVersion has key {
@@ -2873,8 +2888,8 @@ public struct PackageAdmin has key {
 #### Functions
 
 ```move
-/// Wraps this package's Publisher and UpgradeCap in shared custody for good.
-public fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext)
+/// Consumes publication bootstrap, seals native custody, and enables the initial generation.
+public fun wrap(bootstrap: blast_fun::Bootstrap, upgrade_cap: UpgradeCap, ctx: &mut TxContext)
 
 /// Authorizes the exact package digest under the wrapped cap's current policy.
 public fun authorize_upgrade(
@@ -3691,7 +3706,7 @@ public struct VenueConfig has key {
 
 ## API reference: `blast_partners` (Partner codes)
 
-Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
+Live on mainnet. This reference matches the published source.
 
 Events: payload structs are emitted directly, each under its own type.
 
