@@ -6,6 +6,10 @@ cd "$(dirname "$0")/.."
 
 failures=0
 
+if ! bash scripts/check_error_registry.sh; then
+  failures=$((failures + 1))
+fi
+
 if [[ -e ../Move.toml ]] \
   || [[ ! -f Move.toml ]] \
   || [[ ! -d ../migrators ]]; then

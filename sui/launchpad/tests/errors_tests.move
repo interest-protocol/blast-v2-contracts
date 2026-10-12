@@ -14,6 +14,7 @@ fun configuration_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::migration_witness_not_allowed!(), 3);
     assert_eq!(blast_fun::errors::invalid_migration_witness_type!(), 4);
     assert_eq!(blast_fun::errors::unchanged!(), 23);
+    assert_eq!(blast_fun::errors::invalid_creation_fee!(), 35);
 }
 
 #[test]
@@ -34,6 +35,7 @@ fun launch_intake_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::invalid_opening_round!(), 13);
     assert_eq!(blast_fun::errors::invalid_graduation_target!(), 14);
     assert_eq!(blast_fun::errors::invalid_launch_lifecycle!(), 15);
+    assert_eq!(blast_fun::errors::partner_not_accepted!(), 36);
 }
 
 #[test]
@@ -41,6 +43,7 @@ fun trade_and_fee_error_registry_is_stable() {
     assert_eq!(blast_fun::errors::slippage_exceeded!(), 16);
     assert_eq!(blast_fun::errors::zero_trade_output!(), 17);
     assert_eq!(blast_fun::errors::nothing_accrued!(), 20);
+    assert_eq!(blast_fun::errors::partner_mismatch!(), 37);
 }
 
 #[test]
