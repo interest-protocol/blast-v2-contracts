@@ -399,11 +399,11 @@ public fun reassign_metadata_cap<Meme, Quote>(
 
     self.creator = option::none();
     let blast_metadata_cap = creator_authority::new_metadata_cap<Meme>(ctx);
-    let metadata_cap_id = object::id(&blast_metadata_cap);
-    self.blast_metadata_cap_id = option::some(metadata_cap_id);
+    let blast_metadata_cap_id = object::id(&blast_metadata_cap);
+    self.blast_metadata_cap_id = option::some(blast_metadata_cap_id);
     transfer::public_transfer(blast_metadata_cap, recipient);
 
-    events::metadata_cap_reassigned(self.id.to_inner(), metadata_cap_id, recipient);
+    events::metadata_cap_reassigned(self.id.to_inner(), blast_metadata_cap_id, recipient);
 }
 
 public fun set_name<Meme, Quote>(

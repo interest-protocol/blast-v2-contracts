@@ -1078,11 +1078,23 @@ fun designated_creator_claims_both_caps() {
 
         assert_eq!(bcs::to_bytes(&collect_one<events::CreatorCapsClaimed>()), expected);
         assert_eq!(launch.metadata_cap_id_for_testing(), native_metadata_cap_id);
+        assert!(object::id(&metadata_cap) != native_metadata_cap_id);
         assert!(!launch.has_creator_authority_for_testing());
         assert_eq!(launch.curve_fee_cap_id_for_testing(), option::some(object::id(&curve_fee_cap)));
         assert_eq!(
             launch.blast_metadata_cap_id_for_testing(),
             option::some(object::id(&metadata_cap)),
+        );
+
+        let admin_witness = creator_admin();
+        launch.reassign_metadata_cap(&f.package_version, &admin_witness, NEW_CREATOR, f.ctx!());
+        let reassigned_id = launch.blast_metadata_cap_id_for_testing().destroy_some();
+        assert!(reassigned_id != object::id(&metadata_cap));
+        assert!(reassigned_id != native_metadata_cap_id);
+        assert_eq!(launch.metadata_cap_id_for_testing(), native_metadata_cap_id);
+        assert_eq!(
+            bcs::to_bytes(&collect_one<events::MetadataCapReassigned>()),
+            cap_reassigned_bytes(object::id(&launch), reassigned_id, NEW_CREATOR),
         );
 
         destroy(curve_fee_cap);

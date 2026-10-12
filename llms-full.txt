@@ -6215,7 +6215,8 @@ Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/la
 #### Events
 
 ```move
-/// Blast's one-time fee share of every launch's Meme supply and final Quote reserve.
+/// Blast's one-time fee share of the Meme supply and final Quote reserve of launches finalized
+/// from now on. Finalized launches keep the shares recorded in `LaunchCreated.allocation_plan`.
 public struct ProtocolAllocationSet has copy, drop {
     meme_bps: u64,
     quote_bps: u64,
@@ -6232,7 +6233,8 @@ public struct LaunchTradeFeesChanged has copy, drop {
     meme_fee_bps: u64,
 }
 
-/// A Quote type was admitted to (`allowed`) or removed from new launches.
+/// A Quote type was admitted to (`allowed = true`) or removed from (`allowed = false`) future
+/// launches. Existing launches keep trading in it.
 public struct QuoteSet has copy, drop {
     quote: TypeName,
     allowed: bool,
@@ -6269,7 +6271,7 @@ public struct PartnerRemoved has copy, drop {
 public struct CreatorCapsClaimed has copy, drop {
     meme: TypeName,
     curve_fee_cap_id: ID,
-    metadata_cap_id: ID,
+    blast_metadata_cap_id: ID,
 }
 
 public struct CurveFeeCapReassigned has copy, drop {
@@ -6280,7 +6282,7 @@ public struct CurveFeeCapReassigned has copy, drop {
 
 public struct MetadataCapReassigned has copy, drop {
     launch_id: ID,
-    metadata_cap_id: ID,
+    blast_metadata_cap_id: ID,
     recipient: address,
 }
 

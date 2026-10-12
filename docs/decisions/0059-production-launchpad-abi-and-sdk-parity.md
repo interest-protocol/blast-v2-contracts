@@ -141,3 +141,11 @@ The following passed on the reviewed working tree with Sui CLI
   packages, covering 31 modules, 66 functions, 27 structs, and type origins;
 - migrator build in default and mainnet environments, warning-as-error lint,
   15 Move tests, source boundaries, and Turbos and Full Sail dependency pins.
+
+## Pre-publication metadata authority naming (2026-10-12)
+
+`CreatorCapsClaimed` and `MetadataCapReassigned` name the Blast authority
+`blast_metadata_cap_id`. `LaunchTicketCreated.metadata_cap_id` continues to name
+the native Coin Registry capability held in launch custody. Field types, order,
+and BCS values stay unchanged; JSON schemas and consumers change together before
+publication (Asymptotic I-5).
