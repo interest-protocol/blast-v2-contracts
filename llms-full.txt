@@ -6232,7 +6232,8 @@ public struct LaunchTradeFeesChanged has copy, drop {
     meme_fee_bps: u64,
 }
 
-/// A Quote type was admitted to (`allowed`) or removed from new launches.
+/// A Quote type was admitted to (`allowed = true`) or removed from (`allowed = false`) future
+/// launches. Existing launches keep trading in it.
 public struct QuoteSet has copy, drop {
     quote: TypeName,
     allowed: bool,
