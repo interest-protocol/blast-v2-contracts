@@ -70,14 +70,14 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
     let mut initializer = launch::new<_, Quote, _>(
         ticket, &version, &config, Migration(), POOL_TICK_SPACING, POOL_FEE_RATE,
     );
-    initializer.set_virtual_quote(5_000_000);
-    initializer.set_graduation_target(25_000_000);
-    initializer.set_allocation_plan(default_allocation_plan());
-    initializer.set_lp_fee_split(default_fee_split());
+    initializer.set_virtual_quote(&version, 5_000_000);
+    initializer.set_graduation_target(&version, 25_000_000);
+    initializer.set_allocation_plan(&version, default_allocation_plan());
+    initializer.set_lp_fee_split(&version, default_fee_split());
     let creation_fee = coin::zero(scenario.ctx());
-    let market = initializer.finalize(&mut currency, &config, creation_fee, scenario.ctx());
+    let market = initializer.finalize(&version, &mut currency, &config, creation_fee, scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
-    market.share(&clock);
+    market.share(&version, &clock);
     test_scenario::return_shared(config);
     test_scenario::return_to_address(@0xc, currency);
     scenario.next_tx(@0xa);

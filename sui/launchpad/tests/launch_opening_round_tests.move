@@ -832,15 +832,15 @@ fun intake(
         200,
         10_000,
     );
-    initializer.set_virtual_quote(virtual_quote);
-    initializer.set_graduation_target(target);
-    initializer.set_allocation_plan(plan);
-    initializer.set_lp_fee_split(
+    initializer.set_virtual_quote(&self.package_version, virtual_quote);
+    initializer.set_graduation_target(&self.package_version, target);
+    initializer.set_allocation_plan(&self.package_version, plan);
+    initializer.set_lp_fee_split(&self.package_version,
         allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), bps::new(0), vector[]),
     );
-    initializer.set_opening_round(opening_round_ms);
+    initializer.set_opening_round(&self.package_version, opening_round_ms);
     let creation_fee = coin::zero(self.scenario.ctx());
-    let launch = initializer.finalize(&mut currency, &self.config, creation_fee, self.scenario.ctx());
+    let launch = initializer.finalize(&self.package_version, &mut currency, &self.config, creation_fee, self.scenario.ctx());
     test_scenario::return_to_address(COIN_REGISTRY, currency);
 
     launch
@@ -871,7 +871,7 @@ fun open(self: &mut OpeningRoundFixture, opening_round_ms: u64): ID {
 
 /// Shares the launch at the fixture clock's current time.
 fun share(self: &OpeningRoundFixture, launch: Launch<LAUNCH_OPENING_ROUND_TESTS, TEST_QUOTE>) {
-    launch.share(&self.clock);
+    launch.share(&self.package_version, &self.clock);
 }
 
 fun take_launch(self: &OpeningRoundFixture): Launch<LAUNCH_OPENING_ROUND_TESTS, TEST_QUOTE> {

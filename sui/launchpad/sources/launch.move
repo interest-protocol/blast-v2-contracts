@@ -130,30 +130,42 @@ public fun treasury_cap_mut<Meme, Quote, Witness: drop>(
 /// Sets the virtual Quote reserve the curve starts from, which prices the first purchase.
 public fun set_virtual_quote<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,
+    package_version: &PackageVersion,
     virtual_quote: u64,
 ) {
+    package_version.assert_current();
+
     self.virtual_quote = option::some(virtual_quote);
 }
 
 /// Sets the Quote reserve at which the curve closes.
 public fun set_graduation_target<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,
+    package_version: &PackageVersion,
     graduation_target: u64,
 ) {
+    package_version.assert_current();
+
     self.graduation_target = option::some(graduation_target);
 }
 
 public fun set_allocation_plan<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,
+    package_version: &PackageVersion,
     allocation_plan: AllocationPlan,
 ) {
+    package_version.assert_current();
+
     self.allocation_plan = option::some(allocation_plan);
 }
 
 public fun set_lp_fee_split<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,
+    package_version: &PackageVersion,
     lp_fee_split: FeeSplit,
 ) {
+    package_version.assert_current();
+
     self.lp_fee_split = option::some(lp_fee_split);
 }
 
@@ -161,8 +173,11 @@ public fun set_lp_fee_split<Meme, Quote>(
 /// default, has no opening round: trading starts at share.
 public fun set_opening_round<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,
+    package_version: &PackageVersion,
     opening_round_ms: u64,
 ) {
+    package_version.assert_current();
+
     self.opening_round_ms = opening_round_ms;
 }
 
@@ -171,10 +186,12 @@ public fun set_opening_round<Meme, Quote>(
 /// claims them.
 public fun set_partner<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,
+    package_version: &PackageVersion,
     config: &LaunchConfig,
     partner: &Partner,
     clock: &Clock,
 ) {
+    package_version.assert_current();
     let partner_id = object::id(partner);
     config.assert_partner(partner_id, clock.timestamp_ms());
 
@@ -184,14 +201,16 @@ public fun set_partner<Meme, Quote>(
 /// Checks every setting, adds Blast's allocation to the plan, fixes the canonical supply in the
 /// Coin Registry, and splits the Meme into the curve reserve and the migration allocations.
 /// `creation_fee` must be exactly the configured fee; it joins Blast's fees on the launch. The
-/// initializer cannot leave the transaction whose `new` checked the package version.
+/// version check also rejects stale finalization in a transaction that used current intake.
 public fun finalize<Meme, Quote>(
     self: LaunchInitializer<Meme, Quote>,
+    package_version: &PackageVersion,
     currency: &mut Currency<Meme>,
     config: &LaunchConfig,
     creation_fee: Coin<SUI>,
     ctx: &mut TxContext,
 ): Launch<Meme, Quote> {
+    package_version.assert_current();
     let LaunchInitializer {
         ticket,
         migration_witness,
@@ -289,7 +308,12 @@ public fun finalize<Meme, Quote>(
 
 /// Shares the launch. Public time starts now: trading, or the opening round, which ends
 /// `opening_round_ms` later.
-public fun share<Meme, Quote>(mut self: Launch<Meme, Quote>, clock: &Clock) {
+public fun share<Meme, Quote>(
+    mut self: Launch<Meme, Quote>,
+    package_version: &PackageVersion,
+    clock: &Clock,
+) {
+    package_version.assert_current();
     assert!(self.public_start_ms.is_none(), blast_fun::errors::invalid_launch_lifecycle!());
 
     let public_start_ms = clock.timestamp_ms();

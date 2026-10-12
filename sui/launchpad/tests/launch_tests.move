@@ -217,13 +217,13 @@ fun later_setter_calls_replace_earlier_settings() {
             bps::new(0),
             vector[allocation::route(LAUNCHER, bps::new(10_000))],
         );
-        initializer.set_virtual_quote(VIRTUAL_QUOTE);
-        initializer.set_graduation_target(MIGRATION_QUOTE_TARGET * 2);
-        initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
-        initializer.set_allocation_plan(external_plan());
-        initializer.set_allocation_plan(default_plan());
-        initializer.set_lp_fee_split(default_fee_split());
-        initializer.set_lp_fee_split(routes);
+        initializer.set_virtual_quote(&f.package_version, VIRTUAL_QUOTE);
+        initializer.set_graduation_target(&f.package_version, MIGRATION_QUOTE_TARGET * 2);
+        initializer.set_graduation_target(&f.package_version, MIGRATION_QUOTE_TARGET);
+        initializer.set_allocation_plan(&f.package_version, external_plan());
+        initializer.set_allocation_plan(&f.package_version, default_plan());
+        initializer.set_lp_fee_split(&f.package_version, default_fee_split());
+        initializer.set_lp_fee_split(&f.package_version, routes);
         let launch = f.finalize_launch(initializer);
 
         launch.assert_snapshot();
@@ -242,9 +242,9 @@ fun finalize_requires_a_graduation_target() {
     fixture.next_tx!(LAUNCHER, |f| {
         let ticket = f.new_ticket(CREATOR);
         let mut initializer = f.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
-        initializer.set_virtual_quote(VIRTUAL_QUOTE);
-        initializer.set_allocation_plan(default_plan());
-        initializer.set_lp_fee_split(default_fee_split());
+        initializer.set_virtual_quote(&f.package_version, VIRTUAL_QUOTE);
+        initializer.set_allocation_plan(&f.package_version, default_plan());
+        initializer.set_lp_fee_split(&f.package_version, default_fee_split());
 
         destroy(f.finalize_launch(initializer));
     });
@@ -259,9 +259,9 @@ fun finalize_requires_a_virtual_quote() {
     fixture.next_tx!(LAUNCHER, |f| {
         let ticket = f.new_ticket(CREATOR);
         let mut initializer = f.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
-        initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
-        initializer.set_allocation_plan(default_plan());
-        initializer.set_lp_fee_split(default_fee_split());
+        initializer.set_graduation_target(&f.package_version, MIGRATION_QUOTE_TARGET);
+        initializer.set_allocation_plan(&f.package_version, default_plan());
+        initializer.set_lp_fee_split(&f.package_version, default_fee_split());
 
         destroy(f.finalize_launch(initializer));
     });
@@ -276,10 +276,10 @@ fun finalize_rejects_a_zero_virtual_quote() {
     fixture.next_tx!(LAUNCHER, |f| {
         let ticket = f.new_ticket(CREATOR);
         let mut initializer = f.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
-        initializer.set_virtual_quote(0);
-        initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
-        initializer.set_allocation_plan(default_plan());
-        initializer.set_lp_fee_split(default_fee_split());
+        initializer.set_virtual_quote(&f.package_version, 0);
+        initializer.set_graduation_target(&f.package_version, MIGRATION_QUOTE_TARGET);
+        initializer.set_allocation_plan(&f.package_version, default_plan());
+        initializer.set_lp_fee_split(&f.package_version, default_fee_split());
 
         destroy(f.finalize_launch(initializer));
     });
@@ -294,10 +294,10 @@ fun the_creator_picks_the_virtual_quote() {
     fixture.next_tx!(LAUNCHER, |f| {
         let ticket = f.new_ticket(CREATOR);
         let mut initializer = f.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
-        initializer.set_virtual_quote(1);
-        initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
-        initializer.set_allocation_plan(default_plan());
-        initializer.set_lp_fee_split(default_fee_split());
+        initializer.set_virtual_quote(&f.package_version, 1);
+        initializer.set_graduation_target(&f.package_version, MIGRATION_QUOTE_TARGET);
+        initializer.set_allocation_plan(&f.package_version, default_plan());
+        initializer.set_lp_fee_split(&f.package_version, default_fee_split());
         let launch = f.finalize_launch(initializer);
 
         assert_eq!(launch.virtual_quote_for_testing(), 1);
@@ -315,9 +315,9 @@ fun finalize_requires_an_allocation_plan() {
     fixture.next_tx!(LAUNCHER, |f| {
         let ticket = f.new_ticket(CREATOR);
         let mut initializer = f.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
-        initializer.set_virtual_quote(VIRTUAL_QUOTE);
-        initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
-        initializer.set_lp_fee_split(default_fee_split());
+        initializer.set_virtual_quote(&f.package_version, VIRTUAL_QUOTE);
+        initializer.set_graduation_target(&f.package_version, MIGRATION_QUOTE_TARGET);
+        initializer.set_lp_fee_split(&f.package_version, default_fee_split());
 
         destroy(f.finalize_launch(initializer));
     });
@@ -332,9 +332,9 @@ fun finalize_requires_lp_fee_split() {
     fixture.next_tx!(LAUNCHER, |f| {
         let ticket = f.new_ticket(CREATOR);
         let mut initializer = f.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
-        initializer.set_virtual_quote(VIRTUAL_QUOTE);
-        initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
-        initializer.set_allocation_plan(default_plan());
+        initializer.set_virtual_quote(&f.package_version, VIRTUAL_QUOTE);
+        initializer.set_graduation_target(&f.package_version, MIGRATION_QUOTE_TARGET);
+        initializer.set_allocation_plan(&f.package_version, default_plan());
 
         destroy(f.finalize_launch(initializer));
     });
@@ -543,6 +543,134 @@ fun intake_checks_the_decimals_before_the_symbol_length() {
             MIGRATION_QUOTE_TARGET,
             default_plan(),
         ));
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+fun set_virtual_quote_rejects_a_stale_generation() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut initializer = f.configured_initializer(ticket);
+        f.package_version.set_for_testing(2);
+
+        initializer.set_virtual_quote(&f.package_version, 0);
+        destroy(initializer);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+fun set_graduation_target_rejects_a_stale_generation() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut initializer = f.configured_initializer(ticket);
+        f.package_version.set_for_testing(2);
+
+        initializer.set_graduation_target(&f.package_version, 0);
+        destroy(initializer);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+fun set_allocation_plan_rejects_a_stale_generation() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut initializer = f.configured_initializer(ticket);
+        f.package_version.set_for_testing(2);
+
+        initializer.set_allocation_plan(&f.package_version, default_plan());
+        destroy(initializer);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+fun set_lp_fee_split_rejects_a_stale_generation() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut initializer = f.configured_initializer(ticket);
+        f.package_version.set_for_testing(2);
+
+        initializer.set_lp_fee_split(&f.package_version, default_fee_split());
+        destroy(initializer);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+fun set_opening_round_rejects_a_stale_generation() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let mut initializer = f.configured_initializer(ticket);
+        f.package_version.set_for_testing(2);
+
+        initializer.set_opening_round(&f.package_version, 1);
+        destroy(initializer);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+fun set_partner_checks_the_version_before_partner_admission() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let partner = partners::new_for_testing(PARTNER, PARTNER_SHARE_BPS, f.ctx!());
+        let ticket = f.new_ticket(CREATOR);
+        let mut initializer = f.configured_initializer(ticket);
+        f.package_version.set_for_testing(2);
+
+        initializer.set_partner(&f.package_version, &f.config, &partner, &f.clock);
+        destroy(initializer);
+        destroy(partner);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+fun finalize_checks_the_version_before_missing_settings() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let ticket = f.new_ticket(CREATOR);
+        let initializer = f.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
+        f.package_version.set_for_testing(2);
+
+        destroy(f.finalize_launch(initializer));
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+fun share_checks_the_version_before_already_shared_lifecycle() {
+    let mut fixture = start();
+
+    fixture.next_tx!(LAUNCHER, |f| {
+        let launch = f.new_launch_with(MIGRATION_QUOTE_TARGET, default_plan());
+        let launch = f.open_launch(launch);
+        f.package_version.set_for_testing(2);
+
+        launch.share(&f.package_version, &f.clock);
     });
 
     fixture.end();
@@ -1735,7 +1863,7 @@ fun finalize_rejects_a_creation_fee_other_than_the_configured_one() {
         let mut currency = f.take_currency();
         let creation_fee = coin::mint_for_testing<SUI>(CREATION_FEE - 1, f.ctx!());
 
-        destroy(initializer.finalize(&mut currency, &f.config, creation_fee, f.ctx!()));
+        destroy(initializer.finalize(&f.package_version, &mut currency, &f.config, creation_fee, f.ctx!()));
         destroy(currency);
     });
 
@@ -2833,10 +2961,10 @@ fun launch_intake<Quote, MigrationWitness: drop>(
     plan: AllocationPlan,
 ): Launch<LAUNCH_TESTS, Quote> {
     let mut initializer = self.start_launch<Quote, _>(ticket, witness);
-    initializer.set_virtual_quote(VIRTUAL_QUOTE);
-    initializer.set_graduation_target(target);
-    initializer.set_allocation_plan(plan);
-    initializer.set_lp_fee_split(default_fee_split());
+    initializer.set_virtual_quote(&self.package_version, VIRTUAL_QUOTE);
+    initializer.set_graduation_target(&self.package_version, target);
+    initializer.set_allocation_plan(&self.package_version, plan);
+    initializer.set_lp_fee_split(&self.package_version, default_fee_split());
     self.finalize_launch(initializer)
 }
 
@@ -2885,7 +3013,7 @@ fun launch_finalize<Quote>(
 ): Launch<LAUNCH_TESTS, Quote> {
     let mut currency = self.take_currency();
     let creation_fee = coin::mint_for_testing<SUI>(self.config.creation_fee(), self.scenario.ctx());
-    let launch = initializer.finalize(&mut currency, &self.config, creation_fee, self.scenario.ctx());
+    let launch = initializer.finalize(&self.package_version, &mut currency, &self.config, creation_fee, self.scenario.ctx());
     test_scenario::return_to_address(COIN_REGISTRY, currency);
 
     launch
@@ -2897,10 +3025,10 @@ fun launch_configured_initializer(
     ticket: LaunchTicket<LAUNCH_TESTS>,
 ): LaunchInitializer<LAUNCH_TESTS, TEST_QUOTE> {
     let mut initializer = self.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
-    initializer.set_virtual_quote(VIRTUAL_QUOTE);
-    initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
-    initializer.set_allocation_plan(default_plan());
-    initializer.set_lp_fee_split(default_fee_split());
+    initializer.set_virtual_quote(&self.package_version, VIRTUAL_QUOTE);
+    initializer.set_graduation_target(&self.package_version, MIGRATION_QUOTE_TARGET);
+    initializer.set_allocation_plan(&self.package_version, default_plan());
+    initializer.set_lp_fee_split(&self.package_version, default_fee_split());
     initializer
 }
 
@@ -2911,7 +3039,7 @@ fun launch_intake_with_partner(
     partner: &Partner,
 ): Launch<LAUNCH_TESTS, TEST_QUOTE> {
     let mut initializer = self.configured_initializer(ticket);
-    initializer.set_partner(&self.config, partner, &self.clock);
+    initializer.set_partner(&self.package_version, &self.config, partner, &self.clock);
     self.finalize_launch(initializer)
 }
 
@@ -2933,15 +3061,15 @@ fun launch_mint_extra_supply_and_finalize(
 ) {
     let mut initializer = self.start_launch<TEST_QUOTE, _>(ticket, TEST_MIGRATION_WITNESS());
     destroy(initializer.treasury_cap_mut(TEST_MIGRATION_WITNESS()).mint_balance(1));
-    initializer.set_virtual_quote(VIRTUAL_QUOTE);
-    initializer.set_graduation_target(MIGRATION_QUOTE_TARGET);
-    initializer.set_allocation_plan(default_plan());
-    initializer.set_lp_fee_split(default_fee_split());
+    initializer.set_virtual_quote(&self.package_version, VIRTUAL_QUOTE);
+    initializer.set_graduation_target(&self.package_version, MIGRATION_QUOTE_TARGET);
+    initializer.set_allocation_plan(&self.package_version, default_plan());
+    initializer.set_lp_fee_split(&self.package_version, default_fee_split());
     destroy(self.finalize_launch(initializer));
 }
 
 fun share_launch(self: &LaunchFixture, launch: Launch<LAUNCH_TESTS, TEST_QUOTE>) {
-    launch.share(&self.clock);
+    launch.share(&self.package_version, &self.clock);
 }
 
 /// Shares the launch and takes it back in the next transaction from the same sender.
@@ -2961,8 +3089,8 @@ fun open_launch(
 fun prepare_terminal_gap(self: &mut LaunchFixture, target: u64, gap: u64) {
     let ticket = self.new_ticket(CREATOR);
     let mut initializer = self.configured_initializer(ticket);
-    initializer.set_virtual_quote(target);
-    initializer.set_graduation_target(target);
+    initializer.set_virtual_quote(&self.package_version, target);
+    initializer.set_graduation_target(&self.package_version, target);
     let launch = self.finalize_launch(initializer);
     let mut launch = self.open_launch(launch);
     let first_input = (target - gap).mul_div_ceil(10_000, 9_900);

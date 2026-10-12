@@ -1332,7 +1332,9 @@ object at a derived address. Use that shared `Currency<Meme>` in every later ste
 #### Flow 3: create, configure, and share the launch (ticket holder, one PTB)
 
 Type arguments are `<Meme, Quote>` on every adapter and `launch` call below. `Clock` is the shared
-object at `0x6`.
+object at `0x6`. Every initializer setter below, `launch::finalize`, and `launch::share`
+takes the launchpad `PackageVersion` as a shared, immutable argument immediately after the
+initializer or launch. Each checks the current generation before validation or mutation.
 `launch::new` needs the adapter's witness, which only the adapter module can construct, so a
 launch always starts through an adapter's `new`; only that adapter can borrow the ticket's treasury
 cap during the PTB (`launch::treasury_cap_mut`).
@@ -1377,7 +1379,7 @@ cap during the PTB (`launch::treasury_cap_mut`).
    only time a launch can name a partner.
 8. Pay the creation fee: `SplitCoins` from the gas coin for exactly `LaunchConfig.creation_fee`
    MIST (use `0x2::coin::zero<0x2::sui::SUI>` when it is zero).
-9. `launch::finalize` consumes the initializer and takes the shared `Currency<Meme>` (mutable),
+9. `launch::finalize` consumes the initializer and takes `PackageVersion`, the shared `Currency<Meme>` (mutable),
    `LaunchConfig`, and the fee coin. It returns the `Launch<Meme, Quote>` value. It checks every
    setting (see Aborts), copies Blast's current allocation into the plan and requires each asset to
    sum to 10,000, fixes the supply as burn-only or fixed in the Coin Registry (consuming the
@@ -1389,7 +1391,7 @@ cap during the PTB (`launch::treasury_cap_mut`).
       coins. A buy here may even reach the target.
     - with an opening round: `launch::join_opening_round` on the launch value (see Opening round);
       the creator's bid joins the same pot at the same price as everyone's.
-11. `launch::share` consumes the launch value and takes `Clock`: it records `public_start_ms`
+11. `launch::share` consumes the launch value and takes `PackageVersion` and `Clock`: it records `public_start_ms`
     (now), shares the launch, and emits `blast_fun::events::LaunchShared`. The opening round, if
     any, ends `opening_round_ms` later. This must be the launch's last use in the PTB.
 
@@ -6548,22 +6550,26 @@ public fun treasury_cap_mut<Meme, Quote, Witness: drop>(
 /// Sets the virtual Quote reserve the curve starts from, which prices the first purchase.
 public fun set_virtual_quote<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,
+    package_version: &blast_fun::PackageVersion,
     virtual_quote: u64,
 )
 
 /// Sets the Quote reserve at which the curve closes.
 public fun set_graduation_target<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,
+    package_version: &blast_fun::PackageVersion,
     graduation_target: u64,
 )
 
 public fun set_allocation_plan<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,
+    package_version: &blast_fun::PackageVersion,
     allocation_plan: allocation::AllocationPlan,
 )
 
 public fun set_lp_fee_split<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,
+    package_version: &blast_fun::PackageVersion,
     lp_fee_split: allocation::FeeSplit,
 )
 
@@ -6571,6 +6577,7 @@ public fun set_lp_fee_split<Meme, Quote>(
 /// default, has no opening round: trading starts at share.
 public fun set_opening_round<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,
+    package_version: &blast_fun::PackageVersion,
     opening_round_ms: u64,
 )
 
@@ -6579,6 +6586,7 @@ public fun set_opening_round<Meme, Quote>(
 /// claims them.
 public fun set_partner<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,
+    package_version: &blast_fun::PackageVersion,
     config: &launch_config::LaunchConfig,
     partner: &blast_partners::blast_partners::Partner,
     clock: &Clock,
@@ -6587,9 +6595,10 @@ public fun set_partner<Meme, Quote>(
 /// Checks every setting, adds Blast's allocation to the plan, fixes the canonical supply in the
 /// Coin Registry, and splits the Meme into the curve reserve and the migration allocations.
 /// `creation_fee` must be exactly the configured fee; it joins Blast's fees on the launch. The
-/// initializer cannot leave the transaction whose `new` checked the package version.
+/// version check also rejects stale finalization in a transaction that used current intake.
 public fun finalize<Meme, Quote>(
     self: LaunchInitializer<Meme, Quote>,
+    package_version: &blast_fun::PackageVersion,
     currency: &mut Currency<Meme>,
     config: &launch_config::LaunchConfig,
     creation_fee: Coin<sui::SUI>,
@@ -6598,7 +6607,11 @@ public fun finalize<Meme, Quote>(
 
 /// Shares the launch. Public time starts now: trading, or the opening round, which ends
 /// `opening_round_ms` later.
-public fun share<Meme, Quote>(self: Launch<Meme, Quote>, clock: &Clock)
+public fun share<Meme, Quote>(
+    self: Launch<Meme, Quote>,
+    package_version: &blast_fun::PackageVersion,
+    clock: &Clock,
+)
 
 /// Returns the creator's `(tick_spacing, fee_rate)` pool tier, in the adapter's venue units.
 public fun pool_tier<Meme, Quote>(self: &Launch<Meme, Quote>): (u32, u64)

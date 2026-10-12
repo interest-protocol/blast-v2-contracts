@@ -93,6 +93,19 @@ replace existing guarded function bodies, so they cannot perform a bytecode
 cutover. Native `UpgradeCap.version` and Blast's operational package version are
 separate facts and need not advance together.
 
+### Creation generation checks (Asymptotic L-5, 2026-10-12)
+
+Before the first launchpad publication, every initializer setter, `finalize`, and
+`share` borrows the singleton `PackageVersion` and checks it first. A hot potato
+cannot leave its transaction, but the transaction can mix package generations;
+checking only `new` does not protect later validation against stale bytecode.
+Ticket-policy checks remain in guarded finalization. The adapter-only
+`treasury_cap_mut` loan retains its sealed witness check; finalization rechecks
+supply before consuming the treasury capability. No stored state or events change.
+
+This is a pre-publication ABI change: SDK and PTB callers pass the read-only
+version after the receiver. It does not disable already published ungated code.
+
 ### Intake hardening
 
 Before consuming launch policy, `launch::new` rejects equal original Meme and

@@ -224,16 +224,16 @@ fun open_launch(
         tick_spacing,
         fee_rate,
     );
-    initializer.set_virtual_quote(5_000_000);
-    initializer.set_graduation_target(TARGET);
-    initializer.set_allocation_plan(
+    initializer.set_virtual_quote(&f.version, 5_000_000);
+    initializer.set_graduation_target(&f.version, TARGET);
+    initializer.set_allocation_plan(&f.version,
         allocation::plan(bps::new(8_000), bps::new(2_000), bps::new(10_000), vector[]),
     );
-    initializer.set_lp_fee_split(
+    initializer.set_lp_fee_split(&f.version,
         allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), bps::new(0), vector[]),
     );
     let creation_fee = coin::zero(f.scenario.ctx());
-    let launch = initializer.finalize(&mut currency, &f.config, creation_fee, f.scenario.ctx());
+    let launch = initializer.finalize(&f.version, &mut currency, &f.config, creation_fee, f.scenario.ctx());
     test_scenario::return_to_address(COIN_REGISTRY, currency);
 
     launch
