@@ -458,7 +458,7 @@ public fun join_opening_round<Meme, Quote>(
 
 /// Closes the ended opening round: buys from the curve once with the whole pot, at the usual fees
 /// and graduation cap, and holds the Meme bought and any Quote refunded for delivery. A pot too
-/// small to buy one Meme atom is held whole for refund. Anyone may settle.
+/// small to buy one Meme atom is held whole for refund unless it reaches graduation. Anyone may settle.
 public fun settle_opening_round<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
@@ -514,6 +514,7 @@ public fun deliver_opening_round<Meme, Quote>(
 
 /// Buys Meme with Quote; Quote beyond the graduation target is refunded. Trading opens at share,
 /// or at settlement after an opening round; before share only the creator's transaction can buy.
+/// A target-reaching buy may return zero Meme when `min_meme_out` is zero.
 public fun buy<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     package_version: &PackageVersion,
@@ -530,7 +531,10 @@ public fun buy<Meme, Quote>(
         quote_in.into_balance(),
         min_meme_out,
     );
-    assert!(meme_out.value() > 0, blast_fun::errors::zero_trade_output!());
+    assert!(
+        meme_out.value() > 0 || self.lifecycle == Lifecycle::MigrationReady,
+        blast_fun::errors::zero_trade_output!(),
+    );
 
     (meme_out.into_coin(ctx), quote_refund.into_coin(ctx))
 }
@@ -787,7 +791,7 @@ fun emit_metadata_updated<Meme, Quote>(self: &Launch<Meme, Quote>, currency: &Cu
 }
 
 /// Buys from the curve with `quote_in` and returns the net Meme and the Quote refunded past the
-/// graduation target. Input too small to buy one Meme atom is returned whole, and nothing changes.
+/// graduation target. Zero-output input is returned whole unless its net Quote reaches the target.
 fun buy_from_curve<Meme, Quote>(
     self: &mut Launch<Meme, Quote>,
     runtime_config: &RuntimeConfig,
@@ -809,7 +813,9 @@ fun buy_from_curve<Meme, Quote>(
         self.meme_fee_bps,
     );
 
-    if (meme_out_net == 0) return (balance::zero(), quote_in);
+    let reaches_target = quote_in_gross - quote_fee
+        == self.graduation_target - self.real_quote_reserve.value();
+    if (meme_out_net == 0 && !reaches_target) return (balance::zero(), quote_in);
     assert!(meme_out_net >= min_meme_out, blast_fun::errors::slippage_exceeded!());
 
     let quote_refund = quote_in.split(quote_refund);

@@ -127,7 +127,7 @@ fun invalid_opening_round_precedes_the_ticket_sell_burn() {
     let mut fixture = start();
     let mut ticket = fixture.new_ticket();
     ticket.set_sell_burn_bps_for_testing(5_001);
-    let launch = fixture.intake(ticket, plan(), 1);
+    let launch = fixture.intake(ticket, plan(), 1, VIRTUAL_QUOTE, TARGET);
 
     destroy(launch);
     fixture.end();
@@ -143,7 +143,7 @@ fun allocation_sums_precede_an_invalid_opening_round() {
         bps::new(10_000),
         vector[allocation::recipient(CREATOR, bps::new(1), bps::new(0))],
     );
-    let launch = fixture.intake(ticket, plan, 1);
+    let launch = fixture.intake(ticket, plan, 1, VIRTUAL_QUOTE, TARGET);
 
     destroy(launch);
     fixture.end();
@@ -154,7 +154,7 @@ fun invalid_opening_round_aborts_before_ticket_custody_moves() {
     let mut fixture = start();
     let mut ticket = fixture.new_ticket();
     ticket.burn_meme_for_testing(1);
-    let launch = fixture.intake(ticket, plan(), 1);
+    let launch = fixture.intake(ticket, plan(), 1, VIRTUAL_QUOTE, TARGET);
 
     destroy(launch);
     fixture.end();
@@ -525,6 +525,57 @@ fun pot_past_the_target_graduates_and_refunds_the_excess_pro_rata() {
     fixture.end();
 }
 
+#[test]
+fun terminal_zero_output_opening_round_graduates_and_delivers_only_excess_quote() {
+    let mut fixture = start();
+    let ticket = fixture.new_ticket();
+    let launch = fixture.intake(ticket, plan(), MIN_ROUND_MS, 1_000_000_000_000_000_000, 1);
+    let launch_id = object::id(&launch);
+    fixture.share(launch);
+    fixture.join(ALICE, 40);
+    fixture.join(BOB, 60);
+    fixture.set_time(ROUND_END_MS);
+    fixture.settle(KEEPER);
+
+    assert_eq!(
+        bcs::to_bytes(&only_event<Bought>()),
+        u64_payload(launch_id, vector[2, 0, 0, 98, 0, 0, 0, 1, CURVE_MEME, 1]),
+    );
+    assert_eq!(
+        bcs::to_bytes(&only_event<OpeningRoundSettled>()),
+        u64_payload(launch_id, vector[100, 0, 98]),
+    );
+    fixture.next_tx!(KEEPER, |f| {
+        let launch = f.take_launch();
+        assert!(launch.is_migration_ready_for_testing());
+        assert_opening_round(&launch, 100, 98, 0);
+        launch.put_back();
+    });
+
+    fixture.deliver(KEEPER, ALICE);
+    assert_eq!(
+        bcs::to_bytes(&only_event<OpeningRoundDelivered>()),
+        delivered_bytes(launch_id, ALICE, vector[40, 0, 39]),
+    );
+    fixture.deliver(KEEPER, BOB);
+    assert_eq!(
+        bcs::to_bytes(&only_event<OpeningRoundDelivered>()),
+        delivered_bytes(launch_id, BOB, vector[60, 0, 59]),
+    );
+    fixture.next_tx!(KEEPER, |f| {
+        let alice_quote = f.take_coin<TEST_QUOTE>(ALICE);
+        let bob_quote = f.take_coin<TEST_QUOTE>(BOB);
+        let launch = f.take_launch();
+        assert_eq!(alice_quote.value() + bob_quote.value(), 98);
+        assert!(!owns_meme(ALICE) && !owns_meme(BOB));
+        assert_opening_round(&launch, 0, 0, 0);
+        destroy(alice_quote);
+        destroy(bob_quote);
+        launch.put_back();
+    });
+    fixture.end();
+}
+
 // --- Delivering ---
 
 #[test]
@@ -766,6 +817,8 @@ fun intake(
     ticket: LaunchTicket<LAUNCH_OPENING_ROUND_TESTS>,
     plan: AllocationPlan,
     opening_round_ms: u64,
+    virtual_quote: u64,
+    target: u64,
 ): Launch<LAUNCH_OPENING_ROUND_TESTS, TEST_QUOTE> {
     self.scenario.next_tx(LAUNCHER);
     let mut currency = self
@@ -779,8 +832,8 @@ fun intake(
         200,
         10_000,
     );
-    initializer.set_virtual_quote(VIRTUAL_QUOTE);
-    initializer.set_graduation_target(TARGET);
+    initializer.set_virtual_quote(virtual_quote);
+    initializer.set_graduation_target(target);
     initializer.set_allocation_plan(plan);
     initializer.set_lp_fee_split(
         allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), bps::new(0), vector[]),
@@ -799,7 +852,7 @@ fun new_launch(
 ): Launch<LAUNCH_OPENING_ROUND_TESTS, TEST_QUOTE> {
     let ticket = self.new_ticket();
 
-    self.intake(ticket, plan(), opening_round_ms)
+    self.intake(ticket, plan(), opening_round_ms, VIRTUAL_QUOTE, TARGET)
 }
 
 /// Moves the fixture clock to `timestamp_ms` for the following transactions.

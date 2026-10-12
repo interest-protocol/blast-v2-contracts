@@ -41,8 +41,10 @@ moves the launch to `Live` and buys from the curve once with the whole pot,
 through the same path, fees, and graduation cap as `buy`. The Meme bought and
 any Quote refunded past the target are held for delivery. A pot that would buy
 less than one Meme atom (an empty or dust pot, or an extreme virtual reserve)
-buys nothing and is held whole for refund, so settlement can never be stuck.
-A pot that reaches the target makes the launch `MigrationReady`.
+buys nothing and is held whole for refund unless its net Quote fills the target.
+Following ADR 0043's terminal exception, a target-reaching pot is charged even
+when net Meme is zero, emits `Bought`, and makes the launch `MigrationReady`.
+Only its excess Quote is then held for delivery.
 
 **Delivery.** Anyone may `deliver_opening_round(bidder)` after settlement, in
 any later lifecycle, including after migration. It retires the bid record and

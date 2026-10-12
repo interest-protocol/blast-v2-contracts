@@ -31,15 +31,15 @@ def ceil_div(numerator, denominator):
     return -(-numerator // denominator)
 
 
-def buy(meme_reserve, real_quote, quote_supplied, quote_fee_bps=QUOTE_FEE_BPS, meme_fee_bps=MEME_FEE_BPS):
+def buy(meme_reserve, real_quote, quote_supplied, quote_fee_bps=QUOTE_FEE_BPS, meme_fee_bps=MEME_FEE_BPS, virtual_quote=V, terminal_threshold=T):
     """curve::cap_buy_quote_input, then curve::quote_buy and the reserve movement launch.move applies."""
-    if quote_supplied - ceil_div(quote_supplied * quote_fee_bps, BPS) <= T - real_quote:
+    if quote_supplied - ceil_div(quote_supplied * quote_fee_bps, BPS) <= terminal_threshold - real_quote:
         quote_in_gross = quote_supplied
     else:
-        quote_in_gross = ceil_div((T - real_quote) * BPS, BPS - quote_fee_bps)
+        quote_in_gross = ceil_div((terminal_threshold - real_quote) * BPS, BPS - quote_fee_bps)
     quote_fee = ceil_div(quote_in_gross * quote_fee_bps, BPS)
     quote_in_net = quote_in_gross - quote_fee
-    meme_out_gross = meme_reserve * quote_in_net // (V + real_quote + quote_in_net)
+    meme_out_gross = meme_reserve * quote_in_net // (virtual_quote + real_quote + quote_in_net)
     meme_fee = ceil_div(meme_out_gross * meme_fee_bps, BPS)
     return {
         "quote_in_gross": quote_in_gross,
@@ -51,7 +51,7 @@ def buy(meme_reserve, real_quote, quote_supplied, quote_fee_bps=QUOTE_FEE_BPS, m
         "meme_out_net": meme_out_gross - meme_fee,
         "meme_reserve_after": meme_reserve - meme_out_gross,
         "real_quote_after": real_quote + quote_in_net,
-        "crossed_threshold": real_quote + quote_in_net >= T,
+        "crossed_threshold": real_quote + quote_in_net >= terminal_threshold,
     }
 
 
@@ -291,6 +291,23 @@ curve = {
             },
             "A gross Meme input of 1000 pays the 1% Meme fee first, then reserves 50% of the remaining 990 for burn, so the curve prices 495.",
         ),
+        *[
+            buy_case(
+                f"terminal_dust_{gross_meme}_gross_meme",
+                after(buy(
+                    725_000_000_000_000_000, 0,
+                    ceil_div((target - 1) * BPS, BPS - 100),
+                    meme_fee_bps=250, virtual_quote=target, terminal_threshold=target,
+                )) | {
+                    "quote_supplied": 100, "quote_fee_bps": 100, "meme_fee_bps": 250,
+                    "virtual_quote": target, "terminal_threshold": target,
+                },
+                "Reachable after an ordinary buy to target minus one. With minimum Meme zero, "
+                "the final buy charges two Quote atoms, credits one to reserves and one to fees, "
+                "refunds 98, and graduates even when net Meme is zero (Asymptotic L-2).",
+            )
+            for target, gross_meme in [(10**18, 0), (10**17, 1)]
+        ],
         below,
         crossing,
         sell_case(

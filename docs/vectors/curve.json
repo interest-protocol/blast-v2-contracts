@@ -219,6 +219,58 @@
       "notes": "A gross Meme input of 1000 pays the 1% Meme fee first, then reserves 50% of the remaining 990 for burn, so the curve prices 495."
     },
     {
+      "name": "terminal_dust_0_gross_meme",
+      "kind": "buy",
+      "given": {
+        "meme_reserve": 362500000000000001,
+        "real_quote": 999999999999999999,
+        "quote_supplied": 100,
+        "quote_fee_bps": 100,
+        "meme_fee_bps": 250,
+        "virtual_quote": 1000000000000000000,
+        "terminal_threshold": 1000000000000000000
+      },
+      "expect": {
+        "quote_in_gross": 2,
+        "quote_refund": 98,
+        "quote_fee": 1,
+        "quote_in_net": 1,
+        "meme_out_gross": 0,
+        "meme_fee": 0,
+        "meme_out_net": 0,
+        "meme_reserve_after": 362500000000000001,
+        "real_quote_after": 1000000000000000000,
+        "crossed_threshold": true
+      },
+      "notes": "Reachable after an ordinary buy to target minus one. With minimum Meme zero, the final buy charges two Quote atoms, credits one to reserves and one to fees, refunds 98, and graduates even when net Meme is zero (Asymptotic L-2)."
+    },
+    {
+      "name": "terminal_dust_1_gross_meme",
+      "kind": "buy",
+      "given": {
+        "meme_reserve": 362500000000000002,
+        "real_quote": 99999999999999999,
+        "quote_supplied": 100,
+        "quote_fee_bps": 100,
+        "meme_fee_bps": 250,
+        "virtual_quote": 100000000000000000,
+        "terminal_threshold": 100000000000000000
+      },
+      "expect": {
+        "quote_in_gross": 2,
+        "quote_refund": 98,
+        "quote_fee": 1,
+        "quote_in_net": 1,
+        "meme_out_gross": 1,
+        "meme_fee": 1,
+        "meme_out_net": 0,
+        "meme_reserve_after": 362500000000000001,
+        "real_quote_after": 100000000000000000,
+        "crossed_threshold": true
+      },
+      "notes": "Reachable after an ordinary buy to target minus one. With minimum Meme zero, the final buy charges two Quote atoms, credits one to reserves and one to fees, refunds 98, and graduates even when net Meme is zero (Asymptotic L-2)."
+    },
+    {
       "name": "buy_to_below_threshold",
       "kind": "buy",
       "given": {
