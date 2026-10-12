@@ -1491,6 +1491,64 @@ fun graduating_buy_refunds_the_excess_and_closes_the_curve() {
 }
 
 #[test]
+fun terminal_dust_buy_graduates_without_meme_output() {
+    assert_terminal_dust_buy(1_000_000_000_000_000_000, 0);
+}
+
+#[test]
+fun terminal_dust_buy_graduates_when_the_meme_fee_takes_the_entire_output() {
+    assert_terminal_dust_buy(100_000_000_000_000_000, 1);
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::ESlippageExceeded, location = blast_fun::launch)]
+fun terminal_dust_buy_preserves_positive_minimum_output() {
+    let mut fixture = start();
+    fixture.prepare_terminal_gap(1_000_000_000_000_000_000, 1);
+
+    fixture.next_tx!(ALICE, |f| {
+        let mut launch = f.take_launch();
+        let (meme, refund) = f.buy(&mut launch, 100, 1);
+        destroy(meme);
+        destroy(refund);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EZeroTradeOutput, location = blast_fun::launch)]
+fun nonterminal_dust_buy_still_rejects_positive_net_quote() {
+    let mut fixture = start();
+    fixture.prepare_terminal_gap(1_000_000_000_000_000_000, 2);
+
+    fixture.next_tx!(ALICE, |f| {
+        let mut launch = f.take_launch();
+        let (meme, refund) = f.buy(&mut launch, 2, 0);
+        destroy(meme);
+        destroy(refund);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test, expected_failure(abort_code = blast_fun::errors::EZeroTradeOutput, location = blast_fun::launch)]
+fun terminal_gap_does_not_allow_input_consumed_entirely_by_quote_fees() {
+    let mut fixture = start();
+    fixture.prepare_terminal_gap(1_000_000_000_000_000_000, 1);
+
+    fixture.next_tx!(ALICE, |f| {
+        let mut launch = f.take_launch();
+        let (meme, refund) = f.buy(&mut launch, 1, 0);
+        destroy(meme);
+        destroy(refund);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
+
+#[test]
 fun zero_launch_trade_fees_sell_all_bought_meme_without_fee_balances() {
     let mut fixture = start();
 
@@ -2898,6 +2956,72 @@ fun open_launch(
 }
 
 // --- Trading ---
+
+/// Reaches the specified target gap through a real public buy, with no reserve mutation or sell.
+fun prepare_terminal_gap(self: &mut LaunchFixture, target: u64, gap: u64) {
+    let ticket = self.new_ticket(CREATOR);
+    let mut initializer = self.configured_initializer(ticket);
+    initializer.set_virtual_quote(target);
+    initializer.set_graduation_target(target);
+    let launch = self.finalize_launch(initializer);
+    let mut launch = self.open_launch(launch);
+    let first_input = (target - gap).mul_div_ceil(10_000, 9_900);
+    let (meme, refund) = self.buy(&mut launch, first_input, 1);
+
+    assert!(meme.value() > 0);
+    assert_eq!(refund.value(), 0);
+    let (_, real_quote, _, _) = launch.balances_for_testing();
+    assert_eq!(real_quote, target - gap);
+    assert!(launch.is_live_for_testing());
+    destroy(meme);
+    destroy(refund);
+    launch.put_back();
+}
+
+fun assert_terminal_dust_buy(target: u64, gross_meme: u64) {
+    let mut fixture = start();
+    fixture.prepare_terminal_gap(target, 1);
+
+    fixture.next_tx!(ALICE, |f| {
+        let mut launch = f.take_launch();
+        let (meme_before, quote_before, burn_before, allocation_before) = launch.balances_for_testing();
+        let (
+            protocol_meme_before, creator_meme_before, protocol_quote_before, creator_quote_before,
+        ) = launch.fee_totals_for_testing();
+        let (meme, refund) = f.buy(&mut launch, 100, 0);
+        let (meme_after, quote_after, burn_after, allocation_after) = launch.balances_for_testing();
+        let (
+            protocol_meme_after, creator_meme_after, protocol_quote_after, creator_quote_after,
+        ) = launch.fee_totals_for_testing();
+
+        assert_eq!(meme.value(), 0);
+        assert_eq!(refund.value(), 98);
+        assert_eq!(quote_after, target);
+        assert_eq!(100, quote_after - quote_before + 1 + refund.value());
+        assert_eq!(meme_before, meme_after + gross_meme);
+        assert_eq!(burn_after, burn_before);
+        assert_eq!(allocation_after, allocation_before);
+        assert_eq!(protocol_meme_after, protocol_meme_before);
+        assert_eq!(creator_meme_after, creator_meme_before + gross_meme);
+        assert_eq!(protocol_quote_after, protocol_quote_before);
+        assert_eq!(creator_quote_after, creator_quote_before + 1);
+        launch.assert_lifecycle(false, true, false);
+        assert_eq!(
+            bcs::to_bytes(&collect_one<events::Bought>()),
+            u64_payload(
+                object::id(&launch),
+                vector[2, gross_meme, 0, 98, 0, gross_meme, 0, 1, meme_after, target],
+            ),
+        );
+        f.migrate(&mut launch);
+        assert!(launch.is_migrated_for_testing());
+        destroy(meme);
+        destroy(refund);
+        destroy(launch);
+    });
+
+    fixture.end();
+}
 
 fun launch_buy(
     self: &mut LaunchFixture,

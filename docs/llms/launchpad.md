@@ -252,9 +252,9 @@ The creator caps cannot be claimed in this PTB; claim them in a later transactio
 2. Settle: from that time on, anyone calls `launch::settle_opening_round` with the launch,
    `PackageVersion`, `RuntimeConfig`, and `Clock`. The lifecycle becomes `Live`, and the whole pot
    buys from the curve once, with the usual fees, the graduation cap, and no minimum output. The
-   Meme bought and any Quote refunded (past the target, or the whole pot if it cannot buy one Meme
-   atom) stay in the launch for delivery. Emits `blast_fun::events::Bought` (when the pot bought
-   anything) and `blast_fun::events::OpeningRoundSettled`. If the pot reached the target, the
+   Meme bought and any Quote refunded stay in the launch for delivery. A zero-output pot is
+   refunded whole unless its net Quote reaches the target. A target-reaching pot is charged even
+   when it returns zero Meme. Emits `blast_fun::events::Bought` (when Quote enters the reserve) and `blast_fun::events::OpeningRoundSettled`. If the pot reached the target, the
    launch is `MigrationReady` at once.
 3. Deliver: anyone calls `launch::deliver_opening_round` with the launch, `PackageVersion`, and the
    bidder's address. The bidder (not the caller) receives its pro-rata Meme and Quote as coins, and
@@ -269,6 +269,9 @@ takes the shared launch, `PackageVersion`, `RuntimeConfig`, that `Coin<Quote>`, 
 and the Quote refunded past the graduation target. The refund coin is usually zero-valued; it has
 no `drop`, so transfer it or destroy it with `0x2::coin::destroy_zero`. Emits
 `blast_fun::events::Bought`. The buy that reaches the target makes the launch `MigrationReady`.
+That final buy may return zero Meme because of rounding or Meme fees, but only with
+`min_meme_out = 0`. A positive minimum still aborts; nonterminal zero-output buys abort too.
+The target cap and fees still apply, and excess Quote is refunded.
 
 #### Sell (anyone, after share)
 

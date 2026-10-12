@@ -52,7 +52,12 @@ package-only curve arithmetic, move reserves and pending burn, accrue both fee
 assets under the live protocol share, and return the output coin. A final buy
 accepts only the gross Quote needed to reach the exact net target and returns
 the remainder as a Quote coin. Reaching that target changes `Live` to
-`MigrationReady`; sells are then closed.
+`MigrationReady`; sells are then closed. The terminal buy may return zero Meme,
+including when fees consume its entire rounded output, only when its net Quote
+fills the remaining target gap and `min_meme_out` is zero. A positive minimum
+still aborts before custody changes. This removes the sub-atom graduation stall
+reported as Asymptotic L-2 without relaxing ordinary zero-output trade rejection
+or imposing new creator parameter bounds.
 
 `migrate` is atomic and permissionless. It accepts the native `Currency<Meme>`,
 checks the selected migrator witness type, reads the authoritative native supply
