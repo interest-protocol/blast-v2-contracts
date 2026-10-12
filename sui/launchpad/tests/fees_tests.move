@@ -26,6 +26,51 @@ public struct FeesFixture {
 // === Tests ===
 
 #[test]
+#[expected_failure(
+    abort_code = blast_fun::errors::EInvalidMemeQuotePair,
+    location = blast_fun::fees,
+)]
+fun constructor_rejects_identical_asset_types() {
+    let ledger = fees::new<SUI, SUI>(balance::create_for_testing(1_001));
+
+    destroy(ledger);
+}
+
+#[test]
+fun sui_quote_trade_fees_remain_separate_from_creation_fee() {
+    let mut ctx = tx_context::dummy();
+    let mut ledger = fees::new<TEST_MEME, SUI>(balance::create_for_testing(1_001));
+
+    ledger.accrue(
+        balance::create_for_testing(9),
+        balance::create_for_testing(10),
+        bps::new(7_000),
+    );
+    assert_eq!(totals(&ledger), vector[7, 2, 7, 3]);
+    assert_eq!(ledger.protocol_sui_for_testing(), 1_001);
+
+    let (creator_meme, creator_quote) = ledger.claim_creator_fees(&mut ctx);
+    assert_eq!(creator_meme.value(), 2);
+    assert_eq!(creator_quote.value(), 3);
+    assert_eq!(totals(&ledger), vector[7, 0, 7, 0]);
+    assert_eq!(ledger.protocol_sui_for_testing(), 1_001);
+
+    let (protocol_meme, protocol_quote, protocol_sui) = ledger.claim_protocol_fees();
+    assert_eq!(protocol_meme.value(), 7);
+    assert_eq!(protocol_quote.value(), 7);
+    assert_eq!(protocol_sui.value(), 1_001);
+    assert_eq!(totals(&ledger), vector[0, 0, 0, 0]);
+    assert_eq!(ledger.protocol_sui_for_testing(), 0);
+
+    destroy(creator_meme);
+    destroy(creator_quote);
+    destroy(protocol_meme);
+    destroy(protocol_quote);
+    destroy(protocol_sui);
+    destroy(ledger);
+}
+
+#[test]
 fun dual_asset_accrual_splits_and_claims_exactly() {
     let mut ctx = tx_context::dummy();
     let mut ledger = fees::new<TEST_MEME, TEST_QUOTE>(balance::zero());
@@ -330,7 +375,7 @@ fun accrue(
 }
 
 /// The ledger's `[protocol_meme, creator_meme, protocol_quote, creator_quote]` balances.
-fun totals(ledger: &FeeLedger<TEST_MEME, TEST_QUOTE>): vector<u64> {
+fun totals<Meme, Quote>(ledger: &FeeLedger<Meme, Quote>): vector<u64> {
     let (protocol_meme, creator_meme, protocol_quote, creator_quote) = ledger.totals_for_testing();
 
     vector[protocol_meme, creator_meme, protocol_quote, creator_quote]
@@ -388,4 +433,4 @@ use blast_fun::{
 
 use std::unit_test::{assert_eq, destroy};
 
-use sui::{balance, test_scenario::{Self, Scenario}};
+use sui::{balance, sui::SUI, test_scenario::{Self, Scenario}};

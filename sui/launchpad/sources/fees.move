@@ -22,6 +22,11 @@ public struct FeeLedger<phantom Meme, phantom Quote> has store {
 
 /// A ledger holding the launch's creation fee and no trade fees yet.
 public(package) fun new<Meme, Quote>(creation_fee: Balance<SUI>): FeeLedger<Meme, Quote> {
+    assert!(
+        type_name::with_original_ids<Meme>() != type_name::with_original_ids<Quote>(),
+        blast_fun::errors::invalid_meme_quote_pair!(),
+    );
+
     FeeLedger {
         protocol_meme: balance::zero(),
         creator_meme: balance::zero(),
@@ -115,5 +120,7 @@ public fun totals_for_testing<Meme, Quote>(self: &FeeLedger<Meme, Quote>): (u64,
 // === Imports ===
 
 use blast_fun::bps::Bps;
+
+use std::type_name;
 
 use sui::{balance::{Self, Balance}, coin::Coin, sui::SUI};
