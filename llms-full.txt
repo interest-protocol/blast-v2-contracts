@@ -6271,7 +6271,7 @@ public struct PartnerRemoved has copy, drop {
 public struct CreatorCapsClaimed has copy, drop {
     meme: TypeName,
     curve_fee_cap_id: ID,
-    metadata_cap_id: ID,
+    blast_metadata_cap_id: ID,
 }
 
 public struct CurveFeeCapReassigned has copy, drop {
@@ -6282,7 +6282,7 @@ public struct CurveFeeCapReassigned has copy, drop {
 
 public struct MetadataCapReassigned has copy, drop {
     launch_id: ID,
-    metadata_cap_id: ID,
+    blast_metadata_cap_id: ID,
     recipient: address,
 }
 

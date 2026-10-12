@@ -62,7 +62,7 @@ public struct PartnerRemoved has copy, drop {
 public struct CreatorCapsClaimed has copy, drop {
     meme: TypeName,
     curve_fee_cap_id: ID,
-    metadata_cap_id: ID,
+    blast_metadata_cap_id: ID,
 }
 
 public struct CurveFeeCapReassigned has copy, drop {
@@ -73,7 +73,7 @@ public struct CurveFeeCapReassigned has copy, drop {
 
 public struct MetadataCapReassigned has copy, drop {
     launch_id: ID,
-    metadata_cap_id: ID,
+    blast_metadata_cap_id: ID,
     recipient: address,
 }
 
@@ -272,11 +272,11 @@ public(package) fun partner_removed(partner_id: ID, accepted_until_ms: u64) {
     emit(PartnerRemoved { partner_id, accepted_until_ms });
 }
 
-public(package) fun creator_caps_claimed<Meme>(curve_fee_cap_id: ID, metadata_cap_id: ID) {
+public(package) fun creator_caps_claimed<Meme>(curve_fee_cap_id: ID, blast_metadata_cap_id: ID) {
     emit(CreatorCapsClaimed {
         meme: type_name::with_original_ids<Meme>(),
         curve_fee_cap_id,
-        metadata_cap_id,
+        blast_metadata_cap_id,
     });
 }
 
@@ -284,8 +284,8 @@ public(package) fun curve_fee_cap_reassigned(launch_id: ID, curve_fee_cap_id: ID
     emit(CurveFeeCapReassigned { launch_id, curve_fee_cap_id, recipient });
 }
 
-public(package) fun metadata_cap_reassigned(launch_id: ID, metadata_cap_id: ID, recipient: address) {
-    emit(MetadataCapReassigned { launch_id, metadata_cap_id, recipient });
+public(package) fun metadata_cap_reassigned(launch_id: ID, blast_metadata_cap_id: ID, recipient: address) {
+    emit(MetadataCapReassigned { launch_id, blast_metadata_cap_id, recipient });
 }
 
 public(package) fun meme_metadata_updated(
