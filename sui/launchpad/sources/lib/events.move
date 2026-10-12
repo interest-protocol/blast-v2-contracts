@@ -6,7 +6,8 @@ module blast_fun::events;
 
 // === Public Types ===
 
-/// Blast's one-time fee share of every launch's Meme supply and final Quote reserve.
+/// Blast's one-time fee share of the Meme supply and final Quote reserve of launches finalized
+/// from now on. Finalized launches keep the shares recorded in `LaunchCreated.allocation_plan`.
 public struct ProtocolAllocationSet has copy, drop {
     meme_bps: u64,
     quote_bps: u64,
