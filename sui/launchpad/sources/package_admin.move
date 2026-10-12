@@ -23,7 +23,7 @@ public fun wrap(bootstrap: Bootstrap, upgrade_cap: UpgradeCap, ctx: &mut TxConte
     let custody = upgrade_custody::new<BLAST_FUN>(id.to_inner(), publisher, upgrade_cap);
 
     transfer::share_object(PackageAdmin { id, custody });
-    blast_fun::blast_fun::share_version(generation, ctx);
+    generation.share_version(ctx);
 }
 
 /// Authorizes the exact package digest under the wrapped cap's current policy.
@@ -123,6 +123,7 @@ public fun has_upgrade_cap_for_testing(self: &PackageAdmin): bool {
 
 use blast_admin::{
     blast_acl::AdminWitness,
+    operational_version::OperationalVersion,
     upgrade_custody::{Self, UpgradeCustody},
 };
 
@@ -132,3 +133,5 @@ use blast_fun::{
 };
 
 use sui::package::{UpgradeCap, UpgradeReceipt, UpgradeTicket};
+
+use fun blast_fun::blast_fun::share_version as OperationalVersion.share_version;

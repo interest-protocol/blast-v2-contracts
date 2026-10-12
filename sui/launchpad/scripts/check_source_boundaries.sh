@@ -430,13 +430,15 @@ fi
 # would end upgradeability silently.
 # Wrapping delegates Publisher and UpgradeCap provenance wholly to shared custody.
 if [[ "$(move_production_body wrap <<<"$(move_facts sources/package_admin.move)")" \
-    != 'let (publisher, generation) = bootstrap.destroy(); let id = object::new(ctx); let custody = upgrade_custody::new<BLAST_FUN>(id.to_inner(), publisher, upgrade_cap); transfer::share_object(PackageAdmin { id, custody }); blast_fun::blast_fun::share_version(generation, ctx);' ]] \
+    != 'let (publisher, generation) = bootstrap.destroy(); let id = object::new(ctx); let custody = upgrade_custody::new<BLAST_FUN>(id.to_inner(), publisher, upgrade_cap); transfer::share_object(PackageAdmin { id, custody }); generation.share_version(ctx);' ]] \
   || [[ "$(rg -c 'package_version\.assert_current\(\);' <<<"$package_admin_production")" != 2 ]] \
   || [[ "$(move_facts sources/package_admin.move \
     | awk -F'\t' '$1 == "FN" && $2 == "commit_upgrade_and_advance" { print $10 }')" \
     != 'package_version.assert_next();'* ]] \
   || rg -n '\brestrict_to_' sources \
-  || move_facts sources/package_admin.move | awk -F'\t' '$1 == "NORM"' | rg -q '\w as \w' \
+  || ! rg -Fxq 'use fun blast_fun::blast_fun::share_version as OperationalVersion.share_version;' sources/package_admin.move \
+  || move_facts sources/package_admin.move | awk -F'\t' '$1 == "NORM"' \
+    | sed 's/use fun blast_fun::blast_fun::share_version as OperationalVersion\.share_version;//g' | rg -q '\w as \w' \
   || ! rg -Fq 'self.custody.commit_upgrade(custodian_id, receipt);' sources/package_admin.move \
   || ! rg -Fq 'package_version.advance();' sources/package_admin.move \
   || rg -n '\bpackage::(version|only_(additive|dep)_upgrades|make_immutable)\(' \
