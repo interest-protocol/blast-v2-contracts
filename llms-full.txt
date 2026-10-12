@@ -6548,22 +6548,26 @@ public fun treasury_cap_mut<Meme, Quote, Witness: drop>(
 /// Sets the virtual Quote reserve the curve starts from, which prices the first purchase.
 public fun set_virtual_quote<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,
+    package_version: &blast_fun::PackageVersion,
     virtual_quote: u64,
 )
 
 /// Sets the Quote reserve at which the curve closes.
 public fun set_graduation_target<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,
+    package_version: &blast_fun::PackageVersion,
     graduation_target: u64,
 )
 
 public fun set_allocation_plan<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,
+    package_version: &blast_fun::PackageVersion,
     allocation_plan: allocation::AllocationPlan,
 )
 
 public fun set_lp_fee_split<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,
+    package_version: &blast_fun::PackageVersion,
     lp_fee_split: allocation::FeeSplit,
 )
 
@@ -6571,6 +6575,7 @@ public fun set_lp_fee_split<Meme, Quote>(
 /// default, has no opening round: trading starts at share.
 public fun set_opening_round<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,
+    package_version: &blast_fun::PackageVersion,
     opening_round_ms: u64,
 )
 
@@ -6579,6 +6584,7 @@ public fun set_opening_round<Meme, Quote>(
 /// claims them.
 public fun set_partner<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,
+    package_version: &blast_fun::PackageVersion,
     config: &launch_config::LaunchConfig,
     partner: &blast_partners::blast_partners::Partner,
     clock: &Clock,
@@ -6587,9 +6593,10 @@ public fun set_partner<Meme, Quote>(
 /// Checks every setting, adds Blast's allocation to the plan, fixes the canonical supply in the
 /// Coin Registry, and splits the Meme into the curve reserve and the migration allocations.
 /// `creation_fee` must be exactly the configured fee; it joins Blast's fees on the launch. The
-/// initializer cannot leave the transaction whose `new` checked the package version.
+/// version check also rejects stale finalization in a transaction that used current intake.
 public fun finalize<Meme, Quote>(
     self: LaunchInitializer<Meme, Quote>,
+    package_version: &blast_fun::PackageVersion,
     currency: &mut Currency<Meme>,
     config: &launch_config::LaunchConfig,
     creation_fee: Coin<sui::SUI>,
@@ -6598,7 +6605,11 @@ public fun finalize<Meme, Quote>(
 
 /// Shares the launch. Public time starts now: trading, or the opening round, which ends
 /// `opening_round_ms` later.
-public fun share<Meme, Quote>(self: Launch<Meme, Quote>, clock: &Clock)
+public fun share<Meme, Quote>(
+    self: Launch<Meme, Quote>,
+    package_version: &blast_fun::PackageVersion,
+    clock: &Clock,
+)
 
 /// Returns the creator's `(tick_spacing, fee_rate)` pool tier, in the adapter's venue units.
 public fun pool_tier<Meme, Quote>(self: &Launch<Meme, Quote>): (u32, u64)

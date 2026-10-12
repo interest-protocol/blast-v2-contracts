@@ -712,23 +712,23 @@ impl World {
             )
         };
         let virtual_quote = b.pure(5 * self.case.quote_unit())?;
-        call(&mut b, self.blast, "launch", "set_virtual_quote", pair.clone(), vec![initializer, virtual_quote]);
+        call(&mut b, self.blast, "launch", "set_virtual_quote", pair.clone(), vec![initializer, version, virtual_quote]);
         let target = b.pure(self.target())?;
-        call(&mut b, self.blast, "launch", "set_graduation_target", pair.clone(), vec![initializer, target]);
+        call(&mut b, self.blast, "launch", "set_graduation_target", pair.clone(), vec![initializer, version, target]);
         let plan = self.plan_arg(&mut b)?;
-        call(&mut b, self.blast, "launch", "set_allocation_plan", pair.clone(), vec![initializer, plan]);
+        call(&mut b, self.blast, "launch", "set_allocation_plan", pair.clone(), vec![initializer, version, plan]);
         let split = self.fee_split_arg(&mut b, split)?;
-        call(&mut b, self.blast, "launch", "set_lp_fee_split", pair.clone(), vec![initializer, split]);
+        call(&mut b, self.blast, "launch", "set_lp_fee_split", pair.clone(), vec![initializer, version, split]);
         let currency = self.shared(&mut b, currency, true)?;
         let creation_fee = call(&mut b, SUI_FRAMEWORK_PACKAGE_ID, "coin", "zero", vec![sui()], vec![]);
         let launch = call(&mut b, self.blast, "launch", "finalize", pair.clone(), vec![
-            initializer,
+            initializer, version,
             currency,
             config,
             creation_fee,
         ]);
         let clock = self.clock(&mut b)?;
-        call(&mut b, self.blast, "launch", "share", pair, vec![launch, clock]);
+        call(&mut b, self.blast, "launch", "share", pair, vec![launch, version, clock]);
 
         Ok(b.finish())
     }

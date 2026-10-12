@@ -309,9 +309,9 @@ fun share_launch(
         POOL_TICK_SPACING,
         POOL_FEE_RATE,
     );
-    initializer.set_virtual_quote(5_000_000);
-    initializer.set_graduation_target(TARGET);
-    initializer.set_allocation_plan(
+    initializer.set_virtual_quote(version, 5_000_000);
+    initializer.set_graduation_target(version, TARGET);
+    initializer.set_allocation_plan(version,
         allocation::plan(
             bps::new(7_000),
             bps::new(2_000),
@@ -319,11 +319,11 @@ fun share_launch(
             vector[allocation::recipient(CREATOR, bps::new(1_000), bps::new(1_000))],
         ),
     );
-    initializer.set_lp_fee_split(creator_split());
+    initializer.set_lp_fee_split(version, creator_split());
     let creation_fee = coin::zero(scenario.ctx());
-    let launch = initializer.finalize(&mut currency, config, creation_fee, scenario.ctx());
+    let launch = initializer.finalize(version, &mut currency, config, creation_fee, scenario.ctx());
     let launch_id = object::id(&launch);
-    launch.share(clock);
+    launch.share(version, clock);
     test_scenario::return_to_address(COIN_REGISTRY, currency);
 
     launch_id

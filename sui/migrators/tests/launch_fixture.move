@@ -47,7 +47,7 @@ public fun open_launch<Meme: drop, Quote, Witness: drop>(
         burnable,
     );
 
-    finalize_launch(initializer, currency, config, scenario)
+    finalize_launch(initializer, version, currency, config, scenario)
 }
 
 /// Opens the fixture launch as `open_launch` does, naming `partner`, which `config` first accepts.
@@ -72,9 +72,9 @@ public fun open_partnered_launch<Meme: drop, Quote, Witness: drop>(
         fee_split,
         burnable,
     );
-    initializer.set_partner(config, partner, clock);
+    initializer.set_partner(version, config, partner, clock);
 
-    finalize_launch(initializer, currency, config, scenario)
+    finalize_launch(initializer, version, currency, config, scenario)
 }
 
 /// Mints the ticket and starts the launch with every fixture setting, once the Coin Registry holds
@@ -111,12 +111,12 @@ fun start_launch<Meme: drop, Quote, Witness: drop>(
         POOL_TICK_SPACING,
         POOL_FEE_RATE,
     );
-    initializer.set_virtual_quote(VIRTUAL_QUOTE);
-    initializer.set_graduation_target(TARGET);
-    initializer.set_allocation_plan(
+    initializer.set_virtual_quote(version, VIRTUAL_QUOTE);
+    initializer.set_graduation_target(version, TARGET);
+    initializer.set_allocation_plan(version,
         allocation::plan(bps::new(8_000), bps::new(2_000), bps::new(10_000), vector[]),
     );
-    initializer.set_lp_fee_split(fee_split);
+    initializer.set_lp_fee_split(version, fee_split);
 
     (initializer, currency)
 }
@@ -124,12 +124,13 @@ fun start_launch<Meme: drop, Quote, Witness: drop>(
 /// Finalizes the launch for the fixture's zero creation fee.
 fun finalize_launch<Meme, Quote>(
     initializer: LaunchInitializer<Meme, Quote>,
+    version: &PackageVersion,
     mut currency: Currency<Meme>,
     config: &LaunchConfig,
     scenario: &mut Scenario,
 ): (Launch<Meme, Quote>, Currency<Meme>) {
     let creation_fee = coin::zero(scenario.ctx());
-    let launch = initializer.finalize(&mut currency, config, creation_fee, scenario.ctx());
+    let launch = initializer.finalize(version, &mut currency, config, creation_fee, scenario.ctx());
 
     (launch, currency)
 }

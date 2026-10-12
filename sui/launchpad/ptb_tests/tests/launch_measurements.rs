@@ -521,11 +521,11 @@ impl World {
         );
         let pair = vec![ticket.meme.clone(), sui()];
         let virtual_quote = builder.pure(5_000_000u64)?;
-        call(&mut builder, self.blast, "launch", "set_virtual_quote", pair.clone(), vec![initializer, virtual_quote]);
+        call(&mut builder, self.blast, "launch", "set_virtual_quote", pair.clone(), vec![initializer, version, virtual_quote]);
         let target = builder.pure(shape.target)?;
-        call(&mut builder, self.blast, "launch", "set_graduation_target", pair.clone(), vec![initializer, target]);
-        call(&mut builder, self.blast, "launch", "set_allocation_plan", pair.clone(), vec![initializer, plan]);
-        call(&mut builder, self.blast, "launch", "set_lp_fee_split", pair.clone(), vec![initializer, fee_split]);
+        call(&mut builder, self.blast, "launch", "set_graduation_target", pair.clone(), vec![initializer, version, target]);
+        call(&mut builder, self.blast, "launch", "set_allocation_plan", pair.clone(), vec![initializer, version, plan]);
+        call(&mut builder, self.blast, "launch", "set_lp_fee_split", pair.clone(), vec![initializer, version, fee_split]);
         if shape.opening_round_ms != NO_OPENING_ROUND {
             let opening_round_ms = builder.pure(shape.opening_round_ms)?;
             call(
@@ -534,7 +534,7 @@ impl World {
                 "launch",
                 "set_opening_round",
                 pair.clone(),
-                vec![initializer, opening_round_ms],
+                vec![initializer, version, opening_round_ms],
             );
         }
         let currency = builder.obj(self.h.shared(ticket.currency, true))?;
@@ -546,7 +546,7 @@ impl World {
                 "launch",
                 "finalize",
                 pair.clone(),
-                vec![initializer, currency, config, creation_fee],
+                vec![initializer, version, currency, config, creation_fee],
             );
         let clock = builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?;
         if shape.creator_purchase && shape.opening_round_ms != NO_OPENING_ROUND {
@@ -590,7 +590,7 @@ impl World {
             );
             builder.transfer_args(BENEFICIARY.into(), vec![Argument::NestedResult(bought, 0)]);
         }
-        call(&mut builder, self.blast, "launch", "share", pair, vec![launch, clock]);
+        call(&mut builder, self.blast, "launch", "share", pair, vec![launch, version, clock]);
 
         Ok(builder.finish())
     }

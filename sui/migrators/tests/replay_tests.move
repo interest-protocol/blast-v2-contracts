@@ -359,20 +359,20 @@ fun create_launch(self: &mut ReplayFixture) {
             POOL_TICK_SPACING,
             POOL_FEE_RATE,
         );
-        initializer.set_virtual_quote(VIRTUAL_QUOTE);
-        initializer.set_graduation_target(TARGET);
-        initializer.set_allocation_plan(plan());
-        initializer.set_lp_fee_split(first_split());
-        initializer.set_opening_round(OPENING_ROUND_MS);
+        initializer.set_virtual_quote(&f.version, VIRTUAL_QUOTE);
+        initializer.set_graduation_target(&f.version, TARGET);
+        initializer.set_allocation_plan(&f.version, plan());
+        initializer.set_lp_fee_split(&f.version, first_split());
+        initializer.set_opening_round(&f.version, OPENING_ROUND_MS);
         let creation_fee = coin::zero(f.ctx!());
-        let mut launch = initializer.finalize(&mut currency, &config, creation_fee, f.ctx!());
+        let mut launch = initializer.finalize(&f.version, &mut currency, &config, creation_fee, f.ctx!());
         launch.join_opening_round(
             &f.version,
             coin::mint_for_testing<QUOTE>(CREATOR_BID, f.ctx!()),
             &f.clock,
             f.ctx!(),
         );
-        launch.share(&f.clock);
+        launch.share(&f.version, &f.clock);
 
         test_scenario::return_to_address(COIN_REGISTRY, currency);
         test_scenario::return_shared(config);

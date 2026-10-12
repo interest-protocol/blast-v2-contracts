@@ -1017,11 +1017,17 @@ launch_functions_containing() {
 # before custody moves and keeps the native MetadataCap inline forever.
 launch_new_body="$(move_production_body new <<<"$launch_facts")"
 launch_finalize_body="$(move_production_body finalize <<<"$launch_facts")"
+launch_creation_ungated="$(awk -F'\t' '
+  $1 == "FN" && $6 == 0 && $2 ~ /^(set_virtual_quote|set_graduation_target|set_allocation_plan|set_lp_fee_split|set_opening_round|set_partner|finalize|share)$/ {
+    if ($9 !~ /[(,] package_version: &PackageVersion,/ || $10 !~ /^package_version\.assert_current\(\);/) print $2
+  }
+' <<<"$launch_facts")"
 launch_initializer_functions="$(awk -F'\t' '
   $1 == "FN" && $6 == 0 && $9 ~ /LaunchInitializer</ { print $2 ":" $3 }
 ' <<<"$launch_facts" | sort | tr '\n' ' ')"
 
 if [[ ! -f sources/launch.move ]] \
+  || [[ -n "$launch_creation_ungated" ]] \
   || [[ "$(move_production_type LaunchInitializer <<<"$launch_facts")" != 'struct LaunchInitializer<phantom Meme, phantom Quote> {'* ]] \
   || [[ "$launch_initializer_functions" != 'finalize:public new:public set_allocation_plan:public set_graduation_target:public set_lp_fee_split:public set_opening_round:public set_partner:public set_virtual_quote:public treasury_cap_mut:public ' ]] \
   || [[ "$(move_production_function_contract new <<<"$launch_facts")" != 'public:0:0:fun new<Meme, Quote, Witness: drop>( ticket: LaunchTicket<Meme>, package_version: &PackageVersion, config: &LaunchConfig, _: Witness, pool_tick_spacing: u32, pool_fee_rate: u64, ): LaunchInitializer<Meme, Quote>' ]] \
@@ -1034,11 +1040,11 @@ if [[ ! -f sources/launch.move ]] \
     <<<"$launch_new_body" \
   || [[ "$(move_production_function_contract treasury_cap_mut <<<"$launch_facts")" != 'public:0:0:fun treasury_cap_mut<Meme, Quote, Witness: drop>( self: &mut LaunchInitializer<Meme, Quote>, _: Witness, ): &mut TreasuryCap<Meme>' ]] \
   || [[ "$(move_production_body treasury_cap_mut <<<"$launch_facts")" != 'assert!( self.migration_witness == type_name::with_original_ids<Witness>(), blast_fun::errors::invalid_migration_witness!(), ); self.ticket.treasury_cap_mut()' ]] \
-  || [[ "$(move_production_function_contract finalize <<<"$launch_facts")" != 'public:0:0:fun finalize<Meme, Quote>( self: LaunchInitializer<Meme, Quote>, currency: &mut Currency<Meme>, config: &LaunchConfig, creation_fee: Coin<SUI>, ctx: &mut TxContext, ): Launch<Meme, Quote>' ]] \
-  || [[ "$(move_production_function_contract set_partner <<<"$launch_facts")" != 'public:0:0:fun set_partner<Meme, Quote>( self: &mut LaunchInitializer<Meme, Quote>, config: &LaunchConfig, partner: &Partner, clock: &Clock, )' ]] \
+  || [[ "$(move_production_function_contract finalize <<<"$launch_facts")" != 'public:0:0:fun finalize<Meme, Quote>( self: LaunchInitializer<Meme, Quote>, package_version: &PackageVersion, currency: &mut Currency<Meme>, config: &LaunchConfig, creation_fee: Coin<SUI>, ctx: &mut TxContext, ): Launch<Meme, Quote>' ]] \
+  || [[ "$(move_production_function_contract set_partner <<<"$launch_facts")" != 'public:0:0:fun set_partner<Meme, Quote>( self: &mut LaunchInitializer<Meme, Quote>, package_version: &PackageVersion, config: &LaunchConfig, partner: &Partner, clock: &Clock, )' ]] \
   || ! in_order 'config.assert_partner(' 'self.partner_id = option::some(partner_id);' \
     <<<"$(move_production_body set_partner <<<"$launch_facts")" \
-  || [[ "$launch_finalize_body" == *'assert_current'* ]] \
+  || [[ "$launch_finalize_body" != 'package_version.assert_current();'* ]] \
   || [[ "$launch_finalize_body" == *'.is_some()'* ]] \
   || ! in_order \
     'invalid_creation_fee!()' \
@@ -1070,7 +1076,7 @@ fi
 # The pool tier and LP-fee split are the creator's post-migration settings: set once on the
 # initializer, stored unchanged by the launch, and only read back by the migration adapter.
 if [[ "$(launch_functions_containing 'self.lp_fee_split = ')" != 'set_lp_fee_split ' ]] \
-  || [[ "$(move_production_function_contract set_lp_fee_split <<<"$launch_facts")" != 'public:0:0:fun set_lp_fee_split<Meme, Quote>( self: &mut LaunchInitializer<Meme, Quote>, lp_fee_split: FeeSplit, )' ]] \
+  || [[ "$(move_production_function_contract set_lp_fee_split <<<"$launch_facts")" != 'public:0:0:fun set_lp_fee_split<Meme, Quote>( self: &mut LaunchInitializer<Meme, Quote>, package_version: &PackageVersion, lp_fee_split: FeeSplit, )' ]] \
   || [[ "$(count_occurrences '\.lp_fee_split = ' <<<"$launch_source")" != 1 ]] \
   || [[ "$(count_occurrences 'self\.pool_(tick_spacing|fee_rate) = ' <<<"$launch_source")" != 0 ]] \
   || [[ "$(move_production_function_contract pool_tier <<<"$launch_facts")" != 'public:0:0:fun pool_tier<Meme, Quote>(self: &Launch<Meme, Quote>): (u32, u64)' ]] \
@@ -1262,8 +1268,8 @@ fi
 
 # Every production function that takes the shared PackageVersion checks it as its first
 # statement, directly or by first calling a receiver helper that does, and no public function
-# reaching mutable shared state escapes that guard. The one exception consumes the no-ability
-# LaunchInitializer, which cannot leave the transaction whose `new` checked the version.
+# reaching mutable shared state escapes that guard. Creation calls also check individually:
+# one PTB can mix generations even though the initializer cannot leave that transaction.
 version_guard_violations="$(
   for move_file in "${source_files[@]}"; do
     move_facts "$move_file" | awk -F'\t' -v file="$move_file" '
@@ -1273,8 +1279,7 @@ version_guard_violations="$(
       }
       $1 == "FN" && $6 == 0 && $3 == "public" \
         && ($9 ~ /: &mut (Launch|Currency)</ || $9 ~ /: &mut (LaunchConfig|RuntimeConfig|PackageAdmin),/) \
-        && $9 !~ /[(,] package_version: &(mut )?PackageVersion,/ \
-        && $9 !~ /\( ?self: LaunchInitializer</ {
+        && $9 !~ /[(,] package_version: &(mut )?PackageVersion,/ {
         print "  " file ": " $2 " reaches mutable shared state without PackageVersion"
       }
       END {

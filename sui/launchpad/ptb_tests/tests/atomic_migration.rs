@@ -31,6 +31,7 @@ use anyhow::Result;
 use blast_launchpad_ptb_tests::{
     CompiledPackage, Expected, Harness, Outcome, build, build_timelock, call, sui_dir, timelock_dir,
 };
+use move_binary_format::{CompiledModule, file_format::SignatureToken};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sui_types::{
@@ -38,6 +39,7 @@ use sui_types::{
     base_types::{ObjectID, SuiAddress},
     effects::TransactionEffectsAPI,
     object::Owner,
+    move_package::MovePackage,
     parse_sui_type_tag,
     programmable_transaction_builder::ProgrammableTransactionBuilder,
     transaction::{Argument, Command, ObjectArg, ProgrammableTransaction},
@@ -92,6 +94,98 @@ struct World {
     runtime: ObjectID,
     config: ObjectID,
     project: CompiledPackage,
+    core_code: CompiledPackage,
+    adapter_code: CompiledPackage,
+    admin: ObjectID,
+    acl: ObjectID,
+    root: ObjectID,
+    admin_cap: ObjectID,
+    custody: ObjectID,
+}
+
+#[test]
+fn mixed_generation_creation_rejects_each_stale_step_after_native_upgrade() -> Result<()> {
+    let mut w = world("mixed-generation-creation")?;
+    let (ticket, currency, meme) = w.publish_ticket()?;
+    let original = w.blast;
+    let mut code = w.core_code.clone();
+    for bytes in &mut code.modules {
+        let mut module = CompiledModule::deserialize_with_defaults(bytes)?;
+        if module.self_id().name().as_str() == "blast_fun" {
+            let mut changed = 0;
+            for constant in &mut module.constant_pool {
+                if constant.type_ == SignatureToken::U64 {
+                    let value: u64 = bcs::from_bytes(&constant.data)?;
+                    if value == 1 || value == 2 {
+                        constant.data = bcs::to_bytes(&(value + 1))?;
+                        changed += 1;
+                    }
+                }
+            }
+            assert_eq!(changed, 2, "advance only the compiled current and next generations");
+            bytes.clear();
+            module.serialize_with_version(module.version, bytes)?;
+        }
+    }
+    let role = parse_sui_type_tag(&format!("{original}::blast_fun_domain::UpgradeAdmin"))?;
+    let mut b = ProgrammableTransactionBuilder::new();
+    let acl = b.obj(w.h.shared(w.acl, true))?;
+    let root = b.obj(w.h.owned(w.root))?;
+    let cap_id = b.pure(w.admin_cap)?;
+    call(&mut b, w.admin, "blast_acl", "grant_role", vec![role.clone()], vec![acl, root, cap_id]);
+    w.h.impersonate_cap_owner(w.root, b.finish())?.assert_success();
+
+    let custody = w.custody;
+    let digest = MovePackage::compute_digest_for_modules_and_deps(&code.modules, &code.dependencies, true);
+    let mut b = ProgrammableTransactionBuilder::new();
+    let acl = b.obj(w.h.shared(w.acl, false))?;
+    let cap = b.obj(w.h.owned(w.admin_cap))?;
+    let witness = call(&mut b, w.admin, "blast_acl", "sign_in", vec![role], vec![acl, cap]);
+    let custody_arg = b.obj(w.h.shared(custody, true))?;
+    let version = b.obj(w.h.shared(w.version, true))?;
+    let digest = b.pure(digest.to_vec())?;
+    let upgrade_ticket = call(&mut b, original, "package_admin", "authorize_upgrade", vec![], vec![custody_arg, version, witness, digest]);
+    let receipt = b.upgrade(original, upgrade_ticket, code.dependencies, code.modules);
+    call(&mut b, original, "package_admin", "commit_upgrade_and_advance", vec![], vec![custody_arg, version, witness, receipt]);
+    let upgraded = w.h.execute(b.finish())?;
+    upgraded.assert_success();
+    w.blast = upgraded.effects.created().into_iter()
+        .map(|(reference, _)| reference.0).find(|id| w.h.object(*id).is_package()).unwrap();
+    let (_, generation): (ObjectID, u64) = bcs::from_bytes(&w.h.contents(w.version))?;
+    assert_eq!(generation, 2);
+
+    // A fresh adapter links to the active dependency while preserving core type origins.
+    let mut adapter = w.adapter_code.clone();
+    for dependency in &mut adapter.dependencies {
+        if *dependency == original { *dependency = w.blast; }
+    }
+    w.adapter = w.h.publish(adapter)?.0;
+    let mut b = ProgrammableTransactionBuilder::new();
+    let acl = b.obj(w.h.shared(w.acl, false))?;
+    let cap = b.obj(w.h.owned(w.admin_cap))?;
+    let role = parse_sui_type_tag(&format!("{original}::blast_fun_domain::AdapterAdmin"))?;
+    let witness = call(&mut b, w.admin, "blast_acl", "sign_in", vec![role], vec![acl, cap]);
+    let config = b.obj(w.h.shared(w.config, true))?;
+    let version = b.obj(w.h.shared(w.version, false))?;
+    let allowed = b.pure(true)?;
+    call(&mut b, w.blast, "launch_config", "set_migration_witness_allowed", vec![w.adapter_type("Venue")?], vec![config, version, witness, allowed]);
+    w.h.execute(b.finish())?.assert_success();
+
+    let current = w.create_launch(ticket, currency, &meme, &FeeSplit::single(DESTINATION), OPENING_ROUND_MS)?;
+    for name in ["set_virtual_quote", "set_graduation_target", "set_allocation_plan", "set_lp_fee_split", "set_opening_round", "finalize", "share"] {
+        let mut mixed = current.clone();
+        let stale = mixed.commands.iter_mut().find_map(|command| match command {
+            Command::MoveCall(call) if call.module.as_str() == "launch" && call.function.as_str() == name => Some(call),
+            _ => None,
+        }).unwrap();
+        stale.package = original;
+        // This pinned runtime rejects conflicting linkage before entering Move. Unit tests
+        // separately pin the version-first abort for each creation function.
+        println!("mixed-generation step: {name}");
+        w.h.assert_rolled_back(mixed, Expected::Error("InvalidLinkage"), &[ticket, currency, w.version, w.config], &[w.h.sender])?;
+    }
+    w.h.execute(current)?.assert_success();
+    Ok(())
 }
 
 #[test]
@@ -526,7 +620,8 @@ fn world(work: &str) -> Result<World> {
     let partners_dir = sui_dir.join("partners");
     let (partners, _) = h.publish(build(&partners_dir, &[(&timelock_dir, timelock), (&admin_dir, admin)], &work)?)?;
     let core = [(timelock_dir.as_path(), timelock), (admin_dir.as_path(), admin), (partners_dir.as_path(), partners)];
-    let (blast, published) = h.publish(build(&launchpad_dir, &core, &work)?)?;
+    let core_code = build(&launchpad_dir, &core, &work)?;
+    let (blast, published) = h.publish(core_code.clone())?;
     let one = |outcome: &Outcome, module: &str, name: &str| {
         let ids = outcome.created(&h, module, name);
         assert_eq!(ids.len(), 1, "{module}::{name}");
@@ -538,9 +633,14 @@ fn world(work: &str) -> Result<World> {
     let runtime = one(&published, "runtime_config", "RuntimeConfig");
     let version = h.wrap_launchpad(blast, &published)?;
     let linked = [core[0], core[1], core[2], (launchpad_dir.as_path(), blast)];
-    let (adapter, _) = h.publish(build(&fixture.join("adapter"), &linked, &work)?)?;
+    let adapter_code = build(&fixture.join("adapter"), &linked, &work)?;
+    let (adapter, _) = h.publish(adapter_code.clone())?;
     let project = build(&fixture.join("project"), &linked, &work)?;
-    let mut w = World { h, blast, adapter, version, runtime, config, project };
+    let mut w = World { h, blast, adapter, version, runtime, config, project, core_code, adapter_code, admin, acl, root, admin_cap: ObjectID::ZERO, custody: ObjectID::ZERO };
+
+    w.custody = w.h.sim.store().get_transaction_effects(&w.h.object(version).previous_transaction).unwrap()
+        .created().into_iter().map(|(reference, _)| reference.0)
+        .find(|id| w.h.is_type(*id, "package_admin", "PackageAdmin")).unwrap();
 
     // Production admin path: the configured root owner's SuperAdminCap grants one AdminCap and each role the
     // setters below take; the cap then signs in once per role.
@@ -556,6 +656,7 @@ fn world(work: &str) -> Result<World> {
     let granted = w.h.impersonate_cap_owner(root, builder.finish())?;
     granted.assert_success();
     let admin_cap = granted.created(&w.h, "blast_acl", "AdminCap")[0];
+    w.admin_cap = admin_cap;
 
     let mut builder = ProgrammableTransactionBuilder::new();
     let acl_arg = builder.obj(w.h.shared(acl, true))?;
@@ -665,28 +766,28 @@ impl World {
         ]);
         let pair = vec![meme.clone(), sui()];
         let virtual_quote = builder.pure(5_000_000u64)?;
-        call(&mut builder, self.blast, "launch", "set_virtual_quote", pair.clone(), vec![initializer, virtual_quote]);
+        call(&mut builder, self.blast, "launch", "set_virtual_quote", pair.clone(), vec![initializer, version, virtual_quote]);
         let target = builder.pure(TARGET)?;
-        call(&mut builder, self.blast, "launch", "set_graduation_target", pair.clone(), vec![initializer, target]);
-        call(&mut builder, self.blast, "launch", "set_allocation_plan", pair.clone(), vec![initializer, plan]);
-        call(&mut builder, self.blast, "launch", "set_lp_fee_split", pair.clone(), vec![initializer, fee_split]);
+        call(&mut builder, self.blast, "launch", "set_graduation_target", pair.clone(), vec![initializer, version, target]);
+        call(&mut builder, self.blast, "launch", "set_allocation_plan", pair.clone(), vec![initializer, version, plan]);
+        call(&mut builder, self.blast, "launch", "set_lp_fee_split", pair.clone(), vec![initializer, version, fee_split]);
         if opening_round_ms != NO_OPENING_ROUND {
             let opening_round_ms = builder.pure(opening_round_ms)?;
             call(&mut builder, self.blast, "launch", "set_opening_round", pair.clone(), vec![
-                initializer,
+                initializer, version,
                 opening_round_ms,
             ]);
         }
         let currency = builder.obj(self.h.shared(currency, true))?;
         let creation_fee = call(&mut builder, SUI_FRAMEWORK_PACKAGE_ID, "coin", "zero", vec![sui()], vec![]);
         let launch = call(&mut builder, self.blast, "launch", "finalize", pair.clone(), vec![
-            initializer,
+            initializer, version,
             currency,
             config,
             creation_fee,
         ]);
         let clock = builder.obj(self.h.shared(SUI_CLOCK_OBJECT_ID, false))?;
-        call(&mut builder, self.blast, "launch", "share", pair, vec![launch, clock]);
+        call(&mut builder, self.blast, "launch", "share", pair, vec![launch, version, clock]);
 
         Ok(builder.finish())
     }
