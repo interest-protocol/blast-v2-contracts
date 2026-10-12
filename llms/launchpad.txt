@@ -344,7 +344,9 @@ object at a derived address. Use that shared `Currency<Meme>` in every later ste
 #### Flow 3: create, configure, and share the launch (ticket holder, one PTB)
 
 Type arguments are `<Meme, Quote>` on every adapter and `launch` call below. `Clock` is the shared
-object at `0x6`.
+object at `0x6`. Every initializer setter below, `launch::finalize`, and `launch::share`
+takes the launchpad `PackageVersion` as a shared, immutable argument immediately after the
+initializer or launch. Each checks the current generation before validation or mutation.
 `launch::new` needs the adapter's witness, which only the adapter module can construct, so a
 launch always starts through an adapter's `new`; only that adapter can borrow the ticket's treasury
 cap during the PTB (`launch::treasury_cap_mut`).
@@ -389,7 +391,7 @@ cap during the PTB (`launch::treasury_cap_mut`).
    only time a launch can name a partner.
 8. Pay the creation fee: `SplitCoins` from the gas coin for exactly `LaunchConfig.creation_fee`
    MIST (use `0x2::coin::zero<0x2::sui::SUI>` when it is zero).
-9. `launch::finalize` consumes the initializer and takes the shared `Currency<Meme>` (mutable),
+9. `launch::finalize` consumes the initializer and takes `PackageVersion`, the shared `Currency<Meme>` (mutable),
    `LaunchConfig`, and the fee coin. It returns the `Launch<Meme, Quote>` value. It checks every
    setting (see Aborts), copies Blast's current allocation into the plan and requires each asset to
    sum to 10,000, fixes the supply as burn-only or fixed in the Coin Registry (consuming the
@@ -401,7 +403,7 @@ cap during the PTB (`launch::treasury_cap_mut`).
       coins. A buy here may even reach the target.
     - with an opening round: `launch::join_opening_round` on the launch value (see Opening round);
       the creator's bid joins the same pot at the same price as everyone's.
-11. `launch::share` consumes the launch value and takes `Clock`: it records `public_start_ms`
+11. `launch::share` consumes the launch value and takes `PackageVersion` and `Clock`: it records `public_start_ms`
     (now), shares the launch, and emits `blast_fun::events::LaunchShared`. The opening round, if
     any, ends `opening_round_ms` later. This must be the launch's last use in the PTB.
 
