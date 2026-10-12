@@ -378,8 +378,8 @@ impl World {
         let acl = one(&h, &admin_published, "blast_acl", "ACL");
         let root = one(&h, &admin_published, "blast_acl", "SuperAdminCap");
         let config = one(&h, &published, "launch_config", "LaunchConfig");
-        let version = one(&h, &published, "blast_fun", "PackageVersion");
         let runtime = one(&h, &published, "runtime_config", "RuntimeConfig");
+        let version = h.wrap_launchpad(blast, &published)?;
 
         let mut dependencies =
             vec![ObjectID::from_single_byte(1), ObjectID::from_single_byte(2), timelock, admin, partners, blast];
@@ -398,13 +398,13 @@ impl World {
             &work,
         )?;
 
-        // Production admin path: the publisher's SuperAdminCap grants one AdminCap, then each role.
+        // Production admin path: the configured root owner's SuperAdminCap grants one AdminCap, then each role.
         let mut b = ProgrammableTransactionBuilder::new();
         let acl_arg = b.obj(h.shared(acl, true))?;
         let root_arg = b.obj(h.owned(root))?;
         let recipient = b.pure(h.sender)?;
         call(&mut b, admin, "blast_acl", "grant_admin", vec![], vec![acl_arg, root_arg, recipient]);
-        let granted = h.execute(b.finish())?;
+        let granted = h.impersonate_cap_owner(root, b.finish())?;
         granted.assert_success();
         let admin_cap = one(&h, &granted, "blast_acl", "AdminCap");
 
@@ -416,7 +416,7 @@ impl World {
             let role_tag = tag(&format!("{blast}::blast_fun_domain::{role}"));
             call(&mut b, admin, "blast_acl", "grant_role", vec![role_tag], vec![acl_arg, root_arg, admin_cap_id]);
         }
-        h.execute(b.finish())?.assert_success();
+        h.impersonate_cap_owner(root, b.finish())?.assert_success();
 
         let mut w = World {
             h,
@@ -1960,8 +1960,11 @@ struct Recipient {
 struct Vault {
     id: ObjectID,
     pool_id: ObjectID,
+    _partner_id: Option<ObjectID>,
     protocol_meme_residual: u64,
     protocol_quote_residual: u64,
+    _unpaid_protocol_meme: u64,
+    _unpaid_protocol_quote: u64,
     generation: u64,
     fee_split: FeeSplit,
     creator_meme: u64,

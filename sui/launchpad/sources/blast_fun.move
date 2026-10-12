@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// Canonical package provenance witness named after the package, and the shared package version
-/// every entry point checks so old bytecode stops after an upgrade.
+/// Canonical package provenance, publication bootstrap, and operational generation.
 ///
-/// Both come from the one-time witness: `init` seeds the generation from it and then claims the
-/// Publisher with it, so no other package can ever create this package's generation.
+/// The one-time witness seeds the generation and claims the Publisher. Both stay in owned
+/// bootstrap custody until package administration seals the native capabilities.
 module blast_fun::blast_fun;
 
 // === Constants ===
@@ -21,6 +20,13 @@ const NEXT_PACKAGE_VERSION: u64 = 2;
 /// One-time witness: it seeds the package generation and claims this package's Publisher.
 public struct BLAST_FUN() has drop;
 
+/// Publication-only custody; it cannot supply the PackageVersion required by launch activity.
+public struct Bootstrap has key {
+    id: UID,
+    publisher: Publisher,
+    generation: OperationalVersion<BLAST_FUN>,
+}
+
 /// Singleton operational package generation.
 public struct PackageVersion has key {
     id: UID,
@@ -30,11 +36,26 @@ public struct PackageVersion has key {
 // === Private Initialization ===
 
 fun init(otw: BLAST_FUN, ctx: &mut TxContext) {
-    transfer::share_object(new(&otw, ctx));
-    sui::package::claim_and_keep(otw, ctx);
+    let generation = operational_version::new(&otw);
+    let publisher = sui::package::claim(otw, ctx);
+
+    transfer::transfer(Bootstrap { id: object::new(ctx), publisher, generation }, ctx.sender());
 }
 
 // === Package Functions ===
+
+/// Consumes the unique bootstrap for package-admin custody intake.
+public(package) fun destroy(self: Bootstrap): (Publisher, OperationalVersion<BLAST_FUN>) {
+    let Bootstrap { id, publisher, generation } = self;
+    id.delete();
+
+    (publisher, generation)
+}
+
+/// Publishes the usable generation in the same transaction that seals capability custody.
+public(package) fun share_version(generation: OperationalVersion<BLAST_FUN>, ctx: &mut TxContext) {
+    transfer::share_object(PackageVersion { id: object::new(ctx), generation });
+}
 
 /// Rejects callable bytecode from every package generation except the active one.
 public(package) fun assert_current(self: &PackageVersion) {
@@ -51,15 +72,6 @@ public(package) fun advance(self: &mut PackageVersion) {
     self.generation.advance(&self.id, NEXT_PACKAGE_VERSION);
 }
 
-// === Private Functions ===
-
-fun new(otw: &BLAST_FUN, ctx: &mut TxContext): PackageVersion {
-    PackageVersion {
-        id: object::new(ctx),
-        generation: operational_version::new(otw),
-    }
-}
-
 // === Test-Only Functions ===
 
 #[test_only]
@@ -73,7 +85,13 @@ public fun init_for_testing(ctx: &mut TxContext) {
 public fun new_for_testing(ctx: &mut TxContext): PackageVersion {
     let otw = BLAST_FUN();
 
-    new(&otw, ctx)
+    PackageVersion { id: object::new(ctx), generation: operational_version::new(&otw) }
+}
+
+#[test_only]
+/// Inspects the canonical Publisher retained by initialization without releasing it.
+public fun publisher_for_bootstrap_testing(self: &Bootstrap): &Publisher {
+    &self.publisher
 }
 
 #[test_only]
@@ -96,10 +114,12 @@ public fun advance_for_testing(self: &mut PackageVersion) {
 
 #[test_only]
 /// Claims an additional canonical-module Publisher for package-administration fixture inputs.
-public fun publisher_for_testing(ctx: &mut TxContext): sui::package::Publisher {
+public fun publisher_for_testing(ctx: &mut TxContext): Publisher {
     sui::package::test_claim(BLAST_FUN(), ctx)
 }
 
 // === Imports ===
 
 use blast_admin::operational_version::{Self, OperationalVersion};
+
+use sui::package::Publisher;

@@ -34,6 +34,7 @@ use sui_types::{
     event::Event,
     execution_status::{ExecutionFailureStatus, ExecutionStatus},
     gas_coin::MIST_PER_SUI,
+    move_package::UpgradeCap,
     object::{Object, Owner},
     programmable_transaction_builder::ProgrammableTransactionBuilder,
     transaction::{
@@ -394,6 +395,26 @@ impl Harness {
         Ok(Outcome { transaction, effects, error, events })
     }
 
+    /// Simulates the configured capability owner for fixture setup, without its private key.
+    /// Ownership checks still run; this provides no evidence about real root signatures.
+    pub fn impersonate_cap_owner(&mut self, cap: ObjectID, pt: ProgrammableTransaction) -> Result<Outcome> {
+        let sender = self.object(cap).owner().get_address_owner_address()?;
+        let funded = self.sim.request_gas(sender, 100 * MIST_PER_SUI)?;
+        ensure!(funded.status().is_ok(), "fund capability owner");
+        let gas = funded.created().into_iter()
+            .find_map(|(object, owner)| (owner == Owner::AddressOwner(sender)).then_some(object))
+            .context("capability owner's gas")?;
+        let data = TransactionData::new_programmable(
+            sender, vec![gas], pt, 50 * MIST_PER_SUI, self.sim.reference_gas_price(),
+        );
+        let transaction = Transaction::from_data(data, vec![]);
+        let (effects, error) = self.sim.execute_transaction_impersonating(transaction.clone())?;
+        let events = self.sim.store().get_transaction_events(effects.transaction_digest())
+            .map(|events| events.data.clone()).unwrap_or_default();
+
+        Ok(Outcome { transaction, effects, error, events })
+    }
+
     /// Publishes upgradeably and keeps the UpgradeCap with the sender.
     pub fn publish(&mut self, package: CompiledPackage) -> Result<(ObjectID, Outcome)> {
         let mut builder = ProgrammableTransactionBuilder::new();
@@ -405,6 +426,42 @@ impl Harness {
         ensure!(published.len() == 1, "expected one published package");
 
         Ok((published[0], outcome))
+    }
+
+    /// Seals the publication capabilities before any launchpad configuration or launch.
+    pub fn wrap_launchpad(&mut self, package: ObjectID, publication: &Outcome) -> Result<ObjectID> {
+        assert!(publication.created(self, "blast_fun", "PackageVersion").is_empty());
+        let bootstrap = publication.created(self, "blast_fun", "Bootstrap");
+        let cap = publication.created(self, "package", "UpgradeCap");
+        assert_eq!(bootstrap.len(), 1);
+        assert_eq!(cap.len(), 1);
+        let (bootstrap_id, publisher, generation): (ObjectID, (ObjectID, String, String), u64) =
+            bcs::from_bytes(&self.contents(bootstrap[0]))?;
+        let cap_contents = self.contents(cap[0]);
+        let mut builder = ProgrammableTransactionBuilder::new();
+        let bootstrap_arg = builder.obj(self.owned(bootstrap[0]))?;
+        let cap_arg = builder.obj(self.owned(cap[0]))?;
+        call(&mut builder, package, "package_admin", "wrap", vec![], vec![bootstrap_arg, cap_arg]);
+        let outcome = self.execute(builder.finish())?;
+        outcome.assert_success();
+        assert_eq!(outcome.effects.deleted().iter().map(|object| object.0).collect::<Vec<_>>(), vec![bootstrap_id]);
+        // The simulator retains wrapped objects in its cache; transaction effects establish custody.
+        assert_eq!(outcome.effects.wrapped().iter().map(|object| object.0).collect::<Vec<_>>(), cap);
+        let version = outcome.created(self, "blast_fun", "PackageVersion");
+        assert_eq!(version.len(), 1);
+        let admin = outcome.created(self, "package_admin", "PackageAdmin");
+        assert_eq!(admin.len(), 1);
+        self.shared(admin[0], false);
+        let (admin_id, sealed_publisher, sealed_caps): (ObjectID, (ObjectID, String, String), Vec<UpgradeCap>) =
+            bcs::from_bytes(&self.contents(admin[0]))?;
+        assert_eq!(admin_id, admin[0]);
+        assert_eq!(sealed_publisher, publisher);
+        assert_eq!(sealed_caps.len(), 1);
+        assert_eq!(bcs::to_bytes(&sealed_caps[0])?, cap_contents);
+        let (version_id, active_generation): (ObjectID, u64) = bcs::from_bytes(&self.contents(version[0]))?;
+        assert_eq!((version_id, active_generation), (version[0], generation));
+
+        Ok(version[0])
     }
 
     pub fn snapshot(&self, objects: &[ObjectID], owners: &[SuiAddress]) -> Snapshot {

@@ -280,30 +280,43 @@ fi
 
 blast_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/blast_fun.move)"
 
-# The marker module owns the BLAST_FUN witness, the Publisher claim, and the shared generation
-# container with its two compiled constants. The generation value, its checked arithmetic, and its
-# replay event belong to blast_admin, and only this module's init holds the witness that creates it.
+# The OTW creates one owned Bootstrap. Only validated custody intake may consume it and share
+# PackageVersion; publication must not supply a usable generation before custody is sealed.
 if [[ ! -f sources/blast_fun.move ]] \
   || ! rg -Fq 'public struct BLAST_FUN() has drop;' sources/blast_fun.move \
   || ! rg -U -q \
     'public struct PackageVersion has key \{\s*id: UID,\s*generation: OperationalVersion<BLAST_FUN>,\s*\}' \
     sources/blast_fun.move \
   || ! rg -U -q \
-    'fun init\(otw: BLAST_FUN, ctx: &mut TxContext\) \{\s*transfer::share_object\(new\(&otw, ctx\)\);\s*sui::package::claim_and_keep\(otw, ctx\);\s*\}' \
+    'public struct Bootstrap has key \{\s*id: UID,\s*publisher: Publisher,\s*generation: OperationalVersion<BLAST_FUN>,\s*\}' \
     <<<"$blast_production" \
   || ! rg -q '^const PACKAGE_VERSION: u64 = 1;$' sources/blast_fun.move \
   || ! rg -q '^const NEXT_PACKAGE_VERSION: u64 = 2;$' sources/blast_fun.move \
   || [[ "$(rg -c '^(public struct|fun) ' <<<"$blast_production")" != 4 ]] \
   || [[ "$(rg -c '^fun init\(' <<<"$blast_production")" != 1 ]] \
-  || [[ "$(rg -c '^public\(package\) fun (assert_current|assert_next|advance)\(' <<<"$blast_production")" != 3 ]] \
+  || [[ "$(rg -c '^public\(package\) fun (destroy|share_version|assert_current|assert_next|advance)\(' <<<"$blast_production")" != 5 ]] \
   || rg -n '^(public|entry|public entry) fun ' <<<"$blast_production" \
   || rg -n '^public\(package\) fun activate\(' <<<"$blast_production" \
   || ! rg -Fq 'self.generation.assert_current(PACKAGE_VERSION);' sources/blast_fun.move \
   || ! rg -Fq 'self.generation.assert_next(NEXT_PACKAGE_VERSION);' sources/blast_fun.move \
   || ! rg -Fq 'self.generation.advance(&self.id, NEXT_PACKAGE_VERSION);' sources/blast_fun.move \
-  || ! rg -Fq 'generation: operational_version::new(otw),' sources/blast_fun.move \
+  || ! rg -Fq 'let generation = operational_version::new(&otw);' sources/blast_fun.move \
   || rg -n '\.checked_add\(|events::' <<<"$blast_production"; then
-  echo 'blast_fun.move must own only the BLAST_FUN witness, its Publisher claim, and the shared generation container with its two compiled constants.' >&2
+  echo 'blast_fun.move must own the unique publication bootstrap and the guarded generation container.' >&2
+  failures=$((failures + 1))
+fi
+
+# Exact construction and intake paths keep a later helper from bypassing bootstrap custody.
+if [[ "$(move_production_body init <<<"$(move_facts sources/blast_fun.move)")" \
+    != 'let generation = operational_version::new(&otw); let publisher = sui::package::claim(otw, ctx); transfer::transfer(Bootstrap { id: object::new(ctx), publisher, generation }, ctx.sender());' ]] \
+  || [[ "$(move_production_body destroy <<<"$(move_facts sources/blast_fun.move)")" \
+    != 'let Bootstrap { id, publisher, generation } = self; id.delete(); (publisher, generation)' ]] \
+  || [[ "$(move_production_body share_version <<<"$(move_facts sources/blast_fun.move)")" \
+    != 'transfer::share_object(PackageVersion { id: object::new(ctx), generation });' ]] \
+  || [[ "$(rg -c '^public\(package\) fun ' <<<"$blast_production")" != 5 ]] \
+  || [[ "$(rg -l '\bshare_version\(' sources --glob '*.move' | LC_ALL=C sort | tr '\n' ' ')" \
+    != 'sources/blast_fun.move sources/package_admin.move ' ]]; then
+  echo 'Only wrap may activate the unique bootstrap after sealing native capability custody.' >&2
   failures=$((failures + 1))
 fi
 
@@ -398,7 +411,7 @@ if [[ ! -f sources/package_admin.move || -f sources/upgrade.move ]] \
   || rg -n '^public fun commit_upgrade\(|^public fun activate' <<<"$package_admin_production" \
   || [[ "$(rg -o '_: &AdminWitness<UpgradeAdmin>' <<<"$package_admin_production" | wc -l)" != 3 ]] \
   || ! rg -U -q \
-    'public fun wrap\(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext\)' \
+    'public fun wrap\(bootstrap: Bootstrap, upgrade_cap: UpgradeCap, ctx: &mut TxContext\)' \
     sources/package_admin.move \
   || ! rg -U -q \
     'public fun authorize_upgrade\(\s*self: &mut PackageAdmin,\s*package_version: &PackageVersion,\s*_: &AdminWitness<UpgradeAdmin>,\s*digest: vector<u8>,\s*\): UpgradeTicket' \
@@ -417,7 +430,7 @@ fi
 # would end upgradeability silently.
 # Wrapping delegates Publisher and UpgradeCap provenance wholly to shared custody.
 if [[ "$(move_production_body wrap <<<"$(move_facts sources/package_admin.move)")" \
-    != 'let id = object::new(ctx); let custody = upgrade_custody::new<BLAST_FUN>(id.to_inner(), publisher, upgrade_cap); transfer::share_object(PackageAdmin { id, custody });' ]] \
+    != 'let (publisher, generation) = bootstrap.destroy(); let id = object::new(ctx); let custody = upgrade_custody::new<BLAST_FUN>(id.to_inner(), publisher, upgrade_cap); transfer::share_object(PackageAdmin { id, custody }); blast_fun::blast_fun::share_version(generation, ctx);' ]] \
   || [[ "$(rg -c 'package_version\.assert_current\(\);' <<<"$package_admin_production")" != 2 ]] \
   || [[ "$(move_facts sources/package_admin.move \
     | awk -F'\t' '$1 == "FN" && $2 == "commit_upgrade_and_advance" { print $10 }')" \
@@ -528,7 +541,7 @@ for test_file in tests/*.move; do
   fi
 
   if rg -n \
-    'test_scenario::|\.scenario\b|\.ctx\(|\.next_tx\(|take_from_sender|take_shared|return_to_sender|return_shared|has_most_recent_for_sender|let [A-Za-z0-9_]*Fixture|\.extract\(|\.fill\(|\.swap\(|\.borrow\(|\.borrow_mut\(|option::(borrow|borrow_mut|extract|fill|swap)\(' \
+    'test_scenario::[a-z][a-z0-9_]*|\.scenario\b|\.ctx\(|\.next_tx\(|take_from_sender|take_shared|return_to_sender|return_shared|has_most_recent_for_sender|let [A-Za-z0-9_]*Fixture|\.extract\(|\.fill\(|\.swap\(|\.borrow\(|\.borrow_mut\(|option::(borrow|borrow_mut|extract|fill|swap)\(' \
     <<<"$test_bodies"; then
     echo "$test_file: test bodies must reach state only through fixture fields and helpers, never scenario plumbing, fixture destructuring, or receiver- or module-style Option internals." >&2
     failures=$((failures + 1))

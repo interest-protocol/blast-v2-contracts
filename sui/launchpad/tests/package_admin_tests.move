@@ -26,6 +26,8 @@ public struct WrapFixture {
 public struct CustodyFixture {
     scenario: Scenario,
     package_admin: package_admin::PackageAdmin,
+    package_version: marker::PackageVersion,
+    runtime: runtime_config::RuntimeConfig,
     created: blast_admin_events::UpgradeCustodyCreated<BLAST_FUN>,
 }
 
@@ -37,6 +39,61 @@ public struct UpgradeFixture {
 }
 
 // === Tests ===
+
+#[test]
+fun publication_cannot_supply_the_version_required_to_launch() {
+    let fixture = start_unwrapped();
+
+    assert!(!fixture.has_shared_version());
+
+    fixture.end();
+}
+
+#[test]
+fun wrapping_enables_guarded_mutations_and_consumes_bootstrap() {
+    let mut fixture = start_custody();
+
+    fixture.next_tx!(PUBLISHER, |f| {
+        f.runtime.set_treasury(&f.package_version, &blast_acl::witness_for_testing(), PROTOCOL_ADMIN);
+
+        assert_eq!(f.runtime.treasury(), PROTOCOL_ADMIN);
+        assert_eq!(f.package_version.version_for_testing(), 1);
+        assert!(!f.has_bootstrap());
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = sui::test_scenario::EEmptyInventory, location = sui::test_scenario)]
+fun consumed_bootstrap_cannot_be_taken_for_another_wrap() {
+    let mut fixture = start_unwrapped();
+
+    fixture.next_tx!(PUBLISHER, |f| {
+        let bootstrap = f.take_bootstrap();
+        let upgrade_cap = package::test_publish(PACKAGE_ID.to_id(), f.ctx!());
+
+        package_admin::wrap(bootstrap, upgrade_cap, f.ctx!());
+    });
+    fixture.next_tx!(PUBLISHER, |f| {
+        destroy(f.take_bootstrap());
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = sui::test_scenario::EEmptyInventory, location = sui::test_scenario)]
+fun another_sender_cannot_take_the_publication_bootstrap() {
+    let mut fixture = start_unwrapped();
+
+    fixture.next_tx!(PROTOCOL_ADMIN, |f| {
+        let bootstrap = f.take_bootstrap();
+        destroy(bootstrap);
+    });
+
+    fixture.end();
+}
 
 #[test]
 fun wrap_accepts_blast_capabilities_and_shares_complete_custody_fact() {
@@ -76,34 +133,14 @@ fun wrap_accepts_blast_capabilities_and_shares_complete_custody_fact() {
     location = blast_admin::upgrade_custody,
 )]
 fun wrap_rejects_upgrade_cap_for_another_package() {
-    let mut fixture = start_wrap();
+    let mut fixture = start_unwrapped();
 
     fixture.next_tx!(PUBLISHER, |f| {
-        let valid_publisher = marker::publisher_for_testing(f.ctx!());
+        let bootstrap = f.take_bootstrap();
         let foreign_upgrade_cap =
             package::test_publish(OTHER_PACKAGE_ID.to_id(), f.ctx!());
 
-        package_admin::wrap(valid_publisher, foreign_upgrade_cap, f.ctx!());
-    });
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = errors::EInvalidPackagePublisher,
-    location = blast_admin::upgrade_custody,
-)]
-/// Shared custody checks the Publisher's package before the upgrade cap's provenance.
-fun wrap_checks_publisher_before_upgrade_cap_provenance() {
-    let mut fixture = start_wrap();
-
-    fixture.next_tx!(PUBLISHER, |f| {
-        let foreign_publisher = foreign_publisher::new(f.ctx!());
-        let foreign_upgrade_cap =
-            package::test_publish(OTHER_PACKAGE_ID.to_id(), f.ctx!());
-
-        package_admin::wrap(foreign_publisher, foreign_upgrade_cap, f.ctx!());
+        package_admin::wrap(bootstrap, foreign_upgrade_cap, f.ctx!());
     });
 
     fixture.end();
@@ -346,19 +383,36 @@ macro fun wrap_ctx($fixture: &mut WrapFixture): &mut TxContext {
     fixture.scenario.ctx()
 }
 
-fun start_wrap(): WrapFixture {
-    WrapFixture { scenario: test_scenario::begin(PUBLISHER) }
+fun start_unwrapped(): WrapFixture {
+    let mut scenario = test_scenario::begin(PUBLISHER);
+    marker::init_for_testing(scenario.ctx());
+    scenario.next_tx(PUBLISHER);
+
+    WrapFixture { scenario }
+}
+
+fun has_shared_version(_: &WrapFixture): bool {
+    test_scenario::has_most_recent_shared<marker::PackageVersion>()
+}
+
+fun take_bootstrap(self: &WrapFixture): marker::Bootstrap {
+    self.scenario.take_from_sender()
+}
+
+fun has_bootstrap(self: &CustodyFixture): bool {
+    self.scenario.has_most_recent_for_sender<marker::Bootstrap>()
 }
 
 /// Runs the production wrap flow so the fixture custodies the real shared object.
 fun start_custody(): CustodyFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     marker::init_for_testing(scenario.ctx());
+    runtime_config::init_for_testing(scenario.ctx());
 
     scenario.next_tx(PUBLISHER);
-    let publisher = scenario.take_from_sender<Publisher>();
+    let bootstrap = scenario.take_from_sender<marker::Bootstrap>();
     package_admin::wrap(
-        publisher,
+        bootstrap,
         package::test_publish(PACKAGE_ID.to_id(), scenario.ctx()),
         scenario.ctx(),
     );
@@ -368,8 +422,10 @@ fun start_custody(): CustodyFixture {
 
     scenario.next_tx(PUBLISHER);
     let package_admin = scenario.take_shared<package_admin::PackageAdmin>();
+    let package_version = scenario.take_shared<marker::PackageVersion>();
+    let runtime = scenario.take_shared<runtime_config::RuntimeConfig>();
 
-    CustodyFixture { scenario, package_admin, created }
+    CustodyFixture { scenario, package_admin, package_version, runtime, created }
 }
 
 fun start(): UpgradeFixture {
@@ -418,15 +474,14 @@ use blast_fun::{
     blast_fun::{Self as marker, BLAST_FUN},
     blast_fun_domain::UpgradeAdmin,
     package_admin,
+    runtime_config,
 };
-
-use 0xf::foreign_publisher;
 
 use std::unit_test::{assert_eq, destroy};
 
 use sui::{
     event,
-    package::{Self, Publisher, UpgradeCap, UpgradeReceipt},
+    package::{Self, UpgradeCap, UpgradeReceipt},
     test_scenario::{Self, Scenario},
 };
 

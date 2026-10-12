@@ -25,18 +25,26 @@ collection, auto-LP, buyback, and holder rewards are in the migrators guide.
 
 | Object | Created | Holds | Who writes it |
 | --- | --- | --- | --- |
-| `blast_fun::blast_fun::PackageVersion` | package publish | the active package generation | upgrade admin only |
+| `blast_fun::blast_fun::PackageVersion` | `blast_fun::package_admin::wrap` | the active package generation | upgrade admin only |
 | `launch_config::LaunchConfig` | package publish | policy that new launches snapshot: admitted Meme decimals, admitted Quote types, trade fees, admitted adapters, Blast's migration allocation, the creation fee, accepted partners | Blast admins |
 | `runtime_config::RuntimeConfig` | package publish | settings read live: the account-claim signer key, Blast's share of every trade fee, the treasury address | Blast admins |
 | `launch::Launch<Meme, Quote>` | `launch::finalize`, shared by `launch::share` | one launch: lifecycle, curve reserves, settings, fee ledger, opening-round pot, migration allocations | trades, claims, migration |
 | `blast_fun::package_admin::PackageAdmin` | `blast_fun::package_admin::wrap` | the package's `Publisher` and `UpgradeCap` | upgrade admin only |
 | `Currency<Meme>` | `0x2::coin_registry::finalize_registration` | the coin's name, symbol, decimals, description, icon URL, and supply state (Sui Coin Registry) | the launch, through its internal `MetadataCap<Meme>` |
 
-`launch::new` and every call that changes a shared launchpad object take the shared
-`PackageVersion` and abort when the caller links old bytecode after an upgrade (see Aborts).
+`launch::new` and configuration setters require the shared `PackageVersion`. It does not exist
+until `blast_fun::package_admin::wrap` consumes the publication bootstrap and the matching,
+never-upgraded native UpgradeCap. That transaction seals both native capabilities in
+`PackageAdmin` and creates `PackageVersion` atomically. A rejected wrap leaves the bootstrap
+intact and the launchpad inactive. After activation, version-guarded calls abort when the caller
+links old bytecode after an upgrade (see Aborts).
 
 #### Owned objects and capabilities
 
+- `blast_fun::blast_fun::Bootstrap` (`key` only): created once at package publication and sent
+  to the deployer. It holds the canonical Publisher and initial operational generation. Its
+  only production consumer is `blast_fun::package_admin::wrap`; it cannot be transferred by
+  another package, shared, or used in place of `PackageVersion`.
 - `launch_ticket::LaunchTicket<Meme>` (`key, store`): created when the generated coin package is
   published and sent to the publisher. It holds the whole supply as a `Balance<Meme>`, the
   `TreasuryCap<Meme>`, the `MetadataCap<Meme>`, the creator recipient, the decimals, the supply
