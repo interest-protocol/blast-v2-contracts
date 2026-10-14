@@ -401,7 +401,10 @@ def deployment(path: str) -> dict:
     published = ROOT / path / "Published.toml"
     if not published.exists():
         return {"live": False}
-    entry = tomllib.loads(published.read_text())["published"]["mainnet"]
+    # A Published.toml without a mainnet table is a package awaiting a fresh publication.
+    entry = tomllib.loads(published.read_text()).get("published", {}).get("mainnet")
+    if entry is None:
+        return {"live": False}
     info = {"live": True, "published_at": entry["published-at"], "original_id": entry["original-id"], "matches": None}
     for record in sorted((ROOT / "deployments/sui/mainnet").glob("*.json")):
         text = record.read_text()
