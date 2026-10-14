@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "sui-adapter-upgrade",
+  "release": "nvda-authenticated-market-margin-recovery",
+  "network": {
+    "chain": "sui",
+    "environment": "mainnet",
+    "chainIdentifierHex": "35834a8a",
+    "chainIdentifierBase58": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"
+  },
+  "timestampUtc": "2026-10-14T02:08:46.573000+00:00",
+  "recordedAtUtc": "2026-10-14T02:15:19.073753+00:00",
+  "repository": {
+    "commit": "a8f9444",
+    "workingTree": "clean",
+    "note": "Upgrade built from the source committed here; the worktree was clean at broadcast. The restored deployed-source baseline is f6463fd."
+  },
+  "toolchain": {
+    "suiCli": "sui 1.77.2-51d177ad7d65",
+    "moveToolchain": "1.77.2",
+    "moveEdition": "2024",
+    "node": "v24.18.0"
+  },
+  "deployer": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+  "status": "success",
+  "adapterPackage": {
+    "originalPackageId": "0x04f46747d8cb5ea590953ff1847301dfe5a287519d32c1610b35810aab082e50",
+    "currentPackageId": "0x3ebeb5bdb1fb886f631dd324b9480356ccc8972aee0ba81fa6c1ae5725b843bf",
+    "previousPackageId": "0x04f46747d8cb5ea590953ff1847301dfe5a287519d32c1610b35810aab082e50",
+    "nativeVersion": 2,
+    "previousOperationalGeneration": 1,
+    "operationalGeneration": 2,
+    "changedProductionModules": [
+      "checkpoint",
+      "protocol"
+    ]
+  },
+  "dependencies": [
+    "0xf453864f39b7c6122551f665d4fe961b8625853cf89bcae55be4b3b99e848126",
+    "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "0x0000000000000000000000000000000000000000000000000000000000000002",
+    "0x4e2df80a5e2fd0392878298c51ce15164222111ccea05504b9291b158f552677",
+    "0x247b6e2f000a77e82f4afc5c08f95f746e2e132ba2e1ecb3a9082f0c41ab80e2",
+    "0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe",
+    "0x4b4703a7581781d74a4c7b0fb0836b2a67f34f1a377fb81aab6f5cad29d78760",
+    "0x9237337d846fc90b0a7acbdee4ab91809298691873d28e1d64d91e6303ff6ba4",
+    "0x3ec740df8428aa9c93aaef7f8cc1542ac3194fd014826b51bfe245346d64efc7",
+    "0x9196fffe0341b2f0ca7424926b22d9e9e35b4807a1f625fc20eeea1382d08dec",
+    "0x40c958733d43750f9a36f72e2d7a327ef68ce52713f557702b1e784fd7bfa158"
+  ],
+  "objects": {
+    "packageAdmin": "0x1cbfab2ede90ec7a26f78e727d6557bf4bf1e26f24a93225f793197d14f764b2",
+    "upgradeCap": "0xa525b4698224d1c42e31268bd16af5ee34c2c161845add887efd667af0abda72",
+    "authority": "0x130f017e06571a164d5f1c50b35702711bf529f439630dab580253da10a1c8e4",
+    "adminCap": "0x297f449842212fd30f7cbac799ff72199db2708d554275d63c48286f53938af8",
+    "protocol": "0x3fc52afcf2b5d8ab1a54cd190f53939c111333c1cf0182eb32ded5001b761bdd",
+    "vault": "0xc01b669f9c94c21806a557fb2f4e36a3cdcb5e5ef90c694c8a5229c62bb5e3fa",
+    "venueAccount": "0x0ec9f3286da8b0a05caaac6972800063de4147637b6cc7ca72f4cdaa423af667"
+  },
+  "transactions": {
+    "upgradeAndAdvance": {
+      "digest": "BAMePW5RkaULKiVEhDVLgiBeQWooedv1gCMqGAtgxhZW",
+      "checkpoint": "333759830",
+      "timestampUtc": "2026-10-14T02:08:46.573000+00:00",
+      "status": "success",
+      "gasUsed": {
+        "computationCost": "7300000",
+        "storageCost": "362922800",
+        "storageRebate": "8017198",
+        "nonRefundableStorageFee": "802"
+      },
+      "netGasCostMist": "362205602"
+    },
+    "syncHealth": {
+      "digest": "HqPTtzgkNST2Zy2BfZ8pnDzHbQ4H15YP55QCJVRaJurL",
+      "checkpoint": "333760076",
+      "timestampUtc": "2026-10-14T02:09:41.167000+00:00",
+      "status": "success",
+      "gasUsed": {
+        "computationCost": "101000",
+        "storageCost": "25049600",
+        "storageRebate": "25047095",
+        "nonRefundableStorageFee": "2505"
+      },
+      "netGasCostMist": "103505"
+    }
+  },
+  "constructorInitParameters": {
+    "initRerun": false,
+    "note": "Compatible upgrade; no object layout, vault binding, share identity, authority or policy reset."
+  },
+  "postDeployVerification": {
+    "adapterTests": {
+      "passed": 400,
+      "failed": 0,
+      "workers": 1,
+      "lint": true,
+      "warningsAreErrors": true
+    },
+    "sourceBoundaries": "passed",
+    "mainnetDependencyAbi": "passed: 5 packages, 75 functions",
+    "deployedUpgradeBytecode": "all 15 modules exactly match compiled output after original self-address normalization",
+    "dependencyLinkage": "identical to generation 1",
+    "retiredMutator": "rejected by operational_version::assert_current, abort 17",
+    "syncHealth": "accepted live market IMR/MMR and reconciled funding without CheckpointDrifted",
+    "mintCheckedSimulation": "passed: 100000 collateral atoms",
+    "redeemCheckedSimulation": "passed: 100000000 share atoms",
+    "slippageBoundedSimulations": "mint and redeem passed with 50 bps minimum receive bounds",
+    "realTestTradesExecuted": false,
+    "mainnetDeploymentFingerprint": "95eac16f6f43c04ea98c89afa938459e129ad2616f64491f2874e31bbc8ca519"
+  }
+}
