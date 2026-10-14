@@ -177,14 +177,17 @@ public(package) fun classify_change(self: &Checkpoint, after: &Checkpoint, colla
 }
 
 /// What another caller settled between the stored checkpoint `self` and the
-/// one just read: nothing when only the market's cumulative rates advanced,
-/// the funding moved when the position's snapshots refreshed and nothing else
-/// changed, and otherwise a change no operation can attribute.
+/// one just read: nothing when only the market's cumulative rates or the
+/// venue's market-wide policy moved, the funding moved when the position's
+/// snapshots refreshed, and otherwise a change no operation can attribute.
+/// Every account field must remain exact.
 public(package) fun classify_preexisting(self: &Checkpoint, before: &Checkpoint): CheckpointChange {
-    if (self.checkpoint_ready_for_settlement(before)) {
+    let accepted = self.with_venue_policy_of(before);
+
+    if (accepted.checkpoint_ready_for_settlement(before)) {
         CheckpointChange::Unchanged
     } else {
-        self.classify_preexisting_funding(before)
+        accepted.classify_preexisting_funding(before)
     }
 }
 
@@ -340,6 +343,23 @@ fun classify_preexisting_funding(self: &Checkpoint, before: &Checkpoint): Checkp
 }
 
 // --- Read ---
+
+/// `self` carrying the market-wide policy `venue` shows: the pause mode,
+/// frozen flag and both market margin ratios. The venue's admin changes each
+/// of them (`pause_market`, `resume_market`, `freeze_clearing_house`,
+/// `commit_margin_ratios_proposal`) without touching any account, so between
+/// two transactions they are read from the bound clearing house rather than
+/// proved against the stored checkpoint. The lot size stays exact by decision:
+/// it sizes every order the vault places. Every account, position, order and
+/// position-margin field is left as stored.
+fun with_venue_policy_of(self: &Checkpoint, venue: &Checkpoint): Checkpoint {
+    let mut accepted = *self;
+    accepted.market_pause_mode = venue.market_pause_mode;
+    accepted.market_frozen = venue.market_frozen;
+    accepted.market_initial_margin_ratio = venue.market_initial_margin_ratio;
+    accepted.market_maintenance_margin_ratio = venue.market_maintenance_margin_ratio;
+    accepted
+}
 
 /// Returns whether every field outside funding accounting is equal.
 ///

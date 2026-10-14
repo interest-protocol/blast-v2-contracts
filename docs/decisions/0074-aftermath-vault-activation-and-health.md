@@ -1,6 +1,7 @@
 # 0074: Aftermath Vault activation and health evidence
 
-Active-contract amendment: 2026-09-20 (venue bytecode read; shutdown reconciliation). This is the pre-publication source
+Active-contract amendment: 2026-09-20 (venue bytecode read; shutdown reconciliation);
+venue policy and oracle routing amended by [ADR 0115](0115-venue-policy-from-the-bound-clearing-house.md) (2026-10-14). This is the pre-publication source
 contract; local evidence does not establish publication or live release readiness.
 
 - Status: **accepted for dependency and raw-field normalization**
@@ -366,11 +367,13 @@ not deployed venue execution. Release still requires:
   `collateral_oracle_price`, both pinned by bytecode to return the bound
   feed's raw price after the venue's staleness and, for collateral,
   index/TWAP divergence checks) are the price; the storages are checked
-  against the market's storage ids; and each feed's origin object
-  (`PriceFeed.from`) is bound at activation and re-checked on every capture
-  (`oracle_feed_mismatch`), so a re-pointed feed halts the vault exactly as
-  a market parameter change does. The feed's raw price must equal the venue's
-  named price (`oracle_observation_mismatch`). Aftermath feeds carry no
+  against the market's storage ids. The feed's raw price must equal the venue's
+  named price (`oracle_observation_mismatch`). *Amended by ADR 0115
+  (2026-10-14): the feed-origin and storage-object binding this amendment
+  added halted the vault on a venue-side oracle re-pointing, shutdown included;
+  the storages are now checked against the clearing house's current storage
+  ids on every capture and mutation, and the feed is whichever the market reads
+  at its current source id.* Aftermath feeds carry no
   confidence interval: the adapter reports zero confidence and the core's
   `max_confidence_bps` bound is vacuous for this adapter. An external
   classic-Pyth tolerance check was considered and not adopted: it is a

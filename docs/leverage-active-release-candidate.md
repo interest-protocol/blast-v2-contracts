@@ -9,9 +9,9 @@ unwind, final cash and claims. Existing immutability requirements remain in forc
 
 Each exact `Vault<Product>` currency has its own TreasuryCap, retained venue
 account authority, binding, buffer and policy. Core State is venue-neutral;
-the adapter checks the exact collateral type, account number/object, registry,
-clearing house, both oracle storages and both feed origins before venue
-mutation. Position direction, target/public band/hard threshold, valuation rules,
+the adapter checks the exact collateral type, account number/object, registry
+and clearing house before venue mutation, and both oracle storages against the
+clearing house's current market parameters (ADR 0115). Position direction, target/public band/hard threshold, valuation rules,
 fee ceilings, allocation ceiling, lot minimum and NAV cap are frozen at issuance.
 Only bounded current order notional and capped future fee settings can change.
 
@@ -117,8 +117,8 @@ findings are applied (funding settlement replayed from the venue's own
 arithmetic, quote notional under the base's sign, market collateral scale
 checked at initialization). The fourth, that Aftermath's feeds are Pyth Lazer with no on-chain
 `PriceInfoObject`, replaced the Pyth cross-check with venue-feed identity
-(bound feed origins, the venue's own price functions; ADR 0074 oracle
-amendment).
+(the venue's own price functions over the storages the market currently
+names; ADR 0074 oracle amendment, routing amended by ADR 0115).
 
 Observe SC-001 through SC-013 on mainnet under the authorized evidence stage
 (ADR 0074, A-003): both-direction activation and active flows; funding
