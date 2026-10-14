@@ -39,7 +39,6 @@ fun init_shares_the_adapter_generation_at_its_first_generation() {
         let container = fixture.take_protocol();
 
         assert_eq!(container.version_for_testing(), 1);
-        container.assert_current_for_testing();
 
         fixture.return_protocol(container);
     });
@@ -53,7 +52,7 @@ fun init_shares_the_adapter_generation_at_its_first_generation() {
 fun the_generation_advances_to_the_next_compiled_generation() {
     let mut fixture = start(domain::package_admin_role());
 
-    assert_eq!(fixture.protocol.version_for_testing(), 1);
+    assert_eq!(fixture.protocol.version_for_testing(), 2);
 
     fixture.protocol.advance_for_testing();
 
@@ -63,8 +62,8 @@ fun the_generation_advances_to_the_next_compiled_generation() {
     let (container_id, _, previous_generation, new_generation) =
         advanced.operational_version_advanced_fields();
     assert_eq!(container_id, fixture.protocol.id_for_testing());
-    assert_eq!(previous_generation, 1);
-    assert_eq!(new_generation, 2);
+    assert_eq!(previous_generation, 2);
+    assert_eq!(new_generation, 3);
     assert_eq!(new_generation, fixture.protocol.version_for_testing());
 
     fixture.end();
@@ -77,7 +76,7 @@ fun the_finalizer_accepts_the_exact_next_generation_before_committing() {
 
     fixture.protocol.assert_next_for_testing();
 
-    assert_eq!(fixture.protocol.version_for_testing(), 1);
+    assert_eq!(fixture.protocol.version_for_testing(), 2);
 
     fixture.end();
 }
@@ -103,11 +102,11 @@ fun the_finalizer_rejects_a_skipped_generation_before_committing() {
     location = blast_admin::operational_version,
 )]
 /// Once the container already sits at the compiled cutover target, the
-/// finalizer's proof fails: the next generation would be three, not two.
+/// finalizer's proof fails: the next generation would be four, not three.
 fun the_finalizer_rejects_an_already_advanced_generation_as_next() {
     let mut fixture = start(domain::package_admin_role());
 
-    fixture.protocol.set_version_for_testing(2);
+    fixture.protocol.set_version_for_testing(3);
 
     fixture.protocol.assert_next_for_testing();
 
@@ -152,7 +151,7 @@ fun the_cutover_rejects_a_generation_overflow() {
 fun a_stale_generation_rejects_this_bytecode() {
     let mut fixture = start(domain::package_admin_role());
 
-    fixture.protocol.set_version_for_testing(2);
+    fixture.protocol.set_version_for_testing(1);
 
     fixture.protocol.assert_current_for_testing();
 
@@ -164,7 +163,7 @@ fun a_stale_generation_rejects_this_bytecode() {
 /// adapter generation never blocks signing in or checking a Series1 role.
 fun series_domain_administration_does_not_depend_on_the_adapter_generation() {
     let mut fixture = start(domain::package_admin_role());
-    fixture.protocol.set_version_for_testing(2);
+    fixture.protocol.set_version_for_testing(3);
 
     let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
     admin_witness.assert_role(domain::package_admin_role());

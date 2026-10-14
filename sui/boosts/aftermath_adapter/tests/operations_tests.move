@@ -79,7 +79,7 @@ fun order_filled_event_carries_every_fill_fact_in_order() {
 fun terminal_claim_checks_version_before_lifecycle_or_zero_shares() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    fixture.protocol.set_version_for_testing(2);
+    fixture.protocol.set_version_for_testing(1);
     let shares = vault.mint_shares(0, fixture.ctx!());
     let clock = sui::clock::create_for_testing(fixture.ctx!());
     destroy(vault.redeem_shutdown<Product, Collateral>(&fixture.protocol, shares, 0, 0, &clock, fixture.ctx!()));
@@ -93,7 +93,7 @@ fun terminal_claim_checks_version_before_lifecycle_or_zero_shares() {
 fun shutdown_checks_version_before_an_authorized_transition() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    fixture.protocol.set_version_for_testing(2);
+    fixture.protocol.set_version_for_testing(1);
     let witness = fixture.authority.sign_in(&fixture.admin_cap);
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     destroy(vault);
@@ -1949,6 +1949,44 @@ fun connected_external_cost_and_local_income_settle_one_net_checkpoint() {
 }
 
 #[test]
+fun repeated_market_margin_updates_adopt_once_and_preserve_all_funding_totals() {
+    let mut fixture = start();
+    let initial = checkpoint_with_market_imr(0, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 10);
+    let mut vault = issue_and_activate(&mut fixture, initial);
+    let updates = vector[5, 20, 10];
+    updates.do_ref!(|margin| {
+        let previous = *vault.venue().checkpoint();
+        let current = checkpoint_with_market_imr(0, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, *margin);
+        let change = sync_change(&previous, &current, &current, ONE_FIXED);
+        apply_connected_change(&mut vault, current, change);
+        assert_eq!(*vault.venue().checkpoint(), current);
+        assert_eq!(vault.state().maintenance_reserve(), SEED_RESERVE);
+        let repeated = sync_change(&current, &current, &current, ONE_FIXED);
+        apply_connected_change(&mut vault, current, repeated);
+    });
+    let facts = events::collect<events::FundingSettled<Product>>();
+    assert_eq!(facts.length(), 3);
+    let mut replayed = initial;
+    let mut index = 0;
+    facts.do_ref!(|fact| {
+        let (vault_id, is_cost, raw, amount, absorbed, uncovered, restored, reserve, previous, current) =
+            fact.funding_settled_fields();
+        assert_eq!(vault_id, vault.id());
+        assert!(!is_cost);
+        assert_eq!(raw, 0);
+        assert_eq!(vector[amount, absorbed, uncovered, restored, reserve], vector[0, 0, 0, 0, SEED_RESERVE]);
+        let expected = checkpoint_with_market_imr(0, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, updates[index]);
+        assert_eq!(previous, replayed);
+        assert_eq!(current, expected);
+        replayed = current;
+        index = index + 1;
+    });
+    assert_eq!(replayed, *vault.venue().checkpoint());
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
 fun connected_zero_net_checkpoint_emits_once_and_preserves_the_buffer() {
     // A flat position: the rates move and the snapshots refresh, but nothing settles.
     let mut fixture = start();
@@ -1998,9 +2036,9 @@ fun connected_unresolved_drift_preserves_the_accepted_checkpoint_across_retries(
     let initial = initial_checkpoint();
     let mut vault = issue_and_activate(&mut fixture, initial);
     let costed_rate = settled_rate(10, true);
-    let before = checkpoint_with_market_imr(0, ALLOCATED_FIXED, RATE, RATE, costed_rate, costed_rate, 2);
+    let before = checkpoint_with_market_imr(1, ALLOCATED_FIXED, RATE, RATE, costed_rate, costed_rate, 2);
     let after = checkpoint_with_market_imr(
-        0, ALLOCATED_FIXED - 10 * ATOM_FIXED, costed_rate, costed_rate, costed_rate, costed_rate, 2,
+        1, ALLOCATED_FIXED - 10 * ATOM_FIXED, costed_rate, costed_rate, costed_rate, costed_rate, 2,
     );
     let unexpected = sync_change(&initial, &before, &after, ONE_FIXED);
 

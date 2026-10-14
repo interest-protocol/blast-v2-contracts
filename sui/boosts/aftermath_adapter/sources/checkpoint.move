@@ -199,13 +199,18 @@ public(package) fun classify_change(self: &Checkpoint, after: &Checkpoint, colla
 
 /// What another caller settled between the stored checkpoint `self` and the
 /// one just read: nothing when only the market's cumulative rates advanced,
-/// the funding moved when the position's snapshots refreshed and nothing else
-/// changed, and otherwise a change no operation can attribute.
+/// the funding moved when the position's snapshots refreshed, or live market
+/// margin policy changed. Every unrelated account field must remain exact.
 public(package) fun classify_preexisting(self: &Checkpoint, before: &Checkpoint): CheckpointChange {
-    if (self.checkpoint_ready_for_settlement(before)) {
+    // Market policy comes from the bound clearing house; account facts stay exact.
+    let mut accepted = *self;
+    accepted.market_initial_margin_ratio = before.market_initial_margin_ratio;
+    accepted.market_maintenance_margin_ratio = before.market_maintenance_margin_ratio;
+
+    if (accepted.checkpoint_ready_for_settlement(before)) {
         CheckpointChange::Unchanged
     } else {
-        self.classify_preexisting_funding(before)
+        accepted.classify_preexisting_funding(before)
     }
 }
 
