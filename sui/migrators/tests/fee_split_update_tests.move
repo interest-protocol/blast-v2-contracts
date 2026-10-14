@@ -47,7 +47,6 @@ public struct FeeSplitFixture {
 /// Independently encoded `FeesCollected` in ABI order.
 public struct ExpectedCollection has copy, drop {
     vault_id: ID,
-    generation: u64,
     gross_meme: u64,
     gross_quote: u64,
     protocol_destination: Option<address>,
@@ -68,8 +67,6 @@ public struct ExpectedCollection has copy, drop {
 /// Independently encoded `FeeSplitChanged` in ABI order.
 public struct ExpectedFeeSplitChanged has copy, drop {
     vault_id: ID,
-    old_generation: u64,
-    new_generation: u64,
     old_fee_split: FeeSplit,
     new_fee_split: FeeSplit,
 }
@@ -95,19 +92,17 @@ public struct ExpectedCreatorFeesClaimed has copy, drop {
 // Settled Fee-Split Updates
 
 #[test]
-fun settled_update_splits_accrued_fees_under_the_old_split_then_commits_the_next_generation() {
+fun settled_update_splits_accrued_fees_under_the_old_split_then_commits_the_next_split() {
     let mut f = start(creator_and_a());
     let curve_fee_cap = f.claim_curve_fee_cap();
 
     f.accrue(10, 20);
     f.settle_exact_position(&curve_fee_cap, rewards_and_b());
 
-    assert_eq!(f.vault.generation_for_testing(), 1);
     assert_eq!(f.vault.fee_split_for_testing(), rewards_and_b());
     assert_collection(
         ExpectedCollection {
             vault_id: object::id(&f.vault),
-            generation: 0,
             gross_meme: 10,
             gross_quote: 20,
             protocol_destination: option::some(PROTOCOL),
@@ -133,23 +128,20 @@ fun settled_update_splits_accrued_fees_under_the_old_split_then_commits_the_next
         bcs::to_bytes(
             &ExpectedFeeSplitChanged {
                 vault_id: object::id(&f.vault),
-                old_generation: 0,
-                new_generation: 1,
                 old_fee_split: creator_and_a(),
                 new_fee_split: rewards_and_b(),
             },
         ),
     );
 
-    // Collection needs no cap, and later fees follow the committed generation: 3 Meme and 4
-    // Quote split 20/30/50 to auto-LP, rewards, and B, and the mock venue takes one unit of each.
+    // Collection needs no cap, and later fees follow the committed split: 3 Meme and 4 Quote
+    // split 20/30/50 to auto-LP, rewards, and B, and the mock venue takes one unit of each.
     f.scenario.next_tx(KEEPER);
     f.accrue(3, 4);
     f.collect_exact_position();
     assert_collection(
         ExpectedCollection {
             vault_id: object::id(&f.vault),
-            generation: 1,
             gross_meme: 3,
             gross_quote: 4,
             protocol_destination: option::some(PROTOCOL),
@@ -178,13 +170,13 @@ fun settled_update_splits_accrued_fees_under_the_old_split_then_commits_the_next
 }
 
 #[test]
-fun zero_fee_settlement_still_advances_exactly_once_without_a_collection_event() {
+fun zero_fee_settlement_still_commits_the_split_without_a_collection_event() {
     let mut f = start(creator_and_a());
     let curve_fee_cap = f.claim_curve_fee_cap();
 
     f.settle_exact_position(&curve_fee_cap, rewards_and_b());
 
-    assert_eq!(f.vault.generation_for_testing(), 1);
+    assert_eq!(f.vault.fee_split_for_testing(), rewards_and_b());
     assert!(event::events_by_type<blast_events::FeesCollected>().is_empty());
     assert!(event::events_by_type<blast_events::AutoLiquidityAdded>().is_empty());
     assert_eq!(event::events_by_type<blast_events::FeeSplitChanged>().length(), 1);
@@ -201,7 +193,7 @@ fun a_reassigned_curve_fee_cap_updates_the_split() {
     let curve_fee_cap = f.take_reassigned_cap();
     f.settle_exact_position(&curve_fee_cap, rewards_and_b());
 
-    assert_eq!(f.vault.generation_for_testing(), 1);
+    assert_eq!(f.vault.fee_split_for_testing(), rewards_and_b());
     destroy(retired);
     destroy(curve_fee_cap);
     f.end();

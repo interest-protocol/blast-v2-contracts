@@ -35,7 +35,6 @@ public struct LpVault<phantom Meme, phantom Quote> has key {
     protocol_quote_residual: Balance<Quote>,
     unpaid_protocol_meme: Balance<Meme>,
     unpaid_protocol_quote: Balance<Quote>,
-    generation: u64,
     fee_split: FeeSplit,
     creator_meme: Balance<Meme>,
     creator_quote: Balance<Quote>,
@@ -278,7 +277,6 @@ public(package) fun split_fees<Meme, Quote>(
 
     blast_events::fees_collected(
         self.id.to_inner(),
-        self.generation,
         gross_meme,
         gross_quote,
         protocol_destination,
@@ -373,25 +371,16 @@ public(package) fun assert_fee_split_update<Meme, Quote>(
     assert!(proposed != self.fee_split, EFeeSplitUnchanged);
 }
 
-/// Commits `proposed`, which `assert_fee_split_update` already checked, as the next split
-/// generation.
+/// Commits `proposed`, which `assert_fee_split_update` already checked, as the vault's split.
 public(package) fun update_fee_split<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     proposed: FeeSplit,
 ) {
-    let old_generation = self.generation;
     let old_fee_split = self.fee_split;
 
     self.fee_split = proposed;
-    self.generation = old_generation + 1;
 
-    blast_events::fee_split_changed(
-        self.id.to_inner(),
-        old_generation,
-        self.generation,
-        old_fee_split,
-        proposed,
-    );
+    blast_events::fee_split_changed(self.id.to_inner(), old_fee_split, proposed);
 }
 
 /// Reserves holder-reward funds for the round numbered `next_round`, ending at `end_checkpoint`.
@@ -467,8 +456,8 @@ fun pay_all<T>(mut balance: Balance<T>, destination: address, ctx: &mut TxContex
     balance.destroy_zero();
 }
 
-/// Builds the vault at generation zero with the launch's fee split and empty balances, attaches
-/// `position`, and announces the custody.
+/// Builds the vault with the launch's fee split and empty balances, attaches `position`, and
+/// announces the custody.
 fun new<Meme, Quote, Venue, Position: key + store>(
     launch: &Launch<Meme, Quote>,
     _venue: &Venue,
@@ -490,7 +479,6 @@ fun new<Meme, Quote, Venue, Position: key + store>(
         protocol_quote_residual,
         unpaid_protocol_meme: balance::zero(),
         unpaid_protocol_quote: balance::zero(),
-        generation: 0,
         fee_split: launch.lp_fee_split(),
         creator_meme: balance::zero(),
         creator_quote: balance::zero(),
@@ -576,12 +564,6 @@ public fun protocol_meme_residual_for_testing<Meme, Quote>(self: &LpVault<Meme, 
 /// Returns the unclaimed protocol-owned Quote residual that migration left in the vault.
 public fun protocol_quote_residual_for_testing<Meme, Quote>(self: &LpVault<Meme, Quote>): u64 {
     self.protocol_quote_residual.value()
-}
-
-#[test_only]
-/// Returns the split generation stamped on every collection.
-public fun generation_for_testing<Meme, Quote>(self: &LpVault<Meme, Quote>): u64 {
-    self.generation
 }
 
 #[test_only]

@@ -93,7 +93,7 @@ Calls also take objects from other packages:
 - `auto_lp_meme`, `auto_lp_quote`: auto-LP amounts the pool has not taken yet.
 - `rewards_meme`, `rewards_quote`: holder-reward funds not yet reserved by a round.
 - `burn_quote`: Quote waiting for a buyback.
-- `fee_split` and `generation`: the current split and its generation (0 at migration).
+- `fee_split`: the current split (the launch's at migration).
 - `pool_id`, `partner_id` (copied from the launch, never changes), `next_round`, `last_checkpoint`.
 
 No function removes or transfers a position. No function withdraws the auto-LP, rewards, or burn
@@ -129,8 +129,8 @@ balances except the flows below.
 - **Launch.** `MigrationReady` → `migrate` → `Migrated`. Only the adapter whose `Witness` the launch
   recorded at start can migrate it. A failed migration aborts the whole transaction and leaves the
   launch `MigrationReady`.
-- **Vault.** Created and shared inside `migrate`, at generation 0 with the launch's `FeeSplit`. Each
-  `settle_and_update_fee_split` adds 1 to `generation`. On Cetus, the auto-LP position appears the
+- **Vault.** Created and shared inside `migrate` with the launch's `FeeSplit`. Each
+  `settle_and_update_fee_split` replaces the split. On Cetus, the auto-LP position appears the
   first time a collection finds both auto-LP balances nonzero, even if nothing is then added. The
   vault never closes.
 - **Rounds.** `next_round` starts at 0 and rises by 1 per published round. Each round's checkpoint
@@ -320,10 +320,10 @@ split first, so every fee follows the split it accrued under.
 
 Order: generation check; (Cetus) pair proof; live-cap check (launchpad code 22); proposal differs
 from the current split (`EFeeSplitUnchanged`); a full collection exactly as above under the old
-split; then the new split commits with `generation + 1` and emits `FeeSplitChanged`. A settlement
-that finds no fees still commits. Balances already in the vault (creator, auto-LP leftovers,
-rewards, burn Quote) stay where they are; auto-LP leftovers keep being added on later collections
-even if the new split has no auto-LP part.
+split; then the new split commits and emits `FeeSplitChanged`. A settlement that finds no fees
+still commits. Balances already in the vault (creator, auto-LP leftovers, rewards, burn Quote) stay
+where they are; auto-LP leftovers keep being added on later collections even if the new split has
+no auto-LP part.
 
 #### Buyback and burn (Blast admin)
 
@@ -535,10 +535,10 @@ This package emits its events directly, with no envelope. The launchpad wraps it
 | --- | --- | --- |
 | `CetusPoolReserved` | Cetus `new` | `meme`, `quote` (type names), `pool_creation_cap_id`, `tick_spacing` |
 | `VaultCreated` | `migrate` | `vault_id`, `pool_id`, `position_id`, `venue`, `meme`, `quote` (type names), `residual_meme`, `residual_quote`, `liquidity`, `fee_split` |
-| `FeesCollected` | nonzero collection | `vault_id`, `generation`, `gross_meme`, `gross_quote`, `protocol_destination` (none when held for a partner), `protocol_meme`, `protocol_quote`, `creator_*`, `auto_lp_*`, `rewards_*`, `burn_meme` (burned), `burn_quote` (waits), `recipient_meme`, `recipient_quote` (split order) |
+| `FeesCollected` | nonzero collection | `vault_id`, `gross_meme`, `gross_quote`, `protocol_destination` (none when held for a partner), `protocol_meme`, `protocol_quote`, `creator_*`, `auto_lp_*`, `rewards_*`, `burn_meme` (burned), `burn_quote` (waits), `recipient_meme`, `recipient_quote` (split order) |
 | `AutoLpPositionOpened` | first Cetus collection with both auto-LP balances nonzero | `vault_id`, `position_id` |
 | `AutoLiquidityAdded` | auto-LP added something | `vault_id`, `meme_amount`, `quote_amount`, `meme_pending`, `quote_pending` |
-| `FeeSplitChanged` | split update | `vault_id`, `old_generation`, `new_generation`, `old_fee_split`, `new_fee_split` |
+| `FeeSplitChanged` | split update | `vault_id`, `old_fee_split`, `new_fee_split` |
 | `CreatorFeesClaimed` | creator LP-fee claim | `vault_id`, `meme_amount`, `quote_amount` |
 | `BuybackBurned` | buyback | `vault_id`, `quote_spent`, `meme_burned`, `quote_pending` |
 | `RoundPublished` | round publish | `vault_id`, `round_id`, `number`, `start_checkpoint`, `end_checkpoint`, `root`, `manifest_digest`, `leaf_count`, `meme_amount`, `quote_amount`, `meme_unallocated`, `quote_unallocated` |
@@ -558,7 +558,7 @@ is nonzero), and `blast_fun::events::Migrated` before `VaultCreated`.
 
 #### Replaying a vault from events
 
-Start a vault at `VaultCreated`: generation 0, its `fee_split`, residuals, `pool_id`, `position_id`.
+Start a vault at `VaultCreated`: its `fee_split`, residuals, `pool_id`, `position_id`.
 `VaultCreated` has no launch ID; link it through `Migrated.launch_id` in the same transaction, or
 through the `meme` type. On Cetus, `position_id` is the `CetusLPBurnProof`, not the burned Cetus
 position. Position principal is `Migrated.meme − residual_meme` and `Migrated.quote −
@@ -566,11 +566,11 @@ residual_quote`. Then reduce:
 
 - `FeesCollected`: add `creator_*`, `auto_lp_*`, `rewards_*`, and `burn_quote` to their balances;
   `burn_meme` left the supply (or went to `@0x0`); if `protocol_destination` is none, add
-  `protocol_*` to the held partner balance; recipient `i` of the split at `generation` received
+  `protocol_*` to the held partner balance; recipient `i` of the split in force received
   `recipient_meme[i]` and `recipient_quote[i]`.
 - `AutoLiquidityAdded`: auto-LP balances become `meme_pending`/`quote_pending`; principal rises by
   the added amounts. It can appear without `FeesCollected`, when only earlier leftovers were added.
-- `FeeSplitChanged`: adopt `new_generation` and `new_fee_split`.
+- `FeeSplitChanged`: adopt `new_fee_split`.
 - `CreatorFeesClaimed`, `ProtocolFeesClaimed`, `ProtocolLpFeesClaimed`: the matching balances become
   zero (each claim takes everything). `CreatorFeesClaimed` names no recipient; the coins go wherever
   the PTB sends them.

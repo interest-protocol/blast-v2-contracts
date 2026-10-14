@@ -25,7 +25,7 @@ public struct LpFeeDestinationChanged has copy, drop {
 
 /// Records discovery and typed position custody for one completed vault: the position's
 /// `liquidity`, the handoff the venue returned as protocol residuals, and the creator's fee split
-/// it holds from migration (generation zero).
+/// it holds from migration.
 public struct VaultCreated has copy, drop {
     vault_id: ID,
     pool_id: ID,
@@ -39,12 +39,11 @@ public struct VaultCreated has copy, drop {
     fee_split: FeeSplit,
 }
 
-/// One nonzero collection split under `generation`: Blast's share, the creator, auto-LP, rewards,
-/// and burn shares, and every recipient's amount in the split's recipient order. `burn_meme` was
-/// burned; `burn_quote` waits for a buyback.
+/// One nonzero collection split under the vault's split: Blast's share, the creator, auto-LP,
+/// rewards, and burn shares, and every recipient's amount in the split's recipient order.
+/// `burn_meme` was burned; `burn_quote` waits for a buyback.
 public struct FeesCollected has copy, drop {
     vault_id: ID,
-    generation: u64,
     gross_meme: u64,
     gross_quote: u64,
     /// Where Blast's share was paid, or none when a partnered vault holds it for the partner claim.
@@ -87,11 +86,9 @@ public struct AutoLpPositionOpened has copy, drop {
     position_id: ID,
 }
 
-/// The live curve-fee cap holder committed a new fee split as the next generation.
+/// The live curve-fee cap holder committed a new fee split.
 public struct FeeSplitChanged has copy, drop {
     vault_id: ID,
-    old_generation: u64,
-    new_generation: u64,
     old_fee_split: FeeSplit,
     new_fee_split: FeeSplit,
 }
@@ -207,10 +204,9 @@ public(package) fun vault_created<Meme, Quote, Venue>(
     });
 }
 
-/// Emits one nonzero collection split under `generation`.
+/// Emits one nonzero collection split.
 public(package) fun fees_collected(
     vault_id: ID,
-    generation: u64,
     gross_meme: u64,
     gross_quote: u64,
     protocol_destination: Option<address>,
@@ -229,7 +225,6 @@ public(package) fun fees_collected(
 ) {
     sui::event::emit(FeesCollected {
         vault_id,
-        generation,
         gross_meme,
         gross_quote,
         protocol_destination,
@@ -280,21 +275,13 @@ public(package) fun auto_lp_position_opened(vault_id: ID, position_id: ID) {
     sui::event::emit(AutoLpPositionOpened { vault_id, position_id });
 }
 
-/// Emits a committed fee-split generation.
+/// Emits a committed fee-split change.
 public(package) fun fee_split_changed(
     vault_id: ID,
-    old_generation: u64,
-    new_generation: u64,
     old_fee_split: FeeSplit,
     new_fee_split: FeeSplit,
 ) {
-    sui::event::emit(FeeSplitChanged {
-        vault_id,
-        old_generation,
-        new_generation,
-        old_fee_split,
-        new_fee_split,
-    });
+    sui::event::emit(FeeSplitChanged { vault_id, old_fee_split, new_fee_split });
 }
 
 /// Emits a creator LP-fee claim.
