@@ -311,6 +311,34 @@ changed the adapter; the table further down stays the summary.
   the allocated collateral into the account, and `finalize_shutdown` then
   withdraws it without a deallocation, which a paused market refuses.
 
+## Venue state the admin changes without touching an account, re-read 2026-10-14
+
+Read after the live NVDA vault rejected an Aftermath margin-ratio update as
+checkpoint drift. Source: the pinned interface copy (`interfaces/aftermath`,
+gated by `check_mainnet_abi.mjs` against the module hashes above) and the
+disassemblies already recorded here; the mainnet endpoints were not reachable
+from the session that made this read, so nothing below is a fresh bytecode
+fetch. Every mutator is listed with what it writes and how the adapter treats
+the write.
+
+| Venue mutator (cap) | Writes | Adapter before | Adapter now (ADR 0088) |
+| --- | --- | --- | --- |
+| `create_margin_ratios_proposal` → `commit_margin_ratios_proposal` (vendor admin, then anyone after the delay) | `margin_ratio_initial`, `margin_ratio_maintenance` | both stored; any change was `Unexpected` drift (the live outage) | venue policy: adopted by the preexisting classifier |
+| `set_core_params` (vendor admin) | `lot_size`, `tick_size`, `collateral_haircut` | `lot_size` stored, a change was drift; haircut read live | unchanged by decision: a lot change stays drift, reviewed before the vault trades under it |
+| `pause_market` / `admin_pause_market` / `resume_market` / `admin_resume_market` (vendor admin, pause guardian) | `paused` (0 live, 1 paused, 2 cancel-only) | stored; a pause read as drift in `needs_rebalance` and in the settlement unwind | venue policy; the live gate (`venue_not_ready`) and `unwind`'s branch are unchanged |
+| `freeze_clearing_house` / `unfreeze_clearing_house` (freeze guardian, package admin) | `frozen_version` field, `version := u64::MAX` | stored; same as pause | venue policy; `unwind` still refuses a frozen house |
+| `set_base_oracle_params` / `set_collateral_oracle_params` (vendor admin, package admin) | storage id, source id, tolerance | the storage object ids and both feed `from` ids were bound at activation: a re-pointing failed every capture, shutdown included | storages checked against the market's current storage ids; the feed is the one at the current source id |
+| `set_fee_params` | maker, taker, liquidation, insurance, priority taker fees | read live into the fee bound | unchanged |
+| `set_twap_params` | funding and TWAP cadences | read live for the funding-due mirror | unchanged |
+| `set_risk_limit_params` | OI, order-count, spread, divergence and bad-debt limits | venue-enforced inside the venue's own calls | unchanged |
+| `upgrade_version` | `ClearingHouse.version` (and `Registry.version`) | every venue call aborts on the version check until the adapter is relinked | unchanged; the ABI gate reports it first |
+| `close_market`, `set_settlement_prices`, `enable_settlement` | pause, `SettlementPrices` | the settlement unwind path | unchanged |
+| `scaling_factor` | not settable after `create_market_objects` | asserted `10^12` at initialization | unchanged |
+
+Account-moving venue actions (liquidation, ADL, socialized losses, another
+caller's funding settlement) are not in the table: the first three remain
+drift by design and the fourth is the recognized settlement shape.
+
 ## Everything else the adapter calls, and what it relies on
 
 Read→act→read→prove means most calls are proven by the checkpoint after them;

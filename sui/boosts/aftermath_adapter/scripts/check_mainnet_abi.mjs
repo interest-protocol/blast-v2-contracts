@@ -62,7 +62,7 @@ const PACKAGES = [
         previousTransaction: '24uiWDWHnZigACZ6n9s5sKUM9PhJxwtcQDXqVUbL3EWf',
         modules: [
             { name: 'price_feed_storage', sha256: 'f9c56ecf9081bb4c4c519eb12350084c34771fd10d76ad52fa7302feb78156c0', functions: ['storage_id', 'price_feed'] },
-            { name: 'price_feed', sha256: '6a5dae242c1bb6ff6fb2bf4bb4071990a36688213211c80137d55bd91c893aa8', functions: ['from', 'price_and_timestamp_ms'] },
+            { name: 'price_feed', sha256: '6a5dae242c1bb6ff6fb2bf4bb4071990a36688213211c80137d55bd91c893aa8', functions: ['price_and_timestamp_ms'] },
         ],
     },
     {
@@ -149,7 +149,6 @@ const ABI = {
     'position::pending_base_amounts_by_side': 'public fun pending_base_amounts_by_side(&@self::position::Position): (u256, u256)',
     'position::pending_order_count': 'public fun pending_order_count(&@self::position::Position): u64',
     'position::unrealized_pnl': 'public fun unrealized_pnl(&@self::position::Position, u256): u256',
-    'price_feed::from': 'public fun from(&@self::price_feed::PriceFeed): @sui::object::ID',
     'price_feed::price_and_timestamp_ms': 'public fun price_and_timestamp_ms(&@self::price_feed::PriceFeed): (u128, u64)',
     'price_feed_storage::price_feed': 'public fun price_feed(&@self::price_feed_storage::PriceFeedStorage, u16): &@self::price_feed::PriceFeed',
     'price_feed_storage::storage_id': 'public fun storage_id(&@self::price_feed_storage::PriceFeedStorage): u32',

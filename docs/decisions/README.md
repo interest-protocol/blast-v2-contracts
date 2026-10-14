@@ -132,7 +132,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0085](0085-explorer-visible-type-naming.md) | Explorer-visible type naming: every on-chain type names Blast | **accepted** |
 | [0086](0086-maintenance-reserve-ceiling.md) | Maintenance reserve ceiling: `max_reserve_bps` of notional, clamped credits, priced-after-release, no admin release | **accepted** |
 | [0087](0087-vault-issuance-activated-in-one-transaction.md) | Vault issuance activated in one transaction: `issue` returns a hot-potato issuance, `initialize` returns the Vault, no optional activation fields | **accepted** |
-| [0088](0088-authenticated-market-margin-updates.md) | Authenticated market margin updates: live venue policy with exact account checkpoints | **accepted** |
+| [0088](0088-authenticated-market-margin-updates.md) | Venue policy read live from the bound clearing house: margin ratios, pause, freeze and oracle routing are venue facts; account checkpoints and lot size stay exact | **accepted** |
 
 ADRs 0013–0036, 0038–0063, 0065–0069, 0073, 0077–0083, and 0085–0088 are accepted; ADR 0074 accepts the Aftermath dependency and raw-field normalization while retaining its live evidence gate; ADR 0037 is superseded by 0043, and ADRs 0070–0072 are superseded by 0073. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
