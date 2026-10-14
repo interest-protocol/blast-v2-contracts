@@ -101,7 +101,7 @@ accepted that a caller can move the pool price around a collection to skim part
 of that call's auto-LP amount; frequent collection keeps each slice small.
 
 **Split updates.** `settle_and_update_fee_split` settles the fees accrued under
-the current split, then commits the next generation (`FeeSplitChanged`).
+the current split, then commits the new split (`FeeSplitChanged`).
 Only the launch's live `CurveFeeCap` authorizes it. The launchpad's
 lock-to-custodian path is deleted: the creator always keeps a reassignable cap.
 

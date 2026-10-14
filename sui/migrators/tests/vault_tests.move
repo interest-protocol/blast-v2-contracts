@@ -50,7 +50,6 @@ public struct ExpectedVaultCreated has copy, drop {
 /// Independently encoded `FeesCollected` in ABI order, also the decoded form of an emitted one.
 public struct Collection has copy, drop {
     vault_id: ID,
-    generation: u64,
     gross_meme: u64,
     gross_quote: u64,
     protocol_destination: Option<address>,
@@ -106,13 +105,12 @@ public struct ExpectedBuybackBurned has copy, drop {
 // Custody
 
 #[test]
-fun attaching_announces_the_residuals_liquidity_and_launch_fee_split_at_generation_zero() {
+fun attaching_announces_the_residuals_liquidity_and_launch_fee_split() {
     let mut f = start(mixed_split());
 
     f.scenario.next_tx(ADMIN);
     let vault = f.new_vault(3, 4);
 
-    assert_eq!(vault.generation_for_testing(), 0);
     assert_eq!(vault.fee_split_for_testing(), f.launch.lp_fee_split());
     assert_eq!(vault.fee_split_for_testing(), mixed_split());
     assert_balances!(|| vault.creator_balances_for_testing(), 0, 0);
@@ -422,7 +420,6 @@ fun split_rounds_blast_up_then_credits_every_balance_and_pays_every_recipient_ex
         bcs::to_bytes(
             &Collection {
                 vault_id: object::id(&vault),
-                generation: 0,
                 gross_meme: 11,
                 gross_quote: 7,
                 protocol_destination: option::some(PROTOCOL),
@@ -730,7 +727,6 @@ fun a_partnered_collection_holds_blasts_share_and_splits_the_rest_as_before() {
         bcs::to_bytes(
             &Collection {
                 vault_id: object::id(&vault),
-                generation: 0,
                 gross_meme: 11,
                 gross_quote: 7,
                 protocol_destination: option::none(),
@@ -1373,7 +1369,6 @@ fun collection(index: u64): Collection {
     let mut r = bcs::new(bcs::to_bytes(&events[index]));
     let collection = Collection {
         vault_id: object::id_from_address(r.peel_address()),
-        generation: r.peel_u64(),
         gross_meme: r.peel_u64(),
         gross_quote: r.peel_u64(),
         protocol_destination: r.peel_option_address(),

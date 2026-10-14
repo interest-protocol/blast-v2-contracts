@@ -87,7 +87,6 @@ public struct Replay has drop {
     real_quote_reserve: u64,
     allocated_meme: u64,
     binding: Binding,
-    generation: u64,
     fee_split: SplitEntry,
     venue: String,
     residual_meme: u64,
@@ -487,7 +486,7 @@ fun collect(self: &mut ReplayFixture, meme: u64, quote: u64) {
     });
 }
 
-/// Settles the outstanding collection under generation zero, then commits the next split.
+/// Settles the outstanding collection under the migration split, then commits the next split.
 fun settle_fee_split(self: &mut ReplayFixture, meme: u64, quote: u64) {
     self.next_tx!(CREATOR, |f| {
         let curve_fee_cap = f.scenario.take_from_sender<CurveFeeCap<REPLAY_TESTS>>();
@@ -896,7 +895,6 @@ fun new_replay(publisher: address): Replay {
             pool_id: absent(),
             position_id: absent(),
         },
-        generation: 0,
         fee_split: empty_split(),
         venue: b"".to_ascii_string(),
         residual_meme: 0,
@@ -1123,9 +1121,8 @@ fun bought(self: &mut Replay, bytes: vector<u8>) {
     if (real_quote_reserve >= self.graduation_target) self.lifecycle = MIGRATION_READY;
 }
 
-/// Migration copies the creator's launch fee split into the custody `VaultCreated` announces, at
-/// generation zero, and the residuals it keeps leave the rest of the hand-off in a position that
-/// holds liquidity.
+/// Migration copies the creator's launch fee split into the custody `VaultCreated` announces, and
+/// the residuals it keeps leave the rest of the hand-off in a position that holds liquidity.
 fun vault_created(self: &mut Replay, bytes: vector<u8>) {
     let mut r = bcs::new(bytes);
     self.binding.vault_id = r.peel_id();
@@ -1144,7 +1141,6 @@ fun vault_created(self: &mut Replay, bytes: vector<u8>) {
     assert!(self.liquidity > 0);
     assert_eq!(self.venue, self.migration_witness);
     assert_eq!(fee_split, self.launch_fee_split);
-    self.generation = 0;
     self.fee_split = fee_split;
     self.position_meme = self.position_meme - self.residual_meme;
     self.position_quote = self.position_quote - self.residual_quote;
@@ -1220,13 +1216,12 @@ fun migrated(self: &mut Replay, bytes: vector<u8>) {
 }
 
 /// Blast's live share for this Meme rounds up and pays the live destination; the rest splits
-/// under the stamped generation into the creator, auto-LP, and rewards balances, the burned Meme
-/// and the waiting burn Quote, and one payment per recipient in the split's order, conserving each
+/// under the vault's split into the creator, auto-LP, and rewards balances, the burned Meme and
+/// the waiting burn Quote, and one payment per recipient in the split's order, conserving each
 /// asset.
 fun fees_collected(self: &mut Replay, bytes: vector<u8>) {
     let mut r = bcs::new(bytes);
     assert_eq!(r.peel_id(), self.binding.vault_id);
-    assert_eq!(r.peel_u64(), self.generation);
     let gross_meme = r.peel_u64();
     let gross_quote = r.peel_u64();
     // Replayed launches name no partner, so every collection pays Blast at once.
@@ -1291,16 +1286,12 @@ fun auto_liquidity_added(self: &mut Replay, bytes: vector<u8>) {
 fun fee_split_changed(self: &mut Replay, bytes: vector<u8>) {
     let mut r = bcs::new(bytes);
     assert_eq!(r.peel_id(), self.binding.vault_id);
-    assert_eq!(r.peel_u64(), self.generation);
-    let new_generation = r.peel_u64();
     let old_fee_split = r.peel_fee_split();
     let new_fee_split = r.peel_fee_split();
     r.assert_consumed();
 
-    assert_eq!(new_generation, self.generation + 1);
     assert_eq!(old_fee_split, self.fee_split);
     assert!(new_fee_split != old_fee_split);
-    self.generation = new_generation;
     self.fee_split = new_fee_split;
 }
 
@@ -1691,7 +1682,6 @@ fun assert_vault(self: &Replay, vault: &mut LpVault<REPLAY_TESTS, QUOTE>) {
     assert_eq!(self.venue, type_name::with_original_ids<Venue>().into_string());
     assert_eq!(vault.protocol_meme_residual_for_testing(), self.residual_meme);
     assert_eq!(vault.protocol_quote_residual_for_testing(), self.residual_quote);
-    assert_eq!(vault.generation_for_testing(), self.generation);
     assert_eq!(split_entry(&vault.fee_split_for_testing()), self.fee_split);
     assert_eq!(pair!(|| vault.creator_balances_for_testing()), self.creator_balance);
     assert_eq!(pair!(|| vault.auto_lp_balances_for_testing()), self.auto_lp);

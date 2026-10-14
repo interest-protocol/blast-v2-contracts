@@ -69,7 +69,6 @@ fun single_ptb_sealed_mock_adapter_keeps_principal_and_residuals_in_vault_custod
     let mut vault = f.scenario.take_shared<LpVault<ATOMIC_MIGRATION_TESTS, QUOTE>>();
     assert_eq!(vault.protocol_meme_residual_for_testing(), 1);
     assert_eq!(vault.protocol_quote_residual_for_testing(), 1);
-    assert_eq!(vault.generation_for_testing(), 0);
     assert_eq!(vault.fee_split_for_testing(), fee_split);
     assert_eq!(fee_split, creator_split());
     let pool_id = vault.pool_id();
@@ -144,7 +143,6 @@ fun the_migrated_vault_splits_later_collections_and_updates_its_split_under_the_
         balance::create_for_testing(4),
         f.scenario.ctx(),
     );
-    assert_eq!(vault.generation_for_testing(), 1);
     assert_eq!(vault.fee_split_for_testing(), next_split);
     let (creator_meme, creator_quote) = vault.creator_balances_for_testing();
     assert_eq!(creator_meme, 100);
