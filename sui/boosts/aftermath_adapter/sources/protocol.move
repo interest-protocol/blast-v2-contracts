@@ -62,7 +62,9 @@ public fun init_for_testing(ctx: &mut TxContext) {
 
 #[test_only]
 public fun new_for_testing(ctx: &mut TxContext): Protocol {
-    new(ctx)
+    let mut protocol = new(ctx);
+    protocol.generation.set_generation_for_testing(PACKAGE_VERSION);
+    protocol
 }
 
 #[test_only]

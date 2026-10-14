@@ -371,6 +371,11 @@ public(package) fun total_share_supply<Product, Collateral>(self: &Vault<Product
     self.treasury_cap().total_supply()
 }
 
+/// Returns the identity of the retained native share mint authority.
+public(package) fun treasury_cap_id<Product, Collateral>(self: &Vault<Product, Collateral>): ID {
+    object::id(self.treasury_cap())
+}
+
 /// The seed shares locked at activation, excluded from every terminal claim.
 public(package) fun locked_shares<Product, Collateral>(self: &Vault<Product, Collateral>): u64 {
     self.locked_shares

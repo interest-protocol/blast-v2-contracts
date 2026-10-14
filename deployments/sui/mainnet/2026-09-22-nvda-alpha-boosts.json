@@ -1,0 +1,344 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "sui-product-deployment",
+  "release": "alpha-boosts-nvda-bull-2x",
+  "network": {
+    "chain": "sui",
+    "environment": "mainnet",
+    "chainIdentifierHex": "35834a8a",
+    "chainIdentifierBase58": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"
+  },
+  "timestampUtc": "2026-09-22T13:30:02.112Z",
+  "recordedAtUtc": "2026-09-22T13:41:28Z",
+  "repository": {
+    "commit": "94e9a5419bac7d1860136ee32273a1802d5becf9",
+    "workingTree": "dirty",
+    "note": "The checkout was dirty when this record was created and when the deployment artifacts were produced. This record therefore does not claim a clean-tree or byte-for-byte source verification receipt."
+  },
+  "toolchain": {
+    "suiCli": "sui 1.77.2-51d177ad7d65",
+    "moveToolchain": "1.77.2",
+    "moveEdition": "2024",
+    "rustc": "rustc 1.89.0 (29483883e 2025-08-04)",
+    "cargo": "cargo 1.89.0 (c24e10642 2025-06-23)",
+    "node": "v24.18.0"
+  },
+  "deployer": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+  "status": "success",
+  "applicationRelease": {
+    "mainnetConfigFingerprint": "cf992b5f8439532895f9bf89d2b21a8aa8a133006ba9c1ba1498957bb1cfdd02",
+    "transactionsEnabled": false,
+    "releaseGate": "Controlled transaction enablement remains closed pending transaction-release evidence and the keeper host/funding decision."
+  },
+  "transactions": {
+    "adminPackagePublication": {
+      "digest": "FjhNkJVgcQYtUWhY4RLudZKbLq7syrrger3nkT9EJnek",
+      "checkpoint": "325593738",
+      "timestampUtc": "2026-09-22T12:10:21.565Z",
+      "status": "success",
+      "madeImmutableInSameTransaction": true
+    },
+    "corePackagePublication": {
+      "digest": "8KbQXyQ2sykrGvXXHjvinWGDcgKibcFG8ZnBzax9HvNH",
+      "checkpoint": "325596378",
+      "timestampUtc": "2026-09-22T12:20:32.181Z",
+      "status": "success",
+      "madeImmutableInSameTransaction": true
+    },
+    "productsPackagePublication": {
+      "digest": "BhFXhLaT75UedgsKBXRYAk1wtBomoDGW5ToLn2qqXQbm",
+      "checkpoint": "325596662",
+      "timestampUtc": "2026-09-22T12:21:36.454Z",
+      "status": "success"
+    },
+    "routineAdminGrant": {
+      "digest": "2KobqHb4nCRtTaLbR6ZtKdBhoDrzr3bntzLrRrRBoRAK",
+      "checkpoint": "325599121",
+      "timestampUtc": "2026-09-22T12:31:08.650Z",
+      "status": "success",
+      "initialRoles": "1"
+    },
+    "adapterRoleGrant": {
+      "digest": "CuLSgNUwV2WVu5gUnRCKogapZSPQxyhwaeesd6Ra9ty8",
+      "checkpoint": "325603947",
+      "timestampUtc": "2026-09-22T12:49:38.078Z",
+      "status": "success",
+      "grantedRole": "16",
+      "resultingRoles": "17"
+    },
+    "adapterPackagePublication": {
+      "digest": "BC3TRaD5BsHYmtNAUdNjUaDcARRmaZaS8bSC79KzQkjc",
+      "checkpoint": "325611365",
+      "timestampUtc": "2026-09-22T13:19:16.378Z",
+      "status": "success"
+    },
+    "adapterPackageAdminCreation": {
+      "digest": "7oFSyKZvPBgLUX2vHqfEfTiexr6RzU8bobwDwT7LaFjZ",
+      "checkpoint": "325611487",
+      "timestampUtc": "2026-09-22T13:19:47.003Z",
+      "status": "success"
+    },
+    "seedUsdcAcquisition": {
+      "digest": "EgW1sRbcMY8VDteG4hNmDkAMip8UcxFT4ZNHwUaq9MV",
+      "checkpoint": "325612623",
+      "timestampUtc": "2026-09-22T13:24:39.996Z",
+      "status": "success",
+      "venue": "CETUS",
+      "mode": "exact-output",
+      "inputType": "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI",
+      "inputAmount": "989694746",
+      "outputType": "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC",
+      "expectedOutputAmount": "1000000",
+      "observedOutputAmount": "1000000",
+      "outputCoinId": "0x464a31ba1fefab0b5ee5eeeb63c42bd3ae4e8ebe273c96a6fbd093aac28eb7ac"
+    },
+    "nvdaActivation": {
+      "digest": "BTDjg6fcjVTHU8YSExkpKHDth3wMMg1mfxU6BQihcPxj",
+      "checkpoint": "325613848",
+      "timestampUtc": "2026-09-22T13:30:02.112Z",
+      "status": "success"
+    }
+  },
+  "packages": {
+    "admin": {
+      "packageId": "0x247b6e2f000a77e82f4afc5c08f95f746e2e132ba2e1ecb3a9082f0c41ab80e2",
+      "version": "1",
+      "immutable": true
+    },
+    "core": {
+      "packageId": "0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe",
+      "version": "1",
+      "immutable": true,
+      "domainType": "0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe::blast_boosts_core::BLAST_BOOSTS_CORE"
+    },
+    "products": {
+      "originalPackageId": "0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba",
+      "currentPackageId": "0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba",
+      "version": "1",
+      "publisherId": "0x679769e2b3fdc620a0494fa06ac3d2f5500312ad7f1e97a31279de27bcd6fd2f",
+      "upgradeCapId": "0x04e2a4d6042e1c6e5c85b59d394f8037234fd6762086359bed36253f77eadd74"
+    },
+    "aftermathAdapter": {
+      "originalPackageId": "0x04f46747d8cb5ea590953ff1847301dfe5a287519d32c1610b35810aab082e50",
+      "currentPackageId": "0x04f46747d8cb5ea590953ff1847301dfe5a287519d32c1610b35810aab082e50",
+      "version": "1",
+      "publisherId": "0x8c7de5ac1952cf03071a05a2e7c11781cd5517bc68d0611180dc26d479684e12",
+      "upgradeCapId": "0xa525b4698224d1c42e31268bd16af5ee34c2c161845add887efd667af0abda72",
+      "packageAdminId": "0x1cbfab2ede90ec7a26f78e727d6557bf4bf1e26f24a93225f793197d14f764b2",
+      "protocolId": "0x3fc52afcf2b5d8ab1a54cd190f53939c111333c1cf0182eb32ded5001b761bdd",
+      "operationalGeneration": "1"
+    }
+  },
+  "dependencyPackages": {
+    "moveStdlib": "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "suiFramework": "0x0000000000000000000000000000000000000000000000000000000000000002",
+    "orderedMap": "0xf453864f39b7c6122551f665d4fe961b8625853cf89bcae55be4b3b99e848126",
+    "authorityCap": "0x4e2df80a5e2fd0392878298c51ce15164222111ccea05504b9291b158f552677",
+    "ifixed": "0x4b4703a7581781d74a4c7b0fb0836b2a67f34f1a377fb81aab6f5cad29d78760",
+    "oracleAggregator": "0x9237337d846fc90b0a7acbdee4ab91809298691873d28e1d64d91e6303ff6ba4",
+    "aftermathPerpetuals": "0x3ec740df8428aa9c93aaef7f8cc1542ac3194fd014826b51bfe245346d64efc7",
+    "aftermathPosition": "0x9196fffe0341b2f0ca7424926b22d9e9e35b4807a1f625fc20eeea1382d08dec",
+    "aftermathVendor": "0x40c958733d43750f9a36f72e2d7a327ef68ce52713f557702b1e784fd7bfa158",
+    "usdc": "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7"
+  },
+  "administration": {
+    "authority": {
+      "objectId": "0x130f017e06571a164d5f1c50b35702711bf529f439630dab580253da10a1c8e4",
+      "owner": "shared",
+      "initialSharedVersion": "1",
+      "createdByTransaction": "8KbQXyQ2sykrGvXXHjvinWGDcgKibcFG8ZnBzax9HvNH"
+    },
+    "superAdminCap": {
+      "objectId": "0x13dd20c9c9dd682ec2ea2f90f271a992f9075e4b6e1222bb9b9a01874823410c",
+      "owner": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+      "createdByTransaction": "8KbQXyQ2sykrGvXXHjvinWGDcgKibcFG8ZnBzax9HvNH"
+    },
+    "adminCap": {
+      "objectId": "0x297f449842212fd30f7cbac799ff72199db2708d554275d63c48286f53938af8",
+      "owner": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+      "roles": "17",
+      "createdByTransaction": "2KobqHb4nCRtTaLbR6ZtKdBhoDrzr3bntzLrRrRBoRAK"
+    },
+    "packageAdmin": {
+      "objectId": "0x1cbfab2ede90ec7a26f78e727d6557bf4bf1e26f24a93225f793197d14f764b2",
+      "owner": "shared",
+      "initialSharedVersion": "2",
+      "createdByTransaction": "7oFSyKZvPBgLUX2vHqfEfTiexr6RzU8bobwDwT7LaFjZ",
+      "custodiedPublisherId": "0x8c7de5ac1952cf03071a05a2e7c11781cd5517bc68d0611180dc26d479684e12",
+      "custodiedUpgradeCapId": "0xa525b4698224d1c42e31268bd16af5ee34c2c161845add887efd667af0abda72",
+      "custodiedUpgradeCapVersion": "1"
+    },
+    "operationalGeneration": {
+      "objectId": "0x3fc52afcf2b5d8ab1a54cd190f53939c111333c1cf0182eb32ded5001b761bdd",
+      "objectType": "0x04f46747d8cb5ea590953ff1847301dfe5a287519d32c1610b35810aab082e50::protocol::Protocol",
+      "owner": "shared",
+      "initialSharedVersion": "1",
+      "generation": "1",
+      "createdByTransaction": "BC3TRaD5BsHYmtNAUdNjUaDcARRmaZaS8bSC79KzQkjc"
+    }
+  },
+  "product": {
+    "key": "nvda-2x-bull",
+    "name": "NVDA 2x Bull",
+    "symbol": "NVDA2L",
+    "side": "long",
+    "productType": "0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba::blast_boosts_products::NVDA_BULL_2X",
+    "collateralType": "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC",
+    "shareType": "0x04f46747d8cb5ea590953ff1847301dfe5a287519d32c1610b35810aab082e50::blast_boost::BlastBoost<0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba::blast_boosts_products::NVDA_BULL_2X>",
+    "objects": {
+      "vault": {
+        "objectId": "0xc01b669f9c94c21806a557fb2f4e36a3cdcb5e5ef90c694c8a5229c62bb5e3fa",
+        "owner": "shared",
+        "initialSharedVersion": "1013248783"
+      },
+      "venueAccount": {
+        "objectId": "0x0ec9f3286da8b0a05caaac6972800063de4147637b6cc7ca72f4cdaa423af667",
+        "owner": "shared",
+        "initialSharedVersion": "1013248783",
+        "accountNumber": "842"
+      },
+      "currency": {
+        "objectId": "0xcb835962deeb4624df457a52887f5bd67ae51ee48f0decca05b4304a9d313de3",
+        "owner": "shared",
+        "initialSharedVersion": "1013248783",
+        "decimals": 9,
+        "symbol": "NVDA2L",
+        "name": "NVDA 2x Bull",
+        "description": "NVDA 2x Bull",
+        "iconUrl": ""
+      },
+      "treasuryCap": {
+        "objectId": "0x333df6e3d655227cd353cfa73763f797914d6e6247536fd788771c772a52988c",
+        "ownerObjectId": "0xe85a04df4371cae9bfcd948fa2d084b27f16069013d259d02ee645657c674bca"
+      },
+      "metadataCap": {
+        "objectId": "0xa36a34fc9629299678344781ea9e554d53dd9ae03fb146644bb1bd1e615b48e5",
+        "ownerObjectId": "0x3ec57d5ab0e9ef218481968478139a260c52205cfe83ec6a6c8daf589367b726"
+      },
+      "lockedSeedShareCoin": {
+        "objectId": "0xdaf39664caae8958a25813552bec00ff671183b325bfe34715c13dc6b06b8731",
+        "owner": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "balance": "998147000"
+      }
+    },
+    "venueDependencies": {
+      "coinRegistryId": "0x000000000000000000000000000000000000000000000000000000000000000c",
+      "usdcCurrencyId": "0x75cfbbf8c962d542e99a1d15731e6069f60a00db895407785b15d14f606f2b4a",
+      "registryId": "0xda0bd7a60182efd662b70e0de99218bbd2b6c4bbe9de23c0bb5a87ec52b37c37",
+      "clearingHouseId": "0x70519b6e514f78c266dec5f5406bc8ba953ee0941490181bcc7e31d6798999f8",
+      "baseOracleId": "0xc9c03df91207556078d643f4024e8ec3c132741c7979e2948fd0cb95fb496765",
+      "baseFeedId": "0xe9049959effe686081dadff72743961c28dd1f8931e459b7659483e49e8813d6",
+      "collateralOracleId": "0x96ea92a33842446845c38992f5de53971471156e26b269c19a1f5864109ada03",
+      "collateralFeedId": "0x20471fe9485a08a3ec5115ba24337dbda38571ab218b766f28de3b1a26e184da",
+      "clockId": "0x0000000000000000000000000000000000000000000000000000000000000006"
+    },
+    "initialization": {
+      "rebalancePolicy": {
+        "rebalanceBelowBps": "18000",
+        "targetLeverageBps": "20000",
+        "rebalanceAboveBps": "22000",
+        "maxLeverageBps": "25000",
+        "maxSlippageBps": "30",
+        "emergencyMaxSlippageBps": "100",
+        "minLeverageImprovementBps": "10"
+      },
+      "pricePolicy": {
+        "maxPriceAgeMs": "30000",
+        "maxPriceAheadMs": "0",
+        "maxConfidenceBps": "50",
+        "maxMarkDivergenceBps": "100"
+      },
+      "vaultPolicy": {
+        "initialMintFeeBps": "0",
+        "initialRedeemFeeBps": "0",
+        "mintFeeCapBps": "100",
+        "redeemFeeCapBps": "100",
+        "adminShareCapBps": "3000",
+        "minOrderLots": "1",
+        "maxReserveBps": "500"
+      },
+      "maxOrderNotional": "250000000",
+      "navCap": "1000000000",
+      "seedCollateral": "1000000",
+      "seedReserve": "0",
+      "positionInitialMarginRatio": "100000000000000000",
+      "metadataInput": {
+        "symbol": "NVDA2L",
+        "name": "NVDA 2x Bull",
+        "description": "NVDA 2x Bull",
+        "iconUrl": ""
+      }
+    },
+    "initializationResult": {
+      "lifecycle": "Active",
+      "positionSide": "Long",
+      "positionBase": "8810000",
+      "signedQuoteNotional": "1999765492600000000",
+      "lotSize": "10000",
+      "seedShareholderNav": "998147",
+      "seedVenueEquity": "998147",
+      "lockedShares": "998147000",
+      "treasuryTotalSupply": "998147000",
+      "adminCash": "0",
+      "maintenanceReserve": "0",
+      "uncoveredDeficit": "0"
+    }
+  },
+  "postDeployVerification": [
+    {
+      "check": "fresh adapter package published",
+      "result": "pass",
+      "evidence": "Transaction BC3TRaD5BsHYmtNAUdNjUaDcARRmaZaS8bSC79KzQkjc published package 0x04f46747d8cb5ea590953ff1847301dfe5a287519d32c1610b35810aab082e50 at version 1 and created the Protocol, Publisher, and UpgradeCap recorded above."
+    },
+    {
+      "check": "upgrade custody retained required capabilities",
+      "result": "pass",
+      "evidence": "PackageAdmin 0x1cbfab2ede90ec7a26f78e727d6557bf4bf1e26f24a93225f793197d14f764b2 is shared and contains Publisher 0x8c7de5ac1952cf03071a05a2e7c11781cd5517bc68d0611180dc26d479684e12 and UpgradeCap 0xa525b4698224d1c42e31268bd16af5ee34c2c161845add887efd667af0abda72 at package version 1."
+    },
+    {
+      "check": "seed USDC acquired by exact-output swap",
+      "result": "pass",
+      "evidence": "Transaction EgW1sRbcMY8VDteG4hNmDkAMip8UcxFT4ZNHwUaq9MV emitted ConfirmSwapEvent with expected and actual output of 1000000 atomic USDC and created seed coin 0x464a31ba1fefab0b5ee5eeeb63c42bd3ae4e8ebe273c96a6fbd093aac28eb7ac."
+    },
+    {
+      "check": "activation transaction finalized",
+      "result": "pass",
+      "evidence": "Transaction BTDjg6fcjVTHU8YSExkpKHDth3wMMg1mfxU6BQihcPxj finalized successfully at checkpoint 325613848."
+    },
+    {
+      "check": "vault issued and initialized",
+      "result": "pass",
+      "evidence": "The activation emitted VaultIssued at event 0, OrderFilled at event 9, and VaultInitialized at event 10 for NVDA_BULL_2X."
+    },
+    {
+      "check": "currency metadata is exact and unquoted",
+      "result": "pass",
+      "evidence": "Read-only Currency object state reports symbol NVDA2L, name NVDA 2x Bull, description NVDA 2x Bull, and an empty icon URL without literal quote characters."
+    },
+    {
+      "check": "shared product objects exist with expected types",
+      "result": "pass",
+      "evidence": "Read-only mainnet object reads confirmed the Vault, Aftermath Account, and Coin Registry Currency at shared initial version 1013248783."
+    },
+    {
+      "check": "vault policy and seed accounting match activation events",
+      "result": "pass",
+      "evidence": "The live Vault reports Active lifecycle, 1000000000 NAV cap, zero initial mint/redeem fees, 998147000 locked shares, and the exact recorded rebalance and price policies."
+    },
+    {
+      "check": "admin authority and role are live",
+      "result": "pass",
+      "evidence": "Authority 0x130f017e06571a164d5f1c50b35702711bf529f439630dab580253da10a1c8e4 is shared and records AdminCap 0x297f449842212fd30f7cbac799ff72199db2708d554275d63c48286f53938af8 with roles 17."
+    },
+    {
+      "check": "application mainnet transaction gate",
+      "result": "closed",
+      "evidence": "Mainnet configuration fingerprint cf992b5f8439532895f9bf89d2b21a8aa8a133006ba9c1ba1498957bb1cfdd02 records transactionsEnabled=false pending controlled release evidence and the keeper host/funding decision."
+    },
+    {
+      "check": "source verification receipt",
+      "result": "not-recorded",
+      "evidence": "The working tree was dirty; no clean-tree bytecode/source-verification receipt is asserted by this record."
+    }
+  ]
+}

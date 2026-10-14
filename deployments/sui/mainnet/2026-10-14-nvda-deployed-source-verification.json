@@ -1,0 +1,112 @@
+{
+  "network": "sui-mainnet",
+  "packageId": "0x04f46747d8cb5ea590953ff1847301dfe5a287519d32c1610b35810aab082e50",
+  "nativeVersion": 1,
+  "normalization": "Original self-address replaced by zero to compare publication compiler output",
+  "modules": [
+    {
+      "name": "blast_boost",
+      "liveSha256": "86983d21ece9fd7d96e359bd499b5f697ac2bf6d4cf0f6f6dd3d49f8874ee192",
+      "publicationSha256": "ddfef98cd210c110c8033d6c7dd769282b1bcb2101ecdc831d173fd2fe93fde5",
+      "matches": true
+    },
+    {
+      "name": "blast_boosts_aftermath",
+      "liveSha256": "9626d4b28883c55ad9f2ebf814b9008f5f865d7ccd99f59ca7eda41519d2ebfa",
+      "publicationSha256": "db3433080cc4d56ff074a771026fcf73694bf074f61d620538950b96adccd560",
+      "matches": true
+    },
+    {
+      "name": "blast_events",
+      "liveSha256": "f383469bc7014c9a770315760f2799e4d4e37e79db8855acb839c4e7cf2dc9cc",
+      "publicationSha256": "6de503ff10997c48e5eb0f5de01c00d6d91b9cc02c11ed9743bad112f39da150",
+      "matches": true
+    },
+    {
+      "name": "checkpoint",
+      "liveSha256": "b1a54264d7103de7f2cf7249e7960eb2d8e0c4fd71ad04a6f81bcca48b78802f",
+      "publicationSha256": "fc0f8731f49a326449bbead04c70fc349bad2580e397662266bb9f1b1a88a464",
+      "matches": true
+    },
+    {
+      "name": "constants",
+      "liveSha256": "708686de5c9f92df93f5fa6bf12161113ec9d7f420e20aeda5ccbb0b76dd1d1a",
+      "publicationSha256": "f36ac7b50e22c6e417d4b46e008a8279c6396bdfa09ab63e158ac6f95df194ca",
+      "matches": true
+    },
+    {
+      "name": "errors",
+      "liveSha256": "f622e1c7456679eba02f86a13543639faf2edd947a5da827c8f7b5da242f874a",
+      "publicationSha256": "496e90584e1c1e624a53802334e0b0b4cb56e3a214fc7d7ae2b365f7d8ad77e9",
+      "matches": true
+    },
+    {
+      "name": "events",
+      "liveSha256": "b67e456b606a9e4629e96230566c387f535360d2545a9d2fb1cdc035ce1601c0",
+      "publicationSha256": "53b4a6e90010857b8eb58a116520e180913c0944d55d4d82ae1d38cf183700cf",
+      "matches": true
+    },
+    {
+      "name": "ifixed_math",
+      "liveSha256": "126ddd5fa90debff7af7cf74ca766299cb8269363e1c09b267a789396f53fa2c",
+      "publicationSha256": "97c5afcc13a1fdb77923111e018f9cd5d191205e6e2fbd7f1704c9f0fa7c4e58",
+      "matches": true
+    },
+    {
+      "name": "operations",
+      "liveSha256": "f79de0cefc2cb0553d6d8fe190d93d614dd5677787528690ea26c6be97fca27e",
+      "publicationSha256": "9955f0093f7640d549eee8dd400f7ae57c961ec32c066201dee181fa6b695c07",
+      "matches": true
+    },
+    {
+      "name": "orders",
+      "liveSha256": "65baad3c83e0f192ef5545b9d5545c2d0066de0484175fc856d30cd0f6965469",
+      "publicationSha256": "121b670a50fa78f0bb15406eb55a30721a0693a1830c1880fb7af329b80bf544",
+      "matches": true
+    },
+    {
+      "name": "package_admin",
+      "liveSha256": "cacf3f4c3a691f6ec83c1692fee3f7a8e2051c28b89a98892a526b141846cbc8",
+      "publicationSha256": "251e4aa390370e41385b7c764f8a9c25fc4d70edd93ca18254d9761584cde95f",
+      "matches": true
+    },
+    {
+      "name": "protocol",
+      "liveSha256": "4276196c6cb30b9aa14e8725fe0eab4187778a531f6ff11895245284f7a293fa",
+      "publicationSha256": "754fb593ecd3cb46528344be8947a7372c67d1cc3b611e134a518faac22f588e",
+      "matches": true
+    },
+    {
+      "name": "snapshot",
+      "liveSha256": "25d5dfc878e488abc0fe0319b5df0699aa2e15d6d2c1b95bb650bd713743dc6b",
+      "publicationSha256": "540f01b963b697c0859477fa9437740e4cc09ddb18536435c112f4a519699ea3",
+      "matches": true
+    },
+    {
+      "name": "vault",
+      "liveSha256": "48108b44ca8ca334bcbe8b4ee9dc901969045841bdfd8fb03d370a39e26cb269",
+      "publicationSha256": "62e2757993aeb290fdd77db0839c024f712a5808fab571c298bc9dc473a5405d",
+      "matches": true
+    },
+    {
+      "name": "venue_account",
+      "liveSha256": "dac1a9f22832fd87486cf85290436d10e1c79aec264ce4c53da2ae7eb3524ab5",
+      "publicationSha256": "9d63bdabe1566366e5202d7bbdd205c72e8398f1a009ad308ae34591f945664a",
+      "matches": true
+    }
+  ],
+  "schemaVersion": 1,
+  "recordKind": "sui-deployed-source-verification",
+  "sourceBaseCommit": "94e9a5419bac7d1860136ee32273a1802d5becf9",
+  "restoredDeploymentChanges": [
+    "read-only operations::observe and retained treasury ID accessor",
+    "create venue position before allocating seed collateral",
+    "test fixture selects compiled operational generation"
+  ],
+  "cleanRebuildVerification": {
+    "command": "sui client verify-source --build-env mainnet --toolchain /home/ubuntu/.local/bin/sui --json sui/boosts/aftermath_adapter",
+    "exitCode": 0,
+    "suiCli": "1.77.2-51d177ad7d65",
+    "warning": "A transitive control-flow dependency appears in only one linkage table and does not affect this package execution."
+  }
+}
