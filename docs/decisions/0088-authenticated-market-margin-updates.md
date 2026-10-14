@@ -45,8 +45,12 @@ stored checkpoint must reproduce:
   leverage, slippage and deadline gates, so a stricter margin or a pause blocks
   trading for its real reason. The adapter carries no hardcoded venue setting.
 
-The adapter is published fresh at generation 1 after audit rather than upgraded
-in place; the deployed package keeps its stranded vault until then.
+This source is a new package, not an upgrade. The deployed adapter (original
+`0x04f46747…`) took the margin-only fix as a compatible upgrade on 2026-10-14
+and runs at operational generation 2; its vault, shares and objects stay there.
+The `Binding` layout here is different, so after audit this source is published
+fresh: a new original id, upgrade capability, `Protocol` and vaults at
+generation 1, and `Published.toml` carries no mainnet record until then.
 
 ## Consequences
 
@@ -56,6 +60,9 @@ in place; the deployed package keeps its stranded vault until then.
   delta, so replay sees the policy change. Identical retries remain quiet.
 - A re-pointed oracle no longer halts the vault; the capture values with
   whatever feed the venue trades at, under the venue's own staleness check.
+- A new package means new share coin types and new vaults. Holders of the
+  deployed vault's shares are not migrated by this change; whether and how the
+  deployed vault winds down is a separate product decision.
 - `Binding` and `VaultInitialized.binding` lose the four oracle ids; the
   activation evidence scripts check the storages the activation was called with
   against the market, not against the event.
