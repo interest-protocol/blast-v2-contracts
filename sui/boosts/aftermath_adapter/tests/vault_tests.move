@@ -131,7 +131,7 @@ fun stale_adapter_version_precedes_fee_role_and_validation() {
     fixture.next_tx!(ISSUER, |fixture| {
         let mut vault = fixture.take_vault<Sui2x>();
         let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
-        fixture.protocol.set_version_for_testing(1);
+        fixture.protocol.set_version_for_testing(2);
 
         vault.set_fees(&fixture.protocol, &admin_witness, 10_000, 10_000, 10_001);
 
@@ -177,7 +177,7 @@ fun stale_adapter_version_precedes_nav_cap_role_and_validation() {
     fixture.next_tx!(ISSUER, |fixture| {
         let mut vault = fixture.take_vault<Sui2x>();
         let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
-        fixture.protocol.set_version_for_testing(1);
+        fixture.protocol.set_version_for_testing(2);
 
         vault.set_nav_cap(&fixture.protocol, &admin_witness, 0);
 
@@ -300,7 +300,7 @@ fun stale_adapter_version_precedes_metadata_role_check() {
         let vault = fixture.take_vault<Sui2x>();
         let mut currency = fixture.take_currency<Sui2x>();
         let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
-        fixture.protocol.set_version_for_testing(1);
+        fixture.protocol.set_version_for_testing(2);
 
         vault.update_metadata(
             &fixture.protocol, &admin_witness, &mut currency,
@@ -327,7 +327,7 @@ fun stale_adapter_version_precedes_admin_fee_role_check() {
     fixture.next_tx!(ISSUER, |fixture| {
         let mut vault = fixture.take_vault<Sui2x>();
         let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
-        fixture.protocol.set_version_for_testing(1);
+        fixture.protocol.set_version_for_testing(2);
 
         destroy(vault.withdraw_admin_fees(&fixture.protocol, &admin_witness, 1, fixture.ctx!()));
 
@@ -711,7 +711,7 @@ fun stale_adapter_version_precedes_role_and_max_order_notional_validation() {
     fixture.next_tx!(ISSUER, |fixture| {
         let mut vault = fixture.take_vault<Sui2x>();
         let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
-        fixture.protocol.set_version_for_testing(1);
+        fixture.protocol.set_version_for_testing(2);
 
         vault.set_max_order_notional(&fixture.protocol, &admin_witness, 0);
 
@@ -760,7 +760,7 @@ fun stale_version_precedes_the_missing_shutdown_role() {
     fixture.next_tx!(ISSUER, |fixture| {
         let mut vault = fixture.take_vault<Sui2x>();
         let admin_witness = fixture.authority.sign_in(&fixture.admin_cap);
-        fixture.protocol.set_version_for_testing(1);
+        fixture.protocol.set_version_for_testing(2);
 
         vault.begin_shutdown(&fixture.protocol, &admin_witness, blast_boosts_core::lifecycle::emergency_reason());
 
@@ -866,7 +866,7 @@ fun primitive_product_witness_is_rejected() {
 )]
 fun stale_adapter_version_precedes_primitive_witness_rejection() {
     let mut fixture = start(domain::vault_issuer_role());
-    fixture.protocol.set_version_for_testing(1);
+    fixture.protocol.set_version_for_testing(2);
 
     fixture.issue_and_share<u64>(b"BAD".to_string());
 
@@ -1096,9 +1096,7 @@ fun issue_with_order_cap<Product>(
 
 /// A bound account with a flat, order-free checkpoint and a minted admin cap; no test here reads the venue.
 fun fixture_venue_account(ctx: &mut TxContext): VenueAccount {
-    let binding = venue_account::new_binding(
-        @0xB.to_id(), 7, @0xC.to_id(), @0xD.to_id(), @0xE.to_id(), @0xF.to_id(), @0xF1.to_id(), @0xF2.to_id(),
-    );
+    let binding = venue_account::new_binding(@0xB.to_id(), 7, @0xC.to_id(), @0xD.to_id());
     let admin_cap = authority::new_for_testing<ACCOUNT, AdminRole>(@0xB.to_id(), ctx);
     venue_account::new(
         binding, checkpoint::checkpoint_for_testing(0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, false, 0, 0, 0), admin_cap,

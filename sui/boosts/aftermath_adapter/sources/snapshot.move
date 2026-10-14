@@ -158,11 +158,9 @@ public(package) fun collateral_fixed(self: &CapturedSnapshot): u256 { self.colla
 
 // --- Capture ---
 
-/// Proves the whole external object graph is the bound one. The storages are
-/// checked against the market's own storage ids before the venue's price
-/// functions repeat that check, and each feed's origin object must be the one
-/// bound at activation: the venue's price is trusted only from the source it
-/// was activated with.
+/// Proves the venue objects are the bound ones, then that each price-feed
+/// storage is the one the bound market prices with now, so the price a
+/// capture values with is always the one the venue trades at.
 fun assert_bound_graph<Collateral>(
     binding: &Binding,
     account: &Account<Collateral>,
@@ -171,22 +169,10 @@ fun assert_bound_graph<Collateral>(
     base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage,
 ) {
-    let params = clearing_house.market_params();
-    assert!(
-        base_oracle.storage_id() == params.base_storage_id()
-            && collateral_oracle.storage_id() == params.collateral_storage_id(),
-        blast_boosts_aftermath::errors::oracle_storage_mismatch!(),
-    );
     binding.assert_object_graph(
-        object::id(account),
-        account.account_id(),
-        object::id(registry),
-        object::id(clearing_house),
-        object::id(base_oracle),
-        object::id(collateral_oracle),
-        base_oracle[params.base_source_id()].from(),
-        collateral_oracle[params.collateral_source_id()].from(),
+        object::id(account), account.account_id(), object::id(registry), object::id(clearing_house),
     );
+    venue_account::assert_market_oracles(clearing_house, base_oracle, collateral_oracle);
 }
 
 /// Values one position at the captured prices: whole-lot base, venue equity in
@@ -394,7 +380,7 @@ public fun position_signs_coherent_for_testing(
 
 // === Imports ===
 
-use blast_boosts_aftermath::{checkpoint::{Self, Checkpoint}, constants, ifixed_math, venue_account::Binding};
+use blast_boosts_aftermath::{checkpoint::{Self, Checkpoint}, constants, ifixed_math, venue_account::{Self, Binding}};
 
 use blast_boosts_core::{
     observation::{Self, PositionObservation, PriceObservation},

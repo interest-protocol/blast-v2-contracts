@@ -729,20 +729,47 @@ fun repeated_market_margin_updates_are_clean_without_changing_account_guards() {
 }
 
 #[test]
-fun market_margin_updates_cannot_hide_unexplained_account_changes() {
+/// Each market-wide setting the venue's admin can change without touching the
+/// account (lot size, pause mode, frozen flag, market IMR and MMR) is read from
+/// the venue between transactions: alone, together, and alongside a settlement.
+fun venue_policy_updates_are_clean_without_changing_account_guards() {
+    let stored = checkpoint(10, 1_000, 5, 6, 7, 8, 9);
+    let policies = vector[
+        checkpoint::checkpoint_for_testing(10, 1_000, 1, 2, 5, 6, 7, 8, 10, 10, 11, 12, 13, false, 14, 15, 16),
+        checkpoint::checkpoint_for_testing(10, 1_000, 1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 1, false, 14, 15, 16),
+        checkpoint::checkpoint_for_testing(10, 1_000, 1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 2, false, 14, 15, 16),
+        checkpoint::checkpoint_for_testing(10, 1_000, 1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, true, 14, 15, 16),
+        checkpoint::checkpoint_for_testing(10, 1_000, 1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, false, 14, 30, 16),
+        checkpoint::checkpoint_for_testing(10, 1_000, 1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, false, 14, 15, 20),
+        checkpoint::checkpoint_for_testing(10, 1_000, 1, 2, 5, 6, 7, 8, 10, 10, 11, 12, 2, true, 14, 30, 20),
+    ];
+    policies.do_ref!(|policy| {
+        assert!(stored.classify_preexisting(policy).is_unchanged_for_testing());
+        assert!(policy.classify_preexisting(&stored).is_unchanged_for_testing());
+    });
+
+    // A settlement another caller completed under the new policy is still that settlement.
+    let old_rates = checkpoint(10, 1_000, 1_007, 6, 7, 8, 9);
+    let settled = checkpoint::checkpoint_for_testing(10, 2_000, 1, 2, 7, 8, 7, 8, 10, 10, 11, 12, 2, true, 14, 30, 20);
+    assert!(old_rates.classify_preexisting(&settled).is_credit_for_testing());
+    // Inside our own atomic settlement every market setting must remain exact.
+    assert!(old_rates.classify_change(&settled, 1).is_unexpected_for_testing());
+}
+
+#[test]
+/// A policy update never explains a change to any account, position, order or
+/// position-margin field.
+fun venue_policy_updates_cannot_hide_unexplained_account_changes() {
     let before = checkpoint(10, 1_000, 5, 6, 7, 8, 9);
     let variants = vector[
-        checkpoint::checkpoint_for_testing(11, 1_000, 1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, false, 14, 30, 20),
-        checkpoint::checkpoint_for_testing(10, 1_001, 1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, false, 14, 30, 20),
-        checkpoint::checkpoint_for_testing(10, 1_000, 2, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, false, 14, 30, 20),
-        checkpoint::checkpoint_for_testing(10, 1_000, 1, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, false, 14, 30, 20),
-        checkpoint::checkpoint_for_testing(10, 1_000, 1, 2, 5, 6, 7, 8, 10, 10, 11, 12, 13, false, 14, 30, 20),
-        checkpoint::checkpoint_for_testing(10, 1_000, 1, 2, 5, 6, 7, 8, 9, 11, 11, 12, 13, false, 14, 30, 20),
-        checkpoint::checkpoint_for_testing(10, 1_000, 1, 2, 5, 6, 7, 8, 9, 10, 12, 12, 13, false, 14, 30, 20),
-        checkpoint::checkpoint_for_testing(10, 1_000, 1, 2, 5, 6, 7, 8, 9, 10, 11, 13, 13, false, 14, 30, 20),
-        checkpoint::checkpoint_for_testing(10, 1_000, 1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 14, false, 14, 30, 20),
-        checkpoint::checkpoint_for_testing(10, 1_000, 1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, true, 14, 30, 20),
-        checkpoint::checkpoint_for_testing(10, 1_000, 1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, false, 15, 30, 20),
+        checkpoint::checkpoint_for_testing(11, 1_000, 1, 2, 5, 6, 7, 8, 10, 10, 11, 12, 2, true, 14, 30, 20),
+        checkpoint::checkpoint_for_testing(10, 1_001, 1, 2, 5, 6, 7, 8, 10, 10, 11, 12, 2, true, 14, 30, 20),
+        checkpoint::checkpoint_for_testing(10, 1_000, 2, 2, 5, 6, 7, 8, 10, 10, 11, 12, 2, true, 14, 30, 20),
+        checkpoint::checkpoint_for_testing(10, 1_000, 1, 3, 5, 6, 7, 8, 10, 10, 11, 12, 2, true, 14, 30, 20),
+        checkpoint::checkpoint_for_testing(10, 1_000, 1, 2, 5, 6, 7, 8, 10, 11, 11, 12, 2, true, 14, 30, 20),
+        checkpoint::checkpoint_for_testing(10, 1_000, 1, 2, 5, 6, 7, 8, 10, 10, 12, 12, 2, true, 14, 30, 20),
+        checkpoint::checkpoint_for_testing(10, 1_000, 1, 2, 5, 6, 7, 8, 10, 10, 11, 13, 2, true, 14, 30, 20),
+        checkpoint::checkpoint_for_testing(10, 1_000, 1, 2, 5, 6, 7, 8, 10, 10, 11, 12, 2, true, 15, 30, 20),
     ];
     variants.do_ref!(|after| assert!(before.classify_preexisting(after).is_unexpected_for_testing()));
 }

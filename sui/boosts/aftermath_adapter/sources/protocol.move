@@ -9,10 +9,10 @@ module blast_boosts_aftermath::protocol;
 // === Constants ===
 
 /// Current adapter generation accepted by every protected mutation.
-const PACKAGE_VERSION: u64 = 2;
+const PACKAGE_VERSION: u64 = 1;
 
 /// The generation this bytecode hands over to in a governed upgrade.
-const NEXT_PACKAGE_VERSION: u64 = 3;
+const NEXT_PACKAGE_VERSION: u64 = 2;
 
 // === Public Types ===
 

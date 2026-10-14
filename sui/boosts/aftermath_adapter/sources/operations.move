@@ -38,7 +38,7 @@ public fun initialize<Product, Collateral>(
     assert_position_imr(position_imr);
 
     let (mut account, share_policy, admin_cap, binding) =
-        open_venue_account(registry, &clearing_house, base_oracle, collateral_oracle, ctx);
+        open_venue_account(registry, &clearing_house, ctx);
     fund_venue_account(&mut account, &admin_cap, registry, &mut clearing_house, seed, position_imr);
 
     clearing_house = terms.seed_position(
@@ -409,26 +409,15 @@ fun assert_position_imr_sign(is_negative: bool) {
 }
 
 /// Creates the isolated Aftermath account the Vault will own and binds it to
-/// the exact venue objects this activation was called with, down to the
-/// origin objects of the two feeds the market prices with.
+/// the registry and clearing house this activation was called with.
 fun open_venue_account<Collateral>(
     registry: &mut Registry,
     clearing_house: &ClearingHouse<Collateral>,
-    base_oracle: &PriceFeedStorage,
-    collateral_oracle: &PriceFeedStorage,
     ctx: &mut TxContext,
 ): (Account<Collateral>, AccountSharePolicy, AuthorityCap<ACCOUNT, ADMIN>, Binding) {
     let (account, share_policy, admin_cap) = account::create_account<Collateral>(registry, ctx);
-    let params = clearing_house.market_params();
     let binding = venue_account::new_binding(
-        object::id(&account),
-        account.account_id(),
-        object::id(registry),
-        object::id(clearing_house),
-        object::id(base_oracle),
-        object::id(collateral_oracle),
-        base_oracle[params.base_source_id()].from(),
-        collateral_oracle[params.collateral_source_id()].from(),
+        object::id(&account), account.account_id(), object::id(registry), object::id(clearing_house),
     );
 
     (account, share_policy, admin_cap, binding)
