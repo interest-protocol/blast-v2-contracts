@@ -370,11 +370,7 @@
               "account_object_id": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
               "account_number": "42",
               "registry_id": "0x0404040404040404040404040404040404040404040404040404040404040404",
-              "clearing_house_id": "0x0505050505050505050505050505050505050505050505050505050505050505",
-              "base_oracle_id": "0x0606060606060606060606060606060606060606060606060606060606060606",
-              "collateral_oracle_id": "0x0707070707070707070707070707070707070707070707070707070707070707",
-              "base_feed_id": "0xf1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1",
-              "collateral_feed_id": "0xf2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2"
+              "clearing_house_id": "0x0505050505050505050505050505050505050505050505050505050505050505"
             },
             "seed_amount": "100000000",
             "seed_venue_equity": "100000000",
@@ -638,11 +634,7 @@
         "binding": {
           "account_number": "42",
           "account_object_id": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-          "base_feed_id": "0xf1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1",
-          "base_oracle_id": "0x0606060606060606060606060606060606060606060606060606060606060606",
           "clearing_house_id": "0x0505050505050505050505050505050505050505050505050505050505050505",
-          "collateral_feed_id": "0xf2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2",
-          "collateral_oracle_id": "0x0707070707070707070707070707070707070707070707070707070707070707",
           "registry_id": "0x0404040404040404040404040404040404040404040404040404040404040404"
         },
         "checkpoint": {

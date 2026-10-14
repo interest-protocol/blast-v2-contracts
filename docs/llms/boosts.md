@@ -66,16 +66,19 @@ Three packages implement it:
 #### Aftermath objects a PTB must supply
 
 These are Aftermath's shared objects, not Blast code. Every venue-touching
-call takes all of them, and the adapter aborts unless each is exactly the
-object bound at activation (see `venue_account::Binding`):
+call takes all of them. The account, registry and clearing house must be
+exactly the objects bound at activation (see `venue_account::Binding`); the
+two price-feed storages are not bound, and must instead be the storages the
+clearing house's market parameters name right now, so a venue-side oracle
+re-pointing never strands a Vault:
 
 | Argument | Aftermath type (package `perpetuals` or `oracle_aggregator`) | Binding field |
 | --- | --- | --- |
 | `account` | `Account<Collateral>`, the Vault's own isolated Aftermath account, created and shared at activation | `account_object_id`, `account_number` |
 | `registry` | Aftermath perpetuals `Registry` | `registry_id` |
 | `clearing_house` | `ClearingHouse<Collateral>`, the market | `clearing_house_id` |
-| `base_oracle` | `PriceFeedStorage` holding the market's base price feed | `base_oracle_id`, `base_feed_id` |
-| `collateral_oracle` | `PriceFeedStorage` holding the collateral price feed | `collateral_oracle_id`, `collateral_feed_id` |
+| `base_oracle` | `PriceFeedStorage` holding the market's base price feed | none; its `storage_id` must equal the market's `base_storage_id` |
+| `collateral_oracle` | `PriceFeedStorage` holding the collateral price feed | none; its `storage_id` must equal the market's `collateral_storage_id` |
 
 Pass the shared `ClearingHouse` as a normal shared-object input. Several
 functions take it by value and re-share it before returning. Also pass the
@@ -336,7 +339,10 @@ registry, clearing_house, base_oracle, collateral_oracle, clock)` with the
 It refreshes due funding, settles the position's funding, and reconciles with
 the accepted checkpoint without pricing anything. An explainable change books
 funding to the reserve, adopts the new checkpoint and emits `FundingSettled`
-(once per distinct checkpoint; an identical retry emits nothing). Anything
+(once per distinct checkpoint; an identical retry emits nothing). A change to
+the market's pause mode, frozen flag or market-wide margin ratios is venue
+policy, adopted the same way with a zero funding delta; the lot size and every
+account, position, order and position-margin field must be exact. Anything
 else leaves the accepted checkpoint in place and emits `CheckpointDrifted`;
 every drifted sync emits it again. Blast adds no price, margin or drift check
 to this call; a binding mismatch aborts.

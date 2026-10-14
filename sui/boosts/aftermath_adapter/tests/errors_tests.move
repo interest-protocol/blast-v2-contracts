@@ -9,7 +9,7 @@ module blast_boosts_aftermath::errors_tests;
 // Every code is pinned so a renumbering is a deliberate, reviewed edit.
 
 #[test]
-/// Codes 0 to 16.
+/// Codes 0 to 14.
 fun error_registry_first_half_is_sequential() {
     assert_eq!(errors::invalid_package_publisher!(), 0);
     assert_eq!(errors::invalid_product_witness_type!(), 1);
@@ -20,42 +20,40 @@ fun error_registry_first_half_is_sequential() {
     assert_eq!(errors::clearing_house_mismatch!(), 6);
     assert_eq!(errors::base_oracle_mismatch!(), 7);
     assert_eq!(errors::collateral_oracle_mismatch!(), 8);
-    assert_eq!(errors::oracle_storage_mismatch!(), 9);
-    assert_eq!(errors::oracle_feed_mismatch!(), 10);
-    assert_eq!(errors::oracle_observation_mismatch!(), 11);
-    assert_eq!(errors::normalization_overflow!(), 12);
-    assert_eq!(errors::invalid_collateral_decimals!(), 13);
-    assert_eq!(errors::invalid_seed!(), 14);
-    assert_eq!(errors::invalid_seed_reserve!(), 15);
-    assert_eq!(errors::invalid_initialization_order_size!(), 16);
+    assert_eq!(errors::oracle_observation_mismatch!(), 9);
+    assert_eq!(errors::normalization_overflow!(), 10);
+    assert_eq!(errors::invalid_collateral_decimals!(), 11);
+    assert_eq!(errors::invalid_seed!(), 12);
+    assert_eq!(errors::invalid_seed_reserve!(), 13);
+    assert_eq!(errors::invalid_initialization_order_size!(), 14);
 }
 
 #[test]
-/// Codes 17 to 37.
+/// Codes 15 to 37.
 fun error_registry_second_half_is_sequential() {
-    assert_eq!(errors::initialization_fill_mismatch!(), 17);
-    assert_eq!(errors::initialization_imr_mismatch!(), 18);
-    assert_eq!(errors::locked_shares_overflow!(), 19);
-    assert_eq!(errors::initialization_order_count_exceeded!(), 20);
-    assert_eq!(errors::zero_amount!(), 21);
-    assert_eq!(errors::insufficient_admin_cash!(), 22);
-    assert_eq!(errors::cash_checkpoint_mismatch!(), 23);
-    assert_eq!(errors::fill_mismatch!(), 24);
-    assert_eq!(errors::orders_posted!(), 25);
-    assert_eq!(errors::liquidation!(), 26);
-    assert_eq!(errors::active_order_count_exceeded!(), 27);
-    assert_eq!(errors::deadline_expired!(), 28);
-    assert_eq!(errors::active_checkpoint_mismatch!(), 29);
-    assert_eq!(errors::redemption_share_mismatch!(), 30);
-    assert_eq!(errors::venue_fee_unusable!(), 31);
-    assert_eq!(errors::unresolved_checkpoint!(), 32);
-    assert_eq!(errors::terminal_venue_unsettled!(), 33);
-    assert_eq!(errors::invalid_unwind_exposure!(), 34);
-    assert_eq!(errors::venue_not_ready!(), 35);
-    assert_eq!(errors::metadata_unchanged!(), 36);
-    assert_eq!(errors::priority_gas_price!(), 37);
-    assert_eq!(errors::partner_not_accepted!(), 38);
-    assert_eq!(errors::partner_unchanged!(), 39);
+    assert_eq!(errors::initialization_fill_mismatch!(), 15);
+    assert_eq!(errors::initialization_imr_mismatch!(), 16);
+    assert_eq!(errors::locked_shares_overflow!(), 17);
+    assert_eq!(errors::initialization_order_count_exceeded!(), 18);
+    assert_eq!(errors::zero_amount!(), 19);
+    assert_eq!(errors::insufficient_admin_cash!(), 20);
+    assert_eq!(errors::cash_checkpoint_mismatch!(), 21);
+    assert_eq!(errors::fill_mismatch!(), 22);
+    assert_eq!(errors::orders_posted!(), 23);
+    assert_eq!(errors::liquidation!(), 24);
+    assert_eq!(errors::active_order_count_exceeded!(), 25);
+    assert_eq!(errors::deadline_expired!(), 26);
+    assert_eq!(errors::active_checkpoint_mismatch!(), 27);
+    assert_eq!(errors::redemption_share_mismatch!(), 28);
+    assert_eq!(errors::venue_fee_unusable!(), 29);
+    assert_eq!(errors::unresolved_checkpoint!(), 30);
+    assert_eq!(errors::terminal_venue_unsettled!(), 31);
+    assert_eq!(errors::invalid_unwind_exposure!(), 32);
+    assert_eq!(errors::venue_not_ready!(), 33);
+    assert_eq!(errors::metadata_unchanged!(), 34);
+    assert_eq!(errors::priority_gas_price!(), 35);
+    assert_eq!(errors::partner_not_accepted!(), 36);
+    assert_eq!(errors::partner_unchanged!(), 37);
 }
 
 // === Imports ===

@@ -18,10 +18,6 @@ public struct Binding has copy, drop, store {
     account_number: u64,
     registry_id: ID,
     clearing_house_id: ID,
-    base_oracle_id: ID,
-    collateral_oracle_id: ID,
-    base_feed_id: ID,
-    collateral_feed_id: ID,
 }
 
 /// The bound Aftermath account as the adapter knows it: its identity, the last
@@ -38,53 +34,52 @@ public struct VenueAccount has store {
 
 // --- Binding ---
 
-/// Creates a value used to authenticate one complete external object graph.
+/// Creates the value that authenticates the venue objects a Vault owns or
+/// trades on. The oracle storages are not bound: the venue's admin may re-point
+/// a market's oracle (`set_base_oracle_params`, `set_collateral_oracle_params`),
+/// so each capture checks the storages it is given against the bound clearing
+/// house's current market parameters instead.
 public(package) fun new_binding(
     account_object_id: ID,
     account_number: u64,
     registry_id: ID,
     clearing_house_id: ID,
-    base_oracle_id: ID,
-    collateral_oracle_id: ID,
-    base_feed_id: ID,
-    collateral_feed_id: ID,
 ): Binding {
-    Binding {
-        account_object_id,
-        account_number,
-        registry_id,
-        clearing_house_id,
-        base_oracle_id,
-        collateral_oracle_id,
-        base_feed_id,
-        collateral_feed_id,
-    }
+    Binding { account_object_id, account_number, registry_id, clearing_house_id }
 }
 
-/// The external object graph a capture reads is the bound one; rejects the first component that differs.
+/// The venue objects a capture reads are the bound ones; rejects the first component that differs.
 public(package) fun assert_object_graph(
     self: &Binding,
     account_object_id: ID,
     account_number: u64,
     registry_id: ID,
     clearing_house_id: ID,
-    base_oracle_id: ID,
-    collateral_oracle_id: ID,
-    base_feed_id: ID,
-    collateral_feed_id: ID,
 ) {
     assert!(self.account_object_id == account_object_id, blast_boosts_aftermath::errors::account_object_mismatch!());
     assert!(self.account_number == account_number, blast_boosts_aftermath::errors::account_number_mismatch!());
     assert!(self.registry_id == registry_id, blast_boosts_aftermath::errors::registry_mismatch!());
     assert!(self.clearing_house_id == clearing_house_id, blast_boosts_aftermath::errors::clearing_house_mismatch!());
-    assert!(self.base_oracle_id == base_oracle_id, blast_boosts_aftermath::errors::base_oracle_mismatch!());
+}
+
+/// Each price-feed storage is the one the bound market prices with now, base
+/// first. The venue's own price functions repeat this check and read the feed
+/// at the market's current source id; nothing about the oracles is bound at
+/// activation, so a venue-side re-pointing of a market's oracle never strands
+/// the account.
+public(package) fun assert_market_oracles<Collateral>(
+    clearing_house: &ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+) {
+    let params = clearing_house.market_params();
     assert!(
-        self.collateral_oracle_id == collateral_oracle_id,
-        blast_boosts_aftermath::errors::collateral_oracle_mismatch!(),
+        base_oracle.storage_id() == params.base_storage_id(),
+        blast_boosts_aftermath::errors::base_oracle_mismatch!(),
     );
     assert!(
-        self.base_feed_id == base_feed_id && self.collateral_feed_id == collateral_feed_id,
-        blast_boosts_aftermath::errors::oracle_feed_mismatch!(),
+        collateral_oracle.storage_id() == params.collateral_storage_id(),
+        blast_boosts_aftermath::errors::collateral_oracle_mismatch!(),
     );
 }
 
@@ -167,7 +162,7 @@ public(package) fun execute_order<Collateral>(
     ctx: &TxContext,
 ): (ClearingHouse<Collateral>, SessionSummary) {
     self.binding.assert_market_account(account, &clearing_house);
-    self.binding.assert_oracles(base_oracle, collateral_oracle);
+    assert_market_oracles(&clearing_house, base_oracle, collateral_oracle);
 
     execute_order_with_cap(
         &self.admin_cap, account, clearing_house, base_oracle, collateral_oracle, is_ask, base, reduce_only, clock, ctx,
@@ -213,7 +208,7 @@ public(package) fun withdraw<Collateral>(
 ): Coin<Collateral> {
     self.binding.assert_market_account(account, clearing_house);
     self.binding.assert_registry(registry);
-    self.binding.assert_oracles(base_oracle, collateral_oracle);
+    assert_market_oracles(clearing_house, base_oracle, collateral_oracle);
 
     let free = account.collateral_balance();
     if (free < amount) {
@@ -252,9 +247,10 @@ public(package) fun update_funding_when_due<Collateral>(
     base_oracle: &PriceFeedStorage,
     clock: &Clock,
 ) {
-    self.assert_funding_update_inputs(object::id(clearing_house), object::id(base_oracle));
+    let params = clearing_house.market_params();
+    self.assert_funding_update_inputs(object::id(clearing_house), base_oracle.storage_id(), params.base_storage_id());
 
-    let (funding_frequency_ms, _) = clearing_house.market_params().funding_params();
+    let (funding_frequency_ms, _) = params.funding_params();
     let last_funding_update_ms = clearing_house.market_state().funding_last_upd_ms();
 
     if (is_time_to_update_funding(clock.timestamp_ms(), last_funding_update_ms, funding_frequency_ms)) {
@@ -264,21 +260,20 @@ public(package) fun update_funding_when_due<Collateral>(
 
 // === Private Functions ===
 
-/// Rejects a market or base oracle that is not the bound one before the venue
-/// funding update mutates it; the later capture re-authenticates everything.
+/// Rejects a market that is not the bound one, then a base oracle storage the
+/// market does not price with, before the venue funding update mutates either;
+/// the later capture re-authenticates everything.
 fun assert_funding_update_inputs(
     self: &Binding,
     clearing_house_id: ID,
-    base_oracle_id: ID,
+    base_storage_id: u32,
+    market_base_storage_id: u32,
 ) {
     assert!(
         self.clearing_house_id == clearing_house_id,
         blast_boosts_aftermath::errors::clearing_house_mismatch!(),
     );
-    assert!(
-        self.base_oracle_id == base_oracle_id,
-        blast_boosts_aftermath::errors::base_oracle_mismatch!(),
-    );
+    assert!(base_storage_id == market_base_storage_id, blast_boosts_aftermath::errors::base_oracle_mismatch!());
 }
 
 /// The account object, its venue number, and its collateral type are the bound ones.
@@ -302,14 +297,6 @@ fun assert_market_account<Collateral>(
 
 fun assert_registry(self: &Binding, registry: &Registry) {
     assert!(object::id(registry) == self.registry_id, blast_boosts_aftermath::errors::registry_mismatch!());
-}
-
-fun assert_oracles(self: &Binding, base_oracle: &PriceFeedStorage, collateral_oracle: &PriceFeedStorage) {
-    assert!(object::id(base_oracle) == self.base_oracle_id, blast_boosts_aftermath::errors::base_oracle_mismatch!());
-    assert!(
-        object::id(collateral_oracle) == self.collateral_oracle_id,
-        blast_boosts_aftermath::errors::collateral_oracle_mismatch!(),
-    );
 }
 
 /// Returns whether the venue's cumulative funding is due for an update at `now_ms`.
@@ -336,8 +323,13 @@ fun next_funding_update_time_ms(last_funding_update_ms: u64, funding_frequency_m
 // === Test-Only Functions ===
 
 #[test_only]
-public fun assert_funding_update_inputs_for_testing(self: &Binding, clearing_house_id: ID, base_oracle_id: ID) {
-    self.assert_funding_update_inputs(clearing_house_id, base_oracle_id);
+public fun assert_funding_update_inputs_for_testing(
+    self: &Binding,
+    clearing_house_id: ID,
+    base_storage_id: u32,
+    market_base_storage_id: u32,
+) {
+    self.assert_funding_update_inputs(clearing_house_id, base_storage_id, market_base_storage_id);
 }
 
 #[test_only]

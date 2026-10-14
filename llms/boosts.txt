@@ -231,16 +231,19 @@ Three packages implement it:
 #### Aftermath objects a PTB must supply
 
 These are Aftermath's shared objects, not Blast code. Every venue-touching
-call takes all of them, and the adapter aborts unless each is exactly the
-object bound at activation (see `venue_account::Binding`):
+call takes all of them. The account, registry and clearing house must be
+exactly the objects bound at activation (see `venue_account::Binding`); the
+two price-feed storages are not bound, and must instead be the storages the
+clearing house's market parameters name right now, so a venue-side oracle
+re-pointing never strands a Vault:
 
 | Argument | Aftermath type (package `perpetuals` or `oracle_aggregator`) | Binding field |
 | --- | --- | --- |
 | `account` | `Account<Collateral>`, the Vault's own isolated Aftermath account, created and shared at activation | `account_object_id`, `account_number` |
 | `registry` | Aftermath perpetuals `Registry` | `registry_id` |
 | `clearing_house` | `ClearingHouse<Collateral>`, the market | `clearing_house_id` |
-| `base_oracle` | `PriceFeedStorage` holding the market's base price feed | `base_oracle_id`, `base_feed_id` |
-| `collateral_oracle` | `PriceFeedStorage` holding the collateral price feed | `collateral_oracle_id`, `collateral_feed_id` |
+| `base_oracle` | `PriceFeedStorage` holding the market's base price feed | none; its `storage_id` must equal the market's `base_storage_id` |
+| `collateral_oracle` | `PriceFeedStorage` holding the collateral price feed | none; its `storage_id` must equal the market's `collateral_storage_id` |
 
 Pass the shared `ClearingHouse` as a normal shared-object input. Several
 functions take it by value and re-share it before returning. Also pass the
@@ -501,7 +504,10 @@ registry, clearing_house, base_oracle, collateral_oracle, clock)` with the
 It refreshes due funding, settles the position's funding, and reconciles with
 the accepted checkpoint without pricing anything. An explainable change books
 funding to the reserve, adopts the new checkpoint and emits `FundingSettled`
-(once per distinct checkpoint; an identical retry emits nothing). Anything
+(once per distinct checkpoint; an identical retry emits nothing). A change to
+the market's pause mode, frozen flag or market-wide margin ratios is venue
+policy, adopted the same way with a zero funding delta; the lot size and every
+account, position, order and position-margin field must be exact. Anything
 else leaves the accepted checkpoint in place and emits `CheckpointDrifted`;
 every drifted sync emits it again. Blast adds no price, margin or drift check
 to this call; a binding mismatch aborts.
@@ -2221,39 +2227,37 @@ Abort codes: this package aborts with the numeric codes below from whichever mod
 | 4 | `EAccountNumberMismatch` | An Aftermath account number does not match the immutable binding. |
 | 5 | `ERegistryMismatch` | An Aftermath Registry does not match the immutable binding. |
 | 6 | `EClearingHouseMismatch` | An Aftermath ClearingHouse does not match the immutable binding. |
-| 7 | `EBaseOracleMismatch` | A base oracle object does not match the immutable binding. |
-| 8 | `ECollateralOracleMismatch` | A collateral oracle object does not match the immutable binding. |
-| 9 | `EOracleStorageMismatch` | An oracle storage id differs from the bound market parameter. |
-| 10 | `EOracleFeedMismatch` | A market feed does not originate from the object bound at activation. |
-| 11 | `EOracleObservationMismatch` | The venue's named price is not the bound feed's price. |
-| 12 | `ENormalizationOverflow` | A normalized venue value cannot fit its declared atomic unit. |
-| 13 | `EInvalidCollateralDecimals` | Initialization collateral, and the market's collateral scale, must be six atomic decimals. |
-| 14 | `EInvalidSeed` | Initialization seed collateral must be positive. |
-| 15 | `EInvalidSeedReserve` | The maintenance reserve must leave positive seed shareholder NAV. |
-| 16 | `EInvalidInitializationOrderSize` | The target or order cap cannot fund one complete base lot. |
-| 17 | `EInitializationFillMismatch` | Initialization did not fill the exact planned base on the required side. |
-| 18 | `EInitializationImrMismatch` | The selected IMR is negative or the final position IMR differs from it. |
-| 19 | `ELockedSharesOverflow` | Scaling seed NAV into nine-decimal locked shares overflowed `u64`. |
-| 20 | `EInitializationOrderCountExceeded` | Atomic initialization requires more venue orders than the adapter permits. |
-| 21 | `EZeroAmount` | A collateral input or withdrawal must be positive. |
-| 22 | `EInsufficientAdminCash` | Earned local admin collateral cannot cover this withdrawal. |
-| 23 | `ECashCheckpointMismatch` | A cash operation changed more or less than its exact authenticated collateral delta. |
-| 24 | `EFillMismatch` | A market session failed to make a positive whole-lot fill on the selected side. |
-| 25 | `EOrdersPosted` | A market session left posted orders. |
-| 26 | `ELiquidation` | A market session reported liquidation or bad debt. |
-| 27 | `EActiveOrderCountExceeded` | The active atomic operation exhausted its market-session bound. |
-| 28 | `EDeadlineExpired` | The caller's deadline has passed. |
-| 29 | `EActiveCheckpointMismatch` | An active venue session changed a field outside its authenticated execution. |
-| 30 | `ERedemptionShareMismatch` | The held native share coin differs from the sealed redemption amount. |
-| 31 | `EVenueFeeUnusable` | The market's taker fee exceeds a representable rate. |
-| 32 | `EUnresolvedCheckpoint` | A financial operation observed a venue change not reconciled into the accepted checkpoint. |
-| 33 | `ETerminalVenueUnsettled` | Terminal recovery requires exact flat exposure, settled liabilities and integral cash. |
-| 34 | `EInvalidUnwindExposure` | A close requires positive exact whole-lot base in the bound product direction. |
-| 35 | `EVenueNotReady` | The venue cannot serve the operation: open orders, unsafe margin, a paused market, or a frozen clearing house. |
-| 36 | `EMetadataUnchanged` | A metadata update must change the name, the description, or the icon. |
-| 37 | `EPriorityGasPrice` | A permissionless venue trade paid a gas price above the reference gas price. |
-| 38 | `EPartnerNotAccepted` | Boosts does not accept this partner: Blast never added it, or its removal took effect. |
-| 39 | `EPartnerUnchanged` | Adding or removing a partner must change the list: it is already accepted, or already being removed. |
+| 7 | `EBaseOracleMismatch` | A base price-feed storage is not the one the bound market prices with. |
+| 8 | `ECollateralOracleMismatch` | A collateral price-feed storage is not the one the bound market prices with. |
+| 9 | `EOracleObservationMismatch` | The venue's named price is not the bound feed's price. |
+| 10 | `ENormalizationOverflow` | A normalized venue value cannot fit its declared atomic unit. |
+| 11 | `EInvalidCollateralDecimals` | Initialization collateral, and the market's collateral scale, must be six atomic decimals. |
+| 12 | `EInvalidSeed` | Initialization seed collateral must be positive. |
+| 13 | `EInvalidSeedReserve` | The maintenance reserve must leave positive seed shareholder NAV. |
+| 14 | `EInvalidInitializationOrderSize` | The target or order cap cannot fund one complete base lot. |
+| 15 | `EInitializationFillMismatch` | Initialization did not fill the exact planned base on the required side. |
+| 16 | `EInitializationImrMismatch` | The selected IMR is negative or the final position IMR differs from it. |
+| 17 | `ELockedSharesOverflow` | Scaling seed NAV into nine-decimal locked shares overflowed `u64`. |
+| 18 | `EInitializationOrderCountExceeded` | Atomic initialization requires more venue orders than the adapter permits. |
+| 19 | `EZeroAmount` | A collateral input or withdrawal must be positive. |
+| 20 | `EInsufficientAdminCash` | Earned local admin collateral cannot cover this withdrawal. |
+| 21 | `ECashCheckpointMismatch` | A cash operation changed more or less than its exact authenticated collateral delta. |
+| 22 | `EFillMismatch` | A market session failed to make a positive whole-lot fill on the selected side. |
+| 23 | `EOrdersPosted` | A market session left posted orders. |
+| 24 | `ELiquidation` | A market session reported liquidation or bad debt. |
+| 25 | `EActiveOrderCountExceeded` | The active atomic operation exhausted its market-session bound. |
+| 26 | `EDeadlineExpired` | The caller's deadline has passed. |
+| 27 | `EActiveCheckpointMismatch` | An active venue session changed a field outside its authenticated execution. |
+| 28 | `ERedemptionShareMismatch` | The held native share coin differs from the sealed redemption amount. |
+| 29 | `EVenueFeeUnusable` | The market's taker fee exceeds a representable rate. |
+| 30 | `EUnresolvedCheckpoint` | A financial operation observed a venue change not reconciled into the accepted checkpoint. |
+| 31 | `ETerminalVenueUnsettled` | Terminal recovery requires exact flat exposure, settled liabilities and integral cash. |
+| 32 | `EInvalidUnwindExposure` | A close requires positive exact whole-lot base in the bound product direction. |
+| 33 | `EVenueNotReady` | The venue cannot serve the operation: open orders, unsafe margin, a paused market, or a frozen clearing house. |
+| 34 | `EMetadataUnchanged` | A metadata update must change the name, the description, or the icon. |
+| 35 | `EPriorityGasPrice` | A permissionless venue trade paid a gas price above the reference gas price. |
+| 36 | `EPartnerNotAccepted` | Boosts does not accept this partner: Blast never added it, or its removal took effect. |
+| 37 | `EPartnerUnchanged` | Adding or removing a partner must change the list: it is already accepted, or already being removed. |
 
 ### `blast_boosts_aftermath::blast_boost`
 
@@ -3130,10 +3134,6 @@ public struct Binding has copy, drop, store {
     account_number: u64,
     registry_id: ID,
     clearing_house_id: ID,
-    base_oracle_id: ID,
-    collateral_oracle_id: ID,
-    base_feed_id: ID,
-    collateral_feed_id: ID,
 }
 
 /// The bound Aftermath account as the adapter knows it: its identity, the last

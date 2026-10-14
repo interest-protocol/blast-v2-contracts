@@ -156,6 +156,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0112](0112-daily-holder-reward-intervals.md) | Daily holder-reward intervals | **accepted** |
 | [0113](0113-presale-gas-reserve-and-holder-meme-routing.md) | Presale gas reserve and holder Meme routing | **accepted** |
 | [0114](0114-launchpad-custody-before-activation.md) | Launchpad custody before activation | **accepted** |
+| [0115](0115-venue-policy-from-the-bound-clearing-house.md) | Venue policy read live from the bound clearing house: margin ratios, pause, freeze and oracle routing are venue facts; account checkpoints and lot size stay exact | **accepted** |
 
 ADRs 0013–0035, 0038–0056, 0058–0067, 0069, 0073, 0074, 0076–0080, 0082, and 0085–0089 are accepted subject to the amendments shown above; ADR 0088 supersedes 0036, 0068, 0081, and 0083, and ADR 0089 supersedes 0057 and 0075. ADR 0074 accepts the Aftermath dependency and raw-field normalization while retaining its live evidence gate; ADR 0037 is superseded by 0043, and ADRs 0070–0072 are superseded by 0073. ADR 0021 accepts the pure curve formulas and
 package boundary, while ADR 0022 accepts the trade-fee ceiling, live global split
