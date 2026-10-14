@@ -84,10 +84,6 @@ const BINDING_FIELDS = [
     'account_number',
     'registry_id',
     'clearing_house_id',
-    'base_oracle_id',
-    'collateral_oracle_id',
-    'base_feed_id',
-    'collateral_feed_id',
 ];
 const CHECKPOINT_FIELDS = [
     'free_collateral',
@@ -151,8 +147,8 @@ const PHASE_ORDER = [
         to: '\n}\n',
         markers: [
             'account.deposit_collateral(',
-            'clearing_house.allocate_collateral(',
             'clearing_house.create_market_position(',
+            'clearing_house.allocate_collateral(',
             'clearing_house.set_position_initial_margin_ratio(',
         ],
     },
@@ -563,8 +559,6 @@ function normalizeInitializedEvent(events, changedObjects, input) {
     const relations = [
         ['registry_id', 'registry'],
         ['clearing_house_id', 'clearingHouse'],
-        ['base_oracle_id', 'baseOracle'],
-        ['collateral_oracle_id', 'collateralOracle'],
     ];
     for (const [field, role] of relations) {
         assertEqual(
@@ -573,8 +567,6 @@ function normalizeInitializedEvent(events, changedObjects, input) {
             `VaultInitialized.binding.${field}`,
         );
     }
-    // The feed origins are read from the storages on chain, not chosen by the caller.
-    for (const field of ['base_feed_id', 'collateral_feed_id']) expectAddress(binding[field], `VaultInitialized.binding.${field}`);
     return canonical({ type: event.type, parsedJson });
 }
 
@@ -812,10 +804,10 @@ function selfTest() {
     ));
     passed += 1;
 
-    const foreignOracle = structuredClone(fixture.rawDevInspectResponse);
-    foreignOracle.transaction.event_json[0].pos0.binding.base_oracle_id = fixture.builderInput.objects.collateralOracle;
-    expectFailure('binding.base_oracle_id', () => normalizeDevInspect(
-        foreignOracle,
+    const foreignMarket = structuredClone(fixture.rawDevInspectResponse);
+    foreignMarket.transaction.event_json[0].pos0.binding.clearing_house_id = fixture.builderInput.objects.registry;
+    expectFailure('binding.clearing_house_id', () => normalizeDevInspect(
+        foreignMarket,
         fixture.builderInput,
         plan,
         fixture.objectTypes,

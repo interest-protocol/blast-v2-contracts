@@ -125,10 +125,7 @@ const INITIALIZED_FIELDS = [
     'seed_shareholder_nav', 'locked_shares', 'position_base', 'lot_size',
     'position_side', 'position_imr', 'checkpoint',
 ];
-const BINDING_FIELDS = [
-    'account_object_id', 'account_number', 'registry_id', 'clearing_house_id',
-    'base_oracle_id', 'collateral_oracle_id', 'base_feed_id', 'collateral_feed_id',
-];
+const BINDING_FIELDS = ['account_object_id', 'account_number', 'registry_id', 'clearing_house_id'];
 const CHECKPOINT_FIELDS = [
     'free_collateral', 'allocated_collateral', 'signed_base',
     'signed_quote_notional', 'funding_snapshot_long', 'funding_snapshot_short',
@@ -997,8 +994,6 @@ function validateSuccess(evidence, runConfig) {
         [String(fields.binding.account_number), String(account.selected.accountNumber), 'binding.account_number'],
         [fields.binding.registry_id, input.objects.registry.toLowerCase(), 'binding.registry_id'],
         [fields.binding.clearing_house_id, input.objects.clearingHouse.toLowerCase(), 'binding.clearing_house_id'],
-        [fields.binding.base_oracle_id, input.objects.baseOracle.toLowerCase(), 'binding.base_oracle_id'],
-        [fields.binding.collateral_oracle_id, input.objects.collateralOracle.toLowerCase(), 'binding.collateral_oracle_id'],
         [String(fields.seed_amount), String(seedBefore.selected.balance), 'seed_amount'],
         [String(fields.seed_venue_equity), String(seedNav + seedReserve), 'seed_venue_equity'],
         [String(fields.seed_reserve), String(seedReserve), 'seed_reserve input'],
@@ -1345,9 +1340,9 @@ function selfTest() {
         const vault = stateObjectOf(e, 'postState', 'vault');
         vault.content.state.lifecycle = 'Unwinding'; vault.selected.lifecycle = 'Unwinding';
     }, 'lifecycle');
-    failing('binding oracle drift', (e) => {
-        initialized(e).parsedJson.pos0.binding.base_oracle_id = e.builderInput.objects.collateralOracle;
-    }, 'binding.base_oracle_id');
+    failing('binding market drift', (e) => {
+        initialized(e).parsedJson.pos0.binding.clearing_house_id = e.builderInput.objects.registry;
+    }, 'binding.clearing_house_id');
     failing('supply not a share multiple', (e) => {
         const cap = stateObjectOf(e, 'postState', 'treasury_cap');
         cap.content.total_supply.value = '1001'; cap.selected.totalSupply = '1001';

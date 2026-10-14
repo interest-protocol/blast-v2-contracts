@@ -1022,22 +1022,23 @@ fun a_not_due_market_receives_no_funding_update_call() {
     assert!(venue_account::is_time_to_update_funding_for_testing(now, last, frequency));
 }
 
-/// The funding update authenticates the bound market and base oracle before touching either.
+/// The funding update authenticates the bound market, then the base storage
+/// against that market's current parameter, before touching either.
 #[test]
-fun funding_update_inputs_accept_the_bound_market_and_base_oracle() {
-    funding_binding().assert_funding_update_inputs_for_testing(@0xD.to_id(), @0xE.to_id());
+fun funding_update_inputs_accept_the_bound_market_and_its_base_storage() {
+    funding_binding().assert_funding_update_inputs_for_testing(@0xD.to_id(), 3, 3);
 }
 
 #[test]
 #[expected_failure(abort_code = blast_boosts_aftermath::errors::EClearingHouseMismatch, location = blast_boosts_aftermath::venue_account)]
 fun funding_update_rejects_an_unbound_market_before_the_oracle() {
-    funding_binding().assert_funding_update_inputs_for_testing(@0xDD.to_id(), @0xEE.to_id());
+    funding_binding().assert_funding_update_inputs_for_testing(@0xDD.to_id(), 4, 3);
 }
 
 #[test]
 #[expected_failure(abort_code = blast_boosts_aftermath::errors::EBaseOracleMismatch, location = blast_boosts_aftermath::venue_account)]
-fun funding_update_rejects_the_collateral_oracle_as_its_storage() {
-    funding_binding().assert_funding_update_inputs_for_testing(@0xD.to_id(), @0xF.to_id());
+fun funding_update_rejects_a_storage_the_market_does_not_price_with() {
+    funding_binding().assert_funding_update_inputs_for_testing(@0xD.to_id(), 1, 3);
 }
 
 /// A zero frequency is never due, so the adapter never asks the venue to divide by it.
@@ -1573,7 +1574,7 @@ fun vault_initialized_event_records_every_activation_primitive() {
     );
     events::vault_initialized<Product>(
         @0xA.to_id(),
-        venue_account::new_binding(@0xB.to_id(), 27, @0xC.to_id(), @0xD.to_id(), @0xE.to_id(), @0xF.to_id(), @0xF1.to_id(), @0xF2.to_id()),
+        venue_account::new_binding(@0xB.to_id(), 27, @0xC.to_id(), @0xD.to_id()),
         28,
         29,
         30,
@@ -1605,7 +1606,7 @@ fun vault_initialized_event_records_every_activation_primitive() {
     assert_eq!(vault_id, @0xA.to_id());
     assert_eq!(
         binding,
-        venue_account::new_binding(@0xB.to_id(), 27, @0xC.to_id(), @0xD.to_id(), @0xE.to_id(), @0xF.to_id(), @0xF1.to_id(), @0xF2.to_id()),
+        venue_account::new_binding(@0xB.to_id(), 27, @0xC.to_id(), @0xD.to_id()),
     );
     assert_eq!(seed_amount, 28);
     assert_eq!(seed_venue_equity, 29);
@@ -1949,6 +1950,91 @@ fun connected_external_cost_and_local_income_settle_one_net_checkpoint() {
 }
 
 #[test]
+fun repeated_market_margin_updates_adopt_once_and_preserve_all_funding_totals() {
+    let mut fixture = start();
+    let initial = checkpoint_with_market_imr(0, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 10);
+    let mut vault = issue_and_activate(&mut fixture, initial);
+    let updates = vector[5, 20, 10];
+    updates.do_ref!(|margin| {
+        let previous = *vault.venue().checkpoint();
+        let current = checkpoint_with_market_imr(0, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, *margin);
+        let change = sync_change(&previous, &current, &current, ONE_FIXED);
+        apply_connected_change(&mut vault, current, change);
+        assert_eq!(*vault.venue().checkpoint(), current);
+        assert_eq!(vault.state().maintenance_reserve(), SEED_RESERVE);
+        let repeated = sync_change(&current, &current, &current, ONE_FIXED);
+        apply_connected_change(&mut vault, current, repeated);
+    });
+    let facts = events::collect<events::FundingSettled<Product>>();
+    assert_eq!(facts.length(), 3);
+    let mut replayed = initial;
+    let mut index = 0;
+    facts.do_ref!(|fact| {
+        let (vault_id, is_cost, raw, amount, absorbed, uncovered, restored, reserve, previous, current) =
+            fact.funding_settled_fields();
+        assert_eq!(vault_id, vault.id());
+        assert!(!is_cost);
+        assert_eq!(raw, 0);
+        assert_eq!(vector[amount, absorbed, uncovered, restored, reserve], vector[0, 0, 0, 0, SEED_RESERVE]);
+        let expected = checkpoint_with_market_imr(0, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, updates[index]);
+        assert_eq!(previous, replayed);
+        assert_eq!(current, expected);
+        replayed = current;
+        index = index + 1;
+    });
+    assert_eq!(replayed, *vault.venue().checkpoint());
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+/// Each market-wide setting the venue's admin can change (pause mode, frozen
+/// flag, market IMR, market MMR) is adopted into the accepted checkpoint
+/// through the ordinary synchronization, with a zero funding delta, and an
+/// identical retry stays quiet. A lot-size change stays unexplained drift.
+fun venue_policy_updates_adopt_each_setting_and_preserve_funding_totals() {
+    let mut fixture = start();
+    let initial = policy_checkpoint(LOT_SIZE, 0, false, 10, 5);
+    let mut vault = issue_and_activate(&mut fixture, initial);
+    let resized = policy_checkpoint(LOT_SIZE * 2, 0, false, 10, 5);
+    assert!(initial.classify_preexisting(&resized).is_unexpected_for_testing());
+    let updates = vector[
+        policy_checkpoint(LOT_SIZE, 2, false, 10, 5),
+        policy_checkpoint(LOT_SIZE, 2, true, 10, 5),
+        policy_checkpoint(LOT_SIZE, 2, true, 7, 5),
+        policy_checkpoint(LOT_SIZE, 2, true, 7, 3),
+        policy_checkpoint(LOT_SIZE, 0, false, 10, 5),
+    ];
+    updates.do_ref!(|current| {
+        let previous = *vault.venue().checkpoint();
+        let change = sync_change(&previous, current, current, ONE_FIXED);
+        apply_connected_change(&mut vault, *current, change);
+        assert_eq!(*vault.venue().checkpoint(), *current);
+        assert_eq!(vault.state().maintenance_reserve(), SEED_RESERVE);
+        let repeated = sync_change(current, current, current, ONE_FIXED);
+        apply_connected_change(&mut vault, *current, repeated);
+    });
+    assert_eq!(events::collect<events::CheckpointDrifted<Product>>().length(), 0);
+    let facts = events::collect<events::FundingSettled<Product>>();
+    assert_eq!(facts.length(), updates.length());
+    let mut replayed = initial;
+    facts.length().do!(|index| {
+        let (vault_id, is_cost, raw, amount, absorbed, uncovered, restored, reserve, previous, current) =
+            facts[index].funding_settled_fields();
+        assert_eq!(vault_id, vault.id());
+        assert!(!is_cost);
+        assert_eq!(raw, 0);
+        assert_eq!(vector[amount, absorbed, uncovered, restored, reserve], vector[0, 0, 0, 0, SEED_RESERVE]);
+        assert_eq!(previous, replayed);
+        assert_eq!(current, updates[index]);
+        replayed = current;
+    });
+    assert_eq!(replayed, *vault.venue().checkpoint());
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
 fun connected_zero_net_checkpoint_emits_once_and_preserves_the_buffer() {
     // A flat position: the rates move and the snapshots refresh, but nothing settles.
     let mut fixture = start();
@@ -1998,9 +2084,9 @@ fun connected_unresolved_drift_preserves_the_accepted_checkpoint_across_retries(
     let initial = initial_checkpoint();
     let mut vault = issue_and_activate(&mut fixture, initial);
     let costed_rate = settled_rate(10, true);
-    let before = checkpoint_with_market_imr(0, ALLOCATED_FIXED, RATE, RATE, costed_rate, costed_rate, 2);
+    let before = checkpoint_with_market_imr(1, ALLOCATED_FIXED, RATE, RATE, costed_rate, costed_rate, 2);
     let after = checkpoint_with_market_imr(
-        0, ALLOCATED_FIXED - 10 * ATOM_FIXED, costed_rate, costed_rate, costed_rate, costed_rate, 2,
+        1, ALLOCATED_FIXED - 10 * ATOM_FIXED, costed_rate, costed_rate, costed_rate, costed_rate, 2,
     );
     let unexpected = sync_change(&initial, &before, &after, ONE_FIXED);
 
@@ -2598,9 +2684,7 @@ macro fun next_tx($self: &mut Fixture, $sender: address, $body: |&mut Fixture|) 
 }
 
 fun funding_binding(): Binding {
-    venue_account::new_binding(
-        @0xB.to_id(), 7, @0xC.to_id(), @0xD.to_id(), @0xE.to_id(), @0xF.to_id(), @0xF1.to_id(), @0xF2.to_id(),
-    )
+    venue_account::new_binding(@0xB.to_id(), 7, @0xC.to_id(), @0xD.to_id())
 }
 
 fun end(fixture: Fixture) {
@@ -2699,16 +2783,7 @@ fun issue_and_activate_product_with_side<Tag: drop>(
         b"".to_string(),
         scenario.ctx(),
     );
-    let binding = venue_account::new_binding(
-        @0xB.to_id(),
-        7,
-        @0xC.to_id(),
-        @0xD.to_id(),
-        @0xE.to_id(),
-        @0xF.to_id(),
-        @0xF1.to_id(),
-        @0xF2.to_id(),
-    );
+    let binding = venue_account::new_binding(@0xB.to_id(), 7, @0xC.to_id(), @0xD.to_id());
     let admin_cap = authority::new_for_testing<ACCOUNT, AdminRole>(@0xB.to_id(), scenario.ctx());
     let seeded = observation::new_position(
         SEED_EQUITY, ABSOLUTE_BASE, LOT_SIZE, side,
@@ -2786,6 +2861,15 @@ fun flat_checkpoint(snapshot_rate: u256, market_rate: u256): Checkpoint {
     checkpoint::checkpoint_for_testing(
         0, ALLOCATED_FIXED, 0, 0, snapshot_rate, snapshot_rate, market_rate, market_rate,
         LOT_SIZE, 0, 0, 0, 0, false, 1, 1, 1,
+    )
+}
+
+/// The seeded position under one lot size and venue-wide policy: pause mode,
+/// frozen flag and both market margin ratios.
+fun policy_checkpoint(lot_size: u64, pause_mode: u8, frozen: bool, market_imr: u256, market_mmr: u256): Checkpoint {
+    checkpoint::checkpoint_for_testing(
+        0, ALLOCATED_FIXED, ONE_FIXED, 1, RATE, RATE, RATE, RATE, lot_size, 0, 0, 0, pause_mode, frozen, 1,
+        market_imr, market_mmr,
     )
 }
 
