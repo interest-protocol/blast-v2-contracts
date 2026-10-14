@@ -341,16 +341,16 @@ public(package) fun assert_terminal_withdrawal_checkpoint(before: &Checkpoint, a
 
 // --- Read ---
 
-/// `self` carrying the market-wide policy `venue` shows: the lot size, pause
-/// mode, frozen flag and both market margin ratios. The venue's admin changes
-/// each of them (`set_core_params`, `pause_market`, `resume_market`,
-/// `freeze_clearing_house`, `commit_margin_ratios_proposal`) without touching
-/// any account, so between two transactions they are read from the bound
-/// clearing house rather than proved against the stored checkpoint. Every
-/// account, position, order and position-margin field is left as stored.
+/// `self` carrying the market-wide policy `venue` shows: the pause mode,
+/// frozen flag and both market margin ratios. The venue's admin changes each
+/// of them (`pause_market`, `resume_market`, `freeze_clearing_house`,
+/// `commit_margin_ratios_proposal`) without touching any account, so between
+/// two transactions they are read from the bound clearing house rather than
+/// proved against the stored checkpoint. The lot size stays exact by decision:
+/// it sizes every order the vault places. Every account, position, order and
+/// position-margin field is left as stored.
 fun with_venue_policy_of(self: &Checkpoint, venue: &Checkpoint): Checkpoint {
     let mut accepted = *self;
-    accepted.lot_size = venue.lot_size;
     accepted.market_pause_mode = venue.market_pause_mode;
     accepted.market_frozen = venue.market_frozen;
     accepted.market_initial_margin_ratio = venue.market_initial_margin_ratio;

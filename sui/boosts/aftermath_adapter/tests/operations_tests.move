@@ -1988,20 +1988,21 @@ fun repeated_market_margin_updates_adopt_once_and_preserve_all_funding_totals() 
 }
 
 #[test]
-/// Each market-wide setting the venue's admin can change (lot size, pause mode,
-/// frozen flag, market IMR, market MMR) is adopted into the accepted checkpoint
+/// Each market-wide setting the venue's admin can change (pause mode, frozen
+/// flag, market IMR, market MMR) is adopted into the accepted checkpoint
 /// through the ordinary synchronization, with a zero funding delta, and an
-/// identical retry stays quiet.
+/// identical retry stays quiet. A lot-size change stays unexplained drift.
 fun venue_policy_updates_adopt_each_setting_and_preserve_funding_totals() {
     let mut fixture = start();
     let initial = policy_checkpoint(LOT_SIZE, 0, false, 10, 5);
     let mut vault = issue_and_activate(&mut fixture, initial);
+    let resized = policy_checkpoint(LOT_SIZE * 2, 0, false, 10, 5);
+    assert!(initial.classify_preexisting(&resized).is_unexpected_for_testing());
     let updates = vector[
-        policy_checkpoint(LOT_SIZE * 2, 0, false, 10, 5),
-        policy_checkpoint(LOT_SIZE * 2, 2, false, 10, 5),
-        policy_checkpoint(LOT_SIZE * 2, 2, true, 10, 5),
-        policy_checkpoint(LOT_SIZE * 2, 2, true, 7, 5),
-        policy_checkpoint(LOT_SIZE * 2, 2, true, 7, 3),
+        policy_checkpoint(LOT_SIZE, 2, false, 10, 5),
+        policy_checkpoint(LOT_SIZE, 2, true, 10, 5),
+        policy_checkpoint(LOT_SIZE, 2, true, 7, 5),
+        policy_checkpoint(LOT_SIZE, 2, true, 7, 3),
         policy_checkpoint(LOT_SIZE, 0, false, 10, 5),
     ];
     updates.do_ref!(|current| {
@@ -2863,7 +2864,7 @@ fun flat_checkpoint(snapshot_rate: u256, market_rate: u256): Checkpoint {
     )
 }
 
-/// The seeded position under one venue-wide policy: lot size, pause mode,
+/// The seeded position under one lot size and venue-wide policy: pause mode,
 /// frozen flag and both market margin ratios.
 fun policy_checkpoint(lot_size: u64, pause_mode: u8, frozen: bool, market_imr: u256, market_mmr: u256): Checkpoint {
     checkpoint::checkpoint_for_testing(

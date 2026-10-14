@@ -324,7 +324,7 @@ the write.
 | Venue mutator (cap) | Writes | Adapter before | Adapter now (ADR 0088) |
 | --- | --- | --- | --- |
 | `create_margin_ratios_proposal` → `commit_margin_ratios_proposal` (vendor admin, then anyone after the delay) | `margin_ratio_initial`, `margin_ratio_maintenance` | both stored; any change was `Unexpected` drift (the live outage) | venue policy: adopted by the preexisting classifier |
-| `set_core_params` (vendor admin) | `lot_size`, `tick_size`, `collateral_haircut` | `lot_size` stored, a change was drift; haircut read live | `lot_size` is venue policy; order sizing already reads the live lot |
+| `set_core_params` (vendor admin) | `lot_size`, `tick_size`, `collateral_haircut` | `lot_size` stored, a change was drift; haircut read live | unchanged by decision: a lot change stays drift, reviewed before the vault trades under it |
 | `pause_market` / `admin_pause_market` / `resume_market` / `admin_resume_market` (vendor admin, pause guardian) | `paused` (0 live, 1 paused, 2 cancel-only) | stored; a pause read as drift in `needs_rebalance` and in the settlement unwind | venue policy; the live gate (`venue_not_ready`) and `unwind`'s branch are unchanged |
 | `freeze_clearing_house` / `unfreeze_clearing_house` (freeze guardian, package admin) | `frozen_version` field, `version := u64::MAX` | stored; same as pause | venue policy; `unwind` still refuses a frozen house |
 | `set_base_oracle_params` / `set_collateral_oracle_params` (vendor admin, package admin) | storage id, source id, tolerance | the storage object ids and both feed `from` ids were bound at activation: a re-pointing failed every capture, shutdown included | storages checked against the market's current storage ids; the feed is the one at the current source id |

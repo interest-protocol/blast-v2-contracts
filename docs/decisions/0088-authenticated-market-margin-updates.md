@@ -12,8 +12,8 @@ synchronization classified the new values as `Unexpected`, and mint and redeem
 stayed blocked until the adapter changed. The same construction pinned every
 other market-wide setting Aftermath's admin can change without touching a
 Boosts account, and bound the two oracle storages and feed origins by object
-id, so a lot-size change, a pause, a freeze or a re-pointed oracle would have
-stranded the vault the same way, the oracle case including shutdown.
+id, so a pause, a freeze or a re-pointed oracle would have stranded the vault
+the same way, the oracle case including shutdown.
 
 ## Decision
 
@@ -21,14 +21,17 @@ Everything the venue's admin can change for the whole market is venue policy,
 read from the vault's authenticated clearing house, never an account fact the
 stored checkpoint must reproduce:
 
-- The stored-to-current preexisting classifier adopts the lot size, pause mode,
-  frozen flag and both market margin ratios the bound clearing house shows now
-  (`set_core_params`, `pause_market`, `resume_market`, `freeze_clearing_house`,
+- The stored-to-current preexisting classifier adopts the pause mode, frozen
+  flag and both market margin ratios the bound clearing house shows now
+  (`pause_market`, `resume_market`, `freeze_clearing_house`,
   `unfreeze_clearing_house`, `commit_margin_ratios_proposal`). It still requires
   exact free and allocated collateral, position, order, funding-snapshot and
   position-margin fields, and the one funding-settlement shape it recognized
   before. A policy update never explains an account change, and an interval the
   classifier cannot explain is still reported as drift.
+- The lot size stays exact. It sizes every order the vault places and divides
+  the position it holds, so a venue-side `set_core_params` lot change is
+  reported as drift and reviewed before the vault trades under it.
 - The binding authenticates the account, the registry and the clearing house.
   The price-feed storages are checked on every capture and every venue mutation
   against the clearing house's current storage ids, and the feed is the one the
