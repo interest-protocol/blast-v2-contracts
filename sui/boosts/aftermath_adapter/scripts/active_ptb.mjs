@@ -1,5 +1,7 @@
 // Pure reviewed call-plan construction. This module never opens RPC, signs or submits.
 // Plans and CLI arguments are not serialized TransactionData or live execution evidence.
+import { AFTERMATH_PACKAGE } from './aftermath.mjs';
+
 const BOUND_OBJECTS = ['vault', 'protocol', 'account', 'registry', 'clearingHouse',
     'baseOracle', 'collateralOracle'];
 const INPUT_FIELDS = new Set(['operation', 'adapterPackage', 'sender', 'network',
@@ -48,7 +50,10 @@ export function buildActivePlan(input) {
     const bound = BOUND_OBJECTS.map((role) => `@${address(objects[role])}`);
     const clock = `@${address(objects.clock)}`;
     if (operation === 'rebalance') {
-        return {commands: [call(`${adapter}::operations::rebalance`, [product, collateral], [...bound, clock], null)], transfers: []};
+        return {commands: [
+            call(`${adapter}::operations::rebalance`, [product, collateral], [...bound, clock], 'clearing_house'),
+            call(`${AFTERMATH_PACKAGE}::clearing_house::share`, [collateral], ['clearing_house'], null),
+        ], transfers: []};
     }
     const partnered = objects.partner !== undefined;
     const traded = partnered ? [...bound.slice(0, 2), `@${address(objects.partner)}`, ...bound.slice(2)] : bound;
@@ -70,16 +75,21 @@ export function buildActivePlan(input) {
     if (operation === 'mint_buy') {
         return {commands: [
             call(entry('mint'), [product, collateral], [...traded, coin, ...limits], 'shares'),
-            call(`${launchPackage}::launch::buy`, launchTypes, [...launchArgs, 'shares', launchMinimum], 'purchase'),
+            call(`${launchPackage}::launch::buy`, launchTypes, [...launchArgs, 'shares.0', launchMinimum], 'purchase'),
+            call(`${AFTERMATH_PACKAGE}::clearing_house::share`, [collateral], ['shares.1'], null),
         ], transfers: ['purchase.0', 'purchase.1']};
     }
     if (operation === 'sell_redeem') {
         return {commands: [
             call(`${launchPackage}::launch::sell`, launchTypes, [...launchArgs, coin, launchMinimum], 'shares'),
             call(entry('redeem'), [product, collateral], [...traded, 'shares', ...limits], 'result'),
-        ], transfers: ['result']};
+            call(`${AFTERMATH_PACKAGE}::clearing_house::share`, [collateral], ['result.1'], null),
+        ], transfers: ['result.0']};
     }
-    return {commands: [call(entry(operation), [product, collateral], [...traded, coin, ...limits], 'result')], transfers: ['result']};
+    return {commands: [
+        call(entry(operation), [product, collateral], [...traded, coin, ...limits], 'result'),
+        call(`${AFTERMATH_PACKAGE}::clearing_house::share`, [collateral], ['result.1'], null),
+    ], transfers: ['result.0']};
 }
 
 export function renderUnsignedPtbArgs(input) {
@@ -127,6 +137,12 @@ export function buildTerminalPlan(input) {
     if (operation === 'redeem_shutdown') {
         return {commands: [call(`${adapter}::vault::redeem_shutdown`, types,
             [...args.slice(0, 3), u64(input.minimumOutput), u64(input.deadlineMs), args[3]], 'result')], transfers: ['result']};
+    }
+    if (operation === 'unwind') {
+        return {commands: [
+            call(`${adapter}::operations::unwind`, types, args, 'clearing_house'),
+            call(`${AFTERMATH_PACKAGE}::clearing_house::share`, [types[1]], ['clearing_house'], null),
+        ], transfers: []};
     }
     return {commands: [call(`${adapter}::operations::${operation}`, types, args, null)], transfers: []};
 }

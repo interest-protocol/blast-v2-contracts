@@ -46,7 +46,11 @@ Blast partner (`blast_partners::Partner`) and then pay it its share of the admin
 fee that operation retained, never the reserve fee, in the same transaction
 ([ADR 0095](../../../docs/decisions/0095-partner-codes.md),
 [how it works](../../../docs/partner-codes.md)).
-Mint/redeem return ordinary native coins and finish atomically. Rebalance has
+Operations that consume the ClearingHouse return it after completing their
+sessions and checks; mint/redeem return it alongside the native output coin.
+The caller can reuse it in later PTB commands and must share it after its
+final use (ADR 0087). This return shape requires a fresh adapter publication.
+Rebalance has
 no privileged keeper path, caller trade sizing or reward. An unresolved
 external change preserves the accepted economic checkpoint and emits
 `CheckpointDrifted`.

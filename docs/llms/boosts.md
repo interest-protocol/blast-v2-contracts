@@ -81,8 +81,10 @@ re-pointing never strands a Vault:
 | `collateral_oracle` | `PriceFeedStorage` holding the collateral price feed | none; its `storage_id` must equal the market's `collateral_storage_id` |
 
 Pass the shared `ClearingHouse` as a normal shared-object input. Several
-functions take it by value and re-share it before returning. Also pass the
-`Clock` (`0x6`) everywhere a call takes one.
+functions take it by value and return it after settling the required Aftermath
+session. Reuse that result in later PTB commands, then call Aftermath
+`clearing_house::share` once after its final use. Also pass the `Clock` (`0x6`)
+everywhere a call takes one. This ABI requires a fresh publication.
 
 #### Roles
 
@@ -178,9 +180,10 @@ and activation succeed or fail together.
    activation invariants (positive NAV, fresh prices, matching side, NAV at or
    under `nav_cap`, leverage inside the band, reserve at or under its ceiling,
    base above `lot_size * min_order_lots`), mints the locked seed shares to
-   `0x0`, shares the account and the market, and returns the `Vault`. Emits
+   `0x0`, shares the account, and returns `(Vault, ClearingHouse)`. Emits
    `OrderFilled` per seed order and `VaultInitialized`.
-6. `blast_boosts_aftermath::vault::share(vault)` shares the Vault.
+6. `blast_boosts_aftermath::vault::share(vault)` shares the Vault. Reuse the
+   returned market as needed, then call Aftermath `clearing_house::share`.
 
 Locked seed shares: `locked_shares = seed_shareholder_nav * 1,000` (six-decimal
 NAV atoms scaled to nine-decimal share atoms), so the opening price is exactly
@@ -199,8 +202,9 @@ PTB:
    (shared, read), `Account<Collateral>` (shared, mutable), `Registry` (shared,
    read), `ClearingHouse<Collateral>` (shared, by value), both
    `PriceFeedStorage` (shared, read), `Clock`. Returns
-   `Coin<BlastBoost<Product>>`.
-3. `TransferObjects` the shares to the user, or pass them to the next command.
+   `(Coin<BlastBoost<Product>>, ClearingHouse<Collateral>)`.
+3. Reuse the returned market, then call Aftermath `clearing_house::share`.
+   `TransferObjects` the shares to the user, or pass them to the next command.
    The coin cannot be dropped.
 
 Parameters: `minimum_shares` is the share floor in share atoms (0 disables it;
@@ -247,8 +251,9 @@ PTB:
    positive amount below total supply).
 2. `operations::redeem<Product, Collateral>(vault, protocol, account, registry,
    clearing_house, base_oracle, collateral_oracle, shares, minimum_collateral,
-   deadline_ms, clock)`. Returns `Coin<Collateral>`.
-3. `TransferObjects` the collateral to the user.
+   deadline_ms, clock)`. Returns `(Coin<Collateral>, ClearingHouse<Collateral>)`.
+3. Reuse the returned market, then call Aftermath `clearing_house::share`.
+   `TransferObjects` the collateral to the user.
 
 What happens: the same generation, lifecycle, deadline, synchronize and price
 checks as mint (no band check: redemptions work outside the band). The Vault
@@ -292,8 +297,9 @@ Blast removes the partner). Otherwise use the plain calls. While a Vault's
 #### Rebalance (anyone; keepers)
 
 `operations::rebalance<Product, Collateral>(vault, protocol, account, registry,
-clearing_house, base_oracle, collateral_oracle, clock)`. No return value, no
-reward, no direction or size argument. Submit it at a gas price **at or below
+clearing_house, base_oracle, collateral_oracle, clock)`. Returns
+`ClearingHouse<Collateral>` for reuse and a final Aftermath
+`clearing_house::share`. No reward, direction or size argument. Submit it at a gas price **at or below
 the reference gas price** (adapter code 37 otherwise), because Aftermath adds
 a priority taker fee above it and holders pay every fill.
 
@@ -368,7 +374,8 @@ over the ceiling raises shareholder NAV. No shares, no fees. Emits `Donated`.
 2. **Unwind** (anyone, repeat until flat). `operations::unwind<Product,
    Collateral>(vault, protocol, account, registry, clearing_house, base_oracle,
    collateral_oracle, clock)`, at or below the reference gas price, refused
-   while the clearing house is frozen (adapter code 35).
+   while the clearing house is frozen (adapter code 35). Returns the clearing
+   house for reuse and a final Aftermath `clearing_house::share`.
    - Live market: synchronize (drift is reported with `CheckpointDrifted` and
      the live venue state is adopted anyway), price at fresh oracles, then up
      to 16 reduce-only orders under `emergency_max_slippage_bps` and the order
@@ -740,7 +747,8 @@ outdated adapter package aborts in the `operational_version` module of the
 **How do I mint a Boost?** Split a collateral coin and call `operations::mint`
 with the Vault, `Protocol`, the five bound Aftermath objects, the coin, a
 `minimum_shares` floor, an inclusive `deadline_ms`, and the `Clock`. Transfer
-the returned `Coin<BlastBoost<Product>>`. With a partner code call
+the returned coin and re-share the returned clearing house after its final
+use. With a partner code call
 `operations::mint_with_partner` and put the `Partner` after `Protocol`.
 
 **How many shares will I get?** `floor(S * contribution / N)`, where

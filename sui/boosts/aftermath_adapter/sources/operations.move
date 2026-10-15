@@ -9,12 +9,12 @@ module blast_boosts_aftermath::operations;
 
 // === Public Functions ===
 
-/// Seeds one issuance on the venue and returns its activated Vault, which the
-/// same transaction must pass to `vault::share`.
+/// Seeds one issuance and returns its activated Vault and ClearingHouse.
+/// The same transaction must share both after composition.
 ///
 /// Direction and size come only from the immutable core policy; the caller
 /// chooses no order parameter.
-/// Every external value is either retained in the Vault, shared, or consumed.
+/// Every external value is retained in the Vault, shared, consumed, or returned.
 /// Only the issuer's transaction can reach this: the issuance has no abilities,
 /// so it cannot be stored, shared, or handed to another signer.
 public fun initialize<Product, Collateral>(
@@ -30,7 +30,7 @@ public fun initialize<Product, Collateral>(
     position_imr: u256,
     clock: &Clock,
     ctx: &mut TxContext,
-): Vault<Product, Collateral> {
+): (Vault<Product, Collateral>, ClearingHouse<Collateral>) {
     protocol.assert_current();
     let terms = issuance.issuance();
     let position_side = terms.seed_side();
@@ -59,16 +59,16 @@ public fun initialize<Product, Collateral>(
         final_observation, seed_reserve, venue_account, clock.timestamp_ms(), ctx,
     );
     account.consume_policy_and_share_account(share_policy);
-    clearing_house.share();
     emit_vault_initialized<Product, Collateral>(
         &vault, seed_amount, seed_nav, seeded.equity(), seeded.base(), seeded.lot_size(), position_side, position_imr,
     );
 
-    vault
+    (vault, clearing_house)
 }
 
 /// Exchanges exact bound collateral for native leverage shares in one atomic operation.
 /// Policy fixes direction and whole-lot size; partial sessions must complete the aggregate.
+/// Returns the ClearingHouse for composition; the transaction must share it afterward.
 public fun mint<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
@@ -82,7 +82,7 @@ public fun mint<Product, Collateral>(
     deadline_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
-): Coin<BlastBoost<Product>> {
+): (Coin<BlastBoost<Product>>, ClearingHouse<Collateral>) {
     protocol.assert_current();
     vault.state().assert_active();
     let deposit = cash.value();
@@ -112,13 +112,13 @@ public fun mint<Product, Collateral>(
     ).into_observation();
 
     let shares = complete_mint<Product, Collateral>(vault, plan, deposit, after, final_checkpoint, clock.timestamp_ms(), ctx);
-    clearing_house.share();
 
-    shares
+    (shares, clearing_house)
 }
 
 /// Burns native shares only after their proportional close and exact collateral payout.
 /// Entry-quote and realized PnL use authenticated post-session state, never an invented formula.
+/// Returns the ClearingHouse for composition; the transaction must share it afterward.
 public fun redeem<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
@@ -132,7 +132,7 @@ public fun redeem<Product, Collateral>(
     deadline_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
-): Coin<Collateral> {
+): (Coin<Collateral>, ClearingHouse<Collateral>) {
     protocol.assert_current();
     vault.state().assert_active();
     assert!(shares.value() > 0, blast_boosts_aftermath::errors::zero_amount!());
@@ -165,9 +165,8 @@ public fun redeem<Product, Collateral>(
     after_sell_checkpoint.assert_withdrawal_checkpoint(&final_checkpoint, net + admin);
 
     let cash = complete_redemption(vault, shares, cash, net, admin, fee, reserve_fee, final_checkpoint, ctx);
-    clearing_house.share();
 
-    cash
+    (cash, clearing_house)
 }
 
 /// Adds `partner` to the Blast partners Boosts accepts, at once. Adding a
@@ -221,17 +220,17 @@ public fun mint_with_partner<Product, Collateral>(
     deadline_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
-): Coin<BlastBoost<Product>> {
+): (Coin<BlastBoost<Product>>, ClearingHouse<Collateral>) {
     protocol.assert_partner(object::id(partner), clock.timestamp_ms());
     let admin_cash_before = vault.admin_cash_balance<_, Collateral>();
 
-    let shares = mint(
+    let (shares, clearing_house) = mint(
         vault, protocol, account, registry, clearing_house, base_oracle, collateral_oracle,
         cash, minimum_shares, deadline_ms, clock, ctx,
     );
     pay_partner(vault, partner, admin_cash_before, clock, ctx);
 
-    shares
+    (shares, clearing_house)
 }
 
 /// `redeem`, naming a Blast partner Boosts accepts: the partner is paid its
@@ -251,22 +250,23 @@ public fun redeem_with_partner<Product, Collateral>(
     deadline_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
-): Coin<Collateral> {
+): (Coin<Collateral>, ClearingHouse<Collateral>) {
     protocol.assert_partner(object::id(partner), clock.timestamp_ms());
     let admin_cash_before = vault.admin_cash_balance<_, Collateral>();
 
-    let cash = redeem(
+    let (cash, clearing_house) = redeem(
         vault, protocol, account, registry, clearing_house, base_oracle, collateral_oracle,
         shares, minimum_collateral, deadline_ms, clock, ctx,
     );
     pay_partner(vault, partner, admin_cash_before, clock, ctx);
 
-    cash
+    (cash, clearing_house)
 }
 
 /// Permissionless, policy-sized maintenance with no caller reward or trade parameters.
 ///
 /// Holders pay its fills, so it runs only at the reference gas price.
+/// Returns the ClearingHouse for composition; the transaction must share it afterward.
 public fun rebalance<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
@@ -277,7 +277,7 @@ public fun rebalance<Product, Collateral>(
     collateral_oracle: &PriceFeedStorage,
     clock: &Clock,
     ctx: &mut TxContext,
-) {
+): ClearingHouse<Collateral> {
     protocol.assert_current();
     vault.state().assert_active();
     assert_gas_price(ctx);
@@ -297,7 +297,7 @@ public fun rebalance<Product, Collateral>(
     );
 
     complete_rebalance<Product, Collateral>(vault, plan, checkpoint);
-    clearing_house.share();
+    clearing_house
 }
 
 /// A keeper's dry run of `rebalance`: whether the live position sits outside the band.
@@ -392,6 +392,7 @@ public fun sync_health<Product, Collateral>(
 /// market and enabled settlement prices; a frozen clearing house aborts every
 /// venue call on its version check, so it is refused here until unfrozen.
 /// Holders pay its fills, so it runs only at the reference gas price.
+/// Returns the ClearingHouse for composition; the transaction must share it afterward.
 public fun unwind<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
@@ -402,7 +403,7 @@ public fun unwind<Product, Collateral>(
     collateral_oracle: &PriceFeedStorage,
     clock: &Clock,
     ctx: &mut TxContext,
-) {
+): ClearingHouse<Collateral> {
     protocol.assert_current();
     vault.state().assert_unwinding();
     assert_gas_price(ctx);
@@ -415,7 +416,7 @@ public fun unwind<Product, Collateral>(
             vault, account, registry, clearing_house, base_oracle, collateral_oracle, clock, ctx,
         );
     };
-    clearing_house.share();
+    clearing_house
 }
 
 /// Recovers all actual holder collateral only from an exactly settled bound account.
@@ -1112,6 +1113,7 @@ public fun assert_position_imr_unchanged_for_testing(
 public fun assert_deadline_for_testing(now_ms: u64, deadline: u64) { assert_deadline(now_ms, deadline); }
 
 #[test_only]
+#[allow(lint(prefer_mut_tx_context))]
 public fun assert_gas_price_for_testing(ctx: &TxContext) { assert_gas_price(ctx); }
 
 #[test_only]
