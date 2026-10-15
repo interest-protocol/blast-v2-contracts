@@ -6,8 +6,8 @@
 ///
 /// The complete native authorize/commit/advance matrix belongs to
 /// `blast_admin::upgrade_custody_tests`, which owns a package marker at a
-/// nonzero address. This package is tested at its canonical mainnet original
-/// address, so these tests prove its wiring, provenance, and guard order.
+/// nonzero address. These tests use this build's original address to prove
+/// wiring, provenance, and guard order for a fresh publication.
 module blast_boosts_aftermath::package_admin_tests;
 
 // === Constants ===
@@ -15,8 +15,8 @@ module blast_boosts_aftermath::package_admin_tests;
 const ROOT: address = @0xA11CE;
 const PACKAGE_ADMIN: address = @0xAD;
 
-/// This package's canonical original address from the mainnet publication.
-const PACKAGE_ID: address = @0x04f46747d8cb5ea590953ff1847301dfe5a287519d32c1610b35810aab082e50;
+/// The original address of this build, including a fresh publication.
+const PACKAGE_ID: address = @blast_boosts_aftermath;
 const OTHER_PACKAGE_ID: address = @0xBAD;
 
 // === Test-Only Types ===
