@@ -9,6 +9,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import process from 'node:process';
+import { AFTERMATH_PACKAGE } from './aftermath.mjs';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_DIR = join(SCRIPT_DIR, '..');
@@ -125,9 +126,8 @@ const PHASE_ORDER = [
             'venue_account::new(',
             'issuance.activate(',
             'account.consume_policy_and_share_account(share_policy)',
-            'clearing_house.share()',
             'emit_vault_initialized<Product, Collateral>(',
-            '\n    vault\n}',
+            '\n    (vault, clearing_house)\n}',
         ],
     },
     {
@@ -373,9 +373,10 @@ function buildPlan(input) {
                     input.positionImr,
                     object('clock'),
                 ],
-                'vault',
+                'activation',
             ),
-            call(`${adapter}::vault::share`, productArguments, ['vault'], null),
+            call(`${adapter}::vault::share`, productArguments, ['activation.0'], null),
+            call(`${AFTERMATH_PACKAGE}::clearing_house::share`, [input.collateralType], ['activation.1'], null),
         ],
     };
 }

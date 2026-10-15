@@ -38,17 +38,39 @@ holding the core `Issuance` (the issuer's terms) and the currency's
 transferred, so the transaction that issues must also activate; a failed
 activation aborts the whole transaction and the currency registration with it.
 
-### D2. `initialize` consumes the issuance and returns the Vault
+### D2. `initialize` consumes the issuance and returns the Vault and market
 
-`operations::initialize(issuance, …): Vault<Product>` opens the venue
-account, seeds it, opens the position, and then builds the Vault. The Vault
-is `key`-only, so the same transaction must pass it to `vault::share`.
+`operations::initialize` opens the venue account, seeds it, opens the
+position, and returns the Vault together with the ClearingHouse. The Vault
+is `key`-only, so the same transaction must pass it to `vault::share`; the
+caller also shares the returned market after its final use.
 Because the issuance can only exist inside the issuer's transaction,
 activation is gated by the issuer role without a second check. The phases
 run in a fixed order: venue account sealed, Vault activated (core state,
-locked seed shares, object built), account shared, market re-shared, event
-emitted. The five `BLAST_ACTIVATION_BOUNDARY` failpoint markers that named
-them were removed on 2026-10-03 with the testnet rollback rehearsal.
+locked seed shares, object built), account shared, event emitted, Vault and
+market returned. The five `BLAST_ACTIVATION_BOUNDARY` failpoint markers were
+removed on 2026-10-03 with the testnet rollback rehearsal.
+
+### D2b. Return the market for PTB composition (2026-10-15)
+
+The deployed mainnet Aftermath perpetuals package
+`0x3ec740df8428aa9c93aaef7f8cc1542ac3194fd014826b51bfe245346d64efc7`
+was fetched in full and remains version 1. Its public order functions take
+a session; stop and TWAP execution also open and end sessions internally.
+Starting a session consumes the ClearingHouse, and ending it returns the
+ClearingHouse after settlement. A reference cannot replace that ownership
+requirement in the adapter.
+
+Every adapter operation that consumes a ClearingHouse now returns it after
+ending its sessions and completing its execution and accounting checks.
+Coin-producing operations return the coin and market together. Callers may
+borrow or consume the returned market in later PTB commands, then call the
+venue's `clearing_house::share` after its final use. Sharing inside the
+adapter would prevent that reuse within the transaction.
+
+This ABI is for a fresh publication, not an upgrade of the deployed adapter.
+Transaction builders must target that new publication; no compatibility
+wrapper preserves the previous return shape.
 
 ### D2a. The core has no uninitialized state
 
@@ -142,8 +164,8 @@ registry's constants.
 - No uninitialized Vault can be shared, so the core's pre-activation guards
   are unreachable from this adapter and the "uninitialized vault cannot shut
   down" case cannot arise.
-- The issuer's activation PTB is `issue → initialize → share` and takes a
-  mutable lock on Coin Registry alongside the venue's shared objects.
+- The issuer's activation PTB is `issue → initialize → share Vault and market`
+  and takes a mutable lock on Coin Registry alongside the venue's shared objects.
 - Tests build an activated Vault through the production `activate` with a
   cap minted by the vendored interface's test constructor; the custody guards
   are under local test for the first time.

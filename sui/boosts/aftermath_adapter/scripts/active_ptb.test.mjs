@@ -46,13 +46,16 @@ test('permissionless terminal plans exclude caller direction, size, dust write-o
     for (const operation of ['unwind', 'finalize_shutdown', 'redeem_shutdown']) {
         const value = terminal(operation);
         const plan = buildTerminalPlan(value);
-        assert.equal(plan.commands.length, 1);
+        assert.equal(plan.commands.length, operation === 'unwind' ? 2 : 1);
         assert.equal(plan.commands[0].target.split('::').at(-1), operation);
         assert.throws(() => buildTerminalPlan({...value, side: 'short'}), /unexpected field/);
         assert.throws(() => buildTerminalPlan({...value, maximumFeeBps: '1'}), /unexpected field/);
         const args = renderUnsignedPtbArgs(value);
         assert(args.includes('--serialize-unsigned-transaction'));
         assert(!args.includes('--gas-budget'));
+        if (operation === 'unwind') {
+            assert.deepEqual(plan.commands[1].arguments, ['clearing_house']);
+        }
         if (operation === 'redeem_shutdown') {
             assert.equal(plan.commands[0].arguments.length, 6);
             assert.deepEqual(plan.transfers, ['result']);
@@ -82,7 +85,9 @@ test('mint and redemption bind public argument order and transfer only the retur
         const args = renderUnsignedPtbArgs(value);
         assert.deepEqual(args.slice(-3), ['--serialize-unsigned-transaction', '--sender', `@${address(2)}`]);
         assert(!args.includes('--gas-budget'));
-        assert(args.includes('[result]'));
+        assert(args.includes('[result.0]'));
+        assert.deepEqual(plan.commands[1].arguments, ['result.1']);
+        assert.match(plan.commands[1].target, /::clearing_house::share$/);
     }
 });
 
@@ -107,7 +112,9 @@ test('rebalance contains only bound objects, not witness, trade side, size or fe
     const value = input('rebalance');
     const plan = buildActivePlan(value);
     assert.equal(plan.commands[0].arguments.length, 8);
-    assert.equal(plan.commands[0].assign, null);
+    assert.equal(plan.commands[0].assign, 'clearing_house');
+    assert.deepEqual(plan.commands[1].arguments, ['clearing_house']);
+    assert.match(plan.commands[1].target, /::clearing_house::share$/);
     assert.deepEqual(plan.transfers, []);
     assert.throws(() => buildActivePlan({...value, side: 'short'}), /unexpected field/);
 });
@@ -120,13 +127,13 @@ test('both direction types compose returned values through mint-buy and sell-red
             value.launch = { package: address(30), memeType: `${address(31)}::meme::MEME`,
                 launch: address(32), version: address(33), runtime: address(34), minimumOutput: '2' };
             const plan = buildActivePlan(value);
-            assert.equal(plan.commands.length, 2);
+            assert.equal(plan.commands.length, 3);
             if (operation === 'mint_buy') {
-                assert.equal(plan.commands[1].arguments[3], 'shares');
+                assert.equal(plan.commands[1].arguments[3], 'shares.0');
                 assert.deepEqual(plan.transfers, ['purchase.0', 'purchase.1']);
             } else {
                 assert.equal(plan.commands[1].arguments[7], 'shares');
-                assert.deepEqual(plan.transfers, ['result']);
+                assert.deepEqual(plan.transfers, ['result.0']);
             }
             assert(plan.commands.some((c) => c.typeArguments.includes(`${address(1)}::blast_boost::BlastBoost<${value.productType}>`)));
         }

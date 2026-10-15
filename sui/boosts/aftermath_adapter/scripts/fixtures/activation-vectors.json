@@ -162,7 +162,7 @@
           "100000000000000000",
           "@0x0000000000000000000000000000000000000000000000000000000000000006"
         ],
-        "assign": "vault"
+        "assign": "activation"
       },
       {
         "target": "0x1111111111111111111111111111111111111111111111111111111111111111::vault::share",
@@ -171,7 +171,17 @@
           "0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC"
         ],
         "arguments": [
-          "vault"
+          "activation.0"
+        ],
+        "assign": null
+      },
+      {
+        "target": "0x3ec740df8428aa9c93aaef7f8cc1542ac3194fd014826b51bfe245346d64efc7::clearing_house::share",
+        "typeArguments": [
+          "0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC"
+        ],
+        "arguments": [
+          "activation.1"
         ],
         "assign": null
       }
@@ -256,11 +266,15 @@
     "100000000000000000",
     "@0x0000000000000000000000000000000000000000000000000000000000000006",
     "--assign",
-    "vault",
+    "activation",
     "--move-call",
     "0x1111111111111111111111111111111111111111111111111111111111111111::vault::share",
     "<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::SUI_BULL_2X,0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
-    "vault",
+    "activation.0",
+    "--move-call",
+    "0x3ec740df8428aa9c93aaef7f8cc1542ac3194fd014826b51bfe245346d64efc7::clearing_house::share",
+    "<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
+    "activation.1",
     "--serialize-unsigned-transaction",
     "--sender",
     "@0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -509,6 +523,10 @@
       {
         "mutableReferenceOutputs": [],
         "returnValues": []
+      },
+      {
+        "mutableReferenceOutputs": [],
+        "returnValues": []
       }
     ],
     "suggested_gas_price": "1000"
@@ -582,6 +600,10 @@
       }
     ],
     "commandResults": [
+      {
+        "mutableReferenceOutputs": [],
+        "returnValues": []
+      },
       {
         "mutableReferenceOutputs": [],
         "returnValues": []

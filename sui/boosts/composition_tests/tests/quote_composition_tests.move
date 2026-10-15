@@ -162,10 +162,12 @@ public fun mint_and_buy<Product, Collateral, Meme>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<BlastBoost<Product>>) {
-    let shares = operations::mint(vault, protocol, account, registry, clearing_house,
+    let (shares, clearing_house) = operations::mint(vault, protocol, account, registry, clearing_house,
         base_oracle, collateral_oracle, cash,
         minimum_shares, deadline, clock, ctx);
-    market.buy(version, runtime, shares, minimum_meme, ctx)
+    let (meme, refund) = market.buy(version, runtime, shares, minimum_meme, ctx);
+    clearing_house.share();
+    (meme, refund)
 }
 
 /// Typechecks the atomic launch sell -> redemption handoff without a receipt currency.
@@ -188,9 +190,39 @@ public fun sell_and_redeem<Product, Collateral, Meme>(
     ctx: &mut TxContext,
 ): Coin<Collateral> {
     let shares = market.sell(version, runtime, meme, minimum_shares, ctx);
-    operations::redeem(vault, protocol, account, registry, clearing_house,
+    let (cash, clearing_house) = operations::redeem(vault, protocol, account, registry, clearing_house,
         base_oracle, collateral_oracle, shares,
-        minimum_cash, deadline, clock, ctx)
+        minimum_cash, deadline, clock, ctx);
+    clearing_house.share();
+    cash
+}
+
+/// Typechecks reuse of the returned market across two completed venue sessions.
+public fun mint_and_redeem<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>,
+    protocol: &Protocol,
+    account: &mut Account<Collateral>,
+    registry: &Registry,
+    clearing_house: ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    cash: Coin<Collateral>,
+    minimum_shares: u64,
+    minimum_cash: u64,
+    deadline: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+): Coin<Collateral> {
+    let (shares, clearing_house) = operations::mint(
+        vault, protocol, account, registry, clearing_house, base_oracle, collateral_oracle,
+        cash, minimum_shares, deadline, clock, ctx,
+    );
+    let (cash, clearing_house) = operations::redeem(
+        vault, protocol, account, registry, clearing_house, base_oracle, collateral_oracle,
+        shares, minimum_cash, deadline, clock, ctx,
+    );
+    clearing_house.share();
+    cash
 }
 
 // === Imports ===
