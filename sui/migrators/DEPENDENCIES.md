@@ -38,21 +38,27 @@ vault's own address.
   `CreatePoolCapV2` minted by a freshly published LP coin. The creator hands
   `aftermath::new` the DAO fee the pool charges, the launch's tier, and
   `aftermath::finalize` the capability, which it binds to the finalized
-  launch's ID in a shared `aftermath::PoolCreation` that only that launch's
-  `migrate` consumes. The migration builds the vault with no position first,
-  because Aftermath's DAO-fee pool (`dao_fee_amm::pool::new`) takes the fee
-  recipient address at creation, names the vault's ID, checks `fee_bps` and
-  `fee_recipient` back, shares the DAO-fee pool as the object traders use,
-  attaches the returned `OwnerCap` as the vault's position with no borrow or
-  removal path, and sends the LP coin to `0x0`. The reviewed revision-2
-  bytecode of the DAO-fee
-  `pool` module (`docs/research/sui-auto-lp-venue-evidence.json`, module hash
+  launch's ID in a key-only `aftermath::PoolCreation` that `aftermath::share`
+  shares, or the same PTB consumes, and that only that launch's `migrate`
+  consumes. `finalize` admits only a split with no auto-LP and no burn part,
+  since neither has a route out of an Aftermath vault, and the split is fixed
+  from then on. The migration salts each coin's swap-in fee with the
+  transaction digest, because Aftermath's registry rejects a second pool with
+  the same coins, weights, flatness, and fees, so a fixed fee would let a
+  buyer register the launch's pool first and strand it. It builds the vault
+  with no position first, because Aftermath's DAO-fee pool
+  (`dao_fee_amm::pool::new`) takes the fee recipient address at creation,
+  names the vault's ID, checks `fee_bps` and `fee_recipient` back, shares the
+  DAO-fee pool as the object traders use, shares the vault with the returned
+  `OwnerCap` as its position with no borrow or removal path, and sends the LP
+  coin to `0x0`. The reviewed revision-2 bytecode of the DAO-fee `pool`
+  module (`docs/research/sui-auto-lp-venue-evidence.json`, module hash
   `029b3e6e…`) pays `floor(amount × fee_bps / 10_000)` of every swap, deposit,
-  and withdrawal by splitting a coin and `transfer::public_transfer`ing it to
-  the recipient, so fees arrive as coins owned by the vault; `vault::receive_fee`
-  receives them through the vault's UID and only `aftermath` calls it, handing
-  every received coin to `vault::split_fees`. Aftermath deposits and swaps are
-  not linked, so an Aftermath vault's auto-LP and burn-Quote shares wait.
+  and withdrawal by splitting a Meme or Quote coin and
+  `transfer::public_transfer`ing it to the recipient, so fees arrive as coins
+  owned by the vault; `vault::receive_fee` receives them through the vault's
+  UID and only `aftermath` calls it, on a vault whose position sits under its
+  venue, handing every received coin to `vault::split_fees`.
 - **Shared per-launch vault.** `vault::LpVault<Meme, Quote>` is one shared vault
   *type*, not one global object. Every migrated launch shares its own vault, so
   unrelated fee collections never contend on the same Sui object. The venue
@@ -416,6 +422,21 @@ package's current generation. It touches neither the venue nor the position.
 Each fixture starts its launch through the adapter's `new` at a tier the venue
 accepts, and records that the launch stores that tier.
 
+Aftermath rows, each with a fresh 9-decimal LP coin published for the fixture:
+
+- `aftermath::migrate` with Meme sorting before Quote, and again with Quote
+  sorting before Meme: the pool holds exactly the hand-off, the DAO-fee pool
+  reports the launch's fee and the vault's address, the LP coin is owned by
+  `0x0`, and the vault's position is the owner cap;
+- `aftermath::migrate` against a pool another account created with the
+  adapter's fixed terms and the same salt-free fee: it must not collide, since
+  the fixture's own digest salts the fee, and a second attempt in a new
+  transaction must succeed after a first attempt that was front-run with its
+  digest; and
+- one DAO-fee swap whose fee coin a dev-inspect `aftermath::collect_fees`
+  receives and splits, then the same call against a Cetus vault, which must
+  abort with `EWrongVault`.
+
 Each migration fixture must show:
 
 - the balance-derived `sqrt_price_x64` matches the exact Q64.64 target for that
@@ -538,9 +559,10 @@ Before release, in order:
    `node scripts/check_mainnet_abi.mjs` both pass, the latter against live
    mainnet;
 2. the local build, lint, test, and source-boundary gates pass;
-3. every row of the Cetus and Bluefin matrix passes, including each migration,
-   collection, and settled route-update route in every orientation: in the venue
-   fork gate at a freshly refreshed snapshot, then as mainnet dry-runs; and
+3. every row of the Cetus, Bluefin, and Aftermath matrix passes, including each
+   migration, collection, and settled route-update route in every orientation:
+   in the venue fork gate at a freshly refreshed snapshot, then as mainnet
+   dry-runs; and
 4. the deployment runbook admits exactly `cetus::Witness` and
    `bluefin::Witness` in the Launchpad `LaunchConfig` with
    `launch_config::set_migration_witness_allowed`, each only after that adapter's

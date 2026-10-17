@@ -5,12 +5,12 @@
 The Blast launchpad (package `blast_fun`) launches a new coin on a bonding curve. A creator
 publishes a small generated coin package, which mints exactly one billion whole tokens into a
 `launch_ticket::LaunchTicket`. The creator turns the ticket into a `launch::Launch<Meme, Quote>`
-through a migration adapter (Cetus or Bluefin), choosing the curve's starting price, the Quote
+through a migration adapter (Cetus, Bluefin, or Aftermath), choosing the curve's starting price, the Quote
 amount at which the curve closes (the graduation target), how the supply and the final Quote are
 split at migration, and how the future pool's LP fees are split. Anyone then buys and sells `Meme`
 against `Quote` on a constant-product curve. When the curve's real Quote reserve reaches the
 target, trading stops and the launch becomes `MigrationReady`; the adapter then moves the pool's
-share of Meme and Quote into a new Cetus or Bluefin pool. `Meme` is the generated coin type and
+share of Meme and Quote into a new Cetus, Bluefin, or Aftermath pool. `Meme` is the generated coin type and
 `Quote` is the coin it trades against (for example SUI). Blast takes a share of every trade fee, a
 SUI creation fee, and an optional one-time share of the supply and of the final Quote; a Blast partner named at
 creation earns a cut of Blast's fees.
@@ -188,7 +188,7 @@ launch always starts through an adapter's `new`; only that adapter can borrow th
 cap during the PTB (`launch::treasury_cap_mut`), and `launch::migration_witness` tells an adapter
 that wraps `finalize` which adapter started the initializer.
 
-1. Start the launch through an admitted adapter. Both return a `LaunchInitializer<Meme, Quote>`:
+1. Start the launch through an admitted adapter. Each returns a `LaunchInitializer<Meme, Quote>`:
    - Cetus: `blast_fun_migrators::cetus::new` takes the owned ticket, the migrators'
      `blast_fun_migrators::blast_fun_migrators::PackageVersion` (shared), the launchpad
      `PackageVersion` (shared), `LaunchConfig` (shared), the migrators'
@@ -204,6 +204,11 @@ that wraps `finalize` which adapter started the initializer.
      `PackageVersion`, the launchpad `PackageVersion`, `LaunchConfig`, `tick_spacing: u32` (1 to
      400), and `fee_rate: u64` (1 to 20,000, Bluefin's units); otherwise it aborts with
      `blast_fun_migrators::bluefin::EInvalidTier`.
+   - Aftermath: `blast_fun_migrators::aftermath::new` takes the owned ticket, the migrators'
+     `PackageVersion`, the launchpad `PackageVersion`, `LaunchConfig`, and `dao_fee_bps: u16` (1
+     to 10,000), the DAO fee the pool pays the launch's vault; the tier is recorded as tick
+     spacing 0 and that fee. The creator must have published a fresh Aftermath LP coin first and
+     finalizes through `blast_fun_migrators::aftermath::finalize` (step 9), not `launch::finalize`.
 
    Inside, `launch::new` checks that Meme and Quote differ, that `Quote`, the adapter's witness,
    and the decimals are admitted in `LaunchConfig`, and snapshots the trade fees. The pool tier
@@ -229,7 +234,11 @@ that wraps `finalize` which adapter started the initializer.
 8. Pay the creation fee: `SplitCoins` from the gas coin for exactly `LaunchConfig.creation_fee`
    MIST (use `0x2::coin::zero<0x2::sui::SUI>` when it is zero).
 9. `launch::finalize` consumes the initializer and takes `PackageVersion`, the shared `Currency<Meme>` (mutable),
-   `LaunchConfig`, and the fee coin. It returns the `Launch<Meme, Quote>` value. It checks every
+   `LaunchConfig`, and the fee coin. It returns the `Launch<Meme, Quote>` value. An Aftermath
+   launch calls `blast_fun_migrators::aftermath::finalize` instead, which takes the same inputs
+   after the migrators' `PackageVersion`, plus the LP coin's `CreatePoolCapV2`, and returns the
+   launch with the pool reservation the migrators guide describes; a launch finalized here with
+   an Aftermath witness can never migrate. Either way, finalization checks every
    setting (see Aborts), copies Blast's current allocation into the plan and requires each asset to
    sum to 10,000, fixes the supply as burn-only or fixed in the Coin Registry (consuming the
    treasury cap), keeps the curve's Meme as `meme_reserve` and the rest as `allocated_meme`, stores
@@ -337,8 +346,9 @@ Both emit `blast_fun::events::ProtocolFeesClaimed`. Calling the wrong one aborts
 #### Migration, launchpad side (anyone, through the adapter)
 
 Anyone triggers migration of a `MigrationReady` launch through its adapter
-(`blast_fun_migrators::cetus::migrate` or `blast_fun_migrators::bluefin::migrate`; arguments in the
-migrators guide). The adapter calls `launch::migrate` with its witness, which checks the lifecycle
+(`blast_fun_migrators::cetus::migrate`, `blast_fun_migrators::bluefin::migrate`, or
+`blast_fun_migrators::aftermath::migrate`; arguments in the migrators guide). The adapter calls
+`launch::migrate` with its witness, which checks the lifecycle
 and that the witness is the one the launch stored, then:
 
 1. Apportions the Meme supply and the final real Quote reserve by the allocation plan (see
@@ -691,8 +701,9 @@ needed to bring the real reserve to the target and returns the rest as the secon
 `launch::buy`. The launch becomes `MigrationReady` and all buys and sells stop.
 
 **Who migrates the launch, and when?** Anyone, as soon as it is `MigrationReady`, through the
-adapter it started with (`blast_fun_migrators::cetus::migrate` or
-`blast_fun_migrators::bluefin::migrate`). Only that adapter's witness passes `launch::migrate`.
+adapter it started with (`blast_fun_migrators::cetus::migrate`,
+`blast_fun_migrators::bluefin::migrate`, or `blast_fun_migrators::aftermath::migrate`). Only that
+adapter's witness passes `launch::migrate`.
 
 **What happens to unsold tokens and the sell burn?** Both are disposed of at migration: burned when
 the supply is burn-only, or sent to `@0x0` when it is fixed. `blast_fun::events::Migrated` reports

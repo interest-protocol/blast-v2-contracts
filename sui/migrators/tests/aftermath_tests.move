@@ -2,10 +2,10 @@
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
 #[test_only]
-/// Aftermath launch start with its DAO-fee tier, the reservation `finalize` binds to the launch,
-/// the vault's owner-cap custody, and fee collection and settled split updates from coins
-/// Aftermath sends to the vault's address. The venue interface is an `abort 0` link stub, so
-/// migration itself is proven on mainnet dev-inspect instead.
+/// Aftermath launch start with its DAO-fee tier, the reservation `finalize` binds to the launch
+/// and the split it admits, the vault's owner-cap custody, and fee collection from coins Aftermath
+/// sends to the vault's address. The venue interface is an `abort 0` link stub, so migration itself
+/// is proven on mainnet dev-inspect instead.
 module blast_fun_migrators::aftermath_tests;
 
 // === Test-Only Types ===
@@ -71,6 +71,19 @@ fun new_records_aftermath_with_no_tick_spacing_and_the_dao_fee_as_the_fee_rate()
     let (tick_spacing, fee_rate) = launch.pool_tier();
     assert_eq!(tick_spacing, 0);
     assert_eq!(fee_rate, 200);
+    destroy(launch);
+    f.end();
+}
+
+#[test]
+fun new_accepts_one_basis_point_as_the_dao_fee() {
+    let mut f = start();
+    f.admit_aftermath();
+
+    let launch = f.open_launch(1);
+
+    let (_, fee_rate) = launch.pool_tier();
+    assert_eq!(fee_rate, 1);
     destroy(launch);
     f.end();
 }
@@ -189,7 +202,7 @@ fun finalize_rejects_another_adapters_launch() {
     let mut currency = f.scenario.take_from_address<Currency<AFTERMATH_TESTS>>(COIN_REGISTRY);
     let initializer = launch::new<_, QUOTE, _>(ticket, &f.version, &f.config, TestVenue(), 1, 1);
 
-    let _launch = aftermath::finalize<LP, _, _>(
+    let (_launch, _pool_creation) = aftermath::finalize<LP, _, _>(
         initializer,
         &f.migrators_version,
         &f.version,
@@ -201,6 +214,28 @@ fun finalize_rejects_another_adapters_launch() {
     );
 
     abort EUnexpectedSuccess
+}
+
+#[test, expected_failure(
+    abort_code = aftermath::EUnsupportedFeeSplit,
+    location = blast_fun_migrators::aftermath,
+)]
+/// An Aftermath vault has no auto-LP route, so a split with an auto-LP part cannot be finalized.
+fun finalize_rejects_a_split_with_an_auto_lp_part() {
+    finalize_rejected_split(
+        allocation::fee_split(bps::new(9_999), bps::new(1), bps::new(0), bps::new(0), vector[]),
+    );
+}
+
+#[test, expected_failure(
+    abort_code = aftermath::EUnsupportedFeeSplit,
+    location = blast_fun_migrators::aftermath,
+)]
+/// An Aftermath vault has no buyback, so a split with a burn part cannot be finalized.
+fun finalize_rejects_a_split_with_a_burn_part() {
+    finalize_rejected_split(
+        allocation::fee_split(bps::new(0), bps::new(0), bps::new(9_999), bps::new(1), vector[]),
+    );
 }
 
 #[test, expected_failure(
@@ -362,6 +397,38 @@ fun a_stale_generation_rejects_the_collection_before_receiving() {
     abort EUnexpectedSuccess
 }
 
+#[test, expected_failure(abort_code = aftermath::EWrongVault, location = blast_fun_migrators::aftermath)]
+/// Another venue's vault settles its fees only through that venue: Aftermath's collection rejects
+/// it before receiving anything, so a creator cannot reach a Cetus or Bluefin vault here.
+fun collect_fees_rejects_another_venues_vault() {
+    let mut f = start_vault(creator_only());
+    f.scenario.next_tx(KEEPER);
+    let launch = f.scenario.take_shared_by_id<Launch<AFTERMATH_TESTS, QUOTE>>(f.launch_id);
+    let mut other_vault = vault::new_for_testing(
+        &launch,
+        &TestVenue(),
+        object::id_from_address(POOL),
+        TestPosition { id: object::new(f.scenario.ctx()) },
+        1,
+        balance::zero(),
+        balance::zero(),
+        f.scenario.ctx(),
+    );
+    test_scenario::return_shared(launch);
+
+    aftermath::collect_fees(
+        &mut other_vault,
+        &f.migrators_version,
+        &f.policy,
+        &mut f.currency,
+        vector[],
+        vector[],
+        f.scenario.ctx(),
+    );
+
+    abort EUnexpectedSuccess
+}
+
 #[test, expected_failure(abort_code = sui::transfer::EUnableToReceiveObject, location = sui::transfer)]
 /// A coin owned by someone else cannot be received into the vault.
 fun collect_fees_receives_only_coins_the_vault_owns() {
@@ -372,45 +439,6 @@ fun collect_fees_receives_only_coins_the_vault_owns() {
 
     f.scenario.next_tx(KEEPER);
     f.collect(vector[keeper_coin_id], vector[]);
-
-    abort EUnexpectedSuccess
-}
-
-// Settled Fee-Split Updates
-
-#[test]
-/// A settled update splits the listed coins under the old split, then commits the new one.
-fun settled_update_receives_under_the_old_split_then_commits_the_next_split() {
-    let mut f = start_vault(creator_only());
-    let curve_fee_cap = f.claim_curve_fee_cap();
-    let meme_ids = f.send_coins<AFTERMATH_TESTS>(vector[10]);
-    let quote_ids = f.send_coins<QUOTE>(vector[20]);
-
-    f.scenario.next_tx(launch_fixture::creator());
-    f.settle_and_update(&curve_fee_cap, meme_ids, quote_ids, rewards_only());
-
-    assert_eq!(f.vault.fee_split_for_testing(), rewards_only());
-    let (creator_meme, creator_quote) = f.vault.creator_balances_for_testing();
-    assert_eq!(creator_meme, 10);
-    assert_eq!(creator_quote, 20);
-    let (rewards_meme, rewards_quote) = f.vault.rewards_balances();
-    assert_eq!(rewards_meme, 0);
-    assert_eq!(rewards_quote, 0);
-    assert_eq!(event::events_by_type<blast_events::FeesCollected>().length(), 1);
-    assert_eq!(event::events_by_type<blast_events::FeeSplitChanged>().length(), 1);
-    destroy(curve_fee_cap);
-    f.end();
-}
-
-#[test, expected_failure(abort_code = vault::EFeeSplitUnchanged, location = blast_fun_migrators::vault)]
-/// The proposal is checked before any coin is received.
-fun a_settled_update_rejects_the_current_split_before_receiving() {
-    let mut f = start_vault(creator_only());
-    let curve_fee_cap = f.claim_curve_fee_cap();
-    let meme_ids = f.send_coins<AFTERMATH_TESTS>(vector[10]);
-
-    f.scenario.next_tx(launch_fixture::creator());
-    f.settle_and_update(&curve_fee_cap, meme_ids, vector[], creator_only());
 
     abort EUnexpectedSuccess
 }
@@ -446,6 +474,41 @@ fun start_rejected_fee(dao_fee_bps: u16) {
         &f.version,
         &f.config,
         dao_fee_bps,
+    );
+
+    abort EUnexpectedSuccess
+}
+
+/// Finalizes an Aftermath launch under `fee_split`; the finalization must abort.
+fun finalize_rejected_split(fee_split: FeeSplit) {
+    let mut f = start();
+    f.admit_aftermath();
+    let ticket = f.new_ticket();
+    f.scenario.next_tx(ADMIN);
+    let mut currency = f.scenario.take_from_address<Currency<AFTERMATH_TESTS>>(COIN_REGISTRY);
+    let mut initializer = aftermath::new<_, QUOTE>(
+        ticket,
+        &f.migrators_version,
+        &f.version,
+        &f.config,
+        DAO_FEE_BPS,
+    );
+    initializer.set_virtual_quote(&f.version, 5_000_000);
+    initializer.set_graduation_target(&f.version, TARGET);
+    initializer.set_allocation_plan(&f.version,
+        allocation::plan(bps::new(8_000), bps::new(2_000), bps::new(10_000), vector[]),
+    );
+    initializer.set_lp_fee_split(&f.version, fee_split);
+
+    let (_launch, _pool_creation) = aftermath::finalize<LP, _, _>(
+        initializer,
+        &f.migrators_version,
+        &f.version,
+        &mut currency,
+        &f.config,
+        coin::zero(f.scenario.ctx()),
+        amm_pool::create_pool_cap_for_testing(f.scenario.ctx()),
+        f.scenario.ctx(),
     );
 
     abort EUnexpectedSuccess
@@ -507,7 +570,7 @@ fun open_launch_with(
     );
     initializer.set_lp_fee_split(&f.version, creator_only());
     let creation_fee = coin::zero(f.scenario.ctx());
-    let launch = aftermath::finalize<LP, _, _>(
+    let (launch, pool_creation) = aftermath::finalize<LP, _, _>(
         initializer,
         &f.migrators_version,
         &f.version,
@@ -517,6 +580,10 @@ fun open_launch_with(
         create_pool_cap,
         f.scenario.ctx(),
     );
+    // The reservation is returned unshared, bound to the launch, so the creating PTB could
+    // consume it in `migrate`; these fixtures share it as a creator who waits would.
+    assert_eq!(pool_creation.pool_creation_launch_id_for_testing(), object::id(&launch));
+    pool_creation.share(&f.migrators_version);
     test_scenario::return_to_address(COIN_REGISTRY, currency);
 
     launch
@@ -549,14 +616,11 @@ fun start_vault(fee_split: FeeSplit): VaultFixture {
         false,
     );
     let launch_id = object::id(&launch);
-    let vault = vault::new_for_testing(
+    let vault = aftermath::vault_for_testing(
         &launch,
-        &TestVenue(),
         object::id_from_address(POOL),
         TestPosition { id: object::new(scenario.ctx()) },
         1,
-        balance::zero(),
-        balance::zero(),
         scenario.ctx(),
     );
     launch.share(&version, &clock);
@@ -600,47 +664,6 @@ fun collect(self: &mut VaultFixture, meme_ids: vector<ID>, quote_ids: vector<ID>
     );
 }
 
-/// Settles the listed coins under the current split and commits `proposed`.
-fun settle_and_update(
-    self: &mut VaultFixture,
-    curve_fee_cap: &CurveFeeCap<AFTERMATH_TESTS>,
-    meme_ids: vector<ID>,
-    quote_ids: vector<ID>,
-    proposed: FeeSplit,
-) {
-    let launch = self.scenario.take_shared_by_id<Launch<AFTERMATH_TESTS, QUOTE>>(self.launch_id);
-    aftermath::settle_and_update_fee_split(
-        &mut self.vault,
-        &self.migrators_version,
-        &self.policy,
-        &launch,
-        curve_fee_cap,
-        &mut self.currency,
-        meme_ids.map!(|id| test_scenario::receiving_ticket_by_id<Coin<AFTERMATH_TESTS>>(id)),
-        quote_ids.map!(|id| test_scenario::receiving_ticket_by_id<Coin<QUOTE>>(id)),
-        proposed,
-        self.scenario.ctx(),
-    );
-    test_scenario::return_shared(launch);
-}
-
-/// Claims the creator capabilities as the creator recipient and keeps the curve-fee cap.
-fun claim_curve_fee_cap(self: &mut VaultFixture): CurveFeeCap<AFTERMATH_TESTS> {
-    self.scenario.next_tx(launch_fixture::creator());
-    let mut launch = self.scenario.take_shared_by_id<Launch<AFTERMATH_TESTS, QUOTE>>(self.launch_id);
-    let (curve_fee_cap, metadata_cap) = launch.claim_creator_caps(
-        &self.version,
-        &self.runtime,
-        option::none(),
-        &self.clock,
-        self.scenario.ctx(),
-    );
-    destroy(metadata_cap);
-    test_scenario::return_shared(launch);
-
-    curve_fee_cap
-}
-
 fun end_vault(self: VaultFixture) {
     let VaultFixture {
         scenario,
@@ -667,9 +690,6 @@ fun creator_only(): FeeSplit {
     allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), bps::new(0), vector[])
 }
 
-fun rewards_only(): FeeSplit {
-    allocation::fee_split(bps::new(0), bps::new(0), bps::new(10_000), bps::new(0), vector[])
-}
 
 // === Constants ===
 
@@ -706,7 +726,7 @@ use blast_fun::{
     allocation::{Self, FeeSplit},
     blast_fun_domain::{AdapterAdmin, FeeAdmin, ListingAdmin},
     bps,
-    creator_authority::{Self, CurveFeeCap},
+    creator_authority,
     launch::{Self, Launch},
     launch_config::{Self, LaunchConfig},
     launch_ticket::{Self, LaunchTicket},

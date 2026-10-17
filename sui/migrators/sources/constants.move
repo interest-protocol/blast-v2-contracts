@@ -44,6 +44,11 @@ macro public(package) fun aftermath_pool_name(): vector<u8> {
     b"Blast Launch Pool"
 }
 
+/// The basis-points whole, which a fee split's parts total.
+macro public(package) fun basis_points_denominator(): u64 {
+    10_000
+}
+
 /// Lowest sqrt price a Cetus or Bluefin swap accepts as its limit; buybacks selling Quote as coin A
 /// run to it and rely on the caller's minimum Meme out instead.
 macro public(package) fun min_swap_sqrt_price(): u128 {

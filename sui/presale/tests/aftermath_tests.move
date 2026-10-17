@@ -30,6 +30,10 @@ public struct QUOTE() has drop;
 /// The fresh Aftermath LP coin a sale's pool creation is reserved for.
 public struct LP() has drop;
 
+public struct OtherVenue() has drop;
+
+public struct TestPosition has key, store { id: UID }
+
 public struct OTHER_MIGRATOR() has drop;
 
 public struct A() has drop;
@@ -191,7 +195,7 @@ fun finalize_rejects_another_migrators_sale() {
         &fee_policy,
     );
 
-    let (_sale, _cap) = aftermath::finalize<LP, _, _>(
+    let (_sale, _cap, _pool_creation) = aftermath::finalize<LP, _, _>(
         initializer,
         &mut currency,
         amm_pool::create_pool_cap_for_testing(scenario.ctx()),
@@ -276,6 +280,86 @@ fun collect_fees_receives_the_vaults_fee_coins_and_splits_them() {
 
     vault.destroy_for_testing();
     destroy(fee_policy);
+    scenario.end();
+}
+
+#[test]
+/// The DAO-fee pool's owner cap is a vault position like any other: sealed under the Aftermath
+/// venue and invisible to any other venue.
+fun the_owner_cap_is_the_vaults_position_under_the_aftermath_venue() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let owner_cap = dao_fee_pool::owner_cap_for_testing<LP>(scenario.ctx());
+    let owner_cap_id = object::id(&owner_cap);
+
+    let vault = aftermath::vault_for_testing<AFTERMATH_TESTS, QUOTE, _>(
+        object::id_from_address(@0xCAFE),
+        object::id_from_address(@0xCA9),
+        whole_split_to_fee_recipient(),
+        fee_policy::protocol_fees_for_testing(0, 0, 0, 0),
+        option::none(),
+        owner_cap,
+        1,
+        scenario.ctx(),
+    );
+
+    assert_eq!(vault.position_id_for_testing<_, _, Venue>(), option::some(owner_cap_id));
+    assert_eq!(vault.position_id_for_testing<_, _, OtherVenue>(), option::none());
+
+    vault.destroy_for_testing();
+    scenario.end();
+}
+
+#[test]
+#[expected_failure(abort_code = aftermath::EWrongVault, location = blast_presale::aftermath)]
+/// Another venue's vault settles its fees only through that venue: Aftermath's collection rejects
+/// it before receiving anything.
+fun collect_fees_rejects_another_venues_vault() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let mut other_vault = vault::new_for_testing<AFTERMATH_TESTS, QUOTE>(
+        object::id_from_address(@0xCAFE),
+        object::id_from_address(@0xCA9),
+        whole_split_to_fee_recipient(),
+        fee_policy::protocol_fees_for_testing(0, 0, 0, 0),
+        option::none(),
+        scenario.ctx(),
+    );
+    other_vault.attach_position_for_testing(
+        &OtherVenue(),
+        TestPosition { id: object::new(scenario.ctx()) },
+        1,
+    );
+
+    aftermath::collect_fees(&mut other_vault, &fee_policy, vector[], vector[], scenario.ctx());
+    abort
+}
+
+#[test]
+/// The DAO fee's bounds are inclusive: one basis point and the whole amount both start a sale.
+fun new_accepts_one_basis_point_and_the_whole_amount() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let creation_policy = allowing<Witness>(scenario.ctx());
+    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    vector[1, 10_000].do!(|dao_fee_bps| {
+        let mut venue_config = venue_config::new_for_testing(scenario.ctx());
+        let (treasury_cap, currency) = new_currency(&mut scenario);
+
+        let initializer = aftermath::new<_, QUOTE>(
+            treasury_cap,
+            &creation_policy,
+            &fee_policy,
+            &mut venue_config,
+            dao_fee_bps,
+        );
+
+        let (_, stored_fee_rate) = venue_config.pool_tier<AFTERMATH_TESTS>();
+        assert_eq!(stored_fee_rate, dao_fee_bps as u64);
+        destroy(initializer);
+        destroy(currency);
+        destroy(venue_config);
+    });
+    destroy(fee_policy);
+    destroy(creation_policy);
     scenario.end();
 }
 
@@ -383,12 +467,16 @@ fun new_sale(
     initializer.set_fee_split(
         presale::fee_split(vector[presale::recipient_share(CREATOR, bps::new(10_000))], bps::new(0)),
     );
-    let (sale, cap) = aftermath::finalize<LP, _, _>(
+    let (sale, cap, pool_creation) = aftermath::finalize<LP, _, _>(
         initializer,
         &mut currency,
         create_pool_cap,
         scenario.ctx(),
     );
+    // The reservation is returned unshared, bound to the sale, so the creating PTB could consume
+    // it in `migrate`; these fixtures share it as a creator who waits would.
+    assert_eq!(pool_creation.pool_creation_presale_id_for_testing(), object::id(&sale));
+    pool_creation.share();
 
     destroy(currency);
     destroy(fee_policy);
@@ -399,18 +487,22 @@ fun new_sale(
 /// An unshared vault paying its whole split to `FEE_RECIPIENT`, with no holder share and no Blast
 /// LP rate, so every received unit leaves it at once.
 fun new_vault(scenario: &mut Scenario): Vault<AFTERMATH_TESTS, QUOTE> {
-    let presale_id = object::id_from_address(@0xCAFE);
-
-    vault::new_for_testing(
-        presale_id,
+    aftermath::vault_for_testing(
+        object::id_from_address(@0xCAFE),
         object::id_from_address(@0xCA9),
-        presale::fee_split(
-            vector[presale::recipient_share(FEE_RECIPIENT, bps::new(10_000))],
-            bps::new(0),
-        ),
+        whole_split_to_fee_recipient(),
         fee_policy::protocol_fees_for_testing(0, 0, 0, 0),
         option::none(),
+        TestPosition { id: object::new(scenario.ctx()) },
+        1,
         scenario.ctx(),
+    )
+}
+
+fun whole_split_to_fee_recipient(): FeeSplit {
+    presale::fee_split(
+        vector[presale::recipient_share(FEE_RECIPIENT, bps::new(10_000))],
+        bps::new(0),
     )
 }
 
@@ -443,7 +535,7 @@ use blast_presale::{
         Witness,
         sorts_before_for_testing,
     },
-    blast_presale::{Self as presale, Presale, PresaleCap, PresaleCreated},
+    blast_presale::{Self as presale, FeeSplit, Presale, PresaleCap, PresaleCreated},
     bps,
     creation_policy::{Self, CreationPolicy},
     fee_policy,
@@ -451,7 +543,7 @@ use blast_presale::{
     venue_config::{Self, PoolTierReserved, VenueConfig},
 };
 
-use dao_fee_amm::version;
+use dao_fee_amm::{pool as dao_fee_pool, version};
 
 use std::{type_name, unit_test::{assert_eq, destroy}};
 
