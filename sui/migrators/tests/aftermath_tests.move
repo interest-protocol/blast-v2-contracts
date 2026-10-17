@@ -2,10 +2,10 @@
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
 #[test_only]
-/// Aftermath launch start with its pool-creation reservation, the vault's owner-cap custody, and
-/// fee collection and settled split updates from coins Aftermath sends to the vault's address. The
-/// venue interface is an `abort 0` link stub, so migration itself is proven on mainnet dev-inspect
-/// instead.
+/// Aftermath launch start with its DAO-fee tier, the reservation `finalize` binds to the launch,
+/// the vault's owner-cap custody, and fee collection and settled split updates from coins
+/// Aftermath sends to the vault's address. The venue interface is an `abort 0` link stub, so
+/// migration itself is proven on mainnet dev-inspect instead.
 module blast_fun_migrators::aftermath_tests;
 
 // === Test-Only Types ===
@@ -62,7 +62,7 @@ fun new_records_aftermath_with_no_tick_spacing_and_the_dao_fee_as_the_fee_rate()
     let mut f = start();
     f.admit_aftermath();
 
-    let launch = f.open_launch();
+    let launch = f.open_launch(DAO_FEE_BPS);
 
     assert_eq!(
         launch.migration_witness_for_testing(),
@@ -76,24 +76,48 @@ fun new_records_aftermath_with_no_tick_spacing_and_the_dao_fee_as_the_fee_rate()
 }
 
 #[test]
-fun new_shares_one_reservation_bound_to_the_pair_and_announces_it() {
+fun new_accepts_the_whole_amount_as_the_dao_fee() {
+    let mut f = start();
+    f.admit_aftermath();
+
+    let launch = f.open_launch(10_000);
+
+    let (_, fee_rate) = launch.pool_tier();
+    assert_eq!(fee_rate, 10_000);
+    destroy(launch);
+    f.end();
+}
+
+#[test, expected_failure(
+    abort_code = aftermath::EInvalidDaoFee,
+    location = blast_fun_migrators::aftermath,
+)]
+fun new_rejects_a_zero_dao_fee() {
+    start_rejected_fee(0)
+}
+
+#[test, expected_failure(
+    abort_code = aftermath::EInvalidDaoFee,
+    location = blast_fun_migrators::aftermath,
+)]
+fun new_rejects_a_dao_fee_above_the_whole_amount() {
+    start_rejected_fee(10_001)
+}
+
+#[test]
+/// `finalize` shares one reservation bound to the launch it finalized, holding the capability
+/// `new` received, and announces it.
+fun finalize_binds_a_shared_reservation_to_its_launch() {
     let mut f = start();
     f.admit_aftermath();
     let create_pool_cap = amm_pool::create_pool_cap_for_testing(f.scenario.ctx());
     let create_pool_cap_id = object::id(&create_pool_cap);
 
-    let initializer = aftermath::new<LP, _, QUOTE>(
-        f.new_ticket(),
-        &f.migrators_version,
-        &f.version,
-        &f.config,
-        create_pool_cap,
-        f.scenario.ctx(),
-    );
+    let launch = f.open_launch_with(create_pool_cap, DAO_FEE_BPS);
 
     let reservations = event::events_by_type<blast_events::AftermathPoolReserved>();
     assert_eq!(reservations.length(), 1);
-    // Decoded in ABI order, consuming every byte: three type names, then both IDs.
+    // Decoded in ABI order, consuming every byte: three type names, then three IDs.
     let mut r = bcs::new(bcs::to_bytes(&reservations[0]));
     assert_eq!(r.peel_vec_u8(), type_name::with_original_ids<LP>().into_string().into_bytes());
     assert_eq!(
@@ -101,6 +125,7 @@ fun new_shares_one_reservation_bound_to_the_pair_and_announces_it() {
         type_name::with_original_ids<AFTERMATH_TESTS>().into_string().into_bytes(),
     );
     assert_eq!(r.peel_vec_u8(), type_name::with_original_ids<QUOTE>().into_string().into_bytes());
+    assert_eq!(object::id_from_address(r.peel_address()), object::id(&launch));
     let pool_creation_id = object::id_from_address(r.peel_address());
     assert_eq!(object::id_from_address(r.peel_address()), create_pool_cap_id);
     assert!(r.into_remainder_bytes().is_empty());
@@ -109,29 +134,64 @@ fun new_shares_one_reservation_bound_to_the_pair_and_announces_it() {
     let pool_creation = f.scenario.take_shared_by_id<PoolCreation<LP, AFTERMATH_TESTS, QUOTE>>(
         pool_creation_id,
     );
+    assert_eq!(pool_creation.pool_creation_launch_id_for_testing(), object::id(&launch));
     test_scenario::return_shared(pool_creation);
 
-    destroy(initializer);
+    destroy(launch);
     f.end();
+}
+
+#[test, expected_failure(
+    abort_code = aftermath::EWrongLaunch,
+    location = blast_fun_migrators::aftermath,
+)]
+/// A launch's migration cannot consume a reservation bound to another launch, and checks that
+/// before touching the launch.
+fun migrate_rejects_another_launches_reservation() {
+    let mut f = start();
+    f.admit_aftermath();
+    let mut launch = f.open_launch(DAO_FEE_BPS);
+    let other_reservation = aftermath::pool_creation_for_testing<LP, AFTERMATH_TESTS, QUOTE>(
+        object::id_from_address(@0x0B5E),
+        amm_pool::create_pool_cap_for_testing(f.scenario.ctx()),
+        f.scenario.ctx(),
+    );
+    let mut pool_registry = pool_registry::new_for_testing(f.scenario.ctx());
+    let dao_fee_version = version::new_for_testing(f.scenario.ctx());
+
+    f.scenario.next_tx(KEEPER);
+    let mut currency = f.scenario.take_from_address<Currency<AFTERMATH_TESTS>>(COIN_REGISTRY);
+    aftermath::migrate(
+        &mut launch,
+        &f.migrators_version,
+        &f.version,
+        &mut currency,
+        other_reservation,
+        &mut pool_registry,
+        &dao_fee_version,
+        f.scenario.ctx(),
+    );
+
+    abort EUnexpectedSuccess
 }
 
 #[test, expected_failure(
     abort_code = blast_admin::errors::EOperationalVersionMismatch,
     location = blast_admin::operational_version,
 )]
-fun new_checks_the_migrators_generation_before_the_launch() {
+fun new_checks_the_migrators_generation_before_the_fee() {
     let mut f = start();
     f.admit_aftermath();
     f.migrators_version.set_for_testing(2);
     let ticket = f.new_ticket();
 
-    let _initializer = aftermath::new<LP, _, QUOTE>(
+    let (_initializer, _pending) = aftermath::new<LP, _, QUOTE>(
         ticket,
         &f.migrators_version,
         &f.version,
         &f.config,
         amm_pool::create_pool_cap_for_testing(f.scenario.ctx()),
-        f.scenario.ctx(),
+        0,
     );
 
     abort EUnexpectedSuccess
@@ -145,13 +205,13 @@ fun new_aborts_until_the_config_admits_aftermath() {
     let mut f = start();
     let ticket = f.new_ticket();
 
-    let _initializer = aftermath::new<LP, _, QUOTE>(
+    let (_initializer, _pending) = aftermath::new<LP, _, QUOTE>(
         ticket,
         &f.migrators_version,
         &f.version,
         &f.config,
         amm_pool::create_pool_cap_for_testing(f.scenario.ctx()),
-        f.scenario.ctx(),
+        DAO_FEE_BPS,
     );
 
     abort EUnexpectedSuccess
@@ -166,13 +226,13 @@ fun new_admits_only_an_allowed_quote() {
     f.admit_aftermath();
     let ticket = f.new_ticket();
 
-    let _initializer = aftermath::new<LP, _, OTHER_QUOTE>(
+    let (_initializer, _pending) = aftermath::new<LP, _, OTHER_QUOTE>(
         ticket,
         &f.migrators_version,
         &f.version,
         &f.config,
         amm_pool::create_pool_cap_for_testing(f.scenario.ctx()),
-        f.scenario.ctx(),
+        DAO_FEE_BPS,
     );
 
     abort EUnexpectedSuccess
@@ -348,6 +408,24 @@ fun start(): StartFixture {
     StartFixture { scenario, version, migrators_version, config }
 }
 
+/// Starts an Aftermath launch at `dao_fee_bps`; the start must abort.
+fun start_rejected_fee(dao_fee_bps: u16) {
+    let mut f = start();
+    f.admit_aftermath();
+    let ticket = f.new_ticket();
+
+    let (_initializer, _pending) = aftermath::new<LP, _, QUOTE>(
+        ticket,
+        &f.migrators_version,
+        &f.version,
+        &f.config,
+        amm_pool::create_pool_cap_for_testing(f.scenario.ctx()),
+        dao_fee_bps,
+    );
+
+    abort EUnexpectedSuccess
+}
+
 fun admit_aftermath(f: &mut StartFixture) {
     let admin = blast_acl::witness_for_testing<AdapterAdmin>();
     f.config.set_migration_witness_allowed<aftermath::Witness>(&f.version, &admin, true);
@@ -368,19 +446,31 @@ fun new_ticket(f: &mut StartFixture): LaunchTicket<AFTERMATH_TESTS> {
     )
 }
 
-/// Starts an Aftermath launch in `QUOTE` and finalizes it once the Coin Registry holds the
-/// currency.
-fun open_launch(f: &mut StartFixture): Launch<AFTERMATH_TESTS, QUOTE> {
+/// Starts an Aftermath launch in `QUOTE` at `dao_fee_bps` with a fresh test capability and
+/// finalizes it through this module's `finalize`.
+fun open_launch(f: &mut StartFixture, dao_fee_bps: u16): Launch<AFTERMATH_TESTS, QUOTE> {
+    let create_pool_cap = amm_pool::create_pool_cap_for_testing(f.scenario.ctx());
+
+    f.open_launch_with(create_pool_cap, dao_fee_bps)
+}
+
+/// Starts an Aftermath launch in `QUOTE` at `dao_fee_bps` reserving `create_pool_cap`, and
+/// finalizes it through this module's `finalize` once the Coin Registry holds the currency.
+fun open_launch_with(
+    f: &mut StartFixture,
+    create_pool_cap: CreatePoolCapV2,
+    dao_fee_bps: u16,
+): Launch<AFTERMATH_TESTS, QUOTE> {
     let ticket = f.new_ticket();
     f.scenario.next_tx(ADMIN);
     let mut currency = f.scenario.take_from_address<Currency<AFTERMATH_TESTS>>(COIN_REGISTRY);
-    let mut initializer = aftermath::new<LP, _, QUOTE>(
+    let (mut initializer, pending) = aftermath::new<LP, _, QUOTE>(
         ticket,
         &f.migrators_version,
         &f.version,
         &f.config,
-        amm_pool::create_pool_cap_for_testing(f.scenario.ctx()),
-        f.scenario.ctx(),
+        create_pool_cap,
+        dao_fee_bps,
     );
     initializer.set_virtual_quote(&f.version, 5_000_000);
     initializer.set_graduation_target(&f.version, TARGET);
@@ -389,7 +479,16 @@ fun open_launch(f: &mut StartFixture): Launch<AFTERMATH_TESTS, QUOTE> {
     );
     initializer.set_lp_fee_split(&f.version, creator_only());
     let creation_fee = coin::zero(f.scenario.ctx());
-    let launch = initializer.finalize(&f.version, &mut currency, &f.config, creation_fee, f.scenario.ctx());
+    let launch = aftermath::finalize(
+        initializer,
+        pending,
+        &f.migrators_version,
+        &f.version,
+        &mut currency,
+        &f.config,
+        creation_fee,
+        f.scenario.ctx(),
+    );
     test_scenario::return_to_address(COIN_REGISTRY, currency);
 
     launch
@@ -562,6 +661,8 @@ const POOL: address = @0x9001;
 
 const TARGET: u64 = 25_000_000;
 
+const DAO_FEE_BPS: u16 = 200;
+
 // === Errors ===
 
 #[error]
@@ -569,7 +670,7 @@ const EUnexpectedSuccess: vector<u8> = b"The guarded operation unexpectedly retu
 
 // === Imports ===
 
-use amm::pool as amm_pool;
+use amm::{pool::{Self as amm_pool, CreatePoolCapV2}, pool_registry};
 
 use blast_admin::blast_acl;
 
@@ -594,7 +695,7 @@ use blast_fun_migrators::{
     vault::{Self, LpVault},
 };
 
-use dao_fee_amm::pool as dao_fee_pool;
+use dao_fee_amm::{pool as dao_fee_pool, version};
 
 use std::{type_name, unit_test::{assert_eq, destroy}};
 
@@ -617,5 +718,6 @@ use fun end_start as StartFixture.end;
 use fun end_vault as VaultFixture.end;
 use fun new_ticket as StartFixture.new_ticket;
 use fun open_launch as StartFixture.open_launch;
+use fun open_launch_with as StartFixture.open_launch_with;
 use fun send_coins as VaultFixture.send_coins;
 use fun settle_and_update as VaultFixture.settle_and_update;

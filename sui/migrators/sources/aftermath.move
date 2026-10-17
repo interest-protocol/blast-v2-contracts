@@ -14,10 +14,13 @@
 /// path.
 ///
 /// Aftermath creates a pool only from a `CreatePoolCapV2` minted by a freshly published LP coin,
-/// so the creator publishes one per launch and binds its capability to the launch when starting
-/// it. Aftermath pools have no tick spacing, so the launch records zero, and its fee rate is the
-/// DAO fee in basis points. The auto-LP and burn-Quote shares of each collection wait in the vault:
-/// this adapter adds no liquidity to and swaps nothing in an Aftermath pool.
+/// so the creator publishes one per launch and hands its capability to `new`, with the DAO fee
+/// the pool charges. Aftermath pools have no tick spacing, so the launch records zero, and its fee
+/// rate is that DAO fee in basis points. The launch's ID exists only once it is finalized, so
+/// `new` returns the capability in a hot potato that only `finalize` consumes: it finalizes the
+/// launch and shares the reservation bound to that launch's ID, which only that launch's
+/// migration can consume. The auto-LP and burn-Quote shares of each collection wait in the
+/// vault: this adapter adds no liquidity to and swaps nothing in an Aftermath pool.
 module blast_fun_migrators::aftermath;
 
 // === Public Types ===
@@ -28,30 +31,41 @@ public struct Witness() has drop;
 /// Sealed marker for the LP coin and owner cap attached to the common vault.
 public struct Venue() has drop;
 
-/// Shared reservation of the `<Meme, Quote>` launch's Aftermath pool creation: the
-/// `CreatePoolCapV2` of the fresh LP coin `Lp`, which only that launch's migration can consume.
-/// Every Meme has one launch ticket, so the reservation is bound by its type.
+/// The pool-creation capability `new` received for the `<Meme, Quote>` launch of the LP coin
+/// `Lp`, not yet bound to a launch. It has no abilities, so the creation PTB must hand it to
+/// `finalize`.
+public struct PendingPoolCreation<phantom Lp, phantom Meme, phantom Quote> {
+    create_pool_cap: CreatePoolCapV2,
+}
+
+/// Shared reservation of one launch's Aftermath pool creation: the `CreatePoolCapV2` of the fresh
+/// LP coin `Lp`, which only the migration of the launch `launch_id` can consume.
 public struct PoolCreation<phantom Lp, phantom Meme, phantom Quote> has key {
     id: UID,
+    launch_id: ID,
     create_pool_cap: CreatePoolCapV2,
 }
 
 // === Public Functions ===
 
 /// Starts an Aftermath launch in `Quote` whose pool is created from `create_pool_cap`, which the
-/// fresh LP coin `Lp` minted, and shares the reservation binding it to the launch; the core aborts
-/// unless it admits Aftermath and the Quote. The pool's weights and fees are this package's
-/// constants, so the creator chooses no tier. The creator completes the returned initializer with
-/// `launch::finalize`.
+/// fresh LP coin `Lp` minted, charging `dao_fee_bps` of every swap, deposit, and withdrawal to the
+/// launch's vault; the core aborts unless it admits Aftermath and the Quote. The fee is the
+/// launch's tier, with no tick spacing; the pool's weights and base fee are this package's
+/// constants. Returns the capability pending the launch `finalize` binds it to.
 public fun new<Lp, Meme, Quote>(
     ticket: LaunchTicket<Meme>,
     migrators_version: &MigratorsVersion,
     package_version: &PackageVersion,
     config: &LaunchConfig,
     create_pool_cap: CreatePoolCapV2,
-    ctx: &mut TxContext,
-): LaunchInitializer<Meme, Quote> {
+    dao_fee_bps: u16,
+): (LaunchInitializer<Meme, Quote>, PendingPoolCreation<Lp, Meme, Quote>) {
     migrators_version.assert_current();
+    assert!(
+        dao_fee_bps > 0 && dao_fee_bps <= constants::aftermath_max_dao_fee_bps!(),
+        EInvalidDaoFee,
+    );
 
     let launch = launch::new<Meme, Quote, _>(
         ticket,
@@ -59,11 +73,37 @@ public fun new<Lp, Meme, Quote>(
         config,
         Witness(),
         0,
-        constants::aftermath_dao_fee_bps!() as u64,
+        dao_fee_bps as u64,
     );
 
-    let pool_creation = PoolCreation<Lp, Meme, Quote> { id: object::new(ctx), create_pool_cap };
+    (launch, PendingPoolCreation { create_pool_cap })
+}
+
+/// Finalizes a launch `new` started, as `launch::finalize` does, and shares the reservation
+/// binding the pending capability to that launch's ID. The launch ticket is unique per Meme, so
+/// the initializer and the pending capability of one Meme can only be this module's pair. The
+/// creator shares the returned launch with `launch::share`.
+public fun finalize<Lp, Meme, Quote>(
+    initializer: LaunchInitializer<Meme, Quote>,
+    pending: PendingPoolCreation<Lp, Meme, Quote>,
+    migrators_version: &MigratorsVersion,
+    package_version: &PackageVersion,
+    currency: &mut Currency<Meme>,
+    config: &LaunchConfig,
+    creation_fee: Coin<SUI>,
+    ctx: &mut TxContext,
+): Launch<Meme, Quote> {
+    migrators_version.assert_current();
+    let PendingPoolCreation { create_pool_cap } = pending;
+    let launch = initializer.finalize(package_version, currency, config, creation_fee, ctx);
+
+    let pool_creation = PoolCreation<Lp, Meme, Quote> {
+        id: object::new(ctx),
+        launch_id: object::id(&launch),
+        create_pool_cap,
+    };
     blast_events::aftermath_pool_reserved<Lp, Meme, Quote>(
+        pool_creation.launch_id,
         pool_creation.id.to_inner(),
         object::id(&pool_creation.create_pool_cap),
     );
@@ -73,10 +113,10 @@ public fun new<Lp, Meme, Quote>(
 }
 
 // `dao_fee_pool::new` creates the shared pool in this transaction.
-/// Migrates a MigrationReady launch into its reserved Aftermath pool, consuming the reservation:
-/// it seeds a 50/50 pool with exactly the handed-off balances, wraps it in a DAO-fee pool paying
-/// the launch's new vault, shares that pool, and locks the LP coin and the pool's owner cap in
-/// the vault. The caller receives no object.
+/// Migrates a MigrationReady launch into its reserved Aftermath pool, consuming the reservation
+/// bound to it: it seeds a 50/50 pool with exactly the handed-off balances, wraps it in a DAO-fee
+/// pool paying the launch's new vault at the launch's fee, shares that pool, and locks the LP coin
+/// and the pool's owner cap in the vault. The caller receives no object.
 #[allow(lint(share_owned))]
 public fun migrate<Lp, Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
@@ -89,9 +129,12 @@ public fun migrate<Lp, Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    let PoolCreation { id, create_pool_cap } = pool_creation;
+    let PoolCreation { id, launch_id, create_pool_cap } = pool_creation;
+    assert!(launch_id == object::id(launch), EWrongLaunch);
     id.delete();
 
+    let (_, pool_fee_rate) = launch.pool_tier();
+    let dao_fee_bps = pool_fee_rate as u16;
     let (meme, quote) = launch.migrate(package_version, currency, Witness(), ctx);
     let (meme_amount, quote_amount) = (meme.value(), quote.value());
 
@@ -123,13 +166,12 @@ public fun migrate<Lp, Meme, Quote>(
     let (dao_fee_pool, owner_cap) = dao_fee_pool::new(
         pool,
         dao_fee_version,
-        constants::aftermath_dao_fee_bps!(),
+        dao_fee_bps,
         vault_address,
         ctx,
     );
     assert!(
-        dao_fee_pool.fee_bps() == constants::aftermath_dao_fee_bps!()
-            && dao_fee_pool.fee_recipient() == vault_address,
+        dao_fee_pool.fee_bps() == dao_fee_bps && dao_fee_pool.fee_recipient() == vault_address,
         EDaoFeePoolMismatch,
     );
 
@@ -276,13 +318,36 @@ public fun sorts_before_for_testing<A, B>(): bool {
     sorts_before<A, B>()
 }
 
+#[test_only]
+/// Builds an unshared reservation bound to `launch_id`, for binding tests.
+public fun pool_creation_for_testing<Lp, Meme, Quote>(
+    launch_id: ID,
+    create_pool_cap: CreatePoolCapV2,
+    ctx: &mut TxContext,
+): PoolCreation<Lp, Meme, Quote> {
+    PoolCreation { id: object::new(ctx), launch_id, create_pool_cap }
+}
+
+#[test_only]
+public fun pool_creation_launch_id_for_testing<Lp, Meme, Quote>(
+    self: &PoolCreation<Lp, Meme, Quote>,
+): ID {
+    self.launch_id
+}
+
 // === Errors ===
 
 #[error(code = 0)]
 const EPoolMismatch: vector<u8> = b"The Aftermath pool must hold every Meme and Quote unit the launch handed off.";
 
 #[error(code = 1)]
-const EDaoFeePoolMismatch: vector<u8> = b"The DAO-fee pool must charge this package's fee and pay the vault.";
+const EDaoFeePoolMismatch: vector<u8> = b"The DAO-fee pool must charge the launch's fee and pay the vault.";
+
+#[error(code = 2)]
+const EWrongLaunch: vector<u8> = b"The pool creation is bound to a different launch.";
+
+#[error(code = 3)]
+const EInvalidDaoFee: vector<u8> = b"Aftermath DAO fee needs 1..=10,000 basis points.";
 
 // === Imports ===
 
@@ -313,6 +378,7 @@ use sui::{
     balance::{Self, Balance},
     coin::Coin,
     coin_registry::Currency,
+    sui::SUI,
     transfer::Receiving,
 };
 

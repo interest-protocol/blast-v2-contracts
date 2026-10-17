@@ -156,12 +156,13 @@ public struct CetusPoolReserved has copy, drop {
     tick_spacing: u32,
 }
 
-/// Records Aftermath pool creation reserved for one pair: the shared reservation holding the
-/// capability its fresh LP coin minted, which the pair's migration consumes.
+/// Records Aftermath pool creation reserved for one launch: the shared reservation holding the
+/// capability its fresh LP coin minted, which only that launch's migration consumes.
 public struct AftermathPoolReserved has copy, drop {
     lp: TypeName,
     meme: TypeName,
     quote: TypeName,
+    launch_id: ID,
     pool_creation_id: ID,
     create_pool_cap_id: ID,
 }
@@ -408,8 +409,9 @@ public(package) fun cetus_pool_reserved<Meme, Quote>(pool_creation_cap_id: ID, t
     });
 }
 
-/// Emits the Aftermath pair reservation made while starting a launch.
+/// Emits the Aftermath reservation bound to a launch as it is finalized.
 public(package) fun aftermath_pool_reserved<Lp, Meme, Quote>(
+    launch_id: ID,
     pool_creation_id: ID,
     create_pool_cap_id: ID,
 ) {
@@ -417,6 +419,7 @@ public(package) fun aftermath_pool_reserved<Lp, Meme, Quote>(
         lp: type_name::with_original_ids<Lp>(),
         meme: type_name::with_original_ids<Meme>(),
         quote: type_name::with_original_ids<Quote>(),
+        launch_id,
         pool_creation_id,
         create_pool_cap_id,
     });

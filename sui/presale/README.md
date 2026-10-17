@@ -15,8 +15,9 @@ The terms are token supply; presale, LP, and per-recipient
 allocation BPS; fixed or burn-only supply; Quote raise; commitment and migration
 windows (the migration window is at least seven days); `EligibilityPolicy`;
 migration venue (Cetus and Bluefin also take a pool tier, which they keep in
-`VenueConfig`, not in the sale; Aftermath takes the pool-creation capability of a
-fresh LP coin, which it keeps in a shared reservation the migration consumes); and the LP-fee split:
+`VenueConfig`, not in the sale; Aftermath takes its DAO fee as the tier and the
+pool-creation capability of a fresh LP coin, which its `finalize` binds to the sale in
+a shared reservation the migration consumes); and the LP-fee split:
 up to 16 distinct fee recipients (the creator is one of them) and a holder-reward
 share, whose BPS total 10,000. Allocation BPS must total 10,000. The contract mints the complete
 supply once and uses largest-remainder apportionment so every atomic unit belongs
@@ -94,7 +95,7 @@ the raise and
 the LP allocation, creates the configured
 pool, and seals the position, burn proof, or Aftermath LP coin and DAO-fee owner cap
 in a `Vault`; a DEX failure rolls back the presale transition. An Aftermath pool pays
-its 2% DAO fee as coins sent to the vault's address, which anyone receives into the
+its DAO fee as coins sent to the vault's address, which anyone receives into the
 vault through `aftermath::collect_fees` (ADR 0116). Configured recipients receive their
 distinct allocations in that same transaction. Claims open only after success.
 

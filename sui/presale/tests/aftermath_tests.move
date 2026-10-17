@@ -2,9 +2,10 @@
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
 #[test_only]
-/// Aftermath sale start, its pool-creation reservation, the vault's owner-cap custody, and fee
-/// collection from coins Aftermath sends to the vault's address. The venue interface is an
-/// `abort 0` link stub, so migration itself is proven on mainnet dev-inspect instead.
+/// Aftermath sale start with its DAO-fee tier, the reservation `finalize` binds to the sale, the
+/// vault's owner-cap custody, and fee collection from coins Aftermath sends to the vault's
+/// address. The venue interface is an `abort 0` link stub, so migration itself is proven on
+/// mainnet dev-inspect instead.
 module blast_presale::aftermath_tests;
 
 // === Constants ===
@@ -12,8 +13,8 @@ module blast_presale::aftermath_tests;
 const CREATOR: address = @0xC0FFEE;
 const FEE_RECIPIENT: address = @0xFEE;
 const KEEPER: address = @0x4EE9;
-const TREASURY: address = @0x7EA5;
 
+const DAO_FEE_BPS: u16 = 200;
 const TOKEN_SUPPLY: u64 = 1_000_000_000;
 const RAISE_TARGET: u64 = 1_000_000;
 const DURATION_MS: u64 = 100;
@@ -43,78 +44,140 @@ public struct AB() has drop;
 // === Tests ===
 
 #[test]
-/// A sale started here names this migrator and shares one pool creation for its LP coin, holding
-/// the capability it was given.
-fun new_records_the_witness_and_reserves_the_pool_creation() {
+/// A sale started here names this migrator and records its DAO fee as the venue tier, with no
+/// tick spacing, under the sale token's type.
+fun new_records_the_witness_and_the_dao_fee_tier() {
     let mut scenario = test_scenario::begin(CREATOR);
     let creation_policy = allowing<Witness>(scenario.ctx());
     let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let mut venue_config = venue_config::new_for_testing(scenario.ctx());
     let (treasury_cap, currency) = new_currency(&mut scenario);
-    let create_pool_cap = amm_pool::create_pool_cap_for_testing(scenario.ctx());
-    let create_pool_cap_id = object::id(&create_pool_cap);
 
-    let initializer = aftermath::new<LP, _, QUOTE>(
+    let (initializer, pending) = aftermath::new<LP, _, QUOTE>(
         treasury_cap,
-        create_pool_cap,
+        amm_pool::create_pool_cap_for_testing(scenario.ctx()),
         &creation_policy,
         &fee_policy,
-        scenario.ctx(),
+        &mut venue_config,
+        DAO_FEE_BPS,
     );
 
     assert_eq!(initializer.migration_witness(), type_name::with_original_ids<Witness>());
-    let (pool_creation_id, reserved_cap_id) = only_event<
-        PoolCreationReserved<LP, AFTERMATH_TESTS, QUOTE>,
-    >().pool_creation_reserved_fields();
-    assert_eq!(reserved_cap_id, create_pool_cap_id);
-
-    scenario.next_tx(KEEPER);
-    let pool_creation = scenario.take_shared_by_id<PoolCreation<LP, AFTERMATH_TESTS, QUOTE>>(
-        pool_creation_id,
-    );
-    test_scenario::return_shared(pool_creation);
+    let (tick_spacing, pool_fee_rate) = only_event<
+        PoolTierReserved<AFTERMATH_TESTS, QUOTE, Venue>,
+    >().pool_tier_reserved_fields();
+    assert_eq!(tick_spacing, 0);
+    assert_eq!(pool_fee_rate, 200);
+    let (stored_tick_spacing, stored_fee_rate) = venue_config.pool_tier<AFTERMATH_TESTS>();
+    assert_eq!(stored_tick_spacing, 0);
+    assert_eq!(stored_fee_rate, 200);
 
     destroy(initializer);
+    destroy(pending);
     destroy(currency);
+    destroy(venue_config);
     destroy(fee_policy);
     destroy(creation_policy);
     scenario.end();
 }
 
 #[test]
-/// A sale `new` started finalizes like any other, carrying this migrator's witness.
-fun a_sale_started_here_finalizes_with_the_aftermath_witness() {
+#[expected_failure(abort_code = aftermath::EInvalidDaoFee, location = blast_presale::aftermath)]
+fun new_rejects_a_zero_dao_fee() {
+    start_rejected_fee(0)
+}
+
+#[test]
+#[expected_failure(abort_code = aftermath::EInvalidDaoFee, location = blast_presale::aftermath)]
+fun new_rejects_a_dao_fee_above_the_whole_amount() {
+    start_rejected_fee(10_001)
+}
+
+#[test]
+/// `finalize` creates the sale with this migrator's witness and shares one reservation bound to
+/// it, holding the capability `new` received.
+fun finalize_binds_a_shared_reservation_to_its_sale() {
     let mut scenario = test_scenario::begin(CREATOR);
     let creation_policy = allowing<Witness>(scenario.ctx());
-    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
-    let (treasury_cap, mut currency) = new_currency(&mut scenario);
+    let mut venue_config = venue_config::new_for_testing(scenario.ctx());
+    let create_pool_cap = amm_pool::create_pool_cap_for_testing(scenario.ctx());
+    let create_pool_cap_id = object::id(&create_pool_cap);
 
-    let mut initializer = aftermath::new<LP, _, QUOTE>(
-        treasury_cap,
-        amm_pool::create_pool_cap_for_testing(scenario.ctx()),
-        &creation_policy,
-        &fee_policy,
-        scenario.ctx(),
-    );
-    initializer.set_supply(TOKEN_SUPPLY, false);
-    initializer.set_token_allocations(bps::new(5_000), bps::new(5_000), vector[]);
-    initializer.set_raise(RAISE_TARGET, vector[]);
-    initializer.set_windows(DURATION_MS, LIQUIDITY_WINDOW_MS);
-    initializer.set_eligibility(presale::open_eligibility(RAISE_TARGET, 1, RAISE_TARGET));
-    initializer.set_fee_split(
-        presale::fee_split(vector[presale::recipient_share(CREATOR, bps::new(10_000))], bps::new(0)),
-    );
-    let (sale, cap) = initializer.finalize(&mut currency, scenario.ctx());
+    let (sale, cap) = new_sale(&mut scenario, &creation_policy, &mut venue_config, create_pool_cap);
 
     let (witness, _, _, _) = only_event<PresaleCreated<AFTERMATH_TESTS, QUOTE>>()
         .created_migration_fields();
     assert_eq!(witness, type_name::with_original_ids<Witness>());
+    let (presale_id, pool_creation_id, reserved_cap_id) = only_event<
+        PoolCreationReserved<LP, AFTERMATH_TESTS, QUOTE>,
+    >().pool_creation_reserved_fields();
+    assert_eq!(presale_id, object::id(&sale));
+    assert_eq!(reserved_cap_id, create_pool_cap_id);
+
+    scenario.next_tx(KEEPER);
+    let pool_creation = scenario.take_shared_by_id<PoolCreation<LP, AFTERMATH_TESTS, QUOTE>>(
+        pool_creation_id,
+    );
+    assert_eq!(pool_creation.pool_creation_presale_id_for_testing(), object::id(&sale));
+    test_scenario::return_shared(pool_creation);
 
     destroy(sale);
     destroy(cap);
-    destroy(currency);
-    destroy(fee_policy);
+    destroy(venue_config);
     destroy(creation_policy);
     scenario.end();
+}
+
+#[test]
+#[expected_failure(abort_code = aftermath::EWrongPresale, location = blast_presale::aftermath)]
+/// A sale's migration cannot consume the reservation bound to another sale, and checks that
+/// before touching the sale.
+fun migrate_rejects_another_sales_reservation() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let creation_policy = allowing<Witness>(scenario.ctx());
+    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let mut venue_config = venue_config::new_for_testing(scenario.ctx());
+    let clock = clock::create_for_testing(scenario.ctx());
+    let (first_sale, first_cap) = new_sale(
+        &mut scenario,
+        &creation_policy,
+        &mut venue_config,
+        amm_pool::create_pool_cap_for_testing(scenario.ctx()),
+    );
+    let (_, first_pool_creation_id, _) = only_event<
+        PoolCreationReserved<LP, AFTERMATH_TESTS, QUOTE>,
+    >().pool_creation_reserved_fields();
+    destroy(first_sale);
+    destroy(first_cap);
+
+    scenario.next_tx(CREATOR);
+    let mut other_venue_config = venue_config::new_for_testing(scenario.ctx());
+    let (mut second_sale, second_cap) = new_sale(
+        &mut scenario,
+        &creation_policy,
+        &mut other_venue_config,
+        amm_pool::create_pool_cap_for_testing(scenario.ctx()),
+    );
+
+    scenario.next_tx(KEEPER);
+    let pool_creation = scenario.take_shared_by_id<PoolCreation<LP, AFTERMATH_TESTS, QUOTE>>(
+        first_pool_creation_id,
+    );
+    let mut pool_registry = pool_registry::new_for_testing(scenario.ctx());
+    let dao_fee_version = version::new_for_testing(scenario.ctx());
+
+    aftermath::migrate(
+        &mut second_sale,
+        pool_creation,
+        &fee_policy,
+        &venue_config,
+        &mut pool_registry,
+        &dao_fee_version,
+        &clock,
+        scenario.ctx(),
+    );
+    destroy(second_cap);
+    abort
 }
 
 #[test]
@@ -122,20 +185,21 @@ fun a_sale_started_here_finalizes_with_the_aftermath_witness() {
     abort_code = creation_policy::EMigrationWitnessNotAllowed,
     location = blast_presale::creation_policy,
 )]
-/// Blast must allow this migrator's witness before it can create a sale, and the reservation is
-/// never shared for a sale that cannot start.
+/// Blast must allow this migrator's witness before it can create a sale.
 fun new_needs_blast_to_allow_the_witness() {
     let mut scenario = test_scenario::begin(CREATOR);
     let creation_policy = allowing<OTHER_MIGRATOR>(scenario.ctx());
     let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let mut venue_config = venue_config::new_for_testing(scenario.ctx());
     let (treasury_cap, _currency) = new_currency(&mut scenario);
 
-    let _initializer = aftermath::new<LP, _, QUOTE>(
+    let (_initializer, _pending) = aftermath::new<LP, _, QUOTE>(
         treasury_cap,
         amm_pool::create_pool_cap_for_testing(scenario.ctx()),
         &creation_policy,
         &fee_policy,
-        scenario.ctx(),
+        &mut venue_config,
+        DAO_FEE_BPS,
     );
     abort
 }
@@ -272,6 +336,25 @@ fun allowing<MigrationWitness>(ctx: &mut TxContext): CreationPolicy {
     creation_policy::allowing_for_testing<QUOTE, MigrationWitness>(ctx)
 }
 
+/// Starts an Aftermath sale at `dao_fee_bps`; the start must abort.
+fun start_rejected_fee(dao_fee_bps: u16) {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let creation_policy = allowing<Witness>(scenario.ctx());
+    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let mut venue_config = venue_config::new_for_testing(scenario.ctx());
+    let (treasury_cap, _currency) = new_currency(&mut scenario);
+
+    let (_initializer, _pending) = aftermath::new<LP, _, QUOTE>(
+        treasury_cap,
+        amm_pool::create_pool_cap_for_testing(scenario.ctx()),
+        &creation_policy,
+        &fee_policy,
+        &mut venue_config,
+        dao_fee_bps,
+    );
+    abort
+}
+
 /// A fresh sale token's zero-supply treasury cap and currency.
 fun new_currency(
     scenario: &mut Scenario,
@@ -287,6 +370,41 @@ fun new_currency(
     );
 
     (treasury_cap, coin_registry::unwrap_for_testing(currency_initializer))
+}
+
+/// Starts a single-wallet sale whose pool creation is reserved for `LP` with `create_pool_cap`
+/// and finalizes it here, returning the unshared sale and its cap.
+fun new_sale(
+    scenario: &mut Scenario,
+    creation_policy: &CreationPolicy,
+    venue_config: &mut VenueConfig,
+    create_pool_cap: CreatePoolCapV2,
+): (Presale<AFTERMATH_TESTS, QUOTE>, PresaleCap) {
+    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let (treasury_cap, mut currency) = new_currency(scenario);
+
+    let (mut initializer, pending) = aftermath::new<LP, _, QUOTE>(
+        treasury_cap,
+        create_pool_cap,
+        creation_policy,
+        &fee_policy,
+        venue_config,
+        DAO_FEE_BPS,
+    );
+    initializer.set_supply(TOKEN_SUPPLY, false);
+    initializer.set_token_allocations(bps::new(5_000), bps::new(5_000), vector[]);
+    initializer.set_raise(RAISE_TARGET, vector[]);
+    initializer.set_windows(DURATION_MS, LIQUIDITY_WINDOW_MS);
+    initializer.set_eligibility(presale::open_eligibility(RAISE_TARGET, 1, RAISE_TARGET));
+    initializer.set_fee_split(
+        presale::fee_split(vector[presale::recipient_share(CREATOR, bps::new(10_000))], bps::new(0)),
+    );
+    let (sale, cap) = aftermath::finalize(initializer, pending, &mut currency, scenario.ctx());
+
+    destroy(currency);
+    destroy(fee_policy);
+
+    (sale, cap)
 }
 
 /// An unshared vault paying its whole split to `FEE_RECIPIENT`, with no holder share and no Blast
@@ -325,28 +443,31 @@ fun only_event<Event: copy + drop>(): Event {
 
 // === Imports ===
 
-use amm::pool as amm_pool;
+use amm::{pool::{Self as amm_pool, CreatePoolCapV2}, pool_registry};
 
 use blast_presale::{
     aftermath::{
         Self,
         PoolCreation,
         PoolCreationReserved,
+        Venue,
         Witness,
         sorts_before_for_testing,
     },
-    blast_presale::{Self as presale, PresaleCreated},
+    blast_presale::{Self as presale, Presale, PresaleCap, PresaleCreated},
     bps,
     creation_policy::{Self, CreationPolicy},
     fee_policy,
     presale_vault::{Self as vault, FeesCollected, Vault},
+    venue_config::{Self, PoolTierReserved, VenueConfig},
 };
 
-use dao_fee_amm::pool as dao_fee_pool;
+use dao_fee_amm::{pool as dao_fee_pool, version};
 
 use std::{type_name, unit_test::{assert_eq, destroy}};
 
 use sui::{
+    clock,
     coin::{Self, Coin, TreasuryCap},
     coin_registry::{Self, Currency},
     event,

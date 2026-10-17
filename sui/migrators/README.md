@@ -6,7 +6,7 @@ positions, keeps the LP principal and the protocol migration residuals in each
 launch's sealed `LpVault`, and owns everything after migration: the LP-fee
 policy, collection, auto-LP, holder rewards, and fee-split updates (ADR 0089).
 The venues are Cetus, Bluefin, and Aftermath, whose 50/50 pool sits behind
-Aftermath's DAO-fee pool paying the vault's address (ADR 0116). Venue code
+Aftermath's DAO-fee pool charging the creator's fee to the vault's address (ADR 0116). Venue code
 depends inward on the launchpad; the launchpad never imports this package.
 
 Use task-specific sources instead of a duplicated route, event, dependency, or

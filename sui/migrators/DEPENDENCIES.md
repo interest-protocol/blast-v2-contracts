@@ -36,11 +36,13 @@ vault's own address.
   release gate, dependency graph, and `UpgradeCap` lifecycle are shared.
 - **Aftermath DAO-fee custody.** Aftermath creates a pool only from a
   `CreatePoolCapV2` minted by a freshly published LP coin, which the creator
-  binds to the launch in a shared `aftermath::PoolCreation` that `migrate`
-  consumes. The migration builds the vault first, because Aftermath's DAO-fee
-  pool (`dao_fee_amm::pool::new`) takes the fee recipient address at creation,
-  names the vault's own ID, checks `fee_bps` and `fee_recipient` back, and
-  shares the DAO-fee pool as the object traders use. The vault keeps the LP coin
+  hands to `aftermath::new` with the DAO fee the pool charges, the launch's
+  tier; `aftermath::finalize` then binds it to the finalized launch's ID in a
+  shared `aftermath::PoolCreation` that only that launch's `migrate` consumes.
+  The migration builds the vault first, because Aftermath's DAO-fee pool
+  (`dao_fee_amm::pool::new`) takes the fee recipient address at creation, names
+  the vault's own ID, checks `fee_bps` and `fee_recipient` back, and shares the
+  DAO-fee pool as the object traders use. The vault keeps the LP coin
   as its position and the `OwnerCap` under `vault::PoolAuthorityKey`, with no
   borrow or removal path. The reviewed revision-2 bytecode of the DAO-fee
   `pool` module (`docs/research/sui-auto-lp-venue-evidence.json`, module hash

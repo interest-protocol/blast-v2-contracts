@@ -47,20 +47,27 @@ design:
 `Vault` and the launchpad's `LpVault`:
 
 - `new` takes the `CreatePoolCapV2` of a fresh LP coin `Lp` the creator published
-  and shares a key-only `PoolCreation<Lp, Meme, Quote>` holding it, bound to the
-  sale or launch by its type: every sale token has one sale (its zero-supply
-  `TreasuryCap`) and every Meme one launch ticket. The pool terms are compiled:
-  50/50 weights, flatness zero, Aftermath's minimum 0.01% base swap-in fee, and
-  a 2% DAO fee. The launchpad records the tier `(0, 200)`: no tick spacing, and
-  the DAO fee in basis points as the fee rate.
-- `migrate` consumes the reservation, takes the hand-off, creates the pool in
-  Aftermath's coin order from exactly those balances and checks the pool holds
-  every unit (`EPoolMismatch`), builds the vault with the returned `Coin<Lp>` as
-  its position and the LP amount as its liquidity, creates the DAO-fee pool
-  with the vault's own ID as the recipient and checks both values back
-  (`EDaoFeePoolMismatch`), attaches the `OwnerCap` under the vault's new sealed
-  `PoolAuthorityKey<Venue>`, shares the vault, and shares the DAO-fee pool as the
-  object traders use. The vault's `pool_id` is the base pool; `DaoFeePoolCreated`
+  and the DAO fee the pool charges, `dao_fee_bps` in 1..=10,000
+  (`EInvalidDaoFee`): the creator's tier, as Cetus and Bluefin tiers are. The
+  launchpad records it as `(0, dao_fee_bps)`, no tick spacing; the presale
+  records it in `VenueConfig` under the sale token's type, as ADR 0111 does for
+  the other venues. The other pool terms are compiled: 50/50 weights, flatness
+  zero, Aftermath's minimum 0.01% base swap-in fee. `new` returns the capability
+  in an ability-free `PendingPoolCreation<Lp, Meme, Quote>`, so the creation PTB
+  cannot drop it.
+- `finalize` finalizes the sale or launch through the core, then shares a
+  key-only `PoolCreation<Lp, Meme, Quote>` holding the capability and the new
+  object's ID. The sale's ID exists only then, and binding by ID, not by type,
+  is what keeps one reservation from ever serving another pool.
+- `migrate` first checks the reservation names this sale or launch
+  (`EWrongPresale`, `EWrongLaunch`), consumes it, reads the fee back, takes the
+  hand-off, creates the pool in Aftermath's coin order from exactly those
+  balances and checks the pool holds every unit (`EPoolMismatch`), builds the
+  vault with the returned `Coin<Lp>` as its position and the LP amount as its
+  liquidity, creates the DAO-fee pool with the vault's own ID as the recipient
+  at that fee and checks both values back (`EDaoFeePoolMismatch`), attaches the
+  `OwnerCap` under the vault's new sealed `PoolAuthorityKey<Venue>`, shares the
+  vault, and shares the DAO-fee pool as the object traders use. The vault's `pool_id` is the base pool; `DaoFeePoolCreated`
   (presale) and `AftermathPoolCreated` (migrators) record the DAO-fee pool and
   owner cap IDs.
 - `collect_fees` takes `vector<Receiving<Coin<Meme>>>` and
@@ -101,12 +108,13 @@ routes. The presale has neither share, so nothing waits there.
 - **Send the LP coin to `0x0` as the vendor does.** Rejected: the vault already
   seals its position, and `VaultCreated.position_id` then names the locked
   liquidity.
-- **Bind the reservation by sale or launch ID.** Rejected: the ID does not exist
-  until `finalize`, and the type binding is exact because the treasury cap and
-  the launch ticket are unique per Meme.
-- **A creator-chosen DAO fee as the tier.** Deferred: it would mirror Cetus and
-  Bluefin tiers, but the vendor's 2% is the term the partner accepted and the
-  direct mapping was requested.
+- **Bind the reservation by type only.** Rejected (owner, 2026-10-17): the
+  treasury cap and the launch ticket are unique per Meme, so a type binding is
+  sound, but a reservation must name the exact sale or launch it serves; the
+  hot potato makes the ID binding unavoidable at creation.
+- **The vendor's compiled 2% DAO fee.** Rejected (owner, 2026-10-17): the fee is
+  the creator's tier, like a Cetus tick spacing or a Bluefin fee rate, within
+  Aftermath's own range.
 
 ## Consequences
 
@@ -121,9 +129,10 @@ routes. The presale has neither share, so nothing waits there.
 
 ## Verification
 
-- Move tests in both packages: `new` records the witness (and the launchpad
-  tier), shares one reservation bound to the pair and announces it, and needs
-  the policy's admission; the owner cap attaches once under its venue and never
+- Move tests in both packages: `new` records the witness and the fee tier,
+  bounds the fee, and needs the policy's admission; `finalize` shares one
+  reservation bound to the new sale or launch and announces it; `migrate`
+  rejects another sale's or launch's reservation before touching anything; the owner cap attaches once under its venue and never
   under another; collection receives the vault's own coins and splits them
   exactly, an empty collection moves nothing, a coin owned by someone else aborts
   in `sui::transfer`, a stale migrators generation aborts first, and a settled

@@ -13,7 +13,10 @@
 /// path.
 ///
 /// Aftermath creates a pool only from a `CreatePoolCapV2` minted by a freshly published LP coin,
-/// so the creator publishes one per sale and binds its capability to the sale when starting it.
+/// so the creator publishes one per sale and hands its capability to `new`, with the DAO fee the
+/// pool charges. The sale's ID exists only once it is finalized, so `new` returns the capability
+/// in a hot potato that only `finalize` consumes: it finalizes the sale and shares the reservation
+/// bound to that sale's ID, which only that sale's migration can consume.
 module blast_presale::aftermath;
 
 // === Public Types ===
@@ -24,58 +27,95 @@ public struct Witness() has drop;
 /// Sealed marker for the LP coin and owner cap held by a presale vault.
 public struct Venue() has drop;
 
-/// Shared reservation of the `<Meme, Quote>` sale's Aftermath pool creation: the `CreatePoolCapV2`
-/// of the fresh LP coin `Lp`, which only that sale's migration can consume. Every sale token has
-/// one sale, so the reservation is bound by its type.
+/// The pool-creation capability `new` received for the `<Meme, Quote>` sale of the LP coin `Lp`,
+/// not yet bound to a sale. It has no abilities, so the creation PTB must hand it to `finalize`.
+public struct PendingPoolCreation<phantom Lp, phantom Meme, phantom Quote> {
+    create_pool_cap: CreatePoolCapV2,
+}
+
+/// Shared reservation of one sale's Aftermath pool creation: the `CreatePoolCapV2` of the fresh LP
+/// coin `Lp`, which only the migration of the sale `presale_id` can consume.
 public struct PoolCreation<phantom Lp, phantom Meme, phantom Quote> has key {
     id: UID,
+    presale_id: ID,
     create_pool_cap: CreatePoolCapV2,
 }
 
 // === Public Functions ===
 
 /// Starts a presale that migrates to an Aftermath pool created from `create_pool_cap`, which the
-/// fresh LP coin `Lp` minted, and shares the reservation binding it to the sale. The pool's
-/// weights and fees are this module's constants, so the sale carries no pool tier.
+/// fresh LP coin `Lp` minted, charging `dao_fee_bps` of every swap, deposit, and withdrawal to the
+/// sale's vault, and returns the capability pending the sale it is bound to by `finalize`. The
+/// fee is the sale's pool tier, recorded under its token's type with no tick spacing; the pool's
+/// weights and base fee are this module's constants.
 public fun new<Lp, Meme, Quote>(
     treasury_cap: TreasuryCap<Meme>,
     create_pool_cap: CreatePoolCapV2,
     creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
-    ctx: &mut TxContext,
-): PresaleInitializer<Meme, Quote> {
+    venue_config: &mut VenueConfig,
+    dao_fee_bps: u16,
+): (PresaleInitializer<Meme, Quote>, PendingPoolCreation<Lp, Meme, Quote>) {
+    assert!(dao_fee_bps > 0 && dao_fee_bps <= MAX_DAO_FEE_BPS, EInvalidDaoFee);
+
+    venue_config.add_pool_tier<Meme, Quote, _>(&Venue(), 0, dao_fee_bps as u64);
+
     let initializer = presale::new(treasury_cap, Witness(), creation_policy, fee_policy);
 
-    let pool_creation = PoolCreation<Lp, Meme, Quote> { id: object::new(ctx), create_pool_cap };
+    (initializer, PendingPoolCreation { create_pool_cap })
+}
+
+/// Finalizes a sale `new` started, as `blast_presale::finalize` does, and shares the reservation
+/// binding the pending capability to that sale's ID. The sale's `TreasuryCap` is unique, so the
+/// initializer and the pending capability of one sale token can only be this module's pair.
+public fun finalize<Lp, Meme, Quote>(
+    initializer: PresaleInitializer<Meme, Quote>,
+    pending: PendingPoolCreation<Lp, Meme, Quote>,
+    currency: &mut Currency<Meme>,
+    ctx: &mut TxContext,
+): (Presale<Meme, Quote>, PresaleCap) {
+    let PendingPoolCreation { create_pool_cap } = pending;
+    let (sale, cap) = initializer.finalize(currency, ctx);
+
+    let pool_creation = PoolCreation<Lp, Meme, Quote> {
+        id: object::new(ctx),
+        presale_id: object::id(&sale),
+        create_pool_cap,
+    };
 
     event::emit(PoolCreationReserved<Lp, Meme, Quote> {
+        presale_id: pool_creation.presale_id,
         pool_creation_id: pool_creation.id.to_inner(),
         create_pool_cap_id: object::id(&pool_creation.create_pool_cap),
     });
 
     transfer::share_object(pool_creation);
 
-    initializer
+    (sale, cap)
 }
 
 // `dao_fee_pool::new` creates the shared pool in this transaction.
 /// Anyone may migrate a funded presale into its reserved Aftermath pool, consuming the
-/// reservation: it seeds a 50/50 pool with all of the sale's LP tokens and Quote, wraps it in a
-/// DAO-fee pool paying the sale's new vault, shares that pool, and locks the LP coin and the pool's
-/// owner cap in the vault.
+/// reservation bound to it: it seeds a 50/50 pool with all of the sale's LP tokens and Quote,
+/// wraps it in a DAO-fee pool paying the sale's new vault at the fee `new` recorded, shares that
+/// pool, and locks the LP coin and the pool's owner cap in the vault.
 #[allow(lint(share_owned))]
 public fun migrate<Lp, Meme, Quote>(
     sale: &mut Presale<Meme, Quote>,
     pool_creation: PoolCreation<Lp, Meme, Quote>,
     fee_policy: &FeePolicy,
+    venue_config: &VenueConfig,
     pool_registry: &mut PoolRegistry,
     dao_fee_version: &Version,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let PoolCreation { id, create_pool_cap } = pool_creation;
+    let PoolCreation { id, presale_id, create_pool_cap } = pool_creation;
+    assert!(presale_id == object::id(sale), EWrongPresale);
     id.delete();
 
+    let (_, pool_fee_rate) = venue_config.pool_tier<Meme>();
+    let dao_fee_bps = pool_fee_rate as u16;
     let (meme, quote) = sale.migrate(fee_policy, Witness(), clock, ctx);
     let (meme_amount, quote_amount) = (meme.value(), quote.value());
 
@@ -107,12 +147,12 @@ public fun migrate<Lp, Meme, Quote>(
     let (dao_fee_pool, owner_cap) = dao_fee_pool::new(
         pool,
         dao_fee_version,
-        DAO_FEE_BPS,
+        dao_fee_bps,
         vault_address,
         ctx,
     );
     assert!(
-        dao_fee_pool.fee_bps() == DAO_FEE_BPS && dao_fee_pool.fee_recipient() == vault_address,
+        dao_fee_pool.fee_bps() == dao_fee_bps && dao_fee_pool.fee_recipient() == vault_address,
         EDaoFeePoolMismatch,
     );
 
@@ -223,10 +263,17 @@ public fun sorts_before_for_testing<A, B>(): bool {
 }
 
 #[test_only]
+public fun pool_creation_presale_id_for_testing<Lp, Meme, Quote>(
+    self: &PoolCreation<Lp, Meme, Quote>,
+): ID {
+    self.presale_id
+}
+
+#[test_only]
 public fun pool_creation_reserved_fields<Lp, Meme, Quote>(
     event: &PoolCreationReserved<Lp, Meme, Quote>,
-): (ID, ID) {
-    (event.pool_creation_id, event.create_pool_cap_id)
+): (ID, ID, ID) {
+    (event.presale_id, event.pool_creation_id, event.create_pool_cap_id)
 }
 
 #[test_only]
@@ -238,10 +285,11 @@ public fun dao_fee_pool_created_fields<Lp, Meme, Quote>(
 
 // === Events ===
 
-/// `new` reserved the `<Meme, Quote>` sale's Aftermath pool creation for the LP coin `Lp` in the
-/// shared `pool_creation_id`, holding the capability `create_pool_cap_id`; its migration consumes
-/// both.
+/// `finalize` reserved the sale `presale_id`'s Aftermath pool creation for the LP coin `Lp` in the
+/// shared `pool_creation_id`, holding the capability `create_pool_cap_id`; that sale's migration
+/// consumes both.
 public struct PoolCreationReserved<phantom Lp, phantom Meme, phantom Quote> has copy, drop {
+    presale_id: ID,
     pool_creation_id: ID,
     create_pool_cap_id: ID,
 }
@@ -258,8 +306,8 @@ public struct DaoFeePoolCreated<phantom Lp, phantom Meme, phantom Quote> has cop
 
 // === Constants ===
 
-/// The DAO fee, 2%, that Aftermath sends to the vault from every swap, deposit, and withdrawal.
-const DAO_FEE_BPS: u16 = 200;
+/// Aftermath's own bound on a DAO fee: the whole amount, 100%.
+const MAX_DAO_FEE_BPS: u16 = 10_000;
 
 /// Each coin's weight: half of Aftermath's `1e18` fixed-point one.
 const HALF_WEIGHT: u64 = 500_000_000_000_000_000;
@@ -281,15 +329,22 @@ const EPoolMismatch: vector<u8> = b"The Aftermath pool must hold every sale toke
 #[error(code = 1)]
 const EDaoFeePoolMismatch: vector<u8> = b"The DAO-fee pool must charge this module's fee and pay the vault.";
 
+#[error(code = 2)]
+const EWrongPresale: vector<u8> = b"The pool creation is bound to a different presale.";
+
+#[error(code = 3)]
+const EInvalidDaoFee: vector<u8> = b"Aftermath DAO fee needs 1..=10,000 basis points.";
+
 // === Imports ===
 
 use amm::{pool::{CreatePoolCapV2, Pool}, pool_factory, pool_registry::PoolRegistry};
 
 use blast_presale::{
-    blast_presale::{Self as presale, Presale, PresaleInitializer},
+    blast_presale::{Self as presale, Presale, PresaleCap, PresaleInitializer},
     creation_policy::CreationPolicy,
     fee_policy::FeePolicy,
     presale_vault::{Self as vault, Vault},
+    venue_config::VenueConfig,
 };
 
 use dao_fee_amm::{pool as dao_fee_pool, version::Version};
@@ -300,6 +355,7 @@ use sui::{
     balance::{Self, Balance},
     clock::Clock,
     coin::{Coin, TreasuryCap},
+    coin_registry::Currency,
     event,
     transfer::Receiving,
 };
