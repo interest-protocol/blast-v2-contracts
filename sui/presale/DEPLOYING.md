@@ -50,9 +50,11 @@ sale is ever created under an unsealed cap.
    `creation_policy::set_quote_allowed`, and as `AdapterAdmin` the venues with
    `set_migration_witness_allowed<cetus::Witness>`, `<bluefin::Witness>`, and
    `<aftermath::Witness>`, plus any reviewed external migrator's witness, such as a
-   vendor package's. Before allowing Aftermath, run `sui/migrators`'
-   `node scripts/check_mainnet_abi.mjs`, which pins the Aftermath AMM and
-   DAO-fee revisions this package links to, and prove a mainnet dev-inspect of
+   vendor package's. Before allowing Aftermath, run
+   `sui/vendors/aftermath_dao_presale`'s `node scripts/check_mainnet_abi.mjs`,
+   which pins the Aftermath AMM and DAO-fee revisions this package links to (the
+   presale source gate requires its stubs to match the vendor's byte for byte),
+   and prove a mainnet dev-inspect of
    `aftermath::migrate` with a fresh LP coin for both coin orders: the local
    stubs prove types, not behavior. Allow
    only Quote types whose deny-list and pause controls Blast accepts (owner,

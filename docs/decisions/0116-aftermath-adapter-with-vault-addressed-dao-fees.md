@@ -27,7 +27,7 @@ The `blast_aftermath_dao_presale` vendor package (ADR 0104) migrates a partner's
 sales into a 50/50 Aftermath weighted pool wrapped in Aftermath's DAO-fee pool,
 with the 2% DAO fee paid to a compiled treasury and the LP coin sent to `0x0`.
 Blast wants the same venue for its own presales, charging Blast's LP-fee share
-and splitting the rest like every other venue. Three facts shape the design:
+and splitting the rest like every other venue. Four facts shape the design:
 
 - Aftermath pays the DAO fee as coins. The reviewed revision-2 bytecode of
   `dao_fee_amm::pool::collect_dao_fee` computes
@@ -103,6 +103,9 @@ the presale's `Vault`:
   `has_position`), receives each listed coin through the vault's UID with the
   package-only `receive_fee`, joins them, and hands the totals to the vault's
   existing split. A coin the vault does not own aborts in the framework.
+- **No split update.** Aftermath's fees are coins the package cannot
+  enumerate, so no call could settle every accrued fee before a split change;
+  as for the presale's other venues, the split a sale is created with is final.
 
 **Vault seams.** The presale vault splits creation into two package-only steps:
 `new` builds the unshared vault with its pool binding and no position, and
@@ -111,7 +114,9 @@ emits `VaultCreated`, and shares the vault in one consuming call. The DAO-fee
 pool must name the vault's address before the owner cap, its position, exists,
 and Sui's fresh-ID rule forbids building an object around a `UID` minted
 elsewhere, so the vault is born first and takes its position as it is shared.
-`create_without_presale` runs both for Cetus and Bluefin. The vault has only
+`create`, the Cetus and Bluefin migration path, runs both, and
+`create_without_presale` builds a vault for a sale-less vendor and shares it
+the same way. The vault has only
 `key`, so an adapter holding an unfinished vault can do nothing but share it
 with a position. `has_position` tells an adapter the vault is its own, and
 `receive_fee` is the vault's only receipt. The presale source gate pins the
@@ -129,8 +134,10 @@ types already do; ADR 0085's naming table records them as accepted residuals of
 the per-venue module layout.
 
 **Link stubs.** The presale keeps its own normalized Aftermath interfaces under
-`sui/presale/interfaces` (AMM revision 3 and DAO-fee revision 2); the vendor
-package overrides them with its own copies, so both build side by side.
+`sui/presale/interfaces` (AMM revision 3 and DAO-fee revision 2), byte-identical
+to the vendor package's copies, which the vendor's mainnet ABI gate pins; the
+presale source gate fails if the two trees differ. The vendor overrides them
+with its own copies, so both build side by side.
 
 ## Alternatives considered
 
@@ -170,15 +177,13 @@ package overrides them with its own copies, so both build side by side.
   pool creation (Bluefin) needs no seed. The deposit and simulation evidence
   stays on record for any future venue whose pool must exist before its
   liquidity does.
-- **Keep `settle_and_update_fee_split` on Aftermath with caller-listed coins.**
-  Not applicable: the presale has no split update; its fees are coins the
-  package cannot enumerate, so the split a sale is created with is final.
 
 ## Consequences
 
 - Two pinned mainnet lineages (Aftermath AMM revision 3 and DAO-fee revision 2)
-  as presale link stubs, verified by the vendor's gate and the presale's
-  dev-inspect rows before publication.
+  as presale link stubs identical to the vendor's, verified by the vendor's
+  mainnet ABI gate, with a dev-inspect of the presale's `aftermath::migrate`
+  before publication.
 - The presale gains a third adapter under the same `CreationPolicy` admission;
   the migrators package and the launchpad are unchanged.
 - Indexers find an Aftermath vault's pending fees as the coins its address owns,
@@ -199,9 +204,11 @@ package overrides them with its own copies, so both build side by side.
   collection rejects another venue's vault, receives the vault's own coins and
   splits them exactly, an empty collection moves nothing, and a coin owned by
   someone else aborts in `sui::transfer`.
-- `sui/presale/scripts/check_source_boundaries.sh` pins the module, the vault
-  seams, the single receiving path, and that the LP coin is the package's one
-  transfer to `0x0`; `python3 scripts/check_move_style.py` holds.
+- `sui/presale/scripts/check_source_boundaries.sh` pins the vault seams to
+  the Aftermath module, the single receiving path, that `aftermath.move` sends
+  its LP coin to `0x0` exactly once, and that the presale's Aftermath stubs
+  match the vendor's byte for byte; `python3 scripts/check_move_style.py`
+  holds.
 - Release: the vendor's `node scripts/check_mainnet_abi.mjs` (both Aftermath
   lineages, hashes, and ABI; passed against mainnet on 2026-10-17) and
   dev-inspect of the presale's Aftermath routes against the published packages
