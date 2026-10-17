@@ -46,30 +46,32 @@ design:
 `blast_fun_migrators::aftermath` map the vendor's flow onto the presale's
 `Vault` and the launchpad's `LpVault`:
 
-- `new` takes the `CreatePoolCapV2` of a fresh LP coin `Lp` the creator published
-  and the DAO fee the pool charges, `dao_fee_bps` in 1..=10,000
+- `new` takes the DAO fee the pool charges, `dao_fee_bps` in 1..=10,000
   (`EInvalidDaoFee`): the creator's tier, as Cetus and Bluefin tiers are. The
   launchpad records it as `(0, dao_fee_bps)`, no tick spacing; the presale
   records it in `VenueConfig` under the sale token's type, as ADR 0111 does for
   the other venues. The other pool terms are compiled: 50/50 weights, flatness
-  zero, Aftermath's minimum 0.01% base swap-in fee. `new` returns the capability
-  in an ability-free `PendingPoolCreation<Lp, Meme, Quote>`, so the creation PTB
-  cannot drop it.
-- `finalize` finalizes the sale or launch through the core, then shares a
-  key-only `PoolCreation<Lp, Meme, Quote>` holding the capability and the new
-  object's ID. The sale's ID exists only then, and binding by ID, not by type,
-  is what keeps one reservation from ever serving another pool.
+  zero, Aftermath's minimum 0.01% base swap-in fee.
+- `finalize` takes the `CreatePoolCapV2` of a fresh LP coin `Lp` the creator
+  published, aborts unless this module's `new` started the initializer
+  (`EWrongMigrator`, read through the core's `migration_witness` getter),
+  finalizes the sale or launch through the core, then shares a key-only
+  `PoolCreation<Lp, Meme, Quote>` holding the capability and the new object's
+  ID. The sale's ID exists only then, and binding by ID, not by type, is what
+  keeps one reservation from ever serving another pool. A creator who finalizes
+  through the core instead has no reservation: the launch can never migrate,
+  and the sale refunds at its liquidity deadline.
 - `migrate` first checks the reservation names this sale or launch
   (`EWrongPresale`, `EWrongLaunch`), consumes it, reads the fee back, takes the
   hand-off, creates the pool in Aftermath's coin order from exactly those
-  balances and checks the pool holds every unit (`EPoolMismatch`), builds the
-  vault with the returned `Coin<Lp>` as its position and the LP amount as its
-  liquidity, creates the DAO-fee pool with the vault's own ID as the recipient
-  at that fee and checks both values back (`EDaoFeePoolMismatch`), attaches the
-  `OwnerCap` under the vault's new sealed `PoolAuthorityKey<Venue>`, shares the
-  vault, and shares the DAO-fee pool as the object traders use. The vault's `pool_id` is the base pool; `DaoFeePoolCreated`
-  (presale) and `AftermathPoolCreated` (migrators) record the DAO-fee pool and
-  owner cap IDs.
+  balances and checks the pool holds every unit (`EPoolMismatch`), mints the
+  vault's UID, creates the DAO-fee pool with that ID as the recipient at that
+  fee and checks both values back (`EDaoFeePoolMismatch`), builds the vault
+  with the returned `OwnerCap` as its position and the LP coin's amount as its
+  liquidity, shares the vault, shares the DAO-fee pool as the object traders
+  use, and sends the `Coin<Lp>` to `0x0`. The vault's `pool_id` is the base
+  pool; `DaoFeePoolCreated` (presale) and `AftermathPoolCreated` (migrators)
+  record the DAO-fee pool, owner cap, and LP coin IDs.
 - `collect_fees` takes `vector<Receiving<Coin<Meme>>>` and
   `vector<Receiving<Coin<Quote>>>`, receives each listed coin through the
   vault's UID with the new package-only `receive_fee`, joins them, and hands the
@@ -78,16 +80,17 @@ design:
   inputs.
 
 **Vault seams.** Both vaults split creation into a package-only `new` that
-returns the unshared vault and `share`, because the DAO-fee pool must name the
-vault's address before the owner cap exists; `create` keeps sharing in one call
-for Cetus and Bluefin. `attach_pool_authority` writes the owner cap once with no
-borrow or removal path, and `receive_fee` is the vault's only receipt. The
-migrators source gate pins all four and that only `aftermath` reaches them.
+takes a `UID` the adapter minted and returns the unshared vault, and `share`,
+because the DAO-fee pool must name the vault's address before the owner cap,
+its position, exists; `create` keeps minting and sharing in one call for Cetus
+and Bluefin. `receive_fee` is the vault's only receipt. The migrators source
+gate pins all three and that only `aftermath` reaches them.
 
-**Custody.** The LP coin is the vault's position: as locked as a coin at `0x0`,
-but discoverable under the vault and announced by `VaultCreated`. The owner cap
-stays in the vault so no one can reprice or redirect the pool; the package
-exposes no function that uses it.
+**Custody.** The LP coin, the pool's whole liquidity, goes to `0x0` as the
+vendor's does: unrecoverable by any code, this package's upgrades included. The
+owner cap is the vault's position under the ordinary sealed `PositionKey<Venue>`,
+so no one can reprice or redirect the pool; the package exposes no function
+that uses it, and `VaultCreated.position_id` names it.
 
 **Not in scope.** The migrators adapter adds no liquidity to and swaps nothing in
 an Aftermath pool: Aftermath's deposit and swap routes take four further shared
@@ -105,13 +108,19 @@ routes. The presale has neither share, so nothing waits there.
 - **Create the DAO-fee pool first and update the recipient to the vault.**
   Rejected: it needs `update_fee_recipient`, an extra pinned ABI entry, and a
   window in which the pool pays someone else.
-- **Send the LP coin to `0x0` as the vendor does.** Rejected: the vault already
-  seals its position, and `VaultCreated.position_id` then names the locked
-  liquidity.
+- **Keep the LP coin as the vault's position.** Rejected (owner, 2026-10-17):
+  a position the vault seals is locked only as long as the package's code keeps
+  it so; a coin at `0x0` is locked by the framework.
+- **Attach the owner cap under a separate `PoolAuthorityKey`.** Rejected: with
+  the LP coin gone the owner cap is the vault's only venue object, and the
+  existing position key already seals it with no borrow or removal path.
+- **Return the capability from `new` in a hot potato.** Rejected (owner,
+  2026-10-17): `finalize` already needs the initializer, which only the launch's
+  or sale's creator holds, so the capability goes straight to `finalize` and
+  the `EWrongMigrator` check replaces the potato's forcing.
 - **Bind the reservation by type only.** Rejected (owner, 2026-10-17): the
   treasury cap and the launch ticket are unique per Meme, so a type binding is
-  sound, but a reservation must name the exact sale or launch it serves; the
-  hot potato makes the ID binding unavoidable at creation.
+  sound, but a reservation must name the exact sale or launch it serves.
 - **The vendor's compiled 2% DAO fee.** Rejected (owner, 2026-10-17): the fee is
   the creator's tier, like a Cetus tick spacing or a Bluefin fee rate, within
   Aftermath's own range.
@@ -131,15 +140,18 @@ routes. The presale has neither share, so nothing waits there.
 
 - Move tests in both packages: `new` records the witness and the fee tier,
   bounds the fee, and needs the policy's admission; `finalize` shares one
-  reservation bound to the new sale or launch and announces it; `migrate`
-  rejects another sale's or launch's reservation before touching anything; the owner cap attaches once under its venue and never
-  under another; collection receives the vault's own coins and splits them
+  reservation bound to the new sale or launch, announces it, and rejects another
+  adapter's initializer; `migrate` rejects another sale's or launch's
+  reservation before touching anything; an owner cap is a vault position sealed
+  under its venue and invisible to another; collection receives the vault's own
+  coins and splits them
   exactly, an empty collection moves nothing, a coin owned by someone else aborts
   in `sui::transfer`, a stale migrators generation aborts first, and a settled
   update splits under the old split then commits.
 - `sui/migrators/scripts/check_source_boundaries.sh` pins the module, its
-  bodies, errors, and parameter order, the vault seams, and the single
-  receiving path; `python3 scripts/check_move_style.py` holds.
+  bodies, errors, and parameter order, the vault seams, the single receiving
+  path, and that the LP coin is the package's one transfer to `0x0`;
+  `python3 scripts/check_move_style.py` holds.
 - Release: `node scripts/check_mainnet_abi.mjs` in `sui/migrators` (both
   Aftermath lineages, hashes, and ABI) and a mainnet dev-inspect of each
   `migrate` with a fresh LP coin in both coin orders, then one DAO-fee swap whose

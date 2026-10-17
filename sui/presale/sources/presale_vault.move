@@ -5,18 +5,15 @@
 /// holder-reward fee share.
 ///
 /// A venue whose pool pays its fees as coins sent to an address, rather than into a position,
-/// names the vault's own ID as the recipient; the vault then receives those coins with Sui's
-/// transfer-to-object receiving and splits them like any collection.
+/// names the vault's own ID as the recipient, which the venue mints before the pool exists; the
+/// vault then receives those coins with Sui's transfer-to-object receiving and splits them like
+/// any collection.
 module blast_presale::presale_vault;
 
 // === Public Types ===
 
 /// Sealed field name binding one venue position type to a vault.
 public struct PositionKey<phantom Venue>() has copy, drop, store;
-
-/// Sealed field name for the venue pool authority a vault keeps with no borrow or removal path:
-/// Aftermath's DAO-fee `OwnerCap`, which could otherwise change the pool's fee or redirect it.
-public struct PoolAuthorityKey<phantom Venue>() has copy, drop, store;
 
 /// Shared custody for one LP position and its immutable fee split: a presale's, after migration, or
 /// an owner's own position locked here directly, with zero presale and creator-capability IDs.
@@ -147,31 +144,33 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
         new(
             sale,
             venue,
+            object::new(ctx),
             pool_id,
             position,
             liquidity,
             migration_meme_residual,
             migration_quote_residual,
-            ctx,
         ),
     );
 }
 
-/// Builds a migrated presale's vault as `create` does, but leaves it unshared, so a venue that
-/// needs the vault's ID before its pool exists can finish the pool and then `share` it.
+/// Builds a migrated presale's vault as `create` does, around `id`, which the venue minted so its
+/// pool could name the vault's address before the position existed, and leaves it unshared for
+/// the venue to `share` in the same call.
 public(package) fun new<Meme, Quote, Venue, Position: key + store>(
     sale: &Presale<Meme, Quote>,
     venue: &Venue,
+    id: UID,
     pool_id: ID,
     position: Position,
     liquidity: u128,
     migration_meme_residual: Balance<Meme>,
     migration_quote_residual: Balance<Quote>,
-    ctx: &mut TxContext,
 ): Vault<Meme, Quote> {
     let (presale_id, presale_cap_id, fee_split, protocol_fees, partner_id) = sale.vault_config();
 
     build(
+        id,
         presale_id,
         presale_cap_id,
         fee_split,
@@ -183,23 +182,12 @@ public(package) fun new<Meme, Quote, Venue, Position: key + store>(
         liquidity,
         migration_meme_residual,
         migration_quote_residual,
-        ctx,
     )
 }
 
 /// Shares a vault `new` built.
 public(package) fun share<Meme, Quote>(self: Vault<Meme, Quote>) {
     transfer::share_object(self);
-}
-
-/// Attaches the venue pool authority once, under the venue's sealed key, with no borrow or
-/// removal path. A second attachment finds the field taken and aborts in the framework.
-public(package) fun attach_pool_authority<Meme, Quote, Venue, Authority: key + store>(
-    self: &mut Vault<Meme, Quote>,
-    _venue: &Venue,
-    authority: Authority,
-) {
-    self.id.add_dynamic_object_field(PoolAuthorityKey<Venue>(), authority);
 }
 
 /// Receives one fee coin a venue sent to this vault's address. The venue module hands every
@@ -231,6 +219,7 @@ public(package) fun create_without_presale<Meme, Quote, Venue, Position: key + s
 
     transfer::share_object(
         build<Meme, Quote, _, _>(
+            object::new(ctx),
             object::id_from_address(@0x0),
             object::id_from_address(@0x0),
             fee_split,
@@ -242,7 +231,6 @@ public(package) fun create_without_presale<Meme, Quote, Venue, Position: key + s
             liquidity,
             balance::zero(),
             balance::zero(),
-            ctx,
         ),
     );
 }
@@ -369,8 +357,10 @@ public(package) fun restore_holder_rewards<Meme, Quote>(
 
 // === Private Functions ===
 
-/// Builds the vault with its position attached and announces the custody; the caller shares it.
+/// Builds the vault around `id` with its position attached and announces the custody; the caller
+/// shares it.
 fun build<Meme, Quote, Venue, Position: key + store>(
+    id: UID,
     presale_id: ID,
     presale_cap_id: ID,
     fee_split: FeeSplit,
@@ -382,12 +372,11 @@ fun build<Meme, Quote, Venue, Position: key + store>(
     liquidity: u128,
     migration_meme_residual: Balance<Meme>,
     migration_quote_residual: Balance<Quote>,
-    ctx: &mut TxContext,
 ): Vault<Meme, Quote> {
     assert!(liquidity > 0, EZeroLiquidity);
 
     let mut vault = Vault {
-        id: object::new(ctx),
+        id,
         presale_id,
         presale_cap_id,
         pool_id,
@@ -549,20 +538,6 @@ public fun protocol_lp_fees_changed_fields<Meme, Quote>(
     event: &ProtocolLpFeesChanged<Meme, Quote>,
 ): (ID, u64, u64) {
     (event.vault_id, event.protocol_lp_fee_meme_bps, event.protocol_lp_fee_quote_bps)
-}
-
-#[test_only]
-/// Returns the ID of the pool authority attached under `Venue`, or none without one.
-public fun pool_authority_id_for_testing<Meme, Quote, Venue>(
-    self: &Vault<Meme, Quote>,
-): Option<ID> {
-    dynamic_object_field::id(&self.id, PoolAuthorityKey<Venue>())
-}
-
-#[test_only]
-/// Returns the ID of the position attached under `Venue`, or none for any other venue.
-public fun position_id_for_testing<Meme, Quote, Venue>(self: &Vault<Meme, Quote>): Option<ID> {
-    dynamic_object_field::id(&self.id, PositionKey<Venue>())
 }
 
 #[test_only]

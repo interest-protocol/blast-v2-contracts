@@ -169,13 +169,15 @@ public struct AftermathPoolReserved has copy, drop {
 
 /// Records one Aftermath migration's pools: the base pool `pool_id` (the vault's `pool_id`) and
 /// the shared DAO-fee pool `dao_fee_pool_id` traders use, which pays its fees to the vault, whose
-/// owner cap `owner_cap_id` the vault keeps.
+/// owner cap `owner_cap_id` the vault keeps as its position; the LP coin `lp_coin_id`, the whole
+/// pool liquidity, is owned by `0x0`.
 public struct AftermathPoolCreated has copy, drop {
     lp: TypeName,
     vault_id: ID,
     pool_id: ID,
     dao_fee_pool_id: ID,
     owner_cap_id: ID,
+    lp_coin_id: ID,
 }
 
 // === Package Functions ===
@@ -431,6 +433,7 @@ public(package) fun aftermath_pool_created<Lp>(
     pool_id: ID,
     dao_fee_pool_id: ID,
     owner_cap_id: ID,
+    lp_coin_id: ID,
 ) {
     sui::event::emit(AftermathPoolCreated {
         lp: type_name::with_original_ids<Lp>(),
@@ -438,6 +441,7 @@ public(package) fun aftermath_pool_created<Lp>(
         pool_id,
         dao_fee_pool_id,
         owner_cap_id,
+        lp_coin_id,
     });
 }
 

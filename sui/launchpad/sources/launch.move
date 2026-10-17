@@ -127,6 +127,11 @@ public fun treasury_cap_mut<Meme, Quote, Witness: drop>(
     self.ticket.treasury_cap_mut()
 }
 
+/// The adapter witness type the launch was started under, which only that adapter can migrate.
+public fun migration_witness<Meme, Quote>(self: &LaunchInitializer<Meme, Quote>): TypeName {
+    self.migration_witness
+}
+
 /// Sets the virtual Quote reserve the curve starts from, which prices the first purchase.
 public fun set_virtual_quote<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,

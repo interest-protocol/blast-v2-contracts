@@ -14,16 +14,13 @@ public struct PositionKey<phantom Venue>() has copy, drop, store;
 /// position cannot receive more liquidity (Cetus burns it).
 public struct AutoLpPositionKey<phantom Venue>() has copy, drop, store;
 
-/// A sealed field name for the venue pool authority a vault keeps with no borrow or removal path:
-/// Aftermath's DAO-fee `OwnerCap`, which could otherwise change the pool's fee or redirect it.
-public struct PoolAuthorityKey<phantom Venue>() has copy, drop, store;
-
 /// Shared per-launch custody for one position, its protocol migration residuals, and the balances
 /// its LP fees are split into.
 ///
 /// A venue whose pool pays its fees as coins sent to an address, rather than into a position,
-/// names the vault's own ID as the recipient; the vault then receives those coins with Sui's
-/// transfer-to-object receiving, and its adapter splits them like any collection.
+/// names the vault's own ID as the recipient, which the venue mints before the pool exists; the
+/// vault then receives those coins with Sui's transfer-to-object receiving, and its adapter splits
+/// them like any collection.
 ///
 /// Every collection pays Blast's live share from `LpFeePolicy`, then splits the rest by the
 /// creator's `FeeSplit`: the creator share accrues here until the live curve-fee cap claims it,
@@ -158,53 +155,44 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
         build(
             launch,
             venue,
+            object::new(ctx),
             pool_id,
             position,
             liquidity,
             protocol_meme_residual,
             protocol_quote_residual,
-            ctx,
         ),
     );
 }
 
-/// Builds the launch's vault as `create` does, but leaves it unshared, so a venue that needs the
-/// vault's ID before its pool exists can finish the pool and then `share` it.
+/// Builds the launch's vault as `create` does, around `id`, which the venue minted so its pool
+/// could name the vault's address before the position existed, and leaves it unshared for the
+/// venue to `share` in the same call.
 public(package) fun new<Meme, Quote, Venue, Position: key + store>(
     launch: &Launch<Meme, Quote>,
     venue: &Venue,
+    id: UID,
     pool_id: ID,
     position: Position,
     liquidity: u128,
     protocol_meme_residual: Balance<Meme>,
     protocol_quote_residual: Balance<Quote>,
-    ctx: &mut TxContext,
 ): LpVault<Meme, Quote> {
     build(
         launch,
         venue,
+        id,
         pool_id,
         position,
         liquidity,
         protocol_meme_residual,
         protocol_quote_residual,
-        ctx,
     )
 }
 
 /// Shares a vault `new` built.
 public(package) fun share<Meme, Quote>(self: LpVault<Meme, Quote>) {
     transfer::share_object(self);
-}
-
-/// Attaches the venue pool authority once, under the venue's sealed key, with no borrow or
-/// removal path. A second attachment finds the field taken and aborts in the framework.
-public(package) fun attach_pool_authority<Meme, Quote, Venue, Authority: key + store>(
-    self: &mut LpVault<Meme, Quote>,
-    _venue: &Venue,
-    authority: Authority,
-) {
-    self.id.add_dynamic_object_field(PoolAuthorityKey<Venue>(), authority);
 }
 
 /// Receives one fee coin a venue sent to this vault's address. The adapter hands every received
@@ -512,23 +500,23 @@ fun pay_all<T>(mut balance: Balance<T>, destination: address, ctx: &mut TxContex
     balance.destroy_zero();
 }
 
-/// Builds the vault with the launch's fee split and empty balances, attaches `position`, and
-/// announces the custody.
+/// Builds the vault around `id` with the launch's fee split and empty balances, attaches
+/// `position`, and announces the custody.
 fun build<Meme, Quote, Venue, Position: key + store>(
     launch: &Launch<Meme, Quote>,
     _venue: &Venue,
+    id: UID,
     pool_id: ID,
     position: Position,
     liquidity: u128,
     protocol_meme_residual: Balance<Meme>,
     protocol_quote_residual: Balance<Quote>,
-    ctx: &mut TxContext,
 ): LpVault<Meme, Quote> {
     assert!(liquidity > 0, EZeroLiquidity);
 
     let position_id = object::id(&position);
     let mut vault = LpVault {
-        id: object::new(ctx),
+        id,
         pool_id,
         partner_id: launch.partner_id(),
         protocol_meme_residual,
@@ -587,21 +575,13 @@ public fun new_for_testing<Meme, Quote, Venue, Position: key + store>(
     build(
         launch,
         venue,
+        object::new(ctx),
         pool_id,
         position,
         liquidity,
         protocol_meme_residual,
         protocol_quote_residual,
-        ctx,
     )
-}
-
-#[test_only]
-/// Returns the ID of the pool authority attached under `Venue`, or none without one.
-public fun pool_authority_id_for_testing<Meme, Quote, Venue>(
-    self: &LpVault<Meme, Quote>,
-): Option<ID> {
-    dynamic_object_field::id(&self.id, PoolAuthorityKey<Venue>())
 }
 
 #[test_only]

@@ -185,7 +185,8 @@ takes the launchpad `PackageVersion` as a shared, immutable argument immediately
 initializer or launch. Each checks the current generation before validation or mutation.
 `launch::new` needs the adapter's witness, which only the adapter module can construct, so a
 launch always starts through an adapter's `new`; only that adapter can borrow the ticket's treasury
-cap during the PTB (`launch::treasury_cap_mut`).
+cap during the PTB (`launch::treasury_cap_mut`), and `launch::migration_witness` tells an adapter
+that wraps `finalize` which adapter started the initializer.
 
 1. Start the launch through an admitted adapter. Both return a `LaunchInitializer<Meme, Quote>`:
    - Cetus: `blast_fun_migrators::cetus::new` takes the owned ticket, the migrators'

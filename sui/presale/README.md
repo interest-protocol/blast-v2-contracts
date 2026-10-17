@@ -93,8 +93,9 @@ atomically pays Blast its raise and token fees, or holds them for
 `pay_protocol_fees_with_partner` when the sale names a partner, takes the rest of
 the raise and
 the LP allocation, creates the configured
-pool, and seals the position, burn proof, or Aftermath LP coin and DAO-fee owner cap
-in a `Vault`; a DEX failure rolls back the presale transition. An Aftermath pool pays
+pool, and seals the position, burn proof, or Aftermath DAO-fee owner cap in a
+`Vault` (the Aftermath LP coin goes to `0x0`); a DEX failure rolls back the presale
+transition. An Aftermath pool pays
 its DAO fee as coins sent to the vault's address, which anyone receives into the
 vault through `aftermath::collect_fees` (ADR 0116). Configured recipients receive their
 distinct allocations in that same transaction. Claims open only after success.

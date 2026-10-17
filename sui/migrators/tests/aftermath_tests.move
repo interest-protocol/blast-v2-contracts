@@ -105,8 +105,8 @@ fun new_rejects_a_dao_fee_above_the_whole_amount() {
 }
 
 #[test]
-/// `finalize` shares one reservation bound to the launch it finalized, holding the capability
-/// `new` received, and announces it.
+/// `finalize` shares one reservation bound to the launch it finalized, holding the capability it
+/// received, and announces it.
 fun finalize_binds_a_shared_reservation_to_its_launch() {
     let mut f = start();
     f.admit_aftermath();
@@ -176,6 +176,38 @@ fun migrate_rejects_another_launches_reservation() {
 }
 
 #[test, expected_failure(
+    abort_code = aftermath::EWrongMigrator,
+    location = blast_fun_migrators::aftermath,
+)]
+/// Only a launch this module's `new` started can be finalized here: another adapter's launch
+/// could never consume the reservation.
+fun finalize_rejects_another_adapters_launch() {
+    let mut f = start();
+    f.config.set_migration_witness_allowed<TestVenue>(
+        &f.version,
+        &blast_acl::witness_for_testing<AdapterAdmin>(),
+        true,
+    );
+    let ticket = f.new_ticket();
+    f.scenario.next_tx(ADMIN);
+    let mut currency = f.scenario.take_from_address<Currency<AFTERMATH_TESTS>>(COIN_REGISTRY);
+    let initializer = launch::new<_, QUOTE, _>(ticket, &f.version, &f.config, TestVenue(), 1, 1);
+
+    let _launch = aftermath::finalize<LP, _, _>(
+        initializer,
+        &f.migrators_version,
+        &f.version,
+        &mut currency,
+        &f.config,
+        coin::zero(f.scenario.ctx()),
+        amm_pool::create_pool_cap_for_testing(f.scenario.ctx()),
+        f.scenario.ctx(),
+    );
+
+    abort EUnexpectedSuccess
+}
+
+#[test, expected_failure(
     abort_code = blast_admin::errors::EOperationalVersionMismatch,
     location = blast_admin::operational_version,
 )]
@@ -185,12 +217,11 @@ fun new_checks_the_migrators_generation_before_the_fee() {
     f.migrators_version.set_for_testing(2);
     let ticket = f.new_ticket();
 
-    let (_initializer, _pending) = aftermath::new<LP, _, QUOTE>(
+    let _initializer = aftermath::new<_, QUOTE>(
         ticket,
         &f.migrators_version,
         &f.version,
         &f.config,
-        amm_pool::create_pool_cap_for_testing(f.scenario.ctx()),
         0,
     );
 
@@ -205,12 +236,11 @@ fun new_aborts_until_the_config_admits_aftermath() {
     let mut f = start();
     let ticket = f.new_ticket();
 
-    let (_initializer, _pending) = aftermath::new<LP, _, QUOTE>(
+    let _initializer = aftermath::new<_, QUOTE>(
         ticket,
         &f.migrators_version,
         &f.version,
         &f.config,
-        amm_pool::create_pool_cap_for_testing(f.scenario.ctx()),
         DAO_FEE_BPS,
     );
 
@@ -226,12 +256,11 @@ fun new_admits_only_an_allowed_quote() {
     f.admit_aftermath();
     let ticket = f.new_ticket();
 
-    let (_initializer, _pending) = aftermath::new<LP, _, OTHER_QUOTE>(
+    let _initializer = aftermath::new<_, OTHER_QUOTE>(
         ticket,
         &f.migrators_version,
         &f.version,
         &f.config,
-        amm_pool::create_pool_cap_for_testing(f.scenario.ctx()),
         DAO_FEE_BPS,
     );
 
@@ -253,32 +282,32 @@ fun coin_order_is_the_byte_order_of_type_names() {
 // Owner-Cap Custody
 
 #[test]
-fun the_pool_authority_attaches_once_under_its_venue_apart_from_the_position() {
+/// A DAO-fee pool's owner cap is a vault position like any other: sealed under its venue key and
+/// invisible to any other venue.
+fun the_owner_cap_is_the_vaults_position_under_its_venue() {
     let mut f = start_vault(creator_only());
+    f.scenario.next_tx(KEEPER);
+    let launch = f.scenario.take_shared_by_id<Launch<AFTERMATH_TESTS, QUOTE>>(f.launch_id);
     let owner_cap = dao_fee_pool::owner_cap_for_testing<LP>(f.scenario.ctx());
     let owner_cap_id = object::id(&owner_cap);
-    let position_id = f.vault.position_id_for_testing<_, _, TestVenue>();
+    let vault = vault::new_for_testing(
+        &launch,
+        &OtherVenue(),
+        object::id_from_address(POOL),
+        owner_cap,
+        1,
+        balance::zero(),
+        balance::zero(),
+        f.scenario.ctx(),
+    );
 
-    f.vault.attach_pool_authority(&TestVenue(), owner_cap);
+    assert_eq!(vault.position_id_for_testing<_, _, OtherVenue>(), option::some(owner_cap_id));
+    assert_eq!(vault.position_id_for_testing<_, _, TestVenue>(), option::none());
+    assert_eq!(vault.auto_lp_position_id_for_testing<_, _, OtherVenue>(), option::none());
 
-    assert_eq!(f.vault.pool_authority_id_for_testing<_, _, TestVenue>(), option::some(owner_cap_id));
-    assert_eq!(f.vault.pool_authority_id_for_testing<_, _, OtherVenue>(), option::none());
-    assert_eq!(f.vault.position_id_for_testing<_, _, TestVenue>(), position_id);
-    assert!(position_id != option::some(owner_cap_id));
+    destroy(vault);
+    test_scenario::return_shared(launch);
     f.end();
-}
-
-#[test, expected_failure(
-    abort_code = sui::dynamic_field::EFieldAlreadyExists,
-    location = sui::dynamic_field,
-)]
-fun a_second_pool_authority_cannot_replace_the_first() {
-    let mut f = start_vault(creator_only());
-    f.vault.attach_pool_authority(&TestVenue(), dao_fee_pool::owner_cap_for_testing<LP>(f.scenario.ctx()));
-
-    f.vault.attach_pool_authority(&TestVenue(), dao_fee_pool::owner_cap_for_testing<LP>(f.scenario.ctx()));
-
-    abort EUnexpectedSuccess
 }
 
 // Fee Collection
@@ -414,12 +443,11 @@ fun start_rejected_fee(dao_fee_bps: u16) {
     f.admit_aftermath();
     let ticket = f.new_ticket();
 
-    let (_initializer, _pending) = aftermath::new<LP, _, QUOTE>(
+    let _initializer = aftermath::new<_, QUOTE>(
         ticket,
         &f.migrators_version,
         &f.version,
         &f.config,
-        amm_pool::create_pool_cap_for_testing(f.scenario.ctx()),
         dao_fee_bps,
     );
 
@@ -464,12 +492,11 @@ fun open_launch_with(
     let ticket = f.new_ticket();
     f.scenario.next_tx(ADMIN);
     let mut currency = f.scenario.take_from_address<Currency<AFTERMATH_TESTS>>(COIN_REGISTRY);
-    let (mut initializer, pending) = aftermath::new<LP, _, QUOTE>(
+    let mut initializer = aftermath::new<_, QUOTE>(
         ticket,
         &f.migrators_version,
         &f.version,
         &f.config,
-        create_pool_cap,
         dao_fee_bps,
     );
     initializer.set_virtual_quote(&f.version, 5_000_000);
@@ -479,14 +506,14 @@ fun open_launch_with(
     );
     initializer.set_lp_fee_split(&f.version, creator_only());
     let creation_fee = coin::zero(f.scenario.ctx());
-    let launch = aftermath::finalize(
+    let launch = aftermath::finalize<LP, _, _>(
         initializer,
-        pending,
         &f.migrators_version,
         &f.version,
         &mut currency,
         &f.config,
         creation_fee,
+        create_pool_cap,
         f.scenario.ctx(),
     );
     test_scenario::return_to_address(COIN_REGISTRY, currency);
@@ -679,7 +706,7 @@ use blast_fun::{
     blast_fun_domain::{AdapterAdmin, FeeAdmin, ListingAdmin},
     bps,
     creator_authority::{Self, CurveFeeCap},
-    launch::Launch,
+    launch::{Self, Launch},
     launch_config::{Self, LaunchConfig},
     launch_ticket::{Self, LaunchTicket},
     blast_fun::{Self as package_version, PackageVersion},

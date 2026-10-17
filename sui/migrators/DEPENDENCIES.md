@@ -35,16 +35,16 @@ vault's own address.
 - **One aggregate package.** Cetus, Bluefin, and Aftermath ship together, so the
   release gate, dependency graph, and `UpgradeCap` lifecycle are shared.
 - **Aftermath DAO-fee custody.** Aftermath creates a pool only from a
-  `CreatePoolCapV2` minted by a freshly published LP coin, which the creator
-  hands to `aftermath::new` with the DAO fee the pool charges, the launch's
-  tier; `aftermath::finalize` then binds it to the finalized launch's ID in a
-  shared `aftermath::PoolCreation` that only that launch's `migrate` consumes.
-  The migration builds the vault first, because Aftermath's DAO-fee pool
-  (`dao_fee_amm::pool::new`) takes the fee recipient address at creation, names
-  the vault's own ID, checks `fee_bps` and `fee_recipient` back, and shares the
-  DAO-fee pool as the object traders use. The vault keeps the LP coin
-  as its position and the `OwnerCap` under `vault::PoolAuthorityKey`, with no
-  borrow or removal path. The reviewed revision-2 bytecode of the DAO-fee
+  `CreatePoolCapV2` minted by a freshly published LP coin. The creator hands
+  `aftermath::new` the DAO fee the pool charges, the launch's tier, and
+  `aftermath::finalize` the capability, which it binds to the finalized
+  launch's ID in a shared `aftermath::PoolCreation` that only that launch's
+  `migrate` consumes. The migration mints the vault's UID first, because
+  Aftermath's DAO-fee pool (`dao_fee_amm::pool::new`) takes the fee recipient
+  address at creation, names that ID, checks `fee_bps` and `fee_recipient`
+  back, shares the DAO-fee pool as the object traders use, keeps the returned
+  `OwnerCap` as the vault's position with no borrow or removal path, and sends
+  the LP coin to `0x0`. The reviewed revision-2 bytecode of the DAO-fee
   `pool` module (`docs/research/sui-auto-lp-venue-evidence.json`, module hash
   `029b3e6e…`) pays `floor(amount × fee_bps / 10_000)` of every swap, deposit,
   and withdrawal by splitting a coin and `transfer::public_transfer`ing it to
