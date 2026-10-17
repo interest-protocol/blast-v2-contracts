@@ -1,0 +1,10 @@
+[package]
+name = "AftermathProtocolFeeVault"
+edition = "2024"
+published-at = "0xaead64e3b3cc7972ba86396df07066c90176f42c6aea53b6df0d8ab11007ece2"
+
+[dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2", override = true }
+
+[addresses]
+protocol_fee_vault = "0x2d9316f1f1a95f6d7c85a4e690ef7c359e6649773ef2c37ad7d9857adb6bef06"

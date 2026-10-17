@@ -16,6 +16,20 @@ if [[ "$mode" == "--preview" ]]; then
   execution_flag=(--dry-run)
 fi
 
-exec sui client --client.env mainnet publish "$package_dir" \
+sui client --client.env mainnet publish "$package_dir" \
   --json \
-  ${execution_flag[@]+"${execution_flag[@]}"}
+  ${execution_flag[@]+"${execution_flag[@]}"} | python3 -c '
+import json
+import sys
+
+result = json.load(sys.stdin)
+json.dump(result, sys.stdout, indent=2)
+sys.stdout.write("\n")
+try:
+    status = result["effects"]["status"]["status"]
+except (KeyError, TypeError):
+    status = None
+if status != "success":
+    print("Publication failed or returned no successful transaction effects.", file=sys.stderr)
+    sys.exit(1)
+'
