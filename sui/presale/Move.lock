@@ -7,8 +7,8 @@ version = 4
 [pinned.mainnet.AftermathAmm]
 source = { local = "../migrators/interfaces/aftermath_amm" }
 use_environment = "mainnet"
-manifest_digest = "8DD3827ED5FB1F585E9E6684786FFAD7D17252D3D21E84E5D9EA4ECCB74BA0A3"
-deps = { AftermathInsuranceFund = "AftermathInsuranceFund", AftermathProtocolFeeVault = "AftermathProtocolFeeVault", AftermathReferralVault = "AftermathReferralVault", AftermathTreasury = "AftermathTreasury", Sui = "Sui" }
+manifest_digest = "3AB371A59959FA0FA4C49BCF2AFAA43FB008D6D4C1735A6A1F203AB3FBE468CC"
+deps = { AftermathInsuranceFund = "AftermathInsuranceFund", AftermathMath = "AftermathMath", AftermathProtocolFeeVault = "AftermathProtocolFeeVault", AftermathReferralVault = "AftermathReferralVault", AftermathTreasury = "AftermathTreasury", AftermathUtils = "AftermathUtils", Sui = "Sui" }
 
 [pinned.mainnet.AftermathDaoFeePools]
 source = { local = "../migrators/interfaces/aftermath_dao_fee" }
@@ -21,6 +21,12 @@ source = { local = "../migrators/interfaces/aftermath_insurance_fund" }
 use_environment = "mainnet"
 manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
 deps = { Sui = "Sui" }
+
+[pinned.mainnet.AftermathMath]
+source = { local = "../migrators/interfaces/aftermath_math" }
+use_environment = "mainnet"
+manifest_digest = "A4FDE70E3659CA952325988417BACD6520945893CC0798452F39EADAA9C3C063"
+deps = { AftermathUtils = "AftermathUtils", Sui = "Sui" }
 
 [pinned.mainnet.AftermathProtocolFeeVault]
 source = { local = "../migrators/interfaces/aftermath_protocol_fee_vault" }
@@ -36,6 +42,12 @@ deps = { Sui = "Sui" }
 
 [pinned.mainnet.AftermathTreasury]
 source = { local = "../migrators/interfaces/aftermath_treasury" }
+use_environment = "mainnet"
+manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
+deps = { Sui = "Sui" }
+
+[pinned.mainnet.AftermathUtils]
+source = { local = "../migrators/interfaces/aftermath_utils" }
 use_environment = "mainnet"
 manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
 deps = { Sui = "Sui" }

@@ -34,6 +34,12 @@ vault's own address.
   constructor.
 - **One aggregate package.** Cetus, Bluefin, and Aftermath ship together, so the
   release gate, dependency graph, and `UpgradeCap` lifecycle are shared.
+- **Aftermath publication linkage.** The AMM interface includes its math and
+  utility packages as linkage-only dependencies, even though Blast calls
+  neither directly. Omitting them compiles but makes ordinary publication fail
+  with `PublishUpgradeMissingDependency`. Their empty local modules declare no
+  callable ABI; the mainnet gate pins both package revisions and their graph
+  edges. Presale and migrators inherit the same complete publication graph.
 - **Aftermath DAO-fee custody.** Aftermath creates a pool only from a
   `CreatePoolCapV2` minted by a freshly published LP coin. The creator hands
   `aftermath::new` the DAO fee the pool charges, the launch's tier, and

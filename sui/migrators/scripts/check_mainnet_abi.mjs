@@ -365,6 +365,35 @@ const PACKAGES = [
         ],
     },
     {
+        // Linkage-only packages required when publishing a consumer of the live AMM.
+        key: 'aftermath_math',
+        label: 'Aftermath Math',
+        addressName: 'amm_math',
+        originalId:
+            '0x712579292f80c11a0c9de4ff553d6e5c4757105e83a8a3129823d2b39e65d062',
+        currentId:
+            '0xbc7b2c577ad9362fbb0dba397d17f3bcc81bf7aa916559f99a77eaee05d0947c',
+        version: 2,
+        digest: '6Bpr1cWrPnULCU2gqVcxYSJkuxXAQCgvxA8TzkpPU8ZM',
+        previousTransaction: 'EAYnAoXAiC9LtQEEi5eCpaQ92J2qYDT1EVyomP2DXAns',
+        manifest: 'interfaces/aftermath_math/Move.toml',
+        modules: [],
+    },
+    {
+        key: 'aftermath_utils',
+        label: 'Aftermath Utils',
+        addressName: 'aftermath_utils',
+        originalId:
+            '0x73baa782c55003b3a359dec04b189312565d18e7309d4a51f5f112f891e3b2ab',
+        currentId:
+            '0x73baa782c55003b3a359dec04b189312565d18e7309d4a51f5f112f891e3b2ab',
+        version: 1,
+        digest: 'CTEbevZk6Yu4F4XaRtmNJ5TGdUya6omHR9SVa4avdLJo',
+        previousTransaction: 'GBQXo2wLq2gRgAG6Dz2FLkZfSjQuDaPw7sbu7nz6aWS6',
+        manifest: 'interfaces/aftermath_utils/Move.toml',
+        modules: [],
+    },
+    {
         // Facts recorded on 2026-10-17: the fee packages the AMM's deposit route takes. The
         // adapter reads the protocol-fee vault's total rate to bound the fee a deposit may take.
         key: 'aftermath_protocol_fee_vault',
@@ -610,10 +639,41 @@ const MANIFESTS = [
         packageKey: 'aftermath',
         lockNode: 'AftermathAmm',
         dependencies: {
+            AftermathMath: { local: '../aftermath_math' },
+            AftermathUtils: { local: '../aftermath_utils' },
             AftermathProtocolFeeVault: { local: '../aftermath_protocol_fee_vault' },
             AftermathTreasury: { local: '../aftermath_treasury' },
             AftermathInsuranceFund: { local: '../aftermath_insurance_fund' },
             AftermathReferralVault: { local: '../aftermath_referral_vault' },
+            Sui: {
+                git: SUI_GIT,
+                subdir: SUI_FRAMEWORK_SUBDIR,
+                rev: REV.sui,
+                override: true,
+            },
+        },
+    },
+    {
+        path: 'interfaces/aftermath_math/Move.toml',
+        packageName: 'AftermathMath',
+        packageKey: 'aftermath_math',
+        lockNode: 'AftermathMath',
+        dependencies: {
+            AftermathUtils: { local: '../aftermath_utils' },
+            Sui: {
+                git: SUI_GIT,
+                subdir: SUI_FRAMEWORK_SUBDIR,
+                rev: REV.sui,
+                override: true,
+            },
+        },
+    },
+    {
+        path: 'interfaces/aftermath_utils/Move.toml',
+        packageName: 'AftermathUtils',
+        packageKey: 'aftermath_utils',
+        lockNode: 'AftermathUtils',
+        dependencies: {
             Sui: {
                 git: SUI_GIT,
                 subdir: SUI_FRAMEWORK_SUBDIR,
@@ -702,12 +762,22 @@ const LOCK_NODES = {
     AftermathAmm: {
         source: { local: 'interfaces/aftermath_amm' },
         deps: {
+            AftermathMath: 'AftermathMath',
+            AftermathUtils: 'AftermathUtils',
             AftermathInsuranceFund: 'AftermathInsuranceFund',
             AftermathProtocolFeeVault: 'AftermathProtocolFeeVault',
             AftermathReferralVault: 'AftermathReferralVault',
             AftermathTreasury: 'AftermathTreasury',
             Sui: 'Sui',
         },
+    },
+    AftermathMath: {
+        source: { local: 'interfaces/aftermath_math' },
+        deps: { AftermathUtils: 'AftermathUtils', Sui: 'Sui' },
+    },
+    AftermathUtils: {
+        source: { local: 'interfaces/aftermath_utils' },
+        deps: { Sui: 'Sui' },
     },
     AftermathDaoFeePools: {
         source: { local: 'interfaces/aftermath_dao_fee' },

@@ -374,7 +374,7 @@ for module in $matrix_witness_modules; do
 done
 [[ -n "$(find "$PACKAGE_DIR/interfaces" -mindepth 1 -maxdepth 1 -printf '%f\n')" \
     && -z "$(find "$PACKAGE_DIR/interfaces" -mindepth 1 -maxdepth 1 -printf '%f\n' \
-        | rg -v '^(cetus(_[a-z_]+)?|aftermath_(amm|dao_fee|protocol_fee_vault|treasury|insurance_fund|referral_vault))$')" ]] || \
+        | rg -v '^(cetus(_[a-z_]+)?|aftermath_(amm|dao_fee|math|utils|protocol_fee_vault|treasury|insurance_fund|referral_vault))$')" ]] || \
     fail "only Cetus and Aftermath packages may have local venue interfaces; an excluded venue keeps no interface"
 # A sealed witness never leaves its adapter: no adapter function, whatever its visibility, names
 # the witness in its signature, so none returns it or fills a caller's container with it.

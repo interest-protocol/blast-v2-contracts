@@ -132,7 +132,7 @@ public fun new_vault<Meme, Quote, CoinA, CoinB>(
     ctx: &mut TxContext,
 ) {
     creation_policy.assert_allowed<Quote, Witness>();
-    meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
+    let _ = meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
     assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
 
     let liquidity = position.liquidity();
