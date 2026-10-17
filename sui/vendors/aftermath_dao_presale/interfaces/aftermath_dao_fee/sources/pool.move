@@ -24,3 +24,8 @@ public fun fee_bps<Lp>(pool: &DaoFeePool<Lp>): u16 { abort 0 }
 
 /// Returns the address that receives separate DAO fee coins.
 public fun fee_recipient<Lp>(pool: &DaoFeePool<Lp>): address { abort 0 }
+
+#[test_only]
+public fun owner_cap_for_testing<Lp>(ctx: &mut TxContext): OwnerCap<Lp> {
+    OwnerCap { id: object::new(ctx) }
+}

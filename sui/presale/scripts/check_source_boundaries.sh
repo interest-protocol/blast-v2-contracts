@@ -108,4 +108,24 @@ settle_body="$(sed -n '/^public fun settle</,/^}/p' <<<"$presale_production")"
   && rg -q 'self\.duration_ms = now_ms - self\.start_ms;$' <<<"$settle_body" \
   || fail "Only settle, closing a sale early, may shorten its window."
 
+# 5. Aftermath's vault seams (ADR 0116): a vault built before its position, the one call that
+#    shares it with one, the venue predicate, and the one object-owned coin receipt reach only
+#    the Aftermath venue outside the vault, and the vault's position is never transferred.
+for seam in 'vault::new\(' '\.share_with_position\(' '\.has_position\(' '\.receive_fee\('; do
+  callers="$(for file in "$sources"/*.move; do
+    [ "$(basename "$file")" == "presale_vault.move" ] && continue
+    production "$file" | { rg -q "$seam" && basename "$file"; } || true
+  done | sort | tr '\n' ' ')"
+  [ "$callers" == "aftermath.move " ] \
+    || fail "Only the Aftermath venue may reach the vault seam ${seam} (found: ${callers:-none})."
+done
+[ "$(rg -c 'transfer::public_receive\(' "$sources/presale_vault.move")" == 1 ] \
+  && ! rg -q 'transfer::(public_)?receive\(|Receiving<' "$sources"/blast_presale.move "$sources"/cetus.move "$sources"/bluefin.move \
+  || fail "Object-owned coins reach a vault only through presale_vault::receive_fee."
+if rg -q 'transfer::(public_)?transfer\([^)]*position' "$sources"; then
+  fail "A vault's position is never transferred."
+fi
+[ "$(rg -c 'transfer::public_transfer\(lp, @0x0\)' "$sources/aftermath.move")" == 1 ] \
+  || fail "Aftermath's migration must send its LP coin to 0x0 exactly once."
+
 printf 'blast_presale source boundaries hold.\n'

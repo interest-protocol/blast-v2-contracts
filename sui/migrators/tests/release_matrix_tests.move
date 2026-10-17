@@ -2,9 +2,9 @@
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
 #[test_only]
-/// The release adapter matrix: Launchpad admits the Cetus and Bluefin witnesses as two distinct
-/// migration witnesses. That no other module declares a witness or reaches a launchpad seam is
-/// proven by the migrator source gate, not by this test.
+/// The release adapter matrix: Launchpad admits the Cetus, Bluefin, and Aftermath witnesses as
+/// three distinct migration witnesses. That no other module declares a witness or reaches a
+/// launchpad seam is proven by the migrator source gate, not by this test.
 module blast_fun_migrators::release_matrix_tests;
 
 // === Test-Only Types ===
@@ -18,13 +18,14 @@ public struct MatrixFixture {
 // === Tests ===
 
 #[test]
-fun the_cetus_and_bluefin_witnesses_are_admissible() {
+fun the_cetus_bluefin_and_aftermath_witnesses_are_admissible() {
     let mut f = start();
 
     f.admit<cetus::Witness>();
     f.admit<bluefin::Witness>();
+    f.admit<aftermath::Witness>();
 
-    assert_eq!(f.config.allowed_migration_witness_count_for_testing(), 2);
+    assert_eq!(f.config.allowed_migration_witness_count_for_testing(), 3);
 
     f.end();
 }
@@ -65,7 +66,7 @@ use blast_fun::{
     blast_fun::{Self as package_version, PackageVersion},
 };
 
-use blast_fun_migrators::{bluefin, cetus};
+use blast_fun_migrators::{aftermath, bluefin, cetus};
 
 use std::unit_test::{assert_eq, destroy};
 

@@ -4,8 +4,8 @@
 fill first come up to a hard cap. Its
 `UpgradeCap` is sealed in a shared `PackageAdmin` restricted to dependency-only
 upgrades, so venue versions can be relinked but presale logic never changes.
-It does not import or mutate launchpad state. Its Bluefin and Cetus adapters,
-LP vault, and holder-reward rounds live in the same package.
+It does not import or mutate launchpad state. Its Bluefin, Cetus, and Aftermath
+adapters, LP vault, and holder-reward rounds live in the same package.
 
 A creator starts a sale through a venue's `new` with a zero-supply
 `TreasuryCap<SaleToken>`, sets its terms on the returned `PresaleInitializer`, and
@@ -15,7 +15,9 @@ The terms are token supply; presale, LP, and per-recipient
 allocation BPS; fixed or burn-only supply; Quote raise; commitment and migration
 windows (the migration window is at least seven days); `EligibilityPolicy`;
 migration venue (Cetus and Bluefin also take a pool tier, which they keep in
-`VenueConfig`, not in the sale); and the LP-fee split:
+`VenueConfig`, not in the sale; Aftermath takes its DAO fee as the tier and the
+pool-creation capability of a fresh LP coin, which its `finalize` binds to the sale in
+a shared reservation the migration consumes); and the LP-fee split:
 up to 16 distinct fee recipients (the creator is one of them) and a holder-reward
 share, whose BPS total 10,000. Allocation BPS must total 10,000. The contract mints the complete
 supply once and uses largest-remainder apportionment so every atomic unit belongs
@@ -82,7 +84,7 @@ withdraw while a sale is open or funded. Underfunded sales, and funded sales
 cancelled after the LP deadline, refund every commitment; successfully migrated
 sales refund only overflow. One common fill rate applies to every wallet.
 
-Anyone may call the configured Bluefin or Cetus migration at any time until the
+Anyone may call the configured Bluefin, Cetus, or Aftermath migration at any time until the
 sale is cancelled. From the LP deadline onward, anyone may instead cancel an
 unmigrated funded sale; whichever transaction lands first wins. The LP window is
 at least seven days, so a funded sale reaches that exit only after a week in
@@ -91,8 +93,11 @@ atomically pays Blast its raise and token fees, or holds them for
 `pay_protocol_fees_with_partner` when the sale names a partner, takes the rest of
 the raise and
 the LP allocation, creates the configured
-full-range pool, and seals the position or burn proof in a `Vault`; a DEX
-failure rolls back the presale transition. Configured recipients receive their
+pool, and seals the position, burn proof, or Aftermath DAO-fee owner cap in a
+`Vault` (the Aftermath LP coin goes to `0x0`); a DEX failure rolls back the presale
+transition. An Aftermath pool pays
+its DAO fee as coins sent to the vault's address, which anyone receives into the
+vault through `aftermath::collect_fees` (ADR 0116). Configured recipients receive their
 distinct allocations in that same transaction. Claims open only after success.
 
 Permissionless fee collection pays Blast its share of each asset at the vault's

@@ -318,6 +318,165 @@ const PACKAGES = [
         manifest: 'interfaces/cetus_token/Move.toml',
         modules: [],
     },
+    {
+        // Facts recorded on 2026-09-02 for the Aftermath DAO-pool vendor (ADR 0104), reused by
+        // the Aftermath adapter: a newer revision fails the gate until it is reviewed.
+        key: 'aftermath',
+        label: 'Aftermath AMM',
+        addressName: 'amm',
+        originalId:
+            '0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c',
+        currentId:
+            '0xf948935b111990c2b604900c9b2eeb8f24dcf9868a45d1ea1653a5f282c10e29',
+        version: 3,
+        digest: 'Gxia3EZSdQeCXGPkmhXRzXWfmV6bnw7oRvSXNxNLQ9T1',
+        previousTransaction: '7qeJhR15a6jqo7xujZMMe5Bcm11vR7cSBiFHypW3VQ3J',
+        manifest: 'interfaces/aftermath_amm/Move.toml',
+        modules: [
+            {
+                name: 'pool',
+                sha256: 'f952884b3e6ea275911ae488e9d1e3f4b2a4409cdd30e8bed69e98fd7d0f7d78',
+                structs: ['CreatePoolCapV2', 'Pool'],
+                // Revision 3 introduced the LP-coin-backed pool-creation capability.
+                structOrigins: {
+                    CreatePoolCapV2:
+                        '0xf948935b111990c2b604900c9b2eeb8f24dcf9868a45d1ea1653a5f282c10e29',
+                },
+                functions: ['balance_of'],
+            },
+            {
+                name: 'pool_factory',
+                sha256: 'e2601c8181d142cb10bf10bbbe90adbd9545688238cbc3ba8b1bf9cf0809b17d',
+                structs: [],
+                functions: ['create_pool_2_coins_v2'],
+            },
+            {
+                name: 'pool_registry',
+                sha256: '9d4f76ef56e619111d94b41bac54641f2012d16a7e796a83436479b319dc6a62',
+                structs: ['PoolRegistry'],
+                functions: [],
+            },
+            {
+                name: 'deposit',
+                sha256: 'a9b023fea6cab42ccfa06b1c5edb93bf56b62f1d10487a7a576fc299d0981f75',
+                structs: [],
+                functions: ['deposit_2_coins_direct'],
+            },
+        ],
+    },
+    {
+        // Facts recorded on 2026-10-17: the fee packages the AMM's deposit route takes. The
+        // adapter reads the protocol-fee vault's total rate to bound the fee a deposit may take.
+        key: 'aftermath_protocol_fee_vault',
+        label: 'Aftermath Protocol Fee Vault',
+        addressName: 'protocol_fee_vault',
+        originalId:
+            '0x2d9316f1f1a95f6d7c85a4e690ef7c359e6649773ef2c37ad7d9857adb6bef06',
+        currentId:
+            '0xaead64e3b3cc7972ba86396df07066c90176f42c6aea53b6df0d8ab11007ece2',
+        version: 2,
+        digest: 'AFYbLCPpE7c8VyAbb5qQNoDsg5ruKA4hDZgZoQYYqkNT',
+        previousTransaction: '8eto3YoLXBrMP67d19BJqXpbB8bxTgitRT2KBSinmccT',
+        manifest: 'interfaces/aftermath_protocol_fee_vault/Move.toml',
+        modules: [
+            {
+                name: 'vault',
+                sha256: 'ba9bcf56e766b4d083428d7f29097d2f766f390db5558c3b0c5f4100e413a788',
+                structs: ['ProtocolFeeVault'],
+                functions: ['total_protocol_fee'],
+            },
+        ],
+    },
+    {
+        key: 'aftermath_treasury',
+        label: 'Aftermath Treasury',
+        addressName: 'treasury',
+        originalId:
+            '0x64213b0e4a52bac468d4ac3f140242f70714381653a1919a6d57cd49c628207a',
+        currentId:
+            '0x64213b0e4a52bac468d4ac3f140242f70714381653a1919a6d57cd49c628207a',
+        version: 1,
+        digest: 'ByArtn7iAqFXPYpZTQWiNJD9KMtDUtnxv5UVFTmJF5SV',
+        previousTransaction: '5V3pcRvLMA4vdSK5GXJq2eYuzWNDgMzg7kZRv3a6NmZq',
+        manifest: 'interfaces/aftermath_treasury/Move.toml',
+        modules: [
+            {
+                name: 'treasury',
+                sha256: '6e1fc5e426dfd51242bf76eef6a84c7453d9934eccec02d443dbf401ad70e9ff',
+                structs: ['Treasury'],
+                functions: [],
+            },
+        ],
+    },
+    {
+        key: 'aftermath_insurance_fund',
+        label: 'Aftermath Insurance Fund',
+        addressName: 'insurance_fund',
+        originalId:
+            '0xa6baab1e668c7868991c1c3c11e144100f5734c407d020f72a01b9d1a8bcb97f',
+        currentId:
+            '0xa6baab1e668c7868991c1c3c11e144100f5734c407d020f72a01b9d1a8bcb97f',
+        version: 1,
+        digest: 'G1JWbWfgRc8ZaSBsY6TucFCRKde7rvC73jCfARL4nF4i',
+        previousTransaction: '5HzYEqEr1bCJzoVqseUeKyrj4PA4K3SKyMcPUWGvAiH7',
+        manifest: 'interfaces/aftermath_insurance_fund/Move.toml',
+        modules: [
+            {
+                name: 'insurance_fund',
+                sha256: 'b3dec789f8017a67b43af51efee28972df9452925ce0ad0af8053fba753da7fa',
+                structs: ['InsuranceFund'],
+                functions: [],
+            },
+        ],
+    },
+    {
+        key: 'aftermath_referral_vault',
+        label: 'Aftermath Referral Vault',
+        addressName: 'referral_vault',
+        originalId:
+            '0xc66fabf1a9253e43c70f1cc02d40a1d18db183140ecaae2a3f58fa6b66c55acf',
+        currentId:
+            '0xc66fabf1a9253e43c70f1cc02d40a1d18db183140ecaae2a3f58fa6b66c55acf',
+        version: 1,
+        digest: 'RU93ghFMzmL6Q8x2Nd7zwEVZEzndHaSarkd5aKYhJQN',
+        previousTransaction: 'FpTkenExDfEFHYuTtwhMZCR518gro89PtoKzAkWGsKs7',
+        manifest: 'interfaces/aftermath_referral_vault/Move.toml',
+        modules: [
+            {
+                name: 'referral_vault',
+                sha256: '12c9d35cecf570861c1d593d5f8142da9292e7f5efda5633f9325ef9122bc9b9',
+                structs: ['ReferralVault'],
+                functions: [],
+            },
+        ],
+    },
+    {
+        key: 'aftermath_dao_fee',
+        label: 'Aftermath DAO Fee Pools',
+        addressName: 'dao_fee_amm',
+        originalId:
+            '0x6f60a091637054e23915b8745c0c0d47b1d49618ee3435b5f68eccf6a44fb53d',
+        currentId:
+            '0x5ad6890968efcf3d20899e0cec735214f1067b96e77e77d86408989998468bb2',
+        version: 2,
+        digest: 'AeSpba79KZ8Ge8nGk2Li2c2tkLy7eC93wTGhgjEVHVpZ',
+        previousTransaction: '9eMeoFRPGDW1TUvbhtstVu2bAaWCCM7VCgbgkEkCUR4c',
+        manifest: 'interfaces/aftermath_dao_fee/Move.toml',
+        modules: [
+            {
+                name: 'pool',
+                sha256: '029b3e6e0a11a249147cdd0b7b3ea78556d399e03228cae9424529a06cd58f3e',
+                structs: ['DaoFeePool', 'OwnerCap'],
+                functions: ['fee_bps', 'fee_recipient', 'new'],
+            },
+            {
+                name: 'version',
+                sha256: '6fbb4c1b78af3fa68654af6eb29be6fdbc945e9d715a46ac1ca9bc3f3f8920f2',
+                structs: ['Version'],
+                functions: [],
+            },
+        ],
+    },
 ];
 
 // === Expected Local Pins ===
@@ -344,6 +503,12 @@ const MANIFESTS = [
             BluefinSpot: { git: BLUEFIN_GIT, rev: REV.bluefin },
             CetusClmm: { local: 'interfaces/cetus' },
             CetusLpBurn: { local: 'interfaces/cetus_lp_burn' },
+            AftermathAmm: { local: 'interfaces/aftermath_amm' },
+            AftermathDaoFeePools: { local: 'interfaces/aftermath_dao_fee' },
+            AftermathProtocolFeeVault: { local: 'interfaces/aftermath_protocol_fee_vault' },
+            AftermathTreasury: { local: 'interfaces/aftermath_treasury' },
+            AftermathInsuranceFund: { local: 'interfaces/aftermath_insurance_fund' },
+            AftermathReferralVault: { local: 'interfaces/aftermath_referral_vault' },
             Sui: {
                 git: SUI_GIT,
                 subdir: SUI_FRAMEWORK_SUBDIR,
@@ -439,19 +604,138 @@ const MANIFESTS = [
             },
         },
     },
+    {
+        path: 'interfaces/aftermath_amm/Move.toml',
+        packageName: 'AftermathAmm',
+        packageKey: 'aftermath',
+        lockNode: 'AftermathAmm',
+        dependencies: {
+            AftermathProtocolFeeVault: { local: '../aftermath_protocol_fee_vault' },
+            AftermathTreasury: { local: '../aftermath_treasury' },
+            AftermathInsuranceFund: { local: '../aftermath_insurance_fund' },
+            AftermathReferralVault: { local: '../aftermath_referral_vault' },
+            Sui: {
+                git: SUI_GIT,
+                subdir: SUI_FRAMEWORK_SUBDIR,
+                rev: REV.sui,
+                override: true,
+            },
+        },
+    },
+    {
+        path: 'interfaces/aftermath_dao_fee/Move.toml',
+        packageName: 'AftermathDaoFeePools',
+        packageKey: 'aftermath_dao_fee',
+        lockNode: 'AftermathDaoFeePools',
+        dependencies: {
+            AftermathAmm: { local: '../aftermath_amm' },
+            Sui: {
+                git: SUI_GIT,
+                subdir: SUI_FRAMEWORK_SUBDIR,
+                rev: REV.sui,
+                override: true,
+            },
+        },
+    },
+    {
+        path: 'interfaces/aftermath_protocol_fee_vault/Move.toml',
+        packageName: 'AftermathProtocolFeeVault',
+        packageKey: 'aftermath_protocol_fee_vault',
+        lockNode: 'AftermathProtocolFeeVault',
+        dependencies: {
+            Sui: {
+                git: SUI_GIT,
+                subdir: SUI_FRAMEWORK_SUBDIR,
+                rev: REV.sui,
+                override: true,
+            },
+        },
+    },
+    {
+        path: 'interfaces/aftermath_treasury/Move.toml',
+        packageName: 'AftermathTreasury',
+        packageKey: 'aftermath_treasury',
+        lockNode: 'AftermathTreasury',
+        dependencies: {
+            Sui: {
+                git: SUI_GIT,
+                subdir: SUI_FRAMEWORK_SUBDIR,
+                rev: REV.sui,
+                override: true,
+            },
+        },
+    },
+    {
+        path: 'interfaces/aftermath_insurance_fund/Move.toml',
+        packageName: 'AftermathInsuranceFund',
+        packageKey: 'aftermath_insurance_fund',
+        lockNode: 'AftermathInsuranceFund',
+        dependencies: {
+            Sui: {
+                git: SUI_GIT,
+                subdir: SUI_FRAMEWORK_SUBDIR,
+                rev: REV.sui,
+                override: true,
+            },
+        },
+    },
+    {
+        path: 'interfaces/aftermath_referral_vault/Move.toml',
+        packageName: 'AftermathReferralVault',
+        packageKey: 'aftermath_referral_vault',
+        lockNode: 'AftermathReferralVault',
+        dependencies: {
+            Sui: {
+                git: SUI_GIT,
+                subdir: SUI_FRAMEWORK_SUBDIR,
+                rev: REV.sui,
+                override: true,
+            },
+        },
+    },
 ];
 
 /// Every pinned node the lock is allowed to contain, in both environments,
 /// bound to its exact source record and its exact resolved dependency edges.
 /// Both environments resolve identical edges, so one table covers both.
 const LOCK_NODES = {
+    AftermathAmm: {
+        source: { local: 'interfaces/aftermath_amm' },
+        deps: {
+            AftermathInsuranceFund: 'AftermathInsuranceFund',
+            AftermathProtocolFeeVault: 'AftermathProtocolFeeVault',
+            AftermathReferralVault: 'AftermathReferralVault',
+            AftermathTreasury: 'AftermathTreasury',
+            Sui: 'Sui',
+        },
+    },
+    AftermathDaoFeePools: {
+        source: { local: 'interfaces/aftermath_dao_fee' },
+        deps: { AftermathAmm: 'AftermathAmm', Sui: 'Sui' },
+    },
+    AftermathInsuranceFund: {
+        source: { local: 'interfaces/aftermath_insurance_fund' },
+        deps: { Sui: 'Sui' },
+    },
+    AftermathProtocolFeeVault: {
+        source: { local: 'interfaces/aftermath_protocol_fee_vault' },
+        deps: { Sui: 'Sui' },
+    },
+    AftermathReferralVault: {
+        source: { local: 'interfaces/aftermath_referral_vault' },
+        deps: { Sui: 'Sui' },
+    },
+    AftermathTreasury: {
+        source: { local: 'interfaces/aftermath_treasury' },
+        deps: { Sui: 'Sui' },
+    },
     BluefinSpot: {
         source: { git: BLUEFIN_GIT, subdir: '.', rev: REV.bluefin },
-        deps: { IntegerLibrary: 'IntegerLibrary', IntegerMate: 'IntegerMate', Sui: 'Sui_1' },
+        deps: { IntegerLibrary: 'IntegerLibrary', IntegerMate: 'IntegerMate', Sui: 'Sui_2' },
     },
     CetusClmm: {
         source: { local: 'interfaces/cetus' },
-        deps: { IntegerMate: 'IntegerMate_1', MoveSTL: 'MoveSTL', Sui: 'Sui_2' },
+        deps: { IntegerMate: 'IntegerMate_1', MoveSTL: 'MoveSTL', Sui: 'Sui' },
     },
     CetusClmmVester: {
         source: { local: 'interfaces/cetus_clmm_vester' },
@@ -459,7 +743,7 @@ const LOCK_NODES = {
             CetusClmm: 'CetusClmm',
             CetusToken: 'CetusToken',
             IntegerMate: 'IntegerMate_1',
-            Sui: 'Sui_2',
+            Sui: 'Sui',
         },
     },
     CetusLpBurn: {
@@ -469,91 +753,97 @@ const LOCK_NODES = {
             CetusClmmVester: 'CetusClmmVester',
             CetusToken: 'CetusToken',
             IntegerMate: 'IntegerMate_1',
-            Sui: 'Sui_2',
+            Sui: 'Sui',
         },
     },
     CetusToken: {
         source: { local: 'interfaces/cetus_token' },
-        deps: { Sui: 'Sui_2' },
+        deps: { Sui: 'Sui' },
     },
     IntegerLibrary: {
         source: { git: INTEGER_LIBRARY_GIT, subdir: '.', rev: REV.integerLibrary },
-        deps: { Sui: 'Sui' },
+        deps: { Sui: 'Sui_1' },
     },
     IntegerMate: {
         source: { git: INTEGER_MATE_GIT, subdir: 'sui', rev: REV.integerMateBluefin },
-        deps: { Sui: 'Sui' },
+        deps: { Sui: 'Sui_1' },
     },
     IntegerMate_1: {
         source: { git: INTEGER_MATE_GIT, subdir: '.', rev: REV.integerMate },
-        deps: { std: 'MoveStdlib_2', sui: 'Sui_2' },
+        deps: { std: 'MoveStdlib', sui: 'Sui' },
     },
     MoveSTL: {
         source: { git: MOVE_STL_GIT, subdir: '.', rev: REV.moveStl },
-        deps: { std: 'MoveStdlib_2', sui: 'Sui_2' },
+        deps: { std: 'MoveStdlib', sui: 'Sui' },
     },
     MoveStdlib: {
-        source: { git: SUI_GIT, subdir: MOVE_STDLIB_SUBDIR, rev: REV.suiLegacy },
-        deps: {},
-    },
-    MoveStdlib_1: {
-        source: { git: SUI_GIT, subdir: MOVE_STDLIB_SUBDIR, rev: REV.suiBluefin },
-        deps: {},
-    },
-    MoveStdlib_2: {
         source: { git: SUI_GIT, subdir: MOVE_STDLIB_SUBDIR, rev: REV.sui },
         deps: {},
     },
+    MoveStdlib_1: {
+        source: { git: SUI_GIT, subdir: MOVE_STDLIB_SUBDIR, rev: REV.suiLegacy },
+        deps: {},
+    },
+    MoveStdlib_2: {
+        source: { git: SUI_GIT, subdir: MOVE_STDLIB_SUBDIR, rev: REV.suiBluefin },
+        deps: {},
+    },
     Sui: {
-        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.suiLegacy },
+        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.sui },
         deps: { MoveStdlib: 'MoveStdlib' },
     },
     Sui_1: {
-        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.suiBluefin },
+        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.suiLegacy },
         deps: { MoveStdlib: 'MoveStdlib_1' },
     },
     Sui_2: {
-        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.sui },
+        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.suiBluefin },
         deps: { MoveStdlib: 'MoveStdlib_2' },
     },
     // The immutable shared administration package is a local, inward-only edge:
     // it pins the same framework revision and adds no venue dependency.
     blast_admin: {
         source: { local: '../admin' },
-        deps: { Sui: 'Sui_2', blast_fun_timelock: 'blast_fun_timelock' },
+        deps: { Sui: 'Sui', blast_fun_timelock: 'blast_fun_timelock' },
     },
     blast_fun: {
         source: { local: '../launchpad' },
         deps: {
             blast_admin: 'blast_admin',
             blast_partners: 'blast_partners',
-            std: 'MoveStdlib_2',
-            sui: 'Sui_2',
+            std: 'MoveStdlib',
+            sui: 'Sui',
         },
     },
     // The ACL's timelocked root transfer (ADR 0097) and launchpad partners (ADR 0098).
     blast_fun_timelock: {
         source: { git: BLAST_UTIL_GIT, subdir: 'sui/timelock', rev: REV.blastTimelock },
-        deps: { std: 'MoveStdlib_2', sui: 'Sui_2' },
+        deps: { std: 'MoveStdlib', sui: 'Sui' },
     },
     blast_partners: {
         source: { local: '../partners' },
         deps: {
             blast_admin: 'blast_admin',
             blast_fun_timelock: 'blast_fun_timelock',
-            std: 'MoveStdlib_2',
-            sui: 'Sui_2',
+            std: 'MoveStdlib',
+            sui: 'Sui',
         },
     },
     blast_fun_migrators: {
         source: { root: true },
         deps: {
+            AftermathAmm: 'AftermathAmm',
+            AftermathDaoFeePools: 'AftermathDaoFeePools',
+            AftermathInsuranceFund: 'AftermathInsuranceFund',
+            AftermathProtocolFeeVault: 'AftermathProtocolFeeVault',
+            AftermathReferralVault: 'AftermathReferralVault',
+            AftermathTreasury: 'AftermathTreasury',
             BluefinSpot: 'BluefinSpot',
             CetusClmm: 'CetusClmm',
             CetusLpBurn: 'CetusLpBurn',
             IntegerLibrary: 'IntegerLibrary',
             IntegerMate: 'IntegerMate_1',
-            Sui: 'Sui_2',
+            Sui: 'Sui',
             blast_admin: 'blast_admin',
             blast_fun: 'blast_fun',
         },
@@ -565,6 +855,40 @@ const LOCK_NODES = {
 /// package's own original address, `@sui` and `@std` are the framework
 /// addresses; every other address is compared literally.
 const ABI = {
+    'amm::pool::CreatePoolCapV2':
+        'struct CreatePoolCapV2 has store, key',
+    'amm::pool::Pool':
+        'struct Pool<phantom $0> has store, key',
+    'amm::pool::balance_of':
+        'public fun balance_of<$0, $1>(&@self::pool::Pool<$0>): u64',
+    'amm::pool_factory::create_pool_2_coins_v2':
+        'public fun create_pool_2_coins_v2<$0, $1, $2>(@self::pool::CreatePoolCapV2, &mut @self::pool_registry::PoolRegistry, vector<u8>, vector<u64>, u64, vector<u64>, vector<u64>, vector<u64>, vector<u64>, @sui::coin::Coin<$1>, @sui::coin::Coin<$2>, @std::option::Option<vector<u8>>, bool, &mut @sui::tx_context::TxContext): (@self::pool::Pool<$0>, @sui::coin::Coin<$0>)',
+    'amm::pool_registry::PoolRegistry':
+        'struct PoolRegistry has store, key',
+    'amm::deposit::deposit_2_coins_direct':
+        'public fun deposit_2_coins_direct<$0, $1, $2>(&mut @self::pool::Pool<$0>, &@self::pool_registry::PoolRegistry, &0x2d9316f1f1a95f6d7c85a4e690ef7c359e6649773ef2c37ad7d9857adb6bef06::vault::ProtocolFeeVault, &mut 0x64213b0e4a52bac468d4ac3f140242f70714381653a1919a6d57cd49c628207a::treasury::Treasury, &mut 0xa6baab1e668c7868991c1c3c11e144100f5734c407d020f72a01b9d1a8bcb97f::insurance_fund::InsuranceFund, &0xc66fabf1a9253e43c70f1cc02d40a1d18db183140ecaae2a3f58fa6b66c55acf::referral_vault::ReferralVault, @sui::coin::Coin<$1>, @sui::coin::Coin<$2>, u64, &mut @sui::tx_context::TxContext): @sui::coin::Coin<$0>',
+    'protocol_fee_vault::vault::ProtocolFeeVault':
+        'struct ProtocolFeeVault has store, key',
+    'protocol_fee_vault::vault::total_protocol_fee':
+        'public fun total_protocol_fee(&@self::vault::ProtocolFeeVault): u64',
+    'treasury::treasury::Treasury':
+        'struct Treasury has key',
+    'insurance_fund::insurance_fund::InsuranceFund':
+        'struct InsuranceFund has key',
+    'referral_vault::referral_vault::ReferralVault':
+        'struct ReferralVault has key',
+    'dao_fee_amm::pool::DaoFeePool':
+        'struct DaoFeePool<phantom $0> has store, key',
+    'dao_fee_amm::pool::OwnerCap':
+        'struct OwnerCap<phantom $0> has store, key',
+    'dao_fee_amm::pool::fee_bps':
+        'public fun fee_bps<$0>(&@self::pool::DaoFeePool<$0>): u16',
+    'dao_fee_amm::pool::fee_recipient':
+        'public fun fee_recipient<$0>(&@self::pool::DaoFeePool<$0>): address',
+    'dao_fee_amm::pool::new':
+        'public fun new<$0>(0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c::pool::Pool<$0>, &@self::version::Version, u16, address, &mut @sui::tx_context::TxContext): (@self::pool::DaoFeePool<$0>, @self::pool::OwnerCap<$0>)',
+    'dao_fee_amm::version::Version':
+        'struct Version has key',
     'bluefin_spot::config::GlobalConfig':
         'struct GlobalConfig has store, key',
     'bluefin_spot::config::get_tick_range':
@@ -2197,8 +2521,8 @@ function selfTestCases() {
             run: lockCase(
                 mutateSource(
                     lock,
-                    `[pinned.mainnet.Sui_2]\nsource = { git = "${SUI_GIT}", subdir = "${SUI_FRAMEWORK_SUBDIR}", rev = "${REV.sui}" }`,
-                    `[pinned.mainnet.Sui_2]\nsource = { git = "${SUI_GIT}", subdir = "${SUI_FRAMEWORK_SUBDIR}", rev = "${REV.suiLegacy}" }`,
+                    `[pinned.mainnet.Sui]\nsource = { git = "${SUI_GIT}", subdir = "${SUI_FRAMEWORK_SUBDIR}", rev = "${REV.sui}" }`,
+                    `[pinned.mainnet.Sui]\nsource = { git = "${SUI_GIT}", subdir = "${SUI_FRAMEWORK_SUBDIR}", rev = "${REV.suiLegacy}" }`,
                 ),
             ),
         },
@@ -2207,7 +2531,7 @@ function selfTestCases() {
             run: lockCase(
                 mutateSource(
                     lock,
-                    'deps = { IntegerMate = "IntegerMate_1", MoveSTL = "MoveSTL", Sui = "Sui_2" }',
+                    'deps = { IntegerMate = "IntegerMate_1", MoveSTL = "MoveSTL", Sui = "Sui" }',
                     'deps = { IntegerMate = "IntegerMate_1", MoveSTL = "MoveSTL", Sui = "Sui_1" }',
                 ),
             ),

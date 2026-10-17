@@ -192,6 +192,72 @@ fun create_shares_the_vault_it_announces_with_its_pool_and_position() {
 }
 
 #[test]
+/// A vault built before its position has none, announces nothing, and lands shared with the
+/// position it is given, as `create` does in one call.
+fun a_vault_built_before_its_position_shares_with_it_and_announces_the_custody() {
+    let mut f = start(mixed_split());
+    let vault = vault::new(
+        &f.launch,
+        object::id_from_address(POOL),
+        balance::create_for_testing(3),
+        balance::create_for_testing(4),
+        f.scenario.ctx(),
+    );
+    let vault_id = object::id(&vault);
+    assert!(!vault.has_position(&TestVenue()));
+    assert_eq!(event::events_by_type<blast_events::VaultCreated>().length(), 0);
+    let position = TestPosition { id: object::new(f.scenario.ctx()) };
+    let position_id = object::id(&position);
+
+    vault.share_with_position(&TestVenue(), position, 1);
+
+    let created = event::events_by_type<blast_events::VaultCreated>();
+    assert_eq!(created.length(), 1);
+    assert_eq!(
+        bcs::to_bytes(&created[0]),
+        bcs::to_bytes(
+            &ExpectedVaultCreated {
+                vault_id,
+                pool_id: object::id_from_address(POOL),
+                position_id,
+                venue: type_name::with_original_ids<TestVenue>(),
+                meme: type_name::with_original_ids<VAULT_TESTS>(),
+                quote: type_name::with_original_ids<QUOTE>(),
+                residual_meme: 3,
+                residual_quote: 4,
+                liquidity: 1,
+                fee_split: mixed_split(),
+            },
+        ),
+    );
+    f.scenario.next_tx(ADMIN);
+    let shared = f.scenario.take_shared_by_id<LpVault<VAULT_TESTS, QUOTE>>(vault_id);
+    assert!(shared.has_position(&TestVenue()));
+    assert!(!shared.has_position(&OtherVenue()));
+    assert_eq!(shared.position_id_for_testing<_, _, TestVenue>(), option::some(position_id));
+    test_scenario::return_shared(shared);
+
+    f.end();
+}
+
+#[test, expected_failure(abort_code = vault::EZeroLiquidity, location = blast_fun_migrators::vault)]
+/// A position holding no liquidity cannot be attached, so no vault is shared around one.
+fun a_vault_cannot_share_with_an_empty_position() {
+    let mut f = start(mixed_split());
+    let vault = vault::new(
+        &f.launch,
+        object::id_from_address(POOL),
+        balance::zero(),
+        balance::zero(),
+        f.scenario.ctx(),
+    );
+
+    vault.share_with_position(&TestVenue(), TestPosition { id: object::new(f.scenario.ctx()) }, 0);
+
+    abort
+}
+
+#[test]
 fun borrow_returns_the_attached_position() {
     let mut f = start(mixed_split());
     let mut vault = f.new_vault(0, 0);

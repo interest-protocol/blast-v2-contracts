@@ -20,9 +20,9 @@ This keeps V2 smaller than the historical collection of interdependent packages
 without forcing unrelated dependencies into the trusted core.
 
 The dependency-only upgradeable `blast_presale` package is a separate product boundary: it owns
-presale escrow, eligibility, proportional settlement, permissionless Bluefin and
-Cetus migration, LP custody, and fee/reward distribution without importing or
-mutating launchpad state. Its adapters share the package with presale core so a
+presale escrow, eligibility, proportional settlement, permissionless Bluefin,
+Cetus, and Aftermath migration, LP custody, and fee/reward distribution without
+importing or mutating launchpad state. Its adapters share the package with presale core so a
 sealed witness makes pool creation atomic with escrow release. Its public `new` and
 `migrate` take any migrator's sealed witness the `CreationPolicy` allows, so one-off
 partner migrators live in their own packages under `sui/vendors` and depend inward
@@ -308,7 +308,7 @@ Upgradeability is a product/security decision, not a default convenience.
   operational version to the exact next compiled generation in the same call;
   there is no separate activation step.
 - The migrators package keeps its `UpgradeCap` in its own `PackageAdmin` and is
-  never made immutable: Cetus and Bluefin gate callers by package version and
+  never made immutable: Cetus, Bluefin, and Aftermath gate callers by package version and
   launchpad cutovers advance the launchpad version, so the adapters must always
   be able to relink (ADR 0088). Every migrators upgrade uses the compatible
   policy and bumps both compiled generation constants; its custody has no

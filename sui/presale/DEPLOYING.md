@@ -48,8 +48,13 @@ sale is ever created under an unsealed cap.
    launch rates are not zero.
 7. Only now allow the launch Quote types as `ListingAdmin` with
    `creation_policy::set_quote_allowed`, and as `AdapterAdmin` the venues with
-   `set_migration_witness_allowed<cetus::Witness>` and `<bluefin::Witness>`, plus
-   any reviewed external migrator's witness, such as a vendor package's. Allow
+   `set_migration_witness_allowed<cetus::Witness>`, `<bluefin::Witness>`, and
+   `<aftermath::Witness>`, plus any reviewed external migrator's witness, such as a
+   vendor package's. Before allowing Aftermath, run `sui/migrators`'
+   `node scripts/check_mainnet_abi.mjs`, which pins the Aftermath AMM and
+   DAO-fee revisions this package links to, and prove a mainnet dev-inspect of
+   `aftermath::migrate` with a fresh LP coin for both coin orders: the local
+   stubs prove types, not behavior. Allow
    only Quote types whose deny-list and pause controls Blast accepts (owner,
    2026-10-02): payouts are pushed, so a denied fee recipient blocks that vault's
    collection and a denied raise recipient blocks migration until the LP deadline.
@@ -66,7 +71,9 @@ sale is ever created under an unsealed cap.
    Bluefin, pass a `Coin<SUI>` equal to `config::get_pool_creation_fee_amount<SUI>`
    read at submission time; Bluefin aborts on any other amount. For Cetus, the
    Quote must be in Cetus's permission-pair allowlist at the sale's tick spacing
-   when the sale is created.
+   when the sale is created. For Aftermath, pass the sale's shared
+   `aftermath::PoolCreation` by value; its DAO fees then wait as coins at the
+   vault's address until a keeper lists them in `aftermath::collect_fees`.
 9. Record publication, source verification, object IDs, transaction digests, each
    presale role granted with its `AdminCap` and holder, and the checks above.
 
