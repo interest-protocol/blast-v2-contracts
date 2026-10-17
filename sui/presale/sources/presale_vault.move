@@ -555,6 +555,14 @@ public fun position_id_for_testing<Meme, Quote, Venue>(self: &Vault<Meme, Quote>
 }
 
 #[test_only]
+/// The vault, presale, pool, and position IDs and the liquidity a `VaultCreated` names.
+public fun vault_created_fields<Meme, Quote, Venue>(
+    event: &VaultCreated<Meme, Quote, Venue>,
+): (ID, ID, ID, ID, u128) {
+    (event.vault_id, event.presale_id, event.pool_id, event.position_id, event.liquidity)
+}
+
+#[test_only]
 public fun destroy_for_testing<Meme, Quote>(self: Vault<Meme, Quote>) {
     let Vault {
         id,

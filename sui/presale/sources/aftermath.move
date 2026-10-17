@@ -15,8 +15,8 @@
 /// Aftermath creates a pool only from a `CreatePoolCapV2` minted by a freshly published LP coin,
 /// so the creator publishes one per sale and hands its capability to `finalize`, which finalizes
 /// the sale and returns the reservation bound to that sale's ID for `share`; only that sale's
-/// migration can consume it. A sale `new` started but finalized directly in `blast_presale` has no reservation,
-/// so it can never migrate and refunds after its LP deadline.
+/// migration can consume it. A sale `new` started but finalized directly in `blast_presale` has
+/// no reservation, so it can never migrate and refunds after its LP deadline.
 ///
 /// Aftermath's registry rejects a second pool with the same coins, weights, flatness, and fees. No
 /// sale token circulates before migration, so nobody can create the sale's pool first, but the
@@ -32,8 +32,9 @@ public struct Witness() has drop;
 /// Sealed marker for the DAO-fee pool owner cap a presale vault holds as its position.
 public struct Venue() has drop;
 
-/// Shared reservation of one sale's Aftermath pool creation: the `CreatePoolCapV2` of the fresh LP
-/// coin `Lp`, which only the migration of the sale `presale_id` can consume.
+/// Reservation of one sale's Aftermath pool creation, returned by `finalize` and shared by
+/// `share`: the `CreatePoolCapV2` of the fresh LP coin `Lp`, which only the migration of the sale
+/// `presale_id` can consume.
 public struct PoolCreation<phantom Lp, phantom Meme, phantom Quote> has key {
     id: UID,
     presale_id: ID,
@@ -64,8 +65,8 @@ public fun new<Meme, Quote>(
 /// Finalizes a sale `new` started, as `blast_presale::finalize` does, and returns it with the
 /// reservation binding `create_pool_cap`, which the fresh LP coin `Lp` minted, to that sale's ID.
 /// The initializer must be one `new` started: another migrator's sale could never consume the
-/// reservation. The reservation has only `key`, so the same PTB either shares it with `share` or
-/// consumes it in `migrate`.
+/// reservation. The reservation has only `key`, so the PTB that creates the sale must share it
+/// with `share`, as the launchpad adapter's does; a sale is never funded in that PTB.
 public fun finalize<Lp, Meme, Quote>(
     initializer: PresaleInitializer<Meme, Quote>,
     currency: &mut Currency<Meme>,
@@ -277,6 +278,11 @@ public fun pool_creation_presale_id_for_testing<Lp, Meme, Quote>(
     self: &PoolCreation<Lp, Meme, Quote>,
 ): ID {
     self.presale_id
+}
+
+#[test_only]
+public fun swap_in_fee_for_testing(ctx: &TxContext): u64 {
+    swap_in_fee(ctx)
 }
 
 #[test_only]

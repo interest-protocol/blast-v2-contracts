@@ -91,8 +91,8 @@ fun new_rejects_a_dao_fee_above_the_whole_amount() {
 }
 
 #[test]
-/// `finalize` creates the sale with this migrator's witness and shares one reservation bound to
-/// it, holding the capability it received.
+/// `finalize` creates the sale with this migrator's witness and returns one reservation bound to
+/// it, holding the capability it received, which `share` shares.
 fun finalize_binds_a_shared_reservation_to_its_sale() {
     let mut scenario = test_scenario::begin(CREATOR);
     let creation_policy = allowing<Witness>(scenario.ctx());
@@ -224,6 +224,89 @@ fun new_needs_blast_to_allow_the_witness() {
         &mut venue_config,
         DAO_FEE_BPS,
     );
+    abort
+}
+
+#[test]
+/// The swap-in fee is Aftermath's minimum plus the first four digest bytes, big-endian: a zero
+/// digest gives exactly the minimum, a saturated prefix adds `2^32 - 1` and stays far under
+/// Aftermath's 10% maximum, and two digests give two fees.
+fun swap_in_fee_is_the_minimum_plus_the_digest_salt() {
+    let minimum = 100_000_000_000_000;
+    let zero = tx_context::new(@0x0, digest_starting_with(vector[0, 0, 0, 0]), 0, 0, 0);
+    let saturated = tx_context::new(@0x0, digest_starting_with(vector[255, 255, 255, 255]), 0, 0, 0);
+    let other = tx_context::new(@0x0, digest_starting_with(vector[0, 0, 1, 0]), 0, 0, 0);
+
+    assert_eq!(aftermath::swap_in_fee_for_testing(&zero), minimum);
+    assert_eq!(aftermath::swap_in_fee_for_testing(&saturated), minimum + ((1 << 32) - 1));
+    assert!(aftermath::swap_in_fee_for_testing(&saturated) <= 100_000_000_000_000_000);
+    assert_eq!(aftermath::swap_in_fee_for_testing(&other), minimum + 256);
+}
+
+#[test]
+/// A vault built before its position has none, announces nothing, and lands shared with the
+/// position it is given, as `create` does in one call.
+fun a_vault_built_before_its_position_shares_with_it_and_announces_the_custody() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let creation_policy = allowing<Witness>(scenario.ctx());
+    let mut venue_config = venue_config::new_for_testing(scenario.ctx());
+    let create_pool_cap = amm_pool::create_pool_cap_for_testing(scenario.ctx());
+    let (sale, cap) = new_sale(&mut scenario, &creation_policy, &mut venue_config, create_pool_cap);
+    let vault = vault::new(
+        &sale,
+        object::id_from_address(@0xB00),
+        balance::zero(),
+        balance::zero(),
+        scenario.ctx(),
+    );
+    let vault_id = object::id(&vault);
+    assert!(!vault.has_position(&OtherVenue()));
+    assert_eq!(event::events_by_type<VaultCreated<AFTERMATH_TESTS, QUOTE, OtherVenue>>().length(), 0);
+    let position = TestPosition { id: object::new(scenario.ctx()) };
+    let position_id = object::id(&position);
+
+    vault.share_with_position(&OtherVenue(), position, 1);
+
+    let created = event::events_by_type<VaultCreated<AFTERMATH_TESTS, QUOTE, OtherVenue>>();
+    assert_eq!(created.length(), 1);
+    let (created_vault_id, created_presale_id, created_pool_id, created_position_id, liquidity) =
+        created[0].vault_created_fields();
+    assert_eq!(created_vault_id, vault_id);
+    assert_eq!(created_presale_id, object::id(&sale));
+    assert_eq!(created_pool_id, object::id_from_address(@0xB00));
+    assert_eq!(created_position_id, position_id);
+    assert_eq!(liquidity, 1);
+    scenario.next_tx(KEEPER);
+    let shared = scenario.take_shared_by_id<Vault<AFTERMATH_TESTS, QUOTE>>(vault_id);
+    assert!(shared.has_position(&OtherVenue()));
+    assert_eq!(shared.position_id_for_testing<_, _, OtherVenue>(), option::some(position_id));
+    test_scenario::return_shared(shared);
+
+    destroy(sale);
+    destroy(cap);
+    destroy(venue_config);
+    destroy(creation_policy);
+    scenario.end();
+}
+
+#[test]
+#[expected_failure(abort_code = vault::EZeroLiquidity, location = blast_presale::presale_vault)]
+/// A position holding no liquidity cannot be attached, so no vault is shared around one.
+fun a_vault_cannot_share_with_an_empty_position() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let creation_policy = allowing<Witness>(scenario.ctx());
+    let mut venue_config = venue_config::new_for_testing(scenario.ctx());
+    let create_pool_cap = amm_pool::create_pool_cap_for_testing(scenario.ctx());
+    let (sale, _cap) = new_sale(&mut scenario, &creation_policy, &mut venue_config, create_pool_cap);
+    let vault = vault::new(
+        &sale,
+        object::id_from_address(@0xB00),
+        balance::zero(),
+        balance::zero(),
+        scenario.ctx(),
+    );
+
+    vault.share_with_position(&OtherVenue(), TestPosition { id: object::new(scenario.ctx()) }, 0);
     abort
 }
 
@@ -402,6 +485,12 @@ fun collect_fees_receives_only_coins_the_vault_owns() {
 // === Test Helpers ===
 
 /// A creation policy that allows `QUOTE` and `MigrationWitness`.
+/// A 32-byte transaction digest beginning with `prefix`, zero-padded.
+fun digest_starting_with(mut prefix: vector<u8>): vector<u8> {
+    while (prefix.length() < 32) prefix.push_back(0);
+    prefix
+}
+
 fun allowing<MigrationWitness>(ctx: &mut TxContext): CreationPolicy {
     creation_policy::allowing_for_testing<QUOTE, MigrationWitness>(ctx)
 }
@@ -539,7 +628,7 @@ use blast_presale::{
     bps,
     creation_policy::{Self, CreationPolicy},
     fee_policy,
-    presale_vault::{Self as vault, FeesCollected, Vault},
+    presale_vault::{Self as vault, FeesCollected, Vault, VaultCreated},
     venue_config::{Self, PoolTierReserved, VenueConfig},
 };
 
@@ -548,6 +637,7 @@ use dao_fee_amm::{pool as dao_fee_pool, version};
 use std::{type_name, unit_test::{assert_eq, destroy}};
 
 use sui::{
+    balance,
     clock,
     coin::{Self, Coin, TreasuryCap},
     coin_registry::{Self, Currency},
@@ -555,4 +645,5 @@ use sui::{
     sui::SUI,
     test_scenario::{Self, Scenario},
     test_utils,
+    tx_context,
 };

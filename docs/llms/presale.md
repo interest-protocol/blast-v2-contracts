@@ -217,14 +217,16 @@ Steps, type arguments `<Meme, Quote>` throughout:
    (`presale_id`, `pool_creation_id`, `create_pool_cap_id`), and returns
    `(Presale<Meme, Quote>, PresaleCap, PoolCreation<Lp, Meme, Quote>)`: the reservation bound to
    the new sale's ID, unshared. It has only `key`, so the same PTB must pass it to
-   `blast_presale::aftermath::share` (step 6a), which shares it for the migration later. An
+   `blast_presale::aftermath::share` (step 7), which shares it for the migration later. An
    Aftermath sale finalized through `blast_presale::blast_presale::finalize` instead has no
    reservation, can never migrate, and refunds after its liquidity deadline.
 5. Optional, Blast admin only (`FeeAdmin`): `blast_presale::blast_presale::set_protocol_fees` on the pending sale.
 6. `blast_presale::blast_presale::share(presale, start_ms, clock)`, same caller, fixes the windows and shares the
-   sale. (6a, Aftermath) `blast_presale::aftermath::share(pool_creation)` shares the reservation. The start is `max(start_ms, now)`, so a sale can be published ahead of its start. Emits
+   sale. The start is `max(start_ms, now)`, so a sale can be published ahead of its start. Emits
    `blast_presale::blast_presale::PresaleOpened`.
-7. `TransferObjects([presale_cap], creator)`.
+7. Aftermath only: `blast_presale::aftermath::share(pool_creation)` shares the reservation
+   `finalize` returned; the PTB cannot end holding it.
+8. `TransferObjects([presale_cap], creator)`.
 
 Settings:
 

@@ -107,9 +107,10 @@ Calls also take objects from other packages:
 - `pool_id`, `partner_id` (copied from the launch, never changes), `next_round`, `last_checkpoint`.
 
 No function removes or transfers a position. No function withdraws the auto-LP, rewards, or burn
-balances except the flows below. On an Aftermath vault the auto-LP balances and the burn Quote
-only accumulate: this package adds no liquidity to and swaps nothing in an Aftermath pool, so
-creators who pick Aftermath should set the auto-LP and burn parts of their split to zero.
+balances except the flows below. An Aftermath vault never holds auto-LP or burn balances: this
+package adds no liquidity to and swaps nothing in an Aftermath pool, so
+`blast_fun_migrators::aftermath::finalize` admits only a split with zero auto-LP and burn parts,
+and that split never changes.
 
 #### Trust assumptions
 
@@ -316,7 +317,8 @@ Anyone may collect, as often as they like. A collection that finds no fees is va
 Exact order of operations:
 
 1. Check the migrators generation. On Cetus, prove the coin pair (`EWrongCoinPair`).
-2. Check the pool is the vault's own (`EPositionPoolMismatch`). Aftermath takes no pool.
+2. Check the pool is the vault's own (`EPositionPoolMismatch`). Aftermath takes no pool and
+   instead checks the vault is an Aftermath vault (`EWrongVault`).
 3. Collect fees. Cetus: from the burned position through LP Burn, plus the auto-LP position's fees
    once it exists. Bluefin: from the migration position. Aftermath: receive every listed coin into
    the vault (a coin the vault does not own aborts in `sui::transfer`) and join them.
@@ -347,8 +349,8 @@ Auto-LP per venue:
   and the position's bound prices, keeping a 2-atom margin on the other side.
 - Both add nothing while either side is empty, so a one-sided auto-LP balance waits until the other
   asset arrives. The unfixed side's excess always waits for a later call.
-- Aftermath adds nothing, ever: the auto-LP part accumulates in `auto_lp_meme`/`auto_lp_quote` with
-  no exit in this package. Set it to zero on an Aftermath launch.
+- Aftermath adds nothing, ever, and an Aftermath launch's split has no auto-LP part, so nothing
+  reaches `auto_lp_meme`/`auto_lp_quote` on an Aftermath vault.
 
 #### Paying a partnered vault's Blast LP fees
 
@@ -415,9 +417,9 @@ zero), swaps it for Meme in the vault's pool up to the widest price limit, abort
 `EBuybackBelowMinimum` if the Meme bought is below `min_meme_out`, burns that Meme (or sends it to
 `@0x0` when the supply is not burn-only, as collections do), returns any Quote the pool did not
 take to `burn_quote`, and emits `BuybackBurned`. The admin sets `min_meme_out` from an off-chain
-price, because anyone can move the pool price inside a transaction. Aftermath has no buyback:
-an Aftermath vault's `burn_quote` accumulates with no exit in this package, so set the burn part
-to zero on an Aftermath launch.
+price, because anyone can move the pool price inside a transaction. Aftermath has no buyback,
+and an Aftermath launch's split has no burn part, so nothing reaches `burn_quote` on an
+Aftermath vault.
 
 #### Holder-reward rounds
 
@@ -545,10 +547,10 @@ rewards 1,000, burn 1,000, recipient B 2,500, recipient A 1,500; gross 11 Meme a
 | --- | --- |
 | Blast | Policy destination at once, or held for the partner payout. |
 | Creator | `creator_meme`/`creator_quote`, until the live `CurveFeeCap` claims it. |
-| Auto-LP | Added back to liquidity in the same call; what the pool does not take waits in `auto_lp_*`. On Aftermath nothing is added: the whole part waits. |
+| Auto-LP | Added back to liquidity in the same call; what the pool does not take waits in `auto_lp_*`. An Aftermath split has no auto-LP part. |
 | Rewards | `rewards_meme`/`rewards_quote`, until a round reserves it. |
 | Burn, Meme | Burned at once if the Meme's Coin Registry supply is burn-only; otherwise sent to `@0x0`. |
-| Burn, Quote | `burn_quote`, until a buyback swaps it for Meme and disposes of that Meme as above. On Aftermath no buyback exists: it waits. |
+| Burn, Quote | `burn_quote`, until a buyback swaps it for Meme and disposes of that Meme as above. An Aftermath split has no burn part. |
 | Recipients | Coins transferred to each destination in the same call. |
 
 #### Auto-LP math

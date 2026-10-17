@@ -118,8 +118,8 @@ fun new_rejects_a_dao_fee_above_the_whole_amount() {
 }
 
 #[test]
-/// `finalize` shares one reservation bound to the launch it finalized, holding the capability it
-/// received, and announces it.
+/// `finalize` returns one reservation bound to the launch it finalized, holding the capability it
+/// received, announces it, and `share` shares it.
 fun finalize_binds_a_shared_reservation_to_its_launch() {
     let mut f = start();
     f.admit_aftermath();
@@ -296,6 +296,22 @@ fun new_admits_only_an_allowed_quote() {
     );
 
     abort EUnexpectedSuccess
+}
+
+#[test]
+/// The swap-in fee is Aftermath's minimum plus the first four digest bytes, big-endian: a zero
+/// digest gives exactly the minimum, a saturated prefix adds `2^32 - 1` and stays far under
+/// Aftermath's 10% maximum, and two digests give two fees.
+fun swap_in_fee_is_the_minimum_plus_the_digest_salt() {
+    let minimum = 100_000_000_000_000;
+    let zero = tx_context::new(@0x0, digest_starting_with(vector[0, 0, 0, 0]), 0, 0, 0);
+    let saturated = tx_context::new(@0x0, digest_starting_with(vector[255, 255, 255, 255]), 0, 0, 0);
+    let other = tx_context::new(@0x0, digest_starting_with(vector[0, 0, 1, 0]), 0, 0, 0);
+
+    assert_eq!(aftermath::swap_in_fee_for_testing(&zero), minimum);
+    assert_eq!(aftermath::swap_in_fee_for_testing(&saturated), minimum + ((1 << 32) - 1));
+    assert!(aftermath::swap_in_fee_for_testing(&saturated) <= 100_000_000_000_000_000);
+    assert_eq!(aftermath::swap_in_fee_for_testing(&other), minimum + 256);
 }
 
 #[test]
@@ -512,6 +528,12 @@ fun finalize_rejected_split(fee_split: FeeSplit) {
     );
 
     abort EUnexpectedSuccess
+}
+
+/// A 32-byte transaction digest beginning with `prefix`, zero-padded.
+fun digest_starting_with(mut prefix: vector<u8>): vector<u8> {
+    while (prefix.length() < 32) prefix.push_back(0);
+    prefix
 }
 
 fun admit_aftermath(f: &mut StartFixture) {
@@ -757,6 +779,7 @@ use sui::{
     sui::SUI,
     test_scenario::{Self, Scenario},
     test_utils,
+    tx_context,
 };
 
 use fun end_start as StartFixture.end;

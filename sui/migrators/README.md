@@ -39,9 +39,9 @@ launch's `FeeSplit`:
 | Part | Where it goes |
 | --- | --- |
 | Creator | accrues in the vault; `vault::claim_creator_fees` pays it to the holder of the launch's live `CurveFeeCap` |
-| Auto-LP | added back at the pool's current price (Cetus: to a second position, because the migration position is burned through Cetus LP Burn; Bluefin: to the migration position); what the pool does not take waits for the next call. Aftermath adds nothing: the part waits in the vault |
+| Auto-LP | added back at the pool's current price (Cetus: to a second position, because the migration position is burned through Cetus LP Burn; Bluefin: to the migration position); what the pool does not take waits for the next call. An Aftermath launch's split has no auto-LP part |
 | Rewards | accrues in the vault for holder-reward rounds |
-| Burn | the Meme is burned at once (paid to `@0x0` when the supply is fixed); the Quote waits for a buyback, which Aftermath does not have |
+| Burn | the Meme is burned at once (paid to `@0x0` when the supply is fixed); the Quote waits for a buyback; an Aftermath launch's split has no burn part |
 | Recipients | paid directly to each address |
 
 A Blast administrator with the buyback role calls the venue's `buyback_and_burn`
@@ -59,8 +59,10 @@ tickets of the fee coins.
 
 `FeesCollected`, `AutoLiquidityAdded`, and `BuybackBurned` break down every amount
 for indexers.
-The curve-fee cap holder changes the split with `settle_and_update_fee_split`,
-which settles the fees accrued under the current split first. An administrator
+The curve-fee cap holder changes a Cetus or Bluefin vault's split with
+`settle_and_update_fee_split`, which settles the fees accrued under the current
+split first; an Aftermath vault's split is fixed, since its fees are coins the
+package cannot enumerate before a change. An administrator
 changes Blast's default or per-coin share in `LpFeePolicy`, from the next
 collection. Because auto-LP adds at the current price, a caller can move the
 price around a collection and skim part of that call's auto-LP amount; frequent

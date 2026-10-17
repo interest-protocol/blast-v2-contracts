@@ -17,10 +17,9 @@
 /// so the creator publishes one per launch and hands its capability to `finalize`, which
 /// finalizes the launch and returns the reservation bound to that launch's ID, for `share` or for
 /// a migration in the same PTB; only that launch's migration can consume it. A launch `new`
-/// started but finalized directly in the core has no
-/// reservation and can never migrate, so the creator must finalize here. Aftermath pools have no
-/// tick spacing, so the launch records zero, and its fee rate is the creator's DAO fee in basis
-/// points.
+/// started but finalized directly in the core has no reservation and can never migrate, so the
+/// creator must finalize here. Aftermath pools have no tick spacing, so the launch records zero,
+/// and its fee rate is the creator's DAO fee in basis points.
 ///
 /// Aftermath's registry rejects a second pool with the same coins, weights, flatness, and fees,
 /// and buyers hold Meme while the curve is live, so a pool with this adapter's fixed terms could
@@ -40,8 +39,9 @@ public struct Witness() has drop;
 /// Sealed marker for the DAO-fee pool owner cap the common vault holds as its position.
 public struct Venue() has drop;
 
-/// Shared reservation of one launch's Aftermath pool creation: the `CreatePoolCapV2` of the fresh
-/// LP coin `Lp`, which only the migration of the launch `launch_id` can consume.
+/// Reservation of one launch's Aftermath pool creation, returned by `finalize` and shared by
+/// `share` or consumed in the same PTB: the `CreatePoolCapV2` of the fresh LP coin `Lp`, which
+/// only the migration of the launch `launch_id` can consume.
 public struct PoolCreation<phantom Lp, phantom Meme, phantom Quote> has key {
     id: UID,
     launch_id: ID,
@@ -285,7 +285,6 @@ fun sorts_before<A, B>(): bool {
     a_name.length() < b_name.length()
 }
 
-/// Receives the listed fee coins into the vault and splits them through it.
 /// Receives every listed fee coin into the vault and joins them into one balance.
 fun receive_fees<Meme, Quote, Asset>(
     self: &mut LpVault<Meme, Quote>,
@@ -321,6 +320,11 @@ public fun pool_creation_launch_id_for_testing<Lp, Meme, Quote>(
     self: &PoolCreation<Lp, Meme, Quote>,
 ): ID {
     self.launch_id
+}
+
+#[test_only]
+public fun swap_in_fee_for_testing(ctx: &TxContext): u64 {
+    swap_in_fee(ctx)
 }
 
 #[test_only]
