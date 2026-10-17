@@ -132,7 +132,7 @@ public fun new_vault<Meme, Quote, CoinA, CoinB>(
     ctx: &mut TxContext,
 ) {
     creation_policy.assert_allowed<Quote, Witness>();
-    meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
+    assert_coin_pair<Meme, Quote, CoinA, CoinB>();
     assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
 
     let liquidity = position.liquidity();
@@ -183,6 +183,13 @@ public fun collect_fees<Meme, Quote, CoinA, CoinB>(
 
 /// Whether Meme is `CoinA`, after proving `(CoinA, CoinB)` is exactly the presale's pair.
 fun meme_is_coin_a<Meme, Quote, CoinA, CoinB>(): bool {
+    assert_coin_pair<Meme, Quote, CoinA, CoinB>();
+
+    type_name::with_original_ids<Meme>() == type_name::with_original_ids<CoinA>()
+}
+
+/// Aborts unless `(CoinA, CoinB)` is exactly the presale's Meme and Quote, in either order.
+fun assert_coin_pair<Meme, Quote, CoinA, CoinB>() {
     let (meme, quote) = (type_name::with_original_ids<Meme>(), type_name::with_original_ids<Quote>());
     let (coin_a, coin_b) = (
         type_name::with_original_ids<CoinA>(),
@@ -192,8 +199,6 @@ fun meme_is_coin_a<Meme, Quote, CoinA, CoinB>(): bool {
         (meme == coin_a && quote == coin_b) || (meme == coin_b && quote == coin_a),
         EWrongCoinPair,
     );
-
-    meme == coin_a
 }
 
 /// Chooses the side to fix, preferring the side with more atoms, Meme on a tie: a full-range
@@ -278,6 +283,11 @@ fun burn_into_vault<Meme, Quote>(
 #[test_only]
 public fun meme_is_coin_a_for_testing<Meme, Quote, CoinA, CoinB>(): bool {
     meme_is_coin_a<Meme, Quote, CoinA, CoinB>()
+}
+
+#[test_only]
+public fun assert_coin_pair_for_testing<Meme, Quote, CoinA, CoinB>() {
+    assert_coin_pair<Meme, Quote, CoinA, CoinB>()
 }
 
 #[test_only]
