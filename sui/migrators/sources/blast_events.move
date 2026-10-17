@@ -158,8 +158,9 @@ public struct CetusPoolReserved has copy, drop {
 
 /// Records one launch's Aftermath pool, created ahead of its migration and held in the
 /// reservation `pool_creation_id`, which only that launch's migration consumes: the pool
-/// `pool_id` of the fresh LP coin `lp`, seeded by the creator, whose seed LP coin
-/// `seed_lp_coin_id` is owned by `0x0`.
+/// `pool_id` of the fresh LP coin `lp`, seeded by the creator with `seed_meme` and `seed_quote`
+/// atomic units, which set part of the opening price, and whose seed LP coin `seed_lp_coin_id`
+/// is owned by `0x0`.
 public struct AftermathPoolReserved has copy, drop {
     lp: TypeName,
     meme: TypeName,
@@ -168,6 +169,8 @@ public struct AftermathPoolReserved has copy, drop {
     pool_creation_id: ID,
     pool_id: ID,
     seed_lp_coin_id: ID,
+    seed_meme: u64,
+    seed_quote: u64,
 }
 
 /// Records one Aftermath migration's pools: the base pool `pool_id` (the vault's `pool_id`) and
@@ -420,6 +423,8 @@ public(package) fun aftermath_pool_reserved<Lp, Meme, Quote>(
     pool_creation_id: ID,
     pool_id: ID,
     seed_lp_coin_id: ID,
+    seed_meme: u64,
+    seed_quote: u64,
 ) {
     sui::event::emit(AftermathPoolReserved {
         lp: type_name::with_original_ids<Lp>(),
@@ -429,6 +434,8 @@ public(package) fun aftermath_pool_reserved<Lp, Meme, Quote>(
         pool_creation_id,
         pool_id,
         seed_lp_coin_id,
+        seed_meme,
+        seed_quote,
     });
 }
 

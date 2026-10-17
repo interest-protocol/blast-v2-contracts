@@ -49,6 +49,32 @@ macro public(package) fun aftermath_fixed_one(): u64 {
     1_000_000_000_000_000_000
 }
 
+/// The most of each deposited coin Aftermath may take as its protocol fee for a migration to
+/// proceed, 1% in its `1e18` unit, two hundred times the rate observed on 2026-10-17: a higher
+/// live rate aborts the migration until Aftermath lowers it or this package is upgraded, rather
+/// than handing Aftermath an unbounded share of the launch's liquidity.
+macro public(package) fun aftermath_max_protocol_fee(): u64 {
+    10_000_000_000_000_000
+}
+
+/// The most one coin of a migration deposit slice may grow the pool's balance of it relative to
+/// the other coin's growth. Aftermath's exact-in deposit solves for the LP share by a Newton
+/// iteration in its `1e18` fixed point and fails once one coin's balance ratio dwarfs the
+/// other's; read-only simulation of that math (ADR 0116) took every slice within this skew at
+/// every pool size, pending the mainnet matrix.
+macro public(package) fun aftermath_max_deposit_skew(): u64 {
+    100
+}
+
+/// The fewest atomic units of each coin an Aftermath launch pool's seed may hold. Aftermath's
+/// deposit math fails on a pool whose balance of one coin is a few atomic units, whatever the
+/// skew, and a pool's balances only grow, so a seed at this floor keeps every migration slice in
+/// the region the simulation of that math covered (ADR 0116); it also mints more than Aftermath's
+/// 1,000 locked LP units, the geometric mean of the two amounts.
+macro public(package) fun aftermath_min_seed(): u64 {
+    1_001
+}
+
 /// The basis-points whole, which a fee split's parts total.
 macro public(package) fun basis_points_denominator(): u64 {
     10_000

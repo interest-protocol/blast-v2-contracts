@@ -39,7 +39,9 @@ vault's own address.
   `aftermath::new` the DAO fee the pool charges, the launch's tier, and
   `aftermath::finalize` the capability, which it binds to the finalized
   launch's ID in the hot potato `aftermath::PendingPool`; `aftermath::create_pool`
-  consumes it in the same PTB, creating the pool from a seed the creator buys
+  consumes it in the same PTB, creating the pool from a seed of at least 1,001
+  atomic units of each coin (`ESeedTooSmall`; Aftermath's deposit math fails on
+  a pool holding a few atomic units of a coin) the creator buys
   from the still-owned launch, before any buyer holds Meme, because Aftermath's
   registry rejects a second pool with the same coins, weights, flatness, and
   fees, so a pool created only at migration could be registered first by a
@@ -48,12 +50,22 @@ vault's own address.
   consumes, and that only that launch's `migrate` consumes. `finalize` admits
   only a split with no auto-LP and no burn part, since neither has a route out
   of an Aftermath vault, and the split is fixed from then on. The migration
-  deposits the hand-off into the pool through Aftermath's exact-in deposit
+  rejects a live Aftermath protocol-fee rate above the compiled 1% cap
+  (`EProtocolFeeTooHigh`), so a raised rate stalls migrations until Aftermath
+  lowers it or this package is upgraded, then deposits the hand-off into the
+  pool through Aftermath's exact-in deposit
   (`amm::deposit::deposit_2_coins_direct`), asking no minimum LP, since nothing
-  could price the unshared pool, and checks the pool took every unit less at
-  most Aftermath's protocol fee, read from `ProtocolFeeVault::total_protocol_fee`
-  and rounded up (`docs/research/sui-auto-lp-venue-evidence.json`,
-  `supplements[1]`: the deposit joins both coins whole after
+  could price the unshared pool, in slices whose skew between the coins'
+  growth ratios stays within the compiled bound of 100
+  (`docs/research/sui-auto-lp-venue-evidence.json`, `supplements[2]`:
+  Aftermath's exact-in deposit math overflows once one coin's growth ratio
+  dwarfs the other's, and takes every slice within that skew at every size),
+  each spending one atomic unit of the other coin, which must keep one for
+  the rest (`EHandOffTooSmall`, so a pool share under eleven atomic units,
+  which only a creator's terms produce, fails by name),
+  and checks the pool took every unit less at most Aftermath's protocol fee,
+  read from `ProtocolFeeVault::total_protocol_fee` and rounded up
+  (`supplements[1]`: the deposit joins both coins whole after
   `protocol_fees::collect_fees_2_coins`, which splits at most
   `amount × total_protocol_fee / 1e18` of each coin among Aftermath's treasury,
   insurance fund, and dev wallet). It builds the vault
@@ -460,7 +472,12 @@ in one PTB:
 
 - `aftermath::create_pool` with Meme sorting before Quote, and again with Quote
   sorting before Meme: the seed LP coin is owned by `0x0`, the reservation
-  holds the pool, and `AftermathPoolReserved` names both;
+  holds the pool, and `AftermathPoolReserved` names both and the seed;
+- `aftermath::create_pool` with a seed of 1,001 atomic units of each coin,
+  which must create, and with 1,000 of either, which must abort with
+  `ESeedTooSmall` before Aftermath; and, to show what the floor prevents, a
+  forked pool seeded with one and with fifty Quote atoms, into which the
+  migration deposit must fail inside Aftermath's math;
 - `aftermath::create_pool` after another account registered a pool with the
   adapter's fixed terms for the same pair, which cannot happen on a real launch
   (nobody holds Meme before the creation PTB) but proves the collision aborts
@@ -470,14 +487,24 @@ in one PTB:
   residuals zero, the DAO-fee pool reports the launch's fee and the vault's
   address, the deposit's LP coin is owned by `0x0`, and the vault's position
   is the owner cap;
+- `aftermath::migrate` at the seed and hand-off extremes intake admits: a seed
+  of 1,001 atomic units of each coin against the largest hand-off of both, the
+  largest Meme hand-off against twenty Quote atoms and the mirror, a Meme-heavy
+  seed (1e15 Meme against 1,001 Quote) and a Quote-heavy seed against the
+  guide's hand-off, each in both coin orders: every slice Aftermath's deposit
+  takes, the LP minted fits `u64`, and the pool opens at the seed plus
+  hand-off balances;
 - `aftermath::migrate` with the live `ProtocolFeeVault` rate: the deposit's
   take must equal `floor(amount × total_protocol_fee / 1e18)` on each coin,
-  within the ceiling the adapter allows; and
+  within the ceiling the adapter allows; and, against a forked fee vault whose
+  rate is one above the cap, it must abort with `EProtocolFeeTooHigh` before
+  depositing; and
 - one DAO-fee swap whose fee coin a dev-inspect `aftermath::collect_fees`
   receives and splits, then the same call against a Cetus vault, which must
   abort with `EWrongVault`.
 
-Each migration fixture must show:
+Each Cetus and Bluefin migration fixture must show (Aftermath's weighted pool
+has no price square root, ticks, or position; its rows above pin its state):
 
 - the balance-derived `sqrt_price_x64` matches the exact Q64.64 target for that
   orientation, with no caller-supplied price and no display-decimal scaling;

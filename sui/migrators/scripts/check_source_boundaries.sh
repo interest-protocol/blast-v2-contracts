@@ -170,7 +170,7 @@ aftermath:public:fun migrate<Lp, Meme, Quote>( launch: &mut Launch<Meme, Quote>,
 aftermath:public:fun new<Meme, Quote>( ticket: LaunchTicket<Meme>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, config: &LaunchConfig, dao_fee_bps: u16, ): LaunchInitializer<Meme, Quote>
 aftermath:public:fun share<Lp, Meme, Quote>( self: PoolCreation<Lp, Meme, Quote>, migrators_version: &MigratorsVersion, )
 blast_events:package:fun aftermath_pool_created<Lp>( vault_id: ID, pool_id: ID, dao_fee_pool_id: ID, owner_cap_id: ID, lp_coin_id: ID, )
-blast_events:package:fun aftermath_pool_reserved<Lp, Meme, Quote>( launch_id: ID, pool_creation_id: ID, pool_id: ID, seed_lp_coin_id: ID, )
+blast_events:package:fun aftermath_pool_reserved<Lp, Meme, Quote>( launch_id: ID, pool_creation_id: ID, pool_id: ID, seed_lp_coin_id: ID, seed_meme: u64, seed_quote: u64, )
 blast_events:package:fun auto_liquidity_added( vault_id: ID, meme_amount: u64, quote_amount: u64, meme_pending: u64, quote_pending: u64, )
 blast_events:package:fun auto_lp_position_opened(vault_id: ID, position_id: ID)
 blast_events:package:fun buyback_burned( vault_id: ID, quote_spent: u64, meme_burned: u64, quote_pending: u64, )
@@ -205,6 +205,9 @@ constants:package:fun aftermath_fixed_one(): u64
 constants:package:fun aftermath_flatness(): u64
 constants:package:fun aftermath_half_weight(): u64
 constants:package:fun aftermath_max_dao_fee_bps(): u16
+constants:package:fun aftermath_max_deposit_skew(): u64
+constants:package:fun aftermath_max_protocol_fee(): u64
+constants:package:fun aftermath_min_seed(): u64
 constants:package:fun aftermath_pool_name(): vector<u8>
 constants:package:fun auto_lp_margin(): u256
 constants:package:fun basis_points_denominator(): u64
@@ -1147,14 +1150,19 @@ require_pattern "$AFTERMATH_SOURCE" 'public struct Venue' 'sealed Aftermath venu
 # only an initializer this module's start began, finalizes the launch through the core, admits
 # only a split with no auto-LP and no burn part, and returns a hot-potato pending pool holding the
 # fresh LP coin's pool-creation capability, bound to that launch's ID. Pool creation consumes it in
-# the same call: it creates the 50/50 pool with the fixed terms in Aftermath's coin order from the
-# creator's seed coins, sends the seed LP coin to 0x0, announces the reservation, and returns a
+# the same call: it rejects a seed under the compiled floor on either coin, creates the 50/50 pool
+# with the fixed terms in Aftermath's coin order from the seed, sends the seed LP coin to 0x0,
+# announces the reservation, and returns a
 # key-only pool creation holding the unshared pool, bound to the launch, which `share` alone can
 # share. Migration checks that binding before anything else, consumes the pool creation, reads the
-# fee from the launch, migrates it, deposits exactly the handed-off balances into the held pool in
-# Aftermath's order with no minimum (nobody else can reach the unshared pool), checks the pool
-# took them less at most Aftermath's protocol fee rounded up, builds the vault with no position,
-# wraps the pool in a DAO-fee pool paying the vault's address at the launch's fee and checks both,
+# live Aftermath protocol-fee rate above the compiled cap before touching the launch, reads the
+# fee from the launch, migrates it, deposits exactly the handed-off balances into the held pool
+# in Aftermath's order with no minimum (nobody else can reach the unshared pool) in slices whose
+# skew between the coins' growth stays within the compiled bound Aftermath's deposit math takes,
+# each spending one atomic unit of the other coin, which must keep one for the rest, checks the
+# pool took
+# them less at most Aftermath's protocol fee rounded up, builds the vault with no position, wraps
+# the pool in a DAO-fee pool paying the vault's address at the launch's fee and checks both,
 # shares the vault with the owner cap as its position, shares the DAO-fee pool, and sends the LP
 # coin to 0x0.
 # Every fee exit receives the listed coins the DAO-fee pool sent the vault and splits them through
@@ -1177,7 +1185,7 @@ aftermath_body() {
     == 'struct PoolCreation<phantom Lp, phantom Meme, phantom Quote> has key { id: UID, launch_id: ID, pool: Pool<Lp>, }' ]] \
     && [[ "$(aftermath_body new)" == 'migrators_version.assert_current();assert!(dao_fee_bps>0&&dao_fee_bps<=constants::aftermath_max_dao_fee_bps!(),EInvalidDaoFee);launch::new<Meme,Quote,_>(ticket,package_version,config,Witness(),0,dao_fee_bpsasu64)' ]] \
     && [[ "$(aftermath_body finalize)" == 'migrators_version.assert_current();assert!(initializer.migration_witness()==type_name::with_original_ids<Witness>(),EWrongMigrator);letlaunch=initializer.finalize(package_version,currency,config,creation_fee,ctx);let(_,auto_lp_bps,_,burn_bps,_)=launch.lp_fee_split().apportion_fee_split(constants::basis_points_denominator!());assert!(auto_lp_bps==0&&burn_bps==0,EUnsupportedFeeSplit);letpending=PendingPool<Lp,Meme,Quote>{launch_id:object::id(&launch),create_pool_cap};(launch,pending)' ]] \
-    && [[ "$(aftermath_body create_pool)" == 'migrators_version.assert_current();letPendingPool{launch_id,create_pool_cap}=pending;let(pool,lp)=create_pool_2_coins_in_order<Lp,_,_>(create_pool_cap,pool_registry,meme,quote,ctx);letpool_creation=PoolCreation<Lp,Meme,Quote>{id:object::new(ctx),launch_id,pool};blast_events::aftermath_pool_reserved<Lp,Meme,Quote>(launch_id,pool_creation.id.to_inner(),object::id(&pool_creation.pool),object::id(&lp));transfer::public_transfer(lp,@0x0);pool_creation' ]] \
+    && [[ "$(aftermath_body create_pool)" == 'migrators_version.assert_current();letPendingPool{launch_id,create_pool_cap}=pending;let(seed_meme,seed_quote)=(meme.value(),quote.value());assert!(seed_meme>=constants::aftermath_min_seed!()&&seed_quote>=constants::aftermath_min_seed!(),ESeedTooSmall);let(pool,lp)=create_pool_2_coins_in_order<Lp,_,_>(create_pool_cap,pool_registry,meme,quote,ctx);letpool_creation=PoolCreation<Lp,Meme,Quote>{id:object::new(ctx),launch_id,pool};blast_events::aftermath_pool_reserved<Lp,Meme,Quote>(launch_id,pool_creation.id.to_inner(),object::id(&pool_creation.pool),object::id(&lp),seed_meme,seed_quote);transfer::public_transfer(lp,@0x0);pool_creation' ]] \
     && [[ "$(aftermath_body create_pool_2_coins_in_order)" == 'if(sorts_before<Meme,Quote>()){create_pool_2_coins(create_pool_cap,pool_registry,meme,quote,ctx)}else{create_pool_2_coins(create_pool_cap,pool_registry,quote,meme,ctx)}' ]] \
     && [[ "$(aftermath_body create_pool_2_coins)" == 'pool_factory::create_pool_2_coins_v2(create_pool_cap,pool_registry,constants::aftermath_pool_name!(),vector[constants::aftermath_half_weight!(),constants::aftermath_half_weight!()],constants::aftermath_flatness!(),vector[constants::aftermath_base_swap_fee!(),constants::aftermath_base_swap_fee!()],vector[0,0],vector[0,0],vector[0,0],coin_1,coin_2,option::none(),false,ctx)' ]] \
     && [[ "$(aftermath_body share)" == 'migrators_version.assert_current();transfer::share_object(self);' ]] \
@@ -1185,17 +1193,23 @@ aftermath_body() {
     && [[ "$(constant_body aftermath_half_weight)" == '500_000_000_000_000_000' ]] \
     && [[ "$(constant_body aftermath_flatness)" == '0' ]] \
     && [[ "$(constant_body aftermath_base_swap_fee)" == '100_000_000_000_000' ]] \
-    && [[ "$(constant_body aftermath_fixed_one)" == '1_000_000_000_000_000_000' ]] || \
-    fail "aftermath::new must bound the DAO fee to 1..=10,000 and start the launch with no tick spacing and that fee; aftermath::finalize must take only this module's initializer, finalize through the core, admit only a split with no auto-LP and no burn part, and return the hot-potato pending pool bound to the launch; aftermath::create_pool must consume it into the fixed-term 50/50 pool in Aftermath's order from the seed, send the seed LP coin to 0x0, and return the key-only pool creation holding the pool, which only aftermath::share shares"
-[[ "$(aftermath_body migrate)" == 'migrators_version.assert_current();letPoolCreation{id,launch_id,mutpool}=pool_creation;assert!(launch_id==object::id(launch),EWrongLaunch);id.delete();let(_,pool_fee_rate)=launch.pool_tier();letdao_fee_bps=pool_fee_rateasu16;let(meme,quote)=launch.migrate(package_version,currency,Witness(),ctx);let(meme_amount,quote_amount)=(meme.value(),quote.value());let(meme_before,quote_before)=(pool.balance_of<Lp,Meme>(),pool.balance_of<Lp,Quote>());letlp=deposit_in_order<Lp,_,_>(&mutpool,pool_registry,protocol_fee_vault,treasury,insurance_fund,referral_vault,meme.into_coin(ctx),quote.into_coin(ctx),ctx);letprotocol_fee_rate=protocol_fee_vault.total_protocol_fee();assert!(pool.balance_of<Lp,Meme>()-meme_before>=meme_amount-protocol_fee_ceiling(meme_amount,protocol_fee_rate)&&pool.balance_of<Lp,Quote>()-quote_before>=quote_amount-protocol_fee_ceiling(quote_amount,protocol_fee_rate),EPoolMismatch);letpool_id=object::id(&pool);letvault=vault::new(launch,pool_id,balance::zero(),balance::zero(),ctx);letvault_address=object::id(&vault).to_address();let(dao_fee_pool,owner_cap)=dao_fee_pool::new(pool,dao_fee_version,dao_fee_bps,vault_address,ctx);assert!(dao_fee_pool.fee_bps()==dao_fee_bps&&dao_fee_pool.fee_recipient()==vault_address,EDaoFeePoolMismatch);blast_events::aftermath_pool_created<Lp>(object::id(&vault),pool_id,object::id(&dao_fee_pool),object::id(&owner_cap),object::id(&lp));vault.share_with_position(&Venue(),owner_cap,lp.value()asu128);transfer::public_share_object(dao_fee_pool);transfer::public_transfer(lp,@0x0);' ]] \
+    && [[ "$(constant_body aftermath_fixed_one)" == '1_000_000_000_000_000_000' ]] \
+    && [[ "$(constant_body aftermath_max_protocol_fee)" == '10_000_000_000_000_000' ]] \
+    && [[ "$(constant_body aftermath_max_deposit_skew)" == '100' ]] \
+    && [[ "$(constant_body aftermath_min_seed)" == '1_001' ]] || \
+    fail "aftermath::new must bound the DAO fee to 1..=10,000 and start the launch with no tick spacing and that fee; aftermath::finalize must take only this module's initializer, finalize through the core, admit only a split with no auto-LP and no burn part, and return the hot-potato pending pool bound to the launch; aftermath::create_pool must consume it into the fixed-term 50/50 pool in Aftermath's order from a seed of at least the floor on each coin, send the seed LP coin to 0x0, and return the key-only pool creation holding the pool, which only aftermath::share shares"
+[[ "$(aftermath_body migrate)" == 'migrators_version.assert_current();letPoolCreation{id,launch_id,mutpool}=pool_creation;assert!(launch_id==object::id(launch),EWrongLaunch);id.delete();letprotocol_fee_rate=protocol_fee_vault.total_protocol_fee();assert_protocol_fee_capped(protocol_fee_rate);let(_,pool_fee_rate)=launch.pool_tier();letdao_fee_bps=pool_fee_rateasu16;let(meme,quote)=launch.migrate(package_version,currency,Witness(),ctx);let(meme_amount,quote_amount)=(meme.value(),quote.value());let(meme_before,quote_before)=(pool.balance_of<Lp,Meme>(),pool.balance_of<Lp,Quote>());letlp=deposit_hand_off<Lp,_,_>(&mutpool,pool_registry,protocol_fee_vault,treasury,insurance_fund,referral_vault,meme.into_coin(ctx),quote.into_coin(ctx),ctx);assert!(pool.balance_of<Lp,Meme>()-meme_before>=meme_amount-protocol_fee_ceiling(meme_amount,protocol_fee_rate)&&pool.balance_of<Lp,Quote>()-quote_before>=quote_amount-protocol_fee_ceiling(quote_amount,protocol_fee_rate),EPoolMismatch);letpool_id=object::id(&pool);letvault=vault::new(launch,pool_id,balance::zero(),balance::zero(),ctx);letvault_address=object::id(&vault).to_address();let(dao_fee_pool,owner_cap)=dao_fee_pool::new(pool,dao_fee_version,dao_fee_bps,vault_address,ctx);assert!(dao_fee_pool.fee_bps()==dao_fee_bps&&dao_fee_pool.fee_recipient()==vault_address,EDaoFeePoolMismatch);blast_events::aftermath_pool_created<Lp>(object::id(&vault),pool_id,object::id(&dao_fee_pool),object::id(&owner_cap),object::id(&lp));vault.share_with_position(&Venue(),owner_cap,lp.value()asu128);transfer::public_share_object(dao_fee_pool);transfer::public_transfer(lp,@0x0);' ]] \
+    && [[ "$(aftermath_body assert_protocol_fee_capped)" == 'assert!(rate<=constants::aftermath_max_protocol_fee!(),EProtocolFeeTooHigh);' ]] \
+    && [[ "$(aftermath_body deposit_hand_off)" == 'letmutlp=coin::zero<Lp>(ctx);loop{let(meme_slice,quote_slice)=deposit_slice(pool.balance_of<Lp,Meme>(),pool.balance_of<Lp,Quote>(),meme.value(),quote.value());if(meme_slice==meme.value()&&quote_slice==quote.value()){lp.join(deposit_in_order<Lp,_,_>(pool,pool_registry,protocol_fee_vault,treasury,insurance_fund,referral_vault,meme,quote,ctx));returnlp};lp.join(deposit_in_order<Lp,_,_>(pool,pool_registry,protocol_fee_vault,treasury,insurance_fund,referral_vault,meme.split(meme_slice,ctx),quote.split(quote_slice,ctx),ctx));}' ]] \
+    && [[ "$(aftermath_body deposit_slice)" == 'letskew=constants::aftermath_max_deposit_skew!()asu256;letmeme_growth=((meme_balanceasu256)+(meme_leftasu256))*(quote_balanceasu256);letquote_growth=((quote_balanceasu256)+(quote_leftasu256))*(meme_balanceasu256);if(meme_growth>skew*quote_growth){assert!(quote_left>=2,EHandOffTooSmall);((((meme_balanceasu256)*(skew-1)).min(meme_leftasu256))asu64,1)}elseif(quote_growth>skew*meme_growth){assert!(meme_left>=2,EHandOffTooSmall);(1,(((quote_balanceasu256)*(skew-1)).min(quote_leftasu256))asu64)}else{(meme_left,quote_left)}' ]] \
     && [[ "$(aftermath_body deposit_in_order)" == 'if(sorts_before<Meme,Quote>()){deposit::deposit_2_coins_direct(pool,pool_registry,protocol_fee_vault,treasury,insurance_fund,referral_vault,meme,quote,0,ctx)}else{deposit::deposit_2_coins_direct(pool,pool_registry,protocol_fee_vault,treasury,insurance_fund,referral_vault,quote,meme,0,ctx)}' ]] \
     && [[ "$(aftermath_body protocol_fee_ceiling)" == 'letone=constants::aftermath_fixed_one!()asu128;(((amountasu128)*(rateasu128)+one-1)/one)asu64' ]] \
     && [[ "$(aftermath_body sorts_before)" == 'leta_name=type_name::with_defining_ids<A>().into_string().into_bytes();letb_name=type_name::with_defining_ids<B>().into_string().into_bytes();letprefix_length=a_name.length().min(b_name.length());letmuti=0;while(i<prefix_length&&a_name[i]==b_name[i])i=i+1;if(i<prefix_length)returna_name[i]<b_name[i];a_name.length()<b_name.length()' ]] || \
-    fail "aftermath::migrate must check the pool creation's launch first, consume it, read the fee from the launch, migrate it, deposit exactly the hand-off into the held pool in Aftermath's order with no minimum, check the pool took it less at most Aftermath's protocol fee rounded up, share a vault the DAO-fee pool pays at that fee with the owner cap as its position, share the DAO-fee pool, and send the LP coin to 0x0"
+    fail "aftermath::migrate must check the pool creation's launch first, consume it, reject a protocol-fee rate above the cap before touching the launch, read the fee from the launch, migrate it, deposit exactly the hand-off into the held pool in Aftermath's order with no minimum in slices within the compiled skew, check the pool took it less at most Aftermath's protocol fee rounded up, share a vault the DAO-fee pool pays at that fee with the owner cap as its position, share the DAO-fee pool, and send the LP coin to 0x0"
 [[ "$(aftermath_body collect_fees)" == 'migrators_version.assert_current();assert!(self.has_position(&Venue()),EWrongVault);letmeme=self.receive_fees(meme_fees);letquote=self.receive_fees(quote_fees);self.split_fees(policy,currency,meme,quote,ctx);' ]] \
     && [[ "$(aftermath_body receive_fees)" == 'letmutreceived=balance::zero<Asset>();fees.do!(|fee|{received.join(self.receive_fee(fee).into_balance());});received' ]] || \
     fail "Aftermath's collection must take only an Aftermath vault, receive every listed coin into it, and split them at once"
-require_errors "$AFTERMATH_SOURCE" "Aftermath must use codes 0-6 for its pool, DAO-fee pool, binding, fee, migrator, vault, and split checks" <<'ERRORS'
+require_errors "$AFTERMATH_SOURCE" "Aftermath must use codes 0-9 for its pool, DAO-fee pool, binding, fee, migrator, vault, split, protocol-fee, hand-off, and seed checks" <<'ERRORS'
 0 EPoolMismatch The Aftermath pool must take every Meme and Quote unit the launch handed off, less Aftermath's protocol fee.
 1 EDaoFeePoolMismatch The DAO-fee pool must charge the launch's fee and pay the vault.
 2 EWrongLaunch The pool creation is bound to a different launch.
@@ -1203,6 +1217,9 @@ require_errors "$AFTERMATH_SOURCE" "Aftermath must use codes 0-6 for its pool, D
 4 EWrongMigrator Only a launch this module's `new` started can be finalized here.
 5 EWrongVault Only an Aftermath vault's fees are collected here.
 6 EUnsupportedFeeSplit An Aftermath launch's fee split needs no auto-LP and no burn part: this adapter adds no liquidity and has no buyback.
+7 EProtocolFeeTooHigh Aftermath's protocol fee is above this package's cap; the migration waits for a lower rate or an upgrade.
+8 EHandOffTooSmall A hand-off coin must keep one atomic unit for every deposit slice the other coin's growth needs, and one for the rest.
+9 ESeedTooSmall An Aftermath launch pool's seed needs at least 1,001 atomic units of each coin.
 ERRORS
 # Aftermath's public routes share the adapter parameter order; its fee exits take the fee coins
 # as receiving tickets where the others take venue objects.

@@ -158,9 +158,9 @@ fun finalize_binds_the_pending_pool_to_its_launch() {
 }
 
 #[test, expected_failure(abort_code = 0, location = amm::pool_factory)]
-/// `create_pool` reaches Aftermath's factory with the seed, where the link stub aborts; mainnet
-/// dev-inspect proves the creation itself.
-fun create_pool_creates_the_pool_from_the_seed() {
+/// `create_pool` consumes the pending pool and reaches Aftermath's factory with the seed, where
+/// the link stub aborts; mainnet dev-inspect proves the creation itself.
+fun create_pool_consumes_the_pending_pool_into_aftermaths_factory() {
     let mut f = start();
     f.admit_aftermath();
     let (launch, pending) = f.open_launch(DAO_FEE_BPS);
@@ -179,6 +179,30 @@ fun create_pool_creates_the_pool_from_the_seed() {
     abort EUnexpectedSuccess
 }
 
+#[test, expected_failure(abort_code = 0, location = amm::pool_factory)]
+/// A seed of exactly the floor on each coin reaches Aftermath's factory.
+fun create_pool_admits_a_seed_at_the_floor_on_each_coin() {
+    create_pool_with_seed(1_001, 1_001)
+}
+
+#[test, expected_failure(
+    abort_code = aftermath::ESeedTooSmall,
+    location = blast_fun_migrators::aftermath,
+)]
+/// One atomic unit under the floor of Meme is rejected before the factory, whatever the Quote.
+fun create_pool_rejects_a_meme_seed_under_the_floor() {
+    create_pool_with_seed(1_000, 1_000_000_000)
+}
+
+#[test, expected_failure(
+    abort_code = aftermath::ESeedTooSmall,
+    location = blast_fun_migrators::aftermath,
+)]
+/// One atomic unit under the floor of Quote is rejected before the factory, whatever the Meme.
+fun create_pool_rejects_a_quote_seed_under_the_floor() {
+    create_pool_with_seed(1_000_000_000, 1_000)
+}
+
 #[test]
 /// Aftermath's protocol fee is bounded by its rounded-up share of the deposit, so a deposit that
 /// lands every other unit passes the pool check.
@@ -189,6 +213,130 @@ fun protocol_fee_ceiling_rounds_up() {
     // 0.005% of 1,000,001 is 50.00005, which rounds up to 51.
     assert_eq!(aftermath::protocol_fee_ceiling_for_testing(1_000_001, 50_000_000_000_000), 51);
     assert_eq!(aftermath::protocol_fee_ceiling_for_testing(1, 1), 1);
+    // The whole amount at a 100% rate, at the top of the range, is the amount itself.
+    assert_eq!(
+        aftermath::protocol_fee_ceiling_for_testing(
+            std::u64::max_value!(),
+            1_000_000_000_000_000_000,
+        ),
+        std::u64::max_value!(),
+    );
+}
+
+#[test]
+/// Aftermath's live protocol-fee rate passes up to the 1% cap.
+fun the_protocol_fee_cap_admits_rates_up_to_one_percent() {
+    aftermath::assert_protocol_fee_capped_for_testing(0);
+    aftermath::assert_protocol_fee_capped_for_testing(50_000_000_000_000);
+    aftermath::assert_protocol_fee_capped_for_testing(10_000_000_000_000_000);
+}
+
+#[test, expected_failure(
+    abort_code = aftermath::EProtocolFeeTooHigh,
+    location = blast_fun_migrators::aftermath,
+)]
+/// A rate just above the cap stalls the migration instead of handing Aftermath more.
+fun the_protocol_fee_cap_rejects_a_rate_above_one_percent() {
+    aftermath::assert_protocol_fee_capped_for_testing(10_000_000_000_000_001);
+}
+
+#[test]
+/// A hand-off whose growth ratios are within the skew deposits in one slice; a skewed one grows
+/// the skewed coin's balance by the skew alongside one atomic unit of the other, on either side,
+/// and the slice never exceeds what is left.
+fun deposit_slices_bound_the_skew_between_the_coins() {
+    // Balanced growth: everything at once.
+    assert_slice(1_001, 1_001, 1_000_000, 1_000_000, 1_000_000, 1_000_000);
+    // Exactly the skew: Meme grows 100x against Quote's 1.005x, still one slice.
+    assert_slice(1_000, 1_000, 99_000, 5, 99_000, 5);
+    // Past the skew: Meme's slice is 99 balances, with one Quote atom.
+    assert_slice(1_000, 1_000, 200_000, 5, 99_000, 1);
+    // The mirror on the Quote side.
+    assert_slice(1_000, 1_000, 5, 200_000, 1, 99_000);
+    // A seed price far from the hand-off price: the guide's hand-off into a minimum seed.
+    assert_slice(1_001, 1_001, 200_000_000_000_000_000, 8_000_000_000_000, 99_099, 1);
+    // After two such slices the rest fits: Meme's growth is 2e10 against Quote's 8e9.
+    assert_slice(
+        10_010_000,
+        1_003,
+        199_999_999_989_991_001,
+        7_999_999_999_998,
+        199_999_999_989_991_001,
+        7_999_999_999_998,
+    );
+    // The largest balances and hand-offs do not overflow the comparison.
+    let max = std::u64::max_value!();
+    assert_slice(max / 2, max / 2, max / 2, max / 2, max / 2, max / 2);
+    assert_slice(1_001, max, max, 2, 99_099, 1);
+}
+
+#[test]
+/// Walking the slices to the end: the guide's hand-off into a minimum seed takes three deposits,
+/// the largest Meme hand-off against twenty Quote atoms nine, a Quote-heavy seed eight, and a
+/// balanced one just one, each ending with both coins fully deposited.
+fun deposit_slices_walk_every_hand_off_to_the_end() {
+    // A hand-off plus the seed fits a coin's supply, so the largest is `u64::MAX` less the seed.
+    let largest = std::u64::max_value!() - 1_001;
+    assert_eq!(walk_slices(1_001, 1_001, 200_000_000_000_000_000, 8_000_000_000_000), 3);
+    assert_eq!(walk_slices(1_001, 1_001, largest, 20), 9);
+    assert_eq!(walk_slices(1_001, 1_001, 20, largest), 9);
+    assert_eq!(walk_slices(1_001, 1_000_000_000_000_000, 200_000_000_000_000_000, 8_000_000_000_000), 8);
+    assert_eq!(walk_slices(1_001, 1_001, largest, largest), 1);
+    assert_eq!(walk_slices(1_000_000_000_000, 1_000_000_000, 200_000_000_000_000_000, 8_000_000_000_000), 1);
+}
+
+#[test, expected_failure(
+    abort_code = aftermath::EHandOffTooSmall,
+    location = blast_fun_migrators::aftermath,
+)]
+/// A hand-off whose Quote cannot fund the atoms Meme's slices need aborts by name instead of
+/// splitting an empty coin.
+fun deposit_slices_reject_a_hand_off_too_small_to_fund_the_slices() {
+    walk_slices(1_001, 1_001, std::u64::max_value!() - 1_001, 1);
+}
+
+#[test, expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+/// A stale migrators generation rejects pool creation before the seed reaches Aftermath.
+fun a_stale_generation_rejects_create_pool_before_the_seed() {
+    let mut f = start();
+    f.admit_aftermath();
+    let (launch, pending) = f.open_launch(DAO_FEE_BPS);
+    let mut pool_registry = pool_registry::new_for_testing(f.scenario.ctx());
+    f.migrators_version.set_for_testing(2);
+
+    let _pool_creation = aftermath::create_pool(
+        pending,
+        &f.migrators_version,
+        &mut pool_registry,
+        coin::mint_for_testing<AFTERMATH_TESTS>(1_000_000, f.scenario.ctx()),
+        coin::mint_for_testing<QUOTE>(1_000_000, f.scenario.ctx()),
+        f.scenario.ctx(),
+    );
+
+    destroy(launch);
+    abort EUnexpectedSuccess
+}
+
+#[test, expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+/// A stale migrators generation cannot share a reservation.
+fun a_stale_generation_rejects_sharing_the_reservation() {
+    let mut f = start();
+    f.migrators_version.set_for_testing(2);
+    let pool_creation = aftermath::pool_creation_for_testing<LP, AFTERMATH_TESTS, QUOTE>(
+        object::id_from_address(@0xC0FFEE),
+        amm_pool::pool_for_testing<LP>(f.scenario.ctx()),
+        f.scenario.ctx(),
+    );
+
+    aftermath::share(pool_creation, &f.migrators_version);
+
+    abort EUnexpectedSuccess
 }
 
 #[test, expected_failure(
@@ -559,6 +707,66 @@ fun finalize_rejected_split(fee_split: FeeSplit) {
     );
 
     abort EUnexpectedSuccess
+}
+
+/// Creates a launch's pool from a seed of `seed_meme` and `seed_quote`, which either aborts in
+/// the adapter or reaches the factory link stub, which aborts.
+fun create_pool_with_seed(seed_meme: u64, seed_quote: u64) {
+    let mut f = start();
+    f.admit_aftermath();
+    let (launch, pending) = f.open_launch(DAO_FEE_BPS);
+    let mut pool_registry = pool_registry::new_for_testing(f.scenario.ctx());
+
+    let _pool_creation = aftermath::create_pool(
+        pending,
+        &f.migrators_version,
+        &mut pool_registry,
+        coin::mint_for_testing<AFTERMATH_TESTS>(seed_meme, f.scenario.ctx()),
+        coin::mint_for_testing<QUOTE>(seed_quote, f.scenario.ctx()),
+        f.scenario.ctx(),
+    );
+
+    destroy(launch);
+    abort EUnexpectedSuccess
+}
+
+/// Walks the deposit slices for a pool holding `meme_balance` and `quote_balance` with `meme_left`
+/// and `quote_left` to deposit, adding each slice to the balances as a deposit would (less
+/// Aftermath's fee, which the walk ignores), and returns how many deposits it took.
+fun walk_slices(
+    mut meme_balance: u64,
+    mut quote_balance: u64,
+    mut meme_left: u64,
+    mut quote_left: u64,
+): u64 {
+    let mut deposits = 0;
+    while (meme_left > 0 || quote_left > 0) {
+        let (meme_slice, quote_slice) =
+            aftermath::deposit_slice_for_testing(meme_balance, quote_balance, meme_left, quote_left);
+        assert!(meme_slice > 0 && quote_slice > 0);
+        meme_balance = meme_balance + meme_slice;
+        quote_balance = quote_balance + quote_slice;
+        meme_left = meme_left - meme_slice;
+        quote_left = quote_left - quote_slice;
+        deposits = deposits + 1;
+    };
+    deposits
+}
+
+/// Asserts the next deposit slice for a pool holding `meme_balance` and `quote_balance` with
+/// `meme_left` and `quote_left` to deposit is `(expected_meme, expected_quote)`.
+fun assert_slice(
+    meme_balance: u64,
+    quote_balance: u64,
+    meme_left: u64,
+    quote_left: u64,
+    expected_meme: u64,
+    expected_quote: u64,
+) {
+    let (meme_slice, quote_slice) =
+        aftermath::deposit_slice_for_testing(meme_balance, quote_balance, meme_left, quote_left);
+    assert_eq!(meme_slice, expected_meme);
+    assert_eq!(quote_slice, expected_quote);
 }
 
 /// Unpacks and drops a pending creation a test does not carry to `create_pool`.
