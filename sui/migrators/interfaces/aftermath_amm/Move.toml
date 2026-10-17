@@ -4,6 +4,10 @@ edition = "2024"
 published-at = "0xf948935b111990c2b604900c9b2eeb8f24dcf9868a45d1ea1653a5f282c10e29"
 
 [dependencies]
+AftermathProtocolFeeVault = { local = "../aftermath_protocol_fee_vault" }
+AftermathTreasury = { local = "../aftermath_treasury" }
+AftermathInsuranceFund = { local = "../aftermath_insurance_fund" }
+AftermathReferralVault = { local = "../aftermath_referral_vault" }
 Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2", override = true }
 
 [addresses]

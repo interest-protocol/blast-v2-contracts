@@ -7,14 +7,38 @@ version = 4
 [pinned.mainnet.AftermathAmm]
 source = { local = "interfaces/aftermath_amm" }
 use_environment = "mainnet"
-manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
-deps = { Sui = "Sui" }
+manifest_digest = "8DD3827ED5FB1F585E9E6684786FFAD7D17252D3D21E84E5D9EA4ECCB74BA0A3"
+deps = { AftermathInsuranceFund = "AftermathInsuranceFund", AftermathProtocolFeeVault = "AftermathProtocolFeeVault", AftermathReferralVault = "AftermathReferralVault", AftermathTreasury = "AftermathTreasury", Sui = "Sui" }
 
 [pinned.mainnet.AftermathDaoFeePools]
 source = { local = "interfaces/aftermath_dao_fee" }
 use_environment = "mainnet"
 manifest_digest = "059163B6EEC70C0BA08FE015B1DBEC38DB554FC4A43C4D375C757E8D1604346D"
 deps = { AftermathAmm = "AftermathAmm", Sui = "Sui" }
+
+[pinned.mainnet.AftermathInsuranceFund]
+source = { local = "interfaces/aftermath_insurance_fund" }
+use_environment = "mainnet"
+manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
+deps = { Sui = "Sui" }
+
+[pinned.mainnet.AftermathProtocolFeeVault]
+source = { local = "interfaces/aftermath_protocol_fee_vault" }
+use_environment = "mainnet"
+manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
+deps = { Sui = "Sui" }
+
+[pinned.mainnet.AftermathReferralVault]
+source = { local = "interfaces/aftermath_referral_vault" }
+use_environment = "mainnet"
+manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
+deps = { Sui = "Sui" }
+
+[pinned.mainnet.AftermathTreasury]
+source = { local = "interfaces/aftermath_treasury" }
+use_environment = "mainnet"
+manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
+deps = { Sui = "Sui" }
 
 [pinned.mainnet.BluefinSpot]
 source = { git = "https://github.com/fireflyprotocol/bluefin-spot-contract-interface.git", subdir = ".", rev = "91ce930575b2aa3decab9b7e129b8002deba80c1" }
@@ -121,8 +145,8 @@ deps = { blast_admin = "blast_admin", blast_partners = "blast_partners", std = "
 [pinned.mainnet.blast_fun_migrators]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "E52C198B730CE40D45B28C311534925E8F8A010A543AB4EA4A6E4737C97D25D7"
-deps = { AftermathAmm = "AftermathAmm", AftermathDaoFeePools = "AftermathDaoFeePools", BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui", blast_admin = "blast_admin", blast_fun = "blast_fun" }
+manifest_digest = "9B94EFF0CEFB5198E9AC7560DE75488C0F747E21719F26996F0B35675F94D41F"
+deps = { AftermathAmm = "AftermathAmm", AftermathDaoFeePools = "AftermathDaoFeePools", AftermathInsuranceFund = "AftermathInsuranceFund", AftermathProtocolFeeVault = "AftermathProtocolFeeVault", AftermathReferralVault = "AftermathReferralVault", AftermathTreasury = "AftermathTreasury", BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui", blast_admin = "blast_admin", blast_fun = "blast_fun" }
 
 [pinned.mainnet.blast_fun_timelock]
 source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/timelock", rev = "63b6cf86c0e1a74f699610fe182b1de8d8789a14" }

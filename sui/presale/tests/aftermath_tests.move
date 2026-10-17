@@ -228,22 +228,6 @@ fun new_needs_blast_to_allow_the_witness() {
 }
 
 #[test]
-/// The swap-in fee is Aftermath's minimum plus the first four digest bytes, big-endian: a zero
-/// digest gives exactly the minimum, a saturated prefix adds `2^32 - 1` and stays far under
-/// Aftermath's 10% maximum, and two digests give two fees.
-fun swap_in_fee_is_the_minimum_plus_the_digest_salt() {
-    let minimum = 100_000_000_000_000;
-    let zero = tx_context::new(@0x0, digest_starting_with(vector[0, 0, 0, 0]), 0, 0, 0);
-    let saturated = tx_context::new(@0x0, digest_starting_with(vector[255, 255, 255, 255]), 0, 0, 0);
-    let other = tx_context::new(@0x0, digest_starting_with(vector[0, 0, 1, 0]), 0, 0, 0);
-
-    assert_eq!(aftermath::swap_in_fee_for_testing(&zero), minimum);
-    assert_eq!(aftermath::swap_in_fee_for_testing(&saturated), minimum + ((1 << 32) - 1));
-    assert!(aftermath::swap_in_fee_for_testing(&saturated) <= 100_000_000_000_000_000);
-    assert_eq!(aftermath::swap_in_fee_for_testing(&other), minimum + 256);
-}
-
-#[test]
 /// A vault built before its position has none, announces nothing, and lands shared with the
 /// position it is given, as `create` does in one call.
 fun a_vault_built_before_its_position_shares_with_it_and_announces_the_custody() {
@@ -485,12 +469,6 @@ fun collect_fees_receives_only_coins_the_vault_owns() {
 // === Test Helpers ===
 
 /// A creation policy that allows `QUOTE` and `MigrationWitness`.
-/// A 32-byte transaction digest beginning with `prefix`, zero-padded.
-fun digest_starting_with(mut prefix: vector<u8>): vector<u8> {
-    while (prefix.length() < 32) prefix.push_back(0);
-    prefix
-}
-
 fun allowing<MigrationWitness>(ctx: &mut TxContext): CreationPolicy {
     creation_policy::allowing_for_testing<QUOTE, MigrationWitness>(ctx)
 }
@@ -645,5 +623,4 @@ use sui::{
     sui::SUI,
     test_scenario::{Self, Scenario},
     test_utils,
-    tx_context,
 };

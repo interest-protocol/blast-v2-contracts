@@ -12,6 +12,10 @@ CetusClmm = { local = "interfaces/cetus" }
 CetusLpBurn = { local = "interfaces/cetus_lp_burn" }
 AftermathAmm = { local = "interfaces/aftermath_amm" }
 AftermathDaoFeePools = { local = "interfaces/aftermath_dao_fee" }
+AftermathProtocolFeeVault = { local = "interfaces/aftermath_protocol_fee_vault" }
+AftermathTreasury = { local = "interfaces/aftermath_treasury" }
+AftermathInsuranceFund = { local = "interfaces/aftermath_insurance_fund" }
+AftermathReferralVault = { local = "interfaces/aftermath_referral_vault" }
 Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2", override = true }
 IntegerMate = { git = "https://github.com/CetusProtocol/integer-mate.git", rev = "09a12d9b171122883d9350039d4ed6e8400033b9", override = true }
 IntegerLibrary = { git = "https://github.com/fireflyprotocol/integer-library.git", rev = "8a534bd1c0b334cd3937c27987f3147a06ba6a18", override = true }

@@ -44,6 +44,11 @@ macro public(package) fun aftermath_pool_name(): vector<u8> {
     b"Blast Launch Pool"
 }
 
+/// Aftermath's fixed-point one, `1e18`, the unit of its fee rates.
+macro public(package) fun aftermath_fixed_one(): u64 {
+    1_000_000_000_000_000_000
+}
+
 /// The basis-points whole, which a fee split's parts total.
 macro public(package) fun basis_points_denominator(): u64 {
     10_000

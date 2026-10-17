@@ -17,6 +17,7 @@
 | --- | --- | --- |
 | `evidence@2026-09-05` | `docs/research/sui-auto-lp-venue-evidence.json` | Normalized ABI and `sui move disassemble` output of the mainnet DAO-fee package `0x5ad68909…` (revision 2) and AMM package `0xf948935b…` (revision 3), read from the official GraphQL endpoint |
 | `evidence@2026-10-17` | `docs/research/sui-auto-lp-venue-evidence.json`, `supplements[0]` | The same DAO-fee `pool` module (hash `029b3e6e…`): disassembly of `new`, `assert_fee_is_at_most_one_hundred_percent`, `update_fee_bps`, and `update_fee_recipient`; the `withdraw` and `swap` modules' fee collection on each Meme or Quote coin, never on the LP coin |
+| `deposit@2026-10-17` | `docs/research/sui-auto-lp-venue-evidence.json`, `supplements[1]` | The AMM `deposit` module (hash `a9b023fe…`): disassembly of `deposit_2_coins_direct`, which rejects a zero coin, takes Aftermath's protocol fee through `protocol_fees::collect_fees_2_coins`, computes the LP out with `math::calc_deposit_exact_in_direct`, aborts with code 24 below `min_lp`, joins both remaining coins whole, and mints the LP; the protocol-fee vault `vault` module (hash `ba9bcf56…`): `total_protocol_fee` reads `fee_percentages.total_protocol_fee`, and `collect_fees` splits `mul_by_fraction(amount, total_protocol_fee)` of a coin among the treasury, insurance fund, and dev wallet by the vault's percentages (50%, 30%, 20% at observation), less a referee discount; the AMM `pool` module's constants, with the 1,000-unit minimum LP supply and the fee bounds |
 | `amm-source@9431920` | `AftermathFinance/move-amm-public` at commit `9431920`, `packages/amm/sources/pool.move` and `pool_registry.move` | `MIN_FEE` 0.01%, `MAX_FEE` 10% on `fee_swap_in`; `fee_swap_out`, `fee_deposit`, and `fee_withdraw` asserted zero (`EInvalidFee` 4); `register_pool` hashes the sorted coin types, weights, flatness, and the four fee vectors, not the pool name or LP type, and aborts with `EDuplicatePool` (61) on a registered hash |
 | `vendor-gate@2026-09-02` | `sui/vendors/aftermath_dao_presale/scripts/check_mainnet_abi.mjs` | Package lineage, module hashes, and the normalized signatures of `pool_factory::create_pool_2_coins_v2`, `pool::balance_of`, `dao_fee_amm::pool::new`, `fee_bps`, and `fee_recipient` |
 | `sui@06734f6` | `crates/sui-framework/packages/sui-framework/sources/transfer.move` | `public_receive<T: key + store>(&mut UID, Receiving<T>): T` |
@@ -54,11 +55,16 @@ design:
   zeros, as the vendor does.
 - Aftermath's registry rejects a second pool with the same coins, weights,
   flatness, and fees (`amm-source@9431920`). Launch buyers hold Meme while the
-  curve is live, so with fixed pool terms anyone could create the launch's pool
-  first, for dust, and every later `migrate` would abort: the launch would stay
-  `MigrationReady` with its Quote locked, which ADR 0088 forbids an adapter to
-  allow. No sale token circulates before a presale migrates, so the presale is
-  not exposed, but its adapter creates pools the same way.
+  curve is live, so a pool created only at migration could be created first by
+  anyone, for dust, and every later `migrate` would abort: the launch would
+  stay `MigrationReady` with its Quote locked, which ADR 0088 forbids an
+  adapter to allow. No sale token circulates before a presale migrates, so the
+  presale is not exposed and creates its pool at migration.
+- Aftermath's exact-in deposit (`deposit@2026-10-17`) joins both coins whole
+  at whatever ratio the pool prices them, after taking Aftermath's protocol
+  fee from each, at most `amount × total_protocol_fee / 1e18`, and asks only
+  that the LP minted reach the caller's minimum. An unshared pool's price
+  cannot move between its creation and that deposit.
 
 ## Decision
 
@@ -74,44 +80,60 @@ design:
   zero, Aftermath's minimum 0.01% base swap-in fee.
 - `finalize` takes the `CreatePoolCapV2` of a fresh LP coin `Lp` the creator
   published, aborts unless this module's `new` started the initializer
-  (`EWrongMigrator`, read through the core's `migration_witness` getter),
-  finalizes the sale or launch through the core, and returns, with the new
-  object, a key-only `PoolCreation<Lp, Meme, Quote>` holding the capability
-  and the new object's ID. The sale's ID exists only then, and binding by ID,
-  not by type, is what keeps one reservation from ever serving another pool.
-  The reservation is returned unshared so the creating PTB can fill the
-  launch's curve and migrate in the same transaction; `share` shares it for a
-  later migration, and nothing else can share, store, or drop it. On the
-  launchpad, `finalize` also rejects a fee split with an auto-LP or burn part
+  (`EWrongMigrator`, read through the core's `migration_witness` getter), and
+  finalizes the sale or launch through the core. The presale's returns, with
+  the new sale, a key-only `PoolCreation<Lp, Meme, Quote>` holding the
+  capability and the sale's ID. The launchpad's returns, with the new launch,
+  a `PendingPool<Lp, Meme, Quote>` hot potato holding the capability and the
+  launch's ID, and rejects a fee split with an auto-LP or burn part
   (`EUnsupportedFeeSplit`), since neither has a route out of an Aftermath
-  vault. A creator who finalizes through the core instead has no reservation:
-  the launch can never migrate, and the sale refunds at its liquidity deadline.
-  `finalize` cannot check the capability against `Lp`, so a capability of
-  another coin, or an LP coin with other than 9 decimals, leaves a reservation
-  whose every migration aborts inside Aftermath; the launch is then stranded
-  like one finalized through the core, and the UI must verify the capability
-  before listing.
+  vault. The new object's ID exists only then, and binding by ID, not by type,
+  is what keeps one reservation from ever serving another pool.
+- **Pre-created launch pool.** The launchpad's `create_pool` consumes the
+  pending pool in the creation PTB: it creates the pool with the fixed terms
+  in Aftermath's coin order from a seed the creator buys from the still-owned
+  launch with `launch::buy` and some Quote, sends the seed's LP coin to `0x0`,
+  announces the reservation, and returns the key-only
+  `PoolCreation<Lp, Meme, Quote>` holding the unshared pool, bound to the
+  launch's ID. The pool's registry slot is taken before any buyer holds Meme,
+  so nobody can register it first; the pool is unshared, so nothing can trade
+  on it or move its price before the migration, and a dust seed leaves the
+  opening price where the curve ends. The pending pool has no abilities, so a
+  PTB that finalizes here cannot end without creating the pool, and a
+  capability of another coin, or an LP coin with other than 9 decimals, fails
+  that PTB inside Aftermath instead of stranding a launch. Because the seed
+  buy needs the launch `Live` before `launch::share`, an Aftermath launch
+  cannot set an opening round; the launchpad is unchanged, so the creation PTB
+  fails at the buy rather than at a dedicated check. The reservation is
+  returned unshared so the creating PTB can fill the curve and migrate in the
+  same transaction; `share` shares it for a later migration, and nothing else
+  can share, store, or drop it. A creator who finalizes through the core
+  instead has no reservation: the launch can never migrate.
+- The presale creates its pool at migration from the hand-off, as before: no
+  sale token circulates earlier, so no pool can be registered first, and a
+  capability of another coin, or an LP coin with other than 9 decimals, makes
+  every migration abort inside Aftermath, so the sale refunds at its
+  liquidity deadline and the UI must verify the capability before listing.
 - `migrate` checks the package generation (launchpad), then that the
   reservation names this sale or launch (`EWrongPresale`, `EWrongLaunch`),
-  consumes it, reads the fee back, takes the hand-off, creates the pool in
-  Aftermath's coin order from exactly those balances and checks the pool holds
-  every unit (`EPoolMismatch`), builds the vault with no position yet, creates
-  the DAO-fee pool with the vault's ID as the recipient at that fee and checks
-  both values back (`EDaoFeePoolMismatch`), shares the vault with the returned
-  `OwnerCap` as its position and the LP coin's amount as its liquidity, shares
-  the DAO-fee pool as the object traders use, and sends the `Coin<Lp>` to
-  `0x0`. The vault's `pool_id` is the base pool; `DaoFeePoolCreated` (presale)
-  and `AftermathPoolCreated` (migrators) record the DAO-fee pool, owner cap,
-  and LP coin IDs, and `VaultCreated.liquidity` is the LP amount the vault does
-  not hold.
-- **Salted swap-in fee.** Each coin's `fee_swap_in` is Aftermath's minimum plus
-  the first four bytes of the transaction digest, read big-endian: at most
-  `2^32 - 1` in Aftermath's `1e18` unit, under five parts per billion of a
-  swap, and within Aftermath's bounds. The registry hash then differs per
-  transaction, so nobody can register the launch's pool ahead of the migration,
-  and a transaction front-run on its own digest fails once and succeeds on
-  retry with a new digest. Both adapters salt, so both create pools the same
-  way, though only the launchpad needs it.
+  consumes it, reads the fee back, and takes the hand-off. The presale
+  creates the pool in Aftermath's coin order from exactly those balances and
+  checks the pool holds every unit (`EPoolMismatch`). The launchpad deposits
+  them into the reserved pool through `deposit_2_coins_direct` in Aftermath's
+  coin order with a zero minimum, passing Aftermath's `ProtocolFeeVault`,
+  `Treasury`, `InsuranceFund`, and `ReferralVault`, and checks each balance
+  grew by at least the hand-off less Aftermath's protocol fee at the vault's
+  reported total rate, rounded up (`EPoolMismatch`): the bound is exact when
+  Aftermath takes its fee and tight otherwise, and it fails only if Aftermath
+  takes more than it reports. Both then build the vault with no position yet,
+  create the DAO-fee pool with the vault's ID as the recipient at that fee and
+  check both values back (`EDaoFeePoolMismatch`), share the vault with the
+  returned `OwnerCap` as its position and the minted LP coin's amount as its
+  liquidity, share the DAO-fee pool as the object traders use, and send the
+  `Coin<Lp>` to `0x0`. The vault's `pool_id` is the base pool;
+  `DaoFeePoolCreated` (presale) and `AftermathPoolCreated` (migrators) record
+  the DAO-fee pool, owner cap, and LP coin IDs, and `VaultCreated.liquidity`
+  is the LP amount the vault does not hold.
 - `collect_fees` takes `vector<Receiving<Coin<Meme>>>` and
   `vector<Receiving<Coin<Quote>>>`, aborts unless the vault's position sits
   under `aftermath::Venue` (`EWrongVault`, through the vaults' new package-only
@@ -148,17 +170,19 @@ owner cap is the vault's position under the ordinary sealed `PositionKey<Venue>`
 so no one can reprice or redirect the pool; the package exposes no function
 that uses it, and `VaultCreated.position_id` names it.
 
-**Not in scope.** The migrators adapter adds no liquidity to and swaps nothing in
-an Aftermath pool: Aftermath's deposit and swap routes take four further shared
-objects (`ProtocolFeeVault`, `Treasury`, `InsuranceFund`, `ReferralVault`) whose
-ABI is not pinned here. An Aftermath launch therefore admits no auto-LP and no
-burn part in its split. The package stays upgradeable, so a later generation can
-add the routes and a two-step split update. The presale has neither share.
+**Not in scope.** After migration the migrators adapter adds no liquidity to and
+swaps nothing in an Aftermath pool, so an Aftermath launch admits no auto-LP and
+no burn part in its split. The migration deposit pins the AMM `deposit` module
+and the four fee packages it takes (`ProtocolFeeVault`, `Treasury`,
+`InsuranceFund`, `ReferralVault`) as link stubs, calling only
+`total_protocol_fee` on them. The package stays upgradeable, so a later
+generation can add the routes and a two-step split update. The presale has
+neither share.
 
 **Explorer naming.** `aftermath::PoolCreation`, and in the presale its two
 events, read on explorers as Aftermath types, as the venue modules' `Venue` and
 `Witness` types already do; ADR 0085's naming table records them as accepted
-residuals of the per-venue module layout.
+residuals of the per-venue module layout. `PendingPool` never exists on chain.
 
 ## Alternatives considered
 
@@ -174,12 +198,24 @@ residuals of the per-venue module layout.
 - **Attach the owner cap under a separate `PoolAuthorityKey`.** Rejected: with
   the LP coin gone the owner cap is the vault's only venue object, and the
   existing position key already seals it with no borrow or removal path.
-- **Reserve the pool before Meme circulates, as Cetus does.** Not possible:
+- **Reserve the pool's registry slot as Cetus reserves a pair.** Not possible:
   Aftermath has no permissioned pair registration, and its pool creation needs
-  the liquidity itself. The salt makes the slot unclaimable instead.
+  liquidity. Creating the whole pool from a seed at creation, and keeping it
+  unshared until migration, is the equivalent.
+- **Salt each coin's swap-in fee with the transaction digest** so the registry
+  hash differs per migration and nobody can register the pool ahead of it.
+  Rejected (owner, 2026-10-17) for the pre-created pool: a front-run
+  migration still failed once, every launch pool carried a different fee, and
+  a creator's wrong capability still stranded a launch. The pre-created pool
+  fails the creation PTB instead, and every launch pool has the same terms.
+- **Change the launchpad** to expose the lifecycle or an opening-round getter,
+  or to reserve the seed for the adapter. Rejected (owner, 2026-10-17): the
+  launchpad is unchanged; the creation PTB's own failure at the seed buy is
+  the opening-round check.
 - **A liveness exit for a launch that cannot migrate.** Deferred: with the
-  salt, only a creator's own wrong capability strands a launch, and the UI
-  check at listing covers it; a refund path would be a launchpad change.
+  pool created in the creation PTB, no Aftermath launch can be stranded by a
+  wrong capability or a registered pool; a refund path would be a launchpad
+  change.
 - **Keep `settle_and_update_fee_split` on Aftermath with caller-listed coins.**
   Rejected: the cap holder could commit a new split while listing none of the
   coins already at the vault's address, so fees would not follow the split they
@@ -198,17 +234,22 @@ residuals of the per-venue module layout.
 
 ## Consequences
 
-- Two more pinned mainnet lineages (Aftermath AMM revision 3 and DAO-fee revision
-  2) in the migrators' dependency gate and lock, reused by the presale.
+- Six more pinned mainnet lineages (Aftermath AMM revision 3, DAO-fee revision
+  2, Protocol Fee Vault revision 2, Treasury, Insurance Fund, and Referral
+  Vault revision 1) in the migrators' dependency gate and lock; the presale
+  reuses the first two.
 - The presale gains a third adapter under the same `CreationPolicy` admission;
   the launchpad's `LaunchConfig` admits `aftermath::Witness` like the others.
 - An Aftermath launch's split is fixed at finalization and has no auto-LP or
   burn part; its creator can still claim creator fees and fund holder rounds.
-- A creator can finalize, fill the curve, and migrate in one PTB, since the
-  reservation and the launch are both still owned then.
+- A creator can finalize, create the pool, fill the curve, and migrate in one
+  PTB, since the reservation and the launch are both still owned then; every
+  Aftermath launch costs its creator a seed buy and some Quote, locked in the
+  pool, and cannot set an opening round.
 - Indexers find an Aftermath vault's pending fees as the coins its address owns,
   not as a position's accrued fees; `AftermathPoolReserved` and
-  `PoolCreationReserved` link the LP coin to the pair.
+  `PoolCreationReserved` link the LP coin to the pair, and the launch's
+  `AftermathPoolReserved` names the pool before the launch is shared.
 - The migrators source gate now allows exactly one receiving path.
 
 ## Verification
@@ -216,10 +257,12 @@ residuals of the per-venue module layout.
 - Move tests in both packages: `new` records the witness and the fee tier,
   accepts both bounds and rejects beyond them, and needs the policy's
   admission; `finalize` returns one reservation bound to the new sale or
-  launch, announces it, rejects another adapter's initializer, and (launchpad)
-  rejects a split with an auto-LP or burn part; `share` shares the reservation;
-  `migrate` rejects another sale's or launch's reservation before touching
-  anything; an owner cap is a vault position sealed under its venue and
+  launch (the presale announces it), rejects another adapter's initializer,
+  and (launchpad) rejects a split with an auto-LP or burn part; the launchpad's
+  `create_pool` reaches Aftermath's factory with the seed and its protocol-fee
+  ceiling rounds up; `share` shares the reservation; `migrate` rejects another
+  sale's or launch's reservation before touching anything; an owner cap is a
+  vault position sealed under its venue and
   invisible to another; a vault built before its position announces nothing
   until it is shared with one, and cannot be shared with an empty one;
   collection rejects another venue's vault, receives the vault's own coins and
@@ -227,12 +270,13 @@ residuals of the per-venue module layout.
   someone else aborts in `sui::transfer`, and a stale migrators generation
   aborts first.
 - `sui/migrators/scripts/check_source_boundaries.sh` pins the module, its
-  bodies, errors, and parameter order, the vault seams, the single receiving
-  path, and that the LP coin is the package's one transfer to `0x0`;
-  `python3 scripts/check_move_style.py` holds.
-- Release: `node scripts/check_mainnet_abi.mjs` in `sui/migrators` (both
+  bodies, errors, and parameter order, that the pending pool has no abilities,
+  the vault seams, the single receiving path, and that the two LP coins are
+  the package's only transfers to `0x0`; `python3 scripts/check_move_style.py`
+  holds.
+- Release: `node scripts/check_mainnet_abi.mjs` in `sui/migrators` (all six
   Aftermath lineages, hashes, and ABI; passed against mainnet on 2026-10-17)
   and the Aftermath rows of the dev-inspect matrix in
-  `sui/migrators/DEPENDENCIES.md`, including the pre-created identical pool,
+  `sui/migrators/DEPENDENCIES.md`, including the live protocol-fee take,
   before either package is published. The local stubs prove types, not
   behavior.

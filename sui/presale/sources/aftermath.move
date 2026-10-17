@@ -18,10 +18,9 @@
 /// migration can consume it. A sale `new` started but finalized directly in `blast_presale` has
 /// no reservation, so it can never migrate and refunds after its LP deadline.
 ///
-/// Aftermath's registry rejects a second pool with the same coins, weights, flatness, and fees. No
-/// sale token circulates before migration, so nobody can create the sale's pool first, but the
-/// migration still salts the base swap-in fee with its own transaction digest, as the launchpad
-/// adapter must, so the two adapters create pools the same way.
+/// Aftermath's registry rejects a second pool with the same coins, weights, flatness, and fees,
+/// but no sale token circulates before migration, so nobody can create the sale's pool first and
+/// the migration creates it with the module's fixed terms.
 module blast_presale::aftermath;
 
 // === Public Types ===
@@ -212,7 +211,7 @@ fun create_pool_2_coins<Lp, Coin1, Coin2>(
         POOL_NAME,
         vector[HALF_WEIGHT, HALF_WEIGHT],
         FLATNESS,
-        vector[swap_in_fee(ctx), swap_in_fee(ctx)],
+        vector[BASE_SWAP_FEE, BASE_SWAP_FEE],
         vector[0, 0],
         vector[0, 0],
         vector[0, 0],
@@ -222,20 +221,6 @@ fun create_pool_2_coins<Lp, Coin1, Coin2>(
         false,
         ctx,
     )
-}
-
-/// Aftermath's minimum base swap-in fee plus a salt from this transaction's digest, so the pool's
-/// registry hash, which covers the fees, cannot be claimed ahead of the migration. The salt is
-/// below `2^32` in the fee's `1e18` unit, under five parts per billion of the swap, and keeps the
-/// fee within Aftermath's bounds.
-fun swap_in_fee(ctx: &TxContext): u64 {
-    let digest = ctx.digest();
-    let salt = ((digest[0] as u64) << 24)
-        | ((digest[1] as u64) << 16)
-        | ((digest[2] as u64) << 8)
-        | (digest[3] as u64);
-
-    BASE_SWAP_FEE + salt
 }
 
 /// Whether `A` comes before `B` in Aftermath's coin order: the byte order of their defining-ID type
@@ -278,11 +263,6 @@ public fun pool_creation_presale_id_for_testing<Lp, Meme, Quote>(
     self: &PoolCreation<Lp, Meme, Quote>,
 ): ID {
     self.presale_id
-}
-
-#[test_only]
-public fun swap_in_fee_for_testing(ctx: &TxContext): u64 {
-    swap_in_fee(ctx)
 }
 
 #[test_only]
@@ -364,8 +344,8 @@ const HALF_WEIGHT: u64 = 500_000_000_000_000_000;
 /// Selects Aftermath's uncorrelated weighted-product curve.
 const FLATNESS: u64 = 0;
 
-/// Aftermath's minimum base swap-in fee, 0.01% in its `1e18` unit; it rejects zero. This part,
-/// plus the migration's salt, compounds into the locked LP.
+/// Aftermath's minimum base swap-in fee, 0.01% in its `1e18` unit; it rejects zero. This part
+/// compounds into the locked LP.
 const BASE_SWAP_FEE: u64 = 100_000_000_000_000;
 
 const POOL_NAME: vector<u8> = b"Blast Presale Pool";

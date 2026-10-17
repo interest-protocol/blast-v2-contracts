@@ -62,7 +62,7 @@ fun new_records_aftermath_with_no_tick_spacing_and_the_dao_fee_as_the_fee_rate()
     let mut f = start();
     f.admit_aftermath();
 
-    let launch = f.open_launch(DAO_FEE_BPS);
+    let (launch, pending) = f.open_launch(DAO_FEE_BPS);
 
     assert_eq!(
         launch.migration_witness_for_testing(),
@@ -71,6 +71,7 @@ fun new_records_aftermath_with_no_tick_spacing_and_the_dao_fee_as_the_fee_rate()
     let (tick_spacing, fee_rate) = launch.pool_tier();
     assert_eq!(tick_spacing, 0);
     assert_eq!(fee_rate, 200);
+    destroy_pending(pending);
     destroy(launch);
     f.end();
 }
@@ -80,10 +81,11 @@ fun new_accepts_one_basis_point_as_the_dao_fee() {
     let mut f = start();
     f.admit_aftermath();
 
-    let launch = f.open_launch(1);
+    let (launch, pending) = f.open_launch(1);
 
     let (_, fee_rate) = launch.pool_tier();
     assert_eq!(fee_rate, 1);
+    destroy_pending(pending);
     destroy(launch);
     f.end();
 }
@@ -93,10 +95,11 @@ fun new_accepts_the_whole_amount_as_the_dao_fee() {
     let mut f = start();
     f.admit_aftermath();
 
-    let launch = f.open_launch(10_000);
+    let (launch, pending) = f.open_launch(10_000);
 
     let (_, fee_rate) = launch.pool_tier();
     assert_eq!(fee_rate, 10_000);
+    destroy_pending(pending);
     destroy(launch);
     f.end();
 }
@@ -118,40 +121,74 @@ fun new_rejects_a_dao_fee_above_the_whole_amount() {
 }
 
 #[test]
-/// `finalize` returns one reservation bound to the launch it finalized, holding the capability it
-/// received, announces it, and `share` shares it.
-fun finalize_binds_a_shared_reservation_to_its_launch() {
+/// `finalize` owes the launch its pool creation: the pending creation it returns is bound to the
+/// launch it finalized and holds the capability it received, so the same PTB must create the
+/// pool. The reservation that creation yields, built here around a stub pool since the venue
+/// stub cannot create one, is bound to the launch and lands shared through `share`.
+fun finalize_binds_the_pending_pool_to_its_launch() {
     let mut f = start();
     f.admit_aftermath();
     let create_pool_cap = amm_pool::create_pool_cap_for_testing(f.scenario.ctx());
     let create_pool_cap_id = object::id(&create_pool_cap);
 
-    let launch = f.open_launch_with(create_pool_cap, DAO_FEE_BPS);
+    let (launch, pending) = f.open_launch_with(create_pool_cap, DAO_FEE_BPS);
 
-    let reservations = event::events_by_type<blast_events::AftermathPoolReserved>();
-    assert_eq!(reservations.length(), 1);
-    // Decoded in ABI order, consuming every byte: three type names, then three IDs.
-    let mut r = bcs::new(bcs::to_bytes(&reservations[0]));
-    assert_eq!(r.peel_vec_u8(), type_name::with_original_ids<LP>().into_string().into_bytes());
-    assert_eq!(
-        r.peel_vec_u8(),
-        type_name::with_original_ids<AFTERMATH_TESTS>().into_string().into_bytes(),
+    let (pending_launch_id, pending_cap) = pending.unpack_pending_pool_for_testing();
+    assert_eq!(pending_launch_id, object::id(&launch));
+    assert_eq!(object::id(&pending_cap), create_pool_cap_id);
+    assert_eq!(event::events_by_type<blast_events::AftermathPoolReserved>().length(), 0);
+    let pool_creation = aftermath::pool_creation_for_testing<LP, AFTERMATH_TESTS, QUOTE>(
+        object::id(&launch),
+        amm_pool::pool_for_testing<LP>(f.scenario.ctx()),
+        f.scenario.ctx(),
     );
-    assert_eq!(r.peel_vec_u8(), type_name::with_original_ids<QUOTE>().into_string().into_bytes());
-    assert_eq!(object::id_from_address(r.peel_address()), object::id(&launch));
-    let pool_creation_id = object::id_from_address(r.peel_address());
-    assert_eq!(object::id_from_address(r.peel_address()), create_pool_cap_id);
-    assert!(r.into_remainder_bytes().is_empty());
+    let pool_creation_id = object::id(&pool_creation);
+    pool_creation.share(&f.migrators_version);
 
     f.scenario.next_tx(KEEPER);
-    let pool_creation = f.scenario.take_shared_by_id<PoolCreation<LP, AFTERMATH_TESTS, QUOTE>>(
+    let shared = f.scenario.take_shared_by_id<PoolCreation<LP, AFTERMATH_TESTS, QUOTE>>(
         pool_creation_id,
     );
-    assert_eq!(pool_creation.pool_creation_launch_id_for_testing(), object::id(&launch));
-    test_scenario::return_shared(pool_creation);
+    assert_eq!(shared.pool_creation_launch_id_for_testing(), object::id(&launch));
+    test_scenario::return_shared(shared);
 
+    destroy(pending_cap);
     destroy(launch);
     f.end();
+}
+
+#[test, expected_failure(abort_code = 0, location = amm::pool_factory)]
+/// `create_pool` reaches Aftermath's factory with the seed, where the link stub aborts; mainnet
+/// dev-inspect proves the creation itself.
+fun create_pool_creates_the_pool_from_the_seed() {
+    let mut f = start();
+    f.admit_aftermath();
+    let (launch, pending) = f.open_launch(DAO_FEE_BPS);
+    let mut pool_registry = pool_registry::new_for_testing(f.scenario.ctx());
+
+    let _pool_creation = aftermath::create_pool(
+        pending,
+        &f.migrators_version,
+        &mut pool_registry,
+        coin::mint_for_testing<AFTERMATH_TESTS>(1_000_000, f.scenario.ctx()),
+        coin::mint_for_testing<QUOTE>(1_000_000, f.scenario.ctx()),
+        f.scenario.ctx(),
+    );
+
+    destroy(launch);
+    abort EUnexpectedSuccess
+}
+
+#[test]
+/// Aftermath's protocol fee is bounded by its rounded-up share of the deposit, so a deposit that
+/// lands every other unit passes the pool check.
+fun protocol_fee_ceiling_rounds_up() {
+    assert_eq!(aftermath::protocol_fee_ceiling_for_testing(1_000_000, 0), 0);
+    // 0.005% of 1,000,000 is exactly 50.
+    assert_eq!(aftermath::protocol_fee_ceiling_for_testing(1_000_000, 50_000_000_000_000), 50);
+    // 0.005% of 1,000,001 is 50.00005, which rounds up to 51.
+    assert_eq!(aftermath::protocol_fee_ceiling_for_testing(1_000_001, 50_000_000_000_000), 51);
+    assert_eq!(aftermath::protocol_fee_ceiling_for_testing(1, 1), 1);
 }
 
 #[test, expected_failure(
@@ -163,13 +200,19 @@ fun finalize_binds_a_shared_reservation_to_its_launch() {
 fun migrate_rejects_another_launches_reservation() {
     let mut f = start();
     f.admit_aftermath();
-    let mut launch = f.open_launch(DAO_FEE_BPS);
+    let (mut launch, pending) = f.open_launch(DAO_FEE_BPS);
+    let (_, pending_cap) = pending.unpack_pending_pool_for_testing();
+    destroy(pending_cap);
     let other_reservation = aftermath::pool_creation_for_testing<LP, AFTERMATH_TESTS, QUOTE>(
         object::id_from_address(@0x0B5E),
-        amm_pool::create_pool_cap_for_testing(f.scenario.ctx()),
+        amm_pool::pool_for_testing<LP>(f.scenario.ctx()),
         f.scenario.ctx(),
     );
-    let mut pool_registry = pool_registry::new_for_testing(f.scenario.ctx());
+    let pool_registry = pool_registry::new_for_testing(f.scenario.ctx());
+    let protocol_fee_vault = protocol_fee_vault::new_for_testing(f.scenario.ctx());
+    let mut treasury = treasury::new_for_testing(f.scenario.ctx());
+    let mut insurance_fund = insurance_fund::new_for_testing(f.scenario.ctx());
+    let referral_vault = referral_vault::new_for_testing(f.scenario.ctx());
     let dao_fee_version = version::new_for_testing(f.scenario.ctx());
 
     f.scenario.next_tx(KEEPER);
@@ -180,7 +223,11 @@ fun migrate_rejects_another_launches_reservation() {
         &f.version,
         &mut currency,
         other_reservation,
-        &mut pool_registry,
+        &pool_registry,
+        &protocol_fee_vault,
+        &mut treasury,
+        &mut insurance_fund,
+        &referral_vault,
         &dao_fee_version,
         f.scenario.ctx(),
     );
@@ -202,7 +249,7 @@ fun finalize_rejects_another_adapters_launch() {
     let mut currency = f.scenario.take_from_address<Currency<AFTERMATH_TESTS>>(COIN_REGISTRY);
     let initializer = launch::new<_, QUOTE, _>(ticket, &f.version, &f.config, TestVenue(), 1, 1);
 
-    let (_launch, _pool_creation) = aftermath::finalize<LP, _, _>(
+    let (_launch, _pending) = aftermath::finalize<LP, _, _>(
         initializer,
         &f.migrators_version,
         &f.version,
@@ -296,22 +343,6 @@ fun new_admits_only_an_allowed_quote() {
     );
 
     abort EUnexpectedSuccess
-}
-
-#[test]
-/// The swap-in fee is Aftermath's minimum plus the first four digest bytes, big-endian: a zero
-/// digest gives exactly the minimum, a saturated prefix adds `2^32 - 1` and stays far under
-/// Aftermath's 10% maximum, and two digests give two fees.
-fun swap_in_fee_is_the_minimum_plus_the_digest_salt() {
-    let minimum = 100_000_000_000_000;
-    let zero = tx_context::new(@0x0, digest_starting_with(vector[0, 0, 0, 0]), 0, 0, 0);
-    let saturated = tx_context::new(@0x0, digest_starting_with(vector[255, 255, 255, 255]), 0, 0, 0);
-    let other = tx_context::new(@0x0, digest_starting_with(vector[0, 0, 1, 0]), 0, 0, 0);
-
-    assert_eq!(aftermath::swap_in_fee_for_testing(&zero), minimum);
-    assert_eq!(aftermath::swap_in_fee_for_testing(&saturated), minimum + ((1 << 32) - 1));
-    assert!(aftermath::swap_in_fee_for_testing(&saturated) <= 100_000_000_000_000_000);
-    assert_eq!(aftermath::swap_in_fee_for_testing(&other), minimum + 256);
 }
 
 #[test]
@@ -516,7 +547,7 @@ fun finalize_rejected_split(fee_split: FeeSplit) {
     );
     initializer.set_lp_fee_split(&f.version, fee_split);
 
-    let (_launch, _pool_creation) = aftermath::finalize<LP, _, _>(
+    let (_launch, _pending) = aftermath::finalize<LP, _, _>(
         initializer,
         &f.migrators_version,
         &f.version,
@@ -530,10 +561,10 @@ fun finalize_rejected_split(fee_split: FeeSplit) {
     abort EUnexpectedSuccess
 }
 
-/// A 32-byte transaction digest beginning with `prefix`, zero-padded.
-fun digest_starting_with(mut prefix: vector<u8>): vector<u8> {
-    while (prefix.length() < 32) prefix.push_back(0);
-    prefix
+/// Unpacks and drops a pending creation a test does not carry to `create_pool`.
+fun destroy_pending(pending: PendingPool<LP, AFTERMATH_TESTS, QUOTE>) {
+    let (_, create_pool_cap) = pending.unpack_pending_pool_for_testing();
+    destroy(create_pool_cap);
 }
 
 fun admit_aftermath(f: &mut StartFixture) {
@@ -562,7 +593,10 @@ fun new_ticket(f: &mut StartFixture): LaunchTicket<AFTERMATH_TESTS> {
 
 /// Starts an Aftermath launch in `QUOTE` at `dao_fee_bps` with a fresh test capability and
 /// finalizes it through this module's `finalize`.
-fun open_launch(f: &mut StartFixture, dao_fee_bps: u16): Launch<AFTERMATH_TESTS, QUOTE> {
+fun open_launch(
+    f: &mut StartFixture,
+    dao_fee_bps: u16,
+): (Launch<AFTERMATH_TESTS, QUOTE>, PendingPool<LP, AFTERMATH_TESTS, QUOTE>) {
     let create_pool_cap = amm_pool::create_pool_cap_for_testing(f.scenario.ctx());
 
     f.open_launch_with(create_pool_cap, dao_fee_bps)
@@ -574,7 +608,7 @@ fun open_launch_with(
     f: &mut StartFixture,
     create_pool_cap: CreatePoolCapV2,
     dao_fee_bps: u16,
-): Launch<AFTERMATH_TESTS, QUOTE> {
+): (Launch<AFTERMATH_TESTS, QUOTE>, PendingPool<LP, AFTERMATH_TESTS, QUOTE>) {
     let ticket = f.new_ticket();
     f.scenario.next_tx(ADMIN);
     let mut currency = f.scenario.take_from_address<Currency<AFTERMATH_TESTS>>(COIN_REGISTRY);
@@ -592,7 +626,7 @@ fun open_launch_with(
     );
     initializer.set_lp_fee_split(&f.version, creator_only());
     let creation_fee = coin::zero(f.scenario.ctx());
-    let (launch, pool_creation) = aftermath::finalize<LP, _, _>(
+    let (launch, pending) = aftermath::finalize<LP, _, _>(
         initializer,
         &f.migrators_version,
         &f.version,
@@ -602,13 +636,9 @@ fun open_launch_with(
         create_pool_cap,
         f.scenario.ctx(),
     );
-    // The reservation is returned unshared, bound to the launch, so the creating PTB could
-    // consume it in `migrate`; these fixtures share it as a creator who waits would.
-    assert_eq!(pool_creation.pool_creation_launch_id_for_testing(), object::id(&launch));
-    pool_creation.share(&f.migrators_version);
     test_scenario::return_to_address(COIN_REGISTRY, currency);
 
-    launch
+    (launch, pending)
 }
 
 fun end_start(f: StartFixture) {
@@ -757,7 +787,7 @@ use blast_fun::{
 };
 
 use blast_fun_migrators::{
-    aftermath::{Self, PoolCreation},
+    aftermath::{Self, PendingPool, PoolCreation},
     blast_events,
     launch_fixture,
     lp_fee_policy::{Self, LpFeePolicy},
@@ -766,6 +796,12 @@ use blast_fun_migrators::{
 };
 
 use dao_fee_amm::{pool as dao_fee_pool, version};
+
+use insurance_fund::insurance_fund;
+
+use protocol_fee_vault::vault as protocol_fee_vault;
+
+use referral_vault::referral_vault;
 
 use std::{type_name, unit_test::{assert_eq, destroy}};
 
@@ -779,8 +815,9 @@ use sui::{
     sui::SUI,
     test_scenario::{Self, Scenario},
     test_utils,
-    tx_context,
 };
+
+use treasury::treasury;
 
 use fun end_start as StartFixture.end;
 use fun end_vault as VaultFixture.end;

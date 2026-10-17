@@ -7,14 +7,38 @@ version = 4
 [pinned.mainnet.AftermathAmm]
 source = { local = "../migrators/interfaces/aftermath_amm" }
 use_environment = "mainnet"
-manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
-deps = { Sui = "Sui" }
+manifest_digest = "8DD3827ED5FB1F585E9E6684786FFAD7D17252D3D21E84E5D9EA4ECCB74BA0A3"
+deps = { AftermathInsuranceFund = "AftermathInsuranceFund", AftermathProtocolFeeVault = "AftermathProtocolFeeVault", AftermathReferralVault = "AftermathReferralVault", AftermathTreasury = "AftermathTreasury", Sui = "Sui" }
 
 [pinned.mainnet.AftermathDaoFeePools]
 source = { local = "../migrators/interfaces/aftermath_dao_fee" }
 use_environment = "mainnet"
 manifest_digest = "059163B6EEC70C0BA08FE015B1DBEC38DB554FC4A43C4D375C757E8D1604346D"
 deps = { AftermathAmm = "AftermathAmm", Sui = "Sui" }
+
+[pinned.mainnet.AftermathInsuranceFund]
+source = { local = "../migrators/interfaces/aftermath_insurance_fund" }
+use_environment = "mainnet"
+manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
+deps = { Sui = "Sui" }
+
+[pinned.mainnet.AftermathProtocolFeeVault]
+source = { local = "../migrators/interfaces/aftermath_protocol_fee_vault" }
+use_environment = "mainnet"
+manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
+deps = { Sui = "Sui" }
+
+[pinned.mainnet.AftermathReferralVault]
+source = { local = "../migrators/interfaces/aftermath_referral_vault" }
+use_environment = "mainnet"
+manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
+deps = { Sui = "Sui" }
+
+[pinned.mainnet.AftermathTreasury]
+source = { local = "../migrators/interfaces/aftermath_treasury" }
+use_environment = "mainnet"
+manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
+deps = { Sui = "Sui" }
 
 [pinned.mainnet.BluefinSpot]
 source = { git = "https://github.com/fireflyprotocol/bluefin-spot-contract-interface.git", subdir = ".", rev = "91ce930575b2aa3decab9b7e129b8002deba80c1" }

@@ -53,9 +53,11 @@ Cetus orders a pool's coins by type name, so its `migrate`, `collect_fees`,
 `settle_and_update_fee_split`, and `buyback_and_burn` take the pool's coins in
 that order as two extra type arguments, `<Meme, Quote, CoinA, CoinB>`, and
 reject any other pair (ADR 0100). Bluefin's routes take `<Meme, Quote>`. Aftermath's
-`finalize` and `migrate` take `<Lp, Meme, Quote>`, naming the launch's fresh LP coin,
-and its `new` and fee routes `<Meme, Quote>`, the fee routes with the receiving
-tickets of the fee coins.
+`finalize`, `create_pool`, `share`, and `migrate` take `<Lp, Meme, Quote>`, naming the
+launch's fresh LP coin, and its `new` and fee routes `<Meme, Quote>`, the fee routes
+with the receiving tickets of the fee coins. An Aftermath launch's pool is created,
+seeded and unshared, in the PTB that creates the launch and shared at migration, so
+nobody can register it first (ADR 0116).
 
 `FeesCollected`, `AutoLiquidityAdded`, and `BuybackBurned` break down every amount
 for indexers.

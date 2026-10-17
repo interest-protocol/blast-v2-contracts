@@ -156,15 +156,18 @@ public struct CetusPoolReserved has copy, drop {
     tick_spacing: u32,
 }
 
-/// Records Aftermath pool creation reserved for one launch: the shared reservation holding the
-/// capability its fresh LP coin minted, which only that launch's migration consumes.
+/// Records one launch's Aftermath pool, created ahead of its migration and held in the
+/// reservation `pool_creation_id`, which only that launch's migration consumes: the pool
+/// `pool_id` of the fresh LP coin `lp`, seeded by the creator, whose seed LP coin
+/// `seed_lp_coin_id` is owned by `0x0`.
 public struct AftermathPoolReserved has copy, drop {
     lp: TypeName,
     meme: TypeName,
     quote: TypeName,
     launch_id: ID,
     pool_creation_id: ID,
-    create_pool_cap_id: ID,
+    pool_id: ID,
+    seed_lp_coin_id: ID,
 }
 
 /// Records one Aftermath migration's pools: the base pool `pool_id` (the vault's `pool_id`) and
@@ -411,11 +414,12 @@ public(package) fun cetus_pool_reserved<Meme, Quote>(pool_creation_cap_id: ID, t
     });
 }
 
-/// Emits the Aftermath reservation bound to a launch as it is finalized.
+/// Emits the Aftermath pool created ahead of a launch's migration and bound to it.
 public(package) fun aftermath_pool_reserved<Lp, Meme, Quote>(
     launch_id: ID,
     pool_creation_id: ID,
-    create_pool_cap_id: ID,
+    pool_id: ID,
+    seed_lp_coin_id: ID,
 ) {
     sui::event::emit(AftermathPoolReserved {
         lp: type_name::with_original_ids<Lp>(),
@@ -423,7 +427,8 @@ public(package) fun aftermath_pool_reserved<Lp, Meme, Quote>(
         quote: type_name::with_original_ids<Quote>(),
         launch_id,
         pool_creation_id,
-        create_pool_cap_id,
+        pool_id,
+        seed_lp_coin_id,
     });
 }
 

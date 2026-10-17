@@ -332,9 +332,9 @@ Steps, type arguments `<Meme, Quote>` throughout:
      fee_policy, venue_config, dao_fee_bps)`. `dao_fee_bps` is the DAO fee the pool charges on
      every swap, deposit, and withdrawal and pays to the sale's vault, 1..=10,000 BPS
      (`blast_presale::aftermath::EInvalidDaoFee`); it is the sale's tier, recorded in
-     `VenueConfig` (below) with tick spacing 0. The pool's weights and base fee are the module's
-     constants (50/50, flatness 0, a 0.01% base swap-in fee plus a negligible per-transaction
-     salt, see Migrating to Aftermath). The call returns the
+     `VenueConfig` (below) with tick spacing 0. The pool's weights and fee are the module's
+     constants (50/50, flatness 0, Aftermath's minimum 0.01% swap-in fee, see Migrating to
+     Aftermath). The call returns the
      `PresaleInitializer`, which only `blast_presale::aftermath::finalize` (step 4) can finalize
      usefully: it takes the pool-creation capability and reserves the sale's pool. Beforehand,
      in its own transaction, publish a fresh Aftermath LP coin `Lp` (one per sale, through
@@ -588,10 +588,10 @@ Who may call: *anyone*, while `Funded`, until someone cancels.
 3. On a partnered sale, `blast_presale::blast_presale::pay_protocol_fees_with_partner(...)`.
 
 The adapter runs `blast_presale::blast_presale::migrate`, creates the pool from all LP tokens
-and Quote (50/50 weights, flatness 0, a swap-in fee of Aftermath's 0.01% minimum plus a salt
-under five parts per billion taken from the transaction digest, which compounds into the LP, no
-other pool fees, name "Blast Presale Pool"; the salt keeps the pool's registry hash, which covers
-the fees, unique per transaction, as the launchpad adapter needs), checks it holds every unit
+and Quote (50/50 weights, flatness 0, Aftermath's minimum 0.01% swap-in fee, which compounds
+into the LP, no other pool fees, name "Blast Presale Pool"; no sale token circulates before the
+migration, so nobody can register the sale's pool first, unlike a launch, whose adapter creates
+the pool at creation), checks it holds every unit
 (`blast_presale::aftermath::EPoolMismatch`), builds the `Vault` with no position yet, wraps the
 pool in a DAO-fee pool at the recorded `dao_fee_bps` whose fee recipient is the vault's ID
 (`blast_presale::aftermath::EDaoFeePoolMismatch` if Aftermath reports anything else), attaches
@@ -1035,9 +1035,7 @@ it. Common ones by flow (module `blast_presale` unless named):
   `blast_presale::aftermath::EDaoFeePoolMismatch` (Aftermath did not take every unit or did not
   record the vault as the recipient at the recorded fee; nothing to fix by retrying); venue aborts (Bluefin creation fee amount, an Aftermath `CreatePoolCapV2`
   of another LP coin or of an LP coin with other than 9 decimals, which no retry fixes, so the
-  sale refunds at its liquidity deadline; code 61 from Aftermath's `pool_registry` when a pool
-  with these exact terms already exists, which a retry fixes since the next transaction's digest
-  salts the fee differently).
+  sale refunds at its liquidity deadline).
 - Collect (Aftermath): `blast_presale::aftermath::EWrongVault` means the vault is a Cetus or
   Bluefin vault; an abort in `sui::transfer` means a listed coin is not owned by the vault; list
   only the vault's own coins.
@@ -1548,7 +1546,7 @@ Events: payload structs are emitted directly, each under its own type.
 
 ### `blast_presale::aftermath`
 
-Permissionless Aftermath migration and LP-fee collection for configured presales.  A funded sale migrates into a fresh 50/50 Aftermath weighted pool wrapped in Aftermath's DAO-fee pool. Aftermath pays the DAO fee of every swap, deposit, and withdrawal as separate coins sent straight to the fee recipient address, so `migrate` names the sale's new vault as that recipient: the fee coins land owned by the vault object, and anyone may then receive them into the vault, where they are split like any collection. The LP coin, the whole pool liquidity, is sent to `0x0`, so the pool's liquidity is locked for good; the vault's position is the DAO-fee pool's `OwnerCap`, which could otherwise change the fee or redirect it, under its sealed position key with no removal path.  Aftermath creates a pool only from a `CreatePoolCapV2` minted by a freshly published LP coin, so the creator publishes one per sale and hands its capability to `finalize`, which finalizes the sale and returns the reservation bound to that sale's ID for `share`; only that sale's migration can consume it. A sale `new` started but finalized directly in `blast_presale` has no reservation, so it can never migrate and refunds after its LP deadline.  Aftermath's registry rejects a second pool with the same coins, weights, flatness, and fees. No sale token circulates before migration, so nobody can create the sale's pool first, but the migration still salts the base swap-in fee with its own transaction digest, as the launchpad adapter must, so the two adapters create pools the same way.
+Permissionless Aftermath migration and LP-fee collection for configured presales.  A funded sale migrates into a fresh 50/50 Aftermath weighted pool wrapped in Aftermath's DAO-fee pool. Aftermath pays the DAO fee of every swap, deposit, and withdrawal as separate coins sent straight to the fee recipient address, so `migrate` names the sale's new vault as that recipient: the fee coins land owned by the vault object, and anyone may then receive them into the vault, where they are split like any collection. The LP coin, the whole pool liquidity, is sent to `0x0`, so the pool's liquidity is locked for good; the vault's position is the DAO-fee pool's `OwnerCap`, which could otherwise change the fee or redirect it, under its sealed position key with no removal path.  Aftermath creates a pool only from a `CreatePoolCapV2` minted by a freshly published LP coin, so the creator publishes one per sale and hands its capability to `finalize`, which finalizes the sale and returns the reservation bound to that sale's ID for `share`; only that sale's migration can consume it. A sale `new` started but finalized directly in `blast_presale` has no reservation, so it can never migrate and refunds after its LP deadline.  Aftermath's registry rejects a second pool with the same coins, weights, flatness, and fees, but no sale token circulates before migration, so nobody can create the sale's pool first and the migration creates it with the module's fixed terms.
 
 Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/presale/sources/aftermath.move
 
@@ -1671,7 +1669,7 @@ public struct DaoFeePoolCreated<phantom Lp, phantom Meme, phantom Quote> has cop
 - `MAX_DAO_FEE_BPS: u16 = 10_000`: Aftermath's own bound on a DAO fee, the whole amount, which its DAO-fee pool creation asserts as `fee_bps <= 10_000`.
 - `HALF_WEIGHT: u64 = 500_000_000_000_000_000`: Each coin's weight: half of Aftermath's `1e18` fixed-point one.
 - `FLATNESS: u64 = 0`: Selects Aftermath's uncorrelated weighted-product curve.
-- `BASE_SWAP_FEE: u64 = 100_000_000_000_000`: Aftermath's minimum base swap-in fee, 0.01% in its `1e18` unit; it rejects zero. This part, plus the migration's salt, compounds into the locked LP.
+- `BASE_SWAP_FEE: u64 = 100_000_000_000_000`: Aftermath's minimum base swap-in fee, 0.01% in its `1e18` unit; it rejects zero. This part compounds into the locked LP.
 - `POOL_NAME: vector<u8> = b"Blast Presale Pool"`
 
 ### `blast_presale::blast_presale`

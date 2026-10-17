@@ -1,34 +1,32 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// Aftermath launch start, pool-creation reservation, migration into vault custody, and fee
-/// collection from the coins Aftermath sends the vault.
+/// Aftermath launch start, pool creation ahead of migration, migration into vault custody, and
+/// fee collection from the coins Aftermath sends the vault.
 ///
-/// A launch migrates into a fresh 50/50 Aftermath weighted pool wrapped in Aftermath's DAO-fee
+/// A launch migrates into its own 50/50 Aftermath weighted pool wrapped in Aftermath's DAO-fee
 /// pool. Aftermath pays the DAO fee of every swap, deposit, and withdrawal as separate coins sent
 /// straight to the fee recipient address, so `migrate` names the launch's new vault as that
 /// recipient: the fee coins land owned by the vault object, and anyone may then receive them into
-/// the vault, where they are split like any collection. The LP coin, the whole pool liquidity, is
-/// sent to `0x0`, so the pool's liquidity is locked for good; the vault's position is the DAO-fee
-/// pool's `OwnerCap`, which could otherwise change the fee or redirect it, under its sealed
+/// the vault, where they are split like any collection. Every LP coin, the whole pool liquidity,
+/// is sent to `0x0`, so the pool's liquidity is locked for good; the vault's position is the
+/// DAO-fee pool's `OwnerCap`, which could otherwise change the fee or redirect it, under its sealed
 /// position key with no removal path.
 ///
-/// Aftermath creates a pool only from a `CreatePoolCapV2` minted by a freshly published LP coin,
-/// so the creator publishes one per launch and hands its capability to `finalize`, which
-/// finalizes the launch and returns the reservation bound to that launch's ID, for `share` or for
-/// a migration in the same PTB; only that launch's migration can consume it. A launch `new`
-/// started but finalized directly in the core has no reservation and can never migrate, so the
-/// creator must finalize here. Aftermath pools have no tick spacing, so the launch records zero,
-/// and its fee rate is the creator's DAO fee in basis points.
-///
 /// Aftermath's registry rejects a second pool with the same coins, weights, flatness, and fees,
-/// and buyers hold Meme while the curve is live, so a pool with this adapter's fixed terms could
-/// be created ahead of the migration to strand the launch. The migration therefore salts the base
-/// swap-in fee with its own transaction digest, which nobody can claim in advance.
+/// and buyers hold Meme while the curve is live, so a pool created only at migration could be
+/// created first by anyone to strand the launch. The creator therefore creates the pool in the
+/// PTB that creates the launch: `finalize` returns a hot potato that only `create_pool` consumes,
+/// with a seed the creator buys from the still-owned launch and some Quote, and the pool then
+/// waits unshared inside the reservation bound to the launch's ID, where nothing can trade on it
+/// or price it, until that launch's migration deposits the hand-off into it and shares it. A
+/// launch `new` started but finalized directly in the core has no reservation and can never
+/// migrate, so the creator must finalize here. Aftermath pools have no tick spacing, so the launch
+/// records zero, and its fee rate is the creator's DAO fee in basis points.
 ///
-/// This adapter adds no liquidity to and swaps nothing in an Aftermath pool, so `finalize` admits
-/// only a fee split with no auto-LP and no burn part, and it cannot settle every DAO-fee coin
-/// before a split change, so an Aftermath launch's split is fixed at migration.
+/// This adapter adds no liquidity to and swaps nothing in an Aftermath pool after migration, so
+/// `finalize` admits only a fee split with no auto-LP and no burn part, and it cannot settle every
+/// DAO-fee coin before a split change, so an Aftermath launch's split is fixed at migration.
 module blast_fun_migrators::aftermath;
 
 // === Public Types ===
@@ -39,13 +37,21 @@ public struct Witness() has drop;
 /// Sealed marker for the DAO-fee pool owner cap the common vault holds as its position.
 public struct Venue() has drop;
 
-/// Reservation of one launch's Aftermath pool creation, returned by `finalize` and shared by
-/// `share` or consumed in the same PTB: the `CreatePoolCapV2` of the fresh LP coin `Lp`, which
-/// only the migration of the launch `launch_id` can consume.
+/// A launch's pool creation owed in the PTB that finalized it: the `CreatePoolCapV2` of the fresh
+/// LP coin `Lp`, which only `create_pool` can consume, so a launch of this adapter never leaves
+/// its creation PTB without its pool.
+public struct PendingPool<phantom Lp, phantom Meme, phantom Quote> {
+    launch_id: ID,
+    create_pool_cap: CreatePoolCapV2,
+}
+
+/// Reservation of one launch's Aftermath pool, returned by `create_pool` and shared by `share` or
+/// consumed in the same PTB: the pool of the fresh LP coin `Lp`, seeded and unshared, which only
+/// the migration of the launch `launch_id` can deposit into and share.
 public struct PoolCreation<phantom Lp, phantom Meme, phantom Quote> has key {
     id: UID,
     launch_id: ID,
-    create_pool_cap: CreatePoolCapV2,
+    pool: Pool<Lp>,
 }
 
 // === Public Functions ===
@@ -54,7 +60,7 @@ public struct PoolCreation<phantom Lp, phantom Meme, phantom Quote> has key {
 /// and withdrawal to the launch's vault; the core aborts unless it admits Aftermath and the Quote.
 /// The fee is the launch's tier, with no tick spacing; the pool's weights and base fee are this
 /// package's constants. The creator completes the returned initializer with this module's
-/// `finalize`, which reserves its pool creation.
+/// `finalize`, which binds its pool creation.
 public fun new<Meme, Quote>(
     ticket: LaunchTicket<Meme>,
     migrators_version: &MigratorsVersion,
@@ -71,12 +77,12 @@ public fun new<Meme, Quote>(
     launch::new<Meme, Quote, _>(ticket, package_version, config, Witness(), 0, dao_fee_bps as u64)
 }
 
-/// Finalizes a launch `new` started, as `launch::finalize` does, and returns it with the
-/// reservation binding `create_pool_cap`, which the fresh LP coin `Lp` minted, to that launch's
-/// ID. The initializer must be one `new` started: another adapter's launch could never consume
-/// the reservation. The launch's fee split must have no auto-LP and no burn part, since neither
-/// has a route out of an Aftermath vault. The reservation has only `key`, so the same PTB either
-/// shares it with `share` or consumes it in `migrate`, after filling the launch's curve, before
+/// Finalizes a launch `new` started, as `launch::finalize` does, and returns it with the pool
+/// creation owed to it, binding `create_pool_cap`, which the fresh LP coin `Lp` minted, to that
+/// launch's ID. The initializer must be one `new` started: another adapter's launch could never
+/// consume the reservation. The launch's fee split must have no auto-LP and no burn part, since
+/// neither has a route out of an Aftermath vault. The pending creation has no abilities, so the
+/// same PTB must buy the seed from the returned launch and call `create_pool` before
 /// `launch::share`.
 public fun finalize<Lp, Meme, Quote>(
     initializer: LaunchInitializer<Meme, Quote>,
@@ -87,7 +93,7 @@ public fun finalize<Lp, Meme, Quote>(
     creation_fee: Coin<SUI>,
     create_pool_cap: CreatePoolCapV2,
     ctx: &mut TxContext,
-): (Launch<Meme, Quote>, PoolCreation<Lp, Meme, Quote>) {
+): (Launch<Meme, Quote>, PendingPool<Lp, Meme, Quote>) {
     migrators_version.assert_current();
     assert!(
         initializer.migration_witness() == type_name::with_original_ids<Witness>(),
@@ -100,21 +106,50 @@ public fun finalize<Lp, Meme, Quote>(
         .apportion_fee_split(constants::basis_points_denominator!());
     assert!(auto_lp_bps == 0 && burn_bps == 0, EUnsupportedFeeSplit);
 
-    let pool_creation = PoolCreation<Lp, Meme, Quote> {
-        id: object::new(ctx),
-        launch_id: object::id(&launch),
-        create_pool_cap,
-    };
-    blast_events::aftermath_pool_reserved<Lp, Meme, Quote>(
-        pool_creation.launch_id,
-        pool_creation.id.to_inner(),
-        object::id(&pool_creation.create_pool_cap),
-    );
+    let pending = PendingPool<Lp, Meme, Quote> { launch_id: object::id(&launch), create_pool_cap };
 
-    (launch, pool_creation)
+    (launch, pending)
 }
 
-/// Shares a reservation `finalize` returned, so anyone can migrate its launch once it is ready.
+/// Creates the launch's pool from the creator's seed `meme` and `quote`, with this package's
+/// fixed terms, in Aftermath's coin order, so the pool's registry slot is taken before any buyer
+/// holds Meme; sends the seed's LP coin to `0x0`; and returns the reservation holding the pool,
+/// bound to the launch, for `share` or for a migration in the same PTB. The seed only needs to
+/// mint Aftermath's minimum LP: the migration deposits the hand-off at whatever ratio the seed set
+/// and the pool reprices to the hand-off, so a dust seed leaves the price where the curve ended.
+public fun create_pool<Lp, Meme, Quote>(
+    pending: PendingPool<Lp, Meme, Quote>,
+    migrators_version: &MigratorsVersion,
+    pool_registry: &mut PoolRegistry,
+    meme: Coin<Meme>,
+    quote: Coin<Quote>,
+    ctx: &mut TxContext,
+): PoolCreation<Lp, Meme, Quote> {
+    migrators_version.assert_current();
+    let PendingPool { launch_id, create_pool_cap } = pending;
+
+    let (pool, lp) = create_pool_2_coins_in_order<Lp, _, _>(
+        create_pool_cap,
+        pool_registry,
+        meme,
+        quote,
+        ctx,
+    );
+
+    let pool_creation = PoolCreation<Lp, Meme, Quote> { id: object::new(ctx), launch_id, pool };
+    blast_events::aftermath_pool_reserved<Lp, Meme, Quote>(
+        launch_id,
+        pool_creation.id.to_inner(),
+        object::id(&pool_creation.pool),
+        object::id(&lp),
+    );
+    transfer::public_transfer(lp, @0x0);
+
+    pool_creation
+}
+
+/// Shares a reservation `create_pool` returned, so anyone can migrate its launch once it is
+/// ready.
 public fun share<Lp, Meme, Quote>(
     self: PoolCreation<Lp, Meme, Quote>,
     migrators_version: &MigratorsVersion,
@@ -126,10 +161,12 @@ public fun share<Lp, Meme, Quote>(
 
 // `dao_fee_pool::new` creates the shared pool in this transaction.
 /// Migrates a MigrationReady launch into its reserved Aftermath pool, consuming the reservation
-/// bound to it: it seeds a 50/50 pool with exactly the handed-off balances, wraps it in a DAO-fee
-/// pool paying the launch's new vault at the launch's fee, shares that pool, locks the pool's
-/// owner cap in the vault as its position, and sends the LP coin to `0x0`. The caller receives no
-/// object.
+/// bound to it: it deposits exactly the handed-off balances into the pool, which nothing could
+/// trade on or price before, wraps the pool in a DAO-fee pool paying the launch's new vault at the
+/// launch's fee, shares that pool, locks the pool's owner cap in the vault as its position, and
+/// sends the deposit's LP coin to `0x0`. Aftermath takes its protocol fee from the deposit, at the
+/// rate `protocol_fee_vault` reports, and pays it to its own `treasury`, `insurance_fund`, and
+/// `referral_vault`. The caller receives no object.
 #[allow(lint(share_owned))]
 public fun migrate<Lp, Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
@@ -137,12 +174,16 @@ public fun migrate<Lp, Meme, Quote>(
     package_version: &PackageVersion,
     currency: &mut Currency<Meme>,
     pool_creation: PoolCreation<Lp, Meme, Quote>,
-    pool_registry: &mut PoolRegistry,
+    pool_registry: &PoolRegistry,
+    protocol_fee_vault: &ProtocolFeeVault,
+    treasury: &mut Treasury,
+    insurance_fund: &mut InsuranceFund,
+    referral_vault: &ReferralVault,
     dao_fee_version: &Version,
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current();
-    let PoolCreation { id, launch_id, create_pool_cap } = pool_creation;
+    let PoolCreation { id, launch_id, mut pool } = pool_creation;
     assert!(launch_id == object::id(launch), EWrongLaunch);
     id.delete();
 
@@ -150,16 +191,25 @@ public fun migrate<Lp, Meme, Quote>(
     let dao_fee_bps = pool_fee_rate as u16;
     let (meme, quote) = launch.migrate(package_version, currency, Witness(), ctx);
     let (meme_amount, quote_amount) = (meme.value(), quote.value());
+    let (meme_before, quote_before) = (pool.balance_of<Lp, Meme>(), pool.balance_of<Lp, Quote>());
 
-    let (pool, lp) = create_pool<Lp, _, _>(
-        create_pool_cap,
+    let lp = deposit_in_order<Lp, _, _>(
+        &mut pool,
         pool_registry,
+        protocol_fee_vault,
+        treasury,
+        insurance_fund,
+        referral_vault,
         meme.into_coin(ctx),
         quote.into_coin(ctx),
         ctx,
     );
+    let protocol_fee_rate = protocol_fee_vault.total_protocol_fee();
     assert!(
-        pool.balance_of<Lp, Meme>() == meme_amount && pool.balance_of<Lp, Quote>() == quote_amount,
+        pool.balance_of<Lp, Meme>() - meme_before
+            >= meme_amount - protocol_fee_ceiling(meme_amount, protocol_fee_rate)
+            && pool.balance_of<Lp, Quote>() - quote_before
+                >= quote_amount - protocol_fee_ceiling(quote_amount, protocol_fee_rate),
         EPoolMismatch,
     );
 
@@ -213,8 +263,8 @@ public fun collect_fees<Meme, Quote>(
 
 // === Private Functions ===
 
-/// Creates the 50/50 pool from the launch's Meme and Quote, in Aftermath's coin order.
-fun create_pool<Lp, Meme, Quote>(
+/// Creates the 50/50 pool from the seed Meme and Quote, in Aftermath's coin order.
+fun create_pool_2_coins_in_order<Lp, Meme, Quote>(
     create_pool_cap: CreatePoolCapV2,
     pool_registry: &mut PoolRegistry,
     meme: Coin<Meme>,
@@ -242,7 +292,7 @@ fun create_pool_2_coins<Lp, Coin1, Coin2>(
         constants::aftermath_pool_name!(),
         vector[constants::aftermath_half_weight!(), constants::aftermath_half_weight!()],
         constants::aftermath_flatness!(),
-        vector[swap_in_fee(ctx), swap_in_fee(ctx)],
+        vector[constants::aftermath_base_swap_fee!(), constants::aftermath_base_swap_fee!()],
         vector[0, 0],
         vector[0, 0],
         vector[0, 0],
@@ -254,20 +304,53 @@ fun create_pool_2_coins<Lp, Coin1, Coin2>(
     )
 }
 
-/// Aftermath's minimum base swap-in fee plus a salt from this transaction's digest. Aftermath's
-/// registry hashes a pool's coins, weights, flatness, and fees and rejects a duplicate, so a fixed
-/// fee would let anyone create the launch's pool first and strand it; nobody can claim a digest
-/// ahead of its transaction, and a retry gets a new one. The salt is below `2^32` in the fee's
-/// `1e18` unit, under five parts per billion of the swap, and keeps the fee within Aftermath's
-/// bounds.
-fun swap_in_fee(ctx: &TxContext): u64 {
-    let digest = ctx.digest();
-    let salt = ((digest[0] as u64) << 24)
-        | ((digest[1] as u64) << 16)
-        | ((digest[2] as u64) << 8)
-        | (digest[3] as u64);
+/// Deposits the hand-off into the pool, in Aftermath's coin order. The pool is still unshared, so
+/// nothing could move its price before this deposit, and no minimum LP is asked of Aftermath.
+fun deposit_in_order<Lp, Meme, Quote>(
+    pool: &mut Pool<Lp>,
+    pool_registry: &PoolRegistry,
+    protocol_fee_vault: &ProtocolFeeVault,
+    treasury: &mut Treasury,
+    insurance_fund: &mut InsuranceFund,
+    referral_vault: &ReferralVault,
+    meme: Coin<Meme>,
+    quote: Coin<Quote>,
+    ctx: &mut TxContext,
+): Coin<Lp> {
+    if (sorts_before<Meme, Quote>()) {
+        deposit::deposit_2_coins_direct(
+            pool,
+            pool_registry,
+            protocol_fee_vault,
+            treasury,
+            insurance_fund,
+            referral_vault,
+            meme,
+            quote,
+            0,
+            ctx,
+        )
+    } else {
+        deposit::deposit_2_coins_direct(
+            pool,
+            pool_registry,
+            protocol_fee_vault,
+            treasury,
+            insurance_fund,
+            referral_vault,
+            quote,
+            meme,
+            0,
+            ctx,
+        )
+    }
+}
 
-    constants::aftermath_base_swap_fee!() + salt
+/// The most Aftermath's protocol fee can take from `amount` at `rate`, in Aftermath's `1e18`
+/// unit: the fee rounded up, so a deposit that lands every other unit passes the check.
+fun protocol_fee_ceiling(amount: u64, rate: u64): u64 {
+    let one = constants::aftermath_fixed_one!() as u128;
+    (((amount as u128) * (rate as u128) + one - 1) / one) as u64
 }
 
 /// Whether `A` comes before `B` in Aftermath's coin order: the byte order of their defining-ID type
@@ -306,13 +389,27 @@ public fun sorts_before_for_testing<A, B>(): bool {
 }
 
 #[test_only]
-/// Builds an unshared reservation bound to `launch_id`, for binding tests.
+public fun protocol_fee_ceiling_for_testing(amount: u64, rate: u64): u64 {
+    protocol_fee_ceiling(amount, rate)
+}
+
+#[test_only]
+/// Unpacks a pending creation into the launch it is bound to and the capability it holds.
+public fun unpack_pending_pool_for_testing<Lp, Meme, Quote>(
+    pending: PendingPool<Lp, Meme, Quote>,
+): (ID, CreatePoolCapV2) {
+    let PendingPool { launch_id, create_pool_cap } = pending;
+    (launch_id, create_pool_cap)
+}
+
+#[test_only]
+/// Builds an unshared reservation bound to `launch_id` around `pool`, for binding tests.
 public fun pool_creation_for_testing<Lp, Meme, Quote>(
     launch_id: ID,
-    create_pool_cap: CreatePoolCapV2,
+    pool: Pool<Lp>,
     ctx: &mut TxContext,
 ): PoolCreation<Lp, Meme, Quote> {
-    PoolCreation { id: object::new(ctx), launch_id, create_pool_cap }
+    PoolCreation { id: object::new(ctx), launch_id, pool }
 }
 
 #[test_only]
@@ -320,11 +417,6 @@ public fun pool_creation_launch_id_for_testing<Lp, Meme, Quote>(
     self: &PoolCreation<Lp, Meme, Quote>,
 ): ID {
     self.launch_id
-}
-
-#[test_only]
-public fun swap_in_fee_for_testing(ctx: &TxContext): u64 {
-    swap_in_fee(ctx)
 }
 
 #[test_only]
@@ -351,7 +443,8 @@ public fun vault_for_testing<Meme, Quote, Position: key + store>(
 // === Errors ===
 
 #[error(code = 0)]
-const EPoolMismatch: vector<u8> = b"The Aftermath pool must hold every Meme and Quote unit the launch handed off.";
+const EPoolMismatch: vector<u8> =
+    b"The Aftermath pool must take every Meme and Quote unit the launch handed off, less Aftermath's protocol fee.";
 
 #[error(code = 1)]
 const EDaoFeePoolMismatch: vector<u8> = b"The DAO-fee pool must charge the launch's fee and pay the vault.";
@@ -374,7 +467,7 @@ const EUnsupportedFeeSplit: vector<u8> =
 
 // === Imports ===
 
-use amm::{pool::{CreatePoolCapV2, Pool}, pool_factory, pool_registry::PoolRegistry};
+use amm::{deposit, pool::{CreatePoolCapV2, Pool}, pool_factory, pool_registry::PoolRegistry};
 
 use blast_fun::{
     launch::{Self, Launch, LaunchInitializer},
@@ -393,6 +486,12 @@ use blast_fun_migrators::{
 
 use dao_fee_amm::{pool as dao_fee_pool, version::Version};
 
+use insurance_fund::insurance_fund::InsuranceFund;
+
+use protocol_fee_vault::vault::ProtocolFeeVault;
+
+use referral_vault::referral_vault::ReferralVault;
+
 use std::type_name;
 
 use sui::{
@@ -402,5 +501,7 @@ use sui::{
     sui::SUI,
     transfer::Receiving,
 };
+
+use treasury::treasury::Treasury;
 
 use fun receive_fees as LpVault.receive_fees;

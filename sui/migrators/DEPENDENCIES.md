@@ -38,14 +38,25 @@ vault's own address.
   `CreatePoolCapV2` minted by a freshly published LP coin. The creator hands
   `aftermath::new` the DAO fee the pool charges, the launch's tier, and
   `aftermath::finalize` the capability, which it binds to the finalized
-  launch's ID in a key-only `aftermath::PoolCreation` that `aftermath::share`
-  shares, or the same PTB consumes, and that only that launch's `migrate`
-  consumes. `finalize` admits only a split with no auto-LP and no burn part,
-  since neither has a route out of an Aftermath vault, and the split is fixed
-  from then on. The migration salts each coin's swap-in fee with the
-  transaction digest, because Aftermath's registry rejects a second pool with
-  the same coins, weights, flatness, and fees, so a fixed fee would let a
-  buyer register the launch's pool first and strand it. It builds the vault
+  launch's ID in the hot potato `aftermath::PendingPool`; `aftermath::create_pool`
+  consumes it in the same PTB, creating the pool from a seed the creator buys
+  from the still-owned launch, before any buyer holds Meme, because Aftermath's
+  registry rejects a second pool with the same coins, weights, flatness, and
+  fees, so a pool created only at migration could be registered first by a
+  buyer to strand the launch. The seeded pool waits unshared in a key-only
+  `aftermath::PoolCreation` that `aftermath::share` shares, or the same PTB
+  consumes, and that only that launch's `migrate` consumes. `finalize` admits
+  only a split with no auto-LP and no burn part, since neither has a route out
+  of an Aftermath vault, and the split is fixed from then on. The migration
+  deposits the hand-off into the pool through Aftermath's exact-in deposit
+  (`amm::deposit::deposit_2_coins_direct`), asking no minimum LP, since nothing
+  could price the unshared pool, and checks the pool took every unit less at
+  most Aftermath's protocol fee, read from `ProtocolFeeVault::total_protocol_fee`
+  and rounded up (`docs/research/sui-auto-lp-venue-evidence.json`,
+  `supplements[1]`: the deposit joins both coins whole after
+  `protocol_fees::collect_fees_2_coins`, which splits at most
+  `amount × total_protocol_fee / 1e18` of each coin among Aftermath's treasury,
+  insurance fund, and dev wallet). It builds the vault
   with no position first, because Aftermath's DAO-fee pool
   (`dao_fee_amm::pool::new`) takes the fee recipient address at creation,
   names the vault's ID, checks `fee_bps` and `fee_recipient` back, shares the
@@ -244,12 +255,17 @@ here instead.
 ## Published venue packages
 
 Re-verified on mainnet on 2026-09-02; Cetus CLMM re-pinned to revision 15 and
-re-verified on 2026-09-22.
+re-verified on 2026-09-22; the Aftermath deposit route and its four fee packages
+recorded and verified on 2026-10-17.
 
 | Venue | Named address | Original package id | Current package id | Version | Package digest | Previous transaction |
 | --- | --- | --- | --- | --- | --- | --- |
 | Aftermath AMM | `amm` | `0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c` | `0xf948935b111990c2b604900c9b2eeb8f24dcf9868a45d1ea1653a5f282c10e29` | 3 | `Gxia3EZSdQeCXGPkmhXRzXWfmV6bnw7oRvSXNxNLQ9T1` | `7qeJhR15a6jqo7xujZMMe5Bcm11vR7cSBiFHypW3VQ3J` |
 | Aftermath DAO Fee Pools | `dao_fee_amm` | `0x6f60a091637054e23915b8745c0c0d47b1d49618ee3435b5f68eccf6a44fb53d` | `0x5ad6890968efcf3d20899e0cec735214f1067b96e77e77d86408989998468bb2` | 2 | `AeSpba79KZ8Ge8nGk2Li2c2tkLy7eC93wTGhgjEVHVpZ` | `9eMeoFRPGDW1TUvbhtstVu2bAaWCCM7VCgbgkEkCUR4c` |
+| Aftermath Protocol Fee Vault | `protocol_fee_vault` | `0x2d9316f1f1a95f6d7c85a4e690ef7c359e6649773ef2c37ad7d9857adb6bef06` | `0xaead64e3b3cc7972ba86396df07066c90176f42c6aea53b6df0d8ab11007ece2` | 2 | `AFYbLCPpE7c8VyAbb5qQNoDsg5ruKA4hDZgZoQYYqkNT` | `8eto3YoLXBrMP67d19BJqXpbB8bxTgitRT2KBSinmccT` |
+| Aftermath Treasury | `treasury` | `0x64213b0e4a52bac468d4ac3f140242f70714381653a1919a6d57cd49c628207a` | `0x64213b0e4a52bac468d4ac3f140242f70714381653a1919a6d57cd49c628207a` | 1 | `ByArtn7iAqFXPYpZTQWiNJD9KMtDUtnxv5UVFTmJF5SV` | `5V3pcRvLMA4vdSK5GXJq2eYuzWNDgMzg7kZRv3a6NmZq` |
+| Aftermath Insurance Fund | `insurance_fund` | `0xa6baab1e668c7868991c1c3c11e144100f5734c407d020f72a01b9d1a8bcb97f` | `0xa6baab1e668c7868991c1c3c11e144100f5734c407d020f72a01b9d1a8bcb97f` | 1 | `G1JWbWfgRc8ZaSBsY6TucFCRKde7rvC73jCfARL4nF4i` | `5HzYEqEr1bCJzoVqseUeKyrj4PA4K3SKyMcPUWGvAiH7` |
+| Aftermath Referral Vault | `referral_vault` | `0xc66fabf1a9253e43c70f1cc02d40a1d18db183140ecaae2a3f58fa6b66c55acf` | `0xc66fabf1a9253e43c70f1cc02d40a1d18db183140ecaae2a3f58fa6b66c55acf` | 1 | `RU93ghFMzmL6Q8x2Nd7zwEVZEzndHaSarkd5aKYhJQN` | `FpTkenExDfEFHYuTtwhMZCR518gro89PtoKzAkWGsKs7` |
 | Bluefin Spot | `bluefin_spot` | `0x3492c874c1e3b3e2984e8c41b589e642d4d0a5d6459e5a9cfc2d52fd7c89c267` | `0xd075338d105482f1527cbfd363d6413558f184dec36d9138a70261e87f486e9c` | 17 | `4tyboYqrPbZzN6V5Lh2TccW8j9nbH65mJeQFynoQGxut` | `CShZDVqJQrXm4SYiCgDe49kKnFzadwhFV5viqHLgRfaX` |
 | Cetus CLMM | `cetus_clmm` | `0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb` | `0x260693ec785a6e6c9d81d58c7d2ff72f1288ae0fa6a9725abe05a6478b11f084` | 15 | `9rZP5D79m4Yfq9fvtPujtpvU5rhfiYm1JS6LaxcMZVSu` | `5sSoTfTiti8kXjJhZeYuFWFcxxvjbZpFQ96rZ3dzeQbC` |
 
@@ -263,8 +279,13 @@ Only modules that declare an adapter-consumed type or function are fingerprinted
 | `amm` | `pool` | `f952884b3e6ea275911ae488e9d1e3f4b2a4409cdd30e8bed69e98fd7d0f7d78` |
 | `amm` | `pool_factory` | `e2601c8181d142cb10bf10bbbe90adbd9545688238cbc3ba8b1bf9cf0809b17d` |
 | `amm` | `pool_registry` | `9d4f76ef56e619111d94b41bac54641f2012d16a7e796a83436479b319dc6a62` |
+| `amm` | `deposit` | `a9b023fea6cab42ccfa06b1c5edb93bf56b62f1d10487a7a576fc299d0981f75` |
 | `dao_fee_amm` | `pool` | `029b3e6e0a11a249147cdd0b7b3ea78556d399e03228cae9424529a06cd58f3e` |
 | `dao_fee_amm` | `version` | `6fbb4c1b78af3fa68654af6eb29be6fdbc945e9d715a46ac1ca9bc3f3f8920f2` |
+| `protocol_fee_vault` | `vault` | `ba9bcf56e766b4d083428d7f29097d2f766f390db5558c3b0c5f4100e413a788` |
+| `treasury` | `treasury` | `6e1fc5e426dfd51242bf76eef6a84c7453d9934eccec02d443dbf401ad70e9ff` |
+| `insurance_fund` | `insurance_fund` | `b3dec789f8017a67b43af51efee28972df9452925ce0ad0af8053fba753da7fa` |
+| `referral_vault` | `referral_vault` | `12c9d35cecf570861c1d593d5f8142da9292e7f5efda5633f9325ef9122bc9b9` |
 | `bluefin_spot` | `config` | `e896bcbdab23bf5c04eb38b12306f8d6ced8bb9194c789cd1f7f09c78e595cab` |
 | `bluefin_spot` | `pool` | `d1436b0837eab8912797b91ed68755ad6e4228243f188a43c42ea040e844e97c` |
 | `bluefin_spot` | `position` | `ea83d3b9a65c7f62579dd0a902ddad8ade46cec277e5781ab9e52783c48caaec` |
@@ -278,15 +299,22 @@ Only modules that declare an adapter-consumed type or function are fingerprinted
 
 | Venue | Modules | Functions | Structs | Type origins |
 | --- | --- | --- | --- | --- |
-| Aftermath AMM | 3 | 2 | 3 | 3 |
+| Aftermath AMM | 4 | 3 | 3 | 3 |
 | Aftermath DAO Fee Pools | 2 | 3 | 3 | 3 |
+| Aftermath Protocol Fee Vault | 1 | 1 | 1 | 1 |
+| Aftermath Treasury | 1 | 0 | 1 | 1 |
+| Aftermath Insurance Fund | 1 | 0 | 1 | 1 |
+| Aftermath Referral Vault | 1 | 0 | 1 | 1 |
 | Bluefin Spot | 3 | 8 | 3 | 3 |
 | Cetus CLMM | 5 | 9 | 5 | 5 |
 
 The list contains only the Aftermath, Bluefin Spot, and Cetus CLMM functions and
-structs the adapters actually reference. The Aftermath facts are the ones the
-`blast_aftermath_dao_presale` vendor gate recorded on 2026-09-02 (ADR 0104);
-`CreatePoolCapV2` is pinned to the revision-3 package that introduced it.
+structs the adapters actually reference. The Aftermath pool-creation facts are
+the ones the `blast_aftermath_dao_presale` vendor gate recorded on 2026-09-02
+(ADR 0104); `CreatePoolCapV2` is pinned to the revision-3 package that
+introduced it. The deposit route and the four fee packages it takes were
+recorded on 2026-10-17 (ADR 0116); the adapter calls only
+`ProtocolFeeVault::total_protocol_fee` on them and passes the rest through.
 
 ## Source pins
 
@@ -300,6 +328,10 @@ Every direct and overridden Git dependency in `Move.toml` is a full commit.
 | `CetusClmm` | local `interfaces/cetus` | normalized from mainnet revision 15 |
 | `AftermathAmm` | local `interfaces/aftermath_amm` | normalized from mainnet revision 3 |
 | `AftermathDaoFeePools` | local `interfaces/aftermath_dao_fee` | normalized from mainnet revision 2 |
+| `AftermathProtocolFeeVault` | local `interfaces/aftermath_protocol_fee_vault` | normalized from mainnet revision 2 |
+| `AftermathTreasury` | local `interfaces/aftermath_treasury` | normalized from mainnet revision 1 |
+| `AftermathInsuranceFund` | local `interfaces/aftermath_insurance_fund` | normalized from mainnet revision 1 |
+| `AftermathReferralVault` | local `interfaces/aftermath_referral_vault` | normalized from mainnet revision 1 |
 | `Sui` (override) | git `MystenLabs/sui`, subdir `crates/sui-framework/packages/sui-framework` | `06734f6ff0af45d8632a14a4dc4b100197f6b1a2` |
 | `IntegerMate` (override) | git `CetusProtocol/integer-mate` | `09a12d9b171122883d9350039d4ed6e8400033b9` |
 | `IntegerLibrary` (override) | git `fireflyprotocol/integer-library` | `8a534bd1c0b334cd3937c27987f3147a06ba6a18` |
@@ -422,17 +454,25 @@ package's current generation. It touches neither the venue nor the position.
 Each fixture starts its launch through the adapter's `new` at a tier the venue
 accepts, and records that the launch stores that tier.
 
-Aftermath rows, each with a fresh 9-decimal LP coin published for the fixture:
+Aftermath rows, each with a fresh 9-decimal LP coin published for the fixture
+and the launch created, seeded with a dust buy, and its pool created and shared
+in one PTB:
 
-- `aftermath::migrate` with Meme sorting before Quote, and again with Quote
-  sorting before Meme: the pool holds exactly the hand-off, the DAO-fee pool
-  reports the launch's fee and the vault's address, the LP coin is owned by
-  `0x0`, and the vault's position is the owner cap;
-- `aftermath::migrate` against a pool another account created with the
-  adapter's fixed terms and the same salt-free fee: it must not collide, since
-  the fixture's own digest salts the fee, and a second attempt in a new
-  transaction must succeed after a first attempt that was front-run with its
-  digest; and
+- `aftermath::create_pool` with Meme sorting before Quote, and again with Quote
+  sorting before Meme: the seed LP coin is owned by `0x0`, the reservation
+  holds the pool, and `AftermathPoolReserved` names both;
+- `aftermath::create_pool` after another account registered a pool with the
+  adapter's fixed terms for the same pair, which cannot happen on a real launch
+  (nobody holds Meme before the creation PTB) but proves the collision aborts
+  inside Aftermath's registry with code 61 before any launch exists;
+- `aftermath::migrate` in both coin orders: the pool's balances grow by the
+  hand-off less at most Aftermath's reported protocol fee, with the vault's
+  residuals zero, the DAO-fee pool reports the launch's fee and the vault's
+  address, the deposit's LP coin is owned by `0x0`, and the vault's position
+  is the owner cap;
+- `aftermath::migrate` with the live `ProtocolFeeVault` rate: the deposit's
+  take must equal `floor(amount × total_protocol_fee / 1e18)` on each coin,
+  within the ceiling the adapter allows; and
 - one DAO-fee swap whose fee coin a dev-inspect `aftermath::collect_fees`
   receives and splits, then the same call against a Cetus vault, which must
   abort with `EWrongVault`.

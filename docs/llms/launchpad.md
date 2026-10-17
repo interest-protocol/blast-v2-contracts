@@ -207,8 +207,10 @@ that wraps `finalize` which adapter started the initializer.
    - Aftermath: `blast_fun_migrators::aftermath::new` takes the owned ticket, the migrators'
      `PackageVersion`, the launchpad `PackageVersion`, `LaunchConfig`, and `dao_fee_bps: u16` (1
      to 10,000), the DAO fee the pool pays the launch's vault; the tier is recorded as tick
-     spacing 0 and that fee. The creator must have published a fresh Aftermath LP coin first and
-     finalizes through `blast_fun_migrators::aftermath::finalize` (step 9), not `launch::finalize`.
+     spacing 0 and that fee. The creator must have published a fresh Aftermath LP coin first,
+     finalizes through `blast_fun_migrators::aftermath::finalize` (step 9), not `launch::finalize`,
+     and creates the pool from a seed bought in step 10, so an Aftermath launch cannot set an
+     opening round (step 6).
 
    Inside, `launch::new` checks that Meme and Quote differ, that `Quote`, the adapter's witness,
    and the decimals are admitted in `LaunchConfig`, and snapshots the trade fees. The pool tier
@@ -237,14 +239,17 @@ that wraps `finalize` which adapter started the initializer.
    `LaunchConfig`, and the fee coin. It returns the `Launch<Meme, Quote>` value. An Aftermath
    launch calls `blast_fun_migrators::aftermath::finalize` instead, which takes the same inputs
    after the migrators' `PackageVersion`, plus the LP coin's `CreatePoolCapV2`, and returns the
-   launch with the pool reservation the migrators guide describes; a launch finalized here with
-   an Aftermath witness can never migrate. Either way, finalization checks every
+   launch with a pending pool the migrators guide describes, which the PTB must turn into the
+   launch's pool with `blast_fun_migrators::aftermath::create_pool` from a seed bought in step
+   10 and some Quote, then share with `blast_fun_migrators::aftermath::share`; a launch finalized
+   here with an Aftermath witness can never migrate. Either way, finalization checks every
    setting (see Aborts), copies Blast's current allocation into the plan and requires each asset to
    sum to 10,000, fixes the supply as burn-only or fixed in the Coin Registry (consuming the
    treasury cap), keeps the curve's Meme as `meme_reserve` and the rest as `allocated_meme`, stores
    the creation fee in the fee ledger, and emits `blast_fun::events::LaunchCreated`. The lifecycle
    is `OpeningRound` when an opening round was set, else `Live`.
-10. Optional creator purchase before anyone else can trade:
+10. Optional creator purchase before anyone else can trade (required on Aftermath, which seeds
+    the pool from it):
     - without an opening round: `launch::buy` on the launch value (see Buy); transfer both returned
       coins. A buy here may even reach the target.
     - with an opening round: `launch::join_opening_round` on the launch value (see Opening round);
