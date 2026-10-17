@@ -128,4 +128,12 @@ fi
 [ "$(rg -c 'transfer::public_transfer\(lp, @0x0\)' "$sources/aftermath.move")" == 1 ] \
   || fail "Aftermath's migration must send its LP coin to 0x0 exactly once."
 
+# 6. The presale's Aftermath link stubs are the vendor package's, byte for byte (ADR 0116), so the
+#    vendor's mainnet ABI gate, which pins those manifests and signatures, covers the presale too.
+vendor_interfaces="$package_dir/../vendors/aftermath_dao_presale/interfaces"
+for stub in aftermath_amm aftermath_dao_fee; do
+  diff -r "$package_dir/interfaces/$stub" "$vendor_interfaces/$stub" >/dev/null \
+    || fail "The presale's ${stub} link stub must match the vendor package's byte for byte."
+done
+
 printf 'blast_presale source boundaries hold.\n'

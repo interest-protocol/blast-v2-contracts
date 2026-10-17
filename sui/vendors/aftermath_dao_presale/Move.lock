@@ -11,10 +11,10 @@ manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B737
 deps = { Sui = "Sui" }
 
 [pinned.mainnet.AftermathAmm_1]
-source = { local = "../../migrators/interfaces/aftermath_amm" }
+source = { local = "../../presale/interfaces/aftermath_amm" }
 use_environment = "mainnet"
-manifest_digest = "8DD3827ED5FB1F585E9E6684786FFAD7D17252D3D21E84E5D9EA4ECCB74BA0A3"
-deps = { AftermathInsuranceFund = "AftermathInsuranceFund", AftermathProtocolFeeVault = "AftermathProtocolFeeVault", AftermathReferralVault = "AftermathReferralVault", AftermathTreasury = "AftermathTreasury", Sui = "Sui" }
+manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
+deps = { Sui = "Sui" }
 
 [pinned.mainnet.AftermathDaoFeePools]
 source = { local = "interfaces/aftermath_dao_fee" }
@@ -23,34 +23,10 @@ manifest_digest = "059163B6EEC70C0BA08FE015B1DBEC38DB554FC4A43C4D375C757E8D16043
 deps = { AftermathAmm = "AftermathAmm", Sui = "Sui" }
 
 [pinned.mainnet.AftermathDaoFeePools_1]
-source = { local = "../../migrators/interfaces/aftermath_dao_fee" }
+source = { local = "../../presale/interfaces/aftermath_dao_fee" }
 use_environment = "mainnet"
 manifest_digest = "059163B6EEC70C0BA08FE015B1DBEC38DB554FC4A43C4D375C757E8D1604346D"
 deps = { AftermathAmm = "AftermathAmm_1", Sui = "Sui" }
-
-[pinned.mainnet.AftermathInsuranceFund]
-source = { local = "../../migrators/interfaces/aftermath_insurance_fund" }
-use_environment = "mainnet"
-manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
-deps = { Sui = "Sui" }
-
-[pinned.mainnet.AftermathProtocolFeeVault]
-source = { local = "../../migrators/interfaces/aftermath_protocol_fee_vault" }
-use_environment = "mainnet"
-manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
-deps = { Sui = "Sui" }
-
-[pinned.mainnet.AftermathReferralVault]
-source = { local = "../../migrators/interfaces/aftermath_referral_vault" }
-use_environment = "mainnet"
-manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
-deps = { Sui = "Sui" }
-
-[pinned.mainnet.AftermathTreasury]
-source = { local = "../../migrators/interfaces/aftermath_treasury" }
-use_environment = "mainnet"
-manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
-deps = { Sui = "Sui" }
 
 [pinned.mainnet.BluefinSpot]
 source = { git = "https://github.com/fireflyprotocol/bluefin-spot-contract-interface.git", subdir = ".", rev = "91ce930575b2aa3decab9b7e129b8002deba80c1" }
@@ -175,5 +151,5 @@ deps = { blast_admin = "blast_admin", blast_fun_timelock = "blast_fun_timelock",
 [pinned.mainnet.blast_presale]
 source = { local = "../../presale" }
 use_environment = "mainnet"
-manifest_digest = "3D9D4DCA05E01693B22A7E14FBB85EF36161F280E128B3EADBBEA32F7F5AC227"
+manifest_digest = "4D740C0D673E0F68B5504EE723086471CC968E1446AE5C162A3A4B3A7451A06B"
 deps = { AftermathAmm = "AftermathAmm_1", AftermathDaoFeePools = "AftermathDaoFeePools_1", BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate", Sui = "Sui", blast_admin = "blast_admin", blast_fun_vesting = "blast_fun_vesting", blast_partners = "blast_partners" }

@@ -308,7 +308,7 @@ Upgradeability is a product/security decision, not a default convenience.
   operational version to the exact next compiled generation in the same call;
   there is no separate activation step.
 - The migrators package keeps its `UpgradeCap` in its own `PackageAdmin` and is
-  never made immutable: Cetus, Bluefin, and Aftermath gate callers by package version and
+  never made immutable: Cetus and Bluefin gate callers by package version and
   launchpad cutovers advance the launchpad version, so the adapters must always
   be able to relink (ADR 0088). Every migrators upgrade uses the compatible
   policy and bumps both compiled generation constants; its custody has no

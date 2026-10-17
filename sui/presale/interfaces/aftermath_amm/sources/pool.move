@@ -14,8 +14,3 @@ public fun balance_of<L, C>(pool: &Pool<L>): u64 { abort 0 }
 public fun create_pool_cap_for_testing(ctx: &mut TxContext): CreatePoolCapV2 {
     CreatePoolCapV2 { id: object::new(ctx) }
 }
-
-#[test_only]
-public fun pool_for_testing<L>(ctx: &mut TxContext): Pool<L> {
-    Pool { id: object::new(ctx) }
-}

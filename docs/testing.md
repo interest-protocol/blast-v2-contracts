@@ -25,7 +25,7 @@ The migrators package contains local interface stubs, so a local build proves
 type compatibility only. Before release:
 
 1. Run its offline ABI self-test and live mainnet ABI check.
-2. Run the replacement Cetus, Bluefin, and Aftermath dev-inspect matrix in
+2. Run the replacement Cetus and Bluefin dev-inspect matrix in
    [`sui/migrators/DEPENDENCIES.md`](../sui/migrators/DEPENDENCIES.md).
 3. Record the reviewed venue revisions, module fingerprints, normalized ABI,
    route results, residual bounds, and fee-collection results.

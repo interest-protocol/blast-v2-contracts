@@ -17,23 +17,15 @@ public struct AutoLpPositionKey<phantom Venue>() has copy, drop, store;
 /// Shared per-launch custody for one position, its protocol migration residuals, and the balances
 /// its LP fees are split into.
 ///
-/// A venue whose pool pays its fees as coins sent to an address, rather than into a position,
-/// builds the vault before its position exists and names the vault's own ID as the recipient;
-/// the vault then receives those coins with Sui's transfer-to-object receiving, and its adapter
-/// splits them like any collection.
-///
 /// Every collection pays Blast's live share from `LpFeePolicy`, then splits the rest by the
 /// creator's `FeeSplit`: the creator share accrues here until the live curve-fee cap claims it,
-/// the auto-LP share goes back into the position in the same call on a venue with an auto-LP
-/// route (any part the pool does not take waits here for the next call), the rewards share funds
-/// holder-reward rounds, and every recipient is paid at once. The burn share's Meme is burned at
-/// once and its Quote waits here until a buyback admin swaps it for Meme to burn on a venue with
-/// a buyback route; a venue without those routes admits only splits with no auto-LP and no burn
-/// part. The split changes only after the fees accrued under the current one are settled, so
-/// each fee follows the split it accrued under; a venue that cannot settle every accrued fee in
-/// one call fixes the split at migration. When the launch named a partner, Blast's live share
-/// waits here instead, until `claim_protocol_lp_fees_with_partner` pays the partner its cut and
-/// Blast the rest.
+/// the auto-LP share goes back into the position in the same call (any part the pool does not
+/// take waits here for the next call), the rewards share funds holder-reward rounds, and every
+/// recipient is paid at once. The burn share's Meme is burned at once and its Quote waits here until
+/// a buyback admin swaps it for Meme to burn. The split changes only after the fees accrued under
+/// the current one are settled, so each fee follows the split it accrued under. When the launch
+/// named a partner, Blast's live share waits here instead, until
+/// `claim_protocol_lp_fees_with_partner` pays the partner its cut and Blast the rest.
 public struct LpVault<phantom Meme, phantom Quote> has key {
     id: UID,
     pool_id: ID,
@@ -154,69 +146,18 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
     protocol_quote_residual: Balance<Quote>,
     ctx: &mut TxContext,
 ) {
-    let vault = new(launch, pool_id, protocol_meme_residual, protocol_quote_residual, ctx);
-    vault.share_with_position(venue, position, liquidity);
-}
-
-/// Builds the launch's vault, bound to `pool_id`, with the launch's partner and fee split, empty
-/// balances, no round, and no position yet, for a venue whose pool must name the vault's address
-/// before its position exists. The vault has only `key`, so the venue can do nothing with it but
-/// `share_with_position` in the same call.
-public(package) fun new<Meme, Quote>(
-    launch: &Launch<Meme, Quote>,
-    pool_id: ID,
-    protocol_meme_residual: Balance<Meme>,
-    protocol_quote_residual: Balance<Quote>,
-    ctx: &mut TxContext,
-): LpVault<Meme, Quote> {
-    LpVault {
-        id: object::new(ctx),
-        pool_id,
-        partner_id: launch.partner_id(),
-        protocol_meme_residual,
-        protocol_quote_residual,
-        unpaid_protocol_meme: balance::zero(),
-        unpaid_protocol_quote: balance::zero(),
-        fee_split: launch.lp_fee_split(),
-        creator_meme: balance::zero(),
-        creator_quote: balance::zero(),
-        auto_lp_meme: balance::zero(),
-        auto_lp_quote: balance::zero(),
-        rewards_meme: balance::zero(),
-        rewards_quote: balance::zero(),
-        burn_quote: balance::zero(),
-        next_round: 0,
-        last_checkpoint: option::none(),
-    }
-}
-
-/// Attaches `position`, holding `liquidity` in the vault's pool, under the venue's sealed key,
-/// announces the custody, and shares the vault.
-public(package) fun share_with_position<Meme, Quote, Venue, Position: key + store>(
-    mut self: LpVault<Meme, Quote>,
-    venue: &Venue,
-    position: Position,
-    liquidity: u128,
-) {
-    self.attach(venue, position, liquidity);
-    transfer::share_object(self);
-}
-
-/// Whether the vault's position sits under `Venue`: the venue that migrated the launch.
-public(package) fun has_position<Meme, Quote, Venue>(
-    self: &LpVault<Meme, Quote>,
-    _venue: &Venue,
-): bool {
-    self.id.has_dynamic_object_field(PositionKey<Venue>())
-}
-
-/// Receives one fee coin a venue sent to this vault's address. The adapter hands every received
-/// coin to `split_fees` in the same call, so fees leave only by the split.
-public(package) fun receive_fee<Meme, Quote, Asset>(
-    self: &mut LpVault<Meme, Quote>,
-    fee: Receiving<Coin<Asset>>,
-): Coin<Asset> {
-    transfer::public_receive(&mut self.id, fee)
+    transfer::share_object(
+        new(
+            launch,
+            venue,
+            pool_id,
+            position,
+            liquidity,
+            protocol_meme_residual,
+            protocol_quote_residual,
+            ctx,
+        ),
+    );
 }
 
 /// Mutably borrows the venue position without providing a removal path. Another venue's key
@@ -515,28 +456,53 @@ fun pay_all<T>(mut balance: Balance<T>, destination: address, ctx: &mut TxContex
     balance.destroy_zero();
 }
 
-/// Attaches `position`, holding `liquidity` in the vault's pool, once under the venue's sealed key
-/// and announces the custody; a second attachment under the same venue aborts in the framework.
-fun attach<Meme, Quote, Venue, Position: key + store>(
-    self: &mut LpVault<Meme, Quote>,
+/// Builds the vault with the launch's fee split and empty balances, attaches `position`, and
+/// announces the custody.
+fun new<Meme, Quote, Venue, Position: key + store>(
+    launch: &Launch<Meme, Quote>,
     _venue: &Venue,
+    pool_id: ID,
     position: Position,
     liquidity: u128,
-) {
+    protocol_meme_residual: Balance<Meme>,
+    protocol_quote_residual: Balance<Quote>,
+    ctx: &mut TxContext,
+): LpVault<Meme, Quote> {
     assert!(liquidity > 0, EZeroLiquidity);
 
     let position_id = object::id(&position);
-    self.id.add_dynamic_object_field(PositionKey<Venue>(), position);
+    let mut vault = LpVault {
+        id: object::new(ctx),
+        pool_id,
+        partner_id: launch.partner_id(),
+        protocol_meme_residual,
+        protocol_quote_residual,
+        unpaid_protocol_meme: balance::zero(),
+        unpaid_protocol_quote: balance::zero(),
+        fee_split: launch.lp_fee_split(),
+        creator_meme: balance::zero(),
+        creator_quote: balance::zero(),
+        auto_lp_meme: balance::zero(),
+        auto_lp_quote: balance::zero(),
+        rewards_meme: balance::zero(),
+        rewards_quote: balance::zero(),
+        burn_quote: balance::zero(),
+        next_round: 0,
+        last_checkpoint: option::none(),
+    };
+    vault.id.add_dynamic_object_field(PositionKey<Venue>(), position);
 
     blast_events::vault_created<Meme, Quote, Venue>(
-        self.id.to_inner(),
-        self.pool_id,
+        vault.id.to_inner(),
+        pool_id,
         position_id,
-        self.protocol_meme_residual.value(),
-        self.protocol_quote_residual.value(),
+        vault.protocol_meme_residual.value(),
+        vault.protocol_quote_residual.value(),
         liquidity,
-        self.fee_split,
+        vault.fee_split,
     );
+
+    vault
 }
 
 /// Burns `meme`, or sends it to `@0x0` when the supply is fixed, as migration does.
@@ -562,9 +528,16 @@ public fun new_for_testing<Meme, Quote, Venue, Position: key + store>(
     protocol_quote_residual: Balance<Quote>,
     ctx: &mut TxContext,
 ): LpVault<Meme, Quote> {
-    let mut vault = new(launch, pool_id, protocol_meme_residual, protocol_quote_residual, ctx);
-    vault.attach(venue, position, liquidity);
-    vault
+    new(
+        launch,
+        venue,
+        pool_id,
+        position,
+        liquidity,
+        protocol_meme_residual,
+        protocol_quote_residual,
+        ctx,
+    )
 }
 
 #[test_only]
@@ -679,7 +652,6 @@ use sui::{
     coin::Coin,
     coin_registry::Currency,
     dynamic_object_field,
-    transfer::Receiving,
 };
 
 use fun pay as Balance.pay;

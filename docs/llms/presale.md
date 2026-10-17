@@ -426,8 +426,7 @@ Who may call: *anyone*, while `Funded`, until someone cancels.
 The adapter runs `blast_presale::blast_presale::migrate`, creates the pool from all LP tokens
 and Quote (50/50 weights, flatness 0, Aftermath's minimum 0.01% swap-in fee, which compounds
 into the LP, no other pool fees, name "Blast Presale Pool"; no sale token circulates before the
-migration, so nobody can register the sale's pool first, unlike a launch, whose adapter creates
-the pool at creation), checks it holds every unit
+migration, so nobody can register the sale's pool first), checks it holds every unit
 (`blast_presale::aftermath::EPoolMismatch`), builds the `Vault` with no position yet, wraps the
 pool in a DAO-fee pool at the recorded `dao_fee_bps` whose fee recipient is the vault's ID
 (`blast_presale::aftermath::EDaoFeePoolMismatch` if Aftermath reports anything else), attaches
