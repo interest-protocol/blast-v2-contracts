@@ -1,0 +1,11 @@
+[package]
+name = "AftermathMath"
+edition = "2024"
+published-at = "0xbc7b2c577ad9362fbb0dba397d17f3bcc81bf7aa916559f99a77eaee05d0947c"
+
+[dependencies]
+AftermathUtils = { local = "../aftermath_utils" }
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2", override = true }
+
+[addresses]
+amm_math = "0x712579292f80c11a0c9de4ff553d6e5c4757105e83a8a3129823d2b39e65d062"

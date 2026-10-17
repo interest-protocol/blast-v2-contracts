@@ -1,0 +1,10 @@
+[package]
+name = "AftermathTreasury"
+edition = "2024"
+published-at = "0x64213b0e4a52bac468d4ac3f140242f70714381653a1919a6d57cd49c628207a"
+
+[dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2", override = true }
+
+[addresses]
+treasury = "0x64213b0e4a52bac468d4ac3f140242f70714381653a1919a6d57cd49c628207a"

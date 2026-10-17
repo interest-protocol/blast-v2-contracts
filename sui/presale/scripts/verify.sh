@@ -13,6 +13,7 @@ case "${1:-all}" in
     ;;
   boundaries)
     bash "$package_dir/scripts/check_source_boundaries.sh"
+    python3 "$package_dir/scripts/test_publish.py"
     ;;
   test)
     shift || true
@@ -20,6 +21,7 @@ case "${1:-all}" in
     ;;
   all)
     bash "$package_dir/scripts/check_source_boundaries.sh"
+    python3 "$package_dir/scripts/test_publish.py"
     sui move build --path "$package_dir" --build-env mainnet
     sui move lint --path "$package_dir" --build-env mainnet --warnings-are-errors
     sui move test --path "$package_dir" --build-env mainnet --lint --warnings-are-errors
