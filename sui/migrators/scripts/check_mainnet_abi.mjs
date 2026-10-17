@@ -545,19 +545,19 @@ const MANIFESTS = [
 const LOCK_NODES = {
     AftermathAmm: {
         source: { local: 'interfaces/aftermath_amm' },
-        deps: { Sui: 'Sui_2' },
+        deps: { Sui: 'Sui' },
     },
     AftermathDaoFeePools: {
         source: { local: 'interfaces/aftermath_dao_fee' },
-        deps: { AftermathAmm: 'AftermathAmm', Sui: 'Sui_2' },
+        deps: { AftermathAmm: 'AftermathAmm', Sui: 'Sui' },
     },
     BluefinSpot: {
         source: { git: BLUEFIN_GIT, subdir: '.', rev: REV.bluefin },
-        deps: { IntegerLibrary: 'IntegerLibrary', IntegerMate: 'IntegerMate', Sui: 'Sui_1' },
+        deps: { IntegerLibrary: 'IntegerLibrary', IntegerMate: 'IntegerMate', Sui: 'Sui_2' },
     },
     CetusClmm: {
         source: { local: 'interfaces/cetus' },
-        deps: { IntegerMate: 'IntegerMate_1', MoveSTL: 'MoveSTL', Sui: 'Sui_2' },
+        deps: { IntegerMate: 'IntegerMate_1', MoveSTL: 'MoveSTL', Sui: 'Sui' },
     },
     CetusClmmVester: {
         source: { local: 'interfaces/cetus_clmm_vester' },
@@ -565,7 +565,7 @@ const LOCK_NODES = {
             CetusClmm: 'CetusClmm',
             CetusToken: 'CetusToken',
             IntegerMate: 'IntegerMate_1',
-            Sui: 'Sui_2',
+            Sui: 'Sui',
         },
     },
     CetusLpBurn: {
@@ -575,80 +575,80 @@ const LOCK_NODES = {
             CetusClmmVester: 'CetusClmmVester',
             CetusToken: 'CetusToken',
             IntegerMate: 'IntegerMate_1',
-            Sui: 'Sui_2',
+            Sui: 'Sui',
         },
     },
     CetusToken: {
         source: { local: 'interfaces/cetus_token' },
-        deps: { Sui: 'Sui_2' },
+        deps: { Sui: 'Sui' },
     },
     IntegerLibrary: {
         source: { git: INTEGER_LIBRARY_GIT, subdir: '.', rev: REV.integerLibrary },
-        deps: { Sui: 'Sui' },
+        deps: { Sui: 'Sui_1' },
     },
     IntegerMate: {
         source: { git: INTEGER_MATE_GIT, subdir: 'sui', rev: REV.integerMateBluefin },
-        deps: { Sui: 'Sui' },
+        deps: { Sui: 'Sui_1' },
     },
     IntegerMate_1: {
         source: { git: INTEGER_MATE_GIT, subdir: '.', rev: REV.integerMate },
-        deps: { std: 'MoveStdlib_2', sui: 'Sui_2' },
+        deps: { std: 'MoveStdlib', sui: 'Sui' },
     },
     MoveSTL: {
         source: { git: MOVE_STL_GIT, subdir: '.', rev: REV.moveStl },
-        deps: { std: 'MoveStdlib_2', sui: 'Sui_2' },
+        deps: { std: 'MoveStdlib', sui: 'Sui' },
     },
     MoveStdlib: {
-        source: { git: SUI_GIT, subdir: MOVE_STDLIB_SUBDIR, rev: REV.suiLegacy },
-        deps: {},
-    },
-    MoveStdlib_1: {
-        source: { git: SUI_GIT, subdir: MOVE_STDLIB_SUBDIR, rev: REV.suiBluefin },
-        deps: {},
-    },
-    MoveStdlib_2: {
         source: { git: SUI_GIT, subdir: MOVE_STDLIB_SUBDIR, rev: REV.sui },
         deps: {},
     },
+    MoveStdlib_1: {
+        source: { git: SUI_GIT, subdir: MOVE_STDLIB_SUBDIR, rev: REV.suiLegacy },
+        deps: {},
+    },
+    MoveStdlib_2: {
+        source: { git: SUI_GIT, subdir: MOVE_STDLIB_SUBDIR, rev: REV.suiBluefin },
+        deps: {},
+    },
     Sui: {
-        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.suiLegacy },
+        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.sui },
         deps: { MoveStdlib: 'MoveStdlib' },
     },
     Sui_1: {
-        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.suiBluefin },
+        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.suiLegacy },
         deps: { MoveStdlib: 'MoveStdlib_1' },
     },
     Sui_2: {
-        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.sui },
+        source: { git: SUI_GIT, subdir: SUI_FRAMEWORK_SUBDIR, rev: REV.suiBluefin },
         deps: { MoveStdlib: 'MoveStdlib_2' },
     },
     // The immutable shared administration package is a local, inward-only edge:
     // it pins the same framework revision and adds no venue dependency.
     blast_admin: {
         source: { local: '../admin' },
-        deps: { Sui: 'Sui_2', blast_fun_timelock: 'blast_fun_timelock' },
+        deps: { Sui: 'Sui', blast_fun_timelock: 'blast_fun_timelock' },
     },
     blast_fun: {
         source: { local: '../launchpad' },
         deps: {
             blast_admin: 'blast_admin',
             blast_partners: 'blast_partners',
-            std: 'MoveStdlib_2',
-            sui: 'Sui_2',
+            std: 'MoveStdlib',
+            sui: 'Sui',
         },
     },
     // The ACL's timelocked root transfer (ADR 0097) and launchpad partners (ADR 0098).
     blast_fun_timelock: {
         source: { git: BLAST_UTIL_GIT, subdir: 'sui/timelock', rev: REV.blastTimelock },
-        deps: { std: 'MoveStdlib_2', sui: 'Sui_2' },
+        deps: { std: 'MoveStdlib', sui: 'Sui' },
     },
     blast_partners: {
         source: { local: '../partners' },
         deps: {
             blast_admin: 'blast_admin',
             blast_fun_timelock: 'blast_fun_timelock',
-            std: 'MoveStdlib_2',
-            sui: 'Sui_2',
+            std: 'MoveStdlib',
+            sui: 'Sui',
         },
     },
     blast_fun_migrators: {
@@ -661,7 +661,7 @@ const LOCK_NODES = {
             CetusLpBurn: 'CetusLpBurn',
             IntegerLibrary: 'IntegerLibrary',
             IntegerMate: 'IntegerMate_1',
-            Sui: 'Sui_2',
+            Sui: 'Sui',
             blast_admin: 'blast_admin',
             blast_fun: 'blast_fun',
         },

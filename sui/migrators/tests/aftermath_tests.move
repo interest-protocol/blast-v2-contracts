@@ -183,11 +183,7 @@ fun migrate_rejects_another_launches_reservation() {
 /// could never consume the reservation.
 fun finalize_rejects_another_adapters_launch() {
     let mut f = start();
-    f.config.set_migration_witness_allowed<TestVenue>(
-        &f.version,
-        &blast_acl::witness_for_testing<AdapterAdmin>(),
-        true,
-    );
+    f.admit_witness<TestVenue>();
     let ticket = f.new_ticket();
     f.scenario.next_tx(ADMIN);
     let mut currency = f.scenario.take_from_address<Currency<AFTERMATH_TESTS>>(COIN_REGISTRY);
@@ -270,9 +266,10 @@ fun new_admits_only_an_allowed_quote() {
 #[test]
 /// Coin order is the byte order of defining-ID type names, a strict prefix first.
 fun coin_order_is_the_byte_order_of_type_names() {
-    // This package sits at 0x0, so its types sort before the framework's 0x2.
-    assert!(aftermath::sorts_before_for_testing<QUOTE, SUI>());
-    assert!(!aftermath::sorts_before_for_testing<SUI, QUOTE>());
+    // The standard library's 0x1 sorts before the framework's 0x2, whatever address this
+    // package builds at.
+    assert!(aftermath::sorts_before_for_testing<std::ascii::String, SUI>());
+    assert!(!aftermath::sorts_before_for_testing<SUI, std::ascii::String>());
     assert!(aftermath::sorts_before_for_testing<A, AB>());
     assert!(!aftermath::sorts_before_for_testing<AB, A>());
     assert!(aftermath::sorts_before_for_testing<AB, QUOTE>());
@@ -455,8 +452,12 @@ fun start_rejected_fee(dao_fee_bps: u16) {
 }
 
 fun admit_aftermath(f: &mut StartFixture) {
+    f.admit_witness<aftermath::Witness>();
+}
+
+fun admit_witness<Witness: drop>(f: &mut StartFixture) {
     let admin = blast_acl::witness_for_testing<AdapterAdmin>();
-    f.config.set_migration_witness_allowed<aftermath::Witness>(&f.version, &admin, true);
+    f.config.set_migration_witness_allowed<Witness>(&f.version, &admin, true);
 }
 
 fun new_ticket(f: &mut StartFixture): LaunchTicket<AFTERMATH_TESTS> {
@@ -738,13 +739,5 @@ use sui::{
     test_utils,
 };
 
-use fun admit_aftermath as StartFixture.admit_aftermath;
-use fun claim_curve_fee_cap as VaultFixture.claim_curve_fee_cap;
-use fun collect as VaultFixture.collect;
 use fun end_start as StartFixture.end;
 use fun end_vault as VaultFixture.end;
-use fun new_ticket as StartFixture.new_ticket;
-use fun open_launch as StartFixture.open_launch;
-use fun open_launch_with as StartFixture.open_launch_with;
-use fun send_coins as VaultFixture.send_coins;
-use fun settle_and_update as VaultFixture.settle_and_update;

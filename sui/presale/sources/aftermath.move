@@ -91,7 +91,7 @@ public fun finalize<Lp, Meme, Quote>(
 /// Anyone may migrate a funded presale into its reserved Aftermath pool, consuming the
 /// reservation bound to it: it seeds a 50/50 pool with all of the sale's LP tokens and Quote,
 /// wraps it in a DAO-fee pool paying the sale's new vault at the fee `new` recorded, shares that
-/// pool, and locks the LP coin and the pool's owner cap in the vault.
+/// pool, locks the pool's owner cap in the vault as its position, and sends the LP coin to `0x0`.
 #[allow(lint(share_owned))]
 public fun migrate<Lp, Meme, Quote>(
     sale: &mut Presale<Meme, Quote>,
@@ -125,8 +125,8 @@ public fun migrate<Lp, Meme, Quote>(
     );
 
     let pool_id = object::id(&pool);
-    let vault_id = object::new(ctx);
-    let vault_address = vault_id.to_address();
+    let mut vault = vault::new(sale, pool_id, balance::zero(), balance::zero(), ctx);
+    let vault_address = object::id(&vault).to_address();
     let (dao_fee_pool, owner_cap) = dao_fee_pool::new(
         pool,
         dao_fee_version,
@@ -139,26 +139,15 @@ public fun migrate<Lp, Meme, Quote>(
         EDaoFeePoolMismatch,
     );
 
-    let owner_cap_id = object::id(&owner_cap);
-    let lp_coin_id = object::id(&lp);
-    let vault = vault::new(
-        sale,
-        &Venue(),
-        vault_id,
-        pool_id,
-        owner_cap,
-        lp.value() as u128,
-        balance::zero(),
-        balance::zero(),
-    );
     event::emit(DaoFeePoolCreated<Lp, Meme, Quote> {
         vault_id: object::id(&vault),
         pool_id,
         dao_fee_pool_id: object::id(&dao_fee_pool),
-        owner_cap_id,
-        lp_coin_id,
+        owner_cap_id: object::id(&owner_cap),
+        lp_coin_id: object::id(&lp),
     });
 
+    vault.attach_position(&Venue(), owner_cap, lp.value() as u128);
     vault.share();
     transfer::public_share_object(dao_fee_pool);
     transfer::public_transfer(lp, @0x0);
@@ -310,7 +299,8 @@ public struct DaoFeePoolCreated<phantom Lp, phantom Meme, phantom Quote> has cop
 
 // === Constants ===
 
-/// Aftermath's own bound on a DAO fee: the whole amount, 100%.
+/// Aftermath's own bound on a DAO fee, the whole amount, which its DAO-fee pool creation asserts
+/// as `fee_bps <= 10_000`.
 const MAX_DAO_FEE_BPS: u16 = 10_000;
 
 /// Each coin's weight: half of Aftermath's `1e18` fixed-point one.

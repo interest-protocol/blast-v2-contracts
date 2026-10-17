@@ -272,10 +272,11 @@ Inside the call: it checks the migrators generation, then that the reservation i
 own (`EWrongLaunch`), consumes it, reads the DAO fee from the launch's tier, and runs
 `launch::migrate` as above; creates the pool named "Blast Launch Pool" from exactly the handed-off
 balances, in Aftermath's coin order, and aborts with `EPoolMismatch` unless the pool holds every
-unit (so the vault's residuals are zero); mints the vault's ID and wraps the pool in a DAO-fee
-pool charging that fee to that ID, aborting with `EDaoFeePoolMismatch` unless Aftermath reports
-exactly that; builds the `LpVault` with the DAO-fee pool's `OwnerCap` as its position and the LP
-coin's amount as `liquidity`; emits `blast_fun_migrators::blast_events::AftermathPoolCreated`;
+unit (so the vault's residuals are zero); builds the `LpVault` with no position yet and wraps the
+pool in a DAO-fee pool charging that fee to the vault's ID, aborting with `EDaoFeePoolMismatch`
+unless Aftermath reports exactly that; emits
+`blast_fun_migrators::blast_events::AftermathPoolCreated`; attaches the DAO-fee pool's
+`OwnerCap` as the vault's position with the LP coin's amount as `liquidity`;
 shares the vault (`VaultCreated`, whose `pool_id` is the base pool and `position_id` the owner
 cap); shares the DAO-fee pool, the object traders use; and sends the LP coin to `0x0`, where
 nobody can ever use it. The caller receives no object.

@@ -151,43 +151,48 @@ public(package) fun create<Meme, Quote, Venue, Position: key + store>(
     protocol_quote_residual: Balance<Quote>,
     ctx: &mut TxContext,
 ) {
-    transfer::share_object(
-        build(
-            launch,
-            venue,
-            object::new(ctx),
-            pool_id,
-            position,
-            liquidity,
-            protocol_meme_residual,
-            protocol_quote_residual,
-        ),
-    );
+    let mut vault = build(launch, pool_id, protocol_meme_residual, protocol_quote_residual, ctx);
+    vault.attach_position(venue, position, liquidity);
+    transfer::share_object(vault);
 }
 
-/// Builds the launch's vault as `create` does, around `id`, which the venue minted so its pool
-/// could name the vault's address before the position existed, and leaves it unshared for the
-/// venue to `share` in the same call.
-public(package) fun new<Meme, Quote, Venue, Position: key + store>(
+/// Builds the launch's vault as `create` does but with no position yet, for a venue whose pool
+/// must name the vault's address before the position exists. The venue attaches the position
+/// with `attach_position` and shares the vault with `share` in the same call; the vault has only
+/// `key`, so nothing outside this module can keep or share it.
+public(package) fun new<Meme, Quote>(
     launch: &Launch<Meme, Quote>,
-    venue: &Venue,
-    id: UID,
     pool_id: ID,
-    position: Position,
-    liquidity: u128,
     protocol_meme_residual: Balance<Meme>,
     protocol_quote_residual: Balance<Quote>,
+    ctx: &mut TxContext,
 ): LpVault<Meme, Quote> {
-    build(
-        launch,
-        venue,
-        id,
-        pool_id,
-        position,
+    build(launch, pool_id, protocol_meme_residual, protocol_quote_residual, ctx)
+}
+
+/// Attaches `position`, holding `liquidity` in the vault's pool, under the venue's sealed key and
+/// announces the custody. A vault holds one position: a second attachment under the same venue
+/// aborts in the framework.
+public(package) fun attach_position<Meme, Quote, Venue, Position: key + store>(
+    self: &mut LpVault<Meme, Quote>,
+    _venue: &Venue,
+    position: Position,
+    liquidity: u128,
+) {
+    assert!(liquidity > 0, EZeroLiquidity);
+
+    let position_id = object::id(&position);
+    self.id.add_dynamic_object_field(PositionKey<Venue>(), position);
+
+    blast_events::vault_created<Meme, Quote, Venue>(
+        self.id.to_inner(),
+        self.pool_id,
+        position_id,
+        self.protocol_meme_residual.value(),
+        self.protocol_quote_residual.value(),
         liquidity,
-        protocol_meme_residual,
-        protocol_quote_residual,
-    )
+        self.fee_split,
+    );
 }
 
 /// Shares a vault `new` built.
@@ -500,23 +505,17 @@ fun pay_all<T>(mut balance: Balance<T>, destination: address, ctx: &mut TxContex
     balance.destroy_zero();
 }
 
-/// Builds the vault around `id` with the launch's fee split and empty balances, attaches
-/// `position`, and announces the custody.
-fun build<Meme, Quote, Venue, Position: key + store>(
+/// Builds the vault with the launch's fee split and empty balances, bound to `pool_id`, with no
+/// position yet.
+fun build<Meme, Quote>(
     launch: &Launch<Meme, Quote>,
-    _venue: &Venue,
-    id: UID,
     pool_id: ID,
-    position: Position,
-    liquidity: u128,
     protocol_meme_residual: Balance<Meme>,
     protocol_quote_residual: Balance<Quote>,
+    ctx: &mut TxContext,
 ): LpVault<Meme, Quote> {
-    assert!(liquidity > 0, EZeroLiquidity);
-
-    let position_id = object::id(&position);
-    let mut vault = LpVault {
-        id,
+    LpVault {
+        id: object::new(ctx),
         pool_id,
         partner_id: launch.partner_id(),
         protocol_meme_residual,
@@ -533,20 +532,7 @@ fun build<Meme, Quote, Venue, Position: key + store>(
         burn_quote: balance::zero(),
         next_round: 0,
         last_checkpoint: option::none(),
-    };
-    vault.id.add_dynamic_object_field(PositionKey<Venue>(), position);
-
-    blast_events::vault_created<Meme, Quote, Venue>(
-        vault.id.to_inner(),
-        pool_id,
-        position_id,
-        vault.protocol_meme_residual.value(),
-        vault.protocol_quote_residual.value(),
-        liquidity,
-        vault.fee_split,
-    );
-
-    vault
+    }
 }
 
 /// Burns `meme`, or sends it to `@0x0` when the supply is fixed, as migration does.
@@ -572,16 +558,9 @@ public fun new_for_testing<Meme, Quote, Venue, Position: key + store>(
     protocol_quote_residual: Balance<Quote>,
     ctx: &mut TxContext,
 ): LpVault<Meme, Quote> {
-    build(
-        launch,
-        venue,
-        object::new(ctx),
-        pool_id,
-        position,
-        liquidity,
-        protocol_meme_residual,
-        protocol_quote_residual,
-    )
+    let mut vault = build(launch, pool_id, protocol_meme_residual, protocol_quote_residual, ctx);
+    vault.attach_position(venue, position, liquidity);
+    vault
 }
 
 #[test_only]

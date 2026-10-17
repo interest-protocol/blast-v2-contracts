@@ -349,7 +349,8 @@ takes the launchpad `PackageVersion` as a shared, immutable argument immediately
 initializer or launch. Each checks the current generation before validation or mutation.
 `launch::new` needs the adapter's witness, which only the adapter module can construct, so a
 launch always starts through an adapter's `new`; only that adapter can borrow the ticket's treasury
-cap during the PTB (`launch::treasury_cap_mut`).
+cap during the PTB (`launch::treasury_cap_mut`), and `launch::migration_witness` tells an adapter
+that wraps `finalize` which adapter started the initializer.
 
 1. Start the launch through an admitted adapter. Both return a `LaunchInitializer<Meme, Quote>`:
    - Cetus: `blast_fun_migrators::cetus::new` takes the owned ticket, the migrators'
@@ -890,9 +891,10 @@ never reaches its target stays `Live`, and holders exit by selling to the curve.
 
 A Blast launch trades on a bonding curve until the curve fills and the launch becomes
 `MigrationReady`. The `blast_fun_migrators` package then moves the launch's pool allocation into a
-new full-range position on a DEX: Cetus or Bluefin, whichever the creator picked when the launch
-started. The position goes into a per-launch shared vault, `blast_fun_migrators::vault::LpVault`,
-and no function can take it out again. From then on anyone can collect the position's trading fees.
+new pool on a DEX, whichever the creator picked when the launch started: a full-range position on
+Cetus or Bluefin, or a 50/50 Aftermath pool behind Aftermath's DAO-fee pool. The position (on
+Aftermath, the DAO-fee pool's owner cap; the LP coin goes to `0x0`) goes into a per-launch shared
+vault, `blast_fun_migrators::vault::LpVault`, and no function can take it out again. From then on anyone can collect the pool's trading fees.
 Each collection pays Blast its LP-fee share, then splits the rest by the vault's `FeeSplit` (the
 launch's until the creator changes it) into five parts: creator, auto-LP (added back to the pool),
 holder rewards, burn, and fixed recipients. This guide covers how a launch starts on a venue, the
@@ -908,6 +910,7 @@ migration itself, and everything the vault does afterwards.
 | `lp_fee_policy::LpFeePolicy` | singleton | Blast's LP-fee share (a default pair and optional per-coin pairs) and the address Blast's share is paid to. |
 | `blast_holder_rewards::Round` (`Round<Meme, Quote>`) | one per published round | A funded Merkle allocation of holder rewards and its claim bitmap. |
 | `blast_fun_migrators::venue_config::VenueConfig` | singleton | Keeps each Cetus launch's `PoolCreationCap` forever, under `blast_fun_migrators::cetus::CreationCapKey` (typed by the Meme). |
+| `blast_fun_migrators::aftermath::PoolCreation` (`PoolCreation<Lp, Meme, Quote>`) | one per Aftermath launch, until it migrates | Holds the Aftermath `CreatePoolCapV2` of the launch's fresh LP coin `Lp` and the launch's ID; only that launch's migration consumes it. |
 | `blast_fun_migrators::blast_fun_migrators::PackageVersion` | singleton | This package's operational generation. Every public call except `wrap` checks it first. |
 | `blast_fun_migrators::package_admin::PackageAdmin` | singleton | Sealed custody of this package's `Publisher` and `UpgradeCap`. |
 
@@ -920,6 +923,8 @@ Calls also take objects from other packages:
 - Cetus: `GlobalConfig`, `Pools`, the pair's `Pool<CoinA, CoinB>`, and Cetus LP Burn's
   `BurnManager`, all shared.
 - Bluefin: its `GlobalConfig` and the pair's `Pool<Meme, Quote>`, both shared.
+- Aftermath: its shared `PoolRegistry` and the DAO-fee package's shared `Version` (migration
+  only). Collections take no Aftermath object: the fee coins the DAO-fee pool sent the vault.
 - Partners: the launch's shared `blast_partners::blast_partners::Partner`, when the launch named
   one.
 
@@ -947,13 +952,14 @@ Calls also take objects from other packages:
 
 | Call | Who |
 | --- | --- |
-| `blast_fun_migrators::cetus::new`, `blast_fun_migrators::bluefin::new` | anyone holding the `launch_ticket::LaunchTicket` (the creator) |
-| `blast_fun_migrators::cetus::migrate`, `blast_fun_migrators::bluefin::migrate` | anyone |
-| `blast_fun_migrators::cetus::collect_fees`, `blast_fun_migrators::bluefin::collect_fees` | anyone |
+| `blast_fun_migrators::cetus::new`, `blast_fun_migrators::bluefin::new`, `blast_fun_migrators::aftermath::new` | anyone holding the `launch_ticket::LaunchTicket` (the creator) |
+| `blast_fun_migrators::aftermath::finalize` | the creator, in the PTB that called `blast_fun_migrators::aftermath::new` |
+| `blast_fun_migrators::cetus::migrate`, `blast_fun_migrators::bluefin::migrate`, `blast_fun_migrators::aftermath::migrate` | anyone |
+| `blast_fun_migrators::cetus::collect_fees`, `blast_fun_migrators::bluefin::collect_fees`, `blast_fun_migrators::aftermath::collect_fees` | anyone |
 | `blast_fun_migrators::vault::claim_protocol_lp_fees_with_partner` | anyone |
 | `blast_holder_rewards::claim` | anyone (pays only the leaf's beneficiary) |
 | `blast_fun_migrators::vault::claim_creator_fees` | cap holder: the live `CurveFeeCap<Meme>` |
-| `blast_fun_migrators::cetus::settle_and_update_fee_split`, `blast_fun_migrators::bluefin::settle_and_update_fee_split` | cap holder: the live `CurveFeeCap<Meme>` |
+| `blast_fun_migrators::cetus::settle_and_update_fee_split`, `blast_fun_migrators::bluefin::settle_and_update_fee_split`, `blast_fun_migrators::aftermath::settle_and_update_fee_split` | cap holder: the live `CurveFeeCap<Meme>` |
 | `blast_fun_migrators::cetus::buyback_and_burn`, `blast_fun_migrators::bluefin::buyback_and_burn` | Blast admin: `BuybackAdmin` |
 | `blast_holder_rewards::publish_round` | Blast admin: `RewardsAdmin` |
 | `blast_fun_migrators::vault::claim_protocol_fees` | Blast admin: `TreasuryAdmin` |
@@ -965,9 +971,14 @@ Calls also take objects from other packages:
 #### What an `LpVault` holds
 
 - The venue position, as a dynamic object field under `blast_fun_migrators::vault::PositionKey`
-  (`PositionKey<Venue>`), where `Venue` is `blast_fun_migrators::cetus::Venue` or
-  `blast_fun_migrators::bluefin::Venue`. On Cetus this is the `CetusLPBurnProof` of the burned
-  migration position; on Bluefin it is the Bluefin `Position`.
+  (`PositionKey<Venue>`), where `Venue` is `blast_fun_migrators::cetus::Venue`,
+  `blast_fun_migrators::bluefin::Venue`, or `blast_fun_migrators::aftermath::Venue`. On Cetus this
+  is the `CetusLPBurnProof` of the burned migration position; on Bluefin it is the Bluefin
+  `Position`; on Aftermath it is the DAO-fee pool's `OwnerCap`, which no function borrows or
+  removes, so the pool's DAO fee and its recipient (the vault) never change. The `Coin<Lp>`
+  holding the pool's whole LP supply is owned by `0x0`, and the vault's `liquidity` is its amount.
+  The DAO fees themselves arrive as coins owned by the vault's address, not as vault balances,
+  until a collection lists them.
 - On Cetus only, from the first collection that finds both auto-LP balances nonzero: a second
   full-range Cetus `Position` under `blast_fun_migrators::vault::AutoLpPositionKey`
   (`AutoLpPositionKey<Venue>`).
@@ -983,7 +994,9 @@ Calls also take objects from other packages:
 - `pool_id`, `partner_id` (copied from the launch, never changes), `next_round`, `last_checkpoint`.
 
 No function removes or transfers a position. No function withdraws the auto-LP, rewards, or burn
-balances except the flows below.
+balances except the flows below. On an Aftermath vault the auto-LP balances and the burn Quote
+only accumulate: this package adds no liquidity to and swaps nothing in an Aftermath pool, so
+creators who pick Aftermath should set the auto-LP and burn parts of their split to zero.
 
 #### Trust assumptions
 
@@ -991,8 +1004,8 @@ balances except the flows below.
   `PackageAdmin`. An upgrade can add functions to these modules, so the vault's custody and routing
   rules hold only as long as Blast's upgrade governance keeps them. The Cetus migration liquidity is
   different: Cetus LP Burn has burned it, and its `CetusLPBurnProof` can only collect fees. The
-  Bluefin position, the Cetus auto-LP position, and every vault balance depend on this package's
-  code.
+  Bluefin position, the Aftermath owner cap, the Cetus auto-LP position, and every vault balance
+  depend on this package's code; the Aftermath LP coin is at `0x0`, beyond any code.
 - **Blast sets its own share at any time.** `FeeAdmin` can set Blast's LP-fee share anywhere from 0
   to 10,000 BPS per asset, by default or per coin, with no delay. It applies from the next
   collection. `TreasuryAdmin` can redirect Blast's share at any time.
@@ -1062,6 +1075,26 @@ takes, in order: the ticket, the migrators `PackageVersion`, the launchpad `Pack
 then calls `launch::new` with `blast_fun_migrators::bluefin::Witness`. It needs no Bluefin objects.
 Tiers are in each venue's own units.
 
+`blast_fun_migrators::aftermath::new` (type arguments `<Meme, Quote>`; anyone holding the
+ticket) takes, in order: the ticket, the migrators `PackageVersion`, the launchpad
+`PackageVersion`, `LaunchConfig`, and `dao_fee_bps: u16`. `dao_fee_bps` is the DAO fee the pool
+charges on every swap, deposit, and withdrawal and pays to the vault, 1..=10,000 BPS
+(`EInvalidDaoFee`); it is the launch's tier, recorded as `(0, dao_fee_bps)`, since Aftermath
+pools have no tick spacing. The creator chooses nothing else: every Aftermath launch pool is
+50/50, flatness 0, with Aftermath's minimum 0.01% base swap-in fee. The call returns the
+`LaunchInitializer`, which the PTB must pass to `blast_fun_migrators::aftermath::finalize` (type
+arguments `<Lp, Meme, Quote>`) in place of `launch::finalize`. Beforehand, in its own transaction,
+publish a fresh Aftermath LP coin `Lp` (one per launch, through Aftermath's `publish-lp-coin`
+flow); its publication yields the `CreatePoolCapV2`. `finalize` takes, in order: the initializer,
+the migrators `PackageVersion`, the launchpad `PackageVersion`, `Currency<Meme>` (mutable),
+`LaunchConfig`, the creation fee `Coin<SUI>`, and that `CreatePoolCapV2` by value; it aborts with
+`EWrongMigrator` unless `blast_fun_migrators::aftermath::new` started the initializer
+(`launch::migration_witness` reads the witness it recorded), finalizes the launch exactly as
+`launch::finalize` does, shares the `PoolCreation<Lp, Meme, Quote>` bound to the new launch's ID,
+emits `blast_fun_migrators::blast_events::AftermathPoolReserved`, and returns the launch for
+`launch::share`. An Aftermath launch finalized through `launch::finalize` instead has no
+reservation and can never migrate.
+
 #### Migrating to Cetus
 
 Anyone may migrate once the launch is `MigrationReady`. Nothing requires a separate transaction, so
@@ -1114,6 +1147,27 @@ Bluefin's leftovers as protocol residuals (`VaultCreated`); and shares the pool.
 no object, but Bluefin records the caller as the new pool's manager, a Bluefin role limited to the
 pool's reward emissions and to handing the role on.
 
+#### Migrating to Aftermath
+
+Anyone may call `blast_fun_migrators::aftermath::migrate` once the launch is `MigrationReady`, with
+type arguments `<Lp, Meme, Quote>` and, in order: the `Launch` (mutable), the migrators
+`PackageVersion`, the launchpad `PackageVersion`, `Currency<Meme>` (mutable), the launch's shared
+`PoolCreation<Lp, Meme, Quote>` (by value; it is deleted), Aftermath's `PoolRegistry` (mutable),
+and the DAO-fee package's `Version`. It takes no `Clock`.
+
+Inside the call: it checks the migrators generation, then that the reservation is the launch's
+own (`EWrongLaunch`), consumes it, reads the DAO fee from the launch's tier, and runs
+`launch::migrate` as above; creates the pool named "Blast Launch Pool" from exactly the handed-off
+balances, in Aftermath's coin order, and aborts with `EPoolMismatch` unless the pool holds every
+unit (so the vault's residuals are zero); builds the `LpVault` with no position yet and wraps the
+pool in a DAO-fee pool charging that fee to the vault's ID, aborting with `EDaoFeePoolMismatch`
+unless Aftermath reports exactly that; emits
+`blast_fun_migrators::blast_events::AftermathPoolCreated`; attaches the DAO-fee pool's
+`OwnerCap` as the vault's position with the LP coin's amount as `liquidity`;
+shares the vault (`VaultCreated`, whose `pool_id` is the base pool and `position_id` the owner
+cap); shares the DAO-fee pool, the object traders use; and sends the LP coin to `0x0`, where
+nobody can ever use it. The caller receives no object.
+
 #### Collecting LP fees
 
 Anyone may collect, as often as they like. A collection that finds no fees is valid.
@@ -1125,13 +1179,20 @@ Anyone may collect, as often as they like. A collection that finds no fees is va
 - Bluefin: `blast_fun_migrators::bluefin::collect_fees`, type arguments `<Meme, Quote>`, with the
   `LpVault` (mutable), migrators `PackageVersion`, `LpFeePolicy`, `Currency<Meme>` (mutable),
   Bluefin `GlobalConfig`, the vault's `Pool<Meme, Quote>` (mutable), and `Clock`.
+- Aftermath: `blast_fun_migrators::aftermath::collect_fees`, type arguments `<Meme, Quote>`, with
+  the `LpVault` (mutable), migrators `PackageVersion`, `LpFeePolicy`, `Currency<Meme>` (mutable),
+  `meme_fees: vector<Receiving<Coin<Meme>>>`, and `quote_fees: vector<Receiving<Coin<Quote>>>`.
+  Aftermath pays the DAO fee of every swap, deposit, and withdrawal as a separate coin sent to the
+  vault's address, so list the IDs of the coins the vault address owns as PTB receiving inputs and
+  gather each list with `MakeMoveVec`; either may be empty. No `Clock`, no Aftermath object.
 
 Exact order of operations:
 
 1. Check the migrators generation. On Cetus, prove the coin pair (`EWrongCoinPair`).
-2. Check the pool is the vault's own (`EPositionPoolMismatch`).
+2. Check the pool is the vault's own (`EPositionPoolMismatch`). Aftermath takes no pool.
 3. Collect fees. Cetus: from the burned position through LP Burn, plus the auto-LP position's fees
-   once it exists. Bluefin: from the migration position.
+   once it exists. Bluefin: from the migration position. Aftermath: receive every listed coin into
+   the vault (a coin the vault does not own aborts in `sui::transfer`) and join them.
 4. Split (if either amount is nonzero; otherwise skip to step 5 with no event):
    1. Read Blast's live share for this Meme from `LpFeePolicy` and take `ceil(gross × bps / 10,000)`
       of each asset.
@@ -1145,7 +1206,8 @@ Exact order of operations:
    7. Emit `FeesCollected`.
 5. Auto-LP: take all of `auto_lp_meme` and `auto_lp_quote` (this call's part plus anything left from
    earlier calls) and add what the pool takes at its current price. Keep the rest in the vault. Emit
-   `AutoLiquidityAdded` only if something was added.
+   `AutoLiquidityAdded` only if something was added. Aftermath skips this step: its auto-LP part
+   stays in the vault.
 
 Auto-LP per venue:
 
@@ -1158,6 +1220,8 @@ Auto-LP per venue:
   and the position's bound prices, keeping a 2-atom margin on the other side.
 - Both add nothing while either side is empty, so a one-sided auto-LP balance waits until the other
   asset arrives. The unfixed side's excess always waits for a later call.
+- Aftermath adds nothing, ever: the auto-LP part accumulates in `auto_lp_meme`/`auto_lp_quote` with
+  no exit in this package. Set it to zero on an Aftermath launch.
 
 #### Paying a partnered vault's Blast LP fees
 
@@ -1197,12 +1261,15 @@ split first, so every fee follows the split it accrued under.
    `MakeMoveVec` of those routes, then `allocation::fee_split` (creator, auto-LP, rewards, and burn
    BPS, then the routes), with each `Bps` from `blast_fun::bps::new`. The parts must sum to exactly
    10,000; at most 16 recipients; destinations nonzero and distinct.
-2. Call `blast_fun_migrators::cetus::settle_and_update_fee_split` with `<Meme, Quote, CoinA, CoinB>`
-   or `blast_fun_migrators::bluefin::settle_and_update_fee_split` with `<Meme, Quote>`. Arguments,
+2. Call `blast_fun_migrators::cetus::settle_and_update_fee_split` with `<Meme, Quote, CoinA, CoinB>`,
+   `blast_fun_migrators::bluefin::settle_and_update_fee_split` with `<Meme, Quote>`, or
+   `blast_fun_migrators::aftermath::settle_and_update_fee_split` with `<Meme, Quote>`. Arguments,
    in order: the `LpVault` (mutable), migrators `PackageVersion`, `LpFeePolicy`, the `Launch`
-   (read-only), the live `CurveFeeCap<Meme>`, `Currency<Meme>` (mutable), the venue objects exactly
-   as in that venue's `collect_fees` (Cetus `GlobalConfig`, `BurnManager`, pool; or Bluefin
-   `GlobalConfig`, pool), the new `FeeSplit` from step 1, and `Clock`.
+   (read-only), the live `CurveFeeCap<Meme>`, `Currency<Meme>` (mutable), the venue inputs exactly
+   as in that venue's `collect_fees` (Cetus `GlobalConfig`, `BurnManager`, pool; Bluefin
+   `GlobalConfig`, pool; or Aftermath's two receiving lists), the new `FeeSplit` from step 1, and,
+   on Cetus and Bluefin, `Clock`. On Aftermath only the listed coins settle under the old split; a
+   fee coin left at the vault's address is split by the new split when it is later received.
 
 Order: generation check; (Cetus) pair proof; live-cap check (launchpad code 22); proposal differs
 from the current split (`EFeeSplitUnchanged`); a full collection exactly as above under the old
@@ -1222,7 +1289,9 @@ zero), swaps it for Meme in the vault's pool up to the widest price limit, abort
 `EBuybackBelowMinimum` if the Meme bought is below `min_meme_out`, burns that Meme (or sends it to
 `@0x0` when the supply is not burn-only, as collections do), returns any Quote the pool did not
 take to `burn_quote`, and emits `BuybackBurned`. The admin sets `min_meme_out` from an off-chain
-price, because anyone can move the pool price inside a transaction.
+price, because anyone can move the pool price inside a transaction. Aftermath has no buyback:
+an Aftermath vault's `burn_quote` accumulates with no exit in this package, so set the burn part
+to zero on an Aftermath launch.
 
 #### Holder-reward rounds
 
@@ -1350,10 +1419,10 @@ rewards 1,000, burn 1,000, recipient B 2,500, recipient A 1,500; gross 11 Meme a
 | --- | --- |
 | Blast | Policy destination at once, or held for the partner payout. |
 | Creator | `creator_meme`/`creator_quote`, until the live `CurveFeeCap` claims it. |
-| Auto-LP | Added back to liquidity in the same call; what the pool does not take waits in `auto_lp_*`. |
+| Auto-LP | Added back to liquidity in the same call; what the pool does not take waits in `auto_lp_*`. On Aftermath nothing is added: the whole part waits. |
 | Rewards | `rewards_meme`/`rewards_quote`, until a round reserves it. |
 | Burn, Meme | Burned at once if the Meme's Coin Registry supply is burn-only; otherwise sent to `@0x0`. |
-| Burn, Quote | `burn_quote`, until a buyback swaps it for Meme and disposes of that Meme as above. |
+| Burn, Quote | `burn_quote`, until a buyback swaps it for Meme and disposes of that Meme as above. On Aftermath no buyback exists: it waits. |
 | Recipients | Coins transferred to each destination in the same call. |
 
 #### Auto-LP math
@@ -1380,9 +1449,9 @@ becomes the vault's protocol residuals. Position principal plus residuals equals
 - Policy changes apply from the next collection; there is no delay.
 - A partner payout uses the partner's share in force at payout, not at collection.
 - Holder-reward rounds never expire. Their checkpoint intervals must be contiguous and nonempty.
-- `migrate`, `collect_fees`, `settle_and_update_fee_split`, and `buyback_and_burn` take `Clock`
-  (`0x6`) for the venue's own use (`new` takes none); the partner payout takes it for the partner's
-  timelocked share.
+- Cetus's and Bluefin's `migrate`, `collect_fees`, `settle_and_update_fee_split`, and
+  `buyback_and_burn` take `Clock` (`0x6`) for the venue's own use (`new` and every Aftermath route
+  take none); the partner payout takes it for the partner's timelocked share.
 
 ### Reading state
 
@@ -1405,6 +1474,12 @@ This package has no public getters for its objects. Read object fields over RPC 
   `i / 256` is set.
 - **Cetus reservation:** `VenueConfig` has a dynamic object field `CreationCapKey<Meme>` holding the
   pair's `PoolCreationCap`.
+- **Aftermath reservation and fees:** the shared `PoolCreation<Lp, Meme, Quote>` holds the
+  `create_pool_cap` and `launch_id` until migration (`AftermathPoolReserved` gives its ID); the
+  launch's `pool_tier` is `(0, dao_fee_bps)`. After migration, the vault's position is the
+  DAO-fee owner cap, the LP coin (`AftermathPoolCreated.lp_coin_id`) is owned by `0x0`, and the
+  fees waiting to be collected are the `Coin<Meme>` and `Coin<Quote>` objects owned by the
+  vault's address; sum them for a pending-fee preview.
 - **Launch facts** (public launchpad getters): `launch::pool_tier` (tick spacing and fee rate),
   `launch::lp_fee_split` (the split at migration), `launch::partner_id`.
 - **Generation:** `PackageVersion.generation`, an `OperationalVersion` whose own `generation` field
@@ -1420,6 +1495,8 @@ This package emits its events directly, with no envelope. The launchpad wraps it
 | Event | Emitted by | Fields |
 | --- | --- | --- |
 | `CetusPoolReserved` | Cetus `new` | `meme`, `quote` (type names), `pool_creation_cap_id`, `tick_spacing` |
+| `AftermathPoolReserved` | Aftermath `finalize` | `lp`, `meme`, `quote` (type names), `launch_id`, `pool_creation_id`, `create_pool_cap_id` |
+| `AftermathPoolCreated` | Aftermath `migrate`, before `VaultCreated` | `lp` (type name), `vault_id`, `pool_id` (the base pool, also the vault's), `dao_fee_pool_id` (the shared pool traders use), `owner_cap_id` (the vault's position), `lp_coin_id` (owned by `0x0`) |
 | `VaultCreated` | `migrate` | `vault_id`, `pool_id`, `position_id`, `venue`, `meme`, `quote` (type names), `residual_meme`, `residual_quote`, `liquidity`, `fee_split` |
 | `FeesCollected` | nonzero collection | `vault_id`, `gross_meme`, `gross_quote`, `protocol_destination` (none when held for a partner), `protocol_meme`, `protocol_quote`, `creator_*`, `auto_lp_*`, `rewards_*`, `burn_meme` (burned), `burn_quote` (waits), `recipient_meme`, `recipient_quote` (split order) |
 | `AutoLpPositionOpened` | first Cetus collection with both auto-LP balances nonzero | `vault_id`, `position_id` |
@@ -1447,7 +1524,9 @@ is nonzero), and `blast_fun::events::Migrated` before `VaultCreated`.
 Start a vault at `VaultCreated`: its `fee_split`, residuals, `pool_id`, `position_id`.
 `VaultCreated` has no launch ID; link it through `Migrated.launch_id` in the same transaction, or
 through the `meme` type. On Cetus, `position_id` is the `CetusLPBurnProof`, not the burned Cetus
-position. Position principal is `Migrated.meme − residual_meme` and `Migrated.quote −
+position. On Aftermath, `position_id` is the DAO-fee pool's owner cap, `pool_id` the base pool,
+and `AftermathPoolCreated` in the same transaction names the DAO-fee pool traders use and the LP
+coin at `0x0`. Position principal is `Migrated.meme − residual_meme` and `Migrated.quote −
 residual_quote`. Then reduce:
 
 - `FeesCollected`: add `creator_*`, `auto_lp_*`, `rewards_*`, and `burn_quote` to their balances;
@@ -1483,6 +1562,10 @@ Blast admin abort with plain numeric codes from the named module.
 | Cetus routes | `EWrongCoinPair` (2, module `cetus`) | `CoinA`/`CoinB` must be exactly the launch's Meme and Quote. |
 | collect, settle, buyback | `EPositionPoolMismatch` (Cetus 1, Bluefin 0) | Pass the pool whose ID is the vault's `pool_id`. |
 | Bluefin `new` | `EInvalidTier` (1, module `bluefin`) | Tick spacing 1..=400, fee rate 1..=20,000. |
+| Aftermath `new` | `EInvalidDaoFee` (3, module `aftermath`) | DAO fee 1..=10,000 BPS. |
+| Aftermath `migrate` | `EWrongLaunch` (2, module `aftermath`) | Pass the `PoolCreation` whose `launch_id` is the launch's. |
+| Aftermath `migrate` | `EPoolMismatch` (0), `EDaoFeePoolMismatch` (1), module `aftermath` | Aftermath did not take every unit, or did not record the vault as the recipient at the launch's fee; nothing to fix by retrying. |
+| Aftermath collect, settle | an abort in `sui::transfer` | A listed coin is not owned by the vault; list only the vault address's own coins. |
 | `migrate` | code 15 from the launchpad's `launch` module | The launch is not `MigrationReady` (not graduated, or already migrated). |
 | `migrate` | code 21 from the launchpad's `launch` module | Use the venue the launch started with. |
 | `migrate` | `EZeroLiquidity` (3, module `vault`) | The seed produced no liquidity; nothing to fix by retrying. |
@@ -1504,7 +1587,15 @@ codes.
 
 - **Cetus coin order.** Every Cetus route after `new` takes `<Meme, Quote, CoinA, CoinB>`, with
   `CoinA`/`CoinB` in Cetus's order, not launch order. On routes that take a pool, the pool's type
-  already fixes the order. Bluefin routes take only `<Meme, Quote>`.
+  already fixes the order. Bluefin routes take only `<Meme, Quote>`; Aftermath's `finalize` and
+  `migrate` take `<Lp, Meme, Quote>` and its `new` and fee routes `<Meme, Quote>`.
+- **Aftermath fees are coins at the vault's address.** Nothing is collectable until they are
+  listed as receiving inputs. An Aftermath launch has no auto-LP and no buyback: set those parts
+  of the split to zero, or their fees wait in the vault.
+- **Aftermath launches finalize through the adapter.** The PTB must call
+  `blast_fun_migrators::aftermath::finalize` with the LP coin's `CreatePoolCapV2`, not
+  `launch::finalize`, and then `launch::share`; a launch finalized in the core has no reservation
+  and never migrates.
 - **Two version objects.** `new` and `migrate` need both this package's `PackageVersion` and the
   launchpad's. Other calls need only this package's.
 - **Two kinds of creator fees and protocol fees.** `launch::claim_creator_fees` pays bonding-curve
@@ -1533,9 +1624,9 @@ calling the venue's `migrate`. The caller pays gas (and on Bluefin the SUI creat
 receives no object or reward. On Bluefin the caller becomes the pool's Bluefin manager.
 
 **Can the creator or Blast withdraw the liquidity?** No function removes a position from the vault.
-The Cetus migration liquidity is burned through Cetus LP Burn. The Bluefin position and the Cetus
-auto-LP position have no removal path in the current code, which an upgrade of this package could
-change.
+The Cetus migration liquidity is burned through Cetus LP Burn, and the Aftermath LP coin is owned
+by `0x0`. The Bluefin position, the Aftermath owner cap, and the Cetus auto-LP position have no
+removal path in the current code, which an upgrade of this package could change.
 
 **How do I find a launch's vault and pool?** Scan `VaultCreated` events for the `meme` type name;
 the match gives `vault_id`, `pool_id`, and `position_id`. The vault's type is
@@ -2517,6 +2608,9 @@ public fun treasury_cap_mut<Meme, Quote, Witness: drop>(
     _: Witness,
 ): &mut TreasuryCap<Meme>
 
+/// The adapter witness type the launch was started under, which only that adapter can migrate.
+public fun migration_witness<Meme, Quote>(self: &LaunchInitializer<Meme, Quote>): TypeName
+
 /// Sets the virtual Quote reserve the curve starts from, which prices the first purchase.
 public fun set_virtual_quote<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,
@@ -2986,6 +3080,115 @@ Not yet published on mainnet. Its interface may change before publication.
 
 Events: payload structs are emitted directly, each under its own type.
 
+### `blast_fun_migrators::aftermath`
+
+Aftermath launch start, pool-creation reservation, migration into vault custody, fee collection from the coins Aftermath sends the vault, and settled fee-split updates.  A launch migrates into a fresh 50/50 Aftermath weighted pool wrapped in Aftermath's DAO-fee pool. Aftermath pays the DAO fee of every swap, deposit, and withdrawal as separate coins sent straight to the fee recipient address, so `migrate` names the launch's new vault as that recipient: the fee coins land owned by the vault object, and anyone may then receive them into the vault, where they are split like any collection. The LP coin, the whole pool liquidity, is sent to `0x0`, so the pool's liquidity is locked for good; the vault's position is the DAO-fee pool's `OwnerCap`, which could otherwise change the fee or redirect it, under its sealed position key with no removal path.  Aftermath creates a pool only from a `CreatePoolCapV2` minted by a freshly published LP coin, so the creator publishes one per launch and hands its capability to `finalize`, which finalizes the launch and shares the reservation bound to that launch's ID; only that launch's migration can consume it. A launch `new` started but finalized directly in the core has no reservation and can never migrate, so the creator must finalize here. Aftermath pools have no tick spacing, so the launch records zero, and its fee rate is the creator's DAO fee in basis points. The auto-LP and burn-Quote shares of each collection wait in the vault: this adapter adds no liquidity to and swaps nothing in an Aftermath pool.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/migrators/sources/aftermath.move
+
+#### Types
+
+```move
+/// Sealed adapter identity selected by a Blast launch.
+public struct Witness() has drop;
+
+/// Sealed marker for the DAO-fee pool owner cap the common vault holds as its position.
+public struct Venue() has drop;
+
+/// Shared reservation of one launch's Aftermath pool creation: the `CreatePoolCapV2` of the fresh
+/// LP coin `Lp`, which only the migration of the launch `launch_id` can consume.
+public struct PoolCreation<phantom Lp, phantom Meme, phantom Quote> has key {
+    id: UID,
+    launch_id: ID,
+    create_pool_cap: pool::CreatePoolCapV2,
+}
+```
+
+#### Functions
+
+```move
+/// Starts an Aftermath launch in `Quote` whose pool charges `dao_fee_bps` of every swap, deposit,
+/// and withdrawal to the launch's vault; the core aborts unless it admits Aftermath and the Quote.
+/// The fee is the launch's tier, with no tick spacing; the pool's weights and base fee are this
+/// package's constants. The creator completes the returned initializer with this module's
+/// `finalize`, which reserves its pool creation.
+public fun new<Meme, Quote>(
+    ticket: blast_fun::launch_ticket::LaunchTicket<Meme>,
+    migrators_version: &blast_fun_migrators::PackageVersion,
+    package_version: &blast_fun::blast_fun::PackageVersion,
+    config: &blast_fun::launch_config::LaunchConfig,
+    dao_fee_bps: u16,
+): blast_fun::launch::LaunchInitializer<Meme, Quote>
+
+/// Finalizes a launch `new` started, as `launch::finalize` does, and shares the reservation
+/// binding `create_pool_cap`, which the fresh LP coin `Lp` minted, to that launch's ID. The
+/// initializer must be one `new` started: another adapter's launch could never consume the
+/// reservation. The creator shares the returned launch with `launch::share`.
+public fun finalize<Lp, Meme, Quote>(
+    initializer: blast_fun::launch::LaunchInitializer<Meme, Quote>,
+    migrators_version: &blast_fun_migrators::PackageVersion,
+    package_version: &blast_fun::blast_fun::PackageVersion,
+    currency: &mut Currency<Meme>,
+    config: &blast_fun::launch_config::LaunchConfig,
+    creation_fee: Coin<sui::SUI>,
+    create_pool_cap: pool::CreatePoolCapV2,
+    ctx: &mut TxContext,
+): blast_fun::launch::Launch<Meme, Quote>
+
+/// Migrates a MigrationReady launch into its reserved Aftermath pool, consuming the reservation
+/// bound to it: it seeds a 50/50 pool with exactly the handed-off balances, wraps it in a DAO-fee
+/// pool paying the launch's new vault at the launch's fee, shares that pool, locks the pool's
+/// owner cap in the vault as its position, and sends the LP coin to `0x0`. The caller receives no
+/// object.
+public fun migrate<Lp, Meme, Quote>(
+    launch: &mut blast_fun::launch::Launch<Meme, Quote>,
+    migrators_version: &blast_fun_migrators::PackageVersion,
+    package_version: &blast_fun::blast_fun::PackageVersion,
+    currency: &mut Currency<Meme>,
+    pool_creation: PoolCreation<Lp, Meme, Quote>,
+    pool_registry: &mut pool_registry::PoolRegistry,
+    dao_fee_version: &version::Version,
+    ctx: &mut TxContext,
+)
+
+/// Receives the DAO fees Aftermath sent to the vault's address, one `Receiving` per fee coin, and
+/// splits them. Anyone may call it; an empty collection is valid.
+public fun collect_fees<Meme, Quote>(
+    self: &mut vault::LpVault<Meme, Quote>,
+    migrators_version: &blast_fun_migrators::PackageVersion,
+    policy: &lp_fee_policy::LpFeePolicy,
+    currency: &mut Currency<Meme>,
+    meme_fees: vector<transfer::Receiving<Coin<Meme>>>,
+    quote_fees: vector<transfer::Receiving<Coin<Quote>>>,
+    ctx: &mut TxContext,
+)
+
+/// Settles the listed fee coins under the current split, then commits `proposed`. A fee coin the
+/// caller leaves at the vault's address is split by the new split when it is received.
+public fun settle_and_update_fee_split<Meme, Quote>(
+    self: &mut vault::LpVault<Meme, Quote>,
+    migrators_version: &blast_fun_migrators::PackageVersion,
+    policy: &lp_fee_policy::LpFeePolicy,
+    launch: &blast_fun::launch::Launch<Meme, Quote>,
+    curve_fee_cap: &blast_fun::creator_authority::CurveFeeCap<Meme>,
+    currency: &mut Currency<Meme>,
+    meme_fees: vector<transfer::Receiving<Coin<Meme>>>,
+    quote_fees: vector<transfer::Receiving<Coin<Quote>>>,
+    proposed: blast_fun::allocation::FeeSplit,
+    ctx: &mut TxContext,
+)
+```
+
+#### Errors
+
+| Constant | Code | Message |
+| --- | --- | --- |
+| `EPoolMismatch` | 0 | The Aftermath pool must hold every Meme and Quote unit the launch handed off. |
+| `EDaoFeePoolMismatch` | 1 | The DAO-fee pool must charge the launch's fee and pay the vault. |
+| `EWrongLaunch` | 2 | The pool creation is bound to a different launch. |
+| `EInvalidDaoFee` | 3 | Aftermath DAO fee needs 1..=10,000 basis points. |
+| `EWrongMigrator` | 4 | Only a launch this module's `new` started can be finalized here. |
+
 ### `blast_fun_migrators::blast_events`
 
 Typed replay facts for vault custody, the LP-fee policy and split, auto-LP, holder rewards, Cetus pool reservations, and residual claims.
@@ -3142,6 +3345,30 @@ public struct CetusPoolReserved has copy, drop {
     quote: TypeName,
     pool_creation_cap_id: ID,
     tick_spacing: u32,
+}
+
+/// Records Aftermath pool creation reserved for one launch: the shared reservation holding the
+/// capability its fresh LP coin minted, which only that launch's migration consumes.
+public struct AftermathPoolReserved has copy, drop {
+    lp: TypeName,
+    meme: TypeName,
+    quote: TypeName,
+    launch_id: ID,
+    pool_creation_id: ID,
+    create_pool_cap_id: ID,
+}
+
+/// Records one Aftermath migration's pools: the base pool `pool_id` (the vault's `pool_id`) and
+/// the shared DAO-fee pool `dao_fee_pool_id` traders use, which pays its fees to the vault, whose
+/// owner cap `owner_cap_id` the vault keeps as its position; the LP coin `lp_coin_id`, the whole
+/// pool liquidity, is owned by `0x0`.
+public struct AftermathPoolCreated has copy, drop {
+    lp: TypeName,
+    vault_id: ID,
+    pool_id: ID,
+    dao_fee_pool_id: ID,
+    owner_cap_id: ID,
+    lp_coin_id: ID,
 }
 ```
 
@@ -3478,6 +3705,11 @@ Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/mi
 
 - `bluefin_max_tick_spacing: u32 = 400`: Bluefin pool creation's own tick-spacing bound (`pool` aborts 1026 above it).
 - `bluefin_max_fee_rate: u64 = 20_000`: Bluefin pool creation's own fee-rate bound (`pool` aborts 1027 above it).
+- `aftermath_max_dao_fee_bps: u16 = 10_000`: Aftermath's own bound on a DAO fee, the whole amount, which its DAO-fee pool creation asserts as `fee_bps <= 10_000`; the creator picks the launch's fee within it, and Aftermath sends that share of every swap, deposit, and withdrawal to the vault.
+- `aftermath_half_weight: u64 = 500_000_000_000_000_000`: Each coin's weight in an Aftermath launch pool: half of Aftermath's `1e18` fixed-point one.
+- `aftermath_flatness: u64 = 0`: Selects Aftermath's uncorrelated weighted-product curve.
+- `aftermath_base_swap_fee: u64 = 100_000_000_000_000`: Aftermath's minimum base swap-in fee, 0.01% in its `1e18` unit; it rejects zero. This part compounds into the locked LP.
+- `aftermath_pool_name: vector<u8> = b"Blast Launch Pool"`: The name every Aftermath launch pool is created with.
 - `min_swap_sqrt_price: u128 = 4_295_048_017`: Lowest sqrt price a Cetus or Bluefin swap accepts as its limit; buybacks selling Quote as coin A run to it and rely on the caller's minimum Meme out instead.
 - `max_swap_sqrt_price: u128 = 79_226_673_515_401_279_992_447_579_054`: Highest sqrt price a Cetus or Bluefin swap accepts as its limit, for buybacks selling Quote as coin B.
 - `q64_shift: u8 = 64`: Fractional bits of a Q64.64 sqrt price.
@@ -3626,6 +3858,11 @@ public struct AutoLpPositionKey<phantom Venue>() has copy, drop, store;
 
 /// Shared per-launch custody for one position, its protocol migration residuals, and the balances
 /// its LP fees are split into.
+///
+/// A venue whose pool pays its fees as coins sent to an address, rather than into a position,
+/// names the vault's own ID as the recipient, which the venue mints before the pool exists; the
+/// vault then receives those coins with Sui's transfer-to-object receiving, and its adapter splits
+/// them like any collection.
 ///
 /// Every collection pays Blast's live share from `LpFeePolicy`, then splits the rest by the
 /// creator's `FeeSplit`: the creator share accrues here until the live curve-fee cap claims it,

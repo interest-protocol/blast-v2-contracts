@@ -16,8 +16,9 @@ macro public(package) fun bluefin_max_fee_rate(): u64 {
     20_000
 }
 
-/// Aftermath's own bound on a DAO fee, the whole amount; the creator picks the launch's fee
-/// within it, and Aftermath sends that share of every swap, deposit, and withdrawal to the vault.
+/// Aftermath's own bound on a DAO fee, the whole amount, which its DAO-fee pool creation asserts
+/// as `fee_bps <= 10_000`; the creator picks the launch's fee within it, and Aftermath sends that
+/// share of every swap, deposit, and withdrawal to the vault.
 macro public(package) fun aftermath_max_dao_fee_bps(): u16 {
     10_000
 }

@@ -131,11 +131,12 @@ fun migrate_rejects_another_sales_reservation() {
     let fee_policy = fee_policy::new_for_testing(scenario.ctx());
     let mut venue_config = venue_config::new_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
+    let first_create_pool_cap = amm_pool::create_pool_cap_for_testing(scenario.ctx());
     let (first_sale, first_cap) = new_sale(
         &mut scenario,
         &creation_policy,
         &mut venue_config,
-        amm_pool::create_pool_cap_for_testing(scenario.ctx()),
+        first_create_pool_cap,
     );
     let (_, first_pool_creation_id, _) = only_event<
         PoolCreationReserved<LP, AFTERMATH_TESTS, QUOTE>,
@@ -145,11 +146,12 @@ fun migrate_rejects_another_sales_reservation() {
 
     scenario.next_tx(CREATOR);
     let mut other_venue_config = venue_config::new_for_testing(scenario.ctx());
+    let second_create_pool_cap = amm_pool::create_pool_cap_for_testing(scenario.ctx());
     let (mut second_sale, second_cap) = new_sale(
         &mut scenario,
         &creation_policy,
         &mut other_venue_config,
-        amm_pool::create_pool_cap_for_testing(scenario.ctx()),
+        second_create_pool_cap,
     );
 
     scenario.next_tx(KEEPER);
@@ -224,9 +226,10 @@ fun new_needs_blast_to_allow_the_witness() {
 #[test]
 /// Coin order is the byte order of defining-ID type names, a strict prefix first.
 fun coin_order_is_the_byte_order_of_type_names() {
-    // This package sits at 0x0, so its types sort before the framework's 0x2.
-    assert!(sorts_before_for_testing<QUOTE, SUI>());
-    assert!(!sorts_before_for_testing<SUI, QUOTE>());
+    // The standard library's 0x1 sorts before the framework's 0x2, whatever address this
+    // package builds at.
+    assert!(sorts_before_for_testing<std::ascii::String, SUI>());
+    assert!(!sorts_before_for_testing<SUI, std::ascii::String>());
     assert!(sorts_before_for_testing<A, AB>());
     assert!(!sorts_before_for_testing<AB, A>());
     assert!(sorts_before_for_testing<AB, QUOTE>());

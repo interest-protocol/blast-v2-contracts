@@ -255,9 +255,10 @@ fun new_needs_blast_to_allow_the_witness() {
 #[test]
 /// Coin order is the byte order of defining-ID type names, a strict prefix first.
 fun coin_order_is_the_byte_order_of_type_names() {
-    // This test package sits at 0x0, so its types sort before the framework's 0x2.
-    assert!(sorts_before_for_testing<QUOTE, SUI>());
-    assert!(!sorts_before_for_testing<SUI, QUOTE>());
+    // The standard library's 0x1 sorts before the framework's 0x2, whatever address this
+    // package builds at: under `--build-env mainnet` it is the published address, not 0x0.
+    assert!(sorts_before_for_testing<std::ascii::String, SUI>());
+    assert!(!sorts_before_for_testing<SUI, std::ascii::String>());
     assert!(sorts_before_for_testing<A, AB>());
     assert!(!sorts_before_for_testing<AB, A>());
     assert!(sorts_before_for_testing<AB, QUOTE>());

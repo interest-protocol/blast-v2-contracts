@@ -10,11 +10,23 @@ use_environment = "mainnet"
 manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
 deps = { Sui = "Sui" }
 
+[pinned.mainnet.AftermathAmm_1]
+source = { local = "../../migrators/interfaces/aftermath_amm" }
+use_environment = "mainnet"
+manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
+deps = { Sui = "Sui" }
+
 [pinned.mainnet.AftermathDaoFeePools]
 source = { local = "interfaces/aftermath_dao_fee" }
 use_environment = "mainnet"
 manifest_digest = "059163B6EEC70C0BA08FE015B1DBEC38DB554FC4A43C4D375C757E8D1604346D"
 deps = { AftermathAmm = "AftermathAmm", Sui = "Sui" }
+
+[pinned.mainnet.AftermathDaoFeePools_1]
+source = { local = "../../migrators/interfaces/aftermath_dao_fee" }
+use_environment = "mainnet"
+manifest_digest = "059163B6EEC70C0BA08FE015B1DBEC38DB554FC4A43C4D375C757E8D1604346D"
+deps = { AftermathAmm = "AftermathAmm_1", Sui = "Sui" }
 
 [pinned.mainnet.BluefinSpot]
 source = { git = "https://github.com/fireflyprotocol/bluefin-spot-contract-interface.git", subdir = ".", rev = "91ce930575b2aa3decab9b7e129b8002deba80c1" }
@@ -115,7 +127,7 @@ deps = { Sui = "Sui", blast_fun_timelock = "blast_fun_timelock" }
 [pinned.mainnet.blast_aftermath_dao_presale]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "E43A895D64C8BB88C9D250C4E140F4F5F12BFFD6EA18143E5DC986221F6063E0"
+manifest_digest = "B9F2C2ED0FEFF5F6EF86284967762B570C01FC9B641B18F64A0663CD534F5998"
 deps = { AftermathAmm = "AftermathAmm", AftermathDaoFeePools = "AftermathDaoFeePools", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate", Sui = "Sui", blast_presale = "blast_presale" }
 
 [pinned.mainnet.blast_fun_timelock]
@@ -139,5 +151,5 @@ deps = { blast_admin = "blast_admin", blast_fun_timelock = "blast_fun_timelock",
 [pinned.mainnet.blast_presale]
 source = { local = "../../presale" }
 use_environment = "mainnet"
-manifest_digest = "B374BF155D6540C858A93166B73723BAB708759135F507334AFF4C4CCC0E0B0A"
-deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate", Sui = "Sui", blast_admin = "blast_admin", blast_fun_vesting = "blast_fun_vesting", blast_partners = "blast_partners" }
+manifest_digest = "3D9D4DCA05E01693B22A7E14FBB85EF36161F280E128B3EADBBEA32F7F5AC227"
+deps = { AftermathAmm = "AftermathAmm_1", AftermathDaoFeePools = "AftermathDaoFeePools_1", BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate", Sui = "Sui", blast_admin = "blast_admin", blast_fun_vesting = "blast_fun_vesting", blast_partners = "blast_partners" }

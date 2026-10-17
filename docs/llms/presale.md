@@ -420,14 +420,14 @@ Who may call: *anyone*, while `Funded`, until someone cancels.
 The adapter runs `blast_presale::blast_presale::migrate`, creates the pool from all LP tokens
 and Quote (50/50 weights, flatness 0, a 0.01% swap-in fee that compounds into the LP, no other
 pool fees, name "Blast Presale Pool"), checks it holds every unit
-(`blast_presale::aftermath::EPoolMismatch`), mints the vault's ID, wraps the pool in a DAO-fee
-pool at the recorded `dao_fee_bps` whose fee recipient is that ID
-(`blast_presale::aftermath::EDaoFeePoolMismatch` if Aftermath reports anything else), builds the
-`Vault` with the DAO-fee pool's `OwnerCap` as its position and the LP coin's amount (the pool's
-whole liquidity) as its `liquidity`, shares the vault, shares the DAO-fee pool (the object traders
+(`blast_presale::aftermath::EPoolMismatch`), builds the `Vault` with no position yet, wraps the
+pool in a DAO-fee pool at the recorded `dao_fee_bps` whose fee recipient is the vault's ID
+(`blast_presale::aftermath::EDaoFeePoolMismatch` if Aftermath reports anything else), attaches
+the DAO-fee pool's `OwnerCap` as the vault's position with the LP coin's amount (the pool's whole
+liquidity) as its `liquidity`, shares the vault, shares the DAO-fee pool (the object traders
 use), and sends the LP coin to `0x0`, where nobody can ever use it. Emits
 `blast_presale::aftermath::DaoFeePoolCreated` with the vault, base pool, DAO-fee pool, owner cap,
-and LP coin IDs after `presale_vault::VaultCreated`, whose `pool_id` is the base pool and
+and LP coin IDs before `presale_vault::VaultCreated`, whose `pool_id` is the base pool and
 `position_id` the owner cap. Nothing in the package borrows or removes the owner cap, so the fee
 or its recipient cannot be changed, and the liquidity is locked for good. If the
 `CreatePoolCapV2` belongs to a different LP coin than `Lp`, or Aftermath retires the versions
@@ -814,7 +814,7 @@ directly (no envelope).
 | Per-sale rates | `blast_presale::blast_presale::ProtocolFeesChanged` | New rates, Blast amounts, and new buyer `token_allocation`. |
 | Commit | `blast_presale::blast_presale::Committed` | `quote` accepted, `wallet_commitment` (new total), `total_commitments`, `participants`. It has no wallet field: the wallet is the transaction sender. |
 | Settle | `blast_presale::blast_presale::PresaleFunded` / `blast_presale::blast_presale::PresaleCancelled` | Funded: `accepted_quote`, `refundable_quote`, `token_allocation`, and the actual `end_ms` and `liquidity_deadline_ms`, earlier than `PresaleOpened`'s after an early close. Cancelled: total refundable. |
-| Migrate | `blast_presale::blast_presale::ProtocolFeesPaid` (unpartnered), `blast_presale::blast_presale::RaiseAllocated` (per raise recipient), `blast_presale::blast_presale::RecipientAllocated` (per token recipient), `blast_presale::blast_presale::PresaleMigrated`, then `presale_vault::VaultCreated`, then on Aftermath `blast_presale::aftermath::DaoFeePoolCreated` | Payouts with `vesting_id`; LP amounts; vault, pool, and position IDs. The vault event's third type argument is `blast_presale::cetus::Venue`, `blast_presale::bluefin::Venue`, or `blast_presale::aftermath::Venue`. On Aftermath the vault's `pool_id` is the base pool, `position_id` the DAO-fee pool's owner cap, and the DAO-fee event adds the shared DAO-fee pool, owner cap, and LP coin (owned by `0x0`) IDs. |
+| Migrate | `blast_presale::blast_presale::ProtocolFeesPaid` (unpartnered), `blast_presale::blast_presale::RaiseAllocated` (per raise recipient), `blast_presale::blast_presale::RecipientAllocated` (per token recipient), `blast_presale::blast_presale::PresaleMigrated`, then on Aftermath `blast_presale::aftermath::DaoFeePoolCreated`, then `presale_vault::VaultCreated` | Payouts with `vesting_id`; LP amounts; vault, pool, and position IDs. The vault event's third type argument is `blast_presale::cetus::Venue`, `blast_presale::bluefin::Venue`, or `blast_presale::aftermath::Venue`. On Aftermath the vault's `pool_id` is the base pool, `position_id` the DAO-fee pool's owner cap, and the DAO-fee event adds the shared DAO-fee pool, owner cap, and LP coin (owned by `0x0`) IDs. |
 | Partner pay | `blast_partners::blast_partners::PartnerPaid`, `blast_presale::blast_presale::ProtocolFeesPaid` | `partner_quote` is the partner's cut. |
 | Claim | `blast_presale::blast_presale::Claimed` | `tokens`, `quote_refund`, `remaining_participants`, `vesting_id`. |
 | Collect | `presale_vault::FeesCollected`, `presale_vault::HolderMemePaid` | Gross, Blast's part, per-recipient amounts aligned with the vault's recipients, holder share. `protocol_destination` is `none` when held for a partner. |

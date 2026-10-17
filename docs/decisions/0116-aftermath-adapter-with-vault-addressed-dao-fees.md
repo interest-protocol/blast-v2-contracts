@@ -16,6 +16,8 @@
 | Ref | Where | What |
 | --- | --- | --- |
 | `evidence@2026-09-05` | `docs/research/sui-auto-lp-venue-evidence.json` | Normalized ABI and `sui move disassemble` output of the mainnet DAO-fee package `0x5ad68909…` (revision 2) and AMM package `0xf948935b…` (revision 3), read from the official GraphQL endpoint |
+| `evidence@2026-10-17` | `docs/research/sui-auto-lp-venue-evidence.json`, `supplements[0]` | The same DAO-fee `pool` module (hash `029b3e6e…`): disassembly of `new`, `assert_fee_is_at_most_one_hundred_percent`, `update_fee_bps`, and `update_fee_recipient` |
+| `amm-source@main` | `AftermathFinance/move-amm-public`, `packages/amm/sources/pool.move` | `MIN_FEE` 0.01%, `MAX_FEE` 10% on `fee_swap_in`; `fee_swap_out`, `fee_deposit`, and `fee_withdraw` asserted zero (`EInvalidFee` 4) |
 | `vendor-gate@2026-09-02` | `sui/vendors/aftermath_dao_presale/scripts/check_mainnet_abi.mjs` | Package lineage, module hashes, and the normalized signatures of `pool_factory::create_pool_2_coins_v2`, `pool::balance_of`, `dao_fee_amm::pool::new`, `fee_bps`, and `fee_recipient` |
 | `sui@06734f6` | `crates/sui-framework/packages/sui-framework/sources/transfer.move` | `public_receive<T: key + store>(&mut UID, Receiving<T>): T` |
 
@@ -38,7 +40,18 @@ design:
 - The fee recipient is fixed when the DAO-fee pool is created
   (`dao_fee_amm::pool::new(Pool<Lp>, &Version, u16, address, &mut TxContext)`),
   and only the returned `OwnerCap` can change it afterwards (ADR 0066's
-  AFTERMATH-DAO-CAPABILITY premise).
+  AFTERMATH-DAO-CAPABILITY premise). `new` accepts any `fee_bps` of at most
+  10,000 and aborts with code 0 above it (`evidence@2026-10-17`,
+  `assert_fee_is_at_most_one_hundred_percent`); it has no lower bound.
+  `update_fee_bps` and `update_fee_recipient` check only the package version:
+  neither bounds the new fee nor compares the `OwnerCap` to the pool it
+  mutates. One `Pool<Lp>` exists per LP coin and `new` consumes it, so one
+  `OwnerCap<Lp>` exists per pool, and sealing it is what fixes the fee and the
+  recipient.
+- The base pool's own fees are Aftermath's, not the creator's: `fee_swap_in`
+  must be in [0.01%, 10%] and the swap-out, deposit, and withdraw fees must be
+  zero (`amm-source@main`), so the adapters pass exactly the minimum swap-in fee
+  and zeros, as the vendor does.
 
 ## Decision
 
@@ -64,12 +77,13 @@ design:
 - `migrate` first checks the reservation names this sale or launch
   (`EWrongPresale`, `EWrongLaunch`), consumes it, reads the fee back, takes the
   hand-off, creates the pool in Aftermath's coin order from exactly those
-  balances and checks the pool holds every unit (`EPoolMismatch`), mints the
-  vault's UID, creates the DAO-fee pool with that ID as the recipient at that
-  fee and checks both values back (`EDaoFeePoolMismatch`), builds the vault
-  with the returned `OwnerCap` as its position and the LP coin's amount as its
-  liquidity, shares the vault, shares the DAO-fee pool as the object traders
-  use, and sends the `Coin<Lp>` to `0x0`. The vault's `pool_id` is the base
+  balances and checks the pool holds every unit (`EPoolMismatch`), builds the
+  vault with no position yet, creates the DAO-fee pool with the vault's ID as
+  the recipient at that fee and checks both values back
+  (`EDaoFeePoolMismatch`), attaches the returned `OwnerCap` as the vault's
+  position with the LP coin's amount as its liquidity, shares the vault,
+  shares the DAO-fee pool as the object traders use, and sends the `Coin<Lp>`
+  to `0x0`. The vault's `pool_id` is the base
   pool; `DaoFeePoolCreated` (presale) and `AftermathPoolCreated` (migrators)
   record the DAO-fee pool, owner cap, and LP coin IDs.
 - `collect_fees` takes `vector<Receiving<Coin<Meme>>>` and
@@ -79,12 +93,17 @@ design:
   the framework. The launchpad adds `settle_and_update_fee_split` on the same
   inputs.
 
-**Vault seams.** Both vaults split creation into a package-only `new` that
-takes a `UID` the adapter minted and returns the unshared vault, and `share`,
-because the DAO-fee pool must name the vault's address before the owner cap,
-its position, exists; `create` keeps minting and sharing in one call for Cetus
-and Bluefin. `receive_fee` is the vault's only receipt. The migrators source
-gate pins all three and that only `aftermath` reaches them.
+**Vault seams.** Both vaults split creation into three package-only steps:
+`new` builds the unshared vault with its pool binding and no position,
+`attach_position` attaches the position once under the venue's sealed key and
+emits `VaultCreated`, and `share` shares it. The DAO-fee pool must name the
+vault's address before the owner cap, its position, exists, and Sui's
+fresh-ID rule forbids building an object around a `UID` minted elsewhere, so
+the vault is born first and takes its position after. `create` runs all three
+in one call for Cetus and Bluefin. The vault has only `key`, so an adapter
+holding an unfinished vault can only attach and share it. `receive_fee` is the
+vault's only receipt. The migrators source gate pins every seam and that only
+`aftermath` takes the unshared path.
 
 **Custody.** The LP coin, the pool's whole liquidity, goes to `0x0` as the
 vendor's does: unrecoverable by any code, this package's upgrades included. The
@@ -123,7 +142,8 @@ routes. The presale has neither share, so nothing waits there.
   sound, but a reservation must name the exact sale or launch it serves.
 - **The vendor's compiled 2% DAO fee.** Rejected (owner, 2026-10-17): the fee is
   the creator's tier, like a Cetus tick spacing or a Bluefin fee rate, within
-  Aftermath's own range.
+  Aftermath's own range, which `new` enforces at most 10,000; the adapters add
+  only the lower bound of one, since a zero fee pays the vault nothing.
 
 ## Consequences
 
@@ -153,7 +173,8 @@ routes. The presale has neither share, so nothing waits there.
   path, and that the LP coin is the package's one transfer to `0x0`;
   `python3 scripts/check_move_style.py` holds.
 - Release: `node scripts/check_mainnet_abi.mjs` in `sui/migrators` (both
-  Aftermath lineages, hashes, and ABI) and a mainnet dev-inspect of each
+  Aftermath lineages, hashes, and ABI; passed 2026-10-17 against mainnet, 7
+  packages, 16 modules, 43 functions, 20 structs) and a mainnet dev-inspect of each
   `migrate` with a fresh LP coin in both coin orders, then one DAO-fee swap whose
   fee coin a dev-inspect `collect_fees` receives, before either package is
   published. The local stubs prove types, not behavior.
