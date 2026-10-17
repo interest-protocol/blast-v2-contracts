@@ -16,6 +16,33 @@ macro public(package) fun bluefin_max_fee_rate(): u64 {
     20_000
 }
 
+/// The DAO fee, 2%, that Aftermath sends to an Aftermath launch's vault from every swap, deposit,
+/// and withdrawal.
+macro public(package) fun aftermath_dao_fee_bps(): u16 {
+    200
+}
+
+/// Each coin's weight in an Aftermath launch pool: half of Aftermath's `1e18` fixed-point one.
+macro public(package) fun aftermath_half_weight(): u64 {
+    500_000_000_000_000_000
+}
+
+/// Selects Aftermath's uncorrelated weighted-product curve.
+macro public(package) fun aftermath_flatness(): u64 {
+    0
+}
+
+/// Aftermath's minimum base swap-in fee, 0.01% in its `1e18` unit; it rejects zero. This part
+/// compounds into the locked LP.
+macro public(package) fun aftermath_base_swap_fee(): u64 {
+    100_000_000_000_000
+}
+
+/// The name every Aftermath launch pool is created with.
+macro public(package) fun aftermath_pool_name(): vector<u8> {
+    b"Blast Launch Pool"
+}
+
 /// Lowest sqrt price a Cetus or Bluefin swap accepts as its limit; buybacks selling Quote as coin A
 /// run to it and rely on the caller's minimum Meme out instead.
 macro public(package) fun min_swap_sqrt_price(): u128 {

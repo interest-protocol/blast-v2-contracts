@@ -318,6 +318,73 @@ const PACKAGES = [
         manifest: 'interfaces/cetus_token/Move.toml',
         modules: [],
     },
+    {
+        // Facts recorded on 2026-09-02 for the Aftermath DAO-pool vendor (ADR 0104), reused by
+        // the Aftermath adapter: a newer revision fails the gate until it is reviewed.
+        key: 'aftermath',
+        label: 'Aftermath AMM',
+        addressName: 'amm',
+        originalId:
+            '0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c',
+        currentId:
+            '0xf948935b111990c2b604900c9b2eeb8f24dcf9868a45d1ea1653a5f282c10e29',
+        version: 3,
+        digest: 'Gxia3EZSdQeCXGPkmhXRzXWfmV6bnw7oRvSXNxNLQ9T1',
+        previousTransaction: '7qeJhR15a6jqo7xujZMMe5Bcm11vR7cSBiFHypW3VQ3J',
+        manifest: 'interfaces/aftermath_amm/Move.toml',
+        modules: [
+            {
+                name: 'pool',
+                sha256: 'f952884b3e6ea275911ae488e9d1e3f4b2a4409cdd30e8bed69e98fd7d0f7d78',
+                structs: ['CreatePoolCapV2', 'Pool'],
+                // Revision 3 introduced the LP-coin-backed pool-creation capability.
+                structOrigins: {
+                    CreatePoolCapV2:
+                        '0xf948935b111990c2b604900c9b2eeb8f24dcf9868a45d1ea1653a5f282c10e29',
+                },
+                functions: ['balance_of'],
+            },
+            {
+                name: 'pool_factory',
+                sha256: 'e2601c8181d142cb10bf10bbbe90adbd9545688238cbc3ba8b1bf9cf0809b17d',
+                structs: [],
+                functions: ['create_pool_2_coins_v2'],
+            },
+            {
+                name: 'pool_registry',
+                sha256: '9d4f76ef56e619111d94b41bac54641f2012d16a7e796a83436479b319dc6a62',
+                structs: ['PoolRegistry'],
+                functions: [],
+            },
+        ],
+    },
+    {
+        key: 'aftermath_dao_fee',
+        label: 'Aftermath DAO Fee Pools',
+        addressName: 'dao_fee_amm',
+        originalId:
+            '0x6f60a091637054e23915b8745c0c0d47b1d49618ee3435b5f68eccf6a44fb53d',
+        currentId:
+            '0x5ad6890968efcf3d20899e0cec735214f1067b96e77e77d86408989998468bb2',
+        version: 2,
+        digest: 'AeSpba79KZ8Ge8nGk2Li2c2tkLy7eC93wTGhgjEVHVpZ',
+        previousTransaction: '9eMeoFRPGDW1TUvbhtstVu2bAaWCCM7VCgbgkEkCUR4c',
+        manifest: 'interfaces/aftermath_dao_fee/Move.toml',
+        modules: [
+            {
+                name: 'pool',
+                sha256: '029b3e6e0a11a249147cdd0b7b3ea78556d399e03228cae9424529a06cd58f3e',
+                structs: ['DaoFeePool', 'OwnerCap'],
+                functions: ['fee_bps', 'fee_recipient', 'new'],
+            },
+            {
+                name: 'version',
+                sha256: '6fbb4c1b78af3fa68654af6eb29be6fdbc945e9d715a46ac1ca9bc3f3f8920f2',
+                structs: ['Version'],
+                functions: [],
+            },
+        ],
+    },
 ];
 
 // === Expected Local Pins ===
@@ -344,6 +411,8 @@ const MANIFESTS = [
             BluefinSpot: { git: BLUEFIN_GIT, rev: REV.bluefin },
             CetusClmm: { local: 'interfaces/cetus' },
             CetusLpBurn: { local: 'interfaces/cetus_lp_burn' },
+            AftermathAmm: { local: 'interfaces/aftermath_amm' },
+            AftermathDaoFeePools: { local: 'interfaces/aftermath_dao_fee' },
             Sui: {
                 git: SUI_GIT,
                 subdir: SUI_FRAMEWORK_SUBDIR,
@@ -439,12 +508,49 @@ const MANIFESTS = [
             },
         },
     },
+    {
+        path: 'interfaces/aftermath_amm/Move.toml',
+        packageName: 'AftermathAmm',
+        packageKey: 'aftermath',
+        lockNode: 'AftermathAmm',
+        dependencies: {
+            Sui: {
+                git: SUI_GIT,
+                subdir: SUI_FRAMEWORK_SUBDIR,
+                rev: REV.sui,
+                override: true,
+            },
+        },
+    },
+    {
+        path: 'interfaces/aftermath_dao_fee/Move.toml',
+        packageName: 'AftermathDaoFeePools',
+        packageKey: 'aftermath_dao_fee',
+        lockNode: 'AftermathDaoFeePools',
+        dependencies: {
+            AftermathAmm: { local: '../aftermath_amm' },
+            Sui: {
+                git: SUI_GIT,
+                subdir: SUI_FRAMEWORK_SUBDIR,
+                rev: REV.sui,
+                override: true,
+            },
+        },
+    },
 ];
 
 /// Every pinned node the lock is allowed to contain, in both environments,
 /// bound to its exact source record and its exact resolved dependency edges.
 /// Both environments resolve identical edges, so one table covers both.
 const LOCK_NODES = {
+    AftermathAmm: {
+        source: { local: 'interfaces/aftermath_amm' },
+        deps: { Sui: 'Sui_2' },
+    },
+    AftermathDaoFeePools: {
+        source: { local: 'interfaces/aftermath_dao_fee' },
+        deps: { AftermathAmm: 'AftermathAmm', Sui: 'Sui_2' },
+    },
     BluefinSpot: {
         source: { git: BLUEFIN_GIT, subdir: '.', rev: REV.bluefin },
         deps: { IntegerLibrary: 'IntegerLibrary', IntegerMate: 'IntegerMate', Sui: 'Sui_1' },
@@ -548,6 +654,8 @@ const LOCK_NODES = {
     blast_fun_migrators: {
         source: { root: true },
         deps: {
+            AftermathAmm: 'AftermathAmm',
+            AftermathDaoFeePools: 'AftermathDaoFeePools',
             BluefinSpot: 'BluefinSpot',
             CetusClmm: 'CetusClmm',
             CetusLpBurn: 'CetusLpBurn',
@@ -565,6 +673,28 @@ const LOCK_NODES = {
 /// package's own original address, `@sui` and `@std` are the framework
 /// addresses; every other address is compared literally.
 const ABI = {
+    'amm::pool::CreatePoolCapV2':
+        'struct CreatePoolCapV2 has store, key',
+    'amm::pool::Pool':
+        'struct Pool<phantom $0> has store, key',
+    'amm::pool::balance_of':
+        'public fun balance_of<$0, $1>(&@self::pool::Pool<$0>): u64',
+    'amm::pool_factory::create_pool_2_coins_v2':
+        'public fun create_pool_2_coins_v2<$0, $1, $2>(@self::pool::CreatePoolCapV2, &mut @self::pool_registry::PoolRegistry, vector<u8>, vector<u64>, u64, vector<u64>, vector<u64>, vector<u64>, vector<u64>, @sui::coin::Coin<$1>, @sui::coin::Coin<$2>, @std::option::Option<vector<u8>>, bool, &mut @sui::tx_context::TxContext): (@self::pool::Pool<$0>, @sui::coin::Coin<$0>)',
+    'amm::pool_registry::PoolRegistry':
+        'struct PoolRegistry has store, key',
+    'dao_fee_amm::pool::DaoFeePool':
+        'struct DaoFeePool<phantom $0> has store, key',
+    'dao_fee_amm::pool::OwnerCap':
+        'struct OwnerCap<phantom $0> has store, key',
+    'dao_fee_amm::pool::fee_bps':
+        'public fun fee_bps<$0>(&@self::pool::DaoFeePool<$0>): u16',
+    'dao_fee_amm::pool::fee_recipient':
+        'public fun fee_recipient<$0>(&@self::pool::DaoFeePool<$0>): address',
+    'dao_fee_amm::pool::new':
+        'public fun new<$0>(0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c::pool::Pool<$0>, &@self::version::Version, u16, address, &mut @sui::tx_context::TxContext): (@self::pool::DaoFeePool<$0>, @self::pool::OwnerCap<$0>)',
+    'dao_fee_amm::version::Version':
+        'struct Version has key',
     'bluefin_spot::config::GlobalConfig':
         'struct GlobalConfig has store, key',
     'bluefin_spot::config::get_tick_range':

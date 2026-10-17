@@ -156,6 +156,27 @@ public struct CetusPoolReserved has copy, drop {
     tick_spacing: u32,
 }
 
+/// Records Aftermath pool creation reserved for one pair: the shared reservation holding the
+/// capability its fresh LP coin minted, which the pair's migration consumes.
+public struct AftermathPoolReserved has copy, drop {
+    lp: TypeName,
+    meme: TypeName,
+    quote: TypeName,
+    pool_creation_id: ID,
+    create_pool_cap_id: ID,
+}
+
+/// Records one Aftermath migration's pools: the base pool `pool_id` (the vault's `pool_id`) and
+/// the shared DAO-fee pool `dao_fee_pool_id` traders use, which pays its fees to the vault, whose
+/// owner cap `owner_cap_id` the vault keeps.
+public struct AftermathPoolCreated has copy, drop {
+    lp: TypeName,
+    vault_id: ID,
+    pool_id: ID,
+    dao_fee_pool_id: ID,
+    owner_cap_id: ID,
+}
+
 // === Package Functions ===
 
 /// Emits a default or original-type partner policy mutation with complete old/new pairs.
@@ -384,6 +405,36 @@ public(package) fun cetus_pool_reserved<Meme, Quote>(pool_creation_cap_id: ID, t
         quote: type_name::with_original_ids<Quote>(),
         pool_creation_cap_id,
         tick_spacing,
+    });
+}
+
+/// Emits the Aftermath pair reservation made while starting a launch.
+public(package) fun aftermath_pool_reserved<Lp, Meme, Quote>(
+    pool_creation_id: ID,
+    create_pool_cap_id: ID,
+) {
+    sui::event::emit(AftermathPoolReserved {
+        lp: type_name::with_original_ids<Lp>(),
+        meme: type_name::with_original_ids<Meme>(),
+        quote: type_name::with_original_ids<Quote>(),
+        pool_creation_id,
+        create_pool_cap_id,
+    });
+}
+
+/// Emits one Aftermath migration's base pool, DAO-fee pool, and owner cap.
+public(package) fun aftermath_pool_created<Lp>(
+    vault_id: ID,
+    pool_id: ID,
+    dao_fee_pool_id: ID,
+    owner_cap_id: ID,
+) {
+    sui::event::emit(AftermathPoolCreated {
+        lp: type_name::with_original_ids<Lp>(),
+        vault_id,
+        pool_id,
+        dao_fee_pool_id,
+        owner_cap_id,
     });
 }
 

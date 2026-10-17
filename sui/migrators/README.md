@@ -4,8 +4,10 @@ This aggregate package starts every launch at the creator's venue tier,
 completes the launchpad's linear migration handoff into supported venue
 positions, keeps the LP principal and the protocol migration residuals in each
 launch's sealed `LpVault`, and owns everything after migration: the LP-fee
-policy, collection, auto-LP, holder rewards, and fee-split updates (ADR 0089). Venue code depends inward on the launchpad; the launchpad never
-imports this package.
+policy, collection, auto-LP, holder rewards, and fee-split updates (ADR 0089).
+The venues are Cetus, Bluefin, and Aftermath, whose 50/50 pool sits behind
+Aftermath's DAO-fee pool paying the vault's address (ADR 0116). Venue code
+depends inward on the launchpad; the launchpad never imports this package.
 
 Use task-specific sources instead of a duplicated route, event, dependency, or
 error inventory:
@@ -29,15 +31,17 @@ only the transitions it implements.
 ## LP fees after migration
 
 Anyone can call a venue's `collect_fees`. In one transaction it collects the
-position's fees, pays Blast's live share for that coin to the protocol
-destination, and splits the rest by the launch's `FeeSplit`:
+position's fees (on Aftermath, receives the DAO-fee coins Aftermath sent to the
+vault's address, which the caller lists as receiving inputs), pays Blast's live
+share for that coin to the protocol destination, and splits the rest by the
+launch's `FeeSplit`:
 
 | Part | Where it goes |
 | --- | --- |
 | Creator | accrues in the vault; `vault::claim_creator_fees` pays it to the holder of the launch's live `CurveFeeCap` |
-| Auto-LP | added back at the pool's current price (Cetus: to a second position, because the migration position is burned through Cetus LP Burn; Bluefin: to the migration position); what the pool does not take waits for the next call |
+| Auto-LP | added back at the pool's current price (Cetus: to a second position, because the migration position is burned through Cetus LP Burn; Bluefin: to the migration position); what the pool does not take waits for the next call. Aftermath adds nothing: the part waits in the vault |
 | Rewards | accrues in the vault for holder-reward rounds |
-| Burn | the Meme is burned at once (paid to `@0x0` when the supply is fixed); the Quote waits for a buyback |
+| Burn | the Meme is burned at once (paid to `@0x0` when the supply is fixed); the Quote waits for a buyback, which Aftermath does not have |
 | Recipients | paid directly to each address |
 
 A Blast administrator with the buyback role calls the venue's `buyback_and_burn`
@@ -48,7 +52,9 @@ because anyone could move the pool's price around it (ADR 0091).
 Cetus orders a pool's coins by type name, so its `migrate`, `collect_fees`,
 `settle_and_update_fee_split`, and `buyback_and_burn` take the pool's coins in
 that order as two extra type arguments, `<Meme, Quote, CoinA, CoinB>`, and
-reject any other pair (ADR 0100). Bluefin's routes take `<Meme, Quote>`.
+reject any other pair (ADR 0100). Bluefin's routes take `<Meme, Quote>`. Aftermath's
+`new` and `migrate` take `<Lp, Meme, Quote>`, naming the launch's fresh LP coin, and
+its fee routes `<Meme, Quote>` plus the receiving tickets of the fee coins.
 
 `FeesCollected`, `AutoLiquidityAdded`, and `BuybackBurned` break down every amount
 for indexers.

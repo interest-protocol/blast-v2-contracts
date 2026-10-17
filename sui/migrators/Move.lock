@@ -4,6 +4,18 @@
 [move]
 version = 4
 
+[pinned.mainnet.AftermathAmm]
+source = { local = "interfaces/aftermath_amm" }
+use_environment = "mainnet"
+manifest_digest = "876F483E0EC97EE7B7ABCD53554BFE955820F9028A733024AD9B81283B7371BA"
+deps = { Sui = "Sui_2" }
+
+[pinned.mainnet.AftermathDaoFeePools]
+source = { local = "interfaces/aftermath_dao_fee" }
+use_environment = "mainnet"
+manifest_digest = "059163B6EEC70C0BA08FE015B1DBEC38DB554FC4A43C4D375C757E8D1604346D"
+deps = { AftermathAmm = "AftermathAmm", Sui = "Sui_2" }
+
 [pinned.mainnet.BluefinSpot]
 source = { git = "https://github.com/fireflyprotocol/bluefin-spot-contract-interface.git", subdir = ".", rev = "91ce930575b2aa3decab9b7e129b8002deba80c1" }
 use_environment = "mainnet"
@@ -110,7 +122,7 @@ deps = { blast_admin = "blast_admin", blast_partners = "blast_partners", std = "
 source = { root = true }
 use_environment = "mainnet"
 manifest_digest = "E55C97F82BC0F60DACFCDF5AC2F0CCAFEFAA23A5179F8C914CB0C1D1EBECCCDB"
-deps = { BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_admin = "blast_admin", blast_fun = "blast_fun" }
+deps = { AftermathAmm = "AftermathAmm", AftermathDaoFeePools = "AftermathDaoFeePools", BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate_1", Sui = "Sui_2", blast_admin = "blast_admin", blast_fun = "blast_fun" }
 
 [pinned.mainnet.blast_fun_timelock]
 source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/timelock", rev = "63b6cf86c0e1a74f699610fe182b1de8d8789a14" }

@@ -6,32 +6,50 @@ re-verified against mainnet, and which gates must pass before release.
 
 ## Package boundary
 
-Cetus and Bluefin are the only venues (ADR 0088), as modules in one
-independently deployed package. The launchpad core never imports this package;
+Cetus, Bluefin, and Aftermath are the venues (ADR 0088, ADR 0116), as modules in
+one independently deployed package. The launchpad core never imports this package;
 each venue module depends inward on the narrow core interface, owns one sealed
 `Witness() has drop`, and locks what the core's `migrate` hands off in a vault in
-the same Move call. Aftermath, MMT, and Turbos were removed before publication together
-with their witnesses, local interfaces, and dependency pins.
+the same Move call. MMT and Turbos were removed before publication together with
+their witnesses, local interfaces, and dependency pins; Aftermath returned as a
+50/50 weighted pool behind Aftermath's DAO-fee pool, whose fee recipient is the
+vault's own address.
 
 - **Release adapter matrix.** An adapter reaches the launchpad seams
   (`launch::new`, the initializer's treasury-capability borrow,
   and `migrate`) only by constructing its own
   witness. The matrix is therefore exactly
-  `cetus::Witness` and `bluefin::Witness`, each completing into sealed `LpVault`
-  custody. `scripts/check_source_boundaries.sh` pins the package's exact module
+  `cetus::Witness`, `bluefin::Witness`, and `aftermath::Witness`, each completing
+  into sealed `LpVault` custody. `scripts/check_source_boundaries.sh` pins the package's exact module
   set and every module's public and package function set, so any added module
   or non-private function fails it until the gate is extended, and no module
   declares an `entry` function. Within that set it fails when any module other
-  than `cetus` and `bluefin` declares a `Witness` type or names a seam, when a
-  migration does not lock its position in a vault it creates, or when a local
-  venue interface other than Cetus's exists.
+  than `cetus`, `bluefin`, and `aftermath` declares a `Witness` type or names a
+  seam, when a migration does not lock its position in a vault it creates, or
+  when a local venue interface other than Cetus's or Aftermath's exists.
   A future adapter is separate work: it first defines and tests its tier
   validation, its launch start with any venue preparation, `LpVault` custody
   with no exposed withdrawal path, its atomic route, collection, settled route
   update, and event conformance, and then extends that gate. There is no generic plug-in
   constructor.
-- **One aggregate package.** Cetus and Bluefin ship together, so the release
-  gate, dependency graph, and `UpgradeCap` lifecycle are shared.
+- **One aggregate package.** Cetus, Bluefin, and Aftermath ship together, so the
+  release gate, dependency graph, and `UpgradeCap` lifecycle are shared.
+- **Aftermath DAO-fee custody.** Aftermath creates a pool only from a
+  `CreatePoolCapV2` minted by a freshly published LP coin, which the creator
+  binds to the launch in a shared `aftermath::PoolCreation` that `migrate`
+  consumes. The migration builds the vault first, because Aftermath's DAO-fee
+  pool (`dao_fee_amm::pool::new`) takes the fee recipient address at creation,
+  names the vault's own ID, checks `fee_bps` and `fee_recipient` back, and
+  shares the DAO-fee pool as the object traders use. The vault keeps the LP coin
+  as its position and the `OwnerCap` under `vault::PoolAuthorityKey`, with no
+  borrow or removal path. The reviewed revision-2 bytecode of the DAO-fee
+  `pool` module (`docs/research/sui-auto-lp-venue-evidence.json`, module hash
+  `029b3e6e…`) pays `floor(amount × fee_bps / 10_000)` of every swap, deposit,
+  and withdrawal by splitting a coin and `transfer::public_transfer`ing it to
+  the recipient, so fees arrive as coins owned by the vault; `vault::receive_fee`
+  receives them through the vault's UID and only `aftermath` calls it, handing
+  every received coin to `vault::split_fees`. Aftermath deposits and swaps are
+  not linked, so an Aftermath vault's auto-LP and burn-Quote shares wait.
 - **Shared per-launch vault.** `vault::LpVault<Meme, Quote>` is one shared vault
   *type*, not one global object. Every migrated launch shares its own vault, so
   unrelated fee collections never contend on the same Sui object. The venue
@@ -153,8 +171,9 @@ phantom drift, and return drift each fail the run.
 
 ### Local pin validation
 
-The same run parses `Move.toml`, the Cetus local interface manifest, and
-`Move.lock` with a strict reader for exactly the record shapes those files use.
+The same run parses `Move.toml`, the Cetus and Aftermath local interface
+manifests, and `Move.lock` with a strict reader for exactly the record shapes
+those files use.
 Comments are removed before any comparison, so commented-out text can never
 satisfy an expectation, and a duplicate key, a duplicate table, an escape, a
 nested inline table, or any unrecognized value form is itself a failure.
@@ -170,7 +189,7 @@ Each file is then bound to an exact expectation:
 - `[package]` may declare only known keys, `published-at` must equal the current
   package id, `[addresses]` must equal the original package id, and no table
   outside `package`, `dependencies`, and `addresses` may appear;
-- `Move.lock` must declare format version 4, exactly the 15 expected pinned nodes
+- `Move.lock` must declare format version 4, exactly the 17 expected pinned nodes
   in the `mainnet` environment and no other (Blast deploys to mainnet only), each
   node's exact `source`
   record and exact resolved `deps` edges, and nothing else; every node's
@@ -220,6 +239,8 @@ re-verified on 2026-09-22.
 
 | Venue | Named address | Original package id | Current package id | Version | Package digest | Previous transaction |
 | --- | --- | --- | --- | --- | --- | --- |
+| Aftermath AMM | `amm` | `0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c` | `0xf948935b111990c2b604900c9b2eeb8f24dcf9868a45d1ea1653a5f282c10e29` | 3 | `Gxia3EZSdQeCXGPkmhXRzXWfmV6bnw7oRvSXNxNLQ9T1` | `7qeJhR15a6jqo7xujZMMe5Bcm11vR7cSBiFHypW3VQ3J` |
+| Aftermath DAO Fee Pools | `dao_fee_amm` | `0x6f60a091637054e23915b8745c0c0d47b1d49618ee3435b5f68eccf6a44fb53d` | `0x5ad6890968efcf3d20899e0cec735214f1067b96e77e77d86408989998468bb2` | 2 | `AeSpba79KZ8Ge8nGk2Li2c2tkLy7eC93wTGhgjEVHVpZ` | `9eMeoFRPGDW1TUvbhtstVu2bAaWCCM7VCgbgkEkCUR4c` |
 | Bluefin Spot | `bluefin_spot` | `0x3492c874c1e3b3e2984e8c41b589e642d4d0a5d6459e5a9cfc2d52fd7c89c267` | `0xd075338d105482f1527cbfd363d6413558f184dec36d9138a70261e87f486e9c` | 17 | `4tyboYqrPbZzN6V5Lh2TccW8j9nbH65mJeQFynoQGxut` | `CShZDVqJQrXm4SYiCgDe49kKnFzadwhFV5viqHLgRfaX` |
 | Cetus CLMM | `cetus_clmm` | `0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb` | `0x260693ec785a6e6c9d81d58c7d2ff72f1288ae0fa6a9725abe05a6478b11f084` | 15 | `9rZP5D79m4Yfq9fvtPujtpvU5rhfiYm1JS6LaxcMZVSu` | `5sSoTfTiti8kXjJhZeYuFWFcxxvjbZpFQ96rZ3dzeQbC` |
 
@@ -230,6 +251,11 @@ Only modules that declare an adapter-consumed type or function are fingerprinted
 
 | Package | Module | SHA-256 of decoded on-chain bytecode |
 | --- | --- | --- |
+| `amm` | `pool` | `f952884b3e6ea275911ae488e9d1e3f4b2a4409cdd30e8bed69e98fd7d0f7d78` |
+| `amm` | `pool_factory` | `e2601c8181d142cb10bf10bbbe90adbd9545688238cbc3ba8b1bf9cf0809b17d` |
+| `amm` | `pool_registry` | `9d4f76ef56e619111d94b41bac54641f2012d16a7e796a83436479b319dc6a62` |
+| `dao_fee_amm` | `pool` | `029b3e6e0a11a249147cdd0b7b3ea78556d399e03228cae9424529a06cd58f3e` |
+| `dao_fee_amm` | `version` | `6fbb4c1b78af3fa68654af6eb29be6fdbc945e9d715a46ac1ca9bc3f3f8920f2` |
 | `bluefin_spot` | `config` | `e896bcbdab23bf5c04eb38b12306f8d6ced8bb9194c789cd1f7f09c78e595cab` |
 | `bluefin_spot` | `pool` | `d1436b0837eab8912797b91ed68755ad6e4228243f188a43c42ea040e844e97c` |
 | `bluefin_spot` | `position` | `ea83d3b9a65c7f62579dd0a902ddad8ade46cec277e5781ab9e52783c48caaec` |
@@ -243,12 +269,15 @@ Only modules that declare an adapter-consumed type or function are fingerprinted
 
 | Venue | Modules | Functions | Structs | Type origins |
 | --- | --- | --- | --- | --- |
+| Aftermath AMM | 3 | 2 | 3 | 3 |
+| Aftermath DAO Fee Pools | 2 | 3 | 3 | 3 |
 | Bluefin Spot | 3 | 8 | 3 | 3 |
 | Cetus CLMM | 5 | 9 | 5 | 5 |
-| **Total** | **8** | **17** | **8** | **8** |
 
-The list contains only Bluefin Spot and Cetus CLMM functions and structs the
-adapters actually reference.
+The list contains only the Aftermath, Bluefin Spot, and Cetus CLMM functions and
+structs the adapters actually reference. The Aftermath facts are the ones the
+`blast_aftermath_dao_presale` vendor gate recorded on 2026-09-02 (ADR 0104);
+`CreatePoolCapV2` is pinned to the revision-3 package that introduced it.
 
 ## Source pins
 
@@ -260,6 +289,8 @@ Every direct and overridden Git dependency in `Move.toml` is a full commit.
 | `blast_fun` | local | `../launchpad` |
 | `BluefinSpot` | git `fireflyprotocol/bluefin-spot-contract-interface` | `91ce930575b2aa3decab9b7e129b8002deba80c1` |
 | `CetusClmm` | local `interfaces/cetus` | normalized from mainnet revision 15 |
+| `AftermathAmm` | local `interfaces/aftermath_amm` | normalized from mainnet revision 3 |
+| `AftermathDaoFeePools` | local `interfaces/aftermath_dao_fee` | normalized from mainnet revision 2 |
 | `Sui` (override) | git `MystenLabs/sui`, subdir `crates/sui-framework/packages/sui-framework` | `06734f6ff0af45d8632a14a4dc4b100197f6b1a2` |
 | `IntegerMate` (override) | git `CetusProtocol/integer-mate` | `09a12d9b171122883d9350039d4ed6e8400033b9` |
 | `IntegerLibrary` (override) | git `fireflyprotocol/integer-library` | `8a534bd1c0b334cd3937c27987f3147a06ba6a18` |
@@ -371,7 +402,7 @@ pre-deploy check.
 
 ## Mainnet dev-inspect matrix
 
-The release matrix is Cetus and Bluefin. Each row below is one fixture against
+The release matrix is Cetus, Bluefin, and Aftermath. Each row below is one fixture against
 the published venue packages above, in the orientation named by the route: the
 venue fork gate proves it locally, and a mainnet dry-run repeats it before
 deployment. No route may be skipped, and a skipped row is a release blocker, not
