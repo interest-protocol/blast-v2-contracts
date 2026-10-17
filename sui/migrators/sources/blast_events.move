@@ -156,36 +156,6 @@ public struct CetusPoolReserved has copy, drop {
     tick_spacing: u32,
 }
 
-/// Records one launch's Aftermath pool, created ahead of its migration and held in the
-/// reservation `pool_creation_id`, which only that launch's migration consumes: the pool
-/// `pool_id` of the fresh LP coin `lp`, seeded by the creator with `seed_meme` and `seed_quote`
-/// atomic units, which set part of the opening price, and whose seed LP coin `seed_lp_coin_id`
-/// is owned by `0x0`.
-public struct AftermathPoolReserved has copy, drop {
-    lp: TypeName,
-    meme: TypeName,
-    quote: TypeName,
-    launch_id: ID,
-    pool_creation_id: ID,
-    pool_id: ID,
-    seed_lp_coin_id: ID,
-    seed_meme: u64,
-    seed_quote: u64,
-}
-
-/// Records one Aftermath migration's pools: the base pool `pool_id` (the vault's `pool_id`) and
-/// the shared DAO-fee pool `dao_fee_pool_id` traders use, which pays its fees to the vault, whose
-/// owner cap `owner_cap_id` the vault keeps as its position; the LP coin `lp_coin_id`, the whole
-/// pool liquidity, is owned by `0x0`.
-public struct AftermathPoolCreated has copy, drop {
-    lp: TypeName,
-    vault_id: ID,
-    pool_id: ID,
-    dao_fee_pool_id: ID,
-    owner_cap_id: ID,
-    lp_coin_id: ID,
-}
-
 // === Package Functions ===
 
 /// Emits a default or original-type partner policy mutation with complete old/new pairs.
@@ -414,46 +384,6 @@ public(package) fun cetus_pool_reserved<Meme, Quote>(pool_creation_cap_id: ID, t
         quote: type_name::with_original_ids<Quote>(),
         pool_creation_cap_id,
         tick_spacing,
-    });
-}
-
-/// Emits the Aftermath pool created ahead of a launch's migration and bound to it.
-public(package) fun aftermath_pool_reserved<Lp, Meme, Quote>(
-    launch_id: ID,
-    pool_creation_id: ID,
-    pool_id: ID,
-    seed_lp_coin_id: ID,
-    seed_meme: u64,
-    seed_quote: u64,
-) {
-    sui::event::emit(AftermathPoolReserved {
-        lp: type_name::with_original_ids<Lp>(),
-        meme: type_name::with_original_ids<Meme>(),
-        quote: type_name::with_original_ids<Quote>(),
-        launch_id,
-        pool_creation_id,
-        pool_id,
-        seed_lp_coin_id,
-        seed_meme,
-        seed_quote,
-    });
-}
-
-/// Emits one Aftermath migration's base pool, DAO-fee pool, and owner cap.
-public(package) fun aftermath_pool_created<Lp>(
-    vault_id: ID,
-    pool_id: ID,
-    dao_fee_pool_id: ID,
-    owner_cap_id: ID,
-    lp_coin_id: ID,
-) {
-    sui::event::emit(AftermathPoolCreated {
-        lp: type_name::with_original_ids<Lp>(),
-        vault_id,
-        pool_id,
-        dao_fee_pool_id,
-        owner_cap_id,
-        lp_coin_id,
     });
 }
 

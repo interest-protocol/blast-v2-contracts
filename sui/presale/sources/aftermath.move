@@ -65,7 +65,7 @@ public fun new<Meme, Quote>(
 /// reservation binding `create_pool_cap`, which the fresh LP coin `Lp` minted, to that sale's ID.
 /// The initializer must be one `new` started: another migrator's sale could never consume the
 /// reservation. The reservation has only `key`, so the PTB that creates the sale must share it
-/// with `share`, as the launchpad adapter's does; a sale is never funded in that PTB.
+/// with `share`; a sale is never funded in that PTB.
 public fun finalize<Lp, Meme, Quote>(
     initializer: PresaleInitializer<Meme, Quote>,
     currency: &mut Currency<Meme>,

@@ -4,10 +4,8 @@ This aggregate package starts every launch at the creator's venue tier,
 completes the launchpad's linear migration handoff into supported venue
 positions, keeps the LP principal and the protocol migration residuals in each
 launch's sealed `LpVault`, and owns everything after migration: the LP-fee
-policy, collection, auto-LP, holder rewards, and fee-split updates (ADR 0089).
-The venues are Cetus, Bluefin, and Aftermath, whose 50/50 pool sits behind
-Aftermath's DAO-fee pool charging the creator's fee to the vault's address (ADR 0116). Venue code
-depends inward on the launchpad; the launchpad never imports this package.
+policy, collection, auto-LP, holder rewards, and fee-split updates (ADR 0089). Venue code depends inward on the launchpad; the launchpad never
+imports this package.
 
 Use task-specific sources instead of a duplicated route, event, dependency, or
 error inventory:
@@ -31,17 +29,15 @@ only the transitions it implements.
 ## LP fees after migration
 
 Anyone can call a venue's `collect_fees`. In one transaction it collects the
-position's fees (on Aftermath, receives the DAO-fee coins Aftermath sent to the
-vault's address, which the caller lists as receiving inputs), pays Blast's live
-share for that coin to the protocol destination, and splits the rest by the
-launch's `FeeSplit`:
+position's fees, pays Blast's live share for that coin to the protocol
+destination, and splits the rest by the launch's `FeeSplit`:
 
 | Part | Where it goes |
 | --- | --- |
 | Creator | accrues in the vault; `vault::claim_creator_fees` pays it to the holder of the launch's live `CurveFeeCap` |
-| Auto-LP | added back at the pool's current price (Cetus: to a second position, because the migration position is burned through Cetus LP Burn; Bluefin: to the migration position); what the pool does not take waits for the next call. An Aftermath launch's split has no auto-LP part |
+| Auto-LP | added back at the pool's current price (Cetus: to a second position, because the migration position is burned through Cetus LP Burn; Bluefin: to the migration position); what the pool does not take waits for the next call |
 | Rewards | accrues in the vault for holder-reward rounds |
-| Burn | the Meme is burned at once (paid to `@0x0` when the supply is fixed); the Quote waits for a buyback; an Aftermath launch's split has no burn part |
+| Burn | the Meme is burned at once (paid to `@0x0` when the supply is fixed); the Quote waits for a buyback |
 | Recipients | paid directly to each address |
 
 A Blast administrator with the buyback role calls the venue's `buyback_and_burn`
@@ -52,19 +48,12 @@ because anyone could move the pool's price around it (ADR 0091).
 Cetus orders a pool's coins by type name, so its `migrate`, `collect_fees`,
 `settle_and_update_fee_split`, and `buyback_and_burn` take the pool's coins in
 that order as two extra type arguments, `<Meme, Quote, CoinA, CoinB>`, and
-reject any other pair (ADR 0100). Bluefin's routes take `<Meme, Quote>`. Aftermath's
-`finalize`, `create_pool`, `share`, and `migrate` take `<Lp, Meme, Quote>`, naming the
-launch's fresh LP coin, and its `new` and fee routes `<Meme, Quote>`, the fee routes
-with the receiving tickets of the fee coins. An Aftermath launch's pool is created,
-seeded and unshared, in the PTB that creates the launch and shared at migration, so
-nobody can register it first (ADR 0116).
+reject any other pair (ADR 0100). Bluefin's routes take `<Meme, Quote>`.
 
 `FeesCollected`, `AutoLiquidityAdded`, and `BuybackBurned` break down every amount
 for indexers.
-The curve-fee cap holder changes a Cetus or Bluefin vault's split with
-`settle_and_update_fee_split`, which settles the fees accrued under the current
-split first; an Aftermath vault's split is fixed, since its fees are coins the
-package cannot enumerate before a change. An administrator
+The curve-fee cap holder changes the split with `settle_and_update_fee_split`,
+which settles the fees accrued under the current split first. An administrator
 changes Blast's default or per-coin share in `LpFeePolicy`, from the next
 collection. Because auto-LP adds at the current price, a caller can move the
 price around a collection and skim part of that call's auto-LP amount; frequent
