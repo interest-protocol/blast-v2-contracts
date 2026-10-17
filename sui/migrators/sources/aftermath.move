@@ -114,9 +114,11 @@ public fun finalize<Lp, Meme, Quote>(
 /// Creates the launch's pool from the creator's seed `meme` and `quote`, with this package's
 /// fixed terms, in Aftermath's coin order, so the pool's registry slot is taken before any buyer
 /// holds Meme; sends the seed's LP coin to `0x0`; and returns the reservation holding the pool,
-/// bound to the launch, for `share` or for a migration in the same PTB. The seed only needs to
-/// mint Aftermath's minimum LP: the migration deposits the hand-off at whatever ratio the seed set
-/// and the pool reprices to the hand-off, so a dust seed leaves the price where the curve ended.
+/// bound to the launch, for `share` or for a migration in the same PTB. Aftermath mints the seed
+/// LP as the geometric mean of the two amounts and needs more than its 1,000 locked units, so a
+/// seed of about a thousand atomic units of each coin is enough; the migration then deposits the
+/// hand-off at any ratio, in slices Aftermath's deposit math takes, so the pool opens at the
+/// price of the seed plus the hand-off, which a small seed leaves where the curve ended.
 public fun create_pool<Lp, Meme, Quote>(
     pending: PendingPool<Lp, Meme, Quote>,
     migrators_version: &MigratorsVersion,
@@ -127,6 +129,7 @@ public fun create_pool<Lp, Meme, Quote>(
 ): PoolCreation<Lp, Meme, Quote> {
     migrators_version.assert_current();
     let PendingPool { launch_id, create_pool_cap } = pending;
+    let (seed_meme, seed_quote) = (meme.value(), quote.value());
 
     let (pool, lp) = create_pool_2_coins_in_order<Lp, _, _>(
         create_pool_cap,
@@ -142,6 +145,8 @@ public fun create_pool<Lp, Meme, Quote>(
         pool_creation.id.to_inner(),
         object::id(&pool_creation.pool),
         object::id(&lp),
+        seed_meme,
+        seed_quote,
     );
     transfer::public_transfer(lp, @0x0);
 
@@ -162,11 +167,12 @@ public fun share<Lp, Meme, Quote>(
 // `dao_fee_pool::new` creates the shared pool in this transaction.
 /// Migrates a MigrationReady launch into its reserved Aftermath pool, consuming the reservation
 /// bound to it: it deposits exactly the handed-off balances into the pool, which nothing could
-/// trade on or price before, wraps the pool in a DAO-fee pool paying the launch's new vault at the
-/// launch's fee, shares that pool, locks the pool's owner cap in the vault as its position, and
-/// sends the deposit's LP coin to `0x0`. Aftermath takes its protocol fee from the deposit, at the
-/// rate `protocol_fee_vault` reports, and pays it to its own `treasury`, `insurance_fund`, and
-/// `referral_vault`. The caller receives no object.
+/// trade on or price before, in slices its deposit math takes, wraps the pool in a DAO-fee pool
+/// paying the launch's new vault at the launch's fee, shares that pool, locks the pool's owner
+/// cap in the vault as its position, and sends the deposit's LP coin to `0x0`. Aftermath takes
+/// its protocol fee from each deposited coin at the rate `protocol_fee_vault` reports, which must
+/// be within this package's cap, and pays it to its own `treasury`, `insurance_fund`, and dev
+/// wallet; `referral_vault` only discounts a referred sender. The caller receives no object.
 #[allow(lint(share_owned))]
 public fun migrate<Lp, Meme, Quote>(
     launch: &mut Launch<Meme, Quote>,
@@ -192,8 +198,10 @@ public fun migrate<Lp, Meme, Quote>(
     let (meme, quote) = launch.migrate(package_version, currency, Witness(), ctx);
     let (meme_amount, quote_amount) = (meme.value(), quote.value());
     let (meme_before, quote_before) = (pool.balance_of<Lp, Meme>(), pool.balance_of<Lp, Quote>());
+    let protocol_fee_rate = protocol_fee_vault.total_protocol_fee();
+    assert_protocol_fee_capped(protocol_fee_rate);
 
-    let lp = deposit_in_order<Lp, _, _>(
+    let lp = deposit_hand_off<Lp, _, _>(
         &mut pool,
         pool_registry,
         protocol_fee_vault,
@@ -204,7 +212,6 @@ public fun migrate<Lp, Meme, Quote>(
         quote.into_coin(ctx),
         ctx,
     );
-    let protocol_fee_rate = protocol_fee_vault.total_protocol_fee();
     assert!(
         pool.balance_of<Lp, Meme>() - meme_before
             >= meme_amount - protocol_fee_ceiling(meme_amount, protocol_fee_rate)
@@ -304,8 +311,91 @@ fun create_pool_2_coins<Lp, Coin1, Coin2>(
     )
 }
 
-/// Deposits the hand-off into the pool, in Aftermath's coin order. The pool is still unshared, so
-/// nothing could move its price before this deposit, and no minimum LP is asked of Aftermath.
+/// Aborts unless Aftermath's live protocol-fee rate is within this package's cap, so a raised
+/// rate stalls migrations instead of taking an unbounded share of the hand-off.
+fun assert_protocol_fee_capped(rate: u64) {
+    assert!(rate <= constants::aftermath_max_protocol_fee!(), EProtocolFeeTooHigh);
+}
+
+/// Deposits the whole hand-off into the pool in slices Aftermath's deposit math takes, joining
+/// every slice's LP coin: while one coin would grow the pool's balance of it more than
+/// `aftermath_max_deposit_skew` times the other coin's growth, a slice grows that coin's balance
+/// by the skew alongside one atomic unit of the other, and the last slice deposits the rest.
+/// Each slice multiplies the skewed coin's balance by the skew, so a hand-off needs at most ten
+/// slices before the rest, and each slice needs one atomic unit of the other coin.
+fun deposit_hand_off<Lp, Meme, Quote>(
+    pool: &mut Pool<Lp>,
+    pool_registry: &PoolRegistry,
+    protocol_fee_vault: &ProtocolFeeVault,
+    treasury: &mut Treasury,
+    insurance_fund: &mut InsuranceFund,
+    referral_vault: &ReferralVault,
+    mut meme: Coin<Meme>,
+    mut quote: Coin<Quote>,
+    ctx: &mut TxContext,
+): Coin<Lp> {
+    let mut lp = coin::zero<Lp>(ctx);
+    loop {
+        let (meme_slice, quote_slice) = deposit_slice(
+            pool.balance_of<Lp, Meme>(),
+            pool.balance_of<Lp, Quote>(),
+            meme.value(),
+            quote.value(),
+        );
+        if (meme_slice == meme.value() && quote_slice == quote.value()) {
+            lp.join(deposit_in_order<Lp, _, _>(
+                pool,
+                pool_registry,
+                protocol_fee_vault,
+                treasury,
+                insurance_fund,
+                referral_vault,
+                meme,
+                quote,
+                ctx,
+            ));
+            return lp
+        };
+        lp.join(deposit_in_order<Lp, _, _>(
+            pool,
+            pool_registry,
+            protocol_fee_vault,
+            treasury,
+            insurance_fund,
+            referral_vault,
+            meme.split(meme_slice, ctx),
+            quote.split(quote_slice, ctx),
+            ctx,
+        ));
+    }
+}
+
+/// The next deposit slice for a pool holding `meme_balance` and `quote_balance` with `meme_left`
+/// and `quote_left` still to deposit: everything left once neither coin's growth ratio exceeds
+/// the other's by more than the skew, else the skewed coin's balance times the skew less one
+/// alongside one atomic unit of the other coin.
+fun deposit_slice(
+    meme_balance: u64,
+    quote_balance: u64,
+    meme_left: u64,
+    quote_left: u64,
+): (u64, u64) {
+    let skew = constants::aftermath_max_deposit_skew!() as u256;
+    // Each coin's growth ratio (balance + left) / balance, cross-multiplied so both compare
+    // over the common denominator meme_balance * quote_balance.
+    let meme_growth = ((meme_balance as u256) + (meme_left as u256)) * (quote_balance as u256);
+    let quote_growth = ((quote_balance as u256) + (quote_left as u256)) * (meme_balance as u256);
+    if (meme_growth > skew * quote_growth) {
+        ((((meme_balance as u256) * (skew - 1)).min(meme_left as u256)) as u64, 1)
+    } else if (quote_growth > skew * meme_growth) {
+        (1, (((quote_balance as u256) * (skew - 1)).min(quote_left as u256)) as u64)
+    } else {
+        (meme_left, quote_left)
+    }
+}
+
+/// Deposits one slice into the pool, in Aftermath's coin order. The pool is still unshared, so
+/// nothing could move its price before the deposit, and no minimum LP is asked of Aftermath.
 fun deposit_in_order<Lp, Meme, Quote>(
     pool: &mut Pool<Lp>,
     pool_registry: &PoolRegistry,
@@ -394,6 +484,21 @@ public fun protocol_fee_ceiling_for_testing(amount: u64, rate: u64): u64 {
 }
 
 #[test_only]
+public fun assert_protocol_fee_capped_for_testing(rate: u64) {
+    assert_protocol_fee_capped(rate)
+}
+
+#[test_only]
+public fun deposit_slice_for_testing(
+    meme_balance: u64,
+    quote_balance: u64,
+    meme_left: u64,
+    quote_left: u64,
+): (u64, u64) {
+    deposit_slice(meme_balance, quote_balance, meme_left, quote_left)
+}
+
+#[test_only]
 /// Unpacks a pending creation into the launch it is bound to and the capability it holds.
 public fun unpack_pending_pool_for_testing<Lp, Meme, Quote>(
     pending: PendingPool<Lp, Meme, Quote>,
@@ -465,6 +570,10 @@ const EWrongVault: vector<u8> = b"Only an Aftermath vault's fees are collected h
 const EUnsupportedFeeSplit: vector<u8> =
     b"An Aftermath launch's fee split needs no auto-LP and no burn part: this adapter adds no liquidity and has no buyback.";
 
+#[error(code = 7)]
+const EProtocolFeeTooHigh: vector<u8> =
+    b"Aftermath's protocol fee is above this package's cap; the migration waits for a lower rate or an upgrade.";
+
 // === Imports ===
 
 use amm::{deposit, pool::{CreatePoolCapV2, Pool}, pool_factory, pool_registry::PoolRegistry};
@@ -496,7 +605,7 @@ use std::type_name;
 
 use sui::{
     balance::{Self, Balance},
-    coin::Coin,
+    coin::{Self, Coin},
     coin_registry::Currency,
     sui::SUI,
     transfer::Receiving,

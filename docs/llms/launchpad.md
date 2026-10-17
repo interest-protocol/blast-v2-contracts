@@ -249,7 +249,7 @@ that wraps `finalize` which adapter started the initializer.
    the creation fee in the fee ledger, and emits `blast_fun::events::LaunchCreated`. The lifecycle
    is `OpeningRound` when an opening round was set, else `Live`.
 10. Optional creator purchase before anyone else can trade (required on Aftermath, which seeds
-    the pool from it):
+    the pool from it; about a thousand atomic units of Meme and of Quote suffice):
     - without an opening round: `launch::buy` on the launch value (see Buy); transfer both returned
       coins. A buy here may even reach the target.
     - with an opening round: `launch::join_opening_round` on the launch value (see Opening round);
