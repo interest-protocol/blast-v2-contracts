@@ -179,6 +179,30 @@ fun create_pool_consumes_the_pending_pool_into_aftermaths_factory() {
     abort EUnexpectedSuccess
 }
 
+#[test, expected_failure(abort_code = 0, location = amm::pool_factory)]
+/// A seed of exactly the floor on each coin reaches Aftermath's factory.
+fun create_pool_admits_a_seed_at_the_floor_on_each_coin() {
+    create_pool_with_seed(1_001, 1_001)
+}
+
+#[test, expected_failure(
+    abort_code = aftermath::ESeedTooSmall,
+    location = blast_fun_migrators::aftermath,
+)]
+/// One atomic unit under the floor of Meme is rejected before the factory, whatever the Quote.
+fun create_pool_rejects_a_meme_seed_under_the_floor() {
+    create_pool_with_seed(1_000, 1_000_000_000)
+}
+
+#[test, expected_failure(
+    abort_code = aftermath::ESeedTooSmall,
+    location = blast_fun_migrators::aftermath,
+)]
+/// One atomic unit under the floor of Quote is rejected before the factory, whatever the Meme.
+fun create_pool_rejects_a_quote_seed_under_the_floor() {
+    create_pool_with_seed(1_000_000_000, 1_000)
+}
+
 #[test]
 /// Aftermath's protocol fee is bounded by its rounded-up share of the deposit, so a deposit that
 /// lands every other unit passes the pool check.
@@ -243,7 +267,32 @@ fun deposit_slices_bound_the_skew_between_the_coins() {
     // The largest balances and hand-offs do not overflow the comparison.
     let max = std::u64::max_value!();
     assert_slice(max / 2, max / 2, max / 2, max / 2, max / 2, max / 2);
-    assert_slice(1_001, max, max, 1, 99_099, 1);
+    assert_slice(1_001, max, max, 2, 99_099, 1);
+}
+
+#[test]
+/// Walking the slices to the end: the guide's hand-off into a minimum seed takes three deposits,
+/// the largest Meme hand-off against twenty Quote atoms nine, a Quote-heavy seed eight, and a
+/// balanced one just one, each ending with both coins fully deposited.
+fun deposit_slices_walk_every_hand_off_to_the_end() {
+    // A hand-off plus the seed fits a coin's supply, so the largest is `u64::MAX` less the seed.
+    let largest = std::u64::max_value!() - 1_001;
+    assert_eq!(walk_slices(1_001, 1_001, 200_000_000_000_000_000, 8_000_000_000_000), 3);
+    assert_eq!(walk_slices(1_001, 1_001, largest, 20), 9);
+    assert_eq!(walk_slices(1_001, 1_001, 20, largest), 9);
+    assert_eq!(walk_slices(1_001, 1_000_000_000_000_000, 200_000_000_000_000_000, 8_000_000_000_000), 8);
+    assert_eq!(walk_slices(1_001, 1_001, largest, largest), 1);
+    assert_eq!(walk_slices(1_000_000_000_000, 1_000_000_000, 200_000_000_000_000_000, 8_000_000_000_000), 1);
+}
+
+#[test, expected_failure(
+    abort_code = aftermath::EHandOffTooSmall,
+    location = blast_fun_migrators::aftermath,
+)]
+/// A hand-off whose Quote cannot fund the atoms Meme's slices need aborts by name instead of
+/// splitting an empty coin.
+fun deposit_slices_reject_a_hand_off_too_small_to_fund_the_slices() {
+    walk_slices(1_001, 1_001, std::u64::max_value!() - 1_001, 1);
 }
 
 #[test, expected_failure(
@@ -658,6 +707,50 @@ fun finalize_rejected_split(fee_split: FeeSplit) {
     );
 
     abort EUnexpectedSuccess
+}
+
+/// Creates a launch's pool from a seed of `seed_meme` and `seed_quote`, which either aborts in
+/// the adapter or reaches the factory link stub, which aborts.
+fun create_pool_with_seed(seed_meme: u64, seed_quote: u64) {
+    let mut f = start();
+    f.admit_aftermath();
+    let (launch, pending) = f.open_launch(DAO_FEE_BPS);
+    let mut pool_registry = pool_registry::new_for_testing(f.scenario.ctx());
+
+    let _pool_creation = aftermath::create_pool(
+        pending,
+        &f.migrators_version,
+        &mut pool_registry,
+        coin::mint_for_testing<AFTERMATH_TESTS>(seed_meme, f.scenario.ctx()),
+        coin::mint_for_testing<QUOTE>(seed_quote, f.scenario.ctx()),
+        f.scenario.ctx(),
+    );
+
+    destroy(launch);
+    abort EUnexpectedSuccess
+}
+
+/// Walks the deposit slices for a pool holding `meme_balance` and `quote_balance` with `meme_left`
+/// and `quote_left` to deposit, adding each slice to the balances as a deposit would (less
+/// Aftermath's fee, which the walk ignores), and returns how many deposits it took.
+fun walk_slices(
+    mut meme_balance: u64,
+    mut quote_balance: u64,
+    mut meme_left: u64,
+    mut quote_left: u64,
+): u64 {
+    let mut deposits = 0;
+    while (meme_left > 0 || quote_left > 0) {
+        let (meme_slice, quote_slice) =
+            aftermath::deposit_slice_for_testing(meme_balance, quote_balance, meme_left, quote_left);
+        assert!(meme_slice > 0 && quote_slice > 0);
+        meme_balance = meme_balance + meme_slice;
+        quote_balance = quote_balance + quote_slice;
+        meme_left = meme_left - meme_slice;
+        quote_left = quote_left - quote_slice;
+        deposits = deposits + 1;
+    };
+    deposits
 }
 
 /// Asserts the next deposit slice for a pool holding `meme_balance` and `quote_balance` with

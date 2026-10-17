@@ -217,11 +217,12 @@ a pool created only at migration could be registered first by anyone to strand t
 the seed with `launch::buy` on the still-owned launch, then call
 `blast_fun_migrators::aftermath::create_pool` (type arguments `<Lp, Meme, Quote>`) with, in
 order: the `PendingPool`, the migrators `PackageVersion`, Aftermath's `PoolRegistry` (mutable),
-the seed `Coin<Meme>`, and the seed `Coin<Quote>`. Aftermath mints the seed LP as the geometric
-mean of the two amounts and needs more than its 1,000 locked units, so a seed of about a thousand
-atomic units of each coin is enough and the amounts are otherwise the creator's; the migration
-deposits the hand-off at any ratio, so a small seed leaves the opening price where the curve ends
-and a large one moves it toward the seed's price at the creator's cost. It creates the pool named
+the seed `Coin<Meme>`, and the seed `Coin<Quote>`, each of at least 1,001 atomic units
+(`ESeedTooSmall`): Aftermath's deposit math fails on a pool holding only a few atomic units of a
+coin, and that floor also mints more than Aftermath's 1,000 locked LP units, the geometric mean
+of the two amounts. The amounts are otherwise the creator's: the migration deposits the hand-off
+at any ratio, so a seed near the floor leaves the opening price where the curve ends and a large
+one moves it toward the seed's price at the creator's cost. It creates the pool named
 "Blast Launch Pool" from both seed coins with the fixed terms, in Aftermath's coin order (the
 module sorts them), sends the seed's LP coin to `0x0`, emits
 `blast_fun_migrators::blast_events::AftermathPoolReserved`, and returns the unshared
@@ -300,17 +301,20 @@ deleted), Aftermath's `PoolRegistry`, `ProtocolFeeVault`, `Treasury` (mutable), 
 (mutable), and `ReferralVault`, and the DAO-fee package's `Version`. It takes no `Clock`.
 
 Inside the call: it checks the migrators generation, then that the reservation is the launch's
-own (`EWrongLaunch`), consumes it, reads the DAO fee from the launch's tier, and runs
-`launch::migrate` as above; reads Aftermath's total protocol-fee rate from `ProtocolFeeVault`
-and aborts with `EProtocolFeeTooHigh` above this package's 1% cap, so a raised rate stalls the
-migration instead of taking more of the hand-off; then deposits the handed-off balances into the
-reserved pool through Aftermath's exact-in deposit, in Aftermath's coin order, asking no minimum
+own (`EWrongLaunch`), consumes it, reads the DAO fee from the launch's tier and
+Aftermath's total protocol-fee rate from `ProtocolFeeVault` (aborting with `EProtocolFeeTooHigh`
+above this package's 1% cap, so a raised rate stalls the migration instead of taking more of the
+hand-off) and only then runs `launch::migrate` as above; it deposits the handed-off balances into
+the reserved pool through Aftermath's exact-in deposit, in Aftermath's coin order, asking no minimum
 LP (nothing could have moved the unshared pool's price). Aftermath's deposit math fails when one
 coin would grow the pool's balance far more than the other, so the hand-off goes in slices:
 while one coin's growth ratio exceeds the other's by more than 100x, a slice grows that coin's
-balance 100x alongside one atomic unit of the other, and the last slice deposits the rest; a
-hand-off needs at most ten slices before the rest, so each of its coins must hold at least a few
-atomic units. Aftermath takes its protocol fee from each deposited coin at that rate and pays it
+balance 100x alongside one atomic unit of the other, and the last slice deposits the rest. A
+hand-off needs at most ten slices before the rest, and each slice spends one atomic unit of the
+other coin, so each hand-off coin must hold one atomic unit more than the slices the other coin's
+growth needs, eleven at most; a smaller pool share, which only the creator's own terms produce,
+aborts with `EHandOffTooSmall` and the launch never migrates (see Pitfalls). Aftermath takes its
+protocol fee from each deposited coin at that rate and pays it
 to its treasury, insurance fund, and dev wallet (a registered referrer only discounts the
 sender); the call aborts with `EPoolMismatch` unless the pool's balances grew by at least each
 hand-off less that fee rounded up (so the vault's residuals are zero and the pool holds every
@@ -724,8 +728,10 @@ Blast admin abort with plain numeric codes from the named module.
 | Aftermath `finalize` | `EWrongMigrator` (4, module `aftermath`) | Start the launch with `blast_fun_migrators::aftermath::new`, not another adapter's `new`. |
 | Aftermath `finalize` | `EUnsupportedFeeSplit` (6, module `aftermath`) | Set the split's auto-LP and burn parts to zero. |
 | Aftermath `migrate` | `EWrongLaunch` (2, module `aftermath`) | Pass the `PoolCreation` whose `launch_id` is the launch's. |
-| Aftermath `create_pool` | an abort inside Aftermath | The `CreatePoolCapV2` is another LP coin's, the LP coin has other than 9 decimals, a seed coin is zero, or the seed mints no more than Aftermath's 1,000 locked LP units (code 6 in its `pool` module); the whole creation PTB fails, so fix the inputs and create the launch again. |
+| Aftermath `create_pool` | `ESeedTooSmall` (9, module `aftermath`) | A seed coin is under 1,001 atomic units; the whole creation PTB fails, so seed more and create the launch again. |
+| Aftermath `create_pool` | an abort inside Aftermath | The `CreatePoolCapV2` is another LP coin's, or the LP coin has other than 9 decimals; the whole creation PTB fails, so fix the inputs and create the launch again. |
 | Aftermath `migrate` | `EProtocolFeeTooHigh` (7, module `aftermath`) | Aftermath's live protocol-fee rate is above 1%; retry once Aftermath lowers it or the migrators package is upgraded. |
+| Aftermath `migrate` | `EHandOffTooSmall` (8, module `aftermath`) | A hand-off coin has fewer atomic units than the deposit slices the other coin's growth needs plus one (eleven at most); nothing to fix by retrying, since the launch's terms set the pool shares. |
 | Aftermath `migrate` | `EPoolMismatch` (0), `EDaoFeePoolMismatch` (1), module `aftermath` | Aftermath took more than its reported protocol fee from the deposit, or did not record the vault as the recipient at the launch's fee; nothing to fix by retrying. |
 | Aftermath `collect_fees` | `EWrongVault` (5, module `aftermath`) | The vault is a Cetus or Bluefin vault; collect through that venue. |
 | Aftermath `collect_fees` | an abort in `sui::transfer` | A listed coin is not owned by the vault; list only the vault address's own coins. |
@@ -769,6 +775,13 @@ codes.
 - **The capability must match the LP coin.** `create_pool` runs in the creation PTB, so a
   `CreatePoolCapV2` of another coin, or an LP coin with other than 9 decimals, fails that PTB
   inside Aftermath and no launch is created.
+- **Pool shares of at least eleven atomic units.** The migration deposit spends one atomic unit
+  of the other coin per slice, up to ten slices plus the rest, and the launchpad only requires a
+  positive Quote pool share, so a launch whose pool share of Meme or Quote is under eleven atomic
+  units can abort its migration with `EHandOffTooSmall` and stay `MigrationReady` for good when
+  the seed's price is far from the hand-off's. Any real graduation target gives shares of
+  millions of units; refuse to list a launch whose terms do not, as with one finalized in the
+  core.
 - **Two version objects.** `new` and `migrate` need both this package's `PackageVersion` and the
   launchpad's. Other calls need only this package's.
 - **Two kinds of creator fees and protocol fees.** `launch::claim_creator_fees` pays bonding-curve

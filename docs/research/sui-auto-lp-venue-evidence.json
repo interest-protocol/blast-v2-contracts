@@ -409,7 +409,7 @@
       "observed_at_utc": "2026-10-17T19:30:00+00:00",
       "endpoint": "https://graphql.mainnet.sui.io/graphql",
       "method": "Read-only `simulateTransaction` of `0xbc7b2c577ad9362fbb0dba397d17f3bcc81bf7aa916559f99a77eaee05d0947c::geometric_mean_calculations::calc_deposit_fixed_amounts_direct`, the function `amm::math::calc_deposit_exact_in_direct` calls for a flatness-0 pool, with the launch pool's terms (weights 5e17/5e17, swap-in fees 1e14, swap-out fees 0) and balances and amounts normalized by the 1e18 decimal scalars `pool::new_pool` assigns when no coin decimals are given (`supplements[1]`-era bytecode, `respect_decimals` false). Atomic amounts below are multiplied by 1e18 before the call. No transactions executed.",
-      "why": "ADR 0116's migration deposits the hand-off into the seeded pool. The exact-in deposit solves for the LP share with a Newton iteration in u256 fixed point and overflows `fixed::mul_down` when one coin's balance growth ratio dwarfs the other's. `deposit_grid` records, per seed, whether a single deposit growing Meme's balance by the first factor and Quote's by the second succeeded; success holds whenever the two growth ratios are within 100x of each other at every size tested, and fails otherwise. `slicing_plan` records the adapter's slicing rule (one-sided slices growing the skewed coin 100x alongside one atomic unit of the other until the rest is within the skew) checked slice by slice against the same math for edge and log-uniform random seeds and hand-offs up to u64::MAX; every slice succeeded, and the one plan failure is a hand-off of one Quote atom, which cannot fund the atoms the slices need.",
+      "why": "ADR 0116's migration deposits the hand-off into the seeded pool. The exact-in deposit solves for the LP share with a Newton iteration in u256 fixed point and overflows `fixed::mul_down` when one coin's balance growth ratio dwarfs the other's. `deposit_grid` records, per seed, whether a single deposit growing Meme's balance by the first factor and Quote's by the second succeeded; success holds whenever the two growth ratios are within 100x of each other at every size tested, and fails otherwise. `slicing_plan` records the adapter's slicing rule (one-sided slices growing the skewed coin 100x alongside one atomic unit of the other until the rest is within the skew) checked slice by slice against the same math for edge and log-uniform random seeds and hand-offs up to u64::MAX; every slice succeeded, and the one plan failure is a hand-off of one Quote atom, which cannot fund the atoms the slices need. `thin_balances` records the audit's cases with a seed under 1,001 atomic units of one coin, on which the same math fails whatever the skew (the grid's seeds all held at least 1,001 of each coin), and the same launches with a seed of at least 1,001 of each coin, which the adapter now requires, on which every slice succeeds.",
       "deposit_grid": {
         "seed (1001, 1001)": {
           "meme x0 / quote x0": "OK",
@@ -724,6 +724,20 @@
         "PASS rnd37 seed=(9029,29854396626217) handoff=(91434063750922528,164998153710863296) steps=5",
         "PASS rnd38 seed=(178532606,215960600014637) handoff=(471911908,710125704892227968) steps=2",
         "PASS rnd39 seed=(8218401,1737718) handoff=(10297941,153371954858) steps=3"
+      ],
+      "thin_balances": [
+        "FAIL thin quote seed 1 seed=(1002002,1) handoff=(200000000000000000,8000000000000) steps=1",
+        "FAIL thin quote seed 1, 10k USDC seed=(1000000000,1) handoff=(200000000000000000,10000000000) steps=1",
+        "FAIL thin quote seed 50 seed=(100000,50) handoff=(200000000000000000,500000000) steps=3",
+        "FAIL thin quote seed 20 seed=(1000000,20) handoff=(200000000000000000,1000000000) steps=2",
+        "FAIL thin meme seed 1 seed=(1,1002002) handoff=(8000000000000,200000000000000000) steps=1",
+        "PASS floored 1001,1001 vs (u64max,1002) seed=(1001,1001) handoff=(18446744073709551615,1002) steps=8",
+        "PASS floored 1001,1001 vs (1002,u64max) seed=(1001,1001) handoff=(1002,18446744073709551615) steps=8",
+        "PASS floored 1001,1001 vs (2e14,20) seed=(1001,1001) handoff=(200000000000000,20) steps=6",
+        "PASS floored 1001,1e18 vs (u64max,1002) seed=(1001,1000000000000000000) handoff=(18446744073709551615,1002) steps=9",
+        "PASS floored 1e18,1001 vs (1002,u64max) seed=(1000000000000000000,1001) handoff=(1002,18446744073709551615) steps=9",
+        "PASS floored 1e5,1001 vs (2e17,5e8) seed=(100000,1001) handoff=(200000000000000000,500000000) steps=4",
+        "PASS floored 1e9,1001 vs (2e17,1e10) seed=(1000000000,1001) handoff=(200000000000000000,10000000000) steps=1"
       ]
     }
   ]

@@ -114,11 +114,12 @@ public fun finalize<Lp, Meme, Quote>(
 /// Creates the launch's pool from the creator's seed `meme` and `quote`, with this package's
 /// fixed terms, in Aftermath's coin order, so the pool's registry slot is taken before any buyer
 /// holds Meme; sends the seed's LP coin to `0x0`; and returns the reservation holding the pool,
-/// bound to the launch, for `share` or for a migration in the same PTB. Aftermath mints the seed
-/// LP as the geometric mean of the two amounts and needs more than its 1,000 locked units, so a
-/// seed of about a thousand atomic units of each coin is enough; the migration then deposits the
-/// hand-off at any ratio, in slices Aftermath's deposit math takes, so the pool opens at the
-/// price of the seed plus the hand-off, which a small seed leaves where the curve ended.
+/// bound to the launch, for `share` or for a migration in the same PTB. The seed needs at least
+/// `aftermath_min_seed` atomic units of each coin (`ESeedTooSmall`): Aftermath's deposit math
+/// fails on a pool holding a few atomic units of a coin, and that floor also mints more than
+/// Aftermath's 1,000 locked LP units; the migration then deposits the hand-off at any ratio, in
+/// slices that math takes, so the pool opens at the price of the seed plus the hand-off, which a
+/// seed near the floor leaves where the curve ended.
 public fun create_pool<Lp, Meme, Quote>(
     pending: PendingPool<Lp, Meme, Quote>,
     migrators_version: &MigratorsVersion,
@@ -130,6 +131,10 @@ public fun create_pool<Lp, Meme, Quote>(
     migrators_version.assert_current();
     let PendingPool { launch_id, create_pool_cap } = pending;
     let (seed_meme, seed_quote) = (meme.value(), quote.value());
+    assert!(
+        seed_meme >= constants::aftermath_min_seed!() && seed_quote >= constants::aftermath_min_seed!(),
+        ESeedTooSmall,
+    );
 
     let (pool, lp) = create_pool_2_coins_in_order<Lp, _, _>(
         create_pool_cap,
@@ -192,14 +197,14 @@ public fun migrate<Lp, Meme, Quote>(
     let PoolCreation { id, launch_id, mut pool } = pool_creation;
     assert!(launch_id == object::id(launch), EWrongLaunch);
     id.delete();
+    let protocol_fee_rate = protocol_fee_vault.total_protocol_fee();
+    assert_protocol_fee_capped(protocol_fee_rate);
 
     let (_, pool_fee_rate) = launch.pool_tier();
     let dao_fee_bps = pool_fee_rate as u16;
     let (meme, quote) = launch.migrate(package_version, currency, Witness(), ctx);
     let (meme_amount, quote_amount) = (meme.value(), quote.value());
     let (meme_before, quote_before) = (pool.balance_of<Lp, Meme>(), pool.balance_of<Lp, Quote>());
-    let protocol_fee_rate = protocol_fee_vault.total_protocol_fee();
-    assert_protocol_fee_capped(protocol_fee_rate);
 
     let lp = deposit_hand_off<Lp, _, _>(
         &mut pool,
@@ -322,7 +327,8 @@ fun assert_protocol_fee_capped(rate: u64) {
 /// `aftermath_max_deposit_skew` times the other coin's growth, a slice grows that coin's balance
 /// by the skew alongside one atomic unit of the other, and the last slice deposits the rest.
 /// Each slice multiplies the skewed coin's balance by the skew, so a hand-off needs at most ten
-/// slices before the rest, and each slice needs one atomic unit of the other coin.
+/// slices before the rest, and each slice spends one atomic unit of the other coin, which must
+/// keep one more for the rest (`EHandOffTooSmall`).
 fun deposit_hand_off<Lp, Meme, Quote>(
     pool: &mut Pool<Lp>,
     pool_registry: &PoolRegistry,
@@ -373,7 +379,8 @@ fun deposit_hand_off<Lp, Meme, Quote>(
 /// The next deposit slice for a pool holding `meme_balance` and `quote_balance` with `meme_left`
 /// and `quote_left` still to deposit: everything left once neither coin's growth ratio exceeds
 /// the other's by more than the skew, else the skewed coin's balance times the skew less one
-/// alongside one atomic unit of the other coin.
+/// alongside one atomic unit of the other coin, of which at least two must be left, one for the
+/// slice and one for the rest (`EHandOffTooSmall`).
 fun deposit_slice(
     meme_balance: u64,
     quote_balance: u64,
@@ -386,8 +393,10 @@ fun deposit_slice(
     let meme_growth = ((meme_balance as u256) + (meme_left as u256)) * (quote_balance as u256);
     let quote_growth = ((quote_balance as u256) + (quote_left as u256)) * (meme_balance as u256);
     if (meme_growth > skew * quote_growth) {
+        assert!(quote_left >= 2, EHandOffTooSmall);
         ((((meme_balance as u256) * (skew - 1)).min(meme_left as u256)) as u64, 1)
     } else if (quote_growth > skew * meme_growth) {
+        assert!(meme_left >= 2, EHandOffTooSmall);
         (1, (((quote_balance as u256) * (skew - 1)).min(quote_left as u256)) as u64)
     } else {
         (meme_left, quote_left)
@@ -573,6 +582,14 @@ const EUnsupportedFeeSplit: vector<u8> =
 #[error(code = 7)]
 const EProtocolFeeTooHigh: vector<u8> =
     b"Aftermath's protocol fee is above this package's cap; the migration waits for a lower rate or an upgrade.";
+
+#[error(code = 8)]
+const EHandOffTooSmall: vector<u8> =
+    b"A hand-off coin must keep one atomic unit for every deposit slice the other coin's growth needs, and one for the rest.";
+
+#[error(code = 9)]
+const ESeedTooSmall: vector<u8> =
+    b"An Aftermath launch pool's seed needs at least 1,001 atomic units of each coin.";
 
 // === Imports ===
 

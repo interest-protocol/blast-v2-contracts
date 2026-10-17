@@ -68,9 +68,10 @@ design:
   cannot move between its creation and that deposit. Its LP-share solver
   overflows when one coin's balance would grow far more than the other's
   (`deposit-sim@2026-10-17`): a deposit whose two growth ratios are within
-  100× of each other succeeds at any size, one skewed further fails. The
-  protocol-fee rate is set by Aftermath's `ChangeFeeCap` holder with no
-  upper bound.
+  100× of each other succeeds at any size, one skewed further fails, and
+  any deposit fails on a pool whose balance of one coin is a few atomic
+  units, whatever the skew. The protocol-fee rate is set by Aftermath's
+  `ChangeFeeCap` holder with no upper bound.
 
 ## Decision
 
@@ -103,10 +104,14 @@ design:
   `PoolCreation<Lp, Meme, Quote>` holding the unshared pool, bound to the
   launch's ID. The pool's registry slot is taken before any buyer holds Meme,
   so nobody can register it first; the pool is unshared, so nothing can trade
-  on it or move its price before the migration. Aftermath mints the seed LP as
-  the geometric mean of the two amounts and needs more than its 1,000 locked
-  units, so about a thousand atomic units of each coin suffice; the seed's
-  size and ratio are otherwise the creator's, and set part of the opening
+  on it or move its price before the migration. The seed needs at least 1,001
+  atomic units of each coin (`ESeedTooSmall`, the compiled
+  `aftermath_min_seed`): Aftermath's deposit math fails on a pool holding a
+  few atomic units of a coin, a pool's balances only grow, so the floor keeps
+  every migration slice in the region `deposit-sim@2026-10-17` covered, and
+  it mints more than Aftermath's 1,000 locked LP units, the geometric mean of
+  the two amounts. The seed's size and ratio are otherwise the creator's, and
+  set part of the opening
   price (the pool opens at the seed plus the hand-off), which
   `AftermathPoolReserved` records, so a small seed leaves the price where the
   curve ends and a large one moves it toward the seed's price at the creator's
@@ -120,7 +125,9 @@ design:
   returned unshared so the creating PTB can fill the curve and migrate in the
   same transaction; `share` shares it for a later migration, and nothing else
   can share, store, or drop it. A creator who finalizes through the core
-  instead has no reservation: the launch can never migrate.
+  instead has no reservation: the launch can never migrate, as one whose
+  pool share of a coin is under eleven atomic units may not (see the sliced
+  deposit).
 - The presale creates its pool at migration from the hand-off, as before: no
   sale token circulates earlier, so no pool can be registered first, and a
   capability of another coin, or an LP coin with other than 9 decimals, makes
@@ -152,10 +159,17 @@ design:
   100, a slice grows that coin's balance by the skew alongside one atomic
   unit of the other, and the last slice deposits the rest. Each slice
   multiplies the skewed balance by 100, so a hand-off takes at most ten
-  slices before the rest whatever the seed, and the creator's seed size or
-  ratio can no longer make a migration fail; the pool's final balances are
-  the seed plus the hand-off either way. A hand-off coin must hold at least
-  as many atomic units as slices, which any launch's pool share does.
+  slices before the rest whatever the seed, and a seed's ratio alone can no
+  longer make a migration fail; the pool's final balances are the seed plus
+  the hand-off either way. Each slice spends one atomic unit of the other
+  coin, so a hand-off coin must hold one unit more than the slices the other
+  coin's growth needs, eleven in the worst case, which the migration checks
+  before each slice (`EHandOffTooSmall`) rather than splitting an empty
+  coin. Intake requires only a positive Quote pool share, so a launch whose
+  pool share of a coin is smaller than that, which only its creator's terms
+  produce, strands with a seed priced far from the hand-off: a creator-caused
+  residual like finalizing through the core, which the UI's listing checks
+  must refuse.
 - **Capped protocol fee.** Before depositing, the migration reads Aftermath's
   total protocol-fee rate and aborts above a compiled 1% cap
   (`EProtocolFeeTooHigh`), two hundred times the observed rate: a raised rate
@@ -242,8 +256,9 @@ residuals of the per-venue module layout. `PendingPool` never exists on chain.
   the opening-round check.
 - **A liveness exit for a launch that cannot migrate.** Deferred: with the
   pool created in the creation PTB, no Aftermath launch can be stranded by a
-  wrong capability or a registered pool; a refund path would be a launchpad
-  change.
+  wrong capability or a registered pool, and only a creator's own terms (a
+  pool share under eleven atomic units, or finalizing through the core) can
+  strand one; a refund path would be a launchpad change.
 - **Keep `settle_and_update_fee_split` on Aftermath with caller-listed coins.**
   Rejected: the cap holder could commit a new split while listing none of the
   coins already at the vault's address, so fees would not follow the split they
@@ -253,11 +268,12 @@ residuals of the per-venue module layout. `PendingPool` never exists on chain.
   at `finalize`, which already needs the initializer only the creator holds,
   so the capability goes straight to `finalize`; the launchpad's `finalize`
   returns the hot potato that forces pool creation in the same PTB.
-- **A seed floor in `create_pool`** so a single deposit always converges.
-  Rejected: the floor would read the launch's pool allocation and graduation
-  target, which the launchpad does not expose, or charge every creator a
-  Quote seed sized for the largest hand-off; slicing the deposit needs
-  neither.
+- **A seed floor sized to the hand-off** so a single deposit always
+  converges. Rejected: it would read the launch's pool allocation and
+  graduation target, which the launchpad does not expose, or charge every
+  creator a Quote seed sized for the largest hand-off; slicing the deposit
+  needs neither, and the fixed 1,001-unit floor only keeps the pool out of
+  the few-atom region where the math fails at any skew.
 - **Trust Aftermath's protocol-fee rate as a venue-operator setting** (ADR
   0088's venue trust) instead of capping it. Rejected: creating a pool took
   no protocol fee on the liquidity, while the deposit passes the whole
@@ -307,8 +323,11 @@ residuals of the per-venue module layout. `PendingPool` never exists on chain.
   `create_pool` reaches Aftermath's factory with the seed, its protocol-fee
   ceiling rounds up to the top of the range, its deposit slices bound the
   skew on either side without overflowing at the largest amounts, its
-  protocol-fee cap admits 1% and rejects one unit more, and a stale
-  generation rejects `create_pool` and `share`; `share` shares the
+  protocol-fee cap admits 1% and rejects one unit more, the seed floor
+  admits 1,001 of each coin and rejects 1,000 of either, the slices walk
+  every hand-off to the end in the expected number of deposits and reject
+  by name a hand-off that cannot fund them, and a stale generation rejects
+  `create_pool` and `share`; `share` shares the
   reservation; `migrate` rejects another sale's or launch's reservation
   before touching anything; an owner cap is a vault position sealed under its
   venue and

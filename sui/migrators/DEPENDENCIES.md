@@ -39,7 +39,9 @@ vault's own address.
   `aftermath::new` the DAO fee the pool charges, the launch's tier, and
   `aftermath::finalize` the capability, which it binds to the finalized
   launch's ID in the hot potato `aftermath::PendingPool`; `aftermath::create_pool`
-  consumes it in the same PTB, creating the pool from a seed the creator buys
+  consumes it in the same PTB, creating the pool from a seed of at least 1,001
+  atomic units of each coin (`ESeedTooSmall`; Aftermath's deposit math fails on
+  a pool holding a few atomic units of a coin) the creator buys
   from the still-owned launch, before any buyer holds Meme, because Aftermath's
   registry rejects a second pool with the same coins, weights, flatness, and
   fees, so a pool created only at migration could be registered first by a
@@ -58,6 +60,9 @@ vault's own address.
   (`docs/research/sui-auto-lp-venue-evidence.json`, `supplements[2]`:
   Aftermath's exact-in deposit math overflows once one coin's growth ratio
   dwarfs the other's, and takes every slice within that skew at every size),
+  each spending one atomic unit of the other coin, which must keep one for
+  the rest (`EHandOffTooSmall`, so a pool share under eleven atomic units,
+  which only a creator's terms produce, fails by name),
   and checks the pool took every unit less at most Aftermath's protocol fee,
   read from `ProtocolFeeVault::total_protocol_fee` and rounded up
   (`supplements[1]`: the deposit joins both coins whole after
@@ -467,7 +472,12 @@ in one PTB:
 
 - `aftermath::create_pool` with Meme sorting before Quote, and again with Quote
   sorting before Meme: the seed LP coin is owned by `0x0`, the reservation
-  holds the pool, and `AftermathPoolReserved` names both;
+  holds the pool, and `AftermathPoolReserved` names both and the seed;
+- `aftermath::create_pool` with a seed of 1,001 atomic units of each coin,
+  which must create, and with 1,000 of either, which must abort with
+  `ESeedTooSmall` before Aftermath; and, to show what the floor prevents, a
+  forked pool seeded with one and with fifty Quote atoms, into which the
+  migration deposit must fail inside Aftermath's math;
 - `aftermath::create_pool` after another account registered a pool with the
   adapter's fixed terms for the same pair, which cannot happen on a real launch
   (nobody holds Meme before the creation PTB) but proves the collision aborts
