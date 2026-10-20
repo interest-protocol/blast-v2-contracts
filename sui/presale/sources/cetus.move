@@ -15,7 +15,6 @@ public struct Venue() has drop;
 /// Key for a Meme type's reserved Cetus pool-creation capability.
 public struct CreationCapKey<phantom Meme>() has copy, drop, store;
 
-
 /// Transient dynamic-field name `cast` uses to retype a coin or balance.
 public struct CastKey() has copy, drop, store;
 
@@ -26,6 +25,7 @@ public struct CastKey() has copy, drop, store;
 /// sale token has one sale, so the tier is recorded under its type.
 public fun new<Meme, Quote>(
     mut treasury_cap: TreasuryCap<Meme>,
+    package_version: &PackageVersion,
     creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
     venue_config: &mut VenueConfig,
@@ -34,6 +34,8 @@ public fun new<Meme, Quote>(
     tick_spacing: u32,
     ctx: &mut TxContext,
 ): PresaleInitializer<Meme, Quote> {
+    package_version.assert_current();
+
     let creation_cap = factory::mint_pool_creation_cap(cetus_config, pools, &mut treasury_cap, ctx);
     factory::register_permission_pair<Meme, Quote>(
         cetus_config,
@@ -49,13 +51,14 @@ public fun new<Meme, Quote>(
         config::get_fee_rate(tick_spacing, cetus_config),
     );
 
-    presale::new(treasury_cap, Witness(), creation_policy, fee_policy)
+    presale::new(treasury_cap, package_version, Witness(), creation_policy, fee_policy)
 }
 
 /// Anyone may migrate a funded presale into its reserved Cetus pool. `CoinA` and `CoinB` name the
 /// presale's Meme and Quote in Cetus's canonical coin order.
 public fun migrate<Meme, Quote, CoinA, CoinB>(
     sale: &mut Presale<Meme, Quote>,
+    package_version: &PackageVersion,
     fee_policy: &FeePolicy,
     venue_config: &VenueConfig,
     cetus_config: &GlobalConfig,
@@ -64,11 +67,13 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    package_version.assert_current();
+
     assert!(factory::is_right_order<CoinA, CoinB>(), EInvalidCoinOrder);
     let meme_is_a = meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
 
     let (tick_spacing, _) = venue_config.pool_tier<Meme>();
-    let (meme, quote) = sale.migrate(fee_policy, Witness(), clock, ctx);
+    let (meme, quote) = sale.migrate(package_version, fee_policy, Witness(), clock, ctx);
 
     let meme_amount = meme.value();
     let quote_amount = quote.value();
@@ -122,6 +127,7 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
 /// and accept the partner, if one is named.
 public fun new_vault<Meme, Quote, CoinA, CoinB>(
     position: Position,
+    package_version: &PackageVersion,
     fee_split: FeeSplit,
     partner_id: Option<ID>,
     creation_policy: &CreationPolicy,
@@ -131,6 +137,8 @@ public fun new_vault<Meme, Quote, CoinA, CoinB>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    package_version.assert_current();
+
     creation_policy.assert_allowed<Quote, Witness>();
     assert_coin_pair<Meme, Quote, CoinA, CoinB>();
     assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
@@ -155,12 +163,15 @@ public fun new_vault<Meme, Quote, CoinA, CoinB>(
 /// recipient and accruing the holder Quote and paying holder Meme to the governed treasury. `CoinA` and `CoinB` are the pool's coin order.
 public fun collect_fees<Meme, Quote, CoinA, CoinB>(
     vault: &mut Vault<Meme, Quote>,
+    package_version: &PackageVersion,
     fee_policy: &FeePolicy,
     cetus_config: &GlobalConfig,
     burn_manager: &BurnManager,
     pool: &mut Pool<CoinA, CoinB>,
     ctx: &mut TxContext,
 ) {
+    package_version.assert_current();
+
     let meme_is_a = meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
     assert!(vault.pool_id() == object::id(pool), EPositionPoolMismatch);
 
@@ -190,7 +201,10 @@ fun meme_is_coin_a<Meme, Quote, CoinA, CoinB>(): bool {
 
 /// Aborts unless `(CoinA, CoinB)` is exactly the presale's Meme and Quote, in either order.
 fun assert_coin_pair<Meme, Quote, CoinA, CoinB>() {
-    let (meme, quote) = (type_name::with_original_ids<Meme>(), type_name::with_original_ids<Quote>());
+    let (meme, quote) = (
+        type_name::with_original_ids<Meme>(),
+        type_name::with_original_ids<Quote>(),
+    );
     let (coin_a, coin_b) = (
         type_name::with_original_ids<CoinA>(),
         type_name::with_original_ids<CoinB>(),
@@ -214,8 +228,10 @@ fun fixed_side_is_a(
     quote_amount: u64,
     meme_is_a: bool,
 ): bool {
-    let (amount_a, amount_b) = if (meme_is_a) (meme_amount, quote_amount)
-    else (quote_amount, meme_amount);
+    let (amount_a, amount_b) = if (meme_is_a) (meme_amount, quote_amount) else (
+        quote_amount,
+        meme_amount,
+    );
     let prefer_a = (meme_amount >= quote_amount) == meme_is_a;
     let (_, needed_a, needed_b) = clmm_math::get_liquidity_by_amount(
         i32::from_u32(tick_lower),
@@ -245,8 +261,10 @@ fun cast_pair<First: store, Second: store, ToFirst: store, ToSecond: store>(
     second: Second,
     meme_is_a: bool,
 ): (ToFirst, ToSecond) {
-    if (meme_is_a) (scratch.cast(first), scratch.cast(second))
-    else (scratch.cast(second), scratch.cast(first))
+    if (meme_is_a) (scratch.cast(first), scratch.cast(second)) else (
+        scratch.cast(second),
+        scratch.cast(first),
+    )
 }
 
 fun pool_creation_cap<Meme>(self: &VenueConfig): &PoolCreationCap {
@@ -310,11 +328,12 @@ const EWrongCoinPair: vector<u8> = b"CoinA and CoinB must be exactly the presale
 
 use blast_presale::{
     blast_presale::{Self as presale, FeeSplit, Presale, PresaleInitializer},
+    blast_presale_package::PackageVersion,
     creation_policy::CreationPolicy,
     fee_policy::FeePolicy,
     migration_math,
     presale_vault::{Self as vault, Vault},
-    venue_config::VenueConfig,
+    venue_config::VenueConfig
 };
 
 use cetus_clmm::{
@@ -323,7 +342,7 @@ use cetus_clmm::{
     factory::{Self, PoolCreationCap, Pools},
     pool::Pool,
     pool_creator,
-    position::Position,
+    position::Position
 };
 
 use integer_mate::i32;
@@ -335,7 +354,11 @@ use std::type_name;
 use sui::{balance::Balance, clock::Clock, coin::{Coin, TreasuryCap}, dynamic_field};
 
 use fun cast as UID.cast;
+
 use fun cast_pair as UID.cast_pair;
+
 use fun dynamic_field::add as UID.add_dynamic_field;
+
 use fun dynamic_field::remove as UID.remove_dynamic_field;
+
 use fun pool_creation_cap as VenueConfig.pool_creation_cap;

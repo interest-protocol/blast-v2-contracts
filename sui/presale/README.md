@@ -2,8 +2,7 @@
 
 `blast_presale` is a standalone Sui package for presales that overflow pro rata or
 fill first come up to a hard cap. Its
-`UpgradeCap` is sealed in a shared `PackageAdmin` restricted to dependency-only
-upgrades, so venue versions can be relinked but presale logic never changes.
+`UpgradeCap` is held in shared compatible `PackageAdmin` custody after activation, allowing governed logic changes and venue relinks with an atomic version cutover.
 It does not import or mutate launchpad state. Its Bluefin, Cetus, and Aftermath
 adapters, LP vault, and holder-reward rounds live in the same package.
 
@@ -111,8 +110,7 @@ return its unclaimed rewards to the vault. The `PresaleCap` claims migration res
 can be destroyed after cancellation. Anyone may relay participant or reward claims, but payment
 always goes to the committed beneficiary. Eligibility and rewards share the
 package's generic positional Blake2b-256 Merkle verifier. Neither adapter
-collects venue incentive rewards credited to the position, and under
-dependency-only custody no later generation can add that path.
+collects venue incentive rewards credited to the position.
 
 After minting, the contract consumes the matching TreasuryCap into Coin Registry
 `Fixed` or `BurnOnly` state. No mint authority remains after the presale is
@@ -122,7 +120,7 @@ be reversed.
 
 Run `scripts/verify.sh`. Publish to mainnet with `scripts/publish.sh --preview`,
 repeat with `--execute`, then seal the returned `UpgradeCap` with
-`scripts/wrap_package_admin.sh <package-id> <upgrade-cap-id> --preview` and
+`scripts/wrap_package_admin.sh <package-id> <bootstrap-id> <upgrade-cap-id> --preview` and
 `--execute` before creating any presale. The package mints no administrator
 capability: Blast administers it through the one shared Blast ACL
 (`blast_admin`, [ADR 0097](../../docs/decisions/0097-one-singleton-acl-with-typed-roles.md)),
@@ -130,7 +128,7 @@ which it already links through `blast_partners`. `blast_presale_domain` declares
 six roles: `FeeAdmin` sets Blast's rates and the partners new sales may name,
 `TreasuryAdmin` their destination, `ListingAdmin` and `AdapterAdmin` the Quote
 types and migrators new sales may use, `RewardsAdmin` publishes holder-reward
-rounds, and `UpgradeAdmin` authorizes dependency-only upgrades.
+rounds, and `UpgradeAdmin` authorizes compatible upgrades and atomic version cutovers.
 [DEPLOYING.md](DEPLOYING.md) gives the complete order: custody is verified on
 chain before any Quote type or migrator is allowed, so no presale can exist
 under an unsealed cap.
@@ -140,3 +138,9 @@ Blast's fees are proposed in [ADR 0101](../../docs/decisions/0101-presale-protoc
 and its presale partners in [ADR 0106](../../docs/decisions/0106-presale-partners.md);
 creation through the initializer, the sale-level hard cap, and early close are proposed in
 [ADR 0110](../../docs/decisions/0110-presale-initializer-and-early-close.md).
+
+Presale activation and operational versioning follow launchpad: publication transfers
+`blast_presale_package::Bootstrap`, and wrapping it with the matching fresh cap
+shares `PackageVersion`. Every state-changing call requires that version. See
+[ADR 0117](../../docs/decisions/0117-presale-versioning-and-activation.md). This
+source requires fresh publication; existing dependency-only releases stay unchanged.

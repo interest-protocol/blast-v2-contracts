@@ -10,6 +10,27 @@ import unittest
 
 
 class PublicationTests(unittest.TestCase):
+    def test_activation_passes_bootstrap_before_upgrade_cap(self):
+        script = Path(__file__).resolve().parent / 'wrap_package_admin.sh'
+        with tempfile.TemporaryDirectory() as temp:
+            fake_sui = Path(temp) / 'sui'
+            fake_sui.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
+            fake_sui.chmod(0o755)
+            for mode in ['--preview', '--execute']:
+                result = subprocess.run(
+                    ['bash', str(script), '0x10', '0x20', '0x30', mode],
+                    env={**os.environ, 'PATH': temp + os.pathsep + os.environ['PATH']},
+                    capture_output=True, text=True, check=True,
+                )
+                expected = ['client', '--client.env', 'mainnet', 'ptb', '--move-call',
+                            '0x10::package_admin::wrap', '@0x20', '@0x30', '--json']
+                if mode == '--preview':
+                    expected.append('--preview')
+                self.assertEqual(result.stdout.splitlines(), expected)
+            result = subprocess.run(['bash', str(script), '0x10', '0x30', '--execute'],
+                                    capture_output=True, text=True, check=False)
+            self.assertEqual(result.returncode, 2)
+
     def test_cli_and_transaction_status_must_both_succeed(self):
         package = Path(__file__).resolve().parent.parent
         success = '{"effects":{"status":{"status":"success"}}}'

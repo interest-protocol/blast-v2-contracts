@@ -49,16 +49,19 @@ public struct PoolCreation<phantom Lp, phantom Meme, phantom Quote> has key {
 /// `finalize`, which reserves its pool creation.
 public fun new<Meme, Quote>(
     treasury_cap: TreasuryCap<Meme>,
+    package_version: &PackageVersion,
     creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
     venue_config: &mut VenueConfig,
     dao_fee_bps: u16,
 ): PresaleInitializer<Meme, Quote> {
+    package_version.assert_current();
+
     assert!(dao_fee_bps > 0 && dao_fee_bps <= MAX_DAO_FEE_BPS, EInvalidDaoFee);
 
     venue_config.add_pool_tier<Meme, Quote, _>(&Venue(), 0, dao_fee_bps as u64);
 
-    presale::new(treasury_cap, Witness(), creation_policy, fee_policy)
+    presale::new(treasury_cap, package_version, Witness(), creation_policy, fee_policy)
 }
 
 /// Finalizes a sale `new` started, as `blast_presale::finalize` does, and returns it with the
@@ -68,13 +71,19 @@ public fun new<Meme, Quote>(
 /// with `share`; a sale is never funded in that PTB.
 public fun finalize<Lp, Meme, Quote>(
     initializer: PresaleInitializer<Meme, Quote>,
+    package_version: &PackageVersion,
     currency: &mut Currency<Meme>,
     create_pool_cap: CreatePoolCapV2,
     ctx: &mut TxContext,
 ): (Presale<Meme, Quote>, PresaleCap, PoolCreation<Lp, Meme, Quote>) {
-    assert!(initializer.migration_witness() == type_name::with_original_ids<Witness>(), EWrongMigrator);
+    package_version.assert_current();
 
-    let (sale, cap) = initializer.finalize(currency, ctx);
+    assert!(
+        initializer.migration_witness() == type_name::with_original_ids<Witness>(),
+        EWrongMigrator,
+    );
+
+    let (sale, cap) = initializer.finalize(package_version, currency, ctx);
 
     let pool_creation = PoolCreation<Lp, Meme, Quote> {
         id: object::new(ctx),
@@ -92,7 +101,12 @@ public fun finalize<Lp, Meme, Quote>(
 }
 
 /// Shares a reservation `finalize` returned, so anyone can migrate its sale once it is funded.
-public fun share<Lp, Meme, Quote>(self: PoolCreation<Lp, Meme, Quote>) {
+public fun share<Lp, Meme, Quote>(
+    self: PoolCreation<Lp, Meme, Quote>,
+    package_version: &PackageVersion,
+) {
+    package_version.assert_current();
+
     transfer::share_object(self);
 }
 
@@ -104,6 +118,7 @@ public fun share<Lp, Meme, Quote>(self: PoolCreation<Lp, Meme, Quote>) {
 #[allow(lint(share_owned))]
 public fun migrate<Lp, Meme, Quote>(
     sale: &mut Presale<Meme, Quote>,
+    package_version: &PackageVersion,
     pool_creation: PoolCreation<Lp, Meme, Quote>,
     fee_policy: &FeePolicy,
     venue_config: &VenueConfig,
@@ -112,13 +127,15 @@ public fun migrate<Lp, Meme, Quote>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    package_version.assert_current();
+
     let PoolCreation { id, presale_id, create_pool_cap } = pool_creation;
     assert!(presale_id == object::id(sale), EWrongPresale);
     id.delete();
 
     let (_, pool_fee_rate) = venue_config.pool_tier<Meme>();
     let dao_fee_bps = pool_fee_rate as u16;
-    let (meme, quote) = sale.migrate(fee_policy, Witness(), clock, ctx);
+    let (meme, quote) = sale.migrate(package_version, fee_policy, Witness(), clock, ctx);
     let (meme_amount, quote_amount) = (meme.value(), quote.value());
 
     let (pool, lp) = create_pool<Lp, _, _>(
@@ -167,11 +184,14 @@ public fun migrate<Lp, Meme, Quote>(
 /// is valid. Another venue's vault aborts: its fees settle only through its own venue.
 public fun collect_fees<Meme, Quote>(
     vault: &mut Vault<Meme, Quote>,
+    package_version: &PackageVersion,
     fee_policy: &FeePolicy,
     meme_fees: vector<Receiving<Coin<Meme>>>,
     quote_fees: vector<Receiving<Coin<Quote>>>,
     ctx: &mut TxContext,
 ) {
+    package_version.assert_current();
+
     assert!(vault.has_position(&Venue()), EWrongVault);
 
     let meme = vault.receive_fees(meme_fees);
@@ -300,13 +320,7 @@ public fun pool_creation_reserved_fields<Lp, Meme, Quote>(
 public fun dao_fee_pool_created_fields<Lp, Meme, Quote>(
     event: &DaoFeePoolCreated<Lp, Meme, Quote>,
 ): (ID, ID, ID, ID, ID) {
-    (
-        event.vault_id,
-        event.pool_id,
-        event.dao_fee_pool_id,
-        event.owner_cap_id,
-        event.lp_coin_id,
-    )
+    (event.vault_id, event.pool_id, event.dao_fee_pool_id, event.owner_cap_id, event.lp_coin_id)
 }
 
 // === Events ===
@@ -376,14 +390,12 @@ use amm::{pool::{CreatePoolCapV2, Pool}, pool_factory, pool_registry::PoolRegist
 
 use blast_presale::{
     blast_presale::{Self as presale, Presale, PresaleCap, PresaleInitializer},
+    blast_presale_package::PackageVersion,
     creation_policy::CreationPolicy,
     fee_policy::FeePolicy,
     presale_vault::{Self as vault, Vault},
-    venue_config::VenueConfig,
+    venue_config::VenueConfig
 };
-
-#[test_only]
-use blast_presale::{blast_presale::FeeSplit, fee_policy::ProtocolFees};
 
 use dao_fee_amm::{pool as dao_fee_pool, version::Version};
 
@@ -395,7 +407,10 @@ use sui::{
     coin::{Coin, TreasuryCap},
     coin_registry::Currency,
     event,
-    transfer::Receiving,
+    transfer::Receiving
 };
+
+#[test_only]
+use blast_presale::{blast_presale::FeeSplit, fee_policy::ProtocolFees};
 
 use fun receive_fees as Vault.receive_fees;

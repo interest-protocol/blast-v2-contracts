@@ -35,9 +35,12 @@ fun init(ctx: &mut TxContext) {
 /// existing ones keep it.
 public fun set_quote_allowed<Quote>(
     self: &mut CreationPolicy,
+    package_version: &PackageVersion,
     _: &AdminWitness<ListingAdmin>,
     allowed: bool,
 ) {
+    package_version.assert_current();
+
     let quote = type_name::with_original_ids<Quote>();
     assert!(self.allowed_quotes.contains(&quote) != allowed, EAllowanceUnchanged);
 
@@ -55,9 +58,12 @@ public fun set_quote_allowed<Quote>(
 /// any of which a caller can construct, is rejected.
 public fun set_migration_witness_allowed<MigrationWitness: drop>(
     self: &mut CreationPolicy,
+    package_version: &PackageVersion,
     _: &AdminWitness<AdapterAdmin>,
     allowed: bool,
 ) {
+    package_version.assert_current();
+
     let migration_witness = type_name::with_original_ids<MigrationWitness>();
     assert!(!allowed || !is_constructible_by_anyone<MigrationWitness>(), EInvalidMigrationWitness);
     assert!(
@@ -75,9 +81,12 @@ public fun set_migration_witness_allowed<MigrationWitness: drop>(
 /// the removal; adding a removed partner accepts it again.
 public fun add_partner(
     self: &mut CreationPolicy,
+    package_version: &PackageVersion,
     _: &AdminWitness<FeeAdmin>,
     partner: &Partner,
 ) {
+    package_version.assert_current();
+
     let partner_id = object::id(partner);
     let key = PartnerKey(partner_id);
 
@@ -96,10 +105,13 @@ public fun add_partner(
 /// partner, `blast_partners::delay_ms()`. Sales that already name it keep paying it.
 public fun remove_partner(
     self: &mut CreationPolicy,
+    package_version: &PackageVersion,
     _: &AdminWitness<FeeAdmin>,
     partner: &Partner,
     clock: &Clock,
 ) {
+    package_version.assert_current();
+
     let partner_id = object::id(partner);
     let now_ms = clock.timestamp_ms();
     self.assert_partner(partner_id, now_ms);
@@ -117,10 +129,7 @@ public fun remove_partner(
 /// Aborts unless a new presale, or a new vault without a presale, may use `Quote` and be created
 /// by `MigrationWitness`'s migrator.
 public(package) fun assert_allowed<Quote, MigrationWitness>(self: &CreationPolicy) {
-    assert!(
-        self.allowed_quotes.contains(&type_name::with_original_ids<Quote>()),
-        EQuoteNotAllowed,
-    );
+    assert!(self.allowed_quotes.contains(&type_name::with_original_ids<Quote>()), EQuoteNotAllowed);
     assert!(
         self
             .allowed_migration_witnesses
@@ -256,13 +265,19 @@ use blast_admin::blast_acl::AdminWitness;
 
 use blast_partners::blast_partners::{Self as partners, Partner};
 
-use blast_presale::blast_presale_domain::{AdapterAdmin, FeeAdmin, ListingAdmin};
+use blast_presale::{
+    blast_presale_domain::{AdapterAdmin, FeeAdmin, ListingAdmin},
+    blast_presale_package::PackageVersion
+};
 
 use std::type_name::{Self, TypeName};
 
 use sui::{clock::Clock, dynamic_field, event, vec_set::{Self, VecSet}};
 
 use fun dynamic_field::add as UID.add_dynamic_field;
+
 use fun dynamic_field::borrow as UID.dynamic_field;
+
 use fun dynamic_field::borrow_mut as UID.dynamic_field_mut;
+
 use fun dynamic_field::exists as UID.has_dynamic_field;

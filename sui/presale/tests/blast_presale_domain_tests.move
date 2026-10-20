@@ -35,6 +35,9 @@ public struct Fixture {
 /// An administrator granted each presale role signs in to it and runs that role's operations.
 fun each_presale_role_signs_in_to_its_own_operations() {
     let mut fixture = start();
+    let package_version = blast_presale::blast_presale_package::new_for_testing(fixture
+        .scenario
+        .ctx());
     fixture.grant<FeeAdmin>();
     fixture.grant<TreasuryAdmin>();
     fixture.grant<ListingAdmin>();
@@ -42,28 +45,33 @@ fun each_presale_role_signs_in_to_its_own_operations() {
     fixture.grant<UpgradeAdmin>();
     let mut fee_policy = fee_policy::new_for_testing(fixture.scenario.ctx());
     let mut creation_policy = creation_policy::new_for_testing(fixture.scenario.ctx());
-    let mut package_admin = package_admin::seal_any_dependency_only_for_testing(
-        sui::package::test_publish(@0xB1A57.to_id(), fixture.scenario.ctx()),
-        fixture.scenario.ctx(),
-    );
+    let mut package_admin = package_admin::new_for_testing(fixture.scenario.ctx());
 
     fee_policy.set_fees(
+        &package_version,
         &fixture.acl.sign_in<FeeAdmin>(&fixture.admin_cap),
         bps::new(100),
         bps::new(200),
         bps::new(300),
         bps::new(400),
     );
-    fee_policy.set_destination(&fixture.acl.sign_in<TreasuryAdmin>(&fixture.admin_cap), TREASURY);
+    fee_policy.set_destination(
+        &package_version,
+        &fixture.acl.sign_in<TreasuryAdmin>(&fixture.admin_cap),
+        TREASURY,
+    );
     creation_policy.set_quote_allowed<QUOTE>(
+        &package_version,
         &fixture.acl.sign_in<ListingAdmin>(&fixture.admin_cap),
         true,
     );
     creation_policy.set_migration_witness_allowed<MIGRATOR>(
+        &package_version,
         &fixture.acl.sign_in<AdapterAdmin>(&fixture.admin_cap),
         true,
     );
     let ticket = package_admin.authorize_upgrade(
+        &package_version,
         &fixture.acl.sign_in<UpgradeAdmin>(&fixture.admin_cap),
         DIGEST,
     );
@@ -74,14 +82,19 @@ fun each_presale_role_signs_in_to_its_own_operations() {
     assert_eq!(*ticket.ticket_digest(), DIGEST);
 
     destroy(ticket);
-    package_admin.destroy_for_testing();
+    destroy(package_admin);
     creation_policy.destroy_for_testing();
     fee_policy.destroy_for_testing();
     fixture.end();
+
+    std::unit_test::destroy(package_version);
 }
 
 #[test]
-#[expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::blast_acl)]
+#[expected_failure(
+    abort_code = blast_admin::errors::EAdminRoleNotGranted,
+    location = blast_admin::blast_acl,
+)]
 /// Holding every other presale role, or the partners package's own administrator role, never
 /// signs in as the presale `FeeAdmin`.
 fun an_admin_without_the_presale_role_cannot_sign_in_to_it() {
@@ -99,7 +112,10 @@ fun an_admin_without_the_presale_role_cannot_sign_in_to_it() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_admin::errors::EInvalidAdminCap, location = blast_admin::blast_acl)]
+#[expected_failure(
+    abort_code = blast_admin::errors::EInvalidAdminCap,
+    location = blast_admin::blast_acl,
+)]
 /// Once the root revokes an administrator, its cap signs in to none of its presale roles.
 fun a_revoked_admin_cannot_sign_in_to_a_presale_role() {
     let mut fixture = start();
@@ -161,7 +177,7 @@ use blast_presale::{
     bps,
     creation_policy,
     fee_policy,
-    package_admin,
+    package_admin
 };
 
 use std::unit_test::{assert_eq, destroy};

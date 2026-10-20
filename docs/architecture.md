@@ -19,7 +19,7 @@ by one of these boundaries:
 This keeps V2 smaller than the historical collection of interdependent packages
 without forcing unrelated dependencies into the trusted core.
 
-The dependency-only upgradeable `blast_presale` package is a separate product boundary: it owns
+The operationally versioned, compatible-upgradeable `blast_presale` package is a separate product boundary: it owns
 presale escrow, eligibility, proportional settlement, permissionless Bluefin,
 Cetus, and Aftermath migration, LP custody, and fee/reward distribution without
 importing or mutating launchpad state. Its adapters share the package with presale core so a
@@ -318,3 +318,9 @@ The Sui custody and interim authority decision is accepted in
 [ADR 0032](decisions/0032-admin-authorized-upgrade-cap-custody.md). Replacement
 governance, delay, recovery, and remaining shared-state cutover coverage require
 approval before the first public deployment.
+
+Presale uses launchpad-style custody-before-activation (ADR 0117): an owned
+Bootstrap precedes the shared PackageVersion. Its separate provenance module
+`blast_presale_package` avoids policy/economics module cycles. SDK callers pass
+the same read-only version to each public mutation; upgrade commit advances it
+atomically and makes prior-generation bytecode unusable.

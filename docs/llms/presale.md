@@ -18,15 +18,24 @@ deadline passes unmigrated, refunds every commitment in full. After migration a
 DAO-fee pool's owner cap, the LP coin itself being sent to `0x0`) and splits its trading fees
 between Blast, the creator's fee recipients, and holder-reward rounds.
 
-The package shares no code or state with Blast's bonding-curve launchpad, apart from the
-`blast_partners` partner registry both use. Its upgrade capability is sealed for dependency-only
-upgrades (`blast_presale::package_admin::PackageAdmin`), so venue dependencies can be relinked but
-presale logic never changes. In this guide `SaleToken` is the sale's coin; the venue modules and
-the vault call the same type `Meme`.
+The presale is separate from the bonding-curve launchpad and reuses the shared Blast
+ACL, partner registry, and operational-version/capability-custody primitives.
+Publication creates an owned `blast_presale_package::Bootstrap`; it shares no
+`PackageVersion`. Only `blast_presale::package_admin::wrap(Bootstrap, UpgradeCap)` validates the
+fresh matching native cap and shares the usable version and compatible upgrade
+custody. Partners may prepare integrations before activation but cannot start sales.
+See ADR 0117. In this guide `SaleToken` is the sale coin; venues call it `Meme`.
+
+All state-changing public calls below take `&blast_presale_package::PackageVersion`
+immediately after their first object argument, including initializer setters,
+finalize/share, policy administration, migrations, payouts, and holder rewards.
+It is a read-only shared input except during upgrade commit-and-advance. A stale
+or future generation aborts in `blast_admin::operational_version` before effects.
+Pure value constructors, getters and `destroy_cap` do not take it.
 
 ### Objects and authority
 
-Shared singletons, created once at deployment (`PackageAdmin` by
+Shared singletons, created once at deployment (`PackageAdmin` and `PackageVersion` by
 `blast_presale::package_admin::wrap`, the others when the package is published):
 
 - `fee_policy::FeePolicy`: Blast's current rates (`raise_bps`, `token_bps`, `lp_fee_meme_bps`,
@@ -40,7 +49,8 @@ Shared singletons, created once at deployment (`PackageAdmin` by
   by `blast_presale::aftermath::finalize` and shared by `blast_presale::aftermath::share` in the
   same PTB; holds the Aftermath `CreatePoolCapV2` of the sale's fresh LP coin `Lp` and the sale's
   ID, so only that sale's migration can consume it.
-- `blast_presale::package_admin::PackageAdmin`: holds the package's dependency-only upgrade cap.
+- `blast_presale::package_admin::PackageAdmin`: holds the package's Publisher and compatible upgrade cap.
+- `blast_presale::blast_presale_package::PackageVersion`: the singleton active generation, shared only on activation.
 
 Per-sale objects:
 
@@ -81,7 +91,7 @@ reference. Each admin call names exactly one role in its signature:
 | `blast_presale_domain::ListingAdmin` | `creation_policy::set_quote_allowed` |
 | `blast_presale_domain::AdapterAdmin` | `creation_policy::set_migration_witness_allowed` |
 | `blast_presale_domain::RewardsAdmin` | `holder_rewards::publish_round` |
-| `blast_presale_domain::UpgradeAdmin` | `blast_presale::package_admin::authorize_upgrade`, `blast_presale::package_admin::commit_upgrade` |
+| `blast_presale_domain::UpgradeAdmin` | `blast_presale::package_admin::authorize_upgrade`, `blast_presale::package_admin::commit_upgrade_and_advance` |
 
 A role from another package, such as `blast_fun_domain::FeeAdmin`, is a different type and
 cannot reach these calls. No admin can pause a sale, cancel it, move commitments, change windows, recipients, or the fee split. Its
@@ -632,9 +642,9 @@ Integrators cannot call these; they explain state changes. Each takes the
 | `creation_policy::add_partner` | Lets new sales name a partner at once (also cancels a pending removal). Emits `creation_policy::PartnerAdded`. |
 | `creation_policy::remove_partner` | New sales may still name the partner for `blast_partners::blast_partners::delay_ms` (7 days). Sales that already name it keep paying it. Emits `creation_policy::PartnerRemoved`. |
 | `holder_rewards::publish_round`, `holder_rewards::settle_gas_reserve` | See above. |
-| `blast_presale::package_admin::authorize_upgrade`, `blast_presale::package_admin::commit_upgrade` | Dependency-only upgrades. |
+| `blast_presale::package_admin::authorize_upgrade`, `blast_presale::package_admin::commit_upgrade_and_advance` | Compatible upgrades with atomic operational-version cutover. |
 
-`blast_presale::package_admin::wrap` seals the never-upgraded publication cap once, at deployment.
+`blast_presale::package_admin::wrap` consumes the publication Bootstrap and never-upgraded matching cap once. Each upgrade increments both compiled generation constants and commits/advances in one PTB; old bytecode then rejects the advanced version. Existing dependency-only deployments require a fresh publication to adopt this design.
 
 ### Economics
 

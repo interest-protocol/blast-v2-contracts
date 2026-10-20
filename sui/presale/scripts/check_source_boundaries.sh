@@ -62,28 +62,27 @@ done | sort)"
   'holder_rewards:publish_round:RewardsAdmin' \
   'holder_rewards:settle_gas_reserve:RewardsAdmin' \
   'package_admin:authorize_upgrade:UpgradeAdmin' \
-  'package_admin:commit_upgrade:UpgradeAdmin' \
+  'package_admin:commit_upgrade_and_advance:UpgradeAdmin' \
   'presale_vault:set_protocol_lp_fees:FeeAdmin' | sort)" ] \
   || { printf '%s\n' "$admin_roles" >&2; fail "Every administrator action must take exactly its pinned presale role."; }
 
-# 2. Upgrade custody stays sealed and dependency-only, so every generation runs identical logic.
+# 2. Publication cannot activate presales; custody intake alone shares the version.
 admin_production="$(production "$sources/package_admin.move")"
-seal_body="$(sed -n '/^fun seal_dependency_only(/,/^}/p' <<<"$admin_production")"
-rg -q 'upgrade_cap\.only_dep_upgrades\(\);' <<<"$seal_body" \
-  || fail "Sealing must narrow the cap to dependency-only upgrades before sharing it."
-rg -q 'transfer::share_object\(seal_dependency_only\(upgrade_cap, ctx\)\);' <<<"$admin_production" \
-  || fail "wrap must share only a cap sealed by seal_dependency_only."
-if rg -n '\bmake_immutable\b|\bonly_additive_upgrades\b' "$sources"; then
-  fail "Presale custody must stay relinkable and dependency-only."
+marker_production="$(production "$sources/blast_presale_package.move")"
+if rg -n '\bmake_immutable\b|\bonly_additive_upgrades\b|\bonly_dep_upgrades\b' "$sources"; then
+  fail "Presale custody must retain compatible, relinkable upgrades."
 fi
 if rg -U -n '^public fun [^(]+\([^)]*\): (&)?(mut )?UpgradeCap' <<<"$admin_production"; then
-  fail "No custody path may release the sealed UpgradeCap."
+  fail "No custody path may release the UpgradeCap."
 fi
 if rg -n 'transfer::(public_)?transfer\(' <<<"$admin_production"; then
-  fail "The framework UpgradeCap must never leave sealed custody."
+  fail "The native capabilities must never leave shared custody."
 fi
-[ "$(rg -c '^    _: &AdminWitness<UpgradeAdmin>,$' <<<"$admin_production")" -eq 2 ] \
-  || fail "Authorizing and committing an upgrade must each require the UpgradeAdmin role."
+rg -Fq 'generation.share_version(ctx);' <<<"$admin_production" \
+  || fail "wrap must share the operational version after custody validation."
+rg -Fq 'transfer::transfer(Bootstrap' <<<"$marker_production" \
+  || fail "Publication must transfer an owned bootstrap."
+python3 "$package_dir/scripts/check_version_boundaries.py"
 
 # 3. A sale's Blast partner is named only by set_partner on its initializer, so `finalize` fixes it
 #    before the sale exists (ADRs 0106 and 0110), and its vault keeps that partner for good
