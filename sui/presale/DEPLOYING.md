@@ -1,14 +1,14 @@
 # Deploying Blast presale
 
 Use this runbook for a new `blast_presale` deployment. Record the normalized result
-in the format required by [`deployments/README.md`](../../deployments/README.md).
-The order matters: a presale can exist only after Blast's `ListingAdmin` and
-`AdapterAdmin` allow a Quote type and a migrator, so custody is sealed and verified before any allowlisting, and no
-sale is ever created under an unsealed cap.
+in the format required by [`deployments/README.md`](../../../deployments/README.md).
+Publication alone cannot activate presales. The publisher receives an owned Bootstrap;
+only wrapping it with the matching fresh UpgradeCap shares PackageVersion.
+Every policy mutation and sale creation requires that shared version (ADR 0117).
 
 1. Retire the previous generation's link when a release changes presale logic.
    The live package, recorded in
-   `deployments/sui/mainnet/2026-10-09-blast-presale.json`, is sealed
+   `deployments/sui/mainnet/2026-10-20-blast-presale-unregulated.json`, is sealed
    dependency-only and can never gain new logic, so such a release is a new
    publication, not an upgrade
    ([ADR 0104](../../docs/decisions/0104-external-presale-migrators-and-vendor-packages.md)).
@@ -21,15 +21,16 @@ sale is ever created under an unsealed cap.
    and the partner registry (see the partners
    [README](../partners/README.md)). Run the complete `scripts/verify.sh` gate,
    then `scripts/publish.sh --preview`
-   and `--execute`, which publish to mainnet. The sender receives only the raw `UpgradeCap`; the
+   and `--execute`, which publish to mainnet. The sender receives the raw `UpgradeCap` and owned `blast_presale_package::Bootstrap`; the
    package mints no administrator capability. Do not upgrade the package before step 3:
    `package_admin::wrap` accepts only a never-upgraded cap, and a cap upgraded
    first can never be sealed.
-3. Seal custody with `scripts/wrap_package_admin.sh <package-id> <upgrade-cap-id>
+3. Seal custody with `scripts/wrap_package_admin.sh <package-id> <bootstrap-id> <upgrade-cap-id>
    --preview` and `--execute`.
 4. From the effects of step 3, verify that `PackageAdmin` is shared and that the
    `UpgradeCap` is wrapped inside it, no longer address-owned, with its policy
-   narrowed to dependency-only (`192`). From the publish effects, record the
+   unchanged at compatible (`0`). Record the newly shared `PackageVersion` from
+   these activation effects. From the publish effects, record the
    shared `FeePolicy`, `CreationPolicy`, and `VenueConfig` singletons.
 5. With the Blast ACL's `SuperAdminCap`, grant the presale roles
    (`blast_acl::grant_role` with each `blast_presale_domain` type) to the
@@ -40,7 +41,7 @@ sale is ever created under an unsealed cap.
    partners new sales may name; `ListingAdmin` allows Quote types;
    `AdapterAdmin` allows migrators, each of which receives the liquidity of the
    sales it creates; `RewardsAdmin` directs every vault's holder-reward share;
-   and `UpgradeAdmin` authorizes dependency-only upgrades. Each call signs in
+   and `UpgradeAdmin` authorizes compatible upgrades with atomic generation cutover. Each call signs in
    with `blast_acl::sign_in` in the same PTB. The root revokes a role or an
    administrator at once if a cap is lost or compromised.
 6. As `TreasuryAdmin`, call `fee_policy::set_destination`; the policy pays the
@@ -85,3 +86,9 @@ with its amendments [0101](../../docs/decisions/0101-presale-protocol-fees.md),
 [0102](../../docs/decisions/0102-presale-creation-allowlists.md),
 [0104](../../docs/decisions/0104-external-presale-migrators-and-vendor-packages.md),
 and [0106](../../docs/decisions/0106-presale-partners.md).
+
+For later governed upgrades, increment both compiled generation constants. Authorize
+the digest with UpgradeAdmin, execute the native upgrade, and call
+`commit_upgrade_and_advance` with the receipt and mutable PackageVersion in the
+same PTB. Refresh SDK package IDs while retaining the original type identity and
+shared objects. Never advance a version separately from the native commit.

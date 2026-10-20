@@ -84,8 +84,9 @@ fun collected_fees_pay_recipients_and_route_only_holder_meme() {
 /// destination before the creator's split applies to the rest.
 fun collected_fees_pay_blast_its_share_first() {
     let mut scenario = test_scenario::begin(CREATOR);
+    let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let mut policy = fee_policy::new_for_testing(scenario.ctx());
-    policy.set_destination(&treasury_admin(), TREASURY);
+    policy.set_destination(&package_version, &treasury_admin(), TREASURY);
     let mut vault = vault_paying_blast(option::none(), &mut scenario);
 
     vault.credit_fees_for_testing(
@@ -121,6 +122,8 @@ fun collected_fees_pay_blast_its_share_first() {
     vault.destroy_holding(0, 2);
     policy.destroy_for_testing();
     scenario.end();
+
+    std::unit_test::destroy(package_version);
 }
 
 #[test]
@@ -141,8 +144,14 @@ fun a_partnered_vault_holds_blasts_lp_fees_for_its_partner() {
     let (destination, protocol_meme, protocol_quote) = event.fees_collected_protocol_fields();
     assert_eq!(destination, option::none());
     assert_eq!(vector[protocol_meme, protocol_quote], vector[11, 3]);
-    let (_, _, fee_recipient_meme, fee_recipient_quote, holder_rewards_meme, holder_rewards_quote) =
-        event.fees_collected_fields();
+    let (
+        _,
+        _,
+        fee_recipient_meme,
+        fee_recipient_quote,
+        holder_rewards_meme,
+        holder_rewards_quote,
+    ) = event.fees_collected_fields();
     assert_eq!(fee_recipient_meme, vector[45, 18]);
     assert_eq!(fee_recipient_quote, vector[4, 1]);
     assert_eq!(vector[holder_rewards_meme, holder_rewards_quote], vector[27, 2]);
@@ -169,24 +178,38 @@ fun anyone_pays_the_partner_its_cut_of_blasts_lp_fees_and_blast_the_rest() {
     let mut scenario = test_scenario::begin(CREATOR);
     let partner = partners::new_for_testing(PARTNER_RECIPIENT, PARTNER_CUT_BPS, scenario.ctx());
     let mut vault = vault_paying_blast(option::some(object::id(&partner)), &mut scenario);
-    2u64.do!(|_| vault.collect_fees(
-        coin::mint_for_testing<MEME>(101, scenario.ctx()).into_balance(),
-        coin::mint_for_testing<QUOTE>(10, scenario.ctx()).into_balance(),
-        &mut scenario,
-    ));
+    2u64.do!(
+        |_| vault.collect_fees(
+            coin::mint_for_testing<MEME>(101, scenario.ctx()).into_balance(),
+            coin::mint_for_testing<QUOTE>(10, scenario.ctx()).into_balance(),
+            &mut scenario,
+        ),
+    );
 
     scenario.next_tx(HOLDER);
     vault.pay_held_lp_fees(&partner, TREASURY, &mut scenario);
 
     // The vault held 22 Meme and 6 Quote: 40% is 8.8 and 2.4, so the partner takes 8 and 2.
-    let (vault_id, destination, protocol_meme, protocol_quote, partner_meme, partner_quote) =
-        only_event<ProtocolLpFeesPaid<MEME, QUOTE>>().protocol_lp_fees_paid_fields();
+    let (
+        vault_id,
+        destination,
+        protocol_meme,
+        protocol_quote,
+        partner_meme,
+        partner_quote,
+    ) = only_event<ProtocolLpFeesPaid<MEME, QUOTE>>().protocol_lp_fees_paid_fields();
     assert_eq!(vault_id, object::id(&vault));
     assert_eq!(destination, TREASURY);
-    assert_eq!(vector[protocol_meme, protocol_quote, partner_meme, partner_quote], vector[14, 4, 8, 2]);
+    assert_eq!(
+        vector[protocol_meme, protocol_quote, partner_meme, partner_quote],
+        vector[14, 4, 8, 2],
+    );
     let (meme_partner_id, meme_paid) = only_event<PartnerPaid<MEME>>().partner_paid_fields();
     let (quote_partner_id, quote_paid) = only_event<PartnerPaid<QUOTE>>().partner_paid_fields();
-    assert_eq!(vector[meme_partner_id, quote_partner_id], vector[object::id(&partner), object::id(&partner)]);
+    assert_eq!(
+        vector[meme_partner_id, quote_partner_id],
+        vector[object::id(&partner), object::id(&partner)],
+    );
     assert_eq!(vector[meme_paid, quote_paid], vector[8, 2]);
     let (unpaid_meme, unpaid_quote) = vault.unpaid_protocol_lp_fees_for_testing();
     assert_eq!(vector[unpaid_meme, unpaid_quote], vector[0, 0]);
@@ -205,10 +228,11 @@ fun anyone_pays_the_partner_its_cut_of_blasts_lp_fees_and_blast_the_rest() {
 /// named when they were collected.
 fun held_lp_fees_go_to_the_destination_in_force_at_payout() {
     let mut scenario = test_scenario::begin(CREATOR);
+    let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let partner = partners::new_for_testing(PARTNER_RECIPIENT, PARTNER_CUT_BPS, scenario.ctx());
     let mut vault = vault_paying_blast(option::some(object::id(&partner)), &mut scenario);
     let mut policy = fee_policy::new_for_testing(scenario.ctx());
-    policy.set_destination(&treasury_admin(), TREASURY);
+    policy.set_destination(&package_version, &treasury_admin(), TREASURY);
     vault.credit_fees_for_testing(
         &policy,
         coin::mint_for_testing<MEME>(101, scenario.ctx()).into_balance(),
@@ -230,6 +254,8 @@ fun held_lp_fees_go_to_the_destination_in_force_at_payout() {
     policy.destroy_for_testing();
     destroy(partner);
     scenario.end();
+
+    std::unit_test::destroy(package_version);
 }
 
 #[test]
@@ -250,7 +276,10 @@ fun a_zero_cut_partner_leaves_blast_every_held_lp_fee() {
     let (_, _, protocol_meme, protocol_quote, partner_meme, partner_quote) = only_event<
         ProtocolLpFeesPaid<MEME, QUOTE>,
     >().protocol_lp_fees_paid_fields();
-    assert_eq!(vector[protocol_meme, protocol_quote, partner_meme, partner_quote], vector[11, 3, 0, 0]);
+    assert_eq!(
+        vector[protocol_meme, protocol_quote, partner_meme, partner_quote],
+        vector[11, 3, 0, 0],
+    );
     assert!(event::events_by_type<PartnerPaid<MEME>>().is_empty());
     assert!(event::events_by_type<PartnerPaid<QUOTE>>().is_empty());
 
@@ -311,11 +340,12 @@ fun a_vault_without_a_partner_has_no_partner_payout() {
 /// Blast at the new rates, and the creator's split applies to the rest.
 fun the_admin_changes_a_vaults_lp_fee_rates() {
     let mut scenario = test_scenario::begin(CREATOR);
+    let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let mut policy = fee_policy::new_for_testing(scenario.ctx());
-    policy.set_destination(&treasury_admin(), TREASURY);
+    policy.set_destination(&package_version, &treasury_admin(), TREASURY);
     let mut vault = vault_paying_blast(option::none(), &mut scenario);
 
-    vault.set_protocol_lp_fees(&fee_admin(), bps::new(0), bps::new(5_000));
+    vault.set_protocol_lp_fees(&package_version, &fee_admin(), bps::new(0), bps::new(5_000));
 
     let (vault_id, lp_fee_meme_bps, lp_fee_quote_bps) = only_event<
         ProtocolLpFeesChanged<MEME, QUOTE>,
@@ -334,8 +364,14 @@ fun the_admin_changes_a_vaults_lp_fee_rates() {
     let (_, protocol_meme, protocol_quote) = event.fees_collected_protocol_fields();
     // Nothing of 101 Meme and ceil(10 * 50%) = 5 Quote; the creator's split apportions 101 and 5.
     assert_eq!(vector[protocol_meme, protocol_quote], vector[0, 5]);
-    let (_, _, fee_recipient_meme, fee_recipient_quote, holder_rewards_meme, holder_rewards_quote) =
-        event.fees_collected_fields();
+    let (
+        _,
+        _,
+        fee_recipient_meme,
+        fee_recipient_quote,
+        holder_rewards_meme,
+        holder_rewards_quote,
+    ) = event.fees_collected_fields();
     assert_eq!(fee_recipient_meme, vector[51, 20]);
     assert_eq!(fee_recipient_quote, vector[3, 1]);
     assert_eq!(vector[holder_rewards_meme, holder_rewards_quote], vector[30, 1]);
@@ -343,6 +379,8 @@ fun the_admin_changes_a_vaults_lp_fee_rates() {
     vault.destroy_holding(0, 1);
     policy.destroy_for_testing();
     scenario.end();
+
+    std::unit_test::destroy(package_version);
 }
 
 #[test]
@@ -352,9 +390,11 @@ fun the_admin_changes_a_vaults_lp_fee_rates() {
 )]
 fun a_vault_lp_fee_update_must_change_the_rates() {
     let mut scenario = test_scenario::begin(CREATOR);
+    let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let mut vault = vault_paying_blast(option::none(), &mut scenario);
 
-    vault.set_protocol_lp_fees(&fee_admin(), bps::new(1_000), bps::new(2_500));
+    vault.set_protocol_lp_fees(&package_version, &fee_admin(), bps::new(1_000), bps::new(2_500));
+    std::unit_test::destroy(package_version);
     abort
 }
 
@@ -362,16 +402,21 @@ fun a_vault_lp_fee_update_must_change_the_rates() {
 /// Blast's administrator, not the presale creator, funds holder rounds.
 fun the_admin_publishes_holder_rounds_from_the_holder_share() {
     let mut scenario = test_scenario::begin(CREATOR);
+    let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let mut vault = new_vault(vector[], 10_000, &mut scenario);
     vault.credit_holder_for_testing(
-        balance::create_for_testing<MEME>(40), balance::create_for_testing<QUOTE>(5),
+        balance::create_for_testing<MEME>(40),
+        balance::create_for_testing<QUOTE>(5),
     );
     let clock = clock::create_for_testing(scenario.ctx());
 
     let policy = fee_policy::new_for_testing(scenario.ctx());
     rewards::publish_round(
         &mut vault,
-        &rewards_admin(), &policy, policy.destination(),
+        &package_version,
+        &rewards_admin(),
+        &policy,
+        policy.destination(),
         0,
         0,
         10,
@@ -399,13 +444,19 @@ fun the_admin_publishes_holder_rounds_from_the_holder_share() {
     clock.destroy_for_testing();
     vault.destroy_for_testing();
     scenario.end();
+
+    std::unit_test::destroy(package_version);
 }
 
 #[test]
 /// Equal fractional remainders favor the fee recipient over the holder-reward share.
 fun a_remainder_tie_goes_to_the_fee_recipient_before_holders() {
     let mut scenario = test_scenario::begin(CREATOR);
-    let mut vault = new_vault(vector[presale::recipient_share(CREATOR, bps::new(5_000))], 5_000, &mut scenario);
+    let mut vault = new_vault(
+        vector[presale::recipient_share(CREATOR, bps::new(5_000))],
+        5_000,
+        &mut scenario,
+    );
 
     vault.collect_fees(
         coin::mint_for_testing<MEME>(3, scenario.ctx()).into_balance(),
@@ -431,12 +482,18 @@ fun a_remainder_tie_goes_to_the_fee_recipient_before_holders() {
 /// Only the presale's own creator capability reaches the migration residuals.
 fun another_presale_cap_cannot_claim_migration_residuals() {
     let mut scenario = test_scenario::begin(CREATOR);
+    let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let mut vault = new_vault(vector[], 10_000, &mut scenario);
     let other_cap = presale::cap_for_testing(object::id_from_address(@0xD1FF), scenario.ctx());
 
-    let (meme, quote) = vault.claim_migration_residuals(&other_cap, scenario.ctx());
+    let (meme, quote) = vault.claim_migration_residuals(
+        &package_version,
+        &other_cap,
+        scenario.ctx(),
+    );
     destroy(meme);
     destroy(quote);
+    std::unit_test::destroy(package_version);
     abort
 }
 
@@ -462,8 +519,9 @@ fun a_vault_without_a_presale_takes_the_policys_lp_rates() {
         scenario.ctx(),
     );
 
-    let (_, protocol_meme, protocol_quote) = only_event<FeesCollected<MEME, QUOTE>>()
-        .fees_collected_protocol_fields();
+    let (_, protocol_meme, protocol_quote) = only_event<
+        FeesCollected<MEME, QUOTE>,
+    >().fees_collected_protocol_fields();
     assert_eq!(vector[protocol_meme, protocol_quote], vector[10, 25]);
 
     test_scenario::return_shared(vault);
@@ -477,6 +535,7 @@ fun a_vault_without_a_presale_takes_the_policys_lp_rates() {
 /// A vault created without a presale has no creator capability, so no `PresaleCap` reaches it.
 fun no_presale_cap_reaches_a_vault_without_a_presale() {
     let mut scenario = test_scenario::begin(CREATOR);
+    let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let policy = fee_policy::new_for_testing(scenario.ctx());
     let creation_policy = creation_policy::new_for_testing(scenario.ctx());
     new_vault_without_presale(&policy, option::none(), &creation_policy, 7, &mut scenario);
@@ -484,9 +543,10 @@ fun no_presale_cap_reaches_a_vault_without_a_presale() {
     let mut vault = scenario.take_shared<Vault<MEME, QUOTE>>();
     let cap = presale::cap_for_testing(object::id_from_address(@0x0), scenario.ctx());
 
-    let (meme, quote) = vault.claim_migration_residuals(&cap, scenario.ctx());
+    let (meme, quote) = vault.claim_migration_residuals(&package_version, &cap, scenario.ctx());
     destroy(meme);
     destroy(quote);
+    std::unit_test::destroy(package_version);
     abort
 }
 
@@ -506,10 +566,11 @@ fun a_vault_without_a_presale_needs_liquidity() {
 /// fees, and the partner is paid its cut of them.
 fun a_vault_without_a_presale_pays_its_partner_its_cut_of_blasts_lp_fees() {
     let mut scenario = test_scenario::begin(CREATOR);
+    let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let policy = policy_with_lp_fees(1_000, 2_500, &mut scenario);
     let partner = partners::new_for_testing(PARTNER_RECIPIENT, PARTNER_CUT_BPS, scenario.ctx());
     let mut creation_policy = creation_policy::new_for_testing(scenario.ctx());
-    creation_policy.add_partner(&fee_admin(), &partner);
+    creation_policy.add_partner(&package_version, &fee_admin(), &partner);
 
     new_vault_without_presale(
         &policy,
@@ -535,13 +596,18 @@ fun a_vault_without_a_presale_pays_its_partner_its_cut_of_blasts_lp_fees() {
     let (_, _, protocol_meme, protocol_quote, partner_meme, partner_quote) = only_event<
         ProtocolLpFeesPaid<MEME, QUOTE>,
     >().protocol_lp_fees_paid_fields();
-    assert_eq!(vector[protocol_meme, protocol_quote, partner_meme, partner_quote], vector[6, 15, 4, 10]);
+    assert_eq!(
+        vector[protocol_meme, protocol_quote, partner_meme, partner_quote],
+        vector[6, 15, 4, 10],
+    );
 
     test_scenario::return_shared(vault);
     policy.destroy_for_testing();
     creation_policy.destroy_for_testing();
     destroy(partner);
     scenario.end();
+
+    std::unit_test::destroy(package_version);
 }
 
 #[test]
@@ -576,7 +642,10 @@ fun a_round_must_use_the_vaults_next_number() {
 }
 
 #[test]
-#[expected_failure(abort_code = rewards::EInvalidInterval, location = blast_presale::holder_rewards)]
+#[expected_failure(
+    abort_code = rewards::EInvalidInterval,
+    location = blast_presale::holder_rewards,
+)]
 /// A new daily interval may skip checkpoints but cannot overlap a funded round.
 fun a_round_cannot_overlap_checkpoints() {
     let mut scenario = test_scenario::begin(CREATOR);
@@ -591,10 +660,12 @@ fun a_round_cannot_overlap_checkpoints() {
 #[expected_failure(abort_code = rewards::EAlreadyClaimed, location = blast_presale::holder_rewards)]
 fun a_holder_reward_cannot_be_claimed_twice() {
     let mut scenario = test_scenario::begin(CREATOR);
+    let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let mut round = round_owing_holder(20, 0, &mut scenario);
-    rewards::claim(&mut round, 0, HOLDER, 20, 0, vector[], scenario.ctx());
+    rewards::claim(&mut round, &package_version, 0, HOLDER, 20, 0, vector[], scenario.ctx());
 
-    rewards::claim(&mut round, 0, HOLDER, 20, 0, vector[], scenario.ctx());
+    rewards::claim(&mut round, &package_version, 0, HOLDER, 20, 0, vector[], scenario.ctx());
+    std::unit_test::destroy(package_version);
     abort
 }
 
@@ -603,9 +674,11 @@ fun a_holder_reward_cannot_be_claimed_twice() {
 /// A claim leaf must pay something; an empty one is a claim error, not a round-budget one.
 fun a_holder_reward_claim_must_pay_a_positive_amount() {
     let mut scenario = test_scenario::begin(CREATOR);
+    let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let mut round = round_owing_holder(0, 0, &mut scenario);
 
-    rewards::claim(&mut round, 0, HOLDER, 0, 0, vector[], scenario.ctx());
+    rewards::claim(&mut round, &package_version, 0, HOLDER, 0, 0, vector[], scenario.ctx());
+    std::unit_test::destroy(package_version);
     abort
 }
 
@@ -614,9 +687,11 @@ fun a_holder_reward_claim_must_pay_a_positive_amount() {
 /// A relayer cannot redirect a committed reward to another beneficiary.
 fun a_holder_reward_cannot_be_redirected() {
     let mut scenario = test_scenario::begin(CREATOR);
+    let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let mut round = round_owing_holder(40, 0, &mut scenario);
 
-    rewards::claim(&mut round, 0, FEE_RECIPIENT, 40, 0, vector[], scenario.ctx());
+    rewards::claim(&mut round, &package_version, 0, FEE_RECIPIENT, 40, 0, vector[], scenario.ctx());
+    std::unit_test::destroy(package_version);
     abort
 }
 
@@ -639,7 +714,10 @@ fun an_unclaimed_round_returns_to_the_vault_after_its_deadline() {
 }
 
 #[test]
-#[expected_failure(abort_code = rewards::EClaimsStillOpen, location = blast_presale::holder_rewards)]
+#[expected_failure(
+    abort_code = rewards::EClaimsStillOpen,
+    location = blast_presale::holder_rewards,
+)]
 fun a_round_cannot_close_before_its_claim_deadline() {
     let mut scenario = test_scenario::begin(CREATOR);
     let mut vault = funded_holder_vault(&mut scenario);
@@ -663,9 +741,13 @@ fun a_round_cannot_close_into_another_vault() {
 }
 
 #[test]
-#[expected_failure(abort_code = rewards::EInvalidClaimDeadline, location = blast_presale::holder_rewards)]
+#[expected_failure(
+    abort_code = rewards::EInvalidClaimDeadline,
+    location = blast_presale::holder_rewards,
+)]
 fun a_round_needs_a_future_claim_deadline() {
     let mut scenario = test_scenario::begin(CREATOR);
+    let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let mut vault = funded_holder_vault(&mut scenario);
     let mut clock = clock::create_for_testing(scenario.ctx());
     clock.set_for_testing(CLAIM_DEADLINE_MS);
@@ -673,7 +755,10 @@ fun a_round_needs_a_future_claim_deadline() {
     let policy = fee_policy::new_for_testing(scenario.ctx());
     rewards::publish_round(
         &mut vault,
-        &rewards_admin(), &policy, policy.destination(),
+        &package_version,
+        &rewards_admin(),
+        &policy,
+        policy.destination(),
         0,
         0,
         10,
@@ -688,15 +773,17 @@ fun a_round_needs_a_future_claim_deadline() {
         scenario.ctx(),
     );
     policy.destroy_for_testing();
+    std::unit_test::destroy(package_version);
     abort
 }
 
 #[test]
 fun anyone_can_relay_a_holder_reward_to_the_committed_holder() {
     let mut scenario = test_scenario::begin(CREATOR);
+    let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let mut round = round_owing_holder(40, 5, &mut scenario);
 
-    rewards::claim(&mut round, 0, HOLDER, 40, 5, vector[], scenario.ctx());
+    rewards::claim(&mut round, &package_version, 0, HOLDER, 40, 5, vector[], scenario.ctx());
 
     scenario.next_tx(HOLDER);
     assert_eq!(scenario.take_from_sender<Coin<MEME>>().burn_for_testing(), 40);
@@ -704,6 +791,8 @@ fun anyone_can_relay_a_holder_reward_to_the_committed_holder() {
 
     round.destroy_for_testing();
     scenario.end();
+
+    std::unit_test::destroy(package_version);
 }
 
 #[test]
@@ -764,10 +853,13 @@ fun collect_fees(
     quote: Balance<QUOTE>,
     scenario: &mut Scenario,
 ) {
+    let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let mut policy = fee_policy::new_for_testing(scenario.ctx());
-    policy.set_destination(&treasury_admin(), TREASURY);
+    policy.set_destination(&package_version, &treasury_admin(), TREASURY);
     self.credit_fees_for_testing(&policy, meme, quote, scenario.ctx());
     policy.destroy_for_testing();
+
+    std::unit_test::destroy(package_version);
 }
 
 /// Pays the vault's held Blast LP fees to `partner` and to a fee policy paying `destination`.
@@ -777,14 +869,24 @@ fun pay_held_lp_fees(
     destination: address,
     scenario: &mut Scenario,
 ) {
+    let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let mut policy = fee_policy::new_for_testing(scenario.ctx());
-    policy.set_destination(&treasury_admin(), destination);
+    policy.set_destination(&package_version, &treasury_admin(), destination);
     let clock = clock::create_for_testing(scenario.ctx());
 
-    vault::pay_protocol_lp_fees_with_partner(self, &policy, partner, &clock, scenario.ctx());
+    vault::pay_protocol_lp_fees_with_partner(
+        self,
+        &package_version,
+        &policy,
+        partner,
+        &clock,
+        scenario.ctx(),
+    );
 
     clock.destroy_for_testing();
     policy.destroy_for_testing();
+
+    std::unit_test::destroy(package_version);
 }
 
 /// Seals a `liquidity` position on pool `@0x9001` in a vault without a presale, paying half of
@@ -819,15 +921,21 @@ fun new_vault_without_presale(
 
 /// A fee policy whose new vaults pay Blast these LP-fee rates.
 fun policy_with_lp_fees(meme_bps: u64, quote_bps: u64, scenario: &mut Scenario): FeePolicy {
-    let mut policy = fee_policy::new_for_testing(scenario.ctx());
-    policy.set_fees(
-        &fee_admin(),
-        bps::new(0),
-        bps::new(0),
-        bps::new(meme_bps),
-        bps::new(quote_bps),
-    );
-    policy
+    let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
+    let result = {
+        let mut policy = fee_policy::new_for_testing(scenario.ctx());
+        policy.set_fees(
+            &package_version,
+            &fee_admin(),
+            bps::new(0),
+            bps::new(0),
+            bps::new(meme_bps),
+            bps::new(quote_bps),
+        );
+        policy
+    };
+    std::unit_test::destroy(package_version);
+    result
 }
 
 /// A vault whose holder share is 40 Meme and no Quote.
@@ -847,11 +955,15 @@ fun publish_round(
     end_checkpoint: u64,
     scenario: &mut Scenario,
 ) {
+    let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
     let policy = fee_policy::new_for_testing(scenario.ctx());
     rewards::publish_round(
         self,
-        &rewards_admin(), &policy, policy.destination(),
+        &package_version,
+        &rewards_admin(),
+        &policy,
+        policy.destination(),
         number,
         start_checkpoint,
         end_checkpoint,
@@ -867,17 +979,22 @@ fun publish_round(
     );
     policy.destroy_for_testing();
     clock.destroy_for_testing();
+
+    std::unit_test::destroy(package_version);
 }
 
 fun close_round_at(self: &mut Vault<MEME, QUOTE>, now_ms: u64, scenario: &mut Scenario) {
+    let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     scenario.next_tx(CREATOR);
     let round = scenario.take_shared<Round<MEME, QUOTE>>();
     let mut clock = clock::create_for_testing(scenario.ctx());
     clock.set_for_testing(now_ms);
 
-    rewards::close_round(round, self, &clock);
+    rewards::close_round(round, &package_version, self, &clock);
 
     clock.destroy_for_testing();
+
+    std::unit_test::destroy(package_version);
 }
 
 /// A one-leaf round funded with 40 Meme and `quote` Quote, owing `HOLDER` the given amounts.
@@ -940,21 +1057,14 @@ use blast_admin::blast_acl::{Self, AdminWitness};
 use blast_partners::blast_partners::{Self as partners, Partner, PartnerPaid};
 
 use blast_presale::{
-    blast_presale as presale,
+    blast_presale::{Self as presale, RecipientShare},
     blast_presale_domain::{FeeAdmin, RewardsAdmin, TreasuryAdmin},
     bps,
     creation_policy::{Self, CreationPolicy},
     fee_policy::{Self, FeePolicy, ProtocolFees},
     holder_rewards::{Self as rewards, Round},
     merkle_tree,
-    presale_vault::{
-        Self as vault,
-        FeesCollected,
-        Vault,
-        ProtocolLpFeesChanged,
-        ProtocolLpFeesPaid,
-    },
-    blast_presale::RecipientShare,
+    presale_vault::{Self as vault, FeesCollected, Vault, ProtocolLpFeesChanged, ProtocolLpFeesPaid}
 };
 
 use std::unit_test::{assert_eq, destroy};
@@ -965,13 +1075,17 @@ use sui::{
     coin::{Self, Coin},
     event,
     hash,
-    test_scenario::{Self, Scenario},
+    test_scenario::{Self, Scenario}
 };
 
 use fun close_round_at as Vault.close_round_at;
+
 use fun collect_fees as Vault.collect_fees;
+
 use fun destroy_holding as Vault.destroy_holding;
+
 use fun pay_held_lp_fees as Vault.pay_held_lp_fees;
+
 use fun publish_round as Vault.publish_round;
 
 use fun sender_total_meme as Scenario.sender_total_meme;

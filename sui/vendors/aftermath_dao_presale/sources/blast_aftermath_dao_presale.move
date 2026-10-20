@@ -45,11 +45,12 @@ fun init(ctx: &mut TxContext) {
 /// `CreationPolicy` must allow `Witness`.
 public fun new<SaleToken, Quote>(
     _: &AdminCap,
+    package_version: &PackageVersion,
     treasury_cap: TreasuryCap<SaleToken>,
     creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
 ): PresaleInitializer<SaleToken, Quote> {
-    presale::new(treasury_cap, Witness(), creation_policy, fee_policy)
+    presale::new(treasury_cap, package_version, Witness(), creation_policy, fee_policy)
 }
 
 /// Finalizes a sale `new` started, sends its `PresaleCap` to the treasury, and shares a
@@ -59,20 +60,25 @@ public fun new<SaleToken, Quote>(
 /// never consume the pool creation.
 public fun finalize<Lp, SaleToken, Quote>(
     _: &AdminCap,
+    package_version: &PackageVersion,
     mut initializer: PresaleInitializer<SaleToken, Quote>,
     currency: &mut Currency<SaleToken>,
     create_pool_cap: CreatePoolCapV2,
     ctx: &mut TxContext,
 ): Presale<SaleToken, Quote> {
-    assert!(initializer.migration_witness() == type_name::with_original_ids<Witness>(), EWrongMigrator);
+    assert!(
+        initializer.migration_witness() == type_name::with_original_ids<Witness>(),
+        EWrongMigrator,
+    );
 
     initializer.set_fee_split(
+        package_version,
         presale::fee_split(
             vector[presale::recipient_share(TREASURY, bps::new(ALL_BPS))],
             bps::new(0),
         ),
     );
-    let (sale, cap) = initializer.finalize(currency, ctx);
+    let (sale, cap) = initializer.finalize(package_version, currency, ctx);
 
     let pool_creation = PoolCreation<Lp> {
         id: object::new(ctx),
@@ -99,6 +105,7 @@ public fun finalize<Lp, SaleToken, Quote>(
 #[allow(lint(share_owned))]
 public fun migrate<Lp, SaleToken, Quote>(
     sale: &mut Presale<SaleToken, Quote>,
+    package_version: &PackageVersion,
     pool_creation: PoolCreation<Lp>,
     fee_policy: &FeePolicy,
     pool_registry: &mut PoolRegistry,
@@ -110,7 +117,7 @@ public fun migrate<Lp, SaleToken, Quote>(
     assert!(presale_id == object::id(sale), EWrongPresale);
     id.delete();
 
-    let (tokens, quote) = sale.migrate(fee_policy, Witness(), clock, ctx);
+    let (tokens, quote) = sale.migrate(package_version, fee_policy, Witness(), clock, ctx);
     let (token_amount, quote_amount) = (tokens.value(), quote.value());
 
     let (pool, lp) = if (sorts_before<SaleToken, Quote>()) {
@@ -299,18 +306,14 @@ use amm::{pool::{CreatePoolCapV2, Pool}, pool_factory, pool_registry::PoolRegist
 
 use blast_presale::{
     blast_presale::{Self as presale, Presale, PresaleInitializer},
+    blast_presale_package::PackageVersion,
     bps,
     creation_policy::CreationPolicy,
-    fee_policy::FeePolicy,
+    fee_policy::FeePolicy
 };
 
 use dao_fee_amm::{pool as dao_fee_pool, version::Version};
 
 use std::type_name;
 
-use sui::{
-    clock::Clock,
-    coin::{Coin, TreasuryCap},
-    coin_registry::Currency,
-    event,
-};
+use sui::{clock::Clock, coin::{Coin, TreasuryCap}, coin_registry::Currency, event};

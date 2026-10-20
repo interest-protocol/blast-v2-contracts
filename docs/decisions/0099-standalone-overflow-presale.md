@@ -47,6 +47,10 @@
   shared Blast ACL. `blast_presale_domain` declares six roles, and the
   package-local `AdminCap`, `SuperAdminCap`, and `AdminRegistry` are deleted
 
+Amended by [ADR 0117](0117-presale-versioning-and-activation.md): new publications
+use compatible upgrades and custody-gated operational versioning. The earlier
+dependency-only policy below is historical.
+
 ## Context
 
 Projects need a fixed-window presale in which eligible wallets commit up to

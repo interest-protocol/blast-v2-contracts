@@ -10,7 +10,7 @@ module blast_presale::blast_presale_domain;
 
 // === Public Types ===
 
-/// Authorizes and commits dependency-only package upgrades that relink venue generations.
+/// Authorizes compatible package upgrades and their atomic operational-version cutover.
 public struct UpgradeAdmin()
 
 /// Sets the address every protocol fee is paid to.

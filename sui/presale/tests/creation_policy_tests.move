@@ -45,21 +45,27 @@ fun publication_shares_a_policy_that_allows_nothing() {
 #[test]
 /// The administrator allows a Quote type and a migrator, and each change emits its type.
 fun the_admin_allows_a_quote_and_a_migrator() {
+    let package_version = blast_presale::blast_presale_package::new_for_testing(
+        &mut tx_context::dummy(),
+    );
     let mut policy = allowing_nothing();
 
-    policy.set_quote_allowed<QUOTE>(&listing_admin(), true);
-    policy.set_migration_witness_allowed<MIGRATOR>(&adapter_admin(), true);
+    policy.set_quote_allowed<QUOTE>(&package_version, &listing_admin(), true);
+    policy.set_migration_witness_allowed<MIGRATOR>(&package_version, &adapter_admin(), true);
 
     policy.assert_allowed<QUOTE, MIGRATOR>();
     let (quote, allowed) = last_event<QuoteSet>().quote_set_fields();
     assert_eq!(quote, type_name<QUOTE>());
     assert_eq!(allowed, true);
-    let (migration_witness, allowed) = last_event<MigrationWitnessSet>()
-        .migration_witness_set_fields();
+    let (migration_witness, allowed) = last_event<
+        MigrationWitnessSet,
+    >().migration_witness_set_fields();
     assert_eq!(migration_witness, type_name<MIGRATOR>());
     assert_eq!(allowed, true);
 
     policy.destroy_for_testing();
+
+    std::unit_test::destroy(package_version);
 }
 
 #[test]
@@ -82,10 +88,14 @@ fun allowing_one_quote_allows_no_other() {
 )]
 /// An allowed Quote type is not enough without an allowed migrator.
 fun an_allowed_quote_still_needs_an_allowed_migrator() {
+    let package_version = blast_presale::blast_presale_package::new_for_testing(
+        &mut tx_context::dummy(),
+    );
     let mut policy = allowing_nothing();
-    policy.set_quote_allowed<QUOTE>(&listing_admin(), true);
+    policy.set_quote_allowed<QUOTE>(&package_version, &listing_admin(), true);
 
     policy.assert_allowed<QUOTE, MIGRATOR>();
+    std::unit_test::destroy(package_version);
     abort
 }
 
@@ -96,14 +106,18 @@ fun an_allowed_quote_still_needs_an_allowed_migrator() {
 )]
 /// Disallowing a Quote type emits it and stops later creations from raising it.
 fun disallowing_a_quote_stops_later_creations() {
+    let package_version = blast_presale::blast_presale_package::new_for_testing(
+        &mut tx_context::dummy(),
+    );
     let mut policy = allowing<QUOTE, MIGRATOR>();
 
-    policy.set_quote_allowed<QUOTE>(&listing_admin(), false);
+    policy.set_quote_allowed<QUOTE>(&package_version, &listing_admin(), false);
 
     let (quote, allowed) = last_event<QuoteSet>().quote_set_fields();
     assert_eq!(quote, type_name<QUOTE>());
     assert_eq!(allowed, false);
     policy.assert_allowed<QUOTE, MIGRATOR>();
+    std::unit_test::destroy(package_version);
     abort
 }
 
@@ -114,15 +128,20 @@ fun disallowing_a_quote_stops_later_creations() {
 )]
 /// Disallowing a migrator emits it and stops later creations through it.
 fun disallowing_a_migrator_stops_later_creations() {
+    let package_version = blast_presale::blast_presale_package::new_for_testing(
+        &mut tx_context::dummy(),
+    );
     let mut policy = allowing<QUOTE, MIGRATOR>();
 
-    policy.set_migration_witness_allowed<MIGRATOR>(&adapter_admin(), false);
+    policy.set_migration_witness_allowed<MIGRATOR>(&package_version, &adapter_admin(), false);
 
-    let (migration_witness, allowed) = last_event<MigrationWitnessSet>()
-        .migration_witness_set_fields();
+    let (migration_witness, allowed) = last_event<
+        MigrationWitnessSet,
+    >().migration_witness_set_fields();
     assert_eq!(migration_witness, type_name<MIGRATOR>());
     assert_eq!(allowed, false);
     policy.assert_allowed<QUOTE, MIGRATOR>();
+    std::unit_test::destroy(package_version);
     abort
 }
 
@@ -132,9 +151,13 @@ fun disallowing_a_migrator_stops_later_creations() {
     location = blast_presale::creation_policy,
 )]
 fun an_allowed_quote_cannot_be_allowed_again() {
+    let package_version = blast_presale::blast_presale_package::new_for_testing(
+        &mut tx_context::dummy(),
+    );
     let mut policy = allowing<QUOTE, MIGRATOR>();
 
-    policy.set_quote_allowed<QUOTE>(&listing_admin(), true);
+    policy.set_quote_allowed<QUOTE>(&package_version, &listing_admin(), true);
+    std::unit_test::destroy(package_version);
     abort
 }
 
@@ -144,9 +167,13 @@ fun an_allowed_quote_cannot_be_allowed_again() {
     location = blast_presale::creation_policy,
 )]
 fun an_unlisted_quote_cannot_be_disallowed() {
+    let package_version = blast_presale::blast_presale_package::new_for_testing(
+        &mut tx_context::dummy(),
+    );
     let mut policy = allowing<QUOTE, MIGRATOR>();
 
-    policy.set_quote_allowed<OTHER_QUOTE>(&listing_admin(), false);
+    policy.set_quote_allowed<OTHER_QUOTE>(&package_version, &listing_admin(), false);
+    std::unit_test::destroy(package_version);
     abort
 }
 
@@ -156,9 +183,13 @@ fun an_unlisted_quote_cannot_be_disallowed() {
     location = blast_presale::creation_policy,
 )]
 fun an_allowed_migrator_cannot_be_allowed_again() {
+    let package_version = blast_presale::blast_presale_package::new_for_testing(
+        &mut tx_context::dummy(),
+    );
     let mut policy = allowing<QUOTE, MIGRATOR>();
 
-    policy.set_migration_witness_allowed<MIGRATOR>(&adapter_admin(), true);
+    policy.set_migration_witness_allowed<MIGRATOR>(&package_version, &adapter_admin(), true);
+    std::unit_test::destroy(package_version);
     abort
 }
 
@@ -168,9 +199,13 @@ fun an_allowed_migrator_cannot_be_allowed_again() {
     location = blast_presale::creation_policy,
 )]
 fun an_unlisted_migrator_cannot_be_disallowed() {
+    let package_version = blast_presale::blast_presale_package::new_for_testing(
+        &mut tx_context::dummy(),
+    );
     let mut policy = allowing_nothing();
 
-    policy.set_migration_witness_allowed<MIGRATOR>(&adapter_admin(), false);
+    policy.set_migration_witness_allowed<MIGRATOR>(&package_version, &adapter_admin(), false);
+    std::unit_test::destroy(package_version);
     abort
 }
 
@@ -181,9 +216,13 @@ fun an_unlisted_migrator_cannot_be_disallowed() {
 )]
 /// Any caller can make a primitive, so allowing one would let anyone create and migrate sales.
 fun a_primitive_cannot_be_allowed_as_a_migrator() {
+    let package_version = blast_presale::blast_presale_package::new_for_testing(
+        &mut tx_context::dummy(),
+    );
     let mut policy = allowing_nothing();
 
-    policy.set_migration_witness_allowed<u64>(&adapter_admin(), true);
+    policy.set_migration_witness_allowed<u64>(&package_version, &adapter_admin(), true);
+    std::unit_test::destroy(package_version);
     abort
 }
 
@@ -194,9 +233,17 @@ fun a_primitive_cannot_be_allowed_as_a_migrator() {
 )]
 /// Any caller can make a vector of droppable values, so it is rejected like a primitive.
 fun a_vector_cannot_be_allowed_as_a_migrator() {
+    let package_version = blast_presale::blast_presale_package::new_for_testing(
+        &mut tx_context::dummy(),
+    );
     let mut policy = allowing_nothing();
 
-    policy.set_migration_witness_allowed<vector<MIGRATOR>>(&adapter_admin(), true);
+    policy.set_migration_witness_allowed<vector<MIGRATOR>>(
+        &package_version,
+        &adapter_admin(),
+        true,
+    );
+    std::unit_test::destroy(package_version);
     abort
 }
 
@@ -207,9 +254,13 @@ fun a_vector_cannot_be_allowed_as_a_migrator() {
 )]
 /// Any caller can make `TypeName` with `type_name::with_original_ids`, so a stdlib type is rejected.
 fun a_stdlib_type_cannot_be_allowed_as_a_migrator() {
+    let package_version = blast_presale::blast_presale_package::new_for_testing(
+        &mut tx_context::dummy(),
+    );
     let mut policy = allowing_nothing();
 
-    policy.set_migration_witness_allowed<TypeName>(&adapter_admin(), true);
+    policy.set_migration_witness_allowed<TypeName>(&package_version, &adapter_admin(), true);
+    std::unit_test::destroy(package_version);
     abort
 }
 
@@ -221,9 +272,17 @@ fun a_stdlib_type_cannot_be_allowed_as_a_migrator() {
 /// Any caller can make an `Option<MIGRATOR>` with `option::none`, so a generic stdlib type wrapping
 /// a reviewed witness is rejected too.
 fun an_option_of_a_witness_cannot_be_allowed_as_a_migrator() {
+    let package_version = blast_presale::blast_presale_package::new_for_testing(
+        &mut tx_context::dummy(),
+    );
     let mut policy = allowing_nothing();
 
-    policy.set_migration_witness_allowed<Option<MIGRATOR>>(&adapter_admin(), true);
+    policy.set_migration_witness_allowed<Option<MIGRATOR>>(
+        &package_version,
+        &adapter_admin(),
+        true,
+    );
+    std::unit_test::destroy(package_version);
     abort
 }
 
@@ -234,9 +293,13 @@ fun an_option_of_a_witness_cannot_be_allowed_as_a_migrator() {
 )]
 /// Any caller can make an `ID` with `object::id_from_address`, so a Sui framework type is rejected.
 fun a_sui_framework_type_cannot_be_allowed_as_a_migrator() {
+    let package_version = blast_presale::blast_presale_package::new_for_testing(
+        &mut tx_context::dummy(),
+    );
     let mut policy = allowing_nothing();
 
-    policy.set_migration_witness_allowed<ID>(&adapter_admin(), true);
+    policy.set_migration_witness_allowed<ID>(&package_version, &adapter_admin(), true);
+    std::unit_test::destroy(package_version);
     abort
 }
 
@@ -247,9 +310,13 @@ fun a_sui_framework_type_cannot_be_allowed_as_a_migrator() {
 )]
 /// Disallowing never needs the struct check: a primitive can never have been allowed.
 fun disallowing_a_primitive_is_an_unchanged_allowance() {
+    let package_version = blast_presale::blast_presale_package::new_for_testing(
+        &mut tx_context::dummy(),
+    );
     let mut policy = allowing_nothing();
 
-    policy.set_migration_witness_allowed<u64>(&adapter_admin(), false);
+    policy.set_migration_witness_allowed<u64>(&package_version, &adapter_admin(), false);
+    std::unit_test::destroy(package_version);
     abort
 }
 
@@ -259,15 +326,18 @@ fun disallowing_a_primitive_is_an_unchanged_allowance() {
 /// The administrator lets new presales name a partner at once, and the change emits it.
 fun an_added_partner_is_accepted_at_once() {
     let mut ctx = tx_context::dummy();
+    let package_version = blast_presale::blast_presale_package::new_for_testing(&mut ctx);
     let mut policy = empty_policy(&mut ctx);
     let partner = new_partner(&mut ctx);
 
-    policy.add_partner(&fee_admin(), &partner);
+    policy.add_partner(&package_version, &fee_admin(), &partner);
 
     policy.assert_partner(object::id(&partner), 0);
     assert_eq!(last_event<PartnerAdded>().partner_added_fields(), object::id(&partner));
     destroy(partner);
     policy.destroy_for_testing();
+
+    std::unit_test::destroy(package_version);
 }
 
 #[test]
@@ -310,37 +380,43 @@ fun a_removed_partner_is_accepted_until_its_notice_ends() {
 /// Adding a partner whose removal is pending cancels the removal.
 fun re_adding_a_partner_cancels_its_removal() {
     let mut ctx = tx_context::dummy();
+    let package_version = blast_presale::blast_presale_package::new_for_testing(&mut ctx);
     let mut policy = empty_policy(&mut ctx);
     let partner = new_partner(&mut ctx);
     let clock = clock_at(REMOVED_AT_MS, &mut ctx);
-    policy.add_partner(&fee_admin(), &partner);
-    policy.remove_partner(&fee_admin(), &partner, &clock);
+    policy.add_partner(&package_version, &fee_admin(), &partner);
+    policy.remove_partner(&package_version, &fee_admin(), &partner, &clock);
 
-    policy.add_partner(&fee_admin(), &partner);
+    policy.add_partner(&package_version, &fee_admin(), &partner);
 
     policy.assert_partner(object::id(&partner), std::u64::max_value!() - 1);
     destroy(partner);
     clock.destroy_for_testing();
     policy.destroy_for_testing();
+
+    std::unit_test::destroy(package_version);
 }
 
 #[test]
 /// Adding a partner whose notice has ended accepts it again.
 fun re_adding_a_removed_partner_accepts_it_again() {
     let mut ctx = tx_context::dummy();
+    let package_version = blast_presale::blast_presale_package::new_for_testing(&mut ctx);
     let mut policy = empty_policy(&mut ctx);
     let partner = new_partner(&mut ctx);
     let mut clock = clock_at(REMOVED_AT_MS, &mut ctx);
-    policy.add_partner(&fee_admin(), &partner);
-    policy.remove_partner(&fee_admin(), &partner, &clock);
+    policy.add_partner(&package_version, &fee_admin(), &partner);
+    policy.remove_partner(&package_version, &fee_admin(), &partner, &clock);
     clock.set_for_testing(REMOVED_AT_MS + partners::delay_ms());
 
-    policy.add_partner(&fee_admin(), &partner);
+    policy.add_partner(&package_version, &fee_admin(), &partner);
 
     policy.assert_partner(object::id(&partner), clock.timestamp_ms());
     destroy(partner);
     clock.destroy_for_testing();
     policy.destroy_for_testing();
+
+    std::unit_test::destroy(package_version);
 }
 
 #[test]
@@ -350,11 +426,13 @@ fun re_adding_a_removed_partner_accepts_it_again() {
 )]
 fun an_accepted_partner_cannot_be_added_again() {
     let mut ctx = tx_context::dummy();
+    let package_version = blast_presale::blast_presale_package::new_for_testing(&mut ctx);
     let mut policy = empty_policy(&mut ctx);
     let partner = new_partner(&mut ctx);
-    policy.add_partner(&fee_admin(), &partner);
+    policy.add_partner(&package_version, &fee_admin(), &partner);
 
-    policy.add_partner(&fee_admin(), &partner);
+    policy.add_partner(&package_version, &fee_admin(), &partner);
+    std::unit_test::destroy(package_version);
     abort
 }
 
@@ -366,13 +444,15 @@ fun an_accepted_partner_cannot_be_added_again() {
 /// A pending removal cannot be restarted to push its notice back.
 fun a_removed_partner_cannot_be_removed_again() {
     let mut ctx = tx_context::dummy();
+    let package_version = blast_presale::blast_presale_package::new_for_testing(&mut ctx);
     let mut policy = empty_policy(&mut ctx);
     let partner = new_partner(&mut ctx);
     let clock = clock_at(REMOVED_AT_MS, &mut ctx);
-    policy.add_partner(&fee_admin(), &partner);
-    policy.remove_partner(&fee_admin(), &partner, &clock);
+    policy.add_partner(&package_version, &fee_admin(), &partner);
+    policy.remove_partner(&package_version, &fee_admin(), &partner, &clock);
 
-    policy.remove_partner(&fee_admin(), &partner, &clock);
+    policy.remove_partner(&package_version, &fee_admin(), &partner, &clock);
+    std::unit_test::destroy(package_version);
     abort
 }
 
@@ -383,12 +463,66 @@ fun a_removed_partner_cannot_be_removed_again() {
 )]
 fun an_unlisted_partner_cannot_be_removed() {
     let mut ctx = tx_context::dummy();
+    let package_version = blast_presale::blast_presale_package::new_for_testing(&mut ctx);
     let mut policy = empty_policy(&mut ctx);
     let partner = new_partner(&mut ctx);
     let clock = clock_at(REMOVED_AT_MS, &mut ctx);
 
-    policy.remove_partner(&fee_admin(), &partner, &clock);
+    policy.remove_partner(&package_version, &fee_admin(), &partner, &clock);
+    std::unit_test::destroy(package_version);
     abort
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+fun stale_version_cannot_allow_quotes() {
+    let mut package_version = blast_presale::blast_presale_package::new_for_testing(
+        &mut tx_context::dummy(),
+    );
+    let mut policy = allowing_nothing();
+
+    package_version.set_for_testing(2);
+    policy.set_quote_allowed<QUOTE>(&package_version, &listing_admin(), true);
+    policy.set_migration_witness_allowed<MIGRATOR>(&package_version, &adapter_admin(), true);
+
+    policy.assert_allowed<QUOTE, MIGRATOR>();
+    let (quote, allowed) = last_event<QuoteSet>().quote_set_fields();
+    assert_eq!(quote, type_name<QUOTE>());
+    assert_eq!(allowed, true);
+    let (migration_witness, allowed) = last_event<
+        MigrationWitnessSet,
+    >().migration_witness_set_fields();
+    assert_eq!(migration_witness, type_name<MIGRATOR>());
+    assert_eq!(allowed, true);
+
+    policy.destroy_for_testing();
+
+    std::unit_test::destroy(package_version);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+fun stale_version_cannot_accept_partners() {
+    let mut ctx = tx_context::dummy();
+    let mut package_version = blast_presale::blast_presale_package::new_for_testing(&mut ctx);
+    let mut policy = empty_policy(&mut ctx);
+    let partner = new_partner(&mut ctx);
+
+    package_version.set_for_testing(2);
+    policy.add_partner(&package_version, &fee_admin(), &partner);
+
+    policy.assert_partner(object::id(&partner), 0);
+    assert_eq!(last_event<PartnerAdded>().partner_added_fields(), object::id(&partner));
+    destroy(partner);
+    policy.destroy_for_testing();
+
+    std::unit_test::destroy(package_version);
 }
 
 // === Test Helpers ===
@@ -425,17 +559,22 @@ fun clock_at(timestamp_ms: u64, ctx: &mut TxContext): Clock {
 /// A policy whose administrator added a partner and removed it at `REMOVED_AT_MS`, and the
 /// partner's ID.
 fun policy_with_removed_partner(ctx: &mut TxContext): (CreationPolicy, ID) {
-    let mut policy = empty_policy(ctx);
-    let partner = new_partner(ctx);
-    let clock = clock_at(REMOVED_AT_MS, ctx);
-    let partner_id = object::id(&partner);
-    policy.add_partner(&fee_admin(), &partner);
+    let package_version = blast_presale::blast_presale_package::new_for_testing(ctx);
+    let (result_0, result_1) = {
+        let mut policy = empty_policy(ctx);
+        let partner = new_partner(ctx);
+        let clock = clock_at(REMOVED_AT_MS, ctx);
+        let partner_id = object::id(&partner);
+        policy.add_partner(&package_version, &fee_admin(), &partner);
 
-    policy.remove_partner(&fee_admin(), &partner, &clock);
+        policy.remove_partner(&package_version, &fee_admin(), &partner, &clock);
 
-    destroy(partner);
-    clock.destroy_for_testing();
-    (policy, partner_id)
+        destroy(partner);
+        clock.destroy_for_testing();
+        (policy, partner_id)
+    };
+    std::unit_test::destroy(package_version);
+    (result_0, result_1)
 }
 
 fun listing_admin(): AdminWitness<ListingAdmin> {
@@ -474,7 +613,7 @@ use blast_presale::{
         PartnerAdded,
         PartnerRemoved,
         QuoteSet,
-    },
+    }
 };
 
 use std::{type_name::{Self, TypeName}, unit_test::{assert_eq, destroy}};

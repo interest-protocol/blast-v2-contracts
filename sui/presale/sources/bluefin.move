@@ -18,6 +18,7 @@ public struct Venue() has drop;
 /// token has one sale, so the tier is recorded under its type.
 public fun new<Meme, Quote>(
     treasury_cap: TreasuryCap<Meme>,
+    package_version: &PackageVersion,
     currency: &Currency<Meme>,
     creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
@@ -25,6 +26,8 @@ public fun new<Meme, Quote>(
     tick_spacing: u32,
     pool_fee_rate: u64,
 ): PresaleInitializer<Meme, Quote> {
+    package_version.assert_current();
+
     assert!(
         tick_spacing > 0
             && tick_spacing <= MAX_TICK_SPACING
@@ -36,12 +39,13 @@ public fun new<Meme, Quote>(
 
     venue_config.add_pool_tier<Meme, Quote, _>(&Venue(), tick_spacing, pool_fee_rate);
 
-    presale::new(treasury_cap, Witness(), creation_policy, fee_policy)
+    presale::new(treasury_cap, package_version, Witness(), creation_policy, fee_policy)
 }
 
 /// Anyone may atomically migrate a funded presale into its configured Bluefin pool.
 public fun migrate<Meme, Quote>(
     sale: &mut Presale<Meme, Quote>,
+    package_version: &PackageVersion,
     fee_policy: &FeePolicy,
     venue_config: &VenueConfig,
     currency: &Currency<Meme>,
@@ -51,8 +55,10 @@ public fun migrate<Meme, Quote>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    package_version.assert_current();
+
     let (tick_spacing, pool_fee_rate) = venue_config.pool_tier<Meme>();
-    let (meme, quote) = sale.migrate(fee_policy, Witness(), clock, ctx);
+    let (meme, quote) = sale.migrate(package_version, fee_policy, Witness(), clock, ctx);
 
     let source_meme = meme.value();
     let source_quote = quote.value();
@@ -117,6 +123,7 @@ public fun migrate<Meme, Quote>(
 /// and accept the partner, if one is named.
 public fun new_vault<Meme, Quote>(
     position: Position,
+    package_version: &PackageVersion,
     fee_split: FeeSplit,
     partner_id: Option<ID>,
     creation_policy: &CreationPolicy,
@@ -125,6 +132,8 @@ public fun new_vault<Meme, Quote>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    package_version.assert_current();
+
     creation_policy.assert_allowed<Quote, Witness>();
     assert!(position.pool_id() == object::id(pool), EPositionPoolMismatch);
 
@@ -148,12 +157,15 @@ public fun new_vault<Meme, Quote>(
 /// holder Quote and paying holder Meme to the governed treasury.
 public fun collect_fees<Meme, Quote>(
     vault: &mut Vault<Meme, Quote>,
+    package_version: &PackageVersion,
     fee_policy: &FeePolicy,
     bluefin_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    package_version.assert_current();
+
     assert!(vault.pool_id() == object::id(pool), EPositionPoolMismatch);
 
     let (_, _, meme, quote) = pool::collect_fee(
@@ -235,11 +247,12 @@ const ESymbolTooLong: vector<u8> = b"The Meme symbol must be at most 32 bytes fo
 
 use blast_presale::{
     blast_presale::{Self as presale, FeeSplit, Presale, PresaleInitializer},
+    blast_presale_package::PackageVersion,
     creation_policy::CreationPolicy,
     fee_policy::FeePolicy,
     migration_math,
     presale_vault::{Self as vault, Vault},
-    venue_config::VenueConfig,
+    venue_config::VenueConfig
 };
 
 use bluefin_spot::{config::GlobalConfig, pool::{Self, Pool}, position::Position};

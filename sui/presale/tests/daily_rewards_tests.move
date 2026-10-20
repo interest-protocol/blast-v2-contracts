@@ -46,7 +46,10 @@ fun skipped_days_allow_a_new_daily_interval_with_an_independent_claim_window() {
 }
 
 #[test]
-#[expected_failure(abort_code = rewards::EInvalidInterval, location = blast_presale::holder_rewards)]
+#[expected_failure(
+    abort_code = rewards::EInvalidInterval,
+    location = blast_presale::holder_rewards,
+)]
 fun a_daily_interval_cannot_be_empty() {
     let mut fixture = start_daily_rewards();
     fixture.publish(0, 10, 10);
@@ -54,7 +57,10 @@ fun a_daily_interval_cannot_be_empty() {
 }
 
 #[test]
-#[expected_failure(abort_code = rewards::EInvalidInterval, location = blast_presale::holder_rewards)]
+#[expected_failure(
+    abort_code = rewards::EInvalidInterval,
+    location = blast_presale::holder_rewards,
+)]
 fun a_daily_interval_cannot_be_reversed() {
     let mut fixture = start_daily_rewards();
     fixture.publish(0, 11, 10);
@@ -83,7 +89,11 @@ fun start_daily_rewards(): DailyRewardsFixture {
     DailyRewardsFixture { scenario, vault, clock }
 }
 
-macro fun daily_rewards_next_tx($self: &mut DailyRewardsFixture, $sender: address, $body: |&mut DailyRewardsFixture|) {
+macro fun daily_rewards_next_tx(
+    $self: &mut DailyRewardsFixture,
+    $sender: address,
+    $body: |&mut DailyRewardsFixture|,
+) {
     let fixture = $self;
     fixture.scenario.next_tx($sender);
     $body(fixture);
@@ -95,20 +105,44 @@ macro fun daily_rewards_ctx($self: &mut DailyRewardsFixture): &mut TxContext {
 }
 
 fun publish(self: &mut DailyRewardsFixture, number: u64, start: u64, end: u64) {
+    let package_version = blast_presale::blast_presale_package::new_for_testing(self
+        .scenario
+        .ctx());
     let root = rewards::leaf_for_testing(object::id(&self.vault), number, 0, HOLDER, 0, 10);
     let policy = fee_policy::new_for_testing(self.scenario.ctx());
     rewards::publish_round(
-        &mut self.vault, &blast_acl::witness_for_testing<RewardsAdmin>(), &policy, policy.destination(), number, start, end,
-        root, hash::blake2b256(&b"manifest"), 1, 0, 10,
-        0, self.clock.timestamp_ms() + CLAIM_WINDOW_MS, &self.clock, self.scenario.ctx(),
+        &mut self.vault,
+        &package_version,
+        &blast_acl::witness_for_testing<RewardsAdmin>(),
+        &policy,
+        policy.destination(),
+        number,
+        start,
+        end,
+        root,
+        hash::blake2b256(&b"manifest"),
+        1,
+        0,
+        10,
+        0,
+        self.clock.timestamp_ms() + CLAIM_WINDOW_MS,
+        &self.clock,
+        self.scenario.ctx(),
     );
     policy.destroy_for_testing();
+
+    std::unit_test::destroy(package_version);
 }
 
 fun claim(self: &mut DailyRewardsFixture) {
+    let package_version = blast_presale::blast_presale_package::new_for_testing(self
+        .scenario
+        .ctx());
     let mut round = self.scenario.take_shared<Round<MEME, QUOTE>>();
-    rewards::claim(&mut round, 0, HOLDER, 0, 10, vector[], self.ctx!());
+    rewards::claim(&mut round, &package_version, 0, HOLDER, 0, 10, vector[], self.ctx!());
     test_scenario::return_shared(round);
+
+    std::unit_test::destroy(package_version);
 }
 
 fun assert_payment(self: &DailyRewardsFixture) {
@@ -116,8 +150,13 @@ fun assert_payment(self: &DailyRewardsFixture) {
 }
 
 fun close(self: &mut DailyRewardsFixture) {
+    let package_version = blast_presale::blast_presale_package::new_for_testing(self
+        .scenario
+        .ctx());
     let round = self.scenario.take_shared<Round<MEME, QUOTE>>();
-    rewards::close_round(round, &mut self.vault, &self.clock);
+    rewards::close_round(round, &package_version, &mut self.vault, &self.clock);
+
+    std::unit_test::destroy(package_version);
 }
 
 fun balances(self: &DailyRewardsFixture): vector<u64> {
@@ -139,16 +178,20 @@ fun end(mut self: DailyRewardsFixture) {
 // === Imports ===
 
 use blast_admin::blast_acl;
+
 use blast_presale::{
     blast_presale as presale,
     blast_presale_domain::RewardsAdmin,
     bps,
     fee_policy,
     holder_rewards::{Self as rewards, Round},
-    presale_vault::{Self as vault, Vault},
+    presale_vault::{Self as vault, Vault}
 };
+
 use std::unit_test::assert_eq;
+
 use sui::{balance, clock::{Self, Clock}, coin::Coin, hash, test_scenario::{Self, Scenario}};
 
 use fun daily_rewards_next_tx as DailyRewardsFixture.next_tx;
+
 use fun daily_rewards_ctx as DailyRewardsFixture.ctx;

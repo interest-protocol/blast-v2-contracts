@@ -49,9 +49,12 @@ public struct Vault<phantom Meme, phantom Quote> has key {
 /// Claims the pool's one-time migration residuals with the creator capability.
 public fun claim_migration_residuals<Meme, Quote>(
     self: &mut Vault<Meme, Quote>,
+    package_version: &PackageVersion,
     cap: &PresaleCap,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>) {
+    package_version.assert_current();
+
     self.assert_cap(cap);
     assert!(
         self.migration_meme_residual.value() > 0
@@ -75,10 +78,13 @@ public fun claim_migration_residuals<Meme, Quote>(
 /// pool are split at the new rates when collected; the creator's split of the rest is unchanged.
 public fun set_protocol_lp_fees<Meme, Quote>(
     self: &mut Vault<Meme, Quote>,
+    package_version: &PackageVersion,
     _: &AdminWitness<FeeAdmin>,
     lp_fee_meme_bps: Bps,
     lp_fee_quote_bps: Bps,
 ) {
+    package_version.assert_current();
+
     let protocol_fees = self.protocol_fees.with_lp_fees(lp_fee_meme_bps, lp_fee_quote_bps);
     assert!(protocol_fees != self.protocol_fees, EProtocolLpFeesUnchanged);
 
@@ -97,11 +103,14 @@ public fun set_protocol_lp_fees<Meme, Quote>(
 /// so it can follow any collection.
 public fun pay_protocol_lp_fees_with_partner<Meme, Quote>(
     self: &mut Vault<Meme, Quote>,
+    package_version: &PackageVersion,
     fee_policy: &FeePolicy,
     partner: &Partner,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    package_version.assert_current();
+
     assert!(self.partner_id.contains(&object::id(partner)), EWrongPartner);
     if (self.unpaid_protocol_meme.value() == 0 && self.unpaid_protocol_quote.value() == 0) return;
 
@@ -182,7 +191,10 @@ public(package) fun share_with_position<Meme, Quote, Venue, Position: key + stor
 }
 
 /// Whether the vault's position sits under `Venue`: the venue that migrated the sale.
-public(package) fun has_position<Meme, Quote, Venue>(self: &Vault<Meme, Quote>, _venue: &Venue): bool {
+public(package) fun has_position<Meme, Quote, Venue>(
+    self: &Vault<Meme, Quote>,
+    _venue: &Venue,
+): bool {
     self.id.has_dynamic_object_field(PositionKey<Venue>())
 }
 
@@ -298,10 +310,7 @@ public(package) fun split_fees<Meme, Quote>(
     };
 }
 
-public(package) fun assert_cap<Meme, Quote>(
-    self: &Vault<Meme, Quote>,
-    cap: &PresaleCap,
-) {
+public(package) fun assert_cap<Meme, Quote>(self: &Vault<Meme, Quote>, cap: &PresaleCap) {
     assert!(object::id(cap) == self.presale_cap_id, EWrongPresaleCap);
 }
 
@@ -313,15 +322,11 @@ public(package) fun next_round<Meme, Quote>(self: &Vault<Meme, Quote>): u64 {
     self.next_round
 }
 
-public(package) fun last_checkpoint<Meme, Quote>(
-    self: &Vault<Meme, Quote>,
-): Option<u64> {
+public(package) fun last_checkpoint<Meme, Quote>(self: &Vault<Meme, Quote>): Option<u64> {
     self.last_checkpoint
 }
 
-public(package) fun holder_rewards_balances<Meme, Quote>(
-    self: &Vault<Meme, Quote>,
-): (u64, u64) {
+public(package) fun holder_rewards_balances<Meme, Quote>(self: &Vault<Meme, Quote>): (u64, u64) {
     (self.holder_rewards_meme.value(), self.holder_rewards_quote.value())
 }
 
@@ -524,9 +529,7 @@ public fun protocol_lp_fees_paid_fields<Meme, Quote>(
 }
 
 #[test_only]
-public fun unpaid_protocol_lp_fees_for_testing<Meme, Quote>(
-    self: &Vault<Meme, Quote>,
-): (u64, u64) {
+public fun unpaid_protocol_lp_fees_for_testing<Meme, Quote>(self: &Vault<Meme, Quote>): (u64, u64) {
     (self.unpaid_protocol_meme.value(), self.unpaid_protocol_quote.value())
 }
 
@@ -603,7 +606,6 @@ public fun credit_holder_for_testing<Meme, Quote>(
 public fun holder_meme_paid_bytes<Meme, Quote>(payload: &HolderMemePaid<Meme, Quote>): vector<u8> {
     std::bcs::to_bytes(payload)
 }
-
 
 // === Events ===
 
@@ -696,9 +698,10 @@ use blast_partners::blast_partners::Partner;
 use blast_presale::{
     blast_presale::{Self as presale, FeeSplit, Presale, PresaleCap},
     blast_presale_domain::FeeAdmin,
+    blast_presale_package::PackageVersion,
     bps::Bps,
     creation_policy::CreationPolicy,
-    fee_policy::{FeePolicy, ProtocolFees},
+    fee_policy::{FeePolicy, ProtocolFees}
 };
 
 use sui::{
@@ -707,15 +710,19 @@ use sui::{
     coin::Coin,
     dynamic_object_field,
     event,
-    transfer::Receiving,
+    transfer::Receiving
 };
 
 use fun presale::pay as Balance.pay;
+
 use fun pay_all as Balance.pay_all;
 
 use fun presale::bps_of as vector.bps;
+
 use fun presale::recipients_of as vector.recipients;
 
 use fun dynamic_object_field::add as UID.add_dynamic_object_field;
+
 use fun dynamic_object_field::borrow_mut as UID.dynamic_object_field_mut;
+
 use fun dynamic_object_field::exists as UID.has_dynamic_object_field;

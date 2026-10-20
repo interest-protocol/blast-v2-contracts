@@ -293,10 +293,13 @@ public fun fee_split(fee_recipients: vector<RecipientShare>, holder_rewards_bps:
 /// `migrate` called with the same witness.
 public fun new<SaleToken, Quote, MigrationWitness: drop>(
     treasury_cap: TreasuryCap<SaleToken>,
+    package_version: &PackageVersion,
     _: MigrationWitness,
     creation_policy: &CreationPolicy,
     fee_policy: &FeePolicy,
 ): PresaleInitializer<SaleToken, Quote> {
+    package_version.assert_current();
+
     creation_policy.assert_allowed<Quote, MigrationWitness>();
     assert!(
         type_name::with_original_ids<SaleToken>() != type_name::with_original_ids<Quote>(),
@@ -332,9 +335,12 @@ public fun new<SaleToken, Quote, MigrationWitness: drop>(
 /// fixed.
 public fun set_supply<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
+    package_version: &PackageVersion,
     token_supply: u64,
     burnable: bool,
 ) {
+    package_version.assert_current();
+
     self.token_supply = token_supply;
     self.burnable = burnable;
 }
@@ -343,10 +349,13 @@ public fun set_supply<SaleToken, Quote>(
 /// rate the shares must total exactly 10,000 BPS.
 public fun set_token_allocations<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
+    package_version: &PackageVersion,
     token_allocation_bps: Bps,
     liquidity_token_allocation_bps: Bps,
     recipient_allocations: vector<RecipientShare>,
 ) {
+    package_version.assert_current();
+
     self.token_allocation_bps = token_allocation_bps;
     self.liquidity_token_allocation_bps = liquidity_token_allocation_bps;
     self.recipient_allocations = recipient_allocations;
@@ -356,8 +365,11 @@ public fun set_token_allocations<SaleToken, Quote>(
 /// claim, instead of paying them out. Without it, claims pay tokens out at once.
 public fun set_participant_vesting<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
+    package_version: &PackageVersion,
     vesting: VestingTerms,
 ) {
+    package_version.assert_current();
+
     self.participant_vesting = option::some(vesting);
 }
 
@@ -365,9 +377,12 @@ public fun set_participant_vesting<SaleToken, Quote>(
 /// keeps what Blast's and the recipients' shares leave.
 public fun set_raise<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
+    package_version: &PackageVersion,
     raise_target: u64,
     raise_allocations: vector<RecipientShare>,
 ) {
+    package_version.assert_current();
+
     self.raise_target = raise_target;
     self.raise_allocations = raise_allocations;
 }
@@ -376,9 +391,12 @@ public fun set_raise<SaleToken, Quote>(
 /// migrate a funded sale before anyone may cancel it: at least seven days.
 public fun set_windows<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
+    package_version: &PackageVersion,
     duration_ms: u64,
     liquidity_window_ms: u64,
 ) {
+    package_version.assert_current();
+
     self.duration_ms = duration_ms;
     self.liquidity_window_ms = liquidity_window_ms;
 }
@@ -386,16 +404,22 @@ public fun set_windows<SaleToken, Quote>(
 /// Sets who may commit and each wallet's cap.
 public fun set_eligibility<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
+    package_version: &PackageVersion,
     eligibility: EligibilityPolicy,
 ) {
+    package_version.assert_current();
+
     self.eligibility = option::some(eligibility);
 }
 
 /// Adds a closing phase that lifts wallet caps. Without one, caps hold for the whole window.
 public fun set_uncapped_phase<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
+    package_version: &PackageVersion,
     uncapped: UncappedPhase,
 ) {
+    package_version.assert_current();
+
     self.uncapped = option::some(uncapped);
 }
 
@@ -406,17 +430,23 @@ public fun set_uncapped_phase<SaleToken, Quote>(
 /// for the whole window and always runs to its end.
 public fun set_hard_cap<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
+    package_version: &PackageVersion,
     starts_after_ms: u64,
     closes_when_filled: bool,
 ) {
+    package_version.assert_current();
+
     self.hard_cap = option::some(HardCap { starts_after_ms, closes_when_filled });
 }
 
 /// Sets how the sale's vault splits every collected LP fee.
 public fun set_fee_split<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
+    package_version: &PackageVersion,
     fee_split: FeeSplit,
 ) {
+    package_version.assert_current();
+
     self.fee_split = option::some(fee_split);
 }
 
@@ -427,10 +457,13 @@ public fun set_fee_split<SaleToken, Quote>(
 /// token fee.
 public fun set_partner<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
+    package_version: &PackageVersion,
     creation_policy: &CreationPolicy,
     partner: &Partner,
     clock: &Clock,
 ) {
+    package_version.assert_current();
+
     let partner_id = object::id(partner);
     creation_policy.assert_partner(partner_id, clock.timestamp_ms());
 
@@ -450,9 +483,12 @@ public fun migration_witness<SaleToken, Quote>(
 /// irreversibly makes it fixed or burn-only before returning the presale for `share`.
 public fun finalize<SaleToken, Quote>(
     self: PresaleInitializer<SaleToken, Quote>,
+    package_version: &PackageVersion,
     currency: &mut Currency<SaleToken>,
     ctx: &mut TxContext,
 ): (Presale<SaleToken, Quote>, PresaleCap) {
+    package_version.assert_current();
+
     assert_unregulated_currency(currency);
 
     let PresaleInitializer {
@@ -600,9 +636,12 @@ public fun finalize<SaleToken, Quote>(
 /// then Blast's `FeeAdmin` may change the sale's Blast rates.
 public fun share<SaleToken, Quote>(
     mut self: Presale<SaleToken, Quote>,
+    package_version: &PackageVersion,
     start_ms: u64,
     clock: &Clock,
 ) {
+    package_version.assert_current();
+
     assert!(self.lifecycle == Lifecycle::Pending, EInvalidLifecycle);
 
     // Every deadline is derived from the start, so the share proves each one fits in u64. Closing
@@ -636,6 +675,7 @@ public fun share<SaleToken, Quote>(
 /// amount, and every recipient keeps its amount.
 public fun set_protocol_fees<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
+    package_version: &PackageVersion,
     _: &AdminWitness<FeeAdmin>,
     raise_bps: Bps,
     token_bps: Bps,
@@ -643,6 +683,8 @@ public fun set_protocol_fees<SaleToken, Quote>(
     lp_fee_quote_bps: Bps,
     clock: &Clock,
 ) {
+    package_version.assert_current();
+
     match (self.lifecycle) {
         Lifecycle::Pending => (),
         Lifecycle::Open => assert!(clock.timestamp_ms() < self.start_ms, EPresaleStarted),
@@ -690,10 +732,13 @@ public fun set_protocol_fees<SaleToken, Quote>(
 /// accept (a zero coin otherwise).
 public fun commit_open<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
+    package_version: &PackageVersion,
     quote_in: Coin<Quote>,
     clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<Quote> {
+    package_version.assert_current();
+
     self.assert_open(clock);
     assert!(quote_in.value() > 0, EZeroCommitment);
 
@@ -706,6 +751,7 @@ public fun commit_open<SaleToken, Quote>(
 /// returning whatever a hard cap could not accept.
 public fun commit_allowlisted<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
+    package_version: &PackageVersion,
     quote_in: Coin<Quote>,
     index: u64,
     wallet_cap: u64,
@@ -713,6 +759,8 @@ public fun commit_allowlisted<SaleToken, Quote>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<Quote> {
+    package_version.assert_current();
+
     self.assert_open(clock);
     assert!(quote_in.value() > 0, EZeroCommitment);
 
@@ -732,10 +780,13 @@ public fun commit_allowlisted<SaleToken, Quote>(
 /// returning whatever a hard cap could not accept.
 public fun commit_uncapped<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
+    package_version: &PackageVersion,
     quote_in: Coin<Quote>,
     clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<Quote> {
+    package_version.assert_current();
+
     self.assert_open(clock);
     assert!(quote_in.value() > 0, EZeroCommitment);
     assert!(clock.timestamp_ms() >= self.uncapped_from_ms(), EUncappedPhaseNotOpen);
@@ -749,7 +800,13 @@ public fun commit_uncapped<SaleToken, Quote>(
 /// Fixes the fill after the commitment window, or as soon as the raise is full under a hard cap
 /// that closes the sale when filled; closing early ends the window now, so the LP deadline counts
 /// from now. Underfunded sales become fully refundable. Anyone may settle.
-public fun settle<SaleToken, Quote>(self: &mut Presale<SaleToken, Quote>, clock: &Clock) {
+public fun settle<SaleToken, Quote>(
+    self: &mut Presale<SaleToken, Quote>,
+    package_version: &PackageVersion,
+    clock: &Clock,
+) {
+    package_version.assert_current();
+
     assert!(self.lifecycle == Lifecycle::Open, EInvalidLifecycle);
     let now_ms = clock.timestamp_ms();
     assert!(now_ms >= self.end_ms() || self.can_close_early(now_ms), EPresaleNotEnded);
@@ -778,13 +835,13 @@ public fun settle<SaleToken, Quote>(self: &mut Presale<SaleToken, Quote>, clock:
 /// Quote for refunds. Anyone may cancel.
 public fun cancel_unlaunched<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
+    package_version: &PackageVersion,
     clock: &Clock,
 ) {
+    package_version.assert_current();
+
     assert!(self.lifecycle == Lifecycle::Funded, EInvalidLifecycle);
-    assert!(
-        clock.timestamp_ms() >= self.liquidity_deadline_ms(),
-        ELiquidityDeadlineNotReached,
-    );
+    assert!(clock.timestamp_ms() >= self.liquidity_deadline_ms(), ELiquidityDeadlineNotReached);
 
     self.cancel();
 }
@@ -796,10 +853,13 @@ public fun cancel_unlaunched<SaleToken, Quote>(
 /// claim receives the bounded integer-rounding remainder.
 public fun claim<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
+    package_version: &PackageVersion,
     participant: address,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    package_version.assert_current();
+
     assert!(
         self.lifecycle == Lifecycle::Migrated || self.lifecycle == Lifecycle::Cancelled,
         EInvalidLifecycle,
@@ -842,11 +902,14 @@ public fun claim<SaleToken, Quote>(
 /// remains atomic with this state transition.
 public fun migrate<SaleToken, Quote, MigrationWitness: drop>(
     self: &mut Presale<SaleToken, Quote>,
+    package_version: &PackageVersion,
     fee_policy: &FeePolicy,
     _: MigrationWitness,
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Balance<SaleToken>, Balance<Quote>) {
+    package_version.assert_current();
+
     assert!(self.lifecycle == Lifecycle::Funded, EInvalidLifecycle);
     assert!(
         self.migration_witness == type_name::with_original_ids<MigrationWitness>(),
@@ -880,11 +943,14 @@ public fun migrate<SaleToken, Quote, MigrationWitness: drop>(
 /// once after migration: both recipients are fixed.
 public fun pay_protocol_fees_with_partner<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
+    package_version: &PackageVersion,
     fee_policy: &FeePolicy,
     partner: &Partner,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
+    package_version.assert_current();
+
     assert!(self.partner_id.contains(&object::id(partner)), EWrongPartner);
     assert!(self.unpaid_protocol_quote.is_some(), ENoPartnerPayout);
 
@@ -1100,7 +1166,11 @@ fun assert_uncapped_phase(
         UncappedAccess::Anyone { max_participants, min_commitment } => {
             assert!(max_participants >= eligibility.participant_bound(), EInvalidUncappedPhase);
             assert!(
-                reaches(min_commitment, eligibility.slots_at_minimum(max_participants), raise_target),
+                reaches(
+                    min_commitment,
+                    eligibility.slots_at_minimum(max_participants),
+                    raise_target,
+                ),
                 EUnreachableRaise,
             );
         },
@@ -1164,7 +1234,11 @@ fun apportion_supply(
     recipient_allocations: &vector<RecipientShare>,
 ): (u64, u64, u64, vector<RecipientPayout>) {
     // Apportioned in this order: the presale, the LP, Blast, then each recipient.
-    let mut shares = vector[token_allocation_bps, liquidity_token_allocation_bps, protocol_token_bps];
+    let mut shares = vector[
+        token_allocation_bps,
+        liquidity_token_allocation_bps,
+        protocol_token_bps,
+    ];
     recipient_allocations.do_ref!(|allocation| shares.push_back(allocation.bps));
     let amounts = apportion(shares, token_supply);
 
@@ -1213,11 +1287,14 @@ fun payouts(
     amounts: &vector<u64>,
     first: u64,
 ): vector<RecipientPayout> {
-    vector::tabulate!(allocations.length(), |i| RecipientPayout {
-        recipient: allocations[i].recipient,
-        amount: amounts[first + i],
-        vesting: allocations[i].vesting,
-    })
+    vector::tabulate!(
+        allocations.length(),
+        |i| RecipientPayout {
+            recipient: allocations[i].recipient,
+            amount: amounts[first + i],
+            vesting: allocations[i].vesting,
+        },
+    )
 }
 
 /// Each share's vesting terms, in order; `none` where it is paid out.
@@ -1440,7 +1517,10 @@ fun verify_allowlisted(
             assert!(wallet_cap > 0, EInvalidEligibilityProof);
 
             let digest = allowlist_leaf(index, wallet, wallet_cap);
-            assert!(merkle_tree::verify(root, digest, index, leaf_count, proof), EInvalidEligibilityProof);
+            assert!(
+                merkle_tree::verify(root, digest, index, leaf_count, proof),
+                EInvalidEligibilityProof,
+            );
 
             leaf_count
         },
@@ -1617,11 +1697,7 @@ public fun cap_for_testing(presale_id: ID, ctx: &mut TxContext): PresaleCap {
 }
 
 #[test_only]
-public fun allowlist_leaf_for_testing(
-    index: u64,
-    wallet: address,
-    wallet_cap: u64,
-): vector<u8> {
+public fun allowlist_leaf_for_testing(index: u64, wallet: address, wallet_cap: u64): vector<u8> {
     allowlist_leaf(index, wallet, wallet_cap)
 }
 
@@ -2200,11 +2276,12 @@ use blast_partners::blast_partners::Partner;
 
 use blast_presale::{
     blast_presale_domain::FeeAdmin,
+    blast_presale_package::PackageVersion,
     bps::{Self, Bps},
     creation_policy::CreationPolicy,
     fee_policy::{Self, FeePolicy, ProtocolFees},
     merkle_tree,
-    migration_math,
+    migration_math
 };
 
 use std::{bcs, type_name::{Self, TypeName}};
@@ -2216,17 +2293,23 @@ use sui::{
     coin_registry::Currency,
     dynamic_field,
     event,
-    hash,
+    hash
 };
 
 use fun pay as Balance.pay;
+
 use fun pay_or_vest as Balance.pay_or_vest;
 
 use fun bps_of as vector.bps;
+
 use fun recipients_of as vector.recipients;
+
 use fun vesting_terms_of as vector.vesting_terms;
 
 use fun dynamic_field::add as UID.add_dynamic_field;
+
 use fun dynamic_field::borrow_mut as UID.dynamic_field_mut;
+
 use fun dynamic_field::exists as UID.has_dynamic_field;
+
 use fun dynamic_field::remove as UID.remove_dynamic_field;

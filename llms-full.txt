@@ -188,15 +188,24 @@ deadline passes unmigrated, refunds every commitment in full. After migration a
 DAO-fee pool's owner cap, the LP coin itself being sent to `0x0`) and splits its trading fees
 between Blast, the creator's fee recipients, and holder-reward rounds.
 
-The package shares no code or state with Blast's bonding-curve launchpad, apart from the
-`blast_partners` partner registry both use. Its upgrade capability is sealed for dependency-only
-upgrades (`blast_presale::package_admin::PackageAdmin`), so venue dependencies can be relinked but
-presale logic never changes. In this guide `SaleToken` is the sale's coin; the venue modules and
-the vault call the same type `Meme`.
+The presale is separate from the bonding-curve launchpad and reuses the shared Blast
+ACL, partner registry, and operational-version/capability-custody primitives.
+Publication creates an owned `blast_presale_package::Bootstrap`; it shares no
+`PackageVersion`. Only `blast_presale::package_admin::wrap(Bootstrap, UpgradeCap)` validates the
+fresh matching native cap and shares the usable version and compatible upgrade
+custody. Partners may prepare integrations before activation but cannot start sales.
+See ADR 0117. In this guide `SaleToken` is the sale coin; venues call it `Meme`.
+
+All state-changing public calls below take `&blast_presale_package::PackageVersion`
+immediately after their first object argument, including initializer setters,
+finalize/share, policy administration, migrations, payouts, and holder rewards.
+It is a read-only shared input except during upgrade commit-and-advance. A stale
+or future generation aborts in `blast_admin::operational_version` before effects.
+Pure value constructors, getters and `destroy_cap` do not take it.
 
 ### Objects and authority
 
-Shared singletons, created once at deployment (`PackageAdmin` by
+Shared singletons, created once at deployment (`PackageAdmin` and `PackageVersion` by
 `blast_presale::package_admin::wrap`, the others when the package is published):
 
 - `fee_policy::FeePolicy`: Blast's current rates (`raise_bps`, `token_bps`, `lp_fee_meme_bps`,
@@ -210,7 +219,8 @@ Shared singletons, created once at deployment (`PackageAdmin` by
   by `blast_presale::aftermath::finalize` and shared by `blast_presale::aftermath::share` in the
   same PTB; holds the Aftermath `CreatePoolCapV2` of the sale's fresh LP coin `Lp` and the sale's
   ID, so only that sale's migration can consume it.
-- `blast_presale::package_admin::PackageAdmin`: holds the package's dependency-only upgrade cap.
+- `blast_presale::package_admin::PackageAdmin`: holds the package's Publisher and compatible upgrade cap.
+- `blast_presale::blast_presale_package::PackageVersion`: the singleton active generation, shared only on activation.
 
 Per-sale objects:
 
@@ -251,7 +261,7 @@ reference. Each admin call names exactly one role in its signature:
 | `blast_presale_domain::ListingAdmin` | `creation_policy::set_quote_allowed` |
 | `blast_presale_domain::AdapterAdmin` | `creation_policy::set_migration_witness_allowed` |
 | `blast_presale_domain::RewardsAdmin` | `holder_rewards::publish_round` |
-| `blast_presale_domain::UpgradeAdmin` | `blast_presale::package_admin::authorize_upgrade`, `blast_presale::package_admin::commit_upgrade` |
+| `blast_presale_domain::UpgradeAdmin` | `blast_presale::package_admin::authorize_upgrade`, `blast_presale::package_admin::commit_upgrade_and_advance` |
 
 A role from another package, such as `blast_fun_domain::FeeAdmin`, is a different type and
 cannot reach these calls. No admin can pause a sale, cancel it, move commitments, change windows, recipients, or the fee split. Its
@@ -802,9 +812,9 @@ Integrators cannot call these; they explain state changes. Each takes the
 | `creation_policy::add_partner` | Lets new sales name a partner at once (also cancels a pending removal). Emits `creation_policy::PartnerAdded`. |
 | `creation_policy::remove_partner` | New sales may still name the partner for `blast_partners::blast_partners::delay_ms` (7 days). Sales that already name it keep paying it. Emits `creation_policy::PartnerRemoved`. |
 | `holder_rewards::publish_round`, `holder_rewards::settle_gas_reserve` | See above. |
-| `blast_presale::package_admin::authorize_upgrade`, `blast_presale::package_admin::commit_upgrade` | Dependency-only upgrades. |
+| `blast_presale::package_admin::authorize_upgrade`, `blast_presale::package_admin::commit_upgrade_and_advance` | Compatible upgrades with atomic operational-version cutover. |
 
-`blast_presale::package_admin::wrap` seals the never-upgraded publication cap once, at deployment.
+`blast_presale::package_admin::wrap` consumes the publication Bootstrap and never-upgraded matching cap once. Each upgrade increments both compiled generation constants and commits/advances in one PTB; old bytecode then rejects the advanced version. Existing dependency-only deployments require a fresh publication to adopt this design.
 
 ### Economics
 
@@ -4569,6 +4579,7 @@ public struct PoolCreation<phantom Lp, phantom Meme, phantom Quote> has key {
 /// `finalize`, which reserves its pool creation.
 public fun new<Meme, Quote>(
     treasury_cap: TreasuryCap<Meme>,
+    package_version: &blast_presale_package::PackageVersion,
     creation_policy: &creation_policy::CreationPolicy,
     fee_policy: &fee_policy::FeePolicy,
     venue_config: &mut venue_config::VenueConfig,
@@ -4582,13 +4593,17 @@ public fun new<Meme, Quote>(
 /// with `share`; a sale is never funded in that PTB.
 public fun finalize<Lp, Meme, Quote>(
     initializer: blast_presale::PresaleInitializer<Meme, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     currency: &mut Currency<Meme>,
     create_pool_cap: pool::CreatePoolCapV2,
     ctx: &mut TxContext,
 ): (blast_presale::Presale<Meme, Quote>, blast_presale::PresaleCap, PoolCreation<Lp, Meme, Quote>)
 
 /// Shares a reservation `finalize` returned, so anyone can migrate its sale once it is funded.
-public fun share<Lp, Meme, Quote>(self: PoolCreation<Lp, Meme, Quote>)
+public fun share<Lp, Meme, Quote>(
+    self: PoolCreation<Lp, Meme, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
+)
 
 /// Anyone may migrate a funded presale into its reserved Aftermath pool, consuming the
 /// reservation bound to it: it seeds a 50/50 pool with all of the sale's LP tokens and Quote,
@@ -4596,6 +4611,7 @@ public fun share<Lp, Meme, Quote>(self: PoolCreation<Lp, Meme, Quote>)
 /// pool, locks the pool's owner cap in the vault as its position, and sends the LP coin to `0x0`.
 public fun migrate<Lp, Meme, Quote>(
     sale: &mut blast_presale::Presale<Meme, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     pool_creation: PoolCreation<Lp, Meme, Quote>,
     fee_policy: &fee_policy::FeePolicy,
     venue_config: &venue_config::VenueConfig,
@@ -4611,6 +4627,7 @@ public fun migrate<Lp, Meme, Quote>(
 /// is valid. Another venue's vault aborts: its fees settle only through its own venue.
 public fun collect_fees<Meme, Quote>(
     vault: &mut presale_vault::Vault<Meme, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     fee_policy: &fee_policy::FeePolicy,
     meme_fees: vector<transfer::Receiving<Coin<Meme>>>,
     quote_fees: vector<transfer::Receiving<Coin<Quote>>>,
@@ -4915,6 +4932,7 @@ public fun fee_split(fee_recipients: vector<RecipientShare>, holder_rewards_bps:
 /// `migrate` called with the same witness.
 public fun new<SaleToken, Quote, MigrationWitness: drop>(
     treasury_cap: TreasuryCap<SaleToken>,
+    package_version: &blast_presale_package::PackageVersion,
     _: MigrationWitness,
     creation_policy: &creation_policy::CreationPolicy,
     fee_policy: &fee_policy::FeePolicy,
@@ -4924,6 +4942,7 @@ public fun new<SaleToken, Quote, MigrationWitness: drop>(
 /// fixed.
 public fun set_supply<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     token_supply: u64,
     burnable: bool,
 )
@@ -4932,6 +4951,7 @@ public fun set_supply<SaleToken, Quote>(
 /// rate the shares must total exactly 10,000 BPS.
 public fun set_token_allocations<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     token_allocation_bps: bps::Bps,
     liquidity_token_allocation_bps: bps::Bps,
     recipient_allocations: vector<RecipientShare>,
@@ -4941,6 +4961,7 @@ public fun set_token_allocations<SaleToken, Quote>(
 /// claim, instead of paying them out. Without it, claims pay tokens out at once.
 public fun set_participant_vesting<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     vesting: VestingTerms,
 )
 
@@ -4948,6 +4969,7 @@ public fun set_participant_vesting<SaleToken, Quote>(
 /// keeps what Blast's and the recipients' shares leave.
 public fun set_raise<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     raise_target: u64,
     raise_allocations: vector<RecipientShare>,
 )
@@ -4956,6 +4978,7 @@ public fun set_raise<SaleToken, Quote>(
 /// migrate a funded sale before anyone may cancel it: at least seven days.
 public fun set_windows<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     duration_ms: u64,
     liquidity_window_ms: u64,
 )
@@ -4963,12 +4986,14 @@ public fun set_windows<SaleToken, Quote>(
 /// Sets who may commit and each wallet's cap.
 public fun set_eligibility<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     eligibility: EligibilityPolicy,
 )
 
 /// Adds a closing phase that lifts wallet caps. Without one, caps hold for the whole window.
 public fun set_uncapped_phase<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     uncapped: UncappedPhase,
 )
 
@@ -4979,6 +5004,7 @@ public fun set_uncapped_phase<SaleToken, Quote>(
 /// for the whole window and always runs to its end.
 public fun set_hard_cap<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     starts_after_ms: u64,
     closes_when_filled: bool,
 )
@@ -4986,6 +5012,7 @@ public fun set_hard_cap<SaleToken, Quote>(
 /// Sets how the sale's vault splits every collected LP fee.
 public fun set_fee_split<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     fee_split: FeeSplit,
 )
 
@@ -4996,6 +5023,7 @@ public fun set_fee_split<SaleToken, Quote>(
 /// token fee.
 public fun set_partner<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     creation_policy: &creation_policy::CreationPolicy,
     partner: &blast_partners::blast_partners::Partner,
     clock: &Clock,
@@ -5012,6 +5040,7 @@ public fun migration_witness<SaleToken, Quote>(
 /// irreversibly makes it fixed or burn-only before returning the presale for `share`.
 public fun finalize<SaleToken, Quote>(
     self: PresaleInitializer<SaleToken, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     currency: &mut Currency<SaleToken>,
     ctx: &mut TxContext,
 ): (Presale<SaleToken, Quote>, PresaleCap)
@@ -5019,7 +5048,12 @@ public fun finalize<SaleToken, Quote>(
 /// Shares a newly created presale and fixes its windows from `start_ms`, or from now once that
 /// has passed, so a sale can be created ahead of its start. Commitments open at the start; until
 /// then Blast's `FeeAdmin` may change the sale's Blast rates.
-public fun share<SaleToken, Quote>(self: Presale<SaleToken, Quote>, start_ms: u64, clock: &Clock)
+public fun share<SaleToken, Quote>(
+    self: Presale<SaleToken, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
+    start_ms: u64,
+    clock: &Clock,
+)
 
 /// Replaces this sale's snapshot of Blast's rates before its window starts, while nobody can have
 /// committed: in its creation transaction before `share`, or once shared until its start. A
@@ -5028,6 +5062,7 @@ public fun share<SaleToken, Quote>(self: Presale<SaleToken, Quote>, start_ms: u6
 /// amount, and every recipient keeps its amount.
 public fun set_protocol_fees<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     _: &blast_admin::blast_acl::AdminWitness<blast_presale_domain::FeeAdmin>,
     raise_bps: bps::Bps,
     token_bps: bps::Bps,
@@ -5041,6 +5076,7 @@ public fun set_protocol_fees<SaleToken, Quote>(
 /// accept (a zero coin otherwise).
 public fun commit_open<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     quote_in: Coin<Quote>,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -5050,6 +5086,7 @@ public fun commit_open<SaleToken, Quote>(
 /// returning whatever a hard cap could not accept.
 public fun commit_allowlisted<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     quote_in: Coin<Quote>,
     index: u64,
     wallet_cap: u64,
@@ -5062,6 +5099,7 @@ public fun commit_allowlisted<SaleToken, Quote>(
 /// returning whatever a hard cap could not accept.
 public fun commit_uncapped<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     quote_in: Coin<Quote>,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -5070,11 +5108,19 @@ public fun commit_uncapped<SaleToken, Quote>(
 /// Fixes the fill after the commitment window, or as soon as the raise is full under a hard cap
 /// that closes the sale when filled; closing early ends the window now, so the LP deadline counts
 /// from now. Underfunded sales become fully refundable. Anyone may settle.
-public fun settle<SaleToken, Quote>(self: &mut Presale<SaleToken, Quote>, clock: &Clock)
+public fun settle<SaleToken, Quote>(
+    self: &mut Presale<SaleToken, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
+    clock: &Clock,
+)
 
 /// Cancels a funded presale still unmigrated at its LP deadline, preserving all
 /// Quote for refunds. Anyone may cancel.
-public fun cancel_unlaunched<SaleToken, Quote>(self: &mut Presale<SaleToken, Quote>, clock: &Clock)
+public fun cancel_unlaunched<SaleToken, Quote>(
+    self: &mut Presale<SaleToken, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
+    clock: &Clock,
+)
 
 /// Delivers one participant's pro-rata tokens and overflow Quote after migration,
 /// or its full Quote after cancellation. Under participant vesting, the tokens are
@@ -5083,6 +5129,7 @@ public fun cancel_unlaunched<SaleToken, Quote>(self: &mut Presale<SaleToken, Quo
 /// claim receives the bounded integer-rounding remainder.
 public fun claim<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     participant: address,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -5098,6 +5145,7 @@ public fun claim<SaleToken, Quote>(
 /// remains atomic with this state transition.
 public fun migrate<SaleToken, Quote, MigrationWitness: drop>(
     self: &mut Presale<SaleToken, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     fee_policy: &fee_policy::FeePolicy,
     _: MigrationWitness,
     clock: &Clock,
@@ -5110,6 +5158,7 @@ public fun migrate<SaleToken, Quote, MigrationWitness: drop>(
 /// once after migration: both recipients are fixed.
 public fun pay_protocol_fees_with_partner<SaleToken, Quote>(
     self: &mut Presale<SaleToken, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     fee_policy: &fee_policy::FeePolicy,
     partner: &blast_partners::blast_partners::Partner,
     clock: &Clock,
@@ -5326,7 +5375,7 @@ Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/pr
 #### Types
 
 ```move
-/// Authorizes and commits dependency-only package upgrades that relink venue generations.
+/// Authorizes compatible package upgrades and their atomic operational-version cutover.
 public struct UpgradeAdmin {}
 
 /// Sets the address every protocol fee is paid to.
@@ -5345,6 +5394,37 @@ public struct AdapterAdmin {}
 /// Publishes holder-reward rounds and settles capped gas reserves.
 public struct RewardsAdmin {}
 ```
+
+### `blast_presale::blast_presale_package`
+
+Canonical package provenance, publication bootstrap, and operational generation.  The one-time witness seeds the generation and claims the Publisher. Both stay in owned bootstrap custody until package administration seals the native capabilities.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/presale/sources/blast_presale_package.move
+
+#### Types
+
+```move
+/// One-time witness: it seeds the package generation and claims this package's Publisher.
+public struct BLAST_PRESALE_PACKAGE() has drop;
+
+/// Publication-only custody; it cannot supply the PackageVersion required by presale activity.
+public struct Bootstrap has key {
+    id: UID,
+    publisher: Publisher,
+    generation: blast_admin::operational_version::OperationalVersion<BLAST_PRESALE_PACKAGE>,
+}
+
+/// Singleton operational package generation.
+public struct PackageVersion has key {
+    id: UID,
+    generation: blast_admin::operational_version::OperationalVersion<BLAST_PRESALE_PACKAGE>,
+}
+```
+
+#### Constants
+
+- `PACKAGE_VERSION: u64 = 1`: Current package generation accepted by every protected mutation.
+- `NEXT_PACKAGE_VERSION: u64 = 2`: The generation this bytecode hands over to in a governed upgrade.
 
 ### `blast_presale::bluefin`
 
@@ -5369,6 +5449,7 @@ public struct Venue() has drop;
 /// token has one sale, so the tier is recorded under its type.
 public fun new<Meme, Quote>(
     treasury_cap: TreasuryCap<Meme>,
+    package_version: &blast_presale_package::PackageVersion,
     currency: &Currency<Meme>,
     creation_policy: &creation_policy::CreationPolicy,
     fee_policy: &fee_policy::FeePolicy,
@@ -5380,6 +5461,7 @@ public fun new<Meme, Quote>(
 /// Anyone may atomically migrate a funded presale into its configured Bluefin pool.
 public fun migrate<Meme, Quote>(
     sale: &mut blast_presale::Presale<Meme, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     fee_policy: &fee_policy::FeePolicy,
     venue_config: &venue_config::VenueConfig,
     currency: &Currency<Meme>,
@@ -5396,6 +5478,7 @@ public fun migrate<Meme, Quote>(
 /// and accept the partner, if one is named.
 public fun new_vault<Meme, Quote>(
     position: position::Position,
+    package_version: &blast_presale_package::PackageVersion,
     fee_split: blast_presale::FeeSplit,
     partner_id: Option<ID>,
     creation_policy: &creation_policy::CreationPolicy,
@@ -5409,6 +5492,7 @@ public fun new_vault<Meme, Quote>(
 /// holder Quote and paying holder Meme to the governed treasury.
 public fun collect_fees<Meme, Quote>(
     vault: &mut presale_vault::Vault<Meme, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     fee_policy: &fee_policy::FeePolicy,
     bluefin_config: &config::GlobalConfig,
     pool: &mut pool::Pool<Meme, Quote>,
@@ -5495,6 +5579,7 @@ public struct CastKey() has copy, drop, store;
 /// sale token has one sale, so the tier is recorded under its type.
 public fun new<Meme, Quote>(
     treasury_cap: TreasuryCap<Meme>,
+    package_version: &blast_presale_package::PackageVersion,
     creation_policy: &creation_policy::CreationPolicy,
     fee_policy: &fee_policy::FeePolicy,
     venue_config: &mut venue_config::VenueConfig,
@@ -5508,6 +5593,7 @@ public fun new<Meme, Quote>(
 /// presale's Meme and Quote in Cetus's canonical coin order.
 public fun migrate<Meme, Quote, CoinA, CoinB>(
     sale: &mut blast_presale::Presale<Meme, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     fee_policy: &fee_policy::FeePolicy,
     venue_config: &venue_config::VenueConfig,
     cetus_config: &config::GlobalConfig,
@@ -5523,6 +5609,7 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
 /// and accept the partner, if one is named.
 public fun new_vault<Meme, Quote, CoinA, CoinB>(
     position: position::Position,
+    package_version: &blast_presale_package::PackageVersion,
     fee_split: blast_presale::FeeSplit,
     partner_id: Option<ID>,
     creation_policy: &creation_policy::CreationPolicy,
@@ -5537,6 +5624,7 @@ public fun new_vault<Meme, Quote, CoinA, CoinB>(
 /// recipient and accruing the holder Quote and paying holder Meme to the governed treasury. `CoinA` and `CoinB` are the pool's coin order.
 public fun collect_fees<Meme, Quote, CoinA, CoinB>(
     vault: &mut presale_vault::Vault<Meme, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     fee_policy: &fee_policy::FeePolicy,
     cetus_config: &config::GlobalConfig,
     burn_manager: &lp_burn::BurnManager,
@@ -5581,6 +5669,7 @@ public struct PartnerKey(ID) has copy, drop, store;
 /// existing ones keep it.
 public fun set_quote_allowed<Quote>(
     self: &mut CreationPolicy,
+    package_version: &blast_presale_package::PackageVersion,
     _: &blast_admin::blast_acl::AdminWitness<blast_presale_domain::ListingAdmin>,
     allowed: bool,
 )
@@ -5594,6 +5683,7 @@ public fun set_quote_allowed<Quote>(
 /// any of which a caller can construct, is rejected.
 public fun set_migration_witness_allowed<MigrationWitness: drop>(
     self: &mut CreationPolicy,
+    package_version: &blast_presale_package::PackageVersion,
     _: &blast_admin::blast_acl::AdminWitness<blast_presale_domain::AdapterAdmin>,
     allowed: bool,
 )
@@ -5602,6 +5692,7 @@ public fun set_migration_witness_allowed<MigrationWitness: drop>(
 /// the removal; adding a removed partner accepts it again.
 public fun add_partner(
     self: &mut CreationPolicy,
+    package_version: &blast_presale_package::PackageVersion,
     _: &blast_admin::blast_acl::AdminWitness<blast_presale_domain::FeeAdmin>,
     partner: &blast_partners::blast_partners::Partner,
 )
@@ -5610,6 +5701,7 @@ public fun add_partner(
 /// partner, `blast_partners::delay_ms()`. Sales that already name it keep paying it.
 public fun remove_partner(
     self: &mut CreationPolicy,
+    package_version: &blast_presale_package::PackageVersion,
     _: &blast_admin::blast_acl::AdminWitness<blast_presale_domain::FeeAdmin>,
     partner: &blast_partners::blast_partners::Partner,
     clock: &Clock,
@@ -5687,6 +5779,7 @@ public struct ProtocolFees has copy, drop, store {
 /// Sets the rates presales created afterward snapshot; existing presales keep theirs.
 public fun set_fees(
     self: &mut FeePolicy,
+    package_version: &blast_presale_package::PackageVersion,
     _: &blast_admin::blast_acl::AdminWitness<blast_presale_domain::FeeAdmin>,
     raise_bps: bps::Bps,
     token_bps: bps::Bps,
@@ -5697,6 +5790,7 @@ public fun set_fees(
 /// Redirects every later protocol payout, including those of existing presales.
 public fun set_destination(
     self: &mut FeePolicy,
+    package_version: &blast_presale_package::PackageVersion,
     _: &blast_admin::blast_acl::AdminWitness<blast_presale_domain::TreasuryAdmin>,
     destination: address,
 )
@@ -5766,6 +5860,7 @@ public struct Round<phantom Meme, phantom Quote> has key {
 /// USD eligibility and gas attribution remain off chain.
 public fun publish_round<Meme, Quote>(
     vault: &mut presale_vault::Vault<Meme, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     _: &blast_admin::blast_acl::AdminWitness<blast_presale_domain::RewardsAdmin>,
     fee_policy: &fee_policy::FeePolicy,
     expected_treasury: address,
@@ -5786,6 +5881,7 @@ public fun publish_round<Meme, Quote>(
 /// Pays only the committed holder balances; anyone may relay an unchanged proof.
 public fun claim<Meme, Quote>(
     self: &mut Round<Meme, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     index: u64,
     beneficiary: address,
     meme_amount: u64,
@@ -5798,6 +5894,7 @@ public fun claim<Meme, Quote>(
 /// treasury receives it; all unused reserve immediately returns to this vault.
 public fun settle_gas_reserve<Meme, Quote>(
     self: &mut Round<Meme, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     _: &blast_admin::blast_acl::AdminWitness<blast_presale_domain::RewardsAdmin>,
     vault: &mut presale_vault::Vault<Meme, Quote>,
     reimbursement_amount: u64,
@@ -5808,6 +5905,7 @@ public fun settle_gas_reserve<Meme, Quote>(
 /// any unsettled reserve. Missing settlement authority cannot strand custody.
 public fun close_round<Meme, Quote>(
     self: Round<Meme, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     vault: &mut presale_vault::Vault<Meme, Quote>,
     clock: &Clock,
 )
@@ -5913,52 +6011,46 @@ Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/pr
 
 ### `blast_presale::package_admin`
 
-Sealed custody for the presale package's dependency-only UpgradeCap.  Bluefin and Cetus gate callers by their own package version, so a presale linked to a retired venue generation could never migrate or collect fees again. Custody keeps the package relinkable, and `wrap` narrows the cap to dependency-only upgrades in the same call that seals it: presale logic can never change, so every callable generation runs identical code and needs no operational version gate.
+Shared custody of this package's Publisher and UpgradeCap, driven by package administrators.
 
 Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/presale/sources/package_admin.move
 
 #### Types
 
 ```move
-/// Shared custody for this package's framework UpgradeCap.
+/// Shared custody for the package's framework Publisher and UpgradeCap.
 public struct PackageAdmin has key {
     id: UID,
-    upgrade_cap: UpgradeCap,
+    custody: blast_admin::upgrade_custody::UpgradeCustody<blast_presale_package::BLAST_PRESALE_PACKAGE>,
 }
 ```
 
 #### Functions
 
 ```move
-/// Restricts this package's never-upgraded UpgradeCap to dependency-only upgrades and seals it in
-/// a shared `PackageAdmin`. Only the original publication's cap names this package, and requiring
-/// version one proves no upgrade changed presale logic before the seal.
-public fun wrap(upgrade_cap: UpgradeCap, ctx: &mut TxContext)
+/// Consumes publication bootstrap, seals native custody, and enables the initial generation.
+public fun wrap(
+    bootstrap: blast_presale_package::Bootstrap,
+    upgrade_cap: UpgradeCap,
+    ctx: &mut TxContext,
+)
 
-/// Authorizes the exact package digest under the sealed cap's dependency-only policy.
+/// Authorizes the exact package digest under the wrapped cap's current policy.
 public fun authorize_upgrade(
     self: &mut PackageAdmin,
+    package_version: &blast_presale_package::PackageVersion,
     _: &blast_admin::blast_acl::AdminWitness<blast_presale_domain::UpgradeAdmin>,
     digest: vector<u8>,
 ): UpgradeTicket
 
-/// Commits the native receipt into the same sealed cap that authorized it.
-public fun commit_upgrade(
+/// Commits the upgrade and advances the package version together.
+public fun commit_upgrade_and_advance(
     self: &mut PackageAdmin,
+    package_version: &mut blast_presale_package::PackageVersion,
     _: &blast_admin::blast_acl::AdminWitness<blast_presale_domain::UpgradeAdmin>,
     receipt: UpgradeReceipt,
 )
 ```
-
-#### Errors
-
-| Constant | Code | Message |
-| --- | --- | --- |
-| `EInvalidUpgradeCap` | 0 | Only this package's never-upgraded UpgradeCap can be sealed. |
-
-#### Constants
-
-- `INITIAL_VERSION: u64 = 1`: The framework stamps a freshly published package's UpgradeCap with version one.
 
 ### `blast_presale::presale_vault`
 
@@ -6008,6 +6100,7 @@ public struct Vault<phantom Meme, phantom Quote> has key {
 /// Claims the pool's one-time migration residuals with the creator capability.
 public fun claim_migration_residuals<Meme, Quote>(
     self: &mut Vault<Meme, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     cap: &blast_presale::PresaleCap,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<Quote>)
@@ -6016,6 +6109,7 @@ public fun claim_migration_residuals<Meme, Quote>(
 /// pool are split at the new rates when collected; the creator's split of the rest is unchanged.
 public fun set_protocol_lp_fees<Meme, Quote>(
     self: &mut Vault<Meme, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     _: &blast_admin::blast_acl::AdminWitness<blast_presale_domain::FeeAdmin>,
     lp_fee_meme_bps: bps::Bps,
     lp_fee_quote_bps: bps::Bps,
@@ -6027,6 +6121,7 @@ public fun set_protocol_lp_fees<Meme, Quote>(
 /// so it can follow any collection.
 public fun pay_protocol_lp_fees_with_partner<Meme, Quote>(
     self: &mut Vault<Meme, Quote>,
+    package_version: &blast_presale_package::PackageVersion,
     fee_policy: &fee_policy::FeePolicy,
     partner: &blast_partners::blast_partners::Partner,
     clock: &Clock,
@@ -10995,6 +11090,7 @@ public struct PoolCreation<phantom Lp> has key {
 /// `CreationPolicy` must allow `Witness`.
 public fun new<SaleToken, Quote>(
     _: &AdminCap,
+    package_version: &blast_presale::blast_presale_package::PackageVersion,
     treasury_cap: TreasuryCap<SaleToken>,
     creation_policy: &blast_presale::creation_policy::CreationPolicy,
     fee_policy: &blast_presale::fee_policy::FeePolicy,
@@ -11007,6 +11103,7 @@ public fun new<SaleToken, Quote>(
 /// never consume the pool creation.
 public fun finalize<Lp, SaleToken, Quote>(
     _: &AdminCap,
+    package_version: &blast_presale::blast_presale_package::PackageVersion,
     initializer: blast_presale::blast_presale::PresaleInitializer<SaleToken, Quote>,
     currency: &mut Currency<SaleToken>,
     create_pool_cap: pool::CreatePoolCapV2,
@@ -11019,6 +11116,7 @@ public fun finalize<Lp, SaleToken, Quote>(
 /// LP at `BURN_ADDRESS`.
 public fun migrate<Lp, SaleToken, Quote>(
     sale: &mut blast_presale::blast_presale::Presale<SaleToken, Quote>,
+    package_version: &blast_presale::blast_presale_package::PackageVersion,
     pool_creation: PoolCreation<Lp>,
     fee_policy: &blast_presale::fee_policy::FeePolicy,
     pool_registry: &mut pool_registry::PoolRegistry,

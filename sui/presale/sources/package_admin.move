@@ -1,114 +1,129 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// Sealed custody for the presale package's dependency-only UpgradeCap.
-///
-/// Bluefin and Cetus gate callers by their own package version, so a presale linked to a
-/// retired venue generation could never migrate or collect fees again. Custody keeps the
-/// package relinkable, and `wrap` narrows the cap to dependency-only upgrades in the same call
-/// that seals it: presale logic can never change, so every callable generation runs identical
-/// code and needs no operational version gate.
+// Package error macros preserve the admin's abort location.
+#[allow(lint(abort_without_constant))]
+/// Shared custody of this package's Publisher and UpgradeCap, driven by package administrators.
 module blast_presale::package_admin;
 
 // === Public Types ===
 
-/// Shared custody for this package's framework UpgradeCap.
+/// Shared custody for the package's framework Publisher and UpgradeCap.
 public struct PackageAdmin has key {
     id: UID,
-    upgrade_cap: UpgradeCap,
+    custody: UpgradeCustody<BLAST_PRESALE_PACKAGE>,
 }
 
 // === Public Functions ===
 
-/// Restricts this package's never-upgraded UpgradeCap to dependency-only upgrades and seals it in
-/// a shared `PackageAdmin`. Only the original publication's cap names this package, and requiring
-/// version one proves no upgrade changed presale logic before the seal.
-public fun wrap(upgrade_cap: UpgradeCap, ctx: &mut TxContext) {
-    transfer::share_object(seal_dependency_only(upgrade_cap, ctx));
+/// Consumes publication bootstrap, seals native custody, and enables the initial generation.
+public fun wrap(bootstrap: Bootstrap, upgrade_cap: UpgradeCap, ctx: &mut TxContext) {
+    let (publisher, generation) = bootstrap.destroy();
+    let id = object::new(ctx);
+    let custody = upgrade_custody::new<BLAST_PRESALE_PACKAGE>(
+        id.to_inner(),
+        publisher,
+        upgrade_cap,
+    );
+
+    transfer::share_object(PackageAdmin { id, custody });
+    generation.share_version(ctx);
 }
 
-/// Authorizes the exact package digest under the sealed cap's dependency-only policy.
+/// Authorizes the exact package digest under the wrapped cap's current policy.
 public fun authorize_upgrade(
     self: &mut PackageAdmin,
+    package_version: &PackageVersion,
     _: &AdminWitness<UpgradeAdmin>,
     digest: vector<u8>,
 ): UpgradeTicket {
-    let policy = self.upgrade_cap.policy();
+    package_version.assert_current();
+    let custodian_id = self.id.to_inner();
 
-    self.upgrade_cap.authorize(policy, digest)
+    self.custody.authorize_upgrade(custodian_id, digest)
 }
 
-/// Commits the native receipt into the same sealed cap that authorized it.
-public fun commit_upgrade(
+/// Commits the upgrade and advances the package version together.
+public fun commit_upgrade_and_advance(
     self: &mut PackageAdmin,
+    package_version: &mut PackageVersion,
     _: &AdminWitness<UpgradeAdmin>,
     receipt: UpgradeReceipt,
 ) {
-    self.upgrade_cap.commit(receipt);
-}
+    package_version.assert_next();
+    let custodian_id = self.id.to_inner();
 
-// === Private Functions ===
-
-fun seal_dependency_only(mut upgrade_cap: UpgradeCap, ctx: &mut TxContext): PackageAdmin {
-    assert!(
-        upgrade_cap.package().to_address() == type_name::original_id<PackageAdmin>()
-            && upgrade_cap.version() == INITIAL_VERSION,
-        EInvalidUpgradeCap,
-    );
-
-    upgrade_cap.only_dep_upgrades();
-
-    PackageAdmin { id: object::new(ctx), upgrade_cap }
+    self.custody.commit_upgrade(custodian_id, receipt);
+    package_version.advance();
 }
 
 // === Test-Only Functions ===
 
 #[test_only]
-public fun seal_dependency_only_for_testing(
-    upgrade_cap: UpgradeCap,
-    ctx: &mut TxContext,
-): PackageAdmin {
-    seal_dependency_only(upgrade_cap, ctx)
+/// Creates unshared package administration around simulated package capabilities.
+public fun new_for_testing(ctx: &mut TxContext): PackageAdmin {
+    let id = object::new(ctx);
+    let custody = upgrade_custody::new<BLAST_PRESALE_PACKAGE>(
+        id.to_inner(),
+        blast_presale::blast_presale_package::publisher_for_testing(ctx),
+        sui::package::test_publish(
+            std::type_name::original_id<BLAST_PRESALE_PACKAGE>().to_id(),
+            ctx,
+        ),
+    );
+
+    PackageAdmin { id, custody }
 }
 
 #[test_only]
-/// Seals a cap for any package, so tests can authorize under a non-zero package ID whether or not
-/// `Published.toml` assigns this package its published address.
-public fun seal_any_dependency_only_for_testing(
-    mut upgrade_cap: UpgradeCap,
-    ctx: &mut TxContext,
-): PackageAdmin {
-    upgrade_cap.only_dep_upgrades();
+public fun id_for_testing(self: &PackageAdmin): ID {
+    self.id.to_inner()
+}
 
-    PackageAdmin { id: object::new(ctx), upgrade_cap }
+#[test_only]
+public fun publisher_id_for_testing(self: &PackageAdmin): ID {
+    self.custody.publisher_id_for_testing()
+}
+
+#[test_only]
+public fun upgrade_cap_id_for_testing(self: &PackageAdmin): ID {
+    self.custody.upgrade_cap_id_for_testing()
+}
+
+#[test_only]
+public fun package_id_for_testing(self: &PackageAdmin): ID {
+    self.custody.current_package_id_for_testing()
+}
+
+#[test_only]
+public fun version_for_testing(self: &PackageAdmin): u64 {
+    self.custody.native_version_for_testing()
 }
 
 #[test_only]
 public fun policy_for_testing(self: &PackageAdmin): u8 {
-    self.upgrade_cap.policy()
+    self.custody.policy_for_testing()
 }
 
 #[test_only]
-public fun destroy_for_testing(self: PackageAdmin) {
-    std::unit_test::destroy(self)
+/// Reports whether native upgrade authority remains sealed in this package's custody.
+public fun has_upgrade_cap_for_testing(self: &PackageAdmin): bool {
+    self.custody.has_upgrade_cap()
 }
-
-// === Constants ===
-
-/// The framework stamps a freshly published package's UpgradeCap with version one.
-const INITIAL_VERSION: u64 = 1;
-
-// === Errors ===
-
-#[error(code = 0)]
-const EInvalidUpgradeCap: vector<u8> = b"Only this package's never-upgraded UpgradeCap can be sealed.";
 
 // === Imports ===
 
-use blast_admin::blast_acl::AdminWitness;
+use blast_admin::{
+    blast_acl::AdminWitness,
+    operational_version::OperationalVersion,
+    upgrade_custody::{Self, UpgradeCustody}
+};
 
-use blast_presale::blast_presale_domain::UpgradeAdmin;
-
-use std::type_name;
+use blast_presale::{
+    blast_presale_domain::UpgradeAdmin,
+    blast_presale_package::{BLAST_PRESALE_PACKAGE, Bootstrap, PackageVersion}
+};
 
 use sui::package::{UpgradeCap, UpgradeReceipt, UpgradeTicket};
+
+use fun blast_presale::blast_presale_package::share_version as OperationalVersion.share_version;
