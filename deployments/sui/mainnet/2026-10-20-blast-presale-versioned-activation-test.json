@@ -1,0 +1,378 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "sui-package-deployment",
+  "release": "blast-presale-versioned-activation-test",
+  "purpose": "Mainnet test-only publication. Not a production rollout.",
+  "network": {
+    "chain": "sui",
+    "environment": "mainnet",
+    "chainIdentifierHex": "35834a8a"
+  },
+  "timestampUtc": "2026-10-20T20:15:49.214000+00:00",
+  "recordedAtUtc": "2026-10-20T20:20:36.985544+00:00",
+  "repository": {
+    "commit": "13e2f7ed78f012a1d7e24e89daa804e10307ed48",
+    "branch": "codex/deploy-versioned-presale",
+    "workingTreeAtPublication": "clean",
+    "publicationDirectory": "isolated copy under outputs/operations/2026-10-20-presale-versioned/presale",
+    "sourceFilesSha256": {
+      "sui/presale/sources/fee_policy.move": "13c17f89bd0196c6de1bc386f6561c8e8d50da71bf380d7f4007a001f12ce614",
+      "sui/presale/sources/venue_config.move": "c34e63ab33e97c95de39f59a73eb5d9f5a831dc60051c1163ca4072154e35a94",
+      "sui/presale/sources/merkle_tree.move": "2fc625893c711051b02bf0338bac3aba3869df4aba43d7087ad75c8de3491c9d",
+      "sui/presale/sources/cetus.move": "ab855dcdada372e38c88bd536bddeca10383e99e6b5386ca492181f9a545ca4a",
+      "sui/presale/sources/bluefin.move": "893b60ec56860c6b95cab9a95d39e29aea9dc3ead971eff3897eb3db7f619432",
+      "sui/presale/sources/presale_vault.move": "867287413f8f588d0c0da939364999838ecccb683137684d29dfe900f5264774",
+      "sui/presale/sources/blast_presale_package.move": "400008f4d22fdd66f19913a1ee6862850b99592e0c985cfeae1db28d37d2520b",
+      "sui/presale/sources/bps.move": "c62f75af6e838706c09c6850630c7630ddc2fc90539988a892b07cce166b2691",
+      "sui/presale/sources/creation_policy.move": "5b9315458f6e64160fbaea0efa5916bc6f485dd1d51373309f9efecbdf04e567",
+      "sui/presale/sources/holder_rewards.move": "312a7461935a4167a2be9af23ab0cd1905dff26414ff8fae73c8de589a2cf0aa",
+      "sui/presale/sources/migration_math.move": "c5e1da8e2887388d7c8708871fc297b69823ec9464ab9113dd7fa6053e4a0883",
+      "sui/presale/sources/blast_presale.move": "a4b5204cbce10f2dcc6f5b4cbb4c01418adfbd15378c6586893c6695212921b7",
+      "sui/presale/sources/package_admin.move": "4bcb2e846901fd284b14a35dc4c7be6d236b5bd1150c7f947b74ebf41a8b3e62",
+      "sui/presale/sources/aftermath.move": "afb64a7ba54d8947a6d73d451189442527dbbfd1222fa5dbad6931fe12f25e76",
+      "sui/presale/sources/blast_presale_domain.move": "4a0bbf7bbf91cb6580ddc5f5ff8becea79870901752f5df3aceb132247f6c56a"
+    },
+    "sourceManifestSha256": "143cc0014b105fd4b2079a230ee9cf0b2276b690bc36444a758fc11154798b40",
+    "manifestChanges": "Only local dependency paths resolved to absolute paths; original Published.toml omitted for fresh publication. Production manifests unchanged.",
+    "sourceMatchesOnChain": true
+  },
+  "toolchain": {
+    "suiCli": "1.77.2-51d177ad7d65",
+    "moveEdition": "2024"
+  },
+  "deployer": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+  "status": "success",
+  "packages": {
+    "presale": {
+      "packageId": "0xafc415fa1187577c60205ccff10151fca540b088a3b84f798b90ae0642fa83f8",
+      "originalPackageId": "0xafc415fa1187577c60205ccff10151fca540b088a3b84f798b90ae0642fa83f8",
+      "nativeVersion": 1,
+      "operationalGeneration": 1,
+      "freshPublication": true,
+      "upgradePolicy": {
+        "name": "compatible",
+        "value": 0
+      },
+      "custody": {
+        "publisher": {
+          "id": "0x7f1a6de1c895a9d1f4012a3d54388824ef0879b0324033c048a7ab15c8434bee",
+          "module_name": "blast_presale_package",
+          "package": "afc415fa1187577c60205ccff10151fca540b088a3b84f798b90ae0642fa83f8"
+        },
+        "upgrade_cap": {
+          "id": "0xc5f0ceec8e298a7ad4733521e53bb2bb70316470a907d51e36a5601fb089d04c",
+          "package": "0xafc415fa1187577c60205ccff10151fca540b088a3b84f798b90ae0642fa83f8",
+          "policy": 0.0,
+          "version": "1"
+        }
+      },
+      "bootstrap": {
+        "objectId": "0xc9ec95b51f207f3672b42f267a173230e3cf567b65675131a259a2f4214d66bb",
+        "initialOwner": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+        "finalStatus": "consumed at activation"
+      }
+    },
+    "activationFixture": {
+      "packageId": "0x2ed8405d70de84fe07cc7bd7a18424644a890815efcbbb0c3cd272b462873a1f",
+      "purpose": "Worthless currencies and linked test caller; never a production dependency",
+      "upgradeCap": "0x349faa49461f683420c92d0a141e0a613c23c48e1823a14948d31ff97a27710d",
+      "upgradeCapOwner": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600"
+    }
+  },
+  "dependencyPackageIds": [
+    "0xf948935b111990c2b604900c9b2eeb8f24dcf9868a45d1ea1653a5f282c10e29",
+    "0x5ad6890968efcf3d20899e0cec735214f1067b96e77e77d86408989998468bb2",
+    "0xa6baab1e668c7868991c1c3c11e144100f5734c407d020f72a01b9d1a8bcb97f",
+    "0xbc7b2c577ad9362fbb0dba397d17f3bcc81bf7aa916559f99a77eaee05d0947c",
+    "0xaead64e3b3cc7972ba86396df07066c90176f42c6aea53b6df0d8ab11007ece2",
+    "0xc66fabf1a9253e43c70f1cc02d40a1d18db183140ecaae2a3f58fa6b66c55acf",
+    "0x64213b0e4a52bac468d4ac3f140242f70714381653a1919a6d57cd49c628207a",
+    "0x73baa782c55003b3a359dec04b189312565d18e7309d4a51f5f112f891e3b2ab",
+    "0xd075338d105482f1527cbfd363d6413558f184dec36d9138a70261e87f486e9c",
+    "0x260693ec785a6e6c9d81d58c7d2ff72f1288ae0fa6a9725abe05a6478b11f084",
+    "0x48dcc51091e692a0c8a64930fc839fb5a8e58de3590c084a8322b9cd34754c36",
+    "0xc4aabc874f5060d3147d8f74c14e3a8a1f9f8d92edea138a51635395ed167cd9",
+    "0x06864a6f921804860930db6ddbe2e16acdf8504495ea7481637a1c8b9a8fe54b",
+    "0xab5e63352d0f05881bdfa1631cc0f7fc1669175a00d608828a924df481a9e4bd",
+    "0xdfaadf86be9af246900d1e3f3b996cf549e7948e662a9977bdd7646d8fa3a778",
+    "0x8569b7efebec65c73b9dc15c5ac2a9542870d286fa79a3feedffbaa94ed53002",
+    "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "0x0000000000000000000000000000000000000000000000000000000000000002",
+    "0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9",
+    "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d",
+    "0x85fdb7e3d28162b99e0df758069a3d23cff874c400b2160fc0d4618aefd3ec5c",
+    "0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd"
+  ],
+  "sharedObjects": {
+    "feePolicy": {
+      "objectId": "0xda3f9c034fd394180c7cf4c526d9629591fc85badf5cabafe7afa69a8063fd2f",
+      "initialSharedVersion": 1055093520
+    },
+    "creationPolicy": {
+      "objectId": "0x23c7b007cee7f1f3e483bb26d81e2fe93b7139d308ede5642cc4d77442541da8",
+      "initialSharedVersion": 1055093520
+    },
+    "venueConfig": {
+      "objectId": "0x205350751013c266c9a4033df186bc26569f8ecbaf0f246c148bc948a31f6093",
+      "initialSharedVersion": 1055093520
+    },
+    "packageAdmin": {
+      "objectId": "0x6f76be1b79a65cadba5f5454049ed1d49b646e5fd1bd59e7c39aabbdaedd09af",
+      "initialSharedVersion": 1056244915
+    },
+    "packageVersion": {
+      "objectId": "0xe7634c9e47c0ad15c02e52e73cf7b261f064cb00aaedbf6393683ca31ddee7f0",
+      "initialSharedVersion": 1056244915
+    }
+  },
+  "adminObjects": {
+    "acl": "0xc9fbcfc4eda38626d7daad17902cc145b4008beb20470135438298aa7a005a6d",
+    "superAdminCap": {
+      "objectId": "0x6187ad51c17dee9f288ebbf7f7655b0a7185d7697a5aa23e96f8c66169aa2b2c",
+      "holder": "0x612fa27ba229021c5a1c32022fd6341ffbd58a87ac928a0dc32d8d6d1dba9fed",
+      "reused": true
+    },
+    "adminCap": {
+      "objectId": "0xf9b3674eb89193afa58e096868fa9623217c1a8bb2bb9981c48be1741d33146c",
+      "holder": "0x612fa27ba229021c5a1c32022fd6341ffbd58a87ac928a0dc32d8d6d1dba9fed",
+      "reused": true,
+      "temporaryRoles": [
+        "0xafc415fa1187577c60205ccff10151fca540b088a3b84f798b90ae0642fa83f8::blast_presale_domain::ListingAdmin",
+        "0xafc415fa1187577c60205ccff10151fca540b088a3b84f798b90ae0642fa83f8::blast_presale_domain::AdapterAdmin",
+        "0xafc415fa1187577c60205ccff10151fca540b088a3b84f798b90ae0642fa83f8::blast_presale_domain::UpgradeAdmin"
+      ],
+      "temporaryRolesRevoked": true
+    }
+  },
+  "constructorParameters": {
+    "publication": "No explicit arguments; owned Bootstrap and raw UpgradeCap, shared empty CreationPolicy and zero-rate FeePolicy.",
+    "activation": "Matching Bootstrap and fresh UpgradeCap passed to package_admin::wrap in a separate owner-signed transaction."
+  },
+  "transactions": {
+    "publish": {
+      "digest": "4NUejnRjw3z3Q4QUS5nBs88LUgtdyVE19GRKPkGQXoKy",
+      "checkpoint": "336234165",
+      "timestampMs": "1792527349214",
+      "status": "success",
+      "netGasMist": "469048299"
+    },
+    "fixture-publish": {
+      "digest": "EG3c3hcYUjSz9hU5a8Hxyi2WkG962xh7Hsemr48gtGDx",
+      "checkpoint": "336234443",
+      "timestampMs": "1792527412627",
+      "status": "success",
+      "netGasMist": "36304099"
+    },
+    "fund-admin-gas": {
+      "digest": "FBgHbDiiWLFsMM7P4zdooftCABCEk5MT5rXTsF6qfKXj",
+      "checkpoint": "336234463",
+      "timestampMs": "1792527417462",
+      "status": "success",
+      "netGasMist": "1088099"
+    },
+    "register-fixtures": {
+      "digest": "7Z6BfUuVZF3WLTUTU2UoKZtrdTsZbwDHLrBnFUDS5cW2",
+      "checkpoint": "336234510",
+      "timestampMs": "1792527428847",
+      "status": "success",
+      "netGasMist": "33091837"
+    },
+    "roles": {
+      "digest": "3brvjBnzdVnUXreDBMHjYqkADC2gnGKqh9UsgSA6reMu",
+      "checkpoint": "336234543",
+      "timestampMs": "1792527437119",
+      "status": "success",
+      "netGasMist": "2420950"
+    },
+    "activate": {
+      "digest": "HLeJsrsH75b9sC2fisoVmtHM8EpPrFMg173B8c7fRnoM",
+      "checkpoint": "336234664",
+      "timestampMs": "1792527466118",
+      "status": "success",
+      "netGasMist": "450101"
+    },
+    "allow-test": {
+      "digest": "6JptQpKQmDVjw99VDQaKDuHmz9eJULXZ6ovxhMwgCu1Z",
+      "checkpoint": "336234793",
+      "timestampMs": "1792527496225",
+      "status": "success",
+      "netGasMist": "1315174"
+    },
+    "sale-Fixed": {
+      "digest": "AX6SE2KRhy8wGNgxpPNQVdz7X92EFCJukN4oA5RYKdK7",
+      "checkpoint": "336234835",
+      "timestampMs": "1792527505646",
+      "status": "success",
+      "netGasMist": "7343506"
+    },
+    "sale-BurnOnly": {
+      "digest": "9hbK8WYiYkZgWpw4JGx1MkXXueaVyBvWqUUjjusXy5QK",
+      "checkpoint": "336234856",
+      "timestampMs": "1792527510553",
+      "status": "success",
+      "netGasMist": "7366311"
+    },
+    "cancel-test-sales": {
+      "digest": "6ZYk2rA739foqGqpjmidkJX5QQRvBUxMJMmMQyKFSuPZ",
+      "checkpoint": "336234909",
+      "timestampMs": "1792527522941",
+      "status": "success",
+      "netGasMist": "-3119049"
+    },
+    "disable-test": {
+      "digest": "5nrNkqibtTLrcb22PueZxpAKKbgMe9s7uAFKPoxAkro3",
+      "checkpoint": "336234965",
+      "timestampMs": "1792527535928",
+      "status": "success",
+      "netGasMist": "-1086306"
+    },
+    "revoke-test-roles": {
+      "digest": "EtLsFw8B9pU7jtXHxwrHMeNLVnTLXXRHnEmaPw4xFe39",
+      "checkpoint": "336235055",
+      "timestampMs": "1792527556509",
+      "status": "success",
+      "netGasMist": "-2183420"
+    },
+    "return-admin-gas": {
+      "digest": "92C4p3rvBVMxp5mGVu5edCpsVswdmQKt5PQmPZDQkyas",
+      "checkpoint": "336235117",
+      "timestampMs": "1792527570588",
+      "status": "success",
+      "netGasMist": "100099"
+    }
+  },
+  "verification": {
+    "localReleaseGate": {
+      "build": true,
+      "lintWarningsAsErrors": true,
+      "sourceBoundaries": true,
+      "activationAndPublicationCliTests": true,
+      "versionGuardMutationsDetected": 50,
+      "moveTestsPassed": 293,
+      "moveTestsFailed": 0
+    },
+    "liveChecks": [
+      {
+        "case": "publication is inert",
+        "method": "confirmed publication effects and owned-object readback",
+        "passed": true,
+        "details": "Owned Bootstrap and UpgradeCap exist; no shared PackageVersion or PackageAdmin is created."
+      },
+      {
+        "case": "dependent package can be published before activation",
+        "method": "confirmed fixture publication",
+        "passed": true,
+        "details": "Fixture links the exact new presale package before activation; publication alone does not enable its create_sale call."
+      },
+      {
+        "case": "foreign upgrade cap rejected",
+        "method": "mainnet dry run",
+        "passed": true,
+        "module": "blast_admin::upgrade_custody",
+        "abortCode": 16,
+        "objectsUnchanged": [
+          "Bootstrap",
+          "matching UpgradeCap",
+          "foreign UpgradeCap"
+        ],
+        "events": 0
+      },
+      {
+        "case": "non-owner cannot activate",
+        "method": "mainnet dry-run input ownership validation",
+        "passed": true,
+        "details": "The ACL root account cannot use the publisher-owned Bootstrap and UpgradeCap."
+      },
+      {
+        "case": "Bootstrap cannot substitute for PackageVersion",
+        "method": "mainnet dry run of linked fixture create_sale",
+        "passed": true,
+        "error": "CommandArgumentError: arg_idx 1, TypeMismatch"
+      },
+      {
+        "case": "owner activates in a separate transaction",
+        "method": "broadcast and live object readback",
+        "passed": true,
+        "details": "Consumes Bootstrap; wraps original Publisher and matching UpgradeCap; atomically shares PackageAdmin and PackageVersion at generation 1; compatible policy remains 0."
+      },
+      {
+        "case": "activation cannot be replayed",
+        "method": "mainnet dry-run input resolution",
+        "passed": true,
+        "details": "Consumed Bootstrap/raw UpgradeCap no longer exist as usable input objects."
+      },
+      {
+        "case": "unregulated fixed and burn-only sales work after activation",
+        "method": "two broadcast transactions and Currency readback",
+        "passed": true
+      },
+      {
+        "case": "regulated and pausable sale currencies remain rejected",
+        "method": "two mainnet dry runs",
+        "passed": true,
+        "module": "blast_presale::blast_presale",
+        "abortCode": 35,
+        "currencyObjectsUnchanged": true,
+        "events": 0
+      },
+      {
+        "case": "cleanup prevents new presales",
+        "method": "broadcast allowlist removal, state readback, then mainnet dry run",
+        "passed": true,
+        "module": "blast_presale::creation_policy",
+        "abortCode": 1,
+        "details": "Both allowlists empty; creation fails with EQuoteNotAllowed."
+      }
+    ],
+    "sourceVerificationCommand": "sui client --client.env mainnet verify-source presale --toolchain /home/ubuntu/.local/bin/sui",
+    "scope": "Publication, two-step activation, capability custody, sale admission/supply sealing, cancellation, and closure. No DEX pool migration or later generation upgrade was executed."
+  },
+  "finalState": {
+    "operationalGeneration": 1,
+    "creationAllowed": false,
+    "creationPolicy": {
+      "allowed_migration_witnesses": {
+        "contents": []
+      },
+      "allowed_quotes": {
+        "contents": []
+      },
+      "id": "0x23c7b007cee7f1f3e483bb26d81e2fe93b7139d308ede5642cc4d77442541da8"
+    },
+    "feePolicy": {
+      "destination": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+      "fees": {
+        "lp_fee_meme_bps": {
+          "pos0": "0"
+        },
+        "lp_fee_quote_bps": {
+          "pos0": "0"
+        },
+        "raise_bps": {
+          "pos0": "0"
+        },
+        "token_bps": {
+          "pos0": "0"
+        }
+      },
+      "id": "0xda3f9c034fd394180c7cf4c526d9629591fc85badf5cabafe7afa69a8063fd2f"
+    },
+    "testSalesCancelled": true,
+    "testCommitments": 0,
+    "testPresaleCapsDestroyed": true,
+    "temporaryAdminRolesRevoked": true,
+    "adminGasFloatMist": "50000000",
+    "unusedAdminGasReturned": true,
+    "productionPublishedTomlChanged": false,
+    "sdkOrApplicationRoutingChanged": false,
+    "note": "Activation is not reversed. New presales are closed by empty quote and migrator allowlists; any future launch requires deliberate ACL grants and configuration."
+  },
+  "totalNetGasMist": "552139700",
+  "totalNetGasSui": "0.552139700",
+  "evidenceDirectory": "outputs/operations/2026-10-20-presale-versioned",
+  "notes": [
+    "The user clarified mainnet after the test-only instruction; no testnet transaction was sent.",
+    "Sui CLI objectChanges labels the wrapped cap deleted; the canonical effects.wrapped and PackageAdmin custody readback prove wrapping.",
+    "The existing unversioned mainnet deployment and all client routing remain unchanged."
+  ]
+}
