@@ -1019,6 +1019,73 @@ fun configured_allocation_bps_cannot_exceed_full_supply() {
 }
 
 #[test]
+#[expected_failure(abort_code = presale::ESaleTokenNotUnregulated, location = blast_presale::blast_presale)]
+fun regulated_sale_currency_without_global_pause_is_rejected() {
+    let mut ctx = tx_context::dummy();
+    let (treasury_cap, currency) = new_regulated_currency(false, &mut ctx);
+
+    create_sale_with_treasury<QUOTE>(treasury_cap, currency, valid_sale_terms(), &mut ctx);
+}
+
+#[test]
+#[expected_failure(abort_code = presale::ESaleTokenNotUnregulated, location = blast_presale::blast_presale)]
+fun regulated_burnable_sale_currency_with_global_pause_is_rejected() {
+    let mut ctx = tx_context::dummy();
+    let (treasury_cap, currency) = new_regulated_currency(true, &mut ctx);
+    let mut terms = valid_sale_terms();
+    terms.burnable = true;
+
+    create_sale_with_treasury<QUOTE>(treasury_cap, currency, terms, &mut ctx);
+}
+
+#[test]
+#[expected_failure(abort_code = presale::ESaleTokenNotUnregulated, location = blast_presale::blast_presale)]
+fun regulated_sale_currency_is_rejected_before_missing_settings() {
+    let mut ctx = tx_context::dummy();
+    let (treasury_cap, mut currency) = new_regulated_currency(false, &mut ctx);
+    let fee_policy = fee_policy::new_for_testing(&mut ctx);
+    let creation_policy = creation_policy::allowing_for_testing<QUOTE, TEST_MIGRATOR>(&mut ctx);
+    let initializer = bare_initializer(treasury_cap, &creation_policy, &fee_policy);
+
+    let (sale, cap) = initializer.finalize(&mut currency, &mut ctx);
+
+    destroy(sale);
+    destroy(cap);
+    destroy(currency);
+    destroy(fee_policy);
+    destroy(creation_policy);
+}
+
+#[test]
+#[expected_failure(abort_code = presale::ESaleTokenNotUnregulated, location = blast_presale::blast_presale)]
+fun legacy_regulated_sale_currency_with_unknown_status_is_rejected() {
+    let mut ctx = tx_context::dummy();
+    let (treasury_cap, currency) = legacy_regulated_currency(false, &mut ctx);
+    // This is the bypass a guard using only !is_regulated() would admit.
+    assert!(!currency.is_regulated());
+
+    create_sale_with_treasury<QUOTE>(treasury_cap, currency, valid_sale_terms(), &mut ctx);
+}
+
+#[test]
+#[expected_failure(abort_code = presale::ESaleTokenNotUnregulated, location = blast_presale::blast_presale)]
+fun legacy_regulated_sale_currency_with_migrated_status_is_rejected() {
+    let mut ctx = tx_context::dummy();
+    let (treasury_cap, currency) = legacy_regulated_currency(true, &mut ctx);
+    assert!(currency.is_regulated());
+
+    create_sale_with_treasury<QUOTE>(treasury_cap, currency, valid_sale_terms(), &mut ctx);
+}
+
+#[test]
+fun unregulated_sale_currency_with_long_metadata_is_accepted() {
+    let mut ctx = tx_context::dummy();
+    let (treasury_cap, currency) = new_currency_with_symbol(vector::tabulate!(130, |_| 65), &mut ctx);
+
+    create_sale_with_treasury<QUOTE>(treasury_cap, currency, valid_sale_terms(), &mut ctx);
+}
+
+#[test]
 #[expected_failure(abort_code = presale::EInvalidTokenAllocation, location = blast_presale::blast_presale)]
 fun configured_allocation_bps_must_produce_positive_atomic_amounts() {
     let mut terms = valid_sale_terms();
@@ -2901,6 +2968,55 @@ fun new_currency(
     ctx: &mut TxContext,
 ): (TreasuryCap<BLAST_PRESALE_TESTS>, Currency<BLAST_PRESALE_TESTS>) {
     new_currency_with_symbol(b"SALE", ctx)
+}
+
+fun new_regulated_currency(
+    allow_global_pause: bool,
+    ctx: &mut TxContext,
+): (TreasuryCap<BLAST_PRESALE_TESTS>, Currency<BLAST_PRESALE_TESTS>) {
+    let (mut initializer, treasury_cap) = coin_registry::new_currency_with_otw(
+        test_utils::create_one_time_witness<BLAST_PRESALE_TESTS>(),
+        9,
+        b"SALE".to_string(),
+        b"Sale Token".to_string(),
+        b"Regulated presale test token".to_string(),
+        b"".to_string(),
+        ctx,
+    );
+    let deny_cap = initializer.make_regulated(allow_global_pause, ctx);
+    destroy(deny_cap);
+
+    (treasury_cap, coin_registry::unwrap_for_testing(initializer))
+}
+
+// Legacy constructors are required to reproduce a deny cap hidden behind Unknown status.
+#[allow(deprecated_usage)]
+fun legacy_regulated_currency(
+    migrate_status: bool,
+    ctx: &mut TxContext,
+): (TreasuryCap<BLAST_PRESALE_TESTS>, Currency<BLAST_PRESALE_TESTS>) {
+    let (treasury_cap, deny_cap, metadata) = coin::create_regulated_currency_v2(
+        test_utils::create_one_time_witness<BLAST_PRESALE_TESTS>(),
+        9,
+        b"SALE",
+        b"Sale Token",
+        b"Legacy regulated presale test token",
+        option::none(),
+        true,
+        ctx,
+    );
+    let mut registry = coin_registry::create_coin_data_registry_for_testing(ctx);
+    let mut currency = coin_registry::migrate_legacy_metadata_for_testing(
+        &mut registry,
+        &metadata,
+        ctx,
+    );
+    if (migrate_status) currency.migrate_regulated_state_by_cap(&deny_cap);
+    destroy(deny_cap);
+    destroy(metadata);
+    destroy(registry);
+
+    (treasury_cap, currency)
 }
 
 fun new_currency_with_symbol(

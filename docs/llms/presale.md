@@ -130,7 +130,10 @@ Creators call a venue migrator's `new`, never `blast_presale::blast_presale::new
 migrator's witness, which only the migrator's module can construct. The venue is fixed for good
 at creation. Who may call: *anyone* who owns a zero-supply `TreasuryCap<SaleToken>` and the
 matching shared Coin Registry `Currency<SaleToken>`, for a Quote type and migrator the
-`CreationPolicy` allows. Every setter and `finalize` take the initializer value from that PTB, so
+`CreationPolicy` allows. The sale currency must have confirmed `Unregulated` status;
+regulated coins and legacy currencies with `Unknown` status are rejected, including legacy
+coins whose deny cap has not been registered. Create the sale coin through Coin Registry
+without enabling regulation. Every setter and `finalize` take the initializer value from that PTB, so
 only its creator can call them.
 
 Value constructors (*anyone*, pure):
@@ -206,7 +209,8 @@ Steps, type arguments `<Meme, Quote>` throughout:
      time a partner can be named.
 
    A setter called twice keeps its last value.
-4. `blast_presale::blast_presale::finalize(initializer, currency)` checks every setting together, mints the supply,
+4. `blast_presale::blast_presale::finalize(initializer, currency)` first requires confirmed
+   `Unregulated` currency status, then checks every setting together, mints the supply,
    consumes the `TreasuryCap`, and returns `(Presale<Meme, Quote>, PresaleCap)`. The Coin Registry
    supply becomes `Fixed`, or `BurnOnly` when `burnable` is true. Emits
    `blast_presale::blast_presale::PresaleCreated`. An Aftermath sale calls
@@ -843,7 +847,8 @@ it. Common ones by flow (module `blast_presale` unless named):
   (ask Blast to list it); `EInvalidAssetPair` (sale coin equals Quote); `EInitialSupplyNotZero`;
   `blast_presale::bluefin::EInvalidTier`; `blast_presale::bluefin::ESymbolTooLong`;
   `blast_presale::aftermath::EInvalidDaoFee` (1..=10,000 BPS).
-- Finalize: `EMissingSetting` (no eligibility policy or LP-fee split); `EInvalidRaiseTarget`
+- Finalize: `ESaleTokenNotUnregulated` (regulated or unknown legacy currency; use a new
+  Coin Registry currency created without regulation); `EMissingSetting` (no eligibility policy or LP-fee split); `EInvalidRaiseTarget`
   (raise unset or zero); `EInvalidTokenAllocation` (BPS not exactly 10,000 with Blast's token rate, duplicate or zero
   recipient, more than 64, or a zero apportioned amount); `EInvalidRaiseAllocation` (no LP share
   left after Blast, duplicates, zero amounts); `EInvalidWindow` (zero duration or LP window under

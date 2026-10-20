@@ -2,6 +2,9 @@
 
 - Status: accepted
 - Date: 2026-09-29
+- Amended: 2026-10-20 (owner request): presale finalization requires confirmed
+  unregulated sale coins on chain; regulated and unknown legacy currencies are
+  rejected. Quote admission remains governed by Blast's allowlist.
 - Amended by: [0101](0101-presale-protocol-fees.md): Blast takes admin-set,
   creation-snapshotted shares of the raise, the token supply, and LP fees;
   [0102](0102-presale-creation-allowlists.md): Blast allowlists the Quote types
@@ -336,10 +339,20 @@ generic positional Blake2b-256 module verifies eligibility and rewards. The
   aborted claim leaves its on-chain commitment and escrow intact for retry.
   Payouts are pushed, so a denied fee recipient blocks that vault's collection
   and a denied raise recipient blocks migration until the LP deadline. A
-  regulated sale coin gives its creator the same power over participants'
+  regulated sale coin would give its creator the same power over participants'
   post-migration claims. Blast therefore allowlists only Quote types whose
-  controls it accepts and vets each sale coin's `Currency` regulated state off
-  chain (owner, 2026-10-02). A Quote issuer that lengthens its icon can also
+  controls it accepts, and finalization requires the sale's `Currency` to be
+  confirmed `Unregulated` before minting. Legacy `Unknown` currencies are rejected
+  too: they may already have a deny cap that has not been registered. This also
+  excludes ordinary legacy coins with unknown status; creators must use a coin
+  created through Coin Registry without regulation (owner, 2026-10-20).
+  The pinned framework's `is_regulated` conflates unknown and unregulated states,
+  so the guard reads the canonical `Currency` BCS prefix, requiring
+  `Some(SupplyState::Unknown)` and `RegulatedState::Unregulated`. Holding the
+  unique TreasuryCap proves that supply state. Revalidate this layout against
+  compiled framework source whenever changing the Sui dependency; use a native
+  confirmed-status getter when the pinned framework provides one.
+  A Quote issuer that lengthens its icon can also
   block Bluefin migration, which then ends in cancellation and full refunds;
   the Coin Registry has no symbol setter.
 - Neither adapter collects venue incentive rewards credited to the custodied

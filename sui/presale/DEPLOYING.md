@@ -60,9 +60,9 @@ sale is ever created under an unsealed cap.
    only Quote types whose deny-list and pause controls Blast accepts (owner,
    2026-10-02): payouts are pushed, so a denied fee recipient blocks that vault's
    collection and a denied raise recipient blocks migration until the LP deadline.
-   Vet each sale coin's `Currency` regulated state the same way before listing a
-   sale, since a regulated sale coin lets its creator block participants'
-   post-migration claims. Accept each presale partner deal, once it is registered
+   Create sale coins through Coin Registry without regulation. Finalization
+   enforces confirmed `Unregulated` status and rejects legacy `Unknown` status,
+   which can conceal an existing deny cap. Accept each presale partner deal, once it is registered
    in `blast_partners`, as `FeeAdmin` with `creation_policy::add_partner`.
 8. Operate a keeper that calls `settle` and the venue's `migrate` in one PTB as
    soon as a sale's `end_ms` passes, followed by

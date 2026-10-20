@@ -445,13 +445,16 @@ public fun migration_witness<SaleToken, Quote>(
     self.migration_witness
 }
 
-/// Checks every setting together, then mints and apportions the complete token supply and
+/// Requires a confirmed unregulated sale currency and checks every setting, then mints and
+/// apportions the complete token supply and
 /// irreversibly makes it fixed or burn-only before returning the presale for `share`.
 public fun finalize<SaleToken, Quote>(
     self: PresaleInitializer<SaleToken, Quote>,
     currency: &mut Currency<SaleToken>,
     ctx: &mut TxContext,
 ): (Presale<SaleToken, Quote>, PresaleCap) {
+    assert_unregulated_currency(currency);
+
     let PresaleInitializer {
         treasury_cap,
         migration_witness,
@@ -1222,6 +1225,26 @@ fun vesting_terms_of(shares: &vector<RecipientShare>): vector<Option<VestingTerm
     shares.map_ref!(|share| share.vesting)
 }
 
+/// The pinned Coin Registry exposes only `is_regulated`, which also returns false for
+/// legacy `Unknown` currencies that may have a deny cap. Read the canonical Currency BCS
+/// prefix to require `Unregulated` instead. Recheck this layout when changing the Sui pin.
+/// Holding the TreasuryCap proves supply is still Some(Unknown); reject any other layout.
+fun assert_unregulated_currency<SaleToken>(currency: &Currency<SaleToken>) {
+    let mut bytes = sui::bcs::new(bcs::to_bytes(currency));
+    bytes.peel_address(); // UID
+    bytes.peel_u8(); // decimals
+    bytes.peel_vec_u8(); // name
+    bytes.peel_vec_u8(); // symbol
+    bytes.peel_vec_u8(); // description
+    bytes.peel_vec_u8(); // icon_url
+    assert!(
+        bytes.peel_vec_length() == 1 // Some supply
+            && bytes.peel_enum_tag() == 2 // SupplyState::Unknown
+            && bytes.peel_enum_tag() == 1, // RegulatedState::Unregulated
+        ESaleTokenNotUnregulated,
+    );
+}
+
 /// Mints the complete supply once, splits off the presale, LP, and Blast allocations, then gives
 /// up mint authority forever by making the supply fixed or burn-only.
 fun mint_and_seal_supply<SaleToken>(
@@ -1582,6 +1605,11 @@ fun cancel<SaleToken, Quote>(self: &mut Presale<SaleToken, Quote>) {
 }
 
 // === Test-Only Functions ===
+
+#[test_only]
+public fun assert_unregulated_currency_for_testing<SaleToken>(currency: &Currency<SaleToken>) {
+    assert_unregulated_currency(currency);
+}
 
 #[test_only]
 public fun cap_for_testing(presale_id: ID, ctx: &mut TxContext): PresaleCap {
@@ -2158,6 +2186,9 @@ const EInvalidHardCap: vector<u8> = b"A hard cap must start inside the commitmen
 
 #[error(code = 34)]
 const EMissingSetting: vector<u8> = b"A presale needs its eligibility policy and LP-fee split set before it is finalized.";
+
+#[error(code = 35)]
+const ESaleTokenNotUnregulated: vector<u8> = b"The sale currency must be confirmed unregulated; regulated and unknown legacy currencies are not allowed.";
 
 // === Imports ===
 
