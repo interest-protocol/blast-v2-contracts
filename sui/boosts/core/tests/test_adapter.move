@@ -33,7 +33,7 @@ const SEED_SHARE_SCALE: u64 = 1_000;
 
 const MAX_ORDERS: u64 = 16;
 
-const ORACLE_LAG_MS: u64 = 1_000;
+const ORACLE_LAG_DURATION_MS: u64 = 1_000;
 
 // === Errors ===
 
@@ -143,7 +143,7 @@ public fun base_for_notional(self: &Venue, notional: u64): u64 {
     )
 }
 
-/// One observation of the account at this instant, priced by oracles published `ORACLE_LAG_MS` ago.
+/// One observation of the account at this instant, priced by oracles published `ORACLE_LAG_DURATION_MS` ago.
 ///
 /// Like the real adapter, this refuses a venue that is paused, under margin,
 /// carrying orders, or drifted from the last accepted checkpoint before the
@@ -166,7 +166,7 @@ public fun observe(self: &Venue): PositionObservation {
 }
 
 public fun oracle(self: &Venue, price: u64): PriceObservation {
-    observation::new_price(price, price / 1_000, self.now_ms - ORACLE_LAG_MS)
+    observation::new_price(price, price / 1_000, self.now_ms - ORACLE_LAG_DURATION_MS)
 }
 
 /// Moves the oracle and marks the open position to it.
@@ -190,7 +190,7 @@ public fun set_base_price(self: &mut Venue, base_price: u64) {
     };
 }
 
-public fun advance(self: &mut Venue, ms: u64) { self.now_ms = self.now_ms + ms; }
+public fun advance(self: &mut Venue, elapsed_duration_ms: u64) { self.now_ms = self.now_ms + elapsed_duration_ms; }
 
 public fun set_operational(self: &mut Venue, operational: bool) { self.operational = operational; }
 
@@ -346,8 +346,8 @@ public fun mint(self: &mut Vault, deposit: u64, minimum_shares: u64): u64 {
     let (fee, admin_fee, reserve_fee) = self.state.fee_allocation_for_testing(deposit, true);
     assert!(fee == admin_fee + reserve_fee);
 
-    let now_ms = self.venue.now_ms;
-    let plan = self.state.prepare_mint(self.venue.observe(), deposit, self.supply, minimum_shares, now_ms);
+    let now_at_ms = self.venue.now_ms;
+    let plan = self.state.prepare_mint(self.venue.observe(), deposit, self.supply, minimum_shares, now_at_ms);
     assert!(plan.admin_fee() == admin_fee);
     let priced = plan.mint_position();
     assert!(priced.lot_size() == self.venue.lot_size);
@@ -371,7 +371,7 @@ public fun mint(self: &mut Vault, deposit: u64, minimum_shares: u64): u64 {
         orders = orders + 1;
     };
 
-    let (shares, _, total_fee, admin, reserve_slice) = self.state.complete_mint(plan, self.venue.observe(), now_ms);
+    let (shares, _, total_fee, admin, reserve_slice) = self.state.complete_mint(plan, self.venue.observe(), now_at_ms);
     assert!(total_fee == fee && admin == admin_fee && reserve_slice == reserve_fee);
     assert!(self.state.is_within_nav_cap_for_testing(self.venue.equity - self.state.maintenance_reserve()));
     self.supply = self.supply + shares;
@@ -384,8 +384,8 @@ public fun mint(self: &mut Vault, deposit: u64, minimum_shares: u64): u64 {
 
 /// Sells the proportional base in capped orders, withdraws the payout, and burns.
 public fun redeem(self: &mut Vault, shares: u64, minimum_output: u64): u64 {
-    let now_ms = self.venue.now_ms;
-    let plan = self.state.prepare_redemption(self.venue.observe(), shares, self.supply, minimum_output, now_ms);
+    let now_at_ms = self.venue.now_ms;
+    let plan = self.state.prepare_redemption(self.venue.observe(), shares, self.supply, minimum_output, now_at_ms);
     let priced = plan.redemption_position();
     assert!(plan.redemption_shares() == shares && priced.lot_size() == self.venue.lot_size);
     let base_price = priced.base_price();
@@ -406,7 +406,7 @@ public fun redeem(self: &mut Vault, shares: u64, minimum_output: u64): u64 {
     };
     self.last_orders = orders;
 
-    let (net, admin, fee, reserve_slice) = self.state.complete_redemption(plan, self.venue.observe(), now_ms);
+    let (net, admin, fee, reserve_slice) = self.state.complete_redemption(plan, self.venue.observe(), now_at_ms);
     assert!(fee == admin + reserve_slice);
     self.venue.withdraw(net + admin);
     self.admin_cash = self.admin_cash + admin;
@@ -424,8 +424,8 @@ public fun needs_rebalance(self: &Vault): bool {
 
 /// Runs one complete permissionless rebalance and returns the number of orders it placed.
 public fun rebalance(self: &mut Vault): u64 {
-    let now_ms = self.venue.now_ms;
-    let mut plan = self.state.prepare_rebalance(self.venue.observe(), self.venue.taker_fee_bps, now_ms);
+    let now_at_ms = self.venue.now_ms;
+    let mut plan = self.state.prepare_rebalance(self.venue.observe(), self.venue.taker_fee_bps, now_at_ms);
     let base_price = plan.rebalance_position().base_price();
     let mut orders = 0;
     while (orders < MAX_ORDERS) {
@@ -435,7 +435,7 @@ public fun rebalance(self: &mut Vault): u64 {
         let (executed, filled) = self.venue.fill(order.order_base(), order.is_increase());
         self.state.assert_execution(order.is_emergency(), base_price, executed);
         self.state.assert_order_notional_allowed(self.venue.notional_of(filled));
-        self.state.accept_rebalance_fill(&mut plan, order, self.venue.observe(), filled, now_ms);
+        self.state.accept_rebalance_fill(&mut plan, order, self.venue.observe(), filled, now_at_ms);
         orders = orders + 1;
     };
     self.state.complete_rebalance(plan);
@@ -500,12 +500,12 @@ public fun begin_shutdown(self: &mut Vault) {
 /// One unwind transaction: at most `max_orders` close-only orders under the emergency bound.
 public fun unwind(self: &mut Vault, max_orders: u64): u64 {
     self.state.assert_unwinding();
-    let now_ms = self.venue.now_ms;
+    let now_at_ms = self.venue.now_ms;
     let mut orders = 0;
     while (self.venue.base > 0 && orders < max_orders) {
         let (_, max_order_base, base_price, _) = self.state.unwind_constraints(
             self.venue.oracle(self.venue.base_price), self.venue.oracle(self.venue.collateral_price),
-            self.venue.lot_size, now_ms,
+            self.venue.lot_size, now_at_ms,
         );
         let order = self.venue.base.min(max_order_base);
         let (executed, _) = self.venue.fill(order, false);

@@ -9,7 +9,7 @@ module blast_presale::reserve_rewards_tests;
 const OWNER: address = @0xA;
 const HOLDER: address = @0xB;
 const TREASURY: address = @0xC;
-const DEADLINE_MS: u64 = 604_800_001;
+const DEADLINE_AT_MS: u64 = 604_800_001;
 
 // === Test-Only Types ===
 
@@ -273,7 +273,7 @@ fun close_rejects_the_millisecond_before_the_deadline() {
     fixture.publish(30);
     fixture.next_tx!(OWNER, |f| {
         let round = f.take_round();
-        f.clock.set_for_testing(DEADLINE_MS - 1);
+        f.clock.set_for_testing(DEADLINE_AT_MS - 1);
         rewards::close_round(round, &package_version, &mut f.vault, &f.clock);
         abort
     });
@@ -443,14 +443,14 @@ fun publish_budget_to(
         0,
         holder_quote,
         reserve,
-        DEADLINE_MS,
+        DEADLINE_AT_MS,
         &self.clock,
         self.scenario.ctx(),
     );
     let payload = only_event<RoundPublished<MEME, QUOTE>>();
     let round_id = payload.reserve_published_id();
     let (meme_unallocated, quote_unallocated) = self.vault.holder_rewards_balances();
-    let deadline_ms = DEADLINE_MS;
+    let deadline_at_ms = DEADLINE_AT_MS;
     let treasury = expected_treasury;
     let mut expected = vector[];
     expected.append(bcs::to_bytes(&(object::id(&self.vault))));
@@ -458,7 +458,7 @@ fun publish_budget_to(
     expected.append(bcs::to_bytes(&(0u64)));
     expected.append(bcs::to_bytes(&(0u64)));
     expected.append(bcs::to_bytes(&(10u64)));
-    expected.append(bcs::to_bytes(&(deadline_ms)));
+    expected.append(bcs::to_bytes(&(deadline_at_ms)));
     expected.append(bcs::to_bytes(&(root)));
     expected.append(bcs::to_bytes(&(hash::blake2b256(&b"manifest"))));
     expected.append(bcs::to_bytes(&(1u64)));
@@ -538,7 +538,7 @@ fun close(self: &mut ReserveFixture) {
         .scenario
         .ctx());
     let round = self.take_round();
-    self.clock.set_for_testing(DEADLINE_MS);
+    self.clock.set_for_testing(DEADLINE_AT_MS);
     let round_id = object::id(&round);
     let (meme, quote, reserve) = round.reserve_balances_for_testing();
     rewards::close_round(round, &package_version, &mut self.vault, &self.clock);

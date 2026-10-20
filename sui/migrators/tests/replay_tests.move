@@ -258,7 +258,7 @@ fun start(): ReplayFixture {
     lp_fee_policy::init_for_testing(scenario.ctx());
     let runtime = runtime_config::new_disabled_for_testing(scenario.ctx());
     let mut clock = clock::create_for_testing(scenario.ctx());
-    clock.set_for_testing(PUBLIC_START_MS);
+    clock.set_for_testing(PUBLIC_STARTS_AT_MS);
 
     ReplayFixture {
         scenario,
@@ -362,7 +362,7 @@ fun create_launch(self: &mut ReplayFixture) {
         initializer.set_graduation_target(&f.version, TARGET);
         initializer.set_allocation_plan(&f.version, plan());
         initializer.set_lp_fee_split(&f.version, first_split());
-        initializer.set_opening_round(&f.version, OPENING_ROUND_MS);
+        initializer.set_opening_round(&f.version, OPENING_ROUND_DURATION_MS);
         let creation_fee = coin::zero(f.ctx!());
         let mut launch = initializer.finalize(&f.version, &mut currency, &config, creation_fee, f.ctx!());
         launch.join_opening_round(
@@ -395,7 +395,7 @@ fun join_opening_round(self: &mut ReplayFixture) {
 
 /// The keeper settles the round at its end: the pot buys from the curve once.
 fun settle_opening_round(self: &mut ReplayFixture) {
-    self.clock.set_for_testing(PUBLIC_START_MS + OPENING_ROUND_MS);
+    self.clock.set_for_testing(PUBLIC_STARTS_AT_MS + OPENING_ROUND_DURATION_MS);
     self.next_tx!(KEEPER, |f| {
         let mut launch = f.take_launch();
         launch.settle_opening_round(&f.version, &f.runtime, &f.clock);
@@ -1007,11 +1007,11 @@ fun launch_created(self: &mut Replay, bytes: vector<u8>) {
 fun launch_shared(self: &mut Replay, bytes: vector<u8>) {
     let mut r = bcs::new(bytes);
     assert_eq!(r.peel_id(), self.launch_id);
-    let public_start_ms = r.peel_u64();
+    let public_starts_at_ms = r.peel_u64();
     r.assert_consumed();
 
     assert!(self.public_start_ms.is_none());
-    self.public_start_ms = option::some(public_start_ms);
+    self.public_start_ms = option::some(public_starts_at_ms);
 }
 
 /// A bid adds to the sender's record and to the pot; `bids` is the pot after it.
@@ -1772,13 +1772,13 @@ const QUOTE_FEE_BPS: u64 = 100;
 
 const MEME_FEE_BPS: u64 = 200;
 
-const PUBLIC_START_MS: u64 = 1_234;
+const PUBLIC_STARTS_AT_MS: u64 = 1_234;
 
 const POOL_TICK_SPACING: u32 = 60;
 
 const POOL_FEE_RATE: u64 = 2_500;
 
-const OPENING_ROUND_MS: u64 = 60_000;
+const OPENING_ROUND_DURATION_MS: u64 = 60_000;
 
 const CREATOR_BID: u64 = 1_000_000;
 

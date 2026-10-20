@@ -49,14 +49,14 @@ public enum FundingSettlement has drop {
 public fun new_price(
     price: u64,
     confidence: u64,
-    publish_time_ms: u64,
+    price_published_at_ms: u64,
 ): PriceObservation {
     assert!(
         price > 0,
         blast_boosts_core::errors::invalid_price!(),
     );
 
-    PriceObservation { price, confidence, publish_time_ms }
+    PriceObservation { price, confidence, publish_time_ms: price_published_at_ms }
 }
 
 /// Creates one position observation; base is whole lots and the mark is positive.

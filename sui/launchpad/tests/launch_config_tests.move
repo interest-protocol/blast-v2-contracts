@@ -19,7 +19,7 @@ const MEME_DECIMALS: u8 = 9;
 const PARTNER: address = @0x9A27;
 
 /// When the fixture clock removes a partner.
-const NOW_MS: u64 = 1_000;
+const NOW_AT_MS: u64 = 1_000;
 
 // === Test-Only Types ===
 
@@ -1001,7 +1001,7 @@ fun an_added_partner_is_accepted_at_once() {
 
         f.add_partner(&partner);
 
-        f.config.assert_partner(object::id(&partner), NOW_MS);
+        f.config.assert_partner(object::id(&partner), NOW_AT_MS);
         assert_eq!(
             bcs::to_bytes(&collect_one<events::PartnerAdded>()),
             bcs::to_bytes(&object::id(&partner)),
@@ -1024,9 +1024,9 @@ fun a_removed_partner_stays_accepted_for_the_partner_delay() {
 
         f.remove_partner(&partner);
 
-        f.config.assert_partner(partner_id, NOW_MS + partners::delay_ms() - 1);
+        f.config.assert_partner(partner_id, NOW_AT_MS + partners::delay_ms() - 1);
         let mut expected = bcs::to_bytes(&partner_id);
-        expected.append(bcs::to_bytes(&(NOW_MS + partners::delay_ms())));
+        expected.append(bcs::to_bytes(&(NOW_AT_MS + partners::delay_ms())));
         assert_eq!(bcs::to_bytes(&collect_one<events::PartnerRemoved>()), expected);
         destroy(partner);
     });
@@ -1043,7 +1043,7 @@ fun a_removed_partner_is_refused_once_its_notice_ends() {
         f.add_partner(&partner);
         f.remove_partner(&partner);
 
-        f.config.assert_partner(object::id(&partner), NOW_MS + partners::delay_ms());
+        f.config.assert_partner(object::id(&partner), NOW_AT_MS + partners::delay_ms());
         destroy(partner);
     });
 
@@ -1210,7 +1210,7 @@ fun start(): ConfigFixture {
     launch_config::init_for_testing(scenario.ctx());
 
     let mut clock = clock::create_for_testing(scenario.ctx());
-    clock.set_for_testing(NOW_MS);
+    clock.set_for_testing(NOW_AT_MS);
 
     scenario.next_tx(PROTOCOL_ADMIN);
     let config = scenario.take_shared<launch_config::LaunchConfig>();

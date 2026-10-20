@@ -383,8 +383,8 @@ public(package) fun partner_added(partner_id: ID) {
     emit_event(PartnerAdded { partner_id });
 }
 
-public(package) fun partner_removed(partner_id: ID, accepted_until_ms: u64) {
-    emit_event(PartnerRemoved { partner_id, accepted_until_ms });
+public(package) fun partner_removed(partner_id: ID, acceptance_ends_at_ms: u64) {
+    emit_event(PartnerRemoved { partner_id, accepted_until_ms: acceptance_ends_at_ms });
 }
 
 // --- Rebalance ---

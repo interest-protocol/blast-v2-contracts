@@ -44,7 +44,7 @@ public fun publish_round<Meme, Quote>(
     meme_amount: u64,
     quote_amount: u64,
     gas_reserve_amount: u64,
-    claim_deadline_ms: u64,
+    claim_deadline_at_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
@@ -65,7 +65,7 @@ public fun publish_round<Meme, Quote>(
     );
     assert!(leaf_count > 0 && leaf_count <= MAX_REWARD_LEAVES, EInvalidLeafCount);
     assert!(meme_amount > 0 || quote_amount > 0, EEmptyBudget);
-    assert!(claim_deadline_ms > clock.timestamp_ms(), EInvalidClaimDeadline);
+    assert!(claim_deadline_at_ms > clock.timestamp_ms(), EInvalidClaimDeadline);
     let (available_meme, available_quote) = vault.holder_rewards_balances();
     assert!(
         meme_amount <= available_meme && quote_amount <= available_quote
@@ -85,7 +85,7 @@ public fun publish_round<Meme, Quote>(
         id: object::new(ctx),
         vault_id,
         number,
-        claim_deadline_ms,
+        claim_deadline_ms: claim_deadline_at_ms,
         root,
         leaf_count,
         claimed_bitmap: unclaimed(leaf_count),
@@ -102,7 +102,7 @@ public fun publish_round<Meme, Quote>(
         number,
         start_checkpoint,
         end_checkpoint,
-        claim_deadline_ms,
+        claim_deadline_ms: claim_deadline_at_ms,
         root,
         manifest_digest,
         leaf_count,
@@ -251,7 +251,7 @@ fun leaf(
 public fun new_for_testing<Meme, Quote>(
     vault_id: ID,
     number: u64,
-    claim_deadline_ms: u64,
+    claim_deadline_at_ms: u64,
     root: vector<u8>,
     leaf_count: u64,
     meme: Balance<Meme>,
@@ -262,7 +262,7 @@ public fun new_for_testing<Meme, Quote>(
         id: object::new(ctx),
         vault_id,
         number,
-        claim_deadline_ms,
+        claim_deadline_ms: claim_deadline_at_ms,
         root,
         leaf_count,
         claimed_bitmap: unclaimed(leaf_count),

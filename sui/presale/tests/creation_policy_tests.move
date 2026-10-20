@@ -365,14 +365,14 @@ fun an_unlisted_partner_is_not_accepted() {
 fun a_removed_partner_is_accepted_until_its_notice_ends() {
     let mut ctx = tx_context::dummy();
     let (policy, partner_id) = policy_with_removed_partner(&mut ctx);
-    let accepted_until_ms = REMOVED_AT_MS + partners::delay_ms();
+    let acceptance_ends_at_ms = REMOVED_AT_MS + partners::delay_ms();
 
-    let (removed_id, removed_until_ms) = last_event<PartnerRemoved>().partner_removed_fields();
+    let (removed_id, removed_acceptance_ends_at_ms) = last_event<PartnerRemoved>().partner_removed_fields();
     assert_eq!(removed_id, partner_id);
-    assert_eq!(removed_until_ms, accepted_until_ms);
-    policy.assert_partner(partner_id, accepted_until_ms - 1);
+    assert_eq!(removed_acceptance_ends_at_ms, acceptance_ends_at_ms);
+    policy.assert_partner(partner_id, acceptance_ends_at_ms - 1);
 
-    policy.assert_partner(partner_id, accepted_until_ms);
+    policy.assert_partner(partner_id, acceptance_ends_at_ms);
     abort
 }
 

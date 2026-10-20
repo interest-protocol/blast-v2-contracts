@@ -13,9 +13,9 @@ const NEW_ROOT: address = @0xB0B;
 
 const OTHER: address = @0xDAD;
 
-const NOW_MS: u64 = 1_000;
+const NOW_AT_MS: u64 = 1_000;
 
-const DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
+const TRANSFER_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 
 // === Test-Only Types ===
 
@@ -30,7 +30,7 @@ public struct Fixture {
 
 #[test]
 fun the_transfer_delay_is_seven_days() {
-    assert_eq!(blast_acl::super_admin_transfer_delay_ms_for_testing(), DELAY_MS);
+    assert_eq!(blast_acl::super_admin_transfer_delay_ms_for_testing(), TRANSFER_DELAY_MS);
 }
 
 #[test]
@@ -38,7 +38,7 @@ fun the_transfer_delay_is_seven_days() {
 fun a_cancelled_transfer_cannot_be_accepted_even_after_its_delay() {
     let mut fixture = start();
     fixture.begin_transfer(NEW_ROOT);
-    fixture.clock.set_for_testing(NOW_MS + DELAY_MS);
+    fixture.clock.set_for_testing(NOW_AT_MS + TRANSFER_DELAY_MS);
 
     fixture.cancel_transfer();
     fixture.scenario.next_tx(NEW_ROOT);
@@ -52,7 +52,7 @@ fun a_cancelled_transfer_cannot_be_accepted_even_after_its_delay() {
 fun a_replaced_recipient_cannot_accept_even_after_its_delay() {
     let mut fixture = start();
     fixture.begin_transfer(NEW_ROOT);
-    fixture.clock.set_for_testing(NOW_MS + DELAY_MS);
+    fixture.clock.set_for_testing(NOW_AT_MS + TRANSFER_DELAY_MS);
 
     fixture.begin_transfer(OTHER);
     fixture.scenario.next_tx(NEW_ROOT);
@@ -66,7 +66,7 @@ fun a_replaced_recipient_cannot_accept_even_after_its_delay() {
 fun an_accepted_transfer_cannot_be_accepted_twice() {
     let mut fixture = start();
     fixture.begin_transfer(NEW_ROOT);
-    fixture.clock.set_for_testing(NOW_MS + DELAY_MS);
+    fixture.clock.set_for_testing(NOW_AT_MS + TRANSFER_DELAY_MS);
     fixture.scenario.next_tx(NEW_ROOT);
     fixture.accept_transfer();
 
@@ -82,11 +82,11 @@ fun transfer_accepts_at_the_exact_deadline_and_old_root_can_then_be_destroyed() 
 
     fixture.begin_transfer(NEW_ROOT);
     let started = events::collect_one<events::SuperAdminTransferStarted>(0);
-    let (recipient, execute_after_ms) = started.super_admin_transfer_started_fields();
+    let (recipient, executable_at_ms) = started.super_admin_transfer_started_fields();
     assert_eq!(recipient, NEW_ROOT);
-    assert_eq!(execute_after_ms, NOW_MS + DELAY_MS);
+    assert_eq!(executable_at_ms, NOW_AT_MS + TRANSFER_DELAY_MS);
 
-    fixture.clock.set_for_testing(execute_after_ms);
+    fixture.clock.set_for_testing(executable_at_ms);
     fixture.scenario.next_tx(NEW_ROOT);
     fixture.accept_transfer();
 
@@ -113,15 +113,15 @@ fun replacement_cancels_the_previous_recipient_and_restarts_the_delay() {
     let mut fixture = start();
 
     fixture.begin_transfer(NEW_ROOT);
-    fixture.clock.set_for_testing(NOW_MS + 10);
+    fixture.clock.set_for_testing(NOW_AT_MS + 10);
     fixture.begin_transfer(OTHER);
 
     let cancelled = events::collect_one<events::SuperAdminTransferCancelled>(0);
-    let (recipient, execute_after_ms) = cancelled.super_admin_transfer_cancelled_fields();
+    let (recipient, executable_at_ms) = cancelled.super_admin_transfer_cancelled_fields();
     assert_eq!(recipient, NEW_ROOT);
-    assert_eq!(execute_after_ms, NOW_MS + DELAY_MS);
+    assert_eq!(executable_at_ms, NOW_AT_MS + TRANSFER_DELAY_MS);
     assert_eq!(fixture.acl.pending_recipient_for_testing(), OTHER);
-    assert_eq!(fixture.acl.pending_execute_after_ms_for_testing(), NOW_MS + 10 + DELAY_MS);
+    assert_eq!(fixture.acl.pending_execute_after_ms_for_testing(), NOW_AT_MS + 10 + TRANSFER_DELAY_MS);
 
     destroy(fixture);
 }
@@ -134,9 +134,9 @@ fun current_root_can_cancel_a_pending_transfer() {
     fixture.cancel_transfer();
 
     let cancelled = events::collect_one<events::SuperAdminTransferCancelled>(0);
-    let (recipient, execute_after_ms) = cancelled.super_admin_transfer_cancelled_fields();
+    let (recipient, executable_at_ms) = cancelled.super_admin_transfer_cancelled_fields();
     assert_eq!(recipient, NEW_ROOT);
-    assert_eq!(execute_after_ms, NOW_MS + DELAY_MS);
+    assert_eq!(executable_at_ms, NOW_AT_MS + TRANSFER_DELAY_MS);
     assert!(!fixture.acl.has_pending_transfer_for_testing());
 
     destroy(fixture);
@@ -223,7 +223,7 @@ fun start(): Fixture {
     let mut scenario = test_scenario::begin(ROOT);
     let (root, acl) = blast_acl::new_for_testing(scenario.ctx());
     let mut clock = clock::create_for_testing(scenario.ctx());
-    clock.set_for_testing(NOW_MS);
+    clock.set_for_testing(NOW_AT_MS);
 
     Fixture {
         scenario,

@@ -126,13 +126,13 @@ public fun redeem_shutdown<Product, Collateral>(
     protocol: &Protocol,
     shares: Coin<BlastBoost<Product>>,
     minimum_collateral: u64,
-    deadline_ms: u64,
+    deadline_at_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<Collateral> {
     protocol.assert_current();
     self.state.assert_settled();
-    assert!(clock.timestamp_ms() <= deadline_ms, blast_boosts_aftermath::errors::deadline_expired!());
+    assert!(clock.timestamp_ms() <= deadline_at_ms, blast_boosts_aftermath::errors::deadline_expired!());
 
     let output = self.state.shutdown_claim_quote(
         self.terminal_cash.value(), self.total_share_supply(), self.locked_shares, shares.value(), minimum_collateral,
@@ -288,11 +288,11 @@ public(package) fun activate<Product, Collateral>(
     seeded: PositionObservation,
     seed_reserve: u64,
     venue_account: VenueAccount,
-    now_ms: u64,
+    now_at_ms: u64,
     ctx: &mut TxContext,
 ): (Vault<Product, Collateral>, u64, ActivePosition) {
     let VaultIssuance { issuance, mut treasury_cap, metadata_cap } = self;
-    let (state, seed_nav, seeded) = issuance.activate(seeded, seed_reserve, now_ms);
+    let (state, seed_nav, seeded) = issuance.activate(seeded, seed_reserve, now_at_ms);
 
     let locked_shares = seed_shares(seed_nav);
     transfer::public_transfer(treasury_cap.mint(locked_shares, ctx), @0x0);

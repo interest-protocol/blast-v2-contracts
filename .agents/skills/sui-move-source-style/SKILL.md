@@ -93,6 +93,28 @@ example differs.
 - Name tests as behavioral facts: `constructor_rejects_zero_allocation`.
 - Include rounding direction in math names: `apply_down`, `mul_div_up`, `to_assets_down`.
 
+## Distinguish timestamps from durations
+
+- Name points in time `<domain>_at_ms`, such as `commitment_starts_at_ms`,
+  `commitment_ends_at_ms`, `claim_deadline_at_ms`, or `price_published_at_ms`.
+  State the time origin for timestamps; use Unix epoch milliseconds for `Clock`
+  values.
+- Name elapsed lengths `<domain>_duration_ms`, such as
+  `commitment_duration_ms` or `vesting_period_duration_ms`.
+- Name offsets from an anchor `<domain>_delay_ms`, such as
+  `hard_cap_delay_ms` or `vesting_cliff_delay_ms`. Document the anchor, such as
+  the commitment window's opening or vesting start.
+- Keep the unit explicit in fields, parameters, locals, constants, getters,
+  events, and tests; use the matching unit suffix for values in seconds.
+  A relative end offset is a duration, not an absolute timestamp.
+- Make arithmetic readable: timestamp plus duration or delay yields a
+  timestamp; subtracting timestamps yields a duration. For example,
+  `commitment_ends_at_ms = commitment_starts_at_ms + commitment_duration_ms`.
+- Preserve published layouts, event schemas, signed payloads, and dependency
+  APIs when renaming would break compatibility. Use explicit local names at
+  those boundaries and migrate consumers together when a schema change is
+  authorized. Keep framework calls such as `clock.timestamp_ms()` exact.
+
 ## Keep visibility narrow
 
 - Use `public fun` only for real transaction or composition surfaces.

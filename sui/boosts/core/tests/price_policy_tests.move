@@ -30,19 +30,19 @@ fun the_largest_locally_valid_policy_is_accepted_and_preserved() {
 
 #[test]
 fun every_small_valid_policy_tuple_is_accepted_and_preserved() {
-    1u64.range_do!(4, |max_price_age_ms| {
-        0u64.range_do!(max_price_age_ms + 1, |max_price_ahead_ms| {
+    1u64.range_do!(4, |max_price_age_duration_ms| {
+        0u64.range_do!(max_price_age_duration_ms + 1, |max_price_ahead_duration_ms| {
             0u64.range_do!(4, |max_confidence_bps| {
                 0u64.range_do!(4, |max_mark_divergence_bps| {
                     let policy = policy::new_price_policy(
-                        max_price_age_ms,
-                        max_price_ahead_ms,
+                        max_price_age_duration_ms,
+                        max_price_ahead_duration_ms,
                         max_confidence_bps,
                         max_mark_divergence_bps,
                     );
 
-                    assert_eq!(policy.max_price_age_ms(), max_price_age_ms);
-                    assert_eq!(policy.max_price_ahead_ms(), max_price_ahead_ms);
+                    assert_eq!(policy.max_price_age_ms(), max_price_age_duration_ms);
+                    assert_eq!(policy.max_price_ahead_ms(), max_price_ahead_duration_ms);
                     assert_eq!(policy.max_confidence_bps(), max_confidence_bps);
                     assert_eq!(
                         policy.max_mark_divergence_bps(),
@@ -159,30 +159,30 @@ fun confidence_validation_precedes_mark_divergence_validation() {
 
 #[test]
 fun the_freshness_window_matches_the_saturating_interval_model() {
-    1u64.range_do!(4, |max_price_age_ms| {
-        0u64.range_do!(max_price_age_ms + 1, |max_price_ahead_ms| {
-            let policy = freshness_policy(max_price_age_ms, max_price_ahead_ms);
+    1u64.range_do!(4, |max_price_age_duration_ms| {
+        0u64.range_do!(max_price_age_duration_ms + 1, |max_price_ahead_duration_ms| {
+            let policy = freshness_policy(max_price_age_duration_ms, max_price_ahead_duration_ms);
 
-            0u64.range_do!(9, |reference_time_ms| {
+            0u64.range_do!(9, |reference_at_ms| {
                 0u64.range_do!(9, |published_at_ms| {
-                    let window_start = reference_time_ms.saturating_sub(
-                        max_price_age_ms,
+                    let window_start = reference_at_ms.saturating_sub(
+                        max_price_age_duration_ms,
                     );
-                    let window_end = reference_time_ms.saturating_add(
-                        max_price_ahead_ms,
+                    let window_end = reference_at_ms.saturating_add(
+                        max_price_ahead_duration_ms,
                     );
                     let is_fresh =
                         published_at_ms >= window_start
                             && published_at_ms <= window_end;
 
                     assert_eq!(
-                        policy.is_price_fresh_for_testing(published_at_ms, reference_time_ms),
+                        policy.is_price_fresh_for_testing(published_at_ms, reference_at_ms),
                         is_fresh,
                     );
                     if (is_fresh) {
                         policy.assert_price_fresh(
                             published_at_ms,
-                            reference_time_ms,
+                            reference_at_ms,
                         );
                     };
                 });
@@ -499,10 +499,10 @@ fun index_validation_precedes_the_mark_divergence_bound() {
 
 /// Builds a policy whose two-sided freshness window is the bound under test.
 fun freshness_policy(
-    max_price_age_ms: u64,
-    max_price_ahead_ms: u64,
+    max_price_age_duration_ms: u64,
+    max_price_ahead_duration_ms: u64,
 ): PricePolicy {
-    policy::new_price_policy(max_price_age_ms, max_price_ahead_ms, 0, 0)
+    policy::new_price_policy(max_price_age_duration_ms, max_price_ahead_duration_ms, 0, 0)
 }
 
 /// Builds a policy whose confidence bound is the bound under test.

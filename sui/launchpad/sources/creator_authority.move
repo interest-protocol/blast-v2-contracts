@@ -87,19 +87,19 @@ public(package) fun claim_creator_caps<Meme>(
         },
         CreatorRecipient::Account(account_commitment) => {
             let mut attestation = bcs::new(attestation.destroy_some());
-            let expiry_ms = attestation.peel_u64();
+            let expires_at_ms = attestation.peel_u64();
             let signature = attestation.peel_vec_u8();
 
             assert!(
                 attestation.into_remainder_bytes().is_empty(),
                 blast_fun::errors::invalid_creator_claim_attestation!(),
             );
-            assert!(clock.timestamp_ms() <= expiry_ms, blast_fun::errors::creator_claim_expired!());
+            assert!(clock.timestamp_ms() <= expires_at_ms, blast_fun::errors::creator_claim_expired!());
             assert!(
                 ed25519::ed25519_verify(
                     &signature,
                     signer_public_key,
-                    &creator_claim_message_bytes<Meme>(account_commitment, claimant, expiry_ms),
+                    &creator_claim_message_bytes<Meme>(account_commitment, claimant, expires_at_ms),
                 ),
                 blast_fun::errors::invalid_creator_claim_signature!(),
             );
@@ -122,13 +122,13 @@ public(package) fun new_metadata_cap<Meme>(ctx: &mut TxContext): BlastMetadataCa
 fun creator_claim_message_bytes<Meme>(
     account_commitment: vector<u8>,
     claimant: address,
-    expiry_ms: u64,
+    expires_at_ms: u64,
 ): vector<u8> {
     std::bcs::to_bytes(&CreatorClaimMessage {
         meme: type_name::with_original_ids<Meme>(),
         account_commitment,
         claimant,
-        expiry_ms,
+        expiry_ms: expires_at_ms,
     })
 }
 
@@ -138,17 +138,17 @@ fun creator_claim_message_bytes<Meme>(
 public fun creator_claim_message_bytes_for_testing<Meme>(
     account_commitment: vector<u8>,
     claimant: address,
-    expiry_ms: u64,
+    expires_at_ms: u64,
 ): vector<u8> {
-    creator_claim_message_bytes<Meme>(account_commitment, claimant, expiry_ms)
+    creator_claim_message_bytes<Meme>(account_commitment, claimant, expires_at_ms)
 }
 
 #[test_only]
 public fun new_creator_claim_attestation_for_testing(
-    expiry_ms: u64,
+    expires_at_ms: u64,
     signature: vector<u8>,
 ): vector<u8> {
-    let mut attestation = std::bcs::to_bytes(&expiry_ms);
+    let mut attestation = std::bcs::to_bytes(&expires_at_ms);
     attestation.append(std::bcs::to_bytes(&signature));
 
     attestation

@@ -11,7 +11,7 @@ const SYSTEM: address = @0x0;
 const ISSUER: address = @0xA11CE;
 const MAX_ORDER_NOTIONAL: u64 = 250;
 const NAV_CAP: u64 = 1_000_000_000;
-const REFERENCE_TIME_MS: u64 = 1_000;
+const REFERENCE_AT_MS: u64 = 1_000;
 /// The standard seed at the unit price: 1,100 of equity less a 100 reserve is 1,000 of NAV.
 const SEED_EQUITY: u64 = 1_100;
 const SEED_RESERVE: u64 = 100;
@@ -505,9 +505,9 @@ fun unsettled_lifecycle_precedes_an_expired_deadline() {
     vault.begin_shutdown(&fixture.protocol, &admin_witness, blast_boosts_core::lifecycle::emergency_reason());
     let shares = vault.mint_shares(5, fixture.ctx!());
     let mut clock = clock::create_for_testing(fixture.ctx!());
-    clock.set_for_testing(REFERENCE_TIME_MS + 1);
+    clock.set_for_testing(REFERENCE_AT_MS + 1);
 
-    destroy(vault.redeem_shutdown(&fixture.protocol, shares, 0, REFERENCE_TIME_MS, &clock, fixture.ctx!()));
+    destroy(vault.redeem_shutdown(&fixture.protocol, shares, 0, REFERENCE_AT_MS, &clock, fixture.ctx!()));
 
     destroy(clock);
     destroy(vault);
@@ -865,11 +865,11 @@ fun activate<Product>(self: &mut Fixture, issuance: VaultIssuance<Product, SUI>)
 fun activate_at<Product>(self: &mut Fixture, issuance: VaultIssuance<Product, SUI>, target_bps: u64): (Vault<Product, SUI>, u64) {
     let seeded = observation::new_position(
         SEED_EQUITY, SEED_NAV * target_bps / 10_000 * BASE_PER_NOTIONAL, LOT_SIZE, issuance.issuance().seed_side(),
-        observation::new_price(PRICE, 0, REFERENCE_TIME_MS), observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE,
+        observation::new_price(PRICE, 0, REFERENCE_AT_MS), observation::new_price(PRICE, 0, REFERENCE_AT_MS), PRICE,
     );
     let venue_account = fixture_venue_account(self.scenario.ctx());
     let (vault, seed_nav, _) = issuance.activate(
-        seeded, SEED_RESERVE, venue_account, REFERENCE_TIME_MS, self.scenario.ctx(),
+        seeded, SEED_RESERVE, venue_account, REFERENCE_AT_MS, self.scenario.ctx(),
     );
     (vault, seed_nav)
 }

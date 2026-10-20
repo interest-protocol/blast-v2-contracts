@@ -91,9 +91,9 @@ public fun add_partner(
     let key = PartnerKey(partner_id);
 
     if (self.id.has_dynamic_field(key)) {
-        let accepted_until_ms: &mut u64 = self.id.dynamic_field_mut(key);
-        assert!(*accepted_until_ms != std::u64::max_value!(), EAllowanceUnchanged);
-        *accepted_until_ms = std::u64::max_value!();
+        let acceptance_ends_at_ms: &mut u64 = self.id.dynamic_field_mut(key);
+        assert!(*acceptance_ends_at_ms != std::u64::max_value!(), EAllowanceUnchanged);
+        *acceptance_ends_at_ms = std::u64::max_value!();
     } else {
         self.id.add_dynamic_field(key, std::u64::max_value!());
     };
@@ -113,15 +113,15 @@ public fun remove_partner(
     package_version.assert_current();
 
     let partner_id = object::id(partner);
-    let now_ms = clock.timestamp_ms();
-    self.assert_partner(partner_id, now_ms);
-    let notice_ends_ms = now_ms + partners::delay_ms();
+    let now_at_ms = clock.timestamp_ms();
+    self.assert_partner(partner_id, now_at_ms);
+    let notice_ends_at_ms = now_at_ms + partners::delay_ms();
 
-    let accepted_until_ms: &mut u64 = self.id.dynamic_field_mut(PartnerKey(partner_id));
-    assert!(*accepted_until_ms == std::u64::max_value!(), EAllowanceUnchanged);
-    *accepted_until_ms = notice_ends_ms;
+    let acceptance_ends_at_ms: &mut u64 = self.id.dynamic_field_mut(PartnerKey(partner_id));
+    assert!(*acceptance_ends_at_ms == std::u64::max_value!(), EAllowanceUnchanged);
+    *acceptance_ends_at_ms = notice_ends_at_ms;
 
-    event::emit(PartnerRemoved { partner_id, accepted_until_ms: notice_ends_ms });
+    event::emit(PartnerRemoved { partner_id, accepted_until_ms: notice_ends_at_ms });
 }
 
 // === Package Functions ===
@@ -138,13 +138,13 @@ public(package) fun assert_allowed<Quote, MigrationWitness>(self: &CreationPolic
     );
 }
 
-/// Aborts unless a new presale may name the partner `partner_id` at `now_ms`.
-public(package) fun assert_partner(self: &CreationPolicy, partner_id: ID, now_ms: u64) {
+/// Aborts unless a new presale may name the partner `partner_id` at `now_at_ms`.
+public(package) fun assert_partner(self: &CreationPolicy, partner_id: ID, now_at_ms: u64) {
     let key = PartnerKey(partner_id);
 
     assert!(self.id.has_dynamic_field(key), EPartnerNotAccepted);
-    let accepted_until_ms: u64 = *self.id.dynamic_field(key);
-    assert!(now_ms < accepted_until_ms, EPartnerNotAccepted);
+    let acceptance_ends_at_ms: u64 = *self.id.dynamic_field(key);
+    assert!(now_at_ms < acceptance_ends_at_ms, EPartnerNotAccepted);
 }
 
 // === Private Functions ===

@@ -8,7 +8,7 @@ module blast_presale::daily_rewards_tests;
 
 const OWNER: address = @0xA;
 const HOLDER: address = @0xB;
-const CLAIM_WINDOW_MS: u64 = 604_800_000;
+const CLAIM_WINDOW_DURATION_MS: u64 = 604_800_000;
 
 // === Test-Only Types ===
 
@@ -28,7 +28,7 @@ fun skipped_days_allow_a_new_daily_interval_with_an_independent_claim_window() {
     fixture.publish(0, 0, 10);
     assert_eq!(fixture.vault.next_round(), 1);
     fixture.next_tx!(OWNER, |f| {
-        f.clock.set_for_testing(1_000_000 + CLAIM_WINDOW_MS);
+        f.clock.set_for_testing(1_000_000 + CLAIM_WINDOW_DURATION_MS);
         f.close();
     });
     assert_eq!(fixture.balances(), vector[0, 100]);
@@ -38,7 +38,7 @@ fun skipped_days_allow_a_new_daily_interval_with_an_independent_claim_window() {
     fixture.next_tx!(HOLDER, |f| f.claim());
     fixture.next_tx!(HOLDER, |f| f.assert_payment());
     fixture.next_tx!(OWNER, |f| {
-        f.clock.set_for_testing(1_000_000 + 2 * CLAIM_WINDOW_MS);
+        f.clock.set_for_testing(1_000_000 + 2 * CLAIM_WINDOW_DURATION_MS);
         f.close();
     });
     assert_eq!(fixture.balances(), vector[0, 90]);
@@ -125,7 +125,7 @@ fun publish(self: &mut DailyRewardsFixture, number: u64, start: u64, end: u64) {
         0,
         10,
         0,
-        self.clock.timestamp_ms() + CLAIM_WINDOW_MS,
+        self.clock.timestamp_ms() + CLAIM_WINDOW_DURATION_MS,
         &self.clock,
         self.scenario.ctx(),
     );

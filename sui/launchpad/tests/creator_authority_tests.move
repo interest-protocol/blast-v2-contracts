@@ -12,9 +12,9 @@ const ADMIN: address = @0xAD;
 
 const CREATOR: address = @0xC0FFEE;
 
-const NOW_MS: u64 = 1_000_000;
+const NOW_AT_MS: u64 = 1_000_000;
 
-const EXPIRY_MS: u64 = 2_000_000;
+const EXPIRES_AT_MS: u64 = 2_000_000;
 
 // === Test-Only Types ===
 
@@ -22,7 +22,7 @@ public struct TEST_MEME() has drop;
 
 public struct OTHER_MEME() has drop;
 
-/// A runtime configuration whose signer is live and a clock at `NOW_MS`.
+/// A runtime configuration whose signer is live and a clock at `NOW_AT_MS`.
 public struct ClaimFixture {
     scenario: Scenario,
     package_version: PackageVersion,
@@ -68,7 +68,7 @@ fun account_claim_with_the_backend_signature_issues_both_caps() {
             creator_authority::creator_claim_message_bytes_for_testing<TEST_MEME>(
                 account_commitment(),
                 CREATOR,
-                EXPIRY_MS,
+                EXPIRES_AT_MS,
             ),
             x"64303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303a3a63726561746f725f617574686f726974795f74657374733a3a544553545f4d454d452011223344556677889900aabbccddeeffffeeddccbbaa009988776655443322110000000000000000000000000000000000000000000000000000000000c0ffee80841e0000000000",
         );
@@ -94,7 +94,7 @@ fun account_claim_is_accepted_at_the_expiry() {
     let mut fixture = start();
 
     fixture.next_tx!(CREATOR, |f| {
-        f.clock.set_for_testing(EXPIRY_MS);
+        f.clock.set_for_testing(EXPIRES_AT_MS);
 
         f.claim<TEST_MEME>(account_recipient(), option::some(attestation()));
     });
@@ -121,7 +121,7 @@ fun account_claim_rejects_a_signature_that_is_not_64_bytes() {
         let mut signature = signature();
         signature.pop_back();
         let attestation = creator_authority::new_creator_claim_attestation_for_testing(
-            EXPIRY_MS,
+            EXPIRES_AT_MS,
             signature,
         );
 
@@ -150,7 +150,7 @@ fun account_claim_rejects_an_expired_attestation() {
     let mut fixture = start();
 
     fixture.next_tx!(CREATOR, |f| {
-        f.clock.set_for_testing(EXPIRY_MS + 1);
+        f.clock.set_for_testing(EXPIRES_AT_MS + 1);
 
         f.claim<TEST_MEME>(account_recipient(), option::some(attestation()));
     });
@@ -270,7 +270,7 @@ fun start(): ClaimFixture {
     let package_version = package_version::new_for_testing(scenario.ctx());
     let config = runtime_config::new_for_testing(signer_public_key(), scenario.ctx());
     let mut clock = clock::create_for_testing(scenario.ctx());
-    clock.set_for_testing(NOW_MS);
+    clock.set_for_testing(NOW_AT_MS);
 
     ClaimFixture { scenario, package_version, config, clock }
 }
@@ -309,7 +309,7 @@ fun account_recipient(): CreatorRecipient {
 
 /// The backend's attestation for `CREATOR` claiming `TEST_MEME` for `account_commitment()`.
 fun attestation(): vector<u8> {
-    creator_authority::new_creator_claim_attestation_for_testing(EXPIRY_MS, signature())
+    creator_authority::new_creator_claim_attestation_for_testing(EXPIRES_AT_MS, signature())
 }
 
 fun account_commitment(): vector<u8> {

@@ -567,15 +567,15 @@ fun partial_fills_advance_every_path_by_what_actually_filled() {
 #[expected_failure(abort_code = errors::EActiveCheckpointChanged, location = blast_boosts_core::state)]
 fun a_price_move_between_prepare_and_complete_reverts_the_mint() {
     let mut vault = test_adapter::calm_venue().issue().activate(SEED, SEED_RESERVE);
-    let now_ms = vault.venue().now_ms();
+    let now_at_ms = vault.venue().now_ms();
     let supply = vault.supply();
     let observation = vault.venue().observe();
-    let plan = vault.state().prepare_mint(observation, 1_000 * USDC, supply, 1, now_ms);
+    let plan = vault.state().prepare_mint(observation, 1_000 * USDC, supply, 1, now_at_ms);
     let base_price = vault.venue().base_price();
     vault.venue_mut().set_base_price(base_price + 1);
 
     let observation = vault.venue().observe();
-    let (_, _, _, _, _) = vault.state_mut().complete_mint(plan, observation, now_ms);
+    let (_, _, _, _, _) = vault.state_mut().complete_mint(plan, observation, now_at_ms);
     vault.destroy();
 }
 
@@ -585,17 +585,17 @@ fun a_price_move_between_prepare_and_complete_reverts_the_mint() {
 #[expected_failure(abort_code = test_adapter::EVenueNotReady, location = blast_boosts_core::test_adapter)]
 fun a_venue_error_after_the_fill_reverts_the_mint() {
     let mut vault = test_adapter::calm_venue().issue().activate(SEED, SEED_RESERVE);
-    let now_ms = vault.venue().now_ms();
+    let now_at_ms = vault.venue().now_ms();
     let supply = vault.supply();
     let observation = vault.venue().observe();
-    let plan = vault.state().prepare_mint(observation, 1_000 * USDC, supply, 1, now_ms);
+    let plan = vault.state().prepare_mint(observation, 1_000 * USDC, supply, 1, now_at_ms);
     let base_to_buy = plan.base_to_buy();
     vault.venue_mut().deposit(1_000 * USDC);
     vault.venue_mut().fill(base_to_buy, true);
     vault.venue_mut().set_operational(false);
 
     let observation = vault.venue().observe();
-    let (_, _, _, _, _) = vault.state_mut().complete_mint(plan, observation, now_ms);
+    let (_, _, _, _, _) = vault.state_mut().complete_mint(plan, observation, now_at_ms);
     vault.destroy();
 }
 
@@ -868,9 +868,9 @@ fun winding_down_still_requires_fresh_oracles() {
     let stale = vault.venue().oracle(vault.venue().base_price());
     vault.venue_mut().advance(31_000);
     let fresh = vault.venue().oracle(vault.venue().base_price());
-    let now_ms = vault.venue().now_ms();
+    let now_at_ms = vault.venue().now_ms();
 
-    let (_, _, _, _) = vault.state().unwind_constraints(stale, fresh, vault.venue().lot_size(), now_ms);
+    let (_, _, _, _) = vault.state().unwind_constraints(stale, fresh, vault.venue().lot_size(), now_at_ms);
     vault.destroy();
 }
 

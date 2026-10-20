@@ -9,7 +9,7 @@ module blast_boosts_aftermath::operations_tests;
 
 const SYSTEM: address = @0x0;
 const ADMIN: address = @0xA11CE;
-const REFERENCE_TIME_MS: u64 = 1_000;
+const REFERENCE_AT_MS: u64 = 1_000;
 const NAV_CAP: u64 = 1_000_000_000;
 const SEED_EQUITY: u64 = 1_000;
 const SEED_RESERVE: u64 = 100;
@@ -332,7 +332,7 @@ fun insolvent_capture_still_supplies_fresh_close_only_valuation() {
     let base = captured.base_price_observation();
     let collateral = captured.collateral_price_observation();
     let (side, max_order_base, base_price, collateral_price) =
-        vault.state().unwind_constraints(base, collateral, LOT_SIZE, REFERENCE_TIME_MS);
+        vault.state().unwind_constraints(base, collateral, LOT_SIZE, REFERENCE_AT_MS);
     assert_eq!(side, policy::long());
     assert_eq!(vector[max_order_base, base_price, collateral_price], vector[250 * BASE_PER_NOTIONAL, PRICE, PRICE]);
     destroy(vault);
@@ -485,10 +485,10 @@ fun mismatched_native_shares_fail_before_unwind_validation() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let shares = sui::coin::mint_for_testing<BlastBoost<Product>>(100_000, fixture.ctx!());
-    let plan = vault.state().prepare_redemption(position_observation(SEED_EQUITY), shares.value(), vault.total_share_supply(), 1, REFERENCE_TIME_MS);
+    let plan = vault.state().prepare_redemption(position_observation(SEED_EQUITY), shares.value(), vault.total_share_supply(), 1, REFERENCE_AT_MS);
     destroy(shares);
     let wrong_shares = sui::coin::mint_for_testing<BlastBoost<Product>>(99_999, fixture.ctx!());
-    operations::settle_redemption_for_testing(&mut vault, plan, &wrong_shares, position_observation(SEED_EQUITY), REFERENCE_TIME_MS);
+    operations::settle_redemption_for_testing(&mut vault, plan, &wrong_shares, position_observation(SEED_EQUITY), REFERENCE_AT_MS);
     destroy(wrong_shares);
     destroy(vault);
     fixture.end();
@@ -501,24 +501,24 @@ fun native_fee_allocations_preserve_historical_cash_through_redemption_and_rate_
         fee_capped_vault_policy_for_side(policy::long()));
     let witness = risk_admin();
     vault.set_fees(&fixture.protocol, &witness, 10, 10, 2_000);
-    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 10_000, vault.total_share_supply(), 9_989_000, REFERENCE_TIME_MS);
+    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 10_000, vault.total_share_supply(), 9_989_000, REFERENCE_AT_MS);
     assert_eq!(plan.admin_fee(), 2);
     assert_eq!(plan.base_to_buy(), 19_980_000);
     vault.set_fees(&fixture.protocol, &witness, 0, 0, 0);
     vault.retain_admin_cash(sui::balance::create_for_testing<Collateral>(2));
     let shares = operations::complete_mint_for_testing<Product, Collateral>(
-        &mut vault, plan, 10_000, active_position(10_997, 21_780), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!(),
+        &mut vault, plan, 10_000, active_position(10_997, 21_780), initial_checkpoint(), REFERENCE_AT_MS, fixture.ctx!(),
     );
     let (_, minted, contribution, fee, admin, buffer, reserve, cash, supply) =
         events::collect_one<events::Minted<Product>>(0).minted_amounts();
     assert_eq!(vector[minted, contribution, fee, admin, buffer, reserve, cash, supply],
         vector[9_989_000, 9_989, 10, 2, 8, 108, 2, 10_889_000]);
     vault.set_fees(&fixture.protocol, &witness, 10, 10, 2_000);
-    let plan = vault.state().prepare_redemption(active_position(10_997, 21_780), shares.value(), vault.total_share_supply(), 9_978, REFERENCE_TIME_MS);
+    let plan = vault.state().prepare_redemption(active_position(10_997, 21_780), shares.value(), vault.total_share_supply(), 9_978, REFERENCE_AT_MS);
     // 21_780_000 less the floor of its 900_000 / 10_889_000 share, to the atom.
     assert_eq!(plan.base_to_sell(), 19_979_835);
     let (net, admin, fee, reserve_fee) = operations::settle_redemption_for_testing(&mut vault, plan, &shares,
-        active_position_with_base(10_996, 1_800_165), REFERENCE_TIME_MS);
+        active_position_with_base(10_996, 1_800_165), REFERENCE_AT_MS);
     assert_eq!(net + admin, 9_980);
     let cash = sui::coin::mint_for_testing<Collateral>(9_980, fixture.ctx!());
     let cash = operations::complete_redemption_for_testing(&mut vault, shares, cash, net, admin, fee, reserve_fee, initial_checkpoint(), fixture.ctx!());
@@ -626,8 +626,8 @@ fun the_maximum_partner_share_leaves_blast_a_fifth_of_the_admin_fee() {
 fun a_partner_share_takes_effect_exactly_at_the_operations_clock() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let pending = partners::new_scheduled_for_testing(PARTNER_PAYOUT, 0, 5_000, REFERENCE_TIME_MS + 1, fixture.ctx!());
-    let switched = partners::new_scheduled_for_testing(PARTNER_PAYOUT, 0, 5_000, REFERENCE_TIME_MS, fixture.ctx!());
+    let pending = partners::new_scheduled_for_testing(PARTNER_PAYOUT, 0, 5_000, REFERENCE_AT_MS + 1, fixture.ctx!());
+    let switched = partners::new_scheduled_for_testing(PARTNER_PAYOUT, 0, 5_000, REFERENCE_AT_MS, fixture.ctx!());
     let clock = reference_clock(&mut fixture);
     vault.retain_admin_cash(sui::balance::create_for_testing<Collateral>(60));
 
@@ -659,20 +659,20 @@ fun an_added_partner_is_accepted_at_once_and_a_removed_one_until_the_delay_ends(
     let mut clock = reference_clock(&mut fixture);
     fixture.add_partner(&partner);
     fixture.add_partner(&other);
-    fixture.protocol.assert_partner_for_testing(object::id(&partner), REFERENCE_TIME_MS);
+    fixture.protocol.assert_partner_for_testing(object::id(&partner), REFERENCE_AT_MS);
 
     fixture.remove_partner(&partner, &clock);
 
-    let accepted_until_ms = REFERENCE_TIME_MS + partners::delay_ms();
+    let acceptance_ends_at_ms = REFERENCE_AT_MS + partners::delay_ms();
     let added = events::collect<events::PartnerAdded>();
     assert_eq!(added[0].partner_added_id(), object::id(&partner));
     assert_eq!(added[1].partner_added_id(), object::id(&other));
     let (removed_id, until) = events::collect_one<events::PartnerRemoved>(0).partner_removed_fields();
     assert_eq!(removed_id, object::id(&partner));
-    assert_eq!(until, accepted_until_ms);
-    fixture.protocol.assert_partner_for_testing(object::id(&partner), accepted_until_ms - 1);
-    clock.set_for_testing(accepted_until_ms);
-    fixture.protocol.assert_partner_for_testing(object::id(&other), accepted_until_ms);
+    assert_eq!(until, acceptance_ends_at_ms);
+    fixture.protocol.assert_partner_for_testing(object::id(&partner), acceptance_ends_at_ms - 1);
+    clock.set_for_testing(acceptance_ends_at_ms);
+    fixture.protocol.assert_partner_for_testing(object::id(&other), acceptance_ends_at_ms);
     destroy(partner);
     destroy(other);
     clock.destroy_for_testing();
@@ -688,8 +688,8 @@ fun a_removed_partner_is_refused_from_the_end_of_the_delay() {
     fixture.add_partner(&partner);
     fixture.remove_partner(&partner, &clock);
 
-    let accepted_until_ms = REFERENCE_TIME_MS + partners::delay_ms();
-    fixture.protocol.assert_partner_for_testing(object::id(&partner), accepted_until_ms);
+    let acceptance_ends_at_ms = REFERENCE_AT_MS + partners::delay_ms();
+    fixture.protocol.assert_partner_for_testing(object::id(&partner), acceptance_ends_at_ms);
 
     abort
 }
@@ -700,7 +700,7 @@ fun a_partner_never_added_is_refused() {
     let mut fixture = start();
     let partner = partners::new_for_testing(PARTNER_PAYOUT, 5_000, fixture.ctx!());
 
-    fixture.protocol.assert_partner_for_testing(object::id(&partner), REFERENCE_TIME_MS);
+    fixture.protocol.assert_partner_for_testing(object::id(&partner), REFERENCE_AT_MS);
 
     abort
 }
@@ -733,7 +733,7 @@ fun a_removed_partner_added_again_is_accepted_at_once() {
     let mut clock = reference_clock(&mut fixture);
     fixture.add_partner(&partner);
     fixture.remove_partner(&partner, &clock);
-    clock.set_for_testing(REFERENCE_TIME_MS + partners::delay_ms());
+    clock.set_for_testing(REFERENCE_AT_MS + partners::delay_ms());
 
     fixture.add_partner(&partner);
 
@@ -789,7 +789,7 @@ fun removing_a_removed_partner_is_refused() {
     let mut clock = reference_clock(&mut fixture);
     fixture.add_partner(&partner);
     fixture.remove_partner(&partner, &clock);
-    clock.set_for_testing(REFERENCE_TIME_MS + partners::delay_ms());
+    clock.set_for_testing(REFERENCE_AT_MS + partners::delay_ms());
 
     fixture.remove_partner(&partner, &clock);
 
@@ -871,10 +871,10 @@ fun completed_rebalance_changes_only_holder_equity_and_the_accepted_checkpoint()
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let before = observation::new_position(1_000, 3_000_000, LOT_SIZE, policy::long(),
-        observation::new_price(PRICE, 0, REFERENCE_TIME_MS),
-        observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE,
+        observation::new_price(PRICE, 0, REFERENCE_AT_MS),
+        observation::new_price(PRICE, 0, REFERENCE_AT_MS), PRICE,
     );
-    let mut plan = vault.state().prepare_rebalance(before, 10, REFERENCE_TIME_MS);
+    let mut plan = vault.state().prepare_rebalance(before, 10, REFERENCE_AT_MS);
     let priced = plan.rebalance_position();
     let (base_price, collateral_price, lot) = (priced.base_price(), priced.collateral_price(), priced.lot_size());
     assert_eq!(base_price, PRICE);
@@ -886,10 +886,10 @@ fun completed_rebalance_changes_only_holder_equity_and_the_accepted_checkpoint()
     assert!(!order.is_increase() && order.is_emergency());
     vault.state().assert_execution(order.is_emergency(), PRICE, PRICE);
     let after = observation::new_position(999, 2_750_000, LOT_SIZE, policy::long(),
-        observation::new_price(PRICE, 0, REFERENCE_TIME_MS),
-        observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE,
+        observation::new_price(PRICE, 0, REFERENCE_AT_MS),
+        observation::new_price(PRICE, 0, REFERENCE_AT_MS), PRICE,
     );
-    vault.state().accept_rebalance_fill(&mut plan, order, after, base, REFERENCE_TIME_MS);
+    vault.state().accept_rebalance_fill(&mut plan, order, after, base, REFERENCE_AT_MS);
     let checkpoint = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
     operations::complete_rebalance_for_testing<Product, Collateral>(&mut vault, plan, checkpoint);
     assert_eq!(vault.state().maintenance_reserve(), 100);
@@ -931,14 +931,14 @@ fun venue_fee_bound_rejects_a_taker_fee_above_one() {
 fun completed_redemption_burns_the_native_input_only_after_exact_cash_return() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let mint_plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_TIME_MS);
-    let (amount, _, _, _, _) = vault.state_mut().complete_mint(mint_plan, active_position(1_998, 3_798), REFERENCE_TIME_MS);
+    let mint_plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_AT_MS);
+    let (amount, _, _, _, _) = vault.state_mut().complete_mint(mint_plan, active_position(1_998, 3_798), REFERENCE_AT_MS);
     let shares = vault.mint_shares(amount, fixture.ctx!());
-    let plan = vault.state().prepare_redemption(active_position(1_998, 3_798), shares.value(), vault.total_share_supply(), 994, REFERENCE_TIME_MS);
+    let plan = vault.state().prepare_redemption(active_position(1_998, 3_798), shares.value(), vault.total_share_supply(), 994, REFERENCE_AT_MS);
     // 3_798_000 less the floor of its 900_000 / 1_897_000 share, to the atom.
     assert_eq!(plan.base_to_sell(), 1_996_103);
     let (net, admin, fee, reserve_fee) = operations::settle_redemption_for_testing(
-        &mut vault, plan, &shares, active_position_with_base(1_996, 1_801_897), REFERENCE_TIME_MS,
+        &mut vault, plan, &shares, active_position_with_base(1_996, 1_801_897), REFERENCE_AT_MS,
     );
     assert_eq!(net + admin, 994);
     let cash = sui::coin::mint_for_testing<Collateral>(994, fixture.ctx!());
@@ -1132,7 +1132,7 @@ fun active_order_rejects_a_remainder_off_the_lot() {
 fun terms_open_with_the_side_and_reduce_against_it() {
     let mut fixture = start();
     let vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_TIME_MS);
+    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_AT_MS);
     let position = plan.mint_position();
 
     let (is_ask, reduce_only, max_order_base, lot_size, base_price, collateral_price) =
@@ -1154,7 +1154,7 @@ fun terms_of_a_short_vault_open_with_an_ask_and_reduce_with_a_bid() {
     let mut fixture = start();
     let vault = issue_and_activate_product_with_side(&mut fixture, OtherProduct(), initial_checkpoint(),
         standard_vault_policy_for_side(policy::short()), policy::short());
-    let plan = vault.state().prepare_mint(position_observation_for_side(SEED_EQUITY, policy::short()), 1_000, vault.total_share_supply(), 997_000, REFERENCE_TIME_MS);
+    let plan = vault.state().prepare_mint(position_observation_for_side(SEED_EQUITY, policy::short()), 1_000, vault.total_share_supply(), 997_000, REFERENCE_AT_MS);
     let position = plan.mint_position();
 
     let (is_ask, reduce_only, _, _, _, _) = orders::increasing_terms(&vault, position).order_terms_fields();
@@ -1176,7 +1176,7 @@ fun unwind_terms_close_a_long_with_an_ask_at_the_capped_size() {
     let checkpoint = checkpoint_with_market_imr(0, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
     let captured = snapshot::captured_health_for_testing(checkpoint, 0, false, 0, true, true);
 
-    let (terms, remaining, before) = orders::unwind_terms(&vault, &captured, REFERENCE_TIME_MS);
+    let (terms, remaining, before) = orders::unwind_terms(&vault, &captured, REFERENCE_AT_MS);
     let (is_ask, reduce_only, max_order_base, lot_size, base_price, collateral_price) = terms.order_terms_fields();
     assert!(is_ask && reduce_only);
     assert_eq!(vector[max_order_base, lot_size, base_price, collateral_price], vector[250 * BASE_PER_NOTIONAL, LOT_SIZE, PRICE, PRICE]);
@@ -1199,7 +1199,7 @@ fun unwind_terms_reject_a_checkpoint_with_resting_orders() {
     );
     let captured = snapshot::captured_health_for_testing(resting, 0, false, 0, true, true);
 
-    orders::unwind_terms(&vault, &captured, REFERENCE_TIME_MS);
+    orders::unwind_terms(&vault, &captured, REFERENCE_AT_MS);
 
     destroy(vault);
     fixture.end();
@@ -1212,7 +1212,7 @@ fun unwind_terms_require_an_unwinding_vault_before_reading_orders() {
     let vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let captured = snapshot::captured_health_for_testing(initial_checkpoint(), 0, false, 0, true, true);
 
-    orders::unwind_terms(&vault, &captured, REFERENCE_TIME_MS);
+    orders::unwind_terms(&vault, &captured, REFERENCE_AT_MS);
 
     destroy(vault);
     fixture.end();
@@ -1396,7 +1396,7 @@ fun posted_orders_are_reported_before_a_liquidation_in_the_same_session() {
 fun completed_mint_returns_native_shares_and_updates_the_same_treasury_supply() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_TIME_MS);
+    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_AT_MS);
     assert_eq!(plan.base_to_buy(), 1_998_000);
     let priced = plan.mint_position();
     let (base_price, collateral_price, lot) = (priced.base_price(), priced.collateral_price(), priced.lot_size());
@@ -1407,10 +1407,10 @@ fun completed_mint_returns_native_shares_and_updates_the_same_treasury_supply() 
     assert!(vault.max_order_notional_for_testing() > 0);
     vault.state().assert_execution(false, PRICE, PRICE);
     let after = observation::new_position(1_998, 3_798 * BASE_PER_NOTIONAL, LOT_SIZE, policy::long(),
-        observation::new_price(PRICE, 0, REFERENCE_TIME_MS),
-        observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE,
+        observation::new_price(PRICE, 0, REFERENCE_AT_MS),
+        observation::new_price(PRICE, 0, REFERENCE_AT_MS), PRICE,
     );
-    let shares = operations::complete_mint_for_testing<Product, Collateral>(&mut vault, plan, 1_000, after, initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!());
+    let shares = operations::complete_mint_for_testing<Product, Collateral>(&mut vault, plan, 1_000, after, initial_checkpoint(), REFERENCE_AT_MS, fixture.ctx!());
     let event = events::collect_one<events::Minted<Product>>(0);
     let (deposit, minted, contribution, fee, admin, buffer, reserve, admin_cash, supply) = event.minted_amounts();
     assert_eq!(deposit, 1_000);
@@ -1437,7 +1437,7 @@ fun connected_donation_accepts_only_the_exact_free_collateral_deposit() {
     let initial = initial_checkpoint();
     let mut vault = issue_and_activate(&mut fixture, initial);
     let after = checkpoint_with_market_imr(50, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
-    operations::complete_donation_for_testing(&mut vault, position_observation(SEED_EQUITY + 50), after, 50, REFERENCE_TIME_MS);
+    operations::complete_donation_for_testing(&mut vault, position_observation(SEED_EQUITY + 50), after, 50, REFERENCE_AT_MS);
     assert_eq!(vault.state().maintenance_reserve(), 150);
     assert_eq!(vault.total_share_supply(), 900_000);
     assert_eq!(vault.admin_cash_balance<_, Collateral>(), 0);
@@ -1457,7 +1457,7 @@ fun donation_cannot_accept_an_unrelated_position_margin_change() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let after = checkpoint_with_market_imr(50, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 2);
-    operations::complete_donation_for_testing(&mut vault, position_observation(SEED_EQUITY + 50), after, 50, REFERENCE_TIME_MS);
+    operations::complete_donation_for_testing(&mut vault, position_observation(SEED_EQUITY + 50), after, 50, REFERENCE_AT_MS);
     destroy(vault);
     fixture.end();
 }
@@ -2679,11 +2679,11 @@ fun finalization_is_rejected_before_shutdown_begins() {
 fun completed_mint_is_rejected_after_shutdown_begins() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_TIME_MS);
+    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_AT_MS);
     let witness = shutdown_admin();
     vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
     let shares = operations::complete_mint_for_testing<Product, Collateral>(
-        &mut vault, plan, 1_000, active_position(1_998, 3_798), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!(),
+        &mut vault, plan, 1_000, active_position(1_998, 3_798), initial_checkpoint(), REFERENCE_AT_MS, fixture.ctx!(),
     );
     destroy(shares);
     destroy(vault);
@@ -2696,11 +2696,11 @@ fun completed_rebalance_reports_an_increase() {
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     // 1_000 notional on a 900 NAV is 1.11x, under the 1.6x band floor; the
     // 250 order cap sizes the buy and its 4 atoms of execution cost fit the target.
-    let mut plan = vault.state().prepare_rebalance(rebalance_position(1_000, 1_000_000), 10, REFERENCE_TIME_MS);
+    let mut plan = vault.state().prepare_rebalance(rebalance_position(1_000, 1_000_000), 10, REFERENCE_AT_MS);
     let order = vault.state().next_rebalance_order(&plan);
     assert!(order.is_increase() && !order.is_emergency());
     assert_eq!(order.order_base(), 250_000);
-    vault.state().accept_rebalance_fill(&mut plan, order, rebalance_position(999, 1_250_000), 250_000, REFERENCE_TIME_MS);
+    vault.state().accept_rebalance_fill(&mut plan, order, rebalance_position(999, 1_250_000), 250_000, REFERENCE_AT_MS);
     let checkpoint = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
 
     operations::complete_rebalance_for_testing<Product, Collateral>(&mut vault, plan, checkpoint);
@@ -2722,7 +2722,7 @@ fun zero_donation_is_rejected_by_the_core_after_a_trivially_exact_checkpoint() {
     let mut fixture = start();
     let initial = initial_checkpoint();
     let mut vault = issue_and_activate(&mut fixture, initial);
-    operations::complete_donation_for_testing(&mut vault, position_observation(SEED_EQUITY), initial, 0, REFERENCE_TIME_MS);
+    operations::complete_donation_for_testing(&mut vault, position_observation(SEED_EQUITY), initial, 0, REFERENCE_AT_MS);
     destroy(vault);
     fixture.end();
 }
@@ -2886,12 +2886,12 @@ fun issue_and_begin_shutdown(fixture: &mut Fixture, checkpoint: Checkpoint): Vau
 fun complete_redemption_with_cash(cash_amount: u64) {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let mint_plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_TIME_MS);
-    let (amount, _, _, _, _) = vault.state_mut().complete_mint(mint_plan, active_position(1_998, 3_798), REFERENCE_TIME_MS);
+    let mint_plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_AT_MS);
+    let (amount, _, _, _, _) = vault.state_mut().complete_mint(mint_plan, active_position(1_998, 3_798), REFERENCE_AT_MS);
     let shares = vault.mint_shares(amount, fixture.ctx!());
-    let plan = vault.state().prepare_redemption(active_position(1_998, 3_798), shares.value(), vault.total_share_supply(), 994, REFERENCE_TIME_MS);
+    let plan = vault.state().prepare_redemption(active_position(1_998, 3_798), shares.value(), vault.total_share_supply(), 994, REFERENCE_AT_MS);
     let (net, admin, fee, reserve_fee) = operations::settle_redemption_for_testing(
-        &mut vault, plan, &shares, active_position_with_base(1_996, 1_801_897), REFERENCE_TIME_MS,
+        &mut vault, plan, &shares, active_position_with_base(1_996, 1_801_897), REFERENCE_AT_MS,
     );
     assert_eq!(net + admin, 994);
     let cash = sui::coin::mint_for_testing<Collateral>(cash_amount, fixture.ctx!());
@@ -2957,7 +2957,7 @@ fun issue_and_activate(
 /// A clock at the reference time the completion helpers price at.
 fun reference_clock(fixture: &mut Fixture): Clock {
     let mut clock = sui::clock::create_for_testing(fixture.ctx!());
-    clock.set_for_testing(REFERENCE_TIME_MS);
+    clock.set_for_testing(REFERENCE_AT_MS);
     clock
 }
 
@@ -3013,10 +3013,10 @@ fun issue_and_activate_product_with_side<Tag: drop>(
     let admin_cap = authority::new_for_testing<ACCOUNT, AdminRole>(@0xB.to_id(), scenario.ctx());
     let seeded = observation::new_position(
         SEED_EQUITY, ABSOLUTE_BASE, LOT_SIZE, side,
-        observation::new_price(PRICE, 0, REFERENCE_TIME_MS), observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE,
+        observation::new_price(PRICE, 0, REFERENCE_AT_MS), observation::new_price(PRICE, 0, REFERENCE_AT_MS), PRICE,
     );
     let (vault, seed_nav, _) = issuance.activate(
-        seeded, SEED_RESERVE, venue_account::new(binding, checkpoint, admin_cap), REFERENCE_TIME_MS, scenario.ctx(),
+        seeded, SEED_RESERVE, venue_account::new(binding, checkpoint, admin_cap), REFERENCE_AT_MS, scenario.ctx(),
     );
     operations::emit_vault_initialized_for_testing<Tag, Collateral>(&vault, SEED_EQUITY, seed_nav, SEED_EQUITY, ABSOLUTE_BASE, LOT_SIZE, side, 1);
 
@@ -3029,8 +3029,8 @@ fun position_observation(venue_equity: u64): PositionObservation {
 
 fun position_observation_for_side(venue_equity: u64, side: PositionSide): PositionObservation {
     observation::new_position(venue_equity, ABSOLUTE_BASE, LOT_SIZE, side,
-        observation::new_price(PRICE, 0, REFERENCE_TIME_MS),
-        observation::new_price(PRICE, 0, REFERENCE_TIME_MS),
+        observation::new_price(PRICE, 0, REFERENCE_AT_MS),
+        observation::new_price(PRICE, 0, REFERENCE_AT_MS),
         PRICE,
     )
 }
@@ -3042,16 +3042,16 @@ fun active_position(equity: u64, notional: u64): PositionObservation {
 /// A live position of an exact base, valued at the unit price rounded up.
 fun active_position_with_base(equity: u64, base: u64): PositionObservation {
     observation::new_position(equity, base, LOT_SIZE, policy::long(),
-        observation::new_price(PRICE, 0, REFERENCE_TIME_MS),
-        observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE,
+        observation::new_price(PRICE, 0, REFERENCE_AT_MS),
+        observation::new_price(PRICE, 0, REFERENCE_AT_MS), PRICE,
     )
 }
 
 /// A live position of `notional` collateral atoms, held as the base that values to it.
 fun active_position_for_side(equity: u64, notional: u64, side: PositionSide): PositionObservation {
     observation::new_position(equity, notional * BASE_PER_NOTIONAL, LOT_SIZE, side,
-        observation::new_price(PRICE, 0, REFERENCE_TIME_MS),
-        observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE,
+        observation::new_price(PRICE, 0, REFERENCE_AT_MS),
+        observation::new_price(PRICE, 0, REFERENCE_AT_MS), PRICE,
     )
 }
 
@@ -3374,10 +3374,10 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
     let witness = risk_admin();
     vault.set_fees(&fixture.protocol, &witness, 10, 10, 2_000);
     replay_fees(&mut replay, events::collect_one<events::FeesUpdated<Tag>>(0));
-    let plan = vault.state().prepare_mint(position_observation_for_side(SEED_EQUITY, side), 10_000, vault.total_share_supply(), 9_989_000, REFERENCE_TIME_MS);
+    let plan = vault.state().prepare_mint(position_observation_for_side(SEED_EQUITY, side), 10_000, vault.total_share_supply(), 9_989_000, REFERENCE_AT_MS);
     vault.retain_admin_cash(sui::balance::create_for_testing<Collateral>(2));
     let mut shares = operations::complete_mint_for_testing<Tag, Collateral>(&mut vault, plan, 10_000,
-        active_position_for_side(10_997, 21_780, side), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!());
+        active_position_for_side(10_997, 21_780, side), initial_checkpoint(), REFERENCE_AT_MS, fixture.ctx!());
     replay_mint(&mut replay, events::collect_one<events::Minted<Tag>>(0));
     let dirty = checkpoint::checkpoint_for_testing(13, 0, 1, 1, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 1, false, 1, 1, 1);
@@ -3448,7 +3448,7 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, C
     vault.set_fees(&fixture.protocol, &witness, 10, 10, 2_000);
     replay_fees(&mut replay, events::collect<events::FeesUpdated<Tag>>()[0]);
     assert_replay(&replay, vault);
-    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 10_000, vault.total_share_supply(), 9_989_000, REFERENCE_TIME_MS);
+    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 10_000, vault.total_share_supply(), 9_989_000, REFERENCE_AT_MS);
     // Several events in this same transaction: live rates change after the plan seals.
     vault.set_fees(&fixture.protocol, &witness, 0, 0, 0);
     replay_fees(&mut replay, events::collect<events::FeesUpdated<Tag>>()[1]);
@@ -3458,7 +3458,7 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, C
     let admin_cash_before = vault.admin_cash_balance<_, Collateral>();
     vault.retain_admin_cash(sui::balance::create_for_testing<Collateral>(2));
     let shares = operations::complete_mint_for_testing<Tag, Collateral>(vault, plan, 10_000,
-        active_position(10_997, 21_780), initial_checkpoint(), REFERENCE_TIME_MS, fixture.ctx!());
+        active_position(10_997, 21_780), initial_checkpoint(), REFERENCE_AT_MS, fixture.ctx!());
     replay_mint(&mut replay, events::collect_one<events::Minted<Tag>>(0));
     assert_replay(&replay, vault);
     operations::pay_partner_for_testing(vault, &partner, admin_cash_before, &clock, fixture.ctx!());
@@ -3469,9 +3469,9 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, C
     replay_fees(&mut replay, events::collect<events::FeesUpdated<Tag>>()[2]);
     assert_replay(&replay, vault);
     let admin_cash_before = vault.admin_cash_balance<_, Collateral>();
-    let plan = vault.state().prepare_redemption(active_position(10_997, 21_780), shares.value(), vault.total_share_supply(), 9_978, REFERENCE_TIME_MS);
+    let plan = vault.state().prepare_redemption(active_position(10_997, 21_780), shares.value(), vault.total_share_supply(), 9_978, REFERENCE_AT_MS);
     let (net, admin, fee, reserve_fee) = operations::settle_redemption_for_testing(vault, plan, &shares,
-        active_position_with_base(10_996, 1_800_165), REFERENCE_TIME_MS);
+        active_position_with_base(10_996, 1_800_165), REFERENCE_AT_MS);
     let cash = sui::coin::mint_for_testing<Collateral>(9_980, fixture.ctx!());
     let cash = operations::complete_redemption_for_testing(vault, shares, cash, net, admin, fee, reserve_fee, initial_checkpoint(), fixture.ctx!());
     replay_redemption(&mut replay, events::collect_one<events::Redeemed<Tag>>(0));
@@ -3495,7 +3495,7 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, C
     sui::transfer::public_transfer(cash, ADMIN);
 
     let donated_checkpoint = checkpoint_with_market_imr(10, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
-    operations::complete_donation_for_testing(vault, active_position(1_026, 1_800), donated_checkpoint, 10, REFERENCE_TIME_MS);
+    operations::complete_donation_for_testing(vault, active_position(1_026, 1_800), donated_checkpoint, 10, REFERENCE_AT_MS);
     let (id, amount, reserve, checkpoint) = events::collect_one<events::Donated<Tag>>(0).donated_fields();
     assert_eq!(id, replay.vault_id);
     assert_eq!(reserve, replay.maintenance_reserve + amount);
@@ -3503,12 +3503,12 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, C
     replay.checkpoint = option::some(checkpoint);
     assert_replay(&replay, vault);
 
-    let mut plan = vault.state().prepare_rebalance(rebalance_position(1_026, 3_000_000), 10, REFERENCE_TIME_MS);
+    let mut plan = vault.state().prepare_rebalance(rebalance_position(1_026, 3_000_000), 10, REFERENCE_AT_MS);
     let order = vault.state().next_rebalance_order(&plan);
     assert!(!order.is_increase());
     let after_base = 3_000_000 - order.order_base();
     let filled = order.order_base();
-    vault.state().accept_rebalance_fill(&mut plan, order, rebalance_position(1_025, after_base), filled, REFERENCE_TIME_MS);
+    vault.state().accept_rebalance_fill(&mut plan, order, rebalance_position(1_025, after_base), filled, REFERENCE_AT_MS);
     let checkpoint = checkpoint_with_market_imr(10, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
     operations::complete_rebalance_for_testing<Tag, Collateral>(vault, plan, checkpoint);
     let event = events::collect_one<events::Rebalanced<Tag>>(0);
@@ -3547,7 +3547,7 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, C
 
 fun rebalance_position(equity: u64, base: u64): PositionObservation {
     observation::new_position(equity, base, LOT_SIZE, policy::long(),
-        observation::new_price(PRICE, 0, REFERENCE_TIME_MS), observation::new_price(PRICE, 0, REFERENCE_TIME_MS), PRICE)
+        observation::new_price(PRICE, 0, REFERENCE_AT_MS), observation::new_price(PRICE, 0, REFERENCE_AT_MS), PRICE)
 }
 
 fun replay_fees<Tag>(replay: &mut ReplayState, event: events::FeesUpdated<Tag>) {

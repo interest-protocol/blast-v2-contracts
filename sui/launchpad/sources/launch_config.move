@@ -138,9 +138,9 @@ public fun add_partner(
     let key = PartnerKey(partner_id);
 
     if (self.id.has_dynamic_field(key)) {
-        let accepted_until_ms: &mut u64 = self.id.dynamic_field_mut(key);
-        assert!(*accepted_until_ms != std::u64::max_value!(), blast_fun::errors::unchanged!());
-        *accepted_until_ms = std::u64::max_value!();
+        let acceptance_ends_at_ms: &mut u64 = self.id.dynamic_field_mut(key);
+        assert!(*acceptance_ends_at_ms != std::u64::max_value!(), blast_fun::errors::unchanged!());
+        *acceptance_ends_at_ms = std::u64::max_value!();
     } else {
         self.id.add_dynamic_field(key, std::u64::max_value!());
     };
@@ -160,15 +160,15 @@ public fun remove_partner(
     package_version.assert_current();
 
     let partner_id = object::id(partner);
-    let now_ms = clock.timestamp_ms();
-    self.assert_partner(partner_id, now_ms);
-    let accepted_until_ms = now_ms + partners::delay_ms();
+    let now_at_ms = clock.timestamp_ms();
+    self.assert_partner(partner_id, now_at_ms);
+    let acceptance_ends_at_ms = now_at_ms + partners::delay_ms();
 
     let current: &mut u64 = self.id.dynamic_field_mut(PartnerKey(partner_id));
     assert!(*current == std::u64::max_value!(), blast_fun::errors::unchanged!());
-    *current = accepted_until_ms;
+    *current = acceptance_ends_at_ms;
 
-    events::partner_removed(partner_id, accepted_until_ms);
+    events::partner_removed(partner_id, acceptance_ends_at_ms);
 }
 
 /// Admits or removes a migration adapter's witness type. An admitted adapter can start launches
@@ -222,13 +222,13 @@ public(package) fun creation_fee(self: &LaunchConfig): u64 {
     self.creation_fee
 }
 
-/// Aborts unless new launches may name `partner_id` at `now_ms`.
-public(package) fun assert_partner(self: &LaunchConfig, partner_id: ID, now_ms: u64) {
+/// Aborts unless new launches may name `partner_id` at `now_at_ms`.
+public(package) fun assert_partner(self: &LaunchConfig, partner_id: ID, now_at_ms: u64) {
     let key = PartnerKey(partner_id);
 
     assert!(self.id.has_dynamic_field(key), blast_fun::errors::partner_not_accepted!());
-    let accepted_until_ms: u64 = *dynamic_field::borrow(&self.id, key);
-    assert!(now_ms < accepted_until_ms, blast_fun::errors::partner_not_accepted!());
+    let acceptance_ends_at_ms: u64 = *dynamic_field::borrow(&self.id, key);
+    assert!(now_at_ms < acceptance_ends_at_ms, blast_fun::errors::partner_not_accepted!());
 }
 
 // === Private Functions ===

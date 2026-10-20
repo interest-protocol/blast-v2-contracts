@@ -12,7 +12,7 @@ const FEE_RECIPIENT: address = @0xFEE;
 const PARTNER_RECIPIENT: address = @0xB1A57;
 const PARTNER_CUT_BPS: u64 = 4_000;
 const TREASURY: address = @0x7EA5;
-const CLAIM_DEADLINE_MS: u64 = 1_000;
+const CLAIM_DEADLINE_AT_MS: u64 = 1_000;
 
 // === Test-Only Types ===
 
@@ -426,7 +426,7 @@ fun the_admin_publishes_holder_rounds_from_the_holder_share() {
         40,
         5,
         0,
-        CLAIM_DEADLINE_MS,
+        CLAIM_DEADLINE_AT_MS,
         &clock,
         scenario.ctx(),
     );
@@ -704,7 +704,7 @@ fun an_unclaimed_round_returns_to_the_vault_after_its_deadline() {
     let (meme_after_publish, _) = vault.holder_rewards_balances();
     assert_eq!(meme_after_publish, 39);
 
-    vault.close_round_at(CLAIM_DEADLINE_MS, &mut scenario);
+    vault.close_round_at(CLAIM_DEADLINE_AT_MS, &mut scenario);
 
     let (vault_meme, vault_quote) = vault.holder_rewards_balances();
     assert_eq!(vector[vault_meme, vault_quote], vector[40, 0]);
@@ -723,7 +723,7 @@ fun a_round_cannot_close_before_its_claim_deadline() {
     let mut vault = funded_holder_vault(&mut scenario);
     vault.publish_round(0, 0, 10, &mut scenario);
 
-    vault.close_round_at(CLAIM_DEADLINE_MS - 1, &mut scenario);
+    vault.close_round_at(CLAIM_DEADLINE_AT_MS - 1, &mut scenario);
     abort
 }
 
@@ -736,7 +736,7 @@ fun a_round_cannot_close_into_another_vault() {
     vault.publish_round(0, 0, 10, &mut scenario);
     let mut other_vault = new_vault(vector[], 10_000, &mut scenario);
 
-    other_vault.close_round_at(CLAIM_DEADLINE_MS, &mut scenario);
+    other_vault.close_round_at(CLAIM_DEADLINE_AT_MS, &mut scenario);
     abort
 }
 
@@ -750,7 +750,7 @@ fun a_round_needs_a_future_claim_deadline() {
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let mut vault = funded_holder_vault(&mut scenario);
     let mut clock = clock::create_for_testing(scenario.ctx());
-    clock.set_for_testing(CLAIM_DEADLINE_MS);
+    clock.set_for_testing(CLAIM_DEADLINE_AT_MS);
 
     let policy = fee_policy::new_for_testing(scenario.ctx());
     rewards::publish_round(
@@ -768,7 +768,7 @@ fun a_round_needs_a_future_claim_deadline() {
         1,
         0,
         0,
-        CLAIM_DEADLINE_MS,
+        CLAIM_DEADLINE_AT_MS,
         &clock,
         scenario.ctx(),
     );
@@ -973,7 +973,7 @@ fun publish_round(
         1,
         0,
         0,
-        CLAIM_DEADLINE_MS,
+        CLAIM_DEADLINE_AT_MS,
         &clock,
         scenario.ctx(),
     );
@@ -983,12 +983,12 @@ fun publish_round(
     std::unit_test::destroy(package_version);
 }
 
-fun close_round_at(self: &mut Vault<MEME, QUOTE>, now_ms: u64, scenario: &mut Scenario) {
+fun close_round_at(self: &mut Vault<MEME, QUOTE>, now_at_ms: u64, scenario: &mut Scenario) {
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     scenario.next_tx(CREATOR);
     let round = scenario.take_shared<Round<MEME, QUOTE>>();
     let mut clock = clock::create_for_testing(scenario.ctx());
-    clock.set_for_testing(now_ms);
+    clock.set_for_testing(now_at_ms);
 
     rewards::close_round(round, &package_version, self, &clock);
 
@@ -1006,7 +1006,7 @@ fun round_owing_holder(meme: u64, quote: u64, scenario: &mut Scenario): Round<ME
     rewards::new_for_testing(
         vault_id,
         0,
-        CLAIM_DEADLINE_MS,
+        CLAIM_DEADLINE_AT_MS,
         root,
         1,
         balance::create_for_testing<MEME>(40),

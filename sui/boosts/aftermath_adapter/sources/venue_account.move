@@ -250,10 +250,10 @@ public(package) fun update_funding_when_due<Collateral>(
     let params = clearing_house.market_params();
     self.assert_funding_update_inputs(object::id(clearing_house), base_oracle.storage_id(), params.base_storage_id());
 
-    let (funding_frequency_ms, _) = params.funding_params();
-    let last_funding_update_ms = clearing_house.market_state().funding_last_upd_ms();
+    let (funding_update_interval_duration_ms, _) = params.funding_params();
+    let funding_last_updated_at_ms = clearing_house.market_state().funding_last_upd_ms();
 
-    if (is_time_to_update_funding(clock.timestamp_ms(), last_funding_update_ms, funding_frequency_ms)) {
+    if (is_time_to_update_funding(clock.timestamp_ms(), funding_last_updated_at_ms, funding_update_interval_duration_ms)) {
         clearing_house.update_funding(base_oracle, clock);
     };
 }
@@ -299,25 +299,32 @@ fun assert_registry(self: &Binding, registry: &Registry) {
     assert!(object::id(registry) == self.registry_id, blast_boosts_aftermath::errors::registry_mismatch!());
 }
 
-/// Returns whether the venue's cumulative funding is due for an update at `now_ms`.
+/// Returns whether the venue's cumulative funding is due for an update at `now_at_ms`.
 ///
 /// Mirrors the pinned `market::is_time_to_update` bytecode exactly:
-/// `now_ms >= next_funding_update_time_ms(last_funding_update_ms, funding_frequency_ms)`.
+/// `now_at_ms >= next_funding_update_at_ms(funding_last_updated_at_ms, funding_update_interval_duration_ms)`.
 /// The venue's own `try_update_fundings` repeats this check, so the guard only
 /// decides whether the adapter spends a venue call; it never changes what the
 /// venue would settle. A zero frequency is never due: the venue formula would
 /// divide by it, and a market without a funding cadence has nothing to
 /// refresh.
-fun is_time_to_update_funding(now_ms: u64, last_funding_update_ms: u64, funding_frequency_ms: u64): bool {
-    funding_frequency_ms > 0
-        && now_ms >= next_funding_update_time_ms(last_funding_update_ms, funding_frequency_ms)
+fun is_time_to_update_funding(
+    now_at_ms: u64,
+    funding_last_updated_at_ms: u64,
+    funding_update_interval_duration_ms: u64,
+): bool {
+    funding_update_interval_duration_ms > 0
+        && now_at_ms >= next_funding_update_at_ms(funding_last_updated_at_ms, funding_update_interval_duration_ms)
 }
 
 /// Returns the venue's next funding update instant: the start of the period
-/// after the one containing `last_funding_update_ms`, exactly as the pinned
+/// after the one containing `funding_last_updated_at_ms`, exactly as the pinned
 /// `market::next_funding_update_time` computes it.
-fun next_funding_update_time_ms(last_funding_update_ms: u64, funding_frequency_ms: u64): u64 {
-    last_funding_update_ms - last_funding_update_ms % funding_frequency_ms + funding_frequency_ms
+fun next_funding_update_at_ms(
+    funding_last_updated_at_ms: u64,
+    funding_update_interval_duration_ms: u64,
+): u64 {
+    funding_last_updated_at_ms - funding_last_updated_at_ms % funding_update_interval_duration_ms + funding_update_interval_duration_ms
 }
 
 // === Test-Only Functions ===
@@ -334,16 +341,16 @@ public fun assert_funding_update_inputs_for_testing(
 
 #[test_only]
 public fun is_time_to_update_funding_for_testing(
-    now_ms: u64,
-    last_funding_update_ms: u64,
-    funding_frequency_ms: u64,
+    now_at_ms: u64,
+    funding_last_updated_at_ms: u64,
+    funding_update_interval_duration_ms: u64,
 ): bool {
-    is_time_to_update_funding(now_ms, last_funding_update_ms, funding_frequency_ms)
+    is_time_to_update_funding(now_at_ms, funding_last_updated_at_ms, funding_update_interval_duration_ms)
 }
 
 #[test_only]
-public fun next_funding_update_time_ms_for_testing(last_funding_update_ms: u64, funding_frequency_ms: u64): u64 {
-    next_funding_update_time_ms(last_funding_update_ms, funding_frequency_ms)
+public fun next_funding_update_time_ms_for_testing(funding_last_updated_at_ms: u64, funding_update_interval_duration_ms: u64): u64 {
+    next_funding_update_at_ms(funding_last_updated_at_ms, funding_update_interval_duration_ms)
 }
 
 // === Imports ===
