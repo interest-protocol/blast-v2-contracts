@@ -1,0 +1,421 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "sui-package-deployment",
+  "release": "blast-presale-unregulated-sale-currency",
+  "network": {
+    "chain": "sui",
+    "environment": "mainnet",
+    "chainIdentifierHex": "35834a8a",
+    "chainIdentifierBase58": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"
+  },
+  "timestampUtc": "2026-10-20T17:34:11.122000+00:00",
+  "recordedAtUtc": "2026-10-20T17:44:16.484762+00:00",
+  "repository": {
+    "commit": "9cbb1dac9e88cb2c343e30124b6fc80aa00c2fd5",
+    "branch": "codex/presale-unregulated-coin",
+    "workingTree": "dirty: guarded finalizer, regression tests, docs and deployment metadata",
+    "sourceManifestSha256": "be9b91ff27b3956badfea03606cfb0a40919d29b8862d5a90cfb6741587a8335",
+    "sourceFilesSha256": {
+      "sui/presale/sources/aftermath.move": "065cb81e7f29b9e0f6d350f4c29f9d3a310016cd296d9c550b39dbcc32deb5d3",
+      "sui/presale/sources/blast_presale.move": "c353cb5699f41ddd10895f9badcd23a44712e31189e58234503a6feec747733e",
+      "sui/presale/sources/blast_presale_domain.move": "7af80cd9f68020b4f82c90f2393f6e23fe4d7299a874d30b4f38adb43fbb2573",
+      "sui/presale/sources/bluefin.move": "472fa6b1fc63a34677f274b7db2677659d73c0573e97032b9d8bdb5ce82f9238",
+      "sui/presale/sources/bps.move": "c62f75af6e838706c09c6850630c7630ddc2fc90539988a892b07cce166b2691",
+      "sui/presale/sources/cetus.move": "d5cd43b132a2119440d9ca761f349c73803b2484ee679286a7315e3655c07ec8",
+      "sui/presale/sources/creation_policy.move": "9ef961270191829aa3d251d8822431918f5855e0f1065355567fef08c05fc072",
+      "sui/presale/sources/fee_policy.move": "ffdcaf9e4dd52033340270e7ae283026e9b4c1d4528c3d9d65a30bba590e4785",
+      "sui/presale/sources/holder_rewards.move": "b302fae91beb4e57d8e5c58fcecdde51b8926eaffcfe9e61922cbfed2405e1a1",
+      "sui/presale/sources/merkle_tree.move": "2fc625893c711051b02bf0338bac3aba3869df4aba43d7087ad75c8de3491c9d",
+      "sui/presale/sources/migration_math.move": "c5e1da8e2887388d7c8708871fc297b69823ec9464ab9113dd7fa6053e4a0883",
+      "sui/presale/sources/package_admin.move": "738b4e39483e0f333cb581f122b2aae94c3db92e022e9f1ab75c36fbb863b987",
+      "sui/presale/sources/presale_vault.move": "21f2096f742264a59c344c08110a42e094db6534a8c1aa672e21d8febd07589b",
+      "sui/presale/sources/venue_config.move": "c34e63ab33e97c95de39f59a73eb5d9f5a831dc60051c1163ca4072154e35a94",
+      "sui/presale/interfaces/aftermath_amm/sources/pool.move": "4c86ca4a1326d5922297738c815a54529f6d4f2c36ed567f9200f68f6d369ac6",
+      "sui/presale/interfaces/aftermath_amm/sources/pool_factory.move": "38469028b75745ef452e650d23a6e76b034cbb613abba35bf470051d6caf970e",
+      "sui/presale/interfaces/aftermath_amm/sources/pool_registry.move": "3010d84b99fe3d374ab57451307a68c74cf1a241e09f2a4c4a84b5c394881028",
+      "sui/presale/interfaces/aftermath_dao_fee/sources/pool.move": "7d23665efbc7545403fea7af24a9b8cc283482d39864790f2de0503b73d83624",
+      "sui/presale/interfaces/aftermath_dao_fee/sources/version.move": "81ebe4c78fc6a34be60b493ab39e3337c1b4d56623e8ee20efd93bcae6429ee0",
+      "sui/presale/interfaces/aftermath_insurance_fund/sources/insurance_fund.move": "5a2f37c2287d6be23a0fe7d510d64c3aee233fc842d0b5d81ce81f2157c2df2d",
+      "sui/presale/interfaces/aftermath_math/sources/geometric_mean_calculations.move": "40d680f0ed3d364699e0aabd9881e14e161a30df8796565fc312083f5eaf56fb",
+      "sui/presale/interfaces/aftermath_protocol_fee_vault/sources/vault.move": "299a174e7e0523b1c248c3a901aa57ed98f80bc512ccd8a805ac4cf634606b35",
+      "sui/presale/interfaces/aftermath_referral_vault/sources/referral_vault.move": "0dbd0267259c43505824472d8756de9599695064d19e6e5d995b2dffac956c33",
+      "sui/presale/interfaces/aftermath_treasury/sources/treasury.move": "99920cb09e84348effe704f8e21757835c07399c70f579e3d6334ef81b6f5979",
+      "sui/presale/interfaces/aftermath_utils/sources/fixed.move": "a772f8b24c3a45cc3273408560b5300a9c1e73584d280e0777564c9b5579a894",
+      "sui/presale/Move.toml": "16ec8e6ad575e80b9e75e1ea7d73b395362f8fa0e0b1b390e3ff084b42ee7931",
+      "sui/presale/Move.lock": "2e19b49a1ffc27cb1f79e916b0f847b5b885117a40dc673ce56b9bd0deab17f5"
+    },
+    "sourceVerification": "sui client --client.env mainnet verify-source sui/presale --toolchain /home/ubuntu/.local/bin/sui: succeeded"
+  },
+  "toolchain": {
+    "suiCli": "1.77.2-51d177ad7d65",
+    "moveEdition": "2024",
+    "observedMainnetProtocolVersion": 138
+  },
+  "deployer": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+  "status": "success",
+  "packages": {
+    "presale": {
+      "packageId": "0x2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d",
+      "originalPackageId": "0x2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d",
+      "version": 1,
+      "freshPublication": true,
+      "upgradePolicy": "dependency-only, sealed (192)",
+      "modules": [
+        "aftermath",
+        "blast_presale",
+        "blast_presale_domain",
+        "bluefin",
+        "bps",
+        "cetus",
+        "creation_policy",
+        "fee_policy",
+        "holder_rewards",
+        "merkle_tree",
+        "migration_math",
+        "package_admin",
+        "presale_vault",
+        "venue_config"
+      ],
+      "publisher": null,
+      "publisherNote": "This package creates no Publisher object."
+    },
+    "admissionFixture": {
+      "packageId": "0x63a626790e0029e33d091b8be55d9d151916bbccb24a654720fa03572131aaa4",
+      "purpose": "Worthless test currencies and public-call harness; never a production dependency",
+      "upgradeCap": "0xd4d9f817e7d711cc3e95cb6fb2083dcf2a146f586277e4e9370ed7facdae43f7",
+      "upgradeCapOwner": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600"
+    }
+  },
+  "dependencyPackageIds": [
+    "0xf948935b111990c2b604900c9b2eeb8f24dcf9868a45d1ea1653a5f282c10e29",
+    "0x5ad6890968efcf3d20899e0cec735214f1067b96e77e77d86408989998468bb2",
+    "0xa6baab1e668c7868991c1c3c11e144100f5734c407d020f72a01b9d1a8bcb97f",
+    "0xbc7b2c577ad9362fbb0dba397d17f3bcc81bf7aa916559f99a77eaee05d0947c",
+    "0xaead64e3b3cc7972ba86396df07066c90176f42c6aea53b6df0d8ab11007ece2",
+    "0xc66fabf1a9253e43c70f1cc02d40a1d18db183140ecaae2a3f58fa6b66c55acf",
+    "0x64213b0e4a52bac468d4ac3f140242f70714381653a1919a6d57cd49c628207a",
+    "0x73baa782c55003b3a359dec04b189312565d18e7309d4a51f5f112f891e3b2ab",
+    "0xd075338d105482f1527cbfd363d6413558f184dec36d9138a70261e87f486e9c",
+    "0x260693ec785a6e6c9d81d58c7d2ff72f1288ae0fa6a9725abe05a6478b11f084",
+    "0x48dcc51091e692a0c8a64930fc839fb5a8e58de3590c084a8322b9cd34754c36",
+    "0xc4aabc874f5060d3147d8f74c14e3a8a1f9f8d92edea138a51635395ed167cd9",
+    "0x06864a6f921804860930db6ddbe2e16acdf8504495ea7481637a1c8b9a8fe54b",
+    "0xab5e63352d0f05881bdfa1631cc0f7fc1669175a00d608828a924df481a9e4bd",
+    "0xdfaadf86be9af246900d1e3f3b996cf549e7948e662a9977bdd7646d8fa3a778",
+    "0x8569b7efebec65c73b9dc15c5ac2a9542870d286fa79a3feedffbaa94ed53002",
+    "0x0000000000000000000000000000000000000000000000000000000000000001",
+    "0x0000000000000000000000000000000000000000000000000000000000000002",
+    "0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9",
+    "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d",
+    "0x85fdb7e3d28162b99e0df758069a3d23cff874c400b2160fc0d4618aefd3ec5c",
+    "0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd"
+  ],
+  "sharedObjects": {
+    "feePolicy": {
+      "objectId": "0x42b118bd8a264052f3173b6325d0cf1881a9de163e3555e1a0a3faf4b3e612e4",
+      "initialSharedVersion": 1052779268
+    },
+    "creationPolicy": {
+      "objectId": "0xb9a2d76062e9b94f49e96553a75986957b8c8d8394bd717a30f03e3404ba84c4",
+      "initialSharedVersion": 1052779268
+    },
+    "venueConfig": {
+      "objectId": "0xdf7117db2a9c671b1f26b835e6c484d3138d3952c0c16b67eef4a0a400b81250",
+      "initialSharedVersion": 1052779268
+    },
+    "packageAdmin": {
+      "objectId": "0xe9102671babedca13a0e4f0bc7b242341ce19835ccdb2aeb8537311e14225fd9",
+      "owner": {
+        "Shared": {
+          "initial_shared_version": 1052779269
+        }
+      },
+      "wrappedUpgradeCap": {
+        "id": "0x09d334d235c9b53f0196f6de4b355bfdaf9f1da6da0a3e3c0189f0019d14544b",
+        "package": "0x2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d",
+        "policy": 192.0,
+        "version": "1"
+      }
+    }
+  },
+  "adminObjects": {
+    "acl": "0xc9fbcfc4eda38626d7daad17902cc145b4008beb20470135438298aa7a005a6d",
+    "superAdminCap": {
+      "objectId": "0x6187ad51c17dee9f288ebbf7f7655b0a7185d7697a5aa23e96f8c66169aa2b2c",
+      "holder": "0x612fa27ba229021c5a1c32022fd6341ffbd58a87ac928a0dc32d8d6d1dba9fed",
+      "reused": true
+    },
+    "adminCap": {
+      "objectId": "0xf9b3674eb89193afa58e096868fa9623217c1a8bb2bb9981c48be1741d33146c",
+      "holder": "0x612fa27ba229021c5a1c32022fd6341ffbd58a87ac928a0dc32d8d6d1dba9fed",
+      "rolesGranted": [
+        "0x2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d::blast_presale_domain::FeeAdmin",
+        "0x2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d::blast_presale_domain::TreasuryAdmin",
+        "0x2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d::blast_presale_domain::ListingAdmin",
+        "0x2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d::blast_presale_domain::AdapterAdmin",
+        "0x2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d::blast_presale_domain::RewardsAdmin",
+        "0x2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d::blast_presale_domain::UpgradeAdmin"
+      ],
+      "reused": true
+    }
+  },
+  "constructorParameters": {
+    "publication": "No explicit parameters. FeePolicy starts with zero rates and publisher destination; creation allowlists start empty.",
+    "custody": "Sealed before quote/migrator allowlisting or creation of any presale."
+  },
+  "postDeployConfiguration": {
+    "feePolicy": {
+      "destination": "0x9420f27f4c8b33563eade002658e4c6dbe9437bd5ae1bececd61f8e91dc2c951",
+      "fees": {
+        "lp_fee_meme_bps": {
+          "pos0": "2500"
+        },
+        "lp_fee_quote_bps": {
+          "pos0": "2500"
+        },
+        "raise_bps": {
+          "pos0": "200"
+        },
+        "token_bps": {
+          "pos0": "100"
+        }
+      },
+      "id": "0x42b118bd8a264052f3173b6325d0cf1881a9de163e3555e1a0a3faf4b3e612e4"
+    },
+    "creationPolicy": {
+      "allowed_migration_witnesses": {
+        "contents": [
+          "2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d::bluefin::Witness",
+          "2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d::cetus::Witness"
+        ]
+      },
+      "allowed_quotes": {
+        "contents": [
+          "0000000000000000000000000000000000000000000000000000000000000002::sui::SUI",
+          "963331df9a26c8674c33eb97655fe44807d5ff1aa4092bcbe2bdbe044b17b03d::test_sui::TEST_SUI",
+          "dba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC",
+          "44f838219cf67b058f3b37907b655f226153c18e33dfcd0da559a844fea9b1c1::usdsui::USDSUI"
+        ]
+      },
+      "id": "0xb9a2d76062e9b94f49e96553a75986957b8c8d8394bd717a30f03e3404ba84c4"
+    },
+    "venuesEnabled": [
+      "Bluefin",
+      "Cetus"
+    ],
+    "aftermath": "Not enabled. Existing vendor remains linked to the previous presale; native Aftermath and a relinked vendor require their separate venue/release gates.",
+    "clientCutover": "Published.toml updated in this checkout; application/SDK routing not changed by this deployment."
+  },
+  "transactions": {
+    "publish": {
+      "digest": "4jHK1bK3fHHViLrk6sFunrEwUCcivBfwRJcmhqnnSUdA",
+      "checkpoint": "336192714",
+      "timestampMs": "1792517651122",
+      "status": "success",
+      "netGasMist": "449383299"
+    },
+    "seal": {
+      "digest": "6es45S5uey6uF3T2cLEvFWKtauNAk7s4XgmzV6wEF29F",
+      "checkpoint": "336192975",
+      "timestampMs": "1792517712958",
+      "status": "success",
+      "netGasMist": "404262"
+    },
+    "fund-admin-gas": {
+      "digest": "6QTgarqyJpBNBNH1UpSscabk1HcHYj8UH7vHLsXB6mxB",
+      "checkpoint": "336193494",
+      "timestampMs": "1792517838470",
+      "status": "success",
+      "netGasMist": "1088099"
+    },
+    "roles": {
+      "digest": "4oSn2gke9bsZgS39tm7SHw67BWNkS5DKSkM189LV6AwR",
+      "checkpoint": "336193649",
+      "timestampMs": "1792517875445",
+      "status": "success",
+      "netGasMist": "4699492"
+    },
+    "allow-test": {
+      "digest": "8F4RWDU4yxPz1ahHjrBwNSTxcseyM7exccjzAKcwExsA",
+      "checkpoint": "336193875",
+      "timestampMs": "1792517929430",
+      "status": "success",
+      "netGasMist": "1311174"
+    },
+    "fixture-publish": {
+      "digest": "2RP1exdkGvCVLxu6CC9JoCJ1RYkpjndycjJs1DwDM6ff",
+      "checkpoint": "336193833",
+      "timestampMs": "1792517918952",
+      "status": "success",
+      "netGasMist": "63470899"
+    },
+    "register-fixtures": {
+      "digest": "HmZvDdCY8pf3bBU2wAxcH7hyT9oT6TA7M8r4g9LSJX7V",
+      "checkpoint": "336194052",
+      "timestampMs": "1792517971826",
+      "status": "success",
+      "netGasMist": "569516237"
+    },
+    "migrate-legacy": {
+      "digest": "6rrScw8EuMtTfFGewudbCvg5qKxTDVasZZZK46vUZgAk",
+      "checkpoint": "336194064",
+      "timestampMs": "1792517974491",
+      "status": "success",
+      "netGasMist": "9752237"
+    },
+    "admit-fixed": {
+      "digest": "Fc9qoT49aJxYVpbFwFAUa8dG7rGCusxrJVEjtg33k6re",
+      "checkpoint": "336194165",
+      "timestampMs": "1792517998074",
+      "status": "success",
+      "netGasMist": "27046016"
+    },
+    "admit-burnonly": {
+      "digest": "43GUZzvrtvc45zoV8NHNKrfogQofDdTz1qZWZe1VQu1R",
+      "checkpoint": "336194177",
+      "timestampMs": "1792518001028",
+      "status": "success",
+      "netGasMist": "27068821"
+    },
+    "broadcast-rejected-legacy-deny-cap-confirmed": {
+      "digest": "FkbZbKhZLcLP1n8uRLbJxPoiz4edmWeSTmgATpMqDd4",
+      "checkpoint": "336194310",
+      "timestampMs": "1792518033363",
+      "status": "failure",
+      "netGasMist": "100660",
+      "expectedAbort": {
+        "module": "blast_presale",
+        "function": "assert_unregulated_currency",
+        "code": 35,
+        "rawAbortCode": "13844915022411268172"
+      }
+    },
+    "migrate-regulated-status": {
+      "digest": "9f7m8p8qihh2wSePiQBbFyp5yJDamvmSr2XqziNSTWqs",
+      "checkpoint": "336194491",
+      "timestampMs": "1792518076963",
+      "status": "success",
+      "netGasMist": "366517"
+    },
+    "cancel-unfunded-test-sales": {
+      "digest": "91NKDL1EioPh1sHMSgb5szpcZNKre9hBpW8ivE9CZkJK",
+      "checkpoint": "336194570",
+      "timestampMs": "1792518096397",
+      "status": "success",
+      "netGasMist": "-3120049"
+    },
+    "configure": {
+      "digest": "HEUPh9UVaTnS6n2SY52hzBEvX3QM68NAzXSMHiXEP6KS",
+      "checkpoint": "336194619",
+      "timestampMs": "1792518108081",
+      "status": "success",
+      "netGasMist": "2592076"
+    },
+    "return-admin-gas": {
+      "digest": "6joBaWkpYYXshzpR9ANj4KBagAx8UffBAvG69rwpiF6w",
+      "checkpoint": "336194944",
+      "timestampMs": "1792518186086",
+      "status": "success",
+      "netGasMist": "100099"
+    }
+  },
+  "verification": {
+    "unitTests": {
+      "total": 269,
+      "passed": 269,
+      "failed": 0,
+      "command": "bash sui/presale/scripts/verify.sh test --threads 1",
+      "rerunWithPublishedPackageMapping": true
+    },
+    "dedicatedGuardTests": 29,
+    "metadataBoundaryCases": 32,
+    "existingFinalizerRegressionTests": 6,
+    "mutationsDetected": 12,
+    "mutationsAttempted": 12,
+    "build": true,
+    "lintWarningsAsErrors": true,
+    "sourceBoundaries": true,
+    "moveStyle": true,
+    "publicationScriptTests": true,
+    "sourceMatchesOnChain": true,
+    "sharedCustodyAndPolicyReadBack": true,
+    "feesDestinationQuotesVenuesRolesReadBack": true,
+    "mainnetAdmissionCases": [
+      {
+        "case": "fixed",
+        "method": "broadcast",
+        "result": "success",
+        "abortCode": null,
+        "digest": "Fc9qoT49aJxYVpbFwFAUa8dG7rGCusxrJVEjtg33k6re"
+      },
+      {
+        "case": "burnonly",
+        "method": "broadcast",
+        "result": "success",
+        "abortCode": null,
+        "digest": "43GUZzvrtvc45zoV8NHNKrfogQofDdTz1qZWZe1VQu1R"
+      },
+      {
+        "case": "regulated",
+        "method": "mainnet dry run",
+        "result": "failure",
+        "abortCode": 35,
+        "digest": null
+      },
+      {
+        "case": "pausable",
+        "method": "mainnet dry run",
+        "result": "failure",
+        "abortCode": 35,
+        "digest": null
+      },
+      {
+        "case": "legacy_plain",
+        "method": "mainnet dry run",
+        "result": "failure",
+        "abortCode": 35,
+        "digest": null
+      },
+      {
+        "case": "legacy_regulated",
+        "method": "mainnet dry run",
+        "result": "failure",
+        "abortCode": 35,
+        "digest": null
+      },
+      {
+        "case": "legacy-regulated-known",
+        "method": "mainnet dry run",
+        "result": "failure",
+        "abortCode": 35,
+        "digest": null
+      }
+    ],
+    "realRejectedLegacyTransaction": {
+      "digest": "FkbZbKhZLcLP1n8uRLbJxPoiz4edmWeSTmgATpMqDd4",
+      "errorCode": 35,
+      "currencyAndTreasuryContentsAndOwnersPreserved": true,
+      "noCreatedDeletedWrappedObjects": true,
+      "noEvents": true
+    },
+    "scope": "Admission and supply sealing, plus cancellation of unfunded test sales. This is not a rerun of DEX migration/liquidity E2E."
+  },
+  "cleanup": {
+    "testSalesCancelled": true,
+    "testCommitments": 0,
+    "presaleCapsDestroyed": true,
+    "adminGasFloatMist": "50000000",
+    "unusedAdminGasReturned": true,
+    "existingAdminGasCoinUntouched": true,
+    "fixtureObjects": "Retained as test evidence; their tokens have no economic value."
+  },
+  "totalNetGasMist": "1153779839",
+  "totalNetGasSui": "1.153779839",
+  "evidenceDirectory": "outputs/operations/2026-10-20-presale-unregulated",
+  "localTestEvidenceDirectory": "outputs/verification/2026-10-20-presale-unregulated",
+  "notes": [
+    "The pinned framework has no confirmed-unregulated getter; the guard parses its Currency BCS prefix. Revalidate the layout on dependency changes.",
+    "Failed sponsored dry runs and the initial CLI automatic gas-budget failure sent no transaction. Admin setup used a bounded gas float, subsequently returned.",
+    "The intentionally rejected broadcast consumed gas only; mutable object versions advanced while their contents and custody were preserved."
+  ]
+}

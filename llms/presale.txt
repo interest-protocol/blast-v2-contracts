@@ -20,7 +20,7 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 
 | Package | Product | Status | Package ID (`published-at`) | Type origin (`original-id`) |
 | --- | --- | --- | --- | --- |
-| `blast_presale` | Presale | live; source has changed since | `0xf9c404c0368cf014b44cac79dc5037da2aa34e16952673433d1c87ae3d2f8ca4` | `0xf9c404c0368cf014b44cac79dc5037da2aa34e16952673433d1c87ae3d2f8ca4` |
+| `blast_presale` | Presale | live; source has changed since | `0x2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d` | `0x2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d` |
 | `blast_aftermath_dao_presale` | Aftermath DAO-pool presale migrator | live; source has changed since | `0x2fe674f6c42f49b7647be760a10f89f843396b9294af8fab5bfbc929fb7aab01` | `0x2fe674f6c42f49b7647be760a10f89f843396b9294af8fab5bfbc929fb7aab01` |
 | `blast_partners` | Partner codes | live | `0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd` | `0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd` |
 | `blast_admin` | Administration | live | `0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9` | `0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9` |
@@ -294,7 +294,10 @@ Creators call a venue migrator's `new`, never `blast_presale::blast_presale::new
 migrator's witness, which only the migrator's module can construct. The venue is fixed for good
 at creation. Who may call: *anyone* who owns a zero-supply `TreasuryCap<SaleToken>` and the
 matching shared Coin Registry `Currency<SaleToken>`, for a Quote type and migrator the
-`CreationPolicy` allows. Every setter and `finalize` take the initializer value from that PTB, so
+`CreationPolicy` allows. The sale currency must have confirmed `Unregulated` status;
+regulated coins and legacy currencies with `Unknown` status are rejected, including legacy
+coins whose deny cap has not been registered. Create the sale coin through Coin Registry
+without enabling regulation. Every setter and `finalize` take the initializer value from that PTB, so
 only its creator can call them.
 
 Value constructors (*anyone*, pure):
@@ -370,7 +373,8 @@ Steps, type arguments `<Meme, Quote>` throughout:
      time a partner can be named.
 
    A setter called twice keeps its last value.
-4. `blast_presale::blast_presale::finalize(initializer, currency)` checks every setting together, mints the supply,
+4. `blast_presale::blast_presale::finalize(initializer, currency)` first requires confirmed
+   `Unregulated` currency status, then checks every setting together, mints the supply,
    consumes the `TreasuryCap`, and returns `(Presale<Meme, Quote>, PresaleCap)`. The Coin Registry
    supply becomes `Fixed`, or `BurnOnly` when `burnable` is true. Emits
    `blast_presale::blast_presale::PresaleCreated`. An Aftermath sale calls
@@ -1007,7 +1011,8 @@ it. Common ones by flow (module `blast_presale` unless named):
   (ask Blast to list it); `EInvalidAssetPair` (sale coin equals Quote); `EInitialSupplyNotZero`;
   `blast_presale::bluefin::EInvalidTier`; `blast_presale::bluefin::ESymbolTooLong`;
   `blast_presale::aftermath::EInvalidDaoFee` (1..=10,000 BPS).
-- Finalize: `EMissingSetting` (no eligibility policy or LP-fee split); `EInvalidRaiseTarget`
+- Finalize: `ESaleTokenNotUnregulated` (regulated or unknown legacy currency; use a new
+  Coin Registry currency created without regulation); `EMissingSetting` (no eligibility policy or LP-fee split); `EInvalidRaiseTarget`
   (raise unset or zero); `EInvalidTokenAllocation` (BPS not exactly 10,000 with Blast's token rate, duplicate or zero
   recipient, more than 64, or a zero apportioned amount); `EInvalidRaiseAllocation` (no LP share
   left after Blast, duplicates, zero amounts); `EInvalidWindow` (zero duration or LP window under
@@ -2016,7 +2021,8 @@ public fun migration_witness<SaleToken, Quote>(
     self: &PresaleInitializer<SaleToken, Quote>,
 ): TypeName
 
-/// Checks every setting together, then mints and apportions the complete token supply and
+/// Requires a confirmed unregulated sale currency and checks every setting, then mints and
+/// apportions the complete token supply and
 /// irreversibly makes it fixed or burn-only before returning the presale for `share`.
 public fun finalize<SaleToken, Quote>(
     self: PresaleInitializer<SaleToken, Quote>,
@@ -2315,6 +2321,7 @@ public struct Claimed<phantom SaleToken, phantom Quote> has copy, drop {
 | `ENoPartnerPayout` | 32 | The presale holds no partner payout: it has not migrated, or its partner was already paid. |
 | `EInvalidHardCap` | 33 | A hard cap must start inside the commitment window. |
 | `EMissingSetting` | 34 | A presale needs its eligibility policy and LP-fee split set before it is finalized. |
+| `ESaleTokenNotUnregulated` | 35 | The sale currency must be confirmed unregulated; regulated and unknown legacy currencies are not allowed. |
 
 #### Constants
 

@@ -11,6 +11,8 @@ A creator starts a sale through a venue's `new` with a zero-supply
 `TreasuryCap<SaleToken>`, sets its terms on the returned `PresaleInitializer`, and
 `finalize` checks them together and mints the supply with its matching
 `Currency<SaleToken>` ([ADR 0110](../../docs/decisions/0110-presale-initializer-and-early-close.md)).
+The currency must be confirmed unregulated; regulated coins and legacy coins
+whose regulatory status is unknown cannot create a presale.
 The terms are token supply; presale, LP, and per-recipient
 allocation BPS; fixed or burn-only supply; Quote raise; commitment and migration
 windows (the migration window is at least seven days); `EligibilityPolicy`;
