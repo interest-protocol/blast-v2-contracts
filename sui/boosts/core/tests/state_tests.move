@@ -797,7 +797,7 @@ fun initialization_rejects_the_wrong_side() {
 )]
 fun initialization_rejects_a_stale_base_price() {
     initialize_once(
-        standard_observation(policy::long()).with_base_publish_time_ms(69_999),
+        standard_observation(policy::long()).with_base_price_published_at_ms(69_999),
         policy::long(),
         SEED_RESERVE,
     );
@@ -809,7 +809,7 @@ fun initialization_rejects_a_stale_base_price() {
 )]
 fun initialization_rejects_a_future_base_price() {
     initialize_once(
-        standard_observation(policy::long()).with_base_publish_time_ms(102_001),
+        standard_observation(policy::long()).with_base_price_published_at_ms(102_001),
         policy::long(),
         SEED_RESERVE,
     );
@@ -833,7 +833,7 @@ fun initialization_rejects_a_low_confidence_base_price() {
 )]
 fun initialization_rejects_a_stale_collateral_price() {
     initialize_once(
-        standard_observation(policy::long()).with_collateral_publish_time_ms(69_999),
+        standard_observation(policy::long()).with_collateral_price_published_at_ms(69_999),
         policy::long(),
         SEED_RESERVE,
     );
@@ -845,7 +845,7 @@ fun initialization_rejects_a_stale_collateral_price() {
 )]
 fun initialization_rejects_a_future_collateral_price() {
     initialize_once(
-        standard_observation(policy::long()).with_collateral_publish_time_ms(102_001),
+        standard_observation(policy::long()).with_collateral_price_published_at_ms(102_001),
         policy::long(),
         SEED_RESERVE,
     );
@@ -920,7 +920,7 @@ fun initialization_guard_order_checks_nav_before_base_freshness() {
     initialize_once(
         standard_observation(policy::long())
             .with_venue_equity(SEED_RESERVE)
-            .with_base_publish_time_ms(69_999),
+            .with_base_price_published_at_ms(69_999),
         policy::long(),
         SEED_RESERVE,
     );
@@ -933,7 +933,7 @@ fun initialization_guard_order_checks_nav_before_base_freshness() {
 fun initialization_guard_order_checks_base_freshness_before_base_confidence() {
     initialize_once(
         standard_observation(policy::long())
-            .with_base_publish_time_ms(69_999)
+            .with_base_price_published_at_ms(69_999)
             .with_base_confidence(10_000_001),
         policy::long(),
         SEED_RESERVE,
@@ -948,7 +948,7 @@ fun initialization_guard_order_checks_base_before_collateral_valuation() {
     initialize_once(
         standard_observation(policy::long())
             .with_base_confidence(10_000_001)
-            .with_collateral_publish_time_ms(69_999),
+            .with_collateral_price_published_at_ms(69_999),
         policy::long(),
         SEED_RESERVE,
     );
@@ -961,7 +961,7 @@ fun initialization_guard_order_checks_base_before_collateral_valuation() {
 fun initialization_guard_order_checks_collateral_freshness_before_confidence() {
     initialize_once(
         standard_observation(policy::long())
-            .with_collateral_publish_time_ms(69_999)
+            .with_collateral_price_published_at_ms(69_999)
             .with_collateral_confidence(10_000_001),
         policy::long(),
         SEED_RESERVE,
@@ -2323,7 +2323,7 @@ fun with_base_confidence(mut self: ObservationSpec, base_confidence: u64): Obser
     self
 }
 
-fun with_base_publish_time_ms(
+fun with_base_price_published_at_ms(
     mut self: ObservationSpec,
     base_price_published_at_ms: u64,
 ): ObservationSpec {
@@ -2339,7 +2339,7 @@ fun with_collateral_confidence(
     self
 }
 
-fun with_collateral_publish_time_ms(
+fun with_collateral_price_published_at_ms(
     mut self: ObservationSpec,
     collateral_price_published_at_ms: u64,
 ): ObservationSpec {

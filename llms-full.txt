@@ -12,7 +12,7 @@ How it is organized:
 
 When the guides and the reference disagree, the reference is right: it is generated from the source on every change. When this file does not say a behavior exists, treat it as unsupported. Source for every module is linked from the reference ([repository](https://github.com/interest-protocol/blast-v2-contracts)).
 
-Conventions: amounts are atomic units of the coin named; rates are basis points (BPS) out of 10,000; times are Unix milliseconds from Sui's shared `Clock` at `0x6`. Types are written as Move: `module::Type` names a type in another module of the same package, `package::module::Type` one in another Blast package, and well-known Sui framework types appear bare.
+Conventions: amounts are atomic units of the coin named; rates are basis points (BPS) out of 10,000; timestamps are Unix milliseconds from Sui's shared `Clock` at `0x6`, while durations and delays are elapsed milliseconds. Types are written as Move: `module::Type` names a type in another module of the same package, `package::module::Type` one in another Blast package, and well-known Sui framework types appear bare.
 
 ## Packages and deployment status
 
@@ -23,7 +23,7 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 | `blast_presale` | Presale | live; source has changed since | `0x2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d` | `0x2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d` |
 | `blast_fun` | Launchpad | not yet published | — | — |
 | `blast_fun_migrators` | Migration and LP vaults | not yet published | — | — |
-| `blast_partners` | Partner codes | live | `0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd` | `0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd` |
+| `blast_partners` | Partner codes | live; source has changed since | `0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd` | `0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd` |
 | `blast_boosts_core` | Boosts core | live; source has changed since | `0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe` | `0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe` |
 | `blast_boosts_products` | Boost product tags | live; source has changed since | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` |
 | `blast_boosts_aftermath` | Boosts Aftermath adapter | not yet published | — | — |
@@ -71,6 +71,17 @@ instead of `blast_admin`, and holds migrated liquidity in its own
 `blast_fun_timelock` and `blast_fun_vesting` come from Blast's public utility
 repository (`interest-protocol/blast-util-contracts`); both are immutable on
 mainnet.
+
+### Time values
+
+Timestamp parameters ending in `_at_ms` are points in time measured in Unix
+milliseconds. Duration parameters ending in `_duration_ms` are lengths of time;
+`_delay_ms` parameters are offsets from the documented anchor. For example,
+`commitment_starts_at_ms + commitment_duration_ms` is the commitment window's
+end timestamp. Stored fields and event payloads retain their published names;
+read their documented meaning rather than assuming every `_ms` value is a
+timestamp. Framework calls such as `Clock::timestamp_ms` retain their native
+names.
 
 ### Building a call
 
@@ -320,7 +331,7 @@ Value constructors (*anyone*, pure):
 
 - `blast_presale::bps::new(value)` builds each rate; it aborts with
   `blast_presale::bps::EInvalidBps` above 10,000.
-- `blast_presale::blast_presale::vesting_terms(cliff_ms, period_ms, periods)` returns a
+- `blast_presale::blast_presale::vesting_terms(vesting_cliff_delay_ms, vesting_period_duration_ms, periods)` returns a
   `blast_presale::blast_presale::VestingTerms`.
 - `blast_presale::blast_presale::recipient_share(recipient, bps)` or
   `blast_presale::blast_presale::vested_recipient_share(recipient, bps, terms)` build one share. Gather them with
@@ -374,7 +385,7 @@ Steps, type arguments `<Meme, Quote>` throughout:
    - `blast_presale::blast_presale::set_token_allocations(initializer, token_allocation_bps,
      liquidity_token_allocation_bps, recipient_allocations)`.
    - `blast_presale::blast_presale::set_raise(initializer, raise_target, raise_allocations)`.
-   - `blast_presale::blast_presale::set_windows(initializer, duration_ms, liquidity_window_ms)`.
+   - `blast_presale::blast_presale::set_windows(initializer, commitment_duration_ms, liquidity_window_duration_ms)`.
    - `blast_presale::blast_presale::set_eligibility(initializer, eligibility)`.
    - `blast_presale::blast_presale::set_fee_split(initializer, fee_split)`.
 3. Optional setters:
@@ -382,7 +393,7 @@ Steps, type arguments `<Meme, Quote>` throughout:
      that buyer's claim. Without it, claims pay tokens out at once.
    - `blast_presale::blast_presale::set_uncapped_phase(initializer, phase)`: lifts wallet caps from the phase's
      start. Without it, caps hold for the whole window.
-   - `blast_presale::blast_presale::set_hard_cap(initializer, starts_after_ms, closes_when_filled)`: holds the
+   - `blast_presale::blast_presale::set_hard_cap(initializer, start_delay_ms, closes_when_filled)`: holds the
      sale to its raise from that point (below). Without it, the sale overflows for its whole window.
    - `blast_presale::blast_presale::set_partner(initializer, creation_policy, partner, clock)`: names a
      `blast_partners::blast_partners::Partner` the `CreationPolicy` currently accepts. This is the only
@@ -405,8 +416,8 @@ Steps, type arguments `<Meme, Quote>` throughout:
    Aftermath sale finalized through `blast_presale::blast_presale::finalize` instead has no
    reservation, can never migrate, and refunds after its liquidity deadline.
 5. Optional, Blast admin only (`FeeAdmin`): `blast_presale::blast_presale::set_protocol_fees` on the pending sale.
-6. `blast_presale::blast_presale::share(presale, start_ms, clock)`, same caller, fixes the windows and shares the
-   sale. The start is `max(start_ms, now)`, so a sale can be published ahead of its start. Emits
+6. `blast_presale::blast_presale::share(presale, commitment_starts_at_ms, clock)`, same caller, fixes the windows and shares the
+   sale. The start is `max(commitment_starts_at_ms, now)`, so a sale can be published ahead of its start. Emits
    `blast_presale::blast_presale::PresaleOpened`.
 7. Aftermath only: `blast_presale::aftermath::share(pool_creation)` shares the reservation
    `finalize` returned; the PTB cannot end holding it.
@@ -424,7 +435,7 @@ Settings:
 | `participant_vesting` | Optional `VestingTerms` for every buyer's tokens. |
 | `raise_target` | Quote the sale must raise, atomic units, > 0. |
 | `raise_allocations` | Up to 64 raise recipients paid in Quote at migration, optionally vested. Their BPS plus Blast's raise rate must stay below 10,000; the LP keeps the rest. |
-| `duration_ms` | Commitment window length, > 0. |
+| `duration_ms` | Commitment window length, > 0; set with `commitment_duration_ms`. |
 | `liquidity_window_ms` | Time after the window before anyone may cancel an unmigrated funded sale; at least 7 days. |
 | `eligibility` | `EligibilityPolicy::Open` or `EligibilityPolicy::Allowlisted` (below). |
 | uncapped phase | Optional `blast_presale::blast_presale::UncappedPhase` (below). |
@@ -1175,7 +1186,7 @@ Create (*cap holder*, `blast_aftermath_dao_presale::blast_aftermath_dao_presale:
    migrator (it reads `blast_presale::blast_presale::migration_witness`).
 6. Optional `blast_presale::blast_presale::set_protocol_fees(...)` to change this sale's Blast rates, which needs
    Blast's presale `FeeAdmin` signed in within the same transaction; then
-   `blast_presale::blast_presale::share(presale, start_ms, clock)`.
+   `blast_presale::blast_presale::share(presale, commitment_starts_at_ms, clock)`.
 
 Migrate (*anyone*, while `Funded`):
 
@@ -2670,7 +2681,7 @@ its share in force at that moment, rounded down, and Blast's destination the res
 
 ## Partner codes
 
-> **Deployment status:** `blast_partners` is live on mainnet.
+> **Deployment status:** `blast_partners` is live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package.
 
 ### What it is
 
@@ -4890,13 +4901,13 @@ public fun open_eligibility(
 /// Creates one allowlist policy whose leaves are `(index, wallet, wallet_cap)`.
 public fun allowlisted_eligibility(root: vector<u8>, leaf_count: u64): EligibilityPolicy
 
-/// Lifts wallet caps for eligible wallets `starts_after_ms` into the window.
-public fun uncapped_for_eligible(starts_after_ms: u64): UncappedPhase
+/// Lifts wallet caps for eligible wallets `start_delay_ms` into the window.
+public fun uncapped_for_eligible(start_delay_ms: u64): UncappedPhase
 
-/// Opens the sale to any wallet without caps `starts_after_ms` into the window, admitting
+/// Opens the sale to any wallet without caps `start_delay_ms` into the window, admitting
 /// at most `max_participants` wallets in total, each committing at least `min_commitment`.
 public fun uncapped_for_anyone(
-    starts_after_ms: u64,
+    start_delay_ms: u64,
     max_participants: u64,
     min_commitment: u64,
 ): UncappedPhase
@@ -4915,7 +4926,11 @@ public fun vested_recipient_share(
 
 /// Linear vesting terms. The steps and cliff must fit in `MAX_VESTING_DURATION_MS`, so migration and
 /// claims can always create the schedule. Product limits on the duration belong to creation tooling.
-public fun vesting_terms(cliff_ms: u64, period_ms: u64, periods: u64): VestingTerms
+public fun vesting_terms(
+    vesting_cliff_delay_ms: u64,
+    vesting_period_duration_ms: u64,
+    periods: u64,
+): VestingTerms
 
 /// The LP-fee split a sale and its vault pay collected fees under: at most `MAX_FEE_RECIPIENTS`
 /// distinct unvested recipients whose shares total exactly 10,000 BPS with the holder-reward
@@ -4979,8 +4994,8 @@ public fun set_raise<SaleToken, Quote>(
 public fun set_windows<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
     package_version: &blast_presale_package::PackageVersion,
-    duration_ms: u64,
-    liquidity_window_ms: u64,
+    commitment_duration_ms: u64,
+    liquidity_window_duration_ms: u64,
 )
 
 /// Sets who may commit and each wallet's cap.
@@ -4997,7 +5012,7 @@ public fun set_uncapped_phase<SaleToken, Quote>(
     uncapped: UncappedPhase,
 )
 
-/// Hard-caps the sale at its raise from `starts_after_ms` into the window: zero for the whole
+/// Hard-caps the sale at its raise from `start_delay_ms` into the window: zero for the whole
 /// window, or the uncapped phase's offset to keep an overflowing capped phase before it. With
 /// `closes_when_filled`, anyone may settle the sale once its raise is full under the hard cap;
 /// without it, a full sale waits for the window's end. Without a hard cap, the sale overflows
@@ -5005,7 +5020,7 @@ public fun set_uncapped_phase<SaleToken, Quote>(
 public fun set_hard_cap<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
     package_version: &blast_presale_package::PackageVersion,
-    starts_after_ms: u64,
+    start_delay_ms: u64,
     closes_when_filled: bool,
 )
 
@@ -5045,13 +5060,13 @@ public fun finalize<SaleToken, Quote>(
     ctx: &mut TxContext,
 ): (Presale<SaleToken, Quote>, PresaleCap)
 
-/// Shares a newly created presale and fixes its windows from `start_ms`, or from now once that
+/// Shares a newly created presale and fixes its windows from `commitment_starts_at_ms`, or from now once that
 /// has passed, so a sale can be created ahead of its start. Commitments open at the start; until
 /// then Blast's `FeeAdmin` may change the sale's Blast rates.
 public fun share<SaleToken, Quote>(
     self: Presale<SaleToken, Quote>,
     package_version: &blast_presale_package::PackageVersion,
-    start_ms: u64,
+    commitment_starts_at_ms: u64,
     clock: &Clock,
 )
 
@@ -5363,7 +5378,7 @@ public struct Claimed<phantom SaleToken, phantom Quote> has copy, drop {
 - `MAX_PARTICIPANTS: u64 = 65_536`: Technical bound on the dynamic commitment records one presale may hold.
 - `MAX_RECIPIENTS: u64 = 64`: Bounds the token and raise recipient lists, both paid in the one migration transaction.
 - `MAX_FEE_RECIPIENTS: u64 = 16`: Bounds the transfers one fee collection makes.
-- `MIN_LIQUIDITY_WINDOW_MS: u64 = 7 * 24 * 60 * 60 * 1_000`: The shortest LP-migration window. Migration is permissionless, so a funded sale reaches its refund exit only after a week in which nobody migrated it, and a sale that nobody settled by its end cannot be settled and cancelled in one transaction inside that week.
+- `MIN_LIQUIDITY_WINDOW_DURATION_MS: u64 = 7 * 24 * 60 * 60 * 1_000`: The shortest LP-migration window. Migration is permissionless, so a funded sale reaches its refund exit only after a week in which nobody migrated it, and a sale that nobody settled by its end cannot be settled and cancelled in one transaction inside that week.
 - `MAX_VESTING_DURATION_MS: u64 = 1 << 63`: A technical bound on a vesting schedule's duration: from any clock below 2^63 ms, about 292 million years, the schedule's end still fits in u64, so migration cannot overflow creating it.
 
 ### `blast_presale::blast_presale_domain`
@@ -5873,7 +5888,7 @@ public fun publish_round<Meme, Quote>(
     meme_amount: u64,
     quote_amount: u64,
     gas_reserve_amount: u64,
-    claim_deadline_ms: u64,
+    claim_deadline_at_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 )
@@ -6920,7 +6935,7 @@ public fun set_lp_fee_split<Meme, Quote>(
 public fun set_opening_round<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,
     package_version: &blast_fun::PackageVersion,
-    opening_round_ms: u64,
+    opening_round_duration_ms: u64,
 )
 
 /// Names the launch's Blast partner, one new launches may name. From `finalize` on it is the
@@ -8093,13 +8108,13 @@ public struct VenueConfig has key {
 
 ## API reference: `blast_partners` (Partner codes)
 
-Live on mainnet. This reference matches the published source.
+Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
 
 Events: payload structs are emitted directly, each under its own type.
 
 ### `blast_partners::blast_partners`
 
-Blast partner codes, shared by every Blast product.  A partner is one deal: it is paid a share of the fee Blast charges on every trade that names it, in the same transaction. A company holds one `PartnerCap` for all its deals, each a separate partner with its own share. Blast's partner administrator registers partners under a cap, sets each one's share, and can move a partner to another cap; the cap's holder sets where each of its partners is paid. Everything Blast changes takes effect only `DELAY_MS` after it is scheduled, and this package is published immutable, so no one can shorten that delay. The recipient the cap holder sets applies at once.  Products call `pay` with Blast's own fee on a trade. `pay` emits `PartnerPaid` for what the partner received; the product records the trade and the amount in its own event.
+Blast partner codes, shared by every Blast product.  A partner is one deal: it is paid a share of the fee Blast charges on every trade that names it, in the same transaction. A company holds one `PartnerCap` for all its deals, each a separate partner with its own share. Blast's partner administrator registers partners under a cap, sets each one's share, and can move a partner to another cap; the cap's holder sets where each of its partners is paid. Everything Blast changes takes effect only `PARTNER_CHANGE_DELAY_MS` after it is scheduled, and this package is published immutable, so no one can shorten that delay. The recipient the cap holder sets applies at once.  Products call `pay` with Blast's own fee on a trade. `pay` emits `PartnerPaid` for what the partner received; the product records the trade and the amount in its own event.
 
 Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/partners/sources/blast_partners.move
 
@@ -8135,7 +8150,7 @@ public struct PartnerCap has key, store {
 public fun new_cap(ctx: &mut TxContext): PartnerCap
 
 /// Registers and shares a partner managed by the cap `cap_id`, with its share
-/// and cap in force at once. Every later change to either waits `DELAY_MS`.
+/// and cap in force at once. Every later change to either waits `PARTNER_CHANGE_DELAY_MS`.
 public fun register(
     _: &blast_admin::blast_acl::AdminWitness<PartnerAdmin>,
     cap_id: ID,
@@ -8144,7 +8159,7 @@ public fun register(
     ctx: &mut TxContext,
 )
 
-/// Schedules the partner's share to become `share_bps` `DELAY_MS` from now.
+/// Schedules the partner's share to become `share_bps` `PARTNER_CHANGE_DELAY_MS` from now.
 /// A new schedule replaces a pending one; scheduling the share in force
 /// cancels a pending change.
 public fun schedule_share(
@@ -8154,7 +8169,7 @@ public fun schedule_share(
     clock: &Clock,
 )
 
-/// Schedules the partner to be managed by the cap `cap_id` `DELAY_MS` from
+/// Schedules the partner to be managed by the cap `cap_id` `PARTNER_CHANGE_DELAY_MS` from
 /// now, to replace a lost or stolen cap. Until then the current cap keeps
 /// working; a new schedule replaces a pending one, and scheduling the cap in
 /// force cancels a pending change.
@@ -8211,7 +8226,7 @@ public struct PartnerPaid<phantom T> has copy, drop {
 
 #### Constants
 
-- `DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000`: The forced delay before a share or a cap Blast schedules takes effect.
+- `PARTNER_CHANGE_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000`: The forced delay before a share or a cap Blast schedules takes effect.
 - `MAX_SHARE_BPS: u64 = 8_000`: The largest share of Blast's fee one partner may earn: 80%.
 - `BASIS_POINTS: u64 = 10_000`: Basis points in one whole.
 
@@ -8401,7 +8416,7 @@ public enum FundingSettlement has drop {
 
 ```move
 /// Creates one positive normalized price observation.
-public fun new_price(price: u64, confidence: u64, publish_time_ms: u64): PriceObservation
+public fun new_price(price: u64, confidence: u64, price_published_at_ms: u64): PriceObservation
 
 /// Creates one position observation; base is whole lots and the mark is positive.
 ///
@@ -8526,12 +8541,12 @@ public fun new_rebalance_policy(
 
 /// Creates immutable price policy from proposed structural bounds.
 ///
-/// `max_price_age_ms` must be positive because the structural policy requires
+/// `max_price_age_duration_ms` must be positive because the structural policy requires
 /// a nonzero historical-age slippage. This check alone does not prove that a
 /// selected value supports the deployed source cadence; that remains a live
-/// integration and simulation gate. `max_price_ahead_ms` may be zero; zero is
+/// integration and simulation gate. `max_price_ahead_duration_ms` may be zero; zero is
 /// the strictest clock-skew policy and rejects the first millisecond after the
-/// reference time. It must not exceed `max_price_age_ms`: clock skew is never
+/// reference time. It must not exceed `max_price_age_duration_ms`: clock skew is never
 /// larger than a staleness budget, and the rule catches a transposed pair
 /// that would otherwise reject every aged update and admit future-dated ones.
 ///
@@ -8546,8 +8561,8 @@ public fun new_rebalance_policy(
 /// here; this package compiles none of them and validates no value against
 /// live venue state.
 public fun new_price_policy(
-    max_price_age_ms: u64,
-    max_price_ahead_ms: u64,
+    max_price_age_duration_ms: u64,
+    max_price_ahead_duration_ms: u64,
     max_confidence_bps: u64,
     max_mark_divergence_bps: u64,
 ): PricePolicy
@@ -8735,7 +8750,7 @@ public fun activate<Product>(
     self: Issuance<Product>,
     observation: observation::PositionObservation,
     seed_reserve: u64,
-    now_ms: u64,
+    now_at_ms: u64,
 ): (State<Product>, u64, ActivePosition)
 
 /// The immutable direction every seed order takes.
@@ -8782,7 +8797,7 @@ public fun prepare_mint<Product>(
     collateral_deposit: u64,
     total_share_supply: u64,
     minimum_shares: u64,
-    now_ms: u64,
+    now_at_ms: u64,
 ): MintPlan<Product>
 
 /// Returns the entire required whole-lot increase, not caller-selected sizing.
@@ -8804,7 +8819,7 @@ public fun complete_mint<Product>(
     self: &mut State<Product>,
     plan: MintPlan<Product>,
     observation: observation::PositionObservation,
-    now_ms: u64,
+    now_at_ms: u64,
 ): (u64, u64, u64, u64, u64)
 
 /// Seals a rounded-up attributable close and the redeemer's output floor.
@@ -8814,7 +8829,7 @@ public fun prepare_redemption<Product>(
     shares_to_redeem: u64,
     total_share_supply: u64,
     minimum_collateral_out: u64,
-    now_ms: u64,
+    now_at_ms: u64,
 ): RedemptionPlan<Product>
 
 /// Returns the full reduce-only order amount; flat redemptions require no order.
@@ -8835,7 +8850,7 @@ public fun complete_redemption<Product>(
     self: &mut State<Product>,
     plan: RedemptionPlan<Product>,
     observation: observation::PositionObservation,
-    now_ms: u64,
+    now_at_ms: u64,
 ): (u64, u64, u64, u64)
 
 /// Whether a rebalance would be admitted against this observation: the position,
@@ -8844,7 +8859,7 @@ public fun complete_redemption<Product>(
 public fun needs_rebalance<Product>(
     self: &State<Product>,
     observation: observation::PositionObservation,
-    now_ms: u64,
+    now_at_ms: u64,
 ): bool
 
 /// Derives public maintenance intent from exact outside-band ratios, never caller orders.
@@ -8852,7 +8867,7 @@ public fun prepare_rebalance<Product>(
     self: &State<Product>,
     observation: observation::PositionObservation,
     venue_fee_bps: u64,
-    now_ms: u64,
+    now_at_ms: u64,
 ): RebalancePlan<Product>
 
 /// The next order toward the band, sized from the position the last fill left.
@@ -8885,7 +8900,7 @@ public fun accept_rebalance_fill<Product>(
     order: RebalanceOrder,
     observation: observation::PositionObservation,
     filled_base: u64,
-    now_ms: u64,
+    now_at_ms: u64,
 )
 
 /// Completes holder-funded maintenance without changing reserve, supply or admin cash.
@@ -8916,7 +8931,7 @@ public fun donate<Product>(
     self: &mut State<Product>,
     observation: observation::PositionObservation,
     amount: u64,
-    now_ms: u64,
+    now_at_ms: u64,
 )
 
 /// Rejects an ordinary operation outside Active, before the adapter touches the venue.
@@ -8938,7 +8953,7 @@ public fun unwind_constraints<Product>(
     base_oracle: observation::PriceObservation,
     collateral_oracle: observation::PriceObservation,
     lot_size: u64,
-    now_ms: u64,
+    now_at_ms: u64,
 ): (policy::PositionSide, u64, u64, u64)
 
 /// Consumes the reserve book entry only after the adapter proves complete local cash recovery.
@@ -9620,7 +9635,7 @@ public fun mint<Product, Collateral>(
     collateral_oracle: &price_feed_storage::PriceFeedStorage,
     cash: Coin<Collateral>,
     minimum_shares: u64,
-    deadline_ms: u64,
+    deadline_at_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Coin<blast_boost::BlastBoost<Product>>, clearing_house::ClearingHouse<Collateral>)
@@ -9638,7 +9653,7 @@ public fun redeem<Product, Collateral>(
     collateral_oracle: &price_feed_storage::PriceFeedStorage,
     shares: Coin<blast_boost::BlastBoost<Product>>,
     minimum_collateral: u64,
-    deadline_ms: u64,
+    deadline_at_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Coin<Collateral>, clearing_house::ClearingHouse<Collateral>)
@@ -9675,7 +9690,7 @@ public fun mint_with_partner<Product, Collateral>(
     collateral_oracle: &price_feed_storage::PriceFeedStorage,
     cash: Coin<Collateral>,
     minimum_shares: u64,
-    deadline_ms: u64,
+    deadline_at_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Coin<blast_boost::BlastBoost<Product>>, clearing_house::ClearingHouse<Collateral>)
@@ -9694,7 +9709,7 @@ public fun redeem_with_partner<Product, Collateral>(
     collateral_oracle: &price_feed_storage::PriceFeedStorage,
     shares: Coin<blast_boost::BlastBoost<Product>>,
     minimum_collateral: u64,
-    deadline_ms: u64,
+    deadline_at_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Coin<Collateral>, clearing_house::ClearingHouse<Collateral>)
@@ -10017,7 +10032,7 @@ public fun redeem_shutdown<Product, Collateral>(
     protocol: &blast_boosts_aftermath::Protocol,
     shares: Coin<blast_boost::BlastBoost<Product>>,
     minimum_collateral: u64,
-    deadline_ms: u64,
+    deadline_at_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<Collateral>
