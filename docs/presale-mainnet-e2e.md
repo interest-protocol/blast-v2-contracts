@@ -58,6 +58,29 @@ the venues (Bluefin, Cetus), the vesting package, and the SDK builders work toge
 
 ## Tickets
 
+### E2E-043 USDC-quoted Cetus migration with the sale token as coin B
+
+2026-10-21: **live run blocked before funding**. The matching-source mainnet test publication
+`0xafc415fa1187577c60205ccff10151fca540b088a3b84f798b90ae0642fa83f8` matches all 15 recorded
+source hashes, but its live `CreationPolicy` allows neither USDC nor `cetus::Witness`.
+The historical production publication `0x2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d`
+allows both and has the previous ABI; a run there would not prove the current source. Admin
+must identify the intended matching-source deployment and allow the route before execution.
+No policy was changed, sale created, or transaction submitted. The configured wallet already
+holds 0.102242 USDC, so obtaining a tiny raise does not itself require selling SUI.
+
+The full local presale gate passes (299 tests), including six new exact-price tests in both
+orientations. At checkpoint 336358066, all six presale venue-fork cases fail before migration:
+`PublishErrorNonZeroAddress` / `Publishing module aftermath with non-zero address is not allowed`.
+The fixture also still refers to removed administration and construction APIs. All three launchpad
+venue-fork cases return `Error: expected option type` after negative-route rollback reports and
+before their opening-price report. No assertion or production contract logic was changed.
+This ticket remains unproven until both venue gates and
+the real migration, independent price and residual reconciliation, both swaps, collection, and
+claim pass. Before a real sale is created, hide its sale-token package in the indexer, preserving D1.
+Commands, checkpoint, revisions, individual results, and live policy reads are recorded in
+[`2026-10-21-cetus-usdc-coin-b-verification.json`](../deployments/sui/mainnet/2026-10-21-cetus-usdc-coin-b-verification.json).
+
 ### Foundation
 
 **E2E-001 Testkit package.** Write `sui/presale_testkit` as above. Unit-test `mint` and one

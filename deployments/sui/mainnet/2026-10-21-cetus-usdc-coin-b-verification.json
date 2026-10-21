@@ -1,0 +1,631 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "verification",
+  "network": {
+    "chain": "sui",
+    "environment": "mainnet",
+    "chainIdentifierHex": "35834a8a",
+    "chainIdentifierBase58": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"
+  },
+  "recordedAtUtc": "2026-10-21T05:25:41.158391+00:00",
+  "status": "failed: both venue-fork gates; live route blocked on matching-source policy",
+  "repository": {
+    "commit": "0c4a3742b3cb4c61027f9804b904c84c8b41af7a",
+    "branch": "codex/cetus-usdc-proof",
+    "workingTreeAtForkInvocation": "Snapshot and new math tests committed as 0c4a374; only verification documentation and this evidence record uncommitted. Production Move source unchanged.",
+    "contractSourceModified": false,
+    "dirty": true,
+    "dirtyPathsAtVerification": [
+      "docs/presale-mainnet-e2e.md",
+      "deployments/sui/mainnet/2026-10-21-cetus-usdc-coin-b-verification.json"
+    ]
+  },
+  "toolchain": {
+    "suiCli": "sui 1.77.2-51d177ad7d65",
+    "rust": "1.96.1 (sui/launchpad/ptb_tests/rust-toolchain.toml)",
+    "compilerWorkers": 1,
+    "testWorkers": 1
+  },
+  "deployer": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+  "transactionDigest": null,
+  "transactionsSubmitted": 0,
+  "spend": {
+    "suiMist": "0",
+    "usdcAtoms": "0"
+  },
+  "packages": {
+    "matchingSourceMainnetTestDeployment": "0xafc415fa1187577c60205ccff10151fca540b088a3b84f798b90ae0642fa83f8",
+    "historicalProduction": "0x2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d"
+  },
+  "sharedObjects": {
+    "feePolicy": {
+      "objectId": "0xda3f9c034fd394180c7cf4c526d9629591fc85badf5cabafe7afa69a8063fd2f",
+      "initialSharedVersion": 1055093520
+    },
+    "creationPolicy": {
+      "objectId": "0x23c7b007cee7f1f3e483bb26d81e2fe93b7139d308ede5642cc4d77442541da8",
+      "initialSharedVersion": 1055093520
+    },
+    "venueConfig": {
+      "objectId": "0x205350751013c266c9a4033df186bc26569f8ecbaf0f246c148bc948a31f6093",
+      "initialSharedVersion": 1055093520
+    },
+    "packageAdmin": {
+      "objectId": "0x6f76be1b79a65cadba5f5454049ed1d49b646e5fd1bd59e7c39aabbdaedd09af",
+      "initialSharedVersion": 1056244915
+    },
+    "packageVersion": {
+      "objectId": "0xe7634c9e47c0ad15c02e52e73cf7b261f064cb00aaedbf6393683ca31ddee7f0",
+      "initialSharedVersion": 1056244915
+    }
+  },
+  "sourceVerification": {
+    "method": "SHA-256 of every source file against versioned deployment publication record",
+    "matched": 15,
+    "total": 15,
+    "evidence": "source-comparison.json",
+    "productionSourceMatches": false,
+    "matchingSourceDeploymentRecord": "deployments/sui/mainnet/2026-10-20-blast-presale-versioned-activation-test.json",
+    "historicalProductionDeploymentRecord": "deployments/sui/mainnet/2026-10-20-blast-presale-unregulated.json"
+  },
+  "snapshot": {
+    "command": "python3 fork/fetch.py --checkpoint latest",
+    "workingDirectory": "sui/launchpad/ptb_tests",
+    "result": "pass",
+    "checkpoint": 336358066,
+    "checkpointTimestamp": "2026-10-21T04:21:11.688Z",
+    "packages": 34,
+    "objects": 15,
+    "absentFields": 4,
+    "pinnedVenuesChanged": false,
+    "manifestSha256": "bd4c3a8133f48da5bc2134dd072a12a83440f81acd0a946dc2df628f681bcabf",
+    "dependencyPackages": [
+      {
+        "id": "0x03637b7b60978ef4389124f7683456f0050ab015a0590d52b6e6cadb342af34a",
+        "version": 1,
+        "digest": "7Q58zECD49YaUahmyatA81bD5fBSzWDUbiLZBcUfEf94"
+      },
+      {
+        "id": "0x06864a6f921804860930db6ddbe2e16acdf8504495ea7481637a1c8b9a8fe54b",
+        "version": 1,
+        "digest": "8ySdLMhVG9RRwD4zB3s4JwohqNraxTwbF1RWFSuXvL32"
+      },
+      {
+        "id": "0x12d73de9a6bc3cb658ec9dc0fe7de2662be1cea5c76c092fcc3606048cdbac27",
+        "version": 1,
+        "digest": "5wpKHwzvFAAzHyLjgUhaMVHb3aainZQddZJBYNNo3MLC"
+      },
+      {
+        "id": "0x157468379cfe5616c063ae39a889dd184ad48350d3e08f8d9b4ade22b8e3fb61",
+        "version": 8,
+        "digest": "Bc21gW5NohGK9AsMynEZjJ1mZD4f1axNfuvw3U8id3TV"
+      },
+      {
+        "id": "0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb",
+        "version": 1,
+        "digest": "HANmuBtgRTPN4LWW5mN7VnJVTjzUwVZAR92MExGjgz9p"
+      },
+      {
+        "id": "0x260693ec785a6e6c9d81d58c7d2ff72f1288ae0fa6a9725abe05a6478b11f084",
+        "version": 15,
+        "digest": "9rZP5D79m4Yfq9fvtPujtpvU5rhfiYm1JS6LaxcMZVSu"
+      },
+      {
+        "id": "0x3492c874c1e3b3e2984e8c41b589e642d4d0a5d6459e5a9cfc2d52fd7c89c267",
+        "version": 1,
+        "digest": "EP9FjgtA8nrhbeit7Zkw7VMNi9ziKZvDKQFBBYekFpa8"
+      },
+      {
+        "id": "0x48dcc51091e692a0c8a64930fc839fb5a8e58de3590c084a8322b9cd34754c36",
+        "version": 2,
+        "digest": "8jHEsYqEFhApzrEL1r9oG2gMq2KNgDtni9mJUakQZXwS"
+      },
+      {
+        "id": "0x5d029d551d589105a9589e47ef75ffaa43e6d9d1d844745867db2a56e18f65e1",
+        "version": 16,
+        "digest": "gRFrN783ou9RDifh4VXH5hkK7gZwnvw9btw45a4QZTX"
+      },
+      {
+        "id": "0x702301e7c6ca527a6f6a83f12c5edf2dcd6ec7a23fb5318ec86d88282eab7057",
+        "version": 8,
+        "digest": "FY2jEipYccMUrDLC3HPc1uodFMrhF6jh7qqkkcL9dpGL"
+      },
+      {
+        "id": "0x70968826ad1b4ba895753f634b0aea68d0672908ca1075a2abdf0fc9e0b2fc6a",
+        "version": 6,
+        "digest": "6onq6m8U85d7ABRNvC2RVYVozJPybTh1bvWknRUaJjR5"
+      },
+      {
+        "id": "0x7118b0382949f8321e995203c59eb60f0d48657d74234946d32b2bf7126ec80d",
+        "version": 3,
+        "digest": "4FCPgoFdVV88omnU9GeSw1hXB1TdRsGVBv9MzXpEemUk"
+      },
+      {
+        "id": "0x714a63a0dba6da4f017b42d5d0fb78867f18bcde904868e51d951a5a6f5b7f57",
+        "version": 1,
+        "digest": "BHzRjAnhBjfNdWrQwz3FR51dUXrvRfedL4gfGeJdNTd"
+      },
+      {
+        "id": "0x75b2e9ecad34944b8d0c874e568c90db0cf9437f0d7392abfd4cb902972f3e40",
+        "version": 12,
+        "digest": "HNuLHfShQbXaNmz3LHoXS2Hxieq9cfnGm6HXsPretHpz"
+      },
+      {
+        "id": "0x8569b7efebec65c73b9dc15c5ac2a9542870d286fa79a3feedffbaa94ed53002",
+        "version": 5,
+        "digest": "DJhBQ1hHCpGzqVhykvoGCddr6BuiknPqQgTbpDdKPjGT"
+      },
+      {
+        "id": "0x991a8ab5ccc7af04c5d1327aaff520a074e1444bf7fcde2fcfcb0ad58b9c2af4",
+        "version": 5,
+        "digest": "BxKy5Cs9YtWSc5pRuHtBfmq41FgRhGfdhCVvHTdW88Xq"
+      },
+      {
+        "id": "0x9d2f067d3b9d19ac0f8d2e5c2c393b1760232083e42005b2e5df39c06064d522",
+        "version": 1,
+        "digest": "D5uAQTvBuNpC8b1eB1Vha1nZBBykTFUobdxUQgmxuiYf"
+      },
+      {
+        "id": "0xa31282fc0a0ad50cf5f20908cfbb1539a143f5a38912eb8823a8dd6cbf98bc44",
+        "version": 7,
+        "digest": "2S3xvqpGkwwccsWZppvvXtrgYqC8mzh2rUMs4X4Rcn6E"
+      },
+      {
+        "id": "0xab5e63352d0f05881bdfa1631cc0f7fc1669175a00d608828a924df481a9e4bd",
+        "version": 3,
+        "digest": "CTL3KTXSZsMr6jKpYzrukYxwAK7LQfMxCdrwdLx76kNU"
+      },
+      {
+        "id": "0xbc70b10012a01c00fda8957dbaa1f2b83683414f55e22341792b081fdffa9baa",
+        "version": 2,
+        "digest": "GqwiiosBzECX8WyPNKHJvadxfu7fqLCJq11p2h8WhoNC"
+      },
+      {
+        "id": "0xbe21a06129308e0495431d12286127897aff07a8ade3970495a4404d97f9eaaa",
+        "version": 1,
+        "digest": "9TnahPHm8DmK3pkjADFgt8qBY9ACqgWJ3EBfA2dMfgXW"
+      },
+      {
+        "id": "0xc4aabc874f5060d3147d8f74c14e3a8a1f9f8d92edea138a51635395ed167cd9",
+        "version": 8,
+        "digest": "77pAM8TdzRbHqA4b5ccyLQHZzNNhj3k15cZMtD37qLHH"
+      },
+      {
+        "id": "0xc6faf3703b0e8ba9ed06b7851134bbbe7565eb35ff823fd78432baa4cbeaa12e",
+        "version": 10,
+        "digest": "EcuUEjjr76up4pkEiYLvWxUhjwwXR256SMaeArzytwW7"
+      },
+      {
+        "id": "0xd075338d105482f1527cbfd363d6413558f184dec36d9138a70261e87f486e9c",
+        "version": 17,
+        "digest": "4tyboYqrPbZzN6V5Lh2TccW8j9nbH65mJeQFynoQGxut"
+      },
+      {
+        "id": "0xdb5cd62a06c79695bfc9982eb08534706d3752fe123b48e0144f480209b3117f",
+        "version": 13,
+        "digest": "DLXzqA8J7FYH1TfTi5u23xA6EiBQnhafAhupBdgLR4XF"
+      },
+      {
+        "id": "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7",
+        "version": 1,
+        "digest": "959jQ9YckFUXCJVuBqP2j4UoSEEU49qFZu32D31gqoJV"
+      },
+      {
+        "id": "0xdc67d6de3f00051c505da10d8f6fbab3b3ec21ec65f0dc22a2f36c13fc102110",
+        "version": 9,
+        "digest": "7ZT3zHGGiEZtgxwL7TV8wbYFPKcWzqw4PHereAQqwzdv"
+      },
+      {
+        "id": "0xdfaadf86be9af246900d1e3f3b996cf549e7948e662a9977bdd7646d8fa3a778",
+        "version": 7,
+        "digest": "H1dyZFTCRfnR1oKb9AR4dEBeb46LnWWDKj453TPX8MiT"
+      },
+      {
+        "id": "0xe0917b74a5912e4ad186ac634e29c922ab83903f71af7500969f9411706f9b9a",
+        "version": 1,
+        "digest": "FZGNsnySrnsPC2tMuiJAaU5PThDutWYMQ7FHgr2MVcjC"
+      },
+      {
+        "id": "0xe2b515f0052c0b3f83c23db045d49dbe1732818ccfc5d4596c9482f7f2e76a85",
+        "version": 3,
+        "digest": "7jo3VKQ8sKjiJpQ2sat3peuNfSjQK4o4Ey3cBYjzgvmy"
+      },
+      {
+        "id": "0xe93247b408fe44ed0ee5b6ac508b36325b239d6333e44ffa240dcc0c1a69cdd8",
+        "version": 4,
+        "digest": "9Vx3xipwsaSD1eDcz7dNew7kXLNEoTCskEZGLmfV9Vmz"
+      },
+      {
+        "id": "0xecf47609d7da919ea98e7fd04f6e0648a0a79b337aaad373fa37aac8febf19c8",
+        "version": 1,
+        "digest": "DbvKXDLKKEruXzKiNkEBjjEB12W9ifN7JzQgRmxo7VLr"
+      },
+      {
+        "id": "0xf1962ddb76a7f9968b4e597278d3cc717a00620cc421b00e3429c5c071eba26a",
+        "version": 4,
+        "digest": "DEiK2sT9UZm4nQ6L9RAqaenMhbzuHUwmKVjutsZmNGHk"
+      },
+      {
+        "id": "0xf1e4fae2183dabebc4827b0a46ddae9c0d0a6afa06a416e1f887a4ffd33f5067",
+        "version": 6,
+        "digest": "HXwMeMtakAkTb3gqpWPmJANqfbpviFfNWhbeFTvSDspr"
+      }
+    ]
+  },
+  "checks": [
+    {
+      "command": "python3 scripts/check_move_style.py",
+      "result": "pass",
+      "modules": 193
+    },
+    {
+      "command": "bash sui/presale/scripts/verify.sh test migration_math_tests --threads 1",
+      "result": "pass",
+      "tests": [
+        {
+          "name": "sui_like_9dec_quote_matches_both_pair_orientations",
+          "result": "pass"
+        },
+        {
+          "name": "usdc_like_6dec_quote_matches_both_pair_orientations",
+          "result": "pass"
+        },
+        {
+          "name": "lst_like_8dec_quote_matches_both_pair_orientations",
+          "result": "pass"
+        },
+        {
+          "name": "meme_6dec_quote_9dec_matches_both_pair_orientations",
+          "result": "pass"
+        },
+        {
+          "name": "equal_atomic_amounts_are_one_in_both_pair_orientations",
+          "result": "pass"
+        },
+        {
+          "name": "integer_square_root_rounds_down_in_both_pair_orientations",
+          "result": "pass"
+        }
+      ]
+    },
+    {
+      "command": "bash sui/presale/scripts/verify.sh boundaries && bash sui/presale/scripts/verify.sh build && bash sui/presale/scripts/verify.sh lint && bash sui/presale/scripts/verify.sh test --threads 1",
+      "result": "pass",
+      "testsPassed": 299,
+      "testsFailed": 0
+    },
+    {
+      "command": "cargo test --offline --test presale_venue_fork -- --nocapture --test-threads=1",
+      "workingDirectory": "sui/launchpad/ptb_tests",
+      "result": "fail: fixture setup publication",
+      "tests": [
+        {
+          "name": "presale_cetus_meme_a_with_sui_against_mainnet_bytecode",
+          "result": "fail",
+          "stage": "fixture setup publication, before migration",
+          "assertionLocation": "src/lib.rs:215:9",
+          "failureVerbatim": "transaction failed: Failure(ExecutionFailure { error: PublishErrorNonZeroAddress, command: Some(0) }) Some(ExecutionError { inner: ExecutionErrorInner { kind: PublishErrorNonZeroAddress, source: Some(\"Publishing module aftermath with non-zero address is not allowed\"), command: Some(0) } })"
+        },
+        {
+          "name": "presale_cetus_meme_b_with_usdc_against_mainnet_bytecode",
+          "result": "fail",
+          "stage": "fixture setup publication, before migration",
+          "assertionLocation": "src/lib.rs:215:9",
+          "failureVerbatim": "transaction failed: Failure(ExecutionFailure { error: PublishErrorNonZeroAddress, command: Some(0) }) Some(ExecutionError { inner: ExecutionErrorInner { kind: PublishErrorNonZeroAddress, source: Some(\"Publishing module aftermath with non-zero address is not allowed\"), command: Some(0) } })"
+        },
+        {
+          "name": "presale_bluefin_with_sui_against_mainnet_bytecode",
+          "result": "fail",
+          "stage": "fixture setup publication, before migration",
+          "assertionLocation": "src/lib.rs:215:9",
+          "failureVerbatim": "transaction failed: Failure(ExecutionFailure { error: PublishErrorNonZeroAddress, command: Some(0) }) Some(ExecutionError { inner: ExecutionErrorInner { kind: PublishErrorNonZeroAddress, source: Some(\"Publishing module aftermath with non-zero address is not allowed\"), command: Some(0) } })"
+        },
+        {
+          "name": "presale_cetus_meme_a_near_equal_seed_migrates_where_larger_side_fix_aborts",
+          "result": "fail",
+          "stage": "fixture setup publication, before migration",
+          "assertionLocation": "src/lib.rs:215:9",
+          "failureVerbatim": "transaction failed: Failure(ExecutionFailure { error: PublishErrorNonZeroAddress, command: Some(0) }) Some(ExecutionError { inner: ExecutionErrorInner { kind: PublishErrorNonZeroAddress, source: Some(\"Publishing module aftermath with non-zero address is not allowed\"), command: Some(0) } })"
+        },
+        {
+          "name": "presale_cetus_meme_b_near_equal_seed_migrates_where_larger_side_fix_aborts",
+          "result": "fail",
+          "stage": "fixture setup publication, before migration",
+          "assertionLocation": "src/lib.rs:215:9",
+          "failureVerbatim": "transaction failed: Failure(ExecutionFailure { error: PublishErrorNonZeroAddress, command: Some(0) }) Some(ExecutionError { inner: ExecutionErrorInner { kind: PublishErrorNonZeroAddress, source: Some(\"Publishing module aftermath with non-zero address is not allowed\"), command: Some(0) } })"
+        },
+        {
+          "name": "presale_bluefin_near_equal_seed_migrates_where_larger_side_fix_aborts",
+          "result": "fail",
+          "stage": "fixture setup publication, before migration",
+          "assertionLocation": "src/lib.rs:215:9",
+          "failureVerbatim": "transaction failed: Failure(ExecutionFailure { error: PublishErrorNonZeroAddress, command: Some(0) }) Some(ExecutionError { inner: ExecutionErrorInner { kind: PublishErrorNonZeroAddress, source: Some(\"Publishing module aftermath with non-zero address is not allowed\"), command: Some(0) } })"
+        }
+      ],
+      "attempts": [
+        {
+          "result": "not run: missing cached dependency",
+          "error": "error: failed to download `Inflector v0.11.4`\n\nCaused by:\n  attempting to make an HTTP request, but --offline was specified",
+          "remediation": "cargo fetch --locked (succeeded)"
+        },
+        {
+          "result": "interrupted before tests",
+          "exitCode": 143,
+          "signal": "SIGTERM",
+          "compilerError": null,
+          "pressureAtInspection": {
+            "memAvailableKiB": 18900396,
+            "memoryPsiFullAvg10": "0.00"
+          },
+          "cause": "undetermined; retried in PTY using existing compilation cache",
+          "evidence": "presale-venue-fork-interrupted.log"
+        },
+        {
+          "result": "build succeeded; all six tests failed during setup publication",
+          "exitCode": 101,
+          "evidence": "presale-venue-fork.log"
+        }
+      ],
+      "exitCode": 101,
+      "testsPassed": 0,
+      "testsFailed": 6,
+      "buildDuration": "54m 21s",
+      "testDurationSeconds": 33.87,
+      "priceAssertionsReached": false
+    },
+    {
+      "command": "cargo test --offline --test venue_fork -- --test-threads=1",
+      "workingDirectory": "sui/launchpad/ptb_tests",
+      "result": "fail",
+      "exitCode": 101,
+      "testsPassed": 0,
+      "testsFailed": 3,
+      "buildDurationSeconds": 12.59,
+      "testDurationSeconds": 44.83,
+      "tests": [
+        {
+          "name": "bluefin_with_sui_against_mainnet_bytecode",
+          "result": "fail",
+          "failureVerbatim": "Error: expected option type",
+          "reportLines": [
+            "VENUE_FORK Bluefin snapshot checkpoint 336358066",
+            "VENUE_FORK Bluefin bluefin::new at (0, 3000), (401, 3000), (60, 0), (60, 20001): EInvalidTier, rolled back",
+            "VENUE_FORK Bluefin bluefin::new at (60, 3000): launch records the tier",
+            "VENUE_FORK Bluefin PTB [migrate (pool created, position custodied), migrate again]: launch aborts invalid_launch_lifecycle, nothing committed, launch MigrationReady",
+            "VENUE_FORK Bluefin migrate paying 1 MIST against the live 0 MIST creation fee: Bluefin pool aborts 1039, rolled back"
+          ],
+          "openingPriceReportReached": false
+        },
+        {
+          "name": "cetus_meme_a_with_sui_against_mainnet_bytecode",
+          "result": "fail",
+          "failureVerbatim": "Error: expected option type",
+          "reportLines": [
+            "VENUE_FORK CetusMemeA snapshot checkpoint 336358066",
+            "VENUE_FORK CetusMemeA cetus::new at unregistered tick spacing 7: Cetus config aborts 2, rolled back",
+            "VENUE_FORK CetusMemeA cetus::new at registered but unadmitted tick spacing 60: Cetus factory aborts 8, rolled back",
+            "VENUE_FORK CetusMemeA cetus::new at tick spacing 200 registers fee rate 10000 from Cetus; PoolCreationCap 0x386aff0983b3e66d572615bbfa61b4f5d89332849958437e275c98172ec4166a minted, pair registered, kept under VenueConfig",
+            "VENUE_FORK CetusMemeA PTB [migrate (pool created, position custodied), migrate again]: launch aborts invalid_launch_lifecycle, nothing committed, launch MigrationReady",
+            "VENUE_FORK CetusMemeA migrate with the pool's coin types reversed: EInvalidCoinOrder, rolled back",
+            "VENUE_FORK CetusMemeA migrate naming Meme with dba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC in Cetus order: EWrongCoinPair, rolled back"
+          ],
+          "openingPriceReportReached": false
+        },
+        {
+          "name": "cetus_meme_b_with_usdc_against_mainnet_bytecode",
+          "result": "fail",
+          "failureVerbatim": "Error: expected option type",
+          "reportLines": [
+            "VENUE_FORK CetusMemeB snapshot checkpoint 336358066",
+            "VENUE_FORK CetusMemeB cetus::new at unregistered tick spacing 7: Cetus config aborts 2, rolled back",
+            "VENUE_FORK CetusMemeB cetus::new at registered but unadmitted tick spacing 60: Cetus factory aborts 8, rolled back",
+            "VENUE_FORK CetusMemeB cetus::new at tick spacing 200 registers fee rate 10000 from Cetus; PoolCreationCap 0x66bd6390754b04ecefe8a8248bc996c0b1bdee5b7dbb4e69db98e9ee1ea05fdd minted, pair registered, kept under VenueConfig",
+            "VENUE_FORK CetusMemeB PTB [migrate (pool created, position custodied), migrate again]: launch aborts invalid_launch_lifecycle, nothing committed, launch MigrationReady",
+            "VENUE_FORK CetusMemeB migrate with the pool's coin types reversed: EInvalidCoinOrder, rolled back",
+            "VENUE_FORK CetusMemeB migrate naming Meme with 0000000000000000000000000000000000000000000000000000000000000002::sui::SUI in Cetus order: EWrongCoinPair, rolled back"
+          ],
+          "openingPriceReportReached": false
+        }
+      ]
+    }
+  ],
+  "independentOracle": {
+    "oracle": "Python math.isqrt((numerator << 128) // denominator)",
+    "cases": [
+      {
+        "name": "sui_like_9dec_quote",
+        "memeAtoms": "200000000000000001",
+        "quoteAtoms": "2970000000000",
+        "sqrtPriceMemeA": "71085815383773548",
+        "sqrtPriceMemeB": "4786923594866905679395",
+        "matchesCommittedVectors": true
+      },
+      {
+        "name": "usdc_like_6dec_quote",
+        "memeAtoms": "200000000000000001",
+        "quoteAtoms": "2970000000",
+        "sqrtPriceMemeA": "2247930859429608",
+        "sqrtPriceMemeB": "151375815449805255005138",
+        "matchesCommittedVectors": true
+      },
+      {
+        "name": "lst_like_8dec_quote",
+        "memeAtoms": "200000000000000001",
+        "quoteAtoms": "297000000000",
+        "sqrtPriceMemeA": "22479308594296080",
+        "sqrtPriceMemeB": "15137581544980525500513",
+        "matchesCommittedVectors": true
+      },
+      {
+        "name": "meme_6dec_quote_9dec",
+        "memeAtoms": "200000000000000",
+        "quoteAtoms": "2970000000000",
+        "sqrtPriceMemeA": "2247930859429608031",
+        "sqrtPriceMemeB": "151375815449805254626",
+        "matchesCommittedVectors": true
+      }
+    ]
+  },
+  "assertionInspection": {
+    "sqrtPrice": "pool sqrt_price == expected_sqrt_price(lp_tokens, lp_quote, false) for CetusMemeB",
+    "pair": "pool_pair returns (USDC, sale token) for CetusMemeB",
+    "poolBalances": "pool coin_a/coin_b map back to supplied quote/meme, with supplied + vault residual equal hand-off",
+    "negativeRoutes": "EInvalidCoinOrder (cetus code 0) and EWrongCoinPair for (USDC, SUI), with rollback assertions",
+    "runtimeProof": "not reached: all six tests failed at setup publication before any migration or pool price/balance/negative-route assertions"
+  },
+  "liveMainnet": {
+    "result": "blocked",
+    "reason": "The latest matching-source mainnet deployment is explicitly test-only and its live CreationPolicy has empty quote and witness allowlists. Stop before publication/funding as requested; admin must identify the intended matching-source target and allow USDC and cetus::Witness before this route runs.",
+    "matchingSourcePolicy": {
+      "objectId": "0x23c7b007cee7f1f3e483bb26d81e2fe93b7139d308ede5642cc4d77442541da8",
+      "version": 1056408316,
+      "digest": "ExV3rY3pgDzz5VbTdnGtXorZdtgAdH3f6CJg3Q3Ddqsq",
+      "objType": "0xafc415fa1187577c60205ccff10151fca540b088a3b84f798b90ae0642fa83f8::creation_policy::CreationPolicy",
+      "owner": {
+        "Shared": {
+          "initial_shared_version": 1055093520
+        }
+      },
+      "prevTx": "8d1FzuGFdEuayShVTy4ZMifdZs5EZP1DJkm3M5E4DB9k",
+      "storageRebate": 1428800,
+      "content": {
+        "allowed_migration_witnesses": {
+          "contents": []
+        },
+        "allowed_quotes": {
+          "contents": []
+        },
+        "id": "0x23c7b007cee7f1f3e483bb26d81e2fe93b7139d308ede5642cc4d77442541da8"
+      }
+    },
+    "historicalProductionPolicy": {
+      "objectId": "0xb9a2d76062e9b94f49e96553a75986957b8c8d8394bd717a30f03e3404ba84c4",
+      "version": 1056408318,
+      "digest": "Ay4L1c3xKN8HGAU3au3FeWE867XqUP3GDfPYtvKmjkud",
+      "objType": "0x2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d::creation_policy::CreationPolicy",
+      "owner": {
+        "Shared": {
+          "initial_shared_version": 1052779268
+        }
+      },
+      "prevTx": "3uBTxzBbkq1SrKwtEK4aZNzzG5qsbG3RXSLNcjeG5KgH",
+      "storageRebate": 5092000,
+      "content": {
+        "allowed_migration_witnesses": {
+          "contents": [
+            "2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d::bluefin::Witness",
+            "2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d::cetus::Witness"
+          ]
+        },
+        "allowed_quotes": {
+          "contents": [
+            "0000000000000000000000000000000000000000000000000000000000000002::sui::SUI",
+            "963331df9a26c8674c33eb97655fe44807d5ff1aa4092bcbe2bdbe044b17b03d::test_sui::TEST_SUI",
+            "dba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC",
+            "44f838219cf67b058f3b37907b655f226153c18e33dfcd0da559a844fea9b1c1::usdsui::USDSUI"
+          ]
+        },
+        "id": "0xb9a2d76062e9b94f49e96553a75986957b8c8d8394bd717a30f03e3404ba84c4"
+      }
+    },
+    "historicalProductionCaveat": "Historical production allows USDC and Cetus but has the previous unversioned ABI, so testing it would not prove the current source. No policy was changed.",
+    "startingBalances": [
+      {
+        "coinType": "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI",
+        "balance": "29731339219"
+      },
+      {
+        "coinType": "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC",
+        "balance": "102242"
+      }
+    ],
+    "fundingDecision": "Wallet already has 102242 USDC atoms (0.102242 USDC). No SUI swap is needed merely to obtain a tiny raise; feasibility and gas must be simulated after the correct package/policy is selected.",
+    "indexer": "No sale created; no exclusion change needed. A future real USDC test sale must be hidden before creation.",
+    "notExecuted": [
+      "publish sale coin",
+      "create sale",
+      "commit",
+      "settle",
+      "migrate in either type order",
+      "swap either way",
+      "collect fees",
+      "claim"
+    ],
+    "packageVersionRead": {
+      "objectId": "0xe7634c9e47c0ad15c02e52e73cf7b261f064cb00aaedbf6393683ca31ddee7f0",
+      "version": 1056244915,
+      "digest": "FdSJWBy5xSJS6BXjtzEyASnqeAzBQmyQHV6JyywSSGHt",
+      "objType": "0xafc415fa1187577c60205ccff10151fca540b088a3b84f798b90ae0642fa83f8::blast_presale_package::PackageVersion",
+      "owner": {
+        "Shared": {
+          "initial_shared_version": 1056244915
+        }
+      },
+      "prevTx": "HLeJsrsH75b9sC2fisoVmtHM8EpPrFMg173B8c7fRnoM",
+      "storageRebate": 1520000,
+      "content": {
+        "generation": {
+          "generation": "1"
+        },
+        "id": "0xe7634c9e47c0ad15c02e52e73cf7b261f064cb00aaedbf6393683ca31ddee7f0"
+      }
+    },
+    "packageAdminRead": {
+      "objectId": "0x6f76be1b79a65cadba5f5454049ed1d49b646e5fd1bd59e7c39aabbdaedd09af",
+      "version": 1056244915,
+      "digest": "Fx1zRd3iq4GZCKizaCdEzF6GEFSRrbYm4MF5Zx7CoFDX",
+      "objType": "0xafc415fa1187577c60205ccff10151fca540b088a3b84f798b90ae0642fa83f8::package_admin::PackageAdmin",
+      "owner": {
+        "Shared": {
+          "initial_shared_version": 1056244915
+        }
+      },
+      "prevTx": "HLeJsrsH75b9sC2fisoVmtHM8EpPrFMg173B8c7fRnoM",
+      "storageRebate": 2850000,
+      "content": {
+        "custody": {
+          "publisher": {
+            "id": "0x7f1a6de1c895a9d1f4012a3d54388824ef0879b0324033c048a7ab15c8434bee",
+            "module_name": "blast_presale_package",
+            "package": "afc415fa1187577c60205ccff10151fca540b088a3b84f798b90ae0642fa83f8"
+          },
+          "upgrade_cap": {
+            "id": "0xc5f0ceec8e298a7ad4733521e53bb2bb70316470a907d51e36a5601fb089d04c",
+            "package": "0xafc415fa1187577c60205ccff10151fca540b088a3b84f798b90ae0642fa83f8",
+            "policy": 0.0,
+            "version": "1"
+          }
+        },
+        "id": "0x6f76be1b79a65cadba5f5454049ed1d49b646e5fd1bd59e7c39aabbdaedd09af"
+      }
+    }
+  },
+  "findings": [
+    {
+      "kind": "runtime fixture setup failure",
+      "detail": "All six presale venue-fork tests fail at Outcome::assert_success (src/lib.rs:215:9) with PublishErrorNonZeroAddress: Publishing module aftermath with non-zero address is not allowed. World::new first publishes the copied vesting package; no presale migration runs. No contract logic or assertion was changed.",
+      "failureVerbatim": "transaction failed: Failure(ExecutionFailure { error: PublishErrorNonZeroAddress, command: Some(0) }) Some(ExecutionError { inner: ExecutionErrorInner { kind: PublishErrorNonZeroAddress, source: Some(\"Publishing module aftermath with non-zero address is not allowed\"), command: Some(0) } })"
+    },
+    {
+      "kind": "launchpad venue gate runtime error",
+      "detail": "All three venue_fork cases return Error: expected option type after their migration negative-route/rollback reports and before the opening-price report. The exact decoding/error origin was not established. This is not a passing migration or price proof.",
+      "failureVerbatim": "Error: expected option type"
+    },
+    {
+      "kind": "static fixture incompatibility",
+      "detail": "presale_venue_fork expects removed blast_presale_admin::AdminRegistry/AdminCap, old monolithic adapter::new signatures, and old Presale/Vault layouts. Current source uses blast_admin ACL, PackageVersion, and PresaleInitializer/finalize. No assertion or contract logic was changed."
+    }
+  ],
+  "rawEvidenceDirectory": "/home/ubuntu/blast-v2/outputs/verification/2026-10-21-cetus-usdc-proof",
+  "limitations": [
+    "Unit math and source inspection are not an end-to-end migration proof.",
+    "No live migration, swaps, fee collection, or participant claim performed.",
+    "All six presale fork cases fail in setup publication; price/balance assertions are not reached.",
+    "All three launchpad venue cases fail with expected option type before their opening-price report; no passing full venue gate."
+  ],
+  "nextSteps": [
+    "Repair the fork fixture publication and update its presale administration, construction and state mirrors to the current ABI, preserving every price/conservation/rollback assertion.",
+    "Diagnose the launchpad gate expected option type error and rerun both venue gates against checkpoint 336358066.",
+    "Admin must identify the intended matching-source deployment and enable USDC plus cetus::Witness before a live test. Hide the test sale in the indexer, then execute the migration, both swaps, fee collection and claim with independent event/price/residual checks."
+  ]
+}
