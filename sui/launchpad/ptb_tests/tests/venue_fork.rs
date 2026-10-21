@@ -201,11 +201,11 @@ fn run(case: Case) -> Result<()> {
     w.swap(&launch, &m, Side::QuoteIn, 2 * w.case.quote_unit())?;
     w.swap(&launch, &m, Side::MemeIn, LP_MEME / 50)?;
     let c = w.collect(&launch, &mut m, Some((cap, &next)))?;
-    w.report(format!("settle_and_update_fee_split: {} then generation 1", c.line()));
+    w.report(format!("settle_and_update_fee_split: {} then the new split", c.line()));
     w.swap(&launch, &m, Side::QuoteIn, w.case.quote_unit())?;
     let c = w.collect(&launch, &mut m, None)?;
-    ensure!(c.fees.generation == 1, "the next collection runs under generation 1");
-    w.report(format!("collect generation 1: {}", c.line()));
+    ensure!(w.vault(&m)?.fee_split == next, "the next collection runs under the new split");
+    w.report(format!("collect under the new split: {}", c.line()));
     w.buyback(&launch, &m)?;
 
     w.other_pool_is_refused(&launch, &m)?;
@@ -303,9 +303,8 @@ impl Collection {
     fn line(&self) -> String {
         let f = &self.fees;
         format!(
-            "gen {} gross=({}, {}) protocol=({}, {}) creator=({}, {}) auto_lp=({}, {}) rewards=({}, {}) \
+            "gross=({}, {}) protocol=({}, {}) creator=({}, {}) auto_lp=({}, {}) rewards=({}, {}) \
              burn=({}, {}) recipients=({:?}, {:?}) added={}",
-            f.generation,
             f.gross_meme,
             f.gross_quote,
             f.protocol_meme,
@@ -625,7 +624,7 @@ impl World {
     }
 
     fn vault(&self, m: &Migration) -> Result<Vault> {
-        Ok(bcs::from_bytes(&self.h.contents(m.vault))?)
+        bcs::from_bytes(&self.h.contents(m.vault)).context("decode LpVault")
     }
 
     /// The liquidity of the migration position: inside the burn proof on Cetus.
@@ -1022,7 +1021,7 @@ impl World {
             liquidity: created.liquidity,
         };
         let vault = self.vault(&m)?;
-        ensure!(vault.pool_id == m.pool && vault.fee_split == launch.split && vault.generation == 0);
+        ensure!(vault.pool_id == m.pool && vault.fee_split == launch.split);
         ensure!(
             (vault.protocol_meme_residual, vault.protocol_quote_residual)
                 == (created.residual_meme, created.residual_quote)
@@ -1285,7 +1284,7 @@ impl World {
         ensure!(fees.len() == 1, "one FeesCollected");
         let fees = fees[0].clone();
         ensure!((fees.gross_meme, fees.gross_quote) == (venue_meme, venue_quote), "gross is the venue's collection");
-        ensure!(fees.vault_id == m.vault && fees.generation == before.generation);
+        ensure!(fees.vault_id == m.vault);
 
         // Blast's live share, rounded up, then the split apportioned exactly.
         let expected = expected_fees(&before, self.shares, venue_meme, venue_quote);
@@ -1387,11 +1386,10 @@ impl World {
             ensure!(changed.len() == 1 && names.last().map(String::as_str) == Some("FeeSplitChanged"), "{names:?}");
             ensure!(names.first().map(String::as_str) == Some("FeesCollected"), "settles first: {names:?}");
             let changed = &changed[0];
-            ensure!((changed.old_generation, changed.new_generation) == (before.generation, before.generation + 1));
             ensure!(changed.old_fee_split == before.fee_split && changed.new_fee_split == *split);
-            ensure!(after.generation == before.generation + 1 && after.fee_split == *split);
+            ensure!(after.fee_split == *split);
         } else {
-            ensure!(after.generation == before.generation && after.fee_split == before.fee_split);
+            ensure!(after.fee_split == before.fee_split);
         }
 
         Ok(Collection { fees, added })
@@ -1890,7 +1888,6 @@ fn expected_fees(vault: &Vault, shares: (u64, u64), gross_meme: u64, gross_quote
     let quote = apportion(&weights, gross_quote - protocol_quote);
     FeesCollected {
         vault_id: vault.id,
-        generation: vault.generation,
         gross_meme,
         gross_quote,
         protocol_destination: Some(LP_PROTOCOL.into()),
@@ -1965,7 +1962,6 @@ struct Vault {
     protocol_quote_residual: u64,
     _unpaid_protocol_meme: u64,
     _unpaid_protocol_quote: u64,
-    generation: u64,
     fee_split: FeeSplit,
     creator_meme: u64,
     creator_quote: u64,
@@ -2051,7 +2047,6 @@ struct VaultCreated {
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 struct FeesCollected {
     vault_id: ObjectID,
-    generation: u64,
     gross_meme: u64,
     gross_quote: u64,
     /// None when a partnered vault holds Blast's share for the partner claim.
@@ -2096,8 +2091,6 @@ struct AutoLpPositionOpened {
 #[derive(Deserialize)]
 struct FeeSplitChanged {
     _vault_id: ObjectID,
-    old_generation: u64,
-    new_generation: u64,
     old_fee_split: FeeSplit,
     new_fee_split: FeeSplit,
 }

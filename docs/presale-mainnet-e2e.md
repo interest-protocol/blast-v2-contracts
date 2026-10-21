@@ -63,6 +63,35 @@ the venues (Bluefin, Cetus), the vesting package, and the SDK builders work toge
 
 ## Tickets
 
+### E2E-043 USDC-quoted Cetus migration with the sale token as coin B
+
+2026-10-21: **local mainnet-bytecode proof passes; live run blocked before funding**.
+At checkpoint 336358066, the repaired presale venue gate passes all seven tests and the
+launchpad venue gate passes all three. The combined command, run from `sui/launchpad/ptb_tests`,
+is `cargo test --offline --test presale_venue_fork --test venue_fork -- --nocapture --test-threads=1`.
+The full presale Move gate also passes (299 tests), including six exact-price tests in both orders.
+
+The USDC case creates `Pool<USDC, SaleToken>` and stores opening sqrt price
+`2333349067485406353943178`, exactly the independent integer-square-root calculation for
+400000000000000000 sale atoms and 25000000 USDC atoms. Supplied amounts plus vault residuals
+reconcile exactly. Both Cetus orders, reversed-order and wrong-pair rollback, one-atom rounding
+fallback, LP burn proof, swaps both ways, fee distribution, participant claims and residual claims
+pass. A fresh meme coin also passes the full Bluefin quote lifecycle. All ten fork migrations match
+an independent Python price oracle. Repairs update only test publication/linkage and stale ABI/BCS
+fixtures; production Move logic is unchanged. Original failures are retained in the evidence history.
+
+The matching-source mainnet test publication
+`0xafc415fa1187577c60205ccff10151fca540b088a3b84f798b90ae0642fa83f8` matches all 15 recorded
+source hashes, but its CreationPolicy allows neither USDC nor `cetus::Witness`. The original task
+requires stopping at this condition. No policy was changed or transaction submitted; zero SUI and
+USDC were spent. The wallet already holds 0.102242 USDC. The historical production publication
+has a previous ABI, so a run there would not prove current source. The user's latest direction
+focuses on local pricing proof. A future broadcast proof needs an intended matching-source target
+with the route allowed and its test sale hidden in the indexer before creation, preserving D1.
+
+Exact commands, revision, per-test results, independent prices, initial failures and live policy reads:
+[`2026-10-21-cetus-usdc-coin-b-verification.json`](../deployments/sui/mainnet/2026-10-21-cetus-usdc-coin-b-verification.json).
+
 ### Foundation
 
 **E2E-001 Testkit package.** Write `sui/presale_testkit` as above. Unit-test `mint` and one

@@ -108,7 +108,7 @@ pub struct UnlinkedPackage {
     placeholders: BTreeMap<String, AccountAddress>,
 }
 
-/// Compiles `package` offline without a publication record, for a package that also links
+/// Compiles `package` offline and resets its root address for publication, while linking
 /// external venue packages at their pinned `published-at` IDs, which a pubfile cannot name. Each
 /// dependency in `local` compiles at a placeholder address that `UnlinkedPackage::link` replaces
 /// with the ID it was published at in the simulator.
@@ -137,7 +137,18 @@ pub fn build_unlinked(package: &Path, local: &[&str], work: &Path) -> Result<Unl
         modules.sort_by_key(|module| module.self_id());
         Ok(modules)
     };
-    let modules = read(&bytecode)?;
+    let mut modules = read(&bytecode)?;
+    // Published.toml resolves this root at its historical mainnet address. A simulator
+    // publication needs zero-address root modules, including their mutual references.
+    let root = *modules.first().context("root modules")?.self_id().address();
+    for module in &mut modules {
+        ensure!(*module.self_id().address() == root, "one root package address");
+        for address in &mut module.address_identifiers {
+            if *address == root {
+                *address = AccountAddress::ZERO;
+            }
+        }
+    }
     let mut placeholders = BTreeMap::new();
     for dependency in local {
         let module = read(&bytecode.join("dependencies").join(dependency))?
