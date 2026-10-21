@@ -4,7 +4,8 @@
 Reads, never writes, the official Sui mainnet GraphQL endpoint and records at ONE checkpoint:
 
 - every package the migrators' venue calls can load: Cetus CLMM, Cetus LP Burn, Bluefin Spot, and
-  Circle USDC (the second Quote Cetus admits), closed over linkage tables and type origins (the
+  Circle USDC (the second Quote Cetus admits), plus the presale's Aftermath links, closed over
+  linkage tables and type origins (the
   VM resolves a type through the package that defined it, whose own linkage must resolve too);
 - the shared objects the venue code reads (Cetus `GlobalConfig` and `Pools`, LP Burn's
   `BurnManager`, Bluefin's `GlobalConfig`, and mainnet's shared `Currency<SUI>`); and
@@ -64,6 +65,10 @@ VENUES = [
      "0xd075338d105482f1527cbfd363d6413558f184dec36d9138a70261e87f486e9c", 17),
     ("usdc", "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7",
      "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7", 1),
+    ("aftermath_amm", "0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c",
+     "0xf948935b111990c2b604900c9b2eeb8f24dcf9868a45d1ea1653a5f282c10e29", 3),
+    ("aftermath_dao_fee", "0x6f60a091637054e23915b8745c0c0d47b1d49618ee3435b5f68eccf6a44fb53d",
+     "0x5ad6890968efcf3d20899e0cec735214f1067b96e77e77d86408989998468bb2", 2),
 ]
 
 CETUS_GLOBAL_CONFIG = "0xdaa46292632c3c4d8f31f23ea0f9b36a28ff3677e9684980e4438403a67a3d8f"

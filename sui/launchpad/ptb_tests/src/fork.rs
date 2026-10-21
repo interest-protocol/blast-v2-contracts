@@ -117,7 +117,8 @@ pub fn insert_snapshot(h: &mut Harness) -> Result<(u64, BTreeMap<String, ObjectI
 }
 
 /// The venue packages a venue adapter links: Cetus, LP Burn, Bluefin, and every package in their
-/// linkage tables at the highest version any of them names, as publication requires.
+/// linkage tables at the highest version any of them names, as publication requires. The presale
+/// also links Aftermath even when the test exercises a different venue.
 pub fn venue_dependencies(h: &Harness) -> Result<Vec<ObjectID>> {
     let mut table: BTreeMap<ObjectID, (ObjectID, SequenceNumber)> = BTreeMap::new();
     let mut add = |original: ObjectID, current: ObjectID, version: SequenceNumber| {
@@ -126,7 +127,13 @@ pub fn venue_dependencies(h: &Harness) -> Result<Vec<ObjectID>> {
             *entry = (current, version);
         }
     };
-    for root in [CETUS, LP_BURN, BLUEFIN] {
+    for root in [
+        CETUS,
+        LP_BURN,
+        BLUEFIN,
+        "0xf948935b111990c2b604900c9b2eeb8f24dcf9868a45d1ea1653a5f282c10e29",
+        "0x5ad6890968efcf3d20899e0cec735214f1067b96e77e77d86408989998468bb2",
+    ] {
         let object = h.object(id(root));
         let package = object.data.try_as_package().context("venue package")?;
         add(package.original_package_id(), package.id(), package.version());

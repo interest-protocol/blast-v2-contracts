@@ -60,25 +60,31 @@ the venues (Bluefin, Cetus), the vesting package, and the SDK builders work toge
 
 ### E2E-043 USDC-quoted Cetus migration with the sale token as coin B
 
-2026-10-21: **live run blocked before funding**. The matching-source mainnet test publication
-`0xafc415fa1187577c60205ccff10151fca540b088a3b84f798b90ae0642fa83f8` matches all 15 recorded
-source hashes, but its live `CreationPolicy` allows neither USDC nor `cetus::Witness`.
-The historical production publication `0x2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d`
-allows both and has the previous ABI; a run there would not prove the current source. Admin
-must identify the intended matching-source deployment and allow the route before execution.
-No policy was changed, sale created, or transaction submitted. The configured wallet already
-holds 0.102242 USDC, so obtaining a tiny raise does not itself require selling SUI.
+2026-10-21: **local mainnet-bytecode proof passes; live run blocked before funding**.
+At checkpoint 336358066, the repaired presale venue gate passes all seven tests and the
+launchpad venue gate passes all three. The combined command, run from `sui/launchpad/ptb_tests`,
+is `cargo test --offline --test presale_venue_fork --test venue_fork -- --nocapture --test-threads=1`.
+The full presale Move gate also passes (299 tests), including six exact-price tests in both orders.
 
-The full local presale gate passes (299 tests), including six new exact-price tests in both
-orientations. At checkpoint 336358066, all six presale venue-fork cases fail before migration:
-`PublishErrorNonZeroAddress` / `Publishing module aftermath with non-zero address is not allowed`.
-The fixture also still refers to removed administration and construction APIs. All three launchpad
-venue-fork cases return `Error: expected option type` after negative-route rollback reports and
-before their opening-price report. No assertion or production contract logic was changed.
-This ticket remains unproven until both venue gates and
-the real migration, independent price and residual reconciliation, both swaps, collection, and
-claim pass. Before a real sale is created, hide its sale-token package in the indexer, preserving D1.
-Commands, checkpoint, revisions, individual results, and live policy reads are recorded in
+The USDC case creates `Pool<USDC, SaleToken>` and stores opening sqrt price
+`2333349067485406353943178`, exactly the independent integer-square-root calculation for
+400000000000000000 sale atoms and 25000000 USDC atoms. Supplied amounts plus vault residuals
+reconcile exactly. Both Cetus orders, reversed-order and wrong-pair rollback, one-atom rounding
+fallback, LP burn proof, swaps both ways, fee distribution, participant claims and residual claims
+pass. A fresh meme coin also passes the full Bluefin quote lifecycle. All ten fork migrations match
+an independent Python price oracle. Repairs update only test publication/linkage and stale ABI/BCS
+fixtures; production Move logic is unchanged. Original failures are retained in the evidence history.
+
+The matching-source mainnet test publication
+`0xafc415fa1187577c60205ccff10151fca540b088a3b84f798b90ae0642fa83f8` matches all 15 recorded
+source hashes, but its CreationPolicy allows neither USDC nor `cetus::Witness`. The original task
+requires stopping at this condition. No policy was changed or transaction submitted; zero SUI and
+USDC were spent. The wallet already holds 0.102242 USDC. The historical production publication
+has a previous ABI, so a run there would not prove current source. The user's latest direction
+focuses on local pricing proof. A future broadcast proof needs an intended matching-source target
+with the route allowed and its test sale hidden in the indexer before creation, preserving D1.
+
+Exact commands, revision, per-test results, independent prices, initial failures and live policy reads:
 [`2026-10-21-cetus-usdc-coin-b-verification.json`](../deployments/sui/mainnet/2026-10-21-cetus-usdc-coin-b-verification.json).
 
 ### Foundation

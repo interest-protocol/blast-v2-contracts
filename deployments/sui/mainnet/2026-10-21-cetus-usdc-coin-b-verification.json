@@ -7,18 +7,43 @@
     "chainIdentifierHex": "35834a8a",
     "chainIdentifierBase58": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"
   },
-  "recordedAtUtc": "2026-10-21T05:25:41.158391+00:00",
-  "status": "failed: both venue-fork gates; live route blocked on matching-source policy",
+  "recordedAtUtc": "2026-10-21T05:51:35.231404+00:00",
+  "status": "pass: local mainnet-bytecode price and migration gates; live transaction not executed (matching-source policy closed)",
   "repository": {
-    "commit": "0c4a3742b3cb4c61027f9804b904c84c8b41af7a",
+    "commit": "cbdaa9d773c082d36962be51f46bf0afe2c299f5",
     "branch": "codex/cetus-usdc-proof",
-    "workingTreeAtForkInvocation": "Snapshot and new math tests committed as 0c4a374; only verification documentation and this evidence record uncommitted. Production Move source unchanged.",
+    "workingTreeAtForkInvocation": "Current test harness repairs and same-checkpoint dependency closure uncommitted; production Move source unchanged.",
     "contractSourceModified": false,
     "dirty": true,
     "dirtyPathsAtVerification": [
+      "sui/launchpad/ptb_tests/fork/snapshot/packages/0x2d9316f1f1a95f6d7c85a4e690ef7c359e6649773ef2c37ad7d9857adb6bef06.bcs",
+      "sui/launchpad/ptb_tests/fork/snapshot/packages/0x5ad6890968efcf3d20899e0cec735214f1067b96e77e77d86408989998468bb2.bcs",
+      "sui/launchpad/ptb_tests/fork/snapshot/packages/0x64213b0e4a52bac468d4ac3f140242f70714381653a1919a6d57cd49c628207a.bcs",
+      "sui/launchpad/ptb_tests/fork/snapshot/packages/0x6f60a091637054e23915b8745c0c0d47b1d49618ee3435b5f68eccf6a44fb53d.bcs",
+      "sui/launchpad/ptb_tests/fork/snapshot/packages/0x712579292f80c11a0c9de4ff553d6e5c4757105e83a8a3129823d2b39e65d062.bcs",
+      "sui/launchpad/ptb_tests/fork/snapshot/packages/0x73baa782c55003b3a359dec04b189312565d18e7309d4a51f5f112f891e3b2ab.bcs",
+      "sui/launchpad/ptb_tests/fork/snapshot/packages/0xa6baab1e668c7868991c1c3c11e144100f5734c407d020f72a01b9d1a8bcb97f.bcs",
+      "sui/launchpad/ptb_tests/fork/snapshot/packages/0xbc7b2c577ad9362fbb0dba397d17f3bcc81bf7aa916559f99a77eaee05d0947c.bcs",
+      "sui/launchpad/ptb_tests/fork/snapshot/packages/0xc4049b2d1cc0f6e017fda8260e4377cecd236bd7f56a54fee120816e72e2e0dd.bcs",
+      "sui/launchpad/ptb_tests/fork/snapshot/packages/0xc66fabf1a9253e43c70f1cc02d40a1d18db183140ecaae2a3f58fa6b66c55acf.bcs",
+      "sui/launchpad/ptb_tests/fork/snapshot/packages/0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c.bcs",
+      "sui/launchpad/ptb_tests/fork/snapshot/packages/0xf948935b111990c2b604900c9b2eeb8f24dcf9868a45d1ea1653a5f282c10e29.bcs",
+      "deployments/sui/mainnet/2026-10-21-cetus-usdc-coin-b-verification.json",
       "docs/presale-mainnet-e2e.md",
-      "deployments/sui/mainnet/2026-10-21-cetus-usdc-coin-b-verification.json"
-    ]
+      "sui/launchpad/ptb_tests/fork/fetch.py",
+      "sui/launchpad/ptb_tests/fork/snapshot/manifest.json",
+      "sui/launchpad/ptb_tests/src/fork.rs",
+      "sui/launchpad/ptb_tests/src/lib.rs",
+      "sui/launchpad/ptb_tests/tests/presale_venue_fork.rs",
+      "sui/launchpad/ptb_tests/tests/venue_fork.rs"
+    ],
+    "verifiedHarnessSha256": {
+      "sui/launchpad/ptb_tests/fork/fetch.py": "e42e3412fed92334a9c4c0485e667dbe6e4a2a0ad3d833920b6d1146e19b8ed2",
+      "sui/launchpad/ptb_tests/src/fork.rs": "c894cfc80eceb8b85ef2d05c667398d9a9bc0db21e1176798ac761508fc39a26",
+      "sui/launchpad/ptb_tests/src/lib.rs": "75d6c603954d18daf959afd4101493c375ae7ec1f526c0670dfeaa1193da334d",
+      "sui/launchpad/ptb_tests/tests/presale_venue_fork.rs": "6f80bdec1e0a27b46f044f1255a7779d3797166cc03149a54ff2f306e5095987",
+      "sui/launchpad/ptb_tests/tests/venue_fork.rs": "bde571fa13ae553e1bd844eff2d4feb5707215c308cf76c651c03a512196ad0b"
+    }
   },
   "toolchain": {
     "suiCli": "sui 1.77.2-51d177ad7d65",
@@ -69,16 +94,16 @@
     "historicalProductionDeploymentRecord": "deployments/sui/mainnet/2026-10-20-blast-presale-unregulated.json"
   },
   "snapshot": {
-    "command": "python3 fork/fetch.py --checkpoint latest",
+    "command": "python3 fork/fetch.py --checkpoint 336358066",
     "workingDirectory": "sui/launchpad/ptb_tests",
     "result": "pass",
     "checkpoint": 336358066,
     "checkpointTimestamp": "2026-10-21T04:21:11.688Z",
-    "packages": 34,
+    "packages": 46,
     "objects": 15,
     "absentFields": 4,
     "pinnedVenuesChanged": false,
-    "manifestSha256": "bd4c3a8133f48da5bc2134dd072a12a83440f81acd0a946dc2df628f681bcabf",
+    "manifestSha256": "aa1e0b03a734b5d3c7d6622ff98ccdb1c2cefaf09b09b65db37740dcd2797c03",
     "dependencyPackages": [
       {
         "id": "0x03637b7b60978ef4389124f7683456f0050ab015a0590d52b6e6cadb342af34a",
@@ -111,6 +136,11 @@
         "digest": "9rZP5D79m4Yfq9fvtPujtpvU5rhfiYm1JS6LaxcMZVSu"
       },
       {
+        "id": "0x2d9316f1f1a95f6d7c85a4e690ef7c359e6649773ef2c37ad7d9857adb6bef06",
+        "version": 1,
+        "digest": "D9wSuod5GSy4gzCjv5w4UDUKa1dv4UT2asNMjTwwuJDP"
+      },
+      {
         "id": "0x3492c874c1e3b3e2984e8c41b589e642d4d0a5d6459e5a9cfc2d52fd7c89c267",
         "version": 1,
         "digest": "EP9FjgtA8nrhbeit7Zkw7VMNi9ziKZvDKQFBBYekFpa8"
@@ -121,9 +151,24 @@
         "digest": "8jHEsYqEFhApzrEL1r9oG2gMq2KNgDtni9mJUakQZXwS"
       },
       {
+        "id": "0x5ad6890968efcf3d20899e0cec735214f1067b96e77e77d86408989998468bb2",
+        "version": 2,
+        "digest": "AeSpba79KZ8Ge8nGk2Li2c2tkLy7eC93wTGhgjEVHVpZ"
+      },
+      {
         "id": "0x5d029d551d589105a9589e47ef75ffaa43e6d9d1d844745867db2a56e18f65e1",
         "version": 16,
         "digest": "gRFrN783ou9RDifh4VXH5hkK7gZwnvw9btw45a4QZTX"
+      },
+      {
+        "id": "0x64213b0e4a52bac468d4ac3f140242f70714381653a1919a6d57cd49c628207a",
+        "version": 1,
+        "digest": "ByArtn7iAqFXPYpZTQWiNJD9KMtDUtnxv5UVFTmJF5SV"
+      },
+      {
+        "id": "0x6f60a091637054e23915b8745c0c0d47b1d49618ee3435b5f68eccf6a44fb53d",
+        "version": 1,
+        "digest": "3fehkmCh11nDYb5m9vgG3aYcgZzaShTCcKSdmibwrHxB"
       },
       {
         "id": "0x702301e7c6ca527a6f6a83f12c5edf2dcd6ec7a23fb5318ec86d88282eab7057",
@@ -141,9 +186,19 @@
         "digest": "4FCPgoFdVV88omnU9GeSw1hXB1TdRsGVBv9MzXpEemUk"
       },
       {
+        "id": "0x712579292f80c11a0c9de4ff553d6e5c4757105e83a8a3129823d2b39e65d062",
+        "version": 1,
+        "digest": "3KM3RGfAsFAcH2YHFK6wJ8rzz2wuwoKUGbHmQmta32KR"
+      },
+      {
         "id": "0x714a63a0dba6da4f017b42d5d0fb78867f18bcde904868e51d951a5a6f5b7f57",
         "version": 1,
         "digest": "BHzRjAnhBjfNdWrQwz3FR51dUXrvRfedL4gfGeJdNTd"
+      },
+      {
+        "id": "0x73baa782c55003b3a359dec04b189312565d18e7309d4a51f5f112f891e3b2ab",
+        "version": 1,
+        "digest": "CTEbevZk6Yu4F4XaRtmNJ5TGdUya6omHR9SVa4avdLJo"
       },
       {
         "id": "0x75b2e9ecad34944b8d0c874e568c90db0cf9437f0d7392abfd4cb902972f3e40",
@@ -171,6 +226,11 @@
         "digest": "2S3xvqpGkwwccsWZppvvXtrgYqC8mzh2rUMs4X4Rcn6E"
       },
       {
+        "id": "0xa6baab1e668c7868991c1c3c11e144100f5734c407d020f72a01b9d1a8bcb97f",
+        "version": 1,
+        "digest": "G1JWbWfgRc8ZaSBsY6TucFCRKde7rvC73jCfARL4nF4i"
+      },
+      {
         "id": "0xab5e63352d0f05881bdfa1631cc0f7fc1669175a00d608828a924df481a9e4bd",
         "version": 3,
         "digest": "CTL3KTXSZsMr6jKpYzrukYxwAK7LQfMxCdrwdLx76kNU"
@@ -181,14 +241,29 @@
         "digest": "GqwiiosBzECX8WyPNKHJvadxfu7fqLCJq11p2h8WhoNC"
       },
       {
+        "id": "0xbc7b2c577ad9362fbb0dba397d17f3bcc81bf7aa916559f99a77eaee05d0947c",
+        "version": 2,
+        "digest": "6Bpr1cWrPnULCU2gqVcxYSJkuxXAQCgvxA8TzkpPU8ZM"
+      },
+      {
         "id": "0xbe21a06129308e0495431d12286127897aff07a8ade3970495a4404d97f9eaaa",
         "version": 1,
         "digest": "9TnahPHm8DmK3pkjADFgt8qBY9ACqgWJ3EBfA2dMfgXW"
       },
       {
+        "id": "0xc4049b2d1cc0f6e017fda8260e4377cecd236bd7f56a54fee120816e72e2e0dd",
+        "version": 2,
+        "digest": "A6BDuHpaK8MWL6pJzfQJvsQX9Sn1mb1dM8ejwjMQkAFD"
+      },
+      {
         "id": "0xc4aabc874f5060d3147d8f74c14e3a8a1f9f8d92edea138a51635395ed167cd9",
         "version": 8,
         "digest": "77pAM8TdzRbHqA4b5ccyLQHZzNNhj3k15cZMtD37qLHH"
+      },
+      {
+        "id": "0xc66fabf1a9253e43c70f1cc02d40a1d18db183140ecaae2a3f58fa6b66c55acf",
+        "version": 1,
+        "digest": "RU93ghFMzmL6Q8x2Nd7zwEVZEzndHaSarkd5aKYhJQN"
       },
       {
         "id": "0xc6faf3703b0e8ba9ed06b7851134bbbe7565eb35ff823fd78432baa4cbeaa12e",
@@ -241,6 +316,11 @@
         "digest": "DbvKXDLKKEruXzKiNkEBjjEB12W9ifN7JzQgRmxo7VLr"
       },
       {
+        "id": "0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c",
+        "version": 1,
+        "digest": "8CZYQRnxb7VFyCqz1q5NvNDad7fN5cMFaKHr12dmt5TU"
+      },
+      {
         "id": "0xf1962ddb76a7f9968b4e597278d3cc717a00620cc421b00e3429c5c071eba26a",
         "version": 4,
         "digest": "DEiK2sT9UZm4nQ6L9RAqaenMhbzuHUwmKVjutsZmNGHk"
@@ -249,8 +329,14 @@
         "id": "0xf1e4fae2183dabebc4827b0a46ddae9c0d0a6afa06a416e1f887a4ffd33f5067",
         "version": 6,
         "digest": "HXwMeMtakAkTb3gqpWPmJANqfbpviFfNWhbeFTvSDspr"
+      },
+      {
+        "id": "0xf948935b111990c2b604900c9b2eeb8f24dcf9868a45d1ea1653a5f282c10e29",
+        "version": 3,
+        "digest": "Gxia3EZSdQeCXGPkmhXRzXWfmV6bnw7oRvSXNxNLQ9T1"
       }
-    ]
+    ],
+    "note": "Added the presale Aftermath dependency closure at the same checkpoint; original venue revisions, 15 objects and four absent fields unchanged."
   },
   "checks": [
     {
@@ -295,138 +381,66 @@
       "testsFailed": 0
     },
     {
-      "command": "cargo test --offline --test presale_venue_fork -- --nocapture --test-threads=1",
+      "command": "cargo test --offline --test presale_venue_fork --test venue_fork -- --nocapture --test-threads=1",
       "workingDirectory": "sui/launchpad/ptb_tests",
-      "result": "fail: fixture setup publication",
+      "binary": "presale_venue_fork",
+      "result": "pass",
+      "testsPassed": 7,
+      "testsFailed": 0,
       "tests": [
         {
-          "name": "presale_cetus_meme_a_with_sui_against_mainnet_bytecode",
-          "result": "fail",
-          "stage": "fixture setup publication, before migration",
-          "assertionLocation": "src/lib.rs:215:9",
-          "failureVerbatim": "transaction failed: Failure(ExecutionFailure { error: PublishErrorNonZeroAddress, command: Some(0) }) Some(ExecutionError { inner: ExecutionErrorInner { kind: PublishErrorNonZeroAddress, source: Some(\"Publishing module aftermath with non-zero address is not allowed\"), command: Some(0) } })"
+          "name": "presale_bluefin_near_equal_seed_migrates_where_larger_side_fix_aborts",
+          "result": "pass"
         },
         {
-          "name": "presale_cetus_meme_b_with_usdc_against_mainnet_bytecode",
-          "result": "fail",
-          "stage": "fixture setup publication, before migration",
-          "assertionLocation": "src/lib.rs:215:9",
-          "failureVerbatim": "transaction failed: Failure(ExecutionFailure { error: PublishErrorNonZeroAddress, command: Some(0) }) Some(ExecutionError { inner: ExecutionErrorInner { kind: PublishErrorNonZeroAddress, source: Some(\"Publishing module aftermath with non-zero address is not allowed\"), command: Some(0) } })"
+          "name": "presale_bluefin_with_an_arbitrary_meme_quote_against_mainnet_bytecode",
+          "result": "pass"
         },
         {
           "name": "presale_bluefin_with_sui_against_mainnet_bytecode",
-          "result": "fail",
-          "stage": "fixture setup publication, before migration",
-          "assertionLocation": "src/lib.rs:215:9",
-          "failureVerbatim": "transaction failed: Failure(ExecutionFailure { error: PublishErrorNonZeroAddress, command: Some(0) }) Some(ExecutionError { inner: ExecutionErrorInner { kind: PublishErrorNonZeroAddress, source: Some(\"Publishing module aftermath with non-zero address is not allowed\"), command: Some(0) } })"
+          "result": "pass"
         },
         {
           "name": "presale_cetus_meme_a_near_equal_seed_migrates_where_larger_side_fix_aborts",
-          "result": "fail",
-          "stage": "fixture setup publication, before migration",
-          "assertionLocation": "src/lib.rs:215:9",
-          "failureVerbatim": "transaction failed: Failure(ExecutionFailure { error: PublishErrorNonZeroAddress, command: Some(0) }) Some(ExecutionError { inner: ExecutionErrorInner { kind: PublishErrorNonZeroAddress, source: Some(\"Publishing module aftermath with non-zero address is not allowed\"), command: Some(0) } })"
+          "result": "pass"
+        },
+        {
+          "name": "presale_cetus_meme_a_with_sui_against_mainnet_bytecode",
+          "result": "pass"
         },
         {
           "name": "presale_cetus_meme_b_near_equal_seed_migrates_where_larger_side_fix_aborts",
-          "result": "fail",
-          "stage": "fixture setup publication, before migration",
-          "assertionLocation": "src/lib.rs:215:9",
-          "failureVerbatim": "transaction failed: Failure(ExecutionFailure { error: PublishErrorNonZeroAddress, command: Some(0) }) Some(ExecutionError { inner: ExecutionErrorInner { kind: PublishErrorNonZeroAddress, source: Some(\"Publishing module aftermath with non-zero address is not allowed\"), command: Some(0) } })"
+          "result": "pass"
         },
         {
-          "name": "presale_bluefin_near_equal_seed_migrates_where_larger_side_fix_aborts",
-          "result": "fail",
-          "stage": "fixture setup publication, before migration",
-          "assertionLocation": "src/lib.rs:215:9",
-          "failureVerbatim": "transaction failed: Failure(ExecutionFailure { error: PublishErrorNonZeroAddress, command: Some(0) }) Some(ExecutionError { inner: ExecutionErrorInner { kind: PublishErrorNonZeroAddress, source: Some(\"Publishing module aftermath with non-zero address is not allowed\"), command: Some(0) } })"
+          "name": "presale_cetus_meme_b_with_usdc_against_mainnet_bytecode",
+          "result": "pass"
         }
       ],
-      "attempts": [
-        {
-          "result": "not run: missing cached dependency",
-          "error": "error: failed to download `Inflector v0.11.4`\n\nCaused by:\n  attempting to make an HTTP request, but --offline was specified",
-          "remediation": "cargo fetch --locked (succeeded)"
-        },
-        {
-          "result": "interrupted before tests",
-          "exitCode": 143,
-          "signal": "SIGTERM",
-          "compilerError": null,
-          "pressureAtInspection": {
-            "memAvailableKiB": 18900396,
-            "memoryPsiFullAvg10": "0.00"
-          },
-          "cause": "undetermined; retried in PTY using existing compilation cache",
-          "evidence": "presale-venue-fork-interrupted.log"
-        },
-        {
-          "result": "build succeeded; all six tests failed during setup publication",
-          "exitCode": 101,
-          "evidence": "presale-venue-fork.log"
-        }
-      ],
-      "exitCode": 101,
-      "testsPassed": 0,
-      "testsFailed": 6,
-      "buildDuration": "54m 21s",
-      "testDurationSeconds": 33.87,
-      "priceAssertionsReached": false
+      "log": "integration-final.log"
     },
     {
-      "command": "cargo test --offline --test venue_fork -- --test-threads=1",
+      "command": "cargo test --offline --test presale_venue_fork --test venue_fork -- --nocapture --test-threads=1",
       "workingDirectory": "sui/launchpad/ptb_tests",
-      "result": "fail",
-      "exitCode": 101,
-      "testsPassed": 0,
-      "testsFailed": 3,
-      "buildDurationSeconds": 12.59,
-      "testDurationSeconds": 44.83,
+      "binary": "venue_fork",
+      "result": "pass",
+      "testsPassed": 3,
+      "testsFailed": 0,
       "tests": [
         {
           "name": "bluefin_with_sui_against_mainnet_bytecode",
-          "result": "fail",
-          "failureVerbatim": "Error: expected option type",
-          "reportLines": [
-            "VENUE_FORK Bluefin snapshot checkpoint 336358066",
-            "VENUE_FORK Bluefin bluefin::new at (0, 3000), (401, 3000), (60, 0), (60, 20001): EInvalidTier, rolled back",
-            "VENUE_FORK Bluefin bluefin::new at (60, 3000): launch records the tier",
-            "VENUE_FORK Bluefin PTB [migrate (pool created, position custodied), migrate again]: launch aborts invalid_launch_lifecycle, nothing committed, launch MigrationReady",
-            "VENUE_FORK Bluefin migrate paying 1 MIST against the live 0 MIST creation fee: Bluefin pool aborts 1039, rolled back"
-          ],
-          "openingPriceReportReached": false
+          "result": "pass"
         },
         {
           "name": "cetus_meme_a_with_sui_against_mainnet_bytecode",
-          "result": "fail",
-          "failureVerbatim": "Error: expected option type",
-          "reportLines": [
-            "VENUE_FORK CetusMemeA snapshot checkpoint 336358066",
-            "VENUE_FORK CetusMemeA cetus::new at unregistered tick spacing 7: Cetus config aborts 2, rolled back",
-            "VENUE_FORK CetusMemeA cetus::new at registered but unadmitted tick spacing 60: Cetus factory aborts 8, rolled back",
-            "VENUE_FORK CetusMemeA cetus::new at tick spacing 200 registers fee rate 10000 from Cetus; PoolCreationCap 0x386aff0983b3e66d572615bbfa61b4f5d89332849958437e275c98172ec4166a minted, pair registered, kept under VenueConfig",
-            "VENUE_FORK CetusMemeA PTB [migrate (pool created, position custodied), migrate again]: launch aborts invalid_launch_lifecycle, nothing committed, launch MigrationReady",
-            "VENUE_FORK CetusMemeA migrate with the pool's coin types reversed: EInvalidCoinOrder, rolled back",
-            "VENUE_FORK CetusMemeA migrate naming Meme with dba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC in Cetus order: EWrongCoinPair, rolled back"
-          ],
-          "openingPriceReportReached": false
+          "result": "pass"
         },
         {
           "name": "cetus_meme_b_with_usdc_against_mainnet_bytecode",
-          "result": "fail",
-          "failureVerbatim": "Error: expected option type",
-          "reportLines": [
-            "VENUE_FORK CetusMemeB snapshot checkpoint 336358066",
-            "VENUE_FORK CetusMemeB cetus::new at unregistered tick spacing 7: Cetus config aborts 2, rolled back",
-            "VENUE_FORK CetusMemeB cetus::new at registered but unadmitted tick spacing 60: Cetus factory aborts 8, rolled back",
-            "VENUE_FORK CetusMemeB cetus::new at tick spacing 200 registers fee rate 10000 from Cetus; PoolCreationCap 0x66bd6390754b04ecefe8a8248bc996c0b1bdee5b7dbb4e69db98e9ee1ea05fdd minted, pair registered, kept under VenueConfig",
-            "VENUE_FORK CetusMemeB PTB [migrate (pool created, position custodied), migrate again]: launch aborts invalid_launch_lifecycle, nothing committed, launch MigrationReady",
-            "VENUE_FORK CetusMemeB migrate with the pool's coin types reversed: EInvalidCoinOrder, rolled back",
-            "VENUE_FORK CetusMemeB migrate naming Meme with 0000000000000000000000000000000000000000000000000000000000000002::sui::SUI in Cetus order: EWrongCoinPair, rolled back"
-          ],
-          "openingPriceReportReached": false
+          "result": "pass"
         }
-      ]
+      ],
+      "log": "integration-final.log"
     }
   ],
   "independentOracle": {
@@ -471,7 +485,7 @@
     "pair": "pool_pair returns (USDC, sale token) for CetusMemeB",
     "poolBalances": "pool coin_a/coin_b map back to supplied quote/meme, with supplied + vault residual equal hand-off",
     "negativeRoutes": "EInvalidCoinOrder (cetus code 0) and EWrongCoinPair for (USDC, SUI), with rollback assertions",
-    "runtimeProof": "not reached: all six tests failed at setup publication before any migration or pool price/balance/negative-route assertions"
+    "runtimeProof": "Reached and passed: actual pool type parameters and exact opening sqrt_price, actual pool balances, supplied plus residual, negative-route rollback, LP burn proof, both swap directions, fee apportionment, participant claims and residual claims. Near-equal cases prove smaller-side fallback against real venue math."
   },
   "liveMainnet": {
     "result": "blocked",
@@ -602,30 +616,440 @@
   },
   "findings": [
     {
-      "kind": "runtime fixture setup failure",
-      "detail": "All six presale venue-fork tests fail at Outcome::assert_success (src/lib.rs:215:9) with PublishErrorNonZeroAddress: Publishing module aftermath with non-zero address is not allowed. World::new first publishes the copied vesting package; no presale migration runs. No contract logic or assertion was changed.",
-      "failureVerbatim": "transaction failed: Failure(ExecutionFailure { error: PublishErrorNonZeroAddress, command: Some(0) }) Some(ExecutionError { inner: ExecutionErrorInner { kind: PublishErrorNonZeroAddress, source: Some(\"Publishing module aftermath with non-zero address is not allowed\"), command: Some(0) } })"
+      "kind": "resolved harness publication",
+      "detail": "Published.toml resolved presale root modules at their historical nonzero address. Reset only root module addresses and mutual references to zero before local publication, preserving external venue addresses."
     },
     {
-      "kind": "launchpad venue gate runtime error",
-      "detail": "All three venue_fork cases return Error: expected option type after their migration negative-route/rollback reports and before the opening-price report. The exact decoding/error origin was not established. This is not a passing migration or price proof.",
-      "failureVerbatim": "Error: expected option type"
+      "kind": "resolved missing dependency closure",
+      "detail": "Presale links Aftermath even when Cetus or Bluefin is exercised. Included its AMM and DAO dependency closure at checkpoint 336358066."
     },
     {
-      "kind": "static fixture incompatibility",
-      "detail": "presale_venue_fork expects removed blast_presale_admin::AdminRegistry/AdminCap, old monolithic adapter::new signatures, and old Presale/Vault layouts. Current source uses blast_admin ACL, PackageVersion, and PresaleInitializer/finalize. No assertion or contract logic was changed."
+      "kind": "resolved stale presale fixture ABI",
+      "detail": "Updated local ACL roles, PackageVersion wrapping, initializer/setters/finalize/share calls, and exact BCS mirrors to current source. Assert holder Meme treasury payment and holder Quote accrual under the current fee behavior."
+    },
+    {
+      "kind": "resolved launchpad BCS mirrors",
+      "detail": "Removed obsolete generation fields from Rust mirrors of LpVault, FeesCollected and FeeSplitChanged. Current Move layouts have no such fields. Retained exact fee, split, event-order and conservation checks."
+    },
+    {
+      "kind": "pricing result",
+      "detail": "No production math change needed. All ten fork migrations match independent integer sqrt calculations exactly, including sale token as Cetus coin B and both one-atom Cetus rounding orientations. Added a full Bluefin lifecycle with a fresh meme quote coin."
     }
   ],
   "rawEvidenceDirectory": "/home/ubuntu/blast-v2/outputs/verification/2026-10-21-cetus-usdc-proof",
   "limitations": [
-    "Unit math and source inspection are not an end-to-end migration proof.",
-    "No live migration, swaps, fee collection, or participant claim performed.",
-    "All six presale fork cases fail in setup publication; price/balance assertions are not reached.",
-    "All three launchpad venue cases fail with expected option type before their opening-price report; no passing full venue gate."
+    "Tests execute pinned mainnet venue bytecode in an in-memory simulator; they are not broadcast transactions.",
+    "No live migration, swaps, fee collection or participant claim was submitted. The matching-source deployment policy is closed.",
+    "Support remains subject to venue admission, metadata and seedable numeric bounds; these tests do not prove every possible coin or atomic ratio."
   ],
   "nextSteps": [
-    "Repair the fork fixture publication and update its presale administration, construction and state mirrors to the current ABI, preserving every price/conservation/rollback assertion.",
-    "Diagnose the launchpad gate expected option type error and rerun both venue gates against checkpoint 336358066.",
-    "Admin must identify the intended matching-source deployment and enable USDC plus cetus::Witness before a live test. Hide the test sale in the indexer, then execute the migration, both swaps, fee collection and claim with independent event/price/residual checks."
-  ]
+    "No further local pricing fix is required by these results. A future broadcast proof requires an intended matching-source deployment with the route allowed and the test sale hidden before creation."
+  ],
+  "previousAttempts": [
+    {
+      "recordedAtUtc": "2026-10-21T05:25:41.158391+00:00",
+      "status": "failed: both venue-fork gates; live route blocked on matching-source policy",
+      "checks": [
+        {
+          "command": "cargo test --offline --test presale_venue_fork -- --nocapture --test-threads=1",
+          "workingDirectory": "sui/launchpad/ptb_tests",
+          "result": "fail: fixture setup publication",
+          "tests": [
+            {
+              "name": "presale_cetus_meme_a_with_sui_against_mainnet_bytecode",
+              "result": "fail",
+              "stage": "fixture setup publication, before migration",
+              "assertionLocation": "src/lib.rs:215:9",
+              "failureVerbatim": "transaction failed: Failure(ExecutionFailure { error: PublishErrorNonZeroAddress, command: Some(0) }) Some(ExecutionError { inner: ExecutionErrorInner { kind: PublishErrorNonZeroAddress, source: Some(\"Publishing module aftermath with non-zero address is not allowed\"), command: Some(0) } })"
+            },
+            {
+              "name": "presale_cetus_meme_b_with_usdc_against_mainnet_bytecode",
+              "result": "fail",
+              "stage": "fixture setup publication, before migration",
+              "assertionLocation": "src/lib.rs:215:9",
+              "failureVerbatim": "transaction failed: Failure(ExecutionFailure { error: PublishErrorNonZeroAddress, command: Some(0) }) Some(ExecutionError { inner: ExecutionErrorInner { kind: PublishErrorNonZeroAddress, source: Some(\"Publishing module aftermath with non-zero address is not allowed\"), command: Some(0) } })"
+            },
+            {
+              "name": "presale_bluefin_with_sui_against_mainnet_bytecode",
+              "result": "fail",
+              "stage": "fixture setup publication, before migration",
+              "assertionLocation": "src/lib.rs:215:9",
+              "failureVerbatim": "transaction failed: Failure(ExecutionFailure { error: PublishErrorNonZeroAddress, command: Some(0) }) Some(ExecutionError { inner: ExecutionErrorInner { kind: PublishErrorNonZeroAddress, source: Some(\"Publishing module aftermath with non-zero address is not allowed\"), command: Some(0) } })"
+            },
+            {
+              "name": "presale_cetus_meme_a_near_equal_seed_migrates_where_larger_side_fix_aborts",
+              "result": "fail",
+              "stage": "fixture setup publication, before migration",
+              "assertionLocation": "src/lib.rs:215:9",
+              "failureVerbatim": "transaction failed: Failure(ExecutionFailure { error: PublishErrorNonZeroAddress, command: Some(0) }) Some(ExecutionError { inner: ExecutionErrorInner { kind: PublishErrorNonZeroAddress, source: Some(\"Publishing module aftermath with non-zero address is not allowed\"), command: Some(0) } })"
+            },
+            {
+              "name": "presale_cetus_meme_b_near_equal_seed_migrates_where_larger_side_fix_aborts",
+              "result": "fail",
+              "stage": "fixture setup publication, before migration",
+              "assertionLocation": "src/lib.rs:215:9",
+              "failureVerbatim": "transaction failed: Failure(ExecutionFailure { error: PublishErrorNonZeroAddress, command: Some(0) }) Some(ExecutionError { inner: ExecutionErrorInner { kind: PublishErrorNonZeroAddress, source: Some(\"Publishing module aftermath with non-zero address is not allowed\"), command: Some(0) } })"
+            },
+            {
+              "name": "presale_bluefin_near_equal_seed_migrates_where_larger_side_fix_aborts",
+              "result": "fail",
+              "stage": "fixture setup publication, before migration",
+              "assertionLocation": "src/lib.rs:215:9",
+              "failureVerbatim": "transaction failed: Failure(ExecutionFailure { error: PublishErrorNonZeroAddress, command: Some(0) }) Some(ExecutionError { inner: ExecutionErrorInner { kind: PublishErrorNonZeroAddress, source: Some(\"Publishing module aftermath with non-zero address is not allowed\"), command: Some(0) } })"
+            }
+          ],
+          "attempts": [
+            {
+              "result": "not run: missing cached dependency",
+              "error": "error: failed to download `Inflector v0.11.4`\n\nCaused by:\n  attempting to make an HTTP request, but --offline was specified",
+              "remediation": "cargo fetch --locked (succeeded)"
+            },
+            {
+              "result": "interrupted before tests",
+              "exitCode": 143,
+              "signal": "SIGTERM",
+              "compilerError": null,
+              "pressureAtInspection": {
+                "memAvailableKiB": 18900396,
+                "memoryPsiFullAvg10": "0.00"
+              },
+              "cause": "undetermined; retried in PTY using existing compilation cache",
+              "evidence": "presale-venue-fork-interrupted.log"
+            },
+            {
+              "result": "build succeeded; all six tests failed during setup publication",
+              "exitCode": 101,
+              "evidence": "presale-venue-fork.log"
+            }
+          ],
+          "exitCode": 101,
+          "testsPassed": 0,
+          "testsFailed": 6,
+          "buildDuration": "54m 21s",
+          "testDurationSeconds": 33.87,
+          "priceAssertionsReached": false
+        },
+        {
+          "command": "cargo test --offline --test venue_fork -- --test-threads=1",
+          "workingDirectory": "sui/launchpad/ptb_tests",
+          "result": "fail",
+          "exitCode": 101,
+          "testsPassed": 0,
+          "testsFailed": 3,
+          "buildDurationSeconds": 12.59,
+          "testDurationSeconds": 44.83,
+          "tests": [
+            {
+              "name": "bluefin_with_sui_against_mainnet_bytecode",
+              "result": "fail",
+              "failureVerbatim": "Error: expected option type",
+              "reportLines": [
+                "VENUE_FORK Bluefin snapshot checkpoint 336358066",
+                "VENUE_FORK Bluefin bluefin::new at (0, 3000), (401, 3000), (60, 0), (60, 20001): EInvalidTier, rolled back",
+                "VENUE_FORK Bluefin bluefin::new at (60, 3000): launch records the tier",
+                "VENUE_FORK Bluefin PTB [migrate (pool created, position custodied), migrate again]: launch aborts invalid_launch_lifecycle, nothing committed, launch MigrationReady",
+                "VENUE_FORK Bluefin migrate paying 1 MIST against the live 0 MIST creation fee: Bluefin pool aborts 1039, rolled back"
+              ],
+              "openingPriceReportReached": false
+            },
+            {
+              "name": "cetus_meme_a_with_sui_against_mainnet_bytecode",
+              "result": "fail",
+              "failureVerbatim": "Error: expected option type",
+              "reportLines": [
+                "VENUE_FORK CetusMemeA snapshot checkpoint 336358066",
+                "VENUE_FORK CetusMemeA cetus::new at unregistered tick spacing 7: Cetus config aborts 2, rolled back",
+                "VENUE_FORK CetusMemeA cetus::new at registered but unadmitted tick spacing 60: Cetus factory aborts 8, rolled back",
+                "VENUE_FORK CetusMemeA cetus::new at tick spacing 200 registers fee rate 10000 from Cetus; PoolCreationCap 0x386aff0983b3e66d572615bbfa61b4f5d89332849958437e275c98172ec4166a minted, pair registered, kept under VenueConfig",
+                "VENUE_FORK CetusMemeA PTB [migrate (pool created, position custodied), migrate again]: launch aborts invalid_launch_lifecycle, nothing committed, launch MigrationReady",
+                "VENUE_FORK CetusMemeA migrate with the pool's coin types reversed: EInvalidCoinOrder, rolled back",
+                "VENUE_FORK CetusMemeA migrate naming Meme with dba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC in Cetus order: EWrongCoinPair, rolled back"
+              ],
+              "openingPriceReportReached": false
+            },
+            {
+              "name": "cetus_meme_b_with_usdc_against_mainnet_bytecode",
+              "result": "fail",
+              "failureVerbatim": "Error: expected option type",
+              "reportLines": [
+                "VENUE_FORK CetusMemeB snapshot checkpoint 336358066",
+                "VENUE_FORK CetusMemeB cetus::new at unregistered tick spacing 7: Cetus config aborts 2, rolled back",
+                "VENUE_FORK CetusMemeB cetus::new at registered but unadmitted tick spacing 60: Cetus factory aborts 8, rolled back",
+                "VENUE_FORK CetusMemeB cetus::new at tick spacing 200 registers fee rate 10000 from Cetus; PoolCreationCap 0x66bd6390754b04ecefe8a8248bc996c0b1bdee5b7dbb4e69db98e9ee1ea05fdd minted, pair registered, kept under VenueConfig",
+                "VENUE_FORK CetusMemeB PTB [migrate (pool created, position custodied), migrate again]: launch aborts invalid_launch_lifecycle, nothing committed, launch MigrationReady",
+                "VENUE_FORK CetusMemeB migrate with the pool's coin types reversed: EInvalidCoinOrder, rolled back",
+                "VENUE_FORK CetusMemeB migrate naming Meme with 0000000000000000000000000000000000000000000000000000000000000002::sui::SUI in Cetus order: EWrongCoinPair, rolled back"
+              ],
+              "openingPriceReportReached": false
+            }
+          ]
+        }
+      ],
+      "findings": [
+        {
+          "kind": "runtime fixture setup failure",
+          "detail": "All six presale venue-fork tests fail at Outcome::assert_success (src/lib.rs:215:9) with PublishErrorNonZeroAddress: Publishing module aftermath with non-zero address is not allowed. World::new first publishes the copied vesting package; no presale migration runs. No contract logic or assertion was changed.",
+          "failureVerbatim": "transaction failed: Failure(ExecutionFailure { error: PublishErrorNonZeroAddress, command: Some(0) }) Some(ExecutionError { inner: ExecutionErrorInner { kind: PublishErrorNonZeroAddress, source: Some(\"Publishing module aftermath with non-zero address is not allowed\"), command: Some(0) } })"
+        },
+        {
+          "kind": "launchpad venue gate runtime error",
+          "detail": "All three venue_fork cases return Error: expected option type after their migration negative-route/rollback reports and before the opening-price report. The exact decoding/error origin was not established. This is not a passing migration or price proof.",
+          "failureVerbatim": "Error: expected option type"
+        },
+        {
+          "kind": "static fixture incompatibility",
+          "detail": "presale_venue_fork expects removed blast_presale_admin::AdminRegistry/AdminCap, old monolithic adapter::new signatures, and old Presale/Vault layouts. Current source uses blast_admin ACL, PackageVersion, and PresaleInitializer/finalize. No assertion or contract logic was changed."
+        }
+      ],
+      "correction": "The initial publication error was at presale publication, not vesting. See resolved findings below."
+    },
+    {
+      "result": "focused diagnostic failure",
+      "log": "presale-backtrace.log",
+      "test": "presale_cetus_meme_b_with_usdc_against_mainnet_bytecode",
+      "failureVerbatim": "object 0xf2eaf9f45840edc62c9eb64dc262db36ec0250b90158b67ef50222c29979d323 is missing",
+      "resolution": "Outcome::created scans the live object cache. Read created configuration IDs before wrapping and deleting Bootstrap."
+    },
+    {
+      "result": "6 passed; 1 failed",
+      "log": "presale-venue-fork-fixed.log",
+      "test": "presale_bluefin_with_an_arbitrary_meme_quote_against_mainnet_bytecode",
+      "failureVerbatim": "expected failure Abort { package: 0x2d0084f7d3ca92180dda49897a2733691c1eb6cde71119eedb69af2f0fad6aed, module: \"bluefin\", code: 0 }, got CommandArgumentError { arg_idx: 4, kind: TypeMismatch } in command Some(0)",
+      "resolution": "The foreign-pool negative fixture hardcoded SUI instead of the actual quote type. Use self.quote() to reach the intended same-pair pool-ID mismatch assertion."
+    }
+  ],
+  "migrationPriceOracle": {
+    "oracle": "Python standard-library math.isqrt((coin_b_atoms << 128) // coin_a_atoms)",
+    "source": "Actual migration reports from integration-final.log, before swaps",
+    "checkpoint": 336358066,
+    "cases": [
+      {
+        "test": "presale_bluefin_near_equal_seed_migrates_where_larger_side_fix_aborts",
+        "route": "Bluefin",
+        "coinA": "sale token",
+        "coinB": "quote token",
+        "handOffMemeQuote": [
+          "4611686018427387904",
+          "4611686018427387905"
+        ],
+        "suppliedMemeQuote": [
+          "4611686018427387904",
+          "4611686018427387904"
+        ],
+        "residualMemeQuote": [
+          "0",
+          "1"
+        ],
+        "actualSqrtPrice": "18446744073709551617",
+        "independentSqrtPrice": "18446744073709551617",
+        "exactPriceMatch": true,
+        "exactConservation": true
+      },
+      {
+        "test": "presale_bluefin_with_an_arbitrary_meme_quote_against_mainnet_bytecode",
+        "route": "Bluefin",
+        "coinA": "sale token",
+        "coinB": "quote token",
+        "handOffMemeQuote": [
+          "400000000000000000",
+          "25000000000"
+        ],
+        "suppliedMemeQuote": [
+          "399999999999996730",
+          "24999976652"
+        ],
+        "residualMemeQuote": [
+          "3270",
+          "23348"
+        ],
+        "actualSqrtPrice": "4611686018427387",
+        "independentSqrtPrice": "4611686018427387",
+        "exactPriceMatch": true,
+        "exactConservation": true
+      },
+      {
+        "test": "presale_bluefin_with_sui_against_mainnet_bytecode",
+        "route": "Bluefin",
+        "coinA": "sale token",
+        "coinB": "quote token",
+        "handOffMemeQuote": [
+          "400000000000000000",
+          "25000000000"
+        ],
+        "suppliedMemeQuote": [
+          "399999999999996730",
+          "24999976652"
+        ],
+        "residualMemeQuote": [
+          "3270",
+          "23348"
+        ],
+        "actualSqrtPrice": "4611686018427387",
+        "independentSqrtPrice": "4611686018427387",
+        "exactPriceMatch": true,
+        "exactConservation": true
+      },
+      {
+        "test": "presale_cetus_meme_a_near_equal_seed_migrates_where_larger_side_fix_aborts",
+        "route": "CetusMemeA",
+        "coinA": "sale token",
+        "coinB": "quote token",
+        "handOffMemeQuote": [
+          "4611686018427387904",
+          "4611686018427387905"
+        ],
+        "suppliedMemeQuote": [
+          "4611686018427387904",
+          "4611686018427387904"
+        ],
+        "residualMemeQuote": [
+          "0",
+          "1"
+        ],
+        "actualSqrtPrice": "18446744073709551617",
+        "independentSqrtPrice": "18446744073709551617",
+        "exactPriceMatch": true,
+        "exactConservation": true
+      },
+      {
+        "test": "presale_cetus_meme_a_with_sui_against_mainnet_bytecode",
+        "route": "CetusMemeA",
+        "coinA": "sale token",
+        "coinB": "quote token",
+        "handOffMemeQuote": [
+          "400000000000000000",
+          "25000000000"
+        ],
+        "suppliedMemeQuote": [
+          "400000000000000000",
+          "24999976675"
+        ],
+        "residualMemeQuote": [
+          "0",
+          "23325"
+        ],
+        "actualSqrtPrice": "4611686018427387",
+        "independentSqrtPrice": "4611686018427387",
+        "exactPriceMatch": true,
+        "exactConservation": true
+      },
+      {
+        "test": "presale_cetus_meme_b_near_equal_seed_migrates_where_larger_side_fix_aborts",
+        "route": "CetusMemeB",
+        "coinA": "USDC",
+        "coinB": "sale token",
+        "handOffMemeQuote": [
+          "4611686018427387905",
+          "4611686018427387904"
+        ],
+        "suppliedMemeQuote": [
+          "4611686018427387904",
+          "4611686018427387904"
+        ],
+        "residualMemeQuote": [
+          "1",
+          "0"
+        ],
+        "actualSqrtPrice": "18446744073709551617",
+        "independentSqrtPrice": "18446744073709551617",
+        "exactPriceMatch": true,
+        "exactConservation": true
+      },
+      {
+        "test": "presale_cetus_meme_b_with_usdc_against_mainnet_bytecode",
+        "route": "CetusMemeB",
+        "coinA": "USDC",
+        "coinB": "sale token",
+        "handOffMemeQuote": [
+          "400000000000000000",
+          "25000000"
+        ],
+        "suppliedMemeQuote": [
+          "400000000000000000",
+          "24999263"
+        ],
+        "residualMemeQuote": [
+          "0",
+          "737"
+        ],
+        "actualSqrtPrice": "2333349067485406353943178",
+        "independentSqrtPrice": "2333349067485406353943178",
+        "exactPriceMatch": true,
+        "exactConservation": true
+      },
+      {
+        "test": "bluefin_with_sui_against_mainnet_bytecode",
+        "route": "Bluefin",
+        "coinA": "sale token",
+        "coinB": "quote token",
+        "handOffMemeQuote": [
+          "200000000000000000",
+          "22500000000"
+        ],
+        "suppliedMemeQuote": [
+          "199999999999997194",
+          "22499984338"
+        ],
+        "residualMemeQuote": [
+          "2806",
+          "15662"
+        ],
+        "actualSqrtPrice": "6187226056853392",
+        "independentSqrtPrice": "6187226056853392",
+        "exactPriceMatch": true,
+        "exactConservation": true
+      },
+      {
+        "test": "cetus_meme_a_with_sui_against_mainnet_bytecode",
+        "route": "CetusMemeA",
+        "coinA": "sale token",
+        "coinB": "quote token",
+        "handOffMemeQuote": [
+          "200000000000000000",
+          "22500000000"
+        ],
+        "suppliedMemeQuote": [
+          "200000000000000000",
+          "22499984353"
+        ],
+        "residualMemeQuote": [
+          "0",
+          "15647"
+        ],
+        "actualSqrtPrice": "6187226056853392",
+        "independentSqrtPrice": "6187226056853392",
+        "exactPriceMatch": true,
+        "exactConservation": true
+      },
+      {
+        "test": "cetus_meme_b_with_usdc_against_mainnet_bytecode",
+        "route": "CetusMemeB",
+        "coinA": "USDC",
+        "coinB": "sale token",
+        "handOffMemeQuote": [
+          "200000000000000000",
+          "22500000"
+        ],
+        "suppliedMemeQuote": [
+          "200000000000000000",
+          "22499506"
+        ],
+        "residualMemeQuote": [
+          "0",
+          "494"
+        ],
+        "actualSqrtPrice": "1739175710044370961646609",
+        "independentSqrtPrice": "1739175710044370961646609",
+        "exactPriceMatch": true,
+        "exactConservation": true
+      }
+    ]
+  },
+  "rawLogSha256": {
+    "integration-final.log": "88ce61b36711c11679621dae82951c301706c76f04963f2322c73de2c321b7c4",
+    "presale-venue-fork.log": "4222021bf3ca8ddba6482ffc824c7a39b60601d2064e860cae465aeb84938748",
+    "venue-fork.log": "a395c4626a0e203f8637051f69f6884276dd1cd23d7fc02ecb05766fa7b7c6c5",
+    "presale-venue-fork-fixed.log": "0b95cf9837cc1dfb6e8764b8f59980a1dc6b2bdafbf8b66d48ac9280708d7604",
+    "presale-backtrace.log": "05192a267c76854b077dc370dea5d92fe99fcf77e5684ce2cf8cd88e7d9c877f"
+  }
 }
