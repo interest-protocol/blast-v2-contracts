@@ -216,15 +216,15 @@ public fun allowlisted_eligibility(root: vector<u8>, leaf_count: u64): Eligibili
     EligibilityPolicy::Allowlisted { root, leaf_count }
 }
 
-/// Lifts wallet caps for eligible wallets `starts_after_ms` into the window.
-public fun uncapped_for_eligible(starts_after_ms: u64): UncappedPhase {
-    UncappedPhase { starts_after_ms, access: UncappedAccess::Eligible }
+/// Lifts wallet caps for eligible wallets `start_delay_ms` into the window.
+public fun uncapped_for_eligible(start_delay_ms: u64): UncappedPhase {
+    UncappedPhase { starts_after_ms: start_delay_ms, access: UncappedAccess::Eligible }
 }
 
-/// Opens the sale to any wallet without caps `starts_after_ms` into the window, admitting
+/// Opens the sale to any wallet without caps `start_delay_ms` into the window, admitting
 /// at most `max_participants` wallets in total, each committing at least `min_commitment`.
 public fun uncapped_for_anyone(
-    starts_after_ms: u64,
+    start_delay_ms: u64,
     max_participants: u64,
     min_commitment: u64,
 ): UncappedPhase {
@@ -234,7 +234,7 @@ public fun uncapped_for_anyone(
     );
 
     UncappedPhase {
-        starts_after_ms,
+        starts_after_ms: start_delay_ms,
         access: UncappedAccess::Anyone { max_participants, min_commitment },
     }
 }
@@ -257,16 +257,20 @@ public fun vested_recipient_share(
 
 /// Linear vesting terms. The steps and cliff must fit in `MAX_VESTING_DURATION_MS`, so migration and
 /// claims can always create the schedule. Product limits on the duration belong to creation tooling.
-public fun vesting_terms(cliff_ms: u64, period_ms: u64, periods: u64): VestingTerms {
+public fun vesting_terms(
+    vesting_cliff_delay_ms: u64,
+    vesting_period_duration_ms: u64,
+    periods: u64,
+): VestingTerms {
     assert!(
-        period_ms > 0
+        vesting_period_duration_ms > 0
             && periods > 0
-            && period_ms <= MAX_VESTING_DURATION_MS / periods
-            && cliff_ms <= period_ms * periods,
+            && vesting_period_duration_ms <= MAX_VESTING_DURATION_MS / periods
+            && vesting_cliff_delay_ms <= vesting_period_duration_ms * periods,
         EInvalidVestingTerms,
     );
 
-    VestingTerms { cliff_ms, period_ms, periods }
+    VestingTerms { cliff_ms: vesting_cliff_delay_ms, period_ms: vesting_period_duration_ms, periods }
 }
 
 /// The LP-fee split a sale and its vault pay collected fees under: at most `MAX_FEE_RECIPIENTS`
@@ -392,13 +396,13 @@ public fun set_raise<SaleToken, Quote>(
 public fun set_windows<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
     package_version: &PackageVersion,
-    duration_ms: u64,
-    liquidity_window_ms: u64,
+    commitment_duration_ms: u64,
+    liquidity_window_duration_ms: u64,
 ) {
     package_version.assert_current();
 
-    self.duration_ms = duration_ms;
-    self.liquidity_window_ms = liquidity_window_ms;
+    self.duration_ms = commitment_duration_ms;
+    self.liquidity_window_ms = liquidity_window_duration_ms;
 }
 
 /// Sets who may commit and each wallet's cap.
@@ -423,7 +427,7 @@ public fun set_uncapped_phase<SaleToken, Quote>(
     self.uncapped = option::some(uncapped);
 }
 
-/// Hard-caps the sale at its raise from `starts_after_ms` into the window: zero for the whole
+/// Hard-caps the sale at its raise from `start_delay_ms` into the window: zero for the whole
 /// window, or the uncapped phase's offset to keep an overflowing capped phase before it. With
 /// `closes_when_filled`, anyone may settle the sale once its raise is full under the hard cap;
 /// without it, a full sale waits for the window's end. Without a hard cap, the sale overflows
@@ -431,12 +435,12 @@ public fun set_uncapped_phase<SaleToken, Quote>(
 public fun set_hard_cap<SaleToken, Quote>(
     self: &mut PresaleInitializer<SaleToken, Quote>,
     package_version: &PackageVersion,
-    starts_after_ms: u64,
+    start_delay_ms: u64,
     closes_when_filled: bool,
 ) {
     package_version.assert_current();
 
-    self.hard_cap = option::some(HardCap { starts_after_ms, closes_when_filled });
+    self.hard_cap = option::some(HardCap { starts_after_ms: start_delay_ms, closes_when_filled });
 }
 
 /// Sets how the sale's vault splits every collected LP fee.
@@ -503,8 +507,8 @@ public fun finalize<SaleToken, Quote>(
         participant_vesting,
         raise_target,
         raise_allocations,
-        duration_ms,
-        liquidity_window_ms,
+        duration_ms: commitment_duration_ms,
+        liquidity_window_ms: liquidity_window_duration_ms,
         eligibility,
         uncapped,
         hard_cap,
@@ -523,10 +527,10 @@ public fun finalize<SaleToken, Quote>(
         protocol_fees.token_bps(),
         &recipient_allocations,
     );
-    assert!(duration_ms > 0 && liquidity_window_ms >= MIN_LIQUIDITY_WINDOW_MS, EInvalidWindow);
+    assert!(commitment_duration_ms > 0 && liquidity_window_duration_ms >= MIN_LIQUIDITY_WINDOW_DURATION_MS, EInvalidWindow);
     assert!(eligibility.can_reach(raise_target), EUnreachableRaise);
-    uncapped.do_ref!(|phase| assert_uncapped_phase(phase, duration_ms, eligibility, raise_target));
-    hard_cap.do_ref!(|cap| assert!(cap.starts_after_ms < duration_ms, EInvalidHardCap));
+    uncapped.do_ref!(|phase| assert_uncapped_phase(phase, commitment_duration_ms, eligibility, raise_target));
+    hard_cap.do_ref!(|cap| assert!(cap.starts_after_ms < commitment_duration_ms, EInvalidHardCap));
 
     let (
         token_allocation,
@@ -580,8 +584,8 @@ public fun finalize<SaleToken, Quote>(
         raise_recipients: raise_allocations.recipients(),
         raise_recipient_bps: raise_allocations.bps(),
         raise_recipient_vesting: raise_allocations.vesting_terms(),
-        duration_ms,
-        liquidity_window_ms,
+        duration_ms: commitment_duration_ms,
+        liquidity_window_ms: liquidity_window_duration_ms,
         eligibility,
         uncapped,
         hard_cap,
@@ -602,8 +606,8 @@ public fun finalize<SaleToken, Quote>(
             id,
             presale_cap_id,
             lifecycle: Lifecycle::Pending,
-            duration_ms,
-            liquidity_window_ms,
+            duration_ms: commitment_duration_ms,
+            liquidity_window_ms: liquidity_window_duration_ms,
             start_ms: 0,
             raise_target,
             eligibility,
@@ -631,13 +635,13 @@ public fun finalize<SaleToken, Quote>(
     )
 }
 
-/// Shares a newly created presale and fixes its windows from `start_ms`, or from now once that
+/// Shares a newly created presale and fixes its windows from `commitment_starts_at_ms`, or from now once that
 /// has passed, so a sale can be created ahead of its start. Commitments open at the start; until
 /// then Blast's `FeeAdmin` may change the sale's Blast rates.
 public fun share<SaleToken, Quote>(
     mut self: Presale<SaleToken, Quote>,
     package_version: &PackageVersion,
-    start_ms: u64,
+    commitment_starts_at_ms: u64,
     clock: &Clock,
 ) {
     package_version.assert_current();
@@ -646,22 +650,22 @@ public fun share<SaleToken, Quote>(
 
     // Every deadline is derived from the start, so the share proves each one fits in u64. Closing
     // early only brings the end and the LP deadline forward.
-    let start_ms = start_ms.max(clock.timestamp_ms());
-    let end_ms = start_ms.checked_add(self.duration_ms).destroy_or!(abort EInvalidWindow);
-    let liquidity_deadline_ms = end_ms
+    let commitment_starts_at_ms = commitment_starts_at_ms.max(clock.timestamp_ms());
+    let commitment_ends_at_ms = commitment_starts_at_ms.checked_add(self.duration_ms).destroy_or!(abort EInvalidWindow);
+    let liquidity_deadline_at_ms = commitment_ends_at_ms
         .checked_add(self.liquidity_window_ms)
         .destroy_or!(abort EInvalidWindow);
 
     self.lifecycle = Lifecycle::Open;
-    self.start_ms = start_ms;
+    self.start_ms = commitment_starts_at_ms;
 
     event::emit(PresaleOpened<SaleToken, Quote> {
         presale_id: self.id.to_inner(),
-        start_ms,
-        end_ms,
-        liquidity_deadline_ms,
-        uncapped_from_ms: self.uncapped_from_ms(),
-        hard_cap_from_ms: self.hard_cap_from_ms(),
+        start_ms: commitment_starts_at_ms,
+        end_ms: commitment_ends_at_ms,
+        liquidity_deadline_ms: liquidity_deadline_at_ms,
+        uncapped_from_ms: self.uncapped_starts_at_ms(),
+        hard_cap_from_ms: self.hard_cap_starts_at_ms(),
         partner_id: self.partner_id,
     });
 
@@ -789,7 +793,7 @@ public fun commit_uncapped<SaleToken, Quote>(
 
     self.assert_open(clock);
     assert!(quote_in.value() > 0, EZeroCommitment);
-    assert!(clock.timestamp_ms() >= self.uncapped_from_ms(), EUncappedPhaseNotOpen);
+    assert!(clock.timestamp_ms() >= self.uncapped_starts_at_ms(), EUncappedPhaseNotOpen);
 
     let (max_participants, min_commitment) = anyone_limits(self.uncapped.destroy_some());
     let no_wallet_cap = std::u64::max_value!();
@@ -808,11 +812,11 @@ public fun settle<SaleToken, Quote>(
     package_version.assert_current();
 
     assert!(self.lifecycle == Lifecycle::Open, EInvalidLifecycle);
-    let now_ms = clock.timestamp_ms();
-    assert!(now_ms >= self.end_ms() || self.can_close_early(now_ms), EPresaleNotEnded);
+    let now_at_ms = clock.timestamp_ms();
+    assert!(now_at_ms >= self.commitment_ends_at_ms() || self.can_close_early(now_at_ms), EPresaleNotEnded);
 
     // A sale closing early ends now, so its LP deadline counts from now.
-    if (now_ms < self.end_ms()) self.duration_ms = now_ms - self.start_ms;
+    if (now_at_ms < self.commitment_ends_at_ms()) self.duration_ms = now_at_ms - self.start_ms;
 
     if (self.total_commitments < self.raise_target) {
         self.cancel();
@@ -825,8 +829,8 @@ public fun settle<SaleToken, Quote>(
             accepted_quote: self.raise_target,
             refundable_quote: self.total_commitments - self.raise_target,
             token_allocation: self.token_allocation,
-            end_ms: self.end_ms(),
-            liquidity_deadline_ms: self.liquidity_deadline_ms(),
+            end_ms: self.commitment_ends_at_ms(),
+            liquidity_deadline_ms: self.liquidity_deadline_at_ms(),
         });
     };
 }
@@ -841,7 +845,7 @@ public fun cancel_unlaunched<SaleToken, Quote>(
     package_version.assert_current();
 
     assert!(self.lifecycle == Lifecycle::Funded, EInvalidLifecycle);
-    assert!(clock.timestamp_ms() >= self.liquidity_deadline_ms(), ELiquidityDeadlineNotReached);
+    assert!(clock.timestamp_ms() >= self.liquidity_deadline_at_ms(), ELiquidityDeadlineNotReached);
 
     self.cancel();
 }
@@ -1033,44 +1037,44 @@ public(package) fun pay<Asset>(
 fun assert_open<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, clock: &Clock) {
     assert!(self.lifecycle == Lifecycle::Open, EInvalidLifecycle);
     assert!(clock.timestamp_ms() >= self.start_ms, EPresaleNotStarted);
-    assert!(clock.timestamp_ms() < self.end_ms(), EPresaleEnded);
+    assert!(clock.timestamp_ms() < self.commitment_ends_at_ms(), EPresaleEnded);
 }
 
 // Windows, derived from the start `share` fixed: it proved both sums below fit in u64.
 
 /// The exclusive end of the commitment window.
-fun end_ms<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): u64 {
+fun commitment_ends_at_ms<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): u64 {
     self.start_ms + self.duration_ms
 }
 
 /// From when anyone may cancel a funded sale that has not migrated.
-fun liquidity_deadline_ms<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): u64 {
-    self.end_ms() + self.liquidity_window_ms
+fun liquidity_deadline_at_ms<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): u64 {
+    self.commitment_ends_at_ms() + self.liquidity_window_ms
 }
 
 /// When wallet caps lift: the uncapped phase's offset into the window, which `finalize` bounds
 /// below the duration, or the end of a sale without one. Read only while the sale is open, before
 /// an early close can shorten the duration below it.
-fun uncapped_from_ms<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): u64 {
-    self.uncapped.map_ref!(|phase| self.start_ms + phase.starts_after_ms).destroy_or!(self.end_ms())
+fun uncapped_starts_at_ms<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): u64 {
+    self.uncapped.map_ref!(|phase| self.start_ms + phase.starts_after_ms).destroy_or!(self.commitment_ends_at_ms())
 }
 
 /// When the hard cap takes hold: its offset into the window, which `finalize` bounds below the
 /// duration as created; none for a sale that overflows for its whole window.
-fun hard_cap_from_ms<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): Option<u64> {
+fun hard_cap_starts_at_ms<SaleToken, Quote>(self: &Presale<SaleToken, Quote>): Option<u64> {
     self.hard_cap.map_ref!(|cap| self.start_ms + cap.starts_after_ms)
 }
 
-/// Whether the hard cap holds the sale's commitments to its raise at `now_ms`.
-fun is_hard_capped<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, now_ms: u64): bool {
-    self.hard_cap_from_ms().is_some_and!(|from_ms| now_ms >= *from_ms)
+/// Whether the hard cap holds the sale's commitments to its raise at `now_at_ms`.
+fun is_hard_capped<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, now_at_ms: u64): bool {
+    self.hard_cap_starts_at_ms().is_some_and!(|phase_starts_at_ms| now_at_ms >= *phase_starts_at_ms)
 }
 
 /// Whether the sale may settle before its window ends: its raise is full under a hard cap that
 /// closes the sale when filled, so it can take no more Quote.
-fun can_close_early<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, now_ms: u64): bool {
+fun can_close_early<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, now_at_ms: u64): bool {
     self.hard_cap.is_some_and!(|cap| cap.closes_when_filled)
-        && self.is_hard_capped(now_ms)
+        && self.is_hard_capped(now_at_ms)
         && self.total_commitments >= self.raise_target
 }
 
@@ -1157,11 +1161,11 @@ fun total_amount(payouts: &vector<RecipientPayout>): u64 {
 /// policy's wallets while its minimum over the slots held to it still reaches the raise.
 fun assert_uncapped_phase(
     phase: &UncappedPhase,
-    duration_ms: u64,
+    commitment_duration_ms: u64,
     eligibility: EligibilityPolicy,
     raise_target: u64,
 ) {
-    assert!(phase.starts_after_ms < duration_ms, EInvalidUncappedPhase);
+    assert!(phase.starts_after_ms < commitment_duration_ms, EInvalidUncappedPhase);
     match (phase.access) {
         UncappedAccess::Anyone { max_participants, min_commitment } => {
             assert!(max_participants >= eligibility.participant_bound(), EInvalidUncappedPhase);
@@ -1381,7 +1385,7 @@ fun record_commitment<SaleToken, Quote>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<Quote> {
-    let uncapped = clock.timestamp_ms() >= self.uncapped_from_ms();
+    let uncapped = clock.timestamp_ms() >= self.uncapped_starts_at_ms();
     let hard_capped = self.is_hard_capped(clock.timestamp_ms());
     let max_participants = self.participant_limit(uncapped, max_participants);
     let accepted_quote = self.acceptable_quote(quote_in.value(), hard_capped);
@@ -1654,13 +1658,17 @@ fun pay_or_vest<T>(
         return option::none()
     };
 
-    let VestingTerms { cliff_ms, period_ms, periods } = vesting.destroy_some();
+    let VestingTerms {
+        cliff_ms: vesting_cliff_delay_ms,
+        period_ms: vesting_period_duration_ms,
+        periods,
+    } = vesting.destroy_some();
     let schedule = linear_vesting::new_irrevocable(
         self.split(amount).into_coin(ctx),
         recipient,
         clock.timestamp_ms(),
-        cliff_ms,
-        period_ms,
+        vesting_cliff_delay_ms,
+        vesting_period_duration_ms,
         periods,
         clock,
         ctx,
@@ -1832,8 +1840,8 @@ public fun protocol_fees_changed_fields<SaleToken, Quote>(
 }
 
 #[test_only]
-public fun hard_cap_for_testing(starts_after_ms: u64, closes_when_filled: bool): HardCap {
-    HardCap { starts_after_ms, closes_when_filled }
+public fun hard_cap_for_testing(start_delay_ms: u64, closes_when_filled: bool): HardCap {
+    HardCap { starts_after_ms: start_delay_ms, closes_when_filled }
 }
 
 #[test_only]
@@ -2150,7 +2158,7 @@ const MAX_FEE_RECIPIENTS: u64 = 16;
 /// The shortest LP-migration window. Migration is permissionless, so a funded sale reaches its
 /// refund exit only after a week in which nobody migrated it, and a sale that nobody settled by
 /// its end cannot be settled and cancelled in one transaction inside that week.
-const MIN_LIQUIDITY_WINDOW_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
+const MIN_LIQUIDITY_WINDOW_DURATION_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 
 /// A technical bound on a vesting schedule's duration: from any clock below 2^63 ms, about 292
 /// million years, the schedule's end still fits in u64, so migration cannot overflow creating it.

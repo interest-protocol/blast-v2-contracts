@@ -144,12 +144,12 @@ public fun new_rebalance_policy(
 
 /// Creates immutable price policy from proposed structural bounds.
 ///
-/// `max_price_age_ms` must be positive because the structural policy requires
+/// `max_price_age_duration_ms` must be positive because the structural policy requires
 /// a nonzero historical-age slippage. This check alone does not prove that a
 /// selected value supports the deployed source cadence; that remains a live
-/// integration and simulation gate. `max_price_ahead_ms` may be zero; zero is
+/// integration and simulation gate. `max_price_ahead_duration_ms` may be zero; zero is
 /// the strictest clock-skew policy and rejects the first millisecond after the
-/// reference time. It must not exceed `max_price_age_ms`: clock skew is never
+/// reference time. It must not exceed `max_price_age_duration_ms`: clock skew is never
 /// larger than a staleness budget, and the rule catches a transposed pair
 /// that would otherwise reject every aged update and admit future-dated ones.
 ///
@@ -164,17 +164,17 @@ public fun new_rebalance_policy(
 /// here; this package compiles none of them and validates no value against
 /// live venue state.
 public fun new_price_policy(
-    max_price_age_ms: u64,
-    max_price_ahead_ms: u64,
+    max_price_age_duration_ms: u64,
+    max_price_ahead_duration_ms: u64,
     max_confidence_bps: u64,
     max_mark_divergence_bps: u64,
 ): PricePolicy {
     assert!(
-        max_price_age_ms > 0,
+        max_price_age_duration_ms > 0,
         blast_boosts_core::errors::invalid_max_price_age!(),
     );
     assert!(
-        max_price_ahead_ms <= max_price_age_ms,
+        max_price_ahead_duration_ms <= max_price_age_duration_ms,
         blast_boosts_core::errors::invalid_freshness_window!(),
     );
     assert!(
@@ -187,8 +187,8 @@ public fun new_price_policy(
     );
 
     PricePolicy {
-        max_price_age_ms,
-        max_price_ahead_ms,
+        max_price_age_ms: max_price_age_duration_ms,
+        max_price_ahead_ms: max_price_ahead_duration_ms,
         max_confidence_bps,
         max_mark_divergence_bps,
     }
@@ -357,7 +357,7 @@ public(package) fun assert_nav_cap_valid(self: &RebalancePolicy, nav_cap: u64) {
 
 /// Rejects a source update outside the two-sided freshness window.
 ///
-/// `publish_time_ms` is the source's own update time and `now_ms` is
+/// `price_published_at_ms` is the source's own update time and `now_at_ms` is
 /// the operation's single on-chain time reading, both in milliseconds. An
 /// update older than the staleness budget aborts as stale, and one stamped
 /// further ahead than the skew budget aborts as future-dated. The two failures
@@ -370,12 +370,12 @@ public(package) fun assert_nav_cap_valid(self: &RebalancePolicy, nav_cap: u64) {
 /// updates.
 public(package) fun assert_price_fresh(
     self: &PricePolicy,
-    publish_time_ms: u64,
-    now_ms: u64,
+    price_published_at_ms: u64,
+    now_at_ms: u64,
 ) {
-    let fresh = self.is_price_fresh(publish_time_ms, now_ms);
+    let fresh = self.is_price_fresh(price_published_at_ms, now_at_ms);
 
-    if (publish_time_ms > now_ms) {
+    if (price_published_at_ms > now_at_ms) {
         assert!(fresh, blast_boosts_core::errors::future_price!());
     } else {
         assert!(fresh, blast_boosts_core::errors::stale_price!());
@@ -537,18 +537,18 @@ fun is_execution_within_emergency_max_slippage(
 /// Returns whether a source update lies inside the two-sided freshness window.
 ///
 /// The admitted window is the closed interval
-/// `[now_ms - max_price_age_ms, now_ms + max_price_ahead_ms]`.
+/// `[now_at_ms - self.max_price_age_ms, now_at_ms + self.max_price_ahead_ms]`.
 /// Unlike `assert_price_fresh`, this predicate never aborts: health may report
 /// a stale or future-stamped source without changing lifecycle.
 fun is_price_fresh(
     self: &PricePolicy,
-    publish_time_ms: u64,
-    now_ms: u64,
+    price_published_at_ms: u64,
+    now_at_ms: u64,
 ): bool {
-    if (publish_time_ms > now_ms) {
-        publish_time_ms - now_ms <= self.max_price_ahead_ms
+    if (price_published_at_ms > now_at_ms) {
+        price_published_at_ms - now_at_ms <= self.max_price_ahead_ms
     } else {
-        now_ms - publish_time_ms <= self.max_price_age_ms
+        now_at_ms - price_published_at_ms <= self.max_price_age_ms
     }
 }
 
@@ -674,8 +674,8 @@ public fun is_execution_within_emergency_max_slippage_for_testing(self: &Rebalan
 }
 
 #[test_only]
-public fun is_price_fresh_for_testing(self: &PricePolicy, publish_time_ms: u64, now_ms: u64): bool {
-    self.is_price_fresh(publish_time_ms, now_ms)
+public fun is_price_fresh_for_testing(self: &PricePolicy, price_published_at_ms: u64, now_at_ms: u64): bool {
+    self.is_price_fresh(price_published_at_ms, now_at_ms)
 }
 
 #[test_only]

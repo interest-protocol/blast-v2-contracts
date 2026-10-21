@@ -118,12 +118,12 @@ public fun sell_and_redeem_shutdown<Product, Collateral, Meme>(
     vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
     minimum_cash: u64,
-    deadline: u64,
+    deadline_at_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<Collateral> {
     let shares = market.sell(version, runtime, meme, minimum_shares, ctx);
-    vault.redeem_shutdown(protocol, shares, minimum_cash, deadline, clock, ctx)
+    vault.redeem_shutdown(protocol, shares, minimum_cash, deadline_at_ms, clock, ctx)
 }
 
 /// Typechecks issuance under a published product tag, which carries no
@@ -154,7 +154,7 @@ public fun mint_and_buy<Product, Collateral, Meme>(
     collateral_oracle: &PriceFeedStorage,
     cash: Coin<Collateral>,
     minimum_shares: u64,
-    deadline: u64,
+    deadline_at_ms: u64,
     market: &mut Launch<Meme, BlastBoost<Product>>,
     version: &PackageVersion,
     runtime: &RuntimeConfig,
@@ -164,7 +164,7 @@ public fun mint_and_buy<Product, Collateral, Meme>(
 ): (Coin<Meme>, Coin<BlastBoost<Product>>) {
     let (shares, clearing_house) = operations::mint(vault, protocol, account, registry, clearing_house,
         base_oracle, collateral_oracle, cash,
-        minimum_shares, deadline, clock, ctx);
+        minimum_shares, deadline_at_ms, clock, ctx);
     let (meme, refund) = market.buy(version, runtime, shares, minimum_meme, ctx);
     clearing_house.share();
     (meme, refund)
@@ -185,14 +185,14 @@ public fun sell_and_redeem<Product, Collateral, Meme>(
     base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage,
     minimum_cash: u64,
-    deadline: u64,
+    deadline_at_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<Collateral> {
     let shares = market.sell(version, runtime, meme, minimum_shares, ctx);
     let (cash, clearing_house) = operations::redeem(vault, protocol, account, registry, clearing_house,
         base_oracle, collateral_oracle, shares,
-        minimum_cash, deadline, clock, ctx);
+        minimum_cash, deadline_at_ms, clock, ctx);
     clearing_house.share();
     cash
 }
@@ -209,17 +209,17 @@ public fun mint_and_redeem<Product, Collateral>(
     cash: Coin<Collateral>,
     minimum_shares: u64,
     minimum_cash: u64,
-    deadline: u64,
+    deadline_at_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<Collateral> {
     let (shares, clearing_house) = operations::mint(
         vault, protocol, account, registry, clearing_house, base_oracle, collateral_oracle,
-        cash, minimum_shares, deadline, clock, ctx,
+        cash, minimum_shares, deadline_at_ms, clock, ctx,
     );
     let (cash, clearing_house) = operations::redeem(
         vault, protocol, account, registry, clearing_house, base_oracle, collateral_oracle,
-        shares, minimum_cash, deadline, clock, ctx,
+        shares, minimum_cash, deadline_at_ms, clock, ctx,
     );
     clearing_house.share();
     cash

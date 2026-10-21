@@ -150,7 +150,7 @@ Value constructors (*anyone*, pure):
 
 - `blast_presale::bps::new(value)` builds each rate; it aborts with
   `blast_presale::bps::EInvalidBps` above 10,000.
-- `blast_presale::blast_presale::vesting_terms(cliff_ms, period_ms, periods)` returns a
+- `blast_presale::blast_presale::vesting_terms(vesting_cliff_delay_ms, vesting_period_duration_ms, periods)` returns a
   `blast_presale::blast_presale::VestingTerms`.
 - `blast_presale::blast_presale::recipient_share(recipient, bps)` or
   `blast_presale::blast_presale::vested_recipient_share(recipient, bps, terms)` build one share. Gather them with
@@ -204,7 +204,7 @@ Steps, type arguments `<Meme, Quote>` throughout:
    - `blast_presale::blast_presale::set_token_allocations(initializer, token_allocation_bps,
      liquidity_token_allocation_bps, recipient_allocations)`.
    - `blast_presale::blast_presale::set_raise(initializer, raise_target, raise_allocations)`.
-   - `blast_presale::blast_presale::set_windows(initializer, duration_ms, liquidity_window_ms)`.
+   - `blast_presale::blast_presale::set_windows(initializer, commitment_duration_ms, liquidity_window_duration_ms)`.
    - `blast_presale::blast_presale::set_eligibility(initializer, eligibility)`.
    - `blast_presale::blast_presale::set_fee_split(initializer, fee_split)`.
 3. Optional setters:
@@ -212,7 +212,7 @@ Steps, type arguments `<Meme, Quote>` throughout:
      that buyer's claim. Without it, claims pay tokens out at once.
    - `blast_presale::blast_presale::set_uncapped_phase(initializer, phase)`: lifts wallet caps from the phase's
      start. Without it, caps hold for the whole window.
-   - `blast_presale::blast_presale::set_hard_cap(initializer, starts_after_ms, closes_when_filled)`: holds the
+   - `blast_presale::blast_presale::set_hard_cap(initializer, start_delay_ms, closes_when_filled)`: holds the
      sale to its raise from that point (below). Without it, the sale overflows for its whole window.
    - `blast_presale::blast_presale::set_partner(initializer, creation_policy, partner, clock)`: names a
      `blast_partners::blast_partners::Partner` the `CreationPolicy` currently accepts. This is the only
@@ -235,8 +235,8 @@ Steps, type arguments `<Meme, Quote>` throughout:
    Aftermath sale finalized through `blast_presale::blast_presale::finalize` instead has no
    reservation, can never migrate, and refunds after its liquidity deadline.
 5. Optional, Blast admin only (`FeeAdmin`): `blast_presale::blast_presale::set_protocol_fees` on the pending sale.
-6. `blast_presale::blast_presale::share(presale, start_ms, clock)`, same caller, fixes the windows and shares the
-   sale. The start is `max(start_ms, now)`, so a sale can be published ahead of its start. Emits
+6. `blast_presale::blast_presale::share(presale, commitment_starts_at_ms, clock)`, same caller, fixes the windows and shares the
+   sale. The start is `max(commitment_starts_at_ms, now)`, so a sale can be published ahead of its start. Emits
    `blast_presale::blast_presale::PresaleOpened`.
 7. Aftermath only: `blast_presale::aftermath::share(pool_creation)` shares the reservation
    `finalize` returned; the PTB cannot end holding it.
@@ -254,7 +254,7 @@ Settings:
 | `participant_vesting` | Optional `VestingTerms` for every buyer's tokens. |
 | `raise_target` | Quote the sale must raise, atomic units, > 0. |
 | `raise_allocations` | Up to 64 raise recipients paid in Quote at migration, optionally vested. Their BPS plus Blast's raise rate must stay below 10,000; the LP keeps the rest. |
-| `duration_ms` | Commitment window length, > 0. |
+| `duration_ms` | Commitment window length, > 0; set with `commitment_duration_ms`. |
 | `liquidity_window_ms` | Time after the window before anyone may cancel an unmigrated funded sale; at least 7 days. |
 | `eligibility` | `EligibilityPolicy::Open` or `EligibilityPolicy::Allowlisted` (below). |
 | uncapped phase | Optional `blast_presale::blast_presale::UncappedPhase` (below). |
@@ -1005,7 +1005,7 @@ Create (*cap holder*, `blast_aftermath_dao_presale::blast_aftermath_dao_presale:
    migrator (it reads `blast_presale::blast_presale::migration_witness`).
 6. Optional `blast_presale::blast_presale::set_protocol_fees(...)` to change this sale's Blast rates, which needs
    Blast's presale `FeeAdmin` signed in within the same transaction; then
-   `blast_presale::blast_presale::share(presale, start_ms, clock)`.
+   `blast_presale::blast_presale::share(presale, commitment_starts_at_ms, clock)`.
 
 Migrate (*anyone*, while `Funded`):
 

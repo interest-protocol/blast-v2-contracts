@@ -174,11 +174,11 @@ public fun set_lp_fee_split<Meme, Quote>(
 public fun set_opening_round<Meme, Quote>(
     self: &mut LaunchInitializer<Meme, Quote>,
     package_version: &PackageVersion,
-    opening_round_ms: u64,
+    opening_round_duration_ms: u64,
 ) {
     package_version.assert_current();
 
-    self.opening_round_ms = opening_round_ms;
+    self.opening_round_ms = opening_round_duration_ms;
 }
 
 /// Names the launch's Blast partner, one new launches may name. From `finalize` on it is the
@@ -222,7 +222,7 @@ public fun finalize<Meme, Quote>(
         graduation_target,
         allocation_plan,
         lp_fee_split,
-        opening_round_ms,
+        opening_round_ms: opening_round_duration_ms,
         partner_id,
     } = self;
 
@@ -234,9 +234,9 @@ public fun finalize<Meme, Quote>(
     let allocation_plan = allocation_plan.destroy_some().add_protocol(config.protocol_allocation());
     assert!(virtual_quote > 0, blast_fun::errors::invalid_virtual_quote!());
     assert!(
-        opening_round_ms == 0 || (
-            opening_round_ms >= constants::min_opening_round_ms!()
-                && opening_round_ms <= constants::max_opening_round_ms!()
+        opening_round_duration_ms == 0 || (
+            opening_round_duration_ms >= constants::min_opening_round_ms!()
+                && opening_round_duration_ms <= constants::max_opening_round_ms!()
         ),
         blast_fun::errors::invalid_opening_round!(),
     );
@@ -257,9 +257,9 @@ public fun finalize<Meme, Quote>(
 
     let launch = Launch {
         id: object::new(ctx),
-        lifecycle: if (opening_round_ms == 0) Lifecycle::Live else Lifecycle::OpeningRound,
+        lifecycle: if (opening_round_duration_ms == 0) Lifecycle::Live else Lifecycle::OpeningRound,
         public_start_ms: option::none(),
-        opening_round_ms,
+        opening_round_ms: opening_round_duration_ms,
         opening_round_bids: 0,
         opening_round_quote: balance::zero(),
         opening_round_meme: balance::zero(),
@@ -316,10 +316,10 @@ public fun share<Meme, Quote>(
     package_version.assert_current();
     assert!(self.public_start_ms.is_none(), blast_fun::errors::invalid_launch_lifecycle!());
 
-    let public_start_ms = clock.timestamp_ms();
-    self.public_start_ms = option::some(public_start_ms);
+    let public_starts_at_ms = clock.timestamp_ms();
+    self.public_start_ms = option::some(public_starts_at_ms);
 
-    events::launch_shared(self.id.to_inner(), public_start_ms);
+    events::launch_shared(self.id.to_inner(), public_starts_at_ms);
 
     transfer::share_object(self);
 }
@@ -886,9 +886,9 @@ fun pay_treasury<T>(fee: Balance<T>, treasury: address, ctx: &mut TxContext) {
 
 /// Whether the opening round has ended; never before share.
 fun has_opening_round_ended<Meme, Quote>(self: &Launch<Meme, Quote>, clock: &Clock): bool {
-    let opening_round_ms = self.opening_round_ms;
+    let opening_round_duration_ms = self.opening_round_ms;
 
-    self.public_start_ms.is_some_and!(|start_ms| clock.timestamp_ms() >= *start_ms + opening_round_ms)
+    self.public_start_ms.is_some_and!(|opening_round_starts_at_ms| clock.timestamp_ms() >= *opening_round_starts_at_ms + opening_round_duration_ms)
 }
 
 // === Test-Only Functions ===

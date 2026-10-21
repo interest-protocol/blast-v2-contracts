@@ -103,8 +103,8 @@ set_windows_body="$(sed -n '/^public fun set_windows</,/^}/p' <<<"$presale_produ
 settle_body="$(sed -n '/^public fun settle</,/^}/p' <<<"$presale_production")"
 [ "$(rg -c 'self\.duration_ms = ' <<<"$presale_production")" == 2 ] \
   && rg -q '^    self: &mut PresaleInitializer<SaleToken, Quote>,$' <<<"$set_windows_body" \
-  && rg -q '^    self\.duration_ms = duration_ms;$' <<<"$set_windows_body" \
-  && rg -q 'self\.duration_ms = now_ms - self\.start_ms;$' <<<"$settle_body" \
+  && rg -q '^    self\.duration_ms = commitment_duration_ms;$' <<<"$set_windows_body" \
+  && rg -q 'self\.duration_ms = now_at_ms - self\.start_ms;$' <<<"$settle_body" \
   || fail "Only settle, closing a sale early, may shorten its window."
 
 # 5. Aftermath's vault seams (ADR 0116): a vault built before its position, the one call that

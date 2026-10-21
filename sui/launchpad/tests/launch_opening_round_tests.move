@@ -35,13 +35,13 @@ const MEME_FEE_BPS: u64 = 250;
 /// Eighty percent of the nine-decimal supply of 10^18 atoms.
 const CURVE_MEME: u64 = 800_000_000__000_000_000;
 
-const PUBLIC_START_MS: u64 = 1_000;
+const PUBLIC_STARTS_AT_MS: u64 = 1_000;
 
-const MIN_ROUND_MS: u64 = 60_000;
+const MIN_ROUND_DURATION_MS: u64 = 60_000;
 
-const MAX_ROUND_MS: u64 = 300_000;
+const MAX_ROUND_DURATION_MS: u64 = 300_000;
 
-const ROUND_END_MS: u64 = 61_000;
+const ROUND_ENDS_AT_MS: u64 = 61_000;
 
 const ALICE_BID: u64 = 1_000_000;
 
@@ -84,11 +84,11 @@ fun zero_opening_round_starts_live() {
 #[test]
 fun shortest_opening_round_is_accepted() {
     let mut fixture = start();
-    let launch = fixture.new_launch(MIN_ROUND_MS);
+    let launch = fixture.new_launch(MIN_ROUND_DURATION_MS);
 
-    assert_launch_created(object::id(&launch), MIN_ROUND_MS);
+    assert_launch_created(object::id(&launch), MIN_ROUND_DURATION_MS);
     assert!(launch.is_opening_round_for_testing());
-    assert_eq!(launch.opening_round_ms_for_testing(), MIN_ROUND_MS);
+    assert_eq!(launch.opening_round_ms_for_testing(), MIN_ROUND_DURATION_MS);
     destroy(launch);
     fixture.end();
 }
@@ -96,9 +96,9 @@ fun shortest_opening_round_is_accepted() {
 #[test]
 fun longest_opening_round_is_accepted() {
     let mut fixture = start();
-    let launch = fixture.new_launch(MAX_ROUND_MS);
+    let launch = fixture.new_launch(MAX_ROUND_DURATION_MS);
 
-    assert_launch_created(object::id(&launch), MAX_ROUND_MS);
+    assert_launch_created(object::id(&launch), MAX_ROUND_DURATION_MS);
     assert!(launch.is_opening_round_for_testing());
     destroy(launch);
     fixture.end();
@@ -107,7 +107,7 @@ fun longest_opening_round_is_accepted() {
 #[test, expected_failure(abort_code = blast_fun::errors::EInvalidOpeningRound, location = blast_fun::launch)]
 fun opening_round_below_the_minimum_is_rejected() {
     let mut fixture = start();
-    let launch = fixture.new_launch(MIN_ROUND_MS - 1);
+    let launch = fixture.new_launch(MIN_ROUND_DURATION_MS - 1);
 
     destroy(launch);
     fixture.end();
@@ -116,7 +116,7 @@ fun opening_round_below_the_minimum_is_rejected() {
 #[test, expected_failure(abort_code = blast_fun::errors::EInvalidOpeningRound, location = blast_fun::launch)]
 fun opening_round_above_the_maximum_is_rejected() {
     let mut fixture = start();
-    let launch = fixture.new_launch(MAX_ROUND_MS + 1);
+    let launch = fixture.new_launch(MAX_ROUND_DURATION_MS + 1);
 
     destroy(launch);
     fixture.end();
@@ -165,7 +165,7 @@ fun invalid_opening_round_aborts_before_ticket_custody_moves() {
 #[test]
 fun creator_and_public_bids_accumulate_per_bidder() {
     let mut fixture = start();
-    let mut launch = fixture.new_launch(MIN_ROUND_MS);
+    let mut launch = fixture.new_launch(MIN_ROUND_DURATION_MS);
     fixture.join_before_share(&mut launch, ALICE_BID);
     let launch_id = object::id(&launch);
 
@@ -198,8 +198,8 @@ fun creator_and_public_bids_accumulate_per_bidder() {
 #[test]
 fun join_one_millisecond_before_the_end_is_accepted() {
     let mut fixture = start();
-    fixture.open(MIN_ROUND_MS);
-    fixture.set_time(ROUND_END_MS - 1);
+    fixture.open(MIN_ROUND_DURATION_MS);
+    fixture.set_time(ROUND_ENDS_AT_MS - 1);
     fixture.join(ALICE, ALICE_BID);
     fixture.next_tx!(ALICE, |f| {
         let launch = f.take_launch();
@@ -213,8 +213,8 @@ fun join_one_millisecond_before_the_end_is_accepted() {
 #[test, expected_failure(abort_code = blast_fun::errors::EOpeningRoundEnded, location = blast_fun::launch)]
 fun join_at_the_exact_end_is_rejected() {
     let mut fixture = start();
-    fixture.open(MIN_ROUND_MS);
-    fixture.set_time(ROUND_END_MS);
+    fixture.open(MIN_ROUND_DURATION_MS);
+    fixture.set_time(ROUND_ENDS_AT_MS);
 
     fixture.join(ALICE, ALICE_BID);
     fixture.end();
@@ -223,8 +223,8 @@ fun join_at_the_exact_end_is_rejected() {
 #[test, expected_failure(abort_code = blast_fun::errors::EOpeningRoundEnded, location = blast_fun::launch)]
 fun an_ended_round_precedes_a_zero_bid() {
     let mut fixture = start();
-    fixture.open(MIN_ROUND_MS);
-    fixture.set_time(ROUND_END_MS);
+    fixture.open(MIN_ROUND_DURATION_MS);
+    fixture.set_time(ROUND_ENDS_AT_MS);
 
     fixture.join(ALICE, 0);
     fixture.end();
@@ -233,7 +233,7 @@ fun an_ended_round_precedes_a_zero_bid() {
 #[test, expected_failure(abort_code = blast_fun::errors::EZeroOpeningRoundBid, location = blast_fun::launch)]
 fun zero_bid_is_rejected() {
     let mut fixture = start();
-    fixture.open(MIN_ROUND_MS);
+    fixture.open(MIN_ROUND_DURATION_MS);
 
     fixture.join(ALICE, 0);
     fixture.end();
@@ -251,8 +251,8 @@ fun join_without_an_opening_round_is_rejected() {
 #[test, expected_failure(abort_code = blast_fun::errors::EInvalidLaunchLifecycle, location = blast_fun::launch)]
 fun join_after_settlement_is_rejected() {
     let mut fixture = start();
-    fixture.open(MIN_ROUND_MS);
-    fixture.set_time(ROUND_END_MS);
+    fixture.open(MIN_ROUND_DURATION_MS);
+    fixture.set_time(ROUND_ENDS_AT_MS);
     fixture.settle(KEEPER);
 
     fixture.join(ALICE, ALICE_BID);
@@ -264,7 +264,7 @@ fun join_after_settlement_is_rejected() {
 #[test, expected_failure(abort_code = blast_fun::errors::EInvalidLaunchLifecycle, location = blast_fun::launch)]
 fun creator_cannot_buy_before_share_with_an_opening_round() {
     let mut fixture = start();
-    let mut launch = fixture.new_launch(MIN_ROUND_MS);
+    let mut launch = fixture.new_launch(MIN_ROUND_DURATION_MS);
     let quote = coin::mint_for_testing<TEST_QUOTE>(ALICE_BID, fixture.ctx!());
     let (meme, refund) = launch.buy(
         &fixture.package_version,
@@ -283,7 +283,7 @@ fun creator_cannot_buy_before_share_with_an_opening_round() {
 #[test, expected_failure(abort_code = blast_fun::errors::EInvalidLaunchLifecycle, location = blast_fun::launch)]
 fun buy_during_the_round_is_rejected() {
     let mut fixture = start();
-    fixture.open(MIN_ROUND_MS);
+    fixture.open(MIN_ROUND_DURATION_MS);
 
     fixture.buy(ALICE, ALICE_BID, 1);
     fixture.end();
@@ -292,8 +292,8 @@ fun buy_during_the_round_is_rejected() {
 #[test, expected_failure(abort_code = blast_fun::errors::EInvalidLaunchLifecycle, location = blast_fun::launch)]
 fun buy_after_the_end_but_before_settlement_is_rejected() {
     let mut fixture = start();
-    fixture.open(MIN_ROUND_MS);
-    fixture.set_time(ROUND_END_MS);
+    fixture.open(MIN_ROUND_DURATION_MS);
+    fixture.set_time(ROUND_ENDS_AT_MS);
 
     fixture.buy(ALICE, ALICE_BID, 1);
     fixture.end();
@@ -302,7 +302,7 @@ fun buy_after_the_end_but_before_settlement_is_rejected() {
 #[test, expected_failure(abort_code = blast_fun::errors::EInvalidLaunchLifecycle, location = blast_fun::launch)]
 fun sell_during_the_round_is_rejected() {
     let mut fixture = start();
-    fixture.open(MIN_ROUND_MS);
+    fixture.open(MIN_ROUND_DURATION_MS);
     fixture.next_tx!(ALICE, |f| {
         let mut launch = f.take_launch();
         let meme = coin::mint_for_testing<LAUNCH_OPENING_ROUND_TESTS>(1, f.ctx!());
@@ -317,9 +317,9 @@ fun sell_during_the_round_is_rejected() {
 #[test, expected_failure(abort_code = blast_fun::errors::EInvalidLaunchLifecycle, location = blast_fun::launch)]
 fun delivery_before_settlement_is_rejected() {
     let mut fixture = start();
-    fixture.open(MIN_ROUND_MS);
+    fixture.open(MIN_ROUND_DURATION_MS);
     fixture.join(ALICE, ALICE_BID);
-    fixture.set_time(ROUND_END_MS);
+    fixture.set_time(ROUND_ENDS_AT_MS);
 
     fixture.deliver(KEEPER, ALICE);
     fixture.end();
@@ -330,8 +330,8 @@ fun delivery_before_settlement_is_rejected() {
 #[test, expected_failure(abort_code = blast_fun::errors::EOpeningRoundNotEnded, location = blast_fun::launch)]
 fun settle_one_millisecond_before_the_end_is_rejected() {
     let mut fixture = start();
-    fixture.open(MIN_ROUND_MS);
-    fixture.set_time(ROUND_END_MS - 1);
+    fixture.open(MIN_ROUND_DURATION_MS);
+    fixture.set_time(ROUND_ENDS_AT_MS - 1);
 
     fixture.settle(KEEPER);
     fixture.end();
@@ -340,8 +340,8 @@ fun settle_one_millisecond_before_the_end_is_rejected() {
 #[test, expected_failure(abort_code = blast_fun::errors::EOpeningRoundNotEnded, location = blast_fun::launch)]
 fun settle_before_share_is_rejected() {
     let mut fixture = start();
-    let mut launch = fixture.new_launch(MIN_ROUND_MS);
-    fixture.set_time(ROUND_END_MS);
+    let mut launch = fixture.new_launch(MIN_ROUND_DURATION_MS);
+    fixture.set_time(ROUND_ENDS_AT_MS);
 
     launch.settle_opening_round(&fixture.package_version, &fixture.runtime_config, &fixture.clock);
     destroy(launch);
@@ -360,8 +360,8 @@ fun settle_without_an_opening_round_is_rejected() {
 #[test, expected_failure(abort_code = blast_fun::errors::EInvalidLaunchLifecycle, location = blast_fun::launch)]
 fun second_settlement_is_rejected() {
     let mut fixture = start();
-    fixture.open(MIN_ROUND_MS);
-    fixture.set_time(ROUND_END_MS);
+    fixture.open(MIN_ROUND_DURATION_MS);
+    fixture.set_time(ROUND_ENDS_AT_MS);
     fixture.settle(KEEPER);
 
     fixture.settle(KEEPER);
@@ -371,10 +371,10 @@ fun second_settlement_is_rejected() {
 #[test]
 fun settlement_at_the_end_buys_once_with_the_whole_pot_and_opens_trading() {
     let mut fixture = start();
-    let launch_id = fixture.open(MIN_ROUND_MS);
+    let launch_id = fixture.open(MIN_ROUND_DURATION_MS);
     fixture.join(ALICE, ALICE_BID);
     fixture.join(BOB, BOB_BID);
-    fixture.set_time(ROUND_END_MS);
+    fixture.set_time(ROUND_ENDS_AT_MS);
     fixture.settle(KEEPER);
     let pot = ALICE_BID + BOB_BID;
     let (quote_fee, meme_out_gross, meme_fee, meme_out_net) = curve::quote_buy(
@@ -420,8 +420,8 @@ fun settlement_at_the_end_buys_once_with_the_whole_pot_and_opens_trading() {
 #[test]
 fun empty_round_settles_live_without_a_purchase() {
     let mut fixture = start();
-    let launch_id = fixture.open(MIN_ROUND_MS);
-    fixture.set_time(ROUND_END_MS);
+    let launch_id = fixture.open(MIN_ROUND_DURATION_MS);
+    fixture.set_time(ROUND_ENDS_AT_MS);
     fixture.settle(KEEPER);
 
     assert_eq!(event::events_by_type<Event<Bought>>().length(), 0);
@@ -442,9 +442,9 @@ fun empty_round_settles_live_without_a_purchase() {
 #[test]
 fun pot_too_small_to_buy_is_refunded_whole() {
     let mut fixture = start();
-    let launch_id = fixture.open(MIN_ROUND_MS);
+    let launch_id = fixture.open(MIN_ROUND_DURATION_MS);
     fixture.join(ALICE, 1);
-    fixture.set_time(ROUND_END_MS);
+    fixture.set_time(ROUND_ENDS_AT_MS);
     fixture.settle(KEEPER);
 
     assert_eq!(event::events_by_type<Event<Bought>>().length(), 0);
@@ -473,10 +473,10 @@ fun pot_too_small_to_buy_is_refunded_whole() {
 #[test]
 fun pot_past_the_target_graduates_and_refunds_the_excess_pro_rata() {
     let mut fixture = start();
-    fixture.open(MIN_ROUND_MS);
+    fixture.open(MIN_ROUND_DURATION_MS);
     fixture.join(ALICE, 10_000_000);
     fixture.join(BOB, 30_000_000);
-    fixture.set_time(ROUND_END_MS);
+    fixture.set_time(ROUND_ENDS_AT_MS);
     fixture.settle(KEEPER);
     let (quote_in_gross, excess) = curve::cap_buy_quote_input(
         0,
@@ -529,12 +529,12 @@ fun pot_past_the_target_graduates_and_refunds_the_excess_pro_rata() {
 fun terminal_zero_output_opening_round_graduates_and_delivers_only_excess_quote() {
     let mut fixture = start();
     let ticket = fixture.new_ticket();
-    let launch = fixture.intake(ticket, plan(), MIN_ROUND_MS, 1_000_000_000_000_000_000, 1);
+    let launch = fixture.intake(ticket, plan(), MIN_ROUND_DURATION_MS, 1_000_000_000_000_000_000, 1);
     let launch_id = object::id(&launch);
     fixture.share(launch);
     fixture.join(ALICE, 40);
     fixture.join(BOB, 60);
-    fixture.set_time(ROUND_END_MS);
+    fixture.set_time(ROUND_ENDS_AT_MS);
     fixture.settle(KEEPER);
 
     assert_eq!(
@@ -581,10 +581,10 @@ fun terminal_zero_output_opening_round_graduates_and_delivers_only_excess_quote(
 #[test]
 fun deliveries_pay_each_bidder_the_same_price_and_the_last_takes_the_remainder() {
     let mut fixture = start();
-    let launch_id = fixture.open(MIN_ROUND_MS);
+    let launch_id = fixture.open(MIN_ROUND_DURATION_MS);
     fixture.join(ALICE, ALICE_BID);
     fixture.join(BOB, BOB_BID);
-    fixture.set_time(ROUND_END_MS);
+    fixture.set_time(ROUND_ENDS_AT_MS);
     fixture.settle(KEEPER);
     let (_, _, _, meme) = curve::quote_buy(
         CURVE_MEME,
@@ -632,10 +632,10 @@ fun deliveries_pay_each_bidder_the_same_price_and_the_last_takes_the_remainder()
 #[test]
 fun reversing_the_delivery_order_moves_at_most_rounding_dust() {
     let mut fixture = start();
-    fixture.open(MIN_ROUND_MS);
+    fixture.open(MIN_ROUND_DURATION_MS);
     fixture.join(ALICE, ALICE_BID);
     fixture.join(BOB, BOB_BID);
-    fixture.set_time(ROUND_END_MS);
+    fixture.set_time(ROUND_ENDS_AT_MS);
     fixture.settle(KEEPER);
     let (_, _, _, meme) = curve::quote_buy(
         CURVE_MEME,
@@ -664,9 +664,9 @@ fun reversing_the_delivery_order_moves_at_most_rounding_dust() {
 #[test]
 fun delivery_after_migration_still_pays_the_bidder() {
     let mut fixture = start();
-    fixture.open(MIN_ROUND_MS);
+    fixture.open(MIN_ROUND_DURATION_MS);
     fixture.join(ALICE, 30_000_000);
-    fixture.set_time(ROUND_END_MS);
+    fixture.set_time(ROUND_ENDS_AT_MS);
     fixture.settle(KEEPER);
     fixture.next_tx!(KEEPER, |f| {
         let mut launch = f.take_launch();
@@ -694,9 +694,9 @@ fun delivery_after_migration_still_pays_the_bidder() {
 #[test, expected_failure(abort_code = sui::dynamic_field::EFieldDoesNotExist, location = sui::dynamic_field)]
 fun second_delivery_to_a_bidder_aborts() {
     let mut fixture = start();
-    fixture.open(MIN_ROUND_MS);
+    fixture.open(MIN_ROUND_DURATION_MS);
     fixture.join(ALICE, ALICE_BID);
-    fixture.set_time(ROUND_END_MS);
+    fixture.set_time(ROUND_ENDS_AT_MS);
     fixture.settle(KEEPER);
     fixture.deliver(KEEPER, ALICE);
 
@@ -707,9 +707,9 @@ fun second_delivery_to_a_bidder_aborts() {
 #[test, expected_failure(abort_code = sui::dynamic_field::EFieldDoesNotExist, location = sui::dynamic_field)]
 fun delivery_to_an_address_without_a_bid_aborts() {
     let mut fixture = start();
-    fixture.open(MIN_ROUND_MS);
+    fixture.open(MIN_ROUND_DURATION_MS);
     fixture.join(ALICE, ALICE_BID);
-    fixture.set_time(ROUND_END_MS);
+    fixture.set_time(ROUND_ENDS_AT_MS);
     fixture.settle(KEEPER);
 
     fixture.deliver(KEEPER, BOB);
@@ -765,7 +765,7 @@ fun start(): OpeningRoundFixture {
     launch_config::init_for_testing(scenario.ctx());
     let runtime_config = runtime_config::new_disabled_for_testing(scenario.ctx());
     let mut clock = clock::create_for_testing(scenario.ctx());
-    clock.set_for_testing(PUBLIC_START_MS);
+    clock.set_for_testing(PUBLIC_STARTS_AT_MS);
 
     scenario.next_tx(PROTOCOL_ADMIN);
     let mut config = scenario.take_shared<LaunchConfig>();
@@ -816,7 +816,7 @@ fun intake(
     self: &mut OpeningRoundFixture,
     ticket: LaunchTicket<LAUNCH_OPENING_ROUND_TESTS>,
     plan: AllocationPlan,
-    opening_round_ms: u64,
+    opening_round_duration_ms: u64,
     virtual_quote: u64,
     target: u64,
 ): Launch<LAUNCH_OPENING_ROUND_TESTS, TEST_QUOTE> {
@@ -838,7 +838,7 @@ fun intake(
     initializer.set_lp_fee_split(&self.package_version,
         allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), bps::new(0), vector[]),
     );
-    initializer.set_opening_round(&self.package_version, opening_round_ms);
+    initializer.set_opening_round(&self.package_version, opening_round_duration_ms);
     let creation_fee = coin::zero(self.scenario.ctx());
     let launch = initializer.finalize(&self.package_version, &mut currency, &self.config, creation_fee, self.scenario.ctx());
     test_scenario::return_to_address(COIN_REGISTRY, currency);
@@ -848,11 +848,11 @@ fun intake(
 
 fun new_launch(
     self: &mut OpeningRoundFixture,
-    opening_round_ms: u64,
+    opening_round_duration_ms: u64,
 ): Launch<LAUNCH_OPENING_ROUND_TESTS, TEST_QUOTE> {
     let ticket = self.new_ticket();
 
-    self.intake(ticket, plan(), opening_round_ms, VIRTUAL_QUOTE, TARGET)
+    self.intake(ticket, plan(), opening_round_duration_ms, VIRTUAL_QUOTE, TARGET)
 }
 
 /// Moves the fixture clock to `timestamp_ms` for the following transactions.
@@ -861,8 +861,8 @@ fun set_time(self: &mut OpeningRoundFixture, timestamp_ms: u64) {
 }
 
 /// Creates and shares one launch at the fixture clock's current time and returns its ID.
-fun open(self: &mut OpeningRoundFixture, opening_round_ms: u64): ID {
-    let launch = self.new_launch(opening_round_ms);
+fun open(self: &mut OpeningRoundFixture, opening_round_duration_ms: u64): ID {
+    let launch = self.new_launch(opening_round_duration_ms);
     let launch_id = object::id(&launch);
     self.share(launch);
 
@@ -941,12 +941,12 @@ fun buy(self: &mut OpeningRoundFixture, sender: address, quote_in: u64, min_meme
 
 /// Checks this transaction's only `LaunchCreated` event names `launch_id` and `opening_round_ms`,
 /// which the free creation's fee (8 bytes) and the absent partner (1) follow.
-fun assert_launch_created(launch_id: ID, opening_round_ms: u64) {
+fun assert_launch_created(launch_id: ID, opening_round_duration_ms: u64) {
     let created = bcs::to_bytes(&only_event<LaunchCreated>());
     let tail = created.length() - 17;
 
     assert_eq!(vector::tabulate!(32, |i| created[i]), bcs::to_bytes(&launch_id));
-    assert_eq!(vector::tabulate!(8, |i| created[tail + i]), bcs::to_bytes(&opening_round_ms));
+    assert_eq!(vector::tabulate!(8, |i| created[tail + i]), bcs::to_bytes(&opening_round_duration_ms));
 }
 
 /// Expected bytes of a payload whose fields after the launch ID are all `u64`.

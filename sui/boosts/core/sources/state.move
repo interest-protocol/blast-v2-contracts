@@ -185,7 +185,7 @@ public fun activate<Product>(
     self: Issuance<Product>,
     observation: PositionObservation,
     seed_reserve: u64,
-    now_ms: u64,
+    now_at_ms: u64,
 ): (State<Product>, u64, ActivePosition) {
     let Issuance { vault_policy, max_order_notional, nav_cap, base_unit, collateral_unit } = self;
     let state = State {
@@ -207,7 +207,7 @@ public fun activate<Product>(
         accounting_math::is_shareholder_nav_positive(venue_equity, seed_reserve),
         blast_boosts_core::errors::invalid_nav!(),
     );
-    assert_observation_priced(&state.vault_policy, &observation, now_ms);
+    assert_observation_priced(&state.vault_policy, &observation, now_at_ms);
     assert!(
         observation.observed_side() == state.vault_policy.side(),
         blast_boosts_core::errors::invalid_initialization_observation!(),
@@ -282,12 +282,12 @@ public fun prepare_mint<Product>(
     collateral_deposit: u64,
     total_share_supply: u64,
     minimum_shares: u64,
-    now_ms: u64,
+    now_at_ms: u64,
 ): MintPlan<Product> {
     self.lifecycle.assert_active();
     assert!(total_share_supply > 0, blast_boosts_core::errors::invalid_share_supply!());
 
-    let before = validated_active_position(self, observation, now_ms);
+    let before = validated_active_position(self, observation, now_at_ms);
     let reserve_priced = self.admitted_reserve(&before);
     assert!(
         self.is_within_band(&before, reserve_priced),
@@ -332,14 +332,14 @@ public fun complete_mint<Product>(
     self: &mut State<Product>,
     plan: MintPlan<Product>,
     observation: PositionObservation,
-    now_ms: u64,
+    now_at_ms: u64,
 ): (u64, u64, u64, u64, u64) {
     self.lifecycle.assert_active();
     let MintPlan {
         before, expected_contribution, reserve_fee, admin_fee, total_share_supply, minimum_shares, base_to_buy,
     } = plan;
 
-    let after = validated_active_position(self, observation, now_ms);
+    let after = validated_active_position(self, observation, now_at_ms);
     assert!(before.is_same_checkpoint(&after), blast_boosts_core::errors::active_checkpoint_changed!());
     assert!(
         after.base >= before.base && after.base - before.base == base_to_buy,
@@ -385,11 +385,11 @@ public fun prepare_redemption<Product>(
     shares_to_redeem: u64,
     total_share_supply: u64,
     minimum_collateral_out: u64,
-    now_ms: u64,
+    now_at_ms: u64,
 ): RedemptionPlan<Product> {
     self.lifecycle.assert_active();
 
-    let before = validated_active_position(self, observation, now_ms);
+    let before = validated_active_position(self, observation, now_at_ms);
     let (minimum_base, _) = accounting_math::redemption_base_bounds(
         shares_to_redeem, before.base, total_share_supply, before.lot_size, self.vault_policy.min_order_lots(),
     );
@@ -419,14 +419,14 @@ public fun complete_redemption<Product>(
     self: &mut State<Product>,
     plan: RedemptionPlan<Product>,
     observation: PositionObservation,
-    now_ms: u64,
+    now_at_ms: u64,
 ): (u64, u64, u64, u64) {
     self.lifecycle.assert_active();
     let RedemptionPlan {
         before, shares_to_redeem, total_share_supply, minimum_collateral_out, fee_bps, admin_share_bps, base_to_sell,
     } = plan;
 
-    let after = validated_active_position(self, observation, now_ms);
+    let after = validated_active_position(self, observation, now_at_ms);
     assert!(before.is_same_checkpoint(&after), blast_boosts_core::errors::active_checkpoint_changed!());
     assert!(
         before.base >= after.base && before.base - after.base == base_to_sell,
@@ -464,10 +464,10 @@ public fun complete_redemption<Product>(
 /// Whether a rebalance would be admitted against this observation: the position,
 /// priced against the admitted reserve, sits outside the band. A keeper's dry
 /// run; `prepare_rebalance` asks the same question and aborts on `false`.
-public fun needs_rebalance<Product>(self: &State<Product>, observation: PositionObservation, now_ms: u64): bool {
+public fun needs_rebalance<Product>(self: &State<Product>, observation: PositionObservation, now_at_ms: u64): bool {
     self.lifecycle.assert_active();
 
-    let position = validated_active_position(self, observation, now_ms);
+    let position = validated_active_position(self, observation, now_at_ms);
 
     !self.is_within_band(&position, self.admitted_reserve(&position))
 }
@@ -477,7 +477,7 @@ public fun prepare_rebalance<Product>(
     self: &State<Product>,
     observation: PositionObservation,
     venue_fee_bps: u64,
-    now_ms: u64,
+    now_at_ms: u64,
 ): RebalancePlan<Product> {
     self.lifecycle.assert_active();
     assert!(
@@ -485,7 +485,7 @@ public fun prepare_rebalance<Product>(
         blast_boosts_core::errors::venue_fee_unusable!(),
     );
 
-    let before = validated_active_position(self, observation, now_ms);
+    let before = validated_active_position(self, observation, now_at_ms);
     let reserve_priced = self.admitted_reserve(&before);
     assert!(!self.is_within_band(&before, reserve_priced), blast_boosts_core::errors::rebalance_inside_band!());
 
@@ -547,7 +547,7 @@ public fun accept_rebalance_fill<Product>(
     order: RebalanceOrder,
     observation: PositionObservation,
     filled_base: u64,
-    now_ms: u64,
+    now_at_ms: u64,
 ) {
     let RebalanceOrder { base: requested, increase, emergency: _ } = order;
     assert!(
@@ -555,7 +555,7 @@ public fun accept_rebalance_fill<Product>(
         blast_boosts_core::errors::active_fill_incomplete!(),
     );
 
-    let after = validated_active_position(self, observation, now_ms);
+    let after = validated_active_position(self, observation, now_at_ms);
     assert!(plan.before.is_same_checkpoint(&after), blast_boosts_core::errors::active_checkpoint_changed!());
     let expected_base = if (increase) {
         plan.current.base.checked_add(filled_base).destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!())
@@ -656,11 +656,11 @@ public fun settle_funding<Product>(
 /// Credits an exact donation to the reserve, clamped to the ceiling, without
 /// creating supply or an admin entitlement. The adapter proves the venue took
 /// exactly `amount` on the raw checkpoint; the core prices the position it left.
-public fun donate<Product>(self: &mut State<Product>, observation: PositionObservation, amount: u64, now_ms: u64) {
+public fun donate<Product>(self: &mut State<Product>, observation: PositionObservation, amount: u64, now_at_ms: u64) {
     self.lifecycle.assert_active();
     assert!(amount > 0, blast_boosts_core::errors::zero_amount!());
 
-    let after = validated_active_position(self, observation, now_ms);
+    let after = validated_active_position(self, observation, now_at_ms);
     let reserve_funded = self.maintenance_reserve
         .checked_add(amount)
         .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
@@ -698,12 +698,12 @@ public fun unwind_constraints<Product>(
     base_oracle: PriceObservation,
     collateral_oracle: PriceObservation,
     lot_size: u64,
-    now_ms: u64,
+    now_at_ms: u64,
 ): (PositionSide, u64, u64, u64) {
     self.assert_unwinding();
     let price_policy = self.vault_policy.price_policy();
-    assert_oracle_admitted(&price_policy, &base_oracle, now_ms);
-    assert_oracle_admitted(&price_policy, &collateral_oracle, now_ms);
+    assert_oracle_admitted(&price_policy, &base_oracle, now_at_ms);
+    assert_oracle_admitted(&price_policy, &collateral_oracle, now_at_ms);
 
     let (base_price, collateral_price) = (base_oracle.price(), collateral_oracle.price());
     let max_order_base = rebalance_math::base_for_notional_down(
@@ -959,9 +959,9 @@ fun assert_within_nav_cap<Product>(self: &State<Product>, nav: u64) {
 fun validated_active_position<Product>(
     self: &State<Product>,
     observation: PositionObservation,
-    now_ms: u64,
+    now_at_ms: u64,
 ): ActivePosition {
-    assert_observation_priced(&self.vault_policy, &observation, now_ms);
+    assert_observation_priced(&self.vault_policy, &observation, now_at_ms);
     assert!(
         observation.position_base() == 0 || observation.observed_side() == self.vault_policy.side(),
         blast_boosts_core::errors::invalid_position_observation!(),
@@ -995,11 +995,11 @@ fun priced_position<Product>(self: &State<Product>, observation: PositionObserva
 }
 
 /// Rejects an observation whose oracle pair is stale, uncertain, or diverges from the venue mark.
-fun assert_observation_priced(vault_policy: &VaultPolicy, observation: &PositionObservation, now_ms: u64) {
+fun assert_observation_priced(vault_policy: &VaultPolicy, observation: &PositionObservation, now_at_ms: u64) {
     let price_policy = vault_policy.price_policy();
 
-    assert_oracle_admitted(&price_policy, observation.base_oracle(), now_ms);
-    assert_oracle_admitted(&price_policy, observation.collateral_oracle(), now_ms);
+    assert_oracle_admitted(&price_policy, observation.base_oracle(), now_at_ms);
+    assert_oracle_admitted(&price_policy, observation.collateral_oracle(), now_at_ms);
     price_policy.assert_mark_within_oracle_divergence(
         observation.mark_price(),
         observation.base_oracle().price(),
@@ -1007,8 +1007,8 @@ fun assert_observation_priced(vault_policy: &VaultPolicy, observation: &Position
 }
 
 /// Rejects one oracle price that is stale or carries too wide a confidence interval.
-fun assert_oracle_admitted(price_policy: &PricePolicy, oracle: &PriceObservation, now_ms: u64) {
-    price_policy.assert_price_fresh(oracle.publish_time_ms(), now_ms);
+fun assert_oracle_admitted(price_policy: &PricePolicy, oracle: &PriceObservation, now_at_ms: u64) {
+    price_policy.assert_price_fresh(oracle.publish_time_ms(), now_at_ms);
     price_policy.assert_confidence_within_bound(oracle.confidence(), oracle.price());
 }
 

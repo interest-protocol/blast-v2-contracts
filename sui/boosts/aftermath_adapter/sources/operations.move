@@ -79,7 +79,7 @@ public fun mint<Product, Collateral>(
     collateral_oracle: &PriceFeedStorage,
     cash: Coin<Collateral>,
     minimum_shares: u64,
-    deadline_ms: u64,
+    deadline_at_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Coin<BlastBoost<Product>>, ClearingHouse<Collateral>) {
@@ -87,7 +87,7 @@ public fun mint<Product, Collateral>(
     vault.state().assert_active();
     let deposit = cash.value();
     assert!(deposit > 0, blast_boosts_aftermath::errors::zero_amount!());
-    assert_deadline(clock.timestamp_ms(), deadline_ms);
+    assert_deadline(clock.timestamp_ms(), deadline_at_ms);
 
     let (before, before_checkpoint) = synchronize_or_fail(
         vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle, clock,
@@ -129,14 +129,14 @@ public fun redeem<Product, Collateral>(
     collateral_oracle: &PriceFeedStorage,
     shares: Coin<BlastBoost<Product>>,
     minimum_collateral: u64,
-    deadline_ms: u64,
+    deadline_at_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Coin<Collateral>, ClearingHouse<Collateral>) {
     protocol.assert_current();
     vault.state().assert_active();
     assert!(shares.value() > 0, blast_boosts_aftermath::errors::zero_amount!());
-    assert_deadline(clock.timestamp_ms(), deadline_ms);
+    assert_deadline(clock.timestamp_ms(), deadline_at_ms);
 
     let (before, checkpoint) = synchronize_or_fail(
         vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle, clock,
@@ -196,11 +196,11 @@ public fun remove_partner(
     protocol.assert_current();
 
     let partner_id = object::id(partner);
-    let now_ms = clock.timestamp_ms();
-    let accepted_until_ms = now_ms + partners::delay_ms();
-    protocol.remove_partner(partner_id, now_ms, accepted_until_ms);
+    let now_at_ms = clock.timestamp_ms();
+    let acceptance_ends_at_ms = now_at_ms + partners::delay_ms();
+    protocol.remove_partner(partner_id, now_at_ms, acceptance_ends_at_ms);
 
-    events::partner_removed(partner_id, accepted_until_ms);
+    events::partner_removed(partner_id, acceptance_ends_at_ms);
 }
 
 /// `mint`, naming a Blast partner Boosts accepts: the partner is paid its share
@@ -217,7 +217,7 @@ public fun mint_with_partner<Product, Collateral>(
     collateral_oracle: &PriceFeedStorage,
     cash: Coin<Collateral>,
     minimum_shares: u64,
-    deadline_ms: u64,
+    deadline_at_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Coin<BlastBoost<Product>>, ClearingHouse<Collateral>) {
@@ -226,7 +226,7 @@ public fun mint_with_partner<Product, Collateral>(
 
     let (shares, clearing_house) = mint(
         vault, protocol, account, registry, clearing_house, base_oracle, collateral_oracle,
-        cash, minimum_shares, deadline_ms, clock, ctx,
+        cash, minimum_shares, deadline_at_ms, clock, ctx,
     );
     pay_partner(vault, partner, admin_cash_before, clock, ctx);
 
@@ -247,7 +247,7 @@ public fun redeem_with_partner<Product, Collateral>(
     collateral_oracle: &PriceFeedStorage,
     shares: Coin<BlastBoost<Product>>,
     minimum_collateral: u64,
-    deadline_ms: u64,
+    deadline_at_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Coin<Collateral>, ClearingHouse<Collateral>) {
@@ -256,7 +256,7 @@ public fun redeem_with_partner<Product, Collateral>(
 
     let (cash, clearing_house) = redeem(
         vault, protocol, account, registry, clearing_house, base_oracle, collateral_oracle,
-        shares, minimum_collateral, deadline_ms, clock, ctx,
+        shares, minimum_collateral, deadline_at_ms, clock, ctx,
     );
     pay_partner(vault, partner, admin_cash_before, clock, ctx);
 
@@ -598,8 +598,8 @@ fun emit_vault_initialized<Product, Collateral>(
 
 // --- Mint And Redeem ---
 
-fun assert_deadline(now_ms: u64, deadline: u64) {
-    assert!(now_ms <= deadline, blast_boosts_aftermath::errors::deadline_expired!());
+fun assert_deadline(now_at_ms: u64, deadline_at_ms: u64) {
+    assert!(now_at_ms <= deadline_at_ms, blast_boosts_aftermath::errors::deadline_expired!());
 }
 
 /// Keeps the admin's fee slice as vault cash and puts the rest of the deposit
@@ -651,10 +651,10 @@ fun complete_mint<Product, Collateral>(
     deposit: u64,
     after: PositionObservation,
     checkpoint: Checkpoint,
-    now_ms: u64,
+    now_at_ms: u64,
     ctx: &mut TxContext,
 ): Coin<BlastBoost<Product>> {
-    let (amount, contribution, fee, admin, reserve_fee) = vault.state_mut().complete_mint(plan, after, now_ms);
+    let (amount, contribution, fee, admin, reserve_fee) = vault.state_mut().complete_mint(plan, after, now_at_ms);
 
     let shares = vault.mint_shares(amount, ctx);
     vault.venue_mut().replace_checkpoint(checkpoint);
@@ -676,14 +676,14 @@ fun settle_redemption<Product, Collateral>(
     plan: RedemptionPlan<Product>,
     shares: &Coin<BlastBoost<Product>>,
     after_sell: PositionObservation,
-    now_ms: u64,
+    now_at_ms: u64,
 ): (u64, u64, u64, u64) {
     assert!(
         shares.value() == plan.redemption_shares(),
         blast_boosts_aftermath::errors::redemption_share_mismatch!(),
     );
 
-    vault.state_mut().complete_redemption(plan, after_sell, now_ms)
+    vault.state_mut().complete_redemption(plan, after_sell, now_at_ms)
 }
 
 /// Completes custody after the public operation proves the withdrawal on the checkpoint:
@@ -756,11 +756,11 @@ fun complete_donation<Product, Collateral>(
     after: PositionObservation,
     checkpoint: Checkpoint,
     amount: u64,
-    now_ms: u64,
+    now_at_ms: u64,
 ) {
     vault.venue().checkpoint().assert_deposit_checkpoint(&checkpoint, amount);
 
-    vault.state_mut().donate(after, amount, now_ms);
+    vault.state_mut().donate(after, amount, now_at_ms);
     vault.venue_mut().replace_checkpoint(checkpoint);
 
     events::donated<Product>(vault.id(), amount, vault.state().maintenance_reserve(), checkpoint);
@@ -1022,10 +1022,10 @@ public fun complete_mint_for_testing<Product, Collateral>(
     deposit: u64,
     after: PositionObservation,
     checkpoint: Checkpoint,
-    now_ms: u64,
+    now_at_ms: u64,
     ctx: &mut TxContext,
 ): Coin<BlastBoost<Product>> {
-    complete_mint(vault, plan, deposit, after, checkpoint, now_ms, ctx)
+    complete_mint(vault, plan, deposit, after, checkpoint, now_at_ms, ctx)
 }
 
 #[test_only]
@@ -1034,9 +1034,9 @@ public fun settle_redemption_for_testing<Product, Collateral>(
     plan: RedemptionPlan<Product>,
     shares: &Coin<BlastBoost<Product>>,
     after_sell: PositionObservation,
-    now_ms: u64,
+    now_at_ms: u64,
 ): (u64, u64, u64, u64) {
-    settle_redemption(vault, plan, shares, after_sell, now_ms)
+    settle_redemption(vault, plan, shares, after_sell, now_at_ms)
 }
 
 #[test_only]
@@ -1080,9 +1080,9 @@ public fun complete_donation_for_testing<Product, Collateral>(
     after: PositionObservation,
     checkpoint: Checkpoint,
     amount: u64,
-    now_ms: u64,
+    now_at_ms: u64,
 ) {
-    complete_donation(vault, after, checkpoint, amount, now_ms);
+    complete_donation(vault, after, checkpoint, amount, now_at_ms);
 }
 
 #[test_only]
@@ -1110,7 +1110,7 @@ public fun assert_position_imr_unchanged_for_testing(
 }
 
 #[test_only]
-public fun assert_deadline_for_testing(now_ms: u64, deadline: u64) { assert_deadline(now_ms, deadline); }
+public fun assert_deadline_for_testing(now_at_ms: u64, deadline_at_ms: u64) { assert_deadline(now_at_ms, deadline_at_ms); }
 
 #[test_only]
 #[allow(lint(prefer_mut_tx_context))]

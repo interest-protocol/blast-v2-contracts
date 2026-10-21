@@ -80,8 +80,8 @@ public(package) fun capture<Collateral>(
     let base_fixed = params.base_oracle_price(base_oracle, clock);
     let collateral_fixed = params.collateral_oracle_price(collateral_oracle, clock);
     let mark_fixed = clearing_house.mark_price(base_oracle, clock);
-    let (base_price, base_timestamp, base_representable) = oracle_leg(base_feed, base_fixed);
-    let (collateral_price, collateral_timestamp, collateral_representable) =
+    let (base_price, base_price_published_at_ms, base_representable) = oracle_leg(base_feed, base_fixed);
+    let (collateral_price, collateral_price_published_at_ms, collateral_representable) =
         oracle_leg(collateral_feed, collateral_fixed);
     let (mark_price, mark_representable) = ifixed_math::fixed_to_u64_down(mark_fixed, constants::base_decimals!() as u64);
 
@@ -100,9 +100,9 @@ public(package) fun capture<Collateral>(
         venue_operational: clearing_house.market_pause_mode() == 0 && !clearing_house.is_frozen(),
         economics_valid: position_representable && base_representable && collateral_representable && mark_representable,
         base_price,
-        base_timestamp,
+        base_timestamp: base_price_published_at_ms,
         collateral_price,
-        collateral_timestamp,
+        collateral_timestamp: collateral_price_published_at_ms,
         mark_price,
         checkpoint,
         collateral_fixed,
@@ -117,7 +117,8 @@ public(package) fun capture<Collateral>(
 public(package) fun into_observation(self: CapturedSnapshot): (PositionObservation, Checkpoint) {
     let CapturedSnapshot {
         venue_equity, position_base, lot_size, side, pending_order_count, margin_safe, venue_operational,
-        economics_valid, base_price, base_timestamp, collateral_price, collateral_timestamp, mark_price,
+        economics_valid, base_price, base_timestamp: base_price_published_at_ms,
+        collateral_price, collateral_timestamp: collateral_price_published_at_ms, mark_price,
         checkpoint, collateral_fixed: _,
     } = self;
     assert!(economics_valid, blast_boosts_aftermath::errors::normalization_overflow!());
@@ -131,8 +132,8 @@ public(package) fun into_observation(self: CapturedSnapshot): (PositionObservati
         position_base,
         lot_size,
         side,
-        observation::new_price(base_price, 0, base_timestamp),
-        observation::new_price(collateral_price, 0, collateral_timestamp),
+        observation::new_price(base_price, 0, base_price_published_at_ms),
+        observation::new_price(collateral_price, 0, collateral_price_published_at_ms),
         mark_price,
     );
 
@@ -211,18 +212,18 @@ fun position_economics(
 /// equality is asserted so the leg is never valued from a feed the venue is
 /// not reading. Aftermath feeds carry no confidence interval.
 fun oracle_leg(feed: &PriceFeed, venue_price: u256): (u64, u64, bool) {
-    let (feed_price, timestamp) = feed.price_and_timestamp_ms();
-    oracle_leg_decoded(feed_price, timestamp, venue_price)
+    let (feed_price, price_published_at_ms) = feed.price_and_timestamp_ms();
+    oracle_leg_decoded(feed_price, price_published_at_ms, venue_price)
 }
 
-fun oracle_leg_decoded(feed_price: u128, timestamp: u64, venue_price: u256): (u64, u64, bool) {
+fun oracle_leg_decoded(feed_price: u128, price_published_at_ms: u64, venue_price: u256): (u64, u64, bool) {
     assert!(
         (feed_price as u256) == venue_price,
         blast_boosts_aftermath::errors::oracle_observation_mismatch!(),
     );
     let (price, representable) = ifixed_math::fixed_to_u64_down(venue_price, constants::base_decimals!() as u64);
 
-    (price, timestamp, representable)
+    (price, price_published_at_ms, representable)
 }
 
 // --- Position Arithmetic ---
@@ -347,8 +348,8 @@ public fun normalize_price_for_testing(value: u256): (u64, bool) {
 }
 
 #[test_only]
-public fun oracle_leg_for_testing(feed_price: u128, timestamp: u64, venue_price: u256): (u64, u64, bool) {
-    oracle_leg_decoded(feed_price, timestamp, venue_price)
+public fun oracle_leg_for_testing(feed_price: u128, price_published_at_ms: u64, venue_price: u256): (u64, u64, bool) {
+    oracle_leg_decoded(feed_price, price_published_at_ms, venue_price)
 }
 
 #[test_only]

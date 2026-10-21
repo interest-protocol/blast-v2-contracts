@@ -17,8 +17,8 @@ const KEEPER: address = @0x4EE9;
 const DAO_FEE_BPS: u16 = 200;
 const TOKEN_SUPPLY: u64 = 1_000_000_000;
 const RAISE_TARGET: u64 = 1_000_000;
-const DURATION_MS: u64 = 100;
-const LIQUIDITY_WINDOW_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
+const COMMITMENT_DURATION_MS: u64 = 100;
+const LIQUIDITY_WINDOW_DURATION_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 
 // === Test-Only Types ===
 
@@ -598,7 +598,7 @@ fun new_sale(
             vector[],
         );
         initializer.set_raise(&package_version, RAISE_TARGET, vector[]);
-        initializer.set_windows(&package_version, DURATION_MS, LIQUIDITY_WINDOW_MS);
+        initializer.set_windows(&package_version, COMMITMENT_DURATION_MS, LIQUIDITY_WINDOW_DURATION_MS);
         initializer.set_eligibility(
             &package_version,
             presale::open_eligibility(RAISE_TARGET, 1, RAISE_TARGET),

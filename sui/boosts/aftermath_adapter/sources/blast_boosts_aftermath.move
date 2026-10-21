@@ -68,9 +68,9 @@ public(package) fun add_partner(self: &mut Protocol, partner_id: ID) {
     let key = PartnerKey(partner_id);
 
     if (self.id.exists_dynamic_field(key)) {
-        let accepted_until_ms: &mut u64 = self.id.borrow_dynamic_field_mut(key);
-        assert!(*accepted_until_ms != std::u64::max_value!(), errors::partner_unchanged!());
-        *accepted_until_ms = std::u64::max_value!();
+        let acceptance_ends_at_ms: &mut u64 = self.id.borrow_dynamic_field_mut(key);
+        assert!(*acceptance_ends_at_ms != std::u64::max_value!(), errors::partner_unchanged!());
+        *acceptance_ends_at_ms = std::u64::max_value!();
     } else {
         self.id.add_dynamic_field(key, std::u64::max_value!());
     }
@@ -81,23 +81,23 @@ public(package) fun add_partner(self: &mut Protocol, partner_id: ID) {
 public(package) fun remove_partner(
     self: &mut Protocol,
     partner_id: ID,
-    now_ms: u64,
-    accepted_until_ms: u64,
+    now_at_ms: u64,
+    acceptance_ends_at_ms: u64,
 ) {
-    self.assert_partner(partner_id, now_ms);
+    self.assert_partner(partner_id, now_at_ms);
 
     let current: &mut u64 = self.id.borrow_dynamic_field_mut(PartnerKey(partner_id));
     assert!(*current == std::u64::max_value!(), errors::partner_unchanged!());
-    *current = accepted_until_ms;
+    *current = acceptance_ends_at_ms;
 }
 
 /// Aborts unless Boosts accepts `partner_id` at `now_ms`.
-public(package) fun assert_partner(self: &Protocol, partner_id: ID, now_ms: u64) {
+public(package) fun assert_partner(self: &Protocol, partner_id: ID, now_at_ms: u64) {
     let key = PartnerKey(partner_id);
 
     assert!(self.id.exists_dynamic_field(key), errors::partner_not_accepted!());
-    let accepted_until_ms: u64 = *self.id.borrow_dynamic_field(key);
-    assert!(now_ms < accepted_until_ms, errors::partner_not_accepted!());
+    let acceptance_ends_at_ms: u64 = *self.id.borrow_dynamic_field(key);
+    assert!(now_at_ms < acceptance_ends_at_ms, errors::partner_not_accepted!());
 }
 
 // === Private Functions ===
@@ -157,8 +157,8 @@ public fun assert_current_for_testing(self: &Protocol) {
 
 #[test_only]
 /// Exercises the guard every trade that names a partner runs first.
-public fun assert_partner_for_testing(self: &Protocol, partner_id: ID, now_ms: u64) {
-    self.assert_partner(partner_id, now_ms);
+public fun assert_partner_for_testing(self: &Protocol, partner_id: ID, now_at_ms: u64) {
+    self.assert_partner(partner_id, now_at_ms);
 }
 
 #[test_only]

@@ -85,11 +85,11 @@ public(package) fun reducing_terms<Product, Collateral>(vault: &Vault<Product, C
 public(package) fun unwind_terms<Product, Collateral>(
     vault: &Vault<Product, Collateral>,
     capture: &CapturedSnapshot,
-    now_ms: u64,
+    now_at_ms: u64,
 ): (OrderTerms, u64, Checkpoint) {
     let before = capture.checkpoint();
     let (side, max_order_base, base_price, collateral_price) = vault.state().unwind_constraints(
-        capture.base_price_observation(), capture.collateral_price_observation(), before.lot_size(), now_ms,
+        capture.base_price_observation(), capture.collateral_price_observation(), before.lot_size(), now_at_ms,
     );
     before.assert_no_orders();
 

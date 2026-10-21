@@ -268,8 +268,8 @@ public(package) fun partner_added(partner_id: ID) {
     emit(PartnerAdded { partner_id });
 }
 
-public(package) fun partner_removed(partner_id: ID, accepted_until_ms: u64) {
-    emit(PartnerRemoved { partner_id, accepted_until_ms });
+public(package) fun partner_removed(partner_id: ID, acceptance_ends_at_ms: u64) {
+    emit(PartnerRemoved { partner_id, accepted_until_ms: acceptance_ends_at_ms });
 }
 
 public(package) fun creator_caps_claimed<Meme>(curve_fee_cap_id: ID, blast_metadata_cap_id: ID) {
@@ -328,7 +328,7 @@ public(package) fun launch_created<Quote>(
     quote_fee_bps: u64,
     meme_fee_bps: u64,
     allocation_plan: AllocationPlan,
-    opening_round_ms: u64,
+    opening_round_duration_ms: u64,
     creation_fee: u64,
     partner_id: Option<ID>,
 ) {
@@ -345,14 +345,14 @@ public(package) fun launch_created<Quote>(
         quote_fee_bps,
         meme_fee_bps,
         allocation_plan,
-        opening_round_ms,
+        opening_round_ms: opening_round_duration_ms,
         creation_fee,
         partner_id,
     });
 }
 
-public(package) fun launch_shared(launch_id: ID, public_start_ms: u64) {
-    emit(LaunchShared { launch_id, public_start_ms });
+public(package) fun launch_shared(launch_id: ID, public_starts_at_ms: u64) {
+    emit(LaunchShared { launch_id, public_start_ms: public_starts_at_ms });
 }
 
 public(package) fun opening_round_joined(launch_id: ID, quote: u64, bids: u64) {

@@ -9,7 +9,7 @@
 /// Blast's partner administrator registers partners under a cap, sets each
 /// one's share, and can move a partner to another cap; the cap's holder sets
 /// where each of its partners is paid. Everything Blast changes takes effect
-/// only `DELAY_MS` after it is scheduled, and this package is published
+/// only `PARTNER_CHANGE_DELAY_MS` after it is scheduled, and this package is published
 /// immutable, so no one can shorten that delay. The recipient the cap holder
 /// sets applies at once.
 ///
@@ -49,7 +49,7 @@ public fun new_cap(ctx: &mut TxContext): PartnerCap {
 }
 
 /// Registers and shares a partner managed by the cap `cap_id`, with its share
-/// and cap in force at once. Every later change to either waits `DELAY_MS`.
+/// and cap in force at once. Every later change to either waits `PARTNER_CHANGE_DELAY_MS`.
 public fun register(
     _: &AdminWitness<PartnerAdmin>,
     cap_id: ID,
@@ -63,8 +63,8 @@ public fun register(
     let partner = Partner {
         id: object::new(ctx),
         recipient,
-        share_bps: timelock::new(share_bps, DELAY_MS),
-        cap_id: timelock::new(cap_id, DELAY_MS),
+        share_bps: timelock::new(share_bps, PARTNER_CHANGE_DELAY_MS),
+        cap_id: timelock::new(cap_id, PARTNER_CHANGE_DELAY_MS),
     };
 
     partner.emit_updated();
@@ -72,7 +72,7 @@ public fun register(
     transfer::share_object(partner);
 }
 
-/// Schedules the partner's share to become `share_bps` `DELAY_MS` from now.
+/// Schedules the partner's share to become `share_bps` `PARTNER_CHANGE_DELAY_MS` from now.
 /// A new schedule replaces a pending one; scheduling the share in force
 /// cancels a pending change.
 public fun schedule_share(
@@ -89,7 +89,7 @@ public fun schedule_share(
     self.emit_updated();
 }
 
-/// Schedules the partner to be managed by the cap `cap_id` `DELAY_MS` from
+/// Schedules the partner to be managed by the cap `cap_id` `PARTNER_CHANGE_DELAY_MS` from
 /// now, to replace a lost or stolen cap. Until then the current cap keeps
 /// working; a new schedule replaces a pending one, and scheduling the cap in
 /// force cancels a pending change.
@@ -141,7 +141,7 @@ public fun pay<T>(self: &Partner, fee: &mut Balance<T>, clock: &Clock, ctx: &mut
 /// The forced delay every change Blast makes to a partner waits. Products use it
 /// for their own notice, such as how long a partner they remove stays accepted.
 public fun delay_ms(): u64 {
-    DELAY_MS
+    PARTNER_CHANGE_DELAY_MS
 }
 
 // === Private Functions ===
@@ -163,8 +163,8 @@ public fun new_for_testing(recipient: address, share_bps: u64, ctx: &mut TxConte
     Partner {
         id: object::new(ctx),
         recipient,
-        share_bps: timelock::new(share_bps, DELAY_MS),
-        cap_id: timelock::new(object::id_from_address(@0x0), DELAY_MS),
+        share_bps: timelock::new(share_bps, PARTNER_CHANGE_DELAY_MS),
+        cap_id: timelock::new(object::id_from_address(@0x0), PARTNER_CHANGE_DELAY_MS),
     }
 }
 
@@ -180,8 +180,8 @@ public fun new_scheduled_for_testing(
     Partner {
         id: object::new(ctx),
         recipient,
-        share_bps: timelock::new_scheduled_for_testing(before, after, at_ms, DELAY_MS),
-        cap_id: timelock::new(object::id_from_address(@0x0), DELAY_MS),
+        share_bps: timelock::new_scheduled_for_testing(before, after, at_ms, PARTNER_CHANGE_DELAY_MS),
+        cap_id: timelock::new(object::id_from_address(@0x0), PARTNER_CHANGE_DELAY_MS),
     }
 }
 
@@ -220,7 +220,7 @@ public struct PartnerPaid<phantom T> has copy, drop {
 // === Constants ===
 
 /// The forced delay before a share or a cap Blast schedules takes effect.
-const DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
+const PARTNER_CHANGE_DELAY_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 
 /// The largest share of Blast's fee one partner may earn: 80%.
 const MAX_SHARE_BPS: u64 = 8_000;

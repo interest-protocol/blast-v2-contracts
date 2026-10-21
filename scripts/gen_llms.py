@@ -177,7 +177,7 @@ How it is organized:
 
 When the guides and the reference disagree, the reference is right: it is generated from the source on every change. When this file does not say a behavior exists, treat it as unsupported. Source for every module is linked from the reference ([repository]({repo})).
 
-Conventions: amounts are atomic units of the coin named; rates are basis points (BPS) out of 10,000; times are Unix milliseconds from Sui's shared `Clock` at `0x6`. Types are written as Move: `module::Type` names a type in another module of the same package, `package::module::Type` one in another Blast package, and well-known Sui framework types appear bare.
+Conventions: amounts are atomic units of the coin named; rates are basis points (BPS) out of 10,000; timestamps are Unix milliseconds from Sui's shared `Clock` at `0x6`, while durations and delays are elapsed milliseconds. Types are written as Move: `module::Type` names a type in another module of the same package, `package::module::Type` one in another Blast package, and well-known Sui framework types appear bare.
 """
 
 

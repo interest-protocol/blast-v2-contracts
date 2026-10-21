@@ -11,7 +11,7 @@ const ADMIN: address = @0xA11CE;
 const PARTNER: address = @0xB0B;
 const RECIPIENT: address = @0xFEE;
 const NEW_RECIPIENT: address = @0xFEE2;
-const START_MS: u64 = 1_000;
+const PARTNER_CREATED_AT_MS: u64 = 1_000;
 const MAX_SHARE_BPS: u64 = 8_000;
 const BASIS_POINTS: u64 = 10_000;
 
@@ -112,7 +112,7 @@ fun a_zero_recipient_precedes_a_share_above_the_maximum() {
 fun a_scheduled_share_takes_effect_exactly_after_the_delay() {
     let mut fixture = start();
     let cap = fixture.register(RECIPIENT, 2_500);
-    fixture.set_time(START_MS + delay());
+    fixture.set_time(PARTNER_CREATED_AT_MS + delay());
 
     fixture.next_tx!(ADMIN, |fixture| {
         let mut partner = fixture.take_partner();
@@ -138,7 +138,7 @@ fun a_scheduled_share_takes_effect_exactly_after_the_delay() {
 fun a_new_schedule_replaces_a_pending_one_and_restarts_the_delay() {
     let mut fixture = start();
     let cap = fixture.register(RECIPIENT, 2_500);
-    fixture.set_time(START_MS + delay());
+    fixture.set_time(PARTNER_CREATED_AT_MS + delay());
 
     fixture.next_tx!(ADMIN, |fixture| {
         let mut partner = fixture.take_partner();
@@ -161,7 +161,7 @@ fun a_new_schedule_replaces_a_pending_one_and_restarts_the_delay() {
 fun scheduling_the_share_in_force_cancels_a_pending_cut() {
     let mut fixture = start();
     let cap = fixture.register(RECIPIENT, 2_500);
-    fixture.set_time(START_MS + delay());
+    fixture.set_time(PARTNER_CREATED_AT_MS + delay());
 
     fixture.next_tx!(ADMIN, |fixture| {
         let mut partner = fixture.take_partner();
@@ -384,7 +384,7 @@ fun one_cap_manages_every_partner_of_a_company() {
     let (other_id, _, other_share, other_cap) = fixture.last_update().partner_updated_fields();
     assert_eq!(other_share.scheduled(), 800);
     assert_eq!(other_cap.value(&fixture.clock), object::id(&cap));
-    fixture.set_time(START_MS + delay());
+    fixture.set_time(PARTNER_CREATED_AT_MS + delay());
 
     fixture.next_tx!(PARTNER, |fixture| {
         let mut boosts = fixture.take_partner_by_id(boosts_id);
@@ -536,9 +536,9 @@ fun a_partner_is_paid_its_share_from_registration_and_a_new_one_only_once_in_for
         let mut fee = balance::create_for_testing<SUI>(1_000);
         assert_eq!(fixture.pay_fee(&partner, &mut fee), 500);
         fixture.schedule_share(&mut partner, MAX_SHARE_BPS);
-        fixture.set_time(START_MS + delay() - 1);
+        fixture.set_time(PARTNER_CREATED_AT_MS + delay() - 1);
         assert_eq!(fixture.pay_fee(&partner, &mut fee), 250);
-        fixture.set_time(START_MS + delay());
+        fixture.set_time(PARTNER_CREATED_AT_MS + delay());
         assert_eq!(fixture.pay_fee(&partner, &mut fee), 200);
         assert_eq!(fee.value(), 50);
         fee.destroy_for_testing();
@@ -648,7 +648,7 @@ fun start(): Fixture {
     let mut scenario = test_scenario::begin(ROOT);
     scenario.next_tx(ADMIN);
     let mut clock = clock::create_for_testing(scenario.ctx());
-    clock.set_for_testing(START_MS);
+    clock.set_for_testing(PARTNER_CREATED_AT_MS);
 
     Fixture { scenario, clock }
 }
@@ -688,12 +688,12 @@ fun now(self: &Fixture): u64 {
     self.clock.timestamp_ms()
 }
 
-fun set_time(self: &mut Fixture, now_ms: u64) {
-    self.clock.set_for_testing(now_ms);
+fun set_time(self: &mut Fixture, now_at_ms: u64) {
+    self.clock.set_for_testing(now_at_ms);
 }
 
-fun advance(self: &mut Fixture, ms: u64) {
-    self.clock.increment_for_testing(ms);
+fun advance(self: &mut Fixture, elapsed_duration_ms: u64) {
+    self.clock.increment_for_testing(elapsed_duration_ms);
 }
 
 /// Mints a company's cap and registers its first partner under it; the partner

@@ -39,6 +39,17 @@ instead of `blast_admin`, and holds migrated liquidity in its own
 repository (`interest-protocol/blast-util-contracts`); both are immutable on
 mainnet.
 
+### Time values
+
+Timestamp parameters ending in `_at_ms` are points in time measured in Unix
+milliseconds. Duration parameters ending in `_duration_ms` are lengths of time;
+`_delay_ms` parameters are offsets from the documented anchor. For example,
+`commitment_starts_at_ms + commitment_duration_ms` is the commitment window's
+end timestamp. Stored fields and event payloads retain their published names;
+read their documented meaning rather than assuming every `_ms` value is a
+timestamp. Framework calls such as `Clock::timestamp_ms` retain their native
+names.
+
 ### Building a call
 
 - **Target.** A call is `moveCall` with target
