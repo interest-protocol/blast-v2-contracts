@@ -224,6 +224,10 @@ Shared singletons, created once at deployment (`PackageAdmin` and `PackageVersio
   by `blast_presale::aftermath::finalize` and shared by `blast_presale::aftermath::share` in the
   same PTB; holds the Aftermath `CreatePoolCapV2` of the sale's fresh LP coin `Lp` and the sale's
   ID, so only that sale's migration can consume it.
+- `blast_presale::aftermath::FinalizeTicket<Meme, Quote>`: a hot potato with no abilities that
+  `blast_presale::aftermath::new` returns beside the `PresaleInitializer`; only
+  `blast_presale::aftermath::finalize` consumes it, so the PTB that starts an Aftermath sale must
+  finalize it there, or it fails with the ticket unconsumed.
 - `blast_presale::package_admin::PackageAdmin`: holds the package's Publisher and compatible upgrade cap.
 - `blast_presale::blast_presale_package::PackageVersion`: the singleton active generation, shared only on activation.
 
@@ -358,11 +362,11 @@ Steps, type arguments `<Meme, Quote>` throughout:
      (`blast_presale::aftermath::EInvalidDaoFee`); it is the sale's tier, recorded in
      `VenueConfig` (below) with tick spacing 0. The pool's weights and fee are the module's
      constants (50/50, flatness 0, Aftermath's minimum 0.01% swap-in fee, see Migrating to
-     Aftermath). The call returns the
-     `PresaleInitializer`, which only `blast_presale::aftermath::finalize` (step 4) can finalize:
-     it takes the pool-creation capability and reserves the sale's pool, and
-     `blast_presale::blast_presale::finalize` refuses the initializer
-     (`blast_presale::blast_presale::EVenueFinalizesSale`). Beforehand,
+     Aftermath). The call returns the `PresaleInitializer` and a
+     `blast_presale::aftermath::FinalizeTicket<Meme, Quote>`, a hot potato only
+     `blast_presale::aftermath::finalize` (step 4) consumes: that call takes the pool-creation
+     capability and reserves the sale's pool, and a PTB that finalizes the initializer any other
+     way fails with the ticket unconsumed. Beforehand,
      in its own transaction, publish a fresh Aftermath LP coin `Lp` (one per sale, through
      Aftermath's `publish-lp-coin` flow); its publication yields that `CreatePoolCapV2`.
 
@@ -401,17 +405,17 @@ Steps, type arguments `<Meme, Quote>` throughout:
    consumes the `TreasuryCap`, and returns `(Presale<Meme, Quote>, PresaleCap)`. The Coin Registry
    supply becomes `Fixed`, or `BurnOnly` when `burnable` is true. Emits
    `blast_presale::blast_presale::PresaleCreated`. An Aftermath sale calls
-   `blast_presale::aftermath::finalize<Lp, Meme, Quote>(initializer, currency, create_pool_cap)`
-   instead, with the `CreatePoolCapV2` of its LP coin `Lp` by value. It aborts with
-   `blast_presale::aftermath::EWrongMigrator` unless `blast_presale::aftermath::new` started the
-   initializer, runs the same finalization, emits `blast_presale::aftermath::PoolCreationReserved`
-   (`presale_id`, `pool_creation_id`, `create_pool_cap_id`), and returns
+   `blast_presale::aftermath::finalize<Lp, Meme, Quote>(initializer, ticket, currency,
+   create_pool_cap)` instead, with the `FinalizeTicket` step 1 returned and the `CreatePoolCapV2`
+   of its LP coin `Lp` by value. It consumes the ticket, runs the same finalization, emits
+   `blast_presale::aftermath::PoolCreationReserved` (`presale_id`, `pool_creation_id`,
+   `create_pool_cap_id`), and returns
    `(Presale<Meme, Quote>, PresaleCap, PoolCreation<Lp, Meme, Quote>)`: the reservation bound to
    the new sale's ID, unshared. It has only `key`, so the same PTB must pass it to
-   `blast_presale::aftermath::share` (step 7), which shares it for the migration later.
-   `blast_presale::blast_presale::finalize` refuses an initializer `blast_presale::aftermath::new`
-   started (`blast_presale::blast_presale::EVenueFinalizesSale`), so every Aftermath sale carries
-   its reservation.
+   `blast_presale::aftermath::share` (step 7), which shares it for the migration later. The ticket
+   has no abilities and nothing else consumes it, so a PTB that finalizes an Aftermath sale
+   through `blast_presale::blast_presale::finalize` fails, and every Aftermath sale carries its
+   reservation.
 5. Optional, Blast admin only (`FeeAdmin`): `blast_presale::blast_presale::set_protocol_fees` on the pending sale.
 6. `blast_presale::blast_presale::share(presale, commitment_starts_at_ms, clock)`, same caller, fixes the windows and shares the
    sale. The start is `max(commitment_starts_at_ms, now)`, so a sale can be published ahead of its start. Emits
@@ -1042,10 +1046,10 @@ it. Common ones by flow (module `blast_presale` unless named):
   left after Blast, duplicates, zero amounts); `EInvalidWindow` (zero duration or LP window under
   7 days); `EUnreachableRaise` (minimum × slots below raise); `EInvalidEligibilityPolicy`;
   `EInvalidUncappedPhase`; `EInvalidHardCap` (hard cap starts at or after the window's end);
-  `EInvalidFeeSplit`; `EInvalidVestingTerms`; `EUnseedablePrice`; `EVenueFinalizesSale` (the
-  initializer was started by `blast_presale::aftermath::new`; finalize it with
-  `blast_presale::aftermath::finalize`); `blast_presale::aftermath::EWrongMigrator` (the
-  initializer was started by another venue's `new`).
+  `EInvalidFeeSplit`; `EInvalidVestingTerms`; `EUnseedablePrice`. An Aftermath sale finalized
+  with `blast_presale::blast_presale::finalize` fails at the end of the PTB with Sui's
+  unused-value error, not a Move abort, because the `blast_presale::aftermath::FinalizeTicket`
+  was never consumed; finalize it with `blast_presale::aftermath::finalize`.
 - Partner: `creation_policy::EPartnerNotAccepted`.
 - Share: `EInvalidLifecycle` (already shared); `EInvalidWindow`.
 - Commit: `EPresaleNotStarted`, `EPresaleEnded` (check the window); `EZeroCommitment`;
@@ -1108,10 +1112,10 @@ it. Common ones by flow (module `blast_presale` unless named):
 - Bluefin migration needs a `Coin<SUI>` of exactly Bluefin's current pool-creation fee.
 - An Aftermath sale needs a fresh LP coin with 9 decimals published before creation, must be
   finalized with `blast_presale::aftermath::finalize` (which takes the LP coin's
-  `CreatePoolCapV2` and returns the reservation for `blast_presale::aftermath::share`;
-  `blast_presale::blast_presale::finalize` refuses the initializer with
-  `blast_presale::blast_presale::EVenueFinalizesSale`, but `finalize` cannot check the capability
-  against `Lp`, so verify the capability's coin and decimals before listing the sale), and its
+  `CreatePoolCapV2` and the `blast_presale::aftermath::FinalizeTicket` from `new`, and returns
+  the reservation for `blast_presale::aftermath::share`; a PTB that finalizes the sale any other
+  way fails with the ticket unconsumed, but `finalize` cannot check the capability against `Lp`,
+  so verify the capability's coin and decimals before listing the sale), and its
   DAO fees are not in a position: they sit as coins at the vault's address until someone lists
   them in `blast_presale::aftermath::collect_fees`. A collection that lists none is valid and
   emits nothing.
@@ -1576,7 +1580,7 @@ Events: payload structs are emitted directly, each under its own type.
 
 ### `blast_presale::aftermath`
 
-Permissionless Aftermath migration and LP-fee collection for configured presales.  A funded sale migrates into a fresh 50/50 Aftermath weighted pool wrapped in Aftermath's DAO-fee pool. Aftermath pays the DAO fee of every swap, deposit, and withdrawal as separate coins sent straight to the fee recipient address, so `migrate` names the sale's new vault as that recipient: the fee coins land owned by the vault object, and anyone may then receive them into the vault, where they are split like any collection. The LP coin, the whole pool liquidity, is sent to `0x0`, so the pool's liquidity is locked for good; the vault's position is the DAO-fee pool's `OwnerCap`, which could otherwise change the fee or redirect it, under its sealed position key with no removal path.  Aftermath creates a pool only from a `CreatePoolCapV2` minted by a freshly published LP coin, so the creator publishes one per sale and hands its capability to `finalize`, which finalizes the sale and returns the reservation bound to that sale's ID for `share`; only that sale's migration can consume it. A sale `new` started can be finalized only here: `new` marks its initializer, and `blast_presale::finalize` refuses it, so no Aftermath sale exists without its reservation.  Aftermath's registry rejects a second pool with the same coins, weights, flatness, and fees, but no sale token circulates before migration, so nobody can create the sale's pool first and the migration creates it with the module's fixed terms.
+Permissionless Aftermath migration and LP-fee collection for configured presales.  A funded sale migrates into a fresh 50/50 Aftermath weighted pool wrapped in Aftermath's DAO-fee pool. Aftermath pays the DAO fee of every swap, deposit, and withdrawal as separate coins sent straight to the fee recipient address, so `migrate` names the sale's new vault as that recipient: the fee coins land owned by the vault object, and anyone may then receive them into the vault, where they are split like any collection. The LP coin, the whole pool liquidity, is sent to `0x0`, so the pool's liquidity is locked for good; the vault's position is the DAO-fee pool's `OwnerCap`, which could otherwise change the fee or redirect it, under its sealed position key with no removal path.  Aftermath creates a pool only from a `CreatePoolCapV2` minted by a freshly published LP coin, so the creator publishes one per sale and hands its capability to `finalize`, which finalizes the sale and returns the reservation bound to that sale's ID for `share`; only that sale's migration can consume it. `new` returns a `FinalizeTicket` beside the initializer, and only `finalize` here consumes it, so a creation transaction that finalizes through the core ends holding the ticket and fails: no Aftermath sale exists without its reservation.  Aftermath's registry rejects a second pool with the same coins, weights, flatness, and fees, but no sale token circulates before migration, so nobody can create the sale's pool first and the migration creates it with the module's fixed terms.
 
 Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/presale/sources/aftermath.move
 
@@ -1588,6 +1592,12 @@ public struct Witness() has drop;
 
 /// Sealed marker for the DAO-fee pool owner cap a presale vault holds as its position.
 public struct Venue() has drop;
+
+/// Hot potato `new` returns beside the sale's initializer, and only `finalize` consumes. It has no
+/// abilities, so the transaction that starts a sale here must finalize it here, which binds the
+/// reservation its migration needs. Its type parameters admit only the initializer of the same
+/// sale token, the one `new` started, since `new` consumed that token's unique treasury cap.
+public struct FinalizeTicket<phantom Meme, phantom Quote> {}
 
 /// Reservation of one sale's Aftermath pool creation, returned by `finalize` and shared by
 /// `share`: the `CreatePoolCapV2` of the fresh LP coin `Lp`, which only the migration of the sale
@@ -1605,8 +1615,8 @@ public struct PoolCreation<phantom Lp, phantom Meme, phantom Quote> has key {
 /// Starts a presale that migrates to an Aftermath pool charging `dao_fee_bps` of every swap,
 /// deposit, and withdrawal to the sale's vault. The fee is the sale's pool tier, recorded under
 /// its token's type with no tick spacing; the pool's weights and base fee are this module's
-/// constants. The sale is set like any other, then finalized only through this module's
-/// `finalize`, which reserves its pool creation.
+/// constants. The sale is set like any other and finalized only through this module's
+/// `finalize`, which consumes the ticket returned here and reserves its pool creation.
 public fun new<Meme, Quote>(
     treasury_cap: TreasuryCap<Meme>,
     package_version: &blast_presale_package::PackageVersion,
@@ -1614,16 +1624,18 @@ public fun new<Meme, Quote>(
     fee_policy: &fee_policy::FeePolicy,
     venue_config: &mut venue_config::VenueConfig,
     dao_fee_bps: u16,
-): blast_presale::PresaleInitializer<Meme, Quote>
+): (blast_presale::PresaleInitializer<Meme, Quote>, FinalizeTicket<Meme, Quote>)
 
-/// Finalizes a sale `new` started, which `blast_presale::finalize` refuses, and returns it with
-/// the reservation binding `create_pool_cap`, which the fresh LP coin `Lp` minted, to that sale's
-/// ID. The initializer must be one `new` started: another migrator's sale could never consume the
-/// reservation. The reservation has only `key`, so the PTB that creates the sale must share it
-/// with `share`; a sale is never funded in that PTB.
+/// Finalizes a sale `new` started, consuming the ticket `new` returned with it, and returns the
+/// sale with the reservation binding `create_pool_cap`, which the fresh LP coin `Lp` minted, to
+/// that sale's ID. The ticket's type parameters admit only the initializer of the same sale token,
+/// which `new` started, so no other migrator's sale can take a reservation. The reservation has
+/// only `key`, so the PTB that creates the sale must share it with `share`; a sale is never funded
+/// in that PTB.
 public fun finalize<Lp, Meme, Quote>(
     initializer: blast_presale::PresaleInitializer<Meme, Quote>,
     package_version: &blast_presale_package::PackageVersion,
+    ticket: FinalizeTicket<Meme, Quote>,
     currency: &mut Currency<Meme>,
     create_pool_cap: pool::CreatePoolCapV2,
     ctx: &mut TxContext,
@@ -1698,8 +1710,7 @@ public struct DaoFeePoolCreated<phantom Lp, phantom Meme, phantom Quote> has cop
 | `EDaoFeePoolMismatch` | 1 | The DAO-fee pool must charge this module's fee and pay the vault. |
 | `EWrongPresale` | 2 | The pool creation is bound to a different presale. |
 | `EInvalidDaoFee` | 3 | Aftermath DAO fee needs 1..=10,000 basis points. |
-| `EWrongMigrator` | 4 | Only a sale this module's `new` started can be finalized here. |
-| `EWrongVault` | 5 | Only an Aftermath vault's fees are collected here. |
+| `EWrongVault` | 4 | Only an Aftermath vault's fees are collected here. |
 
 #### Constants
 
@@ -1827,18 +1838,13 @@ public struct Commitment has copy, drop, store {
     wallet_cap: u64,
 }
 
-/// Hot potato from `new` to `finalize`, collecting the creator's settings. Only `finalize`, or
-/// `finalize_for_venue` from the venue that started the sale, consumes it, so every sale is
-/// finalized in the transaction whose `new` checked the creation policy and snapshotted Blast's
-/// rates. Finalization validates the settings together; the supply, token allocations, raise,
-/// windows, eligibility policy, and LP-fee split must all be set.
+/// Hot potato from `new` to `finalize`, collecting the creator's settings. Only `finalize`
+/// consumes it, so every sale is finalized in the transaction whose `new` checked the creation
+/// policy and snapshotted Blast's rates. `finalize` validates the settings together; the supply,
+/// token allocations, raise, windows, eligibility policy, and LP-fee split must all be set.
 public struct PresaleInitializer<phantom SaleToken, phantom Quote> {
     treasury_cap: TreasuryCap<SaleToken>,
     migration_witness: TypeName,
-    /// Whether only the venue that started the sale may finalize it, because its `finalize` binds
-    /// what the sale's migration needs, such as Aftermath's pool-creation reservation. The public
-    /// `finalize` refuses such an initializer, so no such sale exists without that binding.
-    venue_finalizes: bool,
     protocol_fees: fee_policy::ProtocolFees,
     token_supply: u64,
     burnable: bool,
@@ -2076,9 +2082,7 @@ public fun migration_witness<SaleToken, Quote>(
 
 /// Requires a confirmed unregulated sale currency and checks every setting, then mints and
 /// apportions the complete token supply and
-/// irreversibly makes it fixed or burn-only before returning the presale for `share`. Refuses an
-/// initializer whose venue finalizes its sales: that venue's `finalize` binds what the sale's
-/// migration needs, so a sale finalized here could never migrate.
+/// irreversibly makes it fixed or burn-only before returning the presale for `share`.
 public fun finalize<SaleToken, Quote>(
     self: PresaleInitializer<SaleToken, Quote>,
     package_version: &blast_presale_package::PackageVersion,
@@ -2398,7 +2402,6 @@ public struct Claimed<phantom SaleToken, phantom Quote> has copy, drop {
 | `EInvalidHardCap` | 33 | A hard cap must start inside the commitment window. |
 | `EMissingSetting` | 34 | A presale needs its eligibility policy and LP-fee split set before it is finalized. |
 | `ESaleTokenNotUnregulated` | 35 | The sale currency must be confirmed unregulated; regulated and unknown legacy currencies are not allowed. |
-| `EVenueFinalizesSale` | 36 | The venue that started this sale finalizes it; call that venue's finalize. |
 
 #### Constants
 

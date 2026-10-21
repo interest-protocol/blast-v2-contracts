@@ -15,9 +15,9 @@
 /// Aftermath creates a pool only from a `CreatePoolCapV2` minted by a freshly published LP coin,
 /// so the creator publishes one per sale and hands its capability to `finalize`, which finalizes
 /// the sale and returns the reservation bound to that sale's ID for `share`; only that sale's
-/// migration can consume it. A sale `new` started can be finalized only here: `new` marks its
-/// initializer, and `blast_presale::finalize` refuses it, so no Aftermath sale exists without its
-/// reservation.
+/// migration can consume it. `new` returns a `FinalizeTicket` beside the initializer, and only
+/// `finalize` here consumes it, so a creation transaction that finalizes through the core ends
+/// holding the ticket and fails: no Aftermath sale exists without its reservation.
 ///
 /// Aftermath's registry rejects a second pool with the same coins, weights, flatness, and fees,
 /// but no sale token circulates before migration, so nobody can create the sale's pool first and
@@ -31,6 +31,12 @@ public struct Witness() has drop;
 
 /// Sealed marker for the DAO-fee pool owner cap a presale vault holds as its position.
 public struct Venue() has drop;
+
+/// Hot potato `new` returns beside the sale's initializer, and only `finalize` consumes. It has no
+/// abilities, so the transaction that starts a sale here must finalize it here, which binds the
+/// reservation its migration needs. Its type parameters admit only the initializer of the same
+/// sale token, the one `new` started, since `new` consumed that token's unique treasury cap.
+public struct FinalizeTicket<phantom Meme, phantom Quote>()
 
 /// Reservation of one sale's Aftermath pool creation, returned by `finalize` and shared by
 /// `share`: the `CreatePoolCapV2` of the fresh LP coin `Lp`, which only the migration of the sale
@@ -46,8 +52,8 @@ public struct PoolCreation<phantom Lp, phantom Meme, phantom Quote> has key {
 /// Starts a presale that migrates to an Aftermath pool charging `dao_fee_bps` of every swap,
 /// deposit, and withdrawal to the sale's vault. The fee is the sale's pool tier, recorded under
 /// its token's type with no tick spacing; the pool's weights and base fee are this module's
-/// constants. The sale is set like any other, then finalized only through this module's
-/// `finalize`, which reserves its pool creation.
+/// constants. The sale is set like any other and finalized only through this module's
+/// `finalize`, which consumes the ticket returned here and reserves its pool creation.
 public fun new<Meme, Quote>(
     treasury_cap: TreasuryCap<Meme>,
     package_version: &PackageVersion,
@@ -55,45 +61,37 @@ public fun new<Meme, Quote>(
     fee_policy: &FeePolicy,
     venue_config: &mut VenueConfig,
     dao_fee_bps: u16,
-): PresaleInitializer<Meme, Quote> {
+): (PresaleInitializer<Meme, Quote>, FinalizeTicket<Meme, Quote>) {
     package_version.assert_current();
 
     assert!(dao_fee_bps > 0 && dao_fee_bps <= MAX_DAO_FEE_BPS, EInvalidDaoFee);
 
     venue_config.add_pool_tier<Meme, Quote, _>(&Venue(), 0, dao_fee_bps as u64);
 
-    let mut initializer = presale::new<Meme, Quote, _>(
-        treasury_cap,
-        package_version,
-        Witness(),
-        creation_policy,
-        fee_policy,
-    );
-    initializer.require_venue_finalize();
-
-    initializer
+    (
+        presale::new(treasury_cap, package_version, Witness(), creation_policy, fee_policy),
+        FinalizeTicket(),
+    )
 }
 
-/// Finalizes a sale `new` started, which `blast_presale::finalize` refuses, and returns it with
-/// the reservation binding `create_pool_cap`, which the fresh LP coin `Lp` minted, to that sale's
-/// ID. The initializer must be one `new` started: another migrator's sale could never consume the
-/// reservation. The reservation has only `key`, so the PTB that creates the sale must share it
-/// with `share`; a sale is never funded in that PTB.
+/// Finalizes a sale `new` started, consuming the ticket `new` returned with it, and returns the
+/// sale with the reservation binding `create_pool_cap`, which the fresh LP coin `Lp` minted, to
+/// that sale's ID. The ticket's type parameters admit only the initializer of the same sale token,
+/// which `new` started, so no other migrator's sale can take a reservation. The reservation has
+/// only `key`, so the PTB that creates the sale must share it with `share`; a sale is never funded
+/// in that PTB.
 public fun finalize<Lp, Meme, Quote>(
     initializer: PresaleInitializer<Meme, Quote>,
     package_version: &PackageVersion,
+    ticket: FinalizeTicket<Meme, Quote>,
     currency: &mut Currency<Meme>,
     create_pool_cap: CreatePoolCapV2,
     ctx: &mut TxContext,
 ): (Presale<Meme, Quote>, PresaleCap, PoolCreation<Lp, Meme, Quote>) {
     package_version.assert_current();
 
-    assert!(
-        initializer.migration_witness() == type_name::with_original_ids<Witness>(),
-        EWrongMigrator,
-    );
-
-    let (sale, cap) = initializer.finalize_for_venue(currency, ctx);
+    let FinalizeTicket() = ticket;
+    let (sale, cap) = initializer.finalize(package_version, currency, ctx);
 
     let pool_creation = PoolCreation<Lp, Meme, Quote> {
         id: object::new(ctx),
@@ -389,9 +387,6 @@ const EWrongPresale: vector<u8> = b"The pool creation is bound to a different pr
 const EInvalidDaoFee: vector<u8> = b"Aftermath DAO fee needs 1..=10,000 basis points.";
 
 #[error(code = 4)]
-const EWrongMigrator: vector<u8> = b"Only a sale this module's `new` started can be finalized here.";
-
-#[error(code = 5)]
 const EWrongVault: vector<u8> = b"Only an Aftermath vault's fees are collected here.";
 
 // === Imports ===

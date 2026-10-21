@@ -54,7 +54,7 @@ fun new_records_the_witness_and_the_dao_fee_tier() {
     let mut venue_config = venue_config::new_for_testing(scenario.ctx());
     let (treasury_cap, currency) = new_currency(&mut scenario);
 
-    let initializer = aftermath::new<_, QUOTE>(
+    let (initializer, ticket) = aftermath::new<_, QUOTE>(
         treasury_cap,
         &package_version,
         &creation_policy,
@@ -74,6 +74,7 @@ fun new_records_the_witness_and_the_dao_fee_tier() {
     assert_eq!(stored_fee_rate, 200);
 
     destroy(initializer);
+    destroy(ticket);
     destroy(currency);
     destroy(venue_config);
     destroy(fee_policy);
@@ -189,35 +190,6 @@ fun migrate_rejects_another_sales_reservation() {
 }
 
 #[test]
-#[expected_failure(abort_code = aftermath::EWrongMigrator, location = blast_presale::aftermath)]
-/// Only a sale this module's `new` started can be finalized here: another migrator's sale could
-/// never consume the reservation.
-fun finalize_rejects_another_migrators_sale() {
-    let mut scenario = test_scenario::begin(CREATOR);
-    let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
-    let creation_policy = allowing<OTHER_MIGRATOR>(scenario.ctx());
-    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
-    let (treasury_cap, mut currency) = new_currency(&mut scenario);
-    let initializer = presale::new<_, QUOTE, _>(
-        treasury_cap,
-        &package_version,
-        OTHER_MIGRATOR(),
-        &creation_policy,
-        &fee_policy,
-    );
-
-    let (_sale, _cap, _pool_creation) = aftermath::finalize<LP, _, _>(
-        initializer,
-        &package_version,
-        &mut currency,
-        amm_pool::create_pool_cap_for_testing(scenario.ctx()),
-        scenario.ctx(),
-    );
-    std::unit_test::destroy(package_version);
-    abort
-}
-
-#[test]
 #[expected_failure(
     abort_code = creation_policy::EMigrationWitnessNotAllowed,
     location = blast_presale::creation_policy,
@@ -231,7 +203,7 @@ fun new_needs_blast_to_allow_the_witness() {
     let mut venue_config = venue_config::new_for_testing(scenario.ctx());
     let (treasury_cap, _currency) = new_currency(&mut scenario);
 
-    let _initializer = aftermath::new<_, QUOTE>(
+    let (_initializer, _ticket) = aftermath::new<_, QUOTE>(
         treasury_cap,
         &package_version,
         &creation_policy,
@@ -454,7 +426,7 @@ fun new_accepts_one_basis_point_and_the_whole_amount() {
         let mut venue_config = venue_config::new_for_testing(scenario.ctx());
         let (treasury_cap, currency) = new_currency(&mut scenario);
 
-        let initializer = aftermath::new<_, QUOTE>(
+        let (initializer, ticket) = aftermath::new<_, QUOTE>(
             treasury_cap,
             &package_version,
             &creation_policy,
@@ -466,6 +438,7 @@ fun new_accepts_one_basis_point_and_the_whole_amount() {
         let (_, stored_fee_rate) = venue_config.pool_tier<AFTERMATH_TESTS>();
         assert_eq!(stored_fee_rate, dao_fee_bps as u64);
         destroy(initializer);
+        destroy(ticket);
         destroy(currency);
         destroy(venue_config);
     });
@@ -527,46 +500,18 @@ fun collect_fees_receives_only_coins_the_vault_owns() {
 
 #[test]
 #[expected_failure(
-    abort_code = presale::EVenueFinalizesSale,
-    location = blast_presale::blast_presale,
-)]
-/// The core refuses to finalize a sale this module's `new` started, before checking its settings:
-/// only `finalize` here binds the reservation the sale's migration needs.
-fun the_core_refuses_to_finalize_a_sale_this_module_started() {
-    let mut scenario = test_scenario::begin(CREATOR);
-    let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
-    let creation_policy = allowing<Witness>(scenario.ctx());
-    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
-    let mut venue_config = venue_config::new_for_testing(scenario.ctx());
-    let (treasury_cap, mut currency) = new_currency(&mut scenario);
-    let initializer = aftermath::new<_, QUOTE>(
-        treasury_cap,
-        &package_version,
-        &creation_policy,
-        &fee_policy,
-        &mut venue_config,
-        DAO_FEE_BPS,
-    );
-
-    let (_sale, _cap) = initializer.finalize(&package_version, &mut currency, scenario.ctx());
-    std::unit_test::destroy(package_version);
-    abort
-}
-
-#[test]
-#[expected_failure(
     abort_code = blast_admin::errors::EOperationalVersionMismatch,
     location = blast_admin::operational_version,
 )]
-/// A stale package version is refused before the core looks at who finalizes the sale.
-fun a_stale_version_precedes_the_venue_finalize_check() {
+/// A stale package version is refused before `finalize` consumes anything.
+fun a_stale_version_cannot_finalize_a_sale() {
     let mut scenario = test_scenario::begin(CREATOR);
     let mut package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let creation_policy = allowing<Witness>(scenario.ctx());
     let fee_policy = fee_policy::new_for_testing(scenario.ctx());
     let mut venue_config = venue_config::new_for_testing(scenario.ctx());
     let (treasury_cap, mut currency) = new_currency(&mut scenario);
-    let initializer = aftermath::new<_, QUOTE>(
+    let (initializer, ticket) = aftermath::new<_, QUOTE>(
         treasury_cap,
         &package_version,
         &creation_policy,
@@ -576,7 +521,14 @@ fun a_stale_version_precedes_the_venue_finalize_check() {
     );
 
     package_version.set_for_testing(2);
-    let (_sale, _cap) = initializer.finalize(&package_version, &mut currency, scenario.ctx());
+    let (_sale, _cap, _pool_creation) = aftermath::finalize<LP, _, _>(
+        initializer,
+        &package_version,
+        ticket,
+        &mut currency,
+        amm_pool::create_pool_cap_for_testing(scenario.ctx()),
+        scenario.ctx(),
+    );
     std::unit_test::destroy(package_version);
     abort
 }
@@ -691,7 +643,7 @@ fun start_rejected_fee(dao_fee_bps: u16) {
     let mut venue_config = venue_config::new_for_testing(scenario.ctx());
     let (treasury_cap, _currency) = new_currency(&mut scenario);
 
-    let _initializer = aftermath::new<_, QUOTE>(
+    let (_initializer, _ticket) = aftermath::new<_, QUOTE>(
         treasury_cap,
         &package_version,
         &creation_policy,
@@ -733,7 +685,7 @@ fun new_sale(
         let fee_policy = fee_policy::new_for_testing(scenario.ctx());
         let (treasury_cap, mut currency) = new_currency(scenario);
 
-        let mut initializer = aftermath::new<_, QUOTE>(
+        let (mut initializer, ticket) = aftermath::new<_, QUOTE>(
             treasury_cap,
             &package_version,
             creation_policy,
@@ -764,6 +716,7 @@ fun new_sale(
         let (sale, cap, pool_creation) = aftermath::finalize<LP, _, _>(
             initializer,
             &package_version,
+            ticket,
             &mut currency,
             create_pool_cap,
             scenario.ctx(),

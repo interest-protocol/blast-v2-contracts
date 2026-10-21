@@ -49,6 +49,10 @@ Shared singletons, created once at deployment (`PackageAdmin` and `PackageVersio
   by `blast_presale::aftermath::finalize` and shared by `blast_presale::aftermath::share` in the
   same PTB; holds the Aftermath `CreatePoolCapV2` of the sale's fresh LP coin `Lp` and the sale's
   ID, so only that sale's migration can consume it.
+- `blast_presale::aftermath::FinalizeTicket<Meme, Quote>`: a hot potato with no abilities that
+  `blast_presale::aftermath::new` returns beside the `PresaleInitializer`; only
+  `blast_presale::aftermath::finalize` consumes it, so the PTB that starts an Aftermath sale must
+  finalize it there, or it fails with the ticket unconsumed.
 - `blast_presale::package_admin::PackageAdmin`: holds the package's Publisher and compatible upgrade cap.
 - `blast_presale::blast_presale_package::PackageVersion`: the singleton active generation, shared only on activation.
 
@@ -183,11 +187,11 @@ Steps, type arguments `<Meme, Quote>` throughout:
      (`blast_presale::aftermath::EInvalidDaoFee`); it is the sale's tier, recorded in
      `VenueConfig` (below) with tick spacing 0. The pool's weights and fee are the module's
      constants (50/50, flatness 0, Aftermath's minimum 0.01% swap-in fee, see Migrating to
-     Aftermath). The call returns the
-     `PresaleInitializer`, which only `blast_presale::aftermath::finalize` (step 4) can finalize:
-     it takes the pool-creation capability and reserves the sale's pool, and
-     `blast_presale::blast_presale::finalize` refuses the initializer
-     (`blast_presale::blast_presale::EVenueFinalizesSale`). Beforehand,
+     Aftermath). The call returns the `PresaleInitializer` and a
+     `blast_presale::aftermath::FinalizeTicket<Meme, Quote>`, a hot potato only
+     `blast_presale::aftermath::finalize` (step 4) consumes: that call takes the pool-creation
+     capability and reserves the sale's pool, and a PTB that finalizes the initializer any other
+     way fails with the ticket unconsumed. Beforehand,
      in its own transaction, publish a fresh Aftermath LP coin `Lp` (one per sale, through
      Aftermath's `publish-lp-coin` flow); its publication yields that `CreatePoolCapV2`.
 
@@ -226,17 +230,17 @@ Steps, type arguments `<Meme, Quote>` throughout:
    consumes the `TreasuryCap`, and returns `(Presale<Meme, Quote>, PresaleCap)`. The Coin Registry
    supply becomes `Fixed`, or `BurnOnly` when `burnable` is true. Emits
    `blast_presale::blast_presale::PresaleCreated`. An Aftermath sale calls
-   `blast_presale::aftermath::finalize<Lp, Meme, Quote>(initializer, currency, create_pool_cap)`
-   instead, with the `CreatePoolCapV2` of its LP coin `Lp` by value. It aborts with
-   `blast_presale::aftermath::EWrongMigrator` unless `blast_presale::aftermath::new` started the
-   initializer, runs the same finalization, emits `blast_presale::aftermath::PoolCreationReserved`
-   (`presale_id`, `pool_creation_id`, `create_pool_cap_id`), and returns
+   `blast_presale::aftermath::finalize<Lp, Meme, Quote>(initializer, ticket, currency,
+   create_pool_cap)` instead, with the `FinalizeTicket` step 1 returned and the `CreatePoolCapV2`
+   of its LP coin `Lp` by value. It consumes the ticket, runs the same finalization, emits
+   `blast_presale::aftermath::PoolCreationReserved` (`presale_id`, `pool_creation_id`,
+   `create_pool_cap_id`), and returns
    `(Presale<Meme, Quote>, PresaleCap, PoolCreation<Lp, Meme, Quote>)`: the reservation bound to
    the new sale's ID, unshared. It has only `key`, so the same PTB must pass it to
-   `blast_presale::aftermath::share` (step 7), which shares it for the migration later.
-   `blast_presale::blast_presale::finalize` refuses an initializer `blast_presale::aftermath::new`
-   started (`blast_presale::blast_presale::EVenueFinalizesSale`), so every Aftermath sale carries
-   its reservation.
+   `blast_presale::aftermath::share` (step 7), which shares it for the migration later. The ticket
+   has no abilities and nothing else consumes it, so a PTB that finalizes an Aftermath sale
+   through `blast_presale::blast_presale::finalize` fails, and every Aftermath sale carries its
+   reservation.
 5. Optional, Blast admin only (`FeeAdmin`): `blast_presale::blast_presale::set_protocol_fees` on the pending sale.
 6. `blast_presale::blast_presale::share(presale, commitment_starts_at_ms, clock)`, same caller, fixes the windows and shares the
    sale. The start is `max(commitment_starts_at_ms, now)`, so a sale can be published ahead of its start. Emits
@@ -867,10 +871,10 @@ it. Common ones by flow (module `blast_presale` unless named):
   left after Blast, duplicates, zero amounts); `EInvalidWindow` (zero duration or LP window under
   7 days); `EUnreachableRaise` (minimum × slots below raise); `EInvalidEligibilityPolicy`;
   `EInvalidUncappedPhase`; `EInvalidHardCap` (hard cap starts at or after the window's end);
-  `EInvalidFeeSplit`; `EInvalidVestingTerms`; `EUnseedablePrice`; `EVenueFinalizesSale` (the
-  initializer was started by `blast_presale::aftermath::new`; finalize it with
-  `blast_presale::aftermath::finalize`); `blast_presale::aftermath::EWrongMigrator` (the
-  initializer was started by another venue's `new`).
+  `EInvalidFeeSplit`; `EInvalidVestingTerms`; `EUnseedablePrice`. An Aftermath sale finalized
+  with `blast_presale::blast_presale::finalize` fails at the end of the PTB with Sui's
+  unused-value error, not a Move abort, because the `blast_presale::aftermath::FinalizeTicket`
+  was never consumed; finalize it with `blast_presale::aftermath::finalize`.
 - Partner: `creation_policy::EPartnerNotAccepted`.
 - Share: `EInvalidLifecycle` (already shared); `EInvalidWindow`.
 - Commit: `EPresaleNotStarted`, `EPresaleEnded` (check the window); `EZeroCommitment`;
@@ -933,10 +937,10 @@ it. Common ones by flow (module `blast_presale` unless named):
 - Bluefin migration needs a `Coin<SUI>` of exactly Bluefin's current pool-creation fee.
 - An Aftermath sale needs a fresh LP coin with 9 decimals published before creation, must be
   finalized with `blast_presale::aftermath::finalize` (which takes the LP coin's
-  `CreatePoolCapV2` and returns the reservation for `blast_presale::aftermath::share`;
-  `blast_presale::blast_presale::finalize` refuses the initializer with
-  `blast_presale::blast_presale::EVenueFinalizesSale`, but `finalize` cannot check the capability
-  against `Lp`, so verify the capability's coin and decimals before listing the sale), and its
+  `CreatePoolCapV2` and the `blast_presale::aftermath::FinalizeTicket` from `new`, and returns
+  the reservation for `blast_presale::aftermath::share`; a PTB that finalizes the sale any other
+  way fails with the ticket unconsumed, but `finalize` cannot check the capability against `Lp`,
+  so verify the capability's coin and decimals before listing the sale), and its
   DAO fees are not in a position: they sit as coins at the vault's address until someone lists
   them in `blast_presale::aftermath::collect_fees`. A collection that lists none is valid and
   emits nothing.

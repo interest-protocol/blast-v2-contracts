@@ -106,18 +106,13 @@ public struct Commitment has copy, drop, store {
     wallet_cap: u64,
 }
 
-/// Hot potato from `new` to `finalize`, collecting the creator's settings. Only `finalize`, or
-/// `finalize_for_venue` from the venue that started the sale, consumes it, so every sale is
-/// finalized in the transaction whose `new` checked the creation policy and snapshotted Blast's
-/// rates. Finalization validates the settings together; the supply, token allocations, raise,
-/// windows, eligibility policy, and LP-fee split must all be set.
+/// Hot potato from `new` to `finalize`, collecting the creator's settings. Only `finalize`
+/// consumes it, so every sale is finalized in the transaction whose `new` checked the creation
+/// policy and snapshotted Blast's rates. `finalize` validates the settings together; the supply,
+/// token allocations, raise, windows, eligibility policy, and LP-fee split must all be set.
 public struct PresaleInitializer<phantom SaleToken, phantom Quote> {
     treasury_cap: TreasuryCap<SaleToken>,
     migration_witness: TypeName,
-    /// Whether only the venue that started the sale may finalize it, because its `finalize` binds
-    /// what the sale's migration needs, such as Aftermath's pool-creation reservation. The public
-    /// `finalize` refuses such an initializer, so no such sale exists without that binding.
-    venue_finalizes: bool,
     protocol_fees: ProtocolFees,
     token_supply: u64,
     burnable: bool,
@@ -321,7 +316,6 @@ public fun new<SaleToken, Quote, MigrationWitness: drop>(
     PresaleInitializer {
         treasury_cap,
         migration_witness: type_name::with_original_ids<MigrationWitness>(),
-        venue_finalizes: false,
         protocol_fees: fee_policy.fees(),
         token_supply: 0,
         burnable: false,
@@ -490,9 +484,7 @@ public fun migration_witness<SaleToken, Quote>(
 
 /// Requires a confirmed unregulated sale currency and checks every setting, then mints and
 /// apportions the complete token supply and
-/// irreversibly makes it fixed or burn-only before returning the presale for `share`. Refuses an
-/// initializer whose venue finalizes its sales: that venue's `finalize` binds what the sale's
-/// migration needs, so a sale finalized here could never migrate.
+/// irreversibly makes it fixed or burn-only before returning the presale for `share`.
 public fun finalize<SaleToken, Quote>(
     self: PresaleInitializer<SaleToken, Quote>,
     package_version: &PackageVersion,
@@ -501,9 +493,146 @@ public fun finalize<SaleToken, Quote>(
 ): (Presale<SaleToken, Quote>, PresaleCap) {
     package_version.assert_current();
 
-    assert!(!self.venue_finalizes, EVenueFinalizesSale);
+    assert_unregulated_currency(currency);
 
-    self.finalize_sale(currency, ctx)
+    let PresaleInitializer {
+        treasury_cap,
+        migration_witness,
+        protocol_fees,
+        token_supply,
+        burnable,
+        token_allocation_bps,
+        liquidity_token_allocation_bps,
+        recipient_allocations,
+        participant_vesting,
+        raise_target,
+        raise_allocations,
+        duration_ms: commitment_duration_ms,
+        liquidity_window_ms: liquidity_window_duration_ms,
+        eligibility,
+        uncapped,
+        hard_cap,
+        fee_split,
+        partner_id,
+    } = self;
+
+    let eligibility = eligibility.destroy_or!(abort EMissingSetting);
+    let fee_split = fee_split.destroy_or!(abort EMissingSetting);
+    assert!(raise_target > 0, EInvalidRaiseTarget);
+    assert_raise_allocations(&raise_allocations, protocol_fees.raise_bps());
+    assert_token_allocations(
+        token_supply,
+        token_allocation_bps,
+        liquidity_token_allocation_bps,
+        protocol_fees.token_bps(),
+        &recipient_allocations,
+    );
+    assert!(commitment_duration_ms > 0 && liquidity_window_duration_ms >= MIN_LIQUIDITY_WINDOW_DURATION_MS, EInvalidWindow);
+    assert!(eligibility.can_reach(raise_target), EUnreachableRaise);
+    uncapped.do_ref!(|phase| assert_uncapped_phase(phase, commitment_duration_ms, eligibility, raise_target));
+    hard_cap.do_ref!(|cap| assert!(cap.starts_after_ms < commitment_duration_ms, EInvalidHardCap));
+
+    let (
+        token_allocation,
+        liquidity_token_allocation,
+        protocol_token_allocation,
+        recipient_payouts,
+    ) = apportion_supply(
+        token_supply,
+        token_allocation_bps,
+        liquidity_token_allocation_bps,
+        protocol_fees.token_bps(),
+        &recipient_allocations,
+    );
+    let (raise_payouts, protocol_quote, liquidity_quote) = apportion_raise(
+        &raise_allocations,
+        protocol_fees.raise_bps(),
+        raise_target,
+    );
+
+    assert_seedable_price(liquidity_token_allocation, liquidity_quote);
+
+    let treasury_cap_id = object::id(&treasury_cap);
+    let (sale_tokens, liquidity_tokens, protocol_tokens, recipient_tokens) = mint_and_seal_supply(
+        treasury_cap,
+        currency,
+        token_supply,
+        token_allocation,
+        liquidity_token_allocation,
+        protocol_token_allocation,
+        burnable,
+    );
+
+    let id = object::new(ctx);
+    let presale_id = id.to_inner();
+    let cap = PresaleCap { id: object::new(ctx), presale_id };
+    let presale_cap_id = cap.id.to_inner();
+
+    event::emit(PresaleCreated<SaleToken, Quote> {
+        presale_id,
+        presale_cap_id,
+        treasury_cap_id,
+        token_supply,
+        token_allocation_bps: token_allocation_bps.value(),
+        participant_vesting,
+        liquidity_token_allocation_bps: liquidity_token_allocation_bps.value(),
+        recipients: recipient_allocations.recipients(),
+        recipient_bps: recipient_allocations.bps(),
+        recipient_vesting: recipient_allocations.vesting_terms(),
+        burnable,
+        raise_target,
+        raise_recipients: raise_allocations.recipients(),
+        raise_recipient_bps: raise_allocations.bps(),
+        raise_recipient_vesting: raise_allocations.vesting_terms(),
+        duration_ms: commitment_duration_ms,
+        liquidity_window_ms: liquidity_window_duration_ms,
+        eligibility,
+        uncapped,
+        hard_cap,
+        migration_witness,
+        fee_recipients: fee_split.fee_recipients.recipients(),
+        fee_recipient_bps: fee_split.fee_recipients.bps(),
+        holder_rewards_bps: fee_split.holder_rewards_bps.value(),
+        protocol_raise_bps: protocol_fees.raise_bps().value(),
+        protocol_token_bps: protocol_fees.token_bps().value(),
+        protocol_lp_fee_meme_bps: protocol_fees.lp_fee_meme_bps().value(),
+        protocol_lp_fee_quote_bps: protocol_fees.lp_fee_quote_bps().value(),
+        protocol_quote,
+        protocol_tokens: protocol_token_allocation,
+    });
+
+    (
+        Presale {
+            id,
+            presale_cap_id,
+            lifecycle: Lifecycle::Pending,
+            duration_ms: commitment_duration_ms,
+            liquidity_window_ms: liquidity_window_duration_ms,
+            start_ms: 0,
+            raise_target,
+            eligibility,
+            uncapped,
+            hard_cap,
+            migration_witness,
+            fee_split,
+            total_commitments: 0,
+            participants: 0,
+            quote: balance::zero(),
+            token_allocation,
+            participant_vesting,
+            sale_tokens,
+            liquidity_tokens,
+            recipient_payouts,
+            recipient_tokens,
+            raise_payouts,
+            protocol_fees,
+            protocol_quote,
+            protocol_tokens,
+            partner_id,
+            unpaid_protocol_quote: option::none(),
+        },
+        cap,
+    )
 }
 
 /// Shares a newly created presale and fixes its windows from `commitment_starts_at_ms`, or from now once that
@@ -847,25 +976,6 @@ public fun destroy_cap<SaleToken, Quote>(self: &Presale<SaleToken, Quote>, cap: 
 
 // === Package Functions ===
 
-/// Marks `self` as finalized only by the venue that started it, through `finalize_for_venue`, so
-/// the public `finalize` refuses it. A venue whose `finalize` binds what the sale's migration
-/// needs, such as Aftermath's pool-creation reservation, calls this from its `new`.
-public(package) fun require_venue_finalize<SaleToken, Quote>(
-    self: &mut PresaleInitializer<SaleToken, Quote>,
-) {
-    self.venue_finalizes = true;
-}
-
-/// Finalizes `self` as `finalize` does, for the venue that started the sale and binds what its
-/// migration needs in the same call; that venue's public `finalize` checks the package version.
-public(package) fun finalize_for_venue<SaleToken, Quote>(
-    self: PresaleInitializer<SaleToken, Quote>,
-    currency: &mut Currency<SaleToken>,
-    ctx: &mut TxContext,
-): (Presale<SaleToken, Quote>, PresaleCap) {
-    self.finalize_sale(currency, ctx)
-}
-
 public(package) fun assert_cap<SaleToken, Quote>(
     self: &Presale<SaleToken, Quote>,
     cap: &PresaleCap,
@@ -990,157 +1100,6 @@ fun apportion(shares: vector<Bps>, total: u64): vector<u64> {
 }
 
 // Presale creation
-
-/// Finalizes `self` for the public `finalize`, or for the venue that started the sale through
-/// `finalize_for_venue`: requires a confirmed unregulated sale currency, checks every setting, mints
-/// and apportions the complete token supply, and irreversibly makes it fixed or burn-only.
-fun finalize_sale<SaleToken, Quote>(
-    self: PresaleInitializer<SaleToken, Quote>,
-    currency: &mut Currency<SaleToken>,
-    ctx: &mut TxContext,
-): (Presale<SaleToken, Quote>, PresaleCap) {
-    assert_unregulated_currency(currency);
-
-    let PresaleInitializer {
-        treasury_cap,
-        migration_witness,
-        venue_finalizes: _,
-        protocol_fees,
-        token_supply,
-        burnable,
-        token_allocation_bps,
-        liquidity_token_allocation_bps,
-        recipient_allocations,
-        participant_vesting,
-        raise_target,
-        raise_allocations,
-        duration_ms: commitment_duration_ms,
-        liquidity_window_ms: liquidity_window_duration_ms,
-        eligibility,
-        uncapped,
-        hard_cap,
-        fee_split,
-        partner_id,
-    } = self;
-
-    let eligibility = eligibility.destroy_or!(abort EMissingSetting);
-    let fee_split = fee_split.destroy_or!(abort EMissingSetting);
-    assert!(raise_target > 0, EInvalidRaiseTarget);
-    assert_raise_allocations(&raise_allocations, protocol_fees.raise_bps());
-    assert_token_allocations(
-        token_supply,
-        token_allocation_bps,
-        liquidity_token_allocation_bps,
-        protocol_fees.token_bps(),
-        &recipient_allocations,
-    );
-    assert!(commitment_duration_ms > 0 && liquidity_window_duration_ms >= MIN_LIQUIDITY_WINDOW_DURATION_MS, EInvalidWindow);
-    assert!(eligibility.can_reach(raise_target), EUnreachableRaise);
-    uncapped.do_ref!(|phase| assert_uncapped_phase(phase, commitment_duration_ms, eligibility, raise_target));
-    hard_cap.do_ref!(|cap| assert!(cap.starts_after_ms < commitment_duration_ms, EInvalidHardCap));
-
-    let (
-        token_allocation,
-        liquidity_token_allocation,
-        protocol_token_allocation,
-        recipient_payouts,
-    ) = apportion_supply(
-        token_supply,
-        token_allocation_bps,
-        liquidity_token_allocation_bps,
-        protocol_fees.token_bps(),
-        &recipient_allocations,
-    );
-    let (raise_payouts, protocol_quote, liquidity_quote) = apportion_raise(
-        &raise_allocations,
-        protocol_fees.raise_bps(),
-        raise_target,
-    );
-
-    assert_seedable_price(liquidity_token_allocation, liquidity_quote);
-
-    let treasury_cap_id = object::id(&treasury_cap);
-    let (sale_tokens, liquidity_tokens, protocol_tokens, recipient_tokens) = mint_and_seal_supply(
-        treasury_cap,
-        currency,
-        token_supply,
-        token_allocation,
-        liquidity_token_allocation,
-        protocol_token_allocation,
-        burnable,
-    );
-
-    let id = object::new(ctx);
-    let presale_id = id.to_inner();
-    let cap = PresaleCap { id: object::new(ctx), presale_id };
-    let presale_cap_id = cap.id.to_inner();
-
-    event::emit(PresaleCreated<SaleToken, Quote> {
-        presale_id,
-        presale_cap_id,
-        treasury_cap_id,
-        token_supply,
-        token_allocation_bps: token_allocation_bps.value(),
-        participant_vesting,
-        liquidity_token_allocation_bps: liquidity_token_allocation_bps.value(),
-        recipients: recipient_allocations.recipients(),
-        recipient_bps: recipient_allocations.bps(),
-        recipient_vesting: recipient_allocations.vesting_terms(),
-        burnable,
-        raise_target,
-        raise_recipients: raise_allocations.recipients(),
-        raise_recipient_bps: raise_allocations.bps(),
-        raise_recipient_vesting: raise_allocations.vesting_terms(),
-        duration_ms: commitment_duration_ms,
-        liquidity_window_ms: liquidity_window_duration_ms,
-        eligibility,
-        uncapped,
-        hard_cap,
-        migration_witness,
-        fee_recipients: fee_split.fee_recipients.recipients(),
-        fee_recipient_bps: fee_split.fee_recipients.bps(),
-        holder_rewards_bps: fee_split.holder_rewards_bps.value(),
-        protocol_raise_bps: protocol_fees.raise_bps().value(),
-        protocol_token_bps: protocol_fees.token_bps().value(),
-        protocol_lp_fee_meme_bps: protocol_fees.lp_fee_meme_bps().value(),
-        protocol_lp_fee_quote_bps: protocol_fees.lp_fee_quote_bps().value(),
-        protocol_quote,
-        protocol_tokens: protocol_token_allocation,
-    });
-
-    (
-        Presale {
-            id,
-            presale_cap_id,
-            lifecycle: Lifecycle::Pending,
-            duration_ms: commitment_duration_ms,
-            liquidity_window_ms: liquidity_window_duration_ms,
-            start_ms: 0,
-            raise_target,
-            eligibility,
-            uncapped,
-            hard_cap,
-            migration_witness,
-            fee_split,
-            total_commitments: 0,
-            participants: 0,
-            quote: balance::zero(),
-            token_allocation,
-            participant_vesting,
-            sale_tokens,
-            liquidity_tokens,
-            recipient_payouts,
-            recipient_tokens,
-            raise_payouts,
-            protocol_fees,
-            protocol_quote,
-            protocol_tokens,
-            partner_id,
-            unpaid_protocol_quote: option::none(),
-        },
-        cap,
-    )
-}
 
 /// Raise allocations: distinct recipients that, with Blast's share, leave the LP part of the raise.
 fun assert_raise_allocations(raise_allocations: &vector<RecipientShare>, protocol_raise_bps: Bps) {
@@ -2314,9 +2273,6 @@ const EMissingSetting: vector<u8> = b"A presale needs its eligibility policy and
 
 #[error(code = 35)]
 const ESaleTokenNotUnregulated: vector<u8> = b"The sale currency must be confirmed unregulated; regulated and unknown legacy currencies are not allowed.";
-
-#[error(code = 36)]
-const EVenueFinalizesSale: vector<u8> = b"The venue that started this sale finalizes it; call that venue's finalize.";
 
 // === Imports ===
 

@@ -205,7 +205,8 @@ Quote-first on mainnet (E2E-040), and `sui/presale/DEPLOYING.md` step 7 requires
 adapter before the Aftermath witness is allowed on the production policy. Steps: (1) publish a fresh
 Aftermath LP coin through Aftermath's `publish-lp-coin` flow and keep its `CreatePoolCapV2`; (2)
 create a SUI-quoted Aftermath sale with `blast_presale::aftermath::new<SaleX, SUI>` (DAO fee 200
-BPS), the required setters, `blast_presale::aftermath::finalize<Lp, SaleX, SUI>`,
+BPS), which returns the initializer and its `FinalizeTicket`, the required setters,
+`blast_presale::aftermath::finalize<Lp, SaleX, SUI>` with that ticket,
 `blast_presale::blast_presale::share`, and `blast_presale::aftermath::share`, raising a small real SUI
 amount as E2E-011 does, under a single-wallet open policy and the seven-day LP window; (3) commit the
 raise and `settle`; (4) dev-inspect `blast_presale::aftermath::migrate<Lp, SaleX, SUI>` with the
