@@ -184,8 +184,10 @@ Steps, type arguments `<Meme, Quote>` throughout:
      `VenueConfig` (below) with tick spacing 0. The pool's weights and fee are the module's
      constants (50/50, flatness 0, Aftermath's minimum 0.01% swap-in fee, see Migrating to
      Aftermath). The call returns the
-     `PresaleInitializer`, which only `blast_presale::aftermath::finalize` (step 4) can finalize
-     usefully: it takes the pool-creation capability and reserves the sale's pool. Beforehand,
+     `PresaleInitializer`, which only `blast_presale::aftermath::finalize` (step 4) can finalize:
+     it takes the pool-creation capability and reserves the sale's pool, and
+     `blast_presale::blast_presale::finalize` refuses the initializer
+     (`blast_presale::blast_presale::EVenueFinalizesSale`). Beforehand,
      in its own transaction, publish a fresh Aftermath LP coin `Lp` (one per sale, through
      Aftermath's `publish-lp-coin` flow); its publication yields that `CreatePoolCapV2`.
 
@@ -231,9 +233,10 @@ Steps, type arguments `<Meme, Quote>` throughout:
    (`presale_id`, `pool_creation_id`, `create_pool_cap_id`), and returns
    `(Presale<Meme, Quote>, PresaleCap, PoolCreation<Lp, Meme, Quote>)`: the reservation bound to
    the new sale's ID, unshared. It has only `key`, so the same PTB must pass it to
-   `blast_presale::aftermath::share` (step 7), which shares it for the migration later. An
-   Aftermath sale finalized through `blast_presale::blast_presale::finalize` instead has no
-   reservation, can never migrate, and refunds after its liquidity deadline.
+   `blast_presale::aftermath::share` (step 7), which shares it for the migration later.
+   `blast_presale::blast_presale::finalize` refuses an initializer `blast_presale::aftermath::new`
+   started (`blast_presale::blast_presale::EVenueFinalizesSale`), so every Aftermath sale carries
+   its reservation.
 5. Optional, Blast admin only (`FeeAdmin`): `blast_presale::blast_presale::set_protocol_fees` on the pending sale.
 6. `blast_presale::blast_presale::share(presale, commitment_starts_at_ms, clock)`, same caller, fixes the windows and shares the
    sale. The start is `max(commitment_starts_at_ms, now)`, so a sale can be published ahead of its start. Emits
@@ -864,9 +867,10 @@ it. Common ones by flow (module `blast_presale` unless named):
   left after Blast, duplicates, zero amounts); `EInvalidWindow` (zero duration or LP window under
   7 days); `EUnreachableRaise` (minimum × slots below raise); `EInvalidEligibilityPolicy`;
   `EInvalidUncappedPhase`; `EInvalidHardCap` (hard cap starts at or after the window's end);
-  `EInvalidFeeSplit`; `EInvalidVestingTerms`; `EUnseedablePrice`;
-  `blast_presale::aftermath::EWrongMigrator` (the initializer was started by another venue's
-  `new`).
+  `EInvalidFeeSplit`; `EInvalidVestingTerms`; `EUnseedablePrice`; `EVenueFinalizesSale` (the
+  initializer was started by `blast_presale::aftermath::new`; finalize it with
+  `blast_presale::aftermath::finalize`); `blast_presale::aftermath::EWrongMigrator` (the
+  initializer was started by another venue's `new`).
 - Partner: `creation_policy::EPartnerNotAccepted`.
 - Share: `EInvalidLifecycle` (already shared); `EInvalidWindow`.
 - Commit: `EPresaleNotStarted`, `EPresaleEnded` (check the window); `EZeroCommitment`;
@@ -929,8 +933,9 @@ it. Common ones by flow (module `blast_presale` unless named):
 - Bluefin migration needs a `Coin<SUI>` of exactly Bluefin's current pool-creation fee.
 - An Aftermath sale needs a fresh LP coin with 9 decimals published before creation, must be
   finalized with `blast_presale::aftermath::finalize` (which takes the LP coin's
-  `CreatePoolCapV2` and returns the reservation for `blast_presale::aftermath::share`; a sale
-  finalized in `blast_presale` never migrates, and `finalize` cannot check the capability
+  `CreatePoolCapV2` and returns the reservation for `blast_presale::aftermath::share`;
+  `blast_presale::blast_presale::finalize` refuses the initializer with
+  `blast_presale::blast_presale::EVenueFinalizesSale`, but `finalize` cannot check the capability
   against `Lp`, so verify the capability's coin and decimals before listing the sale), and its
   DAO fees are not in a position: they sit as coins at the vault's address until someone lists
   them in `blast_presale::aftermath::collect_fees`. A collection that lists none is valid and

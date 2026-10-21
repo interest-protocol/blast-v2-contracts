@@ -18,7 +18,8 @@ windows (the migration window is at least seven days); `EligibilityPolicy`;
 migration venue (Cetus and Bluefin also take a pool tier, which they keep in
 `VenueConfig`, not in the sale; Aftermath takes its DAO fee as the tier and the
 pool-creation capability of a fresh LP coin, which its `finalize` binds to the sale in
-a shared reservation the migration consumes); and the LP-fee split:
+a shared reservation the migration consumes, and only that `finalize` can finalize such a
+sale); and the LP-fee split:
 up to 16 distinct fee recipients (the creator is one of them) and a holder-reward
 share, whose BPS total 10,000. Allocation BPS must total 10,000. The contract mints the complete
 supply once and uses largest-remainder apportionment so every atomic unit belongs

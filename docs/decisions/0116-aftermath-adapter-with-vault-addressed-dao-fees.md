@@ -8,6 +8,9 @@
   whose adapter [0088](0088-reusable-launch-accounting-and-atomic-migration.md)
   removed, and [0104](0104-external-presale-migrators-and-vendor-packages.md),
   whose vendor package fixes the pool terms
+- Amended: 2026-10-21 (pre-launch security review): the core's `finalize`
+  refuses an initializer `aftermath::new` started, so no Aftermath sale exists
+  without its reservation
 
 ## Sources
 
@@ -79,13 +82,18 @@ the presale's `Vault`:
   cap, a key-only `PoolCreation<Lp, Meme, Quote>` holding the capability and
   the sale's ID. The sale's ID exists only then, and binding by ID, not by
   type, is what keeps one reservation from ever serving another pool. `share`
-  shares it; nothing else can share, store, or drop it. A creator who
-  finalizes through the core instead has no reservation: the sale can never
-  migrate and refunds at its liquidity deadline. `finalize` cannot check the
+  shares it; nothing else can share, store, or drop it. `new` marks the
+  initializer as finalized by its venue (the core's package-only
+  `require_venue_finalize`), and the core's public `finalize` refuses such an
+  initializer (`EVenueFinalizesSale`) right after the package version, before
+  any other check; `finalize` here runs the core's package-only
+  `finalize_for_venue` instead. A creator therefore cannot finalize through the
+  core and strand a sale without its reservation, which would have held every
+  commitment until the liquidity deadline. `finalize` cannot check the
   capability against `Lp`, so a capability of another coin, or an LP coin with
   other than 9 decimals, leaves a reservation whose every migration aborts
-  inside Aftermath; the sale then refunds like one finalized through the core,
-  and the UI must verify the capability before listing.
+  inside Aftermath; the sale then refunds at its liquidity deadline, and the UI
+  must verify the capability before listing.
 - `migrate` checks that the reservation names this sale (`EWrongPresale`),
   consumes it, reads the fee back from `VenueConfig`, takes the hand-off,
   creates the pool in Aftermath's coin order from exactly those balances and
@@ -196,7 +204,10 @@ with its own copies, so both build side by side.
 - Move tests in `blast_presale`: `new` records the witness and the fee tier,
   accepts both bounds and rejects beyond them, and needs the policy's
   admission; `finalize` returns one reservation bound to the new sale,
-  announces it, and rejects another adapter's initializer; `share` shares the
+  announces it, and rejects another adapter's initializer; the core's
+  `finalize` refuses a sale `new` started before its settings and after the
+  package version; a funded sale nobody migrates refunds at its LP deadline,
+  and its reservation is refused once it is cancelled; `share` shares the
   reservation; `migrate` rejects another sale's reservation before touching
   anything; an owner cap is a vault position sealed under its venue and
   invisible to another; a vault built before its position announces nothing
@@ -204,8 +215,9 @@ with its own copies, so both build side by side.
   collection rejects another venue's vault, receives the vault's own coins and
   splits them exactly, an empty collection moves nothing, and a coin owned by
   someone else aborts in `sui::transfer`.
-- `sui/presale/scripts/check_source_boundaries.sh` pins the vault seams to
-  the Aftermath module, the single receiving path, that `aftermath.move` sends
+- `sui/presale/scripts/check_source_boundaries.sh` pins the vault seams and
+  the initializer's venue-finalize seams to the Aftermath module, the single
+  receiving path, that `aftermath.move` sends
   its LP coin to `0x0` exactly once, and that the presale's Aftermath stubs
   match the vendor's byte for byte; `python3 scripts/check_move_style.py`
   holds.

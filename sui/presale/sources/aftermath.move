@@ -15,8 +15,9 @@
 /// Aftermath creates a pool only from a `CreatePoolCapV2` minted by a freshly published LP coin,
 /// so the creator publishes one per sale and hands its capability to `finalize`, which finalizes
 /// the sale and returns the reservation bound to that sale's ID for `share`; only that sale's
-/// migration can consume it. A sale `new` started but finalized directly in `blast_presale` has
-/// no reservation, so it can never migrate and refunds after its LP deadline.
+/// migration can consume it. A sale `new` started can be finalized only here: `new` marks its
+/// initializer, and `blast_presale::finalize` refuses it, so no Aftermath sale exists without its
+/// reservation.
 ///
 /// Aftermath's registry rejects a second pool with the same coins, weights, flatness, and fees,
 /// but no sale token circulates before migration, so nobody can create the sale's pool first and
@@ -61,12 +62,21 @@ public fun new<Meme, Quote>(
 
     venue_config.add_pool_tier<Meme, Quote, _>(&Venue(), 0, dao_fee_bps as u64);
 
-    presale::new(treasury_cap, package_version, Witness(), creation_policy, fee_policy)
+    let mut initializer = presale::new<Meme, Quote, _>(
+        treasury_cap,
+        package_version,
+        Witness(),
+        creation_policy,
+        fee_policy,
+    );
+    initializer.require_venue_finalize();
+
+    initializer
 }
 
-/// Finalizes a sale `new` started, as `blast_presale::finalize` does, and returns it with the
-/// reservation binding `create_pool_cap`, which the fresh LP coin `Lp` minted, to that sale's ID.
-/// The initializer must be one `new` started: another migrator's sale could never consume the
+/// Finalizes a sale `new` started, which `blast_presale::finalize` refuses, and returns it with
+/// the reservation binding `create_pool_cap`, which the fresh LP coin `Lp` minted, to that sale's
+/// ID. The initializer must be one `new` started: another migrator's sale could never consume the
 /// reservation. The reservation has only `key`, so the PTB that creates the sale must share it
 /// with `share`; a sale is never funded in that PTB.
 public fun finalize<Lp, Meme, Quote>(
@@ -83,7 +93,7 @@ public fun finalize<Lp, Meme, Quote>(
         EWrongMigrator,
     );
 
-    let (sale, cap) = initializer.finalize(package_version, currency, ctx);
+    let (sale, cap) = initializer.finalize_for_venue(currency, ctx);
 
     let pool_creation = PoolCreation<Lp, Meme, Quote> {
         id: object::new(ctx),

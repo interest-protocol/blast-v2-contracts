@@ -136,4 +136,15 @@ for stub in aftermath_amm aftermath_dao_fee aftermath_math aftermath_utils \
     || fail "The presale's ${stub} link stub must match the vendor package's byte for byte."
 done
 
+# 7. An initializer whose venue finalizes its sale is marked, and finalized, only by that venue
+#    (ADR 0116): the core's public finalize refuses it, so no Aftermath sale exists without its
+#    reservation.
+for seam in '\.require_venue_finalize\(' '\.finalize_for_venue\('; do
+  callers="$(for file in "$sources"/*.move; do
+    production "$file" | { rg -q "$seam" && basename "$file"; } || true
+  done | sort | tr '\n' ' ')"
+  [ "$callers" == "aftermath.move " ] \
+    || fail "Only the Aftermath venue may reach the initializer seam ${seam} (found: ${callers:-none})."
+done
+
 printf 'blast_presale source boundaries hold.\n'
