@@ -13,6 +13,7 @@ module blast_presale::aftermath_tests;
 const CREATOR: address = @0xC0FFEE;
 const FEE_RECIPIENT: address = @0xFEE;
 const KEEPER: address = @0x4EE9;
+const PARTICIPANT: address = @0xA11CE;
 
 const DAO_FEE_BPS: u16 = 200;
 const TOKEN_SUPPLY: u64 = 1_000_000_000;
@@ -53,7 +54,7 @@ fun new_records_the_witness_and_the_dao_fee_tier() {
     let mut venue_config = venue_config::new_for_testing(scenario.ctx());
     let (treasury_cap, currency) = new_currency(&mut scenario);
 
-    let initializer = aftermath::new<_, QUOTE>(
+    let (initializer, ticket) = aftermath::new<_, QUOTE>(
         treasury_cap,
         &package_version,
         &creation_policy,
@@ -73,6 +74,7 @@ fun new_records_the_witness_and_the_dao_fee_tier() {
     assert_eq!(stored_fee_rate, 200);
 
     destroy(initializer);
+    destroy(ticket);
     destroy(currency);
     destroy(venue_config);
     destroy(fee_policy);
@@ -188,35 +190,6 @@ fun migrate_rejects_another_sales_reservation() {
 }
 
 #[test]
-#[expected_failure(abort_code = aftermath::EWrongMigrator, location = blast_presale::aftermath)]
-/// Only a sale this module's `new` started can be finalized here: another migrator's sale could
-/// never consume the reservation.
-fun finalize_rejects_another_migrators_sale() {
-    let mut scenario = test_scenario::begin(CREATOR);
-    let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
-    let creation_policy = allowing<OTHER_MIGRATOR>(scenario.ctx());
-    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
-    let (treasury_cap, mut currency) = new_currency(&mut scenario);
-    let initializer = presale::new<_, QUOTE, _>(
-        treasury_cap,
-        &package_version,
-        OTHER_MIGRATOR(),
-        &creation_policy,
-        &fee_policy,
-    );
-
-    let (_sale, _cap, _pool_creation) = aftermath::finalize<LP, _, _>(
-        initializer,
-        &package_version,
-        &mut currency,
-        amm_pool::create_pool_cap_for_testing(scenario.ctx()),
-        scenario.ctx(),
-    );
-    std::unit_test::destroy(package_version);
-    abort
-}
-
-#[test]
 #[expected_failure(
     abort_code = creation_policy::EMigrationWitnessNotAllowed,
     location = blast_presale::creation_policy,
@@ -230,7 +203,7 @@ fun new_needs_blast_to_allow_the_witness() {
     let mut venue_config = venue_config::new_for_testing(scenario.ctx());
     let (treasury_cap, _currency) = new_currency(&mut scenario);
 
-    let _initializer = aftermath::new<_, QUOTE>(
+    let (_initializer, _ticket) = aftermath::new<_, QUOTE>(
         treasury_cap,
         &package_version,
         &creation_policy,
@@ -453,7 +426,7 @@ fun new_accepts_one_basis_point_and_the_whole_amount() {
         let mut venue_config = venue_config::new_for_testing(scenario.ctx());
         let (treasury_cap, currency) = new_currency(&mut scenario);
 
-        let initializer = aftermath::new<_, QUOTE>(
+        let (initializer, ticket) = aftermath::new<_, QUOTE>(
             treasury_cap,
             &package_version,
             &creation_policy,
@@ -465,6 +438,7 @@ fun new_accepts_one_basis_point_and_the_whole_amount() {
         let (_, stored_fee_rate) = venue_config.pool_tier<AFTERMATH_TESTS>();
         assert_eq!(stored_fee_rate, dao_fee_bps as u64);
         destroy(initializer);
+        destroy(ticket);
         destroy(currency);
         destroy(venue_config);
     });
@@ -524,6 +498,135 @@ fun collect_fees_receives_only_coins_the_vault_owns() {
     abort
 }
 
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+/// A stale package version is refused before `finalize` consumes anything.
+fun a_stale_version_cannot_finalize_a_sale() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let mut package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
+    let creation_policy = allowing<Witness>(scenario.ctx());
+    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let mut venue_config = venue_config::new_for_testing(scenario.ctx());
+    let (treasury_cap, mut currency) = new_currency(&mut scenario);
+    let (initializer, ticket) = aftermath::new<_, QUOTE>(
+        treasury_cap,
+        &package_version,
+        &creation_policy,
+        &fee_policy,
+        &mut venue_config,
+        DAO_FEE_BPS,
+    );
+
+    package_version.set_for_testing(2);
+    let (_sale, _cap, _pool_creation) = aftermath::finalize<LP, _, _>(
+        initializer,
+        &package_version,
+        ticket,
+        &mut currency,
+        amm_pool::create_pool_cap_for_testing(scenario.ctx()),
+        scenario.ctx(),
+    );
+    std::unit_test::destroy(package_version);
+    abort
+}
+
+#[test]
+/// A funded sale nobody can migrate, such as one whose reservation holds the capability of
+/// another LP coin, still reaches its refund exit: at the LP deadline anyone cancels it, the
+/// commitment is refunded in full, no token leaves, and the creator's cap can be destroyed.
+fun a_funded_sale_nobody_migrates_refunds_at_its_lp_deadline() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
+    let creation_policy = allowing<Witness>(scenario.ctx());
+    let mut venue_config = venue_config::new_for_testing(scenario.ctx());
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let (sale_id, _, cap) = fund_sale(
+        &mut scenario,
+        &package_version,
+        &creation_policy,
+        &mut venue_config,
+        &mut clock,
+    );
+
+    scenario.next_tx(KEEPER);
+    clock.set_for_testing(COMMITMENT_DURATION_MS + LIQUIDITY_WINDOW_DURATION_MS);
+    let mut sale = scenario.take_shared_by_id<Presale<AFTERMATH_TESTS, QUOTE>>(sale_id);
+    sale.cancel_unlaunched(&package_version, &clock);
+    assert!(sale.is_cancelled_for_testing());
+    sale.claim(&package_version, PARTICIPANT, &clock, scenario.ctx());
+    let (total_commitments, participants, quote, sale_tokens, liquidity_tokens, _, _) = sale
+        .custody_for_testing();
+    assert_eq!(vector[total_commitments, participants, quote], vector[RAISE_TARGET, 0, 0]);
+    assert_eq!(vector[sale_tokens, liquidity_tokens], vector[TOKEN_SUPPLY / 2, TOKEN_SUPPLY / 2]);
+    test_scenario::return_shared(sale);
+
+    scenario.next_tx(PARTICIPANT);
+    assert_eq!(scenario.take_from_sender<Coin<QUOTE>>().burn_for_testing(), RAISE_TARGET);
+    assert!(!scenario.has_most_recent_for_sender<Coin<AFTERMATH_TESTS>>());
+
+    scenario.next_tx(CREATOR);
+    let sale = scenario.take_shared_by_id<Presale<AFTERMATH_TESTS, QUOTE>>(sale_id);
+    sale.destroy_cap(cap);
+    test_scenario::return_shared(sale);
+
+    destroy(venue_config);
+    destroy(creation_policy);
+    clock.destroy_for_testing();
+    scenario.end();
+
+    std::unit_test::destroy(package_version);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = presale::EInvalidLifecycle,
+    location = blast_presale::blast_presale,
+)]
+/// Once a sale is cancelled its reservation serves nothing: the migration is refused in the core
+/// before any pool is created.
+fun a_cancelled_sales_reservation_cannot_be_consumed() {
+    let mut scenario = test_scenario::begin(CREATOR);
+    let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
+    let creation_policy = allowing<Witness>(scenario.ctx());
+    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let mut venue_config = venue_config::new_for_testing(scenario.ctx());
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    let (sale_id, pool_creation_id, _cap) = fund_sale(
+        &mut scenario,
+        &package_version,
+        &creation_policy,
+        &mut venue_config,
+        &mut clock,
+    );
+
+    scenario.next_tx(KEEPER);
+    clock.set_for_testing(COMMITMENT_DURATION_MS + LIQUIDITY_WINDOW_DURATION_MS);
+    let mut sale = scenario.take_shared_by_id<Presale<AFTERMATH_TESTS, QUOTE>>(sale_id);
+    sale.cancel_unlaunched(&package_version, &clock);
+    let pool_creation = scenario.take_shared_by_id<PoolCreation<LP, AFTERMATH_TESTS, QUOTE>>(
+        pool_creation_id,
+    );
+    let mut pool_registry = pool_registry::new_for_testing(scenario.ctx());
+    let dao_fee_version = version::new_for_testing(scenario.ctx());
+
+    aftermath::migrate(
+        &mut sale,
+        &package_version,
+        pool_creation,
+        &fee_policy,
+        &venue_config,
+        &mut pool_registry,
+        &dao_fee_version,
+        &clock,
+        scenario.ctx(),
+    );
+    std::unit_test::destroy(package_version);
+    abort
+}
+
 // === Test Helpers ===
 
 /// A creation policy that allows `QUOTE` and `MigrationWitness`.
@@ -540,7 +643,7 @@ fun start_rejected_fee(dao_fee_bps: u16) {
     let mut venue_config = venue_config::new_for_testing(scenario.ctx());
     let (treasury_cap, _currency) = new_currency(&mut scenario);
 
-    let _initializer = aftermath::new<_, QUOTE>(
+    let (_initializer, _ticket) = aftermath::new<_, QUOTE>(
         treasury_cap,
         &package_version,
         &creation_policy,
@@ -582,7 +685,7 @@ fun new_sale(
         let fee_policy = fee_policy::new_for_testing(scenario.ctx());
         let (treasury_cap, mut currency) = new_currency(scenario);
 
-        let mut initializer = aftermath::new<_, QUOTE>(
+        let (mut initializer, ticket) = aftermath::new<_, QUOTE>(
             treasury_cap,
             &package_version,
             creation_policy,
@@ -613,6 +716,7 @@ fun new_sale(
         let (sale, cap, pool_creation) = aftermath::finalize<LP, _, _>(
             initializer,
             &package_version,
+            ticket,
             &mut currency,
             create_pool_cap,
             scenario.ctx(),
@@ -629,6 +733,42 @@ fun new_sale(
     };
     std::unit_test::destroy(package_version);
     (result_0, result_1)
+}
+
+/// Shares `new_sale`'s sale at clock zero, funds it with one commitment of the whole raise, and
+/// settles it at the window's end, returning the sale's ID, its reservation's ID, and the
+/// creator's cap.
+fun fund_sale(
+    scenario: &mut Scenario,
+    package_version: &PackageVersion,
+    creation_policy: &CreationPolicy,
+    venue_config: &mut VenueConfig,
+    clock: &mut Clock,
+): (ID, ID, PresaleCap) {
+    let create_pool_cap = amm_pool::create_pool_cap_for_testing(scenario.ctx());
+    let (sale, cap) = new_sale(scenario, creation_policy, venue_config, create_pool_cap);
+    let sale_id = object::id(&sale);
+    let (_, pool_creation_id, _) = only_event<
+        PoolCreationReserved<LP, AFTERMATH_TESTS, QUOTE>,
+    >().pool_creation_reserved_fields();
+    sale.share(package_version, 0, clock);
+
+    scenario.next_tx(PARTICIPANT);
+    let mut sale = scenario.take_shared_by_id<Presale<AFTERMATH_TESTS, QUOTE>>(sale_id);
+    sale
+        .commit_open(
+            package_version,
+            coin::mint_for_testing<QUOTE>(RAISE_TARGET, scenario.ctx()),
+            clock,
+            scenario.ctx(),
+        )
+        .destroy_zero();
+    clock.set_for_testing(COMMITMENT_DURATION_MS);
+    sale.settle(package_version, clock);
+    assert!(sale.is_funded_for_testing());
+    test_scenario::return_shared(sale);
+
+    (sale_id, pool_creation_id, cap)
 }
 
 /// An unshared vault paying its whole split to `FEE_RECIPIENT`, with no holder share and no Blast
@@ -680,6 +820,7 @@ use amm::{pool::{Self as amm_pool, CreatePoolCapV2}, pool_registry};
 use blast_presale::{
     aftermath::{Self, PoolCreation, PoolCreationReserved, Venue, Witness, sorts_before_for_testing},
     blast_presale::{Self as presale, FeeSplit, Presale, PresaleCap, PresaleCreated},
+    blast_presale_package::PackageVersion,
     bps,
     creation_policy::{Self, CreationPolicy},
     fee_policy,
@@ -693,7 +834,7 @@ use std::{type_name, unit_test::{assert_eq, destroy}};
 
 use sui::{
     balance,
-    clock,
+    clock::{Self, Clock},
     coin::{Self, Coin, TreasuryCap},
     coin_registry::{Self, Currency},
     event,

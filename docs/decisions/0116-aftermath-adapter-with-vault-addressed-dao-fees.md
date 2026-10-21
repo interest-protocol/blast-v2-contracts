@@ -8,6 +8,10 @@
   whose adapter [0088](0088-reusable-launch-accounting-and-atomic-migration.md)
   removed, and [0104](0104-external-presale-migrators-and-vendor-packages.md),
   whose vendor package fixes the pool terms
+- Amended: 2026-10-21 (pre-launch security review, owner decision): `new`
+  returns an ability-free `FinalizeTicket` that only `finalize` consumes, so no
+  Aftermath sale exists without its reservation; the migrator check `finalize`
+  made is unreachable and removed
 
 ## Sources
 
@@ -73,19 +77,24 @@ the presale's `Vault`:
   ADR 0111 does for the other venues. The other pool terms are compiled: 50/50
   weights, flatness zero, Aftermath's minimum 0.01% swap-in fee.
 - `finalize` takes the `CreatePoolCapV2` of a fresh LP coin `Lp` the creator
-  published, aborts unless this module's `new` started the initializer
-  (`EWrongMigrator`, read through the core's `migration_witness` getter),
-  finalizes the sale through the core, and returns, with the new sale and its
-  cap, a key-only `PoolCreation<Lp, Meme, Quote>` holding the capability and
-  the sale's ID. The sale's ID exists only then, and binding by ID, not by
+  published and the ticket `new` returned, finalizes the sale through the core,
+  and returns, with the new sale and its cap, a key-only
+  `PoolCreation<Lp, Meme, Quote>` holding the capability and the sale's ID. The sale's ID exists only then, and binding by ID, not by
   type, is what keeps one reservation from ever serving another pool. `share`
-  shares it; nothing else can share, store, or drop it. A creator who
-  finalizes through the core instead has no reservation: the sale can never
-  migrate and refunds at its liquidity deadline. `finalize` cannot check the
-  capability against `Lp`, so a capability of another coin, or an LP coin with
-  other than 9 decimals, leaves a reservation whose every migration aborts
-  inside Aftermath; the sale then refunds like one finalized through the core,
-  and the UI must verify the capability before listing.
+  shares it; nothing else can share, store, or drop it. `new` returns, beside
+  the initializer, a `FinalizeTicket<Meme, Quote>` with no abilities that only
+  `finalize` consumes, so a creation transaction that finalizes through the
+  core instead ends holding the ticket and fails (owner, 2026-10-21): a creator
+  cannot strand a sale without its reservation, which would have held every
+  commitment until the liquidity deadline. The ticket's type parameters admit
+  only the initializer of the same sale token, and `new` consumed that token's
+  unique treasury cap, so no other migrator's initializer can reach `finalize`;
+  the former `EWrongMigrator` check is unreachable and removed. The core is
+  unchanged. `finalize` cannot check the capability against `Lp`, so a
+  capability of another coin, or an LP coin with other than 9 decimals, leaves
+  a reservation whose every migration aborts inside Aftermath; the sale then
+  refunds at its liquidity deadline, and the UI must verify the capability
+  before listing.
 - `migrate` checks that the reservation names this sale (`EWrongPresale`),
   consumes it, reads the fee back from `VenueConfig`, takes the hand-off,
   creates the pool in Aftermath's coin order from exactly those balances and
@@ -156,7 +165,12 @@ with its own copies, so both build side by side.
 - **Return the capability from `new` in a hot potato.** Rejected (owner,
   2026-10-17): the sale's ID, which the reservation must name, exists only at
   `finalize`, which already needs the initializer only the creator holds, so
-  the capability goes straight to `finalize`.
+  the capability goes straight to `finalize`. The `FinalizeTicket` `new`
+  returns carries no capability; it only makes the creator's transaction end
+  in `finalize`.
+- **Flag the initializer in the core so its public `finalize` refuses it.**
+  Replaced (owner, 2026-10-21) by the ticket, which keeps the core untouched
+  and makes the wrong path unrepresentable instead of checked.
 - **Bind the reservation by type only.** Rejected (owner, 2026-10-17): the
   treasury cap is unique per sale token, so a type binding is sound, but a
   reservation must name the exact sale it serves.
@@ -195,8 +209,13 @@ with its own copies, so both build side by side.
 
 - Move tests in `blast_presale`: `new` records the witness and the fee tier,
   accepts both bounds and rejects beyond them, and needs the policy's
-  admission; `finalize` returns one reservation bound to the new sale,
-  announces it, and rejects another adapter's initializer; `share` shares the
+  admission; `finalize` returns one reservation bound to the new sale and
+  announces it, and a stale package version stops it before it consumes
+  anything; the ticket's refusal of a core finalize is a property of an
+  ability-free value that no unit test can express, so the source gate pins
+  the type and its single consumer; a funded sale nobody migrates refunds at
+  its LP deadline, and its reservation is refused once it is cancelled;
+  `share` shares the
   reservation; `migrate` rejects another sale's reservation before touching
   anything; an owner cap is a vault position sealed under its venue and
   invisible to another; a vault built before its position announces nothing
@@ -205,7 +224,8 @@ with its own copies, so both build side by side.
   splits them exactly, an empty collection moves nothing, and a coin owned by
   someone else aborts in `sui::transfer`.
 - `sui/presale/scripts/check_source_boundaries.sh` pins the vault seams to
-  the Aftermath module, the single receiving path, that `aftermath.move` sends
+  the Aftermath module, the ability-free `FinalizeTicket` and its single
+  consumer, the single receiving path, that `aftermath.move` sends
   its LP coin to `0x0` exactly once, and that the presale's Aftermath stubs
   match the vendor's byte for byte; `python3 scripts/check_move_style.py`
   holds.

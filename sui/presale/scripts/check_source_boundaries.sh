@@ -136,4 +136,15 @@ for stub in aftermath_amm aftermath_dao_fee aftermath_math aftermath_utils \
     || fail "The presale's ${stub} link stub must match the vendor package's byte for byte."
 done
 
+# 7. The ticket `aftermath::new` returns beside the initializer has no abilities and only
+#    `aftermath::finalize` consumes it (ADR 0116), so a creation transaction that finalizes an
+#    Aftermath sale through the core ends holding the ticket and fails.
+aftermath_production="$(production "$sources/aftermath.move")"
+rg -q '^public struct FinalizeTicket<phantom Meme, phantom Quote>\(\)$' <<<"$aftermath_production" \
+  || fail "aftermath::FinalizeTicket must be an ability-free hot potato."
+aftermath_finalize_body="$(sed -n '/^public fun finalize</,/^}/p' <<<"$aftermath_production")"
+[ "$(rg -c 'FinalizeTicket\(\)' <<<"$aftermath_production")" == 2 ] \
+  && rg -q '^    let FinalizeTicket\(\) = ticket;$' <<<"$aftermath_finalize_body" \
+  || fail "aftermath::FinalizeTicket is constructed only by new and consumed only by finalize."
+
 printf 'blast_presale source boundaries hold.\n'

@@ -10,6 +10,11 @@ the ACL and a real dependency-only upgrade. Evidence and findings:
 [`deployments/sui/mainnet/2026-10-09-blast-presale-e2e.json`](../deployments/sui/mainnet/2026-10-09-blast-presale-e2e.json).
 The 2026-10-04 run on `0x76cb…8400` is
 [`2026-10-04-blast-presale-e2e.json`](../deployments/sui/mainnet/2026-10-04-blast-presale-e2e.json).
+The 2026-10-20 run on the versioned package `0xafc4…83f8` is
+[`2026-10-20-blast-presale-versioned-e2e.json`](../deployments/sui/mainnet/2026-10-20-blast-presale-versioned-e2e.json);
+it migrated its two Aftermath sales sale-token-first only. E2E-042 (added 2026-10-21) is open: the
+presale adapter's Aftermath migration in the Quote-first coin order, which every SUI-quoted sale
+takes. Whoever runs it records the evidence as a new deployment record and names that run here.
 
 Goal: exercise every public `blast_presale` function and every abort condition users can hit,
 on the real mainnet package (the deployment record each run names),
@@ -189,6 +194,34 @@ transfer, a buy, a sell), replayed checkpoint by checkpoint through the SDK ledg
 token's registration, weighted from vault creation, cross-checked against an independent
 replay of the token's transactions, then allocated, published, and paid to every holder.
 
+**E2E-042 Aftermath presale adapter, Quote-first coin order (SUI).** Why: `blast_presale::aftermath::migrate`
+creates the base pool in Aftermath's coin order, which the module's `sorts_before` computes as the
+byte order of the two defining-ID type names (`0000…0002::sui::SUI` for SUI). Every SUI-quoted
+Aftermath sale therefore takes the Quote-first branch of `create_pool`, because SUI's address sorts
+before any user package's. The 2026-10-20 run exercised only the sale-token-first branch on this
+adapter (its two Aftermath sales used `TEST_SUI` from the testkit package, whose module name sorts
+after `sale_tokens`); only the immutable vendor package's byte-identical `sorts_before` has run
+Quote-first on mainnet (E2E-040), and `sui/presale/DEPLOYING.md` step 7 requires both orders on this
+adapter before the Aftermath witness is allowed on the production policy. Steps: (1) publish a fresh
+Aftermath LP coin through Aftermath's `publish-lp-coin` flow and keep its `CreatePoolCapV2`; (2)
+create a SUI-quoted Aftermath sale with `blast_presale::aftermath::new<SaleX, SUI>` (DAO fee 200
+BPS), which returns the initializer and its `FinalizeTicket`, the required setters,
+`blast_presale::aftermath::finalize<Lp, SaleX, SUI>` with that ticket,
+`blast_presale::blast_presale::share`, and `blast_presale::aftermath::share`, raising a small real SUI
+amount as E2E-011 does, under a single-wallet open policy and the seven-day LP window; (3) commit the
+raise and `settle`; (4) dev-inspect `blast_presale::aftermath::migrate<Lp, SaleX, SUI>` with the
+shared `PoolCreation`, then execute it; (5) one small swap each way on the shared DAO-fee pool, then
+`blast_presale::aftermath::collect_fees` listing every `Coin<SaleX>` and `Coin<SUI>` the vault's
+address owns; (6) `claim` for the participant. Checks: the SDK's coin-order helper and the executed
+branch both put `SUI` first (the base pool's first coin type is `SUI`); `DaoFeePoolCreated` and
+`presale_vault::VaultCreated` are emitted with the base pool, DAO-fee pool, owner cap, and LP coin
+IDs; `amm::pool::balance_of` for `SaleX` and for `SUI` equal `PresaleMigrated`'s `liquidity_tokens`
+and `liquidity_quote`; the LP coin is owned by `0x0`; the owner cap is the vault's position under
+`blast_presale::aftermath::Venue`; each swap sends its DAO fee as a coin to the vault's address, and
+`FeesCollected` splits exactly what was received. Done when: the new deployment record carries the
+digests and checks and lists no reverse-order limitation, and the status paragraph at the top of this
+file names the run.
+
 ### Close-out
 
 **E2E-030 Teardown and record.** Delist `TSUI`; restore the launch fee rates and destination;
@@ -198,4 +231,6 @@ currently hand-encodes them) and the list of test sale IDs to hide.
 ## Order
 
 E2E-001 → 002 → 003 → decisions D1–D5 → 004 → 017 (starts the seven-day clock) → 010–016,
-018–019 in any order → 020–022 on migrated sales → 025 → 023 → 024 → 030.
+018–019 in any order → 020–022 on migrated sales → 025 → 023 → 024 → 030. E2E-042 runs on its own
+against the versioned package once the Aftermath witness and SUI are allowed there, and before
+Aftermath is allowed on the production policy.
