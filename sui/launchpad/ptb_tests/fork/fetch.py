@@ -47,7 +47,7 @@ ENDPOINT = "https://graphql.mainnet.sui.io/graphql"
 CHAIN_IDENTIFIER = "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"
 
 # The pinned checkpoint every committed fixture was read at.
-CHECKPOINT = 326297561
+CHECKPOINT = 336358066
 
 OUT = Path(__file__).resolve().parent / "snapshot"
 
