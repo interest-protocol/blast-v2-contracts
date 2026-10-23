@@ -37,6 +37,32 @@ The Publisher object shows `module_name` of the claiming module, and
 `OperationalVersion<Marker>`, so the marker name is what an auditor reads on
 every package-administration object.
 
+## Blast Market Maker
+
+The side package `blast_market_maker` uses its package name as the local address alias
+in source. Explorer type strings omit that alias, so its public
+marker, key objects, capabilities and direct events carry Blast in their own names.
+
+| Role | Explorer module/type | Identified by |
+| --- | --- | --- |
+| Publisher marker | `blast_market_maker::BLAST_MARKET_MAKER` | module and struct |
+| ACL roles | `blast_market_maker_domain::{FeeAdmin,TreasuryAdmin,RewardsAdmin,UpgradeAdmin}` | module |
+| Vault | `market_maker::BlastMarketMakerVault<Meme,Quote>` | struct |
+| Creator capability | `market_maker::BlastMarketMakerCreatorCap` | struct |
+| Presale epoch rewards | `presale_rewards::BlastPresaleRewardRound<Meme,Quote>` | struct |
+| Delegated operator capability | `market_maker::BlastMarketMakerOperatorCap` | struct |
+| Bootstrap and generation | `package_version::{BlastMarketMakerBootstrap,BlastMarketMakerVersion}` | struct |
+| Native upgrade custody | `package_admin::BlastMarketMakerAdmin` | struct |
+| Treasury | `protocol_treasury::BlastMarketMakerTreasury` | struct |
+| LP fee policy | `market_maker_fee_policy::BlastMarketMakerFeePolicy` | struct |
+| Direct events | `market_maker`, `cetus_engine`, `cetus_migrator`, `presale_adapter`, `presale_rewards`, `package_admin`, `package_version`, `protocol_treasury`, `market_maker_fee_policy` emit `Blast*` structs | struct |
+
+Nested route/phase/limits, sealed dynamic-field keys, ledger/claim/allocation values,
+risk message/domain values and the two sealed adapter `Witness` types keep short
+internal names under ADR 0085's internal-module exception. They are reached through
+the Blast vault or package marker; these residual names are not independent
+wallet-held authorities. Test-only fixture and coin types remain exempt.
+
 ## Coin types
 
 | Package | Coin `T` before | After | Identified by |
