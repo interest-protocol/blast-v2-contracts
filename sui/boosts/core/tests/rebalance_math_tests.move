@@ -39,7 +39,8 @@ fun whole_lot_increase_matches_exhaustive_small_domain_reference() {
                         while (candidate <= 8) {
                             let adverse = (candidate * tolerance + 9_999) / 10_000;
                             let charge = ((candidate + adverse) * fee + 9_999) / 10_000;
-                            if (adverse + charge < nav && notional + candidate <= 2 * (nav - adverse - charge)) {
+                            if (candidate * (1_000 * (10_000 + tolerance) / 10_000 + 1) <= 8_000
+                                && adverse + charge < nav && notional + candidate <= 2 * (nav - adverse - charge)) {
                                 expected = candidate;
                             };
                             candidate = candidate + lot_size;
@@ -184,17 +185,15 @@ fun reduction_predicate_matches_the_small_domain_reference() {
                                 );
                                 let before_bps = leverage_distance_bps(before_notional, before_nav, target_bps);
                                 let after_bps = leverage_distance_bps(after_notional, after_nav, target_bps);
-                                let not_farther = ratio_le(after_bps, before_bps);
-                                let improved = ratio_le(
-                                    Ratio {
+                                let not_farther = after_bps.ratio_le(before_bps);
+                                let improved = (Ratio {
                                         numerator: after_bps.numerator * before_bps.denominator
                                             + (minimum_improvement_bps as u128) * after_bps.denominator * before_bps.denominator,
                                         denominator: after_bps.denominator * before_bps.denominator,
-                                    },
-                                    before_bps,
+                                    }).ratio_le(
+                                        before_bps,
                                 );
-                                let within_lot = ratio_le(
-                                    after_bps,
+                                let within_lot = after_bps.ratio_le(
                                     Ratio { numerator: (lot_size as u128) * 10_000, denominator: after_nav as u128 },
                                 );
                                 assert_eq!(observed, (within_lot && not_farther) || improved);
@@ -257,14 +256,14 @@ fun increase_recomputes_headroom_after_each_order_cost() {
         1_000, 500_000, 10, 50,
         1_000_000_000, 1_000_000,
     );
-    assert_eq!(first, 50_000_000);
-    assert_eq!(rebalance_math::execution_cost_up_for_testing(500_000, 10, 50), 3_003);
+    assert_eq!(first, 49_751_000);
+    assert_eq!(rebalance_math::execution_cost_up_for_testing(497_510, 10, 50), 2_988);
     let second = rebalance_math::increase_base_down(
-        996_997, 1_500_000, 20_000, 10_000_000_000, 1_000_000_000,
+        997_012, 1_497_510, 20_000, 10_000_000_000, 1_000_000_000,
         1_000, 500_000, 10, 50,
         1_000_000_000, 1_000_000,
     );
-    assert_eq!(second, 48_813_000);
+    assert_eq!(second, 49_061_000);
 }
 
 #[test]
@@ -295,7 +294,7 @@ fun generic_four_and_six_times_use_the_same_maximal_integer_search() {
         1_000_000_000, 1_000_000,
     );
     assert_eq!(four, 300_000_000);
-    assert_eq!(six, 500_000_000);
+    assert_eq!(six, 499_999_000);
 }
 
 /// The ceiling charges a full collateral atom for any fractional remainder.
@@ -334,9 +333,10 @@ fun a_zero_notional_has_zero_execution_cost() {
     assert_eq!(rebalance_math::execution_cost_up_for_testing(0, 10_000, 9_999), 0);
 }
 
-/// A zero per-order cap leaves no headroom, so the search returns flat without aborting.
+/// An unusable opening cap fails with its own diagnostic.
 #[test]
-fun a_zero_order_cap_yields_no_increase() {
+#[expected_failure(abort_code = errors::EOrderCapBelowMinimum, location = blast_boosts_core::rebalance_math)]
+fun a_zero_order_cap_refuses_an_increase() {
     assert_eq!(rebalance_math::increase_base_down(
         1_000_000, 0, 20_000, 10_000_000_000, 1_000_000_000,
         1_000, 0, 0, 0,

@@ -63,8 +63,8 @@ public(package) fun seed_position<Product, Collateral>(
     ).into_observation();
     let (target_base, max_order_base, seed) = issuance.seed_terms(flat_observation, seed_reserve);
 
-    open_seed_position(
-        issuance, account, admin_cap, clearing_house, base_oracle, collateral_oracle,
+    issuance.open_seed_position(
+        account, admin_cap, clearing_house, base_oracle, collateral_oracle,
         order_sizes(target_base, max_order_base), seed.lot_size(), seed.base_price(), seed.collateral_price(),
         clock, ctx,
     )
@@ -75,12 +75,12 @@ public(package) fun seed_position<Product, Collateral>(
 /// The terms of an operation that increases the vault's side: direction from
 /// policy, the live cap, and the plan's sealed prices.
 public(package) fun increasing_terms<Product, Collateral>(vault: &Vault<Product, Collateral>, position: ActivePosition): OrderTerms {
-    active_terms(vault, false, position)
+    vault.active_terms(false, position)
 }
 
 /// The terms of a reduce-only operation against the vault's side, otherwise as `increasing_terms`.
 public(package) fun reducing_terms<Product, Collateral>(vault: &Vault<Product, Collateral>, position: ActivePosition): OrderTerms {
-    active_terms(vault, true, position)
+    vault.active_terms(true, position)
 }
 
 /// Prices the step at fresh oracles: the close-only order terms under the
@@ -133,8 +133,8 @@ public(package) fun fill_orders<Product, Collateral>(
     let mut index = 0;
     while (remaining > 0) {
         let requested = terms.next_order_size(remaining, index);
-        let (next_market, fill) = place_order(
-            vault, account, clearing_house, base_oracle, collateral_oracle, &terms, requested, terms.bound, clock, ctx,
+        let (next_market, fill) = vault.place_order(
+            account, clearing_house, base_oracle, collateral_oracle, &terms, requested, terms.bound, clock, ctx,
         );
         clearing_house = next_market;
 
@@ -175,8 +175,8 @@ public(package) fun rebalance_orders<Product, Collateral>(
         let order = vault.state().next_rebalance_order(plan);
         if (order.order_base() == 0) break;
 
-        let (next_market, fill) = place_order(
-            vault, account, clearing_house, base_oracle, collateral_oracle, terms, order.order_base(),
+        let (next_market, fill) = vault.place_order(
+            account, clearing_house, base_oracle, collateral_oracle, terms, order.order_base(),
             order.bound(), clock, ctx,
         );
         clearing_house = next_market;
@@ -219,8 +219,8 @@ public(package) fun close_orders<Product, Collateral>(
 
     while (orders < constants::max_active_orders!() && remaining > 0) {
         let requested = terms.next_order_size(remaining, orders);
-        let (next_market, fill) = place_order(
-            vault, account, clearing_house, base_oracle, collateral_oracle, terms, requested, terms.bound, clock, ctx,
+        let (next_market, fill) = vault.place_order(
+            account, clearing_house, base_oracle, collateral_oracle, terms, requested, terms.bound, clock, ctx,
         );
         clearing_house = next_market;
 
@@ -272,8 +272,8 @@ fun open_seed_position<Product, Collateral>(
         let limit_price = bound.limit_price(
             reference_base_price, aftermath_order_side, clearing_house.market_params().tick_size(),
         );
-        let (next_clearing_house, summary) = venue_account::execute_order_with_cap(
-            admin_cap, account, clearing_house, base_oracle, collateral_oracle,
+        let (next_clearing_house, summary) = admin_cap.execute_order_with_cap(
+            account, clearing_house, base_oracle, collateral_oracle,
             aftermath_order_side, order_base, limit_price, false, clock, ctx,
         );
         clearing_house = next_clearing_house;
@@ -354,7 +354,7 @@ fun active_terms<Product, Collateral>(vault: &Vault<Product, Collateral>, reduce
     let is_ask = if (reduce_only) { !opens_with_ask(side) } else { opens_with_ask(side) };
 
     OrderTerms {
-        is_ask, reduce_only, max_order_base: vault.state().max_order_base(&position),
+        is_ask, reduce_only, max_order_base: vault.state().max_order_base(&position, reduce_only),
         lot_size: position.lot_size(), base_price: position.base_price(), collateral_price: position.collateral_price(),
         bound: vault.state().execution_bound(),
     }
@@ -443,7 +443,9 @@ fun place_order<Product, Collateral>(
     );
     let (_, filled_quote) = summary.filled_base_and_quote(is_ask);
     let executed = execution_price(summary.execution_price(is_ask), !is_ask);
-    vault.state().assert_order_notional_allowed(actual_fill_notional(filled_quote, collateral_price));
+    vault.state().assert_order_notional_allowed(
+        actual_fill_notional(filled_quote, collateral_price), filled, lot_size, reduce_only,
+    );
     bound.assert_execution(base_price, executed);
 
     events::order_filled<Product>(
@@ -662,3 +664,11 @@ use oracle_aggregator::price_feed_storage::PriceFeedStorage;
 use perpetuals::{account::Account, authority::ACCOUNT, clearing_house::ClearingHouse, registry::Registry};
 
 use sui::clock::Clock;
+
+use fun active_terms as Vault.active_terms;
+
+use fun open_seed_position as Issuance.open_seed_position;
+
+use fun place_order as Vault.place_order;
+
+use fun venue_account::execute_order_with_cap as AuthorityCap.execute_order_with_cap;

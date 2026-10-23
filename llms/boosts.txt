@@ -276,7 +276,7 @@ to the call. Integrators cannot obtain these witnesses.
 | Role | Authorizes |
 | --- | --- |
 | `blast_boosts_core::blast_boosts_core::VaultIssuer` | `blast_boosts_aftermath::vault::issue` (new Boost), `blast_boosts_aftermath::vault::update_metadata` |
-| `blast_boosts_core::blast_boosts_core::RiskAdmin` | `blast_boosts_aftermath::vault::set_fees`, `blast_boosts_aftermath::vault::set_nav_cap`, `blast_boosts_aftermath::vault::set_max_order_notional`, `blast_boosts_aftermath::vault::withdraw_admin_fees`, `operations::add_partner`, `operations::remove_partner` |
+| `blast_boosts_core::blast_boosts_core::RiskAdmin` | `blast_boosts_aftermath::vault::set_fees`, `blast_boosts_aftermath::vault::set_nav_cap`, `operations::set_max_order_notional`, `blast_boosts_aftermath::vault::withdraw_admin_fees`, `operations::add_partner`, `operations::remove_partner` |
 | `blast_boosts_core::blast_boosts_core::ShutdownAdmin` | `blast_boosts_aftermath::vault::begin_shutdown` |
 | `blast_boosts_core::blast_boosts_core::UpgradeAdmin` | adapter upgrades through `blast_boosts_aftermath::package_admin` |
 
@@ -358,7 +358,8 @@ and activation succeed or fail together.
    below the seed), `position_imr` (the Aftermath position initial margin
    ratio, a nonnegative IFixed `u256`), and the `Clock`. It creates and binds
    the Aftermath account, deposits and allocates the whole seed, sets the
-   margin ratio, buys or sells whole lots until the position reaches target
+   margin ratio, requires the order cap to cover `min_order_lots` live lots
+   including price headroom, buys or sells whole lots until the position reaches target
    leverage on the seed NAV (at most 16 limit orders priced inside the
    ordinary bound, each filled completely and within the order cap), settles
    funding, checks the
@@ -419,7 +420,8 @@ What happens, in order, all atomic:
 8. Place immediate-or-cancel limit orders in the Vault's direction, priced at
    the oracle moved by `max_slippage_bps` against the order, until exactly
    `base_to_buy` is filled: each order at most the whole-lot base worth
-   `max_order_notional` at the oracle pair, at most 16 orders, each fill
+   `max_order_notional` at the highest admitted execution price (with one
+   extra normalized price atom for sell rounding), at most 16 orders, each fill
    checked for no resting order, no liquidation, whole lots, actual collateral
    notional at or under `max_order_notional`, and execution price within
    `max_slippage_bps` of the oracle price. A thin book fills part of an order
@@ -450,7 +452,8 @@ sells the proportional position reduce-only:
 `required = base - max_final_base` (at least `lot_size * min_order_lots`
 unless `max_final_base` is 0), and `base_to_sell = min(required rounded up to
 whole lots, base)`. Orders are limit orders priced inside the ordinary bound
-and face the order cap.
+and face the order cap, with an exception for exactly one live venue lot
+when closing (see Caps).
 It then prices the payout (see Economics), checks `net >= minimum_collateral`,
 withdraws `net + admin_fee` from the venue (free collateral first, then
 deallocation), keeps `admin_fee` as admin cash, burns the shares, emits
@@ -578,7 +581,8 @@ over the ceiling raises shareholder NAV. No shares, no fees. Emits `Donated`.
    after this call.
    - Live market: synchronize (drift is reported with `CheckpointDrifted` and
      the live venue state is adopted anyway), price at fresh oracles, then up
-     to 16 reduce-only limit orders under the order cap and a bound that
+     to 16 reduce-only limit orders under the order cap (with the one-lot
+     closing exception described in Caps) and a bound that
      starts at `max_slippage_bps` when shutdown begins and widens linearly to
      `emergency_max_slippage_bps` over the following 24 hours, where it stays.
      Emits `OrderFilled` per order and `UnwindProgress`. Positive NAV and the
@@ -607,13 +611,14 @@ over the ceiling raises shareholder NAV. No shares, no fees. Emits `Donated`.
 
 #### Admin settings (Blast admin)
 
-Each needs `Protocol` and the role witness; none needs venue objects or prices.
+Each needs `Protocol` and the role witness. The order-cap update also needs
+venue objects and prices.
 
 | Call | Role | Effect | Event |
 | --- | --- | --- | --- |
 | `blast_boosts_aftermath::vault::set_fees(vault, protocol, witness, mint_fee_bps, redeem_fee_bps, admin_share_bps)` | RiskAdmin | Sets all three live rates within the policy caps; at least one must change; `Active` only. Affects only future operations. | `FeesUpdated` |
 | `blast_boosts_aftermath::vault::set_nav_cap(vault, protocol, witness, nav_cap)` | RiskAdmin | Replaces the NAV cap (positive, changed, and `nav_cap * max_leverage_bps / 10,000` fits in `u64`); may be set below current NAV, which only blocks mints. Any lifecycle. | `NavCapUpdated` |
-| `blast_boosts_aftermath::vault::set_max_order_notional(vault, protocol, witness, max_order_notional)` | RiskAdmin | Replaces the per-order collateral notional cap (positive, changed). Any lifecycle, no cooldown. | `MaxOrderNotionalUpdated` |
+| `operations::set_max_order_notional` | RiskAdmin | Replaces the per-order cap in collateral atoms. Takes the bound account, registry, market, both oracle objects and Clock; requires fresh prices and capacity for `min_order_lots` live lots under the ordinary execution bound. Positive and changed; any lifecycle, no cooldown, no NAV or margin gate. | `MaxOrderNotionalUpdated` |
 | `blast_boosts_aftermath::vault::withdraw_admin_fees(vault, protocol, witness, amount)` | RiskAdmin | Returns `Coin<Collateral>` from admin cash only. Any lifecycle. | `AdminFeesWithdrawn` |
 | `blast_boosts_aftermath::vault::update_metadata(vault, protocol, witness, currency, name, description, icon_url)` | VaultIssuer | Updates the share coin's name, description and icon in its Coin Registry `Currency<BlastBoost<Product>>`; the symbol is fixed. At least one must change. | `MetadataUpdated` |
 | `operations::add_partner(protocol, witness, partner)` | RiskAdmin | Accepts a `Partner` at once, or cancels its pending removal. | `PartnerAdded` |
@@ -737,13 +742,23 @@ refuses an account whose equity does not exceed the admitted reserve.
 - NAV cap: post-mint `N1 <= nav_cap` (inclusive). Only mints check it; profit
   can carry NAV above it, which blocks mints until NAV falls or RiskAdmin
   raises the cap.
-- Order cap: each Aftermath order is sized to at most the whole-lot base worth
-  `max_order_notional` at the oracle pair, and each fill's actual collateral
-  notional must stay at or under `max_order_notional`. With 16 orders per call,
+- Order cap: each order reserves the highest price allowed by its execution
+  bound plus one normalized price atom to cover sell rounding, then rounds
+  size down to whole lots. Each fill checks actual collateral notional
+  (excluding fees) against `max_order_notional`. Opening orders obey the cap
+  strictly. A reduce-only fill of exactly one live venue lot may exceed it;
+  that fill must still pass the same execution-price check. With 16 orders per call,
   one mint can add at most about `16 * max_order_notional` of notional, so the
   largest single mint is roughly `16 * max_order_notional / leverage`.
 - Minimum size: a mint or a non-flat redemption must move at least
-  `lot_size * min_order_lots` of base.
+  `lot_size * min_order_lots` of base. At initialization and each cap change,
+  the cap must cover that minimum in one order at current prices. Later price
+  or lot growth can block openings (core code 63) or make a normal redemption
+  exceed the 16-order budget. RiskAdmin can raise the cap. ShutdownAdmin can
+  instead begin shutdown, after which anyone can repeat unwind calls in
+  separate transactions. Closing still needs fresh prices and executable
+  liquidity inside the bound; a venue freeze or other venue restriction can
+  block it.
 
 #### Shutdown payouts
 
@@ -903,13 +918,14 @@ outdated adapter package aborts in the `operational_version` module of the
 | 35 | Fewer shares than `minimum_shares` | Re-quote; raise slippage tolerance. |
 | 36 | Post-mint NAV above `nav_cap` | Mint less or wait. |
 | 37 | A fill's price outside the execution bound, or no tick inside it | Trade smaller or wait for depth. |
-| 43 | A fill's actual notional above `max_order_notional` | Trade smaller. |
+| 43 | A fill's actual notional above `max_order_notional`, outside the one-lot reduce-only exception | Trade smaller. |
 | 49 | Mint while leverage is outside the band | Call `rebalance` (anyone), then mint in a separate transaction. |
 | 50, 51 | Oracle pair or fills changed within the operation | Retry. |
 | 52 | Leverage after a mint at or above `max_leverage_bps` (rounded up), or a rebalance buy left leverage above target or at or above max | Mint less; for rebalance, retry later. |
 | 53 | Payout below `minimum_collateral` | Re-quote. |
 | 54 | Rebalance while inside the band | Nothing to do. |
 | 55 | Rebalance made no admissible progress | Wait for depth or a better price. |
+| 63 | Cap cannot cover one opening lot, or a configured cap cannot cover `min_order_lots` live lots | RiskAdmin must raise the cap; shutdown closes retain the one-lot exception. |
 | 17, 23, 39, 40, 47, 48, 58 | Admin transition or setting rejected (wrong state, invalid, above cap, unchanged) | Admin only. |
 
 ### Pitfalls
@@ -923,8 +939,8 @@ outdated adapter package aborts in the `operational_version` module of the
   abort (12); shutdown claims that round to zero abort (8).
 - Large trades. More than 16 orders, a fill outside `max_slippage_bps`, an
   order that finds nothing to fill inside its limit (Aftermath aborts the empty
-  session), or a full-size buy order filling above the oracle (actual notional
-  over the cap) aborts the whole transaction.
+  session), or a fill above the cap outside the one-lot closing exception
+  aborts the whole transaction.
 - Submitting `rebalance` or `unwind` with a priority gas price (37). For mint
   and redeem a higher gas price is allowed, but Aftermath then adds its
   priority taker fee to every fill, which the user pays through fewer shares or
@@ -1371,6 +1387,7 @@ Abort codes: this package aborts with the numeric codes below from whichever mod
 | 60 | `ESeedReserveAboveCap` | A seed reserve exceeds the policy ceiling for the opening notional. |
 | 61 | `EInvariantViolated` | A mutation left the state in violation of an accounting invariant that must hold by construction. |
 | 62 | `EInvalidTickSize` | A venue tick size must be positive to price a limit order. |
+| 63 | `EOrderCapBelowMinimum` | The live order cap cannot fund the required minimum whole-lot order. |
 
 ### `blast_boosts_core::blast_boosts_core`
 
@@ -1877,11 +1894,24 @@ public fun seed_execution_bound<Product>(self: &Issuance<Product>): policy::Exec
 /// The immutable direction every order of this product takes.
 public fun side<Product>(self: &State<Product>): policy::PositionSide
 
-/// The whole-lot base one order may carry at `position`'s sealed oracle pair.
-public fun max_order_base<Product>(self: &State<Product>, position: &ActivePosition): u64
+/// Whole-lot capacity under the ordinary execution bound. Closing orders may
+/// use exactly one venue lot when the configured cap cannot cover one lot.
+public fun max_order_base<Product>(
+    self: &State<Product>,
+    position: &ActivePosition,
+    reduce_only: bool,
+): u64
 
-/// Rejects one adapter order above the live atomic-collateral notional limit.
-public fun assert_order_notional_allowed<Product>(self: &State<Product>, order_notional: u64)
+/// Checks the actual filled quote against the cap. The adapter must prove
+/// the fill is reduce-only and exactly one live venue lot for the sole
+/// exception; the same execution-price bound still applies to that fill.
+public fun assert_order_notional_allowed<Product>(
+    self: &State<Product>,
+    order_notional: u64,
+    filled_base: u64,
+    lot_size: u64,
+    reduce_only: bool,
+)
 
 /// The bound every mint, redemption and ordinary rebalance order is priced and
 /// proved under. A rebalance order carries its own bound, which is the wider
@@ -2094,15 +2124,25 @@ public fun set_fees<Product>(
     admin_share_bps: u64,
 ): (u64, u64, u64)
 
-/// Updates the live per-call maximum order notional.
+/// Checks locally decidable cap inputs before an adapter reads external prices.
+public fun assert_max_order_notional_update<Product>(self: &State<Product>, max_order_notional: u64)
+
+/// Updates the live per-order notional cap.
 ///
-/// This value limits the absolute atomic-USDC notional of one adapter order.
-/// It does not limit a user's deposit or the Vault's total open position.
+/// The cap uses collateral atoms and does not limit total open exposure.
+/// An exact one-lot reduce-only fill may exceed it; price checks still apply.
 /// Adapter custody of `State<Product>` determines who can present mutable
 /// access. The adapter must authenticate its currently selected risk module
 /// before calling this function. Updates are available in every lifecycle
 /// state because they change only the size of later calls, not the live position.
-public fun set_max_order_notional<Product>(self: &mut State<Product>, max_order_notional: u64): u64
+public fun set_max_order_notional<Product>(
+    self: &mut State<Product>,
+    max_order_notional: u64,
+    base_oracle: observation::PriceObservation,
+    collateral_oracle: observation::PriceObservation,
+    lot_size: u64,
+    now_at_ms: u64,
+): u64
 
 /// Replaces the NAV cap and returns the previous one.
 ///
@@ -2845,6 +2885,21 @@ public fun needs_rebalance<Product, Collateral>(
     clock: &Clock,
 ): bool
 
+/// Updates the order cap after checking the live bound market's prices and lot.
+/// Risk administration remains available without healthy margin or positive NAV.
+public fun set_max_order_notional<Product, Collateral>(
+    vault: &mut vault::Vault<Product, Collateral>,
+    protocol: &blast_boosts_aftermath::Protocol,
+    witness: &blast_admin::blast_acl::AdminWitness<blast_boosts_core::blast_boosts_core::RiskAdmin>,
+    account: &account::Account<Collateral>,
+    registry: &registry::Registry,
+    clearing_house: &clearing_house::ClearingHouse<Collateral>,
+    base_oracle: &price_feed_storage::PriceFeedStorage,
+    collateral_oracle: &price_feed_storage::PriceFeedStorage,
+    max_order_notional: u64,
+    clock: &Clock,
+)
+
 /// Deposits configured collateral into the active funding buffer without shares or fees.
 public fun donate<Product, Collateral>(
     vault: &mut vault::Vault<Product, Collateral>,
@@ -3175,20 +3230,6 @@ public fun set_nav_cap<Product, Collateral>(
     protocol: &blast_boosts_aftermath::Protocol,
     _: &blast_admin::blast_acl::AdminWitness<blast_boosts_core::blast_boosts_core::RiskAdmin>,
     nav_cap: u64,
-)
-
-/// Changes the live per-call maximum order notional.
-///
-/// This value limits the absolute atomic-USDC notional of one Aftermath order.
-/// It does not limit a user's deposit or the Vault's total open position.
-/// The risk administrator may raise or lower the current value without a
-/// cooldown. This transition changes no live position exposure and therefore
-/// remains available in every lifecycle state.
-public fun set_max_order_notional<Product, Collateral>(
-    self: &mut Vault<Product, Collateral>,
-    protocol: &blast_boosts_aftermath::Protocol,
-    _: &blast_admin::blast_acl::AdminWitness<blast_boosts_core::blast_boosts_core::RiskAdmin>,
-    max_order_notional: u64,
 )
 
 /// Replaces the Boost currency's display name, description and icon in Coin

@@ -164,10 +164,10 @@ public(package) fun execute_order<Collateral>(
     ctx: &TxContext,
 ): (ClearingHouse<Collateral>, SessionSummary) {
     self.binding.assert_market_account(account, &clearing_house);
-    assert_market_oracles(&clearing_house, base_oracle, collateral_oracle);
+    clearing_house.assert_market_oracles(base_oracle, collateral_oracle);
 
-    execute_order_with_cap(
-        &self.admin_cap, account, clearing_house, base_oracle, collateral_oracle, is_ask, base, limit_price, reduce_only,
+    self.admin_cap.execute_order_with_cap(
+        account, clearing_house, base_oracle, collateral_oracle, is_ask, base, limit_price, reduce_only,
         clock, ctx,
     )
 }
@@ -221,7 +221,7 @@ public(package) fun withdraw<Collateral>(
 ): Coin<Collateral> {
     self.binding.assert_market_account(account, clearing_house);
     self.binding.assert_registry(registry);
-    assert_market_oracles(clearing_house, base_oracle, collateral_oracle);
+    clearing_house.assert_market_oracles(base_oracle, collateral_oracle);
 
     let free = account.collateral_balance();
     if (free < amount) {
@@ -383,3 +383,7 @@ use perpetuals::{
 };
 
 use sui::{clock::Clock, coin::Coin};
+
+use fun assert_market_oracles as ClearingHouse.assert_market_oracles;
+
+use fun execute_order_with_cap as AuthorityCap.execute_order_with_cap;

@@ -194,6 +194,11 @@ public fun advance(self: &mut Venue, elapsed_duration_ms: u64) { self.now_ms = s
 
 public fun set_operational(self: &mut Venue, operational: bool) { self.operational = operational; }
 
+public fun set_lot_size(self: &mut Venue, lot_size: u64) {
+    assert!(lot_size > 0 && self.base % lot_size == 0);
+    self.lot_size = lot_size;
+}
+
 public fun set_slippage_bps(self: &mut Venue, slippage_bps: u64) { self.slippage_bps = slippage_bps; }
 
 public fun set_fill_ratio_bps(self: &mut Venue, fill_ratio_bps: u64) { self.fill_ratio_bps = fill_ratio_bps; }
@@ -217,7 +222,7 @@ public fun withdraw(self: &mut Venue, amount: u64) { self.equity = self.equity -
 ///
 /// Returns the execution price the adapter proves against the oracle and the
 /// whole-lot amount actually filled, at least one lot of any positive order.
-public fun fill(self: &mut Venue, base: u64, increase: bool): (u64, u64) {
+public fun fill(self: &mut Venue, base: u64, increase: bool): (u64, u64, u64) {
     assert!(base > 0 && base % self.lot_size == 0);
     let filled = (base.mul_div(self.fill_ratio_bps, BPS) / self.lot_size * self.lot_size).max(self.lot_size);
     let mark = self.notional_of(filled);
@@ -233,7 +238,12 @@ public fun fill(self: &mut Venue, base: u64, increase: bool): (u64, u64) {
         self.base_price.mul_div(BPS - self.slippage_bps, BPS)
     };
 
-    (executed, filled)
+    let price_bps = if (opens) { BPS + self.slippage_bps } else { BPS - self.slippage_bps };
+    let quote = (filled as u256) * (self.base_price as u256) * (COLLATERAL_UNIT as u256) * (price_bps as u256);
+    let denominator = (BASE_UNIT as u256) * (self.collateral_price as u256) * (BPS as u256);
+    let actual_notional = quote.div_ceil(denominator) as u64;
+
+    (executed, filled, actual_notional)
 }
 
 // --- Vault ---
@@ -324,9 +334,9 @@ public fun activate(self: Issued, seed: u64, seed_reserve: u64): Vault {
     let (mut remaining, max_order_base, seed_position) = issuance.seed_terms(venue.observe(), seed_reserve);
 
     while (remaining > 0) {
-        let (executed, filled) = venue.fill(remaining.min(max_order_base), true);
+        let (executed, filled, actual_notional) = venue.fill(remaining.min(max_order_base), true);
         issuance.seed_execution_bound().assert_execution(seed_position.base_price(), executed);
-        issuance.assert_seed_order_notional_allowed(venue.notional_of(filled));
+        issuance.assert_seed_order_notional_allowed(actual_notional);
         remaining = remaining - filled;
     };
     assert!(seed_position.collateral_price() == venue.collateral_price);
@@ -352,22 +362,20 @@ public fun mint(self: &mut Vault, deposit: u64, minimum_shares: u64): u64 {
     let priced = plan.mint_position();
     assert!(priced.lot_size() == self.venue.lot_size);
     let base_price = priced.base_price();
-    let cap = self.state.max_order_notional_for_testing();
 
     self.admin_cash = self.admin_cash + plan.admin_fee();
     self.venue.deposit(deposit - plan.admin_fee());
 
     let mut remaining = plan.base_to_buy();
-    let cap_base = self.venue.base_for_notional(cap);
+    let cap_base = self.state.max_order_base(&priced, false);
     let mut orders = 0;
     while (remaining > 0) {
         assert!(orders < MAX_ORDERS, EOrderLimitExceeded);
         let order = remaining.min(cap_base);
-        self.state.assert_order_notional_allowed(self.venue.notional_of(order));
-        let (executed, filled) = self.venue.fill(order, true);
+        let (executed, filled, actual_notional) = self.venue.fill(order, true);
         self.state.execution_bound().assert_execution(base_price, executed);
-        self.state.assert_order_notional_allowed(self.venue.notional_of(filled));
-            remaining = remaining - filled;
+        self.state.assert_order_notional_allowed(actual_notional, filled, self.venue.lot_size, false);
+        remaining = remaining - filled;
         orders = orders + 1;
     };
 
@@ -389,19 +397,17 @@ public fun redeem(self: &mut Vault, shares: u64, minimum_output: u64): u64 {
     let priced = plan.redemption_position();
     assert!(plan.redemption_shares() == shares && priced.lot_size() == self.venue.lot_size);
     let base_price = priced.base_price();
-    let cap = self.state.max_order_notional_for_testing();
 
     let mut remaining = plan.base_to_sell();
-    let cap_base = self.venue.base_for_notional(cap);
+    let cap_base = self.state.max_order_base(&priced, true);
     let mut orders = 0;
     while (remaining > 0) {
         assert!(orders < MAX_ORDERS, EOrderLimitExceeded);
         let order = remaining.min(cap_base);
-        self.state.assert_order_notional_allowed(self.venue.notional_of(order));
-        let (executed, filled) = self.venue.fill(order, false);
+        let (executed, filled, actual_notional) = self.venue.fill(order, false);
         self.state.execution_bound().assert_execution(base_price, executed);
-        self.state.assert_order_notional_allowed(self.venue.notional_of(filled));
-            remaining = remaining - filled;
+        self.state.assert_order_notional_allowed(actual_notional, filled, self.venue.lot_size, true);
+        remaining = remaining - filled;
         orders = orders + 1;
     };
     self.last_orders = orders;
@@ -431,10 +437,9 @@ public fun rebalance(self: &mut Vault): u64 {
     while (orders < MAX_ORDERS) {
         let order = self.state.next_rebalance_order(&plan);
         if (order.order_base() == 0) break;
-        self.state.assert_order_notional_allowed(self.venue.notional_of(order.order_base()));
-        let (executed, filled) = self.venue.fill(order.order_base(), order.is_increase());
+        let (executed, filled, actual_notional) = self.venue.fill(order.order_base(), order.is_increase());
         order.bound().assert_execution(base_price, executed);
-        self.state.assert_order_notional_allowed(self.venue.notional_of(filled));
+        self.state.assert_order_notional_allowed(actual_notional, filled, self.venue.lot_size, !order.is_increase());
         self.state.accept_rebalance_fill(&mut plan, order, self.venue.observe(), filled, now_at_ms);
         orders = orders + 1;
     };
@@ -476,7 +481,10 @@ public fun set_fees(self: &mut Vault, mint_bps: u64, redeem_bps: u64, admin_shar
 }
 
 public fun set_max_order_notional(self: &mut Vault, max_order_notional: u64) {
-    self.state.set_max_order_notional(max_order_notional);
+    self.state.set_max_order_notional(
+        max_order_notional, self.venue.oracle(self.venue.base_price), self.venue.oracle(self.venue.collateral_price),
+        self.venue.lot_size, self.venue.now_ms,
+    );
     assert!(self.state.max_order_notional_for_testing() == max_order_notional);
 }
 
@@ -509,7 +517,8 @@ public fun unwind(self: &mut Vault, max_orders: u64): u64 {
             self.venue.lot_size, now_at_ms,
         );
         let order = self.venue.base.min(max_order_base);
-        let (executed, _) = self.venue.fill(order, false);
+        let (executed, filled, actual_notional) = self.venue.fill(order, false);
+        self.state.assert_order_notional_allowed(actual_notional, filled, self.venue.lot_size, true);
         bound.assert_execution(base_price, executed);
         orders = orders + 1;
     };

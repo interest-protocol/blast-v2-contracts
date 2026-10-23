@@ -438,7 +438,7 @@ fun migrate(self: &mut ReplayFixture) {
         let mut launch = f.take_launch();
         let mut currency = f.take_currency();
 
-        mock_adapter(&mut launch, &f.version, &mut currency, f.ctx!());
+        launch.mock_adapter(&f.version, &mut currency, f.ctx!());
 
         test_scenario::return_shared(launch);
         test_scenario::return_to_address(COIN_REGISTRY, currency);
@@ -478,7 +478,7 @@ fun collect(self: &mut ReplayFixture, meme: u64, quote: u64) {
             balance::create_for_testing(quote),
             f.ctx!(),
         );
-        compound(&mut vault);
+        vault.compound();
 
         test_scenario::return_shared(vault);
         test_scenario::return_shared(policy);
@@ -503,7 +503,7 @@ fun settle_fee_split(self: &mut ReplayFixture, meme: u64, quote: u64) {
             balance::create_for_testing(quote),
             f.ctx!(),
         );
-        compound(&mut vault);
+        vault.compound();
         vault.update_fee_split(next_split());
 
         f.scenario.return_to_sender(curve_fee_cap);
@@ -579,8 +579,7 @@ fun publish_round(self: &mut ReplayFixture) {
         let (meme, quote) = vault.rewards_balances();
         let root = merkle::leaf(object::id(&vault), 0, 0, ALICE, meme / 2, quote / 2);
 
-        blast_holder_rewards::publish_round(
-            &mut vault,
+        vault.publish_round(
             &f.migrators_version,
             &admin,
             0,
@@ -1353,7 +1352,8 @@ fun round_published(self: &mut Replay, bytes: vector<u8>) {
     self.rewards = unallocated;
     self.next_round = number + 1;
     self.last_checkpoint = option::some(end_checkpoint);
-    self.rounds.push_back(RoundEntry {
+    self.rounds.push_back(
+        RoundEntry {
         round_id,
         number,
         root,
@@ -1641,7 +1641,7 @@ fun assert_launch(self: &Replay, launch: &Launch<REPLAY_TESTS, QUOTE>, currency:
     let (pool_tick_spacing, pool_fee_rate) = launch.pool_tier();
     assert_eq!(pool_tick_spacing, self.pool_tick_spacing);
     assert_eq!(pool_fee_rate, self.pool_fee_rate);
-    assert_eq!(split_entry(&launch.lp_fee_split()), self.launch_fee_split);
+    assert_eq!(launch.lp_fee_split().split_entry(), self.launch_fee_split);
 
     assert_eq!(
         *launch.allocation_plan_for_testing(),
@@ -1682,7 +1682,7 @@ fun assert_vault(self: &Replay, vault: &mut LpVault<REPLAY_TESTS, QUOTE>) {
     assert_eq!(self.venue, type_name::with_original_ids<Venue>().into_string());
     assert_eq!(vault.protocol_meme_residual_for_testing(), self.residual_meme);
     assert_eq!(vault.protocol_quote_residual_for_testing(), self.residual_quote);
-    assert_eq!(split_entry(&vault.fee_split_for_testing()), self.fee_split);
+    assert_eq!(vault.fee_split_for_testing().split_entry(), self.fee_split);
     assert_eq!(pair!(|| vault.creator_balances_for_testing()), self.creator_balance);
     assert_eq!(pair!(|| vault.auto_lp_balances_for_testing()), self.auto_lp);
     assert_eq!(pair!(|| vault.rewards_balances()), self.rewards);
@@ -1716,7 +1716,7 @@ fun split_entry(fee_split: &FeeSplit): SplitEntry {
         auto_lp_bps: fee_split.auto_lp_bps_for_testing().value(),
         rewards_bps: fee_split.rewards_bps_for_testing().value(),
         burn_bps: fee_split.burn_bps_for_testing().value(),
-        recipients: fee_split.recipients().map_ref!(|route| route_entry(route)),
+        recipients: fee_split.recipients().map_ref!(|route| route.route_entry()),
     }
 }
 
@@ -1875,3 +1875,13 @@ use fun peel_route as BCS.peel_route;
 use fun assert_consumed as BCS.assert_consumed;
 
 use fun total as vector.total;
+
+use fun compound as LpVault.compound;
+
+use fun mock_adapter as Launch.mock_adapter;
+
+use fun route_entry as Route.route_entry;
+
+use fun split_entry as FeeSplit.split_entry;
+
+use fun blast_holder_rewards::publish_round as LpVault.publish_round;

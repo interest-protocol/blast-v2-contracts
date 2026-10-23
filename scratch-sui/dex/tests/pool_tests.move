@@ -27,7 +27,7 @@ fun swaps_separate_fees_from_reserves_and_new_lp_cannot_claim_history() {
     let (output, refund) = f.buy(input, 50_000, 200);
     assert_eq!(output.value(), 50_000);
     assert_eq!(refund.value(), 0);
-    assert_balances(&f.pool, 50_000, 200_000, 1_000);
+    f.pool.assert_balances(50_000, 200_000, 1_000);
     destroy(output);
     destroy(refund);
 
@@ -45,7 +45,7 @@ fun swaps_separate_fees_from_reserves_and_new_lp_cannot_claim_history() {
     let original_fee = f.claim_initial_fees();
     assert_eq!(original_fee.value(), 989);
     destroy(original_fee);
-    assert_balances(&f.pool, 100_000, 400_000, 11);
+    f.pool.assert_balances(100_000, 400_000, 11);
     destroy(late);
     f.end();
 }
@@ -67,7 +67,7 @@ fun deposits_return_excess_and_withdrawals_exclude_fee_pot() {
     destroy(meme);
     destroy(quote);
     position.destroy_empty();
-    assert_balances(&f.pool, 100_000, 100_000, 0);
+    f.pool.assert_balances(100_000, 100_000, 0);
     f.end();
 }
 
@@ -187,7 +187,7 @@ fun events_replay_swaps_deposits_withdrawals_and_fee_claims() {
     expected.append(bcs::to_bytes(&late_id));
     assert_eq!(closed.length(), 1);
     assert_eq!(bcs::to_bytes(&closed[0]), expected);
-    assert_balances(&f.pool, 100_000, 100_000, 32);
+    f.pool.assert_balances(100_000, 100_000, 32);
     f.end();
 }
 
@@ -215,7 +215,7 @@ fun transferred_position_carries_earned_fees_to_its_new_owner() {
     assert_eq!(object::id(&position), position_id);
     let fee = pool.claim_fees(&factory, &mut position, scenario.ctx());
     assert_eq!(fee.value(), 989);
-    assert_balances(&pool, 50_000, 200_000, 11);
+    pool.assert_balances(50_000, 200_000, 11);
     destroy(fee);
     destroy(position);
     destroy(pool);
@@ -523,3 +523,5 @@ use blast_fun_dex::pool::{Self, Factory, Pool, Position};
 use std::{bcs, unit_test::{assert_eq, destroy}};
 
 use sui::{balance, clock::{Self, Clock}, coin::{Self, Coin}, event};
+
+use fun assert_balances as Pool.assert_balances;

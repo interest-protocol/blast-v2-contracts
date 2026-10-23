@@ -46,20 +46,20 @@ fun sui_quote_trade_fees_remain_separate_from_creation_fee() {
         balance::create_for_testing(10),
         bps::new(7_000),
     );
-    assert_eq!(totals(&ledger), vector[7, 2, 7, 3]);
+    assert_eq!(ledger.totals(), vector[7, 2, 7, 3]);
     assert_eq!(ledger.protocol_sui_for_testing(), 1_001);
 
     let (creator_meme, creator_quote) = ledger.claim_creator_fees(&mut ctx);
     assert_eq!(creator_meme.value(), 2);
     assert_eq!(creator_quote.value(), 3);
-    assert_eq!(totals(&ledger), vector[7, 0, 7, 0]);
+    assert_eq!(ledger.totals(), vector[7, 0, 7, 0]);
     assert_eq!(ledger.protocol_sui_for_testing(), 1_001);
 
     let (protocol_meme, protocol_quote, protocol_sui) = ledger.claim_protocol_fees();
     assert_eq!(protocol_meme.value(), 7);
     assert_eq!(protocol_quote.value(), 7);
     assert_eq!(protocol_sui.value(), 1_001);
-    assert_eq!(totals(&ledger), vector[0, 0, 0, 0]);
+    assert_eq!(ledger.totals(), vector[0, 0, 0, 0]);
     assert_eq!(ledger.protocol_sui_for_testing(), 0);
 
     destroy(creator_meme);
@@ -80,13 +80,13 @@ fun dual_asset_accrual_splits_and_claims_exactly() {
         creator_meme_delta,
         protocol_quote_delta,
         creator_quote_delta,
-    ) = accrue(&mut ledger, 9, 10, 7_000);
+    ) = ledger.accrue_amounts(9, 10, 7_000);
 
     assert_eq!(protocol_meme_delta, 7);
     assert_eq!(creator_meme_delta, 2);
     assert_eq!(protocol_quote_delta, 7);
     assert_eq!(creator_quote_delta, 3);
-    assert_eq!(totals(&ledger), vector[7, 2, 7, 3]);
+    assert_eq!(ledger.totals(), vector[7, 2, 7, 3]);
 
     let (creator_meme, creator_quote) = ledger.claim_creator_fees(&mut ctx);
     let (protocol_meme, protocol_quote, protocol_sui) = ledger.claim_protocol_fees();
@@ -95,7 +95,7 @@ fun dual_asset_accrual_splits_and_claims_exactly() {
     assert_eq!(creator_quote.value(), 3);
     assert_eq!(protocol_meme.value(), 7);
     assert_eq!(protocol_quote.value(), 7);
-    assert_eq!(totals(&ledger), vector[0, 0, 0, 0]);
+    assert_eq!(ledger.totals(), vector[0, 0, 0, 0]);
 
     destroy(creator_meme);
     destroy(creator_quote);
@@ -115,7 +115,7 @@ fun protocol_fee_share_boundaries_route_every_accrued_unit() {
         creator_meme_delta,
         protocol_quote_delta,
         creator_quote_delta,
-    ) = accrue(&mut ledger, 9, 10, 0);
+    ) = ledger.accrue_amounts(9, 10, 0);
 
     assert_eq!(protocol_meme_delta, 0);
     assert_eq!(creator_meme_delta, 9);
@@ -127,7 +127,7 @@ fun protocol_fee_share_boundaries_route_every_accrued_unit() {
         creator_meme_delta,
         protocol_quote_delta,
         creator_quote_delta,
-    ) = accrue(&mut ledger, 5, 6, 10_000);
+    ) = ledger.accrue_amounts(5, 6, 10_000);
 
     assert_eq!(protocol_meme_delta, 5);
     assert_eq!(creator_meme_delta, 0);
@@ -209,7 +209,7 @@ fun creator_cannot_claim_when_the_whole_fee_went_to_the_protocol() {
     let mut ctx = tx_context::dummy();
     let mut ledger = fees::new<TEST_MEME, TEST_QUOTE>(balance::zero());
 
-    accrue(&mut ledger, 5, 6, 10_000);
+    ledger.accrue_amounts(5, 6, 10_000);
     let (meme, quote) = ledger.claim_creator_fees(&mut ctx);
 
     destroy(meme);
@@ -226,13 +226,13 @@ fun accrual_of_two_zero_balances_changes_nothing() {
         creator_meme_delta,
         protocol_quote_delta,
         creator_quote_delta,
-    ) = accrue(&mut ledger, 0, 0, PROTOCOL_FEE_SHARE_BPS);
+    ) = ledger.accrue_amounts(0, 0, PROTOCOL_FEE_SHARE_BPS);
 
     assert_eq!(protocol_meme_delta, 0);
     assert_eq!(creator_meme_delta, 0);
     assert_eq!(protocol_quote_delta, 0);
     assert_eq!(creator_quote_delta, 0);
-    assert_eq!(totals(&ledger), vector[0, 0, 0, 0]);
+    assert_eq!(ledger.totals(), vector[0, 0, 0, 0]);
 
     destroy(ledger);
 }
@@ -242,8 +242,7 @@ fun maximum_u64_fees_match_the_committed_split_vector() {
     let mut ctx = tx_context::dummy();
     let mut ledger = fees::new<TEST_MEME, TEST_QUOTE>(balance::zero());
 
-    accrue(
-        &mut ledger,
+    ledger.accrue_amounts(
         std::u64::max_value!(),
         std::u64::max_value!(),
         PROTOCOL_FEE_SHARE_BPS,
@@ -318,7 +317,7 @@ fun meme_only_accrual_returns_zero_quote_coins() {
     let mut ctx = tx_context::dummy();
     let mut ledger = fees::new<TEST_MEME, TEST_QUOTE>(balance::zero());
 
-    accrue(&mut ledger, 3, 0, PROTOCOL_FEE_SHARE_BPS);
+    ledger.accrue_amounts(3, 0, PROTOCOL_FEE_SHARE_BPS);
 
     let (creator_meme, creator_quote) = ledger.claim_creator_fees(&mut ctx);
     let (protocol_meme, protocol_quote, protocol_sui) = ledger.claim_protocol_fees();
@@ -341,7 +340,7 @@ fun quote_only_accrual_returns_zero_meme_coins() {
     let mut ctx = tx_context::dummy();
     let mut ledger = fees::new<TEST_MEME, TEST_QUOTE>(balance::zero());
 
-    accrue(&mut ledger, 0, 4, PROTOCOL_FEE_SHARE_BPS);
+    ledger.accrue_amounts(0, 4, PROTOCOL_FEE_SHARE_BPS);
 
     let (creator_meme, creator_quote) = ledger.claim_creator_fees(&mut ctx);
     let (protocol_meme, protocol_quote, protocol_sui) = ledger.claim_protocol_fees();
@@ -361,7 +360,7 @@ fun quote_only_accrual_returns_zero_meme_coins() {
 
 // === Test Helpers ===
 
-fun accrue(
+fun accrue_amounts(
     ledger: &mut FeeLedger<TEST_MEME, TEST_QUOTE>,
     meme_fee: u64,
     quote_fee: u64,
@@ -434,3 +433,7 @@ use blast_fun::{
 use std::unit_test::{assert_eq, destroy};
 
 use sui::{balance, sui::SUI, test_scenario::{Self, Scenario}};
+
+use fun accrue_amounts as FeeLedger.accrue_amounts;
+
+use fun totals as FeeLedger.totals;

@@ -238,6 +238,7 @@ expected_state_public="$(printf '%s\n' \
   assert_active \
   assert_can_sync \
   assert_order_notional_allowed \
+  assert_max_order_notional_update \
   assert_seed_order_notional_allowed \
   assert_settled \
   assert_unwinding \

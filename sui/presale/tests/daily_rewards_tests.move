@@ -110,8 +110,7 @@ fun publish(self: &mut DailyRewardsFixture, number: u64, start: u64, end: u64) {
         .ctx());
     let root = rewards::leaf_for_testing(object::id(&self.vault), number, 0, HOLDER, 0, 10);
     let policy = fee_policy::new_for_testing(self.scenario.ctx());
-    rewards::publish_round(
-        &mut self.vault,
+    self.vault.publish_round(
         &package_version,
         &blast_acl::witness_for_testing<RewardsAdmin>(),
         &policy,
@@ -154,7 +153,7 @@ fun close(self: &mut DailyRewardsFixture) {
         .scenario
         .ctx());
     let round = self.scenario.take_shared<Round<MEME, QUOTE>>();
-    rewards::close_round(round, &package_version, &mut self.vault, &self.clock);
+    round.close_round(&package_version, &mut self.vault, &self.clock);
 
     std::unit_test::destroy(package_version);
 }
@@ -195,3 +194,5 @@ use sui::{balance, clock::{Self, Clock}, coin::Coin, hash, test_scenario::{Self,
 use fun daily_rewards_next_tx as DailyRewardsFixture.next_tx;
 
 use fun daily_rewards_ctx as DailyRewardsFixture.ctx;
+
+use fun rewards::publish_round as Vault.publish_round;

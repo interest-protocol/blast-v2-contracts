@@ -265,7 +265,7 @@ public(package) fun split_fees<Meme, Quote>(
     self.auto_lp_quote.join(quote.split(auto_lp_quote));
     self.rewards_meme.join(meme.split(rewards_meme));
     self.rewards_quote.join(quote.split(rewards_quote));
-    burn(currency, meme.split(burn_meme), ctx);
+    currency.burn(meme.split(burn_meme), ctx);
     self.burn_quote.join(quote.split(burn_quote));
 
     recipients.length().do!(|i| {
@@ -320,7 +320,7 @@ public(package) fun burn_buyback<Meme, Quote>(
     assert!(meme_burned >= min_meme_out, EBuybackBelowMinimum);
 
     let quote_spent = quote_in - unspent_quote.value();
-    burn(currency, meme, ctx);
+    currency.burn(meme, ctx);
     self.burn_quote.join(unspent_quote);
 
     blast_events::buyback_burned(
@@ -661,3 +661,5 @@ use fun dynamic_object_field::add as UID.add_dynamic_object_field;
 use fun dynamic_object_field::borrow as UID.dynamic_object_field;
 use fun dynamic_object_field::borrow_mut as UID.dynamic_object_field_mut;
 use fun dynamic_object_field::exists as UID.has_dynamic_object_field;
+
+use fun burn as Currency.burn;

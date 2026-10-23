@@ -43,13 +43,13 @@ public struct Fixture {
 #[test]
 fun single_ptb_sealed_mock_adapter_keeps_principal_and_residuals_in_vault_custody() {
     let mut f = start();
-    reach_migration(&mut f);
+    f.reach_migration();
 
     f.scenario.next_tx(TESTER);
     let mut launch = f.take_launch();
     let mut currency = f.take_currency();
     let (_, quote_before, _, allocated_before) = launch.balances_for_testing();
-    mock_adapter(&mut launch, &f.version, &mut currency, f.scenario.ctx());
+    launch.mock_adapter(&f.version, &mut currency, f.scenario.ctx());
 
     assert!(!launch.is_live_for_testing() && !launch.is_migration_ready_for_testing());
     assert!(launch.is_migrated_for_testing());
@@ -93,12 +93,12 @@ fun single_ptb_sealed_mock_adapter_keeps_principal_and_residuals_in_vault_custod
 #[test]
 fun the_migrated_vault_splits_later_collections_and_updates_its_split_under_the_curve_fee_cap() {
     let mut f = start();
-    reach_migration(&mut f);
+    f.reach_migration();
 
     f.scenario.next_tx(TESTER);
     let mut launch = f.take_launch();
     let mut currency = f.take_currency();
-    mock_adapter(&mut launch, &f.version, &mut currency, f.scenario.ctx());
+    launch.mock_adapter(&f.version, &mut currency, f.scenario.ctx());
     test_scenario::return_shared(launch);
     test_scenario::return_to_address(COIN_REGISTRY, currency);
 
@@ -176,7 +176,7 @@ fun the_migrated_vault_splits_later_collections_and_updates_its_split_under_the_
 )]
 fun another_adapter_cannot_migrate() {
     let mut f = start();
-    reach_migration(&mut f);
+    f.reach_migration();
 
     f.scenario.next_tx(TESTER);
     let mut launch = f.take_launch();
@@ -191,12 +191,12 @@ fun another_adapter_cannot_migrate() {
 )]
 fun zero_liquidity_aborts_the_migration() {
     let mut f = start();
-    reach_migration(&mut f);
+    f.reach_migration();
 
     f.scenario.next_tx(TESTER);
     let mut launch = f.take_launch();
     let mut currency = f.take_currency();
-    mock_adapter_with(&mut launch, &f.version, &mut currency, 0, f.scenario.ctx());
+    launch.mock_adapter_with(&f.version, &mut currency, 0, f.scenario.ctx());
     abort EUnexpectedSuccess
 }
 
@@ -209,7 +209,7 @@ public fun mock_adapter(
     currency: &mut Currency<ATOMIC_MIGRATION_TESTS>,
     ctx: &mut TxContext,
 ) {
-    mock_adapter_with(launch, version, currency, 1, ctx)
+    launch.mock_adapter_with(version, currency, 1, ctx)
 }
 
 /// Migrate, seed a mock position holding `liquidity` with one residual unit per asset kept in the
@@ -263,7 +263,7 @@ fun start(): Fixture {
         bps::new(100),
         bps::new(100),
     );
-    let launch_id = share_launch(&mut scenario, &version, &config, &clock);
+    let launch_id = scenario.share_launch(&version, &config, &clock);
     test_scenario::return_shared(config);
 
     Fixture {
@@ -309,7 +309,8 @@ fun share_launch(
     );
     initializer.set_virtual_quote(version, 5_000_000);
     initializer.set_graduation_target(version, TARGET);
-    initializer.set_allocation_plan(version,
+    initializer.set_allocation_plan(
+        version,
         allocation::plan(
             bps::new(7_000),
             bps::new(2_000),
@@ -429,3 +430,9 @@ use sui::{
     test_scenario::{Self, Scenario},
     test_utils,
 };
+
+use fun mock_adapter as Launch.mock_adapter;
+
+use fun mock_adapter_with as Launch.mock_adapter_with;
+
+use fun share_launch as Scenario.share_launch;

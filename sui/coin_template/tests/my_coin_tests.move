@@ -45,7 +45,7 @@ fun init_registers_the_template_constants() {
     my_coin::init_for_testing(scenario.ctx());
     scenario.next_tx(PUBLISHER);
 
-    let currency = take_currency(&scenario);
+    let currency = scenario.take_currency();
 
     assert_eq!(currency.decimals(), TEMPLATE_DECIMALS);
     assert_eq!(currency.symbol(), b"COIN".to_string());
@@ -57,9 +57,9 @@ fun init_registers_the_template_constants() {
     assert!(!test_scenario::has_most_recent_for_address<TreasuryCap<MY_COIN>>(PUBLISHER));
     assert_eq!(
         currency.metadata_cap_id(),
-        option::some(metadata_cap_id(&scenario, TEMPLATE_METADATA_CAP_RECIPIENT)),
+        option::some(scenario.metadata_cap_id(TEMPLATE_METADATA_CAP_RECIPIENT)),
     );
-    assert_eq!(coin_value(&scenario, TEMPLATE_SUPPLY_RECIPIENT), TEMPLATE_SUPPLY);
+    assert_eq!(scenario.coin_value(TEMPLATE_SUPPLY_RECIPIENT), TEMPLATE_SUPPLY);
     assert!(!test_scenario::has_most_recent_for_address<Coin<MY_COIN>>(PUBLISHER));
 
     test_scenario::return_to_address(COIN_REGISTRY, currency);
@@ -69,7 +69,7 @@ fun init_registers_the_template_constants() {
 #[test]
 fun mintable_supply_delivers_the_treasury_cap_and_keeps_the_supply_open() {
     let mut scenario = create(SUPPLY, MINTABLE, true);
-    let currency = take_currency(&scenario);
+    let currency = scenario.take_currency();
     let mut treasury_cap = scenario.take_from_address<TreasuryCap<MY_COIN>>(MINTER);
 
     assert_eq!(currency.decimals(), DECIMALS);
@@ -77,7 +77,7 @@ fun mintable_supply_delivers_the_treasury_cap_and_keeps_the_supply_open() {
     assert!(currency.total_supply().is_none());
     assert_eq!(currency.treasury_cap_id(), option::some(object::id(&treasury_cap)));
     assert_eq!(treasury_cap.total_supply(), SUPPLY);
-    assert_eq!(coin_value(&scenario, HOLDER), SUPPLY);
+    assert_eq!(scenario.coin_value(HOLDER), SUPPLY);
 
     destroy(treasury_cap.mint(1, scenario.ctx()));
 
@@ -103,12 +103,12 @@ fun mintable_zero_supply_mints_nothing_and_delivers_the_treasury_cap() {
 #[test]
 fun fixed_supply_retires_the_treasury_cap() {
     let scenario = create(SUPPLY, FIXED, true);
-    let currency = take_currency(&scenario);
+    let currency = scenario.take_currency();
 
     assert!(currency.is_supply_fixed());
     assert_eq!(currency.total_supply(), option::some(SUPPLY));
     assert!(!test_scenario::has_most_recent_for_address<TreasuryCap<MY_COIN>>(MINTER));
-    assert_eq!(coin_value(&scenario, HOLDER), SUPPLY);
+    assert_eq!(scenario.coin_value(HOLDER), SUPPLY);
 
     test_scenario::return_to_address(COIN_REGISTRY, currency);
     scenario.end();
@@ -117,7 +117,7 @@ fun fixed_supply_retires_the_treasury_cap() {
 #[test]
 fun burn_only_supply_retires_the_treasury_cap_and_burns_through_the_currency() {
     let mut scenario = create(SUPPLY, BURN_ONLY, true);
-    let mut currency = take_currency(&scenario);
+    let mut currency = scenario.take_currency();
     let mut supply = scenario.take_from_address<Coin<MY_COIN>>(HOLDER);
 
     assert!(currency.is_supply_burn_only());
@@ -135,10 +135,10 @@ fun burn_only_supply_retires_the_treasury_cap_and_burns_through_the_currency() {
 #[test]
 fun mutable_metadata_delivers_the_metadata_cap() {
     let scenario = create(SUPPLY, FIXED, true);
-    let currency = take_currency(&scenario);
+    let currency = scenario.take_currency();
 
     assert!(!currency.is_metadata_cap_deleted());
-    assert_eq!(currency.metadata_cap_id(), option::some(metadata_cap_id(&scenario, CURATOR)));
+    assert_eq!(currency.metadata_cap_id(), option::some(scenario.metadata_cap_id(CURATOR)));
 
     test_scenario::return_to_address(COIN_REGISTRY, currency);
     scenario.end();
@@ -147,7 +147,7 @@ fun mutable_metadata_delivers_the_metadata_cap() {
 #[test]
 fun immutable_metadata_deletes_the_metadata_cap() {
     let scenario = create(SUPPLY, FIXED, false);
-    let currency = take_currency(&scenario);
+    let currency = scenario.take_currency();
 
     assert!(currency.is_metadata_cap_deleted());
     assert!(!test_scenario::has_most_recent_for_address<MetadataCap<MY_COIN>>(CURATOR));
@@ -233,3 +233,9 @@ use sui::{
     coin_registry::{Currency, MetadataCap},
     test_scenario::{Self, Scenario},
 };
+
+use fun coin_value as Scenario.coin_value;
+
+use fun metadata_cap_id as Scenario.metadata_cap_id;
+
+use fun take_currency as Scenario.take_currency;

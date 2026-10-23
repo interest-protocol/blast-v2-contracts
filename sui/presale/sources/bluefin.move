@@ -62,12 +62,12 @@ public fun migrate<Meme, Quote>(
 
     let source_meme = meme.value();
     let source_quote = quote.value();
-    let (lower_tick, upper_tick) = full_range(bluefin_config, tick_spacing);
+    let (lower_tick, upper_tick) = bluefin_config.full_range(tick_spacing);
 
     let mut pool = pool::create_pool_and_get_object<Meme, Quote, SUI>(
         clock,
         bluefin_config,
-        pool_name(currency, quote_currency),
+        currency.pool_name(quote_currency),
         b"",
         currency.symbol().into_bytes(),
         currency.decimals(),
@@ -89,7 +89,7 @@ public fun migrate<Meme, Quote>(
         upper_tick.as_u32(),
         ctx,
     );
-    let fix_meme = fixes_meme(&pool, lower_tick, upper_tick, source_meme, source_quote);
+    let fix_meme = pool.fixes_meme(lower_tick, upper_tick, source_meme, source_quote);
     let (_, _, residual_meme, residual_quote) = pool::add_liquidity_with_fixed_amount(
         clock,
         bluefin_config,
@@ -260,3 +260,9 @@ use bluefin_spot::{config::GlobalConfig, pool::{Self, Pool}, position::Position}
 use integer_mate::i32::{Self, I32};
 
 use sui::{clock::Clock, coin::{Coin, TreasuryCap}, coin_registry::Currency, sui::SUI};
+
+use fun fixes_meme as Pool.fixes_meme;
+
+use fun full_range as GlobalConfig.full_range;
+
+use fun pool_name as Currency.pool_name;

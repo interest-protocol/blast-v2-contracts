@@ -159,7 +159,7 @@ const PHASE_ORDER = [
         to: '\n}\n',
         markers: [
             'bound.limit_price(',
-            'venue_account::execute_order_with_cap(',
+            'admin_cap.execute_order_with_cap(',
             'assert_seed_fill(',
             'bound.assert_execution(',
             'issuance.assert_seed_order_notional_allowed(',

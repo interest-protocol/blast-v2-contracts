@@ -144,7 +144,7 @@ public fun set_sell_burn_bps_for_testing<Meme>(self: &mut LaunchTicket<Meme>, va
 #[test_only]
 /// Burns part of the minted supply to model an old-generation ticket with another supply rule.
 public fun burn_meme_for_testing<Meme>(self: &mut LaunchTicket<Meme>, amount: u64) {
-    sui::balance::destroy_for_testing(self.meme.split(amount));
+    self.meme.split(amount).destroy_for_testing();
 }
 
 // === Imports ===

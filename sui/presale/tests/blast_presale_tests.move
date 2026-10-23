@@ -1872,9 +1872,8 @@ fun migration_locks_each_vesting_share_in_its_own_schedule() {
 
     let schedules = event::events_by_type<VestingCreated>();
     assert_eq!(schedules.length(), 2);
-    let raise_vesting_id = team_schedule_id<QUOTE>(&schedules[0], RAISE_RECIPIENT, 200, COMMITMENT_ENDS_AT_MS);
-    let token_vesting_id = team_schedule_id<BLAST_PRESALE_TESTS>(
-        &schedules[1],
+    let raise_vesting_id = schedules[0].team_schedule_id<QUOTE>(RAISE_RECIPIENT, 200, COMMITMENT_ENDS_AT_MS);
+    let token_vesting_id = schedules[1].team_schedule_id<BLAST_PRESALE_TESTS>(
         RECIPIENT_A,
         RECIPIENT_A_TOKENS,
         COMMITMENT_ENDS_AT_MS,
@@ -2017,8 +2016,7 @@ fun claims_lock_participant_tokens_in_a_schedule_from_each_claim() {
     assert_eq!(claimed, vector[1_000, 2_500, 750, 1]);
     let alice_vesting_id = alice_vesting_id.destroy_some();
     assert_eq!(
-        team_schedule_id<BLAST_PRESALE_TESTS>(
-            &only_event<VestingCreated>(),
+        only_event<VestingCreated>().team_schedule_id<BLAST_PRESALE_TESTS>(
             ALICE,
             2_500,
             alice_claimed_at_ms,
@@ -2034,8 +2032,7 @@ fun claims_lock_participant_tokens_in_a_schedule_from_each_claim() {
     assert_eq!(claimed, vector[3_000, 7_501, 2_250, 0]);
     let bob_vesting_id = bob_vesting_id.destroy_some();
     assert_eq!(
-        team_schedule_id<BLAST_PRESALE_TESTS>(
-            &only_event<VestingCreated>(),
+        only_event<VestingCreated>().team_schedule_id<BLAST_PRESALE_TESTS>(
             BOB,
             7_501,
             bob_claimed_at_ms,
@@ -2198,7 +2195,7 @@ fun vesting_terms_stay_within_the_technical_bound() {
 fun a_partnered_sale_pays_its_partner_a_cut_of_blasts_raise_fee_only() {
     let mut ctx = tx_context::dummy();
     let partner = new_partner(PARTNER_CUT_BPS, &mut ctx);
-    let mut fixture = start_partnered_sale(&partner);
+    let mut fixture = partner.start_partnered_sale();
 
     assert_eq!(fixture.migrate(), vector[LIQUIDITY_TOKENS, 767]);
     assert!(event::events_by_type<ProtocolFeesPaid<BLAST_PRESALE_TESTS, QUOTE>>().is_empty());
@@ -2244,7 +2241,7 @@ fun the_partner_is_paid_its_cut_in_force_at_payment() {
         LIQUIDITY_DEADLINE_AT_MS,
         &mut ctx,
     );
-    let mut fixture = start_partnered_sale(&partner);
+    let mut fixture = partner.start_partnered_sale();
     fixture.migrate();
     fixture.set_time(LIQUIDITY_DEADLINE_AT_MS);
 
@@ -2265,7 +2262,7 @@ fun the_partner_is_paid_its_cut_in_force_at_payment() {
 fun a_zero_cut_partner_is_paid_nothing() {
     let mut ctx = tx_context::dummy();
     let partner = new_partner(0, &mut ctx);
-    let mut fixture = start_partnered_sale(&partner);
+    let mut fixture = partner.start_partnered_sale();
     fixture.migrate();
 
     fixture.pay_protocol_fees_with_partner(KEEPER, &partner);
@@ -2313,7 +2310,7 @@ fun a_sale_cannot_name_a_partner_blast_has_not_accepted() {
 fun a_partner_cannot_be_paid_before_migration() {
     let mut ctx = tx_context::dummy();
     let partner = new_partner(PARTNER_CUT_BPS, &mut ctx);
-    let mut fixture = start_partnered_sale(&partner);
+    let mut fixture = partner.start_partnered_sale();
 
     fixture.pay_protocol_fees_with_partner(KEEPER, &partner);
     abort
@@ -2325,7 +2322,7 @@ fun a_partner_cannot_be_paid_before_migration() {
 fun a_partner_is_paid_once() {
     let mut ctx = tx_context::dummy();
     let partner = new_partner(PARTNER_CUT_BPS, &mut ctx);
-    let mut fixture = start_partnered_sale(&partner);
+    let mut fixture = partner.start_partnered_sale();
     fixture.migrate();
     fixture.pay_protocol_fees_with_partner(KEEPER, &partner);
 
@@ -2340,7 +2337,7 @@ fun another_partner_cannot_be_paid() {
     let mut ctx = tx_context::dummy();
     let partner = new_partner(PARTNER_CUT_BPS, &mut ctx);
     let other_partner = new_partner(PARTNER_CUT_BPS, &mut ctx);
-    let mut fixture = start_partnered_sale(&partner);
+    let mut fixture = partner.start_partnered_sale();
 
     fixture.pay_protocol_fees_with_partner(KEEPER, &other_partner);
     abort
@@ -2366,7 +2363,7 @@ fun an_unpartnered_sale_pays_no_partner() {
 fun a_cancelled_partnered_sale_pays_no_partner() {
     let mut ctx = tx_context::dummy();
     let partner = new_partner(PARTNER_CUT_BPS, &mut ctx);
-    let mut fixture = start_partnered_sale(&partner);
+    let mut fixture = partner.start_partnered_sale();
     fixture.set_time(LIQUIDITY_DEADLINE_AT_MS);
     fixture.cancel_unlaunched(KEEPER);
     assert_eq!(fixture.unpaid_protocol_quote(), option::none());
@@ -2382,7 +2379,7 @@ fun a_cancelled_partnered_sale_pays_no_partner() {
 fun a_zero_raise_rate_partnered_sale_pays_blast_its_tokens() {
     let mut ctx = tx_context::dummy();
     let partner = new_partner(PARTNER_CUT_BPS, &mut ctx);
-    let mut fixture = share_partnered_sale(&partner, COMMITMENT_STARTS_AT_MS, 0);
+    let mut fixture = partner.share_partnered_sale(COMMITMENT_STARTS_AT_MS, 0);
     fixture.fund_partnered_sale();
 
     // The LP takes the raise after the recipient's 200.
@@ -2408,7 +2405,7 @@ fun a_zero_raise_rate_partnered_sale_pays_blast_its_tokens() {
 fun a_partnered_sale_holds_the_rates_set_before_its_start() {
     let mut ctx = tx_context::dummy();
     let partner = new_partner(PARTNER_CUT_BPS, &mut ctx);
-    let mut fixture = share_partnered_sale(&partner, SCHEDULED_AT_MS, PROTOCOL_RAISE_BPS);
+    let mut fixture = partner.share_partnered_sale(SCHEDULED_AT_MS, PROTOCOL_RAISE_BPS);
     fixture.set_protocol_fees(vector[1_000, 250, 0, 0]);
     fixture.fund_partnered_sale();
 
@@ -2970,7 +2967,7 @@ fun start_configured(
 /// creates, names `partner` before sharing it, then lets Alice and Bob overfill it and a keeper
 /// settle it as funded.
 fun start_partnered_sale(partner: &Partner): Fixture {
-    let mut fixture = share_partnered_sale(partner, COMMITMENT_STARTS_AT_MS, PROTOCOL_RAISE_BPS);
+    let mut fixture = partner.share_partnered_sale(COMMITMENT_STARTS_AT_MS, PROTOCOL_RAISE_BPS);
     fixture.fund_partnered_sale();
 
     fixture
@@ -2989,7 +2986,7 @@ fun share_partnered_sale(partner: &Partner, created_at_ms: u64, protocol_raise_b
             PROTOCOL_TOKEN_BPS,
             scenario.ctx(),
         );
-        let creation_policy = accepting_partner(partner, scenario.ctx());
+        let creation_policy = partner.accepting_partner(scenario.ctx());
         let mut terms = valid_sale_terms();
         terms.recipient_allocations = vector[
             recipient_a_share(option::none()),
@@ -3673,7 +3670,8 @@ fun commit_open_for_change(self: &mut Fixture, sender: address, amount: u64): ve
         let mut change = vector[];
         self.next_tx!(sender, |fixture| {
             let mut sale = fixture.take_presale();
-            change.push_back(sale
+            change.push_back(
+                sale
                 .commit_open(
                     &package_version,
                     coin::mint_for_testing(amount, fixture.ctx!()),
@@ -3702,7 +3700,8 @@ fun commit_uncapped(self: &mut Fixture, sender: address, amount: u64): vector<u6
         let mut change = vector[];
         self.next_tx!(sender, |fixture| {
             let mut sale = fixture.take_presale();
-            change.push_back(sale
+            change.push_back(
+                sale
                 .commit_uncapped(
                     &package_version,
                     coin::mint_for_testing(amount, fixture.ctx!()),
@@ -3750,7 +3749,8 @@ fun protocol_rates(self: &mut Fixture): vector<u64> {
     self.next_tx!(KEEPER, |fixture| {
         let sale = fixture.take_presale();
         let (_, _, _, protocol_fees, _) = sale.vault_config();
-        rates.append(vector[
+        rates.append(
+            vector[
             protocol_fees.raise_bps().value(),
             protocol_fees.token_bps().value(),
             protocol_fees.lp_fee_meme_bps().value(),
@@ -4013,7 +4013,8 @@ fun custody(self: &mut Fixture): vector<u64> {
             recipient_tokens,
             protocol_tokens,
         ) = sale.custody_for_testing();
-        balances.append(vector[
+        balances.append(
+            vector[
             total_commitments,
             participants,
             quote,
@@ -4114,3 +4115,11 @@ use sui::{
     test_scenario::{Self, Scenario},
     test_utils
 };
+
+use fun accepting_partner as Partner.accepting_partner;
+
+use fun share_partnered_sale as Partner.share_partnered_sale;
+
+use fun start_partnered_sale as Partner.start_partnered_sale;
+
+use fun team_schedule_id as VestingCreated.team_schedule_id;

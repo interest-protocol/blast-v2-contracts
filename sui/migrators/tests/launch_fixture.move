@@ -37,8 +37,7 @@ public fun open_launch<Meme: drop, Quote, Witness: drop>(
     fee_split: FeeSplit,
     burnable: bool,
 ): (Launch<Meme, Quote>, Currency<Meme>) {
-    let (initializer, currency) = start_launch(
-        scenario,
+    let (initializer, currency) = scenario.start_launch(
         otw,
         version,
         config,
@@ -63,8 +62,7 @@ public fun open_partnered_launch<Meme: drop, Quote, Witness: drop>(
     clock: &Clock,
 ): (Launch<Meme, Quote>, Currency<Meme>) {
     config.add_partner(version, &blast_acl::witness_for_testing<FeeAdmin>(), partner);
-    let (mut initializer, currency) = start_launch(
-        scenario,
+    let (mut initializer, currency) = scenario.start_launch(
         otw,
         version,
         config,
@@ -113,7 +111,8 @@ fun start_launch<Meme: drop, Quote, Witness: drop>(
     );
     initializer.set_virtual_quote(version, VIRTUAL_QUOTE);
     initializer.set_graduation_target(version, TARGET);
-    initializer.set_allocation_plan(version,
+    initializer.set_allocation_plan(
+        version,
         allocation::plan(bps::new(8_000), bps::new(2_000), bps::new(10_000), vector[]),
     );
     initializer.set_lp_fee_split(version, fee_split);
@@ -174,3 +173,5 @@ use blast_fun::{
 use blast_partners::blast_partners::Partner;
 
 use sui::{clock::Clock, coin, coin_registry::Currency, test_scenario::Scenario};
+
+use fun start_launch as Scenario.start_launch;

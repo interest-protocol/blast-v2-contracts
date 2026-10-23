@@ -20,8 +20,8 @@ const SEED: u64 = 0xA110C;
 fun smallest_positive_curve_and_pool_shares_are_admitted() {
     let plan = shaped(vector[1, 1, 9_998], vector[1, 9_999]);
 
-    assert_eq!(meme_amounts(&plan, 10_000), vector[1, 1, 9_998]);
-    assert_eq!(quote_amounts(&plan, 10_000), vector[1, 9_999]);
+    assert_eq!(plan.meme_amounts(10_000), vector[1, 1, 9_998]);
+    assert_eq!(plan.quote_amounts(10_000), vector[1, 9_999]);
 }
 
 #[test]
@@ -36,8 +36,8 @@ fun a_recipient_without_shares_is_admitted_and_paid_nothing() {
     let plan = shaped(vector[7_000, 2_000, 1_000, 0], vector[9_000, 1_000, 0]);
 
     assert_eq!(plan.destinations(), vector[@0x2]);
-    assert_eq!(meme_amounts(&plan, 999), vector[699, 200, 100, 0]);
-    assert_eq!(quote_amounts(&plan, 999), vector[899, 100, 0]);
+    assert_eq!(plan.meme_amounts(999), vector[699, 200, 100, 0]);
+    assert_eq!(plan.quote_amounts(999), vector[899, 100, 0]);
 }
 
 #[test, expected_failure(abort_code = blast_fun::errors::EInvalidShares, location = blast_fun::allocation)]
@@ -69,29 +69,29 @@ fun a_fee_split_duplicate_apart_from_its_twin_is_rejected() {
 fun a_zero_total_pays_nothing() {
     let plan = shaped(vector[7_000, 2_000, 500, 500], vector[9_000, 500, 500]);
 
-    assert_eq!(meme_amounts(&plan, 0), vector[0, 0, 0, 0]);
-    assert_eq!(quote_amounts(&plan, 0), vector[0, 0, 0]);
-    assert_eq!(fee_amounts(&split(vector[9_000, 500, 0, 500]), 0), vector[0, 0, 0, 0]);
+    assert_eq!(plan.meme_amounts(0), vector[0, 0, 0, 0]);
+    assert_eq!(plan.quote_amounts(0), vector[0, 0, 0]);
+    assert_eq!(split(vector[9_000, 500, 0, 500]).fee_amounts(0), vector[0, 0, 0, 0]);
 }
 
 #[test]
 fun blast_ceiling_takes_the_unit_a_larger_remainder_would_win() {
     let plan = shaped(vector[7_000, 2_000, 500, 500], vector[9_000, 500, 500]);
 
-    assert_eq!(meme_amounts(&plan, 101), vector[70, 20, 6, 5]);
-    assert_eq!(quote_amounts(&plan, 101), vector[90, 6, 5]);
+    assert_eq!(plan.meme_amounts(101), vector[70, 20, 6, 5]);
+    assert_eq!(plan.quote_amounts(101), vector[90, 6, 5]);
     // The same shares without a rounded-up part: the pool's 0.9 remainder wins the unit.
-    assert_eq!(fee_amounts(&split(vector[9_000, 500, 0, 500]), 101), vector[91, 5, 0, 5]);
+    assert_eq!(split(vector[9_000, 500, 0, 500]).fee_amounts(101), vector[91, 5, 0, 5]);
 }
 
 #[test]
 fun blast_ceiling_can_leave_a_one_basis_point_pool_empty() {
     let plan = shaped(vector[9_998, 1, 1], vector[1, 9_999]);
 
-    assert_eq!(quote_amounts(&plan, 1), vector[0, 1]);
-    assert_eq!(quote_amounts(&plan, 9_999), vector[0, 9_999]);
-    assert_eq!(quote_amounts(&plan, 10_000), vector[1, 9_999]);
-    assert_eq!(quote_amounts(&plan, 10_001), vector[1, 10_000]);
+    assert_eq!(plan.quote_amounts(1), vector[0, 1]);
+    assert_eq!(plan.quote_amounts(9_999), vector[0, 9_999]);
+    assert_eq!(plan.quote_amounts(10_000), vector[1, 9_999]);
+    assert_eq!(plan.quote_amounts(10_001), vector[1, 10_000]);
 }
 
 #[test]
@@ -111,8 +111,8 @@ fun equal_routes_take_leftover_units_in_table_order() {
 fun a_larger_total_can_pay_a_floored_part_one_unit_less() {
     let split = split(vector[4_700, 4_200, 0, 1_100]);
 
-    assert_eq!(fee_amounts(&split, 22), vector[10, 9, 0, 3]);
-    assert_eq!(fee_amounts(&split, 23), vector[11, 10, 0, 2]);
+    assert_eq!(split.fee_amounts(22), vector[10, 9, 0, 3]);
+    assert_eq!(split.fee_amounts(23), vector[11, 10, 0, 2]);
 }
 
 #[test]
@@ -142,7 +142,7 @@ fun every_four_parts_and_one_route_grid_split_follows_largest_remainder() {
             ];
             let split = split(shares);
             25u64.do!(|total| {
-                assert_largest_remainder(&shares, fee_amounts(&split, total), option::none(), total)
+                assert_largest_remainder(&shares, split.fee_amounts(total), option::none(), total)
             });
         };
     }))));
@@ -163,8 +163,8 @@ fun random_plans_follow_largest_remainder_with_blast_rounded_up() {
         let plan = shaped(meme, quote);
         let total = random_total(seed);
 
-        assert_largest_remainder(&meme, meme_amounts(&plan, total), option::some(2), total);
-        assert_largest_remainder(&quote, quote_amounts(&plan, total), option::some(1), total);
+        assert_largest_remainder(&meme, plan.meme_amounts(total), option::some(2), total);
+        assert_largest_remainder(&quote, plan.quote_amounts(total), option::some(1), total);
     });
 }
 
@@ -176,7 +176,7 @@ fun random_fee_splits_follow_largest_remainder() {
         let routes = seed % (constants::max_recipients!() + 1);
         let shares = random_shares(4 + routes, constants::basis_points_denominator!(), next(seed));
         let total = random_total(seed);
-        let amounts = fee_amounts(&split(shares), total);
+        let amounts = split(shares).fee_amounts(total);
 
         assert_largest_remainder(&shares, amounts, option::none(), total);
     });
@@ -188,7 +188,7 @@ fun a_full_fee_split_conserves_the_maximum_total() {
     let mut shares = vector[1_000, 2_000, 3_000, 1_000];
     routes.do!(|i| shares.push_back(3_000 / routes + if (i == 0) 3_000 % routes else 0));
     let total = std::u64::max_value!();
-    let amounts = fee_amounts(&split(shares), total);
+    let amounts = split(shares).fee_amounts(total);
 
     assert_largest_remainder(&shares, amounts, option::none(), total);
 }
@@ -323,3 +323,9 @@ use blast_fun::{allocation::{Self, AllocationPlan, FeeSplit, Recipient, Route}, 
 use std::unit_test::assert_eq;
 
 use sui::address;
+
+use fun fee_amounts as FeeSplit.fee_amounts;
+
+use fun meme_amounts as AllocationPlan.meme_amounts;
+
+use fun quote_amounts as AllocationPlan.quote_amounts;

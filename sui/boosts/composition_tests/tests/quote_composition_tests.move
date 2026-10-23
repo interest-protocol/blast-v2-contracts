@@ -162,7 +162,8 @@ public fun mint_and_buy<Product, Collateral, Meme>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<BlastBoost<Product>>) {
-    let (shares, clearing_house) = operations::mint(vault, protocol, account, registry, clearing_house,
+    let (shares, clearing_house) = vault.mint(
+        protocol, account, registry, clearing_house,
         base_oracle, collateral_oracle, cash,
         minimum_shares, deadline_at_ms, clock, ctx);
     let (meme, refund) = market.buy(version, runtime, shares, minimum_meme, ctx);
@@ -190,7 +191,8 @@ public fun sell_and_redeem<Product, Collateral, Meme>(
     ctx: &mut TxContext,
 ): Coin<Collateral> {
     let shares = market.sell(version, runtime, meme, minimum_shares, ctx);
-    let (cash, clearing_house) = operations::redeem(vault, protocol, account, registry, clearing_house,
+    let (cash, clearing_house) = vault.redeem(
+        protocol, account, registry, clearing_house,
         base_oracle, collateral_oracle, shares,
         minimum_cash, deadline_at_ms, clock, ctx);
     clearing_house.share();
@@ -213,12 +215,12 @@ public fun mint_and_redeem<Product, Collateral>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<Collateral> {
-    let (shares, clearing_house) = operations::mint(
-        vault, protocol, account, registry, clearing_house, base_oracle, collateral_oracle,
+    let (shares, clearing_house) = vault.mint(
+        protocol, account, registry, clearing_house, base_oracle, collateral_oracle,
         cash, minimum_shares, deadline_at_ms, clock, ctx,
     );
-    let (cash, clearing_house) = operations::redeem(
-        vault, protocol, account, registry, clearing_house, base_oracle, collateral_oracle,
+    let (cash, clearing_house) = vault.redeem(
+        protocol, account, registry, clearing_house, base_oracle, collateral_oracle,
         shares, minimum_cash, deadline_at_ms, clock, ctx,
     );
     clearing_house.share();
@@ -260,3 +262,7 @@ use sui::{
     test_scenario,
     test_utils,
 };
+
+use fun operations::mint as Vault.mint;
+
+use fun operations::redeem as Vault.redeem;

@@ -2284,7 +2284,7 @@ fun start_create(): CreateFixture {
             ],
         )
         .build();
-    advance_runner_epoch(&mut runner);
+    runner.advance_runner_epoch();
     let version = package_version::new_for_testing(runner.ctx());
 
     CreateFixture { runner, version, system_state: option::none() }
@@ -2468,7 +2468,7 @@ fun issue_test_receipt(
 }
 
 fun advance_epoch(self: &mut VaultFixture) {
-    advance_runner_epoch(&mut self.runner);
+    self.runner.advance_runner_epoch();
 }
 
 fun advance_epoch_with_rewards(self: &mut VaultFixture, computation_charge: u64) {
@@ -2486,7 +2486,7 @@ fun create_advance_epoch_safe_mode(self: &mut CreateFixture) {
 }
 
 fun create_advance_epoch(self: &mut CreateFixture) {
-    advance_runner_epoch(&mut self.runner);
+    self.runner.advance_runner_epoch();
 }
 
 fun create_remove_validator(self: &mut CreateFixture, validator: address) {
@@ -2770,3 +2770,5 @@ use fun vault_next_tx as VaultFixture.next_tx;
 use fun vault_system as VaultFixture.system;
 
 use fun vault_vault as VaultFixture.vault;
+
+use fun advance_runner_epoch as TestRunner.advance_runner_epoch;

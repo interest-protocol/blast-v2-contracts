@@ -173,8 +173,7 @@ fun migrate_rejects_another_sales_reservation() {
     let mut pool_registry = pool_registry::new_for_testing(scenario.ctx());
     let dao_fee_version = version::new_for_testing(scenario.ctx());
 
-    aftermath::migrate(
-        &mut second_sale,
+    second_sale.migrate(
         &package_version,
         pool_creation,
         &fee_policy,
@@ -322,8 +321,7 @@ fun collect_fees_receives_the_vaults_fee_coins_and_splits_them() {
     let quote_ids = send_coins<QUOTE>(vector[10], vault_address, &mut scenario);
 
     scenario.next_tx(KEEPER);
-    aftermath::collect_fees(
-        &mut vault,
+    vault.collect_fees(
         &package_version,
         &fee_policy,
         meme_ids.map!(|id| test_scenario::receiving_ticket_by_id<Coin<AFTERMATH_TESTS>>(id)),
@@ -403,8 +401,7 @@ fun collect_fees_rejects_another_venues_vault() {
         1,
     );
 
-    aftermath::collect_fees(
-        &mut other_vault,
+    other_vault.collect_fees(
         &package_version,
         &fee_policy,
         vector[],
@@ -457,8 +454,7 @@ fun an_empty_collection_moves_nothing() {
     let fee_policy = fee_policy::new_for_testing(scenario.ctx());
     let mut vault = new_vault(&mut scenario);
 
-    aftermath::collect_fees(
-        &mut vault,
+    vault.collect_fees(
         &package_version,
         &fee_policy,
         vector[],
@@ -486,8 +482,7 @@ fun collect_fees_receives_only_coins_the_vault_owns() {
     let meme_ids = send_coins<AFTERMATH_TESTS>(vector[7], KEEPER, &mut scenario);
 
     scenario.next_tx(KEEPER);
-    aftermath::collect_fees(
-        &mut vault,
+    vault.collect_fees(
         &package_version,
         &fee_policy,
         meme_ids.map!(|id| test_scenario::receiving_ticket_by_id<Coin<AFTERMATH_TESTS>>(id)),
@@ -543,8 +538,7 @@ fun a_funded_sale_nobody_migrates_refunds_at_its_lp_deadline() {
     let creation_policy = allowing<Witness>(scenario.ctx());
     let mut venue_config = venue_config::new_for_testing(scenario.ctx());
     let mut clock = clock::create_for_testing(scenario.ctx());
-    let (sale_id, _, cap) = fund_sale(
-        &mut scenario,
+    let (sale_id, _, cap) = scenario.fund_sale(
         &package_version,
         &creation_policy,
         &mut venue_config,
@@ -594,8 +588,7 @@ fun a_cancelled_sales_reservation_cannot_be_consumed() {
     let fee_policy = fee_policy::new_for_testing(scenario.ctx());
     let mut venue_config = venue_config::new_for_testing(scenario.ctx());
     let mut clock = clock::create_for_testing(scenario.ctx());
-    let (sale_id, pool_creation_id, _cap) = fund_sale(
-        &mut scenario,
+    let (sale_id, pool_creation_id, _cap) = scenario.fund_sale(
         &package_version,
         &creation_policy,
         &mut venue_config,
@@ -612,8 +605,7 @@ fun a_cancelled_sales_reservation_cannot_be_consumed() {
     let mut pool_registry = pool_registry::new_for_testing(scenario.ctx());
     let dao_fee_version = version::new_for_testing(scenario.ctx());
 
-    aftermath::migrate(
-        &mut sale,
+    sale.migrate(
         &package_version,
         pool_creation,
         &fee_policy,
@@ -842,3 +834,9 @@ use sui::{
     test_scenario::{Self, Scenario},
     test_utils
 };
+
+use fun fund_sale as Scenario.fund_sale;
+
+use fun aftermath::collect_fees as Vault.collect_fees;
+
+use fun aftermath::migrate as Presale.migrate;

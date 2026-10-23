@@ -436,3 +436,4 @@ test passes, and none is asserted as a cited fact in the records.
 
 | [0117](0117-presale-versioning-and-activation.md) | Presale versioning and custody before activation | **accepted** |
 | [0118](0118-limit-priced-vault-orders-and-a-widening-unwind-bound.md) | Limit-priced vault orders and a widening unwind bound | **proposed** |
+| [0119](0119-execution-priced-order-caps-and-minimum-lot-closes.md) | Execution-priced order caps and minimum-lot closes | **accepted** |

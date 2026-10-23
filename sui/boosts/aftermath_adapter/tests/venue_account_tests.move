@@ -98,8 +98,8 @@ fun checkpoint_preserves_every_raw_field() {
     let checkpoint = standard_checkpoint();
     let checkpoint_copy = checkpoint;
 
-    assert_standard_checkpoint(&checkpoint);
-    assert_standard_checkpoint(&checkpoint_copy);
+    checkpoint.assert_standard_checkpoint();
+    checkpoint_copy.assert_standard_checkpoint();
 
     destroy(checkpoint);
     destroy(checkpoint_copy);
@@ -200,3 +200,5 @@ use blast_boosts_aftermath::{checkpoint::{Self, Checkpoint}, constants, errors, 
 use perpetuals::authority::ACCOUNT;
 
 use std::unit_test::{assert_eq, destroy};
+
+use fun assert_standard_checkpoint as Checkpoint.assert_standard_checkpoint;

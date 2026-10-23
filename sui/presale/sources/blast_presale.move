@@ -493,7 +493,7 @@ public fun finalize<SaleToken, Quote>(
 ): (Presale<SaleToken, Quote>, PresaleCap) {
     package_version.assert_current();
 
-    assert_unregulated_currency(currency);
+    currency.assert_unregulated_currency();
 
     let PresaleInitializer {
         treasury_cap,
@@ -529,7 +529,7 @@ public fun finalize<SaleToken, Quote>(
     );
     assert!(commitment_duration_ms > 0 && liquidity_window_duration_ms >= MIN_LIQUIDITY_WINDOW_DURATION_MS, EInvalidWindow);
     assert!(eligibility.can_reach(raise_target), EUnreachableRaise);
-    uncapped.do_ref!(|phase| assert_uncapped_phase(phase, commitment_duration_ms, eligibility, raise_target));
+    uncapped.do_ref!(|phase| phase.assert_uncapped_phase(commitment_duration_ms, eligibility, raise_target));
     hard_cap.do_ref!(|cap| assert!(cap.starts_after_ms < commitment_duration_ms, EInvalidHardCap));
 
     let (
@@ -746,7 +746,7 @@ public fun commit_open<SaleToken, Quote>(
     self.assert_open(clock);
     assert!(quote_in.value() > 0, EZeroCommitment);
 
-    let (wallet_cap, max_participants, min_commitment) = open_limits(self.eligibility);
+    let (wallet_cap, max_participants, min_commitment) = self.eligibility.open_limits();
 
     self.record_commitment(quote_in, wallet_cap, max_participants, min_commitment, clock, ctx)
 }
@@ -768,8 +768,7 @@ public fun commit_allowlisted<SaleToken, Quote>(
     self.assert_open(clock);
     assert!(quote_in.value() > 0, EZeroCommitment);
 
-    let max_participants = verify_allowlisted(
-        self.eligibility,
+    let max_participants = self.eligibility.verify_allowlisted(
         index,
         ctx.sender(),
         wallet_cap,
@@ -795,7 +794,7 @@ public fun commit_uncapped<SaleToken, Quote>(
     assert!(quote_in.value() > 0, EZeroCommitment);
     assert!(clock.timestamp_ms() >= self.uncapped_starts_at_ms(), EUncappedPhaseNotOpen);
 
-    let (max_participants, min_commitment) = anyone_limits(self.uncapped.destroy_some());
+    let (max_participants, min_commitment) = self.uncapped.destroy_some().anyone_limits();
     let no_wallet_cap = std::u64::max_value!();
 
     self.record_commitment(quote_in, no_wallet_cap, max_participants, min_commitment, clock, ctx)
@@ -1696,7 +1695,7 @@ fun cancel<SaleToken, Quote>(self: &mut Presale<SaleToken, Quote>) {
 
 #[test_only]
 public fun assert_unregulated_currency_for_testing<SaleToken>(currency: &Currency<SaleToken>) {
-    assert_unregulated_currency(currency);
+    currency.assert_unregulated_currency();
 }
 
 #[test_only]
@@ -2321,3 +2320,5 @@ use fun dynamic_field::borrow_mut as UID.dynamic_field_mut;
 use fun dynamic_field::exists as UID.has_dynamic_field;
 
 use fun dynamic_field::remove as UID.remove_dynamic_field;
+
+use fun assert_unregulated_currency as Currency.assert_unregulated_currency;

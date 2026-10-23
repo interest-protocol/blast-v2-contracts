@@ -77,14 +77,14 @@ Paths: "adapter" means `sui/boosts/aftermath_adapter/sources/`, "core" means
 | 1 | M-1 | Medium | A venue event the checkpoint cannot explain blocks mint, redeem and rebalance for good | Partly fixed (ADR 0115): margin-ratio changes no longer block; liquidation and ADL still do |
 | 2 | M-2 | Medium | When the position has a big unrealized profit, every redemption aborts | Open |
 | 3 | M-3 | Medium | Calling either `restrict_*` upgrade function makes the next upgrade freeze the whole adapter forever | Open. Do not call `restrict_*` until fixed |
-| 4 | M-4 | Medium | A per-order cap worth less than one lot wedges every order path, shutdown included | Open |
+| 4 | M-4 | Medium | A per-order cap worth less than one lot wedges every order path, shutdown included | Addressed in source; residual ordinary redemption limit below |
 | 5 | M-5 | Medium | Once margin falls below the venue's opening requirement, the emergency rebalance that should fix it is refused | Open |
 | 6 | M-6 | Medium | A caller can plant a bad quote and make `rebalance` or `unwind` fill into it at the full slippage bound, paid by holders | Atomic trading sequence blocked by [ADR 0118](../decisions/0118-limit-priced-vault-orders-and-a-widening-unwind-bound.md); price calibration and live venue proof remain |
 | 7 | M-7 | Medium | Rotating or re-pointing an oracle feed freezes priced operations and the shutdown exit | Fixed (ADR 0115). Needs a regression test and a doc comment cleanup |
-| 8 | M-8 | Medium | A cap-sized order aborts if it fills even slightly above the oracle price | Open |
+| 8 | M-8 | Medium | A cap-sized order aborts if it fills even slightly above the oracle price | Addressed in source; live execution evidence outstanding |
 | 9 | M-9 | Medium | Sustained above-RGP traffic on the shared objects can starve `rebalance` and `unwind` | Open. Needs a decision |
 | 10 | L-1 | Low | The live NVDA2L vault uses `min_order_lots = 1`, which makes the mint drift bound meaningless | Open (deployment parameter, plus a post-fill band check) |
-| 11 | L-2 | Low | Converting the order cap to base can overflow and abort instead of saturating | Open |
+| 11 | L-2 | Low | Converting the order cap to base can overflow and abort instead of saturating | Addressed with M-4/M-8 in ADR 0119 |
 | 12 | L-3 | Low | A small vault below the band cannot rebalance when one lot overshoots target, and then cannot accept mints either | Open |
 | 13 | L-4 | Low | Donated cash is never allocated to the position, so the core counts margin the venue does not see | Open |
 | 14 | L-5 | Low | Activation accepts any non-negative `position_imr`, even one that later blocks operations inside the band | Open |
@@ -326,7 +326,7 @@ from the wrong version aborts and the old generation keeps serving;
 
 ### Ticket 4 · M-4 · A per-order cap below one lot wedges every order path
 
-**Status:** open.
+**Status:** addressed in source with M-8; see [ADR 0119](../decisions/0119-execution-priced-order-caps-and-minimum-lot-closes.md). Seed and cap updates validate live capacity for the minimum proportional operation. Opening orders remain strictly capped. Closing orders admit exactly one live lot above the cap, still under the execution-price bound. Ordinary redemption can still exceed the 16-order budget after price or lot growth; raising the cap or administrator-triggered shutdown followed by repeated permissionless unwind calls is required. The historical finding and auditor suggestions below are preserved.
 
 **The problem.** `max_order_notional` is a RiskAdmin knob in atomic USDC. Any
 positive value is accepted, in any lifecycle state, with no delay. But every
@@ -534,7 +534,7 @@ which is fail-closed and intended.
 
 ### Ticket 8 · M-8 · Cap-sized orders abort on any fill above the oracle price
 
-**Status:** open.
+**Status:** addressed in source with M-4; see [ADR 0119](../decisions/0119-execution-priced-order-caps-and-minimum-lot-closes.md). Every sizing site reserves its actual execution bound and sell-rounding headroom. The harness prices actual filled quote and checks unwind fills. Local regressions cover both directions and the narrow closing exception. Live venue execution evidence remains a release gate. The historical finding and auditor suggestions below are preserved.
 
 **The problem.** Each order is sized to the largest whole-lot base worth at
 most `max_order_notional` at the oracle price, with no slippage discount.
@@ -673,7 +673,7 @@ the fill.
 
 ### Ticket 11 · L-2 · Cap-to-base conversion aborts on overflow instead of saturating
 
-**Status:** open.
+**Status:** addressed in source by [ADR 0119](../decisions/0119-execution-priced-order-caps-and-minimum-lot-closes.md). Cap conversion rounds in wide arithmetic and saturates to the largest representable whole-lot base before narrowing. Regressions cover maximum caps and low prices. This addresses cap conversion, not every separate target-notional conversion or arithmetic limit. The historical finding follows.
 
 **The problem.** Converting `max_order_notional` into whole-lot base at the
 current price aborts with `arithmetic_overflow` when the result exceeds `u64`.

@@ -55,7 +55,7 @@ fun registration_shares_the_partner_with_its_share_and_cap_in_force_at_once() {
         fixture.return_partner(partner);
     });
 
-    partners::destroy_cap(cap);
+    cap.destroy_cap();
     fixture.end();
 }
 
@@ -70,8 +70,8 @@ fun registration_accepts_a_zero_share_and_the_maximum_share() {
     let (_, _, top_share, _) = updates[1].partner_updated_fields();
     assert_eq!(vector[zero_share.value(&fixture.clock), top_share.value(&fixture.clock)], vector[0, MAX_SHARE_BPS]);
 
-    partners::destroy_cap(zero);
-    partners::destroy_cap(top);
+    zero.destroy_cap();
+    top.destroy_cap();
     fixture.end();
 }
 
@@ -80,7 +80,7 @@ fun registration_accepts_a_zero_share_and_the_maximum_share() {
 fun registration_rejects_a_share_one_above_the_maximum() {
     let mut fixture = start();
 
-    partners::destroy_cap(fixture.register(RECIPIENT, MAX_SHARE_BPS + 1));
+    fixture.register(RECIPIENT, MAX_SHARE_BPS + 1).destroy_cap();
 
     fixture.end();
 }
@@ -90,7 +90,7 @@ fun registration_rejects_a_share_one_above_the_maximum() {
 fun registration_rejects_a_zero_recipient() {
     let mut fixture = start();
 
-    partners::destroy_cap(fixture.register(@0x0, 2_500));
+    fixture.register(@0x0, 2_500).destroy_cap();
 
     fixture.end();
 }
@@ -100,7 +100,7 @@ fun registration_rejects_a_zero_recipient() {
 fun a_zero_recipient_precedes_a_share_above_the_maximum() {
     let mut fixture = start();
 
-    partners::destroy_cap(fixture.register(@0x0, MAX_SHARE_BPS + 1));
+    fixture.register(@0x0, MAX_SHARE_BPS + 1).destroy_cap();
 
     fixture.end();
 }
@@ -128,7 +128,7 @@ fun a_scheduled_share_takes_effect_exactly_after_the_delay() {
         fixture.return_partner(partner);
     });
 
-    partners::destroy_cap(cap);
+    cap.destroy_cap();
     fixture.end();
 }
 
@@ -153,7 +153,7 @@ fun a_new_schedule_replaces_a_pending_one_and_restarts_the_delay() {
         fixture.return_partner(partner);
     });
 
-    partners::destroy_cap(cap);
+    cap.destroy_cap();
     fixture.end();
 }
 
@@ -172,7 +172,7 @@ fun scheduling_the_share_in_force_cancels_a_pending_cut() {
         fixture.return_partner(partner);
     });
 
-    partners::destroy_cap(cap);
+    cap.destroy_cap();
     fixture.end();
 }
 
@@ -188,7 +188,7 @@ fun scheduling_the_pending_share_again_is_refused() {
         fixture.return_partner(partner);
     });
 
-    partners::destroy_cap(cap);
+    cap.destroy_cap();
     fixture.end();
 }
 
@@ -204,7 +204,7 @@ fun a_scheduled_share_one_above_the_maximum_is_refused() {
         fixture.return_partner(partner);
     });
 
-    partners::destroy_cap(cap);
+    cap.destroy_cap();
     fixture.end();
 }
 
@@ -230,11 +230,11 @@ fun a_reissued_cap_goes_live_exactly_after_the_delay() {
         let (recipient, _, live_cap) = partner.terms_for_testing(&fixture.clock);
         assert_eq!(recipient, RECIPIENT);
         assert_eq!(live_cap, object::id(&new_cap));
-        partners::destroy_cap(new_cap);
+        new_cap.destroy_cap();
         fixture.return_partner(partner);
     });
 
-    partners::destroy_cap(old_cap);
+    old_cap.destroy_cap();
     fixture.end();
 }
 
@@ -249,11 +249,11 @@ fun the_replaced_cap_is_refused_once_the_reissue_takes_effect() {
         let new_cap = fixture.reissue_cap(&mut partner);
         fixture.advance(delay());
         fixture.set_recipient(&mut partner, &old_cap, NEW_RECIPIENT);
-        partners::destroy_cap(new_cap);
+        new_cap.destroy_cap();
         fixture.return_partner(partner);
     });
 
-    partners::destroy_cap(old_cap);
+    old_cap.destroy_cap();
     fixture.end();
 }
 
@@ -268,11 +268,11 @@ fun a_reissued_cap_is_refused_before_the_delay() {
         let new_cap = fixture.reissue_cap(&mut partner);
         fixture.advance(delay() - 1);
         fixture.set_recipient(&mut partner, &new_cap, NEW_RECIPIENT);
-        partners::destroy_cap(new_cap);
+        new_cap.destroy_cap();
         fixture.return_partner(partner);
     });
 
-    partners::destroy_cap(old_cap);
+    old_cap.destroy_cap();
     fixture.end();
 }
 
@@ -289,12 +289,12 @@ fun a_superseded_reissue_never_goes_live() {
         let latest = fixture.reissue_cap(&mut partner);
         fixture.advance(10 * delay());
         fixture.set_recipient(&mut partner, &superseded, NEW_RECIPIENT);
-        partners::destroy_cap(superseded);
-        partners::destroy_cap(latest);
+        superseded.destroy_cap();
+        latest.destroy_cap();
         fixture.return_partner(partner);
     });
 
-    partners::destroy_cap(old_cap);
+    old_cap.destroy_cap();
     fixture.end();
 }
 
@@ -310,7 +310,7 @@ fun scheduling_the_pending_cap_again_is_refused() {
         fixture.return_partner(partner);
     });
 
-    partners::destroy_cap(cap);
+    cap.destroy_cap();
     fixture.end();
 }
 
@@ -328,11 +328,11 @@ fun scheduling_the_live_cap_cancels_a_pending_move() {
         let (_, _, live_cap) = partner.terms_for_testing(&fixture.clock);
         assert_eq!(live_cap, object::id(&cap));
         fixture.set_recipient(&mut partner, &cap, NEW_RECIPIENT);
-        partners::destroy_cap(moved_to);
+        moved_to.destroy_cap();
         fixture.return_partner(partner);
     });
 
-    partners::destroy_cap(cap);
+    cap.destroy_cap();
     fixture.end();
 }
 
@@ -342,7 +342,7 @@ fun scheduling_the_live_cap_cancels_a_pending_move() {
 /// live after the delay.
 fun a_partner_without_a_live_cap_is_moved_to_a_new_one() {
     let mut fixture = start();
-    partners::destroy_cap(fixture.register(RECIPIENT, 2_500));
+    fixture.register(RECIPIENT, 2_500).destroy_cap();
     let (destroyed_id, _, _, _) = fixture.last_update().partner_updated_fields();
     fixture.register_under_id(@0xCAFE.to_id(), RECIPIENT, 2_500);
     let (never_minted_id, _, _, _) = fixture.last_update().partner_updated_fields();
@@ -363,7 +363,7 @@ fun a_partner_without_a_live_cap_is_moved_to_a_new_one() {
         assert_eq!(vector[destroyed_recipient, never_minted_recipient], vector[NEW_RECIPIENT, NEW_RECIPIENT]);
         assert_eq!(vector[destroyed_cap, never_minted_cap], vector[object::id(&new_cap), object::id(&new_cap)]);
         fee.destroy_for_testing();
-        partners::destroy_cap(new_cap);
+        new_cap.destroy_cap();
         fixture.return_partner(destroyed);
         fixture.return_partner(never_minted);
     });
@@ -399,7 +399,7 @@ fun one_cap_manages_every_partner_of_a_company() {
         fixture.return_partner(other);
     });
 
-    partners::destroy_cap(cap);
+    cap.destroy_cap();
     fixture.end();
 }
 
@@ -415,10 +415,10 @@ fun a_cap_minted_by_anyone_controls_nothing_until_a_partner_is_registered_under_
         let (_, _, live_cap) = partner.terms_for_testing(&fixture.clock);
         assert!(live_cap != object::id(&own_cap));
         fixture.return_partner(partner);
-        partners::destroy_cap(own_cap);
+        own_cap.destroy_cap();
     });
 
-    partners::destroy_cap(cap);
+    cap.destroy_cap();
     fixture.end();
 }
 
@@ -439,7 +439,7 @@ fun the_live_cap_sets_the_recipient_at_once() {
         fixture.return_partner(partner);
     });
 
-    partners::destroy_cap(cap);
+    cap.destroy_cap();
     fixture.end();
 }
 
@@ -457,8 +457,8 @@ fun another_partners_cap_precedes_an_invalid_recipient() {
         fixture.return_partner(partner);
     });
 
-    partners::destroy_cap(cap);
-    partners::destroy_cap(other_cap);
+    cap.destroy_cap();
+    other_cap.destroy_cap();
     fixture.end();
 }
 
@@ -474,7 +474,7 @@ fun a_zero_recipient_is_refused() {
         fixture.return_partner(partner);
     });
 
-    partners::destroy_cap(cap);
+    cap.destroy_cap();
     fixture.end();
 }
 
@@ -490,7 +490,7 @@ fun the_current_recipient_is_refused() {
         fixture.return_partner(partner);
     });
 
-    partners::destroy_cap(cap);
+    cap.destroy_cap();
     fixture.end();
 }
 
@@ -520,7 +520,7 @@ fun payment_transfers_one_coin_to_the_recipient_and_skips_dust() {
         payment.burn_for_testing();
     });
 
-    partners::destroy_cap(cap);
+    cap.destroy_cap();
     fixture.end();
 }
 
@@ -545,7 +545,7 @@ fun a_partner_is_paid_its_share_from_registration_and_a_new_one_only_once_in_for
         fixture.return_partner(partner);
     });
 
-    partners::destroy_cap(cap);
+    cap.destroy_cap();
     fixture.end();
 }
 

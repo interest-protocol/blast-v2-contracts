@@ -193,26 +193,6 @@ public fun set_nav_cap<Product, Collateral>(
     events::nav_cap_updated<Product>(self.id.to_inner(), previous, nav_cap);
 }
 
-/// Changes the live per-call maximum order notional.
-///
-/// This value limits the absolute atomic-USDC notional of one Aftermath order.
-/// It does not limit a user's deposit or the Vault's total open position.
-/// The risk administrator may raise or lower the current value without a
-/// cooldown. This transition changes no live position exposure and therefore
-/// remains available in every lifecycle state.
-public fun set_max_order_notional<Product, Collateral>(
-    self: &mut Vault<Product, Collateral>,
-    protocol: &Protocol,
-    _: &AdminWitness<RiskAdmin>,
-    max_order_notional: u64,
-) {
-    protocol.assert_current();
-
-    let previous = self.state.set_max_order_notional(max_order_notional);
-
-    events::max_order_notional_updated<Product>(self.id.to_inner(), previous, max_order_notional);
-}
-
 /// Replaces the Boost currency's display name, description and icon in Coin
 /// Registry. The symbol is fixed at issuance; the registry has no setter for it.
 /// At least one of the three must change, so every emitted update is a real one.
@@ -262,6 +242,29 @@ public fun withdraw_admin_fees<Product, Collateral>(
 }
 
 // === Package Functions ===
+
+/// Changes the live per-order notional cap.
+///
+/// The cap uses collateral atoms and does not limit total open exposure.
+/// An exact one-lot reduce-only fill may exceed it; price checks still apply.
+/// The risk administrator may raise or lower the current value without a
+/// cooldown. This transition changes no live position exposure and therefore
+/// remains available in every lifecycle state.
+public(package) fun set_max_order_notional<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>,
+    protocol: &Protocol,
+    _: &AdminWitness<RiskAdmin>,
+    max_order_notional: u64,
+    base_oracle: PriceObservation, collateral_oracle: PriceObservation, lot_size: u64, now_at_ms: u64,
+) {
+    protocol.assert_current();
+
+    let previous = self.state.set_max_order_notional(
+        max_order_notional, base_oracle, collateral_oracle, lot_size, now_at_ms,
+    );
+
+    events::max_order_notional_updated<Product>(self.id.to_inner(), previous, max_order_notional);
+}
 
 // --- Core And Venue ---
 
@@ -479,7 +482,7 @@ use blast_boosts_aftermath::{
 };
 
 use blast_boosts_core::{
-    observation::PositionObservation,
+    observation::{PositionObservation, PriceObservation},
     policy::VaultPolicy,
     blast_boosts_core::{RiskAdmin, ShutdownAdmin, VaultIssuer},
     lifecycle::ShutdownReason,

@@ -45,8 +45,7 @@ fun a_cast_to_the_same_type_returns_the_value() {
     let mut ctx = tx_context::dummy();
     let mut scratch = object::new(&mut ctx);
 
-    let meme = cetus::cast_for_testing<Balance<MEME>, Balance<MEME>>(
-        &mut scratch,
+    let meme = scratch.cast_for_testing<Balance<MEME>, Balance<MEME>>(
         balance::create_for_testing<MEME>(7),
     );
 
@@ -63,8 +62,7 @@ fun a_cast_to_another_type_aborts_in_the_framework() {
     let mut ctx = tx_context::dummy();
     let mut scratch = object::new(&mut ctx);
 
-    let quote = cetus::cast_for_testing<Balance<MEME>, Balance<QUOTE>>(
-        &mut scratch,
+    let quote = scratch.cast_for_testing<Balance<MEME>, Balance<QUOTE>>(
         balance::create_for_testing<MEME>(7),
     );
     destroy(quote);
@@ -78,3 +76,5 @@ use blast_presale::cetus;
 use std::unit_test::{assert_eq, destroy};
 
 use sui::balance::{Self, Balance};
+
+use fun cetus::cast_for_testing as UID.cast_for_testing;

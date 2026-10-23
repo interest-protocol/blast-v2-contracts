@@ -11,7 +11,7 @@ module blast_boosts_aftermath::snapshot_tests;
 fun signed_funding_cost_crosses_allocated_zero_without_becoming_unresolved() {
     let before = checkpoint(10, 5, 5, 6, 7, 8, 9);
     let after = checkpoint(10, neg(3), 7, 8, 7, 8, 9);
-    let change = preexisting(&before, &after);
+    let change = before.preexisting(&after);
     let (has, cost, raw, amount, clean) =
         (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
     assert!(has && cost && clean);
@@ -24,7 +24,7 @@ fun signed_funding_cost_crosses_allocated_zero_without_becoming_unresolved() {
 fun signed_funding_credit_crosses_allocated_zero_without_becoming_unresolved() {
     let before = checkpoint(10, neg(5), 5, 6, 7, 8, 9);
     let after = checkpoint(10, 3, 7, 8, 7, 8, 9);
-    let change = preexisting(&before, &after);
+    let change = before.preexisting(&after);
     let (has, cost, raw, amount, clean) =
         (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
     assert!(has && !cost && clean);
@@ -37,7 +37,7 @@ fun signed_funding_credit_crosses_allocated_zero_without_becoming_unresolved() {
 fun signed_funding_less_negative_allocation_is_a_credit() {
     let before = checkpoint(10, neg(5), 5, 6, 7, 8, 9);
     let after = checkpoint(10, neg(3), 7, 8, 7, 8, 9);
-    let change = preexisting(&before, &after);
+    let change = before.preexisting(&after);
     let (has, cost, raw, amount, clean) =
         (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
     assert!(has && !cost && clean);
@@ -49,7 +49,7 @@ fun signed_funding_less_negative_allocation_is_a_credit() {
 fun signed_funding_deeper_negative_allocation_is_a_cost() {
     let before = checkpoint(10, neg(3), 5, 6, 7, 8, 9);
     let after = checkpoint(10, neg(5), 7, 8, 7, 8, 9);
-    let change = preexisting(&before, &after);
+    let change = before.preexisting(&after);
     let (has, cost, raw, amount, clean) =
         (change.has_funding(), change.is_cost(), change.raw_amount(), change.amount(), change.is_clean());
     assert!(has && cost && clean);
@@ -68,7 +68,7 @@ fun a_flat_position_refreshes_its_snapshots_without_settling() {
     let after = flat_checkpoint(1_000, 7, 8, 7, 8, 9);
     assert!(before != after);
     assert!(before.classify_change(&after, 1).is_unchanged_for_testing());
-    assert!(preexisting(&before, &after).is_unchanged_for_testing());
+    assert!(before.preexisting(&after).is_unchanged_for_testing());
 }
 
 #[test]
@@ -294,8 +294,8 @@ fun an_allocated_move_without_refreshed_snapshots_is_not_preexisting_funding() {
     let stored = checkpoint(10, 1_000, 5, 6, 7, 8, 9);
     let before = checkpoint(10, 1_500, 5, 6, 7, 8, 9);
 
-    assert!(preexisting(&stored, &before).is_unexpected_for_testing());
-    assert!(sync_change(&stored, &before, &before, 1).is_unexpected_for_testing());
+    assert!(stored.preexisting(&before).is_unexpected_for_testing());
+    assert!(stored.sync_change(&before, &before, 1).is_unexpected_for_testing());
 }
 
 #[test]
@@ -345,7 +345,7 @@ fun settlement_replay_divides_by_the_collateral_price_the_venue_divided_by() {
 #[test]
 fun net_funding_refuses_an_overflowing_gross_sum() {
     let half = (1u256 << 255) - 1;
-    let preexisting = preexisting(&checkpoint(10, half, 5, 6, 7, 8, 9), &checkpoint(10, neg(half), 7, 8, 7, 8, 9));
+    let preexisting = checkpoint(10, half, 5, 6, 7, 8, 9).preexisting(&checkpoint(10, neg(half), 7, 8, 7, 8, 9));
     assert!(preexisting.is_cost());
     assert_eq!(preexisting.raw_amount(), std::u256::max_value!() - 1);
     let settled = checkpoint(10, 2_000, 5, 6, 1_005, 8, 9)
@@ -893,3 +893,7 @@ use blast_boosts_aftermath::{checkpoint::{Self, Checkpoint, CheckpointChange}, e
 use blast_boosts_core::{observation, policy};
 
 use std::unit_test::assert_eq;
+
+use fun preexisting as Checkpoint.preexisting;
+
+use fun sync_change as Checkpoint.sync_change;

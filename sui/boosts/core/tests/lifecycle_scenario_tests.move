@@ -18,7 +18,7 @@ const USDC: u64 = 1_000_000;
 const SEED: u64 = 10_000 * USDC;
 const SEED_RESERVE: u64 = 500 * USDC;
 /// The seed after four capped opening orders each paid 20 bps slippage and 5 bps fee.
-const SEED_NAV: u64 = 9_452_481_000;
+const SEED_NAV: u64 = 9_452_480_999;
 const BPS: u64 = 10_000;
 /// One basis point of the calm venue's $2.50 base price.
 const PRICE_STEP: u64 = 250_000;
@@ -32,7 +32,7 @@ const PRICE_STEP: u64 = 250_000;
 fun activation_opens_the_target_in_capped_orders_and_locks_the_seed_shares() {
     let vault = test_adapter::calm_venue().issue().activate(SEED, SEED_RESERVE);
 
-    // Four fills at the 5,000 USDC cap cost 47.519 USDC in slippage and fees.
+    // Four fills at the 5,000 USDC cap cost 47.519001 USDC in slippage and fees.
     assert_eq!(vault.locked() / 1_000, SEED_NAV);
     assert_eq!(vault.venue().equity(), SEED_NAV + SEED_RESERVE);
     assert_eq!(vault.venue().base(), 7_600_000_000_000);
@@ -43,7 +43,7 @@ fun activation_opens_the_target_in_capped_orders_and_locks_the_seed_shares() {
     assert!(vault.state().is_active_for_testing());
     // Leverage lands just above 2x: the costs came out of NAV, not the position.
     assert!(vault.leverage_bps() > 20_000 && vault.leverage_bps() < 20_200);
-    assert_reconciled(&vault);
+    vault.assert_reconciled();
     vault.destroy();
 }
 
@@ -60,7 +60,7 @@ fun a_calm_lifetime_never_dilutes_remaining_holders() {
         let shares = vault.mint(deposit, 1);
         assert!(shares > 0);
         assert!(vault.nav_per_share() >= price_before);
-        assert_reconciled(&vault);
+        vault.assert_reconciled();
         holders.push_back(shares);
         vault.venue_mut().advance(60_000);
     });
@@ -76,7 +76,7 @@ fun a_calm_lifetime_never_dilutes_remaining_holders() {
     assert!(vault.leverage_bps() <= 20_000 && vault.leverage_bps() >= 19_000);
     // Maintenance costs the holders execution, never more than the venue charged.
     assert!(vault.nav_per_share() < before);
-    assert_reconciled(&vault);
+    vault.assert_reconciled();
 
     // Funding is charged and absorbed by the reserve; holders' NAV is untouched.
     let nav_before_funding = vault.nav();
@@ -95,7 +95,7 @@ fun a_calm_lifetime_never_dilutes_remaining_holders() {
         // At most the claim, and short of it by no more than the fee plus execution on 2x notional.
         assert!((payout as u128) <= claim && (payout as u128) >= claim * 9_920 / 10_000);
         assert!(vault.nav_per_share() >= price_before);
-        assert_reconciled(&vault);
+        vault.assert_reconciled();
         index = index + 1;
     };
     assert_eq!(vault.supply(), vault.locked());
@@ -120,7 +120,7 @@ fun fee_splits_route_admin_cash_out_and_the_remainder_into_the_reserve() {
     // A 1% fee on 2,000 is 20 USDC, split evenly.
     assert_eq!(vault.admin_cash(), 10 * USDC);
     assert_eq!(vault.reserve(), SEED_RESERVE + 10 * USDC);
-    assert_reconciled(&vault);
+    vault.assert_reconciled();
 
     let claim = (vault.nav() as u128) * (shares as u128) / (vault.supply() as u128);
     let payout = vault.redeem(shares, 1);
@@ -130,7 +130,7 @@ fun fee_splits_route_admin_cash_out_and_the_remainder_into_the_reserve() {
     assert!(redemption_fee > 0);
     assert_eq!(vault.admin_cash() - 10 * USDC, redemption_fee / 2);
     assert!(vault.admin_cash() - 10 * USDC <= vault.reserve() - SEED_RESERVE - 10 * USDC);
-    assert_reconciled(&vault);
+    vault.assert_reconciled();
     vault.destroy();
 }
 
@@ -155,14 +155,14 @@ fun reserve_above_the_ceiling_is_released_to_holders_before_a_newcomer_is_priced
     // The stored reserve is the pre-mint ceiling plus this mint's 1 USDC fee slice.
     assert!(vault.reserve() < stored_reserve);
     assert_eq!(vault.reserve(), cap + USDC);
-    assert_reconciled(&vault);
+    vault.assert_reconciled();
 
     // A donation is never refused; whatever exceeds the ceiling is holder NAV.
     let nav_before = vault.nav();
     vault.donate(5_000 * USDC);
-    assert_eq!(vault.reserve(), reserve_cap(&vault));
+    assert_eq!(vault.reserve(), vault.reserve_cap());
     assert!(vault.nav() > nav_before);
-    assert_reconciled(&vault);
+    vault.assert_reconciled();
     vault.destroy();
 }
 
@@ -188,7 +188,7 @@ fun a_crash_locks_mints_permits_reduction_and_lets_holders_exit() {
     // Still above the band, an ordinary call completes the reduction to target.
     vault.rebalance();
     assert!(vault.leverage_bps() <= 20_000 && vault.leverage_bps() >= 19_000);
-    assert_reconciled(&vault);
+    vault.assert_reconciled();
 
     // The holder exits at a loss but never at more than the proportional claim.
     let claim = (vault.nav() as u128) * (shares as u128) / (vault.supply() as u128);
@@ -196,7 +196,7 @@ fun a_crash_locks_mints_permits_reduction_and_lets_holders_exit() {
     assert!(payout < 1_000 * USDC && (payout as u128) <= claim);
     // Even in a stressed book the shortfall is bounded by fee plus slippage on the unwound notional.
     assert!((payout as u128) >= claim * 9_700 / 10_000);
-    assert_reconciled(&vault);
+    vault.assert_reconciled();
     vault.destroy();
 }
 
@@ -214,7 +214,7 @@ fun an_emergency_reduction_in_a_wide_market_stops_at_the_cap_and_keeps_its_progr
     let orders = vault.rebalance();
     assert!(orders > 0);
     assert!(vault.leverage_bps() <= 30_000 && vault.leverage_bps() > 26_000);
-    assert_reconciled(&vault);
+    vault.assert_reconciled();
 
     vault.venue_mut().set_slippage_bps(50);
     vault.rebalance();
@@ -313,7 +313,7 @@ fun a_funding_storm_charges_holders_only_after_the_reserve_and_repays_them_first
     assert_eq!(vault.reserve(), 70 * USDC);
     assert_eq!(vault.state().uncovered_deficit(), 0);
     assert_eq!(vault.nav(), nav_before);
-    assert_reconciled(&vault);
+    vault.assert_reconciled();
     vault.destroy();
 }
 
@@ -387,7 +387,7 @@ fun the_minimum_order_mint_is_accepted() {
     // Shares are the deposit net of fee and one lot's execution cost, at NAV per share.
     let ceiling = (vault.locked() as u128) * ((deposit - deposit / 1_000) as u128) / (SEED_NAV as u128);
     assert!((shares as u128) <= ceiling && (shares as u128) >= ceiling * 9_900 / 10_000);
-    assert_reconciled(&vault);
+    vault.assert_reconciled();
     vault.destroy();
 }
 
@@ -412,7 +412,7 @@ fun every_ordinary_share_can_leave_while_the_seed_stays() {
     assert!(payout > 2_900 * USDC && payout < 3_000 * USDC);
     assert_eq!(vault.supply(), vault.locked());
     assert!(vault.venue().base() > 0);
-    assert_reconciled(&vault);
+    vault.assert_reconciled();
     vault.destroy();
 }
 
@@ -449,7 +449,7 @@ fun the_nav_cap_blocks_mints_but_not_profit_or_redemptions() {
 
     let payout = vault.redeem(shares, 1);
     assert!(payout > 1_000 * USDC);
-    assert_reconciled(&vault);
+    vault.assert_reconciled();
     vault.destroy();
 }
 
@@ -476,7 +476,8 @@ fun a_rebalance_inside_the_band_is_refused() {
 /// A large drift is corrected across the sixteen-order limit and finishes on a later call.
 #[test]
 fun a_large_drift_is_corrected_across_several_rebalance_calls() {
-    let mut vault = test_adapter::calm_venue().issue_with(test_adapter::standard_policy(policy::long()), 200 * USDC, 1_000_000_000_000,
+    let mut vault = test_adapter::calm_venue().issue_with(
+        test_adapter::standard_policy(policy::long()), 200 * USDC, 1_000_000_000_000,
     ).activate(SEED, SEED_RESERVE);
     // Doubling the price leaves a 2x long at 1.34x: far more than sixteen 200 USDC orders away.
     let price = vault.venue().base_price();
@@ -497,7 +498,7 @@ fun a_large_drift_is_corrected_across_several_rebalance_calls() {
     assert!(calls > 1);
     // Back inside the band the public trigger closes, even though target is not reached.
     assert!(vault.leverage_bps() >= 16_000 && vault.leverage_bps() < 20_000);
-    assert_reconciled(&vault);
+    vault.assert_reconciled();
     vault.destroy();
 }
 
@@ -537,7 +538,7 @@ fun a_short_rally_above_the_cap_reduces_in_two_calls() {
     assert!(vault.leverage_bps() <= 30_000 && vault.leverage_bps() > 26_000);
     vault.rebalance();
     assert!(vault.leverage_bps() <= 20_000 && vault.leverage_bps() >= 19_000);
-    assert_reconciled(&vault);
+    vault.assert_reconciled();
     vault.destroy();
 }
 
@@ -550,14 +551,14 @@ fun partial_fills_advance_every_path_by_what_actually_filled() {
 
     let shares = vault.mint(1_000 * USDC, 1);
     assert!(vault.last_orders() > 1);
-    assert_reconciled(&vault);
+    vault.assert_reconciled();
     let price = vault.venue().base_price();
     vault.venue_mut().set_base_price(price * 140 / 100);
     vault.rebalance();
     assert!(vault.leverage_bps() <= 20_000 && vault.leverage_bps() >= 19_000);
     let payout = vault.redeem(shares, 1);
     assert!(payout > 1_000 * USDC);
-    assert_reconciled(&vault);
+    vault.assert_reconciled();
     vault.destroy();
 }
 
@@ -615,8 +616,8 @@ fun a_large_funding_credit_is_released_at_the_next_redemption() {
     let claim = (vault.nav() as u128) * (shares as u128) / (vault.supply() as u128);
     let payout = vault.redeem(shares, 1);
     assert!((payout as u128) <= claim && (payout as u128) >= claim * 9_920 / 10_000);
-    assert_eq!(vault.reserve(), reserve_cap(&vault));
-    assert_reconciled(&vault);
+    assert_eq!(vault.reserve(), vault.reserve_cap());
+    vault.assert_reconciled();
     vault.destroy();
 }
 
@@ -637,7 +638,7 @@ fun a_reserve_release_over_the_nav_cap_blocks_the_next_mint() {
 #[test]
 fun the_first_price_below_the_band_opens_the_public_trigger() {
     let mut vault = test_adapter::calm_venue().issue().activate(SEED, SEED_RESERVE);
-    let price = first_price_below_the_band(&mut vault);
+    let price = vault.first_price_below_the_band();
     vault.venue_mut().set_base_price(price);
     assert!(vault.is_below_band());
 
@@ -651,7 +652,7 @@ fun the_first_price_below_the_band_opens_the_public_trigger() {
 #[expected_failure(abort_code = errors::ERebalanceInsideBand, location = blast_boosts_core::state)]
 fun the_last_price_at_the_band_edge_keeps_the_public_trigger_closed() {
     let mut vault = test_adapter::calm_venue().issue().activate(SEED, SEED_RESERVE);
-    let price = first_price_below_the_band(&mut vault) - PRICE_STEP;
+    let price = vault.first_price_below_the_band() - PRICE_STEP;
     vault.venue_mut().set_base_price(price);
     assert!(!vault.is_below_band());
 
@@ -667,7 +668,7 @@ fun the_dry_run_tracks_the_public_trigger_across_the_band_edge() {
     let mut vault = test_adapter::calm_venue().issue().activate(SEED, SEED_RESERVE);
     assert!(!vault.needs_rebalance());
 
-    let price = first_price_below_the_band(&mut vault);
+    let price = vault.first_price_below_the_band();
     vault.venue_mut().set_base_price(price - PRICE_STEP);
     assert!(!vault.needs_rebalance());
 
@@ -755,7 +756,7 @@ fun zero_fees_leave_the_reserve_untouched_through_mint_and_redemption() {
     assert!((payout as u128) <= claim && (payout as u128) >= claim * 9_930 / 10_000);
     assert_eq!(vault.reserve(), SEED_RESERVE);
     assert_eq!(vault.admin_cash(), 0);
-    assert_reconciled(&vault);
+    vault.assert_reconciled();
     vault.destroy();
 }
 
@@ -763,7 +764,8 @@ fun zero_fees_leave_the_reserve_untouched_through_mint_and_redemption() {
 #[test]
 #[expected_failure(abort_code = test_adapter::EOrderLimitExceeded, location = blast_boosts_core::test_adapter)]
 fun a_mint_needing_more_than_sixteen_orders_is_refused() {
-    let mut vault = test_adapter::calm_venue().issue_with(test_adapter::standard_policy(policy::long()), 100 * USDC, 1_000_000_000_000,
+    let mut vault = test_adapter::calm_venue().issue_with(
+        test_adapter::standard_policy(policy::long()), 100 * USDC, 1_000_000_000_000,
     ).activate(SEED, SEED_RESERVE);
 
     vault.mint(2_000 * USDC, 1);
@@ -790,7 +792,7 @@ fun a_reduction_prices_the_release_before_sizing() {
     assert!(leverage_on_plan <= 20_000 && leverage_on_plan >= 19_000);
     assert!((vault.leverage_bps() as u128) < leverage_on_plan);
     // Maintenance writes no reserve, so the pending release still waits for a priced operation.
-    assert!(vault.reserve() > reserve_cap(&vault));
+    assert!(vault.reserve() > vault.reserve_cap());
     assert_eq!(vault.venue().equity(), vault.nav() + vault.admitted_reserve());
     vault.destroy();
 }
@@ -842,7 +844,8 @@ fun a_liquidated_vault_refuses_redemptions() {
 /// calls, a paused venue does not stop the close, and finalization sweeps the rest.
 #[test]
 fun winding_down_spans_transactions_with_funding_and_a_paused_venue_in_between() {
-    let mut vault = test_adapter::calm_venue().issue_with(test_adapter::standard_policy(policy::long()), 2_000 * USDC, 1_000_000_000_000,
+    let mut vault = test_adapter::calm_venue().issue_with(
+        test_adapter::standard_policy(policy::long()), 2_000 * USDC, 1_000_000_000_000,
     ).activate(SEED, SEED_RESERVE);
     vault.begin_shutdown();
 
@@ -1016,14 +1019,15 @@ fun first_price_below_the_band(vault: &mut Vault): u64 {
 
 /// A vault whose 1,000 USDC order cap makes every large correction take several orders.
 fun stressed_vault(): Issued {
-    test_adapter::calm_venue().issue_with(test_adapter::standard_policy(policy::long()), 1_000 * USDC, 1_000_000_000_000,
+    test_adapter::calm_venue().issue_with(
+        test_adapter::standard_policy(policy::long()), 1_000 * USDC, 1_000_000_000_000,
     )
 }
 
 /// After a priced operation the stored reserve sits at or under the ceiling, so venue
 /// equity is exactly shareholder NAV plus the stored reserve.
 fun assert_reconciled(vault: &Vault) {
-    assert!(vault.reserve() <= reserve_cap(vault));
+    assert!(vault.reserve() <= vault.reserve_cap());
     assert_eq!(vault.venue().equity(), vault.nav() + vault.reserve());
 }
 
@@ -1043,3 +1047,9 @@ fun total_reserve_fees(deposits: &vector<u64>): u64 {
 use blast_boosts_core::{errors, policy, test_adapter::{Self, Issued, Vault}};
 
 use std::unit_test::assert_eq;
+
+use fun assert_reconciled as Vault.assert_reconciled;
+
+use fun first_price_below_the_band as Vault.first_price_below_the_band;
+
+use fun reserve_cap as Vault.reserve_cap;
