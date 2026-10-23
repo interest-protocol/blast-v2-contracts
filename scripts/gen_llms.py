@@ -34,6 +34,7 @@ REPO_URL = "https://github.com/interest-protocol/blast-v2-contracts/blob/main"
 
 # Reference order: what an integrator reaches for first.
 PACKAGES = [
+    ("sui/market_maker", "Blast Market Maker"),
     ("sui/presale", "Presale"),
     ("sui/launchpad", "Launchpad"),
     ("sui/migrators", "Migration and LP vaults"),
@@ -48,6 +49,7 @@ PACKAGES = [
 # Each guide with the packages whose deployment status it opens with.
 GUIDES = [
     ("basics.md", []),
+    ("market-maker.md", ["sui/market_maker"]),
     ("presale.md", ["sui/presale", "sui/vendors/aftermath_dao_presale"]),
     ("launchpad.md", ["sui/launchpad"]),
     ("migrators.md", ["sui/migrators"]),
@@ -71,6 +73,15 @@ class Product:
 
 # One file per product under llms/. Every file opens with basics.md.
 PRODUCTS = [
+    Product(
+        "market-maker",
+        "Blast Market Maker",
+        "Blast curve and presale vaults with creator-directed fees, retained market-making capital, burned base LP "
+        "and fixed-weight funded fee claims",
+        ["market-maker.md"],
+        ["sui/market_maker"],
+        ["sui/launchpad", "sui/presale", "sui/partners", "sui/admin"],
+    ),
     Product(
         "presale",
         "Presale",
