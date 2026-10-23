@@ -28,12 +28,16 @@ vault capital and backer reserves; Blast ACL controls its earned-asset withdrawa
 bounded LP policy and native upgrade operations.
 
 Each vault binds one reusable BlastMarketMakerCreatorCap ID. The holder can pause, rotate
-operators/signers, allocate received fees and rebind that vault to another existing
+operators/signers, allocate received fees, deposit/withdraw idle capital and rebind that vault to another existing
 creator cap. Native transfer moves authority over every vault bound to that cap;
 rebinding moves one vault. Neither operation implicitly revokes delegated operators
 or signed authorizations; explicit rotation does. Discretionary execution still
 requires a per-vault operator and an independent Ed25519 risk signature. Creator
-and operator caps confer no protocol ACL role or direct principal withdrawal.
+and operator caps confer no protocol ACL role. The creator cap may withdraw idle
+capital after launch, including while paused, for distribution or other composition.
+This supersedes the prior capital-lock restriction: immutable risk limits restrict
+delegated trades, not creator withdrawals. The creator can exhaust strategy capital.
+Neither authority can take funding refunds, fee liabilities or the burned base LP.
 
 Each creator selects a mandatory upstream Blast Partner per market maker. Curve
 creation commits its ID before funding and activation supplies that exact object.
@@ -54,15 +58,22 @@ Presale principal and participant token/refund rights stay in core custody. The
 wrapper records only accepted commitments through its own endpoint. Direct core
 buyers receive no vault fee weight. Successful migration freezes wrapper weights;
 a zero wrapper denominator does not prevent migration. Presale terms can retain
-at most half of each actual net Meme/Quote migration handoff. Participant tokens
-and upstream allocations are unchanged; there is no extra presale raise fee.
+at most half of each actual net Meme/Quote migration handoff. Optional explicit
+team token and raise shares name the vault address as their sole recipient.
+Core validates them with participant/LP/Blast allocations and releases them on
+successful migration as vault-owned coins. Narrow typed Receiving joins them into
+capital after activation; it also admits same-asset donations because native
+ownership proofs do not establish sender provenance. These receipts grant no fee
+weight or redemption right. Participant tokens remain in core claim custody;
+there is no extra local presale raise fee.
 Presales require a zero idle Quote floor because their actual net handoff is not
 known at creation. Quote is its admitted asset, while curve Quote is SUI.
 
 Both routes permanently burn their positive full-range graduated base LP and
 retain its fee proof. The vault can independently open, add to, partially or fully
 remove, and close up to eight simultaneous ordinary managed range positions.
-Removals return principal to vault capital, never an external caller. The burned
+Removals return principal to vault capital; the creator can subsequently distribute
+that idle capital through composable Meme and Quote coins. The burned
 base proof has no principal-release path. Unknown rewards remain quarantined.
 
 Each asset has separate capital, unallocated received fees and reserved backer
@@ -73,13 +84,16 @@ Quote. Keep returns composable coins, share funds irreversible backer reserves,
 and reinvest moves only unallocated fees into trading capital. Unselected fees
 remain unallocated. Sharing is permitted only after weights freeze and requires
 positive total weight; a zero-backers creator can choose keep or reinvest instead.
-Backers have no guaranteed share before allocation and no right to redeem capital.
+Backers have no guaranteed share before allocation and no automatic right to redeem
+capital. Creator-directed capital transfers can voluntarily return assets to users;
+capital never enters the received-fee ledger.
 
 Asset-generic fixed-weight Q64 ledgers preserve global and per-user remainders.
 Claims withdraw only actually funded reserves. No creator, treasury or dust-sweep
 path can reclaim them. Public views expose unallocated/reserved balances and
 backer claimable amounts; on-chain balances are not private. Local LP deductions,
-curve raise fees and migration residuals remain distinct earned treasury sources.
+and curve raise fees remain distinct earned treasury sources. Unused pool-seeding
+coins remain market-maker capital rather than treasury revenue.
 
 Signatures bind action parameters, assets, vault, external object, operator, nonce,
 key epoch and at most 15 seconds of validity. Immutable per-action, rolling,

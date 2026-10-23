@@ -13,7 +13,6 @@ public struct TreasuryBalanceKey<phantom Asset>() has copy, drop, store;
 /// Records the reason each already-earned balance entered the treasury.
 public enum RevenueSource has copy, drop, store {
     LocalLp,
-    MigrationResidual,
     CurveRaise,
 }
 
@@ -68,8 +67,6 @@ public fun withdraw_earned<Asset>(
 public(package) fun curve_raise(): RevenueSource { RevenueSource::CurveRaise }
 
 public(package) fun local_lp(): RevenueSource { RevenueSource::LocalLp }
-
-public(package) fun migration_residual(): RevenueSource { RevenueSource::MigrationResidual }
 
 public(package) fun new(ctx: &mut TxContext): BlastMarketMakerTreasury {
     BlastMarketMakerTreasury { id: object::new(ctx), payout: option::none() }

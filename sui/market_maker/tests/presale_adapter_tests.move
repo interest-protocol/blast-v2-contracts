@@ -357,6 +357,8 @@ fun first_participant_limit_above_shared_bound_rejects_at_construction() {
         500,
         10,
         0,
+        0,
+        0,
     );
 }
 
@@ -521,6 +523,234 @@ fun presale_partner_cannot_be_paid_from_unmigrated_commitments() {
     end(fixture);
 }
 
+#[test]
+fun explicit_team_tokens_and_raise_land_in_vault_capital_after_real_core_migration() {
+    let mut f = new_team_fixture();
+    assert_eq!(commit(&mut f, ALICE, 1_000, false), 0);
+    f.next_tx!(KEEPER, |f| { migrate_team_handoff(f); });
+    f.next_tx!(KEEPER, |f| {
+        assert_team_coins_owned_by_vault(f);
+        let vault = receive_team_assets(f);
+        let (meme, quote) = market_maker::capital_for_testing(&vault);
+        // Retained net LP assets2000/140 plus explicit team allocations10000/200.
+        assert_eq!(meme, 12_000);
+        assert_eq!(quote, 340);
+        let (available_meme, available_quote, reserved_meme, reserved_quote) = vault.fee_balances();
+        assert_eq!(available_meme, 0);
+        assert_eq!(available_quote, 0);
+        assert_eq!(reserved_meme, 0);
+        assert_eq!(reserved_quote, 0);
+        assert_eq!(market_maker::total_weight_for_testing(&vault), 1_000);
+        return_vault(vault);
+        assert_capital_receipt_events(f, 10_000, 200);
+    });
+    f.next_tx!(KEEPER, |f| {
+        let mut sale = take_sale(f);
+        presale::claim(&mut sale, &f.core_version, ALICE, &f.clock, f.ctx!());
+        return_sale(sale);
+    });
+    f.next_tx!(ALICE, |f| {
+        let participants = take_coin<PRESALE_ADAPTER_TESTS>(f);
+        assert_eq!(participants.value(), 70_000);
+        coin::burn_for_testing(participants);
+    });
+    end(f);
+}
+
+#[test]
+fun cancelled_presale_releases_no_team_allocations_and_preserves_full_refund() {
+    let mut f = new_team_fixture();
+    assert_eq!(commit(&mut f, ALICE, 500, false), 0);
+    f.clock.set_for_testing(START + DURATION);
+    f.next_tx!(KEEPER, |f| {
+        let mut sale = take_sale(f);
+        presale::settle(&mut sale, &f.core_version, &f.clock);
+        assert!(presale::is_cancelled_for_testing(&sale));
+        let (_, _, quote, _, _, team_tokens, _) = presale::custody_for_testing(&sale);
+        assert_eq!(quote, 500);
+        assert_eq!(team_tokens, 10_000);
+        assert_eq!(
+            sui::event::events_by_type<
+                presale::RecipientAllocated<PRESALE_ADAPTER_TESTS, QUOTE>,
+            >().length(),
+            0,
+        );
+        assert_eq!(
+            sui::event::events_by_type<
+                presale::RaiseAllocated<PRESALE_ADAPTER_TESTS, QUOTE>,
+            >().length(),
+            0,
+        );
+        assert_no_team_coins_at_vault(f);
+        presale::claim(&mut sale, &f.core_version, ALICE, &f.clock, f.ctx!());
+        return_sale(sale);
+    });
+    f.next_tx!(ALICE, |f| {
+        let refund = take_coin<QUOTE>(f);
+        assert_eq!(refund.value(), 500);
+        coin::burn_for_testing(refund);
+    });
+    end(f);
+}
+
+#[test]
+#[
+    expected_failure(
+        abort_code = market_maker::EWrongPhase,
+        location = blast_market_maker::market_maker,
+    ),
+]
+fun team_receiving_cannot_activate_capital_from_a_cancelled_sale() {
+    let mut f = new_team_fixture();
+    f.clock.set_for_testing(START + DURATION);
+    f.next_tx!(KEEPER, |f| {
+        let mut sale = take_sale(f);
+        presale::settle(&mut sale, &f.core_version, &f.clock);
+        assert!(presale::is_cancelled_for_testing(&sale));
+        return_sale(sale);
+        let recipient = f.vault_id.to_address();
+        send_quote_to(f, recipient);
+    });
+    f.next_tx!(KEEPER, |f| { receive_team_quote(f); });
+    end(f);
+}
+
+#[test]
+#[
+    expected_failure(
+        abort_code = presale_adapter::ENoTeamAllocation,
+        location = blast_market_maker::presale_adapter,
+    ),
+]
+fun disabled_team_quote_allocation_has_no_adapter_receiving_path() {
+    let mut f = new_fixture();
+    assert_eq!(commit(&mut f, ALICE, 1_000, false), 0);
+    migrate_handoff_and_activate(&mut f, 0);
+    f.next_tx!(KEEPER, |f| {
+        let recipient = f.vault_id.to_address();
+        send_quote_to(f, recipient);
+    });
+    f.next_tx!(KEEPER, |f| { receive_team_quote(f); });
+    end(f);
+}
+
+#[test]
+#[expected_failure(abort_code = sui::transfer::EUnableToReceiveObject, location = sui::transfer)]
+fun team_receiving_rejects_a_coin_owned_by_another_address() {
+    let mut f = new_team_fixture();
+    assert_eq!(commit(&mut f, ALICE, 1_000, false), 0);
+    let foreign_coin;
+    f.next_tx!(KEEPER, |f| {
+        migrate_team_handoff(f);
+        foreign_coin = send_quote_to(f, ROOT);
+    });
+    f.next_tx!(KEEPER, |f| { receive_quote_by_id(f, foreign_coin); });
+    end(f);
+}
+
+#[test]
+#[
+    expected_failure(
+        abort_code = market_maker::EWrongCreator,
+        location = blast_market_maker::market_maker,
+    ),
+]
+fun unrelated_creator_cap_cannot_withdraw_received_team_capital() {
+    let mut f = new_team_fixture();
+    assert_eq!(commit(&mut f, ALICE, 1_000, false), 0);
+    f.next_tx!(KEEPER, |f| { migrate_team_handoff(f); });
+    f.next_tx!(KEEPER, |f| {
+        let mut vault = receive_team_assets(f);
+        withdraw_team_with_foreign_cap(f, &mut vault);
+        return_vault(vault);
+    });
+    end(f);
+}
+
+#[test]
+#[expected_failure(abort_code = blast_presale::bps::EInvalidBps, location = blast_presale::bps)]
+fun team_raise_share_rejects_first_rate_above_one_hundred_percent() {
+    let _ = presale_adapter::terms(
+        100_000,
+        false,
+        7_000,
+        2_000,
+        1_000,
+        DURATION,
+        604_800_000,
+        1_000,
+        2,
+        500,
+        10,
+        0,
+        1_000,
+        10_001,
+    );
+}
+
+#[test]
+#[
+    expected_failure(
+        abort_code = market_maker::EWrongExternalObject,
+        location = blast_market_maker::market_maker,
+    ),
+]
+fun team_receiving_rejects_wrong_sale_binding_before_native_receive() {
+    let mut f = new_team_fixture();
+    assert_eq!(commit(&mut f, ALICE, 1_000, false), 0);
+    f.next_tx!(KEEPER, |f| { migrate_team_handoff(f); });
+    f.next_tx!(KEEPER, |f| { receive_with_wrong_sale_binding(f); });
+    end(f);
+}
+
+#[test]
+#[
+    expected_failure(
+        abort_code = package_version::EVersionMismatch,
+        location = blast_market_maker::package_version,
+    ),
+]
+fun stale_version_rejects_before_receiving_a_real_team_payout() {
+    let mut f = new_team_fixture();
+    assert_eq!(commit(&mut f, ALICE, 1_000, false), 0);
+    f.next_tx!(KEEPER, |f| { migrate_team_handoff(f); });
+    package_version::set_generation_for_testing(&mut f.version, 2);
+    f.next_tx!(KEEPER, |f| { receive_team_quote(f); });
+    end(f);
+}
+
+#[test]
+fun same_asset_donation_becomes_only_capital_without_fee_weight_or_reserves() {
+    let mut f = new_team_fixture();
+    assert_eq!(commit(&mut f, ALICE, 1_000, false), 0);
+    f.next_tx!(KEEPER, |f| { migrate_team_handoff(f); });
+    f.next_tx!(KEEPER, |f| {
+        let recipient = f.vault_id.to_address();
+        send_quote_to(f, recipient);
+    });
+    f.next_tx!(KEEPER, |f| {
+        receive_team_quote(f);
+        assert_donation_receipt_event(f);
+    });
+    f.next_tx!(KEEPER, |f| {
+        let vault = take_vault(f);
+        let (meme, quote) = market_maker::capital_for_testing(&vault);
+        assert_eq!(meme, 2_000);
+        assert_eq!(quote, 141);
+        assert_eq!(market_maker::total_weight_for_testing(&vault), 1_000);
+        let (available_meme, available_quote, reserved_meme, reserved_quote) = vault.fee_balances();
+        assert_eq!(available_meme, 0);
+        assert_eq!(available_quote, 0);
+        assert_eq!(reserved_meme, 0);
+        assert_eq!(reserved_quote, 0);
+        let (meme_claim, quote_claim) = vault.claimable_fees(ALICE);
+        assert_eq!(meme_claim, 0);
+        assert_eq!(quote_claim, 0);
+        return_vault(vault);
+    });
+    end(f);
+}
+
 // === Test Helpers ===
 
 macro fun fixture_next_tx($fixture: &mut Fixture, $sender: address, $body: |&mut Fixture|) {
@@ -546,6 +776,181 @@ fun return_vault(vault: BlastMarketMakerVault<PRESALE_ADAPTER_TESTS, QUOTE>) {
     test_scenario::return_shared(vault);
 }
 
+// The real sale and its actual payout are valid. A separate production-constructed vault
+// commits another sale ID, so exact-sale identity must fail before adapter state or native
+// ownership checks. No forged Presale layout or external capability is needed by this fixture.
+fun receive_with_wrong_sale_binding(f: &mut Fixture) {
+    let payment = test_scenario::most_recent_receiving_ticket<Coin<QUOTE>>(&f.vault_id);
+    let sale = take_sale(f);
+    let Fixture { scenario, creator, version, treasury, policy, .. } = f;
+    let mut foreign = market_maker::new<PRESALE_ADAPTER_TESTS, QUOTE>(
+        market_maker::presale_route(),
+        1_000,
+        START + DURATION,
+        ROOT,
+        creator,
+        vector::tabulate!(32, |_| 0),
+        version,
+        policy,
+        treasury,
+        scenario.ctx(),
+    );
+    market_maker::bind_external(&mut foreign, object::id_from_address(@0xBAD));
+    presale_adapter::receive_team_quote(&mut foreign, &sale, version, payment);
+    destroy(foreign);
+    return_sale(sale);
+}
+
+fun assert_donation_receipt_event(f: &Fixture) {
+    let events = sui::event::events_by_type<
+        market_maker::BlastCapitalDeposited<PRESALE_ADAPTER_TESTS, QUOTE>,
+    >();
+    assert_eq!(events.length(), 1);
+    let mut data = sui::bcs::new(std::bcs::to_bytes(&events[0]));
+    assert_eq!(data.peel_address(), f.vault_id.to_address());
+    assert_eq!(data.peel_u64(), 0);
+    assert_eq!(data.peel_u64(), 1);
+    assert_eq!(data.into_remainder_bytes(), vector[]);
+}
+
+fun new_team_fixture(): Fixture {
+    new_fixture_with_team_allocations(2_000, 0, 1_000, 1_000, true, 1_000, 2_000)
+}
+
+// Executes the real production presale migration and production retention split. Cetus creation
+// and base LP burn are deliberately outside this unit harness, as in the original handoff fixture.
+fun migrate_team_handoff(f: &mut Fixture) {
+    let mut vault = take_vault(f);
+    let mut sale = take_sale(f);
+    presale::settle(&mut sale, &f.core_version, &f.clock);
+    let (meme, quote) = presale_adapter::migration_handoff_for_testing(
+        &vault,
+        &mut sale,
+        &f.version,
+        &f.core_version,
+        &f.core_policy,
+        &f.clock,
+        f.ctx!(),
+    );
+    assert!(presale::is_migrated_for_testing(&sale));
+    assert_eq!(meme.value(), 10_000);
+    assert_eq!(quote.value(), 700);
+    let recipients = sui::event::events_by_type<
+        presale::RecipientAllocated<PRESALE_ADAPTER_TESTS, QUOTE>,
+    >();
+    let raises = sui::event::events_by_type<
+        presale::RaiseAllocated<PRESALE_ADAPTER_TESTS, QUOTE>,
+    >();
+    assert_eq!(recipients.length(), 1);
+    assert_eq!(raises.length(), 1);
+    let (sale_id, recipient, tokens) = presale::recipient_allocated_fields(&recipients[0]);
+    assert_eq!(sale_id, f.sale_id);
+    assert_eq!(recipient, f.vault_id.to_address());
+    assert_eq!(tokens, 10_000);
+    assert_eq!(presale::recipient_allocated_vesting_id(&recipients[0]), option::none());
+    let (sale_id, recipient, quote_amount) = presale::raise_allocated_fields(&raises[0]);
+    assert_eq!(sale_id, f.sale_id);
+    assert_eq!(recipient, f.vault_id.to_address());
+    assert_eq!(quote_amount, 200);
+    assert_eq!(presale::raise_allocated_vesting_id(&raises[0]), option::none());
+    let (meme, quote) = cetus_engine::retain_capital(&mut vault, meme, quote, 2_000);
+    assert_eq!(meme.value(), 8_000);
+    assert_eq!(quote.value(), 560);
+    balance::destroy_for_testing(meme);
+    balance::destroy_for_testing(quote);
+    market_maker::activate_pool(&mut vault, object::id_from_address(@0xCAFE));
+    return_vault(vault);
+    return_sale(sale);
+}
+
+fun assert_team_coins_owned_by_vault(f: &Fixture) {
+    assert!(
+        test_scenario::has_most_recent_for_address<Coin<PRESALE_ADAPTER_TESTS>>(f
+            .vault_id
+            .to_address()),
+    );
+    assert!(test_scenario::has_most_recent_for_address<Coin<QUOTE>>(f.vault_id.to_address()));
+    assert!(!f.scenario.has_most_recent_for_sender<Coin<PRESALE_ADAPTER_TESTS>>());
+    assert!(!f.scenario.has_most_recent_for_sender<Coin<QUOTE>>());
+}
+
+fun assert_no_team_coins_at_vault(f: &Fixture) {
+    assert!(
+        !test_scenario::has_most_recent_for_address<Coin<PRESALE_ADAPTER_TESTS>>(f
+            .vault_id
+            .to_address()),
+    );
+    assert!(!test_scenario::has_most_recent_for_address<Coin<QUOTE>>(f.vault_id.to_address()));
+}
+
+fun receive_team_assets(f: &Fixture): BlastMarketMakerVault<PRESALE_ADAPTER_TESTS, QUOTE> {
+    let meme = test_scenario::most_recent_receiving_ticket<Coin<PRESALE_ADAPTER_TESTS>>(
+        &f.vault_id,
+    );
+    let quote = test_scenario::most_recent_receiving_ticket<Coin<QUOTE>>(&f.vault_id);
+    let mut vault = take_vault(f);
+    let sale = take_sale(f);
+    presale_adapter::receive_team_meme(&mut vault, &sale, &f.version, meme);
+    presale_adapter::receive_team_quote(&mut vault, &sale, &f.version, quote);
+    return_sale(sale);
+    vault
+}
+
+fun receive_team_quote(f: &Fixture) {
+    let payment = test_scenario::most_recent_receiving_ticket<Coin<QUOTE>>(&f.vault_id);
+    let mut vault = take_vault(f);
+    let sale = take_sale(f);
+    presale_adapter::receive_team_quote(&mut vault, &sale, &f.version, payment);
+    return_vault(vault);
+    return_sale(sale);
+}
+
+fun send_quote_to(f: &mut Fixture, recipient: address): ID {
+    let coin = coin::mint_for_testing<QUOTE>(1, f.ctx!());
+    let id = object::id(&coin);
+    transfer::public_transfer(coin, recipient);
+    id
+}
+
+fun receive_quote_by_id(f: &Fixture, id: ID) {
+    let payment = test_scenario::receiving_ticket_by_id<Coin<QUOTE>>(id);
+    let mut vault = take_vault(f);
+    let sale = take_sale(f);
+    presale_adapter::receive_team_quote(&mut vault, &sale, &f.version, payment);
+    return_vault(vault);
+    return_sale(sale);
+}
+
+fun withdraw_team_with_foreign_cap(
+    f: &mut Fixture,
+    vault: &mut BlastMarketMakerVault<PRESALE_ADAPTER_TESTS, QUOTE>,
+) {
+    let Fixture { scenario, version, .. } = f;
+    let foreign = market_maker::new_creator_cap(scenario.ctx());
+    let (meme, quote) = vault.withdraw_capital(&foreign, version, 1, 1, scenario.ctx());
+    coin::burn_for_testing(meme);
+    coin::burn_for_testing(quote);
+    destroy(foreign);
+}
+
+fun assert_capital_receipt_events(f: &Fixture, meme: u64, quote: u64) {
+    let events = sui::event::events_by_type<
+        market_maker::BlastCapitalDeposited<PRESALE_ADAPTER_TESTS, QUOTE>,
+    >();
+    assert_eq!(events.length(), 2);
+    let mut deposited_meme = 0;
+    let mut deposited_quote = 0;
+    events.do_ref!(|event| {
+        let mut data = sui::bcs::new(std::bcs::to_bytes(event));
+        assert_eq!(data.peel_address(), f.vault_id.to_address());
+        deposited_meme = deposited_meme + data.peel_u64();
+        deposited_quote = deposited_quote + data.peel_u64();
+        assert_eq!(data.into_remainder_bytes(), vector[]);
+    });
+    assert_eq!(deposited_meme, meme);
+    assert_eq!(deposited_quote, quote);
+}
+
 fun sale_terms(retention_bps: u64): PresaleTerms {
     presale_adapter::terms(
         100_000,
@@ -560,6 +965,8 @@ fun sale_terms(retention_bps: u64): PresaleTerms {
         500,
         10,
         retention_bps,
+        0,
+        0,
     )
 }
 
@@ -590,6 +997,26 @@ fun new_fixture_with_partner_options(
     raise_bps: u64,
     token_bps: u64,
     accepted_partner: bool,
+): Fixture {
+    new_fixture_with_team_allocations(
+        retention_bps,
+        idle_quote,
+        raise_bps,
+        token_bps,
+        accepted_partner,
+        0,
+        0,
+    )
+}
+
+fun new_fixture_with_team_allocations(
+    retention_bps: u64,
+    idle_quote: u64,
+    raise_bps: u64,
+    token_bps: u64,
+    accepted_partner: bool,
+    team_token_bps: u64,
+    team_raise_bps: u64,
 ): Fixture {
     let mut scenario = test_scenario::begin(ROOT);
     let ctx = scenario.ctx();
@@ -654,7 +1081,7 @@ fun new_fixture_with_partner_options(
         presale_adapter::terms(
             100_000,
             false,
-            8_000,
+            8_000 - team_token_bps,
             2_000 - token_bps,
             1_000,
             DURATION,
@@ -664,6 +1091,8 @@ fun new_fixture_with_partner_options(
             500,
             10,
             retention_bps,
+            team_token_bps,
+            team_raise_bps,
         ),
         market_maker::trading_limits(10_000, 10_000, 100_000, 100_000, idle_quote, 1_000),
         ROOT,
@@ -691,6 +1120,13 @@ fun new_fixture_with_partner_options(
     assert_eq!(recipients, vector[vault_id.to_address()]);
     assert_eq!(shares, vector[10_000]);
     assert_eq!(holder_rewards_bps, 0);
+    let (team_recipients, team_shares, _) = presale::created_supply_fields(&created[0]);
+    assert_eq!(
+        team_recipients,
+        if (team_token_bps == 0) vector[] else vector[vault_id.to_address()],
+    );
+    assert_eq!(team_shares, if (team_token_bps == 0) vector[] else vector[team_token_bps]);
+
     test_scenario::return_shared(vault);
     test_scenario::return_shared(sale);
 

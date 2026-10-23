@@ -11,7 +11,8 @@ module blast_market_maker::presale_adapter;
 public struct Witness() has drop;
 
 /// Committed presale settings. Retention is a fraction of the actual net migration handoff,
-/// after Blast's allocations, not of the participants' token allocation or gross raise.
+/// after Blast and team allocations, not of the participants' token allocation or gross raise.
+/// Optional team shares (zero disables each) go directly to this vault as trading capital.
 public struct PresaleTerms has copy, drop, store {
     token_supply: u64,
     burnable: bool,
@@ -25,6 +26,8 @@ public struct PresaleTerms has copy, drop, store {
     minimum_commitment: u64,
     tick_spacing: u32,
     retention_bps: u64,
+    team_token_bps: u64,
+    team_raise_bps: u64,
 }
 
 public struct CreationCapKey() has copy, drop, store;
@@ -48,6 +51,8 @@ public fun terms(
     minimum_commitment: u64,
     tick_spacing: u32,
     retention_bps: u64,
+    team_token_bps: u64,
+    team_raise_bps: u64,
 ): PresaleTerms {
     assert!(retention_bps <= MAX_RETENTION_BPS, EInvalidRetention);
     assert!(tick_spacing > 0, EInvalidTickSpacing);
@@ -59,6 +64,8 @@ public fun terms(
     let _ = presale::open_eligibility(wallet_cap, max_participants, minimum_commitment);
     let _ = presale_bps::new(participant_token_bps);
     let _ = presale_bps::new(liquidity_token_bps);
+    let _ = presale_bps::new(team_token_bps);
+    let _ = presale_bps::new(team_raise_bps);
 
     PresaleTerms {
         token_supply,
@@ -73,6 +80,8 @@ public fun terms(
         minimum_commitment,
         tick_spacing,
         retention_bps,
+        team_token_bps,
+        team_raise_bps,
     }
 }
 
@@ -164,6 +173,40 @@ public fun commit<Meme, Quote>(
 
     market_maker::record_presale_contribution(vault, version, accepted, clock, ctx);
     change
+}
+
+/// Receives Meme owned by this bound presale vault only after successful pool activation.
+/// Native Receiving authenticates ownership, not the sender of a prior coin transfer; donations
+/// of the same asset are harmless capital too. Collection creates no fee entitlement or payout.
+public fun receive_team_meme<Meme, Quote>(
+    vault: &mut BlastMarketMakerVault<Meme, Quote>,
+    sale: &Presale<Meme, Quote>,
+    version: &PackageVersion,
+    payment: sui::transfer::Receiving<Coin<Meme>>,
+) {
+    version.assert_current();
+    market_maker::assert_presale_route(vault);
+    market_maker::assert_external(vault, object::id(sale));
+    let venue = market_maker::adapter_state<Meme, Quote, _, VenueTerms>(vault, VenueKey());
+    assert!(venue.terms.team_token_bps > 0, ENoTeamAllocation);
+
+    market_maker::receive_capital_meme(vault, payment);
+}
+
+/// Receives the committed team raise allocation into Quote capital, never the fee ledger.
+public fun receive_team_quote<Meme, Quote>(
+    vault: &mut BlastMarketMakerVault<Meme, Quote>,
+    sale: &Presale<Meme, Quote>,
+    version: &PackageVersion,
+    payment: sui::transfer::Receiving<Coin<Quote>>,
+) {
+    version.assert_current();
+    market_maker::assert_presale_route(vault);
+    market_maker::assert_external(vault, object::id(sale));
+    let venue = market_maker::adapter_state<Meme, Quote, _, VenueTerms>(vault, VenueKey());
+    assert!(venue.terms.team_raise_bps > 0, ENoTeamAllocation);
+
+    market_maker::receive_capital_quote(vault, payment);
 }
 
 /// Core destruction proves cancellation without inventing a public lifecycle getter.
@@ -275,9 +318,24 @@ fun build_sale<Meme, Quote>(
         presale_version,
         presale_bps::new(terms.participant_token_bps),
         presale_bps::new(terms.liquidity_token_bps),
-        vector[],
+        if (terms.team_token_bps == 0) vector[] else vector[
+            presale::recipient_share(
+                object::id(vault).to_address(),
+                presale_bps::new(terms.team_token_bps),
+            ),
+        ],
     );
-    presale::set_raise(&mut initializer, presale_version, terms.raise_target, vector[]);
+    presale::set_raise(
+        &mut initializer,
+        presale_version,
+        terms.raise_target,
+        if (terms.team_raise_bps == 0) vector[] else vector[
+            presale::recipient_share(
+                object::id(vault).to_address(),
+                presale_bps::new(terms.team_raise_bps),
+            ),
+        ],
+    );
     presale::set_windows(
         &mut initializer,
         presale_version,
@@ -441,6 +499,9 @@ const ETooManyParticipants: vector<u8> = b"The presale exceeds the protocol's ba
 const EInvalidPresaleTerms: vector<u8> = b"The presale amounts or time window are invalid.";
 #[error(code = 4)]
 const ENoPresaleCap: vector<u8> = b"The cancelled presale capability has already been destroyed.";
+
+#[error(code = 5)]
+const ENoTeamAllocation: vector<u8> = b"This presale has no team allocation of the supplied asset.";
 
 // === Imports ===
 

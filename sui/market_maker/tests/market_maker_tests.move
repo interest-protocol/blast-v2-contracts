@@ -32,6 +32,18 @@ public struct FeesCreditedPayload has copy, drop {
     quote_received: u64,
 }
 
+public struct CapitalDepositPayload has copy, drop {
+    vault_id: ID,
+    meme_amount: u64,
+    quote_amount: u64,
+}
+public struct CapitalWithdrawalPayload has copy, drop {
+    vault_id: ID,
+    creator_cap_id: ID,
+    meme_amount: u64,
+    quote_amount: u64,
+}
+
 public struct Fixture {
     scenario: Scenario,
     clock: Clock,
@@ -523,7 +535,7 @@ fun shared_presale_constructor_rejects_an_unfunded_idle_quote_floor() {
 }
 
 #[test]
-fun curve_funding_event_and_treasury_sources_replay_separate_earned_buckets() {
+fun curve_raise_and_lp_fees_fund_treasury_while_seed_remainders_stay_creator_capital() {
     let mut f = start(20_000_000);
     let _ = contribute(&mut f, ALICE, 20_000_000);
     activate_curve(&mut f);
@@ -535,28 +547,35 @@ fun curve_funding_event_and_treasury_sources_replay_separate_earned_buckets() {
         net: 19_000_000,
     };
     assert_eq!(std::bcs::to_bytes(&transition), std::bcs::to_bytes(&expected));
+    set_rates(&mut f, 1_000, 2_000);
     f.next_tx!(ROOT, |f| {
         let mut vault = take_vault(f);
+        let (unused_meme, unused_quote) = cetus_engine::retain_seed_residuals(
+            &mut vault,
+            balance::create_for_testing<MEME>(7),
+            balance::create_for_testing<SUI>(11),
+        );
+        assert_eq!(unused_meme, 7);
+        assert_eq!(unused_quote, 11);
         market_maker::credit_curve_fees(
             &mut vault,
             balance::zero(),
             balance::create_for_testing<SUI>(100),
         );
-        market_maker::hold_residuals(
-            &mut vault,
-            balance::create_for_testing<MEME>(7),
-            balance::create_for_testing<SUI>(11),
-        );
-        market_maker::credit_raise_fees_to_treasury(&mut vault, &f.version, &mut f.treasury);
-        market_maker::credit_migration_residuals_to_treasury(
+        market_maker::activate_pool(&mut vault, object::id_from_address(@0xFACE));
+        market_maker::credit_lp_fees(
             &mut vault,
             &f.version,
+            &f.policy,
             &mut f.treasury,
+            balance::create_for_testing<MEME>(10),
+            balance::create_for_testing<SUI>(100),
         );
+        market_maker::credit_raise_fees_to_treasury(&mut vault, &f.version, &mut f.treasury);
         let credits = sui::event::events_by_type<protocol_treasury::BlastTreasuryCredited<SUI>>();
         assert_eq!(credits.length(), 2);
         let mut raise = 0;
-        let mut residual = 0;
+        let mut lp = 0;
         credits.do!(|credit| {
             let mut data = sui::bcs::new(std::bcs::to_bytes(&credit));
             assert_eq!(data.peel_address(), object::id(&f.treasury).to_address());
@@ -566,19 +585,51 @@ fun curve_funding_event_and_treasury_sources_replay_separate_earned_buckets() {
             assert!(data.into_remainder_bytes().is_empty());
             if (source == std::bcs::to_bytes(&protocol_treasury::curve_raise())[0])
                 raise = raise + amount
-            else if (source == std::bcs::to_bytes(&protocol_treasury::migration_residual())[0])
-                residual = residual + amount
+            else if (source == std::bcs::to_bytes(&protocol_treasury::local_lp())[0])
+                lp = lp + amount
             else abort EUnexpectedRevenueSource;
         });
-        assert!(raise == 1_000_000 && residual == 11);
-        assert_eq!(protocol_treasury::balance_for_testing<SUI>(&f.treasury), raise + residual);
-        withdraw_quote(f, 11);
+        assert_eq!(raise, 1_000_000);
+        assert_eq!(lp, 20);
+        assert_eq!(protocol_treasury::balance_for_testing<SUI>(&f.treasury), raise + lp);
+        assert_eq!(protocol_treasury::balance_for_testing<MEME>(&f.treasury), 1);
+        let meme_credits = sui::event::events_by_type<
+            protocol_treasury::BlastTreasuryCredited<MEME>,
+        >();
+        assert_eq!(meme_credits.length(), 1);
+        let mut data = sui::bcs::new(std::bcs::to_bytes(&meme_credits[0]));
+        assert_eq!(data.peel_address(), object::id(&f.treasury).to_address());
+        assert_eq!(data.peel_address(), f.vault_id.to_address());
+        assert_eq!(data.peel_u8(), std::bcs::to_bytes(&protocol_treasury::local_lp())[0]);
+        assert_eq!(data.peel_u64(), 1);
+        assert_eq!(data.into_remainder_bytes(), vector[]);
+
+        let (meme, quote) = market_maker::capital_for_testing(&vault);
+        assert_eq!(meme, 7);
+        assert_eq!(quote, 19_000_011);
+        let creator = take_sender<BlastMarketMakerCreatorCap>(f);
+        let (meme, quote) = vault.withdraw_capital(&creator, &f.version, 7, 11, f.ctx!());
+        assert_eq!(meme.value(), 7);
+        assert_eq!(quote.value(), 11);
+        coin::burn_for_testing(meme);
+        coin::burn_for_testing(quote);
+        let (meme, quote) = market_maker::capital_for_testing(&vault);
+        assert_eq!(meme, 0);
+        assert_eq!(quote, 19_000_000);
+        let (meme_fees, quote_fees, reserved_meme, reserved_quote) = vault.fee_balances();
+        assert_eq!(meme_fees, 9);
+        assert_eq!(quote_fees, 180);
+        assert_eq!(reserved_meme, 0);
+        assert_eq!(reserved_quote, 0);
+        return_sender(f, creator);
+        withdraw_quote(f, 20);
         assert_eq!(protocol_treasury::balance_for_testing<SUI>(&f.treasury), 1_000_000);
-        assert_eq!(protocol_treasury::balance_for_testing<MEME>(&f.treasury), 7);
         return_vault(vault);
     });
     f.next_tx!(PAYOUT, |f| {
-        coin::burn_for_testing(take_sender<sui::coin::Coin<SUI>>(f));
+        let earned_lp_fee = take_sender<sui::coin::Coin<SUI>>(f);
+        assert_eq!(earned_lp_fee.value(), 20);
+        coin::burn_for_testing(earned_lp_fee);
     });
     end(f);
 }
@@ -822,7 +873,7 @@ fun sharing_with_zero_wrapper_backers_requires_explicit_other_choice() {
         location = blast_market_maker::fee_ledger,
     ),
 ]
-fun creator_cannot_keep_principal_without_received_fees() {
+fun fee_allocation_cannot_disguise_principal_as_received_fees() {
     let mut f = start(20_000_000);
     let _ = contribute(&mut f, ALICE, 20_000_000);
     activate_curve(&mut f);
@@ -972,6 +1023,301 @@ fun creator_rebind_revokes_old_cap_for_that_vault() {
     vault.set_paused(&creator, &f.version, true);
     destroy(successor);
     return_sender(&f, creator);
+    return_vault(vault);
+    end(f);
+}
+
+#[test]
+fun creator_can_return_all_idle_capital_while_preserving_user_claims_and_unallocated_fees() {
+    let mut f = funded_fee_fixture();
+    f.next_tx!(ROOT, |f| {
+        let mut vault = take_vault(f);
+        let creator = take_sender<BlastMarketMakerCreatorCap>(f);
+        let creator_id = object::id(&creator);
+        let (m, q) = vault.allocate_fees(
+            &creator,
+            &f.version,
+            fee_ledger::allocation(0, 40, 0),
+            fee_ledger::allocation(0, 80, 0),
+            f.ctx!(),
+        );
+        coin::burn_for_testing(m);
+        coin::burn_for_testing(q);
+        let meme = coin::mint_for_testing<MEME>(700, f.ctx!());
+        let quote = coin::mint_for_testing<SUI>(900, f.ctx!());
+        vault.deposit_capital(&f.version, meme, quote);
+        vault.set_paused(&creator, &f.version, true);
+        let (m, q) = vault.withdraw_capital(&creator, &f.version, 700, 900, f.ctx!());
+        assert!(m.value() == 700 && q.value() == 900);
+        transfer::public_transfer(m, ALICE);
+        transfer::public_transfer(q, BOB);
+        let (cm, cq) = market_maker::capital_for_testing(&vault);
+        assert!(cm == 0 && cq == 0);
+        let (am, aq, rm, rq) = vault.fee_balances();
+        assert!(am == 60 && aq == 120 && rm == 40 && rq == 80);
+        let (am, aq) = vault.claimable_fees(ALICE);
+        assert!(am == 10 && aq == 20);
+        let (bm, bq) = vault.claimable_fees(BOB);
+        assert!(bm == 30 && bq == 60);
+        let deposits = sui::event::events_by_type<market_maker::BlastCapitalDeposited<MEME, SUI>>();
+        let withdrawals = sui::event::events_by_type<
+            market_maker::BlastCapitalWithdrawn<MEME, SUI>,
+        >();
+        assert_eq!(deposits.length(), 1);
+        assert_eq!(withdrawals.length(), 1);
+        assert_eq!(
+            std::bcs::to_bytes(&deposits[0]),
+            std::bcs::to_bytes(
+                &CapitalDepositPayload {
+                    vault_id: f.vault_id,
+                    meme_amount: 700,
+                    quote_amount: 900,
+                },
+            ),
+        );
+        assert_eq!(
+            std::bcs::to_bytes(&withdrawals[0]),
+            std::bcs::to_bytes(
+                &CapitalWithdrawalPayload {
+                    vault_id: f.vault_id,
+                    creator_cap_id: creator_id,
+                    meme_amount: 700,
+                    quote_amount: 900,
+                },
+            ),
+        );
+        return_sender(f, creator);
+        return_vault(vault);
+    });
+    f.next_tx!(ALICE, |f| {
+        let returned = take_sender<coin::Coin<MEME>>(f);
+        assert_eq!(returned.value(), 700);
+        coin::burn_for_testing(returned);
+        let mut vault = take_vault(f);
+        let (m, q) = vault.claim_fees(&f.version, f.ctx!());
+        assert!(m.value() == 10 && q.value() == 20);
+        coin::burn_for_testing(m);
+        coin::burn_for_testing(q);
+        return_vault(vault);
+    });
+    f.next_tx!(BOB, |f| {
+        let returned = take_sender<coin::Coin<SUI>>(f);
+        assert_eq!(returned.value(), 900);
+        coin::burn_for_testing(returned);
+        let mut vault = take_vault(f);
+        let (m, q) = vault.claim_fees(&f.version, f.ctx!());
+        assert!(m.value() == 30 && q.value() == 60);
+        coin::burn_for_testing(m);
+        coin::burn_for_testing(q);
+        let (am, aq, rm, rq) = vault.fee_balances();
+        assert!(am == 60 && aq == 120 && rm == 0 && rq == 0);
+        return_vault(vault);
+    });
+    end(f);
+}
+
+#[test]
+fun creator_capital_distribution_can_override_delegated_idle_floor_after_curve_launch() {
+    let mut f = start_with_limits(
+        20_000_000,
+        market_maker::trading_limits(1, 1, 100, 100, 10, 1),
+    );
+    let _ = contribute(&mut f, ALICE, 20_000_000);
+    activate_curve(&mut f);
+    f.next_tx!(ROOT, |f| {
+        let mut vault = take_vault(f);
+        let creator = take_sender<BlastMarketMakerCreatorCap>(f);
+        let (m, q) = vault.withdraw_capital(&creator, &f.version, 0, 19_000_000, f.ctx!());
+        assert!(m.value() == 0 && q.value() == 19_000_000);
+        coin::burn_for_testing(m);
+        coin::burn_for_testing(q);
+        let (cm, cq) = market_maker::capital_for_testing(&vault);
+        assert!(cm == 0 && cq == 0);
+        assert_eq!(market_maker::raise_fees_for_testing(&vault), 1_000_000);
+        return_sender(f, creator);
+        return_vault(vault);
+    });
+    end(f);
+}
+
+#[test]
+#[
+    expected_failure(
+        abort_code = market_maker::EWrongCreator,
+        location = blast_market_maker::market_maker,
+    ),
+]
+fun foreign_creator_cannot_withdraw_capital_even_when_vault_is_empty() {
+    let mut f = funded_fee_fixture();
+    let mut vault = take_vault(&f);
+    let foreign = market_maker::new_creator_cap(f.ctx!());
+    let (m, q) = vault.withdraw_capital(&foreign, &f.version, 1, 0, f.ctx!());
+    coin::burn_for_testing(m);
+    coin::burn_for_testing(q);
+    destroy(foreign);
+    return_vault(vault);
+    end(f);
+}
+
+#[test]
+#[
+    expected_failure(
+        abort_code = market_maker::EWrongPhase,
+        location = blast_market_maker::market_maker,
+    ),
+]
+fun creator_cannot_withdraw_unlaunched_funding() {
+    let mut f = start(20_000_000);
+    let _ = contribute(&mut f, ALICE, 20_000_000);
+    f.next_tx!(ROOT, |f| {
+        let mut vault = take_vault(f);
+        let creator = take_sender<BlastMarketMakerCreatorCap>(f);
+        let (m, q) = vault.withdraw_capital(&creator, &f.version, 0, 20_000_000, f.ctx!());
+        coin::burn_for_testing(m);
+        coin::burn_for_testing(q);
+        return_sender(f, creator);
+        return_vault(vault);
+    });
+    end(f);
+}
+
+#[test]
+#[
+    expected_failure(
+        abort_code = market_maker::EInsufficientCapital,
+        location = blast_market_maker::market_maker,
+    ),
+]
+fun capital_withdrawal_cannot_spend_unallocated_fees_or_user_reserves() {
+    let mut f = funded_fee_fixture();
+    let mut vault = take_vault(&f);
+    let creator = take_sender<BlastMarketMakerCreatorCap>(&f);
+    let (m, q) = vault.allocate_fees(
+        &creator,
+        &f.version,
+        fee_ledger::allocation(0, 40, 0),
+        fee_ledger::allocation(0, 80, 0),
+        f.ctx!(),
+    );
+    coin::burn_for_testing(m);
+    coin::burn_for_testing(q);
+    let (m, q) = vault.withdraw_capital(&creator, &f.version, 1, 0, f.ctx!());
+    coin::burn_for_testing(m);
+    coin::burn_for_testing(q);
+    return_sender(&f, creator);
+    return_vault(vault);
+    end(f);
+}
+
+#[test]
+#[
+    expected_failure(
+        abort_code = package_version::EVersionMismatch,
+        location = blast_market_maker::package_version,
+    ),
+]
+fun stale_version_rejects_withdrawal_before_foreign_cap_and_empty_amount() {
+    let mut f = funded_fee_fixture();
+    let mut vault = take_vault(&f);
+    let foreign = market_maker::new_creator_cap(f.ctx!());
+    f.version.set_generation_for_testing(999);
+    let (m, q) = vault.withdraw_capital(&foreign, &f.version, 0, 0, f.ctx!());
+    coin::burn_for_testing(m);
+    coin::burn_for_testing(q);
+    destroy(foreign);
+    return_vault(vault);
+    end(f);
+}
+
+#[test]
+#[
+    expected_failure(
+        abort_code = market_maker::EEmptyCapitalMovement,
+        location = blast_market_maker::market_maker,
+    ),
+]
+fun capital_withdrawal_rejects_both_zero_amounts() {
+    let mut f = funded_fee_fixture();
+    let mut vault = take_vault(&f);
+    let creator = take_sender<BlastMarketMakerCreatorCap>(&f);
+    let (m, q) = vault.withdraw_capital(&creator, &f.version, 0, 0, f.ctx!());
+    coin::burn_for_testing(m);
+    coin::burn_for_testing(q);
+    return_sender(&f, creator);
+    return_vault(vault);
+    end(f);
+}
+
+#[test]
+#[
+    expected_failure(
+        abort_code = market_maker::EWrongPhase,
+        location = blast_market_maker::market_maker,
+    ),
+]
+fun capital_deposits_cannot_bypass_funding_weights() {
+    let mut f = start(20_000_000);
+    let mut vault = take_vault(&f);
+    let meme = coin::mint_for_testing<MEME>(1, f.ctx!());
+    let quote = coin::zero<SUI>(f.ctx!());
+    vault.deposit_capital(&f.version, meme, quote);
+    return_vault(vault);
+    end(f);
+}
+
+#[test]
+#[
+    expected_failure(
+        abort_code = market_maker::EInsufficientCapital,
+        location = blast_market_maker::market_maker,
+    ),
+]
+fun capital_withdrawal_checks_both_assets_before_splitting_either() {
+    let mut f = funded_fee_fixture();
+    let mut vault = take_vault(&f);
+    let creator = take_sender<BlastMarketMakerCreatorCap>(&f);
+    let meme = coin::mint_for_testing<MEME>(5, f.ctx!());
+    let quote = coin::mint_for_testing<SUI>(7, f.ctx!());
+    vault.deposit_capital(&f.version, meme, quote);
+    let (m, q) = vault.withdraw_capital(&creator, &f.version, 5, 8, f.ctx!());
+    coin::burn_for_testing(m);
+    coin::burn_for_testing(q);
+    return_sender(&f, creator);
+    return_vault(vault);
+    end(f);
+}
+
+#[test]
+#[
+    expected_failure(
+        abort_code = market_maker::EEmptyCapitalMovement,
+        location = blast_market_maker::market_maker,
+    ),
+]
+fun capital_deposit_rejects_both_zero_coins() {
+    let mut f = funded_fee_fixture();
+    let mut vault = take_vault(&f);
+    let meme = coin::zero<MEME>(f.ctx!());
+    let quote = coin::zero<SUI>(f.ctx!());
+    vault.deposit_capital(&f.version, meme, quote);
+    return_vault(vault);
+    end(f);
+}
+
+#[test]
+#[
+    expected_failure(
+        abort_code = package_version::EVersionMismatch,
+        location = blast_market_maker::package_version,
+    ),
+]
+fun stale_version_rejects_capital_deposit_before_phase_and_zero_amount() {
+    let mut f = start(20_000_000);
+    let mut vault = take_vault(&f);
+    let meme = coin::zero<MEME>(f.ctx!());
+    let quote = coin::zero<SUI>(f.ctx!());
+    f.version.set_generation_for_testing(999);
+    vault.deposit_capital(&f.version, meme, quote);
     return_vault(vault);
     end(f);
 }

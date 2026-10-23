@@ -27,7 +27,12 @@ publication or changes production ACL grants.
 Protocol administration uses Blast ACL with package-defined roles. Creators use a
 reusable cap that may control several vaults. Received Meme and Quote fees remain
 unallocated until the creator chooses amounts to keep, share with backers or
-reinvest; allocated backer reserves cannot be reclaimed. Native transfer of the
+reinvest; allocated backer reserves cannot be reclaimed. Presale team token and
+raise allocations pay the vault address and are received as trading capital.
+Unused coins from seeding the original pool stay in capital too.
+The creator may deposit or withdraw idle capital to distribute assets to users or
+compose other operations. Delegated risk limits do not restrict creator withdrawals;
+the burned base LP, funding refunds and fee reserves stay isolated. Native transfer of the
 creator cap moves control of all bound vaults and does not revoke existing trading
 delegates. Rebinding can move one vault to another existing cap.
 

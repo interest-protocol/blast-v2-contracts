@@ -190,6 +190,12 @@ use_environment = "mainnet"
 manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
 deps = { std = "MoveStdlib", sui = "Sui" }
 
+[pinned.mainnet.blast_market_maker]
+source = { root = true }
+use_environment = "mainnet"
+manifest_digest = "8116E82E3FB0F59669E5374EED5E345393844B87B6A46CCD486BB9F4334505C7"
+deps = { CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate", Sui = "Sui", blast_admin = "blast_admin", blast_fun = "blast_fun", blast_partners = "blast_partners", blast_presale = "blast_presale" }
+
 [pinned.mainnet.blast_partners]
 source = { local = "../partners" }
 use_environment = "mainnet"
@@ -201,9 +207,3 @@ source = { local = "../presale" }
 use_environment = "mainnet"
 manifest_digest = "4D740C0D673E0F68B5504EE723086471CC968E1446AE5C162A3A4B3A7451A06B"
 deps = { AftermathAmm = "AftermathAmm", AftermathDaoFeePools = "AftermathDaoFeePools", BluefinSpot = "BluefinSpot", CetusClmm = "CetusClmm_1", CetusLpBurn = "CetusLpBurn_1", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate", Sui = "Sui", blast_admin = "blast_admin", blast_fun_vesting = "blast_fun_vesting", blast_partners = "blast_partners" }
-
-[pinned.mainnet.bundle_protocol]
-source = { root = true }
-use_environment = "mainnet"
-manifest_digest = "8116E82E3FB0F59669E5374EED5E345393844B87B6A46CCD486BB9F4334505C7"
-deps = { CetusClmm = "CetusClmm", CetusLpBurn = "CetusLpBurn", IntegerLibrary = "IntegerLibrary", IntegerMate = "IntegerMate", Sui = "Sui", blast_admin = "blast_admin", blast_fun = "blast_fun", blast_partners = "blast_partners", blast_presale = "blast_presale" }

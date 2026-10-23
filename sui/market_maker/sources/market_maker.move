@@ -68,8 +68,6 @@ public struct BlastMarketMakerVault<phantom Meme, phantom Quote> has key {
     meme_fees: FeeLedger<Meme>,
     quote_fees: FeeLedger<Quote>,
     raise_fees: Balance<Quote>,
-    residual_meme: Balance<Meme>,
-    residual_quote: Balance<Quote>,
     backers: Table<address, BackerClaim>,
     total_weight: u64,
 }
@@ -227,6 +225,55 @@ public fun creator_cap_id<Meme, Quote>(self: &BlastMarketMakerVault<Meme, Quote>
     self.creator_cap_id
 }
 
+/// Adds strategy capital without creating fee weight or a redemption claim.
+/// Anyone may fund an active vault, including while discretionary trading is paused.
+public fun deposit_capital<Meme, Quote>(
+    self: &mut BlastMarketMakerVault<Meme, Quote>,
+    version: &PackageVersion,
+    meme: Coin<Meme>,
+    quote: Coin<Quote>,
+) {
+    version.assert_current();
+    assert!(self.phase == Phase::Curve || self.phase == Phase::Pool, EWrongPhase);
+    let meme_amount = meme.value();
+    let quote_amount = quote.value();
+    assert!(meme_amount > 0 || quote_amount > 0, EEmptyCapitalMovement);
+
+    self.join_capital(meme.into_balance(), quote.into_balance());
+    self.emit_capital_deposited(meme_amount, quote_amount);
+}
+
+/// The creator may return idle strategy capital to users or compose it in another protocol.
+/// This authority is broader than delegated trading limits and remains usable while paused.
+/// Funding refunds, fee balances and positions (including the burned base) are never spent.
+public fun withdraw_capital<Meme, Quote>(
+    self: &mut BlastMarketMakerVault<Meme, Quote>,
+    cap: &BlastMarketMakerCreatorCap,
+    version: &PackageVersion,
+    meme_amount: u64,
+    quote_amount: u64,
+    ctx: &mut TxContext,
+): (Coin<Meme>, Coin<Quote>) {
+    version.assert_current();
+    self.assert_creator(cap);
+    assert!(self.phase == Phase::Curve || self.phase == Phase::Pool, EWrongPhase);
+    assert!(meme_amount > 0 || quote_amount > 0, EEmptyCapitalMovement);
+    assert!(
+        meme_amount <= self.capital_meme.value() && quote_amount <= self.capital_quote.value(),
+        EInsufficientCapital,
+    );
+
+    let meme = self.capital_meme.split(meme_amount).into_coin(ctx);
+    let quote = self.capital_quote.split(quote_amount).into_coin(ctx);
+    sui::event::emit(BlastCapitalWithdrawn<Meme, Quote> {
+        vault_id: self.id.to_inner(),
+        creator_cap_id: self.creator_cap_id,
+        meme_amount,
+        quote_amount,
+    });
+    (meme, quote)
+}
+
 /// Returns unallocated Meme/Quote and reserved Meme/Quote balances, in that order.
 public fun fee_balances<Meme, Quote>(
     self: &BlastMarketMakerVault<Meme, Quote>,
@@ -253,7 +300,7 @@ public fun claimable_fees<Meme, Quote>(
 }
 
 /// Only received, unallocated fees may be kept, shared or moved into trading capital.
-/// Existing backer reserves and all principal remain outside the creator's payout path.
+/// Existing backer reserves and principal remain outside this fee-only payout path.
 public fun allocate_fees<Meme, Quote>(
     self: &mut BlastMarketMakerVault<Meme, Quote>,
     cap: &BlastMarketMakerCreatorCap,
@@ -317,29 +364,6 @@ public fun credit_raise_fees_to_treasury<Meme, Quote>(
         self.id.to_inner(),
         protocol_treasury::curve_raise(),
         self.raise_fees.withdraw_all(),
-    );
-}
-
-public fun credit_migration_residuals_to_treasury<Meme, Quote>(
-    self: &mut BlastMarketMakerVault<Meme, Quote>,
-    version: &PackageVersion,
-    treasury: &mut BlastMarketMakerTreasury,
-) {
-    version.assert_current();
-    self.assert_treasury(treasury);
-    assert!(self.residual_meme.value() > 0 || self.residual_quote.value() > 0, ENothingClaimable);
-
-    treasury.credit(
-        version,
-        self.id.to_inner(),
-        protocol_treasury::migration_residual(),
-        self.residual_meme.withdraw_all(),
-    );
-    treasury.credit(
-        version,
-        self.id.to_inner(),
-        protocol_treasury::migration_residual(),
-        self.residual_quote.withdraw_all(),
     );
 }
 
@@ -513,8 +537,6 @@ public(package) fun new<Meme, Quote>(
         meme_fees: fee_ledger::new(),
         quote_fees: fee_ledger::new(),
         raise_fees: balance::zero(),
-        residual_meme: balance::zero(),
-        residual_quote: balance::zero(),
         backers: table::new(ctx),
         total_weight: 0,
     }
@@ -664,15 +686,6 @@ public(package) fun join_capital<Meme, Quote>(
 ) {
     self.capital_meme.join(meme);
     self.capital_quote.join(quote);
-}
-
-public(package) fun hold_residuals<Meme, Quote>(
-    self: &mut BlastMarketMakerVault<Meme, Quote>,
-    meme: Balance<Meme>,
-    quote: Balance<Quote>,
-) {
-    self.residual_meme.join(meme);
-    self.residual_quote.join(quote);
 }
 
 public(package) fun credit_lp_fees<Meme, Quote>(
@@ -949,6 +962,32 @@ public(package) fun receive_curve_cap<Meme, Quote>(
     transfer::public_receive(&mut self.id, cap)
 }
 
+/// Receives pair assets sent to this vault's address. Native Receiving proves ownership,
+/// not sender provenance; these receipts create capital only, never fee rights.
+public(package) fun receive_capital_meme<Meme, Quote>(
+    self: &mut BlastMarketMakerVault<Meme, Quote>,
+    coin: sui::transfer::Receiving<Coin<Meme>>,
+) {
+    assert!(self.phase == Phase::Curve || self.phase == Phase::Pool, EWrongPhase);
+    let meme = transfer::public_receive(&mut self.id, coin);
+    let amount = meme.value();
+
+    self.capital_meme.join(meme.into_balance());
+    if (amount > 0) self.emit_capital_deposited(amount, 0);
+}
+
+public(package) fun receive_capital_quote<Meme, Quote>(
+    self: &mut BlastMarketMakerVault<Meme, Quote>,
+    coin: sui::transfer::Receiving<Coin<Quote>>,
+) {
+    assert!(self.phase == Phase::Curve || self.phase == Phase::Pool, EWrongPhase);
+    let quote = transfer::public_receive(&mut self.id, coin);
+    let amount = quote.value();
+
+    self.capital_quote.join(quote.into_balance());
+    if (amount > 0) self.emit_capital_deposited(0, amount);
+}
+
 public(package) fun has_escrowed_child<Meme, Quote, Key: copy + drop + store>(
     self: &BlastMarketMakerVault<Meme, Quote>,
     key: Key,
@@ -1047,6 +1086,18 @@ fun credit_received_fees<Meme, Quote>(
             meme_received,
             quote_received,
         });
+}
+
+fun emit_capital_deposited<Meme, Quote>(
+    self: &BlastMarketMakerVault<Meme, Quote>,
+    meme_amount: u64,
+    quote_amount: u64,
+) {
+    sui::event::emit(BlastCapitalDeposited<Meme, Quote> {
+        vault_id: self.id.to_inner(),
+        meme_amount,
+        quote_amount,
+    });
 }
 
 // === Test-Only Functions ===
@@ -1172,6 +1223,18 @@ public struct BlastFeesAllocated<phantom Meme, phantom Quote> has copy, drop {
     total_weight: u64,
 }
 
+public struct BlastCapitalDeposited<phantom Meme, phantom Quote> has copy, drop {
+    vault_id: ID,
+    meme_amount: u64,
+    quote_amount: u64,
+}
+public struct BlastCapitalWithdrawn<phantom Meme, phantom Quote> has copy, drop {
+    vault_id: ID,
+    creator_cap_id: ID,
+    meme_amount: u64,
+    quote_amount: u64,
+}
+
 public struct BlastActionExecuted has copy, drop {
     vault_id: ID,
     action: Action,
@@ -1289,6 +1352,8 @@ const EClockRegression: vector<u8> =
 
 #[error(code = 38)]
 const EEmptyAllocation: vector<u8> = b"Allocate a positive amount of received fees.";
+#[error(code = 39)]
+const EEmptyCapitalMovement: vector<u8> = b"Move a positive amount of market-making capital.";
 
 // === Imports ===
 

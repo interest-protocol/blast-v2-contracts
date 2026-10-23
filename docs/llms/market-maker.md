@@ -15,7 +15,7 @@ LP fees after migration follow the independently held positions and burn proof.
 ### Objects and authority
 
 Each shared `blast_market_maker::market_maker::BlastMarketMakerVault` holds one Meme/Quote pair,
-backer records, separate capital/fee/residual balances and discoverable dynamic
+backer records, separate capital/fee/raise-fee balances and discoverable dynamic
 object children. Curve Quote is SUI. Presale Quote is its admitted actual asset;
 there is no conversion into SUI or a common NAV.
 
@@ -48,13 +48,15 @@ Blast governance custody.
 
 Anyone creates an owned `blast_market_maker::market_maker::BlastMarketMakerCreatorCap` through
 `new_creator_cap(ctx)`. One cap can control several vaults, each explicitly bound
-to its ID at creation. It allocates received fees, pauses discretionary actions
+to its ID at creation. It allocates received fees, withdraws idle capital, pauses discretionary actions
 and rotates the operator or price signer. Normal object transfer moves control
 of all vaults bound to that cap. `set_creator_cap` rebinds one vault to another
 existing creator cap with the current cap's authorization. Neither transfer nor
 rebinding invalidates the vault's operator or outstanding risk signatures; use
-operator or signer rotation when that is intended. The creator cap cannot extract
-trading principal, consume backer reserves or change fixed weights.
+operator or signer rotation when that is intended. The creator cap may withdraw idle trading capital for distribution or other use,
+including while paused and below the delegated idle Quote floor. It cannot consume
+backer fee reserves, prelaunch refunds, the burned base LP or change fixed weights.
+Users trust the creator with strategy capital; the creator may withdraw all of it.
 
 The owned `blast_market_maker::market_maker::BlastMarketMakerOperatorCap` authorizes discretionary
 trading together with an independent price-policy signature. Trading remains
@@ -125,7 +127,7 @@ PartnerCap or any Blast admin authority.
 6. Anyone calls `blast_market_maker::cetus_migrator::migrate_and_activate`
    when core is MigrationReady. The sealed witness releases the handoff into
    a new Cetus pool; the full-range base LP is burned, its proof stays in the
-   vault, and exact residuals enter the protocol residual bucket. The Cetus tier
+   vault, and unused seed coins remain market-maker capital. The Cetus tier
    rate is checked at launch; migration uses the same tick spacing with the live
    venue rate and does not freeze capital if that external rate changes later.
 
@@ -149,7 +151,10 @@ market makers retain their explicitly funded initial idle-floor checks.
    real admitted core presale and common vault. Core starts immediately with
    a fixed hard cap, closes when filled and binds that partner through the core
    initializer. Core checks the partner is accepted by its CreationPolicy. There
-   is no participant vesting or extra recipient allocation. The presale cap stays escrowed.
+   is no participant vesting. Optional `team_token_bps` and `team_raise_bps` commit
+   unvested token and raise allocations to the vault's address; zero disables each.
+   Core checks all allocations against participant, LP and Blast shares. The presale
+   cap stays escrowed.
 2. Anyone calls `blast_market_maker::presale_adapter::commit` with Coin Quote.
    The core credits its real sender, returns excess and preserves its token
    and refund rights. The wrapper credits only offered minus change as fee
@@ -167,7 +172,19 @@ market makers retain their explicitly funded initial idle-floor checks.
    partner, core version, upstream FeePolicy and Clock, normally as the next PTB
    command after migration. Core pays the partner its live share of the raise
    fee and Blast the remainder plus its token fee; the operation is one-time.
-5. Core cancellation/refunds remain authoritative if the commitment target or
+5. On successful migration, core sends explicit team Meme/Quote allocations to the
+   vault address as owned Coin objects. Anyone supplies those object references as
+   `Receiving<Coin<Meme>>` or `Receiving<Coin<Quote>>` to
+   `blast_market_maker::presale_adapter::receive_team_meme` or
+   `blast_market_maker::presale_adapter::receive_team_quote`, with the shared vault,
+   exact bound sale and current local version. These calls require the corresponding
+   team share to be configured and the vault to be in Pool. They join actual values
+   into capital, without fee weight or fee revenue. Obtain owned Coin references
+   from the successful migration effects and receive them in a following transaction.
+   Native Receiving verifies vault ownership, not provenance; same-asset donations
+   sent to that vault are accepted as capital too. This is no claim on participant
+   tokens, which remain in core custody.
+6. Core cancellation/refunds remain authoritative if the commitment target or
    liquidity deadline fails. The wrapper holds no mirrored refundable
    principal. Anyone may retire its cancelled escrowed PresaleCap through
    `blast_market_maker::presale_adapter::destroy_cancelled_presale_cap`.
@@ -209,6 +226,34 @@ fee rights or payout, and no governance sweep exists. Fee settlement is permissi
 `blast_market_maker::cetus_engine::collect_base_fees` and
 `blast_market_maker::cetus_engine::collect_managed_fees`.
 
+At finalization, team token BPS are apportioned against total minted supply and
+team raise BPS against the fixed raise target. Token shares for participants, LP,
+Blast and team must total 10,000; team plus Blast raise shares must leave a positive
+LP share. Core uses largest remainders: floor each share, then give leftover atoms
+to the largest fractional remainders. Token ties follow participant, LP, Blast,
+team order; raise ties follow team, Blast, LP order. Configured recipients and LP
+must receive positive amounts. Retention is a separate floor-rounded fraction of
+the actual remaining migration handoff after upstream allocations.
+
+### Capital management and returning assets to users
+
+Anyone calls `blast_market_maker::market_maker::deposit_capital` in Curve or Pool
+with Meme and Quote coins; at least one must be positive. Deposits create no
+weight, fee entitlement or redemption right. Bought inventory, retained migration
+assets, team allocations, unused pool-seeding coins and managed-position removal
+proceeds remain capital.
+
+The bound creator cap holder calls `blast_market_maker::market_maker::withdraw_capital`
+with current version and explicit Meme/Quote amounts. It returns both coins,
+including zero coins, for transfer to users, team payouts or other PTB composition.
+Use a managed-position removal first when capital is deployed in a range. The
+withdrawal spends only idle capital and can withdraw all of it; risk signatures,
+trading budgets, pause and delegated idle floors do not constrain this creator
+asset-disposition authority. Funding and cancelled/refunding states reject.
+Unallocated fees, reserved user fees, treasury buckets and the burned base position
+remain unavailable through this call. Consume or transfer both returned coins.
+A capital transfer is distinct from a backer's fee claim and is not recorded as fees.
+
 ### Fees and rounding
 
 BPS means a share of 10,000. The curve raise fee is floor(target * 500 / 10000),
@@ -234,8 +279,8 @@ market maker capital, backer weights or funded fee revenue.
 
 Both Meme and Quote net fee receipts enter separate unallocated fee balances.
 Neither asset automatically reinvests or receives an additional platform split.
-Trading capital, retained migration assets, the curve raise fee and migration
-residuals never enter these available fee balances.
+Trading capital, retained migration assets, team allocations, unused seed coins
+and the curve raise fee never enter these available fee balances.
 
 Only the bound creator cap can call `blast_market_maker::market_maker::allocate_fees`.
 For each asset, pass `blast_market_maker::fee_ledger::allocation(keep, share, reinvest)`
@@ -260,9 +305,8 @@ one backer owns the full weight.
 
 Each backer calls `blast_market_maker::market_maker::claim_fees` for its own sender row in
 Curve or Pool. It returns `(Coin<Meme>, Coin<Quote>)`; deliver or consume both,
-including zero. Anyone can move segregated raise and residual buckets to the
-bound treasury through `blast_market_maker::market_maker::credit_raise_fees_to_treasury`
-and `credit_migration_residuals_to_treasury`. Empty buckets reject. TreasuryAdmin
+including zero. Anyone can move the segregated curve raise fee to the bound treasury through
+`blast_market_maker::market_maker::credit_raise_fees_to_treasury`. An empty bucket rejects. TreasuryAdmin
 withdraws earned balances only to the stored payout and cannot withdraw vault
 capital, unallocated creator fees or reserved backer fees.
 
@@ -292,7 +336,8 @@ principal refunds remain available at that deadline. No raise fee is charged the
 
 Read canonical shared-object content and dynamic-object-field children to inspect
 current authority, immutable terms, principal and segregated balances. The private
-UID has no public borrowing or generic receiving seam. Initial ticket, core
+UID has no public borrowing or generic receiving seam; presale pair-asset receipt
+is exposed only through typed, sale-bound calls. Initial ticket, core
 creator-fee cap, pool reservation, burn proof and ordinary position IDs remain discoverable
 as dynamic object children. Quarantined reward balances are typed ordinary fields.
 The pair-reordering helper temporarily uses two dynamic fields on a fresh UID and
@@ -300,10 +345,12 @@ deletes them in the same transaction; this preserves exact typed values but adds
 gas/object writes that require native-venue profiling before release.
 
 Creation, accepted contributions, refunds, cap changes, fee receipts, allocations,
-treasury credits, activation and signed actions emit completed facts. Reconcile
-direct LP credits separately from raise and residual credits. `BlastCurveFundingActivated`
+treasury credits, capital deposits/withdrawals, activation and signed actions emit
+completed facts. Reconcile
+direct LP credits separately from raise-fee credits. Unused migration seed coins
+remain capital, available to the creator after activation. `BlastCurveFundingActivated`
 records gross funding, the assessed raise fee and net capital. `BlastTreasuryCredited`
-identifies `CurveRaise`, `LocalLp` or `MigrationResidual`; sender-linked
+identifies `CurveRaise` or `LocalLp`; sender-linked
 contribution/refund/claim events use transaction sender metadata. Assessed raise
 fees equal CurveRaise credits plus the raise-fee balance. `BlastExternalBound` records
 the later curve launch binding.
@@ -322,10 +369,17 @@ appropriate core presale path. A stale signature requires a fresh quote for the
 current nonce/key epoch; an exhausted immutable budget cannot be raised by an
 administrator. Unsupported nonzero rewards must be quarantined before close.
 
+`BlastCapitalDeposited` and `BlastCapitalWithdrawn` record vault and actual pair-asset
+deltas; withdrawals also identify the authorizing creator cap. They preserve the
+separation between capital disposition and received-fee allocation. Migration team
+payouts are first visible in core effects as coins owned by the vault; the deposit
+event records their later receipt into spendable capital.
+
 ### Questions integrators ask
 
-1. **Can backers redeem principal?** No. Successful launch commits permanent
-   strategy capital; backers claim only fees explicitly allocated to them.
+1. **Can backers redeem principal?** Backers have no automatic redemption right.
+   The creator may voluntarily withdraw idle capital and transfer it to users;
+   backers separately claim fees explicitly allocated to them.
 2. **Are base and managed LP the same?** No. Base LP is burned permanently.
    Ordinary managed positions retain removable principal under vault custody.
 3. **Does a direct presale purchase earn MM fees?** It earns no wrapper weight.

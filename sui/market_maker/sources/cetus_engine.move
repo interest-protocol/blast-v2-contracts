@@ -496,11 +496,12 @@ public(package) fun create_burn_and_activate<Meme, Quote, CoinA, CoinB>(
         meme_is_a,
         ctx,
     );
-    let residual_meme_amount = residual_meme.value();
-    let residual_quote_amount = residual_quote.value();
-
     market_maker::escrow_child(vault, BaseProofKey(), proof);
-    market_maker::hold_residuals(vault, residual_meme, residual_quote);
+    let (residual_meme_amount, residual_quote_amount) = retain_seed_residuals(
+        vault,
+        residual_meme,
+        residual_quote,
+    );
     market_maker::add_adapter_state(vault, StrategyKey(), StrategyState { positions: vector[] });
     market_maker::activate_pool(vault, pool_id);
     sui::event::emit(BlastBaseLiquidityBurned<Meme, Quote> {
@@ -515,6 +516,20 @@ public(package) fun create_burn_and_activate<Meme, Quote, CoinA, CoinB>(
         residual_meme: residual_meme_amount,
         residual_quote: residual_quote_amount,
     });
+}
+
+/// Every actual unused seed asset remains creator-managed strategy capital.
+/// Returns the received amounts for the completed base-liquidity settlement event.
+public(package) fun retain_seed_residuals<Meme, Quote>(
+    vault: &mut BlastMarketMakerVault<Meme, Quote>,
+    meme: Balance<Meme>,
+    quote: Balance<Quote>,
+): (u64, u64) {
+    let meme_amount = meme.value();
+    let quote_amount = quote.value();
+
+    market_maker::join_capital(vault, meme, quote);
+    (meme_amount, quote_amount)
 }
 
 /// Shared retention arithmetic is exercised against real core handoff balances without venue stubs.
