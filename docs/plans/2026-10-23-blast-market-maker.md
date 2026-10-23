@@ -220,7 +220,11 @@ implied by local implementation work.
 Use the requested [Sui Move engineering suite at
 `a6c14e46e6cb33dcaf8d765499c268002cb559d5`](https://github.com/josemvcerqueira/sui-move-engineering-skills/tree/a6c14e46e6cb33dcaf8d765499c268002cb559d5):
 architecture, security, source style, testing and review, including custody,
-events, DeFi, signatures, PTBs and upgrades. Repository decisions take precedence.
+events, DeFi, signatures, PTBs and upgrades. The source/API pass uses the upstream
+snapshot directly: the local mirror omits its PTB-composability additions. Function
+names disclose custody/delivery effects and returned values; transaction APIs keep
+intentional vault custody and expose composable coins where required. Native PTB
+runtime execution remains a release evidence gate. Repository decisions take precedence.
 Astra reviews the implementation because the user replaced the unavailable Fable
 reviewer. A review score cannot substitute for missing native execution evidence.
 

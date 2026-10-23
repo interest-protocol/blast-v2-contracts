@@ -248,7 +248,7 @@ fun authorize_foreign_custody(f: &mut Fixture) {
     let mut foreign = package_admin::new_for_testing(cap, f.scenario.ctx());
     let witness = f.upgrade_witness();
     destroy(
-        foreign.authorize_upgrade(&f.version, &witness, vector::tabulate!(32, |_| 1)),
+        foreign.authorize_upgrade(&witness, &f.version, vector::tabulate!(32, |_| 1)),
     );
     destroy(foreign);
 }
@@ -258,7 +258,7 @@ fun stale_witness_after_cutover(f: &mut Fixture) {
     f.commit_native_upgrade(1);
     f.activate_fixture_generation(2);
     destroy(
-        f.custody.authorize_upgrade(&f.version, &witness, vector::tabulate!(32, |_| 2)),
+        f.custody.authorize_upgrade(&witness, &f.version, vector::tabulate!(32, |_| 2)),
     );
 }
 
@@ -272,29 +272,29 @@ fun upgrade_witness(f: &Fixture): AdminWitness<UpgradeAdmin> {
 
 fun authorize_fixture_digest(f: &mut Fixture, digest: vector<u8>) {
     let witness = f.upgrade_witness();
-    destroy(f.custody.authorize_upgrade(&f.version, &witness, digest));
+    destroy(f.custody.authorize_upgrade(&witness, &f.version, digest));
 }
 
 fun commit_native_upgrade(f: &mut Fixture, digest_byte: u8) {
     let witness = f.upgrade_witness();
     let ticket = f.custody.authorize_upgrade(
-        &f.version,
         &witness,
+        &f.version,
         vector::tabulate!(32, |_| digest_byte),
     );
-    f.custody.commit_upgrade(&f.version, &witness, package::test_upgrade(ticket));
+    f.custody.commit_upgrade(&witness, &f.version, package::test_upgrade(ticket));
 }
 
 // The parameterized compiled-generation seam uses the production custody/fresh-native guard.
 // It does not claim two separately compiled Move packages ran in one unit-test module.
 fun activate_fixture_generation(f: &mut Fixture, compiled_generation: u64) {
     let witness = f.upgrade_witness();
-    f.custody.activate_generation_for_testing(&mut f.version, &witness, compiled_generation);
+    f.custody.activate_generation_for_testing(&witness, &mut f.version, compiled_generation);
 }
 
 fun activate_production_generation(f: &mut Fixture) {
     let witness = f.upgrade_witness();
-    f.custody.activate_generation(&mut f.version, &witness);
+    f.custody.activate_generation(&witness, &mut f.version);
 }
 
 fun additive_only_cap_cannot_activate_operational_cutover_protocol_setup() {
@@ -308,7 +308,7 @@ fun additive_only_cap_cannot_activate_operational_cutover_protocol_setup() {
         scenario.ctx(),
     );
     package::only_additive_upgrades(&mut cap);
-    bootstrap.wrap(cap, scenario.ctx());
+    bootstrap.activate_and_share_package(cap, scenario.ctx());
     scenario.end();
 }
 
@@ -319,7 +319,7 @@ fun foreign_native_upgrade_cap_cannot_activate_protocol_setup() {
     scenario.next_tx(ROOT);
     let bootstrap = scenario.take_from_sender<Bootstrap>();
     let cap = package::test_publish(object::id_from_address(@0xCAFE), scenario.ctx());
-    bootstrap.wrap(cap, scenario.ctx());
+    bootstrap.activate_and_share_package(cap, scenario.ctx());
     scenario.end();
 }
 
@@ -330,7 +330,7 @@ fun publisher_from_another_module_cannot_activate_protocol_setup() {
     scenario.next_tx(ROOT);
     let bootstrap = scenario.take_from_sender<Bootstrap>();
     let cap = package::test_publish(object::id_from_address(@blast_market_maker), scenario.ctx());
-    bootstrap.wrap(cap, scenario.ctx());
+    bootstrap.activate_and_share_package(cap, scenario.ctx());
     scenario.end();
 }
 
@@ -341,7 +341,7 @@ fun start(): Fixture {
     let publisher = authentic_publisher(scenario.ctx());
     let marker = test_utils::create_one_time_witness<BLAST_MARKET_MAKER>();
     let seed = package_version::initial_generation(&marker);
-    package_version::new_bootstrap(
+    package_version::create_and_transfer_bootstrap(
         publisher,
         seed,
         object::id_from_address(@0xD),
@@ -352,7 +352,7 @@ fun start(): Fixture {
     let admin = scenario.take_from_sender<AdminCap>();
     let bootstrap = scenario.take_from_sender<Bootstrap>();
     let cap = package::test_publish(object::id_from_address(@blast_market_maker), scenario.ctx());
-    bootstrap.wrap(cap, scenario.ctx());
+    bootstrap.activate_and_share_package(cap, scenario.ctx());
     scenario.next_tx(ROOT);
     let version = scenario.take_shared<PackageVersion>();
     let custody = scenario.take_shared<PackageAdmin>();
@@ -384,7 +384,7 @@ fun authentic_publisher(ctx: &mut TxContext): Publisher {
 fun seed_bootstrap(publisher: Publisher, ctx: &mut TxContext) {
     let marker = test_utils::create_one_time_witness<BLAST_MARKET_MAKER>();
     let seed = package_version::initial_generation(&marker);
-    package_version::new_bootstrap(
+    package_version::create_and_transfer_bootstrap(
         publisher,
         seed,
         object::id_from_address(@0xD),
@@ -419,4 +419,4 @@ use blast_market_maker::{
 use std::unit_test::destroy;
 use sui::{package::{Self, Publisher}, test_scenario::{Self, Scenario}, test_utils};
 
-use fun package_admin::wrap as Bootstrap.wrap;
+use fun package_admin::activate_and_share_package as Bootstrap.activate_and_share_package;

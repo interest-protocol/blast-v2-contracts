@@ -14,8 +14,8 @@ public struct Foreign has drop {}
 
 #[test]
 fun pure_pair_proof_accepts_both_orders() {
-    assert!(cetus_engine::prove_pair<Meme, Quote, Meme, Quote>());
-    assert!(!cetus_engine::prove_pair<Meme, Quote, Quote, Meme>());
+    assert!(cetus_engine::meme_is_first_asset_for_testing<Meme, Quote, Meme, Quote>());
+    assert!(!cetus_engine::meme_is_first_asset_for_testing<Meme, Quote, Quote, Meme>());
 }
 
 #[test]
@@ -26,7 +26,7 @@ fun pure_pair_proof_accepts_both_orders() {
     ),
 ]
 fun pair_proof_rejects_foreign_asset() {
-    let _ = cetus_engine::prove_pair<Meme, Quote, Meme, Foreign>();
+    let _ = cetus_engine::meme_is_first_asset_for_testing<Meme, Quote, Meme, Foreign>();
 }
 
 #[test]
@@ -37,7 +37,7 @@ fun pair_proof_rejects_foreign_asset() {
     ),
 ]
 fun pair_proof_rejects_duplicate_pool_asset() {
-    let _ = cetus_engine::prove_pair<Meme, Quote, Meme, Meme>();
+    let _ = cetus_engine::meme_is_first_asset_for_testing<Meme, Quote, Meme, Meme>();
 }
 
 #[test]
@@ -48,15 +48,15 @@ fun pair_proof_rejects_duplicate_pool_asset() {
     ),
 ]
 fun pair_proof_rejects_identical_protocol_assets() {
-    let _ = cetus_engine::prove_pair<Meme, Meme, Meme, Meme>();
+    let _ = cetus_engine::meme_is_first_asset_for_testing<Meme, Meme, Meme, Meme>();
 }
 
 #[test]
 fun checked_reorder_preserves_exact_values_in_both_orders() {
     let mut ctx = tx_context::dummy();
-    let (first, second): (u64, u128) = cetus_engine::reorder(7u64, 11u128, true, &mut ctx);
+    let (first, second): (u64, u128) = cetus_engine::reorder_for_testing(7u64, 11u128, true, &mut ctx);
     assert!(first == 7 && second == 11);
-    let (second, first): (u128, u64) = cetus_engine::reorder(7u64, 11u128, false, &mut ctx);
+    let (second, first): (u128, u64) = cetus_engine::reorder_for_testing(7u64, 11u128, false, &mut ctx);
     assert!(first == 7 && second == 11);
 }
 
@@ -69,7 +69,7 @@ fun checked_reorder_preserves_exact_values_in_both_orders() {
 ]
 fun checked_reorder_refuses_forged_destination_type() {
     let mut ctx = tx_context::dummy();
-    let (_first, _second): (u128, u64) = cetus_engine::reorder(7u64, 11u128, true, &mut ctx);
+    let (_first, _second): (u128, u64) = cetus_engine::reorder_for_testing(7u64, 11u128, true, &mut ctx);
 }
 
 // === Imports ===

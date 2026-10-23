@@ -199,7 +199,7 @@ fun take_two_sui(f: &Fixture): u64 {
 
 fun committed_for_partner(partner: &Partner): cetus_migrator::CommittedTerms {
     cetus_migrator::committed_terms_for_testing(
-        cetus_migrator::terms(
+        cetus_migrator::new_terms(
             20_000_000,
             2_000,
             100_000,
@@ -226,7 +226,7 @@ fun committed_for_partner(partner: &Partner): cetus_migrator::CommittedTerms {
 fun assert_wrong_partner(f: &mut Fixture) {
     let wrong = partners::new_for_testing(@0xD, 4_000, f.scenario.ctx());
     let committed = committed_for_partner(f.partner.borrow());
-    committed.assert_committed_partner(&wrong);
+    committed.assert_committed_partner_for_testing(&wrong);
     destroy(wrong);
 }
 
@@ -264,8 +264,8 @@ fun buy(f: &mut Fixture) {
     let Fixture { vault, launch, core_version, version, runtime, scenario, clock, operator, .. } =
         f;
     vault.buy(
-        version,
         operator,
+        version,
         launch,
         core_version,
         runtime,
@@ -283,8 +283,8 @@ fun sell(f: &mut Fixture) {
     let Fixture { vault, launch, core_version, version, runtime, scenario, clock, operator, .. } =
         f;
     vault.sell(
-        version,
         operator,
+        version,
         launch,
         core_version,
         runtime,
@@ -370,7 +370,7 @@ fun start_with_partner(with_partner: bool, admitted: bool): Fixture {
         object::id(&policy),
         ctx,
     );
-    let mut vault = market_maker::new<CURVE_STRATEGY_TESTS, SUI>(
+    let mut vault = market_maker::new_and_transfer_operator_cap<CURVE_STRATEGY_TESTS, SUI>(
         market_maker::curve_route(),
         20_000_000,
         2_000,
@@ -383,7 +383,7 @@ fun start_with_partner(with_partner: bool, admitted: bool): Fixture {
         ctx,
     );
     vault.set_trading_limits(
-        market_maker::trading_limits(
+        market_maker::new_trading_limits(
             100_000_000_000_000,
             1_000_000,
             1_000_000_000_000_000,
@@ -441,7 +441,7 @@ fun start_with_partner(with_partner: bool, admitted: bool): Fixture {
     );
     partner.do_ref!(|partner| {
         let committed = committed_for_partner(partner);
-        initializer.apply_committed_partner(&committed, &core_version, &config, partner, &clock);
+        initializer.apply_committed_partner_for_testing(&committed, &core_version, &config, partner, &clock);
     });
     initializer.set_virtual_quote(&core_version, 5_000_000);
     initializer.set_graduation_target(&core_version, 25_000_000);
@@ -533,7 +533,7 @@ use sui::{
     test_utils,
 };
 
-use fun cetus_migrator::apply_committed_partner as blast_fun::launch::LaunchInitializer.apply_committed_partner;
+use fun cetus_migrator::apply_committed_partner_for_testing as blast_fun::launch::LaunchInitializer.apply_committed_partner_for_testing;
 use fun cetus_migrator::buy as BlastMarketMakerVault.buy;
 use fun cetus_migrator::claim_and_credit_curve_fees as BlastMarketMakerVault.claim_and_credit_curve_fees;
 use fun cetus_migrator::escrow_curve_fee_cap as BlastMarketMakerVault.escrow_curve_fee_cap;

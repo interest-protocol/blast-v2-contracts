@@ -29,7 +29,8 @@ public struct BlastMarketMakerVersion has key {
 
 // === Package Functions ===
 
-public(package) fun new_bootstrap(
+/// Delivers the unique publication bootstrap to the publisher for native-cap custody intake.
+public(package) fun create_and_transfer_bootstrap(
     publisher: Publisher,
     initial_generation: InitialGeneration,
     treasury_id: ID,
@@ -64,7 +65,8 @@ public(package) fun initial_generation<Marker: drop>(otw: &Marker): InitialGener
     InitialGeneration { generation: PACKAGE_VERSION }
 }
 
-public(package) fun activate(
+/// Consumes the authentic seed and publishes the canonical operational version.
+public(package) fun create_and_share_version(
     initial_generation: InitialGeneration,
     treasury_id: ID,
     policy_id: ID,

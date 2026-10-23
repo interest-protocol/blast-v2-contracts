@@ -40,15 +40,15 @@ public struct RiskMessage has drop {
 // === Public Functions ===
 
 /// Constructors are inert values. Execution reconstructs the exact action from its arguments.
-public fun curve_buy(quote_input: u64, min_meme: u64): Action {
+public fun new_curve_buy(quote_input: u64, min_meme: u64): Action {
     action(CURVE_BUY, 0, quote_input, min_meme, 0, 0, option::none(), 0, 0, 0)
 }
 
-public fun curve_sell(meme_input: u64, min_quote: u64): Action {
+public fun new_curve_sell(meme_input: u64, min_quote: u64): Action {
     action(CURVE_SELL, meme_input, 0, 0, min_quote, 0, option::none(), 0, 0, 0)
 }
 
-public fun pool_swap(
+public fun new_pool_swap(
     meme_input: u64,
     quote_input: u64,
     min_meme: u64,
@@ -69,7 +69,7 @@ public fun pool_swap(
     )
 }
 
-public fun open(
+public fun new_open_position(
     tick_lower: u32,
     tick_upper: u32,
     max_meme: u64,
@@ -90,7 +90,7 @@ public fun open(
     )
 }
 
-public fun add(position_id: ID, meme_input: u64, quote_input: u64, min_liquidity: u128): Action {
+public fun new_add_liquidity(position_id: ID, meme_input: u64, quote_input: u64, min_liquidity: u128): Action {
     action(
         ADD_LIQUIDITY,
         meme_input,
@@ -105,7 +105,7 @@ public fun add(position_id: ID, meme_input: u64, quote_input: u64, min_liquidity
     )
 }
 
-public fun remove(position_id: ID, liquidity: u128, min_meme: u64, min_quote: u64): Action {
+public fun new_remove_liquidity(position_id: ID, liquidity: u128, min_meme: u64, min_quote: u64): Action {
     action(
         REMOVE_LIQUIDITY,
         0,
@@ -120,7 +120,7 @@ public fun remove(position_id: ID, liquidity: u128, min_meme: u64, min_quote: u6
     )
 }
 
-public fun unwind(position_id: ID, liquidity: u128, min_meme: u64, min_quote: u64): Action {
+public fun new_unwind(position_id: ID, liquidity: u128, min_meme: u64, min_quote: u64): Action {
     action(UNWIND, 0, 0, min_meme, min_quote, 0, option::some(position_id), 0, 0, liquidity)
 }
 

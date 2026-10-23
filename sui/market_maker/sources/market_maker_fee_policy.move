@@ -17,8 +17,8 @@ public struct BlastMarketMakerFeePolicy has key {
 
 public fun set_rates(
     self: &mut BlastMarketMakerFeePolicy,
-    version: &PackageVersion,
     _: &AdminWitness<FeeAdmin>,
+    version: &PackageVersion,
     meme_bps: u64,
     quote_bps: u64,
 ) {
@@ -47,7 +47,7 @@ public(package) fun new(treasury_id: ID, ctx: &mut TxContext): BlastMarketMakerF
 
 public(package) fun share(self: BlastMarketMakerFeePolicy) { transfer::share_object(self); }
 
-public(package) fun maximum(): u64 { MAX_LOCAL_LP_BPS }
+public(package) fun maximum_lp_bps(): u64 { MAX_LOCAL_LP_BPS }
 
 public(package) fun capped_rates(
     self: &BlastMarketMakerFeePolicy,

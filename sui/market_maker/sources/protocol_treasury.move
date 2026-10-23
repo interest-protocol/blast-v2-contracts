@@ -14,8 +14,8 @@ public struct TreasuryBalanceKey<phantom Asset>() has copy, drop, store;
 
 public fun set_payout(
     self: &mut BlastMarketMakerTreasury,
-    version: &PackageVersion,
     _: &AdminWitness<TreasuryAdmin>,
+    version: &PackageVersion,
     destination: address,
 ) {
     self.assert_canonical(version);
@@ -32,10 +32,10 @@ public fun set_payout(
 }
 
 /// Withdraws only already-earned treasury assets, to the configured destination.
-public fun withdraw_earned<Asset>(
+public fun pay_earned<Asset>(
     self: &mut BlastMarketMakerTreasury,
-    version: &PackageVersion,
     _: &AdminWitness<TreasuryAdmin>,
+    version: &PackageVersion,
     amount: u64,
     ctx: &mut TxContext,
 ) {

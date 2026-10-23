@@ -528,8 +528,8 @@ fun start(): RewardFixture {
 fun allocate_all(f: &mut RewardFixture) {
     let RewardFixture { vault, creator, version, scenario, .. } = f;
     let (meme, quote) = vault.allocate_fees(
-        creator, version, fee_ledger::allocation(0, 100, 0),
-        fee_ledger::allocation(0, 200, 0), scenario.ctx(),
+        creator, version, fee_ledger::new_allocation(0, 100, 0),
+        fee_ledger::new_allocation(0, 200, 0), scenario.ctx(),
     );
     meme.burn_for_testing();
     quote.burn_for_testing();
@@ -547,11 +547,11 @@ fun start_unfunded(route: market_maker::Route): RewardFixture {
     let treasury = protocol_treasury::new_for_testing(ctx);
     let policy = market_maker_fee_policy::new_for_testing(object::id(&treasury), ctx);
     let version = package_version::new_for_testing(object::id(&treasury), object::id(&policy), ctx);
-    let mut vault = market_maker::new<MEME, QUOTE>(
+    let mut vault = market_maker::new_and_transfer_operator_cap<MEME, QUOTE>(
         route, 67_108_864, 10_000, ROOT, &creator,
         vector::tabulate!(32, |_| 0), &version, &policy, &treasury, ctx,
     );
-    vault.set_trading_limits(market_maker::trading_limits(1, 1, 100, 100, 0, 10));
+    vault.set_trading_limits(market_maker::new_trading_limits(1, 1, 100, 100, 0, 10));
     RewardFixture { scenario, root, acl, admin, vault, version, creator, treasury, policy }
 }
 
@@ -563,7 +563,7 @@ fun publish(f: &mut RewardFixture, number: u64, start: u64, end: u64, root: vect
     let witness = f.acl.sign_in<RewardsAdmin>(&f.admin);
     let RewardFixture { vault, version, scenario, .. } = f;
     rewards::publish_round(
-        vault, version, &witness, number, start, end, root,
+        vault, &witness, version, number, start, end, root,
         vector::tabulate!(32, |_| 9), leaves, meme, quote, scenario.ctx(),
     );
     rewards::published_round_id(&f.last_publication())
@@ -585,7 +585,7 @@ fun return_round(_: &RewardFixture, round: BlastPresaleRewardRound<MEME, QUOTE>)
 
 fun claim(f: &mut RewardFixture, round: &mut BlastPresaleRewardRound<MEME, QUOTE>, index: u64, buyer: address, meme: u64, quote: u64, proof: vector<vector<u8>>) {
     let RewardFixture { version, scenario, .. } = f;
-    round.claim(version, index, buyer, meme, quote, proof, scenario.ctx());
+    round.claim_and_pay(version, index, buyer, meme, quote, proof, scenario.ctx());
 }
 
 fun assert_reserves(f: &RewardFixture, meme: u64, quote: u64) {
@@ -640,7 +640,7 @@ fun credit_more_fees(f: &mut RewardFixture) {
 
 fun keep_one_fee(f: &mut RewardFixture) {
     let RewardFixture { vault, creator, version, scenario, .. } = f;
-    let (meme, quote) = vault.allocate_fees(creator, version, fee_ledger::allocation(1, 0, 0), fee_ledger::allocation(0, 0, 0), scenario.ctx());
+    let (meme, quote) = vault.allocate_fees(creator, version, fee_ledger::new_allocation(1, 0, 0), fee_ledger::new_allocation(0, 0, 0), scenario.ctx());
     meme.burn_for_testing();
     quote.burn_for_testing();
 }

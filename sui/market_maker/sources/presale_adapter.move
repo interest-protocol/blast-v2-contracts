@@ -20,7 +20,7 @@ public struct PresaleTerms has copy, drop, store {
     liquidity_token_bps: u64,
     raise_target: u64,
     commitment_duration_ms: u64,
-    liquidity_window_ms: u64,
+    liquidity_window_duration_ms: u64,
     wallet_cap: u64,
     max_participants: u64,
     minimum_commitment: u64,
@@ -38,14 +38,14 @@ public struct VenueTerms has copy, drop, store { terms: PresaleTerms, fee_rate: 
 // === Public Functions ===
 
 /// Builds bounded settings; upstream finalization also validates allocations and eligibility.
-public fun terms(
+public fun new_terms(
     token_supply: u64,
     burnable: bool,
     participant_token_bps: u64,
     liquidity_token_bps: u64,
     raise_target: u64,
     commitment_duration_ms: u64,
-    liquidity_window_ms: u64,
+    liquidity_window_duration_ms: u64,
     wallet_cap: u64,
     max_participants: u64,
     minimum_commitment: u64,
@@ -73,7 +73,7 @@ public fun terms(
         liquidity_token_bps,
         raise_target,
         commitment_duration_ms,
-        liquidity_window_ms,
+        liquidity_window_duration_ms,
         wallet_cap,
         max_participants,
         minimum_commitment,
@@ -86,6 +86,7 @@ public fun terms(
 
 /// Reserves Cetus creation before minting, creates and shares the real presale and its vault,
 /// and escrows both capabilities. No initializer, vault, position or capability escapes.
+/// The creator cap binds the new instance; it does not authorize a mutation of an existing vault.
 public fun create_and_share<Meme, Quote>(
     mut treasury_cap: TreasuryCap<Meme>,
     currency: &mut Currency<Meme>,
@@ -108,8 +109,8 @@ public fun create_and_share<Meme, Quote>(
 ) {
     version.assert_current();
     limits.assert_presale_limits();
-    let deadline_at_ms = terms.commitment_deadline(clock);
-    let mut vault = market_maker::new<Meme, Quote>(
+    let deadline_at_ms = terms.commitment_deadline_at_ms(clock);
+    let mut vault = market_maker::new_and_transfer_operator_cap<Meme, Quote>(
         market_maker::presale_route(),
         terms.raise_target,
         deadline_at_ms,
@@ -134,7 +135,7 @@ public fun create_and_share<Meme, Quote>(
     vault.escrow_child(CreationCapKey(), creation_cap);
     vault.add_adapter_state(VenueKey(), VenueTerms { terms, fee_rate });
 
-    let sale = vault.build_sale(
+    let sale = vault.create_sale_and_escrow_cap(
         treasury_cap,
         currency,
         presale_version,
@@ -208,7 +209,7 @@ public fun destroy_cancelled_presale_cap<Meme, Quote>(
 
 /// Releases the exact bound sale through our witness, retains its committed fraction of both
 /// handoff assets and atomically creates/burns the base LP. Buyer reward accounting cannot veto it.
-public fun migrate<Meme, Quote, CoinA, CoinB>(
+public fun migrate_burn_and_activate<Meme, Quote, CoinA, CoinB>(
     vault: &mut BlastMarketMakerVault<Meme, Quote>,
     sale: &mut Presale<Meme, Quote>,
     version: &PackageVersion,
@@ -246,14 +247,14 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
 
 // === Private Functions ===
 
-fun commitment_deadline(terms: PresaleTerms, clock: &Clock): u64 {
+fun commitment_deadline_at_ms(terms: PresaleTerms, clock: &Clock): u64 {
     clock
         .timestamp_ms()
         .checked_add(terms.commitment_duration_ms)
         .destroy_or!(abort EInvalidPresaleTerms)
 }
 
-fun build_sale<Meme, Quote>(
+fun create_sale_and_escrow_cap<Meme, Quote>(
     vault: &mut BlastMarketMakerVault<Meme, Quote>,
     treasury_cap: TreasuryCap<Meme>,
     currency: &mut Currency<Meme>,
@@ -298,7 +299,7 @@ fun build_sale<Meme, Quote>(
     initializer.set_windows(
         presale_version,
         terms.commitment_duration_ms,
-        terms.liquidity_window_ms,
+        terms.liquidity_window_duration_ms,
     );
     initializer.set_eligibility(
         presale_version,
@@ -388,10 +389,10 @@ public fun create_without_venue_for_testing<Meme, Quote>(
 ) {
     version.assert_current();
     limits.assert_presale_limits();
-    let mut vault = market_maker::new<Meme, Quote>(
+    let mut vault = market_maker::new_and_transfer_operator_cap<Meme, Quote>(
         market_maker::presale_route(),
         terms.raise_target,
-        terms.commitment_deadline(clock),
+        terms.commitment_deadline_at_ms(clock),
         operator,
         creator,
         signer_pk,
@@ -402,7 +403,7 @@ public fun create_without_venue_for_testing<Meme, Quote>(
     );
     vault.set_trading_limits(limits);
     vault.add_adapter_state(VenueKey(), VenueTerms { terms, fee_rate: 0 });
-    let sale = vault.build_sale(
+    let sale = vault.create_sale_and_escrow_cap(
         treasury_cap,
         currency,
         presale_version,
@@ -476,6 +477,6 @@ use cetus_clmm::{config::{Self, GlobalConfig}, factory::{Self, PoolCreationCap, 
 use lp_burn::lp_burn::BurnManager;
 use sui::{clock::Clock, coin::{Coin, TreasuryCap}, coin_registry::Currency};
 
-use fun build_sale as BlastMarketMakerVault.build_sale;
+use fun create_sale_and_escrow_cap as BlastMarketMakerVault.create_sale_and_escrow_cap;
 use fun emit_created as BlastMarketMakerVault.emit_created;
 use fun cetus_engine::create_burn_and_activate as BlastMarketMakerVault.create_burn_and_activate;

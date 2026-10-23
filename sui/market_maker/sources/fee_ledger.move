@@ -18,7 +18,7 @@ public struct FeeClaim has drop, store { paid_index: u256, scaled_remainder: u25
 // === Public Functions ===
 
 /// Zero allocations are useful when allocating only the other asset in a vault.
-public fun allocation(keep: u64, share: u64, reinvest: u64): FeeAllocation {
+public fun new_allocation(keep: u64, share: u64, reinvest: u64): FeeAllocation {
     assert!(
         (keep as u128) + (share as u128) + (reinvest as u128) <= (U64_MAX as u128),
         EAllocationOverflow,
@@ -26,13 +26,11 @@ public fun allocation(keep: u64, share: u64, reinvest: u64): FeeAllocation {
     FeeAllocation { keep, share, reinvest }
 }
 
-public fun amounts(self: &FeeAllocation): (u64, u64, u64) { (self.keep, self.share, self.reinvest) }
+// === Package Functions ===
 
-public fun is_empty(self: &FeeAllocation): bool {
+public(package) fun is_empty(self: &FeeAllocation): bool {
     self.keep == 0 && self.share == 0 && self.reinvest == 0
 }
-
-// === Package Functions ===
 
 public(package) fun new<Asset>(): FeeLedger<Asset> {
     FeeLedger {
@@ -63,7 +61,7 @@ public(package) fun allocate<Asset>(
     assert!(keep + share + reinvest <= self.available.value(), EInsufficientFees);
     assert!(share == 0 || total_weight > 0, ENoBackers);
     if (share > 0) {
-        let (accumulator, remainder) = market_maker_math::accrue(
+        let (accumulator, remainder) = market_maker_math::accrued_index_down(
             self.accumulator,
             self.distribution_remainder,
             share,
@@ -94,7 +92,7 @@ public(package) fun take_rewards<Asset>(self: &mut FeeLedger<Asset>, amount: u64
 }
 
 public(package) fun claimable<Asset>(self: &FeeLedger<Asset>, claim: &FeeClaim, weight: u64): u64 {
-    let (amount, _) = market_maker_math::claim(
+    let (amount, _) = market_maker_math::claim_amount_down(
         self.accumulator,
         claim.paid_index,
         claim.scaled_remainder,
@@ -108,7 +106,7 @@ public(package) fun claim<Asset>(
     claim: &mut FeeClaim,
     weight: u64,
 ): Balance<Asset> {
-    let (amount, remainder) = market_maker_math::claim(
+    let (amount, remainder) = market_maker_math::claim_amount_down(
         self.accumulator,
         claim.paid_index,
         claim.scaled_remainder,

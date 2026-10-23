@@ -24,8 +24,8 @@ fun fragmented_sharing_and_claims_preserve_each_assets_funded_remainders() {
     1_000u64.do!(|_| {
         meme.credit(balance::create_for_testing<MEME>(3));
         quote.credit(balance::create_for_testing<QUOTE>(5));
-        let (m_keep, m_reinvest) = meme.allocate(fee_ledger::allocation(1, 1, 1), 7);
-        let (q_keep, q_reinvest) = quote.allocate(fee_ledger::allocation(1, 3, 1), 7);
+        let (m_keep, m_reinvest) = meme.allocate(fee_ledger::new_allocation(1, 1, 1), 7);
+        let (q_keep, q_reinvest) = quote.allocate(fee_ledger::new_allocation(1, 3, 1), 7);
         kept = kept + m_keep.value() + q_keep.value();
         reinvested = reinvested + m_reinvest.value() + q_reinvest.value();
         m_keep.destroy_for_testing();
@@ -63,7 +63,7 @@ fun sharing_every_last_atom_to_binary_weights_is_exact_with_interleaved_claims()
     let mut small_paid = 0;
     100u64.do!(|_| {
         ledger.credit(balance::create_for_testing<MEME>(1));
-        let (keep, reinvest) = ledger.allocate(fee_ledger::allocation(0, 1, 0), 4);
+        let (keep, reinvest) = ledger.allocate(fee_ledger::new_allocation(0, 1, 0), 4);
         keep.destroy_zero();
         reinvest.destroy_zero();
         let paid = ledger.claim(&mut small, 1);
@@ -89,7 +89,7 @@ fun sharing_every_last_atom_to_binary_weights_is_exact_with_interleaved_claims()
     ),
 ]
 fun allocation_total_rejects_u64_overflow_before_balance_mutation() {
-    let _ = fee_ledger::allocation(18_446_744_073_709_551_615, 1, 0);
+    let _ = fee_ledger::new_allocation(18_446_744_073_709_551_615, 1, 0);
 }
 
 // === Imports ===

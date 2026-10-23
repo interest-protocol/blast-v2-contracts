@@ -45,7 +45,7 @@ public struct CommittedTerms has copy, drop, store {
 // === Public Functions ===
 
 /// The initial buy may intentionally graduate immediately. Backers commit its exact budget.
-public fun terms(
+public fun new_terms(
     target: u64,
     deadline_at_ms: u64,
     initial_buy_budget: u64,
@@ -92,6 +92,7 @@ public fun terms(
 }
 
 /// No owned vault or initializer escapes. Funding discovers only atomically shared vaults.
+/// The creator cap binds the new instance; it does not authorize a mutation of an existing vault.
 public fun create_and_share<Meme>(
     ticket: LaunchTicket<Meme>,
     currency: &Currency<Meme>,
@@ -116,7 +117,7 @@ public fun create_and_share<Meme>(
     );
     let fee_rate = cetus_config::get_fee_rate(terms.tick_spacing, config);
     terms.preflight_profile<Meme>();
-    let mut vault = market_maker::new<Meme, SUI>(
+    let mut vault = market_maker::new_and_transfer_operator_cap<Meme, SUI>(
         market_maker::curve_route(),
         terms.target,
         terms.deadline_at_ms,
@@ -129,7 +130,7 @@ public fun create_and_share<Meme>(
         ctx,
     );
     vault.set_trading_limits(limits);
-    vault.check_initial_budget(terms.initial_buy_budget, terms.initial_idle_quote);
+    vault.assert_initial_budget(terms.initial_buy_budget, terms.initial_idle_quote);
     let ticket_id = object::id(&ticket);
     vault.escrow_child(TicketKey(), ticket);
     vault.add_adapter_state(
@@ -238,7 +239,7 @@ public fun launch_buy_and_share<Meme>(
     launch.share(core_version, clock);
 }
 
-public fun return_unused_ticket<Meme>(
+public fun transfer_unused_ticket_to_supplier<Meme>(
     vault: &mut BlastMarketMakerVault<Meme, SUI>,
     version: &PackageVersion,
 ) {
@@ -296,7 +297,7 @@ public fun claim_and_credit_curve_fees<Meme>(
     vault.credit_curve_fees(meme.into_balance(), quote.into_balance());
 }
 
-public fun migrate_and_activate<Meme, CoinA, CoinB>(
+public fun migrate_burn_and_activate<Meme, CoinA, CoinB>(
     vault: &mut BlastMarketMakerVault<Meme, SUI>,
     version: &PackageVersion,
     launch: &mut Launch<Meme, SUI>,
@@ -335,8 +336,8 @@ public fun migrate_and_activate<Meme, CoinA, CoinB>(
 /// Curve trading uses original core entry points and rejoins every returned asset to capital.
 public fun buy<Meme>(
     vault: &mut BlastMarketMakerVault<Meme, SUI>,
-    version: &PackageVersion,
     cap: &BlastMarketMakerOperatorCap,
+    version: &PackageVersion,
     launch: &mut Launch<Meme, SUI>,
     core_version: &CoreVersion,
     runtime: &RuntimeConfig,
@@ -351,7 +352,7 @@ public fun buy<Meme>(
     version.assert_current();
     vault.assert_external(object::id(launch));
     assert!(quote_input > 0 && min_meme > 0, EInvalidTrade);
-    let action = risk::curve_buy(quote_input, min_meme);
+    let action = risk::new_curve_buy(quote_input, min_meme);
     vault.authorize_action(
         version,
         option::some(object::id(cap)),
@@ -372,8 +373,8 @@ public fun buy<Meme>(
 
 public fun sell<Meme>(
     vault: &mut BlastMarketMakerVault<Meme, SUI>,
-    version: &PackageVersion,
     cap: &BlastMarketMakerOperatorCap,
+    version: &PackageVersion,
     launch: &mut Launch<Meme, SUI>,
     core_version: &CoreVersion,
     runtime: &RuntimeConfig,
@@ -388,7 +389,7 @@ public fun sell<Meme>(
     version.assert_current();
     vault.assert_external(object::id(launch));
     assert!(meme_input > 0 && min_quote > 0, EInvalidTrade);
-    let action = risk::curve_sell(meme_input, min_quote);
+    let action = risk::new_curve_sell(meme_input, min_quote);
     vault.authorize_action(
         version,
         option::some(object::id(cap)),
@@ -400,21 +401,21 @@ public fun sell<Meme>(
     );
     let input = vault.take_capital_meme(meme_input).into_coin(ctx);
     let quote = launch.sell(core_version, runtime, input, min_quote, ctx);
-    let basis = sell_quote_basis(quote.value());
+    let basis = sell_quote_basis_up(quote.value());
     vault.join_capital(balance::zero(), quote.into_balance());
 
     vault.finish_action(action, meme_input, 0, basis, 0, clock);
 }
 
-// === Package Functions ===
+// === Private Functions ===
 
 /// Rejects partner substitution before any funding mutation or external venue effects.
-public(package) fun assert_committed_partner(committed: &CommittedTerms, partner: &Partner) {
+fun assert_committed_partner(committed: &CommittedTerms, partner: &Partner) {
     assert!(committed.partner_id == object::id(partner), EWrongPartner);
 }
 
 /// Uses the core's real allowlist and fixed initializer partner; no local partner split exists.
-public(package) fun apply_committed_partner<Meme>(
+fun apply_committed_partner<Meme>(
     initializer: &mut LaunchInitializer<Meme, SUI>,
     committed: &CommittedTerms,
     core_version: &CoreVersion,
@@ -427,12 +428,10 @@ public(package) fun apply_committed_partner<Meme>(
 }
 
 /// Bounds capital lockup even when an upstream private profile later rejects launch.
-public(package) fun assert_funding_window(now_ms: u64, deadline_at_ms: u64) {
-    assert!(deadline_at_ms > now_ms, EInvalidTerms);
-    assert!(deadline_at_ms - now_ms <= MAX_FUNDING_WINDOW_MS, EInvalidTerms);
+fun assert_funding_window(now_at_ms: u64, deadline_at_ms: u64) {
+    assert!(deadline_at_ms > now_at_ms, EInvalidTerms);
+    assert!(deadline_at_ms - now_at_ms <= MAX_FUNDING_WINDOW_DURATION_MS, EInvalidTerms);
 }
-
-// === Private Functions ===
 
 fun replace_escrowed_cap<Meme>(
     vault: &mut BlastMarketMakerVault<Meme, SUI>,
@@ -450,7 +449,7 @@ fun replace_escrowed_cap<Meme>(
 }
 
 /// Frozen core Quote-fee ceiling is 10%; include one atom for its ceiling rounding.
-fun sell_quote_basis(net: u64): u64 {
+fun sell_quote_basis_up(net: u64): u64 {
     let basis = (((net as u128) + 1) * 10).div_ceil(9);
     assert!(basis <= (std::u64::max_value!() as u128), EInvalidTrade);
     basis as u64
@@ -473,7 +472,7 @@ fun preflight_profile<Meme>(terms: CurveTerms) {
         terms.graduation_target - market_maker_math::apply_up(terms.graduation_target, 10_000 - terms.lp_quote_bps);
     assert!(lp_meme > 0 && lp_quote > 0, EUnsupportedMigrationProfile);
     let meme_is_a = factory::is_right_order<Meme, SUI>();
-    let sqrt_price = venue_math::sqrt_price_x64(lp_meme, lp_quote, meme_is_a);
+    let sqrt_price = venue_math::sqrt_price_x64_down(lp_meme, lp_quote, meme_is_a);
     let (lower, upper) = pool_creator::full_range_tick_range(terms.tick_spacing);
     let (_, needed_a, needed_b) = clmm_math::get_liquidity_by_amount(
         integer_mate::i32::from_u32(lower),
@@ -491,6 +490,28 @@ fun preflight_profile<Meme>(terms: CurveTerms) {
 }
 
 // === Test-Only Functions ===
+
+#[test_only]
+public fun assert_funding_window_for_testing(now_at_ms: u64, deadline_at_ms: u64) {
+    assert_funding_window(now_at_ms, deadline_at_ms);
+}
+
+#[test_only]
+public fun assert_committed_partner_for_testing(committed: &CommittedTerms, partner: &Partner) {
+    assert_committed_partner(committed, partner);
+}
+
+#[test_only]
+public fun apply_committed_partner_for_testing<Meme>(
+    initializer: &mut LaunchInitializer<Meme, SUI>,
+    committed: &CommittedTerms,
+    core_version: &CoreVersion,
+    config: &LaunchConfig,
+    partner: &Partner,
+    clock: &Clock,
+) {
+    apply_committed_partner(initializer, committed, core_version, config, partner, clock);
+}
 
 /// Fixtures exercise immutable partner matching and the real public core initializer without Cetus.
 #[test_only]
@@ -522,7 +543,7 @@ public struct BlastUnusedTicketReturned has copy, drop {
 
 // === Constants ===
 
-const MAX_FUNDING_WINDOW_MS: u64 = 604_800_000;
+const MAX_FUNDING_WINDOW_DURATION_MS: u64 = 604_800_000;
 
 // === Errors ===
 

@@ -37,7 +37,7 @@ LP deductions under FeeAdmin. The key-only
 policy and native custody identities and requires the active bytecode generation.
 
 A publication has one bootstrap. Anyone holding it and the matching original
-native UpgradeCap can call `blast_market_maker::package_admin::wrap` to seal custody
+native UpgradeCap can call `blast_market_maker::package_admin::activate_and_share_package` to seal custody
 and activate the first generation. Blast UpgradeAdmin authorizes and commits
 native compatible upgrades using the old active bytecode. `commit_upgrade` commits
 only the native receipt and leaves the operational generation unchanged. A later
@@ -129,7 +129,7 @@ PartnerCap or any Blast admin authority.
 5. Anyone calls `blast_market_maker::cetus_migrator::claim_and_credit_curve_fees`
    to join actual creator receipts into the funded fee pipeline. Completely
    empty core collection retains the core's abort semantics.
-6. Anyone calls `blast_market_maker::cetus_migrator::migrate_and_activate`
+6. Anyone calls `blast_market_maker::cetus_migrator::migrate_burn_and_activate`
    when core is MigrationReady. The sealed witness releases the handoff into
    a new Cetus pool; the full-range base LP is burned, its proof stays in the
    vault, and unused seed coins remain market-maker capital. The Cetus tier
@@ -139,7 +139,7 @@ PartnerCap or any Blast admin authority.
 Anyone can start `blast_market_maker::market_maker::begin_refunding` at the deadline while
 still Funding. Each backer calls `blast_market_maker::market_maker::refund` for its own
 strictly positive remaining contribution and consumes/delivers the returned coin.
-Anyone can call `blast_market_maker::cetus_migrator::return_unused_ticket`; its
+Anyone can call `blast_market_maker::cetus_migrator::transfer_unused_ticket_to_supplier`; its
 recipient is fixed to the original ticket supplier.
 
 ### Presale flows
@@ -166,7 +166,7 @@ market makers retain their explicitly funded initial idle-floor checks.
    Consume every returned change coin. The presale's own eligibility bound applies.
 3. Anyone may settle and claim through core. Claims pay the participant's wallet;
    claiming tokens does not remove that buyer from future epoch reward eligibility.
-4. Anyone calls `blast_market_maker::presale_adapter::migrate` on the bound funded
+4. Anyone calls `blast_market_maker::presale_adapter::migrate_burn_and_activate` on the bound funded
    sale. The committed fraction, at most 50%, of both actual net handoff assets becomes
    retained capital; the positive remainder seeds and burns the base LP. The
    reward allocation never gates migration. No caller receives
@@ -287,7 +287,7 @@ Trading capital, retained migration assets, team allocations, unused seed coins
 and the curve raise fee never enter these available fee balances.
 
 Only the bound creator cap can call `blast_market_maker::market_maker::allocate_fees`.
-For each asset, pass `blast_market_maker::fee_ledger::allocation(keep, share, reinvest)`
+For each asset, pass `blast_market_maker::fee_ledger::new_allocation(keep, share, reinvest)`
 in actual atomic units. The sum cannot exceed that asset's received, unallocated
 fees. `keep` returns a Coin to the caller. Curve `share` irrevocably funds
 fixed-weight backer claims; presale `share` funds a segregated epoch reward reserve
@@ -313,7 +313,7 @@ Each curve backer calls `blast_market_maker::market_maker::claim_fees` for its o
 Curve or Pool. It returns `(Coin<Meme>, Coin<Quote>)`; deliver or consume both,
 including zero. Anyone can move the segregated curve raise fee to the bound treasury through
 `blast_market_maker::market_maker::credit_raise_fees_to_treasury`. An empty bucket rejects. TreasuryAdmin
-withdraws earned balances only to the stored payout and cannot withdraw vault
+calls `blast_market_maker::protocol_treasury::pay_earned` to deliver earned balances to the stored payout and cannot withdraw vault
 capital, unallocated creator fees or reserved backer fees.
 
 ### Presale epoch rewards
@@ -324,12 +324,12 @@ capital, unallocated creator fees or reserved backer fees.
 2. Blast admin signs in to the existing ACL as
    `blast_market_maker::blast_market_maker_domain::RewardsAdmin`, then calls
    `blast_market_maker::presale_rewards::publish_round` with the active vault,
-   version, witness and allocation commitment. Each vault starts at round zero;
+   RewardsAdmin witness, version and allocation commitment. Each vault starts at round zero;
    publication increments the number once. Checkpoint intervals satisfy
    previous end <= start < end, allowing skipped epochs. Publication debits only
    the allocated reserve and creates a shared
    `blast_market_maker::presale_rewards::BlastPresaleRewardRound`.
-3. Anyone relays `blast_market_maker::presale_rewards::claim` using that shared
+3. Anyone relays `blast_market_maker::presale_rewards::claim_and_pay` using that shared
    round, current market-maker version, index, beneficiary, amounts and proof.
    Both actual coins are transferred directly to the committed beneficiary.
    The vault, creator, operator and admin are not needed. A bitmap prevents repeat
@@ -370,7 +370,7 @@ and expiry minus issued <= 15 seconds. Each success consumes its current nonce.
 
 Immutable limits bound per-action atoms, token buckets, lifetime gross inputs,
 Quote self-fee basis and discretionary action count. The default
-`blast_market_maker::market_maker::trading_limits` constructor gives non-refilling
+`blast_market_maker::market_maker::new_trading_limits` constructor gives non-refilling
 lifetime-sized buckets; `blast_market_maker::market_maker::with_rate_limits` commits
 explicit rolling/refill and self-fee limits. Gross inputs charge both trading
 directions and LP deposits. Removal never refills budgets. Claims, collection,

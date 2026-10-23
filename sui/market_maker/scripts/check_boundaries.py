@@ -105,7 +105,7 @@ def check() -> list[str]:
     # Reservation fixes tick spacing. A later fee-rate edit must not become a new
     # wrapper veto over an already funded/graduated migration. This is a source
     # regression gate; real changed-tier execution still needs venue runtime proof.
-    for adapter, function in (("cetus_migrator", "migrate_and_activate"), ("presale_adapter", "migrate")):
+    for adapter, function in (("cetus_migrator", "migrate_burn_and_activate"), ("presale_adapter", "migrate_burn_and_activate")):
         body = sources[adapter].split(f"public fun {function}<", 1)[1].split("\npublic fun ", 1)[0]
         require("EVenueRateChanged" not in body and "get_fee_rate(" not in body,
                 f"Migration must not veto settlement after a venue tier-rate edit: {adapter}")
@@ -150,7 +150,7 @@ def check() -> list[str]:
     )
     for expression, owner in (
         (r"package_version::initial_generation\s*\(", "blast_market_maker"),
-        (r"package_version::activate\s*\(", "package_admin"),
+        (r"package_version::create_and_share_version\s*\(", "package_admin"),
         (r"protocol_treasury::new\s*\(", "blast_market_maker"),
         (r"market_maker_fee_policy::new\s*\(", "blast_market_maker"),
     ):

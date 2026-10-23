@@ -15,7 +15,9 @@ public struct BlastMarketMakerAdmin has key {
 
 // === Public Functions ===
 
-public fun wrap(bootstrap: Bootstrap, upgrade_cap: UpgradeCap, ctx: &mut TxContext) {
+/// Consumes publication bootstrap and seals the Publisher/UpgradeCap in shared custody.
+/// Creates and shares the initial operational version; no capability or owned admin escapes.
+public fun activate_and_share_package(bootstrap: Bootstrap, upgrade_cap: UpgradeCap, ctx: &mut TxContext) {
     let (
         publisher,
         initial_generation,
@@ -39,14 +41,14 @@ public fun wrap(bootstrap: Bootstrap, upgrade_cap: UpgradeCap, ctx: &mut TxConte
         upgrade_cap,
         activated_native_version: 1,
     });
-    package_version::activate(initial_generation, treasury_id, policy_id, package_admin_id, ctx);
+    package_version::create_and_share_version(initial_generation, treasury_id, policy_id, package_admin_id, ctx);
     sui::event::emit(BlastUpgradeCustodySealed { package_admin_id, upgrade_cap_id });
 }
 
 public fun authorize_upgrade(
     self: &mut BlastMarketMakerAdmin,
-    version: &PackageVersion,
     _: &AdminWitness<UpgradeAdmin>,
+    version: &PackageVersion,
     digest: vector<u8>,
 ): UpgradeTicket {
     version.assert_package_admin(self.id.to_inner());
@@ -60,8 +62,8 @@ public fun authorize_upgrade(
 /// If the installed build has the wrong generation constant, the old build can authorize repair.
 public fun commit_upgrade(
     self: &mut BlastMarketMakerAdmin,
-    version: &PackageVersion,
     _: &AdminWitness<UpgradeAdmin>,
+    version: &PackageVersion,
     receipt: UpgradeReceipt,
 ) {
     version.assert_package_admin(self.id.to_inner());
@@ -76,8 +78,8 @@ public fun commit_upgrade(
 /// Invoke through the newly installed bytecode. Its compiled generation must be the next one.
 public fun activate_generation(
     self: &mut BlastMarketMakerAdmin,
-    version: &mut PackageVersion,
     _: &AdminWitness<UpgradeAdmin>,
+    version: &mut PackageVersion,
 ) {
     self.assert_activation_authority(version);
     version.activate_generation();
@@ -114,8 +116,8 @@ public fun new_for_testing(upgrade_cap: UpgradeCap, ctx: &mut TxContext): BlastM
 #[test_only]
 public fun activate_generation_for_testing(
     self: &mut BlastMarketMakerAdmin,
-    version: &mut PackageVersion,
     _: &AdminWitness<UpgradeAdmin>,
+    version: &mut PackageVersion,
     compiled_generation: u64,
 ) {
     self.assert_activation_authority(version);

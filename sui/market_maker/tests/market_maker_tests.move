@@ -158,8 +158,8 @@ fun curve_raise_fee_and_lp_deduction_are_separate_from_creator_and_backer_fees()
         let (kept_meme, kept_quote) = vault.allocate_fees(
             &creator,
             &f.version,
-            fee_ledger::allocation(1, 3, 4),
-            fee_ledger::allocation(10, 64, 6),
+            fee_ledger::new_allocation(1, 3, 4),
+            fee_ledger::new_allocation(10, 64, 6),
             f.ctx!(),
         );
         assert!(kept_meme.value() == 1 && kept_quote.value() == 10);
@@ -220,7 +220,7 @@ fun full_action_signature_is_required_before_any_capital_movement() {
         vault.authorize_action(
             &f.version,
             option::some(object::id(&cap)),
-            risk::curve_buy(1, 1),
+            risk::new_curve_buy(1, 1),
             100,
             200,
             &vector[],
@@ -249,7 +249,7 @@ fun gross_input_limit_rejects_before_malformed_signature() {
         vault.authorize_action(
             &f.version,
             option::some(object::id(&cap)),
-            risk::curve_buy(10_000_001, 1),
+            risk::new_curve_buy(10_000_001, 1),
             100,
             200,
             &vector[],
@@ -263,7 +263,7 @@ fun gross_input_limit_rejects_before_malformed_signature() {
 
 #[test]
 fun canonical_signature_payload_changes_for_action_nonce_epoch_and_target() {
-    let action = risk::curve_buy(100, 1);
+    let action = risk::new_curve_buy(100, 1);
     let base = risk::message_bytes<MEME, SUI>(
         object::id_from_address(@1),
         object::id_from_address(@2),
@@ -345,10 +345,10 @@ fun fee_accumulator_preserves_fractional_entitlements_over_many_tiny_receipts() 
     let mut index = 0;
     let mut claim_rem = 0;
     1_000u64.do!(|_| {
-        let (next_acc, next_rem) = market_maker_math::accrue(acc, rem, 1, 7);
+        let (next_acc, next_rem) = market_maker_math::accrued_index_down(acc, rem, 1, 7);
         acc = next_acc;
         rem = next_rem;
-        let (amount, remainder) = market_maker_math::claim(acc, index, claim_rem, 7);
+        let (amount, remainder) = market_maker_math::claim_amount_down(acc, index, claim_rem, 7);
         paid = paid + amount;
         index = acc;
         claim_rem = remainder;
@@ -361,7 +361,7 @@ fun fee_accumulator_preserves_fractional_entitlements_over_many_tiny_receipts() 
 fun full_unwind_can_finish_below_idle_floor_and_advances_nonce() {
     let mut f = start_with_limits(
         20_000_000,
-        market_maker::trading_limits(10_000_000, 10_000_000, 100_000_000, 100_000_000, 1, 1),
+        market_maker::new_trading_limits(10_000_000, 10_000_000, 100_000_000, 100_000_000, 1, 1),
     );
     let _ = f.contribute(ALICE, 20_000_000);
     f.activate_curve();
@@ -369,7 +369,7 @@ fun full_unwind_can_finish_below_idle_floor_and_advances_nonce() {
         let mut vault = f.take_vault();
         vault.activate_pool(object::id_from_address(@0xFACE));
         balance::destroy_for_testing(vault.take_capital_quote(19_000_000));
-        let action = risk::unwind(object::id_from_address(@0xCAFE), 1, 0, 0);
+        let action = risk::new_unwind(object::id_from_address(@0xCAFE), 1, 0, 0);
         let before = vault.signing_bytes(action, 100, 200);
         // The production venue adapter has already verified the signature and retained removal output.
         // This regression isolates the post-execution ledger gate; it does not execute a venue stub.
@@ -393,7 +393,7 @@ fun full_unwind_can_finish_below_idle_floor_and_advances_nonce() {
 fun ordinary_removal_cannot_finish_below_idle_floor() {
     let mut f = start_with_limits(
         20_000_000,
-        market_maker::trading_limits(10_000_000, 10_000_000, 100_000_000, 100_000_000, 1, 1),
+        market_maker::new_trading_limits(10_000_000, 10_000_000, 100_000_000, 100_000_000, 1, 1),
     );
     let _ = f.contribute(ALICE, 20_000_000);
     f.activate_curve();
@@ -402,7 +402,7 @@ fun ordinary_removal_cannot_finish_below_idle_floor() {
         vault.activate_pool(object::id_from_address(@0xFACE));
         balance::destroy_for_testing(vault.take_capital_quote(19_000_000));
         vault.finish_action(
-            risk::remove(object::id_from_address(@0xCAFE), 1, 0, 0),
+            risk::new_remove_liquidity(object::id_from_address(@0xCAFE), 1, 0, 0),
             0,
             0,
             0,
@@ -416,11 +416,11 @@ fun ordinary_removal_cannot_finish_below_idle_floor() {
 
 #[test]
 fun opening_signature_commits_to_ticks_inputs_and_minimum_liquidity() {
-    let lower = risk::open(10, 20, 100, 200, 300);
-    let changed_tick = risk::open(11, 20, 100, 200, 300);
-    let changed_meme = risk::open(10, 20, 101, 200, 300);
-    let changed_quote = risk::open(10, 20, 100, 201, 300);
-    let changed_liquidity = risk::open(10, 20, 100, 200, 301);
+    let lower = risk::new_open_position(10, 20, 100, 200, 300);
+    let changed_tick = risk::new_open_position(11, 20, 100, 200, 300);
+    let changed_meme = risk::new_open_position(10, 20, 101, 200, 300);
+    let changed_quote = risk::new_open_position(10, 20, 100, 201, 300);
+    let changed_liquidity = risk::new_open_position(10, 20, 100, 200, 301);
     assert!(
         lower != changed_tick && lower != changed_meme && lower != changed_quote && lower != changed_liquidity,
     );
@@ -448,7 +448,7 @@ fun direct_only_fees_remain_unallocated_until_creator_chooses() {
     let mut f = start_route(
         1_000,
         market_maker::presale_route(),
-        market_maker::trading_limits(100, 100, 1_000, 1_000, 0, 10),
+        market_maker::new_trading_limits(100, 100, 1_000, 1_000, 0, 10),
     );
     f.next_tx!(ROOT, |f| {
         let mut vault = f.take_vault();
@@ -472,8 +472,8 @@ fun direct_only_fees_remain_unallocated_until_creator_chooses() {
         let (meme, quote) = vault.allocate_fees(
             &creator,
             &f.version,
-            fee_ledger::allocation(2, 0, 5),
-            fee_ledger::allocation(20, 0, 80),
+            fee_ledger::new_allocation(2, 0, 5),
+            fee_ledger::new_allocation(20, 0, 80),
             f.ctx!(),
         );
         assert!(meme.value() == 2 && quote.value() == 20);
@@ -519,7 +519,7 @@ fun shared_presale_constructor_rejects_an_unfunded_idle_quote_floor() {
     let f = start_route(
         1_000,
         market_maker::presale_route(),
-        market_maker::trading_limits(100, 100, 1_000, 1_000, 1, 10),
+        market_maker::new_trading_limits(100, 100, 1_000, 1_000, 1, 10),
     );
     f.end();
 }
@@ -540,7 +540,7 @@ fun curve_raise_and_lp_fees_fund_treasury_while_seed_remainders_stay_creator_cap
     f.set_rates(1_000, 2_000);
     f.next_tx!(ROOT, |f| {
         let mut vault = f.take_vault();
-        let (unused_meme, unused_quote) = vault.retain_seed_residuals(
+        let (unused_meme, unused_quote) = vault.retain_seed_residuals_for_testing(
             balance::create_for_testing<MEME>(7),
             balance::create_for_testing<SUI>(11),
         );
@@ -627,14 +627,14 @@ fun treasury_pays_publisher_before_configuration_and_new_destination_after_rotat
     let mut f = start_route_with_payout(
         20_000_000,
         market_maker::curve_route(),
-        market_maker::trading_limits(10_000_000, 10_000_000, 100_000_000, 100_000_000, 0, 100),
+        market_maker::new_trading_limits(10_000_000, 10_000_000, 100_000_000, 100_000_000, 0, 100),
         ROOT,
     );
     f.next_tx!(ROOT, |f| {
         let vault_id = f.vault_id;
         f.treasury.credit(&f.version, vault_id, balance::create_for_testing<SUI>(30));
         f.withdraw_quote(10);
-        f.treasury.set_payout(&f.version, &blast_acl::witness_for_testing<TreasuryAdmin>(), PAYOUT);
+        f.treasury.set_payout(&blast_acl::witness_for_testing<TreasuryAdmin>(), &f.version, PAYOUT);
         let changed = sui::event::events_by_type<protocol_treasury::BlastTreasuryDestinationChanged>();
         assert_eq!(changed.length(), 1);
         let mut data = sui::bcs::new(std::bcs::to_bytes(&changed[0]));
@@ -678,7 +678,7 @@ fun treasury_pays_publisher_before_configuration_and_new_destination_after_rotat
 fun treasury_payout_rejects_zero_address() {
     let mut f = start(20_000_000);
     f.next_tx!(ROOT, |f| {
-        f.treasury.set_payout(&f.version, &blast_acl::witness_for_testing<TreasuryAdmin>(), @0x0);
+        f.treasury.set_payout(&blast_acl::witness_for_testing<TreasuryAdmin>(), &f.version, @0x0);
     });
     f.end();
 }
@@ -691,7 +691,7 @@ fun treasury_payout_rejects_zero_address() {
 fun treasury_payout_rejects_unchanged_address() {
     let mut f = start(20_000_000);
     f.next_tx!(ROOT, |f| {
-        f.treasury.set_payout(&f.version, &blast_acl::witness_for_testing<TreasuryAdmin>(), PAYOUT);
+        f.treasury.set_payout(&blast_acl::witness_for_testing<TreasuryAdmin>(), &f.version, PAYOUT);
     });
     f.end();
 }
@@ -719,7 +719,7 @@ fun creator_can_rotate_operator_and_retire_stale_cap() {
         let mut vault = f.take_vault();
         let creator = f.take_sender<BlastMarketMakerCreatorCap>();
         let operator = f.take_sender<BlastMarketMakerOperatorCap>();
-        vault.rotate_operator(&creator, &f.version, BOB, f.ctx!());
+        vault.rotate_and_transfer_operator_cap(&creator, &f.version, BOB, f.ctx!());
         vault.destroy_stale_operator_cap(operator);
         f.return_sender(creator);
         vault.return_vault();
@@ -747,10 +747,10 @@ fun current_operator_cap_cannot_be_destroyed_as_stale() {
 
 #[test]
 fun capacity_guards_admit_last_slot_and_existing_backer_topup() {
-    market_maker::assert_backer_slot(false, 9_999);
-    market_maker::assert_backer_slot(true, 10_000);
-    cetus_engine::assert_position_slot(7);
-    cetus_migrator::assert_funding_window(100, 604_800_100);
+    market_maker::assert_backer_slot_for_testing(false, 9_999);
+    market_maker::assert_backer_slot_for_testing(true, 10_000);
+    cetus_engine::assert_position_slot_for_testing(7);
+    cetus_migrator::assert_funding_window_for_testing(100, 604_800_100);
 }
 
 #[test]
@@ -761,7 +761,7 @@ fun capacity_guards_admit_last_slot_and_existing_backer_topup() {
     ),
 ]
 fun first_new_backer_above_capacity_is_rejected() {
-    market_maker::assert_backer_slot(false, 10_000);
+    market_maker::assert_backer_slot_for_testing(false, 10_000);
 }
 
 #[test]
@@ -771,7 +771,7 @@ fun first_new_backer_above_capacity_is_rejected() {
         location = blast_market_maker::cetus_engine,
     ),
 ]
-fun ninth_managed_position_is_rejected() { cetus_engine::assert_position_slot(8); }
+fun ninth_managed_position_is_rejected() { cetus_engine::assert_position_slot_for_testing(8); }
 
 #[test]
 #[
@@ -781,7 +781,7 @@ fun ninth_managed_position_is_rejected() { cetus_engine::assert_position_slot(8)
     ),
 ]
 fun funding_window_rejects_first_millisecond_above_seven_days() {
-    cetus_migrator::assert_funding_window(100, 604_800_101);
+    cetus_migrator::assert_funding_window_for_testing(100, 604_800_101);
 }
 
 #[test]
@@ -791,7 +791,7 @@ fun funding_window_rejects_first_millisecond_above_seven_days() {
         location = blast_market_maker::cetus_migrator,
     ),
 ]
-fun funding_window_rejects_present_deadline() { cetus_migrator::assert_funding_window(100, 100); }
+fun funding_window_rejects_present_deadline() { cetus_migrator::assert_funding_window_for_testing(100, 100); }
 
 #[test]
 fun reusable_creator_cap_controls_two_vaults_after_native_transfer() {
@@ -800,7 +800,7 @@ fun reusable_creator_cap_controls_two_vaults_after_native_transfer() {
     {
         let creator = f.take_sender<BlastMarketMakerCreatorCap>();
         let Fixture { scenario, version, policy, treasury, .. } = &mut f;
-        let mut second = market_maker::new<MEME, SUI>(
+        let mut second = market_maker::new_and_transfer_operator_cap<MEME, SUI>(
             market_maker::curve_route(),
             20_000_000,
             DEADLINE,
@@ -812,7 +812,7 @@ fun reusable_creator_cap_controls_two_vaults_after_native_transfer() {
             treasury,
             scenario.ctx(),
         );
-        second.set_trading_limits(market_maker::trading_limits(1, 1, 100, 100, 0, 10));
+        second.set_trading_limits(market_maker::new_trading_limits(1, 1, 100, 100, 0, 10));
         second_id = object::id(&second);
         second.share();
         sui::transfer::public_transfer(creator, BOB);
@@ -825,7 +825,7 @@ fun reusable_creator_cap_controls_two_vaults_after_native_transfer() {
         let creator = f.take_sender<BlastMarketMakerCreatorCap>();
         let mut first = f.take_vault();
         let mut second = f.scenario.take_shared_by_id<BlastMarketMakerVault<MEME, SUI>>(second_id);
-        assert_eq!(first.creator_cap_id(), second.creator_cap_id());
+        assert_eq!(first.creator_cap_id_for_testing(), second.creator_cap_id_for_testing());
         first.set_paused(&creator, &f.version, true);
         second.set_paused(&creator, &f.version, true);
         assert_eq!(sui::event::events_by_type<market_maker::BlastPauseChanged>().length(), 2);
@@ -868,8 +868,8 @@ fun creator_cannot_allocate_before_backer_weights_freeze() {
         let (kept_meme, kept_quote) = vault.allocate_fees(
             &creator,
             &f.version,
-            fee_ledger::allocation(0, 1, 0),
-            fee_ledger::allocation(0, 0, 0),
+            fee_ledger::new_allocation(0, 1, 0),
+            fee_ledger::new_allocation(0, 0, 0),
             f.ctx!(),
         );
         kept_meme.burn_for_testing();
@@ -885,7 +885,7 @@ fun presale_sharing_needs_no_wrapper_backers() {
     let mut f = start_route(
         1_000,
         market_maker::presale_route(),
-        market_maker::trading_limits(1, 1, 100, 100, 0, 10),
+        market_maker::new_trading_limits(1, 1, 100, 100, 0, 10),
     );
     let mut vault = f.take_vault();
     vault.activate_pool(object::id_from_address(@0xFACE));
@@ -895,8 +895,8 @@ fun presale_sharing_needs_no_wrapper_backers() {
         let (kept_meme, kept_quote) = vault.allocate_fees(
             &creator,
             &f.version,
-            fee_ledger::allocation(0, 0, 0),
-            fee_ledger::allocation(0, 10, 0),
+            fee_ledger::new_allocation(0, 0, 0),
+            fee_ledger::new_allocation(0, 10, 0),
             f.ctx!(),
         );
         kept_meme.burn_for_testing();
@@ -927,8 +927,8 @@ fun fee_allocation_cannot_disguise_principal_as_received_fees() {
         let (kept_meme, kept_quote) = vault.allocate_fees(
             &creator,
             &f.version,
-            fee_ledger::allocation(0, 0, 0),
-            fee_ledger::allocation(1, 0, 0),
+            fee_ledger::new_allocation(0, 0, 0),
+            fee_ledger::new_allocation(1, 0, 0),
             f.ctx!(),
         );
         kept_meme.burn_for_testing();
@@ -954,8 +954,8 @@ fun creator_cannot_reallocate_reserved_backer_fees() {
         let (kept_meme, kept_quote) = vault.allocate_fees(
             &creator,
             &f.version,
-            fee_ledger::allocation(0, 100, 0),
-            fee_ledger::allocation(0, 200, 0),
+            fee_ledger::new_allocation(0, 100, 0),
+            fee_ledger::new_allocation(0, 200, 0),
             f.ctx!(),
         );
         kept_meme.burn_for_testing();
@@ -965,8 +965,8 @@ fun creator_cannot_reallocate_reserved_backer_fees() {
         let (kept_meme, kept_quote) = vault.allocate_fees(
             &creator,
             &f.version,
-            fee_ledger::allocation(1, 0, 0),
-            fee_ledger::allocation(0, 0, 0),
+            fee_ledger::new_allocation(1, 0, 0),
+            fee_ledger::new_allocation(0, 0, 0),
             f.ctx!(),
         );
         kept_meme.burn_for_testing();
@@ -987,8 +987,8 @@ fun creator_rebinding_preserves_both_asset_claims_and_reinvests_only_available_f
             let (kept_meme, kept_quote) = vault.allocate_fees(
                 &creator,
                 &f.version,
-                fee_ledger::allocation(10, 40, 20),
-                fee_ledger::allocation(20, 80, 40),
+                fee_ledger::new_allocation(10, 40, 20),
+                fee_ledger::new_allocation(20, 80, 40),
                 f.ctx!(),
             );
             kept_meme.burn_for_testing();
@@ -1000,8 +1000,8 @@ fun creator_rebinding_preserves_both_asset_claims_and_reinvests_only_available_f
             let (kept_meme, kept_quote) = vault.allocate_fees(
                 &successor,
                 &f.version,
-                fee_ledger::allocation(30, 0, 0),
-                fee_ledger::allocation(0, 0, 60),
+                fee_ledger::new_allocation(30, 0, 0),
+                fee_ledger::new_allocation(0, 0, 60),
                 f.ctx!(),
             );
             kept_meme.burn_for_testing();
@@ -1080,8 +1080,8 @@ fun creator_can_return_all_idle_capital_while_preserving_user_claims_and_unalloc
         let (m, q) = vault.allocate_fees(
             &creator,
             &f.version,
-            fee_ledger::allocation(0, 40, 0),
-            fee_ledger::allocation(0, 80, 0),
+            fee_ledger::new_allocation(0, 40, 0),
+            fee_ledger::new_allocation(0, 80, 0),
             f.ctx!(),
         );
         m.burn_for_testing();
@@ -1163,7 +1163,7 @@ fun creator_can_return_all_idle_capital_while_preserving_user_claims_and_unalloc
 fun creator_capital_distribution_can_override_delegated_idle_floor_after_curve_launch() {
     let mut f = start_with_limits(
         20_000_000,
-        market_maker::trading_limits(1, 1, 100, 100, 10, 1),
+        market_maker::new_trading_limits(1, 1, 100, 100, 10, 1),
     );
     let _ = f.contribute(ALICE, 20_000_000);
     f.activate_curve();
@@ -1238,8 +1238,8 @@ fun capital_withdrawal_cannot_spend_unallocated_fees_or_user_reserves() {
     let (m, q) = vault.allocate_fees(
         &creator,
         &f.version,
-        fee_ledger::allocation(0, 40, 0),
-        fee_ledger::allocation(0, 80, 0),
+        fee_ledger::new_allocation(0, 40, 0),
+        fee_ledger::new_allocation(0, 80, 0),
         f.ctx!(),
     );
     m.burn_for_testing();
@@ -1403,9 +1403,9 @@ fun return_sender<T: key>(f: &Fixture, value: T) { f.scenario.return_to_sender(v
 
 fun withdraw_quote(f: &mut Fixture, amount: u64) {
     let Fixture { treasury, version, scenario, .. } = f;
-    treasury.withdraw_earned<SUI>(
-        version,
+    treasury.pay_earned<SUI>(
         &blast_acl::witness_for_testing<TreasuryAdmin>(),
+        version,
         amount,
         scenario.ctx(),
     );
@@ -1414,13 +1414,13 @@ fun withdraw_quote(f: &mut Fixture, amount: u64) {
 fun return_vault(vault: BlastMarketMakerVault<MEME, SUI>) { test_scenario::return_shared(vault); }
 
 fun set_rates(f: &mut Fixture, meme: u64, quote: u64) {
-    f.policy.set_rates(&f.version, &blast_acl::witness_for_testing<FeeAdmin>(), meme, quote);
+    f.policy.set_rates(&blast_acl::witness_for_testing<FeeAdmin>(), &f.version, meme, quote);
 }
 
 fun start(target: u64): Fixture {
     start_with_limits(
         target,
-        market_maker::trading_limits(10_000_000, 10_000_000, 100_000_000, 100_000_000, 0, 100),
+        market_maker::new_trading_limits(10_000_000, 10_000_000, 100_000_000, 100_000_000, 0, 100),
     )
 }
 
@@ -1451,8 +1451,8 @@ fun start_route_with_payout(
     let policy = market_maker_fee_policy::new_for_testing(object::id(&treasury), ctx);
     let version = package_version::new_for_testing(object::id(&treasury), object::id(&policy), ctx);
     if (payout != ROOT)
-        treasury.set_payout(&version, &blast_acl::witness_for_testing<TreasuryAdmin>(), payout);
-    let mut vault = market_maker::new<MEME, SUI>(
+        treasury.set_payout(&blast_acl::witness_for_testing<TreasuryAdmin>(), &version, payout);
+    let mut vault = market_maker::new_and_transfer_operator_cap<MEME, SUI>(
         route,
         target,
         DEADLINE,
@@ -1540,5 +1540,5 @@ use sui::{
     tx_context,
 };
 
-use fun cetus_engine::retain_seed_residuals as BlastMarketMakerVault.retain_seed_residuals;
+use fun cetus_engine::retain_seed_residuals_for_testing as BlastMarketMakerVault.retain_seed_residuals_for_testing;
 use fun return_vault as BlastMarketMakerVault.return_vault;

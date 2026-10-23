@@ -227,18 +227,18 @@ fun all_core_buyers_receive_epoch_rewards_even_after_claiming_presale_tokens() {
         let alice = rewards::leaf_for_testing(f.vault_id, 0, 0, ALICE, 6, 60);
         let bob = rewards::leaf_for_testing(f.vault_id, 0, 1, BOB, 4, 40);
         rewards::publish_round(
-            &mut vault, &f.version, &blast_acl::witness_for_testing<RewardsAdmin>(),
+            &mut vault, &blast_acl::witness_for_testing<RewardsAdmin>(), &f.version,
             0, 10, 20, rewards::node_for_testing(alice, bob), vector::tabulate!(32, |_| 7),
             2, 10, 100, f.ctx!(),
-        );
+    );
         vault.return_vault();
     });
     f.next_tx!(KEEPER, |f| {
         let mut round = f.take_round();
         let alice = rewards::leaf_for_testing(f.vault_id, 0, 0, ALICE, 6, 60);
         let bob = rewards::leaf_for_testing(f.vault_id, 0, 1, BOB, 4, 40);
-        round.claim(&f.version, 0, ALICE, 6, 60, vector[bob], f.ctx!());
-        round.claim(&f.version, 1, BOB, 4, 40, vector[alice], f.ctx!());
+        round.claim_and_pay(&f.version, 0, ALICE, 6, 60, vector[bob], f.ctx!());
+        round.claim_and_pay(&f.version, 1, BOB, 4, 40, vector[alice], f.ctx!());
         let (meme, quote) = round.balances_for_testing();
         assert_eq!(meme, 0);
         assert_eq!(quote, 0);
@@ -341,7 +341,7 @@ fun presale_rejects_unachievable_idle_floor_before_core_creation() {
     ),
 ]
 fun participant_limit_is_owned_by_core_presale() {
-    let _ = presale_adapter::terms(
+    let _ = presale_adapter::new_terms(
         100_000,
         false,
         8_000,
@@ -379,7 +379,7 @@ fun retention_uses_net_assets_after_upstream_fees_and_preserves_participant_toke
         // Gross raise1000 = protocol100 + net LP900.
         assert_eq!(meme.value(), 10_000);
         assert_eq!(quote.value(), 900);
-        let (meme_seed, quote_seed) = vault.retain_capital(meme, quote, 2_000);
+        let (meme_seed, quote_seed) = vault.retain_capital_and_return_seed_for_testing(meme, quote, 2_000);
         assert_eq!(meme_seed.value(), 8_000);
         assert_eq!(quote_seed.value(), 720);
         let (retained_meme, retained_quote) = vault.capital_for_testing();
@@ -662,7 +662,7 @@ fun unrelated_creator_cap_cannot_withdraw_received_team_capital() {
 #[test]
 #[expected_failure(abort_code = blast_presale::bps::EInvalidBps, location = blast_presale::bps)]
 fun team_raise_share_rejects_first_rate_above_one_hundred_percent() {
-    let _ = presale_adapter::terms(
+    let _ = presale_adapter::new_terms(
         100_000,
         false,
         7_000,
@@ -772,7 +772,7 @@ fun receive_with_wrong_sale_binding(f: &mut Fixture) {
     let payment = test_scenario::most_recent_receiving_ticket<Coin<QUOTE>>(&f.vault_id);
     let sale = f.take_sale();
     let Fixture { scenario, creator, version, treasury, policy, .. } = f;
-    let mut foreign = market_maker::new<PRESALE_ADAPTER_TESTS, QUOTE>(
+    let mut foreign = market_maker::new_and_transfer_operator_cap<PRESALE_ADAPTER_TESTS, QUOTE>(
         market_maker::presale_route(),
         1_000,
         START + DURATION,
@@ -841,7 +841,7 @@ fun migrate_team_handoff(f: &mut Fixture) {
     assert_eq!(recipient, f.vault_id.to_address());
     assert_eq!(quote_amount, 200);
     assert_eq!(presale::raise_allocated_vesting_id(&raises[0]), option::none());
-    let (meme, quote) = vault.retain_capital(meme, quote, 2_000);
+    let (meme, quote) = vault.retain_capital_and_return_seed_for_testing(meme, quote, 2_000);
     assert_eq!(meme.value(), 8_000);
     assert_eq!(quote.value(), 560);
     meme.destroy_for_testing();
@@ -940,7 +940,7 @@ fun assert_capital_receipt_events(f: &Fixture, meme: u64, quote: u64) {
 }
 
 fun sale_terms(retention_bps: u64): PresaleTerms {
-    presale_adapter::terms(
+    presale_adapter::new_terms(
         100_000,
         false,
         8_000,
@@ -1018,7 +1018,7 @@ fun new_fixture_with_team_allocations(
         object::id(&policy),
         ctx,
     );
-    treasury.set_payout(&version, &blast_acl::witness_for_testing<TreasuryAdmin>(), TREASURY);
+    treasury.set_payout(&blast_acl::witness_for_testing<TreasuryAdmin>(), &version, TREASURY);
     let core_version = blast_presale_package::new_for_testing(ctx);
     let mut core_policy = fee_policy::new_for_testing(ctx);
     if (raise_bps > 0 || token_bps > 0) {
@@ -1066,7 +1066,7 @@ fun new_fixture_with_team_allocations(
         &creation,
         &core_policy,
         &partner,
-        presale_adapter::terms(
+        presale_adapter::new_terms(
             100_000,
             false,
             8_000 - team_token_bps,
@@ -1082,7 +1082,7 @@ fun new_fixture_with_team_allocations(
             team_token_bps,
             team_raise_bps,
         ),
-        market_maker::trading_limits(10_000, 10_000, 100_000, 100_000, idle_quote, 1_000),
+        market_maker::new_trading_limits(10_000, 10_000, 100_000, 100_000, idle_quote, 1_000),
         ROOT,
         &creator,
         vector::tabulate!(32, |_| 0),
@@ -1172,8 +1172,8 @@ fun allocate(
     let (meme, quote) = vault.allocate_fees(
         creator,
         version,
-        fee_ledger::allocation(0, share_meme, reinvest_meme),
-        fee_ledger::allocation(0, share_quote, reinvest_quote),
+        fee_ledger::new_allocation(0, share_meme, reinvest_meme),
+        fee_ledger::new_allocation(0, share_quote, reinvest_quote),
         scenario.ctx(),
     );
     assert_eq!(meme.value(), 0);
@@ -1220,7 +1220,7 @@ fun migrate_handoff_and_activate(fixture: &mut Fixture, retention_bps: u64) {
     assert!(sale.is_migrated_for_testing());
     assert_eq!(meme.value(), 20_000);
     assert_eq!(quote.value(), 1_000);
-    let (meme, quote) = vault.retain_capital(meme, quote, retention_bps);
+    let (meme, quote) = vault.retain_capital_and_return_seed_for_testing(meme, quote, retention_bps);
     if (retention_bps == 2_000) {
         let (meme_capital, quote_capital) = vault.capital_for_testing();
         assert_eq!(meme_capital, 4_000);
@@ -1334,7 +1334,7 @@ use sui::{
     test_utils,
 };
 
-use fun cetus_engine::retain_capital as BlastMarketMakerVault.retain_capital;
+use fun cetus_engine::retain_capital_and_return_seed_for_testing as BlastMarketMakerVault.retain_capital_and_return_seed_for_testing;
 use fun presale_adapter::destroy_cancelled_presale_cap as BlastMarketMakerVault.destroy_cancelled_presale_cap;
 use fun presale_adapter::migration_handoff_for_testing as BlastMarketMakerVault.migration_handoff_for_testing;
 use fun presale_adapter::receive_team_meme as BlastMarketMakerVault.receive_team_meme;

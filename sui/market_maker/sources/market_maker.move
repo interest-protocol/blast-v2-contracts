@@ -81,7 +81,7 @@ public struct BlastMarketMakerCreatorCap has key, store { id: UID }
 
 // === Public Functions ===
 
-public fun trading_limits(
+public fun new_trading_limits(
     max_meme_input: u64,
     max_quote_input: u64,
     lifetime_meme_input: u64,
@@ -114,7 +114,7 @@ public fun trading_limits(
 
 /// Optional stricter rolling and self-fee ceilings, immutable once the market maker is shared.
 public fun with_rate_limits(
-    mut limits: TradingLimits,
+    mut self: TradingLimits,
     meme_capacity: u64,
     quote_capacity: u64,
     meme_refill_per_ms: u64,
@@ -123,18 +123,18 @@ public fun with_rate_limits(
     pool_quote_input_limit: u64,
 ): TradingLimits {
     assert!(
-        meme_capacity >= limits.max_meme_input && quote_capacity >= limits.max_quote_input,
+        meme_capacity >= self.max_meme_input && quote_capacity >= self.max_quote_input,
         EInvalidTradingLimits,
     );
     assert!(curve_quote_basis_limit > 0 && pool_quote_input_limit > 0, EInvalidTradingLimits);
-    limits.meme_bucket_capacity = meme_capacity;
-    limits.quote_bucket_capacity = quote_capacity;
-    limits.meme_refill_per_ms = meme_refill_per_ms;
-    limits.quote_refill_per_ms = quote_refill_per_ms;
-    limits.curve_quote_basis_limit = curve_quote_basis_limit;
-    limits.pool_quote_input_limit = pool_quote_input_limit;
+    self.meme_bucket_capacity = meme_capacity;
+    self.quote_bucket_capacity = quote_capacity;
+    self.meme_refill_per_ms = meme_refill_per_ms;
+    self.quote_refill_per_ms = quote_refill_per_ms;
+    self.curve_quote_basis_limit = curve_quote_basis_limit;
+    self.pool_quote_input_limit = pool_quote_input_limit;
 
-    limits
+    self
 }
 
 /// Returns the exact BCS payload for the current key epoch/nonce and exact action.
@@ -209,22 +209,18 @@ public fun refund<Meme, Quote>(
     let BackerClaim { weight, meme: _, quote: _ } = self.backers.remove(ctx.sender());
 
     self.total_weight = self.total_weight - weight;
-    let refund = self.funding.split(weight).into_coin(ctx);
+    let refund_coin = self.funding.split(weight).into_coin(ctx);
     sui::event::emit(BlastRefunded<Quote> {
         vault_id: self.id.to_inner(),
         amount: weight,
     });
 
-    refund
+    refund_coin
 }
 
 /// Creates an inert authority; using it against a vault always checks the current version.
 public fun new_creator_cap(ctx: &mut TxContext): BlastMarketMakerCreatorCap {
     BlastMarketMakerCreatorCap { id: object::new(ctx) }
-}
-
-public fun creator_cap_id<Meme, Quote>(self: &BlastMarketMakerVault<Meme, Quote>): ID {
-    self.creator_cap_id
 }
 
 /// Adds strategy capital without creating fee weight or a redemption claim.
@@ -385,7 +381,7 @@ public fun set_paused<Meme, Quote>(
     sui::event::emit(BlastPauseChanged { vault_id: self.id.to_inner(), paused });
 }
 
-public fun rotate_operator<Meme, Quote>(
+public fun rotate_and_transfer_operator_cap<Meme, Quote>(
     self: &mut BlastMarketMakerVault<Meme, Quote>,
     cap: &BlastMarketMakerCreatorCap,
     version: &PackageVersion,
@@ -472,7 +468,9 @@ public(package) fun curve_route(): Route { Route::Curve }
 
 public(package) fun presale_route(): Route { Route::Presale }
 
-public(package) fun new<Meme, Quote>(
+/// Returns an owned vault and delivers its operator cap to the committed operator address.
+/// Adapters configure and share the vault atomically; this is an intentional delivery endpoint.
+public(package) fun new_and_transfer_operator_cap<Meme, Quote>(
     route: Route,
     target: u64,
     deadline_at_ms: u64,
@@ -519,7 +517,7 @@ public(package) fun new<Meme, Quote>(
         policy_id: object::id(policy),
         treasury_id: object::id(treasury),
         raise_bps: if (route == Route::Curve) CURVE_RAISE_BPS else 0,
-        maximum_lp_bps: market_maker_fee_policy::maximum(),
+        maximum_lp_bps: market_maker_fee_policy::maximum_lp_bps(),
         paused: false,
         operator_cap_id,
         creator_cap_id,
@@ -911,7 +909,7 @@ public(package) fun finish_action<Meme, Quote>(
     });
 }
 
-public(package) fun check_initial_budget<Meme, Quote>(
+public(package) fun assert_initial_budget<Meme, Quote>(
     self: &BlastMarketMakerVault<Meme, Quote>,
     initial_budget: u64,
     idle_floor: u64,
@@ -1007,11 +1005,6 @@ public(package) fun assert_refunding<Meme, Quote>(self: &BlastMarketMakerVault<M
     assert!(self.phase == Phase::Refunding, EWrongPhase);
 }
 
-/// Existing contributors may top up even when every distinct-address slot is occupied.
-public(package) fun assert_backer_slot(existing: bool, count: u64) {
-    assert!(existing || count < MAX_BACKERS, EBackerCapacity);
-}
-
 // === Private Functions ===
 
 fun refilled_buckets<Meme, Quote>(
@@ -1019,12 +1012,12 @@ fun refilled_buckets<Meme, Quote>(
     clock: &Clock,
 ): (u64, u64) {
     assert!(clock.timestamp_ms() >= self.bucket_at_ms, EClockRegression);
-    let elapsed = (clock.timestamp_ms() - self.bucket_at_ms) as u256;
+    let elapsed_duration_ms = (clock.timestamp_ms() - self.bucket_at_ms) as u256;
     let limits = self.limits.borrow();
-    let meme = ((self.meme_bucket as u256) + elapsed * (limits.meme_refill_per_ms as u256)).min(
+    let meme = ((self.meme_bucket as u256) + elapsed_duration_ms * (limits.meme_refill_per_ms as u256)).min(
         limits.meme_bucket_capacity as u256,
     );
-    let quote = ((self.quote_bucket as u256) + elapsed * (limits.quote_refill_per_ms as u256)).min(
+    let quote = ((self.quote_bucket as u256) + elapsed_duration_ms * (limits.quote_refill_per_ms as u256)).min(
         limits.quote_bucket_capacity as u256,
     );
 
@@ -1035,7 +1028,11 @@ fun assert_backer_capacity<Meme, Quote>(
     self: &BlastMarketMakerVault<Meme, Quote>,
     backer: address,
 ) {
-    assert_backer_slot(self.backers.contains(backer), self.backers.length());
+    if (!self.backers.contains(backer)) assert_new_backer_slot(self.backers.length());
+}
+
+fun assert_new_backer_slot(backer_count: u64) {
+    assert!(backer_count < MAX_BACKERS, EBackerCapacity);
 }
 
 fun record_weight<Meme, Quote>(
@@ -1105,6 +1102,17 @@ fun emit_capital_deposited<Meme, Quote>(
 }
 
 // === Test-Only Functions ===
+
+/// Exercises the production new-address bound without constructing ten thousand table entries.
+#[test_only]
+public fun assert_backer_slot_for_testing(existing: bool, backer_count: u64) {
+    if (!existing) assert_new_backer_slot(backer_count);
+}
+
+#[test_only]
+public fun creator_cap_id_for_testing<Meme, Quote>(self: &BlastMarketMakerVault<Meme, Quote>): ID {
+    self.creator_cap_id
+}
 
 #[test_only]
 public fun weight_for_testing<Meme, Quote>(

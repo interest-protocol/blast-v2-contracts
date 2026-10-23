@@ -32,7 +32,7 @@ public fun collect_base_fees<Meme, Quote, CoinA, CoinB>(
     ctx: &mut TxContext,
 ) {
     version.assert_current();
-    let meme_is_a = assert_pair<Meme, Quote, CoinA, CoinB>();
+    let meme_is_a = meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
     vault.assert_pool(object::id(pool));
     let proof = vault.escrowed_child_mut<Meme, Quote, _, CetusLPBurnProof>(BaseProofKey());
     let (a, b) = manager.collect_fee(config, pool, proof, ctx);
@@ -44,8 +44,8 @@ public fun collect_base_fees<Meme, Quote, CoinA, CoinB>(
 /// Atomically opens and funds one of eight ordinary positions; returns only its inert ID.
 public fun open_position<Meme, Quote, A, B>(
     vault: &mut BlastMarketMakerVault<Meme, Quote>,
-    version: &PackageVersion,
     cap: &BlastMarketMakerOperatorCap,
+    version: &PackageVersion,
     config: &GlobalConfig,
     pool: &mut Pool<A, B>,
     tick_lower: u32,
@@ -60,12 +60,12 @@ public fun open_position<Meme, Quote, A, B>(
     ctx: &mut TxContext,
 ): ID {
     version.assert_current();
-    let meme_is_a = assert_pair<Meme, Quote, A, B>();
+    let meme_is_a = meme_is_coin_a<Meme, Quote, A, B>();
     vault.assert_pool(object::id(pool));
     let state = vault.adapter_state<Meme, Quote, _, StrategyState>(StrategyKey());
     assert_position_slot(state.positions.length());
     assert!(max_meme > 0 && max_quote > 0 && min_liquidity > 0, EInvalidAction);
-    let action = risk::open(tick_lower, tick_upper, max_meme, max_quote, min_liquidity);
+    let action = risk::new_open_position(tick_lower, tick_upper, max_meme, max_quote, min_liquidity);
     vault.authorize_action(
         version,
         option::some(object::id(cap)),
@@ -123,7 +123,7 @@ public fun collect_managed_fees<Meme, Quote, A, B>(
     ctx: &mut TxContext,
 ) {
     version.assert_current();
-    let meme_is_a = assert_pair<Meme, Quote, A, B>();
+    let meme_is_a = meme_is_coin_a<Meme, Quote, A, B>();
     vault.assert_pool(object::id(pool));
     let position = vault.managed_position(position_id, object::id(pool));
     let (a, b) = pool::collect_fee(config, pool, position, true);
@@ -134,8 +134,8 @@ public fun collect_managed_fees<Meme, Quote, A, B>(
 
 public fun add_liquidity<Meme, Quote, A, B>(
     vault: &mut BlastMarketMakerVault<Meme, Quote>,
-    version: &PackageVersion,
     cap: &BlastMarketMakerOperatorCap,
+    version: &PackageVersion,
     policy: &BlastMarketMakerFeePolicy,
     treasury: &mut BlastMarketMakerTreasury,
     config: &GlobalConfig,
@@ -151,11 +151,11 @@ public fun add_liquidity<Meme, Quote, A, B>(
     ctx: &mut TxContext,
 ) {
     version.assert_current();
-    let meme_is_a = assert_pair<Meme, Quote, A, B>();
+    let meme_is_a = meme_is_coin_a<Meme, Quote, A, B>();
     vault.assert_pool(object::id(pool));
     assert!(max_meme > 0 && max_quote > 0 && min_liquidity > 0, EInvalidAction);
     let _ = vault.managed_position(position_id, object::id(pool));
-    let action = risk::add(position_id, max_meme, max_quote, min_liquidity);
+    let action = risk::new_add_liquidity(position_id, max_meme, max_quote, min_liquidity);
     vault.authorize_action(
         version,
         option::some(object::id(cap)),
@@ -184,8 +184,8 @@ public fun add_liquidity<Meme, Quote, A, B>(
 /// Ordinary partial/full removal requires both authorities and consumes a discretionary action.
 public fun remove_liquidity<Meme, Quote, A, B>(
     vault: &mut BlastMarketMakerVault<Meme, Quote>,
-    version: &PackageVersion,
     cap: &BlastMarketMakerOperatorCap,
+    version: &PackageVersion,
     policy: &BlastMarketMakerFeePolicy,
     treasury: &mut BlastMarketMakerTreasury,
     config: &GlobalConfig,
@@ -201,11 +201,11 @@ public fun remove_liquidity<Meme, Quote, A, B>(
     ctx: &mut TxContext,
 ) {
     version.assert_current();
-    let meme_is_a = assert_pair<Meme, Quote, A, B>();
+    let meme_is_a = meme_is_coin_a<Meme, Quote, A, B>();
     vault.assert_pool(object::id(pool));
     let position = vault.managed_position(position_id, object::id(pool));
     assert!(liquidity > 0 && liquidity <= position.liquidity(), EInvalidAction);
-    let action = risk::remove(position_id, liquidity, min_meme, min_quote);
+    let action = risk::new_remove_liquidity(position_id, liquidity, min_meme, min_quote);
     vault.authorize_action(
         version,
         option::some(object::id(cap)),
@@ -251,11 +251,11 @@ public fun unwind<Meme, Quote, A, B>(
     ctx: &mut TxContext,
 ) {
     version.assert_current();
-    let meme_is_a = assert_pair<Meme, Quote, A, B>();
+    let meme_is_a = meme_is_coin_a<Meme, Quote, A, B>();
     vault.assert_pool(object::id(pool));
     let liquidity = vault.managed_position(position_id, object::id(pool)).liquidity();
     assert!(liquidity > 0, EZeroLiquidity);
-    let action = risk::unwind(position_id, liquidity, min_meme, min_quote);
+    let action = risk::new_unwind(position_id, liquidity, min_meme, min_quote);
     vault.authorize_action(
         version,
         option::none(),
@@ -295,7 +295,7 @@ public fun quarantine_managed_reward<Meme, Quote, A, B, Reward>(
     clock: &Clock,
 ) {
     version.assert_current();
-    let _ = assert_pair<Meme, Quote, A, B>();
+    let _ = meme_is_coin_a<Meme, Quote, A, B>();
     vault.assert_pool(object::id(pool));
     let position = vault.managed_position(position_id, object::id(pool));
     let reward = pool::collect_reward<A, B, Reward>(
@@ -331,7 +331,7 @@ public fun close_empty_position<Meme, Quote, A, B>(
     clock: &Clock,
 ) {
     version.assert_current();
-    let _ = assert_pair<Meme, Quote, A, B>();
+    let _ = meme_is_coin_a<Meme, Quote, A, B>();
     vault.assert_pool(object::id(pool));
     assert!(
         vault.managed_position(position_id, object::id(pool)).liquidity() == 0,
@@ -355,8 +355,8 @@ public fun close_empty_position<Meme, Quote, A, B>(
 /// Exact-input flash-swap/repay; every unspent input atom and output rejoins retained capital.
 public fun swap<Meme, Quote, A, B>(
     vault: &mut BlastMarketMakerVault<Meme, Quote>,
-    version: &PackageVersion,
     cap: &BlastMarketMakerOperatorCap,
+    version: &PackageVersion,
     config: &GlobalConfig,
     pool: &mut Pool<A, B>,
     meme_input: u64,
@@ -371,14 +371,14 @@ public fun swap<Meme, Quote, A, B>(
     ctx: &mut TxContext,
 ) {
     version.assert_current();
-    let meme_is_a = assert_pair<Meme, Quote, A, B>();
+    let meme_is_a = meme_is_coin_a<Meme, Quote, A, B>();
     vault.assert_pool(object::id(pool));
     assert!((meme_input > 0) != (quote_input > 0), EInvalidAction);
     assert!(
         if (meme_input > 0) min_quote > 0 && min_meme == 0 else min_meme > 0 && min_quote == 0,
         EInvalidAction,
     );
-    let action = risk::pool_swap(meme_input, quote_input, min_meme, min_quote, sqrt_price_limit);
+    let action = risk::new_pool_swap(meme_input, quote_input, min_meme, min_quote, sqrt_price_limit);
     vault.authorize_action(
         version,
         option::some(object::id(cap)),
@@ -435,17 +435,17 @@ public(package) fun create_burn_and_activate<Meme, Quote, CoinA, CoinB>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let meme_is_a = assert_pair<Meme, Quote, CoinA, CoinB>();
+    let meme_is_a = meme_is_coin_a<Meme, Quote, CoinA, CoinB>();
     let meme_handoff = meme.value();
     let quote_handoff = quote.value();
-    let (meme, quote) = vault.retain_capital(meme, quote, retain_bps);
+    let (meme, quote) = vault.retain_capital_and_return_seed(meme, quote, retain_bps);
     let retained_meme = meme_handoff - meme.value();
     let retained_quote = quote_handoff - quote.value();
     let meme_seed = meme.value();
     let quote_seed = quote.value();
-    let price = venue_math::sqrt_price_x64(meme_seed, quote_seed, meme_is_a);
+    let price = venue_math::sqrt_price_x64_down(meme_seed, quote_seed, meme_is_a);
     let (lower, upper) = pool_creator::full_range_tick_range(tick_spacing);
-    let fix_a = seed_side(lower, upper, price, meme_seed, quote_seed, meme_is_a);
+    let fix_a = seed_uses_coin_a(lower, upper, price, meme_seed, quote_seed, meme_is_a);
     let (a, b) = reorder(meme.into_coin(ctx), quote.into_coin(ctx), meme_is_a, ctx);
     let (position, residual_a, residual_b) = pool_creator::create_pool_v3_with_creation_cap<
         CoinA,
@@ -496,44 +496,16 @@ public(package) fun create_burn_and_activate<Meme, Quote, CoinA, CoinB>(
     });
 }
 
-/// Every actual unused seed asset remains creator-managed strategy capital.
-/// Returns the received amounts for the completed base-liquidity settlement event.
-public(package) fun retain_seed_residuals<Meme, Quote>(
-    vault: &mut BlastMarketMakerVault<Meme, Quote>,
-    meme: Balance<Meme>,
-    quote: Balance<Quote>,
-): (u64, u64) {
-    let meme_amount = meme.value();
-    let quote_amount = quote.value();
+// === Private Functions ===
 
-    vault.join_capital(meme, quote);
-    (meme_amount, quote_amount)
-}
-
-/// Shared retention arithmetic is exercised against real core handoff balances without venue stubs.
-public(package) fun retain_capital<Meme, Quote>(
-    vault: &mut BlastMarketMakerVault<Meme, Quote>,
-    mut meme: Balance<Meme>,
-    mut quote: Balance<Quote>,
-    retain_bps: u64,
-): (Balance<Meme>, Balance<Quote>) {
-    assert!(retain_bps < 10_000, EInvalidRetention);
-    let retained_meme = market_maker_math::apply_down(meme.value(), retain_bps);
-    let retained_quote = market_maker_math::apply_down(quote.value(), retain_bps);
-    assert!(meme.value() > retained_meme && quote.value() > retained_quote, EEmptyBaseSeed);
-
-    vault.join_capital(meme.split(retained_meme), quote.split(retained_quote));
-    (meme, quote)
-}
-
-public(package) fun assert_pair<Meme, Quote, A, B>(): bool {
+fun meme_is_coin_a<Meme, Quote, A, B>(): bool {
     assert!(factory::is_right_order<A, B>(), EInvalidCoinOrder);
 
-    prove_pair<Meme, Quote, A, B>()
+    meme_is_first_asset<Meme, Quote, A, B>()
 }
 
 /// Proves exact type equality independently of venue ordering and its external linkage.
-public(package) fun prove_pair<Meme, Quote, A, B>(): bool {
+fun meme_is_first_asset<Meme, Quote, A, B>(): bool {
     assert!(
         type_name::with_defining_ids<Meme>() != type_name::with_defining_ids<Quote>(),
         EWrongPair,
@@ -549,7 +521,7 @@ public(package) fun prove_pair<Meme, Quote, A, B>(): bool {
 }
 
 /// A dynamic-field round trip checks the concrete runtime types before returning a balance.
-public(package) fun reorder<T: store, U: store, V: store, W: store>(
+fun reorder<T: store, U: store, V: store, W: store>(
     a: T,
     b: U,
     same_order: bool,
@@ -572,12 +544,40 @@ public(package) fun reorder<T: store, U: store, V: store, W: store>(
     (first, second)
 }
 
-/// Shared admission guard; a full strategy can remove/close before opening another range.
-public(package) fun assert_position_slot(count: u64) {
-    assert!(count < MAX_POSITIONS, EPositionCapacity);
+/// Every actual unused seed asset remains creator-managed strategy capital.
+/// Returns the received amounts for the completed base-liquidity settlement event.
+fun retain_seed_residuals<Meme, Quote>(
+    vault: &mut BlastMarketMakerVault<Meme, Quote>,
+    meme: Balance<Meme>,
+    quote: Balance<Quote>,
+): (u64, u64) {
+    let meme_amount = meme.value();
+    let quote_amount = quote.value();
+
+    vault.join_capital(meme, quote);
+    (meme_amount, quote_amount)
 }
 
-// === Private Functions ===
+/// Shared retention arithmetic is exercised against real core handoff balances without venue stubs.
+fun retain_capital_and_return_seed<Meme, Quote>(
+    vault: &mut BlastMarketMakerVault<Meme, Quote>,
+    mut meme: Balance<Meme>,
+    mut quote: Balance<Quote>,
+    retain_bps: u64,
+): (Balance<Meme>, Balance<Quote>) {
+    assert!(retain_bps < 10_000, EInvalidRetention);
+    let retained_meme = market_maker_math::apply_down(meme.value(), retain_bps);
+    let retained_quote = market_maker_math::apply_down(quote.value(), retain_bps);
+    assert!(meme.value() > retained_meme && quote.value() > retained_quote, EEmptyBaseSeed);
+
+    vault.join_capital(meme.split(retained_meme), quote.split(retained_quote));
+    (meme, quote)
+}
+
+/// Shared admission guard; a full strategy can remove/close before opening another range.
+fun assert_position_slot(count: u64) {
+    assert!(count < MAX_POSITIONS, EPositionCapacity);
+}
 
 fun add_from_capital<Meme, Quote, A, B>(
     vault: &mut BlastMarketMakerVault<Meme, Quote>,
@@ -596,7 +596,7 @@ fun add_from_capital<Meme, Quote, A, B>(
     let (mut a, mut b): (Balance<A>, Balance<B>) = reorder(meme, quote, meme_is_a, ctx);
     let position = vault.escrowed_child_mut<Meme, Quote, _, Position>(PositionKey(position_id));
     let before = position.liquidity();
-    let (fix_a, amount) = fixed_side(pool, position, a.value(), b.value());
+    let (fix_a, amount) = fixed_liquidity_input(pool, position, a.value(), b.value());
     assert!(amount > 0, EZeroLiquidity);
     let receipt = pool::add_liquidity_fix_coin(config, pool, position, amount, fix_a, clock);
     let (paid_a, paid_b) = receipt.add_liquidity_pay_amount();
@@ -626,7 +626,7 @@ fun managed_position<Meme, Quote>(
     position
 }
 
-fun fixed_side<A, B>(
+fun fixed_liquidity_input<A, B>(
     pool: &Pool<A, B>,
     position: &Position,
     amount_a: u64,
@@ -691,7 +691,7 @@ fun remove_and_keep<Meme, Quote, A, B>(
     });
 }
 
-fun seed_side(lower: u32, upper: u32, price: u128, meme: u64, quote: u64, meme_is_a: bool): bool {
+fun seed_uses_coin_a(lower: u32, upper: u32, price: u128, meme: u64, quote: u64, meme_is_a: bool): bool {
     let (a, b) = if (meme_is_a) (meme, quote) else (quote, meme);
     let prefer_a = (meme >= quote) == meme_is_a;
     let (_, needed_a, needed_b) = clmm_math::get_liquidity_by_amount(
@@ -704,6 +704,47 @@ fun seed_side(lower: u32, upper: u32, price: u128, meme: u64, quote: u64, meme_i
     );
 
     if (needed_a <= a && needed_b <= b) prefer_a else !prefer_a
+}
+
+// === Test-Only Functions ===
+
+#[test_only]
+public fun meme_is_first_asset_for_testing<Meme, Quote, A, B>(): bool {
+    meme_is_first_asset<Meme, Quote, A, B>()
+}
+
+#[test_only]
+public fun reorder_for_testing<T: store, U: store, V: store, W: store>(
+    first: T,
+    second: U,
+    same_order: bool,
+    ctx: &mut TxContext,
+): (V, W) {
+    reorder(first, second, same_order, ctx)
+}
+
+#[test_only]
+public fun retain_seed_residuals_for_testing<Meme, Quote>(
+    vault: &mut BlastMarketMakerVault<Meme, Quote>,
+    meme: Balance<Meme>,
+    quote: Balance<Quote>,
+): (u64, u64) {
+    vault.retain_seed_residuals(meme, quote)
+}
+
+#[test_only]
+public fun retain_capital_and_return_seed_for_testing<Meme, Quote>(
+    vault: &mut BlastMarketMakerVault<Meme, Quote>,
+    meme: Balance<Meme>,
+    quote: Balance<Quote>,
+    retain_bps: u64,
+): (Balance<Meme>, Balance<Quote>) {
+    vault.retain_capital_and_return_seed(meme, quote, retain_bps)
+}
+
+#[test_only]
+public fun assert_position_slot_for_testing(count: u64) {
+    assert_position_slot(count);
 }
 
 // === Events ===
@@ -816,7 +857,7 @@ use fun add_from_capital as BlastMarketMakerVault.add_from_capital;
 use fun collect_managed_fees as BlastMarketMakerVault.collect_managed_fees;
 use fun managed_position as BlastMarketMakerVault.managed_position;
 use fun remove_and_keep as BlastMarketMakerVault.remove_and_keep;
-use fun retain_capital as BlastMarketMakerVault.retain_capital;
+use fun retain_capital_and_return_seed as BlastMarketMakerVault.retain_capital_and_return_seed;
 use fun retain_seed_residuals as BlastMarketMakerVault.retain_seed_residuals;
 use fun dynamic_field::add as UID.add_dynamic_field;
 use fun dynamic_field::remove as UID.remove_dynamic_field;

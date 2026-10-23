@@ -19,7 +19,7 @@ fun init(otw: BLAST_MARKET_MAKER, ctx: &mut TxContext) {
 
     treasury.share();
     policy.share();
-    package_version::new_bootstrap(
+    package_version::create_and_transfer_bootstrap(
         sui::package::claim(otw, ctx),
         initial_generation,
         treasury_id,

@@ -26,8 +26,8 @@ public struct BlastPresaleRewardRound<phantom Meme, phantom Quote> has key {
 /// The publisher is trusted for eligibility, allocation completeness and root/budget agreement.
 public fun publish_round<Meme, Quote>(
     vault: &mut BlastMarketMakerVault<Meme, Quote>,
-    version: &PackageVersion,
     _: &AdminWitness<RewardsAdmin>,
+    version: &PackageVersion,
     number: u64,
     start_checkpoint: u64,
     end_checkpoint: u64,
@@ -77,7 +77,7 @@ public fun publish_round<Meme, Quote>(
 
 /// Anyone may relay an unchanged proof. Delivery always pays the committed beneficiary.
 /// Claims need neither the vault nor creator, operator, RewardsAdmin or trading availability.
-public fun claim<Meme, Quote>(
+public fun claim_and_pay<Meme, Quote>(
     self: &mut BlastPresaleRewardRound<Meme, Quote>,
     version: &PackageVersion,
     index: u64,
@@ -94,8 +94,8 @@ public fun claim<Meme, Quote>(
     assert!(self.claimed[word] & bit == 0, EAlreadyClaimed);
     assert!(beneficiary != @0x0, EInvalidBeneficiary);
     assert!(meme_amount > 0 || quote_amount > 0, EEmptyClaim);
-    let digest = leaf(self.vault_id, self.number, index, beneficiary, meme_amount, quote_amount);
-    assert!(verify(self.root, digest, index, self.leaf_count, &proof), EInvalidProof);
+    let digest = leaf_digest(self.vault_id, self.number, index, beneficiary, meme_amount, quote_amount);
+    assert!(is_valid_proof(self.root, digest, index, self.leaf_count, &proof), EInvalidProof);
     assert!(meme_amount <= self.meme.value() && quote_amount <= self.quote.value(), EInsufficientBudget);
 
     *&mut self.claimed[word] = self.claimed[word] | bit;
@@ -119,7 +119,7 @@ fun pay<Asset>(self: &mut Balance<Asset>, amount: u64, beneficiary: address, ctx
 }
 
 /// Positional Blake2b-256 trees use the same node encoding as Blast holder rewards.
-fun verify(
+fun is_valid_proof(
     root: vector<u8>,
     mut digest: vector<u8>,
     mut index: u64,
@@ -136,20 +136,20 @@ fun verify(
         return false;
 
     proof.do_ref!(|sibling| {
-        digest = if (index % 2 == 0) node(digest, *sibling) else node(*sibling, digest);
+        digest = if (index % 2 == 0) node_digest(digest, *sibling) else node_digest(*sibling, digest);
         index = index / 2;
     });
     digest == root
 }
 
-fun node(left: vector<u8>, right: vector<u8>): vector<u8> {
+fun node_digest(left: vector<u8>, right: vector<u8>): vector<u8> {
     let mut bytes = vector[1u8];
     bytes.append(left);
     bytes.append(right);
     sui::hash::blake2b256(&bytes)
 }
 
-fun leaf(vault_id: ID, number: u64, index: u64, beneficiary: address, meme: u64, quote: u64): vector<u8> {
+fun leaf_digest(vault_id: ID, number: u64, index: u64, beneficiary: address, meme: u64, quote: u64): vector<u8> {
     let mut bytes = b"\x00blast-market-maker-presale-rewards-v1";
     bytes.append(std::bcs::to_bytes(&vault_id));
     bytes.append(std::bcs::to_bytes(&number));
@@ -164,11 +164,11 @@ fun leaf(vault_id: ID, number: u64, index: u64, beneficiary: address, meme: u64,
 
 #[test_only]
 public fun leaf_for_testing(vault_id: ID, number: u64, index: u64, beneficiary: address, meme: u64, quote: u64): vector<u8> {
-    leaf(vault_id, number, index, beneficiary, meme, quote)
+    leaf_digest(vault_id, number, index, beneficiary, meme, quote)
 }
 
 #[test_only]
-public fun node_for_testing(left: vector<u8>, right: vector<u8>): vector<u8> { node(left, right) }
+public fun node_for_testing(left: vector<u8>, right: vector<u8>): vector<u8> { node_digest(left, right) }
 
 #[test_only]
 public fun balances_for_testing<Meme, Quote>(self: &BlastPresaleRewardRound<Meme, Quote>): (u64, u64) {

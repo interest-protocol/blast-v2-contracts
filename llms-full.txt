@@ -219,7 +219,7 @@ LP deductions under FeeAdmin. The key-only
 policy and native custody identities and requires the active bytecode generation.
 
 A publication has one bootstrap. Anyone holding it and the matching original
-native UpgradeCap can call `blast_market_maker::package_admin::wrap` to seal custody
+native UpgradeCap can call `blast_market_maker::package_admin::activate_and_share_package` to seal custody
 and activate the first generation. Blast UpgradeAdmin authorizes and commits
 native compatible upgrades using the old active bytecode. `commit_upgrade` commits
 only the native receipt and leaves the operational generation unchanged. A later
@@ -311,7 +311,7 @@ PartnerCap or any Blast admin authority.
 5. Anyone calls `blast_market_maker::cetus_migrator::claim_and_credit_curve_fees`
    to join actual creator receipts into the funded fee pipeline. Completely
    empty core collection retains the core's abort semantics.
-6. Anyone calls `blast_market_maker::cetus_migrator::migrate_and_activate`
+6. Anyone calls `blast_market_maker::cetus_migrator::migrate_burn_and_activate`
    when core is MigrationReady. The sealed witness releases the handoff into
    a new Cetus pool; the full-range base LP is burned, its proof stays in the
    vault, and unused seed coins remain market-maker capital. The Cetus tier
@@ -321,7 +321,7 @@ PartnerCap or any Blast admin authority.
 Anyone can start `blast_market_maker::market_maker::begin_refunding` at the deadline while
 still Funding. Each backer calls `blast_market_maker::market_maker::refund` for its own
 strictly positive remaining contribution and consumes/delivers the returned coin.
-Anyone can call `blast_market_maker::cetus_migrator::return_unused_ticket`; its
+Anyone can call `blast_market_maker::cetus_migrator::transfer_unused_ticket_to_supplier`; its
 recipient is fixed to the original ticket supplier.
 
 ### Presale flows
@@ -348,7 +348,7 @@ market makers retain their explicitly funded initial idle-floor checks.
    Consume every returned change coin. The presale's own eligibility bound applies.
 3. Anyone may settle and claim through core. Claims pay the participant's wallet;
    claiming tokens does not remove that buyer from future epoch reward eligibility.
-4. Anyone calls `blast_market_maker::presale_adapter::migrate` on the bound funded
+4. Anyone calls `blast_market_maker::presale_adapter::migrate_burn_and_activate` on the bound funded
    sale. The committed fraction, at most 50%, of both actual net handoff assets becomes
    retained capital; the positive remainder seeds and burns the base LP. The
    reward allocation never gates migration. No caller receives
@@ -469,7 +469,7 @@ Trading capital, retained migration assets, team allocations, unused seed coins
 and the curve raise fee never enter these available fee balances.
 
 Only the bound creator cap can call `blast_market_maker::market_maker::allocate_fees`.
-For each asset, pass `blast_market_maker::fee_ledger::allocation(keep, share, reinvest)`
+For each asset, pass `blast_market_maker::fee_ledger::new_allocation(keep, share, reinvest)`
 in actual atomic units. The sum cannot exceed that asset's received, unallocated
 fees. `keep` returns a Coin to the caller. Curve `share` irrevocably funds
 fixed-weight backer claims; presale `share` funds a segregated epoch reward reserve
@@ -495,7 +495,7 @@ Each curve backer calls `blast_market_maker::market_maker::claim_fees` for its o
 Curve or Pool. It returns `(Coin<Meme>, Coin<Quote>)`; deliver or consume both,
 including zero. Anyone can move the segregated curve raise fee to the bound treasury through
 `blast_market_maker::market_maker::credit_raise_fees_to_treasury`. An empty bucket rejects. TreasuryAdmin
-withdraws earned balances only to the stored payout and cannot withdraw vault
+calls `blast_market_maker::protocol_treasury::pay_earned` to deliver earned balances to the stored payout and cannot withdraw vault
 capital, unallocated creator fees or reserved backer fees.
 
 ### Presale epoch rewards
@@ -506,12 +506,12 @@ capital, unallocated creator fees or reserved backer fees.
 2. Blast admin signs in to the existing ACL as
    `blast_market_maker::blast_market_maker_domain::RewardsAdmin`, then calls
    `blast_market_maker::presale_rewards::publish_round` with the active vault,
-   version, witness and allocation commitment. Each vault starts at round zero;
+   RewardsAdmin witness, version and allocation commitment. Each vault starts at round zero;
    publication increments the number once. Checkpoint intervals satisfy
    previous end <= start < end, allowing skipped epochs. Publication debits only
    the allocated reserve and creates a shared
    `blast_market_maker::presale_rewards::BlastPresaleRewardRound`.
-3. Anyone relays `blast_market_maker::presale_rewards::claim` using that shared
+3. Anyone relays `blast_market_maker::presale_rewards::claim_and_pay` using that shared
    round, current market-maker version, index, beneficiary, amounts and proof.
    Both actual coins are transferred directly to the committed beneficiary.
    The vault, creator, operator and admin are not needed. A bitmap prevents repeat
@@ -552,7 +552,7 @@ and expiry minus issued <= 15 seconds. Each success consumes its current nonce.
 
 Immutable limits bound per-action atoms, token buckets, lifetime gross inputs,
 Quote self-fee basis and discretionary action count. The default
-`blast_market_maker::market_maker::trading_limits` constructor gives non-refilling
+`blast_market_maker::market_maker::new_trading_limits` constructor gives non-refilling
 lifetime-sized buckets; `blast_market_maker::market_maker::with_rate_limits` commits
 explicit rolling/refill and self-fee limits. Gross inputs charge both trading
 directions and LP deposits. Removal never refills budgets. Claims, collection,
@@ -5101,8 +5101,8 @@ public fun collect_base_fees<Meme, Quote, CoinA, CoinB>(
 /// Atomically opens and funds one of eight ordinary positions; returns only its inert ID.
 public fun open_position<Meme, Quote, A, B>(
     vault: &mut market_maker::BlastMarketMakerVault<Meme, Quote>,
-    version: &package_version::BlastMarketMakerVersion,
     cap: &market_maker::BlastMarketMakerOperatorCap,
+    version: &package_version::BlastMarketMakerVersion,
     config: &config::GlobalConfig,
     pool: &mut pool::Pool<A, B>,
     tick_lower: u32,
@@ -5131,8 +5131,8 @@ public fun collect_managed_fees<Meme, Quote, A, B>(
 
 public fun add_liquidity<Meme, Quote, A, B>(
     vault: &mut market_maker::BlastMarketMakerVault<Meme, Quote>,
-    version: &package_version::BlastMarketMakerVersion,
     cap: &market_maker::BlastMarketMakerOperatorCap,
+    version: &package_version::BlastMarketMakerVersion,
     policy: &market_maker_fee_policy::BlastMarketMakerFeePolicy,
     treasury: &mut protocol_treasury::BlastMarketMakerTreasury,
     config: &config::GlobalConfig,
@@ -5151,8 +5151,8 @@ public fun add_liquidity<Meme, Quote, A, B>(
 /// Ordinary partial/full removal requires both authorities and consumes a discretionary action.
 public fun remove_liquidity<Meme, Quote, A, B>(
     vault: &mut market_maker::BlastMarketMakerVault<Meme, Quote>,
-    version: &package_version::BlastMarketMakerVersion,
     cap: &market_maker::BlastMarketMakerOperatorCap,
+    version: &package_version::BlastMarketMakerVersion,
     policy: &market_maker_fee_policy::BlastMarketMakerFeePolicy,
     treasury: &mut protocol_treasury::BlastMarketMakerTreasury,
     config: &config::GlobalConfig,
@@ -5212,8 +5212,8 @@ public fun close_empty_position<Meme, Quote, A, B>(
 /// Exact-input flash-swap/repay; every unspent input atom and output rejoins retained capital.
 public fun swap<Meme, Quote, A, B>(
     vault: &mut market_maker::BlastMarketMakerVault<Meme, Quote>,
-    version: &package_version::BlastMarketMakerVersion,
     cap: &market_maker::BlastMarketMakerOperatorCap,
+    version: &package_version::BlastMarketMakerVersion,
     config: &config::GlobalConfig,
     pool: &mut pool::Pool<A, B>,
     meme_input: u64,
@@ -5354,7 +5354,7 @@ public struct CommittedTerms has copy, drop, store {
 
 ```move
 /// The initial buy may intentionally graduate immediately. Backers commit its exact budget.
-public fun terms(
+public fun new_terms(
     target: u64,
     deadline_at_ms: u64,
     initial_buy_budget: u64,
@@ -5373,6 +5373,7 @@ public fun terms(
 ): CurveTerms
 
 /// No owned vault or initializer escapes. Funding discovers only atomically shared vaults.
+/// The creator cap binds the new instance; it does not authorize a mutation of an existing vault.
 public fun create_and_share<Meme>(
     ticket: blast_fun::launch_ticket::LaunchTicket<Meme>,
     currency: &Currency<Meme>,
@@ -5406,7 +5407,7 @@ public fun launch_buy_and_share<Meme>(
     ctx: &mut TxContext,
 )
 
-public fun return_unused_ticket<Meme>(
+public fun transfer_unused_ticket_to_supplier<Meme>(
     vault: &mut market_maker::BlastMarketMakerVault<Meme, sui::SUI>,
     version: &package_version::BlastMarketMakerVersion,
 )
@@ -5434,7 +5435,7 @@ public fun claim_and_credit_curve_fees<Meme>(
     ctx: &mut TxContext,
 )
 
-public fun migrate_and_activate<Meme, CoinA, CoinB>(
+public fun migrate_burn_and_activate<Meme, CoinA, CoinB>(
     vault: &mut market_maker::BlastMarketMakerVault<Meme, sui::SUI>,
     version: &package_version::BlastMarketMakerVersion,
     launch: &mut blast_fun::launch::Launch<Meme, sui::SUI>,
@@ -5450,8 +5451,8 @@ public fun migrate_and_activate<Meme, CoinA, CoinB>(
 /// Curve trading uses original core entry points and rejoins every returned asset to capital.
 public fun buy<Meme>(
     vault: &mut market_maker::BlastMarketMakerVault<Meme, sui::SUI>,
-    version: &package_version::BlastMarketMakerVersion,
     cap: &market_maker::BlastMarketMakerOperatorCap,
+    version: &package_version::BlastMarketMakerVersion,
     launch: &mut blast_fun::launch::Launch<Meme, sui::SUI>,
     core_version: &blast_fun::blast_fun::PackageVersion,
     runtime: &blast_fun::runtime_config::RuntimeConfig,
@@ -5466,8 +5467,8 @@ public fun buy<Meme>(
 
 public fun sell<Meme>(
     vault: &mut market_maker::BlastMarketMakerVault<Meme, sui::SUI>,
-    version: &package_version::BlastMarketMakerVersion,
     cap: &market_maker::BlastMarketMakerOperatorCap,
+    version: &package_version::BlastMarketMakerVersion,
     launch: &mut blast_fun::launch::Launch<Meme, sui::SUI>,
     core_version: &blast_fun::blast_fun::PackageVersion,
     runtime: &blast_fun::runtime_config::RuntimeConfig,
@@ -5520,7 +5521,7 @@ public struct BlastUnusedTicketReturned has copy, drop {
 
 #### Constants
 
-- `MAX_FUNDING_WINDOW_MS: u64 = 604_800_000`
+- `MAX_FUNDING_WINDOW_DURATION_MS: u64 = 604_800_000`
 
 ### `blast_market_maker::fee_ledger`
 
@@ -5554,11 +5555,7 @@ public struct FeeClaim has drop, store {
 
 ```move
 /// Zero allocations are useful when allocating only the other asset in a vault.
-public fun allocation(keep: u64, share: u64, reinvest: u64): FeeAllocation
-
-public fun amounts(self: &FeeAllocation): (u64, u64, u64)
-
-public fun is_empty(self: &FeeAllocation): bool
+public fun new_allocation(keep: u64, share: u64, reinvest: u64): FeeAllocation
 ```
 
 #### Errors
@@ -5671,7 +5668,7 @@ public struct BlastMarketMakerCreatorCap has key, store {
 #### Functions
 
 ```move
-public fun trading_limits(
+public fun new_trading_limits(
     max_meme_input: u64,
     max_quote_input: u64,
     lifetime_meme_input: u64,
@@ -5682,7 +5679,7 @@ public fun trading_limits(
 
 /// Optional stricter rolling and self-fee ceilings, immutable once the market maker is shared.
 public fun with_rate_limits(
-    limits: TradingLimits,
+    self: TradingLimits,
     meme_capacity: u64,
     quote_capacity: u64,
     meme_refill_per_ms: u64,
@@ -5723,8 +5720,6 @@ public fun refund<Meme, Quote>(
 
 /// Creates an inert authority; using it against a vault always checks the current version.
 public fun new_creator_cap(ctx: &mut TxContext): BlastMarketMakerCreatorCap
-
-public fun creator_cap_id<Meme, Quote>(self: &BlastMarketMakerVault<Meme, Quote>): ID
 
 /// Adds strategy capital without creating fee weight or a redemption claim.
 /// Anyone may fund an active vault, including while discretionary trading is paused.
@@ -5791,7 +5786,7 @@ public fun set_paused<Meme, Quote>(
     paused: bool,
 )
 
-public fun rotate_operator<Meme, Quote>(
+public fun rotate_and_transfer_operator_cap<Meme, Quote>(
     self: &mut BlastMarketMakerVault<Meme, Quote>,
     cap: &BlastMarketMakerCreatorCap,
     version: &package_version::BlastMarketMakerVersion,
@@ -6040,8 +6035,8 @@ public struct BlastMarketMakerFeePolicy has key {
 ```move
 public fun set_rates(
     self: &mut BlastMarketMakerFeePolicy,
-    version: &package_version::BlastMarketMakerVersion,
     _: &blast_admin::blast_acl::AdminWitness<blast_market_maker_domain::FeeAdmin>,
+    version: &package_version::BlastMarketMakerVersion,
     meme_bps: u64,
     quote_bps: u64,
 )
@@ -6076,22 +6071,6 @@ Wide integer arithmetic shared by presale and curve fee ledgers.
 
 Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/market_maker/sources/market_maker_math.move
 
-#### Functions
-
-```move
-/// Applies a validated basis-points rate, rounding down.
-public fun apply_down(amount: u64, bps: u64): u64
-
-/// Applies a validated basis-points rate, rounding up, without overflowing u64 multiplication.
-public fun apply_up(amount: u64, bps: u64): u64
-
-/// Adds a funded receipt to a fixed-weight accumulator while retaining global dust.
-public fun accrue(accumulator: u256, remainder: u256, funded: u64, total_weight: u64): (u256, u256)
-
-/// Settles one fixed weight, preserving its fractional entitlement across repeated claims.
-public fun claim(accumulator: u256, paid_index: u256, remainder: u256, weight: u64): (u64, u256)
-```
-
 #### Errors
 
 | Constant | Code | Message |
@@ -6123,7 +6102,9 @@ public struct BlastMarketMakerAdmin has key {
 #### Functions
 
 ```move
-public fun wrap(
+/// Consumes publication bootstrap and seals the Publisher/UpgradeCap in shared custody.
+/// Creates and shares the initial operational version; no capability or owned admin escapes.
+public fun activate_and_share_package(
     bootstrap: package_version::BlastMarketMakerBootstrap,
     upgrade_cap: UpgradeCap,
     ctx: &mut TxContext,
@@ -6131,8 +6112,8 @@ public fun wrap(
 
 public fun authorize_upgrade(
     self: &mut BlastMarketMakerAdmin,
-    version: &package_version::BlastMarketMakerVersion,
     _: &blast_admin::blast_acl::AdminWitness<blast_market_maker_domain::UpgradeAdmin>,
+    version: &package_version::BlastMarketMakerVersion,
     digest: vector<u8>,
 ): UpgradeTicket
 
@@ -6140,16 +6121,16 @@ public fun authorize_upgrade(
 /// If the installed build has the wrong generation constant, the old build can authorize repair.
 public fun commit_upgrade(
     self: &mut BlastMarketMakerAdmin,
-    version: &package_version::BlastMarketMakerVersion,
     _: &blast_admin::blast_acl::AdminWitness<blast_market_maker_domain::UpgradeAdmin>,
+    version: &package_version::BlastMarketMakerVersion,
     receipt: UpgradeReceipt,
 )
 
 /// Invoke through the newly installed bytecode. Its compiled generation must be the next one.
 public fun activate_generation(
     self: &mut BlastMarketMakerAdmin,
-    version: &mut package_version::BlastMarketMakerVersion,
     _: &blast_admin::blast_acl::AdminWitness<blast_market_maker_domain::UpgradeAdmin>,
+    version: &mut package_version::BlastMarketMakerVersion,
 )
 ```
 
@@ -6253,7 +6234,7 @@ public struct PresaleTerms has copy, drop, store {
     liquidity_token_bps: u64,
     raise_target: u64,
     commitment_duration_ms: u64,
-    liquidity_window_ms: u64,
+    liquidity_window_duration_ms: u64,
     wallet_cap: u64,
     max_participants: u64,
     minimum_commitment: u64,
@@ -6279,14 +6260,14 @@ public struct VenueTerms has copy, drop, store {
 
 ```move
 /// Builds bounded settings; upstream finalization also validates allocations and eligibility.
-public fun terms(
+public fun new_terms(
     token_supply: u64,
     burnable: bool,
     participant_token_bps: u64,
     liquidity_token_bps: u64,
     raise_target: u64,
     commitment_duration_ms: u64,
-    liquidity_window_ms: u64,
+    liquidity_window_duration_ms: u64,
     wallet_cap: u64,
     max_participants: u64,
     minimum_commitment: u64,
@@ -6298,6 +6279,7 @@ public fun terms(
 
 /// Reserves Cetus creation before minting, creates and shares the real presale and its vault,
 /// and escrows both capabilities. No initializer, vault, position or capability escapes.
+/// The creator cap binds the new instance; it does not authorize a mutation of an existing vault.
 public fun create_and_share<Meme, Quote>(
     treasury_cap: TreasuryCap<Meme>,
     currency: &mut Currency<Meme>,
@@ -6347,7 +6329,7 @@ public fun destroy_cancelled_presale_cap<Meme, Quote>(
 
 /// Releases the exact bound sale through our witness, retains its committed fraction of both
 /// handoff assets and atomically creates/burns the base LP. Buyer reward accounting cannot veto it.
-public fun migrate<Meme, Quote, CoinA, CoinB>(
+public fun migrate_burn_and_activate<Meme, Quote, CoinA, CoinB>(
     vault: &mut market_maker::BlastMarketMakerVault<Meme, Quote>,
     sale: &mut blast_presale::blast_presale::Presale<Meme, Quote>,
     version: &package_version::BlastMarketMakerVersion,
@@ -6424,8 +6406,8 @@ public struct BlastPresaleRewardRound<phantom Meme, phantom Quote> has key {
 /// The publisher is trusted for eligibility, allocation completeness and root/budget agreement.
 public fun publish_round<Meme, Quote>(
     vault: &mut market_maker::BlastMarketMakerVault<Meme, Quote>,
-    version: &package_version::BlastMarketMakerVersion,
     _: &blast_admin::blast_acl::AdminWitness<blast_market_maker_domain::RewardsAdmin>,
+    version: &package_version::BlastMarketMakerVersion,
     number: u64,
     start_checkpoint: u64,
     end_checkpoint: u64,
@@ -6439,7 +6421,7 @@ public fun publish_round<Meme, Quote>(
 
 /// Anyone may relay an unchanged proof. Delivery always pays the committed beneficiary.
 /// Claims need neither the vault nor creator, operator, RewardsAdmin or trading availability.
-public fun claim<Meme, Quote>(
+public fun claim_and_pay<Meme, Quote>(
     self: &mut BlastPresaleRewardRound<Meme, Quote>,
     version: &package_version::BlastMarketMakerVersion,
     index: u64,
@@ -6521,16 +6503,16 @@ public struct TreasuryBalanceKey<phantom Asset>() has copy, drop, store;
 ```move
 public fun set_payout(
     self: &mut BlastMarketMakerTreasury,
-    version: &package_version::BlastMarketMakerVersion,
     _: &blast_admin::blast_acl::AdminWitness<blast_market_maker_domain::TreasuryAdmin>,
+    version: &package_version::BlastMarketMakerVersion,
     destination: address,
 )
 
 /// Withdraws only already-earned treasury assets, to the configured destination.
-public fun withdraw_earned<Asset>(
+public fun pay_earned<Asset>(
     self: &mut BlastMarketMakerTreasury,
-    version: &package_version::BlastMarketMakerVersion,
     _: &blast_admin::blast_acl::AdminWitness<blast_market_maker_domain::TreasuryAdmin>,
+    version: &package_version::BlastMarketMakerVersion,
     amount: u64,
     ctx: &mut TxContext,
 )
@@ -6613,11 +6595,11 @@ public struct RiskMessage has drop {
 
 ```move
 /// Constructors are inert values. Execution reconstructs the exact action from its arguments.
-public fun curve_buy(quote_input: u64, min_meme: u64): Action
+public fun new_curve_buy(quote_input: u64, min_meme: u64): Action
 
-public fun curve_sell(meme_input: u64, min_quote: u64): Action
+public fun new_curve_sell(meme_input: u64, min_quote: u64): Action
 
-public fun pool_swap(
+public fun new_pool_swap(
     meme_input: u64,
     quote_input: u64,
     min_meme: u64,
@@ -6625,7 +6607,7 @@ public fun pool_swap(
     sqrt_price_limit: u128,
 ): Action
 
-public fun open(
+public fun new_open_position(
     tick_lower: u32,
     tick_upper: u32,
     max_meme: u64,
@@ -6633,11 +6615,21 @@ public fun open(
     min_liquidity: u128,
 ): Action
 
-public fun add(position_id: ID, meme_input: u64, quote_input: u64, min_liquidity: u128): Action
+public fun new_add_liquidity(
+    position_id: ID,
+    meme_input: u64,
+    quote_input: u64,
+    min_liquidity: u128,
+): Action
 
-public fun remove(position_id: ID, liquidity: u128, min_meme: u64, min_quote: u64): Action
+public fun new_remove_liquidity(
+    position_id: ID,
+    liquidity: u128,
+    min_meme: u64,
+    min_quote: u64,
+): Action
 
-public fun unwind(position_id: ID, liquidity: u128, min_meme: u64, min_quote: u64): Action
+public fun new_unwind(position_id: ID, liquidity: u128, min_meme: u64, min_quote: u64): Action
 ```
 
 #### Errors

@@ -4,24 +4,24 @@
 /// Wide integer arithmetic shared by presale and curve fee ledgers.
 module blast_market_maker::market_maker_math;
 
-// === Public Functions ===
+// === Package Functions ===
 
 /// Applies a validated basis-points rate, rounding down.
-public fun apply_down(amount: u64, bps: u64): u64 {
+public(package) fun apply_down(amount: u64, bps: u64): u64 {
     assert!(bps <= 10_000, EInvalidRate);
 
     (((amount as u128) * (bps as u128) / 10_000) as u64)
 }
 
 /// Applies a validated basis-points rate, rounding up, without overflowing u64 multiplication.
-public fun apply_up(amount: u64, bps: u64): u64 {
+public(package) fun apply_up(amount: u64, bps: u64): u64 {
     assert!(bps <= 10_000, EInvalidRate);
 
     ((((amount as u128) * (bps as u128) + 9_999) / 10_000) as u64)
 }
 
 /// Adds a funded receipt to a fixed-weight accumulator while retaining global dust.
-public fun accrue(
+public(package) fun accrued_index_down(
     accumulator: u256,
     remainder: u256,
     funded: u64,
@@ -34,7 +34,7 @@ public fun accrue(
 }
 
 /// Settles one fixed weight, preserving its fractional entitlement across repeated claims.
-public fun claim(accumulator: u256, paid_index: u256, remainder: u256, weight: u64): (u64, u256) {
+public(package) fun claim_amount_down(accumulator: u256, paid_index: u256, remainder: u256, weight: u64): (u64, u256) {
     let numerator = (weight as u256) * (accumulator - paid_index) + remainder;
 
     (((numerator / SCALE) as u64), numerator % SCALE)
