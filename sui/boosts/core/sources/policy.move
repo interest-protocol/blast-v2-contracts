@@ -34,6 +34,16 @@ public struct RebalancePolicy has copy, drop, store {
     min_leverage_improvement_bps: u64,
 }
 
+/// The execution bound one venue order is priced and proved under, in basis
+/// points of the reference price: the limit the adapter places the order at
+/// sits inside it, and the fill must land inside it.
+///
+/// Only this module constructs one, from the policy's own bounds, so no
+/// caller of a permissionless operation can choose the price it accepts.
+public struct ExecutionBound has copy, drop {
+    slippage_bps: u64,
+}
+
 /// Locally validated bounds for the price gates of one Vault.
 ///
 /// Millisecond bounds use the on-chain clock scale. Relative bounds use the
@@ -255,6 +265,52 @@ public fun new_vault_policy(
     }
 }
 
+// --- Execution Bound ---
+
+/// The bound in basis points of the reference price.
+public fun slippage_bps(self: &ExecutionBound): u64 {
+    self.slippage_bps
+}
+
+/// The price limit an order under this bound is placed with: the reference
+/// moved by the bound against the order, up for a bid and down for an ask,
+/// then rounded to a multiple of `tick_size` back toward the reference.
+///
+/// The limit always stays inside the bound, so a venue that honors it cannot
+/// fill outside the bound, and the fill proof against the same reference
+/// cannot then fail on price. A tick wider than the bound leaves no such
+/// price and aborts; a zero reference or tick aborts first.
+public fun limit_price(self: &ExecutionBound, reference_price: u64, is_ask: bool, tick_size: u64): u64 {
+    assert!(reference_price > 0, blast_boosts_core::errors::invalid_price!());
+    assert!(tick_size > 0, blast_boosts_core::errors::invalid_tick_size!());
+
+    let denominator = constants::basis_points_denominator!() as u128;
+    let (reference, slippage, tick) = (reference_price as u128, self.slippage_bps as u128, tick_size as u128);
+    let limit = if (is_ask) {
+        (reference * (denominator - slippage)).div_ceil(denominator).div_ceil(tick) * tick
+    } else {
+        reference * (denominator + slippage) / denominator / tick * tick
+    };
+    assert!(limit <= std::u64::max_value!() as u128, blast_boosts_core::errors::arithmetic_overflow!());
+    assert!(
+        is_within_relative_tolerance(self.slippage_bps, reference_price, limit as u64),
+        blast_boosts_core::errors::execution_outside_max_slippage!(),
+    );
+
+    limit as u64
+}
+
+/// Rejects a price outside this bound of the reference; a zero reference
+/// price aborts first. Inclusive:
+/// `|executed_price - reference_price| * 10_000 <= slippage_bps * reference_price`.
+public fun assert_execution(self: &ExecutionBound, reference_price: u64, executed_price: u64) {
+    assert!(reference_price > 0, blast_boosts_core::errors::invalid_price!());
+    assert!(
+        is_within_relative_tolerance(self.slippage_bps, reference_price, executed_price),
+        blast_boosts_core::errors::execution_outside_max_slippage!(),
+    );
+}
+
 // === Package Functions ===
 
 // --- Rebalance Policy ---
@@ -310,36 +366,29 @@ public(package) fun is_leverage_above_max(self: &RebalancePolicy, notional: u64,
     scale_by_denominator(notional) > (nav as u128) * (self.max_leverage_bps as u128)
 }
 
-/// Rejects an execution outside max slippage; a zero reference price aborts first.
-public(package) fun assert_execution_within_max_slippage(
-    self: &RebalancePolicy,
-    reference_price: u64,
-    executed_price: u64,
-) {
-    assert!(
-        reference_price > 0,
-        blast_boosts_core::errors::invalid_price!(),
-    );
-    assert!(
-        self.is_execution_within_max_slippage(reference_price, executed_price),
-        blast_boosts_core::errors::execution_outside_max_slippage!(),
-    );
+/// The bound an order runs under: the emergency one for a reduction placed
+/// while leverage is above the hard cap, otherwise the ordinary one. Risk
+/// increase and every ordinary rebalance, mint and redemption use the ordinary
+/// bound. The finite wider bound does not guarantee executable liquidity or
+/// successful deleveraging.
+public(package) fun execution_bound(self: &RebalancePolicy, emergency: bool): ExecutionBound {
+    ExecutionBound {
+        slippage_bps: if (emergency) { self.emergency_max_slippage_bps } else { self.max_slippage_bps },
+    }
 }
 
-/// Rejects an execution outside emergency max slippage; a zero reference price aborts first.
-public(package) fun assert_execution_within_emergency_max_slippage(
-    self: &RebalancePolicy,
-    reference_price: u64,
-    executed_price: u64,
-) {
-    assert!(
-        reference_price > 0,
-        blast_boosts_core::errors::invalid_price!(),
-    );
-    assert!(
-        self.is_execution_within_emergency_max_slippage(reference_price, executed_price),
-        blast_boosts_core::errors::execution_outside_max_slippage!(),
-    );
+/// The close-only bound `elapsed_duration_ms` after shutdown began: the
+/// ordinary bound at first, widening linearly, rounded down to whole basis
+/// points, to the emergency bound at `unwind_bound_widening_duration_ms`,
+/// where it stays. A caller cannot bring the wide bound forward; only time does.
+public(package) fun unwind_execution_bound(self: &RebalancePolicy, elapsed_duration_ms: u64): ExecutionBound {
+    let widening_duration_ms = constants::unwind_bound_widening_duration_ms!();
+    let elapsed = elapsed_duration_ms.min(widening_duration_ms) as u128;
+    // The constructor guarantees the emergency bound is at least the ordinary one.
+    let width = (self.emergency_max_slippage_bps - self.max_slippage_bps) as u128;
+    let widened = (width * elapsed / (widening_duration_ms as u128)) as u64;
+
+    ExecutionBound { slippage_bps: self.max_slippage_bps + widened }
 }
 
 /// Rejects a NAV cap that is zero or so large that
@@ -501,37 +550,6 @@ fun is_leverage_above_band(self: &RebalancePolicy, notional: u64, nav: u64): boo
     scale_by_denominator(notional) > (nav as u128) * (self.rebalance_above_bps as u128)
 }
 
-/// Returns whether an executed price stays within max slippage of its reference price.
-///
-/// Both values share one unit and scale; the gate is
-/// `|executed_price - reference_price| * 10_000 <= max_slippage_bps * reference_price`,
-/// cross-multiplied through `u128`. A zero reference price returns false. Risk
-/// increase and every ordinary rebalance use this bound.
-fun is_execution_within_max_slippage(
-    self: &RebalancePolicy,
-    reference_price: u64,
-    executed_price: u64,
-): bool {
-    is_within_relative_tolerance(self.max_slippage_bps, reference_price, executed_price)
-}
-
-/// Returns whether an executed value stays within emergency max slippage.
-///
-/// Same gate as the strict form with the wider emergency bound. Reduce-only
-/// execution strictly above max leverage may use it. This finite wider bound
-/// does not guarantee executable liquidity or successful deleveraging.
-fun is_execution_within_emergency_max_slippage(
-    self: &RebalancePolicy,
-    reference_price: u64,
-    executed_price: u64,
-): bool {
-    is_within_relative_tolerance(
-        self.emergency_max_slippage_bps,
-        reference_price,
-        executed_price,
-    )
-}
-
 // --- Price Policy ---
 
 /// Returns whether a source update lies inside the two-sided freshness window.
@@ -594,6 +612,10 @@ fun scale_by_denominator(notional: u64): u128 {
 }
 
 /// Returns whether `executed_price` is within `slippage_bps` of a positive `reference_price`.
+///
+/// Both values share one unit and scale; the gate is
+/// `|executed_price - reference_price| * 10_000 <= slippage_bps * reference_price`,
+/// cross-multiplied through `u128`. A zero reference price returns false.
 fun is_within_relative_tolerance(
     slippage_bps: u64,
     reference_price: u64,
@@ -664,13 +686,8 @@ public fun is_leverage_above_band_for_testing(self: &RebalancePolicy, notional: 
 }
 
 #[test_only]
-public fun is_execution_within_max_slippage_for_testing(self: &RebalancePolicy, reference_price: u64, executed_price: u64): bool {
-    self.is_execution_within_max_slippage(reference_price, executed_price)
-}
-
-#[test_only]
-public fun is_execution_within_emergency_max_slippage_for_testing(self: &RebalancePolicy, reference_price: u64, executed_price: u64): bool {
-    self.is_execution_within_emergency_max_slippage(reference_price, executed_price)
+public fun is_within_for_testing(self: &ExecutionBound, reference_price: u64, executed_price: u64): bool {
+    is_within_relative_tolerance(self.slippage_bps, reference_price, executed_price)
 }
 
 #[test_only]

@@ -435,3 +435,4 @@ None is treated as established until its named compile, localnet, or integration
 test passes, and none is asserted as a cited fact in the records.
 
 | [0117](0117-presale-versioning-and-activation.md) | Presale versioning and custody before activation | **accepted** |
+| [0118](0118-limit-priced-vault-orders-and-a-widening-unwind-bound.md) | Limit-priced vault orders and a widening unwind bound | **proposed** |

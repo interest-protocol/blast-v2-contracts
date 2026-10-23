@@ -37,7 +37,7 @@ base64 `TransactionData` to Sui's machine-readable `serialized-tx` surface with
 `--dev-inspect --json` on mainnet. Both live proof paths enforce the pinned Sui
 CLI version.
 
-Public active operations are `initialize`, `mint`, `redeem`, `rebalance`,
+Public active operations are `initialize`, `mint`, `redeem`,
 `needs_rebalance`, `sync_health` and `donate`; Vault also exposes authorized
 fee, NAV-cap and order-cap settings, issuer-only coin metadata updates, and
 earned-admin cash withdrawal.
@@ -46,24 +46,30 @@ Blast partner (`blast_partners::Partner`) and then pay it its share of the admin
 fee that operation retained, never the reserve fee, in the same transaction
 ([ADR 0095](../../../docs/decisions/0095-partner-codes.md),
 [how it works](../../../docs/partner-codes.md)).
-Operations that consume the ClearingHouse return it after completing their
+Initialization and mint/redeem return the ClearingHouse after completing their
 sessions and checks; mint/redeem return it alongside the native output coin.
 The caller can reuse it in later PTB commands and must share it after its
 final use (ADR 0087). This return shape requires a fresh adapter publication.
-Rebalance has
+Permissionless `rebalance` and `unwind` are private `entry` functions that share
+the market internally and return nothing (ADR 0118). They reject a market
+returned by an earlier trading session and end its use in that PTB. Repeated
+maintenance, rebalance followed by mint, and unwind followed by finalization
+on that market use separate transactions. Rebalance has
 no privileged keeper path, caller trade sizing or reward. An unresolved
 external change preserves the accepted economic checkpoint and emits
 `CheckpointDrifted`.
 
 Activation mints the locked seed shares to the burn address; they are never
 redeemable. `vault::begin_shutdown` requires a shutdown-role witness and no venue or oracle
-input. It irreversibly moves Active to Unwinding. Permissionless
+input; the clock it reads fixes when shutdown began. It irreversibly moves Active to Unwinding. Permissionless
 `operations::unwind` first reconciles the stored checkpoint with the venue
 exactly as `sync_health` does: an explainable funding move is booked and
 emitted, anything else emits `CheckpointDrifted`, and the step proceeds from the
 live state either way, because shutdown closes what the venue holds whatever
-moved it there. It then makes up to 16 bounded close-only market orders using
-fresh prices and the immutable emergency tolerance. A market the venue has
+moved it there. It then makes up to 16 bounded close-only immediate-or-cancel
+limit orders priced at fresh oracles inside a bound that opens at the ordinary
+tolerance and widens to the emergency tolerance over the day after shutdown
+began. A market the venue has
 paused admits no session, funding update or settlement; once the venue has
 closed it and enabled settlement prices, the step reconciles without a venue
 call and uses only the pinned direct settlement operation at those prices. That

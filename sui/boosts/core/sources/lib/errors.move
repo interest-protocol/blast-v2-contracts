@@ -255,6 +255,10 @@ const ESeedReserveAboveCap: u64 = 60;
 /// A mutation left the state in violation of an accounting invariant that must hold by construction.
 const EInvariantViolated: u64 = 61;
 
+#[test_only]
+/// A venue tick size must be positive to price a limit order.
+const EInvalidTickSize: u64 = 62;
+
 macro public(package) fun zero_amount(): u64 { 0 }
 
 macro public(package) fun invalid_fee_bps(): u64 { 1 }
@@ -378,3 +382,5 @@ macro public(package) fun invalid_max_reserve_bps(): u64 { 59 }
 macro public(package) fun seed_reserve_above_cap(): u64 { 60 }
 
 macro public(package) fun invariant_violated(): u64 { 61 }
+
+macro public(package) fun invalid_tick_size(): u64 { 62 }

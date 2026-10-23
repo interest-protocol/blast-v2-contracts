@@ -83,7 +83,11 @@ re-pointing never strands a Vault:
 Pass the shared `ClearingHouse` as a normal shared-object input. Several
 functions take it by value and return it after settling the required Aftermath
 session. Reuse that result in later PTB commands, then call Aftermath
-`clearing_house::share` once after its final use. Also pass the `Clock` (`0x6`)
+`clearing_house::share` once after its final use. `operations::rebalance` and
+`operations::unwind` instead share it internally and return nothing. These
+private `entry` calls accept the shared market directly, never a market returned
+by an earlier trading session, and end that market's use in the PTB.
+Also pass the `Clock` (`0x6`)
 everywhere a call takes one. This ABI requires a fresh publication.
 
 #### Roles
@@ -115,7 +119,11 @@ trade size exists anywhere.
   (ordinary execution bound, in bps of the oracle price)
   `<= emergency_max_slippage_bps < 10,000`;
   `min_leverage_improvement_bps > 0`. A zero `rebalance_below_bps` disables
-  increase-rebalancing.
+  increase-rebalancing. Every order the Vault places is an immediate-or-cancel
+  limit order whose price is the oracle price moved by the applicable bound
+  against the order and rounded to the market tick back toward the oracle, so
+  no fill can cross the bound; the fill's average price is then checked against
+  the same bound.
 - `price_policy` (`policy::PricePolicy`): `max_price_age_ms > 0`,
   `max_price_ahead_ms <= max_price_age_ms`, `max_confidence_bps < 10,000`,
   `max_mark_divergence_bps < 10,000`.
@@ -175,8 +183,9 @@ and activation succeed or fail together.
    ratio, a nonnegative IFixed `u256`), and the `Clock`. It creates and binds
    the Aftermath account, deposits and allocates the whole seed, sets the
    margin ratio, buys or sells whole lots until the position reaches target
-   leverage on the seed NAV (at most 16 orders, each filled completely within
-   the ordinary slippage bound and the order cap), settles funding, checks the
+   leverage on the seed NAV (at most 16 limit orders priced inside the
+   ordinary bound, each filled completely and within the order cap), settles
+   funding, checks the
    activation invariants (positive NAV, fresh prices, matching side, NAV at or
    under `nav_cap`, leverage inside the band, reserve at or under its ceiling,
    base above `lot_size * min_order_lots`), mints the locked seed shares to
@@ -231,12 +240,15 @@ What happens, in order, all atomic:
    `lot_size * min_order_lots` (core code 12).
 7. Keep `admin_fee` as Vault admin cash; deposit and allocate the rest
    (`deposit - admin_fee`) to the position.
-8. Place market orders in the Vault's direction until exactly `base_to_buy` is
-   filled: each order at most the whole-lot base worth `max_order_notional` at
-   the oracle pair, at most 16 orders, each fill checked for no resting order,
-   no liquidation, whole lots, actual collateral notional at or under
-   `max_order_notional`, and execution price within `max_slippage_bps` of the
-   oracle price.
+8. Place immediate-or-cancel limit orders in the Vault's direction, priced at
+   the oracle moved by `max_slippage_bps` against the order, until exactly
+   `base_to_buy` is filled: each order at most the whole-lot base worth
+   `max_order_notional` at the oracle pair, at most 16 orders, each fill
+   checked for no resting order, no liquidation, whole lots, actual collateral
+   notional at or under `max_order_notional`, and execution price within
+   `max_slippage_bps` of the oracle price. A thin book fills part of an order
+   and the next order carries the rest; an order that fills nothing aborts
+   inside Aftermath.
 9. Re-price at the same oracle pair and credit shares (see Economics). Check
    `shares >= minimum_shares`, post-mint NAV at or under `nav_cap`, post-mint
    leverage (rounded up to whole bps) strictly under `max_leverage_bps`, and
@@ -261,7 +273,8 @@ sells the proportional position reduce-only:
 `max_final_base = floor(base * (S - x) / S)`,
 `required = base - max_final_base` (at least `lot_size * min_order_lots`
 unless `max_final_base` is 0), and `base_to_sell = min(required rounded up to
-whole lots, base)`. Fills face the ordinary slippage bound and the order cap.
+whole lots, base)`. Orders are limit orders priced inside the ordinary bound
+and face the order cap.
 It then prices the payout (see Economics), checks `net >= minimum_collateral`,
 withdraws `net + admin_fee` from the venue (free collateral first, then
 deallocation), keeps `admin_fee` as admin cash, burns the shares, emits
@@ -297,9 +310,12 @@ Blast removes the partner). Otherwise use the plain calls. While a Vault's
 #### Rebalance (anyone; keepers)
 
 `operations::rebalance<Product, Collateral>(vault, protocol, account, registry,
-clearing_house, base_oracle, collateral_oracle, clock)`. Returns
-`ClearingHouse<Collateral>` for reuse and a final Aftermath
-`clearing_house::share`. No reward, direction or size argument. Submit it at a gas price **at or below
+clearing_house, base_oracle, collateral_oracle, clock)`. Anyone can submit this
+private `entry` call directly in a PTB. It shares the clearing house internally
+and returns nothing; no earlier trading session may supply its market and no
+later command may reuse that market. Use a separate transaction for another
+rebalance or a mint on the same market. No reward, direction or size argument.
+Submit it at a gas price **at or below
 the reference gas price** (adapter code 37 otherwise), because Aftermath adds
 a priority taker fee above it and holders pay every fill.
 
@@ -309,18 +325,22 @@ a priority taker fee above it and holders pay every fill.
    `notional * 10,000 > N * rebalance_above_bps` (reduce). Band edges are
    healthy.
 3. Read the market taker fee, rounded up to whole bps (rebates count as zero).
-4. Up to 16 orders. Increase: each order is the largest whole-lot buy that
+4. Up to 16 limit orders, each priced at the oracle moved by its bound
+   against the order. Increase: each order is the largest whole-lot buy that
    keeps post-cost leverage at or under target, reserving adverse slippage
    (`max_slippage_bps`) and the taker fee on it, capped at
    `max_order_notional`; each fill must leave leverage at or under target and
    under max. Reduce: each order sells toward the target base, capped per
-   order, rounded down to lots. A reduction that started above
-   `max_leverage_bps` uses `emergency_max_slippage_bps` and stops once leverage
-   is no longer above max; every other order uses `max_slippage_bps`.
+   order, rounded down to lots, under `max_slippage_bps`. A reduction that
+   started above `max_leverage_bps` instead sells only what brings leverage
+   back to `max_leverage_bps` (at least one lot, capped per order) under
+   `emergency_max_slippage_bps`, and stops once leverage is no longer above
+   max; a later call reduces the rest toward target under `max_slippage_bps`.
 5. Require progress: at least one fill; an increase must raise base and
    leverage; a reduction must lower base and either move leverage at least
    `min_leverage_improvement_bps` toward target or land within one lot of
-   target without moving away (core code 55).
+   target without moving away (core code 55). A reduction that started above
+   `max_leverage_bps` has made progress once leverage is no longer above it.
 6. Store the checkpoint; emit `Rebalanced`. Reserve, supply and admin cash do
    not change; execution cost lowers NAV.
 
@@ -366,25 +386,31 @@ over the ceiling raises shareholder NAV. No shares, no fees. Emits `Donated`.
 
 1. **Begin** (Blast admin: ShutdownAdmin).
    `blast_boosts_aftermath::vault::begin_shutdown(vault, protocol, witness,
-   reason)` with `reason` from `lifecycle::emergency_reason()` or
+   reason, clock)` with `reason` from `lifecycle::emergency_reason()` or
    `lifecycle::observed_venue_change_reason()` (an operator's label, never an
-   on-chain liquidation verdict). Needs no venue or oracle object. Moves
+   on-chain liquidation verdict). Needs no venue or oracle object; the `Clock`
+   fixes when shutdown began. Moves
    `Active` to `Unwinding`, emits `ShutdownBegun`. Mint, redeem, rebalance and
    donate stop.
 2. **Unwind** (anyone, repeat until flat). `operations::unwind<Product,
    Collateral>(vault, protocol, account, registry, clearing_house, base_oracle,
    collateral_oracle, clock)`, at or below the reference gas price, refused
-   while the clearing house is frozen (adapter code 35). Returns the clearing
-   house for reuse and a final Aftermath `clearing_house::share`.
+   while the clearing house is frozen (adapter code 35). This private `entry`
+   call shares the clearing house internally and returns nothing. Pass the
+   shared market directly, without a preceding trading session. Repeat unwind
+   and finalize in separate transactions because the market cannot be reused
+   after this call.
    - Live market: synchronize (drift is reported with `CheckpointDrifted` and
      the live venue state is adopted anyway), price at fresh oracles, then up
-     to 16 reduce-only orders under `emergency_max_slippage_bps` and the order
-     cap. Emits `OrderFilled` per order and `UnwindProgress`. Positive NAV and
-     the reserve do not gate it. A flat position aborts (adapter code 34): go
-     to finalize.
+     to 16 reduce-only limit orders under the order cap and a bound that
+     starts at `max_slippage_bps` when shutdown begins and widens linearly to
+     `emergency_max_slippage_bps` over the following 24 hours, where it stays.
+     Emits `OrderFilled` per order and `UnwindProgress`. Positive NAV and the
+     reserve do not gate it. A flat position aborts (adapter code 34): go to
+     finalize.
    - Market paused by Aftermath: once Aftermath has enabled positive
      settlement prices, the step closes the position at those prices without a
-     market order (`UnwindProgress` with `market_orders = 0`,
+     venue order (`UnwindProgress` with `market_orders = 0`,
      `filled_quote = none`). Before that it aborts (adapter code 33).
 3. **Finalize** (anyone). `operations::finalize_shutdown<Product,
    Collateral>(vault, protocol, account, registry, clearing_house, base_oracle,
@@ -626,7 +652,7 @@ types below from the adapter's `events` module (for example
 | --- | --- | --- |
 | `VaultIssued` | `issue` | Policy, initial caps, treasury and metadata cap IDs. No Vault ID yet. |
 | `VaultInitialized` | `initialize` | Vault ID, binding, seed amount, seed equity, reserve and NAV, locked shares, opening base and lot, side, IMR, first checkpoint. |
-| `OrderFilled` | every Aftermath order (seed, mint, redeem, rebalance, unwind) | `account_object_id` (map to the Vault through the binding), side, reduce-only, emergency, requested and filled base, raw quote, 9-decimal reference and executed prices. |
+| `OrderFilled` | every Aftermath order (seed, mint, redeem, rebalance, unwind) | `account_object_id` (map to the Vault through the binding), side, reduce-only, requested and filled base, raw quote, 9-decimal reference price, limit price and executed price. The limit sits inside the bound the order ran under. |
 | `Minted` | `mint` | deposit, shares, contribution, fee, admin and reserve fee, reserve, admin cash and supply after, checkpoint. |
 | `Redeemed` | `redeem` | shares burned, net paid, fee split, reserve, admin cash and supply after, checkpoint. |
 | `PartnerFeePaid` | partner variants, after `Minted` or `Redeemed` | partner ID, the operation's admin fee, the partner's cut. `admin_cash_after` in the preceding event still includes the cut. |
@@ -636,7 +662,7 @@ types below from the adapter's `events` module (for example
 | `CheckpointDrifted` | `sync_health` or `unwind` that finds unexplained venue state | After `sync_health` the accepted checkpoint stands and priced operations abort until a sync finds the venue explainable again; `unwind` then adopts the live state and closes it. |
 | `Donated` | `donate` | amount, reserve after. |
 | `ShutdownBegun` | `begin_shutdown` | declared reason. |
-| `UnwindProgress` | `unwind` | adopted before checkpoint, after checkpoint, market orders, filled quote (`none` for settlement-price closes). |
+| `UnwindProgress` | `unwind` | adopted before checkpoint, after checkpoint, orders placed (`market_orders`), filled quote (`none` for settlement-price closes). |
 | `ShutdownFinalized` | `finalize_shutdown` | recovered cash, eligible supply, final checkpoint, raw unrecoverable remainder (below one atom). |
 | `ShutdownRedeemed` | `redeem_shutdown` | shares, cash paid, cash and eligible supply remaining. |
 | `FeesUpdated`, `NavCapUpdated`, `MaxOrderNotionalUpdated` | admin calls | previous and new values. |
@@ -700,9 +726,9 @@ outdated adapter package aborts in the `operational_version` module of the
 | 31 | Venue mark too far from the oracle | Retry later. |
 | 35 | Fewer shares than `minimum_shares` | Re-quote; raise slippage tolerance. |
 | 36 | Post-mint NAV above `nav_cap` | Mint less or wait. |
-| 37 | A fill's price outside the slippage bound | Trade smaller or wait for depth. |
+| 37 | A fill's price outside the execution bound, or no tick inside it | Trade smaller or wait for depth. |
 | 43 | A fill's actual notional above `max_order_notional` | Trade smaller. |
-| 49 | Mint while leverage is outside the band | Call `rebalance` (anyone), then mint. |
+| 49 | Mint while leverage is outside the band | Call `rebalance` (anyone), then mint in a separate transaction. |
 | 50, 51 | Oracle pair or fills changed within the operation | Retry. |
 | 52 | Leverage after a mint at or above `max_leverage_bps` (rounded up), or a rebalance buy left leverage above target or at or above max | Mint less; for rebalance, retry later. |
 | 53 | Payout below `minimum_collateral` | Re-quote. |
@@ -719,9 +745,10 @@ outdated adapter package aborts in the `operational_version` module of the
   (49), above the NAV cap (36), or while the checkpoint is drifted (32).
 - Tiny trades. Mints and redemptions below `lot_size * min_order_lots` of base
   abort (12); shutdown claims that round to zero abort (8).
-- Large trades. More than 16 orders, a fill outside `max_slippage_bps`, or a
-  full-size buy order filling above the oracle (actual notional over the cap)
-  aborts the whole transaction.
+- Large trades. More than 16 orders, a fill outside `max_slippage_bps`, an
+  order that finds nothing to fill inside its limit (Aftermath aborts the empty
+  session), or a full-size buy order filling above the oracle (actual notional
+  over the cap) aborts the whole transaction.
 - Submitting `rebalance` or `unwind` with a priority gas price (37). For mint
   and redeem a higher gas price is allowed, but Aftermath then adds its
   priority taker fee to every fill, which the user pays through fewer shares or
@@ -763,7 +790,7 @@ changes nothing for the user.
 
 **Why did my mint abort with code 49 in `state`?** The Vault's leverage is
 outside the rebalance band, and mints are allowed only inside it. Anyone can call
-`operations::rebalance`; once it succeeds, mint again.
+`operations::rebalance`; once its transaction succeeds, mint in a new transaction.
 
 **Who rebalances, and is there a reward?** Anyone, through
 `operations::rebalance`, at or below the reference gas price. There is no

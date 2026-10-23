@@ -11,7 +11,9 @@ module blast_boosts_core::lifecycle;
 /// A Vault is born active; only authenticated shutdown moves it forward.
 public enum Lifecycle has drop, store {
     Active,
-    Unwinding,
+    /// Shutdown began at the recorded adapter clock time; the close-only
+    /// execution bound widens from that instant.
+    Unwinding { began_at_ms: u64 },
     Settled,
 }
 
@@ -49,15 +51,24 @@ public(package) fun assert_can_sync(self: &Lifecycle) {
     );
 }
 
-/// Only the owner with authenticated shutdown authority may call this transition.
-public(package) fun begin_shutdown(self: &mut Lifecycle) {
+/// Only the owner with authenticated shutdown authority may call this
+/// transition; `now_at_ms` is the adapter's clock reading it happens at.
+public(package) fun begin_shutdown(self: &mut Lifecycle, now_at_ms: u64) {
     assert!(self.is_active(), blast_boosts_core::errors::invalid_lifecycle_transition!());
 
-    *self = Lifecycle::Unwinding;
+    *self = Lifecycle::Unwinding { began_at_ms: now_at_ms };
 }
 
 public(package) fun is_unwinding(self: &Lifecycle): bool {
-    match (self) { Lifecycle::Unwinding => true, _ => false }
+    match (self) { Lifecycle::Unwinding { .. } => true, _ => false }
+}
+
+/// The adapter clock reading shutdown began at; only an unwinding Vault has one.
+public(package) fun shutdown_began_at_ms(self: &Lifecycle): u64 {
+    match (self) {
+        Lifecycle::Unwinding { began_at_ms } => *began_at_ms,
+        _ => abort blast_boosts_core::errors::operation_not_permitted_in_lifecycle!(),
+    }
 }
 
 public(package) fun assert_unwinding(self: &Lifecycle) {
@@ -82,12 +93,12 @@ public(package) fun assert_settled(self: &Lifecycle) {
 // === Test-Only Functions ===
 
 #[test_only]
-public(package) fun unwinding_for_testing(): Lifecycle { Lifecycle::Unwinding }
+public(package) fun unwinding_for_testing(): Lifecycle { Lifecycle::Unwinding { began_at_ms: 0 } }
 
 #[test_only]
 public(package) fun settled_for_testing(): Lifecycle { Lifecycle::Settled }
 
 #[test_only]
 public(package) fun set_unwinding_for_testing(self: &mut Lifecycle) {
-    *self = Lifecycle::Unwinding;
+    *self = Lifecycle::Unwinding { began_at_ms: 0 };
 }

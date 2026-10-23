@@ -33,8 +33,8 @@ const PACKAGES = [
         previousTransaction: 'EwwGij6nQ1R8zHzSTcSsJXpAh45otaGKQNHqCGTM7tFx',
         modules: [
             { name: 'account', sha256: 'e94916287e63c4dbd2c8bb8b4939d306834740e50668eaca1ccc4bf3951ec23e', functions: ['create_account', 'consume_policy_and_share_account', 'deposit_collateral', 'withdraw_collateral', 'account_id', 'collateral_balance'] },
-            { name: 'clearing_house', sha256: '56290307f97f6d974b1a4edadd2d62963ac678e76c7b4b3193cbd379c7825eaf', functions: ['allocate_collateral', 'create_market_position', 'set_position_initial_margin_ratio', 'settle_position_funding', 'start_session', 'place_market_order', 'end_session', 'share', 'position', 'market_params', 'market_state', 'market_pause_mode', 'is_frozen', 'is_market_paused', 'filled_base_and_quote', 'base_filled_bid', 'base_filled_ask', 'posted_orders', 'execution_price', 'liquidated_size', 'liquidation_bad_debt', 'mark_price', 'update_funding', 'deallocate_collateral', 'settlement_valuation_prices', 'close_position_at_settlement_prices'] },
-            { name: 'market', sha256: '7b48781611318e2fe87686166925780cd0c73517d0f2a474be9d58761c340985', functions: ['lot_size', 'scaling_factor', 'base_storage_id', 'collateral_storage_id', 'base_source_id', 'collateral_source_id', 'margin_ratio_initial', 'margin_ratio_maintenance', 'collateral_haircut', 'cum_funding_rates', 'base_oracle_price', 'collateral_oracle_price', 'calculate_mark_price', 'funding_params', 'funding_last_upd_ms', 'is_time_to_update', 'next_funding_update_time', 'taker_fee'] },
+            { name: 'clearing_house', sha256: '56290307f97f6d974b1a4edadd2d62963ac678e76c7b4b3193cbd379c7825eaf', functions: ['allocate_collateral', 'create_market_position', 'set_position_initial_margin_ratio', 'settle_position_funding', 'start_session', 'place_limit_order', 'end_session', 'share', 'position', 'market_params', 'market_state', 'market_pause_mode', 'is_frozen', 'is_market_paused', 'filled_base_and_quote', 'base_filled_bid', 'base_filled_ask', 'posted_orders', 'execution_price', 'liquidated_size', 'liquidation_bad_debt', 'mark_price', 'update_funding', 'deallocate_collateral', 'settlement_valuation_prices', 'close_position_at_settlement_prices'] },
+            { name: 'market', sha256: '7b48781611318e2fe87686166925780cd0c73517d0f2a474be9d58761c340985', functions: ['lot_size', 'tick_size', 'scaling_factor', 'base_storage_id', 'collateral_storage_id', 'base_source_id', 'collateral_source_id', 'margin_ratio_initial', 'margin_ratio_maintenance', 'collateral_haircut', 'cum_funding_rates', 'base_oracle_price', 'collateral_oracle_price', 'calculate_mark_price', 'funding_params', 'funding_last_upd_ms', 'is_time_to_update', 'next_funding_update_time', 'taker_fee'] },
         ],
     },
     {
@@ -104,7 +104,7 @@ const ABI = {
     'clearing_house::market_params': 'public fun market_params<$0>(&@self::clearing_house::ClearingHouse<$0>): &@self::market::MarketParams',
     'clearing_house::market_pause_mode': 'public fun market_pause_mode<$0>(&@self::clearing_house::ClearingHouse<$0>): u8',
     'clearing_house::market_state': 'public fun market_state<$0>(&@self::clearing_house::ClearingHouse<$0>): &@self::market::MarketState',
-    'clearing_house::place_market_order': 'public fun place_market_order<$0>(&mut @self::clearing_house::SessionHotPotato<$0>, bool, u64, bool)',
+    'clearing_house::place_limit_order': 'public fun place_limit_order<$0>(&mut @self::clearing_house::SessionHotPotato<$0>, bool, u64, u64, u64, @std::option::Option<u64>, bool, @std::option::Option<u64>): @std::option::Option<u128>',
     'clearing_house::position': 'public fun position<$0>(&@self::clearing_house::ClearingHouse<$0>, u64): &0x9196fffe0341b2f0ca7424926b22d9e9e35b4807a1f625fc20eeea1382d08dec::position::Position',
     'clearing_house::posted_orders': 'public fun posted_orders(&@self::clearing_house::SessionSummary): u64',
     'clearing_house::set_position_initial_margin_ratio': 'public fun set_position_initial_margin_ratio<$0, $1>(&mut @self::clearing_house::ClearingHouse<$0>, &0x4e2df80a5e2fd0392878298c51ce15164222111ccea05504b9291b158f552677::authority::AuthorityCap<@self::authority::ACCOUNT, $1>, &@self::account::Account<$0>, u256)',
@@ -138,6 +138,7 @@ const ABI = {
     'market::next_funding_update_time': 'public fun next_funding_update_time(u64, u64): u64',
     'market::scaling_factor': 'public fun scaling_factor(&@self::market::MarketParams): u256',
     'market::taker_fee': 'public fun taker_fee(&@self::market::MarketParams): u256',
+    'market::tick_size': 'public fun tick_size(&@self::market::MarketParams): u64',
     'position::abs_net_base': 'public fun abs_net_base(&@self::position::Position): u256',
     'position::base_and_quote_amounts': 'public fun base_and_quote_amounts(&@self::position::Position): (u256, u256)',
     'position::collateral': 'public fun collateral(&@self::position::Position): u256',

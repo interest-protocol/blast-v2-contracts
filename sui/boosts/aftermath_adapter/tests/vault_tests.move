@@ -148,7 +148,7 @@ fun fees_cannot_change_once_shutdown_has_begun() {
 
     fixture.next_tx!(ISSUER, |fixture| {
         let mut vault = fixture.take_vault<Sui2x>();
-        vault.begin_shutdown(&fixture.protocol, &shutdown_admin(), blast_boosts_core::lifecycle::emergency_reason());
+        begin_shutdown_now(fixture, &mut vault);
 
         vault.set_fees(&fixture.protocol, &risk_admin(), 0, 0, 0);
 
@@ -425,7 +425,7 @@ fun max_order_notional_can_change_while_unwinding() {
 
     fixture.next_tx!(ISSUER, |fixture| {
         let mut vault = fixture.take_vault<Sui2x>();
-        vault.begin_shutdown(&fixture.protocol, &shutdown_admin(), blast_boosts_core::lifecycle::emergency_reason());
+        begin_shutdown_now(fixture, &mut vault);
 
         vault.set_max_order_notional(&fixture.protocol, &risk_admin(), MAX_ORDER_NOTIONAL * 4);
 
@@ -480,8 +480,7 @@ fun terminal_claim_during_unwinding_is_rejected_before_finalization() {
     let mut fixture = start();
     let issuance = fixture.issue<Sui2x>(b"SUI2X".to_string());
     let (mut vault, _) = fixture.activate(issuance);
-    let admin_witness = shutdown_admin();
-    vault.begin_shutdown(&fixture.protocol, &admin_witness, blast_boosts_core::lifecycle::emergency_reason());
+    begin_shutdown_now(&mut fixture, &mut vault);
     let shares = vault.mint_shares(5, fixture.ctx!());
     let clock = clock::create_for_testing(fixture.ctx!());
 
@@ -501,8 +500,7 @@ fun unsettled_lifecycle_precedes_an_expired_deadline() {
     let mut fixture = start();
     let issuance = fixture.issue<Sui2x>(b"SUI2X".to_string());
     let (mut vault, _) = fixture.activate(issuance);
-    let admin_witness = shutdown_admin();
-    vault.begin_shutdown(&fixture.protocol, &admin_witness, blast_boosts_core::lifecycle::emergency_reason());
+    begin_shutdown_now(&mut fixture, &mut vault);
     let shares = vault.mint_shares(5, fixture.ctx!());
     let mut clock = clock::create_for_testing(fixture.ctx!());
     clock.set_for_testing(REFERENCE_AT_MS + 1);
@@ -629,9 +627,8 @@ fun shutdown_admin_moves_an_active_vault_to_unwinding() {
     fixture.next_tx!(ISSUER, |fixture| {
         let mut vault = fixture.take_vault<Sui2x>();
         let vault_id = vault.id();
-        let admin_witness = shutdown_admin();
 
-        vault.begin_shutdown(&fixture.protocol, &admin_witness, blast_boosts_core::lifecycle::emergency_reason());
+        begin_shutdown_now(fixture, &mut vault);
 
         assert!(vault.is_unwinding_for_testing());
         assert_eq!(vault.total_share_supply(), SEED_NAV * 1_000);
@@ -656,11 +653,10 @@ fun stale_version_precedes_an_already_unwinding_vault() {
 
     fixture.next_tx!(ISSUER, |fixture| {
         let mut vault = fixture.take_vault<Sui2x>();
-        let admin_witness = shutdown_admin();
-        vault.begin_shutdown(&fixture.protocol, &admin_witness, blast_boosts_core::lifecycle::emergency_reason());
+        begin_shutdown_now(fixture, &mut vault);
         fixture.protocol.set_version_for_testing(3);
 
-        vault.begin_shutdown(&fixture.protocol, &admin_witness, blast_boosts_core::lifecycle::emergency_reason());
+        begin_shutdown_now(fixture, &mut vault);
 
         fixture.return_vault(vault);
     });
@@ -828,10 +824,16 @@ fun shutdown_admin(): AdminWitness<ShutdownAdmin> {
     blast_acl::witness_for_testing()
 }
 
+/// Begins shutdown under the shutdown admin's witness at the fixture's clock.
+fun begin_shutdown_now<Product>(self: &mut Fixture, vault: &mut Vault<Product, SUI>) {
+    let clock = clock::create_for_testing(self.ctx!());
+    vault.begin_shutdown(&self.protocol, &shutdown_admin(), blast_boosts_core::lifecycle::emergency_reason(), &clock);
+    destroy(clock);
+}
+
 /// Begins shutdown and finalizes it on `recovered` collateral atoms, keeping the current checkpoint.
 fun settle_with_cash<Product>(self: &mut Fixture, vault: &mut Vault<Product, SUI>, recovered: u64) {
-    let admin_witness = shutdown_admin();
-    vault.begin_shutdown(&self.protocol, &admin_witness, blast_boosts_core::lifecycle::emergency_reason());
+    begin_shutdown_now(self, vault);
     let checkpoint = *vault.venue().checkpoint();
     operations::complete_finalization_for_testing(
         vault, checkpoint, coin::mint_for_testing<SUI>(recovered, self.scenario.ctx()),
