@@ -20,7 +20,7 @@ const terminal = (operation) => {
     value.reason = 'observed_venue_change';
     value.objects.acl = address(41);
     value.objects.adminCap = address(42);
-    const keys = operation === 'begin_shutdown' ? ['vault', 'protocol', 'acl', 'adminCap']
+    const keys = operation === 'begin_shutdown' ? ['vault', 'protocol', 'acl', 'adminCap', 'clock']
         : operation === 'redeem_shutdown' ? ['vault', 'protocol', 'inputCoin', 'clock']
         : operation === 'finalize_shutdown' ? ['vault', 'protocol', 'account', 'registry', 'clearingHouse', 'baseOracle', 'collateralOracle', 'clock']
         : ['vault', 'protocol', 'account', 'registry', 'clearingHouse', 'baseOracle', 'collateralOracle', 'clock'];
@@ -37,7 +37,7 @@ test('shutdown requires the shutdown-admin witness and a declared reason, withou
     assert.deepEqual(plan.commands[0].typeArguments, [`${address(40)}::blast_boosts_core::ShutdownAdmin`]);
     assert.deepEqual(plan.commands[0].arguments, [`@${value.objects.acl}`, `@${value.objects.adminCap}`]);
     assert.deepEqual(plan.commands[2].typeArguments, [value.productType, value.collateralType]);
-    assert.deepEqual(plan.commands[2].arguments, [`@${value.objects.vault}`, `@${value.objects.protocol}`, 'witness', 'reason']);
+    assert.deepEqual(plan.commands[2].arguments, [`@${value.objects.vault}`, `@${value.objects.protocol}`, 'witness', 'reason', `@${value.objects.clock}`]);
     assert.throws(() => buildTerminalPlan({...value, adminPackage: undefined}), /address/);
     assert.throws(() => buildTerminalPlan({...value, reason: 'liquidation'}), /declared reason/);
 });

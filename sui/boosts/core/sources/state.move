@@ -106,21 +106,22 @@ public struct RebalancePlan<phantom Product> {
     reserve_priced: u64,
     increase: bool,
     /// Whether the plan began above the hard cap and so may use the emergency
-    /// slippage bound. Such a reduction stops at the cap: below it only the
-    /// ordinary bound applies, and a market that cannot fill within it must
-    /// not revert the progress already made.
+    /// execution bound. Such a reduction sells only what restores the cap and
+    /// stops there: below the cap only the ordinary bound applies, and a
+    /// market that cannot fill within it must not revert the progress made.
     emergency: bool,
     venue_fee_bps: u64,
     steps: u64,
 }
 
-/// The next whole-lot order a rebalance places: its size, direction, and
-/// whether the position is still above the hard cap so the emergency
-/// slippage bound applies. A zero size ends the plan.
+/// The next whole-lot order a rebalance places: its size, direction, whether
+/// the position is still above the hard cap, and the execution bound it is
+/// priced and proved under. A zero size ends the plan.
 public struct RebalanceOrder has drop {
     base: u64,
     increase: bool,
     emergency: bool,
+    bound: ExecutionBound,
 }
 
 // === Public Functions ===
@@ -244,10 +245,10 @@ public fun assert_seed_order_notional_allowed<Product>(self: &Issuance<Product>,
     assert_order_notional_within(self.max_order_notional, order_notional);
 }
 
-/// Rejects a seed fill outside the ordinary slippage bound; opening a position
-/// always increases risk, so the emergency bound never applies here.
-public fun assert_seed_execution<Product>(self: &Issuance<Product>, reference_price: u64, executed_price: u64) {
-    assert_execution_within(&self.vault_policy, false, reference_price, executed_price);
+/// The bound every seed order is priced and proved under: the ordinary one,
+/// because opening a position always increases risk.
+public fun seed_execution_bound<Product>(self: &Issuance<Product>): ExecutionBound {
+    self.vault_policy.rebalance_policy().execution_bound(false)
 }
 
 /// The immutable direction every order of this product takes.
@@ -265,11 +266,12 @@ public fun assert_order_notional_allowed<Product>(self: &State<Product>, order_n
     assert_order_notional_within(self.max_order_notional, order_notional);
 }
 
-/// Rejects a fill whose price diverges from the reference beyond the bound the
-/// order was placed under: the ordinary one, or the wider emergency one for a
-/// reduction placed above the hard cap and for shutdown.
-public fun assert_execution<Product>(self: &State<Product>, emergency: bool, reference_price: u64, executed_price: u64) {
-    assert_execution_within(&self.vault_policy, emergency, reference_price, executed_price);
+/// The bound every mint, redemption and ordinary rebalance order is priced and
+/// proved under. A rebalance order carries its own bound, which is the wider
+/// emergency one only while the position is above the hard cap, and a
+/// close-only order takes the bound `unwind_constraints` prices at.
+public fun execution_bound<Product>(self: &State<Product>): ExecutionBound {
+    self.vault_policy.rebalance_policy().execution_bound(false)
 }
 
 // --- Mint ---
@@ -507,25 +509,37 @@ public fun prepare_rebalance<Product>(
 /// The next order toward the band, sized from the position the last fill left.
 ///
 /// A zero size ends the plan; the adapter bounds the number of orders. An
-/// emergency reduction ends as soon as leverage is no longer above the hard
-/// cap, so the emergency bound never covers an order placed below it and a wide
-/// market cannot revert the orders placed above it.
+/// emergency reduction sells only what brings leverage back to the hard cap
+/// and ends as soon as it is no longer above it, so the emergency bound never
+/// covers more notional than restoring the cap needs, never an order placed
+/// below the cap, and a wide market cannot revert the orders placed above it.
 public fun next_rebalance_order<Product>(self: &State<Product>, plan: &RebalancePlan<Product>): RebalanceOrder {
     let position = &plan.current;
     let nav = accounting_math::shareholder_nav(position.equity, plan.reserve_priced);
+    let rebalance = self.vault_policy.rebalance_policy();
+    let ordinary = rebalance.execution_bound(false);
 
     if (plan.increase) {
-        return RebalanceOrder { base: self.increase_order(position, nav, plan.venue_fee_bps), increase: true, emergency: false }
+        return RebalanceOrder {
+            base: self.increase_order(position, nav, plan.venue_fee_bps), increase: true, emergency: false, bound: ordinary,
+        }
     };
 
     // The bound is the plan's, decided against the observation that opened it:
     // a plan's own fills cannot widen it. A reduction that crosses the cap
     // mid-plan either finishes within the ordinary bound or aborts, and the
     // next plan is prepared, and judged emergency, against a fresh observation.
-    let above_max = self.vault_policy.rebalance_policy().is_leverage_above_max(position.notional, nav);
-    if (plan.emergency && !above_max) return RebalanceOrder { base: 0, increase: false, emergency: false };
+    if (plan.emergency) {
+        if (!rebalance.is_leverage_above_max(position.notional, nav)) {
+            return RebalanceOrder { base: 0, increase: false, emergency: false, bound: ordinary }
+        };
+        return RebalanceOrder {
+            base: self.cap_restoring_order(position, nav), increase: false, emergency: true,
+            bound: rebalance.execution_bound(true),
+        }
+    };
 
-    RebalanceOrder { base: self.reduction_order(position, nav), increase: false, emergency: plan.emergency }
+    RebalanceOrder { base: self.reduction_order(position, nav), increase: false, emergency: false, bound: ordinary }
 }
 
 /// The position the rebalance was priced against.
@@ -540,6 +554,9 @@ public fun is_increase(self: &RebalanceOrder): bool { self.increase }
 
 public fun is_emergency(self: &RebalanceOrder): bool { self.emergency }
 
+/// The bound the order is priced and proved under.
+public fun bound(self: &RebalanceOrder): ExecutionBound { self.bound }
+
 /// Advances the plan by one accepted whole-lot fill of `order` under the fixed oracle pair.
 public fun accept_rebalance_fill<Product>(
     self: &State<Product>,
@@ -549,7 +566,7 @@ public fun accept_rebalance_fill<Product>(
     filled_base: u64,
     now_at_ms: u64,
 ) {
-    let RebalanceOrder { base: requested, increase, emergency: _ } = order;
+    let RebalanceOrder { base: requested, increase, emergency: _, bound: _ } = order;
     assert!(
         filled_base > 0 && filled_base <= requested && filled_base % plan.current.lot_size == 0,
         blast_boosts_core::errors::active_fill_incomplete!(),
@@ -585,25 +602,28 @@ public fun complete_rebalance<Product>(
     plan: RebalancePlan<Product>,
 ): (u64, u64, u64, u64, bool) {
     self.lifecycle.assert_active();
-    let RebalancePlan { before, current, reserve_priced, increase, emergency: _, venue_fee_bps: _, steps } = plan;
+    let RebalancePlan { before, current, reserve_priced, increase, emergency, venue_fee_bps: _, steps } = plan;
     assert!(steps > 0, blast_boosts_core::errors::rebalance_no_progress!());
 
     let before_nav = accounting_math::shareholder_nav(before.equity, reserve_priced);
     let after_nav = accounting_math::shareholder_nav(current.equity, reserve_priced);
     let rebalance = self.vault_policy.rebalance_policy();
+    // An emergency plan has done its job once leverage is no longer above the
+    // hard cap, however small the sale that restored it was.
+    let cap_restored = emergency && !rebalance.is_leverage_above_max(current.notional, after_nav);
     let improved = if (increase) {
         current.base > before.base
             && rebalance_math::leverage_rose(before.notional, before_nav, current.notional, after_nav)
     } else {
         current.base < before.base
-            && rebalance_math::reduction_is_sufficient(
+            && (cap_restored || rebalance_math::reduction_is_sufficient(
                 before.notional, before_nav, current.notional, after_nav,
                 rebalance.target_leverage_bps(), rebalance.min_leverage_improvement_bps(),
                 rebalance_math::oracle_notional_up(
                     current.lot_size, current.base_price, current.collateral_price,
                     self.base_unit, self.collateral_unit,
                 ),
-            )
+            ))
     };
     assert!(improved, blast_boosts_core::errors::rebalance_no_progress!());
 
@@ -682,8 +702,10 @@ public fun assert_can_sync<Product>(self: &State<Product>) {
 // --- Shutdown ---
 
 /// Irreversibly stops ordinary operations. The owning adapter authenticates shutdown authority.
-public fun begin_shutdown<Product>(self: &mut State<Product>) {
-    self.lifecycle.begin_shutdown();
+/// Moves the Vault to Unwinding at the adapter's clock reading `now_at_ms`,
+/// from which the close-only execution bound widens.
+public fun begin_shutdown<Product>(self: &mut State<Product>, now_at_ms: u64) {
+    self.lifecycle.begin_shutdown(now_at_ms);
 }
 
 /// Authorizes only close-only venue progress before finalization.
@@ -691,15 +713,18 @@ public fun assert_unwinding<Product>(self: &State<Product>) {
     self.lifecycle.assert_unwinding();
 }
 
-/// Prices a close-only order and sizes the per-order cap in whole lots at that
-/// price; insolvency and the reserve do not gate an exit.
+/// Prices a close-only order, sizes the per-order cap in whole lots at that
+/// price, and fixes the execution bound every close order of this step is
+/// priced and proved under: the ordinary bound when shutdown has just begun,
+/// widening with the time since to the emergency bound. Insolvency and the
+/// reserve do not gate an exit.
 public fun unwind_constraints<Product>(
     self: &State<Product>,
     base_oracle: PriceObservation,
     collateral_oracle: PriceObservation,
     lot_size: u64,
     now_at_ms: u64,
-): (PositionSide, u64, u64, u64) {
+): (PositionSide, u64, u64, u64, ExecutionBound) {
     self.assert_unwinding();
     let price_policy = self.vault_policy.price_policy();
     assert_oracle_admitted(&price_policy, &base_oracle, now_at_ms);
@@ -709,8 +734,11 @@ public fun unwind_constraints<Product>(
     let max_order_base = rebalance_math::base_for_notional_down(
         self.max_order_notional, base_price, collateral_price, lot_size, self.base_unit, self.collateral_unit,
     );
+    let shutdown_began_at_ms = self.lifecycle.shutdown_began_at_ms();
+    let elapsed_duration_ms = if (now_at_ms > shutdown_began_at_ms) { now_at_ms - shutdown_began_at_ms } else { 0 };
+    let bound = self.vault_policy.rebalance_policy().unwind_execution_bound(elapsed_duration_ms);
 
-    (self.vault_policy.side(), max_order_base, base_price, collateral_price)
+    (self.vault_policy.side(), max_order_base, base_price, collateral_price, bound)
 }
 
 /// Consumes the reserve book entry only after the adapter proves complete local cash recovery.
@@ -858,16 +886,6 @@ fun assert_order_notional_within(max_order_notional: u64, order_notional: u64) {
     assert!(order_notional <= max_order_notional, blast_boosts_core::errors::order_notional_exceeds_maximum!());
 }
 
-fun assert_execution_within(vault_policy: &VaultPolicy, emergency: bool, reference_price: u64, executed_price: u64) {
-    let rebalance = vault_policy.rebalance_policy();
-
-    if (emergency) {
-        rebalance.assert_execution_within_emergency_max_slippage(reference_price, executed_price);
-    } else {
-        rebalance.assert_execution_within_max_slippage(reference_price, executed_price);
-    };
-}
-
 /// Returns whether two positions share one oracle pair and one venue lot, so their
 /// base and equity deltas can be attributed to the fills between them.
 fun is_same_checkpoint(self: &ActivePosition, other: &ActivePosition): bool {
@@ -943,6 +961,20 @@ fun reduction_order<Product>(self: &State<Product>, position: &ActivePosition, n
     if (position.base <= target_base) return 0;
 
     (position.base - target_base).min(self.max_order_base(position)) / position.lot_size * position.lot_size
+}
+
+/// The sell that brings a position above the hard cap back to it, at least
+/// one lot and capped per order, so the emergency bound covers no more
+/// notional than restoring the cap needs. Rounding can place the whole-lot
+/// base at the cap at or above the position while its rounded-up notional is
+/// still above the cap; one lot then restores it.
+fun cap_restoring_order<Product>(self: &State<Product>, position: &ActivePosition, nav: u64): u64 {
+    let cap_notional =
+        accounting_math::target_notional_down(nav, self.vault_policy.rebalance_policy().max_leverage_bps());
+    let base_at_cap = base_for_notional(cap_notional, position, self.base_unit, self.collateral_unit);
+    let to_cap = if (position.base > base_at_cap) { position.base - base_at_cap } else { 0 };
+
+    to_cap.max(position.lot_size).min(self.max_order_base(position)) / position.lot_size * position.lot_size
 }
 
 /// The cap is inclusive; the mint transition applies it to post-mint shareholder NAV.
@@ -1102,7 +1134,7 @@ use blast_boosts_core::{
     constants,
     lifecycle::{Self, Lifecycle},
     observation::{Self, FundingSettlement, PositionObservation, PriceObservation},
-    policy::{PositionSide, PricePolicy, VaultPolicy},
+    policy::{ExecutionBound, PositionSide, PricePolicy, VaultPolicy},
     rebalance_math,
     blast_boosts_core::VaultIssuer,
 };

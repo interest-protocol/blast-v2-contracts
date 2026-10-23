@@ -41,20 +41,22 @@ public struct VaultInitialized<phantom Product> has copy, drop {
 
 // --- Orders ---
 
-/// Emitted once per venue market order the adapter places, seed orders
-/// included, after the fill passed the cap and slippage checks. The account is
+/// Emitted once per venue order the adapter places, seed orders included,
+/// after the fill passed the cap and execution-bound checks. The account is
 /// the bound venue account (`VaultInitialized.binding` maps it to the Vault);
-/// seed orders run before the Vault id exists. Prices are 9-decimal; the quote
-/// is the raw IFixed amount the session moved.
+/// seed orders run before the Vault id exists. Prices are 9-decimal: the
+/// oracle reference the order was priced from, the limit it was placed with,
+/// which sits inside the bound that applied, and the average it filled at.
+/// The quote is the raw IFixed amount the session moved.
 public struct OrderFilled<phantom Product> has copy, drop {
     account_object_id: ID,
     is_ask: bool,
     reduce_only: bool,
-    emergency: bool,
     requested_base: u64,
     filled_base: u64,
     filled_quote: u256,
     reference_price: u64,
+    limit_price: u64,
     executed_price: u64,
 }
 
@@ -179,7 +181,7 @@ public struct ShutdownBegun<phantom Product> has copy, drop {
 
 /// Completed close-only progress with exact raw venue effects: the checkpoint
 /// the step adopted after reconciling the stored one, the checkpoint the close
-/// left, the market orders placed and the quote they filled. The venue's
+/// left, the orders placed and the quote they filled. The venue's
 /// settlement of a closed market places no order and fills no quote.
 public struct UnwindProgress<phantom Product> has copy, drop {
     vault_id: ID,
@@ -308,22 +310,22 @@ public(package) fun order_filled<Product>(
     account_object_id: ID,
     is_ask: bool,
     reduce_only: bool,
-    emergency: bool,
     requested_base: u64,
     filled_base: u64,
     filled_quote: u256,
     reference_price: u64,
+    limit_price: u64,
     executed_price: u64,
 ) {
     emit_event(OrderFilled<Product> {
         account_object_id,
         is_ask,
         reduce_only,
-        emergency,
         requested_base,
         filled_base,
         filled_quote,
         reference_price,
+        limit_price,
         executed_price,
     });
 }
@@ -752,12 +754,13 @@ public fun admin_fees_withdrawn_fields<Product>(self: &AdminFeesWithdrawn<Produc
 }
 
 #[test_only]
+/// `(account_object_id, is_ask, reduce_only, requested_base, filled_base, filled_quote, reference_price, limit_price, executed_price)`.
 public fun order_filled_fields<Product>(
     self: &OrderFilled<Product>,
-): (ID, bool, bool, bool, u64, u64, u256, u64, u64) {
+): (ID, bool, bool, u64, u64, u256, u64, u64, u64) {
     (
-        self.account_object_id, self.is_ask, self.reduce_only, self.emergency, self.requested_base,
-        self.filled_base, self.filled_quote, self.reference_price, self.executed_price,
+        self.account_object_id, self.is_ask, self.reduce_only, self.requested_base,
+        self.filled_base, self.filled_quote, self.reference_price, self.limit_price, self.executed_price,
     )
 }
 

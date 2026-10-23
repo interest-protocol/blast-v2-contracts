@@ -64,15 +64,15 @@ public struct ReplayState has drop {
 #[test]
 fun order_filled_event_carries_every_fill_fact_in_order() {
     let account = object::id_from_address(@0xA11);
-    events::order_filled<Product>(account, true, false, true, 2_500_000_000_000, 2_400_000_000_000,
-        4_800_000_000_000_000_000_000, 2_000_000_000, 2_004_000_000);
-    let (id, is_ask, reduce_only, emergency, requested, filled, quote, reference, executed) =
+    events::order_filled<Product>(account, true, false, 2_500_000_000_000, 2_400_000_000_000,
+        4_800_000_000_000_000_000_000, 2_000_000_000, 1_990_000_000, 2_004_000_000);
+    let (id, is_ask, reduce_only, requested, filled, quote, reference, limit, executed) =
         events::collect_one<events::OrderFilled<Product>>(0).order_filled_fields();
     assert_eq!(id, account);
-    assert_eq!(vector[is_ask, reduce_only, emergency], vector[true, false, true]);
+    assert_eq!(vector[is_ask, reduce_only], vector[true, false]);
     assert_eq!(vector[requested, filled], vector[2_500_000_000_000, 2_400_000_000_000]);
     assert_eq!(quote, 4_800_000_000_000_000_000_000);
-    assert_eq!(vector[reference, executed], vector[2_000_000_000, 2_004_000_000]);
+    assert_eq!(vector[reference, limit, executed], vector[2_000_000_000, 1_990_000_000, 2_004_000_000]);
     assert!(events::collect<events::OrderFilled<OtherProduct>>().is_empty());
 }
 
@@ -96,8 +96,7 @@ fun shutdown_checks_version_before_an_authorized_transition() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     fixture.protocol.set_version_for_testing(3);
-    let witness = shutdown_admin();
-    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
+    begin_shutdown_at_reference(&mut fixture, &mut vault, blast_boosts_core::lifecycle::emergency_reason());
     destroy(vault);
     fixture.end();
 }
@@ -108,8 +107,7 @@ fun expired_terminal_claim_cannot_burn_shares_or_pay_cash() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let shares = vault.mint_shares(5, fixture.ctx!());
-    let witness = shutdown_admin();
-    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
+    begin_shutdown_at_reference(&mut fixture, &mut vault, blast_boosts_core::lifecycle::emergency_reason());
     finalize_recovered(&mut vault, sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!()));
     let mut clock = sui::clock::create_for_testing(fixture.ctx!());
     clock.set_for_testing(1);
@@ -168,8 +166,7 @@ fun short_terminal_claims_allow_changed_order_and_split_merge_without_fees() {
     let first = shares.split(3, fixture.ctx!());
     let split = shares.split(1, fixture.ctx!());
     shares.join(split);
-    let witness = shutdown_admin();
-    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
+    begin_shutdown_at_reference(&mut fixture, &mut vault, blast_boosts_core::lifecycle::emergency_reason());
     finalize_recovered(&mut vault, sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!()));
     let clock = sui::clock::create_for_testing(fixture.ctx!());
     let first_out = vault.redeem_shutdown<OtherProduct, Collateral>(&fixture.protocol, first, 7, 0, &clock, fixture.ctx!());
@@ -206,8 +203,7 @@ fun terminal_zero_cash_burns_native_shares_and_returns_composable_zero_coin() {
     let mut shares = vault.mint_shares(5, fixture.ctx!());
     let split = shares.split(2, fixture.ctx!());
     shares.join(split);
-    let witness = shutdown_admin();
-    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
+    begin_shutdown_at_reference(&mut fixture, &mut vault, blast_boosts_core::lifecycle::emergency_reason());
     finalize_recovered(&mut vault, sui::coin::zero<Collateral>(fixture.ctx!()));
     let clock = sui::clock::create_for_testing(fixture.ctx!());
     let output = vault.redeem_shutdown<Product, Collateral>(&fixture.protocol, shares, 0, 0, &clock, fixture.ctx!());
@@ -224,9 +220,8 @@ fun terminal_zero_cash_burns_native_shares_and_returns_composable_zero_coin() {
 fun shutdown_is_irreversible_even_for_the_same_authorized_witness() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let witness = shutdown_admin();
-    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
-    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
+    begin_shutdown_at_reference(&mut fixture, &mut vault, blast_boosts_core::lifecycle::emergency_reason());
+    begin_shutdown_at_reference(&mut fixture, &mut vault, blast_boosts_core::lifecycle::emergency_reason());
     destroy(vault);
     fixture.end();
 }
@@ -236,8 +231,7 @@ fun shutdown_is_irreversible_even_for_the_same_authorized_witness() {
 fun finalization_cannot_recover_terminal_cash_twice() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let witness = shutdown_admin();
-    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
+    begin_shutdown_at_reference(&mut fixture, &mut vault, blast_boosts_core::lifecycle::emergency_reason());
     finalize_recovered(&mut vault, sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!()));
     finalize_recovered(&mut vault, sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!()));
     destroy(vault);
@@ -252,8 +246,7 @@ fun completed_direct_settlement_reports_actual_cash_and_no_market_order() {
     let after = checkpoint::checkpoint_for_testing(5, 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 1, false, 1, 1, 1);
     let mut vault = issue_and_activate(&mut fixture, before);
-    let witness = shutdown_admin();
-    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
+    begin_shutdown_at_reference(&mut fixture, &mut vault, blast_boosts_core::lifecycle::emergency_reason());
     operations::complete_unwind_for_testing(&mut vault, before, after, 0, option::none());
     let event = events::collect_one<events::UnwindProgress<Product>>(0);
     let (id, observed, actual, orders, quote) = event.unwind_progress_fields();
@@ -326,15 +319,15 @@ fun unwind_normalization_rejects_a_base_beyond_u64_atoms() {
 fun insolvent_capture_still_supplies_fresh_close_only_valuation() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let witness = shutdown_admin();
-    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
+    begin_shutdown_at_reference(&mut fixture, &mut vault, blast_boosts_core::lifecycle::emergency_reason());
     let captured = snapshot::captured_health_for_testing(initial_checkpoint(), 0, false, 0, true, true);
     let base = captured.base_price_observation();
     let collateral = captured.collateral_price_observation();
-    let (side, max_order_base, base_price, collateral_price) =
+    let (side, max_order_base, base_price, collateral_price, bound) =
         vault.state().unwind_constraints(base, collateral, LOT_SIZE, REFERENCE_AT_MS);
     assert_eq!(side, policy::long());
     assert_eq!(vector[max_order_base, base_price, collateral_price], vector[250 * BASE_PER_NOTIONAL, PRICE, PRICE]);
+    assert_eq!(bound.slippage_bps(), 100);
     destroy(vault);
     fixture.end();
 }
@@ -347,8 +340,7 @@ fun terminal_claims_exclude_locked_seed_burn_native_shares_and_give_last_claiman
     let mut shares = vault.mint_shares(5, fixture.ctx!());
     let first = shares.split(2, fixture.ctx!());
     vault.retain_admin_cash(sui::balance::create_for_testing<Collateral>(7));
-    let witness = shutdown_admin();
-    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
+    begin_shutdown_at_reference(&mut fixture, &mut vault, blast_boosts_core::lifecycle::emergency_reason());
     let recovered = sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!());
     finalize_recovered(&mut vault, recovered);
     let clock = sui::clock::create_for_testing(fixture.ctx!());
@@ -382,8 +374,7 @@ fun terminal_claims_exclude_locked_seed_burn_native_shares_and_give_last_claiman
 fun zero_eligible_supply_keeps_all_terminal_cash_as_admin_cash() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let witness = shutdown_admin();
-    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::observed_venue_change_reason());
+    begin_shutdown_at_reference(&mut fixture, &mut vault, blast_boosts_core::lifecycle::observed_venue_change_reason());
     fixture.next_tx!(@0xBEEF, |fixture| {
         let recovered = sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!());
         finalize_recovered(&mut vault, recovered);
@@ -416,8 +407,7 @@ fun terminal_claim_before_shutdown_rejects_lifecycle_before_missing_cash_field()
 fun finalization_rejects_a_short_actual_coin_even_when_the_venue_is_empty() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let witness = shutdown_admin();
-    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
+    begin_shutdown_at_reference(&mut fixture, &mut vault, blast_boosts_core::lifecycle::emergency_reason());
     let before = checkpoint::checkpoint_for_testing(13, 0, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, false, 1, 1, 1);
     let recovered = sui::coin::mint_for_testing<Collateral>(12, fixture.ctx!());
@@ -432,8 +422,7 @@ fun finalization_rejects_a_short_actual_coin_even_when_the_venue_is_empty() {
 fun finalization_rejects_a_short_actual_coin_with_exact_sub_atomic_remainder() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let witness = shutdown_admin();
-    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
+    begin_shutdown_at_reference(&mut fixture, &mut vault, blast_boosts_core::lifecycle::emergency_reason());
     let before = checkpoint::checkpoint_for_testing(12, 1_000_000_000_001, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 0, false, 1, 1, 1);
     let after = checkpoint::checkpoint_for_testing(0, 1, 0, 0, 11, 21, 11, 21, LOT_SIZE,
@@ -884,7 +873,7 @@ fun completed_rebalance_changes_only_holder_equity_and_the_accepted_checkpoint()
     let base = order.order_base();
     assert_eq!(base, 250_000);
     assert!(!order.is_increase() && order.is_emergency());
-    vault.state().assert_execution(order.is_emergency(), PRICE, PRICE);
+    order.bound().assert_execution(PRICE, PRICE);
     let after = observation::new_position(999, 2_750_000, LOT_SIZE, policy::long(),
         observation::new_price(PRICE, 0, REFERENCE_AT_MS),
         observation::new_price(PRICE, 0, REFERENCE_AT_MS), PRICE,
@@ -1135,13 +1124,15 @@ fun terms_open_with_the_side_and_reduce_against_it() {
     let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_AT_MS);
     let position = plan.mint_position();
 
-    let (is_ask, reduce_only, max_order_base, lot_size, base_price, collateral_price) =
+    let (is_ask, reduce_only, max_order_base, lot_size, base_price, collateral_price, slippage_bps) =
         orders::increasing_terms(&vault, position).order_terms_fields();
     assert!(!is_ask && !reduce_only);
     assert_eq!(max_order_base, vault.state().max_order_base(&position));
     assert_eq!(vector[lot_size, base_price, collateral_price], vector[LOT_SIZE, PRICE, PRICE]);
+    // Mint and redemption orders run under the ordinary bound.
+    assert_eq!(slippage_bps, 100);
 
-    let (is_ask, reduce_only, _, _, _, _) = orders::reducing_terms(&vault, position).order_terms_fields();
+    let (is_ask, reduce_only, _, _, _, _, _) = orders::reducing_terms(&vault, position).order_terms_fields();
     assert!(is_ask && reduce_only);
 
     destroy(plan);
@@ -1157,9 +1148,9 @@ fun terms_of_a_short_vault_open_with_an_ask_and_reduce_with_a_bid() {
     let plan = vault.state().prepare_mint(position_observation_for_side(SEED_EQUITY, policy::short()), 1_000, vault.total_share_supply(), 997_000, REFERENCE_AT_MS);
     let position = plan.mint_position();
 
-    let (is_ask, reduce_only, _, _, _, _) = orders::increasing_terms(&vault, position).order_terms_fields();
+    let (is_ask, reduce_only, _, _, _, _, _) = orders::increasing_terms(&vault, position).order_terms_fields();
     assert!(is_ask && !reduce_only);
-    let (is_ask, reduce_only, _, _, _, _) = orders::reducing_terms(&vault, position).order_terms_fields();
+    let (is_ask, reduce_only, _, _, _, _, _) = orders::reducing_terms(&vault, position).order_terms_fields();
     assert!(!is_ask && reduce_only);
 
     destroy(plan);
@@ -1171,18 +1162,38 @@ fun terms_of_a_short_vault_open_with_an_ask_and_reduce_with_a_bid() {
 fun unwind_terms_close_a_long_with_an_ask_at_the_capped_size() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let witness = shutdown_admin();
-    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
+    begin_shutdown_at_reference(&mut fixture, &mut vault, blast_boosts_core::lifecycle::emergency_reason());
     let checkpoint = checkpoint_with_market_imr(0, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
     let captured = snapshot::captured_health_for_testing(checkpoint, 0, false, 0, true, true);
 
     let (terms, remaining, before) = orders::unwind_terms(&vault, &captured, REFERENCE_AT_MS);
-    let (is_ask, reduce_only, max_order_base, lot_size, base_price, collateral_price) = terms.order_terms_fields();
+    let (is_ask, reduce_only, max_order_base, lot_size, base_price, collateral_price, slippage_bps) =
+        terms.order_terms_fields();
     assert!(is_ask && reduce_only);
     assert_eq!(vector[max_order_base, lot_size, base_price, collateral_price], vector[250 * BASE_PER_NOTIONAL, LOT_SIZE, PRICE, PRICE]);
+    // Shutdown has just begun, so the close runs under the ordinary bound.
+    assert_eq!(slippage_bps, 100);
     assert_eq!(remaining, 1_000_000_000);
     assert_eq!(before, checkpoint);
 
+    destroy(vault);
+    fixture.end();
+}
+
+/// The clock `begin_shutdown` reads fixes when the close-only bound starts
+/// widening: a day later a close runs under the emergency bound.
+#[test]
+fun unwind_bound_widens_from_the_clock_shutdown_began_at() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
+    begin_shutdown_at_reference(&mut fixture, &mut vault, blast_boosts_core::lifecycle::emergency_reason());
+
+    let later_at_ms = REFERENCE_AT_MS + 86_400_000;
+    let (_, _, _, _, bound) = vault.state().unwind_constraints(
+        observation::new_price(PRICE, 0, later_at_ms), observation::new_price(PRICE, 0, later_at_ms), LOT_SIZE, later_at_ms,
+    );
+
+    assert_eq!(bound.slippage_bps(), 500);
     destroy(vault);
     fixture.end();
 }
@@ -1192,8 +1203,7 @@ fun unwind_terms_close_a_long_with_an_ask_at_the_capped_size() {
 fun unwind_terms_reject_a_checkpoint_with_resting_orders() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let witness = shutdown_admin();
-    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
+    begin_shutdown_at_reference(&mut fixture, &mut vault, blast_boosts_core::lifecycle::emergency_reason());
     let resting = checkpoint::checkpoint_for_testing(
         0, ALLOCATED_FIXED, ONE_FIXED, 1, RATE, RATE, RATE, RATE, LOT_SIZE, 0, 0, 1, 0, false, 1, 1, 1,
     );
@@ -1405,7 +1415,7 @@ fun completed_mint_returns_native_shares_and_updates_the_same_treasury_supply() 
     assert_eq!(lot, LOT_SIZE);
     assert_eq!(vault.state().side(), policy::long());
     assert!(vault.max_order_notional_for_testing() > 0);
-    vault.state().assert_execution(false, PRICE, PRICE);
+    vault.state().execution_bound().assert_execution(PRICE, PRICE);
     let after = observation::new_position(1_998, 3_798 * BASE_PER_NOTIONAL, LOT_SIZE, policy::long(),
         observation::new_price(PRICE, 0, REFERENCE_AT_MS),
         observation::new_price(PRICE, 0, REFERENCE_AT_MS), PRICE,
@@ -2357,7 +2367,7 @@ fun reducer_reconstructs_every_canonical_vault_fact_from_the_event_stream() {
     let funding = sync_change(&initial_checkpoint, &funding_before, &funded_checkpoint, ONE_FIXED);
     apply_connected_change(&mut vault, funded_checkpoint, funding);
     vault.set_max_order_notional(&fixture.protocol, &risk_admin(), 300);
-    vault.begin_shutdown(&fixture.protocol, &shutdown_admin(), blast_boosts_core::lifecycle::emergency_reason());
+    begin_shutdown_at_reference(&mut fixture, &mut vault, blast_boosts_core::lifecycle::emergency_reason());
 
     let costed_rate = settled_rate(10, true);
     let final_checkpoint = checkpoint_with_market_imr(
@@ -2680,8 +2690,7 @@ fun completed_mint_is_rejected_after_shutdown_begins() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
     let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_AT_MS);
-    let witness = shutdown_admin();
-    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
+    begin_shutdown_at_reference(&mut fixture, &mut vault, blast_boosts_core::lifecycle::emergency_reason());
     let shares = operations::complete_mint_for_testing<Product, Collateral>(
         &mut vault, plan, 1_000, active_position(1_998, 3_798), initial_checkpoint(), REFERENCE_AT_MS, fixture.ctx!(),
     );
@@ -2876,9 +2885,15 @@ fun reduced_checkpoint(): Checkpoint {
 /// An active vault at `checkpoint` whose shutdown has begun.
 fun issue_and_begin_shutdown(fixture: &mut Fixture, checkpoint: Checkpoint): Vault<Product, Collateral> {
     let mut vault = issue_and_activate(fixture, checkpoint);
-    let witness = shutdown_admin();
-    vault.begin_shutdown(&fixture.protocol, &witness, blast_boosts_core::lifecycle::emergency_reason());
+    begin_shutdown_at_reference(fixture, &mut vault, blast_boosts_core::lifecycle::emergency_reason());
     vault
+}
+
+/// Begins shutdown for `reason` under the shutdown admin's witness at the reference time.
+fun begin_shutdown_at_reference<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, Collateral>, reason: ShutdownReason) {
+    let clock = reference_clock(fixture);
+    vault.begin_shutdown(&fixture.protocol, &shutdown_admin(), reason, &clock);
+    destroy(clock);
 }
 
 /// Runs `completed_redemption_burns_the_native_input_only_after_exact_cash_return`
@@ -3383,7 +3398,7 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
         0, 0, 0, 1, false, 1, 1, 1);
     apply_connected_change(&mut vault, dirty, checkpoint::unexpected_change());
     replay_drift(&mut replay, events::collect<events::CheckpointDrifted<Tag>>()[0]);
-    vault.begin_shutdown(&fixture.protocol, &shutdown_admin(), blast_boosts_core::lifecycle::observed_venue_change_reason());
+    begin_shutdown_at_reference(&mut fixture, &mut vault, blast_boosts_core::lifecycle::observed_venue_change_reason());
     let shutdown = events::collect_one<events::ShutdownBegun<Tag>>(0);
     assert_eq!(shutdown.shutdown_reason(), blast_boosts_core::lifecycle::observed_venue_change_reason());
     replay_shutdown(&mut replay, shutdown);
@@ -3739,6 +3754,7 @@ use blast_boosts_aftermath::{
 };
 
 use blast_boosts_core::{
+    lifecycle::ShutdownReason,
     observation::{Self, PositionObservation},
     policy::{Self, PositionSide, VaultPolicy},
     blast_boosts_core::{RiskAdmin, ShutdownAdmin, VaultIssuer},

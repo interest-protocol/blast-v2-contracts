@@ -701,7 +701,8 @@ fun the_dry_run_stays_due_until_the_reduction_reaches_the_band() {
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun the_dry_run_refuses_an_unwinding_vault() {
     let mut vault = test_adapter::calm_venue().issue().activate(SEED, SEED_RESERVE);
-    vault.state_mut().begin_shutdown();
+    let now_at_ms = vault.venue().now_ms();
+    vault.state_mut().begin_shutdown(now_at_ms);
 
     vault.needs_rebalance();
     vault.destroy();
@@ -870,7 +871,7 @@ fun winding_down_still_requires_fresh_oracles() {
     let fresh = vault.venue().oracle(vault.venue().base_price());
     let now_at_ms = vault.venue().now_ms();
 
-    let (_, _, _, _) = vault.state().unwind_constraints(stale, fresh, vault.venue().lot_size(), now_at_ms);
+    let (_, _, _, _, _) = vault.state().unwind_constraints(stale, fresh, vault.venue().lot_size(), now_at_ms);
     vault.destroy();
 }
 
@@ -880,7 +881,8 @@ fun winding_down_still_requires_fresh_oracles() {
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun an_unwinding_vault_refuses_mints() {
     let mut vault = test_adapter::calm_venue().issue().activate(SEED, SEED_RESERVE);
-    vault.state_mut().begin_shutdown();
+    let now_at_ms = vault.venue().now_ms();
+    vault.state_mut().begin_shutdown(now_at_ms);
     vault.mint(100 * USDC, 1);
     vault.destroy();
 }
@@ -890,7 +892,8 @@ fun an_unwinding_vault_refuses_mints() {
 fun an_unwinding_vault_refuses_redemptions() {
     let mut vault = test_adapter::calm_venue().issue().activate(SEED, SEED_RESERVE);
     let shares = vault.mint(100 * USDC, 1);
-    vault.state_mut().begin_shutdown();
+    let now_at_ms = vault.venue().now_ms();
+    vault.state_mut().begin_shutdown(now_at_ms);
     vault.redeem(shares, 1);
     vault.destroy();
 }
@@ -899,7 +902,8 @@ fun an_unwinding_vault_refuses_redemptions() {
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun an_unwinding_vault_refuses_rebalances() {
     let mut vault = test_adapter::calm_venue().issue().activate(SEED, SEED_RESERVE);
-    vault.state_mut().begin_shutdown();
+    let now_at_ms = vault.venue().now_ms();
+    vault.state_mut().begin_shutdown(now_at_ms);
     vault.rebalance();
     vault.destroy();
 }
@@ -908,7 +912,8 @@ fun an_unwinding_vault_refuses_rebalances() {
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun an_unwinding_vault_refuses_donations() {
     let mut vault = test_adapter::calm_venue().issue().activate(SEED, SEED_RESERVE);
-    vault.state_mut().begin_shutdown();
+    let now_at_ms = vault.venue().now_ms();
+    vault.state_mut().begin_shutdown(now_at_ms);
     vault.donate(USDC);
     vault.destroy();
 }
@@ -917,7 +922,8 @@ fun an_unwinding_vault_refuses_donations() {
 #[test]
 fun an_unwinding_vault_still_settles_funding() {
     let mut vault = test_adapter::calm_venue().issue().activate(SEED, SEED_RESERVE);
-    vault.state_mut().begin_shutdown();
+    let now_at_ms = vault.venue().now_ms();
+    vault.state_mut().begin_shutdown(now_at_ms);
     let (absorbed, _, _) = vault.charge_funding(10 * USDC);
     assert_eq!(absorbed, 10 * USDC);
     vault.destroy();
@@ -927,7 +933,8 @@ fun an_unwinding_vault_still_settles_funding() {
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun an_unwinding_vault_refuses_claims() {
     let mut vault = test_adapter::calm_venue().issue().activate(SEED, SEED_RESERVE);
-    vault.state_mut().begin_shutdown();
+    let now_at_ms = vault.venue().now_ms();
+    vault.state_mut().begin_shutdown(now_at_ms);
     vault.claim(1, 0);
     vault.destroy();
 }
@@ -955,7 +962,8 @@ fun a_settled_vault_refuses_funding() {
 fun a_settled_vault_cannot_shut_down_again() {
     let mut vault = test_adapter::calm_venue().issue().activate(SEED, SEED_RESERVE);
     vault.shutdown();
-    vault.state_mut().begin_shutdown();
+    let now_at_ms = vault.venue().now_ms();
+    vault.state_mut().begin_shutdown(now_at_ms);
     vault.destroy();
 }
 

@@ -79,7 +79,7 @@ Paths: "adapter" means `sui/boosts/aftermath_adapter/sources/`, "core" means
 | 3 | M-3 | Medium | Calling either `restrict_*` upgrade function makes the next upgrade freeze the whole adapter forever | Open. Do not call `restrict_*` until fixed |
 | 4 | M-4 | Medium | A per-order cap worth less than one lot wedges every order path, shutdown included | Open |
 | 5 | M-5 | Medium | Once margin falls below the venue's opening requirement, the emergency rebalance that should fix it is refused | Open |
-| 6 | M-6 | Medium | A caller can plant a bad quote and make `rebalance` or `unwind` fill into it at the full slippage bound, paid by holders | Open. Fix first |
+| 6 | M-6 | Medium | A caller can plant a bad quote and make `rebalance` or `unwind` fill into it at the full slippage bound, paid by holders | Fixed by [ADR 0118](../decisions/0118-limit-priced-vault-orders-and-a-widening-unwind-bound.md) |
 | 7 | M-7 | Medium | Rotating or re-pointing an oracle feed freezes priced operations and the shutdown exit | Fixed (ADR 0115). Needs a regression test and a doc comment cleanup |
 | 8 | M-8 | Medium | A cap-sized order aborts if it fills even slightly above the oracle price | Open |
 | 9 | M-9 | Medium | Sustained above-RGP traffic on the shared objects can starve `rebalance` and `unwind` | Open. Needs a decision |
@@ -427,7 +427,12 @@ places its reducing order; `mint` still refuses; `donate` succeeds.
 
 ### Ticket 6 · M-6 · A caller can make `rebalance` and `unwind` fill into a planted quote
 
-**Status:** open. Fix first.
+**Status:** fixed by
+[ADR 0118](../decisions/0118-limit-priced-vault-orders-and-a-widening-unwind-bound.md):
+every order is an immediate-or-cancel limit order priced inside its bound
+before placement, an emergency reduction sells only what restores the hard
+cap, and a shutdown close starts at the ordinary bound and widens to the
+emergency bound over a day. The description below is the finding as audited.
 
 **The problem.** `rebalance` is permissionless and takes no price or size. Its
 orders go to the venue as unpriced market orders, and the only price check

@@ -16,6 +16,14 @@ fun binding_exposes_the_bound_account_number() {
     assert_eq!(standard_binding().account_number(), ACCOUNT_NUMBER);
 }
 
+/// Every order the adapter places is Aftermath's immediate-or-cancel type: the
+/// deployed `execute_limit_order` fills type 3 at or inside the limit and drops
+/// the remainder without posting.
+#[test]
+fun every_venue_order_is_placed_immediate_or_cancel() {
+    assert_eq!(constants::immediate_or_cancel_order_type!(), 3);
+}
+
 #[test]
 fun an_admin_cap_for_the_bound_account_seals_the_venue_account() {
     let mut ctx = tx_context::dummy();
@@ -187,7 +195,7 @@ fun assert_standard_checkpoint(checkpoint: &Checkpoint) {
 
 use authority_cap::authority::{Self, ADMIN, AuthorityCap};
 
-use blast_boosts_aftermath::{checkpoint::{Self, Checkpoint}, errors, venue_account::{Self, Binding}};
+use blast_boosts_aftermath::{checkpoint::{Self, Checkpoint}, constants, errors, venue_account::{Self, Binding}};
 
 use perpetuals::authority::ACCOUNT;
 

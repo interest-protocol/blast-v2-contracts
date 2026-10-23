@@ -74,9 +74,10 @@ fun error_codes_run_from_zero_without_gaps() {
         errors::invalid_max_reserve_bps!(),
         errors::seed_reserve_above_cap!(),
         errors::invariant_violated!(),
+        errors::invalid_tick_size!(),
     ];
 
-    assert_eq!(codes.length(), 62);
+    assert_eq!(codes.length(), 63);
     codes.length().do!(|i| assert_eq!(codes[i], i));
 }
 

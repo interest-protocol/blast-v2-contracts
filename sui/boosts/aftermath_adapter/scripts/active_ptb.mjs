@@ -115,7 +115,7 @@ export function buildTerminalPlan(input) {
     const adapter = address(input.adapterPackage), product = type(input.productType);
     address(input.sender);
     if (input.network !== 'mainnet') throw Error('network must be mainnet');
-    const roles = operation === 'begin_shutdown' ? ['vault', 'protocol', 'acl', 'adminCap']
+    const roles = operation === 'begin_shutdown' ? ['vault', 'protocol', 'acl', 'adminCap', 'clock']
         : operation === 'redeem_shutdown' ? ['vault', 'protocol', 'inputCoin', 'clock']
         : operation === 'finalize_shutdown' ? [...BOUND_OBJECTS.slice(0, 7), 'clock']
         : [...BOUND_OBJECTS, 'clock'];
@@ -127,10 +127,10 @@ export function buildTerminalPlan(input) {
         const core = address(input.corePackage), admin = address(input.adminPackage);
         if (!['emergency', 'observed_venue_change'].includes(input.reason)) throw Error('explicit declared reason required');
         return {commands: [
-            call(`${admin}::blast_acl::sign_in`, [`${core}::blast_boosts_core::ShutdownAdmin`], args.slice(2), 'witness'),
+            call(`${admin}::blast_acl::sign_in`, [`${core}::blast_boosts_core::ShutdownAdmin`], args.slice(2, 4), 'witness'),
             call(`${core}::lifecycle::${input.reason}_reason`, [], [], 'reason'),
             call(`${adapter}::vault::begin_shutdown`, [product, type(input.collateralType)],
-                [...args.slice(0, 2), 'witness', 'reason'], null),
+                [...args.slice(0, 2), 'witness', 'reason', args[4]], null),
         ], transfers: []};
     }
     const types = [product, type(input.collateralType)];

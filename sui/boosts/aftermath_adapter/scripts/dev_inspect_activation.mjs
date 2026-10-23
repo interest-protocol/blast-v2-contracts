@@ -158,9 +158,10 @@ const PHASE_ORDER = [
         from: 'fun open_seed_position<',
         to: '\n}\n',
         markers: [
+            'bound.limit_price(',
             'venue_account::execute_order_with_cap(',
             'assert_seed_fill(',
-            'issuance.assert_seed_execution(',
+            'bound.assert_execution(',
             'issuance.assert_seed_order_notional_allowed(',
         ],
     },
@@ -168,7 +169,7 @@ const PHASE_ORDER = [
         path: VENUE_ACCOUNT_PATH,
         from: 'public(package) fun execute_order_with_cap<',
         to: '\n}\n',
-        markers: ['clearing_house.start_session(', 'session.place_market_order(', 'session.end_session('],
+        markers: ['clearing_house.start_session(', 'session.place_limit_order(', 'session.end_session('],
     },
 ];
 

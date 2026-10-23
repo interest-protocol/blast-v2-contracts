@@ -45,7 +45,7 @@ public struct ObservationSpec has copy, drop {
 fun terminal_claim_quote_conserves_zero_dust_and_maximum_cash_for_both_sides() {
     vector[policy::long(), policy::short()].do!(|side| {
         let mut state = initialized_state(side);
-        state.begin_shutdown();
+        state.begin_shutdown(REFERENCE_AT_MS);
         assert_eq!(state.finalize_shutdown(7, 2), 5);
         assert_eq!(state.shutdown_claim_quote(13, 7, 2, 2, 5), 5);
         assert_eq!(state.shutdown_claim_quote(8, 5, 2, 3, 8), 8);
@@ -60,7 +60,7 @@ fun terminal_claim_quote_conserves_zero_dust_and_maximum_cash_for_both_sides() {
 #[expected_failure(abort_code = errors::EZeroNetPayout, location = blast_boosts_core::state)]
 fun terminal_partial_dust_requires_combining_native_shares() {
     let mut state = initialized_state(policy::long());
-    state.begin_shutdown();
+    state.begin_shutdown(REFERENCE_AT_MS);
     state.finalize_shutdown(7, 2);
     state.shutdown_claim_quote(1, 7, 2, 1, 0);
     destroy(state);
@@ -70,7 +70,7 @@ fun terminal_partial_dust_requires_combining_native_shares() {
 #[expected_failure(abort_code = errors::ERedemptionOutputBelowMinimum, location = blast_boosts_core::state)]
 fun terminal_zero_pool_requires_explicit_zero_minimum() {
     let mut state = initialized_state(policy::short());
-    state.begin_shutdown();
+    state.begin_shutdown(REFERENCE_AT_MS);
     state.finalize_shutdown(7, 2);
     state.shutdown_claim_quote(0, 7, 2, 5, 1);
     destroy(state);
@@ -80,7 +80,7 @@ fun terminal_zero_pool_requires_explicit_zero_minimum() {
 #[expected_failure(abort_code = errors::EInvalidShareAmount, location = blast_boosts_core::state)]
 fun terminal_claim_cannot_include_locked_seed() {
     let mut state = initialized_state(policy::long());
-    state.begin_shutdown();
+    state.begin_shutdown(REFERENCE_AT_MS);
     state.finalize_shutdown(7, 2);
     state.shutdown_claim_quote(13, 7, 2, 6, 0);
     destroy(state);
@@ -90,17 +90,19 @@ fun terminal_claim_cannot_include_locked_seed() {
 #[expected_failure(abort_code = errors::EInvalidShareSupply, location = blast_boosts_core::state)]
 fun terminal_supply_below_locked_seed_fails_closed() {
     let mut state = initialized_state(policy::long());
-    state.begin_shutdown();
+    state.begin_shutdown(REFERENCE_AT_MS);
     state.finalize_shutdown(1, 2);
     destroy(state);
 }
 
+/// Insolvency and the reserve never enter a close-only order; the step prices
+/// at fresh oracles and, when shutdown has just begun, at the ordinary bound.
 #[test]
-fun unwind_uses_the_frozen_emergency_bound_without_a_nav_input_for_both_sides() {
+fun unwind_prices_both_sides_at_the_ordinary_bound_when_shutdown_has_just_begun() {
     vector[policy::long(), policy::short()].do!(|side| {
         let mut state = initialized_state(side);
-        state.begin_shutdown();
-        let (actual_side, max_order_base, base_price, collateral_price) = state.unwind_constraints(
+        state.begin_shutdown(REFERENCE_AT_MS);
+        let (actual_side, max_order_base, base_price, collateral_price, bound) = state.unwind_constraints(
             observation::new_price(1_000_000_000, 0, REFERENCE_AT_MS),
             observation::new_price(1_000_000_000, 0, REFERENCE_AT_MS), LOT_SIZE, REFERENCE_AT_MS,
         );
@@ -109,17 +111,46 @@ fun unwind_uses_the_frozen_emergency_bound_without_a_nav_input_for_both_sides() 
         assert_eq!(max_order_base, MAX_ORDER_NOTIONAL * 1_000);
         assert_eq!(base_price, 1_000_000_000);
         assert_eq!(collateral_price, 1_000_000_000);
-        state.assert_execution(true, 1_000_000_000, 1_050_000_000);
-        state.assert_execution(true, 1_000_000_000, 950_000_000);
+        assert_eq!(bound.slippage_bps(), 100);
+        bound.assert_execution(1_000_000_000, 1_010_000_000);
+        bound.assert_execution(1_000_000_000, 990_000_000);
         state.destroy_for_testing();
     });
+}
+
+/// The close-only bound widens with the time since shutdown began and reaches
+/// the emergency bound after a day; a clock behind the shutdown counts as no time.
+#[test]
+fun unwind_bound_widens_with_the_time_since_shutdown_began() {
+    let mut state = initialized_state(policy::long());
+    state.begin_shutdown(REFERENCE_AT_MS);
+
+    assert_eq!(unwind_bound_bps_at(&state, REFERENCE_AT_MS - 1), 100);
+    assert_eq!(unwind_bound_bps_at(&state, REFERENCE_AT_MS), 100);
+    assert_eq!(unwind_bound_bps_at(&state, REFERENCE_AT_MS + 43_200_000), 300);
+    assert_eq!(unwind_bound_bps_at(&state, REFERENCE_AT_MS + 86_400_000), 500);
+    assert_eq!(unwind_bound_bps_at(&state, REFERENCE_AT_MS + 86_400_001), 500);
+    state.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EExecutionOutsideMaxSlippage, location = blast_boosts_core::policy)]
+fun a_fresh_shutdown_rejects_a_close_at_the_emergency_bound() {
+    let mut state = initialized_state(policy::long());
+    state.begin_shutdown(REFERENCE_AT_MS);
+    let (_, _, _, _, bound) = state.unwind_constraints(
+        observation::new_price(1_000_000_000, 0, REFERENCE_AT_MS),
+        observation::new_price(1_000_000_000, 0, REFERENCE_AT_MS), LOT_SIZE, REFERENCE_AT_MS,
+    );
+    bound.assert_execution(1_000_000_000, 950_000_000);
+    abort
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EStalePrice, location = blast_boosts_core::policy)]
 fun ordinary_unwind_never_falls_back_to_a_stale_price() {
     let mut state = initialized_state(policy::short());
-    state.begin_shutdown();
+    state.begin_shutdown(REFERENCE_AT_MS);
     state.unwind_constraints(observation::new_price(1_000_000_000, 0, 0),
         observation::new_price(1_000_000_000, 0, 0), LOT_SIZE, REFERENCE_AT_MS);
     state.destroy_for_testing();
@@ -129,7 +160,7 @@ fun ordinary_unwind_never_falls_back_to_a_stale_price() {
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun settled_cash_cannot_reopen_a_funding_buffer() {
     let mut state = initialized_state(policy::long());
-    state.begin_shutdown();
+    state.begin_shutdown(REFERENCE_AT_MS);
     state.finalize_shutdown(5, 2);
     state.settle_funding(observation::funding_credit(1));
     state.destroy_for_testing();
@@ -356,23 +387,79 @@ fun rebalance_increase_reserves_cost_and_keeps_buffer_unchanged() {
     state.destroy_for_testing();
 }
 
-/// An emergency reduction ends the moment leverage is no longer above the hard
-/// cap: the wider bound never covers an order below it, and a wide market cannot
-/// revert the orders placed above it.
+/// An emergency reduction sells only what brings leverage back to the hard cap,
+/// under the wide bound, and ends the moment leverage is no longer above it:
+/// the wider bound never covers more than restoring the cap needs, never an
+/// order below the cap, and a wide market cannot revert the orders placed above it.
 #[test]
-fun rebalance_short_emergency_reduction_stops_once_leverage_is_below_the_cap() {
+fun rebalance_short_emergency_reduction_sells_to_the_cap_and_stops_below_it() {
     let state = rebalance_state(policy::short());
+    // 3.2x on a 1_000_000 NAV: the 3x cap is 3_000_000 of notional, 200_000_000 of base above it.
     let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_200_000, policy::short()), 10, REFERENCE_AT_MS);
     let order = state.next_rebalance_order(&plan);
-    assert_eq!(order.order_base(), 1_200_000_000);
+    assert_eq!(order.order_base(), 200_000_000);
     assert!(!order.is_increase() && order.is_emergency());
-    state.assert_execution(order.is_emergency(), 100, 104);
-    state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_099_500, 2_900_000, policy::short()), 300_000_000, REFERENCE_AT_MS);
+    assert_eq!(order.bound().slippage_bps(), 500);
+    order.bound().assert_execution(100, 104);
+    // The fill's cost leaves the position a hair above the cap, so a small emergency order follows.
+    state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_099_500, 3_000_000, policy::short()), 200_000_000, REFERENCE_AT_MS);
+    let residual = state.next_rebalance_order(&plan);
+    assert_eq!(residual.order_base(), 1_500_000);
+    assert!(residual.is_emergency());
+    state.accept_rebalance_fill(&mut plan, residual, rebalance_observation(1_099_500, 2_998_500, policy::short()), 1_500_000, REFERENCE_AT_MS);
     let next = state.next_rebalance_order(&plan);
     assert_eq!(next.order_base(), 0);
     assert!(!next.is_emergency());
+    assert_eq!(next.bound().slippage_bps(), 100);
     state.complete_rebalance(plan);
     assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
+    state.destroy_for_testing();
+}
+
+/// A position one lot's notional above the cap sells one lot under the emergency
+/// bound, and the plan completes on the restored cap although leverage moved far
+/// less than the ordinary minimum improvement.
+#[test]
+fun an_emergency_plan_barely_above_the_cap_sells_one_lot_and_completes_on_the_restored_cap() {
+    let state = rebalance_state(policy::long());
+    let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_000_001, policy::long()), 10, REFERENCE_AT_MS);
+    let order = state.next_rebalance_order(&plan);
+    assert_eq!(order.order_base(), LOT_SIZE);
+    assert!(order.is_emergency());
+    state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_100_000, 3_000_000, policy::long()), LOT_SIZE, REFERENCE_AT_MS);
+    assert_eq!(state.next_rebalance_order(&plan).order_base(), 0);
+
+    let (_, _, before_base, after_base, increased) = state.complete_rebalance(plan);
+
+    assert_eq!(vector[before_base, after_base], vector[3_000_001_000, 3_000_000_000]);
+    assert!(!increased);
+    state.destroy_for_testing();
+}
+
+/// An emergency plan that ends still above the cap is judged like any other
+/// reduction: it must have moved leverage by the policy minimum.
+#[test]
+#[expected_failure(abort_code = errors::ERebalanceNoProgress, location = blast_boosts_core::state)]
+fun an_emergency_plan_still_above_the_cap_needs_the_ordinary_improvement() {
+    let state = rebalance_state(policy::long());
+    let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_200_000, policy::long()), 10, REFERENCE_AT_MS);
+    let order = state.next_rebalance_order(&plan);
+    // One lot of the cap-sized order fills and leaves leverage essentially where it was.
+    state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_100_000, 3_199_999, policy::long()), LOT_SIZE, REFERENCE_AT_MS);
+    state.complete_rebalance(plan);
+    abort
+}
+
+/// The per-order cap still paces an emergency sale that restoring the cap needs more than one order for.
+#[test]
+fun an_emergency_order_never_exceeds_the_per_order_cap() {
+    let state = rebalance_state(policy::long());
+    // 6x on a 1_000_000 NAV: 3_000_000 of notional above the cap against a 2_000_000 order cap.
+    let plan = state.prepare_rebalance(rebalance_observation(1_100_000, 6_000_000, policy::long()), 10, REFERENCE_AT_MS);
+    let order = state.next_rebalance_order(&plan);
+    assert_eq!(order.order_base(), 2_000_000_000);
+    assert!(order.is_emergency());
+    destroy(plan);
     state.destroy_for_testing();
 }
 
@@ -422,7 +509,7 @@ fun rebalance_increase_rejects_post_cost_target_overshoot() {
 fun rebalance_hard_threshold_equality_does_not_enable_wide_tolerance() {
     let state = rebalance_state(policy::long());
     let plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_000_000, policy::long()), 10, REFERENCE_AT_MS);
-    state.assert_execution(state.next_rebalance_order(&plan).is_emergency(), 100, 102);
+    state.next_rebalance_order(&plan).bound().assert_execution(100, 102);
     state.complete_rebalance(plan);
     state.destroy_for_testing();
 }
@@ -596,7 +683,7 @@ fun flat_seed_preflight_returns_authenticated_order_inputs() {
 fun initialization_strict_execution_uses_the_frozen_tolerance() {
     let issuance = issued(policy::long());
 
-    issuance.assert_seed_execution(1_000_000, 1_010_000);
+    issuance.seed_execution_bound().assert_execution(1_000_000, 1_010_000);
 
     destroy(issuance);
 }
@@ -608,7 +695,7 @@ fun initialization_strict_execution_uses_the_frozen_tolerance() {
 fun initialization_strict_execution_rejects_one_unit_past_tolerance() {
     let issuance = issued(policy::long());
 
-    issuance.assert_seed_execution(1_000_000, 1_010_001);
+    issuance.seed_execution_bound().assert_execution(1_000_000, 1_010_001);
 
     destroy(issuance);
 }
@@ -681,7 +768,7 @@ fun active_state_begins_shutdown() {
     let witness = vault_issuer();
     let (mut state, _) = activate_with(state::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6), standard_observation(policy::long()), SEED_RESERVE);
 
-    state.begin_shutdown();
+    state.begin_shutdown(REFERENCE_AT_MS);
 
     assert!(state.is_unwinding_for_testing());
     state.destroy_for_testing();
@@ -1392,8 +1479,9 @@ fun max_order_base_floors_the_live_cap_to_whole_lots() {
 #[test]
 #[expected_failure(abort_code = errors::EExecutionOutsideMaxSlippage, location = blast_boosts_core::policy)]
 fun emergency_execution_rejects_one_unit_past_the_wide_bound() {
-    let state = initialized_state(policy::long());
-    state.assert_execution(true, 1_000_000_000, 1_050_000_001);
+    let state = rebalance_state(policy::long());
+    let plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_200_000, policy::long()), 10, REFERENCE_AT_MS);
+    state.next_rebalance_order(&plan).bound().assert_execution(1_000_000_000, 1_050_000_001);
     abort
 }
 
@@ -1401,8 +1489,20 @@ fun emergency_execution_rejects_one_unit_past_the_wide_bound() {
 fun ordinary_execution_admits_the_exact_bound() {
     let state = initialized_state(policy::long());
 
-    state.assert_execution(false, 1_000_000_000, 1_010_000_000);
+    assert_eq!(state.execution_bound().slippage_bps(), 100);
+    state.execution_bound().assert_execution(1_000_000_000, 1_010_000_000);
 
+    state.destroy_for_testing();
+}
+
+/// The seed opens a position, so its orders run under the ordinary bound.
+#[test]
+fun seed_orders_run_under_the_ordinary_bound() {
+    let issuance = issued(policy::long());
+
+    assert_eq!(issuance.seed_execution_bound().slippage_bps(), 100);
+
+    let (state, _) = activate_with(issuance, standard_observation(policy::long()), SEED_RESERVE);
     state.destroy_for_testing();
 }
 
@@ -1454,7 +1554,7 @@ fun a_zero_deposit_mint_is_refused() {
 fun mint_completion_is_refused_once_shutdown_began() {
     let mut state = initialized_state(policy::long());
     let plan = standard_mint_plan(&state);
-    state.begin_shutdown();
+    state.begin_shutdown(REFERENCE_AT_MS);
     state.complete_mint(plan, standard_mint_fill().into_position_observation(), REFERENCE_AT_MS);
     abort
 }
@@ -1592,7 +1692,7 @@ fun a_dust_redemption_below_the_minimum_order_is_refused() {
 fun redemption_completion_is_refused_once_shutdown_began() {
     let mut state = initialized_state(policy::long());
     let plan = standard_redemption_plan(&state);
-    state.begin_shutdown();
+    state.begin_shutdown(REFERENCE_AT_MS);
     state.complete_redemption(plan, standard_redemption_fill().into_position_observation(), REFERENCE_AT_MS);
     abort
 }
@@ -1765,7 +1865,7 @@ fun rebalance_increase_whose_leverage_did_not_rise_is_refused() {
 fun rebalance_completion_is_refused_once_shutdown_began() {
     let mut state = rebalance_state(policy::long());
     let plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_000_000, policy::long()), 10, REFERENCE_AT_MS);
-    state.begin_shutdown();
+    state.begin_shutdown(REFERENCE_AT_MS);
     state.complete_rebalance(plan);
     abort
 }
@@ -1875,7 +1975,7 @@ fun unwind_constraints_are_refused_while_active() {
 #[expected_failure(abort_code = errors::EStalePrice, location = blast_boosts_core::policy)]
 fun unwind_rejects_a_stale_collateral_price() {
     let mut state = initialized_state(policy::long());
-    state.begin_shutdown();
+    state.begin_shutdown(REFERENCE_AT_MS);
     state.unwind_constraints(
         fresh_price(1_000_000_000), observation::new_price(1_000_000_000, 0, 0), LOT_SIZE, REFERENCE_AT_MS,
     );
@@ -1886,7 +1986,7 @@ fun unwind_rejects_a_stale_collateral_price() {
 #[expected_failure(abort_code = errors::EConfidenceExceedsBound, location = blast_boosts_core::policy)]
 fun unwind_rejects_a_low_confidence_base_price() {
     let mut state = initialized_state(policy::long());
-    state.begin_shutdown();
+    state.begin_shutdown(REFERENCE_AT_MS);
     state.unwind_constraints(
         observation::new_price(1_000_000_000, 10_000_001, REFERENCE_AT_MS), fresh_price(1_000_000_000), LOT_SIZE, REFERENCE_AT_MS,
     );
@@ -1896,9 +1996,9 @@ fun unwind_rejects_a_low_confidence_base_price() {
 #[test]
 fun unwind_floors_the_order_cap_to_whole_lots() {
     let mut state = initialized_state(policy::long());
-    state.begin_shutdown();
+    state.begin_shutdown(REFERENCE_AT_MS);
 
-    let (_, max_order_base, _, _) = state.unwind_constraints(
+    let (_, max_order_base, _, _, _) = state.unwind_constraints(
         fresh_price(1_000_000_000), fresh_price(1_000_000_000), 4_000, REFERENCE_AT_MS,
     );
 
@@ -1920,7 +2020,7 @@ fun finalize_shutdown_is_refused_while_active() {
 #[expected_failure(abort_code = errors::EInvalidShareAmount, location = blast_boosts_core::state)]
 fun finalize_shutdown_with_only_the_seed_leaves_no_eligible_shares() {
     let mut state = initialized_state(policy::long());
-    state.begin_shutdown();
+    state.begin_shutdown(REFERENCE_AT_MS);
     assert_eq!(state.finalize_shutdown(7, 7), 0);
     state.shutdown_claim_quote(13, 7, 7, 1, 0);
     abort
@@ -1930,7 +2030,7 @@ fun finalize_shutdown_with_only_the_seed_leaves_no_eligible_shares() {
 #[expected_failure(abort_code = errors::EInvalidShareAmount, location = blast_boosts_core::state)]
 fun terminal_claim_of_zero_shares_is_refused() {
     let mut state = initialized_state(policy::long());
-    state.begin_shutdown();
+    state.begin_shutdown(REFERENCE_AT_MS);
     state.finalize_shutdown(7, 2);
     state.shutdown_claim_quote(13, 7, 2, 0, 0);
     abort
@@ -1940,7 +2040,7 @@ fun terminal_claim_of_zero_shares_is_refused() {
 #[expected_failure(abort_code = errors::EInvalidShareSupply, location = blast_boosts_core::state)]
 fun terminal_claim_against_a_supply_below_the_locked_seed_is_refused() {
     let mut state = initialized_state(policy::long());
-    state.begin_shutdown();
+    state.begin_shutdown(REFERENCE_AT_MS);
     state.finalize_shutdown(7, 2);
     state.shutdown_claim_quote(13, 1, 2, 1, 0);
     abort
@@ -1950,7 +2050,7 @@ fun terminal_claim_against_a_supply_below_the_locked_seed_is_refused() {
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun terminal_claim_before_settlement_is_refused() {
     let mut state = initialized_state(policy::long());
-    state.begin_shutdown();
+    state.begin_shutdown(REFERENCE_AT_MS);
     state.shutdown_claim_quote(13, 7, 2, 2, 0);
     abort
 }
@@ -1961,7 +2061,7 @@ fun terminal_claim_before_settlement_is_refused() {
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun fee_updates_are_refused_after_shutdown_began() {
     let mut state = initialized_state(policy::long());
-    state.begin_shutdown();
+    state.begin_shutdown(REFERENCE_AT_MS);
     state.set_fees(5, 5, 0);
     abort
 }
@@ -1985,7 +2085,7 @@ fun a_fee_update_that_changes_only_the_admin_share_is_accepted() {
 #[test]
 fun max_order_notional_updates_in_every_lifecycle_state() {
     let mut state = initialized_state(policy::long());
-    state.begin_shutdown();
+    state.begin_shutdown(REFERENCE_AT_MS);
     assert_eq!(state.set_max_order_notional(500), MAX_ORDER_NOTIONAL);
     state.finalize_shutdown(7, 2);
     assert_eq!(state.set_max_order_notional(750), 500);
@@ -2065,6 +2165,15 @@ fun rebalance_observation(equity: u64, notional: u64, side: PositionSide): Posit
     spec.venue_equity = equity;
     spec.position_base = notional * 1_000;
     spec.into_position_observation()
+}
+
+/// The close-only bound, in basis points, an unwind step at `now_at_ms` would price under.
+fun unwind_bound_bps_at(state: &State<Product>, now_at_ms: u64): u64 {
+    let (_, _, _, _, bound) = state.unwind_constraints(
+        observation::new_price(1_000_000_000, 0, now_at_ms),
+        observation::new_price(1_000_000_000, 0, now_at_ms), LOT_SIZE, now_at_ms,
+    );
+    bound.slippage_bps()
 }
 
 fun rebalance_endpoint(notional: u64) {

@@ -35,3 +35,13 @@ macro public(package) fun max_min_order_lots(): u64 {
 macro public(package) fun max_asset_decimals(): u8 {
     18
 }
+
+/// How long after shutdown begins the close-only execution bound takes to
+/// widen, linearly, from the ordinary bound to the emergency one: 24 hours.
+///
+/// A permissionless close must stay as cheap for holders as honest depth
+/// allows, yet a book that stays thin must not refuse the exit forever, so the
+/// admitted execution widens with time instead of opening at the wide bound.
+macro public(package) fun unwind_bound_widening_duration_ms(): u64 {
+    86_400_000
+}

@@ -106,16 +106,19 @@ public fun share<Product, Collateral>(self: Vault<Product, Collateral>) {
     transfer::share_object(self);
 }
 
-/// Irreversibly stops ordinary operations without requiring venue or oracle availability.
+/// Irreversibly stops ordinary operations without requiring venue or oracle
+/// availability. The clock fixes when shutdown began; the close-only execution
+/// bound `operations::unwind` prices under widens from that instant.
 public fun begin_shutdown<Product, Collateral>(
     self: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
     _: &AdminWitness<ShutdownAdmin>,
     reason: ShutdownReason,
+    clock: &Clock,
 ) {
     protocol.assert_current();
 
-    self.state.begin_shutdown();
+    self.state.begin_shutdown(clock.timestamp_ms());
 
     events::shutdown_begun<Product>(self.id.to_inner(), reason);
 }

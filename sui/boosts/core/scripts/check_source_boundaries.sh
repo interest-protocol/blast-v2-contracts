@@ -204,8 +204,9 @@ if grep -rn 'sui::event::emit\|sui::event::' "$package_dir/sources"; then
 fi
 
 # --- Public surface ---
-# The policy constructors and the State transitions are the cross-package ABI;
-# a change here is a reviewed boundary decision.
+# The policy constructors, the execution bound the adapter prices and proves
+# every order under, and the State transitions are the cross-package ABI; a
+# change here is a reviewed boundary decision.
 
 actual_policy_public="$(
   production "$policy_file" \
@@ -213,11 +214,14 @@ actual_policy_public="$(
     | sort
 )"
 expected_policy_public="$(printf '%s\n' \
+  assert_execution \
+  limit_price \
   long \
   new_price_policy \
   new_rebalance_policy \
   new_vault_policy \
   short \
+  slippage_bps \
   | sort)"
 [[ "$actual_policy_public" == "$expected_policy_public" ]] \
   || fail "The public policy-construction surface changed without boundary review."
@@ -233,9 +237,7 @@ expected_state_public="$(printf '%s\n' \
   admin_fee \
   assert_active \
   assert_can_sync \
-  assert_execution \
   assert_order_notional_allowed \
-  assert_seed_execution \
   assert_seed_order_notional_allowed \
   assert_settled \
   assert_unwinding \
@@ -244,12 +246,14 @@ expected_state_public="$(printf '%s\n' \
   base_to_buy \
   base_to_sell \
   begin_shutdown \
+  bound \
   collateral_price \
   complete_mint \
   complete_rebalance \
   complete_redemption \
   donate \
   equity \
+  execution_bound \
   finalize_shutdown \
   is_emergency \
   is_increase \
@@ -269,6 +273,7 @@ expected_state_public="$(printf '%s\n' \
   rebalance_position \
   redemption_position \
   redemption_shares \
+  seed_execution_bound \
   seed_side \
   seed_terms \
   set_fees \
@@ -294,7 +299,7 @@ actual_lifecycle_construction="$(
 )"
 expected_lifecycle_construction="$(printf '%s\n' \
   'public(package) fun active(): Lifecycle { Lifecycle::Active }' \
-  '*self = Lifecycle::Unwinding;' \
+  '*self = Lifecycle::Unwinding { began_at_ms: now_at_ms };' \
   '*self = Lifecycle::Settled;')"
 [[ "$actual_lifecycle_construction" == "$expected_lifecycle_construction" ]] \
   || fail "Only the Active constructor and the two forward transitions may construct lifecycle variants."

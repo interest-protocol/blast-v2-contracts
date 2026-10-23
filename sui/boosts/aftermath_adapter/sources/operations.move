@@ -387,7 +387,7 @@ public fun sync_health<Product, Collateral>(
 }
 
 /// Permissionless bounded close-only progress, never caller-sized or dependent
-/// on positive NAV. A live market is closed by market orders; a market the
+/// on positive NAV. A live market is closed by price-limited orders; a market the
 /// venue has paused only by the venue's own settlement, once it has closed the
 /// market and enabled settlement prices; a frozen clearing house aborts every
 /// venue call on its version check, so it is refused here until unfrozen.
@@ -873,7 +873,7 @@ fun synchronize_or_fail<Product, Collateral>(
 
 // --- Shutdown ---
 
-/// The venue's settlement of a closed market is not a market order or a
+/// The venue's settlement of a closed market is not a venue order or a
 /// stale-price fallback. A paused market admits no funding update or
 /// settlement, so the stored checkpoint is reconciled with the one read here
 /// without a venue call, and the venue's settlement prices, which its admin
@@ -909,8 +909,9 @@ fun unwind_settlement<Product, Collateral>(
 
 /// One bounded unwind step on a live market: synchronize funding and the
 /// checkpoint exactly as every priced operation does, then place up to
-/// `max_active_orders` close-only orders under the emergency bound, proving
-/// each fill against the checkpoint before the next. A venue the stored
+/// `max_active_orders` close-only orders under the bound the time since
+/// shutdown began admits, proving each fill against the checkpoint before the
+/// next. A venue the stored
 /// checkpoint cannot explain is reported as drift and adopted: shutdown closes
 /// what the venue holds, whatever moved it there.
 fun unwind_market<Product, Collateral>(

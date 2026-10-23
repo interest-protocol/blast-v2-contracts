@@ -148,7 +148,8 @@ public(package) fun allocate<Collateral>(
 
 // --- Trade ---
 
-/// Executes one bounded market order under retained authority and returns its venue facts.
+/// Executes one bounded, price-limited order under retained authority and
+/// returns its venue facts.
 public(package) fun execute_order<Collateral>(
     self: &VenueAccount,
     account: &mut Account<Collateral>,
@@ -157,6 +158,7 @@ public(package) fun execute_order<Collateral>(
     collateral_oracle: &PriceFeedStorage,
     is_ask: bool,
     base: u64,
+    limit_price: u64,
     reduce_only: bool,
     clock: &Clock,
     ctx: &TxContext,
@@ -165,13 +167,19 @@ public(package) fun execute_order<Collateral>(
     assert_market_oracles(&clearing_house, base_oracle, collateral_oracle);
 
     execute_order_with_cap(
-        &self.admin_cap, account, clearing_house, base_oracle, collateral_oracle, is_ask, base, reduce_only, clock, ctx,
+        &self.admin_cap, account, clearing_house, base_oracle, collateral_oracle, is_ask, base, limit_price, reduce_only,
+        clock, ctx,
     )
 }
 
-/// One market order in its own session under an explicit cap: the seed
-/// position opens through this before the cap is sealed, and every later
-/// order through `execute_order` above.
+/// One immediate-or-cancel limit order in its own session under an explicit
+/// cap: the seed position opens through this before the cap is sealed, and
+/// every later order through `execute_order` above.
+///
+/// `limit_price` is the venue's 9-decimal price, a multiple of the market's
+/// tick: a bid pays at most, an ask receives at least, that price. The venue
+/// fills what rests at or inside it and cancels the remainder, so no order the
+/// adapter places ever rests on the book and no fill crosses the limit.
 public(package) fun execute_order_with_cap<Collateral>(
     admin_cap: &AuthorityCap<ACCOUNT, ADMIN>,
     account: &mut Account<Collateral>,
@@ -180,6 +188,7 @@ public(package) fun execute_order_with_cap<Collateral>(
     collateral_oracle: &PriceFeedStorage,
     is_ask: bool,
     base: u64,
+    limit_price: u64,
     reduce_only: bool,
     clock: &Clock,
     ctx: &TxContext,
@@ -187,7 +196,11 @@ public(package) fun execute_order_with_cap<Collateral>(
     let mut session = clearing_house.start_session(
         admin_cap, account, base_oracle, collateral_oracle, option::none(), clock, ctx,
     );
-    session.place_market_order(is_ask, base, reduce_only);
+    // Immediate-or-cancel never posts, so the venue returns no resting order id.
+    let _ = session.place_limit_order(
+        is_ask, base, limit_price, constants::immediate_or_cancel_order_type!(), option::none(), reduce_only,
+        option::none(),
+    );
 
     session.end_session(admin_cap, account, false, false)
 }
@@ -357,7 +370,7 @@ public fun next_funding_update_time_ms_for_testing(funding_last_updated_at_ms: u
 
 use authority_cap::authority::{ADMIN, AuthorityCap};
 
-use blast_boosts_aftermath::checkpoint::Checkpoint;
+use blast_boosts_aftermath::{checkpoint::Checkpoint, constants};
 
 use oracle_aggregator::price_feed_storage::PriceFeedStorage;
 

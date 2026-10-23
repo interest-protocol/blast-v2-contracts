@@ -246,10 +246,12 @@ Risk increase uses a strict slippage bound against the canonical index
 price. Reduce-only orders above an emergency threshold, proposed 2.5x, use
 a wider bound, and no cooldown may block them. A crash with wide spreads must
 never be the reason deleveraging fails. The two bounds are immutable policy
-values with gates, `is_execution_within_max_slippage` and
-`is_execution_within_emergency_max_slippage`, and the package pins that the
-strict bound rejects and the wide bound admits the same fill. The adapter
-selects which gate each order class uses.
+values; the core hands the adapter the applicable one as an `ExecutionBound`
+that prices each order's limit before placement and proves its fill after,
+and the package pins that the strict bound rejects and the wide bound admits
+the same fill. The adapter never chooses a bound: a rebalance order carries
+the one the core sized it under, and a shutdown close runs under a bound that
+widens with the time since shutdown began (ADR 0118).
 
 ### 2.3 Permissionless emergency deleverage (owner: Series and adapter)
 

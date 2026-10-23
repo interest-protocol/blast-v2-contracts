@@ -55,3 +55,15 @@ macro public(package) fun max_initialization_orders(): u64 {
 macro public(package) fun max_active_orders(): u64 {
     16
 }
+
+/// Aftermath's immediate-or-cancel order type for `clearing_house::place_limit_order`.
+///
+/// The deployed `execute_limit_order` (`0x3ec740df…`, interface revision
+/// `f62e74a`) admits types 0 to 3: 0 posts the unfilled remainder, 1 aborts
+/// unless the whole size fills, 2 aborts on any fill, and 3 fills what rests
+/// at or inside the limit and drops the rest without posting. Every order the
+/// adapter places is the last kind, so a session never leaves a resting order
+/// and a thin book fills less rather than worse.
+macro public(package) fun immediate_or_cancel_order_type(): u64 {
+    3
+}
