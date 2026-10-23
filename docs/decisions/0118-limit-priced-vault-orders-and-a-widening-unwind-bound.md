@@ -3,7 +3,8 @@
 - Status: proposed
 - Date: 2026-10-23
 - Amends: [0084](0084-leverage-coin-design-after-perpsplexity-review.md),
-  [0064](0064-aftermath-backed-leverage-coins.md)
+  [0064](0064-aftermath-backed-leverage-coins.md),
+  [0087](0087-vault-issuance-activated-in-one-transaction.md)
 
 ## Sources
 
@@ -95,9 +96,11 @@ kept).
 `RebalancePolicy::unwind_execution_bound(elapsed)`: `max_slippage_bps` at
 first, widening linearly, rounded down to whole basis points, to
 `emergency_max_slippage_bps` at `constants::unwind_bound_widening_duration_ms`
-(24 hours), where it stays. A composer cannot bring the wide bound forward; a
-book that stays thin cannot refuse the exit forever. The ramp length is a core
-constant, not a policy value: it is a liveness floor every product shares, and
+(24 hours), where it stays. A composer cannot bring the wide bound forward,
+and the ordinary bound cannot hold the exit at its initial tolerance forever.
+An exit still requires liquidity inside the maximum bound or a venue settlement
+path; the ramp does not guarantee a fill. The ramp length is a core
+constant, not a policy value: it is an escalation schedule every product shares, and
 the two bounds it interpolates between remain per-Vault policy.
 
 ### D5. `OrderFilled` records the limit
@@ -105,6 +108,31 @@ the two bounds it interpolates between remain per-Vault policy.
 The event replaces its `emergency` flag with `limit_price`, the 9-decimal
 price the order was placed with. With the reference price it states the bound
 that applied; an indexer no longer needs to infer it from the plan.
+
+### D6. Permissionless maintenance ends market use in private entry calls
+
+`operations::rebalance` and `operations::unwind` are private `entry` functions.
+They take the shared `ClearingHouse` by value, complete the operation, call
+Aftermath `clearing_house::share` internally and return nothing. Anyone can
+still submit either call; no keeper capability is introduced.
+
+This cuts the audited atomic sweep, post and maintenance sequence at its
+handoff. Sui rejects a non-public entry argument after that shared object has
+already been consumed by value in the PTB. Aftermath trading requires
+`start_session` to consume the market, so `end_session` cannot return a market
+that maintenance will accept. Internal sharing consumes the market, preventing
+later commands from trading with it. Making the function public would permit
+a Move wrapper; returning the market would permit reuse after maintenance.
+Both boundaries are intentional.
+
+This is not complete transaction isolation. Prior mutable-reference calls,
+including cancellation of the caller's own venue orders, may remain possible;
+liquidity planted in previous transactions also remains possible. The execution
+bounds, cap-sized emergency reductions and unwind ramp therefore remain in
+force. A limit at the existing slippage guard alone would still admit the
+audited quote at that limit when trading and maintenance compose.
+
+Reference: [Sui non-public entry restrictions](https://www.docs.sui.io/develop/transactions/ptbs/prog-txn-blocks#non-public-entry-function-restrictions).
 
 ## Alternatives considered
 
@@ -116,13 +144,17 @@ emergency order still sells to target under the wide bound. Rejected.
 **A limit bound tighter than the post-fill guard.** The guard checks the
 session's average price, which a venue honoring the per-fill limit can never
 move outside the limit, so a second, wider number would only describe a venue
-bug. One bound prices and proves each order. The auditors' "well inside the
-guard" is met by selecting bounds near venue costs at issuance, which this
-record leaves to the issuance simulation.
+bug. One tight bound prices and proves each order. Retaining a wide value and
+using it as a limit does not meet the auditor's economic objective: a quote at
+that value can still extract the accepted slippage. New issuances must select
+and justify executable bounds against venue spreads, fees, depth, oracle
+uncertainty and stressed exits. That calibration remains an issuance gate;
+neither this record nor private entry establishes suitable numerical values.
 
 **Restrict `rebalance` and `unwind` to a keeper.** Trades the permissionless
 backstop ADR 0084 relies on for a role that must stay live during an incident.
-Rejected; the limit price keeps the caller irrelevant to the fill.
+Rejected; private entry calls block the audited trading-session composition
+without introducing a keeper role, and limits bound the remaining price risk.
 
 **Fill-or-kill orders.** Type 1 aborts unless the whole order fills, so a book
 with honest depth for part of an order would refuse all of it. Immediate-or-
@@ -136,12 +168,15 @@ absence. The time ramp gives the same first-hours protection with no new role.
 
 - Core and adapter are republished: `State`'s public surface, the
   `RebalancePolicy` package API, `Lifecycle`'s layout, `vault::begin_shutdown`
-  and `OrderFilled` change. The deployed NVDA2L package is not upgraded by this
+  and `OrderFilled` change; `rebalance` and `unwind` become private entry calls
+  without return values. The deployed NVDA2L package is not upgraded by this
   change; its vault keeps market orders and the 30/100 bps post-fill guard
   until it is wound down or re-issued.
 - Keeper transactions for `begin_shutdown` pass the `Clock` (`0x6`); the
-  `active_ptb.mjs` builder does. `rebalance` and `unwind` are unchanged for
-  callers.
+  `active_ptb.mjs` builder does. Rebalance and unwind plans contain one call
+  with no result assignment or subsequent share command. Same-market
+  maintenance batching, rebalance followed by mint, and unwind followed by
+  finalization require separate transactions.
 - A thin book now produces partial fills instead of worse prices. Mint and
   redemption loops already carry a remainder to the next order; the 16-order
   budget bounds the work as before, and an order that fills nothing still
@@ -149,12 +184,13 @@ absence. The time ramp gives the same first-hours protection with no new role.
 - An emergency rebalance that restores the cap leaves leverage above the band;
   keepers follow with an ordinary `rebalance`, as they already do after any
   partial reduction.
-- During the first day of a shutdown the close runs at the ordinary bound; a
-  book that only fills wider waits for the ramp. Holders are locked for that
+- At shutdown the close starts at the ordinary bound and widens over the first
+  day; liquidity requiring a wider bound waits until the ramp admits it. Holders are locked for that
   time as they were before, since `redeem` stops at `begin_shutdown`.
-- Policy values selected for new issuances should sit near venue costs: the
-  limit is where a composer's quote can still fill, so the bound is the
-  per-order take the protocol accepts.
+- Policy values selected for new issuances should sit near venue costs: a
+  quote already on the book can still fill at the limit, so the bound remains
+  the per-order price loss the protocol accepts. Private entry blocks the
+  audited atomic trading sequence, not cross-transaction book manipulation.
 
 ## Verification
 
@@ -173,6 +209,14 @@ absence. The time ramp gives the same first-hours protection with no new role.
   `place_limit_order` and `tick_size`.
 - Both packages pass `sui move test --lint --warnings-are-errors`, the source
   boundary gates and the Move style check.
+- A private localnet fixture on Sui 1.77.2 / protocol 133 verifies the ownership
+  boundary: session then public maintenance succeeds; session then private
+  entry fails with `InvalidArgumentToPrivateEntryFunction`; direct private
+  entry succeeds and leaves the market shared; reuse after internal sharing
+  fails with `ArgumentWithoutValue`. Prior mutable-reference mutation still
+  succeeds. The fixture models the venue's ownership shape, not its trading
+  implementation. Keeper plans contain no returned-market assignment or
+  subsequent share command.
 - Not established here: a live fill through `place_limit_order` on mainnet.
   The vendored interfaces abort, so the first activation on the new package
   must run the activation evidence scripts as ADR 0064 requires.

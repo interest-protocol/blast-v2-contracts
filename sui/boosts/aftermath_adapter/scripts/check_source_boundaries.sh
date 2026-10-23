@@ -96,7 +96,8 @@ done
 # Callers see three modules: vault (issuance, administration, shutdown),
 # operations (the driver, and which Blast partners Boosts accepts) and
 # package_admin (upgrades). Everything else is
-# package-private, and no function is an entry point.
+# package-private. Permissionless maintenance ends market use in private entry
+# functions; callers cannot wrap it or reuse its clearing house (ADR 0118).
 
 for file in "$package_dir"/sources/*.move "$package_dir"/sources/lib/*.move; do
   module="$(basename "$file" .move)"
@@ -105,9 +106,11 @@ for file in "$package_dir"/sources/*.move "$package_dir"/sources/lib/*.move; do
     fail "$module exposes a public function; only vault, operations and package_admin are callable."
   fi
 done
-if grep -rnE '\bentry fun ' "$core_dir/sources" "$package_dir/sources"; then
-  fail "Boost packages expose no entry functions; every call composes in a PTB."
-fi
+entry_functions="$(grep -rHE '\bentry fun ' "$core_dir/sources" "$package_dir/sources" || true)"
+expected_entries="$package_dir/sources/operations.move:entry fun rebalance<Product, Collateral>(
+$package_dir/sources/operations.move:entry fun unwind<Product, Collateral>("
+[[ "$entry_functions" == "$expected_entries" ]] \
+  || fail "Only operations::rebalance and operations::unwind may be private entry functions."
 if grep -rnE 'AdapterRoot|AdapterDomain|venue_handoff|struct [A-Za-z0-9_]*AdminCap\b' "$package_dir/sources"; then
   fail "The adapter must not reintroduce a per-adapter ACL root, handoff layer or AdminCap; administration is the shared ACL."
 fi

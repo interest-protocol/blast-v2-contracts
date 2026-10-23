@@ -46,7 +46,7 @@ test('permissionless terminal plans exclude caller direction, size, dust write-o
     for (const operation of ['unwind', 'finalize_shutdown', 'redeem_shutdown']) {
         const value = terminal(operation);
         const plan = buildTerminalPlan(value);
-        assert.equal(plan.commands.length, operation === 'unwind' ? 2 : 1);
+        assert.equal(plan.commands.length, 1);
         assert.equal(plan.commands[0].target.split('::').at(-1), operation);
         assert.throws(() => buildTerminalPlan({...value, side: 'short'}), /unexpected field/);
         assert.throws(() => buildTerminalPlan({...value, maximumFeeBps: '1'}), /unexpected field/);
@@ -54,7 +54,9 @@ test('permissionless terminal plans exclude caller direction, size, dust write-o
         assert(args.includes('--serialize-unsigned-transaction'));
         assert(!args.includes('--gas-budget'));
         if (operation === 'unwind') {
-            assert.deepEqual(plan.commands[1].arguments, ['clearing_house']);
+            assert.equal(plan.commands[0].assign, null);
+            assert.deepEqual(plan.transfers, []);
+            assert(!args.includes('--assign'));
         }
         if (operation === 'redeem_shutdown') {
             assert.equal(plan.commands[0].arguments.length, 6);
@@ -108,13 +110,13 @@ test('naming a partner switches mint and redemption to the partner entry points,
     assert.throws(() => buildActivePlan({...rebalance, objects: {...rebalance.objects, partner: address(40)}}), /unexpected object field partner/);
 });
 
-test('rebalance contains only bound objects, not witness, trade side, size or fee choices', () => {
+test('rebalance ends market use without returning a result or a separate share command', () => {
     const value = input('rebalance');
     const plan = buildActivePlan(value);
     assert.equal(plan.commands[0].arguments.length, 8);
-    assert.equal(plan.commands[0].assign, 'clearing_house');
-    assert.deepEqual(plan.commands[1].arguments, ['clearing_house']);
-    assert.match(plan.commands[1].target, /::clearing_house::share$/);
+    assert.equal(plan.commands.length, 1);
+    assert.equal(plan.commands[0].assign, null);
+    assert(!renderUnsignedPtbArgs(value).includes('--assign'));
     assert.deepEqual(plan.transfers, []);
     assert.throws(() => buildActivePlan({...value, side: 'short'}), /unexpected field/);
 });

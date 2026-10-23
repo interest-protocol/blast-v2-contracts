@@ -20,8 +20,8 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 
 | Package | Product | Status | Package ID (`published-at`) | Type origin (`original-id`) |
 | --- | --- | --- | --- | --- |
-| `blast_boosts_core` | Boosts core | live | `0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe` | `0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe` |
-| `blast_boosts_products` | Boost product tags | live | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` |
+| `blast_boosts_core` | Boosts core | live; source has changed since | `0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe` | `0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe` |
+| `blast_boosts_products` | Boost product tags | live; source has changed since | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` |
 | `blast_boosts_aftermath` | Boosts Aftermath adapter | not yet published | — | — |
 | `blast_partners` | Partner codes | live; source has changed since | `0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd` | `0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd` |
 | `blast_admin` | Administration | live | `0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9` | `0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9` |
@@ -174,7 +174,7 @@ run) before signing it.
 
 ## Boosts
 
-> **Deployment status:** `blast_boosts_core` and `blast_boosts_products` are live on mainnet. `blast_boosts_aftermath` is not yet published on mainnet; its interface may change before publication.
+> **Deployment status:** `blast_boosts_core` and `blast_boosts_products` are live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package. `blast_boosts_aftermath` is not yet published on mainnet; its interface may change before publication.
 
 ### What it is
 
@@ -259,7 +259,11 @@ re-pointing never strands a Vault:
 Pass the shared `ClearingHouse` as a normal shared-object input. Several
 functions take it by value and return it after settling the required Aftermath
 session. Reuse that result in later PTB commands, then call Aftermath
-`clearing_house::share` once after its final use. Also pass the `Clock` (`0x6`)
+`clearing_house::share` once after its final use. `operations::rebalance` and
+`operations::unwind` instead share it internally and return nothing. These
+private `entry` calls accept the shared market directly, never a market returned
+by an earlier trading session, and end that market's use in the PTB.
+Also pass the `Clock` (`0x6`)
 everywhere a call takes one. This ABI requires a fresh publication.
 
 #### Roles
@@ -482,9 +486,12 @@ Blast removes the partner). Otherwise use the plain calls. While a Vault's
 #### Rebalance (anyone; keepers)
 
 `operations::rebalance<Product, Collateral>(vault, protocol, account, registry,
-clearing_house, base_oracle, collateral_oracle, clock)`. Returns
-`ClearingHouse<Collateral>` for reuse and a final Aftermath
-`clearing_house::share`. No reward, direction or size argument. Submit it at a gas price **at or below
+clearing_house, base_oracle, collateral_oracle, clock)`. Anyone can submit this
+private `entry` call directly in a PTB. It shares the clearing house internally
+and returns nothing; no earlier trading session may supply its market and no
+later command may reuse that market. Use a separate transaction for another
+rebalance or a mint on the same market. No reward, direction or size argument.
+Submit it at a gas price **at or below
 the reference gas price** (adapter code 37 otherwise), because Aftermath adds
 a priority taker fee above it and holders pay every fill.
 
@@ -564,8 +571,11 @@ over the ceiling raises shareholder NAV. No shares, no fees. Emits `Donated`.
 2. **Unwind** (anyone, repeat until flat). `operations::unwind<Product,
    Collateral>(vault, protocol, account, registry, clearing_house, base_oracle,
    collateral_oracle, clock)`, at or below the reference gas price, refused
-   while the clearing house is frozen (adapter code 35). Returns the clearing
-   house for reuse and a final Aftermath `clearing_house::share`.
+   while the clearing house is frozen (adapter code 35). This private `entry`
+   call shares the clearing house internally and returns nothing. Pass the
+   shared market directly, without a preceding trading session. Repeat unwind
+   and finalize in separate transactions because the market cannot be reused
+   after this call.
    - Live market: synchronize (drift is reported with `CheckpointDrifted` and
      the live venue state is adopted anyway), price at fresh oracles, then up
      to 16 reduce-only limit orders under the order cap and a bound that
@@ -894,7 +904,7 @@ outdated adapter package aborts in the `operational_version` module of the
 | 36 | Post-mint NAV above `nav_cap` | Mint less or wait. |
 | 37 | A fill's price outside the execution bound, or no tick inside it | Trade smaller or wait for depth. |
 | 43 | A fill's actual notional above `max_order_notional` | Trade smaller. |
-| 49 | Mint while leverage is outside the band | Call `rebalance` (anyone), then mint. |
+| 49 | Mint while leverage is outside the band | Call `rebalance` (anyone), then mint in a separate transaction. |
 | 50, 51 | Oracle pair or fills changed within the operation | Retry. |
 | 52 | Leverage after a mint at or above `max_leverage_bps` (rounded up), or a rebalance buy left leverage above target or at or above max | Mint less; for rebalance, retry later. |
 | 53 | Payout below `minimum_collateral` | Re-quote. |
@@ -956,7 +966,7 @@ changes nothing for the user.
 
 **Why did my mint abort with code 49 in `state`?** The Vault's leverage is
 outside the rebalance band, and mints are allowed only inside it. Anyone can call
-`operations::rebalance`; once it succeeds, mint again.
+`operations::rebalance`; once its transaction succeeds, mint in a new transaction.
 
 **Who rebalances, and is there a reward?** Anyone, through
 `operations::rebalance`, at or below the reference gas price. There is no
@@ -1290,7 +1300,7 @@ where you like); Blast takes no cut of it.
 
 ## API reference: `blast_boosts_core` (Boosts core)
 
-Live on mainnet.
+Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -2122,7 +2132,7 @@ public fun collateral_price(self: &ActivePosition): u64
 
 ## API reference: `blast_boosts_products` (Boost product tags)
 
-Live on mainnet.
+Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -2816,22 +2826,6 @@ public fun redeem_with_partner<Product, Collateral>(
     ctx: &mut TxContext,
 ): (Coin<Collateral>, clearing_house::ClearingHouse<Collateral>)
 
-/// Permissionless, policy-sized maintenance with no caller reward or trade parameters.
-///
-/// Holders pay its fills, so it runs only at the reference gas price.
-/// Returns the ClearingHouse for composition; the transaction must share it afterward.
-public fun rebalance<Product, Collateral>(
-    vault: &mut vault::Vault<Product, Collateral>,
-    protocol: &blast_boosts_aftermath::Protocol,
-    account: &mut account::Account<Collateral>,
-    registry: &registry::Registry,
-    clearing_house: clearing_house::ClearingHouse<Collateral>,
-    base_oracle: &price_feed_storage::PriceFeedStorage,
-    collateral_oracle: &price_feed_storage::PriceFeedStorage,
-    clock: &Clock,
-    ctx: &mut TxContext,
-): clearing_house::ClearingHouse<Collateral>
-
 /// A keeper's dry run of `rebalance`: whether the live position sits outside the band.
 ///
 /// Reads everything `rebalance` reads and asks the core the same question, so it
@@ -2880,25 +2874,6 @@ public fun sync_health<Product, Collateral>(
     clock: &Clock,
 )
 
-/// Permissionless bounded close-only progress, never caller-sized or dependent
-/// on positive NAV. A live market is closed by price-limited orders; a market the
-/// venue has paused only by the venue's own settlement, once it has closed the
-/// market and enabled settlement prices; a frozen clearing house aborts every
-/// venue call on its version check, so it is refused here until unfrozen.
-/// Holders pay its fills, so it runs only at the reference gas price.
-/// Returns the ClearingHouse for composition; the transaction must share it afterward.
-public fun unwind<Product, Collateral>(
-    vault: &mut vault::Vault<Product, Collateral>,
-    protocol: &blast_boosts_aftermath::Protocol,
-    account: &mut account::Account<Collateral>,
-    registry: &registry::Registry,
-    clearing_house: clearing_house::ClearingHouse<Collateral>,
-    base_oracle: &price_feed_storage::PriceFeedStorage,
-    collateral_oracle: &price_feed_storage::PriceFeedStorage,
-    clock: &Clock,
-    ctx: &mut TxContext,
-): clearing_house::ClearingHouse<Collateral>
-
 /// Recovers all actual holder collateral only from an exactly settled bound account.
 public fun finalize_shutdown<Product, Collateral>(
     vault: &mut vault::Vault<Product, Collateral>,
@@ -2910,6 +2885,43 @@ public fun finalize_shutdown<Product, Collateral>(
     collateral_oracle: &price_feed_storage::PriceFeedStorage,
     clock: &Clock,
     ctx: &mut TxContext,
+)
+
+/// Permissionless, policy-sized maintenance with no caller reward or trade parameters.
+///
+/// Holders pay its fills, so it runs only at the reference gas price.
+/// Private entry prevents a preceding venue session from supplying the shared market.
+/// Shares the ClearingHouse internally, ending its use in this transaction.
+entry fun rebalance<Product, Collateral>(
+    vault: &mut vault::Vault<Product, Collateral>,
+    protocol: &blast_boosts_aftermath::Protocol,
+    account: &mut account::Account<Collateral>,
+    registry: &registry::Registry,
+    clearing_house: clearing_house::ClearingHouse<Collateral>,
+    base_oracle: &price_feed_storage::PriceFeedStorage,
+    collateral_oracle: &price_feed_storage::PriceFeedStorage,
+    clock: &Clock,
+    ctx: &TxContext,
+)
+
+/// Permissionless bounded close-only progress, never caller-sized or dependent
+/// on positive NAV. A live market is closed by price-limited orders; a market the
+/// venue has paused only by the venue's own settlement, once it has closed the
+/// market and enabled settlement prices; a frozen clearing house aborts every
+/// venue call on its version check, so it is refused here until unfrozen.
+/// Holders pay its fills, so it runs only at the reference gas price.
+/// Private entry prevents a preceding venue session from supplying the shared market.
+/// Shares the ClearingHouse internally, ending its use in this transaction.
+entry fun unwind<Product, Collateral>(
+    vault: &mut vault::Vault<Product, Collateral>,
+    protocol: &blast_boosts_aftermath::Protocol,
+    account: &mut account::Account<Collateral>,
+    registry: &registry::Registry,
+    clearing_house: clearing_house::ClearingHouse<Collateral>,
+    base_oracle: &price_feed_storage::PriceFeedStorage,
+    collateral_oracle: &price_feed_storage::PriceFeedStorage,
+    clock: &Clock,
+    ctx: &TxContext,
 )
 ```
 

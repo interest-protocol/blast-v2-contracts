@@ -51,8 +51,7 @@ export function buildActivePlan(input) {
     const clock = `@${address(objects.clock)}`;
     if (operation === 'rebalance') {
         return {commands: [
-            call(`${adapter}::operations::rebalance`, [product, collateral], [...bound, clock], 'clearing_house'),
-            call(`${AFTERMATH_PACKAGE}::clearing_house::share`, [collateral], ['clearing_house'], null),
+            call(`${adapter}::operations::rebalance`, [product, collateral], [...bound, clock], null),
         ], transfers: []};
     }
     const partnered = objects.partner !== undefined;
@@ -140,8 +139,7 @@ export function buildTerminalPlan(input) {
     }
     if (operation === 'unwind') {
         return {commands: [
-            call(`${adapter}::operations::unwind`, types, args, 'clearing_house'),
-            call(`${AFTERMATH_PACKAGE}::clearing_house::share`, [types[1]], ['clearing_house'], null),
+            call(`${adapter}::operations::unwind`, types, args, null),
         ], transfers: []};
     }
     return {commands: [call(`${adapter}::operations::${operation}`, types, args, null)], transfers: []};

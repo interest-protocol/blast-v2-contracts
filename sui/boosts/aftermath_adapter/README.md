@@ -37,7 +37,7 @@ base64 `TransactionData` to Sui's machine-readable `serialized-tx` surface with
 `--dev-inspect --json` on mainnet. Both live proof paths enforce the pinned Sui
 CLI version.
 
-Public active operations are `initialize`, `mint`, `redeem`, `rebalance`,
+Public active operations are `initialize`, `mint`, `redeem`,
 `needs_rebalance`, `sync_health` and `donate`; Vault also exposes authorized
 fee, NAV-cap and order-cap settings, issuer-only coin metadata updates, and
 earned-admin cash withdrawal.
@@ -46,11 +46,15 @@ Blast partner (`blast_partners::Partner`) and then pay it its share of the admin
 fee that operation retained, never the reserve fee, in the same transaction
 ([ADR 0095](../../../docs/decisions/0095-partner-codes.md),
 [how it works](../../../docs/partner-codes.md)).
-Operations that consume the ClearingHouse return it after completing their
+Initialization and mint/redeem return the ClearingHouse after completing their
 sessions and checks; mint/redeem return it alongside the native output coin.
 The caller can reuse it in later PTB commands and must share it after its
 final use (ADR 0087). This return shape requires a fresh adapter publication.
-Rebalance has
+Permissionless `rebalance` and `unwind` are private `entry` functions that share
+the market internally and return nothing (ADR 0118). They reject a market
+returned by an earlier trading session and end its use in that PTB. Repeated
+maintenance, rebalance followed by mint, and unwind followed by finalization
+on that market use separate transactions. Rebalance has
 no privileged keeper path, caller trade sizing or reward. An unresolved
 external change preserves the accepted economic checkpoint and emits
 `CheckpointDrifted`.

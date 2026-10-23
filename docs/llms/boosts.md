@@ -83,7 +83,11 @@ re-pointing never strands a Vault:
 Pass the shared `ClearingHouse` as a normal shared-object input. Several
 functions take it by value and return it after settling the required Aftermath
 session. Reuse that result in later PTB commands, then call Aftermath
-`clearing_house::share` once after its final use. Also pass the `Clock` (`0x6`)
+`clearing_house::share` once after its final use. `operations::rebalance` and
+`operations::unwind` instead share it internally and return nothing. These
+private `entry` calls accept the shared market directly, never a market returned
+by an earlier trading session, and end that market's use in the PTB.
+Also pass the `Clock` (`0x6`)
 everywhere a call takes one. This ABI requires a fresh publication.
 
 #### Roles
@@ -306,9 +310,12 @@ Blast removes the partner). Otherwise use the plain calls. While a Vault's
 #### Rebalance (anyone; keepers)
 
 `operations::rebalance<Product, Collateral>(vault, protocol, account, registry,
-clearing_house, base_oracle, collateral_oracle, clock)`. Returns
-`ClearingHouse<Collateral>` for reuse and a final Aftermath
-`clearing_house::share`. No reward, direction or size argument. Submit it at a gas price **at or below
+clearing_house, base_oracle, collateral_oracle, clock)`. Anyone can submit this
+private `entry` call directly in a PTB. It shares the clearing house internally
+and returns nothing; no earlier trading session may supply its market and no
+later command may reuse that market. Use a separate transaction for another
+rebalance or a mint on the same market. No reward, direction or size argument.
+Submit it at a gas price **at or below
 the reference gas price** (adapter code 37 otherwise), because Aftermath adds
 a priority taker fee above it and holders pay every fill.
 
@@ -388,8 +395,11 @@ over the ceiling raises shareholder NAV. No shares, no fees. Emits `Donated`.
 2. **Unwind** (anyone, repeat until flat). `operations::unwind<Product,
    Collateral>(vault, protocol, account, registry, clearing_house, base_oracle,
    collateral_oracle, clock)`, at or below the reference gas price, refused
-   while the clearing house is frozen (adapter code 35). Returns the clearing
-   house for reuse and a final Aftermath `clearing_house::share`.
+   while the clearing house is frozen (adapter code 35). This private `entry`
+   call shares the clearing house internally and returns nothing. Pass the
+   shared market directly, without a preceding trading session. Repeat unwind
+   and finalize in separate transactions because the market cannot be reused
+   after this call.
    - Live market: synchronize (drift is reported with `CheckpointDrifted` and
      the live venue state is adopted anyway), price at fresh oracles, then up
      to 16 reduce-only limit orders under the order cap and a bound that
@@ -718,7 +728,7 @@ outdated adapter package aborts in the `operational_version` module of the
 | 36 | Post-mint NAV above `nav_cap` | Mint less or wait. |
 | 37 | A fill's price outside the execution bound, or no tick inside it | Trade smaller or wait for depth. |
 | 43 | A fill's actual notional above `max_order_notional` | Trade smaller. |
-| 49 | Mint while leverage is outside the band | Call `rebalance` (anyone), then mint. |
+| 49 | Mint while leverage is outside the band | Call `rebalance` (anyone), then mint in a separate transaction. |
 | 50, 51 | Oracle pair or fills changed within the operation | Retry. |
 | 52 | Leverage after a mint at or above `max_leverage_bps` (rounded up), or a rebalance buy left leverage above target or at or above max | Mint less; for rebalance, retry later. |
 | 53 | Payout below `minimum_collateral` | Re-quote. |
@@ -780,7 +790,7 @@ changes nothing for the user.
 
 **Why did my mint abort with code 49 in `state`?** The Vault's leverage is
 outside the rebalance band, and mints are allowed only inside it. Anyone can call
-`operations::rebalance`; once it succeeds, mint again.
+`operations::rebalance`; once its transaction succeeds, mint in a new transaction.
 
 **Who rebalances, and is there a reward?** Anyone, through
 `operations::rebalance`, at or below the reference gas price. There is no

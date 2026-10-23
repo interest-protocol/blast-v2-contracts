@@ -263,43 +263,6 @@ public fun redeem_with_partner<Product, Collateral>(
     (cash, clearing_house)
 }
 
-/// Permissionless, policy-sized maintenance with no caller reward or trade parameters.
-///
-/// Holders pay its fills, so it runs only at the reference gas price.
-/// Returns the ClearingHouse for composition; the transaction must share it afterward.
-public fun rebalance<Product, Collateral>(
-    vault: &mut Vault<Product, Collateral>,
-    protocol: &Protocol,
-    account: &mut Account<Collateral>,
-    registry: &Registry,
-    mut clearing_house: ClearingHouse<Collateral>,
-    base_oracle: &PriceFeedStorage,
-    collateral_oracle: &PriceFeedStorage,
-    clock: &Clock,
-    ctx: &mut TxContext,
-): ClearingHouse<Collateral> {
-    protocol.assert_current();
-    vault.state().assert_active();
-    assert_gas_price(ctx);
-
-    let (before, checkpoint) = synchronize_or_fail(
-        vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle, clock,
-    ).into_observation();
-
-    let mut plan = vault.state().prepare_rebalance(before, clearing_house.live_venue_fee_bps(), clock.timestamp_ms());
-    let position = plan.rebalance_position();
-    let terms = if (plan.is_increasing()) { vault.increasing_terms(position) } else { vault.reducing_terms(position) };
-    let binding = vault.venue().binding();
-
-    let (clearing_house, checkpoint) = vault.rebalance_orders(
-        account, registry, clearing_house, base_oracle, collateral_oracle,
-        &binding, &terms, &mut plan, checkpoint, clock, ctx,
-    );
-
-    complete_rebalance<Product, Collateral>(vault, plan, checkpoint);
-    clearing_house
-}
-
 /// A keeper's dry run of `rebalance`: whether the live position sits outside the band.
 ///
 /// Reads everything `rebalance` reads and asks the core the same question, so it
@@ -386,39 +349,6 @@ public fun sync_health<Product, Collateral>(
     );
 }
 
-/// Permissionless bounded close-only progress, never caller-sized or dependent
-/// on positive NAV. A live market is closed by price-limited orders; a market the
-/// venue has paused only by the venue's own settlement, once it has closed the
-/// market and enabled settlement prices; a frozen clearing house aborts every
-/// venue call on its version check, so it is refused here until unfrozen.
-/// Holders pay its fills, so it runs only at the reference gas price.
-/// Returns the ClearingHouse for composition; the transaction must share it afterward.
-public fun unwind<Product, Collateral>(
-    vault: &mut Vault<Product, Collateral>,
-    protocol: &Protocol,
-    account: &mut Account<Collateral>,
-    registry: &Registry,
-    mut clearing_house: ClearingHouse<Collateral>,
-    base_oracle: &PriceFeedStorage,
-    collateral_oracle: &PriceFeedStorage,
-    clock: &Clock,
-    ctx: &mut TxContext,
-): ClearingHouse<Collateral> {
-    protocol.assert_current();
-    vault.state().assert_unwinding();
-    assert_gas_price(ctx);
-    assert!(!clearing_house.is_frozen(), blast_boosts_aftermath::errors::venue_not_ready!());
-
-    if (clearing_house.is_market_paused()) {
-        unwind_settlement(vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle);
-    } else {
-        clearing_house = unwind_market(
-            vault, account, registry, clearing_house, base_oracle, collateral_oracle, clock, ctx,
-        );
-    };
-    clearing_house
-}
-
 /// Recovers all actual holder collateral only from an exactly settled bound account.
 public fun finalize_shutdown<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
@@ -457,6 +387,78 @@ public fun finalize_shutdown<Product, Collateral>(
 }
 
 // === Private Functions ===
+
+/// Permissionless, policy-sized maintenance with no caller reward or trade parameters.
+///
+/// Holders pay its fills, so it runs only at the reference gas price.
+/// Private entry prevents a preceding venue session from supplying the shared market.
+/// Shares the ClearingHouse internally, ending its use in this transaction.
+entry fun rebalance<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>,
+    protocol: &Protocol,
+    account: &mut Account<Collateral>,
+    registry: &Registry,
+    mut clearing_house: ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    clock: &Clock,
+    ctx: &TxContext,
+) {
+    protocol.assert_current();
+    vault.state().assert_active();
+    assert_gas_price(ctx);
+
+    let (before, checkpoint) = synchronize_or_fail(
+        vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle, clock,
+    ).into_observation();
+
+    let mut plan = vault.state().prepare_rebalance(before, clearing_house.live_venue_fee_bps(), clock.timestamp_ms());
+    let position = plan.rebalance_position();
+    let terms = if (plan.is_increasing()) { vault.increasing_terms(position) } else { vault.reducing_terms(position) };
+    let binding = vault.venue().binding();
+
+    let (clearing_house, checkpoint) = vault.rebalance_orders(
+        account, registry, clearing_house, base_oracle, collateral_oracle,
+        &binding, &terms, &mut plan, checkpoint, clock, ctx,
+    );
+
+    complete_rebalance<Product, Collateral>(vault, plan, checkpoint);
+    clearing_house::share(clearing_house);
+}
+
+/// Permissionless bounded close-only progress, never caller-sized or dependent
+/// on positive NAV. A live market is closed by price-limited orders; a market the
+/// venue has paused only by the venue's own settlement, once it has closed the
+/// market and enabled settlement prices; a frozen clearing house aborts every
+/// venue call on its version check, so it is refused here until unfrozen.
+/// Holders pay its fills, so it runs only at the reference gas price.
+/// Private entry prevents a preceding venue session from supplying the shared market.
+/// Shares the ClearingHouse internally, ending its use in this transaction.
+entry fun unwind<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>,
+    protocol: &Protocol,
+    account: &mut Account<Collateral>,
+    registry: &Registry,
+    mut clearing_house: ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    clock: &Clock,
+    ctx: &TxContext,
+) {
+    protocol.assert_current();
+    vault.state().assert_unwinding();
+    assert_gas_price(ctx);
+    assert!(!clearing_house.is_frozen(), blast_boosts_aftermath::errors::venue_not_ready!());
+
+    if (clearing_house.is_market_paused()) {
+        unwind_settlement(vault, account, registry, &mut clearing_house, base_oracle, collateral_oracle);
+    } else {
+        clearing_house = unwind_market(
+            vault, account, registry, clearing_house, base_oracle, collateral_oracle, clock, ctx,
+        );
+    };
+    clearing_house::share(clearing_house);
+}
 
 /// Returns one authenticated product observation without mutating state.
 ///
@@ -1227,7 +1229,7 @@ use oracle_aggregator::price_feed_storage::PriceFeedStorage;
 use perpetuals::{
     account::{Self as account, Account, AccountSharePolicy},
     authority::ACCOUNT,
-    clearing_house::ClearingHouse,
+    clearing_house::{Self, ClearingHouse},
     market,
     registry::Registry,
 };
