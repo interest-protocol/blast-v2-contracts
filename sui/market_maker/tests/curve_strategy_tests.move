@@ -383,14 +383,13 @@ fun start_with_partner(with_partner: bool, admitted: bool): Fixture {
     );
     let mut runtime = runtime_config::new_disabled_for_testing(ctx);
     let creator = market_maker::new_creator_cap(ctx);
-    let mut treasury = protocol_treasury::new_for_testing(ctx);
+    let treasury = protocol_treasury::new_for_testing(ctx);
     let policy = market_maker_fee_policy::new_for_testing(object::id(&treasury), ctx);
     let version = package_version::new_for_testing(
         object::id(&treasury),
         object::id(&policy),
         ctx,
     );
-    treasury.set_payout(&version, &blast_acl::witness_for_testing<TreasuryAdmin>(), ROOT);
     let mut vault = market_maker::new<CURVE_STRATEGY_TESTS, SUI>(
         market_maker::curve_route(),
         20_000_000,
@@ -547,7 +546,6 @@ use blast_fun::{
 };
 use blast_partners::blast_partners::{Self as partners, Partner};
 use blast_market_maker::{
-    blast_market_maker_domain::TreasuryAdmin,
     market_maker::{Self, BlastMarketMakerVault, BlastMarketMakerOperatorCap},
     market_maker_fee_policy,
     cetus_migrator,

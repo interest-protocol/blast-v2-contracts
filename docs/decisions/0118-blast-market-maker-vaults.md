@@ -91,8 +91,11 @@ capital never enters the received-fee ledger.
 Asset-generic fixed-weight Q64 ledgers preserve global and per-user remainders.
 Claims withdraw only actually funded reserves. No creator, treasury or dust-sweep
 path can reclaim them. Public views expose unallocated/reserved balances and
-backer claimable amounts; on-chain balances are not private. Local LP deductions,
-and curve raise fees remain distinct earned treasury sources. Unused pool-seeding
+backer claimable amounts; on-chain balances are not private. Local LP deductions
+and curve raise fees enter the same typed earned treasury balances, without an
+event-only revenue-source type. The treasury always stores a payout address,
+initially the publisher's; TreasuryAdmin can rotate it to another nonzero address.
+Unused pool-seeding
 coins remain market-maker capital rather than treasury revenue.
 
 Signatures bind action parameters, assets, vault, external object, operator, nonce,

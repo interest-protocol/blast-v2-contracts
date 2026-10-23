@@ -6,15 +6,9 @@ module blast_market_maker::protocol_treasury;
 
 // === Public Types ===
 
-public struct BlastMarketMakerTreasury has key { id: UID, payout: Option<address> }
+public struct BlastMarketMakerTreasury has key { id: UID, payout: address }
 
 public struct TreasuryBalanceKey<phantom Asset>() has copy, drop, store;
-
-/// Records the reason each already-earned balance entered the treasury.
-public enum RevenueSource has copy, drop, store {
-    LocalLp,
-    CurveRaise,
-}
 
 // === Public Functions ===
 
@@ -26,10 +20,10 @@ public fun set_payout(
 ) {
     self.assert_canonical(version);
     assert!(destination != @0x0, EZeroDestination);
-    assert!(!self.payout.contains(&destination), EDestinationUnchanged);
+    assert!(self.payout != destination, EDestinationUnchanged);
     let previous = self.payout;
 
-    self.payout = option::some(destination);
+    self.payout = destination;
     sui::event::emit(BlastTreasuryDestinationChanged {
         treasury_id: self.id.to_inner(),
         previous,
@@ -47,12 +41,11 @@ public fun withdraw_earned<Asset>(
 ) {
     self.assert_canonical(version);
     assert!(amount > 0, EZeroWithdrawal);
-    assert!(self.payout.is_some(), EUnconfiguredTreasury);
     let key = TreasuryBalanceKey<Asset>();
     assert!(self.id.has_dynamic_field(key), EInsufficientTreasuryBalance);
     let balance = self.id.borrow_dynamic_field_mut<_, Balance<Asset>>(key);
     assert!(balance.value() >= amount, EInsufficientTreasuryBalance);
-    let destination = *self.payout.borrow();
+    let destination = self.payout;
 
     transfer::public_transfer(balance.split(amount).into_coin(ctx), destination);
     sui::event::emit(BlastTreasuryWithdrawn<Asset> {
@@ -64,26 +57,20 @@ public fun withdraw_earned<Asset>(
 
 // === Package Functions ===
 
-public(package) fun curve_raise(): RevenueSource { RevenueSource::CurveRaise }
-
-public(package) fun local_lp(): RevenueSource { RevenueSource::LocalLp }
-
 public(package) fun new(ctx: &mut TxContext): BlastMarketMakerTreasury {
-    BlastMarketMakerTreasury { id: object::new(ctx), payout: option::none() }
+    BlastMarketMakerTreasury { id: object::new(ctx), payout: ctx.sender() }
 }
 
 public(package) fun share(self: BlastMarketMakerTreasury) { transfer::share_object(self); }
 
-public(package) fun assert_configured(self: &BlastMarketMakerTreasury, version: &PackageVersion) {
-    self.assert_canonical(version);
-    assert!(self.payout.is_some(), EUnconfiguredTreasury);
+public(package) fun assert_canonical(self: &BlastMarketMakerTreasury, version: &PackageVersion) {
+    version.assert_treasury(self.id.to_inner());
 }
 
 public(package) fun credit<Asset>(
     self: &mut BlastMarketMakerTreasury,
     version: &PackageVersion,
     vault_id: ID,
-    source: RevenueSource,
     balance: Balance<Asset>,
 ) {
     self.assert_canonical(version);
@@ -99,15 +86,8 @@ public(package) fun credit<Asset>(
     sui::event::emit(BlastTreasuryCredited<Asset> {
         treasury_id: self.id.to_inner(),
         vault_id,
-        source,
         amount,
     });
-}
-
-// === Private Functions ===
-
-fun assert_canonical(self: &BlastMarketMakerTreasury, version: &PackageVersion) {
-    version.assert_treasury(self.id.to_inner());
 }
 
 // === Test-Only Functions ===
@@ -129,13 +109,12 @@ public fun share_for_testing(self: BlastMarketMakerTreasury) { self.share(); }
 
 public struct BlastTreasuryDestinationChanged has copy, drop {
     treasury_id: ID,
-    previous: Option<address>,
+    previous: address,
     destination: address,
 }
 public struct BlastTreasuryCredited<phantom Asset> has copy, drop {
     treasury_id: ID,
     vault_id: ID,
-    source: RevenueSource,
     amount: u64,
 }
 public struct BlastTreasuryWithdrawn<phantom Asset> has copy, drop {
@@ -153,9 +132,6 @@ const EDestinationUnchanged: vector<u8> = b"The treasury destination must change
 #[error(code = 2)]
 const EZeroWithdrawal: vector<u8> = b"A treasury withdrawal must be positive.";
 #[error(code = 3)]
-const EUnconfiguredTreasury: vector<u8> =
-    b"Configure the protocol treasury payout before creating market makers.";
-#[error(code = 4)]
 const EInsufficientTreasuryBalance: vector<u8> = b"The earned treasury balance is insufficient.";
 
 // === Imports ===

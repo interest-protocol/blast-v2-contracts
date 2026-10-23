@@ -203,7 +203,9 @@ local administrator registry or local role wrapper. Each consumer checks its
 current operational generation and canonical object bindings when using a witness.
 
 The shared `blast_market_maker::protocol_treasury::BlastMarketMakerTreasury` accepts actual
-typed earned balances and pays only its configured destination under TreasuryAdmin.
+typed earned balances and pays only its stored destination under TreasuryAdmin.
+The payout starts at the publisher's address. TreasuryAdmin can change it to
+another nonzero address through `blast_market_maker::protocol_treasury::set_payout`.
 The shared `blast_market_maker::market_maker_fee_policy::BlastMarketMakerFeePolicy` controls bounded
 LP deductions under FeeAdmin. The key-only
 `blast_market_maker::package_version::BlastMarketMakerVersion` binds canonical treasury,
@@ -522,13 +524,12 @@ gas/object writes that require native-venue profiling before release.
 
 Creation, accepted contributions, refunds, cap changes, fee receipts, allocations,
 treasury credits, capital deposits/withdrawals, activation and signed actions emit
-completed facts. Reconcile
-direct LP credits separately from raise-fee credits. Unused migration seed coins
+completed facts. Unused migration seed coins
 remain capital, available to the creator after activation. `BlastCurveFundingActivated`
 records gross funding, the assessed raise fee and net capital. `BlastTreasuryCredited`
-identifies `CurveRaise` or `LocalLp`; sender-linked
-contribution/refund/claim events use transaction sender metadata. Assessed raise
-fees equal CurveRaise credits plus the raise-fee balance. `BlastExternalBound` records
+records the vault and actual typed amount without a revenue-source tag. The
+funding event and `BlastLpFeesCollected` describe the originating fee flows;
+sender-linked contribution/refund/claim events use transaction sender metadata. `BlastExternalBound` records
 the later curve launch binding.
 
 `BlastFeesCredited` records actual Meme and Quote receipts. `BlastFeesAllocated` records the
@@ -1971,16 +1972,10 @@ Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/ma
 ```move
 public struct BlastMarketMakerTreasury has key {
     id: UID,
-    payout: Option<address>,
+    payout: address,
 }
 
 public struct TreasuryBalanceKey<phantom Asset>() has copy, drop, store;
-
-/// Records the reason each already-earned balance entered the treasury.
-public enum RevenueSource has copy, drop, store {
-    LocalLp,
-    CurveRaise,
-}
 ```
 
 #### Functions
@@ -2008,14 +2003,13 @@ public fun withdraw_earned<Asset>(
 ```move
 public struct BlastTreasuryDestinationChanged has copy, drop {
     treasury_id: ID,
-    previous: Option<address>,
+    previous: address,
     destination: address,
 }
 
 public struct BlastTreasuryCredited<phantom Asset> has copy, drop {
     treasury_id: ID,
     vault_id: ID,
-    source: RevenueSource,
     amount: u64,
 }
 
@@ -2033,8 +2027,7 @@ public struct BlastTreasuryWithdrawn<phantom Asset> has copy, drop {
 | `EZeroDestination` | 0 | The treasury destination must be nonzero. |
 | `EDestinationUnchanged` | 1 | The treasury destination must change. |
 | `EZeroWithdrawal` | 2 | A treasury withdrawal must be positive. |
-| `EUnconfiguredTreasury` | 3 | Configure the protocol treasury payout before creating market makers. |
-| `EInsufficientTreasuryBalance` | 4 | The earned treasury balance is insufficient. |
+| `EInsufficientTreasuryBalance` | 3 | The earned treasury balance is insufficient. |
 
 ### `blast_market_maker::risk`
 

@@ -27,7 +27,9 @@ local administrator registry or local role wrapper. Each consumer checks its
 current operational generation and canonical object bindings when using a witness.
 
 The shared `blast_market_maker::protocol_treasury::BlastMarketMakerTreasury` accepts actual
-typed earned balances and pays only its configured destination under TreasuryAdmin.
+typed earned balances and pays only its stored destination under TreasuryAdmin.
+The payout starts at the publisher's address. TreasuryAdmin can change it to
+another nonzero address through `blast_market_maker::protocol_treasury::set_payout`.
 The shared `blast_market_maker::market_maker_fee_policy::BlastMarketMakerFeePolicy` controls bounded
 LP deductions under FeeAdmin. The key-only
 `blast_market_maker::package_version::BlastMarketMakerVersion` binds canonical treasury,
@@ -346,13 +348,12 @@ gas/object writes that require native-venue profiling before release.
 
 Creation, accepted contributions, refunds, cap changes, fee receipts, allocations,
 treasury credits, capital deposits/withdrawals, activation and signed actions emit
-completed facts. Reconcile
-direct LP credits separately from raise-fee credits. Unused migration seed coins
+completed facts. Unused migration seed coins
 remain capital, available to the creator after activation. `BlastCurveFundingActivated`
 records gross funding, the assessed raise fee and net capital. `BlastTreasuryCredited`
-identifies `CurveRaise` or `LocalLp`; sender-linked
-contribution/refund/claim events use transaction sender metadata. Assessed raise
-fees equal CurveRaise credits plus the raise-fee balance. `BlastExternalBound` records
+records the vault and actual typed amount without a revenue-source tag. The
+funding event and `BlastLpFeesCollected` describe the originating fee flows;
+sender-linked contribution/refund/claim events use transaction sender metadata. `BlastExternalBound` records
 the later curve launch binding.
 
 `BlastFeesCredited` records actual Meme and Quote receipts. `BlastFeesAllocated` records the

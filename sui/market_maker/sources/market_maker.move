@@ -362,7 +362,6 @@ public fun credit_raise_fees_to_treasury<Meme, Quote>(
     treasury.credit(
         version,
         self.id.to_inner(),
-        protocol_treasury::curve_raise(),
         self.raise_fees.withdraw_all(),
     );
 }
@@ -482,7 +481,7 @@ public(package) fun new<Meme, Quote>(
 ): BlastMarketMakerVault<Meme, Quote> {
     version.assert_current();
     policy.assert_canonical(version);
-    treasury.assert_configured(version);
+    treasury.assert_canonical(version);
     assert!(
         std::type_name::with_original_ids<Meme>() != std::type_name::with_original_ids<Quote>(),
         EIdenticalAssets,
@@ -708,13 +707,11 @@ public(package) fun credit_lp_fees<Meme, Quote>(
     treasury.credit(
         version,
         self.id.to_inner(),
-        protocol_treasury::local_lp(),
         meme.split(protocol_meme),
     );
     treasury.credit(
         version,
         self.id.to_inner(),
-        protocol_treasury::local_lp(),
         quote.split(protocol_quote),
     );
     sui::event::emit(BlastLpFeesCollected<Meme, Quote> {
@@ -1362,7 +1359,7 @@ use blast_market_maker::{
     market_maker_math,
     fee_ledger::{Self, FeeLedger, FeeClaim, FeeAllocation},
     package_version::BlastMarketMakerVersion as PackageVersion,
-    protocol_treasury::{Self, BlastMarketMakerTreasury},
+    protocol_treasury::BlastMarketMakerTreasury,
     risk::{Self, Action},
 };
 use sui::{balance::{Self, Balance}, clock::Clock, coin::Coin, dynamic_field, table::{Self, Table}};

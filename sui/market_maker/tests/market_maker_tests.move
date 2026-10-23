@@ -12,10 +12,6 @@ const BOB: address = @0xC;
 const PAYOUT: address = @0xD;
 const DEADLINE: u64 = 2_000;
 
-// === Errors ===
-
-const EUnexpectedRevenueSource: u64 = 0;
-
 // === Test-Only Types ===
 
 public struct MEME has drop {}
@@ -574,24 +570,16 @@ fun curve_raise_and_lp_fees_fund_treasury_while_seed_remainders_stay_creator_cap
         market_maker::credit_raise_fees_to_treasury(&mut vault, &f.version, &mut f.treasury);
         let credits = sui::event::events_by_type<protocol_treasury::BlastTreasuryCredited<SUI>>();
         assert_eq!(credits.length(), 2);
-        let mut raise = 0;
-        let mut lp = 0;
+        let mut credited = 0;
         credits.do!(|credit| {
             let mut data = sui::bcs::new(std::bcs::to_bytes(&credit));
             assert_eq!(data.peel_address(), object::id(&f.treasury).to_address());
             assert_eq!(data.peel_address(), f.vault_id.to_address());
-            let source = data.peel_u8();
-            let amount = data.peel_u64();
+            credited = credited + data.peel_u64();
             assert!(data.into_remainder_bytes().is_empty());
-            if (source == std::bcs::to_bytes(&protocol_treasury::curve_raise())[0])
-                raise = raise + amount
-            else if (source == std::bcs::to_bytes(&protocol_treasury::local_lp())[0])
-                lp = lp + amount
-            else abort EUnexpectedRevenueSource;
         });
-        assert_eq!(raise, 1_000_000);
-        assert_eq!(lp, 20);
-        assert_eq!(protocol_treasury::balance_for_testing<SUI>(&f.treasury), raise + lp);
+        assert_eq!(credited, 1_000_020);
+        assert_eq!(protocol_treasury::balance_for_testing<SUI>(&f.treasury), credited);
         assert_eq!(protocol_treasury::balance_for_testing<MEME>(&f.treasury), 1);
         let meme_credits = sui::event::events_by_type<
             protocol_treasury::BlastTreasuryCredited<MEME>,
@@ -600,7 +588,6 @@ fun curve_raise_and_lp_fees_fund_treasury_while_seed_remainders_stay_creator_cap
         let mut data = sui::bcs::new(std::bcs::to_bytes(&meme_credits[0]));
         assert_eq!(data.peel_address(), object::id(&f.treasury).to_address());
         assert_eq!(data.peel_address(), f.vault_id.to_address());
-        assert_eq!(data.peel_u8(), std::bcs::to_bytes(&protocol_treasury::local_lp())[0]);
         assert_eq!(data.peel_u64(), 1);
         assert_eq!(data.into_remainder_bytes(), vector[]);
 
@@ -644,6 +631,84 @@ fun curve_raise_and_lp_fees_fund_treasury_while_seed_remainders_stay_creator_cap
 fun fee_manager_cannot_raise_local_lp_rate_above_compiled_ceiling() {
     let mut f = start(20_000_000);
     set_rates(&mut f, 2_001, 0);
+    end(f);
+}
+
+#[test]
+fun treasury_pays_publisher_before_configuration_and_new_destination_after_rotation() {
+    let mut f = start_route_with_payout(
+        20_000_000,
+        market_maker::curve_route(),
+        market_maker::trading_limits(10_000_000, 10_000_000, 100_000_000, 100_000_000, 0, 100),
+        ROOT,
+    );
+    f.next_tx!(ROOT, |f| {
+        let vault_id = f.vault_id;
+        f.treasury.credit(&f.version, vault_id, balance::create_for_testing<SUI>(30));
+        withdraw_quote(f, 10);
+        f.treasury.set_payout(
+            &f.version,
+            &blast_acl::witness_for_testing<TreasuryAdmin>(),
+            PAYOUT,
+        );
+        let changed = sui::event::events_by_type<protocol_treasury::BlastTreasuryDestinationChanged>();
+        assert_eq!(changed.length(), 1);
+        let mut data = sui::bcs::new(std::bcs::to_bytes(&changed[0]));
+        assert_eq!(data.peel_address(), object::id(&f.treasury).to_address());
+        assert_eq!(data.peel_address(), ROOT);
+        assert_eq!(data.peel_address(), PAYOUT);
+        assert_eq!(data.into_remainder_bytes(), vector[]);
+        withdraw_quote(f, 20);
+        assert_eq!(protocol_treasury::balance_for_testing<SUI>(&f.treasury), 0);
+        let withdrawals = sui::event::events_by_type<protocol_treasury::BlastTreasuryWithdrawn<SUI>>();
+        assert_eq!(withdrawals.length(), 2);
+        let mut first = sui::bcs::new(std::bcs::to_bytes(&withdrawals[0]));
+        assert_eq!(first.peel_address(), object::id(&f.treasury).to_address());
+        assert_eq!(first.peel_u64(), 10);
+        assert_eq!(first.peel_address(), ROOT);
+        assert_eq!(first.into_remainder_bytes(), vector[]);
+        let mut second = sui::bcs::new(std::bcs::to_bytes(&withdrawals[1]));
+        assert_eq!(second.peel_address(), object::id(&f.treasury).to_address());
+        assert_eq!(second.peel_u64(), 20);
+        assert_eq!(second.peel_address(), PAYOUT);
+        assert_eq!(second.into_remainder_bytes(), vector[]);
+    });
+    f.next_tx!(ROOT, |f| {
+        let earned = take_sender<sui::coin::Coin<SUI>>(f);
+        assert_eq!(earned.value(), 10);
+        coin::burn_for_testing(earned);
+    });
+    f.next_tx!(PAYOUT, |f| {
+        let earned = take_sender<sui::coin::Coin<SUI>>(f);
+        assert_eq!(earned.value(), 20);
+        coin::burn_for_testing(earned);
+    });
+    end(f);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = protocol_treasury::EZeroDestination,
+    location = blast_market_maker::protocol_treasury,
+)]
+fun treasury_payout_rejects_zero_address() {
+    let mut f = start(20_000_000);
+    f.next_tx!(ROOT, |f| {
+        f.treasury.set_payout(&f.version, &blast_acl::witness_for_testing<TreasuryAdmin>(), @0x0);
+    });
+    end(f);
+}
+
+#[test]
+#[expected_failure(
+    abort_code = protocol_treasury::EDestinationUnchanged,
+    location = blast_market_maker::protocol_treasury,
+)]
+fun treasury_payout_rejects_unchanged_address() {
+    let mut f = start(20_000_000);
+    f.next_tx!(ROOT, |f| {
+        f.treasury.set_payout(&f.version, &blast_acl::witness_for_testing<TreasuryAdmin>(), PAYOUT);
+    });
     end(f);
 }
 
@@ -1397,6 +1462,15 @@ fun start_route(
     route: market_maker::Route,
     limits: market_maker::TradingLimits,
 ): Fixture {
+    start_route_with_payout(target, route, limits, PAYOUT)
+}
+
+fun start_route_with_payout(
+    target: u64,
+    route: market_maker::Route,
+    limits: market_maker::TradingLimits,
+    payout: address,
+): Fixture {
     let mut scenario = test_scenario::begin(ROOT);
     let ctx = scenario.ctx();
     let mut clock = clock::create_for_testing(ctx);
@@ -1405,7 +1479,8 @@ fun start_route(
     let mut treasury = protocol_treasury::new_for_testing(ctx);
     let policy = market_maker_fee_policy::new_for_testing(object::id(&treasury), ctx);
     let version = package_version::new_for_testing(object::id(&treasury), object::id(&policy), ctx);
-    treasury.set_payout(&version, &blast_acl::witness_for_testing<TreasuryAdmin>(), PAYOUT);
+    if (payout != ROOT)
+        treasury.set_payout(&version, &blast_acl::witness_for_testing<TreasuryAdmin>(), payout);
     let mut vault = market_maker::new<MEME, SUI>(
         route,
         target,
