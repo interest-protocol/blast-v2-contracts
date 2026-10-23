@@ -46,15 +46,16 @@ marker, key objects, capabilities and direct events carry Blast in their own nam
 | Role | Explorer module/type | Identified by |
 | --- | --- | --- |
 | Publisher marker | `blast_market_maker::BLAST_MARKET_MAKER` | module and struct |
-| ACL roles | `blast_market_maker_domain::{FeeAdmin,TreasuryAdmin,UpgradeAdmin}` | module |
+| ACL roles | `blast_market_maker_domain::{FeeAdmin,TreasuryAdmin,RewardsAdmin,UpgradeAdmin}` | module |
 | Vault | `market_maker::BlastMarketMakerVault<Meme,Quote>` | struct |
 | Creator capability | `market_maker::BlastMarketMakerCreatorCap` | struct |
+| Presale epoch rewards | `presale_rewards::BlastPresaleRewardRound<Meme,Quote>` | struct |
 | Delegated operator capability | `market_maker::BlastMarketMakerOperatorCap` | struct |
 | Bootstrap and generation | `package_version::{BlastMarketMakerBootstrap,BlastMarketMakerVersion}` | struct |
 | Native upgrade custody | `package_admin::BlastMarketMakerAdmin` | struct |
 | Treasury | `protocol_treasury::BlastMarketMakerTreasury` | struct |
 | LP fee policy | `market_maker_fee_policy::BlastMarketMakerFeePolicy` | struct |
-| Direct events | `market_maker`, `cetus_engine`, `cetus_migrator`, `presale_adapter`, `package_admin`, `package_version`, `protocol_treasury`, `market_maker_fee_policy` emit `Blast*` structs | struct |
+| Direct events | `market_maker`, `cetus_engine`, `cetus_migrator`, `presale_adapter`, `presale_rewards`, `package_admin`, `package_version`, `protocol_treasury`, `market_maker_fee_policy` emit `Blast*` structs | struct |
 
 Nested route/phase/limits, sealed dynamic-field keys, ledger/claim/allocation values,
 risk message/domain values and the two sealed adapter `Witness` types keep short

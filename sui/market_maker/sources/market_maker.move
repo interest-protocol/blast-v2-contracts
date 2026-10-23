@@ -70,6 +70,8 @@ public struct BlastMarketMakerVault<phantom Meme, phantom Quote> has key {
     raise_fees: Balance<Quote>,
     backers: Table<address, BackerClaim>,
     total_weight: u64,
+    next_reward_round: u64,
+    last_reward_checkpoint: Option<u64>,
 }
 
 public struct BackerClaim has store { weight: u64, meme: FeeClaim, quote: FeeClaim }
@@ -286,11 +288,12 @@ public fun fee_balances<Meme, Quote>(
     )
 }
 
-/// On-chain fee balances are public; this view reports a backer's funded entitlement.
+/// Curve-only funded entitlement. Presale beneficiaries claim independently funded epoch rounds.
 public fun claimable_fees<Meme, Quote>(
     self: &BlastMarketMakerVault<Meme, Quote>,
     backer: address,
 ): (u64, u64) {
+    assert!(self.route == Route::Curve, EWrongRoute);
     if (!self.backers.contains(backer)) return (0, 0);
     let claim = self.backers.borrow(backer);
     (
@@ -300,7 +303,8 @@ public fun claimable_fees<Meme, Quote>(
 }
 
 /// Only received, unallocated fees may be kept, shared or moved into trading capital.
-/// Existing backer reserves and principal remain outside this fee-only payout path.
+/// Curve shares fund fixed-weight claims; presale shares fund epoch rewards for all buyers.
+/// Existing user reserves and principal remain outside the keep/reinvest paths.
 public fun allocate_fees<Meme, Quote>(
     self: &mut BlastMarketMakerVault<Meme, Quote>,
     cap: &BlastMarketMakerCreatorCap,
@@ -313,8 +317,12 @@ public fun allocate_fees<Meme, Quote>(
     self.assert_creator(cap);
     assert!(self.phase == Phase::Curve || self.phase == Phase::Pool, EWrongPhase);
     assert!(!meme.is_empty() || !quote.is_empty(), EEmptyAllocation);
-    let (kept_meme, reinvested_meme) = self.meme_fees.allocate(meme, self.total_weight);
-    let (kept_quote, reinvested_quote) = self.quote_fees.allocate(quote, self.total_weight);
+    let (kept_meme, reinvested_meme) = if (self.route == Route::Curve)
+        self.meme_fees.allocate(meme, self.total_weight)
+    else self.meme_fees.allocate_rewards(meme);
+    let (kept_quote, reinvested_quote) = if (self.route == Route::Curve)
+        self.quote_fees.allocate(quote, self.total_weight)
+    else self.quote_fees.allocate_rewards(quote);
     self.capital_meme.join(reinvested_meme);
     self.capital_quote.join(reinvested_quote);
     sui::event::emit(BlastFeesAllocated<Meme, Quote> {
@@ -327,7 +335,7 @@ public fun allocate_fees<Meme, Quote>(
     (kept_meme.into_coin(ctx), kept_quote.into_coin(ctx))
 }
 
-/// Claims only the sender's reserved, funded fees in both assets.
+/// Claims only a curve backer's reserved, funded fees in both assets.
 public fun claim_fees<Meme, Quote>(
     self: &mut BlastMarketMakerVault<Meme, Quote>,
     version: &PackageVersion,
@@ -335,6 +343,7 @@ public fun claim_fees<Meme, Quote>(
 ): (Coin<Meme>, Coin<Quote>) {
     version.assert_current();
     assert!(self.phase == Phase::Curve || self.phase == Phase::Pool, EWrongPhase);
+    assert!(self.route == Route::Curve, EWrongRoute);
     assert!(self.backers.contains(ctx.sender()), ENoBackerClaim);
     let claim = self.backers.borrow_mut(ctx.sender());
     let meme = self.meme_fees.claim(&mut claim.meme, claim.weight);
@@ -534,6 +543,8 @@ public(package) fun new<Meme, Quote>(
         raise_fees: balance::zero(),
         backers: table::new(ctx),
         total_weight: 0,
+        next_reward_round: 0,
+        last_reward_checkpoint: option::none(),
     }
 }
 
@@ -603,29 +614,37 @@ public(package) fun assert_can_contribute<Meme, Quote>(
 ) {
     version.assert_current();
     assert!(!self.paused, EPaused);
-    assert!(self.phase == Phase::Funding || self.phase == Phase::Presale, EWrongPhase);
+    assert!(self.phase == Phase::Funding, EWrongPhase);
     assert!(clock.timestamp_ms() < self.deadline_at_ms, EDeadlineReached);
 }
 
-public(package) fun record_presale_contribution<Meme, Quote>(
+/// Only the presale rewards module moves allocated fees into independently funded rounds.
+/// Epoch allocations may skip checkpoint intervals but can never overlap a published one.
+public(package) fun fund_presale_reward_round<Meme, Quote>(
     self: &mut BlastMarketMakerVault<Meme, Quote>,
-    version: &PackageVersion,
-    accepted: u64,
-    clock: &Clock,
-    ctx: &TxContext,
-) {
-    self.assert_can_contribute(version, clock);
+    number: u64,
+    start_checkpoint: u64,
+    end_checkpoint: u64,
+    meme_amount: u64,
+    quote_amount: u64,
+): (Balance<Meme>, Balance<Quote>) {
     self.assert_presale_route();
-    assert!(accepted > 0, EZeroContribution);
-    assert!(accepted <= self.target - self.total_weight, EFundingAboveTarget);
-    self.assert_backer_capacity(ctx.sender());
+    assert!(self.phase == Phase::Pool, EWrongPhase);
+    assert!(number == self.next_reward_round, EWrongRewardRound);
+    assert!(
+        start_checkpoint < end_checkpoint
+            && self.last_reward_checkpoint.is_none_or!(|last| *last <= start_checkpoint),
+        EInvalidRewardInterval,
+    );
+    assert!(
+        meme_amount <= self.meme_fees.reserved() && quote_amount <= self.quote_fees.reserved(),
+        EInsufficientRewards,
+    );
+    let next_round = number.checked_add(1).destroy_or!(abort ERewardRoundOverflow);
 
-    self.record_weight(accepted, ctx.sender());
-    sui::event::emit(BlastContributed<Quote> {
-        vault_id: self.id.to_inner(),
-        accepted,
-        total_weight: self.total_weight,
-    });
+    self.next_reward_round = next_round;
+    self.last_reward_checkpoint = option::some(end_checkpoint);
+    (self.meme_fees.take_rewards(meme_amount), self.quote_fees.take_rewards(quote_amount))
 }
 
 public(package) fun charge_raise_fee_and_enter_curve<Meme, Quote>(
@@ -1289,56 +1308,62 @@ const EPaused: vector<u8> = b"The market maker is paused for discretionary actio
 #[error(code = 18)]
 const EDeadlineReached: vector<u8> = b"The exclusive contribution deadline has been reached.";
 #[error(code = 19)]
-const EFundingAboveTarget: vector<u8> =
-    b"Wrapper contributions cannot exceed the committed target.";
-#[error(code = 20)]
 const ETargetNotFilled: vector<u8> = b"The curve fundraising target must be filled exactly.";
-#[error(code = 21)]
+#[error(code = 20)]
 const EPoolAlreadyBound: vector<u8> = b"The market maker already has its immutable pool binding.";
-#[error(code = 22)]
+#[error(code = 21)]
 const EWrongPool: vector<u8> = b"The pool is not this market maker's active pool.";
-#[error(code = 23)]
+#[error(code = 22)]
 const EWrongFeePolicy: vector<u8> = b"The LP policy is not the one committed by this market maker.";
-#[error(code = 24)]
+#[error(code = 23)]
 const EBackerCapacity: vector<u8> = b"The maximum number of distinct fee backers has been reached.";
-#[error(code = 25)]
+#[error(code = 24)]
 const EWrongTreasury: vector<u8> =
     b"Only the market maker's canonical protocol treasury may receive protocol assets.";
-#[error(code = 26)]
+#[error(code = 25)]
 const EWrongCreator: vector<u8> = b"The creator cap is not bound to this market maker.";
 
-#[error(code = 27)]
+#[error(code = 26)]
 const EContributionBelowMinimum: vector<u8> =
     b"A new curve backer must offer the committed minimum payment.";
-#[error(code = 28)]
+#[error(code = 27)]
 const ECurveTargetBelowMinimum: vector<u8> = b"The curve funding target must be at least 0.01 SUI.";
 
-#[error(code = 29)]
+#[error(code = 28)]
 const EWrongOperator: vector<u8> = b"The operator cap is stale or belongs to another market maker.";
-#[error(code = 30)]
+#[error(code = 29)]
 const EActionLimit: vector<u8> = b"The immutable discretionary action limit is exhausted.";
-#[error(code = 31)]
+#[error(code = 30)]
 const ETradingInputLimit: vector<u8> =
     b"The action exceeds its per-action or lifetime gross input ceiling.";
-#[error(code = 32)]
+#[error(code = 31)]
 const ERateLimit: vector<u8> = b"The immutable token bucket cannot cover this gross input.";
-#[error(code = 33)]
+#[error(code = 32)]
 const EInsufficientCapital: vector<u8> =
     b"The action cannot spend fee liabilities or more than retained capital.";
-#[error(code = 34)]
+#[error(code = 33)]
 const EIdleQuoteFloor: vector<u8> = b"The action must preserve the committed idle Quote floor.";
-#[error(code = 35)]
+#[error(code = 34)]
 const ESelfFeeLimit: vector<u8> = b"The immutable self-fee conversion basis is exhausted.";
-#[error(code = 36)]
+#[error(code = 35)]
 const ENonceOverflow: vector<u8> = b"The next authorization nonce must fit u64.";
-#[error(code = 37)]
+#[error(code = 36)]
 const EClockRegression: vector<u8> =
     b"The canonical Clock cannot precede the previous token-bucket update.";
 
-#[error(code = 38)]
+#[error(code = 37)]
 const EEmptyAllocation: vector<u8> = b"Allocate a positive amount of received fees.";
-#[error(code = 39)]
+#[error(code = 38)]
 const EEmptyCapitalMovement: vector<u8> = b"Move a positive amount of market-making capital.";
+
+#[error(code = 39)]
+const EWrongRewardRound: vector<u8> = b"The presale reward round must match the next funded round.";
+#[error(code = 40)]
+const EInvalidRewardInterval: vector<u8> = b"Reward checkpoint intervals must be nonempty and nonoverlapping.";
+#[error(code = 41)]
+const EInsufficientRewards: vector<u8> = b"A round may spend only fees already allocated to presale rewards.";
+#[error(code = 42)]
+const ERewardRoundOverflow: vector<u8> = b"The next reward round number must fit u64.";
 
 // === Imports ===
 

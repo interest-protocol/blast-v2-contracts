@@ -21,7 +21,7 @@ The `blast_market_maker` side package shares generic vault custody, risk checks,
 Cetus position execution across two sealed-witness migration adapters. It depends
 on existing public core extension points and Blast ACL; no existing package changes.
 Upstream governance admits the exact witnesses through existing configuration.
-The package defines FeeAdmin, TreasuryAdmin and UpgradeAdmin roles for Blast ACL
+The package defines FeeAdmin, TreasuryAdmin, RewardsAdmin and UpgradeAdmin roles for Blast ACL
 AdminWitness authorization. It has no second root, address-role registry or
 implicit publisher privileges. Its canonical typed treasury remains separate from
 vault capital and backer reserves; Blast ACL controls its earned-asset withdrawals,
@@ -54,10 +54,10 @@ permits full principal refunds at the deadline and return of the unused ticket t
 its supplier. The committed new-address minimum and bounded backer count prevent
 cheap table exhaustion. Curve weights freeze on successful launch.
 
-Presale principal and participant token/refund rights stay in core custody. The
-wrapper records only accepted commitments through its own endpoint. Direct core
-buyers receive no vault fee weight. Successful migration freezes wrapper weights;
-a zero wrapper denominator does not prevent migration. Presale terms can retain
+Presale principal and participant token/refund rights stay in core custody. All
+buyers use core commitment endpoints and qualify for epoch rewards; there is no
+wrapper-only buyer accounting. Claiming participant tokens does not remove reward
+eligibility. Presale terms can retain
 at most half of each actual net Meme/Quote migration handoff. Optional explicit
 team token and raise shares name the vault address as their sole recipient.
 Core validates them with participant/LP/Blast allocations and releases them on
@@ -82,13 +82,13 @@ unallocated fees. There is no automatic platform split or Meme reinvestment. The
 creator chooses explicit keep/share/reinvest amounts independently for Meme and
 Quote. Keep returns composable coins, share funds irreversible backer reserves,
 and reinvest moves only unallocated fees into trading capital. Unselected fees
-remain unallocated. Sharing is permitted only after weights freeze and requires
-positive total weight; a zero-backers creator can choose keep or reinvest instead.
+remain unallocated. Curve sharing requires frozen positive weight. Presale sharing funds a
+segregated reward reserve without requiring any wrapper contribution denominator.
 Backers have no guaranteed share before allocation and no automatic right to redeem
 capital. Creator-directed capital transfers can voluntarily return assets to users;
 capital never enters the received-fee ledger.
 
-Asset-generic fixed-weight Q64 ledgers preserve global and per-user remainders.
+Curve asset-generic fixed-weight Q64 ledgers preserve global and per-user remainders.
 Claims withdraw only actually funded reserves. No creator, treasury or dust-sweep
 path can reclaim them. Public views expose unallocated/reserved balances and
 backer claimable amounts; on-chain balances are not private. Local LP deductions
@@ -97,6 +97,25 @@ event-only revenue-source type. The treasury always stores a payout address,
 initially the publisher's; TreasuryAdmin can rotate it to another nonzero address.
 Unused pool-seeding
 coins remain market-maker capital rather than treasury revenue.
+
+Presale sharing uses the existing Blast epoch-airdrop pattern rather than local
+contribution indices. A market-maker-local RewardsAdmin role signs in through the
+existing ACL. Its publisher commits sequential per-vault, nonoverlapping checkpoint
+intervals, a domain-separated positional Merkle root and a manifest digest. Epochs
+may skip intervals. Each round reserves its Meme/Quote budget from previously
+shared fees and is independently claimable forever. Permissionless relays pay only
+the committed beneficiary once; no creator, operator, treasury, pause or admin
+withdrawal can reach round funds. There is no expiry, close or reimbursement path.
+The administrator is trusted for buyer inclusion, allocation weights, manifest
+availability and root/budget agreement. Off-chain allocation uses canonical core
+sale history because participant claims delete current commitment fields. It must
+include all successful-sale buyers, including those who bought directly or claimed
+tokens already. Curve allocation and claims retain their prior fixed-weight model.
+Existing reward modules cannot be reused directly because their public funding
+functions require their own vault types and package-private custody. The local
+module reuses their bounded Merkle construction with a distinct leaf domain,
+without modifying either core package. Retained/team trading capital is never
+implicitly used to fund rewards.
 
 Signatures bind action parameters, assets, vault, external object, operator, nonce,
 key epoch and at most 15 seconds of validity. Immutable per-action, rolling,

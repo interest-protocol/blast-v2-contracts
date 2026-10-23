@@ -76,6 +76,23 @@ public(package) fun allocate<Asset>(
     (self.available.split(keep), self.available.split(reinvest))
 }
 
+/// Presale allocations reserve rewards without creating any wrapper contribution index.
+public(package) fun allocate_rewards<Asset>(
+    self: &mut FeeLedger<Asset>,
+    allocation: FeeAllocation,
+): (Balance<Asset>, Balance<Asset>) {
+    let FeeAllocation { keep, share, reinvest } = allocation;
+    assert!(keep + share + reinvest <= self.available.value(), EInsufficientFees);
+
+    self.reserved.join(self.available.split(share));
+    (self.available.split(keep), self.available.split(reinvest))
+}
+
+/// Only the vault's presale round funding path consumes this reserve.
+public(package) fun take_rewards<Asset>(self: &mut FeeLedger<Asset>, amount: u64): Balance<Asset> {
+    self.reserved.split(amount)
+}
+
 public(package) fun claimable<Asset>(self: &FeeLedger<Asset>, claim: &FeeClaim, weight: u64): u64 {
     let (amount, _) = market_maker_math::claim(
         self.accumulator,

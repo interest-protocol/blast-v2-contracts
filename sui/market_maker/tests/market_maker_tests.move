@@ -881,8 +881,7 @@ fun creator_cannot_allocate_before_backer_weights_freeze() {
 }
 
 #[test]
-#[expected_failure(abort_code = fee_ledger::ENoBackers, location = blast_market_maker::fee_ledger)]
-fun sharing_with_zero_wrapper_backers_requires_explicit_other_choice() {
+fun presale_sharing_needs_no_wrapper_backers() {
     let mut f = start_route(
         1_000,
         market_maker::presale_route(),
@@ -903,6 +902,8 @@ fun sharing_with_zero_wrapper_backers_requires_explicit_other_choice() {
         kept_meme.burn_for_testing();
         kept_quote.burn_for_testing();
     };
+    let (m, q, rm, rq) = vault.fee_balances();
+    assert!(m == 0 && q == 0 && rm == 0 && rq == 10);
     f.return_sender(creator);
     vault.return_vault();
     f.end();
@@ -1367,19 +1368,13 @@ fun stale_version_rejects_capital_deposit_before_phase_and_zero_amount() {
 // === Test Helpers ===
 
 fun funded_fee_fixture(): Fixture {
-    let mut f = start_route(
-        1_000,
-        market_maker::presale_route(),
-        market_maker::trading_limits(1, 1, 100, 100, 0, 10),
-    );
-    f.next_tx!(ALICE, |f| {
+    let mut f = start(67_108_864);
+    assert_eq!(f.contribute(ALICE, 16_777_216), 0);
+    assert_eq!(f.contribute(BOB, 50_331_648), 0);
+    f.next_tx!(ROOT, |f| {
         let mut vault = f.take_vault();
-        vault.record_presale_contribution(&f.version, 1, &f.clock, f.scenario.ctx());
-        vault.return_vault();
-    });
-    f.next_tx!(BOB, |f| {
-        let mut vault = f.take_vault();
-        vault.record_presale_contribution(&f.version, 3, &f.clock, f.scenario.ctx());
+        // This ledger fixture deliberately discards deployment principal, leaving only fees.
+        vault.charge_raise_fee_and_enter_curve(&f.version, &f.clock).destroy_for_testing();
         vault.activate_pool(object::id_from_address(@0xFACE));
         vault.credit_curve_fees(
             balance::create_for_testing<MEME>(100),
@@ -1387,7 +1382,7 @@ fun funded_fee_fixture(): Fixture {
         );
         vault.return_vault();
     });
-    f.scenario.next_tx(ROOT);
+    f.next_tx!(ROOT, |_| {});
     f
 }
 

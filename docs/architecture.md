@@ -32,6 +32,15 @@ Blast partner. See [ADR 0099](decisions/0099-standalone-overflow-presale.md),
 [ADR 0106](decisions/0106-presale-partners.md), and
 [ADR 0107](decisions/0107-partner-cut-of-lp-fees.md).
 
+The `blast_market_maker` package composes with these core extension points. It owns
+retained/team trading inventory, permanent base-LP fee proof custody and separately
+managed positions. Creator-directed curve fee shares use fixed-weight claims;
+presale shares fund Blast ACL-published epoch Merkle airdrops for all core buyers.
+The off-chain publisher derives eligibility from canonical sale history, including
+buyers who already claimed tokens. Independently funded reward rounds isolate
+claims from trading and creator capital withdrawals. See
+[ADR 0118](decisions/0118-blast-market-maker-vaults.md).
+
 The package boundaries are decided in
 [decisions/0001-sui-package-and-module-layout.md](decisions/0001-sui-package-and-module-layout.md):
 keep external dependencies and independently governed custody outside core.

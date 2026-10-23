@@ -4,8 +4,9 @@ Blast market makers fund market-making inventory alongside a bonding-curve launc
 a presale. Each vault keeps capital through launch and migration and earns fees
 from permanently burned base liquidity and separate removable strategy positions.
 Its creator explicitly keeps, shares or reinvests received fees in each actual
-asset. Backer weight determines a share only of fees the creator has allocated
-to backers; it gives no right to redeem trading principal or demand future allocations.
+asset. Curve backers use fixed contribution weights. All presale buyers qualify
+for Blast-published epoch reward allocations from canonical sale history. Neither
+route gives a right to redeem trading principal or demand future fee allocations.
 
 Curve creator-fee income is contingent: the real core creator must voluntarily
 claim and escrow its authentic live fee capability. Upstream CreatorAdmin can
@@ -21,7 +22,7 @@ there is no conversion into SUI or a common NAV.
 
 The existing shared Blast ACL authorizes protocol governance with typed
 `AdminWitness` values for `blast_market_maker::blast_market_maker_domain::FeeAdmin`,
-`TreasuryAdmin` and `UpgradeAdmin`. The existing Blast `SuperAdminCap` grants
+`TreasuryAdmin`, `RewardsAdmin` and `UpgradeAdmin`. The existing Blast `SuperAdminCap` grants
 these roles to AdminCaps, which sign in through the existing ACL. There is no separate market maker root address,
 local administrator registry or local role wrapper. Each consumer checks its
 current operational generation and canonical object bindings when using a witness.
@@ -57,7 +58,7 @@ existing creator cap with the current cap's authorization. Neither transfer nor
 rebinding invalidates the vault's operator or outstanding risk signatures; use
 operator or signer rotation when that is intended. The creator cap may withdraw idle trading capital for distribution or other use,
 including while paused and below the delegated idle Quote floor. It cannot consume
-backer fee reserves, prelaunch refunds, the burned base LP or change fixed weights.
+curve backer and presale reward reserves, prelaunch refunds, the burned base LP or change fixed weights.
 Users trust the creator with strategy capital; the creator may withdraw all of it.
 
 The owned `blast_market_maker::market_maker::BlastMarketMakerOperatorCap` authorizes discretionary
@@ -72,12 +73,14 @@ exclusive deadline (strictly future and at most seven days from creation); succe
 deadline anyone may start Refunding if launch did not succeed. Successful core
 migration moves Curve to Pool.
 
-The presale route starts in Presale. Its core sale accepts actual commitments,
-settles, delivers tokens/refunds and supports cancellation independently. The
-wrapper records only accepted commitments made through its own commit endpoint.
-Successful migration freezes those weights and moves the vault to Pool. A core
-sale funded entirely by direct buyers has a zero wrapper denominator and still
-migrates. Cancelled sales never create vault fee claimability.
+The presale route starts in Presale. Its core sale accepts commitments, settles,
+delivers tokens/refunds and supports cancellation independently. Buyers use the
+core commitment endpoint; no local wrapper tracks buyers or contribution weights.
+Successful migration moves the vault to Pool. All core buyers are eligible for
+epoch rewards, including buyers who have claimed their participant tokens. Core
+claims delete current commitment entries, so publication tooling uses canonical
+sale transaction history rather than current commitment fields. Cancelled sales
+never reach the active fee-allocation phase.
 
 ### Curve flows
 
@@ -157,17 +160,16 @@ market makers retain their explicitly funded initial idle-floor checks.
    unvested token and raise allocations to the vault's address; zero disables each.
    Core checks all allocations against participant, LP and Blast shares. The presale
    cap stays escrowed.
-2. Anyone calls `blast_market_maker::presale_adapter::commit` with Coin Quote.
-   The core credits its real sender, returns excess and preserves its token
-   and refund rights. The wrapper credits only offered minus change as fee
-   weight. Consume every returned change coin.
-3. Anyone may use core settlement and claim directly. Core claims pay the fixed
-   participant's wallet. Direct core commitments get their full core rights
-   and acquire no vault MM fee weight.
+2. Anyone calls `blast_presale::blast_presale::commit_open` with the shared sale,
+   core version, Coin Quote and Clock. Core credits the real sender, returns excess
+   and preserves token/refund rights. No market-maker vault input is needed.
+   Consume every returned change coin. The presale's own eligibility bound applies.
+3. Anyone may settle and claim through core. Claims pay the participant's wallet;
+   claiming tokens does not remove that buyer from future epoch reward eligibility.
 4. Anyone calls `blast_market_maker::presale_adapter::migrate` on the bound funded
    sale. The committed fraction, at most 50%, of both actual net handoff assets becomes
    retained capital; the positive remainder seeds and burns the base LP. The
-   denominator is wrapper-accepted Quote, including zero. No caller receives
+   reward allocation never gates migration. No caller receives
    handoff assets, position or capability. The partnered core holds its upstream
    protocol fees for settlement. Anyone calls
    `blast_presale::blast_presale::pay_protocol_fees_with_partner` with the same
@@ -287,30 +289,72 @@ and the curve raise fee never enter these available fee balances.
 Only the bound creator cap can call `blast_market_maker::market_maker::allocate_fees`.
 For each asset, pass `blast_market_maker::fee_ledger::allocation(keep, share, reinvest)`
 in actual atomic units. The sum cannot exceed that asset's received, unallocated
-fees. `keep` returns a Coin to the caller, `share` irrevocably funds backer reserves
-and `reinvest` moves fees into the vault's trading capital. The call returns both
+fees. `keep` returns a Coin to the caller. Curve `share` irrevocably funds
+fixed-weight backer claims; presale `share` funds a segregated epoch reward reserve
+without a local buyer denominator. `reinvest` moves fees into trading capital. The call returns both
 Meme and Quote coins, including zero coins; consume or deliver both in the PTB.
-An allocation may leave some fees unallocated. With zero wrapper backers, positive
-`share` rejects; the creator may instead keep or reinvest either asset.
+An allocation may leave some fees unallocated. Curve sharing requires positive
+frozen weight. Presale sharing has no wrapper-weight requirement.
 
 `blast_market_maker::market_maker::fee_balances` returns available Meme, available Quote,
-reserved Meme and reserved Quote, in that order. `claimable_fees` reports each
-backer's currently funded entitlement in both assets. These public views require
+reserved Meme and reserved Quote, in that order. Presale reserves here are
+allocated rewards not yet published; already funded rounds hold their own balances.
+`claimable_fees` reports only curve backers' funded entitlement in both assets. These public views require
 no creator authority.
 
-Fixed weights use separate per-asset Q64 cumulative indices with global and
+Curve fixed weights use separate per-asset Q64 cumulative indices with global and
 per-backer remainders. Only explicitly shared fees enter these indices. Claims
 round down; repeated claims preserve fractional entitlement. Reserved fees cannot
 be reclaimed, reallocated or reinvested by the creator. Rounding stays reserved
 with no expiry or dust sweep. A first claim may leave one atom pending even when
 one backer owns the full weight.
 
-Each backer calls `blast_market_maker::market_maker::claim_fees` for its own sender row in
+Each curve backer calls `blast_market_maker::market_maker::claim_fees` for its own sender row in
 Curve or Pool. It returns `(Coin<Meme>, Coin<Quote>)`; deliver or consume both,
 including zero. Anyone can move the segregated curve raise fee to the bound treasury through
 `blast_market_maker::market_maker::credit_raise_fees_to_treasury`. An empty bucket rejects. TreasuryAdmin
 withdraws earned balances only to the stored payout and cannot withdraw vault
 capital, unallocated creator fees or reserved backer fees.
+
+### Presale epoch rewards
+
+1. The creator cap holder calls `blast_market_maker::market_maker::allocate_fees`
+   with positive `share` amounts to fund rewards in either asset. These balances
+   cannot be kept, reinvested, withdrawn as capital or paid to the treasury.
+2. Blast admin signs in to the existing ACL as
+   `blast_market_maker::blast_market_maker_domain::RewardsAdmin`, then calls
+   `blast_market_maker::presale_rewards::publish_round` with the active vault,
+   version, witness and allocation commitment. Each vault starts at round zero;
+   publication increments the number once. Checkpoint intervals satisfy
+   previous end <= start < end, allowing skipped epochs. Publication debits only
+   the allocated reserve and creates a shared
+   `blast_market_maker::presale_rewards::BlastPresaleRewardRound`.
+3. Anyone relays `blast_market_maker::presale_rewards::claim` using that shared
+   round, current market-maker version, index, beneficiary, amounts and proof.
+   Both actual coins are transferred directly to the committed beneficiary.
+   The vault, creator, operator and admin are not needed. A bitmap prevents repeat
+   payment. Claims remain available while trading is paused. There is no expiry,
+   close, creator recovery or gas reimbursement path.
+
+The off-chain publisher includes all core presale buyers, independent of purchase
+routing and participant-token claim status. Blast is trusted for eligibility,
+allocation completeness, weighting and matching root totals to the funded budget;
+Move verifies commitments and custody, not an off-chain buyer list. A cancelled
+buyer has no successful-sale allocation. Retained migration assets, team tokens,
+team raise and unused seed coins remain creator-managed trading capital and do
+not implicitly become rewards. Creator choice still controls when fees are shared.
+
+An epoch root commits 1–65,536 positional leaves. A leaf is Blake2b-256 of
+`0x00 || UTF8("blast-market-maker-presale-rewards-v1") || BCS(vault ID) ||
+BCS(round u64) || BCS(index u64) || BCS(beneficiary address) || BCS(Meme u64) ||
+BCS(Quote u64)`. An internal node hashes `0x01 || left digest || right digest`.
+Proofs contain exactly ceil(log2(leaf count)) 32-byte siblings, bottom-up, using
+index parity for ordering and the existing Blast duplicate-last rule for odd tree
+widths. The root and manifest digest are each 32 bytes. The manifest is an
+independently retrievable allocation artifact; its digest is emitted at publication.
+Payout amounts are committed atomic units. Rounding belongs to the off-chain
+manifest policy; undistributed or underclaimed budget stays reserved forever.
+No round may spend another round's funds or the vault's trading inventory.
 
 ### Time and risk authorization
 
@@ -359,8 +403,13 @@ the later curve launch binding.
 `BlastFeesCredited` records actual Meme and Quote receipts. `BlastFeesAllocated` records the
 creator cap and both per-asset allocation triples. For each asset, cumulative net
 receipts equal its available balance plus cumulative kept and reinvested amounts
-plus cumulative shared amounts. Cumulative shared amounts equal backer payouts
-plus the reserved balance, including fractional dust. Sharing is an explicit
+plus cumulative shared amounts. Curve shared amounts equal backer payouts
+plus reserved dust and claims. Presale shared amounts equal the unpublished reward
+reserve plus funded-round balances plus paid epoch rewards.
+`BlastPresaleRewardRoundPublished` commits the vault, round, checkpoint interval,
+root, manifest digest, leaf count, both budgets and remaining unpublished reserves.
+`BlastPresaleRewardPaid` records the index, beneficiary, payouts and remaining
+round balances. These facts permit independent per-asset reconciliation. Sharing is an explicit
 creator decision; a receipt alone never creates a backer liability.
 
 Version mismatches require the active deployment/version or reviewed dependency
@@ -383,15 +432,17 @@ event records their later receipt into spendable capital.
    backers separately claim fees explicitly allocated to them.
 2. **Are base and managed LP the same?** No. Base LP is burned permanently.
    Ordinary managed positions retain removable principal under vault custody.
-3. **Does a direct presale purchase earn MM fees?** It earns no wrapper weight.
-   It keeps all upstream token and refund rights.
-4. **Can a direct-only presale migrate?** Yes. It has zero wrapper denominator,
-   and the creator can keep or reinvest received fees; sharing requires backers.
+3. **Does a direct presale purchase qualify for MM fees?** Yes. All core presale
+   buyers qualify for epoch allocations from creator-shared fees, including
+   buyers who already claimed tokens.
+4. **Can a core-only presale migrate and share fees?** Yes. No wrapper buyer
+   denominator exists. The creator shares fees and Blast publishes buyer epochs.
 5. **Does retention reduce bought tokens?** It applies after upstream allocation
    to migration handoff balances. Participant token allocation stays unchanged.
 6. **Can a keeper withdraw collection proceeds?** Collection retains them in
    vault accounting. Only the bound creator cap allocates unallocated fees, and
-   each backer claims its own explicitly funded entitlement.
+   curve backers claim their funded weights. Presale rewards pay proof-bound
+   buyers from independently funded epoch rounds.
 7. **Can CreatorAdmin seize managed LP?** Its upstream authority can invalidate
    the curve creator cap. It grants no authority over this protocol's LP custody.
 8. **Does the signer prove market price?** It is a trusted independent risk

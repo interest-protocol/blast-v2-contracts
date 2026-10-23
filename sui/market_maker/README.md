@@ -27,7 +27,10 @@ publication or changes production ACL grants.
 Protocol administration uses Blast ACL with package-defined roles. Creators use a
 reusable cap that may control several vaults. Received Meme and Quote fees remain
 unallocated until the creator chooses amounts to keep, share with backers or
-reinvest; allocated backer reserves cannot be reclaimed. Presale team token and
+reinvest; allocated user reserves cannot be reclaimed. Curve backers use fixed
+weights. All core presale buyers qualify for Blast-administered epoch airdrops
+from creator-shared fees, including buyers who already claimed their tokens.
+Presale team token and
 raise allocations pay the vault address and are received as trading capital.
 Unused coins from seeding the original pool stay in capital too.
 The creator may deposit or withdraw idle capital to distribute assets to users or

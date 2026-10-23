@@ -12,13 +12,13 @@ verification and review artifacts record evidence separately from this plan.
 
 Build a package with one shared generic Meme/Quote vault and two adapters. Curve
 Quote is SUI; presale Quote is its exact admitted asset. Share capital custody,
-fee arithmetic, backer claims, risk authorization, treasury routing and Cetus
+fee arithmetic, curve backer claims, risk authorization, treasury routing and Cetus
 execution. Adapter-owned sealed dynamic fields hold route-specific terms, core
 capabilities and migration configuration. Only the defining adapter can construct
 its migration witness. Constructors complete initialization and share internally;
 no raw initializer or owned vault escapes.
 
-Use existing Blast ACL with package-defined FeeAdmin, TreasuryAdmin and
+Use existing Blast ACL with package-defined FeeAdmin, TreasuryAdmin, RewardsAdmin and
 UpgradeAdmin role markers and typed witnesses. Do not add another root or
 address-role registry. Keep canonical package-owned fee policy, typed treasury and
 native upgrade custody; ACL authority does not make a foreign object canonical.
@@ -77,10 +77,11 @@ Native Receiving verifies the vault owner, not the sending transaction; same-ass
 donations are therefore capital too, without fee weight or redemption rights.
 Cancelled sales retain allocations in core and cannot receive team coins.
 
-Wrapper commitments call core and record only accepted Quote; change is returned.
-Core holds participant principal and owns token claims, refunds and cancellation.
-Direct core buyers keep those rights without receiving wrapper fee weight. Freeze
-wrapper weights on successful migration, including the zero-wrapper-buyers case.
+Buyers commit directly through core, which owns principal, returned change, token
+claims, refunds and cancellation. Do not add a wrapper buyer ledger. All successful
+presale buyers qualify for epoch rewards from canonical sale history, including
+buyers who already claimed participant tokens. Current commitment fields are not
+a complete historical eligibility source because core claims delete them.
 Commit retention of at most half of each actual net Meme/Quote migration handoff,
 after upstream allocations. Participant token entitlements stay unchanged. Require
 a zero idle Quote floor because future net handoff is unknown. There is no extra
@@ -138,18 +139,32 @@ Expose public per-vault available/reserved and per-backer claimable views. The
 creator supplies explicit atom amounts to keep, share and reinvest independently
 for Meme and Quote. Validate the sum, available funds, current generation and bound
 creator cap. Keep returns two composable coins. Share transfers only actual fees
-into irrevocable reserves and advances independent Q64 accumulators. Reinvest moves
+into irrevocable reserves. Curve sharing advances independent Q64 accumulators;
+presale sharing funds epoch rewards without a local buyer denominator. Reinvest moves
 only unallocated fees into capital. Leave unselected amounts available. Sharing
-requires frozen weights and positive total weight; with no backers the creator can
-choose keep or reinvest, without an implicit fallback.
+requires frozen positive weights only on the curve route. Presale reward funding
+must not depend on a wrapper purchase path or an on-chain buyer table.
 
-Backers claim both assets using their frozen weight, independent per-asset paid
+Curve backers claim both assets using their frozen weight, independent per-asset paid
 indices and fractional remainders. Preserve global division dust and each personal
 remainder across repeated receipts/claims. There is no creator/treasury/dust sweep
 of reserves, no NAV or principal redemption and no guaranteed backer percentage
 before allocation. Transferring or rebinding creator authority cannot reduce
 already-funded claims. Events distinguish actual fee receipts, allocations,
 claims, treasury credits and capital actions for independent reconciliation.
+
+Use a market-maker-local presale reward module: existing Blast holder-reward
+publication functions require different vault types and package-private funding.
+RewardsAdmin commits sequential per-vault Merkle rounds and nonempty, nonoverlapping
+checkpoint intervals, allowing gaps. Fund only from already shared fees. Use the
+existing positional Blake2b construction with a distinct market-maker leaf domain,
+1–65,536 leaves and per-round bitmap replay protection. Anyone relays proofs;
+pay only the committed beneficiary. Published rounds hold their own budgets and
+remain claimable forever without the vault or admin. No recovery, expiry or gas
+reimbursement path is needed. Blast's publisher owns off-chain buyer inclusion,
+weighting and manifest/root/budget agreement. Core buying and token claiming never
+require market-maker reward state. Keep the original burned LP and retained/team
+market-making inventory separate from these funded reward obligations.
 
 Credit local LP deductions and curve raise fees to typed treasury balances without
 an event-only source classification. Unused migration seed coins belong to vault capital. Creator allocation replaces the old 20% platform cut;
@@ -188,7 +203,8 @@ checks. Exercise these material boundaries:
 | Capital | Active deposits without weight, creator-only withdrawals, both assets, user transfers while paused, delegated floor separation, funding/cancel/version/foreign-cap rejection, fee reserve isolation and event replay |
 | Blast ACL | Real grants/sign-in, revoked admin, wrong role, distinct package role types, canonical custody/policy/treasury checks, witnesses cannot bypass version gates |
 | Curve | Minimum/tail/change, target/deadline boundaries, full refunds, real initial construction/buy/creator-fee cap, partner mismatch/admission/settlement |
-| Presale | Real construction and accepted change, wrapper/direct buyer mix, cancellation/refunds, frozen/zero weights, actual net retention, explicit team allocations and vault-owned receipt, zero allocations, foreign-sale/owner/version rejection, non-SUI Quote, partner settlement |
+| Presale | Real construction and accepted change, core-only buyers, token claims before epoch publication, cancellation/refunds, epoch reserves, actual net retention, explicit team allocations and vault-owned receipt, zero allocations, foreign-sale/owner/version rejection, non-SUI Quote, partner settlement |
+| Presale epochs | Real ACL grants/revocation, direct buyer eligibility, independent two-asset budgets, proof/domain/index tampering, duplicate claims, interval gaps/overlap, skipped round rejection, reserve/capital separation, paused relayed claims, odd-width and maximum-leaf trees |
 | Liquidity/risk | Multiple ranges, slot reuse, burned-base separation, actual add/remove/unwind/close/swap, fee/principal separation, rewards, exact signature domains/replay/expiry, all risk budgets |
 | Upgrades | Bootstrap/native custody, compatible receipt flow, generation mismatch repair, cutover, stale bytecode, dependency relink and core-generation change |
 

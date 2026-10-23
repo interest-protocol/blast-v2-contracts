@@ -12,5 +12,8 @@ public struct FeeAdmin()
 /// Configures Blast market maker treasury payouts and withdraws already-earned assets.
 public struct TreasuryAdmin()
 
+/// Publishes funded presale buyer allocations for checkpointed reward epochs.
+public struct RewardsAdmin()
+
 /// Authorizes native upgrades and activates a checked next operational generation.
 public struct UpgradeAdmin()

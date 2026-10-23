@@ -117,10 +117,15 @@ def check() -> list[str]:
             "Curve creation must not restate transaction sender in its event")
 
     require("protocol_admin" not in sources, "Parallel local administration must not return")
-    for owner, role in (("market_maker_fee_policy", "FeeAdmin"), ("protocol_treasury", "TreasuryAdmin"), ("package_admin", "UpgradeAdmin")):
+    for owner, role in (("market_maker_fee_policy", "FeeAdmin"), ("protocol_treasury", "TreasuryAdmin"), ("package_admin", "UpgradeAdmin"), ("presale_rewards", "RewardsAdmin")):
         require(f"AdminWitness<{role}>" in sources[owner], f"Typed Blast ACL authority missing: {owner}")
     for adapter in ("cetus_migrator", "presale_adapter"):
         require("creator: &BlastMarketMakerCreatorCap" in sources[adapter], f"Reusable creator authority missing: {adapter}")
+
+    require("record_presale_contribution" not in sources["market_maker"],
+            "Presale buyer weights must not depend on a wrapper purchase path")
+    require(not re.search(r"public fun commit\s*(?:<|\()", sources["presale_adapter"]),
+            "Presale buyers must use the existing core commitment endpoint")
 
     require(manifest["package"]["name"] == "blast_market_maker", "Blast package identity missing")
     require("public struct BLAST_MARKET_MAKER()" in sources["blast_market_maker"], "Blast Publisher marker missing")

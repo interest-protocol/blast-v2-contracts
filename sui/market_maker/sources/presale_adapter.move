@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
 /// Starts presales with this protocol's sealed witness and preserves both assets for its
-/// shared market-making vault. Only commitments through this adapter earn vault fee rights.
+/// shared market-making vault. All presale buyers are eligible for epoch reward allocations.
 module blast_market_maker::presale_adapter;
 
 // === Public Types ===
@@ -56,7 +56,6 @@ public fun terms(
 ): PresaleTerms {
     assert!(retention_bps <= MAX_RETENTION_BPS, EInvalidRetention);
     assert!(tick_spacing > 0, EInvalidTickSpacing);
-    assert!(max_participants <= MAX_BACKERS, ETooManyParticipants);
     assert!(
         token_supply > 0 && raise_target > 0 && commitment_duration_ms > 0,
         EInvalidPresaleTerms,
@@ -151,29 +150,6 @@ public fun create_and_share<Meme, Quote>(
     vault.share();
 }
 
-/// Buys normal presale tokens and records only the Quote actually accepted after change.
-/// Core direct buyers keep their token/refund rights but acquire no market-maker fee weight.
-public fun commit<Meme, Quote>(
-    vault: &mut BlastMarketMakerVault<Meme, Quote>,
-    sale: &mut Presale<Meme, Quote>,
-    version: &PackageVersion,
-    presale_version: &PresaleVersion,
-    payment: Coin<Quote>,
-    clock: &Clock,
-    ctx: &mut TxContext,
-): Coin<Quote> {
-    version.assert_current();
-    vault.assert_presale_route();
-    vault.assert_can_contribute(version, clock);
-    vault.assert_external(object::id(sale));
-    let offered = payment.value();
-    let change = sale.commit_open(presale_version, payment, clock, ctx);
-    let accepted = offered - change.value();
-
-    vault.record_presale_contribution(version, accepted, clock, ctx);
-    change
-}
-
 /// Receives Meme owned by this bound presale vault only after successful pool activation.
 /// Native Receiving authenticates ownership, not the sender of a prior coin transfer; donations
 /// of the same asset are harmless capital too. Collection creates no fee entitlement or payout.
@@ -231,7 +207,7 @@ public fun destroy_cancelled_presale_cap<Meme, Quote>(
 }
 
 /// Releases the exact bound sale through our witness, retains its committed fraction of both
-/// handoff assets and atomically creates/burns the base LP. Zero wrapper backers cannot veto it.
+/// handoff assets and atomically creates/burns the base LP. Buyer reward accounting cannot veto it.
 public fun migrate<Meme, Quote, CoinA, CoinB>(
     vault: &mut BlastMarketMakerVault<Meme, Quote>,
     sale: &mut Presale<Meme, Quote>,
@@ -462,7 +438,6 @@ public struct BlastCancelledPresaleCapDestroyed has copy, drop {
 // === Constants ===
 
 const BPS_DENOMINATOR: u64 = 10_000;
-const MAX_BACKERS: u64 = 10_000;
 const MAX_RETENTION_BPS: u64 = 5_000;
 
 // === Errors ===
@@ -473,13 +448,11 @@ const EInvalidRetention: vector<u8> =
 #[error(code = 1)]
 const EInvalidTickSpacing: vector<u8> = b"The pool tick spacing must be positive.";
 #[error(code = 2)]
-const ETooManyParticipants: vector<u8> = b"The presale exceeds the protocol's backer bound.";
-#[error(code = 3)]
 const EInvalidPresaleTerms: vector<u8> = b"The presale amounts or time window are invalid.";
-#[error(code = 4)]
+#[error(code = 3)]
 const ENoPresaleCap: vector<u8> = b"The cancelled presale capability has already been destroyed.";
 
-#[error(code = 5)]
+#[error(code = 4)]
 const ENoTeamAllocation: vector<u8> = b"This presale has no team allocation of the supplied asset.";
 
 // === Imports ===
