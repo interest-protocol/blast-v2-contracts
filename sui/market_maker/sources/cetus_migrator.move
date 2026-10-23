@@ -115,7 +115,7 @@ public fun create_and_share<Meme>(
         EUnsupportedCurrency,
     );
     let fee_rate = cetus_config::get_fee_rate(terms.tick_spacing, config);
-    preflight_profile<Meme>(terms);
+    terms.preflight_profile<Meme>();
     let mut vault = market_maker::new<Meme, SUI>(
         market_maker::curve_route(),
         terms.target,
@@ -128,12 +128,11 @@ public fun create_and_share<Meme>(
         treasury,
         ctx,
     );
-    market_maker::set_trading_limits(&mut vault, limits);
-    market_maker::check_initial_budget(&vault, terms.initial_buy_budget, terms.initial_idle_quote);
+    vault.set_trading_limits(limits);
+    vault.check_initial_budget(terms.initial_buy_budget, terms.initial_idle_quote);
     let ticket_id = object::id(&ticket);
-    market_maker::escrow_child(&mut vault, TicketKey(), ticket);
-    market_maker::add_adapter_state(
-        &mut vault,
+    vault.escrow_child(TicketKey(), ticket);
+    vault.add_adapter_state(
         TermsKey(),
         CommittedTerms {
             terms,
@@ -151,7 +150,7 @@ public fun create_and_share<Meme>(
         fee_rate,
     });
 
-    market_maker::share(vault);
+    vault.share();
 }
 
 /// The caller funds Blast's creation fee separately. Stored backer terms cannot be repaired or repriced.
@@ -170,19 +169,16 @@ public fun launch_buy_and_share<Meme>(
     ctx: &mut TxContext,
 ) {
     version.assert_current();
-    market_maker::assert_can_contribute(vault, version, clock);
-    let committed = *market_maker::adapter_state<Meme, SUI, _, CommittedTerms>(vault, TermsKey());
-    assert_committed_partner(&committed, partner);
+    vault.assert_can_contribute(version, clock);
+    let committed = *vault.adapter_state<Meme, SUI, _, CommittedTerms>(TermsKey());
+    committed.assert_committed_partner(partner);
     let terms = committed.terms;
     assert!(
         cetus_config::get_fee_rate(terms.tick_spacing, config) == committed.fee_rate,
         EVenueRateChanged,
     );
-    let funding = market_maker::charge_raise_fee_and_enter_curve(vault, version, clock);
-    let ticket = market_maker::take_escrowed_child<Meme, SUI, _, LaunchTicket<Meme>>(
-        vault,
-        TicketKey(),
-    );
+    let funding = vault.charge_raise_fee_and_enter_curve(version, clock);
+    let ticket = vault.take_escrowed_child<Meme, SUI, _, LaunchTicket<Meme>>(TicketKey());
     assert!(object::id(&ticket) == committed.ticket_id, EWrongTicket);
     let mut initializer = launch::new<Meme, SUI, Witness>(
         ticket,
@@ -192,18 +188,11 @@ public fun launch_buy_and_share<Meme>(
         terms.tick_spacing,
         committed.fee_rate,
     );
-    apply_committed_partner(
-        &mut initializer,
-        &committed,
-        core_version,
-        launch_config,
-        partner,
-        clock,
-    );
+    initializer.apply_committed_partner(&committed, core_version, launch_config, partner, clock);
     let creation_cap = factory::mint_pool_creation_cap(
         config,
         pools,
-        launch::treasury_cap_mut(&mut initializer, Witness()),
+        initializer.treasury_cap_mut(Witness()),
         ctx,
     );
     factory::register_permission_pair<Meme, SUI>(
@@ -213,10 +202,9 @@ public fun launch_buy_and_share<Meme>(
         &creation_cap,
         ctx,
     );
-    launch::set_virtual_quote(&mut initializer, core_version, terms.virtual_quote);
-    launch::set_graduation_target(&mut initializer, core_version, terms.graduation_target);
-    launch::set_allocation_plan(
-        &mut initializer,
+    initializer.set_virtual_quote(core_version, terms.virtual_quote);
+    initializer.set_graduation_target(core_version, terms.graduation_target);
+    initializer.set_allocation_plan(
         core_version,
         allocation::plan(
             bps::new(terms.curve_meme_bps),
@@ -225,26 +213,17 @@ public fun launch_buy_and_share<Meme>(
             vector[],
         ),
     );
-    launch::set_lp_fee_split(
-        &mut initializer,
+    initializer.set_lp_fee_split(
         core_version,
         allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), bps::new(0), vector[]),
     );
-    launch::set_opening_round(&mut initializer, core_version, 0);
-    let mut launch = launch::finalize(
-        initializer,
-        core_version,
-        currency,
-        launch_config,
-        creation_fee,
-        ctx,
-    );
-    market_maker::bind_external(vault, object::id(&launch));
-    market_maker::escrow_child(vault, CreationCapKey(), creation_cap);
-    market_maker::join_capital(vault, balance::zero(), funding);
-    let quote = market_maker::take_capital_quote(vault, terms.initial_buy_budget).into_coin(ctx);
-    let (meme, change) = launch::buy(
-        &mut launch,
+    initializer.set_opening_round(core_version, 0);
+    let mut launch = initializer.finalize(core_version, currency, launch_config, creation_fee, ctx);
+    vault.bind_external(object::id(&launch));
+    vault.escrow_child(CreationCapKey(), creation_cap);
+    vault.join_capital(balance::zero(), funding);
+    let quote = vault.take_capital_quote(terms.initial_buy_budget).into_coin(ctx);
+    let (meme, change) = launch.buy(
         core_version,
         runtime_config,
         quote,
@@ -253,10 +232,10 @@ public fun launch_buy_and_share<Meme>(
     );
     assert!(meme.value() > 0, EZeroInitialOutput);
     let spent = terms.initial_buy_budget - change.value();
-    market_maker::join_capital(vault, meme.into_balance(), change.into_balance());
-    market_maker::record_initial_buy(vault, spent, terms.initial_idle_quote);
+    vault.join_capital(meme.into_balance(), change.into_balance());
+    vault.record_initial_buy(spent, terms.initial_idle_quote);
 
-    launch::share(launch, core_version, clock);
+    launch.share(core_version, clock);
 }
 
 public fun return_unused_ticket<Meme>(
@@ -264,12 +243,9 @@ public fun return_unused_ticket<Meme>(
     version: &PackageVersion,
 ) {
     version.assert_current();
-    market_maker::assert_refunding(vault);
-    let committed = *market_maker::adapter_state<Meme, SUI, _, CommittedTerms>(vault, TermsKey());
-    let ticket = market_maker::take_escrowed_child<Meme, SUI, _, LaunchTicket<Meme>>(
-        vault,
-        TicketKey(),
-    );
+    vault.assert_refunding();
+    let committed = *vault.adapter_state<Meme, SUI, _, CommittedTerms>(TermsKey());
+    let ticket = vault.take_escrowed_child<Meme, SUI, _, LaunchTicket<Meme>>(TicketKey());
     let ticket_id = object::id(&ticket);
     transfer::public_transfer(ticket, committed.ticket_supplier);
     sui::event::emit(BlastUnusedTicketReturned {
@@ -287,9 +263,9 @@ public fun escrow_curve_fee_cap<Meme>(
     cap: CurveFeeCap<Meme>,
 ) {
     version.assert_current();
-    market_maker::assert_external(vault, object::id(launch));
-    launch::assert_curve_fee_cap(launch, &cap);
-    replace_escrowed_cap(vault, cap);
+    vault.assert_external(object::id(launch));
+    launch.assert_curve_fee_cap(&cap);
+    vault.replace_escrowed_cap(cap);
 }
 
 public fun receive_and_escrow_curve_fee_cap<Meme>(
@@ -299,10 +275,10 @@ public fun receive_and_escrow_curve_fee_cap<Meme>(
     cap: Receiving<CurveFeeCap<Meme>>,
 ) {
     version.assert_current();
-    market_maker::assert_external(vault, object::id(launch));
-    let cap = market_maker::receive_curve_cap(vault, cap);
-    launch::assert_curve_fee_cap(launch, &cap);
-    replace_escrowed_cap(vault, cap);
+    vault.assert_external(object::id(launch));
+    let cap = vault.receive_curve_cap(cap);
+    launch.assert_curve_fee_cap(&cap);
+    vault.replace_escrowed_cap(cap);
 }
 
 public fun claim_and_credit_curve_fees<Meme>(
@@ -313,11 +289,11 @@ public fun claim_and_credit_curve_fees<Meme>(
     ctx: &mut TxContext,
 ) {
     version.assert_current();
-    market_maker::assert_external(vault, object::id(launch));
-    let cap = market_maker::escrowed_child<Meme, SUI, _, CurveFeeCap<Meme>>(vault, CurveCapKey());
-    let (meme, quote) = launch::claim_creator_fees(launch, core_version, cap, ctx);
+    vault.assert_external(object::id(launch));
+    let cap = vault.escrowed_child<Meme, SUI, _, CurveFeeCap<Meme>>(CurveCapKey());
+    let (meme, quote) = launch.claim_creator_fees(core_version, cap, ctx);
 
-    market_maker::credit_curve_fees(vault, meme.into_balance(), quote.into_balance());
+    vault.credit_curve_fees(meme.into_balance(), quote.into_balance());
 }
 
 public fun migrate_and_activate<Meme, CoinA, CoinB>(
@@ -333,19 +309,15 @@ public fun migrate_and_activate<Meme, CoinA, CoinB>(
     ctx: &mut TxContext,
 ) {
     version.assert_current();
-    market_maker::assert_curve(vault);
-    market_maker::assert_external(vault, object::id(launch));
-    let committed = *market_maker::adapter_state<Meme, SUI, _, CommittedTerms>(vault, TermsKey());
+    vault.assert_curve();
+    vault.assert_external(object::id(launch));
+    let committed = *vault.adapter_state<Meme, SUI, _, CommittedTerms>(TermsKey());
     // After launch, fee-tier changes must not strand graduated principal. Pool creation uses
     // the live rate for the already committed tick spacing, as the frozen core migrator does.
-    let creation_cap = market_maker::take_escrowed_child<Meme, SUI, _, PoolCreationCap>(
-        vault,
-        CreationCapKey(),
-    );
-    let (meme, quote) = launch::migrate(launch, core_version, currency, Witness(), ctx);
+    let creation_cap = vault.take_escrowed_child<Meme, SUI, _, PoolCreationCap>(CreationCapKey());
+    let (meme, quote) = launch.migrate(core_version, currency, Witness(), ctx);
 
-    cetus_engine::create_burn_and_activate<Meme, SUI, CoinA, CoinB>(
-        vault,
+    vault.create_burn_and_activate<Meme, SUI, CoinA, CoinB>(
         meme,
         quote,
         0,
@@ -357,7 +329,7 @@ public fun migrate_and_activate<Meme, CoinA, CoinB>(
         clock,
         ctx,
     );
-    market_maker::restore_escrowed_child(vault, CreationCapKey(), creation_cap);
+    vault.restore_escrowed_child(CreationCapKey(), creation_cap);
 }
 
 /// Curve trading uses original core entry points and rejoins every returned asset to capital.
@@ -377,11 +349,10 @@ public fun buy<Meme>(
     ctx: &mut TxContext,
 ) {
     version.assert_current();
-    market_maker::assert_external(vault, object::id(launch));
+    vault.assert_external(object::id(launch));
     assert!(quote_input > 0 && min_meme > 0, EInvalidTrade);
     let action = risk::curve_buy(quote_input, min_meme);
-    market_maker::authorize_action(
-        vault,
+    vault.authorize_action(
         version,
         option::some(object::id(cap)),
         action,
@@ -390,13 +361,13 @@ public fun buy<Meme>(
         &signature,
         clock,
     );
-    let input = market_maker::take_capital_quote(vault, quote_input).into_coin(ctx);
-    let (meme, change) = launch::buy(launch, core_version, runtime, input, min_meme, ctx);
+    let input = vault.take_capital_quote(quote_input).into_coin(ctx);
+    let (meme, change) = launch.buy(core_version, runtime, input, min_meme, ctx);
     assert!(meme.value() >= min_meme, EInvalidTrade);
     let spent = quote_input - change.value();
-    market_maker::join_capital(vault, meme.into_balance(), change.into_balance());
+    vault.join_capital(meme.into_balance(), change.into_balance());
 
-    market_maker::finish_action(vault, action, 0, spent, spent, 0, clock);
+    vault.finish_action(action, 0, spent, spent, 0, clock);
 }
 
 public fun sell<Meme>(
@@ -415,11 +386,10 @@ public fun sell<Meme>(
     ctx: &mut TxContext,
 ) {
     version.assert_current();
-    market_maker::assert_external(vault, object::id(launch));
+    vault.assert_external(object::id(launch));
     assert!(meme_input > 0 && min_quote > 0, EInvalidTrade);
     let action = risk::curve_sell(meme_input, min_quote);
-    market_maker::authorize_action(
-        vault,
+    vault.authorize_action(
         version,
         option::some(object::id(cap)),
         action,
@@ -428,12 +398,12 @@ public fun sell<Meme>(
         &signature,
         clock,
     );
-    let input = market_maker::take_capital_meme(vault, meme_input).into_coin(ctx);
-    let quote = launch::sell(launch, core_version, runtime, input, min_quote, ctx);
+    let input = vault.take_capital_meme(meme_input).into_coin(ctx);
+    let quote = launch.sell(core_version, runtime, input, min_quote, ctx);
     let basis = sell_quote_basis(quote.value());
-    market_maker::join_capital(vault, balance::zero(), quote.into_balance());
+    vault.join_capital(balance::zero(), quote.into_balance());
 
-    market_maker::finish_action(vault, action, meme_input, 0, basis, 0, clock);
+    vault.finish_action(action, meme_input, 0, basis, 0, clock);
 }
 
 // === Package Functions ===
@@ -452,8 +422,8 @@ public(package) fun apply_committed_partner<Meme>(
     partner: &Partner,
     clock: &Clock,
 ) {
-    assert_committed_partner(committed, partner);
-    launch::set_partner(initializer, core_version, config, partner, clock);
+    committed.assert_committed_partner(partner);
+    initializer.set_partner(core_version, config, partner, clock);
 }
 
 /// Bounds capital lockup even when an upstream private profile later rejects launch.
@@ -469,19 +439,13 @@ fun replace_escrowed_cap<Meme>(
     cap: CurveFeeCap<Meme>,
 ) {
     let cap_id = object::id(&cap);
-    if (market_maker::has_escrowed_child(vault, CurveCapKey())) {
-        let previous = market_maker::escrowed_child<Meme, SUI, _, CurveFeeCap<Meme>>(
-            vault,
-            CurveCapKey(),
-        );
+    if (vault.has_escrowed_child(CurveCapKey())) {
+        let previous = vault.escrowed_child<Meme, SUI, _, CurveFeeCap<Meme>>(CurveCapKey());
         assert!(object::id(previous) != cap_id, ECurveCapUnchanged);
-        let previous = market_maker::take_escrowed_child<Meme, SUI, _, CurveFeeCap<Meme>>(
-            vault,
-            CurveCapKey(),
-        );
-        creator_authority::destroy_curve_fee_cap(previous);
+        let previous = vault.take_escrowed_child<Meme, SUI, _, CurveFeeCap<Meme>>(CurveCapKey());
+        previous.destroy_curve_fee_cap();
     };
-    market_maker::escrow_child(vault, CurveCapKey(), cap);
+    vault.escrow_child(CurveCapKey(), cap);
     sui::event::emit(BlastCurveCapEscrowed { vault_id: object::id(vault), cap_id });
 }
 
@@ -631,3 +595,7 @@ use sui::{
     sui::SUI,
     transfer::Receiving,
 };
+
+use fun apply_committed_partner as LaunchInitializer.apply_committed_partner;
+use fun replace_escrowed_cap as BlastMarketMakerVault.replace_escrowed_cap;
+use fun cetus_engine::create_burn_and_activate as BlastMarketMakerVault.create_burn_and_activate;

@@ -359,11 +359,7 @@ public fun credit_raise_fees_to_treasury<Meme, Quote>(
     version.assert_current();
     self.assert_treasury(treasury);
     assert!(self.raise_fees.value() > 0, ENothingClaimable);
-    treasury.credit(
-        version,
-        self.id.to_inner(),
-        self.raise_fees.withdraw_all(),
-    );
+    treasury.credit(version, self.id.to_inner(), self.raise_fees.withdraw_all());
 }
 
 public fun set_paused<Meme, Quote>(
@@ -552,7 +548,7 @@ public(package) fun set_trading_limits<Meme, Quote>(
     limits: TradingLimits,
 ) {
     assert!(self.limits.is_none(), ELimitsAlreadyConfigured);
-    if (self.route == Route::Presale) assert_presale_limits(&limits);
+    if (self.route == Route::Presale) limits.assert_presale_limits();
     self.meme_bucket = limits.meme_bucket_capacity;
     self.quote_bucket = limits.quote_bucket_capacity;
     self.limits = option::some(limits);
@@ -704,16 +700,8 @@ public(package) fun credit_lp_fees<Meme, Quote>(
     let protocol_meme = market_maker_math::apply_up(gross_meme, meme_bps);
     let protocol_quote = market_maker_math::apply_up(gross_quote, quote_bps);
 
-    treasury.credit(
-        version,
-        self.id.to_inner(),
-        meme.split(protocol_meme),
-    );
-    treasury.credit(
-        version,
-        self.id.to_inner(),
-        quote.split(protocol_quote),
-    );
+    treasury.credit(version, self.id.to_inner(), meme.split(protocol_meme));
+    treasury.credit(version, self.id.to_inner(), quote.split(protocol_quote));
     sui::event::emit(BlastLpFeesCollected<Meme, Quote> {
         vault_id: self.id.to_inner(),
         gross_meme,
@@ -815,10 +803,10 @@ public(package) fun authorize_action<Meme, Quote>(
     clock: &Clock,
 ) {
     version.assert_current();
-    let unwind = risk::is_unwind(action);
+    let unwind = action.is_unwind();
     assert!(unwind || !self.paused, EPaused);
     assert!(
-        if (risk::is_curve(action)) self.phase == Phase::Curve else self.phase == Phase::Pool,
+        if (action.is_curve()) self.phase == Phase::Curve else self.phase == Phase::Pool,
         EWrongPhase,
     );
     if (!unwind) {
@@ -829,7 +817,7 @@ public(package) fun authorize_action<Meme, Quote>(
     } else {
         assert!(cap.is_none(), EWrongOperator);
     };
-    let (meme, quote) = risk::inputs(action);
+    let (meme, quote) = action.inputs();
     let limits = self.limits.borrow();
     assert!(meme <= limits.max_meme_input && quote <= limits.max_quote_input, ETradingInputLimit);
     assert!(
@@ -869,15 +857,15 @@ public(package) fun finish_action<Meme, Quote>(
         next_curve <= (limits.curve_quote_basis_limit as u128) && next_pool <= (limits.pool_quote_input_limit as u128),
         ESelfFeeLimit,
     );
-    let (approved_meme, approved_quote) = risk::inputs(action);
+    let (approved_meme, approved_quote) = action.inputs();
     assert!(meme <= approved_meme && quote <= approved_quote, ETradingInputLimit);
     let (meme_available, quote_available) = self.refilled_buckets(clock);
     let nonce = self.nonce.checked_add(1).destroy_or!(abort ENonceOverflow);
-    let actions = if (risk::is_unwind(action)) self.actions
+    let actions = if (action.is_unwind()) self.actions
     else self.actions.checked_add(1).destroy_or!(abort EActionLimit);
     assert!(actions <= limits.action_limit, EActionLimit);
     assert!(
-        risk::is_unwind(action) || self.capital_quote.value() >= limits.idle_quote,
+        action.is_unwind() || self.capital_quote.value() >= limits.idle_quote,
         EIdleQuoteFloor,
     );
 

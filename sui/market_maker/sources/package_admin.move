@@ -21,7 +21,7 @@ public fun wrap(bootstrap: Bootstrap, upgrade_cap: UpgradeCap, ctx: &mut TxConte
         initial_generation,
         treasury_id,
         policy_id,
-    ) = package_version::destroy_bootstrap(bootstrap);
+    ) = bootstrap.destroy_bootstrap();
     assert!(publisher.from_module<BLAST_MARKET_MAKER>(), EWrongPublisher);
     assert!(
         upgrade_cap.package().to_address() == std::type_name::original_id<BLAST_MARKET_MAKER>(),

@@ -108,8 +108,8 @@ public fun create_and_share<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     version.assert_current();
-    market_maker::assert_presale_limits(&limits);
-    let deadline_at_ms = commitment_deadline(terms, clock);
+    limits.assert_presale_limits();
+    let deadline_at_ms = terms.commitment_deadline(clock);
     let mut vault = market_maker::new<Meme, Quote>(
         market_maker::presale_route(),
         terms.raise_target,
@@ -122,7 +122,7 @@ public fun create_and_share<Meme, Quote>(
         treasury,
         ctx,
     );
-    market_maker::set_trading_limits(&mut vault, limits);
+    vault.set_trading_limits(limits);
     let fee_rate = config::get_fee_rate(terms.tick_spacing, cetus_config);
     let creation_cap = factory::mint_pool_creation_cap(cetus_config, pools, &mut treasury_cap, ctx);
     factory::register_permission_pair<Meme, Quote>(
@@ -132,11 +132,10 @@ public fun create_and_share<Meme, Quote>(
         &creation_cap,
         ctx,
     );
-    market_maker::escrow_child(&mut vault, CreationCapKey(), creation_cap);
-    market_maker::add_adapter_state(&mut vault, VenueKey(), VenueTerms { terms, fee_rate });
+    vault.escrow_child(CreationCapKey(), creation_cap);
+    vault.add_adapter_state(VenueKey(), VenueTerms { terms, fee_rate });
 
-    let sale = build_sale(
-        &mut vault,
+    let sale = vault.build_sale(
         treasury_cap,
         currency,
         presale_version,
@@ -147,9 +146,9 @@ public fun create_and_share<Meme, Quote>(
         clock,
         ctx,
     );
-    emit_created(&vault, &sale, terms, fee_rate);
-    presale::share(sale, presale_version, clock.timestamp_ms(), clock);
-    market_maker::share(vault);
+    vault.emit_created(&sale, terms, fee_rate);
+    sale.share(presale_version, clock.timestamp_ms(), clock);
+    vault.share();
 }
 
 /// Buys normal presale tokens and records only the Quote actually accepted after change.
@@ -164,14 +163,14 @@ public fun commit<Meme, Quote>(
     ctx: &mut TxContext,
 ): Coin<Quote> {
     version.assert_current();
-    market_maker::assert_presale_route(vault);
-    market_maker::assert_can_contribute(vault, version, clock);
-    market_maker::assert_external(vault, object::id(sale));
+    vault.assert_presale_route();
+    vault.assert_can_contribute(version, clock);
+    vault.assert_external(object::id(sale));
     let offered = payment.value();
-    let change = presale::commit_open(sale, presale_version, payment, clock, ctx);
+    let change = sale.commit_open(presale_version, payment, clock, ctx);
     let accepted = offered - change.value();
 
-    market_maker::record_presale_contribution(vault, version, accepted, clock, ctx);
+    vault.record_presale_contribution(version, accepted, clock, ctx);
     change
 }
 
@@ -185,12 +184,12 @@ public fun receive_team_meme<Meme, Quote>(
     payment: sui::transfer::Receiving<Coin<Meme>>,
 ) {
     version.assert_current();
-    market_maker::assert_presale_route(vault);
-    market_maker::assert_external(vault, object::id(sale));
-    let venue = market_maker::adapter_state<Meme, Quote, _, VenueTerms>(vault, VenueKey());
+    vault.assert_presale_route();
+    vault.assert_external(object::id(sale));
+    let venue = vault.adapter_state<Meme, Quote, _, VenueTerms>(VenueKey());
     assert!(venue.terms.team_token_bps > 0, ENoTeamAllocation);
 
-    market_maker::receive_capital_meme(vault, payment);
+    vault.receive_capital_meme(payment);
 }
 
 /// Receives the committed team raise allocation into Quote capital, never the fee ledger.
@@ -201,12 +200,12 @@ public fun receive_team_quote<Meme, Quote>(
     payment: sui::transfer::Receiving<Coin<Quote>>,
 ) {
     version.assert_current();
-    market_maker::assert_presale_route(vault);
-    market_maker::assert_external(vault, object::id(sale));
-    let venue = market_maker::adapter_state<Meme, Quote, _, VenueTerms>(vault, VenueKey());
+    vault.assert_presale_route();
+    vault.assert_external(object::id(sale));
+    let venue = vault.adapter_state<Meme, Quote, _, VenueTerms>(VenueKey());
     assert!(venue.terms.team_raise_bps > 0, ENoTeamAllocation);
 
-    market_maker::receive_capital_quote(vault, payment);
+    vault.receive_capital_quote(payment);
 }
 
 /// Core destruction proves cancellation without inventing a public lifecycle getter.
@@ -217,16 +216,13 @@ public fun destroy_cancelled_presale_cap<Meme, Quote>(
     version: &PackageVersion,
 ) {
     version.assert_current();
-    market_maker::assert_presale_route(vault);
-    market_maker::assert_external(vault, object::id(sale));
-    assert!(market_maker::has_escrowed_child(vault, PresaleCapKey()), ENoPresaleCap);
-    let cap = market_maker::take_escrowed_child<Meme, Quote, _, presale::PresaleCap>(
-        vault,
-        PresaleCapKey(),
-    );
+    vault.assert_presale_route();
+    vault.assert_external(object::id(sale));
+    assert!(vault.has_escrowed_child(PresaleCapKey()), ENoPresaleCap);
+    let cap = vault.take_escrowed_child<Meme, Quote, _, presale::PresaleCap>(PresaleCapKey());
     let cap_id = object::id(&cap);
 
-    presale::destroy_cap(sale, cap);
+    sale.destroy_cap(cap);
     sui::event::emit(BlastCancelledPresaleCapDestroyed {
         vault_id: object::id(vault),
         presale_id: object::id(sale),
@@ -249,26 +245,15 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
     ctx: &mut TxContext,
 ) {
     version.assert_current();
-    market_maker::assert_presale_route(vault);
-    market_maker::assert_external(vault, object::id(sale));
-    let venue = *market_maker::adapter_state<Meme, Quote, _, VenueTerms>(vault, VenueKey());
+    vault.assert_presale_route();
+    vault.assert_external(object::id(sale));
+    let venue = *vault.adapter_state<Meme, Quote, _, VenueTerms>(VenueKey());
     // The reservation binds tick spacing; later venue fee-rate changes must not veto settlement.
     // fee_rate remains creation-time metadata, while real venue execution uses its live config.
-    let creation_cap = market_maker::take_escrowed_child<Meme, Quote, _, PoolCreationCap>(
-        vault,
-        CreationCapKey(),
-    );
-    let (meme, quote) = presale::migrate(
-        sale,
-        presale_version,
-        upstream_fee_policy,
-        Witness(),
-        clock,
-        ctx,
-    );
+    let creation_cap = vault.take_escrowed_child<Meme, Quote, _, PoolCreationCap>(CreationCapKey());
+    let (meme, quote) = sale.migrate(presale_version, upstream_fee_policy, Witness(), clock, ctx);
 
-    cetus_engine::create_burn_and_activate<Meme, Quote, CoinA, CoinB>(
-        vault,
+    vault.create_burn_and_activate<Meme, Quote, CoinA, CoinB>(
         meme,
         quote,
         venue.terms.retention_bps,
@@ -280,7 +265,7 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
         clock,
         ctx,
     );
-    market_maker::escrow_child(vault, CreationCapKey(), creation_cap);
+    vault.escrow_child(CreationCapKey(), creation_cap);
 }
 
 // === Private Functions ===
@@ -311,10 +296,9 @@ fun build_sale<Meme, Quote>(
         creation_policy,
         upstream_fee_policy,
     );
-    presale::set_partner(&mut initializer, presale_version, creation_policy, partner, clock);
-    presale::set_supply(&mut initializer, presale_version, terms.token_supply, terms.burnable);
-    presale::set_token_allocations(
-        &mut initializer,
+    initializer.set_partner(presale_version, creation_policy, partner, clock);
+    initializer.set_supply(presale_version, terms.token_supply, terms.burnable);
+    initializer.set_token_allocations(
         presale_version,
         presale_bps::new(terms.participant_token_bps),
         presale_bps::new(terms.liquidity_token_bps),
@@ -325,8 +309,7 @@ fun build_sale<Meme, Quote>(
             ),
         ],
     );
-    presale::set_raise(
-        &mut initializer,
+    initializer.set_raise(
         presale_version,
         terms.raise_target,
         if (terms.team_raise_bps == 0) vector[] else vector[
@@ -336,14 +319,12 @@ fun build_sale<Meme, Quote>(
             ),
         ],
     );
-    presale::set_windows(
-        &mut initializer,
+    initializer.set_windows(
         presale_version,
         terms.commitment_duration_ms,
         terms.liquidity_window_ms,
     );
-    presale::set_eligibility(
-        &mut initializer,
+    initializer.set_eligibility(
         presale_version,
         presale::open_eligibility(
             terms.wallet_cap,
@@ -351,10 +332,9 @@ fun build_sale<Meme, Quote>(
             terms.minimum_commitment,
         ),
     );
-    presale::set_hard_cap(&mut initializer, presale_version, 0, true);
+    initializer.set_hard_cap(presale_version, 0, true);
     // Metadata for our witness. Actual LP routing is the common vault fee pipeline.
-    presale::set_fee_split(
-        &mut initializer,
+    initializer.set_fee_split(
         presale_version,
         presale::fee_split(
             vector[
@@ -366,10 +346,10 @@ fun build_sale<Meme, Quote>(
             presale_bps::new(0),
         ),
     );
-    let (sale, cap) = presale::finalize(initializer, presale_version, currency, ctx);
+    let (sale, cap) = initializer.finalize(presale_version, currency, ctx);
 
-    market_maker::bind_external(vault, object::id(&sale));
-    market_maker::escrow_child(vault, PresaleCapKey(), cap);
+    vault.bind_external(object::id(&sale));
+    vault.escrow_child(PresaleCapKey(), cap);
     sale
 }
 
@@ -403,10 +383,10 @@ public fun migration_handoff_for_testing<Meme, Quote>(
     ctx: &mut TxContext,
 ): (sui::balance::Balance<Meme>, sui::balance::Balance<Quote>) {
     version.assert_current();
-    market_maker::assert_presale_route(vault);
-    market_maker::assert_external(vault, object::id(sale));
+    vault.assert_presale_route();
+    vault.assert_external(object::id(sale));
 
-    presale::migrate(sale, presale_version, upstream_fee_policy, Witness(), clock, ctx)
+    sale.migrate(presale_version, upstream_fee_policy, Witness(), clock, ctx)
 }
 
 #[test_only]
@@ -431,11 +411,11 @@ public fun create_without_venue_for_testing<Meme, Quote>(
     ctx: &mut TxContext,
 ) {
     version.assert_current();
-    market_maker::assert_presale_limits(&limits);
+    limits.assert_presale_limits();
     let mut vault = market_maker::new<Meme, Quote>(
         market_maker::presale_route(),
         terms.raise_target,
-        commitment_deadline(terms, clock),
+        terms.commitment_deadline(clock),
         operator,
         creator,
         signer_pk,
@@ -444,10 +424,9 @@ public fun create_without_venue_for_testing<Meme, Quote>(
         treasury,
         ctx,
     );
-    market_maker::set_trading_limits(&mut vault, limits);
-    market_maker::add_adapter_state(&mut vault, VenueKey(), VenueTerms { terms, fee_rate: 0 });
-    let sale = build_sale(
-        &mut vault,
+    vault.set_trading_limits(limits);
+    vault.add_adapter_state(VenueKey(), VenueTerms { terms, fee_rate: 0 });
+    let sale = vault.build_sale(
         treasury_cap,
         currency,
         presale_version,
@@ -459,9 +438,9 @@ public fun create_without_venue_for_testing<Meme, Quote>(
         ctx,
     );
 
-    emit_created(&vault, &sale, terms, 0);
-    presale::share(sale, presale_version, clock.timestamp_ms(), clock);
-    market_maker::share(vault);
+    vault.emit_created(&sale, terms, 0);
+    sale.share(presale_version, clock.timestamp_ms(), clock);
+    vault.share();
 }
 
 // === Events ===
@@ -523,3 +502,7 @@ use blast_market_maker::{
 use cetus_clmm::{config::{Self, GlobalConfig}, factory::{Self, PoolCreationCap, Pools}};
 use lp_burn::lp_burn::BurnManager;
 use sui::{clock::Clock, coin::{Coin, TreasuryCap}, coin_registry::Currency};
+
+use fun build_sale as BlastMarketMakerVault.build_sale;
+use fun emit_created as BlastMarketMakerVault.emit_created;
+use fun cetus_engine::create_burn_and_activate as BlastMarketMakerVault.create_burn_and_activate;

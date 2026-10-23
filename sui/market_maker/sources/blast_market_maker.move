@@ -17,8 +17,8 @@ fun init(otw: BLAST_MARKET_MAKER, ctx: &mut TxContext) {
     let policy = market_maker_fee_policy::new(treasury_id, ctx);
     let policy_id = object::id(&policy);
 
-    protocol_treasury::share(treasury);
-    market_maker_fee_policy::share(policy);
+    treasury.share();
+    policy.share();
     package_version::new_bootstrap(
         sui::package::claim(otw, ctx),
         initial_generation,

@@ -39,51 +39,50 @@ public struct Fixture {
 #[test]
 fun hard_cap_change_never_inflates_backer_weight() {
     let mut fixture = new_fixture();
-    assert_eq!(commit(&mut fixture, ALICE, 500, false), 0);
-    assert_eq!(commit(&mut fixture, BOB, 1_000, false), 500);
-    assert_weights(&mut fixture, 500, 500, 1_000);
+    assert_eq!(fixture.commit(ALICE, 500, false), 0);
+    assert_eq!(fixture.commit(BOB, 1_000, false), 500);
+    fixture.assert_weights(500, 500, 1_000);
     fixture.next_tx!(KEEPER, |f| {
-        let sale = take_sale(f);
-        let (total, participants, quote, _, _, _, _) = presale::custody_for_testing(&sale);
+        let sale = f.take_sale();
+        let (total, participants, quote, _, _, _, _) = sale.custody_for_testing();
         assert_eq!(total, 1_000);
         assert_eq!(participants, 2);
         assert_eq!(quote, 1_000);
         return_sale(sale);
     });
-    end(fixture);
+    fixture.end();
 }
 
 #[test]
 fun direct_core_buyers_keep_tokens_but_receive_no_vault_weight() {
     let mut fixture = new_fixture();
-    assert_eq!(commit(&mut fixture, ALICE, 500, true), 0);
-    assert_eq!(commit(&mut fixture, BOB, 500, false), 0);
-    assert_weights(&mut fixture, 0, 500, 500);
-    migrate_handoff_and_activate(&mut fixture, 0);
+    assert_eq!(fixture.commit(ALICE, 500, true), 0);
+    assert_eq!(fixture.commit(BOB, 500, false), 0);
+    fixture.assert_weights(0, 500, 500);
+    fixture.migrate_handoff_and_activate(0);
     fixture.next_tx!(KEEPER, |f| {
-        let mut sale = take_sale(f);
-        presale::claim(&mut sale, &f.core_version, ALICE, &f.clock, f.ctx!());
-        assert_eq!(presale::commitment_for_testing(&sale, ALICE), 0);
+        let mut sale = f.take_sale();
+        sale.claim(&f.core_version, ALICE, &f.clock, f.ctx!());
+        assert_eq!(sale.commitment_for_testing(ALICE), 0);
         return_sale(sale);
     });
     fixture.next_tx!(ALICE, |f| {
-        let tokens = take_coin<PRESALE_ADAPTER_TESTS>(f);
+        let tokens = f.take_coin<PRESALE_ADAPTER_TESTS>();
         assert_eq!(tokens.value(), 40_000);
-        coin::burn_for_testing(tokens);
+        tokens.burn_for_testing();
     });
-    end(fixture);
+    fixture.end();
 }
 
 #[test]
 fun no_wrapper_backers_cannot_veto_migration_and_creator_can_reinvest() {
     let mut fixture = new_fixture();
-    assert_eq!(commit(&mut fixture, ALICE, 1_000, true), 0);
-    assert_weights(&mut fixture, 0, 0, 0);
-    migrate_handoff_and_activate(&mut fixture, 0);
+    assert_eq!(fixture.commit(ALICE, 1_000, true), 0);
+    fixture.assert_weights(0, 0, 0);
+    fixture.migrate_handoff_and_activate(0);
     fixture.next_tx!(KEEPER, |f| {
-        let mut vault = take_vault(f);
-        market_maker::credit_lp_fees(
-            &mut vault,
+        let mut vault = f.take_vault();
+        vault.credit_lp_fees(
             &f.version,
             &f.policy,
             &mut f.treasury,
@@ -95,49 +94,48 @@ fun no_wrapper_backers_cannot_veto_migration_and_creator_can_reinvest() {
             available_quote,
             reserved_meme,
             reserved_quote,
-        ) = market_maker::fee_balances(
-            &vault,
+        ) = vault.fee_balances(
         );
         assert_eq!(available_meme, 7);
         assert_eq!(available_quote, 100);
         assert_eq!(reserved_meme, 0);
         assert_eq!(reserved_quote, 0);
-        allocate(f, &mut vault, 0, 7, 0, 100);
-        let (meme_capital, quote_capital) = market_maker::capital_for_testing(&vault);
+        f.allocate(&mut vault, 0, 7, 0, 100);
+        let (meme_capital, quote_capital) = vault.capital_for_testing();
         assert_eq!(meme_capital, 7);
         assert_eq!(quote_capital, 100);
-        assert_eq!(market_maker::is_pool_for_testing(&vault), true);
-        return_vault(vault);
+        assert_eq!(vault.is_pool_for_testing(), true);
+        vault.return_vault();
     });
-    end(fixture);
+    fixture.end();
 }
 
 #[test]
 fun failed_presale_refunds_once_through_core_and_holds_no_vault_capital() {
     let mut fixture = new_fixture();
-    assert_eq!(commit(&mut fixture, ALICE, 500, false), 0);
+    assert_eq!(fixture.commit(ALICE, 500, false), 0);
     fixture.clock.set_for_testing(START + DURATION);
     fixture.next_tx!(KEEPER, |f| {
-        let mut sale = take_sale(f);
-        presale::settle(&mut sale, &f.core_version, &f.clock);
-        assert_eq!(presale::is_cancelled_for_testing(&sale), true);
-        presale::claim(&mut sale, &f.core_version, ALICE, &f.clock, f.ctx!());
-        assert_eq!(presale::commitment_for_testing(&sale, ALICE), 0);
-        let (_, _, quote, _, _, _, _) = presale::custody_for_testing(&sale);
+        let mut sale = f.take_sale();
+        sale.settle(&f.core_version, &f.clock);
+        assert_eq!(sale.is_cancelled_for_testing(), true);
+        sale.claim(&f.core_version, ALICE, &f.clock, f.ctx!());
+        assert_eq!(sale.commitment_for_testing(ALICE), 0);
+        let (_, _, quote, _, _, _, _) = sale.custody_for_testing();
         assert_eq!(quote, 0);
         return_sale(sale);
-        let vault = take_vault(f);
-        let (meme_capital, quote_capital) = market_maker::capital_for_testing(&vault);
+        let vault = f.take_vault();
+        let (meme_capital, quote_capital) = vault.capital_for_testing();
         assert_eq!(meme_capital, 0);
         assert_eq!(quote_capital, 0);
-        return_vault(vault);
+        vault.return_vault();
     });
     fixture.next_tx!(ALICE, |f| {
-        let refund = take_coin<QUOTE>(f);
+        let refund = f.take_coin<QUOTE>();
         assert_eq!(refund.value(), 500);
-        coin::burn_for_testing(refund);
+        refund.burn_for_testing();
     });
-    end(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -150,12 +148,12 @@ fun failed_presale_refunds_once_through_core_and_holds_no_vault_capital() {
 fun presale_cannot_refund_through_curve_escrow() {
     let mut fixture = new_fixture();
     fixture.next_tx!(ALICE, |f| {
-        let mut vault = take_vault(f);
-        let refund = market_maker::refund(&mut vault, &f.version, f.ctx!());
-        coin::burn_for_testing(refund);
-        return_vault(vault);
+        let mut vault = f.take_vault();
+        let refund = vault.refund(&f.version, f.ctx!());
+        refund.burn_for_testing();
+        vault.return_vault();
     });
-    end(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -167,9 +165,9 @@ fun presale_cannot_refund_through_curve_escrow() {
 ]
 fun stale_local_version_rejects_before_accepting_presale_payment() {
     let mut fixture = new_fixture();
-    package_version::set_generation_for_testing(&mut fixture.version, 2);
-    let _ = commit(&mut fixture, ALICE, 500, false);
-    end(fixture);
+    fixture.version.set_generation_for_testing(2);
+    let _ = fixture.commit(ALICE, 500, false);
+    fixture.end();
 }
 
 #[test]
@@ -193,102 +191,100 @@ fun retaining_everything_cannot_leave_an_empty_base_pool() {
 fun migration_cannot_release_an_unbound_sale() {
     let mut fixture = new_fixture();
     fixture.next_tx!(KEEPER, |f| {
-        let vault = take_vault(f);
-        market_maker::assert_external(&vault, object::id_from_address(@0xBAD));
-        return_vault(vault);
+        let vault = f.take_vault();
+        vault.assert_external(object::id_from_address(@0xBAD));
+        vault.return_vault();
     });
-    end(fixture);
+    fixture.end();
 }
 
 #[test]
 fun retains_both_actual_core_handoff_assets_without_reducing_buyer_tokens() {
     let mut fixture = new_fixture();
-    assert_eq!(commit(&mut fixture, ALICE, 1_000, false), 0);
-    migrate_handoff_and_activate(&mut fixture, 2_000);
+    assert_eq!(fixture.commit(ALICE, 1_000, false), 0);
+    fixture.migrate_handoff_and_activate(2_000);
     fixture.next_tx!(KEEPER, |f| {
-        let mut sale = take_sale(f);
-        presale::claim(&mut sale, &f.core_version, ALICE, &f.clock, f.ctx!());
+        let mut sale = f.take_sale();
+        sale.claim(&f.core_version, ALICE, &f.clock, f.ctx!());
         return_sale(sale);
     });
     fixture.next_tx!(ALICE, |f| {
-        let tokens = take_coin<PRESALE_ADAPTER_TESTS>(f);
+        let tokens = f.take_coin<PRESALE_ADAPTER_TESTS>();
         assert_eq!(tokens.value(), 80_000);
-        coin::burn_for_testing(tokens);
+        tokens.burn_for_testing();
     });
-    end(fixture);
+    fixture.end();
 }
 
 #[test]
 fun fragmented_fees_and_repeated_claims_preserve_unequal_presale_weights() {
     let mut fixture = new_fixture();
-    assert_eq!(commit(&mut fixture, ALICE, 600, false), 0);
-    assert_eq!(commit(&mut fixture, BOB, 500, false), 100);
-    migrate_handoff_and_activate(&mut fixture, 0);
+    assert_eq!(fixture.commit(ALICE, 600, false), 0);
+    assert_eq!(fixture.commit(BOB, 500, false), 100);
+    fixture.migrate_handoff_and_activate(0);
     let mut alice_claimed = 0;
     let mut bob_claimed = 0;
     vector[1, 2, 7, 40, 200, 1_000].do!(|received| {
         fixture.next_tx!(KEEPER, |f| {
-            let mut vault = take_vault(f);
-            market_maker::credit_lp_fees(
-                &mut vault,
+            let mut vault = f.take_vault();
+            vault.credit_lp_fees(
                 &f.version,
                 &f.policy,
                 &mut f.treasury,
                 balance::zero<PRESALE_ADAPTER_TESTS>(),
                 balance::create_for_testing<QUOTE>(received),
             );
-            allocate(f, &mut vault, 0, 0, received, 0);
-            return_vault(vault);
-            alice_claimed = alice_claimed + claim_fees(f, ALICE);
-            bob_claimed = bob_claimed + claim_fees(f, BOB);
+            f.allocate(&mut vault, 0, 0, received, 0);
+            vault.return_vault();
+            alice_claimed = alice_claimed + f.claim_fees(ALICE);
+            bob_claimed = bob_claimed + f.claim_fees(BOB);
         });
     });
     assert_eq!(alice_claimed, 750);
     assert_eq!(bob_claimed, 500);
     fixture.next_tx!(KEEPER, |f| {
-        let vault = take_vault(f);
+        let vault = f.take_vault();
         let (
             available_meme,
             available_quote,
             reserved_meme,
             reserved_quote,
-        ) = market_maker::fee_balances(
-            &vault,
+        ) = vault.fee_balances(
         );
         assert_eq!(available_meme, 0);
         assert_eq!(available_quote, 0);
         assert_eq!(reserved_meme, 0);
         assert_eq!(reserved_quote, 0);
-        return_vault(vault);
+        vault.return_vault();
     });
-    end(fixture);
+    fixture.end();
 }
 
 #[test]
 fun funded_sale_cancelled_at_liquidity_deadline_refunds_and_retires_cap() {
     let mut fixture = new_fixture();
-    assert_eq!(commit(&mut fixture, ALICE, 1_000, false), 0);
+    assert_eq!(fixture.commit(ALICE, 1_000, false), 0);
     fixture.next_tx!(KEEPER, |f| {
-        let mut sale = take_sale(f);
-        presale::settle(&mut sale, &f.core_version, &f.clock);
-        assert_eq!(presale::is_funded_for_testing(&sale), true);
+        let mut sale = f.take_sale();
+        sale.settle(&f.core_version, &f.clock);
+        assert_eq!(sale.is_funded_for_testing(), true);
         f.clock.set_for_testing(START + 604_800_000);
-        presale::cancel_unlaunched(&mut sale, &f.core_version, &f.clock);
-        let mut vault = take_vault(f);
-        presale_adapter::destroy_cancelled_presale_cap(&mut vault, &sale, &f.version);
-        presale::claim(&mut sale, &f.core_version, ALICE, &f.clock, f.ctx!());
-        let (meme_capital, quote_capital) = market_maker::capital_for_testing(&vault);
+        sale.cancel_unlaunched(&f.core_version, &f.clock);
+        let mut vault = f.take_vault();
+        vault.destroy_cancelled_presale_cap(&sale, &f.version);
+        sale.claim(&f.core_version, ALICE, &f.clock, f.ctx!());
+        let (meme_capital, quote_capital) = vault.capital_for_testing();
         assert_eq!(meme_capital, 0);
         assert_eq!(quote_capital, 0);
-        return_vault(vault);
+        vault.return_vault();
         return_sale(sale);
     });
     fixture.next_tx!(ALICE, |f| {
-        let refund = take_coin<QUOTE>(f);
+        let refund = f.take_coin<QUOTE>();
         assert_eq!(refund.value(), 1_000);
-        coin::burn_for_testing(refund);
+        refund.burn_for_testing();
     });
-    end(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -300,17 +296,17 @@ fun funded_sale_cancelled_at_liquidity_deadline_refunds_and_retires_cap() {
 ]
 fun presale_fee_claim_rejects_before_weights_freeze() {
     let mut fixture = new_fixture();
-    assert_eq!(commit(&mut fixture, ALICE, 500, false), 0);
-    let _ = claim_fees(&mut fixture, ALICE);
-    end(fixture);
+    assert_eq!(fixture.commit(ALICE, 500, false), 0);
+    let _ = fixture.claim_fees(ALICE);
+    fixture.end();
 }
 
 #[test]
 fun maximum_presale_retention_keeps_half_of_both_actual_handoff_assets() {
     let mut fixture = new_fixture_with_retention(5_000);
-    assert_eq!(commit(&mut fixture, ALICE, 1_000, false), 0);
-    migrate_handoff_and_activate(&mut fixture, 5_000);
-    end(fixture);
+    assert_eq!(fixture.commit(ALICE, 1_000, false), 0);
+    fixture.migrate_handoff_and_activate(5_000);
+    fixture.end();
 }
 
 #[test]
@@ -333,7 +329,7 @@ fun first_retention_above_half_rejects_at_construction() {
 ]
 fun presale_rejects_unachievable_idle_floor_before_core_creation() {
     let fixture = new_fixture_with_options(2_000, 1);
-    end(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -365,13 +361,12 @@ fun first_participant_limit_above_shared_bound_rejects_at_construction() {
 #[test]
 fun retention_uses_net_assets_after_upstream_fees_and_preserves_participant_tokens() {
     let mut fixture = new_fixture_with_upstream_fees(2_000, 0, 1_000, 1_000);
-    assert_eq!(commit(&mut fixture, ALICE, 1_000, false), 0);
+    assert_eq!(fixture.commit(ALICE, 1_000, false), 0);
     fixture.next_tx!(KEEPER, |f| {
-        let mut vault = take_vault(f);
-        let mut sale = take_sale(f);
-        presale::settle(&mut sale, &f.core_version, &f.clock);
-        let (meme, quote) = presale_adapter::migration_handoff_for_testing(
-            &vault,
+        let mut vault = f.take_vault();
+        let mut sale = f.take_sale();
+        sale.settle(&f.core_version, &f.clock);
+        let (meme, quote) = vault.migration_handoff_for_testing(
             &mut sale,
             &f.version,
             &f.core_version,
@@ -383,18 +378,17 @@ fun retention_uses_net_assets_after_upstream_fees_and_preserves_participant_toke
         // Gross raise1000 = protocol100 + net LP900.
         assert_eq!(meme.value(), 10_000);
         assert_eq!(quote.value(), 900);
-        let (meme_seed, quote_seed) = cetus_engine::retain_capital(&mut vault, meme, quote, 2_000);
+        let (meme_seed, quote_seed) = vault.retain_capital(meme, quote, 2_000);
         assert_eq!(meme_seed.value(), 8_000);
         assert_eq!(quote_seed.value(), 720);
-        let (retained_meme, retained_quote) = market_maker::capital_for_testing(&vault);
+        let (retained_meme, retained_quote) = vault.capital_for_testing();
         assert_eq!(retained_meme, 2_000);
         assert_eq!(retained_quote, 180);
-        balance::destroy_for_testing(meme_seed);
-        balance::destroy_for_testing(quote_seed);
-        market_maker::activate_pool(&mut vault, object::id_from_address(@0xFACE));
+        meme_seed.destroy_for_testing();
+        quote_seed.destroy_for_testing();
+        vault.activate_pool(object::id_from_address(@0xFACE));
         // Upstream LP metadata1000bps does not impose a second receipt deduction here.
-        market_maker::credit_lp_fees(
-            &mut vault,
+        vault.credit_lp_fees(
             &f.version,
             &f.policy,
             &mut f.treasury,
@@ -406,23 +400,21 @@ fun retention_uses_net_assets_after_upstream_fees_and_preserves_participant_toke
             available_quote,
             reserved_meme,
             reserved_quote,
-        ) = market_maker::fee_balances(
-            &vault,
+        ) = vault.fee_balances(
         );
         assert_eq!(available_meme, 0);
         assert_eq!(available_quote, 100);
         assert_eq!(reserved_meme, 0);
         assert_eq!(reserved_quote, 0);
-        assert_eq!(presale::unpaid_protocol_quote_for_testing(&sale), option::some(100));
-        presale::pay_protocol_fees_with_partner(
-            &mut sale,
+        assert_eq!(sale.unpaid_protocol_quote_for_testing(), option::some(100));
+        sale.pay_protocol_fees_with_partner(
             &f.core_version,
             &f.core_policy,
             &f.partner,
             &f.clock,
             f.ctx!(),
         );
-        assert_eq!(presale::unpaid_protocol_quote_for_testing(&sale), option::none());
+        assert_eq!(sale.unpaid_protocol_quote_for_testing(), option::none());
         let paid = sui::event::events_by_type<
             presale::ProtocolFeesPaid<PRESALE_ADAPTER_TESTS, QUOTE>,
         >();
@@ -443,29 +435,29 @@ fun retention_uses_net_assets_after_upstream_fees_and_preserves_participant_toke
         let (paid_partner_id, partner_quote) = partners::partner_paid_fields(&partner_paid[0]);
         assert_eq!(paid_partner_id, object::id(&f.partner));
         assert_eq!(partner_quote, 40);
-        presale::claim(&mut sale, &f.core_version, ALICE, &f.clock, f.ctx!());
-        return_vault(vault);
+        sale.claim(&f.core_version, ALICE, &f.clock, f.ctx!());
+        vault.return_vault();
         return_sale(sale);
     });
     fixture.next_tx!(ROOT, |f| {
-        let protocol_meme = take_coin<PRESALE_ADAPTER_TESTS>(f);
-        let protocol_quote = take_coin<QUOTE>(f);
+        let protocol_meme = f.take_coin<PRESALE_ADAPTER_TESTS>();
+        let protocol_quote = f.take_coin<QUOTE>();
         assert_eq!(protocol_meme.value(), 10_000);
         assert_eq!(protocol_quote.value(), 60);
-        coin::burn_for_testing(protocol_meme);
-        coin::burn_for_testing(protocol_quote);
+        protocol_meme.burn_for_testing();
+        protocol_quote.burn_for_testing();
     });
     fixture.next_tx!(PARTNER_RECIPIENT, |f| {
-        let payment = take_coin<QUOTE>(f);
+        let payment = f.take_coin<QUOTE>();
         assert_eq!(payment.value(), 40);
-        coin::burn_for_testing(payment);
+        payment.burn_for_testing();
     });
     fixture.next_tx!(ALICE, |f| {
-        let tokens = take_coin<PRESALE_ADAPTER_TESTS>(f);
+        let tokens = f.take_coin<PRESALE_ADAPTER_TESTS>();
         assert_eq!(tokens.value(), 80_000);
-        coin::burn_for_testing(tokens);
+        tokens.burn_for_testing();
     });
-    end(fixture);
+    fixture.end();
 }
 
 #[test]
@@ -477,20 +469,19 @@ fun retention_uses_net_assets_after_upstream_fees_and_preserves_participant_toke
 ]
 fun creator_cannot_select_a_partner_unaccepted_by_presale_core() {
     let fixture = new_fixture_with_partner_options(2_000, 0, 0, 0, false);
-    end(fixture);
+    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = presale::EWrongPartner, location = blast_presale::blast_presale)]
 fun migrated_presale_cannot_pay_a_different_partner() {
     let mut fixture = new_fixture_with_upstream_fees(2_000, 0, 1_000, 0);
-    assert_eq!(commit(&mut fixture, ALICE, 1_000, false), 0);
-    fixture.next_tx!(KEEPER, |f| { migrate_for_partner_payout(f); });
+    assert_eq!(fixture.commit(ALICE, 1_000, false), 0);
+    fixture.next_tx!(KEEPER, |f| { f.migrate_for_partner_payout(); });
     fixture.next_tx!(KEEPER, |f| {
         let other = partners::new_for_testing(KEEPER, 4_000, f.ctx!());
-        let mut sale = take_sale(f);
-        presale::pay_protocol_fees_with_partner(
-            &mut sale,
+        let mut sale = f.take_sale();
+        sale.pay_protocol_fees_with_partner(
             &f.core_version,
             &f.core_policy,
             &other,
@@ -500,38 +491,38 @@ fun migrated_presale_cannot_pay_a_different_partner() {
         destroy(other);
         return_sale(sale);
     });
-    end(fixture);
+    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = presale::ENoPartnerPayout, location = blast_presale::blast_presale)]
 fun presale_partner_payout_cannot_be_repeated() {
     let mut fixture = new_fixture_with_upstream_fees(2_000, 0, 1_000, 0);
-    assert_eq!(commit(&mut fixture, ALICE, 1_000, false), 0);
-    fixture.next_tx!(KEEPER, |f| { migrate_for_partner_payout(f); });
-    fixture.next_tx!(KEEPER, |f| { pay_partner(f); });
-    fixture.next_tx!(KEEPER, |f| { pay_partner(f); });
-    end(fixture);
+    assert_eq!(fixture.commit(ALICE, 1_000, false), 0);
+    fixture.next_tx!(KEEPER, |f| { f.migrate_for_partner_payout(); });
+    fixture.next_tx!(KEEPER, |f| { f.pay_partner(); });
+    fixture.next_tx!(KEEPER, |f| { f.pay_partner(); });
+    fixture.end();
 }
 
 #[test]
 #[expected_failure(abort_code = presale::ENoPartnerPayout, location = blast_presale::blast_presale)]
 fun presale_partner_cannot_be_paid_from_unmigrated_commitments() {
     let mut fixture = new_fixture_with_upstream_fees(2_000, 0, 1_000, 0);
-    assert_eq!(commit(&mut fixture, ALICE, 1_000, false), 0);
-    fixture.next_tx!(KEEPER, |f| { pay_partner(f); });
-    end(fixture);
+    assert_eq!(fixture.commit(ALICE, 1_000, false), 0);
+    fixture.next_tx!(KEEPER, |f| { f.pay_partner(); });
+    fixture.end();
 }
 
 #[test]
 fun explicit_team_tokens_and_raise_land_in_vault_capital_after_real_core_migration() {
     let mut f = new_team_fixture();
-    assert_eq!(commit(&mut f, ALICE, 1_000, false), 0);
-    f.next_tx!(KEEPER, |f| { migrate_team_handoff(f); });
+    assert_eq!(f.commit(ALICE, 1_000, false), 0);
+    f.next_tx!(KEEPER, |f| { f.migrate_team_handoff(); });
     f.next_tx!(KEEPER, |f| {
-        assert_team_coins_owned_by_vault(f);
-        let vault = receive_team_assets(f);
-        let (meme, quote) = market_maker::capital_for_testing(&vault);
+        f.assert_team_coins_owned_by_vault();
+        let vault = f.receive_team_assets();
+        let (meme, quote) = vault.capital_for_testing();
         // Retained net LP assets2000/140 plus explicit team allocations10000/200.
         assert_eq!(meme, 12_000);
         assert_eq!(quote, 340);
@@ -540,33 +531,33 @@ fun explicit_team_tokens_and_raise_land_in_vault_capital_after_real_core_migrati
         assert_eq!(available_quote, 0);
         assert_eq!(reserved_meme, 0);
         assert_eq!(reserved_quote, 0);
-        assert_eq!(market_maker::total_weight_for_testing(&vault), 1_000);
-        return_vault(vault);
-        assert_capital_receipt_events(f, 10_000, 200);
+        assert_eq!(vault.total_weight_for_testing(), 1_000);
+        vault.return_vault();
+        f.assert_capital_receipt_events(10_000, 200);
     });
     f.next_tx!(KEEPER, |f| {
-        let mut sale = take_sale(f);
-        presale::claim(&mut sale, &f.core_version, ALICE, &f.clock, f.ctx!());
+        let mut sale = f.take_sale();
+        sale.claim(&f.core_version, ALICE, &f.clock, f.ctx!());
         return_sale(sale);
     });
     f.next_tx!(ALICE, |f| {
-        let participants = take_coin<PRESALE_ADAPTER_TESTS>(f);
+        let participants = f.take_coin<PRESALE_ADAPTER_TESTS>();
         assert_eq!(participants.value(), 70_000);
-        coin::burn_for_testing(participants);
+        participants.burn_for_testing();
     });
-    end(f);
+    f.end();
 }
 
 #[test]
 fun cancelled_presale_releases_no_team_allocations_and_preserves_full_refund() {
     let mut f = new_team_fixture();
-    assert_eq!(commit(&mut f, ALICE, 500, false), 0);
+    assert_eq!(f.commit(ALICE, 500, false), 0);
     f.clock.set_for_testing(START + DURATION);
     f.next_tx!(KEEPER, |f| {
-        let mut sale = take_sale(f);
-        presale::settle(&mut sale, &f.core_version, &f.clock);
-        assert!(presale::is_cancelled_for_testing(&sale));
-        let (_, _, quote, _, _, team_tokens, _) = presale::custody_for_testing(&sale);
+        let mut sale = f.take_sale();
+        sale.settle(&f.core_version, &f.clock);
+        assert!(sale.is_cancelled_for_testing());
+        let (_, _, quote, _, _, team_tokens, _) = sale.custody_for_testing();
         assert_eq!(quote, 500);
         assert_eq!(team_tokens, 10_000);
         assert_eq!(
@@ -581,16 +572,16 @@ fun cancelled_presale_releases_no_team_allocations_and_preserves_full_refund() {
             >().length(),
             0,
         );
-        assert_no_team_coins_at_vault(f);
-        presale::claim(&mut sale, &f.core_version, ALICE, &f.clock, f.ctx!());
+        f.assert_no_team_coins_at_vault();
+        sale.claim(&f.core_version, ALICE, &f.clock, f.ctx!());
         return_sale(sale);
     });
     f.next_tx!(ALICE, |f| {
-        let refund = take_coin<QUOTE>(f);
+        let refund = f.take_coin<QUOTE>();
         assert_eq!(refund.value(), 500);
-        coin::burn_for_testing(refund);
+        refund.burn_for_testing();
     });
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -604,15 +595,15 @@ fun team_receiving_cannot_activate_capital_from_a_cancelled_sale() {
     let mut f = new_team_fixture();
     f.clock.set_for_testing(START + DURATION);
     f.next_tx!(KEEPER, |f| {
-        let mut sale = take_sale(f);
-        presale::settle(&mut sale, &f.core_version, &f.clock);
-        assert!(presale::is_cancelled_for_testing(&sale));
+        let mut sale = f.take_sale();
+        sale.settle(&f.core_version, &f.clock);
+        assert!(sale.is_cancelled_for_testing());
         return_sale(sale);
         let recipient = f.vault_id.to_address();
-        send_quote_to(f, recipient);
+        f.send_quote_to(recipient);
     });
-    f.next_tx!(KEEPER, |f| { receive_team_quote(f); });
-    end(f);
+    f.next_tx!(KEEPER, |f| { f.receive_team_quote(); });
+    f.end();
 }
 
 #[test]
@@ -624,28 +615,28 @@ fun team_receiving_cannot_activate_capital_from_a_cancelled_sale() {
 ]
 fun disabled_team_quote_allocation_has_no_adapter_receiving_path() {
     let mut f = new_fixture();
-    assert_eq!(commit(&mut f, ALICE, 1_000, false), 0);
-    migrate_handoff_and_activate(&mut f, 0);
+    assert_eq!(f.commit(ALICE, 1_000, false), 0);
+    f.migrate_handoff_and_activate(0);
     f.next_tx!(KEEPER, |f| {
         let recipient = f.vault_id.to_address();
-        send_quote_to(f, recipient);
+        f.send_quote_to(recipient);
     });
-    f.next_tx!(KEEPER, |f| { receive_team_quote(f); });
-    end(f);
+    f.next_tx!(KEEPER, |f| { f.receive_team_quote(); });
+    f.end();
 }
 
 #[test]
 #[expected_failure(abort_code = sui::transfer::EUnableToReceiveObject, location = sui::transfer)]
 fun team_receiving_rejects_a_coin_owned_by_another_address() {
     let mut f = new_team_fixture();
-    assert_eq!(commit(&mut f, ALICE, 1_000, false), 0);
+    assert_eq!(f.commit(ALICE, 1_000, false), 0);
     let foreign_coin;
     f.next_tx!(KEEPER, |f| {
-        migrate_team_handoff(f);
-        foreign_coin = send_quote_to(f, ROOT);
+        f.migrate_team_handoff();
+        foreign_coin = f.send_quote_to(ROOT);
     });
-    f.next_tx!(KEEPER, |f| { receive_quote_by_id(f, foreign_coin); });
-    end(f);
+    f.next_tx!(KEEPER, |f| { f.receive_quote_by_id(foreign_coin); });
+    f.end();
 }
 
 #[test]
@@ -657,14 +648,14 @@ fun team_receiving_rejects_a_coin_owned_by_another_address() {
 ]
 fun unrelated_creator_cap_cannot_withdraw_received_team_capital() {
     let mut f = new_team_fixture();
-    assert_eq!(commit(&mut f, ALICE, 1_000, false), 0);
-    f.next_tx!(KEEPER, |f| { migrate_team_handoff(f); });
+    assert_eq!(f.commit(ALICE, 1_000, false), 0);
+    f.next_tx!(KEEPER, |f| { f.migrate_team_handoff(); });
     f.next_tx!(KEEPER, |f| {
-        let mut vault = receive_team_assets(f);
-        withdraw_team_with_foreign_cap(f, &mut vault);
-        return_vault(vault);
+        let mut vault = f.receive_team_assets();
+        f.withdraw_team_with_foreign_cap(&mut vault);
+        vault.return_vault();
     });
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -697,10 +688,10 @@ fun team_raise_share_rejects_first_rate_above_one_hundred_percent() {
 ]
 fun team_receiving_rejects_wrong_sale_binding_before_native_receive() {
     let mut f = new_team_fixture();
-    assert_eq!(commit(&mut f, ALICE, 1_000, false), 0);
-    f.next_tx!(KEEPER, |f| { migrate_team_handoff(f); });
-    f.next_tx!(KEEPER, |f| { receive_with_wrong_sale_binding(f); });
-    end(f);
+    assert_eq!(f.commit(ALICE, 1_000, false), 0);
+    f.next_tx!(KEEPER, |f| { f.migrate_team_handoff(); });
+    f.next_tx!(KEEPER, |f| { f.receive_with_wrong_sale_binding(); });
+    f.end();
 }
 
 #[test]
@@ -712,32 +703,32 @@ fun team_receiving_rejects_wrong_sale_binding_before_native_receive() {
 ]
 fun stale_version_rejects_before_receiving_a_real_team_payout() {
     let mut f = new_team_fixture();
-    assert_eq!(commit(&mut f, ALICE, 1_000, false), 0);
-    f.next_tx!(KEEPER, |f| { migrate_team_handoff(f); });
-    package_version::set_generation_for_testing(&mut f.version, 2);
-    f.next_tx!(KEEPER, |f| { receive_team_quote(f); });
-    end(f);
+    assert_eq!(f.commit(ALICE, 1_000, false), 0);
+    f.next_tx!(KEEPER, |f| { f.migrate_team_handoff(); });
+    f.version.set_generation_for_testing(2);
+    f.next_tx!(KEEPER, |f| { f.receive_team_quote(); });
+    f.end();
 }
 
 #[test]
 fun same_asset_donation_becomes_only_capital_without_fee_weight_or_reserves() {
     let mut f = new_team_fixture();
-    assert_eq!(commit(&mut f, ALICE, 1_000, false), 0);
-    f.next_tx!(KEEPER, |f| { migrate_team_handoff(f); });
+    assert_eq!(f.commit(ALICE, 1_000, false), 0);
+    f.next_tx!(KEEPER, |f| { f.migrate_team_handoff(); });
     f.next_tx!(KEEPER, |f| {
         let recipient = f.vault_id.to_address();
-        send_quote_to(f, recipient);
+        f.send_quote_to(recipient);
     });
     f.next_tx!(KEEPER, |f| {
-        receive_team_quote(f);
-        assert_donation_receipt_event(f);
+        f.receive_team_quote();
+        f.assert_donation_receipt_event();
     });
     f.next_tx!(KEEPER, |f| {
-        let vault = take_vault(f);
-        let (meme, quote) = market_maker::capital_for_testing(&vault);
+        let vault = f.take_vault();
+        let (meme, quote) = vault.capital_for_testing();
         assert_eq!(meme, 2_000);
         assert_eq!(quote, 141);
-        assert_eq!(market_maker::total_weight_for_testing(&vault), 1_000);
+        assert_eq!(vault.total_weight_for_testing(), 1_000);
         let (available_meme, available_quote, reserved_meme, reserved_quote) = vault.fee_balances();
         assert_eq!(available_meme, 0);
         assert_eq!(available_quote, 0);
@@ -746,9 +737,9 @@ fun same_asset_donation_becomes_only_capital_without_fee_weight_or_reserves() {
         let (meme_claim, quote_claim) = vault.claimable_fees(ALICE);
         assert_eq!(meme_claim, 0);
         assert_eq!(quote_claim, 0);
-        return_vault(vault);
+        vault.return_vault();
     });
-    end(f);
+    f.end();
 }
 
 // === Test Helpers ===
@@ -781,7 +772,7 @@ fun return_vault(vault: BlastMarketMakerVault<PRESALE_ADAPTER_TESTS, QUOTE>) {
 // ownership checks. No forged Presale layout or external capability is needed by this fixture.
 fun receive_with_wrong_sale_binding(f: &mut Fixture) {
     let payment = test_scenario::most_recent_receiving_ticket<Coin<QUOTE>>(&f.vault_id);
-    let sale = take_sale(f);
+    let sale = f.take_sale();
     let Fixture { scenario, creator, version, treasury, policy, .. } = f;
     let mut foreign = market_maker::new<PRESALE_ADAPTER_TESTS, QUOTE>(
         market_maker::presale_route(),
@@ -795,8 +786,8 @@ fun receive_with_wrong_sale_binding(f: &mut Fixture) {
         treasury,
         scenario.ctx(),
     );
-    market_maker::bind_external(&mut foreign, object::id_from_address(@0xBAD));
-    presale_adapter::receive_team_quote(&mut foreign, &sale, version, payment);
+    foreign.bind_external(object::id_from_address(@0xBAD));
+    foreign.receive_team_quote(&sale, version, payment);
     destroy(foreign);
     return_sale(sale);
 }
@@ -820,11 +811,10 @@ fun new_team_fixture(): Fixture {
 // Executes the real production presale migration and production retention split. Cetus creation
 // and base LP burn are deliberately outside this unit harness, as in the original handoff fixture.
 fun migrate_team_handoff(f: &mut Fixture) {
-    let mut vault = take_vault(f);
-    let mut sale = take_sale(f);
-    presale::settle(&mut sale, &f.core_version, &f.clock);
-    let (meme, quote) = presale_adapter::migration_handoff_for_testing(
-        &vault,
+    let mut vault = f.take_vault();
+    let mut sale = f.take_sale();
+    sale.settle(&f.core_version, &f.clock);
+    let (meme, quote) = vault.migration_handoff_for_testing(
         &mut sale,
         &f.version,
         &f.core_version,
@@ -832,7 +822,7 @@ fun migrate_team_handoff(f: &mut Fixture) {
         &f.clock,
         f.ctx!(),
     );
-    assert!(presale::is_migrated_for_testing(&sale));
+    assert!(sale.is_migrated_for_testing());
     assert_eq!(meme.value(), 10_000);
     assert_eq!(quote.value(), 700);
     let recipients = sui::event::events_by_type<
@@ -853,13 +843,13 @@ fun migrate_team_handoff(f: &mut Fixture) {
     assert_eq!(recipient, f.vault_id.to_address());
     assert_eq!(quote_amount, 200);
     assert_eq!(presale::raise_allocated_vesting_id(&raises[0]), option::none());
-    let (meme, quote) = cetus_engine::retain_capital(&mut vault, meme, quote, 2_000);
+    let (meme, quote) = vault.retain_capital(meme, quote, 2_000);
     assert_eq!(meme.value(), 8_000);
     assert_eq!(quote.value(), 560);
-    balance::destroy_for_testing(meme);
-    balance::destroy_for_testing(quote);
-    market_maker::activate_pool(&mut vault, object::id_from_address(@0xCAFE));
-    return_vault(vault);
+    meme.destroy_for_testing();
+    quote.destroy_for_testing();
+    vault.activate_pool(object::id_from_address(@0xCAFE));
+    vault.return_vault();
     return_sale(sale);
 }
 
@@ -888,20 +878,20 @@ fun receive_team_assets(f: &Fixture): BlastMarketMakerVault<PRESALE_ADAPTER_TEST
         &f.vault_id,
     );
     let quote = test_scenario::most_recent_receiving_ticket<Coin<QUOTE>>(&f.vault_id);
-    let mut vault = take_vault(f);
-    let sale = take_sale(f);
-    presale_adapter::receive_team_meme(&mut vault, &sale, &f.version, meme);
-    presale_adapter::receive_team_quote(&mut vault, &sale, &f.version, quote);
+    let mut vault = f.take_vault();
+    let sale = f.take_sale();
+    vault.receive_team_meme(&sale, &f.version, meme);
+    vault.receive_team_quote(&sale, &f.version, quote);
     return_sale(sale);
     vault
 }
 
 fun receive_team_quote(f: &Fixture) {
     let payment = test_scenario::most_recent_receiving_ticket<Coin<QUOTE>>(&f.vault_id);
-    let mut vault = take_vault(f);
-    let sale = take_sale(f);
-    presale_adapter::receive_team_quote(&mut vault, &sale, &f.version, payment);
-    return_vault(vault);
+    let mut vault = f.take_vault();
+    let sale = f.take_sale();
+    vault.receive_team_quote(&sale, &f.version, payment);
+    vault.return_vault();
     return_sale(sale);
 }
 
@@ -914,10 +904,10 @@ fun send_quote_to(f: &mut Fixture, recipient: address): ID {
 
 fun receive_quote_by_id(f: &Fixture, id: ID) {
     let payment = test_scenario::receiving_ticket_by_id<Coin<QUOTE>>(id);
-    let mut vault = take_vault(f);
-    let sale = take_sale(f);
-    presale_adapter::receive_team_quote(&mut vault, &sale, &f.version, payment);
-    return_vault(vault);
+    let mut vault = f.take_vault();
+    let sale = f.take_sale();
+    vault.receive_team_quote(&sale, &f.version, payment);
+    vault.return_vault();
     return_sale(sale);
 }
 
@@ -928,8 +918,8 @@ fun withdraw_team_with_foreign_cap(
     let Fixture { scenario, version, .. } = f;
     let foreign = market_maker::new_creator_cap(scenario.ctx());
     let (meme, quote) = vault.withdraw_capital(&foreign, version, 1, 1, scenario.ctx());
-    coin::burn_for_testing(meme);
-    coin::burn_for_testing(quote);
+    meme.burn_for_testing();
+    quote.burn_for_testing();
     destroy(foreign);
 }
 
@@ -1155,20 +1145,13 @@ fun take_sale(fixture: &Fixture): Presale<PRESALE_ADAPTER_TESTS, QUOTE> {
 
 fun commit(fixture: &mut Fixture, buyer: address, offered: u64, direct: bool): u64 {
     fixture.scenario.next_tx(buyer);
-    let mut vault = take_vault(fixture);
-    let mut sale = take_sale(fixture);
+    let mut vault = fixture.take_vault();
+    let mut sale = fixture.take_sale();
     let payment = coin::mint_for_testing<QUOTE>(offered, fixture.scenario.ctx());
     let change = if (direct) {
-        presale::commit_open(
-            &mut sale,
-            &fixture.core_version,
-            payment,
-            &fixture.clock,
-            fixture.scenario.ctx(),
-        )
+        sale.commit_open(&fixture.core_version, payment, &fixture.clock, fixture.scenario.ctx())
     } else {
-        presale_adapter::commit(
-            &mut vault,
+        vault.commit(
             &mut sale,
             &fixture.version,
             &fixture.core_version,
@@ -1178,7 +1161,7 @@ fun commit(fixture: &mut Fixture, buyer: address, offered: u64, direct: bool): u
         )
     };
     let returned = change.value();
-    coin::burn_for_testing(change);
+    change.burn_for_testing();
     test_scenario::return_shared(vault);
     test_scenario::return_shared(sale);
 
@@ -1194,8 +1177,7 @@ fun allocate(
     reinvest_quote: u64,
 ) {
     let Fixture { scenario, version, creator, .. } = f;
-    let (meme, quote) = market_maker::allocate_fees(
-        vault,
+    let (meme, quote) = vault.allocate_fees(
         creator,
         version,
         fee_ledger::allocation(0, share_meme, reinvest_meme),
@@ -1204,22 +1186,18 @@ fun allocate(
     );
     assert_eq!(meme.value(), 0);
     assert_eq!(quote.value(), 0);
-    coin::burn_for_testing(meme);
-    coin::burn_for_testing(quote);
+    meme.burn_for_testing();
+    quote.burn_for_testing();
 }
 
 fun claim_fees(fixture: &mut Fixture, buyer: address): u64 {
     fixture.scenario.next_tx(buyer);
-    let mut vault = take_vault(fixture);
-    let (meme, quote) = market_maker::claim_fees(
-        &mut vault,
-        &fixture.version,
-        fixture.scenario.ctx(),
-    );
+    let mut vault = fixture.take_vault();
+    let (meme, quote) = vault.claim_fees(&fixture.version, fixture.scenario.ctx());
     assert_eq!(meme.value(), 0);
     let amount = quote.value();
-    coin::burn_for_testing(meme);
-    coin::burn_for_testing(quote);
+    meme.burn_for_testing();
+    quote.burn_for_testing();
     test_scenario::return_shared(vault);
 
     amount
@@ -1227,20 +1205,19 @@ fun claim_fees(fixture: &mut Fixture, buyer: address): u64 {
 
 fun assert_weights(fixture: &mut Fixture, alice: u64, bob: u64, total: u64) {
     fixture.scenario.next_tx(KEEPER);
-    let vault = take_vault(fixture);
-    assert_eq!(market_maker::weight_for_testing(&vault, ALICE), alice);
-    assert_eq!(market_maker::weight_for_testing(&vault, BOB), bob);
-    assert_eq!(market_maker::total_weight_for_testing(&vault), total);
+    let vault = fixture.take_vault();
+    assert_eq!(vault.weight_for_testing(ALICE), alice);
+    assert_eq!(vault.weight_for_testing(BOB), bob);
+    assert_eq!(vault.total_weight_for_testing(), total);
     test_scenario::return_shared(vault);
 }
 
 fun migrate_handoff_and_activate(fixture: &mut Fixture, retention_bps: u64) {
     fixture.scenario.next_tx(KEEPER);
-    let mut vault = take_vault(fixture);
-    let mut sale = take_sale(fixture);
-    presale::settle(&mut sale, &fixture.core_version, &fixture.clock);
-    let (meme, quote) = presale_adapter::migration_handoff_for_testing(
-        &vault,
+    let mut vault = fixture.take_vault();
+    let mut sale = fixture.take_sale();
+    sale.settle(&fixture.core_version, &fixture.clock);
+    let (meme, quote) = vault.migration_handoff_for_testing(
         &mut sale,
         &fixture.version,
         &fixture.core_version,
@@ -1248,18 +1225,18 @@ fun migrate_handoff_and_activate(fixture: &mut Fixture, retention_bps: u64) {
         &fixture.clock,
         fixture.scenario.ctx(),
     );
-    assert!(presale::is_migrated_for_testing(&sale));
+    assert!(sale.is_migrated_for_testing());
     assert_eq!(meme.value(), 20_000);
     assert_eq!(quote.value(), 1_000);
-    let (meme, quote) = cetus_engine::retain_capital(&mut vault, meme, quote, retention_bps);
+    let (meme, quote) = vault.retain_capital(meme, quote, retention_bps);
     if (retention_bps == 2_000) {
-        let (meme_capital, quote_capital) = market_maker::capital_for_testing(&vault);
+        let (meme_capital, quote_capital) = vault.capital_for_testing();
         assert_eq!(meme_capital, 4_000);
         assert_eq!(quote_capital, 200);
         assert_eq!(meme.value(), 16_000);
         assert_eq!(quote.value(), 800);
     } else if (retention_bps == 5_000) {
-        let (meme_capital, quote_capital) = market_maker::capital_for_testing(&vault);
+        let (meme_capital, quote_capital) = vault.capital_for_testing();
         assert_eq!(meme_capital, 10_000);
         assert_eq!(quote_capital, 500);
         assert_eq!(meme.value(), 10_000);
@@ -1269,19 +1246,18 @@ fun migrate_handoff_and_activate(fixture: &mut Fixture, retention_bps: u64) {
         assert_eq!(meme.value(), 20_000);
         assert_eq!(quote.value(), 1_000);
     };
-    balance::destroy_for_testing(meme);
-    balance::destroy_for_testing(quote);
-    market_maker::activate_pool(&mut vault, object::id_from_address(@0xCAFE));
+    meme.destroy_for_testing();
+    quote.destroy_for_testing();
+    vault.activate_pool(object::id_from_address(@0xCAFE));
     test_scenario::return_shared(vault);
     test_scenario::return_shared(sale);
 }
 
 fun migrate_for_partner_payout(fixture: &mut Fixture) {
-    let vault = take_vault(fixture);
-    let mut sale = take_sale(fixture);
-    presale::settle(&mut sale, &fixture.core_version, &fixture.clock);
-    let (meme, quote) = presale_adapter::migration_handoff_for_testing(
-        &vault,
+    let vault = fixture.take_vault();
+    let mut sale = fixture.take_sale();
+    sale.settle(&fixture.core_version, &fixture.clock);
+    let (meme, quote) = vault.migration_handoff_for_testing(
         &mut sale,
         &fixture.version,
         &fixture.core_version,
@@ -1289,16 +1265,15 @@ fun migrate_for_partner_payout(fixture: &mut Fixture) {
         &fixture.clock,
         fixture.ctx!(),
     );
-    balance::destroy_for_testing(meme);
-    balance::destroy_for_testing(quote);
-    return_vault(vault);
+    meme.destroy_for_testing();
+    quote.destroy_for_testing();
+    vault.return_vault();
     return_sale(sale);
 }
 
 fun pay_partner(fixture: &mut Fixture) {
-    let mut sale = take_sale(fixture);
-    presale::pay_protocol_fees_with_partner(
-        &mut sale,
+    let mut sale = fixture.take_sale();
+    sale.pay_protocol_fees_with_partner(
         &fixture.core_version,
         &fixture.core_policy,
         &fixture.partner,
@@ -1364,3 +1339,11 @@ use sui::{
     test_scenario::{Self, Scenario},
     test_utils,
 };
+
+use fun cetus_engine::retain_capital as BlastMarketMakerVault.retain_capital;
+use fun presale_adapter::commit as BlastMarketMakerVault.commit;
+use fun presale_adapter::destroy_cancelled_presale_cap as BlastMarketMakerVault.destroy_cancelled_presale_cap;
+use fun presale_adapter::migration_handoff_for_testing as BlastMarketMakerVault.migration_handoff_for_testing;
+use fun presale_adapter::receive_team_meme as BlastMarketMakerVault.receive_team_meme;
+use fun presale_adapter::receive_team_quote as BlastMarketMakerVault.receive_team_quote;
+use fun return_vault as BlastMarketMakerVault.return_vault;

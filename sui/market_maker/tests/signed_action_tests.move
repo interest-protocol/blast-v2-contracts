@@ -26,41 +26,41 @@ public struct Fixture {
 #[test]
 fun valid_signature_charges_actual_input_and_next_nonce() {
     let mut f = start(default_limits());
-    authorize(&f, risk::curve_buy(100, 1), signature(0));
-    finish(&mut f, risk::curve_buy(100, 1), 70, 70, 0);
-    authorize(&f, risk::curve_buy(100, 1), signature(1));
-    finish(&mut f, risk::curve_buy(100, 1), 100, 100, 0);
-    end(f);
+    f.authorize(risk::curve_buy(100, 1), signature(0));
+    f.finish(risk::curve_buy(100, 1), 70, 70, 0);
+    f.authorize(risk::curve_buy(100, 1), signature(1));
+    f.finish(risk::curve_buy(100, 1), 100, 100, 0);
+    f.end();
 }
 
 #[test]
 #[expected_failure(abort_code = risk::EInvalidSignature, location = blast_market_maker::risk)]
 fun consumed_signature_cannot_be_replayed() {
     let mut f = start(default_limits());
-    authorize(&f, risk::curve_buy(100, 1), signature(0));
-    finish(&mut f, risk::curve_buy(100, 1), 100, 100, 0);
-    authorize(&f, risk::curve_buy(100, 1), signature(0));
-    end(f);
+    f.authorize(risk::curve_buy(100, 1), signature(0));
+    f.finish(risk::curve_buy(100, 1), 100, 100, 0);
+    f.authorize(risk::curve_buy(100, 1), signature(0));
+    f.end();
 }
 
 #[test]
 #[expected_failure(abort_code = risk::EInvalidSignature, location = blast_market_maker::risk)]
 fun signed_minimum_output_cannot_be_changed() {
     let f = start(default_limits());
-    authorize(&f, risk::curve_buy(100, 2), signature(0));
-    end(f);
+    f.authorize(risk::curve_buy(100, 2), signature(0));
+    f.end();
 }
 
 #[test]
 fun token_bucket_refills_at_exact_boundary_without_changing_lifetime_spend() {
     let limits = market_maker::with_rate_limits(default_limits(), 100, 100, 10, 10, 200, 200);
     let mut f = start(limits);
-    authorize(&f, risk::curve_buy(100, 1), signature(0));
-    finish(&mut f, risk::curve_buy(100, 1), 100, 100, 0);
+    f.authorize(risk::curve_buy(100, 1), signature(0));
+    f.finish(risk::curve_buy(100, 1), 100, 100, 0);
     f.clock.set_for_testing(110);
-    authorize(&f, risk::curve_buy(100, 1), signature(1));
-    finish(&mut f, risk::curve_buy(100, 1), 100, 100, 0);
-    end(f);
+    f.authorize(risk::curve_buy(100, 1), signature(1));
+    f.finish(risk::curve_buy(100, 1), 100, 100, 0);
+    f.end();
 }
 
 #[test]
@@ -73,11 +73,11 @@ fun token_bucket_refills_at_exact_boundary_without_changing_lifetime_spend() {
 fun token_bucket_rejects_one_millisecond_before_refill_boundary() {
     let limits = market_maker::with_rate_limits(default_limits(), 100, 100, 10, 10, 200, 200);
     let mut f = start(limits);
-    authorize(&f, risk::curve_buy(100, 1), signature(0));
-    finish(&mut f, risk::curve_buy(100, 1), 100, 100, 0);
+    f.authorize(risk::curve_buy(100, 1), signature(0));
+    f.finish(risk::curve_buy(100, 1), 100, 100, 0);
     f.clock.set_for_testing(109);
-    authorize(&f, risk::curve_buy(100, 1), signature(1));
-    end(f);
+    f.authorize(risk::curve_buy(100, 1), signature(1));
+    f.end();
 }
 
 #[test]
@@ -98,11 +98,11 @@ fun lifetime_spend_stays_exhausted_after_bucket_refill() {
         200,
     );
     let mut f = start(limits);
-    authorize(&f, risk::curve_buy(100, 1), signature(0));
-    finish(&mut f, risk::curve_buy(100, 1), 100, 100, 0);
+    f.authorize(risk::curve_buy(100, 1), signature(0));
+    f.finish(risk::curve_buy(100, 1), 100, 100, 0);
     f.clock.set_for_testing(200);
-    authorize(&f, risk::curve_buy(100, 1), signature(1));
-    end(f);
+    f.authorize(risk::curve_buy(100, 1), signature(1));
+    f.end();
 }
 
 #[test]
@@ -114,10 +114,10 @@ fun lifetime_spend_stays_exhausted_after_bucket_refill() {
 ]
 fun discretionary_limit_rejects_first_action_past_exact_limit() {
     let mut f = start(market_maker::trading_limits(100, 100, 200, 200, 0, 1));
-    authorize(&f, risk::curve_buy(100, 1), signature(0));
-    finish(&mut f, risk::curve_buy(100, 1), 100, 100, 0);
-    authorize(&f, risk::curve_buy(100, 1), signature(1));
-    end(f);
+    f.authorize(risk::curve_buy(100, 1), signature(0));
+    f.finish(risk::curve_buy(100, 1), 100, 100, 0);
+    f.authorize(risk::curve_buy(100, 1), signature(1));
+    f.end();
 }
 
 #[test]
@@ -130,11 +130,11 @@ fun discretionary_limit_rejects_first_action_past_exact_limit() {
 fun curve_basis_accepts_exact_limit_and_rejects_first_over() {
     let limits = market_maker::with_rate_limits(default_limits(), 200, 200, 0, 0, 100, 100);
     let mut f = start(limits);
-    authorize(&f, risk::curve_buy(100, 1), signature(0));
-    finish(&mut f, risk::curve_buy(100, 1), 100, 100, 0);
-    authorize(&f, risk::curve_buy(100, 1), signature(1));
-    finish(&mut f, risk::curve_buy(100, 1), 1, 1, 0);
-    end(f);
+    f.authorize(risk::curve_buy(100, 1), signature(0));
+    f.finish(risk::curve_buy(100, 1), 100, 100, 0);
+    f.authorize(risk::curve_buy(100, 1), signature(1));
+    f.finish(risk::curve_buy(100, 1), 1, 1, 0);
+    f.end();
 }
 
 #[test]
@@ -148,9 +148,9 @@ fun pool_basis_accepts_exact_limit_and_rejects_first_over() {
     let limits = market_maker::with_rate_limits(default_limits(), 200, 200, 0, 0, 100, 100);
     let mut f = start(limits);
     // Isolate the common post-venue receipt gate, without executing a Cetus stub.
-    finish(&mut f, risk::curve_buy(100, 1), 100, 0, 100);
-    finish(&mut f, risk::curve_buy(100, 1), 1, 0, 1);
-    end(f);
+    f.finish(risk::curve_buy(100, 1), 100, 0, 100);
+    f.finish(risk::curve_buy(100, 1), 1, 0, 1);
+    f.end();
 }
 
 #[test]
@@ -162,8 +162,8 @@ fun pool_basis_accepts_exact_limit_and_rejects_first_over() {
 ]
 fun quote_input_must_preserve_idle_floor_before_signature_verification() {
     let f = start(market_maker::trading_limits(100, 100, 200, 200, 18_999_901, 2));
-    authorize(&f, risk::curve_buy(100, 1), signature(0));
-    end(f);
+    f.authorize(risk::curve_buy(100, 1), signature(0));
+    f.end();
 }
 
 #[test]
@@ -175,11 +175,11 @@ fun quote_input_must_preserve_idle_floor_before_signature_verification() {
 ]
 fun clock_cannot_regress_after_successful_action() {
     let mut f = start(default_limits());
-    authorize(&f, risk::curve_buy(100, 1), signature(0));
-    finish(&mut f, risk::curve_buy(100, 1), 100, 100, 0);
-    let f = replace_with_synthetic_earlier_clock(f, 99);
-    authorize(&f, risk::curve_buy(100, 1), signature(1));
-    end(f);
+    f.authorize(risk::curve_buy(100, 1), signature(0));
+    f.finish(risk::curve_buy(100, 1), 100, 100, 0);
+    let f = f.replace_with_synthetic_earlier_clock(99);
+    f.authorize(risk::curve_buy(100, 1), signature(1));
+    f.end();
 }
 
 #[test]
@@ -191,8 +191,7 @@ fun clock_cannot_regress_after_successful_action() {
 ]
 fun discretionary_action_without_operator_uses_local_error() {
     let f = start(default_limits());
-    market_maker::authorize_action(
-        &f.vault,
+    f.vault.authorize_action(
         &f.version,
         option::none(),
         risk::curve_buy(100, 1),
@@ -201,39 +200,30 @@ fun discretionary_action_without_operator_uses_local_error() {
         &signature(0),
         &f.clock,
     );
-    end(f);
+    f.end();
 }
 
 #[test]
 #[expected_failure(abort_code = market_maker::EPaused, location = blast_market_maker::market_maker)]
 fun pause_blocks_discretionary_actions() {
     let mut f = start(default_limits());
-    pause(&mut f);
-    authorize(&f, risk::curve_buy(100, 1), signature(0));
-    end(f);
+    f.pause();
+    f.authorize(risk::curve_buy(100, 1), signature(0));
+    f.end();
 }
 
 #[test]
 fun signed_unwind_remains_available_paused_and_after_discretionary_exhaustion() {
     let mut f = start(market_maker::trading_limits(100, 100, 200, 200, 0, 1));
-    authorize(&f, risk::curve_buy(100, 1), signature(0));
-    finish(&mut f, risk::curve_buy(100, 1), 100, 100, 0);
-    pause(&mut f);
+    f.authorize(risk::curve_buy(100, 1), signature(0));
+    f.finish(risk::curve_buy(100, 1), 100, 100, 0);
+    f.pause();
     let Fixture { vault, version, clock, .. } = &mut f;
-    market_maker::activate_pool(vault, object::id_from_address(@0xFACE));
+    vault.activate_pool(object::id_from_address(@0xFACE));
     let action = risk::unwind(object::id_from_address(@0xCAFE), 1, 0, 0);
-    market_maker::authorize_action(
-        vault,
-        version,
-        option::none(),
-        action,
-        100,
-        200,
-        &unwind_signature(),
-        clock,
-    );
-    market_maker::finish_action(vault, action, 0, 0, 0, 0, clock);
-    end(f);
+    vault.authorize_action(version, option::none(), action, 100, 200, &unwind_signature(), clock);
+    vault.finish_action(action, 0, 0, 0, 0, clock);
+    f.end();
 }
 
 #[test]
@@ -245,8 +235,8 @@ fun signed_unwind_remains_available_paused_and_after_discretionary_exhaustion() 
 ]
 fun pool_action_cannot_authorize_in_curve_phase() {
     let f = start(default_limits());
-    authorize(&f, risk::pool_swap(0, 100, 1, 0, 1), signature(0));
-    end(f);
+    f.authorize(risk::pool_swap(0, 100, 1, 0, 1), signature(0));
+    f.end();
 }
 
 #[test]
@@ -254,15 +244,14 @@ fun pool_action_cannot_authorize_in_curve_phase() {
 fun restoring_signer_key_does_not_restore_old_epoch_signature() {
     let mut f = start(default_limits());
     let Fixture { vault, creator, version, .. } = &mut f;
-    market_maker::rotate_signer(vault, creator, version, vector::tabulate!(32, |_| 1));
-    market_maker::rotate_signer(
-        vault,
+    vault.rotate_signer(creator, version, vector::tabulate!(32, |_| 1));
+    vault.rotate_signer(
         creator,
         version,
         x"d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
     );
-    authorize(&f, risk::curve_buy(100, 1), signature(0));
-    end(f);
+    f.authorize(risk::curve_buy(100, 1), signature(0));
+    f.end();
 }
 
 #[test]
@@ -274,9 +263,9 @@ fun restoring_signer_key_does_not_restore_old_epoch_signature() {
 ]
 fun stale_generation_rejects_before_signature_verification() {
     let mut f = start(default_limits());
-    package_version::set_generation_for_testing(&mut f.version, 2);
-    authorize(&f, risk::curve_buy(100, 1), signature(0));
-    end(f);
+    f.version.set_generation_for_testing(2);
+    f.authorize(risk::curve_buy(100, 1), signature(0));
+    f.end();
 }
 
 #[test]
@@ -317,9 +306,8 @@ fun risk_window_rejects_first_millisecond_after_expiry() {
 ]
 fun paused_unwind_in_curve_phase_rejects_wrong_phase_before_any_pause_check() {
     let mut f = start(default_limits());
-    pause(&mut f);
-    market_maker::authorize_action(
-        &f.vault,
+    f.pause();
+    f.vault.authorize_action(
         &f.version,
         option::none(),
         risk::unwind(object::id_from_address(@0xCAFE), 1, 0, 0),
@@ -328,28 +316,26 @@ fun paused_unwind_in_curve_phase_rejects_wrong_phase_before_any_pause_check() {
         &unwind_signature(),
         &f.clock,
     );
-    end(f);
+    f.end();
 }
 
 #[test]
 fun event_reducer_reconciles_two_signed_actions_and_actual_fee_receipts() {
     let mut f = start(default_limits());
-    authorize(&f, risk::curve_buy(100, 1), signature(0));
-    finish(&mut f, risk::curve_buy(100, 1), 70, 70, 0);
-    market_maker::credit_curve_fees(
-        &mut f.vault,
+    f.authorize(risk::curve_buy(100, 1), signature(0));
+    f.finish(risk::curve_buy(100, 1), 70, 70, 0);
+    f.vault.credit_curve_fees(
         balance::create_for_testing<MEME>(5),
         balance::create_for_testing<SUI>(125),
     );
-    authorize(&f, risk::curve_buy(100, 1), signature(1));
-    finish(&mut f, risk::curve_buy(100, 1), 100, 100, 0);
-    market_maker::credit_curve_fees(
-        &mut f.vault,
+    f.authorize(risk::curve_buy(100, 1), signature(1));
+    f.finish(risk::curve_buy(100, 1), 100, 100, 0);
+    f.vault.credit_curve_fees(
         balance::create_for_testing<MEME>(5),
         balance::create_for_testing<SUI>(125),
     );
-    reconcile_action_and_fee_events(&f);
-    end(f);
+    f.reconcile_action_and_fee_events();
+    f.end();
 }
 
 #[test]
@@ -427,8 +413,7 @@ fun reconcile_action_and_fee_events(f: &Fixture) {
         available_quote,
         reserved_meme,
         reserved_quote,
-    ) = market_maker::fee_balances(
-        &f.vault,
+    ) = f.vault.fee_balances(
     );
     assert_eq!(available_meme, gross_meme);
     assert_eq!(available_quote, gross_quote);
@@ -436,7 +421,7 @@ fun reconcile_action_and_fee_events(f: &Fixture) {
     assert_eq!(reserved_quote, 0);
     assert_eq!(gross_meme, 10);
     assert_eq!(gross_quote, 250);
-    let (meme_capital, quote_capital) = market_maker::capital_for_testing(&f.vault);
+    let (meme_capital, quote_capital) = f.vault.capital_for_testing();
     assert_eq!(meme_capital, 1_000);
     assert_eq!(quote_capital, 19_000_000);
 }
@@ -469,8 +454,7 @@ fun verify_window(issued: u64, expires: u64, now: u64) {
 }
 
 fun authorize(f: &Fixture, action: risk::Action, signature: vector<u8>) {
-    market_maker::authorize_action(
-        &f.vault,
+    f.vault.authorize_action(
         &f.version,
         option::some(object::id(&f.operator)),
         action,
@@ -483,12 +467,12 @@ fun authorize(f: &Fixture, action: risk::Action, signature: vector<u8>) {
 
 fun finish(f: &mut Fixture, action: risk::Action, quote: u64, curve_basis: u64, pool_basis: u64) {
     let Fixture { vault, clock, .. } = f;
-    market_maker::finish_action(vault, action, 0, quote, curve_basis, pool_basis, clock);
+    vault.finish_action(action, 0, quote, curve_basis, pool_basis, clock);
 }
 
 fun pause(f: &mut Fixture) {
     let Fixture { vault, creator, version, .. } = f;
-    market_maker::set_paused(vault, creator, version, true);
+    vault.set_paused(creator, version, true);
 }
 
 /// RFC8032 public test seed; signatures bind exact deterministic Scenario IDs, types and Action.
@@ -533,14 +517,14 @@ fun start(limits: market_maker::TradingLimits): Fixture {
         &treasury,
         ctx,
     );
-    market_maker::set_trading_limits(&mut vault, limits);
+    vault.set_trading_limits(limits);
     let payment = coin::mint_for_testing<SUI>(20_000_000, ctx);
     coin::burn_for_testing(
-        market_maker::contribute_and_return_change(&mut vault, &version, payment, &clock, ctx),
+        vault.contribute_and_return_change(&version, payment, &clock, ctx),
     );
-    let funding = market_maker::charge_raise_fee_and_enter_curve(&mut vault, &version, &clock);
-    market_maker::join_capital(&mut vault, balance::create_for_testing<MEME>(1_000), funding);
-    market_maker::bind_external(&mut vault, object::id_from_address(@0xCAFE));
+    let funding = vault.charge_raise_fee_and_enter_curve(&version, &clock);
+    vault.join_capital(balance::create_for_testing<MEME>(1_000), funding);
+    vault.bind_external(object::id_from_address(@0xCAFE));
     destroy(treasury);
     destroy(policy);
     scenario.next_tx(ROOT);

@@ -58,16 +58,16 @@ def check() -> list[str]:
         if re.search(r"\bstruct\s+Witness\b", source):
             require(name in {"cetus_migrator", "presale_adapter"}, f"Unexpected migration witness in {name}")
             require("struct Witness() has drop;" in source, f"Witness must have a sealed positional constructor: {name}")
-        if re.search(r"\blaunch::(?:new|migrate|treasury_cap_mut)\s*(?:<|\()", source):
+        if re.search(r"\blaunch::(?:new|migrate|treasury_cap_mut)\s*(?:<|\()|\blaunch\.migrate\s*\(|\.treasury_cap_mut\s*\(", source):
             require(name == "cetus_migrator", f"Bonding seam used outside its adapter: {name}")
-        if re.search(r"\bpresale::(?:new|migrate)\s*(?:<|\()", source):
+        if re.search(r"\bpresale::(?:new|migrate)\s*(?:<|\()|\bsale\.migrate\s*\(", source):
             require(name == "presale_adapter", f"Presale seam used outside its adapter: {name}")
         if name in {"cetus_migrator", "presale_adapter"}:
             other = "presale_adapter" if name == "cetus_migrator" else "cetus_migrator"
             require(other not in source, f"Adapters must not depend on each other: {name}")
-        if re.search(r"\bpool::\w+\s*(?:<|\()", source):
+        if re.search(r"\bpool(?:::\w+|\.\w+)\s*(?:<|\()|\.(?:swap_pay_amount|add_liquidity_pay_amount)\s*\(", source):
             require(name == "cetus_engine", f"Pool execution must belong to shared engine: {name}")
-        if re.search(r"\blp_burn::\w+\s*(?:<|\()", source):
+        if re.search(r"\blp_burn::\w+\s*(?:<|\()|\.(?:collect_fee|burn_lp_v2)\s*\(", source):
             require(name == "cetus_engine", f"LP Burn execution must belong to shared engine: {name}")
         # Public production functions cannot return raw custody objects or witnesses.
         # Test-only fixture seams deliberately have separate compiler-only visibility.
@@ -97,7 +97,10 @@ def check() -> list[str]:
         signature = sources[adapter].split(f"public fun {function}<", 1)[1].split(") {", 1)[0]
         require("partner: &Partner" in signature, f"Required creator-selected partner omitted: {adapter}::{function}")
     for adapter, core in (("cetus_migrator", "launch"), ("presale_adapter", "presale")):
-        require(f"{core}::set_partner(" in sources[adapter], f"Core partner binding missing: {adapter}")
+        require(
+            f"{core}::set_partner(" in sources[adapter] or "initializer.set_partner(" in sources[adapter],
+            f"Core partner binding missing: {adapter}",
+        )
 
     # Reservation fixes tick spacing. A later fee-rate edit must not become a new
     # wrapper veto over an already funded/graduated migration. This is a source

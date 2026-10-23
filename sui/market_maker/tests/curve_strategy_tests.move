@@ -32,27 +32,26 @@ public struct Fixture {
 fun signed_public_curve_buy_sell_and_live_cap_fee_credit_preserve_custody() {
     let mut f = start();
     f.next_tx!(ROOT, |f| {
-        buy(f);
-        let (bought_meme, quote_after_buy) = market_maker::capital_for_testing(&f.vault);
+        f.buy();
+        let (bought_meme, quote_after_buy) = f.vault.capital_for_testing();
         assert!(bought_meme > SELL_INPUT);
         assert_eq!(quote_after_buy, 19_000_000 - BUY_INPUT);
-        sell(f);
-        let (meme_after_sell, quote_after_sell) = market_maker::capital_for_testing(&f.vault);
+        f.sell();
+        let (meme_after_sell, quote_after_sell) = f.vault.capital_for_testing();
         assert_eq!(meme_after_sell, bought_meme - SELL_INPUT);
         assert!(quote_after_sell > quote_after_buy);
         assert_eq!(sui::event::events_by_type<market_maker::BlastActionExecuted>().length(), 2);
-        let (_, creator_meme, _, creator_quote) = launch::fee_totals_for_testing(&f.launch);
+        let (_, creator_meme, _, creator_quote) = f.launch.fee_totals_for_testing();
         assert!(creator_meme > 0 && creator_quote > 0);
-        claim_and_escrow_cap(f);
-        credit_curve_fees(f);
-        let (meme_after_fees, quote_after_fees) = market_maker::capital_for_testing(&f.vault);
+        f.claim_and_escrow_cap();
+        f.credit_curve_fees();
+        let (meme_after_fees, quote_after_fees) = f.vault.capital_for_testing();
         let (
             available_meme,
             available_quote,
             reserved_meme,
             reserved_quote,
-        ) = market_maker::fee_balances(
-            &f.vault,
+        ) = f.vault.fee_balances(
         );
         assert_eq!(meme_after_fees, meme_after_sell);
         assert_eq!(quote_after_fees, quote_after_sell);
@@ -61,15 +60,15 @@ fun signed_public_curve_buy_sell_and_live_cap_fee_credit_preserve_custody() {
         assert_eq!(reserved_meme, 0);
         assert_eq!(reserved_quote, 0);
     });
-    end(f);
+    f.end();
 }
 
 #[test]
 #[expected_failure(abort_code = risk::EInvalidSignature, location = blast_market_maker::risk)]
 fun public_curve_buy_rejects_replay_before_spending_again() {
     let mut f = start();
-    f.next_tx!(ROOT, |f| { buy(f); buy(f); });
-    end(f);
+    f.next_tx!(ROOT, |f| { f.buy(); f.buy(); });
+    f.end();
 }
 
 #[test]
@@ -82,11 +81,11 @@ fun public_curve_buy_rejects_replay_before_spending_again() {
 fun reassigned_core_cap_cannot_credit_vault_creator_fees() {
     let mut f = start();
     f.next_tx!(ROOT, |f| {
-        claim_and_escrow_cap(f);
-        reassign_cap(f);
-        credit_curve_fees(f);
+        f.claim_and_escrow_cap();
+        f.reassign_cap();
+        f.credit_curve_fees();
     });
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -98,8 +97,8 @@ fun reassigned_core_cap_cannot_credit_vault_creator_fees() {
 ]
 fun immutable_market_maker_partner_rejects_a_different_object() {
     let mut f = start_with_partner(true, true);
-    f.next_tx!(ROOT, |f| { assert_wrong_partner(f); });
-    end(f);
+    f.next_tx!(ROOT, |f| { f.assert_wrong_partner(); });
+    f.end();
 }
 
 #[test]
@@ -111,7 +110,7 @@ fun immutable_market_maker_partner_rejects_a_different_object() {
 ]
 fun initializer_requires_upstream_partner_admission() {
     let f = start_with_partner(true, false);
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -120,31 +119,30 @@ fun finalized_partner_gets_core_fee_share_once_without_touching_creator_or_local
     let expected_partner: u64;
     let expected_treasury: u64;
     f.next_tx!(ROOT, |f| {
-        direct_core_buy(f);
-        let (_, creator_meme, protocol_quote, creator_quote) = launch::fee_totals_for_testing(
-            &f.launch,
+        f.direct_core_buy();
+        let (_, creator_meme, protocol_quote, creator_quote) = f.launch.fee_totals_for_testing(
         );
         assert!(protocol_quote > 0 && creator_quote > 0);
-        let sui_creation = launch::protocol_sui_for_testing(&f.launch);
+        let sui_creation = f.launch.protocol_sui_for_testing();
         assert_eq!(sui_creation, 1_000);
         let (
             meme_before,
             quote_before,
             reserve_meme_before,
             reserve_quote_before,
-        ) = market_maker::fee_balances(&f.vault);
-        claim_partner_fees(f);
+        ) = f.vault.fee_balances();
+        f.claim_partner_fees();
         let (
             protocol_meme_left,
             creator_meme_left,
             protocol_quote_left,
             creator_quote_left,
-        ) = launch::fee_totals_for_testing(&f.launch);
+        ) = f.launch.fee_totals_for_testing();
         assert_eq!(protocol_meme_left, 0);
         assert_eq!(protocol_quote_left, 0);
         assert_eq!(creator_meme_left, creator_meme);
         assert_eq!(creator_quote_left, creator_quote);
-        assert_eq!(launch::protocol_sui_for_testing(&f.launch), 0);
+        assert_eq!(f.launch.protocol_sui_for_testing(), 0);
         let payments = sui::event::events_by_type<partners::PartnerPaid<SUI>>();
         assert_eq!(payments.length(), 2);
         let mut paid = 0;
@@ -159,7 +157,7 @@ fun finalized_partner_gets_core_fee_share_once_without_touching_creator_or_local
             quote_after,
             reserve_meme_after,
             reserve_quote_after,
-        ) = market_maker::fee_balances(&f.vault);
+        ) = f.vault.fee_balances();
         assert_eq!(meme_after, meme_before);
         assert_eq!(quote_after, quote_before);
         assert_eq!(reserve_meme_after, reserve_meme_before);
@@ -167,25 +165,25 @@ fun finalized_partner_gets_core_fee_share_once_without_touching_creator_or_local
         expected_partner = paid;
         expected_treasury = protocol_quote + sui_creation - paid;
     });
-    f.next_tx!(@0xD, |f| { assert_eq!(take_two_sui(f), expected_partner); });
-    f.next_tx!(ROOT, |f| { assert_eq!(take_two_sui(f), expected_treasury); });
-    end(f);
+    f.next_tx!(@0xD, |f| { assert_eq!(f.take_two_sui(), expected_partner); });
+    f.next_tx!(ROOT, |f| { assert_eq!(f.take_two_sui(), expected_treasury); });
+    f.end();
 }
 
 #[test]
 #[expected_failure(abort_code = blast_fun::errors::ENothingAccrued, location = blast_fun::fees)]
 fun partner_protocol_fee_claim_cannot_pay_twice() {
     let mut f = start_with_partner(true, true);
-    f.next_tx!(ROOT, |f| { direct_core_buy(f); claim_partner_fees(f); claim_partner_fees(f); });
-    end(f);
+    f.next_tx!(ROOT, |f| { f.direct_core_buy(); f.claim_partner_fees(); f.claim_partner_fees(); });
+    f.end();
 }
 
 #[test]
 #[expected_failure(abort_code = blast_fun::errors::EPartnerMismatch, location = blast_fun::launch)]
 fun finalized_partner_cannot_be_omitted_from_core_protocol_fee_claim() {
     let mut f = start_with_partner(true, true);
-    f.next_tx!(ROOT, |f| { claim_without_partner(f); });
-    end(f);
+    f.next_tx!(ROOT, |f| { f.claim_without_partner(); });
+    f.end();
 }
 
 // === Test Helpers ===
@@ -194,8 +192,8 @@ fun take_two_sui(f: &Fixture): u64 {
     let first = f.scenario.take_from_sender<coin::Coin<SUI>>();
     let second = f.scenario.take_from_sender<coin::Coin<SUI>>();
     let total = first.value() + second.value();
-    coin::burn_for_testing(first);
-    coin::burn_for_testing(second);
+    first.burn_for_testing();
+    second.burn_for_testing();
     total
 }
 
@@ -228,29 +226,21 @@ fun committed_for_partner(partner: &Partner): cetus_migrator::CommittedTerms {
 fun assert_wrong_partner(f: &mut Fixture) {
     let wrong = partners::new_for_testing(@0xD, 4_000, f.scenario.ctx());
     let committed = committed_for_partner(f.partner.borrow());
-    cetus_migrator::assert_committed_partner(&committed, &wrong);
+    committed.assert_committed_partner(&wrong);
     destroy(wrong);
 }
 
 fun direct_core_buy(f: &mut Fixture) {
     let Fixture { launch, core_version, runtime, scenario, .. } = f;
     let payment = coin::mint_for_testing<SUI>(100_000, scenario.ctx());
-    let (meme, change) = launch::buy(
-        launch,
-        core_version,
-        runtime,
-        payment,
-        1,
-        scenario.ctx(),
-    );
-    coin::burn_for_testing(meme);
-    coin::burn_for_testing(change);
+    let (meme, change) = launch.buy(core_version, runtime, payment, 1, scenario.ctx());
+    meme.burn_for_testing();
+    change.burn_for_testing();
 }
 
 fun claim_partner_fees(f: &mut Fixture) {
     let Fixture { launch, core_version, runtime, partner, clock, scenario, .. } = f;
-    launch::claim_protocol_fees_with_partner(
-        launch,
+    launch.claim_protocol_fees_with_partner(
         core_version,
         runtime,
         partner.borrow(),
@@ -261,7 +251,7 @@ fun claim_partner_fees(f: &mut Fixture) {
 
 fun claim_without_partner(f: &mut Fixture) {
     let Fixture { launch, core_version, runtime, scenario, .. } = f;
-    launch::claim_protocol_fees(launch, core_version, runtime, scenario.ctx());
+    launch.claim_protocol_fees(core_version, runtime, scenario.ctx());
 }
 
 macro fun fixture_next_tx($fixture: &mut Fixture, $sender: address, $body: |&mut Fixture|) {
@@ -273,8 +263,7 @@ macro fun fixture_next_tx($fixture: &mut Fixture, $sender: address, $body: |&mut
 fun buy(f: &mut Fixture) {
     let Fixture { vault, launch, core_version, version, runtime, scenario, clock, operator, .. } =
         f;
-    cetus_migrator::buy(
-        vault,
+    vault.buy(
         version,
         operator,
         launch,
@@ -293,8 +282,7 @@ fun buy(f: &mut Fixture) {
 fun sell(f: &mut Fixture) {
     let Fixture { vault, launch, core_version, version, runtime, scenario, clock, operator, .. } =
         f;
-    cetus_migrator::sell(
-        vault,
+    vault.sell(
         version,
         operator,
         launch,
@@ -312,33 +300,25 @@ fun sell(f: &mut Fixture) {
 
 fun claim_and_escrow_cap(f: &mut Fixture) {
     let Fixture { vault, launch, core_version, version, runtime, scenario, clock, .. } = f;
-    let (cap, metadata) = launch::claim_creator_caps(
-        launch,
+    let (cap, metadata) = launch.claim_creator_caps(
         core_version,
         runtime,
         option::none(),
         clock,
         scenario.ctx(),
     );
-    cetus_migrator::escrow_curve_fee_cap(vault, version, launch, cap);
+    vault.escrow_curve_fee_cap(version, launch, cap);
     destroy(metadata);
 }
 
 fun credit_curve_fees(f: &mut Fixture) {
     let Fixture { vault, launch, core_version, version, scenario, .. } = f;
-    cetus_migrator::claim_and_credit_curve_fees(
-        vault,
-        version,
-        launch,
-        core_version,
-        scenario.ctx(),
-    );
+    vault.claim_and_credit_curve_fees(version, launch, core_version, scenario.ctx());
 }
 
 fun reassign_cap(f: &mut Fixture) {
     let Fixture { launch, core_version, scenario, .. } = f;
-    launch::reassign_curve_fee_cap(
-        launch,
+    launch.reassign_curve_fee_cap(
         core_version,
         &blast_acl::witness_for_testing<CreatorAdmin>(),
         ROOT,
@@ -402,8 +382,7 @@ fun start_with_partner(with_partner: bool, admitted: bool): Fixture {
         &treasury,
         ctx,
     );
-    market_maker::set_trading_limits(
-        &mut vault,
+    vault.set_trading_limits(
         market_maker::trading_limits(
             100_000_000_000_000,
             1_000_000,
@@ -415,10 +394,10 @@ fun start_with_partner(with_partner: bool, admitted: bool): Fixture {
     );
     let payment = coin::mint_for_testing<SUI>(20_000_000, ctx);
     coin::burn_for_testing(
-        market_maker::contribute_and_return_change(&mut vault, &version, payment, &clock, ctx),
+        vault.contribute_and_return_change(&version, payment, &clock, ctx),
     );
-    let funding = market_maker::charge_raise_fee_and_enter_curve(&mut vault, &version, &clock);
-    market_maker::join_capital(&mut vault, balance::zero<CURVE_STRATEGY_TESTS>(), funding);
+    let funding = vault.charge_raise_fee_and_enter_curve(&version, &clock);
+    vault.join_capital(balance::zero<CURVE_STRATEGY_TESTS>(), funding);
     let partner = if (with_partner) {
         let partner = partners::new_for_testing(@0xD, 4_000, ctx);
         if (admitted)
@@ -462,31 +441,21 @@ fun start_with_partner(with_partner: bool, admitted: bool): Fixture {
     );
     partner.do_ref!(|partner| {
         let committed = committed_for_partner(partner);
-        cetus_migrator::apply_committed_partner(
-            &mut initializer,
-            &committed,
-            &core_version,
-            &config,
-            partner,
-            &clock,
-        );
+        initializer.apply_committed_partner(&committed, &core_version, &config, partner, &clock);
     });
-    launch::set_virtual_quote(&mut initializer, &core_version, 5_000_000);
-    launch::set_graduation_target(&mut initializer, &core_version, 25_000_000);
-    launch::set_allocation_plan(
-        &mut initializer,
+    initializer.set_virtual_quote(&core_version, 5_000_000);
+    initializer.set_graduation_target(&core_version, 25_000_000);
+    initializer.set_allocation_plan(
         &core_version,
         allocation::plan(bps::new(8_000), bps::new(2_000), bps::new(10_000), vector[]),
     );
-    launch::set_lp_fee_split(
-        &mut initializer,
+    initializer.set_lp_fee_split(
         &core_version,
         allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), bps::new(0), vector[]),
     );
     let creation_fee = if (with_partner) coin::mint_for_testing<SUI>(1_000, scenario.ctx())
     else coin::zero<SUI>(scenario.ctx());
-    let launch = launch::finalize(
-        initializer,
+    let launch = initializer.finalize(
         &core_version,
         &mut currency,
         &config,
@@ -494,9 +463,9 @@ fun start_with_partner(with_partner: bool, admitted: bool): Fixture {
         scenario.ctx(),
     );
     test_scenario::return_to_address(@0xc, currency);
-    market_maker::bind_external(&mut vault, object::id(&launch));
+    vault.bind_external(object::id(&launch));
     let launch_id = object::id(&launch);
-    launch::share(launch, &core_version, &clock);
+    launch.share(&core_version, &clock);
     scenario.next_tx(ROOT);
     let launch = scenario.take_shared_by_id<Launch<CURVE_STRATEGY_TESTS, SUI>>(launch_id);
     let operator = scenario.take_from_sender<BlastMarketMakerOperatorCap>();
@@ -563,3 +532,9 @@ use sui::{
     test_scenario::{Self, Scenario},
     test_utils,
 };
+
+use fun cetus_migrator::apply_committed_partner as blast_fun::launch::LaunchInitializer.apply_committed_partner;
+use fun cetus_migrator::buy as BlastMarketMakerVault.buy;
+use fun cetus_migrator::claim_and_credit_curve_fees as BlastMarketMakerVault.claim_and_credit_curve_fees;
+use fun cetus_migrator::escrow_curve_fee_cap as BlastMarketMakerVault.escrow_curve_fee_cap;
+use fun cetus_migrator::sell as BlastMarketMakerVault.sell;

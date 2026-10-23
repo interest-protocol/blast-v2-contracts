@@ -26,19 +26,19 @@ public struct Fixture {
 fun authentic_production_wrap_activates_usable_local_generation() {
     let f = start();
     f.version.assert_current();
-    end(f);
+    f.end();
 }
 
 #[test]
 fun native_commit_preserves_active_generation_and_repair_authority() {
     let mut f = start_with_nonzero_native_cap();
-    grant_upgrade_role(&mut f);
-    commit_native_upgrade(&mut f, 1);
+    f.grant_upgrade_role();
+    f.commit_native_upgrade(1);
     f.version.assert_current();
     // A wrong new build has not changed operational generation. Old code can commit a repair.
-    commit_native_upgrade(&mut f, 2);
+    f.commit_native_upgrade(2);
     f.version.assert_current();
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -50,11 +50,11 @@ fun native_commit_preserves_active_generation_and_repair_authority() {
 ]
 fun next_generation_activation_rejects_old_generation_bytecode_after_cutover() {
     let mut f = start_with_nonzero_native_cap();
-    grant_upgrade_role(&mut f);
-    commit_native_upgrade(&mut f, 1);
-    activate_fixture_generation(&mut f, 2);
+    f.grant_upgrade_role();
+    f.commit_native_upgrade(1);
+    f.activate_fixture_generation(2);
     f.version.assert_current();
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -66,10 +66,10 @@ fun next_generation_activation_rejects_old_generation_bytecode_after_cutover() {
 ]
 fun activation_rejects_skipped_compiled_generation() {
     let mut f = start_with_nonzero_native_cap();
-    grant_upgrade_role(&mut f);
-    commit_native_upgrade(&mut f, 1);
-    activate_fixture_generation(&mut f, 3);
-    end(f);
+    f.grant_upgrade_role();
+    f.commit_native_upgrade(1);
+    f.activate_fixture_generation(3);
+    f.end();
 }
 
 #[test]
@@ -81,10 +81,10 @@ fun activation_rejects_skipped_compiled_generation() {
 ]
 fun active_old_bytecode_cannot_activate_a_new_generation() {
     let mut f = start_with_nonzero_native_cap();
-    grant_upgrade_role(&mut f);
-    commit_native_upgrade(&mut f, 1);
-    activate_production_generation(&mut f);
-    end(f);
+    f.grant_upgrade_role();
+    f.commit_native_upgrade(1);
+    f.activate_production_generation();
+    f.end();
 }
 
 #[test]
@@ -96,9 +96,9 @@ fun active_old_bytecode_cannot_activate_a_new_generation() {
 ]
 fun next_generation_requires_committed_native_upgrade() {
     let mut f = start_with_nonzero_native_cap();
-    grant_upgrade_role(&mut f);
-    activate_fixture_generation(&mut f, 2);
-    end(f);
+    f.grant_upgrade_role();
+    f.activate_fixture_generation(2);
+    f.end();
 }
 
 #[test]
@@ -110,11 +110,11 @@ fun next_generation_requires_committed_native_upgrade() {
 ]
 fun operational_activation_cannot_reuse_same_committed_native_revision() {
     let mut f = start_with_nonzero_native_cap();
-    grant_upgrade_role(&mut f);
-    commit_native_upgrade(&mut f, 1);
-    activate_fixture_generation(&mut f, 2);
-    activate_fixture_generation(&mut f, 2);
-    end(f);
+    f.grant_upgrade_role();
+    f.commit_native_upgrade(1);
+    f.activate_fixture_generation(2);
+    f.activate_fixture_generation(2);
+    f.end();
 }
 
 #[test]
@@ -126,9 +126,9 @@ fun operational_activation_cannot_reuse_same_committed_native_revision() {
 ]
 fun upgrade_digest_must_be_exactly_32_bytes() {
     let mut f = start();
-    grant_upgrade_role(&mut f);
-    authorize_fixture_digest(&mut f, vector[1]);
-    end(f);
+    f.grant_upgrade_role();
+    f.authorize_fixture_digest(vector[1]);
+    f.end();
 }
 
 #[test]
@@ -185,10 +185,10 @@ fun ordinary_drop_type_cannot_seed_initial_generation() {
 ]
 fun revoked_blast_admin_cannot_authorize_a_native_upgrade() {
     let mut f = start_with_nonzero_native_cap();
-    grant_upgrade_role(&mut f);
-    revoke_fixture_admin(&mut f);
-    authorize_fixture_digest(&mut f, vector::tabulate!(32, |_| 1));
-    end(f);
+    f.grant_upgrade_role();
+    f.revoke_fixture_admin();
+    f.authorize_fixture_digest(vector::tabulate!(32, |_| 1));
+    f.end();
 }
 
 #[test]
@@ -200,9 +200,9 @@ fun revoked_blast_admin_cannot_authorize_a_native_upgrade() {
 ]
 fun blast_fee_role_does_not_authorize_native_upgrades() {
     let mut f = start_with_nonzero_native_cap();
-    grant_fee_role(&mut f);
-    authorize_fixture_digest(&mut f, vector::tabulate!(32, |_| 1));
-    end(f);
+    f.grant_fee_role();
+    f.authorize_fixture_digest(vector::tabulate!(32, |_| 1));
+    f.end();
 }
 
 #[test]
@@ -214,9 +214,9 @@ fun blast_fee_role_does_not_authorize_native_upgrades() {
 ]
 fun upgrade_witness_cannot_substitute_another_custody_object() {
     let mut f = start_with_nonzero_native_cap();
-    grant_upgrade_role(&mut f);
-    authorize_foreign_custody(&mut f);
-    end(f);
+    f.grant_upgrade_role();
+    f.authorize_foreign_custody();
+    f.end();
 }
 
 #[test]
@@ -228,9 +228,9 @@ fun upgrade_witness_cannot_substitute_another_custody_object() {
 ]
 fun witness_signed_in_before_cutover_cannot_bypass_old_bytecode_gate() {
     let mut f = start_with_nonzero_native_cap();
-    grant_upgrade_role(&mut f);
-    stale_witness_after_cutover(&mut f);
-    end(f);
+    f.grant_upgrade_role();
+    f.stale_witness_after_cutover();
+    f.end();
 }
 
 // === Test Helpers ===
@@ -246,29 +246,19 @@ fun grant_fee_role(f: &mut Fixture) {
 fun authorize_foreign_custody(f: &mut Fixture) {
     let cap = package::test_publish(object::id_from_address(@0xB01), f.scenario.ctx());
     let mut foreign = package_admin::new_for_testing(cap, f.scenario.ctx());
-    let witness = upgrade_witness(f);
+    let witness = f.upgrade_witness();
     destroy(
-        package_admin::authorize_upgrade(
-            &mut foreign,
-            &f.version,
-            &witness,
-            vector::tabulate!(32, |_| 1),
-        ),
+        foreign.authorize_upgrade(&f.version, &witness, vector::tabulate!(32, |_| 1)),
     );
     destroy(foreign);
 }
 
 fun stale_witness_after_cutover(f: &mut Fixture) {
-    let witness = upgrade_witness(f);
-    commit_native_upgrade(f, 1);
-    activate_fixture_generation(f, 2);
+    let witness = f.upgrade_witness();
+    f.commit_native_upgrade(1);
+    f.activate_fixture_generation(2);
     destroy(
-        package_admin::authorize_upgrade(
-            &mut f.custody,
-            &f.version,
-            &witness,
-            vector::tabulate!(32, |_| 2),
-        ),
+        f.custody.authorize_upgrade(&f.version, &witness, vector::tabulate!(32, |_| 2)),
     );
 }
 
@@ -281,41 +271,30 @@ fun upgrade_witness(f: &Fixture): AdminWitness<UpgradeAdmin> {
 }
 
 fun authorize_fixture_digest(f: &mut Fixture, digest: vector<u8>) {
-    let witness = upgrade_witness(f);
-    destroy(package_admin::authorize_upgrade(&mut f.custody, &f.version, &witness, digest));
+    let witness = f.upgrade_witness();
+    destroy(f.custody.authorize_upgrade(&f.version, &witness, digest));
 }
 
 fun commit_native_upgrade(f: &mut Fixture, digest_byte: u8) {
-    let witness = upgrade_witness(f);
-    let ticket = package_admin::authorize_upgrade(
-        &mut f.custody,
+    let witness = f.upgrade_witness();
+    let ticket = f.custody.authorize_upgrade(
         &f.version,
         &witness,
         vector::tabulate!(32, |_| digest_byte),
     );
-    package_admin::commit_upgrade(
-        &mut f.custody,
-        &f.version,
-        &witness,
-        package::test_upgrade(ticket),
-    );
+    f.custody.commit_upgrade(&f.version, &witness, package::test_upgrade(ticket));
 }
 
 // The parameterized compiled-generation seam uses the production custody/fresh-native guard.
 // It does not claim two separately compiled Move packages ran in one unit-test module.
 fun activate_fixture_generation(f: &mut Fixture, compiled_generation: u64) {
-    let witness = upgrade_witness(f);
-    package_admin::activate_generation_for_testing(
-        &mut f.custody,
-        &mut f.version,
-        &witness,
-        compiled_generation,
-    );
+    let witness = f.upgrade_witness();
+    f.custody.activate_generation_for_testing(&mut f.version, &witness, compiled_generation);
 }
 
 fun activate_production_generation(f: &mut Fixture) {
-    let witness = upgrade_witness(f);
-    package_admin::activate_generation(&mut f.custody, &mut f.version, &witness);
+    let witness = f.upgrade_witness();
+    f.custody.activate_generation(&mut f.version, &witness);
 }
 
 fun additive_only_cap_cannot_activate_operational_cutover_protocol_setup() {
@@ -329,7 +308,7 @@ fun additive_only_cap_cannot_activate_operational_cutover_protocol_setup() {
         scenario.ctx(),
     );
     package::only_additive_upgrades(&mut cap);
-    package_admin::wrap(bootstrap, cap, scenario.ctx());
+    bootstrap.wrap(cap, scenario.ctx());
     scenario.end();
 }
 
@@ -340,7 +319,7 @@ fun foreign_native_upgrade_cap_cannot_activate_protocol_setup() {
     scenario.next_tx(ROOT);
     let bootstrap = scenario.take_from_sender<Bootstrap>();
     let cap = package::test_publish(object::id_from_address(@0xCAFE), scenario.ctx());
-    package_admin::wrap(bootstrap, cap, scenario.ctx());
+    bootstrap.wrap(cap, scenario.ctx());
     scenario.end();
 }
 
@@ -351,7 +330,7 @@ fun publisher_from_another_module_cannot_activate_protocol_setup() {
     scenario.next_tx(ROOT);
     let bootstrap = scenario.take_from_sender<Bootstrap>();
     let cap = package::test_publish(object::id_from_address(@blast_market_maker), scenario.ctx());
-    package_admin::wrap(bootstrap, cap, scenario.ctx());
+    bootstrap.wrap(cap, scenario.ctx());
     scenario.end();
 }
 
@@ -373,7 +352,7 @@ fun start(): Fixture {
     let admin = scenario.take_from_sender<AdminCap>();
     let bootstrap = scenario.take_from_sender<Bootstrap>();
     let cap = package::test_publish(object::id_from_address(@blast_market_maker), scenario.ctx());
-    package_admin::wrap(bootstrap, cap, scenario.ctx());
+    bootstrap.wrap(cap, scenario.ctx());
     scenario.next_tx(ROOT);
     let version = scenario.take_shared<PackageVersion>();
     let custody = scenario.take_shared<PackageAdmin>();
@@ -439,3 +418,5 @@ use blast_market_maker::{
 };
 use std::unit_test::destroy;
 use sui::{package::{Self, Publisher}, test_scenario::{Self, Scenario}, test_utils};
+
+use fun package_admin::wrap as Bootstrap.wrap;

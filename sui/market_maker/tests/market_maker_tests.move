@@ -54,16 +54,16 @@ public struct Fixture {
 #[test]
 fun new_backer_can_fill_one_atom_tail_without_inflating_weight() {
     let mut f = start(10_000_001);
-    assert_eq!(contribute(&mut f, ALICE, 10_000_000), 0);
-    assert_eq!(contribute(&mut f, BOB, 10_000_000), 9_999_999);
+    assert_eq!(f.contribute(ALICE, 10_000_000), 0);
+    assert_eq!(f.contribute(BOB, 10_000_000), 9_999_999);
     f.next_tx!(ROOT, |f| {
-        let vault = take_vault(f);
-        assert_eq!(market_maker::weight_for_testing(&vault, ALICE), 10_000_000);
-        assert_eq!(market_maker::weight_for_testing(&vault, BOB), 1);
-        assert_eq!(market_maker::total_weight_for_testing(&vault), 10_000_001);
-        return_vault(vault);
+        let vault = f.take_vault();
+        assert_eq!(vault.weight_for_testing(ALICE), 10_000_000);
+        assert_eq!(vault.weight_for_testing(BOB), 1);
+        assert_eq!(vault.total_weight_for_testing(), 10_000_001);
+        vault.return_vault();
     });
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -75,28 +75,28 @@ fun new_backer_can_fill_one_atom_tail_without_inflating_weight() {
 ]
 fun cheap_new_address_cannot_consume_backer_capacity() {
     let mut f = start(100_000_000_001);
-    let _ = contribute(&mut f, ALICE, 10_000_000);
-    end(f);
+    let _ = f.contribute(ALICE, 10_000_000);
+    f.end();
 }
 
 #[test]
 fun existing_backer_can_top_up_one_atom_and_refund_full_principal_at_deadline() {
     let mut f = start(20_000_000);
-    let _ = contribute(&mut f, ALICE, 10_000_000);
-    let _ = contribute(&mut f, ALICE, 1);
+    let _ = f.contribute(ALICE, 10_000_000);
+    let _ = f.contribute(ALICE, 1);
     f.clock.set_for_testing(DEADLINE);
     f.next_tx!(ALICE, |f| {
-        let mut vault = take_vault(f);
-        market_maker::begin_refunding(&mut vault, &f.version, &f.clock);
-        let refund = market_maker::refund(&mut vault, &f.version, f.ctx!());
+        let mut vault = f.take_vault();
+        vault.begin_refunding(&f.version, &f.clock);
+        let refund = vault.refund(&f.version, f.ctx!());
         assert_eq!(refund.value(), 10_000_001);
-        coin::burn_for_testing(refund);
+        refund.burn_for_testing();
         let (m, q, rm, rq) = vault.fee_balances();
         assert!(m == 0 && q == 0 && rm == 0 && rq == 0);
-        assert_eq!(market_maker::weight_for_testing(&vault, ALICE), 0);
-        return_vault(vault);
+        assert_eq!(vault.weight_for_testing(ALICE), 0);
+        vault.return_vault();
     });
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -108,16 +108,16 @@ fun existing_backer_can_top_up_one_atom_and_refund_full_principal_at_deadline() 
 ]
 fun refund_cannot_be_claimed_twice() {
     let mut f = start(20_000_000);
-    let _ = contribute(&mut f, ALICE, 10_000_000);
+    let _ = f.contribute(ALICE, 10_000_000);
     f.clock.set_for_testing(DEADLINE);
     f.next_tx!(ALICE, |f| {
-        let mut vault = take_vault(f);
-        market_maker::begin_refunding(&mut vault, &f.version, &f.clock);
-        coin::burn_for_testing(market_maker::refund(&mut vault, &f.version, f.ctx!()));
-        coin::burn_for_testing(market_maker::refund(&mut vault, &f.version, f.ctx!()));
-        return_vault(vault);
+        let mut vault = f.take_vault();
+        vault.begin_refunding(&f.version, &f.clock);
+        coin::burn_for_testing(vault.refund(&f.version, f.ctx!()));
+        coin::burn_for_testing(vault.refund(&f.version, f.ctx!()));
+        vault.return_vault();
     });
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -129,33 +129,32 @@ fun refund_cannot_be_claimed_twice() {
 ]
 fun launch_cannot_take_full_funding_at_exact_deadline() {
     let mut f = start(20_000_000);
-    let _ = contribute(&mut f, ALICE, 20_000_000);
+    let _ = f.contribute(ALICE, 20_000_000);
     f.clock.set_for_testing(DEADLINE);
-    activate_curve(&mut f);
-    end(f);
+    f.activate_curve();
+    f.end();
 }
 
 #[test]
 fun curve_raise_fee_and_lp_deduction_are_separate_from_creator_and_backer_fees() {
     let mut f = start(20_000_000);
-    let _ = contribute(&mut f, ALICE, 20_000_000);
-    activate_curve(&mut f);
+    let _ = f.contribute(ALICE, 20_000_000);
+    f.activate_curve();
     f.next_tx!(ROOT, |f| {
-        set_rates(f, 2_000, 2_000);
-        let mut vault = take_vault(f);
-        market_maker::credit_lp_fees(
-            &mut vault,
+        f.set_rates(2_000, 2_000);
+        let mut vault = f.take_vault();
+        vault.credit_lp_fees(
             &f.version,
             &f.policy,
             &mut f.treasury,
             balance::create_for_testing<MEME>(11),
             balance::create_for_testing<SUI>(101),
         );
-        assert_eq!(protocol_treasury::balance_for_testing<MEME>(&f.treasury), 3);
-        assert_eq!(protocol_treasury::balance_for_testing<SUI>(&f.treasury), 21);
+        assert_eq!(f.treasury.balance_for_testing<MEME>(), 3);
+        assert_eq!(f.treasury.balance_for_testing<SUI>(), 21);
         let (m, q, rm, rq) = vault.fee_balances();
         assert!(m == 8 && q == 80 && rm == 0 && rq == 0);
-        let creator = take_sender<BlastMarketMakerCreatorCap>(f);
+        let creator = f.take_sender<BlastMarketMakerCreatorCap>();
         let (kept_meme, kept_quote) = vault.allocate_fees(
             &creator,
             &f.version,
@@ -164,63 +163,61 @@ fun curve_raise_fee_and_lp_deduction_are_separate_from_creator_and_backer_fees()
             f.ctx!(),
         );
         assert!(kept_meme.value() == 1 && kept_quote.value() == 10);
-        coin::burn_for_testing(kept_meme);
-        coin::burn_for_testing(kept_quote);
-        let (meme, quote) = market_maker::capital_for_testing(&vault);
+        kept_meme.burn_for_testing();
+        kept_quote.burn_for_testing();
+        let (meme, quote) = vault.capital_for_testing();
         assert!(meme == 4 && quote == 19_000_006);
-        market_maker::credit_raise_fees_to_treasury(&mut vault, &f.version, &mut f.treasury);
-        assert_eq!(protocol_treasury::balance_for_testing<SUI>(&f.treasury), 1_000_021);
-        return_sender(f, creator);
-        return_vault(vault);
+        vault.credit_raise_fees_to_treasury(&f.version, &mut f.treasury);
+        assert_eq!(f.treasury.balance_for_testing<SUI>(), 1_000_021);
+        f.return_sender(creator);
+        vault.return_vault();
     });
     f.next_tx!(ALICE, |f| {
-        let mut vault = take_vault(f);
+        let mut vault = f.take_vault();
         let (meme, quote) = vault.claim_fees(&f.version, f.ctx!());
         assert!(meme.value() == 2 && quote.value() == 63);
-        coin::burn_for_testing(meme);
-        coin::burn_for_testing(quote);
+        meme.burn_for_testing();
+        quote.burn_for_testing();
         let (m, q, rm, rq) = vault.fee_balances();
         assert!(m == 0 && q == 0 && rm == 1 && rq == 1);
-        return_vault(vault);
+        vault.return_vault();
     });
-    end(f);
+    f.end();
 }
 
 #[test]
 fun tiny_lp_receipt_can_be_all_local_deduction_without_unfunded_backer_rights() {
     let mut f = start(20_000_000);
-    let _ = contribute(&mut f, ALICE, 20_000_000);
-    activate_curve(&mut f);
+    let _ = f.contribute(ALICE, 20_000_000);
+    f.activate_curve();
     f.next_tx!(ROOT, |f| {
-        set_rates(f, 1, 1);
-        let mut vault = take_vault(f);
-        market_maker::credit_lp_fees(
-            &mut vault,
+        f.set_rates(1, 1);
+        let mut vault = f.take_vault();
+        vault.credit_lp_fees(
             &f.version,
             &f.policy,
             &mut f.treasury,
             balance::zero<MEME>(),
             balance::create_for_testing<SUI>(1),
         );
-        assert_eq!(protocol_treasury::balance_for_testing<SUI>(&f.treasury), 1);
+        assert_eq!(f.treasury.balance_for_testing<SUI>(), 1);
         let (m, q, rm, rq) = vault.fee_balances();
         assert!(m == 0 && q == 0 && rm == 0 && rq == 0);
-        return_vault(vault);
+        vault.return_vault();
     });
-    end(f);
+    f.end();
 }
 
 #[test]
 #[expected_failure(abort_code = risk::EInvalidSignatureShape, location = blast_market_maker::risk)]
 fun full_action_signature_is_required_before_any_capital_movement() {
     let mut f = start(20_000_000);
-    let _ = contribute(&mut f, ALICE, 20_000_000);
-    activate_curve(&mut f);
+    let _ = f.contribute(ALICE, 20_000_000);
+    f.activate_curve();
     f.next_tx!(ROOT, |f| {
-        let vault = take_vault(f);
-        let cap = take_sender<BlastMarketMakerOperatorCap>(f);
-        market_maker::authorize_action(
-            &vault,
+        let vault = f.take_vault();
+        let cap = f.take_sender<BlastMarketMakerOperatorCap>();
+        vault.authorize_action(
             &f.version,
             option::some(object::id(&cap)),
             risk::curve_buy(1, 1),
@@ -229,10 +226,10 @@ fun full_action_signature_is_required_before_any_capital_movement() {
             &vector[],
             &f.clock,
         );
-        return_vault(vault);
-        return_sender(f, cap);
+        vault.return_vault();
+        f.return_sender(cap);
     });
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -244,13 +241,12 @@ fun full_action_signature_is_required_before_any_capital_movement() {
 ]
 fun gross_input_limit_rejects_before_malformed_signature() {
     let mut f = start(20_000_000);
-    let _ = contribute(&mut f, ALICE, 20_000_000);
-    activate_curve(&mut f);
+    let _ = f.contribute(ALICE, 20_000_000);
+    f.activate_curve();
     f.next_tx!(ROOT, |f| {
-        let vault = take_vault(f);
-        let cap = take_sender<BlastMarketMakerOperatorCap>(f);
-        market_maker::authorize_action(
-            &vault,
+        let vault = f.take_vault();
+        let cap = f.take_sender<BlastMarketMakerOperatorCap>();
+        vault.authorize_action(
             &f.version,
             option::some(object::id(&cap)),
             risk::curve_buy(10_000_001, 1),
@@ -259,10 +255,10 @@ fun gross_input_limit_rejects_before_malformed_signature() {
             &vector[],
             &f.clock,
         );
-        return_vault(vault);
-        return_sender(f, cap);
+        vault.return_vault();
+        f.return_sender(cap);
     });
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -367,24 +363,24 @@ fun full_unwind_can_finish_below_idle_floor_and_advances_nonce() {
         20_000_000,
         market_maker::trading_limits(10_000_000, 10_000_000, 100_000_000, 100_000_000, 1, 1),
     );
-    let _ = contribute(&mut f, ALICE, 20_000_000);
-    activate_curve(&mut f);
+    let _ = f.contribute(ALICE, 20_000_000);
+    f.activate_curve();
     f.next_tx!(ROOT, |f| {
-        let mut vault = take_vault(f);
-        market_maker::activate_pool(&mut vault, object::id_from_address(@0xFACE));
-        balance::destroy_for_testing(market_maker::take_capital_quote(&mut vault, 19_000_000));
+        let mut vault = f.take_vault();
+        vault.activate_pool(object::id_from_address(@0xFACE));
+        balance::destroy_for_testing(vault.take_capital_quote(19_000_000));
         let action = risk::unwind(object::id_from_address(@0xCAFE), 1, 0, 0);
-        let before = market_maker::signing_bytes(&vault, action, 100, 200);
+        let before = vault.signing_bytes(action, 100, 200);
         // The production venue adapter has already verified the signature and retained removal output.
         // This regression isolates the post-execution ledger gate; it does not execute a venue stub.
-        market_maker::finish_action(&mut vault, action, 0, 0, 0, 0, &f.clock);
-        let after = market_maker::signing_bytes(&vault, action, 100, 200);
+        vault.finish_action(action, 0, 0, 0, 0, &f.clock);
+        let after = vault.signing_bytes(action, 100, 200);
         assert!(before != after);
-        let (meme, quote) = market_maker::capital_for_testing(&vault);
+        let (meme, quote) = vault.capital_for_testing();
         assert!(meme == 0 && quote == 0);
-        return_vault(vault);
+        vault.return_vault();
     });
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -399,14 +395,13 @@ fun ordinary_removal_cannot_finish_below_idle_floor() {
         20_000_000,
         market_maker::trading_limits(10_000_000, 10_000_000, 100_000_000, 100_000_000, 1, 1),
     );
-    let _ = contribute(&mut f, ALICE, 20_000_000);
-    activate_curve(&mut f);
+    let _ = f.contribute(ALICE, 20_000_000);
+    f.activate_curve();
     f.next_tx!(ROOT, |f| {
-        let mut vault = take_vault(f);
-        market_maker::activate_pool(&mut vault, object::id_from_address(@0xFACE));
-        balance::destroy_for_testing(market_maker::take_capital_quote(&mut vault, 19_000_000));
-        market_maker::finish_action(
-            &mut vault,
+        let mut vault = f.take_vault();
+        vault.activate_pool(object::id_from_address(@0xFACE));
+        balance::destroy_for_testing(vault.take_capital_quote(19_000_000));
+        vault.finish_action(
             risk::remove(object::id_from_address(@0xCAFE), 1, 0, 0),
             0,
             0,
@@ -414,9 +409,9 @@ fun ordinary_removal_cannot_finish_below_idle_floor() {
             0,
             &f.clock,
         );
-        return_vault(vault);
+        vault.return_vault();
     });
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -429,15 +424,15 @@ fun opening_signature_commits_to_ticks_inputs_and_minimum_liquidity() {
     assert!(
         lower != changed_tick && lower != changed_meme && lower != changed_quote && lower != changed_liquidity,
     );
-    let (meme, quote) = risk::inputs(lower);
+    let (meme, quote) = lower.inputs();
     assert!(meme == 100 && quote == 200);
 }
 
 #[test]
 fun external_binding_event_replays_exact_curve_launch_identity() {
     let mut f = start(20_000_000);
-    let _ = contribute(&mut f, ALICE, 20_000_000);
-    activate_curve(&mut f);
+    let _ = f.contribute(ALICE, 20_000_000);
+    f.activate_curve();
     let events = sui::event::events_by_type<market_maker::BlastExternalBound>();
     assert_eq!(events.length(), 1);
     let expected = ExternalBoundPayload {
@@ -445,7 +440,7 @@ fun external_binding_event_replays_exact_curve_launch_identity() {
         external_id: object::id_from_address(@0xCAFE),
     };
     assert_eq!(std::bcs::to_bytes(&events[0]), std::bcs::to_bytes(&expected));
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -456,11 +451,10 @@ fun direct_only_fees_remain_unallocated_until_creator_chooses() {
         market_maker::trading_limits(100, 100, 1_000, 1_000, 0, 10),
     );
     f.next_tx!(ROOT, |f| {
-        let mut vault = take_vault(f);
-        market_maker::bind_external(&mut vault, object::id_from_address(@0xCAFE));
-        market_maker::activate_pool(&mut vault, object::id_from_address(@0xFACE));
-        market_maker::credit_curve_fees(
-            &mut vault,
+        let mut vault = f.take_vault();
+        vault.bind_external(object::id_from_address(@0xCAFE));
+        vault.activate_pool(object::id_from_address(@0xFACE));
+        vault.credit_curve_fees(
             balance::create_for_testing<MEME>(7),
             balance::create_for_testing<SUI>(100),
         );
@@ -474,7 +468,7 @@ fun direct_only_fees_remain_unallocated_until_creator_chooses() {
         assert_eq!(std::bcs::to_bytes(&events[0]), std::bcs::to_bytes(&expected));
         let (m, q, rm, rq) = vault.fee_balances();
         assert!(m == 7 && q == 100 && rm == 0 && rq == 0);
-        let creator = take_sender<BlastMarketMakerCreatorCap>(f);
+        let creator = f.take_sender<BlastMarketMakerCreatorCap>();
         let (meme, quote) = vault.allocate_fees(
             &creator,
             &f.version,
@@ -483,35 +477,35 @@ fun direct_only_fees_remain_unallocated_until_creator_chooses() {
             f.ctx!(),
         );
         assert!(meme.value() == 2 && quote.value() == 20);
-        coin::burn_for_testing(meme);
-        coin::burn_for_testing(quote);
-        let (cm, cq) = market_maker::capital_for_testing(&vault);
+        meme.burn_for_testing();
+        quote.burn_for_testing();
+        let (cm, cq) = vault.capital_for_testing();
         assert!(cm == 5 && cq == 80);
-        return_sender(f, creator);
-        return_vault(vault);
+        f.return_sender(creator);
+        vault.return_vault();
     });
-    end(f);
+    f.end();
 }
 
 #[test]
 fun zero_claim_does_not_emit_a_backer_payment_event() {
     let mut f = start(20_000_000);
-    let _ = contribute(&mut f, ALICE, 20_000_000);
-    activate_curve(&mut f);
+    let _ = f.contribute(ALICE, 20_000_000);
+    f.activate_curve();
     f.next_tx!(ALICE, |f| {
-        let mut vault = take_vault(f);
-        let (meme, quote) = market_maker::claim_fees(&mut vault, &f.version, f.ctx!());
+        let mut vault = f.take_vault();
+        let (meme, quote) = vault.claim_fees(&f.version, f.ctx!());
         assert!(meme.value() == 0 && quote.value() == 0);
         assert!(
             sui::event::events_by_type<
                 market_maker::BlastBackerFeesClaimed<MEME, SUI>,
             >().is_empty(),
         );
-        coin::burn_for_testing(meme);
-        coin::burn_for_testing(quote);
-        return_vault(vault);
+        meme.burn_for_testing();
+        quote.burn_for_testing();
+        vault.return_vault();
     });
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -527,14 +521,14 @@ fun shared_presale_constructor_rejects_an_unfunded_idle_quote_floor() {
         market_maker::presale_route(),
         market_maker::trading_limits(100, 100, 1_000, 1_000, 1, 10),
     );
-    end(f);
+    f.end();
 }
 
 #[test]
 fun curve_raise_and_lp_fees_fund_treasury_while_seed_remainders_stay_creator_capital() {
     let mut f = start(20_000_000);
-    let _ = contribute(&mut f, ALICE, 20_000_000);
-    activate_curve(&mut f);
+    let _ = f.contribute(ALICE, 20_000_000);
+    f.activate_curve();
     let transition = sui::event::events_by_type<market_maker::BlastCurveFundingActivated<SUI>>()[0];
     let expected = CurveFundingPayload {
         vault_id: f.vault_id,
@@ -543,31 +537,25 @@ fun curve_raise_and_lp_fees_fund_treasury_while_seed_remainders_stay_creator_cap
         net: 19_000_000,
     };
     assert_eq!(std::bcs::to_bytes(&transition), std::bcs::to_bytes(&expected));
-    set_rates(&mut f, 1_000, 2_000);
+    f.set_rates(1_000, 2_000);
     f.next_tx!(ROOT, |f| {
-        let mut vault = take_vault(f);
-        let (unused_meme, unused_quote) = cetus_engine::retain_seed_residuals(
-            &mut vault,
+        let mut vault = f.take_vault();
+        let (unused_meme, unused_quote) = vault.retain_seed_residuals(
             balance::create_for_testing<MEME>(7),
             balance::create_for_testing<SUI>(11),
         );
         assert_eq!(unused_meme, 7);
         assert_eq!(unused_quote, 11);
-        market_maker::credit_curve_fees(
-            &mut vault,
-            balance::zero(),
-            balance::create_for_testing<SUI>(100),
-        );
-        market_maker::activate_pool(&mut vault, object::id_from_address(@0xFACE));
-        market_maker::credit_lp_fees(
-            &mut vault,
+        vault.credit_curve_fees(balance::zero(), balance::create_for_testing<SUI>(100));
+        vault.activate_pool(object::id_from_address(@0xFACE));
+        vault.credit_lp_fees(
             &f.version,
             &f.policy,
             &mut f.treasury,
             balance::create_for_testing<MEME>(10),
             balance::create_for_testing<SUI>(100),
         );
-        market_maker::credit_raise_fees_to_treasury(&mut vault, &f.version, &mut f.treasury);
+        vault.credit_raise_fees_to_treasury(&f.version, &mut f.treasury);
         let credits = sui::event::events_by_type<protocol_treasury::BlastTreasuryCredited<SUI>>();
         assert_eq!(credits.length(), 2);
         let mut credited = 0;
@@ -579,8 +567,8 @@ fun curve_raise_and_lp_fees_fund_treasury_while_seed_remainders_stay_creator_cap
             assert!(data.into_remainder_bytes().is_empty());
         });
         assert_eq!(credited, 1_000_020);
-        assert_eq!(protocol_treasury::balance_for_testing<SUI>(&f.treasury), credited);
-        assert_eq!(protocol_treasury::balance_for_testing<MEME>(&f.treasury), 1);
+        assert_eq!(f.treasury.balance_for_testing<SUI>(), credited);
+        assert_eq!(f.treasury.balance_for_testing<MEME>(), 1);
         let meme_credits = sui::event::events_by_type<
             protocol_treasury::BlastTreasuryCredited<MEME>,
         >();
@@ -591,16 +579,16 @@ fun curve_raise_and_lp_fees_fund_treasury_while_seed_remainders_stay_creator_cap
         assert_eq!(data.peel_u64(), 1);
         assert_eq!(data.into_remainder_bytes(), vector[]);
 
-        let (meme, quote) = market_maker::capital_for_testing(&vault);
+        let (meme, quote) = vault.capital_for_testing();
         assert_eq!(meme, 7);
         assert_eq!(quote, 19_000_011);
-        let creator = take_sender<BlastMarketMakerCreatorCap>(f);
+        let creator = f.take_sender<BlastMarketMakerCreatorCap>();
         let (meme, quote) = vault.withdraw_capital(&creator, &f.version, 7, 11, f.ctx!());
         assert_eq!(meme.value(), 7);
         assert_eq!(quote.value(), 11);
-        coin::burn_for_testing(meme);
-        coin::burn_for_testing(quote);
-        let (meme, quote) = market_maker::capital_for_testing(&vault);
+        meme.burn_for_testing();
+        quote.burn_for_testing();
+        let (meme, quote) = vault.capital_for_testing();
         assert_eq!(meme, 0);
         assert_eq!(quote, 19_000_000);
         let (meme_fees, quote_fees, reserved_meme, reserved_quote) = vault.fee_balances();
@@ -608,17 +596,17 @@ fun curve_raise_and_lp_fees_fund_treasury_while_seed_remainders_stay_creator_cap
         assert_eq!(quote_fees, 180);
         assert_eq!(reserved_meme, 0);
         assert_eq!(reserved_quote, 0);
-        return_sender(f, creator);
-        withdraw_quote(f, 20);
-        assert_eq!(protocol_treasury::balance_for_testing<SUI>(&f.treasury), 1_000_000);
-        return_vault(vault);
+        f.return_sender(creator);
+        f.withdraw_quote(20);
+        assert_eq!(f.treasury.balance_for_testing<SUI>(), 1_000_000);
+        vault.return_vault();
     });
     f.next_tx!(PAYOUT, |f| {
-        let earned_lp_fee = take_sender<sui::coin::Coin<SUI>>(f);
+        let earned_lp_fee = f.take_sender<sui::coin::Coin<SUI>>();
         assert_eq!(earned_lp_fee.value(), 20);
-        coin::burn_for_testing(earned_lp_fee);
+        earned_lp_fee.burn_for_testing();
     });
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -630,8 +618,8 @@ fun curve_raise_and_lp_fees_fund_treasury_while_seed_remainders_stay_creator_cap
 ]
 fun fee_manager_cannot_raise_local_lp_rate_above_compiled_ceiling() {
     let mut f = start(20_000_000);
-    set_rates(&mut f, 2_001, 0);
-    end(f);
+    f.set_rates(2_001, 0);
+    f.end();
 }
 
 #[test]
@@ -645,12 +633,8 @@ fun treasury_pays_publisher_before_configuration_and_new_destination_after_rotat
     f.next_tx!(ROOT, |f| {
         let vault_id = f.vault_id;
         f.treasury.credit(&f.version, vault_id, balance::create_for_testing<SUI>(30));
-        withdraw_quote(f, 10);
-        f.treasury.set_payout(
-            &f.version,
-            &blast_acl::witness_for_testing<TreasuryAdmin>(),
-            PAYOUT,
-        );
+        f.withdraw_quote(10);
+        f.treasury.set_payout(&f.version, &blast_acl::witness_for_testing<TreasuryAdmin>(), PAYOUT);
         let changed = sui::event::events_by_type<protocol_treasury::BlastTreasuryDestinationChanged>();
         assert_eq!(changed.length(), 1);
         let mut data = sui::bcs::new(std::bcs::to_bytes(&changed[0]));
@@ -658,8 +642,8 @@ fun treasury_pays_publisher_before_configuration_and_new_destination_after_rotat
         assert_eq!(data.peel_address(), ROOT);
         assert_eq!(data.peel_address(), PAYOUT);
         assert_eq!(data.into_remainder_bytes(), vector[]);
-        withdraw_quote(f, 20);
-        assert_eq!(protocol_treasury::balance_for_testing<SUI>(&f.treasury), 0);
+        f.withdraw_quote(20);
+        assert_eq!(f.treasury.balance_for_testing<SUI>(), 0);
         let withdrawals = sui::event::events_by_type<protocol_treasury::BlastTreasuryWithdrawn<SUI>>();
         assert_eq!(withdrawals.length(), 2);
         let mut first = sui::bcs::new(std::bcs::to_bytes(&withdrawals[0]));
@@ -674,16 +658,16 @@ fun treasury_pays_publisher_before_configuration_and_new_destination_after_rotat
         assert_eq!(second.into_remainder_bytes(), vector[]);
     });
     f.next_tx!(ROOT, |f| {
-        let earned = take_sender<sui::coin::Coin<SUI>>(f);
+        let earned = f.take_sender<sui::coin::Coin<SUI>>();
         assert_eq!(earned.value(), 10);
-        coin::burn_for_testing(earned);
+        earned.burn_for_testing();
     });
     f.next_tx!(PAYOUT, |f| {
-        let earned = take_sender<sui::coin::Coin<SUI>>(f);
+        let earned = f.take_sender<sui::coin::Coin<SUI>>();
         assert_eq!(earned.value(), 20);
-        coin::burn_for_testing(earned);
+        earned.burn_for_testing();
     });
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -696,7 +680,7 @@ fun treasury_payout_rejects_zero_address() {
     f.next_tx!(ROOT, |f| {
         f.treasury.set_payout(&f.version, &blast_acl::witness_for_testing<TreasuryAdmin>(), @0x0);
     });
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -709,7 +693,7 @@ fun treasury_payout_rejects_unchanged_address() {
     f.next_tx!(ROOT, |f| {
         f.treasury.set_payout(&f.version, &blast_acl::witness_for_testing<TreasuryAdmin>(), PAYOUT);
     });
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -721,26 +705,26 @@ fun treasury_payout_rejects_unchanged_address() {
 ]
 fun treasury_cannot_withdraw_market_maker_principal() {
     let mut f = start(20_000_000);
-    let _ = contribute(&mut f, ALICE, 20_000_000);
+    let _ = f.contribute(ALICE, 20_000_000);
     f.next_tx!(ROOT, |f| {
-        withdraw_quote(f, 1);
+        f.withdraw_quote(1);
     });
-    end(f);
+    f.end();
 }
 
 #[test]
 fun creator_can_rotate_operator_and_retire_stale_cap() {
     let mut f = start(20_000_000);
     f.next_tx!(ROOT, |f| {
-        let mut vault = take_vault(f);
-        let creator = take_sender<BlastMarketMakerCreatorCap>(f);
-        let operator = take_sender<BlastMarketMakerOperatorCap>(f);
-        market_maker::rotate_operator(&mut vault, &creator, &f.version, BOB, f.ctx!());
-        market_maker::destroy_stale_operator_cap(&vault, operator);
-        return_sender(f, creator);
-        return_vault(vault);
+        let mut vault = f.take_vault();
+        let creator = f.take_sender<BlastMarketMakerCreatorCap>();
+        let operator = f.take_sender<BlastMarketMakerOperatorCap>();
+        vault.rotate_operator(&creator, &f.version, BOB, f.ctx!());
+        vault.destroy_stale_operator_cap(operator);
+        f.return_sender(creator);
+        vault.return_vault();
     });
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -753,12 +737,12 @@ fun creator_can_rotate_operator_and_retire_stale_cap() {
 fun current_operator_cap_cannot_be_destroyed_as_stale() {
     let mut f = start(20_000_000);
     f.next_tx!(ROOT, |f| {
-        let vault = take_vault(f);
-        let operator = take_sender<BlastMarketMakerOperatorCap>(f);
-        market_maker::destroy_stale_operator_cap(&vault, operator);
-        return_vault(vault);
+        let vault = f.take_vault();
+        let operator = f.take_sender<BlastMarketMakerOperatorCap>();
+        vault.destroy_stale_operator_cap(operator);
+        vault.return_vault();
     });
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -814,7 +798,7 @@ fun reusable_creator_cap_controls_two_vaults_after_native_transfer() {
     let mut f = start(20_000_000);
     let second_id;
     {
-        let creator = take_sender<BlastMarketMakerCreatorCap>(&f);
+        let creator = f.take_sender<BlastMarketMakerCreatorCap>();
         let Fixture { scenario, version, policy, treasury, .. } = &mut f;
         let mut second = market_maker::new<MEME, SUI>(
             market_maker::curve_route(),
@@ -828,12 +812,9 @@ fun reusable_creator_cap_controls_two_vaults_after_native_transfer() {
             treasury,
             scenario.ctx(),
         );
-        market_maker::set_trading_limits(
-            &mut second,
-            market_maker::trading_limits(1, 1, 100, 100, 0, 10),
-        );
+        second.set_trading_limits(market_maker::trading_limits(1, 1, 100, 100, 0, 10));
         second_id = object::id(&second);
-        market_maker::share(second);
+        second.share();
         sui::transfer::public_transfer(creator, BOB);
     };
     f.next_tx!(
@@ -841,18 +822,18 @@ fun reusable_creator_cap_controls_two_vaults_after_native_transfer() {
         |f| { assert!(!f.scenario.has_most_recent_for_sender<BlastMarketMakerCreatorCap>()); },
     );
     f.next_tx!(BOB, |f| {
-        let creator = take_sender<BlastMarketMakerCreatorCap>(f);
-        let mut first = take_vault(f);
+        let creator = f.take_sender<BlastMarketMakerCreatorCap>();
+        let mut first = f.take_vault();
         let mut second = f.scenario.take_shared_by_id<BlastMarketMakerVault<MEME, SUI>>(second_id);
         assert_eq!(first.creator_cap_id(), second.creator_cap_id());
         first.set_paused(&creator, &f.version, true);
         second.set_paused(&creator, &f.version, true);
         assert_eq!(sui::event::events_by_type<market_maker::BlastPauseChanged>().length(), 2);
-        return_sender(f, creator);
-        return_vault(first);
-        return_vault(second);
+        f.return_sender(creator);
+        first.return_vault();
+        second.return_vault();
     });
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -864,12 +845,12 @@ fun reusable_creator_cap_controls_two_vaults_after_native_transfer() {
 ]
 fun newly_minted_unbound_creator_cap_cannot_control_vault() {
     let mut f = start(20_000_000);
-    let mut vault = take_vault(&f);
+    let mut vault = f.take_vault();
     let foreign = market_maker::new_creator_cap(f.ctx!());
     vault.set_paused(&foreign, &f.version, true);
     destroy(foreign);
-    return_vault(vault);
-    end(f);
+    vault.return_vault();
+    f.end();
 }
 
 #[test]
@@ -881,8 +862,8 @@ fun newly_minted_unbound_creator_cap_cannot_control_vault() {
 ]
 fun creator_cannot_allocate_before_backer_weights_freeze() {
     let mut f = start(20_000_000);
-    let mut vault = take_vault(&f);
-    let creator = take_sender<BlastMarketMakerCreatorCap>(&f);
+    let mut vault = f.take_vault();
+    let creator = f.take_sender<BlastMarketMakerCreatorCap>();
     {
         let (kept_meme, kept_quote) = vault.allocate_fees(
             &creator,
@@ -891,12 +872,12 @@ fun creator_cannot_allocate_before_backer_weights_freeze() {
             fee_ledger::allocation(0, 0, 0),
             f.ctx!(),
         );
-        coin::burn_for_testing(kept_meme);
-        coin::burn_for_testing(kept_quote);
+        kept_meme.burn_for_testing();
+        kept_quote.burn_for_testing();
     };
-    return_sender(&f, creator);
-    return_vault(vault);
-    end(f);
+    f.return_sender(creator);
+    vault.return_vault();
+    f.end();
 }
 
 #[test]
@@ -907,14 +888,10 @@ fun sharing_with_zero_wrapper_backers_requires_explicit_other_choice() {
         market_maker::presale_route(),
         market_maker::trading_limits(1, 1, 100, 100, 0, 10),
     );
-    let mut vault = take_vault(&f);
-    market_maker::activate_pool(&mut vault, object::id_from_address(@0xFACE));
-    market_maker::credit_curve_fees(
-        &mut vault,
-        balance::zero(),
-        balance::create_for_testing<SUI>(10),
-    );
-    let creator = take_sender<BlastMarketMakerCreatorCap>(&f);
+    let mut vault = f.take_vault();
+    vault.activate_pool(object::id_from_address(@0xFACE));
+    vault.credit_curve_fees(balance::zero(), balance::create_for_testing<SUI>(10));
+    let creator = f.take_sender<BlastMarketMakerCreatorCap>();
     {
         let (kept_meme, kept_quote) = vault.allocate_fees(
             &creator,
@@ -923,12 +900,12 @@ fun sharing_with_zero_wrapper_backers_requires_explicit_other_choice() {
             fee_ledger::allocation(0, 10, 0),
             f.ctx!(),
         );
-        coin::burn_for_testing(kept_meme);
-        coin::burn_for_testing(kept_quote);
+        kept_meme.burn_for_testing();
+        kept_quote.burn_for_testing();
     };
-    return_sender(&f, creator);
-    return_vault(vault);
-    end(f);
+    f.return_sender(creator);
+    vault.return_vault();
+    f.end();
 }
 
 #[test]
@@ -940,11 +917,11 @@ fun sharing_with_zero_wrapper_backers_requires_explicit_other_choice() {
 ]
 fun fee_allocation_cannot_disguise_principal_as_received_fees() {
     let mut f = start(20_000_000);
-    let _ = contribute(&mut f, ALICE, 20_000_000);
-    activate_curve(&mut f);
+    let _ = f.contribute(ALICE, 20_000_000);
+    f.activate_curve();
     f.scenario.next_tx(ROOT);
-    let mut vault = take_vault(&f);
-    let creator = take_sender<BlastMarketMakerCreatorCap>(&f);
+    let mut vault = f.take_vault();
+    let creator = f.take_sender<BlastMarketMakerCreatorCap>();
     {
         let (kept_meme, kept_quote) = vault.allocate_fees(
             &creator,
@@ -953,12 +930,12 @@ fun fee_allocation_cannot_disguise_principal_as_received_fees() {
             fee_ledger::allocation(1, 0, 0),
             f.ctx!(),
         );
-        coin::burn_for_testing(kept_meme);
-        coin::burn_for_testing(kept_quote);
+        kept_meme.burn_for_testing();
+        kept_quote.burn_for_testing();
     };
-    return_sender(&f, creator);
-    return_vault(vault);
-    end(f);
+    f.return_sender(creator);
+    vault.return_vault();
+    f.end();
 }
 
 #[test]
@@ -970,8 +947,8 @@ fun fee_allocation_cannot_disguise_principal_as_received_fees() {
 ]
 fun creator_cannot_reallocate_reserved_backer_fees() {
     let mut f = funded_fee_fixture();
-    let mut vault = take_vault(&f);
-    let creator = take_sender<BlastMarketMakerCreatorCap>(&f);
+    let mut vault = f.take_vault();
+    let creator = f.take_sender<BlastMarketMakerCreatorCap>();
     {
         let (kept_meme, kept_quote) = vault.allocate_fees(
             &creator,
@@ -980,8 +957,8 @@ fun creator_cannot_reallocate_reserved_backer_fees() {
             fee_ledger::allocation(0, 200, 0),
             f.ctx!(),
         );
-        coin::burn_for_testing(kept_meme);
-        coin::burn_for_testing(kept_quote);
+        kept_meme.burn_for_testing();
+        kept_quote.burn_for_testing();
     };
     {
         let (kept_meme, kept_quote) = vault.allocate_fees(
@@ -991,20 +968,20 @@ fun creator_cannot_reallocate_reserved_backer_fees() {
             fee_ledger::allocation(0, 0, 0),
             f.ctx!(),
         );
-        coin::burn_for_testing(kept_meme);
-        coin::burn_for_testing(kept_quote);
+        kept_meme.burn_for_testing();
+        kept_quote.burn_for_testing();
     };
-    return_sender(&f, creator);
-    return_vault(vault);
-    end(f);
+    f.return_sender(creator);
+    vault.return_vault();
+    f.end();
 }
 
 #[test]
 fun creator_rebinding_preserves_both_asset_claims_and_reinvests_only_available_fees() {
     let mut f = funded_fee_fixture();
     f.next_tx!(ROOT, |f| {
-        let mut vault = take_vault(f);
-        let creator = take_sender<BlastMarketMakerCreatorCap>(f);
+        let mut vault = f.take_vault();
+        let creator = f.take_sender<BlastMarketMakerCreatorCap>();
         {
             let (kept_meme, kept_quote) = vault.allocate_fees(
                 &creator,
@@ -1013,8 +990,8 @@ fun creator_rebinding_preserves_both_asset_claims_and_reinvests_only_available_f
                 fee_ledger::allocation(20, 80, 40),
                 f.ctx!(),
             );
-            coin::burn_for_testing(kept_meme);
-            coin::burn_for_testing(kept_quote);
+            kept_meme.burn_for_testing();
+            kept_quote.burn_for_testing();
         };
         let successor = market_maker::new_creator_cap(f.ctx!());
         vault.set_creator_cap(&creator, &f.version, &successor);
@@ -1026,50 +1003,50 @@ fun creator_rebinding_preserves_both_asset_claims_and_reinvests_only_available_f
                 fee_ledger::allocation(0, 0, 60),
                 f.ctx!(),
             );
-            coin::burn_for_testing(kept_meme);
-            coin::burn_for_testing(kept_quote);
+            kept_meme.burn_for_testing();
+            kept_quote.burn_for_testing();
         };
         let (m, q, rm, rq) = vault.fee_balances();
         assert!(m == 0 && q == 0 && rm == 40 && rq == 80);
-        let (cm, cq) = market_maker::capital_for_testing(&vault);
+        let (cm, cq) = vault.capital_for_testing();
         assert!(cm == 20 && cq == 100);
         let (am, aq) = vault.claimable_fees(ALICE);
         let (bm, bq) = vault.claimable_fees(BOB);
         assert!(am == 10 && aq == 20 && bm == 30 && bq == 60);
         sui::transfer::public_transfer(successor, BOB);
-        return_sender(f, creator);
-        return_vault(vault);
+        f.return_sender(creator);
+        vault.return_vault();
     });
     f.next_tx!(ALICE, |f| {
-        let mut vault = take_vault(f);
+        let mut vault = f.take_vault();
         let (m, q) = vault.claim_fees(&f.version, f.ctx!());
         assert!(m.value() == 10 && q.value() == 20);
         {
             let (kept_meme, kept_quote) = (m, q);
-            coin::burn_for_testing(kept_meme);
-            coin::burn_for_testing(kept_quote);
+            kept_meme.burn_for_testing();
+            kept_quote.burn_for_testing();
         };
         {
             let (kept_meme, kept_quote) = vault.claim_fees(&f.version, f.ctx!());
-            coin::burn_for_testing(kept_meme);
-            coin::burn_for_testing(kept_quote);
+            kept_meme.burn_for_testing();
+            kept_quote.burn_for_testing();
         };
-        return_vault(vault);
+        vault.return_vault();
     });
     f.next_tx!(BOB, |f| {
-        let mut vault = take_vault(f);
+        let mut vault = f.take_vault();
         let (m, q) = vault.claim_fees(&f.version, f.ctx!());
         assert!(m.value() == 30 && q.value() == 60);
         {
             let (kept_meme, kept_quote) = (m, q);
-            coin::burn_for_testing(kept_meme);
-            coin::burn_for_testing(kept_quote);
+            kept_meme.burn_for_testing();
+            kept_quote.burn_for_testing();
         };
         let (m, q, rm, rq) = vault.fee_balances();
         assert!(m == 0 && q == 0 && rm == 0 && rq == 0);
-        return_vault(vault);
+        vault.return_vault();
     });
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -1081,23 +1058,23 @@ fun creator_rebinding_preserves_both_asset_claims_and_reinvests_only_available_f
 ]
 fun creator_rebind_revokes_old_cap_for_that_vault() {
     let mut f = start(20_000_000);
-    let mut vault = take_vault(&f);
-    let creator = take_sender<BlastMarketMakerCreatorCap>(&f);
+    let mut vault = f.take_vault();
+    let creator = f.take_sender<BlastMarketMakerCreatorCap>();
     let successor = market_maker::new_creator_cap(f.ctx!());
     vault.set_creator_cap(&creator, &f.version, &successor);
     vault.set_paused(&creator, &f.version, true);
     destroy(successor);
-    return_sender(&f, creator);
-    return_vault(vault);
-    end(f);
+    f.return_sender(creator);
+    vault.return_vault();
+    f.end();
 }
 
 #[test]
 fun creator_can_return_all_idle_capital_while_preserving_user_claims_and_unallocated_fees() {
     let mut f = funded_fee_fixture();
     f.next_tx!(ROOT, |f| {
-        let mut vault = take_vault(f);
-        let creator = take_sender<BlastMarketMakerCreatorCap>(f);
+        let mut vault = f.take_vault();
+        let creator = f.take_sender<BlastMarketMakerCreatorCap>();
         let creator_id = object::id(&creator);
         let (m, q) = vault.allocate_fees(
             &creator,
@@ -1106,8 +1083,8 @@ fun creator_can_return_all_idle_capital_while_preserving_user_claims_and_unalloc
             fee_ledger::allocation(0, 80, 0),
             f.ctx!(),
         );
-        coin::burn_for_testing(m);
-        coin::burn_for_testing(q);
+        m.burn_for_testing();
+        q.burn_for_testing();
         let meme = coin::mint_for_testing<MEME>(700, f.ctx!());
         let quote = coin::mint_for_testing<SUI>(900, f.ctx!());
         vault.deposit_capital(&f.version, meme, quote);
@@ -1116,7 +1093,7 @@ fun creator_can_return_all_idle_capital_while_preserving_user_claims_and_unalloc
         assert!(m.value() == 700 && q.value() == 900);
         transfer::public_transfer(m, ALICE);
         transfer::public_transfer(q, BOB);
-        let (cm, cq) = market_maker::capital_for_testing(&vault);
+        let (cm, cq) = vault.capital_for_testing();
         assert!(cm == 0 && cq == 0);
         let (am, aq, rm, rq) = vault.fee_balances();
         assert!(am == 60 && aq == 120 && rm == 40 && rq == 80);
@@ -1151,34 +1128,34 @@ fun creator_can_return_all_idle_capital_while_preserving_user_claims_and_unalloc
                 },
             ),
         );
-        return_sender(f, creator);
-        return_vault(vault);
+        f.return_sender(creator);
+        vault.return_vault();
     });
     f.next_tx!(ALICE, |f| {
-        let returned = take_sender<coin::Coin<MEME>>(f);
+        let returned = f.take_sender<coin::Coin<MEME>>();
         assert_eq!(returned.value(), 700);
-        coin::burn_for_testing(returned);
-        let mut vault = take_vault(f);
+        returned.burn_for_testing();
+        let mut vault = f.take_vault();
         let (m, q) = vault.claim_fees(&f.version, f.ctx!());
         assert!(m.value() == 10 && q.value() == 20);
-        coin::burn_for_testing(m);
-        coin::burn_for_testing(q);
-        return_vault(vault);
+        m.burn_for_testing();
+        q.burn_for_testing();
+        vault.return_vault();
     });
     f.next_tx!(BOB, |f| {
-        let returned = take_sender<coin::Coin<SUI>>(f);
+        let returned = f.take_sender<coin::Coin<SUI>>();
         assert_eq!(returned.value(), 900);
-        coin::burn_for_testing(returned);
-        let mut vault = take_vault(f);
+        returned.burn_for_testing();
+        let mut vault = f.take_vault();
         let (m, q) = vault.claim_fees(&f.version, f.ctx!());
         assert!(m.value() == 30 && q.value() == 60);
-        coin::burn_for_testing(m);
-        coin::burn_for_testing(q);
+        m.burn_for_testing();
+        q.burn_for_testing();
         let (am, aq, rm, rq) = vault.fee_balances();
         assert!(am == 60 && aq == 120 && rm == 0 && rq == 0);
-        return_vault(vault);
+        vault.return_vault();
     });
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -1187,22 +1164,22 @@ fun creator_capital_distribution_can_override_delegated_idle_floor_after_curve_l
         20_000_000,
         market_maker::trading_limits(1, 1, 100, 100, 10, 1),
     );
-    let _ = contribute(&mut f, ALICE, 20_000_000);
-    activate_curve(&mut f);
+    let _ = f.contribute(ALICE, 20_000_000);
+    f.activate_curve();
     f.next_tx!(ROOT, |f| {
-        let mut vault = take_vault(f);
-        let creator = take_sender<BlastMarketMakerCreatorCap>(f);
+        let mut vault = f.take_vault();
+        let creator = f.take_sender<BlastMarketMakerCreatorCap>();
         let (m, q) = vault.withdraw_capital(&creator, &f.version, 0, 19_000_000, f.ctx!());
         assert!(m.value() == 0 && q.value() == 19_000_000);
-        coin::burn_for_testing(m);
-        coin::burn_for_testing(q);
-        let (cm, cq) = market_maker::capital_for_testing(&vault);
+        m.burn_for_testing();
+        q.burn_for_testing();
+        let (cm, cq) = vault.capital_for_testing();
         assert!(cm == 0 && cq == 0);
-        assert_eq!(market_maker::raise_fees_for_testing(&vault), 1_000_000);
-        return_sender(f, creator);
-        return_vault(vault);
+        assert_eq!(vault.raise_fees_for_testing(), 1_000_000);
+        f.return_sender(creator);
+        vault.return_vault();
     });
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -1214,14 +1191,14 @@ fun creator_capital_distribution_can_override_delegated_idle_floor_after_curve_l
 ]
 fun foreign_creator_cannot_withdraw_capital_even_when_vault_is_empty() {
     let mut f = funded_fee_fixture();
-    let mut vault = take_vault(&f);
+    let mut vault = f.take_vault();
     let foreign = market_maker::new_creator_cap(f.ctx!());
     let (m, q) = vault.withdraw_capital(&foreign, &f.version, 1, 0, f.ctx!());
-    coin::burn_for_testing(m);
-    coin::burn_for_testing(q);
+    m.burn_for_testing();
+    q.burn_for_testing();
     destroy(foreign);
-    return_vault(vault);
-    end(f);
+    vault.return_vault();
+    f.end();
 }
 
 #[test]
@@ -1233,17 +1210,17 @@ fun foreign_creator_cannot_withdraw_capital_even_when_vault_is_empty() {
 ]
 fun creator_cannot_withdraw_unlaunched_funding() {
     let mut f = start(20_000_000);
-    let _ = contribute(&mut f, ALICE, 20_000_000);
+    let _ = f.contribute(ALICE, 20_000_000);
     f.next_tx!(ROOT, |f| {
-        let mut vault = take_vault(f);
-        let creator = take_sender<BlastMarketMakerCreatorCap>(f);
+        let mut vault = f.take_vault();
+        let creator = f.take_sender<BlastMarketMakerCreatorCap>();
         let (m, q) = vault.withdraw_capital(&creator, &f.version, 0, 20_000_000, f.ctx!());
-        coin::burn_for_testing(m);
-        coin::burn_for_testing(q);
-        return_sender(f, creator);
-        return_vault(vault);
+        m.burn_for_testing();
+        q.burn_for_testing();
+        f.return_sender(creator);
+        vault.return_vault();
     });
-    end(f);
+    f.end();
 }
 
 #[test]
@@ -1255,8 +1232,8 @@ fun creator_cannot_withdraw_unlaunched_funding() {
 ]
 fun capital_withdrawal_cannot_spend_unallocated_fees_or_user_reserves() {
     let mut f = funded_fee_fixture();
-    let mut vault = take_vault(&f);
-    let creator = take_sender<BlastMarketMakerCreatorCap>(&f);
+    let mut vault = f.take_vault();
+    let creator = f.take_sender<BlastMarketMakerCreatorCap>();
     let (m, q) = vault.allocate_fees(
         &creator,
         &f.version,
@@ -1264,14 +1241,14 @@ fun capital_withdrawal_cannot_spend_unallocated_fees_or_user_reserves() {
         fee_ledger::allocation(0, 80, 0),
         f.ctx!(),
     );
-    coin::burn_for_testing(m);
-    coin::burn_for_testing(q);
+    m.burn_for_testing();
+    q.burn_for_testing();
     let (m, q) = vault.withdraw_capital(&creator, &f.version, 1, 0, f.ctx!());
-    coin::burn_for_testing(m);
-    coin::burn_for_testing(q);
-    return_sender(&f, creator);
-    return_vault(vault);
-    end(f);
+    m.burn_for_testing();
+    q.burn_for_testing();
+    f.return_sender(creator);
+    vault.return_vault();
+    f.end();
 }
 
 #[test]
@@ -1283,15 +1260,15 @@ fun capital_withdrawal_cannot_spend_unallocated_fees_or_user_reserves() {
 ]
 fun stale_version_rejects_withdrawal_before_foreign_cap_and_empty_amount() {
     let mut f = funded_fee_fixture();
-    let mut vault = take_vault(&f);
+    let mut vault = f.take_vault();
     let foreign = market_maker::new_creator_cap(f.ctx!());
     f.version.set_generation_for_testing(999);
     let (m, q) = vault.withdraw_capital(&foreign, &f.version, 0, 0, f.ctx!());
-    coin::burn_for_testing(m);
-    coin::burn_for_testing(q);
+    m.burn_for_testing();
+    q.burn_for_testing();
     destroy(foreign);
-    return_vault(vault);
-    end(f);
+    vault.return_vault();
+    f.end();
 }
 
 #[test]
@@ -1303,14 +1280,14 @@ fun stale_version_rejects_withdrawal_before_foreign_cap_and_empty_amount() {
 ]
 fun capital_withdrawal_rejects_both_zero_amounts() {
     let mut f = funded_fee_fixture();
-    let mut vault = take_vault(&f);
-    let creator = take_sender<BlastMarketMakerCreatorCap>(&f);
+    let mut vault = f.take_vault();
+    let creator = f.take_sender<BlastMarketMakerCreatorCap>();
     let (m, q) = vault.withdraw_capital(&creator, &f.version, 0, 0, f.ctx!());
-    coin::burn_for_testing(m);
-    coin::burn_for_testing(q);
-    return_sender(&f, creator);
-    return_vault(vault);
-    end(f);
+    m.burn_for_testing();
+    q.burn_for_testing();
+    f.return_sender(creator);
+    vault.return_vault();
+    f.end();
 }
 
 #[test]
@@ -1322,12 +1299,12 @@ fun capital_withdrawal_rejects_both_zero_amounts() {
 ]
 fun capital_deposits_cannot_bypass_funding_weights() {
     let mut f = start(20_000_000);
-    let mut vault = take_vault(&f);
+    let mut vault = f.take_vault();
     let meme = coin::mint_for_testing<MEME>(1, f.ctx!());
     let quote = coin::zero<SUI>(f.ctx!());
     vault.deposit_capital(&f.version, meme, quote);
-    return_vault(vault);
-    end(f);
+    vault.return_vault();
+    f.end();
 }
 
 #[test]
@@ -1339,17 +1316,17 @@ fun capital_deposits_cannot_bypass_funding_weights() {
 ]
 fun capital_withdrawal_checks_both_assets_before_splitting_either() {
     let mut f = funded_fee_fixture();
-    let mut vault = take_vault(&f);
-    let creator = take_sender<BlastMarketMakerCreatorCap>(&f);
+    let mut vault = f.take_vault();
+    let creator = f.take_sender<BlastMarketMakerCreatorCap>();
     let meme = coin::mint_for_testing<MEME>(5, f.ctx!());
     let quote = coin::mint_for_testing<SUI>(7, f.ctx!());
     vault.deposit_capital(&f.version, meme, quote);
     let (m, q) = vault.withdraw_capital(&creator, &f.version, 5, 8, f.ctx!());
-    coin::burn_for_testing(m);
-    coin::burn_for_testing(q);
-    return_sender(&f, creator);
-    return_vault(vault);
-    end(f);
+    m.burn_for_testing();
+    q.burn_for_testing();
+    f.return_sender(creator);
+    vault.return_vault();
+    f.end();
 }
 
 #[test]
@@ -1361,12 +1338,12 @@ fun capital_withdrawal_checks_both_assets_before_splitting_either() {
 ]
 fun capital_deposit_rejects_both_zero_coins() {
     let mut f = funded_fee_fixture();
-    let mut vault = take_vault(&f);
+    let mut vault = f.take_vault();
     let meme = coin::zero<MEME>(f.ctx!());
     let quote = coin::zero<SUI>(f.ctx!());
     vault.deposit_capital(&f.version, meme, quote);
-    return_vault(vault);
-    end(f);
+    vault.return_vault();
+    f.end();
 }
 
 #[test]
@@ -1378,13 +1355,13 @@ fun capital_deposit_rejects_both_zero_coins() {
 ]
 fun stale_version_rejects_capital_deposit_before_phase_and_zero_amount() {
     let mut f = start(20_000_000);
-    let mut vault = take_vault(&f);
+    let mut vault = f.take_vault();
     let meme = coin::zero<MEME>(f.ctx!());
     let quote = coin::zero<SUI>(f.ctx!());
     f.version.set_generation_for_testing(999);
     vault.deposit_capital(&f.version, meme, quote);
-    return_vault(vault);
-    end(f);
+    vault.return_vault();
+    f.end();
 }
 
 // === Test Helpers ===
@@ -1396,19 +1373,19 @@ fun funded_fee_fixture(): Fixture {
         market_maker::trading_limits(1, 1, 100, 100, 0, 10),
     );
     f.next_tx!(ALICE, |f| {
-        let mut vault = take_vault(f);
+        let mut vault = f.take_vault();
         vault.record_presale_contribution(&f.version, 1, &f.clock, f.scenario.ctx());
-        return_vault(vault);
+        vault.return_vault();
     });
     f.next_tx!(BOB, |f| {
-        let mut vault = take_vault(f);
+        let mut vault = f.take_vault();
         vault.record_presale_contribution(&f.version, 3, &f.clock, f.scenario.ctx());
         vault.activate_pool(object::id_from_address(@0xFACE));
         vault.credit_curve_fees(
             balance::create_for_testing<MEME>(100),
             balance::create_for_testing<SUI>(200),
         );
-        return_vault(vault);
+        vault.return_vault();
     });
     f.scenario.next_tx(ROOT);
     f
@@ -1431,8 +1408,7 @@ fun return_sender<T: key>(f: &Fixture, value: T) { f.scenario.return_to_sender(v
 
 fun withdraw_quote(f: &mut Fixture, amount: u64) {
     let Fixture { treasury, version, scenario, .. } = f;
-    protocol_treasury::withdraw_earned<SUI>(
-        treasury,
+    treasury.withdraw_earned<SUI>(
         version,
         &blast_acl::witness_for_testing<TreasuryAdmin>(),
         amount,
@@ -1493,9 +1469,9 @@ fun start_route_with_payout(
         &treasury,
         ctx,
     );
-    market_maker::set_trading_limits(&mut vault, limits);
+    vault.set_trading_limits(limits);
     let vault_id = object::id(&vault);
-    market_maker::share(vault);
+    vault.share();
     sui::transfer::public_transfer(creator, ROOT);
     scenario.next_tx(ROOT);
     Fixture { scenario, clock, version, treasury, policy, vault_id }
@@ -1507,33 +1483,23 @@ fun take_vault(f: &Fixture): BlastMarketMakerVault<MEME, SUI> {
 
 fun contribute(f: &mut Fixture, sender: address, offered: u64): u64 {
     f.scenario.next_tx(sender);
-    let mut vault = take_vault(f);
+    let mut vault = f.take_vault();
     let payment = coin::mint_for_testing<SUI>(offered, f.ctx!());
-    let change = market_maker::contribute_and_return_change(
-        &mut vault,
-        &f.version,
-        payment,
-        &f.clock,
-        f.ctx!(),
-    );
+    let change = vault.contribute_and_return_change(&f.version, payment, &f.clock, f.ctx!());
     let returned = change.value();
-    coin::burn_for_testing(change);
-    return_vault(vault);
+    change.burn_for_testing();
+    vault.return_vault();
     returned
 }
 
 /// Ledger transition only; actual launch construction remains a runtime integration gate.
 fun activate_curve(f: &mut Fixture) {
     f.next_tx!(ROOT, |f| {
-        let mut vault = take_vault(f);
-        let funding = market_maker::charge_raise_fee_and_enter_curve(
-            &mut vault,
-            &f.version,
-            &f.clock,
-        );
-        market_maker::join_capital(&mut vault, balance::zero<MEME>(), funding);
-        market_maker::bind_external(&mut vault, object::id_from_address(@0xCAFE));
-        return_vault(vault);
+        let mut vault = f.take_vault();
+        let funding = vault.charge_raise_fee_and_enter_curve(&f.version, &f.clock);
+        vault.join_capital(balance::zero<MEME>(), funding);
+        vault.bind_external(object::id_from_address(@0xCAFE));
+        vault.return_vault();
     });
 }
 
@@ -1578,3 +1544,6 @@ use sui::{
     test_scenario::{Self, Scenario},
     tx_context,
 };
+
+use fun cetus_engine::retain_seed_residuals as BlastMarketMakerVault.retain_seed_residuals;
+use fun return_vault as BlastMarketMakerVault.return_vault;
