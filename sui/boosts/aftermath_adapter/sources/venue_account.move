@@ -10,9 +10,9 @@ module blast_boosts_aftermath::venue_account;
 
 // === Public Types ===
 
-/// Immutable external object graph for one Aftermath leverage account. The
-/// two feed ids are the origin objects (`PriceFeed.from`) of the feeds the
-/// market priced with at activation.
+/// Immutable account, registry and clearing-house identities for one Aftermath
+/// leverage account. Oracle storages and feeds follow the authenticated
+/// market's current settings; their identities are not frozen at activation.
 public struct Binding has copy, drop, store {
     account_object_id: ID,
     account_number: u64,
@@ -73,13 +73,9 @@ public(package) fun assert_market_oracles<Collateral>(
     collateral_oracle: &PriceFeedStorage,
 ) {
     let params = clearing_house.market_params();
-    assert!(
-        base_oracle.storage_id() == params.base_storage_id(),
-        blast_boosts_aftermath::errors::base_oracle_mismatch!(),
-    );
-    assert!(
-        collateral_oracle.storage_id() == params.collateral_storage_id(),
-        blast_boosts_aftermath::errors::collateral_oracle_mismatch!(),
+    assert_market_oracle_ids!(
+        base_oracle.storage_id(), params.base_storage_id(),
+        collateral_oracle.storage_id(), params.collateral_storage_id(),
     );
 }
 
@@ -273,6 +269,18 @@ public(package) fun update_funding_when_due<Collateral>(
 
 // === Private Functions ===
 
+/// Inlined so the base guard still runs before either collateral storage read.
+/// Tests supply decoded ids because the external getter ports abort locally.
+macro fun assert_market_oracle_ids(
+    $base_storage_id: u32,
+    $market_base_storage_id: u32,
+    $collateral_storage_id: u32,
+    $market_collateral_storage_id: u32,
+) {
+    assert!($base_storage_id == $market_base_storage_id, blast_boosts_aftermath::errors::base_oracle_mismatch!());
+    assert!($collateral_storage_id == $market_collateral_storage_id, blast_boosts_aftermath::errors::collateral_oracle_mismatch!());
+}
+
 /// Rejects a market that is not the bound one, then a base oracle storage the
 /// market does not price with, before the venue funding update mutates either;
 /// the later capture re-authenticates everything.
@@ -341,6 +349,23 @@ fun next_funding_update_at_ms(
 }
 
 // === Test-Only Functions ===
+
+#[test_only]
+public fun assert_market_oracle_ids_for_testing(
+    base_storage_id: u32,
+    market_base_storage_id: u32,
+    collateral_storage_id: u32,
+    market_collateral_storage_id: u32,
+) {
+    assert_market_oracle_ids!(base_storage_id, market_base_storage_id, collateral_storage_id, market_collateral_storage_id);
+}
+
+#[test_only]
+// EC09005 flags the deliberately unreachable getter trap; the test pins the earlier abort.
+#[allow(dead_code)]
+public fun assert_base_oracle_before_collateral_read_for_testing() {
+    assert_market_oracle_ids!(1, 2, abort 404, abort 404);
+}
 
 #[test_only]
 public fun assert_funding_update_inputs_for_testing(

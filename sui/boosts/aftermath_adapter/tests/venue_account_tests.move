@@ -11,6 +11,48 @@ const ACCOUNT_NUMBER: u64 = 7;
 
 // === Tests ===
 
+/// These are the production storage guards with decoded external getter values.
+/// Source-routing checks cover their callers; this is not venue execution.
+#[test]
+fun storage_guards_accept_matching_market_ids_on_either_leg() {
+    venue_account::assert_market_oracle_ids_for_testing(10, 10, 20, 20);
+    venue_account::assert_market_oracle_ids_for_testing(11, 11, 20, 20);
+    venue_account::assert_market_oracle_ids_for_testing(11, 11, 21, 21);
+    venue_account::assert_market_oracle_ids_for_testing(12, 12, 22, 22);
+}
+
+#[test]
+fun current_storage_ids_have_no_adapter_specific_range_or_distinctness_rule() {
+    venue_account::assert_market_oracle_ids_for_testing(0, 0, 0, 0);
+    venue_account::assert_market_oracle_ids_for_testing(4_294_967_295, 4_294_967_295, 4_294_967_295, 4_294_967_295);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EBaseOracleMismatch, location = blast_boosts_aftermath::venue_account)]
+fun an_obsolete_base_storage_is_rejected_after_rotation() {
+    venue_account::assert_market_oracle_ids_for_testing(10, 10, 20, 20);
+    venue_account::assert_market_oracle_ids_for_testing(10, 11, 20, 20);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ECollateralOracleMismatch, location = blast_boosts_aftermath::venue_account)]
+fun an_obsolete_collateral_storage_is_rejected_after_rotation() {
+    venue_account::assert_market_oracle_ids_for_testing(10, 10, 20, 20);
+    venue_account::assert_market_oracle_ids_for_testing(10, 10, 20, 21);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EBaseOracleMismatch, location = blast_boosts_aftermath::venue_account)]
+fun base_storage_mismatch_precedes_collateral_storage_mismatch() {
+    venue_account::assert_market_oracle_ids_for_testing(10, 11, 20, 21);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EBaseOracleMismatch, location = blast_boosts_aftermath::venue_account)]
+fun base_storage_mismatch_precedes_a_failing_collateral_getter() {
+    venue_account::assert_base_oracle_before_collateral_read_for_testing();
+}
+
 #[test]
 fun binding_exposes_the_bound_account_number() {
     assert_eq!(standard_binding().account_number(), ACCOUNT_NUMBER);

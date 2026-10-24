@@ -16,3 +16,5 @@ jobs:
           python-version: '3.12'
       - run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - run: python3 scripts/check_move_style.py
+      - name: Check M7 oracle routing regressions
+        run: python3 sui/boosts/aftermath_adapter/scripts/test_oracle_routing.py
