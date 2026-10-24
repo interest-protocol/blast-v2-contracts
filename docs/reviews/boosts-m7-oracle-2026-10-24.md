@@ -95,3 +95,10 @@ conditions; a price-free checkpoint does not prove all withdrawal calls are
 price-free. Fresh publication and new vaults follow ADR 0115; historical
 deployed vaults are not upgraded by this source change. No deployment or
 exchange-admin mutation was performed.
+
+M-7 is accepted as resolved in source through
+[PR #119](https://github.com/interest-protocol/blast-v2-contracts/pull/119).
+The local tests and completed Opus review support this source resolution; the
+live release gates above remain open. GitHub Actions could not start because of
+account billing or spending limits. The corresponding local checks passed;
+acceptance does not represent a successful remote CI run.

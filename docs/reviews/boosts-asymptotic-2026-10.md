@@ -95,7 +95,7 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | 4 | M-4 | Medium | A per-order cap worth less than one lot wedges every order path, shutdown included | Resolved in source (ADR 0119); ordinary-redemption recovery can require an administrator |
 | 5 | M-5 | Medium | Once margin falls below the venue's opening requirement, the emergency rebalance that should fix it is refused | Resolved in source (PR #118, ADR 0124); venue execution remains a release gate |
 | 6 | M-6 | Medium | A caller can plant a bad quote and make `rebalance` or `unwind` fill into it at the full slippage bound, paid by holders | Atomic trading sequence blocked by [ADR 0118](../decisions/0118-limit-priced-vault-orders-and-a-widening-unwind-bound.md); price calibration and live venue proof remain |
-| 7 | M-7 | Medium | Rotating or re-pointing an oracle feed freezes priced operations and the shutdown exit | Fixed in source (ADR 0115); local guard/routing regressions added; controlled venue rotation remains a release gate |
+| 7 | M-7 | Medium | Rotating or re-pointing an oracle feed freezes priced operations and the shutdown exit | Resolved in source (ADR 0115, PR #119); guard/routing regressions complete; controlled venue rotation remains a release gate |
 | 8 | M-8 | Medium | A cap-sized order aborts if it fills even slightly above the oracle price | Resolved in source (ADR 0119); live execution evidence remains a release gate |
 | 9 | M-9 | Medium | Sustained above-RGP traffic on the shared objects can starve `rebalance` and `unwind` | Resolved in source through accepted mitigation (ADR 0120); ordinary-rebalance congestion remains an accepted risk |
 | 10 | L-1 | Low | The live NVDA2L vault uses `min_order_lots = 1`, which makes the mint drift bound meaningless | Open (deployment parameter, plus a post-fill band check) |
@@ -542,9 +542,12 @@ order stops at the cap; unwind under a widening bound.
 
 ### Ticket 7 · M-7 · Oracle feed rotation freezes priced operations and the shutdown exit
 
-**Status:** fixed in source by ADR 0115. Local guard/routing regressions and the
-comment correction are recorded in the [M-7 review](boosts-m7-oracle-2026-10-24.md).
-Controlled execution after venue rotation remains a release gate.
+**Status:** resolved in source through ADR 0115 and
+[PR #119](https://github.com/interest-protocol/blast-v2-contracts/pull/119).
+Local guard/routing regressions, the comment correction and the completed Opus
+5.5 review are recorded in the [M-7 review](boosts-m7-oracle-2026-10-24.md).
+Controlled execution after venue rotation remains a release gate; this does
+not claim original-auditor acceptance or a repair of historical deployed vaults.
 
 **The problem as reported.** At the audited commit every capture required the
 origin objects of the market's price feeds to equal ids stored in the vault's
