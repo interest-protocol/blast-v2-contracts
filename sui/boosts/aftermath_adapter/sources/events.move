@@ -155,11 +155,22 @@ public struct FundingSettled<phantom Product> has copy, drop {
 
 /// A sync found the venue in a state no vault operation explains. The accepted
 /// checkpoint stands and priced operations are refused until a later sync
-/// finds the venue explainable again; every such sync emits this event. An
+/// finds the venue explainable again or RiskAdmin rebaselines a reviewed forced
+/// reduction; every such sync emits this event. An
 /// unwind step that finds such a venue emits it too, then adopts the live
 /// state and closes what the venue holds.
 public struct CheckpointDrifted<phantom Product> has copy, drop {
     vault_id: ID,
+    checkpoint: Checkpoint,
+}
+
+/// RiskAdmin accepted a reviewed reduction. This records the historical edge
+/// up to the pre-funding capture; a following FundingSettled records any local
+/// settlement. Together they expose the final checkpoint and reserve. Native
+/// metadata identifies the administrator; supply and admin cash do not move.
+public struct CheckpointRebaselined<phantom Product> has copy, drop {
+    vault_id: ID,
+    previous_checkpoint: Checkpoint,
     checkpoint: Checkpoint,
 }
 
@@ -444,6 +455,14 @@ public(package) fun checkpoint_drifted<Product>(vault_id: ID, checkpoint: Checkp
     emit_event(CheckpointDrifted<Product> { vault_id, checkpoint });
 }
 
+public(package) fun checkpoint_rebaselined<Product>(
+    vault_id: ID,
+    previous_checkpoint: Checkpoint,
+    checkpoint: Checkpoint,
+) {
+    emit_event(CheckpointRebaselined<Product> { vault_id, previous_checkpoint, checkpoint });
+}
+
 public(package) fun donated<Product>(vault_id: ID, amount: u64, reserve_after: u64, checkpoint: Checkpoint) {
     emit_event(Donated<Product> {
         vault_id, amount, reserve_after, checkpoint,
@@ -680,6 +699,11 @@ public fun funding_settled_fields<Product>(
 #[test_only]
 public fun checkpoint_drifted_fields<Product>(self: &CheckpointDrifted<Product>): (ID, Checkpoint) {
     (self.vault_id, self.checkpoint)
+}
+
+#[test_only]
+public fun checkpoint_rebaselined_fields<Product>(self: &CheckpointRebaselined<Product>): (ID, Checkpoint, Checkpoint) {
+    (self.vault_id, self.previous_checkpoint, self.checkpoint)
 }
 
 #[test_only]

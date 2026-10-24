@@ -72,3 +72,7 @@ upgrade capability, `Protocol` and vaults.
   scale (not settable after creation), and anything that moves the account
   itself (liquidation, ADL, socialized losses). The first aborts inside the
   venue until the adapter is relinked; the last is drift by design.
+
+[ADR 0121](0121-reviewed-recovery-after-a-forced-venue-reduction.md) adds a
+separate RiskAdmin-reviewed recovery path for the admitted forced-reduction
+shape. Ordinary synchronization continues to reject account drift.

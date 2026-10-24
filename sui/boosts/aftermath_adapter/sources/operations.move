@@ -353,6 +353,35 @@ public fun donate<Product, Collateral>(
     vault.complete_donation(after, checkpoint, amount, clock.timestamp_ms());
 }
 
+/// Accepts a reviewed forced venue reduction without shutting down the vault.
+/// Only RiskAdmin may acknowledge the change. Every number comes from the bound
+/// venue; the caller supplies no replacement accounting. Funding settled here
+/// is isolated from the historical change and booked normally. Recovery checks
+/// prices and positive NAV without requiring margin for opening another trade.
+/// This changes no share supply, admin cash, fees or lifecycle.
+public fun rebaseline<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>,
+    protocol: &Protocol,
+    witness: &AdminWitness<RiskAdmin>,
+    account: &Account<Collateral>,
+    registry: &Registry,
+    clearing_house: &mut ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    clock: &Clock,
+) {
+    vault.assert_can_rebaseline(protocol, witness);
+    let binding = vault.venue().binding();
+    // Authenticate the complete object graph before the first venue mutation.
+    binding.assert_bound_graph(account, registry, clearing_house, base_oracle, collateral_oracle);
+    binding.update_funding_when_due(clearing_house, base_oracle, clock);
+    let before = binding.capture(account, registry, clearing_house, base_oracle, collateral_oracle, clock);
+    clearing_house.settle_position_funding(collateral_oracle, binding.account_number(), clock);
+    let after = binding.capture(account, registry, clearing_house, base_oracle, collateral_oracle, clock);
+
+    vault.complete_rebaseline(before, after, clock.timestamp_ms());
+}
+
 /// Settles due funding and reconciles the stored checkpoint with the venue,
 /// with no priced operation attached and no lifecycle move. Any caller may
 /// submit the bound objects; a binding failure aborts. An explainable funding
@@ -796,6 +825,39 @@ fun complete_donation<Product, Collateral>(
     events::donated<Product>(vault.id(), amount, vault.state().maintenance_reserve(), checkpoint);
 }
 
+// --- Recovery ---
+
+fun assert_can_rebaseline<Product, Collateral>(
+    vault: &Vault<Product, Collateral>,
+    protocol: &Protocol,
+    _: &AdminWitness<RiskAdmin>,
+) {
+    protocol.assert_current();
+    vault.state().assert_active();
+}
+
+/// Records the reviewed interval separately from this call's proven funding
+/// settlement. The final NAV check uses the reserve after that settlement.
+/// Any rejection rolls back both checkpoint updates and their events.
+fun complete_rebaseline<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>,
+    before: CapturedSnapshot,
+    after: CapturedSnapshot,
+    now_at_ms: u64,
+) {
+    let previous = *vault.venue().checkpoint();
+    previous.assert_forced_reduction(&after.checkpoint());
+    let before_checkpoint = before.checkpoint();
+    let funding = before_checkpoint.classify_change(&after.checkpoint(), before.collateral_fixed());
+    assert!(funding.is_clean(), blast_boosts_aftermath::errors::invalid_rebaseline!());
+    let (observation, checkpoint) = after.into_recovery_observation();
+
+    vault.venue_mut().replace_checkpoint(before_checkpoint);
+    events::checkpoint_rebaselined<Product>(vault.id(), previous, before_checkpoint);
+    vault.apply_post_capture(checkpoint, funding);
+    vault.state().assert_recoverable_position(observation, now_at_ms);
+}
+
 // --- Funding ---
 
 /// Reconciles the stored checkpoint with one the venue just showed, given the
@@ -1030,6 +1092,21 @@ fun complete_finalization<Product, Collateral>(
 
 // === Test-Only Functions ===
 
+/// Substitutes only the authenticated venue captures; production authorization,
+/// lifecycle, checkpoint, valuation and completion checks are reused unchanged.
+#[test_only]
+public fun rebaseline_from_captures_for_testing<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>,
+    protocol: &Protocol,
+    witness: &AdminWitness<RiskAdmin>,
+    before: CapturedSnapshot,
+    after: CapturedSnapshot,
+    now_at_ms: u64,
+) {
+    vault.assert_can_rebaseline(protocol, witness);
+    vault.complete_rebaseline(before, after, now_at_ms);
+}
+
 #[test_only]
 public fun emit_vault_initialized_for_testing<Product, Collateral>(
     vault: &Vault<Product, Collateral>,
@@ -1240,6 +1317,8 @@ use fun snapshot::capture as Binding.capture;
 
 use fun snapshot::capture_checkpoint as Binding.capture_checkpoint;
 
+use fun snapshot::assert_bound_graph as Binding.assert_bound_graph;
+
 use blast_boosts_core::{
     blast_boosts_core::RiskAdmin,
     observation::{Self, PositionObservation},
@@ -1267,6 +1346,10 @@ use perpetuals::{
 use sui::{clock::Clock, coin::Coin, coin_registry::Currency};
 
 use fun apply_post_capture as Vault.apply_post_capture;
+
+use fun assert_can_rebaseline as Vault.assert_can_rebaseline;
+
+use fun complete_rebaseline as Vault.complete_rebaseline;
 
 use fun assert_position_imr_unchanged as ClearingHouse.assert_position_imr_unchanged;
 

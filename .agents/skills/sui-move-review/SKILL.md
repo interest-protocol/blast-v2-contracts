@@ -55,7 +55,10 @@ decisions.
    returns in execution order. This pass is complete when every reachable path
    preserves its invariants and every applicable economic identity reconciles.
 4. Apply source style to the affected production and test code. Preserve
-   observable ordering and published compatibility while simplifying. Flag a
+   observable ordering and published compatibility while simplifying. For
+   changed transaction APIs, apply its PTB-composability reference and require
+   testing's runtime evidence for the intended result chain; distinguish an
+   accidental composition blocker from an accepted security restriction. Flag a
    function name that omits or misstates a mutation, custody movement, object
    operation, emission, or its return value as a defect, not a style
    preference; its failure path is the misuse or misreview the name invites. This pass is complete when every changed

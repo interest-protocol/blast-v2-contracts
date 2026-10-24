@@ -153,6 +153,15 @@ or activation transition.
 - Otherwise use a new type or a predesigned dynamic-extension seam instead of
   speculative flags, modes, roles, or governance hooks.
 
+## Define PTB composition seams
+
+Before fixing a transaction API, trace an intended PTB from input producers
+through the operation to result consumers and terminal sinks. Reusable
+operations must leave intermediate resources available for that chain; separate
+optional delivery from the core transition. Record intentional endpoints and
+security restrictions explicitly. Every returned linear resource needs a
+reachable authorized consumer without broadening its abilities or authority.
+
 ## Design authority by scope
 
 - A protocol-global admin cap normally carries only its identity. Revocation comes from live shared registry state.
@@ -176,6 +185,9 @@ Architecture is complete only when every changed fact has a canonical owner,
 every public seam has a concrete caller and invariant, every stored value has a
 required lifecycle, and every promised off-chain fact has a durable
 reconstruction source.
+
+Every changed transaction seam also has a complete intended PTB data flow or an
+explicit reason its composition is restricted.
 
 Reject on-chain logic whose removal would not weaken a consensus transition,
 asset invariant, trustless composition seam, or independent reconstruction.

@@ -89,7 +89,7 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 
 | Ticket | ID | Severity | In one sentence | Status in current source |
 | --- | --- | --- | --- | --- |
-| 1 | M-1 | Medium | A venue event the checkpoint cannot explain blocks mint, redeem and rebalance for good | Partly fixed (ADR 0115): margin-ratio changes no longer block; liquidation and ADL still do |
+| 1 | M-1 | Medium | A venue event the checkpoint cannot explain blocks mint, redeem and rebalance for good | Resolved in source (ADRs 0115, 0121); RiskAdmin review and live recovery proof remain; M-5 is separate |
 | 2 | M-2 | Medium | When the position has a big unrealized profit, every redemption aborts | Open |
 | 3 | M-3 | Medium | Calling either `restrict_*` upgrade function makes the next upgrade freeze the whole adapter forever | Open. Do not call `restrict_*` until fixed |
 | 4 | M-4 | Medium | A per-order cap worth less than one lot wedges every order path, shutdown included | Resolved in source (ADR 0119); ordinary-redemption recovery can require an administrator |
@@ -99,7 +99,7 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | 8 | M-8 | Medium | A cap-sized order aborts if it fills even slightly above the oracle price | Resolved in source (ADR 0119); live execution evidence remains a release gate |
 | 9 | M-9 | Medium | Sustained above-RGP traffic on the shared objects can starve `rebalance` and `unwind` | Resolved in source through accepted mitigation (ADR 0120); ordinary-rebalance congestion remains an accepted risk |
 | 10 | L-1 | Low | The live NVDA2L vault uses `min_order_lots = 1`, which makes the mint drift bound meaningless | Open (deployment parameter, plus a post-fill band check) |
-| 11 | L-2 | Low | Converting the order cap to base can overflow and abort instead of saturating | Addressed with M-4/M-8 in ADR 0119 |
+| 11 | L-2 | Low | Converting the order cap to base can overflow and abort instead of saturating | Resolved in source with M-4/M-8 in PR #112 (ADR 0119) |
 | 12 | L-3 | Low | A small vault below the band cannot rebalance when one lot overshoots target, and then cannot accept mints either | Open |
 | 13 | L-4 | Low | Donated cash is never allocated to the position, so the core counts margin the venue does not see | Open |
 | 14 | L-5 | Low | Activation accepts any non-negative `position_imr`, even one that later blocks operations inside the band | Open |
@@ -170,8 +170,20 @@ feed re-point surviving the shutdown exit.
 
 ### Ticket 1 · M-1 · A venue event the checkpoint cannot explain blocks the vault for good
 
-**Status:** partly fixed by ADR 0115. The liquidation and auto-deleverage
-trigger is open.
+**Status:** resolved in source by ADRs 0115 and
+[0121](../decisions/0121-reviewed-recovery-after-a-forced-venue-reduction.md).
+A RiskAdmin-reviewed same-side reduction or full close can adopt the live
+checkpoint; ordinary synchronization remains fail-closed. The implementation
+adopts the auditor's gated-rebaseline recommendation, with three explicit
+extensions: realized gains are accepted as well as losses, locally proven
+funding is booked separately, and recording recovery requires no opening-margin
+headroom. Fresh Fable review found no blocking source issue; see the
+[review record](boosts-m1-recovery-2026-10-24.md).
+RiskAdmin must verify the cause, and real venue-event/recovery execution remains
+a release gate. M-5's independent restriction on reducing trades is unchanged;
+shutdown remains available. This is source resolution, not Asymptotic sign-off,
+a live NVDA fix or a claim that every distressed vault can resume trading.
+The historical finding and recommendation below are preserved.
 
 **The problem.** Before every mint, redeem, rebalance or donate the adapter
 re-reads the venue and insists the live state equals the stored checkpoint,
@@ -688,7 +700,7 @@ the fill.
 
 ### Ticket 11 · L-2 · Cap-to-base conversion aborts on overflow instead of saturating
 
-**Status:** addressed in source by [ADR 0119](../decisions/0119-execution-priced-order-caps-and-minimum-lot-closes.md). Cap conversion rounds in wide arithmetic and saturates to the largest representable whole-lot base before narrowing. Regressions cover maximum caps and low prices. This addresses cap conversion, not every separate target-notional conversion or arithmetic limit. The historical finding follows.
+**Status:** resolved in source by [PR #112](https://github.com/interest-protocol/blast-v2-contracts/pull/112) and [ADR 0119](../decisions/0119-execution-priced-order-caps-and-minimum-lot-closes.md). Cap conversion rounds in wide arithmetic and saturates to the largest representable whole-lot base before narrowing. Regressions cover maximum caps and low prices; the complete core suite passed again with PR #114. This status records the source fix and local verification, not auditor sign-off or live release evidence. It addresses cap conversion, not every separate target-notional conversion or arithmetic limit. The historical finding follows.
 
 **The problem.** Converting `max_order_notional` into whole-lot base at the
 current price aborts with `arithmetic_overflow` when the result exceeds `u64`.

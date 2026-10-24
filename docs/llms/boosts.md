@@ -100,7 +100,7 @@ to the call. Integrators cannot obtain these witnesses.
 | Role | Authorizes |
 | --- | --- |
 | `blast_boosts_core::blast_boosts_core::VaultIssuer` | `blast_boosts_aftermath::vault::issue` (new Boost), `blast_boosts_aftermath::vault::update_metadata` |
-| `blast_boosts_core::blast_boosts_core::RiskAdmin` | `blast_boosts_aftermath::vault::set_fees`, `blast_boosts_aftermath::vault::set_nav_cap`, `operations::set_max_order_notional`, `blast_boosts_aftermath::vault::withdraw_admin_fees`, `operations::add_partner`, `operations::remove_partner` |
+| `blast_boosts_core::blast_boosts_core::RiskAdmin` | `blast_boosts_aftermath::vault::set_fees`, `blast_boosts_aftermath::vault::set_nav_cap`, `operations::set_max_order_notional`, `operations::rebaseline`, `blast_boosts_aftermath::vault::withdraw_admin_fees`, `operations::add_partner`, `operations::remove_partner` |
 | `blast_boosts_core::blast_boosts_core::ShutdownAdmin` | `blast_boosts_aftermath::vault::begin_shutdown` |
 | `blast_boosts_core::blast_boosts_core::UpgradeAdmin` | adapter upgrades through `blast_boosts_aftermath::package_admin` |
 
@@ -147,7 +147,7 @@ only from activation, so it is born `Active`.
 
 | State | Entered by | Allowed |
 | --- | --- | --- |
-| `Active` | `operations::initialize` | mint, redeem (plain and partner), rebalance, `needs_rebalance`, donate, `sync_health`, all admin settings, `begin_shutdown` |
+| `Active` | `operations::initialize` | mint, redeem (plain and partner), rebalance, `needs_rebalance`, donate, `sync_health`, RiskAdmin `rebaseline`, all admin settings, `begin_shutdown` |
 | `Unwinding` | `blast_boosts_aftermath::vault::begin_shutdown` (ShutdownAdmin) | `operations::unwind`, `operations::sync_health`, `operations::finalize_shutdown`, `set_nav_cap`, `set_max_order_notional`, `update_metadata`, `withdraw_admin_fees` |
 | `Settled` | `operations::finalize_shutdown` (anyone) | `blast_boosts_aftermath::vault::redeem_shutdown`, `set_nav_cap`, `set_max_order_notional`, `update_metadata`, `withdraw_admin_fees` |
 
@@ -388,6 +388,39 @@ account, position, order and position-margin field must be exact. Anything
 else leaves the accepted checkpoint in place and emits `CheckpointDrifted`;
 every drifted sync emits it again. Blast adds no price, margin or drift check
 to this call; a binding mismatch aborts.
+
+#### Recover a reviewed forced reduction (Blast admin: RiskAdmin)
+
+`operations::rebaseline` takes the Vault, Protocol, a live
+`AdminWitness<RiskAdmin>`, bound account, registry, clearing house, both current
+oracle storages and Clock. The clearing house is borrowed mutably; no object or
+coin is returned. An administrator obtains the witness through the shared ACL
+earlier in the same PTB, then calls this function. Recovery is Active-only.
+
+The call refreshes funding and captures immediately before and after settlement.
+The final position must be strictly smaller on the same side or exactly flat
+with zero entry quote. Allocated collateral may reflect realized profit or loss;
+free cash, lot size and position IMR cannot change; stored and final checkpoints
+must have no orders. Final funding snapshots must be current. Fresh-price,
+representation, correct-side, operational-venue and positive shareholder-NAV
+checks apply. Recording recovery needs no opening-margin headroom; normal
+trades retain their existing checks, including M-5's remaining restriction.
+
+The administrator supplies no replacement numbers and must review venue history:
+the shape alone does not prove liquidation. `CheckpointRebaselined` records
+stored state to the capture before local funding. Any local settlement must
+match the ordinary funding calculation exactly; it is booked under normal
+reserve/deficit rules and emitted as a following `FundingSettled` to the final
+checkpoint. Process both events in transaction order. Historical mixed PnL,
+fees and funding remain in holder NAV without inventing a reserve entitlement.
+Supply, admin cash, fee settings and lifecycle stay unchanged. Subsequent
+operations price the actual remaining position. An identical retry aborts.
+
+A free-cash change, changed lot or position IMR, unexplained orders or a loss
+without a position reduction is outside this recovery path. Insolvency, stale
+prices and paused/frozen markets still block recovery. The independently
+authorized shutdown path remains available. See ADR 0121 for the auditor
+recommendation adopted, explicit extensions and release evidence limits.
 
 #### Donate (anyone)
 
@@ -689,7 +722,8 @@ types below from the adapter's `events` module (for example
 | `PartnerAdded`, `PartnerRemoved` | partner list changes | `accepted_until_ms` on removal. |
 | `Rebalanced` | `rebalance` | equity and base before and after, direction. Equity change is the execution cost (or gain) at the fixed pair. |
 | `FundingSettled` | any synchronization (`sync_health`, mint, redeem, rebalance, donate, unwind) that adopts a changed checkpoint | cost or credit, raw IFixed and atom amounts (atoms may be 0), absorbed, uncovered, restored, reserve after, previous and new checkpoint. |
-| `CheckpointDrifted` | `sync_health` or `unwind` that finds unexplained venue state | After `sync_health` the accepted checkpoint stands and priced operations abort until a sync finds the venue explainable again; `unwind` then adopts the live state and closes it. |
+| `CheckpointRebaselined` | RiskAdmin `operations::rebaseline` | vault ID, stored checkpoint and capture before local funding; a following `FundingSettled` carries any local settlement to the final checkpoint and reserve. |
+| `CheckpointDrifted` | `sync_health` or `unwind` that finds unexplained venue state | After `sync_health` the accepted checkpoint stands and priced operations abort until ordinary synchronization or RiskAdmin recovery accepts it; `unwind` adopts the live state and closes it. |
 | `Donated` | `donate` | amount, reserve after. |
 | `ShutdownBegun` | `begin_shutdown` | declared reason. |
 | `UnwindProgress` | `unwind` | adopted before checkpoint, after checkpoint, orders placed (`market_orders`), filled quote (`none` for settlement-price closes). |
@@ -731,7 +765,7 @@ outdated adapter package aborts in the `operational_version` module of the
 | 26 | Deadline passed | Use a later `deadline_ms`. |
 | 27 | A fill changed venue fields it should not | Retry. |
 | 29 | The market's taker fee is not a usable rate (rebalance) | Wait; venue configuration. |
-| 30 | Venue state the Vault cannot explain since its checkpoint | Call `sync_health` and check for `CheckpointDrifted`; priced operations stay blocked until the venue is explainable. |
+| 30 | Venue state the Vault cannot explain since its checkpoint | Inspect `CheckpointDrifted`; RiskAdmin may recover an admitted forced reduction with `operations::rebaseline`. |
 | 31 | Terminal step not possible: orders open, funding unsettled, settlement prices not enabled, or wrong order count | Settle funding with `sync_health` first, or wait for Aftermath. |
 | 32 | Unwind found no lot-aligned position on the bound side (for example already flat) | Call `finalize_shutdown`. |
 | 33 | Venue not ready: resting orders, unsafe margin, paused market or frozen clearing house | Wait. |
@@ -757,6 +791,7 @@ outdated adapter package aborts in the `operational_version` module of the
 | 35 | Fewer shares than `minimum_shares` | Re-quote; raise slippage tolerance. |
 | 36 | Post-mint NAV above `nav_cap` | Mint less or wait. |
 | 37 | A fill's price outside the execution bound, or no tick inside it | Trade smaller or wait for depth. |
+| 38 | Recovery does not match the admitted forced-reduction shape | RiskAdmin must review the venue event; recovery cannot accept arbitrary drift. |
 | 43 | A fill's actual notional above `max_order_notional`, outside the one-lot reduce-only exception | Trade smaller. |
 | 49 | Leverage before or after mint is outside the band | Dry-run another amount. Rebalance first only if the current position is outside the band. |
 | 50, 51 | Oracle pair or fills changed within the operation | Retry. |
@@ -791,9 +826,9 @@ outdated adapter package aborts in the `operational_version` module of the
   lower payout.
 - Reading `CheckpointDrifted` from a failed mint: aborted transactions emit
   nothing. Only `sync_health` and `unwind` record drift. Drift from a
-  lasting venue change (a liquidation, an ADL, or a change to the market's
-  margin ratios or lot size) does not clear on its own; Blast's ShutdownAdmin
-  may then shut the Boost down.
+  lasting account change does not clear on its own. RiskAdmin can recover an
+  admitted forced reduction; other drift may require ShutdownAdmin to shut
+  the Boost down. Market-wide margin changes are accepted automatically.
 - Decoding an abort by code alone. Core and adapter codes overlap.
 - Calling an old adapter package after an upgrade (blast_admin code 13). Types
   keep their original package IDs; calls must target the current package.
@@ -857,7 +892,8 @@ dust.
 
 **Can a Boost be liquidated?** The Aftermath position can be. The Vault never
 declares liquidation on chain; a liquidation appears as `CheckpointDrifted`,
-priced operations stop, and Blast's ShutdownAdmin may shut the Boost down so
-holders can claim what remains.
+priced operations stop, and RiskAdmin may recover the admitted reduction shape
+once the remaining position is healthy. Otherwise ShutdownAdmin may shut the
+Boost down so holders can claim what remains.
 
 **Is there a testnet deployment?** No. Blast deploys Boosts on Sui mainnet only.

@@ -62,6 +62,326 @@ public struct ReplayState has drop {
 // === Tests ===
 
 #[test]
+fun rebaseline_reprices_mint_and_redemption_without_changing_existing_claims() {
+    let mut fixture = start();
+    let before = recovery_checkpoint(1_000, 1_800);
+    let after = recovery_checkpoint(550, 900);
+    let mut vault = issue_and_activate(&mut fixture, before);
+    let mut replay = replay_issued(events::collect_one<events::VaultIssued<Product>>(0));
+    replay.replay_initialized(events::collect_one<events::VaultInitialized<Product>>(0));
+    vault.set_fees(&fixture.protocol, &risk_admin(), 0, 0, 0);
+    replay.replay_fees(events::collect_one<events::FeesUpdated<Product>>(0));
+    let supply_before = vault.total_share_supply();
+    let reserve_before = vault.state().maintenance_reserve();
+    let deficit_before = vault.state().uncovered_deficit();
+    vault.apply_post_capture_for_testing(after, before.classify_preexisting(&after));
+    replay.replay_drift(events::collect_one<events::CheckpointDrifted<Product>>(0));
+    replay.assert_replay(&vault);
+    assert_eq!(*vault.venue().checkpoint(), before);
+
+    fixture.recover(&mut vault, after, 550, 900, true, true, REFERENCE_AT_MS);
+    let (id, recorded_before, recorded_after) =
+        events::collect_one<events::CheckpointRebaselined<Product>>(0).checkpoint_rebaselined_fields();
+    assert_eq!(id, vault.id());
+    assert_eq!(recorded_before, before);
+    assert_eq!(recorded_after, after);
+    assert_eq!(*vault.venue().checkpoint(), recorded_after);
+    replay.replay_rebaseline(events::collect_one<events::CheckpointRebaselined<Product>>(0));
+    replay.assert_replay(&vault);
+    assert!(replay.unresolved_checkpoint.is_none());
+    assert_eq!(vault.total_share_supply(), supply_before);
+    assert_eq!(vault.state().maintenance_reserve(), reserve_before);
+    assert_eq!(vault.state().uncovered_deficit(), deficit_before);
+    assert_eq!(vault.admin_cash_balance<_, Collateral>(), 0);
+    assert!(vault.state().is_active_for_testing());
+    assert!(events::collect<events::FundingSettled<Product>>().is_empty());
+    assert!(events::collect<events::CheckpointRebaselined<OtherProduct>>().is_empty());
+    // Ordinary synchronization now accepts this checkpoint. At half the old
+    // holder NAV, an equal-sized deposit receives twice as many shares.
+    vault.venue().checkpoint().assert_unchanged(&after);
+    let plan = vault.state().prepare_mint(active_position(550, 900), 450, supply_before, supply_before, REFERENCE_AT_MS);
+    assert_eq!(plan.base_to_buy(), 900 * BASE_PER_NOTIONAL);
+    let shares = vault.complete_mint_for_testing(plan, 450, active_position(1_000, 1_800),
+        recovery_checkpoint(1_000, 1_800), REFERENCE_AT_MS, fixture.ctx!());
+    assert_eq!(shares.value(), supply_before);
+    let plan = vault.state().prepare_redemption(active_position(1_000, 1_800), shares.value(),
+        vault.total_share_supply(), 450, REFERENCE_AT_MS);
+    assert_eq!(plan.base_to_sell(), 900 * BASE_PER_NOTIONAL);
+    let (net, admin, fee, reserve_fee) = vault.settle_redemption_for_testing(
+        plan, &shares, active_position(1_000, 900), REFERENCE_AT_MS,
+    );
+    assert_eq!(net, 450);
+    let cash = sui::coin::mint_for_testing<Collateral>(net + admin, fixture.ctx!());
+    let cash = vault.complete_redemption_for_testing(shares, cash, net, admin, fee, reserve_fee, after, fixture.ctx!());
+    assert_eq!(cash.value(), 450);
+    assert_eq!(vault.total_share_supply(), supply_before);
+    assert_eq!(*vault.venue().checkpoint(), recorded_after);
+    destroy(cash);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+fun short_rebaseline_after_full_close() {
+    recover_short(0);
+}
+
+#[test]
+fun short_rebaseline_after_partial_close() {
+    recover_short(900);
+}
+
+#[test]
+fun rebaseline_allows_rebalance_after_full_close() {
+    recover_and_rebalance(0);
+}
+
+#[test]
+fun rebaseline_allows_rebalance_after_partial_close() {
+    recover_and_rebalance(600);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EUnresolvedCheckpoint, location = blast_boosts_aftermath::checkpoint)]
+fun ordinary_operations_still_reject_a_forced_reduction_before_rebaseline() {
+    let mut fixture = start();
+    let before = recovery_checkpoint(1_000, 1_800);
+    let after = recovery_checkpoint(550, 900);
+    let mut vault = issue_and_activate(&mut fixture, before);
+    vault.apply_post_capture_for_testing(after, before.classify_preexisting(&after));
+    vault.venue().checkpoint().assert_unchanged(&after);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EInvalidRebaseline, location = blast_boosts_aftermath::checkpoint)]
+fun rebaseline_cannot_replay_an_already_accepted_reduction() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, recovery_checkpoint(1_000, 1_800));
+    let after = recovery_checkpoint(550, 900);
+    fixture.recover(&mut vault, after, 550, 900, true, true, REFERENCE_AT_MS);
+    fixture.recover(&mut vault, after, 550, 900, true, true, REFERENCE_AT_MS);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+fun rebaseline_records_reduction_without_opening_margin() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, recovery_checkpoint(1_000, 1_800));
+
+    fixture.recover(&mut vault, recovery_checkpoint(550, 900), 550, 900, false, true, REFERENCE_AT_MS);
+    assert_eq!(*vault.venue().checkpoint(), recovery_checkpoint(550, 900));
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EVenueNotReady, location = blast_boosts_aftermath::snapshot)]
+fun rebaseline_does_not_remove_opening_margin_checks_from_trades() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, recovery_checkpoint(1_000, 1_800));
+    let after = recovery_checkpoint(550, 900);
+    fixture.recover(&mut vault, after, 550, 900, false, true, REFERENCE_AT_MS);
+    let (_, _) = snapshot::captured_position_for_testing(after, 550, 900 * BASE_PER_NOTIONAL,
+        policy::long(), false, true).into_observation();
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EInvalidRebaseline, location = blast_boosts_aftermath::checkpoint)]
+fun rebaseline_checks_shape_before_venue_readiness() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, recovery_checkpoint(1_000, 1_800));
+    fixture.recover(&mut vault, recovery_checkpoint(550, 1_800), 550, 1_800, false, false, REFERENCE_AT_MS);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+fun rebaseline_allows_emergency_reduction_of_remaining_position() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, recovery_checkpoint(1_000, 1_800));
+    fixture.recover(&mut vault, recovery_checkpoint(550, 1_700), 550, 1_700, true, true, REFERENCE_AT_MS);
+    let mut plan = vault.state().prepare_rebalance(active_position(550, 1_700), 0, REFERENCE_AT_MS);
+    let order = vault.state().next_rebalance_order(&plan);
+    assert!(order.is_emergency() && !order.is_increase());
+    let filled = order.order_base();
+    assert!(filled > 0);
+    let after_base = 1_700 * BASE_PER_NOTIONAL - filled;
+    vault.state().accept_rebalance_fill(&mut plan, order, active_position_with_base(550, after_base), filled, REFERENCE_AT_MS);
+    vault.complete_rebalance_for_testing(plan, recovery_checkpoint_with_base(550, after_base));
+    assert_eq!(*vault.venue().checkpoint(), recovery_checkpoint_with_base(550, after_base));
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = blast_boosts_core::errors::EMintOutsideRebalanceBand, location = blast_boosts_core::state)]
+fun rebaseline_does_not_allow_minting_while_remaining_position_is_overleveraged() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, recovery_checkpoint(1_000, 1_800));
+    fixture.recover(&mut vault, recovery_checkpoint(550, 1_700), 550, 1_700, true, true, REFERENCE_AT_MS);
+    let plan = vault.state().prepare_mint(active_position(550, 1_700), 450,
+        vault.total_share_supply(), 1, REFERENCE_AT_MS);
+    destroy(plan);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+fun rebaseline_accepts_realized_profit_without_creating_a_funding_entitlement() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, recovery_checkpoint(1_000, 1_800));
+    let supply = vault.total_share_supply();
+    fixture.recover(&mut vault, recovery_checkpoint(1_100, 900), 1_100, 900, true, true, REFERENCE_AT_MS);
+    assert_eq!(*vault.venue().checkpoint(), recovery_checkpoint(1_100, 900));
+    assert_eq!(vault.state().maintenance_reserve(), SEED_RESERVE);
+    assert_eq!(vault.state().uncovered_deficit(), 0);
+    assert_eq!(vault.total_share_supply(), supply);
+    assert!(events::collect<events::FundingSettled<Product>>().is_empty());
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+fun rebaseline_isolates_local_funding_cost_from_historical_loss() {
+    recover_with_funding(true, 50, false, false);
+}
+
+#[test]
+fun rebaseline_books_uncovered_local_funding_cost() {
+    recover_with_funding(true, 150, false, false);
+}
+
+#[test]
+fun rebaseline_isolates_local_funding_credit_from_historical_loss() {
+    recover_with_funding(false, 50, false, false);
+}
+
+#[test]
+fun rebaseline_local_funding_credit_restores_an_existing_deficit() {
+    recover_with_funding(false, 75, true, false);
+}
+
+#[test]
+fun short_rebaseline_books_local_funding_cost_from_the_short_rate() {
+    recover_with_funding(true, 50, false, true);
+}
+
+#[test]
+fun short_rebaseline_books_local_funding_credit_from_the_short_rate() {
+    recover_with_funding(false, 50, false, true);
+}
+
+#[test]
+fun flat_rebaseline_replays_locally_refreshed_snapshots_with_zero_funding() {
+    let mut fixture = start();
+    let previous = recovery_checkpoint(1_000, 1_800);
+    let mut vault = issue_and_activate(&mut fixture, previous);
+    let mut replay = replay_issued(events::collect_one<events::VaultIssued<Product>>(0));
+    replay.replay_initialized(events::collect_one<events::VaultInitialized<Product>>(0));
+    let market_long = RATE + ONE_FIXED / 20;
+    let market_short = RATE + ONE_FIXED / 10;
+    let before_checkpoint = checkpoint::checkpoint_for_testing(0, 550 * ATOM_FIXED, 0, 0,
+        RATE, RATE, market_long, market_short, LOT_SIZE, 0, 0, 0, 0, false, 1, 1, 1);
+    let after_checkpoint = checkpoint::checkpoint_for_testing(0, 550 * ATOM_FIXED, 0, 0,
+        market_long, market_short, market_long, market_short, LOT_SIZE, 0, 0, 0, 0, false, 1, 1, 1);
+    let before = snapshot::captured_position_for_testing(before_checkpoint, 550, 0, policy::long(), true, true);
+    let after = snapshot::captured_position_for_testing(after_checkpoint, 550, 0, policy::long(), true, true);
+    vault.rebaseline_from_captures_for_testing(&fixture.protocol, &risk_admin(), before, after, REFERENCE_AT_MS);
+
+    replay.replay_rebaseline(events::collect_one<events::CheckpointRebaselined<Product>>(0));
+    assert_eq!(*replay.checkpoint.borrow(), before_checkpoint);
+    let funding = events::collect_one<events::FundingSettled<Product>>(0);
+    let (_, is_cost, raw, amount, absorbed, uncovered, restored, reserve, event_before, event_after) =
+        funding.funding_settled_fields();
+    assert!(!is_cost);
+    assert_eq!(raw, 0);
+    assert_eq!(vector[amount, absorbed, uncovered, restored, reserve], vector[0, 0, 0, 0, SEED_RESERVE]);
+    assert_eq!(event_before, before_checkpoint);
+    assert_eq!(event_after, after_checkpoint);
+    replay.replay_funding(funding);
+    replay.assert_replay(&vault);
+    assert_eq!(*vault.venue().checkpoint(), after_checkpoint);
+    assert_eq!(vault.state().uncovered_deficit(), 0);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EInvalidRebaseline, location = blast_boosts_aftermath::operations)]
+fun rebaseline_rejects_an_unexplained_change_during_its_own_funding_settlement() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, recovery_checkpoint(1_000, 1_800));
+    let market = RATE + ONE_FIXED / 20;
+    let before = funding_recovery_capture(550, RATE, market, false);
+    // The remaining 0.001 base owes 50 collateral atoms, not 49.
+    let after = funding_recovery_capture(501, market, market, false);
+    vault.rebaseline_from_captures_for_testing(&fixture.protocol, &risk_admin(), before, after, REFERENCE_AT_MS);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EVenueNotReady, location = blast_boosts_aftermath::snapshot)]
+fun rebaseline_rejects_paused_or_frozen_market() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, recovery_checkpoint(1_000, 1_800));
+
+    fixture.recover(&mut vault, recovery_checkpoint(550, 900), 550, 900, true, false, REFERENCE_AT_MS);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = blast_boosts_core::errors::EInvalidNav, location = blast_boosts_core::state)]
+fun rebaseline_rejects_nonpositive_holder_nav() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, recovery_checkpoint(1_000, 1_800));
+
+    fixture.recover(&mut vault, recovery_checkpoint(100, 900), 100, 900, true, true, REFERENCE_AT_MS);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = blast_boosts_core::errors::EStalePrice, location = blast_boosts_core::policy)]
+fun rebaseline_rejects_stale_prices() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, recovery_checkpoint(1_000, 1_800));
+
+    fixture.recover(&mut vault, recovery_checkpoint(550, 900), 550, 900, true, true, REFERENCE_AT_MS + 30_001);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = blast_boosts_core::errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
+fun rebaseline_rejects_shutdown() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, recovery_checkpoint(1_000, 1_800));
+    vault.set_unwinding_for_testing();
+    fixture.recover(&mut vault, recovery_checkpoint(550, 900), 550, 900, true, true, REFERENCE_AT_MS);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = blast_admin::errors::EOperationalVersionMismatch, location = blast_admin::operational_version)]
+fun rebaseline_rejects_wrong_version_before_lifecycle_or_capture() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, recovery_checkpoint(1_000, 1_800));
+    fixture.protocol.set_version_for_testing(3);
+    vault.set_unwinding_for_testing();
+    fixture.recover(&mut vault, recovery_checkpoint(100, 900), 100, 900, false, false, REFERENCE_AT_MS + 30_001);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
 fun order_filled_event_carries_every_fill_fact_in_order() {
     let account = object::id_from_address(@0xA11);
     events::order_filled<Product>(account, true, false, 2_500_000_000_000, 2_400_000_000_000,
@@ -2866,6 +3186,152 @@ fun net_funding_adds_two_costs_and_keeps_the_larger_side_of_a_cost_and_a_credit(
 
 // === Test Helpers ===
 
+fun recover_with_funding(is_cost: bool, amount: u64, with_deficit: bool, short: bool) {
+    let mut fixture = start();
+    let side = if (short) { policy::short() } else { policy::long() };
+    let previous = if (short) { short_recovery_checkpoint(1_000, 1_800) } else { recovery_checkpoint(1_000, 1_800) };
+    let mut vault = issue_and_activate_product_with_side(&mut fixture, Product(), previous,
+        standard_vault_policy_for_side(side), side);
+    if (with_deficit) {
+        let (_, _, _) = vault.state_mut().settle_funding(observation::funding_cost(150));
+    };
+    let mut replay = replay_issued(events::collect_one<events::VaultIssued<Product>>(0));
+    replay.replay_initialized(events::collect_one<events::VaultInitialized<Product>>(0));
+    replay.maintenance_reserve = vault.state().maintenance_reserve();
+    let supply = vault.total_share_supply();
+    let reserve_before = vault.state().maintenance_reserve();
+    let deficit_before = vault.state().uncovered_deficit();
+    // A 0.001-base remainder turns this rate delta into exactly `amount` atoms.
+    let delta = (amount as u256) * ONE_FIXED / 1_000;
+    let market = if (is_cost != short) { RATE + delta } else { RATE - delta };
+    let equity = if (is_cost) { 550 - amount } else { 550 + amount };
+    let before = funding_recovery_capture(550, RATE, market, short);
+    let before_checkpoint = before.checkpoint();
+    let after = funding_recovery_capture(equity, market, market, short);
+    let after_checkpoint = after.checkpoint();
+    vault.rebaseline_from_captures_for_testing(&fixture.protocol, &risk_admin(), before, after, REFERENCE_AT_MS);
+
+    let baseline = events::collect_one<events::CheckpointRebaselined<Product>>(0);
+    let (_, event_previous, event_before) = baseline.checkpoint_rebaselined_fields();
+    assert_eq!(event_previous, previous);
+    assert_eq!(event_before, before_checkpoint);
+    replay.replay_rebaseline(baseline);
+    let funding = events::collect_one<events::FundingSettled<Product>>(0);
+    let (_, event_cost, raw, rounded, absorbed, uncovered, restored, reserve_after, event_before, event_after) =
+        funding.funding_settled_fields();
+    assert_eq!(event_cost, is_cost);
+    assert_eq!(raw, (amount as u256) * ATOM_FIXED);
+    assert_eq!(rounded, amount);
+    assert_eq!(event_before, before_checkpoint);
+    assert_eq!(event_after, after_checkpoint);
+    if (is_cost) {
+        assert_eq!(absorbed, amount.min(reserve_before));
+        assert_eq!(uncovered, amount - absorbed);
+        assert_eq!(restored, 0);
+        assert_eq!(reserve_after, reserve_before - absorbed);
+        assert_eq!(vault.state().uncovered_deficit(), deficit_before + uncovered);
+    } else {
+        assert_eq!(absorbed, 0);
+        assert_eq!(uncovered, 0);
+        assert_eq!(restored, amount.min(deficit_before));
+        assert_eq!(reserve_after, reserve_before + amount - restored);
+        assert_eq!(vault.state().uncovered_deficit(), deficit_before - restored);
+    };
+    replay.replay_funding(funding);
+    replay.assert_replay(&vault);
+    assert_eq!(vault.total_share_supply(), supply);
+    assert_eq!(vault.admin_cash_balance<_, Collateral>(), 0);
+    assert!(vault.state().is_active_for_testing());
+    assert_eq!(*vault.venue().checkpoint(), after_checkpoint);
+    destroy(vault);
+    fixture.end();
+}
+
+fun funding_recovery_capture(equity: u64, snapshot: u256, market: u256, short: bool): CapturedSnapshot {
+    let magnitude = 1_000 * ATOM_FIXED;
+    let base = if (short) { std::u256::max_value!() - magnitude + 1 } else { magnitude };
+    let (snapshot_long, snapshot_short, market_long, market_short) =
+        if (short) { (RATE, snapshot, RATE, market) } else { (snapshot, RATE, market, RATE) };
+    let checkpoint = checkpoint::checkpoint_for_testing(0, (equity as u256) * ATOM_FIXED, base, base,
+        snapshot_long, snapshot_short, market_long, market_short, LOT_SIZE, 0, 0, 0, 0, false, 1, 1, 1);
+    snapshot::captured_position_for_testing(checkpoint, equity, 1_000 * BASE_PER_NOTIONAL,
+        if (short) { policy::short() } else { policy::long() }, true, true)
+}
+
+fun recover_and_rebalance(notional: u64) {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, recovery_checkpoint(1_000, 1_800));
+    let after = recovery_checkpoint(550, notional);
+    fixture.recover(&mut vault, after, 550, notional, true, true, REFERENCE_AT_MS);
+    let mut plan = vault.state().prepare_rebalance(active_position(550, notional), 0, REFERENCE_AT_MS);
+    let order = vault.state().next_rebalance_order(&plan);
+    assert!(order.is_increase());
+    let filled = order.order_base();
+    assert!(filled > 0);
+    let after_base = notional * BASE_PER_NOTIONAL + filled;
+    vault.state().accept_rebalance_fill(&mut plan, order, active_position_with_base(550, after_base), filled, REFERENCE_AT_MS);
+    vault.complete_rebalance_for_testing(plan, recovery_checkpoint_with_base(550, after_base));
+    assert_eq!(events::collect<events::Rebalanced<Product>>().length(), 1);
+    destroy(vault);
+    fixture.end();
+}
+
+fun recover_short(notional: u64) {
+    let mut fixture = start();
+    let before = short_recovery_checkpoint(1_000, 1_800);
+    let after = short_recovery_checkpoint(550, notional);
+    let mut vault = issue_and_activate_product_with_side(&mut fixture, Product(), before,
+        standard_vault_policy_for_side(policy::short()), policy::short());
+    let capture = snapshot::captured_position_for_testing(after, 550, notional * BASE_PER_NOTIONAL,
+        if (notional == 0) { policy::long() } else { policy::short() }, true, true);
+    let before_funding = snapshot::captured_position_for_testing(after, 550, notional * BASE_PER_NOTIONAL,
+        if (notional == 0) { policy::long() } else { policy::short() }, true, true);
+    vault.rebaseline_from_captures_for_testing(&fixture.protocol, &risk_admin(), before_funding, capture, REFERENCE_AT_MS);
+    assert_eq!(*vault.venue().checkpoint(), after);
+    assert_eq!(vault.state().maintenance_reserve(), SEED_RESERVE);
+    assert!(vault.state().is_active_for_testing());
+    destroy(vault);
+    fixture.end();
+}
+
+/// Coherent unit-price position: raw base and entry quote are 18-decimal;
+/// allocated collateral is six-decimal cash scaled to the venue's carrier.
+fun recovery_checkpoint(equity: u64, notional: u64): Checkpoint {
+    recovery_checkpoint_with_base(equity, notional * BASE_PER_NOTIONAL)
+}
+
+fun short_recovery_checkpoint(equity: u64, notional: u64): Checkpoint {
+    let raw = (notional as u256) * ATOM_FIXED;
+    let signed = if (raw == 0) { 0 } else { std::u256::max_value!() - raw + 1 };
+    checkpoint::checkpoint_for_testing(0, (equity as u256) * ATOM_FIXED, signed, signed,
+        RATE, RATE, RATE, RATE, LOT_SIZE, 0, 0, 0, 0, false, 1, 1, 1)
+}
+
+fun recovery_checkpoint_with_base(equity: u64, base: u64): Checkpoint {
+    checkpoint::checkpoint_for_testing(0, (equity as u256) * ATOM_FIXED,
+        (base as u256) * 1_000_000_000, (base as u256) * 1_000_000_000,
+        RATE, RATE, RATE, RATE, LOT_SIZE, 0, 0, 0, 0, false, 1, 1, 1)
+}
+
+fun recover(
+    fixture: &Fixture,
+    vault: &mut Vault<Product, Collateral>,
+    checkpoint: Checkpoint,
+    equity: u64,
+    notional: u64,
+    margin_safe: bool,
+    venue_operational: bool,
+    now_at_ms: u64,
+) {
+    let capture = snapshot::captured_position_for_testing(
+        checkpoint, equity, notional * BASE_PER_NOTIONAL, policy::long(), margin_safe, venue_operational,
+    );
+    let before_funding = snapshot::captured_position_for_testing(
+        checkpoint, equity, notional * BASE_PER_NOTIONAL, policy::long(), margin_safe, venue_operational,
+    );
+    vault.rebaseline_from_captures_for_testing(&fixture.protocol, &risk_admin(), before_funding, capture, now_at_ms);
+}
+
 fun assert_rebalance_gas_at(side: PositionSide, notional: u64, gas_price: u64) {
     let (state, _, _) = state::issue<Product>(
         &vault_issuer(), fee_capped_vault_policy_for_side(side), 250, NAV_CAP, 9, 6,
@@ -3720,6 +4186,14 @@ fun replay_initialized<Tag>(
     replay.checkpoint = option::some(checkpoint);
 }
 
+fun replay_rebaseline<Tag>(replay: &mut ReplayState, event: events::CheckpointRebaselined<Tag>) {
+    let (vault_id, previous, checkpoint) = event.checkpoint_rebaselined_fields();
+    assert_eq!(vault_id, replay.vault_id);
+    assert_eq!(previous, *replay.checkpoint.borrow());
+    replay.checkpoint = option::some(checkpoint);
+    replay.unresolved_checkpoint = option::none();
+}
+
 fun replay_funding<Tag>(
     replay: &mut ReplayState,
     event: events::FundingSettled<Tag>,
@@ -3791,7 +4265,7 @@ use blast_boosts_aftermath::{
     operations,
     orders,
     blast_boosts_aftermath::{Self as protocol, Protocol},
-    snapshot,
+    snapshot::{Self, CapturedSnapshot},
     vault::{Self, Vault},
     venue_account::{Self, Binding},
 };
@@ -3862,3 +4336,5 @@ use fun orders::reducing_terms as Vault.reducing_terms;
 use fun orders::unwind_terms as Vault.unwind_terms;
 
 use fun operations::assert_rebalance_gas_price_for_testing as RebalancePlan.assert_gas_price;
+
+use fun operations::rebaseline_from_captures_for_testing as Vault.rebaseline_from_captures_for_testing;

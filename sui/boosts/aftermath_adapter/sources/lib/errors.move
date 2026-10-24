@@ -159,6 +159,10 @@ const EPartnerNotAccepted: u64 = 36;
 /// Adding or removing a partner must change the list: it is already accepted, or already being removed.
 const EPartnerUnchanged: u64 = 37;
 
+#[test_only]
+/// Recovery requires a settled same-side reduction with no unexplained cash or order changes.
+const EInvalidRebaseline: u64 = 38;
+
 macro public(package) fun invalid_package_publisher(): u64 { 0 }
 
 macro public(package) fun invalid_product_witness_type(): u64 { 1 }
@@ -234,3 +238,5 @@ macro public(package) fun priority_gas_price(): u64 { 35 }
 macro public(package) fun partner_not_accepted(): u64 { 36 }
 
 macro public(package) fun partner_unchanged(): u64 { 37 }
+
+macro public(package) fun invalid_rebaseline(): u64 { 38 }
