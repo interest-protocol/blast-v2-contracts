@@ -83,9 +83,10 @@ fun error_codes_run_from_zero_without_gaps() {
         errors::rebalance_outside_band!(),
         errors::rebalance_capacity!(),
         errors::rebalance_order_limit!(),
+        errors::protected_shutdown_not_allowed!(),
     ];
 
-    assert_eq!(codes.length(), 71);
+    assert_eq!(codes.length(), 72);
     codes.length().do!(|i| assert_eq!(codes[i], i));
 }
 

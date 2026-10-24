@@ -272,7 +272,8 @@ fun terminal_claim_quote_conserves_zero_dust_and_maximum_cash_for_both_sides() {
     vector[policy::long(), policy::short()].do!(|side| {
         let mut state = initialized_state(side);
         state.begin_shutdown(REFERENCE_AT_MS);
-        assert_eq!(state.finalize_shutdown(7, 2), 5);
+        let (eligible, reserve_cash, seed_cash) = state.finalize_shutdown(7, 2, 13);
+        assert_eq!(vector[eligible, reserve_cash, seed_cash], vector[5, 0, 0]);
         assert_eq!(state.shutdown_claim_quote(13, 7, 2, 2, 5), 5);
         assert_eq!(state.shutdown_claim_quote(8, 5, 2, 3, 8), 8);
         assert_eq!(state.shutdown_claim_quote(0, 7, 2, 5, 0), 0);
@@ -287,7 +288,7 @@ fun terminal_claim_quote_conserves_zero_dust_and_maximum_cash_for_both_sides() {
 fun terminal_partial_dust_requires_combining_native_shares() {
     let mut state = initialized_state(policy::long());
     state.begin_shutdown(REFERENCE_AT_MS);
-    state.finalize_shutdown(7, 2);
+    state.finalize_shutdown(7, 2, 0);
     state.shutdown_claim_quote(1, 7, 2, 1, 0);
     destroy(state);
 }
@@ -297,7 +298,7 @@ fun terminal_partial_dust_requires_combining_native_shares() {
 fun terminal_zero_pool_requires_explicit_zero_minimum() {
     let mut state = initialized_state(policy::short());
     state.begin_shutdown(REFERENCE_AT_MS);
-    state.finalize_shutdown(7, 2);
+    state.finalize_shutdown(7, 2, 0);
     state.shutdown_claim_quote(0, 7, 2, 5, 1);
     destroy(state);
 }
@@ -307,7 +308,7 @@ fun terminal_zero_pool_requires_explicit_zero_minimum() {
 fun terminal_claim_cannot_include_locked_seed() {
     let mut state = initialized_state(policy::long());
     state.begin_shutdown(REFERENCE_AT_MS);
-    state.finalize_shutdown(7, 2);
+    state.finalize_shutdown(7, 2, 0);
     state.shutdown_claim_quote(13, 7, 2, 6, 0);
     destroy(state);
 }
@@ -317,7 +318,7 @@ fun terminal_claim_cannot_include_locked_seed() {
 fun terminal_supply_below_locked_seed_fails_closed() {
     let mut state = initialized_state(policy::long());
     state.begin_shutdown(REFERENCE_AT_MS);
-    state.finalize_shutdown(1, 2);
+    state.finalize_shutdown(1, 2, 0);
     destroy(state);
 }
 
@@ -388,7 +389,7 @@ fun ordinary_unwind_never_falls_back_to_a_stale_price() {
 fun settled_cash_cannot_reopen_a_funding_buffer() {
     let mut state = initialized_state(policy::long());
     state.begin_shutdown(REFERENCE_AT_MS);
-    state.finalize_shutdown(5, 2);
+    state.finalize_shutdown(5, 2, 0);
     state.settle_funding(observation::funding_credit(1));
     state.destroy_for_testing();
 }
@@ -2279,7 +2280,7 @@ fun unwind_floors_the_order_cap_to_whole_lots() {
 #[expected_failure(abort_code = errors::EInvalidLifecycleTransition, location = blast_boosts_core::lifecycle)]
 fun finalize_shutdown_is_refused_while_active() {
     let mut state = initialized_state(policy::long());
-    state.finalize_shutdown(7, 2);
+    state.finalize_shutdown(7, 2, 0);
     abort
 }
 
@@ -2288,7 +2289,8 @@ fun finalize_shutdown_is_refused_while_active() {
 fun finalize_shutdown_with_only_the_seed_leaves_no_eligible_shares() {
     let mut state = initialized_state(policy::long());
     state.begin_shutdown(REFERENCE_AT_MS);
-    assert_eq!(state.finalize_shutdown(7, 7), 0);
+    let (eligible, reserve_cash, seed_cash) = state.finalize_shutdown(7, 7, 13);
+    assert_eq!(vector[eligible, reserve_cash, seed_cash], vector[0, 0, 0]);
     state.shutdown_claim_quote(13, 7, 7, 1, 0);
     abort
 }
@@ -2298,7 +2300,7 @@ fun finalize_shutdown_with_only_the_seed_leaves_no_eligible_shares() {
 fun terminal_claim_of_zero_shares_is_refused() {
     let mut state = initialized_state(policy::long());
     state.begin_shutdown(REFERENCE_AT_MS);
-    state.finalize_shutdown(7, 2);
+    state.finalize_shutdown(7, 2, 0);
     state.shutdown_claim_quote(13, 7, 2, 0, 0);
     abort
 }
@@ -2308,7 +2310,7 @@ fun terminal_claim_of_zero_shares_is_refused() {
 fun terminal_claim_against_a_supply_below_the_locked_seed_is_refused() {
     let mut state = initialized_state(policy::long());
     state.begin_shutdown(REFERENCE_AT_MS);
-    state.finalize_shutdown(7, 2);
+    state.finalize_shutdown(7, 2, 0);
     state.shutdown_claim_quote(13, 1, 2, 1, 0);
     abort
 }
@@ -2354,7 +2356,7 @@ fun max_order_notional_updates_in_every_lifecycle_state() {
     let mut state = initialized_state(policy::long());
     state.begin_shutdown(REFERENCE_AT_MS);
     assert_eq!(state.set_test_order_cap(500), MAX_ORDER_NOTIONAL);
-    state.finalize_shutdown(7, 2);
+    state.finalize_shutdown(7, 2, 0);
     assert_eq!(state.set_test_order_cap(750), 500);
     assert_eq!(state.max_order_notional_for_testing(), 750);
     state.destroy_for_testing();

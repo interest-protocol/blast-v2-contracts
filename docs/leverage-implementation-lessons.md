@@ -320,3 +320,14 @@ The Series slice is complete only when every rule in section 1 has an
 enforcement site and a test, every item in section 2 has either code or an
 accepted ADR decision with a stated owner, the package README and this file
 are updated to remove what is now enforced, and the full pinned gate passes.
+
+## Permissionless terminal entry must preserve ownership
+
+A terminal payout denominator that excludes inaccessible seed shares is safe
+only under its intended shutdown authority. Reusing it for permissionless entry
+can let a caller mint, redeem nearly everything and claim the seed plus reserves
+with one remaining share. Prove the exact largest accessible burn is blocked,
+then segregate reserve and seed recovery before calculating holder claims.
+Rounding must favor the protected allocation, including the final claimant.
+The protected allocation stays locked after all claims; legacy administrator
+shutdown remains a distinct, sealed settlement mode (ADR 0130).

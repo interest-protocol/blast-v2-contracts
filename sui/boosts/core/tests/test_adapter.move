@@ -532,7 +532,7 @@ public fun finalize(self: &mut Vault): u64 {
     self.state.assert_unwinding();
     let cash = self.venue.equity;
     self.venue.withdraw(cash);
-    self.state.finalize_shutdown(self.supply, self.locked);
+    self.state.finalize_shutdown(self.supply, self.locked, cash);
     self.terminal_cash = cash;
 
     cash

@@ -43,7 +43,7 @@ test('shutdown requires the shutdown-admin witness and a declared reason, withou
 });
 
 test('permissionless terminal plans exclude caller direction, size, dust write-off and claim fees', () => {
-    for (const operation of ['unwind', 'finalize_shutdown', 'redeem_shutdown']) {
+    for (const operation of ['begin_protected_shutdown', 'unwind', 'finalize_shutdown', 'redeem_shutdown']) {
         const value = terminal(operation);
         const plan = buildTerminalPlan(value);
         assert.equal(plan.commands.length, 1);
@@ -63,6 +63,30 @@ test('permissionless terminal plans exclude caller direction, size, dust write-o
             assert.deepEqual(plan.transfers, ['result']);
         }
     }
+});
+
+test('protected entry supplies the bound graph without administrator authority or a caller trade size', () => {
+    const value = terminal('begin_protected_shutdown');
+    delete value.corePackage;
+    delete value.adminPackage;
+    delete value.reason;
+    delete value.minimumOutput;
+    delete value.deadlineMs;
+    const plan = buildTerminalPlan(value);
+    assert.equal(plan.commands.length, 1);
+    const command = plan.commands[0];
+    assert.equal(command.target, `${address(1)}::operations::begin_protected_shutdown`);
+    assert.deepEqual(command.typeArguments, [value.productType, value.collateralType]);
+    assert.deepEqual(command.arguments, ['vault', 'protocol', 'account', 'registry', 'clearingHouse',
+        'baseOracle', 'collateralOracle', 'clock'].map((key) => `@${value.objects[key]}`));
+    assert.equal(command.assign, null);
+    assert.deepEqual(plan.transfers, []);
+    assert.throws(() => buildTerminalPlan({...value, baseToClose: '1'}), /unexpected field/);
+    assert.throws(() => buildTerminalPlan({...value, objects: {...value.objects, adminCap: address(42)}}), /unexpected object/);
+    const args = renderUnsignedPtbArgs(value);
+    assert(args.includes(command.target));
+    assert(!args.includes('--assign'));
+    assert(!args.includes('--transfer-objects'));
 });
 
 test('full liquidation, partial liquidation and ADL observations require human witness review, never automatic shutdown', () => {

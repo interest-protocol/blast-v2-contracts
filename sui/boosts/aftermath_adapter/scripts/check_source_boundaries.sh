@@ -160,6 +160,19 @@ assert source.count('.gas_price(') == 2 and source.count('.reference_gas_price('
     'Only rebalance and profit realization may inspect gas prices.'
 assert source.count('.assert_gas_price(') == 1, \
     'Only rebalance may invoke the gas-price restriction.'
+dust = source.split('public fun begin_protected_shutdown<', 1)[1].split('\n}\n', 1)[0]
+assert dust.index('.assert_can_begin_protected_shutdown(protocol)') < dust.index('.capture_checkpoint(') < dust.index('.begin_protected_shutdown_from_checkpoint(')
+authorization = source.split('fun assert_can_begin_protected_shutdown<', 1)[1].split('\n}\n', 1)[0]
+assert authorization.index('protocol.assert_current()') < authorization.index('.assert_active()')
+seam = Path(sys.argv[1]).read_text().split('public fun begin_protected_shutdown_for_testing<', 1)[1].split('\n}\n', 1)[0]
+assert seam.index('.assert_can_begin_protected_shutdown(protocol)') < seam.index('.begin_protected_shutdown_from_checkpoint(')
+assert '.capture(' not in dust and '.into_observation(' not in dust and 'AdminWitness' not in dust
+dust_completion = source.split('fun begin_protected_shutdown_from_checkpoint<', 1)[1].split('\n}\n', 1)[0]
+assert dust_completion.index('.classify_preexisting(&checkpoint).is_unchanged()') < dust_completion.index('.base_to_close(') < dust_completion.index('.begin_protected_shutdown(') < dust_completion.index('.replace_checkpoint(') < dust_completion.index('events::protected_shutdown_begun')
+assert '.total_share_supply()' in dust_completion and '.locked_shares()' in dust_completion
+custody = Path(sys.argv[1]).with_name('vault.move').read_text().split('// === Test-Only Functions ===')[0]
+assert custody.count('self.protected_cash.') == 1 and 'self.protected_cash.join(recovered.split(protected_amount))' in custody
+assert '.protected_cash.split(' not in custody, 'Protected cash must have no holder or administrator withdrawal path.'
 PY
 if grep -rnE 'AdapterRoot|AdapterDomain|venue_handoff|struct [A-Za-z0-9_]*AdminCap\b' "$package_dir/sources"; then
   fail "The adapter must not reintroduce a per-adapter ACL root, handoff layer or AdminCap; administration is the shared ACL."

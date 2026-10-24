@@ -52,7 +52,7 @@ Three packages implement it:
 
 | Object | Type | Created by | Role |
 | --- | --- | --- | --- |
-| Vault | `blast_boosts_aftermath::vault::Vault<Product, Collateral>` | Blast issuer, once per product | Custody of the core `State`, the bound venue account, the share `TreasuryCap` and `MetadataCap` (dynamic object fields under `TreasuryKey<Product>` and `MetadataKey<Product>`), the locked seed count, earned admin cash, and post-shutdown holder cash. |
+| Vault | `blast_boosts_aftermath::vault::Vault<Product, Collateral>` | Blast issuer, once per product | Custody of the core `State`, the bound venue account, the share `TreasuryCap` and `MetadataCap` (dynamic object fields under `TreasuryKey<Product>` and `MetadataKey<Product>`), the locked seed count, earned admin cash, post-shutdown holder cash, and protected cash with no exposed withdrawal path from a size-locked exit. |
 | Protocol | `blast_boosts_aftermath::blast_boosts_aftermath::Protocol` | package publish | The adapter's operational generation (ordinary calls require the current generation; upgrade activation requires exactly the next one) and the accepted partners, one dynamic field per partner keyed by `blast_boosts_aftermath::blast_boosts_aftermath::PartnerKey`. |
 | PackageAdmin | `blast_boosts_aftermath::package_admin::PackageAdmin` | deployment | Sealed Publisher and UpgradeCap of the adapter. |
 | Blast ACL | `blast_acl::ACL` | `blast_admin` | Role membership for every Blast admin. |
@@ -60,8 +60,8 @@ Three packages implement it:
 `Vault` fields: `state` (core `state::State<Product>`), `venue_account`
 (`venue_account::VenueAccount`: the immutable `binding`, the last accepted
 `checkpoint`, and the Aftermath account admin cap, which never leaves),
-`locked_shares`, `admin_cash` (`Balance<Collateral>`), `terminal_cash`
-(`Balance<Collateral>`).
+`locked_shares`, `admin_cash`, `terminal_cash`, and `protected_cash`
+(the three cash fields are `Balance<Collateral>`).
 
 #### Aftermath objects a PTB must supply
 
@@ -151,13 +151,14 @@ only from activation, so it is born `Active`.
 
 | State | Entered by | Allowed |
 | --- | --- | --- |
-| `Active` | `operations::initialize` | mint, redeem (plain and partner), `realize_profit`, rebalance, `needs_rebalance`, donate, `sync_health`, RiskAdmin `rebaseline`, all admin settings, `begin_shutdown` |
-| `Unwinding` | `blast_boosts_aftermath::vault::begin_shutdown` (ShutdownAdmin) | `operations::unwind`, `operations::sync_health`, `operations::finalize_shutdown`, `set_nav_cap`, `set_max_order_notional`, `update_metadata`, `withdraw_admin_fees` |
+| `Active` | `operations::initialize` | mint, redeem (plain and partner), `realize_profit`, rebalance, `needs_rebalance`, donate, `sync_health`, RiskAdmin `rebaseline`, all admin settings, `begin_shutdown`, `begin_protected_shutdown` |
+| `Unwinding` | `blast_boosts_aftermath::vault::begin_shutdown` (ShutdownAdmin) or `operations::begin_protected_shutdown` (anyone, proven size lock) | `operations::unwind`, `operations::sync_health`, `operations::finalize_shutdown`, `set_nav_cap`, `set_max_order_notional`, `update_metadata`, `withdraw_admin_fees` |
 | `Settled` | `operations::finalize_shutdown` (anyone) | `blast_boosts_aftermath::vault::redeem_shutdown`, `set_nav_cap`, `set_max_order_notional`, `update_metadata`, `withdraw_admin_fees` |
 
 `set_fees` works only in `Active`. Nothing reopens a Vault. Health reporting
-(`sync_health`, `CheckpointDrifted`) never changes lifecycle; only the
-ShutdownAdmin moves `Active` to `Unwinding`.
+(`sync_health`, `CheckpointDrifted`) never changes lifecycle. ShutdownAdmin or
+an explicit, proven permissionless size-lock trigger moves `Active` to
+`Unwinding`. Entry seals whether settlement protects the seed and reserves.
 
 ### Flows
 
@@ -563,6 +564,19 @@ active checks still apply. No shares, no fees. Emits `Donated`.
    fixes when shutdown began. Moves
    `Active` to `Unwinding`, emits `ShutdownBegun`. Mint, redeem, rebalance and
    donate stop.
+   Alternatively, anyone may call `operations::begin_protected_shutdown(vault,
+   protocol, account, registry, clearing_house, base_oracle, collateral_oracle,
+   clock)`. It authenticates a raw, accepted, order-free checkpoint and native
+   supply. If even burning all circulating shares fails the ordinary minimum
+   order, it starts protected closure and emits `ProtectedShutdownBegun`. Flat,
+   seed-only and ordinary-exitable positions are rejected. It reads no live
+   prices and requires neither positive NAV nor opening margin; unexplained
+   account drift must first be reconciled. Market pause/freeze, margin policy
+   and cumulative rates may change without synchronization; the trigger adopts
+   them. If another caller has already settled account funding, run `sync_health`
+   first while the venue permits it, then the trigger (in the same transaction
+   if desired). The offline planner leaves this optional: unconditional sync
+   would block closed markets. Entry places no trade and pays no reward.
 2. **Unwind** (anyone, repeat until flat). `operations::unwind<Product,
    Collateral>(vault, protocol, account, registry, clearing_house, base_oracle,
    collateral_oracle, clock)`. Any gas price is allowed, including a higher
@@ -593,8 +607,11 @@ active checks still apply. No shares, no fees. Emits `Donated`.
    and nonnegative allocated collateral. It withdraws all free collateral plus
    the whole-atom floor of allocated collateral, leaving only a raw remainder
    below one atom at the venue. It sets `Settled`, zeroes the reserve book
-   entry, and seals the recovered coin as `terminal_cash` (or as admin cash if
-   no eligible share exists). Emits `ShutdownFinalized`. If position funding is
+   entry, and seals the holder allocation as `terminal_cash`. Protected closure
+   first segregates reserve and seed cash with no exposed withdrawal path; administrator-approved
+   closure retains its existing allocation, including admin cash when no
+   eligible shares exist. Emits `ShutdownFinalized`, including both protected
+   amounts (explicitly zero for admin shutdown). If position funding is
    not fully settled it aborts with adapter code 33; on a live market, settle
    it first, for example with `operations::sync_health` earlier in the same
    PTB.
@@ -782,13 +799,34 @@ eligible = total_supply - locked_shares
 payout   = floor(terminal_cash * shares / eligible)
 ```
 
+For permissionless size-locked closure, finalization first allocates:
+
+```text
+protected_reserve = min(actual_recovered_cash, full_recorded_reserve)
+share_cash = actual_recovered_cash - protected_reserve
+terminal_cash = floor(share_cash * eligible / total_supply)
+protected_seed = share_cash - terminal_cash
+```
+
+Both protected amounts stay in the upgradeable adapter's `protected_cash`,
+including after all holder claims. No holder or admin withdrawal path exists
+under this code; upgrade governance remains a trust assumption (ADR 0130).
+Closing losses may exhaust holder cash; this does not guarantee seed capital.
+The full recorded reserve is retained under the flat-position policy, rather
+than releasing the last open position's excess reserve to holders (ADR 0130).
+A closed-market settlement can include funding that was not separately booked
+into the reserve; recovery stays exact, but protection then uses the last
+recorded reserve. Already-settled account funding followed by a market pause
+can also block protected entry until reconciliation becomes available.
+
 No fee. The last claimant (shares equal to all eligible supply) receives all
-remaining cash, dust included. A partial claim that rounds to zero while cash
+remaining **holder-pool** cash, dust included. A partial claim that rounds to zero while cash
 remains aborts; combine shares. If `terminal_cash` is zero, a burn with
 `minimum_collateral = 0` succeeds and returns a zero coin. If no eligible
-shares remain at finalization, recovered cash becomes admin cash. The reserve
-book entry is consumed at finalization, so recovered reserve cash belongs to
-holders. Admin cash never enters the holder pool.
+shares remain at administrator-approved finalization, recovered cash becomes
+admin cash. Administrator-approved closure distributes recovered reserve and
+seed-backed cash to circulating holders when any exist; protected closure
+does not. Admin cash never enters the holder pool.
 
 ### Time rules
 
@@ -830,7 +868,7 @@ events and dry runs.
 | Lifecycle | Vault `state.lifecycle` variant (`Active`, `Unwinding`, `Settled`). |
 | Total supply | `total_supply` of the `TreasuryCap` stored as a dynamic object field of the Vault under `TreasuryKey<Product>`; also `supply_after` in `Minted`, `Redeemed`, `Rebalanced`. |
 | Locked seed | Vault `locked_shares`; `VaultInitialized.locked_shares`. |
-| Admin cash, holder cash after shutdown | Vault `admin_cash`, `terminal_cash`. |
+| Admin cash, holder cash after shutdown, protected cash | Vault `admin_cash`, `terminal_cash`, `protected_cash`. |
 | Last accepted venue state | Vault `venue_account.checkpoint` (`checkpoint::Checkpoint`). |
 | Is a partner accepted | `Protocol` dynamic field `PartnerKey(partner_id)` holding `accepted_until_ms`. |
 | Coin name, symbol, decimals | Coin Registry `Currency<BlastBoost<Product>>` (9 decimals). |
@@ -872,8 +910,9 @@ types below from the adapter's `events` module (for example
 | `CheckpointDrifted` | `sync_health` or `unwind` that finds unexplained venue state | After `sync_health` the accepted checkpoint stands and priced operations abort until ordinary synchronization or RiskAdmin recovery accepts it; `unwind` adopts the live state and closes it. |
 | `Donated` | `donate` | amount, reserve after. |
 | `ShutdownBegun` | `begin_shutdown` | declared reason. |
+| `ProtectedShutdownBegun` | `begin_protected_shutdown` | accepted raw checkpoint, total supply and locked shares. |
 | `UnwindProgress` | `unwind` | adopted before checkpoint, after checkpoint, orders placed (`market_orders`), filled quote (`none` for settlement-price closes). |
-| `ShutdownFinalized` | `finalize_shutdown` | recovered cash, eligible supply, final checkpoint, raw unrecoverable remainder (below one atom). |
+| `ShutdownFinalized` | `finalize_shutdown` | total recovered cash, eligible supply, final checkpoint, raw unrecoverable remainder (below one atom), protected reserve and seed cash (both zero for admin shutdown). Subtract protected cash to replay the holder pool. |
 | `ShutdownRedeemed` | `redeem_shutdown` | shares, cash paid, cash and eligible supply remaining. |
 | `FeesUpdated`, `NavCapUpdated`, `MaxOrderNotionalUpdated` | admin calls | previous and new values. |
 | `MetadataUpdated` | `update_metadata` | the new name, description and icon URL. |
@@ -881,7 +920,8 @@ types below from the adapter's `events` module (for example
 
 An indexer can rebuild supply, reserve and admin cash from the `*_after`
 fields plus `FundingSettled`, `Donated`, `PartnerFeePaid`,
-`AdminFeesWithdrawn`, `ShutdownFinalized` and `ShutdownRedeemed`, execution
+`AdminFeesWithdrawn`, `ProtectedShutdownBegun`,
+`ShutdownFinalized` and `ShutdownRedeemed`, execution
 prices from `OrderFilled`, and approximate NAV per share at each mint as
 `contribution / shares` (rounding makes it slightly high).
 
@@ -912,9 +952,9 @@ outdated adapter package aborts in the `operational_version` module of the
 | 26 | Deadline passed | Use a later `deadline_ms`. |
 | 27 | A fill changed venue fields it should not | Retry. |
 | 29 | The market's trading fee is not a usable rate (initialization, rebalance or profit realization) | Wait; venue configuration. |
-| 30 | Venue state the Vault cannot explain since its checkpoint | Inspect `CheckpointDrifted`; RiskAdmin may recover an admitted forced reduction with `operations::rebaseline`. |
+| 30 | Unaccepted account change since the checkpoint | Before protected entry, use `sync_health` for already-settled attributable funding while the venue permits it. For unexplained drift inspect `CheckpointDrifted`; RiskAdmin may recover an admitted forced reduction with `operations::rebaseline`. |
 | 31 | Terminal step not possible: orders open, funding unsettled, settlement prices not enabled, or wrong order count | Settle funding with `sync_health` first, or wait for Aftermath. |
-| 32 | Unwind found no lot-aligned position on the bound side (for example already flat) | Call `finalize_shutdown`. |
+| 32 | Unwind or protected entry found no exact whole-lot position on the bound side (including flat) | During Unwinding, finalize if fully settled. During Active, protected entry is unavailable; use the applicable ordinary or admin recovery path. |
 | 33 | Venue not ready: resting orders, paused/frozen market, or insufficient opening margin on a strict path | Reductions and donations need no opening margin; other guards still apply. |
 | 34, 37 | Metadata or partner list update changes nothing | Admin only. |
 | 35 | Ordinary rebalance or profit realization above the reference gas price | Submit at the reference gas price. |
@@ -952,6 +992,7 @@ outdated adapter package aborts in the `operational_version` module of the
 | 64 | No positive cash shortfall or profit to realize | No recovery trade is needed or possible. |
 | 65 | Profit realization is uneconomic or exceeds its cost allowance | Wait for better prices or sufficient profit. |
 | 66 | Initial margin leaves no cushion under the issuance policy and live venue rates | Choose compatible issuance settings before activation; the venue minimum still applies. |
+| 71 | Permissionless shutdown found no exact redemption size lock | Use an ordinary exit or reconcile the position first; seed-only positions are ineligible. Flat or malformed base aborts earlier with adapter code 32. |
 | 17, 23, 39, 40, 47, 48, 58 | Admin transition or setting rejected (wrong state, invalid, above cap, unchanged) | Admin only. |
 
 ### Pitfalls
@@ -964,7 +1005,9 @@ outdated adapter package aborts in the `operational_version` module of the
   drifted (32). A minimum-sized mint is not guaranteed to pass. At an exact
   band edge, a rounded mint may fail while rebalance remains unavailable.
 - Tiny trades. Mints and redemptions below `lot_size * min_order_lots` of base
-  abort (12); shutdown claims that round to zero abort (8).
+  abort (12). If every accessible ordinary burn fails this size guard, anyone
+  can begin protected closure with `begin_protected_shutdown`. Positive-cash
+  shutdown claims that round to zero abort (8).
 - Large trades. More than 16 orders, a fill outside `max_slippage_bps`, an
   order that finds nothing to fill inside its limit (Aftermath aborts the empty
   session), or a fill above the cap outside the one-lot closing exception
@@ -1035,12 +1078,14 @@ that share pricing excludes. Funding costs consume it before holders bear
 them, mint and redeem reserve fees refill it, and donations add to it. It is
 capped at `max_reserve_bps` of notional; anything above counts as holder NAV.
 
-**What happens on shutdown?** Blast's ShutdownAdmin calls `begin_shutdown`;
-anyone then calls `operations::unwind` until flat and
+**What happens on shutdown?** Blast's ShutdownAdmin calls `begin_shutdown`,
+or anyone proves a size lock through `begin_protected_shutdown`. Anyone then calls `operations::unwind` until flat and
 `operations::finalize_shutdown`. Holders call
 `blast_boosts_aftermath::vault::redeem_shutdown` for a fee-free pro-rata share
-of the recovered cash, excluding the locked seed; the last claimant gets the
-dust.
+of the holder cash pool. Permissionless size-locked closure
+retains reserve and seed cash separately with no holder or admin withdrawal
+path; the adapter remains upgradeable. The last claimant gets only the
+holder pool's dust. Administrator-approved closure retains its original payout.
 
 **Can a Boost be liquidated?** The Aftermath position can be. The Vault never
 declares liquidation on chain; a liquidation appears as `CheckpointDrifted`,

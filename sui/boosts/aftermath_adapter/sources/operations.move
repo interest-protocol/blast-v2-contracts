@@ -409,7 +409,31 @@ public fun sync_health<Product, Collateral>(
     );
 }
 
-/// Recovers all actual holder collateral only from an exactly settled bound account.
+/// Starts irreversible protected closure when the minimum order blocks every
+/// ordinary redemption. Anyone may call with the bound account and market.
+/// Reads account facts without prices; market policy and cumulative funding may
+/// move. Stale feeds, low margin and nonpositive equity do not block entry.
+/// Already-settled account funding needs sync_health first; unexplained account
+/// changes need reconciliation. Unwind still enforces its execution protections.
+public fun begin_protected_shutdown<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>,
+    protocol: &Protocol,
+    account: &Account<Collateral>,
+    registry: &Registry,
+    clearing_house: &ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    clock: &Clock,
+) {
+    vault.assert_can_begin_protected_shutdown(protocol);
+    let checkpoint = vault.venue().binding().capture_checkpoint(
+        account, registry, clearing_house, base_oracle, collateral_oracle,
+    );
+
+    vault.begin_protected_shutdown_from_checkpoint(checkpoint, clock.timestamp_ms());
+}
+
+/// Recovers all actual collateral only from an exactly settled bound account.
 public fun finalize_shutdown<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
@@ -1156,27 +1180,64 @@ fun complete_unwind<Product, Collateral>(
     events::unwind_progress<Product>(vault.id(), before, after, order_count, filled_quote);
 }
 
-/// Settles the core on the proven withdrawal, then seals the recovered coin as
-/// holder cash under the final checkpoint, whose allocated collateral is the
-/// raw sub-atomic remainder the venue could not release.
+/// Settles the core on the proven withdrawal and segregates any protected
+/// allocation before sealing holder cash. The final checkpoint retains only
+/// the raw sub-atomic collateral remainder the venue could not release.
 fun complete_finalization<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     checkpoint: Checkpoint,
     recovered: Coin<Collateral>,
 ) {
     let (total_share_supply, locked_shares) = (vault.total_share_supply(), vault.locked_shares());
-    let eligible = vault.state_mut().finalize_shutdown(total_share_supply, locked_shares);
-
     let recovered_amount = recovered.value();
-    vault.seal_terminal_cash(recovered, eligible);
+    let (eligible, protected_reserve, protected_seed) = vault.state_mut().finalize_shutdown(
+        total_share_supply, locked_shares, recovered_amount,
+    );
+    vault.seal_terminal_cash(recovered, eligible, protected_reserve, protected_seed);
     vault.venue_mut().replace_checkpoint(checkpoint);
 
     events::shutdown_finalized<Product>(
         vault.id(), recovered_amount, eligible, checkpoint, checkpoint.allocated_collateral(),
+        protected_reserve, protected_seed,
     );
 }
 
+/// Runs before venue capture, including when only that capture is substituted in tests.
+fun assert_can_begin_protected_shutdown<Product, Collateral>(vault: &Vault<Product, Collateral>, protocol: &Protocol) {
+    protocol.assert_current();
+    vault.state().assert_active();
+}
+
+/// Account facts must match before irreversible closure; venue-wide policy stays
+/// live. Callers supply no size, burn amount or price.
+fun begin_protected_shutdown_from_checkpoint<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>,
+    checkpoint: Checkpoint,
+    now_at_ms: u64,
+) {
+    vault.state().assert_active();
+    assert!(vault.venue().checkpoint().classify_preexisting(&checkpoint).is_unchanged(),
+        blast_boosts_aftermath::errors::unresolved_checkpoint!());
+    let base = checkpoint.base_to_close(vault.state().side());
+    let (total_supply, locked) = (vault.total_share_supply(), vault.locked_shares());
+    vault.state_mut().begin_protected_shutdown(base, checkpoint.lot_size(), total_supply, locked, now_at_ms);
+
+    vault.venue_mut().replace_checkpoint(checkpoint);
+    events::protected_shutdown_begun<Product>(vault.id(), checkpoint, total_supply, locked);
+}
+
 // === Test-Only Functions ===
+
+#[test_only]
+public fun begin_protected_shutdown_for_testing<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>,
+    protocol: &Protocol,
+    checkpoint: Checkpoint,
+    now_at_ms: u64,
+) {
+    vault.assert_can_begin_protected_shutdown(protocol);
+    vault.begin_protected_shutdown_from_checkpoint(checkpoint, now_at_ms);
+}
 
 /// Substitutes external captures after the two independently proven fills.
 #[test_only]
@@ -1467,6 +1528,10 @@ use fun complete_donation as Vault.complete_donation;
 
 use fun complete_finalization as Vault.complete_finalization;
 
+use fun assert_can_begin_protected_shutdown as Vault.assert_can_begin_protected_shutdown;
+
+use fun begin_protected_shutdown_from_checkpoint as Vault.begin_protected_shutdown_from_checkpoint;
+
 use fun complete_mint as Vault.complete_mint;
 
 use fun assert_rebalance_gas_price as RebalancePlan.assert_gas_price;
@@ -1502,6 +1567,8 @@ use fun synchronize_or_fail as Vault.synchronize_or_fail;
 use fun unwind_market as Vault.unwind_market;
 
 use fun unwind_settlement as Vault.unwind_settlement;
+
+use fun orders::base_to_close as Checkpoint.base_to_close;
 
 use fun snapshot::capture_order_capacity as Binding.capture_order_capacity;
 
