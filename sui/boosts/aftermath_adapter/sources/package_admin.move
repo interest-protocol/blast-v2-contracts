@@ -6,8 +6,9 @@
 #[allow(lint(abort_without_constant))]
 /// Permanent shared custody for the adapter Publisher and UpgradeCap.
 ///
-/// Its governed transitions take `AdminWitness<UpgradeAdmin>`, the upgrade role
-/// the Boosts core declares for every adapter. Custody itself stays package-local:
+/// Authorization, activation and immutability take `AdminWitness<UpgradeAdmin>`,
+/// the upgrade role the core declares for every adapter. Receipt commit carries
+/// the native authorization proof instead. Custody itself stays package-local:
 /// this adapter's generation advances without touching the core, which is
 /// immutable and has no generation of its own.
 module blast_boosts_aftermath::package_admin;
@@ -42,56 +43,38 @@ public fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxConte
 }
 
 /// Authorizes one exact adapter digest under the sealed cap's current policy.
+/// Version-independent so the live UpgradeAdmin can repair a mismatched build.
 public fun authorize_upgrade(
     self: &mut PackageAdmin,
-    protocol: &Protocol,
     _: &AdminWitness<UpgradeAdmin>,
     digest: vector<u8>,
 ): UpgradeTicket {
-    protocol.assert_current();
-
     self.custody.authorize_upgrade(self.id.to_inner(), digest)
 }
 
-/// Commits the native receipt and advances one operational generation at once.
+/// Commits the receipt bound to this cap without changing the active generation.
 ///
-/// This is the only upgrade finalizer. Both mutations belong to the same
-/// transaction, so a failure at either step rolls back the whole upgrade.
-public fun commit_upgrade_and_advance(
+/// Authorization, native upgrade and receipt commit complete in one transaction.
+/// The receipt already proves authorization; repair finalization is version-independent.
+public fun commit_upgrade(
     self: &mut PackageAdmin,
-    protocol: &mut Protocol,
-    _: &AdminWitness<UpgradeAdmin>,
     receipt: UpgradeReceipt,
 ) {
-    protocol.assert_next();
-
     self.custody.commit_upgrade(self.id.to_inner(), receipt);
-    protocol.advance();
 }
 
-/// Irreversibly narrows adapter upgrades to additive changes.
-public fun restrict_to_additive(
-    self: &mut PackageAdmin,
-    protocol: &Protocol,
+/// Activates the running successor in a follow-up transaction, only if its
+/// compiled generation is exactly next. A mismatched build leaves the old
+/// generation serving. The caller cannot choose the target generation.
+public fun activate_upgrade(
+    protocol: &mut Protocol,
     _: &AdminWitness<UpgradeAdmin>,
 ) {
-    protocol.assert_current();
-
-    self.custody.restrict_to_additive(self.id.to_inner());
-}
-
-/// Irreversibly narrows adapter upgrades to dependency-only changes.
-public fun restrict_to_dependency_only(
-    self: &mut PackageAdmin,
-    protocol: &Protocol,
-    _: &AdminWitness<UpgradeAdmin>,
-) {
-    protocol.assert_current();
-
-    self.custody.restrict_to_dependency_only(self.id.to_inner());
+    protocol.activate();
 }
 
 /// Irreversibly destroys native upgrade authority for this adapter.
+/// The running code must match the active generation before giving up repair.
 public fun make_immutable(
     self: &mut PackageAdmin,
     protocol: &Protocol,

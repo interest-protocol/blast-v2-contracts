@@ -740,7 +740,7 @@ fun primitive_witness_precedes_core_issuance_validation() {
 /// upgrade advances the adapter generation past this bytecode.
 fun vault_issuance_stops_after_the_adapter_generation_advances() {
     let mut fixture = start();
-    fixture.protocol.advance_for_testing();
+    fixture.protocol.set_version_for_testing(2);
 
     fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
 

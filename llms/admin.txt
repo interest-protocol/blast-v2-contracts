@@ -288,7 +288,9 @@ what each transaction leaves on chain.
 3. The old holder may call `blast_acl::destroy_retired_super_admin_cap`. Emits
    `SuperAdminCapDestroyed`.
 
-#### Upgrade a consumer package (Blast admin, one PTB)
+#### Upgrade a consumer package (Blast admin)
+
+For consumers other than the Boosts adapter, use one PTB:
 
 1. `blast_acl::sign_in` with the package's upgrade role (for example
    `blast_sui_domain::UpgradeAdmin`).
@@ -310,6 +312,23 @@ what each transaction leaves on chain.
 From the next transaction, calls into the previous bytecode abort and the new
 bytecode is the only one that works.
 
+The Boosts adapter separates native upgrade from activation. A Blast UpgradeAdmin
+signs in, calls `blast_boosts_aftermath::package_admin::authorize_upgrade` with
+custody, witness and digest, feeds its ticket into native Upgrade, then calls
+`blast_boosts_aftermath::package_admin::commit_upgrade` with custody and receipt.
+These calls neither read nor change Protocol and stay available during a version
+mismatch. The receipt proves authorization; commit needs no second witness.
+
+In a follow-up transaction, sign in again and call the successor's
+`blast_boosts_aftermath::package_admin::activate_upgrade` with mutable Protocol
+and the UpgradeAdmin witness. The running code must accept exactly the next
+generation. Failed activation leaves the old generation serving; a corrected
+upgrade can be installed. Native upgrade count and operational generation can
+diverge after failed attempts. `blast_boosts_aftermath::package_admin::make_immutable`
+still requires the running code to match the active generation before destroying
+repair authority. Historical repair functions retain live ACL checks; retiring
+their UpgradeAdmin authority requires revoking that role, not just a cutover.
+
 ### Operational versions
 
 Each upgradeable consumer keeps one shared version object holding an
@@ -325,10 +344,11 @@ genuine one-time witness, so the value can only be created in that package's
 | `blast_sui` | `blast_sui_package::PackageVersion` |
 | `blast_boosts_aftermath` | `blast_boosts_aftermath::blast_boosts_aftermath::Protocol` |
 
-Each package's bytecode compiles two private constants: its own generation and
-the next one. Every protected call passes the shared version object and runs
+Consumers other than Boosts compile two private constants: their own generation
+and the next one. Boosts compiles only its own generation and checks it during
+successor activation. Every ordinary protected call passes the shared version object and runs
 `operational_version::assert_current`, which aborts unless the stored generation
-equals the compiled one. The upgrade finalizer runs
+equals the compiled one. The other consumers' upgrade finalizer runs
 `operational_version::assert_next` and then `operational_version::advance`,
 which increments the stored generation by exactly one and emits
 `OperationalVersionAdvanced` with `container_id` (the version object's ID),
@@ -341,15 +361,16 @@ that takes it and must call the latest package version.
 `upgrade_custody::new` seals a package's `Publisher` and never-upgraded
 `UpgradeCap` (version 1) after checking both belong to the package of `M`.
 Neither can leave the custody. The consumer's shared `PackageAdmin` wraps it and
-gates every upgrade transition behind its upgrade role (`wrap`, and Blast SUI's
-`new` and `share`, need only the package's own `Publisher` and `UpgradeCap`):
+gates authorization behind its upgrade role. Boosts receipt commit instead carries
+the native authorized receipt. `wrap`, and Blast SUI's `new` and `share`, need
+only the package's own `Publisher` and `UpgradeCap`:
 
 | Package | Custody object | Transitions exposed |
 | --- | --- | --- |
 | `blast_fun` | `blast_fun::package_admin::PackageAdmin` | `blast_fun::package_admin::wrap`, `blast_fun::package_admin::authorize_upgrade`, `blast_fun::package_admin::commit_upgrade_and_advance`, `blast_fun::package_admin::make_immutable` |
 | `blast_fun_migrators` | `blast_fun_migrators::package_admin::PackageAdmin` | `blast_fun_migrators::package_admin::wrap`, `blast_fun_migrators::package_admin::authorize_upgrade`, `blast_fun_migrators::package_admin::commit_upgrade_and_advance` (no restriction, no immutability: always upgradeable) |
 | `blast_sui` | `blast_sui::package_admin::PackageAdmin` | `blast_sui::package_admin::new`, `blast_sui::package_admin::add_capability`, `blast_sui::package_admin::share`, `blast_sui::package_admin::authorize_upgrade`, `blast_sui::package_admin::commit_upgrade_and_advance`, `blast_sui::package_admin::restrict_to_additive`, `blast_sui::package_admin::make_immutable`, `blast_sui::package_admin::has_upgrade_cap` |
-| `blast_boosts_aftermath` | `blast_boosts_aftermath::package_admin::PackageAdmin` | `blast_boosts_aftermath::package_admin::wrap`, `blast_boosts_aftermath::package_admin::authorize_upgrade`, `blast_boosts_aftermath::package_admin::commit_upgrade_and_advance`, `blast_boosts_aftermath::package_admin::restrict_to_additive`, `blast_boosts_aftermath::package_admin::restrict_to_dependency_only`, `blast_boosts_aftermath::package_admin::make_immutable` |
+| `blast_boosts_aftermath` | `blast_boosts_aftermath::package_admin::PackageAdmin` | `blast_boosts_aftermath::package_admin::wrap`, `blast_boosts_aftermath::package_admin::authorize_upgrade`, `blast_boosts_aftermath::package_admin::commit_upgrade`, `blast_boosts_aftermath::package_admin::activate_upgrade`, `blast_boosts_aftermath::package_admin::make_immutable` |
 
 The custody primitives: `upgrade_custody::authorize_upgrade` (exactly one
 32-byte digest under the current policy), `upgrade_custody::commit_upgrade`
@@ -372,8 +393,9 @@ and have no custody at all.
 - `pending_super_admin` is a `Timelocked<Option<address>>` with fields `before`,
   `after`, `at_ms`, `delay_ms`. Begin, cancel, and accept each store a fresh
   value, so a replaced, cancelled, or already accepted nominee can never accept.
-- Grants, revocations, role changes, and upgrades take effect in the same
-  transaction; only the root transfer waits.
+- Grants, revocations and role changes take effect in the same transaction.
+  Boosts upgrades use a follow-up activation transaction; root transfer waits
+  for its delay.
 
 ### Reading state
 

@@ -6,7 +6,7 @@
 ///
 /// The checked arithmetic and the replay event belong to
 /// `blast_admin::operational_version`. These tests prove only that this
-/// package's container carries the compiled constants it claims.
+/// package's activation uses its own compiled generation and typed authority.
 module blast_boosts_aftermath::protocol_tests;
 
 // === Constants ===
@@ -59,36 +59,38 @@ fun a_fresh_publish_of_this_bytecode_accepts_its_own_generation() {
 }
 
 #[test]
-/// The container advances to exactly the generation this bytecode hands over
-/// to, and the shared package emits the only cutover fact.
-fun the_generation_advances_to_the_next_compiled_generation() {
+/// The synthetic predecessor tests the real activation wrapper with this
+/// build's constant (1). Runtime tests publish and activate actual successors.
+fun activation_uses_the_running_compiled_generation() {
     let mut fixture = start();
+    fixture.protocol.set_version_for_testing(0);
 
-    assert_eq!(fixture.protocol.version_for_testing(), 1);
-
-    fixture.protocol.advance_for_testing();
+    fixture.protocol.activate_upgrade(&upgrade_admin());
+    fixture.protocol.assert_current_for_testing();
 
     let advanced = blast_admin::blast_admin_events::collect_one<
         blast_admin::blast_admin_events::OperationalVersionAdvanced<BLAST_BOOSTS_AFTERMATH>,
     >(0);
-    let (container_id, _, previous_generation, new_generation) =
+    let (container_id, package_id, previous_generation, new_generation) =
         advanced.operational_version_advanced_fields();
     assert_eq!(container_id, fixture.protocol.id_for_testing());
-    assert_eq!(previous_generation, 1);
-    assert_eq!(new_generation, 2);
+    assert_eq!(package_id, std::type_name::original_id<BLAST_BOOSTS_AFTERMATH>());
+    assert_eq!(previous_generation, 0);
+    assert_eq!(new_generation, 1);
     assert_eq!(new_generation, fixture.protocol.version_for_testing());
 
     fixture.end();
 }
 
 #[test]
-/// The finalizer proves the exact next generation before it commits a receipt.
-fun the_finalizer_accepts_the_exact_next_generation_before_committing() {
-    let fixture = start();
+#[expected_failure(
+    abort_code = blast_admin::errors::EOperationalVersionMismatch,
+    location = blast_admin::operational_version,
+)]
+fun activation_rejects_a_build_that_kept_the_current_generation() {
+    let mut fixture = start();
 
-    fixture.protocol.assert_next_for_testing();
-
-    assert_eq!(fixture.protocol.version_for_testing(), 1);
+    fixture.protocol.activate_upgrade(&upgrade_admin());
 
     fixture.end();
 }
@@ -98,29 +100,12 @@ fun the_finalizer_accepts_the_exact_next_generation_before_committing() {
     abort_code = blast_admin::errors::EOperationalVersionMismatch,
     location = blast_admin::operational_version,
 )]
-fun the_finalizer_rejects_a_skipped_generation_before_committing() {
+fun activation_cannot_be_replayed() {
     let mut fixture = start();
+    fixture.protocol.set_version_for_testing(0);
+    fixture.protocol.activate_upgrade(&upgrade_admin());
 
-    fixture.protocol.set_version_for_testing(5);
-
-    fixture.protocol.assert_next_for_testing();
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_admin::errors::EOperationalVersionMismatch,
-    location = blast_admin::operational_version,
-)]
-/// Once the container already sits at the compiled cutover target, the
-/// finalizer's proof fails: the next generation would be three, not two.
-fun the_finalizer_rejects_an_already_advanced_generation_as_next() {
-    let mut fixture = start();
-
-    fixture.protocol.set_version_for_testing(2);
-
-    fixture.protocol.assert_next_for_testing();
+    fixture.protocol.activate_upgrade(&upgrade_admin());
 
     fixture.end();
 }
@@ -135,7 +120,7 @@ fun the_cutover_rejects_a_skipped_generation() {
 
     fixture.protocol.set_version_for_testing(5);
 
-    fixture.protocol.advance_for_testing();
+    fixture.protocol.activate_upgrade(&upgrade_admin());
 
     fixture.end();
 }
@@ -150,7 +135,7 @@ fun the_cutover_rejects_a_generation_overflow() {
 
     fixture.protocol.set_version_for_testing(std::u64::max_value!());
 
-    fixture.protocol.advance_for_testing();
+    fixture.protocol.activate_upgrade(&upgrade_admin());
 
     fixture.end();
 }
@@ -221,9 +206,20 @@ fun end(self: Fixture) {
     scenario.end();
 }
 
+fun upgrade_admin(): AdminWitness<UpgradeAdmin> {
+    blast_acl::witness_for_testing()
+}
+
 // === Imports ===
 
-use blast_boosts_aftermath::blast_boosts_aftermath::{Self as protocol, BLAST_BOOSTS_AFTERMATH, Protocol};
+use blast_admin::blast_acl::{Self, AdminWitness};
+
+use blast_boosts_core::blast_boosts_core::UpgradeAdmin;
+
+use blast_boosts_aftermath::{
+    blast_boosts_aftermath::{Self as protocol, BLAST_BOOSTS_AFTERMATH, Protocol},
+    package_admin,
+};
 
 use std::unit_test::{assert_eq, destroy};
 
@@ -236,3 +232,5 @@ use fun init_next_tx as InitFixture.next_tx;
 use fun init_return_protocol as InitFixture.return_protocol;
 
 use fun init_take_protocol as InitFixture.take_protocol;
+
+use fun package_admin::activate_upgrade as Protocol.activate_upgrade;

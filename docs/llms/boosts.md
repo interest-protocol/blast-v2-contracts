@@ -53,7 +53,7 @@ Three packages implement it:
 | Object | Type | Created by | Role |
 | --- | --- | --- | --- |
 | Vault | `blast_boosts_aftermath::vault::Vault<Product, Collateral>` | Blast issuer, once per product | Custody of the core `State`, the bound venue account, the share `TreasuryCap` and `MetadataCap` (dynamic object fields under `TreasuryKey<Product>` and `MetadataKey<Product>`), the locked seed count, earned admin cash, and post-shutdown holder cash. |
-| Protocol | `blast_boosts_aftermath::blast_boosts_aftermath::Protocol` | package publish | The adapter's operational generation (every call that takes it checks it) and the accepted partners, one dynamic field per partner keyed by `blast_boosts_aftermath::blast_boosts_aftermath::PartnerKey`. |
+| Protocol | `blast_boosts_aftermath::blast_boosts_aftermath::Protocol` | package publish | The adapter's operational generation (ordinary calls require the current generation; upgrade activation requires exactly the next one) and the accepted partners, one dynamic field per partner keyed by `blast_boosts_aftermath::blast_boosts_aftermath::PartnerKey`. |
 | PackageAdmin | `blast_boosts_aftermath::package_admin::PackageAdmin` | deployment | Sealed Publisher and UpgradeCap of the adapter. |
 | Blast ACL | `blast_acl::ACL` | `blast_admin` | Role membership for every Blast admin. |
 
@@ -535,15 +535,29 @@ venue objects and prices.
 
 Upgrades: at deployment, the holder of the adapter's Publisher and UpgradeCap
 calls `blast_boosts_aftermath::package_admin::wrap` to seal them into the shared
-`PackageAdmin`. Then, with the UpgradeAdmin witness,
-`blast_boosts_aftermath::package_admin::authorize_upgrade` returns an
-`UpgradeTicket` for one digest;
-`blast_boosts_aftermath::package_admin::commit_upgrade_and_advance` commits the
-receipt and advances `Protocol` to the next generation in the same
-transaction; `blast_boosts_aftermath::package_admin::restrict_to_additive`,
-`blast_boosts_aftermath::package_admin::restrict_to_dependency_only` and
-`blast_boosts_aftermath::package_admin::make_immutable` narrow upgrades
-irreversibly. The core package is immutable.
+`PackageAdmin`. A Blast admin signs in with the UpgradeAdmin role, then calls
+`blast_boosts_aftermath::package_admin::authorize_upgrade` for one digest. Its
+`UpgradeTicket` feeds the native upgrade command, whose `UpgradeReceipt` feeds
+`blast_boosts_aftermath::package_admin::commit_upgrade` in the same transaction.
+Commit needs no second witness: the receipt binds the authorized upgrade to the
+same cap. Neither operation checks or changes `Protocol`, so repair remains
+possible during a version mismatch.
+
+In a follow-up transaction a Blast UpgradeAdmin calls the new package's
+`blast_boosts_aftermath::package_admin::activate_upgrade` with the shared
+`Protocol` and a fresh witness. It accepts only the running code's compiled
+generation equal to the active generation plus one. A wrong build cannot
+advance it; the previous generation remains usable. Successful activation emits
+`blast_admin::blast_admin_events::OperationalVersionAdvanced` and rejects older
+operational generations on ordinary paths. The native upgrade count may exceed
+the active generation after a failed attempt; they are separate values.
+
+There is no policy-narrowing path. A Blast UpgradeAdmin may permanently destroy
+the cap through `blast_boosts_aftermath::package_admin::make_immutable`, but only
+from code matching the active generation. This proves a version match, not the
+absence of other bugs or that this is the latest installed package. Historical
+repair-authorization paths still require the live ACL role; changing the active
+generation does not revoke that role. The core package is immutable.
 
 ### Economics
 
@@ -872,7 +886,7 @@ outdated adapter package aborts in the `operational_version` module of the
   admitted forced reduction; other drift may require ShutdownAdmin to shut
   the Boost down. Market-wide margin changes are accepted automatically.
 - Decoding an abort by code alone. Core and adapter codes overlap.
-- Calling an old adapter package after an upgrade (blast_admin code 13). Types
+- Calling an old adapter generation after activation (blast_admin code 13). Types
   keep their original package IDs; calls must target the current package.
 - Treating the tag name as the policy. `NVDA_BULL_2X` is a label; read `side`
   and `target_leverage_bps` from the Vault.

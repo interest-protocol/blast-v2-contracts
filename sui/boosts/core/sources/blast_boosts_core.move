@@ -22,5 +22,5 @@ public struct RiskAdmin()
 /// Irreversibly begins a Vault's shutdown.
 public struct ShutdownAdmin()
 
-/// Authorizes, cuts over, restricts, or seals an adapter package upgrade.
+/// Authorizes and activates adapter upgrades, or permanently ends them.
 public struct UpgradeAdmin()
