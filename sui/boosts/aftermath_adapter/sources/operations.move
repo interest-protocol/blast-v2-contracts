@@ -96,7 +96,7 @@ public fun mint<Product, Collateral>(
         account, registry, &mut clearing_house, base_oracle, collateral_oracle, clock,
     ).into_observation();
 
-    let plan = vault.state().prepare_mint(before, deposit, vault.total_share_supply(), minimum_shares, clock.timestamp_ms());
+    let plan = vault.state().prepare_mint(before, deposit, vault.total_share_supply(), minimum_shares, clearing_house.live_venue_fee_bps(), clock.timestamp_ms());
     let terms = vault.increasing_terms(plan.mint_position());
 
     let checkpoint = vault.fund_mint(
@@ -271,10 +271,10 @@ public fun redeem_with_partner<Product, Collateral>(
 }
 
 /// A keeper hint: true for a needed reduction, or an increase with opening margin.
-/// Inside the band or when only an unsafe increase is needed, returns false.
+/// Inside the band, without opening margin, or for an unsizeable increase, returns false.
 /// Unexplained checkpoint drift, invalid prices or an unavailable venue abort.
-/// Intended for dev-inspect: funding is not settled, and fees, gas admission,
-/// order size, liquidity and fill progress are checked by the actual rebalance.
+/// Intended for dev-inspect: fee-aware sizing is shared with execution, but
+/// funding, gas admission, liquidity and fill progress remain execution checks.
 public fun needs_rebalance<Product, Collateral>(
     vault: &Vault<Product, Collateral>,
     protocol: &Protocol,
@@ -291,7 +291,7 @@ public fun needs_rebalance<Product, Collateral>(
     let binding = vault.venue().binding();
     let (ready, checkpoint) = binding.capture(
         account, registry, clearing_house, base_oracle, collateral_oracle, clock,
-    ).into_rebalance_readiness(vault.state(), clock.timestamp_ms());
+    ).into_rebalance_readiness(vault.state(), clearing_house.live_venue_fee_bps(), clock.timestamp_ms());
     assert!(
         vault.venue().checkpoint().classify_preexisting(&checkpoint).is_clean(),
         blast_boosts_aftermath::errors::unresolved_checkpoint!(),

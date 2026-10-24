@@ -627,6 +627,11 @@ bands:
   `leverage > public_upper`. Exact public-bound equality remains
   risk-module-only.
 
+[ADR 0125](0125-small-vault-recovery-within-the-band.md) narrowly refines the
+current source's target-only increase rule: one lot may cross target only when
+it starts below the band and finishes inside both band edges. Genuine lot dust
+may instead use deposit-funded catch-up with full in-band completion.
+
 Every eligible normal call aims toward the one immutable target. Series1
 selects the side and maximum size; no caller supplies either. Above target the
 order is reduce-only, uses risk-reducing rounding, and cannot cross flat. Below

@@ -345,7 +345,7 @@ fun a_stale_oracle_refuses_active_operations() {
     let observation = vault.venue().observe();
     vault.venue_mut().advance(31_000);
 
-    let plan = vault.state().prepare_mint(observation, 100 * USDC, vault.supply(), 1, vault.venue().now_ms());
+    let plan = vault.state().prepare_mint(observation, 100 * USDC, vault.supply(), 1, 10, vault.venue().now_ms());
     std::unit_test::destroy(plan);
     vault.destroy();
 }
@@ -571,7 +571,7 @@ fun a_price_move_between_prepare_and_complete_reverts_the_mint() {
     let now_at_ms = vault.venue().now_ms();
     let supply = vault.supply();
     let observation = vault.venue().observe();
-    let plan = vault.state().prepare_mint(observation, 1_000 * USDC, supply, 1, now_at_ms);
+    let plan = vault.state().prepare_mint(observation, 1_000 * USDC, supply, 1, 10, now_at_ms);
     let base_price = vault.venue().base_price();
     vault.venue_mut().set_base_price(base_price + 1);
 
@@ -589,7 +589,7 @@ fun a_venue_error_after_the_fill_reverts_the_mint() {
     let now_at_ms = vault.venue().now_ms();
     let supply = vault.supply();
     let observation = vault.venue().observe();
-    let plan = vault.state().prepare_mint(observation, 1_000 * USDC, supply, 1, now_at_ms);
+    let plan = vault.state().prepare_mint(observation, 1_000 * USDC, supply, 1, 10, now_at_ms);
     let base_to_buy = plan.base_to_buy();
     vault.venue_mut().deposit(1_000 * USDC);
     vault.venue_mut().fill(base_to_buy, true);

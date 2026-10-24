@@ -50,6 +50,9 @@ value is a simulation gate, but the shape of the decision is fixed:
   using its actual final equity and reserve after fee credit and clamping.
   Exact cross-products prevent whole-bps rounding from hiding a breach.
   This check can reject a mint even when its minimum size is satisfied.
+  ADR 0125 permits a sealed deposit-funded catch-up only when below-band lot
+  granularity prevents any standalone increase. The final band check remains;
+  the recovery's extra exposure is not a proportional-mint rounding exception.
 - The minimum has a sharp lock condition, recorded in `docs/accounting.md`.
   Initialization requires exposure above the minimum operation size; priced
   redemptions enforce their exact proportional bounds. Health synchronization

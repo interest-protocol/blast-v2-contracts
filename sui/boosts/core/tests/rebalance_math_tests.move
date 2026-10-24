@@ -15,7 +15,7 @@ public struct Ratio has copy, drop { numerator: u128, denominator: u128 }
 #[test]
 fun maximum_width_cost_and_conversion_keep_wide_intermediates() {
     let max = std::u64::max_value!();
-    assert_eq!(rebalance_math::execution_cost_up_for_testing(max, 10_000, 9_999), 55_336_542_872_313_912_935);
+    assert_eq!(rebalance_math::execution_cost_up(max, 10_000, 9_999), 55_336_542_872_313_912_935);
     assert_eq!(rebalance_math::oracle_notional_up(max, 1_000, 1, 1_000_000_000, 1_000_000), max);
     assert_eq!(rebalance_math::base_for_oracle_notional_down(max, 1_000, 1, 1, 1_000_000_000, 1_000_000), max);
     assert_eq!(rebalance_math::increase_base_down(max, max - 1, 10_000, 1_000, 1, 1, max, 0, 0, 1_000_000_000, 1_000_000), 1);
@@ -59,13 +59,13 @@ fun whole_lot_increase_matches_exhaustive_small_domain_reference() {
 #[test]
 #[expected_failure(abort_code = errors::EVenueFeeUnusable, location = blast_boosts_core::rebalance_math)]
 fun sizing_rejects_fee_first_above_full_rate() {
-    rebalance_math::execution_cost_up_for_testing(1, 10_001, 0);
+    rebalance_math::execution_cost_up(1, 10_001, 0);
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EVenueFeeUnusable, location = blast_boosts_core::rebalance_math)]
 fun sizing_rejects_tolerance_at_full_rate() {
-    rebalance_math::execution_cost_up_for_testing(1, 0, 10_000);
+    rebalance_math::execution_cost_up(1, 0, 10_000);
 }
 
 #[test]
@@ -240,12 +240,12 @@ fun increase_reserves_adverse_execution_and_fee_headroom() {
     );
     assert_eq!(base, 98_813_000);
     let notional = rebalance_math::oracle_notional_up(base, 10_000_000_000, 1_000_000_000, 1_000_000_000, 1_000_000);
-    let cost = rebalance_math::execution_cost_up_for_testing(notional, 10, 50);
+    let cost = rebalance_math::execution_cost_up(notional, 10, 50);
     assert_eq!(notional, 988_130);
     assert_eq!(cost, 5_935);
     assert!((1_000_000u128 + (notional as u128)) * 10_000 <= 20_000 * (1_000_000 - cost));
     let next = rebalance_math::oracle_notional_up(base + 1_000, 10_000_000_000, 1_000_000_000, 1_000_000_000, 1_000_000);
-    let next_cost = rebalance_math::execution_cost_up_for_testing(next, 10, 50);
+    let next_cost = rebalance_math::execution_cost_up(next, 10, 50);
     assert!((1_000_000u128 + (next as u128)) * 10_000 > 20_000 * (1_000_000 - next_cost));
 }
 
@@ -257,7 +257,7 @@ fun increase_recomputes_headroom_after_each_order_cost() {
         1_000_000_000, 1_000_000,
     );
     assert_eq!(first, 49_751_000);
-    assert_eq!(rebalance_math::execution_cost_up_for_testing(497_510, 10, 50), 2_988);
+    assert_eq!(rebalance_math::execution_cost_up(497_510, 10, 50), 2_988);
     let second = rebalance_math::increase_base_down(
         997_012, 1_497_510, 20_000, 10_000_000_000, 1_000_000_000,
         1_000, 500_000, 10, 50,
@@ -268,9 +268,9 @@ fun increase_recomputes_headroom_after_each_order_cost() {
 
 #[test]
 fun execution_cost_rounds_each_order_instead_of_the_aggregate() {
-    assert_eq!(rebalance_math::execution_cost_up_for_testing(1, 10, 50), 2);
-    assert_eq!(rebalance_math::execution_cost_up_for_testing(16, 10, 50), 2);
-    assert_eq!(16 * rebalance_math::execution_cost_up_for_testing(1, 10, 50), 32);
+    assert_eq!(rebalance_math::execution_cost_up(1, 10, 50), 2);
+    assert_eq!(rebalance_math::execution_cost_up(16, 10, 50), 2);
+    assert_eq!(16 * rebalance_math::execution_cost_up(1, 10, 50), 32);
 }
 
 #[test]
@@ -330,7 +330,7 @@ fun base_for_notional_rejects_a_zero_collateral_price() {
 /// The bound guards still run, but nothing is reserved on an empty order.
 #[test]
 fun a_zero_notional_has_zero_execution_cost() {
-    assert_eq!(rebalance_math::execution_cost_up_for_testing(0, 10_000, 9_999), 0);
+    assert_eq!(rebalance_math::execution_cost_up(0, 10_000, 9_999), 0);
 }
 
 /// An unusable opening cap fails with its own diagnostic.

@@ -441,3 +441,4 @@ test passes, and none is asserted as a cited fact in the records.
 | [0122](0122-bounded-profit-realization-before-redemption.md) | Bounded profit realization before redemption | **accepted** |
 | [0123](0123-successor-activated-boosts-upgrades.md) | Successor-activated Boosts upgrades | **accepted** |
 | [0124](0124-margin-recovery-and-initial-headroom.md) | Margin recovery and initial headroom | **accepted** |
+| [0125](0125-small-vault-recovery-within-the-band.md) | Small-vault recovery within the band | **accepted** |

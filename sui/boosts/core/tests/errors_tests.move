@@ -79,9 +79,11 @@ fun error_codes_run_from_zero_without_gaps() {
         errors::profit_realization_not_needed!(),
         errors::profit_realization_uneconomic!(),
         errors::initial_margin_headroom!(),
+        errors::rebalance_not_actionable!(),
+        errors::rebalance_outside_band!(),
     ];
 
-    assert_eq!(codes.length(), 67);
+    assert_eq!(codes.length(), 69);
     codes.length().do!(|i| assert_eq!(codes[i], i));
 }
 

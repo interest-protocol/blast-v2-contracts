@@ -100,7 +100,7 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | 9 | M-9 | Medium | Sustained above-RGP traffic on the shared objects can starve `rebalance` and `unwind` | Resolved in source through accepted mitigation (ADR 0120); ordinary-rebalance congestion remains an accepted risk |
 | 10 | L-1 | Low | The live NVDA2L vault uses `min_order_lots = 1`, which makes the mint drift bound meaningless | Open (deployment parameter, plus a post-fill band check) |
 | 11 | L-2 | Low | Converting the order cap to base can overflow and abort instead of saturating | Resolved in source with M-4/M-8 in PR #112 (ADR 0119) |
-| 12 | L-3 | Low | A small vault below the band cannot rebalance when one lot overshoots target, and then cannot accept mints either | Open |
+| 12 | L-3 | Low | A small vault below the band cannot rebalance when one lot overshoots target, and then cannot accept mints either | Source implementation under review; ADR 0125 |
 | 13 | L-4 | Low | Donated cash is never allocated to the position, so the core counts margin the venue does not see | Resolved in source (PR #118, ADR 0124); venue execution remains a release gate |
 | 14 | L-5 | Low | Activation accepts any non-negative `position_imr`, even one that later blocks operations inside the band | Resolved in source (PR #118, ADR 0124); venue execution remains a release gate |
 | 15 | L-6 | Low | An emergency rebalance that stops just under the cap can fail the minimum-improvement check and revert every time | Open |
@@ -761,7 +761,7 @@ scale and does not abort.
 
 ### Ticket 12 · L-3 · A small vault below the band cannot rebalance, which then blocks mints
 
-**Status:** open.
+**Status:** source implementation under review in [ADR 0125](../decisions/0125-small-vault-recovery-within-the-band.md). One-lot rebalances may finish inside the full band; genuine lot dust has an early diagnostic and a deposit-funded catch-up path. Every completed mint retains L1's final band check. This follows the auditor's recovery goal but requires full recovery in the same transaction. Deliberately, the auditor's five-lot fixture now has a true hint and a successful one-lot rebalance; deposits wait for that rebalance. `a_small_long_or_short_can_buy_one_lot_past_target_inside_the_band` and `recovery_deposits_do_not_skip_an_available_single_lot_rebalance` pin the difference. A one-lot position at 1.67x exercises the false hint, new diagnostic and deposit recovery instead. Live venue validation and original-auditor acceptance remain separate. The historical finding follows.
 
 **The problem.** `prepare_rebalance` admits any position outside the band
 without checking that a whole-lot order can move it toward the band. On the

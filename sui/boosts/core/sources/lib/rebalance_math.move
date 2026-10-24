@@ -165,11 +165,9 @@ public(package) fun reduction_is_sufficient(
     (within_one_lot_of_target && not_farther_than_before) || improved_by_minimum
 }
 
-// === Private Functions ===
-
 /// Reserves adverse execution first, then the authenticated fee on that adverse quote.
 /// Each session calls this separately: rounding a multi-order total is not equivalent.
-fun execution_cost_up(notional: u64, venue_fee_bps: u64, max_slippage_bps: u64): u128 {
+public(package) fun execution_cost_up(notional: u64, venue_fee_bps: u64, max_slippage_bps: u64): u128 {
     assert!(
         venue_fee_bps <= constants::basis_points_denominator!() && max_slippage_bps < constants::basis_points_denominator!(),
         blast_boosts_core::errors::venue_fee_unusable!(),
@@ -180,13 +178,6 @@ fun execution_cost_up(notional: u64, venue_fee_bps: u64, max_slippage_bps: u64):
     let fee = (((notional as u128) + adverse) * (venue_fee_bps as u128)).div_ceil(denominator);
 
     adverse + fee
-}
-
-// === Test-Only Functions ===
-
-#[test_only]
-public fun execution_cost_up_for_testing(notional: u64, venue_fee_bps: u64, max_slippage_bps: u64): u128 {
-    execution_cost_up(notional, venue_fee_bps, max_slippage_bps)
 }
 
 // === Imports ===

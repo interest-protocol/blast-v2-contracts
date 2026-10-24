@@ -98,7 +98,7 @@ fun keeper_readiness_admits_low_margin_reductions_in_both_directions() {
         let side = if (short) { policy::short() } else { policy::long() };
         let state = seeded(side);
         vector[2_500, 3_600].do!(|notional| {
-            let (ready, _) = capture(notional, side, false).into_rebalance_readiness(&state, NOW);
+            let (ready, _) = capture(notional, side, false).into_rebalance_readiness(&state, 10, NOW);
             assert!(ready);
         });
         destroy(state);
@@ -108,8 +108,8 @@ fun keeper_readiness_admits_low_margin_reductions_in_both_directions() {
 #[test]
 fun keeper_readiness_filters_only_unsafe_increases() {
     let state = seeded(policy::long());
-    let (unsafe_increase, _) = capture(1_000, policy::long(), false).into_rebalance_readiness(&state, NOW);
-    let (safe_increase, _) = capture(1_000, policy::long(), true).into_rebalance_readiness(&state, NOW);
+    let (unsafe_increase, _) = capture(1_000, policy::long(), false).into_rebalance_readiness(&state, 10, NOW);
+    let (safe_increase, _) = capture(1_000, policy::long(), true).into_rebalance_readiness(&state, 10, NOW);
     assert!(!unsafe_increase && safe_increase);
     destroy(state);
 }
@@ -117,7 +117,7 @@ fun keeper_readiness_filters_only_unsafe_increases() {
 #[test]
 fun keeper_readiness_does_not_trigger_inside_the_band_without_opening_margin() {
     let state = seeded(policy::long());
-    let (ready, _) = capture(1_800, policy::long(), false).into_rebalance_readiness(&state, NOW);
+    let (ready, _) = capture(1_800, policy::long(), false).into_rebalance_readiness(&state, 10, NOW);
     assert!(!ready);
     destroy(state);
 }
@@ -127,7 +127,7 @@ fun keeper_readiness_does_not_trigger_inside_the_band_without_opening_margin() {
 fun keeper_readiness_still_rejects_a_paused_venue() {
     let state = seeded(policy::long());
     snapshot::captured_health_for_testing(checkpoint(), 1_000, false, 0, false, true)
-        .into_rebalance_readiness(&state, NOW);
+        .into_rebalance_readiness(&state, 10, NOW);
     destroy(state);
 }
 

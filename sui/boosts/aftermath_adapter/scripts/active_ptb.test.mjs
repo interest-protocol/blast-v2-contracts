@@ -169,11 +169,19 @@ test('keeper trigger uses exact rational endpoints and fails closed on missing e
         equity: '1000000', reserve: '0', notional: '1800000', lowerBps: '18000', upperBps: '22000'};
     assert.equal(keeperDecision(facts), 'no_change');
     assert.equal(keeperDecision({...facts, notional: '2200000'}), 'no_change');
-    assert.equal(keeperDecision({...facts, notional: '1799999'}), 'rebalance');
-    assert.equal(keeperDecision({...facts, notional: '2200001'}), 'rebalance');
-    assert.equal(keeperDecision({...facts, equity: '1000001'}), 'rebalance');
+    assert.equal(keeperDecision({...facts, notional: '1799999'}), 'inspect_rebalance');
+    assert.equal(keeperDecision({...facts, notional: '2200001'}), 'inspect_rebalance');
+    assert.equal(keeperDecision({...facts, equity: '1000001'}), 'inspect_rebalance');
     assert.equal(keeperDecision({...facts, pricingValid: false}), 'blocked');
     assert.equal(keeperDecision({...facts, checkpointClean: false}), 'blocked');
     assert.equal(keeperDecision({...facts, active: false}), 'blocked');
     assert.equal(keeperDecision({...facts, reserve: '1000000'}), 'blocked');
+});
+
+test('lot dust only requests inspection and never authorizes a rebalance', () => {
+    const dust = {active: true, pricingValid: true, checkpointClean: true,
+        equity: '600', reserve: '0', notional: '1000', lowerBps: '18000', upperBps: '22000'};
+    assert.equal(keeperDecision(dust), 'inspect_rebalance');
+    // The on-chain hint must confirm an order before any keeper submits it.
+    assert.notEqual(keeperDecision(dust), 'rebalance');
 });

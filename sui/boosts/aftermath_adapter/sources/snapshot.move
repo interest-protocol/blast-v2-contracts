@@ -228,12 +228,13 @@ public(package) fun into_recovery_observation(self: CapturedSnapshot): (Position
 public(package) fun into_rebalance_readiness<Product>(
     self: CapturedSnapshot,
     state: &State<Product>,
+    venue_fee_bps: u64,
     now_at_ms: u64,
 ): (bool, Checkpoint) {
     let margin_safe = self.margin_safe;
     let (observation, checkpoint) = self.into_recovery_observation();
 
-    (state.needs_rebalance(observation, margin_safe, now_at_ms), checkpoint)
+    (state.needs_rebalance(observation, margin_safe, venue_fee_bps, now_at_ms), checkpoint)
 }
 
 /// Only the core's authenticated direction can exempt a rebalance from the
