@@ -104,7 +104,7 @@ fun recovery_deposits_cannot_enter_from_above_the_band() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EOrderCapBelowMinimum, location = blast_boosts_core::rebalance_math)]
+#[expected_failure(abort_code = errors::EOrderCapBelowMinimum, location = blast_boosts_core::state)]
 fun a_price_move_that_makes_the_cap_too_small_is_not_reported_as_lot_dust() {
     let state = small_cap_state();
     state.needs_rebalance(expensive_position(), true, 10, NOW);
@@ -112,7 +112,7 @@ fun a_price_move_that_makes_the_cap_too_small_is_not_reported_as_lot_dust() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EOrderCapBelowMinimum, location = blast_boosts_core::rebalance_math)]
+#[expected_failure(abort_code = errors::EOrderCapBelowMinimum, location = blast_boosts_core::state)]
 fun recovery_deposits_do_not_bypass_a_cap_smaller_than_one_lot() {
     let state = small_cap_state();
     destroy(state.prepare_mint(expensive_position(), 540_000, 600, 1, 10, NOW));

@@ -105,8 +105,9 @@ moved value between parties without a bound or a design record.
 
 This records what the code does and supersedes the two 0064 sentences that say
 otherwise. A donation credits the reserve; a positive funding settlement first
-repays the uncovered deficit to NAV, then credits the reserve. Both are subject
-to D2, so neither can grow the reserve past the ceiling for the live position.
+repays the uncovered deficit to NAV, then credits the reserve. Donations clamp
+with their observation. Funding has no observation and may leave a recorded
+excess; subsequent priced operations admit it only up to their live ceiling.
 
 ## Consequences
 
@@ -116,10 +117,12 @@ to D2, so neither can grow the reserve past the ceiling for the live position.
   ceiling, with no moment to time a trade around.
 - A vault at its NAV cap may refuse mints after a release raises NAV, exactly
   as it does after favourable PnL; `set_nav_cap` remains the remedy.
-- Rebalance sizing still reads the stored reserve, which may be transiently
-  above the ceiling after a funding credit. It then targets a slightly lower
-  NAV, which under-levers by the excess until the next priced operation. This
-  is harmless and avoids a clamp in a path that does not price shares.
+- Under [ADR 0128](0128-reserve-aware-rebalance-increases.md), increases size
+  and validate against the reserve admitted by the resulting notional. A
+  growing ceiling can lower NAV, so the opening reserve is not a safe basis
+  for an increase. Maintenance leaves the recorded reserve unchanged.
+  Reductions retain their separate opening-reserve basis; the L-10 liveness
+  concern is not resolved by the increase fix.
 - Tests pin the inclusive seed bound, the redemption release with unchanged
   physical equity, a mint priced after a pending release (951,428 shares on
   a 999,000 contribution against NAV 1,050,000, not 999,000), an accepted

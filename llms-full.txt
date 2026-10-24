@@ -3396,14 +3396,18 @@ venue; it does not grow with the gas bid.
 4. Up to 16 limit orders, using the core-owned rebalance budget (core code 70
    rejects an additional accepted fill), each priced at the oracle moved by its bound
    against the order. Increase: each order is the largest whole-lot buy that
-   keeps post-cost leverage at or under target, reserving adverse slippage
+   keeps post-cost leverage at or under target, using the reserve admitted at
+   the resulting total notional and reserving adverse slippage
    (`max_slippage_bps`) and the taker fee on it, capped at
    `max_order_notional`; each fill must leave leverage at or under target and
    under max. If no whole lot fits under target while the position is below
    the band, exactly one lot may instead land inside the full band. Conservative
-   cost sizing must admit it, and the actual fill must pass both band edges
+   cost and resulting-reserve sizing must admit it, and the actual fill must pass both band edges
    (core code 68 otherwise).
    This exception retains the ordinary price bound and order cap.
+   Each increase fill and completion recomputes the admitted reserve at its
+   actual notional before checking target or the sealed one-lot band exception.
+   The recorded reserve is not clamped by rebalance.
    Reduce: each order sells toward the target base, capped per
    order, rounded down to lots, under `max_slippage_bps`. A reduction that
    started above `max_leverage_bps` instead sells only what brings leverage
@@ -8949,9 +8953,9 @@ public struct State<phantom Product> has store {
     /// the selected risk module. Execution slippage is bounded separately by
     /// the immutable rebalance policy, so this value only paces orders.
     max_order_notional: u64,
-    /// Collateral inside the venue account that share pricing excludes. Every
-    /// credit is clamped to the policy ceiling for the live notional, so the
-    /// reserve can never grow past the share of the position it protects.
+    /// Recorded collateral buffer inside the venue account. Mint, redemption
+    /// and donation credits clamp at their observation; funding can leave an
+    /// excess. Priced operations admit the live ceiling (flat positions keep all).
     maintenance_reserve: u64,
     /// Funding cost holders bore while the reserve was exhausted; later credits
     /// repay it to NAV before any credit rebuilds the reserve.
@@ -9010,7 +9014,7 @@ public struct RedemptionPlan<phantom Product> {
 public struct RebalancePlan<phantom Product> {
     before: ActivePosition,
     current: ActivePosition,
-    /// The reserve as the ceiling admits it against `before`; every NAV in the plan uses it.
+    /// Opening reserve basis; reductions keep it, increases reprice at each position.
     reserve_priced: u64,
     increase: bool,
     /// Whether the plan began above the hard cap and so may use the emergency
@@ -9022,6 +9026,8 @@ public struct RebalancePlan<phantom Product> {
     steps: u64,
     /// Every reduction fill matched both its order and fresh core sizing.
     full_fills: bool,
+    /// The last accepted increase used the sealed one-lot band exception.
+    band_landing: bool,
 }
 
 /// The next whole-lot order a rebalance places: its size, direction, whether

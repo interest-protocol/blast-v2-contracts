@@ -43,9 +43,9 @@ public struct State<phantom Product> has store {
     /// the selected risk module. Execution slippage is bounded separately by
     /// the immutable rebalance policy, so this value only paces orders.
     max_order_notional: u64,
-    /// Collateral inside the venue account that share pricing excludes. Every
-    /// credit is clamped to the policy ceiling for the live notional, so the
-    /// reserve can never grow past the share of the position it protects.
+    /// Recorded collateral buffer inside the venue account. Mint, redemption
+    /// and donation credits clamp at their observation; funding can leave an
+    /// excess. Priced operations admit the live ceiling (flat positions keep all).
     maintenance_reserve: u64,
     /// Funding cost holders bore while the reserve was exhausted; later credits
     /// repay it to NAV before any credit rebuilds the reserve.
@@ -104,7 +104,7 @@ public struct RedemptionPlan<phantom Product> {
 public struct RebalancePlan<phantom Product> {
     before: ActivePosition,
     current: ActivePosition,
-    /// The reserve as the ceiling admits it against `before`; every NAV in the plan uses it.
+    /// Opening reserve basis; reductions keep it, increases reprice at each position.
     reserve_priced: u64,
     increase: bool,
     /// Whether the plan began above the hard cap and so may use the emergency
@@ -116,6 +116,8 @@ public struct RebalancePlan<phantom Product> {
     steps: u64,
     /// Every reduction fill matched both its order and fresh core sizing.
     full_fills: bool,
+    /// The last accepted increase used the sealed one-lot band exception.
+    band_landing: bool,
 }
 
 /// The next whole-lot order a rebalance places: its size, direction, whether
@@ -341,7 +343,7 @@ public fun prepare_mint<Product>(
             self.vault_policy.rebalance_policy().is_leverage_below_band(before.notional, nav),
             blast_boosts_core::errors::mint_outside_rebalance_band!(),
         );
-        let (standalone_base, _) = self.increase_order(&before, nav, venue_fee_bps);
+        let (standalone_base, _) = self.increase_order(&before, venue_fee_bps);
         assert!(standalone_base == 0, blast_boosts_core::errors::mint_outside_rebalance_band!());
     };
 
@@ -551,7 +553,7 @@ public fun needs_rebalance<Product>(
     if (rebalance.is_leverage_within_band(position.notional, nav)) return false;
     if (!rebalance.is_leverage_below_band(position.notional, nav)) return true;
     if (!increases_allowed) return false;
-    let (base, _) = self.increase_order(&position, nav, venue_fee_bps);
+    let (base, _) = self.increase_order(&position, venue_fee_bps);
 
     base > 0
 }
@@ -582,7 +584,7 @@ public fun prepare_rebalance<Product>(
 
     let increase = rebalance.is_leverage_below_band(before.notional, nav);
     if (increase) {
-        let (base, _) = self.increase_order(&before, nav, venue_fee_bps);
+        let (base, _) = self.increase_order(&before, venue_fee_bps);
         assert!(base > 0, blast_boosts_core::errors::rebalance_not_actionable!());
     };
 
@@ -595,6 +597,7 @@ public fun prepare_rebalance<Product>(
         venue_fee_bps,
         steps: 0,
         full_fills: true,
+        band_landing: false,
     }
 }
 
@@ -607,7 +610,6 @@ public fun prepare_rebalance<Product>(
 /// below the cap, and a wide market cannot revert the orders placed above it.
 public fun next_rebalance_order<Product>(self: &State<Product>, plan: &RebalancePlan<Product>): RebalanceOrder {
     let position = &plan.current;
-    let nav = accounting_math::shareholder_nav(position.equity, plan.reserve_priced);
     let rebalance = self.vault_policy.rebalance_policy();
     let ordinary = rebalance.execution_bound(false);
 
@@ -616,10 +618,11 @@ public fun next_rebalance_order<Product>(self: &State<Product>, plan: &Rebalance
     };
 
     if (plan.increase) {
-        let (base, band_landing) = self.increase_order(position, nav, plan.venue_fee_bps);
+        let (base, band_landing) = self.increase_order(position, plan.venue_fee_bps);
         return RebalanceOrder { base, increase: true, emergency: false, bound: ordinary, band_landing }
     };
 
+    let nav = accounting_math::shareholder_nav(position.equity, plan.reserve_priced);
     // The bound is the plan's, decided against the observation that opened it:
     // a plan's own fills cannot widen it. A reduction that crosses the cap
     // mid-plan either finishes within the ordinary bound or aborts, and the
@@ -688,20 +691,8 @@ public fun accept_rebalance_fill<Product>(
     assert!(after.base == expected_base, blast_boosts_core::errors::active_fill_incomplete!());
 
     if (increase) {
-        let nav = accounting_math::shareholder_nav(after.equity, plan.reserve_priced);
-        let rebalance = self.vault_policy.rebalance_policy();
-        if (band_landing) {
-            assert!(
-                rebalance.is_leverage_within_band(after.notional, nav),
-                blast_boosts_core::errors::rebalance_outside_band!(),
-            );
-        } else {
-            assert!(
-                rebalance.is_leverage_at_most_target(after.notional, nav)
-                    && rebalance.is_leverage_below_max(after.notional, nav),
-                blast_boosts_core::errors::active_leverage_above_cap!(),
-            );
-        };
+        self.assert_increase_leverage(&after, band_landing);
+        plan.band_landing = band_landing;
     };
 
     // Prove full fills against fresh core sizing, not a retained or foreign order.
@@ -718,11 +709,13 @@ public fun complete_rebalance<Product>(
     plan: RebalancePlan<Product>,
 ): (u64, u64, u64, u64, bool) {
     self.lifecycle.assert_active();
-    let RebalancePlan { before, current, reserve_priced, increase, emergency, venue_fee_bps, steps, full_fills } = plan;
+    let RebalancePlan { before, current, reserve_priced, increase, emergency, venue_fee_bps, steps, full_fills, band_landing } = plan;
     assert!(steps > 0, blast_boosts_core::errors::rebalance_no_progress!());
 
     let before_nav = accounting_math::shareholder_nav(before.equity, reserve_priced);
-    let after_nav = accounting_math::shareholder_nav(current.equity, reserve_priced);
+    let reserve_after = if (increase) self.admitted_reserve(&current) else reserve_priced;
+    let after_nav = accounting_math::shareholder_nav(current.equity, reserve_after);
+    if (increase) self.assert_increase_leverage(&current, band_landing);
     let rebalance = self.vault_policy.rebalance_policy();
     // An emergency plan has done its job once leverage is no longer above the
     // hard cap, however small the sale that restored it was.
@@ -1204,23 +1197,71 @@ fun assert_minimum_order_capacity(max_order_base: u64, lot_size: u64, min_order_
     );
 }
 
-/// Only lot granularity may permit a single-lot landing above target. The
-/// actual fill must finish inside the band; caps and fees retain their errors.
-fun increase_order<Product>(self: &State<Product>, position: &ActivePosition, nav: u64, venue_fee_bps: u64): (u64, bool) {
-    let base = self.target_increase_order(position, nav, venue_fee_bps);
+/// Sizes against the reserve admitted by the resulting position and rounded-up
+/// execution cost. Only one lot may cross target, and only into the full band.
+fun increase_order<Product>(self: &State<Product>, position: &ActivePosition, venue_fee_bps: u64): (u64, bool) {
+    let nav = accounting_math::shareholder_nav(position.equity, self.admitted_reserve(position));
     let rebalance = self.vault_policy.rebalance_policy();
-    if (base > 0 || !rebalance.is_leverage_below_band(position.notional, nav)) return (base, false);
+    if ((position.notional as u128) * (constants::basis_points_denominator!() as u128)
+        >= (nav as u128) * (rebalance.target_leverage_bps() as u128)) return (0, false);
 
-    let lot_notional = rebalance_math::oracle_notional_up(
-        position.lot_size, position.base_price, position.collateral_price, self.base_unit, self.collateral_unit,
-    );
-    let cost = rebalance_math::execution_cost_up(lot_notional, venue_fee_bps, rebalance.max_slippage_bps());
-    if (cost >= nav as u128) return (0, false);
-    let notional_after = position.notional.checked_add(lot_notional)
-        .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
-    if (!rebalance.is_leverage_within_band(notional_after, nav - (cost as u64))) return (0, false);
+    // The cap must permit a lot even when the target cannot; no opening escape hatch.
+    let mut high = (self.max_order_base(position, false) / position.lot_size)
+        .min((std::u64::max_value!() - position.base) / position.lot_size);
+    let mut low = 0;
+    while (low < high) {
+        let candidate = low + (high - low).div_ceil(2);
+        if (self.increase_fits(position, candidate * position.lot_size, venue_fee_bps, false)) {
+            low = candidate;
+        } else {
+            high = candidate - 1;
+        };
+    };
+    if (low > 0) return (low * position.lot_size, false);
+    if (!rebalance.is_leverage_below_band(position.notional, nav)
+        || !self.increase_fits(position, position.lot_size, venue_fee_bps, true)) return (0, false);
 
     (position.lot_size, true)
+}
+
+/// A monotone target predicate: more base cannot lower costs or the admitted
+/// reserve. Price the resulting total base once so fractional lots cannot
+/// overstate the band landing. Unrepresentable candidates are never executable.
+fun increase_fits<Product>(
+    self: &State<Product>, position: &ActivePosition, base: u64, venue_fee_bps: u64, band_landing: bool,
+): bool {
+    if (base > std::u64::max_value!() - position.base) return false;
+    let order_notional = rebalance_math::oracle_notional_up(
+        base, position.base_price, position.collateral_price, self.base_unit, self.collateral_unit,
+    );
+    if ((position.notional as u128) + (order_notional as u128) > std::u64::max_value!() as u128) return false;
+    let notional_after = rebalance_math::oracle_notional_up(
+        position.base + base, position.base_price, position.collateral_price, self.base_unit, self.collateral_unit,
+    );
+    let reserve_after = self.maintenance_reserve.min(self.vault_policy.reserve_cap(notional_after));
+    let rebalance = self.vault_policy.rebalance_policy();
+    let cost = rebalance_math::execution_cost_up(order_notional, venue_fee_bps, rebalance.max_slippage_bps());
+    if (cost + (reserve_after as u128) >= position.equity as u128) return false;
+    let nav_after = position.equity - reserve_after - (cost as u64);
+
+    if (band_landing) rebalance.is_leverage_within_band(notional_after, nav_after)
+    else rebalance.is_leverage_at_most_target(notional_after, nav_after)
+}
+
+/// Each fill and completion must use the reserve the next checkpoint will admit.
+/// The ordinary target and sealed one-lot band landing remain distinct promises.
+fun assert_increase_leverage<Product>(self: &State<Product>, position: &ActivePosition, band_landing: bool) {
+    let nav = accounting_math::shareholder_nav(position.equity, self.admitted_reserve(position));
+    let rebalance = self.vault_policy.rebalance_policy();
+    if (band_landing) {
+        assert!(rebalance.is_leverage_within_band(position.notional, nav), blast_boosts_core::errors::rebalance_outside_band!());
+    } else {
+        assert!(
+            rebalance.is_leverage_at_most_target(position.notional, nav)
+                && rebalance.is_leverage_below_max(position.notional, nav),
+            blast_boosts_core::errors::active_leverage_above_cap!(),
+        );
+    };
 }
 
 /// Deposit-funded catch-up is at most one ordinary capped order. All execution
@@ -1230,7 +1271,7 @@ fun recovery_mint_base<Product>(
     self: &State<Product>, before: &ActivePosition, nav: u64, contribution: u64, proportional_base: u64, venue_fee_bps: u64,
 ): u64 {
     let funded_nav = nav.checked_add(contribution).destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
-    let base = self.target_increase_order(before, funded_nav, venue_fee_bps);
+    let base = self.funded_mint_increase_order(before, funded_nav, venue_fee_bps);
     let final_base = before.base.checked_add(base).destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
     let final_notional = rebalance_math::oracle_notional_up(
         final_base, before.base_price, before.collateral_price, self.base_unit, self.collateral_unit,
@@ -1243,8 +1284,9 @@ fun recovery_mint_base<Product>(
     base
 }
 
-/// The largest next buy at or under target after its own execution cost, capped per order.
-fun target_increase_order<Product>(self: &State<Product>, position: &ActivePosition, nav: u64, venue_fee_bps: u64): u64 {
+/// Mint catch-up uses opening admitted reserve plus its fee credit at completion,
+/// not the raw stored reserve used by maintenance. Keep its funded NAV basis.
+fun funded_mint_increase_order<Product>(self: &State<Product>, position: &ActivePosition, nav: u64, venue_fee_bps: u64): u64 {
     let rebalance = self.vault_policy.rebalance_policy();
 
     rebalance_math::increase_base_down(

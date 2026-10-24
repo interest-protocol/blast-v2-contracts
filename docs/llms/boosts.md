@@ -405,14 +405,18 @@ venue; it does not grow with the gas bid.
 4. Up to 16 limit orders, using the core-owned rebalance budget (core code 70
    rejects an additional accepted fill), each priced at the oracle moved by its bound
    against the order. Increase: each order is the largest whole-lot buy that
-   keeps post-cost leverage at or under target, reserving adverse slippage
+   keeps post-cost leverage at or under target, using the reserve admitted at
+   the resulting total notional and reserving adverse slippage
    (`max_slippage_bps`) and the taker fee on it, capped at
    `max_order_notional`; each fill must leave leverage at or under target and
    under max. If no whole lot fits under target while the position is below
    the band, exactly one lot may instead land inside the full band. Conservative
-   cost sizing must admit it, and the actual fill must pass both band edges
+   cost and resulting-reserve sizing must admit it, and the actual fill must pass both band edges
    (core code 68 otherwise).
    This exception retains the ordinary price bound and order cap.
+   Each increase fill and completion recomputes the admitted reserve at its
+   actual notional before checking target or the sealed one-lot band exception.
+   The recorded reserve is not clamped by rebalance.
    Reduce: each order sells toward the target base, capped per
    order, rounded down to lots, under `max_slippage_bps`. A reduction that
    started above `max_leverage_bps` instead sells only what brings leverage
