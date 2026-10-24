@@ -108,7 +108,7 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | 17 | L-8 | Low | Emergency rebalance is refused when the venue mark diverges from spot, even though it never uses the mark | Resolved in source (PR #123, ADR 0127), Opus 5.5 reviewed; live execution remains a release gate |
 | 18 | L-9 | Low | Increase rebalances check the hard cap against a reserve admitted at the opening notional, not the post-fill one | Resolved in source (PR #124, ADR 0128), Opus 5.5 reviewed; live execution remains a release gate |
 | 19 | L-10 | Low | Reductions are checked fill by fill on one reserve basis and completed on another, so a valid deleverage can revert | Resolved in source (PR #125, ADR 0129), Opus 5.5 reviewed; live execution remains a release gate |
-| 20 | L-11 | Low | Once the position shrinks below one minimum order, nobody can redeem | Implemented and locally tested (ADR 0130), Opus 5.5 reviewed; merge pending |
+| 20 | L-11 | Low | Once the position shrinks below one minimum order, nobody can redeem | Resolved in source (PR #126, ADR 0130), Opus 5.5 reviewed; live execution and auditor acceptance remain |
 | 21 | L-12 | Low | The funding-credit conservation check can overflow on a state that fits | Open |
 | 22 | A-1 | Advisory | `ifixed_math::to_u64` is wider than its callers | Open |
 | 23 | A-2 | Advisory | `needs_rebalance` prices post-settlement equity against the pre-settlement reserve | Open |
@@ -1116,8 +1116,9 @@ retain the full reserve may require separately authorized shutdown.
 
 ### Ticket 20 · L-11 · Once the position shrinks below one minimum order, nobody can redeem
 
-**Status:** implemented and locally tested; awaiting merge. All 1,366 Move tests
-pass, and fresh Opus 5.5 review has no remaining actionable code finding.
+**Status:** resolved in source through [PR #126](https://github.com/interest-protocol/blast-v2-contracts/pull/126).
+All 1,366 Move tests pass, and fresh Opus 5.5 review has no remaining actionable
+code finding. GitHub Actions could not start because of account billing limits.
 See [ADR 0130](../decisions/0130-protected-permissionless-shutdown.md) and the
 [review record](boosts-l11-protected-exit-2026-10-24.md). This is not
 original-auditor acceptance or live venue execution evidence.
