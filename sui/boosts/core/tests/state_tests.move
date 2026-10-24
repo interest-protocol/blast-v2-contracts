@@ -405,7 +405,7 @@ fun invalid_rebalance_fee_precedes_invalid_observation() {
 #[expected_failure(abort_code = errors::EMintOutsideRebalanceBand, location = blast_boosts_core::state)]
 fun mint_outside_band_precedes_deposit_arithmetic() {
     let state = initialized_state(policy::long());
-    let plan = state.prepare_mint(standard_observation(policy::long()).with_notional(1_000_000).into_position_observation(), 0, 1_000_000, 1, REFERENCE_AT_MS);
+    let plan = state.prepare_mint(standard_observation(policy::long()).with_notional(1_000_000).into_position_observation(), 0, 1_000_000, 1, 10, REFERENCE_AT_MS);
     destroy(plan);
     state.destroy_for_testing();
 }
@@ -414,7 +414,7 @@ fun mint_outside_band_precedes_deposit_arithmetic() {
 #[expected_failure(abort_code = errors::EActiveFillIncomplete, location = blast_boosts_core::state)]
 fun mint_completion_rejects_missing_attributable_fill() {
     let mut state = initialized_state(policy::long());
-    let plan = state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 1_000_000, 1_000_000, 1, REFERENCE_AT_MS);
+    let plan = state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 1_000_000, 1_000_000, 1, 10, REFERENCE_AT_MS);
     state.complete_mint(plan, standard_observation(policy::long()).into_position_observation(), REFERENCE_AT_MS);
     state.destroy_for_testing();
 }
@@ -434,7 +434,7 @@ fun redemption_rejects_output_one_above_net() {
 fun mint_amount_supply_swap_cannot_satisfy_the_original_minimum() {
     let mut state = initialized_state(policy::long());
     let before = standard_observation(policy::long());
-    let plan = state.prepare_mint(before.into_position_observation(), 1_000_000, 500_000, 600_000, REFERENCE_AT_MS);
+    let plan = state.prepare_mint(before.into_position_observation(), 1_000_000, 500_000, 600_000, 10, REFERENCE_AT_MS);
     state.complete_mint(plan, before.with_venue_equity(2_098_000).with_position_base(3_998_000_000).into_position_observation(), REFERENCE_AT_MS);
     state.destroy_for_testing();
 }
@@ -535,7 +535,7 @@ fun active_mint_and_redemption_are_generic_for_long_and_short_2x_4x_6x() {
             let notional = target * 100;
             let (mut state, _, _) = state::issue<Product>(&witness, vault_policy, 2_000_000, NAV_CAP, 9, 6)
                 .activate(rebalance_observation(1_100_000, notional, side), 100_000, REFERENCE_AT_MS);
-            let plan = state.prepare_mint(rebalance_observation(1_100_000, notional, side), 1_000_000, 1_000_000, 1_000_000, REFERENCE_AT_MS);
+            let plan = state.prepare_mint(rebalance_observation(1_100_000, notional, side), 1_000_000, 1_000_000, 1_000_000, 10, REFERENCE_AT_MS);
             assert_eq!(plan.base_to_buy(), notional * 1_000);
             let (shares, contribution, _, _, _) = state.complete_mint(plan, rebalance_observation(2_100_000, notional * 2, side), REFERENCE_AT_MS);
             assert_eq!(vector[shares, contribution, state.maintenance_reserve()], vector[1_000_000, 1_000_000, 100_000]);
@@ -578,7 +578,7 @@ fun fee_update_rejects_an_unchanged_tuple() {
 #[expected_failure(abort_code = errors::ENonpositiveContribution, location = blast_boosts_core::state)]
 fun mint_rejects_input_consumed_by_rounded_fee_before_sizing_exposure() {
     let state = initialized_state(policy::long());
-    destroy(state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 1, HEALTH_SHARE_SUPPLY, 0, REFERENCE_AT_MS));
+    destroy(state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 1, HEALTH_SHARE_SUPPLY, 0, 10, REFERENCE_AT_MS));
     state.destroy_for_testing();
 }
 
@@ -789,7 +789,7 @@ fun mint_credits_at_most_the_deposit_net_of_fee_when_the_fill_is_favorable() {
         standard_observation(policy::long()).into_position_observation(),
         1_000_000,
         1_000_000,
-        999_000,
+        999_000, 10,
         REFERENCE_AT_MS,
     );
     assert_eq!(plan.base_to_buy(), 1_998_000_000);
@@ -843,7 +843,7 @@ fun mint_prices_actual_contribution_after_the_attributable_cost() {
         standard_observation(policy::long()).into_position_observation(),
         1_000_000,
         1_000_000,
-        997_000,
+        997_000, 10,
         REFERENCE_AT_MS,
     );
     assert_eq!(plan.base_to_buy(), 1_998_000_000);
@@ -1494,7 +1494,7 @@ fun a_mint_prices_shares_after_releasing_reserve_above_the_ceiling() {
     assert_eq!(state.maintenance_reserve(), 150_000);
 
     let before = standard_observation(policy::long()).with_venue_equity(1_150_000);
-    let plan = state.prepare_mint(before.into_position_observation(), 1_000_000, 1_000_000, 1, REFERENCE_AT_MS);
+    let plan = state.prepare_mint(before.into_position_observation(), 1_000_000, 1_000_000, 1, 10, REFERENCE_AT_MS);
     // Sized against NAV 1_050_000, not 1_000_000: 200_000 * 999_000 / 1_050_000 floored to the lot.
     // 2e9 * 999_000 / 1_050_000 floored to the lot.
     assert_eq!(plan.base_to_buy(), 1_902_857_000);
@@ -1717,7 +1717,7 @@ fun seed_orders_run_under_the_ordinary_bound() {
 #[expected_failure(abort_code = errors::EInvalidShareSupply, location = blast_boosts_core::state)]
 fun mint_rejects_a_zero_share_supply() {
     let state = initialized_state(policy::long());
-    destroy(state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 1_000_000, 0, 1, REFERENCE_AT_MS));
+    destroy(state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 1_000_000, 0, 1, 10, REFERENCE_AT_MS));
     abort
 }
 
@@ -1728,11 +1728,11 @@ fun mint_admits_both_band_endpoints() {
 
     let lower = state.prepare_mint(
         standard_observation(policy::long()).with_notional(1_600_000).into_position_observation(),
-        1_000_000, HEALTH_SHARE_SUPPLY, 1, REFERENCE_AT_MS,
+        1_000_000, HEALTH_SHARE_SUPPLY, 1, 10, REFERENCE_AT_MS,
     );
     let upper = state.prepare_mint(
         standard_observation(policy::long()).with_notional(2_600_000).into_position_observation(),
-        1_000_000, HEALTH_SHARE_SUPPLY, 1, REFERENCE_AT_MS,
+        1_000_000, HEALTH_SHARE_SUPPLY, 1, 10, REFERENCE_AT_MS,
     );
 
     // 999_000 of contribution against 1_000_000 of NAV buys 99.9% of the position.
@@ -1748,7 +1748,7 @@ fun mint_admits_both_band_endpoints() {
 #[expected_failure(abort_code = errors::EZeroAmount, location = blast_boosts_core::accounting_math)]
 fun a_zero_deposit_mint_is_refused() {
     let state = initialized_state(policy::long());
-    destroy(state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 0, HEALTH_SHARE_SUPPLY, 1, REFERENCE_AT_MS));
+    destroy(state.prepare_mint(standard_observation(policy::long()).into_position_observation(), 0, HEALTH_SHARE_SUPPLY, 1, 10, REFERENCE_AT_MS));
     abort
 }
 
@@ -1760,7 +1760,7 @@ fun completed_mints_preserve_both_exact_band_edges_for_both_sides() {
         vector[1_600_000, 2_600_000].do!(|notional| {
             let mut state = initialized_state(side);
             let before = standard_observation(side).with_notional(notional);
-            let plan = state.prepare_mint(before.into_position_observation(), 101, HEALTH_SHARE_SUPPLY, 1, REFERENCE_AT_MS);
+            let plan = state.prepare_mint(before.into_position_observation(), 101, HEALTH_SHARE_SUPPLY, 1, 10, REFERENCE_AT_MS);
             let base_after = before.position_base + plan.base_to_buy();
             let (shares, contribution, fee, _, _) = state.complete_mint(
                 plan, before.with_venue_equity(SEED_VENUE_EQUITY + 101).with_position_base(base_after).into_position_observation(),
@@ -1896,7 +1896,7 @@ fun a_mint_landing_one_atom_over_the_nav_cap_is_refused() {
 fun mint_completion_rejects_post_fill_leverage_above_the_cap() {
     let mut state = initialized_state(policy::long());
     let before = standard_observation(policy::long()).with_notional(2_600_000);
-    let plan = state.prepare_mint(before.into_position_observation(), 1_000_000, HEALTH_SHARE_SUPPLY, 1, REFERENCE_AT_MS);
+    let plan = state.prepare_mint(before.into_position_observation(), 1_000_000, HEALTH_SHARE_SUPPLY, 1, 10, REFERENCE_AT_MS);
     assert_eq!(plan.base_to_buy(), 2_597_400_000);
     state.complete_mint(
         plan,
@@ -1914,7 +1914,7 @@ fun a_mint_fee_above_the_ceiling_is_released_to_holders() {
     let (mut state, seed_nav) = capped_issuance(1).activate_with(standard_observation(policy::long()), 200);
     assert_eq!(seed_nav, 1_099_800);
     let plan = state.prepare_mint(
-        standard_observation(policy::long()).into_position_observation(), 1_000_000, HEALTH_SHARE_SUPPLY, 1, REFERENCE_AT_MS,
+        standard_observation(policy::long()).into_position_observation(), 1_000_000, HEALTH_SHARE_SUPPLY, 1, 10, REFERENCE_AT_MS,
     );
     // 2e9 * 999_000 / 1_099_800 floored to the lot.
     assert_eq!(plan.base_to_buy(), 1_816_693_000);
@@ -2376,7 +2376,7 @@ fun nav_cap_may_be_lowered_below_the_live_nav() {
 #[expected_failure(abort_code = errors::EInvalidPositionObservation, location = blast_boosts_core::state)]
 fun an_active_operation_rejects_a_non_flat_observation_on_the_wrong_side() {
     let state = initialized_state(policy::long());
-    state.needs_rebalance(standard_observation(policy::long()).with_observed_side(policy::short()).into_position_observation(), true, REFERENCE_AT_MS);
+    state.needs_rebalance(standard_observation(policy::long()).with_observed_side(policy::short()).into_position_observation(), true, 10, REFERENCE_AT_MS);
     abort
 }
 
@@ -2384,7 +2384,7 @@ fun an_active_operation_rejects_a_non_flat_observation_on_the_wrong_side() {
 #[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::state)]
 fun an_active_operation_rejects_equity_equal_to_the_reserve() {
     let state = initialized_state(policy::long());
-    state.needs_rebalance(standard_observation(policy::long()).with_venue_equity(SEED_RESERVE).into_position_observation(), true, REFERENCE_AT_MS);
+    state.needs_rebalance(standard_observation(policy::long()).with_venue_equity(SEED_RESERVE).into_position_observation(), true, 10, REFERENCE_AT_MS);
     abort
 }
 
@@ -2413,7 +2413,7 @@ fun a_priced_operation_admits_equity_that_covers_the_admitted_reserve() {
 fun a_priced_operation_is_refused_when_equity_only_covers_the_admitted_reserve() {
     let mut state = capped_initialized_state(500);
     state.settle_funding(observation::funding_credit(50_000));
-    state.needs_rebalance(standard_observation(policy::long()).with_venue_equity(100_000).into_position_observation(), true, REFERENCE_AT_MS);
+    state.needs_rebalance(standard_observation(policy::long()).with_venue_equity(100_000).into_position_observation(), true, 10, REFERENCE_AT_MS);
     abort
 }
 
@@ -2468,7 +2468,7 @@ fun invalid_cap_is_rejected_before_stale_prices() {
 fun mint_at_band_edge(side: PositionSide, notional: u64, deposit: u64, equity_increase: u64) {
     let mut state = initialized_state(side);
     let before = standard_observation(side).with_notional(notional);
-    let plan = state.prepare_mint(before.into_position_observation(), deposit, HEALTH_SHARE_SUPPLY, 1, REFERENCE_AT_MS);
+    let plan = state.prepare_mint(before.into_position_observation(), deposit, HEALTH_SHARE_SUPPLY, 1, 10, REFERENCE_AT_MS);
     let base_after = before.position_base + plan.base_to_buy();
     state.complete_mint(
         plan, before.with_venue_equity(SEED_VENUE_EQUITY + equity_increase).with_position_base(base_after).into_position_observation(),
@@ -2611,7 +2611,7 @@ fun initialize_once(spec: ObservationSpec, side: PositionSide, seed_reserve: u64
 /// The standard 1_000_000 deposit against the seed: 999_000 of contribution buys 1_998_000_000 of base.
 fun standard_mint_plan(state: &State<Product>): MintPlan<Product> {
     let plan = state.prepare_mint(
-        standard_observation(policy::long()).into_position_observation(), 1_000_000, HEALTH_SHARE_SUPPLY, 1, REFERENCE_AT_MS,
+        standard_observation(policy::long()).into_position_observation(), 1_000_000, HEALTH_SHARE_SUPPLY, 1, 10, REFERENCE_AT_MS,
     );
     assert_eq!(plan.base_to_buy(), 1_998_000_000);
 

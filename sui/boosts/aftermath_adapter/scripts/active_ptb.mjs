@@ -152,8 +152,9 @@ export function emergencyDecision(facts) {
         ? 'shutdown_role_review' : 'no_change';
 }
 
-// Observation-side trigger only. The on-chain public call independently authenticates
-// bindings, funding, prices, margin and policy, then derives its own side and size.
+// Observation-side pre-filter only: inspect_rebalance requires a fresh dev-inspect
+// of operations::needs_rebalance before submission. It cannot establish executable
+// whole-lot size, margin, funding or liquidity. Never treat it as a trade decision.
 export function keeperDecision(facts) {
     if (facts.active !== true || facts.pricingValid !== true || facts.checkpointClean !== true) return 'blocked';
     const equity = BigInt(u64(facts.equity)), reserve = BigInt(u64(facts.reserve));
@@ -161,5 +162,5 @@ export function keeperDecision(facts) {
     const lower = BigInt(u64(facts.lowerBps)), upper = BigInt(u64(facts.upperBps));
     if (equity <= reserve || lower >= upper) return 'blocked';
     const nav = equity - reserve, scaled = notional * 10000n;
-    return scaled < nav * lower || scaled > nav * upper ? 'rebalance' : 'no_change';
+    return scaled < nav * lower || scaled > nav * upper ? 'inspect_rebalance' : 'no_change';
 }

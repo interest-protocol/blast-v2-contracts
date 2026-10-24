@@ -171,7 +171,7 @@ fun rebaseline_reprices_mint_and_redemption_without_changing_existing_claims() {
     // Ordinary synchronization now accepts this checkpoint. At half the old
     // holder NAV, an equal-sized deposit receives twice as many shares.
     vault.venue().checkpoint().assert_unchanged(&after);
-    let plan = vault.state().prepare_mint(active_position(550, 900), 450, supply_before, supply_before, REFERENCE_AT_MS);
+    let plan = vault.state().prepare_mint(active_position(550, 900), 450, supply_before, supply_before, 10, REFERENCE_AT_MS);
     assert_eq!(plan.base_to_buy(), 900 * BASE_PER_NOTIONAL);
     let shares = vault.complete_mint_for_testing(plan, 450, active_position(1_000, 1_800),
         recovery_checkpoint(1_000, 1_800), REFERENCE_AT_MS, fixture.ctx!());
@@ -297,7 +297,7 @@ fun rebaseline_does_not_allow_minting_while_remaining_position_is_overleveraged(
     let mut vault = issue_and_activate(&mut fixture, recovery_checkpoint(1_000, 1_800));
     fixture.recover(&mut vault, recovery_checkpoint(550, 1_700), 550, 1_700, true, true, REFERENCE_AT_MS);
     let plan = vault.state().prepare_mint(active_position(550, 1_700), 450,
-        vault.total_share_supply(), 1, REFERENCE_AT_MS);
+        vault.total_share_supply(), 1, 10, REFERENCE_AT_MS);
     destroy(plan);
     destroy(vault);
     fixture.end();
@@ -882,7 +882,7 @@ fun native_fee_allocations_preserve_historical_cash_through_redemption_and_rate_
         fee_capped_vault_policy_for_side(policy::long()));
     let witness = risk_admin();
     vault.set_fees(&fixture.protocol, &witness, 10, 10, 2_000);
-    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 10_000, vault.total_share_supply(), 9_989_000, REFERENCE_AT_MS);
+    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 10_000, vault.total_share_supply(), 9_989_000, 10, REFERENCE_AT_MS);
     assert_eq!(plan.admin_fee(), 2);
     assert_eq!(plan.base_to_buy(), 19_980_000);
     vault.set_fees(&fixture.protocol, &witness, 0, 0, 0);
@@ -1313,7 +1313,7 @@ fun venue_fee_bound_rejects_a_taker_fee_above_one() {
 fun completed_redemption_burns_the_native_input_only_after_exact_cash_return() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let mint_plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_AT_MS);
+    let mint_plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, 10, REFERENCE_AT_MS);
     let (amount, _, _, _, _) = vault.state_mut().complete_mint(mint_plan, active_position(1_998, 3_798), REFERENCE_AT_MS);
     let shares = vault.mint_shares(amount, fixture.ctx!());
     let plan = vault.state().prepare_redemption(active_position(1_998, 3_798), shares.value(), vault.total_share_supply(), 994, REFERENCE_AT_MS);
@@ -1514,7 +1514,7 @@ fun active_order_rejects_a_remainder_off_the_lot() {
 fun terms_open_with_the_side_and_reduce_against_it() {
     let mut fixture = start();
     let vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_AT_MS);
+    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, 10, REFERENCE_AT_MS);
     let position = plan.mint_position();
 
     let (is_ask, reduce_only, max_order_base, lot_size, base_price, collateral_price, slippage_bps) =
@@ -1538,7 +1538,7 @@ fun terms_of_a_short_vault_open_with_an_ask_and_reduce_with_a_bid() {
     let mut fixture = start();
     let vault = issue_and_activate_product_with_side(&mut fixture, OtherProduct(), initial_checkpoint(),
         standard_vault_policy_for_side(policy::short()), policy::short());
-    let plan = vault.state().prepare_mint(position_observation_for_side(SEED_EQUITY, policy::short()), 1_000, vault.total_share_supply(), 997_000, REFERENCE_AT_MS);
+    let plan = vault.state().prepare_mint(position_observation_for_side(SEED_EQUITY, policy::short()), 1_000, vault.total_share_supply(), 997_000, 10, REFERENCE_AT_MS);
     let position = plan.mint_position();
 
     let (is_ask, reduce_only, _, _, _, _, _) = vault.increasing_terms(position).order_terms_fields();
@@ -1829,7 +1829,7 @@ fun posted_orders_are_reported_before_a_liquidation_in_the_same_session() {
 fun completed_mint_returns_native_shares_and_updates_the_same_treasury_supply() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_AT_MS);
+    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, 10, REFERENCE_AT_MS);
     assert_eq!(plan.base_to_buy(), 1_998_000);
     let priced = plan.mint_position();
     let (base_price, collateral_price, lot) = (priced.base_price(), priced.collateral_price(), priced.lot_size());
@@ -3138,7 +3138,7 @@ fun finalization_is_rejected_before_shutdown_begins() {
 fun completed_mint_is_rejected_after_shutdown_begins() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_AT_MS);
+    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, 10, REFERENCE_AT_MS);
     fixture.begin_shutdown_at_reference(&mut vault, blast_boosts_core::lifecycle::emergency_reason());
     let shares = vault.complete_mint_for_testing<Product, Collateral>(
         plan, 1_000, active_position(1_998, 3_798), initial_checkpoint(), REFERENCE_AT_MS, fixture.ctx!(),
@@ -3500,7 +3500,7 @@ fun begin_shutdown_at_reference<Tag>(fixture: &mut Fixture, vault: &mut Vault<Ta
 fun complete_redemption_with_cash(cash_amount: u64) {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let mint_plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, REFERENCE_AT_MS);
+    let mint_plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 1_000, vault.total_share_supply(), 997_000, 10, REFERENCE_AT_MS);
     let (amount, _, _, _, _) = vault.state_mut().complete_mint(mint_plan, active_position(1_998, 3_798), REFERENCE_AT_MS);
     let shares = vault.mint_shares(amount, fixture.ctx!());
     let plan = vault.state().prepare_redemption(active_position(1_998, 3_798), shares.value(), vault.total_share_supply(), 994, REFERENCE_AT_MS);
@@ -3988,7 +3988,7 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
     let witness = risk_admin();
     vault.set_fees(&fixture.protocol, &witness, 10, 10, 2_000);
     replay.replay_fees(events::collect_one<events::FeesUpdated<Tag>>(0));
-    let plan = vault.state().prepare_mint(position_observation_for_side(SEED_EQUITY, side), 10_000, vault.total_share_supply(), 9_989_000, REFERENCE_AT_MS);
+    let plan = vault.state().prepare_mint(position_observation_for_side(SEED_EQUITY, side), 10_000, vault.total_share_supply(), 9_989_000, 10, REFERENCE_AT_MS);
     vault.retain_admin_cash(sui::balance::create_for_testing<Collateral>(2));
     let mut shares = vault.complete_mint_for_testing<Tag, Collateral>(
         plan, 10_000,
@@ -4063,7 +4063,7 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, C
     vault.set_fees(&fixture.protocol, &witness, 10, 10, 2_000);
     replay.replay_fees(events::collect<events::FeesUpdated<Tag>>()[0]);
     replay.assert_replay(vault);
-    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 10_000, vault.total_share_supply(), 9_989_000, REFERENCE_AT_MS);
+    let plan = vault.state().prepare_mint(position_observation(SEED_EQUITY), 10_000, vault.total_share_supply(), 9_989_000, 10, REFERENCE_AT_MS);
     // Several events in this same transaction: live rates change after the plan seals.
     vault.set_fees(&fixture.protocol, &witness, 0, 0, 0);
     replay.replay_fees(events::collect<events::FeesUpdated<Tag>>()[1]);

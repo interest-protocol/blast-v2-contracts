@@ -350,14 +350,14 @@ public fun activate(self: Issued, seed: u64, seed_reserve: u64): Vault {
 
 // --- Mint ---
 
-/// Deposits `deposit`, buys the proportional base in capped orders, and mints shares.
+/// Deposits cash, executes the sealed proportional or recovery order, and mints shares.
 public fun mint(self: &mut Vault, deposit: u64, minimum_shares: u64): u64 {
     assert!(deposit > 0);
     let (fee, admin_fee, reserve_fee) = self.state.fee_allocation_for_testing(deposit, true);
     assert!(fee == admin_fee + reserve_fee);
 
     let now_at_ms = self.venue.now_ms;
-    let plan = self.state.prepare_mint(self.venue.observe(), deposit, self.supply, minimum_shares, now_at_ms);
+    let plan = self.state.prepare_mint(self.venue.observe(), deposit, self.supply, minimum_shares, self.venue.taker_fee_bps, now_at_ms);
     assert!(plan.admin_fee() == admin_fee);
     let priced = plan.mint_position();
     assert!(priced.lot_size() == self.venue.lot_size);
@@ -425,7 +425,7 @@ public fun redeem(self: &mut Vault, shares: u64, minimum_output: u64): u64 {
 
 /// The keeper's dry run: whether the core would admit a rebalance right now.
 public fun needs_rebalance(self: &Vault): bool {
-    self.state.needs_rebalance(self.venue.observe(), true, self.venue.now_ms)
+    self.state.needs_rebalance(self.venue.observe(), true, self.venue.taker_fee_bps, self.venue.now_ms)
 }
 
 /// Runs one complete permissionless rebalance and returns the number of orders it placed.

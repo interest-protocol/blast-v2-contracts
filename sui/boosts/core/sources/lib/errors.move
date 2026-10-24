@@ -275,6 +275,14 @@ const EProfitRealizationUneconomic: u64 = 65;
 /// The live venue's initial-margin settings leave no conservative opening cushion.
 const EInitialMarginHeadroom: u64 = 66;
 
+#[test_only]
+/// No whole-lot increase can fit the permitted leverage range.
+const ERebalanceNotActionable: u64 = 67;
+
+#[test_only]
+/// The exceptional one-lot rebalance did not finish inside both band edges.
+const ERebalanceOutsideBand: u64 = 68;
+
 macro public(package) fun zero_amount(): u64 { 0 }
 
 macro public(package) fun invalid_fee_bps(): u64 { 1 }
@@ -408,3 +416,7 @@ macro public(package) fun profit_realization_not_needed(): u64 { 64 }
 macro public(package) fun profit_realization_uneconomic(): u64 { 65 }
 
 macro public(package) fun initial_margin_headroom(): u64 { 66 }
+
+macro public(package) fun rebalance_not_actionable(): u64 { 67 }
+
+macro public(package) fun rebalance_outside_band(): u64 { 68 }

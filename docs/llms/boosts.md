@@ -238,7 +238,10 @@ What happens, in order, all atomic:
 3. Price the position at the bound oracle pair; reject stale, future-dated or
    divergent prices, unsafe margin, resting orders, or a paused or frozen
    market.
-4. Require leverage **inside** the band (core code 49 otherwise).
+4. Require leverage **inside** the band, except for a below-band position
+   whose fee-aware standalone increase sizes zero even after considering a
+   one-lot landing inside the band. This exception cannot bypass cap, margin,
+   price or market admission. Other outside-band deposits abort (core code 49).
 5. Fee: `fee = ceil(deposit * mint_fee_bps / 10,000)`,
    `admin_fee = floor(fee * admin_share_bps / 10,000)`,
    `reserve_fee = fee - admin_fee`. Expected contribution
@@ -246,7 +249,15 @@ What happens, in order, all atomic:
 6. Size the order: `base_to_buy = floor(base * C_exp / N0)` rounded down to
    whole lots, where `base` is the current absolute position and `N0` the
    shareholder NAV. The unrounded figure must be at least
-   `lot_size * min_order_lots` (core code 12).
+   `lot_size * min_order_lots` (core code 12). For the exceptional below-band
+   recovery, use a sealed catch-up buy toward target after adding the expected
+   contribution, at most one ordinary order cap, and at least the proportional
+   amount. Reject a deposit that cannot produce an in-band projected result.
+   Actual contribution must still fund the proportional minimum. All catch-up
+   execution costs reduce the depositor's credited contribution and shares;
+   `minimum_shares` limits that cost. A priority-gas surcharge, if charged by the
+   venue, also reduces actual contribution; the sizing projection uses the ordinary
+   taker fee. Ordinary deposits retain proportional sizing.
 7. Keep `admin_fee` as Vault admin cash; deposit and allocate the rest
    (`deposit - admin_fee`) to the position.
 8. Place immediate-or-cancel limit orders in the Vault's direction, priced at
@@ -378,7 +389,8 @@ venue; it does not grow with the gas bid.
    as zero), and prepare the plan. Require leverage strictly outside the band
    (core code 54 otherwise): `notional * 10,000 < N * rebalance_below_bps`
    (increase) or `notional * 10,000 > N * rebalance_above_bps` (reduce).
-   Band edges are healthy.
+   Band edges are healthy. A below-band position with no sizeable first order
+   aborts early with core code 67 (`rebalance_not_actionable`).
 3. Check the gas price against that prepared plan. Only a plan starting
    strictly above the hard cap is exempt; exactly at the cap is ordinary.
    The decision is fixed for the transaction: its own fills cannot promote an
@@ -389,7 +401,12 @@ venue; it does not grow with the gas bid.
    keeps post-cost leverage at or under target, reserving adverse slippage
    (`max_slippage_bps`) and the taker fee on it, capped at
    `max_order_notional`; each fill must leave leverage at or under target and
-   under max. Reduce: each order sells toward the target base, capped per
+   under max. If no whole lot fits under target while the position is below
+   the band, exactly one lot may instead land inside the full band. Conservative
+   cost sizing must admit it, and the actual fill must pass both band edges
+   (core code 68 otherwise).
+   This exception retains the ordinary price bound and order cap.
+   Reduce: each order sells toward the target base, capped per
    order, rounded down to lots, under `max_slippage_bps`. A reduction that
    started above `max_leverage_bps` instead sells only what brings leverage
    back to `max_leverage_bps` (at least one lot, capped per order) under
@@ -411,11 +428,16 @@ Dry run: `operations::needs_rebalance<Product, Collateral>(vault, protocol,
 account, registry, clearing_house, base_oracle, collateral_oracle, clock)`
 takes every object by immutable reference and returns `bool`. Run it with
 dev-inspect. It returns true for a needed reduction even below opening margin,
-and for an increase only with opening margin. Inside the band or when an increase
-lacks margin it returns false. Unexplained drift, invalid prices and an unavailable
-venue still abort. This is a hint: it does not settle funding or prove usable fees,
-gas admission, executable order size, liquidity or fill progress; the real call
-checks them and can still abort.
+and for an increase only with opening margin and a nonzero fee-aware order.
+Inside the band, without opening margin, or when whole-lot sizing cannot produce
+an increase, it returns false. Unexplained drift, invalid prices, unusable fees,
+an insufficient opening cap and an unavailable venue still abort. This is a hint:
+it does not settle funding or prove gas admission, liquidity or fill progress;
+the real call checks them and can still abort.
+
+The off-chain `keeperDecision` helper returns `inspect_rebalance` for an
+outside-band observation. This is only a pre-filter: confirm the on-chain hint
+before submitting; it does not authorize a rebalance.
 
 Keeper loop: when dev-inspect returns `true`, submit ordinary `rebalance` at
 the reference gas price. Above the hard cap, a higher bid can compete during
