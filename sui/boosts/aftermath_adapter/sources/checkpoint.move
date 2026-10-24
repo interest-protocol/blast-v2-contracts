@@ -111,7 +111,7 @@ public(package) fun assert_allocated_deposit_checkpoint(before: &Checkpoint, aft
         before.allocated_collateral.is_neg(), before.allocated_collateral.abs(),
         after.allocated_collateral.is_neg(), after.allocated_collateral.abs(), amount, true,
     );
-    assert_cash_checkpoint(before, after, before.free_collateral);
+    before.assert_cash_checkpoint(after, before.free_collateral);
 }
 
 // --- Trade ---
@@ -136,7 +136,7 @@ public(package) fun assert_trade_checkpoint(
 /// The venue does not expose those deltas separately. Exact filled base, strict
 /// post-position validity and actual kept-NAV pricing complete the adapter proof.
 public(package) fun assert_reduction_checkpoint(before: &Checkpoint, after: &Checkpoint, expected_base: u256) {
-    assert_trade_checkpoint(before, after, expected_base, after.signed_quote_notional);
+    before.assert_trade_checkpoint(after, expected_base, after.signed_quote_notional);
 }
 
 // --- Withdraw ---
@@ -150,7 +150,7 @@ public(package) fun assert_withdrawal_checkpoint(before: &Checkpoint, after: &Ch
         after.allocated_collateral.is_neg(), after.allocated_collateral.abs(),
         amount - from_free, false,
     );
-    assert_cash_checkpoint(before, after, before.free_collateral - from_free);
+    before.assert_cash_checkpoint(after, before.free_collateral - from_free);
 }
 
 /// Classifies only an isolated funding-snapshot and allocated-collateral change.
@@ -162,8 +162,7 @@ public(package) fun classify_change(self: &Checkpoint, after: &Checkpoint, colla
     let base_negative = self.signed_base.is_neg();
     let (market_rate, snapshot_rate) = self.side_funding_rates(base_negative);
 
-    classify_change_decoded(
-        self,
+    self.classify_change_decoded(
         after,
         base_negative,
         self.signed_base.abs(),
@@ -171,7 +170,7 @@ public(package) fun classify_change(self: &Checkpoint, after: &Checkpoint, colla
         market_rate.abs(),
         snapshot_rate.is_neg(),
         snapshot_rate.abs(),
-        allocated_delta(self, after),
+        self.allocated_delta(after),
         collateral_price,
     )
 }
@@ -307,13 +306,13 @@ public(package) fun assert_direct_settlement_checkpoint(before: &Checkpoint, aft
 /// Named IFixed decoding excludes liabilities before whole-atom floor conversion.
 public(package) fun recoverable_terminal_cash(self: &Checkpoint): u64 {
     let (negative, magnitude) = self.allocated_collateral_sign_and_magnitude();
-    recoverable_cash_decoded(self, negative, magnitude)
+    self.recoverable_cash_decoded(negative, magnitude)
 }
 
 /// Complete recovery changes only the two collateral locations, by exactly the coin returned.
 public(package) fun assert_terminal_withdrawal_checkpoint(before: &Checkpoint, after: &Checkpoint, amount: u64) {
     let (negative, magnitude) = before.allocated_collateral_sign_and_magnitude();
-    assert_terminal_withdrawal_checkpoint_decoded(before, after, amount, negative, magnitude);
+    before.assert_terminal_withdrawal_checkpoint_decoded(after, amount, negative, magnitude);
 }
 
 // === Private Functions ===
@@ -339,7 +338,7 @@ fun checkpoint_ready_for_settlement(self: &Checkpoint, before: &Checkpoint): boo
 /// changes, while every unrelated account, position, order, and risk field is
 /// byte-for-byte unchanged.
 fun classify_preexisting_funding(self: &Checkpoint, before: &Checkpoint): CheckpointChange {
-    classify_preexisting_from_delta(self, before, allocated_delta(self, before))
+    self.classify_preexisting_from_delta(before, self.allocated_delta(before))
 }
 
 // --- Read ---
@@ -586,7 +585,7 @@ fun assert_terminal_withdrawal_checkpoint_decoded(
     magnitude: u256,
 ) {
     assert!(
-        recoverable_cash_decoded(before, is_negative, magnitude) == amount,
+        before.recoverable_cash_decoded(is_negative, magnitude) == amount,
         blast_boosts_aftermath::errors::terminal_venue_unsettled!(),
     );
 
@@ -678,7 +677,7 @@ public fun assert_signed_cash_change_for_testing(
 /// Decoded dependency-port values; the production wrapper always uses named IFixed decoding.
 #[test_only]
 public(package) fun recoverable_cash_for_testing(self: &Checkpoint, is_negative: bool, magnitude: u256): u64 {
-    recoverable_cash_decoded(self, is_negative, magnitude)
+    self.recoverable_cash_decoded(is_negative, magnitude)
 }
 
 #[test_only]
@@ -689,7 +688,7 @@ public fun assert_terminal_withdrawal_checkpoint_decoded_for_testing(
     is_negative: bool,
     magnitude: u256,
 ) {
-    assert_terminal_withdrawal_checkpoint_decoded(before, after, amount, is_negative, magnitude);
+    before.assert_terminal_withdrawal_checkpoint_decoded(after, amount, is_negative, magnitude);
 }
 
 #[test_only]

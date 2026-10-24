@@ -566,9 +566,8 @@ fun start(): RewardsFixture {
     let mut config = launch_config::new_for_testing(scenario.ctx());
 
     scenario.next_tx(ADMIN);
-    launch_fixture::admit<QUOTE, TestVenue>(&mut config, &version);
-    let (launch, mut currency) = launch_fixture::open_launch<_, QUOTE, _>(
-        &mut scenario,
+    config.admit<QUOTE, TestVenue>(&version);
+    let (launch, mut currency) = scenario.open_launch<_, QUOTE, _>(
         test_utils::create_one_time_witness<BLAST_HOLDER_REWARDS_TESTS>(),
         &version,
         &config,
@@ -629,8 +628,7 @@ fun publish(
 ) {
     let admin = blast_acl::witness_for_testing<RewardsAdmin>();
 
-    blast_holder_rewards::publish_round(
-        &mut self.vault,
+    self.vault.publish_round(
         &self.migrators_version,
         &admin,
         number,
@@ -792,3 +790,9 @@ use blast_fun_migrators::{
 use std::unit_test::{assert_eq, destroy};
 
 use sui::{balance, bcs, coin::Coin, event, test_scenario::{Self, Scenario}, test_utils};
+
+use fun blast_holder_rewards::publish_round as LpVault.publish_round;
+
+use fun launch_fixture::admit as blast_fun::launch_config::LaunchConfig.admit;
+
+use fun launch_fixture::open_launch as Scenario.open_launch;

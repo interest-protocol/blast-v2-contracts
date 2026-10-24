@@ -1149,10 +1149,9 @@ fun open_fixture(fee_split: FeeSplit, burnable: bool, cut_bps: u64, names_partne
     let clock = clock::create_for_testing(scenario.ctx());
 
     scenario.next_tx(ADMIN);
-    launch_fixture::admit<QUOTE, TestVenue>(&mut config, &version);
+    config.admit<QUOTE, TestVenue>(&version);
     let otw = test_utils::create_one_time_witness<VAULT_TESTS>();
-    let (launch, currency) = if (names_partner) launch_fixture::open_partnered_launch<_, QUOTE, _>(
-        &mut scenario,
+    let (launch, currency) = if (names_partner) scenario.open_partnered_launch<_, QUOTE, _>(
         otw,
         &version,
         &mut config,
@@ -1161,8 +1160,7 @@ fun open_fixture(fee_split: FeeSplit, burnable: bool, cut_bps: u64, names_partne
         burnable,
         &partner,
         &clock,
-    ) else launch_fixture::open_launch<_, QUOTE, _>(
-        &mut scenario,
+    ) else scenario.open_launch<_, QUOTE, _>(
         otw,
         &version,
         &config,
@@ -1516,3 +1514,9 @@ use sui::{
     test_scenario::{Self, Scenario},
     test_utils,
 };
+
+use fun launch_fixture::admit as blast_fun::launch_config::LaunchConfig.admit;
+
+use fun launch_fixture::open_launch as Scenario.open_launch;
+
+use fun launch_fixture::open_partnered_launch as Scenario.open_partnered_launch;

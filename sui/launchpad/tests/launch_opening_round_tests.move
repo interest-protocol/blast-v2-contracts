@@ -188,8 +188,8 @@ fun creator_and_public_bids_accumulate_per_bidder() {
         assert_eq!(launch.opening_round_bid_for_testing(LAUNCHER), ALICE_BID);
         assert_eq!(launch.opening_round_bid_for_testing(ALICE), 2 * ALICE_BID);
         assert_eq!(launch.opening_round_bid_for_testing(BOB), BOB_BID);
-        assert_opening_round(&launch, 3 * ALICE_BID + BOB_BID, 3 * ALICE_BID + BOB_BID, 0);
-        assert_curve_untouched(&launch);
+        launch.assert_opening_round(3 * ALICE_BID + BOB_BID, 3 * ALICE_BID + BOB_BID, 0);
+        launch.assert_curve_untouched();
         launch.put_back();
     });
     fixture.end();
@@ -402,7 +402,7 @@ fun settlement_at_the_end_buys_once_with_the_whole_pot_and_opens_trading() {
         let launch = f.take_launch();
 
         assert!(launch.is_live_for_testing());
-        assert_opening_round(&launch, pot, 0, meme_out_net);
+        launch.assert_opening_round(pot, 0, meme_out_net);
         let (meme_reserve, real_quote, _, _) = launch.balances_for_testing();
         assert_eq!(meme_reserve, CURVE_MEME - meme_out_gross);
         assert_eq!(real_quote, pot - quote_fee);
@@ -433,7 +433,7 @@ fun empty_round_settles_live_without_a_purchase() {
         let launch = f.take_launch();
 
         assert!(launch.is_live_for_testing());
-        assert_curve_untouched(&launch);
+        launch.assert_curve_untouched();
         launch.put_back();
     });
     fixture.end();
@@ -455,7 +455,7 @@ fun pot_too_small_to_buy_is_refunded_whole() {
     fixture.next_tx!(KEEPER, |f| {
         let launch = f.take_launch();
 
-        assert_curve_untouched(&launch);
+        launch.assert_curve_untouched();
         launch.put_back();
     });
 
@@ -498,7 +498,7 @@ fun pot_past_the_target_graduates_and_refunds_the_excess_pro_rata() {
         let launch = f.take_launch();
 
         assert!(launch.is_migration_ready_for_testing());
-        assert_opening_round(&launch, 40_000_000, excess, meme_out_net);
+        launch.assert_opening_round(40_000_000, excess, meme_out_net);
         launch.put_back();
     });
 
@@ -515,7 +515,7 @@ fun pot_past_the_target_graduates_and_refunds_the_excess_pro_rata() {
         assert_eq!(alice_quote.value(), excess / 4);
         assert_eq!(bob_meme.value(), meme_out_net - meme_out_net / 4);
         assert_eq!(bob_quote.value(), excess - excess / 4);
-        assert_opening_round(&launch, 0, 0, 0);
+        launch.assert_opening_round(0, 0, 0);
         destroy(alice_meme);
         destroy(alice_quote);
         destroy(bob_meme);
@@ -548,7 +548,7 @@ fun terminal_zero_output_opening_round_graduates_and_delivers_only_excess_quote(
     fixture.next_tx!(KEEPER, |f| {
         let launch = f.take_launch();
         assert!(launch.is_migration_ready_for_testing());
-        assert_opening_round(&launch, 100, 98, 0);
+        launch.assert_opening_round(100, 98, 0);
         launch.put_back();
     });
 
@@ -568,7 +568,7 @@ fun terminal_zero_output_opening_round_graduates_and_delivers_only_excess_quote(
         let launch = f.take_launch();
         assert_eq!(alice_quote.value() + bob_quote.value(), 98);
         assert!(!owns_meme(ALICE) && !owns_meme(BOB));
-        assert_opening_round(&launch, 0, 0, 0);
+        launch.assert_opening_round(0, 0, 0);
         destroy(alice_quote);
         destroy(bob_quote);
         launch.put_back();
@@ -606,7 +606,7 @@ fun deliveries_pay_each_bidder_the_same_price_and_the_last_takes_the_remainder()
         let launch = f.take_launch();
 
         assert!(!launch.has_opening_round_bid_for_testing(ALICE));
-        assert_opening_round(&launch, BOB_BID, 0, meme - alice_share);
+        launch.assert_opening_round(BOB_BID, 0, meme - alice_share);
         launch.put_back();
     });
 
@@ -621,7 +621,7 @@ fun deliveries_pay_each_bidder_the_same_price_and_the_last_takes_the_remainder()
         assert!(bob.value() - 2 * alice.value() <= 2);
         assert!(!f.has_coin<TEST_QUOTE>(BOB));
         assert!(!owns_meme(KEEPER));
-        assert_opening_round(&launch, 0, 0, 0);
+        launch.assert_opening_round(0, 0, 0);
         destroy(alice);
         destroy(bob);
         launch.put_back();
@@ -683,7 +683,7 @@ fun delivery_after_migration_still_pays_the_bidder() {
         let launch = f.take_launch();
 
         assert!(meme.value() > 0 && quote.value() > 0);
-        assert_opening_round(&launch, 0, 0, 0);
+        launch.assert_opening_round(0, 0, 0);
         destroy(meme);
         destroy(quote);
         launch.put_back();
@@ -835,7 +835,8 @@ fun intake(
     initializer.set_virtual_quote(&self.package_version, virtual_quote);
     initializer.set_graduation_target(&self.package_version, target);
     initializer.set_allocation_plan(&self.package_version, plan);
-    initializer.set_lp_fee_split(&self.package_version,
+    initializer.set_lp_fee_split(
+        &self.package_version,
         allocation::fee_split(bps::new(10_000), bps::new(0), bps::new(0), bps::new(0), vector[]),
     );
     initializer.set_opening_round(&self.package_version, opening_round_duration_ms);
@@ -1036,3 +1037,7 @@ use sui::{
 };
 
 use fun put_back as Launch.put_back;
+
+use fun assert_curve_untouched as Launch.assert_curve_untouched;
+
+use fun assert_opening_round as Launch.assert_opening_round;

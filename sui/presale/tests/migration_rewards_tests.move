@@ -411,8 +411,7 @@ fun the_admin_publishes_holder_rounds_from_the_holder_share() {
     let clock = clock::create_for_testing(scenario.ctx());
 
     let policy = fee_policy::new_for_testing(scenario.ctx());
-    rewards::publish_round(
-        &mut vault,
+    vault.publish_round(
         &package_version,
         &rewards_admin(),
         &policy,
@@ -635,9 +634,9 @@ fun a_vault_without_a_presale_cannot_name_an_unaccepted_partner() {
 #[expected_failure(abort_code = rewards::EWrongRound, location = blast_presale::holder_rewards)]
 fun a_round_must_use_the_vaults_next_number() {
     let mut scenario = test_scenario::begin(CREATOR);
-    let mut vault = funded_holder_vault(&mut scenario);
+    let mut vault = scenario.funded_holder_vault();
 
-    vault.publish_round(1, 0, 10, &mut scenario);
+    vault.publish_test_round(1, 0, 10, &mut scenario);
     abort
 }
 
@@ -649,10 +648,10 @@ fun a_round_must_use_the_vaults_next_number() {
 /// A new daily interval may skip checkpoints but cannot overlap a funded round.
 fun a_round_cannot_overlap_checkpoints() {
     let mut scenario = test_scenario::begin(CREATOR);
-    let mut vault = funded_holder_vault(&mut scenario);
-    vault.publish_round(0, 0, 10, &mut scenario);
+    let mut vault = scenario.funded_holder_vault();
+    vault.publish_test_round(0, 0, 10, &mut scenario);
 
-    vault.publish_round(1, 9, 20, &mut scenario);
+    vault.publish_test_round(1, 9, 20, &mut scenario);
     abort
 }
 
@@ -699,8 +698,8 @@ fun a_holder_reward_cannot_be_redirected() {
 /// Once the claim deadline passes, anyone may return a round's unclaimed rewards to the vault.
 fun an_unclaimed_round_returns_to_the_vault_after_its_deadline() {
     let mut scenario = test_scenario::begin(CREATOR);
-    let mut vault = funded_holder_vault(&mut scenario);
-    vault.publish_round(0, 0, 10, &mut scenario);
+    let mut vault = scenario.funded_holder_vault();
+    vault.publish_test_round(0, 0, 10, &mut scenario);
     let (meme_after_publish, _) = vault.holder_rewards_balances();
     assert_eq!(meme_after_publish, 39);
 
@@ -720,8 +719,8 @@ fun an_unclaimed_round_returns_to_the_vault_after_its_deadline() {
 )]
 fun a_round_cannot_close_before_its_claim_deadline() {
     let mut scenario = test_scenario::begin(CREATOR);
-    let mut vault = funded_holder_vault(&mut scenario);
-    vault.publish_round(0, 0, 10, &mut scenario);
+    let mut vault = scenario.funded_holder_vault();
+    vault.publish_test_round(0, 0, 10, &mut scenario);
 
     vault.close_round_at(CLAIM_DEADLINE_AT_MS - 1, &mut scenario);
     abort
@@ -732,8 +731,8 @@ fun a_round_cannot_close_before_its_claim_deadline() {
 /// A round's leftovers can only return to the vault that funded it.
 fun a_round_cannot_close_into_another_vault() {
     let mut scenario = test_scenario::begin(CREATOR);
-    let mut vault = funded_holder_vault(&mut scenario);
-    vault.publish_round(0, 0, 10, &mut scenario);
+    let mut vault = scenario.funded_holder_vault();
+    vault.publish_test_round(0, 0, 10, &mut scenario);
     let mut other_vault = new_vault(vector[], 10_000, &mut scenario);
 
     other_vault.close_round_at(CLAIM_DEADLINE_AT_MS, &mut scenario);
@@ -748,13 +747,12 @@ fun a_round_cannot_close_into_another_vault() {
 fun a_round_needs_a_future_claim_deadline() {
     let mut scenario = test_scenario::begin(CREATOR);
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
-    let mut vault = funded_holder_vault(&mut scenario);
+    let mut vault = scenario.funded_holder_vault();
     let mut clock = clock::create_for_testing(scenario.ctx());
     clock.set_for_testing(CLAIM_DEADLINE_AT_MS);
 
     let policy = fee_policy::new_for_testing(scenario.ctx());
-    rewards::publish_round(
-        &mut vault,
+    vault.publish_round(
         &package_version,
         &rewards_admin(),
         &policy,
@@ -874,8 +872,7 @@ fun pay_held_lp_fees(
     policy.set_destination(&package_version, &treasury_admin(), destination);
     let clock = clock::create_for_testing(scenario.ctx());
 
-    vault::pay_protocol_lp_fees_with_partner(
-        self,
+    self.pay_protocol_lp_fees_with_partner(
         &package_version,
         &policy,
         partner,
@@ -948,7 +945,7 @@ fun funded_holder_vault(scenario: &mut Scenario): Vault<MEME, QUOTE> {
 }
 
 /// Publishes a one-leaf round that pays 1 Meme from the holder share.
-fun publish_round(
+fun publish_test_round(
     self: &mut Vault<MEME, QUOTE>,
     number: u64,
     start_checkpoint: u64,
@@ -958,8 +955,7 @@ fun publish_round(
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
     let policy = fee_policy::new_for_testing(scenario.ctx());
-    rewards::publish_round(
-        self,
+    self.publish_round(
         &package_version,
         &rewards_admin(),
         &policy,
@@ -990,7 +986,7 @@ fun close_round_at(self: &mut Vault<MEME, QUOTE>, now_at_ms: u64, scenario: &mut
     let mut clock = clock::create_for_testing(scenario.ctx());
     clock.set_for_testing(now_at_ms);
 
-    rewards::close_round(round, &package_version, self, &clock);
+    round.close_round(&package_version, self, &clock);
 
     clock.destroy_for_testing();
 
@@ -1086,6 +1082,10 @@ use fun destroy_holding as Vault.destroy_holding;
 
 use fun pay_held_lp_fees as Vault.pay_held_lp_fees;
 
-use fun publish_round as Vault.publish_round;
+use fun publish_test_round as Vault.publish_test_round;
 
 use fun sender_total_meme as Scenario.sender_total_meme;
+
+use fun funded_holder_vault as Scenario.funded_holder_vault;
+
+use fun rewards::publish_round as Vault.publish_round;

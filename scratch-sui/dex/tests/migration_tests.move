@@ -583,8 +583,7 @@ macro fun create_pool(
 
 macro fun migrate($f: &mut MigrationFixture) {
     let f = $f;
-    migration::migrate(
-        &mut f.launch,
+    f.launch.migrate_to_dex(
         &f.version,
         &mut f.factory,
         &mut f.currency,
@@ -732,3 +731,5 @@ use blast_fun_dex::{
 use std::{bcs, unit_test::{assert_eq, destroy}};
 
 use sui::{clock::{Self, Clock}, coin, coin_registry::Currency, test_scenario::{Self, Scenario}};
+
+use fun migration::migrate as Launch.migrate_to_dex;

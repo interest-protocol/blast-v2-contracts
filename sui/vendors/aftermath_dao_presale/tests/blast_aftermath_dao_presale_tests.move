@@ -95,9 +95,9 @@ fun a_vendor_sale_can_name_a_partner_before_it_is_finalized() {
     let clock = clock::create_for_testing(scenario.ctx());
 
     let admin_cap = scenario.take_from_sender<AdminCap>();
-    let (mut initializer, currency) = start_sale(&mut scenario, &admin_cap, &creation_policy);
+    let (mut initializer, currency) = scenario.start_sale(&admin_cap, &creation_policy);
     initializer.set_partner(&package_version, &creation_policy, &partner, &clock);
-    let (sale, _) = finalize_sale(&mut scenario, &admin_cap, initializer, currency);
+    let (sale, _) = scenario.finalize_sale(&admin_cap, initializer, currency);
     sale.share(&package_version, 0, &clock);
 
     let opened = last_event<PresaleOpened<BLAST_AFTERMATH_DAO_PRESALE_TESTS, QUOTE>>();
@@ -176,8 +176,7 @@ fun migrate_rejects_another_sales_pool_creation() {
     let dao_fee_version = version::new_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
 
-    migrator::migrate(
-        &mut sale,
+    sale.migrate(
         &package_version,
         pool_creation,
         &fee_policy,
@@ -198,12 +197,12 @@ fun finalize_overrides_any_lp_fee_split() {
     let creation_policy = allowing<Witness>(scenario.ctx());
 
     let admin_cap = scenario.take_from_sender<AdminCap>();
-    let (mut initializer, currency) = start_sale(&mut scenario, &admin_cap, &creation_policy);
+    let (mut initializer, currency) = scenario.start_sale(&admin_cap, &creation_policy);
     initializer.set_fee_split(
         &package_version,
         presale::fee_split(vector[presale::recipient_share(KEEPER, bps::new(10_000))], bps::new(0)),
     );
-    let (sale, _) = finalize_sale(&mut scenario, &admin_cap, initializer, currency);
+    let (sale, _) = scenario.finalize_sale(&admin_cap, initializer, currency);
 
     let (_, fee_recipients, fee_recipient_bps, _) = last_event<
         PresaleCreated<BLAST_AFTERMATH_DAO_PRESALE_TESTS, QUOTE>,
@@ -240,8 +239,7 @@ fun finalize_rejects_another_migrators_sale() {
         &fee_policy,
     );
 
-    let _sale = migrator::finalize<LP, _, _>(
-        &admin_cap,
+    let _sale = admin_cap.finalize<LP, _, _>(
         &package_version,
         initializer,
         &mut currency,
@@ -321,8 +319,8 @@ fun new_sale(
     creation_policy: &CreationPolicy,
 ): (Presale<BLAST_AFTERMATH_DAO_PRESALE_TESTS, QUOTE>, ID) {
     let admin_cap = scenario.take_from_sender<AdminCap>();
-    let (initializer, currency) = start_sale(scenario, &admin_cap, creation_policy);
-    let (sale, pool_creation_id) = finalize_sale(scenario, &admin_cap, initializer, currency);
+    let (initializer, currency) = scenario.start_sale(&admin_cap, creation_policy);
+    let (sale, pool_creation_id) = scenario.finalize_sale(&admin_cap, initializer, currency);
 
     scenario.return_to_sender(admin_cap);
     (sale, pool_creation_id)
@@ -401,8 +399,7 @@ fun finalize_sale(
     let (result_0, result_1) = {
         let create_pool_cap = amm_pool::create_pool_cap_for_testing(scenario.ctx());
 
-        let sale = migrator::finalize<LP, _, _>(
-            admin_cap,
+        let sale = admin_cap.finalize<LP, _, _>(
             &package_version,
             initializer,
             &mut currency,
@@ -470,3 +467,9 @@ use dao_fee_amm::version;
 use std::{type_name, unit_test::{assert_eq, destroy}};
 
 use sui::{clock, coin::TreasuryCap, coin_registry::{Self, Currency}, event, sui::SUI, test_scenario::{Self, Scenario}, test_utils};
+
+use fun finalize_sale as Scenario.finalize_sale;
+
+use fun start_sale as Scenario.start_sale;
+
+use fun migrator::migrate as Presale.migrate;

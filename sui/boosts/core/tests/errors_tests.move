@@ -75,9 +75,10 @@ fun error_codes_run_from_zero_without_gaps() {
         errors::seed_reserve_above_cap!(),
         errors::invariant_violated!(),
         errors::invalid_tick_size!(),
+        errors::order_cap_below_minimum!(),
     ];
 
-    assert_eq!(codes.length(), 63);
+    assert_eq!(codes.length(), 64);
     codes.length().do!(|i| assert_eq!(codes[i], i));
 }
 

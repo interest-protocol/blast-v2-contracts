@@ -11,11 +11,11 @@ fun seventy_five_twenty_five_conserves_both_precisions() {
     let plan = plan(500, 2_000);
 
     assert_eq!(
-        meme_amounts(&plan, 1_000_000_000_000_000),
+        plan.meme_amounts(1_000_000_000_000_000),
         vector[750_000_000_000_000, 200_000_000_000_000, 50_000_000_000_000],
     );
     assert_eq!(
-        meme_amounts(&plan, 1_000_000_000_000_000_000),
+        plan.meme_amounts(1_000_000_000_000_000_000),
         vector[750_000_000_000_000_000, 200_000_000_000_000_000, 50_000_000_000_000_000],
     );
 }
@@ -24,26 +24,26 @@ fun seventy_five_twenty_five_conserves_both_precisions() {
 fun blast_ceiling_precedes_remainder_ties() {
     let plan = plan(2_000, 4_000);
 
-    assert_eq!(meme_amounts(&plan, 1), vector[0, 0, 1]);
-    assert_eq!(meme_amounts(&plan, 2), vector[1, 0, 1]);
-    assert_eq!(meme_amounts(&plan, 3), vector[1, 1, 1]);
-    assert_eq!(quote_amounts(&plan, 1), vector[0, 1]);
+    assert_eq!(plan.meme_amounts(1), vector[0, 0, 1]);
+    assert_eq!(plan.meme_amounts(2), vector[1, 0, 1]);
+    assert_eq!(plan.meme_amounts(3), vector[1, 1, 1]);
+    assert_eq!(plan.quote_amounts(1), vector[0, 1]);
 }
 
 #[test]
 fun distinct_remainders_precede_part_order() {
     let plan = plan(0, 6_000);
 
-    assert_eq!(meme_amounts(&plan, 1), vector[0, 1, 0]);
-    assert_eq!(meme_amounts(&plan, 3), vector[1, 2, 0]);
+    assert_eq!(plan.meme_amounts(1), vector[0, 1, 0]);
+    assert_eq!(plan.meme_amounts(3), vector[1, 2, 0]);
 }
 
 #[test]
 fun equal_remainders_go_to_the_earlier_part() {
     let plan = plan(0, 5_000);
 
-    assert_eq!(meme_amounts(&plan, 1), vector[1, 0, 0]);
-    assert_eq!(meme_amounts(&plan, 3), vector[2, 1, 0]);
+    assert_eq!(plan.meme_amounts(1), vector[1, 0, 0]);
+    assert_eq!(plan.meme_amounts(3), vector[2, 1, 0]);
 }
 
 #[test]
@@ -88,8 +88,8 @@ fun blast_is_separate_and_creator_recipients_keep_their_order() {
     ).add_protocol(allocation::protocol_allocation(bps::new(500), bps::new(1_000)));
 
     assert_eq!(plan.destinations(), vector[@0x7, @0x1]);
-    assert_eq!(meme_amounts(&plan, 10_000), vector[7_000, 2_000, 500, 400, 100]);
-    assert_eq!(quote_amounts(&plan, 10_000), vector[8_000, 1_000, 1_000, 0]);
+    assert_eq!(plan.meme_amounts(10_000), vector[7_000, 2_000, 500, 400, 100]);
+    assert_eq!(plan.quote_amounts(10_000), vector[8_000, 1_000, 1_000, 0]);
 }
 
 #[test]
@@ -97,9 +97,9 @@ fun zero_shares_receive_nothing() {
     let meme_only = shaped(vector[7_500, 2_000, 500], vector[10_000, 0]);
     let quote_only = shaped(vector[5_000, 5_000, 0], vector[9_500, 500]);
 
-    assert_eq!(quote_amounts(&meme_only, 7), vector[7, 0]);
-    assert_eq!(meme_amounts(&quote_only, 3), vector[2, 1, 0]);
-    assert_eq!(quote_amounts(&quote_only, 3), vector[2, 1]);
+    assert_eq!(meme_only.quote_amounts(7), vector[7, 0]);
+    assert_eq!(quote_only.meme_amounts(3), vector[2, 1, 0]);
+    assert_eq!(quote_only.quote_amounts(3), vector[2, 1]);
 }
 
 #[test]
@@ -287,8 +287,8 @@ fun random_shares(count: u64, mut seed: u64): vector<u64> {
 fun assert_conservation(meme: vector<u64>, quote: vector<u64>, total: u64) {
     let plan = shaped(meme, quote);
 
-    assert_apportioned(&meme, meme_amounts(&plan, total), 2, total);
-    assert_apportioned(&quote, quote_amounts(&plan, total), 1, total);
+    assert_apportioned(&meme, plan.meme_amounts(total), 2, total);
+    assert_apportioned(&quote, plan.quote_amounts(total), 1, total);
 }
 
 fun assert_apportioned(shares: &vector<u64>, amounts: vector<u64>, blast: u64, total: u64) {
@@ -307,3 +307,7 @@ use blast_fun::{allocation::{Self, AllocationPlan, Recipient, Route}, bps};
 use std::unit_test::assert_eq;
 
 use sui::address;
+
+use fun meme_amounts as AllocationPlan.meme_amounts;
+
+use fun quote_amounts as AllocationPlan.quote_amounts;

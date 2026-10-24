@@ -148,7 +148,7 @@ fun fees_cannot_change_once_shutdown_has_begun() {
 
     fixture.next_tx!(ISSUER, |fixture| {
         let mut vault = fixture.take_vault<Sui2x>();
-        begin_shutdown_now(fixture, &mut vault);
+        fixture.begin_shutdown_now(&mut vault);
 
         vault.set_fees(&fixture.protocol, &risk_admin(), 0, 0, 0);
 
@@ -403,7 +403,7 @@ fun the_risk_admin_updates_max_order_notional_and_emits_the_change() {
         let vault_id = vault.id();
         let admin_witness = risk_admin();
 
-        vault.set_max_order_notional(&fixture.protocol, &admin_witness, MAX_ORDER_NOTIONAL * 4);
+        vault.set_test_order_cap(&fixture.protocol, &admin_witness, MAX_ORDER_NOTIONAL * 4);
 
         assert_eq!(vault.max_order_notional_for_testing(), MAX_ORDER_NOTIONAL * 4);
         let updated = events::collect_one<events::MaxOrderNotionalUpdated<Sui2x>>(0);
@@ -425,9 +425,9 @@ fun max_order_notional_can_change_while_unwinding() {
 
     fixture.next_tx!(ISSUER, |fixture| {
         let mut vault = fixture.take_vault<Sui2x>();
-        begin_shutdown_now(fixture, &mut vault);
+        fixture.begin_shutdown_now(&mut vault);
 
-        vault.set_max_order_notional(&fixture.protocol, &risk_admin(), MAX_ORDER_NOTIONAL * 4);
+        vault.set_test_order_cap(&fixture.protocol, &risk_admin(), MAX_ORDER_NOTIONAL * 4);
 
         assert!(vault.is_unwinding_for_testing());
         assert_eq!(vault.max_order_notional_for_testing(), MAX_ORDER_NOTIONAL * 4);
@@ -480,7 +480,7 @@ fun terminal_claim_during_unwinding_is_rejected_before_finalization() {
     let mut fixture = start();
     let issuance = fixture.issue<Sui2x>(b"SUI2X".to_string());
     let (mut vault, _) = fixture.activate(issuance);
-    begin_shutdown_now(&mut fixture, &mut vault);
+    fixture.begin_shutdown_now(&mut vault);
     let shares = vault.mint_shares(5, fixture.ctx!());
     let clock = clock::create_for_testing(fixture.ctx!());
 
@@ -500,7 +500,7 @@ fun unsettled_lifecycle_precedes_an_expired_deadline() {
     let mut fixture = start();
     let issuance = fixture.issue<Sui2x>(b"SUI2X".to_string());
     let (mut vault, _) = fixture.activate(issuance);
-    begin_shutdown_now(&mut fixture, &mut vault);
+    fixture.begin_shutdown_now(&mut vault);
     let shares = vault.mint_shares(5, fixture.ctx!());
     let mut clock = clock::create_for_testing(fixture.ctx!());
     clock.set_for_testing(REFERENCE_AT_MS + 1);
@@ -567,7 +567,7 @@ fun the_risk_admin_cannot_repeat_the_current_max_order_notional() {
         let mut vault = fixture.take_vault<Sui2x>();
         let admin_witness = risk_admin();
 
-        vault.set_max_order_notional(&fixture.protocol, &admin_witness, MAX_ORDER_NOTIONAL);
+        vault.set_test_order_cap(&fixture.protocol, &admin_witness, MAX_ORDER_NOTIONAL);
 
         fixture.return_vault(vault);
     });
@@ -588,7 +588,7 @@ fun the_risk_admin_cannot_zero_the_max_order_notional() {
         let mut vault = fixture.take_vault<Sui2x>();
         let admin_witness = risk_admin();
 
-        vault.set_max_order_notional(&fixture.protocol, &admin_witness, 0);
+        vault.set_test_order_cap(&fixture.protocol, &admin_witness, 0);
 
         fixture.return_vault(vault);
     });
@@ -610,7 +610,7 @@ fun stale_adapter_version_precedes_max_order_notional_validation() {
         let admin_witness = risk_admin();
         fixture.protocol.set_version_for_testing(3);
 
-        vault.set_max_order_notional(&fixture.protocol, &admin_witness, 0);
+        vault.set_test_order_cap(&fixture.protocol, &admin_witness, 0);
 
         fixture.return_vault(vault);
     });
@@ -628,7 +628,7 @@ fun shutdown_admin_moves_an_active_vault_to_unwinding() {
         let mut vault = fixture.take_vault<Sui2x>();
         let vault_id = vault.id();
 
-        begin_shutdown_now(fixture, &mut vault);
+        fixture.begin_shutdown_now(&mut vault);
 
         assert!(vault.is_unwinding_for_testing());
         assert_eq!(vault.total_share_supply(), SEED_NAV * 1_000);
@@ -653,10 +653,10 @@ fun stale_version_precedes_an_already_unwinding_vault() {
 
     fixture.next_tx!(ISSUER, |fixture| {
         let mut vault = fixture.take_vault<Sui2x>();
-        begin_shutdown_now(fixture, &mut vault);
+        fixture.begin_shutdown_now(&mut vault);
         fixture.protocol.set_version_for_testing(3);
 
-        begin_shutdown_now(fixture, &mut vault);
+        fixture.begin_shutdown_now(&mut vault);
 
         fixture.return_vault(vault);
     });
@@ -749,6 +749,16 @@ fun vault_issuance_stops_after_the_adapter_generation_advances() {
 
 // === Test Helpers ===
 
+fun set_test_order_cap<Product>(
+    self: &mut Vault<Product, SUI>, protocol: &Protocol, witness: &AdminWitness<RiskAdmin>, cap: u64,
+) {
+    self.set_max_order_notional(
+        protocol, witness, cap, observation::new_price(PRICE, 0, REFERENCE_AT_MS),
+        observation::new_price(PRICE, 0, REFERENCE_AT_MS), LOT_SIZE, REFERENCE_AT_MS,
+    );
+}
+
+
 macro fun ctx($self: &mut Fixture): &mut TxContext {
     let fixture = $self;
 
@@ -833,10 +843,10 @@ fun begin_shutdown_now<Product>(self: &mut Fixture, vault: &mut Vault<Product, S
 
 /// Begins shutdown and finalizes it on `recovered` collateral atoms, keeping the current checkpoint.
 fun settle_with_cash<Product>(self: &mut Fixture, vault: &mut Vault<Product, SUI>, recovered: u64) {
-    begin_shutdown_now(self, vault);
+    self.begin_shutdown_now(vault);
     let checkpoint = *vault.venue().checkpoint();
-    operations::complete_finalization_for_testing(
-        vault, checkpoint, coin::mint_for_testing<SUI>(recovered, self.scenario.ctx()),
+    vault.complete_finalization_for_testing(
+        checkpoint, coin::mint_for_testing<SUI>(recovered, self.scenario.ctx()),
     );
 }
 
@@ -989,3 +999,7 @@ use sui::{
     sui::SUI,
     test_scenario::{Self, Scenario},
 };
+
+use fun set_test_order_cap as Vault.set_test_order_cap;
+
+use fun operations::complete_finalization_for_testing as Vault.complete_finalization_for_testing;

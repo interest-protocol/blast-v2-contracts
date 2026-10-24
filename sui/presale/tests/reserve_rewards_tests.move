@@ -274,7 +274,7 @@ fun close_rejects_the_millisecond_before_the_deadline() {
     fixture.next_tx!(OWNER, |f| {
         let round = f.take_round();
         f.clock.set_for_testing(DEADLINE_AT_MS - 1);
-        rewards::close_round(round, &package_version, &mut f.vault, &f.clock);
+        round.close_round(&package_version, &mut f.vault, &f.clock);
         abort
     });
     std::unit_test::destroy(package_version);
@@ -299,8 +299,7 @@ fun settlement_rejects_another_vault_before_its_amount_check() {
             option::none(),
             f.ctx!(),
         );
-        rewards::settle_gas_reserve(
-            &mut round,
+        round.settle_gas_reserve(
             &package_version,
             &blast_acl::witness_for_testing<RewardsAdmin>(),
             &mut other,
@@ -428,8 +427,7 @@ fun publish_budget_to(
         .scenario
         .ctx());
     let root = rewards::leaf_for_testing(object::id(&self.vault), 0, 0, HOLDER, 0, holder_quote);
-    rewards::publish_round(
-        &mut self.vault,
+    self.vault.publish_round(
         &package_version,
         &blast_acl::witness_for_testing<RewardsAdmin>(),
         &self.policy,
@@ -487,8 +485,7 @@ fun settle(self: &mut ReserveFixture, round: &mut Round<MEME, QUOTE>, amount: u6
         .ctx());
     let (_, _, reserve) = round.reserve_balances_for_testing();
     let reserve_amount = reserve.destroy_or!(0);
-    rewards::settle_gas_reserve(
-        round,
+    round.settle_gas_reserve(
         &package_version,
         &blast_acl::witness_for_testing<RewardsAdmin>(),
         &mut self.vault,
@@ -541,7 +538,7 @@ fun close(self: &mut ReserveFixture) {
     self.clock.set_for_testing(DEADLINE_AT_MS);
     let round_id = object::id(&round);
     let (meme, quote, reserve) = round.reserve_balances_for_testing();
-    rewards::close_round(round, &package_version, &mut self.vault, &self.clock);
+    round.close_round(&package_version, &mut self.vault, &self.clock);
     let payload = only_event<RoundClosed<MEME, QUOTE>>();
     let mut expected = vector[];
     expected.append(bcs::to_bytes(&(object::id(&self.vault))));
@@ -608,8 +605,7 @@ fun settle_without_role(self: &mut ReserveFixture) {
     let cap = self.scenario.take_from_sender<AdminCap>();
     let witness = acl.sign_in<RewardsAdmin>(&cap);
     let mut round = self.take_round();
-    rewards::settle_gas_reserve(
-        &mut round,
+    round.settle_gas_reserve(
         &package_version,
         &witness,
         &mut self.vault,
@@ -653,3 +649,5 @@ use sui::{balance, clock::{Self, Clock}, coin::Coin, event, hash, test_scenario:
 use fun reserve_next_tx as ReserveFixture.next_tx;
 
 use fun reserve_ctx as ReserveFixture.ctx;
+
+use fun rewards::publish_round as Vault.publish_round;

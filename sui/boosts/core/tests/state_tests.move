@@ -108,7 +108,7 @@ fun unwind_prices_both_sides_at_the_ordinary_bound_when_shutdown_has_just_begun(
         );
         assert_eq!(actual_side, side);
         // Prices are 1:1, so base is notional scaled by `10^(9 - 6)`, floored to the lot.
-        assert_eq!(max_order_base, MAX_ORDER_NOTIONAL * 1_000);
+        assert_eq!(max_order_base, 247_000);
         assert_eq!(base_price, 1_000_000_000);
         assert_eq!(collateral_price, 1_000_000_000);
         assert_eq!(bound.slippage_bps(), 100);
@@ -125,11 +125,11 @@ fun unwind_bound_widens_with_the_time_since_shutdown_began() {
     let mut state = initialized_state(policy::long());
     state.begin_shutdown(REFERENCE_AT_MS);
 
-    assert_eq!(unwind_bound_bps_at(&state, REFERENCE_AT_MS - 1), 100);
-    assert_eq!(unwind_bound_bps_at(&state, REFERENCE_AT_MS), 100);
-    assert_eq!(unwind_bound_bps_at(&state, REFERENCE_AT_MS + 43_200_000), 300);
-    assert_eq!(unwind_bound_bps_at(&state, REFERENCE_AT_MS + 86_400_000), 500);
-    assert_eq!(unwind_bound_bps_at(&state, REFERENCE_AT_MS + 86_400_001), 500);
+    assert_eq!(state.unwind_bound_bps_at(REFERENCE_AT_MS - 1), 100);
+    assert_eq!(state.unwind_bound_bps_at(REFERENCE_AT_MS), 100);
+    assert_eq!(state.unwind_bound_bps_at(REFERENCE_AT_MS + 43_200_000), 300);
+    assert_eq!(state.unwind_bound_bps_at(REFERENCE_AT_MS + 86_400_000), 500);
+    assert_eq!(state.unwind_bound_bps_at(REFERENCE_AT_MS + 86_400_001), 500);
     state.destroy_for_testing();
 }
 
@@ -151,7 +151,8 @@ fun a_fresh_shutdown_rejects_a_close_at_the_emergency_bound() {
 fun ordinary_unwind_never_falls_back_to_a_stale_price() {
     let mut state = initialized_state(policy::short());
     state.begin_shutdown(REFERENCE_AT_MS);
-    state.unwind_constraints(observation::new_price(1_000_000_000, 0, 0),
+    state.unwind_constraints(
+        observation::new_price(1_000_000_000, 0, 0),
         observation::new_price(1_000_000_000, 0, 0), LOT_SIZE, REFERENCE_AT_MS);
     state.destroy_for_testing();
 }
@@ -290,7 +291,7 @@ fun live_fee_setter_accepts_each_exact_immutable_cap() {
     let issuance: Issuance<Product> = state::issue(
         &witness, fee_capped_vault_policy(100, 200, 3_000), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6,
     );
-    let (mut state, _) = activate_with(issuance, standard_observation(policy::long()), SEED_RESERVE);
+    let (mut state, _) = issuance.activate_with(standard_observation(policy::long()), SEED_RESERVE);
     state.set_fees(100, 200, 3_000);
     let (mint, redeem, admin) = state.fee_settings();
     assert_eq!(vector[mint, redeem, admin], vector[100, 200, 3_000]);
@@ -457,7 +458,7 @@ fun an_emergency_order_never_exceeds_the_per_order_cap() {
     // 6x on a 1_000_000 NAV: 3_000_000 of notional above the cap against a 2_000_000 order cap.
     let plan = state.prepare_rebalance(rebalance_observation(1_100_000, 6_000_000, policy::long()), 10, REFERENCE_AT_MS);
     let order = state.next_rebalance_order(&plan);
-    assert_eq!(order.order_base(), 2_000_000_000);
+    assert_eq!(order.order_base(), 1_904_761_000);
     assert!(order.is_emergency());
     destroy(plan);
     state.destroy_for_testing();
@@ -639,7 +640,7 @@ fun fee_updates_change_future_allocations_without_relabeling_the_buffer() {
     let issuance: Issuance<Product> = state::issue(
         &witness, fee_capped_vault_policy(100, 100, 3_000), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6,
     );
-    let (mut state, _) = activate_with(issuance, standard_observation(policy::long()), SEED_RESERVE);
+    let (mut state, _) = issuance.activate_with(standard_observation(policy::long()), SEED_RESERVE);
     let (fee, admin, buffer) = state.fee_allocation_for_testing(1_000_000, true);
     assert_eq!(vector[fee, admin, buffer], vector[1_000, 0, 1_000]);
     let (mint, redeem, allocation) = state.set_fees(30, 40, 3_000);
@@ -669,7 +670,7 @@ fun flat_seed_preflight_returns_authenticated_order_inputs() {
 
     // Prices are 1:1, so base is notional scaled by `10^(9 - 6)`, floored to the lot.
     assert_eq!(target_base, SEED_NOTIONAL * 1_000);
-    assert_eq!(max_order_base, MAX_ORDER_NOTIONAL * 1_000);
+    assert_eq!(max_order_base, 247_000);
     assert_eq!(seed_position.base_price(), 1_000_000_000);
     assert_eq!(seed_position.collateral_price(), 1_000_000_000);
     assert_eq!(seed_position.lot_size(), LOT_SIZE);
@@ -704,7 +705,7 @@ fun initialization_strict_execution_rejects_one_unit_past_tolerance() {
 fun an_authorized_issuance_activates_into_the_issued_terms() {
     let witness = vault_issuer();
     let expected_policy = standard_vault_policy();
-    let (state, _) = activate_with(state::issue<Product>(&witness, expected_policy, MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6), standard_observation(policy::long()), SEED_RESERVE);
+    let (state, _) = state::issue<Product>(&witness, expected_policy, MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6).activate_with(standard_observation(policy::long()), SEED_RESERVE);
 
     assert!(state.is_active_for_testing());
     assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
@@ -727,10 +728,10 @@ fun max_order_notional_must_be_positive() {
 #[test]
 fun max_order_notional_moves_both_directions_and_returns_the_previous_value() {
     let witness = vault_issuer();
-    let (mut state, _) = activate_with(state::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6), standard_observation(policy::long()), SEED_RESERVE);
+    let (mut state, _) = state::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6).activate_with(standard_observation(policy::long()), SEED_RESERVE);
 
-    assert_eq!(state.set_max_order_notional(1), MAX_ORDER_NOTIONAL);
-    assert_eq!(state.set_max_order_notional(std::u64::max_value!()), 1);
+    assert_eq!(state.set_test_order_cap(150), MAX_ORDER_NOTIONAL);
+    assert_eq!(state.set_test_order_cap(std::u64::max_value!()), 150);
     assert_eq!(state.max_order_notional_for_testing(), std::u64::max_value!());
 
     state.destroy_for_testing();
@@ -743,9 +744,9 @@ fun max_order_notional_moves_both_directions_and_returns_the_previous_value() {
 )]
 fun max_order_notional_rejects_the_current_value() {
     let witness = vault_issuer();
-    let (mut state, _) = activate_with(state::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6), standard_observation(policy::long()), SEED_RESERVE);
+    let (mut state, _) = state::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6).activate_with(standard_observation(policy::long()), SEED_RESERVE);
 
-    state.set_max_order_notional(MAX_ORDER_NOTIONAL);
+    state.set_test_order_cap(MAX_ORDER_NOTIONAL);
 
     state.destroy_for_testing();
 }
@@ -756,9 +757,9 @@ fun max_order_notional_rejects_the_current_value() {
 )]
 fun max_order_notional_rejects_zero() {
     let witness = vault_issuer();
-    let (mut state, _) = activate_with(state::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6), standard_observation(policy::long()), SEED_RESERVE);
+    let (mut state, _) = state::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6).activate_with(standard_observation(policy::long()), SEED_RESERVE);
 
-    state.set_max_order_notional(0);
+    state.set_test_order_cap(0);
 
     state.destroy_for_testing();
 }
@@ -766,7 +767,7 @@ fun max_order_notional_rejects_zero() {
 #[test]
 fun active_state_begins_shutdown() {
     let witness = vault_issuer();
-    let (mut state, _) = activate_with(state::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6), standard_observation(policy::long()), SEED_RESERVE);
+    let (mut state, _) = state::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6).activate_with(standard_observation(policy::long()), SEED_RESERVE);
 
     state.begin_shutdown(REFERENCE_AT_MS);
 
@@ -778,7 +779,7 @@ fun active_state_begins_shutdown() {
 
 #[test]
 fun valid_long_seed_activates_and_records_only_the_reserve() {
-    let (state, seed_nav) = activate_with(issued(policy::long()), standard_observation(policy::long()), SEED_RESERVE);
+    let (state, seed_nav) = issued(policy::long()).activate_with(standard_observation(policy::long()), SEED_RESERVE);
 
     assert_eq!(seed_nav, SEED_NAV);
     assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
@@ -788,7 +789,7 @@ fun valid_long_seed_activates_and_records_only_the_reserve() {
 
 #[test]
 fun valid_short_seed_activates() {
-    let (state, seed_nav) = activate_with(issued(policy::short()), standard_observation(policy::short()), SEED_RESERVE);
+    let (state, seed_nav) = issued(policy::short()).activate_with(standard_observation(policy::short()), SEED_RESERVE);
 
     assert_eq!(seed_nav, SEED_NAV);
     assert!(state.is_active_for_testing());
@@ -809,7 +810,7 @@ fun initialization_admits_nav_cap_equality() {
         .with_venue_equity(NAV_CAP + SEED_RESERVE)
         .with_notional(2 * NAV_CAP);
 
-    let (state, seed_nav) = activate_with(issued(policy::long()), spec, SEED_RESERVE);
+    let (state, seed_nav) = issued(policy::long()).activate_with(spec, SEED_RESERVE);
     assert_eq!(seed_nav, NAV_CAP);
 
     state.destroy_for_testing();
@@ -817,11 +818,11 @@ fun initialization_admits_nav_cap_equality() {
 
 #[test]
 fun initialization_admits_both_healthy_leverage_boundaries() {
-    let (lower, _) = activate_with(
-        issued(policy::long()), standard_observation(policy::long()).with_notional(1_600_000), SEED_RESERVE,
+    let (lower, _) = issued(policy::long()).activate_with(
+        standard_observation(policy::long()).with_notional(1_600_000), SEED_RESERVE,
     );
-    let (upper, _) = activate_with(
-        issued(policy::long()), standard_observation(policy::long()).with_notional(2_600_000), SEED_RESERVE,
+    let (upper, _) = issued(policy::long()).activate_with(
+        standard_observation(policy::long()).with_notional(2_600_000), SEED_RESERVE,
     );
 
     assert!(lower.is_active_for_testing());
@@ -833,8 +834,7 @@ fun initialization_admits_both_healthy_leverage_boundaries() {
 #[test]
 #[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::state)]
 fun initialization_rejects_a_reserve_above_equity() {
-    initialize_once(
-        standard_observation(policy::long()).with_venue_equity(SEED_RESERVE - 1),
+    standard_observation(policy::long()).with_venue_equity(SEED_RESERVE - 1).initialize_once(
         policy::long(),
         SEED_RESERVE,
     );
@@ -845,8 +845,7 @@ fun initialization_rejects_a_reserve_above_equity() {
     abort_code = errors::EInvalidNav, location = blast_boosts_core::state,
 )]
 fun initialization_rejects_zero_shareholder_nav() {
-    initialize_once(
-        standard_observation(policy::long()).with_venue_equity(SEED_RESERVE),
+    standard_observation(policy::long()).with_venue_equity(SEED_RESERVE).initialize_once(
         policy::long(),
         SEED_RESERVE,
     );
@@ -857,11 +856,10 @@ fun initialization_rejects_zero_shareholder_nav() {
     abort_code = errors::ENavCapExceeded, location = blast_boosts_core::state,
 )]
 fun initialization_rejects_one_unit_above_the_nav_cap() {
-    initialize_once(
-        standard_observation(policy::long())
+    standard_observation(policy::long())
             .with_venue_equity(NAV_CAP + SEED_RESERVE + 1)
-            .with_position_base((2 * NAV_CAP + 2) * 1_000),
-        policy::long(),
+            .with_position_base((2 * NAV_CAP + 2) * 1_000).initialize_once(
+                policy::long(),
         SEED_RESERVE,
     );
 }
@@ -871,8 +869,7 @@ fun initialization_rejects_one_unit_above_the_nav_cap() {
     abort_code = errors::EInvalidInitializationObservation, location = blast_boosts_core::state,
 )]
 fun initialization_rejects_the_wrong_side() {
-    initialize_once(
-        standard_observation(policy::long()).with_observed_side(policy::short()),
+    standard_observation(policy::long()).with_observed_side(policy::short()).initialize_once(
         policy::long(),
         SEED_RESERVE,
     );
@@ -883,8 +880,7 @@ fun initialization_rejects_the_wrong_side() {
     abort_code = errors::EStalePrice, location = blast_boosts_core::policy,
 )]
 fun initialization_rejects_a_stale_base_price() {
-    initialize_once(
-        standard_observation(policy::long()).with_base_price_published_at_ms(69_999),
+    standard_observation(policy::long()).with_base_price_published_at_ms(69_999).initialize_once(
         policy::long(),
         SEED_RESERVE,
     );
@@ -895,8 +891,7 @@ fun initialization_rejects_a_stale_base_price() {
     abort_code = errors::EFuturePrice, location = blast_boosts_core::policy,
 )]
 fun initialization_rejects_a_future_base_price() {
-    initialize_once(
-        standard_observation(policy::long()).with_base_price_published_at_ms(102_001),
+    standard_observation(policy::long()).with_base_price_published_at_ms(102_001).initialize_once(
         policy::long(),
         SEED_RESERVE,
     );
@@ -907,8 +902,7 @@ fun initialization_rejects_a_future_base_price() {
     abort_code = errors::EConfidenceExceedsBound, location = blast_boosts_core::policy,
 )]
 fun initialization_rejects_a_low_confidence_base_price() {
-    initialize_once(
-        standard_observation(policy::long()).with_base_confidence(10_000_001),
+    standard_observation(policy::long()).with_base_confidence(10_000_001).initialize_once(
         policy::long(),
         SEED_RESERVE,
     );
@@ -919,8 +913,7 @@ fun initialization_rejects_a_low_confidence_base_price() {
     abort_code = errors::EStalePrice, location = blast_boosts_core::policy,
 )]
 fun initialization_rejects_a_stale_collateral_price() {
-    initialize_once(
-        standard_observation(policy::long()).with_collateral_price_published_at_ms(69_999),
+    standard_observation(policy::long()).with_collateral_price_published_at_ms(69_999).initialize_once(
         policy::long(),
         SEED_RESERVE,
     );
@@ -931,8 +924,7 @@ fun initialization_rejects_a_stale_collateral_price() {
     abort_code = errors::EFuturePrice, location = blast_boosts_core::policy,
 )]
 fun initialization_rejects_a_future_collateral_price() {
-    initialize_once(
-        standard_observation(policy::long()).with_collateral_price_published_at_ms(102_001),
+    standard_observation(policy::long()).with_collateral_price_published_at_ms(102_001).initialize_once(
         policy::long(),
         SEED_RESERVE,
     );
@@ -943,8 +935,7 @@ fun initialization_rejects_a_future_collateral_price() {
     abort_code = errors::EConfidenceExceedsBound, location = blast_boosts_core::policy,
 )]
 fun initialization_rejects_a_low_confidence_collateral_price() {
-    initialize_once(
-        standard_observation(policy::long()).with_collateral_confidence(10_000_001),
+    standard_observation(policy::long()).with_collateral_confidence(10_000_001).initialize_once(
         policy::long(),
         SEED_RESERVE,
     );
@@ -955,8 +946,7 @@ fun initialization_rejects_a_low_confidence_collateral_price() {
     abort_code = errors::EMarkOracleDivergenceExceedsBound, location = blast_boosts_core::policy,
 )]
 fun initialization_rejects_mark_divergence() {
-    initialize_once(
-        standard_observation(policy::long()).with_mark_price(1_050_000_001),
+    standard_observation(policy::long()).with_mark_price(1_050_000_001).initialize_once(
         policy::long(),
         SEED_RESERVE,
     );
@@ -967,8 +957,7 @@ fun initialization_rejects_mark_divergence() {
     abort_code = errors::EInitializationLeverageUnhealthy, location = blast_boosts_core::state,
 )]
 fun initialization_rejects_leverage_one_unit_below_healthy() {
-    initialize_once(
-        standard_observation(policy::long()).with_position_base(1_599_999_000),
+    standard_observation(policy::long()).with_position_base(1_599_999_000).initialize_once(
         policy::long(),
         SEED_RESERVE,
     );
@@ -979,8 +968,7 @@ fun initialization_rejects_leverage_one_unit_below_healthy() {
     abort_code = errors::EInitializationLeverageUnhealthy, location = blast_boosts_core::state,
 )]
 fun initialization_rejects_leverage_one_unit_above_healthy() {
-    initialize_once(
-        standard_observation(policy::long()).with_position_base(2_600_001_000),
+    standard_observation(policy::long()).with_position_base(2_600_001_000).initialize_once(
         policy::long(),
         SEED_RESERVE,
     );
@@ -992,8 +980,7 @@ fun initialization_rejects_leverage_one_unit_above_healthy() {
 )]
 fun initialization_rejects_base_below_the_immutable_lot_minimum() {
     // A lot of 0.1 base makes the 100-lot minimum 1e10, above the 2e9 seed position.
-    initialize_once(
-        standard_observation(policy::long()).with_lot_size(100_000_000),
+    standard_observation(policy::long()).with_lot_size(100_000_000).initialize_once(
         policy::long(),
         SEED_RESERVE,
     );
@@ -1004,11 +991,10 @@ fun initialization_rejects_base_below_the_immutable_lot_minimum() {
     abort_code = errors::EInvalidNav, location = blast_boosts_core::state,
 )]
 fun initialization_guard_order_checks_nav_before_base_freshness() {
-    initialize_once(
-        standard_observation(policy::long())
+    standard_observation(policy::long())
             .with_venue_equity(SEED_RESERVE)
-            .with_base_price_published_at_ms(69_999),
-        policy::long(),
+            .with_base_price_published_at_ms(69_999).initialize_once(
+                policy::long(),
         SEED_RESERVE,
     );
 }
@@ -1018,11 +1004,10 @@ fun initialization_guard_order_checks_nav_before_base_freshness() {
     abort_code = errors::EStalePrice, location = blast_boosts_core::policy,
 )]
 fun initialization_guard_order_checks_base_freshness_before_base_confidence() {
-    initialize_once(
-        standard_observation(policy::long())
+    standard_observation(policy::long())
             .with_base_price_published_at_ms(69_999)
-            .with_base_confidence(10_000_001),
-        policy::long(),
+            .with_base_confidence(10_000_001).initialize_once(
+                policy::long(),
         SEED_RESERVE,
     );
 }
@@ -1032,11 +1017,10 @@ fun initialization_guard_order_checks_base_freshness_before_base_confidence() {
     abort_code = errors::EConfidenceExceedsBound, location = blast_boosts_core::policy,
 )]
 fun initialization_guard_order_checks_base_before_collateral_valuation() {
-    initialize_once(
-        standard_observation(policy::long())
+    standard_observation(policy::long())
             .with_base_confidence(10_000_001)
-            .with_collateral_price_published_at_ms(69_999),
-        policy::long(),
+            .with_collateral_price_published_at_ms(69_999).initialize_once(
+                policy::long(),
         SEED_RESERVE,
     );
 }
@@ -1046,11 +1030,10 @@ fun initialization_guard_order_checks_base_before_collateral_valuation() {
     abort_code = errors::EStalePrice, location = blast_boosts_core::policy,
 )]
 fun initialization_guard_order_checks_collateral_freshness_before_confidence() {
-    initialize_once(
-        standard_observation(policy::long())
+    standard_observation(policy::long())
             .with_collateral_price_published_at_ms(69_999)
-            .with_collateral_confidence(10_000_001),
-        policy::long(),
+            .with_collateral_confidence(10_000_001).initialize_once(
+                policy::long(),
         SEED_RESERVE,
     );
 }
@@ -1060,11 +1043,10 @@ fun initialization_guard_order_checks_collateral_freshness_before_confidence() {
     abort_code = errors::EConfidenceExceedsBound, location = blast_boosts_core::policy,
 )]
 fun initialization_guard_order_checks_collateral_confidence_before_mark() {
-    initialize_once(
-        standard_observation(policy::long())
+    standard_observation(policy::long())
             .with_collateral_confidence(10_000_001)
-            .with_mark_price(1_050_000_001),
-        policy::long(),
+            .with_mark_price(1_050_000_001).initialize_once(
+                policy::long(),
         SEED_RESERVE,
     );
 }
@@ -1074,11 +1056,10 @@ fun initialization_guard_order_checks_collateral_confidence_before_mark() {
     abort_code = errors::EMarkOracleDivergenceExceedsBound, location = blast_boosts_core::policy,
 )]
 fun initialization_guard_order_checks_mark_before_side() {
-    initialize_once(
-        standard_observation(policy::long())
+    standard_observation(policy::long())
             .with_mark_price(1_050_000_001)
-            .with_observed_side(policy::short()),
-        policy::long(),
+            .with_observed_side(policy::short()).initialize_once(
+                policy::long(),
         SEED_RESERVE,
     );
 }
@@ -1088,11 +1069,10 @@ fun initialization_guard_order_checks_mark_before_side() {
     abort_code = errors::ENavCapExceeded, location = blast_boosts_core::state,
 )]
 fun initialization_guard_order_checks_nav_cap_before_leverage() {
-    initialize_once(
-        standard_observation(policy::long())
+    standard_observation(policy::long())
             .with_venue_equity(NAV_CAP + SEED_RESERVE + 1)
-            .with_position_base(SEED_BASE * 100),
-        policy::long(),
+            .with_position_base(SEED_BASE * 100).initialize_once(
+                policy::long(),
         SEED_RESERVE,
     );
 }
@@ -1103,11 +1083,10 @@ fun initialization_guard_order_checks_nav_cap_before_leverage() {
 )]
 fun initialization_guard_order_checks_leverage_before_minimum_exposure() {
     // Equity 700_000 leaves NAV 600_000 against 2_000_000 of notional: 3.33x, outside the band.
-    initialize_once(
-        standard_observation(policy::long())
+    standard_observation(policy::long())
             .with_venue_equity(700_000)
-            .with_lot_size(100_000_000),
-        policy::long(),
+            .with_lot_size(100_000_000).initialize_once(
+                policy::long(),
         SEED_RESERVE,
     );
 }
@@ -1118,7 +1097,7 @@ fun initialization_guard_order_checks_leverage_before_minimum_exposure() {
 fun an_order_at_the_live_maximum_is_allowed() {
     let state = initialized_state(policy::long());
 
-    state.assert_order_notional_allowed(MAX_ORDER_NOTIONAL);
+    state.assert_order_notional_allowed(MAX_ORDER_NOTIONAL, LOT_SIZE, LOT_SIZE, false);
 
     state.destroy_for_testing();
 }
@@ -1130,7 +1109,7 @@ fun an_order_at_the_live_maximum_is_allowed() {
 fun an_order_one_unit_above_the_live_maximum_is_rejected() {
     let state = initialized_state(policy::long());
 
-    state.assert_order_notional_allowed(MAX_ORDER_NOTIONAL + 1);
+    state.assert_order_notional_allowed(MAX_ORDER_NOTIONAL + 1, LOT_SIZE, LOT_SIZE, false);
 
     state.destroy_for_testing();
 }
@@ -1236,14 +1215,14 @@ fun deficits_accumulate_and_an_over_repaying_credit_splits() {
 #[test]
 #[expected_failure(abort_code = errors::ESeedReserveAboveCap, location = blast_boosts_core::state)]
 fun a_seed_reserve_above_the_ceiling_cannot_activate() {
-    let (state, _) = activate_with(capped_issuance(400), standard_observation(policy::long()), SEED_RESERVE);
+    let (state, _) = capped_issuance(400).activate_with(standard_observation(policy::long()), SEED_RESERVE);
     state.destroy_for_testing();
 }
 
 /// A seed reserve exactly at the ceiling activates; the ceiling is inclusive.
 #[test]
 fun a_seed_reserve_at_the_ceiling_activates() {
-    let (state, seed_nav) = activate_with(capped_issuance(500), standard_observation(policy::long()), SEED_RESERVE);
+    let (state, seed_nav) = capped_issuance(500).activate_with(standard_observation(policy::long()), SEED_RESERVE);
     assert_eq!(seed_nav, SEED_NAV);
     assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
     state.destroy_for_testing();
@@ -1351,7 +1330,8 @@ fun issuance_rejects_collateral_decimals_above_the_maximum() {
 /// At 18 decimals on both sides the unit ratio is one, so a 1:1 pair sizes base
 /// atom for atom with notional and the 250-atom order cap rounds below one lot.
 #[test]
-fun issuance_admits_both_decimals_at_the_maximum() {
+#[expected_failure(abort_code = errors::EOrderCapBelowMinimum, location = blast_boosts_core::state)]
+fun seed_rejects_a_cap_below_one_lot_at_maximum_decimals() {
     let witness = vault_issuer();
     let issuance = state::issue<Product>(&witness, vault_policy(policy::long()), MAX_ORDER_NOTIONAL, NAV_CAP, 18, 18);
     let flat = standard_observation(policy::long()).with_position_base(0).into_position_observation();
@@ -1384,7 +1364,7 @@ fun seed_terms_reject_a_reserve_above_the_seed() {
 /// At a base price of 3 the target and the cap both leave a sub-lot remainder unopened.
 #[test]
 fun flat_seed_preflight_floors_the_order_cap_to_whole_lots() {
-    let issuance = issued(policy::long());
+    let issuance = state::issue<Product>(&vault_issuer(), standard_vault_policy(), 500, NAV_CAP, 9, 6);
     let flat = standard_observation(policy::long())
         .with_position_base(0)
         .with_base_price(3_000_000_000)
@@ -1394,7 +1374,7 @@ fun flat_seed_preflight_floors_the_order_cap_to_whole_lots() {
 
     // 2_000_000 of notional buys 666_666_666 base at 3; 250 buys 83_333. Both floor to the lot.
     assert_eq!(target_base, 666_666_000);
-    assert_eq!(max_order_base, 83_000);
+    assert_eq!(max_order_base, 165_000);
     assert_eq!(seed_position.equity(), SEED_VENUE_EQUITY);
     assert_eq!(seed_position.base_price(), 3_000_000_000);
     destroy(issuance);
@@ -1423,8 +1403,7 @@ fun a_seed_order_one_unit_above_the_maximum_is_rejected() {
 #[test]
 #[expected_failure(abort_code = errors::EInitializationBaseBelowMinOrder, location = blast_boosts_core::state)]
 fun initialization_rejects_base_equal_to_the_lot_minimum() {
-    initialize_once(
-        standard_observation(policy::long()).with_lot_size(SEED_BASE / MIN_EXPOSURE_LOTS),
+    standard_observation(policy::long()).with_lot_size(SEED_BASE / MIN_EXPOSURE_LOTS).initialize_once(
         policy::long(),
         SEED_RESERVE,
     );
@@ -1433,7 +1412,7 @@ fun initialization_rejects_base_equal_to_the_lot_minimum() {
 #[test]
 #[expected_failure(abort_code = errors::EInitializationLeverageUnhealthy, location = blast_boosts_core::state)]
 fun a_flat_seed_cannot_activate() {
-    initialize_once(standard_observation(policy::long()).with_position_base(0), policy::long(), SEED_RESERVE);
+    standard_observation(policy::long()).with_position_base(0).initialize_once(policy::long(), SEED_RESERVE);
 }
 
 #[test]
@@ -1463,14 +1442,12 @@ fun an_active_state_reads_the_frozen_side() {
 
 #[test]
 fun max_order_base_floors_the_live_cap_to_whole_lots() {
-    let (mut state, _, seeded) = issued(policy::long()).activate(
+    let (state, _, seeded) = issued(policy::long()).activate(
         standard_observation(policy::long()).with_lot_size(4_000).into_position_observation(), SEED_RESERVE, REFERENCE_AT_MS,
     );
 
     // 250 of notional is 250_000 base at 1:1, floored to the 4_000 lot.
-    assert_eq!(state.max_order_base(&seeded), 248_000);
-    state.set_max_order_notional(1);
-    assert_eq!(state.max_order_base(&seeded), 0);
+    assert_eq!(state.max_order_base(&seeded, false), 244_000);
     state.destroy_for_testing();
 }
 
@@ -1502,7 +1479,7 @@ fun seed_orders_run_under_the_ordinary_bound() {
 
     assert_eq!(issuance.seed_execution_bound().slippage_bps(), 100);
 
-    let (state, _) = activate_with(issuance, standard_observation(policy::long()), SEED_RESERVE);
+    let (state, _) = issuance.activate_with(standard_observation(policy::long()), SEED_RESERVE);
     state.destroy_for_testing();
 }
 
@@ -1553,7 +1530,7 @@ fun a_zero_deposit_mint_is_refused() {
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun mint_completion_is_refused_once_shutdown_began() {
     let mut state = initialized_state(policy::long());
-    let plan = standard_mint_plan(&state);
+    let plan = state.standard_mint_plan();
     state.begin_shutdown(REFERENCE_AT_MS);
     state.complete_mint(plan, standard_mint_fill().into_position_observation(), REFERENCE_AT_MS);
     abort
@@ -1563,7 +1540,7 @@ fun mint_completion_is_refused_once_shutdown_began() {
 #[expected_failure(abort_code = errors::EActiveCheckpointChanged, location = blast_boosts_core::state)]
 fun mint_completion_rejects_a_collateral_price_move() {
     let mut state = initialized_state(policy::long());
-    let plan = standard_mint_plan(&state);
+    let plan = state.standard_mint_plan();
     state.complete_mint(
         plan, standard_mint_fill().with_collateral_price(1_000_000_001).into_position_observation(), REFERENCE_AT_MS,
     );
@@ -1574,7 +1551,7 @@ fun mint_completion_rejects_a_collateral_price_move() {
 #[expected_failure(abort_code = errors::EActiveCheckpointChanged, location = blast_boosts_core::state)]
 fun mint_completion_rejects_a_lot_size_change() {
     let mut state = initialized_state(policy::long());
-    let plan = standard_mint_plan(&state);
+    let plan = state.standard_mint_plan();
     state.complete_mint(plan, standard_mint_fill().with_lot_size(2_000).into_position_observation(), REFERENCE_AT_MS);
     abort
 }
@@ -1583,7 +1560,7 @@ fun mint_completion_rejects_a_lot_size_change() {
 #[expected_failure(abort_code = errors::EActiveFillIncomplete, location = blast_boosts_core::state)]
 fun mint_completion_rejects_a_position_that_shrank() {
     let mut state = initialized_state(policy::long());
-    let plan = standard_mint_plan(&state);
+    let plan = state.standard_mint_plan();
     state.complete_mint(
         plan, standard_mint_fill().with_position_base(1_000_000_000).into_position_observation(), REFERENCE_AT_MS,
     );
@@ -1594,7 +1571,7 @@ fun mint_completion_rejects_a_position_that_shrank() {
 #[expected_failure(abort_code = errors::EActiveFillIncomplete, location = blast_boosts_core::state)]
 fun mint_completion_rejects_an_over_fill() {
     let mut state = initialized_state(policy::long());
-    let plan = standard_mint_plan(&state);
+    let plan = state.standard_mint_plan();
     state.complete_mint(
         plan, standard_mint_fill().with_position_base(3_999_000_000).into_position_observation(), REFERENCE_AT_MS,
     );
@@ -1606,7 +1583,7 @@ fun mint_completion_rejects_an_over_fill() {
 fun a_mint_landing_exactly_on_the_nav_cap_is_accepted() {
     let mut state = initialized_state(policy::long());
     state.set_nav_cap(1_997_000);
-    let plan = standard_mint_plan(&state);
+    let plan = state.standard_mint_plan();
 
     let (shares, _, _, _, _) = state.complete_mint(plan, standard_mint_fill().into_position_observation(), REFERENCE_AT_MS);
 
@@ -1620,7 +1597,7 @@ fun a_mint_landing_exactly_on_the_nav_cap_is_accepted() {
 fun a_mint_landing_one_atom_over_the_nav_cap_is_refused() {
     let mut state = initialized_state(policy::long());
     state.set_nav_cap(1_996_999);
-    let plan = standard_mint_plan(&state);
+    let plan = state.standard_mint_plan();
     state.complete_mint(plan, standard_mint_fill().into_position_observation(), REFERENCE_AT_MS);
     abort
 }
@@ -1648,7 +1625,7 @@ fun mint_completion_rejects_post_fill_leverage_above_the_cap() {
 /// the rest is NAV, priced into the shares the newcomer receives.
 #[test]
 fun a_mint_fee_above_the_ceiling_is_released_to_holders() {
-    let (mut state, seed_nav) = activate_with(capped_issuance(1), standard_observation(policy::long()), 200);
+    let (mut state, seed_nav) = capped_issuance(1).activate_with(standard_observation(policy::long()), 200);
     assert_eq!(seed_nav, 1_099_800);
     let plan = state.prepare_mint(
         standard_observation(policy::long()).into_position_observation(), 1_000_000, HEALTH_SHARE_SUPPLY, 1, REFERENCE_AT_MS,
@@ -1691,7 +1668,7 @@ fun a_dust_redemption_below_the_minimum_order_is_refused() {
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun redemption_completion_is_refused_once_shutdown_began() {
     let mut state = initialized_state(policy::long());
-    let plan = standard_redemption_plan(&state);
+    let plan = state.standard_redemption_plan();
     state.begin_shutdown(REFERENCE_AT_MS);
     state.complete_redemption(plan, standard_redemption_fill().into_position_observation(), REFERENCE_AT_MS);
     abort
@@ -1701,7 +1678,7 @@ fun redemption_completion_is_refused_once_shutdown_began() {
 #[expected_failure(abort_code = errors::EActiveCheckpointChanged, location = blast_boosts_core::state)]
 fun redemption_completion_rejects_a_price_move() {
     let mut state = initialized_state(policy::long());
-    let plan = standard_redemption_plan(&state);
+    let plan = state.standard_redemption_plan();
     state.complete_redemption(
         plan, standard_redemption_fill().with_base_price(1_000_000_001).into_position_observation(), REFERENCE_AT_MS,
     );
@@ -1712,7 +1689,7 @@ fun redemption_completion_rejects_a_price_move() {
 #[expected_failure(abort_code = errors::EActiveFillIncomplete, location = blast_boosts_core::state)]
 fun redemption_completion_rejects_a_partial_sell() {
     let mut state = initialized_state(policy::long());
-    let plan = standard_redemption_plan(&state);
+    let plan = state.standard_redemption_plan();
     state.complete_redemption(
         plan, standard_redemption_fill().with_position_base(1_500_000_000).into_position_observation(), REFERENCE_AT_MS,
     );
@@ -1723,7 +1700,7 @@ fun redemption_completion_rejects_a_partial_sell() {
 #[expected_failure(abort_code = errors::EActiveFillIncomplete, location = blast_boosts_core::state)]
 fun redemption_completion_rejects_a_position_that_grew() {
     let mut state = initialized_state(policy::long());
-    let plan = standard_redemption_plan(&state);
+    let plan = state.standard_redemption_plan();
     state.complete_redemption(
         plan, standard_redemption_fill().with_position_base(3_000_000_000).into_position_observation(), REFERENCE_AT_MS,
     );
@@ -1737,9 +1714,9 @@ fun a_redemption_with_an_admin_share_splits_the_fee() {
     let issuance: Issuance<Product> = state::issue(
         &witness, fee_capped_vault_policy(10, 10, 5_000), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6,
     );
-    let (mut state, _) = activate_with(issuance, standard_observation(policy::long()), SEED_RESERVE);
+    let (mut state, _) = issuance.activate_with(standard_observation(policy::long()), SEED_RESERVE);
     state.set_fees(10, 10, 5_000);
-    let plan = standard_redemption_plan(&state);
+    let plan = state.standard_redemption_plan();
 
     let (net, admin, fee, reserve_fee) = state.complete_redemption(
         plan, standard_redemption_fill().into_position_observation(), REFERENCE_AT_MS,
@@ -2002,7 +1979,7 @@ fun unwind_floors_the_order_cap_to_whole_lots() {
         fresh_price(1_000_000_000), fresh_price(1_000_000_000), 4_000, REFERENCE_AT_MS,
     );
 
-    assert_eq!(max_order_base, 248_000);
+    assert_eq!(max_order_base, 244_000);
     state.destroy_for_testing();
 }
 
@@ -2072,7 +2049,7 @@ fun a_fee_update_that_changes_only_the_admin_share_is_accepted() {
     let issuance: Issuance<Product> = state::issue(
         &witness, fee_capped_vault_policy(10, 10, 3_000), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6,
     );
-    let (mut state, _) = activate_with(issuance, standard_observation(policy::long()), SEED_RESERVE);
+    let (mut state, _) = issuance.activate_with(standard_observation(policy::long()), SEED_RESERVE);
 
     let (previous_mint, previous_redeem, previous_admin) = state.set_fees(10, 10, 3_000);
 
@@ -2086,9 +2063,9 @@ fun a_fee_update_that_changes_only_the_admin_share_is_accepted() {
 fun max_order_notional_updates_in_every_lifecycle_state() {
     let mut state = initialized_state(policy::long());
     state.begin_shutdown(REFERENCE_AT_MS);
-    assert_eq!(state.set_max_order_notional(500), MAX_ORDER_NOTIONAL);
+    assert_eq!(state.set_test_order_cap(500), MAX_ORDER_NOTIONAL);
     state.finalize_shutdown(7, 2);
-    assert_eq!(state.set_max_order_notional(750), 500);
+    assert_eq!(state.set_test_order_cap(750), 500);
     assert_eq!(state.max_order_notional_for_testing(), 750);
     state.destroy_for_testing();
 }
@@ -2099,7 +2076,7 @@ fun max_order_notional_updates_in_every_lifecycle_state() {
 fun nav_cap_may_be_lowered_below_the_live_nav() {
     let mut state = initialized_state(policy::long());
     assert_eq!(state.set_nav_cap(1), NAV_CAP);
-    let plan = standard_mint_plan(&state);
+    let plan = state.standard_mint_plan();
     state.complete_mint(plan, standard_mint_fill().into_position_observation(), REFERENCE_AT_MS);
     abort
 }
@@ -2151,7 +2128,58 @@ fun a_priced_operation_is_refused_when_equity_only_covers_the_admitted_reserve()
     abort
 }
 
+#[test]
+fun seed_and_admin_accept_the_first_cap_covering_the_live_minimum() {
+    // 100 lots at $1 with 1% headroom and the extra price atom cost 102 atoms.
+    let issuance = state::issue<Product>(&vault_issuer(), standard_vault_policy(), 102, NAV_CAP, 9, 6);
+    let flat = standard_observation(policy::long()).with_position_base(0).into_position_observation();
+    let (_, capacity, _) = issuance.seed_terms(flat, SEED_RESERVE);
+    assert!(capacity >= MIN_EXPOSURE_LOTS * LOT_SIZE);
+    destroy(issuance);
+    let mut state = initialized_state(policy::long());
+    state.set_test_order_cap(102);
+    state.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EOrderCapBelowMinimum, location = blast_boosts_core::state)]
+fun seed_rejects_one_atom_below_minimum_order_capacity() {
+    let issuance = state::issue<Product>(&vault_issuer(), standard_vault_policy(), 101, NAV_CAP, 9, 6);
+    let flat = standard_observation(policy::long()).with_position_base(0).into_position_observation();
+    issuance.seed_terms(flat, SEED_RESERVE);
+    destroy(issuance);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EOrderCapBelowMinimum, location = blast_boosts_core::state)]
+fun admin_rejects_one_atom_below_minimum_order_capacity() {
+    let mut state = initialized_state(policy::long());
+    state.set_test_order_cap(101);
+    state.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EStalePrice, location = blast_boosts_core::policy)]
+fun order_cap_update_requires_fresh_prices() {
+    let mut state = initialized_state(policy::long());
+    state.set_max_order_notional(500, fresh_price(1_000_000_000), fresh_price(1_000_000_000), LOT_SIZE, REFERENCE_AT_MS + 100_000);
+    state.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EInvalidMaxOrderNotional, location = blast_boosts_core::state)]
+fun invalid_cap_is_rejected_before_stale_prices() {
+    let mut state = initialized_state(policy::long());
+    state.set_max_order_notional(0, fresh_price(1_000_000_000), fresh_price(1_000_000_000), LOT_SIZE, REFERENCE_AT_MS + 100_000);
+    state.destroy_for_testing();
+}
+
 // === Test Helpers ===
+
+fun set_test_order_cap(self: &mut State<Product>, cap: u64): u64 {
+    self.set_max_order_notional(cap, fresh_price(1_000_000_000), fresh_price(1_000_000_000), LOT_SIZE, REFERENCE_AT_MS)
+}
+
 
 fun rebalance_state(side: PositionSide): State<Product> {
     let witness = vault_issuer();
@@ -2250,7 +2278,7 @@ fun capped_issuance(max_reserve_bps: u64): Issuance<Product> {
 }
 
 fun capped_initialized_state(max_reserve_bps: u64): State<Product> {
-    let (state, _) = activate_with(capped_issuance(max_reserve_bps), standard_observation(policy::long()), SEED_RESERVE);
+    let (state, _) = capped_issuance(max_reserve_bps).activate_with(standard_observation(policy::long()), SEED_RESERVE);
     state
 }
 
@@ -2267,14 +2295,14 @@ fun activate_with(self: Issuance<Product>, spec: ObservationSpec, seed_reserve: 
 }
 
 fun initialized_state(side: PositionSide): State<Product> {
-    let (state, seed_nav) = activate_with(issued(side), standard_observation(side), SEED_RESERVE);
+    let (state, seed_nav) = issued(side).activate_with(standard_observation(side), SEED_RESERVE);
     assert_eq!(seed_nav, SEED_NAV);
 
     state
 }
 
 fun initialize_once(spec: ObservationSpec, side: PositionSide, seed_reserve: u64) {
-    let (state, _) = activate_with(issued(side), spec, seed_reserve);
+    let (state, _) = issued(side).activate_with(spec, seed_reserve);
 
     state.destroy_for_testing();
 }
@@ -2476,3 +2504,13 @@ use blast_boosts_core::{
 };
 
 use std::unit_test::{assert_eq, destroy};
+
+use fun set_test_order_cap as State.set_test_order_cap;
+
+use fun activate_with as Issuance.activate_with;
+
+use fun standard_mint_plan as State.standard_mint_plan;
+
+use fun standard_redemption_plan as State.standard_redemption_plan;
+
+use fun unwind_bound_bps_at as State.unwind_bound_bps_at;

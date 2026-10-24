@@ -29,8 +29,8 @@ public(package) fun oracle_notional_up(
     value as u64
 }
 
-/// Converts a notional cap to the largest whole-lot base it permits.
-public(package) fun base_for_notional_down(
+/// Converts oracle-valued notional to the largest whole-lot base it permits.
+public(package) fun base_for_oracle_notional_down(
     notional: u64,
     base_price: u64,
     collateral_price: u64,
@@ -46,6 +46,33 @@ public(package) fun base_for_notional_down(
     assert!(base <= std::u64::max_value!() as u256, blast_boosts_core::errors::arithmetic_overflow!());
 
     (base as u64) / lot_size * lot_size
+}
+
+/// Largest representable whole-lot order whose filled quote stays inside the cap.
+/// Both sides reserve the upper execution price. A sell's normalized price is
+/// rounded down, so one additional price atom covers its discarded fraction.
+/// Round lots before narrowing: an oversized quotient still permits every
+/// representable whole-lot base, rather than making a large cap unusable.
+public(package) fun base_for_execution_notional_down(
+    notional: u64,
+    base_price: u64,
+    collateral_price: u64,
+    lot_size: u64,
+    slippage_bps: u64,
+    base_unit: u64,
+    collateral_unit: u64,
+): u64 {
+    assert!(base_price > 0 && collateral_price > 0, blast_boosts_core::errors::invalid_price!());
+    assert!(lot_size > 0, blast_boosts_core::errors::invalid_lot_size!());
+    assert!(slippage_bps < constants::basis_points_denominator!(), blast_boosts_core::errors::invalid_max_slippage_bps!());
+
+    let bps = constants::basis_points_denominator!() as u256;
+    let upper_price = (base_price as u256) * (bps + (slippage_bps as u256)) / bps + 1;
+    let lots = (notional as u256) * (collateral_price as u256) * (base_unit as u256)
+        / (upper_price * (collateral_unit as u256) * (lot_size as u256));
+    let representable_lots = (std::u64::max_value!() / lot_size) as u256;
+
+    (lots.min(representable_lots) as u64) * lot_size
 }
 
 /// Finds the maximal next whole-lot increase under both the live order cap and post-cost target.
@@ -66,8 +93,11 @@ public(package) fun increase_base_down(
     let target = accounting_math::target_notional_down(nav, target_leverage_bps);
     if (target <= notional) return 0;
 
-    let headroom = (target - notional).min(max_order_notional);
-    let maximum = base_for_notional_down(headroom, base_price, collateral_price, lot_size, base_unit, collateral_unit);
+    let capped_base = base_for_execution_notional_down(
+        max_order_notional, base_price, collateral_price, lot_size, max_slippage_bps, base_unit, collateral_unit,
+    );
+    assert!(capped_base > 0, blast_boosts_core::errors::order_cap_below_minimum!());
+    let maximum = capped_base;
     let mut low = 0;
     let mut high = maximum / lot_size;
 

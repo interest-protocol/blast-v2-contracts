@@ -118,7 +118,7 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
     );
     scratch.delete();
 
-    burn_into_vault(sale, burn_manager, position, residual_meme, residual_quote, ctx);
+    sale.burn_into_vault(burn_manager, position, residual_meme, residual_quote, ctx);
 }
 
 /// Burns the caller's own Cetus position in `pool` for its fee-claiming proof and seals the proof
@@ -362,3 +362,5 @@ use fun dynamic_field::add as UID.add_dynamic_field;
 use fun dynamic_field::remove as UID.remove_dynamic_field;
 
 use fun pool_creation_cap as VenueConfig.pool_creation_cap;
+
+use fun burn_into_vault as Presale.burn_into_vault;

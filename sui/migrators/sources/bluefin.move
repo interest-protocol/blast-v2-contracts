@@ -63,13 +63,13 @@ public fun migrate<Meme, Quote>(
     migrators_version.assert_current();
 
     let (tick_spacing, fee_rate) = launch.pool_tier();
-    let (lower_tick, upper_tick) = full_range_tick_range(bluefin_config, tick_spacing);
+    let (lower_tick, upper_tick) = bluefin_config.full_range_tick_range(tick_spacing);
     let (meme, quote) = launch.migrate(package_version, currency, Witness(), ctx);
 
     let mut pool = pool::create_pool_and_get_object<Meme, Quote, SUI>(
         clock,
         bluefin_config,
-        pool_name(currency, quote_currency),
+        currency.pool_name(quote_currency),
         // No Meme icon, as Cetus: the metadata capability can grow the icon URL, and the position
         // stores it, so a long URL would make the position too large to create.
         b"",
@@ -86,16 +86,15 @@ public fun migrate<Meme, Quote>(
         ctx,
     );
     let mut position = pool::open_position(bluefin_config, &mut pool, lower_tick, upper_tick, ctx);
-    let (residual_meme, residual_quote) = seed(
+    let (residual_meme, residual_quote) = pool.seed(
         bluefin_config,
-        &mut pool,
         &mut position,
         meme,
         quote,
         clock,
     );
 
-    lock_into_vault(launch, position, residual_meme, residual_quote, ctx);
+    launch.lock_into_vault(position, residual_meme, residual_quote, ctx);
     pool.share_pool_object();
 }
 
@@ -202,14 +201,14 @@ fun pool_name<Meme, Quote>(
 /// Adds the handed-off balances to the new full-range position, fixing the side
 /// `is_meme_seed_side` chooses, and returns the residuals.
 fun seed<Meme, Quote>(
-    bluefin_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
+    bluefin_config: &GlobalConfig,
     position: &mut Position,
     meme: Balance<Meme>,
     quote: Balance<Quote>,
     clock: &Clock,
 ): (Balance<Meme>, Balance<Quote>) {
-    let fix_meme = is_meme_seed_side(pool, position, meme.value(), quote.value());
+    let fix_meme = pool.is_meme_seed_side(position, meme.value(), quote.value());
     let fixed_amount = if (fix_meme) meme.value() else quote.value();
     let (_, _, residual_meme, residual_quote) = pool::add_liquidity_with_fixed_amount(
         clock,
@@ -311,7 +310,7 @@ fun compound<Meme, Quote>(
 ) {
     let (meme, quote) = self.take_auto_lp();
     let position = self.position_mut<_, _, _, Position>(&Venue());
-    let (fix_meme, fixed_amount) = fixed_side(pool, position, meme.value(), quote.value());
+    let (fix_meme, fixed_amount) = pool.fixed_side(position, meme.value(), quote.value());
 
     let (added_meme, added_quote, meme, quote) = if (fixed_amount > 0) {
         pool::add_liquidity_with_fixed_amount(
@@ -391,3 +390,15 @@ use sui::{balance::{Self, Balance}, clock::Clock, coin::Coin, coin_registry::Cur
 use fun collect_position_fees as LpVault.collect_position_fees;
 use fun compound as LpVault.compound;
 use fun settle_fees as LpVault.settle_fees;
+
+use fun fixed_side as Pool.fixed_side;
+
+use fun full_range_tick_range as GlobalConfig.full_range_tick_range;
+
+use fun is_meme_seed_side as Pool.is_meme_seed_side;
+
+use fun lock_into_vault as Launch.lock_into_vault;
+
+use fun pool_name as Currency.pool_name;
+
+use fun seed as Pool.seed;

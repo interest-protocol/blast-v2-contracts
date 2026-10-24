@@ -100,8 +100,7 @@ fun settled_update_splits_accrued_fees_under_the_old_split_then_commits_the_next
     f.settle_exact_position(&curve_fee_cap, rewards_and_b());
 
     assert_eq!(f.vault.fee_split_for_testing(), rewards_and_b());
-    assert_collection(
-        ExpectedCollection {
+    (ExpectedCollection {
             vault_id: object::id(&f.vault),
             gross_meme: 10,
             gross_quote: 20,
@@ -118,8 +117,7 @@ fun settled_update_splits_accrued_fees_under_the_old_split_then_commits_the_next
             burn_quote: 0,
             recipient_meme: vector[5],
             recipient_quote: vector[10],
-        },
-    );
+        }).assert_collection();
     assert!(event::events_by_type<blast_events::AutoLiquidityAdded>().is_empty());
     let changes = event::events_by_type<blast_events::FeeSplitChanged>();
     assert_eq!(changes.length(), 1);
@@ -139,8 +137,7 @@ fun settled_update_splits_accrued_fees_under_the_old_split_then_commits_the_next
     f.scenario.next_tx(KEEPER);
     f.accrue(3, 4);
     f.collect_exact_position();
-    assert_collection(
-        ExpectedCollection {
+    (ExpectedCollection {
             vault_id: object::id(&f.vault),
             gross_meme: 3,
             gross_quote: 4,
@@ -157,8 +154,7 @@ fun settled_update_splits_accrued_fees_under_the_old_split_then_commits_the_next
             burn_quote: 0,
             recipient_meme: vector[1],
             recipient_quote: vector[2],
-        },
-    );
+        }).assert_collection();
     f.assert_auto_liquidity_added(1, 1, 0, 0);
     assert_balances!(|| f.vault.creator_balances_for_testing(), 5, 10);
     assert_balances!(|| f.vault.rewards_balances(), 1, 1);
@@ -412,9 +408,8 @@ fun start(fee_split: FeeSplit): FeeSplitFixture {
     let mut config = launch_config::new_for_testing(scenario.ctx());
 
     scenario.next_tx(ADMIN);
-    launch_fixture::admit<QUOTE, Venue>(&mut config, &version);
-    let (launch, currency) = launch_fixture::open_launch<_, QUOTE, _>(
-        &mut scenario,
+    config.admit<QUOTE, Venue>(&version);
+    let (launch, currency) = scenario.open_launch<_, QUOTE, _>(
         test_utils::create_one_time_witness<FEE_SPLIT_UPDATE_TESTS>(),
         &version,
         &config,
@@ -698,3 +693,7 @@ use sui::{
     test_scenario::{Self, Scenario},
     test_utils,
 };
+
+use fun launch_fixture::admit as blast_fun::launch_config::LaunchConfig.admit;
+
+use fun launch_fixture::open_launch as Scenario.open_launch;

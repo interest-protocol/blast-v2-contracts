@@ -155,7 +155,7 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
         );
     let (residual_meme, residual_quote) = reorder(residual_a, residual_b, meme_is_a, ctx);
 
-    burn_into_vault(launch, burn_manager, position, residual_meme, residual_quote, ctx);
+    launch.burn_into_vault(burn_manager, position, residual_meme, residual_quote, ctx);
 }
 
 /// Collects the vault position's fees from its pool, splits them, burns the burn share's Meme, and
@@ -224,7 +224,7 @@ public fun buyback_and_burn<Meme, Quote, CoinA, CoinB>(
 
     let quote = self.take_buyback_quote(admin_witness);
     let quote_in = quote.value();
-    let (meme, quote) = swap_quote_for_meme(cetus_config, pool, quote, meme_is_a, clock, ctx);
+    let (meme, quote) = pool.swap_quote_for_meme(cetus_config, quote, meme_is_a, clock, ctx);
 
     self.burn_buyback(currency, meme, quote, quote_in, min_meme_out, ctx);
 }
@@ -386,7 +386,7 @@ fun add_liquidity<A, B, Meme, Quote>(
     };
 
     let position = self.auto_lp_position_mut<_, _, _, Position>(&Venue());
-    let (fix_a, fixed_amount) = fixed_side(pool, position, a.value(), b.value());
+    let (fix_a, fixed_amount) = pool.fixed_side(position, a.value(), b.value());
     if (fixed_amount == 0) return (a, b, 0, 0);
 
     let receipt = pool::add_liquidity_fix_coin(
@@ -441,15 +441,15 @@ fun fixed_side<A, B>(
 /// Swaps all of `quote` for Meme through `pool` in the pool's coin order, returning the Meme bought
 /// and the Quote the pool did not take.
 fun swap_quote_for_meme<Meme, Quote, CoinA, CoinB>(
-    cetus_config: &GlobalConfig,
     pool: &mut Pool<CoinA, CoinB>,
+    cetus_config: &GlobalConfig,
     quote: Balance<Quote>,
     meme_is_a: bool,
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Balance<Meme>, Balance<Quote>) {
     let (a, b) = reorder(balance::zero<Meme>(), quote, meme_is_a, ctx);
-    let (a, b) = swap(cetus_config, pool, a, b, !meme_is_a, clock);
+    let (a, b) = pool.swap(cetus_config, a, b, !meme_is_a, clock);
 
     reorder(a, b, meme_is_a, ctx)
 }
@@ -457,8 +457,8 @@ fun swap_quote_for_meme<Meme, Quote, CoinA, CoinB>(
 /// Swaps all of the input side (`a` when `a2b`) through `pool` up to the widest price limit, pays
 /// what Cetus asks, and returns both sides: the unspent input and the output.
 fun swap<A, B>(
-    cetus_config: &GlobalConfig,
     pool: &mut Pool<A, B>,
+    cetus_config: &GlobalConfig,
     mut a: Balance<A>,
     mut b: Balance<B>,
     a2b: bool,
@@ -507,9 +507,9 @@ fun reorder<X: store, Y: store, First: store, Second: store>(
 ): (First, Second) {
     let mut scratch = object::new(ctx);
     let (first, second) = if (meme_is_a) {
-        (cast(&mut scratch, x), cast(&mut scratch, y))
+        (scratch.cast(x), scratch.cast(y))
     } else {
-        (cast(&mut scratch, y), cast(&mut scratch, x))
+        (scratch.cast(y), scratch.cast(x))
     };
     scratch.delete();
 
@@ -607,3 +607,13 @@ use fun compound as LpVault.compound;
 use fun settle_fees as LpVault.settle_fees;
 
 use fun pool_creation_cap as VenueConfig.pool_creation_cap;
+
+use fun burn_into_vault as Launch.burn_into_vault;
+
+use fun cast as UID.cast;
+
+use fun fixed_side as Pool.fixed_side;
+
+use fun swap as Pool.swap;
+
+use fun swap_quote_for_meme as Pool.swap_quote_for_meme;

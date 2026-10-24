@@ -50,9 +50,36 @@ public(package) fun capture_checkpoint<Collateral>(
     base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage,
 ): Checkpoint {
-    assert_bound_graph(binding, account, registry, clearing_house, base_oracle, collateral_oracle);
+    binding.assert_bound_graph(account, registry, clearing_house, base_oracle, collateral_oracle);
 
-    checkpoint::read_checkpoint(account, clearing_house)
+    account.read_checkpoint(clearing_house)
+}
+
+/// Reads only authenticated prices and the live lot for a risk-cap update.
+/// Position valuation, mark price and opening-margin health cannot block it.
+public(package) fun capture_order_capacity<Collateral>(
+    binding: &Binding,
+    account: &Account<Collateral>,
+    registry: &Registry,
+    clearing_house: &ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    clock: &Clock,
+): (PriceObservation, PriceObservation, u64) {
+    binding.assert_bound_graph(account, registry, clearing_house, base_oracle, collateral_oracle);
+    let params = clearing_house.market_params();
+    let base_feed = &base_oracle[params.base_source_id()];
+    let collateral_feed = &collateral_oracle[params.collateral_source_id()];
+    let (base_price, base_timestamp, base_valid) = base_feed.oracle_leg(params.base_oracle_price(base_oracle, clock));
+    let (collateral_price, collateral_timestamp, collateral_valid) =
+        collateral_feed.oracle_leg(params.collateral_oracle_price(collateral_oracle, clock));
+    assert!(base_valid && collateral_valid, blast_boosts_aftermath::errors::normalization_overflow!());
+
+    (
+        observation::new_price(base_price, 0, base_timestamp),
+        observation::new_price(collateral_price, 0, collateral_timestamp),
+        params.lot_size(),
+    )
 }
 
 /// Captures one authenticated venue valuation.
@@ -72,7 +99,7 @@ public(package) fun capture<Collateral>(
     collateral_oracle: &PriceFeedStorage,
     clock: &Clock,
 ): CapturedSnapshot {
-    let checkpoint = capture_checkpoint(binding, account, registry, clearing_house, base_oracle, collateral_oracle);
+    let checkpoint = binding.capture_checkpoint(account, registry, clearing_house, base_oracle, collateral_oracle);
     let params = clearing_house.market_params();
     let base_feed = &base_oracle[params.base_source_id()];
     let collateral_feed = &collateral_oracle[params.collateral_source_id()];
@@ -80,14 +107,14 @@ public(package) fun capture<Collateral>(
     let base_fixed = params.base_oracle_price(base_oracle, clock);
     let collateral_fixed = params.collateral_oracle_price(collateral_oracle, clock);
     let mark_fixed = clearing_house.mark_price(base_oracle, clock);
-    let (base_price, base_price_published_at_ms, base_representable) = oracle_leg(base_feed, base_fixed);
+    let (base_price, base_price_published_at_ms, base_representable) = base_feed.oracle_leg(base_fixed);
     let (collateral_price, collateral_price_published_at_ms, collateral_representable) =
-        oracle_leg(collateral_feed, collateral_fixed);
+        collateral_feed.oracle_leg(collateral_fixed);
     let (mark_price, mark_representable) = ifixed_math::fixed_to_u64_down(mark_fixed, constants::base_decimals!() as u64);
 
     let position = clearing_house.position(account.account_id());
-    let (position_base, venue_equity, margin_safe, position_representable) = position_economics(
-        position, params, account.collateral_balance(), base_fixed, collateral_fixed, mark_fixed,
+    let (position_base, venue_equity, margin_safe, position_representable) = position.position_economics(
+        params, account.collateral_balance(), base_fixed, collateral_fixed, mark_fixed,
     );
 
     CapturedSnapshot {
@@ -176,7 +203,7 @@ fun assert_bound_graph<Collateral>(
     binding.assert_object_graph(
         object::id(account), account.account_id(), object::id(registry), object::id(clearing_house),
     );
-    venue_account::assert_market_oracles(clearing_house, base_oracle, collateral_oracle);
+    clearing_house.assert_market_oracles(base_oracle, collateral_oracle);
 }
 
 /// Values one position at the captured prices: whole-lot base, venue equity in
@@ -410,3 +437,15 @@ use perpetuals::{
 use position::position::Position;
 
 use sui::clock::Clock;
+
+use fun assert_bound_graph as Binding.assert_bound_graph;
+
+use fun capture_checkpoint as Binding.capture_checkpoint;
+
+use fun oracle_leg as PriceFeed.oracle_leg;
+
+use fun position_economics as Position.position_economics;
+
+use fun checkpoint::read_checkpoint as Account.read_checkpoint;
+
+use fun venue_account::assert_market_oracles as ClearingHouse.assert_market_oracles;
