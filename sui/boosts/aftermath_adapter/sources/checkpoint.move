@@ -251,6 +251,12 @@ public(package) fun net_funding(preexisting: CheckpointChange, settled: Checkpoi
 
 // --- Funding Change Reads ---
 
+/// Account facts are identical; venue-wide policy and cumulative funding may move.
+/// Funding already settled into the account is not unchanged and must be accounted first.
+public(package) fun is_unchanged(self: &CheckpointChange): bool {
+    match (self) { CheckpointChange::Unchanged => true, _ => false }
+}
+
 /// Returns whether the change is a representable funding credit or cost.
 public(package) fun has_funding(self: &CheckpointChange): bool {
     match (self) {

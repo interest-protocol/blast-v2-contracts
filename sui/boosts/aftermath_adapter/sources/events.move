@@ -203,6 +203,14 @@ public struct ShutdownBegun<phantom Product> has copy, drop {
     reason: ShutdownReason,
 }
 
+/// Permissionless protected shutdown authorized by an exact size-locked position.
+public struct ProtectedShutdownBegun<phantom Product> has copy, drop {
+    vault_id: ID,
+    checkpoint: Checkpoint,
+    total_supply: u64,
+    locked_shares: u64,
+}
+
 /// Completed close-only progress with exact raw venue effects: the checkpoint
 /// the step adopted after reconciling the stored one, the checkpoint the close
 /// left, the orders placed and the quote they filled. The venue's
@@ -215,7 +223,9 @@ public struct UnwindProgress<phantom Product> has copy, drop {
     filled_quote: Option<u256>,
 }
 
-/// Actual recovered holder cash and fixed eligible supply after venue finality.
+/// Completed terminal allocation. Cash after protected reserve and seed goes
+/// to holders, or to admin cash when admin shutdown has no eligible holders.
+/// Both protected amounts are zero for admin shutdown.
 public struct ShutdownFinalized<phantom Product> has copy, drop {
     vault_id: ID,
     recovered_cash: u64,
@@ -223,6 +233,8 @@ public struct ShutdownFinalized<phantom Product> has copy, drop {
     checkpoint: Checkpoint,
     // Nonnegative collateral-token IFixed, strictly below 10^12 raw units (one USDC atom).
     unrecoverable_collateral_raw: u256,
+    protected_reserve_cash: u64,
+    protected_seed_cash: u64,
 }
 
 /// Completed native share burn and fee-free local collateral payout.
@@ -506,6 +518,10 @@ public(package) fun shutdown_begun<Product>(vault_id: ID, reason: ShutdownReason
     );
 }
 
+public(package) fun protected_shutdown_begun<Product>(vault_id: ID, checkpoint: Checkpoint, total_supply: u64, locked_shares: u64) {
+    emit_event(ProtectedShutdownBegun<Product> { vault_id, checkpoint, total_supply, locked_shares });
+}
+
 public(package) fun unwind_progress<Product>(
     vault_id: ID,
     before: Checkpoint,
@@ -524,9 +540,12 @@ public(package) fun shutdown_finalized<Product>(
     eligible_supply: u64,
     checkpoint: Checkpoint,
     unrecoverable_collateral_raw: u256,
+    protected_reserve_cash: u64,
+    protected_seed_cash: u64,
 ) {
     emit_event(ShutdownFinalized<Product> {
         vault_id, recovered_cash, eligible_supply, checkpoint, unrecoverable_collateral_raw,
+        protected_reserve_cash, protected_seed_cash,
     });
 }
 
@@ -756,6 +775,11 @@ public fun shutdown_reason<Product>(self: &ShutdownBegun<Product>): ShutdownReas
 }
 
 #[test_only]
+public fun protected_shutdown_begun_fields<Product>(self: &ProtectedShutdownBegun<Product>): (ID, Checkpoint, u64, u64) {
+    (self.vault_id, self.checkpoint, self.total_supply, self.locked_shares)
+}
+
+#[test_only]
 public fun shutdown_begun_vault_id<Product>(
     self: &ShutdownBegun<Product>,
 ): ID {
@@ -772,10 +796,11 @@ public fun unwind_progress_fields<Product>(
 #[test_only]
 public fun shutdown_finalized_fields<Product>(
     self: &ShutdownFinalized<Product>,
-): (ID, u64, u64, Checkpoint, u256) {
+): (ID, u64, u64, Checkpoint, u256, u64, u64) {
     (
         self.vault_id, self.recovered_cash, self.eligible_supply,
         self.checkpoint, self.unrecoverable_collateral_raw,
+        self.protected_reserve_cash, self.protected_seed_cash,
     )
 }
 

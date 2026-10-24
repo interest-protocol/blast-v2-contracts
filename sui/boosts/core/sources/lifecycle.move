@@ -8,12 +8,12 @@ module blast_boosts_core::lifecycle;
 
 // === Public Types ===
 
-/// A Vault is born active; only authenticated shutdown moves it forward.
+/// A Vault is born active; authorized shutdown or a proven size lock moves it forward.
 public enum Lifecycle has drop, store {
     Active,
     /// Shutdown began at the recorded adapter clock time; the close-only
     /// execution bound widens from that instant.
-    Unwinding { began_at_ms: u64 },
+    Unwinding { began_at_ms: u64, protect_balances: bool },
     Settled,
 }
 
@@ -56,7 +56,22 @@ public(package) fun assert_can_sync(self: &Lifecycle) {
 public(package) fun begin_shutdown(self: &mut Lifecycle, now_at_ms: u64) {
     assert!(self.is_active(), blast_boosts_core::errors::invalid_lifecycle_transition!());
 
-    *self = Lifecycle::Unwinding { began_at_ms: now_at_ms };
+    *self = Lifecycle::Unwinding { began_at_ms: now_at_ms, protect_balances: false };
+}
+
+/// The core must first prove that every ordinary redemption is size-locked.
+public(package) fun begin_protected_shutdown(self: &mut Lifecycle, now_at_ms: u64) {
+    assert!(self.is_active(), blast_boosts_core::errors::invalid_lifecycle_transition!());
+
+    *self = Lifecycle::Unwinding { began_at_ms: now_at_ms, protect_balances: true };
+}
+
+/// Sealed at entry; no administrator or later caller can change settlement mode.
+public(package) fun protects_shutdown_balances(self: &Lifecycle): bool {
+    match (self) {
+        Lifecycle::Unwinding { protect_balances, .. } => *protect_balances,
+        _ => abort blast_boosts_core::errors::invalid_lifecycle_transition!(),
+    }
 }
 
 public(package) fun is_unwinding(self: &Lifecycle): bool {
@@ -66,7 +81,7 @@ public(package) fun is_unwinding(self: &Lifecycle): bool {
 /// The adapter clock reading shutdown began at; only an unwinding Vault has one.
 public(package) fun shutdown_began_at_ms(self: &Lifecycle): u64 {
     match (self) {
-        Lifecycle::Unwinding { began_at_ms } => *began_at_ms,
+        Lifecycle::Unwinding { began_at_ms, .. } => *began_at_ms,
         _ => abort blast_boosts_core::errors::operation_not_permitted_in_lifecycle!(),
     }
 }
@@ -93,12 +108,12 @@ public(package) fun assert_settled(self: &Lifecycle) {
 // === Test-Only Functions ===
 
 #[test_only]
-public(package) fun unwinding_for_testing(): Lifecycle { Lifecycle::Unwinding { began_at_ms: 0 } }
+public(package) fun unwinding_for_testing(): Lifecycle { Lifecycle::Unwinding { began_at_ms: 0, protect_balances: false } }
 
 #[test_only]
 public(package) fun settled_for_testing(): Lifecycle { Lifecycle::Settled }
 
 #[test_only]
 public(package) fun set_unwinding_for_testing(self: &mut Lifecycle) {
-    *self = Lifecycle::Unwinding { began_at_ms: 0 };
+    *self = Lifecycle::Unwinding { began_at_ms: 0, protect_balances: false };
 }

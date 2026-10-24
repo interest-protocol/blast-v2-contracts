@@ -95,15 +95,21 @@ public(package) fun unwind_terms<Product, Collateral>(
     let (side, max_order_base, base_price, collateral_price, bound) = vault.state().unwind_constraints(
         capture.base_price_observation(), capture.collateral_price_observation(), before.lot_size(), now_at_ms,
     );
-    before.assert_no_orders();
 
     let terms = OrderTerms {
         is_ask: !opens_with_ask(side), reduce_only: true, max_order_base,
         lot_size: before.lot_size(), base_price, collateral_price, bound,
     };
-    let base = before.signed_base();
+    (terms, before.base_to_close(side), before)
+}
 
-    (terms, unwind_base_decoded(base.abs(), !base.is_neg(), before.lot_size(), side), before)
+/// Exact, nonzero whole-lot exposure on the product side, with no resting orders.
+/// Raw checkpoint validation needs no oracle price or opening margin.
+public(package) fun base_to_close(self: &Checkpoint, side: PositionSide): u64 {
+    self.assert_no_orders();
+    let base = self.signed_base();
+
+    unwind_base_decoded(base.abs(), !base.is_neg(), self.lot_size(), side)
 }
 
 /// Reads the ordinary taker fee for increase sizing. Only emergency reductions
@@ -684,6 +690,8 @@ public fun order_terms_fields(self: &OrderTerms): (bool, bool, u64, u64, u64, u6
 // === Imports ===
 
 use fun fill_exact_order as Vault.fill_exact_order;
+
+use fun base_to_close as Checkpoint.base_to_close;
 
 use fun reducing_terms as Vault.reducing_terms;
 

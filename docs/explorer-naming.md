@@ -107,6 +107,9 @@ every package-administration object.
 
 Payload struct names inside the envelopes (`Bought`, `Migrated`,
 `VaultSynced`, `Minted<Product>`, …) are unchanged.
+The protected Boost exit adds `events::ProtectedShutdownBegun<Product>` and
+protected reserve/seed amounts to `events::ShutdownFinalized<Product>` inside
+the same `blast_events::Event<T>` envelope (ADR 0130).
 
 ## Phantom tags and dynamic-field keys
 

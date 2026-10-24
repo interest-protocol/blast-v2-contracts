@@ -18,8 +18,15 @@ signs in through the existing ACL, and supplies that witness to
 The planner emits inert call descriptions or unsigned-serialization arguments;
 it never reads RPC, signs, serializes live objects or submits.
 
-Normal `operations::unwind` runs only at or below the reference gas price, so
-Aftermath's priority taker surcharge never reaches holders. It derives configured
+Anyone can instead call `operations::begin_protected_shutdown` when the largest
+accessible ordinary burn fails the minimum-order guard (ADR 0130). Bound account
+facts must match, but market-wide policy/rates may change. No price or opening
+margin is required. Already-settled funding must be accounted first; the planner
+does not force sync because venue funding calls can fail on paused markets.
+The settlement allocation mode is sealed at entry.
+
+`operations::unwind` allows a higher gas bid during congestion. Holders pay
+Aftermath's priority trading surcharge; callers pay network gas. It derives configured
 direction and exact remaining
 whole-lot base from the authenticated position, consumes fresh bound price
 observations, isolates funding, and executes at most sixteen reduce-only orders.
@@ -53,8 +60,13 @@ Actual recovered holder cash occupies a private typed native Balance field,
 separate from earned admin cash. Finalization zeros the buffer book entry.
 Eligible shares are always native TreasuryCap supply minus immutable locked
 seed; there is no mutable numerical claim-supply ledger. No seed funder is
-recorded. With zero eligible supply, the recovered coin joins Blast's admin
-cash instead of the claim balance, and `withdraw_admin_fees` spends it.
+recorded. For administrator-approved shutdown, zero eligible supply routes the
+recovered coin to Blast's admin cash, which `withdraw_admin_fees` can spend.
+For protected shutdown, finalization first retains `min(recovery, reserve)`,
+then gives circulating holders their floor-rounded fraction of the remaining
+cash. The seed's fraction and reserve join private `protected_cash`. No holder
+or admin withdrawal path exists, even after all claims; adapter upgrade
+governance remains trusted. The remaining holder pool alone funds claims.
 
 Claims burn the supplied native coin before returning its floor-rounded
 remaining-cash fraction. The last claimant gets dust. A partial rounded-zero
@@ -63,12 +75,14 @@ positive shares to burn with explicit minimum zero and returns a composable
 zero coin. Inclusive deadlines and caller minimums apply; no fee, oracle,
 venue access, reactivation, cross-product payment or transfer restriction exists.
 
-Completed events are ShutdownBegun (declared reason), UnwindProgress (the
+Completed events are ShutdownBegun (declared reason), ProtectedShutdownBegun
+(accepted checkpoint, native supply and locked shares), UnwindProgress (the
 adopted before checkpoint, the after checkpoint, the market-order count and the
 actual market-fill quote when available; drift found at the start of a step is
 reported by CheckpointDrifted before it),
 ShutdownFinalized (actual recovered cash, eligible supply, final checkpoint and
-raw unrecoverable collateral remainder), and ShutdownRedeemed (burn, payout, remaining
+raw unrecoverable collateral remainder, protected reserve and seed cash; both
+protected amounts are explicitly zero for admin shutdown), and ShutdownRedeemed (burn, payout, remaining
 cash and eligible supply). CheckpointDrifted is not deduplicated: every sync or
 unwind step that finds drift emits it again, and no diagnostic state is stored
 for finalization to clear. Local reducers consume same-transaction events and

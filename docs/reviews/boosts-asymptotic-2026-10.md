@@ -108,7 +108,7 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | 17 | L-8 | Low | Emergency rebalance is refused when the venue mark diverges from spot, even though it never uses the mark | Resolved in source (PR #123, ADR 0127), Opus 5.5 reviewed; live execution remains a release gate |
 | 18 | L-9 | Low | Increase rebalances check the hard cap against a reserve admitted at the opening notional, not the post-fill one | Resolved in source (PR #124, ADR 0128), Opus 5.5 reviewed; live execution remains a release gate |
 | 19 | L-10 | Low | Reductions are checked fill by fill on one reserve basis and completed on another, so a valid deleverage can revert | Resolved in source (PR #125, ADR 0129), Opus 5.5 reviewed; live execution remains a release gate |
-| 20 | L-11 | Low | Once the position shrinks below one minimum order, nobody can redeem | Open. Must land before the next issuance |
+| 20 | L-11 | Low | Once the position shrinks below one minimum order, nobody can redeem | Implemented and locally tested (ADR 0130), Opus 5.5 reviewed; merge pending |
 | 21 | L-12 | Low | The funding-credit conservation check can overflow on a state that fits | Open |
 | 22 | A-1 | Advisory | `ifixed_math::to_u64` is wider than its callers | Open |
 | 23 | A-2 | Advisory | `needs_rebalance` prices post-settlement equity against the pre-settlement reserve | Open |
@@ -1116,8 +1116,11 @@ retain the full reserve may require separately authorized shutdown.
 
 ### Ticket 20 · L-11 · Once the position shrinks below one minimum order, nobody can redeem
 
-**Status:** open. Must land before the next vault is issued, because
-`min_order_lots` and the lot size are fixed at issuance.
+**Status:** implemented and locally tested; awaiting merge. All 1,366 Move tests
+pass, and fresh Opus 5.5 review has no remaining actionable code finding.
+See [ADR 0130](../decisions/0130-protected-permissionless-shutdown.md) and the
+[review record](boosts-l11-protected-exit-2026-10-24.md). This is not
+original-auditor acceptance or live venue execution evidence.
 
 **The problem.** Every ordinary redemption must reduce base by at least
 `lot_size × min_order_lots` or leave the position flat. Seed shares are locked,
@@ -1154,6 +1157,25 @@ admin action, either:
 
 **Tests.** Base shrunk below the minimum by a reduction: a redemption that
 closes the position succeeds (or the terminal trigger fires).
+
+**Implementation decision.** Follow the auditor's second option: explicit,
+permissionless terminal entry. Refine the trigger to the largest accessible
+burn, including pre-lot rounding and the existing zero-keep exemption. Require
+the current bound, accepted, order-free checkpoint and native supply; no price,
+positive NAV or opening-margin gate is added to entry. Unwind remains bounded
+and price-limited. Market-wide policy/rates may change at entry; account
+facts remain exact, and settled funding must first be accounted. At final
+recovery, segregate the full recorded reserve (up to recovery) and the locked seed's share of the remainder before
+holder claims. This extra protection prevents a mint/large-redemption/one-share
+caller from collecting the seed and reserves through legacy terminal payouts.
+The user chose to keep those protected balances locked after the last claim.
+Administrator-approved shutdown retains its existing allocation.
+
+**Remaining limits.** This irrevocably ends the vault. Venue restrictions,
+liquidity, stale close prices, unreconciled drift and settlement availability
+can still delay recovery. Losses and funding can reduce cash, including to
+zero; protection is not a capital guarantee. Actual live venue execution and
+original-auditor acceptance remain separate evidence.
 
 ### Ticket 21 · L-12 · The funding-credit conservation check can overflow on a fitting state
 

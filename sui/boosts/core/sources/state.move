@@ -920,6 +920,28 @@ public fun begin_shutdown<Product>(self: &mut State<Product>, now_at_ms: u64) {
     self.lifecycle.begin_shutdown(now_at_ms);
 }
 
+/// Starts protected closure only when even all circulating shares cannot
+/// meet the ordinary redemption minimum. The adapter authenticates raw base,
+/// lot size and native supply; no price, equity or caller-sized burn is needed.
+public fun begin_protected_shutdown<Product>(
+    self: &mut State<Product>,
+    base: u64,
+    lot_size: u64,
+    total_share_supply: u64,
+    locked_shares: u64,
+    now_at_ms: u64,
+) {
+    self.lifecycle.assert_active();
+    assert!(
+        accounting_math::is_redemption_size_locked(
+            base, total_share_supply, locked_shares, lot_size, self.vault_policy.min_order_lots(),
+        ),
+        blast_boosts_core::errors::protected_shutdown_not_allowed!(),
+    );
+
+    self.lifecycle.begin_protected_shutdown(now_at_ms);
+}
+
 /// Authorizes only close-only venue progress before finalization.
 public fun assert_unwinding<Product>(self: &State<Product>) {
     self.lifecycle.assert_unwinding();
@@ -954,14 +976,38 @@ public fun unwind_constraints<Product>(
     (self.vault_policy.side(), max_order_base, base_price, collateral_price, bound)
 }
 
-/// Consumes the reserve book entry only after the adapter proves complete local cash recovery.
-public fun finalize_shutdown<Product>(self: &mut State<Product>, total_share_supply: u64, locked_shares: u64): u64 {
+/// Consumes the reserve book entry only after complete local cash recovery.
+/// Returns eligible supply, protected reserve cash and protected seed cash.
+/// Protected closure first retains the full recorded reserve up to recovered
+/// cash, then floors the circulating holders' fraction of the remainder using
+/// total supply including the locked seed. The adapter must segregate both
+/// protected amounts with no holder/admin withdrawal path. Admin shutdown retains its
+/// original distribution. Venue losses can reduce every allocation.
+public fun finalize_shutdown<Product>(
+    self: &mut State<Product>,
+    total_share_supply: u64,
+    locked_shares: u64,
+    recovered_cash: u64,
+): (u64, u64, u64) {
     assert!(total_share_supply >= locked_shares, blast_boosts_core::errors::invalid_share_supply!());
+    let protect_balances = self.lifecycle.protects_shutdown_balances();
+
+    let eligible = total_share_supply - locked_shares;
+    let (protected_reserve, protected_seed) = if (protect_balances) {
+        assert!(locked_shares > 0 && eligible > 0, blast_boosts_core::errors::invalid_share_supply!());
+        let reserve_cash = self.maintenance_reserve.min(recovered_cash);
+        let share_cash = recovered_cash - reserve_cash;
+        let holder_cash = share_cash.mul_div(eligible, total_share_supply);
+
+        (reserve_cash, share_cash - holder_cash)
+    } else {
+        (0, 0)
+    };
 
     self.lifecycle.finalize_shutdown();
     self.maintenance_reserve = 0;
 
-    total_share_supply - locked_shares
+    (eligible, protected_reserve, protected_seed)
 }
 
 /// Rejects terminal claims before any adapter cash-field access.

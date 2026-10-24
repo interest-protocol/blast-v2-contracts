@@ -99,6 +99,26 @@ public(package) fun is_base_above_min_order(
         && (base_before as u128) > (lot_size as u128) * (min_order_lots as u128)
 }
 
+/// Whether even burning every circulating share fails the ordinary size guard.
+/// Mirrors redemption_base_bounds before lot rounding, including its flat exemption.
+/// Invalid, flat and seed-only inputs never authorize irreversible closure.
+public(package) fun is_redemption_size_locked(
+    base: u64,
+    total_share_supply: u64,
+    locked_shares: u64,
+    lot_size: u64,
+    min_order_lots: u64,
+): bool {
+    if (base == 0 || lot_size == 0 || min_order_lots == 0
+        || locked_shares == 0 || locked_shares >= total_share_supply) return false;
+    if (base % lot_size != 0) return false;
+
+    let kept_base = base.mul_div(locked_shares, total_share_supply);
+
+    kept_base > 0
+        && ((base - kept_base) as u128) < (lot_size as u128) * (min_order_lots as u128)
+}
+
 /// Returns shareholder NAV after excluding the complete maintenance reserve.
 ///
 /// Both inputs and the result are atomic collateral units. Equality is valid
@@ -368,8 +388,10 @@ public(package) fun redemption_accounting_quote(
 /// `lot_size * min_order_lots` and `base_before >= shares_before`, no burn
 /// count is legal and every non-flat redemption aborts; the flat exemption is
 /// unreachable because a proportional keep of zero needs
-/// `base_before < shares_before`. `is_base_above_min_order` is the
-/// non-aborting predicate the health transition uses to observe that state.
+/// `base_before < shares_before`. Production also excludes the locked seed
+/// from the burnable supply. `is_redemption_size_locked` checks that exact
+/// maximum burn for the explicit protected exit; health synchronization alone
+/// never changes lifecycle.
 ///
 /// Preconditions: `0 < shares_to_redeem < shares_before`, positive `lot_size`,
 /// and positive `min_order_lots`. A flat core returns `(0, 0)` and must

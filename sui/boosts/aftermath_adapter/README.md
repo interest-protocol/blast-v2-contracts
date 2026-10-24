@@ -97,12 +97,29 @@ final checkpoint and `ShutdownFinalized`; callers cannot choose a tolerance or
 write-off, and free collateral must be zero.
 It seals Settled once; no terminal path reopens leverage.
 
+For a proven size lock, anyone may instead begin protected closure with
+`operations::begin_protected_shutdown`. It checks the bound raw checkpoint and
+native supply: even burning every circulating share must fail the ordinary
+minimum-order guard. It needs no live prices, positive equity or opening
+margin. Market-wide settings may change; account facts remain exact.
+Already-settled account funding needs `sync_health` first while the venue
+permits it; unexplained account drift needs reconciliation. The planner does
+not force sync, because venue funding calls can abort on paused markets. The same unwind
+and finality protections then apply. At recovery the full recorded reserve
+(up to recovered cash) and the locked shares' portion of remaining cash are
+segregated in the vault with no holder or admin withdrawal path, including
+after the last holder exits. The adapter remains upgradeable; upgrade
+governance is a trust assumption.
+See [ADR 0130](../../../docs/decisions/0130-protected-permissionless-shutdown.md).
+
 `vault::redeem_shutdown` burns native eligible shares and returns local
 `Coin<Collateral>` without venue access or fees. Locked seed is excluded from
 the denominator. Claims floor the fraction of remaining cash; the last gets
-all dust. A wholly zero cash pool permits an explicit zero-minimum burn, but a
+all holder-pool dust. Protected closure excludes its segregated cash from
+that pool; administrator-approved closure keeps its prior allocation.
+A wholly zero cash pool permits an explicit zero-minimum burn, but a
 partial claim rounded to zero while cash remains aborts. With no eligible
-holders, what the locked seed backed is retained as admin cash, never paid to
+holders at administrator-approved finalization, what the locked seed backed is retained as admin cash, never paid to
 the finalizer. Admin cash remains separate. See the
 [terminal local record](../../../docs/leverage-terminal-local.md) for events,
 observer-to-witness operation and the boundary of local evidence.

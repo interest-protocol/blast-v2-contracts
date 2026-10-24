@@ -291,6 +291,10 @@ const ERebalanceCapacity: u64 = 69;
 /// A rebalance cannot accept more fills than its core-owned order budget.
 const ERebalanceOrderLimit: u64 = 70;
 
+#[test_only]
+/// The maximum circulating-share redemption is not locked by its minimum size.
+const EProtectedShutdownNotAllowed: u64 = 71;
+
 macro public(package) fun zero_amount(): u64 { 0 }
 
 macro public(package) fun invalid_fee_bps(): u64 { 1 }
@@ -432,3 +436,5 @@ macro public(package) fun rebalance_outside_band(): u64 { 68 }
 macro public(package) fun rebalance_capacity(): u64 { 69 }
 
 macro public(package) fun rebalance_order_limit(): u64 { 70 }
+
+macro public(package) fun protected_shutdown_not_allowed(): u64 { 71 }

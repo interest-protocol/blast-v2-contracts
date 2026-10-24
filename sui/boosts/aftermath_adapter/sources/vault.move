@@ -48,6 +48,9 @@ public struct Vault<phantom Product, phantom Collateral> has key {
     admin_cash: Balance<Collateral>,
     /// Recovered holder collateral after finalization, never mixed with admin cash.
     terminal_cash: Balance<Collateral>,
+    /// Seed-backed cash and reserve retained by protected size-locked closure.
+    /// No holder or admin withdrawal path; adapter upgrade governance remains trusted.
+    protected_cash: Balance<Collateral>,
 }
 
 /// Dynamic-object-field key for one Vault's share mint authority.
@@ -287,8 +290,9 @@ public(package) fun issuance<Product, Collateral>(self: &VaultIssuance<Product, 
 /// to the burn address, and builds the Vault around the venue account, with
 /// the share caps hanging off the new id. Returns the Vault, the seed's
 /// shareholder NAV, and the priced seed position. The seed is a permanent
-/// gift to the product: its shares are never redeemable and its cash, once
-/// every other share has left, becomes admin cash.
+/// gift to the product: its shares are never redeemable. Admin seed-only
+/// shutdown routes recovery to admin cash; protected shutdown keeps its
+/// allocated seed cash separate with no holder or admin withdrawal path.
 public(package) fun activate<Product, Collateral>(
     self: VaultIssuance<Product, Collateral>,
     seeded: PositionObservation,
@@ -310,6 +314,7 @@ public(package) fun activate<Product, Collateral>(
         locked_shares,
         admin_cash: balance::zero(),
         terminal_cash: balance::zero(),
+        protected_cash: balance::zero(),
     };
     vault.id.add_dynamic_object_field(TreasuryKey<Product>(), treasury_cap);
     vault.id.add_dynamic_object_field(MetadataKey<Product>(), metadata_cap);
@@ -337,18 +342,25 @@ public(package) fun burn_redeemed_shares<Product, Collateral>(self: &mut Vault<P
 
 // --- Shutdown ---
 
-/// Seals the proven terminal withdrawal as holder cash: the coin becomes the
-/// terminal claim balance, or admin cash when no eligible share is left to
-/// claim what the locked seed backed.
+/// Segregates protected cash before sealing the holder claim pool.
+/// Only an administrator-approved, seed-only shutdown sends recovery to admin cash.
 public(package) fun seal_terminal_cash<Product, Collateral>(
     self: &mut Vault<Product, Collateral>,
     recovered: Coin<Collateral>,
     eligible: u64,
+    protected_reserve: u64,
+    protected_seed: u64,
 ) {
+    let mut recovered = recovered.into_balance();
+    let protected_amount = protected_reserve + protected_seed;
+    if (protected_amount > 0) {
+        self.protected_cash.join(recovered.split(protected_amount));
+    };
+
     if (eligible == 0) {
-        self.retain_admin_cash(recovered.into_balance());
+        self.retain_admin_cash(recovered);
     } else {
-        self.terminal_cash.join(recovered.into_balance());
+        self.terminal_cash.join(recovered);
     };
 }
 
@@ -427,6 +439,11 @@ public fun seed_shares_for_testing(seed_nav: u64): u64 {
 #[test_only]
 public fun terminal_cash_for_testing<Product, Collateral>(self: &Vault<Product, Collateral>): u64 {
     self.terminal_cash.value()
+}
+
+#[test_only]
+public fun protected_cash_for_testing<Product, Collateral>(self: &Vault<Product, Collateral>): u64 {
+    self.protected_cash.value()
 }
 
 #[test_only]

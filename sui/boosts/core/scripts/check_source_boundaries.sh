@@ -249,6 +249,7 @@ expected_state_public="$(printf '%s\n' \
   base_to_realize \
   base_to_sell \
   begin_shutdown \
+  begin_protected_shutdown \
   bound \
   collateral_price \
   complete_mint \
@@ -308,7 +309,8 @@ actual_lifecycle_construction="$(
 )"
 expected_lifecycle_construction="$(printf '%s\n' \
   'public(package) fun active(): Lifecycle { Lifecycle::Active }' \
-  '*self = Lifecycle::Unwinding { began_at_ms: now_at_ms };' \
+  '*self = Lifecycle::Unwinding { began_at_ms: now_at_ms, protect_balances: false };' \
+  '*self = Lifecycle::Unwinding { began_at_ms: now_at_ms, protect_balances: true };' \
   '*self = Lifecycle::Settled;')"
 [[ "$actual_lifecycle_construction" == "$expected_lifecycle_construction" ]] \
   || fail "Only the Active constructor and the two forward transitions may construct lifecycle variants."

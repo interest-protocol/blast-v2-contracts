@@ -27,6 +27,13 @@ reserve; costs consume reserve before backing. Ordinary health observation never
 retires a product. The single public maintenance band has inclusive healthy
 endpoints and strict outside-band eligibility.
 
+An explicit permissionless shutdown can retire a position only when every
+accessible ordinary burn fails the minimum-order guard. This seals a protected
+settlement mode: recovered reserves and the locked seed's cash share are
+excluded from holder claims and remain in adapter custody with no exposed
+withdrawal path; adapter upgrade governance remains trusted
+([ADR 0130](../../../docs/decisions/0130-protected-permissionless-shutdown.md)).
+
 This is pre-publication source preparation, not a deployment or live-parity
 claim. Series1 remains immutable after publication. The
 [active release-candidate record](../../../docs/leverage-active-release-candidate.md)

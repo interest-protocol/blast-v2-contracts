@@ -93,7 +93,7 @@ export function buildActivePlan(input) {
 }
 
 export function renderUnsignedPtbArgs(input) {
-    const plan = ['begin_shutdown', 'unwind', 'finalize_shutdown', 'redeem_shutdown'].includes(input.operation)
+    const plan = ['begin_shutdown', 'begin_protected_shutdown', 'unwind', 'finalize_shutdown', 'redeem_shutdown'].includes(input.operation)
         ? buildTerminalPlan(input) : buildActivePlan(input);
     const args = ['client', '--client.env', input.network, 'ptb'];
     for (const command of plan.commands) {
@@ -111,7 +111,7 @@ export function buildTerminalPlan(input) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw Error('input object required');
     for (const key of Object.keys(input)) if (!allowed.has(key)) throw Error(`unexpected field ${key}`);
     const operation = input.operation;
-    if (!['begin_shutdown', 'unwind', 'finalize_shutdown', 'redeem_shutdown'].includes(operation)) throw Error('unsupported terminal operation');
+    if (!['begin_shutdown', 'begin_protected_shutdown', 'unwind', 'finalize_shutdown', 'redeem_shutdown'].includes(operation)) throw Error('unsupported terminal operation');
     const adapter = address(input.adapterPackage), product = type(input.productType);
     address(input.sender);
     if (input.network !== 'mainnet') throw Error('network must be mainnet');
@@ -146,7 +146,8 @@ export function buildTerminalPlan(input) {
     return {commands: [call(`${adapter}::operations::${operation}`, types, args, null)], transfers: []};
 }
 
-// Observer classifications are advisory. Only a shutdown-role witness can retire a Vault.
+// Drift observations remain advisory and require administrator review.
+// Protected closure instead proves its own exact on-chain size condition.
 export function emergencyDecision(facts) {
     return facts.active === true && facts.authenticatedUnexpectedChange === true
         ? 'shutdown_role_review' : 'no_change';
