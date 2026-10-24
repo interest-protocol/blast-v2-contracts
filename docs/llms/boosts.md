@@ -318,16 +318,24 @@ private `entry` call directly in a PTB. It shares the clearing house internally
 and returns nothing; no earlier trading session may supply its market and no
 later command may reuse that market. Use a separate transaction for another
 rebalance or a mint on the same market. No reward, direction or size argument.
-Submit it at a gas price **at or below
-the reference gas price** (adapter code 37 otherwise), because Aftermath adds
-a priority taker fee above it and holders pay every fill.
+Ordinary rebalances require a gas price **at or below the reference gas
+price** (adapter code 35 otherwise). A rebalance whose authenticated starting
+leverage is strictly above `max_leverage_bps` may use a higher gas price.
+Holders pay Aftermath's configured priority trading surcharge on those fills.
+The caller pays the network gas bill. The extra trading rate is set by the
+venue; it does not grow with the gas bid.
 
-1. Generation, `Active`, gas price; synchronize as in mint.
-2. Require leverage strictly outside the band (core code 54 otherwise):
-   `notional * 10,000 < N * rebalance_below_bps` (increase) or
-   `notional * 10,000 > N * rebalance_above_bps` (reduce). Band edges are
-   healthy.
-3. Read the market taker fee, rounded up to whole bps (rebates count as zero).
+1. Generation, `Active`; synchronize and validate the observation as in mint.
+2. Read the ordinary market taker fee, rounded up to whole bps (rebates count
+   as zero), and prepare the plan. Require leverage strictly outside the band
+   (core code 54 otherwise): `notional * 10,000 < N * rebalance_below_bps`
+   (increase) or `notional * 10,000 > N * rebalance_above_bps` (reduce).
+   Band edges are healthy.
+3. Check the gas price against that prepared plan. Only a plan starting
+   strictly above the hard cap is exempt; exactly at the cap is ordinary.
+   The decision is fixed for the transaction: its own fills cannot promote an
+   ordinary plan into an emergency. Invalid observations and inside-band
+   positions can therefore abort before the gas-price check.
 4. Up to 16 limit orders, each priced at the oracle moved by its bound
    against the order. Increase: each order is the largest whole-lot buy that
    keeps post-cost leverage at or under target, reserving adverse slippage
@@ -354,10 +362,13 @@ dev-inspect. It aborts where `rebalance` would abort before its first order
 (unexplained drift, refused prices, venue not ready). It does not settle
 funding first, so a due settlement can shift the answer slightly.
 
-Keeper loop: when dev-inspect returns `true`, submit `rebalance` at the
-reference gas price. If another keeper already brought leverage back inside the
-band, the call aborts with core code 54; rebuild from current objects. Resolve
-an uncertain digest before retrying.
+Keeper loop: when dev-inspect returns `true`, submit ordinary `rebalance` at
+the reference gas price. Above the hard cap, a higher bid can compete during
+congestion. Eligibility is checked again on chain after funding synchronization:
+if another keeper has restored the cap, a priority-priced call is refused.
+Inside the band, the call aborts with core code 54; rebuild from current
+objects. Resolve an uncertain digest before retrying. Ordinary rebalances can
+still be delayed by higher-priced traffic.
 
 #### Sync health (anyone)
 
@@ -397,8 +408,10 @@ over the ceiling raises shareholder NAV. No shares, no fees. Emits `Donated`.
    donate stop.
 2. **Unwind** (anyone, repeat until flat). `operations::unwind<Product,
    Collateral>(vault, protocol, account, registry, clearing_house, base_oracle,
-   collateral_oracle, clock)`, at or below the reference gas price, refused
-   while the clearing house is frozen (adapter code 35). This private `entry`
+   collateral_oracle, clock)`. Any gas price is allowed, including a higher
+   bid to compete during congestion. Holders pay the venue's priority trading
+   surcharge on those fills; the caller pays network gas. The call is refused
+   while the clearing house is frozen (adapter code 33). This private `entry`
    call shares the clearing house internally and returns nothing. Pass the
    shared market directly, without a preceding trading session. Repeat unwind
    and finalize in separate transactions because the market cannot be reused
@@ -410,7 +423,7 @@ over the ceiling raises shareholder NAV. No shares, no fees. Emits `Donated`.
      starts at `max_slippage_bps` when shutdown begins and widens linearly to
      `emergency_max_slippage_bps` over the following 24 hours, where it stays.
      Emits `OrderFilled` per order and `UnwindProgress`. Positive NAV and the
-     reserve do not gate it. A flat position aborts (adapter code 34): go to
+     reserve do not gate it. A flat position aborts (adapter code 32): go to
      finalize.
    - Market paused by Aftermath: once Aftermath has enabled positive
      settlement prices, the step closes the position at those prices without a
@@ -704,25 +717,25 @@ outdated adapter package aborts in the `operational_version` module of the
 
 | Code | Meaning | Fix |
 | --- | --- | --- |
-| 0-2, 13-20 | Deployment, issuance, activation input or seed problems | Issuer only. |
-| 3-10 | An Aftermath object (account, registry, clearing house, oracle storage or feed) is not the bound one | Pass the objects from the Vault's binding. |
-| 11 | The venue's price is not the bound feed's | Same; use the bound feed storage. |
-| 12 | A venue value cannot be represented (for example negative equity) | The account is underwater; wait or expect shutdown. |
-| 21 | Zero coin or amount | Pass a positive coin. |
-| 22 | Admin withdrawal above admin cash | Lower the amount. |
-| 23 | A cash move did not match the venue exactly | Retry; the venue changed mid-transaction. |
-| 24, 25, 26 | Fill not whole-lot, a resting order left, or a liquidation during the order | Retry later; the book or margin did not support the order. |
-| 27 | The operation needed more than 16 orders | Trade a smaller amount or wait for a larger order cap. |
-| 28 | Deadline passed | Use a later `deadline_ms`. |
-| 29 | A fill changed venue fields it should not | Retry. |
-| 31 | The market's taker fee is not a usable rate (rebalance) | Wait; venue configuration. |
-| 32 | Venue state the Vault cannot explain since its checkpoint | Call `sync_health` and check for `CheckpointDrifted`; priced operations stay blocked until the venue is explainable. |
-| 33 | Terminal step not possible: orders open, funding unsettled, settlement prices not enabled, or wrong order count | Settle funding with `sync_health` first, or wait for Aftermath. |
-| 34 | Unwind found no lot-aligned position on the bound side (for example already flat) | Call `finalize_shutdown`. |
-| 35 | Venue not ready: resting orders, unsafe margin, paused market or frozen clearing house | Wait. |
-| 36, 39 | Metadata or partner list update changes nothing | Admin only. |
-| 37 | Rebalance or unwind above the reference gas price | Submit at the reference gas price. |
-| 38 | Partner not accepted | Use the plain call. |
+| 0-1, 11-18 | Deployment, issuance, activation input or seed problems | Issuer only. |
+| 2-8 | An Aftermath object (account, registry, clearing house, oracle storage or feed) is not the bound one | Pass the objects from the Vault's binding. |
+| 9 | The venue's price is not the bound feed's | Same; use the bound feed storage. |
+| 10 | A venue value cannot be represented (for example negative equity) | The account is underwater; wait or expect shutdown. |
+| 19 | Zero coin or amount | Pass a positive coin. |
+| 20 | Admin withdrawal above admin cash | Lower the amount. |
+| 21 | A cash move did not match the venue exactly | Retry; the venue changed mid-transaction. |
+| 22, 23, 24 | Fill not whole-lot, a resting order left, or a liquidation during the order | Retry later; the book or margin did not support the order. |
+| 25 | The operation needed more than 16 orders | Trade a smaller amount or wait for a larger order cap. |
+| 26 | Deadline passed | Use a later `deadline_ms`. |
+| 27 | A fill changed venue fields it should not | Retry. |
+| 29 | The market's taker fee is not a usable rate (rebalance) | Wait; venue configuration. |
+| 30 | Venue state the Vault cannot explain since its checkpoint | Call `sync_health` and check for `CheckpointDrifted`; priced operations stay blocked until the venue is explainable. |
+| 31 | Terminal step not possible: orders open, funding unsettled, settlement prices not enabled, or wrong order count | Settle funding with `sync_health` first, or wait for Aftermath. |
+| 32 | Unwind found no lot-aligned position on the bound side (for example already flat) | Call `finalize_shutdown`. |
+| 33 | Venue not ready: resting orders, unsafe margin, paused market or frozen clearing house | Wait. |
+| 34, 37 | Metadata or partner list update changes nothing | Admin only. |
+| 35 | Ordinary rebalance above the reference gas price | Submit at the reference gas price. |
+| 36 | Partner not accepted | Use the plain call. |
 
 #### Core (`blast_boosts_core`)
 
@@ -765,10 +778,13 @@ outdated adapter package aborts in the `operational_version` module of the
   order that finds nothing to fill inside its limit (Aftermath aborts the empty
   session), or a fill above the cap outside the one-lot closing exception
   aborts the whole transaction.
-- Submitting `rebalance` or `unwind` with a priority gas price (37). For mint
-  and redeem a higher gas price is allowed, but Aftermath then adds its
-  priority taker fee to every fill, which the user pays through fewer shares or
-  a lower payout.
+- Submitting an ordinary `rebalance` with a priority gas price (35).
+  Emergency rebalances and `unwind` permit it, and holders bear the extra
+  venue trading fee. Venue priority support, usable liquidity and the existing
+  price, margin and progress checks still apply; permission to bid higher is
+  not a guarantee of execution. For mint and redeem, a higher gas price is
+  allowed and the user pays the extra trading fee through fewer shares or a
+  lower payout.
 - Reading `CheckpointDrifted` from a failed mint: aborted transactions emit
   nothing. Only `sync_health` and `unwind` record drift. Drift from a
   lasting venue change (a liquidation, an ADL, or a change to the market's
@@ -809,10 +825,12 @@ outside the rebalance band, and mints are allowed only inside it. Anyone can cal
 `operations::rebalance`; once its transaction succeeds, mint in a new transaction.
 
 **Who rebalances, and is there a reward?** Anyone, through
-`operations::rebalance`, at or below the reference gas price. There is no
-reward, no role and no size argument; the chain derives direction and size and
-holders pay the fills. Use `operations::needs_rebalance` in dev-inspect to
-decide when to submit.
+`operations::rebalance`. Ordinary calls require a gas price at or below the
+reference; emergency reductions starting strictly above the hard cap permit
+higher bids. There is no reward, role or size argument; the chain derives
+direction and size and holders pay the fills, including any priority trading
+surcharge. Use `operations::needs_rebalance` in dev-inspect to decide when to
+submit.
 
 **How do I read NAV and leverage?** NAV is not stored. Compute
 `N = E - min(maintenance_reserve, notional * max_reserve_bps / 10,000)` from

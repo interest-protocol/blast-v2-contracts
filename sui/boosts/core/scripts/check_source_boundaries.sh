@@ -257,6 +257,7 @@ expected_state_public="$(printf '%s\n' \
   execution_bound \
   finalize_shutdown \
   is_emergency \
+  is_emergency_rebalance \
   is_increase \
   is_increasing \
   issue \

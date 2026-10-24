@@ -416,7 +416,9 @@ public fun finalize_shutdown<Product, Collateral>(
 
 /// Permissionless, policy-sized maintenance with no caller reward or trade parameters.
 ///
-/// Holders pay its fills, so it runs only at the reference gas price.
+/// Ordinary maintenance runs at or below the reference gas price. A reduction
+/// starting above the hard leverage cap may pay priority gas; holders bear the
+/// venue's extra trading fee, and the plan stops once the hard cap is restored.
 /// Private entry prevents a preceding venue session from supplying the shared market.
 /// Shares the ClearingHouse internally, ending its use in this transaction.
 entry fun rebalance<Product, Collateral>(
@@ -432,13 +434,13 @@ entry fun rebalance<Product, Collateral>(
 ) {
     protocol.assert_current();
     vault.state().assert_active();
-    assert_gas_price(ctx);
 
     let (before, checkpoint) = vault.synchronize_or_fail(
         account, registry, &mut clearing_house, base_oracle, collateral_oracle, clock,
     ).into_observation();
 
     let mut plan = vault.state().prepare_rebalance(before, clearing_house.live_venue_fee_bps(), clock.timestamp_ms());
+    plan.assert_gas_price(ctx);
     let position = plan.rebalance_position();
     let terms = if (plan.is_increasing()) { vault.increasing_terms(position) } else { vault.reducing_terms(position) };
     let binding = vault.venue().binding();
@@ -457,7 +459,8 @@ entry fun rebalance<Product, Collateral>(
 /// venue has paused only by the venue's own settlement, once it has closed the
 /// market and enabled settlement prices; a frozen clearing house aborts every
 /// venue call on its version check, so it is refused here until unfrozen.
-/// Holders pay its fills, so it runs only at the reference gas price.
+/// Priority gas is allowed so closings can compete during congestion; holders
+/// bear the venue's extra trading fee on any priority-priced fills.
 /// Private entry prevents a preceding venue session from supplying the shared market.
 /// Shares the ClearingHouse internally, ending its use in this transaction.
 entry fun unwind<Product, Collateral>(
@@ -473,7 +476,6 @@ entry fun unwind<Product, Collateral>(
 ) {
     protocol.assert_current();
     vault.state().assert_unwinding();
-    assert_gas_price(ctx);
     assert!(!clearing_house.is_frozen(), blast_boosts_aftermath::errors::venue_not_ready!());
 
     if (clearing_house.is_market_paused()) {
@@ -661,11 +663,11 @@ fun fund_mint<Product, Collateral>(
 
 // --- Permissionless Trades ---
 
-/// Aftermath adds its priority taker fee to every fill of a transaction whose
-/// gas price is strictly above the reference gas price.
-fun assert_gas_price(ctx: &TxContext) {
+/// Only a plan that started above the hard cap may pass the venue's priority
+/// trading fee to holders. The core fixes that decision before any fill.
+fun assert_rebalance_gas_price<Product>(plan: &RebalancePlan<Product>, ctx: &TxContext) {
     assert!(
-        ctx.gas_price() <= ctx.reference_gas_price(),
+        plan.is_emergency_rebalance() || ctx.gas_price() <= ctx.reference_gas_price(),
         blast_boosts_aftermath::errors::priority_gas_price!(),
     );
 }
@@ -1143,7 +1145,9 @@ public fun assert_deadline_for_testing(now_at_ms: u64, deadline_at_ms: u64) { as
 
 #[test_only]
 #[allow(lint(prefer_mut_tx_context))]
-public fun assert_gas_price_for_testing(ctx: &TxContext) { assert_gas_price(ctx); }
+public fun assert_rebalance_gas_price_for_testing<Product>(plan: &RebalancePlan<Product>, ctx: &TxContext) {
+    plan.assert_gas_price(ctx);
+}
 
 #[test_only]
 public fun assert_settlement_valuation_for_testing(
@@ -1271,6 +1275,8 @@ use fun complete_donation as Vault.complete_donation;
 use fun complete_finalization as Vault.complete_finalization;
 
 use fun complete_mint as Vault.complete_mint;
+
+use fun assert_rebalance_gas_price as RebalancePlan.assert_gas_price;
 
 use fun complete_rebalance as Vault.complete_rebalance;
 

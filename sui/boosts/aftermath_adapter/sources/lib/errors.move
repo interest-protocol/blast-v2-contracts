@@ -148,7 +148,7 @@ const EVenueNotReady: u64 = 33;
 const EMetadataUnchanged: u64 = 34;
 
 #[test_only]
-/// A permissionless venue trade paid a gas price above the reference gas price.
+/// An ordinary rebalance paid a gas price above the reference gas price.
 const EPriorityGasPrice: u64 = 35;
 
 #[test_only]

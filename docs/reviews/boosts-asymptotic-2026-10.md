@@ -57,9 +57,10 @@ Read this once; the tickets lean on these words.
   or to release collateral. The effective IMR is the larger of the market's
   IMR and the vault's own `position_imr`, which the issuer sets once at
   activation and can never change.
-- **Reference gas price (RGP).** `rebalance` and `unwind` refuse to run in a
-  transaction that pays more than the RGP, so the venue's priority taker fee
-  never lands on holders.
+- **Reference gas price (RGP).** Ordinary `rebalance` calls refuse gas prices
+  above RGP. Under ADR 0120, shutdown `unwind` and rebalances starting strictly
+  above the hard leverage cap permit higher gas; holders pay the venue's
+  configured priority trading fee on those fills.
 - **Shutdown.** `begin_shutdown` (ShutdownAdmin) freezes mint and redeem. Then
   anyone can call `unwind` repeatedly to close the position, `finalize_shutdown`
   to pull the cash into the vault, and holders call `redeem_shutdown` to claim
@@ -79,6 +80,13 @@ under ADR 0119: 2,010 tests passed across the maintained packages, and all 626
 core tests passed again after the helper rename at `a745fcc`. Their documented
 recovery limits and live-exchange release gates remain.
 
+M-9 is resolved in source through the accepted mitigation in
+[PR #113](https://github.com/interest-protocol/blast-v2-contracts/pull/113)
+and ADR 0120. It implements the auditor's recommended unwind exemption and
+also exempts emergency rebalances. Ordinary-rebalance congestion is an
+accepted residual risk. The 1,027 affected-package Move tests passed locally
+at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
+
 | Ticket | ID | Severity | In one sentence | Status in current source |
 | --- | --- | --- | --- | --- |
 | 1 | M-1 | Medium | A venue event the checkpoint cannot explain blocks mint, redeem and rebalance for good | Partly fixed (ADR 0115): margin-ratio changes no longer block; liquidation and ADL still do |
@@ -89,7 +97,7 @@ recovery limits and live-exchange release gates remain.
 | 6 | M-6 | Medium | A caller can plant a bad quote and make `rebalance` or `unwind` fill into it at the full slippage bound, paid by holders | Atomic trading sequence blocked by [ADR 0118](../decisions/0118-limit-priced-vault-orders-and-a-widening-unwind-bound.md); price calibration and live venue proof remain |
 | 7 | M-7 | Medium | Rotating or re-pointing an oracle feed freezes priced operations and the shutdown exit | Fixed (ADR 0115). Needs a regression test and a doc comment cleanup |
 | 8 | M-8 | Medium | A cap-sized order aborts if it fills even slightly above the oracle price | Resolved in source (ADR 0119); live execution evidence remains a release gate |
-| 9 | M-9 | Medium | Sustained above-RGP traffic on the shared objects can starve `rebalance` and `unwind` | Open. Needs a decision |
+| 9 | M-9 | Medium | Sustained above-RGP traffic on the shared objects can starve `rebalance` and `unwind` | Resolved in source through accepted mitigation (ADR 0120); ordinary-rebalance congestion remains an accepted risk |
 | 10 | L-1 | Low | The live NVDA2L vault uses `min_order_lots = 1`, which makes the mint drift bound meaningless | Open (deployment parameter, plus a post-fill band check) |
 | 11 | L-2 | Low | Converting the order cap to base can overflow and abort instead of saturating | Addressed with M-4/M-8 in ADR 0119 |
 | 12 | L-3 | Low | A small vault below the band cannot rebalance when one lot overshoots target, and then cannot accept mints either | Open |
@@ -598,7 +606,7 @@ index makes progress.
 
 ### Ticket 9 · M-9 · Above-RGP traffic can starve `rebalance` and `unwind`
 
-**Status:** open. Needs a product decision.
+**Status:** resolved in source through the accepted mitigation under [ADR 0120](../decisions/0120-priority-gas-for-emergency-reductions-and-unwind.md) and [PR #113](https://github.com/interest-protocol/blast-v2-contracts/pull/113). Shutdown unwind and rebalances whose authenticated starting leverage is strictly above the hard cap admit priority gas. Ordinary rebalances retain the restriction and can still be delayed; this is an accepted residual risk under the auditor's recommended policy. Holders accept the venue's configured extra trading fee for those emergency or shutdown fills; all price, sizing and progress checks remain. This status records completion of the chosen source remediation, not elimination of all congestion risk or auditor sign-off. Local admission tests do not prove live priority execution, which remains a release gate. The historical finding and auditor options below are preserved.
 
 **The problem.** `rebalance` and `unwind` abort any transaction priced above
 the reference gas price so Aftermath's priority taker fee never lands on
