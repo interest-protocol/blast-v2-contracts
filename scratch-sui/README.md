@@ -17,6 +17,12 @@ overrides and cached dynamic fee updates, original caller context, and opaque
 hook data. Permissions use a `u16` bitmap with named flag macros; construction
 must reject unknown bits and delta bits without their matching callback.
 Fees use parts per million (1,000,000 is 100%).
+`SwapFee` combines the immutable mode and its rate: `Fixed { fee_ppm }` or
+`Dynamic { current_fee_ppm }`. Creation accepts this enum, produced by
+`new_fixed_fee` or `new_dynamic_fee`; both must validate the rate limit.
+Only the dynamic variant permits a hook to update the stored rate or override
+one swap. An override leaves the stored rate unchanged, and updates cannot
+switch modes. `pool_state` projects the current rate from either variant.
 
 The intended construction returns a `PoolInitializer` with no abilities. It owns
 the unfinished pool, so trading and publication cannot receive a `Pool` yet.
@@ -26,7 +32,7 @@ for liquidity:
 
 ```move
 let mut initializer = pool::new<Asset, Quote>(
-    tick_spacing, true, fee_ppm, sqrt_price_x96, ctx,
+    tick_spacing, pool::new_dynamic_fee(fee_ppm), sqrt_price_x96, ctx,
 );
 let liquidity_flags = liquidity::hook_flags!();
 example::register_hooks(

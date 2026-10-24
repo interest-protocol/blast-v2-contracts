@@ -18,8 +18,14 @@ public struct Pool<phantom Asset, phantom Quote> has key {
     permissions: Permissions,
     hooks: vector<HookBinding>,
     nonce: u64,
-    dynamic_fee: bool,
-    lp_fee_ppm: u32,
+    swap_fee: SwapFee,
+}
+
+/// LP swap fee in ppm (1,000,000 = 100%). The mode is fixed at construction;
+/// only Dynamic permits authorized current-rate updates or per-swap overrides.
+public enum SwapFee has copy, drop, store {
+    Fixed { fee_ppm: u32 },
+    Dynamic { current_fee_ppm: u32 },
 }
 
 /// No abilities. Owns the unfinished pool; only this type exposes hook registration.
@@ -225,11 +231,24 @@ macro public fun all_hook_flags(): u16 { 0x3fff }
 /// Intended construction of a no-ability initializer. Validate pair, fee, and range units.
 public fun new<Asset, Quote>(
     _tick_spacing: u32,
-    _dynamic_fee: bool,
-    _lp_fee_ppm: u32,
+    _swap_fee: SwapFee,
     _sqrt_price_x96: u256,
     _ctx: &mut TxContext,
 ): PoolInitializer<Asset, Quote> {
+    abort EInterfaceOnly
+}
+
+/// Intended fixed-fee constructor; validate <= 1,000,000 ppm.
+public fun new_fixed_fee(
+    _fee_ppm: u32,
+): SwapFee {
+    abort EInterfaceOnly
+}
+
+/// Intended dynamic-fee constructor; validate initial current rate <= 1,000,000 ppm.
+public fun new_dynamic_fee(
+    _current_fee_ppm: u32,
+): SwapFee {
     abort EInterfaceOnly
 }
 
@@ -390,7 +409,7 @@ public fun donation_amounts(
     abort EInterfaceOnly
 }
 
-/// Intended live price, tick, and cached LP fee, available to hook policy.
+/// Intended live price, tick, and current LP fee in ppm from either SwapFee variant.
 public fun pool_state<Asset, Quote>(
     _self: &Pool<Asset, Quote>,
 ): (u256, SignedAmount, u32) {
@@ -529,7 +548,8 @@ public fun begin_swap<Asset, Quote>(
 
 /// Intended before-swap binding and pool/nonce checks, then core execution.
 /// NoHook is disabled-only and requires zero delta/no override. A real override
-/// requires a dynamic pool; before delta cannot change exact-in/out mode.
+/// requires SwapFee::Dynamic and never changes its stored rate; before delta
+/// cannot change exact-in/out mode.
 public fun execute_swap<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
@@ -638,7 +658,8 @@ public fun finish_settlement<Asset, Quote>(
     abort EInterfaceOnly
 }
 
-/// Intended before-swap-hook-only cached fee update on dynamic pools; enforce <= 1,000,000 ppm.
+/// Intended before-swap-hook-only current-rate update; require SwapFee::Dynamic.
+/// Enforce <= 1,000,000 ppm, reject Fixed, and preserve the Dynamic variant.
 public fun update_dynamic_lp_fee<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
