@@ -95,7 +95,7 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | 4 | M-4 | Medium | A per-order cap worth less than one lot wedges every order path, shutdown included | Resolved in source (ADR 0119); ordinary-redemption recovery can require an administrator |
 | 5 | M-5 | Medium | Once margin falls below the venue's opening requirement, the emergency rebalance that should fix it is refused | Resolved in source (PR #118, ADR 0124); venue execution remains a release gate |
 | 6 | M-6 | Medium | A caller can plant a bad quote and make `rebalance` or `unwind` fill into it at the full slippage bound, paid by holders | Atomic trading sequence blocked by [ADR 0118](../decisions/0118-limit-priced-vault-orders-and-a-widening-unwind-bound.md); price calibration and live venue proof remain |
-| 7 | M-7 | Medium | Rotating or re-pointing an oracle feed freezes priced operations and the shutdown exit | Fixed (ADR 0115). Needs a regression test and a doc comment cleanup |
+| 7 | M-7 | Medium | Rotating or re-pointing an oracle feed freezes priced operations and the shutdown exit | Resolved in source (ADR 0115, PR #119); guard/routing regressions complete; controlled venue rotation remains a release gate |
 | 8 | M-8 | Medium | A cap-sized order aborts if it fills even slightly above the oracle price | Resolved in source (ADR 0119); live execution evidence remains a release gate |
 | 9 | M-9 | Medium | Sustained above-RGP traffic on the shared objects can starve `rebalance` and `unwind` | Resolved in source through accepted mitigation (ADR 0120); ordinary-rebalance congestion remains an accepted risk |
 | 10 | L-1 | Low | The live NVDA2L vault uses `min_order_lots = 1`, which makes the mint drift bound meaningless | Open (deployment parameter, plus a post-fill band check) |
@@ -162,10 +162,10 @@ house", ADR 0115) changed three things the audit relies on:
 - The lot size is still compared exactly, by decision: a venue-side lot change
   is still reported as drift.
 
-Two leftovers from that change belong in tickets 1 and 7: the doc comment on
-`Binding` ([venue_account.move:13](../../sui/boosts/aftermath_adapter/sources/venue_account.move#L13))
-still says the two feed ids are bound, and there is no regression test for a
-feed re-point surviving the shutdown exit.
+The `Binding` comment and local guard/routing regression gaps are addressed in
+[Ticket 7](#ticket-7--m-7--oracle-feed-rotation-freezes-priced-operations-and-the-shutdown-exit)
+and the [M-7 review](boosts-m7-oracle-2026-10-24.md). Controlled execution of
+mint and shutdown after feed rotation remains a release gate.
 
 ## Medium findings
 
@@ -542,8 +542,12 @@ order stops at the cap; unwind under a widening bound.
 
 ### Ticket 7 · M-7 · Oracle feed rotation freezes priced operations and the shutdown exit
 
-**Status:** fixed on `main` by ADR 0115. Remaining work is a regression test
-and a comment cleanup.
+**Status:** resolved in source through ADR 0115 and
+[PR #119](https://github.com/interest-protocol/blast-v2-contracts/pull/119).
+Local guard/routing regressions, the comment correction and the completed Opus
+5.5 review are recorded in the [M-7 review](boosts-m7-oracle-2026-10-24.md).
+Controlled execution after venue rotation remains a release gate; this does
+not claim original-auditor acceptance or a repair of historical deployed vaults.
 
 **The problem as reported.** At the audited commit every capture required the
 origin objects of the market's price feeds to equal ids stored in the vault's
@@ -557,23 +561,30 @@ until an adapter upgrade.
 **What changed.** The `Binding` now holds only the account, registry and
 clearing house ids. Each capture checks the storages it is handed against the
 clearing house's current storage ids
-([venue_account::assert_market_oracles](../../sui/boosts/aftermath_adapter/sources/venue_account.move#L70))
+([venue_account::assert_market_oracles](../../sui/boosts/aftermath_adapter/sources/venue_account.move))
 and reads the feed at the market's current source id
-([snapshot::capture](../../sui/boosts/aftermath_adapter/sources/snapshot.move#L77)).
+([snapshot::capture](../../sui/boosts/aftermath_adapter/sources/snapshot.move)).
 The terminal path
-([snapshot::capture_checkpoint](../../sui/boosts/aftermath_adapter/sources/snapshot.move#L45))
+([snapshot::capture_checkpoint](../../sui/boosts/aftermath_adapter/sources/snapshot.move))
 reads no feed at all. A removed feed still aborts the live-price `capture`,
 which is fail-closed and intended.
 
-**The fix.** Close the ticket with evidence:
+**Regression evidence.** Move tests exercise the production storage guards for
+both legs, obsolete inputs, current funding inputs and exact failure order. Structural
+tests pin current storage/source selection, absence of saved feed origins, mint
+capture routing and price-independent terminal checkpoints. Mutating those
+routes makes the gate fail. The `Binding` comment now describes the actual ids.
 
-- Add a regression test: re-point the market's base oracle source (new
-  storage, new source id), then `mint`, `unwind_settlement` and
-  `finalize_shutdown` succeed.
-- Correct the stale doc comment on `Binding`
-  ([venue_account.move:13](../../sui/boosts/aftermath_adapter/sources/venue_account.move#L13)),
-  which still says the two feed ids are bound.
-- Tell the auditors the finding is resolved by `ecc7c2f`.
+**Remaining release evidence.** In a controlled venue, replace each leg's
+storage, change its source id, and recreate a feed under a new origin; prove
+`mint`, settlement unwind and finalization work with the new settings and reject
+obsolete storage inputs. With live feeds removed, fixed-price settlement should
+pay collateral into the account and allow finalization without deallocation.
+Live-market finalization with collateral still allocated is instead expected to
+abort: the venue's deallocation reads both prices. These are distinct cases in
+the [bytecode evidence](../research/aftermath-venue-bytecode-2026-09-20.md#session-path-deallocation-and-account-calls-re-read-2026-09-21).
+Local ABI stubs cannot execute them. Checkpoint capture reads no price but still
+requires the current storage objects. No original-auditor acceptance is claimed.
 
 ### Ticket 8 · M-8 · Cap-sized orders abort on any fill above the oracle price
 
