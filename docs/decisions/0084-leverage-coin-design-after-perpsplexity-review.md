@@ -113,6 +113,9 @@ source-boundary gate pins the order.
 
 ### D6. Position IMR floor
 
+The inverse-hard-cap choice below is superseded for the current source by the
+conditional headroom budget in [ADR 0124](0124-margin-recovery-and-initial-headroom.md).
+
 Premise P18 gains live evidence: Perpsplexity's 3x pool allocates exactly to
 its configured per-position ratio through Aftermath's session
 auto-allocation, so the ratio is settable and honored at open. Persistence

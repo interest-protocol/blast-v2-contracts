@@ -72,7 +72,7 @@ const EInvalidInitializationOrderSize: u64 = 14;
 const EInitializationFillMismatch: u64 = 15;
 
 #[test_only]
-/// The selected IMR is negative or the final position IMR differs from it.
+/// The selected IMR is outside (0, 1], below the live market floor, or differs after seeding.
 const EInitializationImrMismatch: u64 = 16;
 
 #[test_only]
@@ -124,7 +124,7 @@ const EActiveCheckpointMismatch: u64 = 27;
 const ERedemptionShareMismatch: u64 = 28;
 
 #[test_only]
-/// The market's taker fee exceeds a representable rate.
+/// The nonnegative venue fee (including a priority surcharge when budgeted) exceeds one.
 const EVenueFeeUnusable: u64 = 29;
 
 #[test_only]

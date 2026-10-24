@@ -24,8 +24,8 @@ public struct PriceObservation has drop {
 /// The external facts one operation prices against: the venue position and
 /// the oracle pair, as the adapter authenticated them.
 ///
-/// The adapter has already refused a venue that is paused, under margin or
-/// carrying orders; the core values what it is given.
+/// The adapter authenticates venue state and applies opening-margin admission
+/// only where the operation requires it; the core values what it is given.
 public struct PositionObservation has drop {
     venue_equity: u64,
     /// Unsigned position size in base-asset atoms; direction is `observed_side`.

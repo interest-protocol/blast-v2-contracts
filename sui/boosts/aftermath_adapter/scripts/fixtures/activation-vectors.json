@@ -60,7 +60,13 @@
       "iconUrl": "https://blast.fun/sui2x.png"
     },
     "seedReserve": "10000000",
-    "positionImr": "100000000000000000"
+    "positionImr": "100000000000000000",
+    "venueMargin": {
+      "marketImr": "50000000000000000",
+      "collateralHaircut": "0",
+      "takerFee": "1000000000000000",
+      "priorityTakerFee": null
+    }
   },
   "expectedPlan": {
     "commands": [

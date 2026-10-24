@@ -334,3 +334,11 @@ Bootstrap precedes the shared PackageVersion. Its separate provenance module
 `blast_presale_package` avoids policy/economics module cycles. SDK callers pass
 the same read-only version to each public mutation; upgrade commit advances it
 atomically and makes prior-generation bytecode unusable.
+
+Boosts margin recovery separates the ability to open risk from the ability to
+reduce it ([ADR 0124](decisions/0124-margin-recovery-and-initial-headroom.md)).
+The adapter authenticates venue facts; core seals the rebalance direction and
+owns policy admission. Only increasing plans require opening margin, both
+before execution and after fills. Donations become allocated position cash.
+Initial-margin settings must satisfy the live venue floor and core's conditional
+conservative cushion; later recovery is never gated by that issuance budget.

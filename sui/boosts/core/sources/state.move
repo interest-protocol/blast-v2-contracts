@@ -163,6 +163,17 @@ public fun issue<Product>(
     }
 }
 
+/// Checks live venue rates against this issuance's immutable execution and
+/// leverage policy. The adapter rounds each nonnegative rate upward to bps.
+public fun assert_initial_margin_headroom<Product>(
+    self: &Issuance<Product>,
+    initial_margin_bps: u64,
+    collateral_haircut_bps: u64,
+    venue_fee_bps: u64,
+) {
+    self.vault_policy.assert_initial_margin_headroom(initial_margin_bps, collateral_haircut_bps, venue_fee_bps);
+}
+
 /// Sizes the opening position from a flat seed observation: the whole-lot
 /// target base, the whole-lot base one order may carry, and the priced flat
 /// seed whose pair and lot the orders are placed under.
@@ -483,15 +494,23 @@ public fun complete_redemption<Product>(
 
 // --- Rebalance ---
 
-/// Whether a rebalance would be admitted against this observation: the position,
-/// priced against the admitted reserve, sits outside the band. A keeper's dry
-/// run; `prepare_rebalance` asks the same question and aborts on `false`.
-public fun needs_rebalance<Product>(self: &State<Product>, observation: PositionObservation, now_at_ms: u64): bool {
+/// Whether the position needs a reduction, or an increase the adapter permits.
+/// `increases_allowed` only filters this read-only keeper hint; real execution
+/// still prepares a linear plan and rechecks the venue's opening admission.
+public fun needs_rebalance<Product>(
+    self: &State<Product>,
+    observation: PositionObservation,
+    increases_allowed: bool,
+    now_at_ms: u64,
+): bool {
     self.lifecycle.assert_active();
 
     let position = self.validated_active_position(observation, now_at_ms);
+    let nav = accounting_math::shareholder_nav(position.equity, self.admitted_reserve(&position));
+    let rebalance = self.vault_policy.rebalance_policy();
 
-    !self.is_within_band(&position, self.admitted_reserve(&position))
+    !rebalance.is_leverage_within_band(position.notional, nav)
+        && (increases_allowed || !rebalance.is_leverage_below_band(position.notional, nav))
 }
 
 /// Derives public maintenance intent from exact outside-band ratios, never caller orders.

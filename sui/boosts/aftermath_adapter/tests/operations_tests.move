@@ -1865,11 +1865,50 @@ fun completed_mint_returns_native_shares_and_updates_the_same_treasury_supply() 
 }
 
 #[test]
-fun connected_donation_accepts_only_the_exact_free_collateral_deposit() {
+fun donation_can_partly_repair_margin_without_restoring_the_opening_requirement() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
+    let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED + 10 * ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
+    let (observation, checkpoint) = snapshot::captured_position_for_testing(
+        after, SEED_EQUITY + 10, ABSOLUTE_BASE, policy::long(), false, true,
+    ).into_recovery_observation();
+    vault.complete_donation_for_testing(observation, checkpoint, 10, REFERENCE_AT_MS);
+    assert_eq!(vault.state().maintenance_reserve(), 110);
+    assert_eq!(vault.total_share_supply(), 900_000);
+    assert_eq!(vault.admin_cash_balance<_, Collateral>(), 0);
+    assert_eq!(*vault.venue().checkpoint(), after);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
+fun donation_rejects_cash_left_in_the_free_account() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
+    let after = checkpoint_with_market_imr(50, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
+    vault.complete_donation_for_testing(position_observation(SEED_EQUITY + 50), after, 50, REFERENCE_AT_MS);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
+fun donation_rejects_allocating_less_than_the_donated_amount() {
+    let mut fixture = start();
+    let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
+    let after = checkpoint_with_market_imr(1, ALLOCATED_FIXED + 49 * ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
+    vault.complete_donation_for_testing(position_observation(SEED_EQUITY + 50), after, 50, REFERENCE_AT_MS);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+fun connected_donation_accepts_only_the_exact_allocated_collateral_deposit() {
     let mut fixture = start();
     let initial = initial_checkpoint();
     let mut vault = issue_and_activate(&mut fixture, initial);
-    let after = checkpoint_with_market_imr(50, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
+    let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED + 50 * ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
     vault.complete_donation_for_testing(position_observation(SEED_EQUITY + 50), after, 50, REFERENCE_AT_MS);
     assert_eq!(vault.state().maintenance_reserve(), 150);
     assert_eq!(vault.total_share_supply(), 900_000);
@@ -1889,7 +1928,7 @@ fun connected_donation_accepts_only_the_exact_free_collateral_deposit() {
 fun donation_cannot_accept_an_unrelated_position_margin_change() {
     let mut fixture = start();
     let mut vault = issue_and_activate(&mut fixture, initial_checkpoint());
-    let after = checkpoint_with_market_imr(50, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 2);
+    let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED + 50 * ATOM_FIXED, RATE, RATE, RATE, RATE, 2);
     vault.complete_donation_for_testing(position_observation(SEED_EQUITY + 50), after, 50, REFERENCE_AT_MS);
     destroy(vault);
     fixture.end();
@@ -2225,17 +2264,6 @@ fun execution_price_does_not_round_up_an_exact_price() {
 #[expected_failure(abort_code = errors::ENormalizationOverflow, location = blast_boosts_aftermath::orders)]
 fun execution_price_rejects_a_round_up_past_the_largest_representable() {
     orders::execution_price_for_testing((std::u64::max_value!() as u256) * 1_000_000_000 + 1, true, false);
-}
-
-#[test]
-fun nonnegative_position_imr_is_accepted() {
-    operations::assert_position_imr_for_testing(false);
-}
-
-#[test]
-#[expected_failure(abort_code = errors::EInitializationImrMismatch, location = blast_boosts_aftermath::operations)]
-fun negative_position_imr_is_rejected() {
-    operations::assert_position_imr_for_testing(true);
 }
 
 #[test]
@@ -3158,23 +3186,16 @@ fun zero_donation_is_rejected_by_the_core_after_a_trivially_exact_checkpoint() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
-fun deposit_checkpoint_refuses_a_free_collateral_sum_that_overflows() {
-    let before = checkpoint_with_market_imr(std::u64::max_value!(), ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
-    before.assert_deposit_checkpoint(&before, 1);
-}
-
-#[test]
-fun zero_deposit_checkpoint_accepts_only_an_identical_venue() {
+fun zero_allocated_deposit_checkpoint_accepts_only_an_identical_venue() {
     let initial = initial_checkpoint();
-    initial.assert_deposit_checkpoint(&initial, 0);
+    initial.assert_allocated_deposit_checkpoint(&initial, 0);
 }
 
 #[test]
 #[expected_failure(abort_code = errors::ECashCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
-fun zero_deposit_checkpoint_rejects_free_collateral_that_moved() {
+fun zero_allocated_deposit_checkpoint_rejects_free_collateral_that_moved() {
     let after = checkpoint_with_market_imr(1, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
-    initial_checkpoint().assert_deposit_checkpoint(&after, 0);
+    initial_checkpoint().assert_allocated_deposit_checkpoint(&after, 0);
 }
 
 #[test]
@@ -4090,7 +4111,7 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, C
     replay.assert_replay(vault);
     sui::transfer::public_transfer(cash, ADMIN);
 
-    let donated_checkpoint = checkpoint_with_market_imr(10, ALLOCATED_FIXED, RATE, RATE, RATE, RATE, 1);
+    let donated_checkpoint = checkpoint_with_market_imr(0, ALLOCATED_FIXED + 10 * ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
     vault.complete_donation_for_testing(active_position(1_026, 1_800), donated_checkpoint, 10, REFERENCE_AT_MS);
     let (id, amount, reserve, checkpoint) = events::collect_one<events::Donated<Tag>>(0).donated_fields();
     assert_eq!(id, replay.vault_id);
@@ -4105,7 +4126,7 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, C
     let after_base = 3_000_000 - order.order_base();
     let filled = order.order_base();
     vault.state().accept_rebalance_fill(&mut plan, order, rebalance_position(1_025, after_base), filled, REFERENCE_AT_MS);
-    let checkpoint = checkpoint_with_market_imr(10, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
+    let checkpoint = checkpoint_with_market_imr(0, ALLOCATED_FIXED + 9 * ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
     vault.complete_rebalance_for_testing<Tag, Collateral>(plan, checkpoint);
     let event = events::collect_one<events::Rebalanced<Tag>>(0);
     let (before_equity, after_equity, before_base, event_after_base, event_increase) = event.rebalanced_amounts();
@@ -4117,7 +4138,7 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, C
     replay.checkpoint = option::some(checkpoint);
     replay.assert_replay(vault);
 
-    let dirty = checkpoint_with_market_imr(10, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 2);
+    let dirty = checkpoint_with_market_imr(0, ALLOCATED_FIXED + 9 * ATOM_FIXED, RATE, RATE, RATE, RATE, 2);
     vault.apply_connected_change(dirty, checkpoint::unexpected_change());
     replay.replay_drift(events::collect<events::CheckpointDrifted<Tag>>()[0]);
     replay.assert_replay(vault);
@@ -4130,8 +4151,8 @@ fun replay_active_economics<Tag>(fixture: &mut Fixture, vault: &mut Vault<Tag, C
     replay.assert_replay(vault);
 
     let credited_rate = RATE - ATOM_FIXED;
-    let before = checkpoint_with_market_imr(10, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, credited_rate, credited_rate, 1);
-    let after = checkpoint_with_market_imr(10, ALLOCATED_FIXED, credited_rate, credited_rate, credited_rate, credited_rate, 1);
+    let before = checkpoint_with_market_imr(0, ALLOCATED_FIXED + 9 * ATOM_FIXED, RATE, RATE, credited_rate, credited_rate, 1);
+    let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED + 10 * ATOM_FIXED, credited_rate, credited_rate, credited_rate, credited_rate, 1);
     let change = checkpoint.sync_change(&before, &after, ONE_FIXED);
     vault.apply_connected_change(after, change);
     replay.replay_funding(events::collect_one<events::FundingSettled<Tag>>(0));

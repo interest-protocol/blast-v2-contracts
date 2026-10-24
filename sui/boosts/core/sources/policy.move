@@ -315,6 +315,36 @@ public fun assert_execution(self: &ExecutionBound, reference_price: u64, execute
 
 // === Package Functions ===
 
+/// Configuration budget at the hard cap, assuming fully realized and allocated
+/// equity and no reserve credit. Charge full-notional emergency execution costs,
+/// discount the remaining cash by the live haircut, and allow adverse mark PnL
+/// and the highest admitted mark requirement simultaneously. This conditional
+/// opening cushion does not gate later recovery or guarantee future margin.
+public(package) fun assert_initial_margin_headroom(
+    self: &VaultPolicy,
+    initial_margin_bps: u64,
+    collateral_haircut_bps: u64,
+    venue_fee_bps: u64,
+) {
+    let b = constants::basis_points_denominator!() as u128;
+    assert!(
+        initial_margin_bps > 0 && initial_margin_bps <= b as u64
+            && collateral_haircut_bps < b as u64 && venue_fee_bps <= b as u64,
+        blast_boosts_core::errors::initial_margin_headroom!(),
+    );
+    let leverage = self.rebalance_policy.max_leverage_bps as u128;
+    let slippage = self.rebalance_policy.emergency_max_slippage_bps as u128;
+    let divergence = self.price_policy.max_mark_divergence_bps as u128;
+    let cost_bps = slippage + ((b + slippage) * (venue_fee_bps as u128)).div_ceil(b);
+    let cost_at_cap = leverage * cost_bps;
+    assert!(cost_at_cap < b * b, blast_boosts_core::errors::initial_margin_headroom!());
+
+    let cash_margin = (b * b - cost_at_cap) * (b - (collateral_haircut_bps as u128));
+    let mark_loss = leverage * divergence * b;
+    let requirement = leverage * (b + divergence) * (initial_margin_bps as u128);
+    assert!(cash_margin > mark_loss + requirement, blast_boosts_core::errors::initial_margin_headroom!());
+}
+
 // --- Rebalance Policy ---
 
 public(package) fun target_leverage_bps(self: &RebalancePolicy): u64 {

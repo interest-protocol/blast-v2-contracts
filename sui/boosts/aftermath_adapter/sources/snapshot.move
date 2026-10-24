@@ -215,10 +215,50 @@ public(package) fun into_observation(self: CapturedSnapshot): (PositionObservati
     self.into_validated_observation(true)
 }
 
-/// Recovery records an existing reduction without opening risk. It retains all
-/// pricing and operational checks but needs no opening-margin headroom.
+/// Recovery admits observations without opening-margin headroom. Callers must
+/// restrict their use to recovery or prove the planned trade is reducing.
+/// Pricing and operational checks remain unchanged.
 public(package) fun into_recovery_observation(self: CapturedSnapshot): (PositionObservation, Checkpoint) {
     self.into_validated_observation(false)
+}
+
+/// A keeper hint with the same margin distinction as execution. It creates no
+/// linear plan: the core only filters increases when opening margin is absent.
+/// Returns the captured checkpoint so callers can reject unexplained drift.
+public(package) fun into_rebalance_readiness<Product>(
+    self: CapturedSnapshot,
+    state: &State<Product>,
+    now_at_ms: u64,
+): (bool, Checkpoint) {
+    let margin_safe = self.margin_safe;
+    let (observation, checkpoint) = self.into_recovery_observation();
+
+    (state.needs_rebalance(observation, margin_safe, now_at_ms), checkpoint)
+}
+
+/// Only the core's authenticated direction can exempt a rebalance from the
+/// opening-margin requirement. All other active-operation checks still run.
+public(package) fun into_rebalance_plan<Product>(
+    self: CapturedSnapshot,
+    state: &State<Product>,
+    venue_fee_bps: u64,
+    now_at_ms: u64,
+): (RebalancePlan<Product>, Checkpoint) {
+    let margin_safe = self.margin_safe;
+    let (observation, checkpoint) = self.into_recovery_observation();
+    let plan = state.prepare_rebalance(observation, venue_fee_bps, now_at_ms);
+    assert!(!plan.is_increasing() || margin_safe, blast_boosts_aftermath::errors::venue_not_ready!());
+
+    (plan, checkpoint)
+}
+
+/// A reducing fill need not restore opening margin in one step. Increasing
+/// fills remain strict, using the direction sealed in the original plan.
+public(package) fun into_rebalance_observation<Product>(
+    self: CapturedSnapshot,
+    plan: &RebalancePlan<Product>,
+): (PositionObservation, Checkpoint) {
+    self.into_validated_observation(plan.is_increasing())
 }
 
 /// The authenticated raw checkpoint the capture was read with.
@@ -559,6 +599,7 @@ use blast_boosts_aftermath::{checkpoint::{Self, Checkpoint}, constants, ifixed_m
 use blast_boosts_core::{
     observation::{Self, PositionObservation, PriceObservation},
     policy::{Self, PositionSide},
+    state::{State, RebalancePlan},
 };
 
 use ifixed::ifixed;
