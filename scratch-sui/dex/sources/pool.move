@@ -1,4 +1,4 @@
-/// Interface sketch only. Operational bodies abort; flag macros are constants.
+/// Interface sketch only. All function bodies abort.
 /// This package must not be published.
 /// Core owns operation phases and settlement; it imports no hook package.
 module blast_fun_dex::pool;
@@ -19,13 +19,6 @@ public struct Pool<phantom Asset, phantom Quote> has key {
     hooks: vector<HookBinding>,
     nonce: u64,
     swap_fee: SwapFee,
-}
-
-/// LP swap fee in ppm (1,000,000 = 100%). The mode is fixed at construction;
-/// only Dynamic permits authorized current-rate updates or per-swap overrides.
-public enum SwapFee has copy, drop, store {
-    Fixed { fee_ppm: u32 },
-    Dynamic { current_fee_ppm: u32 },
 }
 
 /// No abilities. Owns the unfinished pool; only this type exposes hook registration.
@@ -52,7 +45,7 @@ public struct InitializeCompletion<phantom Asset, phantom Quote> {
     pool: Pool<Asset, Quote>,
     sender: address,
     params: InitializeParams,
-    tick: SignedAmount,
+    tick: I32,
 }
 
 /// A public skip witness, accepted only when the specific callback is disabled.
@@ -65,72 +58,10 @@ public struct NoHook() has drop;
 public struct Position<phantom Asset, phantom Quote> has key, store {
     id: UID,
     pool_id: ID,
-    tick_lower: SignedAmount,
-    tick_upper: SignedAmount,
+    tick_lower: I32,
+    tick_upper: I32,
     liquidity: u128,
 }
-
-// Fields are intentionally unread while all interface bodies abort.
-/// A u16 bitmap: ten lifecycle bits and four delta bits, following v4 Hooks.sol.
-/// Only the low 14 bits are valid. Construction must validate callback dependencies.
-#[allow(unused_field)]
-public struct Permissions(u16) has copy, drop, store;
-
-// Fields are intentionally unread while all interface bodies abort.
-/// Sign/magnitude interface representation; implementation must canonicalize zero
-/// and check the destination width (ticks int24, accounting deltas int128).
-#[allow(unused_field)]
-public struct SignedAmount has copy, drop, store { negative: bool, magnitude: u128 }
-
-// Fields are intentionally unread while all interface bodies abort.
-/// Token-order deltas. Positive: recipient is owed; negative: recipient pays.
-/// Caller and hook deltas have separate ledgers with this same sign convention.
-#[allow(unused_field)]
-public struct BalanceDelta has copy, drop, store { asset: SignedAmount, quote: SignedAmount }
-
-// Fields are intentionally unread while all interface bodies abort.
-/// Before-swap hook delta, in specified/unspecified currency order.
-#[allow(unused_field)]
-public struct BeforeSwapDelta has copy, drop, store {
-    specified: SignedAmount,
-    unspecified: SignedAmount,
-}
-
-// Fields are intentionally unread while all interface bodies abort.
-/// Initialization price uses Q64.96; implementation must enforce uint160 bounds.
-#[allow(unused_field)]
-public struct InitializeParams has copy, drop, store { sqrt_price_x96: u256 }
-
-// Fields are intentionally unread while all interface bodies abort.
-/// A range update. Zero liquidity on the remove path collects accrued fees.
-/// Bounds are maximum payments when adding, minimum receipts when removing.
-#[allow(unused_field)]
-public struct LiquidityParams has copy, drop, store {
-    position_id: ID,
-    tick_lower: SignedAmount,
-    tick_upper: SignedAmount,
-    liquidity: u128,
-    asset_bound: u64,
-    quote_bound: u64,
-}
-
-// Fields are intentionally unread while all interface bodies abort.
-/// Both directions and exact-input/output swaps. Amounts use atomic coin units.
-/// Final bounds apply after all hook deltas and fees, including partial fills.
-#[allow(unused_field)]
-public struct SwapParams has copy, drop, store {
-    asset_to_quote: bool,
-    exact_input: bool,
-    amount: u64,
-    sqrt_price_limit_x96: u256,
-    minimum_output: u64,
-    maximum_input: u64,
-}
-
-// Fields are intentionally unread while all interface bodies abort.
-/// Donation is credited to eligible LP fee growth, without minting liquidity.
-#[allow(unused_field)]
-public struct DonateParams has copy, drop, store { asset: u64, quote: u64 }
 
 /// Phantom operation tags prevent cross-operation request/completion substitution.
 public struct AddLiquidity()
@@ -167,7 +98,7 @@ public struct Completion<phantom Asset, phantom Quote, phantom Operation, Params
     fees_accrued: BalanceDelta,
     before_swap_delta: BeforeSwapDelta,
     hook_balances: vector<HookBalance>,
-    tick: SignedAmount,
+    tick: I32,
 }
 
 // Fields are intentionally unread while all interface bodies abort.
@@ -193,40 +124,7 @@ public struct HookBalance {
 
 // === Public Functions ===
 
-// Permission flags. Public macros expose named constants across package boundaries.
-
-/// Enables the before-initialize callback.
-macro public fun before_initialize_flag(): u16 { 0x2000 }
-/// Enables the after-initialize callback.
-macro public fun after_initialize_flag(): u16 { 0x1000 }
-/// Enables the before-add-liquidity callback.
-macro public fun before_add_liquidity_flag(): u16 { 0x0800 }
-/// Enables the after-add-liquidity callback.
-macro public fun after_add_liquidity_flag(): u16 { 0x0400 }
-/// Enables the before-remove-liquidity callback.
-macro public fun before_remove_liquidity_flag(): u16 { 0x0200 }
-/// Enables the after-remove-liquidity callback.
-macro public fun after_remove_liquidity_flag(): u16 { 0x0100 }
-/// Enables the before-swap callback.
-macro public fun before_swap_flag(): u16 { 0x0080 }
-/// Enables the after-swap callback.
-macro public fun after_swap_flag(): u16 { 0x0040 }
-/// Enables the before-donate callback.
-macro public fun before_donate_flag(): u16 { 0x0020 }
-/// Enables the after-donate callback.
-macro public fun after_donate_flag(): u16 { 0x0010 }
-/// Allows a specified/unspecified delta from the before-swap callback.
-macro public fun before_swap_returns_delta_flag(): u16 { 0x0008 }
-/// Allows an unspecified delta from the after-swap callback.
-macro public fun after_swap_returns_delta_flag(): u16 { 0x0004 }
-/// Allows a token-pair delta from the after-add-liquidity callback.
-macro public fun after_add_liquidity_returns_delta_flag(): u16 { 0x0002 }
-/// Allows a token-pair delta from the after-remove-liquidity callback.
-macro public fun after_remove_liquidity_returns_delta_flag(): u16 { 0x0001 }
-/// All ten callbacks and four delta permissions, with both reserved bits clear.
-macro public fun all_hook_flags(): u16 { 0x3fff }
-
-// Construction and callback context.
+// Construction and pool state.
 
 /// Intended construction of a no-ability initializer. Validate pair, fee, and range units.
 public fun new<Asset, Quote>(
@@ -235,20 +133,6 @@ public fun new<Asset, Quote>(
     _sqrt_price_x96: u256,
     _ctx: &mut TxContext,
 ): PoolInitializer<Asset, Quote> {
-    abort EInterfaceOnly
-}
-
-/// Intended fixed-fee constructor; validate <= 1,000,000 ppm.
-public fun new_fixed_fee(
-    _fee_ppm: u32,
-): SwapFee {
-    abort EInterfaceOnly
-}
-
-/// Intended dynamic-fee constructor; validate initial current rate <= 1,000,000 ppm.
-public fun new_dynamic_fee(
-    _current_fee_ppm: u32,
-): SwapFee {
     abort EInterfaceOnly
 }
 
@@ -277,11 +161,11 @@ public fun no_hook(): NoHook {
     abort EInterfaceOnly
 }
 
-/// Intended position constructor, validating initialized pool, range, and tick spacing.
+/// Intended position constructor; validate int24 ticks, supported pool range, and spacing.
 public fun new_position<Asset, Quote>(
     _self: &Pool<Asset, Quote>,
-    _tick_lower: SignedAmount,
-    _tick_upper: SignedAmount,
+    _tick_lower: I32,
+    _tick_upper: I32,
     _ctx: &mut TxContext,
 ): Position<Asset, Quote> {
     abort EInterfaceOnly
@@ -295,78 +179,6 @@ public fun destroy_position<Asset, Quote>(
     abort EInterfaceOnly
 }
 
-/// Intended bitmap validation: reject unknown bits and delta bits without callbacks.
-public fun new_permissions(
-    _bitmap: u16,
-): Permissions {
-    abort EInterfaceOnly
-}
-
-/// Intended bitmap projection for hook policy and transaction composition.
-public fun permission_bits(
-    _self: &Permissions,
-): u16 {
-    abort EInterfaceOnly
-}
-
-/// Intended all-bits check: (stored bitmap & mask) == mask.
-public fun has_permissions(
-    _self: &Permissions,
-    _mask: u16,
-): bool {
-    abort EInterfaceOnly
-}
-
-/// Intended canonical signed-value constructor; sign is false for zero.
-public fun new_signed_amount(
-    _negative: bool,
-    _magnitude: u128,
-): SignedAmount {
-    abort EInterfaceOnly
-}
-
-/// Intended signed-value projection for hook policy.
-public fun signed_amount(
-    _self: &SignedAmount,
-): (bool, u128) {
-    abort EInterfaceOnly
-}
-
-/// Intended token-order delta constructor; values must fit int128.
-public fun new_balance_delta(
-    _asset: SignedAmount,
-    _quote: SignedAmount,
-): BalanceDelta {
-    abort EInterfaceOnly
-}
-
-/// Intended delta projection for hook policy.
-public fun balance_delta(
-    _self: &BalanceDelta,
-): (SignedAmount, SignedAmount) {
-    abort EInterfaceOnly
-}
-
-/// Intended before-swap delta constructor, with both values bounded to int128.
-public fun new_before_swap_delta(
-    _specified: SignedAmount,
-    _unspecified: SignedAmount,
-): BeforeSwapDelta {
-    abort EInterfaceOnly
-}
-
-/// Intended swap constructor; core must independently recheck bounds at execution.
-public fun new_swap_params(
-    _asset_to_quote: bool,
-    _exact_input: bool,
-    _amount: u64,
-    _sqrt_price_limit_x96: u256,
-    _minimum_output: u64,
-    _maximum_input: u64,
-): SwapParams {
-    abort EInterfaceOnly
-}
-
 /// Intended copy of authenticated sender, parameters, and opaque hook data.
 public fun request_context<Asset, Quote, Operation, Params: copy + drop + store>(
     _self: &Request<Asset, Quote, Operation, Params>,
@@ -377,42 +189,14 @@ public fun request_context<Asset, Quote, Operation, Params: copy + drop + store>
 /// Intended original context, caller delta, fees accrued, and resulting tick.
 public fun completion_context<Asset, Quote, Operation, Params: copy + drop + store>(
     _self: &Completion<Asset, Quote, Operation, Params>,
-): (address, Params, vector<u8>, BalanceDelta, BalanceDelta, SignedAmount) {
-    abort EInterfaceOnly
-}
-
-/// Intended initial-price projection for hook policy.
-public fun initialize_price_x96(
-    _self: &InitializeParams,
-): u256 {
-    abort EInterfaceOnly
-}
-
-/// Intended position ID, range, liquidity, and payment/receipt bounds.
-public fun liquidity_params(
-    _self: &LiquidityParams,
-): (ID, SignedAmount, SignedAmount, u128, u64, u64) {
-    abort EInterfaceOnly
-}
-
-/// Intended direction, exact-input flag, amount, price limit, and final bounds.
-public fun swap_params(
-    _self: &SwapParams,
-): (bool, bool, u64, u256, u64, u64) {
-    abort EInterfaceOnly
-}
-
-/// Intended donated atomic amounts, in token order.
-public fun donation_amounts(
-    _self: &DonateParams,
-): (u64, u64) {
+): (address, Params, vector<u8>, BalanceDelta, BalanceDelta, I32) {
     abort EInterfaceOnly
 }
 
 /// Intended live price, tick, and current LP fee in ppm from either SwapFee variant.
 public fun pool_state<Asset, Quote>(
     _self: &Pool<Asset, Quote>,
-): (u256, SignedAmount, u32) {
+): (u256, I32, u32) {
     abort EInterfaceOnly
 }
 
@@ -454,7 +238,7 @@ public fun initialize_request_context<Asset, Quote>(
 /// Intended pending pool ID, original caller, initial parameters, and resulting tick.
 public fun initialize_completion_context<Asset, Quote>(
     _self: &InitializeCompletion<Asset, Quote>,
-): (ID, address, InitializeParams, SignedAmount) {
+): (ID, address, InitializeParams, I32) {
     abort EInterfaceOnly
 }
 
@@ -567,7 +351,7 @@ public fun finish_swap<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
     _completion: Completion<Asset, Quote, Swap, SwapParams>,
-    _unspecified_hook_delta: SignedAmount,
+    _unspecified_hook_delta: I128,
 ): Settlement<Asset, Quote> {
     abort EInterfaceOnly
 }
@@ -669,6 +453,15 @@ public fun update_dynamic_lp_fee<Asset, Quote, Hook: drop>(
 }
 
 // === Imports ===
+
+use blast_fun_dex::{
+    delta::{BalanceDelta, BeforeSwapDelta},
+    i32::I32,
+    i128::I128,
+    params::{InitializeParams, LiquidityParams, SwapParams, DonateParams},
+    permissions::Permissions,
+    swap_fee::SwapFee,
+};
 
 use std::type_name::TypeName;
 use sui::coin::Coin;

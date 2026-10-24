@@ -20,7 +20,7 @@ public fun register_hooks<Asset, Quote>(
     initializer: &mut PoolInitializer<Asset, Quote>,
     bitmap: u16,
 ) {
-    let permissions = pool::new_permissions(bitmap);
+    let permissions = permissions::new(bitmap);
 
     initializer.register_hook(HookWitness(), permissions)
 }
@@ -188,7 +188,7 @@ fun before_swap_policy<Asset, Quote>(
 fun after_swap_policy<Asset, Quote>(
     _pool: &Pool<Asset, Quote>,
     _completion: &Completion<Asset, Quote, Swap, SwapParams>,
-): SignedAmount {
+): I128 {
     abort EInterfaceOnly
 }
 
@@ -216,11 +216,14 @@ fun fee_update_policy<Asset, Quote>(
 
 // === Imports ===
 
-use blast_fun_dex::pool::{
-    Self, Pool, Position, SignedAmount, BalanceDelta, BeforeSwapDelta,
-    PoolInitializer, InitializeRequest, InitializeCompletion,
-    LiquidityParams, SwapParams, DonateParams,
-    AddLiquidity, RemoveLiquidity, Swap, Donate,
-    Request, Completion, Settlement,
+use blast_fun_dex::{
+    delta::{BalanceDelta, BeforeSwapDelta},
+    i128::I128,
+    params::{LiquidityParams, SwapParams, DonateParams},
+    permissions,
+    pool::{
+        Self, Pool, Position, PoolInitializer, InitializeRequest, InitializeCompletion,
+        AddLiquidity, RemoveLiquidity, Swap, Donate, Request, Completion, Settlement,
+    },
 };
 use sui::coin::Coin;

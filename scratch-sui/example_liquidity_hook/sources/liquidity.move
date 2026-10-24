@@ -16,17 +16,17 @@ public struct HookWitness() has drop;
 
 /// Four liquidity callbacks and their two after-callback delta permissions.
 macro public fun hook_flags(): u16 {
-    pool::before_add_liquidity_flag!() | pool::after_add_liquidity_flag!() |
-    pool::before_remove_liquidity_flag!() | pool::after_remove_liquidity_flag!() |
-    pool::after_add_liquidity_returns_delta_flag!() |
-    pool::after_remove_liquidity_returns_delta_flag!()
+    permissions::before_add_liquidity_flag!() | permissions::after_add_liquidity_flag!() |
+    permissions::before_remove_liquidity_flag!() | permissions::after_remove_liquidity_flag!() |
+    permissions::after_add_liquidity_returns_delta_flag!() |
+    permissions::after_remove_liquidity_returns_delta_flag!()
 }
 
 /// Configure only the liquidity slots while the unfinished pool is still owned.
 public fun register_hooks<Asset, Quote>(
     initializer: &mut PoolInitializer<Asset, Quote>,
 ) {
-    let permissions = pool::new_permissions(hook_flags!());
+    let permissions = permissions::new(hook_flags!());
 
     initializer.register_hook(HookWitness(), permissions)
 }
@@ -111,8 +111,13 @@ fun settlement_policy<Asset, Quote>(
 
 // === Imports ===
 
-use blast_fun_dex::pool::{
-    Self, Pool, PoolInitializer, Position, LiquidityParams, AddLiquidity,
-    RemoveLiquidity, Request, Completion, Settlement, BalanceDelta,
+use blast_fun_dex::{
+    delta::BalanceDelta,
+    params::LiquidityParams,
+    permissions,
+    pool::{
+        Pool, PoolInitializer, Position, AddLiquidity, RemoveLiquidity,
+        Request, Completion, Settlement,
+    },
 };
 use sui::coin::Coin;

@@ -7,6 +7,21 @@ only type linkage, not authorization, settlement, or transaction execution.
 The DEX owns the pool, positions, initializer, and linear operation obligations.
 The independent example hook packages depend inward on the DEX and privately
 construct their approval witnesses. The DEX imports neither hook package.
+Within the DEX, `pool` alone issues and consumes lifecycle and settlement
+obligations. `permissions` owns bitmap validation, `swap_fee` owns fee modes,
+`delta` owns accounting pairs, and `params` owns operation parameter validation.
+These value modules expose constructors and projections rather than access to
+the pool's private receipts.
+
+Signed deltas use `i128::I128(u128)` and ticks use `i32::I32(u32)`, both with
+two's-complement encoding and no decimal scaling. Separate types prevent
+interchanging tick and accounting units. Raw-bit constructors interpret all bits
+as signed; unsigned-value constructors must reject values beyond the positive
+signed maximum. Arithmetic must abort on signed overflow, `neg(MIN)` must abort,
+and unsigned `magnitude(MIN)` must remain representable. Pool and liquidity
+parameter validation additionally restrict ticks to int24 and the pool's
+supported range and spacing. Numeric function bodies also remain aborting
+interfaces; compilation does not verify their arithmetic.
 
 The hook surface follows Uniswap v4's
 [IHooks](https://github.com/Uniswap/v4-core/blob/bea7f6d1c11cd5dc4f0d5151ffa37a1c239feee6/src/interfaces/IHooks.sol)
@@ -19,7 +34,7 @@ must reject unknown bits and delta bits without their matching callback.
 Fees use parts per million (1,000,000 is 100%).
 `SwapFee` combines the immutable mode and its rate: `Fixed { fee_ppm }` or
 `Dynamic { current_fee_ppm }`. Creation accepts this enum, produced by
-`new_fixed_fee` or `new_dynamic_fee`; both must validate the rate limit.
+`swap_fee::new_fixed` or `swap_fee::new_dynamic`; both must validate the rate limit.
 Only the dynamic variant permits a hook to update the stored rate or override
 one swap. An override leaves the stored rate unchanged, and updates cannot
 switch modes. `pool_state` projects the current rate from either variant.
@@ -32,11 +47,11 @@ for liquidity:
 
 ```move
 let mut initializer = pool::new<Asset, Quote>(
-    tick_spacing, pool::new_dynamic_fee(fee_ppm), sqrt_price_x96, ctx,
+    tick_spacing, swap_fee::new_dynamic(fee_ppm), sqrt_price_x96, ctx,
 );
 let liquidity_flags = liquidity::hook_flags!();
 example::register_hooks(
-    &mut initializer, pool::all_hook_flags!() ^ liquidity_flags,
+    &mut initializer, permissions::all_hook_flags!() ^ liquidity_flags,
 );
 liquidity::register_hooks(&mut initializer);
 let request = pool::begin_initialize(initializer, ctx);
