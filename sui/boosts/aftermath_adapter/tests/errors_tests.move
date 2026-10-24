@@ -57,6 +57,16 @@ fun error_registry_second_half_is_sequential() {
     assert_eq!(errors::invalid_rebaseline!(), 38);
 }
 
+#[test]
+fun redemption_exceeds_releasable_code_is_pinned() {
+    assert_eq!(errors::redemption_exceeds_releasable!(), 39);
+}
+
+#[test]
+fun profit_realization_no_progress_code_is_pinned() {
+    assert_eq!(errors::profit_realization_no_progress!(), 40);
+}
+
 // === Imports ===
 
 use blast_boosts_aftermath::errors;

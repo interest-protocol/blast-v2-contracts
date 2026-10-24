@@ -90,7 +90,7 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | Ticket | ID | Severity | In one sentence | Status in current source |
 | --- | --- | --- | --- | --- |
 | 1 | M-1 | Medium | A venue event the checkpoint cannot explain blocks mint, redeem and rebalance for good | Resolved in source (ADRs 0115, 0121); RiskAdmin review and live recovery proof remain; M-5 is separate |
-| 2 | M-2 | Medium | When the position has a big unrealized profit, every redemption aborts | Open |
+| 2 | M-2 | Medium | When the position has a big unrealized profit, every redemption aborts | Resolved in source through accepted mitigation (ADR 0122); margin/configuration limits and live execution proof remain |
 | 3 | M-3 | Medium | Calling either `restrict_*` upgrade function makes the next upgrade freeze the whole adapter forever | Open. Do not call `restrict_*` until fixed |
 | 4 | M-4 | Medium | A per-order cap worth less than one lot wedges every order path, shutdown included | Resolved in source (ADR 0119); ordinary-redemption recovery can require an administrator |
 | 5 | M-5 | Medium | Once margin falls below the venue's opening requirement, the emergency rebalance that should fix it is refused | Open |
@@ -235,9 +235,25 @@ collateral or orders changed in a way the liquidation shape does not explain.
 
 ### Ticket 2 · M-2 · Big unrealized profit makes every redemption abort
 
-**Status:** open. The threshold depends on the position IMR and the venue's
-collateral haircut, which the repository does not fix. Design together with
-tickets 5 and 14.
+**Status:** resolved in source through the accepted mitigation under [ADR 0122](../decisions/0122-bounded-profit-realization-before-redemption.md) and [PR #116](https://github.com/interest-protocol/blast-v2-contracts/pull/116).
+The redemption path checks the venue's cash budget and refuses an unpaid claim
+with a named error. Separate permissionless maintenance closes and reopens a
+bounded amount to realize gains before a fresh redemption quote, preserving the
+original position and full proportional payout. Both fills must complete, stay
+within existing price/cap limits, and improve cash by more than their cost.
+Preflight rejects a cash gap that cannot fit within profit minus a full-position
+cost allowance. This adopts the auditor's cash-check and profit-realization
+options; separating maintenance from redemption is the implementation refinement.
+
+This closure records completion of the chosen source remediation, supported by
+1,125 passing Move tests, 40 tooling tests and the final independent Fable review.
+It is not universal withdrawal liveness or original-auditor sign-off. Opening
+margin and the position IMR/haircut choice (M-5 and L-5), economical two-sided
+liquidity, cap capacity and fresh prices still matter. Several capped calls may
+be needed; later calls can be refused as costs consume headroom. If the unchanged
+position cannot be supported after profit is realized, new collateral, reduced
+exposure or shutdown is needed. Controlled live execution remains a release gate.
+The historical finding and recommendations below are preserved.
 
 **The problem.** A redemption is priced on the vault's full equity, profit
 included, and paid by asking Aftermath to release collateral. Aftermath only

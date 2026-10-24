@@ -150,7 +150,7 @@ grep -q '^public struct State<phantom Product> has store {$' "$state_file" \
 if grep -qE 'UID|Bag|TypeName|TreasuryCap|MetadataCap|CoinRegistry|share_object' "$state_file"; then
   fail "Product state must not own adapter objects, witnesses, or currency caps."
 fi
-for linear in Issuance MintPlan RedemptionPlan RebalancePlan; do
+for linear in Issuance MintPlan RedemptionPlan RebalancePlan ProfitRealizationPlan; do
   grep -q "^public struct $linear<phantom Product> {$" "$state_file" \
     || fail "$linear must remain an ability-free, transaction-local carrier."
 done
@@ -246,11 +246,13 @@ expected_state_public="$(printf '%s\n' \
   base \
   base_price \
   base_to_buy \
+  base_to_realize \
   base_to_sell \
   begin_shutdown \
   bound \
   collateral_price \
   complete_mint \
+  complete_profit_realization \
   complete_rebalance \
   complete_redemption \
   donate \
@@ -271,8 +273,10 @@ expected_state_public="$(printf '%s\n' \
   notional \
   order_base \
   prepare_mint \
+  prepare_profit_realization \
   prepare_rebalance \
   prepare_redemption \
+  realization_position \
   rebalance_position \
   redemption_position \
   redemption_shares \

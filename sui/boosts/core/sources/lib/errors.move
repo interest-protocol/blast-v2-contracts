@@ -263,6 +263,14 @@ const EInvalidTickSize: u64 = 62;
 /// The live order cap cannot fund the required minimum whole-lot order.
 const EOrderCapBelowMinimum: u64 = 63;
 
+#[test_only]
+/// No positive cash shortfall and realizable profit require maintenance.
+const EProfitRealizationNotNeeded: u64 = 64;
+
+#[test_only]
+/// Profit realization cannot justify its bounded trading cost.
+const EProfitRealizationUneconomic: u64 = 65;
+
 macro public(package) fun zero_amount(): u64 { 0 }
 
 macro public(package) fun invalid_fee_bps(): u64 { 1 }
@@ -390,3 +398,7 @@ macro public(package) fun invariant_violated(): u64 { 61 }
 macro public(package) fun invalid_tick_size(): u64 { 62 }
 
 macro public(package) fun order_cap_below_minimum(): u64 { 63 }
+
+macro public(package) fun profit_realization_not_needed(): u64 { 64 }
+
+macro public(package) fun profit_realization_uneconomic(): u64 { 65 }

@@ -37,9 +37,79 @@ public struct CapturedSnapshot has drop {
     collateral_fixed: u256,
 }
 
+/// Cash the venue can release, the cash-only margin shortfall, and positive
+/// oracle PnL that a maintenance trade can realize. All amounts are collateral atoms.
+public struct CashLiquidity has copy, drop {
+    releasable: u64,
+    shortfall: u64,
+    unrealized_profit: u64,
+}
+
 // === Package Functions ===
 
 // --- Capture ---
+
+/// Reads the venue's own withdrawal budget after funding has been settled.
+/// The shortfall excludes positive PnL, applies the live haircut and effective
+/// IMR, and credits free account cash. It is not a shareholder valuation.
+public(package) fun capture_cash_liquidity<Collateral>(
+    binding: &Binding,
+    account: &Account<Collateral>,
+    registry: &Registry,
+    clearing_house: &ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    clock: &Clock,
+): CashLiquidity {
+    binding.assert_bound_graph(account, registry, clearing_house, base_oracle, collateral_oracle);
+    let params = clearing_house.market_params();
+    let position = clearing_house.position(account.account_id());
+    let collateral_price = params.collateral_oracle_price(collateral_oracle, clock);
+    let mark_price = clearing_house.mark_price(base_oracle, clock);
+    let effective_imr = position.effective_initial_margin_ratio(params.margin_ratio_initial());
+    let haircut = params.collateral_haircut();
+    let (margin, requirement) = position.compute_margin_and_requirement(
+        collateral_price, mark_price, effective_imr, haircut,
+    );
+    let mark_pnl = position.unrealized_pnl(mark_price);
+    let cash_margin = if (mark_pnl.is_neg()) { margin } else { ifixed::sub(margin, mark_pnl) };
+    let cash_deficit = ifixed::sub(requirement, cash_margin);
+
+    cash_liquidity(
+        account.collateral_balance(),
+        position.compute_free_collateral(collateral_price, mark_price, effective_imr, haircut),
+        cash_deficit,
+        position.unrealized_pnl(params.base_oracle_price(base_oracle, clock)),
+        collateral_price,
+        haircut,
+    )
+}
+
+/// Fails before deallocation without reducing the holder's agreed payout.
+public(package) fun assert_releasable(self: &CashLiquidity, amount: u64) {
+    assert!(amount <= self.releasable, blast_boosts_aftermath::errors::redemption_exceeds_releasable!());
+}
+
+public(package) fun shortfall(self: &CashLiquidity): u64 { self.shortfall }
+
+public(package) fun unrealized_profit(self: &CashLiquidity): u64 { self.unrealized_profit }
+
+/// Recovery must improve the cash shortfall and add more allocated cash than
+/// holders paid in trading costs. Mark movements alone cannot prove progress.
+public(package) fun assert_realization_progress(
+    self: &CashLiquidity,
+    after: &CashLiquidity,
+    before_checkpoint: &Checkpoint,
+    after_checkpoint: &Checkpoint,
+    equity_cost: u64,
+) {
+    let cash_gain = ifixed::sub(after_checkpoint.allocated_collateral(), before_checkpoint.allocated_collateral());
+    assert!(
+        after.shortfall < self.shortfall && !cash_gain.is_neg()
+            && cash_gain > (equity_cost as u256) * constants::collateral_atom_to_ifixed_scale!(),
+        blast_boosts_aftermath::errors::profit_realization_no_progress!(),
+    );
+}
 
 /// Authenticates raw terminal state without requiring a live price or positive equity.
 public(package) fun capture_checkpoint<Collateral>(
@@ -187,6 +257,44 @@ public(package) fun assert_bound_graph<Collateral>(
 }
 
 // === Private Functions ===
+
+/// Converts the venue's signed results conservatively: budget and profit down,
+/// cash needed up. A zero cash shortfall disables paid profit realization.
+fun cash_liquidity(
+    free: u64,
+    releasable_fixed: u256,
+    cash_deficit_usd: u256,
+    oracle_pnl_usd: u256,
+    collateral_price: u256,
+    haircut: u256,
+): CashLiquidity {
+    assert!(
+        collateral_price > 0 && !collateral_price.is_neg() && haircut < constants::ifixed_one!()
+            && !releasable_fixed.is_neg(),
+        blast_boosts_aftermath::errors::normalization_overflow!(),
+    );
+    let (available, available_ok) = ifixed_math::fixed_to_u64_down(releasable_fixed, constants::collateral_decimals!() as u64);
+    let positive_deficit = if (cash_deficit_usd.is_neg()) { 0 } else { cash_deficit_usd };
+    let (deficit_collateral, deficit_ok) = ifixed_math::usd_fixed_to_collateral_fixed(positive_deficit, collateral_price, true);
+    let (deficit_before_haircut, haircut_ok) = ifixed_math::usd_fixed_to_collateral_fixed(
+        deficit_collateral, constants::ifixed_one!() - haircut, true,
+    );
+    let (required, required_ok) = ifixed_math::fixed_to_u64_up(deficit_before_haircut, constants::collateral_decimals!() as u64);
+    let positive_profit = if (oracle_pnl_usd.is_neg()) { 0 } else { oracle_pnl_usd };
+    let (profit_fixed, profit_ok) = ifixed_math::usd_fixed_to_collateral_fixed(positive_profit, collateral_price, false);
+    let (unrealized_profit, profit_atoms_ok) = ifixed_math::fixed_to_u64_down(profit_fixed, constants::collateral_decimals!() as u64);
+    assert!(
+        available_ok && deficit_ok && haircut_ok && required_ok && profit_ok && profit_atoms_ok
+            && available <= std::u64::max_value!() - free,
+        blast_boosts_aftermath::errors::normalization_overflow!(),
+    );
+
+    CashLiquidity {
+        releasable: free + available,
+        shortfall: required - required.min(free),
+        unrealized_profit,
+    }
+}
 
 fun into_validated_observation(self: CapturedSnapshot, require_opening_margin: bool): (PositionObservation, Checkpoint) {
     let CapturedSnapshot {
@@ -346,6 +454,14 @@ fun position_signs_coherent_decoded(
 }
 
 // === Test-Only Functions ===
+
+#[test_only]
+public fun cash_liquidity_for_testing(
+    free: u64, releasable_fixed: u256, cash_deficit_usd: u256,
+    oracle_pnl_usd: u256, collateral_price: u256, haircut: u256,
+): CashLiquidity {
+    cash_liquidity(free, releasable_fixed, cash_deficit_usd, oracle_pnl_usd, collateral_price, haircut)
+}
 
 /// Replaces only external reads for recovery tests; production conversion and
 /// core valuation still run. Uses the standard unit-price fixture.

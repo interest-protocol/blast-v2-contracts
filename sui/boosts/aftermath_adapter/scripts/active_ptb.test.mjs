@@ -121,6 +121,19 @@ test('rebalance ends market use without returning a result or a separate share c
     assert.throws(() => buildActivePlan({...value, side: 'short'}), /unexpected field/);
 });
 
+test('profit realization is one endpoint with no caller sizing, reward, partner or returned market', () => {
+    const value = input('realize_profit');
+    const plan = buildActivePlan(value);
+    assert.equal(plan.commands.length, 1);
+    assert.equal(plan.commands[0].arguments.length, 8);
+    assert.equal(plan.commands[0].target, `${address(1)}::operations::realize_profit`);
+    assert.equal(plan.commands[0].assign, null);
+    assert.deepEqual(plan.transfers, []);
+    assert(!renderUnsignedPtbArgs(value).includes('--assign'));
+    assert.throws(() => buildActivePlan({...value, base: '10'}), /unexpected field/);
+    assert.throws(() => buildActivePlan({...value, objects: {...value.objects, partner: address(40)}}), /unexpected object field/);
+});
+
 test('both direction types compose returned values through mint-buy and sell-redeem', () => {
     for (const direction of ['Long2x', 'Short2x']) {
         for (const operation of ['mint_buy', 'sell_redeem']) {
