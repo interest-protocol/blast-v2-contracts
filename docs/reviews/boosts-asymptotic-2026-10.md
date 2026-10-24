@@ -91,7 +91,7 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | --- | --- | --- | --- | --- |
 | 1 | M-1 | Medium | A venue event the checkpoint cannot explain blocks mint, redeem and rebalance for good | Resolved in source (ADRs 0115, 0121); RiskAdmin review and live recovery proof remain; M-5 is separate |
 | 2 | M-2 | Medium | When the position has a big unrealized profit, every redemption aborts | Resolved in source through accepted mitigation (ADR 0122); margin/configuration limits and live execution proof remain |
-| 3 | M-3 | Medium | Calling either `restrict_*` upgrade function makes the next upgrade freeze the whole adapter forever | Source fix under review (ADR 0123); separate activation and repair access, no restriction paths; fresh-lineage and deployment limits remain |
+| 3 | M-3 | Medium | Calling either `restrict_*` upgrade function makes the next upgrade freeze the whole adapter forever | Resolved in source (ADR 0123, PR #117); separate activation and repair access, no restriction paths; fresh-lineage and deployment limits remain |
 | 4 | M-4 | Medium | A per-order cap worth less than one lot wedges every order path, shutdown included | Resolved in source (ADR 0119); ordinary-redemption recovery can require an administrator |
 | 5 | M-5 | Medium | Once margin falls below the venue's opening requirement, the emergency rebalance that should fix it is refused | Open |
 | 6 | M-6 | Medium | A caller can plant a bad quote and make `rebalance` or `unwind` fill into it at the full slippage bound, paid by holders | Atomic trading sequence blocked by [ADR 0118](../decisions/0118-limit-priced-vault-orders-and-a-widening-unwind-bound.md); price calibration and live venue proof remain |
@@ -133,7 +133,7 @@ This follows the auditors' summary, adjusted for what ADR 0115 already closed.
 3. **Choose the position IMR once**: tickets 2 (M-2), 5 (M-5) and 14 (L-5)
    constrain the same parameter and must be designed together.
 4. **Ticket 16 (L-7)**: move root and upgrade authority off the single key.
-5. **Ticket 3 (M-3)**: review the ADR 0123 successor-activation fix and its
+5. **Ticket 3 (M-3)** is resolved in source under ADR 0123. Follow its
    two-transaction runbook. The current source removes both restriction paths;
    historical deployed lineages still require their own upgrade-policy review.
 6. The rebalance arithmetic cluster: tickets 15 (L-6), 18 (L-9), 19 (L-10),
@@ -306,7 +306,7 @@ still pays in full.
 
 ### Ticket 3 · M-3 · Restricting the upgrade policy makes the next upgrade freeze the adapter forever
 
-**Status:** proposed source fix under review; see [ADR 0123](../decisions/0123-successor-activated-boosts-upgrades.md). Commit and successor activation are separate, repair authorization is version-independent, and the adapter no longer exposes policy narrowing. Deliberate difference: `make_immutable` retains the current-generation check. The historical finding and recommendation below are preserved; this is not original-auditor sign-off.
+**Status:** resolved in source in [PR #117](https://github.com/interest-protocol/blast-v2-contracts/pull/117); see accepted [ADR 0123](../decisions/0123-successor-activated-boosts-upgrades.md). Commit and successor activation are separate, repair authorization is version-independent, and the adapter no longer exposes policy narrowing. Deliberate difference: `make_immutable` retains the current-generation check. Verification includes 459 adapter tests, 3 composition tests and 33 localnet transactions; fresh Fable review confirmed the source remediation with no production defect. This is a fresh-lineage fix: it cannot remove unsafe historical bytecode, activation only proves version agreement, and live venue/holder-exit verification remains a deployment gate. The historical finding and recommendation below are preserved; this is not original-auditor sign-off or a deployment claim.
 
 **The problem.** Every upgrade ends with `commit_upgrade_and_advance`, which
 moves the shared generation from 1 to the compiled `NEXT_PACKAGE_VERSION` of
