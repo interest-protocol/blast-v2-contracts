@@ -15,14 +15,43 @@ const EInterfaceOnly: vector<u8> = b"Scratch interface only; implementation is n
 #[allow(unused_field)]
 public struct Pool<phantom Asset, phantom Quote> has key {
     id: UID,
-    hook_type: TypeName,
     permissions: Permissions,
-    initialized: bool,
+    hooks: vector<HookBinding>,
     nonce: u64,
-    in_flight: bool,
     dynamic_fee: bool,
     lp_fee_ppm: u32,
 }
+
+/// No abilities. Owns the unfinished pool; only this type exposes hook registration.
+public struct PoolInitializer<phantom Asset, phantom Quote> {
+    pool: Pool<Asset, Quote>,
+    params: InitializeParams,
+}
+
+/// One callback bit and its sealed witness type. At most ten distinct slots.
+public struct HookBinding has store {
+    callback: u16,
+    witness_type: TypeName,
+}
+
+/// No abilities. Consuming the initializer seals its callback configuration.
+public struct InitializeRequest<phantom Asset, phantom Quote> {
+    initializer: PoolInitializer<Asset, Quote>,
+    sender: address,
+}
+
+/// No abilities. Holds the pool after the before-initialize phase and core setup.
+/// Only the configured after-initialize hook can authorize the ready pool.
+public struct InitializeCompletion<phantom Asset, phantom Quote> {
+    pool: Pool<Asset, Quote>,
+    sender: address,
+    params: InitializeParams,
+    tick: SignedAmount,
+}
+
+/// A public skip witness, accepted only when the specific callback is disabled.
+/// It must never be registered as a hook; it conveys no hook authority.
+public struct NoHook() has drop;
 
 // Fields are intentionally unread while all interface bodies abort.
 /// Caller-owned liquidity authority; object ID distinguishes positions in a range.
@@ -98,15 +127,16 @@ public struct SwapParams has copy, drop, store {
 public struct DonateParams has copy, drop, store { asset: u64, quote: u64 }
 
 /// Phantom operation tags prevent cross-operation request/completion substitution.
-public struct Initialize()
 public struct AddLiquidity()
 public struct RemoveLiquidity()
 public struct Swap()
 public struct Donate()
 
 // Fields are intentionally unread while all interface bodies abort.
-/// No abilities. Intended immutable context, sender from TxContext, and pool lock.
-/// Params plus operation tag distinguish all five operations without erasing types.
+/// No abilities. Immutable context and a snapshot of the current operation nonce.
+/// Every consumer must check that nonce; overlapping operations stale earlier
+/// obligations, whose mandatory consumption must then abort the whole PTB.
+/// Params plus operation tag distinguish runtime operations without erasing types.
 #[allow(unused_field)]
 public struct Request<phantom Asset, phantom Quote, phantom Operation, Params: copy + drop + store> {
     pool_id: ID,
@@ -119,7 +149,7 @@ public struct Request<phantom Asset, phantom Quote, phantom Operation, Params: c
 // Fields are intentionally unread while all interface bodies abort.
 /// No abilities. Retains original context plus core results for the after hook.
 /// Before-swap delta is retained for finish_swap to combine with the after delta.
-/// Initialization exposes tick; liquidity exposes caller delta and fees accrued.
+/// Liquidity exposes caller delta and fees accrued; swap retains before-hook debts.
 #[allow(unused_field)]
 public struct Completion<phantom Asset, phantom Quote, phantom Operation, Params: copy + drop + store> {
     pool_id: ID,
@@ -130,21 +160,29 @@ public struct Completion<phantom Asset, phantom Quote, phantom Operation, Params
     caller_delta: BalanceDelta,
     fees_accrued: BalanceDelta,
     before_swap_delta: BeforeSwapDelta,
+    hook_balances: vector<HookBalance>,
     tick: SignedAmount,
 }
 
 // Fields are intentionally unread while all interface bodies abort.
-/// No abilities. Both ledgers must be reconciled exactly once before unlock.
-/// Hook type and caller must match the original operation, even at zero delta.
+/// No abilities. Caller and all recorded hook ledgers must reconcile exactly once.
+/// Aggregate by witness type, at most two delta-producing hooks per operation.
 #[allow(unused_field)]
 public struct Settlement<phantom Asset, phantom Quote> {
     pool_id: ID,
     nonce: u64,
     sender: address,
     caller_delta: BalanceDelta,
-    hook_delta: BalanceDelta,
+    hook_balances: vector<HookBalance>,
     caller_settled: bool,
-    hook_settled: bool,
+}
+
+/// A single hook's debt or claim; before/after contributions of one type net here.
+/// Fields are private; only core may create, combine, or mark a ledger settled.
+public struct HookBalance {
+    witness_type: TypeName,
+    delta: BalanceDelta,
+    settled: bool,
 }
 
 // === Public Functions ===
@@ -184,22 +222,39 @@ macro public fun all_hook_flags(): u16 { 0x3fff }
 
 // Construction and callback context.
 
-/// Intended sealed-witness binding. Reject invalid permission combinations and fees.
-public fun new<Asset, Quote, Hook: drop>(
-    _hook: Hook,
-    _permissions: Permissions,
+/// Intended construction of a no-ability initializer. Validate pair, fee, and range units.
+public fun new<Asset, Quote>(
     _tick_spacing: u32,
     _dynamic_fee: bool,
     _lp_fee_ppm: u32,
+    _sqrt_price_x96: u256,
     _ctx: &mut TxContext,
-): Pool<Asset, Quote> {
+): PoolInitializer<Asset, Quote> {
     abort EInterfaceOnly
 }
 
-/// Intended defining-module sink; require initialized state and no pending operation.
+/// Intended registration of this witness for each selected callback bit.
+/// Bind the original defining witness type, rejecting primitive/NoHook types,
+/// duplicate slots and invalid delta flags. Hook packages must keep witnesses sealed;
+/// core cannot detect a hook package that publicly exposes its own witness.
+/// At most ten slots; final bindings must exactly match the aggregate bitmap.
+public fun register_hook<Asset, Quote, Hook: drop>(
+    _self: &mut PoolInitializer<Asset, Quote>,
+    _hook: Hook,
+    _permissions: Permissions,
+) {
+    abort EInterfaceOnly
+}
+
+/// Intended defining-module sink for the ready pool returned by finalize.
 public fun share<Asset, Quote>(
     _self: Pool<Asset, Quote>,
 ) {
+    abort EInterfaceOnly
+}
+
+/// Intended skip-witness issuer. Enabled callbacks must reject this witness.
+public fun no_hook(): NoHook {
     abort EInterfaceOnly
 }
 
@@ -342,38 +397,51 @@ public fun pool_state<Asset, Quote>(
     abort EInterfaceOnly
 }
 
-// Initialize.
+// Initialization. The unfinished pool never becomes a public Pool input.
 
-/// Intended lifecycle checks, pool lock, nonce advance, and authenticated context.
+/// Intended immutable configuration seal; validate all bindings before either hook.
 public fun begin_initialize<Asset, Quote>(
-    _self: &mut Pool<Asset, Quote>,
-    _sqrt_price_x96: u256,
+    _initializer: PoolInitializer<Asset, Quote>,
     _ctx: &mut TxContext,
-): Request<Asset, Quote, Initialize, InitializeParams> {
+): InitializeRequest<Asset, Quote> {
     abort EInterfaceOnly
 }
 
-/// Intended witness, phase, pool/nonce, and economic checks, then core execution.
+/// Intended before-initialize witness check and core price/tick initialization.
+/// Require NoHook only when the before-initialize callback is disabled.
 public fun execute_initialize<Asset, Quote, Hook: drop>(
-    _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
-    _request: Request<Asset, Quote, Initialize, InitializeParams>,
-): Completion<Asset, Quote, Initialize, InitializeParams> {
+    _request: InitializeRequest<Asset, Quote>,
+): InitializeCompletion<Asset, Quote> {
     abort EInterfaceOnly
 }
 
-/// Intended after-hook authorization; mark initialized and unlock.
-public fun finish_initialize<Asset, Quote, Hook: drop>(
-    _self: &mut Pool<Asset, Quote>,
+/// Intended after-initialize witness check; consume the last construction obligation.
+/// Return the ready pool. There is no hook setter on Pool; NoHook is disabled-only.
+public fun finalize<Asset, Quote, Hook: drop>(
     _hook: Hook,
-    _completion: Completion<Asset, Quote, Initialize, InitializeParams>,
-) {
+    _completion: InitializeCompletion<Asset, Quote>,
+): Pool<Asset, Quote> {
+    abort EInterfaceOnly
+}
+
+/// Intended pending pool ID, original caller, and initial parameters for hook policy.
+public fun initialize_request_context<Asset, Quote>(
+    _self: &InitializeRequest<Asset, Quote>,
+): (ID, address, InitializeParams) {
+    abort EInterfaceOnly
+}
+
+/// Intended pending pool ID, original caller, initial parameters, and resulting tick.
+public fun initialize_completion_context<Asset, Quote>(
+    _self: &InitializeCompletion<Asset, Quote>,
+): (ID, address, InitializeParams, SignedAmount) {
     abort EInterfaceOnly
 }
 
 // Add liquidity.
 
-/// Intended lifecycle checks, pool lock, nonce advance, and authenticated context.
+/// Intended validation, monotonic nonce advance, and authenticated context.
 public fun begin_add_liquidity<Asset, Quote>(
     _self: &mut Pool<Asset, Quote>,
     _position: &Position<Asset, Quote>,
@@ -386,7 +454,8 @@ public fun begin_add_liquidity<Asset, Quote>(
     abort EInterfaceOnly
 }
 
-/// Intended witness, phase, pool/nonce, and economic checks, then core execution.
+/// Intended before-callback binding, pool/nonce, and economic checks, then core execution.
+/// NoHook is accepted only for a disabled callback, with no hook delta.
 public fun execute_add_liquidity<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
@@ -396,7 +465,8 @@ public fun execute_add_liquidity<Asset, Quote, Hook: drop>(
     abort EInterfaceOnly
 }
 
-/// Intended after-hook authorization; validate permitted deltas and create settlement.
+/// Intended after-callback binding and current nonce checks; create settlement.
+/// NoHook is disabled-only; reject unpermitted deltas and preserve all hook ledgers.
 /// Check final user bounds on combined deltas before issuing the settlement.
 public fun finish_add_liquidity<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
@@ -409,7 +479,7 @@ public fun finish_add_liquidity<Asset, Quote, Hook: drop>(
 
 // Remove liquidity.
 
-/// Intended lifecycle checks, pool lock, nonce advance, and authenticated context.
+/// Intended validation, monotonic nonce advance, and authenticated context.
 public fun begin_remove_liquidity<Asset, Quote>(
     _self: &mut Pool<Asset, Quote>,
     _position: &Position<Asset, Quote>,
@@ -422,7 +492,8 @@ public fun begin_remove_liquidity<Asset, Quote>(
     abort EInterfaceOnly
 }
 
-/// Intended witness, phase, pool/nonce, and economic checks, then core execution.
+/// Intended before-callback binding, pool/nonce, and economic checks, then core execution.
+/// NoHook is accepted only for a disabled callback, with no hook delta.
 public fun execute_remove_liquidity<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
@@ -432,7 +503,8 @@ public fun execute_remove_liquidity<Asset, Quote, Hook: drop>(
     abort EInterfaceOnly
 }
 
-/// Intended after-hook authorization; validate permitted deltas and create settlement.
+/// Intended after-callback binding and current nonce checks; create settlement.
+/// NoHook is disabled-only; reject unpermitted deltas and preserve all hook ledgers.
 /// Check final user bounds on combined deltas before issuing the settlement.
 public fun finish_remove_liquidity<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
@@ -445,7 +517,7 @@ public fun finish_remove_liquidity<Asset, Quote, Hook: drop>(
 
 // Swap.
 
-/// Intended lifecycle checks, pool lock, nonce advance, and authenticated context.
+/// Intended validation, monotonic nonce advance, and authenticated context.
 public fun begin_swap<Asset, Quote>(
     _self: &mut Pool<Asset, Quote>,
     _params: SwapParams,
@@ -455,8 +527,9 @@ public fun begin_swap<Asset, Quote>(
     abort EInterfaceOnly
 }
 
-/// Intended witness, phase, and pool/nonce checks, then core execution.
-/// Swap override only for dynamic pools; before delta cannot change exact-in/out mode.
+/// Intended before-swap binding and pool/nonce checks, then core execution.
+/// NoHook is disabled-only and requires zero delta/no override. A real override
+/// requires a dynamic pool; before delta cannot change exact-in/out mode.
 public fun execute_swap<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
@@ -467,7 +540,8 @@ public fun execute_swap<Asset, Quote, Hook: drop>(
     abort EInterfaceOnly
 }
 
-/// Intended after-hook authorization; validate permitted deltas and create settlement.
+/// Intended after-callback binding and current nonce checks; create settlement.
+/// NoHook is disabled-only; reject unpermitted deltas and preserve all hook ledgers.
 /// Check final user bounds on combined deltas before issuing the settlement.
 public fun finish_swap<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
@@ -480,7 +554,7 @@ public fun finish_swap<Asset, Quote, Hook: drop>(
 
 // Donate.
 
-/// Intended lifecycle checks, pool lock, nonce advance, and authenticated context.
+/// Intended validation, monotonic nonce advance, and authenticated context.
 public fun begin_donate<Asset, Quote>(
     _self: &mut Pool<Asset, Quote>,
     _asset_amount: u64,
@@ -491,7 +565,8 @@ public fun begin_donate<Asset, Quote>(
     abort EInterfaceOnly
 }
 
-/// Intended witness, phase, pool/nonce, and economic checks, then core execution.
+/// Intended before-callback binding, pool/nonce, and economic checks, then core execution.
+/// NoHook is accepted only for a disabled callback, with no hook delta.
 public fun execute_donate<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
@@ -500,7 +575,8 @@ public fun execute_donate<Asset, Quote, Hook: drop>(
     abort EInterfaceOnly
 }
 
-/// Intended after-hook authorization; validate permitted deltas and create settlement.
+/// Intended after-callback binding and current nonce checks; create settlement.
+/// NoHook is disabled-only; reject unpermitted deltas and preserve all hook ledgers.
 /// Donation amounts must match the caller debt, with no minted liquidity.
 public fun finish_donate<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
@@ -512,14 +588,22 @@ public fun finish_donate<Asset, Quote, Hook: drop>(
 
 // Settlement and dynamic fees.
 
-/// Intended settlement projection for hook funding and payout authorization.
+/// Intended original caller and its final delta, for settlement policy.
 public fun settlement_context<Asset, Quote>(
     _self: &Settlement<Asset, Quote>,
-): (address, BalanceDelta, BalanceDelta) {
+): (address, BalanceDelta) {
     abort EInterfaceOnly
 }
 
-/// Intended exact-once original-caller settlement. Return payouts and payment change.
+/// Intended lookup of the exact witness type's operation ledger for hook policy.
+public fun hook_delta<Asset, Quote, Hook: drop>(
+    _self: &Settlement<Asset, Quote>,
+    _hook: &Hook,
+): BalanceDelta {
+    abort EInterfaceOnly
+}
+
+/// Intended current-nonce, exact-once original-caller settlement. Return payouts/change.
 /// Consume actual coins for debts; a positive delta alone never mints value.
 public fun settle_caller<Asset, Quote>(
     _self: &mut Pool<Asset, Quote>,
@@ -531,7 +615,8 @@ public fun settle_caller<Asset, Quote>(
     abort EInterfaceOnly
 }
 
-/// Intended exact-once registered-hook settlement. Return payouts and payment change.
+/// Intended current-nonce, exact-once settlement of this witness type's ledger.
+/// NoHook is never a ledger owner. Return hook payouts and payment change.
 /// Consume actual coins for debts; a positive delta alone never mints value.
 public fun settle_hook<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
@@ -544,7 +629,8 @@ public fun settle_hook<Asset, Quote, Hook: drop>(
     abort EInterfaceOnly
 }
 
-/// Intended final sink: require both ledgers paid and per-asset conservation; unlock.
+/// Intended final sink: require current nonce, caller and every hook ledger paid,
+/// and per-asset conservation. No stale obligation may ever be discarded.
 public fun finish_settlement<Asset, Quote>(
     _self: &mut Pool<Asset, Quote>,
     _settlement: Settlement<Asset, Quote>,
@@ -552,7 +638,7 @@ public fun finish_settlement<Asset, Quote>(
     abort EInterfaceOnly
 }
 
-/// Intended registered-hook-only cached fee update for dynamic pools; enforce <= 1,000,000 ppm.
+/// Intended before-swap-hook-only cached fee update on dynamic pools; enforce <= 1,000,000 ppm.
 public fun update_dynamic_lp_fee<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,

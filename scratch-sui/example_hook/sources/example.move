@@ -14,36 +14,33 @@ public struct HookWitness() has drop;
 
 // === Public Functions ===
 
-/// Registers this hook with all ten callbacks and all four delta permissions.
-public fun new_pool<Asset, Quote>(
-    tick_spacing: u32,
-    dynamic_fee: bool,
-    lp_fee_ppm: u32,
-    ctx: &mut TxContext,
-): Pool<Asset, Quote> {
-    let permissions = pool::new_permissions(pool::all_hook_flags!());
-
-    pool::new(HookWitness(), permissions, tick_spacing, dynamic_fee, lp_fee_ppm, ctx)
-}
-
-/// Before initialize: inspect authenticated context, then approve core execution.
-public fun before_initialize<Asset, Quote>(
-    pool: &mut Pool<Asset, Quote>,
-    request: Request<Asset, Quote, Initialize, InitializeParams>,
-): Completion<Asset, Quote, Initialize, InitializeParams> {
-    before_policy(pool, &request);
-
-    pool.execute_initialize(HookWitness(), request)
-}
-
-/// After initialize: inspect core results, then approve initialization.
-public fun after_initialize<Asset, Quote>(
-    pool: &mut Pool<Asset, Quote>,
-    completion: Completion<Asset, Quote, Initialize, InitializeParams>,
+/// Register this package for any selected callbacks before the initializer is sealed.
+/// Another hook package may register the remaining, non-overlapping callback slots.
+public fun register_hooks<Asset, Quote>(
+    initializer: &mut PoolInitializer<Asset, Quote>,
+    bitmap: u16,
 ) {
-    after_policy(pool, &completion);
+    let permissions = pool::new_permissions(bitmap);
 
-    pool.finish_initialize(HookWitness(), completion)
+    initializer.register_hook(HookWitness(), permissions)
+}
+
+/// Before initialize: inspect the sealed initializer, then approve core setup.
+public fun before_initialize<Asset, Quote>(
+    request: InitializeRequest<Asset, Quote>,
+): InitializeCompletion<Asset, Quote> {
+    before_initialize_policy(&request);
+
+    pool::execute_initialize(HookWitness(), request)
+}
+
+/// After initialize: inspect core results, then release the ready pool.
+public fun after_initialize<Asset, Quote>(
+    completion: InitializeCompletion<Asset, Quote>,
+): Pool<Asset, Quote> {
+    after_initialize_policy(&completion);
+
+    pool::finalize(HookWitness(), completion)
 }
 
 /// Before add liquidity: inspect authenticated context, then approve core execution.
@@ -155,6 +152,18 @@ public fun update_dynamic_lp_fee<Asset, Quote>(
 
 // === Private Functions ===
 
+fun before_initialize_policy<Asset, Quote>(
+    _request: &InitializeRequest<Asset, Quote>,
+) {
+    abort EInterfaceOnly
+}
+
+fun after_initialize_policy<Asset, Quote>(
+    _completion: &InitializeCompletion<Asset, Quote>,
+) {
+    abort EInterfaceOnly
+}
+
 fun before_policy<Asset, Quote, Operation, Params: copy + drop + store>(
     _pool: &Pool<Asset, Quote>,
     _context: &Request<Asset, Quote, Operation, Params>,
@@ -209,8 +218,9 @@ fun fee_update_policy<Asset, Quote>(
 
 use blast_fun_dex::pool::{
     Self, Pool, Position, SignedAmount, BalanceDelta, BeforeSwapDelta,
-    InitializeParams, LiquidityParams, SwapParams, DonateParams,
-    Initialize, AddLiquidity, RemoveLiquidity, Swap, Donate,
+    PoolInitializer, InitializeRequest, InitializeCompletion,
+    LiquidityParams, SwapParams, DonateParams,
+    AddLiquidity, RemoveLiquidity, Swap, Donate,
     Request, Completion, Settlement,
 };
 use sui::coin::Coin;
