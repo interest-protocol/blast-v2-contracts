@@ -106,7 +106,7 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | 15 | L-6 | Low | An emergency rebalance that stops just under the cap can fail the minimum-improvement check and revert every time | Resolved in source (PR #121, ADR 0126), Opus 5.5 reviewed; live execution proof remains |
 | 16 | L-7 | Low | One single-key address holds all root, issuance and upgrade authority | Open (custody and deployment records) |
 | 17 | L-8 | Low | Emergency rebalance is refused when the venue mark diverges from spot, even though it never uses the mark | Resolved in source (PR #123, ADR 0127), Opus 5.5 reviewed; live execution remains a release gate |
-| 18 | L-9 | Low | Increase rebalances check the hard cap against a reserve admitted at the opening notional, not the post-fill one | Open |
+| 18 | L-9 | Low | Increase rebalances check the hard cap against a reserve admitted at the opening notional, not the post-fill one | Resolved in source (PR #124, ADR 0128), Opus 5.5 reviewed; live execution remains a release gate |
 | 19 | L-10 | Low | Reductions are checked fill by fill on one reserve basis and completed on another, so a valid deleverage can revert | Open. Needs a decision |
 | 20 | L-11 | Low | Once the position shrinks below one minimum order, nobody can redeem | Open. Must land before the next issuance |
 | 21 | L-12 | Low | The funding-credit conservation check can overflow on a state that fits | Open |
@@ -989,7 +989,21 @@ limit. Deleveraging must not be refused on an input it does not consume.
 
 ### Ticket 18 · L-9 · Increase rebalances check the cap on the opening-notional reserve
 
-**Status:** open.
+**Status:** resolved in source (2026-10-24) through
+[PR #124](https://github.com/interest-protocol/blast-v2-contracts/pull/124),
+under ADR 0128. Live Aftermath execution remains a release gate.
+1,302 Move tests pass across core, adapter and composition. The fresh review
+found two Low follow-ups, both corrected and verified with no remaining
+actionable L9 findings. This is project verification, not auditor sign-off.
+See the [review evidence](boosts-l9-reserve-increases-2026-10-24.md).
+
+**Implementation.** Follow the auditor's post-fill reserve recommendation,
+extending it to order sizing and completion. Each increase accounts for the
+reserve its resulting exposure admits, then checks actual fills and the final
+position on that same basis. The one-lot band exception remains sealed in the
+plan. Recorded reserve is preserved; mint catch-up retains its distinct
+opening-admitted-reserve basis. L-10 reductions remain separate.
+See [ADR 0128](../decisions/0128-reserve-aware-rebalance-increases.md).
 
 **The problem.** The increase branch of `accept_rebalance_fill` checks the
 post-fill notional against NAV priced with the plan's `reserve_priced`, which
