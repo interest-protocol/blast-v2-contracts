@@ -132,11 +132,9 @@ Payload struct names inside the envelopes (`Bought`, `Migrated`,
 
 ## Parked packages
 
-`scratch-sui/dex` and `scratch-sui/auto_lp` are on hold outside every build
-and gate. Their references to the launchpad domain follow the rename
-(`BLAST_FUN_DOMAIN`); their own markers (`package_marker::PACKAGE_MARKER`,
-`dex_domain::DEX_DOMAIN`) and modules (`pool`, `migration`, `vault`) are
-renamed when they return to `sui/`.
+`scratch-sui/` is outside the publication surface. Its interface sketches must
+not be published; any future implementation requires an explorer-naming review
+before promotion to `sui/`.
 
 Presale activation (ADR 0117) uses `blast_presale_package::BLAST_PRESALE_PACKAGE`,
 `blast_presale_package::Bootstrap`, and `blast_presale_package::PackageVersion`.
