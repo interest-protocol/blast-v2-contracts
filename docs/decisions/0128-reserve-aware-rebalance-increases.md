@@ -63,8 +63,8 @@ actual leverage are still required. Recorded reserve, supply and admin cash
 remain unchanged by rebalance. Mint catch-up sizing keeps its separate funded
 NAV basis; mint completion admits opening reserve plus its own reserve fee,
 then clamps. Using the raw recorded reserve there would reassign the pending
-release away from existing holders. Reduction sizing and completion retain
-their current reserve basis; L-10 is a separate unresolved finding.
+release away from existing holders. Reduction sizing, progress and completion are governed separately by
+[ADR 0129](0129-reserve-consistent-emergency-reductions.md).
 
 ## Evidence and limits
 

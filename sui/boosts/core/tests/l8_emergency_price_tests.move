@@ -381,8 +381,7 @@ fun emergency_fill_still_proves_the_exact_base_movement() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ERebalanceNoProgress, location = blast_boosts_core::state)]
-fun emergency_fill_does_not_waive_net_progress() {
+fun emergency_fill_can_keep_real_exposure_reduction_despite_ratio_costs() {
     let state = new_state(policy::long());
     let mut plan = state.prepare_rebalance(position(policy::long(), 1_000_000, 3_001_000, DIVERGENT_MARK), 10, NOW);
     let order = state.next_rebalance_order(&plan);

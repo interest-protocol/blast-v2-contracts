@@ -392,7 +392,7 @@ venue; it does not grow with the gas bid.
    as zero), and prepare the plan. Require leverage strictly outside the band
    (core code 54 otherwise): `notional * 10,000 < N * rebalance_below_bps`
    (increase) or `notional * 10,000 > N * rebalance_above_bps` (reduce).
-   Band edges are healthy. A below-band position with no sizeable first order
+   Band edges are healthy. A position with no sizeable first order
    aborts early with core code 67 (`rebalance_not_actionable`).
    Mark-versus-oracle divergence is checked only for ordinary plans. Emergency
    status is derived after validating the oracle pair, side and positive NAV;
@@ -417,12 +417,25 @@ venue; it does not grow with the gas bid.
    Each increase fill and completion recomputes the admitted reserve at its
    actual notional before checking target or the sealed one-lot band exception.
    The recorded reserve is not clamped by rebalance.
-   Reduce: each order sells toward the target base, capped per
-   order, rounded down to lots, under `max_slippage_bps`. A reduction that
-   started above `max_leverage_bps` instead sells only what brings leverage
-   back to `max_leverage_bps` (at least one lot, capped per order) under
-   `emergency_max_slippage_bps`, and stops once leverage is no longer above
-   max; a later call reduces the rest toward target under `max_slippage_bps`.
+   Reduce: size toward target using the reserve admitted at the remaining
+   position, capped per order and rounded to whole lots, under
+   `max_slippage_bps`. A plan starting above `max_leverage_bps` instead sizes
+   toward that hard cap under `emergency_max_slippage_bps`. Target sizing
+   uses current equity without a projected cost deduction to avoid excess
+   selling on cheaper fills; every subsequent order uses actual fill equity.
+   Each emergency order also limits bounded price cost plus the ordinary
+   taker fee below current admitted NAV, protecting partial fills as well as
+   full fills. The cost allowance also covers one normalized oracle-price
+   atom per base unit, its fee, and three collateral atoms for equity capture
+   rounding. Recompute that limit after every fill. If no lot fits that
+   conservative limit, exactly one lot may use its own reserve release only
+   when its resulting NAV remains positive. Stop when no affordable lot
+   remains, or when actual leverage is no longer above max; a later ordinary
+   call reduces toward target. A final close to zero must leave
+   positive holder value after reserving adverse slippage, the ordinary taker
+   fee, the same oracle-price precision and capture-rounding allowances, and
+   the full recorded reserve. These allowances apply to ordinary flat closes too. Otherwise leave one lot and stop when
+   no further close is sizeable; priority-gas costs can still prevent a fill.
 5. Every fill repeats the corresponding admission: increases require opening
    margin; reductions may remain below it. An emergency plan keeps its mark-
    divergence exemption through the final cap-restoring fill; fresh oracle
@@ -431,32 +444,36 @@ venue; it does not grow with the gas bid.
    pass the divergence check again. Exact fill and checkpoint proofs,
    price limits and execution caps remain enforced. A bounded reduction may
    commit partial recovery without restoring opening margin in one call.
-   Require progress: at least one fill; an increase must raise base and
-   leverage; a reduction must lower base and either move leverage at least
-   `min_leverage_improvement_bps` toward target or land within one lot of
-   target without moving away (core code 55). A reduction that started above
-   `max_leverage_bps` has made progress once leverage is no longer above it.
-   If neither rule passes, a reduction may instead complete all 16 orders in
-   full and finish at least as close to target as a conservative projection,
-   with strict net progress. Core records whether each fill matched its order
-   and fresh sizing; cheaper or favorable fills may shrink the last orders.
-   Projection repeats the
-   core sizing up to 16 times, charging adverse slippage and authenticated
-   taker fees per order against actual starting NAV and the fixed reserve.
-   This includes emergency batches still above the cap. Exact comparisons
-   preserve progress below one basis point. Tiny partial fills do not qualify
-   simply by exhausting the order count, and a smaller retained order cannot
-   misrepresent a full fill. Insufficient net progress still aborts. Priority-gas surcharges are actual costs beyond the projection.
+   Require at least one fill. An increase must raise base and actual leverage.
+   An emergency plan must lower both base and oracle-valued notional; partial
+   fills may complete while still above the hard cap even if actual costs
+   worsen leverage. Positive holder value remains required against the reserve
+   admitted at the final position. Ordinary reductions must lower base and
+   move leverage at least `min_leverage_improvement_bps` toward target or land
+   within one lot of target without moving away (core code 55).
+   An ordinary reduction may instead fill all 16 orders in full and finish
+   at least as close to target as a conservative projection, with strict net
+   progress. Core records whether each fill matched its order and fresh
+   sizing. The projection repeats sizing and charges adverse slippage and
+   authenticated taker fees per order, repricing the admitted reserve at each
+   remaining position. Exact comparisons preserve progress below one basis
+   point. Tiny ordinary partial fills do not qualify simply by exhausting
+   the order count; a smaller retained order cannot misrepresent a full fill.
+   Emergency exposure reduction does not guarantee better leverage or margin.
+   An order with no fill still aborts the adapter transaction, including its
+   earlier fills; the progress rule does not guarantee liquidity.
 6. Store the checkpoint; emit `Rebalanced`. Reserve, supply and admin cash do
    not change; execution cost lowers NAV.
 
 Dry run: `operations::needs_rebalance<Product, Collateral>(vault, protocol,
 account, registry, clearing_house, base_oracle, collateral_oracle, clock)`
 takes every object by immutable reference and returns `bool`. Run it with
-dev-inspect. It returns true for a needed reduction even below opening margin,
-and for an increase only with opening margin and a nonzero fee-aware order.
-Inside the band, without opening margin, or when whole-lot sizing cannot produce
-an increase, it returns false. Unexplained drift, invalid prices, unusable fees,
+dev-inspect. It returns true for a needed, sizeable reduction even below opening
+margin, and for an increase only with opening margin and a nonzero fee-aware
+order. Inside the band, when a proposed increase lacks opening margin, or when
+whole-lot sizing cannot produce an order, it returns false. A final reduction
+that cannot retain the full reserve and positive holder value is not sizeable;
+neither is an emergency close with no affordable lot. Unexplained drift, invalid prices, unusable fees,
 an insufficient opening cap and an unavailable venue still abort. This is a hint:
 it does not settle funding or prove gas admission, liquidity or fill progress;
 the real call checks them and can still abort.
@@ -744,8 +761,10 @@ refuses an account whose equity does not exceed the admitted reserve.
 - Rebalance progress: issuance and both cap setters reject a configured
   minimum larger than the optimistic effect of 16 cap-sized orders at
   `nav_cap`. Actual NAV can exceed that ceiling. The full-batch completion
-  rule above permits smaller, cost-adjusted progress when capacity is the
-  limit; it does not promise liquidity or accept fee-only churn. See ADR 0126.
+  rule above permits smaller, cost-adjusted ordinary progress when capacity
+  is the limit. Emergency progress requires actual exposure reduction and
+  positive holder value, even if costs worsen leverage. Neither rule promises
+  liquidity. A final lot that cannot retain the full reserve may need shutdown.
 - Minimum size: a mint or a non-flat redemption must move at least
   `lot_size * min_order_lots` of base. At initialization and each cap change,
   the cap must cover that minimum in one order at current prices. Later price

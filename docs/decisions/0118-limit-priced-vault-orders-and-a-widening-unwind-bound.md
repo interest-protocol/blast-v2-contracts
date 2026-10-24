@@ -80,10 +80,12 @@ size already is (ADR 0115).
 A rebalance plan that begins above `max_leverage_bps` sizes each order to the
 whole-lot base that brings leverage back to the cap, at least one lot and at
 most the per-order cap, under the emergency bound, and ends as soon as leverage
-is no longer above the cap. Such a plan has made progress once the cap is
-restored, however small the sale; a plan that ends still above the cap is
-judged by the ordinary minimum improvement or the full-batch capacity rule
-in [ADR 0126](0126-capacity-aware-rebalance-progress.md). The remaining reduction toward
+is no longer above the cap. Under
+[ADR 0129](0129-reserve-consistent-emergency-reductions.md), sizing and checks
+use the reserve admitted at the remaining position. A plan may complete
+while still above the cap after any genuine base and notional reduction
+with positive holder value, including partial fills and costs that worsen
+leverage. Ordinary reductions retain ADR 0126's progress rules. The remaining reduction toward
 target runs in a later, ordinary plan under the ordinary bound, so the wide
 bound covers no more notional than the cap needs and a wide market can still
 not revert the orders placed above the cap (ADR 0084's stop-at-the-cap rule is
@@ -200,8 +202,8 @@ absence. The time ramp gives the same first-hours protection with no new role.
   reference, the tick-wider-than-bound and zero-tick aborts, `u64` width; the
   unwind ramp at zero, mid-way, a day, after a day and with equal bounds;
   `Lifecycle` records and reports the shutdown start; `State` sizes an
-  emergency order to the cap, completes on the restored cap, refuses an
-  emergency plan still above the cap without the ordinary improvement, and
+  emergency order to the cap, completes on genuine exposure reduction under
+  ADR 0129, and
   widens the close bound from the recorded start.
 - Adapter: `OrderFilled` carries the limit; order terms carry the ordinary
   bound; the unwind terms carry the ordinary bound at shutdown and the

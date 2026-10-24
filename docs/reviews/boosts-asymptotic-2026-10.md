@@ -107,7 +107,7 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | 16 | L-7 | Low | One single-key address holds all root, issuance and upgrade authority | Open (custody and deployment records) |
 | 17 | L-8 | Low | Emergency rebalance is refused when the venue mark diverges from spot, even though it never uses the mark | Resolved in source (PR #123, ADR 0127), Opus 5.5 reviewed; live execution remains a release gate |
 | 18 | L-9 | Low | Increase rebalances check the hard cap against a reserve admitted at the opening notional, not the post-fill one | Resolved in source (PR #124, ADR 0128), Opus 5.5 reviewed; live execution remains a release gate |
-| 19 | L-10 | Low | Reductions are checked fill by fill on one reserve basis and completed on another, so a valid deleverage can revert | Open. Needs a decision |
+| 19 | L-10 | Low | Reductions are checked fill by fill on one reserve basis and completed on another, so a valid deleverage can revert | Implemented and Opus 5.5 reviewed (ADR 0129); pending merge |
 | 20 | L-11 | Low | Once the position shrinks below one minimum order, nobody can redeem | Open. Must land before the next issuance |
 | 21 | L-12 | Low | The funding-credit conservation check can overflow on a state that fits | Open |
 | 22 | A-1 | Advisory | `ifixed_math::to_u64` is wider than its callers | Open |
@@ -1041,7 +1041,9 @@ whose "difference is harmless" argument describes superseded code.
 
 ### Ticket 19 · L-10 · Emergency deleveraging reverts on the plan-start reserve basis
 
-**Status:** open. Needs a decision on the reserve basis.
+**Status:** implemented, tested and independently reviewed by Opus 5.5;
+pending merge. [Review and evidence](boosts-l10-emergency-reductions-2026-10-24.md).
+Live Aftermath execution and original-auditor acceptance remain separate.
 
 **The problem.** `complete_rebalance` prices the final position against the
 plan's `reserve_priced`, fixed at the pre-rebalance notional, while each
@@ -1086,6 +1088,27 @@ refuse reserve-crossing fills there with a dedicated error.
 
 **Tests.** A thin-equity fixture: an emergency reduction that passes every
 fill completes; the policy-validation rejection for exposed issuances.
+
+**Implementation.** [ADR 0129](../decisions/0129-reserve-consistent-emergency-reductions.md)
+combines the auditor's current-position reserve and genuine emergency reduction
+recommendations. Sizing, fill admission, next-order stopping, ordinary capacity
+projection and completion use the reserve appropriate to each position.
+Emergency completion requires a real base and oracle-notional decrease with
+positive holder value, including partial fills whose costs worsen leverage.
+Ordinary progress rules remain. Emergency affordability caps bounded costs
+against current holder value, including oracle precision and capture rounding;
+no affordable next lot ends the batch without undoing prior valid reductions.
+Exactly one lot may use its own reserve release if it remains affordable.
+Final-lot sizing retains the full recorded reserve; no reserve, supply or admin
+cash is changed. The temporary policy ban
+and fixed-reserve error are unnecessary because the core basis is corrected.
+
+The original finding and suggested alternatives above remain the audit
+restatement. Local tests and independent model review do not constitute
+original-auditor acceptance or live venue execution proof. Expensive emergency
+closes may worsen leverage or margin. Zero fills, venue restrictions, stale
+prices, insolvency and priority-gas costs can still block; a last lot that cannot
+retain the full reserve may require separately authorized shutdown.
 
 ### Ticket 20 · L-11 · Once the position shrinks below one minimum order, nobody can redeem
 

@@ -121,8 +121,9 @@ excess; subsequent priced operations admit it only up to their live ceiling.
   and validate against the reserve admitted by the resulting notional. A
   growing ceiling can lower NAV, so the opening reserve is not a safe basis
   for an increase. Maintenance leaves the recorded reserve unchanged.
-  Reductions retain their separate opening-reserve basis; the L-10 liveness
-  concern is not resolved by the increase fix.
+  [ADR 0129](0129-reserve-consistent-emergency-reductions.md) applies the
+  current-position reserve consistently to reductions, preserves the flat
+  reserve rule and permits genuine partial emergency exposure reduction.
 - Tests pin the inclusive seed bound, the redemption release with unchanged
   physical equity, a mint priced after a pending release (951,428 shares on
   a 999,000 contribution against NAV 1,050,000, not 999,000), an accepted

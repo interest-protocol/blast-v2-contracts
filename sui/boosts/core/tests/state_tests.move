@@ -666,19 +666,17 @@ fun an_emergency_plan_barely_above_the_cap_sells_one_lot_and_completes_on_the_re
     state.destroy_for_testing();
 }
 
-/// An emergency plan still above the cap must meet the ordinary minimum or
-/// fully execute all sixteen orders and match projected progress. One tiny
-/// partial fill meets neither.
+/// Genuine emergency exposure reduction may commit before restoring the cap,
+/// including one partial fill smaller than the ordinary improvement minimum.
 #[test]
-#[expected_failure(abort_code = errors::ERebalanceNoProgress, location = blast_boosts_core::state)]
-fun an_emergency_plan_still_above_the_cap_needs_the_ordinary_improvement() {
+fun an_emergency_plan_still_above_the_cap_can_keep_a_real_reduction() {
     let state = rebalance_state(policy::long());
     let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_200_000, policy::long()), 10, REFERENCE_AT_MS);
     let order = state.next_rebalance_order(&plan);
     // One lot of the cap-sized order fills and leaves leverage essentially where it was.
     state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_100_000, 3_199_999, policy::long()), LOT_SIZE, REFERENCE_AT_MS);
     state.complete_rebalance(plan);
-    abort
+    state.destroy_for_testing();
 }
 
 /// The per-order cap still paces an emergency sale that restoring the cap needs more than one order for.
