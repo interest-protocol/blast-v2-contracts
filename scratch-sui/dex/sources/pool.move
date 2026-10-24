@@ -113,11 +113,11 @@ public struct SwapParams has copy, drop, store {
 public struct DonateParams has copy, drop, store { asset: u64, quote: u64 }
 
 /// Phantom operation tags prevent cross-operation request/completion substitution.
-public struct Initialize {}
-public struct AddLiquidity {}
-public struct RemoveLiquidity {}
-public struct Swap {}
-public struct Donate {}
+public struct Initialize()
+public struct AddLiquidity()
+public struct RemoveLiquidity()
+public struct Swap()
+public struct Donate()
 
 // Fields are intentionally unread while all interface bodies abort.
 /// No abilities. Intended immutable context, sender from TxContext, and pool lock.

@@ -10,7 +10,7 @@ const EInterfaceOnly: vector<u8> = b"Scratch interface only; hook logic is not p
 // === Public Types ===
 
 /// Only this module constructs approval; no public witness issuer exists.
-public struct HookWitness has drop {}
+public struct HookWitness() has drop;
 
 // === Public Functions ===
 
@@ -21,7 +21,7 @@ public fun new_pool<Asset, Quote>(
     lp_fee_ppm: u32,
     ctx: &mut TxContext,
 ): Pool<Asset, Quote> {
-    pool::new(HookWitness {}, permissions(), tick_spacing, dynamic_fee, lp_fee_ppm, ctx)
+    pool::new(HookWitness(), permissions(), tick_spacing, dynamic_fee, lp_fee_ppm, ctx)
 }
 
 /// Before initialize: inspect authenticated context, then approve core execution.
@@ -31,7 +31,7 @@ public fun before_initialize<Asset, Quote>(
 ): Completion<Asset, Quote, Initialize, InitializeParams> {
     before_policy(pool, &request);
 
-    pool.execute_initialize(HookWitness {}, request)
+    pool.execute_initialize(HookWitness(), request)
 }
 
 /// After initialize: inspect core results, then approve initialization.
@@ -41,7 +41,7 @@ public fun after_initialize<Asset, Quote>(
 ) {
     after_policy(pool, &completion);
 
-    pool.finish_initialize(HookWitness {}, completion)
+    pool.finish_initialize(HookWitness(), completion)
 }
 
 /// Before add liquidity: inspect authenticated context, then approve core execution.
@@ -52,7 +52,7 @@ public fun before_add_liquidity<Asset, Quote>(
 ): Completion<Asset, Quote, AddLiquidity, LiquidityParams> {
     before_policy(pool, &request);
 
-    pool.execute_add_liquidity(HookWitness {}, request, position)
+    pool.execute_add_liquidity(HookWitness(), request, position)
 }
 
 /// After add liquidity: inspect core results, then approve settlement.
@@ -62,7 +62,7 @@ public fun after_add_liquidity<Asset, Quote>(
 ): Settlement<Asset, Quote> {
     let hook_delta = after_liquidity_policy(pool, &completion);
 
-    pool.finish_add_liquidity(HookWitness {}, completion, hook_delta)
+    pool.finish_add_liquidity(HookWitness(), completion, hook_delta)
 }
 
 /// Before remove liquidity: inspect authenticated context, then approve core execution.
@@ -73,7 +73,7 @@ public fun before_remove_liquidity<Asset, Quote>(
 ): Completion<Asset, Quote, RemoveLiquidity, LiquidityParams> {
     before_policy(pool, &request);
 
-    pool.execute_remove_liquidity(HookWitness {}, request, position)
+    pool.execute_remove_liquidity(HookWitness(), request, position)
 }
 
 /// After remove liquidity: inspect core results, then approve settlement.
@@ -83,7 +83,7 @@ public fun after_remove_liquidity<Asset, Quote>(
 ): Settlement<Asset, Quote> {
     let hook_delta = after_liquidity_policy(pool, &completion);
 
-    pool.finish_remove_liquidity(HookWitness {}, completion, hook_delta)
+    pool.finish_remove_liquidity(HookWitness(), completion, hook_delta)
 }
 
 /// Before swap: inspect authenticated context, then approve core execution.
@@ -93,7 +93,7 @@ public fun before_swap<Asset, Quote>(
 ): Completion<Asset, Quote, Swap, SwapParams> {
     let (before_delta, fee_override_ppm) = before_swap_policy(pool, &request);
 
-    pool.execute_swap(HookWitness {}, request, before_delta, fee_override_ppm)
+    pool.execute_swap(HookWitness(), request, before_delta, fee_override_ppm)
 }
 
 /// After swap: inspect core results, then approve settlement.
@@ -103,7 +103,7 @@ public fun after_swap<Asset, Quote>(
 ): Settlement<Asset, Quote> {
     let unspecified_delta = after_swap_policy(pool, &completion);
 
-    pool.finish_swap(HookWitness {}, completion, unspecified_delta)
+    pool.finish_swap(HookWitness(), completion, unspecified_delta)
 }
 
 /// Before donate: inspect authenticated context, then approve core execution.
@@ -113,7 +113,7 @@ public fun before_donate<Asset, Quote>(
 ): Completion<Asset, Quote, Donate, DonateParams> {
     before_policy(pool, &request);
 
-    pool.execute_donate(HookWitness {}, request)
+    pool.execute_donate(HookWitness(), request)
 }
 
 /// After donate: inspect core results, then approve settlement.
@@ -123,7 +123,7 @@ public fun after_donate<Asset, Quote>(
 ): Settlement<Asset, Quote> {
     after_policy(pool, &completion);
 
-    pool.finish_donate(HookWitness {}, completion)
+    pool.finish_donate(HookWitness(), completion)
 }
 
 /// Hook policy must authorize funding and payout destinations before settlement.
@@ -137,7 +137,7 @@ public fun settle_hook<Asset, Quote>(
 ): (Coin<Asset>, Coin<Quote>) {
     settlement_policy(pool, settlement);
 
-    pool.settle_hook(HookWitness {}, settlement, asset_payment, quote_payment, ctx)
+    pool.settle_hook(HookWitness(), settlement, asset_payment, quote_payment, ctx)
 }
 
 /// Example policy must authenticate who may change its cached dynamic fee.
@@ -148,7 +148,7 @@ public fun update_dynamic_lp_fee<Asset, Quote>(
 ) {
     fee_update_policy(pool, lp_fee_ppm, ctx);
 
-    pool.update_dynamic_lp_fee(HookWitness {}, lp_fee_ppm)
+    pool.update_dynamic_lp_fee(HookWitness(), lp_fee_ppm)
 }
 
 // === Private Functions ===
