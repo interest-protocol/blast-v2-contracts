@@ -540,9 +540,13 @@ public fun needs_rebalance<Product>(
 ): bool {
     self.lifecycle.assert_active();
 
-    let position = self.validated_active_position(observation, now_at_ms);
+    let mark = observation.mark_price();
+    let position = self.validated_oracle_position(observation, now_at_ms);
     let nav = accounting_math::shareholder_nav(position.equity, self.admitted_reserve(&position));
     let rebalance = self.vault_policy.rebalance_policy();
+    if (!rebalance.is_leverage_above_max(position.notional, nav)) {
+        self.vault_policy.price_policy().assert_mark_within_oracle_divergence(mark, position.base_price);
+    };
 
     if (rebalance.is_leverage_within_band(position.notional, nav)) return false;
     if (!rebalance.is_leverage_below_band(position.notional, nav)) return true;
@@ -565,12 +569,17 @@ public fun prepare_rebalance<Product>(
         blast_boosts_core::errors::venue_fee_unusable!(),
     );
 
-    let before = self.validated_active_position(observation, now_at_ms);
+    let mark = observation.mark_price();
+    let before = self.validated_oracle_position(observation, now_at_ms);
     let reserve_priced = self.admitted_reserve(&before);
-    assert!(!self.is_within_band(&before, reserve_priced), blast_boosts_core::errors::rebalance_inside_band!());
-
     let nav = accounting_math::shareholder_nav(before.equity, reserve_priced);
     let rebalance = self.vault_policy.rebalance_policy();
+    let emergency = rebalance.is_leverage_above_max(before.notional, nav);
+    if (!emergency) {
+        self.vault_policy.price_policy().assert_mark_within_oracle_divergence(mark, before.base_price);
+    };
+    assert!(!self.is_within_band(&before, reserve_priced), blast_boosts_core::errors::rebalance_inside_band!());
+
     let increase = rebalance.is_leverage_below_band(before.notional, nav);
     if (increase) {
         let (base, _) = self.increase_order(&before, nav, venue_fee_bps);
@@ -582,7 +591,7 @@ public fun prepare_rebalance<Product>(
         current: before,
         reserve_priced,
         increase,
-        emergency: !increase && rebalance.is_leverage_above_max(before.notional, nav),
+        emergency,
         venue_fee_bps,
         steps: 0,
         full_fills: true,
@@ -663,7 +672,13 @@ public fun accept_rebalance_fill<Product>(
         blast_boosts_core::errors::active_fill_incomplete!(),
     );
 
-    let after = self.validated_active_position(observation, now_at_ms);
+    // Keep the opening emergency decision through the cap-restoring fill.
+    // Reclassifying that fill would reintroduce the divergence check and undo recovery.
+    let after = if (plan.emergency) {
+        self.validated_oracle_position(observation, now_at_ms)
+    } else {
+        self.validated_active_position(observation, now_at_ms)
+    };
     assert!(plan.before.is_same_checkpoint(&after), blast_boosts_core::errors::active_checkpoint_changed!());
     let expected_base = if (increase) {
         plan.current.base.checked_add(filled_base).destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!())
@@ -1325,6 +1340,24 @@ fun validated_active_position<Product>(
     now_at_ms: u64,
 ): ActivePosition {
     self.vault_policy.assert_observation_priced(&observation, now_at_ms);
+
+    self.active_position(observation)
+}
+
+/// Validates the oracle pair without requiring the venue mark to track it.
+/// Only rebalance admission and fills of a sealed emergency plan use this path.
+fun validated_oracle_position<Product>(
+    self: &State<Product>,
+    observation: PositionObservation,
+    now_at_ms: u64,
+): ActivePosition {
+    self.vault_policy.price_policy().assert_observation_oracles(&observation, now_at_ms);
+
+    self.active_position(observation)
+}
+
+/// The position side and positive holder backing are required under either price admission.
+fun active_position<Product>(self: &State<Product>, observation: PositionObservation): ActivePosition {
     assert!(
         observation.position_base() == 0 || observation.observed_side() == self.vault_policy.side(),
         blast_boosts_core::errors::invalid_position_observation!(),
@@ -1361,12 +1394,17 @@ fun priced_position<Product>(self: &State<Product>, observation: PositionObserva
 fun assert_observation_priced(vault_policy: &VaultPolicy, observation: &PositionObservation, now_at_ms: u64) {
     let price_policy = vault_policy.price_policy();
 
-    price_policy.assert_oracle_admitted(observation.base_oracle(), now_at_ms);
-    price_policy.assert_oracle_admitted(observation.collateral_oracle(), now_at_ms);
+    price_policy.assert_observation_oracles(observation, now_at_ms);
     price_policy.assert_mark_within_oracle_divergence(
         observation.mark_price(),
         observation.base_oracle().price(),
     );
+}
+
+/// Both valuation sources remain fresh and sufficiently certain, including in emergencies.
+fun assert_observation_oracles(price_policy: &PricePolicy, observation: &PositionObservation, now_at_ms: u64) {
+    price_policy.assert_oracle_admitted(observation.base_oracle(), now_at_ms);
+    price_policy.assert_oracle_admitted(observation.collateral_oracle(), now_at_ms);
 }
 
 /// Rejects one oracle price that is stale or carries too wide a confidence interval.
@@ -1471,5 +1509,6 @@ use blast_boosts_core::{
 };
 
 use fun assert_observation_priced as VaultPolicy.assert_observation_priced;
+use fun assert_observation_oracles as PricePolicy.assert_observation_oracles;
 
 use fun assert_oracle_admitted as PricePolicy.assert_oracle_admitted;
