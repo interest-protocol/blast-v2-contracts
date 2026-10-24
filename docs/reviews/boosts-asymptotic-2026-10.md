@@ -107,7 +107,7 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | 16 | L-7 | Low | One single-key address holds all root, issuance and upgrade authority | Open (custody and deployment records) |
 | 17 | L-8 | Low | Emergency rebalance is refused when the venue mark diverges from spot, even though it never uses the mark | Resolved in source (PR #123, ADR 0127), Opus 5.5 reviewed; live execution remains a release gate |
 | 18 | L-9 | Low | Increase rebalances check the hard cap against a reserve admitted at the opening notional, not the post-fill one | Resolved in source (PR #124, ADR 0128), Opus 5.5 reviewed; live execution remains a release gate |
-| 19 | L-10 | Low | Reductions are checked fill by fill on one reserve basis and completed on another, so a valid deleverage can revert | Implemented and Opus 5.5 reviewed (ADR 0129); pending merge |
+| 19 | L-10 | Low | Reductions are checked fill by fill on one reserve basis and completed on another, so a valid deleverage can revert | Resolved in source (PR #125, ADR 0129), Opus 5.5 reviewed; live execution remains a release gate |
 | 20 | L-11 | Low | Once the position shrinks below one minimum order, nobody can redeem | Open. Must land before the next issuance |
 | 21 | L-12 | Low | The funding-credit conservation check can overflow on a state that fits | Open |
 | 22 | A-1 | Advisory | `ifixed_math::to_u64` is wider than its callers | Open |
@@ -1041,9 +1041,13 @@ whose "difference is harmless" argument describes superseded code.
 
 ### Ticket 19 · L-10 · Emergency deleveraging reverts on the plan-start reserve basis
 
-**Status:** implemented, tested and independently reviewed by Opus 5.5;
-pending merge. [Review and evidence](boosts-l10-emergency-reductions-2026-10-24.md).
-Live Aftermath execution and original-auditor acceptance remain separate.
+**Status:** resolved in source (2026-10-24) through
+[PR #125](https://github.com/interest-protocol/blast-v2-contracts/pull/125),
+under ADR 0129. All 1,328 Move tests pass across core, adapter and composition.
+Fresh Opus 5.5 review findings were corrected and verified with no remaining
+actionable L10 source defect. This is project verification, not auditor sign-off.
+[Review and evidence](boosts-l10-emergency-reductions-2026-10-24.md).
+Live Aftermath execution remains a release gate.
 
 **The problem.** `complete_rebalance` prices the final position against the
 plan's `reserve_priced`, fixed at the pre-rebalance notional, while each
