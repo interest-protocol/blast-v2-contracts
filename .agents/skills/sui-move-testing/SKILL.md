@@ -1,6 +1,6 @@
 ---
 name: sui-move-testing
-description: Testing for Sui Move invariants, exact aborts, guard precedence, stateful fixtures, arithmetic properties, event replay, adversarial integrations, upgrades, dependencies, and release gates. Use when adding, changing, fixing, or reviewing Move behavior or tests.
+description: Testing for Sui Move invariants, exact aborts, guard precedence, PTB composability, stateful fixtures, arithmetic properties, event replay, adversarial integrations, upgrades, dependencies, and release gates. Use when adding, changing, fixing, or reviewing Move behavior or tests.
 ---
 
 # Sui Move Testing
@@ -27,6 +27,8 @@ Target repository instructions, accepted design records, pinned toolchain behavi
 - Lifecycle: every legal edge and rejection from every illegal source state.
 - Authorization: allowed and forbidden actions, rotation, revocation, last-authority destruction or handoff, pause, and version precedence.
 - Accounting: reserves, fees, allocations, vesting, burns, and conservation after operations and sequences.
+- Composition: intended PTB input producers, chained result consumers, and
+  terminal sinks for every returned resource.
 - Adversarial: direct public calls, PTB composition, replay, third-party signature submission, expiry, wrong domain, wrong type or object, slippage, stale or selectable oracle data, callback-like handoffs, randomness selection, duplicate settlement, and hostile assets.
 - Events: every payload field and full reducer replay against final state.
 - Upgrades: cover compatibility, permitted generic-constraint relaxation,
@@ -95,6 +97,30 @@ fun constructor_rejects_the_first_value_above_the_limit() {
 - Assert framework errors when the framework is the intended enforcement layer.
 - Ensure cleanup cannot make a negative test pass through an unrelated abort.
 - When the harness exposes failed transaction effects, snapshot relevant state, assets, and events and prove the aborted path leaves them unchanged.
+
+## Verify PTB composition through the transaction runtime
+
+For changed transaction APIs or resource-returning functions:
+
+- Execute or simulate an actual multi-command PTB using the pinned SDK or CLI
+  against the target protocol configuration. Feed earlier command results into
+  the changed operation when supported, then use its outputs in the intended
+  downstream operation before final delivery. Include cross-package calls when
+  the API promises them.
+- Handle every non-droppable result, including refunds, zero-valued coins,
+  key-only objects through defining-module sinks, and receipts through their
+  authorized finalizers. Assert final ownership, accounting, and settlement.
+- Add applicable negative PTBs for unused results, use after move, invalid
+  aliasing, missing or mismatched settlement, and deliberate endpoint
+  restrictions. Assert the intended runtime rejection or abort and unchanged
+  protocol state and assets, accounting separately for failure gas charges.
+- Call reusable operations directly to prove optional delivery wrappers are
+  not the only place authorization or economic guards run.
+
+Direct Move unit calls and `test_scenario` remain useful for domain invariants,
+but do not prove PTB command validation, result handling, or protocol-specific
+`entry` restrictions. Building or serializing a PTB alone is also insufficient;
+report a missing execution environment as a validation gap.
 
 ## Test arithmetic and economics
 

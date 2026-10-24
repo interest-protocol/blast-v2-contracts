@@ -64,6 +64,13 @@ Apply architecture and source style. Add security for authority, asset,
 lifecycle, or shared-state types. Preserve published function signatures and
 datatype layouts; the focused skills own migration details.
 
+### Make a transaction API PTB-composable
+
+Apply source style's PTB-composability reference and testing's runtime checks.
+Add architecture when callable seams or resource lifecycles change, and
+security when custody, authority, settlement, or deliberate composition
+restrictions change.
+
 ### Upgrade a package or migrate state
 
 Apply architecture, security, source style, and testing. Load architecture's

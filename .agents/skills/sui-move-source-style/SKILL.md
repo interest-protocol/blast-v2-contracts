@@ -1,6 +1,6 @@
 ---
 name: sui-move-source-style
-description: Source conventions for Sui Move organization, names, visibility, abilities, signatures, errors, syntax, pinned-library reuse, locals, API vocabulary, documentation, and test-only seams. Use when writing, simplifying, refactoring, or reviewing `.move` production or test files.
+description: Source conventions for Sui Move organization, names, visibility, abilities, signatures, PTB composability, errors, syntax, pinned-library reuse, locals, API vocabulary, documentation, and test-only seams. Use when writing, simplifying, refactoring, or reviewing `.move` production or test files.
 ---
 
 # Sui Move Source Style
@@ -70,6 +70,10 @@ Format function bodies as logical paragraphs, with one blank line between valida
   completely before splitting or simplifying a multi-phase function, extracting
   helpers, inlining locals, flattening chained `else if` derivations, or
   changing pass-through parameters.
+- **PTB composability:** Read
+  [PTB-composable public APIs](references/ptb-composability.md) completely when
+  adding, changing, or reviewing transaction-facing functions, returned
+  resources, delivery sinks, or a public API intended for chained calls.
 
 Read every matching reference; keep the loaded set to the triggered branches.
 Follow the target package's pinned edition and compiler when a reference
@@ -150,11 +154,27 @@ Use this order for public functions:
 4. `Clock` or other framework reads;
 5. `TxContext` last.
 
-Use `&` for reads, `&mut` for actual mutation, and by value for resources the function consumes. Return newly created owned objects, coins, capabilities, and refunds. Transfer inside core only when delivery is the explicit endpoint contract.
+Use `&` for reads, `&mut` for actual mutation, and by value for resources the function consumes.
+
+## Make transaction APIs PTB-composable
+
+Design reusable operations as `public fun` building blocks whose inputs can
+come from earlier PTB commands and whose outputs remain available to later
+commands. `public fun` is directly PTB-callable without `entry`.
+
+Return newly created owned objects, coins, capabilities, and refunds. Transfer
+inside core only when delivery is the explicit endpoint contract; keep optional
+delivery in a thin wrapper or a final PTB command. Return the resource itself
+when the next command needs it; an event or object ID is not a resource result.
 
 Keep construction and publication separate when possible: `new` returns the owned value and `share` consumes it into shared state.
 
 When a returned object has `key` but not `store`, provide its consuming sink in the defining module, such as `share(self)` for shared state or `keep(self, ctx)` for sender delivery. Do not strand a value that callers cannot transfer or share themselves.
+
+Keep intentional composition restrictions explicit and preserve their security
+purpose, especially for randomness. For every changed reusable operation,
+identify a valid producer → operation → consumer or sink PTB and verify it
+under the target's pinned toolchain and active network protocol rules.
 
 ## Use precise API vocabulary
 
