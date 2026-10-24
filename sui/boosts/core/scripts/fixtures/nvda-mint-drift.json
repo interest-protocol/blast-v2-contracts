@@ -1,0 +1,13 @@
+{
+  "name": "NVDA 2x successor issuance: mint rounding calibration",
+  "source": "deployments/sui/mainnet/2026-09-22-nvda-alpha-boosts.json",
+  "model": "fixed-price-net-deposits-only",
+  "minimumSeedNav": "998147",
+  "seedBase": "8810000",
+  "lotSize": "10000",
+  "navCap": "1000000000",
+  "minimumStartingLeverageBps": "20000",
+  "rebalanceBelowBps": "18000",
+  "rebalanceAboveBps": "22000",
+  "minOrderLots": "65"
+}

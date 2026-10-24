@@ -35,7 +35,15 @@ the `mainnet` environment and has no testnet rehearsal tooling. The read-only
 activation proof first serializes the reviewed PTB, then passes that exact
 base64 `TransactionData` to Sui's machine-readable `serialized-tx` surface with
 `--dev-inspect --json` on mainnet. Both live proof paths enforce the pinned Sui
-CLI version.
+CLI version. Live activation configurations use schema version 4 and include
+`mintDriftProfile`, the full calibrated profile object (see
+[`core/scripts/fixtures/nvda-mint-drift.json`](../core/scripts/fixtures/nvda-mint-drift.json)
+for the NVDA successor). The tool refuses mismatched band, minimum or cap inputs,
+then checks the observed seed NAV, lot and exposure. Starting leverage remains
+a separate evidence requirement because `VaultInitialized` omits oracle-valued
+notional. The profile's forecast is conditional; the final mint-band guard is
+always enforced. Synthetic activation fixtures retain their own schema and do
+not stand in for this production calibration.
 
 Public active operations are `initialize`, `mint`, `redeem`,
 `needs_rebalance`, `sync_health` and `donate`; Vault also exposes authorized

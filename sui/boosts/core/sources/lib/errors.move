@@ -92,7 +92,7 @@ const EMintBaseAboveBound: u64 = 19;
 const EMintBaseBelowBound: u64 = 20;
 
 #[test_only]
-/// A minimum order lot multiple must be positive.
+/// A minimum lot multiple is invalid: policy requires 2 to 1,000,000; raw arithmetic requires a positive value.
 const EInvalidMinOrderLots: u64 = 21;
 
 #[test_only]
@@ -204,7 +204,7 @@ const EFeeCapExceeded: u64 = 47;
 const EFeeSettingsUnchanged: u64 = 48;
 
 #[test_only]
-/// Post-mint leverage lies outside the rebalance band.
+/// Leverage before or after a mint lies outside the rebalance band.
 const EMintOutsideRebalanceBand: u64 = 49;
 
 #[test_only]

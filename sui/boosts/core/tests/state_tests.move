@@ -1530,6 +1530,64 @@ fun a_zero_deposit_mint_is_refused() {
 // --- Mint Completion ---
 
 #[test]
+fun completed_mints_preserve_both_exact_band_edges_for_both_sides() {
+    vector[policy::long(), policy::short()].do!(|side| {
+        vector[1_600_000, 2_600_000].do!(|notional| {
+            let mut state = initialized_state(side);
+            let before = standard_observation(side).with_notional(notional);
+            let plan = state.prepare_mint(before.into_position_observation(), 101, HEALTH_SHARE_SUPPLY, 1, REFERENCE_AT_MS);
+            let base_after = before.position_base + plan.base_to_buy();
+            let (shares, contribution, fee, _, _) = state.complete_mint(
+                plan, before.with_venue_equity(SEED_VENUE_EQUITY + 101).with_position_base(base_after).into_position_observation(),
+                REFERENCE_AT_MS,
+            );
+            assert_eq!(vector[shares, contribution, fee], vector[100, 100, 1]);
+            // Using the old reserve instead would wrongly refuse the lower edge.
+            assert_eq!(state.maintenance_reserve(), SEED_RESERVE + 1);
+            state.destroy_for_testing();
+        });
+    });
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EMintOutsideRebalanceBand, location = blast_boosts_core::state)]
+fun a_rounded_long_mint_cannot_cross_the_lower_band_edge() {
+    mint_at_band_edge(policy::long(), 1_600_000, 102, 102);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EMintOutsideRebalanceBand, location = blast_boosts_core::state)]
+fun a_rounded_short_mint_cannot_cross_the_lower_band_edge() {
+    mint_at_band_edge(policy::short(), 1_600_000, 102, 102);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EMintOutsideRebalanceBand, location = blast_boosts_core::state)]
+fun a_long_mint_cannot_cross_the_upper_band_edge_after_costs() {
+    // The final reserve credit matters: using the old reserve admits this fill.
+    mint_at_band_edge(policy::long(), 2_600_000, 101, 100);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EMintOutsideRebalanceBand, location = blast_boosts_core::state)]
+fun a_short_mint_cannot_cross_the_upper_band_edge_after_costs() {
+    mint_at_band_edge(policy::short(), 2_600_000, 101, 100);
+}
+
+/// Credited contribution is capped at 100, but leverage must use the actual NAV gain of 101.
+#[test]
+#[expected_failure(abort_code = errors::EMintOutsideRebalanceBand, location = blast_boosts_core::state)]
+fun a_favorable_long_mint_cannot_cross_the_lower_band_edge() {
+    mint_at_band_edge(policy::long(), 1_600_000, 101, 102);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EMintOutsideRebalanceBand, location = blast_boosts_core::state)]
+fun a_favorable_short_mint_cannot_cross_the_lower_band_edge() {
+    mint_at_band_edge(policy::short(), 1_600_000, 101, 102);
+}
+
+#[test]
 #[expected_failure(abort_code = errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
 fun mint_completion_is_refused_once_shutdown_began() {
     let mut state = initialized_state(policy::long());
@@ -1606,10 +1664,10 @@ fun a_mint_landing_one_atom_over_the_nav_cap_is_refused() {
 }
 
 /// A costly fill from the upper band edge lands at 30_591 bps: the fill
-/// attribution, share quote, order bounds and NAV cap all pass, and only the
-/// post-fill hard cap refuses it.
+/// attribution, share quote, order bounds and NAV cap all pass. The final
+/// band guard also covers positions beyond the wider hard cap.
 #[test]
-#[expected_failure(abort_code = errors::EActiveLeverageAboveCap, location = blast_boosts_core::state)]
+#[expected_failure(abort_code = errors::EMintOutsideRebalanceBand, location = blast_boosts_core::state)]
 fun mint_completion_rejects_post_fill_leverage_above_the_cap() {
     let mut state = initialized_state(policy::long());
     let before = standard_observation(policy::long()).with_notional(2_600_000);
@@ -2181,6 +2239,18 @@ fun invalid_cap_is_rejected_before_stale_prices() {
 }
 
 // === Test Helpers ===
+
+fun mint_at_band_edge(side: PositionSide, notional: u64, deposit: u64, equity_increase: u64) {
+    let mut state = initialized_state(side);
+    let before = standard_observation(side).with_notional(notional);
+    let plan = state.prepare_mint(before.into_position_observation(), deposit, HEALTH_SHARE_SUPPLY, 1, REFERENCE_AT_MS);
+    let base_after = before.position_base + plan.base_to_buy();
+    state.complete_mint(
+        plan, before.with_venue_equity(SEED_VENUE_EQUITY + equity_increase).with_position_base(base_after).into_position_observation(),
+        REFERENCE_AT_MS,
+    );
+    state.destroy_for_testing();
+}
 
 fun set_test_order_cap(self: &mut State<Product>, cap: u64): u64 {
     self.set_max_order_notional(cap, fresh_price(1_000_000_000), fresh_price(1_000_000_000), LOT_SIZE, REFERENCE_AT_MS)

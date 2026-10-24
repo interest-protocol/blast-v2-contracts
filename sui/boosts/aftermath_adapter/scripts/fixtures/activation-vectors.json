@@ -48,7 +48,7 @@
       "mintFeeCapBps": "100",
       "redeemFeeCapBps": "100",
       "adminShareCapBps": "5000",
-      "minOrderLots": "1",
+      "minOrderLots": "2",
       "maxReserveBps": "500"
     },
     "maxOrderNotional": "250000000",
@@ -118,7 +118,7 @@
           "100",
           "100",
           "5000",
-          "1",
+          "2",
           "500"
         ],
         "assign": "vault_policy"
@@ -232,7 +232,7 @@
     "100",
     "100",
     "5000",
-    "1",
+    "2",
     "500",
     "--assign",
     "vault_policy",
