@@ -130,7 +130,8 @@ trade size exists anywhere.
 - Fees: `initial_mint_fee_bps <= mint_fee_cap_bps < 10,000`,
   `initial_redeem_fee_bps <= redeem_fee_cap_bps < 10,000`,
   `admin_share_cap_bps <= 10,000`.
-- `min_order_lots`: 1 to 1,000,000; the minimum proportional order in venue lots.
+- `min_order_lots`: 2 to 1,000,000; the minimum proportional order in venue lots.
+  Two is only the structural floor; each product needs a simulated minimum.
 - `max_reserve_bps`: 1 to 10,000; ceiling on the reserve as a share of notional.
 
 Live, adjustable values in `State`: `mint_fee_bps`, `redeem_fee_bps`,
@@ -253,7 +254,8 @@ What happens, in order, all atomic:
    inside Aftermath.
 9. Re-price at the same oracle pair and credit shares (see Economics). Check
    `shares >= minimum_shares`, post-mint NAV at or under `nav_cap`, post-mint
-   leverage (rounded up to whole bps) strictly under `max_leverage_bps`, and
+   leverage inside both inclusive rebalance-band edges, using final equity and
+   the final reserve after fee credit and clamping, and
    that existing holders' NAV per share did not fall.
 10. Mint shares, store the new checkpoint, emit `Minted`.
 
@@ -493,8 +495,8 @@ in basis points out of 10,000; leverage in basis points where 10,000 = 1x.
   stored reserve.
 - Shareholder NAV `N = E - R*`. Every priced operation requires `N > 0`.
 - Leverage `= notional / N`. Band comparisons and the rebalance max and target
-  checks cross-multiply exactly, without rounding; the post-mint max check
-  rounds leverage up to whole bps first.
+  checks cross-multiply exactly, without rounding. Mint must start and finish
+  inside the band; the final comparison uses final equity and final reserve.
 - NAV per share `= N / S`, where `S` is total share supply including the
   locked seed. A whole share is worth `N * 10^9 / S` collateral atoms.
 
@@ -756,9 +758,9 @@ outdated adapter package aborts in the `operational_version` module of the
 | 36 | Post-mint NAV above `nav_cap` | Mint less or wait. |
 | 37 | A fill's price outside the execution bound, or no tick inside it | Trade smaller or wait for depth. |
 | 43 | A fill's actual notional above `max_order_notional`, outside the one-lot reduce-only exception | Trade smaller. |
-| 49 | Mint while leverage is outside the band | Call `rebalance` (anyone), then mint in a separate transaction. |
+| 49 | Leverage before or after mint is outside the band | Dry-run another amount. Rebalance first only if the current position is outside the band. |
 | 50, 51 | Oracle pair or fills changed within the operation | Retry. |
-| 52 | Leverage after a mint at or above `max_leverage_bps` (rounded up), or a rebalance buy left leverage above target or at or above max | Mint less; for rebalance, retry later. |
+| 52 | A rebalance buy left leverage above target or at or above max | Retry later. |
 | 53 | Payout below `minimum_collateral` | Re-quote. |
 | 54 | Rebalance while inside the band | Nothing to do. |
 | 55 | Rebalance made no admissible progress | Wait for depth or a better price. |
@@ -770,8 +772,10 @@ outdated adapter package aborts in the `operational_version` module of the
 - Passing an Aftermath object other than the bound one. Always read the binding.
 - Setting `minimum_shares` or `minimum_collateral` to 0 in production. The
   mint floors shares and execution costs vary; set a floor from a fresh dry run.
-- Expecting to mint at any time. Mints abort while leverage is outside the band
-  (49), above the NAV cap (36), or while the checkpoint is drifted (32).
+- Expecting to mint at any time. Mints abort if starting or final leverage is
+  outside the band (49), above the NAV cap (36), or while the checkpoint is
+  drifted (32). A minimum-sized mint is not guaranteed to pass. At an exact
+  band edge, a rounded mint may fail while rebalance remains unavailable.
 - Tiny trades. Mints and redemptions below `lot_size * min_order_lots` of base
   abort (12); shutdown claims that round to zero abort (8).
 - Large trades. More than 16 orders, a fill outside `max_slippage_bps`, an
@@ -820,9 +824,10 @@ taker fees and slippage on the Vault's orders. The fee splits into a reserve
 part (stays in the Vault for holders) and Blast's admin part. A partner code
 changes nothing for the user.
 
-**Why did my mint abort with code 49 in `state`?** The Vault's leverage is
-outside the rebalance band, and mints are allowed only inside it. Anyone can call
-`operations::rebalance`; once its transaction succeeds, mint in a new transaction.
+**Why did my mint abort with code 49 in `state`?** Starting or final leverage
+was outside the rebalance band. The whole transaction rolls back; gas is still
+payable. Dry-run a different amount. Anyone can rebalance an already out-of-band
+position first, but an exact band edge does not allow rebalance.
 
 **Who rebalances, and is there a reward?** Anyone, through
 `operations::rebalance`. Ordinary calls require a gas price at or below the

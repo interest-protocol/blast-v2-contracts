@@ -68,7 +68,7 @@ fun fee_limits_reject_an_admin_share_one_unit_above_its_cap() {
 
 #[test]
 fun a_complete_long_policy_is_composed_and_preserved() {
-    let vault_policy = new_policy(true, 0, 0, 1);
+    let vault_policy = new_policy(true, 0, 0, 2);
     let rebalance = vault_policy.rebalance_policy();
     let price_policy = vault_policy.price_policy();
 
@@ -77,7 +77,7 @@ fun a_complete_long_policy_is_composed_and_preserved() {
     assert_eq!(price_policy.max_price_age_ms(), 1);
     assert_eq!(vault_policy.initial_mint_fee_bps(), 0);
     assert_eq!(vault_policy.initial_redeem_fee_bps(), 0);
-    assert_eq!(vault_policy.min_order_lots(), 1);
+    assert_eq!(vault_policy.min_order_lots(), 2);
 }
 
 #[test]
@@ -131,7 +131,7 @@ fun every_small_valid_domain_tuple_is_accepted_and_preserved() {
     vector[false, true].do!(|is_long| {
         0u64.range_do!(3, |mint_fee_bps| {
             0u64.range_do!(3, |redeem_fee_bps| {
-                1u64.range_do!(3, |min_order_lots| {
+                2u64.range_do!(4, |min_order_lots| {
                     let vault_policy = new_policy(is_long, mint_fee_bps, redeem_fee_bps, min_order_lots);
 
                     assert_eq!(vault_policy.initial_mint_fee_bps(), mint_fee_bps);
@@ -179,19 +179,26 @@ fun a_nav_cap_whose_max_leverage_notional_overflows_is_rejected() {
 #[test]
 #[expected_failure(abort_code = errors::EInvalidFeeBps, location = blast_boosts_core::policy)]
 fun mint_fee_at_the_denominator_is_rejected() {
-    new_policy(true, 10_000, 0, 1);
+    new_policy(true, 10_000, 0, 2);
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EInvalidFeeBps, location = blast_boosts_core::policy)]
 fun redeem_fee_at_the_denominator_is_rejected() {
-    new_policy(true, 0, 10_000, 1);
+    new_policy(true, 0, 10_000, 2);
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EInvalidMinOrderLots, location = blast_boosts_core::policy)]
 fun zero_minimum_exposure_lots_are_rejected() {
     new_policy(true, 0, 0, 0);
+}
+
+/// A one-lot minimum leaves the relative rounding limit without useful protection.
+#[test]
+#[expected_failure(abort_code = errors::EInvalidMinOrderLots, location = blast_boosts_core::policy)]
+fun one_minimum_exposure_lot_is_rejected() {
+    new_policy(true, 0, 0, 1);
 }
 
 #[test]
@@ -303,7 +310,7 @@ fun new_policy_with_fee_caps(
         mint_fee_cap_bps,
         redeem_fee_cap_bps,
         admin_share_cap_bps,
-        1,
+        2,
         MAX_RESERVE_BPS,
     )
 }
@@ -318,7 +325,7 @@ fun new_policy_with_reserve_ceiling(max_reserve_bps: u64): VaultPolicy {
         0,
         0,
         0,
-        1,
+        2,
         max_reserve_bps,
     )
 }

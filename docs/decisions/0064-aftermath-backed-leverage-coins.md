@@ -943,13 +943,60 @@ site and at least one adversarial test.
 | I23 | The launchpad cannot influence NAV, leverage, or venue authority. | No dependency; exact Quote allowlist only. |
 | I24 | Shutdown redemption can distribute only verified cash, including any terminally released reserve, and cannot reopen exposure. | Flat cash-only, empty-order, settled-funding checkpoint; reserve reclassification; floor pro-rata payout; no fee. |
 | I25 | Share pricing cannot use caller-selected or book-only prices. | Fixed market-bound oracle pair for pre/post NAV; separate mark and margin checks. The `ValuationPolicy` type in `blast_leverage_series_one::policy` enforces the two-sided freshness window, the confidence bound, and the mark-versus-index divergence bound, and the source-boundary script rejects mark-identified inputs in `accounting_math`; semantic review must still trace arbitrarily named numeric inputs. The linear valuation carrier and exact source binding remain open. |
-| I26 | A share-changing operation preserves proportional exposure within the operation-captured live-lot rounding bound, and repeated operations cannot evade the selected cumulative drift limit. | Mint and redemption reject a proportional exposure change below `min_exposure_lots` live lots unless a redemption reaches flat; mint sizes from `D - F` and admits a final base only inside `Q0 + [min(delta(C), delta(D - F)), delta(D - F)]`; redemption admits a final base only inside `Q_min` to `Q_keep`. The relative cap bounds cumulative drift to about `L0 * (N0 / N)^(1 / min_exposure_lots)`. Simulation selects `min_exposure_lots`, and mint must still enforce the final leverage-band gate. |
+| I26 | A share-changing operation preserves proportional exposure within the operation-captured live-lot rounding bound, and repeated operations cannot evade the selected cumulative drift limit. | Mint and redemption reject a proportional exposure change below `min_exposure_lots` live lots unless a redemption reaches flat; mint sizes from `D - F` and admits a final base only inside `Q0 + [min(delta(C), delta(D - F)), delta(D - F)]`; redemption admits a final base only inside `Q_min` to `Q_keep`. For fixed valuation and net-deposit-only growth, the tighter bound is `L_final >= L_start * (N_start / N_final)^(1 / (min_exposure_lots + 1))`. Simulation selects the minimum; mint independently enforces both inclusive final band edges using final equity and final reserve after fee credit and clamping. |
 | I27 | A total-equity delta cannot masquerade as funding or hide a reserve impairment. | Exact funding-accumulator proof; `R <= E` for priced operations; separate objective loss sync. |
 | I28 | Lifecycle degradation is monotone until a complete Vault proof authorizes an upgrade. | Closed five-state enum; initialization is one-way, only `Active -> ReduceOnly`, `Active -> ShutdownPending`, and `ReduceOnly -> ShutdownPending` exist in the pure slice, and shutdown is irreversible. Resume and settlement finalization require their full proofs. |
 | I29 | Every constructed rebalance policy has strictly ordered public, module, target, and hard-cap thresholds. | `blast_leverage_series_one::policy` exclusively constructs private `RebalancePolicy` fields and enforces `public lower < module lower < target < module upper < public upper < hard cap` before tolerance and improvement checks. |
 | I30 | Every constructed preliminary Tier policy fixes a long or short direction, embeds validated rebalance and valuation policies, keeps both fee rates and the mint-contribution divergence bound below 10,000, and has positive minimum exposure lots and NAV cap. | Private `TierPolicy` fields, the closed `PositionSide` enum, package constructors, and the Series1 source-boundary gate; production values and stateful policy use stay blocked until their design and simulation gates close. |
 | I31 | Every constructed valuation policy fixes a two-sided freshness window with positive historical-age tolerance, keeps the confidence and mark-divergence bounds below 10,000 basis points, and its gates reject a stale, future-dated, zero-priced, low-confidence, or divergent observation without wrapping or underflowing at `u64` width. | Private `ValuationPolicy` fields and Series1 gates. The adapter must carry operation-scoped authenticated oracle and venue inputs through one call; exact normalized fields and selected bounds remain blocked on premises P16 through P20 and simulation. |
 | I32 | A mint cannot credit an implausibly favorable shareholder-NAV contribution by treating venue mark divergence as share-accounting authority. | `TierPolicy` stores a distinct validated `max_mint_contribution_divergence_bps`; `blast_leverage_series_one::policy::assert_mint_contribution_within_bound` applies the exact leveraged `u256` cap to the canonical contribution before share minting. Boundary, width, exhaustive-reference, registry, and precedence tests pin the rule. Superseded by ADR 0084 D3 (2026-09-16): the divergence bound, its gate, and their error codes are removed; `accounting_math::allocated_mint_quote` credits `min(nav_after - nav_before, deposit - fee)` and `redemption_quote` pays `min(nav_unwound, nav_before) - equity_keep`, so favorable execution accrues to the remaining holders without a policy value. |
+
+### I26 refinement: mint admission and the NVDA successor minimum (2026-10-24)
+
+The final mint band check is unconditional. It keeps the existing exact-fill,
+proportional-exposure and non-dilution rules, and aborts the whole transaction
+before issuing shares if either edge fails. It uses the actual final reserve,
+including fee credit and its cap. Minimum size reduces rounding drift but does
+not guarantee deposit availability. At an exact edge, an unsafe rounded mint
+can fail while ordinary rebalance is unavailable; no in-band rebalance bypass
+is introduced. Failed transactions still cost gas.
+
+Policy excludes a one-lot minimum. The two-lot structural floor is deliberately
+separate from each product's calibrated minimum. For a future NVDA 2x issuance,
+[`nvda-mint-drift.json`](../../sui/boosts/core/scripts/fixtures/nvda-mint-drift.json)
+selects **65 lots**, using the historical recorded seed quantities (998,147
+USDC atoms NAV, 8,810,000 base, 10,000 base per lot) and a 1,000,000,000-atom NAV
+cap. Historical deployment evidence is not rewritten or claimed to be current
+chain state. The model normalizes starting leverage to exactly 2x; the recorded
+entry quote is not an oracle price.
+
+For desired base `x = Q*D/N` and rounded fill `q >= m*lot`,
+`x < q + lot <= q*(m+1)/m`. Thus `q >= m*x/(m+1)`, and concavity gives
+`Q_next/Q >= (N_next/N)^(m/(m+1))`. Multiplying across mints gives the bound
+in I26. Exact integer powers select the smallest `m >= 2` satisfying
+`start_bps^(m+1) * seed_NAV >= lower_bps^(m+1) * NAV_cap`.
+This covers every mint sequence in that model, including the final cap remainder.
+
+The executable stress model picks the largest integer deposit below the next
+lot threshold, stops when the cap remainder cannot fund a minimum order, and
+compares leverage without rounding it. At 64 lots it first crosses 1.8x on mint
+12,129; 65 lots stays inside through 12,223 mints and ends at about 1.802293x.
+At the recorded seed quantities, the minimum net deposit is 73,644 USDC atoms
+($0.073644); the smallest partial redemption burns 73,643 seed-priced share
+atoms (about $0.073643 gross, before fees/costs). Move tests pin both thresholds
+and the existing flat-redemption exception. Later minimum dollar amounts vary
+with the position and share price.
+
+Run `bash sui/boosts/core/scripts/verify.sh simulation` to reproduce selection
+and stress evidence. The read-only activation tool requires the calibration
+profile in its live configuration, checks band/minimum/cap inputs and observable
+seed NAV/lot/exposure, and explicitly leaves the starting-leverage premise
+unverified: `VaultInitialized` does not contain oracle-valued notional. Starting
+at least at 2x must be established separately before relying on the forecast.
+Recalibrate for another band, larger NAV cap, changed lot size or different
+starting assumptions. Price moves, execution credits/costs, reserve changes,
+funding and mixed redemption flows are outside this model; the final mint check
+still applies. This calibration is not a live venue-execution or rollback proof.
 
 ## Alternatives considered
 

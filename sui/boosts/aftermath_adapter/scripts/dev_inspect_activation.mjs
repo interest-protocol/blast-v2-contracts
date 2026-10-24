@@ -10,6 +10,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import process from 'node:process';
 import { AFTERMATH_PACKAGE } from './aftermath.mjs';
+import { assertCalibratedPolicy, assertCalibratedSeed } from '../../core/scripts/calibrate_mint_minimum.mjs';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_DIR = join(SCRIPT_DIR, '..');
@@ -304,6 +305,8 @@ function validateBuilderInput(input) {
     expectDecimals(input.rebalancePolicy, 'builderInput.rebalancePolicy', REBALANCE_POLICY_FIELDS);
     expectDecimals(input.pricePolicy, 'builderInput.pricePolicy', PRICE_POLICY_FIELDS);
     expectDecimals(input.vaultPolicy, 'builderInput.vaultPolicy', VAULT_POLICY_FIELDS);
+    const minimum = BigInt(input.vaultPolicy.minOrderLots);
+    if (minimum < 2n || minimum > 1_000_000n) fail('builderInput.vaultPolicy.minOrderLots: expected 2 to 1000000');
     expectDecimal(input.maxOrderNotional, 'builderInput.maxOrderNotional');
     expectDecimal(input.navCap, 'builderInput.navCap');
     expectObject(input.metadata, 'builderInput.metadata', METADATA_FIELDS);
@@ -782,6 +785,11 @@ function selfTest() {
     const { plan } = validateFixture(fixture);
     let passed = 3;
 
+    const oneLot = structuredClone(fixture.builderInput);
+    oneLot.vaultPolicy.minOrderLots = '1';
+    expectFailure('minOrderLots', () => buildPlan(oneLot));
+    passed += 1;
+
     const wrongSide = structuredClone(fixture.builderInput);
     wrongSide.side = 'flat';
     expectFailure('long or short', () => buildPlan(wrongSide));
@@ -915,7 +923,7 @@ function selfTest() {
         validatePinnedSurfaceFixture(testnetCapture));
     passed += 1;
 
-    process.stdout.write(`dev_inspect_activation self-test: PASS ${passed}/18 cases\n`);
+    process.stdout.write(`dev_inspect_activation self-test: PASS ${passed}/19 cases\n`);
 }
 
 function runSui(args) {
@@ -972,12 +980,14 @@ function live(configPath) {
         'builderInput',
         'objectTypes',
         'expectedObservation',
+        'mintDriftProfile',
     ]);
-    if (config.schemaVersion !== 3
+    if (config.schemaVersion !== 4
         || config.fixtureKind !== 'live-mainnet-dev-inspect') {
         fail('config: unsupported schema or kind');
     }
     const plan = buildPlan(config.builderInput);
+    assertCalibratedPolicy(config.builderInput, config.mintDriftProfile);
     verifyProductionPhaseOrder();
     const chain = parseChainIdentifier(runSui([
         'client',
@@ -1026,6 +1036,8 @@ function live(configPath) {
         objectTypes,
     );
     assertEqual(observed, config.expectedObservation, 'liveObservation');
+    assertCalibratedSeed(observed.vaultInitialized.parsedJson, config.builderInput, config.mintDriftProfile);
+    process.stdout.write('Mint drift forecast remains conditional: VaultInitialized does not prove the minimum starting leverage.\n');
     process.stdout.write('dev_inspect_activation: PASS mainnet read-only activation\n');
 }
 

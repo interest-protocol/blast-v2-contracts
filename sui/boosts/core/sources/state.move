@@ -342,6 +342,7 @@ public fun mint_position<Product>(self: &MintPlan<Product>): ActivePosition { se
 /// The credited contribution is capped at the deposit net of the whole fee, so
 /// a favorable fill accrues to existing holders (ADR 0084 D3).
 /// The returned shares are minted through the adapter's native share authority.
+/// The actual final position must remain inside both inclusive band edges.
 /// Returns shares, contribution, fee, admin, reserve and the two sealed rates.
 public fun complete_mint<Product>(
     self: &mut State<Product>,
@@ -378,11 +379,8 @@ public fun complete_mint<Product>(
     );
     self.assert_within_nav_cap(nav_after);
     assert!(
-        accounting_math::is_accounting_leverage_below_limit(
-            after.notional, after.equity, reserve_after,
-            self.vault_policy.rebalance_policy().max_leverage_bps(),
-        ),
-        blast_boosts_core::errors::active_leverage_above_cap!(),
+        self.is_within_band(&after, reserve_after),
+        blast_boosts_core::errors::mint_outside_rebalance_band!(),
     );
 
     self.maintenance_reserve = reserve_after;

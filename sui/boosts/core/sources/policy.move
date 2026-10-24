@@ -212,7 +212,9 @@ public fun new_price_policy(
 /// its cap, and both caps stay below 10,000 bps. `admin_share_cap_bps` bounds
 /// the share of future collected fees the admin may take and may equal
 /// 10,000; the Vault starts with an admin share of zero.
-/// `min_order_lots` is positive and at most `max_min_order_lots`.
+/// `min_order_lots` is at least two and at most `max_min_order_lots`.
+/// Two only excludes the vacuous one-lot rounding bound; each product still
+/// needs a simulated minimum for its band, seed and intended growth.
 /// `max_reserve_bps` is positive and at most 10,000: the maintenance reserve
 /// may hold at most that share of position notional, and every reserve
 /// credit is clamped to it so the excess stays with holders as NAV.
@@ -242,7 +244,7 @@ public fun new_vault_policy(
         blast_boosts_core::errors::fee_cap_exceeded!(),
     );
     assert!(
-        min_order_lots > 0
+        min_order_lots >= 2
             && min_order_lots <= constants::max_min_order_lots!(),
         blast_boosts_core::errors::invalid_min_order_lots!(),
     );

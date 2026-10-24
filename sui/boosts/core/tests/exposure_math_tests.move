@@ -143,6 +143,36 @@ fun the_mint_base_delta_supports_maximum_supported_values() {
     assert_eq!(accounting_math::mint_base_to_buy_down(2, max, 2, 1, max), max);
 }
 
+/// Pins the calibrated successor profile's smallest net deposit in collateral atoms.
+#[test]
+fun calibrated_minimum_still_admits_a_small_mint_and_partial_redemption() {
+    assert_eq!(accounting_math::mint_base_to_buy_down(73_644, 8_810_000, 998_147, 10_000, 65), 650_000);
+    let (minimum, maximum) = accounting_math::redemption_base_bounds(73_643, 8_810_000, 998_147, 10_000, 65);
+    assert_eq!(minimum, 8_160_000);
+    assert_eq!(maximum, 8_160_000);
+    assert!(accounting_math::is_base_above_min_order(8_810_000, 10_000, 65));
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EOrderBelowMinLots, location = blast_boosts_core::accounting_math)]
+fun calibrated_minimum_rejects_a_mint_one_atom_below_the_threshold() {
+    accounting_math::mint_base_to_buy_down(73_643, 8_810_000, 998_147, 10_000, 65);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EOrderBelowMinLots, location = blast_boosts_core::accounting_math)]
+fun calibrated_minimum_rejects_a_partial_redemption_one_share_below_the_threshold() {
+    accounting_math::redemption_base_bounds(73_642, 8_810_000, 998_147, 10_000, 65);
+}
+
+/// The minimum never removes the existing proportional-close-to-flat exception.
+#[test]
+fun calibrated_minimum_preserves_the_flat_redemption_exception() {
+    let (minimum, maximum) = accounting_math::redemption_base_bounds(999, 999, 1_000, 10_000, 65);
+    assert_eq!(minimum, 0);
+    assert_eq!(maximum, 0);
+}
+
 /// Catches a rounded delta that exceeds its proportional target or falls a lot short.
 #[test]
 fun the_mint_base_delta_never_exceeds_its_proportional_target() {

@@ -33,19 +33,23 @@ proof.
 
 ### 1.2 Always supply the Series' immutable `min_order_lots`
 
-Every exposure function takes `min_order_lots`. It must come from the
+Every exposure function takes `min_order_lots`. Policy requires at least two
+lots; this structural floor alone is not a calibrated production choice. It must come from the
 immutable `VaultPolicy`, never from a caller or a live setter. Selecting the
 value is a simulation gate, but the shape of the decision is fixed:
 
 - Relative under-exposure per mint and over-reduction per redemption are both
   below `1 / min_order_lots`.
-- After any sequence of legal mints, accounting leverage stays close to
-  `L0 * (N0 / N)^(1 / min_order_lots)`, a lower bound whose attained worst
-  case is `1 / (min_order_lots + 1)`. With one lot a 2.0x pool leaves the
-  1.8x band on worst-case mint 2,229 and sits at 1.7397x after 3,000 mints
-  and 32 percent NAV growth. With one hundred lots the same sequence stays at
-  1.9455x after 3,000 mints and sixteen times NAV growth. Both facts are
-  pinned exactly by package tests.
+- For fixed valuation and NAV growth caused only by net deposits, the tighter
+  bound is `L_final >= L_start * (N_start / N_final)^(1 / (m + 1))`, where
+  `m = min_order_lots`. The calibration script compares integer powers exactly
+  and simulates deposits just below the next lot threshold. This is a
+  conditional rounding model, not a promise under market moves, execution
+  credits, funding, reserve changes or interleaved redemptions.
+- Every completed mint must independently pass both inclusive band edges,
+  using its actual final equity and reserve after fee credit and clamping.
+  Exact cross-products prevent whole-bps rounding from hiding a breach.
+  This check can reject a mint even when its minimum size is satisfied.
 - The minimum has a sharp lock condition, recorded in `docs/accounting.md`.
   Initialization requires exposure above the minimum operation size; priced
   redemptions enforce their exact proportional bounds. Health synchronization
