@@ -29,7 +29,7 @@ fun error_registry_first_half_is_sequential() {
 }
 
 #[test]
-/// Codes 15 to 37.
+/// Codes 15 to 38.
 fun error_registry_second_half_is_sequential() {
     assert_eq!(errors::initialization_fill_mismatch!(), 15);
     assert_eq!(errors::initialization_imr_mismatch!(), 16);
@@ -54,6 +54,7 @@ fun error_registry_second_half_is_sequential() {
     assert_eq!(errors::priority_gas_price!(), 35);
     assert_eq!(errors::partner_not_accepted!(), 36);
     assert_eq!(errors::partner_unchanged!(), 37);
+    assert_eq!(errors::invalid_rebaseline!(), 38);
 }
 
 // === Imports ===

@@ -709,6 +709,18 @@ public fun assert_active<Product>(self: &State<Product>) {
     self.lifecycle.assert_active();
 }
 
+/// Checks a recovery observation against the same prices, side and positive
+/// shareholder NAV required by ordinary operations. Recovery changes no core
+/// allocation: the authenticated venue loss is reflected in the next valuation.
+public fun assert_recoverable_position<Product>(
+    self: &State<Product>,
+    observation: PositionObservation,
+    now_at_ms: u64,
+) {
+    self.lifecycle.assert_active();
+    let _ = self.validated_active_position(observation, now_at_ms);
+}
+
 /// Rejects venue synchronization after the local cash pool has been sealed.
 public fun assert_can_sync<Product>(self: &State<Product>) {
     self.lifecycle.assert_can_sync();

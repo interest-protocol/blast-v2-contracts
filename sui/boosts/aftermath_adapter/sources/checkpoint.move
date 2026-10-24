@@ -95,6 +95,41 @@ public(package) fun lot_size(self: &Checkpoint): u64 { self.lot_size }
 /// The raw signed IFixed collateral allocated to the position.
 public(package) fun allocated_collateral(self: &Checkpoint): u256 { self.allocated_collateral }
 
+// --- Recovery ---
+
+/// Admits only a same-side forced reduction with settled funding. This proves
+/// the shape of the change, not its cause; RiskAdmin must review the venue event.
+/// Free cash, lot size, position IMR and all order fields stay exact. Market
+/// policy remains live under ADR 0115. Realized PnL may debit or credit allocated
+/// collateral; neither is mistaken for an attributable funding settlement.
+public(package) fun assert_forced_reduction(self: &Checkpoint, after: &Checkpoint) {
+    assert!(
+        self.pending_ask_base == 0 && self.pending_bid_base == 0 && self.pending_order_count == 0
+            && after.pending_ask_base == 0 && after.pending_bid_base == 0 && after.pending_order_count == 0
+            && self.signed_base != 0
+            && after.signed_base.abs() < self.signed_base.abs()
+            && (after.signed_base == 0 || after.signed_base.is_neg() == self.signed_base.is_neg())
+            && after.signed_quote_notional.abs() <= self.signed_quote_notional.abs()
+            && if (after.signed_base == 0) {
+                after.signed_quote_notional == 0
+            } else {
+                after.signed_quote_notional != 0
+                    && after.signed_quote_notional.is_neg() == after.signed_base.is_neg()
+            },
+        blast_boosts_aftermath::errors::invalid_rebaseline!(),
+    );
+    let mut expected = self.with_venue_policy_of(after);
+    expected.signed_base = after.signed_base;
+    expected.signed_quote_notional = after.signed_quote_notional;
+    expected.allocated_collateral = after.allocated_collateral;
+    expected.market_funding_long = after.market_funding_long;
+    expected.market_funding_short = after.market_funding_short;
+    expected.funding_snapshot_long = after.market_funding_long;
+    expected.funding_snapshot_short = after.market_funding_short;
+
+    assert!(&expected == after, blast_boosts_aftermath::errors::invalid_rebaseline!());
+}
+
 // --- Deposit ---
 
 /// A cash-only deposit may change exactly free collateral and no other raw field.

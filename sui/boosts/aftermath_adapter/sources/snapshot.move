@@ -142,29 +142,13 @@ public(package) fun capture<Collateral>(
 /// with, refusing a venue no priced operation may build on: unrepresentable
 /// economics, open orders, unsafe margin, or a paused or frozen market.
 public(package) fun into_observation(self: CapturedSnapshot): (PositionObservation, Checkpoint) {
-    let CapturedSnapshot {
-        venue_equity, position_base, lot_size, side, pending_order_count, margin_safe, venue_operational,
-        economics_valid, base_price, base_timestamp: base_price_published_at_ms,
-        collateral_price, collateral_timestamp: collateral_price_published_at_ms, mark_price,
-        checkpoint, collateral_fixed: _,
-    } = self;
-    assert!(economics_valid, blast_boosts_aftermath::errors::normalization_overflow!());
-    assert!(
-        pending_order_count == 0 && margin_safe && venue_operational,
-        blast_boosts_aftermath::errors::venue_not_ready!(),
-    );
+    self.into_validated_observation(true)
+}
 
-    let observation = observation::new_position(
-        venue_equity,
-        position_base,
-        lot_size,
-        side,
-        observation::new_price(base_price, 0, base_price_published_at_ms),
-        observation::new_price(collateral_price, 0, collateral_price_published_at_ms),
-        mark_price,
-    );
-
-    (observation, checkpoint)
+/// Recovery records an existing reduction without opening risk. It retains all
+/// pricing and operational checks but needs no opening-margin headroom.
+public(package) fun into_recovery_observation(self: CapturedSnapshot): (PositionObservation, Checkpoint) {
+    self.into_validated_observation(false)
 }
 
 /// The authenticated raw checkpoint the capture was read with.
@@ -185,14 +169,10 @@ public(package) fun collateral_price_observation(self: &CapturedSnapshot): Price
 /// Returns the raw IFixed collateral price the venue read for this capture.
 public(package) fun collateral_fixed(self: &CapturedSnapshot): u256 { self.collateral_fixed }
 
-// === Private Functions ===
-
-// --- Capture ---
-
 /// Proves the venue objects are the bound ones, then that each price-feed
 /// storage is the one the bound market prices with now, so the price a
 /// capture values with is always the one the venue trades at.
-fun assert_bound_graph<Collateral>(
+public(package) fun assert_bound_graph<Collateral>(
     binding: &Binding,
     account: &Account<Collateral>,
     registry: &Registry,
@@ -205,6 +185,36 @@ fun assert_bound_graph<Collateral>(
     );
     clearing_house.assert_market_oracles(base_oracle, collateral_oracle);
 }
+
+// === Private Functions ===
+
+fun into_validated_observation(self: CapturedSnapshot, require_opening_margin: bool): (PositionObservation, Checkpoint) {
+    let CapturedSnapshot {
+        venue_equity, position_base, lot_size, side, pending_order_count, margin_safe, venue_operational,
+        economics_valid, base_price, base_timestamp: base_price_published_at_ms,
+        collateral_price, collateral_timestamp: collateral_price_published_at_ms, mark_price,
+        checkpoint, collateral_fixed: _,
+    } = self;
+    assert!(economics_valid, blast_boosts_aftermath::errors::normalization_overflow!());
+    assert!(
+        pending_order_count == 0 && (!require_opening_margin || margin_safe) && venue_operational,
+        blast_boosts_aftermath::errors::venue_not_ready!(),
+    );
+
+    let observation = observation::new_position(
+        venue_equity,
+        position_base,
+        lot_size,
+        side,
+        observation::new_price(base_price, 0, base_price_published_at_ms),
+        observation::new_price(collateral_price, 0, collateral_price_published_at_ms),
+        mark_price,
+    );
+
+    (observation, checkpoint)
+}
+
+// --- Capture ---
 
 /// Values one position at the captured prices: whole-lot base, venue equity in
 /// collateral atoms, whether margin covers the requirement, and whether every
@@ -336,6 +346,23 @@ fun position_signs_coherent_decoded(
 }
 
 // === Test-Only Functions ===
+
+/// Replaces only external reads for recovery tests; production conversion and
+/// core valuation still run. Uses the standard unit-price fixture.
+#[test_only]
+public fun captured_position_for_testing(
+    checkpoint: Checkpoint,
+    equity: u64,
+    base: u64,
+    side: PositionSide,
+    margin_safe: bool,
+    venue_operational: bool,
+): CapturedSnapshot {
+    let mut capture = captured_health_for_testing(checkpoint, equity, margin_safe, 0, venue_operational, true);
+    capture.position_base = base;
+    capture.side = side;
+    capture
+}
 
 /// Builds a normalized authenticated post-capture fixture around a real raw
 /// checkpoint. Tests vary only equity and the venue-readiness facts; all other
