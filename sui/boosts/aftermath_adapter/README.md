@@ -9,8 +9,13 @@ Membership is shared, custody is not: administrators sign in to the singleton
 Blast ACL with a core role, but this package's generation and `UpgradeCap` belong only to
 it, and advancing them leaves the core untouched. Its Publisher and `UpgradeCap`
 are validated once and sealed inside `blast_admin` custody, from which no call
-returns them; a governed upgrade commits its receipt and advances the generation
-in one transaction, so a failure at either step rolls the whole upgrade back.
+returns them. An upgrade commits its receipt without changing the active
+operational generation. In a follow-up transaction the successor activates its
+own compiled generation, which must be exactly next. A wrong version cannot
+activate; the previous generation remains usable and live upgrade administrators
+can install a repair. Permanently destroying upgrade authority still requires
+matching active code. See [ADR 0123](../../../docs/decisions/0123-successor-activated-boosts-upgrades.md)
+and the [upgrade procedure](../../../deployments/README.md#boosts-adapter-upgrades).
 
 A product is any non-primitive type. The share currency is
 `blast_boost::BlastBoost<Product>`, a never-constructed marker registered
@@ -108,3 +113,23 @@ Local official venue ports contain aborting implementations: compilation and
 pure/native-custody tests do not prove venue execution or submitted rollback.
 See the [active release-candidate record](../../../docs/leverage-active-release-candidate.md)
 for parameters, keeper behavior, T-002 handoff facts and outstanding release evidence.
+
+### Local upgrade regression
+
+`scripts/test_upgrade_runtime.mjs` executes M-3 on a disposable loopback localnet
+with the pinned Sui CLI and `@mysten/sui` 2.35.0. Run it under the shared heavy-job
+guard. Set `M3_LOCALNET_CONFIG` to a task-owned genesis directory,
+`M3_OUTPUT_DIR` to a fresh evidence directory, and `M3_SDK_PATH` to that SDK's
+installed package directory. `M3_RPC` defaults to `http://127.0.0.1:52421` and
+must use 127.0.0.1. The runner sets its private CLI environment; it never uses the
+operator's default client configuration. Stop the task-owned node and remove its
+private genesis keys when done.
+
+It copies full first-party source, changes only the copied ACL root recipient
+and successor generation constants, and disables the three copied venue-interface
+initializers solely for local publication. No venue operation executes. Actual
+partner administration exercises the adapter's operational gate; this does not
+replace live redemption and dependency verification before deployment. Every
+transaction result, version transition, rollback and source hash is recorded in
+the output directory. The compile-only publication file uses mainnet's dependency
+environment label with localnet package IDs; it is never used to broadcast.

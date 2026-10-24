@@ -10,8 +10,8 @@
 /// The generation value, its checked arithmetic, and its replay event belong to
 /// `blast_admin::operational_version`; `init` seeds the value from the one-time witness before
 /// claiming the Publisher with it, so no other package can create this adapter's generation. This
-/// module owns the shared container, the two compiled constants that identify this bytecode and
-/// the bytecode a governed upgrade cuts over to, and the list of accepted Blast partners, one
+/// module owns the shared container, the compiled generation that identifies this bytecode,
+/// and the list of accepted Blast partners, one
 /// dynamic field per partner so the container's layout never changes.
 module blast_boosts_aftermath::blast_boosts_aftermath;
 
@@ -19,9 +19,6 @@ module blast_boosts_aftermath::blast_boosts_aftermath;
 
 /// Current adapter generation accepted by every protected mutation.
 const PACKAGE_VERSION: u64 = 1;
-
-/// The generation this bytecode hands over to in a governed upgrade.
-const NEXT_PACKAGE_VERSION: u64 = 2;
 
 // === Public Types ===
 
@@ -52,14 +49,9 @@ public(package) fun assert_current(self: &Protocol) {
     self.generation.assert_current(PACKAGE_VERSION);
 }
 
-/// Proves the cutover target is exactly next before any upgrade finalizer effect.
-public(package) fun assert_next(self: &Protocol) {
-    self.generation.assert_next(NEXT_PACKAGE_VERSION);
-}
-
-/// Advances the generation to the exact bytecode this upgrade installs.
-public(package) fun advance(self: &mut Protocol) {
-    self.generation.advance(&self.id, NEXT_PACKAGE_VERSION);
+/// Activates this bytecode only when its own generation is exactly next.
+public(package) fun activate(self: &mut Protocol) {
+    self.generation.advance(&self.id, PACKAGE_VERSION);
 }
 
 /// Accepts `partner_id` at once. Adding a partner whose removal is pending
@@ -135,18 +127,6 @@ public fun version_for_testing(self: &Protocol): u64 {
 #[test_only]
 public fun set_version_for_testing(self: &mut Protocol, version: u64) {
     self.generation.set_generation_for_testing(version);
-}
-
-#[test_only]
-/// Exercises the compiled cutover target without a native upgrade fixture.
-public fun advance_for_testing(self: &mut Protocol) {
-    self.advance();
-}
-
-#[test_only]
-/// Exercises the finalizer's pre-commit proof without a native upgrade fixture.
-public fun assert_next_for_testing(self: &Protocol) {
-    self.assert_next();
 }
 
 #[test_only]

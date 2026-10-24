@@ -4,9 +4,8 @@
 #[test_only]
 /// Tests for adapter-owned Publisher and UpgradeCap custody.
 ///
-/// The complete native authorize/commit/advance matrix belongs to
-/// `blast_admin::upgrade_custody_tests`, which owns a package marker at a
-/// nonzero address. These tests use this build's original address to prove
+/// Native authorize/upgrade/commit and activation are exercised by the runtime
+/// upgrade test at real published addresses. These tests use this build's original address to prove
 /// wiring, provenance, and guard order for a fresh publication.
 module blast_boosts_aftermath::package_admin_tests;
 
@@ -120,81 +119,6 @@ fun an_upgrade_cap_for_another_package_is_rejected() {
 }
 
 #[test]
-/// The upgrade administrator irreversibly narrows the policy in two steps.
-fun the_upgrade_admin_can_irreversibly_restrict_the_adapter() {
-    let mut fixture = start();
-
-    fixture.restrict_to_additive();
-    let restricted = blast_admin::blast_admin_events::collect_one<
-        blast_admin::blast_admin_events::UpgradePolicyRestricted<BLAST_BOOSTS_AFTERMATH>,
-    >(0);
-    let (_, _, _, _, previous_policy, new_policy) =
-        restricted.upgrade_policy_restricted_fields();
-    assert_eq!(previous_policy, package::compatible_policy());
-    assert_eq!(new_policy, package::additive_policy());
-    assert_eq!(
-        fixture.package_admin.policy_for_testing(),
-        package::additive_policy(),
-    );
-
-    fixture.restrict_to_dependency_only();
-    assert_eq!(
-        fixture.package_admin.policy_for_testing(),
-        package::dep_only_policy(),
-    );
-
-    fixture.end();
-}
-
-#[test]
-/// The second narrowing step emits its own policy fact, chained from the
-/// additive policy the first step installed.
-fun the_dependency_only_restriction_emits_the_policy_fact() {
-    let mut fixture = start();
-    let upgrade_cap_id = fixture.package_admin.upgrade_cap_id_for_testing();
-
-    fixture.restrict_to_additive();
-    fixture.restrict_to_dependency_only();
-
-    let mut restricted = sui::event::events_by_type<
-        blast_admin::blast_admin_events::UpgradePolicyRestricted<BLAST_BOOSTS_AFTERMATH>,
-    >();
-    assert_eq!(restricted.length(), 2);
-    let dependency_only = restricted.pop_back();
-    let (
-        custodian_id,
-        emitted_upgrade_cap_id,
-        package_id,
-        native_version,
-        previous_policy,
-        new_policy,
-    ) = dependency_only.upgrade_policy_restricted_fields();
-    assert_eq!(custodian_id, fixture.package_admin.id_for_testing());
-    assert_eq!(emitted_upgrade_cap_id, upgrade_cap_id);
-    assert_eq!(package_id, PACKAGE_ID);
-    assert_eq!(native_version, 1);
-    assert_eq!(previous_policy, package::additive_policy());
-    assert_eq!(new_policy, package::dep_only_policy());
-    assert_eq!(new_policy, fixture.package_admin.policy_for_testing());
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_admin::errors::EUpgradePolicyNotMoreRestrictive,
-    location = blast_admin::upgrade_custody,
-)]
-fun an_equal_policy_restriction_is_rejected_before_mutation() {
-    let mut fixture = start();
-
-    fixture.restrict_to_additive();
-    fixture.restrict_to_additive();
-
-    fixture.end();
-}
-
-#[test]
 /// Immutability destroys native upgrade authority while the final operational
 /// generation survives.
 fun the_upgrade_admin_can_permanently_destroy_upgrade_authority() {
@@ -214,20 +138,6 @@ fun the_upgrade_admin_can_permanently_destroy_upgrade_authority() {
     assert_eq!(final_policy, package::compatible_policy());
     assert!(!fixture.package_admin.has_upgrade_cap_for_testing());
     assert_eq!(fixture.protocol.version_for_testing(), 1);
-
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(
-    abort_code = blast_admin::errors::EUpgradeCapUnavailable,
-    location = blast_admin::upgrade_custody,
-)]
-fun policy_restriction_is_rejected_after_immutability() {
-    let mut fixture = start();
-
-    fixture.make_immutable();
-    fixture.restrict_to_additive();
 
     fixture.end();
 }
@@ -265,15 +175,17 @@ fun a_stale_generation_rejects_immutability() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_admin::errors::EOperationalVersionMismatch,
-    location = blast_admin::operational_version,
+    abort_code = blast_admin::errors::EInvalidPackageDigest,
+    location = blast_admin::upgrade_custody,
 )]
-/// A stale generation aborts before the native call.
-fun a_stale_generation_rejects_old_bytecode() {
+/// Repair authorization reaches custody even when this bytecode is stale.
+/// Real native upgrades need a nonzero published package ID; the runtime
+/// upgrade test covers successful authorization and receipt commit.
+fun a_stale_generation_still_reaches_upgrade_authorization() {
     let mut fixture = start();
     fixture.protocol.set_version_for_testing(3);
 
-    let ticket = fixture.authorize_upgrade(package_digest());
+    let ticket = fixture.authorize_upgrade(vector[]);
 
     destroy(ticket);
     fixture.end();
@@ -344,23 +256,11 @@ fun start(): Fixture {
     Fixture { scenario, protocol, package_admin }
 }
 
-fun package_digest(): vector<u8> {
-    x"11223344556677889900aabbccddeeffffeeddccbbaa00998877665544332211"
-}
-
 fun authorize_upgrade(
     self: &mut Fixture,
     digest: vector<u8>,
 ): UpgradeTicket {
-    self.package_admin.authorize_upgrade(&self.protocol, &upgrade_admin(), digest)
-}
-
-fun restrict_to_additive(self: &mut Fixture) {
-    self.package_admin.restrict_to_additive(&self.protocol, &upgrade_admin());
-}
-
-fun restrict_to_dependency_only(self: &mut Fixture) {
-    self.package_admin.restrict_to_dependency_only(&self.protocol, &upgrade_admin());
+    self.package_admin.authorize_upgrade(&upgrade_admin(), digest)
 }
 
 fun make_immutable(self: &mut Fixture) {

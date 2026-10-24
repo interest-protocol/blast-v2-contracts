@@ -305,8 +305,7 @@ still pays in full.
 
 ### Ticket 3 · M-3 · Restricting the upgrade policy makes the next upgrade freeze the adapter forever
 
-**Status:** open. Operational rule until fixed: never call
-`restrict_to_additive` or `restrict_to_dependency_only`.
+**Status:** proposed source fix under review; see [ADR 0123](../decisions/0123-successor-activated-boosts-upgrades.md). Commit and successor activation are separate, repair authorization is version-independent, and the adapter no longer exposes policy narrowing. Deliberate difference: `make_immutable` retains the current-generation check. The historical finding and recommendation below are preserved; this is not original-auditor sign-off.
 
 **The problem.** Every upgrade ends with `commit_upgrade_and_advance`, which
 moves the shared generation from 1 to the compiled `NEXT_PACKAGE_VERSION` of

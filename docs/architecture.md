@@ -52,7 +52,7 @@ without returning to core for its post-conditions.
 | Component | Responsibility | Must not own |
 | --- | --- | --- |
 | Package bootstrap | canonical OTW, the package's operational version singleton seeded from that witness, and the one-time framework `Publisher` claim | protocol administration, feature state beyond the version singleton, or upgrade authority |
-| Package administration | validated `Publisher` and raw `UpgradeCap` custody, exact-digest authorization under the compatible policy, receipt commit that advances the generation, and deliberate `make_immutable` | ACL membership storage, feature configuration, or state migration |
+| Package administration | validated `Publisher` and raw `UpgradeCap` custody, exact-digest authorization under the compatible policy, receipt commit, package-specific operational activation, and deliberate `make_immutable` | ACL membership storage, feature configuration, or state migration |
 | Protocol ACL | root rotation and revocable routine-admin membership | feature configuration, backend keys, creator recipients, or fees |
 | Runtime config | one dedicated creator-claim backend key, the live bonding-curve trade protocol fee share, and the treasury every permissionless protocol fee claim pays | admin delegation, creator recipient or issuance, cold launch policy, accrued balances, total trade-fee rates, or claim authority |
 | LP fee policy | migrators-owned default and per-coin Blast shares per asset, read live at every collection, and the protocol destination every vault pays | trade fee shares, the creator's split, accrued balances, or launch state |
@@ -291,7 +291,7 @@ intentional semantic difference in an ADR and in shared differential vectors.
 
 Upgradeability is a product/security decision, not a default convenience.
 
-- Sui: Blast's canonical `Publisher` and raw `UpgradeCap` enter one shared
+- Launchpad: the canonical `Publisher` and raw `UpgradeCap` enter one shared
   `PackageAdmin` after module/package provenance checks. An
   `AdminWitness<UpgradeAdmin>` signed in on the singleton Blast ACL (ADR 0097)
   authorizes an exact digest under the cap's compatible policy, which no path
@@ -313,6 +313,16 @@ Upgradeability is a product/security decision, not a default convenience.
   be able to relink (ADR 0088). Every migrators upgrade uses the compatible
   policy and bumps both compiled generation constants; its custody has no
   policy-narrowing or immutability path.
+
+- Boosts Aftermath separates native receipt commit from successor activation
+  ([ADR 0123](decisions/0123-successor-activated-boosts-upgrades.md)). The successor
+  proves its own compiled generation is exactly next before changing the shared
+  `Protocol`; failed activation leaves existing operations usable. Authorization
+  and receipt commit remain version-independent for repair. Compatible policy
+  cannot be narrowed; `make_immutable` still requires the current generation.
+  These historical authorization paths remain callable with the live ACL's
+  UpgradeAdmin role: a future governance replacement must revoke that role or
+  explicitly account for it. Version cutover alone does not retire this authority.
 
 The Sui custody and interim authority decision is accepted in
 [ADR 0032](decisions/0032-admin-authorized-upgrade-cap-custody.md). Replacement

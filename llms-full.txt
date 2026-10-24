@@ -3044,7 +3044,7 @@ Three packages implement it:
 | Object | Type | Created by | Role |
 | --- | --- | --- | --- |
 | Vault | `blast_boosts_aftermath::vault::Vault<Product, Collateral>` | Blast issuer, once per product | Custody of the core `State`, the bound venue account, the share `TreasuryCap` and `MetadataCap` (dynamic object fields under `TreasuryKey<Product>` and `MetadataKey<Product>`), the locked seed count, earned admin cash, and post-shutdown holder cash. |
-| Protocol | `blast_boosts_aftermath::blast_boosts_aftermath::Protocol` | package publish | The adapter's operational generation (every call that takes it checks it) and the accepted partners, one dynamic field per partner keyed by `blast_boosts_aftermath::blast_boosts_aftermath::PartnerKey`. |
+| Protocol | `blast_boosts_aftermath::blast_boosts_aftermath::Protocol` | package publish | The adapter's operational generation (ordinary calls require the current generation; upgrade activation requires exactly the next one) and the accepted partners, one dynamic field per partner keyed by `blast_boosts_aftermath::blast_boosts_aftermath::PartnerKey`. |
 | PackageAdmin | `blast_boosts_aftermath::package_admin::PackageAdmin` | deployment | Sealed Publisher and UpgradeCap of the adapter. |
 | Blast ACL | `blast_acl::ACL` | `blast_admin` | Role membership for every Blast admin. |
 
@@ -3526,15 +3526,29 @@ venue objects and prices.
 
 Upgrades: at deployment, the holder of the adapter's Publisher and UpgradeCap
 calls `blast_boosts_aftermath::package_admin::wrap` to seal them into the shared
-`PackageAdmin`. Then, with the UpgradeAdmin witness,
-`blast_boosts_aftermath::package_admin::authorize_upgrade` returns an
-`UpgradeTicket` for one digest;
-`blast_boosts_aftermath::package_admin::commit_upgrade_and_advance` commits the
-receipt and advances `Protocol` to the next generation in the same
-transaction; `blast_boosts_aftermath::package_admin::restrict_to_additive`,
-`blast_boosts_aftermath::package_admin::restrict_to_dependency_only` and
-`blast_boosts_aftermath::package_admin::make_immutable` narrow upgrades
-irreversibly. The core package is immutable.
+`PackageAdmin`. A Blast admin signs in with the UpgradeAdmin role, then calls
+`blast_boosts_aftermath::package_admin::authorize_upgrade` for one digest. Its
+`UpgradeTicket` feeds the native upgrade command, whose `UpgradeReceipt` feeds
+`blast_boosts_aftermath::package_admin::commit_upgrade` in the same transaction.
+Commit needs no second witness: the receipt binds the authorized upgrade to the
+same cap. Neither operation checks or changes `Protocol`, so repair remains
+possible during a version mismatch.
+
+In a follow-up transaction a Blast UpgradeAdmin calls the new package's
+`blast_boosts_aftermath::package_admin::activate_upgrade` with the shared
+`Protocol` and a fresh witness. It accepts only the running code's compiled
+generation equal to the active generation plus one. A wrong build cannot
+advance it; the previous generation remains usable. Successful activation emits
+`blast_admin::blast_admin_events::OperationalVersionAdvanced` and rejects older
+operational generations on ordinary paths. The native upgrade count may exceed
+the active generation after a failed attempt; they are separate values.
+
+There is no policy-narrowing path. A Blast UpgradeAdmin may permanently destroy
+the cap through `blast_boosts_aftermath::package_admin::make_immutable`, but only
+from code matching the active generation. This proves a version match, not the
+absence of other bugs or that this is the latest installed package. Historical
+repair-authorization paths still require the live ACL role; changing the active
+generation does not revoke that role. The core package is immutable.
 
 ### Economics
 
@@ -3863,7 +3877,7 @@ outdated adapter package aborts in the `operational_version` module of the
   admitted forced reduction; other drift may require ShutdownAdmin to shut
   the Boost down. Market-wide margin changes are accepted automatically.
 - Decoding an abort by code alone. Core and adapter codes overlap.
-- Calling an old adapter package after an upgrade (blast_admin code 13). Types
+- Calling an old adapter generation after activation (blast_admin code 13). Types
   keep their original package IDs; calls must target the current package.
 - Treating the tag name as the policy. `NVDA_BULL_2X` is a label; read `side`
   and `target_leverage_bps` from the Vault.
@@ -4486,7 +4500,9 @@ what each transaction leaves on chain.
 3. The old holder may call `blast_acl::destroy_retired_super_admin_cap`. Emits
    `SuperAdminCapDestroyed`.
 
-#### Upgrade a consumer package (Blast admin, one PTB)
+#### Upgrade a consumer package (Blast admin)
+
+For consumers other than the Boosts adapter, use one PTB:
 
 1. `blast_acl::sign_in` with the package's upgrade role (for example
    `blast_sui_domain::UpgradeAdmin`).
@@ -4508,6 +4524,23 @@ what each transaction leaves on chain.
 From the next transaction, calls into the previous bytecode abort and the new
 bytecode is the only one that works.
 
+The Boosts adapter separates native upgrade from activation. A Blast UpgradeAdmin
+signs in, calls `blast_boosts_aftermath::package_admin::authorize_upgrade` with
+custody, witness and digest, feeds its ticket into native Upgrade, then calls
+`blast_boosts_aftermath::package_admin::commit_upgrade` with custody and receipt.
+These calls neither read nor change Protocol and stay available during a version
+mismatch. The receipt proves authorization; commit needs no second witness.
+
+In a follow-up transaction, sign in again and call the successor's
+`blast_boosts_aftermath::package_admin::activate_upgrade` with mutable Protocol
+and the UpgradeAdmin witness. The running code must accept exactly the next
+generation. Failed activation leaves the old generation serving; a corrected
+upgrade can be installed. Native upgrade count and operational generation can
+diverge after failed attempts. `blast_boosts_aftermath::package_admin::make_immutable`
+still requires the running code to match the active generation before destroying
+repair authority. Historical repair functions retain live ACL checks; retiring
+their UpgradeAdmin authority requires revoking that role, not just a cutover.
+
 ### Operational versions
 
 Each upgradeable consumer keeps one shared version object holding an
@@ -4523,10 +4556,11 @@ genuine one-time witness, so the value can only be created in that package's
 | `blast_sui` | `blast_sui_package::PackageVersion` |
 | `blast_boosts_aftermath` | `blast_boosts_aftermath::blast_boosts_aftermath::Protocol` |
 
-Each package's bytecode compiles two private constants: its own generation and
-the next one. Every protected call passes the shared version object and runs
+Consumers other than Boosts compile two private constants: their own generation
+and the next one. Boosts compiles only its own generation and checks it during
+successor activation. Every ordinary protected call passes the shared version object and runs
 `operational_version::assert_current`, which aborts unless the stored generation
-equals the compiled one. The upgrade finalizer runs
+equals the compiled one. The other consumers' upgrade finalizer runs
 `operational_version::assert_next` and then `operational_version::advance`,
 which increments the stored generation by exactly one and emits
 `OperationalVersionAdvanced` with `container_id` (the version object's ID),
@@ -4539,15 +4573,16 @@ that takes it and must call the latest package version.
 `upgrade_custody::new` seals a package's `Publisher` and never-upgraded
 `UpgradeCap` (version 1) after checking both belong to the package of `M`.
 Neither can leave the custody. The consumer's shared `PackageAdmin` wraps it and
-gates every upgrade transition behind its upgrade role (`wrap`, and Blast SUI's
-`new` and `share`, need only the package's own `Publisher` and `UpgradeCap`):
+gates authorization behind its upgrade role. Boosts receipt commit instead carries
+the native authorized receipt. `wrap`, and Blast SUI's `new` and `share`, need
+only the package's own `Publisher` and `UpgradeCap`:
 
 | Package | Custody object | Transitions exposed |
 | --- | --- | --- |
 | `blast_fun` | `blast_fun::package_admin::PackageAdmin` | `blast_fun::package_admin::wrap`, `blast_fun::package_admin::authorize_upgrade`, `blast_fun::package_admin::commit_upgrade_and_advance`, `blast_fun::package_admin::make_immutable` |
 | `blast_fun_migrators` | `blast_fun_migrators::package_admin::PackageAdmin` | `blast_fun_migrators::package_admin::wrap`, `blast_fun_migrators::package_admin::authorize_upgrade`, `blast_fun_migrators::package_admin::commit_upgrade_and_advance` (no restriction, no immutability: always upgradeable) |
 | `blast_sui` | `blast_sui::package_admin::PackageAdmin` | `blast_sui::package_admin::new`, `blast_sui::package_admin::add_capability`, `blast_sui::package_admin::share`, `blast_sui::package_admin::authorize_upgrade`, `blast_sui::package_admin::commit_upgrade_and_advance`, `blast_sui::package_admin::restrict_to_additive`, `blast_sui::package_admin::make_immutable`, `blast_sui::package_admin::has_upgrade_cap` |
-| `blast_boosts_aftermath` | `blast_boosts_aftermath::package_admin::PackageAdmin` | `blast_boosts_aftermath::package_admin::wrap`, `blast_boosts_aftermath::package_admin::authorize_upgrade`, `blast_boosts_aftermath::package_admin::commit_upgrade_and_advance`, `blast_boosts_aftermath::package_admin::restrict_to_additive`, `blast_boosts_aftermath::package_admin::restrict_to_dependency_only`, `blast_boosts_aftermath::package_admin::make_immutable` |
+| `blast_boosts_aftermath` | `blast_boosts_aftermath::package_admin::PackageAdmin` | `blast_boosts_aftermath::package_admin::wrap`, `blast_boosts_aftermath::package_admin::authorize_upgrade`, `blast_boosts_aftermath::package_admin::commit_upgrade`, `blast_boosts_aftermath::package_admin::activate_upgrade`, `blast_boosts_aftermath::package_admin::make_immutable` |
 
 The custody primitives: `upgrade_custody::authorize_upgrade` (exactly one
 32-byte digest under the current policy), `upgrade_custody::commit_upgrade`
@@ -4570,8 +4605,9 @@ and have no custody at all.
 - `pending_super_admin` is a `Timelocked<Option<address>>` with fields `before`,
   `after`, `at_ms`, `delay_ms`. Begin, cancel, and accept each store a fresh
   value, so a replaced, cancelled, or already accepted nominee can never accept.
-- Grants, revocations, role changes, and upgrades take effect in the same
-  transaction; only the root transfer waits.
+- Grants, revocations and role changes take effect in the same transaction.
+  Boosts upgrades use a follow-up activation transaction; root transfer waits
+  for its delay.
 
 ### Reading state
 
@@ -8485,7 +8521,7 @@ public struct RiskAdmin {}
 /// Irreversibly begins a Vault's shutdown.
 public struct ShutdownAdmin {}
 
-/// Authorizes, cuts over, restricts, or seals an adapter package upgrade.
+/// Authorizes and activates adapter upgrades, or permanently ends them.
 public struct UpgradeAdmin {}
 ```
 
@@ -9541,7 +9577,7 @@ public struct BlastBoost<phantom Product> has key {
 
 ### `blast_boosts_aftermath::blast_boosts_aftermath`
 
-Canonical package marker for this adapter, its operational generation, and the partners Boosts accepts.  The generation value, its checked arithmetic, and its replay event belong to `blast_admin::operational_version`; `init` seeds the value from the one-time witness before claiming the Publisher with it, so no other package can create this adapter's generation. This module owns the shared container, the two compiled constants that identify this bytecode and the bytecode a governed upgrade cuts over to, and the list of accepted Blast partners, one dynamic field per partner so the container's layout never changes.
+Canonical package marker for this adapter, its operational generation, and the partners Boosts accepts.  The generation value, its checked arithmetic, and its replay event belong to `blast_admin::operational_version`; `init` seeds the value from the one-time witness before claiming the Publisher with it, so no other package can create this adapter's generation. This module owns the shared container, the compiled generation that identifies this bytecode, and the list of accepted Blast partners, one dynamic field per partner so the container's layout never changes.
 
 Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/boosts/aftermath_adapter/sources/blast_boosts_aftermath.move
 
@@ -9565,7 +9601,6 @@ public struct PartnerKey(ID) has copy, drop, store;
 #### Constants
 
 - `PACKAGE_VERSION: u64 = 1`: Current adapter generation accepted by every protected mutation.
-- `NEXT_PACKAGE_VERSION: u64 = 2`: The generation this bytecode hands over to in a governed upgrade.
 
 ### `blast_boosts_aftermath::blast_events`
 
@@ -10210,7 +10245,7 @@ public struct Fill has drop {
 
 ### `blast_boosts_aftermath::package_admin`
 
-Permanent shared custody for the adapter Publisher and UpgradeCap.  Its governed transitions take `AdminWitness<UpgradeAdmin>`, the upgrade role the Boosts core declares for every adapter. Custody itself stays package-local: this adapter's generation advances without touching the core, which is immutable and has no generation of its own.
+Permanent shared custody for the adapter Publisher and UpgradeCap.  Authorization, activation and immutability take `AdminWitness<UpgradeAdmin>`, the upgrade role the core declares for every adapter. Receipt commit carries the native authorization proof instead. Custody itself stays package-local: this adapter's generation advances without touching the core, which is immutable and has no generation of its own.
 
 Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/boosts/aftermath_adapter/sources/package_admin.move
 
@@ -10236,39 +10271,29 @@ public struct PackageAdmin has key {
 public fun wrap(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext)
 
 /// Authorizes one exact adapter digest under the sealed cap's current policy.
+/// Version-independent so the live UpgradeAdmin can repair a mismatched build.
 public fun authorize_upgrade(
     self: &mut PackageAdmin,
-    protocol: &blast_boosts_aftermath::Protocol,
     _: &blast_admin::blast_acl::AdminWitness<blast_boosts_core::blast_boosts_core::UpgradeAdmin>,
     digest: vector<u8>,
 ): UpgradeTicket
 
-/// Commits the native receipt and advances one operational generation at once.
+/// Commits the receipt bound to this cap without changing the active generation.
 ///
-/// This is the only upgrade finalizer. Both mutations belong to the same
-/// transaction, so a failure at either step rolls back the whole upgrade.
-public fun commit_upgrade_and_advance(
-    self: &mut PackageAdmin,
+/// Authorization, native upgrade and receipt commit complete in one transaction.
+/// The receipt already proves authorization; repair finalization is version-independent.
+public fun commit_upgrade(self: &mut PackageAdmin, receipt: UpgradeReceipt)
+
+/// Activates the running successor in a follow-up transaction, only if its
+/// compiled generation is exactly next. A mismatched build leaves the old
+/// generation serving. The caller cannot choose the target generation.
+public fun activate_upgrade(
     protocol: &mut blast_boosts_aftermath::Protocol,
-    _: &blast_admin::blast_acl::AdminWitness<blast_boosts_core::blast_boosts_core::UpgradeAdmin>,
-    receipt: UpgradeReceipt,
-)
-
-/// Irreversibly narrows adapter upgrades to additive changes.
-public fun restrict_to_additive(
-    self: &mut PackageAdmin,
-    protocol: &blast_boosts_aftermath::Protocol,
-    _: &blast_admin::blast_acl::AdminWitness<blast_boosts_core::blast_boosts_core::UpgradeAdmin>,
-)
-
-/// Irreversibly narrows adapter upgrades to dependency-only changes.
-public fun restrict_to_dependency_only(
-    self: &mut PackageAdmin,
-    protocol: &blast_boosts_aftermath::Protocol,
     _: &blast_admin::blast_acl::AdminWitness<blast_boosts_core::blast_boosts_core::UpgradeAdmin>,
 )
 
 /// Irreversibly destroys native upgrade authority for this adapter.
+/// The running code must match the active generation before giving up repair.
 public fun make_immutable(
     self: &mut PackageAdmin,
     protocol: &blast_boosts_aftermath::Protocol,

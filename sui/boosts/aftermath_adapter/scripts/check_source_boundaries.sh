@@ -170,8 +170,13 @@ foreign_admin_witnesses="$(
   || fail "Every administrator witness must name one concrete Boosts role: $foreign_admin_witnesses"
 upgrade_role_gates="$(grep -c '^    _: &AdminWitness<UpgradeAdmin>,$' \
   "$package_dir/sources/package_admin.move" || true)"
-[[ "${upgrade_role_gates:-0}" -eq 5 ]] \
-  || fail "Every package-custody transition must require the upgrade-admin role."
+[[ "${upgrade_role_gates:-0}" -eq 3 ]] \
+  || fail "Authorization, activation and immutability must require the upgrade-admin role; receipt commit carries its own proof."
+
+# Policy narrowing would prevent future operational version changes (ADR 0123).
+if grep -nE 'restrict_to_|commit_upgrade_and_advance' <<<"$(production "$package_dir/sources/package_admin.move")"; then
+  fail "The adapter must keep repairable upgrades and separate receipt commit from activation."
+fi
 
 # --- Currency and custody ownership ---
 
