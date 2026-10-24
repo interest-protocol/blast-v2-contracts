@@ -133,3 +133,18 @@ replace live redemption and dependency verification before deployment. Every
 transaction result, version transition, rollback and source hash is recorded in
 the output directory. The compile-only publication file uses mainnet's dependency
 environment label with localnet package IDs; it is never used to broadcast.
+
+## Margin recovery
+
+Reducing rebalances skip the opening-margin check before and after each fill;
+increases and close/reopen profit realization stay strict. Donations allocate
+all supplied collateral to the position and may commit partial recovery.
+Price, checkpoint, operational, size and progress checks remain in force.
+
+Initialization validates the live market floor and a core-owned conservative
+margin budget before creating the account. The activation tool requires a
+`venueMargin` preview with raw IFixed decimal strings `marketImr`,
+`collateralHaircut`, `takerFee` and `priorityTakerFee` (null if absent). It repeats
+the budget offline; Move reads current venue rates, so preview data has no
+authority. See [ADR 0124](../../../docs/decisions/0124-margin-recovery-and-initial-headroom.md)
+for assumptions and release evidence requirements.

@@ -136,8 +136,22 @@ redeem = source.split('public fun redeem<', 1)[1].split('\n}\n', 1)[0]
 assert redeem.index('.assert_releasable(net + admin)') < redeem.index('.withdraw(')
 rebalance = source.split('entry fun rebalance<', 1)[1].split('\n}\n', 1)[0]
 unwind = source.split('entry fun unwind<', 1)[1].split('\n}\n', 1)[0]
-assert rebalance.index('.prepare_rebalance(') < rebalance.index('plan.assert_gas_price(ctx)') < rebalance.index('.rebalance_orders('), \
+assert rebalance.index('.into_rebalance_plan(') < rebalance.index('plan.assert_gas_price(ctx)') < rebalance.index('.rebalance_orders('), \
     'Rebalance must check the authenticated plan gas policy before trading.'
+readiness = source.split('public fun needs_rebalance<', 1)[1].split('\n}\n', 1)[0]
+assert '.into_rebalance_readiness(' in readiness and '.classify_preexisting(' in readiness
+assert '.into_observation()' not in readiness
+rebalance_fills = orders.split('fun rebalance_orders<', 1)[1].split('\n}\n', 1)[0]
+assert '.into_rebalance_observation(plan)' in rebalance_fills
+assert '.into_observation()' not in rebalance_fills
+assert 'fill.assert_checkpoint(' in rebalance_fills and '.accept_rebalance_fill(' in rebalance_fills
+donate = source.split('public fun donate<', 1)[1].split('\n}\n', 1)[0]
+assert donate.index('.synchronize_or_fail(') < donate.index('.deposit(') < donate.index('.allocate(') < donate.index('.into_recovery_observation()') < donate.index('.complete_donation(')
+completion = source.split('fun complete_donation<', 1)[1].split('\n}\n', 1)[0]
+assert '.assert_allocated_deposit_checkpoint(' in completion
+initialize = source.split('public fun initialize<', 1)[1].split('\n}\n', 1)[0]
+assert initialize.index('.assert_initial_margin(') < initialize.index('.open_venue_account(')
+assert '.priority_taker_fee()' in initialize and '.collateral_haircut()' in initialize
 assert 'assert_gas_price' not in unwind and '.gas_price(' not in unwind, \
     'Shutdown unwind must remain free of the gas-price restriction.'
 assert source.count('.gas_price(') == 2 and source.count('.reference_gas_price(') == 2, \

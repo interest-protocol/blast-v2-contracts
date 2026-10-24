@@ -31,7 +31,7 @@ case "${1:-all}" in
     ;;
   local)
     bash "$package_dir/scripts/check_source_boundaries.sh"
-    node --test "$package_dir/scripts/active_ptb.test.mjs"
+    node --test --test-concurrency=1 "$package_dir/scripts/active_ptb.test.mjs" "$package_dir/scripts/initial_margin.test.mjs"
     node "$package_dir/scripts/check_mainnet_abi.mjs" --self-test
     node "$package_dir/scripts/dev_inspect_activation.mjs" --self-test
     sui move build --path "$package_dir" --build-env mainnet

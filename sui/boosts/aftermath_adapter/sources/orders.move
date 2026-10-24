@@ -183,7 +183,7 @@ public(package) fun rebalance_orders<Product, Collateral>(
 
         let (after, after_checkpoint) = binding.capture(
             account, registry, &clearing_house, base_oracle, collateral_oracle, clock,
-        ).into_observation();
+        ).into_rebalance_observation(plan);
         fill.assert_checkpoint(terms, &checkpoint, &after_checkpoint);
         vault.state().accept_rebalance_fill(plan, order, after, fill.filled, clock.timestamp_ms());
 

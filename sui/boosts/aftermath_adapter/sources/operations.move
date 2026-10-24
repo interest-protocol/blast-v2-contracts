@@ -38,7 +38,10 @@ public fun initialize<Product, Collateral>(
     assert_initialization_inputs(
         currency.decimals(), clearing_house.market_params().scaling_factor(), seed_amount, seed_reserve,
     );
-    assert_position_imr(position_imr);
+    let params = clearing_house.market_params();
+    let priority_fee = params.priority_taker_fee().destroy_or!(0);
+    let venue_fee = ifixed_math::nonnegative_rate(params.taker_fee()) + ifixed_math::nonnegative_rate(priority_fee);
+    terms.assert_initial_margin(position_imr, params.margin_ratio_initial(), params.collateral_haircut(), venue_fee);
 
     let (mut account, share_policy, admin_cap, binding) =
         registry.open_venue_account(&clearing_house, ctx);
@@ -267,14 +270,11 @@ public fun redeem_with_partner<Product, Collateral>(
     (cash, clearing_house)
 }
 
-/// A keeper's dry run of `rebalance`: whether the live position sits outside the band.
-///
-/// Reads everything `rebalance` reads and asks the core the same question, so it
-/// aborts where `rebalance` would abort before its first order: an interval
-/// since the stored checkpoint that the classifier cannot explain, or an
-/// observation the price policy refuses. It does not settle funding first, so a
-/// due settlement can move the answer by that amount when the real call runs;
-/// intended for `dev_inspect`, not for on-chain gating.
+/// A keeper hint: true for a needed reduction, or an increase with opening margin.
+/// Inside the band or when only an unsafe increase is needed, returns false.
+/// Unexplained checkpoint drift, invalid prices or an unavailable venue abort.
+/// Intended for dev-inspect: funding is not settled, and fees, gas admission,
+/// order size, liquidity and fill progress are checked by the actual rebalance.
 public fun needs_rebalance<Product, Collateral>(
     vault: &Vault<Product, Collateral>,
     protocol: &Protocol,
@@ -289,15 +289,15 @@ public fun needs_rebalance<Product, Collateral>(
     vault.state().assert_active();
 
     let binding = vault.venue().binding();
-    let (observation, checkpoint) = binding.capture(
+    let (ready, checkpoint) = binding.capture(
         account, registry, clearing_house, base_oracle, collateral_oracle, clock,
-    ).into_observation();
+    ).into_rebalance_readiness(vault.state(), clock.timestamp_ms());
     assert!(
         vault.venue().checkpoint().classify_preexisting(&checkpoint).is_clean(),
         blast_boosts_aftermath::errors::unresolved_checkpoint!(),
     );
 
-    vault.state().needs_rebalance(observation, clock.timestamp_ms())
+    ready
 }
 
 /// Updates the order cap after checking the live bound market's prices and lot.
@@ -348,11 +348,12 @@ public fun donate<Product, Collateral>(
     );
 
     vault.venue().deposit(account, registry, cash);
+    vault.venue().allocate(account, clearing_house, amount);
 
     let binding = vault.venue().binding();
     let (after, checkpoint) = binding.capture(
         account, registry, clearing_house, base_oracle, collateral_oracle, clock,
-    ).into_observation();
+    ).into_recovery_observation();
 
     vault.complete_donation(after, checkpoint, amount, clock.timestamp_ms());
 }
@@ -536,11 +537,9 @@ entry fun rebalance<Product, Collateral>(
     protocol.assert_current();
     vault.state().assert_active();
 
-    let (before, checkpoint) = vault.synchronize_or_fail(
+    let (mut plan, checkpoint) = vault.synchronize_or_fail(
         account, registry, &mut clearing_house, base_oracle, collateral_oracle, clock,
-    ).into_observation();
-
-    let mut plan = vault.state().prepare_rebalance(before, clearing_house.live_venue_fee_bps(), clock.timestamp_ms());
+    ).into_rebalance_plan(vault.state(), clearing_house.live_venue_fee_bps(), clock.timestamp_ms());
     plan.assert_gas_price(ctx);
     let position = plan.rebalance_position();
     let terms = if (plan.is_increasing()) { vault.increasing_terms(position) } else { vault.reducing_terms(position) };
@@ -640,12 +639,27 @@ fun assert_initialization_inputs(
     assert!(seed_reserve < seed_amount, blast_boosts_aftermath::errors::invalid_seed_reserve!());
 }
 
-fun assert_position_imr(position_imr: u256) {
-    assert_position_imr_sign(position_imr.is_neg());
-}
-
-fun assert_position_imr_sign(is_negative: bool) {
-    assert!(!is_negative, blast_boosts_aftermath::errors::initialization_imr_mismatch!());
+/// Validate signed IFixed carriers by their unsigned unit-interval bounds.
+/// The venue sets the lower bound; the core owns the conservative upper bound.
+fun assert_initial_margin<Product>(
+    issuance: &Issuance<Product>,
+    position_imr: u256,
+    market_imr: u256,
+    haircut: u256,
+    venue_fee: u256,
+) {
+    assert!(
+        position_imr > 0 && position_imr <= constants::ifixed_one!()
+            && market_imr <= position_imr,
+        blast_boosts_aftermath::errors::initialization_imr_mismatch!(),
+    );
+    assert!(haircut < constants::ifixed_one!(), blast_boosts_aftermath::errors::normalization_overflow!());
+    assert!(venue_fee <= constants::ifixed_one!(), blast_boosts_aftermath::errors::venue_fee_unusable!());
+    issuance.assert_initial_margin_headroom(
+        position_imr.div_ceil(constants::ifixed_per_basis_point!()) as u64,
+        haircut.div_ceil(constants::ifixed_per_basis_point!()) as u64,
+        venue_fee.div_ceil(constants::ifixed_per_basis_point!()) as u64,
+    );
 }
 
 /// Creates the isolated Aftermath account the Vault will own and binds it to
@@ -889,7 +903,7 @@ fun complete_donation<Product, Collateral>(
     amount: u64,
     now_at_ms: u64,
 ) {
-    vault.venue().checkpoint().assert_deposit_checkpoint(&checkpoint, amount);
+    vault.venue().checkpoint().assert_allocated_deposit_checkpoint(&checkpoint, amount);
 
     vault.state_mut().donate(after, amount, now_at_ms);
     vault.venue_mut().replace_checkpoint(checkpoint);
@@ -1291,8 +1305,10 @@ public fun assert_initialization_inputs_for_testing(
 }
 
 #[test_only]
-public fun assert_position_imr_for_testing(is_negative: bool) {
-    assert_position_imr_sign(is_negative);
+public fun assert_initial_margin_for_testing<Product>(
+    issuance: &Issuance<Product>, position_imr: u256, market_imr: u256, haircut: u256, venue_fee: u256,
+) {
+    issuance.assert_initial_margin(position_imr, market_imr, haircut, venue_fee);
 }
 
 #[test_only]
@@ -1373,6 +1389,7 @@ use blast_boosts_aftermath::{
     blast_boost::BlastBoost,
     checkpoint::{Checkpoint, CheckpointChange},
     constants,
+    ifixed_math,
     events,
     orders,
     blast_boosts_aftermath::Protocol,
@@ -1487,3 +1504,5 @@ use fun unwind_market as Vault.unwind_market;
 use fun unwind_settlement as Vault.unwind_settlement;
 
 use fun snapshot::capture_order_capacity as Binding.capture_order_capacity;
+
+use fun assert_initial_margin as Issuance.assert_initial_margin;

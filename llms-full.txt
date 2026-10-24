@@ -3173,7 +3173,13 @@ and activation succeed or fail together.
    `Registry` (mutable), the `ClearingHouse`, both `PriceFeedStorage` objects,
    the seed coin, `seed_reserve` (atoms of the seed kept as reserve; must be
    below the seed), `position_imr` (the Aftermath position initial margin
-   ratio, a nonnegative IFixed `u256`), and the `Clock`. It creates and binds
+   ratio, a positive IFixed `u256` no greater than one), and the `Clock`.
+   Before creating the account it requires that ratio to meet the live market
+   minimum and pass a policy-owned safety budget. The budget accounts for the
+   live collateral haircut, ordinary plus configured priority trading fees,
+   emergency price limit and allowed mark divergence. It assumes fully realized,
+   fully allocated equity at the hard cap, with no reserve credit; it is not a
+   guarantee against accumulated losses or later exchange changes. It creates and binds
    the Aftermath account, deposits and allocates the whole seed, sets the
    margin ratio, requires the order cap to cover `min_order_lots` live lots
    including price headroom, buys or sells whole lots until the position reaches target
@@ -3337,7 +3343,7 @@ the holder's proportional position and pays the full agreed amount. The cash
 check never silently reduces that payout. Recovery may fail for insufficient
 two-sided depth, uneconomic profit, inadequate opening margin, emergency leverage
 or stale prices. Prices, funding and cash requirements can change before the
-later redemption. M-5 and the activation-margin choice in L-5 remain separate;
+later redemption. Reducing maintenance and initial-margin admission are separate from this round trip;
 this call does not bypass either. See ADR 0122 and its live execution release gate.
 
 #### Rebalance (anyone; keepers)
@@ -3355,7 +3361,10 @@ Holders pay Aftermath's configured priority trading surcharge on those fills.
 The caller pays the network gas bill. The extra trading rate is set by the
 venue; it does not grow with the gas bid.
 
-1. Generation, `Active`; synchronize and validate the observation as in mint.
+1. Generation, `Active`; synchronize the checkpoint and validate prices,
+   side, positive shareholder NAV, no resting orders and an operational venue.
+   The core chooses the direction. An increase requires opening margin; a
+   reduction does not, including an ordinary reduction below the hard cap.
 2. Read the ordinary market taker fee, rounded up to whole bps (rebates count
    as zero), and prepare the plan. Require leverage strictly outside the band
    (core code 54 otherwise): `notional * 10,000 < N * rebalance_below_bps`
@@ -3377,7 +3386,11 @@ venue; it does not grow with the gas bid.
    back to `max_leverage_bps` (at least one lot, capped per order) under
    `emergency_max_slippage_bps`, and stops once leverage is no longer above
    max; a later call reduces the rest toward target under `max_slippage_bps`.
-5. Require progress: at least one fill; an increase must raise base and
+5. Every fill repeats the corresponding admission: increases require opening
+   margin; reductions may remain below it. Exact fill and checkpoint proofs,
+   price limits and execution caps remain enforced. A bounded reduction may
+   commit partial recovery without restoring opening margin in one call.
+   Require progress: at least one fill; an increase must raise base and
    leverage; a reduction must lower base and either move leverage at least
    `min_leverage_improvement_bps` toward target or land within one lot of
    target without moving away (core code 55). A reduction that started above
@@ -3388,9 +3401,12 @@ venue; it does not grow with the gas bid.
 Dry run: `operations::needs_rebalance<Product, Collateral>(vault, protocol,
 account, registry, clearing_house, base_oracle, collateral_oracle, clock)`
 takes every object by immutable reference and returns `bool`. Run it with
-dev-inspect. It aborts where `rebalance` would abort before its first order
-(unexplained drift, refused prices, venue not ready). It does not settle
-funding first, so a due settlement can shift the answer slightly.
+dev-inspect. It returns true for a needed reduction even below opening margin,
+and for an increase only with opening margin. Inside the band or when an increase
+lacks margin it returns false. Unexplained drift, invalid prices and an unavailable
+venue still abort. This is a hint: it does not settle funding or prove usable fees,
+gas admission, executable order size, liquidity or fill progress; the real call
+checks them and can still abort.
 
 Keeper loop: when dev-inspect returns `true`, submit ordinary `rebalance` at
 the reference gas price. Above the hard cap, a higher bid can compete during
@@ -3432,7 +3448,8 @@ free cash, lot size and position IMR cannot change; stored and final checkpoints
 must have no orders. Final funding snapshots must be current. Fresh-price,
 representation, correct-side, operational-venue and positive shareholder-NAV
 checks apply. Recording recovery needs no opening-margin headroom; normal
-trades retain their existing checks, including M-5's remaining restriction.
+increasing trades retain their opening-margin checks; reducing rebalances use
+the recovery admission described above.
 
 The administrator supplies no replacement numbers and must review venue history:
 the shape alone does not prove liquidation. `CheckpointRebaselined` records
@@ -3455,9 +3472,12 @@ recommendation adopted, explicit extensions and release evidence limits.
 `operations::donate<Product, Collateral>(vault, protocol, account, registry,
 clearing_house, base_oracle, collateral_oracle, cash, clock)`, `Active` only,
 `cash` positive. It synchronizes (drift aborts), deposits the coin into the
-Vault's Aftermath account as free collateral, proves the exact deposit, and
+Vault's Aftermath account and immediately allocates that amount to its
+position, proves the exact allocated deposit, and
 adds it to the maintenance reserve clamped to the reserve ceiling. Any excess
-over the ceiling raises shareholder NAV. No shares, no fees. Emits `Donated`.
+over the ceiling raises shareholder NAV. A partial donation can complete while
+opening margin remains insufficient; valid prices, accounting and the other
+active checks still apply. No shares, no fees. Emits `Donated`.
 
 #### Shutdown
 
@@ -3796,10 +3816,11 @@ outdated adapter package aborts in the `operational_version` module of the
 
 | Code | Meaning | Fix |
 | --- | --- | --- |
-| 0-1, 11-18 | Deployment, issuance, activation input or seed problems | Issuer only. |
+| 0-1, 11-15, 17-18 | Deployment, issuance, activation input or seed problems | Issuer only. |
 | 2-8 | An Aftermath object (account, registry, clearing house, oracle storage or feed) is not the bound one | Pass the objects from the Vault's binding. |
 | 9 | The venue's price is not the bound feed's | Same; use the bound feed storage. |
-| 10 | A venue value cannot be represented (for example negative equity) | The account is underwater; wait or expect shutdown. |
+| 10 | A venue value cannot be represented, or its collateral haircut is outside the supported range | Inspect account equity and venue rates. |
+| 16 | Initial margin is outside (0, 1], below the market minimum, or changed while seeding | Correct issuance settings; the exchange minimum applies. |
 | 19 | Zero coin or amount | Pass a positive coin. |
 | 20 | Admin withdrawal above admin cash | Lower the amount. |
 | 21 | A cash move did not match the venue exactly | Retry; the venue changed mid-transaction. |
@@ -3807,11 +3828,11 @@ outdated adapter package aborts in the `operational_version` module of the
 | 25 | The operation needed more than 16 orders | Trade a smaller amount or wait for a larger order cap. |
 | 26 | Deadline passed | Use a later `deadline_ms`. |
 | 27 | A fill changed venue fields it should not | Retry. |
-| 29 | The market's taker fee is not a usable rate (rebalance or profit realization) | Wait; venue configuration. |
+| 29 | The market's trading fee is not a usable rate (initialization, rebalance or profit realization) | Wait; venue configuration. |
 | 30 | Venue state the Vault cannot explain since its checkpoint | Inspect `CheckpointDrifted`; RiskAdmin may recover an admitted forced reduction with `operations::rebaseline`. |
 | 31 | Terminal step not possible: orders open, funding unsettled, settlement prices not enabled, or wrong order count | Settle funding with `sync_health` first, or wait for Aftermath. |
 | 32 | Unwind found no lot-aligned position on the bound side (for example already flat) | Call `finalize_shutdown`. |
-| 33 | Venue not ready: resting orders, unsafe margin, paused market or frozen clearing house | Wait. |
+| 33 | Venue not ready: resting orders, paused/frozen market, or insufficient opening margin on a strict path | Reductions and donations need no opening margin; other guards still apply. |
 | 34, 37 | Metadata or partner list update changes nothing | Admin only. |
 | 35 | Ordinary rebalance or profit realization above the reference gas price | Submit at the reference gas price. |
 | 36 | Partner not accepted | Use the plain call. |
@@ -3847,6 +3868,7 @@ outdated adapter package aborts in the `operational_version` module of the
 | 63 | Cap cannot cover one opening lot, or a configured cap cannot cover `min_order_lots` live lots | RiskAdmin must raise the cap; shutdown closes retain the one-lot exception. |
 | 64 | No positive cash shortfall or profit to realize | No recovery trade is needed or possible. |
 | 65 | Profit realization is uneconomic or exceeds its cost allowance | Wait for better prices or sufficient profit. |
+| 66 | Initial margin leaves no cushion under the issuance policy and live venue rates | Choose compatible issuance settings before activation; the venue minimum still applies. |
 | 17, 23, 39, 40, 47, 48, 58 | Admin transition or setting rejected (wrong state, invalid, above cap, unchanged) | Admin only. |
 
 ### Pitfalls
@@ -8502,6 +8524,7 @@ Abort codes: this package aborts with the numeric codes below from whichever mod
 | 63 | `EOrderCapBelowMinimum` | The live order cap cannot fund the required minimum whole-lot order. |
 | 64 | `EProfitRealizationNotNeeded` | No positive cash shortfall and realizable profit require maintenance. |
 | 65 | `EProfitRealizationUneconomic` | Profit realization cannot justify its bounded trading cost. |
+| 66 | `EInitialMarginHeadroom` | The live venue's initial-margin settings leave no conservative opening cushion. |
 
 ### `blast_boosts_core::blast_boosts_core`
 
@@ -8597,8 +8620,8 @@ public struct PriceObservation has drop {
 /// The external facts one operation prices against: the venue position and
 /// the oracle pair, as the adapter authenticated them.
 ///
-/// The adapter has already refused a venue that is paused, under margin or
-/// carrying orders; the core values what it is given.
+/// The adapter authenticates venue state and applies opening-margin admission
+/// only where the operation requires it; the core values what it is given.
 public struct PositionObservation has drop {
     venue_equity: u64,
     /// Unsigned position size in base-asset atoms; direction is `observed_side`.
@@ -8977,6 +9000,15 @@ public fun issue<Product>(
     collateral_decimals: u8,
 ): Issuance<Product>
 
+/// Checks live venue rates against this issuance's immutable execution and
+/// leverage policy. The adapter rounds each nonnegative rate upward to bps.
+public fun assert_initial_margin_headroom<Product>(
+    self: &Issuance<Product>,
+    initial_margin_bps: u64,
+    collateral_haircut_bps: u64,
+    venue_fee_bps: u64,
+)
+
 /// Sizes the opening position from a flat seed observation: the whole-lot
 /// target base, the whole-lot base one order may carry, and the priced flat
 /// seed whose pair and lot the orders are placed under.
@@ -9109,12 +9141,13 @@ public fun complete_redemption<Product>(
     now_at_ms: u64,
 ): (u64, u64, u64, u64)
 
-/// Whether a rebalance would be admitted against this observation: the position,
-/// priced against the admitted reserve, sits outside the band. A keeper's dry
-/// run; `prepare_rebalance` asks the same question and aborts on `false`.
+/// Whether the position needs a reduction, or an increase the adapter permits.
+/// `increases_allowed` only filters this read-only keeper hint; real execution
+/// still prepares a linear plan and rechecks the venue's opening admission.
 public fun needs_rebalance<Product>(
     self: &State<Product>,
     observation: observation::PositionObservation,
+    increases_allowed: bool,
     now_at_ms: u64,
 ): bool
 
@@ -9529,7 +9562,7 @@ Abort codes: this package aborts with the numeric codes below from whichever mod
 | 13 | `EInvalidSeedReserve` | The maintenance reserve must leave positive seed shareholder NAV. |
 | 14 | `EInvalidInitializationOrderSize` | The target or order cap cannot fund one complete base lot. |
 | 15 | `EInitializationFillMismatch` | Initialization did not fill the exact planned base on the required side. |
-| 16 | `EInitializationImrMismatch` | The selected IMR is negative or the final position IMR differs from it. |
+| 16 | `EInitializationImrMismatch` | The selected IMR is outside (0, 1], below the live market floor, or differs after seeding. |
 | 17 | `ELockedSharesOverflow` | Scaling seed NAV into nine-decimal locked shares overflowed `u64`. |
 | 18 | `EInitializationOrderCountExceeded` | Atomic initialization requires more venue orders than the adapter permits. |
 | 19 | `EZeroAmount` | A collateral input or withdrawal must be positive. |
@@ -9542,7 +9575,7 @@ Abort codes: this package aborts with the numeric codes below from whichever mod
 | 26 | `EDeadlineExpired` | The caller's deadline has passed. |
 | 27 | `EActiveCheckpointMismatch` | An active venue session changed a field outside its authenticated execution. |
 | 28 | `ERedemptionShareMismatch` | The held native share coin differs from the sealed redemption amount. |
-| 29 | `EVenueFeeUnusable` | The market's taker fee exceeds a representable rate. |
+| 29 | `EVenueFeeUnusable` | The nonnegative venue fee (including a priority surcharge when budgeted) exceeds one. |
 | 30 | `EUnresolvedCheckpoint` | A financial operation observed a venue change not reconciled into the accepted checkpoint. |
 | 31 | `ETerminalVenueUnsettled` | Terminal recovery requires exact flat exposure, settled liabilities and integral cash. |
 | 32 | `EInvalidUnwindExposure` | A close requires positive exact whole-lot base in the bound product direction. |
@@ -10058,14 +10091,11 @@ public fun redeem_with_partner<Product, Collateral>(
     ctx: &mut TxContext,
 ): (Coin<Collateral>, clearing_house::ClearingHouse<Collateral>)
 
-/// A keeper's dry run of `rebalance`: whether the live position sits outside the band.
-///
-/// Reads everything `rebalance` reads and asks the core the same question, so it
-/// aborts where `rebalance` would abort before its first order: an interval
-/// since the stored checkpoint that the classifier cannot explain, or an
-/// observation the price policy refuses. It does not settle funding first, so a
-/// due settlement can move the answer by that amount when the real call runs;
-/// intended for `dev_inspect`, not for on-chain gating.
+/// A keeper hint: true for a needed reduction, or an increase with opening margin.
+/// Inside the band or when only an unsafe increase is needed, returns false.
+/// Unexplained checkpoint drift, invalid prices or an unavailable venue abort.
+/// Intended for dev-inspect: funding is not settled, and fees, gas admission,
+/// order size, liquidity and fill progress are checked by the actual rebalance.
 public fun needs_rebalance<Product, Collateral>(
     vault: &vault::Vault<Product, Collateral>,
     protocol: &blast_boosts_aftermath::Protocol,

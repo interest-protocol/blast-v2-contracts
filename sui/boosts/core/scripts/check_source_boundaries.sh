@@ -263,6 +263,7 @@ expected_state_public="$(printf '%s\n' \
   is_emergency_rebalance \
   is_increase \
   is_increasing \
+  assert_initial_margin_headroom \
   issue \
   lot_size \
   maintenance_reserve \

@@ -132,14 +132,6 @@ public(package) fun assert_forced_reduction(self: &Checkpoint, after: &Checkpoin
 
 // --- Deposit ---
 
-/// A cash-only deposit may change exactly free collateral and no other raw field.
-public(package) fun assert_deposit_checkpoint(before: &Checkpoint, after: &Checkpoint, amount: u64) {
-    let mut expected = *before;
-    expected.free_collateral = expected.free_collateral.checked_add(amount)
-        .destroy_or!(abort blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
-    assert!(&expected == after, blast_boosts_aftermath::errors::cash_checkpoint_mismatch!());
-}
-
 /// A deposited-and-allocated input changes exactly allocated six-decimal collateral.
 public(package) fun assert_allocated_deposit_checkpoint(before: &Checkpoint, after: &Checkpoint, amount: u64) {
     assert_signed_cash_change(

@@ -10,6 +10,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import process from 'node:process';
 import { AFTERMATH_PACKAGE } from './aftermath.mjs';
+import { assertInitialMargin } from './initial_margin.mjs';
 import { assertCalibratedPolicy, assertCalibratedSeed } from '../../core/scripts/calibrate_mint_minimum.mjs';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -117,7 +118,7 @@ const PHASE_ORDER = [
         markers: [
             'protocol.assert_current()',
             'assert_initialization_inputs(',
-            'assert_position_imr(',
+            'terms.assert_initial_margin(',
             'open_venue_account(',
             'fund_venue_account(',
             'terms.seed_position(',
@@ -291,6 +292,7 @@ function validateBuilderInput(input) {
         'metadata',
         'seedReserve',
         'positionImr',
+        'venueMargin',
     ]);
     expectAddress(input.sender, 'builderInput.sender');
     expectAddress(input.adminPackage, 'builderInput.adminPackage');
@@ -312,6 +314,10 @@ function validateBuilderInput(input) {
     expectObject(input.metadata, 'builderInput.metadata', METADATA_FIELDS);
     expectDecimal(input.seedReserve, 'builderInput.seedReserve');
     expectDecimal(input.positionImr, 'builderInput.positionImr');
+    expectObject(input.venueMargin, 'builderInput.venueMargin', ['marketImr', 'collateralHaircut', 'takerFee', 'priorityTakerFee']);
+    for (const key of ['marketImr', 'collateralHaircut', 'takerFee']) expectDecimal(input.venueMargin[key], `builderInput.venueMargin.${key}`);
+    if (input.venueMargin.priorityTakerFee !== null) expectDecimal(input.venueMargin.priorityTakerFee, 'builderInput.venueMargin.priorityTakerFee');
+    assertInitialMargin(input);
 }
 
 function call(target, typeArguments, args, assign) {
@@ -320,7 +326,8 @@ function call(target, typeArguments, args, assign) {
 
 /// The issuer's activation PTB: sign in, build the immutable policy, issue the
 /// currency, seed and activate the Vault, share it. Every value is a literal
-/// or a prior result; nothing is read from the chain to build it.
+/// or a prior result. venueMargin is an offline preview; Move repeats admission
+/// with current venue rates before creating the account or moving the seed.
 function buildPlan(input) {
     validateBuilderInput(input);
     const admin = input.adminPackage.toLowerCase();
