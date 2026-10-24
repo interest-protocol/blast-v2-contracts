@@ -438,4 +438,4 @@ test passes, and none is asserted as a cited fact in the records.
 | [0118](0118-limit-priced-vault-orders-and-a-widening-unwind-bound.md) | Limit-priced vault orders and a widening unwind bound | **proposed** |
 | [0119](0119-execution-priced-order-caps-and-minimum-lot-closes.md) | Execution-priced order caps and minimum-lot closes | **accepted** |
 | [0120](0120-priority-gas-for-emergency-reductions-and-unwind.md) | Priority gas for emergency reductions and unwind | **accepted** |
-| [0122](0122-bounded-profit-realization-before-redemption.md) | Bounded profit realization before redemption | **proposed** |
+| [0122](0122-bounded-profit-realization-before-redemption.md) | Bounded profit realization before redemption | **accepted** |
