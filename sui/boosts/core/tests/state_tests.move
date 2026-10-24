@@ -2176,6 +2176,41 @@ fun the_maximum_funding_credit_cannot_wrap() {
     abort
 }
 
+/// The conservation totals can exceed u64 even though the resulting reserve fits.
+#[test]
+fun a_funding_credit_can_fit_when_its_conservation_total_exceeds_u64() {
+    vector[policy::long(), policy::short()].do!(|side| {
+        vector[std::u64::max_value!() - 1, std::u64::max_value!()].do!(|credit| {
+            let mut state = initialized_state(side);
+            state.settle_funding(observation::funding_cost(SEED_RESERVE + 1));
+            assert_eq!(vector[state.maintenance_reserve(), state.uncovered_deficit()], vector[0, 1]);
+            // A real donation rebuilds reserve without repaying the holder deficit.
+            state.donate(standard_observation(side).with_venue_equity(SEED_NAV).into_position_observation(), 1, REFERENCE_AT_MS);
+            assert_eq!(vector[state.maintenance_reserve(), state.uncovered_deficit()], vector[1, 1]);
+
+            let (absorbed, uncovered, restored) = state.settle_funding(observation::funding_credit(credit));
+
+            assert_eq!(vector[absorbed, uncovered, restored], vector[0, 0, 1]);
+            assert_eq!(vector[state.maintenance_reserve(), state.uncovered_deficit()], vector[credit, 0]);
+            assert!(state.is_active_for_testing());
+            state.destroy_for_testing();
+        });
+    });
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EArithmeticOverflow, location = blast_boosts_core::state)]
+fun a_funding_credit_still_rejects_a_post_reserve_above_u64() {
+    let mut state = initialized_state(policy::long());
+    state.settle_funding(observation::funding_cost(SEED_RESERVE + 1));
+    state.donate(standard_observation(policy::long()).with_venue_equity(SEED_NAV + 1).into_position_observation(), 2, REFERENCE_AT_MS);
+    assert_eq!(vector[state.maintenance_reserve(), state.uncovered_deficit()], vector[2, 1]);
+
+    // Repaying one atom still leaves a reserve of MAX + 1, which must fail.
+    state.settle_funding(observation::funding_credit(std::u64::max_value!()));
+    abort
+}
+
 #[test]
 fun a_zero_funding_credit_is_an_exact_no_op() {
     assert_funding_settlement(observation::funding_credit(0), 0, 0, SEED_RESERVE);

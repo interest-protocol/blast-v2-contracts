@@ -754,6 +754,10 @@ credit: restored = min(credit, uncovered_deficit); uncovered_deficit -= restored
         reserve += credit - restored           (restored stays in NAV)
 ```
 
+A credit must leave the stored reserve within `u64`; the amount restored to
+holders does not count against that reserve limit. The old reserve plus the
+full credit may exceed `u64` when the restored amount makes the final reserve fit.
+
 A credit may lift the stored reserve above its ceiling; priced operations
 value shares against the admitted reserve `R*`, so the excess counts as NAV
 from the next priced operation on. Mint, redeem and donate store the clamped
