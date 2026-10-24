@@ -394,6 +394,9 @@ venue; it does not grow with the gas bid.
    (increase) or `notional * 10,000 > N * rebalance_above_bps` (reduce).
    Band edges are healthy. A below-band position with no sizeable first order
    aborts early with core code 67 (`rebalance_not_actionable`).
+   Mark-versus-oracle divergence is checked only for ordinary plans. Emergency
+   status is derived after validating the oracle pair, side and positive NAV;
+   the keeper readiness hint uses the same rule.
 3. Check the gas price against that prepared plan. Only a plan starting
    strictly above the hard cap is exempt; exactly at the cap is ordinary.
    The decision is fixed for the transaction: its own fills cannot promote an
@@ -417,7 +420,11 @@ venue; it does not grow with the gas bid.
    `emergency_max_slippage_bps`, and stops once leverage is no longer above
    max; a later call reduces the rest toward target under `max_slippage_bps`.
 5. Every fill repeats the corresponding admission: increases require opening
-   margin; reductions may remain below it. Exact fill and checkpoint proofs,
+   margin; reductions may remain below it. An emergency plan keeps its mark-
+   divergence exemption through the final cap-restoring fill; fresh oracle
+   prices, side and positive NAV are still required. An ordinary plan cannot
+   gain this exemption through its own fills, and a later ordinary call must
+   pass the divergence check again. Exact fill and checkpoint proofs,
    price limits and execution caps remain enforced. A bounded reduction may
    commit partial recovery without restoring opening margin in one call.
    Require progress: at least one fill; an increase must raise base and
@@ -769,7 +776,9 @@ holders. Admin cash never enters the holder pool.
   with core code 27; further ahead aborts with core code 28. The confidence
   gate always passes because Aftermath feeds carry no confidence interval. The
   venue mark must be within `max_mark_divergence_bps` of the base oracle price
-  (core code 31) for priced operations; unwind skips the mark check.
+  (core code 31) for priced operations except emergency rebalance reductions.
+  That exception lasts through the final cap-restoring fill; unwind also skips
+  the mark check. Both oracle legs still require valid, fresh prices.
 - Same oracle pair: every order and the final pricing of one operation use the
   oracle pair captured at its start; a change of pair or lot between plan and
   completion aborts (core code 50).
@@ -905,7 +914,7 @@ outdated adapter package aborts in the `operational_version` module of the
 | 16 | Reserve exceeds equity after the sell | Redeem less or retry later. |
 | 18 | Operation not allowed in this lifecycle | Check `state.lifecycle`. |
 | 27, 28 | Oracle price stale or future-dated | Retry after the Aftermath feed updates. |
-| 31 | Venue mark too far from the oracle | Retry later. |
+| 31 | Venue mark too far from the oracle for an operation requiring that check | Retry later; emergency reductions and shutdown closes are exempt from this check only. |
 | 35 | Fewer shares than `minimum_shares` | Re-quote; raise slippage tolerance. |
 | 36 | Post-mint NAV above `nav_cap` | Mint less or wait. |
 | 37 | A fill's price outside the execution bound, or no tick inside it | Trade smaller or wait for depth. |

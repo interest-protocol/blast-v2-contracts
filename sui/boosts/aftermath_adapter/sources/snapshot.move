@@ -554,6 +554,13 @@ public fun captured_health_for_testing(
 }
 
 #[test_only]
+/// Changes only the venue mark, retaining the authenticated valuation pair.
+public fun with_mark_for_testing(mut self: CapturedSnapshot, mark: u64): CapturedSnapshot {
+    self.mark_price = mark;
+    self
+}
+
+#[test_only]
 public fun normalize_price_for_testing(value: u256): (u64, bool) {
     ifixed_math::fixed_to_u64_down(value, constants::base_decimals!() as u64)
 }
