@@ -268,6 +268,7 @@ expected_state_public="$(printf '%s\n' \
   lot_size \
   maintenance_reserve \
   max_order_base \
+  max_rebalance_orders \
   mint_position \
   needs_rebalance \
   next_rebalance_order \

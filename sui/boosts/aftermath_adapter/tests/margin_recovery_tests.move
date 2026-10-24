@@ -166,7 +166,7 @@ fun seeded(side: PositionSide): State<Product> {
         policy::new_price_policy(60_000, 1_000, 100, 100),
         0, 0, 100, 100, 3_000, 65, 1_000,
     );
-    let (state, _, _) = state::issue<Product>(&blast_admin::blast_acl::witness_for_testing<blast_boosts_core::blast_boosts_core::VaultIssuer>(), vault_policy, 100, 1_000_000, 9, 6).activate(
+    let (state, _, _) = state::issue<Product>(&blast_admin::blast_acl::witness_for_testing<blast_boosts_core::blast_boosts_core::VaultIssuer>(), vault_policy, 100, 160_000, 9, 6).activate(
         observation::new_position(
             1_000, 1_800 * BASE_PER_NOTIONAL, 1, side,
             observation::new_price(PRICE, 0, NOW), observation::new_price(PRICE, 0, NOW), PRICE,

@@ -171,7 +171,7 @@ public(package) fun rebalance_orders<Product, Collateral>(
     ctx: &TxContext,
 ): (ClearingHouse<Collateral>, Checkpoint) {
     let mut index = 0;
-    while (index < constants::max_active_orders!()) {
+    while (index < state::max_rebalance_orders()) {
         let order = vault.state().next_rebalance_order(plan);
         if (order.order_base() == 0) break;
 
@@ -709,7 +709,7 @@ use fun snapshot::capture_checkpoint as Binding.capture_checkpoint;
 
 use blast_boosts_core::{
     policy::{Self, ExecutionBound, PositionSide},
-    state::{ActivePosition, Issuance, RebalancePlan},
+    state::{Self, ActivePosition, Issuance, RebalancePlan},
 };
 
 use ifixed::ifixed;

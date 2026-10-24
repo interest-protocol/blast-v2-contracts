@@ -103,7 +103,7 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | 12 | L-3 | Low | A small vault below the band cannot rebalance when one lot overshoots target, and then cannot accept mints either | Resolved in source; PR #120, ADR 0125, Opus 5.5 reviewed |
 | 13 | L-4 | Low | Donated cash is never allocated to the position, so the core counts margin the venue does not see | Resolved in source (PR #118, ADR 0124); venue execution remains a release gate |
 | 14 | L-5 | Low | Activation accepts any non-negative `position_imr`, even one that later blocks operations inside the band | Resolved in source (PR #118, ADR 0124); venue execution remains a release gate |
-| 15 | L-6 | Low | An emergency rebalance that stops just under the cap can fail the minimum-improvement check and revert every time | Open |
+| 15 | L-6 | Low | An emergency rebalance that stops just under the cap can fail the minimum-improvement check and revert every time | Resolved in source (PR #121, ADR 0126), Opus 5.5 reviewed; live execution proof remains |
 | 16 | L-7 | Low | One single-key address holds all root, issuance and upgrade authority | Open (custody and deployment records) |
 | 17 | L-8 | Low | Emergency rebalance is refused when the venue mark diverges from spot, even though it never uses the mark | Open |
 | 18 | L-9 | Low | Increase rebalances check the hard cap against a reserve admitted at the opening notional, not the post-fill one | Open |
@@ -869,7 +869,7 @@ builder refuses to compose a mismatched value.
 
 ### Ticket 15 · L-6 · Emergency rebalance can trap a vault just above the hard cap
 
-**Status:** open.
+**Status:** resolved in source through [PR #121](https://github.com/interest-protocol/blast-v2-contracts/pull/121), with 1,243 passing Move tests and no remaining actionable findings in the [Opus 5.5 follow-up](boosts-l6-capacity-2026-10-24.md), under [ADR 0126](../decisions/0126-capacity-aware-rebalance-progress.md). The fix preserves the existing emergency cap-restoration exception. It follows the auditor's sixteen-order configuration bound at issuance and both cap setters, and extends it with a conservative full-batch projection against actual NAV, costs and lots. A smaller improvement may complete only after all sixteen fills match their full freshly sized orders and the actual net improvement matches or beats the conservative projection. Tiny partial fills cannot claim the exception. Static validation is necessary, not a liquidity or execution guarantee. Live venue proof and original-auditor acceptance remain separate. The historical finding follows.
 
 **The problem.** `complete_rebalance` ignores the plan's `emergency` flag and
 completes a reduction only if leverage moved toward target by at least

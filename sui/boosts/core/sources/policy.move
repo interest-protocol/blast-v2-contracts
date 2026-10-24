@@ -436,6 +436,18 @@ public(package) fun assert_nav_cap_valid(self: &RebalancePolicy, nav_cap: u64) {
     );
 }
 
+/// Necessary configuration bound: even cost-free cap-sized orders must cover
+/// the minimum at the deposit ceiling. Live costs, lots and NAV are handled
+/// by the core's full-batch completion rule; this is not a liquidity promise.
+public(package) fun assert_rebalance_capacity(self: &RebalancePolicy, max_order_notional: u64, nav_cap: u64) {
+    assert!(
+        (self.min_leverage_improvement_bps as u256) * (nav_cap as u256)
+            <= (constants::max_rebalance_orders!() as u256) * (max_order_notional as u256)
+                * (constants::basis_points_denominator!() as u256),
+        blast_boosts_core::errors::rebalance_capacity!(),
+    );
+}
+
 /// Rejects a source update outside the two-sided freshness window.
 ///
 /// `price_published_at_ms` is the source's own update time and `now_at_ms` is

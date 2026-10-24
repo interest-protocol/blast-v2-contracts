@@ -10,7 +10,8 @@ module blast_boosts_aftermath::vault_tests;
 const SYSTEM: address = @0x0;
 const ISSUER: address = @0xA11CE;
 const MAX_ORDER_NOTIONAL: u64 = 250;
-const NAV_CAP: u64 = 1_000_000_000;
+/// Sixteen 250-atom orders cover the configured 10-bps minimum at this ceiling.
+const NAV_CAP: u64 = 4_000_000;
 const REFERENCE_AT_MS: u64 = 1_000;
 /// The standard seed at the unit price: 1,100 of equity less a 100 reserve is 1,000 of NAV.
 const SEED_EQUITY: u64 = 1_100;
@@ -103,12 +104,12 @@ fun risk_admin_updates_the_nav_cap_with_a_completed_event() {
     fixture.next_tx!(ISSUER, |fixture| {
         let mut vault = fixture.take_vault<Sui2x>();
         let witness = risk_admin();
-        vault.set_nav_cap(&fixture.protocol, &witness, 2_000_000_000);
+        vault.set_nav_cap(&fixture.protocol, &witness, 2_000_000);
         let (id, previous, current) =
             events::collect_one<events::NavCapUpdated<Sui2x>>(0).nav_cap_updated_fields();
         assert_eq!(id, vault.id());
-        assert_eq!(vector[previous, current], vector[1_000_000_000, 2_000_000_000]);
-        assert_eq!(vault.nav_cap_for_testing(), 2_000_000_000);
+        assert_eq!(vector[previous, current], vector[NAV_CAP, 2_000_000]);
+        assert_eq!(vault.nav_cap_for_testing(), 2_000_000);
         fixture.return_vault(vault);
     });
 

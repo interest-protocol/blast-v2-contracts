@@ -295,7 +295,10 @@ trade size exists anywhere.
   rebalance_above_bps < max_leverage_bps <= 1,000,000`; `max_slippage_bps`
   (ordinary execution bound, in bps of the oracle price)
   `<= emergency_max_slippage_bps < 10,000`;
-  `min_leverage_improvement_bps > 0`. A zero `rebalance_below_bps` disables
+  `min_leverage_improvement_bps > 0`. Issuance and either live cap update also
+  require `min_leverage_improvement_bps * nav_cap <= 16 * max_order_notional *
+  10,000` (core code 69). This optimistic bound does not guarantee execution
+  after costs or lot rounding. A zero `rebalance_below_bps` disables
   increase-rebalancing. Every order the Vault places is an immediate-or-cancel
   limit order whose price is the oracle price moved by the applicable bound
   against the order and rounded to the market tick back toward the oracle, so
@@ -572,7 +575,8 @@ venue; it does not grow with the gas bid.
    The decision is fixed for the transaction: its own fills cannot promote an
    ordinary plan into an emergency. Invalid observations and inside-band
    positions can therefore abort before the gas-price check.
-4. Up to 16 limit orders, each priced at the oracle moved by its bound
+4. Up to 16 limit orders, using the core-owned rebalance budget (core code 70
+   rejects an additional accepted fill), each priced at the oracle moved by its bound
    against the order. Increase: each order is the largest whole-lot buy that
    keeps post-cost leverage at or under target, reserving adverse slippage
    (`max_slippage_bps`) and the taker fee on it, capped at
@@ -597,6 +601,17 @@ venue; it does not grow with the gas bid.
    `min_leverage_improvement_bps` toward target or land within one lot of
    target without moving away (core code 55). A reduction that started above
    `max_leverage_bps` has made progress once leverage is no longer above it.
+   If neither rule passes, a reduction may instead complete all 16 orders in
+   full and finish at least as close to target as a conservative projection,
+   with strict net progress. Core records whether each fill matched its order
+   and fresh sizing; cheaper or favorable fills may shrink the last orders.
+   Projection repeats the
+   core sizing up to 16 times, charging adverse slippage and authenticated
+   taker fees per order against actual starting NAV and the fixed reserve.
+   This includes emergency batches still above the cap. Exact comparisons
+   preserve progress below one basis point. Tiny partial fills do not qualify
+   simply by exhausting the order count, and a smaller retained order cannot
+   misrepresent a full fill. Insufficient net progress still aborts. Priority-gas surcharges are actual costs beyond the projection.
 6. Store the checkpoint; emit `Rebalanced`. Reserve, supply and admin cash do
    not change; execution cost lowers NAV.
 
@@ -744,8 +759,8 @@ venue objects and prices.
 | Call | Role | Effect | Event |
 | --- | --- | --- | --- |
 | `blast_boosts_aftermath::vault::set_fees(vault, protocol, witness, mint_fee_bps, redeem_fee_bps, admin_share_bps)` | RiskAdmin | Sets all three live rates within the policy caps; at least one must change; `Active` only. Affects only future operations. | `FeesUpdated` |
-| `blast_boosts_aftermath::vault::set_nav_cap(vault, protocol, witness, nav_cap)` | RiskAdmin | Replaces the NAV cap (positive, changed, and `nav_cap * max_leverage_bps / 10,000` fits in `u64`); may be set below current NAV, which only blocks mints. Any lifecycle. | `NavCapUpdated` |
-| `operations::set_max_order_notional` | RiskAdmin | Replaces the per-order cap in collateral atoms. Takes the bound account, registry, market, both oracle objects and Clock; requires fresh prices and capacity for `min_order_lots` live lots under the ordinary execution bound. Positive and changed; any lifecycle, no cooldown, no NAV or margin gate. | `MaxOrderNotionalUpdated` |
+| `blast_boosts_aftermath::vault::set_nav_cap(vault, protocol, witness, nav_cap)` | RiskAdmin | Replaces the NAV cap (positive, changed, and `nav_cap * max_leverage_bps / 10,000` fits in `u64`, and the rebalance capacity bound holds); may be set below current NAV, which only blocks mints. Any lifecycle. | `NavCapUpdated` |
+| `operations::set_max_order_notional` | RiskAdmin | Replaces the per-order cap in collateral atoms. Takes the bound account, registry, market, both oracle objects and Clock; requires fresh prices and capacity for `min_order_lots` live lots under the ordinary execution bound. Positive and changed; must also preserve the rebalance capacity bound. Any lifecycle, no cooldown, no current-NAV or margin gate. | `MaxOrderNotionalUpdated` |
 | `blast_boosts_aftermath::vault::withdraw_admin_fees(vault, protocol, witness, amount)` | RiskAdmin | Returns `Coin<Collateral>` from admin cash only. Any lifecycle. | `AdminFeesWithdrawn` |
 | `blast_boosts_aftermath::vault::update_metadata(vault, protocol, witness, currency, name, description, icon_url)` | VaultIssuer | Updates the share coin's name, description and icon in its Coin Registry `Currency<BlastBoost<Product>>`; the symbol is fixed. At least one must change. | `MetadataUpdated` |
 | `operations::add_partner(protocol, witness, partner)` | RiskAdmin | Accepts a `Partner` at once, or cancels its pending removal. | `PartnerAdded` |
@@ -891,6 +906,11 @@ refuses an account whose equity does not exceed the admitted reserve.
   that fill must still pass the same execution-price check. With 16 orders per call,
   one mint can add at most about `16 * max_order_notional` of notional, so the
   largest single mint is roughly `16 * max_order_notional / leverage`.
+- Rebalance progress: issuance and both cap setters reject a configured
+  minimum larger than the optimistic effect of 16 cap-sized orders at
+  `nav_cap`. Actual NAV can exceed that ceiling. The full-batch completion
+  rule above permits smaller, cost-adjusted progress when capacity is the
+  limit; it does not promise liquidity or accept fee-only churn. See ADR 0126.
 - Minimum size: a mint or a non-flat redemption must move at least
   `lot_size * min_order_lots` of base. At initialization and each cap change,
   the cap must cover that minimum in one order at current prices. Later price
@@ -1552,6 +1572,8 @@ Abort codes: this package aborts with the numeric codes below from whichever mod
 | 66 | `EInitialMarginHeadroom` | The live venue's initial-margin settings leave no conservative opening cushion. |
 | 67 | `ERebalanceNotActionable` | No whole-lot increase can fit the permitted leverage range. |
 | 68 | `ERebalanceOutsideBand` | The exceptional one-lot rebalance did not finish inside both band edges. |
+| 69 | `ERebalanceCapacity` | The required improvement exceeds even a cost-free full rebalance at the NAV cap. |
+| 70 | `ERebalanceOrderLimit` | A rebalance cannot accept more fills than its core-owned order budget. |
 
 ### `blast_boosts_core::blast_boosts_core`
 
@@ -1587,6 +1609,7 @@ Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/bo
 - `leverage_ceiling_bps: u64 = 100 * basis_points_denominator!()`: Structural ceiling on any leverage threshold: 100x in leverage basis points.  No leveraged coin in this protocol targets more than a small multiple, and the mint-contribution allowance scales with target leverage, so an unbounded threshold would let a transposed or mistyped policy admit almost any contribution. The ceiling is a sanity fence, not a selected product value.
 - `max_min_order_lots: u64 = 1_000_000`: Structural ceiling on the minimum operation size in live venue lots.  The minimum exists so a small holder can still exit; a million lots can never be small in collateral terms. The fence also catches a policy that swaps `min_order_lots` with an atomic-collateral value such as the NAV cap, which would otherwise brick every mint of an immutable policy.
 - `max_asset_decimals: u8 = 18`: Widest asset precision the notional formulas support without overflow.
+- `max_rebalance_orders: u64 = 16`: One rebalance's bounded execution and capacity projection share this budget.
 - `unwind_bound_widening_duration_ms: u64 = 86_400_000`: How long after shutdown begins the close-only execution bound takes to widen, linearly, from the ordinary bound to the emergency one: 24 hours.  A permissionless close must stay as cheap for holders as honest depth allows, yet a book that stays thin must not refuse the exit forever, so the admitted execution widens with time instead of opening at the wide bound.
 
 ### `blast_boosts_core::lifecycle`
@@ -1991,6 +2014,8 @@ public struct RebalancePlan<phantom Product> {
     emergency: bool,
     venue_fee_bps: u64,
     steps: u64,
+    /// Every reduction fill matched both its order and fresh core sizing.
+    full_fills: bool,
 }
 
 /// The next whole-lot order a rebalance places: its size, direction, whether
@@ -2174,6 +2199,9 @@ public fun complete_redemption<Product>(
     now_at_ms: u64,
 ): (u64, u64, u64, u64)
 
+/// Core-owned bound shared by the adapter's loop and the progress projection.
+public fun max_rebalance_orders(): u64
+
 /// Whether the position needs a reduction, or a nonzero increase the adapter permits.
 /// `increases_allowed` only filters this read-only keeper hint; real execution
 /// still prepares a linear plan and rechecks the venue's opening admission.
@@ -2196,7 +2224,7 @@ public fun prepare_rebalance<Product>(
 
 /// The next order toward the band, sized from the position the last fill left.
 ///
-/// A zero size ends the plan; the adapter bounds the number of orders. An
+/// A zero size ends the plan; core and adapter share the core-owned order budget. An
 /// emergency reduction sells only what brings leverage back to the hard cap
 /// and ends as soon as it is no longer above it, so the emergency bound never
 /// covers more notional than restoring the cap needs, never an order placed

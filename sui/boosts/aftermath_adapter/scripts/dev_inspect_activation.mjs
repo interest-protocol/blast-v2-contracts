@@ -311,6 +311,10 @@ function validateBuilderInput(input) {
     if (minimum < 2n || minimum > 1_000_000n) fail('builderInput.vaultPolicy.minOrderLots: expected 2 to 1000000');
     expectDecimal(input.maxOrderNotional, 'builderInput.maxOrderNotional');
     expectDecimal(input.navCap, 'builderInput.navCap');
+    if (BigInt(input.rebalancePolicy.minLeverageImprovementBps) * BigInt(input.navCap)
+        > 16n * BigInt(input.maxOrderNotional) * 10_000n) {
+        fail('builderInput: minimum rebalance improvement exceeds the sixteen-order capacity at navCap');
+    }
     expectObject(input.metadata, 'builderInput.metadata', METADATA_FIELDS);
     expectDecimal(input.seedReserve, 'builderInput.seedReserve');
     expectDecimal(input.positionImr, 'builderInput.positionImr');
@@ -797,6 +801,17 @@ function selfTest() {
     expectFailure('minOrderLots', () => buildPlan(oneLot));
     passed += 1;
 
+    for (const [field, value] of [['navCap', '400000000001'], ['maxOrderNotional', '249999999']]) {
+        const impossible = structuredClone(fixture.builderInput);
+        impossible[field] = value;
+        expectFailure('sixteen-order capacity', () => buildPlan(impossible));
+        passed += 1;
+    }
+    const impossibleMinimum = structuredClone(fixture.builderInput);
+    impossibleMinimum.rebalancePolicy.minLeverageImprovementBps = '101';
+    expectFailure('sixteen-order capacity', () => buildPlan(impossibleMinimum));
+    passed += 1;
+
     const wrongSide = structuredClone(fixture.builderInput);
     wrongSide.side = 'flat';
     expectFailure('long or short', () => buildPlan(wrongSide));
@@ -930,7 +945,7 @@ function selfTest() {
         validatePinnedSurfaceFixture(testnetCapture));
     passed += 1;
 
-    process.stdout.write(`dev_inspect_activation self-test: PASS ${passed}/19 cases\n`);
+    process.stdout.write(`dev_inspect_activation self-test: PASS ${passed}/22 cases\n`);
 }
 
 function runSui(args) {

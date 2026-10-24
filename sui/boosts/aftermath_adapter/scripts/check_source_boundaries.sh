@@ -142,6 +142,8 @@ readiness = source.split('public fun needs_rebalance<', 1)[1].split('\n}\n', 1)[
 assert '.into_rebalance_readiness(' in readiness and '.classify_preexisting(' in readiness
 assert '.into_observation()' not in readiness
 rebalance_fills = orders.split('fun rebalance_orders<', 1)[1].split('\n}\n', 1)[0]
+assert 'while (index < state::max_rebalance_orders())' in rebalance_fills, \
+    'Rebalance execution must use the core-owned capacity budget.'
 assert '.into_rebalance_observation(plan)' in rebalance_fills
 assert '.into_observation()' not in rebalance_fills
 assert 'fill.assert_checkpoint(' in rebalance_fills and '.accept_rebalance_fill(' in rebalance_fills

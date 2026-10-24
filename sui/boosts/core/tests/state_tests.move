@@ -16,7 +16,8 @@ const SEED_BASE: u64 = 2_000_000_000;
 const SEED_NOTIONAL: u64 = 2_000_000;
 const LOT_SIZE: u64 = 1_000;
 const MIN_EXPOSURE_LOTS: u64 = 100;
-const NAV_CAP: u64 = 1_000_000_000;
+/// Sixteen 250-atom orders can improve leverage by 10 bps at this ceiling.
+const NAV_CAP: u64 = 4_000_000;
 /// Half of notional: wide enough that ordinary fixtures never touch the ceiling.
 const MAX_RESERVE_BPS: u64 = 5_000;
 const HEALTH_SHARE_SUPPLY: u64 = 1_000_000;
@@ -665,8 +666,9 @@ fun an_emergency_plan_barely_above_the_cap_sells_one_lot_and_completes_on_the_re
     state.destroy_for_testing();
 }
 
-/// An emergency plan that ends still above the cap is judged like any other
-/// reduction: it must have moved leverage by the policy minimum.
+/// An emergency plan still above the cap must meet the ordinary minimum or
+/// fully execute all sixteen orders and match projected progress. One tiny
+/// partial fill meets neither.
 #[test]
 #[expected_failure(abort_code = errors::ERebalanceNoProgress, location = blast_boosts_core::state)]
 fun an_emergency_plan_still_above_the_cap_needs_the_ordinary_improvement() {
@@ -958,6 +960,7 @@ fun max_order_notional_moves_both_directions_and_returns_the_previous_value() {
     let witness = vault_issuer();
     let (mut state, _) = state::issue<Product>(&witness, standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP, 9, 6).activate_with(standard_observation(policy::long()), SEED_RESERVE);
 
+    state.set_nav_cap(2_000_000);
     assert_eq!(state.set_test_order_cap(150), MAX_ORDER_NOTIONAL);
     assert_eq!(state.set_test_order_cap(std::u64::max_value!()), 150);
     assert_eq!(state.max_order_notional_for_testing(), std::u64::max_value!());
@@ -2420,12 +2423,13 @@ fun a_priced_operation_is_refused_when_equity_only_covers_the_admitted_reserve()
 #[test]
 fun seed_and_admin_accept_the_first_cap_covering_the_live_minimum() {
     // 100 lots at $1 with 1% headroom and the extra price atom cost 102 atoms.
-    let issuance = state::issue<Product>(&vault_issuer(), standard_vault_policy(), 102, NAV_CAP, 9, 6);
+    let issuance = state::issue<Product>(&vault_issuer(), standard_vault_policy(), 102, 1_600_000, 9, 6);
     let flat = standard_observation(policy::long()).with_position_base(0).into_position_observation();
     let (_, capacity, _) = issuance.seed_terms(flat, SEED_RESERVE);
     assert!(capacity >= MIN_EXPOSURE_LOTS * LOT_SIZE);
     destroy(issuance);
     let mut state = initialized_state(policy::long());
+    state.set_nav_cap(1_600_000);
     state.set_test_order_cap(102);
     state.destroy_for_testing();
 }
@@ -2433,7 +2437,7 @@ fun seed_and_admin_accept_the_first_cap_covering_the_live_minimum() {
 #[test]
 #[expected_failure(abort_code = errors::EOrderCapBelowMinimum, location = blast_boosts_core::state)]
 fun seed_rejects_one_atom_below_minimum_order_capacity() {
-    let issuance = state::issue<Product>(&vault_issuer(), standard_vault_policy(), 101, NAV_CAP, 9, 6);
+    let issuance = state::issue<Product>(&vault_issuer(), standard_vault_policy(), 101, 1_600_000, 9, 6);
     let flat = standard_observation(policy::long()).with_position_base(0).into_position_observation();
     issuance.seed_terms(flat, SEED_RESERVE);
     destroy(issuance);
@@ -2443,6 +2447,7 @@ fun seed_rejects_one_atom_below_minimum_order_capacity() {
 #[expected_failure(abort_code = errors::EOrderCapBelowMinimum, location = blast_boosts_core::state)]
 fun admin_rejects_one_atom_below_minimum_order_capacity() {
     let mut state = initialized_state(policy::long());
+    state.set_nav_cap(1_600_000);
     state.set_test_order_cap(101);
     state.destroy_for_testing();
 }
