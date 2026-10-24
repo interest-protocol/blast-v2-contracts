@@ -119,7 +119,10 @@ trade size exists anywhere.
   rebalance_above_bps < max_leverage_bps <= 1,000,000`; `max_slippage_bps`
   (ordinary execution bound, in bps of the oracle price)
   `<= emergency_max_slippage_bps < 10,000`;
-  `min_leverage_improvement_bps > 0`. A zero `rebalance_below_bps` disables
+  `min_leverage_improvement_bps > 0`. Issuance and either live cap update also
+  require `min_leverage_improvement_bps * nav_cap <= 16 * max_order_notional *
+  10,000` (core code 69). This optimistic bound does not guarantee execution
+  after costs or lot rounding. A zero `rebalance_below_bps` disables
   increase-rebalancing. Every order the Vault places is an immediate-or-cancel
   limit order whose price is the oracle price moved by the applicable bound
   against the order and rounded to the market tick back toward the oracle, so
@@ -396,7 +399,8 @@ venue; it does not grow with the gas bid.
    The decision is fixed for the transaction: its own fills cannot promote an
    ordinary plan into an emergency. Invalid observations and inside-band
    positions can therefore abort before the gas-price check.
-4. Up to 16 limit orders, each priced at the oracle moved by its bound
+4. Up to 16 limit orders, using the core-owned rebalance budget (core code 70
+   rejects an additional accepted fill), each priced at the oracle moved by its bound
    against the order. Increase: each order is the largest whole-lot buy that
    keeps post-cost leverage at or under target, reserving adverse slippage
    (`max_slippage_bps`) and the taker fee on it, capped at
@@ -421,6 +425,17 @@ venue; it does not grow with the gas bid.
    `min_leverage_improvement_bps` toward target or land within one lot of
    target without moving away (core code 55). A reduction that started above
    `max_leverage_bps` has made progress once leverage is no longer above it.
+   If neither rule passes, a reduction may instead complete all 16 orders in
+   full and finish at least as close to target as a conservative projection,
+   with strict net progress. Core records whether each fill matched its order
+   and fresh sizing; cheaper or favorable fills may shrink the last orders.
+   Projection repeats the
+   core sizing up to 16 times, charging adverse slippage and authenticated
+   taker fees per order against actual starting NAV and the fixed reserve.
+   This includes emergency batches still above the cap. Exact comparisons
+   preserve progress below one basis point. Tiny partial fills do not qualify
+   simply by exhausting the order count, and a smaller retained order cannot
+   misrepresent a full fill. Insufficient net progress still aborts. Priority-gas surcharges are actual costs beyond the projection.
 6. Store the checkpoint; emit `Rebalanced`. Reserve, supply and admin cash do
    not change; execution cost lowers NAV.
 
@@ -568,8 +583,8 @@ venue objects and prices.
 | Call | Role | Effect | Event |
 | --- | --- | --- | --- |
 | `blast_boosts_aftermath::vault::set_fees(vault, protocol, witness, mint_fee_bps, redeem_fee_bps, admin_share_bps)` | RiskAdmin | Sets all three live rates within the policy caps; at least one must change; `Active` only. Affects only future operations. | `FeesUpdated` |
-| `blast_boosts_aftermath::vault::set_nav_cap(vault, protocol, witness, nav_cap)` | RiskAdmin | Replaces the NAV cap (positive, changed, and `nav_cap * max_leverage_bps / 10,000` fits in `u64`); may be set below current NAV, which only blocks mints. Any lifecycle. | `NavCapUpdated` |
-| `operations::set_max_order_notional` | RiskAdmin | Replaces the per-order cap in collateral atoms. Takes the bound account, registry, market, both oracle objects and Clock; requires fresh prices and capacity for `min_order_lots` live lots under the ordinary execution bound. Positive and changed; any lifecycle, no cooldown, no NAV or margin gate. | `MaxOrderNotionalUpdated` |
+| `blast_boosts_aftermath::vault::set_nav_cap(vault, protocol, witness, nav_cap)` | RiskAdmin | Replaces the NAV cap (positive, changed, and `nav_cap * max_leverage_bps / 10,000` fits in `u64`, and the rebalance capacity bound holds); may be set below current NAV, which only blocks mints. Any lifecycle. | `NavCapUpdated` |
+| `operations::set_max_order_notional` | RiskAdmin | Replaces the per-order cap in collateral atoms. Takes the bound account, registry, market, both oracle objects and Clock; requires fresh prices and capacity for `min_order_lots` live lots under the ordinary execution bound. Positive and changed; must also preserve the rebalance capacity bound. Any lifecycle, no cooldown, no current-NAV or margin gate. | `MaxOrderNotionalUpdated` |
 | `blast_boosts_aftermath::vault::withdraw_admin_fees(vault, protocol, witness, amount)` | RiskAdmin | Returns `Coin<Collateral>` from admin cash only. Any lifecycle. | `AdminFeesWithdrawn` |
 | `blast_boosts_aftermath::vault::update_metadata(vault, protocol, witness, currency, name, description, icon_url)` | VaultIssuer | Updates the share coin's name, description and icon in its Coin Registry `Currency<BlastBoost<Product>>`; the symbol is fixed. At least one must change. | `MetadataUpdated` |
 | `operations::add_partner(protocol, witness, partner)` | RiskAdmin | Accepts a `Partner` at once, or cancels its pending removal. | `PartnerAdded` |
@@ -715,6 +730,11 @@ refuses an account whose equity does not exceed the admitted reserve.
   that fill must still pass the same execution-price check. With 16 orders per call,
   one mint can add at most about `16 * max_order_notional` of notional, so the
   largest single mint is roughly `16 * max_order_notional / leverage`.
+- Rebalance progress: issuance and both cap setters reject a configured
+  minimum larger than the optimistic effect of 16 cap-sized orders at
+  `nav_cap`. Actual NAV can exceed that ceiling. The full-batch completion
+  rule above permits smaller, cost-adjusted progress when capacity is the
+  limit; it does not promise liquidity or accept fee-only churn. See ADR 0126.
 - Minimum size: a mint or a non-flat redemption must move at least
   `lot_size * min_order_lots` of base. At initialization and each cap change,
   the cap must cover that minimum in one order at current prices. Later price

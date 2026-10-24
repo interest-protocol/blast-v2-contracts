@@ -52,7 +52,7 @@
       "maxReserveBps": "500"
     },
     "maxOrderNotional": "250000000",
-    "navCap": "1000000000000",
+    "navCap": "400000000000",
     "metadata": {
       "symbol": "SUI2X",
       "name": "SUI 2x Bull",
@@ -141,7 +141,7 @@
           "@0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
           "vault_policy",
           "250000000",
-          "1000000000000",
+          "400000000000",
           "\"SUI2X\"",
           "\"SUI 2x Bull\"",
           "\"Two times SUI\"",
@@ -250,7 +250,7 @@
     "@0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
     "vault_policy",
     "250000000",
-    "1000000000000",
+    "400000000000",
     "\"SUI2X\"",
     "\"SUI 2x Bull\"",
     "\"Two times SUI\"",

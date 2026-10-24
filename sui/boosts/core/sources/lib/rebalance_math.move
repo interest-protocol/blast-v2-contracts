@@ -165,6 +165,27 @@ public(package) fun reduction_is_sufficient(
     (within_one_lot_of_target && not_farther_than_before) || improved_by_minimum
 }
 
+/// Compares exact distances to target, including improvements smaller than one
+/// basis point. Both the full-batch projection and the real fill must improve;
+/// the real result must be at least as close as the conservative projection.
+public(package) fun reduction_matches_capacity(
+    notional_before: u64, nav_before: u64,
+    notional_after: u64, nav_after: u64,
+    projected_notional: u64, projected_nav: u64,
+    target_leverage_bps: u64,
+): bool {
+    assert!(nav_before > 0 && nav_after > 0 && projected_nav > 0, blast_boosts_core::errors::invalid_nav!());
+    let bps = constants::basis_points_denominator!() as u256;
+    let target = target_leverage_bps as u256;
+    let before = ((notional_before as u256) * bps).diff(target * (nav_before as u256));
+    let after = ((notional_after as u256) * bps).diff(target * (nav_after as u256));
+    let projected = ((projected_notional as u256) * bps).diff(target * (projected_nav as u256));
+
+    projected * (nav_before as u256) < before * (projected_nav as u256)
+        && after * (nav_before as u256) < before * (nav_after as u256)
+        && after * (projected_nav as u256) <= projected * (nav_after as u256)
+}
+
 /// Reserves adverse execution first, then the authenticated fee on that adverse quote.
 /// Each session calls this separately: rounding a multi-order total is not equivalent.
 public(package) fun execution_cost_up(notional: u64, venue_fee_bps: u64, max_slippage_bps: u64): u128 {

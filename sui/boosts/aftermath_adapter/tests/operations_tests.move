@@ -10,7 +10,8 @@ module blast_boosts_aftermath::operations_tests;
 const SYSTEM: address = @0x0;
 const ADMIN: address = @0xA11CE;
 const REFERENCE_AT_MS: u64 = 1_000;
-const NAV_CAP: u64 = 1_000_000_000;
+/// Sixteen 250-atom orders cover the configured 10-bps minimum at this ceiling.
+const NAV_CAP: u64 = 4_000_000;
 const SEED_EQUITY: u64 = 1_000;
 const SEED_RESERVE: u64 = 100;
 /// With 9-decimal base, 6-decimal collateral and unit prices, one collateral atom of notional is 1,000 base atoms.

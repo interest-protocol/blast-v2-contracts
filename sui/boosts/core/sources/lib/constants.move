@@ -36,6 +36,11 @@ macro public(package) fun max_asset_decimals(): u8 {
     18
 }
 
+/// One rebalance's bounded execution and capacity projection share this budget.
+macro public(package) fun max_rebalance_orders(): u64 {
+    16
+}
+
 /// How long after shutdown begins the close-only execution bound takes to
 /// widen, linearly, from the ordinary bound to the emergency one: 24 hours.
 ///

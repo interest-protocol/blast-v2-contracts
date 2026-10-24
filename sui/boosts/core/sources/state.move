@@ -114,6 +114,8 @@ public struct RebalancePlan<phantom Product> {
     emergency: bool,
     venue_fee_bps: u64,
     steps: u64,
+    /// Every reduction fill matched both its order and fresh core sizing.
+    full_fills: bool,
 }
 
 /// The next whole-lot order a rebalance places: its size, direction, whether
@@ -155,6 +157,7 @@ public fun issue<Product>(
 ): Issuance<Product> {
     assert!(max_order_notional > 0, blast_boosts_core::errors::invalid_max_order_notional!());
     vault_policy.rebalance_policy().assert_nav_cap_valid(nav_cap);
+    vault_policy.rebalance_policy().assert_rebalance_capacity(max_order_notional, nav_cap);
     assert!(
         base_decimals <= constants::max_asset_decimals!()
             && collateral_decimals <= constants::max_asset_decimals!(),
@@ -521,6 +524,9 @@ public fun complete_redemption<Product>(
 
 // --- Rebalance ---
 
+/// Core-owned bound shared by the adapter's loop and the progress projection.
+public fun max_rebalance_orders(): u64 { constants::max_rebalance_orders!() }
+
 /// Whether the position needs a reduction, or a nonzero increase the adapter permits.
 /// `increases_allowed` only filters this read-only keeper hint; real execution
 /// still prepares a linear plan and rechecks the venue's opening admission.
@@ -579,12 +585,13 @@ public fun prepare_rebalance<Product>(
         emergency: !increase && rebalance.is_leverage_above_max(before.notional, nav),
         venue_fee_bps,
         steps: 0,
+        full_fills: true,
     }
 }
 
 /// The next order toward the band, sized from the position the last fill left.
 ///
-/// A zero size ends the plan; the adapter bounds the number of orders. An
+/// A zero size ends the plan; core and adapter share the core-owned order budget. An
 /// emergency reduction sells only what brings leverage back to the hard cap
 /// and ends as soon as it is no longer above it, so the emergency bound never
 /// covers more notional than restoring the cap needs, never an order placed
@@ -594,6 +601,10 @@ public fun next_rebalance_order<Product>(self: &State<Product>, plan: &Rebalance
     let nav = accounting_math::shareholder_nav(position.equity, plan.reserve_priced);
     let rebalance = self.vault_policy.rebalance_policy();
     let ordinary = rebalance.execution_bound(false);
+
+    if (plan.steps >= max_rebalance_orders()) {
+        return RebalanceOrder { base: 0, increase: plan.increase, emergency: false, bound: ordinary, band_landing: false }
+    };
 
     if (plan.increase) {
         let (base, band_landing) = self.increase_order(position, nav, plan.venue_fee_bps);
@@ -646,6 +657,7 @@ public fun accept_rebalance_fill<Product>(
     now_at_ms: u64,
 ) {
     let RebalanceOrder { base: requested, increase, emergency: _, bound: _, band_landing } = order;
+    assert!(plan.steps < max_rebalance_orders(), blast_boosts_core::errors::rebalance_order_limit!());
     assert!(
         filled_base > 0 && filled_base <= requested && filled_base % plan.current.lot_size == 0,
         blast_boosts_core::errors::active_fill_incomplete!(),
@@ -677,6 +689,9 @@ public fun accept_rebalance_fill<Product>(
         };
     };
 
+    // Prove full fills against fresh core sizing, not a retained or foreign order.
+    plan.full_fills = !plan.increase && !increase && plan.full_fills && filled_base == requested
+        && filled_base == self.next_rebalance_order(plan).base;
     plan.current = after;
     plan.steps = plan.steps + 1;
 }
@@ -688,7 +703,7 @@ public fun complete_rebalance<Product>(
     plan: RebalancePlan<Product>,
 ): (u64, u64, u64, u64, bool) {
     self.lifecycle.assert_active();
-    let RebalancePlan { before, current, reserve_priced, increase, emergency, venue_fee_bps: _, steps } = plan;
+    let RebalancePlan { before, current, reserve_priced, increase, emergency, venue_fee_bps, steps, full_fills } = plan;
     assert!(steps > 0, blast_boosts_core::errors::rebalance_no_progress!());
 
     let before_nav = accounting_math::shareholder_nav(before.equity, reserve_priced);
@@ -709,7 +724,8 @@ public fun complete_rebalance<Product>(
                     current.lot_size, current.base_price, current.collateral_price,
                     self.base_unit, self.collateral_unit,
                 ),
-            ))
+            ) || (steps == max_rebalance_orders() && full_fills
+                && self.reduction_matches_capacity(&before, &current, reserve_priced, emergency, venue_fee_bps)))
     };
     assert!(improved, blast_boosts_core::errors::rebalance_no_progress!());
 
@@ -988,6 +1004,7 @@ public fun set_fees<Product>(
 public fun assert_max_order_notional_update<Product>(self: &State<Product>, max_order_notional: u64) {
     assert!(max_order_notional != self.max_order_notional, blast_boosts_core::errors::max_order_notional_unchanged!());
     assert!(max_order_notional > 0, blast_boosts_core::errors::invalid_max_order_notional!());
+    self.vault_policy.rebalance_policy().assert_rebalance_capacity(max_order_notional, self.nav_cap);
 }
 
 /// Updates the live per-order notional cap.
@@ -1027,6 +1044,7 @@ public fun set_nav_cap<Product>(self: &mut State<Product>, nav_cap: u64): u64 {
     let previous = self.nav_cap;
     assert!(nav_cap != previous, blast_boosts_core::errors::nav_cap_unchanged!());
     self.vault_policy.rebalance_policy().assert_nav_cap_valid(nav_cap);
+    self.vault_policy.rebalance_policy().assert_rebalance_capacity(self.max_order_notional, nav_cap);
 
     self.nav_cap = nav_cap;
 
@@ -1218,6 +1236,46 @@ fun target_increase_order<Product>(self: &State<Product>, position: &ActivePosit
         nav, position.notional, rebalance.target_leverage_bps(), position.base_price, position.collateral_price,
         position.lot_size, self.max_order_notional, venue_fee_bps, rebalance.max_slippage_bps(),
         self.base_unit, self.collateral_unit,
+    )
+}
+
+/// A fully filled batch may keep smaller progress if its actual result matches
+/// the net improvement of a conservative full-batch projection. Full execution
+/// is proved while accepting each fill, so cheaper/favorable fills may shrink
+/// the final orders without failing an independently projected base threshold.
+fun reduction_matches_capacity<Product>(
+    self: &State<Product>, before: &ActivePosition, after: &ActivePosition,
+    reserve: u64, emergency: bool, venue_fee_bps: u64,
+): bool {
+    let rebalance = self.vault_policy.rebalance_policy();
+    let mut projected = *before;
+    let mut steps = 0;
+    while (steps < max_rebalance_orders()) {
+        let nav = accounting_math::shareholder_nav(projected.equity, reserve);
+        if (emergency && !rebalance.is_leverage_above_max(projected.notional, nav)) break;
+        let base = if (emergency) {
+            self.cap_restoring_order(&projected, nav)
+        } else {
+            self.reduction_order(&projected, nav)
+        };
+        if (base == 0) break;
+        let notional = rebalance_math::oracle_notional_up(
+            base, before.base_price, before.collateral_price, self.base_unit, self.collateral_unit,
+        );
+        let cost = rebalance_math::execution_cost_up(notional, venue_fee_bps, rebalance.execution_bound(emergency).slippage_bps());
+        if (cost >= nav as u128) return false;
+        projected.equity = projected.equity - (cost as u64);
+        projected.base = projected.base - base;
+        projected.notional = rebalance_math::oracle_notional_up(
+            projected.base, before.base_price, before.collateral_price, self.base_unit, self.collateral_unit,
+        );
+        steps = steps + 1;
+    };
+
+    rebalance_math::reduction_matches_capacity(
+        before.notional, accounting_math::shareholder_nav(before.equity, reserve),
+        after.notional, accounting_math::shareholder_nav(after.equity, reserve),
+        projected.notional, accounting_math::shareholder_nav(projected.equity, reserve), rebalance.target_leverage_bps(),
     )
 }
 

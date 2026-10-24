@@ -81,9 +81,11 @@ fun error_codes_run_from_zero_without_gaps() {
         errors::initial_margin_headroom!(),
         errors::rebalance_not_actionable!(),
         errors::rebalance_outside_band!(),
+        errors::rebalance_capacity!(),
+        errors::rebalance_order_limit!(),
     ];
 
-    assert_eq!(codes.length(), 69);
+    assert_eq!(codes.length(), 71);
     codes.length().do!(|i| assert_eq!(codes[i], i));
 }
 

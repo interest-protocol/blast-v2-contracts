@@ -442,3 +442,4 @@ test passes, and none is asserted as a cited fact in the records.
 | [0123](0123-successor-activated-boosts-upgrades.md) | Successor-activated Boosts upgrades | **accepted** |
 | [0124](0124-margin-recovery-and-initial-headroom.md) | Margin recovery and initial headroom | **accepted** |
 | [0125](0125-small-vault-recovery-within-the-band.md) | Small-vault recovery within the band | **accepted** |
+| [0126](0126-capacity-aware-rebalance-progress.md) | Capacity-aware rebalance progress | **accepted** |

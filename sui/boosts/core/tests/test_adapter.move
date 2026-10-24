@@ -434,7 +434,7 @@ public fun rebalance(self: &mut Vault): u64 {
     let mut plan = self.state.prepare_rebalance(self.venue.observe(), self.venue.taker_fee_bps, now_at_ms);
     let base_price = plan.rebalance_position().base_price();
     let mut orders = 0;
-    while (orders < MAX_ORDERS) {
+    while (orders < state::max_rebalance_orders()) {
         let order = self.state.next_rebalance_order(&plan);
         if (order.order_base() == 0) break;
         let (executed, filled, actual_notional) = self.venue.fill(order.order_base(), order.is_increase());

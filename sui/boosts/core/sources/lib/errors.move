@@ -283,6 +283,14 @@ const ERebalanceNotActionable: u64 = 67;
 /// The exceptional one-lot rebalance did not finish inside both band edges.
 const ERebalanceOutsideBand: u64 = 68;
 
+#[test_only]
+/// The required improvement exceeds even a cost-free full rebalance at the NAV cap.
+const ERebalanceCapacity: u64 = 69;
+
+#[test_only]
+/// A rebalance cannot accept more fills than its core-owned order budget.
+const ERebalanceOrderLimit: u64 = 70;
+
 macro public(package) fun zero_amount(): u64 { 0 }
 
 macro public(package) fun invalid_fee_bps(): u64 { 1 }
@@ -420,3 +428,7 @@ macro public(package) fun initial_margin_headroom(): u64 { 66 }
 macro public(package) fun rebalance_not_actionable(): u64 { 67 }
 
 macro public(package) fun rebalance_outside_band(): u64 { 68 }
+
+macro public(package) fun rebalance_capacity(): u64 { 69 }
+
+macro public(package) fun rebalance_order_limit(): u64 { 70 }

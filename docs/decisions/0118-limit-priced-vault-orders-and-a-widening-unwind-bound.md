@@ -82,7 +82,8 @@ whole-lot base that brings leverage back to the cap, at least one lot and at
 most the per-order cap, under the emergency bound, and ends as soon as leverage
 is no longer above the cap. Such a plan has made progress once the cap is
 restored, however small the sale; a plan that ends still above the cap is
-judged by the ordinary minimum improvement. The remaining reduction toward
+judged by the ordinary minimum improvement or the full-batch capacity rule
+in [ADR 0126](0126-capacity-aware-rebalance-progress.md). The remaining reduction toward
 target runs in a later, ordinary plan under the ordinary bound, so the wide
 bound covers no more notional than the cap needs and a wide market can still
 not revert the orders placed above the cap (ADR 0084's stop-at-the-cap rule is

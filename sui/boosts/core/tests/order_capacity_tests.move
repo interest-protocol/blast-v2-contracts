@@ -160,6 +160,7 @@ fun one_opening_lot_cannot_use_the_closing_exception() {
 #[expected_failure(abort_code = errors::EOrderCapBelowMinimum, location = blast_boosts_core::state)]
 fun the_admin_cannot_set_a_cap_below_the_live_proportional_minimum() {
     let mut vault = test_adapter::calm_venue().issue().activate(SEED, RESERVE);
+    vault.state_mut().set_nav_cap(1);
     vault.set_max_order_notional(1);
     vault.destroy();
 }
