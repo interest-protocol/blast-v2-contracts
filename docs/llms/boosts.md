@@ -83,8 +83,9 @@ re-pointing never strands a Vault:
 Pass the shared `ClearingHouse` as a normal shared-object input. Several
 functions take it by value and return it after settling the required Aftermath
 session. Reuse that result in later PTB commands, then call Aftermath
-`clearing_house::share` once after its final use. `operations::rebalance` and
-`operations::unwind` instead share it internally and return nothing. These
+`clearing_house::share` once after its final use. `operations::realize_profit`,
+`operations::rebalance` and `operations::unwind` instead share it internally
+and return nothing. These
 private `entry` calls accept the shared market directly, never a market returned
 by an earlier trading session, and end that market's use in the PTB.
 Also pass the `Clock` (`0x6`)
@@ -104,7 +105,7 @@ to the call. Integrators cannot obtain these witnesses.
 | `blast_boosts_core::blast_boosts_core::ShutdownAdmin` | `blast_boosts_aftermath::vault::begin_shutdown` |
 | `blast_boosts_core::blast_boosts_core::UpgradeAdmin` | adapter upgrades through `blast_boosts_aftermath::package_admin` |
 
-Everything else (mint, redeem, rebalance, donate, sync, unwind, finalize,
+Everything else (mint, redeem, realize profit, rebalance, donate, sync, unwind, finalize,
 shutdown claims) is *anyone*. No keeper role, keeper reward, or caller-chosen
 trade size exists anywhere.
 
@@ -147,7 +148,7 @@ only from activation, so it is born `Active`.
 
 | State | Entered by | Allowed |
 | --- | --- | --- |
-| `Active` | `operations::initialize` | mint, redeem (plain and partner), rebalance, `needs_rebalance`, donate, `sync_health`, RiskAdmin `rebaseline`, all admin settings, `begin_shutdown` |
+| `Active` | `operations::initialize` | mint, redeem (plain and partner), `realize_profit`, rebalance, `needs_rebalance`, donate, `sync_health`, RiskAdmin `rebaseline`, all admin settings, `begin_shutdown` |
 | `Unwinding` | `blast_boosts_aftermath::vault::begin_shutdown` (ShutdownAdmin) | `operations::unwind`, `operations::sync_health`, `operations::finalize_shutdown`, `set_nav_cap`, `set_max_order_notional`, `update_metadata`, `withdraw_admin_fees` |
 | `Settled` | `operations::finalize_shutdown` (anyone) | `blast_boosts_aftermath::vault::redeem_shutdown`, `set_nav_cap`, `set_max_order_notional`, `update_metadata`, `withdraw_admin_fees` |
 
@@ -280,7 +281,8 @@ unless `max_final_base` is 0), and `base_to_sell = min(required rounded up to
 whole lots, base)`. Orders are limit orders priced inside the ordinary bound
 and face the order cap, with an exception for exactly one live venue lot
 when closing (see Caps).
-It then prices the payout (see Economics), checks `net >= minimum_collateral`,
+It then prices the payout (see Economics), checks `net >= minimum_collateral`
+and that the venue can release `net + admin_fee` (adapter code 39 otherwise),
 withdraws `net + admin_fee` from the venue (free collateral first, then
 deallocation), keeps `admin_fee` as admin cash, burns the shares, emits
 `Redeemed`, and returns `net`.
@@ -311,6 +313,41 @@ dynamic field with name `PartnerKey(partner_id)`. The partner is accepted
 while the field exists and `now_ms < value` (the value is `u64::MAX` until
 Blast removes the partner). Otherwise use the plain calls. While a Vault's
 `admin_share_bps` is 0 the partner earns nothing.
+
+#### Realize profit before redemption (anyone; keepers)
+
+`operations::realize_profit<Product, Collateral>(vault, protocol, account,
+registry, clearing_house, base_oracle, collateral_oracle, clock)` is a private
+`entry` call. Pass the shared market directly; the call shares it internally
+and returns nothing. Submit at or below reference gas price. The keeper builder
+accepts `operation: 'realize_profit'` with the same bound objects as `rebalance`.
+
+Share value includes paper gains; Aftermath excludes them from cash available
+for withdrawal. When free and allocated cash cannot cover the live initial
+margin requirement, this operation closes and reopens exactly the same bounded
+portion to turn gains into cash. It selects size from authenticated shortfall,
+positive profit, live fee, lot size and the existing cap. The caller chooses no
+trade size or price bound and receives no reward.
+
+The full cash gap plus rounding headroom must fit within total profit minus a
+full-position cost allowance, or recovery is refused before trading. Both orders
+must fill fully within ordinary price limits and the opening-order cap. Either failure rolls back everything. Estimated realized profit must exceed
+twice the worst-case trading cost; completion requires a smaller cash shortfall,
+an allocated-cash gain greater than actual cost, unchanged position size and
+side, and final leverage at or below the hard cap. Supply, reserve, funding
+deficit, admin cash and lifecycle are unchanged after initial funding settlement.
+Actual costs reduce share value for all holders before a fresh redemption quote.
+
+Repeat in separate transactions if the cap requires several steps. Each step
+spends cost headroom; a later code 65 stops the sequence until cash, prices or
+exposure improve, and raising the cap alone does not remove that check. Quote and
+submit redemption afterward with a fresh minimum payout; it still closes exactly
+the holder's proportional position and pays the full agreed amount. The cash
+check never silently reduces that payout. Recovery may fail for insufficient
+two-sided depth, uneconomic profit, inadequate opening margin, emergency leverage
+or stale prices. Prices, funding and cash requirements can change before the
+later redemption. M-5 and the activation-margin choice in L-5 remain separate;
+this call does not bypass either. See ADR 0122 and its live execution release gate.
 
 #### Rebalance (anyone; keepers)
 
@@ -715,13 +752,14 @@ types below from the adapter's `events` module (for example
 | --- | --- | --- |
 | `VaultIssued` | `issue` | Policy, initial caps, treasury and metadata cap IDs. No Vault ID yet. |
 | `VaultInitialized` | `initialize` | Vault ID, binding, seed amount, seed equity, reserve and NAV, locked shares, opening base and lot, side, IMR, first checkpoint. |
-| `OrderFilled` | every Aftermath order (seed, mint, redeem, rebalance, unwind) | `account_object_id` (map to the Vault through the binding), side, reduce-only, requested and filled base, raw quote, 9-decimal reference price, limit price and executed price. The limit sits inside the bound the order ran under. |
+| `OrderFilled` | every Aftermath order (seed, mint, redeem, profit realization, rebalance, unwind) | `account_object_id` (map to the Vault through the binding), side, reduce-only, requested and filled base, raw quote, 9-decimal reference price, limit price and executed price. The limit sits inside the bound the order ran under. |
 | `Minted` | `mint` | deposit, shares, contribution, fee, admin and reserve fee, reserve, admin cash and supply after, checkpoint. |
 | `Redeemed` | `redeem` | shares burned, net paid, fee split, reserve, admin cash and supply after, checkpoint. |
 | `PartnerFeePaid` | partner variants, after `Minted` or `Redeemed` | partner ID, the operation's admin fee, the partner's cut. `admin_cash_after` in the preceding event still includes the cut. |
 | `PartnerAdded`, `PartnerRemoved` | partner list changes | `accepted_until_ms` on removal. |
+| `ProfitRealized` | `realize_profit` | vault ID, equity before/after, base closed and reopened, cash shortfall before/after, previous and new raw checkpoint. |
 | `Rebalanced` | `rebalance` | equity and base before and after, direction. Equity change is the execution cost (or gain) at the fixed pair. |
-| `FundingSettled` | any synchronization (`sync_health`, mint, redeem, rebalance, donate, unwind) that adopts a changed checkpoint | cost or credit, raw IFixed and atom amounts (atoms may be 0), absorbed, uncovered, restored, reserve after, previous and new checkpoint. |
+| `FundingSettled` | any synchronization (`sync_health`, mint, redeem, profit realization, rebalance, donate, unwind) that adopts a changed checkpoint | cost or credit, raw IFixed and atom amounts (atoms may be 0), absorbed, uncovered, restored, reserve after, previous and new checkpoint. |
 | `CheckpointRebaselined` | RiskAdmin `operations::rebaseline` | vault ID, stored checkpoint and capture before local funding; a following `FundingSettled` carries any local settlement to the final checkpoint and reserve. |
 | `CheckpointDrifted` | `sync_health` or `unwind` that finds unexplained venue state | After `sync_health` the accepted checkpoint stands and priced operations abort until ordinary synchronization or RiskAdmin recovery accepts it; `unwind` adopts the live state and closes it. |
 | `Donated` | `donate` | amount, reserve after. |
@@ -764,14 +802,17 @@ outdated adapter package aborts in the `operational_version` module of the
 | 25 | The operation needed more than 16 orders | Trade a smaller amount or wait for a larger order cap. |
 | 26 | Deadline passed | Use a later `deadline_ms`. |
 | 27 | A fill changed venue fields it should not | Retry. |
-| 29 | The market's taker fee is not a usable rate (rebalance) | Wait; venue configuration. |
+| 29 | The market's taker fee is not a usable rate (rebalance or profit realization) | Wait; venue configuration. |
 | 30 | Venue state the Vault cannot explain since its checkpoint | Inspect `CheckpointDrifted`; RiskAdmin may recover an admitted forced reduction with `operations::rebaseline`. |
 | 31 | Terminal step not possible: orders open, funding unsettled, settlement prices not enabled, or wrong order count | Settle funding with `sync_health` first, or wait for Aftermath. |
 | 32 | Unwind found no lot-aligned position on the bound side (for example already flat) | Call `finalize_shutdown`. |
 | 33 | Venue not ready: resting orders, unsafe margin, paused market or frozen clearing house | Wait. |
 | 34, 37 | Metadata or partner list update changes nothing | Admin only. |
-| 35 | Ordinary rebalance above the reference gas price | Submit at the reference gas price. |
+| 35 | Ordinary rebalance or profit realization above the reference gas price | Submit at the reference gas price. |
 | 36 | Partner not accepted | Use the plain call. |
+| 38 | Recovery does not match the admitted forced-reduction shape | RiskAdmin must review the venue event; recovery cannot accept arbitrary drift. |
+| 39 | Redemption payout exceeds cash the venue can release | Realize profit first when eligible, then obtain a fresh quote; never discount the agreed payout. |
+| 40 | Profit realization did not sufficiently improve cash | Wait for better execution or cash conditions. |
 
 #### Core (`blast_boosts_core`)
 
@@ -791,7 +832,6 @@ outdated adapter package aborts in the `operational_version` module of the
 | 35 | Fewer shares than `minimum_shares` | Re-quote; raise slippage tolerance. |
 | 36 | Post-mint NAV above `nav_cap` | Mint less or wait. |
 | 37 | A fill's price outside the execution bound, or no tick inside it | Trade smaller or wait for depth. |
-| 38 | Recovery does not match the admitted forced-reduction shape | RiskAdmin must review the venue event; recovery cannot accept arbitrary drift. |
 | 43 | A fill's actual notional above `max_order_notional`, outside the one-lot reduce-only exception | Trade smaller. |
 | 49 | Leverage before or after mint is outside the band | Dry-run another amount. Rebalance first only if the current position is outside the band. |
 | 50, 51 | Oracle pair or fills changed within the operation | Retry. |
@@ -800,6 +840,8 @@ outdated adapter package aborts in the `operational_version` module of the
 | 54 | Rebalance while inside the band | Nothing to do. |
 | 55 | Rebalance made no admissible progress | Wait for depth or a better price. |
 | 63 | Cap cannot cover one opening lot, or a configured cap cannot cover `min_order_lots` live lots | RiskAdmin must raise the cap; shutdown closes retain the one-lot exception. |
+| 64 | No positive cash shortfall or profit to realize | No recovery trade is needed or possible. |
+| 65 | Profit realization is uneconomic or exceeds its cost allowance | Wait for better prices or sufficient profit. |
 | 17, 23, 39, 40, 47, 48, 58 | Admin transition or setting rejected (wrong state, invalid, above cap, unchanged) | Admin only. |
 
 ### Pitfalls

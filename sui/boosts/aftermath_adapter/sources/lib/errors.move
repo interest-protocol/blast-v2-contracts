@@ -163,6 +163,14 @@ const EPartnerUnchanged: u64 = 37;
 /// Recovery requires a settled same-side reduction with no unexplained cash or order changes.
 const EInvalidRebaseline: u64 = 38;
 
+#[test_only]
+/// The exact redemption payout exceeds cash the venue can release.
+const ERedemptionExceedsReleasable: u64 = 39;
+
+#[test_only]
+/// Profit realization did not improve cash availability enough to cover its cost.
+const EProfitRealizationNoProgress: u64 = 40;
+
 macro public(package) fun invalid_package_publisher(): u64 { 0 }
 
 macro public(package) fun invalid_product_witness_type(): u64 { 1 }
@@ -240,3 +248,7 @@ macro public(package) fun partner_not_accepted(): u64 { 36 }
 macro public(package) fun partner_unchanged(): u64 { 37 }
 
 macro public(package) fun invalid_rebaseline(): u64 { 38 }
+
+macro public(package) fun redemption_exceeds_releasable(): u64 { 39 }
+
+macro public(package) fun profit_realization_no_progress(): u64 { 40 }

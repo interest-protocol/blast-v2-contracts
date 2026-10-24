@@ -137,6 +137,19 @@ public struct Rebalanced<phantom Product> has copy, drop {
     checkpoint: Checkpoint,
 }
 
+/// A completed close-and-reopen improved cash availability. Supply, reserve,
+/// admin cash and position base are unchanged; actual trading costs stay in NAV.
+public struct ProfitRealized<phantom Product> has copy, drop {
+    vault_id: ID,
+    equity_before: u64,
+    equity_after: u64,
+    base_realized: u64,
+    shortfall_before: u64,
+    shortfall_after: u64,
+    previous_checkpoint: Checkpoint,
+    checkpoint: Checkpoint,
+}
+
 // --- Funding And Donation ---
 
 /// Emitted after one nonzero isolated funding change is reconciled.
@@ -421,6 +434,22 @@ public(package) fun rebalanced<Product>(
     });
 }
 
+public(package) fun profit_realized<Product>(
+    vault_id: ID,
+    equity_before: u64,
+    equity_after: u64,
+    base_realized: u64,
+    shortfall_before: u64,
+    shortfall_after: u64,
+    previous_checkpoint: Checkpoint,
+    checkpoint: Checkpoint,
+) {
+    emit_event(ProfitRealized<Product> {
+        vault_id, equity_before, equity_after, base_realized, shortfall_before,
+        shortfall_after, previous_checkpoint, checkpoint,
+    });
+}
+
 // --- Funding And Donation ---
 
 public(package) fun funding_settled<Product>(
@@ -553,6 +582,14 @@ public(package) fun admin_fees_withdrawn<Product>(vault_id: ID, amount: u64, rem
 }
 
 // === Test-Only Functions ===
+
+#[test_only]
+public fun profit_realized_fields<Product>(self: &ProfitRealized<Product>): (ID, u64, u64, u64, u64, u64, Checkpoint, Checkpoint) {
+    (
+        self.vault_id, self.equity_before, self.equity_after, self.base_realized,
+        self.shortfall_before, self.shortfall_after, self.previous_checkpoint, self.checkpoint,
+    )
+}
 
 #[test_only]
 public fun collect<T: copy + drop>(): vector<T> {

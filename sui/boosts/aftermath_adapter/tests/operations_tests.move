@@ -62,6 +62,78 @@ public struct ReplayState has drop {
 // === Tests ===
 
 #[test]
+fun profit_realization_restores_long_redemption_and_replays_without_changing_holder_claims() {
+    let mut fixture = start();
+    fixture.realize_then_redeem(policy::long(), 0);
+    fixture.end();
+}
+
+#[test]
+fun profit_realization_restores_short_redemption_and_replays_without_changing_holder_claims() {
+    let mut fixture = start();
+    fixture.realize_then_redeem(policy::short(), 0);
+    fixture.end();
+}
+
+#[test]
+fun profit_realization_restores_redemption_with_a_collateral_haircut() {
+    let mut fixture = start();
+    fixture.realize_then_redeem(policy::long(), ONE_FIXED / 10);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ERedemptionExceedsReleasable, location = blast_boosts_aftermath::snapshot)]
+fun profitable_position_cannot_pay_proportional_redemption_before_realization() {
+    let mut fixture = start();
+    let side = policy::long();
+    let before = profit_checkpoint(300, 700, ABSOLUTE_NOTIONAL, side);
+    let mut vault = issue_and_activate(&mut fixture, before);
+    vault.set_fees(&fixture.protocol, &risk_admin(), 0, 0, 0);
+    let initial_supply = vault.total_share_supply();
+    let shares = vault.mint_shares(initial_supply, fixture.ctx!());
+    let plan = vault.state().prepare_redemption(position_observation(1_000), shares.value(), vault.total_share_supply(), 1, REFERENCE_AT_MS);
+    let remaining = ABSOLUTE_NOTIONAL - plan.base_to_sell() / BASE_PER_NOTIONAL;
+    let (net, admin, _, _) = vault.settle_redemption_for_testing(plan, &shares, active_position(1_000, remaining), REFERENCE_AT_MS);
+    // The proportional sale realizes 350 of profit: cash 650, margin 360.
+    // The holder is owed 450 but only 290 can be released.
+    profit_cash(650, 350, remaining).assert_releasable(net + admin);
+    destroy(shares);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EProfitRealizationNoProgress, location = blast_boosts_aftermath::snapshot)]
+fun profit_realization_rejects_unchanged_cash_even_with_a_changed_mark() {
+    let before = profit_checkpoint(300, 700, ABSOLUTE_NOTIONAL, policy::long());
+    let cash_before = profit_cash(300, 700, ABSOLUTE_NOTIONAL);
+    let cash_after = profit_cash(300, 700, 1_700);
+    cash_before.assert_realization_progress(&cash_after, &before, &before, 0);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EProfitRealizationNoProgress, location = blast_boosts_aftermath::snapshot)]
+fun profit_realization_rejects_cash_improvement_no_larger_than_holder_cost() {
+    let before = profit_checkpoint(300, 700, ABSOLUTE_NOTIONAL, policy::long());
+    let after = profit_checkpoint(305, 690, ABSOLUTE_NOTIONAL, policy::long());
+    profit_cash(300, 700, ABSOLUTE_NOTIONAL).assert_realization_progress(
+        &profit_cash(305, 690, ABSOLUTE_NOTIONAL), &before, &after, 5,
+    );
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EProfitRealizationNoProgress, location = blast_boosts_aftermath::snapshot)]
+fun profit_realization_rejects_worsening_shortfall_despite_realized_cash() {
+    let before = profit_checkpoint(300, 700, ABSOLUTE_NOTIONAL, policy::long());
+    let after = profit_checkpoint(310, 688, ABSOLUTE_NOTIONAL, policy::long());
+    profit_cash(300, 700, ABSOLUTE_NOTIONAL).assert_realization_progress(
+        &profit_cash(310, 688, 1_900), &before, &after, 2,
+    );
+}
+
+
+#[test]
 fun rebaseline_reprices_mint_and_redemption_without_changing_existing_claims() {
     let mut fixture = start();
     let before = recovery_checkpoint(1_000, 1_800);
@@ -4250,6 +4322,110 @@ fun replay_drift<Tag>(replay: &mut ReplayState, event: events::CheckpointDrifted
     replay.unresolved_checkpoint = option::some(checkpoint);
 }
 
+/// Unit-price venue reference: 40% initial margin, no free cash.
+/// Expected amounts are derived here, independently of production normalization.
+fun profit_cash(cash: u64, profit: u64, notional: u64): snapshot::CashLiquidity {
+    profit_cash_with_haircut(cash, profit, notional, 0)
+}
+
+fun profit_cash_with_haircut(cash: u64, profit: u64, notional: u64, haircut: u256): snapshot::CashLiquidity {
+    let requirement = (notional as u256) * ATOM_FIXED * 4 / 10;
+    let allocated = (cash as u256) * ATOM_FIXED * (ONE_FIXED - haircut) / ONE_FIXED;
+    let deficit = if (requirement >= allocated) { requirement - allocated } else { std::u256::max_value!() - (allocated - requirement) + 1 };
+    let free = if (allocated > requirement) { (allocated - requirement) * ONE_FIXED / (ONE_FIXED - haircut) } else { 0 };
+    snapshot::cash_liquidity_for_testing(0, free, deficit, (profit as u256) * ATOM_FIXED, ONE_FIXED, haircut)
+}
+
+fun profit_checkpoint(cash: u64, profit: u64, notional: u64, side: PositionSide): Checkpoint {
+    let base = (notional as u256) * ATOM_FIXED;
+    let quote = if (side == policy::long()) { ((notional - profit) as u256) * ATOM_FIXED } else { ((notional + profit) as u256) * ATOM_FIXED };
+    let signed_base = if (side == policy::long()) { base } else { std::u256::max_value!() - base + 1 };
+    let signed_quote = if (side == policy::long()) { quote } else { std::u256::max_value!() - quote + 1 };
+    checkpoint::checkpoint_for_testing(0, (cash as u256) * ATOM_FIXED, signed_base, signed_quote,
+        RATE, RATE, RATE, RATE, LOT_SIZE, 0, 0, 0, 0, false, ONE_FIXED * 4 / 10, ONE_FIXED * 4 / 10, ONE_FIXED / 10)
+}
+
+fun realize_then_redeem(self: &mut Fixture, side: PositionSide, haircut: u256) {
+    let mut cash = 300;
+    let mut profit = 700;
+    let mut equity = cash + profit;
+    let initial = profit_checkpoint(cash, profit, ABSOLUTE_NOTIONAL, side);
+    let mut vault = issue_and_activate_product_with_side(self, Product(), initial, standard_vault_policy_for_side(side), side);
+    vault.set_fees(&self.protocol, &risk_admin(), 0, 0, 0);
+    let initial_supply = vault.total_share_supply();
+    let shares = vault.mint_shares(initial_supply, self.ctx!());
+    let supply = vault.total_share_supply();
+    let reserve = vault.state().maintenance_reserve();
+    let deficit = vault.state().uncovered_deficit();
+    let mut steps = 0;
+    let mut replay_checkpoint = initial;
+    let mut replay_equity = equity;
+    while (profit_cash_with_haircut(cash, profit, ABSOLUTE_NOTIONAL, haircut).shortfall() > 0) {
+        assert!(steps < 16);
+        let before_cash = profit_cash_with_haircut(cash, profit, ABSOLUTE_NOTIONAL, haircut);
+        let before_checkpoint = *vault.venue().checkpoint();
+        let plan = vault.state().prepare_profit_realization(
+            position_observation_for_side(equity, side), before_cash.shortfall(), profit, 10, REFERENCE_AT_MS,
+        );
+        let base = plan.base_to_realize();
+        let realized = profit.mul_div(base, ABSOLUTE_BASE);
+        assert!(realized > 4);
+        // Independent venue fixture: both orders fill at oracle; total fee is two atoms.
+        cash = cash + realized - 2;
+        profit = profit - realized;
+        equity = equity - 2;
+        let after_checkpoint = profit_checkpoint(cash, profit, ABSOLUTE_NOTIONAL, side);
+        vault.complete_profit_realization_for_testing(
+            plan, before_cash, profit_cash_with_haircut(cash, profit, ABSOLUTE_NOTIONAL, haircut), before_checkpoint,
+            position_observation_for_side(equity, side), after_checkpoint, REFERENCE_AT_MS,
+        );
+        let recorded = events::collect<events::ProfitRealized<Product>>();
+        assert_eq!(recorded.length(), steps + 1);
+        let (id, equity_before, equity_after, base_realized, shortage_before, shortage_after, previous, checkpoint) =
+            recorded[steps].profit_realized_fields();
+        assert_eq!(id, vault.id());
+        assert_eq!(equity_before, replay_equity);
+        assert_eq!(equity_after, equity);
+        assert_eq!(base_realized, base);
+        assert_eq!(shortage_before, before_cash.shortfall());
+        assert_eq!(shortage_after, profit_cash_with_haircut(cash, profit, ABSOLUTE_NOTIONAL, haircut).shortfall());
+        assert_eq!(previous, replay_checkpoint);
+        assert_eq!(checkpoint, after_checkpoint);
+        replay_checkpoint = checkpoint;
+        replay_equity = equity_after;
+        assert_eq!(*vault.venue().checkpoint(), replay_checkpoint);
+        assert_eq!(vault.total_share_supply(), supply);
+        assert_eq!(vault.state().maintenance_reserve(), reserve);
+        assert_eq!(vault.state().uncovered_deficit(), deficit);
+        assert_eq!(vault.admin_cash_balance<_, Collateral>(), 0);
+        assert!(vault.state().is_active_for_testing());
+        steps = steps + 1;
+    };
+    assert!(steps > 1);
+    assert!(events::collect<events::ProfitRealized<OtherProduct>>().is_empty());
+    let plan = vault.state().prepare_redemption(
+        position_observation_for_side(equity, side), shares.value(), supply, 1, REFERENCE_AT_MS,
+    );
+    let realized = profit.mul_div(plan.base_to_sell(), ABSOLUTE_BASE);
+    let remaining = ABSOLUTE_NOTIONAL - plan.base_to_sell() / BASE_PER_NOTIONAL;
+    let (net, admin, fee, reserve_fee) = vault.settle_redemption_for_testing(
+        plan, &shares, active_position_for_side(equity, remaining, side), REFERENCE_AT_MS,
+    );
+    profit_cash_with_haircut(cash + realized, profit - realized, remaining, haircut).assert_releasable(net + admin);
+    assert_eq!(net, (equity - reserve) / 2);
+    assert_eq!(admin, 0);
+    let after_sell = profit_checkpoint(cash + realized, profit - realized, remaining, side);
+    let withdrawn = profit_checkpoint(cash + realized - net, profit - realized, remaining, side);
+    after_sell.assert_withdrawal_checkpoint(&withdrawn, net);
+    let payment = sui::coin::mint_for_testing<Collateral>(net, self.ctx!());
+    let output = vault.complete_redemption_for_testing(shares, payment, net, admin, fee, reserve_fee, withdrawn, self.ctx!());
+    assert_eq!(output.value(), net);
+    assert_eq!(vault.total_share_supply(), supply / 2);
+    assert!(equity - reserve - net >= net);
+    destroy(output);
+    destroy(vault);
+}
+
 // === Imports ===
 
 use authority_cap::authority::{Self, ADMIN as AdminRole};
@@ -4338,3 +4514,6 @@ use fun orders::unwind_terms as Vault.unwind_terms;
 use fun operations::assert_rebalance_gas_price_for_testing as RebalancePlan.assert_gas_price;
 
 use fun operations::rebaseline_from_captures_for_testing as Vault.rebaseline_from_captures_for_testing;
+
+
+use fun operations::complete_profit_realization_for_testing as Vault.complete_profit_realization_for_testing;

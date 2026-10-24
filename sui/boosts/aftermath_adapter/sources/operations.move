@@ -156,6 +156,10 @@ public fun redeem<Product, Collateral>(
     ).into_observation();
     let (net, admin, fee, reserve_fee) = vault.settle_redemption(plan, &shares, after_sell, clock.timestamp_ms());
 
+    binding.capture_cash_liquidity(
+        account, registry, &clearing_house, base_oracle, collateral_oracle, clock,
+    ).assert_releasable(net + admin);
+
     let cash = vault.venue().withdraw(
         account, registry, &mut clearing_house, base_oracle, collateral_oracle, net + admin, clock, ctx,
     );
@@ -442,6 +446,74 @@ public fun finalize_shutdown<Product, Collateral>(
 }
 
 // === Private Functions ===
+
+/// Realizes profitable exposure only while cash margin is insufficient. The
+/// core sizes one capped close and exact reopen, with no caller reward. Both
+/// fills must complete, restore the original position and improve usable cash
+/// by more than their cost. Withdrawals use a new quote in a later transaction.
+/// Private entry and internal sharing preserve the maintenance PTB boundary.
+entry fun realize_profit<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>,
+    protocol: &Protocol,
+    account: &mut Account<Collateral>,
+    registry: &Registry,
+    mut clearing_house: ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    clock: &Clock,
+    ctx: &TxContext,
+) {
+    protocol.assert_current();
+    vault.state().assert_active();
+    assert!(ctx.gas_price() <= ctx.reference_gas_price(), blast_boosts_aftermath::errors::priority_gas_price!());
+    let (before, before_checkpoint) = vault.synchronize_or_fail(
+        account, registry, &mut clearing_house, base_oracle, collateral_oracle, clock,
+    ).into_observation();
+    let binding = vault.venue().binding();
+    let before_cash = binding.capture_cash_liquidity(
+        account, registry, &clearing_house, base_oracle, collateral_oracle, clock,
+    );
+    let plan = vault.state().prepare_profit_realization(
+        before, before_cash.shortfall(), before_cash.unrealized_profit(),
+        clearing_house.live_venue_fee_bps(), clock.timestamp_ms(),
+    );
+    let clearing_house = vault.realize_profit_orders(
+        account, registry, clearing_house, base_oracle, collateral_oracle,
+        before_checkpoint, plan.realization_position(), plan.base_to_realize(), clock, ctx,
+    );
+    let (after, after_checkpoint) = binding.capture(
+        account, registry, &clearing_house, base_oracle, collateral_oracle, clock,
+    ).into_observation();
+    let after_cash = binding.capture_cash_liquidity(
+        account, registry, &clearing_house, base_oracle, collateral_oracle, clock,
+    );
+
+    vault.complete_profit_realization(
+        plan, before_cash, after_cash, before_checkpoint, after, after_checkpoint, clock.timestamp_ms(),
+    );
+    clearing_house.share();
+}
+
+fun complete_profit_realization<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>,
+    plan: ProfitRealizationPlan<Product>,
+    before_cash: CashLiquidity,
+    after_cash: CashLiquidity,
+    before_checkpoint: Checkpoint,
+    after: PositionObservation,
+    after_checkpoint: Checkpoint,
+    now_at_ms: u64,
+) {
+    let (equity_before, equity_after, base_realized, cost) =
+        vault.state().complete_profit_realization(plan, after, now_at_ms);
+    before_cash.assert_realization_progress(&after_cash, &before_checkpoint, &after_checkpoint, cost);
+
+    vault.venue_mut().replace_checkpoint(after_checkpoint);
+    events::profit_realized<Product>(
+        vault.id(), equity_before, equity_after, base_realized,
+        before_cash.shortfall(), after_cash.shortfall(), before_checkpoint, after_checkpoint,
+    );
+}
 
 /// Permissionless, policy-sized maintenance with no caller reward or trade parameters.
 ///
@@ -1092,6 +1164,21 @@ fun complete_finalization<Product, Collateral>(
 
 // === Test-Only Functions ===
 
+/// Substitutes external captures after the two independently proven fills.
+#[test_only]
+public fun complete_profit_realization_for_testing<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>,
+    plan: ProfitRealizationPlan<Product>,
+    before_cash: CashLiquidity,
+    after_cash: CashLiquidity,
+    before_checkpoint: Checkpoint,
+    after: PositionObservation,
+    after_checkpoint: Checkpoint,
+    now_at_ms: u64,
+) {
+    vault.complete_profit_realization(plan, before_cash, after_cash, before_checkpoint, after, after_checkpoint, now_at_ms);
+}
+
 /// Substitutes only the authenticated venue captures; production authorization,
 /// lifecycle, checkpoint, valuation and completion checks are reused unchanged.
 #[test_only]
@@ -1289,7 +1376,7 @@ use blast_boosts_aftermath::{
     events,
     orders,
     blast_boosts_aftermath::Protocol,
-    snapshot::{Self, CapturedSnapshot},
+    snapshot::{Self, CapturedSnapshot, CashLiquidity},
     vault::{Vault, VaultIssuance},
     venue_account::{Self, Binding},
 };
@@ -1307,6 +1394,12 @@ use fun orders::live_venue_fee_bps as ClearingHouse.live_venue_fee_bps;
 
 use fun orders::rebalance_orders as Vault.rebalance_orders;
 
+use fun orders::realize_profit_orders as Vault.realize_profit_orders;
+
+use fun snapshot::capture_cash_liquidity as Binding.capture_cash_liquidity;
+
+use fun complete_profit_realization as Vault.complete_profit_realization;
+
 use fun orders::reducing_terms as Vault.reducing_terms;
 
 use fun orders::seed_position as Issuance.seed_position;
@@ -1323,7 +1416,7 @@ use blast_boosts_core::{
     blast_boosts_core::RiskAdmin,
     observation::{Self, PositionObservation},
     policy::{Self, PositionSide},
-    state::{ActivePosition, Issuance, MintPlan, RebalancePlan, RedemptionPlan},
+    state::{ActivePosition, Issuance, MintPlan, ProfitRealizationPlan, RebalancePlan, RedemptionPlan},
 };
 
 use blast_partners::blast_partners::{Self as partners, Partner};

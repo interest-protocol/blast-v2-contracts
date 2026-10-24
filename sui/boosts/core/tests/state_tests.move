@@ -42,6 +42,231 @@ public struct ObservationSpec has copy, drop {
 // === Tests ===
 
 #[test]
+fun profit_realization_preserves_position_and_accounting_for_long_and_short() {
+    vector[policy::long(), policy::short()].do!(|side| {
+        let state = rebalance_state(side);
+        let before = standard_observation(side);
+        let plan = state.prepare_profit_realization(before.into_position_observation(), 300_000, 600_000, 10, REFERENCE_AT_MS);
+        let base = plan.base_to_realize();
+        assert!(base > 0 && base < SEED_BASE && base % LOT_SIZE == 0);
+        assert!(base <= state.max_order_base(&plan.realization_position(), false));
+        let (equity_before, equity_after, realized, cost) = state.complete_profit_realization(
+            plan, before.with_venue_equity(SEED_VENUE_EQUITY - 1_000).into_position_observation(), REFERENCE_AT_MS,
+        );
+        assert_eq!(equity_before, SEED_VENUE_EQUITY);
+        assert_eq!(equity_after, SEED_VENUE_EQUITY - 1_000);
+        assert_eq!(realized, base);
+        assert_eq!(cost, 1_000);
+        assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
+        assert_eq!(state.uncovered_deficit(), 0);
+        assert!(state.is_active_for_testing());
+        state.destroy_for_testing();
+    });
+}
+
+#[test]
+fun profit_realization_small_order_cap_allows_bounded_repeated_progress() {
+    let state = initialized_state(policy::long());
+    let before = standard_observation(policy::long());
+    let plan = state.prepare_profit_realization(before.into_position_observation(), 300_000, 600_000, 10, REFERENCE_AT_MS);
+    assert_eq!(plan.base_to_realize(), state.max_order_base(&plan.realization_position(), false));
+    let (_, _, _, cost) = state.complete_profit_realization(
+        plan, before.with_venue_equity(SEED_VENUE_EQUITY - 5).into_position_observation(), REFERENCE_AT_MS,
+    );
+    assert_eq!(cost, 5);
+    state.destroy_for_testing();
+}
+
+#[test]
+fun profit_realization_sizes_a_useful_minimum_for_a_one_atom_shortfall() {
+    let state = rebalance_state(policy::long());
+    let before = standard_observation(policy::long());
+    let plan = state.prepare_profit_realization(before.into_position_observation(), 1, 600_000, 10, REFERENCE_AT_MS);
+    assert!(plan.base_to_realize() > LOT_SIZE && plan.base_to_realize() < SEED_BASE / 1_000);
+    state.complete_profit_realization(plan, before.into_position_observation(), REFERENCE_AT_MS);
+    state.destroy_for_testing();
+}
+
+#[test]
+fun profit_realization_size_is_monotonic_whole_lots_and_capped() {
+    let state = rebalance_state(policy::short());
+    let mut previous = 0;
+    vector[1, 2, 10, 100, 1_000, 10_000, 100_000, 300_000, 555_597].do!(|shortfall| {
+        let before = standard_observation(policy::short());
+        let plan = state.prepare_profit_realization(before.into_position_observation(), shortfall, 600_000, 10, REFERENCE_AT_MS);
+        let base = plan.base_to_realize();
+        assert!(base >= previous && base <= SEED_BASE && base % LOT_SIZE == 0);
+        assert!(base <= state.max_order_base(&plan.realization_position(), false));
+        previous = base;
+        state.complete_profit_realization(plan, before.into_position_observation(), REFERENCE_AT_MS);
+    });
+    state.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EProfitRealizationNotNeeded, location = blast_boosts_core::state)]
+fun profit_realization_rejects_no_shortfall() {
+    let state = initialized_state(policy::long());
+    let plan = state.prepare_profit_realization((standard_observation(policy::long())).into_position_observation(), 0, 600_000, 10, REFERENCE_AT_MS);
+    destroy(plan);
+    state.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EProfitRealizationNotNeeded, location = blast_boosts_core::state)]
+fun profit_realization_rejects_no_profit() {
+    let state = initialized_state(policy::long());
+    let plan = state.prepare_profit_realization((standard_observation(policy::long())).into_position_observation(), 100, 0, 10, REFERENCE_AT_MS);
+    destroy(plan);
+    state.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EProfitRealizationUneconomic, location = blast_boosts_core::state)]
+fun profit_realization_rejects_profit_that_cannot_cover_costs() {
+    let state = initialized_state(policy::long());
+    let plan = state.prepare_profit_realization((standard_observation(policy::long())).into_position_observation(), 100, 10_000, 10, REFERENCE_AT_MS);
+    destroy(plan);
+    state.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EProfitRealizationUneconomic, location = blast_boosts_core::state)]
+fun profit_realization_rejects_a_shortfall_larger_than_all_profit() {
+    let state = rebalance_state(policy::long());
+    let plan = state.prepare_profit_realization((standard_observation(policy::long())).into_position_observation(), 700_000, 600_000, 10, REFERENCE_AT_MS);
+    destroy(plan);
+    state.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EProfitRealizationUneconomic, location = blast_boosts_core::state)]
+fun profit_realization_rejects_shortfall_one_atom_above_cost_headroom() {
+    let state = rebalance_state(policy::short());
+    // 600,000 profit minus 44,400 full-position cost minus three rounding atoms.
+    let plan = state.prepare_profit_realization((standard_observation(policy::short())).into_position_observation(), 555_598, 600_000, 10, REFERENCE_AT_MS);
+    destroy(plan);
+    state.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EProfitRealizationUneconomic, location = blast_boosts_core::state)]
+fun profit_realization_rejects_maximum_shortfall_without_overflow() {
+    let state = rebalance_state(policy::long());
+    let plan = state.prepare_profit_realization((standard_observation(policy::long())).into_position_observation(), std::u64::max_value!(), 600_000, 10, REFERENCE_AT_MS);
+    destroy(plan);
+    state.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EProfitRealizationUneconomic, location = blast_boosts_core::state)]
+fun profit_realization_capped_sequence_stops_when_cost_consumes_headroom() {
+    let state = initialized_state(policy::long());
+    let before = standard_observation(policy::long());
+    let plan = state.prepare_profit_realization(before.into_position_observation(), 555_597, 600_000, 10, REFERENCE_AT_MS);
+    let realized = 600_000u64.mul_div(plan.base_to_realize(), SEED_BASE);
+    assert!(realized < 555_597);
+    let after = before.with_venue_equity(SEED_VENUE_EQUITY - 1);
+    state.complete_profit_realization(plan, after.into_position_observation(), REFERENCE_AT_MS);
+    // The same position costs the same to close and reopen. The first step's
+    // one-atom cost consumes the slack even though it converted profit to cash.
+    let plan = state.prepare_profit_realization(
+        after.into_position_observation(), 555_597 - realized + 1, 600_000 - realized, 10, REFERENCE_AT_MS,
+    );
+    destroy(plan);
+    state.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EVenueFeeUnusable, location = blast_boosts_core::state)]
+fun profit_realization_rejects_unusable_live_fee() {
+    let state = initialized_state(policy::long());
+    let plan = state.prepare_profit_realization((standard_observation(policy::long())).into_position_observation(), 100, 600_000, 10_001, REFERENCE_AT_MS);
+    destroy(plan);
+    state.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EActiveLeverageAboveCap, location = blast_boosts_core::state)]
+fun profit_realization_rejects_emergency_leverage() {
+    let state = initialized_state(policy::long());
+    let plan = state.prepare_profit_realization((standard_observation(policy::long()).with_venue_equity(700_000)).into_position_observation(), 100, 600_000, 10, REFERENCE_AT_MS);
+    destroy(plan);
+    state.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EActiveLeverageAboveCap, location = blast_boosts_core::state)]
+fun profit_realization_rejects_cost_that_crosses_the_hard_cap() {
+    let state = initialized_state(policy::long());
+    let before = standard_observation(policy::long()).with_venue_equity(766_667);
+    let plan = state.prepare_profit_realization(before.into_position_observation(), 100, 600_000, 10, REFERENCE_AT_MS);
+    // One atom is within the trade-cost allowance but leaves NAV just below
+    // the 666,667 atoms needed to support 2,000,000 notional at the 3x cap.
+    state.complete_profit_realization(plan, before.with_venue_equity(766_666).into_position_observation(), REFERENCE_AT_MS);
+    state.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EStalePrice, location = blast_boosts_core::policy)]
+fun profit_realization_rejects_stale_prices() {
+    let state = initialized_state(policy::long());
+    let plan = state.prepare_profit_realization((standard_observation(policy::long()).with_base_price_published_at_ms(1)).into_position_observation(), 100, 600_000, 10, REFERENCE_AT_MS);
+    destroy(plan);
+    state.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EProfitRealizationNotNeeded, location = blast_boosts_core::state)]
+fun profit_realization_rejects_flat_position() {
+    let state = initialized_state(policy::long());
+    let plan = state.prepare_profit_realization((standard_observation(policy::long()).with_position_base(0)).into_position_observation(), 100, 600_000, 10, REFERENCE_AT_MS);
+    destroy(plan);
+    state.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EActiveFillIncomplete, location = blast_boosts_core::state)]
+fun profit_realization_rejects_incomplete_reopening() {
+    let state = initialized_state(policy::long());
+    let before = standard_observation(policy::long());
+    let plan = state.prepare_profit_realization(before.into_position_observation(), 300_000, 600_000, 10, REFERENCE_AT_MS);
+    state.complete_profit_realization(plan, before.with_position_base(SEED_BASE - LOT_SIZE).into_position_observation(), REFERENCE_AT_MS);
+    state.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EActiveFillIncomplete, location = blast_boosts_core::state)]
+fun profit_realization_rejects_extra_exposure() {
+    let state = initialized_state(policy::long());
+    let before = standard_observation(policy::long());
+    let plan = state.prepare_profit_realization(before.into_position_observation(), 300_000, 600_000, 10, REFERENCE_AT_MS);
+    state.complete_profit_realization(plan, before.with_position_base(SEED_BASE + LOT_SIZE).into_position_observation(), REFERENCE_AT_MS);
+    state.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EProfitRealizationUneconomic, location = blast_boosts_core::state)]
+fun profit_realization_rejects_cost_above_bound() {
+    let state = initialized_state(policy::long());
+    let before = standard_observation(policy::long());
+    let plan = state.prepare_profit_realization(before.into_position_observation(), 300_000, 600_000, 10, REFERENCE_AT_MS);
+    state.complete_profit_realization(plan, before.with_venue_equity(SEED_VENUE_EQUITY - 100).into_position_observation(), REFERENCE_AT_MS);
+    state.destroy_for_testing();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EActiveCheckpointChanged, location = blast_boosts_core::state)]
+fun profit_realization_rejects_changed_oracle_pair() {
+    let state = initialized_state(policy::long());
+    let before = standard_observation(policy::long());
+    let plan = state.prepare_profit_realization(before.into_position_observation(), 300_000, 600_000, 10, REFERENCE_AT_MS);
+    state.complete_profit_realization(plan, before.with_base_price(1_010_000_000).into_position_observation(), REFERENCE_AT_MS);
+    state.destroy_for_testing();
+}
+
+
+#[test]
 fun terminal_claim_quote_conserves_zero_dust_and_maximum_cash_for_both_sides() {
     vector[policy::long(), policy::short()].do!(|side| {
         let mut state = initialized_state(side);

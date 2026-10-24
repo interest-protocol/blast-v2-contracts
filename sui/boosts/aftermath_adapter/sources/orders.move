@@ -194,6 +194,34 @@ public(package) fun rebalance_orders<Product, Collateral>(
     (clearing_house, checkpoint)
 }
 
+/// Exactly two capped orders: close the sealed amount, then reopen that same
+/// amount. Either incomplete fill aborts the entire transaction. Each boundary
+/// retains the ordinary fill, checkpoint, price and actual-notional proofs.
+public(package) fun realize_profit_orders<Product, Collateral>(
+    vault: &Vault<Product, Collateral>,
+    account: &mut Account<Collateral>,
+    registry: &Registry,
+    clearing_house: ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    before: Checkpoint,
+    position: ActivePosition,
+    base: u64,
+    clock: &Clock,
+    ctx: &TxContext,
+): ClearingHouse<Collateral> {
+    let (clearing_house, reduced) = vault.fill_exact_order(
+        account, registry, clearing_house, base_oracle, collateral_oracle,
+        &before, vault.reducing_terms(position), base, clock, ctx,
+    );
+    let (clearing_house, _) = vault.fill_exact_order(
+        account, registry, clearing_house, base_oracle, collateral_oracle,
+        &reduced, vault.increasing_terms(position), base, clock, ctx,
+    );
+
+    clearing_house
+}
+
 /// Places close-only orders under the step's bound until the base is flat or
 /// the per-call order budget is spent; every fill is proven against the
 /// checkpoint before the next, which also keeps the book order-free.
@@ -403,6 +431,32 @@ fun unwind_base_decoded(magnitude: u256, is_long: bool, lot_size: u64, side: Pos
 }
 
 // --- Fills ---
+
+fun fill_exact_order<Product, Collateral>(
+    vault: &Vault<Product, Collateral>,
+    account: &mut Account<Collateral>,
+    registry: &Registry,
+    clearing_house: ClearingHouse<Collateral>,
+    base_oracle: &PriceFeedStorage,
+    collateral_oracle: &PriceFeedStorage,
+    before: &Checkpoint,
+    terms: OrderTerms,
+    base: u64,
+    clock: &Clock,
+    ctx: &TxContext,
+): (ClearingHouse<Collateral>, Checkpoint) {
+    assert!(base <= terms.max_order_base, blast_boosts_aftermath::errors::fill_mismatch!());
+    let (clearing_house, fill) = vault.place_order(
+        account, clearing_house, base_oracle, collateral_oracle, &terms, base, terms.bound, clock, ctx,
+    );
+    assert!(fill.filled == base, blast_boosts_aftermath::errors::fill_mismatch!());
+    let after = vault.venue().binding().capture_checkpoint(
+        account, registry, &clearing_house, base_oracle, collateral_oracle,
+    );
+    fill.assert_checkpoint(&terms, before, &after);
+
+    (clearing_house, after)
+}
 
 /// Places one whole-lot immediate-or-cancel limit order and verifies the
 /// venue's report of it.
@@ -628,6 +682,12 @@ public fun order_terms_fields(self: &OrderTerms): (bool, bool, u64, u64, u64, u6
 }
 
 // === Imports ===
+
+use fun fill_exact_order as Vault.fill_exact_order;
+
+use fun reducing_terms as Vault.reducing_terms;
+
+use fun increasing_terms as Vault.increasing_terms;
 
 use authority_cap::authority::{ADMIN, AuthorityCap};
 

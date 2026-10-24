@@ -124,6 +124,15 @@ public struct RebalanceOrder has drop {
     bound: ExecutionBound,
 }
 
+/// Linear terms for one bounded close-and-reopen that realizes existing profit.
+/// The final base must equal the starting base; all trading costs remain in NAV.
+public struct ProfitRealizationPlan<phantom Product> {
+    before: ActivePosition,
+    base_to_realize: u64,
+    max_cost: u64,
+    reserve_priced: u64,
+}
+
 // === Public Functions ===
 
 // --- Issuance ---
@@ -645,6 +654,87 @@ public fun complete_rebalance<Product>(
     (before.equity, current.equity, before.base, current.base, increase)
 }
 
+// --- Profit Realization ---
+
+/// Sizes a whole-lot recovery of an adapter-authenticated cash shortfall and
+/// an economical rounding minimum, capped to one opening-sized order. Larger deficits need further
+/// transactions. No caller selects the size, price bound or cost allowance.
+public fun prepare_profit_realization<Product>(
+    self: &State<Product>,
+    observation: PositionObservation,
+    cash_shortfall: u64,
+    unrealized_profit: u64,
+    venue_fee_bps: u64,
+    now_at_ms: u64,
+): ProfitRealizationPlan<Product> {
+    self.lifecycle.assert_active();
+    assert!(cash_shortfall > 0 && unrealized_profit > 0, blast_boosts_core::errors::profit_realization_not_needed!());
+    assert!(venue_fee_bps <= constants::basis_points_denominator!(), blast_boosts_core::errors::venue_fee_unusable!());
+    let before = self.validated_active_position(observation, now_at_ms);
+    assert!(before.base > 0, blast_boosts_core::errors::profit_realization_not_needed!());
+    let reserve_priced = self.admitted_reserve(&before);
+    self.assert_realization_leverage(&before, reserve_priced);
+
+    let denominator = constants::basis_points_denominator!() as u128;
+    let slippage = self.execution_bound().slippage_bps() as u128;
+    let cost_bps = 2 * (slippage + ((venue_fee_bps as u128) * (denominator + slippage)).div_ceil(denominator));
+    let full_cost = ((before.notional as u128) * cost_bps).div_ceil(denominator);
+    assert!(2 * full_cost < unrealized_profit as u128, blast_boosts_core::errors::profit_realization_uneconomic!());
+    // Do not pay to convert gains when even realizing the whole position at
+    // the cost allowance cannot cover the cash-only margin requirement.
+    assert!(
+        (cash_shortfall as u128) + 3 <= (unrealized_profit as u128) - full_cost,
+        blast_boosts_core::errors::profit_realization_uneconomic!(),
+    );
+
+    // Two collateral atoms cover normalization across the two trades; a third
+    // targets positive cash headroom instead of stopping exactly on the floor.
+    let needed = (((cash_shortfall as u256) + 3) * (before.base as u256))
+        .div_ceil((unrealized_profit as u256) - (full_cost as u256));
+    // A tiny shortfall must not demand a trade whose fixed rounding allowance
+    // costs more than its profit. This minimum covers both cost roundings.
+    let rounding_allowance = 2 + cost_bps.div_ceil(denominator);
+    let economical = (((2 * rounding_allowance + 3) as u256) * (before.base as u256))
+        .div_ceil((unrealized_profit as u256) - 2 * (full_cost as u256));
+    let rounded = needed.max(economical).div_ceil(before.lot_size as u256) * (before.lot_size as u256);
+    let base_to_realize = (rounded.min(before.base as u256) as u64).min(self.max_order_base(&before, false));
+    let trade_notional = rebalance_math::oracle_notional_up(
+        base_to_realize, before.base_price, before.collateral_price, self.base_unit, self.collateral_unit,
+    );
+    let max_cost = ((trade_notional as u128) * cost_bps).div_ceil(denominator) + 2;
+    let realized_profit = (unrealized_profit as u128) * (base_to_realize as u128) / (before.base as u128);
+    // Even at the cost limit, more cash is released than holders spend.
+    assert!(realized_profit > 2 * max_cost, blast_boosts_core::errors::profit_realization_uneconomic!());
+
+    ProfitRealizationPlan { before, base_to_realize, max_cost: max_cost as u64, reserve_priced }
+}
+
+/// The fixed oracle pair and starting position used by both recovery orders.
+public fun realization_position<Product>(self: &ProfitRealizationPlan<Product>): ActivePosition { self.before }
+
+/// Exact base to close and reopen in the same transaction.
+public fun base_to_realize<Product>(self: &ProfitRealizationPlan<Product>): u64 { self.base_to_realize }
+
+/// Proves unchanged exposure, bounded actual cost and a healthy final position.
+/// Does not change supply, reserve, funding deficit, fees or lifecycle.
+public fun complete_profit_realization<Product>(
+    self: &State<Product>,
+    plan: ProfitRealizationPlan<Product>,
+    observation: PositionObservation,
+    now_at_ms: u64,
+): (u64, u64, u64, u64) {
+    self.lifecycle.assert_active();
+    let ProfitRealizationPlan { before, base_to_realize, max_cost, reserve_priced } = plan;
+    let after = self.validated_active_position(observation, now_at_ms);
+    assert!(before.is_same_checkpoint(&after), blast_boosts_core::errors::active_checkpoint_changed!());
+    assert!(before.base == after.base, blast_boosts_core::errors::active_fill_incomplete!());
+    let cost = before.equity - before.equity.min(after.equity);
+    assert!(cost <= max_cost, blast_boosts_core::errors::profit_realization_uneconomic!());
+    self.assert_realization_leverage(&after, reserve_priced);
+
+    (before.equity, after.equity, base_to_realize, cost)
+}
+
 // --- Funding And Reserve ---
 
 /// Applies one adapter-authenticated funding classification to the reserve.
@@ -957,6 +1047,15 @@ fun assert_invariant(holds: bool) {
 /// keeps the reserve intact for the position that reopens.
 fun reserve_within_cap<Product>(self: &State<Product>, reserve: u64, position: &ActivePosition): u64 {
     if (position.notional == 0) reserve else reserve.min(self.vault_policy.reserve_cap(position.notional))
+}
+
+/// Profit recovery reopens exposure, so it cannot precede needed emergency reduction.
+fun assert_realization_leverage<Product>(self: &State<Product>, position: &ActivePosition, reserve_priced: u64) {
+    let nav = accounting_math::shareholder_nav(position.equity, reserve_priced);
+    assert!(
+        !self.vault_policy.rebalance_policy().is_leverage_above_max(position.notional, nav),
+        blast_boosts_core::errors::active_leverage_above_cap!(),
+    );
 }
 
 /// Returns the stored reserve as the ceiling admits it against `position`.

@@ -107,10 +107,11 @@ for file in "$package_dir"/sources/*.move "$package_dir"/sources/lib/*.move; do
   fi
 done
 entry_functions="$(grep -rHE '\bentry fun ' "$core_dir/sources" "$package_dir/sources" || true)"
-expected_entries="$package_dir/sources/operations.move:entry fun rebalance<Product, Collateral>(
+expected_entries="$package_dir/sources/operations.move:entry fun realize_profit<Product, Collateral>(
+$package_dir/sources/operations.move:entry fun rebalance<Product, Collateral>(
 $package_dir/sources/operations.move:entry fun unwind<Product, Collateral>("
 [[ "$entry_functions" == "$expected_entries" ]] \
-  || fail "Only operations::rebalance and operations::unwind may be private entry functions."
+  || fail "Only operations::realize_profit, operations::rebalance and operations::unwind may be private entry functions."
 
 # Venue interfaces cannot execute the entry functions locally. Pin the gas
 # policy at their production call sites as well as testing real prepared plans.
@@ -119,14 +120,28 @@ from pathlib import Path
 import sys
 
 source = Path(sys.argv[1]).read_text().split('// === Test-Only Functions ===')[0]
+realization = source.split('entry fun realize_profit<', 1)[1].split('\n}\n', 1)[0]
+assert realization.index('protocol.assert_current()') < realization.index('.assert_active()') < realization.index('.gas_price()')
+assert realization.count(').into_observation()') == 2
+assert realization.index(').into_observation()') < realization.index('.prepare_profit_realization(')
+assert realization.index('.gas_price() <= ctx.reference_gas_price()') < realization.index('.synchronize_or_fail(') < realization.index('.realize_profit_orders(') < realization.index('.complete_profit_realization(') < realization.index('clearing_house.share()')
+assert '): ClearingHouse' not in realization
+orders = Path(sys.argv[1]).with_name('orders.move').read_text().split('// === Test-Only Functions ===')[0]
+round_trip = orders.split('fun realize_profit_orders<', 1)[1].split('\n}\n', 1)[0]
+assert round_trip.count('.fill_exact_order(') == 2
+assert round_trip.index('&before, vault.reducing_terms(position), base') < round_trip.index('&reduced, vault.increasing_terms(position), base')
+exact_fill = orders.split('fun fill_exact_order<', 1)[1].split('\n}\n', 1)[0]
+assert exact_fill.index('base <= terms.max_order_base') < exact_fill.index('.place_order(') < exact_fill.index('fill.filled == base') < exact_fill.index('fill.assert_checkpoint(')
+redeem = source.split('public fun redeem<', 1)[1].split('\n}\n', 1)[0]
+assert redeem.index('.assert_releasable(net + admin)') < redeem.index('.withdraw(')
 rebalance = source.split('entry fun rebalance<', 1)[1].split('\n}\n', 1)[0]
 unwind = source.split('entry fun unwind<', 1)[1].split('\n}\n', 1)[0]
 assert rebalance.index('.prepare_rebalance(') < rebalance.index('plan.assert_gas_price(ctx)') < rebalance.index('.rebalance_orders('), \
     'Rebalance must check the authenticated plan gas policy before trading.'
 assert 'assert_gas_price' not in unwind and '.gas_price(' not in unwind, \
     'Shutdown unwind must remain free of the gas-price restriction.'
-assert source.count('.gas_price(') == 1 and source.count('.reference_gas_price(') == 1, \
-    'Only the rebalance plan gas guard may inspect gas prices.'
+assert source.count('.gas_price(') == 2 and source.count('.reference_gas_price(') == 2, \
+    'Only rebalance and profit realization may inspect gas prices.'
 assert source.count('.assert_gas_price(') == 1, \
     'Only rebalance may invoke the gas-price restriction.'
 PY

@@ -34,7 +34,7 @@ export function buildActivePlan(input) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw Error('input object required');
     for (const key of Object.keys(input)) if (!INPUT_FIELDS.has(key)) throw Error(`unexpected field ${key}`);
     const operation = input.operation;
-    if (!['mint', 'redeem', 'rebalance', 'mint_buy', 'sell_redeem'].includes(operation)) throw Error('unsupported active operation');
+    if (!['mint', 'redeem', 'rebalance', 'realize_profit', 'mint_buy', 'sell_redeem'].includes(operation)) throw Error('unsupported active operation');
     const adapter = address(input.adapterPackage);
     address(input.sender);
     if (input.network !== 'mainnet') throw Error('network must be mainnet');
@@ -42,16 +42,17 @@ export function buildActivePlan(input) {
     const objects = input.objects;
     if (!objects || typeof objects !== 'object' || Array.isArray(objects)) throw Error('bound objects required');
     // A mint or redeem may name a Blast partner, which switches it to the `_with_partner` entry
-    // point with the partner right after the protocol object; rebalance takes none.
-    const allowed = [...BOUND_OBJECTS, 'clock', 'inputCoin', ...(operation === 'rebalance' ? [] : ['partner'])];
+    // point with the partner right after the protocol object; maintenance takes none.
+    const maintenance = operation === 'rebalance' || operation === 'realize_profit';
+    const allowed = [...BOUND_OBJECTS, 'clock', 'inputCoin', ...(maintenance ? [] : ['partner'])];
     for (const key of Object.keys(objects)) {
         if (!allowed.includes(key)) throw Error(`unexpected object field ${key}`);
     }
     const bound = BOUND_OBJECTS.map((role) => `@${address(objects[role])}`);
     const clock = `@${address(objects.clock)}`;
-    if (operation === 'rebalance') {
+    if (maintenance) {
         return {commands: [
-            call(`${adapter}::operations::rebalance`, [product, collateral], [...bound, clock], null),
+            call(`${adapter}::operations::${operation}`, [product, collateral], [...bound, clock], null),
         ], transfers: []};
     }
     const partnered = objects.partner !== undefined;

@@ -76,9 +76,11 @@ fun error_codes_run_from_zero_without_gaps() {
         errors::invariant_violated!(),
         errors::invalid_tick_size!(),
         errors::order_cap_below_minimum!(),
+        errors::profit_realization_not_needed!(),
+        errors::profit_realization_uneconomic!(),
     ];
 
-    assert_eq!(codes.length(), 64);
+    assert_eq!(codes.length(), 66);
     codes.length().do!(|i| assert_eq!(codes[i], i));
 }
 

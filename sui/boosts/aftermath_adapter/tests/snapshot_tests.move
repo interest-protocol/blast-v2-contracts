@@ -8,6 +8,72 @@ module blast_boosts_aftermath::snapshot_tests;
 // === Tests ===
 
 #[test]
+fun cash_liquidity_rounds_budget_down_and_shortfall_up() {
+    let cash = snapshot::cash_liquidity_for_testing(
+        2, 1_999_999_999_999, 10_000_000_000_001, 100_999_999_999_999,
+        1_000_000_000_000_000_000, 0,
+    );
+    cash.assert_releasable(3);
+    assert_eq!(cash.shortfall(), 9);
+    assert_eq!(cash.unrealized_profit(), 100);
+}
+
+#[test]
+fun cash_liquidity_applies_collateral_price_haircut_and_free_cash() {
+    let cash = snapshot::cash_liquidity_for_testing(
+        3, 0, 20_000_000_000_000, 200_000_000_000_000,
+        2_000_000_000_000_000_000, 500_000_000_000_000_000,
+    );
+    assert_eq!(cash.shortfall(), 17);
+    assert_eq!(cash.unrealized_profit(), 100);
+    cash.assert_releasable(3);
+}
+
+#[test]
+fun cash_liquidity_free_cash_covers_deficit_without_paid_recovery() {
+    let cash = snapshot::cash_liquidity_for_testing(
+        100, 0, 20_000_000_000_000, 200_000_000_000_000,
+        1_000_000_000_000_000_000, 0,
+    );
+    assert_eq!(cash.shortfall(), 0);
+    cash.assert_releasable(100);
+}
+
+#[test]
+fun cash_liquidity_does_not_treat_losses_or_spare_margin_as_profit_shortfall() {
+    let cash = snapshot::cash_liquidity_for_testing(
+        0, 5_000_000_000_000, neg(5_000_000_000_000), neg(200_000_000_000_000),
+        1_000_000_000_000_000_000, 0,
+    );
+    assert_eq!(cash.shortfall(), 0);
+    assert_eq!(cash.unrealized_profit(), 0);
+    cash.assert_releasable(5);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ERedemptionExceedsReleasable, location = blast_boosts_aftermath::snapshot)]
+fun cash_liquidity_rejects_one_atom_above_withdrawable_cash() {
+    snapshot::cash_liquidity_for_testing(
+        2, 1_999_999_999_999, 0, 0, 1_000_000_000_000_000_000, 0,
+    ).assert_releasable(4);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ENormalizationOverflow, location = blast_boosts_aftermath::snapshot)]
+fun cash_liquidity_rejects_total_cash_overflow() {
+    snapshot::cash_liquidity_for_testing(
+        std::u64::max_value!(), 1_000_000_000_000, 0, 0, 1_000_000_000_000_000_000, 0,
+    );
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ENormalizationOverflow, location = blast_boosts_aftermath::snapshot)]
+fun cash_liquidity_rejects_full_haircut() {
+    snapshot::cash_liquidity_for_testing(0, 0, 0, 0, 1_000_000_000_000_000_000, 1_000_000_000_000_000_000);
+}
+
+
+#[test]
 fun signed_funding_cost_crosses_allocated_zero_without_becoming_unresolved() {
     let before = checkpoint(10, 5, 5, 6, 7, 8, 9);
     let after = checkpoint(10, neg(3), 7, 8, 7, 8, 9);

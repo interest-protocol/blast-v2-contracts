@@ -44,7 +44,7 @@ const PACKAGES = [
         version: 1,
         digest: '4xHTNndPFAfEwZHBpY4YdmSs4QYXwM2gKNHKaWyFeVGg',
         previousTransaction: 'CAMhK1PF63EQ9bSRMGriNvyhtM5jTRUsy7YpepMbPwcS',
-        modules: [{ name: 'position', sha256: '9dbf0ed53fb6d0628ef821d86d4d63295c6d80efa5e3715735b1dee68bed26e7', functions: ['collateral', 'base_and_quote_amounts', 'pending_base_amounts_by_side', 'pending_order_count', 'funding_rate_snapshots', 'initial_margin_ratio', 'effective_initial_margin_ratio', 'compute_margin_and_requirement', 'is_long_or_flat', 'unrealized_pnl', 'abs_net_base'] }],
+        modules: [{ name: 'position', sha256: '9dbf0ed53fb6d0628ef821d86d4d63295c6d80efa5e3715735b1dee68bed26e7', functions: ['collateral', 'base_and_quote_amounts', 'pending_base_amounts_by_side', 'pending_order_count', 'funding_rate_snapshots', 'initial_margin_ratio', 'effective_initial_margin_ratio', 'compute_margin_and_requirement', 'compute_free_collateral', 'is_long_or_flat', 'unrealized_pnl', 'abs_net_base'] }],
     },
     {
         label: 'Aftermath authority-cap',
@@ -142,6 +142,7 @@ const ABI = {
     'position::abs_net_base': 'public fun abs_net_base(&@self::position::Position): u256',
     'position::base_and_quote_amounts': 'public fun base_and_quote_amounts(&@self::position::Position): (u256, u256)',
     'position::collateral': 'public fun collateral(&@self::position::Position): u256',
+    'position::compute_free_collateral': 'public fun compute_free_collateral(&@self::position::Position, u256, u256, u256, u256): u256',
     'position::compute_margin_and_requirement': 'public fun compute_margin_and_requirement(&@self::position::Position, u256, u256, u256, u256): (u256, u256)',
     'position::effective_initial_margin_ratio': 'public fun effective_initial_margin_ratio(&@self::position::Position, u256): u256',
     'position::funding_rate_snapshots': 'public fun funding_rate_snapshots(&@self::position::Position): (u256, u256)',
