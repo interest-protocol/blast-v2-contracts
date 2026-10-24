@@ -105,7 +105,7 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | 14 | L-5 | Low | Activation accepts any non-negative `position_imr`, even one that later blocks operations inside the band | Resolved in source (PR #118, ADR 0124); venue execution remains a release gate |
 | 15 | L-6 | Low | An emergency rebalance that stops just under the cap can fail the minimum-improvement check and revert every time | Resolved in source (PR #121, ADR 0126), Opus 5.5 reviewed; live execution proof remains |
 | 16 | L-7 | Low | One single-key address holds all root, issuance and upgrade authority | Open (custody and deployment records) |
-| 17 | L-8 | Low | Emergency rebalance is refused when the venue mark diverges from spot, even though it never uses the mark | Implemented in source (ADR 0127), Opus 5.5 reviewed; merge and live execution pending |
+| 17 | L-8 | Low | Emergency rebalance is refused when the venue mark diverges from spot, even though it never uses the mark | Resolved in source (PR #123, ADR 0127), Opus 5.5 reviewed; live execution remains a release gate |
 | 18 | L-9 | Low | Increase rebalances check the hard cap against a reserve admitted at the opening notional, not the post-fill one | Open |
 | 19 | L-10 | Low | Reductions are checked fill by fill on one reserve basis and completed on another, so a valid deleverage can revert | Open. Needs a decision |
 | 20 | L-11 | Low | Once the position shrinks below one minimum order, nobody can redeem | Open. Must land before the next issuance |
@@ -946,7 +946,7 @@ records.
 
 ### Ticket 17 · L-8 · Emergency rebalance is refused on mark-versus-spot divergence it never uses
 
-**Status:** implemented in source, Opus 5.5 reviewed; pending merge.
+**Status:** resolved in source (PR #123, 2026-10-24), Opus 5.5 reviewed.
 [ADR 0127](../decisions/0127-emergency-rebalance-mark-divergence.md) follows
 the auditor's emergency-only exemption without widening ordinary tolerance.
 Validated starting leverage seals the exception through the final cap-restoring
