@@ -29,8 +29,8 @@ public(package) fun oracle_notional_up(
     value as u64
 }
 
-/// Converts a notional cap to the largest whole-lot base it permits.
-public(package) fun base_for_notional_down(
+/// Converts oracle-valued notional to the largest whole-lot base it permits.
+public(package) fun base_for_oracle_notional_down(
     notional: u64,
     base_price: u64,
     collateral_price: u64,

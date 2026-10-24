@@ -17,7 +17,7 @@ fun maximum_width_cost_and_conversion_keep_wide_intermediates() {
     let max = std::u64::max_value!();
     assert_eq!(rebalance_math::execution_cost_up_for_testing(max, 10_000, 9_999), 55_336_542_872_313_912_935);
     assert_eq!(rebalance_math::oracle_notional_up(max, 1_000, 1, 1_000_000_000, 1_000_000), max);
-    assert_eq!(rebalance_math::base_for_notional_down(max, 1_000, 1, 1, 1_000_000_000, 1_000_000), max);
+    assert_eq!(rebalance_math::base_for_oracle_notional_down(max, 1_000, 1, 1, 1_000_000_000, 1_000_000), max);
     assert_eq!(rebalance_math::increase_base_down(max, max - 1, 10_000, 1_000, 1, 1, max, 0, 0, 1_000_000_000, 1_000_000), 1);
     assert!(!rebalance_math::reduction_is_sufficient(max, max, max - 1, max, 20_000, max, max));
 }
@@ -77,7 +77,7 @@ fun sizing_rejects_target_width_overflow() {
 #[test]
 #[expected_failure(abort_code = errors::EArithmeticOverflow, location = blast_boosts_core::rebalance_math)]
 fun sizing_rejects_base_width_overflow() {
-    rebalance_math::base_for_notional_down(std::u64::max_value!(), 1, 1, 1, 1_000_000_000, 1_000_000);
+    rebalance_math::base_for_oracle_notional_down(std::u64::max_value!(), 1, 1, 1, 1_000_000_000, 1_000_000);
 }
 
 #[test]
@@ -101,13 +101,13 @@ fun sizing_rejects_zero_target_before_invalid_price() {
 #[test]
 #[expected_failure(abort_code = errors::EInvalidPrice, location = blast_boosts_core::rebalance_math)]
 fun sizing_rejects_invalid_price_before_zero_lot() {
-    rebalance_math::base_for_notional_down(1, 0, 1, 0, 1_000_000_000, 1_000_000);
+    rebalance_math::base_for_oracle_notional_down(1, 0, 1, 0, 1_000_000_000, 1_000_000);
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EInvalidLotSize, location = blast_boosts_core::rebalance_math)]
 fun sizing_rejects_zero_lot_at_valid_prices() {
-    rebalance_math::base_for_notional_down(1, 1, 1, 0, 1_000_000_000, 1_000_000);
+    rebalance_math::base_for_oracle_notional_down(1, 1, 1, 0, 1_000_000_000, 1_000_000);
 }
 
 #[test]
@@ -315,16 +315,16 @@ fun a_flat_position_has_zero_notional() {
 /// The conversion floors the price ratio first and then the lot, never rounding up.
 #[test]
 fun base_for_notional_floors_the_price_ratio_and_the_lot() {
-    assert_eq!(rebalance_math::base_for_notional_down(10, 3, 1, 1, 1, 1), 3);
-    assert_eq!(rebalance_math::base_for_notional_down(10, 1, 1, 3, 1, 1), 9);
-    assert_eq!(rebalance_math::base_for_notional_down(2, 1, 1, 3, 1, 1), 0);
-    assert_eq!(rebalance_math::base_for_notional_down(0, 1, 1, 1, 1, 1), 0);
+    assert_eq!(rebalance_math::base_for_oracle_notional_down(10, 3, 1, 1, 1, 1), 3);
+    assert_eq!(rebalance_math::base_for_oracle_notional_down(10, 1, 1, 3, 1, 1), 9);
+    assert_eq!(rebalance_math::base_for_oracle_notional_down(2, 1, 1, 3, 1, 1), 0);
+    assert_eq!(rebalance_math::base_for_oracle_notional_down(0, 1, 1, 1, 1, 1), 0);
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EInvalidPrice, location = blast_boosts_core::rebalance_math)]
 fun base_for_notional_rejects_a_zero_collateral_price() {
-    rebalance_math::base_for_notional_down(1, 1, 0, 1, 1, 1);
+    rebalance_math::base_for_oracle_notional_down(1, 1, 0, 1, 1, 1);
 }
 
 /// The bound guards still run, but nothing is reserved on an empty order.

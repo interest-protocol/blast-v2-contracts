@@ -557,7 +557,7 @@ contradicting the stated design that the cap does not limit deposits.
 
 - [state::max_order_base](../../sui/boosts/core/sources/state.move#L259) and
   [state::unwind_constraints](../../sui/boosts/core/sources/state.move#L709)
-  size with [rebalance_math::base_for_notional_down](../../sui/boosts/core/sources/lib/rebalance_math.move#L33)
+  size with [rebalance_math::base_for_oracle_notional_down](../../sui/boosts/core/sources/lib/rebalance_math.move#L33)
   at the oracle price; [state::seed_terms](../../sui/boosts/core/sources/state.move#L173)
   and the headroom in [rebalance_math::increase_base_down](../../sui/boosts/core/sources/lib/rebalance_math.move#L69)
   do the same.
@@ -686,7 +686,7 @@ from price drift alone. A `RiskAdmin` can recover by lowering the cap.
 
 **Where it is.**
 
-- [rebalance_math::base_for_notional_down](../../sui/boosts/core/sources/lib/rebalance_math.move#L46)
+- [rebalance_math::base_for_oracle_notional_down](../../sui/boosts/core/sources/lib/rebalance_math.move#L46)
   asserts the result fits.
 - Callers: [state::max_order_base](../../sui/boosts/core/sources/state.move#L259),
   [state::reduction_order](../../sui/boosts/core/sources/state.move#L945),

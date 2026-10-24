@@ -138,7 +138,7 @@ public fun notional_of(self: &Venue, base: u64): u64 {
 
 /// Whole-lot base worth at most `notional` at the oracle.
 public fun base_for_notional(self: &Venue, notional: u64): u64 {
-    rebalance_math::base_for_notional_down(
+    rebalance_math::base_for_oracle_notional_down(
         notional, self.base_price, self.collateral_price, self.lot_size, BASE_UNIT, COLLATERAL_UNIT,
     )
 }

@@ -967,7 +967,7 @@ fun live_fee_bps<Product>(self: &State<Product>, is_mint: bool): u64 {
 
 /// Whole-lot base worth at most `notional` at the position's sealed oracle pair.
 fun base_for_notional(notional: u64, position: &ActivePosition, base_unit: u64, collateral_unit: u64): u64 {
-    rebalance_math::base_for_notional_down(
+    rebalance_math::base_for_oracle_notional_down(
         notional, position.base_price, position.collateral_price, position.lot_size, base_unit, collateral_unit,
     )
 }
