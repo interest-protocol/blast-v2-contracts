@@ -782,15 +782,10 @@ fun a_reduction_prices_the_release_before_sizing() {
     let price = vault.venue().base_price();
     vault.venue_mut().set_base_price(price * 60 / 100);
     assert!(vault.leverage_bps() > 26_000);
-    let reserve_priced = vault.admitted_reserve();
-
     vault.rebalance();
-    // Sized on the reserve the plan admitted, the position lands at target; on the
-    // smaller ceiling the reduction itself earned, it reads a little under.
-    let leverage_on_plan = ((vault.venue().notional() as u128) * (BPS as u128))
-        .div_ceil((vault.venue().equity() - reserve_priced) as u128);
-    assert!(leverage_on_plan <= 20_000 && leverage_on_plan >= 19_000);
-    assert!((vault.leverage_bps() as u128) < leverage_on_plan);
+    // Sizing and completion both use the smaller reserve the remaining
+    // position admits; the old opening basis would demand an excessive sale.
+    assert!(vault.leverage_bps() <= 20_000 && vault.leverage_bps() >= 19_000);
     // Maintenance writes no reserve, so the pending release still waits for a priced operation.
     assert!(vault.reserve() > vault.reserve_cap());
     assert_eq!(vault.venue().equity(), vault.nav() + vault.admitted_reserve());

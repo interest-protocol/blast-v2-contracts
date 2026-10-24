@@ -276,7 +276,7 @@ const EProfitRealizationUneconomic: u64 = 65;
 const EInitialMarginHeadroom: u64 = 66;
 
 #[test_only]
-/// No whole-lot increase can fit the permitted leverage range.
+/// No whole-lot maintenance order fits its leverage and reserve constraints.
 const ERebalanceNotActionable: u64 = 67;
 
 #[test_only]

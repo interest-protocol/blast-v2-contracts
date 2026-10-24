@@ -247,21 +247,21 @@ fun the_capacity_projection_excludes_and_preserves_the_reserve() {
 
 #[test]
 #[expected_failure(abort_code = errors::ERebalanceNoProgress, location = blast_boosts_core::state)]
-fun a_projection_that_would_consume_the_nav_does_not_lower_the_threshold() {
+fun a_projection_that_worsens_leverage_does_not_lower_the_threshold() {
     let side = policy::short();
     let (state, _, _) = state::issue<Product>(
         &blast_acl::witness_for_testing(), vault_policy(side, 1_000_000), 1_000, 160, 0, 0,
     ).activate(position(side, 100, 200), 0, NOW);
-    let mut plan = state.prepare_rebalance(position(side, 1_000, 100_000), 10_000, NOW);
-    let mut base = 100_000;
+    let mut plan = state.prepare_rebalance(position(side, 1_000_000, 2_900_000), 10_000, NOW);
+    let mut base = 2_900_000;
     16u64.do!(|_| {
         let order = state.next_rebalance_order(&plan);
         let filled = order.order_base();
         base = base - filled;
-        state.accept_rebalance_fill(&mut plan, order, position(side, 1_000, base), filled, NOW);
+        state.accept_rebalance_fill(&mut plan, order, position(side, 1_000_000, base), filled, NOW);
     });
     // All cost-free orders filled; the real improvement is below this fixture's
-    // configured minimum. The impossible fee projection must still reject it.
+    // configured minimum. The fee projection worsens leverage and must still reject it.
     state.complete_rebalance(plan);
     state.destroy_for_testing();
 }
@@ -325,32 +325,28 @@ fun the_order_budget_precedes_a_malformed_seventeenth_fill() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ERebalanceNoProgress, location = blast_boosts_core::state)]
-fun tiny_long_fills_cannot_claim_the_tail_exception_at_10000_excess() {
+fun partial_long_emergency_fills_can_commit_at_10000_excess() {
     let state = new_state(policy::long());
     state.finish_batch(policy::long(), 100_000_000, 300_010_000, 16, 1, 0);
     state.destroy_for_testing();
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ERebalanceNoProgress, location = blast_boosts_core::state)]
-fun tiny_long_fills_cannot_claim_the_tail_exception_at_17000_excess() {
+fun partial_long_emergency_fills_can_commit_at_17000_excess() {
     let state = new_state(policy::long());
     state.finish_batch(policy::long(), 100_000_000, 300_017_000, 16, 1, 0);
     state.destroy_for_testing();
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ERebalanceNoProgress, location = blast_boosts_core::state)]
-fun tiny_short_fills_cannot_claim_the_tail_exception_at_10000_excess() {
+fun partial_short_emergency_fills_can_commit_at_10000_excess() {
     let state = new_state(policy::short());
     state.finish_batch(policy::short(), 100_000_000, 300_010_000, 16, 1, 0);
     state.destroy_for_testing();
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ERebalanceNoProgress, location = blast_boosts_core::state)]
-fun tiny_short_fills_cannot_claim_the_tail_exception_at_17000_excess() {
+fun partial_short_emergency_fills_can_commit_at_17000_excess() {
     let state = new_state(policy::short());
     state.finish_batch(policy::short(), 100_000_000, 300_017_000, 16, 1, 0);
     state.destroy_for_testing();
@@ -378,8 +374,7 @@ fun favorable_fills_followed_by_costs_cannot_fail_an_independent_base_floor() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ERebalanceNoProgress, location = blast_boosts_core::state)]
-fun a_partial_tail_cannot_claim_full_execution_despite_beating_the_projection() {
+fun a_partial_emergency_tail_does_not_need_the_capacity_exception() {
     let state = new_state(policy::long());
     let (mut plan, equity) = state.filled_batch(policy::long(), 100_000_000, 300_014_261, 15, 100, 11);
     let order = state.next_rebalance_order(&plan);
@@ -389,8 +384,7 @@ fun a_partial_tail_cannot_claim_full_execution_despite_beating_the_projection() 
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ERebalanceNoProgress, location = blast_boosts_core::state)]
-fun a_smaller_retained_order_cannot_misrepresent_a_full_canonical_fill() {
+fun an_emergency_reduction_does_not_need_a_full_canonical_fill() {
     let state = new_state(policy::short());
     let small_plan = state.prepare_rebalance(position(policy::short(), 100_000_000, 300_000_001), 10, NOW);
     let small_order = state.next_rebalance_order(&small_plan);

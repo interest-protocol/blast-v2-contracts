@@ -270,8 +270,8 @@ public fun redeem_with_partner<Product, Collateral>(
     (cash, clearing_house)
 }
 
-/// A keeper hint: true for a needed reduction, or an increase with opening margin.
-/// Inside the band, without opening margin, or for an unsizeable increase, returns false.
+/// A keeper hint: true for a needed, sizeable reduction, or an increase with opening margin.
+/// Inside the band, for an increase without opening margin, or with no sizeable order, returns false.
 /// Unexplained checkpoint drift, invalid prices or an unavailable venue abort.
 /// Intended for dev-inspect: fee-aware sizing is shared with execution, but
 /// funding, gas admission, liquidity and fill progress remain execution checks.

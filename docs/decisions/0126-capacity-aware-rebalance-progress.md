@@ -28,6 +28,16 @@ Static validation alone therefore cannot prevent this trap. Execution costs
 also reduce the leverage improvement from a given sale. The source of the
 finding is the project's audit restatement, not original-auditor sign-off.
 
+## Amendment
+
+[ADR 0129](0129-reserve-consistent-emergency-reductions.md) supersedes the
+emergency completion rule below: real base and notional reduction with
+positive current holder value may commit, including partial batches and
+costs that worsen leverage. The capacity fallback remains for ordinary
+reductions only and reprices reserve at every projected position. The
+historical fixed-reserve and emergency-projection descriptions below record
+the L-6 decision before that amendment.
+
 ## Completion rule
 
 Retain ordinary completion at the configured minimum, or within one lot of
