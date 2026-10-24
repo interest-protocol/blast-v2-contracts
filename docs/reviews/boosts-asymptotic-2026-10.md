@@ -89,7 +89,7 @@ recovery limits and live-exchange release gates remain.
 | 6 | M-6 | Medium | A caller can plant a bad quote and make `rebalance` or `unwind` fill into it at the full slippage bound, paid by holders | Atomic trading sequence blocked by [ADR 0118](../decisions/0118-limit-priced-vault-orders-and-a-widening-unwind-bound.md); price calibration and live venue proof remain |
 | 7 | M-7 | Medium | Rotating or re-pointing an oracle feed freezes priced operations and the shutdown exit | Fixed (ADR 0115). Needs a regression test and a doc comment cleanup |
 | 8 | M-8 | Medium | A cap-sized order aborts if it fills even slightly above the oracle price | Resolved in source (ADR 0119); live execution evidence remains a release gate |
-| 9 | M-9 | Medium | Sustained above-RGP traffic on the shared objects can starve `rebalance` and `unwind` | Open. Needs a decision |
+| 9 | M-9 | Medium | Sustained above-RGP traffic on the shared objects can starve `rebalance` and `unwind` | Mitigated in source (ADR 0120); ordinary rebalances intentionally remain capped |
 | 10 | L-1 | Low | The live NVDA2L vault uses `min_order_lots = 1`, which makes the mint drift bound meaningless | Open (deployment parameter, plus a post-fill band check) |
 | 11 | L-2 | Low | Converting the order cap to base can overflow and abort instead of saturating | Addressed with M-4/M-8 in ADR 0119 |
 | 12 | L-3 | Low | A small vault below the band cannot rebalance when one lot overshoots target, and then cannot accept mints either | Open |
@@ -598,7 +598,7 @@ index makes progress.
 
 ### Ticket 9 · M-9 · Above-RGP traffic can starve `rebalance` and `unwind`
 
-**Status:** open. Needs a product decision.
+**Status:** mitigated in source under [ADR 0120](../decisions/0120-priority-gas-for-emergency-reductions-and-unwind.md). Shutdown unwind and rebalances whose authenticated starting leverage is strictly above the hard cap admit priority gas. Ordinary rebalances retain the restriction and can still be delayed. Holders accept the venue's configured extra trading fee for those emergency or shutdown fills; all price, sizing and progress checks remain. Local admission tests do not prove live priority execution. The historical finding and auditor options below are preserved.
 
 **The problem.** `rebalance` and `unwind` abort any transaction priced above
 the reference gas price so Aftermath's priority taker fee never lands on

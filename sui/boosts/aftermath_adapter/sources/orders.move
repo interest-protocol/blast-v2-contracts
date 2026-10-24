@@ -106,8 +106,8 @@ public(package) fun unwind_terms<Product, Collateral>(
     (terms, unwind_base_decoded(base.abs(), !base.is_neg(), before.lot_size(), side), before)
 }
 
-/// Reads the market's taker fee as a basis-point bound. Rebalances run at the
-/// reference gas price, so Aftermath's priority surcharge never applies.
+/// Reads the ordinary taker fee for increase sizing. Only emergency reductions
+/// can use priority gas; those size and prove progress from actual post-fill equity.
 public(package) fun live_venue_fee_bps<Collateral>(clearing_house: &ClearingHouse<Collateral>): u64 {
     venue_fee_bound(ifixed_math::nonnegative_rate(clearing_house.market_params().taker_fee()))
 }

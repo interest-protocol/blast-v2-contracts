@@ -561,6 +561,10 @@ public fun rebalance_position<Product>(self: &RebalancePlan<Product>): ActivePos
 /// Whether the plan buys toward the target rather than sells.
 public fun is_increasing<Product>(self: &RebalancePlan<Product>): bool { self.increase }
 
+/// Whether the authenticated starting position was strictly above the hard cap.
+/// Fixed for the plan: its own fills cannot promote ordinary maintenance.
+public fun is_emergency_rebalance<Product>(self: &RebalancePlan<Product>): bool { self.emergency }
+
 public fun order_base(self: &RebalanceOrder): u64 { self.base }
 
 public fun is_increase(self: &RebalanceOrder): bool { self.increase }

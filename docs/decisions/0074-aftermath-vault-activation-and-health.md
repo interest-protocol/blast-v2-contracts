@@ -738,6 +738,9 @@ with ADR 0087 D3 on 2026-09-18.
   never reaches holders, and `orders::live_venue_fee_bps` bounds the
   rebalance fee budget by the market's ordinary taker fee alone. `mint` and
   `redeem` have no gas-price check: their callers pay their own fills.
+  [ADR 0120](0120-priority-gas-for-emergency-reductions-and-unwind.md) amends
+  this restriction for shutdown closings and plans starting above the hard
+  leverage cap; ordinary rebalances retain it.
 
 ## Consequences
 

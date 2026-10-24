@@ -111,6 +111,25 @@ expected_entries="$package_dir/sources/operations.move:entry fun rebalance<Produ
 $package_dir/sources/operations.move:entry fun unwind<Product, Collateral>("
 [[ "$entry_functions" == "$expected_entries" ]] \
   || fail "Only operations::rebalance and operations::unwind may be private entry functions."
+
+# Venue interfaces cannot execute the entry functions locally. Pin the gas
+# policy at their production call sites as well as testing real prepared plans.
+python3 - "$package_dir/sources/operations.move" <<'PY'
+from pathlib import Path
+import sys
+
+source = Path(sys.argv[1]).read_text().split('// === Test-Only Functions ===')[0]
+rebalance = source.split('entry fun rebalance<', 1)[1].split('\n}\n', 1)[0]
+unwind = source.split('entry fun unwind<', 1)[1].split('\n}\n', 1)[0]
+assert rebalance.index('.prepare_rebalance(') < rebalance.index('plan.assert_gas_price(ctx)') < rebalance.index('.rebalance_orders('), \
+    'Rebalance must check the authenticated plan gas policy before trading.'
+assert 'assert_gas_price' not in unwind and '.gas_price(' not in unwind, \
+    'Shutdown unwind must remain free of the gas-price restriction.'
+assert source.count('.gas_price(') == 1 and source.count('.reference_gas_price(') == 1, \
+    'Only the rebalance plan gas guard may inspect gas prices.'
+assert source.count('.assert_gas_price(') == 1, \
+    'Only rebalance may invoke the gas-price restriction.'
+PY
 if grep -rnE 'AdapterRoot|AdapterDomain|venue_handoff|struct [A-Za-z0-9_]*AdminCap\b' "$package_dir/sources"; then
   fail "The adapter must not reintroduce a per-adapter ACL root, handoff layer or AdminCap; administration is the shared ACL."
 fi

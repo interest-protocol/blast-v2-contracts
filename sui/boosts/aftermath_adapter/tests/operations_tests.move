@@ -1331,16 +1331,46 @@ fun active_order_rejects_an_expired_deadline() {
 }
 
 #[test]
-fun permissionless_trades_accept_the_reference_gas_price_and_below() {
-    operations::assert_gas_price_for_testing(&ctx_at_gas_price(REFERENCE_GAS_PRICE));
-    operations::assert_gas_price_for_testing(&ctx_at_gas_price(REFERENCE_GAS_PRICE - 1));
+fun ordinary_rebalances_accept_the_reference_gas_price_and_below() {
+    vector[policy::long(), policy::short()].do!(|side| {
+        vector[1_000, 2_500, 2_700].do!(|notional| {
+            assert_rebalance_gas_at(side, notional, REFERENCE_GAS_PRICE);
+            assert_rebalance_gas_at(side, notional, REFERENCE_GAS_PRICE - 1);
+        });
+    });
 }
 
 #[test]
 #[expected_failure(abort_code = errors::EPriorityGasPrice, location = blast_boosts_aftermath::operations)]
-/// Aftermath charges its priority taker fee from one unit above the reference.
-fun permissionless_trades_reject_one_unit_above_the_reference_gas_price() {
-    operations::assert_gas_price_for_testing(&ctx_at_gas_price(REFERENCE_GAS_PRICE + 1));
+fun an_ordinary_increase_rejects_priority_gas() {
+    assert_rebalance_gas_at(policy::long(), 1_000, REFERENCE_GAS_PRICE + 1);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EPriorityGasPrice, location = blast_boosts_aftermath::operations)]
+fun an_ordinary_reduction_rejects_priority_gas() {
+    assert_rebalance_gas_at(policy::short(), 2_500, REFERENCE_GAS_PRICE + 1);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EPriorityGasPrice, location = blast_boosts_aftermath::operations)]
+fun a_rebalance_starting_exactly_at_the_hard_cap_rejects_priority_gas() {
+    // Seed equity 1_000 minus reserve 100 gives NAV 900; the hard cap is 3x.
+    assert_rebalance_gas_at(policy::long(), 2_700, REFERENCE_GAS_PRICE + 1);
+}
+
+#[test]
+fun emergency_rebalances_accept_priority_gas_for_both_sides() {
+    vector[policy::long(), policy::short()].do!(|side| {
+        assert_rebalance_gas_at(side, 2_701, REFERENCE_GAS_PRICE + 1);
+        assert_rebalance_gas_at(side, 3_000, std::u64::max_value!());
+    });
+}
+
+#[test]
+#[expected_failure(abort_code = blast_boosts_core::errors::ERebalanceInsideBand, location = blast_boosts_core::state)]
+fun an_inside_band_position_is_rejected_before_its_priority_gas_bid() {
+    assert_rebalance_gas_at(policy::long(), 1_800, REFERENCE_GAS_PRICE + 1);
 }
 
 #[test]
@@ -2836,6 +2866,17 @@ fun net_funding_adds_two_costs_and_keeps_the_larger_side_of_a_cost_and_a_credit(
 
 // === Test Helpers ===
 
+fun assert_rebalance_gas_at(side: PositionSide, notional: u64, gas_price: u64) {
+    let (state, _, _) = state::issue<Product>(
+        &vault_issuer(), fee_capped_vault_policy_for_side(side), 250, NAV_CAP, 9, 6,
+    ).activate(position_observation_for_side(SEED_EQUITY, side), SEED_RESERVE, REFERENCE_AT_MS);
+    let position = active_position_for_side(SEED_EQUITY, notional, side);
+    let plan = state.prepare_rebalance(position, 10, REFERENCE_AT_MS);
+    plan.assert_gas_price(&ctx_at_gas_price(gas_price));
+    destroy(plan);
+    state.destroy_for_testing();
+}
+
 fun ctx_at_gas_price(gas_price: u64): TxContext {
     tx_context::create(
         SYSTEM,
@@ -3757,6 +3798,7 @@ use blast_boosts_aftermath::{
 
 use blast_boosts_core::{
     lifecycle::ShutdownReason,
+    state::{Self, RebalancePlan},
     observation::{Self, PositionObservation},
     policy::{Self, PositionSide, VaultPolicy},
     blast_boosts_core::{RiskAdmin, ShutdownAdmin, VaultIssuer},
@@ -3818,3 +3860,5 @@ use fun orders::increasing_terms as Vault.increasing_terms;
 use fun orders::reducing_terms as Vault.reducing_terms;
 
 use fun orders::unwind_terms as Vault.unwind_terms;
+
+use fun operations::assert_rebalance_gas_price_for_testing as RebalancePlan.assert_gas_price;

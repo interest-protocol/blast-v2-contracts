@@ -363,6 +363,7 @@ fun a_rebalance_plan_reports_whether_it_buys_or_sells() {
     let buying = state.prepare_rebalance(rebalance_observation(1_100_000, 1_000_000, policy::long()), 10, REFERENCE_AT_MS);
     let selling = state.prepare_rebalance(rebalance_observation(1_100_000, 3_000_000, policy::long()), 10, REFERENCE_AT_MS);
     assert!(buying.is_increasing() && !selling.is_increasing());
+    assert!(!buying.is_emergency_rebalance() && !selling.is_emergency_rebalance());
     destroy(buying);
     destroy(selling);
     state.destroy_for_testing();
@@ -397,6 +398,7 @@ fun rebalance_short_emergency_reduction_sells_to_the_cap_and_stops_below_it() {
     let state = rebalance_state(policy::short());
     // 3.2x on a 1_000_000 NAV: the 3x cap is 3_000_000 of notional, 200_000_000 of base above it.
     let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_200_000, policy::short()), 10, REFERENCE_AT_MS);
+    assert!(plan.is_emergency_rebalance());
     let order = state.next_rebalance_order(&plan);
     assert_eq!(order.order_base(), 200_000_000);
     assert!(!order.is_increase() && order.is_emergency());
@@ -411,6 +413,7 @@ fun rebalance_short_emergency_reduction_sells_to_the_cap_and_stops_below_it() {
     let next = state.next_rebalance_order(&plan);
     assert_eq!(next.order_base(), 0);
     assert!(!next.is_emergency());
+    assert!(plan.is_emergency_rebalance());
     assert_eq!(next.bound().slippage_bps(), 100);
     state.complete_rebalance(plan);
     assert_eq!(state.maintenance_reserve(), SEED_RESERVE);
@@ -1755,17 +1758,20 @@ fun a_reduction_that_crosses_the_cap_mid_plan_keeps_the_ordinary_bound() {
     let mut plan = state.prepare_rebalance(rebalance_observation(1_100_000, 3_000_000, policy::long()), 10, REFERENCE_AT_MS);
     let order = state.next_rebalance_order(&plan);
     assert!(!order.is_emergency());
+    assert!(!plan.is_emergency_rebalance());
 
     state.accept_rebalance_fill(&mut plan, order, rebalance_observation(1_050_000, 2_900_000, policy::long()), 100_000_000, REFERENCE_AT_MS);
 
     let next = state.next_rebalance_order(&plan);
     assert!(!next.is_emergency());
+    assert!(!plan.is_emergency_rebalance());
     assert!(next.order_base() > 0);
     destroy(plan);
 
     // A fresh plan against the same observation is emergency from its first order.
     let fresh = state.prepare_rebalance(rebalance_observation(1_050_000, 2_900_000, policy::long()), 10, REFERENCE_AT_MS);
     assert!(state.next_rebalance_order(&fresh).is_emergency());
+    assert!(fresh.is_emergency_rebalance());
     destroy(fresh);
     state.destroy_for_testing();
 }
