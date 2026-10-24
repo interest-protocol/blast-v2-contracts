@@ -14,7 +14,9 @@ and [permissions](https://github.com/Uniswap/v4-core/blob/bea7f6d1c11cd5dc4f0d51
 before/after initialization, adding liquidity, removing liquidity, swapping,
 and donating. It includes the four return-delta permissions, per-swap fee
 overrides and cached dynamic fee updates, original caller context, and opaque
-hook data. Fees use parts per million (1,000,000 is 100%).
+hook data. Permissions use a `u16` bitmap with named flag macros; construction
+must reject unknown bits and delta bits without their matching callback.
+Fees use parts per million (1,000,000 is 100%).
 
 The intended initialization returns an owned pool, then runs both hook phases
 before publication. Creation alone must not permit trading:

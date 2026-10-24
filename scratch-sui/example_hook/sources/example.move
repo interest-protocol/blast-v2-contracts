@@ -21,7 +21,9 @@ public fun new_pool<Asset, Quote>(
     lp_fee_ppm: u32,
     ctx: &mut TxContext,
 ): Pool<Asset, Quote> {
-    pool::new(HookWitness(), permissions(), tick_spacing, dynamic_fee, lp_fee_ppm, ctx)
+    let permissions = pool::new_permissions(pool::all_hook_flags!());
+
+    pool::new(HookWitness(), permissions, tick_spacing, dynamic_fee, lp_fee_ppm, ctx)
 }
 
 /// Before initialize: inspect authenticated context, then approve core execution.
@@ -153,25 +155,6 @@ public fun update_dynamic_lp_fee<Asset, Quote>(
 
 // === Private Functions ===
 
-fun permissions(): Permissions {
-    pool::new_permissions(
-        true, // before_initialize
-        true, // after_initialize
-        true, // before_add_liquidity
-        true, // after_add_liquidity
-        true, // before_remove_liquidity
-        true, // after_remove_liquidity
-        true, // before_swap
-        true, // after_swap
-        true, // before_donate
-        true, // after_donate
-        true, // before_swap_return_delta
-        true, // after_swap_return_delta
-        true, // after_add_liquidity_return_delta
-        true, // after_remove_liquidity_return_delta
-    )
-}
-
 fun before_policy<Asset, Quote, Operation, Params: copy + drop + store>(
     _pool: &Pool<Asset, Quote>,
     _context: &Request<Asset, Quote, Operation, Params>,
@@ -225,7 +208,7 @@ fun fee_update_policy<Asset, Quote>(
 // === Imports ===
 
 use blast_fun_dex::pool::{
-    Self, Pool, Position, Permissions, SignedAmount, BalanceDelta, BeforeSwapDelta,
+    Self, Pool, Position, SignedAmount, BalanceDelta, BeforeSwapDelta,
     InitializeParams, LiquidityParams, SwapParams, DonateParams,
     Initialize, AddLiquidity, RemoveLiquidity, Swap, Donate,
     Request, Completion, Settlement,

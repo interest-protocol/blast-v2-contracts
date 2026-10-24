@@ -1,4 +1,5 @@
-/// Interface sketch only. Every body aborts; this package must not be published.
+/// Interface sketch only. Operational bodies abort; flag macros are constants.
+/// This package must not be published.
 /// Core owns operation phases and settlement; it imports no hook package.
 module blast_fun_dex::pool;
 
@@ -24,36 +25,21 @@ public struct Pool<phantom Asset, phantom Quote> has key {
 }
 
 // Fields are intentionally unread while all interface bodies abort.
-/// Caller-owned liquidity authority; construction binds pool, range, and salt.
+/// Caller-owned liquidity authority; object ID distinguishes positions in a range.
 #[allow(unused_field)]
 public struct Position<phantom Asset, phantom Quote> has key, store {
     id: UID,
     pool_id: ID,
     tick_lower: SignedAmount,
     tick_upper: SignedAmount,
-    salt: u256,
     liquidity: u128,
 }
 
 // Fields are intentionally unread while all interface bodies abort.
-/// Ten lifecycle permissions and four delta permissions, following v4 Hooks.sol.
+/// A u16 bitmap: ten lifecycle bits and four delta bits, following v4 Hooks.sol.
+/// Only the low 14 bits are valid. Construction must validate callback dependencies.
 #[allow(unused_field)]
-public struct Permissions has copy, drop, store {
-    before_initialize: bool,
-    after_initialize: bool,
-    before_add_liquidity: bool,
-    after_add_liquidity: bool,
-    before_remove_liquidity: bool,
-    after_remove_liquidity: bool,
-    before_swap: bool,
-    after_swap: bool,
-    before_donate: bool,
-    after_donate: bool,
-    before_swap_return_delta: bool,
-    after_swap_return_delta: bool,
-    after_add_liquidity_return_delta: bool,
-    after_remove_liquidity_return_delta: bool,
-}
+public struct Permissions(u16) has copy, drop, store;
 
 // Fields are intentionally unread while all interface bodies abort.
 /// Sign/magnitude interface representation; implementation must canonicalize zero
@@ -88,7 +74,6 @@ public struct LiquidityParams has copy, drop, store {
     position_id: ID,
     tick_lower: SignedAmount,
     tick_upper: SignedAmount,
-    salt: u256,
     liquidity: u128,
     asset_bound: u64,
     quote_bound: u64,
@@ -164,6 +149,39 @@ public struct Settlement<phantom Asset, phantom Quote> {
 
 // === Public Functions ===
 
+// Permission flags. Public macros expose named constants across package boundaries.
+
+/// Enables the before-initialize callback.
+macro public fun before_initialize_flag(): u16 { 0x2000 }
+/// Enables the after-initialize callback.
+macro public fun after_initialize_flag(): u16 { 0x1000 }
+/// Enables the before-add-liquidity callback.
+macro public fun before_add_liquidity_flag(): u16 { 0x0800 }
+/// Enables the after-add-liquidity callback.
+macro public fun after_add_liquidity_flag(): u16 { 0x0400 }
+/// Enables the before-remove-liquidity callback.
+macro public fun before_remove_liquidity_flag(): u16 { 0x0200 }
+/// Enables the after-remove-liquidity callback.
+macro public fun after_remove_liquidity_flag(): u16 { 0x0100 }
+/// Enables the before-swap callback.
+macro public fun before_swap_flag(): u16 { 0x0080 }
+/// Enables the after-swap callback.
+macro public fun after_swap_flag(): u16 { 0x0040 }
+/// Enables the before-donate callback.
+macro public fun before_donate_flag(): u16 { 0x0020 }
+/// Enables the after-donate callback.
+macro public fun after_donate_flag(): u16 { 0x0010 }
+/// Allows a specified/unspecified delta from the before-swap callback.
+macro public fun before_swap_returns_delta_flag(): u16 { 0x0008 }
+/// Allows an unspecified delta from the after-swap callback.
+macro public fun after_swap_returns_delta_flag(): u16 { 0x0004 }
+/// Allows a token-pair delta from the after-add-liquidity callback.
+macro public fun after_add_liquidity_returns_delta_flag(): u16 { 0x0002 }
+/// Allows a token-pair delta from the after-remove-liquidity callback.
+macro public fun after_remove_liquidity_returns_delta_flag(): u16 { 0x0001 }
+/// All ten callbacks and four delta permissions, with both reserved bits clear.
+macro public fun all_hook_flags(): u16 { 0x3fff }
+
 // Construction and callback context.
 
 /// Intended sealed-witness binding. Reject invalid permission combinations and fees.
@@ -190,7 +208,6 @@ public fun new_position<Asset, Quote>(
     _self: &Pool<Asset, Quote>,
     _tick_lower: SignedAmount,
     _tick_upper: SignedAmount,
-    _salt: u256,
     _ctx: &mut TxContext,
 ): Position<Asset, Quote> {
     abort EInterfaceOnly
@@ -204,23 +221,25 @@ public fun destroy_position<Asset, Quote>(
     abort EInterfaceOnly
 }
 
-/// Intended permission constructor; delta permission requires the matching callback.
+/// Intended bitmap validation: reject unknown bits and delta bits without callbacks.
 public fun new_permissions(
-    _before_initialize: bool,
-    _after_initialize: bool,
-    _before_add_liquidity: bool,
-    _after_add_liquidity: bool,
-    _before_remove_liquidity: bool,
-    _after_remove_liquidity: bool,
-    _before_swap: bool,
-    _after_swap: bool,
-    _before_donate: bool,
-    _after_donate: bool,
-    _before_swap_return_delta: bool,
-    _after_swap_return_delta: bool,
-    _after_add_liquidity_return_delta: bool,
-    _after_remove_liquidity_return_delta: bool,
+    _bitmap: u16,
 ): Permissions {
+    abort EInterfaceOnly
+}
+
+/// Intended bitmap projection for hook policy and transaction composition.
+public fun permission_bits(
+    _self: &Permissions,
+): u16 {
+    abort EInterfaceOnly
+}
+
+/// Intended all-bits check: (stored bitmap & mask) == mask.
+public fun has_permissions(
+    _self: &Permissions,
+    _mask: u16,
+): bool {
     abort EInterfaceOnly
 }
 
@@ -295,10 +314,10 @@ public fun initialize_price_x96(
     abort EInterfaceOnly
 }
 
-/// Intended position, range, salt, liquidity, and payment/receipt bounds.
+/// Intended position ID, range, liquidity, and payment/receipt bounds.
 public fun liquidity_params(
     _self: &LiquidityParams,
-): (ID, SignedAmount, SignedAmount, u256, u128, u64, u64) {
+): (ID, SignedAmount, SignedAmount, u128, u64, u64) {
     abort EInterfaceOnly
 }
 
