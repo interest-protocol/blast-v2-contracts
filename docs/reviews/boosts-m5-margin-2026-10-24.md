@@ -89,4 +89,9 @@ acceptance/rejection. Liquidity, pauses, insolvency, accepted prices and existin
 progress rules still constrain recovery. No inside-band rescue is added; profit
 realization’s reopening remains strict. Fresh publication follows ADR 0115.
 No deployment, original-auditor acceptance or change to historical bytecode is
-claimed. Audit statuses remain source fix under review until the PR is accepted.
+claimed. The source remediation is accepted through
+[PR #118](https://github.com/interest-protocol/blast-v2-contracts/pull/118): M-5,
+L-4 and L-5 are resolved in source and ADR 0124 is accepted. The release gates
+above remain open. GitHub Actions did not start because of account billing or
+spending limits; the corresponding local checks passed. Acceptance does not
+represent a successful remote CI run.

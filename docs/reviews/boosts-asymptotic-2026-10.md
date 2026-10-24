@@ -93,7 +93,7 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | 2 | M-2 | Medium | When the position has a big unrealized profit, every redemption aborts | Resolved in source through accepted mitigation (ADR 0122); margin/configuration limits and live execution proof remain |
 | 3 | M-3 | Medium | Calling either `restrict_*` upgrade function makes the next upgrade freeze the whole adapter forever | Resolved in source (ADR 0123, PR #117); separate activation and repair access, no restriction paths; fresh-lineage and deployment limits remain |
 | 4 | M-4 | Medium | A per-order cap worth less than one lot wedges every order path, shutdown included | Resolved in source (ADR 0119); ordinary-redemption recovery can require an administrator |
-| 5 | M-5 | Medium | Once margin falls below the venue's opening requirement, the emergency rebalance that should fix it is refused | Source fix under review (ADR 0124); venue execution remains a release gate |
+| 5 | M-5 | Medium | Once margin falls below the venue's opening requirement, the emergency rebalance that should fix it is refused | Resolved in source (PR #118, ADR 0124); venue execution remains a release gate |
 | 6 | M-6 | Medium | A caller can plant a bad quote and make `rebalance` or `unwind` fill into it at the full slippage bound, paid by holders | Atomic trading sequence blocked by [ADR 0118](../decisions/0118-limit-priced-vault-orders-and-a-widening-unwind-bound.md); price calibration and live venue proof remain |
 | 7 | M-7 | Medium | Rotating or re-pointing an oracle feed freezes priced operations and the shutdown exit | Fixed (ADR 0115). Needs a regression test and a doc comment cleanup |
 | 8 | M-8 | Medium | A cap-sized order aborts if it fills even slightly above the oracle price | Resolved in source (ADR 0119); live execution evidence remains a release gate |
@@ -101,8 +101,8 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | 10 | L-1 | Low | The live NVDA2L vault uses `min_order_lots = 1`, which makes the mint drift bound meaningless | Open (deployment parameter, plus a post-fill band check) |
 | 11 | L-2 | Low | Converting the order cap to base can overflow and abort instead of saturating | Resolved in source with M-4/M-8 in PR #112 (ADR 0119) |
 | 12 | L-3 | Low | A small vault below the band cannot rebalance when one lot overshoots target, and then cannot accept mints either | Open |
-| 13 | L-4 | Low | Donated cash is never allocated to the position, so the core counts margin the venue does not see | Source fix under review (ADR 0124); venue execution remains a release gate |
-| 14 | L-5 | Low | Activation accepts any non-negative `position_imr`, even one that later blocks operations inside the band | Source fix under review (ADR 0124); venue execution remains a release gate |
+| 13 | L-4 | Low | Donated cash is never allocated to the position, so the core counts margin the venue does not see | Resolved in source (PR #118, ADR 0124); venue execution remains a release gate |
+| 14 | L-5 | Low | Activation accepts any non-negative `position_imr`, even one that later blocks operations inside the band | Resolved in source (PR #118, ADR 0124); venue execution remains a release gate |
 | 15 | L-6 | Low | An emergency rebalance that stops just under the cap can fail the minimum-improvement check and revert every time | Open |
 | 16 | L-7 | Low | One single-key address holds all root, issuance and upgrade authority | Open (custody and deployment records) |
 | 17 | L-8 | Low | Emergency rebalance is refused when the venue mark diverges from spot, even though it never uses the mark | Open |
@@ -181,8 +181,8 @@ funding is booked separately, and recording recovery requires no opening-margin
 headroom. Fresh Fable review found no blocking source issue; see the
 [review record](boosts-m1-recovery-2026-10-24.md).
 RiskAdmin must verify the cause, and real venue-event/recovery execution remains
-a release gate. M-5's independent restriction on reducing trades is unchanged;
-shutdown remains available. This is source resolution, not Asymptotic sign-off,
+a release gate. M-5's independent restriction on reducing trades is addressed
+by ADR 0124; shutdown remains available. This is source resolution, not Asymptotic sign-off,
 a live NVDA fix or a claim that every distressed vault can resume trading.
 The historical finding and recommendation below are preserved.
 
@@ -420,7 +420,7 @@ current price.
 
 ### Ticket 5 · M-5 · Below the opening margin, the emergency rebalance that should fix it is refused
 
-**Status:** source fix under review with M-5/L-4/L-5; see [ADR 0124](../decisions/0124-margin-recovery-and-initial-headroom.md). Reductions and partial donations need no opening margin; donations are allocated to the position; issuance checks the live market floor and a conservative policy-owned cushion. The historical finding and auditor recommendation below are preserved. The cushion replaces L-5's inverse equality to meet M-5's headroom requirement; it is conditional, not a permanent margin guarantee. This is not original-auditor sign-off or deployment evidence.
+**Status:** resolved in source through [PR #118](https://github.com/interest-protocol/blast-v2-contracts/pull/118) and accepted [ADR 0124](../decisions/0124-margin-recovery-and-initial-headroom.md), with 1,165 passing Move tests and the [final Fable review](boosts-m5-margin-2026-10-24.md). Reductions and partial donations need no opening margin; donations are allocated to the position; issuance checks the live market floor and a conservative policy-owned cushion. The historical finding and auditor recommendation below are preserved. The cushion replaces L-5's inverse equality to meet M-5's headroom requirement; it is conditional, not a permanent margin guarantee. This is not original-auditor sign-off or deployment evidence.
 
 **The problem.** Every priced path, including `rebalance` and its fills,
 `donate`, `mint` and `redeem`, builds its observation through
@@ -788,7 +788,7 @@ succeeds.
 
 ### Ticket 13 · L-4 · Donated cash is never allocated to the position
 
-**Status:** source fix under review with M-5/L-4/L-5; see [ADR 0124](../decisions/0124-margin-recovery-and-initial-headroom.md). Reductions and partial donations need no opening margin; donations are allocated to the position; issuance checks the live market floor and a conservative policy-owned cushion. The historical finding and auditor recommendation below are preserved. The cushion replaces L-5's inverse equality to meet M-5's headroom requirement; it is conditional, not a permanent margin guarantee. This is not original-auditor sign-off or deployment evidence.
+**Status:** resolved in source through [PR #118](https://github.com/interest-protocol/blast-v2-contracts/pull/118) and accepted [ADR 0124](../decisions/0124-margin-recovery-and-initial-headroom.md), with 1,165 passing Move tests and the [final Fable review](boosts-m5-margin-2026-10-24.md). Reductions and partial donations need no opening margin; donations are allocated to the position; issuance checks the live market floor and a conservative policy-owned cushion. The historical finding and auditor recommendation below are preserved. The cushion replaces L-5's inverse equality to meet M-5's headroom requirement; it is conditional, not a permanent margin guarantee. This is not original-auditor sign-off or deployment evidence.
 
 **The problem.** `donate` deposits the coin into the Aftermath account's free
 balance and stops. Unlike `fund_mint`, nothing allocates it to the position,
@@ -823,7 +823,7 @@ as allocated position collateral.
 
 ### Ticket 14 · L-5 · Activation accepts any non-negative position IMR
 
-**Status:** source fix under review with M-5/L-4/L-5; see [ADR 0124](../decisions/0124-margin-recovery-and-initial-headroom.md). Reductions and partial donations need no opening margin; donations are allocated to the position; issuance checks the live market floor and a conservative policy-owned cushion. The historical finding and auditor recommendation below are preserved. The cushion replaces L-5's inverse equality to meet M-5's headroom requirement; it is conditional, not a permanent margin guarantee. This is not original-auditor sign-off or deployment evidence.
+**Status:** resolved in source through [PR #118](https://github.com/interest-protocol/blast-v2-contracts/pull/118) and accepted [ADR 0124](../decisions/0124-margin-recovery-and-initial-headroom.md), with 1,165 passing Move tests and the [final Fable review](boosts-m5-margin-2026-10-24.md). Reductions and partial donations need no opening margin; donations are allocated to the position; issuance checks the live market floor and a conservative policy-owned cushion. The historical finding and auditor recommendation below are preserved. The cushion replaces L-5's inverse equality to meet M-5's headroom requirement; it is conditional, not a permanent margin guarantee. This is not original-auditor sign-off or deployment evidence.
 
 **The problem.** `initialize` takes `position_imr` as a free issuer input,
 checks only that it is non-negative and unchanged by the seed orders, then
