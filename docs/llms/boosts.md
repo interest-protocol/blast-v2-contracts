@@ -926,7 +926,7 @@ types below from the adapter's `events` module (for example
 | `Donated` | `donate` | amount, reserve after. |
 | `ShutdownBegun` | `begin_shutdown` | declared reason. |
 | `ProtectedShutdownBegun` | `begin_protected_shutdown` | accepted raw checkpoint, total supply and locked shares. |
-| `UnwindProgress` | `unwind` | adopted before checkpoint, after checkpoint, orders placed (`market_orders`), filled quote (`none` for settlement-price closes). |
+| `UnwindProgress` | `unwind` | live pre-close capture, after checkpoint, orders placed (`market_orders`), filled quote (`none` for settlement-price closes). For a direct settlement, the preceding `FundingSettled` already advances the reducer to the after checkpoint; the pre-close capture may differ from the previously stored checkpoint. |
 | `ShutdownFinalized` | `finalize_shutdown` | total recovered cash, eligible supply, final checkpoint, raw unrecoverable remainder (below one atom), protected reserve and seed cash (both zero for admin shutdown). Subtract protected cash to replay the holder pool. |
 | `ShutdownRedeemed` | `redeem_shutdown` | shares, cash paid, cash and eligible supply remaining. |
 | `FeesUpdated`, `NavCapUpdated`, `MaxOrderNotionalUpdated` | admin calls | previous and new values. |

@@ -3817,9 +3817,14 @@ fun a4_net_close(external_cost: bool, external: u256, local: u256) {
     let before = a4_checkpoint(ONE_FIXED, before_allocated, snapshot, market, 0);
     let after = a4_checkpoint(0, 0, market, market, 1_000);
     let mut vault = issue_and_begin_shutdown(&mut fixture, stored);
+    let mut replay = replay_issued(events::collect_one<events::VaultIssued<Product>>(0));
+    replay.replay_initialized(events::collect_one<events::VaultInitialized<Product>>(0));
+    replay.replay_shutdown(events::collect_one<events::ShutdownBegun<Product>>(0));
     vault.complete_settlement_unwind_for_testing(before, after, ONE_FIXED);
+    let funding = events::collect<events::FundingSettled<Product>>();
+    assert_eq!(funding.length(), 1);
     let (_, cost, raw, amount, absorbed, uncovered, restored, reserve, previous, checkpoint) =
-        events::collect_one<events::FundingSettled<Product>>(0).funding_settled_fields();
+        funding[0].funding_settled_fields();
     let rounded = (magnitude / ATOM_FIXED + if (net_cost && magnitude % ATOM_FIXED != 0) { 1 } else { 0 }) as u64;
     assert_eq!(cost, net_cost && magnitude > 0);
     assert_eq!(raw, magnitude);
@@ -3830,6 +3835,16 @@ fun a4_net_close(external_cost: bool, external: u256, local: u256) {
     assert_eq!(vault.state().maintenance_reserve(), reserve);
     assert_eq!(previous, stored);
     assert_eq!(checkpoint, after);
+    replay.replay_funding(funding[0]);
+    replay.assert_replay(&vault);
+    let (id, observed, closed, orders, quote) =
+        events::collect_one<events::UnwindProgress<Product>>(0).unwind_progress_fields();
+    assert_eq!(id, vault.id());
+    assert_eq!(observed, before);
+    assert!(observed != stored);
+    assert_eq!(closed, *replay.checkpoint.borrow());
+    assert_eq!(orders, 0);
+    assert!(quote.is_none());
     assert!(events::collect<events::CheckpointDrifted<Product>>().is_empty());
     destroy(vault);
     fixture.end();
@@ -3882,7 +3897,6 @@ fun a4_protected_close(short: bool, cost: bool) {
     destroy(vault);
     fixture.end();
 }
-
 
 /// Authenticated raw-capture seam: no live price, NAV, mark or margin validation.
 /// The fixture deliberately has no equity and unusable margins. Real venue execution
@@ -4736,18 +4750,20 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
     let flat = checkpoint::checkpoint_for_testing(12, 1_000_000_000_001, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 1, false, 1, 1, 1);
     vault.complete_settlement_unwind_for_testing(dirty, flat, ONE_FIXED);
+    replay.replay_drift(events::collect<events::CheckpointDrifted<Tag>>()[1]);
+    replay.replay_funding(events::collect_one<events::FundingSettled<Tag>>(0));
     let (_, before, after, orders, quote) = events::collect_one<events::UnwindProgress<Tag>>(0).unwind_progress_fields();
     assert_eq!(before, dirty);
     assert_eq!(orders, 0);
     assert!(quote.is_none());
-    replay.checkpoint = option::some(after);
+    assert_eq!(*replay.checkpoint.borrow(), after);
+    assert!(replay.unresolved_checkpoint.is_none());
     let final_checkpoint = checkpoint::checkpoint_for_testing(0, 1, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 1, false, 1, 1, 1);
     let recovered = sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!());
     flat.assert_terminal_withdrawal_checkpoint_decoded_for_testing(&final_checkpoint, recovered.value(), false, 1_000_000_000_001);
     vault.complete_finalization_for_testing(final_checkpoint, recovered);
     assert_eq!(events::collect<events::CheckpointDrifted<Tag>>().length(), 2);
-    replay.unresolved_checkpoint = option::none();
     replay.replay_finalization(events::collect_one<events::ShutdownFinalized<Tag>>(0));
     assert_eq!(replay.protected_cash, 0);
     assert_eq!(replay.unrecoverable_collateral_raw, 1);

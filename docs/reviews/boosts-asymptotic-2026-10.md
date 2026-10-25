@@ -113,7 +113,7 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | 22 | A-1 | Advisory | `ifixed_math::to_u64` is wider than its callers | Resolved in source (PR #128), Opus 5.5 reviewed; original-auditor acceptance remains |
 | 23 | A-2 | Advisory | `needs_rebalance` prices post-settlement equity against the pre-settlement reserve | Resolved in source (merged PR #129, ADR 0131); Opus 5.5 reviewed; local checks accepted |
 | 24 | A-3 | Advisory | `needs_rebalance` skips the venue-fee check `rebalance` enforces | Resolved in source by L3 (merged PR #120); Sol 6.1 rechecked |
-| 25 | A-4 | Advisory | Settlement unwind adopts the venue checkpoint without booking funding | Implemented in proposed source (ADR 0132); local checks pass, Opus 5.5 review pending |
+| 25 | A-4 | Advisory | Settlement unwind adopts the venue checkpoint without booking funding | Resolved in proposed source (ADR 0132); local checks pass, Opus 5.5 reviewed; merge pending |
 | 26 | A-5 | Advisory | Nothing in the type system forces a fill to be proven against the checkpoint | Open |
 | 27 | A-6 | Advisory | The products package's UpgradeCap and Publisher are plain owned objects on the deployer key | Open |
 | 28 | A-7 | Advisory | NAV above the cap can push the target notional past `u64` and abort increases | Open |
@@ -1317,12 +1317,17 @@ market state, or narrow its documentation to what it checks.
 
 ### Ticket 25 · A-4 · Settlement unwind adopts the venue checkpoint without booking funding
 
-**Status:** implemented in proposed source under [ADR 0132](../decisions/0132-closed-market-funding-accounting.md).
+**Status:** resolved in proposed source under [ADR 0132](../decisions/0132-closed-market-funding-accounting.md).
 The original regression fails before the fix and passes after it. All local gates pass: 576 adapter Move tests (44 new A4 cases), 5 downstream
 tests, 28 Node tests, 11 ABI self-tests, live read-only ABI checks for 5
 packages/75 functions, 22 proof self-tests, 10 repository tests, source routing
-mutations, style and generated references. Fresh Opus 5.5 review is pending. No deployment or original-auditor
-acceptance is claimed.
+mutations, style and generated references. Fresh Opus 5.5 review found no
+remaining actionable findings after the event-documentation/replay follow-up.
+That follow-up passed all 44 A4 and 2 terminal-reducer tests plus generated
+references, style and diff checks; production Move source stayed unchanged.
+Fresh pinned mainnet bytecode confirms the settlement funding call chain and
+rounding, recorded in research F5. Merge remains pending. No deployment or
+original-auditor acceptance is claimed.
 
 **The problem at audit time.** Closed-market unwind adopted the final venue
 checkpoint without booking funding settled inside that close. This left reserve,
