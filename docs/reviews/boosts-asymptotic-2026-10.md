@@ -111,9 +111,9 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | 20 | L-11 | Low | Once the position shrinks below one minimum order, nobody can redeem | Resolved in source (PR #126, ADR 0130), Opus 5.5 reviewed; live execution and auditor acceptance remain |
 | 21 | L-12 | Low | The funding-credit conservation check can overflow on a state that fits | Resolved in source (PR #127), Opus 5.5 reviewed; original-auditor acceptance remains |
 | 22 | A-1 | Advisory | `ifixed_math::to_u64` is wider than its callers | Resolved in source (PR #128), Opus 5.5 reviewed; original-auditor acceptance remains |
-| 23 | A-2 | Advisory | `needs_rebalance` prices post-settlement equity against the pre-settlement reserve | Resolved in proposed source (PR #129, ADR 0131), Opus 5.5 reviewed; merge pending hosted CI |
-| 24 | A-3 | Advisory | `needs_rebalance` skips the venue-fee check `rebalance` enforces | Open |
-| 25 | A-4 | Advisory | Settlement unwind adopts the venue checkpoint without booking funding | Partly fixed (ADR 0115): pause-mode mismatch gone; post-close funding still unbooked |
+| 23 | A-2 | Advisory | `needs_rebalance` prices post-settlement equity against the pre-settlement reserve | Resolved in source (merged PR #129, ADR 0131); Opus 5.5 reviewed; local checks accepted |
+| 24 | A-3 | Advisory | `needs_rebalance` skips the venue-fee check `rebalance` enforces | Resolved in source by L3 (merged PR #120); Sol 6.1 rechecked |
+| 25 | A-4 | Advisory | Settlement unwind adopts the venue checkpoint without booking funding | Implemented in proposed source (ADR 0132); local checks pass, Opus 5.5 review pending |
 | 26 | A-5 | Advisory | Nothing in the type system forces a fill to be proven against the checkpoint | Open |
 | 27 | A-6 | Advisory | The products package's UpgradeCap and Publisher are plain owned objects on the deployer key | Open |
 | 28 | A-7 | Advisory | NAV above the cap can push the target notional past `u64` and abort increases | Open |
@@ -1252,8 +1252,9 @@ same module called it.
 
 **Status:** resolved in proposed source in [PR #129](https://github.com/interest-protocol/blast-v2-contracts/pull/129),
 independently reviewed by Opus 5.5 with no actionable findings after follow-up.
-Merge remains pending because hosted checks could not start due to account
-billing/spending limits. Original-auditor acceptance remains pending.
+Merged with explicit user acceptance of passing local checks; hosted checks
+could not start due to account billing/spending limits. The merged tree matches
+the reviewed head. Original-auditor acceptance remains pending.
 
 Validation: the full gate passed 848 core Move tests, 533 adapter tests and 5
 downstream tests, including the initial 16 A2 tests. Review added 5 core cases;
@@ -1296,6 +1297,12 @@ reserve before the band test, so the dry run prices the same pair as
 
 ### Ticket 24 · A-3 · `needs_rebalance` omits the venue-fee abort that `rebalance` enforces
 
+**Status:** resolved in source by the L3 fix in merged [PR #120](https://github.com/interest-protocol/blast-v2-contracts/pull/120).
+Fresh Sol 6.1 consultation confirmed both preview and execution consume
+`live_venue_fee_bps`; helper tests and public-routing mutation checks cover the
+shared rejection. This follows the auditor's code recommendation. No additional
+A3 implementation is included with A4. Original-auditor acceptance is separate.
+
 **The problem.** `rebalance` reads the market's taker fee and aborts with
 `venue_fee_unusable` when it exceeds 1.0; the dry run never makes that call,
 so on such a market it returns true while `rebalance` aborts before any order.
@@ -1310,28 +1317,50 @@ market state, or narrow its documentation to what it checks.
 
 ### Ticket 25 · A-4 · Settlement unwind adopts the venue checkpoint without booking funding
 
-**Status:** partly fixed by ADR 0115 (the pause-mode mismatch before the close
-no longer classifies as `Unexpected`). The post-close half is open.
+**Status:** implemented in proposed source under [ADR 0132](../decisions/0132-closed-market-funding-accounting.md).
+The original regression fails before the fix and passes after it. All local gates pass: 576 adapter Move tests (44 new A4 cases), 5 downstream
+tests, 28 Node tests, 11 ABI self-tests, live read-only ABI checks for 5
+packages/75 functions, 22 proof self-tests, 10 repository tests, source routing
+mutations, style and generated references. Fresh Opus 5.5 review is pending. No deployment or original-auditor
+acceptance is claimed.
 
-**The problem.** When `unwind` finds the market paused for settlement,
-`unwind_settlement` closes the position at the venue's settlement prices and
-`complete_unwind` adopts the new checkpoint unconditionally. Funding settled
-inside the venue's close is never classified, so it bypasses `settle_funding`
-and the `FundingSettled` event, leaving the reserve and deficit books stale.
-Holder payouts are unaffected: finalization zeroes the reserve and seals
-recovered cash for pro-rata claims. The impact is confined to the core's
-funding books and event stream.
+**The problem at audit time.** Closed-market unwind adopted the final venue
+checkpoint without booking funding settled inside that close. This left reserve,
+deficit and funding events stale. The original audit's statement that holder
+payouts were unaffected applied to administrator-approved shutdown. Since L11
+introduced protected shutdown (ADR 0130), the recorded reserve also determines
+how recovered cash is split between holders and protected funds.
 
-**Where.** [operations::unwind_settlement](../../sui/boosts/aftermath_adapter/sources/operations.move#L881)
-and [operations::complete_unwind](../../sui/boosts/aftermath_adapter/sources/operations.move#L957).
+**Auditor recommendation.** Book the net funding through the canonical funding
+accounting before adopting the post-close checkpoint, exactly once.
 
-**Fix.** Before `complete_unwind` adopts the post-close checkpoint, classify
-it against the stored one (funding snapshots refreshed, collateral moved by
-the settlement) and book the net through `settle_net_funding`, so every venue
-funding change reaches the books and the event stream exactly once.
+**Implementation and refinement.** Follow that recommendation. Derive the
+funding component from the authenticated live pre-close position, held-side
+funding rates and enabled settlement collateral price, reusing the existing
+venue calculation and preserving the direct-close proof. A generic checkpoint
+classifier cannot classify a close that also changes position and free cash;
+the final cash difference also includes trading PnL, insurance and collateral
+release. Those amounts must not be called funding.
 
-**Tests.** A paused-market fixture with funding owed at close: `FundingSettled`
-is emitted and the reserve moves by the settled amount.
+Net attributable stored-to-live and closing funding in raw units, then round
+and allocate once. Report unexplained history separately and book only proven
+local funding from the reported live baseline. Emit `FundingSettled` before
+`UnwindProgress`; the funding event's final checkpoint includes the close, but
+its explicit funding fields alone affect reserves. Protected finalization uses
+that corrected reserve; starter funds and reserves retain their locked custody.
+
+**Limits.** Unknown historical changes remain unresolved. Venue availability,
+settlement readiness and arithmetic bounds can still block an exit. An
+unrepresentable net or accounting overflow aborts instead of silently skipping
+known funding. Local fixtures and read-only ABI checks do not prove live venue
+execution; the existing release gates still apply.
+
+**Tests.** Both position sides and funding directions, settlement-price
+selection and venue rounding, offsetting intervals before atom conversion,
+reserve exhaustion/deficit repayment, unrelated recovered cash, unexplained
+history, protected finalization and all-holder claims, event replay, repeated
+close and exact invalid-state errors. A mutation-tested source gate protects
+the external call routing that abort-only venue interfaces cannot execute.
 
 ### Ticket 26 · A-5 · Nothing forces a fill to be proven against the checkpoint
 

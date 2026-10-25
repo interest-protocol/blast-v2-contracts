@@ -784,6 +784,328 @@ fun finalization_cannot_recover_terminal_cash_twice() {
 }
 
 #[test]
+fun a4_direct_funding_uses_the_held_side_and_rounds_like_the_venue() {
+    // Different rates on each side expose selection errors. One raw base unit
+    // times a one-unit rate difference at price 2 has magnitude 1/2 raw unit.
+    // The venue rounds that cost up to 1, and that credit down to zero.
+    vector[false, true].do!(|short| {
+        vector[false, true].do!(|cost| {
+            let base = a4_signed(1, short);
+            let held_rate = a4_signed(1, short == cost);
+            let (long_rate, short_rate) = if (short) { (100, held_rate) } else { (held_rate, 100) };
+            let before = checkpoint::checkpoint_for_testing(0, ATOM_FIXED, base, base,
+                0, 0, long_rate, short_rate, LOT_SIZE, 0, 0, 0, 1, false, 1, 1, 1);
+            let after = checkpoint::checkpoint_for_testing(0, 0, 0, 0,
+                long_rate, short_rate, long_rate, short_rate, LOT_SIZE, 0, 0, 0, 1, false, 1, 1, 1);
+            let change = before.direct_settlement_funding(&after, 2);
+            assert!(change.is_clean());
+            assert_eq!(change.is_cost(), cost);
+            assert_eq!(change.raw_amount(), if (cost) { 1 } else { 0 });
+            assert_eq!(change.amount(), if (cost) { 1 } else { 0 });
+        });
+    });
+}
+
+#[test]
+fun a4_long_credit_one_atom_uses_settlement_price() {
+    a4_book_close(false, false, 1, false, 990);
+}
+
+#[test]
+fun a4_long_credit_above_reserve_uses_settlement_price() {
+    a4_book_close(false, false, 150, false, 990);
+}
+
+#[test]
+fun a4_long_credit_with_uncovered_deficit_uses_settlement_price() {
+    a4_book_close(false, false, 10, true, 990);
+}
+
+#[test]
+fun a4_long_credit_beyond_deficit_uses_settlement_price() {
+    a4_book_close(false, false, 150, true, 990);
+}
+
+#[test]
+fun a4_long_cost_one_atom_uses_settlement_price() {
+    a4_book_close(false, true, 1, false, 990);
+}
+
+#[test]
+fun a4_long_cost_above_reserve_uses_settlement_price() {
+    a4_book_close(false, true, 150, false, 990);
+}
+
+#[test]
+fun a4_long_cost_with_uncovered_deficit_uses_settlement_price() {
+    a4_book_close(false, true, 10, true, 990);
+}
+
+#[test]
+fun a4_long_cost_beyond_deficit_uses_settlement_price() {
+    a4_book_close(false, true, 150, true, 990);
+}
+
+#[test]
+fun a4_short_credit_one_atom_uses_settlement_price() {
+    a4_book_close(true, false, 1, false, 990);
+}
+
+#[test]
+fun a4_short_credit_above_reserve_uses_settlement_price() {
+    a4_book_close(true, false, 150, false, 990);
+}
+
+#[test]
+fun a4_short_credit_with_uncovered_deficit_uses_settlement_price() {
+    a4_book_close(true, false, 10, true, 990);
+}
+
+#[test]
+fun a4_short_credit_beyond_deficit_uses_settlement_price() {
+    a4_book_close(true, false, 150, true, 990);
+}
+
+#[test]
+fun a4_short_cost_one_atom_uses_settlement_price() {
+    a4_book_close(true, true, 1, false, 990);
+}
+
+#[test]
+fun a4_short_cost_above_reserve_uses_settlement_price() {
+    a4_book_close(true, true, 150, false, 990);
+}
+
+#[test]
+fun a4_short_cost_with_uncovered_deficit_uses_settlement_price() {
+    a4_book_close(true, true, 10, true, 990);
+}
+
+#[test]
+fun a4_short_cost_beyond_deficit_uses_settlement_price() {
+    a4_book_close(true, true, 150, true, 990);
+}
+
+#[test]
+fun a4_insurance_exhaustion_is_not_counted_as_funding() {
+    a4_book_close(false, true, 10, false, 0);
+}
+
+#[test]
+fun a4_trading_loss_is_not_counted_as_funding() {
+    a4_book_close(false, true, 10, false, 890);
+}
+
+#[test]
+fun a4_trading_profit_is_not_counted_as_funding() {
+    a4_book_close(false, true, 10, false, 1090);
+}
+
+#[test]
+fun a4_zero_funding_still_records_the_completed_close() {
+    a4_book_close(false, false, 0, false, 1000);
+}
+
+#[test]
+fun a4_prior_credit_and_closing_funding_net_one_atom() {
+    a4_net_close(false, 3 * ATOM_FIXED / 2, ATOM_FIXED / 2);
+}
+
+#[test]
+fun a4_prior_credit_and_closing_funding_cancel_before_rounding() {
+    a4_net_close(false, 3 * ATOM_FIXED / 2, 3 * ATOM_FIXED / 2);
+}
+
+#[test]
+fun a4_prior_credit_and_closing_funding_opposite_net() {
+    a4_net_close(false, ATOM_FIXED / 2, 3 * ATOM_FIXED / 2);
+}
+
+#[test]
+fun a4_prior_credit_and_closing_funding_one_raw_remainder() {
+    a4_net_close(false, ATOM_FIXED + 1, ATOM_FIXED);
+}
+
+#[test]
+fun a4_prior_credit_and_closing_funding_opposite_raw_remainder() {
+    a4_net_close(false, ATOM_FIXED, ATOM_FIXED + 1);
+}
+
+#[test]
+fun a4_prior_cost_and_closing_funding_net_one_atom() {
+    a4_net_close(true, 3 * ATOM_FIXED / 2, ATOM_FIXED / 2);
+}
+
+#[test]
+fun a4_prior_cost_and_closing_funding_cancel_before_rounding() {
+    a4_net_close(true, 3 * ATOM_FIXED / 2, 3 * ATOM_FIXED / 2);
+}
+
+#[test]
+fun a4_prior_cost_and_closing_funding_opposite_net() {
+    a4_net_close(true, ATOM_FIXED / 2, 3 * ATOM_FIXED / 2);
+}
+
+#[test]
+fun a4_prior_cost_and_closing_funding_one_raw_remainder() {
+    a4_net_close(true, ATOM_FIXED + 1, ATOM_FIXED);
+}
+
+#[test]
+fun a4_prior_cost_and_closing_funding_opposite_raw_remainder() {
+    a4_net_close(true, ATOM_FIXED, ATOM_FIXED + 1);
+}
+
+#[test]
+fun a4_unrepresentable_gross_funding_can_cancel_before_conversion() {
+    let gross = ((std::u64::max_value!() as u256) + 1) * ATOM_FIXED;
+    a4_net_close(false, gross, gross);
+}
+
+#[test]
+fun a4_unknown_history_still_exits_and_books_only_proven_closing_funding() {
+    let mut fixture = start();
+    let stored = a4_checkpoint(ONE_FIXED, ALLOCATED_FIXED, 0, 0, 0);
+    let market = 40 * ATOM_FIXED;
+    let before = a4_checkpoint(ONE_FIXED / 2, 500 * ATOM_FIXED, 0, market, 0);
+    let after = a4_checkpoint(0, 0, market, market, 490);
+    let mut vault = issue_and_begin_shutdown(&mut fixture, stored);
+    let mut replay = replay_issued(events::collect_one<events::VaultIssued<Product>>(0));
+    replay.replay_initialized(events::collect_one<events::VaultInitialized<Product>>(0));
+    replay.replay_shutdown(events::collect_one<events::ShutdownBegun<Product>>(0));
+
+    vault.complete_settlement_unwind_for_testing(before, after, 2 * ONE_FIXED);
+
+    let drift = events::collect_one<events::CheckpointDrifted<Product>>(0);
+    let (id, observed) = drift.checkpoint_drifted_fields();
+    assert_eq!(id, vault.id());
+    assert_eq!(observed, before);
+    replay.replay_drift(drift);
+    let funding = events::collect_one<events::FundingSettled<Product>>(0);
+    let (_, _, raw, amount, _, _, _, reserve, previous, checkpoint) = funding.funding_settled_fields();
+    assert_eq!(raw, 10 * ATOM_FIXED);
+    assert_eq!(vector[amount, reserve], vector[10, 90]);
+    assert_eq!(previous, before);
+    assert_eq!(checkpoint, after);
+    replay.replay_funding(funding);
+    replay.assert_replay(&vault);
+    assert_eq!(*vault.venue().checkpoint(), after);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+fun a4_protected_long_credit_keeps_starter_cash_locked() {
+    a4_protected_close(false, false);
+}
+
+#[test]
+fun a4_protected_long_cost_keeps_starter_cash_locked() {
+    a4_protected_close(false, true);
+}
+
+#[test]
+fun a4_protected_short_credit_keeps_starter_cash_locked() {
+    a4_protected_close(true, false);
+}
+
+#[test]
+fun a4_protected_short_cost_keeps_starter_cash_locked() {
+    a4_protected_close(true, true);
+}
+
+#[test]
+fun a4_flat_collateral_release_does_not_create_funding() {
+    let mut fixture = start();
+    let before = a4_checkpoint(0, ALLOCATED_FIXED, 0, ONE_FIXED, 0);
+    let after = a4_checkpoint(0, 0, ONE_FIXED, ONE_FIXED, 1_000);
+    let mut vault = issue_and_begin_shutdown(&mut fixture, before);
+    vault.complete_settlement_unwind_for_testing(before, after, ONE_FIXED);
+    let (_, _, raw, amount, _, _, _, reserve, _, _) =
+        events::collect_one<events::FundingSettled<Product>>(0).funding_settled_fields();
+    assert_eq!(raw, 0);
+    assert_eq!(vector[amount, reserve], vector[0, SEED_RESERVE]);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
+fun a4_repeated_settlement_cannot_book_funding_twice() {
+    let mut fixture = start();
+    let before = closed_checkpoint();
+    let after = settled_flat_checkpoint();
+    let mut vault = issue_and_begin_shutdown(&mut fixture, before);
+    vault.complete_settlement_unwind_for_testing(before, after, ONE_FIXED);
+    vault.complete_settlement_unwind_for_testing(after, after, ONE_FIXED);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
+fun a4_invalid_settlement_price_is_rejected_before_any_accounting() {
+    let mut fixture = start();
+    let before = closed_checkpoint();
+    let mut vault = issue_and_begin_shutdown(&mut fixture, before);
+    vault.complete_settlement_unwind_for_testing(before, settled_flat_checkpoint(), 0);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::checkpoint)]
+fun a4_unrefreshed_funding_snapshot_cannot_be_booked() {
+    let mut fixture = start();
+    let before = a4_checkpoint(ONE_FIXED, ALLOCATED_FIXED, 0, ATOM_FIXED, 0);
+    let after = a4_checkpoint(0, 0, 0, ATOM_FIXED, 999);
+    let mut vault = issue_and_begin_shutdown(&mut fixture, before);
+    vault.complete_settlement_unwind_for_testing(before, after, ONE_FIXED);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EUnresolvedCheckpoint, location = blast_boosts_aftermath::operations)]
+fun a4_unrepresentable_net_funding_is_not_silently_skipped() {
+    let mut fixture = start();
+    let market = ((std::u64::max_value!() as u256) + 1) * ATOM_FIXED;
+    let before = a4_checkpoint(ONE_FIXED, ALLOCATED_FIXED, 0, market, 0);
+    let after = a4_checkpoint(0, 0, market, market, 0);
+    let mut vault = issue_and_begin_shutdown(&mut fixture, before);
+    vault.complete_settlement_unwind_for_testing(before, after, ONE_FIXED);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = blast_boosts_core::errors::EOperationNotPermittedInLifecycle, location = blast_boosts_core::lifecycle)]
+fun a4_closing_accounting_requires_shutdown_before_venue_validation() {
+    let mut fixture = start();
+    let before = initial_checkpoint();
+    let mut vault = issue_and_activate(&mut fixture, before);
+    vault.complete_settlement_unwind_for_testing(before, before, 0);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
+fun a4_direct_settlement_books_the_funding_cost_before_adopting_the_close() {
+    let mut fixture = start();
+    let market = RATE + 10 * ATOM_FIXED;
+    let before = checkpoint::checkpoint_for_testing(0, ALLOCATED_FIXED, ONE_FIXED, ONE_FIXED,
+        RATE, RATE, market, market, LOT_SIZE, 0, 0, 0, 1, false, 1, 1, 1);
+    let after = checkpoint::checkpoint_for_testing(990, 0, 0, 0,
+        market, market, market, market, LOT_SIZE, 0, 0, 0, 1, false, 1, 1, 1);
+    let mut vault = issue_and_begin_shutdown(&mut fixture, before);
+    vault.complete_settlement_unwind_for_testing(before, after, ONE_FIXED);
+    assert_eq!(vault.state().maintenance_reserve(), 90);
+    assert_eq!(events::collect<events::FundingSettled<Product>>().length(), 1);
+    destroy(vault);
+    fixture.end();
+}
+
+#[test]
 fun completed_direct_settlement_reports_actual_cash_and_no_market_order() {
     let mut fixture = start();
     let before = checkpoint::checkpoint_for_testing(0, 0, 1, 1, 11, 21, 11, 21, LOT_SIZE,
@@ -792,7 +1114,7 @@ fun completed_direct_settlement_reports_actual_cash_and_no_market_order() {
         0, 0, 0, 1, false, 1, 1, 1);
     let mut vault = issue_and_activate(&mut fixture, before);
     fixture.begin_shutdown_at_reference(&mut vault, blast_boosts_core::lifecycle::emergency_reason());
-    vault.complete_unwind_for_testing(before, after, 0, option::none());
+    vault.complete_settlement_unwind_for_testing(before, after, ONE_FIXED);
     let event = events::collect_one<events::UnwindProgress<Product>>(0);
     let (id, observed, actual, orders, quote) = event.unwind_progress_fields();
     assert_eq!(id, vault.id());
@@ -3184,7 +3506,7 @@ fun completed_market_unwind_step_records_the_checkpoints_orders_and_quote() {
     let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
     let mut vault = issue_and_begin_shutdown(&mut fixture, before);
 
-    vault.complete_unwind_for_testing(before, after, 3, option::some(1_500));
+    vault.complete_market_unwind_for_testing(before, after, 3, 1_500);
 
     let (id, observed, actual, orders, quote) =
         events::collect_one<events::UnwindProgress<Product>>(0).unwind_progress_fields();
@@ -3207,8 +3529,8 @@ fun completed_market_unwind_step_accepts_the_maximum_order_count() {
     let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
     let mut vault = issue_and_begin_shutdown(&mut fixture, before);
 
-    vault.complete_unwind_for_testing(
-        before, after, constants::max_active_orders!(), option::some(1_500),
+    vault.complete_market_unwind_for_testing(
+        before, after, constants::max_active_orders!(), 1_500,
     );
 
     let (_, _, _, orders, _) = events::collect_one<events::UnwindProgress<Product>>(0).unwind_progress_fields();
@@ -3225,8 +3547,8 @@ fun completed_market_unwind_step_rejects_one_order_past_the_maximum() {
     let before = initial_checkpoint();
     let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
     let mut vault = issue_and_begin_shutdown(&mut fixture, before);
-    vault.complete_unwind_for_testing(
-        before, after, constants::max_active_orders!() + 1, option::some(1_500),
+    vault.complete_market_unwind_for_testing(
+        before, after, constants::max_active_orders!() + 1, 1_500,
     );
     destroy(vault);
     fixture.end();
@@ -3239,18 +3561,7 @@ fun completed_market_unwind_step_rejects_a_quote_without_orders() {
     let before = initial_checkpoint();
     let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
     let mut vault = issue_and_begin_shutdown(&mut fixture, before);
-    vault.complete_unwind_for_testing(before, after, 0, option::some(1_500));
-    destroy(vault);
-    fixture.end();
-}
-
-#[test]
-#[expected_failure(abort_code = errors::ETerminalVenueUnsettled, location = blast_boosts_aftermath::operations)]
-fun completed_direct_settlement_rejects_a_market_order() {
-    let mut fixture = start();
-    let before = closed_checkpoint();
-    let mut vault = issue_and_begin_shutdown(&mut fixture, before);
-    vault.complete_unwind_for_testing(before, settled_flat_checkpoint(), 1, option::none());
+    vault.complete_market_unwind_for_testing(before, after, 0, 1_500);
     destroy(vault);
     fixture.end();
 }
@@ -3261,7 +3572,7 @@ fun completed_direct_settlement_rejects_an_unpaused_market() {
     let mut fixture = start();
     let before = initial_checkpoint();
     let mut vault = issue_and_begin_shutdown(&mut fixture, before);
-    vault.complete_unwind_for_testing(before, settled_flat_checkpoint(), 0, option::none());
+    vault.complete_settlement_unwind_for_testing(before, settled_flat_checkpoint(), ONE_FIXED);
     destroy(vault);
     fixture.end();
 }
@@ -3273,7 +3584,7 @@ fun unwind_progress_is_rejected_while_active() {
     let before = initial_checkpoint();
     let after = checkpoint_with_market_imr(0, ALLOCATED_FIXED - ATOM_FIXED, RATE, RATE, RATE, RATE, 1);
     let mut vault = issue_and_activate(&mut fixture, before);
-    vault.complete_unwind_for_testing(before, after, 3, option::some(1_500));
+    vault.complete_market_unwind_for_testing(before, after, 3, 1_500);
     destroy(vault);
     fixture.end();
 }
@@ -3433,6 +3744,145 @@ fun net_funding_adds_two_costs_and_keeps_the_larger_side_of_a_cost_and_a_credit(
 }
 
 // === Test Helpers ===
+
+/// Same account shape on a closed market; raw signed values stay explicit.
+fun a4_checkpoint(base: u256, allocated: u256, snapshot: u256, market: u256, free: u64): Checkpoint {
+    checkpoint::checkpoint_for_testing(free, allocated, base, base, snapshot, snapshot, market, market,
+        LOT_SIZE, 0, 0, 0, 1, false, 1, 1, 1)
+}
+
+fun a4_signed(magnitude: u256, negative: bool): u256 {
+    if (negative && magnitude > 0) { std::u256::max_value!() - magnitude + 1 } else { magnitude }
+}
+
+fun a4_book_close(short: bool, cost: bool, amount: u64, with_deficit: bool, recovered: u64) {
+    let mut fixture = start();
+    let side = if (short) { policy::short() } else { policy::long() };
+    // The settlement collateral price is $2, independently of the fixture's $1 oracle.
+    let market = a4_signed((amount as u256) * ATOM_FIXED * 2, short == cost);
+    let before = a4_checkpoint(a4_signed(ONE_FIXED, short), ALLOCATED_FIXED, 0, market, 0);
+    let after = a4_checkpoint(0, 0, market, market, recovered);
+    let mut vault = issue_and_activate_product_with_side(&mut fixture, Product(), before,
+        standard_vault_policy_for_side(side), side);
+    if (with_deficit) { vault.state_mut().settle_funding(observation::funding_cost(150)); };
+    fixture.begin_shutdown_at_reference(&mut vault, blast_boosts_core::lifecycle::emergency_reason());
+    let reserve_before = vault.state().maintenance_reserve();
+    let deficit_before = vault.state().uncovered_deficit();
+    let mut replay = replay_issued(events::collect_one<events::VaultIssued<Product>>(0));
+    replay.replay_initialized(events::collect_one<events::VaultInitialized<Product>>(0));
+    replay.maintenance_reserve = reserve_before;
+    replay.replay_shutdown(events::collect_one<events::ShutdownBegun<Product>>(0));
+
+    vault.complete_settlement_unwind_for_testing(before, after, 2 * ONE_FIXED);
+
+    let funding = events::collect_one<events::FundingSettled<Product>>(0);
+    let (id, is_cost, raw, rounded, absorbed, uncovered, restored, reserve, previous, checkpoint) = funding.funding_settled_fields();
+    assert_eq!(id, vault.id());
+    assert_eq!(is_cost, cost && amount > 0);
+    assert_eq!(raw, (amount as u256) * ATOM_FIXED);
+    assert_eq!(rounded, amount);
+    assert_eq!(previous, before);
+    assert_eq!(checkpoint, after);
+    let expected_absorbed = if (cost) { amount.min(reserve_before) } else { 0 };
+    let expected_restored = if (cost) { 0 } else { amount.min(deficit_before) };
+    assert_eq!(absorbed, expected_absorbed);
+    assert_eq!(uncovered, if (cost) { amount - expected_absorbed } else { 0 });
+    assert_eq!(restored, expected_restored);
+    assert_eq!(reserve, if (cost) { reserve_before - expected_absorbed } else { reserve_before + amount - expected_restored });
+    assert_eq!(vault.state().uncovered_deficit(), deficit_before + uncovered - restored);
+    replay.replay_funding(funding);
+    replay.assert_replay(&vault);
+    let (id, observed, final_checkpoint, orders, quote) =
+        events::collect_one<events::UnwindProgress<Product>>(0).unwind_progress_fields();
+    assert_eq!(id, vault.id());
+    assert_eq!(observed, before);
+    assert_eq!(final_checkpoint, after);
+    assert_eq!(orders, 0);
+    assert!(quote.is_none());
+    assert!(events::collect<events::CheckpointDrifted<Product>>().is_empty());
+    destroy(vault);
+    fixture.end();
+}
+
+fun a4_net_close(external_cost: bool, external: u256, local: u256) {
+    let mut fixture = start();
+    // A large initial allocation admits the cancellation test without a liability.
+    let allocated = ALLOCATED_FIXED + external;
+    let stored = a4_checkpoint(ONE_FIXED, allocated, 0, 0, 0);
+    let snapshot = a4_signed(external, !external_cost);
+    let before_allocated = if (external_cost) { allocated - external } else { allocated + external };
+    let net_cost = if (external >= local) { external_cost } else { !external_cost };
+    let magnitude = external.diff(local);
+    let market = a4_signed(magnitude, !net_cost);
+    let before = a4_checkpoint(ONE_FIXED, before_allocated, snapshot, market, 0);
+    let after = a4_checkpoint(0, 0, market, market, 1_000);
+    let mut vault = issue_and_begin_shutdown(&mut fixture, stored);
+    vault.complete_settlement_unwind_for_testing(before, after, ONE_FIXED);
+    let (_, cost, raw, amount, absorbed, uncovered, restored, reserve, previous, checkpoint) =
+        events::collect_one<events::FundingSettled<Product>>(0).funding_settled_fields();
+    let rounded = (magnitude / ATOM_FIXED + if (net_cost && magnitude % ATOM_FIXED != 0) { 1 } else { 0 }) as u64;
+    assert_eq!(cost, net_cost && magnitude > 0);
+    assert_eq!(raw, magnitude);
+    assert_eq!(amount, rounded);
+    assert_eq!(absorbed, if (cost) { rounded } else { 0 });
+    assert_eq!(vector[uncovered, restored], vector[0, 0]);
+    assert_eq!(reserve, if (cost) { SEED_RESERVE - rounded } else { SEED_RESERVE + rounded });
+    assert_eq!(vault.state().maintenance_reserve(), reserve);
+    assert_eq!(previous, stored);
+    assert_eq!(checkpoint, after);
+    assert!(events::collect<events::CheckpointDrifted<Product>>().is_empty());
+    destroy(vault);
+    fixture.end();
+}
+
+fun a4_protected_close(short: bool, cost: bool) {
+    let mut fixture = start();
+    let side = if (short) { policy::short() } else { policy::long() };
+    let raw_base = 100_000_000_000;
+    let market = a4_signed(10 * ATOM_FIXED * 2 * ONE_FIXED / raw_base, short == cost);
+    let before = a4_checkpoint(a4_signed(raw_base, short), ALLOCATED_FIXED, 0, market, 0);
+    let after = a4_checkpoint(0, 0, market, market, 1_001);
+    let mut vault = issue_and_activate_product_with_side(&mut fixture, Product(), before,
+        standard_vault_policy_for_side(side), side);
+    let locked = vault.locked_shares();
+    let shares = vault.mint_shares(locked, fixture.ctx!());
+    let mut replay = replay_issued(events::collect_one<events::VaultIssued<Product>>(0));
+    replay.replay_initialized(events::collect_one<events::VaultInitialized<Product>>(0));
+    replay.supply = replay.supply + locked;
+    vault.begin_protected_shutdown_for_testing(&fixture.protocol, before, REFERENCE_AT_MS);
+    replay.replay_protected_shutdown(events::collect_one<events::ProtectedShutdownBegun<Product>>(0));
+    vault.complete_settlement_unwind_for_testing(before, after, 2 * ONE_FIXED);
+    replay.replay_funding(events::collect_one<events::FundingSettled<Product>>(0));
+    let reserve = if (cost) { 90 } else { 110 };
+    assert_eq!(vault.state().maintenance_reserve(), reserve);
+    let withdrawn = a4_checkpoint(0, 0, market, market, 0);
+    after.assert_terminal_withdrawal_checkpoint(&withdrawn, 1_001);
+    vault.complete_finalization_for_testing(withdrawn, sui::coin::mint_for_testing<Collateral>(1_001, fixture.ctx!()));
+    let finalized = events::collect_one<events::ShutdownFinalized<Product>>(0);
+    let (id, recovered, eligible, checkpoint, remainder, protected_reserve, protected_seed) = finalized.shutdown_finalized_fields();
+    assert_eq!(id, vault.id());
+    assert_eq!(recovered, 1_001);
+    assert_eq!(eligible, locked);
+    assert_eq!(checkpoint, withdrawn);
+    assert_eq!(remainder, 0);
+    assert_eq!(protected_reserve, reserve);
+    let holder_pool = (1_001 - reserve) / 2;
+    assert_eq!(protected_seed, 1_001 - reserve - holder_pool);
+    replay.replay_finalization(finalized);
+    let clock = reference_clock(&mut fixture);
+    let cash = vault.redeem_shutdown(&fixture.protocol, shares, holder_pool, REFERENCE_AT_MS, &clock, fixture.ctx!());
+    assert_eq!(cash.value(), holder_pool);
+    replay.replay_terminal_claim(events::collect_one<events::ShutdownRedeemed<Product>>(0));
+    assert_eq!(vault.terminal_cash_for_testing(), 0);
+    assert_eq!(vault.total_share_supply(), locked);
+    assert_eq!(vault.protected_cash_for_testing(), reserve + protected_seed);
+    replay.assert_replay(&vault);
+    destroy(cash);
+    destroy(clock);
+    destroy(vault);
+    fixture.end();
+}
+
 
 /// Authenticated raw-capture seam: no live price, NAV, mark or margin validation.
 /// The fixture deliberately has no equity and unusable margins. Real venue execution
@@ -4285,7 +4735,7 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
     replay.replay_shutdown(shutdown);
     let flat = checkpoint::checkpoint_for_testing(12, 1_000_000_000_001, 0, 0, 11, 21, 11, 21, LOT_SIZE,
         0, 0, 0, 1, false, 1, 1, 1);
-    vault.complete_unwind_for_testing(dirty, flat, 0, option::none());
+    vault.complete_settlement_unwind_for_testing(dirty, flat, ONE_FIXED);
     let (_, before, after, orders, quote) = events::collect_one<events::UnwindProgress<Tag>>(0).unwind_progress_fields();
     assert_eq!(before, dirty);
     assert_eq!(orders, 0);
@@ -4296,7 +4746,7 @@ fun replay_terminal_lifecycle<Tag: drop>(product: Tag, side: PositionSide) {
     let recovered = sui::coin::mint_for_testing<Collateral>(13, fixture.ctx!());
     flat.assert_terminal_withdrawal_checkpoint_decoded_for_testing(&final_checkpoint, recovered.value(), false, 1_000_000_000_001);
     vault.complete_finalization_for_testing(final_checkpoint, recovered);
-    assert_eq!(events::collect<events::CheckpointDrifted<Tag>>().length(), 1);
+    assert_eq!(events::collect<events::CheckpointDrifted<Tag>>().length(), 2);
     replay.unresolved_checkpoint = option::none();
     replay.replay_finalization(events::collect_one<events::ShutdownFinalized<Tag>>(0));
     assert_eq!(replay.protected_cash, 0);
@@ -4500,8 +4950,13 @@ fun assert_replay<Tag>(replay: &ReplayState, vault: &Vault<Tag, Collateral>) {
     let (mint, redeem, admin) = vault.fee_settings_for_testing();
     assert_eq!(replay.fees, vector[mint, redeem, admin]);
     assert_eq!(*replay.checkpoint.borrow(), *vault.venue().checkpoint());
-    assert_eq!(replay.lifecycle, 1);
-    assert!(!vault.is_unwinding_for_testing());
+    assert_eq!(replay.terminal_cash, vault.terminal_cash_for_testing());
+    match (replay.lifecycle) {
+        1 => vault.state().assert_active(),
+        2 => vault.state().assert_unwinding(),
+        3 => vault.state().assert_settled(),
+        _ => abort 0,
+    };
 }
 
 /// `VaultIssued` carries no Vault id: the Vault does not exist yet, and the
@@ -4571,7 +5026,11 @@ fun replay_funding<Tag>(
     let (vault_id, is_cost, raw_amount, amount, absorbed, uncovered, restored, reserve_after, previous_checkpoint, checkpoint) =
         event.funding_settled_fields();
     assert_eq!(vault_id, replay.vault_id);
-    assert_eq!(previous_checkpoint, *replay.checkpoint.borrow());
+    if (previous_checkpoint != *replay.checkpoint.borrow()) {
+        assert_eq!(replay.lifecycle, 2);
+        assert_eq!(previous_checkpoint, *replay.unresolved_checkpoint.borrow());
+        replay.unresolved_checkpoint = option::none();
+    };
     let rounded = raw_amount / ATOM_FIXED + if (is_cost && raw_amount % ATOM_FIXED > 0) { 1 } else { 0 };
     assert_eq!(amount as u256, rounded);
     let expected_absorbed = if (is_cost) { std::u64::min(amount, replay.maintenance_reserve) } else { 0 };
@@ -4818,7 +5277,9 @@ use fun operations::complete_rebalance_for_testing as Vault.complete_rebalance_f
 
 use fun operations::complete_redemption_for_testing as Vault.complete_redemption_for_testing;
 
-use fun operations::complete_unwind_for_testing as Vault.complete_unwind_for_testing;
+use fun operations::complete_market_unwind_for_testing as Vault.complete_market_unwind_for_testing;
+
+use fun operations::complete_settlement_unwind_for_testing as Vault.complete_settlement_unwind_for_testing;
 
 use fun operations::emit_vault_initialized_for_testing as Vault.emit_vault_initialized_for_testing;
 

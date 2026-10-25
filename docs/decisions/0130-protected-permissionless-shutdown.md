@@ -98,14 +98,14 @@ can intentionally leave a small circulating balance and make a genuine size
 lock reachable; anyone may then end the vault, but cannot confiscate its
 protected assets. New vault issuance is required to restart trading.
 
-For a closed market, direct settlement may settle outstanding funding without
-attributing that delta to the reserve book. Actual recovered cash remains exact,
-but protection uses the last recorded reserve, so the holder/reserve split can
-differ from a live-market synchronized close. If account funding was already
-settled just before the market paused, entry rejects until it can be reconciled;
+ADR 0132 books funding settled inside a closed-market direct close before
+finalization, so protected allocation uses that updated reserve. Unknown
+historical changes are reported separately and are not invented funding.
+If account funding was already settled just before the market paused,
+protected entry rejects until it can be reconciled;
 venue funding calls may then be unavailable. Legacy admin shutdown remains a
 separate fallback with its old distribution. These are not guaranteed-progress
-or funding-attribution claims.
+claims.
 
 The source and storage layouts are pre-publication changes, not a compatible
 upgrade to any published layout. Venue interface fixtures and local tests do

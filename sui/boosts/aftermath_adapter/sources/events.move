@@ -152,7 +152,10 @@ public struct ProfitRealized<phantom Product> has copy, drop {
 
 // --- Funding And Donation ---
 
-/// Emitted after one nonzero isolated funding change is reconciled.
+/// One completed attributable funding interval, netted and rounded once.
+/// During direct settlement, the endpoint also includes the close; only the
+/// explicit funding amounts affect reserves. A preceding terminal drift event
+/// identifies a live baseline when the historical interval was unexplained.
 public struct FundingSettled<phantom Product> has copy, drop {
     vault_id: ID,
     is_cost: bool,
