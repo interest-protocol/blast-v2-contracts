@@ -109,7 +109,7 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | 18 | L-9 | Low | Increase rebalances check the hard cap against a reserve admitted at the opening notional, not the post-fill one | Resolved in source (PR #124, ADR 0128), Opus 5.5 reviewed; live execution remains a release gate |
 | 19 | L-10 | Low | Reductions are checked fill by fill on one reserve basis and completed on another, so a valid deleverage can revert | Resolved in source (PR #125, ADR 0129), Opus 5.5 reviewed; live execution remains a release gate |
 | 20 | L-11 | Low | Once the position shrinks below one minimum order, nobody can redeem | Resolved in source (PR #126, ADR 0130), Opus 5.5 reviewed; live execution and auditor acceptance remain |
-| 21 | L-12 | Low | The funding-credit conservation check can overflow on a state that fits | Open |
+| 21 | L-12 | Low | The funding-credit conservation check can overflow on a state that fits | Resolved in source (PR #127), Opus 5.5 reviewed; original-auditor acceptance remains |
 | 22 | A-1 | Advisory | `ifixed_math::to_u64` is wider than its callers | Open |
 | 23 | A-2 | Advisory | `needs_rebalance` prices post-settlement equity against the pre-settlement reserve | Open |
 | 24 | A-3 | Advisory | `needs_rebalance` skips the venue-fee check `rebalance` enforces | Open |
@@ -1180,7 +1180,11 @@ original-auditor acceptance remain separate evidence.
 
 ### Ticket 21 · L-12 · The funding-credit conservation check can overflow on a fitting state
 
-**Status:** open.
+**Status:** resolved in source through
+[PR #127](https://github.com/interest-protocol/blast-v2-contracts/pull/127),
+with local validation and Opus 5.5 review complete. Original-auditor acceptance
+remains separate. See [the L12 review](boosts-l12-funding-conservation-2026-10-24.md)
+for validation and remaining limits.
 
 **The problem.** `settle_funding` books a credit by repaying the uncovered
 deficit first and sending the remainder to the reserve. The new reserve uses
@@ -1205,6 +1209,13 @@ reverted transactions never advance the checkpoint.
 post-state `checked_add` already computed. Keep `checked_add` as the guard.
 Add a test with an open deficit, a sum above `u64::MAX` and a fitting
 post-state that must succeed.
+
+**Implementation decision.** Follow the auditor directly: cast every operand
+of the credit conservation equation to `u128` before addition. Keep the existing
+`checked_add` guard on the actual stored reserve and all allocation rules.
+A real cost/donation/credit sequence tests fitting post-states on both sides
+of the sum boundary; a paired case pins the exact failure for a truly oversized
+reserve. No API, storage, error number or payout rule changes.
 
 ## Advisory findings
 

@@ -867,7 +867,11 @@ public fun settle_funding<Product>(
         self.maintenance_reserve = reserve_before
             .checked_add(amount - restored)
             .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
-        assert_invariant(self.maintenance_reserve + restored == reserve_before + amount);
+        // Conservation totals can exceed u64 even when the stored reserve fits.
+        assert_invariant(
+            (self.maintenance_reserve as u128) + (restored as u128)
+                == (reserve_before as u128) + (amount as u128),
+        );
 
         (0, 0, restored)
     }
