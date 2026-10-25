@@ -2414,7 +2414,7 @@ fun nav_cap_may_be_lowered_below_the_live_nav() {
 #[expected_failure(abort_code = errors::EInvalidPositionObservation, location = blast_boosts_core::state)]
 fun an_active_operation_rejects_a_non_flat_observation_on_the_wrong_side() {
     let state = initialized_state(policy::long());
-    state.needs_rebalance(standard_observation(policy::long()).with_observed_side(policy::short()).into_position_observation(), true, 10, REFERENCE_AT_MS);
+    state.needs_rebalance(standard_observation(policy::long()).with_observed_side(policy::short()).into_position_observation(), observation::funding_credit(0), true, 10, REFERENCE_AT_MS);
     abort
 }
 
@@ -2422,7 +2422,7 @@ fun an_active_operation_rejects_a_non_flat_observation_on_the_wrong_side() {
 #[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::state)]
 fun an_active_operation_rejects_equity_equal_to_the_reserve() {
     let state = initialized_state(policy::long());
-    state.needs_rebalance(standard_observation(policy::long()).with_venue_equity(SEED_RESERVE).into_position_observation(), true, 10, REFERENCE_AT_MS);
+    state.needs_rebalance(standard_observation(policy::long()).with_venue_equity(SEED_RESERVE).into_position_observation(), observation::funding_credit(0), true, 10, REFERENCE_AT_MS);
     abort
 }
 
@@ -2451,7 +2451,7 @@ fun a_priced_operation_admits_equity_that_covers_the_admitted_reserve() {
 fun a_priced_operation_is_refused_when_equity_only_covers_the_admitted_reserve() {
     let mut state = capped_initialized_state(500);
     state.settle_funding(observation::funding_credit(50_000));
-    state.needs_rebalance(standard_observation(policy::long()).with_venue_equity(100_000).into_position_observation(), true, 10, REFERENCE_AT_MS);
+    state.needs_rebalance(standard_observation(policy::long()).with_venue_equity(100_000).into_position_observation(), observation::funding_credit(0), true, 10, REFERENCE_AT_MS);
     abort
 }
 

@@ -475,9 +475,16 @@ order. Inside the band, when a proposed increase lacks opening margin, or when
 whole-lot sizing cannot produce an order, it returns false. A final reduction
 that cannot retain the full reserve and positive holder value is not sizeable;
 neither is an emergency close with no affordable lot. Unexplained drift, invalid prices, unusable fees,
-an insufficient opening cap and an unavailable venue still abort. This is a hint:
-it does not settle funding or prove gas admission, liquidity or fill progress;
-the real call checks them and can still abort.
+an insufficient opening cap and an unavailable venue still abort. Before pricing,
+it classifies funding already settled since the stored checkpoint and projects
+the reserve using the same allocation rules as real settlement: costs consume
+reserve first, while credits repay uncovered losses before rebuilding reserve.
+Positive holder value, band checks and all trade sizing use that projected
+reserve, applying the ceiling at each candidate position. This changes no stored
+balance, checkpoint or event. The hint does not settle additional funding or
+prove gas admission, liquidity or fill progress; the real call checks them and
+can still abort. Execution nets already-settled and newly settled raw funding
+before rounding once, so additional settlement can also change the result.
 
 The off-chain `keeperDecision` helper returns `inspect_rebalance` for an
 outside-band observation. This is only a pre-filter: confirm the on-chain hint

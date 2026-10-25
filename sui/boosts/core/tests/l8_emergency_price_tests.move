@@ -51,7 +51,7 @@ fun emergency_reductions_accept_a_divergent_mark_through_the_cap_restoring_fill(
 fun keeper_hint_reports_emergency_even_without_opening_margin_or_matching_mark() {
     vector[policy::long(), policy::short()].do!(|side| {
         let state = new_state(side);
-        assert!(state.needs_rebalance(position(side, 1_000_000, 3_000_001, DIVERGENT_MARK), false, 10, NOW));
+        assert!(state.needs_rebalance(position(side, 1_000_000, 3_000_001, DIVERGENT_MARK), observation::funding_credit(0), false, 10, NOW));
         state.destroy_for_testing();
     });
 }
@@ -118,7 +118,7 @@ fun one_unit_beyond_the_ordinary_mark_tolerance_fails() {
 #[expected_failure(abort_code = errors::EMarkOracleDivergenceExceedsBound, location = blast_boosts_core::policy)]
 fun keeper_hint_at_the_cap_keeps_the_mark_check() {
     let state = new_state(policy::long());
-    state.needs_rebalance(position(policy::long(), 1_000_000, 3_000_000, DIVERGENT_MARK), false, 10, NOW);
+    state.needs_rebalance(position(policy::long(), 1_000_000, 3_000_000, DIVERGENT_MARK), observation::funding_credit(0), false, 10, NOW);
     state.destroy_for_testing();
 }
 

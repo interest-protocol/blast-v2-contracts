@@ -224,17 +224,22 @@ public(package) fun into_recovery_observation(self: CapturedSnapshot): (Position
 
 /// A keeper hint with the same margin distinction as execution. It creates no
 /// linear plan: the core only filters increases when opening margin is absent.
-/// Returns the captured checkpoint so callers can reject unexplained drift.
+/// Rejects unexplained drift before pricing and projects classified funding into
+/// the reserve. The capture, checkpoint and stored core state remain unchanged.
 public(package) fun into_rebalance_readiness<Product>(
     self: CapturedSnapshot,
     state: &State<Product>,
+    funding: CheckpointChange,
     venue_fee_bps: u64,
     now_at_ms: u64,
-): (bool, Checkpoint) {
+): bool {
+    assert!(funding.is_clean(), blast_boosts_aftermath::errors::unresolved_checkpoint!());
+    let settlement = if (funding.is_cost()) observation::funding_cost(funding.amount())
+        else observation::funding_credit(funding.amount());
     let margin_safe = self.margin_safe;
-    let (observation, checkpoint) = self.into_recovery_observation();
+    let (observation, _) = self.into_recovery_observation();
 
-    (state.needs_rebalance(observation, margin_safe, venue_fee_bps, now_at_ms), checkpoint)
+    state.needs_rebalance(observation, settlement, margin_safe, venue_fee_bps, now_at_ms)
 }
 
 /// Only the core's authenticated direction can exempt a rebalance from the
@@ -602,7 +607,7 @@ public fun position_signs_coherent_for_testing(
 
 // === Imports ===
 
-use blast_boosts_aftermath::{checkpoint::{Self, Checkpoint}, constants, ifixed_math, venue_account::{Self, Binding}};
+use blast_boosts_aftermath::{checkpoint::{Self, Checkpoint, CheckpointChange}, constants, ifixed_math, venue_account::{Self, Binding}};
 
 use blast_boosts_core::{
     observation::{Self, PositionObservation, PriceObservation},

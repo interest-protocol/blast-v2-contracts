@@ -24,7 +24,7 @@ fun captures_complete_reserve_aware_increases_for_both_sides() {
         state.settle_funding(observation::funding_credit(400));
         let mut base = 300 * BASE_PER_NOTIONAL;
         let mut equity = 1_000;
-        let (ready, _) = capture(side, equity, base).into_rebalance_readiness(&state, 10, NOW);
+        let ready = capture(side, equity, base).into_rebalance_readiness(&state, checkpoint::unchanged_change(), 10, NOW);
         assert!(ready);
         let (mut plan, _) = capture(side, equity, base).into_rebalance_plan(&state, 10, NOW);
         let mut steps = 0;
