@@ -119,7 +119,66 @@ fun preview_rejects_inactive_state_before_funding_overflow() {
     state.destroy_for_testing();
 }
 
+#[test]
+fun a_projected_credit_can_enable_emergency_reduction_despite_mark_divergence() {
+    vector[policy::long(), policy::short()].do!(|side| {
+        let mut state = seeded(side, 0, 0, 2_000);
+        // Stored reserve gives 2.7x; the credit raises reserve to 200 and leverage to 3.375x.
+        assert!(state.needs_rebalance(divergent_position(side), observation::funding_credit(200), false, 0, NOW));
+        state.settle_funding(observation::funding_credit(200));
+        let plan = state.prepare_rebalance(divergent_position(side), 0, NOW);
+        assert!(plan.is_emergency_rebalance());
+        assert!(state.next_rebalance_order(&plan).order_base() > 0);
+        destroy(plan);
+        state.destroy_for_testing();
+    });
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EMarkOracleDivergenceExceedsBound, location = blast_boosts_core::policy)]
+fun a_projected_cost_restores_the_ordinary_long_mark_guard() {
+    cost_restores_mark_guard(policy::long(), false);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EMarkOracleDivergenceExceedsBound, location = blast_boosts_core::policy)]
+fun a_projected_cost_restores_the_ordinary_short_mark_guard() {
+    cost_restores_mark_guard(policy::short(), false);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EMarkOracleDivergenceExceedsBound, location = blast_boosts_core::policy)]
+fun a_settled_cost_restores_the_same_long_mark_guard_in_execution() {
+    cost_restores_mark_guard(policy::long(), true);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EMarkOracleDivergenceExceedsBound, location = blast_boosts_core::policy)]
+fun a_settled_cost_restores_the_same_short_mark_guard_in_execution() {
+    cost_restores_mark_guard(policy::short(), true);
+}
+
 // === Test Helpers ===
+
+fun cost_restores_mark_guard(side: PositionSide, settle: bool) {
+    let mut state = seeded(side, 200, 0, 2_000);
+    // Paying 200 consumes the reserve; the same capture is now 2.7x rather than 3.375x.
+    if (settle) {
+        state.settle_funding(observation::funding_cost(200));
+        destroy(state.prepare_rebalance(divergent_position(side), 0, NOW));
+    } else {
+        state.needs_rebalance(divergent_position(side), observation::funding_cost(200), false, 0, NOW);
+    };
+    state.destroy_for_testing();
+}
+
+fun divergent_position(side: PositionSide): PositionObservation {
+    observation::new_position(
+        1_000, 2_700, 1, side, observation::new_price(PRICE, 0, NOW),
+        observation::new_price(PRICE, 0, NOW), PRICE * 102 / 100,
+    )
+}
+
 
 fun assert_projection_matches_settlement(side: PositionSide, reserve: u64, deficit: u64, cost: bool, amount: u64) {
     let preview_state = seeded(side, reserve, deficit, 2_000);

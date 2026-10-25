@@ -111,7 +111,7 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | 20 | L-11 | Low | Once the position shrinks below one minimum order, nobody can redeem | Resolved in source (PR #126, ADR 0130), Opus 5.5 reviewed; live execution and auditor acceptance remain |
 | 21 | L-12 | Low | The funding-credit conservation check can overflow on a state that fits | Resolved in source (PR #127), Opus 5.5 reviewed; original-auditor acceptance remains |
 | 22 | A-1 | Advisory | `ifixed_math::to_u64` is wider than its callers | Resolved in source (PR #128), Opus 5.5 reviewed; original-auditor acceptance remains |
-| 23 | A-2 | Advisory | `needs_rebalance` prices post-settlement equity against the pre-settlement reserve | Implemented and locally tested (ADR 0131); independent review and merge pending |
+| 23 | A-2 | Advisory | `needs_rebalance` prices post-settlement equity against the pre-settlement reserve | Resolved in proposed source (PR #129, ADR 0131), Opus 5.5 reviewed; merge pending hosted CI |
 | 24 | A-3 | Advisory | `needs_rebalance` skips the venue-fee check `rebalance` enforces | Open |
 | 25 | A-4 | Advisory | Settlement unwind adopts the venue checkpoint without booking funding | Partly fixed (ADR 0115): pause-mode mismatch gone; post-close funding still unbooked |
 | 26 | A-5 | Advisory | Nothing in the type system forces a fill to be proven against the checkpoint | Open |
@@ -1250,14 +1250,19 @@ same module called it.
 
 ### Ticket 23 · A-2 · `needs_rebalance` pairs post-settlement equity with a pre-settlement reserve
 
-**Status:** implemented and locally tested. Independent review, merge and
-original-auditor acceptance remain pending.
+**Status:** resolved in proposed source in [PR #129](https://github.com/interest-protocol/blast-v2-contracts/pull/129),
+independently reviewed by Opus 5.5 with no actionable findings after follow-up.
+Merge remains pending because hosted checks could not start due to account
+billing/spending limits. Original-auditor acceptance remains pending.
 
-Validation: 848 core Move tests, 533 adapter tests and 5 downstream tests pass,
-including 16 new A2 tests. Build, warning-as-error lint, source boundaries,
-simulation, live read-only ABI, proof-tool self-tests, repository style and
-generated references pass. These are source and fixture checks, not live venue
-execution proof.
+Validation: the full gate passed 848 core Move tests, 533 adapter tests and 5
+downstream tests, including the initial 16 A2 tests. Review added 5 core cases;
+all 15 core A2 cases pass in the focused follow-up, for 21 new A2 tests overall.
+These cover funding-driven emergency/mark-guard transitions for both sides.
+The public routing gate also rejects comparing the stored checkpoint to itself.
+Build, warning-as-error lint, source boundaries, simulation, live read-only ABI,
+proof-tool self-tests, repository style and generated references pass locally.
+These are source and fixture checks, not live venue execution proof.
 
 **Implementation and audit alignment.** Follow the auditor's code remedy:
 classify pre-existing funding before preview pricing, then use a local reserve
