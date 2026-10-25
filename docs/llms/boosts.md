@@ -509,15 +509,22 @@ registry, clearing_house, base_oracle, collateral_oracle, clock)` with the
 `ClearingHouse` by mutable reference. Works in `Active` and `Unwinding`.
 
 It refreshes due funding, settles the position's funding, and reconciles with
-the accepted checkpoint without pricing anything. An explainable change books
+the accepted checkpoint without trading. It still reads venue prices for
+funding and reconciliation. Stale feeds or a collateral index price too far
+from its time-weighted average make the transaction abort. No synchronization
+state changes or events are committed on failure; retry after the venue's
+price checks can pass.
+
+After the venue calls succeed, an explainable change books
 funding to the reserve, adopts the new checkpoint and emits `FundingSettled`
 (once per distinct checkpoint; an identical retry emits nothing). A change to
 the market's pause mode, frozen flag or market-wide margin ratios is venue
 policy, adopted the same way with a zero funding delta; the lot size and every
 account, position, order and position-margin field must be exact. Anything
 else leaves the accepted checkpoint in place and emits `CheckpointDrifted`;
-every drifted sync emits it again. Blast adds no price, margin or drift check
-to this call; a binding mismatch aborts.
+every drifted sync emits it again. Blast's separate trade-price and opening-margin
+checks do not apply here; binding mismatches and venue funding/price failures
+still abort. A failed transaction does not emit `CheckpointDrifted`.
 
 #### Recover a reviewed forced reduction (Blast admin: RiskAdmin)
 

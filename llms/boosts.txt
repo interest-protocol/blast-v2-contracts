@@ -685,15 +685,22 @@ registry, clearing_house, base_oracle, collateral_oracle, clock)` with the
 `ClearingHouse` by mutable reference. Works in `Active` and `Unwinding`.
 
 It refreshes due funding, settles the position's funding, and reconciles with
-the accepted checkpoint without pricing anything. An explainable change books
+the accepted checkpoint without trading. It still reads venue prices for
+funding and reconciliation. Stale feeds or a collateral index price too far
+from its time-weighted average make the transaction abort. No synchronization
+state changes or events are committed on failure; retry after the venue's
+price checks can pass.
+
+After the venue calls succeed, an explainable change books
 funding to the reserve, adopts the new checkpoint and emits `FundingSettled`
 (once per distinct checkpoint; an identical retry emits nothing). A change to
 the market's pause mode, frozen flag or market-wide margin ratios is venue
 policy, adopted the same way with a zero funding delta; the lot size and every
 account, position, order and position-margin field must be exact. Anything
 else leaves the accepted checkpoint in place and emits `CheckpointDrifted`;
-every drifted sync emits it again. Blast adds no price, margin or drift check
-to this call; a binding mismatch aborts.
+every drifted sync emits it again. Blast's separate trade-price and opening-margin
+checks do not apply here; binding mismatches and venue funding/price failures
+still abort. A failed transaction does not emit `CheckpointDrifted`.
 
 #### Recover a reviewed forced reduction (Blast admin: RiskAdmin)
 
@@ -3363,10 +3370,12 @@ public fun rebaseline<Product, Collateral>(
 )
 
 /// Settles due funding and reconciles the stored checkpoint with the venue,
-/// with no priced operation attached and no lifecycle move. Any caller may
-/// submit the bound objects; a binding failure aborts. An explainable funding
-/// move is booked and emitted, and an interval the classifier cannot explain
-/// leaves the accepted checkpoint standing and emits `CheckpointDrifted`.
+/// without trading or changing lifecycle. Any caller may submit the bound
+/// objects. Binding failures and venue funding/price failures abort; stale
+/// feeds or collateral index/TWAP divergence leave no committed synchronization
+/// state changes or events. After those calls succeed, explainable funding is
+/// booked and emitted. An interval the classifier cannot explain leaves the
+/// accepted checkpoint standing and emits `CheckpointDrifted`.
 public fun sync_health<Product, Collateral>(
     vault: &mut vault::Vault<Product, Collateral>,
     protocol: &blast_boosts_aftermath::Protocol,
@@ -3568,8 +3577,9 @@ Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/bo
 ```move
 /// One authenticated capture: the raw checkpoint, both oracle legs, the mark,
 /// the position's economics, and whether the venue can serve a priced
-/// operation. A priced caller consumes it through `into_observation`; a health
-/// caller reads only its checkpoint.
+/// operation. A priced caller consumes it through `into_observation`; health
+/// reconciliation uses its checkpoint and collateral price. Creating the
+/// capture requires the venue's price reads to succeed.
 public struct CapturedSnapshot has drop {
     venue_equity: u64,
     position_base: u64,
