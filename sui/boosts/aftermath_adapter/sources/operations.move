@@ -1076,9 +1076,9 @@ fun synchronize_or_fail<Product, Collateral>(
 
 /// The venue's settlement of a closed market is not a venue order or a
 /// stale-price fallback. A paused market admits no funding update or
-/// settlement, so the stored checkpoint is reconciled with the one read here
-/// without a venue call, and the venue's settlement prices, which its admin
-/// enables only after closing the market, price the close.
+/// settlement, so only the direct close settles local funding. Reconcile that
+/// funding with the stored-to-live interval after proving the close, using
+/// the venue's enabled settlement prices and rounding the net only once.
 fun unwind_settlement<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     account: &mut Account<Collateral>,
@@ -1097,15 +1097,12 @@ fun unwind_settlement<Product, Collateral>(
         enabled, base_price, base_price.is_neg(), collateral_price, collateral_price.is_neg(),
     );
 
-    let preexisting_change = vault.venue().checkpoint().classify_preexisting(&before);
-    vault.apply_post_capture(before, preexisting_change);
-
     clearing_house.close_position_at_settlement_prices(account, &vector[]);
     let after = binding.capture_checkpoint(
         account, registry, clearing_house, base_oracle, collateral_oracle,
     );
 
-    vault.complete_unwind(before, after, 0, option::none());
+    vault.complete_settlement_unwind(before, after, collateral_price);
 }
 
 /// One bounded unwind step on a live market: synchronize funding and the
@@ -1136,7 +1133,7 @@ fun unwind_market<Product, Collateral>(
         &binding, &terms, before, remaining, clock, ctx,
     );
 
-    vault.complete_unwind(before, after, order_count, option::some(filled_quote));
+    vault.complete_market_unwind(before, after, order_count, filled_quote);
 
     clearing_house
 }
@@ -1155,28 +1152,49 @@ fun assert_settlement_valuation(
     );
 }
 
-/// Advances terminal checkpoint/event state only after an attributable close has completed.
-fun complete_unwind<Product, Collateral>(
+/// Books the complete attributable funding interval once, then records the close.
+/// Unknown history is reported separately; the proven local funding still counts.
+fun complete_settlement_unwind<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>,
+    before: Checkpoint,
+    after: Checkpoint,
+    collateral_price: u256,
+) {
+    vault.state().assert_unwinding();
+    let local = before.direct_settlement_funding(&after, collateral_price);
+    let preexisting = vault.venue().checkpoint().classify_preexisting(&before);
+    let drifted = preexisting.is_unexpected();
+    let net = if (drifted) { local } else { preexisting.net_funding(local) };
+    assert!(net.is_clean(), blast_boosts_aftermath::errors::unresolved_checkpoint!());
+
+    if (drifted) {
+        // This terminal step accepts the observed position, without inventing
+        // funding for its unknown history. The following event starts here.
+        events::checkpoint_drifted<Product>(vault.id(), before);
+        vault.venue_mut().replace_checkpoint(before);
+    };
+    vault.apply_post_capture(after, net);
+
+    events::unwind_progress<Product>(vault.id(), before, after, 0, option::none());
+}
+
+/// Records one bounded market close after its fills and funding were proved.
+fun complete_market_unwind<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     before: Checkpoint,
     after: Checkpoint,
     order_count: u64,
-    filled_quote: Option<u256>,
+    filled_quote: u256,
 ) {
     vault.state().assert_unwinding();
-    if (filled_quote.is_none()) {
-        assert!(order_count == 0, blast_boosts_aftermath::errors::terminal_venue_unsettled!());
-        before.assert_direct_settlement_checkpoint(&after);
-    } else {
-        assert!(
-            order_count > 0 && order_count <= constants::max_active_orders!(),
-            blast_boosts_aftermath::errors::terminal_venue_unsettled!(),
-        );
-    };
+    assert!(
+        order_count > 0 && order_count <= constants::max_active_orders!(),
+        blast_boosts_aftermath::errors::terminal_venue_unsettled!(),
+    );
 
     vault.venue_mut().replace_checkpoint(after);
 
-    events::unwind_progress<Product>(vault.id(), before, after, order_count, filled_quote);
+    events::unwind_progress<Product>(vault.id(), before, after, order_count, option::some(filled_quote));
 }
 
 /// Settles the core on the proven withdrawal and segregates any protected
@@ -1420,14 +1438,21 @@ public fun apply_post_captures_for_testing<Product, Collateral>(
 }
 
 #[test_only]
-public fun complete_unwind_for_testing<Product, Collateral>(
+public fun complete_settlement_unwind_for_testing<Product, Collateral>(
+    vault: &mut Vault<Product, Collateral>, before: Checkpoint, after: Checkpoint, collateral_price: u256,
+) {
+    vault.complete_settlement_unwind(before, after, collateral_price);
+}
+
+#[test_only]
+public fun complete_market_unwind_for_testing<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     before: Checkpoint,
     after: Checkpoint,
     order_count: u64,
-    filled_quote: Option<u256>,
+    filled_quote: u256,
 ) {
-    vault.complete_unwind(before, after, order_count, filled_quote);
+    vault.complete_market_unwind(before, after, order_count, filled_quote);
 }
 
 #[test_only]
@@ -1539,7 +1564,9 @@ use fun complete_rebalance as Vault.complete_rebalance;
 
 use fun complete_redemption as Vault.complete_redemption;
 
-use fun complete_unwind as Vault.complete_unwind;
+use fun complete_market_unwind as Vault.complete_market_unwind;
+
+use fun complete_settlement_unwind as Vault.complete_settlement_unwind;
 
 use fun emit_vault_initialized as Vault.emit_vault_initialized;
 

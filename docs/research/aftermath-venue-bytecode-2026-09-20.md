@@ -181,6 +181,19 @@ floor to the account (vault balance abort `23`). The position collateral is
 therefore exactly zero after a settlement close; the sub-atomic remainder
 stays in the market vault, not in the position.
 
+A4 follow-up (2026-10-25): a fresh mainnet GraphQL read of the same pinned
+`clearing_house` and `position` module bytes confirms this funding call chain.
+These are function-relative instruction offsets, not disassembly line numbers:
+`close_position_at_settlement_prices` 41–45 reads settlement collateral price
+into local 13; 64–68 reads market funding rates; 115–121 passes that position,
+price and rates to `settle_position_funding_and_emit`. That helper's 0–4
+forwards them unchanged to `position::settle_position_funding`. In that
+function, 0–32 selects the held side, 90–93 multiplies rate delta by base,
+98–101 floors credit division, and 166–172 ceiling-divides costs as in F1.
+The close realizes trading PnL afterward (148, 154). This verifies use of the
+same funding calculation at settlement price; it is bytecode evidence, not
+an executed close.
+
 Pause modes are `0` live, `1` paused and `2` cancel-only
 (`assert_valid_pause_mode` 8575). `update_funding` (2147), `update_twaps`,
 `settle_position_funding` (2207), `start_session` (3110),

@@ -285,5 +285,6 @@ check_error_registry "$package_dir/sources/lib/errors.move"
 
 python3 "$package_dir/scripts/test_oracle_routing.py"
 python3 "$package_dir/scripts/test_l3_routing.py"
+python3 "$package_dir/scripts/test_a4_routing.py"
 
 printf 'Source boundaries hold: hierarchy, surface, roles, sole driver and test seams.\n'

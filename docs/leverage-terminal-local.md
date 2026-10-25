@@ -77,13 +77,16 @@ venue access, reactivation, cross-product payment or transfer restriction exists
 
 Completed events are ShutdownBegun (declared reason), ProtectedShutdownBegun
 (accepted checkpoint, native supply and locked shares), UnwindProgress (the
-adopted before checkpoint, the after checkpoint, the market-order count and the
-actual market-fill quote when available; drift found at the start of a step is
-reported by CheckpointDrifted before it),
-ShutdownFinalized (actual recovered cash, eligible supply, final checkpoint and
+live pre-close capture, the after checkpoint, the market-order count and the
+actual market-fill quote when available). In a direct settlement, FundingSettled
+already advances the reducer to the final checkpoint before UnwindProgress;
+the live pre-close capture need not equal the previously stored checkpoint.
+Unknown history is first reported by CheckpointDrifted, then FundingSettled
+books only proven local funding from that live baseline (ADR 0132).
+ShutdownFinalized records actual recovered cash, eligible supply, final checkpoint and
 raw unrecoverable collateral remainder, protected reserve and seed cash; both
-protected amounts are explicitly zero for admin shutdown), and ShutdownRedeemed (burn, payout, remaining
-cash and eligible supply). CheckpointDrifted is not deduplicated: every sync or
+protected amounts are explicitly zero for admin shutdown. ShutdownRedeemed
+records burn, payout, remaining cash and eligible supply. CheckpointDrifted is not deduplicated: every sync or
 unwind step that finds drift emits it again, and no diagnostic state is stored
 for finalization to clear. Local reducers consume same-transaction events and
 compare native supply, cash and checkpoint against actual Blast objects.

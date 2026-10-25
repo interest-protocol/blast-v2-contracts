@@ -825,10 +825,14 @@ under this code; upgrade governance remains a trust assumption (ADR 0130).
 Closing losses may exhaust holder cash; this does not guarantee seed capital.
 The full recorded reserve is retained under the flat-position policy, rather
 than releasing the last open position's excess reserve to holders (ADR 0130).
-A closed-market settlement can include funding that was not separately booked
-into the reserve; recovery stays exact, but protection then uses the last
-recorded reserve. Already-settled account funding followed by a market pause
-can also block protected entry until reconciliation becomes available.
+A closed-market direct close books funding at the enabled settlement
+collateral price before finalization. Attributable earlier funding and the
+close's funding are netted raw and converted to collateral atoms once. Trading
+PnL, insurance and released cash are not funding. Unknown history emits
+`CheckpointDrifted`; only proven local funding is then booked from that live
+baseline (ADR 0132). Arithmetic limits can still abort. Already-settled account
+funding followed by a market pause can block protected entry until
+reconciliation becomes available.
 
 No fee. The last claimant (shares equal to all eligible supply) receives all
 remaining **holder-pool** cash, dust included. A partial claim that rounds to zero while cash
@@ -916,13 +920,13 @@ types below from the adapter's `events` module (for example
 | `PartnerAdded`, `PartnerRemoved` | partner list changes | `accepted_until_ms` on removal. |
 | `ProfitRealized` | `realize_profit` | vault ID, equity before/after, base closed and reopened, cash shortfall before/after, previous and new raw checkpoint. |
 | `Rebalanced` | `rebalance` | equity and base before and after, direction. Equity change is the execution cost (or gain) at the fixed pair. |
-| `FundingSettled` | any synchronization (`sync_health`, mint, redeem, profit realization, rebalance, donate, unwind) that adopts a changed checkpoint | cost or credit, raw IFixed and atom amounts (atoms may be 0), absorbed, uncovered, restored, reserve after, previous and new checkpoint. |
+| `FundingSettled` | synchronization or direct settlement unwind that adopts a changed checkpoint | cost or credit, raw IFixed and atom amounts (both may be 0), absorbed, uncovered, restored, reserve after, previous and new checkpoint. In a direct close the new checkpoint includes the close, but only explicit funding amounts affect reserves. Following terminal `CheckpointDrifted`, the previous checkpoint is that live baseline; unknown history is excluded. |
 | `CheckpointRebaselined` | RiskAdmin `operations::rebaseline` | vault ID, stored checkpoint and capture before local funding; a following `FundingSettled` carries any local settlement to the final checkpoint and reserve. |
 | `CheckpointDrifted` | `sync_health` or `unwind` that finds unexplained venue state | After `sync_health` the accepted checkpoint stands and priced operations abort until ordinary synchronization or RiskAdmin recovery accepts it; `unwind` adopts the live state and closes it. |
 | `Donated` | `donate` | amount, reserve after. |
 | `ShutdownBegun` | `begin_shutdown` | declared reason. |
 | `ProtectedShutdownBegun` | `begin_protected_shutdown` | accepted raw checkpoint, total supply and locked shares. |
-| `UnwindProgress` | `unwind` | adopted before checkpoint, after checkpoint, orders placed (`market_orders`), filled quote (`none` for settlement-price closes). |
+| `UnwindProgress` | `unwind` | live pre-close capture, after checkpoint, orders placed (`market_orders`), filled quote (`none` for settlement-price closes). For a direct settlement, the preceding `FundingSettled` already advances the reducer to the after checkpoint; the pre-close capture may differ from the previously stored checkpoint. |
 | `ShutdownFinalized` | `finalize_shutdown` | total recovered cash, eligible supply, final checkpoint, raw unrecoverable remainder (below one atom), protected reserve and seed cash (both zero for admin shutdown). Subtract protected cash to replay the holder pool. |
 | `ShutdownRedeemed` | `redeem_shutdown` | shares, cash paid, cash and eligible supply remaining. |
 | `FeesUpdated`, `NavCapUpdated`, `MaxOrderNotionalUpdated` | admin calls | previous and new values. |
@@ -963,7 +967,7 @@ outdated adapter package aborts in the `operational_version` module of the
 | 26 | Deadline passed | Use a later `deadline_ms`. |
 | 27 | A fill changed venue fields it should not | Retry. |
 | 29 | The market's trading fee is not a usable rate (initialization, rebalance or profit realization) | Wait; venue configuration. |
-| 30 | Unaccepted account change since the checkpoint | Before protected entry, use `sync_health` for already-settled attributable funding while the venue permits it. For unexplained drift inspect `CheckpointDrifted`; RiskAdmin may recover an admitted forced reduction with `operations::rebaseline`. |
+| 30 | Unaccepted account change, or unrepresentable net funding at direct settlement | Before protected entry, use `sync_health` for already-settled attributable funding while the venue permits it. For unexplained drift inspect `CheckpointDrifted`; RiskAdmin may recover an admitted forced reduction with `operations::rebaseline`. |
 | 31 | Terminal step not possible: orders open, funding unsettled, settlement prices not enabled, or wrong order count | Settle funding with `sync_health` first, or wait for Aftermath. |
 | 32 | Unwind or protected entry found no exact whole-lot position on the bound side (including flat) | During Unwinding, finalize if fully settled. During Active, protected entry is unavailable; use the applicable ordinary or admin recovery path. |
 | 33 | Venue not ready: resting orders, paused/frozen market, or insufficient opening margin on a strict path | Reductions and donations need no opening margin; other guards still apply. |

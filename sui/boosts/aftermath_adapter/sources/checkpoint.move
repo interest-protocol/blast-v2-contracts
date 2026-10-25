@@ -298,6 +298,12 @@ public(package) fun is_clean(self: &CheckpointChange): bool {
     }
 }
 
+/// Whether historical movement could not be attributed, distinct from a raw
+/// funding amount that only becomes representable after netting.
+public(package) fun is_unexpected(self: &CheckpointChange): bool {
+    match (self) { CheckpointChange::Unexpected => true, _ => false }
+}
+
 // --- Shutdown ---
 
 /// Neither an ordinary close nor a direct settlement may adopt standing orders.
@@ -333,6 +339,27 @@ public(package) fun assert_direct_settlement_checkpoint(before: &Checkpoint, aft
     expected.funding_snapshot_short = after.funding_snapshot_short;
 
     assert!(&expected == after, blast_boosts_aftermath::errors::terminal_venue_unsettled!());
+}
+
+/// Funding settled inside an authenticated direct close, before PnL, insurance
+/// and collateral release. The price is the enabled settlement collateral price;
+/// neither the final cash delta nor a current oracle price identifies this amount.
+public(package) fun direct_settlement_funding(
+    before: &Checkpoint, after: &Checkpoint, collateral_price: u256,
+): CheckpointChange {
+    before.assert_direct_settlement_checkpoint(after);
+    assert!(
+        collateral_price != 0 && !collateral_price.is_neg(),
+        blast_boosts_aftermath::errors::terminal_venue_unsettled!(),
+    );
+    let base_negative = before.signed_base.is_neg();
+    let (market, snapshot) = before.side_funding_rates(base_negative);
+    let (delta_negative, delta_magnitude) =
+        signed_difference(snapshot.is_neg(), snapshot.abs(), market.is_neg(), market.abs());
+
+    settled_funding_change(
+        base_negative, before.signed_base.abs(), delta_negative, delta_magnitude, collateral_price,
+    )
 }
 
 /// Returns every recoverable atomic USDC unit only after exact venue finality.
@@ -574,10 +601,6 @@ fun funding_change(is_cost: bool, amount: u256): CheckpointChange {
     } else {
         CheckpointChange::FundingCredit(amount)
     }
-}
-
-fun is_unexpected(self: &CheckpointChange): bool {
-    match (self) { CheckpointChange::Unexpected => true, _ => false }
 }
 
 // --- Shutdown ---
