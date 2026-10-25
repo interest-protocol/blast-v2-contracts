@@ -779,9 +779,13 @@ refuses an account whose equity does not exceed the admitted reserve.
 
 #### Caps
 
-- NAV cap: post-mint `N1 <= nav_cap` (inclusive). Only mints check it; profit
+- NAV cap: post-mint `N1 <= nav_cap` (inclusive). Once active, only mints check it; profit
   can carry NAV above it, which blocks mints until NAV falls or RiskAdmin
   raises the cap.
+- Increase sizing keeps the desired position in wide arithmetic even when
+  profits make it exceed `u64`. Actual orders and resulting positions remain
+  bounded. At the maximum supported position size, further increases stop;
+  a large desired position does not relax the NAV cap on completed mints.
 - Order cap: each order reserves the highest price allowed by its execution
   bound plus one normalized price atom to cover sell rounding, then rounds
   size down to whole lots. Each fill checks actual collateral notional

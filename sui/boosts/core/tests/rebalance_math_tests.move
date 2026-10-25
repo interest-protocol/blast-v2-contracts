@@ -69,9 +69,57 @@ fun sizing_rejects_tolerance_at_full_rate() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EArithmeticOverflow, location = blast_boosts_core::accounting_math)]
-fun sizing_rejects_target_width_overflow() {
-    rebalance_math::increase_base_down(std::u64::max_value!(), 0, 20_000, 1_000, 1, 1, 1, 0, 0, 1_000_000_000, 1_000_000);
+fun sizing_handles_nav_below_at_and_above_the_old_target_limit() {
+    let max = std::u64::max_value!();
+    vector[max / 2 - 1, max / 2, max / 2 + 1, max].do!(|nav| {
+        // One base atom is one collateral atom. The execution-price allowance
+        // makes a 1,001 cap permit exactly 1,000 base, even at an enormous NAV.
+        assert_eq!(rebalance_math::increase_base_down(nav, 0, 20_000, 1_000, 1, 1, 1_001, 0, 0, 1_000_000_000, 1_000_000), 1_000);
+    });
+}
+
+#[test]
+fun an_oversized_target_still_bounds_the_resulting_notional() {
+    let max = std::u64::max_value!();
+    vector[20_000u64, max].do!(|target| {
+        assert_eq!(rebalance_math::increase_base_down(max, max - 7, target, 1_000, 1, 1, 1_001, 0, 0, 1_000_000_000, 1_000_000), 7);
+        assert_eq!(rebalance_math::increase_base_down(max, max - 7, target, 1_000, 1, 3, 1_001, 0, 0, 1_000_000_000, 1_000_000), 6);
+        assert_eq!(rebalance_math::increase_base_down(max, max, target, 1_000, 1, 1, 1_001, 0, 0, 1_000_000_000, 1_000_000), 0);
+    });
+}
+
+#[test]
+fun an_oversized_target_keeps_the_execution_cap_with_costs() {
+    // A 1,101 cap at upper price 1,101 permits exactly 1,000 base. Fees are
+    // charged against NAV separately and cannot enlarge the allowed order.
+    assert_eq!(rebalance_math::increase_base_down(
+        std::u64::max_value!(), 0, 20_000, 1_000, 1, 1, 1_101, 37, 1_000, 1_000_000_000, 1_000_000,
+    ), 1_000);
+}
+
+#[test]
+fun target_boundary_sizing_matches_independent_post_cost_enumeration() {
+    let max = std::u64::max_value!();
+    vector[max / 2, max / 2 + 1, max].do!(|nav| {
+        let notional = max - 1_000;
+        let mut expected = 0;
+        let mut candidate = 1u64;
+        while (candidate <= 2_000) {
+            let adverse = candidate.div_ceil(100);
+            let fee = ((candidate + adverse) * 37).div_ceil(10_000);
+            let final_notional = (notional as u128) + (candidate as u128);
+            if (candidate * 1_011 <= 2_002_000 && final_notional <= max as u128
+                && final_notional <= 2 * ((nav - adverse - fee) as u128)) expected = candidate;
+            candidate = candidate + 1;
+        };
+        assert!(expected > 0);
+        assert_eq!(rebalance_math::increase_base_down(nav, notional, 20_000, 1_000, 1, 1, 2_002, 37, 100, 1_000_000_000, 1_000_000), expected);
+    });
+}
+
+#[test]
+fun a_fractional_target_gap_returns_zero_before_price_validation() {
+    assert_eq!(rebalance_math::increase_base_down(10_001, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1), 0);
 }
 
 #[test]
@@ -87,13 +135,13 @@ fun sizing_rejects_notional_width_overflow() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::accounting_math)]
+#[expected_failure(abort_code = errors::EInvalidNav, location = blast_boosts_core::rebalance_math)]
 fun sizing_rejects_zero_nav_before_invalid_target() {
     rebalance_math::increase_base_down(0, 0, 0, 0, 0, 0, 0, 0, 0, 1_000_000_000, 1_000_000);
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EInvalidTargetLeverageBps, location = blast_boosts_core::accounting_math)]
+#[expected_failure(abort_code = errors::EInvalidTargetLeverageBps, location = blast_boosts_core::rebalance_math)]
 fun sizing_rejects_zero_target_before_invalid_price() {
     rebalance_math::increase_base_down(1, 0, 0, 0, 0, 0, 0, 0, 0, 1_000_000_000, 1_000_000);
 }

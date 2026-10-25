@@ -75,8 +75,9 @@ public(package) fun base_for_execution_notional_down(
     (lots.min(representable_lots) as u64) * lot_size
 }
 
-/// Finds the maximal next whole-lot increase under both the live order cap and post-cost target.
-/// The adapter must recompute from each accepted session and enforce its fixed work bound.
+/// Sizes deposit-funded catch-up under the execution cap and post-cost target.
+/// The ideal target may exceed `u64`; the current notional plus the rounded-up
+/// order quote must still fit. The caller checks final base and actual mint bounds.
 public(package) fun increase_base_down(
     nav: u64,
     notional: u64,
@@ -90,8 +91,11 @@ public(package) fun increase_base_down(
     base_unit: u64,
     collateral_unit: u64,
 ): u64 {
-    let target = accounting_math::target_notional_down(nav, target_leverage_bps);
-    if (target <= notional) return 0;
+    assert!(nav > 0, blast_boosts_core::errors::invalid_nav!());
+    assert!(target_leverage_bps > 0, blast_boosts_core::errors::invalid_target_leverage_bps!());
+
+    let target = (nav as u128) * (target_leverage_bps as u128) / (constants::basis_points_denominator!() as u128);
+    if (target <= notional as u128) return 0;
 
     let capped_base = base_for_execution_notional_down(
         max_order_notional, base_price, collateral_price, lot_size, max_slippage_bps, base_unit, collateral_unit,
@@ -105,8 +109,9 @@ public(package) fun increase_base_down(
         let candidate = low + (high - low).div_ceil(2);
         let value = oracle_notional_up(candidate * lot_size, base_price, collateral_price, base_unit, collateral_unit);
         let cost = execution_cost_up(value, venue_fee_bps, max_slippage_bps);
-        let within_target = (nav as u128) > cost
-            && ((notional as u128) + (value as u128)) * (constants::basis_points_denominator!() as u128)
+        let notional_after = (notional as u128) + (value as u128);
+        let within_target = notional_after <= std::u64::max_value!() as u128 && (nav as u128) > cost
+            && notional_after * (constants::basis_points_denominator!() as u128)
                 <= (target_leverage_bps as u128) * ((nav as u128) - cost);
 
         if (within_target) {
@@ -203,4 +208,4 @@ public(package) fun execution_cost_up(notional: u64, venue_fee_bps: u64, max_sli
 
 // === Imports ===
 
-use blast_boosts_core::{accounting_math, constants};
+use blast_boosts_core::constants;

@@ -424,8 +424,8 @@ public(package) fun unwind_execution_bound(self: &RebalancePolicy, elapsed_durat
 }
 
 /// Rejects a NAV cap that is zero or so large that
-/// `nav_cap * max_leverage_bps / 10_000` overflows `u64`; without that ceiling
-/// a Vault at the cap could not compute a target notional and rebalance.
+/// `nav_cap * max_leverage_bps / 10_000` overflows `u64`. This bounds admitted
+/// capital; profits may exceed the cap, so maintenance sizes from live NAV.
 public(package) fun assert_nav_cap_valid(self: &RebalancePolicy, nav_cap: u64) {
     assert!(
         nav_cap > 0
