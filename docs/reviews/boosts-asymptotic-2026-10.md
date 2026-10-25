@@ -116,7 +116,7 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | 25 | A-4 | Advisory | Settlement unwind adopts the venue checkpoint without booking funding | Resolved in merged source (PR #130, ADR 0132); local checks pass, Opus 5.5 reviewed |
 | 26 | A-5 | Advisory | Nothing in the type system forces a fill to be proven against the checkpoint | Resolved in proposed source (ADR 0133); local checks pass, Opus 5.5 reviewed; merge pending |
 | 27 | A-6 | Advisory | The products package's UpgradeCap and Publisher are plain owned objects on the deployer key | Open |
-| 28 | A-7 | Advisory | NAV above the cap can push the target notional past `u64` and abort increases | Open |
+| 28 | A-7 | Advisory | NAV above the cap can push the target notional past `u64` and abort increases | Resolved in proposed source (ADR 0128); local checks pass; merge pending |
 | 29 | A-8 | Advisory | `snapshot::capture` docs say a stale feed is reported, but it aborts | Open |
 | 30 | A-9 | Advisory | Rebalance fills trust the order's direction, not the plan's | Open |
 
@@ -1435,7 +1435,26 @@ path.
 
 ### Ticket 28 · A-7 · NAV above the cap can push the target notional past `u64`
 
-**The problem.** `assert_nav_cap_valid` checks that `nav_cap × max_leverage`
+**Status:** resolved in proposed source; local checks pass, merge pending. L-9 / merged PR #124
+already replaced ordinary rebalance target narrowing with wide comparisons and
+bounded whole-lot sizing. The remaining funded-mint helper now keeps its ideal
+target in `u128` and explicitly bounds current notional plus the rounded-up
+order quote to `u64`. Exact initialization target sizing still rejects overflow.
+The old implementation fails the new above-limit regression with arithmetic
+overflow. The corrected source passes all 859 core, 585 adapter and 5 product
+and composition tests, plus build, lint, source-boundary and documentation gates.
+
+**Audit alignment.** This follows the auditor's guarded live-NAV calculation
+recommendation. We guard executable positions instead of rejecting a large
+ideal target or silently saturating the exact initialization helper. The
+funded-mint reserve basis, execution cap, costs and final mint checks remain.
+Positive NAV and target checks move into `rebalance_math` with the same codes
+and precedence. At the actual representation limit, further increases stop;
+the requested leverage may remain unreachable. Lot size, liquidity, venue
+admission and the existing mint cap still apply. Local source verification
+does not constitute original-auditor acceptance or live venue execution proof.
+
+**The problem (audit-time findings).** `assert_nav_cap_valid` checks that `nav_cap × max_leverage`
 fits in `u64`, and the cap is enforced only at mint. NAV can exceed the cap
 through profit or a venue credit. The increase path computes
 `nav × target_leverage / 10_000` and aborts on overflow, so while NAV stays

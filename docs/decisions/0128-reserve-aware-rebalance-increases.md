@@ -66,6 +66,15 @@ then clamps. Using the raw recorded reserve there would reassign the pending
 release away from existing holders. Reduction sizing, progress and completion are governed separately by
 [ADR 0129](0129-reserve-consistent-emergency-reductions.md).
 
+The NAV cap limits admitted capital, not subsequent profits. Increase sizing
+keeps the ideal target wide and bounds executable positions separately, so a
+target larger than `u64` does not reject every smaller order (A-7). The separate
+funded-mint helper also bounds current notional plus the rounded-up order quote
+to `u64`, preserving the implicit limit previously supplied by its narrow
+target. State still checks final base and notional, the band, and the post-mint
+NAV cap. Exact target sizing for initialization retains its overflow rejection;
+it promises a representable target, not a partial maintenance order.
+
 ## Evidence and limits
 
 Regressions cover the audit's oversized fill, successful smaller long/short
