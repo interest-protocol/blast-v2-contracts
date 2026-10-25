@@ -441,7 +441,10 @@ venue; it does not grow with the gas bid.
    fee, the same oracle-price precision and capture-rounding allowances, and
    the full recorded reserve. These allowances apply to ordinary flat closes too. Otherwise leave one lot and stop when
    no further close is sizeable; priority-gas costs can still prevent a fill.
-5. Every fill repeats the corresponding admission: increases require opening
+5. Before accepting a fill, core requires the order's direction and emergency
+   status to match the plan (core code 72 otherwise). The plan determines
+   expected position movement and which safety checks apply.
+   Every fill repeats the corresponding admission: increases require opening
    margin; reductions may remain below it. An emergency plan keeps its mark-
    divergence exemption through the final cap-restoring fill; fresh oracle
    prices, side and positive NAV are still required. An ordinary plan cannot

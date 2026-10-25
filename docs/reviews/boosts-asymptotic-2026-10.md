@@ -118,7 +118,7 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | 27 | A-6 | Advisory | The products package's UpgradeCap and Publisher are plain owned objects on the deployer key | Open |
 | 28 | A-7 | Advisory | NAV above the cap can push the target notional past `u64` and abort increases | Resolved in proposed source (ADR 0128); local checks pass; merge pending |
 | 29 | A-8 | Advisory | `snapshot::capture` docs say a stale feed is reported, but it aborts | Resolved in proposed documentation; local checks pass; merge pending |
-| 30 | A-9 | Advisory | Rebalance fills trust the order's direction, not the plan's | Open |
+| 30 | A-9 | Advisory | Rebalance fills trust the order's direction, not the plan's | Resolved in proposed source; local checks pass; merge pending |
 
 ## Recommended order
 
@@ -1506,7 +1506,32 @@ callers that must not depend on a live price use `capture_checkpoint`.
 
 ### Ticket 30 · A-9 · Rebalance fills are validated against the order's direction, never the plan's
 
-**The problem.** `accept_rebalance_fill` derives every direction-dependent
+**Status:** resolved in proposed source; local checks pass; merge pending.
+
+**Auditor alignment.** Follow the recommendation to reject orders whose
+direction or emergency status differs from the plan. Core checks both before
+fill-size and observation validation, preserving the existing order-budget
+check first. Expected base movement, increase leverage checks and full-fill
+tracking use the plan's direction; emergency observation admission already
+used the plan's opening classification. Matching full and partial fills keep
+their existing behavior, including the final emergency fill that reaches the
+cap. Package error 72 identifies a mismatch. No public signature, stored
+layout, fee, execution bound, sizing or completion policy changes.
+
+Regressions construct genuine orders from other plans and exercise both
+directions and emergency mismatches for long and short positions, guard
+precedence, and valid full/partial fills. This enforces the two audited flags,
+not unique order-to-plan identity; same-flag orders remain subject to the
+existing fill, checkpoint, leverage, capacity and adapter execution proofs.
+Live venue validation and original-auditor acceptance are not established.
+
+Local evidence: 13 focused tests pass after reproducing 11 failures in the
+old checker. Full suites pass 872 core, 585 adapter and 5 product/composition
+tests, plus pinned build/lint, source boundaries, simulation, compiler
+fill-proof, style and generated-reference gates. No new independent model
+review was performed.
+
+**The problem (audit-time findings).** `accept_rebalance_fill` derives every direction-dependent
 check from the `RebalanceOrder` it is handed (expected post-fill base, and the
 leverage gate that applies only to increases). It never reads
 `plan.increase` and discards the order's `emergency` flag, trusting rather
@@ -1516,8 +1541,8 @@ improvement. No caller can trigger it today: `State` is exposed only through
 `public(package)` accessors and the sole production path builds each order
 from the plan it advances.
 
-**Where.** [state::accept_rebalance_fill](../../sui/boosts/core/sources/state.move#L552),
-[orders::rebalance_orders](../../sui/boosts/aftermath_adapter/sources/orders.move#L171).
+**Where.** [state::accept_rebalance_fill](../../sui/boosts/core/sources/state.move#L676),
+[orders::rebalance_orders](../../sui/boosts/aftermath_adapter/sources/orders.move#L165).
 
 **Fix.** Take direction and emergency status from the plan inside
 `accept_rebalance_fill`, or reject orders whose values differ from

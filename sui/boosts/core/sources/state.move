@@ -671,6 +671,8 @@ public fun is_emergency(self: &RebalanceOrder): bool { self.emergency }
 public fun bound(self: &RebalanceOrder): ExecutionBound { self.bound }
 
 /// Advances the plan by one accepted whole-lot fill of `order` under the fixed oracle pair.
+/// The order must agree with the plan's direction and opening emergency status;
+/// the plan owns the expected base movement and applicable safety checks.
 public fun accept_rebalance_fill<Product>(
     self: &State<Product>,
     plan: &mut RebalancePlan<Product>,
@@ -679,8 +681,12 @@ public fun accept_rebalance_fill<Product>(
     filled_base: u64,
     now_at_ms: u64,
 ) {
-    let RebalanceOrder { base: requested, increase, emergency: _, bound: _, band_landing } = order;
+    let RebalanceOrder { base: requested, increase, emergency, bound: _, band_landing } = order;
     assert!(plan.steps < max_rebalance_orders(), blast_boosts_core::errors::rebalance_order_limit!());
+    assert!(
+        increase == plan.increase && emergency == plan.emergency,
+        blast_boosts_core::errors::rebalance_order_mismatch!(),
+    );
     assert!(
         filled_base > 0 && filled_base <= requested && filled_base % plan.current.lot_size == 0,
         blast_boosts_core::errors::active_fill_incomplete!(),
@@ -694,20 +700,20 @@ public fun accept_rebalance_fill<Product>(
         self.validated_active_position(observation, now_at_ms)
     };
     assert!(plan.before.is_same_checkpoint(&after), blast_boosts_core::errors::active_checkpoint_changed!());
-    let expected_base = if (increase) {
+    let expected_base = if (plan.increase) {
         plan.current.base.checked_add(filled_base).destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!())
     } else {
         plan.current.base - filled_base
     };
     assert!(after.base == expected_base, blast_boosts_core::errors::active_fill_incomplete!());
 
-    if (increase) {
+    if (plan.increase) {
         self.assert_increase_leverage(&after, band_landing);
         plan.band_landing = band_landing;
     };
 
     // Prove full fills against fresh core sizing, not a retained or foreign order.
-    plan.full_fills = !plan.emergency && !plan.increase && !increase && plan.full_fills && filled_base == requested
+    plan.full_fills = !plan.emergency && !plan.increase && plan.full_fills && filled_base == requested
         && filled_base == self.next_rebalance_order(plan).base;
     plan.current = after;
     plan.steps = plan.steps + 1;
