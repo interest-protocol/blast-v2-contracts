@@ -110,7 +110,7 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | 19 | L-10 | Low | Reductions are checked fill by fill on one reserve basis and completed on another, so a valid deleverage can revert | Resolved in source (PR #125, ADR 0129), Opus 5.5 reviewed; live execution remains a release gate |
 | 20 | L-11 | Low | Once the position shrinks below one minimum order, nobody can redeem | Resolved in source (PR #126, ADR 0130), Opus 5.5 reviewed; live execution and auditor acceptance remain |
 | 21 | L-12 | Low | The funding-credit conservation check can overflow on a state that fits | Resolved in source (PR #127), Opus 5.5 reviewed; original-auditor acceptance remains |
-| 22 | A-1 | Advisory | `ifixed_math::to_u64` is wider than its callers | Open |
+| 22 | A-1 | Advisory | `ifixed_math::to_u64` is wider than its callers | Implemented and tested, Opus 5.5 reviewed; merge and original-auditor acceptance pending |
 | 23 | A-2 | Advisory | `needs_rebalance` prices post-settlement equity against the pre-settlement reserve | Open |
 | 24 | A-3 | Advisory | `needs_rebalance` skips the venue-fee check `rebalance` enforces | Open |
 | 25 | A-4 | Advisory | Settlement unwind adopts the venue checkpoint without booking funding | Partly fixed (ADR 0115): pause-mode mismatch gone; post-close funding still unbooked |
@@ -1221,9 +1221,28 @@ reserve. No API, storage, error number or payout rule changes.
 
 ### Ticket 22 · A-1 · `ifixed_math::to_u64` is wider than its callers
 
-**Where.** [ifixed_math::to_u64](../../sui/boosts/aftermath_adapter/sources/lib/ifixed_math.move#L27)
-is `public(package)` but only `fixed_to_u64_down` and `fixed_to_u64_up` in the
-same module call it (verified by grep).
+**Status:** implemented and tested, Opus 5.5 reviewed; merge and original-auditor
+acceptance remain pending.
+
+**Implementation.** Follow the auditor directly: make `to_u64` private and move
+its unchanged body and documentation into the private-functions section. Its
+two same-module callers retain package visibility for their existing consumers.
+No arithmetic, rounding, failure, storage or transaction-facing API changes.
+
+**Validation.** All 527 adapter tests pass, including the existing rounding,
+largest-value and overflow cases. Build, warning-as-error lint, source
+boundaries, tooling, ABI checks, style and generated references pass. The
+compiler checks every package caller; no new behavioral test is needed for
+the visibility-only change.
+
+Fresh Opus 5.5 review (`claude-opus-5-5`, session
+`2ce55c4c-7f86-4bd2-8d94-b285c2f8aa8d`) found no actionable defect and confirmed
+A1 addressed in source. This is source remediation, not a historical package
+upgrade, deployment or original-auditor acceptance.
+
+**Where (audit-time finding).** [ifixed_math::to_u64](../../sui/boosts/aftermath_adapter/sources/lib/ifixed_math.move#L45)
+was `public(package)` but only `fixed_to_u64_down` and `fixed_to_u64_up` in the
+same module called it.
 
 **Fix.** Narrow it to a private `fun`. No test or entry point is affected.
 
