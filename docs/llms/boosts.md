@@ -128,6 +128,10 @@ trade size exists anywhere.
   against the order and rounded to the market tick back toward the oracle, so
   no fill can cross the bound; the fill's average price is then checked against
   the same bound.
+  Each active or unwind market-order fill also creates an internal receipt
+  with no abilities. Its checkpoint proof consumes the receipt before the
+  operation can finish and returns the checked amounts used for progress.
+  This adds no transaction argument or result.
 - `price_policy` (`policy::PricePolicy`): `max_price_age_ms > 0`,
   `max_price_ahead_ms <= max_price_age_ms`, `max_confidence_bps < 10,000`,
   `max_mark_divergence_bps < 10,000`.

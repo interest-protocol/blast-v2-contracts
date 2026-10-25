@@ -113,8 +113,8 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | 22 | A-1 | Advisory | `ifixed_math::to_u64` is wider than its callers | Resolved in source (PR #128), Opus 5.5 reviewed; original-auditor acceptance remains |
 | 23 | A-2 | Advisory | `needs_rebalance` prices post-settlement equity against the pre-settlement reserve | Resolved in source (merged PR #129, ADR 0131); Opus 5.5 reviewed; local checks accepted |
 | 24 | A-3 | Advisory | `needs_rebalance` skips the venue-fee check `rebalance` enforces | Resolved in source by L3 (merged PR #120); Sol 6.1 rechecked |
-| 25 | A-4 | Advisory | Settlement unwind adopts the venue checkpoint without booking funding | Resolved in proposed source (ADR 0132); local checks pass, Opus 5.5 reviewed; merge pending |
-| 26 | A-5 | Advisory | Nothing in the type system forces a fill to be proven against the checkpoint | Open |
+| 25 | A-4 | Advisory | Settlement unwind adopts the venue checkpoint without booking funding | Resolved in merged source (PR #130, ADR 0132); local checks pass, Opus 5.5 reviewed |
+| 26 | A-5 | Advisory | Nothing in the type system forces a fill to be proven against the checkpoint | Resolved in proposed source (ADR 0133); local checks pass, Opus 5.5 reviewed; merge pending |
 | 27 | A-6 | Advisory | The products package's UpgradeCap and Publisher are plain owned objects on the deployer key | Open |
 | 28 | A-7 | Advisory | NAV above the cap can push the target notional past `u64` and abort increases | Open |
 | 29 | A-8 | Advisory | `snapshot::capture` docs say a stale feed is reported, but it aborts | Open |
@@ -1317,7 +1317,7 @@ market state, or narrow its documentation to what it checks.
 
 ### Ticket 25 · A-4 · Settlement unwind adopts the venue checkpoint without booking funding
 
-**Status:** resolved in proposed source under [ADR 0132](../decisions/0132-closed-market-funding-accounting.md).
+**Status:** resolved in merged source ([PR #130](https://github.com/interest-protocol/blast-v2-contracts/pull/130)) under [ADR 0132](../decisions/0132-closed-market-funding-accounting.md).
 The original regression fails before the fix and passes after it. All local gates pass: 576 adapter Move tests (44 new A4 cases), 5 downstream
 tests, 28 Node tests, 11 ABI self-tests, live read-only ABI checks for 5
 packages/75 functions, 22 proof self-tests, 10 repository tests, source routing
@@ -1326,7 +1326,8 @@ remaining actionable findings after the event-documentation/replay follow-up.
 That follow-up passed all 44 A4 and 2 terminal-reducer tests plus generated
 references, style and diff checks; production Move source stayed unchanged.
 Fresh pinned mainnet bytecode confirms the settlement funding call chain and
-rounding, recorded in research F5. Merge remains pending. No deployment or
+rounding, recorded in research F5. Hosted checks were blocked before execution
+by account billing; merge used the passing local checks. No deployment or
 original-auditor acceptance is claimed.
 
 **The problem at audit time.** Closed-market unwind adopted the final venue
@@ -1369,21 +1370,46 @@ the external call routing that abort-only venue interfaces cannot execute.
 
 ### Ticket 26 · A-5 · Nothing forces a fill to be proven against the checkpoint
 
-**The problem.** `place_order` returns a `Fill` with `drop`, and the proof
-`assert_checkpoint` only borrows it. The three order loops run the proof by
-convention. A future edit that dropped the call would compile and advance the
-checkpoint on an unproven fill. No impact today: every current path runs the
-proof and `Fill` never leaves the module.
+**Status:** resolved in proposed source under [ADR 0133](../decisions/0133-required-order-fill-proof.md).
+All local checks pass: 585 adapter Move tests (nine new receipt cases), an
+unchanged compiler control and all four missing-proof rejections, five
+downstream tests, 28 Node tests, 11 ABI self-tests, read-only live ABI checks
+for five packages/75 functions, 22 proof-tooling self-tests, ten repository
+tests, routing mutations, style and generated references. Fresh Opus 5.5
+review against this restatement found no actionable findings. The compiler
+and routing regressions are wired into CI; hosted execution and merge remain
+pending. No deployment or original-auditor acceptance is claimed.
 
-**Where.** [orders::Fill](../../sui/boosts/aftermath_adapter/sources/orders.move#L32),
-[orders::place_order](../../sui/boosts/aftermath_adapter/sources/orders.move#L406),
-[orders::assert_checkpoint](../../sui/boosts/aftermath_adapter/sources/orders.move#L444).
+**The problem at audit time.** `place_order` returned a `Fill` with `drop`,
+and `assert_checkpoint` only borrowed it. Every current path ran the check,
+but removing a check would still compile and allow an unproven checkpoint.
 
-**Fix.** Let the type system enforce the proof: `place_order` returns an
-ability-less value that only the proof can consume, and the proof yields the
-proven fill amounts the loops use. The adapter is published, so `Fill`'s
-abilities cannot change in an upgrade; add a new type rather than removing
-`drop`. Both functions are private, so a compatible upgrade carries it.
+**Auditor recommendation.** Return an ability-less receipt, consume it in the
+checkpoint proof, and return the proven amounts for loop accounting. The
+historical deployed adapter required a new type while preserving the old
+`Fill` for upgrade compatibility.
+
+**Implementation and difference.** Follow the receipt recommendation across
+all four callers: mint/redemption, rebalance, market-order unwind and the
+helper used by both profit-realization legs. `proven_fill` takes the
+receipt by value and returns the checked base and quote. Preserve all existing
+trade checks and the profit helper's partial-fill rejection before capture.
+Rebalance retains its plan-aware observation. Replace the obsolete `Fill`
+directly because current source targets a fresh package lineage; this is not
+a compatible upgrade of the historical deployed package.
+
+**Limits.** This prevents accidentally omitting consumption, not deliberate
+rewrites inside the defining module or a future weakening of the proof.
+Reduction quote and allocated trading cash remain venue-derived under the
+existing checks. There is no storage, event or public transaction change.
+Local tests cannot execute full exchange sessions through the venue ports;
+existing live execution and release requirements still apply.
+
+**Tests.** Compile the actual adapter without each proof separately and require
+the specific missing-`drop` rejection, with an unchanged compile-pass control.
+Test both sides and opening/reduction proofs, returned amounts, and exact
+errors for mismatched base, quote and unrelated cash. A mutation-tested source
+gate checks the sole production constructor/consumer and checked accounting.
 
 ### Ticket 27 · A-6 · Products package custody is undecided
 

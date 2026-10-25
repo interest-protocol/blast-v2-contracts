@@ -13,6 +13,8 @@ jobs:
     timeout-minutes: 45
     env:
       SUI_RELEASE: mainnet-v1.77.2
+      CARGO_BUILD_JOBS: 1
+      RAYON_NUM_THREADS: 1
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,3 +29,5 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Check llms-full.txt and llms/ are current
         run: python3 scripts/gen_llms.py --check
+      - name: Reject omitted fill proofs with the pinned compiler
+        run: bash sui/boosts/aftermath_adapter/scripts/verify.sh fill-proof

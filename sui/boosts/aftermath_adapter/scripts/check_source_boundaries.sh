@@ -131,7 +131,7 @@ round_trip = orders.split('fun realize_profit_orders<', 1)[1].split('\n}\n', 1)[
 assert round_trip.count('.fill_exact_order(') == 2
 assert round_trip.index('&before, vault.reducing_terms(position), base') < round_trip.index('&reduced, vault.increasing_terms(position), base')
 exact_fill = orders.split('fun fill_exact_order<', 1)[1].split('\n}\n', 1)[0]
-assert exact_fill.index('base <= terms.max_order_base') < exact_fill.index('.place_order(') < exact_fill.index('fill.filled == base') < exact_fill.index('fill.assert_checkpoint(')
+assert exact_fill.index('base <= terms.max_order_base') < exact_fill.index('.place_order(') < exact_fill.index('receipt.filled == base') < exact_fill.index('.capture_checkpoint(') < exact_fill.index('receipt.proven_fill(')
 redeem = source.split('public fun redeem<', 1)[1].split('\n}\n', 1)[0]
 assert redeem.index('.assert_releasable(net + admin)') < redeem.index('.withdraw(')
 rebalance = source.split('entry fun rebalance<', 1)[1].split('\n}\n', 1)[0]
@@ -146,7 +146,7 @@ assert 'while (index < state::max_rebalance_orders())' in rebalance_fills, \
     'Rebalance execution must use the core-owned capacity budget.'
 assert '.into_rebalance_observation(plan)' in rebalance_fills
 assert '.into_observation()' not in rebalance_fills
-assert 'fill.assert_checkpoint(' in rebalance_fills and '.accept_rebalance_fill(' in rebalance_fills
+assert 'receipt.proven_fill(' in rebalance_fills and '.accept_rebalance_fill(' in rebalance_fills
 donate = source.split('public fun donate<', 1)[1].split('\n}\n', 1)[0]
 assert donate.index('.synchronize_or_fail(') < donate.index('.deposit(') < donate.index('.allocate(') < donate.index('.into_recovery_observation()') < donate.index('.complete_donation(')
 completion = source.split('fun complete_donation<', 1)[1].split('\n}\n', 1)[0]
@@ -286,5 +286,6 @@ check_error_registry "$package_dir/sources/lib/errors.move"
 python3 "$package_dir/scripts/test_oracle_routing.py"
 python3 "$package_dir/scripts/test_l3_routing.py"
 python3 "$package_dir/scripts/test_a4_routing.py"
+python3 "$package_dir/scripts/test_a5_routing.py"
 
 printf 'Source boundaries hold: hierarchy, surface, roles, sole driver and test seams.\n'
