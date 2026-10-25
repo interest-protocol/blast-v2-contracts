@@ -295,6 +295,10 @@ const ERebalanceOrderLimit: u64 = 70;
 /// The maximum circulating-share redemption is not locked by its minimum size.
 const EProtectedShutdownNotAllowed: u64 = 71;
 
+#[test_only]
+/// A rebalance order's direction or emergency status differs from its plan.
+const ERebalanceOrderMismatch: u64 = 72;
+
 macro public(package) fun zero_amount(): u64 { 0 }
 
 macro public(package) fun invalid_fee_bps(): u64 { 1 }
@@ -438,3 +442,5 @@ macro public(package) fun rebalance_capacity(): u64 { 69 }
 macro public(package) fun rebalance_order_limit(): u64 { 70 }
 
 macro public(package) fun protected_shutdown_not_allowed(): u64 { 71 }
+
+macro public(package) fun rebalance_order_mismatch(): u64 { 72 }
