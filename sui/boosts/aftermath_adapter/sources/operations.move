@@ -387,10 +387,12 @@ public fun rebaseline<Product, Collateral>(
 }
 
 /// Settles due funding and reconciles the stored checkpoint with the venue,
-/// with no priced operation attached and no lifecycle move. Any caller may
-/// submit the bound objects; a binding failure aborts. An explainable funding
-/// move is booked and emitted, and an interval the classifier cannot explain
-/// leaves the accepted checkpoint standing and emits `CheckpointDrifted`.
+/// without trading or changing lifecycle. Any caller may submit the bound
+/// objects. Binding failures and venue funding/price failures abort; stale
+/// feeds or collateral index/TWAP divergence leave no committed synchronization
+/// state changes or events. After those calls succeed, explainable funding is
+/// booked and emitted. An interval the classifier cannot explain leaves the
+/// accepted checkpoint standing and emits `CheckpointDrifted`.
 public fun sync_health<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
@@ -1019,9 +1021,11 @@ fun settle_net_funding<Product, Collateral>(
 
 /// Settles due funding on the venue and reconciles the stored checkpoint with
 /// what the venue shows now; returns that capture so a priced operation can
-/// build on it without reading the venue again. Drift is reported here, never
-/// an abort: `sync_health` and `unwind` carry on from it, and a priced
-/// operation goes through `synchronize_or_fail`.
+/// build on it without reading the venue again. Venue funding and price calls
+/// must succeed before reconciliation: stale feeds or collateral index/TWAP
+/// divergence abort the transaction. Once captured, unexplained checkpoint
+/// drift is reported; `sync_health` and `unwind` carry on from that drift, and
+/// a priced operation goes through `synchronize_or_fail`.
 fun synchronize<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     account: &Account<Collateral>,

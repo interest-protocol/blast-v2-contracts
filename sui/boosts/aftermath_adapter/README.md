@@ -72,6 +72,11 @@ no privileged keeper path, caller trade sizing or reward. An unresolved
 external change preserves the accepted economic checkpoint and emits
 `CheckpointDrifted`.
 
+Health synchronization still reads venue prices for funding and reconciliation.
+Stale feeds or collateral index/TWAP divergence abort the whole transaction,
+with no committed synchronization state changes or events. Raw reads through
+`snapshot::capture_checkpoint` require no live prices and do not settle funding.
+
 Activation mints the locked seed shares to the burn address; they are never
 redeemable. `vault::begin_shutdown` requires a shutdown-role witness and no venue or oracle
 input; the clock it reads fixes when shutdown began. It irreversibly moves Active to Unwinding. Permissionless

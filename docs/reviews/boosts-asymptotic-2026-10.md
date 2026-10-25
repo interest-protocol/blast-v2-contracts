@@ -117,7 +117,7 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | 26 | A-5 | Advisory | Nothing in the type system forces a fill to be proven against the checkpoint | Resolved in proposed source (ADR 0133); local checks pass, Opus 5.5 reviewed; merge pending |
 | 27 | A-6 | Advisory | The products package's UpgradeCap and Publisher are plain owned objects on the deployer key | Open |
 | 28 | A-7 | Advisory | NAV above the cap can push the target notional past `u64` and abort increases | Resolved in proposed source (ADR 0128); local checks pass; merge pending |
-| 29 | A-8 | Advisory | `snapshot::capture` docs say a stale feed is reported, but it aborts | Open |
+| 29 | A-8 | Advisory | `snapshot::capture` docs say a stale feed is reported, but it aborts | Resolved in proposed documentation; local checks pass; merge pending |
 | 30 | A-9 | Advisory | Rebalance fills trust the order's direction, not the plan's | Open |
 
 ## Recommended order
@@ -1473,7 +1473,22 @@ saturate or guard the target in `target_notional_down` and the increase path.
 
 ### Ticket 29 · A-8 · `snapshot::capture` docs say a stale feed is carried, but it aborts
 
-**The problem.** The doc comment says only source-identity problems abort and
+**Status:** resolved in proposed documentation; local checks pass, merge pending.
+The edited Move files differ only in doc comments. Build, warning-as-error lint,
+source boundaries, repository tests, style, generated references and the
+existing compiler fill-proof gate pass.
+
+**Audit alignment.** Follow the auditor's recommendation. Capture and
+synchronization comments now distinguish venue price failures, which abort,
+from checkpoint drift reported after successful venue calls. The adapter README
+and integration guide state that failed synchronization commits no state changes
+or events. The comments direct raw reads that need no live price to
+`capture_checkpoint`, which does not settle funding or produce a valuation.
+Executable code, venue protections and trading behavior are unchanged.
+Venue availability remains a constraint; local documentation checks do not
+establish live execution or original-auditor acceptance.
+
+**The problem (audit-time findings).** The doc comment says only source-identity problems abort and
 that an unserviceable venue is carried as a fact for health synchronization to
 report. But `capture` calls the venue's price functions with the clock, which
 (per the venue bytecode) abort when a feed is older than the market's
@@ -1482,8 +1497,8 @@ covers only pause and freeze, so a stale feed aborts `capture` inside the
 venue and `sync_health` aborts instead of reporting. No measurable impact; the
 inaccurate contract could mislead a future caller.
 
-**Where.** [snapshot::capture](../../sui/boosts/aftermath_adapter/sources/snapshot.move#L58)
-doc comment; the venue price calls at lines 80 to 82.
+**Where.** [snapshot::capture](../../sui/boosts/aftermath_adapter/sources/snapshot.move#L172)
+doc comment and venue price calls immediately below it.
 
 **Fix.** Amend the doc comment: a stale feed or an index/TWAP divergence
 aborts `capture`, so health synchronization aborts rather than reports, and

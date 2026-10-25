@@ -17,8 +17,9 @@ module blast_boosts_aftermath::snapshot;
 
 /// One authenticated capture: the raw checkpoint, both oracle legs, the mark,
 /// the position's economics, and whether the venue can serve a priced
-/// operation. A priced caller consumes it through `into_observation`; a health
-/// caller reads only its checkpoint.
+/// operation. A priced caller consumes it through `into_observation`; health
+/// reconciliation uses its checkpoint and collateral price. Creating the
+/// capture requires the venue's price reads to succeed.
 public struct CapturedSnapshot has drop {
     venue_equity: u64,
     position_base: u64,
@@ -111,7 +112,9 @@ public(package) fun assert_realization_progress(
     );
 }
 
-/// Authenticates raw terminal state without requiring a live price or positive equity.
+/// Authenticates raw venue state without requiring a live price or positive equity.
+/// Use for reads that must remain independent of price availability. This does
+/// not settle funding or produce a valuation for a priced operation.
 public(package) fun capture_checkpoint<Collateral>(
     binding: &Binding,
     account: &Account<Collateral>,
@@ -154,12 +157,18 @@ public(package) fun capture_order_capacity<Collateral>(
 
 /// Captures one authenticated venue valuation.
 ///
-/// Source identity is strict and aborts. Values that do not fit the adapter's
-/// units, and a venue that cannot serve a priced operation, are carried as
-/// facts: `into_observation` refuses them for a priced operation, health
-/// synchronization reports them. The interface packages are ABI ports, so this
-/// production path is mechanically pinned but never executed by local unit
-/// tests.
+/// Source identity failures and venue price-check failures abort. Stale feeds
+/// or collateral index/TWAP divergence abort inside the venue and propagate to
+/// the caller, including `sync_health`; no partial capture or health report is
+/// returned. Use `capture_checkpoint` when only raw, price-independent state
+/// is needed.
+///
+/// After the venue reads succeed, normalization and margin failures, open
+/// orders, and pause/freeze status are carried as facts that `into_observation`
+/// rejects. `venue_operational` describes only pause/freeze status, not price
+/// availability. Health reconciliation uses the checkpoint and collateral
+/// price; it does not report every captured economic flag. The interface
+/// packages are ABI ports, so local unit tests do not execute these venue reads.
 public(package) fun capture<Collateral>(
     binding: &Binding,
     account: &Account<Collateral>,
