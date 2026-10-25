@@ -23,11 +23,6 @@ public(package) fun fixed_to_u64_up(value: u256, decimals: u64): (u64, bool) {
     to_u64(value.div_ceil(atom_scale(decimals)))
 }
 
-/// The value as a u64 and whether it fit; an unrepresentable value reads as zero.
-public(package) fun to_u64(value: u256): (u64, bool) {
-    if (value > std::u64::max_value!() as u256) { (0, false) } else { (value as u64, true) }
-}
-
 /// Converts a USD IFixed amount into collateral IFixed at `collateral_price`.
 ///
 /// `usd / price` in IFixed is `usd × 10^18 / price`; the product is split into
@@ -45,6 +40,11 @@ public(package) fun usd_fixed_to_collateral_fixed(usd: u256, collateral_price: u
 }
 
 // === Private Functions ===
+
+/// The value as a u64 and whether it fit; an unrepresentable value reads as zero.
+fun to_u64(value: u256): (u64, bool) {
+    if (value > std::u64::max_value!() as u256) { (0, false) } else { (value as u64, true) }
+}
 
 /// Raw IFixed units in one `decimals`-decimal atom: `10^(18 - decimals)`.
 fun atom_scale(decimals: u64): u256 {
