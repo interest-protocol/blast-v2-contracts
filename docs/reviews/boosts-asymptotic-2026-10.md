@@ -8,18 +8,24 @@ sound, and the risk sits where the adapter meets Aftermath and its own
 parameters. Most findings deny service (a vault gets stuck) rather than move
 value. One finding, M-6, lets an unprivileged caller take value from holders.
 
-This document restates every finding in plain English, maps it to the
-functions in the current source, says what the fix is, and splits the work
-into one ticket per finding so it can be worked step by step. Line numbers
-refer to the tree this document was written against; the audited commit is
-not in this clone, but every cited function was re-read and the line numbers
-drift by at most a dozen lines in `operations.move` and match exactly
-elsewhere.
+This document restates every finding in plain English and tracks its response.
+The finding descriptions, original remedies and source line references preserve
+historical context unless explicitly described as the implementation. Line
+references may have moved; use the status summaries and linked merged PRs for
+the current response.
 
-**Three findings were already changed on `main` after the audited commit**, by
-commit `ecc7c2f` and [ADR 0115](../decisions/0115-venue-policy-from-the-bound-clearing-house.md)
-(2026-10-14). The status column below reflects that. Everything else was
-confirmed open in the current source.
+**Status as of 2026-10-25:** all 28 code or documentation remediations are merged
+into `main`, through [PR #134](https://github.com/interest-protocol/blast-v2-contracts/pull/134)
+at commit `b99ecf31179ab76e8c4a672e63a439ccad3385ad`. This includes every medium
+finding, M-1 through M-9. The remaining two findings, **L-7 and A-6, are
+acknowledged**: the project has committed to multisig custody before deployment.
+The custody transfers and signer/threshold records still need verification.
+Acknowledgment does not mean the custody changes have happened.
+
+These statuses record the project's assessment of merged changes and local
+checks. Live venue execution, deployment/source verification, product-specific
+calibration and original-auditor acceptance remain separate release work. The
+documented limits of each mitigation still apply.
 
 The report's own claims about Aftermath behaviour (deallocation rules, limit
 order semantics, fill pricing) come from the deployed venue bytecode, not from
@@ -89,40 +95,43 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 
 | Ticket | ID | Severity | In one sentence | Status in current source |
 | --- | --- | --- | --- | --- |
-| 1 | M-1 | Medium | A venue event the checkpoint cannot explain blocks mint, redeem and rebalance for good | Resolved in source (ADRs 0115, 0121); RiskAdmin review and live recovery proof remain; M-5 is separate |
-| 2 | M-2 | Medium | When the position has a big unrealized profit, every redemption aborts | Resolved in source through accepted mitigation (ADR 0122); margin/configuration limits and live execution proof remain |
-| 3 | M-3 | Medium | Calling either `restrict_*` upgrade function makes the next upgrade freeze the whole adapter forever | Resolved in source (ADR 0123, PR #117); separate activation and repair access, no restriction paths; fresh-lineage and deployment limits remain |
-| 4 | M-4 | Medium | A per-order cap worth less than one lot wedges every order path, shutdown included | Resolved in source (ADR 0119); ordinary-redemption recovery can require an administrator |
-| 5 | M-5 | Medium | Once margin falls below the venue's opening requirement, the emergency rebalance that should fix it is refused | Resolved in source (PR #118, ADR 0124); venue execution remains a release gate |
-| 6 | M-6 | Medium | A caller can plant a bad quote and make `rebalance` or `unwind` fill into it at the full slippage bound, paid by holders | Atomic trading sequence blocked by [ADR 0118](../decisions/0118-limit-priced-vault-orders-and-a-widening-unwind-bound.md); price calibration and live venue proof remain |
-| 7 | M-7 | Medium | Rotating or re-pointing an oracle feed freezes priced operations and the shutdown exit | Resolved in source (ADR 0115, PR #119); guard/routing regressions complete; controlled venue rotation remains a release gate |
-| 8 | M-8 | Medium | A cap-sized order aborts if it fills even slightly above the oracle price | Resolved in source (ADR 0119); live execution evidence remains a release gate |
-| 9 | M-9 | Medium | Sustained above-RGP traffic on the shared objects can starve `rebalance` and `unwind` | Resolved in source through accepted mitigation (ADR 0120); ordinary-rebalance congestion remains an accepted risk |
-| 10 | L-1 | Low | The live NVDA2L vault uses `min_order_lots = 1`, which makes the mint drift bound meaningless | Open (deployment parameter, plus a post-fill band check) |
-| 11 | L-2 | Low | Converting the order cap to base can overflow and abort instead of saturating | Resolved in source with M-4/M-8 in PR #112 (ADR 0119) |
-| 12 | L-3 | Low | A small vault below the band cannot rebalance when one lot overshoots target, and then cannot accept mints either | Resolved in source; PR #120, ADR 0125, Opus 5.5 reviewed |
-| 13 | L-4 | Low | Donated cash is never allocated to the position, so the core counts margin the venue does not see | Resolved in source (PR #118, ADR 0124); venue execution remains a release gate |
-| 14 | L-5 | Low | Activation accepts any non-negative `position_imr`, even one that later blocks operations inside the band | Resolved in source (PR #118, ADR 0124); venue execution remains a release gate |
-| 15 | L-6 | Low | An emergency rebalance that stops just under the cap can fail the minimum-improvement check and revert every time | Resolved in source (PR #121, ADR 0126), Opus 5.5 reviewed; live execution proof remains |
-| 16 | L-7 | Low | One single-key address holds all root, issuance and upgrade authority | Open (custody and deployment records) |
-| 17 | L-8 | Low | Emergency rebalance is refused when the venue mark diverges from spot, even though it never uses the mark | Resolved in source (PR #123, ADR 0127), Opus 5.5 reviewed; live execution remains a release gate |
-| 18 | L-9 | Low | Increase rebalances check the hard cap against a reserve admitted at the opening notional, not the post-fill one | Resolved in source (PR #124, ADR 0128), Opus 5.5 reviewed; live execution remains a release gate |
-| 19 | L-10 | Low | Reductions are checked fill by fill on one reserve basis and completed on another, so a valid deleverage can revert | Resolved in source (PR #125, ADR 0129), Opus 5.5 reviewed; live execution remains a release gate |
-| 20 | L-11 | Low | Once the position shrinks below one minimum order, nobody can redeem | Resolved in source (PR #126, ADR 0130), Opus 5.5 reviewed; live execution and auditor acceptance remain |
-| 21 | L-12 | Low | The funding-credit conservation check can overflow on a state that fits | Resolved in source (PR #127), Opus 5.5 reviewed; original-auditor acceptance remains |
-| 22 | A-1 | Advisory | `ifixed_math::to_u64` is wider than its callers | Resolved in source (PR #128), Opus 5.5 reviewed; original-auditor acceptance remains |
-| 23 | A-2 | Advisory | `needs_rebalance` prices post-settlement equity against the pre-settlement reserve | Resolved in source (merged PR #129, ADR 0131); Opus 5.5 reviewed; local checks accepted |
-| 24 | A-3 | Advisory | `needs_rebalance` skips the venue-fee check `rebalance` enforces | Resolved in source by L3 (merged PR #120); Sol 6.1 rechecked |
-| 25 | A-4 | Advisory | Settlement unwind adopts the venue checkpoint without booking funding | Resolved in merged source (PR #130, ADR 0132); local checks pass, Opus 5.5 reviewed |
-| 26 | A-5 | Advisory | Nothing in the type system forces a fill to be proven against the checkpoint | Resolved in proposed source (ADR 0133); local checks pass, Opus 5.5 reviewed; merge pending |
-| 27 | A-6 | Advisory | The products package's UpgradeCap and Publisher are plain owned objects on the deployer key | Open |
-| 28 | A-7 | Advisory | NAV above the cap can push the target notional past `u64` and abort increases | Resolved in proposed source (ADR 0128); local checks pass; merge pending |
-| 29 | A-8 | Advisory | `snapshot::capture` docs say a stale feed is reported, but it aborts | Resolved in proposed documentation; local checks pass; merge pending |
-| 30 | A-9 | Advisory | Rebalance fills trust the order's direction, not the plan's | Resolved in proposed source; local checks pass; merge pending |
+| 1 | M-1 | Medium | A venue event the checkpoint cannot explain blocks mint, redeem and rebalance for good | Resolved in merged source ([PR #115](https://github.com/interest-protocol/blast-v2-contracts/pull/115)); ADRs 0115, 0121; RiskAdmin review and live recovery proof remain; M-5 is separate |
+| 2 | M-2 | Medium | When the position has a big unrealized profit, every redemption aborts | Resolved in merged source ([PR #116](https://github.com/interest-protocol/blast-v2-contracts/pull/116)); accepted mitigation, ADR 0122; margin/configuration limits and live execution proof remain |
+| 3 | M-3 | Medium | Calling either `restrict_*` upgrade function makes the next upgrade freeze the whole adapter forever | Resolved in merged source ([PR #117](https://github.com/interest-protocol/blast-v2-contracts/pull/117)); ADR 0123; separate activation and repair access, no restriction paths; fresh-lineage and deployment limits remain |
+| 4 | M-4 | Medium | A per-order cap worth less than one lot wedges every order path, shutdown included | Resolved in merged source ([PR #112](https://github.com/interest-protocol/blast-v2-contracts/pull/112)); ADR 0119; ordinary-redemption recovery can require an administrator |
+| 5 | M-5 | Medium | Once margin falls below the venue's opening requirement, the emergency rebalance that should fix it is refused | Resolved in merged source ([PR #118](https://github.com/interest-protocol/blast-v2-contracts/pull/118)); ADR 0124; venue execution remains a release gate |
+| 6 | M-6 | Medium | A caller can plant a bad quote and make `rebalance` or `unwind` fill into it at the full slippage bound, paid by holders | Resolved in merged source ([PR #111](https://github.com/interest-protocol/blast-v2-contracts/pull/111)); ADR 0118 blocks the audited atomic trading sequence; price calibration and live venue proof remain |
+| 7 | M-7 | Medium | Rotating or re-pointing an oracle feed freezes priced operations and the shutdown exit | Resolved in merged source ([PR #119](https://github.com/interest-protocol/blast-v2-contracts/pull/119)); ADR 0115; guard/routing regressions complete; controlled venue rotation remains a release gate |
+| 8 | M-8 | Medium | A cap-sized order aborts if it fills even slightly above the oracle price | Resolved in merged source ([PR #112](https://github.com/interest-protocol/blast-v2-contracts/pull/112)); ADR 0119; live execution evidence remains a release gate |
+| 9 | M-9 | Medium | Sustained above-RGP traffic on the shared objects can starve `rebalance` and `unwind` | Resolved in merged source ([PR #113](https://github.com/interest-protocol/blast-v2-contracts/pull/113)); accepted mitigation, ADR 0120; ordinary-rebalance congestion remains an accepted risk |
+| 10 | L-1 | Low | The live NVDA2L vault uses `min_order_lots = 1`, which makes the mint drift bound meaningless | Resolved in merged source ([PR #114](https://github.com/interest-protocol/blast-v2-contracts/pull/114)); post-fill band check and calibrated successor minimum; product calibration and deployment verification remain |
+| 11 | L-2 | Low | Converting the order cap to base can overflow and abort instead of saturating | Resolved in merged source ([PR #112](https://github.com/interest-protocol/blast-v2-contracts/pull/112)); with M-4/M-8, ADR 0119 |
+| 12 | L-3 | Low | A small vault below the band cannot rebalance when one lot overshoots target, and then cannot accept mints either | Resolved in merged source ([PR #120](https://github.com/interest-protocol/blast-v2-contracts/pull/120)); ADR 0125; Opus 5.5 reviewed |
+| 13 | L-4 | Low | Donated cash is never allocated to the position, so the core counts margin the venue does not see | Resolved in merged source ([PR #118](https://github.com/interest-protocol/blast-v2-contracts/pull/118)); ADR 0124; venue execution remains a release gate |
+| 14 | L-5 | Low | Activation accepts any non-negative `position_imr`, even one that later blocks operations inside the band | Resolved in merged source ([PR #118](https://github.com/interest-protocol/blast-v2-contracts/pull/118)); ADR 0124; venue execution remains a release gate |
+| 15 | L-6 | Low | An emergency rebalance that stops just under the cap can fail the minimum-improvement check and revert every time | Resolved in merged source ([PR #121](https://github.com/interest-protocol/blast-v2-contracts/pull/121)); ADR 0126; Opus 5.5 reviewed; live execution proof remains |
+| 16 | L-7 | Low | One single-key address holds all root, issuance and upgrade authority | Acknowledged; root/admin multisig required before deployment; custody evidence pending |
+| 17 | L-8 | Low | Emergency rebalance is refused when the venue mark diverges from spot, even though it never uses the mark | Resolved in merged source ([PR #123](https://github.com/interest-protocol/blast-v2-contracts/pull/123)); ADR 0127; Opus 5.5 reviewed; live execution remains a release gate |
+| 18 | L-9 | Low | Increase rebalances check the hard cap against a reserve admitted at the opening notional, not the post-fill one | Resolved in merged source ([PR #124](https://github.com/interest-protocol/blast-v2-contracts/pull/124)); ADR 0128; Opus 5.5 reviewed; live execution remains a release gate |
+| 19 | L-10 | Low | Reductions are checked fill by fill on one reserve basis and completed on another, so a valid deleverage can revert | Resolved in merged source ([PR #125](https://github.com/interest-protocol/blast-v2-contracts/pull/125)); ADR 0129; Opus 5.5 reviewed; live execution remains a release gate |
+| 20 | L-11 | Low | Once the position shrinks below one minimum order, nobody can redeem | Resolved in merged source ([PR #126](https://github.com/interest-protocol/blast-v2-contracts/pull/126)); ADR 0130; Opus 5.5 reviewed; live execution and auditor acceptance remain |
+| 21 | L-12 | Low | The funding-credit conservation check can overflow on a state that fits | Resolved in merged source ([PR #127](https://github.com/interest-protocol/blast-v2-contracts/pull/127)); Opus 5.5 reviewed; original-auditor acceptance remains |
+| 22 | A-1 | Advisory | `ifixed_math::to_u64` is wider than its callers | Resolved in merged source ([PR #128](https://github.com/interest-protocol/blast-v2-contracts/pull/128)); Opus 5.5 reviewed; original-auditor acceptance remains |
+| 23 | A-2 | Advisory | `needs_rebalance` prices post-settlement equity against the pre-settlement reserve | Resolved in merged source ([PR #129](https://github.com/interest-protocol/blast-v2-contracts/pull/129)); ADR 0131; Opus 5.5 reviewed; local checks accepted |
+| 24 | A-3 | Advisory | `needs_rebalance` skips the venue-fee check `rebalance` enforces | Resolved in merged source ([PR #120](https://github.com/interest-protocol/blast-v2-contracts/pull/120)); by L-3; Sol 6.1 rechecked |
+| 25 | A-4 | Advisory | Settlement unwind adopts the venue checkpoint without booking funding | Resolved in merged source ([PR #130](https://github.com/interest-protocol/blast-v2-contracts/pull/130)); ADR 0132; local checks pass; Opus 5.5 reviewed |
+| 26 | A-5 | Advisory | Nothing in the type system forces a fill to be proven against the checkpoint | Resolved in merged source ([PR #131](https://github.com/interest-protocol/blast-v2-contracts/pull/131)); ADR 0133; local checks pass; Opus 5.5 reviewed |
+| 27 | A-6 | Advisory | The products package's UpgradeCap and Publisher are plain owned objects on the deployer key | Acknowledged; products UpgradeCap/Publisher multisig required before deployment; custody evidence pending |
+| 28 | A-7 | Advisory | NAV above the cap can push the target notional past `u64` and abort increases | Resolved in merged source ([PR #132](https://github.com/interest-protocol/blast-v2-contracts/pull/132)); completes the L-9 / PR #124 fix; ADR 0128; local checks pass |
+| 29 | A-8 | Advisory | `snapshot::capture` docs say a stale feed is reported, but it aborts | Resolved in merged documentation ([PR #133](https://github.com/interest-protocol/blast-v2-contracts/pull/133)); local checks pass |
+| 30 | A-9 | Advisory | Rebalance fills trust the order's direction, not the plan's | Resolved in merged source ([PR #134](https://github.com/interest-protocol/blast-v2-contracts/pull/134)); local checks pass |
 
-## Recommended order
+## Original recommended order
 
-This follows the auditors' summary, adjusted for what ADR 0115 already closed.
+The historical sequence below follows the auditors' summary, adjusted for what
+ADR 0115 had already closed. Its code and documentation work is now merged; it
+is retained to explain the dependencies, not as a list of open fixes. The L-7
+and A-6 multisig requirements and the release evidence described above remain.
 
 1. **Ticket 6 (M-6)** first. It is the only path where an unprivileged caller
    takes value from holders, and it can recur.
@@ -693,7 +702,20 @@ house writers are outside this protocol.
 
 ### Ticket 10 · L-1 · The live vault's one-lot minimum voids the mint drift bound
 
-**Status:** open. Mostly a deployment parameter; one code change.
+**Status:** resolved in merged source by
+[PR #114](https://github.com/interest-protocol/blast-v2-contracts/pull/114).
+`complete_mint` checks both inclusive leverage-band edges using actual final
+equity and reserve after fees and reserve clamping. Policies reject a one-lot
+minimum; the structural floor is two lots, with a separately calibrated minimum
+for each product. The recorded NVDA 2x successor profile selects **65 lots**,
+the smallest supported by its fixed-price, net-deposit-only seed-to-cap model
+starting at least at 2x. The 64-lot stress case crosses the lower edge; 65 lots
+stays inside. See the calibration and its assumptions in
+[ADR 0064](../decisions/0064-aftermath-backed-leverage-coins.md).
+Move regressions and simulation checks passed locally. Different product
+conditions require recalibration; deployment must verify the starting-leverage
+premise separately. This does not claim a change to the historical live vault
+or original-auditor acceptance. The historical finding follows.
 
 **The problem.** Each mint rounds its added base down to whole lots, so a mint
 can leave up to one lot of its target unopened. ADR 0064 I26 turns this into
@@ -912,9 +934,16 @@ rejected at policy creation.
 
 ### Ticket 16 · L-7 · One single-key address holds every Boosts authority
 
-**Status:** open. Custody and records, not a code defect.
+**Status:** acknowledged (2026-10-24), with the commitment reaffirmed on
+2026-10-25: place root and admin authority under multisig **before deployment**.
+This includes the `SuperAdminCap` and admin capabilities carrying issuance and
+package-admin authority. Record and verify custody, signers and threshold before
+deployment. This records the required mitigation, not a completed transfer or
+verified signer setup. The auditor's recommendations on upgrade delays,
+deployment records and source verification remain outstanding. Products-package
+custody is also acknowledged under A-6. This finding is not marked resolved.
 
-**The problem.** The mainnet deployer address holds the `SuperAdminCap`, the
+**The problem (audit-time findings).** The mainnet deployer address holds the `SuperAdminCap`, the
 only `AdminCap` (roles `VAULT_ISSUER` and `PACKAGE_ADMIN`) and the products
 `UpgradeCap`. Its transactions carry a single Ed25519 signature, so it is one
 key, not a multisig. With `PACKAGE_ADMIN` that key alone can authorize,
@@ -1250,7 +1279,7 @@ same module called it.
 
 ### Ticket 23 · A-2 · `needs_rebalance` pairs post-settlement equity with a pre-settlement reserve
 
-**Status:** resolved in proposed source in [PR #129](https://github.com/interest-protocol/blast-v2-contracts/pull/129),
+**Status:** resolved in merged source in [PR #129](https://github.com/interest-protocol/blast-v2-contracts/pull/129),
 independently reviewed by Opus 5.5 with no actionable findings after follow-up.
 Merged with explicit user acceptance of passing local checks; hosted checks
 could not start due to account billing/spending limits. The merged tree matches
@@ -1370,15 +1399,18 @@ the external call routing that abort-only venue interfaces cannot execute.
 
 ### Ticket 26 · A-5 · Nothing forces a fill to be proven against the checkpoint
 
-**Status:** resolved in proposed source under [ADR 0133](../decisions/0133-required-order-fill-proof.md).
+**Status:** resolved in merged source in
+[PR #131](https://github.com/interest-protocol/blast-v2-contracts/pull/131)
+under [ADR 0133](../decisions/0133-required-order-fill-proof.md).
 All local checks pass: 585 adapter Move tests (nine new receipt cases), an
 unchanged compiler control and all four missing-proof rejections, five
 downstream tests, 28 Node tests, 11 ABI self-tests, read-only live ABI checks
 for five packages/75 functions, 22 proof-tooling self-tests, ten repository
 tests, routing mutations, style and generated references. Fresh Opus 5.5
 review against this restatement found no actionable findings. The compiler
-and routing regressions are wired into CI; hosted execution and merge remain
-pending. No deployment or original-auditor acceptance is claimed.
+and routing regressions are wired into CI. Merge used passing local checks;
+hosted checks were blocked by account billing. No deployment or
+original-auditor acceptance is claimed.
 
 **The problem at audit time.** `place_order` returned a `Fill` with `drop`,
 and `assert_checkpoint` only borrowed it. Every current path ran the check,
@@ -1413,7 +1445,14 @@ gate checks the sole production constructor/consumer and checked accounting.
 
 ### Ticket 27 · A-6 · Products package custody is undecided
 
-**The problem.** The products package's `UpgradeCap` (compatible policy) and
+**Status:** acknowledged (2026-10-25). The project commits to placing the
+products package's `UpgradeCap` and `Publisher` under multisig control
+**before deployment**. Record and verify custody, signers, threshold and the
+upgrade policy before deployment. This records the required mitigation, not a
+completed transfer or a resolved finding. The multisig remains trusted to
+approve new code, and additive-only upgrades do not mean product tags only.
+
+**The problem (audit-time findings).** The products package's `UpgradeCap` (compatible policy) and
 `Publisher` are plain objects owned by the deployer address. Publication
 neither called `make_immutable` (as the core did) nor applied the README's
 additive-only restriction. The holder can publish new public functions,
@@ -1435,7 +1474,9 @@ path.
 
 ### Ticket 28 · A-7 · NAV above the cap can push the target notional past `u64`
 
-**Status:** resolved in proposed source; local checks pass, merge pending. L-9 / merged PR #124
+**Status:** resolved in merged source in
+[PR #132](https://github.com/interest-protocol/blast-v2-contracts/pull/132).
+L-9 / merged PR #124
 already replaced ordinary rebalance target narrowing with wide comparisons and
 bounded whole-lot sizing. The remaining funded-mint helper now keeps its ideal
 target in `u128` and explicitly bounds current notional plus the rounded-up
@@ -1473,7 +1514,8 @@ saturate or guard the target in `target_notional_down` and the increase path.
 
 ### Ticket 29 · A-8 · `snapshot::capture` docs say a stale feed is carried, but it aborts
 
-**Status:** resolved in proposed documentation; local checks pass, merge pending.
+**Status:** resolved in merged documentation in
+[PR #133](https://github.com/interest-protocol/blast-v2-contracts/pull/133).
 The edited Move files differ only in doc comments. Build, warning-as-error lint,
 source boundaries, repository tests, style, generated references and the
 existing compiler fill-proof gate pass.
@@ -1506,7 +1548,10 @@ callers that must not depend on a live price use `capture_checkpoint`.
 
 ### Ticket 30 · A-9 · Rebalance fills are validated against the order's direction, never the plan's
 
-**Status:** resolved in proposed source; local checks pass; merge pending.
+**Status:** resolved in merged source in
+[PR #134](https://github.com/interest-protocol/blast-v2-contracts/pull/134).
+Merge used the passing local checks; hosted checks were blocked by account
+billing. The merged tree matches the tested head.
 
 **Auditor alignment.** Follow the recommendation to reject orders whose
 direction or emergency status differs from the plan. Core checks both before
