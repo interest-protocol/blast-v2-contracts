@@ -138,7 +138,7 @@ fun an_unaffordable_flat_close_leaves_one_lot_and_keeps_the_valid_reduction() {
         state.accept_rebalance_fill(&mut plan, order, position(side, 90, 1_000, 1_000), 1_000, NOW);
         assert_eq!(state.next_rebalance_order(&plan).order_base(), 0);
         state.complete_rebalance(plan);
-        assert!(!state.needs_rebalance(position(side, 90, 1_000, 1_000), true, 0, NOW));
+        assert!(!state.needs_rebalance(position(side, 90, 1_000, 1_000), observation::funding_credit(0), true, 0, NOW));
         assert_eq!(state.maintenance_reserve(), 50_000);
         state.destroy_for_testing();
     });
@@ -171,8 +171,8 @@ fun a_flat_close_keeps_the_full_reserve_and_positive_holder_value() {
 fun flat_preflight_includes_the_fee_and_requires_strictly_positive_nav() {
     let state = seeded(policy::long(), 5, 500, 102_001);
     // 20 slippage + 11 fee + 1 price precision + 1 precision fee + 3 capture + 5 reserve = 41.
-    assert!(!state.needs_rebalance(position(policy::long(), 41, 1_000, 1_000), true, 100, NOW));
-    assert!(state.needs_rebalance(position(policy::long(), 42, 1_000, 1_000), true, 100, NOW));
+    assert!(!state.needs_rebalance(position(policy::long(), 41, 1_000, 1_000), observation::funding_credit(0), true, 100, NOW));
+    assert!(state.needs_rebalance(position(policy::long(), 42, 1_000, 1_000), observation::funding_credit(0), true, 100, NOW));
     state.destroy_for_testing();
 }
 
@@ -304,7 +304,7 @@ fun a_full_emergency_batch_stops_before_its_permitted_costs_erase_holder_value()
         assert_eq!(equity, 3);
         assert_eq!(base, 500_650);
         state.complete_rebalance(plan);
-        assert!(!state.needs_rebalance(position(side, equity, base, 1), true, 0, NOW));
+        assert!(!state.needs_rebalance(position(side, equity, base, 1), observation::funding_credit(0), true, 0, NOW));
         state.destroy_for_testing();
     });
 }

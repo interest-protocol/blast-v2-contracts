@@ -36,7 +36,7 @@ fun repeated_increases_reprice_the_reserve_and_preserve_its_recorded_balance() {
         let state = seeded(side, 400_000, 2_000, 300_000);
         let mut equity = 1_000_000;
         let mut base = 300_000;
-        assert!(state.needs_rebalance(position(side, equity, base, 1), true, 10, NOW));
+        assert!(state.needs_rebalance(position(side, equity, base, 1), observation::funding_credit(0), true, 10, NOW));
         let mut plan = state.prepare_rebalance(position(side, equity, base, 1), 10, NOW);
         let mut steps = 0;
         loop {
@@ -51,7 +51,7 @@ fun repeated_increases_reprice_the_reserve_and_preserve_its_recorded_balance() {
         };
         assert!(steps > 1 && steps <= state::max_rebalance_orders());
         state.complete_rebalance(plan);
-        assert!(!state.needs_rebalance(position(side, equity, base, 1), true, 10, NOW));
+        assert!(!state.needs_rebalance(position(side, equity, base, 1), observation::funding_credit(0), true, 10, NOW));
         assert_eq!(state.maintenance_reserve(), 400_000);
         state.destroy_for_testing();
     });
@@ -139,7 +139,7 @@ fun completion_rechecks_the_current_reserve_after_an_accepted_fill() {
 fun the_one_lot_band_exception_survives_the_final_reserve_check() {
     vector[policy::long(), policy::short()].do!(|side| {
         let state = seeded(side, 500, 2_000, 2_000_000);
-        assert!(state.needs_rebalance(position(side, 1_350, 1_000, 1_000), true, 0, NOW));
+        assert!(state.needs_rebalance(position(side, 1_350, 1_000, 1_000), observation::funding_credit(0), true, 0, NOW));
         let mut plan = state.prepare_rebalance(position(side, 1_350, 1_000, 1_000), 0, NOW);
         let order = state.next_rebalance_order(&plan);
         assert_eq!(order.order_base(), 1_000);
@@ -156,7 +156,7 @@ fun the_one_lot_band_exception_survives_the_final_reserve_check() {
 #[test]
 fun keeper_hint_refuses_a_lot_that_only_fits_with_the_old_reserve() {
     let state = seeded(policy::long(), 500, 2_000, 2_000_000);
-    assert!(!state.needs_rebalance(position(policy::long(), 1_150, 1_000, 1_000), true, 0, NOW));
+    assert!(!state.needs_rebalance(position(policy::long(), 1_150, 1_000, 1_000), observation::funding_credit(0), true, 0, NOW));
     state.destroy_for_testing();
 }
 

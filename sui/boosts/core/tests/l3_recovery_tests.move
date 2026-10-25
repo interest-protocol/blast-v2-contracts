@@ -34,13 +34,13 @@ fun a_small_long_or_short_can_buy_one_lot_past_target_inside_the_band() {
 fun a_deposit_can_recover_a_position_too_small_for_any_standalone_buy() {
     vector[policy::long(), policy::short()].do!(|side| {
         let mut state = new_state(side);
-        assert!(!state.needs_rebalance(position(side, 600, LOT), true, 10, NOW));
+        assert!(!state.needs_rebalance(position(side, 600, LOT), observation::funding_credit(0), true, 10, NOW));
         let plan = state.prepare_mint(position(side, 600, LOT), 5_400, 600, 5_380, 10, NOW);
         let base_after = LOT + plan.base_to_buy();
         let (shares, contribution, _, _, _) = state.complete_mint(plan, position(side, 5_990, base_after), NOW);
         assert_eq!(shares, 5_390);
         assert_eq!(contribution, 5_390);
-        assert!(!state.needs_rebalance(position(side, 5_990, base_after), true, 10, NOW));
+        assert!(!state.needs_rebalance(position(side, 5_990, base_after), observation::funding_credit(0), true, 10, NOW));
         assert_eq!(state.maintenance_reserve(), 0);
         state.destroy_for_testing();
     });
@@ -107,7 +107,7 @@ fun recovery_deposits_cannot_enter_from_above_the_band() {
 #[expected_failure(abort_code = errors::EOrderCapBelowMinimum, location = blast_boosts_core::state)]
 fun a_price_move_that_makes_the_cap_too_small_is_not_reported_as_lot_dust() {
     let state = small_cap_state();
-    state.needs_rebalance(expensive_position(), true, 10, NOW);
+    state.needs_rebalance(expensive_position(), observation::funding_credit(0), true, 10, NOW);
     state.destroy_for_testing();
 }
 
@@ -234,7 +234,7 @@ fun readiness_and_execution_match_an_independent_small_position_sweep() {
                     if ((base + LOT) * 10_000 >= 18_000 * after_equity
                         && (base + LOT) * 10_000 <= 22_000 * after_equity) expected = LOT;
                 };
-                assert_eq!(state.needs_rebalance(position(side, equity, base), true, 10, NOW), expected > 0);
+                assert_eq!(state.needs_rebalance(position(side, equity, base), observation::funding_credit(0), true, 10, NOW), expected > 0);
                 if (expected > 0) {
                     let mut plan = state.prepare_rebalance(position(side, equity, base), 10, NOW);
                     let order = state.next_rebalance_order(&plan);
@@ -266,7 +266,7 @@ fun the_calibrated_65_lot_minimum_also_supports_recovery() {
     let (shares, contribution, _, _, _) = state.complete_mint(plan, position(policy::long(), 40_500, base_after), NOW);
     assert_eq!(shares, 39_900);
     assert_eq!(contribution, 39_900);
-    assert!(!state.needs_rebalance(position(policy::long(), 40_500, base_after), true, 10, NOW));
+    assert!(!state.needs_rebalance(position(policy::long(), 40_500, base_after), observation::funding_credit(0), true, 10, NOW));
     state.destroy_for_testing();
 }
 

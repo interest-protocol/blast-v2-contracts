@@ -651,9 +651,16 @@ order. Inside the band, when a proposed increase lacks opening margin, or when
 whole-lot sizing cannot produce an order, it returns false. A final reduction
 that cannot retain the full reserve and positive holder value is not sizeable;
 neither is an emergency close with no affordable lot. Unexplained drift, invalid prices, unusable fees,
-an insufficient opening cap and an unavailable venue still abort. This is a hint:
-it does not settle funding or prove gas admission, liquidity or fill progress;
-the real call checks them and can still abort.
+an insufficient opening cap and an unavailable venue still abort. Before pricing,
+it classifies funding already settled since the stored checkpoint and projects
+the reserve using the same allocation rules as real settlement: costs consume
+reserve first, while credits repay uncovered losses before rebuilding reserve.
+Positive holder value, band checks and all trade sizing use that projected
+reserve, applying the ceiling at each candidate position. This changes no stored
+balance, checkpoint or event. The hint does not settle additional funding or
+prove gas admission, liquidity or fill progress; the real call checks them and
+can still abort. Execution nets already-settled and newly settled raw funding
+before rounding once, so additional settlement can also change the result.
 
 The off-chain `keeperDecision` helper returns `inspect_rebalance` for an
 outside-band observation. This is only a pre-filter: confirm the on-chain hint
@@ -2290,10 +2297,13 @@ public fun max_rebalance_orders(): u64
 /// Whether an outside-band position has a sizeable order the adapter permits.
 /// `increases_allowed` only filters this read-only keeper hint; real execution
 /// still prepares a linear plan and rechecks the venue's opening admission.
-/// Sizing uses the authenticated ordinary fee; lot dust or an unsafe flat close returns false.
+/// Projects already-settled funding without changing reserve or deficit. Every
+/// admission and sizing check uses that projected reserve and the authenticated
+/// ordinary fee; lot dust or an unsafe flat close returns false.
 public fun needs_rebalance<Product>(
     self: &State<Product>,
     observation: observation::PositionObservation,
+    funding: observation::FundingSettlement,
     increases_allowed: bool,
     venue_fee_bps: u64,
     now_at_ms: u64,
@@ -3277,8 +3287,9 @@ public fun redeem_with_partner<Product, Collateral>(
 /// A keeper hint: true for a needed, sizeable reduction, or an increase with opening margin.
 /// Inside the band, for an increase without opening margin, or with no sizeable order, returns false.
 /// Unexplained checkpoint drift, invalid prices or an unavailable venue abort.
-/// Intended for dev-inspect: fee-aware sizing is shared with execution, but
-/// funding, gas admission, liquidity and fill progress remain execution checks.
+/// Intended for dev-inspect: projects already-settled funding through the same
+/// reserve and fee-aware sizing rules as execution, without changing storage.
+/// Additional funding settlement, gas, liquidity and fill progress remain execution checks.
 public fun needs_rebalance<Product, Collateral>(
     vault: &vault::Vault<Product, Collateral>,
     protocol: &blast_boosts_aftermath::Protocol,

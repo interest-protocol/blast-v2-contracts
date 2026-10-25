@@ -54,8 +54,8 @@ fun emergency_capture_and_fills_allow_divergence_without_opening_margin() {
 fun keeper_capture_reports_emergency_despite_divergence_and_low_margin() {
     vector[policy::long(), policy::short()].do!(|side| {
         let state = seeded(side);
-        let (ready, _) = capture(side, 3_000 * BASE_PER_NOTIONAL, false).with_mark_for_testing(DIVERGENT_MARK)
-            .into_rebalance_readiness(&state, 10, NOW);
+        let ready = capture(side, 3_000 * BASE_PER_NOTIONAL, false).with_mark_for_testing(DIVERGENT_MARK)
+            .into_rebalance_readiness(&state, checkpoint::unchanged_change(), 10, NOW);
         assert!(ready);
         state.destroy_for_testing();
     });
@@ -76,7 +76,7 @@ fun ordinary_capture_at_the_cap_still_requires_mark_agreement() {
 fun ordinary_keeper_capture_still_requires_mark_agreement() {
     let state = seeded(policy::long());
     capture(policy::long(), 2_700 * BASE_PER_NOTIONAL, false).with_mark_for_testing(DIVERGENT_MARK)
-        .into_rebalance_readiness(&state, 10, NOW);
+        .into_rebalance_readiness(&state, checkpoint::unchanged_change(), 10, NOW);
     state.destroy_for_testing();
 }
 

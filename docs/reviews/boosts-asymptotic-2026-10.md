@@ -111,7 +111,7 @@ at `3cf3cb4`; live priority execution and auditor sign-off remain outstanding.
 | 20 | L-11 | Low | Once the position shrinks below one minimum order, nobody can redeem | Resolved in source (PR #126, ADR 0130), Opus 5.5 reviewed; live execution and auditor acceptance remain |
 | 21 | L-12 | Low | The funding-credit conservation check can overflow on a state that fits | Resolved in source (PR #127), Opus 5.5 reviewed; original-auditor acceptance remains |
 | 22 | A-1 | Advisory | `ifixed_math::to_u64` is wider than its callers | Resolved in source (PR #128), Opus 5.5 reviewed; original-auditor acceptance remains |
-| 23 | A-2 | Advisory | `needs_rebalance` prices post-settlement equity against the pre-settlement reserve | Open |
+| 23 | A-2 | Advisory | `needs_rebalance` prices post-settlement equity against the pre-settlement reserve | Implemented and locally tested (ADR 0131); independent review and merge pending |
 | 24 | A-3 | Advisory | `needs_rebalance` skips the venue-fee check `rebalance` enforces | Open |
 | 25 | A-4 | Advisory | Settlement unwind adopts the venue checkpoint without booking funding | Partly fixed (ADR 0115): pause-mode mismatch gone; post-close funding still unbooked |
 | 26 | A-5 | Advisory | Nothing in the type system forces a fill to be proven against the checkpoint | Open |
@@ -1249,6 +1249,29 @@ same module called it.
 **Fix.** Narrow it to a private `fun`. No test or entry point is affected.
 
 ### Ticket 23 · A-2 · `needs_rebalance` pairs post-settlement equity with a pre-settlement reserve
+
+**Status:** implemented and locally tested. Independent review, merge and
+original-auditor acceptance remain pending.
+
+Validation: 848 core Move tests, 533 adapter tests and 5 downstream tests pass,
+including 16 new A2 tests. Build, warning-as-error lint, source boundaries,
+simulation, live read-only ABI, proof-tool self-tests, repository style and
+generated references pass. These are source and fixture checks, not live venue
+execution proof.
+
+**Implementation and audit alignment.** Follow the auditor's code remedy:
+classify pre-existing funding before preview pricing, then use a local reserve
+projection. A private calculation is shared with actual funding settlement,
+including reserve exhaustion, deficit repayment, overflow checks and wide
+conservation totals. The projected raw reserve reaches positive-NAV admission,
+band checks and all increase/reduction sizing; each candidate applies its own
+reserve ceiling, including full reserve retention at flatness. Stored state,
+checkpoint and events remain unchanged. See [ADR 0131](../decisions/0131-funding-consistent-rebalance-preview.md).
+
+This covers already-settled funding only. Execution may settle more funding
+and must still net raw changes before rounding once. Gas, liquidity, future
+prices and fills remain execution checks; the preview is not a success
+promise. No deployment or historical-upgrade compatibility is claimed.
 
 **The problem.** The keeper's dry run captures the venue without settling
 funding, then asks the core the band question using the stored reserve. If

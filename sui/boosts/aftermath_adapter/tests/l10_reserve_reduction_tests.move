@@ -65,7 +65,7 @@ fun finish_partial_batch(side: PositionSide, reserve: u64, mut equity: u64, quot
     let mut state = seeded(side);
     state.settle_funding(observation::funding_credit(reserve));
     let mut base = 1_000_000 * BASE_PER_NOTIONAL;
-    let (ready, _) = capture(side, equity, base).into_rebalance_readiness(&state, 0, NOW);
+    let ready = capture(side, equity, base).into_rebalance_readiness(&state, checkpoint::unchanged_change(), 0, NOW);
     assert!(ready);
     let (mut plan, _) = capture(side, equity, base).into_rebalance_plan(&state, 0, NOW);
     assert!(plan.is_emergency_rebalance());

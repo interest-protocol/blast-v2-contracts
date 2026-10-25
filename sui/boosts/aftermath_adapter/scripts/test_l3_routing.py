@@ -15,9 +15,9 @@ def compact(source):
 def check_routes(operations, snapshot):
     assert compact("""vault.state().prepare_mint(before, deposit, vault.total_share_supply(),
         minimum_shares, clearing_house.live_venue_fee_bps(), clock.timestamp_ms())""") in compact(operations)
-    assert compact(""".into_rebalance_readiness(vault.state(),
-        clearing_house.live_venue_fee_bps(), clock.timestamp_ms())""") in compact(operations)
-    assert compact("state.needs_rebalance(observation, margin_safe, venue_fee_bps, now_at_ms)") in compact(snapshot)
+    assert compact(""".into_rebalance_readiness(vault.state(), funding,
+        clearing_house.live_venue_fee_bps(), clock.timestamp_ms(),)""") in compact(operations)
+    assert compact("state.needs_rebalance(observation, settlement, margin_safe, venue_fee_bps, now_at_ms)") in compact(snapshot)
 
 
 class FeeRoutingTests(unittest.TestCase):
@@ -29,9 +29,9 @@ class FeeRoutingTests(unittest.TestCase):
         snapshot = (SOURCES / "snapshot.move").read_text()
         mutations = [
             (operations.replace("minimum_shares, clearing_house.live_venue_fee_bps()", "minimum_shares, 0"), snapshot),
-            (operations.replace(".into_rebalance_readiness(vault.state(), clearing_house.live_venue_fee_bps()",
-                                ".into_rebalance_readiness(vault.state(), 0"), snapshot),
-            (operations, snapshot.replace("observation, margin_safe, venue_fee_bps", "observation, margin_safe, 0")),
+            (compact(operations).replace(".into_rebalance_readiness(vault.state(),funding,clearing_house.live_venue_fee_bps()",
+                                         ".into_rebalance_readiness(vault.state(),funding,0"), snapshot),
+            (operations, snapshot.replace("observation, settlement, margin_safe, venue_fee_bps", "observation, settlement, margin_safe, 0")),
             (operations.replace("let plan = vault.state().prepare_mint(before", "// let plan = vault.state().prepare_mint(before"), snapshot),
         ]
         for ops, snap in mutations:

@@ -273,8 +273,9 @@ public fun redeem_with_partner<Product, Collateral>(
 /// A keeper hint: true for a needed, sizeable reduction, or an increase with opening margin.
 /// Inside the band, for an increase without opening margin, or with no sizeable order, returns false.
 /// Unexplained checkpoint drift, invalid prices or an unavailable venue abort.
-/// Intended for dev-inspect: fee-aware sizing is shared with execution, but
-/// funding, gas admission, liquidity and fill progress remain execution checks.
+/// Intended for dev-inspect: projects already-settled funding through the same
+/// reserve and fee-aware sizing rules as execution, without changing storage.
+/// Additional funding settlement, gas, liquidity and fill progress remain execution checks.
 public fun needs_rebalance<Product, Collateral>(
     vault: &Vault<Product, Collateral>,
     protocol: &Protocol,
@@ -288,16 +289,14 @@ public fun needs_rebalance<Product, Collateral>(
     protocol.assert_current();
     vault.state().assert_active();
 
-    let binding = vault.venue().binding();
-    let (ready, checkpoint) = binding.capture(
+    let capture = vault.venue().binding().capture(
         account, registry, clearing_house, base_oracle, collateral_oracle, clock,
-    ).into_rebalance_readiness(vault.state(), clearing_house.live_venue_fee_bps(), clock.timestamp_ms());
-    assert!(
-        vault.venue().checkpoint().classify_preexisting(&checkpoint).is_clean(),
-        blast_boosts_aftermath::errors::unresolved_checkpoint!(),
     );
+    let funding = vault.venue().checkpoint().classify_preexisting(&capture.checkpoint());
 
-    ready
+    capture.into_rebalance_readiness(
+        vault.state(), funding, clearing_house.live_venue_fee_bps(), clock.timestamp_ms(),
+    )
 }
 
 /// Updates the order cap after checking the live bound market's prices and lot.

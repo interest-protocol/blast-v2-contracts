@@ -348,7 +348,7 @@ public fun prepare_mint<Product>(
             self.vault_policy.rebalance_policy().is_leverage_below_band(before.notional, nav),
             blast_boosts_core::errors::mint_outside_rebalance_band!(),
         );
-        let (standalone_base, _) = self.increase_order(&before, venue_fee_bps);
+        let (standalone_base, _) = self.increase_order(&before, self.maintenance_reserve, venue_fee_bps);
         assert!(standalone_base == 0, blast_boosts_core::errors::mint_outside_rebalance_band!());
     };
 
@@ -537,19 +537,23 @@ public fun max_rebalance_orders(): u64 { constants::max_rebalance_orders!() }
 /// Whether an outside-band position has a sizeable order the adapter permits.
 /// `increases_allowed` only filters this read-only keeper hint; real execution
 /// still prepares a linear plan and rechecks the venue's opening admission.
-/// Sizing uses the authenticated ordinary fee; lot dust or an unsafe flat close returns false.
+/// Projects already-settled funding without changing reserve or deficit. Every
+/// admission and sizing check uses that projected reserve and the authenticated
+/// ordinary fee; lot dust or an unsafe flat close returns false.
 public fun needs_rebalance<Product>(
     self: &State<Product>,
     observation: PositionObservation,
+    funding: FundingSettlement,
     increases_allowed: bool,
     venue_fee_bps: u64,
     now_at_ms: u64,
 ): bool {
     self.lifecycle.assert_active();
 
+    let (reserve, _, _, _, _) = self.funding_outcome(funding);
     let mark = observation.mark_price();
-    let position = self.validated_oracle_position(observation, now_at_ms);
-    let nav = accounting_math::shareholder_nav(position.equity, self.admitted_reserve(&position));
+    let position = self.validated_oracle_position(observation, reserve, now_at_ms);
+    let nav = accounting_math::shareholder_nav(position.equity, self.reserve_within_cap(reserve, &position));
     let rebalance = self.vault_policy.rebalance_policy();
     if (!rebalance.is_leverage_above_max(position.notional, nav)) {
         self.vault_policy.price_policy().assert_mark_within_oracle_divergence(mark, position.base_price);
@@ -557,10 +561,10 @@ public fun needs_rebalance<Product>(
 
     if (rebalance.is_leverage_within_band(position.notional, nav)) return false;
     if (!rebalance.is_leverage_below_band(position.notional, nav)) {
-        return self.reduction_order(&position, rebalance.is_leverage_above_max(position.notional, nav), venue_fee_bps) > 0
+        return self.reduction_order(&position, reserve, rebalance.is_leverage_above_max(position.notional, nav), venue_fee_bps) > 0
     };
     if (!increases_allowed) return false;
-    let (base, _) = self.increase_order(&position, venue_fee_bps);
+    let (base, _) = self.increase_order(&position, reserve, venue_fee_bps);
 
     base > 0
 }
@@ -579,7 +583,7 @@ public fun prepare_rebalance<Product>(
     );
 
     let mark = observation.mark_price();
-    let before = self.validated_oracle_position(observation, now_at_ms);
+    let before = self.validated_oracle_position(observation, self.maintenance_reserve, now_at_ms);
     let reserve_priced = self.admitted_reserve(&before);
     let nav = accounting_math::shareholder_nav(before.equity, reserve_priced);
     let rebalance = self.vault_policy.rebalance_policy();
@@ -591,10 +595,10 @@ public fun prepare_rebalance<Product>(
 
     let increase = rebalance.is_leverage_below_band(before.notional, nav);
     if (increase) {
-        let (base, _) = self.increase_order(&before, venue_fee_bps);
+        let (base, _) = self.increase_order(&before, self.maintenance_reserve, venue_fee_bps);
         assert!(base > 0, blast_boosts_core::errors::rebalance_not_actionable!());
     } else {
-        assert!(self.reduction_order(&before, emergency, venue_fee_bps) > 0, blast_boosts_core::errors::rebalance_not_actionable!());
+        assert!(self.reduction_order(&before, self.maintenance_reserve, emergency, venue_fee_bps) > 0, blast_boosts_core::errors::rebalance_not_actionable!());
     };
 
     RebalancePlan {
@@ -627,7 +631,7 @@ public fun next_rebalance_order<Product>(self: &State<Product>, plan: &Rebalance
     };
 
     if (plan.increase) {
-        let (base, band_landing) = self.increase_order(position, plan.venue_fee_bps);
+        let (base, band_landing) = self.increase_order(position, self.maintenance_reserve, plan.venue_fee_bps);
         return RebalanceOrder { base, increase: true, emergency: false, bound: ordinary, band_landing }
     };
 
@@ -639,12 +643,12 @@ public fun next_rebalance_order<Product>(self: &State<Product>, plan: &Rebalance
             return RebalanceOrder { base: 0, increase: false, emergency: false, bound: ordinary, band_landing: false }
         };
         return RebalanceOrder {
-            base: self.reduction_order(position, true, plan.venue_fee_bps), increase: false, emergency: true,
+            base: self.reduction_order(position, self.maintenance_reserve, true, plan.venue_fee_bps), increase: false, emergency: true,
             bound: rebalance.execution_bound(true), band_landing: false,
         }
     };
 
-    RebalanceOrder { base: self.reduction_order(position, false, plan.venue_fee_bps), increase: false, emergency: false, bound: ordinary, band_landing: false }
+    RebalanceOrder { base: self.reduction_order(position, self.maintenance_reserve, false, plan.venue_fee_bps), increase: false, emergency: false, bound: ordinary, band_landing: false }
 }
 
 /// The position the rebalance was priced against.
@@ -685,7 +689,7 @@ public fun accept_rebalance_fill<Product>(
     // Keep the opening emergency decision through the cap-restoring fill.
     // Reclassifying that fill would reintroduce the divergence check and undo recovery.
     let after = if (plan.emergency) {
-        self.validated_oracle_position(observation, now_at_ms)
+        self.validated_oracle_position(observation, self.maintenance_reserve, now_at_ms)
     } else {
         self.validated_active_position(observation, now_at_ms)
     };
@@ -847,34 +851,12 @@ public fun settle_funding<Product>(
 ): (u64, u64, u64) {
     self.lifecycle.assert_can_sync();
 
-    let amount = settlement.amount();
-    let reserve_before = self.maintenance_reserve;
+    let (reserve_after, deficit_after, absorbed, uncovered, restored) = self.funding_outcome(settlement);
 
-    if (settlement.is_cost()) {
-        let (reserve_after, absorbed, uncovered) = accounting_math::absorb_funding_cost(reserve_before, amount);
+    self.maintenance_reserve = reserve_after;
+    self.uncovered_deficit = deficit_after;
 
-        self.maintenance_reserve = reserve_after;
-        self.uncovered_deficit = self.uncovered_deficit
-            .checked_add(uncovered)
-            .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
-        assert_invariant(reserve_after + absorbed == reserve_before && absorbed + uncovered == amount);
-
-        (absorbed, uncovered, 0)
-    } else {
-        let restored = amount.min(self.uncovered_deficit);
-
-        self.uncovered_deficit = self.uncovered_deficit - restored;
-        self.maintenance_reserve = reserve_before
-            .checked_add(amount - restored)
-            .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
-        // Conservation totals can exceed u64 even when the stored reserve fits.
-        assert_invariant(
-            (self.maintenance_reserve as u128) + (restored as u128)
-                == (reserve_before as u128) + (amount as u128),
-        );
-
-        (0, 0, restored)
-    }
+    (absorbed, uncovered, restored)
 }
 
 /// Credits an exact donation to the reserve, clamped to the ceiling, without
@@ -1142,6 +1124,40 @@ public fun collateral_price(self: &ActivePosition): u64 { self.collateral_price 
 
 // === Private Functions ===
 
+/// Computes reserve, deficit and settlement totals without changing storage.
+/// Preview and settlement use identical allocation, rounding inputs and overflow checks.
+fun funding_outcome<Product>(
+    self: &State<Product>, settlement: FundingSettlement,
+): (u64, u64, u64, u64, u64) {
+    let amount = settlement.amount();
+    let reserve_before = self.maintenance_reserve;
+
+    if (settlement.is_cost()) {
+        let (reserve_after, absorbed, uncovered) = accounting_math::absorb_funding_cost(reserve_before, amount);
+
+        let deficit_after = self.uncovered_deficit
+            .checked_add(uncovered)
+            .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
+        assert_invariant(reserve_after + absorbed == reserve_before && absorbed + uncovered == amount);
+
+        (reserve_after, deficit_after, absorbed, uncovered, 0)
+    } else {
+        let restored = amount.min(self.uncovered_deficit);
+
+        let deficit_after = self.uncovered_deficit - restored;
+        let reserve_after = reserve_before
+            .checked_add(amount - restored)
+            .destroy_or!(abort blast_boosts_core::errors::arithmetic_overflow!());
+        // Conservation totals can exceed u64 even when the stored reserve fits.
+        assert_invariant(
+            (reserve_after as u128) + (restored as u128)
+                == (reserve_before as u128) + (amount as u128),
+        );
+
+        (reserve_after, deficit_after, 0, 0, restored)
+    }
+}
+
 /// Returns fee, local admin share, and reserve allocation in collateral atoms.
 /// The fee rounds up, admin share rounds down, and reserve receives the remainder.
 fun fee_allocation<Product>(self: &State<Product>, amount: u64, is_mint: bool): (u64, u64, u64) {
@@ -1258,8 +1274,8 @@ fun assert_minimum_order_capacity(max_order_base: u64, lot_size: u64, min_order_
 
 /// Sizes against the reserve admitted by the resulting position and rounded-up
 /// execution cost. Only one lot may cross target, and only into the full band.
-fun increase_order<Product>(self: &State<Product>, position: &ActivePosition, venue_fee_bps: u64): (u64, bool) {
-    let nav = accounting_math::shareholder_nav(position.equity, self.admitted_reserve(position));
+fun increase_order<Product>(self: &State<Product>, position: &ActivePosition, reserve: u64, venue_fee_bps: u64): (u64, bool) {
+    let nav = accounting_math::shareholder_nav(position.equity, self.reserve_within_cap(reserve, position));
     let rebalance = self.vault_policy.rebalance_policy();
     if ((position.notional as u128) * (constants::basis_points_denominator!() as u128)
         >= (nav as u128) * (rebalance.target_leverage_bps() as u128)) return (0, false);
@@ -1270,7 +1286,7 @@ fun increase_order<Product>(self: &State<Product>, position: &ActivePosition, ve
     let mut low = 0;
     while (low < high) {
         let candidate = low + (high - low).div_ceil(2);
-        if (self.increase_fits(position, candidate * position.lot_size, venue_fee_bps, false)) {
+        if (self.increase_fits(position, reserve, candidate * position.lot_size, venue_fee_bps, false)) {
             low = candidate;
         } else {
             high = candidate - 1;
@@ -1278,7 +1294,7 @@ fun increase_order<Product>(self: &State<Product>, position: &ActivePosition, ve
     };
     if (low > 0) return (low * position.lot_size, false);
     if (!rebalance.is_leverage_below_band(position.notional, nav)
-        || !self.increase_fits(position, position.lot_size, venue_fee_bps, true)) return (0, false);
+        || !self.increase_fits(position, reserve, position.lot_size, venue_fee_bps, true)) return (0, false);
 
     (position.lot_size, true)
 }
@@ -1287,7 +1303,7 @@ fun increase_order<Product>(self: &State<Product>, position: &ActivePosition, ve
 /// reserve. Price the resulting total base once so fractional lots cannot
 /// overstate the band landing. Unrepresentable candidates are never executable.
 fun increase_fits<Product>(
-    self: &State<Product>, position: &ActivePosition, base: u64, venue_fee_bps: u64, band_landing: bool,
+    self: &State<Product>, position: &ActivePosition, reserve: u64, base: u64, venue_fee_bps: u64, band_landing: bool,
 ): bool {
     if (base > std::u64::max_value!() - position.base) return false;
     let order_notional = rebalance_math::oracle_notional_up(
@@ -1297,7 +1313,7 @@ fun increase_fits<Product>(
     let notional_after = rebalance_math::oracle_notional_up(
         position.base + base, position.base_price, position.collateral_price, self.base_unit, self.collateral_unit,
     );
-    let reserve_after = self.maintenance_reserve.min(self.vault_policy.reserve_cap(notional_after));
+    let reserve_after = reserve.min(self.vault_policy.reserve_cap(notional_after));
     let rebalance = self.vault_policy.rebalance_policy();
     let cost = rebalance_math::execution_cost_up(order_notional, venue_fee_bps, rebalance.max_slippage_bps());
     if (cost + (reserve_after as u128) >= position.equity as u128) return false;
@@ -1366,7 +1382,7 @@ fun reduction_matches_capacity<Product>(
     let mut projected = *before;
     let mut steps = 0;
     while (steps < max_rebalance_orders()) {
-        let base = self.reduction_order(&projected, false, venue_fee_bps);
+        let base = self.reduction_order(&projected, self.maintenance_reserve, false, venue_fee_bps);
         if (base == 0) break;
         let notional = rebalance_math::oracle_notional_up(
             base, before.base_price, before.collateral_price, self.base_unit, self.collateral_unit,
@@ -1395,20 +1411,20 @@ fun reduction_matches_capacity<Product>(
 /// worst cost here would oversell when actual fills are cheaper. Reprice after
 /// each actual fill. The search includes only positive remaining positions;
 /// a flat position keeps the full reserve and needs a separate cost check.
-fun reduction_order<Product>(self: &State<Product>, position: &ActivePosition, emergency: bool, venue_fee_bps: u64): u64 {
+fun reduction_order<Product>(self: &State<Product>, position: &ActivePosition, reserve: u64, emergency: bool, venue_fee_bps: u64): u64 {
     let rebalance = self.vault_policy.rebalance_policy();
     let target = if (emergency) rebalance.max_leverage_bps() else rebalance.target_leverage_bps();
-    let nav = accounting_math::shareholder_nav(position.equity, self.admitted_reserve(position));
+    let nav = accounting_math::shareholder_nav(position.equity, self.reserve_within_cap(reserve, position));
     if ((position.notional as u128) * (constants::basis_points_denominator!() as u128) <= (nav as u128) * (target as u128)) return 0;
     let lots = position.base / position.lot_size;
-    let remaining = self.reduction_target_lots(position, target);
+    let remaining = self.reduction_target_lots(position, reserve, target);
     let bound = rebalance.execution_bound(emergency);
     let max_base = execution_order_base(self.max_order_notional, position, bound, true, self.base_unit, self.collateral_unit);
     let mut base = ((lots - remaining) * position.lot_size).min(max_base);
     if (base == 0) return 0;
     // Flatness admits the full stored reserve. Keep one lot when that final
     // step cannot preserve positive holder value under the cost allowance.
-    if (base == position.base && !self.reduction_preserves_nav(position, base, bound, venue_fee_bps)) {
+    if (base == position.base && !self.reduction_preserves_nav(position, reserve, base, bound, venue_fee_bps)) {
         base = base - position.lot_size;
     };
     if (base == 0 || !emergency) return base;
@@ -1431,7 +1447,7 @@ fun reduction_order<Product>(self: &State<Product>, position: &ActivePosition, e
     if (low > 0) return low * position.lot_size;
     // A single lot can still fit because it releases reserve. Retain that
     // minimum-sized close instead of imposing the old reserve on every fill.
-    if (self.reduction_preserves_nav(position, position.lot_size, bound, venue_fee_bps)) return position.lot_size;
+    if (self.reduction_preserves_nav(position, reserve, position.lot_size, bound, venue_fee_bps)) return position.lot_size;
 
     0
 }
@@ -1439,7 +1455,7 @@ fun reduction_order<Product>(self: &State<Product>, position: &ActivePosition, e
 /// Quote the actual remaining reserve, including the flat-position exception.
 /// A partial fill and completion still prove positive NAV on their real facts.
 fun reduction_preserves_nav<Product>(
-    self: &State<Product>, position: &ActivePosition, base: u64, bound: ExecutionBound, venue_fee_bps: u64,
+    self: &State<Product>, position: &ActivePosition, reserve: u64, base: u64, bound: ExecutionBound, venue_fee_bps: u64,
 ): bool {
     let mut after = *position;
     after.base = position.base - base;
@@ -1447,7 +1463,7 @@ fun reduction_preserves_nav<Product>(
         after.base, position.base_price, position.collateral_price, self.base_unit, self.collateral_unit,
     );
 
-    self.reduction_cost_up(position, base, bound, venue_fee_bps) + (self.admitted_reserve(&after) as u128)
+    self.reduction_cost_up(position, base, bound, venue_fee_bps) + (self.reserve_within_cap(reserve, &after) as u128)
         < position.equity as u128
 }
 
@@ -1473,15 +1489,15 @@ fun reduction_cost_up<Product>(
 /// Largest remaining whole-lot count under target at unchanged equity. The
 /// common fully admitted reserve has a direct solution; search only when the
 /// ceiling changes it. Observations already require whole-lot positions.
-fun reduction_target_lots<Product>(self: &State<Product>, position: &ActivePosition, target: u64): u64 {
-    if (self.maintenance_reserve < position.equity) {
-        let target_notional = (((position.equity - self.maintenance_reserve) as u128) * (target as u128)
+fun reduction_target_lots<Product>(self: &State<Product>, position: &ActivePosition, reserve: u64, target: u64): u64 {
+    if (reserve < position.equity) {
+        let target_notional = (((position.equity - reserve) as u128) * (target as u128)
             / (constants::basis_points_denominator!() as u128)).min(position.notional as u128) as u64;
         let target_base = base_for_notional(target_notional, position, self.base_unit, self.collateral_unit).min(position.base);
         let notional = rebalance_math::oracle_notional_up(
             target_base, position.base_price, position.collateral_price, self.base_unit, self.collateral_unit,
         );
-        if (self.maintenance_reserve <= self.vault_policy.reserve_cap(notional)) return target_base / position.lot_size;
+        if (reserve <= self.vault_policy.reserve_cap(notional)) return target_base / position.lot_size;
     };
     let lots = position.base / position.lot_size;
     let mut low = 0;
@@ -1492,8 +1508,8 @@ fun reduction_target_lots<Product>(self: &State<Product>, position: &ActivePosit
             candidate * position.lot_size, position.base_price, position.collateral_price,
             self.base_unit, self.collateral_unit,
         );
-        let reserve = self.maintenance_reserve.min(self.vault_policy.reserve_cap(notional));
-        let nav = position.equity - reserve;
+        let reserve_priced = reserve.min(self.vault_policy.reserve_cap(notional));
+        let nav = position.equity - reserve_priced;
         if ((notional as u128) * (constants::basis_points_denominator!() as u128) <= (nav as u128) * (target as u128)) {
             low = candidate;
         } else {
@@ -1521,7 +1537,7 @@ fun validated_active_position<Product>(
 ): ActivePosition {
     self.vault_policy.assert_observation_priced(&observation, now_at_ms);
 
-    self.active_position(observation)
+    self.active_position(observation, self.maintenance_reserve)
 }
 
 /// Validates the oracle pair without requiring the venue mark to track it.
@@ -1529,15 +1545,16 @@ fun validated_active_position<Product>(
 fun validated_oracle_position<Product>(
     self: &State<Product>,
     observation: PositionObservation,
+    reserve: u64,
     now_at_ms: u64,
 ): ActivePosition {
     self.vault_policy.price_policy().assert_observation_oracles(&observation, now_at_ms);
 
-    self.active_position(observation)
+    self.active_position(observation, reserve)
 }
 
 /// The position side and positive holder backing are required under either price admission.
-fun active_position<Product>(self: &State<Product>, observation: PositionObservation): ActivePosition {
+fun active_position<Product>(self: &State<Product>, observation: PositionObservation, reserve: u64): ActivePosition {
     assert!(
         observation.position_base() == 0 || observation.observed_side() == self.vault_policy.side(),
         blast_boosts_core::errors::invalid_position_observation!(),
@@ -1545,7 +1562,7 @@ fun active_position<Product>(self: &State<Product>, observation: PositionObserva
 
     let position = self.priced_position(observation);
     assert!(
-        accounting_math::is_shareholder_nav_positive(position.equity, self.admitted_reserve(&position)),
+        accounting_math::is_shareholder_nav_positive(position.equity, self.reserve_within_cap(reserve, &position)),
         blast_boosts_core::errors::invalid_nav!(),
     );
 
