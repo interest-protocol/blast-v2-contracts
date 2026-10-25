@@ -30,10 +30,10 @@ public struct OrderTerms has copy, drop {
     bound: ExecutionBound,
 }
 
-/// What one whole-lot order proved: the base atoms filled and the raw quote
-/// the session moved, already checked against the cap, the lot and the
-/// execution bound.
-public struct Fill has drop {
+/// A whole-lot fill checked against the cap and execution bound, still awaiting
+/// its checkpoint proof. No abilities: every receipt must be consumed by
+/// `proven_fill` before the operation can finish.
+public struct FillReceipt {
     filled: u64,
     filled_quote: u256,
 }
@@ -139,7 +139,7 @@ public(package) fun fill_orders<Product, Collateral>(
     let mut index = 0;
     while (remaining > 0) {
         let requested = terms.next_order_size(remaining, index);
-        let (next_market, fill) = vault.place_order(
+        let (next_market, receipt) = vault.place_order(
             account, clearing_house, base_oracle, collateral_oracle, &terms, requested, terms.bound, clock, ctx,
         );
         clearing_house = next_market;
@@ -147,10 +147,10 @@ public(package) fun fill_orders<Product, Collateral>(
         let after_checkpoint = binding.capture_checkpoint(
             account, registry, &clearing_house, base_oracle, collateral_oracle,
         );
-        fill.assert_checkpoint(&terms, &checkpoint, &after_checkpoint);
+        let (filled, _) = receipt.proven_fill(&terms, &checkpoint, &after_checkpoint);
 
         checkpoint = after_checkpoint;
-        remaining = remaining - fill.filled;
+        remaining = remaining - filled;
         index = index + 1;
     };
 
@@ -181,7 +181,7 @@ public(package) fun rebalance_orders<Product, Collateral>(
         let order = vault.state().next_rebalance_order(plan);
         if (order.order_base() == 0) break;
 
-        let (next_market, fill) = vault.place_order(
+        let (next_market, receipt) = vault.place_order(
             account, clearing_house, base_oracle, collateral_oracle, terms, order.order_base(),
             order.bound(), clock, ctx,
         );
@@ -190,8 +190,8 @@ public(package) fun rebalance_orders<Product, Collateral>(
         let (after, after_checkpoint) = binding.capture(
             account, registry, &clearing_house, base_oracle, collateral_oracle, clock,
         ).into_rebalance_observation(plan);
-        fill.assert_checkpoint(terms, &checkpoint, &after_checkpoint);
-        vault.state().accept_rebalance_fill(plan, order, after, fill.filled, clock.timestamp_ms());
+        let (filled, _) = receipt.proven_fill(terms, &checkpoint, &after_checkpoint);
+        vault.state().accept_rebalance_fill(plan, order, after, filled, clock.timestamp_ms());
 
         checkpoint = after_checkpoint;
         index = index + 1;
@@ -253,7 +253,7 @@ public(package) fun close_orders<Product, Collateral>(
 
     while (orders < constants::max_active_orders!() && remaining > 0) {
         let requested = terms.next_order_size(remaining, orders);
-        let (next_market, fill) = vault.place_order(
+        let (next_market, receipt) = vault.place_order(
             account, clearing_house, base_oracle, collateral_oracle, terms, requested, terms.bound, clock, ctx,
         );
         clearing_house = next_market;
@@ -261,11 +261,11 @@ public(package) fun close_orders<Product, Collateral>(
         let after = binding.capture_checkpoint(
             account, registry, &clearing_house, base_oracle, collateral_oracle,
         );
-        fill.assert_checkpoint(terms, &checkpoint, &after);
+        let (filled, quote) = receipt.proven_fill(terms, &checkpoint, &after);
 
         checkpoint = after;
-        remaining = remaining - fill.filled;
-        filled_quote = filled_quote.checked_add(fill.filled_quote)
+        remaining = remaining - filled;
+        filled_quote = filled_quote.checked_add(quote)
             .destroy_or!(abort blast_boosts_aftermath::errors::normalization_overflow!());
         orders = orders + 1;
     };
@@ -452,14 +452,14 @@ fun fill_exact_order<Product, Collateral>(
     ctx: &TxContext,
 ): (ClearingHouse<Collateral>, Checkpoint) {
     assert!(base <= terms.max_order_base, blast_boosts_aftermath::errors::fill_mismatch!());
-    let (clearing_house, fill) = vault.place_order(
+    let (clearing_house, receipt) = vault.place_order(
         account, clearing_house, base_oracle, collateral_oracle, &terms, base, terms.bound, clock, ctx,
     );
-    assert!(fill.filled == base, blast_boosts_aftermath::errors::fill_mismatch!());
+    assert!(receipt.filled == base, blast_boosts_aftermath::errors::fill_mismatch!());
     let after = vault.venue().binding().capture_checkpoint(
         account, registry, &clearing_house, base_oracle, collateral_oracle,
     );
-    fill.assert_checkpoint(&terms, before, &after);
+    let (_, _) = receipt.proven_fill(&terms, before, &after);
 
     (clearing_house, after)
 }
@@ -487,7 +487,7 @@ fun place_order<Product, Collateral>(
     bound: ExecutionBound,
     clock: &Clock,
     ctx: &TxContext,
-): (ClearingHouse<Collateral>, Fill) {
+): (ClearingHouse<Collateral>, FillReceipt) {
     let OrderTerms { is_ask, reduce_only, lot_size, base_price, collateral_price, .. } = *terms;
     let limit_price = bound.limit_price(base_price, is_ask, clearing_house.market_params().tick_size());
 
@@ -512,21 +512,25 @@ fun place_order<Product, Collateral>(
         object::id(account), is_ask, reduce_only, requested, filled, filled_quote, base_price, limit_price, executed,
     );
 
-    (clearing_house, Fill { filled, filled_quote })
+    (clearing_house, FillReceipt { filled, filled_quote })
 }
 
-/// Proves the checkpoint moved exactly as this fill did: an opening trade moves
-/// base and quote, a reduction only base.
-fun assert_checkpoint(self: &Fill, terms: &OrderTerms, before: &Checkpoint, after: &Checkpoint) {
-    let filled_base = (self.filled as u256) * constants::base_atom_to_ifixed_scale!();
+/// Consumes the receipt and proves the checkpoint moved as this fill
+/// did: an opening trade proves base and quote, a reduction proves base.
+/// Returns the checked base atoms and raw quote for the caller's accounting.
+fun proven_fill(self: FillReceipt, terms: &OrderTerms, before: &Checkpoint, after: &Checkpoint): (u64, u256) {
+    let FillReceipt { filled, filled_quote } = self;
+    let filled_base = (filled as u256) * constants::base_atom_to_ifixed_scale!();
     let base = filled_after(terms.is_ask, before.signed_base(), filled_base);
 
     if (terms.reduce_only) {
         before.assert_reduction_checkpoint(after, base)
     } else {
-        let quote = filled_after(terms.is_ask, before.signed_quote_notional(), self.filled_quote);
+        let quote = filled_after(terms.is_ask, before.signed_quote_notional(), filled_quote);
         before.assert_trade_checkpoint(after, base, quote)
-    }
+    };
+
+    (filled, filled_quote)
 }
 
 /// A signed position value after a fill. The venue keeps base and quote
@@ -594,6 +598,25 @@ fun normalize_execution_price(raw_price: u256, round_up: bool, is_negative: bool
 }
 
 // === Test-Only Functions ===
+
+#[test_only]
+/// Runs the production consuming proof on explicit session facts and checkpoints.
+public fun prove_fill_for_testing(
+    is_ask: bool,
+    reduce_only: bool,
+    bound: ExecutionBound,
+    filled: u64,
+    filled_quote: u256,
+    before: &Checkpoint,
+    after: &Checkpoint,
+): (u64, u256) {
+    let terms = OrderTerms {
+        is_ask, reduce_only, max_order_base: filled, lot_size: 1,
+        base_price: 1, collateral_price: 1, bound,
+    };
+    let receipt = FillReceipt { filled, filled_quote };
+    receipt.proven_fill(&terms, before, after)
+}
 
 #[test_only]
 public fun assert_seed_fill_for_testing(

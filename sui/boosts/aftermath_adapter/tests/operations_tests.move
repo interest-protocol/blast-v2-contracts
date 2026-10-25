@@ -64,6 +64,56 @@ public struct ReplayState has drop {
 // === Tests ===
 
 #[test]
+fun fill_receipt_proves_a_long_opening_and_returns_session_amounts() {
+    prove_opening_fill(false);
+}
+
+#[test]
+fun fill_receipt_proves_a_short_opening_and_returns_session_amounts() {
+    prove_opening_fill(true);
+}
+
+#[test]
+fun fill_receipt_proves_a_long_reduction_and_accepts_venue_realized_quote() {
+    prove_reducing_fill(false);
+}
+
+#[test]
+fun fill_receipt_proves_a_short_reduction_and_accepts_venue_realized_quote() {
+    prove_reducing_fill(true);
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EActiveCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
+fun fill_receipt_rejects_an_opening_with_the_wrong_base() {
+    prove_fill_case(false, false, &fill_checkpoint(3_000_000_000, 21, 0, 1_000), &fill_checkpoint(4_000_000_001, 28, 0, 999));
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EActiveCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
+fun fill_receipt_rejects_an_opening_with_the_wrong_quote() {
+    prove_fill_case(false, false, &fill_checkpoint(3_000_000_000, 21, 0, 1_000), &fill_checkpoint(4_000_000_000, 29, 0, 999));
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EActiveCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
+fun fill_receipt_rejects_a_reduction_with_the_wrong_base() {
+    prove_fill_case(true, true, &fill_checkpoint(3_000_000_000, 21, 0, 1_000), &fill_checkpoint(2_000_000_001, 13, 0, 1_005));
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EActiveCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
+fun fill_receipt_rejects_unrelated_cash_changes_on_opening() {
+    prove_fill_case(false, false, &fill_checkpoint(3_000_000_000, 21, 0, 1_000), &fill_checkpoint(4_000_000_000, 28, 1, 999));
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EActiveCheckpointMismatch, location = blast_boosts_aftermath::checkpoint)]
+fun fill_receipt_rejects_unrelated_cash_changes_on_reduction() {
+    prove_fill_case(true, true, &fill_checkpoint(3_000_000_000, 21, 0, 1_000), &fill_checkpoint(2_000_000_000, 13, 1, 1_005));
+}
+
+#[test]
 fun protected_exit_long_replays_and_keeps_cash_locked_after_all_claims() {
     protected_exit(Product(), policy::long(), 1_001);
 }
@@ -3744,6 +3794,42 @@ fun net_funding_adds_two_costs_and_keeps_the_larger_side_of_a_cost_and_a_credit(
 }
 
 // === Test Helpers ===
+
+fun prove_opening_fill(short: bool) {
+    let before = fill_checkpoint(signed(3_000_000_000, short), signed(21, short), 0, 1_000);
+    let after = fill_checkpoint(signed(4_000_000_000, short), signed(28, short), 0, 999);
+    prove_fill_case(short, false, &before, &after);
+}
+
+fun prove_reducing_fill(short: bool) {
+    let before = fill_checkpoint(signed(3_000_000_000, short), signed(21, short), 0, 1_000);
+    // Realized entry quote need not equal the session's execution quote.
+    let after = fill_checkpoint(signed(2_000_000_000, short), signed(13, short), 0, 1_005);
+    prove_fill_case(!short, true, &before, &after);
+}
+
+fun prove_fill_case(is_ask: bool, reduce_only: bool, before: &Checkpoint, after: &Checkpoint) {
+    let mut fixture = start();
+    let vault = issue_and_activate(&mut fixture, initial_checkpoint());
+    let (base, quote) = orders::prove_fill_for_testing(
+        is_ask, reduce_only, vault.state().execution_bound(), 1, 7, before, after,
+    );
+    assert_eq!(base, 1);
+    assert_eq!(quote, 7);
+    destroy(vault);
+    fixture.end();
+}
+
+fun fill_checkpoint(base: u256, quote: u256, free: u64, allocated: u256): Checkpoint {
+    checkpoint::checkpoint_for_testing(
+        free, allocated, base, quote, RATE, RATE, RATE, RATE,
+        1, 0, 0, 0, 0, false, 1, 1, 1,
+    )
+}
+
+fun signed(magnitude: u256, negative: bool): u256 {
+    if (negative) { std::u256::max_value!() - magnitude + 1 } else { magnitude }
+}
 
 /// Same account shape on a closed market; raw signed values stay explicit.
 fun a4_checkpoint(base: u256, allocated: u256, snapshot: u256, market: u256, free: u64): Checkpoint {

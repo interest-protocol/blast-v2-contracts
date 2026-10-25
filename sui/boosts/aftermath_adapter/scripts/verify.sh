@@ -18,6 +18,10 @@ case "${1:-all}" in
   boundaries)
     bash "$package_dir/scripts/check_source_boundaries.sh"
     ;;
+  fill-proof)
+    shift || true
+    python3 "$package_dir/scripts/check_fill_receipt.py" "$@"
+    ;;
   abi)
     node "$package_dir/scripts/check_mainnet_abi.mjs" --self-test
     node "$package_dir/scripts/check_mainnet_abi.mjs"
@@ -36,14 +40,15 @@ case "${1:-all}" in
     node "$package_dir/scripts/dev_inspect_activation.mjs" --self-test
     sui move build --path "$package_dir" --build-env mainnet
     sui move lint --path "$package_dir" --build-env mainnet --warnings-are-errors
-    sui move test --path "$package_dir" --build-env mainnet --lint --warnings-are-errors
+    sui move test --path "$package_dir" --build-env mainnet --lint --warnings-are-errors --threads 1
+    python3 "$package_dir/scripts/check_fill_receipt.py"
     ;;
   all)
     bash "$package_dir/scripts/verify.sh" local
     bash "$package_dir/scripts/verify.sh" proof
     ;;
   *)
-    printf 'usage: %s [build|lint|test [filter]|boundaries|abi|proof-self-test|proof|local|all]\n' "$0" >&2
+    printf 'usage: %s [build|lint|test [filter]|boundaries|fill-proof|abi|proof-self-test|proof|local|all]\n' "$0" >&2
     exit 2
     ;;
 esac
