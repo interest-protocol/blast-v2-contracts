@@ -45,7 +45,7 @@ public fun before_add_liquidity<Asset, Quote>(
     );
     pool.prepare_add_liquidity(
         HookWitness(), params,
-        asset_payment.into_balance(), quote_payment.into_balance(), ctx,
+        asset_payment.into_balance(), quote_payment.into_balance(),
     )
 }
 
@@ -81,7 +81,7 @@ public fun before_remove_liquidity<Asset, Quote>(
     );
     pool.prepare_remove_liquidity(
         HookWitness(), params,
-        asset_payment.into_balance(), quote_payment.into_balance(), ctx,
+        asset_payment.into_balance(), quote_payment.into_balance(),
     )
 }
 

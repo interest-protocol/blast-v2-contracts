@@ -24,8 +24,10 @@ After its policy succeeds, the hook calls the corresponding `pool::prepare_*`
 with its sealed witness, chosen parameters and the remaining payments as
 `Balance<Asset>` and `Balance<Quote>`. Core authenticates the configured before
 witness and wraps that entire payload in a core-owned `Request`. The request
-also captures pool ID, economic nonce and caller. It has no abilities; its
-private fields cannot be rewritten or its balances removed by other packages.
+also captures pool ID and locks that pool against other mutations. It has no
+abilities; its private fields cannot be rewritten or its balances removed by
+other packages. Hooks get the transaction sender from `ctx.sender()` rather
+than storing a duplicate caller in receipts.
 There is no public constructor that bypasses witness authentication.
 
 ```text
@@ -33,13 +35,13 @@ hook::before_swap(pool, params, payment coins, ctx)
   read hook's dynamic fields and public pool state
   simulate expected payments / post-swap pool state, without writes
   apply hook policy: validate, change parameters, retain coins, update own state
-  pool::prepare_swap(witness, params, payment balances, fee override, ctx)
-    -> sealed Request owning the chosen payload
+  pool::prepare_swap(witness, params, payment balances, fee override)
+    -> sealed Request owning the chosen payload; pool is locked
 
 pool::execute_swap(pool, request, ctx)
-  authenticate pool / operation / caller / current nonce
+  require locked; authenticate pool / operation
   consume request and execute its wrapped parameters and balances
-  recompute against live state; validate payment and preserve core invariants
+  recompute against locked state; apply operation and unlock
     -> Completion + actual output/change coins
 
 hook::after_swap(pool, completion, output/change coins, ctx)
@@ -71,12 +73,25 @@ uses prepare plus execute and returns coins directly. Core must reject that
 shortcut when after-swap is enabled.
 
 The after-hook receives immutable core execution facts and the mutable actual
-coin pair. Core requires after approval but does not enforce the hook's policy,
+coin pair. Core requires after approval but does not enforce hook policy,
 returned coin amounts or any original hook-wide budget. Both coins need a
-consumer, even when zero. The completion has no abilities, requiring after
-approval in the same PTB. Request and completion consumers authenticate pool,
-operation and current economic nonce. Overlapping core operations stale earlier
-obligations; mandatory consumption must abort instead of accepting stale state.
+consumer, even when zero. Completion has no abilities, requiring after approval
+in the same PTB; consumers authenticate its pool and operation.
+
+Preparation requires an unlocked pool and sets its lock. Every other pool
+mutation, including another preparation, hook-state writes, fee changes and
+completion finalization, rejects while locked. Only execution consuming the
+matching pool-bound request may proceed, apply the operation and release the
+lock. Read-only views remain available. There is no public unlock, cancellation
+or request-discard function. Before-only execution releases the same lock.
+
+The lock protects the interval between preparation and execution within a PTB.
+Other transactions cannot interleave with a running transaction. A request
+cannot be stored or dropped, so a transaction cannot commit an outstanding
+preparation lock; failure rolls back preparation and all earlier effects. This
+replaces the economic nonce. After execution the pool is unlocked, and later
+operations may run before an earlier completion is finalized. After-hook policy
+must use its own execution facts when examining such a composition.
 
 ## Pool-local hook state
 
@@ -109,7 +124,7 @@ example::register_hooks(
     &mut initializer, permissions::all_hook_flags!() ^ liquidity_flags,
 );
 liquidity::register_hooks(&mut initializer);
-let request = pool::begin_initialize(initializer, ctx);
+let request = pool::begin_initialize(initializer);
 let completion = example::before_initialize(request);
 let pool = example::after_initialize(completion);
 pool.share();
@@ -133,7 +148,7 @@ before-swap override or authorized cached-rate update. An override does not
 change the stored rate. Ticks use checked, two's-complement `I32`, with int24,
 pool-range and spacing checks in core.
 
-Before promotion, implement and test proof issuance/consumption, stale-state
-rejection, disabled-hook routing, namespace isolation, simulation/execution
+Before promotion, implement and test proof issuance/consumption, lock enforcement
+and rollback, disabled-hook routing, namespace isolation, simulation/execution
 agreement, actual balance custody, arithmetic, pricing and LP entitlement.
 Runtime PTB behavior and economic/security safety are not established here.

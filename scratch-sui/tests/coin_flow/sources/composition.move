@@ -74,7 +74,7 @@ public fun disabled_swap_hooks<Asset, Quote>(
 ): (Coin<Asset>, Coin<Quote>) {
     let request = pool.prepare_swap(
         pool::no_hook(), params, asset.into_balance(), quote.into_balance(),
-        option::none(), ctx,
+        option::none(),
     );
     let (completion, asset_coin, quote_coin) = pool.execute_swap(request, ctx);
 
@@ -85,7 +85,7 @@ public fun disabled_swap_hooks<Asset, Quote>(
 public fun inspect_swap_request<Asset, Quote>(
     request: Request<Asset, Quote, Swap, SwapParams>,
 ): Request<Asset, Quote, Swap, SwapParams> {
-    let (_, _, _, _, _, _, _) = request.request_context();
+    let (_, _, _, _, _) = request.request_context();
     request
 }
 

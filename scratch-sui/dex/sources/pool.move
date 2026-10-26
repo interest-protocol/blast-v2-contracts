@@ -1,6 +1,8 @@
 /// Interface sketch only. All function bodies abort.
 /// This package must not be published.
 /// Core owns operation phases and actual-coin execution; it imports no hook package.
+/// A prepared request locks pool mutation until its matching execute consumes it.
+/// Read-only views remain available. No public unlock or request-discard path exists.
 module blast_fun_dex::pool;
 
 // === Errors ===
@@ -17,7 +19,7 @@ public struct Pool<phantom Asset, phantom Quote> has key {
     id: UID,
     permissions: Permissions,
     hooks: vector<HookBinding>,
-    nonce: u64,
+    locked: bool,
     swap_fee: SwapFee,
 }
 
@@ -36,14 +38,12 @@ public struct HookBinding has store {
 /// No abilities. Consuming the initializer seals its callback configuration.
 public struct InitializeRequest<phantom Asset, phantom Quote> {
     initializer: PoolInitializer<Asset, Quote>,
-    sender: address,
 }
 
 /// No abilities. Holds the pool after the before-initialize phase and core setup.
 /// Only the configured after-initialize hook can authorize the ready pool.
 public struct InitializeCompletion<phantom Asset, phantom Quote> {
     pool: Pool<Asset, Quote>,
-    sender: address,
     params: InitializeParams,
     tick: I32,
 }
@@ -72,13 +72,11 @@ public struct Donate()
 // Fields are intentionally unread while all interface bodies abort.
 /// No abilities. Proves core execution and requires the configured after approval.
 /// Actual output/change coins travel beside this receipt, never as debts or credits.
-/// Every consumer checks pool, operation and current nonce.
+/// Every consumer checks pool and operation; completion consumers require an unlocked pool.
 /// Consuming this requires after-hook approval, without interpreting its policy or results.
 #[allow(unused_field)]
 public struct Completion<phantom Asset, phantom Quote, phantom Operation, Params: copy + drop + store> {
     pool_id: ID,
-    nonce: u64,
-    sender: address,
     params: Params,
     asset_paid: u64,
     quote_paid: u64,
@@ -86,15 +84,14 @@ public struct Completion<phantom Asset, phantom Quote, phantom Operation, Params
 }
 
 // Fields are intentionally unread while all interface bodies abort.
-/// No abilities. Sealed parameters chosen by the hook for one pool/operation/caller/nonce.
+/// No abilities. Sealed parameters chosen by the hook for one pool and operation.
+/// Holds that pool's exclusive preparation lock until consumed by execution.
 /// Only core constructs this after checking the registered sealed witness.
 /// Owns both token balances and parameters chosen by the hook.
 /// Core executes this exact payload without interpreting the hook's policy.
 #[allow(unused_field)]
 public struct Request<phantom Asset, phantom Quote, phantom Operation, Params: copy + drop + store> {
     pool_id: ID,
-    nonce: u64,
-    sender: address,
     hook_type: TypeName,
     params: Params,
     lp_fee_override_ppm: Option<u32>,
@@ -108,7 +105,6 @@ public struct Request<phantom Asset, phantom Quote, phantom Operation, Params: c
 #[allow(unused_field)]
 public struct Simulation<phantom Asset, phantom Quote, phantom Operation> has copy, drop {
     pool_id: ID,
-    nonce: u64,
     asset_paid: u64,
     quote_paid: u64,
     asset_returned: u64,
@@ -126,7 +122,7 @@ public struct Simulation<phantom Asset, phantom Quote, phantom Operation> has co
 
 // Construction and pool state.
 
-/// Intended construction of a no-ability initializer. Validate pair, fee, and range units.
+/// Intended no-ability initializer; start unlocked and validate pair, fee and range units.
 public fun new<Asset, Quote>(
     _tick_spacing: u32,
     _swap_fee: SwapFee,
@@ -171,7 +167,7 @@ public fun new_position<Asset, Quote>(
     abort EInterfaceOnly
 }
 
-/// Intended owner-authorized destruction, only with zero liquidity and no fee claims.
+/// Intended owner-authorized destruction; require unlocked, zero liquidity and no fee claims.
 public fun destroy_position<Asset, Quote>(
     _self: &mut Pool<Asset, Quote>,
     _position: Position<Asset, Quote>,
@@ -179,11 +175,11 @@ public fun destroy_position<Asset, Quote>(
     abort EInterfaceOnly
 }
 
-/// Intended caller, executed inputs, actual core payments and resulting tick.
+/// Intended executed inputs, actual core payments and resulting tick.
 /// Output/change coins accompany this immutable receipt and remain hook-controlled.
 public fun completion_context<Asset, Quote, Operation, Params: copy + drop + store>(
     _self: &Completion<Asset, Quote, Operation, Params>,
-): (address, Params, u64, u64, I32) {
+): (Params, u64, u64, I32) {
     abort EInterfaceOnly
 }
 
@@ -198,7 +194,7 @@ public fun pool_state<Asset, Quote>(
 
 /// Intended dynamic-field insertion under (original defining Hook type, typed key).
 /// Require Hook registered in at least one callback on this pool; reject NoHook.
-/// Reject duplicates. State is pool-owned, with no additional shared object input.
+/// Require unlocked and reject duplicates. State needs no additional shared object input.
 /// Before/after slots using the same witness share a namespace; other hooks cannot access it.
 public fun add_hook_state<Asset, Quote, Hook: drop, Name: copy + drop + store, State: store>(
     _self: &mut Pool<Asset, Quote>,
@@ -229,7 +225,7 @@ public fun hook_state<Asset, Quote, Hook: drop, Name: copy + drop + store, State
 }
 
 /// Intended typed mutation in this registered hook's namespace; reject NoHook.
-/// Borrow only the hook's stored value, never pool reserves, bindings, or UID.
+/// Require unlocked. Borrow only the hook's value, never reserves, bindings, or UID.
 public fun hook_state_mut<Asset, Quote, Hook: drop, Name: copy + drop + store, State: store>(
     _self: &mut Pool<Asset, Quote>,
     _hook: &Hook,
@@ -239,7 +235,7 @@ public fun hook_state_mut<Asset, Quote, Hook: drop, Name: copy + drop + store, S
 }
 
 /// Intended typed removal in this registered hook's namespace; reject NoHook.
-/// Return the actual stored value, preserving any resources it owns.
+/// Require unlocked. Return the stored value, preserving any resources it owns.
 public fun remove_hook_state<Asset, Quote, Hook: drop, Name: copy + drop + store, State: store>(
     _self: &mut Pool<Asset, Quote>,
     _hook: &Hook,
@@ -253,7 +249,6 @@ public fun remove_hook_state<Asset, Quote, Hook: drop, Name: copy + drop + store
 /// Intended immutable configuration seal; validate all bindings before either hook.
 public fun begin_initialize<Asset, Quote>(
     _initializer: PoolInitializer<Asset, Quote>,
-    _ctx: &mut TxContext,
 ): InitializeRequest<Asset, Quote> {
     abort EInterfaceOnly
 }
@@ -276,26 +271,26 @@ public fun finalize<Asset, Quote, Hook: drop>(
     abort EInterfaceOnly
 }
 
-/// Intended pending pool ID, original caller, and initial parameters for hook policy.
+/// Intended pending pool ID and initial parameters for hook policy.
 public fun initialize_request_context<Asset, Quote>(
     _self: &InitializeRequest<Asset, Quote>,
-): (ID, address, InitializeParams) {
+): (ID, InitializeParams) {
     abort EInterfaceOnly
 }
 
-/// Intended pending pool ID, original caller, initial parameters, and resulting tick.
+/// Intended pending pool ID, initial parameters and resulting tick.
 public fun initialize_completion_context<Asset, Quote>(
     _self: &InitializeCompletion<Asset, Quote>,
-): (ID, address, InitializeParams, I32) {
+): (ID, InitializeParams, I32) {
     abort EInterfaceOnly
 }
 
 // Read-only operation simulation.
 
-/// Intended snapshot identity and economic nonce; simulation does not reserve the pool.
+/// Intended pool identity; read-only simulation does not lock or reserve the pool.
 public fun simulation_context<Asset, Quote, Operation>(
     _self: &Simulation<Asset, Quote, Operation>,
-): (ID, u64) {
+): ID {
     abort EInterfaceOnly
 }
 
@@ -352,81 +347,81 @@ public fun simulate_donate<Asset, Quote>(
 
 // Wrap hook-approved parameters and balances.
 
-/// Intended wrapped pool, nonce, caller, parameters, fee override and payment amounts.
+/// Intended wrapped pool, parameters, fee override and payment amounts.
 public fun request_context<Asset, Quote, Operation, Params: copy + drop + store>(
     _self: &Request<Asset, Quote, Operation, Params>,
-): (ID, u64, address, Params, Option<u32>, u64, u64) {
+): (ID, Params, Option<u32>, u64, u64) {
     abort EInterfaceOnly
 }
 
 /// Intended sealed request constructor called by the hook after its policy completes.
 /// Require this operation's registered before witness; NoHook is disabled-only.
-/// Bind pool ID, nonce and sender; move chosen parameters and balances into the request.
+/// Require unlocked, then lock the pool and move parameters/balances into the request.
+/// Bind the pool ID. Only execution consuming this request can release its lock.
 /// Core validates its own execution requirements, never interprets the hook's policy.
 public fun prepare_add_liquidity<Asset, Quote, Hook: drop>(
-    _self: &Pool<Asset, Quote>,
+    _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
     _params: LiquidityParams,
     _asset_payment: Balance<Asset>,
     _quote_payment: Balance<Quote>,
-    _ctx: &mut TxContext,
 ): Request<Asset, Quote, AddLiquidity, LiquidityParams> {
     abort EInterfaceOnly
 }
 
 /// Intended sealed request constructor called by the hook after its policy completes.
 /// Require this operation's registered before witness; NoHook is disabled-only.
-/// Bind pool ID, nonce and sender; move chosen parameters and balances into the request.
+/// Require unlocked, then lock the pool and move parameters/balances into the request.
+/// Bind the pool ID. Only execution consuming this request can release its lock.
 /// Core validates its own execution requirements, never interprets the hook's policy.
 public fun prepare_remove_liquidity<Asset, Quote, Hook: drop>(
-    _self: &Pool<Asset, Quote>,
+    _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
     _params: LiquidityParams,
     _asset_payment: Balance<Asset>,
     _quote_payment: Balance<Quote>,
-    _ctx: &mut TxContext,
 ): Request<Asset, Quote, RemoveLiquidity, LiquidityParams> {
     abort EInterfaceOnly
 }
 
 /// Intended sealed request constructor called by the hook after its policy completes.
 /// Require this operation's registered before witness; NoHook is disabled-only.
-/// Bind pool ID, nonce and sender; move chosen parameters and balances into the request.
+/// Require unlocked, then lock the pool and move parameters/balances into the request.
+/// Bind the pool ID. Only execution consuming this request can release its lock.
 /// Core validates its own execution requirements, never interprets the hook's policy.
 public fun prepare_swap<Asset, Quote, Hook: drop>(
-    _self: &Pool<Asset, Quote>,
+    _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
     _params: SwapParams,
     _asset_payment: Balance<Asset>,
     _quote_payment: Balance<Quote>,
     _lp_fee_override_ppm: Option<u32>,
-    _ctx: &mut TxContext,
 ): Request<Asset, Quote, Swap, SwapParams> {
     abort EInterfaceOnly
 }
 
 /// Intended sealed request constructor called by the hook after its policy completes.
 /// Require this operation's registered before witness; NoHook is disabled-only.
-/// Bind pool ID, nonce and sender; move chosen parameters and balances into the request.
+/// Require unlocked, then lock the pool and move parameters/balances into the request.
+/// Bind the pool ID. Only execution consuming this request can release its lock.
 /// Core validates its own execution requirements, never interprets the hook's policy.
 public fun prepare_donate<Asset, Quote, Hook: drop>(
-    _self: &Pool<Asset, Quote>,
+    _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
     _params: DonateParams,
     _asset_payment: Balance<Asset>,
     _quote_payment: Balance<Quote>,
-    _ctx: &mut TxContext,
 ): Request<Asset, Quote, Donate, DonateParams> {
     abort EInterfaceOnly
 }
 
 // Add liquidity.
 
-/// Intended consumption of a sealed request for this pool, operation, caller and current nonce.
-/// Advance the economic nonce without wrapping. Recompute against live state;
+/// Intended consumption of the sealed request for this locked pool and operation.
+/// Require locked and matching pool ID. Recompute against the locked live state;
 /// execute the wrapped parameters, validate actual payment, preserve reserves and LP entitlement.
 /// No separate parameter or payment input can replace the wrapped payload; policy stays opaque.
-/// Return actual coins plus a mandatory after-hook completion.
+/// Apply the operation, then unlock and return actual coins plus mandatory after approval.
 /// Validate the owned position ID, pool, range, spacing and liquidity authority.
 public fun execute_add_liquidity<Asset, Quote>(
     _self: &mut Pool<Asset, Quote>,
@@ -437,7 +432,7 @@ public fun execute_add_liquidity<Asset, Quote>(
     abort EInterfaceOnly
 }
 
-/// Intended after-witness, pool, operation and current-nonce checks.
+/// Intended after-witness, pool and operation checks; require an unlocked pool.
 /// Consume the completion and return the coins supplied after hook policy runs.
 /// NoHook is disabled-only. Do not enforce hook policy, coin identity or return amounts;
 /// any user-level checks on post-hook results belong to the caller or bundled wrapper.
@@ -453,11 +448,11 @@ public fun finish_add_liquidity<Asset, Quote, Hook: drop>(
 
 // Remove liquidity.
 
-/// Intended consumption of a sealed request for this pool, operation, caller and current nonce.
-/// Advance the economic nonce without wrapping. Recompute against live state;
+/// Intended consumption of the sealed request for this locked pool and operation.
+/// Require locked and matching pool ID. Recompute against the locked live state;
 /// execute the wrapped parameters, validate actual payment, preserve reserves and LP entitlement.
 /// No separate parameter or payment input can replace the wrapped payload; policy stays opaque.
-/// Return actual coins plus a mandatory after-hook completion.
+/// Apply the operation, then unlock and return actual coins plus mandatory after approval.
 /// Validate the owned position ID, pool, range, spacing and liquidity authority.
 public fun execute_remove_liquidity<Asset, Quote>(
     _self: &mut Pool<Asset, Quote>,
@@ -468,7 +463,7 @@ public fun execute_remove_liquidity<Asset, Quote>(
     abort EInterfaceOnly
 }
 
-/// Intended after-witness, pool, operation and current-nonce checks.
+/// Intended after-witness, pool and operation checks; require an unlocked pool.
 /// Consume the completion and return the coins supplied after hook policy runs.
 /// NoHook is disabled-only. Do not enforce hook policy, coin identity or return amounts;
 /// any user-level checks on post-hook results belong to the caller or bundled wrapper.
@@ -484,11 +479,11 @@ public fun finish_remove_liquidity<Asset, Quote, Hook: drop>(
 
 // Swap.
 
-/// Intended consumption of a sealed request for this pool, operation, caller and current nonce.
-/// Advance the economic nonce without wrapping. Recompute against live state;
+/// Intended consumption of the sealed request for this locked pool and operation.
+/// Require locked and matching pool ID. Recompute against the locked live state;
 /// execute the wrapped parameters, validate actual payment, preserve reserves and LP entitlement.
 /// No separate parameter or payment input can replace the wrapped payload; policy stays opaque.
-/// Return actual coins plus a mandatory after-hook completion.
+/// Apply the operation, then unlock and return actual coins plus mandatory after approval.
 /// Require zero output-side balance. LP override requires Dynamic and an enabled before hook.
 public fun execute_swap<Asset, Quote>(
     _self: &mut Pool<Asset, Quote>,
@@ -498,7 +493,7 @@ public fun execute_swap<Asset, Quote>(
     abort EInterfaceOnly
 }
 
-/// Intended after-witness, pool, operation and current-nonce checks.
+/// Intended after-witness, pool and operation checks; require an unlocked pool.
 /// Consume the completion and return the coins supplied after hook policy runs.
 /// NoHook is disabled-only. Do not enforce hook policy, coin identity or return amounts;
 /// any user-level checks on post-hook results belong to the caller or bundled wrapper.
@@ -514,11 +509,11 @@ public fun finish_swap<Asset, Quote, Hook: drop>(
 
 // Donate.
 
-/// Intended consumption of a sealed request for this pool, operation, caller and current nonce.
-/// Advance the economic nonce without wrapping. Recompute against live state;
+/// Intended consumption of the sealed request for this locked pool and operation.
+/// Require locked and matching pool ID. Recompute against the locked live state;
 /// execute the wrapped parameters, validate actual payment, preserve reserves and LP entitlement.
 /// No separate parameter or payment input can replace the wrapped payload; policy stays opaque.
-/// Return actual coins plus a mandatory after-hook completion.
+/// Apply the operation, then unlock and return actual coins plus mandatory after approval.
 /// Credit actual donated coins to eligible LP fees without minting liquidity.
 public fun execute_donate<Asset, Quote>(
     _self: &mut Pool<Asset, Quote>,
@@ -528,7 +523,7 @@ public fun execute_donate<Asset, Quote>(
     abort EInterfaceOnly
 }
 
-/// Intended after-witness, pool, operation and current-nonce checks.
+/// Intended after-witness, pool and operation checks; require an unlocked pool.
 /// Consume the completion and return the coins supplied after hook policy runs.
 /// NoHook is disabled-only. Do not enforce hook policy, coin identity or return amounts;
 /// any user-level checks on post-hook results belong to the caller or bundled wrapper.
@@ -542,7 +537,7 @@ public fun finish_donate<Asset, Quote, Hook: drop>(
     abort EInterfaceOnly
 }
 
-/// Intended before-only swap: consume the sealed request with the same execution checks.
+/// Intended before-only swap: consume the matching request and unlock after execution.
 /// Reject enabled after-swap callbacks. Return actual coins without a completion.
 public fun execute_swap_without_after<Asset, Quote>(
     _self: &mut Pool<Asset, Quote>,
@@ -553,7 +548,7 @@ public fun execute_swap_without_after<Asset, Quote>(
 }
 
 /// Intended before-swap-hook-only current-rate update; require SwapFee::Dynamic.
-/// Enforce <= 1,000,000 ppm, reject Fixed, and preserve the Dynamic variant.
+/// Require unlocked. Enforce <= 1,000,000 ppm, reject Fixed and preserve Dynamic.
 public fun update_dynamic_lp_fee<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
