@@ -485,6 +485,8 @@ public fun finish_remove_liquidity<Asset, Quote, Hook: drop>(
 /// No separate parameter or payment input can replace the wrapped payload; policy stays opaque.
 /// Apply the operation, then unlock and return actual coins plus mandatory after approval.
 /// Require zero output-side balance. LP override requires Dynamic and an enabled before hook.
+/// Stop at the requested amount or sqrt price limit; permit partial fills and return change.
+/// Never spend beyond the wrapped input balance; callers own full-fill and final amount checks.
 public fun execute_swap<Asset, Quote>(
     _self: &mut Pool<Asset, Quote>,
     _request: Request<Asset, Quote, Swap, SwapParams>,

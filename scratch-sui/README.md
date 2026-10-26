@@ -59,6 +59,16 @@ gross hook budgets, hook fee accounting or automatic post-hook user bounds.
 Checks spanning both hooks belong to a caller or bundled wrapper that chooses
 to enforce them. Simulations do not authorize execution or reserve a pool.
 
+Swap parameters follow [Uniswap v4 core](https://github.com/Uniswap/v4-core/blob/main/src/types/PoolOperation.sol):
+direction, amount/mode and a sqrt price limit. Move represents the signed amount
+as `exact_input: bool` plus `amount: u64`. The amount is an input budget including
+LP fees or a desired output; the request's actual input balance bounds funding.
+Swapping stops at the amount or price limit, permitting partial fills and
+returning unspent payment as change. A sqrt price limit bounds pool execution
+price; it does not guarantee a final coin amount after hook fees. Minimum-output,
+maximum-input and full-fill checks belong to hooks or callers, as amount checks
+do in [Uniswap's router](https://github.com/Uniswap/v4-periphery/blob/main/src/interfaces/IV4Router.sol).
+
 The hook may simulate again after changing parameters or payments. A simulation
 returns projected payments/receipts, price, tick, active liquidity, LP fee and
 fee growth, with resulting position liquidity for liquidity operations. It is

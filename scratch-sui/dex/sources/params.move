@@ -29,17 +29,15 @@ public struct LiquidityParams has copy, drop, store {
 
 // Fields are intentionally unread while all interface bodies abort.
 /// Both directions and exact-input/output swaps. Amounts use atomic coin units.
-/// Amount and bounds describe execution inputs, not a hook-wide spending budget.
-/// Core enforces these supplied values during execution. Hooks and callers own
-/// any additional policy or post-hook result checks.
+/// Amount is the input budget including LP fees, or the desired output in exact-output mode.
+/// The price limit can stop either mode early; unspent payment returns as change.
+/// Hooks and callers own full-fill requirements and final coin-amount checks.
 #[allow(unused_field)]
 public struct SwapParams has copy, drop, store {
     asset_to_quote: bool,
     exact_input: bool,
     amount: u64,
     sqrt_price_limit_x96: u256,
-    minimum_output: u64,
-    maximum_input: u64,
 }
 
 // Fields are intentionally unread while all interface bodies abort.
@@ -49,14 +47,12 @@ public struct DonateParams has copy, drop, store { asset: u64, quote: u64 }
 
 // === Public Functions ===
 
-/// Intended swap constructor; core must independently recheck bounds at execution.
+/// Intended swap constructor; core must recheck price limits and actual funding at execution.
 public fun new_swap(
     _asset_to_quote: bool,
     _exact_input: bool,
     _amount: u64,
     _sqrt_price_limit_x96: u256,
-    _minimum_output: u64,
-    _maximum_input: u64,
 ): SwapParams {
     abort EInterfaceOnly
 }
@@ -75,10 +71,10 @@ public fun liquidity_params(
     abort EInterfaceOnly
 }
 
-/// Intended direction, exact-input flag, amount, price limit, and execution bounds.
+/// Intended direction, exact-input flag, amount, and sqrt price limit.
 public fun swap_params(
     _self: &SwapParams,
-): (bool, bool, u64, u256, u64, u64) {
+): (bool, bool, u64, u256) {
     abort EInterfaceOnly
 }
 
