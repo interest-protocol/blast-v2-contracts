@@ -36,9 +36,10 @@ proves preparation already authenticated the before-hook without storing its typ
 ```text
 hook::before_swap(pool, price limit, Coin<Input>, ctx)
   read hook's dynamic fields and public pool state
+  optionally update the Dynamic pool's stored LP fee through the sealed witness
   simulate expected payments / post-swap pool state, without writes
   apply hook policy: validate, change parameters, retain coins, update own state
-  pool::prepare_swap(witness, price limit, Balance<Input>, fee override)
+  pool::prepare_swap(witness, price limit, Balance<Input>)
     -> sealed SwapRequest owning the chosen payload; pool is locked
 
 pool::execute_swap(pool, request, ctx)
@@ -162,9 +163,12 @@ mandatory after-approval flow. Liquidity execution checks the supplied owned
 position against the wrapped parameters, pool and tick range. Removing zero
 liquidity collects accrued fees; donations fund LP fees without minting liquidity.
 
-Fees use ppm. Fixed/Dynamic mode is immutable; only Dynamic permits a configured
-before-swap override or authorized cached-rate update. An override does not
-change the stored rate. Ticks use checked, two's-complement `I32`, with int24,
+Fees use ppm. Fixed/Dynamic mode is immutable; only Dynamic permits an authorized
+stored-rate update by the configured before-swap witness. The hook may update
+that rate before simulation and preparation. Preparation locks fee changes until
+execution consumes the request, so execution uses the stored rate without a
+request-level override. The updated rate persists for later operations. Ticks use
+checked, two's-complement `I32`, with int24,
 pool-range and spacing checks in core.
 
 Before promotion, implement and test proof issuance/consumption, lock enforcement

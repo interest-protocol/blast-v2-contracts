@@ -23,6 +23,19 @@ public fun before_only_swap<Asset, Quote>(
     example::swap_without_after(pool, params::new_swap(sqrt_price_limit_x96), payment, ctx)
 }
 
+/// The hook's authorized stored-fee update happens before preparation acquires the lock.
+public fun update_fee_then_swap<Asset, Quote, Input>(
+    pool: &mut Pool<Asset, Quote>,
+    fee_ppm: u32,
+    params: SwapParams,
+    payment: Coin<Input>,
+    ctx: &mut TxContext,
+): (Coin<Asset>, Coin<Quote>) {
+    example::update_dynamic_lp_fee(pool, fee_ppm, ctx);
+
+    example::swap(pool, params, payment, ctx)
+}
+
 /// Pre-hook seals payments in the request; post-execution coin mutation needs no signed amounts.
 /// This fixture establishes types only, not entitlement or runtime safety.
 public fun split_swap_results<Asset, Quote, Input>(
@@ -70,7 +83,6 @@ public fun disabled_swap_hooks<Asset, Quote, Input>(
 ): (Coin<Asset>, Coin<Quote>) {
     let request = pool.prepare_swap(
         pool::no_hook(), params, payment.into_balance(),
-        option::none(),
     );
     let (completion, asset_coin, quote_coin) = pool.execute_swap(request, ctx);
 
@@ -81,7 +93,7 @@ public fun disabled_swap_hooks<Asset, Quote, Input>(
 public fun inspect_swap_request<Asset, Quote, Input>(
     request: SwapRequest<Asset, Quote, Input>,
 ): SwapRequest<Asset, Quote, Input> {
-    let (_, _, _, _) = request.swap_request_context();
+    let (_, _, _) = request.swap_request_context();
     request
 }
 
@@ -91,7 +103,7 @@ public fun read_swap_projection<Asset, Quote, Input>(
     params: SwapParams,
     payment: &Balance<Input>,
 ): Simulation<Asset, Quote, Swap> {
-    pool.simulate_swap(params, payment, option::none())
+    pool.simulate_swap(params, payment)
 }
 
 // === Imports ===

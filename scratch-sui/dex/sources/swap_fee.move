@@ -10,7 +10,7 @@ const EInterfaceOnly: vector<u8> = b"Scratch interface only; implementation is n
 // === Public Types ===
 
 /// LP swap fee in ppm (1,000,000 = 100%). The mode is fixed at construction;
-/// only Dynamic permits authorized current-rate updates or per-swap overrides.
+/// only Dynamic permits authorized current-rate updates.
 public enum SwapFee has copy, drop, store {
     Fixed { fee_ppm: u32 },
     Dynamic { current_fee_ppm: u32 },
@@ -37,7 +37,7 @@ public fun rate_ppm(_self: &SwapFee): u32 {
     abort EInterfaceOnly
 }
 
-/// Intended mode predicate for fee-override validation.
+/// Intended mode predicate for stored-rate update authorization.
 public fun is_dynamic(_self: &SwapFee): bool {
     abort EInterfaceOnly
 }

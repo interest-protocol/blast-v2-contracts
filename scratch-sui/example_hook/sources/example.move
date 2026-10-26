@@ -143,10 +143,10 @@ public fun before_swap<Asset, Quote, Input>(
     ctx: &mut TxContext,
 ): SwapRequest<Asset, Quote, Input> {
     let mut payment = payment.into_balance();
-    let fee_override = before_swap_policy(
+    before_swap_policy(
         pool, &mut params, &mut payment, ctx,
     );
-    pool.prepare_swap(HookWitness(), params, payment, fee_override)
+    pool.prepare_swap(HookWitness(), params, payment)
 }
 
 /// Policy receives immutable execution facts and mutable actual output/change coins.
@@ -255,21 +255,22 @@ fun after_initialize_policy<Asset, Quote>(_completion: &InitializeCompletion<Ass
 
 /// Example policy may read pool-local state and preview effects before making its decisions.
 /// Ordinary tokens may be transferred/split; burning additionally requires coin authority.
+/// Policy may update a Dynamic pool's stored LP fee with HookWitness before simulation/preparation.
 fun before_swap_policy<Asset, Quote, Input>(
     pool: &mut Pool<Asset, Quote>,
     _params: &mut SwapParams,
     _payment: &mut Balance<Input>,
     _ctx: &mut TxContext,
-): Option<u32> {
+) {
     let witness = HookWitness();
     if (pool.has_hook_state(&witness, StateKey())) {
         let _state: &HookState = pool.hook_state(&witness, StateKey());
     };
     let (_, _, _) = pool.pool_state();
-    let preview = pool.simulate_swap(*_params, _payment, option::none());
+    let preview = pool.simulate_swap(*_params, _payment);
     let (_, _, _, _) = preview.simulation_amounts();
     let (_, _, _, _, _, _, _) = preview.simulation_pool_state();
-    // The preview itself never writes. Policy may update only its own hook state here.
+    // Policy records its own state separately from the read-only preview.
     record_call(pool);
     abort EInterfaceOnly
 }
