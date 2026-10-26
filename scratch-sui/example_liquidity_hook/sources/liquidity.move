@@ -33,7 +33,6 @@ public fun register_hooks<Asset, Quote>(
 public fun before_add_liquidity<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     mut params: LiquidityParams,
-    mut hook_data: vector<u8>,
     mut asset_payment: Coin<Asset>,
     mut quote_payment: Coin<Quote>,
     position: &Position<Asset, Quote>,
@@ -41,11 +40,11 @@ public fun before_add_liquidity<Asset, Quote>(
 ): Request<Asset, Quote, AddLiquidity, LiquidityParams> {
     let preview = pool.simulate_add_liquidity(position, params);
     before_policy(
-        pool, &preview, &mut params, &mut hook_data,
+        pool, &preview, &mut params,
         &mut asset_payment, &mut quote_payment, ctx,
     );
     pool.prepare_add_liquidity(
-        HookWitness(), params, hook_data,
+        HookWitness(), params,
         asset_payment.into_balance(), quote_payment.into_balance(), ctx,
     )
 }
@@ -70,7 +69,6 @@ public fun after_add_liquidity<Asset, Quote>(
 public fun before_remove_liquidity<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     mut params: LiquidityParams,
-    mut hook_data: vector<u8>,
     mut asset_payment: Coin<Asset>,
     mut quote_payment: Coin<Quote>,
     position: &Position<Asset, Quote>,
@@ -78,11 +76,11 @@ public fun before_remove_liquidity<Asset, Quote>(
 ): Request<Asset, Quote, RemoveLiquidity, LiquidityParams> {
     let preview = pool.simulate_remove_liquidity(position, params);
     before_policy(
-        pool, &preview, &mut params, &mut hook_data,
+        pool, &preview, &mut params,
         &mut asset_payment, &mut quote_payment, ctx,
     );
     pool.prepare_remove_liquidity(
-        HookWitness(), params, hook_data,
+        HookWitness(), params,
         asset_payment.into_balance(), quote_payment.into_balance(), ctx,
     )
 }
@@ -107,7 +105,6 @@ fun before_policy<Asset, Quote, Operation, Params: copy + drop + store>(
     _pool: &mut Pool<Asset, Quote>,
     _preview: &Simulation<Asset, Quote, Operation>,
     _params: &mut Params,
-    _hook_data: &mut vector<u8>,
     _asset_payment: &mut Coin<Asset>,
     _quote_payment: &mut Coin<Quote>,
     _ctx: &mut TxContext,

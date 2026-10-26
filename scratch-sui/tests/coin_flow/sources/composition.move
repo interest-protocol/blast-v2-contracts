@@ -7,24 +7,22 @@ module blast_fun_dex_coin_flow_tests::composition;
 public fun bundled_swap<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     params: SwapParams,
-    hook_data: vector<u8>,
     asset: Coin<Asset>,
     quote: Coin<Quote>,
     ctx: &mut TxContext,
 ): (Coin<Asset>, Coin<Quote>) {
-    example::swap(pool, params, hook_data, asset, quote, ctx)
+    example::swap(pool, params, asset, quote, ctx)
 }
 
 /// A before-only swap has the same terminal coin types and no leaked obligation.
 public fun before_only_swap<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     params: SwapParams,
-    hook_data: vector<u8>,
     asset: Coin<Asset>,
     quote: Coin<Quote>,
     ctx: &mut TxContext,
 ): (Coin<Asset>, Coin<Quote>) {
-    example::swap_without_after(pool, params, hook_data, asset, quote, ctx)
+    example::swap_without_after(pool, params, asset, quote, ctx)
 }
 
 /// Pre-hook seals payments in the request; post-execution coin mutation needs no signed amounts.
@@ -32,14 +30,13 @@ public fun before_only_swap<Asset, Quote>(
 public fun split_swap_results<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     params: SwapParams,
-    hook_data: vector<u8>,
     asset: Coin<Asset>,
     quote: Coin<Quote>,
     fee_recipient: address,
     ctx: &mut TxContext,
 ): (Coin<Asset>, Coin<Quote>) {
     let request = example::before_swap(
-        pool, params, hook_data, asset, quote, ctx,
+        pool, params, asset, quote, ctx,
     );
     let (completion, mut asset_coin, quote_coin) = pool.execute_swap(request, ctx);
     let fee = asset_coin.split(1, ctx);
@@ -58,7 +55,7 @@ public fun mixed_liquidity_hooks<Asset, Quote>(
     ctx: &mut TxContext,
 ): (Coin<Asset>, Coin<Quote>) {
     let request = liquidity::before_add_liquidity(
-        pool, params, vector[], asset, quote, position, ctx,
+        pool, params, asset, quote, position, ctx,
     );
     let (completion, asset_coin, quote_coin) = pool.execute_add_liquidity(
         request, position, ctx,
@@ -76,7 +73,7 @@ public fun disabled_swap_hooks<Asset, Quote>(
     ctx: &mut TxContext,
 ): (Coin<Asset>, Coin<Quote>) {
     let request = pool.prepare_swap(
-        pool::no_hook(), params, vector[], asset.into_balance(), quote.into_balance(),
+        pool::no_hook(), params, asset.into_balance(), quote.into_balance(),
         option::none(), ctx,
     );
     let (completion, asset_coin, quote_coin) = pool.execute_swap(request, ctx);
@@ -88,7 +85,7 @@ public fun disabled_swap_hooks<Asset, Quote>(
 public fun inspect_swap_request<Asset, Quote>(
     request: Request<Asset, Quote, Swap, SwapParams>,
 ): Request<Asset, Quote, Swap, SwapParams> {
-    let (_, _, _, _, _, _, _, _) = request.request_context();
+    let (_, _, _, _, _, _, _) = request.request_context();
     request
 }
 

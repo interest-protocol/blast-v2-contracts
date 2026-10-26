@@ -51,13 +51,12 @@ public fun after_initialize<Asset, Quote>(
 public fun swap<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     params: SwapParams,
-    hook_data: vector<u8>,
     asset_payment: Coin<Asset>,
     quote_payment: Coin<Quote>,
     ctx: &mut TxContext,
 ): (Coin<Asset>, Coin<Quote>) {
     let request = before_swap(
-        pool, params, hook_data, asset_payment, quote_payment, ctx,
+        pool, params, asset_payment, quote_payment, ctx,
     );
     let (completion, asset_coin, quote_coin) = pool.execute_swap(request, ctx);
 
@@ -70,7 +69,6 @@ public fun swap<Asset, Quote>(
 public fun before_add_liquidity<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     mut params: LiquidityParams,
-    mut hook_data: vector<u8>,
     mut asset_payment: Coin<Asset>,
     mut quote_payment: Coin<Quote>,
     position: &Position<Asset, Quote>,
@@ -78,11 +76,11 @@ public fun before_add_liquidity<Asset, Quote>(
 ): Request<Asset, Quote, AddLiquidity, LiquidityParams> {
     let preview = pool.simulate_add_liquidity(position, params);
     before_policy(
-        pool, &preview, &mut params, &mut hook_data,
+        pool, &preview, &mut params,
         &mut asset_payment, &mut quote_payment, ctx,
     );
     pool.prepare_add_liquidity(
-        HookWitness(), params, hook_data,
+        HookWitness(), params,
         asset_payment.into_balance(), quote_payment.into_balance(), ctx,
     )
 }
@@ -107,7 +105,6 @@ public fun after_add_liquidity<Asset, Quote>(
 public fun before_remove_liquidity<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     mut params: LiquidityParams,
-    mut hook_data: vector<u8>,
     mut asset_payment: Coin<Asset>,
     mut quote_payment: Coin<Quote>,
     position: &Position<Asset, Quote>,
@@ -115,11 +112,11 @@ public fun before_remove_liquidity<Asset, Quote>(
 ): Request<Asset, Quote, RemoveLiquidity, LiquidityParams> {
     let preview = pool.simulate_remove_liquidity(position, params);
     before_policy(
-        pool, &preview, &mut params, &mut hook_data,
+        pool, &preview, &mut params,
         &mut asset_payment, &mut quote_payment, ctx,
     );
     pool.prepare_remove_liquidity(
-        HookWitness(), params, hook_data,
+        HookWitness(), params,
         asset_payment.into_balance(), quote_payment.into_balance(), ctx,
     )
 }
@@ -144,16 +141,15 @@ public fun after_remove_liquidity<Asset, Quote>(
 public fun before_swap<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     mut params: SwapParams,
-    mut hook_data: vector<u8>,
     mut asset_payment: Coin<Asset>,
     mut quote_payment: Coin<Quote>,
     ctx: &mut TxContext,
 ): Request<Asset, Quote, Swap, SwapParams> {
     let fee_override = before_swap_policy(
-        pool, &mut params, &mut hook_data, &mut asset_payment, &mut quote_payment, ctx,
+        pool, &mut params, &mut asset_payment, &mut quote_payment, ctx,
     );
     pool.prepare_swap(
-        HookWitness(), params, hook_data,
+        HookWitness(), params,
         asset_payment.into_balance(), quote_payment.into_balance(), fee_override, ctx,
     )
 }
@@ -178,18 +174,17 @@ public fun after_swap<Asset, Quote>(
 public fun before_donate<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     mut params: DonateParams,
-    mut hook_data: vector<u8>,
     mut asset_payment: Coin<Asset>,
     mut quote_payment: Coin<Quote>,
     ctx: &mut TxContext,
 ): Request<Asset, Quote, Donate, DonateParams> {
     let preview = pool.simulate_donate(params);
     before_policy(
-        pool, &preview, &mut params, &mut hook_data,
+        pool, &preview, &mut params,
         &mut asset_payment, &mut quote_payment, ctx,
     );
     pool.prepare_donate(
-        HookWitness(), params, hook_data,
+        HookWitness(), params,
         asset_payment.into_balance(), quote_payment.into_balance(), ctx,
     )
 }
@@ -212,13 +207,12 @@ public fun after_donate<Asset, Quote>(
 public fun swap_without_after<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     params: SwapParams,
-    hook_data: vector<u8>,
     asset_payment: Coin<Asset>,
     quote_payment: Coin<Quote>,
     ctx: &mut TxContext,
 ): (Coin<Asset>, Coin<Quote>) {
     let request = before_swap(
-        pool, params, hook_data, asset_payment, quote_payment, ctx,
+        pool, params, asset_payment, quote_payment, ctx,
     );
 
     pool.execute_swap_without_after(request, ctx)
@@ -270,7 +264,6 @@ fun after_initialize_policy<Asset, Quote>(_completion: &InitializeCompletion<Ass
 fun before_swap_policy<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     _params: &mut SwapParams,
-    _hook_data: &mut vector<u8>,
     _asset_payment: &mut Coin<Asset>,
     _quote_payment: &mut Coin<Quote>,
     _ctx: &mut TxContext,
@@ -292,7 +285,6 @@ fun before_policy<Asset, Quote, Operation, Params: copy + drop + store>(
     pool: &mut Pool<Asset, Quote>,
     _preview: &Simulation<Asset, Quote, Operation>,
     _params: &mut Params,
-    _hook_data: &mut vector<u8>,
     _asset_payment: &mut Coin<Asset>,
     _quote_payment: &mut Coin<Quote>,
     _ctx: &mut TxContext,

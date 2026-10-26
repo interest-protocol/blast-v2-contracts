@@ -80,7 +80,6 @@ public struct Completion<phantom Asset, phantom Quote, phantom Operation, Params
     nonce: u64,
     sender: address,
     params: Params,
-    hook_data: vector<u8>,
     asset_paid: u64,
     quote_paid: u64,
     tick: I32,
@@ -89,7 +88,7 @@ public struct Completion<phantom Asset, phantom Quote, phantom Operation, Params
 // Fields are intentionally unread while all interface bodies abort.
 /// No abilities. Sealed parameters chosen by the hook for one pool/operation/caller/nonce.
 /// Only core constructs this after checking the registered sealed witness.
-/// Owns both token balances, parameters and hook data chosen by the hook.
+/// Owns both token balances and parameters chosen by the hook.
 /// Core executes this exact payload without interpreting the hook's policy.
 #[allow(unused_field)]
 public struct Request<phantom Asset, phantom Quote, phantom Operation, Params: copy + drop + store> {
@@ -98,7 +97,6 @@ public struct Request<phantom Asset, phantom Quote, phantom Operation, Params: c
     sender: address,
     hook_type: TypeName,
     params: Params,
-    hook_data: vector<u8>,
     lp_fee_override_ppm: Option<u32>,
     asset_payment: Balance<Asset>,
     quote_payment: Balance<Quote>,
@@ -181,11 +179,11 @@ public fun destroy_position<Asset, Quote>(
     abort EInterfaceOnly
 }
 
-/// Intended caller, executed inputs, hook data, actual core payments and resulting tick.
+/// Intended caller, executed inputs, actual core payments and resulting tick.
 /// Output/change coins accompany this immutable receipt and remain hook-controlled.
 public fun completion_context<Asset, Quote, Operation, Params: copy + drop + store>(
     _self: &Completion<Asset, Quote, Operation, Params>,
-): (address, Params, vector<u8>, u64, u64, I32) {
+): (address, Params, u64, u64, I32) {
     abort EInterfaceOnly
 }
 
@@ -354,22 +352,21 @@ public fun simulate_donate<Asset, Quote>(
 
 // Wrap hook-approved parameters and balances.
 
-/// Intended wrapped pool, nonce, caller, parameters/data/override and payment amounts.
+/// Intended wrapped pool, nonce, caller, parameters, fee override and payment amounts.
 public fun request_context<Asset, Quote, Operation, Params: copy + drop + store>(
     _self: &Request<Asset, Quote, Operation, Params>,
-): (ID, u64, address, Params, vector<u8>, Option<u32>, u64, u64) {
+): (ID, u64, address, Params, Option<u32>, u64, u64) {
     abort EInterfaceOnly
 }
 
 /// Intended sealed request constructor called by the hook after its policy completes.
 /// Require this operation's registered before witness; NoHook is disabled-only.
-/// Bind pool ID, nonce and sender; move chosen parameters, data and balances into the request.
+/// Bind pool ID, nonce and sender; move chosen parameters and balances into the request.
 /// Core validates its own execution requirements, never interprets the hook's policy.
 public fun prepare_add_liquidity<Asset, Quote, Hook: drop>(
     _self: &Pool<Asset, Quote>,
     _hook: Hook,
     _params: LiquidityParams,
-    _hook_data: vector<u8>,
     _asset_payment: Balance<Asset>,
     _quote_payment: Balance<Quote>,
     _ctx: &mut TxContext,
@@ -379,13 +376,12 @@ public fun prepare_add_liquidity<Asset, Quote, Hook: drop>(
 
 /// Intended sealed request constructor called by the hook after its policy completes.
 /// Require this operation's registered before witness; NoHook is disabled-only.
-/// Bind pool ID, nonce and sender; move chosen parameters, data and balances into the request.
+/// Bind pool ID, nonce and sender; move chosen parameters and balances into the request.
 /// Core validates its own execution requirements, never interprets the hook's policy.
 public fun prepare_remove_liquidity<Asset, Quote, Hook: drop>(
     _self: &Pool<Asset, Quote>,
     _hook: Hook,
     _params: LiquidityParams,
-    _hook_data: vector<u8>,
     _asset_payment: Balance<Asset>,
     _quote_payment: Balance<Quote>,
     _ctx: &mut TxContext,
@@ -395,13 +391,12 @@ public fun prepare_remove_liquidity<Asset, Quote, Hook: drop>(
 
 /// Intended sealed request constructor called by the hook after its policy completes.
 /// Require this operation's registered before witness; NoHook is disabled-only.
-/// Bind pool ID, nonce and sender; move chosen parameters, data and balances into the request.
+/// Bind pool ID, nonce and sender; move chosen parameters and balances into the request.
 /// Core validates its own execution requirements, never interprets the hook's policy.
 public fun prepare_swap<Asset, Quote, Hook: drop>(
     _self: &Pool<Asset, Quote>,
     _hook: Hook,
     _params: SwapParams,
-    _hook_data: vector<u8>,
     _asset_payment: Balance<Asset>,
     _quote_payment: Balance<Quote>,
     _lp_fee_override_ppm: Option<u32>,
@@ -412,13 +407,12 @@ public fun prepare_swap<Asset, Quote, Hook: drop>(
 
 /// Intended sealed request constructor called by the hook after its policy completes.
 /// Require this operation's registered before witness; NoHook is disabled-only.
-/// Bind pool ID, nonce and sender; move chosen parameters, data and balances into the request.
+/// Bind pool ID, nonce and sender; move chosen parameters and balances into the request.
 /// Core validates its own execution requirements, never interprets the hook's policy.
 public fun prepare_donate<Asset, Quote, Hook: drop>(
     _self: &Pool<Asset, Quote>,
     _hook: Hook,
     _params: DonateParams,
-    _hook_data: vector<u8>,
     _asset_payment: Balance<Asset>,
     _quote_payment: Balance<Quote>,
     _ctx: &mut TxContext,

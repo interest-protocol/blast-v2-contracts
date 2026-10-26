@@ -11,15 +11,17 @@ or payment-reconciliation phases.
 
 ## Before-hook, sealed request and execution
 
-The before-hook receives the pool, operation parameters, opaque hook data,
-payment coins and transaction context. Liquidity hooks also inspect the owned
-position. It can read its own pool-local state and public pool state, simulate
+The before-hook receives the pool, operation parameters, payment coins and
+transaction context. Liquidity hooks also inspect the owned position. It can
+read its own pool-local state and public pool state, simulate
 the operation, reject parameters, change the payload, or retain an explicit fee.
 Keeping or transferring coins does not grant authority to burn their supply.
-Core does not interpret or impose the hook's policy.
+Core does not interpret or impose the hook's policy. Hook-specific inputs belong
+in the hook's own typed arguments; core requests and completions carry no opaque
+hook payload.
 
 After its policy succeeds, the hook calls the corresponding `pool::prepare_*`
-with its sealed witness, chosen parameters/data and the remaining payments as
+with its sealed witness, chosen parameters and the remaining payments as
 `Balance<Asset>` and `Balance<Quote>`. Core authenticates the configured before
 witness and wraps that entire payload in a core-owned `Request`. The request
 also captures pool ID, economic nonce and caller. It has no abilities; its
@@ -27,11 +29,11 @@ private fields cannot be rewritten or its balances removed by other packages.
 There is no public constructor that bypasses witness authentication.
 
 ```text
-hook::before_swap(pool, params, data, payment coins, ctx)
+hook::before_swap(pool, params, payment coins, ctx)
   read hook's dynamic fields and public pool state
   simulate expected payments / post-swap pool state, without writes
   apply hook policy: validate, change parameters, retain coins, update own state
-  pool::prepare_swap(witness, params, data, payment balances, fee override, ctx)
+  pool::prepare_swap(witness, params, payment balances, fee override, ctx)
     -> sealed Request owning the chosen payload
 
 pool::execute_swap(pool, request, ctx)
