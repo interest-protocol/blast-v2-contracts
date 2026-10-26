@@ -92,7 +92,6 @@ public struct Completion<phantom Asset, phantom Quote, phantom Operation, Params
 #[allow(unused_field)]
 public struct Request<phantom Asset, phantom Quote, phantom Operation, Params: copy + drop + store> {
     pool_id: ID,
-    hook_type: TypeName,
     params: Params,
     lp_fee_override_ppm: Option<u32>,
     asset_payment: Balance<Asset>,
@@ -106,7 +105,6 @@ public struct Request<phantom Asset, phantom Quote, phantom Operation, Params: c
 #[allow(unused_field)]
 public struct SwapRequest<phantom Asset, phantom Quote, phantom Input> {
     pool_id: ID,
-    hook_type: TypeName,
     params: SwapParams,
     lp_fee_override_ppm: Option<u32>,
     payment: Balance<Input>,

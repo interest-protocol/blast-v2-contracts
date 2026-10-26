@@ -30,6 +30,8 @@ abilities; its private fields cannot be rewritten or its balances removed by
 other packages. Hooks get the transaction sender from `ctx.sender()` rather
 than storing a duplicate caller in receipts.
 There is no public constructor that bypasses witness authentication.
+Hook identity stays in the pool's immutable callback bindings; the sealed request
+proves preparation already authenticated the before-hook without storing its type again.
 
 ```text
 hook::before_swap(pool, price limit, Coin<Input>, ctx)
