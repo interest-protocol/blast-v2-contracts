@@ -84,7 +84,7 @@ public struct Completion<phantom Asset, phantom Quote, phantom Operation, Params
 }
 
 // Fields are intentionally unread while all interface bodies abort.
-/// No abilities. Sealed parameters chosen by the hook for one pool and operation.
+/// No abilities. Sealed liquidity/donation payload chosen by the hook for one pool and operation.
 /// Holds that pool's exclusive preparation lock until consumed by execution.
 /// Only core constructs this after checking the registered sealed witness.
 /// Owns both token balances and parameters chosen by the hook.
@@ -97,6 +97,19 @@ public struct Request<phantom Asset, phantom Quote, phantom Operation, Params: c
     lp_fee_override_ppm: Option<u32>,
     asset_payment: Balance<Asset>,
     quote_payment: Balance<Quote>,
+}
+
+// Fields are intentionally unread while all interface bodies abort.
+/// No abilities. Sealed swap payload; Input determines direction and payment.value() the budget.
+/// Core must require Input to match exactly one pool token and reject identical tokens at creation.
+/// Owns the pool's exclusive preparation lock until matching execution consumes this request.
+#[allow(unused_field)]
+public struct SwapRequest<phantom Asset, phantom Quote, phantom Input> {
+    pool_id: ID,
+    hook_type: TypeName,
+    params: SwapParams,
+    lp_fee_override_ppm: Option<u32>,
+    payment: Balance<Input>,
 }
 
 // Fields are intentionally unread while all interface bodies abort.
@@ -311,9 +324,11 @@ public fun simulation_pool_state<Asset, Quote, Operation>(
 
 /// Intended pure swap simulation using the same pricing, tick and fee math as execution.
 /// Borrow pool state immutably. Do not move coins, write pool/hook state, or issue approval.
-public fun simulate_swap<Asset, Quote>(
+/// Derive direction and input budget from payment; reject types outside this pool's pair.
+public fun simulate_swap<Asset, Quote, Input>(
     _self: &Pool<Asset, Quote>,
     _params: SwapParams,
+    _payment: &Balance<Input>,
     _lp_fee_override_ppm: Option<u32>,
 ): Simulation<Asset, Quote, Swap> {
     abort EInterfaceOnly
@@ -354,6 +369,13 @@ public fun request_context<Asset, Quote, Operation, Params: copy + drop + store>
     abort EInterfaceOnly
 }
 
+/// Intended wrapped pool, price limit, fee override and input amount; Input supplies direction.
+public fun swap_request_context<Asset, Quote, Input>(
+    _self: &SwapRequest<Asset, Quote, Input>,
+): (ID, SwapParams, Option<u32>, u64) {
+    abort EInterfaceOnly
+}
+
 /// Intended sealed request constructor called by the hook after its policy completes.
 /// Require this operation's registered before witness; NoHook is disabled-only.
 /// Require unlocked, then lock the pool and move parameters/balances into the request.
@@ -389,14 +411,14 @@ public fun prepare_remove_liquidity<Asset, Quote, Hook: drop>(
 /// Require unlocked, then lock the pool and move parameters/balances into the request.
 /// Bind the pool ID. Only execution consuming this request can release its lock.
 /// Core validates its own execution requirements, never interprets the hook's policy.
-public fun prepare_swap<Asset, Quote, Hook: drop>(
+/// Require Input to match one pool token; derive direction and amount from its payment.
+public fun prepare_swap<Asset, Quote, Input, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
     _params: SwapParams,
-    _asset_payment: Balance<Asset>,
-    _quote_payment: Balance<Quote>,
+    _payment: Balance<Input>,
     _lp_fee_override_ppm: Option<u32>,
-): Request<Asset, Quote, Swap, SwapParams> {
+): SwapRequest<Asset, Quote, Input> {
     abort EInterfaceOnly
 }
 
@@ -484,12 +506,12 @@ public fun finish_remove_liquidity<Asset, Quote, Hook: drop>(
 /// execute the wrapped parameters, validate actual payment, preserve reserves and LP entitlement.
 /// No separate parameter or payment input can replace the wrapped payload; policy stays opaque.
 /// Apply the operation, then unlock and return actual coins plus mandatory after approval.
-/// Require zero output-side balance. LP override requires Dynamic and an enabled before hook.
-/// Stop at the requested amount or sqrt price limit; permit partial fills and return change.
+/// Derive direction from Input; reject types outside the pool pair. LP override requires Dynamic
+/// and an enabled before hook. Consume the input balance up to the sqrt price limit and return change.
 /// Never spend beyond the wrapped input balance; callers own full-fill and final amount checks.
-public fun execute_swap<Asset, Quote>(
+public fun execute_swap<Asset, Quote, Input>(
     _self: &mut Pool<Asset, Quote>,
-    _request: Request<Asset, Quote, Swap, SwapParams>,
+    _request: SwapRequest<Asset, Quote, Input>,
     _ctx: &mut TxContext,
 ): (Completion<Asset, Quote, Swap, SwapParams>, Coin<Asset>, Coin<Quote>) {
     abort EInterfaceOnly
@@ -541,9 +563,10 @@ public fun finish_donate<Asset, Quote, Hook: drop>(
 
 /// Intended before-only swap: consume the matching request and unlock after execution.
 /// Reject enabled after-swap callbacks. Return actual coins without a completion.
-public fun execute_swap_without_after<Asset, Quote>(
+/// Use the same typed-input funding and price-limit rules as execute_swap.
+public fun execute_swap_without_after<Asset, Quote, Input>(
     _self: &mut Pool<Asset, Quote>,
-    _request: Request<Asset, Quote, Swap, SwapParams>,
+    _request: SwapRequest<Asset, Quote, Input>,
     _ctx: &mut TxContext,
 ): (Coin<Asset>, Coin<Quote>) {
     abort EInterfaceOnly

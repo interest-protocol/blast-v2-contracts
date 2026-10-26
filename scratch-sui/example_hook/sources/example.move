@@ -48,15 +48,14 @@ public fun after_initialize<Asset, Quote>(
 }
 
 /// One entry call forwards the hook's sealed request into execution and after policy.
-public fun swap<Asset, Quote>(
+public fun swap<Asset, Quote, Input>(
     pool: &mut Pool<Asset, Quote>,
     params: SwapParams,
-    asset_payment: Coin<Asset>,
-    quote_payment: Coin<Quote>,
+    payment: Coin<Input>,
     ctx: &mut TxContext,
 ): (Coin<Asset>, Coin<Quote>) {
     let request = before_swap(
-        pool, params, asset_payment, quote_payment, ctx,
+        pool, params, payment, ctx,
     );
     let (completion, asset_coin, quote_coin) = pool.execute_swap(request, ctx);
 
@@ -135,23 +134,19 @@ public fun after_remove_liquidity<Asset, Quote>(
     pool.finish_remove_liquidity(HookWitness(), completion, asset_coin, quote_coin)
 }
 
-/// Policy may read its state, simulate, validate parameters and keep or replace coins.
-/// Ask core to wrap the chosen parameters only after policy succeeds.
-/// The request owns remaining payments as balances; execution accepts no replacement payload.
-public fun before_swap<Asset, Quote>(
+/// Policy may change the price limit and split/retain coins before sealing the payment.
+/// Input's type determines direction; the remaining balance determines the swap budget.
+public fun before_swap<Asset, Quote, Input>(
     pool: &mut Pool<Asset, Quote>,
     mut params: SwapParams,
-    mut asset_payment: Coin<Asset>,
-    mut quote_payment: Coin<Quote>,
+    payment: Coin<Input>,
     ctx: &mut TxContext,
-): Request<Asset, Quote, Swap, SwapParams> {
+): SwapRequest<Asset, Quote, Input> {
+    let mut payment = payment.into_balance();
     let fee_override = before_swap_policy(
-        pool, &mut params, &mut asset_payment, &mut quote_payment, ctx,
+        pool, &mut params, &mut payment, ctx,
     );
-    pool.prepare_swap(
-        HookWitness(), params,
-        asset_payment.into_balance(), quote_payment.into_balance(), fee_override,
-    )
+    pool.prepare_swap(HookWitness(), params, payment, fee_override)
 }
 
 /// Policy receives immutable execution facts and mutable actual output/change coins.
@@ -204,15 +199,14 @@ public fun after_donate<Asset, Quote>(
 }
 
 /// Before-only bundle. Core rejects this when after-swap is enabled.
-public fun swap_without_after<Asset, Quote>(
+public fun swap_without_after<Asset, Quote, Input>(
     pool: &mut Pool<Asset, Quote>,
     params: SwapParams,
-    asset_payment: Coin<Asset>,
-    quote_payment: Coin<Quote>,
+    payment: Coin<Input>,
     ctx: &mut TxContext,
 ): (Coin<Asset>, Coin<Quote>) {
     let request = before_swap(
-        pool, params, asset_payment, quote_payment, ctx,
+        pool, params, payment, ctx,
     );
 
     pool.execute_swap_without_after(request, ctx)
@@ -261,11 +255,10 @@ fun after_initialize_policy<Asset, Quote>(_completion: &InitializeCompletion<Ass
 
 /// Example policy may read pool-local state and preview effects before making its decisions.
 /// Ordinary tokens may be transferred/split; burning additionally requires coin authority.
-fun before_swap_policy<Asset, Quote>(
+fun before_swap_policy<Asset, Quote, Input>(
     pool: &mut Pool<Asset, Quote>,
     _params: &mut SwapParams,
-    _asset_payment: &mut Coin<Asset>,
-    _quote_payment: &mut Coin<Quote>,
+    _payment: &mut Balance<Input>,
     _ctx: &mut TxContext,
 ): Option<u32> {
     let witness = HookWitness();
@@ -273,7 +266,7 @@ fun before_swap_policy<Asset, Quote>(
         let _state: &HookState = pool.hook_state(&witness, StateKey());
     };
     let (_, _, _) = pool.pool_state();
-    let preview = pool.simulate_swap(*_params, option::none());
+    let preview = pool.simulate_swap(*_params, _payment, option::none());
     let (_, _, _, _) = preview.simulation_amounts();
     let (_, _, _, _, _, _, _) = preview.simulation_pool_state();
     // The preview itself never writes. Policy may update only its own hook state here.
@@ -320,7 +313,7 @@ use blast_fun_dex::{
     permissions,
     pool::{
         Self, Pool, Position, PoolInitializer, InitializeRequest, InitializeCompletion,
-        AddLiquidity, RemoveLiquidity, Swap, Donate, Completion, Request, Simulation,
+        AddLiquidity, RemoveLiquidity, Swap, Donate, Completion, Request, SwapRequest, Simulation,
     },
 };
-use sui::coin::Coin;
+use sui::{balance::Balance, coin::Coin};

@@ -21,22 +21,23 @@ in the hook's own typed arguments; core requests and completions carry no opaque
 hook payload.
 
 After its policy succeeds, the hook calls the corresponding `pool::prepare_*`
-with its sealed witness, chosen parameters and the remaining payments as
-`Balance<Asset>` and `Balance<Quote>`. Core authenticates the configured before
-witness and wraps that entire payload in a core-owned `Request`. The request
-also captures pool ID and locks that pool against other mutations. It has no
+with its sealed witness, chosen parameters and the remaining payment balances.
+A swap uses one `Balance<Input>` inside a `SwapRequest<Asset, Quote, Input>`;
+liquidity and donation use both pool-token balances inside `Request`. Core
+authenticates the configured before witness and seals that entire payload. The
+request also captures pool ID and locks that pool against other mutations. It has no
 abilities; its private fields cannot be rewritten or its balances removed by
 other packages. Hooks get the transaction sender from `ctx.sender()` rather
 than storing a duplicate caller in receipts.
 There is no public constructor that bypasses witness authentication.
 
 ```text
-hook::before_swap(pool, params, payment coins, ctx)
+hook::before_swap(pool, price limit, Coin<Input>, ctx)
   read hook's dynamic fields and public pool state
   simulate expected payments / post-swap pool state, without writes
   apply hook policy: validate, change parameters, retain coins, update own state
-  pool::prepare_swap(witness, params, payment balances, fee override)
-    -> sealed Request owning the chosen payload; pool is locked
+  pool::prepare_swap(witness, price limit, Balance<Input>, fee override)
+    -> sealed SwapRequest owning the chosen payload; pool is locked
 
 pool::execute_swap(pool, request, ctx)
   require locked; authenticate pool / operation
@@ -59,15 +60,21 @@ gross hook budgets, hook fee accounting or automatic post-hook user bounds.
 Checks spanning both hooks belong to a caller or bundled wrapper that chooses
 to enforce them. Simulations do not authorize execution or reserve a pool.
 
-Swap parameters follow [Uniswap v4 core](https://github.com/Uniswap/v4-core/blob/main/src/types/PoolOperation.sol):
-direction, amount/mode and a sqrt price limit. Move represents the signed amount
-as `exact_input: bool` plus `amount: u64`. The amount is an input budget including
-LP fees or a desired output; the request's actual input balance bounds funding.
-Swapping stops at the amount or price limit, permitting partial fills and
-returning unspent payment as change. A sqrt price limit bounds pool execution
-price; it does not guarantee a final coin amount after hook fees. Minimum-output,
-maximum-input and full-fill checks belong to hooks or callers, as amount checks
-do in [Uniswap's router](https://github.com/Uniswap/v4-periphery/blob/main/src/interfaces/IV4Router.sol).
+`SwapParams` contains only `sqrt_price_limit_x96`. The payment's `Input` type
+supplies direction; its balance value supplies the input budget including pool
+swap fees. Core must reject an input type outside the pool pair, and pool
+creation must reject identical token types. Hooks may split/retain payment before
+preparation; execution spends the exact remaining balance up to the price limit
+and returns unspent payment as change. Simulation borrows that typed balance
+immutably, so it uses the same direction and budget without taking custody.
+
+[Uniswap v4 core](https://github.com/Uniswap/v4-core/blob/main/src/types/PoolOperation.sol)
+passes direction and a signed amount explicitly. This interface instead uses
+the provided input balance and has no exact-output target parameter. A sqrt
+price limit bounds pool execution price; it does not guarantee full input
+consumption or a final coin amount after hook fees. Minimum-output and full-fill
+checks belong to hooks or callers, as amount checks do in
+[Uniswap's router](https://github.com/Uniswap/v4-periphery/blob/main/src/interfaces/IV4Router.sol).
 
 The hook may simulate again after changing parameters or payments. A simulation
 returns projected payments/receipts, price, tick, active liquidity, LP fee and
@@ -159,6 +166,6 @@ change the stored rate. Ticks use checked, two's-complement `I32`, with int24,
 pool-range and spacing checks in core.
 
 Before promotion, implement and test proof issuance/consumption, lock enforcement
-and rollback, disabled-hook routing, namespace isolation, simulation/execution
-agreement, actual balance custody, arithmetic, pricing and LP entitlement.
+and rollback, input-token membership, disabled-hook routing, namespace isolation,
+simulation/execution agreement, actual balance custody, arithmetic, pricing and LP entitlement.
 Runtime PTB behavior and economic/security safety are not established here.
