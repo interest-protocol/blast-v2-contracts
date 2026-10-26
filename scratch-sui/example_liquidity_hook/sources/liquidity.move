@@ -1,110 +1,127 @@
-/// Interface sketch only. Independently packaged liquidity hook; do not publish.
-/// Configures the same initializer as other hook packages and depends only on DEX.
+/// Interface sketch only. Hook policies and DEX execution still abort; do not publish.
+/// Hooks receive the complete payload and actual coins, not accounting claims.
 module blast_fun_dex_example_liquidity_hook::liquidity;
 
 // === Errors ===
 
 #[error(code = 0)]
-const EInterfaceOnly: vector<u8> = b"Scratch interface only; liquidity hook logic is not provided.";
+const EInterfaceOnly: vector<u8> = b"Scratch interface only; hook logic is not provided.";
 
 // === Public Types ===
 
-/// This package's sealed approval; independent of the swap hook's witness type.
+/// Only this module constructs approval; no public witness issuer exists.
 public struct HookWitness() has drop;
 
 // === Public Functions ===
 
-/// Four liquidity callbacks and their two after-callback delta permissions.
+/// The four liquidity lifecycle callbacks, independently registered from swap hooks.
 macro public fun hook_flags(): u16 {
     permissions::before_add_liquidity_flag!() | permissions::after_add_liquidity_flag!() |
-    permissions::before_remove_liquidity_flag!() | permissions::after_remove_liquidity_flag!() |
-    permissions::after_add_liquidity_returns_delta_flag!() |
-    permissions::after_remove_liquidity_returns_delta_flag!()
+    permissions::before_remove_liquidity_flag!() | permissions::after_remove_liquidity_flag!()
 }
 
 /// Configure only the liquidity slots while the unfinished pool is still owned.
 public fun register_hooks<Asset, Quote>(
     initializer: &mut PoolInitializer<Asset, Quote>,
 ) {
-    let permissions = permissions::new(hook_flags!());
-
-    initializer.register_hook(HookWitness(), permissions)
+    initializer.register_hook(HookWitness(), permissions::new(hook_flags!()))
 }
 
-/// Inspect liquidity parameters, then authorize the configured before callback.
+/// Full before payload: validate original limits, then mutate inputs/coins by policy.
 public fun before_add_liquidity<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
-    request: Request<Asset, Quote, AddLiquidity, LiquidityParams>,
+    mut params: LiquidityParams,
+    mut hook_data: vector<u8>,
+    mut asset_payment: Coin<Asset>,
+    mut quote_payment: Coin<Quote>,
     position: &mut Position<Asset, Quote>,
-): Completion<Asset, Quote, AddLiquidity, LiquidityParams> {
-    before_policy(pool, &request);
+    ctx: &mut TxContext,
+): (Completion<Asset, Quote, AddLiquidity, LiquidityParams>, Coin<Asset>, Coin<Quote>) {
+    let original_params = params;
+    let asset_budget = asset_payment.value();
+    let quote_budget = quote_payment.value();
+    before_policy(
+        pool, original_params, &mut params, &mut hook_data,
+        &mut asset_payment, &mut quote_payment, ctx,
+    );
 
-    pool.execute_add_liquidity(HookWitness(), request, position)
+    pool.execute_add_liquidity(
+        HookWitness(), original_params, params, hook_data, asset_budget, quote_budget,
+        asset_payment, quote_payment, position, ctx,
+    )
 }
 
-/// Inspect core results, then authorize this hook's accounting delta.
+/// Full after results: mutate actual coins, validate, and return final coins.
 public fun after_add_liquidity<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     completion: Completion<Asset, Quote, AddLiquidity, LiquidityParams>,
-): Settlement<Asset, Quote> {
-    let hook_delta = after_policy(pool, &completion);
+    mut asset_coin: Coin<Asset>,
+    mut quote_coin: Coin<Quote>,
+    ctx: &mut TxContext,
+): (Coin<Asset>, Coin<Quote>) {
+    after_policy(pool, &completion, &mut asset_coin, &mut quote_coin, ctx);
 
-    pool.finish_add_liquidity(HookWitness(), completion, hook_delta)
+    pool.finish_add_liquidity(HookWitness(), completion, asset_coin, quote_coin)
 }
 
-/// Inspect liquidity parameters, then authorize the configured before callback.
+/// Full before payload: validate original limits, then mutate inputs/coins by policy.
 public fun before_remove_liquidity<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
-    request: Request<Asset, Quote, RemoveLiquidity, LiquidityParams>,
+    mut params: LiquidityParams,
+    mut hook_data: vector<u8>,
+    mut asset_payment: Coin<Asset>,
+    mut quote_payment: Coin<Quote>,
     position: &mut Position<Asset, Quote>,
-): Completion<Asset, Quote, RemoveLiquidity, LiquidityParams> {
-    before_policy(pool, &request);
+    ctx: &mut TxContext,
+): (Completion<Asset, Quote, RemoveLiquidity, LiquidityParams>, Coin<Asset>, Coin<Quote>) {
+    let original_params = params;
+    let asset_budget = asset_payment.value();
+    let quote_budget = quote_payment.value();
+    before_policy(
+        pool, original_params, &mut params, &mut hook_data,
+        &mut asset_payment, &mut quote_payment, ctx,
+    );
 
-    pool.execute_remove_liquidity(HookWitness(), request, position)
+    pool.execute_remove_liquidity(
+        HookWitness(), original_params, params, hook_data, asset_budget, quote_budget,
+        asset_payment, quote_payment, position, ctx,
+    )
 }
 
-/// Inspect core results, then authorize this hook's accounting delta.
+/// Full after results: mutate actual coins, validate, and return final coins.
 public fun after_remove_liquidity<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     completion: Completion<Asset, Quote, RemoveLiquidity, LiquidityParams>,
-): Settlement<Asset, Quote> {
-    let hook_delta = after_policy(pool, &completion);
-
-    pool.finish_remove_liquidity(HookWitness(), completion, hook_delta)
-}
-
-/// Policy must authorize this package's own funding and payout destinations.
-public fun settle_hook<Asset, Quote>(
-    pool: &mut Pool<Asset, Quote>,
-    settlement: &mut Settlement<Asset, Quote>,
-    asset_payment: Coin<Asset>,
-    quote_payment: Coin<Quote>,
+    mut asset_coin: Coin<Asset>,
+    mut quote_coin: Coin<Quote>,
     ctx: &mut TxContext,
 ): (Coin<Asset>, Coin<Quote>) {
-    settlement_policy(pool, settlement);
+    after_policy(pool, &completion, &mut asset_coin, &mut quote_coin, ctx);
 
-    pool.settle_hook(HookWitness(), settlement, asset_payment, quote_payment, ctx)
+    pool.finish_remove_liquidity(HookWitness(), completion, asset_coin, quote_coin)
 }
 
 // === Private Functions ===
 
-fun before_policy<Asset, Quote, Operation>(
-    _pool: &Pool<Asset, Quote>,
-    _request: &Request<Asset, Quote, Operation, LiquidityParams>,
+fun before_policy<Asset, Quote, Params: copy + drop + store>(
+    _pool: &mut Pool<Asset, Quote>,
+    _original_params: Params,
+    _params: &mut Params,
+    _hook_data: &mut vector<u8>,
+    _asset_payment: &mut Coin<Asset>,
+    _quote_payment: &mut Coin<Quote>,
+    _ctx: &mut TxContext,
 ) {
     abort EInterfaceOnly
 }
 
-fun after_policy<Asset, Quote, Operation>(
-    _pool: &Pool<Asset, Quote>,
-    _completion: &Completion<Asset, Quote, Operation, LiquidityParams>,
-): BalanceDelta {
-    abort EInterfaceOnly
-}
-
-fun settlement_policy<Asset, Quote>(
-    _pool: &Pool<Asset, Quote>,
-    _settlement: &Settlement<Asset, Quote>,
+/// Receipt facts stay core-owned; the hook can mutate the entire returned coin pair.
+fun after_policy<Asset, Quote, Operation, Params: copy + drop + store>(
+    _pool: &mut Pool<Asset, Quote>,
+    _completion: &Completion<Asset, Quote, Operation, Params>,
+    _asset_coin: &mut Coin<Asset>,
+    _quote_coin: &mut Coin<Quote>,
+    _ctx: &mut TxContext,
 ) {
     abort EInterfaceOnly
 }
@@ -112,12 +129,8 @@ fun settlement_policy<Asset, Quote>(
 // === Imports ===
 
 use blast_fun_dex::{
-    delta::BalanceDelta,
     params::LiquidityParams,
     permissions,
-    pool::{
-        Pool, PoolInitializer, Position, AddLiquidity, RemoveLiquidity,
-        Request, Completion, Settlement,
-    },
+    pool::{Pool, Position, PoolInitializer, AddLiquidity, RemoveLiquidity, Completion},
 };
 use sui::coin::Coin;

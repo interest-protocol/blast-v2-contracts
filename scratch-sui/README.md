@@ -1,49 +1,105 @@
 # Scratch Sui interfaces
 
 These sketches are outside the production surface and must not be published.
-Aborting bodies deliberately leave behavior unimplemented; compilation proves
-only type linkage, not authorization, settlement, or transaction execution.
+Core operations, validation and hook policies deliberately abort. Compilation
+proves type linkage only; it does not prove execution, authorization or economics.
+Production integrator references exclude these packages.
 
-The DEX owns the pool, positions, initializer, and linear operation obligations.
-The independent example hook packages depend inward on the DEX and privately
-construct their approval witnesses. The DEX imports neither hook package.
-Within the DEX, `pool` alone issues and consumes lifecycle and settlement
-obligations. `permissions` owns bitmap validation, `swap_fee` owns fee modes,
-`delta` owns accounting pairs, and `params` owns operation parameter validation.
-These value modules expose constructors and projections rather than access to
-the pool's private receipts.
+The design takes the before/after hook idea from Uniswap v4. Each operation
+accepts actual coins and returns actual output/change coins. Hooks never return
+signed accounting adjustments, and callers never open debts against a shared
+manager. There is no separate payment-reconciliation phase.
 
-Signed deltas use `i128::I128(u128)` and ticks use `i32::I32(u32)`, both with
-two's-complement encoding and no decimal scaling. Separate types prevent
-interchanging tick and accounting units. Raw-bit constructors interpret all bits
-as signed; unsigned-value constructors must reject values beyond the positive
-signed maximum. Arithmetic must abort on signed overflow, `neg(MIN)` must abort,
-and unsigned `magnitude(MIN)` must remain representable. Pool and liquidity
-parameter validation additionally restrict ticks to int24 and the pool's
-supported range and spacing. Numeric function bodies also remain aborting
-interfaces; compilation does not verify their arithmetic.
+## Pool-local hook state
 
-The hook surface follows Uniswap v4's
-[IHooks](https://github.com/Uniswap/v4-core/blob/bea7f6d1c11cd5dc4f0d5151ffa37a1c239feee6/src/interfaces/IHooks.sol)
-and [permissions](https://github.com/Uniswap/v4-core/blob/bea7f6d1c11cd5dc4f0d5151ffa37a1c239feee6/src/libraries/Hooks.sol):
-before/after initialization, adding liquidity, removing liquidity, swapping,
-and donating. It includes the four return-delta permissions, per-swap fee
-overrides and cached dynamic fee updates, original caller context, and opaque
-hook data. Permissions use a `u16` bitmap with named flag macros; construction
-must reject unknown bits and delta bits without their matching callback.
-Fees use parts per million (1,000,000 is 100%).
-`SwapFee` combines the immutable mode and its rate: `Fixed { fee_ppm }` or
-`Dynamic { current_fee_ppm }`. Creation accepts this enum, produced by
-`swap_fee::new_fixed` or `swap_fee::new_dynamic`; both must validate the rate limit.
-Only the dynamic variant permits a hook to update the stored rate or override
-one swap. An override leaves the stored rate unchanged, and updates cannot
-switch modes. `pool_state` projects the current rate from either variant.
+Hooks can keep state as dynamic fields owned by the existing shared pool. The
+state accessors take the pool plus a reference to the sealed hook witness and
+a typed key. Core must require that witness to be registered on this pool,
+reject `NoHook`, and namespace fields by its original defining type plus the key.
+The same witness can share state across before/after callbacks; different hook
+witnesses remain isolated. No accessor exposes the pool UID or core storage.
 
-The intended construction returns a `PoolInitializer` with no abilities. It owns
-the unfinished pool, so trading and publication cannot receive a `Pool` yet.
-Hook packages register non-overlapping callback slots on the initializer. For
-example, use one package for initialization, swaps, and donations, and another
-for liquidity:
+`example::record_call` shows a hook lazily creating and updating a pool-local
+counter; policies receive `&mut Pool` so they can use this access. Its public
+`call_count` reader constructs the witness internally and returns only the count.
+State values need `store`, not `key`. Dynamic fields are child storage and still
+cost storage/access gas, but need no additional shared object input. Pool writes
+retain the existing pool contention boundary. Cross-pool global state needs a
+separate storage design. These accessors are aborting interface stubs too.
+
+## Swap and hook boundary
+
+The complete before payload is the pool, swap parameters, opaque hook data,
+actual payment coin pair and transaction context. The before-hook may validate
+and replace parameters/data, split off an explicit fee, transfer coins it is
+entrusted with, or consume coins under the required coin authority. Merely
+holding a coin does not authorize burning its supply. Hook-supplied funding
+must come from actual coins and remain within the approved execution limits.
+
+The wrapper snapshots original parameters and gross coin budgets before policy
+mutation and passes both original and adjusted inputs to core. These snapshots
+are attested by its sealed witness; core cannot infer what a hook already spent.
+The hook module is trusted to snapshot honestly and validate gross caller
+funding before its first coin effect. Core still owns reserve conservation,
+actual-payment checks, original execution limits and final coin bounds. A hook
+that publicly issues its witness defeats its own policy and must not be admitted.
+
+A bundled swap composes the phases in the hook package:
+
+```move
+let (asset_coin, quote_coin) = example::swap(
+    pool, swap_params, hook_data, asset_payment, quote_payment, ctx,
+);
+// Transfer or consume both returned coins, including zero coins.
+```
+
+Its flow is:
+
+```text
+complete swap payload
+  before policy: validate / mutate params, data and payment coins
+  core execute_swap: consume actual payment, update reserves
+    -> Completion + actual output/change coins
+  after policy: inspect all core results, mutate / validate returned coins
+  core finish_swap: authenticate after approval, check original final bounds
+    -> final actual coins
+```
+
+The after-hook receives the whole result tuple. Its core-owned `Completion`
+is read-only proof of execution; its coin pair is mutable and can be split,
+consumed or augmented. It does not receive permission to rewrite core facts.
+Core keeps the original caller, limits, gross budgets, actual core payments,
+adjusted parameters, hook data and resulting tick in the receipt. Final checks
+apply to the coins returned after the after-hook, including output deductions
+and input-change consumption. Parameters cannot change the caller's swap
+direction or exact-input/output mode, loosen the price limit or exceed the
+original gross spend bound. Exact-input amount is the gross budget before hook
+fees, with the approved remainder traded; exact-output amount is the final user
+output target. Swaps require a zero coin on the output side; existing output
+funding cannot count toward the minimum receipt. Insufficient payment or a final
+bound failure aborts everything.
+
+This is two core transition calls, `execute_swap` and `finish_swap`; policy
+reads may add calls. Individual before/after wrappers remain available for PTB
+composition and independently configured callback packages. With after-swap
+disabled, `example::swap_without_after` uses a single
+`pool::execute_swap_without_after` transition and returns coins directly. Core
+must reject that shortcut when after-swap is enabled. A disabled before callback
+uses `NoHook` directly, with unchanged parameters, matching gross budgets and no
+fee override; `NoHook` never authorizes an enabled callback.
+
+The completion has no abilities. Its mandatory final consumption enforces
+after approval in the same PTB even though coins are passed separately. Every
+consumer checks pool identity, operation and a strictly increasing current pool
+nonce. An overlapping operation stales an earlier receipt; its mandatory
+consumption must abort rather than silently discard it. These checks remain
+implementation requirements, not guarantees supplied by the current stubs.
+
+## Creation and independent hooks
+
+The DEX owns pools, positions and lifecycle receipts, and imports neither example
+hook package. Both hooks depend inward on DEX. Initialization returns an owned,
+no-ability `PoolInitializer`; only this unfinished type permits registration.
 
 ```move
 let mut initializer = pool::new<Asset, Quote>(
@@ -60,66 +116,28 @@ let pool = example::after_initialize(completion);
 pool.share();
 ```
 
-`begin_initialize` consumes the initializer and freezes its bindings. Each
-callback bit names its own original defining witness type, so even the before
-and after callbacks of one operation can belong to different packages.
-`finalize`, called by the after-initialize hook, consumes the final construction
-obligation and returns the ready pool. Hook setters exist only on the initializer;
-there is no `initialized` or `in_flight` flag.
+Registration binds each callback slot to its original defining witness type and
+rejects overlap. Sealing the initializer freezes the configuration; no setter
+accepts a ready pool. Before and after slots may belong to different packages.
+`NoHook` is for disabled callbacks only and cannot be registered. There are ten
+callback flags; accounting-return flags are unsupported bits and must be
+rejected. Hooks must keep their witness constructors private.
 
-For a disabled callback, callers use core's `NoHook` witness with the matching
-execute/finalize/finish function. It must be rejected for enabled slots, hook
-registration, hook ledgers, nonzero deltas, and fee overrides. Real hooks must
-keep their witness constructors private; core checks type identity, not package
-policy.
+Adding/removing liquidity and donations follow the same actual-coin execution
+and after-approval flow. Liquidity callers supply an owned position and validated
+parameters; core checks its ID, pool and tick range. Removing zero liquidity
+collects accrued fees as actual coins. Donations credit actual funded amounts
+to eligible LP fees and never mint liquidity. Both returned coins always need a
+consumer, even when one or both are zero.
 
-Each later operation passes its typed request and completion through the hook.
-For example, a swap produces a settlement obligation rather than a free output:
+Fees remain in ppm. `SwapFee` combines the immutable Fixed/Dynamic mode and its
+current rate. Only Dynamic permits a before-swap override or an authorized
+cached-rate update; an override does not change the stored rate. Ticks retain
+the checked, two's-complement `I32` type, with int24/range/spacing checks in core.
 
-```move
-let request = pool.begin_swap(swap_params, hook_data, ctx);
-let completion = example::before_swap(pool, request);
-let mut settlement = example::after_swap(pool, completion);
-let (caller_asset, caller_quote) = pool.settle_caller(
-    &mut settlement, caller_asset_payment, caller_quote_payment, ctx,
-);
-let (hook_asset, hook_quote) = example::settle_hook(
-    pool, &mut settlement, hook_asset_payment, hook_quote_payment, ctx,
-);
-pool.finish_settlement(settlement);
-// Consume or transfer all four payout/change coins, including zero coins.
-```
-
-With the configuration above, adding and removing liquidity pass an owned
-position through `liquidity`'s before/after hooks, then the same settlement flow.
-Removing zero liquidity is the fee-collection path. Donations run both donation
-hooks and settle a debt
-credited to eligible LP fees, without minting liquidity.
-
-Swap hooks can return specified/unspecified deltas before execution and an
-unspecified delta afterward; liquidity after-hooks can return both token deltas.
-Positive deltas mean the recipient is owed coins; negative deltas mean it must
-pay. Settlement records a separate ledger for each delta-producing witness
-type, at most two per operation; before/after deltas from the same type net into
-one ledger. The caller and every recorded hook ledger settle exactly once,
-including zero deltas, before the settlement can be consumed. Final user bounds
-apply to combined deltas before a settlement is issued. Hook payouts and funding
-require hook-owned authorization policy. Cached dynamic fee updates belong only
-to the configured before-swap witness.
-
-Runtime obligations carry a strictly increasing pool nonce that must never wrap.
-Every consuming or settling function must check that it is current. Starting an overlapping
-operation makes an earlier obligation stale; because it cannot be dropped,
-stored, or discarded, consuming it must abort the entire transaction. This
-requires every path to enforce the nonce, including final settlement; it is an
-intended alternative to a mutable busy flag, not behavior proved by these stubs.
-
-Before implementation, define witness admission, permission enforcement and
-disabled-hook routing, phase ordering, pool/position/nonce binding, mandatory
-obligation consumption, bounded hook data, tick/price and signed-value validation,
-fee/slippage bounds, LP fee entitlement, actual-coin settlement, and reserve conservation.
-All of these remain unimplemented. The sketches do not establish full
-PoolManager, flash-accounting, EVM callback, or aggregator compatibility.
-
-The old native V2 implementation and its tests were removed. Historical ADRs
-and research remain historical evidence, not a specification for these sketches.
+Before promotion, implement and test witness checks, disabled-hook routing,
+immutable caller bounds, nonce binding, hook-state namespace/authority checks,
+fee/slippage checks, actual coin custody, reserve conservation and LP fee entitlement.
+Real PTB execution, economic and
+security behavior are not established by interface compilation. No PoolManager,
+flash-accounting or aggregator compatibility is claimed.

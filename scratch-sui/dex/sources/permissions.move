@@ -10,8 +10,8 @@ const EInterfaceOnly: vector<u8> = b"Scratch interface only; implementation is n
 // === Public Types ===
 
 // Fields are intentionally unread while all interface bodies abort.
-/// A u16 bitmap: ten lifecycle bits and four delta bits, following v4 Hooks.sol.
-/// Only the low 14 bits are valid. Construction must validate callback dependencies.
+/// A u16 bitmap with only the ten v4-style lifecycle callback bits.
+/// Accounting permission bits are unsupported and must be rejected.
 #[allow(unused_field)]
 public struct Permissions(u16) has copy, drop, store;
 
@@ -39,18 +39,10 @@ macro public fun after_swap_flag(): u16 { 0x0040 }
 macro public fun before_donate_flag(): u16 { 0x0020 }
 /// Enables the after-donate callback.
 macro public fun after_donate_flag(): u16 { 0x0010 }
-/// Allows a specified/unspecified delta from the before-swap callback.
-macro public fun before_swap_returns_delta_flag(): u16 { 0x0008 }
-/// Allows an unspecified delta from the after-swap callback.
-macro public fun after_swap_returns_delta_flag(): u16 { 0x0004 }
-/// Allows a token-pair delta from the after-add-liquidity callback.
-macro public fun after_add_liquidity_returns_delta_flag(): u16 { 0x0002 }
-/// Allows a token-pair delta from the after-remove-liquidity callback.
-macro public fun after_remove_liquidity_returns_delta_flag(): u16 { 0x0001 }
-/// All ten callbacks and four delta permissions, with both reserved bits clear.
-macro public fun all_hook_flags(): u16 { 0x3fff }
+/// All ten lifecycle callbacks; accounting and reserved bits are clear.
+macro public fun all_hook_flags(): u16 { 0x3ff0 }
 
-/// Intended bitmap validation: reject unknown bits and delta bits without callbacks.
+/// Intended bitmap validation: reject every bit outside all_hook_flags, including 0x000f.
 public fun new(
     _bitmap: u16,
 ): Permissions {

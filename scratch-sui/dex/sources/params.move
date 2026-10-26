@@ -29,7 +29,9 @@ public struct LiquidityParams has copy, drop, store {
 
 // Fields are intentionally unread while all interface bodies abort.
 /// Both directions and exact-input/output swaps. Amounts use atomic coin units.
-/// Final bounds apply after all hook deltas and fees, including partial fills.
+/// Final bounds apply to actual returned coins after BOTH hooks, including hook fees.
+/// Exact-input amount is the caller gross budget before hooks; core trades the
+/// remaining approved input. Exact-output amount is the final caller output target.
 #[allow(unused_field)]
 public struct SwapParams has copy, drop, store {
     asset_to_quote: bool,
@@ -87,15 +89,8 @@ public fun donation_amounts(
     abort EInterfaceOnly
 }
 
-// === Package Functions ===
-
-/// Intended initialization parameters; validate the uint160 price carrier.
-public(package) fun new_initialize(_sqrt_price_x96: u256): InitializeParams {
-    abort EInterfaceOnly
-}
-
 /// Intended ordered int24 tick bounds; pool additionally validates its tick range and spacing.
-public(package) fun new_liquidity(
+public fun new_liquidity(
     _position_id: ID,
     _tick_lower: I32,
     _tick_upper: I32,
@@ -107,7 +102,14 @@ public(package) fun new_liquidity(
 }
 
 /// Intended donation parameters in atomic token units.
-public(package) fun new_donate(_asset: u64, _quote: u64): DonateParams {
+public fun new_donate(_asset: u64, _quote: u64): DonateParams {
+    abort EInterfaceOnly
+}
+
+// === Package Functions ===
+
+/// Intended initialization parameters; validate the uint160 price carrier.
+public(package) fun new_initialize(_sqrt_price_x96: u256): InitializeParams {
     abort EInterfaceOnly
 }
 

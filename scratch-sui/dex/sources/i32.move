@@ -11,6 +11,7 @@ const EInterfaceOnly: vector<u8> = b"Scratch interface only; implementation is n
 
 /// Two's-complement signed 32-bit integer, with no fixed-point scaling.
 /// All bit patterns are valid; the highest bit is the sign and zero is unique.
+#[allow(unused_field)]
 public struct I32(u32) has copy, drop, store;
 
 // === Public Functions ===

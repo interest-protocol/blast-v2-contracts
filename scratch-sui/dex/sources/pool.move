@@ -1,6 +1,6 @@
 /// Interface sketch only. All function bodies abort.
 /// This package must not be published.
-/// Core owns operation phases and settlement; it imports no hook package.
+/// Core owns operation phases and actual-coin execution; it imports no hook package.
 module blast_fun_dex::pool;
 
 // === Errors ===
@@ -50,6 +50,8 @@ public struct InitializeCompletion<phantom Asset, phantom Quote> {
 
 /// A public skip witness, accepted only when the specific callback is disabled.
 /// It must never be registered as a hook; it conveys no hook authority.
+/// Execution with NoHook requires identical original/adjusted params, budgets equal
+/// to actual payment values, and no LP override; there is no trusted pre-hook snapshot.
 public struct NoHook() has drop;
 
 // Fields are intentionally unread while all interface bodies abort.
@@ -70,56 +72,23 @@ public struct Swap()
 public struct Donate()
 
 // Fields are intentionally unread while all interface bodies abort.
-/// No abilities. Immutable context and a snapshot of the current operation nonce.
-/// Every consumer must check that nonce; overlapping operations stale earlier
-/// obligations, whose mandatory consumption must then abort the whole PTB.
-/// Params plus operation tag distinguish runtime operations without erasing types.
-#[allow(unused_field)]
-public struct Request<phantom Asset, phantom Quote, phantom Operation, Params: copy + drop + store> {
-    pool_id: ID,
-    nonce: u64,
-    sender: address,
-    params: Params,
-    hook_data: vector<u8>,
-}
-
-// Fields are intentionally unread while all interface bodies abort.
-/// No abilities. Retains original context plus core results for the after hook.
-/// Before-swap delta is retained for finish_swap to combine with the after delta.
-/// Liquidity exposes caller delta and fees accrued; swap retains before-hook debts.
+/// No abilities. Proves core execution and requires the configured after approval.
+/// Actual output/change coins travel beside this receipt, never as debts or credits.
+/// Original limits and gross budgets survive hook mutation; every consumer checks
+/// pool, operation and current nonce. No receipt may be dropped or stored.
 #[allow(unused_field)]
 public struct Completion<phantom Asset, phantom Quote, phantom Operation, Params: copy + drop + store> {
     pool_id: ID,
     nonce: u64,
     sender: address,
+    original_params: Params,
     params: Params,
     hook_data: vector<u8>,
-    caller_delta: BalanceDelta,
-    fees_accrued: BalanceDelta,
-    before_swap_delta: BeforeSwapDelta,
-    hook_balances: vector<HookBalance>,
+    asset_budget: u64,
+    quote_budget: u64,
+    asset_paid: u64,
+    quote_paid: u64,
     tick: I32,
-}
-
-// Fields are intentionally unread while all interface bodies abort.
-/// No abilities. Caller and all recorded hook ledgers must reconcile exactly once.
-/// Aggregate by witness type, at most two delta-producing hooks per operation.
-#[allow(unused_field)]
-public struct Settlement<phantom Asset, phantom Quote> {
-    pool_id: ID,
-    nonce: u64,
-    sender: address,
-    caller_delta: BalanceDelta,
-    hook_balances: vector<HookBalance>,
-    caller_settled: bool,
-}
-
-/// A single hook's debt or claim; before/after contributions of one type net here.
-/// Fields are private; only core may create, combine, or mark a ledger settled.
-public struct HookBalance {
-    witness_type: TypeName,
-    delta: BalanceDelta,
-    settled: bool,
 }
 
 // === Public Functions ===
@@ -138,7 +107,7 @@ public fun new<Asset, Quote>(
 
 /// Intended registration of this witness for each selected callback bit.
 /// Bind the original defining witness type, rejecting primitive/NoHook types,
-/// duplicate slots and invalid delta flags. Hook packages must keep witnesses sealed;
+/// duplicate slots and unknown permission bits. Hook packages must keep witnesses sealed;
 /// core cannot detect a hook package that publicly exposes its own witness.
 /// At most ten slots; final bindings must exactly match the aggregate bitmap.
 public fun register_hook<Asset, Quote, Hook: drop>(
@@ -179,17 +148,11 @@ public fun destroy_position<Asset, Quote>(
     abort EInterfaceOnly
 }
 
-/// Intended copy of authenticated sender, parameters, and opaque hook data.
-public fun request_context<Asset, Quote, Operation, Params: copy + drop + store>(
-    _self: &Request<Asset, Quote, Operation, Params>,
-): (address, Params, vector<u8>) {
-    abort EInterfaceOnly
-}
-
-/// Intended original context, caller delta, fees accrued, and resulting tick.
+/// Intended original caller, original/adjusted inputs, hook data, gross coin budgets,
+/// actual core payments, and resulting tick. Output/change coins accompany the receipt.
 public fun completion_context<Asset, Quote, Operation, Params: copy + drop + store>(
     _self: &Completion<Asset, Quote, Operation, Params>,
-): (address, Params, vector<u8>, BalanceDelta, BalanceDelta, I32) {
+): (address, Params, Params, vector<u8>, u64, u64, u64, u64, I32) {
     abort EInterfaceOnly
 }
 
@@ -197,6 +160,60 @@ public fun completion_context<Asset, Quote, Operation, Params: copy + drop + sto
 public fun pool_state<Asset, Quote>(
     _self: &Pool<Asset, Quote>,
 ): (u256, I32, u32) {
+    abort EInterfaceOnly
+}
+
+// Hook-owned state. Never expose the pool UID to external packages.
+
+/// Intended dynamic-field insertion under (original defining Hook type, typed key).
+/// Require Hook registered in at least one callback on this pool; reject NoHook.
+/// Reject duplicates. State is pool-owned, with no additional shared object input.
+/// Before/after slots using the same witness share a namespace; other hooks cannot access it.
+public fun add_hook_state<Asset, Quote, Hook: drop, Name: copy + drop + store, State: store>(
+    _self: &mut Pool<Asset, Quote>,
+    _hook: &Hook,
+    _name: Name,
+    _state: State,
+) {
+    abort EInterfaceOnly
+}
+
+/// Intended existence check in this registered hook's namespace; reject NoHook.
+public fun has_hook_state<Asset, Quote, Hook: drop, Name: copy + drop + store>(
+    _self: &Pool<Asset, Quote>,
+    _hook: &Hook,
+    _name: Name,
+): bool {
+    abort EInterfaceOnly
+}
+
+/// Intended typed read in this registered hook's namespace; reject NoHook.
+/// Require an existing field with matching State type.
+public fun hook_state<Asset, Quote, Hook: drop, Name: copy + drop + store, State: store>(
+    _self: &Pool<Asset, Quote>,
+    _hook: &Hook,
+    _name: Name,
+): &State {
+    abort EInterfaceOnly
+}
+
+/// Intended typed mutation in this registered hook's namespace; reject NoHook.
+/// Borrow only the hook's stored value, never pool reserves, bindings, or UID.
+public fun hook_state_mut<Asset, Quote, Hook: drop, Name: copy + drop + store, State: store>(
+    _self: &mut Pool<Asset, Quote>,
+    _hook: &Hook,
+    _name: Name,
+): &mut State {
+    abort EInterfaceOnly
+}
+
+/// Intended typed removal in this registered hook's namespace; reject NoHook.
+/// Return the actual stored value, preserving any resources it owns.
+public fun remove_hook_state<Asset, Quote, Hook: drop, Name: copy + drop + store, State: store>(
+    _self: &mut Pool<Asset, Quote>,
+    _hook: &Hook,
+    _name: Name,
+): State {
     abort EInterfaceOnly
 }
 
@@ -244,201 +261,183 @@ public fun initialize_completion_context<Asset, Quote>(
 
 // Add liquidity.
 
-/// Intended validation, monotonic nonce advance, and authenticated context.
-public fun begin_add_liquidity<Asset, Quote>(
-    _self: &mut Pool<Asset, Quote>,
-    _position: &Position<Asset, Quote>,
-    _liquidity: u128,
-    _asset_bound: u64,
-    _quote_bound: u64,
-    _hook_data: vector<u8>,
-    _ctx: &mut TxContext,
-): Request<Asset, Quote, AddLiquidity, LiquidityParams> {
-    abort EInterfaceOnly
-}
-
-/// Intended before-callback binding, pool/nonce, and economic checks, then core execution.
-/// NoHook is accepted only for a disabled callback, with no hook delta.
+/// Intended before-witness, original/adjusted input, actual-payment and reserve checks.
+/// Authenticate sender from ctx, advance the nonce without wrapping, and consume coins.
+/// The sealed hook attests the gross budgets captured before its coin mutations;
+/// bound remaining payments by those budgets and preserve original user limits.
+/// Return the actual output/change coins plus a mandatory after-approval receipt.
+/// NoHook is accepted only when this before callback is disabled.
+/// Bind both parameter sets to the actual owned position, pool, range and tick spacing.
 public fun execute_add_liquidity<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
-    _request: Request<Asset, Quote, AddLiquidity, LiquidityParams>,
+    _original_params: LiquidityParams,
+    _params: LiquidityParams,
+    _hook_data: vector<u8>,
+    _asset_budget: u64,
+    _quote_budget: u64,
+    _asset_payment: Coin<Asset>,
+    _quote_payment: Coin<Quote>,
     _position: &mut Position<Asset, Quote>,
-): Completion<Asset, Quote, AddLiquidity, LiquidityParams> {
+    _ctx: &mut TxContext,
+): (Completion<Asset, Quote, AddLiquidity, LiquidityParams>, Coin<Asset>, Coin<Quote>) {
     abort EInterfaceOnly
 }
 
-/// Intended after-callback binding and current nonce checks; create settlement.
-/// NoHook is disabled-only; reject unpermitted deltas and preserve all hook ledgers.
-/// Check final user bounds on combined deltas before issuing the settlement.
+/// Intended after-witness, pool, operation and current-nonce checks.
+/// Validate the actual post-hook coins against ORIGINAL user limits: total gross
+/// spend includes both hooks; final receipts include all output deductions.
+/// Preserve per-asset reserve conservation. Consume the receipt and return coins.
+/// NoHook is accepted only when this after callback is disabled.
 public fun finish_add_liquidity<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
     _completion: Completion<Asset, Quote, AddLiquidity, LiquidityParams>,
-    _hook_delta: BalanceDelta,
-): Settlement<Asset, Quote> {
+    _asset_coin: Coin<Asset>,
+    _quote_coin: Coin<Quote>,
+): (Coin<Asset>, Coin<Quote>) {
     abort EInterfaceOnly
 }
 
 // Remove liquidity.
 
-/// Intended validation, monotonic nonce advance, and authenticated context.
-public fun begin_remove_liquidity<Asset, Quote>(
-    _self: &mut Pool<Asset, Quote>,
-    _position: &Position<Asset, Quote>,
-    _liquidity: u128,
-    _asset_bound: u64,
-    _quote_bound: u64,
-    _hook_data: vector<u8>,
-    _ctx: &mut TxContext,
-): Request<Asset, Quote, RemoveLiquidity, LiquidityParams> {
-    abort EInterfaceOnly
-}
-
-/// Intended before-callback binding, pool/nonce, and economic checks, then core execution.
-/// NoHook is accepted only for a disabled callback, with no hook delta.
+/// Intended before-witness, original/adjusted input, actual-payment and reserve checks.
+/// Authenticate sender from ctx, advance the nonce without wrapping, and consume coins.
+/// The sealed hook attests the gross budgets captured before its coin mutations;
+/// bound remaining payments by those budgets and preserve original user limits.
+/// Return the actual output/change coins plus a mandatory after-approval receipt.
+/// NoHook is accepted only when this before callback is disabled.
+/// Bind both parameter sets to the actual owned position, pool, range and tick spacing.
 public fun execute_remove_liquidity<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
-    _request: Request<Asset, Quote, RemoveLiquidity, LiquidityParams>,
+    _original_params: LiquidityParams,
+    _params: LiquidityParams,
+    _hook_data: vector<u8>,
+    _asset_budget: u64,
+    _quote_budget: u64,
+    _asset_payment: Coin<Asset>,
+    _quote_payment: Coin<Quote>,
     _position: &mut Position<Asset, Quote>,
-): Completion<Asset, Quote, RemoveLiquidity, LiquidityParams> {
+    _ctx: &mut TxContext,
+): (Completion<Asset, Quote, RemoveLiquidity, LiquidityParams>, Coin<Asset>, Coin<Quote>) {
     abort EInterfaceOnly
 }
 
-/// Intended after-callback binding and current nonce checks; create settlement.
-/// NoHook is disabled-only; reject unpermitted deltas and preserve all hook ledgers.
-/// Check final user bounds on combined deltas before issuing the settlement.
+/// Intended after-witness, pool, operation and current-nonce checks.
+/// Validate the actual post-hook coins against ORIGINAL user limits: total gross
+/// spend includes both hooks; final receipts include all output deductions.
+/// Preserve per-asset reserve conservation. Consume the receipt and return coins.
+/// NoHook is accepted only when this after callback is disabled.
 public fun finish_remove_liquidity<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
     _completion: Completion<Asset, Quote, RemoveLiquidity, LiquidityParams>,
-    _hook_delta: BalanceDelta,
-): Settlement<Asset, Quote> {
+    _asset_coin: Coin<Asset>,
+    _quote_coin: Coin<Quote>,
+): (Coin<Asset>, Coin<Quote>) {
     abort EInterfaceOnly
 }
 
 // Swap.
 
-/// Intended validation, monotonic nonce advance, and authenticated context.
-public fun begin_swap<Asset, Quote>(
-    _self: &mut Pool<Asset, Quote>,
-    _params: SwapParams,
-    _hook_data: vector<u8>,
-    _ctx: &mut TxContext,
-): Request<Asset, Quote, Swap, SwapParams> {
-    abort EInterfaceOnly
-}
-
-/// Intended before-swap binding and pool/nonce checks, then core execution.
-/// NoHook is disabled-only and requires zero delta/no override. A real override
-/// requires SwapFee::Dynamic and never changes its stored rate; before delta
-/// cannot change exact-in/out mode.
+/// Intended before-witness, original/adjusted input, actual-payment and reserve checks.
+/// Authenticate sender from ctx, advance the nonce without wrapping, and consume coins.
+/// The sealed hook attests the gross budgets captured before its coin mutations;
+/// bound remaining payments by those budgets and preserve original user limits.
+/// Return the actual output/change coins plus a mandatory after-approval receipt.
+/// NoHook is accepted only when this before callback is disabled.
+/// Swap direction and exact-input/output mode stay caller-bound; adjusted amounts and
+/// price limits cannot weaken original limits. LP override requires Dynamic and is per-swap.
+/// Require zero payment on the output side, so pre-existing coins cannot satisfy
+/// minimum receipts. Final net input spend includes fees taken by either hook.
 public fun execute_swap<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
-    _request: Request<Asset, Quote, Swap, SwapParams>,
-    _before_delta: BeforeSwapDelta,
+    _original_params: SwapParams,
+    _params: SwapParams,
+    _hook_data: vector<u8>,
+    _asset_budget: u64,
+    _quote_budget: u64,
+    _asset_payment: Coin<Asset>,
+    _quote_payment: Coin<Quote>,
     _lp_fee_override_ppm: Option<u32>,
-): Completion<Asset, Quote, Swap, SwapParams> {
+    _ctx: &mut TxContext,
+): (Completion<Asset, Quote, Swap, SwapParams>, Coin<Asset>, Coin<Quote>) {
     abort EInterfaceOnly
 }
 
-/// Intended after-callback binding and current nonce checks; create settlement.
-/// NoHook is disabled-only; reject unpermitted deltas and preserve all hook ledgers.
-/// Check final user bounds on combined deltas before issuing the settlement.
+/// Intended after-witness, pool, operation and current-nonce checks.
+/// Validate the actual post-hook coins against ORIGINAL user limits: total gross
+/// spend includes both hooks; final receipts include all output deductions.
+/// Preserve per-asset reserve conservation. Consume the receipt and return coins.
+/// NoHook is accepted only when this after callback is disabled.
 public fun finish_swap<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
     _completion: Completion<Asset, Quote, Swap, SwapParams>,
-    _unspecified_hook_delta: I128,
-): Settlement<Asset, Quote> {
+    _asset_coin: Coin<Asset>,
+    _quote_coin: Coin<Quote>,
+): (Coin<Asset>, Coin<Quote>) {
     abort EInterfaceOnly
 }
 
 // Donate.
 
-/// Intended validation, monotonic nonce advance, and authenticated context.
-public fun begin_donate<Asset, Quote>(
-    _self: &mut Pool<Asset, Quote>,
-    _asset_amount: u64,
-    _quote_amount: u64,
-    _hook_data: vector<u8>,
-    _ctx: &mut TxContext,
-): Request<Asset, Quote, Donate, DonateParams> {
-    abort EInterfaceOnly
-}
-
-/// Intended before-callback binding, pool/nonce, and economic checks, then core execution.
-/// NoHook is accepted only for a disabled callback, with no hook delta.
+/// Intended before-witness, original/adjusted input, actual-payment and reserve checks.
+/// Authenticate sender from ctx, advance the nonce without wrapping, and consume coins.
+/// The sealed hook attests the gross budgets captured before its coin mutations;
+/// bound remaining payments by those budgets and preserve original user limits.
+/// Return the actual output/change coins plus a mandatory after-approval receipt.
+/// NoHook is accepted only when this before callback is disabled.
+/// Credit actual donated coins to eligible LP fees without minting liquidity.
 public fun execute_donate<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
-    _request: Request<Asset, Quote, Donate, DonateParams>,
-): Completion<Asset, Quote, Donate, DonateParams> {
+    _original_params: DonateParams,
+    _params: DonateParams,
+    _hook_data: vector<u8>,
+    _asset_budget: u64,
+    _quote_budget: u64,
+    _asset_payment: Coin<Asset>,
+    _quote_payment: Coin<Quote>,
+    _ctx: &mut TxContext,
+): (Completion<Asset, Quote, Donate, DonateParams>, Coin<Asset>, Coin<Quote>) {
     abort EInterfaceOnly
 }
 
-/// Intended after-callback binding and current nonce checks; create settlement.
-/// NoHook is disabled-only; reject unpermitted deltas and preserve all hook ledgers.
-/// Donation amounts must match the caller debt, with no minted liquidity.
+/// Intended after-witness, pool, operation and current-nonce checks.
+/// Validate the actual post-hook coins against ORIGINAL user limits: total gross
+/// spend includes both hooks; final receipts include all output deductions.
+/// Preserve per-asset reserve conservation. Consume the receipt and return coins.
+/// NoHook is accepted only when this after callback is disabled.
 public fun finish_donate<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
     _completion: Completion<Asset, Quote, Donate, DonateParams>,
-): Settlement<Asset, Quote> {
-    abort EInterfaceOnly
-}
-
-// Settlement and dynamic fees.
-
-/// Intended original caller and its final delta, for settlement policy.
-public fun settlement_context<Asset, Quote>(
-    _self: &Settlement<Asset, Quote>,
-): (address, BalanceDelta) {
-    abort EInterfaceOnly
-}
-
-/// Intended lookup of the exact witness type's operation ledger for hook policy.
-public fun hook_delta<Asset, Quote, Hook: drop>(
-    _self: &Settlement<Asset, Quote>,
-    _hook: &Hook,
-): BalanceDelta {
-    abort EInterfaceOnly
-}
-
-/// Intended current-nonce, exact-once original-caller settlement. Return payouts/change.
-/// Consume actual coins for debts; a positive delta alone never mints value.
-public fun settle_caller<Asset, Quote>(
-    _self: &mut Pool<Asset, Quote>,
-    _settlement: &mut Settlement<Asset, Quote>,
-    _asset_payment: Coin<Asset>,
-    _quote_payment: Coin<Quote>,
-    _ctx: &mut TxContext,
+    _asset_coin: Coin<Asset>,
+    _quote_coin: Coin<Quote>,
 ): (Coin<Asset>, Coin<Quote>) {
     abort EInterfaceOnly
 }
 
-/// Intended current-nonce, exact-once settlement of this witness type's ledger.
-/// NoHook is never a ledger owner. Return hook payouts and payment change.
-/// Consume actual coins for debts; a positive delta alone never mints value.
-public fun settle_hook<Asset, Quote, Hook: drop>(
+/// Intended before-only swap: require AFTER_SWAP disabled, authenticate BEFORE_SWAP,
+/// then execute the same actual-coin swap and original/final bounds as the two-phase path.
+/// Require zero payment on the output side, just like execute_swap.
+/// No outstanding completion exists; return final coins directly. Reject enabled after hooks.
+public fun execute_swap_without_after<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
-    _settlement: &mut Settlement<Asset, Quote>,
+    _original_params: SwapParams,
+    _params: SwapParams,
+    _hook_data: vector<u8>,
+    _asset_budget: u64,
+    _quote_budget: u64,
     _asset_payment: Coin<Asset>,
     _quote_payment: Coin<Quote>,
+    _lp_fee_override_ppm: Option<u32>,
     _ctx: &mut TxContext,
 ): (Coin<Asset>, Coin<Quote>) {
-    abort EInterfaceOnly
-}
-
-/// Intended final sink: require current nonce, caller and every hook ledger paid,
-/// and per-asset conservation. No stale obligation may ever be discarded.
-public fun finish_settlement<Asset, Quote>(
-    _self: &mut Pool<Asset, Quote>,
-    _settlement: Settlement<Asset, Quote>,
-) {
     abort EInterfaceOnly
 }
 
@@ -455,9 +454,7 @@ public fun update_dynamic_lp_fee<Asset, Quote, Hook: drop>(
 // === Imports ===
 
 use blast_fun_dex::{
-    delta::{BalanceDelta, BeforeSwapDelta},
     i32::I32,
-    i128::I128,
     params::{InitializeParams, LiquidityParams, SwapParams, DonateParams},
     permissions::Permissions,
     swap_fee::SwapFee,
