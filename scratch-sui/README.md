@@ -49,7 +49,7 @@ pool::execute_swap(pool, request, ctx)
     -> Completion + actual output/change coins
 
 hook::after_swap(pool, completion, output/change coins, ctx)
-  inspect immutable execution facts; validate / mutate actual coins by policy
+  receive pool-bound execution proof; validate / mutate actual coins by policy
   pool::finish_swap(witness, completion, coins)
     -> final coins
 ```
@@ -92,8 +92,10 @@ read/accessor calls. With after-swap disabled, `example::swap_without_after`
 uses prepare plus execute and returns coins directly. Core must reject that
 shortcut when after-swap is enabled.
 
-The after-hook receives immutable core execution facts and the mutable actual
-coin pair. Core requires after approval but does not enforce hook policy,
+The after-hook receives a `Completion<Asset, Quote, Operation>` containing only
+the pool ID, alongside the mutable actual coin pair. The sealed completion proves
+execution and carries no parameters, payment amounts or tick snapshot. Core
+requires after approval but does not enforce hook policy,
 returned coin amounts or any original hook-wide budget. Both coins need a
 consumer, even when zero. Completion has no abilities, requiring after approval
 in the same PTB; consumers authenticate its pool and operation.
@@ -110,8 +112,9 @@ Other transactions cannot interleave with a running transaction. A request
 cannot be stored or dropped, so a transaction cannot commit an outstanding
 preparation lock; failure rolls back preparation and all earlier effects. This
 replaces the economic nonce. After execution the pool is unlocked, and later
-operations may run before an earlier completion is finalized. After-hook policy
-must use its own execution facts when examining such a composition.
+operations may run before an earlier completion is finalized. Pool reads in an
+after-hook observe current state. Hooks needing additional operation context must
+provide it through their own typed arguments or state.
 
 ## Pool-local hook state
 

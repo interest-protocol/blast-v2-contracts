@@ -84,11 +84,11 @@ public fun before_add_liquidity<Asset, Quote>(
     )
 }
 
-/// Policy receives immutable execution facts and mutable actual output/change coins.
+/// Policy receives the pool-bound execution proof and mutable actual output/change coins.
 /// Core authenticates invocation; it does not enforce policy or post-hook coin amounts.
 public fun after_add_liquidity<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
-    completion: Completion<Asset, Quote, AddLiquidity, LiquidityParams>,
+    completion: Completion<Asset, Quote, AddLiquidity>,
     mut asset_coin: Coin<Asset>,
     mut quote_coin: Coin<Quote>,
     ctx: &mut TxContext,
@@ -120,11 +120,11 @@ public fun before_remove_liquidity<Asset, Quote>(
     )
 }
 
-/// Policy receives immutable execution facts and mutable actual output/change coins.
+/// Policy receives the pool-bound execution proof and mutable actual output/change coins.
 /// Core authenticates invocation; it does not enforce policy or post-hook coin amounts.
 public fun after_remove_liquidity<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
-    completion: Completion<Asset, Quote, RemoveLiquidity, LiquidityParams>,
+    completion: Completion<Asset, Quote, RemoveLiquidity>,
     mut asset_coin: Coin<Asset>,
     mut quote_coin: Coin<Quote>,
     ctx: &mut TxContext,
@@ -149,11 +149,11 @@ public fun before_swap<Asset, Quote, Input>(
     pool.prepare_swap(HookWitness(), params, payment)
 }
 
-/// Policy receives immutable execution facts and mutable actual output/change coins.
+/// Policy receives the pool-bound execution proof and mutable actual output/change coins.
 /// Core authenticates invocation; it does not enforce policy or post-hook coin amounts.
 public fun after_swap<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
-    completion: Completion<Asset, Quote, Swap, SwapParams>,
+    completion: Completion<Asset, Quote, Swap>,
     mut asset_coin: Coin<Asset>,
     mut quote_coin: Coin<Quote>,
     ctx: &mut TxContext,
@@ -184,11 +184,11 @@ public fun before_donate<Asset, Quote>(
     )
 }
 
-/// Policy receives immutable execution facts and mutable actual output/change coins.
+/// Policy receives the pool-bound execution proof and mutable actual output/change coins.
 /// Core authenticates invocation; it does not enforce policy or post-hook coin amounts.
 public fun after_donate<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
-    completion: Completion<Asset, Quote, Donate, DonateParams>,
+    completion: Completion<Asset, Quote, Donate>,
     mut asset_coin: Coin<Asset>,
     mut quote_coin: Coin<Quote>,
     ctx: &mut TxContext,
@@ -287,10 +287,10 @@ fun before_policy<Asset, Quote, Operation, Params: copy + drop + store>(
     abort EInterfaceOnly
 }
 
-/// Receipt facts stay core-owned; the hook can mutate the entire returned coin pair.
-fun after_policy<Asset, Quote, Operation, Params: copy + drop + store>(
+/// The execution proof stays core-owned; the hook can mutate the entire returned coin pair.
+fun after_policy<Asset, Quote, Operation>(
     pool: &mut Pool<Asset, Quote>,
-    _completion: &Completion<Asset, Quote, Operation, Params>,
+    _completion: &Completion<Asset, Quote, Operation>,
     _asset_coin: &mut Coin<Asset>,
     _quote_coin: &mut Coin<Quote>,
     _ctx: &mut TxContext,

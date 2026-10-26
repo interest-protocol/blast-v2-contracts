@@ -75,12 +75,8 @@ public struct Donate()
 /// Every consumer checks pool and operation; completion consumers require an unlocked pool.
 /// Consuming this requires after-hook approval, without interpreting its policy or results.
 #[allow(unused_field)]
-public struct Completion<phantom Asset, phantom Quote, phantom Operation, Params: copy + drop + store> {
+public struct Completion<phantom Asset, phantom Quote, phantom Operation> {
     pool_id: ID,
-    params: Params,
-    asset_paid: u64,
-    quote_paid: u64,
-    tick: I32,
 }
 
 // Fields are intentionally unread while all interface bodies abort.
@@ -181,14 +177,6 @@ public fun destroy_position<Asset, Quote>(
     _self: &mut Pool<Asset, Quote>,
     _position: Position<Asset, Quote>,
 ) {
-    abort EInterfaceOnly
-}
-
-/// Intended executed inputs, actual core payments and resulting tick.
-/// Output/change coins accompany this immutable receipt and remain hook-controlled.
-public fun completion_context<Asset, Quote, Operation, Params: copy + drop + store>(
-    _self: &Completion<Asset, Quote, Operation, Params>,
-): (Params, u64, u64, I32) {
     abort EInterfaceOnly
 }
 
@@ -446,7 +434,7 @@ public fun execute_add_liquidity<Asset, Quote>(
     _request: Request<Asset, Quote, AddLiquidity, LiquidityParams>,
     _position: &mut Position<Asset, Quote>,
     _ctx: &mut TxContext,
-): (Completion<Asset, Quote, AddLiquidity, LiquidityParams>, Coin<Asset>, Coin<Quote>) {
+): (Completion<Asset, Quote, AddLiquidity>, Coin<Asset>, Coin<Quote>) {
     abort EInterfaceOnly
 }
 
@@ -457,7 +445,7 @@ public fun execute_add_liquidity<Asset, Quote>(
 public fun finish_add_liquidity<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
-    _completion: Completion<Asset, Quote, AddLiquidity, LiquidityParams>,
+    _completion: Completion<Asset, Quote, AddLiquidity>,
     _asset_coin: Coin<Asset>,
     _quote_coin: Coin<Quote>,
 ): (Coin<Asset>, Coin<Quote>) {
@@ -477,7 +465,7 @@ public fun execute_remove_liquidity<Asset, Quote>(
     _request: Request<Asset, Quote, RemoveLiquidity, LiquidityParams>,
     _position: &mut Position<Asset, Quote>,
     _ctx: &mut TxContext,
-): (Completion<Asset, Quote, RemoveLiquidity, LiquidityParams>, Coin<Asset>, Coin<Quote>) {
+): (Completion<Asset, Quote, RemoveLiquidity>, Coin<Asset>, Coin<Quote>) {
     abort EInterfaceOnly
 }
 
@@ -488,7 +476,7 @@ public fun execute_remove_liquidity<Asset, Quote>(
 public fun finish_remove_liquidity<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
-    _completion: Completion<Asset, Quote, RemoveLiquidity, LiquidityParams>,
+    _completion: Completion<Asset, Quote, RemoveLiquidity>,
     _asset_coin: Coin<Asset>,
     _quote_coin: Coin<Quote>,
 ): (Coin<Asset>, Coin<Quote>) {
@@ -509,7 +497,7 @@ public fun execute_swap<Asset, Quote, Input>(
     _self: &mut Pool<Asset, Quote>,
     _request: SwapRequest<Asset, Quote, Input>,
     _ctx: &mut TxContext,
-): (Completion<Asset, Quote, Swap, SwapParams>, Coin<Asset>, Coin<Quote>) {
+): (Completion<Asset, Quote, Swap>, Coin<Asset>, Coin<Quote>) {
     abort EInterfaceOnly
 }
 
@@ -520,7 +508,7 @@ public fun execute_swap<Asset, Quote, Input>(
 public fun finish_swap<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
-    _completion: Completion<Asset, Quote, Swap, SwapParams>,
+    _completion: Completion<Asset, Quote, Swap>,
     _asset_coin: Coin<Asset>,
     _quote_coin: Coin<Quote>,
 ): (Coin<Asset>, Coin<Quote>) {
@@ -539,7 +527,7 @@ public fun execute_donate<Asset, Quote>(
     _self: &mut Pool<Asset, Quote>,
     _request: Request<Asset, Quote, Donate, DonateParams>,
     _ctx: &mut TxContext,
-): (Completion<Asset, Quote, Donate, DonateParams>, Coin<Asset>, Coin<Quote>) {
+): (Completion<Asset, Quote, Donate>, Coin<Asset>, Coin<Quote>) {
     abort EInterfaceOnly
 }
 
@@ -550,7 +538,7 @@ public fun execute_donate<Asset, Quote>(
 public fun finish_donate<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
-    _completion: Completion<Asset, Quote, Donate, DonateParams>,
+    _completion: Completion<Asset, Quote, Donate>,
     _asset_coin: Coin<Asset>,
     _quote_coin: Coin<Quote>,
 ): (Coin<Asset>, Coin<Quote>) {
