@@ -47,8 +47,7 @@ public fun after_initialize<Asset, Quote>(
     pool::finalize(HookWitness(), completion)
 }
 
-/// One entry call: before policy, actual-coin execution, after policy, final coins.
-/// Both callback slots must be registered to this module's sealed witness.
+/// One entry call forwards the hook's sealed request into execution and after policy.
 public fun swap<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     params: SwapParams,
@@ -57,101 +56,39 @@ public fun swap<Asset, Quote>(
     quote_payment: Coin<Quote>,
     ctx: &mut TxContext,
 ): (Coin<Asset>, Coin<Quote>) {
-    let (completion, asset_coin, quote_coin) = before_swap(
+    let request = before_swap(
         pool, params, hook_data, asset_payment, quote_payment, ctx,
     );
+    let (completion, asset_coin, quote_coin) = pool.execute_swap(request, ctx);
 
     after_swap(pool, completion, asset_coin, quote_coin, ctx)
 }
 
-/// Full swap payload. Policy may validate/replace params and hook data, split fees,
-/// burn under legitimate coin authority, or add funded coins before core execution.
-/// Snapshot caller limits/budgets before mutation; policy must bound gross funding.
-public fun before_swap<Asset, Quote>(
-    pool: &mut Pool<Asset, Quote>,
-    mut params: SwapParams,
-    mut hook_data: vector<u8>,
-    mut asset_payment: Coin<Asset>,
-    mut quote_payment: Coin<Quote>,
-    ctx: &mut TxContext,
-): (Completion<Asset, Quote, Swap, SwapParams>, Coin<Asset>, Coin<Quote>) {
-    let original_params = params;
-    let asset_budget = asset_payment.value();
-    let quote_budget = quote_payment.value();
-    let fee_override_ppm = before_swap_policy(
-        pool, original_params, &mut params, &mut hook_data,
-        &mut asset_payment, &mut quote_payment, ctx,
-    );
-
-    pool.execute_swap(
-        HookWitness(), original_params, params, hook_data, asset_budget, quote_budget,
-        asset_payment, quote_payment, fee_override_ppm, ctx,
-    )
-}
-
-/// All execution results, including actual output/change coins, reach the after policy.
-/// Policy may consume, split or augment coins; core then checks ORIGINAL final bounds.
-public fun after_swap<Asset, Quote>(
-    pool: &mut Pool<Asset, Quote>,
-    completion: Completion<Asset, Quote, Swap, SwapParams>,
-    mut asset_coin: Coin<Asset>,
-    mut quote_coin: Coin<Quote>,
-    ctx: &mut TxContext,
-): (Coin<Asset>, Coin<Quote>) {
-    after_policy(pool, &completion, &mut asset_coin, &mut quote_coin, ctx);
-
-    pool.finish_swap(HookWitness(), completion, asset_coin, quote_coin)
-}
-
-/// Before-only bundle. Core must reject this path when the after callback is enabled.
-/// It performs final coin checks directly and returns no completion obligation.
-public fun swap_without_after<Asset, Quote>(
-    pool: &mut Pool<Asset, Quote>,
-    mut params: SwapParams,
-    mut hook_data: vector<u8>,
-    mut asset_payment: Coin<Asset>,
-    mut quote_payment: Coin<Quote>,
-    ctx: &mut TxContext,
-): (Coin<Asset>, Coin<Quote>) {
-    let original_params = params;
-    let asset_budget = asset_payment.value();
-    let quote_budget = quote_payment.value();
-    let fee_override_ppm = before_swap_policy(
-        pool, original_params, &mut params, &mut hook_data,
-        &mut asset_payment, &mut quote_payment, ctx,
-    );
-
-    pool.execute_swap_without_after(
-        HookWitness(), original_params, params, hook_data, asset_budget, quote_budget,
-        asset_payment, quote_payment, fee_override_ppm, ctx,
-    )
-}
-
-/// Full before payload: validate original limits, then mutate inputs/coins by policy.
+/// Policy may read its state, simulate, validate parameters and keep or replace coins.
+/// Ask core to wrap the chosen parameters only after policy succeeds.
+/// The request owns remaining payments as balances; execution accepts no replacement payload.
 public fun before_add_liquidity<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     mut params: LiquidityParams,
     mut hook_data: vector<u8>,
     mut asset_payment: Coin<Asset>,
     mut quote_payment: Coin<Quote>,
-    position: &mut Position<Asset, Quote>,
+    position: &Position<Asset, Quote>,
     ctx: &mut TxContext,
-): (Completion<Asset, Quote, AddLiquidity, LiquidityParams>, Coin<Asset>, Coin<Quote>) {
-    let original_params = params;
-    let asset_budget = asset_payment.value();
-    let quote_budget = quote_payment.value();
+): Request<Asset, Quote, AddLiquidity, LiquidityParams> {
+    let preview = pool.simulate_add_liquidity(position, params);
     before_policy(
-        pool, original_params, &mut params, &mut hook_data,
+        pool, &preview, &mut params, &mut hook_data,
         &mut asset_payment, &mut quote_payment, ctx,
     );
-
-    pool.execute_add_liquidity(
-        HookWitness(), original_params, params, hook_data, asset_budget, quote_budget,
-        asset_payment, quote_payment, position, ctx,
+    pool.prepare_add_liquidity(
+        HookWitness(), params, hook_data,
+        asset_payment.into_balance(), quote_payment.into_balance(), ctx,
     )
 }
 
-/// Full after results: mutate actual coins, validate, and return final coins.
+/// Policy receives immutable execution facts and mutable actual output/change coins.
+/// Core authenticates invocation; it does not enforce policy or post-hook coin amounts.
 public fun after_add_liquidity<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     completion: Completion<Asset, Quote, AddLiquidity, LiquidityParams>,
@@ -164,31 +101,31 @@ public fun after_add_liquidity<Asset, Quote>(
     pool.finish_add_liquidity(HookWitness(), completion, asset_coin, quote_coin)
 }
 
-/// Full before payload: validate original limits, then mutate inputs/coins by policy.
+/// Policy may read its state, simulate, validate parameters and keep or replace coins.
+/// Ask core to wrap the chosen parameters only after policy succeeds.
+/// The request owns remaining payments as balances; execution accepts no replacement payload.
 public fun before_remove_liquidity<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     mut params: LiquidityParams,
     mut hook_data: vector<u8>,
     mut asset_payment: Coin<Asset>,
     mut quote_payment: Coin<Quote>,
-    position: &mut Position<Asset, Quote>,
+    position: &Position<Asset, Quote>,
     ctx: &mut TxContext,
-): (Completion<Asset, Quote, RemoveLiquidity, LiquidityParams>, Coin<Asset>, Coin<Quote>) {
-    let original_params = params;
-    let asset_budget = asset_payment.value();
-    let quote_budget = quote_payment.value();
+): Request<Asset, Quote, RemoveLiquidity, LiquidityParams> {
+    let preview = pool.simulate_remove_liquidity(position, params);
     before_policy(
-        pool, original_params, &mut params, &mut hook_data,
+        pool, &preview, &mut params, &mut hook_data,
         &mut asset_payment, &mut quote_payment, ctx,
     );
-
-    pool.execute_remove_liquidity(
-        HookWitness(), original_params, params, hook_data, asset_budget, quote_budget,
-        asset_payment, quote_payment, position, ctx,
+    pool.prepare_remove_liquidity(
+        HookWitness(), params, hook_data,
+        asset_payment.into_balance(), quote_payment.into_balance(), ctx,
     )
 }
 
-/// Full after results: mutate actual coins, validate, and return final coins.
+/// Policy receives immutable execution facts and mutable actual output/change coins.
+/// Core authenticates invocation; it does not enforce policy or post-hook coin amounts.
 public fun after_remove_liquidity<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     completion: Completion<Asset, Quote, RemoveLiquidity, LiquidityParams>,
@@ -201,7 +138,43 @@ public fun after_remove_liquidity<Asset, Quote>(
     pool.finish_remove_liquidity(HookWitness(), completion, asset_coin, quote_coin)
 }
 
-/// Full before payload: validate original limits, then mutate inputs/coins by policy.
+/// Policy may read its state, simulate, validate parameters and keep or replace coins.
+/// Ask core to wrap the chosen parameters only after policy succeeds.
+/// The request owns remaining payments as balances; execution accepts no replacement payload.
+public fun before_swap<Asset, Quote>(
+    pool: &mut Pool<Asset, Quote>,
+    mut params: SwapParams,
+    mut hook_data: vector<u8>,
+    mut asset_payment: Coin<Asset>,
+    mut quote_payment: Coin<Quote>,
+    ctx: &mut TxContext,
+): Request<Asset, Quote, Swap, SwapParams> {
+    let fee_override = before_swap_policy(
+        pool, &mut params, &mut hook_data, &mut asset_payment, &mut quote_payment, ctx,
+    );
+    pool.prepare_swap(
+        HookWitness(), params, hook_data,
+        asset_payment.into_balance(), quote_payment.into_balance(), fee_override, ctx,
+    )
+}
+
+/// Policy receives immutable execution facts and mutable actual output/change coins.
+/// Core authenticates invocation; it does not enforce policy or post-hook coin amounts.
+public fun after_swap<Asset, Quote>(
+    pool: &mut Pool<Asset, Quote>,
+    completion: Completion<Asset, Quote, Swap, SwapParams>,
+    mut asset_coin: Coin<Asset>,
+    mut quote_coin: Coin<Quote>,
+    ctx: &mut TxContext,
+): (Coin<Asset>, Coin<Quote>) {
+    after_policy(pool, &completion, &mut asset_coin, &mut quote_coin, ctx);
+
+    pool.finish_swap(HookWitness(), completion, asset_coin, quote_coin)
+}
+
+/// Policy may read its state, simulate, validate parameters and keep or replace coins.
+/// Ask core to wrap the chosen parameters only after policy succeeds.
+/// The request owns remaining payments as balances; execution accepts no replacement payload.
 public fun before_donate<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     mut params: DonateParams,
@@ -209,22 +182,20 @@ public fun before_donate<Asset, Quote>(
     mut asset_payment: Coin<Asset>,
     mut quote_payment: Coin<Quote>,
     ctx: &mut TxContext,
-): (Completion<Asset, Quote, Donate, DonateParams>, Coin<Asset>, Coin<Quote>) {
-    let original_params = params;
-    let asset_budget = asset_payment.value();
-    let quote_budget = quote_payment.value();
+): Request<Asset, Quote, Donate, DonateParams> {
+    let preview = pool.simulate_donate(params);
     before_policy(
-        pool, original_params, &mut params, &mut hook_data,
+        pool, &preview, &mut params, &mut hook_data,
         &mut asset_payment, &mut quote_payment, ctx,
     );
-
-    pool.execute_donate(
-        HookWitness(), original_params, params, hook_data, asset_budget, quote_budget,
-        asset_payment, quote_payment, ctx,
+    pool.prepare_donate(
+        HookWitness(), params, hook_data,
+        asset_payment.into_balance(), quote_payment.into_balance(), ctx,
     )
 }
 
-/// Full after results: mutate actual coins, validate, and return final coins.
+/// Policy receives immutable execution facts and mutable actual output/change coins.
+/// Core authenticates invocation; it does not enforce policy or post-hook coin amounts.
 public fun after_donate<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     completion: Completion<Asset, Quote, Donate, DonateParams>,
@@ -235,6 +206,22 @@ public fun after_donate<Asset, Quote>(
     after_policy(pool, &completion, &mut asset_coin, &mut quote_coin, ctx);
 
     pool.finish_donate(HookWitness(), completion, asset_coin, quote_coin)
+}
+
+/// Before-only bundle. Core rejects this when after-swap is enabled.
+public fun swap_without_after<Asset, Quote>(
+    pool: &mut Pool<Asset, Quote>,
+    params: SwapParams,
+    hook_data: vector<u8>,
+    asset_payment: Coin<Asset>,
+    quote_payment: Coin<Quote>,
+    ctx: &mut TxContext,
+): (Coin<Asset>, Coin<Quote>) {
+    let request = before_swap(
+        pool, params, hook_data, asset_payment, quote_payment, ctx,
+    );
+
+    pool.execute_swap_without_after(request, ctx)
 }
 
 /// Policy must authenticate who may change the cached Dynamic LP fee.
@@ -278,24 +265,32 @@ fun after_initialize_policy<Asset, Quote>(_completion: &InitializeCompletion<Ass
     abort EInterfaceOnly
 }
 
-/// Validate gross user funding before taking coins; never weaken original bounds.
+/// Example policy may read pool-local state and preview effects before making its decisions.
 /// Ordinary tokens may be transferred/split; burning additionally requires coin authority.
 fun before_swap_policy<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
-    _original_params: SwapParams,
     _params: &mut SwapParams,
     _hook_data: &mut vector<u8>,
     _asset_payment: &mut Coin<Asset>,
     _quote_payment: &mut Coin<Quote>,
     _ctx: &mut TxContext,
 ): Option<u32> {
+    let witness = HookWitness();
+    if (pool.has_hook_state(&witness, StateKey())) {
+        let _state: &HookState = pool.hook_state(&witness, StateKey());
+    };
+    let (_, _, _) = pool.pool_state();
+    let preview = pool.simulate_swap(*_params, option::none());
+    let (_, _, _, _) = preview.simulation_amounts();
+    let (_, _, _, _, _, _, _) = preview.simulation_pool_state();
+    // The preview itself never writes. Policy may update only its own hook state here.
     record_call(pool);
     abort EInterfaceOnly
 }
 
-fun before_policy<Asset, Quote, Params: copy + drop + store>(
+fun before_policy<Asset, Quote, Operation, Params: copy + drop + store>(
     pool: &mut Pool<Asset, Quote>,
-    _original_params: Params,
+    _preview: &Simulation<Asset, Quote, Operation>,
     _params: &mut Params,
     _hook_data: &mut vector<u8>,
     _asset_payment: &mut Coin<Asset>,
@@ -333,7 +328,7 @@ use blast_fun_dex::{
     permissions,
     pool::{
         Self, Pool, Position, PoolInitializer, InitializeRequest, InitializeCompletion,
-        AddLiquidity, RemoveLiquidity, Swap, Donate, Completion,
+        AddLiquidity, RemoveLiquidity, Swap, Donate, Completion, Request, Simulation,
     },
 };
 use sui::coin::Coin;

@@ -50,8 +50,6 @@ public struct InitializeCompletion<phantom Asset, phantom Quote> {
 
 /// A public skip witness, accepted only when the specific callback is disabled.
 /// It must never be registered as a hook; it conveys no hook authority.
-/// Execution with NoHook requires identical original/adjusted params, budgets equal
-/// to actual payment values, and no LP override; there is no trusted pre-hook snapshot.
 public struct NoHook() has drop;
 
 // Fields are intentionally unread while all interface bodies abort.
@@ -74,21 +72,56 @@ public struct Donate()
 // Fields are intentionally unread while all interface bodies abort.
 /// No abilities. Proves core execution and requires the configured after approval.
 /// Actual output/change coins travel beside this receipt, never as debts or credits.
-/// Original limits and gross budgets survive hook mutation; every consumer checks
-/// pool, operation and current nonce. No receipt may be dropped or stored.
+/// Every consumer checks pool, operation and current nonce.
+/// Consuming this requires after-hook approval, without interpreting its policy or results.
 #[allow(unused_field)]
 public struct Completion<phantom Asset, phantom Quote, phantom Operation, Params: copy + drop + store> {
     pool_id: ID,
     nonce: u64,
     sender: address,
-    original_params: Params,
     params: Params,
     hook_data: vector<u8>,
-    asset_budget: u64,
-    quote_budget: u64,
     asset_paid: u64,
     quote_paid: u64,
     tick: I32,
+}
+
+// Fields are intentionally unread while all interface bodies abort.
+/// No abilities. Sealed parameters chosen by the hook for one pool/operation/caller/nonce.
+/// Only core constructs this after checking the registered sealed witness.
+/// Owns both token balances, parameters and hook data chosen by the hook.
+/// Core executes this exact payload without interpreting the hook's policy.
+#[allow(unused_field)]
+public struct Request<phantom Asset, phantom Quote, phantom Operation, Params: copy + drop + store> {
+    pool_id: ID,
+    nonce: u64,
+    sender: address,
+    hook_type: TypeName,
+    params: Params,
+    hook_data: vector<u8>,
+    lp_fee_override_ppm: Option<u32>,
+    asset_payment: Balance<Asset>,
+    quote_payment: Balance<Quote>,
+}
+
+// Fields are intentionally unread while all interface bodies abort.
+/// Read-only simulation values, not executable changes or authority to mutate reserves.
+/// Amounts are actual projected payments/receipts, never signed accounting deltas.
+#[allow(unused_field)]
+public struct Simulation<phantom Asset, phantom Quote, phantom Operation> has copy, drop {
+    pool_id: ID,
+    nonce: u64,
+    asset_paid: u64,
+    quote_paid: u64,
+    asset_returned: u64,
+    quote_returned: u64,
+    sqrt_price_x96: u256,
+    tick: I32,
+    liquidity: u128,
+    lp_fee_ppm: u32,
+    asset_fee_growth_x128: u256,
+    quote_fee_growth_x128: u256,
+    position_liquidity: Option<u128>,
 }
 
 // === Public Functions ===
@@ -148,11 +181,11 @@ public fun destroy_position<Asset, Quote>(
     abort EInterfaceOnly
 }
 
-/// Intended original caller, original/adjusted inputs, hook data, gross coin budgets,
-/// actual core payments, and resulting tick. Output/change coins accompany the receipt.
+/// Intended caller, executed inputs, hook data, actual core payments and resulting tick.
+/// Output/change coins accompany this immutable receipt and remain hook-controlled.
 public fun completion_context<Asset, Quote, Operation, Params: copy + drop + store>(
     _self: &Completion<Asset, Quote, Operation, Params>,
-): (address, Params, Params, vector<u8>, u64, u64, u64, u64, I32) {
+): (address, Params, vector<u8>, u64, u64, I32) {
     abort EInterfaceOnly
 }
 
@@ -259,25 +292,151 @@ public fun initialize_completion_context<Asset, Quote>(
     abort EInterfaceOnly
 }
 
-// Add liquidity.
+// Read-only operation simulation.
 
-/// Intended before-witness, original/adjusted input, actual-payment and reserve checks.
-/// Authenticate sender from ctx, advance the nonce without wrapping, and consume coins.
-/// The sealed hook attests the gross budgets captured before its coin mutations;
-/// bound remaining payments by those budgets and preserve original user limits.
-/// Return the actual output/change coins plus a mandatory after-approval receipt.
-/// NoHook is accepted only when this before callback is disabled.
-/// Bind both parameter sets to the actual owned position, pool, range and tick spacing.
-public fun execute_add_liquidity<Asset, Quote, Hook: drop>(
-    _self: &mut Pool<Asset, Quote>,
+/// Intended snapshot identity and economic nonce; simulation does not reserve the pool.
+public fun simulation_context<Asset, Quote, Operation>(
+    _self: &Simulation<Asset, Quote, Operation>,
+): (ID, u64) {
+    abort EInterfaceOnly
+}
+
+/// Intended projected payments and returned coin amounts in asset/quote order.
+public fun simulation_amounts<Asset, Quote, Operation>(
+    _self: &Simulation<Asset, Quote, Operation>,
+): (u64, u64, u64, u64) {
+    abort EInterfaceOnly
+}
+
+/// Intended post-operation price, tick, active liquidity, LP fee and fee growth.
+/// The optional position liquidity is present only for liquidity operations.
+public fun simulation_pool_state<Asset, Quote, Operation>(
+    _self: &Simulation<Asset, Quote, Operation>,
+): (u256, I32, u128, u32, u256, u256, Option<u128>) {
+    abort EInterfaceOnly
+}
+
+/// Intended pure swap simulation using the same pricing, tick and fee math as execution.
+/// Borrow pool state immutably. Do not move coins, write pool/hook state, or issue approval.
+public fun simulate_swap<Asset, Quote>(
+    _self: &Pool<Asset, Quote>,
+    _params: SwapParams,
+    _lp_fee_override_ppm: Option<u32>,
+): Simulation<Asset, Quote, Swap> {
+    abort EInterfaceOnly
+}
+
+/// Intended read-only projection of pool, position and coin effects when adding liquidity.
+public fun simulate_add_liquidity<Asset, Quote>(
+    _self: &Pool<Asset, Quote>,
+    _position: &Position<Asset, Quote>,
+    _params: LiquidityParams,
+): Simulation<Asset, Quote, AddLiquidity> {
+    abort EInterfaceOnly
+}
+
+/// Intended read-only projection of removal or zero-liquidity fee collection.
+public fun simulate_remove_liquidity<Asset, Quote>(
+    _self: &Pool<Asset, Quote>,
+    _position: &Position<Asset, Quote>,
+    _params: LiquidityParams,
+): Simulation<Asset, Quote, RemoveLiquidity> {
+    abort EInterfaceOnly
+}
+
+/// Intended read-only projection of actual donated amounts and LP fee growth.
+public fun simulate_donate<Asset, Quote>(
+    _self: &Pool<Asset, Quote>,
+    _params: DonateParams,
+): Simulation<Asset, Quote, Donate> {
+    abort EInterfaceOnly
+}
+
+// Wrap hook-approved parameters and balances.
+
+/// Intended wrapped pool, nonce, caller, parameters/data/override and payment amounts.
+public fun request_context<Asset, Quote, Operation, Params: copy + drop + store>(
+    _self: &Request<Asset, Quote, Operation, Params>,
+): (ID, u64, address, Params, vector<u8>, Option<u32>, u64, u64) {
+    abort EInterfaceOnly
+}
+
+/// Intended sealed request constructor called by the hook after its policy completes.
+/// Require this operation's registered before witness; NoHook is disabled-only.
+/// Bind pool ID, nonce and sender; move chosen parameters, data and balances into the request.
+/// Core validates its own execution requirements, never interprets the hook's policy.
+public fun prepare_add_liquidity<Asset, Quote, Hook: drop>(
+    _self: &Pool<Asset, Quote>,
     _hook: Hook,
-    _original_params: LiquidityParams,
     _params: LiquidityParams,
     _hook_data: vector<u8>,
-    _asset_budget: u64,
-    _quote_budget: u64,
-    _asset_payment: Coin<Asset>,
-    _quote_payment: Coin<Quote>,
+    _asset_payment: Balance<Asset>,
+    _quote_payment: Balance<Quote>,
+    _ctx: &mut TxContext,
+): Request<Asset, Quote, AddLiquidity, LiquidityParams> {
+    abort EInterfaceOnly
+}
+
+/// Intended sealed request constructor called by the hook after its policy completes.
+/// Require this operation's registered before witness; NoHook is disabled-only.
+/// Bind pool ID, nonce and sender; move chosen parameters, data and balances into the request.
+/// Core validates its own execution requirements, never interprets the hook's policy.
+public fun prepare_remove_liquidity<Asset, Quote, Hook: drop>(
+    _self: &Pool<Asset, Quote>,
+    _hook: Hook,
+    _params: LiquidityParams,
+    _hook_data: vector<u8>,
+    _asset_payment: Balance<Asset>,
+    _quote_payment: Balance<Quote>,
+    _ctx: &mut TxContext,
+): Request<Asset, Quote, RemoveLiquidity, LiquidityParams> {
+    abort EInterfaceOnly
+}
+
+/// Intended sealed request constructor called by the hook after its policy completes.
+/// Require this operation's registered before witness; NoHook is disabled-only.
+/// Bind pool ID, nonce and sender; move chosen parameters, data and balances into the request.
+/// Core validates its own execution requirements, never interprets the hook's policy.
+public fun prepare_swap<Asset, Quote, Hook: drop>(
+    _self: &Pool<Asset, Quote>,
+    _hook: Hook,
+    _params: SwapParams,
+    _hook_data: vector<u8>,
+    _asset_payment: Balance<Asset>,
+    _quote_payment: Balance<Quote>,
+    _lp_fee_override_ppm: Option<u32>,
+    _ctx: &mut TxContext,
+): Request<Asset, Quote, Swap, SwapParams> {
+    abort EInterfaceOnly
+}
+
+/// Intended sealed request constructor called by the hook after its policy completes.
+/// Require this operation's registered before witness; NoHook is disabled-only.
+/// Bind pool ID, nonce and sender; move chosen parameters, data and balances into the request.
+/// Core validates its own execution requirements, never interprets the hook's policy.
+public fun prepare_donate<Asset, Quote, Hook: drop>(
+    _self: &Pool<Asset, Quote>,
+    _hook: Hook,
+    _params: DonateParams,
+    _hook_data: vector<u8>,
+    _asset_payment: Balance<Asset>,
+    _quote_payment: Balance<Quote>,
+    _ctx: &mut TxContext,
+): Request<Asset, Quote, Donate, DonateParams> {
+    abort EInterfaceOnly
+}
+
+// Add liquidity.
+
+/// Intended consumption of a sealed request for this pool, operation, caller and current nonce.
+/// Advance the economic nonce without wrapping. Recompute against live state;
+/// execute the wrapped parameters, validate actual payment, preserve reserves and LP entitlement.
+/// No separate parameter or payment input can replace the wrapped payload; policy stays opaque.
+/// Return actual coins plus a mandatory after-hook completion.
+/// Validate the owned position ID, pool, range, spacing and liquidity authority.
+public fun execute_add_liquidity<Asset, Quote>(
+    _self: &mut Pool<Asset, Quote>,
+    _request: Request<Asset, Quote, AddLiquidity, LiquidityParams>,
     _position: &mut Position<Asset, Quote>,
     _ctx: &mut TxContext,
 ): (Completion<Asset, Quote, AddLiquidity, LiquidityParams>, Coin<Asset>, Coin<Quote>) {
@@ -285,10 +444,9 @@ public fun execute_add_liquidity<Asset, Quote, Hook: drop>(
 }
 
 /// Intended after-witness, pool, operation and current-nonce checks.
-/// Validate the actual post-hook coins against ORIGINAL user limits: total gross
-/// spend includes both hooks; final receipts include all output deductions.
-/// Preserve per-asset reserve conservation. Consume the receipt and return coins.
-/// NoHook is accepted only when this after callback is disabled.
+/// Consume the completion and return the coins supplied after hook policy runs.
+/// NoHook is disabled-only. Do not enforce hook policy, coin identity or return amounts;
+/// any user-level checks on post-hook results belong to the caller or bundled wrapper.
 public fun finish_add_liquidity<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
@@ -301,23 +459,15 @@ public fun finish_add_liquidity<Asset, Quote, Hook: drop>(
 
 // Remove liquidity.
 
-/// Intended before-witness, original/adjusted input, actual-payment and reserve checks.
-/// Authenticate sender from ctx, advance the nonce without wrapping, and consume coins.
-/// The sealed hook attests the gross budgets captured before its coin mutations;
-/// bound remaining payments by those budgets and preserve original user limits.
-/// Return the actual output/change coins plus a mandatory after-approval receipt.
-/// NoHook is accepted only when this before callback is disabled.
-/// Bind both parameter sets to the actual owned position, pool, range and tick spacing.
-public fun execute_remove_liquidity<Asset, Quote, Hook: drop>(
+/// Intended consumption of a sealed request for this pool, operation, caller and current nonce.
+/// Advance the economic nonce without wrapping. Recompute against live state;
+/// execute the wrapped parameters, validate actual payment, preserve reserves and LP entitlement.
+/// No separate parameter or payment input can replace the wrapped payload; policy stays opaque.
+/// Return actual coins plus a mandatory after-hook completion.
+/// Validate the owned position ID, pool, range, spacing and liquidity authority.
+public fun execute_remove_liquidity<Asset, Quote>(
     _self: &mut Pool<Asset, Quote>,
-    _hook: Hook,
-    _original_params: LiquidityParams,
-    _params: LiquidityParams,
-    _hook_data: vector<u8>,
-    _asset_budget: u64,
-    _quote_budget: u64,
-    _asset_payment: Coin<Asset>,
-    _quote_payment: Coin<Quote>,
+    _request: Request<Asset, Quote, RemoveLiquidity, LiquidityParams>,
     _position: &mut Position<Asset, Quote>,
     _ctx: &mut TxContext,
 ): (Completion<Asset, Quote, RemoveLiquidity, LiquidityParams>, Coin<Asset>, Coin<Quote>) {
@@ -325,10 +475,9 @@ public fun execute_remove_liquidity<Asset, Quote, Hook: drop>(
 }
 
 /// Intended after-witness, pool, operation and current-nonce checks.
-/// Validate the actual post-hook coins against ORIGINAL user limits: total gross
-/// spend includes both hooks; final receipts include all output deductions.
-/// Preserve per-asset reserve conservation. Consume the receipt and return coins.
-/// NoHook is accepted only when this after callback is disabled.
+/// Consume the completion and return the coins supplied after hook policy runs.
+/// NoHook is disabled-only. Do not enforce hook policy, coin identity or return amounts;
+/// any user-level checks on post-hook results belong to the caller or bundled wrapper.
 public fun finish_remove_liquidity<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
@@ -341,37 +490,24 @@ public fun finish_remove_liquidity<Asset, Quote, Hook: drop>(
 
 // Swap.
 
-/// Intended before-witness, original/adjusted input, actual-payment and reserve checks.
-/// Authenticate sender from ctx, advance the nonce without wrapping, and consume coins.
-/// The sealed hook attests the gross budgets captured before its coin mutations;
-/// bound remaining payments by those budgets and preserve original user limits.
-/// Return the actual output/change coins plus a mandatory after-approval receipt.
-/// NoHook is accepted only when this before callback is disabled.
-/// Swap direction and exact-input/output mode stay caller-bound; adjusted amounts and
-/// price limits cannot weaken original limits. LP override requires Dynamic and is per-swap.
-/// Require zero payment on the output side, so pre-existing coins cannot satisfy
-/// minimum receipts. Final net input spend includes fees taken by either hook.
-public fun execute_swap<Asset, Quote, Hook: drop>(
+/// Intended consumption of a sealed request for this pool, operation, caller and current nonce.
+/// Advance the economic nonce without wrapping. Recompute against live state;
+/// execute the wrapped parameters, validate actual payment, preserve reserves and LP entitlement.
+/// No separate parameter or payment input can replace the wrapped payload; policy stays opaque.
+/// Return actual coins plus a mandatory after-hook completion.
+/// Require zero output-side balance. LP override requires Dynamic and an enabled before hook.
+public fun execute_swap<Asset, Quote>(
     _self: &mut Pool<Asset, Quote>,
-    _hook: Hook,
-    _original_params: SwapParams,
-    _params: SwapParams,
-    _hook_data: vector<u8>,
-    _asset_budget: u64,
-    _quote_budget: u64,
-    _asset_payment: Coin<Asset>,
-    _quote_payment: Coin<Quote>,
-    _lp_fee_override_ppm: Option<u32>,
+    _request: Request<Asset, Quote, Swap, SwapParams>,
     _ctx: &mut TxContext,
 ): (Completion<Asset, Quote, Swap, SwapParams>, Coin<Asset>, Coin<Quote>) {
     abort EInterfaceOnly
 }
 
 /// Intended after-witness, pool, operation and current-nonce checks.
-/// Validate the actual post-hook coins against ORIGINAL user limits: total gross
-/// spend includes both hooks; final receipts include all output deductions.
-/// Preserve per-asset reserve conservation. Consume the receipt and return coins.
-/// NoHook is accepted only when this after callback is disabled.
+/// Consume the completion and return the coins supplied after hook policy runs.
+/// NoHook is disabled-only. Do not enforce hook policy, coin identity or return amounts;
+/// any user-level checks on post-hook results belong to the caller or bundled wrapper.
 public fun finish_swap<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
@@ -384,33 +520,24 @@ public fun finish_swap<Asset, Quote, Hook: drop>(
 
 // Donate.
 
-/// Intended before-witness, original/adjusted input, actual-payment and reserve checks.
-/// Authenticate sender from ctx, advance the nonce without wrapping, and consume coins.
-/// The sealed hook attests the gross budgets captured before its coin mutations;
-/// bound remaining payments by those budgets and preserve original user limits.
-/// Return the actual output/change coins plus a mandatory after-approval receipt.
-/// NoHook is accepted only when this before callback is disabled.
+/// Intended consumption of a sealed request for this pool, operation, caller and current nonce.
+/// Advance the economic nonce without wrapping. Recompute against live state;
+/// execute the wrapped parameters, validate actual payment, preserve reserves and LP entitlement.
+/// No separate parameter or payment input can replace the wrapped payload; policy stays opaque.
+/// Return actual coins plus a mandatory after-hook completion.
 /// Credit actual donated coins to eligible LP fees without minting liquidity.
-public fun execute_donate<Asset, Quote, Hook: drop>(
+public fun execute_donate<Asset, Quote>(
     _self: &mut Pool<Asset, Quote>,
-    _hook: Hook,
-    _original_params: DonateParams,
-    _params: DonateParams,
-    _hook_data: vector<u8>,
-    _asset_budget: u64,
-    _quote_budget: u64,
-    _asset_payment: Coin<Asset>,
-    _quote_payment: Coin<Quote>,
+    _request: Request<Asset, Quote, Donate, DonateParams>,
     _ctx: &mut TxContext,
 ): (Completion<Asset, Quote, Donate, DonateParams>, Coin<Asset>, Coin<Quote>) {
     abort EInterfaceOnly
 }
 
 /// Intended after-witness, pool, operation and current-nonce checks.
-/// Validate the actual post-hook coins against ORIGINAL user limits: total gross
-/// spend includes both hooks; final receipts include all output deductions.
-/// Preserve per-asset reserve conservation. Consume the receipt and return coins.
-/// NoHook is accepted only when this after callback is disabled.
+/// Consume the completion and return the coins supplied after hook policy runs.
+/// NoHook is disabled-only. Do not enforce hook policy, coin identity or return amounts;
+/// any user-level checks on post-hook results belong to the caller or bundled wrapper.
 public fun finish_donate<Asset, Quote, Hook: drop>(
     _self: &mut Pool<Asset, Quote>,
     _hook: Hook,
@@ -421,21 +548,11 @@ public fun finish_donate<Asset, Quote, Hook: drop>(
     abort EInterfaceOnly
 }
 
-/// Intended before-only swap: require AFTER_SWAP disabled, authenticate BEFORE_SWAP,
-/// then execute the same actual-coin swap and original/final bounds as the two-phase path.
-/// Require zero payment on the output side, just like execute_swap.
-/// No outstanding completion exists; return final coins directly. Reject enabled after hooks.
-public fun execute_swap_without_after<Asset, Quote, Hook: drop>(
+/// Intended before-only swap: consume the sealed request with the same execution checks.
+/// Reject enabled after-swap callbacks. Return actual coins without a completion.
+public fun execute_swap_without_after<Asset, Quote>(
     _self: &mut Pool<Asset, Quote>,
-    _hook: Hook,
-    _original_params: SwapParams,
-    _params: SwapParams,
-    _hook_data: vector<u8>,
-    _asset_budget: u64,
-    _quote_budget: u64,
-    _asset_payment: Coin<Asset>,
-    _quote_payment: Coin<Quote>,
-    _lp_fee_override_ppm: Option<u32>,
+    _request: Request<Asset, Quote, Swap, SwapParams>,
     _ctx: &mut TxContext,
 ): (Coin<Asset>, Coin<Quote>) {
     abort EInterfaceOnly
@@ -461,4 +578,4 @@ use blast_fun_dex::{
 };
 
 use std::type_name::TypeName;
-use sui::coin::Coin;
+use sui::{balance::Balance, coin::Coin};

@@ -29,9 +29,9 @@ public struct LiquidityParams has copy, drop, store {
 
 // Fields are intentionally unread while all interface bodies abort.
 /// Both directions and exact-input/output swaps. Amounts use atomic coin units.
-/// Final bounds apply to actual returned coins after BOTH hooks, including hook fees.
-/// Exact-input amount is the caller gross budget before hooks; core trades the
-/// remaining approved input. Exact-output amount is the final caller output target.
+/// Amount and bounds describe execution inputs, not a hook-wide spending budget.
+/// Core enforces these supplied values during execution. Hooks and callers own
+/// any additional policy or post-hook result checks.
 #[allow(unused_field)]
 public struct SwapParams has copy, drop, store {
     asset_to_quote: bool,
@@ -75,7 +75,7 @@ public fun liquidity_params(
     abort EInterfaceOnly
 }
 
-/// Intended direction, exact-input flag, amount, price limit, and final bounds.
+/// Intended direction, exact-input flag, amount, price limit, and execution bounds.
 public fun swap_params(
     _self: &SwapParams,
 ): (bool, bool, u64, u256, u64, u64) {

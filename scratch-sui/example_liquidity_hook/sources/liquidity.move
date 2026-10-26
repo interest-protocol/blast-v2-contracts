@@ -27,31 +27,31 @@ public fun register_hooks<Asset, Quote>(
     initializer.register_hook(HookWitness(), permissions::new(hook_flags!()))
 }
 
-/// Full before payload: validate original limits, then mutate inputs/coins by policy.
+/// Policy may read its state, simulate, validate parameters and keep or replace coins.
+/// Ask core to wrap the chosen parameters only after policy succeeds.
+/// The request owns remaining payments as balances; execution accepts no replacement payload.
 public fun before_add_liquidity<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     mut params: LiquidityParams,
     mut hook_data: vector<u8>,
     mut asset_payment: Coin<Asset>,
     mut quote_payment: Coin<Quote>,
-    position: &mut Position<Asset, Quote>,
+    position: &Position<Asset, Quote>,
     ctx: &mut TxContext,
-): (Completion<Asset, Quote, AddLiquidity, LiquidityParams>, Coin<Asset>, Coin<Quote>) {
-    let original_params = params;
-    let asset_budget = asset_payment.value();
-    let quote_budget = quote_payment.value();
+): Request<Asset, Quote, AddLiquidity, LiquidityParams> {
+    let preview = pool.simulate_add_liquidity(position, params);
     before_policy(
-        pool, original_params, &mut params, &mut hook_data,
+        pool, &preview, &mut params, &mut hook_data,
         &mut asset_payment, &mut quote_payment, ctx,
     );
-
-    pool.execute_add_liquidity(
-        HookWitness(), original_params, params, hook_data, asset_budget, quote_budget,
-        asset_payment, quote_payment, position, ctx,
+    pool.prepare_add_liquidity(
+        HookWitness(), params, hook_data,
+        asset_payment.into_balance(), quote_payment.into_balance(), ctx,
     )
 }
 
-/// Full after results: mutate actual coins, validate, and return final coins.
+/// Policy receives immutable execution facts and mutable actual output/change coins.
+/// Core authenticates invocation; it does not enforce policy or post-hook coin amounts.
 public fun after_add_liquidity<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     completion: Completion<Asset, Quote, AddLiquidity, LiquidityParams>,
@@ -64,31 +64,31 @@ public fun after_add_liquidity<Asset, Quote>(
     pool.finish_add_liquidity(HookWitness(), completion, asset_coin, quote_coin)
 }
 
-/// Full before payload: validate original limits, then mutate inputs/coins by policy.
+/// Policy may read its state, simulate, validate parameters and keep or replace coins.
+/// Ask core to wrap the chosen parameters only after policy succeeds.
+/// The request owns remaining payments as balances; execution accepts no replacement payload.
 public fun before_remove_liquidity<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     mut params: LiquidityParams,
     mut hook_data: vector<u8>,
     mut asset_payment: Coin<Asset>,
     mut quote_payment: Coin<Quote>,
-    position: &mut Position<Asset, Quote>,
+    position: &Position<Asset, Quote>,
     ctx: &mut TxContext,
-): (Completion<Asset, Quote, RemoveLiquidity, LiquidityParams>, Coin<Asset>, Coin<Quote>) {
-    let original_params = params;
-    let asset_budget = asset_payment.value();
-    let quote_budget = quote_payment.value();
+): Request<Asset, Quote, RemoveLiquidity, LiquidityParams> {
+    let preview = pool.simulate_remove_liquidity(position, params);
     before_policy(
-        pool, original_params, &mut params, &mut hook_data,
+        pool, &preview, &mut params, &mut hook_data,
         &mut asset_payment, &mut quote_payment, ctx,
     );
-
-    pool.execute_remove_liquidity(
-        HookWitness(), original_params, params, hook_data, asset_budget, quote_budget,
-        asset_payment, quote_payment, position, ctx,
+    pool.prepare_remove_liquidity(
+        HookWitness(), params, hook_data,
+        asset_payment.into_balance(), quote_payment.into_balance(), ctx,
     )
 }
 
-/// Full after results: mutate actual coins, validate, and return final coins.
+/// Policy receives immutable execution facts and mutable actual output/change coins.
+/// Core authenticates invocation; it does not enforce policy or post-hook coin amounts.
 public fun after_remove_liquidity<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     completion: Completion<Asset, Quote, RemoveLiquidity, LiquidityParams>,
@@ -103,9 +103,9 @@ public fun after_remove_liquidity<Asset, Quote>(
 
 // === Private Functions ===
 
-fun before_policy<Asset, Quote, Params: copy + drop + store>(
+fun before_policy<Asset, Quote, Operation, Params: copy + drop + store>(
     _pool: &mut Pool<Asset, Quote>,
-    _original_params: Params,
+    _preview: &Simulation<Asset, Quote, Operation>,
     _params: &mut Params,
     _hook_data: &mut vector<u8>,
     _asset_payment: &mut Coin<Asset>,
@@ -131,6 +131,6 @@ fun after_policy<Asset, Quote, Operation, Params: copy + drop + store>(
 use blast_fun_dex::{
     params::LiquidityParams,
     permissions,
-    pool::{Pool, Position, PoolInitializer, AddLiquidity, RemoveLiquidity, Completion},
+    pool::{Pool, Position, PoolInitializer, AddLiquidity, RemoveLiquidity, Completion, Request, Simulation},
 };
 use sui::coin::Coin;

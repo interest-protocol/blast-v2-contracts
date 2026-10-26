@@ -27,7 +27,7 @@ public fun before_only_swap<Asset, Quote>(
     example::swap_without_after(pool, params, hook_data, asset, quote, ctx)
 }
 
-/// Both phases expose their whole coin pair; coin mutation needs no signed amounts.
+/// Pre-hook seals payments in the request; post-execution coin mutation needs no signed amounts.
 /// This fixture establishes types only, not entitlement or runtime safety.
 public fun split_swap_results<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
@@ -38,9 +38,10 @@ public fun split_swap_results<Asset, Quote>(
     fee_recipient: address,
     ctx: &mut TxContext,
 ): (Coin<Asset>, Coin<Quote>) {
-    let (completion, mut asset_coin, quote_coin) = example::before_swap(
+    let request = example::before_swap(
         pool, params, hook_data, asset, quote, ctx,
     );
+    let (completion, mut asset_coin, quote_coin) = pool.execute_swap(request, ctx);
     let fee = asset_coin.split(1, ctx);
     transfer::public_transfer(fee, fee_recipient);
 
@@ -56,14 +57,17 @@ public fun mixed_liquidity_hooks<Asset, Quote>(
     quote: Coin<Quote>,
     ctx: &mut TxContext,
 ): (Coin<Asset>, Coin<Quote>) {
-    let (completion, asset_coin, quote_coin) = liquidity::before_add_liquidity(
+    let request = liquidity::before_add_liquidity(
         pool, params, vector[], asset, quote, position, ctx,
+    );
+    let (completion, asset_coin, quote_coin) = pool.execute_add_liquidity(
+        request, position, ctx,
     );
 
     example::after_add_liquidity(pool, completion, asset_coin, quote_coin, ctx)
 }
 
-/// Disabled callbacks use core directly, with exactly the original payment budgets.
+/// Disabled callbacks use core directly; proof issuance rejects an enabled callback.
 public fun disabled_swap_hooks<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     params: SwapParams,
@@ -71,19 +75,37 @@ public fun disabled_swap_hooks<Asset, Quote>(
     quote: Coin<Quote>,
     ctx: &mut TxContext,
 ): (Coin<Asset>, Coin<Quote>) {
-    let asset_budget = asset.value();
-    let quote_budget = quote.value();
-    let (completion, asset_coin, quote_coin) = pool.execute_swap(
-        pool::no_hook(), params, params, vector[], asset_budget, quote_budget,
-        asset, quote, option::none(), ctx,
+    let request = pool.prepare_swap(
+        pool::no_hook(), params, vector[], asset.into_balance(), quote.into_balance(),
+        option::none(), ctx,
     );
+    let (completion, asset_coin, quote_coin) = pool.execute_swap(request, ctx);
 
     pool.finish_swap(pool::no_hook(), completion, asset_coin, quote_coin)
 }
 
+/// Wrapped parameters may be inspected, but no API exposes mutable request fields.
+public fun inspect_swap_request<Asset, Quote>(
+    request: Request<Asset, Quote, Swap, SwapParams>,
+): Request<Asset, Quote, Swap, SwapParams> {
+    let (_, _, _, _, _, _, _, _) = request.request_context();
+    request
+}
+
+/// Pure simulation takes only immutable inputs and returns values, never a swap approval.
+public fun read_swap_projection<Asset, Quote>(
+    pool: &Pool<Asset, Quote>,
+    params: SwapParams,
+): Simulation<Asset, Quote, Swap> {
+    pool.simulate_swap(params, option::none())
+}
+
 // === Imports ===
 
-use blast_fun_dex::{params::{LiquidityParams, SwapParams}, pool::{Self, Pool, Position}};
+use blast_fun_dex::{
+    params::{LiquidityParams, SwapParams},
+    pool::{Self, Pool, Position, Simulation, Swap, Request},
+};
 use blast_fun_dex_example_hook::example;
 use blast_fun_dex_example_liquidity_hook::liquidity;
 use sui::coin::Coin;
