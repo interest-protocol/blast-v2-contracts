@@ -32,7 +32,7 @@ public struct LiquidityParams has copy, drop, store {
 /// The price limit can stop execution early; unspent payment returns as change.
 /// Hooks and callers own full-fill requirements and final coin-amount checks.
 #[allow(unused_field)]
-public struct SwapParams has copy, drop, store { sqrt_price_limit_x96: u256 }
+public struct SwapParams(u256) has copy, drop, store;
 
 // Fields are intentionally unread while all interface bodies abort.
 /// Donation is credited to eligible LP fee growth, without minting liquidity.

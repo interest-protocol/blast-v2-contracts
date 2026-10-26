@@ -60,7 +60,7 @@ gross hook budgets, hook fee accounting or automatic post-hook user bounds.
 Checks spanning both hooks belong to a caller or bundled wrapper that chooses
 to enforce them. Simulations do not authorize execution or reserve a pool.
 
-`SwapParams` contains only `sqrt_price_limit_x96`. The payment's `Input` type
+`SwapParams(u256)` holds the sqrt price limit positionally. The payment's `Input` type
 supplies direction; its balance value supplies the input budget including pool
 swap fees. Core must reject an input type outside the pool pair, and pool
 creation must reject identical token types. Hooks may split/retain payment before
