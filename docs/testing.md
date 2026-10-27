@@ -26,12 +26,27 @@ type compatibility only. Before release:
 
 1. Run its offline ABI self-test and live mainnet ABI check.
 2. Run the replacement Cetus and Bluefin dev-inspect matrix in
-   [`sui/migrators/DEPENDENCIES.md`](../sui/migrators/DEPENDENCIES.md).
+   [`sui/migrators/DEPENDENCIES.md`](https://github.com/interest-protocol/blast-v2-move/blob/main/sui/migrators/DEPENDENCIES.md).
 3. Record the reviewed venue revisions, module fingerprints, normalized ABI,
    route results, residual bounds, and fee-collection results.
 4. Describe LP principal as held by an upgradeable package with no exposed
    withdrawal path, never as permanently locked: the migrators package stays
    upgradeable (ADR 0088).
+
+## Legacy launchpad consumers
+
+Boosts composition tests and the parked DEX pin the original contracts snapshot
+for launchpad, retaining the published admin and partner identities. New
+launchpad and presale development is verified in `blast-v2-move`. These historical
+Git dependencies require access to this repository. With the local GitHub CLI
+login, the pinned Sui CLI can receive its Git credential helper explicitly:
+
+```sh
+GIT_CONFIG_COUNT=1 \
+GIT_CONFIG_KEY_0=credential.https://github.com.helper \
+GIT_CONFIG_VALUE_0='!gh auth git-credential' \
+sui move test --path sui/boosts/composition_tests --build-env mainnet --threads 1 --lint --warnings-are-errors
+```
 
 ## Blast SUI gate
 

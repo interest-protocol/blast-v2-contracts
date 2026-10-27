@@ -3,7 +3,7 @@
 This compiler-input package creates one standalone Sui coin when it is
 published. It has no Blast dependency and gives Blast no authority over the
 coin, and the coin cannot launch on Blast: a launch needs the `LaunchTicket`
-that only the [launch ticket template](../launch_ticket_template/README.md)
+that only the [launch ticket template](https://github.com/interest-protocol/blast-v2-move/blob/main/sui/launch_ticket_template/README.md)
 creates.
 
 Like that template, the SDK does not compile this source per coin. It patches

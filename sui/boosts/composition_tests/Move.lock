@@ -40,6 +40,12 @@ use_environment = "mainnet"
 manifest_digest = "E26908079EDB3A11E96711E1FF8CDE5BBA0499612C6BF3BE67995DA6D8BED85B"
 deps = { Sui = "Sui", blast_fun_timelock = "blast_fun_timelock" }
 
+[pinned.mainnet.blast_admin_1]
+source = { git = "https://github.com/interest-protocol/blast-v2-contracts.git", subdir = "sui/admin", rev = "d2917bbb8570fb5a86f065e83c0c1fc1909dfc4a" }
+use_environment = "mainnet"
+manifest_digest = "E26908079EDB3A11E96711E1FF8CDE5BBA0499612C6BF3BE67995DA6D8BED85B"
+deps = { Sui = "Sui", blast_fun_timelock = "blast_fun_timelock" }
+
 [pinned.mainnet.blast_boosts_aftermath]
 source = { local = "../aftermath_adapter" }
 use_environment = "mainnet"
@@ -49,8 +55,8 @@ deps = { authority_cap = "authority_cap", blast_admin = "blast_admin", blast_boo
 [pinned.mainnet.blast_boosts_composition_tests]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "FC8F4B25B91AABDC8D9FC7965B0D426818DBC4BF37F5C33B94084DEDCC2E66EA"
-deps = { blast_admin = "blast_admin", blast_boosts_aftermath = "blast_boosts_aftermath", blast_boosts_products = "blast_boosts_products", blast_fun = "blast_fun", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "A5EA9D50E477D44A587A5F8594060F1294C7B743009F55470172B0EF152A3DC6"
+deps = { blast_admin = "blast_admin", blast_boosts_aftermath = "blast_boosts_aftermath", blast_boosts_products = "blast_boosts_products", blast_fun = "blast_fun", blast_partners = "blast_partners", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.blast_boosts_core]
 source = { local = "../core" }
@@ -65,10 +71,10 @@ manifest_digest = "294D98BBBEFA7E526C52FD7F30B5691CD30B86738DDC489AC065D612D0E5F
 deps = { Sui = "Sui" }
 
 [pinned.mainnet.blast_fun]
-source = { local = "../../launchpad" }
+source = { git = "https://github.com/interest-protocol/blast-v2-contracts.git", subdir = "sui/launchpad", rev = "d2917bbb8570fb5a86f065e83c0c1fc1909dfc4a" }
 use_environment = "mainnet"
 manifest_digest = "E2577746AFF27E65313264EBF8DA126BE85E0CA5B00BD503983E8F7DE9806C5A"
-deps = { blast_admin = "blast_admin", blast_partners = "blast_partners", std = "MoveStdlib", sui = "Sui" }
+deps = { blast_admin = "blast_admin_1", blast_partners = "blast_partners_1", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.blast_fun_timelock]
 source = { git = "https://github.com/interest-protocol/blast-util-contracts.git", subdir = "sui/timelock", rev = "63b6cf86c0e1a74f699610fe182b1de8d8789a14" }
@@ -81,6 +87,12 @@ source = { local = "../../partners" }
 use_environment = "mainnet"
 manifest_digest = "D5CCB833332CD32F07926CDFF448E853BA674CB7110877E91BA125049FDB2026"
 deps = { blast_admin = "blast_admin", blast_fun_timelock = "blast_fun_timelock", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.blast_partners_1]
+source = { git = "https://github.com/interest-protocol/blast-v2-contracts.git", subdir = "sui/partners", rev = "d2917bbb8570fb5a86f065e83c0c1fc1909dfc4a" }
+use_environment = "mainnet"
+manifest_digest = "D5CCB833332CD32F07926CDFF448E853BA674CB7110877E91BA125049FDB2026"
+deps = { blast_admin = "blast_admin_1", blast_fun_timelock = "blast_fun_timelock", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.ifixed]
 source = { local = "../aftermath_adapter/interfaces/aftermath/ifixed/ifixed" }

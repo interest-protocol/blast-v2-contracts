@@ -4,10 +4,11 @@ edition = "2024"
 license = "BUSL-1.1"
 
 [dependencies]
-blast_admin = { local = "../../admin" }
+blast_admin = { local = "../../admin", override = true }
+blast_partners = { local = "../../partners", override = true }
 blast_boosts_aftermath = { local = "../aftermath_adapter" }
 blast_boosts_products = { local = "../products" }
-blast_fun = { local = "../../launchpad" }
+blast_fun = { git = "https://github.com/interest-protocol/blast-v2-contracts.git", subdir = "sui/launchpad", rev = "d2917bbb8570fb5a86f065e83c0c1fc1909dfc4a" }
 
 [addresses]
 blast_boosts_composition_tests = "0x0"

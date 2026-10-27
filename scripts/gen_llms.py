@@ -34,23 +34,16 @@ REPO_URL = "https://github.com/interest-protocol/blast-v2-contracts/blob/main"
 
 # Reference order: what an integrator reaches for first.
 PACKAGES = [
-    ("sui/presale", "Presale"),
-    ("sui/launchpad", "Launchpad"),
-    ("sui/migrators", "Migration and LP vaults"),
     ("sui/partners", "Partner codes"),
     ("sui/boosts/core", "Boosts core"),
     ("sui/boosts/products", "Boost product tags"),
     ("sui/boosts/aftermath_adapter", "Boosts Aftermath adapter"),
     ("sui/blast_sui", "blastSUI and funSUI"),
     ("sui/admin", "Administration"),
-    ("sui/vendors/aftermath_dao_presale", "Aftermath DAO-pool presale migrator"),
 ]
 # Each guide with the packages whose deployment status it opens with.
 GUIDES = [
     ("basics.md", []),
-    ("presale.md", ["sui/presale", "sui/vendors/aftermath_dao_presale"]),
-    ("launchpad.md", ["sui/launchpad"]),
-    ("migrators.md", ["sui/migrators"]),
     ("partners.md", ["sui/partners"]),
     ("boosts.md", ["sui/boosts/core", "sui/boosts/products", "sui/boosts/aftermath_adapter"]),
     ("blast-sui.md", ["sui/blast_sui"]),
@@ -71,24 +64,6 @@ class Product:
 
 # One file per product under llms/. Every file opens with basics.md.
 PRODUCTS = [
-    Product(
-        "presale",
-        "Presale",
-        "standalone overflow presales on Sui: commit Quote to a capped or overflow sale, claim tokens or "
-        "refunds, migrate into Cetus or Bluefin, and earn LP fees and holder rewards after migration",
-        ["presale.md", "partners.md"],
-        ["sui/presale", "sui/vendors/aftermath_dao_presale"],
-        ["sui/partners", "sui/admin"],
-    ),
-    Product(
-        "launchpad",
-        "Launchpad",
-        "bonding-curve coin launches on Sui: launch a coin, trade it on the curve, graduate it into a "
-        "Cetus or Bluefin pool, and collect LP fees and holder rewards from the LP vault",
-        ["launchpad.md", "migrators.md", "partners.md"],
-        ["sui/launchpad", "sui/migrators"],
-        ["sui/partners", "sui/admin"],
-    ),
     Product(
         "partners",
         "Partner codes",
@@ -155,7 +130,7 @@ BARE_TYPES = {
 HEADER = """\
 # Blast contracts: integrator reference
 
-> Everything an integrator needs to understand and call Blast's Sui Move contracts: a bonding-curve launchpad whose graduated coins migrate into Cetus or Bluefin pools, standalone overflow presales, partner fee codes, Boost leverage coins on Aftermath perpetuals, and the funSUI/blastSUI staking vault. Sui mainnet only.
+> Everything an integrator needs to understand and call Blast's Sui Move contracts: Boost leverage coins on Aftermath perpetuals, the funSUI/blastSUI staking vault, partner codes and shared administration. Launchpad and presale references moved to https://github.com/interest-protocol/blast-v2-move. Sui mainnet only.
 
 This file is self-contained. Give it to an AI agent and ask it anything about Blast's contracts. An agent that needs one product can take that product's smaller file instead: {products}.
 """

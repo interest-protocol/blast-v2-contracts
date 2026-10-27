@@ -1,7 +1,16 @@
 # Blast V2 contracts
 
-Sui Move contracts for Blast V2. Each directory containing a `Move.toml` is an
-independently built package; the `sui/` directory itself is only a workspace.
+Sui Move Boosts, liquid staking, shared administration and utility source for Blast V2.
+
+Launchpad, presale, migrators, launch tickets and vendor presale adapters moved to
+[blast-v2-move](https://github.com/interest-protocol/blast-v2-move), with their
+tests, related documentation and agent references. Historical publication records
+stay here; existing deployed lineages are unchanged. Shared admin and partner
+packages remain here for Boosts and liquid-staking consumers. Legacy composition
+tests pin the original launchpad revision to preserve its published identities;
+new launch development belongs in the new repository.
+
+Each directory containing a `Move.toml` is an independently built package; the `sui/` directory itself is only a workspace.
 
 Agents start with [llms.txt](llms.txt), the map of every package and where each
 question is answered; changes to the contracts follow [AGENTS.md](AGENTS.md).

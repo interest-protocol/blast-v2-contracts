@@ -446,3 +446,4 @@ test passes, and none is asserted as a cited fact in the records.
 | [0127](0127-emergency-rebalance-mark-divergence.md) | Emergency rebalance admission during mark divergence | **accepted** |
 | [0128](0128-reserve-aware-rebalance-increases.md) | Reserve-aware rebalance increases | **accepted** |
 | [0130](0130-protected-permissionless-shutdown.md) | Protected permissionless shutdown of a size-locked Boost | **accepted** |
+| [0134](0134-launchpad-presale-repository-boundary.md) | Launchpad and presale repository boundary | **accepted** |

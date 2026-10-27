@@ -8,32 +8,24 @@ product guide below assumes it.
 
 | Product | What users do | Packages |
 | --- | --- | --- |
-| Presale | commit Quote to a capped or overflow sale, claim tokens or refunds, earn LP fees and holder rewards after migration | `blast_presale`; one-off partner migrators such as `blast_aftermath_dao_presale` |
-| Launchpad | launch a coin on a bonding curve, trade it, graduate it into a DEX pool | `blast_fun` (curve, lifecycle, fees), a generated coin package per launch, `blast_fun_migrators` (venue start, migration, LP vault, LP fees, holder rewards) |
 | Partner codes | earn a share of Blast's fee on the flow an app brings | `blast_partners` |
 | Boosts | hold a leveraged long or short coin backed by Aftermath perpetuals | `blast_boosts_core`, `blast_boosts_products`, `blast_boosts_aftermath` |
 | blastSUI | stake SUI with one validator through funSUI and blastSUI | `blast_sui` |
-| Administration | Blast's operators manage roles, fees, and upgrades | `blast_admin` (the presale has its own admin caps) |
+| Administration | Blast's operators manage roles, fees, and upgrades | `blast_admin` |
 
 Each package and what it depends on:
 
 ```text
-blast_fun_migrators          -> blast_fun, blast_admin, Cetus, Bluefin
-blast_fun                    -> blast_partners, blast_admin
 blast_partners               -> blast_admin, blast_fun_timelock
-blast_presale                -> blast_partners, blast_fun_vesting, Cetus, Bluefin
-blast_aftermath_dao_presale  -> blast_presale, Aftermath AMM
 blast_boosts_aftermath       -> blast_boosts_core, blast_partners, blast_admin, Aftermath perpetuals
 blast_boosts_core            -> blast_admin
 blast_sui                    -> blast_admin, Sui system
 blast_admin                  -> blast_fun_timelock
 ```
 
-The launchpad imports no DEX. A migrator package depends on the launchpad and
-composes with it inside one PTB. The presale is a separate product: it shares
-no state or code with the launchpad or the migrators, keeps its own admin caps
-instead of `blast_admin`, and holds migrated liquidity in its own
-`presale_vault::Vault`. Answer presale questions from the presale guide alone.
+Launchpad, presale and their venue adapters are documented in
+[blast-v2-move](https://github.com/interest-protocol/blast-v2-move/blob/main/llms-full.txt).
+This reference covers the packages retained in this repository.
 
 `blast_fun_timelock` and `blast_fun_vesting` come from Blast's public utility
 repository (`interest-protocol/blast-util-contracts`); both are immutable on
@@ -102,17 +94,16 @@ Each package has one upgrade posture:
 
 | Posture | Packages | What callers do |
 | --- | --- | --- |
-| Immutable | `blast_admin`, `blast_partners`, `blast_boosts_core`, `blast_aftermath_dao_presale` | Nothing: the code never changes. |
-| Dependency-only | `blast_presale` | Presale logic is sealed; Blast can only relink newer Cetus, Bluefin, and Aftermath versions, and every generation runs identical code with no version gate. Call the latest package ID, because a venue rejects calls linked to a version it retired. |
-| Version-gated | `blast_fun`, `blast_fun_migrators`, `blast_sui`, `blast_boosts_aftermath` | Mutating calls take the package's shared version object. After an upgrade advances it, calls through an older package ID abort with a version mismatch, so always call the current ID. |
+| Immutable | `blast_admin`, `blast_partners`, `blast_boosts_core` | Nothing: the code never changes. |
+| Version-gated | `blast_sui`, `blast_boosts_aftermath` | Mutating calls take the package's shared version object. After an upgrade advances it, calls through an older package ID abort with a version mismatch, so always call the current ID. |
 | Additive | `blast_boosts_products` | Upgrades only add product tags; it holds no state. |
 
 ### Events
 
 - Query events by their Move type, named with the `original-id`.
-- `blast_fun`, `blast_sui`, and `blast_boosts_aftermath` wrap every payload in
+- `blast_sui` and `blast_boosts_aftermath` wrap every payload in
   the `Event<T>` envelope of their own `blast_events` module (for example
-  `blast_fun::blast_events::Event`), so the event type is
+  `blast_sui::blast_events::Event`), so the event type is
   `<original-id>::blast_events::Event<<original-id>::<module>::<Payload>>`.
   Every other package emits payload structs directly.
 - Sui orders events by checkpoint, transaction, and event index within the

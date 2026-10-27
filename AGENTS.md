@@ -64,11 +64,14 @@ Load only the branch the task changes:
   `docs/vectors/`.
 - Leverage contracts: `docs/leverage-implementation-lessons.md` and the
   applicable accepted ADR.
-- Venue dependency or live ABI: `sui/migrators/DEPENDENCIES.md`.
+- Launchpad, presale or their venue ABI: the source and documentation moved to
+  `https://github.com/interest-protocol/blast-v2-move`; this checkout retains
+  historical publication records.
 - Package publication: `deployments/README.md`; for Blast SUI, also use
   `sui/blast_sui/DEPLOYING.md`.
 - Blast SUI upgrade: `sui/blast_sui/UPGRADING.md`.
-- Partner one-off contract: `sui/vendors/README.md` and ADR 0104.
+- Partner one-off contract: `https://github.com/interest-protocol/blast-v2-move/tree/main/sui/vendors`
+  and ADR 0104.
 
 ## Unrelated issues found during a task
 

@@ -81,16 +81,16 @@ necessary merely because the chain uses Move.
 The following are evidence links for this proposal, not a replacement ABI
 inventory:
 
-- [`creator_authority.move`](../../sui/launchpad/sources/creator_authority.move)
+- [`creator_authority.move`](https://github.com/interest-protocol/blast-v2-move/blob/main/sui/launchpad/sources/creator_authority.move)
   defines a transferable, storable, coin-typed creator capability, issued by a
   one-time authorized claim.
-- [`launch.move`](../../sui/launchpad/sources/launch.move) returns this capability
+- [`launch.move`](https://github.com/interest-protocol/blast-v2-move/blob/main/sui/launchpad/sources/launch.move) returns this capability
   separately from the metadata capability and accepts it to claim both
   creator-fee assets.
-- [`fees.move`](../../sui/launchpad/sources/fees.move) already separates creator
+- [`fees.move`](https://github.com/interest-protocol/blast-v2-move/blob/main/sui/launchpad/sources/fees.move) already separates creator
   and protocol balances; protocol amounts round up and the creator gets the
   remainder. Holder rewards would receive that remainder, not the protocol cut.
-- [`vault.move`](../../sui/migrators/sources/vault.move) accepts the same
+- [`vault.move`](https://github.com/interest-protocol/blast-v2-move/blob/main/sui/migrators/sources/vault.move) accepts the same
   capability to claim creator LP fees without extracting LP principal.
 - [`indexer/src/handler.rs`](../../../indexer/src/handler.rs) currently processes
   Blast's wrapped events. It is not a complete holder balance index.

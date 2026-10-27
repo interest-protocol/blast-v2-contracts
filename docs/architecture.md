@@ -1,5 +1,10 @@
 # Architecture
 
+Launchpad, presale and their adapters are now maintained in
+[blast-v2-move](https://github.com/interest-protocol/blast-v2-move). The design
+history below still explains their relationship to the retained shared packages.
+See [ADR 0134](decisions/0134-launchpad-presale-repository-boundary.md).
+
 ## Goal
 
 Blast V2 currently has one Sui Move implementation. Other chain implementations

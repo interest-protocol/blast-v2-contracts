@@ -9,5 +9,12 @@ smallest required core surface. See the repository
 [architecture](../docs/architecture.md) and [decision index](../docs/decisions/README.md)
 for the durable boundaries.
 
-One-off partner packages live under [`vendors/`](vendors/README.md), one
+Launchpad, presale, migrators and launch tickets now live in
+[blast-v2-move](https://github.com/interest-protocol/blast-v2-move).
+Boosts, liquid staking, standalone coin creation and their shared dependencies
+remain here. Legacy composition tests use an immutable historical launchpad
+revision, with the original shared package identities. Fetching this private Git
+dependency requires repository access.
+
+One-off partner packages live under [`vendors/`](https://github.com/interest-protocol/blast-v2-move/blob/main/sui/vendors/README.md), one
 directory per contract.
