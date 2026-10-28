@@ -23,7 +23,7 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 | `blast_fun` | Launchpad | not yet published | — | — |
 | `blast_fun_migrators` | Migration and LP vaults | not yet published | — | — |
 | `blast_partners` | Partner codes | live; source has changed since | `0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd` | `0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd` |
-| `blast_admin` | Administration | live | `0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9` | `0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9` |
+| `blast_admin` | Administration | not yet published | — | — |
 
 ## Calling Blast contracts
 
@@ -3863,7 +3863,7 @@ public struct PartnerPaid<phantom T> has copy, drop {
 
 ## API reference: `blast_admin` (Administration)
 
-Live on mainnet. This reference matches the published source.
+Not yet published on mainnet. Its interface may change before publication.
 
 Events: payload structs are emitted directly, each under its own type.
 

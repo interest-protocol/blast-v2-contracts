@@ -28,7 +28,7 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 | `blast_boosts_products` | Boost product tags | live; source has changed since | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` |
 | `blast_boosts_aftermath` | Boosts Aftermath adapter | not yet published | — | — |
 | `blast_sui` | blastSUI and funSUI | not yet published | — | — |
-| `blast_admin` | Administration | live | `0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9` | `0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9` |
+| `blast_admin` | Administration | not yet published | — | — |
 | `blast_aftermath_dao_presale` | Aftermath DAO-pool presale migrator | live; source has changed since | `0x2fe674f6c42f49b7647be760a10f89f843396b9294af8fab5bfbc929fb7aab01` | `0x2fe674f6c42f49b7647be760a10f89f843396b9294af8fab5bfbc929fb7aab01` |
 
 ## Calling Blast contracts
@@ -4559,7 +4559,7 @@ and those shares keep their pro-rata part of the vault forever.
 
 ## Administration
 
-> **Deployment status:** `blast_admin` is live on mainnet.
+> **Deployment status:** `blast_admin` is not yet published on mainnet; its interface may change before publication.
 
 ### What it is
 
@@ -11383,7 +11383,7 @@ public fun sync(
 
 ## API reference: `blast_admin` (Administration)
 
-Live on mainnet. This reference matches the published source.
+Not yet published on mainnet. Its interface may change before publication.
 
 Events: payload structs are emitted directly, each under its own type.
 

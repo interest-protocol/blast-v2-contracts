@@ -23,7 +23,7 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 | `blast_presale` | Presale | live; source has changed since | `0x2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d` | `0x2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d` |
 | `blast_aftermath_dao_presale` | Aftermath DAO-pool presale migrator | live; source has changed since | `0x2fe674f6c42f49b7647be760a10f89f843396b9294af8fab5bfbc929fb7aab01` | `0x2fe674f6c42f49b7647be760a10f89f843396b9294af8fab5bfbc929fb7aab01` |
 | `blast_partners` | Partner codes | live; source has changed since | `0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd` | `0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd` |
-| `blast_admin` | Administration | live | `0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9` | `0x726fb49b880faa89719b95c6ef3a91be794f771ed3560fe5894d0a605c8469f9` |
+| `blast_admin` | Administration | not yet published | — | — |
 
 ## Calling Blast contracts
 
@@ -3535,7 +3535,7 @@ public struct PartnerPaid<phantom T> has copy, drop {
 
 ## API reference: `blast_admin` (Administration)
 
-Live on mainnet. This reference matches the published source.
+Not yet published on mainnet. Its interface may change before publication.
 
 Events: payload structs are emitted directly, each under its own type.
 

@@ -11,4 +11,4 @@ blast_fun_timelock = { git = "https://github.com/interest-protocol/blast-util-co
 [addresses]
 blast_admin = "0x0"
 # Receives the cold SuperAdminCap at publish; init aborts while this is 0x0.
-blast_acl_root = "0x612fa27ba229021c5a1c32022fd6341ffbd58a87ac928a0dc32d8d6d1dba9fed"
+blast_acl_root = "0x818d6d7026632f82367a9ca2413a5bb28aeec2a1b8dedca919ef812577b4d0a2"
