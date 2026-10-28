@@ -218,8 +218,7 @@ fun disabled_reimbursement_cannot_be_settled() {
         let mut round = f.take_round();
         f.settle(&mut round, 0);
         abort
-    });
-    abort
+    })
 }
 
 #[test]
@@ -231,8 +230,7 @@ fun settlement_rejects_cost_above_the_reserve() {
         let mut round = f.take_round();
         f.settle(&mut round, 31);
         abort
-    });
-    abort
+    })
 }
 
 #[test]
@@ -245,8 +243,7 @@ fun duplicate_settlement_cannot_pay_twice() {
         f.settle(&mut round, 24);
         f.settle(&mut round, 1);
         abort
-    });
-    abort
+    })
 }
 
 #[test]
@@ -276,9 +273,7 @@ fun close_rejects_the_millisecond_before_the_deadline() {
         f.clock.set_for_testing(DEADLINE_AT_MS - 1);
         round.close_round(&package_version, &mut f.vault, &f.clock);
         abort
-    });
-    std::unit_test::destroy(package_version);
-    abort
+    })
 }
 
 #[test]
@@ -307,9 +302,7 @@ fun settlement_rejects_another_vault_before_its_amount_check() {
             f.ctx!(),
         );
         abort
-    });
-    std::unit_test::destroy(package_version);
-    abort
+    })
 }
 
 #[test]
@@ -355,9 +348,7 @@ fun reserve_holder_payment_cannot_be_redirected() {
         let mut round = f.take_round();
         rewards::claim(&mut round, &package_version, 0, OWNER, 0, 970, vector[], f.ctx!());
         abort
-    });
-    std::unit_test::destroy(package_version);
-    abort
+    })
 }
 
 // === Test Helpers ===
@@ -401,7 +392,7 @@ macro fun reserve_next_tx(
 ) {
     let fixture = $self;
     fixture.scenario.next_tx($sender);
-    $body(fixture);
+    $body(fixture)
 }
 
 macro fun reserve_ctx($self: &mut ReserveFixture): &mut TxContext {
