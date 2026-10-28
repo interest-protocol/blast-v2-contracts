@@ -634,8 +634,7 @@
       "Multisig configures reviewed quote, adapter, venue and presale admission policies.",
       "Complete required mainnet venue route, residual and fee-collection matrix before product rollout.",
       "Adopt canonical IDs in SDK, indexer and application as a separate rollout."
-    ],
-    "canonicalPackageRecord": "2026-10-28-canonical-mvr-launch-stack.json"
+    ]
   },
   "validation": [
     {
@@ -732,21 +731,6 @@
       "environment": "canonical mainnet packages",
       "check": "live mainnet venue route, residual and fee-collection matrix",
       "result": "pending; product rollout blocked until multisig configuration and this matrix complete"
-    },
-    {
-      "check": "fresh-package source verification",
-      "environment": "live mainnet",
-      "result": "pass; all five packages match pinned CLI rebuild bytecode and linkage"
-    },
-    {
-      "check": "fresh-package source verification",
-      "environment": "live mainnet",
-      "result": "pass; all five packages match pinned CLI rebuild bytecode and linkage"
-    },
-    {
-      "check": "fresh-package source verification",
-      "environment": "live mainnet",
-      "result": "pass; all five packages match pinned CLI rebuild bytecode and linkage"
     }
   ],
   "moveTestsPassed": 902,

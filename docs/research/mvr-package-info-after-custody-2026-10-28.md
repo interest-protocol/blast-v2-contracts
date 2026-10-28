@@ -78,3 +78,21 @@ The contracts need no source dependency on MVR merely to perform these external 
 - The immutable-after-metadata result is supported by the reviewed constructor, setter and resolver source. A transaction simulation with the currently deployed metadata implementation should confirm the intended publish/create/burn or create/wrap composition before broadcast. The research request does not itself authorize a new mainnet transaction.
 - No SuiNS namespace, availability, existing irreversible app binding, multisig signing ability, or metadata object pre-existence was asserted by this research. Check these against mainnet before committing a name.
 - MVR latest-version resolution follows native upgrades, not Blast activation. Decide how SDK/app callers pin reviewed active releases before adopting unversioned MVR call targets.
+
+## Subsequent authorized execution
+
+After the user authorized the fresh deployment and supplied `blastpackages.sui`,
+the five-package sequence was executed successfully. The [MVR release record](../../deployments/sui/mainnet/2026-10-28-canonical-mvr-launch-stack.json)
+supersedes the first publication. Each package has PackageInfo, version-1 Git
+metadata at commit `52effbcee5f12b727484ba0bb14f96aa5e2b4786` (including the fresh
+dependency bindings), and a permanent `@blastpackages/<package>` registration.
+The deployed bytecode and linkage match pinned CLI rebuilds. All five forward,
+explicit `/1`, and reverse resolutions were checked against their final package
+IDs, including the immutable packages whose caps were destroyed and the packages
+whose caps are wrapped.
+
+All five PackageInfo objects and AppCaps, the SuiNS registration NFT, and the new
+SuperAdminCap are verified under the requested multisig. This completes package
+publication, metadata registration and ownership handoff; treasury, admission and
+worker configuration and application rollout are separate pending work recorded
+in the release manifest.

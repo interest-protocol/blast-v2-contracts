@@ -9,15 +9,15 @@
     "chainIdentifierBase58": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"
   },
   "toolchain": "sui 1.77.2-51d177ad7d65",
-  "sourceCommit": "a52cf9aa845513ef3c3ce0d691556c46aa2d04d5",
+  "sourceCommit": "52effbcee5f12b727484ba0bb14f96aa5e2b4786",
   "deployer": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
   "status": "success",
-  "deploymentStage": "canonical-packages-verified-mvr-registration-pending",
+  "deploymentStage": "canonical-packages-and-mvr-ownership-verified",
   "timestampUtc": "2026-10-28T12:42:51.761000+00:00",
-  "verifiedAtUtc": "2026-10-28T12:45:50.232439+00:00",
+  "verifiedAtUtc": "2026-10-28T12:54:39.762943+00:00",
   "repository": {
     "url": "https://github.com/interest-protocol/blast-v2-contracts",
-    "commit": "a52cf9aa845513ef3c3ce0d691556c46aa2d04d5",
+    "commit": "52effbcee5f12b727484ba0bb14f96aa5e2b4786",
     "productionMoveSourcesMatchCommit": true,
     "workingTreeCleanAtPublication": false,
     "approvedProductionSourceCommit": "9255e78751b70b22d8f33cc6577df126a3434424"
@@ -57,13 +57,18 @@
         "source": {
           "path": "sui/admin",
           "repository": "https://github.com/interest-protocol/blast-v2-contracts",
-          "tag": "a52cf9aa845513ef3c3ce0d691556c46aa2d04d5"
+          "tag": "52effbcee5f12b727484ba0bb14f96aa5e2b4786"
         },
         "sourceVersion": 1,
         "documentationUrl": "https://docs.blast.fun",
         "homepageUrl": "https://blast.fun",
-        "status": "pending-registration",
-        "owner": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600"
+        "status": "registered",
+        "registrationDigest": "EDNF4NeYnHsfKR4L1ZS51PamS3e4ic5ssqBvmsjtBJod",
+        "registrationCheckpoint": "339057716",
+        "owner": "0x818d6d7026632f82367a9ca2413a5bb28aeec2a1b8dedca919ef812577b4d0a2",
+        "appCapId": "0x3f238b752107ece1de38fd8143a37aa9971e479169377e091cceeb87bb9feaf8",
+        "appRecordFieldId": "0x82c5d10dd1fe8cbe5712ab5770621904fb2ff4e59db2ca9fcbf67c0cab12c094",
+        "permanentBindingVerifiedOnChain": true
       },
       "sharedObjects": [
         {
@@ -112,7 +117,8 @@
         "superAdminTransferDelayMs": 604800000
       },
       "netGasMist": {
-        "publish": "88321800"
+        "publish": "88321800",
+        "register": "9623878"
       },
       "sourceVerification": {
         "status": "success",
@@ -161,13 +167,18 @@
         "source": {
           "path": "sui/partners",
           "repository": "https://github.com/interest-protocol/blast-v2-contracts",
-          "tag": "a52cf9aa845513ef3c3ce0d691556c46aa2d04d5"
+          "tag": "52effbcee5f12b727484ba0bb14f96aa5e2b4786"
         },
         "sourceVersion": 1,
         "documentationUrl": "https://docs.blast.fun",
         "homepageUrl": "https://blast.fun",
-        "status": "pending-registration",
-        "owner": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600"
+        "status": "registered",
+        "registrationDigest": "4b8TsRXXeXLBLviiQcmc5fTVcc4VdYuFqBFfTjVHwd4E",
+        "registrationCheckpoint": "339057981",
+        "owner": "0x818d6d7026632f82367a9ca2413a5bb28aeec2a1b8dedca919ef812577b4d0a2",
+        "appCapId": "0x2d286f7aadaa2b098fb225122a6f492017657629445bc84d2147ad4172933e99",
+        "appRecordFieldId": "0xd4ac663613b1675cb9360d7fc26607f98a78db3a8fb026409d7efd4c9750d495",
+        "permanentBindingVerifiedOnChain": true
       },
       "sharedObjects": [],
       "immutable": true,
@@ -175,7 +186,8 @@
       "upgradeCapId": "0x8c2fe1e61442bfc67b020929086714db847c96b5dc6ee052d9db6f1ece7b6533",
       "status": "published-immutable",
       "netGasMist": {
-        "publish": "30104800"
+        "publish": "30104800",
+        "register": "9737885"
       },
       "sourceVerification": {
         "status": "success",
@@ -228,13 +240,18 @@
         "source": {
           "path": "sui/launchpad",
           "repository": "https://github.com/interest-protocol/blast-v2-contracts",
-          "tag": "a52cf9aa845513ef3c3ce0d691556c46aa2d04d5"
+          "tag": "52effbcee5f12b727484ba0bb14f96aa5e2b4786"
         },
         "sourceVersion": 1,
         "documentationUrl": "https://docs.blast.fun",
         "homepageUrl": "https://blast.fun",
-        "status": "pending-registration",
-        "owner": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600"
+        "status": "registered",
+        "registrationDigest": "3iC73nF1m38rvt3hUxyZcDJmCSMQFRJJ8cfTDpfmDjti",
+        "registrationCheckpoint": "339058018",
+        "owner": "0x818d6d7026632f82367a9ca2413a5bb28aeec2a1b8dedca919ef812577b4d0a2",
+        "appCapId": "0x2cc6e800dc448d0186781d138a2712160059137d2d8785b52407ac521cf9da7c",
+        "appRecordFieldId": "0x61e0da587c98e73736e22af9b6073a6ac73d9d266c195b7036f5d9ba56305a9b",
+        "permanentBindingVerifiedOnChain": true
       },
       "sharedObjects": [
         {
@@ -338,7 +355,8 @@
       },
       "netGasMist": {
         "publish": "263025200",
-        "seal": "10063984"
+        "seal": "10063984",
+        "register": "9775888"
       },
       "sourceVerification": {
         "status": "success",
@@ -427,13 +445,18 @@
         "source": {
           "path": "sui/migrators",
           "repository": "https://github.com/interest-protocol/blast-v2-contracts",
-          "tag": "a52cf9aa845513ef3c3ce0d691556c46aa2d04d5"
+          "tag": "52effbcee5f12b727484ba0bb14f96aa5e2b4786"
         },
         "sourceVersion": 1,
         "documentationUrl": "https://docs.blast.fun",
         "homepageUrl": "https://blast.fun",
-        "status": "pending-registration",
-        "owner": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600"
+        "status": "registered",
+        "registrationDigest": "6gvnUjfdFeSMV2Dq58Zv9BBFakawTtxkjXHJG6eAnkbJ",
+        "registrationCheckpoint": "339058051",
+        "owner": "0x818d6d7026632f82367a9ca2413a5bb28aeec2a1b8dedca919ef812577b4d0a2",
+        "appCapId": "0xda42a7d58bafe72713aca8b36d93f47821fc9987e92302e242c3f43ec58d46eb",
+        "appRecordFieldId": "0x4978e708ffa4e8fd4014a9eb23e97efaba6407a88c554042ca3496505c1d6607",
+        "permanentBindingVerifiedOnChain": true
       },
       "sharedObjects": [
         {
@@ -539,7 +562,8 @@
       },
       "netGasMist": {
         "publish": "255039600",
-        "seal": "8954359"
+        "seal": "8954359",
+        "register": "9775888"
       },
       "sourceVerification": {
         "status": "success",
@@ -660,13 +684,18 @@
         "source": {
           "path": "sui/presale",
           "repository": "https://github.com/interest-protocol/blast-v2-contracts",
-          "tag": "a52cf9aa845513ef3c3ce0d691556c46aa2d04d5"
+          "tag": "52effbcee5f12b727484ba0bb14f96aa5e2b4786"
         },
         "sourceVersion": 1,
         "documentationUrl": "https://docs.blast.fun",
         "homepageUrl": "https://blast.fun",
-        "status": "pending-registration",
-        "owner": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600"
+        "status": "registered",
+        "registrationDigest": "8TcQkwTK6zFBupjkHG5ztManNr1NPoXi1jW5Cwxc7ydg",
+        "registrationCheckpoint": "339058081",
+        "owner": "0x818d6d7026632f82367a9ca2413a5bb28aeec2a1b8dedca919ef812577b4d0a2",
+        "appCapId": "0x691694770d6fd0cbfc2824e4eef70b8f0d4e2e9a98c9d8f6238f70fbd1912cf4",
+        "appRecordFieldId": "0x9be5edbe867c88db263f2475b6fd2d41a70c889600191c9133cc8c0a9363dbe1",
+        "permanentBindingVerifiedOnChain": true
       },
       "sharedObjects": [
         {
@@ -777,7 +806,8 @@
       },
       "netGasMist": {
         "publish": "468860400",
-        "seal": "10003202"
+        "seal": "10003202",
+        "register": "9699883"
       },
       "sourceVerification": {
         "status": "success",
@@ -814,10 +844,97 @@
     "registryObject": "0x0e5d473a055b6b7d014af557a13ad9075157fdc19b6d51562a18511afd397727",
     "suinsName": "blastpackages.sui",
     "suinsRegistrationId": "0xa2d018da6cb801f4d87506143c3cdd0b0c9844d2760425a91f1346fcad5c9c49",
-    "suinsOwner": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
-    "metadataAndAppCapOwner": "pending-handoff",
-    "sourceCommit": "a52cf9aa845513ef3c3ce0d691556c46aa2d04d5",
-    "mainnetBindingsArePermanent": true
+    "suinsOwner": "0x818d6d7026632f82367a9ca2413a5bb28aeec2a1b8dedca919ef812577b4d0a2",
+    "metadataAndAppCapOwner": "0x818d6d7026632f82367a9ca2413a5bb28aeec2a1b8dedca919ef812577b4d0a2",
+    "sourceCommit": "52effbcee5f12b727484ba0bb14f96aa5e2b4786",
+    "mainnetBindingsArePermanent": true,
+    "suinsHandoffDigest": "5HbKULwHw6aJQHMnkPeKCVwFwqsoxzAYGjzdH6zUBc5H",
+    "sourceMetadataUpdateDigest": "HMmTw4iHY9CodnbJKUmg43Gj5wqPnLRchVMUGAegW2rq",
+    "resolutionVerification": {
+      "status": "success",
+      "verifiedAtUtc": "2026-10-28T12:52:15.576724+00:00",
+      "forwardAndVersion1": {
+        "@blastpackages/admin": {
+          "url": "https://mainnet.mvr.mystenlabs.com/v1/resolution/@blastpackages/admin",
+          "response": {
+            "package_id": "0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac"
+          }
+        },
+        "@blastpackages/admin/1": {
+          "url": "https://mainnet.mvr.mystenlabs.com/v1/resolution/@blastpackages/admin/1",
+          "response": {
+            "package_id": "0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac"
+          }
+        },
+        "@blastpackages/partners": {
+          "url": "https://mainnet.mvr.mystenlabs.com/v1/resolution/@blastpackages/partners",
+          "response": {
+            "package_id": "0x163a96aa9b88afe77e51febc195a9e0fa8534a6122bc09c6bd46d176c91a99f9"
+          }
+        },
+        "@blastpackages/partners/1": {
+          "url": "https://mainnet.mvr.mystenlabs.com/v1/resolution/@blastpackages/partners/1",
+          "response": {
+            "package_id": "0x163a96aa9b88afe77e51febc195a9e0fa8534a6122bc09c6bd46d176c91a99f9"
+          }
+        },
+        "@blastpackages/launchpad": {
+          "url": "https://mainnet.mvr.mystenlabs.com/v1/resolution/@blastpackages/launchpad",
+          "response": {
+            "package_id": "0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573"
+          }
+        },
+        "@blastpackages/launchpad/1": {
+          "url": "https://mainnet.mvr.mystenlabs.com/v1/resolution/@blastpackages/launchpad/1",
+          "response": {
+            "package_id": "0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573"
+          }
+        },
+        "@blastpackages/migrators": {
+          "url": "https://mainnet.mvr.mystenlabs.com/v1/resolution/@blastpackages/migrators",
+          "response": {
+            "package_id": "0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53"
+          }
+        },
+        "@blastpackages/migrators/1": {
+          "url": "https://mainnet.mvr.mystenlabs.com/v1/resolution/@blastpackages/migrators/1",
+          "response": {
+            "package_id": "0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53"
+          }
+        },
+        "@blastpackages/presale": {
+          "url": "https://mainnet.mvr.mystenlabs.com/v1/resolution/@blastpackages/presale",
+          "response": {
+            "package_id": "0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b"
+          }
+        },
+        "@blastpackages/presale/1": {
+          "url": "https://mainnet.mvr.mystenlabs.com/v1/resolution/@blastpackages/presale/1",
+          "response": {
+            "package_id": "0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b"
+          }
+        }
+      },
+      "reverse": {
+        "resolution": {
+          "0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac": {
+            "name": "@blastpackages/admin"
+          },
+          "0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53": {
+            "name": "@blastpackages/migrators"
+          },
+          "0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b": {
+            "name": "@blastpackages/presale"
+          },
+          "0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573": {
+            "name": "@blastpackages/launchpad"
+          },
+          "0x163a96aa9b88afe77e51febc195a9e0fa8534a6122bc09c6bd46d176c91a99f9": {
+            "name": "@blastpackages/partners"
+          }
+        }
+      }
+    }
   },
   "configuration": {
     "launchFeeTreasury": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
@@ -936,16 +1053,6 @@
       "check": "fresh-package source verification",
       "environment": "live mainnet",
       "result": "pass; all five packages match pinned CLI rebuild bytecode and linkage"
-    },
-    {
-      "check": "fresh-package source verification",
-      "environment": "live mainnet",
-      "result": "pass; all five packages match pinned CLI rebuild bytecode and linkage"
-    },
-    {
-      "check": "fresh-package source verification",
-      "environment": "live mainnet",
-      "result": "pass; all five packages match pinned CLI rebuild bytecode and linkage"
     }
   ],
   "moveTestsPassed": 902,
@@ -958,5 +1065,5 @@
       122788714268
     ]
   },
-  "totalNetGasMist": "1134373345"
+  "totalNetGasMist": "1183191769"
 }
