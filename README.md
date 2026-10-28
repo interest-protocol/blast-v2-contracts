@@ -12,6 +12,7 @@ Load deeper documentation only when the task requires it:
 - [architecture decisions](docs/decisions/README.md)
 - [release verification](docs/testing.md)
 - [deployment records](deployments/README.md)
+- [security audits](audits/README.md), including Asymptotic's October 2026 launchpad report
 - [Sui packages](sui/README.md)
 
 Package source, tests, manifests, and lockfiles are authoritative for current

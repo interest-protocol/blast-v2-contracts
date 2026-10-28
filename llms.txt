@@ -25,6 +25,7 @@ Rules that hold on every branch:
 - Indexing events: read the emitting package's source. A package that defines `blast_events::Event<T>` wraps every payload in that envelope; the others emit payload structs directly, so check before writing a filter. Native checkpoint, transaction, and event order sequences everything; singleton events follow [ADR 0030](docs/decisions/0030-singleton-event-identity.md).
 - [Vectors](docs/vectors/README.md): checking arithmetic, rounding, or SDK parity. Chain-neutral numerical vectors and the rules for regenerating them; rates use the validated basis-points unit of [ADR 0044](docs/decisions/0044-validated-basis-points-unit.md).
 - [Release verification](docs/testing.md): proving a change is releasable. Package gates, vector rules, the external venue gate, and what counts as evidence.
+- [Security audits](audits/README.md): Asymptotic's October 2026 launchpad report, reviewed commits, scope exclusions, and remediation status. Audit coverage belongs to the revisions named in the report.
 - [Deployment records](deployments/README.md): publishing or upgrading. Record format and post-publish steps; then the package's own `DEPLOYING.md` or `UPGRADING.md`.
 - [Venue dependencies](sui/migrators/DEPENDENCIES.md): Cetus or Bluefin package IDs, pinned ABIs, and the mainnet dev-inspect matrix. A vendor package's README names its own venue objects.
 - [Protocol scope](docs/protocol-scope.md): whether a mode, role, or recovery path is deliberately absent, and what admitting a new one requires.
