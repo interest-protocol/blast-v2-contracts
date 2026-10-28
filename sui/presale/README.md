@@ -104,10 +104,14 @@ distinct allocations in that same transaction. Claims open only after success.
 
 Permissionless fee collection pays Blast its share of each asset at the vault's
 current rates, or holds it for a partnered sale's partner payout, then applies the immutable creation-time split to the rest: every fee recipient
-is paid in the same transaction, and the holder-reward share stays
-in the vault. Blast's `RewardsAdmin` publishes Merkle
-rounds funded from that share, each with a claim deadline after which anyone can
-return its unclaimed rewards to the vault. The `PresaleCap` claims migration residuals and
+is paid in the same transaction. Holder Meme goes directly to the governed treasury;
+holder Quote stays in the vault. This treasury Meme allocation is additional to the
+explicit protocol LP cut; ignoring rounding, its gross share is
+`protocol + (1 - protocol) * holder`. Blast's `RewardsAdmin` publishes Merkle
+rounds funded from holder Quote, optionally reserving a separate capped Quote
+budget for treasury gas reimbursement. Claims pay their full committed amounts;
+unused reserve returns to the vault. Each round has a claim deadline after which
+anyone can return unclaimed rewards and unsettled reserve to the vault. The `PresaleCap` claims migration residuals and
 can be destroyed after cancellation. Anyone may relay participant or reward claims, but payment
 always goes to the committed beneficiary. Eligibility and rewards share the
 package's generic positional Blake2b-256 Merkle verifier. Neither adapter
@@ -145,3 +149,7 @@ Presale activation and operational versioning follow launchpad: publication tran
 shares `PackageVersion`. Every state-changing call requires that version. See
 [ADR 0117](../../docs/decisions/0117-presale-versioning-and-activation.md). This
 source requires fresh publication; existing dependency-only releases stay unchanged.
+
+For the complete fee bases, rounding, policy snapshots, external venue costs,
+and the dated live-policy audit, see the [presale integrator guide](../../docs/llms/presale.md#economics)
+and [28 October 2026 fee audit](../../docs/research/2026-10-28-fee-audit.md).

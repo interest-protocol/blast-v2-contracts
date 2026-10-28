@@ -421,6 +421,32 @@ generation.
 
 All amounts are atomic units. BPS are out of 10,000.
 
+#### Separate venue charges from Blast's share
+
+A pool's swap fee is set by its venue tier. Blast then takes a percentage of the LP fees the
+vault actually collects, independently for Meme and Quote. A 1,500 BPS Blast LP share means 15%
+of collected LP fees; it does not mean traders pay a further 15% of swap notional. The venue can
+also retain its own protocol share before LP fees reach the vault. Do not infer gross swap cost
+from the vault's protocol rate alone.
+
+Cetus derives the selected fee rate from its registered tick spacing; Bluefin accepts a fee rate
+from 1 to 20,000 in Bluefin's own units and tick spacing from 1 to 400. Preserve those venue units
+when reading the stored tier; they are not the BPS unit of `lp_fee_policy::LpFeePolicy`.
+Migration to Bluefin separately requires the exact SUI creation-fee coin its live configuration
+requires. The Cetus adapter accepts no separate creation-fee coin. Sui gas and coin-package
+publication are additional network costs.
+
+Blast's launchpad migration allocation is already removed before the adapter receives the LP
+assets. Seeding adds no further configured Blast percentage. Venue seed leftovers become
+protocol-owned residuals, independently of the migration allocation and LP fees; their amount
+depends on venue rounding and liquidity math, not a fixed rate.
+
+The creator's postprotocol split can route up to the entire remainder to creator fees, named
+recipients, rewards, burn, or auto-LP. These divide collected fees rather than charging another
+swap tax. Creator claims, partner payouts, and reward claims add no Blast claim fee. Auto-LP
+adds liquidity without a balancing swap; a buyback is an ordinary venue swap and bears its venue
+fee and price impact.
+
 #### Blast's LP-fee share
 
 For each collection, with the Meme's own pair if `FeeAdmin` set one, otherwise the defaults:
@@ -429,8 +455,11 @@ For each collection, with the Meme's own pair if `FeeAdmin` set one, otherwise t
 - `protocol_quote = ceil(gross_quote × quote_bps / 10,000)`
 
 Blast's share rounds up, so it takes the rounding dust of its own part. The pair and the destination
-are read live at each collection. This share is separate from Blast's one-time migration allocation,
-which the launchpad takes from the supply and the final reserve at migration.
+are read live at each collection. Both rates may be 0..=10,000 BPS, and Blast can change them
+without delay. A change affects the next collection's whole gross amount, including fees that
+accrued at the venue before the change. It does not resplit fees already collected. This share is
+separate from Blast's one-time migration allocation, which the launchpad takes from the supply
+and the final reserve at migration.
 
 #### Partner cut
 

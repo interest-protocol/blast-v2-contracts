@@ -32,3 +32,8 @@ Move source and tests are authoritative for the current ABI, storage, events,
 errors, and behavior; `sources/lib/errors.move` is the sole error registry.
 `Move.toml` and `Move.lock` are authoritative for the
 toolchain environments and dependency graph.
+
+For complete fee bases, rounding, and live-versus-snapshotted policy, see the
+[launchpad integrator guide](../../docs/llms/launchpad.md#economics). The
+[28 October 2026 fee audit](../../docs/research/2026-10-28-fee-audit.md) records
+dated deployed rates; publication defaults do not establish current pricing.

@@ -655,7 +655,36 @@ Integrators cannot call these; they explain state changes. Each takes the
 
 ### Economics
 
-All amounts are atomic units. All rates are BPS out of 10,000. `floor` rounds down.
+All amounts are atomic units. Blast policy rates are BPS out of 10,000. `floor` rounds down.
+Venue pool tiers use their venue's own units; Aftermath's DAO tier specifically uses BPS.
+
+#### Fee inventory and which settings apply
+
+| Charge or allocation | Base | When fixed or read | Publication default / contract bound |
+| --- | --- | --- | --- |
+| Blast raise fee | Accepted `raise_target`, not all commitments | Sale snapshot; admin may change before start | 0 / 0..=9,999 BPS |
+| Blast token fee | Entire minted `token_supply` | Sale snapshot; admin may change before start | 0 / 0..=9,998 BPS |
+| Blast Meme LP share | Gross Meme fees collected from the venue | Sale snapshot copied to vault; admin may change vault rate | 0 / 0..=10,000 BPS |
+| Blast Quote LP share | Gross Quote fees collected from the venue | Sale snapshot copied to vault; admin may change vault rate | 0 / 0..=10,000 BPS |
+| Holder Meme routing | Holder share of Meme LP fees remaining after Blast's explicit LP share | Creator's immutable LP split; live treasury destination | Creator selects holder share as part of a 10,000-BPS split |
+| Optional holder-round gas reimbursement | Separately reserved holder Quote rewards | Reserve set at round publication; one capped admin settlement | No fixed percentage; at most the funded reserve |
+
+Publication defaults are initial source values, not a claim that deployed sales are free. For a
+new sale read the current `FeePolicy`; for an existing sale read its `protocol_fees`, then the
+vault's rates after migration. Updating the global policy changes future sales only. Updating a
+vault's LP rates affects its next collection's entire gross fees, including fees already accrued
+at the venue, but does not resplit fees previously collected.
+
+Raise and token fees are paid only upon successful migration. They have different denominators
+and assets: a token-supply percentage is not another percentage of accepted cash. Initial amounts
+use largest-remainder apportionment, so the token/raise fee is not always rounded up. The LP
+protocol cuts are rounded up per asset at each collection.
+
+The core presale charges no Blast SUI creation fee, commitment fee, settlement fee, cancellation
+fee, refund fee, token claim fee, vesting fee, or residual-claim fee. Cancelled sales return all
+committed Quote, and successful sales return overflow without a deduction. There is no bridge fee
+mechanism in these contracts. Sui gas, coin/LP-package publication, Bluefin's separate live SUI
+pool-creation fee, and venue trading charges remain external expenses.
 
 #### Largest-remainder apportionment
 
@@ -700,9 +729,11 @@ and the earlier overflow fills pro rata as usual.
 
 #### Blast's fees
 
-Blast takes three fees, all from the sale's snapshot (`Presale.protocol_fees`), copied from
-`FeePolicy` at creation. Later `fee_policy::set_fees` calls never touch existing sales. Nothing is
-charged at creation, on commitment, on refund, or when a sale does not migrate.
+Blast's raise, token, and explicit LP fees begin with the sale's snapshot
+(`Presale.protocol_fees`), copied from `FeePolicy` at creation. Later `fee_policy::set_fees` calls
+never touch existing sales. Nothing is charged at creation, on commitment, on refund, or when a
+sale does not migrate. Holder Meme routing and optional holder-round gas reimbursement below
+also direct value to treasury and must be disclosed alongside the explicit fee rates.
 
 - Raise fee: Blast's Quote, apportioned with the raise at creation, paid at migration. Overflow
   refunds are never charged.
@@ -739,6 +770,35 @@ earlier recipients over later ones. Recipients are paid as coins in the same tra
 amount sends nothing); holder Quote stays in the vault for rounds and holder Meme
 is paid to the governed fee-policy destination. The split never changes
 after creation.
+
+Consequently, treasury receives the explicit Meme LP cut **plus** the holder Meme share of the
+remainder. Ignoring atomic rounding, if the explicit Meme rate is `p` and the holder rate is `h`
+as fractions, the treasury allocation is `p + (1 - p) * h` of gross Meme LP fees before any partner
+cut on the explicit portion. For example, hypothetical rates of 25% protocol and 50% holders route
+62.5% of Meme LP fees to treasury, while only the holder Quote portion funds rounds. A 0% explicit
+Meme rate does not eliminate treasury Meme receipts when the holder share is positive. The holder
+Meme portion pays treasury directly, including on a partnered vault; the partner cut applies only
+to the explicit protocol portion.
+
+A holder round may reserve additional Quote from the holder budget for gas. `RewardsAdmin` can
+settle that reserve once, paying at most its funded amount to the treasury captured at publication.
+Claims pay their committed leaf amounts intact. Unused reserve returns to the vault on settlement;
+closing at the deadline returns unclaimed rewards and any unsettled reserve. This reimbursement
+reduces the Quote available for holder allocations; it is not a per-claim fee.
+
+#### Venue trading charges
+
+Cetus and Bluefin charge their selected pool swap tier. Blast's LP percentages apply to the fees
+collected by the vault, after any venue protocol accounting, not to swap principal. Bluefin also
+requires a separately funded live SUI pool-creation fee at migration. The Cetus adapter takes no
+separate creation-fee coin.
+
+Aftermath's creator-selected DAO fee is 1..=10,000 BPS on every swap, deposit, and withdrawal
+through its DAO-fee pool. Those collected DAO-fee coins enter the same Blast LP split. The base
+pool also charges a fixed 0.01% swap-in fee that compounds inside locked liquidity; Blast's vault
+does not collect that base fee as a separate coin. The two charges have distinct accounting and
+must both appear in a trader's quote. The adapter configures zero base swap-out, deposit, and
+withdrawal fees. Venue-wide protocol settings and network gas are separate from Blast policy.
 
 #### Seed price bound
 
