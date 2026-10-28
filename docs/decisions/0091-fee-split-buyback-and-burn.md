@@ -3,6 +3,8 @@
 - Status: accepted; amended by [0100](0100-single-cetus-route-with-checked-retype.md)
   (Cetus has one buyback route for both coin orders)
 - Date: 2026-09-24
+- Amended in place: 2026-10-27 — each buyback spends an administrator-chosen
+  `quote_in` of the burn Quote instead of all of it
 - Amends: [0089](0089-migrators-own-post-migration-and-start-launches.md)
 
 ## Context
@@ -29,14 +31,20 @@ vault's `burn_quote` balance. Collections therefore take the Meme `Currency`.
 `FeesCollected` records `burn_meme` and `burn_quote`.
 
 **Buyback.** `blast_fun_domain` adds the public buyback-admin role, bit 4. Each
-venue has one buyback entry per coin order: it takes the vault's whole burn
-Quote under a witness carrying that role, swaps it for Meme in the vault's own
-pool up to the widest sqrt-price limit both venues accept, and burns the Meme
-bought, which must reach the administrator's `min_meme_out`. Quote the pool does
-not take waits for the next buyback. `BuybackBurned` records the Quote spent,
+venue has one buyback entry per coin order: under a witness carrying that role
+it takes exactly `quote_in` of the vault's burn Quote, which must be positive and
+at most the burn Quote held, swaps it for Meme in the vault's own pool up to the
+widest sqrt-price limit both venues accept, and burns the Meme bought, which
+must reach the administrator's `min_meme_out`. Quote the pool does not take, and
+burn Quote the administrator left, waits for the next buyback. `BuybackBurned` records the Quote spent,
 the Meme burned, and the Quote still waiting. Cetus swaps through
 `flash_swap`/`repay_flash_swap`, repaying exactly the receipt; Bluefin through
 `swap`. Both join the pinned venue ABI.
+
+Since 2026-10-27 the administrator chooses `quote_in`, so the buyback keeper can
+spend the burn Quote in pieces of varying size, each kept under a cap relative
+to the pool's liquidity, instead of moving the price with the whole balance at
+once.
 
 ## Consequences
 

@@ -1533,6 +1533,7 @@ impl World {
         launch: &Launch,
         m: &Migration,
         pool: ObjectID,
+        quote_in: u64,
         min_meme_out: u64,
     ) -> Result<ProgrammableTransaction> {
         let mut b = ProgrammableTransactionBuilder::new();
@@ -1543,6 +1544,7 @@ impl World {
         let config = if self.case.is_cetus() { "cetus_global_config" } else { "bluefin_global_config" };
         let config = self.shared(&mut b, self.venue(config), false)?;
         let pool = self.shared(&mut b, pool, true)?;
+        let quote_in = b.pure(quote_in)?;
         let min_meme_out = b.pure(min_meme_out)?;
         let clock = self.clock(&mut b)?;
         call(
@@ -1551,7 +1553,7 @@ impl World {
             self.case.module(),
             "buyback_and_burn",
             self.route_types(launch),
-            vec![vault, migrators_version, signed_in, currency, config, pool, min_meme_out, clock],
+            vec![vault, migrators_version, signed_in, currency, config, pool, quote_in, min_meme_out, clock],
         );
 
         Ok(b.finish())
@@ -1565,10 +1567,10 @@ impl World {
         ensure!(before.burn_quote > 0, "burn Quote accrued");
         let owners = [self.h.sender, SuiAddress::ZERO];
         let refused = Expected::Abort { package: self.migrators, module: "vault", code: BUYBACK_BELOW_MINIMUM };
-        let pt = self.buyback_pt(launch, m, m.pool, u64::MAX)?;
+        let pt = self.buyback_pt(launch, m, m.pool, before.burn_quote, u64::MAX)?;
         self.h.assert_rolled_back(pt, refused, &[m.vault, m.pool, launch.currency, self.admin_cap], &owners)?;
 
-        let pt = self.buyback_pt(launch, m, m.pool, 1)?;
+        let pt = self.buyback_pt(launch, m, m.pool, before.burn_quote, 1)?;
         let outcome = self.h.execute(pt)?;
         outcome.assert_success();
         let burned: Vec<BuybackBurned> = self.events(&outcome, "BuybackBurned");
@@ -1681,7 +1683,7 @@ impl World {
         let watched = [m.vault, other, launch.currency];
         self.h.assert_rolled_back(pt, expected, &watched, &[self.h.sender, LP_PROTOCOL.into()])?;
         let expected = Expected::Abort { package: self.migrators, module, code };
-        let pt = self.buyback_pt(launch, m, other, 1)?;
+        let pt = self.buyback_pt(launch, m, other, 1, 1)?;
         let watched = [m.vault, other, launch.currency, self.admin_cap];
         self.h.assert_rolled_back(pt, expected, &watched, &[self.h.sender, SuiAddress::ZERO])?;
         self.report(format!(

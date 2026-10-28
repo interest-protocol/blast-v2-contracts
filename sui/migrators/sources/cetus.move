@@ -203,10 +203,11 @@ public fun settle_and_update_fee_split<Meme, Quote, CoinA, CoinB>(
     self.update_fee_split(proposed);
 }
 
-/// Swaps the vault's burn Quote for Meme in its pool and burns it, under a buyback admin. Aborts
-/// unless the swap returns at least `min_meme_out`; the admin sets it from an off-chain price,
-/// since anyone can move the pool's price within a transaction. `CoinA` and `CoinB` are the pool's
-/// coin order.
+/// Swaps `quote_in` of the vault's burn Quote for Meme in its pool and burns it, under a buyback
+/// admin. Aborts unless `quote_in` is positive and at most the burn Quote held, and unless the swap
+/// returns at least `min_meme_out`; the admin sets it from an off-chain price, since anyone can move
+/// the pool's price within a transaction. Quote the pool does not take stays for the next buyback.
+/// `CoinA` and `CoinB` are the pool's coin order.
 public fun buyback_and_burn<Meme, Quote, CoinA, CoinB>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
@@ -214,6 +215,7 @@ public fun buyback_and_burn<Meme, Quote, CoinA, CoinB>(
     currency: &mut Currency<Meme>,
     cetus_config: &GlobalConfig,
     pool: &mut Pool<CoinA, CoinB>,
+    quote_in: u64,
     min_meme_out: u64,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -222,8 +224,7 @@ public fun buyback_and_burn<Meme, Quote, CoinA, CoinB>(
     let meme_is_a = is_meme_coin_a<Meme, Quote, CoinA, CoinB>();
     assert!(self.pool_id() == object::id(pool), EPositionPoolMismatch);
 
-    let quote = self.take_buyback_quote(admin_witness);
-    let quote_in = quote.value();
+    let quote = self.take_buyback_quote(admin_witness, quote_in);
     let (meme, quote) = pool.swap_quote_for_meme(cetus_config, quote, meme_is_a, clock, ctx);
 
     self.burn_buyback(currency, meme, quote, quote_in, min_meme_out, ctx);

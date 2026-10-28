@@ -993,7 +993,7 @@ fun a_zero_burn_share_sends_nothing_to_the_zero_address_under_a_fixed_supply() {
 // Buyback
 
 #[test]
-fun a_buyback_takes_every_burn_quote_then_burns_the_meme_and_keeps_the_unspent_quote() {
+fun a_buyback_takes_only_the_requested_burn_quote_then_burns_the_meme_and_keeps_the_unspent_quote() {
     let mut f = start_burnable(mixed_split());
     let mut vault = f.new_vault(0, 0);
     f.split(&mut vault, 0, 50);
@@ -1002,22 +1002,22 @@ fun a_buyback_takes_every_burn_quote_then_burns_the_meme_and_keeps_the_unspent_q
 
     f.scenario.next_tx(ADMIN);
     let admin = buyback_admin();
-    let mut quote = vault.take_buyback_quote(&admin);
-    assert_eq!(quote.value(), 8);
-    assert_eq!(vault.burn_quote_for_testing(), 0);
-    // The swap spends 6 of the 8 Quote for exactly the 21 Meme minimum.
-    destroy(quote.split(6));
+    let mut quote = vault.take_buyback_quote(&admin, 7);
+    assert_eq!(quote.value(), 7);
+    assert_eq!(vault.burn_quote_for_testing(), 1);
+    // The swap spends 5 of the 7 Quote for exactly the 21 Meme minimum.
+    destroy(quote.split(5));
     vault.burn_buyback(
         &mut f.currency,
         balance::create_for_testing(21),
         quote,
-        8,
+        7,
         21,
         f.scenario.ctx(),
     );
 
     assert_eq!(f.total_supply(), supply - 21);
-    assert_eq!(vault.burn_quote_for_testing(), 2);
+    assert_eq!(vault.burn_quote_for_testing(), 3);
     let events = event::events_by_type<blast_events::BuybackBurned>();
     assert_eq!(events.length(), 1);
     assert_eq!(
@@ -1025,13 +1025,77 @@ fun a_buyback_takes_every_burn_quote_then_burns_the_meme_and_keeps_the_unspent_q
         bcs::to_bytes(
             &ExpectedBuybackBurned {
                 vault_id: object::id(&vault),
-                quote_spent: 6,
+                quote_spent: 5,
                 meme_burned: 21,
-                quote_pending: 2,
+                quote_pending: 3,
             },
         ),
     );
     f.assert_received(@0x0, 0, 0);
+
+    destroy(vault);
+    f.end();
+}
+
+#[test]
+fun successive_partial_buybacks_spend_the_burn_quote_in_pieces() {
+    let mut f = start_burnable(mixed_split());
+    let mut vault = f.new_vault(0, 0);
+    f.split(&mut vault, 0, 50);
+    f.split(&mut vault, 0, 30);
+    let supply = f.total_supply();
+
+    f.scenario.next_tx(ADMIN);
+    let admin = buyback_admin();
+    let quote = vault.take_buyback_quote(&admin, 3);
+    vault.burn_buyback(
+        &mut f.currency,
+        balance::create_for_testing(9),
+        balance::zero(),
+        quote.value(),
+        9,
+        f.scenario.ctx(),
+    );
+    destroy(quote);
+    assert_eq!(vault.burn_quote_for_testing(), 5);
+
+    let quote = vault.take_buyback_quote(&admin, 5);
+    vault.burn_buyback(
+        &mut f.currency,
+        balance::create_for_testing(14),
+        balance::zero(),
+        quote.value(),
+        14,
+        f.scenario.ctx(),
+    );
+    destroy(quote);
+
+    assert_eq!(f.total_supply(), supply - 23);
+    assert_eq!(vault.burn_quote_for_testing(), 0);
+    let events = event::events_by_type<blast_events::BuybackBurned>();
+    assert_eq!(events.length(), 2);
+    assert_eq!(
+        bcs::to_bytes(&events[0]),
+        bcs::to_bytes(
+            &ExpectedBuybackBurned {
+                vault_id: object::id(&vault),
+                quote_spent: 3,
+                meme_burned: 9,
+                quote_pending: 5,
+            },
+        ),
+    );
+    assert_eq!(
+        bcs::to_bytes(&events[1]),
+        bcs::to_bytes(
+            &ExpectedBuybackBurned {
+                vault_id: object::id(&vault),
+                quote_spent: 5,
+                meme_burned: 14,
+                quote_pending: 0,
+            },
+        ),
+    );
 
     destroy(vault);
     f.end();
@@ -1046,7 +1110,7 @@ fun a_buyback_under_a_fixed_supply_sends_the_meme_to_the_zero_address() {
 
     f.scenario.next_tx(ADMIN);
     let admin = buyback_admin();
-    let quote = vault.take_buyback_quote(&admin);
+    let quote = vault.take_buyback_quote(&admin, 5);
     vault.burn_buyback(
         &mut f.currency,
         balance::create_for_testing(13),
@@ -1085,7 +1149,7 @@ fun a_buyback_returning_less_than_the_minimum_meme_is_rejected() {
     let mut vault = f.new_vault(0, 0);
     f.split(&mut vault, 0, 50);
     let admin = buyback_admin();
-    let quote = vault.take_buyback_quote(&admin);
+    let quote = vault.take_buyback_quote(&admin, 5);
 
     vault.burn_buyback(
         &mut f.currency,
@@ -1100,15 +1164,60 @@ fun a_buyback_returning_less_than_the_minimum_meme_is_rejected() {
     f.end();
 }
 
-#[test]
-#[expected_failure(abort_code = vault::ENoBuybackQuote, location = blast_fun_migrators::vault)]
+#[
+    test,
+    expected_failure(
+        abort_code = vault::EBuybackQuoteOutOfRange,
+        location = blast_fun_migrators::vault,
+    ),
+]
+fun a_buyback_of_zero_quote_is_rejected() {
+    let mut f = start(mixed_split());
+    let mut vault = f.new_vault(0, 0);
+    f.split(&mut vault, 0, 50);
+    let admin = buyback_admin();
+
+    let quote = vault.take_buyback_quote(&admin, 0);
+
+    destroy(quote);
+    destroy(vault);
+    f.end();
+}
+
+#[
+    test,
+    expected_failure(
+        abort_code = vault::EBuybackQuoteOutOfRange,
+        location = blast_fun_migrators::vault,
+    ),
+]
+fun a_buyback_of_more_than_the_burn_quote_held_is_rejected() {
+    let mut f = start(mixed_split());
+    let mut vault = f.new_vault(0, 0);
+    f.split(&mut vault, 0, 50);
+    let admin = buyback_admin();
+
+    let quote = vault.take_buyback_quote(&admin, 6);
+
+    destroy(quote);
+    destroy(vault);
+    f.end();
+}
+
+#[
+    test,
+    expected_failure(
+        abort_code = vault::EBuybackQuoteOutOfRange,
+        location = blast_fun_migrators::vault,
+    ),
+]
 fun a_buyback_with_no_burn_quote_waiting_is_rejected() {
     let mut f = start(mixed_split());
     let mut vault = f.new_vault(0, 0);
     f.split(&mut vault, 50, 0);
     let admin = buyback_admin();
 
-    let quote = vault.take_buyback_quote(&admin);
+    let quote = vault.take_buyback_quote(&admin, 1);
 
     destroy(quote);
     destroy(vault);

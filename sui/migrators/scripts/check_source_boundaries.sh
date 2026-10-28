@@ -181,12 +181,12 @@ blast_fun_migrators:package:fun assert_current(self: &PackageVersion)
 blast_fun_migrators:package:fun assert_next(self: &PackageVersion)
 blast_holder_rewards:public:fun claim<Meme, Quote>( self: &mut Round<Meme, Quote>, migrators_version: &MigratorsVersion, index: u64, beneficiary: address, meme_amount: u64, quote_amount: u64, proof: vector<vector<u8>>, ctx: &mut TxContext, )
 blast_holder_rewards:public:fun publish_round<Meme, Quote>( vault: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, _: &AdminWitness<RewardsAdmin>, number: u64, start_checkpoint: u64, end_checkpoint: u64, root: vector<u8>, manifest_digest: vector<u8>, leaf_count: u64, meme_amount: u64, quote_amount: u64, ctx: &mut TxContext, )
-bluefin:public:fun buyback_and_burn<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>, bluefin_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, min_meme_out: u64, clock: &Clock, ctx: &mut TxContext, )
+bluefin:public:fun buyback_and_burn<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>, bluefin_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, quote_in: u64, min_meme_out: u64, clock: &Clock, ctx: &mut TxContext, )
 bluefin:public:fun collect_fees<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, currency: &mut Currency<Meme>, bluefin_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, clock: &Clock, ctx: &mut TxContext, )
 bluefin:public:fun migrate<Meme, Quote>( launch: &mut Launch<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, currency: &mut Currency<Meme>, quote_currency: &Currency<Quote>, bluefin_config: &mut GlobalConfig, creation_fee: Coin<SUI>, clock: &Clock, ctx: &mut TxContext, )
 bluefin:public:fun new<Meme, Quote>( ticket: LaunchTicket<Meme>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, config: &LaunchConfig, tick_spacing: u32, fee_rate: u64, ): LaunchInitializer<Meme, Quote>
 bluefin:public:fun settle_and_update_fee_split<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, launch: &Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, currency: &mut Currency<Meme>, bluefin_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, proposed: FeeSplit, clock: &Clock, ctx: &mut TxContext, )
-cetus:public:fun buyback_and_burn<Meme, Quote, CoinA, CoinB>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, pool: &mut Pool<CoinA, CoinB>, min_meme_out: u64, clock: &Clock, ctx: &mut TxContext, )
+cetus:public:fun buyback_and_burn<Meme, Quote, CoinA, CoinB>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, pool: &mut Pool<CoinA, CoinB>, quote_in: u64, min_meme_out: u64, clock: &Clock, ctx: &mut TxContext, )
 cetus:public:fun collect_fees<Meme, Quote, CoinA, CoinB>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, policy: &LpFeePolicy, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, burn_manager: &BurnManager, pool: &mut Pool<CoinA, CoinB>, clock: &Clock, ctx: &mut TxContext, )
 cetus:public:fun migrate<Meme, Quote, CoinA, CoinB>( launch: &mut Launch<Meme, Quote>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, currency: &mut Currency<Meme>, venue_config: &VenueConfig, cetus_config: &GlobalConfig, pools: &mut Pools, burn_manager: &mut BurnManager, clock: &Clock, ctx: &mut TxContext, )
 cetus:public:fun new<Meme, Quote>( ticket: LaunchTicket<Meme>, migrators_version: &MigratorsVersion, package_version: &PackageVersion, config: &LaunchConfig, venue_config: &mut VenueConfig, cetus_config: &GlobalConfig, pools: &mut Pools, tick_spacing: u32, ctx: &mut TxContext, ): LaunchInitializer<Meme, Quote>
@@ -231,7 +231,7 @@ vault:package:fun position_mut< Meme, Quote, Venue, Position: key + store, >( se
 vault:package:fun rewards_balances<Meme, Quote>(self: &LpVault<Meme, Quote>): (u64, u64)
 vault:package:fun split_fees<Meme, Quote>( self: &mut LpVault<Meme, Quote>, policy: &LpFeePolicy, currency: &mut Currency<Meme>, mut meme: Balance<Meme>, mut quote: Balance<Quote>, ctx: &mut TxContext, )
 vault:package:fun take_auto_lp<Meme, Quote>( self: &mut LpVault<Meme, Quote>, ): (Balance<Meme>, Balance<Quote>)
-vault:package:fun take_buyback_quote<Meme, Quote>( self: &mut LpVault<Meme, Quote>, _: &AdminWitness<BuybackAdmin>, ): Balance<Quote>
+vault:package:fun take_buyback_quote<Meme, Quote>( self: &mut LpVault<Meme, Quote>, _: &AdminWitness<BuybackAdmin>, quote_in: u64, ): Balance<Quote>
 vault:package:fun update_fee_split<Meme, Quote>( self: &mut LpVault<Meme, Quote>, proposed: FeeSplit, )
 vault:public:fun claim_creator_fees<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, launch: &Launch<Meme, Quote>, curve_fee_cap: &CurveFeeCap<Meme>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)
 vault:public:fun claim_protocol_fees<Meme, Quote>( self: &mut LpVault<Meme, Quote>, migrators_version: &MigratorsVersion, _: &AdminWitness<TreasuryAdmin>, ctx: &mut TxContext, ): (Coin<Meme>, Coin<Quote>)
@@ -523,9 +523,10 @@ in_order \
         | LC_ALL=C sort | tr '\n' ' ')" == 'claim_protocol_lp_fees_with_partner pay_or_hold_protocol_lp_fees ' ]] \
     && ! rg -q '\.partner_id\s*=' "$VAULT_SOURCE" || \
     fail "Blast's share must wait only on a partnered vault, and only the permissionless partner claim may pay it: the partner its cut, then the live destination the rest"
-# A buyback takes the whole burn Quote only under the buyback-admin role, and burns only Meme that
-# reaches the admin's minimum; what the pool did not take goes back to wait.
-[[ "$(vault_body take_buyback_quote)" == 'assert!(self.burn_quote.value()>0,ENoBuybackQuote);self.burn_quote.withdraw_all()' ]] \
+# A buyback takes exactly the admin's positive `quote_in`, at most the burn Quote held, only under
+# the buyback-admin role, and burns only Meme that reaches the admin's minimum; what the pool did
+# not take goes back to wait.
+[[ "$(vault_body take_buyback_quote)" == 'assert!(quote_in>0&&quote_in<=self.burn_quote.value(),EBuybackQuoteOutOfRange);self.burn_quote.split(quote_in)' ]] \
     && in_order \
         'letmeme_burned=meme.value();' \
         'assert!(meme_burned>=min_meme_out,EBuybackBelowMinimum);' \
@@ -535,7 +536,7 @@ in_order \
         'blast_events::buyback_burned(' \
         <<<"$(vault_body burn_buyback)" \
     && [[ "$(vault_body burn)" == 'if(currency.is_supply_burn_only())returncurrency.burn_balance(meme);letmeme_amount=meme.value();meme.pay(meme_amount,@0x0,ctx);meme.destroy_zero();' ]] || \
-    fail "buybacks must require the buyback-admin role and a nonzero burn Quote, burn only Meme at or above the minimum, and keep the unspent Quote"
+    fail "buybacks must require the buyback-admin role and a positive quote_in within the burn Quote, burn only Meme at or above the minimum, and keep the unspent Quote"
 [[ "$(vault_body take_auto_lp)" == '(self.auto_lp_meme.withdraw_all(),self.auto_lp_quote.withdraw_all())' ]] \
     && [[ "$(vault_body keep_auto_lp)" == 'self.auto_lp_meme.join(meme);self.auto_lp_quote.join(quote);if(added_meme==0&&added_quote==0)return;blast_events::auto_liquidity_added(self.id.to_inner(),added_meme,added_quote,self.auto_lp_meme.value(),self.auto_lp_quote.value());' ]] || \
     fail "auto-LP must take every waiting unit, keep whatever the venue did not take, and announce only a nonzero addition"
@@ -660,7 +661,7 @@ require_errors "$VAULT_SOURCE" "vault must use sequential codes 0-6 for its resi
 1 EFeeSplitUnchanged Fee split proposal must differ from the current split.
 2 ENoCreatorFees No creator LP fees are available to claim.
 3 EZeroLiquidity Migration position must hold liquidity.
-4 ENoBuybackQuote No burn Quote is waiting to buy Meme back.
+4 EBuybackQuoteOutOfRange Buyback Quote must be positive and at most the burn Quote waiting to buy Meme back.
 5 EBuybackBelowMinimum Buyback must return at least the minimum Meme.
 6 EPartnerMismatch The partner is not the one the vault's launch named at creation.
 EOF
@@ -791,8 +792,9 @@ require_pattern "$BLUEFIN_SOURCE" 'public struct Venue' 'sealed Bluefin venue ma
 # to the core; migration reads that tier from the launch, begins, creates and funds the pool,
 # completes once into a shared vault holding the venue position, then shares the pool; and every fee
 # exit splits the collected position's fees through the vault and adds the auto-LP share back to
-# the same position. The buyback swaps the vault's whole burn Quote for Meme in the vault's own
-# pool and hands the result to the vault, which checks the admin's minimum and burns it.
+# the same position. The buyback swaps the admin's `quote_in` of the vault's burn Quote for Meme in
+# the vault's own pool and hands the result to the vault, which checks the admin's minimum and burns
+# it.
 bluefin_facts="$(move_facts "$BLUEFIN_SOURCE")"
 [[ "$bluefin_facts" != *MALFORMED* ]] || fail "the Move reader rejected bluefin.move"
 bluefin_public="$(awk -F'\t' '$1 == "FN" && $3 == "public" && $6 == 0 { print $2 }' <<<"$bluefin_facts" \
@@ -840,8 +842,8 @@ bluefin_migrate_body="$(bluefin_body migrate)"
     fail "Bluefin collection must split the collected position's fees, then add the auto-LP share back"
 [[ "$(bluefin_body settle_and_update_fee_split)" == 'migrators_version.assert_current();self.assert_fee_split_update(launch,curve_fee_cap,proposed);self.settle_fees(policy,currency,bluefin_config,pool,clock,ctx);self.update_fee_split(proposed);' ]] || \
     fail "Bluefin settled updates must check the cap and proposal before collecting, then split the accrued fees under the current split before committing a new one"
-[[ "$(bluefin_body buyback_and_burn)" == 'migrators_version.assert_current();assert!(self.pool_id()==object::id(pool),EPositionPoolMismatch);letquote=self.take_buyback_quote(admin_witness);letquote_in=quote.value();let(meme,quote)=pool::swap(clock,bluefin_config,pool,balance::zero(),quote,false,true,quote_in,0,constants::max_swap_sqrt_price!());self.burn_buyback(currency,meme,quote,quote_in,min_meme_out,ctx);' ]] || \
-    fail "the Bluefin buyback must check the vault's pool, take the burn Quote under the buyback admin, swap all of it Quote-to-Meme, and let the vault check and burn"
+[[ "$(bluefin_body buyback_and_burn)" == 'migrators_version.assert_current();assert!(self.pool_id()==object::id(pool),EPositionPoolMismatch);letquote=self.take_buyback_quote(admin_witness,quote_in);let(meme,quote)=pool::swap(clock,bluefin_config,pool,balance::zero(),quote,false,true,quote_in,0,constants::max_swap_sqrt_price!());self.burn_buyback(currency,meme,quote,quote_in,min_meme_out,ctx);' ]] || \
+    fail "the Bluefin buyback must check the vault's pool, take the admin's quote_in of the burn Quote under the buyback admin, swap all of it Quote-to-Meme, and let the vault check and burn"
 in_order \
     'self.position_mut<_,_,_,Position>(&Venue());' \
     'assert!(position.pool_id()==object::id(pool),EPositionPoolMismatch);' \
@@ -914,8 +916,8 @@ require_pattern "$CETUS_SOURCE" 'public struct Venue' 'sealed Cetus venue marker
 # through Cetus LP Burn, and completes into a new vault holding the burn proof. Every fee exit
 # collects the burn proof's and the auto-LP position's fees, splits them through the vault, and adds
 # the auto-LP share to the auto-LP position. Each buyback checks the vault's own pool, swaps the
-# vault's whole burn Quote for Meme, repays exactly what Cetus asks, and hands the result to the
-# vault, which checks the admin's minimum and burns it.
+# admin's `quote_in` of the vault's burn Quote for Meme, repays exactly what Cetus asks, and hands
+# the result to the vault, which checks the admin's minimum and burns it.
 cetus_facts="$(move_facts "$CETUS_SOURCE")"
 [[ "$cetus_facts" != *MALFORMED* ]] || fail "the Move reader rejected cetus.move"
 cetus_public="$(awk -F'\t' '$1 == "FN" && $3 == "public" && $6 == 0 { print $2 }' <<<"$cetus_facts" \
@@ -961,9 +963,9 @@ pair_proof='letmeme_is_a=is_meme_coin_a<Meme,Quote,CoinA,CoinB>();'
     fail "cetus::collect_fees must check the generation and the pair, split the collected fees, then add the auto-LP share back"
 [[ "$(cetus_body settle_and_update_fee_split)" == "migrators_version.assert_current();${pair_proof}self.assert_fee_split_update(launch,curve_fee_cap,proposed);self.settle_fees(policy,currency,cetus_config,burn_manager,pool,meme_is_a,clock,ctx);self.update_fee_split(proposed);" ]] || \
     fail "cetus::settle_and_update_fee_split must check the pair, cap, and proposal before collecting, then split the accrued fees under the current split before committing a new one"
-[[ "$(cetus_body buyback_and_burn)" == "migrators_version.assert_current();${pair_proof}assert!(self.pool_id()==object::id(pool),EPositionPoolMismatch);letquote=self.take_buyback_quote(admin_witness);letquote_in=quote.value();let(meme,quote)=pool.swap_quote_for_meme(cetus_config,quote,meme_is_a,clock,ctx);self.burn_buyback(currency,meme,quote,quote_in,min_meme_out,ctx);" ]] \
+[[ "$(cetus_body buyback_and_burn)" == "migrators_version.assert_current();${pair_proof}assert!(self.pool_id()==object::id(pool),EPositionPoolMismatch);letquote=self.take_buyback_quote(admin_witness,quote_in);let(meme,quote)=pool.swap_quote_for_meme(cetus_config,quote,meme_is_a,clock,ctx);self.burn_buyback(currency,meme,quote,quote_in,min_meme_out,ctx);" ]] \
     && [[ "$(cetus_body swap_quote_for_meme)" == 'let(a,b)=reorder(balance::zero<Meme>(),quote,meme_is_a,ctx);let(a,b)=pool.swap(cetus_config,a,b,!meme_is_a,clock);reorder(a,b,meme_is_a,ctx)' ]] || \
-    fail "cetus::buyback_and_burn must check the pair and the vault's pool, take the burn Quote under the buyback admin, swap all of it Quote-to-Meme, and let the vault check and burn"
+    fail "cetus::buyback_and_burn must check the pair and the vault's pool, take the admin's quote_in of the burn Quote under the buyback admin, swap all of it Quote-to-Meme, and let the vault check and burn"
 [[ "$(cetus_body compound)" == 'let(meme,quote)=self.take_auto_lp();let(a,b)=reorder(meme,quote,meme_is_a,ctx);let(a,b,added_a,added_b)=self.add_liquidity(cetus_config,pool,a,b,clock,ctx);let(meme,quote)=reorder(a,b,meme_is_a,ctx);let(added_meme,added_quote)=if(meme_is_a)(added_a,added_b)else(added_b,added_a);self.keep_auto_lp(added_meme,added_quote,meme,quote);' ]] || \
     fail "Cetus auto-LP must take the waiting balances in its pool's coin order and keep what the pool did not take"
 # The pair proof is pure and total: `(CoinA, CoinB)` must be exactly `{Meme, Quote}` by original

@@ -137,9 +137,10 @@ public fun settle_and_update_fee_split<Meme, Quote>(
     self.update_fee_split(proposed);
 }
 
-/// Swaps the vault's burn Quote for Meme in its pool and burns it, under a buyback admin. Aborts
-/// unless the swap returns at least `min_meme_out`; the admin sets it from an off-chain price,
-/// since anyone can move the pool's price within a transaction.
+/// Swaps `quote_in` of the vault's burn Quote for Meme in its pool and burns it, under a buyback
+/// admin. Aborts unless `quote_in` is positive and at most the burn Quote held, and unless the swap
+/// returns at least `min_meme_out`; the admin sets it from an off-chain price, since anyone can move
+/// the pool's price within a transaction. Quote the pool does not take stays for the next buyback.
 public fun buyback_and_burn<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     migrators_version: &MigratorsVersion,
@@ -147,6 +148,7 @@ public fun buyback_and_burn<Meme, Quote>(
     currency: &mut Currency<Meme>,
     bluefin_config: &GlobalConfig,
     pool: &mut Pool<Meme, Quote>,
+    quote_in: u64,
     min_meme_out: u64,
     clock: &Clock,
     ctx: &mut TxContext,
@@ -154,8 +156,7 @@ public fun buyback_and_burn<Meme, Quote>(
     migrators_version.assert_current();
     assert!(self.pool_id() == object::id(pool), EPositionPoolMismatch);
 
-    let quote = self.take_buyback_quote(admin_witness);
-    let quote_in = quote.value();
+    let quote = self.take_buyback_quote(admin_witness, quote_in);
     let (meme, quote) = pool::swap(
         clock,
         bluefin_config,

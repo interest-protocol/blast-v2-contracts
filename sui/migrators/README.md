@@ -41,8 +41,9 @@ destination, and splits the rest by the launch's `FeeSplit`:
 | Recipients | paid directly to each address |
 
 A Blast administrator with the buyback role calls the venue's `buyback_and_burn`
-with a minimum Meme out set from an off-chain price: it swaps the waiting burn
-Quote for Meme in the vault's pool and burns it. The swap is not permissionless,
+with an amount of the waiting burn Quote and a minimum Meme out set from an
+off-chain price: it swaps that much burn Quote for Meme in the vault's pool and
+burns it. The swap is not permissionless,
 because anyone could move the pool's price around it (ADR 0091).
 
 Cetus orders a pool's coins by type name, so its `migrate`, `collect_fees`,

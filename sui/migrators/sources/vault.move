@@ -295,14 +295,16 @@ public(package) fun split_fees<Meme, Quote>(
     );
 }
 
-/// Takes every Quote waiting to buy Meme back, under a live buyback admin.
+/// Takes exactly `quote_in` of the Quote waiting to buy Meme back, under a live buyback admin.
+/// Aborts unless `quote_in` is positive and at most the burn Quote held.
 public(package) fun take_buyback_quote<Meme, Quote>(
     self: &mut LpVault<Meme, Quote>,
     _: &AdminWitness<BuybackAdmin>,
+    quote_in: u64,
 ): Balance<Quote> {
-    assert!(self.burn_quote.value() > 0, ENoBuybackQuote);
+    assert!(quote_in > 0 && quote_in <= self.burn_quote.value(), EBuybackQuoteOutOfRange);
 
-    self.burn_quote.withdraw_all()
+    self.burn_quote.split(quote_in)
 }
 
 /// Burns the Meme a swap of `quote_in` returned, which must reach `min_meme_out`, and keeps the
@@ -619,7 +621,8 @@ const ENoCreatorFees: vector<u8> = b"No creator LP fees are available to claim."
 const EZeroLiquidity: vector<u8> = b"Migration position must hold liquidity.";
 
 #[error(code = 4)]
-const ENoBuybackQuote: vector<u8> = b"No burn Quote is waiting to buy Meme back.";
+const EBuybackQuoteOutOfRange: vector<u8> =
+    b"Buyback Quote must be positive and at most the burn Quote waiting to buy Meme back.";
 
 #[error(code = 5)]
 const EBuybackBelowMinimum: vector<u8> = b"Buyback must return at least the minimum Meme.";

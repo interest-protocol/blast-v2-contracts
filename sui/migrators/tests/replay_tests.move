@@ -522,8 +522,8 @@ fun buy_back_and_burn(self: &mut ReplayFixture) {
         let mut vault = f.take_vault();
         let mut currency = f.take_currency();
 
-        let mut quote = vault.take_buyback_quote(&admin);
-        let quote_in = quote.value();
+        let quote_in = vault.burn_quote_for_testing();
+        let mut quote = vault.take_buyback_quote(&admin, quote_in);
         let spent = quote_in * 2 / 3;
         let position = vault.position_mut<_, _, _, MockPosition<REPLAY_TESTS, QUOTE>>(&Venue());
         position.quote.join(quote.split(spent));

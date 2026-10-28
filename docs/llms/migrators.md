@@ -330,13 +330,16 @@ no auto-LP part.
 A `BuybackAdmin` calls `blast_fun_migrators::cetus::buyback_and_burn` (`<Meme, Quote, CoinA,
 CoinB>`) or `blast_fun_migrators::bluefin::buyback_and_burn` (`<Meme, Quote>`) with the vault, the
 migrators `PackageVersion`, `&AdminWitness<BuybackAdmin>`, `Currency<Meme>`, the venue
-`GlobalConfig`, the vault's pool, `min_meme_out` (atomic Meme units), and `Clock`. It checks the
-pool is the vault's (`EPositionPoolMismatch`), takes all of `burn_quote` (`ENoBuybackQuote` if
-zero), swaps it for Meme in the vault's pool up to the widest price limit, aborts with
+`GlobalConfig`, the vault's pool, `quote_in` (atomic Quote units), `min_meme_out` (atomic Meme
+units), and `Clock`. It checks the pool is the vault's (`EPositionPoolMismatch`), takes exactly
+`quote_in` from `burn_quote` (`EBuybackQuoteOutOfRange` if `quote_in` is zero or more than
+`burn_quote` holds), swaps it for Meme in the vault's pool up to the widest price limit, aborts with
 `EBuybackBelowMinimum` if the Meme bought is below `min_meme_out`, burns that Meme (or sends it to
 `@0x0` when the supply is not burn-only, as collections do), returns any Quote the pool did not
-take to `burn_quote`, and emits `BuybackBurned`. The admin sets `min_meme_out` from an off-chain
-price, because anyone can move the pool price inside a transaction.
+take to `burn_quote`, and emits `BuybackBurned`, whose `quote_pending` is the burn Quote still
+waiting afterwards. The admin may spend `burn_quote` in several smaller buybacks. The admin sets
+`min_meme_out` from an off-chain price, because anyone can move the pool price inside a
+transaction.
 
 #### Holder-reward rounds
 
@@ -605,7 +608,7 @@ Blast admin abort with plain numeric codes from the named module.
 | split update | `EFeeSplitUnchanged` (1, module `vault`) | Propose a different split. |
 | split construction | codes 6, 7, 8, 24 from the launchpad's `allocation` module; 0 from its `bps` module | Nonzero destination, sum exactly 10,000, at most 16 recipients, no duplicates, each BPS ≤ 10,000. |
 | partner payout | `EPartnerMismatch` (6, module `vault`) | Pass the `Partner` whose ID is the vault's `partner_id`; vaults without a partner have no payout. |
-| buyback | `ENoBuybackQuote` (4), `EBuybackBelowMinimum` (5), module `vault` | Wait for burn Quote; lower `min_meme_out` or retry at a better price. |
+| buyback | `EBuybackQuoteOutOfRange` (4), `EBuybackBelowMinimum` (5), module `vault` | Pass a `quote_in` between 1 and the vault's `burn_quote`; lower `min_meme_out` or retry at a better price. |
 | residual claim | `ENothingClaimable` (0, module `vault`) | Nothing left to claim. |
 | publish round | `EWrongRound` (0), `EInvalidInterval` (1), `EInvalidCommitment` (2), `EInvalidLeafCount` (3), `EEmptyBudget` (4) in `blast_holder_rewards` | Use `next_round`, a contiguous interval, 32-byte digests, 1..=65,536 leaves, a nonzero budget within the rewards balance. |
 | reward claim | `EInvalidIndex` (5), `EAlreadyClaimed` (6), `EInvalidBeneficiary` (7), `EEmptyBudget` (4), `EInvalidProof` (8) in `blast_holder_rewards` | Pass the leaf exactly as committed with its full-depth proof; each leaf pays once. |
