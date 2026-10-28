@@ -21,7 +21,7 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 | Package | Product | Status | Package ID (`published-at`) | Type origin (`original-id`) |
 | --- | --- | --- | --- | --- |
 | `blast_sui` | blastSUI and funSUI | not yet published | — | — |
-| `blast_admin` | Administration | not yet published | — | — |
+| `blast_admin` | Administration | live | `0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac` | `0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac` |
 
 ## Calling Blast contracts
 
@@ -1190,7 +1190,7 @@ public fun sync(
 
 ## API reference: `blast_admin` (Administration)
 
-Not yet published on mainnet. Its interface may change before publication.
+Live on mainnet. This reference matches the published source.
 
 Events: payload structs are emitted directly, each under its own type.
 

@@ -20,15 +20,15 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 
 | Package | Product | Status | Package ID (`published-at`) | Type origin (`original-id`) |
 | --- | --- | --- | --- | --- |
-| `blast_presale` | Presale | live; source has changed since | `0x2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d` | `0x2c0ce340b5652d3ce8b813f47f728f335835a1aacd9ecac4a6e23c260404844d` |
-| `blast_fun` | Launchpad | not yet published | — | — |
-| `blast_fun_migrators` | Migration and LP vaults | not yet published | — | — |
-| `blast_partners` | Partner codes | live; source has changed since | `0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd` | `0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd` |
+| `blast_presale` | Presale | live | `0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b` | `0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b` |
+| `blast_fun` | Launchpad | live | `0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573` | `0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573` |
+| `blast_fun_migrators` | Migration and LP vaults | live | `0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53` | `0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53` |
+| `blast_partners` | Partner codes | live | `0x163a96aa9b88afe77e51febc195a9e0fa8534a6122bc09c6bd46d176c91a99f9` | `0x163a96aa9b88afe77e51febc195a9e0fa8534a6122bc09c6bd46d176c91a99f9` |
 | `blast_boosts_core` | Boosts core | live; source has changed since | `0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe` | `0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe` |
 | `blast_boosts_products` | Boost product tags | live; source has changed since | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` |
 | `blast_boosts_aftermath` | Boosts Aftermath adapter | not yet published | — | — |
 | `blast_sui` | blastSUI and funSUI | not yet published | — | — |
-| `blast_admin` | Administration | not yet published | — | — |
+| `blast_admin` | Administration | live | `0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac` | `0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac` |
 | `blast_aftermath_dao_presale` | Aftermath DAO-pool presale migrator | live; source has changed since | `0x2fe674f6c42f49b7647be760a10f89f843396b9294af8fab5bfbc929fb7aab01` | `0x2fe674f6c42f49b7647be760a10f89f843396b9294af8fab5bfbc929fb7aab01` |
 
 ## Calling Blast contracts
@@ -179,7 +179,7 @@ run) before signing it.
 
 ## Presale
 
-> **Deployment status:** `blast_presale` and `blast_aftermath_dao_presale` are live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package.
+> **Deployment status:** `blast_presale` is live on mainnet. `blast_aftermath_dao_presale` is live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package.
 
 ### What it is
 
@@ -1281,7 +1281,7 @@ Upgrades can only relink dependencies, so this cannot change.
 
 ## Launchpad
 
-> **Deployment status:** `blast_fun` is not yet published on mainnet; its interface may change before publication.
+> **Deployment status:** `blast_fun` is live on mainnet.
 
 ### What it is
 
@@ -2003,7 +2003,7 @@ never reaches its target stays `Live`, and holders exit by selling to the curve.
 
 ## Migration and LP vaults
 
-> **Deployment status:** `blast_fun_migrators` is not yet published on mainnet; its interface may change before publication.
+> **Deployment status:** `blast_fun_migrators` is live on mainnet.
 
 ### What it is
 
@@ -2693,7 +2693,7 @@ its share in force at that moment, rounded down, and Blast's destination the res
 
 ## Partner codes
 
-> **Deployment status:** `blast_partners` is live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package.
+> **Deployment status:** `blast_partners` is live on mainnet.
 
 ### What it is
 
@@ -4559,7 +4559,7 @@ and those shares keep their pro-rata part of the vault forever.
 
 ## Administration
 
-> **Deployment status:** `blast_admin` is not yet published on mainnet; its interface may change before publication.
+> **Deployment status:** `blast_admin` is live on mainnet.
 
 ### What it is
 
@@ -4917,7 +4917,7 @@ presale roles, granted like any other package's.
 
 ## API reference: `blast_presale` (Presale)
 
-Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
+Live on mainnet. This reference matches the published source.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -6630,7 +6630,7 @@ public struct PoolTierReserved<phantom Meme, phantom Quote, phantom Venue> has c
 
 ## API reference: `blast_fun` (Launchpad)
 
-Not yet published on mainnet. Its interface may change before publication.
+Live on mainnet. This reference matches the published source.
 
 Events: every payload is emitted inside `blast_fun::blast_events::Event<T>`; filter on that type.
 
@@ -7742,7 +7742,7 @@ public fun set_treasury(
 
 ## API reference: `blast_fun_migrators` (Migration and LP vaults)
 
-Not yet published on mainnet. Its interface may change before publication.
+Live on mainnet. This reference matches the published source.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -8485,7 +8485,7 @@ public struct VenueConfig has key {
 
 ## API reference: `blast_partners` (Partner codes)
 
-Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
+Live on mainnet. This reference matches the published source.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -11383,7 +11383,7 @@ public fun sync(
 
 ## API reference: `blast_admin` (Administration)
 
-Not yet published on mainnet. Its interface may change before publication.
+Live on mainnet. This reference matches the published source.
 
 Events: payload structs are emitted directly, each under its own type.
 

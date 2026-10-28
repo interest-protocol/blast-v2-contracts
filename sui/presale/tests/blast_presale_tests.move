@@ -3764,7 +3764,7 @@ fun protocol_rates(self: &mut Fixture): vector<u64> {
 
 /// Returns the partner the sale's vault inherits, which it pays a cut of Blast's LP fees.
 fun vault_partner_id(self: &mut Fixture): Option<ID> {
-    let mut partner_id = option::none();
+    let partner_id;
     self.next_tx!(KEEPER, |fixture| {
         let sale = fixture.take_presale();
         let (_, _, _, _, vault_partner_id) = sale.vault_config();

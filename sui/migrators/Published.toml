@@ -1,0 +1,8 @@
+# Generated from confirmed MVR canonical mainnet publication effects.
+[published.mainnet]
+chain-id = "35834a8a"
+published-at = "0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53"
+original-id = "0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53"
+version = 1
+toolchain-version = "1.77.2"
+build-config = { flavor = "sui", edition = "2024" }

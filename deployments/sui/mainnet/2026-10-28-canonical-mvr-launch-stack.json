@@ -1,0 +1,1069 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "canonical-mainnet-mvr-deployment",
+  "release": "2026-10-28-canonical-mvr-launch-stack",
+  "network": {
+    "chain": "sui",
+    "environment": "mainnet",
+    "chainIdentifierHex": "35834a8a",
+    "chainIdentifierBase58": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"
+  },
+  "toolchain": "sui 1.77.2-51d177ad7d65",
+  "sourceCommit": "52effbcee5f12b727484ba0bb14f96aa5e2b4786",
+  "deployer": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+  "status": "success",
+  "deploymentStage": "canonical-packages-and-mvr-ownership-verified",
+  "timestampUtc": "2026-10-28T12:42:51.761000+00:00",
+  "verifiedAtUtc": "2026-10-28T12:54:39.762943+00:00",
+  "repository": {
+    "url": "https://github.com/interest-protocol/blast-v2-contracts",
+    "commit": "52effbcee5f12b727484ba0bb14f96aa5e2b4786",
+    "productionMoveSourcesMatchCommit": true,
+    "workingTreeCleanAtPublication": false,
+    "approvedProductionSourceCommit": "9255e78751b70b22d8f33cc6577df126a3434424"
+  },
+  "sourceState": {
+    "productionMoveSourcesUnchanged": true,
+    "differences": [
+      "fresh canonical publication bindings",
+      "deployment evidence and generated integrator references"
+    ]
+  },
+  "supersedes": "2026-10-28-canonical-launch-stack.json",
+  "packages": {
+    "admin": {
+      "packageId": "0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac",
+      "originalPackageId": "0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac",
+      "nativeVersion": 1,
+      "publicationDigest": "9QPC85nBDcKvM3NsWc24qMYGQ9LSMP54eJVWgkAwArBh",
+      "publicationCheckpoint": "339055856",
+      "dependencies": {
+        "0x0000000000000000000000000000000000000000000000000000000000000001": {
+          "upgraded_id": "0x0000000000000000000000000000000000000000000000000000000000000001",
+          "upgraded_version": 25
+        },
+        "0x0000000000000000000000000000000000000000000000000000000000000002": {
+          "upgraded_id": "0x0000000000000000000000000000000000000000000000000000000000000002",
+          "upgraded_version": 60
+        },
+        "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d": {
+          "upgraded_id": "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d",
+          "upgraded_version": 1
+        }
+      },
+      "mvr": {
+        "name": "@blastpackages/admin",
+        "packageInfoId": "0xe9ee77bcfe01347b084b095c43e24283ab7a582bfa0664a1c5a82ce3dcc5ff80",
+        "source": {
+          "path": "sui/admin",
+          "repository": "https://github.com/interest-protocol/blast-v2-contracts",
+          "tag": "52effbcee5f12b727484ba0bb14f96aa5e2b4786"
+        },
+        "sourceVersion": 1,
+        "documentationUrl": "https://docs.blast.fun",
+        "homepageUrl": "https://blast.fun",
+        "status": "registered",
+        "registrationDigest": "EDNF4NeYnHsfKR4L1ZS51PamS3e4ic5ssqBvmsjtBJod",
+        "registrationCheckpoint": "339057716",
+        "owner": "0x818d6d7026632f82367a9ca2413a5bb28aeec2a1b8dedca919ef812577b4d0a2",
+        "appCapId": "0x3f238b752107ece1de38fd8143a37aa9971e479169377e091cceeb87bb9feaf8",
+        "appRecordFieldId": "0x82c5d10dd1fe8cbe5712ab5770621904fb2ff4e59db2ca9fcbf67c0cab12c094",
+        "permanentBindingVerifiedOnChain": true
+      },
+      "sharedObjects": [
+        {
+          "type": "created",
+          "sender": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+          "owner": {
+            "Shared": {
+              "initial_shared_version": 1
+            }
+          },
+          "objectType": "0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac::blast_acl::ACL",
+          "objectId": "0xbda4af615d93435145012eaaeb540bad2fe09ec0cbe6cb99fb0dae7637643a1d",
+          "version": "1",
+          "digest": "7oGB5Yhyvoz6B6FhXywbUEeiTNGA26riXY6APGQCqTqx",
+          "initializationReadback": {
+            "admins": {
+              "contents": []
+            },
+            "id": "0xbda4af615d93435145012eaaeb540bad2fe09ec0cbe6cb99fb0dae7637643a1d",
+            "pending_super_admin": {
+              "after": null,
+              "at_ms": "0",
+              "before": null,
+              "delay_ms": "604800000"
+            },
+            "super_admin_cap_id": "0x4d809d0909016b51d5f7d5e2ac2b3c387a10efd3ee1da125efbede635ddabf87"
+          }
+        }
+      ],
+      "immutable": true,
+      "upgradeCapDestroyedInPublication": true,
+      "upgradeCapId": "0x9046075579327a15773e436db861ee15195078bda9579ae0b5aa3a3185dcabb2",
+      "status": "published-immutable",
+      "superAdminCap": {
+        "objectId": "0x4d809d0909016b51d5f7d5e2ac2b3c387a10efd3ee1da125efbede635ddabf87",
+        "owner": "0x818d6d7026632f82367a9ca2413a5bb28aeec2a1b8dedca919ef812577b4d0a2"
+      },
+      "acl": {
+        "objectId": "0xbda4af615d93435145012eaaeb540bad2fe09ec0cbe6cb99fb0dae7637643a1d",
+        "initialSharedVersion": 1
+      },
+      "sourceDigest": "sha256:3f99b6ef588b9c882b67802b91b888b3baffbd4e808ee77bd720108290a3e456",
+      "adminCaps": [],
+      "constructor": {
+        "rootAddress": "0x818d6d7026632f82367a9ca2413a5bb28aeec2a1b8dedca919ef812577b4d0a2",
+        "superAdminTransferDelayMs": 604800000
+      },
+      "netGasMist": {
+        "publish": "88321800",
+        "register": "9623878"
+      },
+      "sourceVerification": {
+        "status": "success",
+        "command": [
+          "/home/ubuntu/.local/bin/sui",
+          "client",
+          "--client.env",
+          "mainnet",
+          "verify-source",
+          "/home/ubuntu/blast-v2/worktrees/contracts-canonical-mainnet-20261028/sui/admin",
+          "--toolchain",
+          "/home/ubuntu/.local/bin/sui",
+          "--json"
+        ],
+        "verifiedAtUtc": "2026-10-28T12:45:42.080730+00:00",
+        "verifiedPackageId": "0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac"
+      }
+    },
+    "partners": {
+      "packageId": "0x163a96aa9b88afe77e51febc195a9e0fa8534a6122bc09c6bd46d176c91a99f9",
+      "originalPackageId": "0x163a96aa9b88afe77e51febc195a9e0fa8534a6122bc09c6bd46d176c91a99f9",
+      "nativeVersion": 1,
+      "publicationDigest": "76Z3rwhNrZxTz5th9Knu8QgCqveCAxMzWGrmeWGBLbYY",
+      "publicationCheckpoint": "339055930",
+      "dependencies": {
+        "0x0000000000000000000000000000000000000000000000000000000000000001": {
+          "upgraded_id": "0x0000000000000000000000000000000000000000000000000000000000000001",
+          "upgraded_version": 25
+        },
+        "0x0000000000000000000000000000000000000000000000000000000000000002": {
+          "upgraded_id": "0x0000000000000000000000000000000000000000000000000000000000000002",
+          "upgraded_version": 60
+        },
+        "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d": {
+          "upgraded_id": "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d",
+          "upgraded_version": 1
+        },
+        "0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac": {
+          "upgraded_id": "0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac",
+          "upgraded_version": 1
+        }
+      },
+      "mvr": {
+        "name": "@blastpackages/partners",
+        "packageInfoId": "0x01ca5239d520d303f8f6a556fd9d4816093aae44ad34956a2e238f881c688ec7",
+        "source": {
+          "path": "sui/partners",
+          "repository": "https://github.com/interest-protocol/blast-v2-contracts",
+          "tag": "52effbcee5f12b727484ba0bb14f96aa5e2b4786"
+        },
+        "sourceVersion": 1,
+        "documentationUrl": "https://docs.blast.fun",
+        "homepageUrl": "https://blast.fun",
+        "status": "registered",
+        "registrationDigest": "4b8TsRXXeXLBLviiQcmc5fTVcc4VdYuFqBFfTjVHwd4E",
+        "registrationCheckpoint": "339057981",
+        "owner": "0x818d6d7026632f82367a9ca2413a5bb28aeec2a1b8dedca919ef812577b4d0a2",
+        "appCapId": "0x2d286f7aadaa2b098fb225122a6f492017657629445bc84d2147ad4172933e99",
+        "appRecordFieldId": "0xd4ac663613b1675cb9360d7fc26607f98a78db3a8fb026409d7efd4c9750d495",
+        "permanentBindingVerifiedOnChain": true
+      },
+      "sharedObjects": [],
+      "immutable": true,
+      "upgradeCapDestroyedInPublication": true,
+      "upgradeCapId": "0x8c2fe1e61442bfc67b020929086714db847c96b5dc6ee052d9db6f1ece7b6533",
+      "status": "published-immutable",
+      "netGasMist": {
+        "publish": "30104800",
+        "register": "9737885"
+      },
+      "sourceVerification": {
+        "status": "success",
+        "command": [
+          "/home/ubuntu/.local/bin/sui",
+          "client",
+          "--client.env",
+          "mainnet",
+          "verify-source",
+          "/home/ubuntu/blast-v2/worktrees/contracts-canonical-mainnet-20261028/sui/partners",
+          "--toolchain",
+          "/home/ubuntu/.local/bin/sui",
+          "--json"
+        ],
+        "verifiedAtUtc": "2026-10-28T12:45:44.082047+00:00",
+        "verifiedPackageId": "0x163a96aa9b88afe77e51febc195a9e0fa8534a6122bc09c6bd46d176c91a99f9"
+      }
+    },
+    "launchpad": {
+      "packageId": "0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573",
+      "originalPackageId": "0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573",
+      "nativeVersion": 1,
+      "publicationDigest": "3Qqc2DnEDucks229oFvRWBzkxD6DhDw44ZbToqZKHQHo",
+      "publicationCheckpoint": "339055980",
+      "dependencies": {
+        "0x0000000000000000000000000000000000000000000000000000000000000001": {
+          "upgraded_id": "0x0000000000000000000000000000000000000000000000000000000000000001",
+          "upgraded_version": 25
+        },
+        "0x0000000000000000000000000000000000000000000000000000000000000002": {
+          "upgraded_id": "0x0000000000000000000000000000000000000000000000000000000000000002",
+          "upgraded_version": 60
+        },
+        "0x163a96aa9b88afe77e51febc195a9e0fa8534a6122bc09c6bd46d176c91a99f9": {
+          "upgraded_id": "0x163a96aa9b88afe77e51febc195a9e0fa8534a6122bc09c6bd46d176c91a99f9",
+          "upgraded_version": 1
+        },
+        "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d": {
+          "upgraded_id": "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d",
+          "upgraded_version": 1
+        },
+        "0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac": {
+          "upgraded_id": "0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac",
+          "upgraded_version": 1
+        }
+      },
+      "mvr": {
+        "name": "@blastpackages/launchpad",
+        "packageInfoId": "0x50f7059b14bda3b58037d2270f2c65fbe9bd065fc817d92985b1521bb8f87f63",
+        "source": {
+          "path": "sui/launchpad",
+          "repository": "https://github.com/interest-protocol/blast-v2-contracts",
+          "tag": "52effbcee5f12b727484ba0bb14f96aa5e2b4786"
+        },
+        "sourceVersion": 1,
+        "documentationUrl": "https://docs.blast.fun",
+        "homepageUrl": "https://blast.fun",
+        "status": "registered",
+        "registrationDigest": "3iC73nF1m38rvt3hUxyZcDJmCSMQFRJJ8cfTDpfmDjti",
+        "registrationCheckpoint": "339058018",
+        "owner": "0x818d6d7026632f82367a9ca2413a5bb28aeec2a1b8dedca919ef812577b4d0a2",
+        "appCapId": "0x2cc6e800dc448d0186781d138a2712160059137d2d8785b52407ac521cf9da7c",
+        "appRecordFieldId": "0x61e0da587c98e73736e22af9b6073a6ac73d9d266c195b7036f5d9ba56305a9b",
+        "permanentBindingVerifiedOnChain": true
+      },
+      "sharedObjects": [
+        {
+          "type": "created",
+          "sender": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+          "owner": {
+            "Shared": {
+              "initial_shared_version": 1
+            }
+          },
+          "objectType": "0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573::runtime_config::RuntimeConfig",
+          "objectId": "0x6d0c08363ebc1e2a77f16fed290dd0cd5f52791285744d758a3b0942073b6785",
+          "version": "1",
+          "digest": "GqcYSmSYmYPJ1jEuQ9mkYZyEukxEdT3QDxVBHXKdm8LJ",
+          "initializationReadback": {
+            "creator_claim_signer_public_key": "",
+            "id": "0x6d0c08363ebc1e2a77f16fed290dd0cd5f52791285744d758a3b0942073b6785",
+            "protocol_fee_share_bps": {
+              "pos0": "0"
+            },
+            "treasury": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600"
+          }
+        },
+        {
+          "type": "created",
+          "sender": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+          "owner": {
+            "Shared": {
+              "initial_shared_version": 1
+            }
+          },
+          "objectType": "0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573::launch_config::LaunchConfig",
+          "objectId": "0xb1c860103a7c89c7def5ec92bc0585f26bf927ac6b3df48c985e1154e4765391",
+          "version": "1",
+          "digest": "4wTDDQwxG8C8GvQ7invVWpgHWEnsxcmsW8Na7fsFrjnw",
+          "initializationReadback": {
+            "creation_fee": "0",
+            "id": "0xb1c860103a7c89c7def5ec92bc0585f26bf927ac6b3df48c985e1154e4765391",
+            "meme_decimals": {
+              "contents": "Bgk="
+            },
+            "meme_fee_bps": {
+              "pos0": "0"
+            },
+            "migration_witnesses": {
+              "contents": []
+            },
+            "protocol_allocation": {
+              "meme_bps": {
+                "pos0": "0"
+              },
+              "quote_bps": {
+                "pos0": "0"
+              }
+            },
+            "quote_fee_bps": {
+              "pos0": "0"
+            },
+            "quotes": {
+              "id": "0x03d457115077272c40b8f8962d4975972251fe3dacbd775076c2c77598812979",
+              "size": "0"
+            }
+          }
+        }
+      ],
+      "status": "published-and-wrapped",
+      "policy": 0,
+      "operationalGeneration": 1,
+      "wrapDigest": "DAnSTzxqR3B79NfdrWrfh5V3ATPewpEh7XsbzKgmDWMD",
+      "wrapCheckpoint": "339056167",
+      "upgradeCapId": "0x5b3be7ffd398a79c6b1f4734810dd2ded52ee381ec3155f4e19abfe7f5347c95",
+      "publisherId": "0x881391fabf6c17e9cc3f1a94a7bc877df95c3a2a64f31d5e152913e68b489598",
+      "packageAdmin": {
+        "objectId": "0xe07d6b9fffe4a7f83c8cc430b4655d79f48d97e60750b6ff16945b51ec3d285d",
+        "initialSharedVersion": 2
+      },
+      "packageVersion": {
+        "objectId": "0xe63adb5817a9a74a883062ac3790d21a6433dfbd35a9403d18261de3a8836f93",
+        "initialSharedVersion": 2
+      },
+      "custodyEvent": {
+        "id": {
+          "txDigest": "DAnSTzxqR3B79NfdrWrfh5V3ATPewpEh7XsbzKgmDWMD",
+          "eventSeq": "0"
+        },
+        "packageId": "0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573",
+        "transactionModule": "package_admin",
+        "sender": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+        "type": "0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac::blast_admin_events::UpgradeCustodyCreated<0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573::blast_fun::BLAST_FUN>",
+        "parsedJson": {
+          "custodian_id": "0xe07d6b9fffe4a7f83c8cc430b4655d79f48d97e60750b6ff16945b51ec3d285d",
+          "native_version": "1",
+          "package_id": "0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573",
+          "policy": 0.0,
+          "publisher_id": "0x881391fabf6c17e9cc3f1a94a7bc877df95c3a2a64f31d5e152913e68b489598",
+          "upgrade_cap_id": "0x5b3be7ffd398a79c6b1f4734810dd2ded52ee381ec3155f4e19abfe7f5347c95"
+        },
+        "bcsEncoding": "base64",
+        "bcs": "4H1rn//kp/g8jMQwtGVdefSNl+YHULb/FpRbUew9KF2IE5H6v2wX6cw/GpSnvId9+Vw6KmTzHV4VKRPmi0iVmFs75//TmKecax9HNIEN0t7VLuOB7DFV9OGav+f1NHyVB5obRMVRYTy8Y8wEBvj/jXF0BzeN1vF9Q9nhs/1jpXMBAAAAAAAAAAA=",
+        "timestampMs": "1793191447241"
+      },
+      "netGasMist": {
+        "publish": "263025200",
+        "seal": "10063984",
+        "register": "9775888"
+      },
+      "sourceVerification": {
+        "status": "success",
+        "command": [
+          "/home/ubuntu/.local/bin/sui",
+          "client",
+          "--client.env",
+          "mainnet",
+          "verify-source",
+          "/home/ubuntu/blast-v2/worktrees/contracts-canonical-mainnet-20261028/sui/launchpad",
+          "--toolchain",
+          "/home/ubuntu/.local/bin/sui",
+          "--json"
+        ],
+        "verifiedAtUtc": "2026-10-28T12:45:46.412719+00:00",
+        "verifiedPackageId": "0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573"
+      }
+    },
+    "migrators": {
+      "packageId": "0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53",
+      "originalPackageId": "0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53",
+      "nativeVersion": 1,
+      "publicationDigest": "4UXZoF2hwvhz5WxA8tC6nMqYYD8RaPsBdqVsnsRLRqsw",
+      "publicationCheckpoint": "339056212",
+      "dependencies": {
+        "0x0000000000000000000000000000000000000000000000000000000000000001": {
+          "upgraded_id": "0x0000000000000000000000000000000000000000000000000000000000000001",
+          "upgraded_version": 25
+        },
+        "0x0000000000000000000000000000000000000000000000000000000000000002": {
+          "upgraded_id": "0x0000000000000000000000000000000000000000000000000000000000000002",
+          "upgraded_version": 60
+        },
+        "0x03637b7b60978ef4389124f7683456f0050ab015a0590d52b6e6cadb342af34a": {
+          "upgraded_id": "0xab5e63352d0f05881bdfa1631cc0f7fc1669175a00d608828a924df481a9e4bd",
+          "upgraded_version": 3
+        },
+        "0x06864a6f921804860930db6ddbe2e16acdf8504495ea7481637a1c8b9a8fe54b": {
+          "upgraded_id": "0x06864a6f921804860930db6ddbe2e16acdf8504495ea7481637a1c8b9a8fe54b",
+          "upgraded_version": 1
+        },
+        "0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573": {
+          "upgraded_id": "0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573",
+          "upgraded_version": 1
+        },
+        "0x12d73de9a6bc3cb658ec9dc0fe7de2662be1cea5c76c092fcc3606048cdbac27": {
+          "upgraded_id": "0xc4aabc874f5060d3147d8f74c14e3a8a1f9f8d92edea138a51635395ed167cd9",
+          "upgraded_version": 8
+        },
+        "0x163a96aa9b88afe77e51febc195a9e0fa8534a6122bc09c6bd46d176c91a99f9": {
+          "upgraded_id": "0x163a96aa9b88afe77e51febc195a9e0fa8534a6122bc09c6bd46d176c91a99f9",
+          "upgraded_version": 1
+        },
+        "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d": {
+          "upgraded_id": "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d",
+          "upgraded_version": 1
+        },
+        "0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb": {
+          "upgraded_id": "0x260693ec785a6e6c9d81d58c7d2ff72f1288ae0fa6a9725abe05a6478b11f084",
+          "upgraded_version": 15
+        },
+        "0x3492c874c1e3b3e2984e8c41b589e642d4d0a5d6459e5a9cfc2d52fd7c89c267": {
+          "upgraded_id": "0xd075338d105482f1527cbfd363d6413558f184dec36d9138a70261e87f486e9c",
+          "upgraded_version": 17
+        },
+        "0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac": {
+          "upgraded_id": "0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac",
+          "upgraded_version": 1
+        },
+        "0x714a63a0dba6da4f017b42d5d0fb78867f18bcde904868e51d951a5a6f5b7f57": {
+          "upgraded_id": "0xdfaadf86be9af246900d1e3f3b996cf549e7948e662a9977bdd7646d8fa3a778",
+          "upgraded_version": 7
+        },
+        "0x9d2f067d3b9d19ac0f8d2e5c2c393b1760232083e42005b2e5df39c06064d522": {
+          "upgraded_id": "0x48dcc51091e692a0c8a64930fc839fb5a8e58de3590c084a8322b9cd34754c36",
+          "upgraded_version": 2
+        },
+        "0xbe21a06129308e0495431d12286127897aff07a8ade3970495a4404d97f9eaaa": {
+          "upgraded_id": "0x8569b7efebec65c73b9dc15c5ac2a9542870d286fa79a3feedffbaa94ed53002",
+          "upgraded_version": 5
+        }
+      },
+      "mvr": {
+        "name": "@blastpackages/migrators",
+        "packageInfoId": "0xfca90066c0c54653423fceac66584dad51f047a6a413f20a062af74cc9d65b8c",
+        "source": {
+          "path": "sui/migrators",
+          "repository": "https://github.com/interest-protocol/blast-v2-contracts",
+          "tag": "52effbcee5f12b727484ba0bb14f96aa5e2b4786"
+        },
+        "sourceVersion": 1,
+        "documentationUrl": "https://docs.blast.fun",
+        "homepageUrl": "https://blast.fun",
+        "status": "registered",
+        "registrationDigest": "6gvnUjfdFeSMV2Dq58Zv9BBFakawTtxkjXHJG6eAnkbJ",
+        "registrationCheckpoint": "339058051",
+        "owner": "0x818d6d7026632f82367a9ca2413a5bb28aeec2a1b8dedca919ef812577b4d0a2",
+        "appCapId": "0xda42a7d58bafe72713aca8b36d93f47821fc9987e92302e242c3f43ec58d46eb",
+        "appRecordFieldId": "0x4978e708ffa4e8fd4014a9eb23e97efaba6407a88c554042ca3496505c1d6607",
+        "permanentBindingVerifiedOnChain": true
+      },
+      "sharedObjects": [
+        {
+          "type": "created",
+          "sender": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+          "owner": {
+            "Shared": {
+              "initial_shared_version": 1
+            }
+          },
+          "objectType": "0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53::blast_fun_migrators::PackageVersion",
+          "objectId": "0x63c5f99c1ddcdf390585a9926861ac558274fa6434d2b581aa67d13fe8a95706",
+          "version": "1",
+          "digest": "HtYNHdFf1tXaZ4d9z4khz5ADcszsmxVrhmwhHseVNBzB",
+          "initializationReadback": {
+            "generation": {
+              "generation": "1"
+            },
+            "id": "0x63c5f99c1ddcdf390585a9926861ac558274fa6434d2b581aa67d13fe8a95706"
+          }
+        },
+        {
+          "type": "created",
+          "sender": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+          "owner": {
+            "Shared": {
+              "initial_shared_version": 1
+            }
+          },
+          "objectType": "0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53::lp_fee_policy::LpFeePolicy",
+          "objectId": "0x6f4791d8f80c2192c66df947057560c5088040d872f16828c4f9d0a780d161b1",
+          "version": "1",
+          "digest": "EixjimtcEY5BPbgrYRk3GNcmDV2QbXYGRFS3dbk2jGVA",
+          "initializationReadback": {
+            "coins": {
+              "id": "0x067500d6429ac8a4f2a0006056acc9aac83252f54b166778abcde074125efae0",
+              "size": "0"
+            },
+            "defaults": {
+              "meme_bps": {
+                "pos0": "0"
+              },
+              "quote_bps": {
+                "pos0": "0"
+              }
+            },
+            "destination": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+            "id": "0x6f4791d8f80c2192c66df947057560c5088040d872f16828c4f9d0a780d161b1"
+          }
+        },
+        {
+          "type": "created",
+          "sender": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+          "owner": {
+            "Shared": {
+              "initial_shared_version": 1
+            }
+          },
+          "objectType": "0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53::venue_config::VenueConfig",
+          "objectId": "0xa9e38d9b9630bddbe47589f9d7815a3863d1e854270d122ab7108fa96c5489f8",
+          "version": "1",
+          "digest": "58HDFzuumCrmyLDSGVSRvxRzYnaxhBbxpf7ch7nykaZv",
+          "initializationReadback": {
+            "id": "0xa9e38d9b9630bddbe47589f9d7815a3863d1e854270d122ab7108fa96c5489f8"
+          }
+        }
+      ],
+      "status": "published-and-wrapped",
+      "policy": 0,
+      "operationalGeneration": 1,
+      "wrapDigest": "6hMFmSSYT4T8JKwe9gvxqdAHCRzF7H8mS21NskCjTTuN",
+      "wrapCheckpoint": "339056352",
+      "upgradeCapId": "0x6b078cd6ee3add753b4dad52b44f7437b809f59754114b7a176cacbb2cc7a5ef",
+      "publisherId": "0xdfc361d9537134b24ec7ce596cb24e3284b7e6b822e97834d33f28cd040a9ee0",
+      "packageAdmin": {
+        "objectId": "0x83c61c421978c15e9cf93cb589b572397cef7f81ef85db65804c48aaecd9e405",
+        "initialSharedVersion": 2
+      },
+      "packageVersion": {
+        "objectId": "0x63c5f99c1ddcdf390585a9926861ac558274fa6434d2b581aa67d13fe8a95706",
+        "initialSharedVersion": 1
+      },
+      "custodyEvent": {
+        "id": {
+          "txDigest": "6hMFmSSYT4T8JKwe9gvxqdAHCRzF7H8mS21NskCjTTuN",
+          "eventSeq": "0"
+        },
+        "packageId": "0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53",
+        "transactionModule": "package_admin",
+        "sender": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+        "type": "0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac::blast_admin_events::UpgradeCustodyCreated<0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53::blast_fun_migrators::BLAST_FUN_MIGRATORS>",
+        "parsedJson": {
+          "custodian_id": "0x83c61c421978c15e9cf93cb589b572397cef7f81ef85db65804c48aaecd9e405",
+          "native_version": "1",
+          "package_id": "0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53",
+          "policy": 0.0,
+          "publisher_id": "0xdfc361d9537134b24ec7ce596cb24e3284b7e6b822e97834d33f28cd040a9ee0",
+          "upgrade_cap_id": "0x6b078cd6ee3add753b4dad52b44f7437b809f59754114b7a176cacbb2cc7a5ef"
+        },
+        "bcsEncoding": "base64",
+        "bcs": "g8YcQhl4wV6c+Ty1ibVyOXzvf4HvhdtlgExIquzZ5AXfw2HZU3E0sk7Hzllssk4yhLfmuCLpeDTTPyjNBAqe4GsHjNbuOt11O02tUrRPdDe4CfWXVBFLehdsrLssx6XvSl0R2EQ+ll1iq7P/Ay6bAg0Qrq9N+8O8WXdbRKivH1MBAAAAAAAAAAA=",
+        "timestampMs": "1793191492109"
+      },
+      "netGasMist": {
+        "publish": "255039600",
+        "seal": "8954359",
+        "register": "9775888"
+      },
+      "sourceVerification": {
+        "status": "success",
+        "command": [
+          "/home/ubuntu/.local/bin/sui",
+          "client",
+          "--client.env",
+          "mainnet",
+          "verify-source",
+          "/home/ubuntu/blast-v2/worktrees/contracts-canonical-mainnet-20261028/sui/migrators",
+          "--toolchain",
+          "/home/ubuntu/.local/bin/sui",
+          "--json"
+        ],
+        "verifiedAtUtc": "2026-10-28T12:45:50.260471+00:00",
+        "verifiedPackageId": "0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53"
+      }
+    },
+    "presale": {
+      "packageId": "0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b",
+      "originalPackageId": "0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b",
+      "nativeVersion": 1,
+      "publicationDigest": "FdT1SiwhaXHzscenaYzmhNwr7GDRGmGrCXFsUfmx2T2P",
+      "publicationCheckpoint": "339056472",
+      "dependencies": {
+        "0x0000000000000000000000000000000000000000000000000000000000000001": {
+          "upgraded_id": "0x0000000000000000000000000000000000000000000000000000000000000001",
+          "upgraded_version": 25
+        },
+        "0x0000000000000000000000000000000000000000000000000000000000000002": {
+          "upgraded_id": "0x0000000000000000000000000000000000000000000000000000000000000002",
+          "upgraded_version": 60
+        },
+        "0x03637b7b60978ef4389124f7683456f0050ab015a0590d52b6e6cadb342af34a": {
+          "upgraded_id": "0xab5e63352d0f05881bdfa1631cc0f7fc1669175a00d608828a924df481a9e4bd",
+          "upgraded_version": 3
+        },
+        "0x06864a6f921804860930db6ddbe2e16acdf8504495ea7481637a1c8b9a8fe54b": {
+          "upgraded_id": "0x06864a6f921804860930db6ddbe2e16acdf8504495ea7481637a1c8b9a8fe54b",
+          "upgraded_version": 1
+        },
+        "0x12d73de9a6bc3cb658ec9dc0fe7de2662be1cea5c76c092fcc3606048cdbac27": {
+          "upgraded_id": "0xc4aabc874f5060d3147d8f74c14e3a8a1f9f8d92edea138a51635395ed167cd9",
+          "upgraded_version": 8
+        },
+        "0x163a96aa9b88afe77e51febc195a9e0fa8534a6122bc09c6bd46d176c91a99f9": {
+          "upgraded_id": "0x163a96aa9b88afe77e51febc195a9e0fa8534a6122bc09c6bd46d176c91a99f9",
+          "upgraded_version": 1
+        },
+        "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d": {
+          "upgraded_id": "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d",
+          "upgraded_version": 1
+        },
+        "0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb": {
+          "upgraded_id": "0x260693ec785a6e6c9d81d58c7d2ff72f1288ae0fa6a9725abe05a6478b11f084",
+          "upgraded_version": 15
+        },
+        "0x2d9316f1f1a95f6d7c85a4e690ef7c359e6649773ef2c37ad7d9857adb6bef06": {
+          "upgraded_id": "0xaead64e3b3cc7972ba86396df07066c90176f42c6aea53b6df0d8ab11007ece2",
+          "upgraded_version": 2
+        },
+        "0x3492c874c1e3b3e2984e8c41b589e642d4d0a5d6459e5a9cfc2d52fd7c89c267": {
+          "upgraded_id": "0xd075338d105482f1527cbfd363d6413558f184dec36d9138a70261e87f486e9c",
+          "upgraded_version": 17
+        },
+        "0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac": {
+          "upgraded_id": "0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac",
+          "upgraded_version": 1
+        },
+        "0x64213b0e4a52bac468d4ac3f140242f70714381653a1919a6d57cd49c628207a": {
+          "upgraded_id": "0x64213b0e4a52bac468d4ac3f140242f70714381653a1919a6d57cd49c628207a",
+          "upgraded_version": 1
+        },
+        "0x6f60a091637054e23915b8745c0c0d47b1d49618ee3435b5f68eccf6a44fb53d": {
+          "upgraded_id": "0x5ad6890968efcf3d20899e0cec735214f1067b96e77e77d86408989998468bb2",
+          "upgraded_version": 2
+        },
+        "0x712579292f80c11a0c9de4ff553d6e5c4757105e83a8a3129823d2b39e65d062": {
+          "upgraded_id": "0xbc7b2c577ad9362fbb0dba397d17f3bcc81bf7aa916559f99a77eaee05d0947c",
+          "upgraded_version": 2
+        },
+        "0x714a63a0dba6da4f017b42d5d0fb78867f18bcde904868e51d951a5a6f5b7f57": {
+          "upgraded_id": "0xdfaadf86be9af246900d1e3f3b996cf549e7948e662a9977bdd7646d8fa3a778",
+          "upgraded_version": 7
+        },
+        "0x73baa782c55003b3a359dec04b189312565d18e7309d4a51f5f112f891e3b2ab": {
+          "upgraded_id": "0x73baa782c55003b3a359dec04b189312565d18e7309d4a51f5f112f891e3b2ab",
+          "upgraded_version": 1
+        },
+        "0x85fdb7e3d28162b99e0df758069a3d23cff874c400b2160fc0d4618aefd3ec5c": {
+          "upgraded_id": "0x85fdb7e3d28162b99e0df758069a3d23cff874c400b2160fc0d4618aefd3ec5c",
+          "upgraded_version": 1
+        },
+        "0x9d2f067d3b9d19ac0f8d2e5c2c393b1760232083e42005b2e5df39c06064d522": {
+          "upgraded_id": "0x48dcc51091e692a0c8a64930fc839fb5a8e58de3590c084a8322b9cd34754c36",
+          "upgraded_version": 2
+        },
+        "0xa6baab1e668c7868991c1c3c11e144100f5734c407d020f72a01b9d1a8bcb97f": {
+          "upgraded_id": "0xa6baab1e668c7868991c1c3c11e144100f5734c407d020f72a01b9d1a8bcb97f",
+          "upgraded_version": 1
+        },
+        "0xbe21a06129308e0495431d12286127897aff07a8ade3970495a4404d97f9eaaa": {
+          "upgraded_id": "0x8569b7efebec65c73b9dc15c5ac2a9542870d286fa79a3feedffbaa94ed53002",
+          "upgraded_version": 5
+        },
+        "0xc66fabf1a9253e43c70f1cc02d40a1d18db183140ecaae2a3f58fa6b66c55acf": {
+          "upgraded_id": "0xc66fabf1a9253e43c70f1cc02d40a1d18db183140ecaae2a3f58fa6b66c55acf",
+          "upgraded_version": 1
+        },
+        "0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c": {
+          "upgraded_id": "0xf948935b111990c2b604900c9b2eeb8f24dcf9868a45d1ea1653a5f282c10e29",
+          "upgraded_version": 3
+        }
+      },
+      "mvr": {
+        "name": "@blastpackages/presale",
+        "packageInfoId": "0x47ee3480cc1841a1e4d152af37be119a71c0a48ae20a6b9490900dd8cfc0e63e",
+        "source": {
+          "path": "sui/presale",
+          "repository": "https://github.com/interest-protocol/blast-v2-contracts",
+          "tag": "52effbcee5f12b727484ba0bb14f96aa5e2b4786"
+        },
+        "sourceVersion": 1,
+        "documentationUrl": "https://docs.blast.fun",
+        "homepageUrl": "https://blast.fun",
+        "status": "registered",
+        "registrationDigest": "8TcQkwTK6zFBupjkHG5ztManNr1NPoXi1jW5Cwxc7ydg",
+        "registrationCheckpoint": "339058081",
+        "owner": "0x818d6d7026632f82367a9ca2413a5bb28aeec2a1b8dedca919ef812577b4d0a2",
+        "appCapId": "0x691694770d6fd0cbfc2824e4eef70b8f0d4e2e9a98c9d8f6238f70fbd1912cf4",
+        "appRecordFieldId": "0x9be5edbe867c88db263f2475b6fd2d41a70c889600191c9133cc8c0a9363dbe1",
+        "permanentBindingVerifiedOnChain": true
+      },
+      "sharedObjects": [
+        {
+          "type": "created",
+          "sender": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+          "owner": {
+            "Shared": {
+              "initial_shared_version": 1
+            }
+          },
+          "objectType": "0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b::fee_policy::FeePolicy",
+          "objectId": "0x7eee3154e7235f172a3f19c0c7fc3c0721008f22a4cbcd61dc8a4ab0614ef9e0",
+          "version": "1",
+          "digest": "ByJGtR3KYy1KA1avZQxUf3uzA8yWHK43QBH8qbwKRnY2",
+          "initializationReadback": {
+            "destination": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+            "fees": {
+              "lp_fee_meme_bps": {
+                "pos0": "0"
+              },
+              "lp_fee_quote_bps": {
+                "pos0": "0"
+              },
+              "raise_bps": {
+                "pos0": "0"
+              },
+              "token_bps": {
+                "pos0": "0"
+              }
+            },
+            "id": "0x7eee3154e7235f172a3f19c0c7fc3c0721008f22a4cbcd61dc8a4ab0614ef9e0"
+          }
+        },
+        {
+          "type": "created",
+          "sender": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+          "owner": {
+            "Shared": {
+              "initial_shared_version": 1
+            }
+          },
+          "objectType": "0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b::venue_config::VenueConfig",
+          "objectId": "0xaa4c53cfc143a4548f8ce0b9f6c9e6e2a30be000d496efc53d8763b1bf577eef",
+          "version": "1",
+          "digest": "6KWbqpugbJ64aM3Je9DZffD78rTtc47jvDtjVYLJP5ic",
+          "initializationReadback": {
+            "id": "0xaa4c53cfc143a4548f8ce0b9f6c9e6e2a30be000d496efc53d8763b1bf577eef"
+          }
+        },
+        {
+          "type": "created",
+          "sender": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+          "owner": {
+            "Shared": {
+              "initial_shared_version": 1
+            }
+          },
+          "objectType": "0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b::creation_policy::CreationPolicy",
+          "objectId": "0xac28eb90fea57e13a8c4807f37746811c046508cf46e390fd2ec07a6d7925b31",
+          "version": "1",
+          "digest": "Fe96kQ6eaJPkiaXDBSksr4tMdejuPaoNccyvgkyJxqqY",
+          "initializationReadback": {
+            "allowed_migration_witnesses": {
+              "contents": []
+            },
+            "allowed_quotes": {
+              "contents": []
+            },
+            "id": "0xac28eb90fea57e13a8c4807f37746811c046508cf46e390fd2ec07a6d7925b31"
+          }
+        }
+      ],
+      "status": "published-and-wrapped",
+      "policy": 0,
+      "operationalGeneration": 1,
+      "wrapDigest": "HrWaVvBh2ukHj3foiwXbreMCNwkFc8LCueTMXzqTRPfE",
+      "wrapCheckpoint": "339056547",
+      "upgradeCapId": "0x3da2e7c75cf7d08be4f0bae6b985097eb224e22772ac2ca960179ad87305c155",
+      "publisherId": "0xe6180d8f8e162b17ef31755388c46f9c56d5c9b13d939f5c9e948c383f14d65d",
+      "packageAdmin": {
+        "objectId": "0xb73a81baa62ffd20bbdb62712ba37c1b712913555343337a9b0f42425878078e",
+        "initialSharedVersion": 2
+      },
+      "packageVersion": {
+        "objectId": "0xbf285882f2c2e0eec1afd3dc869e6d25fad70bccd30059ec1a7b7ceb95c3b42f",
+        "initialSharedVersion": 2
+      },
+      "custodyEvent": {
+        "id": {
+          "txDigest": "HrWaVvBh2ukHj3foiwXbreMCNwkFc8LCueTMXzqTRPfE",
+          "eventSeq": "0"
+        },
+        "packageId": "0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b",
+        "transactionModule": "package_admin",
+        "sender": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+        "type": "0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac::blast_admin_events::UpgradeCustodyCreated<0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b::blast_presale_package::BLAST_PRESALE_PACKAGE>",
+        "parsedJson": {
+          "custodian_id": "0xb73a81baa62ffd20bbdb62712ba37c1b712913555343337a9b0f42425878078e",
+          "native_version": "1",
+          "package_id": "0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b",
+          "policy": 0.0,
+          "publisher_id": "0xe6180d8f8e162b17ef31755388c46f9c56d5c9b13d939f5c9e948c383f14d65d",
+          "upgrade_cap_id": "0x3da2e7c75cf7d08be4f0bae6b985097eb224e22772ac2ca960179ad87305c155"
+        },
+        "bcsEncoding": "base64",
+        "bcs": "tzqBuqYv/SC722JxK6N8G3EpE1VTQzN6mw9CQlh4B47mGA2PjhYrF+8xdVOIxG+cVtXJsT2Tn1yelIw4PxTWXT2i58dc99CL5PC65rmFCX6yJOIncqwsqWAXmthzBcFVsCefvlS/0dkg6YWk26CRaytzpSGFFO3uy3ud0wzyhjsBAAAAAAAAAAA=",
+        "timestampMs": "1793191536594"
+      },
+      "netGasMist": {
+        "publish": "468860400",
+        "seal": "10003202",
+        "register": "9699883"
+      },
+      "sourceVerification": {
+        "status": "success",
+        "command": [
+          "/home/ubuntu/.local/bin/sui",
+          "client",
+          "--client.env",
+          "mainnet",
+          "verify-source",
+          "/home/ubuntu/blast-v2/worktrees/contracts-canonical-mainnet-20261028/sui/presale",
+          "--toolchain",
+          "/home/ubuntu/.local/bin/sui",
+          "--json"
+        ],
+        "verifiedAtUtc": "2026-10-28T12:45:53.891504+00:00",
+        "verifiedPackageId": "0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b"
+      }
+    }
+  },
+  "initializationVerification": {
+    "superAdminCapOwner": "0x818d6d7026632f82367a9ca2413a5bb28aeec2a1b8dedca919ef812577b4d0a2",
+    "aclRootMatchesCap": true,
+    "allFirstPartyDependencyLinksMatchCanonicalPackages": true,
+    "immutableAdminAndPartnersCapsDestroyed": true,
+    "sealedPackages": [
+      "launchpad",
+      "migrators",
+      "presale"
+    ]
+  },
+  "mvr": {
+    "metadataImplementation": "0xc88768f8b26581a8ee1bf71e6a6ec0f93d4cc6460ebb66a31b94d64de8105c98",
+    "registryImplementation": "0xbb97fa5af2504cc944a8df78dcb5c8b72c3673ca4ba8e4969a98188bf745ee54",
+    "registryObject": "0x0e5d473a055b6b7d014af557a13ad9075157fdc19b6d51562a18511afd397727",
+    "suinsName": "blastpackages.sui",
+    "suinsRegistrationId": "0xa2d018da6cb801f4d87506143c3cdd0b0c9844d2760425a91f1346fcad5c9c49",
+    "suinsOwner": "0x818d6d7026632f82367a9ca2413a5bb28aeec2a1b8dedca919ef812577b4d0a2",
+    "metadataAndAppCapOwner": "0x818d6d7026632f82367a9ca2413a5bb28aeec2a1b8dedca919ef812577b4d0a2",
+    "sourceCommit": "52effbcee5f12b727484ba0bb14f96aa5e2b4786",
+    "mainnetBindingsArePermanent": true,
+    "suinsHandoffDigest": "5HbKULwHw6aJQHMnkPeKCVwFwqsoxzAYGjzdH6zUBc5H",
+    "sourceMetadataUpdateDigest": "HMmTw4iHY9CodnbJKUmg43Gj5wqPnLRchVMUGAegW2rq",
+    "resolutionVerification": {
+      "status": "success",
+      "verifiedAtUtc": "2026-10-28T12:52:15.576724+00:00",
+      "forwardAndVersion1": {
+        "@blastpackages/admin": {
+          "url": "https://mainnet.mvr.mystenlabs.com/v1/resolution/@blastpackages/admin",
+          "response": {
+            "package_id": "0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac"
+          }
+        },
+        "@blastpackages/admin/1": {
+          "url": "https://mainnet.mvr.mystenlabs.com/v1/resolution/@blastpackages/admin/1",
+          "response": {
+            "package_id": "0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac"
+          }
+        },
+        "@blastpackages/partners": {
+          "url": "https://mainnet.mvr.mystenlabs.com/v1/resolution/@blastpackages/partners",
+          "response": {
+            "package_id": "0x163a96aa9b88afe77e51febc195a9e0fa8534a6122bc09c6bd46d176c91a99f9"
+          }
+        },
+        "@blastpackages/partners/1": {
+          "url": "https://mainnet.mvr.mystenlabs.com/v1/resolution/@blastpackages/partners/1",
+          "response": {
+            "package_id": "0x163a96aa9b88afe77e51febc195a9e0fa8534a6122bc09c6bd46d176c91a99f9"
+          }
+        },
+        "@blastpackages/launchpad": {
+          "url": "https://mainnet.mvr.mystenlabs.com/v1/resolution/@blastpackages/launchpad",
+          "response": {
+            "package_id": "0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573"
+          }
+        },
+        "@blastpackages/launchpad/1": {
+          "url": "https://mainnet.mvr.mystenlabs.com/v1/resolution/@blastpackages/launchpad/1",
+          "response": {
+            "package_id": "0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573"
+          }
+        },
+        "@blastpackages/migrators": {
+          "url": "https://mainnet.mvr.mystenlabs.com/v1/resolution/@blastpackages/migrators",
+          "response": {
+            "package_id": "0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53"
+          }
+        },
+        "@blastpackages/migrators/1": {
+          "url": "https://mainnet.mvr.mystenlabs.com/v1/resolution/@blastpackages/migrators/1",
+          "response": {
+            "package_id": "0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53"
+          }
+        },
+        "@blastpackages/presale": {
+          "url": "https://mainnet.mvr.mystenlabs.com/v1/resolution/@blastpackages/presale",
+          "response": {
+            "package_id": "0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b"
+          }
+        },
+        "@blastpackages/presale/1": {
+          "url": "https://mainnet.mvr.mystenlabs.com/v1/resolution/@blastpackages/presale/1",
+          "response": {
+            "package_id": "0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b"
+          }
+        }
+      },
+      "reverse": {
+        "resolution": {
+          "0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac": {
+            "name": "@blastpackages/admin"
+          },
+          "0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53": {
+            "name": "@blastpackages/migrators"
+          },
+          "0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b": {
+            "name": "@blastpackages/presale"
+          },
+          "0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573": {
+            "name": "@blastpackages/launchpad"
+          },
+          "0x163a96aa9b88afe77e51febc195a9e0fa8534a6122bc09c6bd46d176c91a99f9": {
+            "name": "@blastpackages/partners"
+          }
+        }
+      }
+    }
+  },
+  "configuration": {
+    "launchFeeTreasury": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+    "lpFeeProtocolDestination": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+    "presaleFeeDestination": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+    "treasuryChangeRequiredBeforeFirstLaunch": true,
+    "workerAdminCapsGranted": [],
+    "productRolloutStatus": "pending-multisig-configuration-and-live-route-validation",
+    "pending": [
+      "Multisig grants scoped governance and worker AdminCaps.",
+      "TreasuryAdmin sets runtime_config treasury and lp_fee_policy protocol destination before any launch.",
+      "Presale TreasuryAdmin sets fee_policy destination before opening presales.",
+      "Multisig configures reviewed quote, adapter, venue and presale admission policies.",
+      "Complete required mainnet venue route, residual and fee-collection matrix before product rollout.",
+      "Adopt canonical IDs in SDK, indexer and application as a separate rollout."
+    ],
+    "canonicalPackageRecord": "2026-10-28-canonical-mvr-launch-stack.json"
+  },
+  "validation": [
+    {
+      "package": "admin",
+      "environment": "mainnet build environment; local Move VM",
+      "command": "sui move test --path sui/admin --build-env mainnet --lint --warnings-are-errors",
+      "testOnlyIdentity": "package test identity",
+      "result": "pass",
+      "testsPassed": 70,
+      "build": "pass",
+      "warningAsErrorLint": "pass"
+    },
+    {
+      "package": "partners",
+      "environment": "mainnet build environment; local Move VM",
+      "command": "sui move test --path sui/partners --build-env mainnet --lint --warnings-are-errors",
+      "testOnlyIdentity": "package test identity",
+      "result": "pass",
+      "testsPassed": 30,
+      "build": "pass",
+      "warningAsErrorLint": "pass"
+    },
+    {
+      "package": "launchpad",
+      "environment": "mainnet build environment; local Move VM",
+      "command": "sui move test --path sui/launchpad --build-env mainnet --lint --warnings-are-errors",
+      "testOnlyIdentity": "package test identity",
+      "result": "pass",
+      "testsPassed": 347,
+      "build": "pass",
+      "warningAsErrorLint": "pass"
+    },
+    {
+      "package": "migrators",
+      "environment": "mainnet build environment; local Move VM",
+      "command": "sui move test --path sui/migrators --build-env mainnet --lint --warnings-are-errors",
+      "testOnlyIdentity": "package test identity",
+      "result": "pass",
+      "testsPassed": 154,
+      "build": "pass",
+      "warningAsErrorLint": "pass"
+    },
+    {
+      "package": "presale",
+      "environment": "mainnet build environment; local Move VM",
+      "command": "sui move test --path sui/presale --build-env mainnet --lint --warnings-are-errors",
+      "testOnlyIdentity": "blast_presale=0xb, manifest restored to 0x0 after tests",
+      "result": "pass",
+      "testsPassed": 301,
+      "build": "pass",
+      "warningAsErrorLint": "pass"
+    },
+    {
+      "command": "node sui/migrators/scripts/check_mainnet_abi.mjs --self-test; node sui/migrators/scripts/check_mainnet_abi.mjs",
+      "environment": "live mainnet",
+      "result": "pass; 5 packages, 11 modules, 38 functions, 14 structs"
+    },
+    {
+      "command": "bash sui/{admin,launchpad,migrators,presale}/scripts/check_source_boundaries.sh (each separately); python3 scripts/gen_llms.py --check",
+      "result": "pass"
+    },
+    {
+      "command": "python3 scripts/check_move_style.py; git diff --check",
+      "result": "pass; 213 first-party modules"
+    },
+    {
+      "command": "cargo test --locked --test bootstrap --test atomic_migration --test venue_fork --test presale_venue_fork -- --nocapture --test-threads=1",
+      "environment": "Rust 1.96.1; Sui simulator pinned to 51d177ad7d65102fc368b582408f466d97b31548; mainnet snapshot checkpoint 339033808",
+      "result": "pass",
+      "completedSuites": [
+        {
+          "result": "ok",
+          "passed": 5,
+          "failed": 0
+        },
+        {
+          "result": "ok",
+          "passed": 1,
+          "failed": 0
+        },
+        {
+          "result": "ok",
+          "passed": 7,
+          "failed": 0
+        },
+        {
+          "result": "ok",
+          "passed": 3,
+          "failed": 0
+        }
+      ]
+    },
+    {
+      "environment": "canonical mainnet packages",
+      "check": "live mainnet venue route, residual and fee-collection matrix",
+      "result": "pending; product rollout blocked until multisig configuration and this matrix complete"
+    },
+    {
+      "check": "fresh-package source verification",
+      "environment": "live mainnet",
+      "result": "pass; all five packages match pinned CLI rebuild bytecode and linkage"
+    }
+  ],
+  "moveTestsPassed": 902,
+  "githubChecks": {
+    "pullRequest": "https://github.com/interest-protocol/blast-v2-contracts/pull/142",
+    "result": "not started; organization account payments or spending-limit restriction",
+    "trackingIssue": "https://github.com/interest-protocol/blast-v2-contracts/issues/141",
+    "annotationChecks": [
+      122788714676,
+      122788714268
+    ]
+  },
+  "totalNetGasMist": "1183191769"
+}
