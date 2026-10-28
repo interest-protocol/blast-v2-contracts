@@ -1,0 +1,112 @@
+{
+  "checkedAt": "2026-10-28T23:13:53.887163+00:00",
+  "network": "Sui mainnet",
+  "chainId": "35834a8a",
+  "scope": "28 October 2026 canonical package fee policies. These reads are independent, not one checkpoint. Existing launches and presales may retain earlier snapshots; LP fee policies may change. These rates do not establish app rollout or production quote admission.",
+  "sourceMethod": "sui client --client.env mainnet object --json (gRPC)",
+  "canonical": [
+    {
+      "objectId": "0x6d0c08363ebc1e2a77f16fed290dd0cd5f52791285744d758a3b0942073b6785",
+      "type": "0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573::runtime_config::RuntimeConfig",
+      "version": 12,
+      "digest": "ABMiJXxRorG2s6ooHAqFVCLohkYeaLgwBuyi2rswVN9L",
+      "previousTransaction": "GcSDB4hpBLbvvyEbTAgnhTASBSFKGKubpBwojkfnXoN5",
+      "fields": {
+        "protocol_fee_share_bps": {
+          "pos0": "6500"
+        }
+      }
+    },
+    {
+      "objectId": "0xb1c860103a7c89c7def5ec92bc0585f26bf927ac6b3df48c985e1154e4765391",
+      "type": "0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573::launch_config::LaunchConfig",
+      "version": 18,
+      "digest": "7Jo8K3kJBmZKH7rp6rWnJfYccv8RXCSZmcS2PDMxdJwH",
+      "previousTransaction": "HgpP5w2PtJsB9EVFQnqfFaevk4ULbnhk3HRdoySETYwq",
+      "fields": {
+        "creation_fee": "0",
+        "meme_fee_bps": {
+          "pos0": "150"
+        },
+        "quote_fee_bps": {
+          "pos0": "150"
+        },
+        "protocol_allocation": {
+          "meme_bps": {
+            "pos0": "250"
+          },
+          "quote_bps": {
+            "pos0": "150"
+          }
+        }
+      }
+    },
+    {
+      "objectId": "0x6f4791d8f80c2192c66df947057560c5088040d872f16828c4f9d0a780d161b1",
+      "type": "0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53::lp_fee_policy::LpFeePolicy",
+      "version": 17,
+      "digest": "Eqst2ZvpdYWx3Qa7yaisLoc4yuZgUpjrNC1brLKmBNRf",
+      "previousTransaction": "AZBTGWsTHtsFnkTMkMgnaqkBiwgcA61BHBnHADMnMhyi",
+      "fields": {
+        "defaults": {
+          "meme_bps": {
+            "pos0": "5000"
+          },
+          "quote_bps": {
+            "pos0": "1500"
+          }
+        },
+        "coinOverrideCount": "0"
+      }
+    },
+    {
+      "objectId": "0x7eee3154e7235f172a3f19c0c7fc3c0721008f22a4cbcd61dc8a4ab0614ef9e0",
+      "type": "0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b::fee_policy::FeePolicy",
+      "version": 5,
+      "digest": "7t6h7U37LdfHyaUSPUj6Rg3XWpVHBAqbyzVfgMYAu7bW",
+      "previousTransaction": "GdTpreUy88u7JJ1QZxG5YwSsbZqiryUPV6NVRehWbWPL",
+      "fields": {
+        "fees": {
+          "lp_fee_meme_bps": {
+            "pos0": "2500"
+          },
+          "lp_fee_quote_bps": {
+            "pos0": "1500"
+          },
+          "raise_bps": {
+            "pos0": "200"
+          },
+          "token_bps": {
+            "pos0": "100"
+          }
+        }
+      }
+    }
+  ],
+  "historicalPresale": {
+    "checkedAt": "2026-10-28T23:15:12.282215+00:00",
+    "publicationDate": "2026-10-11",
+    "objectId": "0x3da5bfd3275991b70a445a2022e07925ce9a927dd47d7c3fd583563089a9afae",
+    "type": "0xf9c404c0368cf014b44cac79dc5037da2aa34e16952673433d1c87ae3d2f8ca4::fee_policy::FeePolicy",
+    "version": 1041186703,
+    "digest": "EhQhAr2S7q7drqRVahV9vMKvN64io9j2z1KLSjMzxGut",
+    "previousTransaction": "HbiG4ToVM29jB6AvwPUMjRozZC5KsTEy6CzvbiFWsNwp",
+    "fields": {
+      "fees": {
+        "lp_fee_meme_bps": {
+          "pos0": "2500"
+        },
+        "lp_fee_quote_bps": {
+          "pos0": "2500"
+        },
+        "raise_bps": {
+          "pos0": "200"
+        },
+        "token_bps": {
+          "pos0": "100"
+        }
+      }
+    }
+  },
+  "appFee": "Not verified from a live quote; configured outside these policies. App source describes an optional fee on swap output; use the actual trade quote."
+}

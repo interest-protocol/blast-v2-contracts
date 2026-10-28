@@ -85,3 +85,8 @@ beneficial-owner balances under this policy.
 
 Move source and tests own current functions, events, errors, and custody behavior.
 `Move.toml` and `Move.lock` own dependency resolution.
+
+For complete fee bases, rounding, and live-versus-snapshotted policy, see the
+[migrators integrator guide](../../docs/llms/migrators.md#economics). The
+[28 October 2026 fee audit](../../docs/research/2026-10-28-fee-audit.md) records
+dated deployed rates; publication defaults do not establish current pricing.

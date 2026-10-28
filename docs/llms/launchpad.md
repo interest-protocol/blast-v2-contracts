@@ -402,6 +402,41 @@ allow/remove toggles for Quotes, decimals, and adapters instead abort inside the
 
 All amounts are atomic units. Rates are BPS out of 10,000. `ceil` rounds up, `floor` rounds down.
 
+#### Fee inventory and which settings apply
+
+| Charge or allocation | Base | When fixed or read | Publication default / contract bound |
+| --- | --- | --- | --- |
+| Blast creation fee | Exact SUI coin in MIST, independent of Quote | `LaunchConfig` at finalization | 0 MIST / any `u64` amount |
+| Quote trade fee | Consumed gross Quote on buys; gross Quote output on sells | Snapshotted at `launch::new` | 0 / 0..=1,000 BPS |
+| Meme trade fee | Gross Meme output on buys; gross Meme input on sells | Snapshotted at `launch::new` | 0 / 0..=1,000 BPS |
+| Blast share of each trade fee | Each charged fee, independently in its asset | Live `RuntimeConfig` at every trade | 0 / 0..=10,000 BPS |
+| Migration Meme allocation | Entire minted supply, before unsold tokens are disposed of | `LaunchConfig` at finalization | 0 / 0..=9,998 BPS |
+| Migration Quote allocation | Final real Quote reserve | `LaunchConfig` at finalization | 0 / 0..=9,999 BPS |
+| Optional sell burn | Meme input after the Meme trade fee | Immutable ticket setting | Creator selects 0..=5,000 BPS |
+| Postmigration Blast LP share | Each asset's collected venue LP fees | Live migrators policy; see migrators guide | 0 on publication / 0..=10,000 BPS per asset |
+
+Publication defaults are initial values in source, not today's deployed rates. Read the live policy
+for a new launch and the launch's own snapshots for an existing launch. Rate limits preserve a valid
+allocation; they are not recommended prices. The launch's allocation and both trade rates stay fixed,
+but Blast can change its share of subsequent trade fees immediately.
+
+Both trade fees apply on **every buy and sell**. Blast's protocol share divides those fees with the
+creator; it adds no further trader charge. With no price impact, burn, or rounding, the retained
+trade fraction is `(1 - fq / 10,000) * (1 - fm / 10,000)`. For example, hypothetical rates of
+150 BPS on each asset produce about 2.9775% fee drag per trade, not 1.5%. Finite trades also move
+the curve price; use the exact formulas below for execution.
+
+The migration charges use different assets and different bases: never add a percentage of token
+supply to a percentage of raised Quote and label it a single cash fee. Project recipient allocations
+and creator LP routing are additional uses of proceeds, chosen by the creator. Sell burn destroys
+value from the seller's input; it is not fee income for Blast.
+
+Opening-round bids have no separate levy: settlement executes one ordinary curve buy, and excess
+Quote is returned without a trade fee. Creator/protocol claims and reward deliveries add no Blast
+claim fee. This contract has no bridge or presale refund flow. Sui gas and publication costs,
+Bluefin's separate venue creation fee, and postmigration DEX swap fees belong in a launch's total
+cost estimate; none is covered by the SUI creation fee above.
+
 #### Supply
 
 Every generated coin has exactly `1_000_000_000 * 10^decimals` atoms, minted once. Finalization
@@ -451,10 +486,12 @@ Buy with `q` Quote supplied:
 2. `quote_fee = ceil(g * fq / 10,000)`; `net = g - quote_fee`.
 3. `meme_out_gross = floor(M * net / (V + Q + net))`.
 4. `meme_fee = ceil(meme_out_gross * fm / 10,000)`; `meme_out_net = meme_out_gross - meme_fee`.
-5. If `meme_out_net` is 0, `launch::buy` aborts with `EZeroTradeOutput` (settlement instead keeps
-   the pot for refund). If it is below `min_meme_out`, abort `ESlippageExceeded`.
-6. `Q += net`, `M -= meme_out_gross`. If `Q >= T`, the launch becomes `MigrationReady`. Because of
-   rounding the final `Q` can sit a few atoms above `T`.
+5. If `meme_out_net` is 0 and the net Quote does not reach the target, `launch::buy` aborts with
+   `EZeroTradeOutput`; opening-round settlement instead keeps the whole pot for refund. A
+   target-reaching buy may return zero Meme only with `min_meme_out = 0`. Any output below the
+   minimum aborts `ESlippageExceeded`.
+6. `Q += net`, `M -= meme_out_gross`. When `Q = T`, the launch becomes `MigrationReady`. The cap
+   reaches the target exactly: `g - ceil(g * fq / 10,000) = T - Q` on a capped buy.
 
 Sell with `m` Meme:
 
@@ -481,6 +518,7 @@ Blast fee claim.
 
 Exactly `LaunchConfig.creation_fee` MIST of SUI, whatever the Quote, paid at finalization into the
 ledger's `protocol_sui` balance. It is Blast's and is claimed with the other Blast fees.
+One SUI is 1,000,000,000 MIST. A zero fee still requires an explicit zero-valued SUI coin.
 
 #### Partner payouts
 
