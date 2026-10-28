@@ -634,7 +634,8 @@
       "Multisig configures reviewed quote, adapter, venue and presale admission policies.",
       "Complete required mainnet venue route, residual and fee-collection matrix before product rollout.",
       "Adopt canonical IDs in SDK, indexer and application as a separate rollout."
-    ]
+    ],
+    "canonicalPackageRecord": "2026-10-28-canonical-mvr-launch-stack.json"
   },
   "validation": [
     {
@@ -703,13 +704,49 @@
     {
       "command": "cargo test --locked --test bootstrap --test atomic_migration --test venue_fork --test presale_venue_fork -- --nocapture --test-threads=1",
       "environment": "Rust 1.96.1; Sui simulator pinned to 51d177ad7d65102fc368b582408f466d97b31548; mainnet snapshot checkpoint 339033808",
-      "result": "pending; see raw integration log",
-      "completedSuites": []
+      "result": "pass",
+      "completedSuites": [
+        {
+          "result": "ok",
+          "passed": 5,
+          "failed": 0
+        },
+        {
+          "result": "ok",
+          "passed": 1,
+          "failed": 0
+        },
+        {
+          "result": "ok",
+          "passed": 7,
+          "failed": 0
+        },
+        {
+          "result": "ok",
+          "passed": 3,
+          "failed": 0
+        }
+      ]
     },
     {
       "environment": "canonical mainnet packages",
       "check": "live mainnet venue route, residual and fee-collection matrix",
       "result": "pending; product rollout blocked until multisig configuration and this matrix complete"
+    },
+    {
+      "check": "fresh-package source verification",
+      "environment": "live mainnet",
+      "result": "pass; all five packages match pinned CLI rebuild bytecode and linkage"
+    },
+    {
+      "check": "fresh-package source verification",
+      "environment": "live mainnet",
+      "result": "pass; all five packages match pinned CLI rebuild bytecode and linkage"
+    },
+    {
+      "check": "fresh-package source verification",
+      "environment": "live mainnet",
+      "result": "pass; all five packages match pinned CLI rebuild bytecode and linkage"
     }
   ],
   "moveTestsPassed": 902,
@@ -731,5 +768,7 @@
     "productionMoveSourcesMatchCommit": true,
     "testFixtureCommit": "47eeb24"
   },
-  "timestampUtc": "2026-10-28T11:21:55.640000+00:00"
+  "timestampUtc": "2026-10-28T11:21:55.640000+00:00",
+  "supersededBy": "2026-10-28-canonical-mvr-launch-stack.json",
+  "canonical": false
 }
