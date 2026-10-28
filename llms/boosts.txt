@@ -23,8 +23,8 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 | `blast_boosts_core` | Boosts core | live; source has changed since | `0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe` | `0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe` |
 | `blast_boosts_products` | Boost product tags | live; source has changed since | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` |
 | `blast_boosts_aftermath` | Boosts Aftermath adapter | not yet published | — | — |
-| `blast_partners` | Partner codes | live; source has changed since | `0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd` | `0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd` |
-| `blast_admin` | Administration | not yet published | — | — |
+| `blast_partners` | Partner codes | live | `0x1ac5602bea673a59f693020e57ece4819e1bcb1c421c40494e9b225aeb949a85` | `0x1ac5602bea673a59f693020e57ece4819e1bcb1c421c40494e9b225aeb949a85` |
+| `blast_admin` | Administration | live | `0x2136ba8efa373b04d237c4eb5154d240f526e65f27a06164e88e9513d28f50df` | `0x2136ba8efa373b04d237c4eb5154d240f526e65f27a06164e88e9513d28f50df` |
 
 ## Calling Blast contracts
 
@@ -1306,7 +1306,7 @@ Boost down so holders can claim what remains.
 
 ## Partner codes
 
-> **Deployment status:** `blast_partners` is live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package.
+> **Deployment status:** `blast_partners` is live on mainnet.
 
 ### What it is
 
@@ -3795,7 +3795,7 @@ public struct VenueAccount has store {
 
 ## API reference: `blast_partners` (Partner codes)
 
-Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
+Live on mainnet.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -3919,7 +3919,7 @@ public struct PartnerPaid<phantom T> has copy, drop {
 
 ## API reference: `blast_admin` (Administration)
 
-Not yet published on mainnet. Its interface may change before publication.
+Live on mainnet.
 
 Events: payload structs are emitted directly, each under its own type.
 

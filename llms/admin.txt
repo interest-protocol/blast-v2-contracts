@@ -20,7 +20,7 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 
 | Package | Product | Status | Package ID (`published-at`) | Type origin (`original-id`) |
 | --- | --- | --- | --- | --- |
-| `blast_admin` | Administration | not yet published | — | — |
+| `blast_admin` | Administration | live | `0x2136ba8efa373b04d237c4eb5154d240f526e65f27a06164e88e9513d28f50df` | `0x2136ba8efa373b04d237c4eb5154d240f526e65f27a06164e88e9513d28f50df` |
 
 ## Calling Blast contracts
 
@@ -170,7 +170,7 @@ run) before signing it.
 
 ## Administration
 
-> **Deployment status:** `blast_admin` is not yet published on mainnet; its interface may change before publication.
+> **Deployment status:** `blast_admin` is live on mainnet.
 
 ### What it is
 
@@ -528,7 +528,7 @@ presale roles, granted like any other package's.
 
 ## API reference: `blast_admin` (Administration)
 
-Not yet published on mainnet. Its interface may change before publication.
+Live on mainnet.
 
 Events: payload structs are emitted directly, each under its own type.
 

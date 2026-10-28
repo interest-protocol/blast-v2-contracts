@@ -20,10 +20,10 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 
 | Package | Product | Status | Package ID (`published-at`) | Type origin (`original-id`) |
 | --- | --- | --- | --- | --- |
-| `blast_fun` | Launchpad | not yet published | — | — |
-| `blast_fun_migrators` | Migration and LP vaults | not yet published | — | — |
-| `blast_partners` | Partner codes | live; source has changed since | `0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd` | `0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd` |
-| `blast_admin` | Administration | not yet published | — | — |
+| `blast_fun` | Launchpad | live | `0x827e04933699da94c23d9ea529f184656738cacdb7962f03be791fd715b76743` | `0x827e04933699da94c23d9ea529f184656738cacdb7962f03be791fd715b76743` |
+| `blast_fun_migrators` | Migration and LP vaults | live | `0x7e009c69fcaab269617359fc9ea2b3a308e71c82165af30f3b91ffc445800416` | `0x7e009c69fcaab269617359fc9ea2b3a308e71c82165af30f3b91ffc445800416` |
+| `blast_partners` | Partner codes | live | `0x1ac5602bea673a59f693020e57ece4819e1bcb1c421c40494e9b225aeb949a85` | `0x1ac5602bea673a59f693020e57ece4819e1bcb1c421c40494e9b225aeb949a85` |
+| `blast_admin` | Administration | live | `0x2136ba8efa373b04d237c4eb5154d240f526e65f27a06164e88e9513d28f50df` | `0x2136ba8efa373b04d237c4eb5154d240f526e65f27a06164e88e9513d28f50df` |
 
 ## Calling Blast contracts
 
@@ -173,7 +173,7 @@ run) before signing it.
 
 ## Launchpad
 
-> **Deployment status:** `blast_fun` is not yet published on mainnet; its interface may change before publication.
+> **Deployment status:** `blast_fun` is live on mainnet.
 
 ### What it is
 
@@ -895,7 +895,7 @@ never reaches its target stays `Live`, and holders exit by selling to the curve.
 
 ## Migration and LP vaults
 
-> **Deployment status:** `blast_fun_migrators` is not yet published on mainnet; its interface may change before publication.
+> **Deployment status:** `blast_fun_migrators` is live on mainnet.
 
 ### What it is
 
@@ -1585,7 +1585,7 @@ its share in force at that moment, rounded down, and Blast's destination the res
 
 ## Partner codes
 
-> **Deployment status:** `blast_partners` is live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package.
+> **Deployment status:** `blast_partners` is live on mainnet.
 
 ### What it is
 
@@ -1884,7 +1884,7 @@ where you like); Blast takes no cut of it.
 
 ## API reference: `blast_fun` (Launchpad)
 
-Not yet published on mainnet. Its interface may change before publication.
+Live on mainnet.
 
 Events: every payload is emitted inside `blast_fun::blast_events::Event<T>`; filter on that type.
 
@@ -2996,7 +2996,7 @@ public fun set_treasury(
 
 ## API reference: `blast_fun_migrators` (Migration and LP vaults)
 
-Not yet published on mainnet. Its interface may change before publication.
+Live on mainnet.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -3739,7 +3739,7 @@ public struct VenueConfig has key {
 
 ## API reference: `blast_partners` (Partner codes)
 
-Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
+Live on mainnet.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -3863,7 +3863,7 @@ public struct PartnerPaid<phantom T> has copy, drop {
 
 ## API reference: `blast_admin` (Administration)
 
-Not yet published on mainnet. Its interface may change before publication.
+Live on mainnet.
 
 Events: payload structs are emitted directly, each under its own type.
 

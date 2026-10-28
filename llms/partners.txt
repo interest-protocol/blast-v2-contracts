@@ -20,8 +20,8 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 
 | Package | Product | Status | Package ID (`published-at`) | Type origin (`original-id`) |
 | --- | --- | --- | --- | --- |
-| `blast_partners` | Partner codes | live; source has changed since | `0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd` | `0x50c4a1b68af8c4fa0438ad8b02e49d484d46ab38e85ac4d001ea13449aa20dbd` |
-| `blast_admin` | Administration | not yet published | — | — |
+| `blast_partners` | Partner codes | live | `0x1ac5602bea673a59f693020e57ece4819e1bcb1c421c40494e9b225aeb949a85` | `0x1ac5602bea673a59f693020e57ece4819e1bcb1c421c40494e9b225aeb949a85` |
+| `blast_admin` | Administration | live | `0x2136ba8efa373b04d237c4eb5154d240f526e65f27a06164e88e9513d28f50df` | `0x2136ba8efa373b04d237c4eb5154d240f526e65f27a06164e88e9513d28f50df` |
 
 ## Calling Blast contracts
 
@@ -171,7 +171,7 @@ run) before signing it.
 
 ## Partner codes
 
-> **Deployment status:** `blast_partners` is live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package.
+> **Deployment status:** `blast_partners` is live on mainnet.
 
 ### What it is
 
@@ -470,7 +470,7 @@ where you like); Blast takes no cut of it.
 
 ## API reference: `blast_partners` (Partner codes)
 
-Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
+Live on mainnet.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -594,7 +594,7 @@ public struct PartnerPaid<phantom T> has copy, drop {
 
 ## API reference: `blast_admin` (Administration)
 
-Not yet published on mainnet. Its interface may change before publication.
+Live on mainnet.
 
 Events: payload structs are emitted directly, each under its own type.
 

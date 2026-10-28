@@ -1,0 +1,709 @@
+{
+  "schemaVersion": 1,
+  "recordKind": "sui-package-stack-deployment",
+  "release": "canonical-launchpad-presale",
+  "network": {
+    "chain": "sui",
+    "environment": "mainnet",
+    "chainIdentifierHex": "35834a8a",
+    "chainIdentifierBase58": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S"
+  },
+  "sourceCommit": "9255e78751b70b22d8f33cc6577df126a3434424",
+  "toolchain": "sui 1.77.2-51d177ad7d65",
+  "deployer": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+  "status": "canonical-packages-published-and-custody-verified",
+  "packages": {
+    "admin": {
+      "packageId": "0x2136ba8efa373b04d237c4eb5154d240f526e65f27a06164e88e9513d28f50df",
+      "sourceDigest": "sha256:3f99b6ef588b9c882b67802b91b888b3baffbd4e808ee77bd720108290a3e456",
+      "publicationDigest": "7qx1RnpQkWGMZuyht19gbUsNj3donz2UbKPv2FHstFAz",
+      "checkpoint": "339033094",
+      "status": "success",
+      "immutable": true,
+      "acl": {
+        "objectId": "0xf326d951bd8d05cead62bffde480e3d7aca4a94837fc0caf522297497b410244",
+        "initialSharedVersion": 1
+      },
+      "superAdminCap": {
+        "objectId": "0x8476e3ad6bb6cc3481e85afb9268bf6547824ad8e8eac8eab7a67c404bfab656",
+        "owner": "0x818d6d7026632f82367a9ca2413a5bb28aeec2a1b8dedca919ef812577b4d0a2"
+      },
+      "dependencies": {
+        "0x0000000000000000000000000000000000000000000000000000000000000001": {
+          "upgraded_id": "0x0000000000000000000000000000000000000000000000000000000000000001",
+          "upgraded_version": 25
+        },
+        "0x0000000000000000000000000000000000000000000000000000000000000002": {
+          "upgraded_id": "0x0000000000000000000000000000000000000000000000000000000000000002",
+          "upgraded_version": 60
+        },
+        "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d": {
+          "upgraded_id": "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d",
+          "upgraded_version": 1
+        }
+      },
+      "upgradeCapDestroyedInPublication": true,
+      "adminCaps": [],
+      "constructor": {
+        "rootAddress": "0x818d6d7026632f82367a9ca2413a5bb28aeec2a1b8dedca919ef812577b4d0a2",
+        "superAdminTransferDelayMs": 604800000
+      },
+      "netGasMist": {
+        "publish": "78828400"
+      }
+    },
+    "partners": {
+      "packageId": "0x1ac5602bea673a59f693020e57ece4819e1bcb1c421c40494e9b225aeb949a85",
+      "publicationDigest": "2NnvtTDkUgRnY67XeAoKTLSqBNqEoN1nbXZbXc77foB2",
+      "checkpoint": "339033453",
+      "status": "success",
+      "immutable": true,
+      "dependencies": {
+        "0x0000000000000000000000000000000000000000000000000000000000000001": {
+          "upgraded_id": "0x0000000000000000000000000000000000000000000000000000000000000001",
+          "upgraded_version": 25
+        },
+        "0x0000000000000000000000000000000000000000000000000000000000000002": {
+          "upgraded_id": "0x0000000000000000000000000000000000000000000000000000000000000002",
+          "upgraded_version": 60
+        },
+        "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d": {
+          "upgraded_id": "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d",
+          "upgraded_version": 1
+        },
+        "0x2136ba8efa373b04d237c4eb5154d240f526e65f27a06164e88e9513d28f50df": {
+          "upgraded_id": "0x2136ba8efa373b04d237c4eb5154d240f526e65f27a06164e88e9513d28f50df",
+          "upgraded_version": 1
+        }
+      },
+      "upgradeCapDestroyedInPublication": true,
+      "netGasMist": {
+        "publish": "20521200"
+      }
+    },
+    "launchpad": {
+      "packageId": "0x827e04933699da94c23d9ea529f184656738cacdb7962f03be791fd715b76743",
+      "originalPackageId": "0x827e04933699da94c23d9ea529f184656738cacdb7962f03be791fd715b76743",
+      "nativeVersion": 1,
+      "policy": 0,
+      "operationalGeneration": 1,
+      "publicationDigest": "9nS38Fx58RC8KFLgpJpDsACdzEt4Hxu4eiGe323dtQ6f",
+      "publicationCheckpoint": "339034157",
+      "wrapDigest": "8EhnJYMxqYJAHzHvJk5iqXXFXZ2tsgFw5pYseMFfUEHx",
+      "wrapCheckpoint": "339034323",
+      "status": "published-and-wrapped",
+      "publisherId": "0xe2c2b13ea55e12228af25881414f2814e855ad4d45d6af60529d8126221df05b",
+      "upgradeCapId": "0x41d96e1a4e100048c7abe986c0f5ba8ef70cfc8f5067dd801239e0ec8822f3c3",
+      "packageAdmin": {
+        "objectId": "0x82d81e655b92f8a3feb92221c35ce53fd4e9a1bf9daf4a0d6e1986efbd0b01a6",
+        "initialSharedVersion": 2
+      },
+      "packageVersion": {
+        "objectId": "0xf5c3dc0dff4c3b46681a4869613259069709b18e3ca337011eb0de8c90e825ae",
+        "initialSharedVersion": 2
+      },
+      "sharedObjects": [
+        {
+          "type": "created",
+          "sender": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+          "owner": {
+            "Shared": {
+              "initial_shared_version": 1
+            }
+          },
+          "objectType": "0x827e04933699da94c23d9ea529f184656738cacdb7962f03be791fd715b76743::runtime_config::RuntimeConfig",
+          "objectId": "0x93887f806260f9a473ea12c00fcc9fb450ba57e92dbcad959b41c44478535092",
+          "version": "1",
+          "digest": "5SZ3sjSVkktUtijG2ieqUtL1uP5RaFXmadT7anxFffVg",
+          "initializationReadback": {
+            "creator_claim_signer_public_key": "",
+            "id": "0x93887f806260f9a473ea12c00fcc9fb450ba57e92dbcad959b41c44478535092",
+            "protocol_fee_share_bps": {
+              "pos0": "0"
+            },
+            "treasury": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600"
+          }
+        },
+        {
+          "type": "created",
+          "sender": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+          "owner": {
+            "Shared": {
+              "initial_shared_version": 1
+            }
+          },
+          "objectType": "0x827e04933699da94c23d9ea529f184656738cacdb7962f03be791fd715b76743::launch_config::LaunchConfig",
+          "objectId": "0xf562d83d9d71d8e9c7a1487cc4b0ef97401451813b2c01fb36e0f35be0614cca",
+          "version": "1",
+          "digest": "6Jypf35G6HKkDqGarDTigD5Dzgpu2afQacY7Hj2GE8pP",
+          "initializationReadback": {
+            "creation_fee": "0",
+            "id": "0xf562d83d9d71d8e9c7a1487cc4b0ef97401451813b2c01fb36e0f35be0614cca",
+            "meme_decimals": {
+              "contents": "Bgk="
+            },
+            "meme_fee_bps": {
+              "pos0": "0"
+            },
+            "migration_witnesses": {
+              "contents": []
+            },
+            "protocol_allocation": {
+              "meme_bps": {
+                "pos0": "0"
+              },
+              "quote_bps": {
+                "pos0": "0"
+              }
+            },
+            "quote_fee_bps": {
+              "pos0": "0"
+            },
+            "quotes": {
+              "id": "0x89bbae29629350642f246442c743705a58964f228796f08cf83d5b0e3e737936",
+              "size": "0"
+            }
+          }
+        }
+      ],
+      "custodyEvent": {
+        "id": {
+          "txDigest": "8EhnJYMxqYJAHzHvJk5iqXXFXZ2tsgFw5pYseMFfUEHx",
+          "eventSeq": "0"
+        },
+        "packageId": "0x827e04933699da94c23d9ea529f184656738cacdb7962f03be791fd715b76743",
+        "transactionModule": "package_admin",
+        "sender": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+        "type": "0x2136ba8efa373b04d237c4eb5154d240f526e65f27a06164e88e9513d28f50df::blast_admin_events::UpgradeCustodyCreated<0x827e04933699da94c23d9ea529f184656738cacdb7962f03be791fd715b76743::blast_fun::BLAST_FUN>",
+        "parsedJson": {
+          "custodian_id": "0x82d81e655b92f8a3feb92221c35ce53fd4e9a1bf9daf4a0d6e1986efbd0b01a6",
+          "native_version": "1",
+          "package_id": "0x827e04933699da94c23d9ea529f184656738cacdb7962f03be791fd715b76743",
+          "policy": 0.0,
+          "publisher_id": "0xe2c2b13ea55e12228af25881414f2814e855ad4d45d6af60529d8126221df05b",
+          "upgrade_cap_id": "0x41d96e1a4e100048c7abe986c0f5ba8ef70cfc8f5067dd801239e0ec8822f3c3"
+        },
+        "bcsEncoding": "base64",
+        "bcs": "gtgeZVuS+KP+uSIhw1zlP9Tpob+dr0oNbhmG770LAabiwrE+pV4SIoryWIFBTygU6FWtTUXWr2BSnYEmIh3wW0HZbhpOEABIx6vphsD1uo73DPyPUGfdgBI54OyIIvPDgn4EkzaZ2pTCPZ6lKfGEZWc4ys23li8Dvnkf1xW3Z0MBAAAAAAAAAAA=",
+        "timestampMs": "1793186281158"
+      },
+      "dependencies": {
+        "0x0000000000000000000000000000000000000000000000000000000000000001": {
+          "upgraded_id": "0x0000000000000000000000000000000000000000000000000000000000000001",
+          "upgraded_version": 25
+        },
+        "0x0000000000000000000000000000000000000000000000000000000000000002": {
+          "upgraded_id": "0x0000000000000000000000000000000000000000000000000000000000000002",
+          "upgraded_version": 60
+        },
+        "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d": {
+          "upgraded_id": "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d",
+          "upgraded_version": 1
+        },
+        "0x1ac5602bea673a59f693020e57ece4819e1bcb1c421c40494e9b225aeb949a85": {
+          "upgraded_id": "0x1ac5602bea673a59f693020e57ece4819e1bcb1c421c40494e9b225aeb949a85",
+          "upgraded_version": 1
+        },
+        "0x2136ba8efa373b04d237c4eb5154d240f526e65f27a06164e88e9513d28f50df": {
+          "upgraded_id": "0x2136ba8efa373b04d237c4eb5154d240f526e65f27a06164e88e9513d28f50df",
+          "upgraded_version": 1
+        }
+      },
+      "netGasMist": {
+        "publish": "263025200",
+        "wrap": "449984"
+      }
+    },
+    "migrators": {
+      "packageId": "0x7e009c69fcaab269617359fc9ea2b3a308e71c82165af30f3b91ffc445800416",
+      "originalPackageId": "0x7e009c69fcaab269617359fc9ea2b3a308e71c82165af30f3b91ffc445800416",
+      "nativeVersion": 1,
+      "policy": 0,
+      "operationalGeneration": 1,
+      "publicationDigest": "A8K9DZpmhGuuqmUmoPEr3crUvj3VFnoELyZxrMjRWgSC",
+      "publicationCheckpoint": "339035100",
+      "wrapDigest": "BuPmt2CSrSuxueYdGuYMVeT4fWKg2kESEUDc9tdMphQk",
+      "wrapCheckpoint": "339035193",
+      "status": "published-and-wrapped",
+      "publisherId": "0xa130ccda28cf3805ebe6dc7c263bcb252b0b611b62ff3b9192720cd739f76fe8",
+      "upgradeCapId": "0x69cddf399266a766e371a49e4045579a1f2a321c44b63b045b74f4d42990f2de",
+      "packageAdmin": {
+        "objectId": "0x63dfae1d39bf2a3673a3e6483d84facde2bda0b9423afaa13c9189a0f67dd73c",
+        "initialSharedVersion": 2
+      },
+      "packageVersion": {
+        "objectId": "0xa2400c287ab0ccc13619d468f9257edd1857550e2bee8a706ed4748f68ecfd4d",
+        "initialSharedVersion": 1
+      },
+      "sharedObjects": [
+        {
+          "type": "created",
+          "sender": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+          "owner": {
+            "Shared": {
+              "initial_shared_version": 1
+            }
+          },
+          "objectType": "0x7e009c69fcaab269617359fc9ea2b3a308e71c82165af30f3b91ffc445800416::lp_fee_policy::LpFeePolicy",
+          "objectId": "0x240dc9305b26297b444daf686e649085d3977f003a23b9829ce8d6af263f7646",
+          "version": "1",
+          "digest": "DxynLkMNbk4JrGReZrL55y1xS6H7iTvRHQi5vNrMWdz6",
+          "initializationReadback": {
+            "coins": {
+              "id": "0xb9b150aa4bb7a6a11dbb741b439c8043b98c73ad42ff671f75bad01091e5d9f7",
+              "size": "0"
+            },
+            "defaults": {
+              "meme_bps": {
+                "pos0": "0"
+              },
+              "quote_bps": {
+                "pos0": "0"
+              }
+            },
+            "destination": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+            "id": "0x240dc9305b26297b444daf686e649085d3977f003a23b9829ce8d6af263f7646"
+          }
+        },
+        {
+          "type": "created",
+          "sender": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+          "owner": {
+            "Shared": {
+              "initial_shared_version": 1
+            }
+          },
+          "objectType": "0x7e009c69fcaab269617359fc9ea2b3a308e71c82165af30f3b91ffc445800416::venue_config::VenueConfig",
+          "objectId": "0x6f76ba819d1ef1a273a0b176422a0026a4c714b3cecbab222bb4841432c28e5d",
+          "version": "1",
+          "digest": "DKpgdi6822uZD6VenuA5NxckWweQVuLuZPyAh47rFbji",
+          "initializationReadback": {
+            "id": "0x6f76ba819d1ef1a273a0b176422a0026a4c714b3cecbab222bb4841432c28e5d"
+          }
+        },
+        {
+          "type": "created",
+          "sender": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+          "owner": {
+            "Shared": {
+              "initial_shared_version": 1
+            }
+          },
+          "objectType": "0x7e009c69fcaab269617359fc9ea2b3a308e71c82165af30f3b91ffc445800416::blast_fun_migrators::PackageVersion",
+          "objectId": "0xa2400c287ab0ccc13619d468f9257edd1857550e2bee8a706ed4748f68ecfd4d",
+          "version": "1",
+          "digest": "7BThsxi5FjTdZqt2cR6bSaCEuV4HdFRZLGZjPyApzLsJ",
+          "initializationReadback": {
+            "generation": {
+              "generation": "1"
+            },
+            "id": "0xa2400c287ab0ccc13619d468f9257edd1857550e2bee8a706ed4748f68ecfd4d"
+          }
+        }
+      ],
+      "custodyEvent": {
+        "id": {
+          "txDigest": "BuPmt2CSrSuxueYdGuYMVeT4fWKg2kESEUDc9tdMphQk",
+          "eventSeq": "0"
+        },
+        "packageId": "0x7e009c69fcaab269617359fc9ea2b3a308e71c82165af30f3b91ffc445800416",
+        "transactionModule": "package_admin",
+        "sender": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+        "type": "0x2136ba8efa373b04d237c4eb5154d240f526e65f27a06164e88e9513d28f50df::blast_admin_events::UpgradeCustodyCreated<0x7e009c69fcaab269617359fc9ea2b3a308e71c82165af30f3b91ffc445800416::blast_fun_migrators::BLAST_FUN_MIGRATORS>",
+        "parsedJson": {
+          "custodian_id": "0x63dfae1d39bf2a3673a3e6483d84facde2bda0b9423afaa13c9189a0f67dd73c",
+          "native_version": "1",
+          "package_id": "0x7e009c69fcaab269617359fc9ea2b3a308e71c82165af30f3b91ffc445800416",
+          "policy": 0.0,
+          "publisher_id": "0xa130ccda28cf3805ebe6dc7c263bcb252b0b611b62ff3b9192720cd739f76fe8",
+          "upgrade_cap_id": "0x69cddf399266a766e371a49e4045579a1f2a321c44b63b045b74f4d42990f2de"
+        },
+        "bcsEncoding": "base64",
+        "bcs": "Y9+uHTm/KjZzo+ZIPYT6zeK9oLlCOvqhPJGJoPZ91zyhMMzaKM84Bevm3HwmO8slKwthG2L/O5GScgzXOfdv6GnN3zmSZqdm43GknkBFV5ofKjIcRLY7BFt09NQpkPLefgCcafyqsmlhc1n8nqKzowjnHIIWWvMPO5H/xEWABBYBAAAAAAAAAAA=",
+        "timestampMs": "1793186488085"
+      },
+      "dependencies": {
+        "0x0000000000000000000000000000000000000000000000000000000000000001": {
+          "upgraded_id": "0x0000000000000000000000000000000000000000000000000000000000000001",
+          "upgraded_version": 25
+        },
+        "0x0000000000000000000000000000000000000000000000000000000000000002": {
+          "upgraded_id": "0x0000000000000000000000000000000000000000000000000000000000000002",
+          "upgraded_version": 60
+        },
+        "0x03637b7b60978ef4389124f7683456f0050ab015a0590d52b6e6cadb342af34a": {
+          "upgraded_id": "0xab5e63352d0f05881bdfa1631cc0f7fc1669175a00d608828a924df481a9e4bd",
+          "upgraded_version": 3
+        },
+        "0x06864a6f921804860930db6ddbe2e16acdf8504495ea7481637a1c8b9a8fe54b": {
+          "upgraded_id": "0x06864a6f921804860930db6ddbe2e16acdf8504495ea7481637a1c8b9a8fe54b",
+          "upgraded_version": 1
+        },
+        "0x12d73de9a6bc3cb658ec9dc0fe7de2662be1cea5c76c092fcc3606048cdbac27": {
+          "upgraded_id": "0xc4aabc874f5060d3147d8f74c14e3a8a1f9f8d92edea138a51635395ed167cd9",
+          "upgraded_version": 8
+        },
+        "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d": {
+          "upgraded_id": "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d",
+          "upgraded_version": 1
+        },
+        "0x1ac5602bea673a59f693020e57ece4819e1bcb1c421c40494e9b225aeb949a85": {
+          "upgraded_id": "0x1ac5602bea673a59f693020e57ece4819e1bcb1c421c40494e9b225aeb949a85",
+          "upgraded_version": 1
+        },
+        "0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb": {
+          "upgraded_id": "0x260693ec785a6e6c9d81d58c7d2ff72f1288ae0fa6a9725abe05a6478b11f084",
+          "upgraded_version": 15
+        },
+        "0x2136ba8efa373b04d237c4eb5154d240f526e65f27a06164e88e9513d28f50df": {
+          "upgraded_id": "0x2136ba8efa373b04d237c4eb5154d240f526e65f27a06164e88e9513d28f50df",
+          "upgraded_version": 1
+        },
+        "0x3492c874c1e3b3e2984e8c41b589e642d4d0a5d6459e5a9cfc2d52fd7c89c267": {
+          "upgraded_id": "0xd075338d105482f1527cbfd363d6413558f184dec36d9138a70261e87f486e9c",
+          "upgraded_version": 17
+        },
+        "0x714a63a0dba6da4f017b42d5d0fb78867f18bcde904868e51d951a5a6f5b7f57": {
+          "upgraded_id": "0xdfaadf86be9af246900d1e3f3b996cf549e7948e662a9977bdd7646d8fa3a778",
+          "upgraded_version": 7
+        },
+        "0x827e04933699da94c23d9ea529f184656738cacdb7962f03be791fd715b76743": {
+          "upgraded_id": "0x827e04933699da94c23d9ea529f184656738cacdb7962f03be791fd715b76743",
+          "upgraded_version": 1
+        },
+        "0x9d2f067d3b9d19ac0f8d2e5c2c393b1760232083e42005b2e5df39c06064d522": {
+          "upgraded_id": "0x48dcc51091e692a0c8a64930fc839fb5a8e58de3590c084a8322b9cd34754c36",
+          "upgraded_version": 2
+        },
+        "0xbe21a06129308e0495431d12286127897aff07a8ade3970495a4404d97f9eaaa": {
+          "upgraded_id": "0x8569b7efebec65c73b9dc15c5ac2a9542870d286fa79a3feedffbaa94ed53002",
+          "upgraded_version": 5
+        }
+      },
+      "netGasMist": {
+        "publish": "255039600",
+        "wrap": "-659641"
+      }
+    },
+    "presale": {
+      "packageId": "0xedb6ddae546132a66f5ae5a1c3561ef07bf892620bd78d90659aba962f7be0af",
+      "originalPackageId": "0xedb6ddae546132a66f5ae5a1c3561ef07bf892620bd78d90659aba962f7be0af",
+      "nativeVersion": 1,
+      "policy": 0,
+      "operationalGeneration": 1,
+      "publicationDigest": "84NJcxdt67EVXfPcF6uwKGa2c6u4Gn36JQFjy2tQdtZK",
+      "publicationCheckpoint": "339035255",
+      "wrapDigest": "CxnfEvd1dB9Wg5KBWZpxq54Rpw6Tc6hhqMTDXyacYHLn",
+      "wrapCheckpoint": "339035309",
+      "status": "published-and-wrapped",
+      "publisherId": "0x9e928d6267da46c93de1ef0f8d25a67975d35b093864b9140acf2c1b7b52a772",
+      "upgradeCapId": "0xaba02798e203bdf457892a031564a7a9a6a7277e05d763c96ce027845f7de4fd",
+      "packageAdmin": {
+        "objectId": "0x903e7610db9c1ea98401b88ebd3c17b584bb923c00fa34a103420b6209497fd8",
+        "initialSharedVersion": 2
+      },
+      "packageVersion": {
+        "objectId": "0x4b52b856959ad5c7b2cdb9507888f891cdda77b37497dcbf62bba2c779198ce6",
+        "initialSharedVersion": 2
+      },
+      "sharedObjects": [
+        {
+          "type": "created",
+          "sender": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+          "owner": {
+            "Shared": {
+              "initial_shared_version": 1
+            }
+          },
+          "objectType": "0xedb6ddae546132a66f5ae5a1c3561ef07bf892620bd78d90659aba962f7be0af::fee_policy::FeePolicy",
+          "objectId": "0x1225f690d2b877da3d0b08da6ee8a064439d52f8f1df6e50e7584bc74b7e287d",
+          "version": "1",
+          "digest": "B62poGzEAq9hkRLnPMZRYADtKFhhzXgCQLUgBiMiMCn7",
+          "initializationReadback": {
+            "destination": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+            "fees": {
+              "lp_fee_meme_bps": {
+                "pos0": "0"
+              },
+              "lp_fee_quote_bps": {
+                "pos0": "0"
+              },
+              "raise_bps": {
+                "pos0": "0"
+              },
+              "token_bps": {
+                "pos0": "0"
+              }
+            },
+            "id": "0x1225f690d2b877da3d0b08da6ee8a064439d52f8f1df6e50e7584bc74b7e287d"
+          }
+        },
+        {
+          "type": "created",
+          "sender": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+          "owner": {
+            "Shared": {
+              "initial_shared_version": 1
+            }
+          },
+          "objectType": "0xedb6ddae546132a66f5ae5a1c3561ef07bf892620bd78d90659aba962f7be0af::creation_policy::CreationPolicy",
+          "objectId": "0x319676c10bd896eaf6ef751def9f4ea8ea5e687fa11c88d8d02a0f7f8ff06d69",
+          "version": "1",
+          "digest": "Az7gRJhjpVu5m9ykhq7UTB5JaYwjxtaLtpe8pAusFYWr",
+          "initializationReadback": {
+            "allowed_migration_witnesses": {
+              "contents": []
+            },
+            "allowed_quotes": {
+              "contents": []
+            },
+            "id": "0x319676c10bd896eaf6ef751def9f4ea8ea5e687fa11c88d8d02a0f7f8ff06d69"
+          }
+        },
+        {
+          "type": "created",
+          "sender": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+          "owner": {
+            "Shared": {
+              "initial_shared_version": 1
+            }
+          },
+          "objectType": "0xedb6ddae546132a66f5ae5a1c3561ef07bf892620bd78d90659aba962f7be0af::venue_config::VenueConfig",
+          "objectId": "0x788f60f5a19c312e9b3060cb8180d50ca17a6ed033169e33d6fb54525ff39bc9",
+          "version": "1",
+          "digest": "PexmgDaYoqTFQ1y9F3fHF2AmEZNxCbGHiigMKPeW6fw",
+          "initializationReadback": {
+            "id": "0x788f60f5a19c312e9b3060cb8180d50ca17a6ed033169e33d6fb54525ff39bc9"
+          }
+        }
+      ],
+      "custodyEvent": {
+        "id": {
+          "txDigest": "CxnfEvd1dB9Wg5KBWZpxq54Rpw6Tc6hhqMTDXyacYHLn",
+          "eventSeq": "0"
+        },
+        "packageId": "0xedb6ddae546132a66f5ae5a1c3561ef07bf892620bd78d90659aba962f7be0af",
+        "transactionModule": "package_admin",
+        "sender": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+        "type": "0x2136ba8efa373b04d237c4eb5154d240f526e65f27a06164e88e9513d28f50df::blast_admin_events::UpgradeCustodyCreated<0xedb6ddae546132a66f5ae5a1c3561ef07bf892620bd78d90659aba962f7be0af::blast_presale_package::BLAST_PRESALE_PACKAGE>",
+        "parsedJson": {
+          "custodian_id": "0x903e7610db9c1ea98401b88ebd3c17b584bb923c00fa34a103420b6209497fd8",
+          "native_version": "1",
+          "package_id": "0xedb6ddae546132a66f5ae5a1c3561ef07bf892620bd78d90659aba962f7be0af",
+          "policy": 0.0,
+          "publisher_id": "0x9e928d6267da46c93de1ef0f8d25a67975d35b093864b9140acf2c1b7b52a772",
+          "upgrade_cap_id": "0xaba02798e203bdf457892a031564a7a9a6a7277e05d763c96ce027845f7de4fd"
+        },
+        "bcsEncoding": "base64",
+        "bcs": "kD52ENucHqmEAbiOvTwXtYS7kjwA+jShA0ILYglJf9ieko1iZ9pGyT3h7w+NJaZ5ddNbCThkuRQKzywbe1KncqugJ5jiA730V4kqAxVkp6mmpyd+BddjyWzgJ4RffeT97bbdrlRhMqZvWuWhw1Ye8Hv4kmIL142QZZq6li974K8BAAAAAAAAAAA=",
+        "timestampMs": "1793186515640"
+      },
+      "dependencies": {
+        "0x0000000000000000000000000000000000000000000000000000000000000001": {
+          "upgraded_id": "0x0000000000000000000000000000000000000000000000000000000000000001",
+          "upgraded_version": 25
+        },
+        "0x0000000000000000000000000000000000000000000000000000000000000002": {
+          "upgraded_id": "0x0000000000000000000000000000000000000000000000000000000000000002",
+          "upgraded_version": 60
+        },
+        "0x03637b7b60978ef4389124f7683456f0050ab015a0590d52b6e6cadb342af34a": {
+          "upgraded_id": "0xab5e63352d0f05881bdfa1631cc0f7fc1669175a00d608828a924df481a9e4bd",
+          "upgraded_version": 3
+        },
+        "0x06864a6f921804860930db6ddbe2e16acdf8504495ea7481637a1c8b9a8fe54b": {
+          "upgraded_id": "0x06864a6f921804860930db6ddbe2e16acdf8504495ea7481637a1c8b9a8fe54b",
+          "upgraded_version": 1
+        },
+        "0x12d73de9a6bc3cb658ec9dc0fe7de2662be1cea5c76c092fcc3606048cdbac27": {
+          "upgraded_id": "0xc4aabc874f5060d3147d8f74c14e3a8a1f9f8d92edea138a51635395ed167cd9",
+          "upgraded_version": 8
+        },
+        "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d": {
+          "upgraded_id": "0x1749b76a3ae065dedfe847578b07826fa83d1e18ff485d9e4f9647f3698e104d",
+          "upgraded_version": 1
+        },
+        "0x1ac5602bea673a59f693020e57ece4819e1bcb1c421c40494e9b225aeb949a85": {
+          "upgraded_id": "0x1ac5602bea673a59f693020e57ece4819e1bcb1c421c40494e9b225aeb949a85",
+          "upgraded_version": 1
+        },
+        "0x1eabed72c53feb3805120a081dc15963c204dc8d091542592abaf7a35689b2fb": {
+          "upgraded_id": "0x260693ec785a6e6c9d81d58c7d2ff72f1288ae0fa6a9725abe05a6478b11f084",
+          "upgraded_version": 15
+        },
+        "0x2136ba8efa373b04d237c4eb5154d240f526e65f27a06164e88e9513d28f50df": {
+          "upgraded_id": "0x2136ba8efa373b04d237c4eb5154d240f526e65f27a06164e88e9513d28f50df",
+          "upgraded_version": 1
+        },
+        "0x2d9316f1f1a95f6d7c85a4e690ef7c359e6649773ef2c37ad7d9857adb6bef06": {
+          "upgraded_id": "0xaead64e3b3cc7972ba86396df07066c90176f42c6aea53b6df0d8ab11007ece2",
+          "upgraded_version": 2
+        },
+        "0x3492c874c1e3b3e2984e8c41b589e642d4d0a5d6459e5a9cfc2d52fd7c89c267": {
+          "upgraded_id": "0xd075338d105482f1527cbfd363d6413558f184dec36d9138a70261e87f486e9c",
+          "upgraded_version": 17
+        },
+        "0x64213b0e4a52bac468d4ac3f140242f70714381653a1919a6d57cd49c628207a": {
+          "upgraded_id": "0x64213b0e4a52bac468d4ac3f140242f70714381653a1919a6d57cd49c628207a",
+          "upgraded_version": 1
+        },
+        "0x6f60a091637054e23915b8745c0c0d47b1d49618ee3435b5f68eccf6a44fb53d": {
+          "upgraded_id": "0x5ad6890968efcf3d20899e0cec735214f1067b96e77e77d86408989998468bb2",
+          "upgraded_version": 2
+        },
+        "0x712579292f80c11a0c9de4ff553d6e5c4757105e83a8a3129823d2b39e65d062": {
+          "upgraded_id": "0xbc7b2c577ad9362fbb0dba397d17f3bcc81bf7aa916559f99a77eaee05d0947c",
+          "upgraded_version": 2
+        },
+        "0x714a63a0dba6da4f017b42d5d0fb78867f18bcde904868e51d951a5a6f5b7f57": {
+          "upgraded_id": "0xdfaadf86be9af246900d1e3f3b996cf549e7948e662a9977bdd7646d8fa3a778",
+          "upgraded_version": 7
+        },
+        "0x73baa782c55003b3a359dec04b189312565d18e7309d4a51f5f112f891e3b2ab": {
+          "upgraded_id": "0x73baa782c55003b3a359dec04b189312565d18e7309d4a51f5f112f891e3b2ab",
+          "upgraded_version": 1
+        },
+        "0x85fdb7e3d28162b99e0df758069a3d23cff874c400b2160fc0d4618aefd3ec5c": {
+          "upgraded_id": "0x85fdb7e3d28162b99e0df758069a3d23cff874c400b2160fc0d4618aefd3ec5c",
+          "upgraded_version": 1
+        },
+        "0x9d2f067d3b9d19ac0f8d2e5c2c393b1760232083e42005b2e5df39c06064d522": {
+          "upgraded_id": "0x48dcc51091e692a0c8a64930fc839fb5a8e58de3590c084a8322b9cd34754c36",
+          "upgraded_version": 2
+        },
+        "0xa6baab1e668c7868991c1c3c11e144100f5734c407d020f72a01b9d1a8bcb97f": {
+          "upgraded_id": "0xa6baab1e668c7868991c1c3c11e144100f5734c407d020f72a01b9d1a8bcb97f",
+          "upgraded_version": 1
+        },
+        "0xbe21a06129308e0495431d12286127897aff07a8ade3970495a4404d97f9eaaa": {
+          "upgraded_id": "0x8569b7efebec65c73b9dc15c5ac2a9542870d286fa79a3feedffbaa94ed53002",
+          "upgraded_version": 5
+        },
+        "0xc66fabf1a9253e43c70f1cc02d40a1d18db183140ecaae2a3f58fa6b66c55acf": {
+          "upgraded_id": "0xc66fabf1a9253e43c70f1cc02d40a1d18db183140ecaae2a3f58fa6b66c55acf",
+          "upgraded_version": 1
+        },
+        "0xefe170ec0be4d762196bedecd7a065816576198a6527c99282a2551aaa7da38c": {
+          "upgraded_id": "0xf948935b111990c2b604900c9b2eeb8f24dcf9868a45d1ea1653a5f282c10e29",
+          "upgraded_version": 3
+        }
+      },
+      "netGasMist": {
+        "publish": "468860400",
+        "wrap": "450002"
+      }
+    }
+  },
+  "verifiedAtUtc": "2026-10-28T11:24:14.634547+00:00",
+  "sourceState": {
+    "workingTreeCleanAtPublication": false,
+    "productionMoveSourcesMatchSourceCommit": true,
+    "differences": [
+      "canonical publication bindings",
+      "refreshed venue fork fixtures",
+      "presale test-only warning fixes",
+      "deployment evidence"
+    ]
+  },
+  "initializationVerification": {
+    "superAdminCapOwner": "0x818d6d7026632f82367a9ca2413a5bb28aeec2a1b8dedca919ef812577b4d0a2",
+    "aclRootMatchesCap": true,
+    "allFirstPartyDependencyLinksMatchCanonicalPackages": true,
+    "immutableAdminAndPartnersCapsDestroyed": true,
+    "launchpadMigratorsPresaleCustodyAndGeneration": "verified; sealed Publisher and native UpgradeCap, compatible policy 0, native version 1, operational generation 1"
+  },
+  "configuration": {
+    "launchFeeTreasury": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+    "lpFeeProtocolDestination": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+    "presaleFeeDestination": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
+    "treasuryChangeRequiredBeforeFirstLaunch": true,
+    "workerAdminCapsGranted": [],
+    "productRolloutStatus": "pending-multisig-configuration-and-live-route-validation",
+    "pending": [
+      "Multisig grants scoped governance and worker AdminCaps.",
+      "TreasuryAdmin sets runtime_config treasury and lp_fee_policy protocol destination before any launch.",
+      "Presale TreasuryAdmin sets fee_policy destination before opening presales.",
+      "Multisig configures reviewed quote, adapter, venue and presale admission policies.",
+      "Complete required mainnet venue route, residual and fee-collection matrix before product rollout.",
+      "Adopt canonical IDs in SDK, indexer and application as a separate rollout."
+    ]
+  },
+  "validation": [
+    {
+      "package": "admin",
+      "environment": "mainnet build environment; local Move VM",
+      "command": "sui move test --path sui/admin --build-env mainnet --lint --warnings-are-errors",
+      "testOnlyIdentity": "package test identity",
+      "result": "pass",
+      "testsPassed": 70,
+      "build": "pass",
+      "warningAsErrorLint": "pass"
+    },
+    {
+      "package": "partners",
+      "environment": "mainnet build environment; local Move VM",
+      "command": "sui move test --path sui/partners --build-env mainnet --lint --warnings-are-errors",
+      "testOnlyIdentity": "package test identity",
+      "result": "pass",
+      "testsPassed": 30,
+      "build": "pass",
+      "warningAsErrorLint": "pass"
+    },
+    {
+      "package": "launchpad",
+      "environment": "mainnet build environment; local Move VM",
+      "command": "sui move test --path sui/launchpad --build-env mainnet --lint --warnings-are-errors",
+      "testOnlyIdentity": "package test identity",
+      "result": "pass",
+      "testsPassed": 347,
+      "build": "pass",
+      "warningAsErrorLint": "pass"
+    },
+    {
+      "package": "migrators",
+      "environment": "mainnet build environment; local Move VM",
+      "command": "sui move test --path sui/migrators --build-env mainnet --lint --warnings-are-errors",
+      "testOnlyIdentity": "package test identity",
+      "result": "pass",
+      "testsPassed": 154,
+      "build": "pass",
+      "warningAsErrorLint": "pass"
+    },
+    {
+      "package": "presale",
+      "environment": "mainnet build environment; local Move VM",
+      "command": "sui move test --path sui/presale --build-env mainnet --lint --warnings-are-errors",
+      "testOnlyIdentity": "blast_presale=0xb, manifest restored to 0x0 after tests",
+      "result": "pass",
+      "testsPassed": 301,
+      "build": "pass",
+      "warningAsErrorLint": "pass"
+    },
+    {
+      "command": "node sui/migrators/scripts/check_mainnet_abi.mjs --self-test; node sui/migrators/scripts/check_mainnet_abi.mjs",
+      "environment": "live mainnet",
+      "result": "pass; 5 packages, 11 modules, 38 functions, 14 structs"
+    },
+    {
+      "command": "bash sui/{admin,launchpad,migrators,presale}/scripts/check_source_boundaries.sh (each separately); python3 scripts/gen_llms.py --check",
+      "result": "pass"
+    },
+    {
+      "command": "python3 scripts/check_move_style.py; git diff --check",
+      "result": "pass; 213 first-party modules"
+    },
+    {
+      "command": "cargo test --locked --test bootstrap --test atomic_migration --test venue_fork --test presale_venue_fork -- --nocapture --test-threads=1",
+      "environment": "Rust 1.96.1; Sui simulator pinned to 51d177ad7d65102fc368b582408f466d97b31548; mainnet snapshot checkpoint 339033808",
+      "result": "pending; see raw integration log",
+      "completedSuites": []
+    },
+    {
+      "environment": "canonical mainnet packages",
+      "check": "live mainnet venue route, residual and fee-collection matrix",
+      "result": "pending; product rollout blocked until multisig configuration and this matrix complete"
+    }
+  ],
+  "moveTestsPassed": 902,
+  "totalNetGasMist": "1086515145"
+}

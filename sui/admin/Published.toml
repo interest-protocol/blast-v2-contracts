@@ -1,0 +1,8 @@
+# Generated from confirmed canonical mainnet publication effects.
+[published.mainnet]
+chain-id = "35834a8a"
+published-at = "0x2136ba8efa373b04d237c4eb5154d240f526e65f27a06164e88e9513d28f50df"
+original-id = "0x2136ba8efa373b04d237c4eb5154d240f526e65f27a06164e88e9513d28f50df"
+version = 1
+toolchain-version = "1.77.2"
+build-config = { flavor = "sui", edition = "2024" }
