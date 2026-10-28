@@ -11,7 +11,7 @@
   "sourceCommit": "9255e78751b70b22d8f33cc6577df126a3434424",
   "toolchain": "sui 1.77.2-51d177ad7d65",
   "deployer": "0x52ecee5e58e2f3a7461cc604f4efcc3b68031e4715456d821e3a2719b0593600",
-  "status": "canonical-packages-published-and-custody-verified",
+  "status": "success",
   "packages": {
     "admin": {
       "packageId": "0x2136ba8efa373b04d237c4eb5154d240f526e65f27a06164e88e9513d28f50df",
@@ -50,7 +50,8 @@
       },
       "netGasMist": {
         "publish": "78828400"
-      }
+      },
+      "publishTimestampUtc": "2026-10-28T11:13:08.936000+00:00"
     },
     "partners": {
       "packageId": "0x1ac5602bea673a59f693020e57ece4819e1bcb1c421c40494e9b225aeb949a85",
@@ -79,7 +80,8 @@
       "upgradeCapDestroyedInPublication": true,
       "netGasMist": {
         "publish": "20521200"
-      }
+      },
+      "publishTimestampUtc": "2026-10-28T11:14:35.700000+00:00"
     },
     "launchpad": {
       "packageId": "0x827e04933699da94c23d9ea529f184656738cacdb7962f03be791fd715b76743",
@@ -212,7 +214,9 @@
       "netGasMist": {
         "publish": "263025200",
         "wrap": "449984"
-      }
+      },
+      "publishTimestampUtc": "2026-10-28T11:17:22.398000+00:00",
+      "wrapTimestampUtc": "2026-10-28T11:18:01.158000+00:00"
     },
     "migrators": {
       "packageId": "0x7e009c69fcaab269617359fc9ea2b3a308e71c82165af30f3b91ffc445800416",
@@ -383,7 +387,9 @@
       "netGasMist": {
         "publish": "255039600",
         "wrap": "-659641"
-      }
+      },
+      "publishTimestampUtc": "2026-10-28T11:21:07.147000+00:00",
+      "wrapTimestampUtc": "2026-10-28T11:21:28.085000+00:00"
     },
     "presale": {
       "packageId": "0xedb6ddae546132a66f5ae5a1c3561ef07bf892620bd78d90659aba962f7be0af",
@@ -591,7 +597,9 @@
       "netGasMist": {
         "publish": "468860400",
         "wrap": "450002"
-      }
+      },
+      "publishTimestampUtc": "2026-10-28T11:21:42.258000+00:00",
+      "wrapTimestampUtc": "2026-10-28T11:21:55.640000+00:00"
     }
   },
   "verifiedAtUtc": "2026-10-28T11:24:14.634547+00:00",
@@ -705,5 +713,23 @@
     }
   ],
   "moveTestsPassed": 902,
-  "totalNetGasMist": "1086515145"
+  "totalNetGasMist": "1086515145",
+  "githubChecks": {
+    "pullRequest": "https://github.com/interest-protocol/blast-v2-contracts/pull/142",
+    "result": "not started; organization account payments or spending-limit restriction",
+    "trackingIssue": "https://github.com/interest-protocol/blast-v2-contracts/issues/141",
+    "annotationChecks": [
+      122788714676,
+      122788714268
+    ]
+  },
+  "deploymentStage": "canonical-packages-published-and-custody-verified",
+  "repository": {
+    "url": "https://github.com/interest-protocol/blast-v2-contracts",
+    "commit": "9255e78751b70b22d8f33cc6577df126a3434424",
+    "workingTreeCleanAtPublication": false,
+    "productionMoveSourcesMatchCommit": true,
+    "testFixtureCommit": "47eeb24"
+  },
+  "timestampUtc": "2026-10-28T11:21:55.640000+00:00"
 }

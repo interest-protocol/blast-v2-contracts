@@ -470,7 +470,7 @@ where you like); Blast takes no cut of it.
 
 ## API reference: `blast_partners` (Partner codes)
 
-Live on mainnet.
+Live on mainnet. This reference matches the published source.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -594,7 +594,7 @@ public struct PartnerPaid<phantom T> has copy, drop {
 
 ## API reference: `blast_admin` (Administration)
 
-Live on mainnet.
+Live on mainnet. This reference matches the published source.
 
 Events: payload structs are emitted directly, each under its own type.
 

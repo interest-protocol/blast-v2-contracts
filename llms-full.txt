@@ -4917,7 +4917,7 @@ presale roles, granted like any other package's.
 
 ## API reference: `blast_presale` (Presale)
 
-Live on mainnet.
+Live on mainnet. This reference matches the published source.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -6630,7 +6630,7 @@ public struct PoolTierReserved<phantom Meme, phantom Quote, phantom Venue> has c
 
 ## API reference: `blast_fun` (Launchpad)
 
-Live on mainnet.
+Live on mainnet. This reference matches the published source.
 
 Events: every payload is emitted inside `blast_fun::blast_events::Event<T>`; filter on that type.
 
@@ -7742,7 +7742,7 @@ public fun set_treasury(
 
 ## API reference: `blast_fun_migrators` (Migration and LP vaults)
 
-Live on mainnet.
+Live on mainnet. This reference matches the published source.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -8485,7 +8485,7 @@ public struct VenueConfig has key {
 
 ## API reference: `blast_partners` (Partner codes)
 
-Live on mainnet.
+Live on mainnet. This reference matches the published source.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -11383,7 +11383,7 @@ public fun sync(
 
 ## API reference: `blast_admin` (Administration)
 
-Live on mainnet.
+Live on mainnet. This reference matches the published source.
 
 Events: payload structs are emitted directly, each under its own type.
 
