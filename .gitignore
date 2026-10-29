@@ -16,6 +16,14 @@ sui/**/.coverage_map.mvcov
 sui/**/traces/
 sui/**/coverage/
 
+# Scratch interface compilation artifacts.
+scratch-sui/**/.move/
+scratch-sui/**/build/
+scratch-sui/**/.trace
+scratch-sui/**/.coverage_map.mvcov
+scratch-sui/**/traces/
+scratch-sui/**/coverage/
+
 # Rust programmable-transaction harness output; each run relinks the fixture lockfiles
 sui/**/target/
 sui/launchpad/ptb_tests/fixture/*/Move.lock

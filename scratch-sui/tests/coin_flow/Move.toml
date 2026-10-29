@@ -1,0 +1,13 @@
+[package]
+name = "blast_fun_dex_coin_flow_tests"
+edition = "2024"
+license = "BUSL-1.1"
+
+[dependencies]
+blast_fun_dex = { local = "../../dex" }
+blast_fun_dex_example_hook = { local = "../../example_hook" }
+blast_fun_dex_example_liquidity_hook = { local = "../../example_liquidity_hook" }
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "06734f6ff0af45d8632a14a4dc4b100197f6b1a2", override = true }
+
+[addresses]
+blast_fun_dex_coin_flow_tests = "0x0"
