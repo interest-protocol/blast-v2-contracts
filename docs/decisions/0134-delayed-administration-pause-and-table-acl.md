@@ -6,7 +6,7 @@
   [0032](0032-admin-authorized-upgrade-cap-custody.md) and
   [0034](0034-remove-premature-governance-cutover.md) (upgrade authorization
   gains a delay), [0097](0097-one-singleton-acl-with-typed-roles.md) (ACL
-  storage, `AdminCap` abilities, delayed role grants)
+  storage)
 - Supersedes: the 2026-10-28 canonical stack (`admin 0x4a27d8…`, `partners
   0x163a96…`, `launchpad 0x079a1b…`, `migrators 0x4a5d11…`, `presale
   0xb0279f…`), which holds no user assets (owner, 2026-10-31)
@@ -51,9 +51,9 @@ changes. No package has a pause flag; ADR 0007 proposed one and
 The owner also asked that the ACL keep its admins in a `Table`.
 
 `blast_admin` is published immutable (ADR 0097), and every admin setter takes
-`&AdminWitness<Role>`, a `blast_admin` type. The ACL's storage, the
-`AdminCap` abilities and the grant path therefore cannot change in place: they
-need a new `blast_admin` and a new publish of every package that links it.
+`&AdminWitness<Role>`, a `blast_admin` type. The ACL's storage therefore
+cannot change in place: it needs a new `blast_admin` and a new publish of every
+package that links it.
 
 ## Decision
 
@@ -97,7 +97,6 @@ never applies to claiming fees, rewards or refunds.
 | --- | --- | --- |
 | launchpad, presale, migrators | `authorize_upgrade`: the digest must equal a ready `schedule_upgrade(digest)`; `commit_upgrade_and_advance` is unchanged | `UpgradeAdmin` |
 | launchpad, presale, migrators | `make_immutable` | `UpgradeAdmin` |
-| admin | `grant_role<Role>`, for every role | `SuperAdminCap` |
 | launchpad | `runtime_config::set_protocol_fee_share` | `FeeAdmin` |
 | launchpad | `launch_config::set_trade_fees`, `set_creation_fee` | `FeeAdmin` |
 | launchpad | `launch_config::set_protocol_allocation` | `TreasuryAdmin` |
@@ -119,6 +118,12 @@ LP-fee shares; leaving them out would leave a hole in R2's coverage.
 `make_immutable` is delayed because it removes the only way to fix code; a
 compromised `UpgradeAdmin` could otherwise make a bug permanent.
 
+Role grants are not delayed (owner, 2026-10-31). Every change a role can make
+to fees, destinations, creator authority, adapters or code is itself delayed,
+so a newly granted `UpgradeAdmin` still cannot upgrade sooner than 48 hours
+after it schedules a digest. That covers R2's `UpgradeAdmin` grants: the
+delay sits on the power, not on the grant.
+
 ### Immediate actions
 
 | Action | Reason |
@@ -130,14 +135,7 @@ compromised `UpgradeAdmin` could otherwise make a bug permanent.
 | Fee claims, holder-reward rounds and claims, `settle_gas_reserve`, `close_round` | Claiming pays out under the rates and destinations in force and changes no setting |
 | Buybacks (`BuybackAdmin`) | The bought Meme is burned, so no value reaches the key |
 | Quote and decimals allowlists, `launch_config::add_partner` | Admit future launches only; partner shares are delayed at `register` |
-| `grant_admin` | Creates a cap with no role; its roles still wait 48h |
-
-### `AdminCap` is key-only
-
-`AdminCap` drops `store`. With `store`, a holder could `public_transfer` a cap
-that already holds `UpgradeAdmin` to anyone, instantly, which would make the
-grant delay meaningless. Moving authority becomes revoke plus a delayed grant,
-the same model as `SuperAdminCap`.
+| `grant_admin`, `grant_role`, `AdminCap` transfer | Whoever holds a role, its fee, destination, authority and code changes still wait 48h |
 
 ### Pause
 
@@ -174,54 +172,37 @@ its `*_domain` module, as ADR 0097 requires for every role.
 public struct ACL has key {
     id: UID,
     super_admin_cap_id: ID,
-    admins: Table<ID, AdminEntry>,
+    admins: Table<ID, VecSet<TypeName>>, // was VecMap<ID, VecSet<TypeName>>
     pending_super_admin: Timelocked<Option<address>>,
-}
-
-public struct AdminEntry has store {
-    roles: VecSet<TypeName>,
-    pending_roles: VecMap<TypeName, u64>, // role -> ready_at_ms
-}
-
-public struct AdminCap has key {
-    id: UID,
 }
 ```
 
-- `grant_role<Role>` becomes `schedule_role_grant<Role>`,
-  `apply_role_grant<Role>` (anyone, after the delay; re-checks that the cap is
-  live) and `cancel_role_grant<Role>` (`SuperAdminCap`).
-- Pending grants live inside the admin's entry. `revoke_admin` and
-  `destroy_admin_cap` drop them with the entry, and `revoke_role<Role>` also
-  drops a pending grant of `Role`. A separate table keyed by cap and role could
-  not be enumerated on revoke.
-- `MAX_ROLES_PER_ADMIN` bounds `roles` and `pending_roles` together.
-  `MAX_ADMINS` is removed, along with its abort.
+- Only storage changes. `grant_admin`, `grant_role`, `revoke_role`,
+  `revoke_admin`, `destroy_admin_cap`, `sign_in`, the root transfer, `AdminCap`
+  and the events keep their behavior.
+- `MAX_ADMINS` is removed, along with its abort. `MAX_ROLES_PER_ADMIN` stays.
 - `sign_in`, grant and revoke cost the same however many admins exist.
 - The ACL is a shared singleton that is never destroyed, so the `Table`
   emptiness rule never applies.
-- Events add `AdminRoleGrantScheduled` and `AdminRoleGrantCancelled`;
-  `AdminRoleGranted` now fires on apply.
 
 ### Genesis
 
-With every grant delayed, the new stack is unusable for 48 hours after publish.
-To keep that to one window:
+A delayed treasury would leave the new stack paying the publisher for 48 hours
+after publish. Instead:
 
 - `runtime_config`'s treasury, `fee_policy`'s destination and `lp_fee_policy`'s
   protocol destination are set in `init` from `Move.toml` named addresses, as
   `blast_acl_root` is today. A `0x0` address aborts the publish.
-- The root goes to the protocol multisig at publish. Every operational role
-  grant is scheduled in the publish window and applies 48 hours later.
+- The root goes to the protocol multisig at publish, which grants the
+  operational roles at once.
 
 ## Alternatives considered
 
 **Compatible upgrade of the 2026-10-28 stack.** Timelock and pause state would
 live in dynamic fields of existing objects, and old setters would abort in
-favour of new entry points. It cannot change `ACL`, `AdminCap` or
-`grant_role`, all in the immutable `blast_admin`, so it can deliver neither
-the Table ACL nor the grant delay, and the transfer bypass stays. Rejected
-because the stack holds no user assets.
+favour of new entry points. It cannot change `ACL`, which lives in the
+immutable `blast_admin`, so it cannot deliver the Table ACL. Rejected because
+the stack holds no user assets.
 
 **`Timelocked<T>` for every delayed field.** It needs a `Clock` on every read,
 which would change `buy`, `sell` and every claim. Rejected for hot-path
@@ -234,8 +215,11 @@ destinations at once. Rejected: R2 names fee shares and treasury destinations.
 **Pause with auto-expiry.** It bounds a griefing `PauseAdmin`, but needs a
 `Clock` on every paused path. Rejected; the multisig unpauses and revokes.
 
-**A `Table<RoleGrant, u64>` for pending grants.** Revoking an admin could not
-find its pending grants. Rejected for per-entry pending maps.
+**Delayed role grants.** Every role grant would wait 48 hours, with a
+non-transferable `AdminCap` to stop a holder moving a granted cap at once. The
+powers that matter are already delayed where they are used, so this adds a
+second wait without closing anything, and it would hold back a new
+`PauseAdmin` in an incident. Rejected (owner, 2026-10-31).
 
 ## Consequences
 
@@ -249,9 +233,8 @@ find its pending grants. Rejected for per-entry pending maps.
   claims down for 48 hours.
 - **User exit.** Pausing `SELL` traps holders until unpause; claims and refunds
   stay open in every state.
-- **Indexing.** The indexer ingests `*Scheduled`, `*Cancelled`, `Paused`,
-  `Unpaused`, `AdminRoleGrantScheduled` and `AdminRoleGrantCancelled`, and
-  shows pending changes with their `ready_at_ms`.
+- **Indexing.** The indexer ingests `*Scheduled`, `*Cancelled`, `Paused` and
+  `Unpaused`, and shows pending changes with their `ready_at_ms`.
 - **Off-chain ACL reads.** The ACL no longer lists admins inline. The admin
   console (`admin-acl`) and SDK read the table's dynamic fields or rebuild state
   from events; the console's 32-admin limit goes.
@@ -265,16 +248,16 @@ find its pending grants. Rejected for per-entry pending maps.
 | Date | Milestone | Exit criterion |
 | --- | --- | --- |
 | 2026-11-02 | This ADR accepted | Owner sign-off, including dates and the `PauseAdmin` worker owner |
-| 2026-11-05 | `blast_admin` and `blast_partners` | Move tests with exact aborts: early apply, cancel, revoke drops pending, apply on a revoked cap, transfer of `AdminCap` impossible |
+| 2026-11-05 | `blast_admin` (Table ACL) and `blast_partners` (scheduled initial share) | Existing ACL tests pass on the Table, including more than 32 admins; partner share tests with exact aborts |
 | 2026-11-10 | Launchpad, presale and migrators: delayed setters, upgrade delay, pause, per-sale fee cap | See Verification |
 | 2026-11-12 | `docs/llms` and `gen_llms.py`; SDK ABI fixtures; indexer events; admin console Table reader | CI green in each repository |
 | 2026-11-12 | `PauseAdmin` monitoring worker (owner, triggers, runbook); multisig ready for root, `UnpauseAdmin`, `CancelAdmin`, `UpgradeAdmin` | Dry run against a local fixture; signers and threshold documented |
 | 2026-11-13 to 11-18 | Independent review of the diff | No open High or Medium |
-| 2026-11-19 | Mainnet publish; root to the multisig; destinations from `init`; every role grant scheduled | Deployment record lists `ADMIN_DELAY_MS`, pause bits, role holders and source commit |
-| 2026-11-21 | Grants apply; MVR, SDK, indexer, web and workers rebound | Canonical-publication gate checks the pause roles, `CancelAdmin` and `ADMIN_DELAY_MS` |
+| 2026-11-19 | Mainnet publish; root to the multisig; destinations from `init`; roles granted | Deployment record lists `ADMIN_DELAY_MS`, pause bits, role holders and source commit |
+| 2026-11-20 | MVR, SDK, indexer, web and workers rebound | Canonical-publication gate checks the pause roles, `CancelAdmin` and `ADMIN_DELAY_MS` |
 
 No launch or presale opens, and no quote or adapter is admitted, before
-2026-11-21. If a date slips, this gate moves with it.
+2026-11-20. If a date slips, this gate moves with it.
 
 ## Verification
 
@@ -286,8 +269,7 @@ No launch or presale opens, and no quote or adapter is admitted, before
   after unpause; every never-paused path succeeds with all bits set.
 - `pause` cannot clear bits and `unpause` cannot set them; each role signs in
   to nothing else.
-- ACL: grant, apply and revoke at more than 32 admins; revoke and destroy drop
-  pending grants; `MAX_ROLES_PER_ADMIN` counts pending grants.
+- ACL: grant, sign-in and revoke at more than 32 admins.
 - `blast_presale::set_protocol_fees` aborts above the in-force rates.
 - Publish aborts when any `init` destination is `0x0`.
 - `scripts/check_move_style.py`, the package gates and `gen_llms.py` pass.
