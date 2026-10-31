@@ -2,171 +2,273 @@
 
 - Status: proposed
 - Date: 2026-10-31
-- Amends: [0007](0007-acl-pause-and-versioning.md) (pause scope, now decided),
+- Amends: [0007](0007-acl-pause-and-versioning.md) (pause),
   [0032](0032-admin-authorized-upgrade-cap-custody.md) and
-  [0034](0034-remove-premature-governance-cutover.md) (upgrade authorization
-  gains a delay), [0097](0097-one-singleton-acl-with-typed-roles.md) (ACL
-  storage)
-- Supersedes: the 2026-10-28 canonical stack (`admin 0x4a27d8…`, `partners
-  0x163a96…`, `launchpad 0x079a1b…`, `migrators 0x4a5d11…`, `presale
-  0xb0279f…`), which holds no user assets (owner, 2026-10-31)
+  [0034](0034-remove-premature-governance-cutover.md) (upgrades),
+  [0097](0097-one-singleton-acl-with-typed-roles.md) (ACL storage)
+- Supersedes: the 2026-10-28 canonical stack, which holds no user assets
 
 ## Sources
 
 | Ref | Full commit | Repository |
 | --- | --- | --- |
 | `sui@06734f6` | `06734f6ff0af45d8632a14a4dc4b100197f6b1a2` | [MystenLabs/sui](https://github.com/MystenLabs/sui) |
-| `util@63b6cf8` | `63b6cf86c0e1a74f699610fe182b1de8d8789a14` | [interest-protocol/blast-util-contracts](https://github.com/interest-protocol/blast-util-contracts) |
 
-- A `Table` stores each entry as a dynamic field of its own UID
-  (`sui@06734f6:crates/sui-framework/packages/sui-framework/sources/table.move:26,44-45`),
-  so entries are not listed inline in the owning object. `destroy_empty` needs
-  an empty table and `drop` needs `V: drop` (`table.move:91,99`).
-- `Timelocked<T>::value` takes a `&Clock`
-  (`util@63b6cf8:sui/timelock/sources/blast_fun_timelock.move:52`).
+A `Table` keeps each entry as a dynamic field, not inline
+(`sui@06734f6:crates/sui-framework/packages/sui-framework/sources/table.move:26,44-45`).
 
 ## Context
 
-An external risk register raised two findings against the launchpad and
-presale:
+An external risk register found:
 
-- **R2.** No timelock on upgrades or on fee, treasury and creator
-  administration. Required: a dated plan for a 48-hour delay on
-  solvency-affecting admin actions, covering at least upgrades, `UpgradeAdmin`
-  grants, fee shares, treasury destinations and creator-cap reassignment. The
-  emergency pause is exempt.
-- **R3.** No pause or circuit breaker. Required: a dated plan for a pause on
-  buy, sell and migration, which may be held by a hot or automated key, before
-  real assets are admitted.
+- **R2:** no timelock on upgrades or on fee, treasury and creator
+  administration. It asks for a 48-hour delay covering at least upgrades,
+  `UpgradeAdmin` grants, fee shares, treasury destinations and creator-cap
+  reassignment. The pause is exempt.
+- **R3:** no pause. It asks for a pause on buy, sell and migration, which a
+  hot or automated key may hold, before real assets are admitted.
 
-Asymptotic's launchpad review (L-3, acknowledged) found the same gap for
-upgrades: `authorize_upgrade` and `commit_upgrade_and_advance` apply a digest
-in one transaction, and `blast_acl::grant_role` applies at once.
+Asymptotic's L-3 found the same gap for upgrades. Today every admin setter
+applies in the transaction that signs it, and no package can pause.
 
-At `d82645c` every solvency-affecting setter applies in the transaction that
-signs it. The only delays are the ACL's 7-day root transfer and partner share
-changes. No package has a pause flag; ADR 0007 proposed one and
-`docs/protocol-scope.md` deferred it.
-
-The owner also asked that the ACL keep its admins in a `Table`.
-
-`blast_admin` is published immutable (ADR 0097), and every admin setter takes
-`&AdminWitness<Role>`, a `blast_admin` type. The ACL's storage therefore
-cannot change in place: it needs a new `blast_admin` and a new publish of every
-package that links it.
+The owner also asked for the ACL's admins to live in a `Table`.
+`blast_admin` is immutable, so that needs a fresh publish of every package
+that links it.
 
 ## Decision
 
 ### Ship path
 
 Publish a fresh stack: `blast_admin`, `blast_partners`, launchpad, presale and
-migrators. The 2026-10-28 stack is superseded, not upgraded. Other packages
-that link `blast_admin` (Blast SUI, Boosts) link the new one at their next
-publish; their own setters are outside this record.
+migrators. Blast SUI and Boosts link the new `blast_admin` at their next
+publish.
 
-### The delay
+### One delay type
 
-`ADMIN_DELAY_MS = 48 * 60 * 60 * 1_000`, a constant in each package. It is not
-configurable.
+`blast_admin` gains a module that every package uses for delayed values. The
+delay is a constant in the module, so no caller can shorten it.
 
-Every delayed setter becomes three functions:
+```move
+module blast_admin::delayed;
 
-| Function | Caller | Effect |
-| --- | --- | --- |
-| `schedule_<x>(…, value, clock)` | the setter's role | stores `pending = { value, ready_at_ms: now + ADMIN_DELAY_MS }`, replacing any pending value and restarting the delay; emits `<X>Scheduled` with the full value and `ready_at_ms` |
-| `apply_<x>(…, clock)` | anyone | aborts before `ready_at_ms`; writes the plain field, clears `pending`, emits the existing `<X>Changed` |
-| `cancel_<x>(…)` | `CancelAdmin` | clears `pending` at once; emits `<X>Cancelled` |
+const DELAY_MS: u64 = 48 * 60 * 60 * 1_000;
 
-- The pending value sits next to the field it changes, in the same object:
-  `RuntimeConfig`, `LaunchConfig`, `FeePolicy`, `CreationPolicy`,
-  `LpFeePolicy`, a `Launch`, a presale `Vault`, or `PackageAdmin`.
-- The applied value is an ordinary field, so `buy`, `sell` and claims keep
-  reading it without a `Clock`. `Timelocked<T>` is not used for these fields
-  because its reads need one.
-- `CancelAdmin` is a separate role held by the multisig. Revoking a
-  compromised role does not clear what it already scheduled, and `apply` is
-  permissionless, so the multisig needs its own way to stop a pending change.
-  One role per action, as in ADR 0094.
+/// A value whose changes wait DELAY_MS. No `drop`, so the storing
+/// module cannot overwrite the field; it changes only through this module.
+public struct Delayed<T: copy + drop + store> has store {
+    value: T,
+    pending: Option<Pending<T>>,
+}
 
-The delay applies to **changing** fees, destinations, code and authority. It
-never applies to claiming fees, rewards or refunds.
+/// One scheduled value or action.
+public struct Pending<T: copy + drop + store> has copy, drop, store {
+    value: T,
+    ready_at_ms: u64,
+}
 
-### Delayed actions
+public fun new<T>(value: T): Delayed<T>;
+public fun value<T>(self: &Delayed<T>): T;                          // no Clock
+public fun pending<T>(self: &Delayed<T>): Option<Pending<T>>;
+public fun schedule<T>(self: &mut Delayed<T>, value: T, clock: &Clock): u64; // ready_at_ms
+public fun apply<T>(self: &mut Delayed<T>, clock: &Clock): T;       // aborts before ready_at_ms
+public fun cancel<T>(self: &mut Delayed<T>): T;                     // the cancelled value
+public fun set_now<T>(self: &mut Delayed<T>, value: T);             // authority-reducing changes only
 
-| Package | Action | Role |
-| --- | --- | --- |
-| launchpad, presale, migrators | `authorize_upgrade`: the digest must equal a ready `schedule_upgrade(digest)`; `commit_upgrade_and_advance` is unchanged | `UpgradeAdmin` |
-| launchpad, presale, migrators | `make_immutable` | `UpgradeAdmin` |
-| launchpad | `runtime_config::set_protocol_fee_share` | `FeeAdmin` |
-| launchpad | `launch_config::set_trade_fees`, `set_creation_fee` | `FeeAdmin` |
-| launchpad | `launch_config::set_protocol_allocation` | `TreasuryAdmin` |
-| launchpad | `runtime_config::set_treasury` | `TreasuryAdmin` |
-| launchpad | `launch::reassign_curve_fee_cap`, `reassign_metadata_cap` | `CreatorAdmin` |
-| launchpad | `runtime_config::set_creator_claim_signer`, when setting a key | `ClaimSignerAdmin` |
-| launchpad | `launch_config::set_migration_witness_allowed`, when admitting | `AdapterAdmin` |
-| presale | `fee_policy::set_fees` | `FeeAdmin` |
-| presale | `fee_policy::set_destination` | `TreasuryAdmin` |
-| presale | `presale_vault::set_protocol_lp_fees` | `FeeAdmin` |
-| presale | `creation_policy::set_migration_witness_allowed`, when admitting | `AdapterAdmin` |
-| migrators | `lp_fee_policy::set_protocol_destination` | `TreasuryAdmin` |
-| migrators | `lp_fee_policy::set_default_shares`, `set_coin_shares` | `FeeAdmin` |
-| partners | `register`: the partner starts at 0 bps in force with the requested share scheduled; `MAX_SHARE_BPS` is unchanged | `PartnerAdmin` |
+public fun new_pending<T>(value: T, clock: &Clock): Pending<T>;
+public fun take_ready<T>(self: Pending<T>, clock: &Clock): T;       // aborts before ready_at_ms
+```
 
-Migrators are in scope because they hold the LP-fee treasury destination and
-LP-fee shares; leaving them out would leave a hole in R2's coverage.
+The applied value is a plain read, so `buy`, `sell` and claims need no
+`Clock`. Scheduling again replaces the pending value and restarts the delay.
 
-`make_immutable` is delayed because it removes the only way to fix code; a
-compromised `UpgradeAdmin` could otherwise make a bug permanent.
+### Delayed setters
 
-Role grants are not delayed (owner, 2026-10-31). Every change a role can make
-to fees, destinations, creator authority, adapters or code is itself delayed,
-so a newly granted `UpgradeAdmin` still cannot upgrade sooner than 48 hours
-after it schedules a digest. That covers R2's `UpgradeAdmin` grants: the
-delay sits on the power, not on the grant.
+Every `set_<x>` becomes three functions. The treasury shows the shape; every
+other delayed field below follows it with its own role.
 
-### Immediate actions
+```move
+public fun schedule_treasury(
+    self: &mut RuntimeConfig,
+    package_version: &PackageVersion,
+    _: &AdminWitness<TreasuryAdmin>,
+    treasury: address,
+    clock: &Clock,
+); // emits TreasuryScheduled { treasury, ready_at_ms }
 
-| Action | Reason |
-| --- | --- |
-| `pause`, `unpause`, every `cancel_*` | Emergency controls |
-| `revoke_admin`, `revoke_role`, `destroy_admin_cap` | Remove authority only |
-| Claim-signer revocation (empty key), adapter removal | Remove authority only; existing launches keep their witness. A signer replaced after a compromise waits 48h, so creator-cap claims by account stop for two days |
-| `blast_presale::set_protocol_fees` | Allowed only before the sale starts, and now only at or below the in-force `FeePolicy` rates |
-| Fee claims, holder-reward rounds and claims, `settle_gas_reserve`, `close_round` | Claiming pays out under the rates and destinations in force and changes no setting |
-| Buybacks (`BuybackAdmin`) | The bought Meme is burned, so no value reaches the key |
-| Quote and decimals allowlists, `launch_config::add_partner` | Admit future launches only; partner shares are delayed at `register` |
-| `grant_admin`, `grant_role`, `AdminCap` transfer | Whoever holds a role, its fee, destination, authority and code changes still wait 48h |
+public fun apply_treasury(          // anyone, once ready
+    self: &mut RuntimeConfig,
+    package_version: &PackageVersion,
+    clock: &Clock,
+); // emits TreasuryChanged { treasury }
+
+public fun cancel_treasury(
+    self: &mut RuntimeConfig,
+    package_version: &PackageVersion,
+    _: &AdminWitness<CancelAdmin>,
+); // emits TreasuryCancelled { treasury }
+```
+
+`CancelAdmin` is a new role held by the multisig. Revoking a compromised role
+does not clear what it scheduled, and anyone can apply, so the multisig needs
+its own stop.
+
+The delayed fields:
+
+```move
+// launchpad
+public struct RuntimeConfig has key {
+    id: UID,
+    creator_claim_signer_public_key: Delayed<vector<u8>>, // ClaimSignerAdmin
+    protocol_fee_share_bps: Delayed<Bps>,                 // FeeAdmin
+    treasury: Delayed<address>,                           // TreasuryAdmin
+}
+
+public struct LaunchConfig has key {
+    id: UID,
+    meme_decimals: VecSet<u8>,
+    quotes: Table<TypeName, bool>,
+    trade_fees: Delayed<TradeFees>,                       // FeeAdmin; was quote_fee_bps + meme_fee_bps
+    migration_witnesses: VecSet<TypeName>,
+    pending_witnesses: VecMap<TypeName, Pending<bool>>,   // AdapterAdmin admits
+    protocol_allocation: Delayed<ProtocolAllocation>,     // TreasuryAdmin
+    creation_fee: Delayed<u64>,                           // FeeAdmin
+}
+
+// presale
+public struct FeePolicy has key {
+    id: UID,
+    destination: Delayed<address>,                        // TreasuryAdmin
+    fees: Delayed<ProtocolFees>,                          // FeeAdmin
+}
+
+public struct Vault<phantom Meme, phantom Quote> has key {
+    // ...
+    protocol_fees: Delayed<ProtocolFees>,                 // FeeAdmin (LP-fee rates)
+}
+
+public struct CreationPolicy has key {
+    // ...
+    pending_witnesses: VecMap<TypeName, Pending<bool>>,   // AdapterAdmin admits
+}
+
+// migrators
+public struct LpFeePolicy has key {
+    id: UID,
+    destination: Delayed<address>,                        // TreasuryAdmin
+    defaults: Delayed<SharePair>,                         // FeeAdmin
+    coins: Table<TypeName, Delayed<SharePair>>,           // FeeAdmin
+}
+```
+
+Revoking the claim signer (an empty key) and removing an adapter use
+`set_now` or remove at once, because they only take authority away.
+
+`blast_presale::set_protocol_fees` stays immediate before a sale starts, but
+may only set rates at or below the in-force `FeePolicy` rates.
+
+### Upgrades
+
+```move
+public enum UpgradeAction has copy, drop, store {
+    Upgrade(vector<u8>), // the package digest
+    MakeImmutable,
+}
+
+public struct PackageAdmin has key {
+    id: UID,
+    custody: UpgradeCustody<BLAST_FUN>,
+    pending: Option<Pending<UpgradeAction>>,
+}
+
+public fun schedule_upgrade(self: &mut PackageAdmin, package_version: &PackageVersion, _: &AdminWitness<UpgradeAdmin>, digest: vector<u8>, clock: &Clock);
+public fun schedule_make_immutable(self: &mut PackageAdmin, package_version: &PackageVersion, _: &AdminWitness<UpgradeAdmin>, clock: &Clock);
+public fun cancel_upgrade_action(self: &mut PackageAdmin, package_version: &PackageVersion, _: &AdminWitness<CancelAdmin>);
+
+/// Aborts unless a ready Upgrade(digest) is pending.
+public fun authorize_upgrade(self: &mut PackageAdmin, package_version: &PackageVersion, _: &AdminWitness<UpgradeAdmin>, digest: vector<u8>, clock: &Clock): UpgradeTicket;
+/// Aborts unless a ready MakeImmutable is pending.
+public fun make_immutable(self: &mut PackageAdmin, package_version: &PackageVersion, _: &AdminWitness<UpgradeAdmin>, clock: &Clock);
+```
+
+Launchpad, presale and migrators each get this. `commit_upgrade_and_advance` is
+unchanged. `make_immutable` is delayed because it removes the only way to fix
+code.
+
+### Creator caps
+
+```move
+public struct Launch<phantom Meme, phantom Quote> has key {
+    // ...
+    pending_curve_fee_cap_recipient: Option<Pending<address>>,
+    pending_metadata_cap_recipient: Option<Pending<address>>,
+}
+
+public fun schedule_curve_fee_cap_reassignment<Meme, Quote>(self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, _: &AdminWitness<CreatorAdmin>, recipient: address, clock: &Clock);
+public fun reassign_curve_fee_cap<Meme, Quote>(self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, clock: &Clock, ctx: &mut TxContext); // anyone, once ready
+public fun cancel_curve_fee_cap_reassignment<Meme, Quote>(self: &mut Launch<Meme, Quote>, package_version: &PackageVersion, _: &AdminWitness<CancelAdmin>);
+// the same three for the metadata cap
+```
+
+The current cap holder can still claim curve fees during the 48 hours.
+
+### Partners
+
+`blast_partners::register` keeps its signature. A new partner starts at
+0 bps and its requested share is scheduled with the package's existing 7-day
+partner delay, so a new partner can never take a fee share at once.
+
+### Role grants are immediate
+
+`grant_role` and `AdminCap` transfers are not delayed (owner, 2026-10-31).
+Every change a role can make to fees, destinations, creator authority,
+adapters or code is delayed where it is made, so a new `UpgradeAdmin` still
+waits 48 hours from scheduling a digest. That covers R2's `UpgradeAdmin`
+grants.
 
 ### Pause
 
-Each of launchpad and presale keeps a `paused: u8` bitmask in its
-`PackageVersion`. Every scoped entry point already takes `&PackageVersion`, so
-the check adds no argument and no `Clock`:
-`package_version.assert_not_paused(BIT)`.
+```move
+public struct PackageVersion has key {   // launchpad; presale is the same with BLAST_PRESALE
+    id: UID,
+    generation: OperationalVersion<BLAST_FUN>,
+    paused: u8,
+}
+
+const CREATE: u8 = 1;
+const BUY: u8 = 2;
+const SELL: u8 = 4;      // launchpad only
+const MIGRATE: u8 = 8;
+
+public fun pause(self: &mut PackageVersion, _: &AdminWitness<PauseAdmin>, bits: u8);     // sets bits only
+public fun unpause(self: &mut PackageVersion, _: &AdminWitness<UnpauseAdmin>, bits: u8); // clears bits only
+public(package) fun assert_not_paused(self: &PackageVersion, bit: u8);
+// events: Paused { bits, paused }, Unpaused { bits, paused }
+```
 
 | Bit | Launchpad | Presale |
 | --- | --- | --- |
-| `CREATE` | `launch::new`, `finalize`, `share` | `new`, `share` |
-| `BUY` | `buy`, `join_opening_round`, `settle_opening_round` (it trades on the curve) | `commit_open`, `commit_allowlisted`, `commit_uncapped` |
+| `CREATE` | `new`, `finalize`, `share` | `new`, `share` |
+| `BUY` | `buy`, `join_opening_round`, `settle_opening_round` | `commit_open`, `commit_allowlisted`, `commit_uncapped` |
 | `SELL` | `sell` | — |
 | `MIGRATE` | `migrate` | `migrate` |
-| Never paused | `deliver_opening_round`, creator and protocol fee claims | `claim`, `cancel_unlaunched` refunds, `settle` |
+| Never paused | `deliver_opening_round`, fee claims | `claim`, `cancel_unlaunched`, `settle` |
 
-- `pause(bits)` requires `PauseAdmin`, which may be a hot or automated key. It
-  can only set bits.
-- `unpause(bits)` requires `UnpauseAdmin`, held by the multisig. It can only
-  clear bits.
-- Both are immediate and emit `Paused { bits, paused }` or
-  `Unpaused { bits, paused }`, where `paused` is the resulting mask.
-- A pause does not expire. Expiry would put a `Clock` on `buy` and `sell`; the
-  multisig's unpause is the release.
-- Migrators' own value paths (LP-fee collection, auto-LP, buyback, reward
-  rounds) are not paused. Changes to their fee settings are delayed as above.
+`PauseAdmin` may be a hot or automated key; it can freeze but never move funds.
+`UnpauseAdmin` is held by the multisig. A pause does not expire.
 
-Each consumer package declares `PauseAdmin`, `UnpauseAdmin` and `CancelAdmin` in
-its `*_domain` module, as ADR 0097 requires for every role.
+### Roles
 
-### Table-backed ACL
+Each package's `*_domain` module adds three roles:
+
+```move
+public struct PauseAdmin()
+public struct UnpauseAdmin()
+public struct CancelAdmin()
+```
+
+Migrators use the launchpad's roles and are not paused.
+
+### ACL
 
 ```move
 public struct ACL has key {
@@ -177,99 +279,74 @@ public struct ACL has key {
 }
 ```
 
-- Only storage changes. `grant_admin`, `grant_role`, `revoke_role`,
-  `revoke_admin`, `destroy_admin_cap`, `sign_in`, the root transfer, `AdminCap`
-  and the events keep their behavior.
-- `MAX_ADMINS` is removed, along with its abort. `MAX_ROLES_PER_ADMIN` stays.
-- `sign_in`, grant and revoke cost the same however many admins exist.
-- The ACL is a shared singleton that is never destroyed, so the `Table`
-  emptiness rule never applies.
+Only storage changes. The functions, `AdminCap` and events keep their
+behavior. `MAX_ADMINS` and its abort are removed; `MAX_ROLES_PER_ADMIN`
+stays.
 
 ### Genesis
 
-A delayed treasury would leave the new stack paying the publisher for 48 hours
-after publish. Instead:
+```move
+// Move.toml [addresses], set before publish; 0x0 aborts init
+blast_treasury = "0x…"           // RuntimeConfig.treasury, FeePolicy.destination
+blast_lp_fee_destination = "0x…" // LpFeePolicy.destination
+```
 
-- `runtime_config`'s treasury, `fee_policy`'s destination and `lp_fee_policy`'s
-  protocol destination are set in `init` from `Move.toml` named addresses, as
-  `blast_acl_root` is today. A `0x0` address aborts the publish.
-- The root goes to the protocol multisig at publish, which grants the
-  operational roles at once.
+Destinations are correct from the first block, so nothing waits 48 hours
+after publish. The root goes to the multisig, which grants roles at once.
+
+### Never delayed
+
+Claims of fees, rewards and refunds; pause, unpause and cancel; revocations;
+quote and decimals allowlists; buybacks (their Meme is burned); reward rounds.
 
 ## Alternatives considered
 
-**Compatible upgrade of the 2026-10-28 stack.** Timelock and pause state would
-live in dynamic fields of existing objects, and old setters would abort in
-favour of new entry points. It cannot change `ACL`, which lives in the
-immutable `blast_admin`, so it cannot deliver the Table ACL. Rejected because
-the stack holds no user assets.
-
-**`Timelocked<T>` for every delayed field.** It needs a `Clock` on every read,
-which would change `buy`, `sell` and every claim. Rejected for hot-path
-fields; the ACL's root transfer keeps it.
-
-**One delay for authority only, through the ACL.** Delaying role grants alone
-leaves a granted `FeeAdmin` or `TreasuryAdmin` free to change rates and
-destinations at once. Rejected: R2 names fee shares and treasury destinations.
-
-**Pause with auto-expiry.** It bounds a griefing `PauseAdmin`, but needs a
-`Clock` on every paused path. Rejected; the multisig unpauses and revokes.
-
-**Delayed role grants.** Every role grant would wait 48 hours, with a
-non-transferable `AdminCap` to stop a holder moving a granted cap at once. The
-powers that matter are already delayed where they are used, so this adds a
-second wait without closing anything, and it would hold back a new
-`PauseAdmin` in an incident. Rejected (owner, 2026-10-31).
+- **Upgrade the 2026-10-28 stack.** Cannot change the immutable ACL.
+  Rejected; the stack holds no assets.
+- **`Timelocked<T>` for these fields.** Its reads need a `Clock`, which would
+  change `buy`, `sell` and claims.
+- **Delayed role grants.** Adds a second wait to powers that are already
+  delayed, and holds back a new `PauseAdmin` in an incident. Rejected by the
+  owner.
+- **Pause that expires.** Needs a `Clock` on every paused path; the multisig's
+  unpause is the release instead.
 
 ## Consequences
 
-- **Security.** No setter that changes fees, destinations, creator
-  authority, adapters or code takes effect sooner than 48 hours after it is
-  publicly scheduled. Users can exit before it applies. A compromised
-  `PauseAdmin` can freeze trading but never move funds.
-- **Operations.** Every routine change becomes schedule, wait, apply.
-  Emergency fee or destination changes are no longer possible; the pause is
-  the emergency tool. Rotating a compromised claim signer leaves account
-  claims down for 48 hours.
-- **User exit.** Pausing `SELL` traps holders until unpause; claims and refunds
-  stay open in every state.
-- **Indexing.** The indexer ingests `*Scheduled`, `*Cancelled`, `Paused` and
-  `Unpaused`, and shows pending changes with their `ready_at_ms`.
-- **Off-chain ACL reads.** The ACL no longer lists admins inline. The admin
-  console (`admin-acl`) and SDK read the table's dynamic fields or rebuild state
-  from events; the console's 32-admin limit goes.
-- **Rebind.** SDK, indexer, web, Render workers and MVR move to the new package
-  IDs; every partner is registered again.
-- **Docs.** `docs/protocol-scope.md` no longer defers pause; `docs/llms` and the
-  generated `llms-full.txt` describe the new calls.
+- No change to fees, destinations, creator authority, adapters or code takes
+  effect within 48 hours of being publicly scheduled.
+- Emergency fee or destination changes are gone; the pause is the emergency
+  tool. A replaced claim signer stops account claims for 48 hours.
+- Pausing `SELL` traps holders until unpause; claims and refunds stay open.
+- The indexer reads `*Scheduled`, `*Cancelled`, `Paused` and `Unpaused`. The
+  admin console reads the ACL's table entries instead of an inline map.
+- SDK, indexer, web, workers and MVR rebind to the new packages; partners
+  register again.
 
 ## Rollout
 
-| Date | Milestone | Exit criterion |
-| --- | --- | --- |
-| 2026-11-02 | This ADR accepted | Owner sign-off, including dates and the `PauseAdmin` worker owner |
-| 2026-11-05 | `blast_admin` (Table ACL) and `blast_partners` (scheduled initial share) | Existing ACL tests pass on the Table, including more than 32 admins; partner share tests with exact aborts |
-| 2026-11-10 | Launchpad, presale and migrators: delayed setters, upgrade delay, pause, per-sale fee cap | See Verification |
-| 2026-11-12 | `docs/llms` and `gen_llms.py`; SDK ABI fixtures; indexer events; admin console Table reader | CI green in each repository |
-| 2026-11-12 | `PauseAdmin` monitoring worker (owner, triggers, runbook); multisig ready for root, `UnpauseAdmin`, `CancelAdmin`, `UpgradeAdmin` | Dry run against a local fixture; signers and threshold documented |
-| 2026-11-13 to 11-18 | Independent review of the diff | No open High or Medium |
-| 2026-11-19 | Mainnet publish; root to the multisig; destinations from `init`; roles granted | Deployment record lists `ADMIN_DELAY_MS`, pause bits, role holders and source commit |
-| 2026-11-20 | MVR, SDK, indexer, web and workers rebound | Canonical-publication gate checks the pause roles, `CancelAdmin` and `ADMIN_DELAY_MS` |
+| Date | Milestone |
+| --- | --- |
+| 2026-11-02 | ADR accepted; `PauseAdmin` worker owner named |
+| 2026-11-05 | `blast_admin` (`delayed`, Table ACL) and `blast_partners` |
+| 2026-11-10 | Launchpad, presale, migrators |
+| 2026-11-12 | `docs/llms`, SDK, indexer, admin console; pause worker; multisig signers |
+| 2026-11-13 to 11-18 | Independent review of the diff |
+| 2026-11-19 | Mainnet publish |
+| 2026-11-20 | Rebind; first launch or presale may open |
 
-No launch or presale opens, and no quote or adapter is admitted, before
-2026-11-20. If a date slips, this gate moves with it.
+Nothing opens before the rebind date; if a date slips, so does that gate.
 
 ## Verification
 
-- For every delayed setter: schedule, apply before `ready_at_ms` aborts with
-  its named error, apply at `ready_at_ms` succeeds, reschedule restarts the
-  delay, cancel clears it, and apply on an old package generation aborts.
-- `authorize_upgrade` aborts for an unscheduled, unready or different digest.
-- For every pause bit: each scoped entry point aborts while set and succeeds
-  after unpause; every never-paused path succeeds with all bits set.
-- `pause` cannot clear bits and `unpause` cannot set them; each role signs in
-  to nothing else.
-- ACL: grant, sign-in and revoke at more than 32 admins.
-- `blast_presale::set_protocol_fees` aborts above the in-force rates.
-- Publish aborts when any `init` destination is `0x0`.
-- `scripts/check_move_style.py`, the package gates and `gen_llms.py` pass.
+- `delayed`: apply before `ready_at_ms` aborts; reschedule restarts the delay;
+  cancel clears it; `value` never changes before apply.
+- Every delayed setter: schedule, early apply, apply, cancel, old package
+  generation.
+- `authorize_upgrade` and `make_immutable` abort without a ready matching
+  action.
+- Every pause bit stops its entry points; every never-paused path works with
+  all bits set; `pause` cannot clear and `unpause` cannot set.
+- ACL works past 32 admins.
+- Publish aborts on a `0x0` destination.
+- `check_move_style.py`, package gates and `gen_llms.py` pass.
