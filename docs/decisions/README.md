@@ -446,3 +446,4 @@ test passes, and none is asserted as a cited fact in the records.
 | [0127](0127-emergency-rebalance-mark-divergence.md) | Emergency rebalance admission during mark divergence | **accepted** |
 | [0128](0128-reserve-aware-rebalance-increases.md) | Reserve-aware rebalance increases | **accepted** |
 | [0130](0130-protected-permissionless-shutdown.md) | Protected permissionless shutdown of a size-locked Boost | **accepted** |
+| [0134](0134-delayed-administration-pause-and-table-acl.md) | Delayed administration, pause, and a Table-backed ACL | proposed |
