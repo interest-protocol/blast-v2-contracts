@@ -20,9 +20,9 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 
 | Package | Product | Status | Package ID (`published-at`) | Type origin (`original-id`) |
 | --- | --- | --- | --- | --- |
-| `blast_presale` | Presale | live | `0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b` | `0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b` |
-| `blast_fun` | Launchpad | live | `0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573` | `0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573` |
-| `blast_fun_migrators` | Migration and LP vaults | live | `0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53` | `0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53` |
+| `blast_presale` | Presale | live; source has changed since | `0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b` | `0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b` |
+| `blast_fun` | Launchpad | live; source has changed since | `0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573` | `0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573` |
+| `blast_fun_migrators` | Migration and LP vaults | live; source has changed since | `0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53` | `0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53` |
 | `blast_partners` | Partner codes | live | `0x163a96aa9b88afe77e51febc195a9e0fa8534a6122bc09c6bd46d176c91a99f9` | `0x163a96aa9b88afe77e51febc195a9e0fa8534a6122bc09c6bd46d176c91a99f9` |
 | `blast_boosts_core` | Boosts core | live; source has changed since | `0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe` | `0xac10e88ff25bd98a841f60cfcdc4006b4ad3d3afb577b5024043798ff7f4cafe` |
 | `blast_boosts_products` | Boost product tags | live; source has changed since | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` |
@@ -179,7 +179,7 @@ run) before signing it.
 
 ## Presale
 
-> **Deployment status:** `blast_presale` is live on mainnet. `blast_aftermath_dao_presale` is live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package.
+> **Deployment status:** `blast_presale` and `blast_aftermath_dao_presale` are live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package.
 
 ### What it is
 
@@ -836,6 +836,8 @@ Integrators cannot call these; they explain state changes. Each takes the
 
 ### Economics
 
+Publication defaults follow the [Blast visual map](https://map.blast.fun/#fees): 200 BPS (2%) of the successful raise target, 100 BPS (1%) of total Meme supply, and 1,500 BPS (15%) of each collected LP-fee asset. Administrators can change the policy; sales snapshot their rates. Changing source defaults does not update an existing policy, sale or vault.
+
 All amounts are atomic units. All rates are BPS out of 10,000. `floor` rounds down.
 
 #### Largest-remainder apportionment
@@ -1281,7 +1283,7 @@ Upgrades can only relink dependencies, so this cannot change.
 
 ## Launchpad
 
-> **Deployment status:** `blast_fun` is live on mainnet.
+> **Deployment status:** `blast_fun` is live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package.
 
 ### What it is
 
@@ -1683,6 +1685,8 @@ allow/remove toggles for Quotes, decimals, and adapters instead abort inside the
 
 ### Economics
 
+Publication defaults follow the [Blast visual map](https://map.blast.fun/#fees): the curve charges 150 BPS of Quote and 0 BPS of Meme, and Blast receives 5,000 BPS of each collected trade fee (50/50 with the creator). The migration allocation defaults to 250 BPS of original Meme supply and 150 BPS of the final real Quote reserve. The creation fee defaults to zero. Administrators can change these settings; read the current objects before constructing a launch. Changing source defaults does not update existing objects or a finalized launch.
+
 All amounts are atomic units. Rates are BPS out of 10,000. `ceil` rounds up, `floor` rounds down.
 
 #### Supply
@@ -2003,7 +2007,7 @@ never reaches its target stays `Live`, and holders exit by selling to the curve.
 
 ## Migration and LP vaults
 
-> **Deployment status:** `blast_fun_migrators` is live on mainnet.
+> **Deployment status:** `blast_fun_migrators` is live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package.
 
 ### What it is
 
@@ -2423,6 +2427,8 @@ Type names keep the original package address. Upgrading this package leaves the 
 generation.
 
 ### Economics
+
+Publication defaults follow the [Blast visual map](https://map.blast.fun/#fees): Blast receives 1,500 BPS (15%) of each collected LP-fee asset. The remaining 85% follows the vault split. Administrators can change the defaults and set per-coin overrides. Changing source defaults does not update an existing policy object.
 
 All amounts are atomic units. BPS are out of 10,000.
 
@@ -4917,7 +4923,7 @@ presale roles, granted like any other package's.
 
 ## API reference: `blast_presale` (Presale)
 
-Live on mainnet. This reference matches the published source.
+Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -6630,7 +6636,7 @@ public struct PoolTierReserved<phantom Meme, phantom Quote, phantom Venue> has c
 
 ## API reference: `blast_fun` (Launchpad)
 
-Live on mainnet. This reference matches the published source.
+Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
 
 Events: every payload is emitted inside `blast_fun::blast_events::Event<T>`; filter on that type.
 
@@ -7742,7 +7748,7 @@ public fun set_treasury(
 
 ## API reference: `blast_fun_migrators` (Migration and LP vaults)
 
-Live on mainnet. This reference matches the published source.
+Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
 
 Events: payload structs are emitted directly, each under its own type.
 

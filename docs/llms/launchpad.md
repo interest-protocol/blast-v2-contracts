@@ -400,6 +400,8 @@ allow/remove toggles for Quotes, decimals, and adapters instead abort inside the
 
 ### Economics
 
+Publication defaults follow the [Blast visual map](https://map.blast.fun/#fees): the curve charges 150 BPS of Quote and 0 BPS of Meme, and Blast receives 5,000 BPS of each collected trade fee (50/50 with the creator). The migration allocation defaults to 250 BPS of original Meme supply and 150 BPS of the final real Quote reserve. The creation fee defaults to zero. Administrators can change these settings; read the current objects before constructing a launch. Changing source defaults does not update existing objects or a finalized launch.
+
 All amounts are atomic units. Rates are BPS out of 10,000. `ceil` rounds up, `floor` rounds down.
 
 #### Supply

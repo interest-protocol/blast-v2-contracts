@@ -79,7 +79,7 @@ fun start_daily_rewards(): DailyRewardsFixture {
         option::none(),
         scenario.ctx(),
     );
-    let policy = fee_policy::new_for_testing(scenario.ctx());
+    let policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     vault.credit_fees_for_testing(
         &policy, balance::zero(), balance::create_for_testing<QUOTE>(100), scenario.ctx(),
     );
@@ -109,7 +109,7 @@ fun publish(self: &mut DailyRewardsFixture, number: u64, start: u64, end: u64) {
         .scenario
         .ctx());
     let root = rewards::leaf_for_testing(object::id(&self.vault), number, 0, HOLDER, 0, 10);
-    let policy = fee_policy::new_for_testing(self.scenario.ctx());
+    let policy = fee_policy::new_zero_fees_for_testing(self.scenario.ctx());
     self.vault.publish_round(
         &package_version,
         &blast_acl::witness_for_testing<RewardsAdmin>(),

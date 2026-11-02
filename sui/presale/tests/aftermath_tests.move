@@ -50,7 +50,7 @@ fun new_records_the_witness_and_the_dao_fee_tier() {
     let mut scenario = test_scenario::begin(CREATOR);
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let creation_policy = allowing<Witness>(scenario.ctx());
-    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let fee_policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     let mut venue_config = venue_config::new_for_testing(scenario.ctx());
     let (treasury_cap, currency) = new_currency(&mut scenario);
 
@@ -140,7 +140,7 @@ fun migrate_rejects_another_sales_reservation() {
     let mut scenario = test_scenario::begin(CREATOR);
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let creation_policy = allowing<Witness>(scenario.ctx());
-    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let fee_policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     let mut venue_config = venue_config::new_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
     let first_create_pool_cap = amm_pool::create_pool_cap_for_testing(scenario.ctx());
@@ -198,7 +198,7 @@ fun new_needs_blast_to_allow_the_witness() {
     let mut scenario = test_scenario::begin(CREATOR);
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let creation_policy = allowing<OTHER_MIGRATOR>(scenario.ctx());
-    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let fee_policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     let mut venue_config = venue_config::new_for_testing(scenario.ctx());
     let (treasury_cap, _currency) = new_currency(&mut scenario);
 
@@ -314,7 +314,7 @@ fun coin_order_is_the_byte_order_of_type_names() {
 fun collect_fees_receives_the_vaults_fee_coins_and_splits_them() {
     let mut scenario = test_scenario::begin(CREATOR);
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
-    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let fee_policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     let mut vault = new_vault(&mut scenario);
     let vault_address = object::id(&vault).to_address();
     let meme_ids = send_coins<AFTERMATH_TESTS>(vector[60, 41], vault_address, &mut scenario);
@@ -386,7 +386,7 @@ fun the_owner_cap_is_the_vaults_position_under_the_aftermath_venue() {
 fun collect_fees_rejects_another_venues_vault() {
     let mut scenario = test_scenario::begin(CREATOR);
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
-    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let fee_policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     let mut other_vault = vault::new_for_testing<AFTERMATH_TESTS, QUOTE>(
         object::id_from_address(@0xCAFE),
         object::id_from_address(@0xCA9),
@@ -418,7 +418,7 @@ fun new_accepts_one_basis_point_and_the_whole_amount() {
     let mut scenario = test_scenario::begin(CREATOR);
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let creation_policy = allowing<Witness>(scenario.ctx());
-    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let fee_policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     vector[1, 10_000].do!(|dao_fee_bps| {
         let mut venue_config = venue_config::new_for_testing(scenario.ctx());
         let (treasury_cap, currency) = new_currency(&mut scenario);
@@ -451,7 +451,7 @@ fun new_accepts_one_basis_point_and_the_whole_amount() {
 fun an_empty_collection_moves_nothing() {
     let mut scenario = test_scenario::begin(CREATOR);
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
-    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let fee_policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     let mut vault = new_vault(&mut scenario);
 
     vault.collect_fees(
@@ -477,7 +477,7 @@ fun an_empty_collection_moves_nothing() {
 fun collect_fees_receives_only_coins_the_vault_owns() {
     let mut scenario = test_scenario::begin(CREATOR);
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
-    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let fee_policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     let mut vault = new_vault(&mut scenario);
     let meme_ids = send_coins<AFTERMATH_TESTS>(vector[7], KEEPER, &mut scenario);
 
@@ -503,7 +503,7 @@ fun a_stale_version_cannot_finalize_a_sale() {
     let mut scenario = test_scenario::begin(CREATOR);
     let mut package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let creation_policy = allowing<Witness>(scenario.ctx());
-    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let fee_policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     let mut venue_config = venue_config::new_for_testing(scenario.ctx());
     let (treasury_cap, mut currency) = new_currency(&mut scenario);
     let (initializer, ticket) = aftermath::new<_, QUOTE>(
@@ -585,7 +585,7 @@ fun a_cancelled_sales_reservation_cannot_be_consumed() {
     let mut scenario = test_scenario::begin(CREATOR);
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let creation_policy = allowing<Witness>(scenario.ctx());
-    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let fee_policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     let mut venue_config = venue_config::new_for_testing(scenario.ctx());
     let mut clock = clock::create_for_testing(scenario.ctx());
     let (sale_id, pool_creation_id, _cap) = scenario.fund_sale(
@@ -631,7 +631,7 @@ fun start_rejected_fee(dao_fee_bps: u16) {
     let mut scenario = test_scenario::begin(CREATOR);
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let creation_policy = allowing<Witness>(scenario.ctx());
-    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let fee_policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     let mut venue_config = venue_config::new_for_testing(scenario.ctx());
     let (treasury_cap, _currency) = new_currency(&mut scenario);
 
@@ -674,7 +674,7 @@ fun new_sale(
 ): (Presale<AFTERMATH_TESTS, QUOTE>, PresaleCap) {
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let (result_0, result_1) = {
-        let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+        let fee_policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
         let (treasury_cap, mut currency) = new_currency(scenario);
 
         let (mut initializer, ticket) = aftermath::new<_, QUOTE>(

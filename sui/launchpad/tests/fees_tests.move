@@ -397,7 +397,7 @@ macro fun ctx($fixture: &mut FeesFixture): &mut TxContext {
 fun start(): FeesFixture {
     let mut scenario = test_scenario::begin(PROTOCOL_ADMIN);
     let package_version = package_version::new_for_testing(scenario.ctx());
-    let runtime_config = runtime_config::new_disabled_for_testing(scenario.ctx());
+    let runtime_config = runtime_config::new_zero_fee_share_for_testing(scenario.ctx());
 
     FeesFixture { scenario, package_version, runtime_config }
 }

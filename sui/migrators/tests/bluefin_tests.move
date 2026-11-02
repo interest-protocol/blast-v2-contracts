@@ -155,7 +155,7 @@ fun start(): BluefinFixture {
     let mut scenario = test_scenario::begin(ADMIN);
     let version = package_version::new_for_testing(scenario.ctx());
     let migrators_version = migrators_package_version::new_for_testing(scenario.ctx());
-    let mut config = launch_config::new_for_testing(scenario.ctx());
+    let mut config = launch_config::new_zero_fees_for_testing(scenario.ctx());
 
     scenario.next_tx(ADMIN);
     config.set_quote_allowed<QUOTE>(&version, &blast_acl::witness_for_testing<ListingAdmin>(), true);

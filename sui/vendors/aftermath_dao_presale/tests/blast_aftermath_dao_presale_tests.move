@@ -171,7 +171,7 @@ fun migrate_rejects_another_sales_pool_creation() {
         second_presale_id,
     );
     let pool_creation = scenario.take_shared_by_id<PoolCreation<LP>>(first_pool_creation_id);
-    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let fee_policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     let mut pool_registry = pool_registry::new_for_testing(scenario.ctx());
     let dao_fee_version = version::new_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
@@ -228,7 +228,7 @@ fun finalize_rejects_another_migrators_sale() {
     let mut scenario = publish();
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let creation_policy = allowing<OTHER_MIGRATOR>(scenario.ctx());
-    let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+    let fee_policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     let admin_cap = scenario.take_from_sender<AdminCap>();
     let (treasury_cap, mut currency) = new_currency(&mut scenario);
     let initializer = presale::new<_, QUOTE, _>(
@@ -338,7 +338,7 @@ fun start_sale(
 ) {
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let (result_0, result_1) = {
-        let fee_policy = fee_policy::new_for_testing(scenario.ctx());
+        let fee_policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
         let (treasury_cap, currency) = new_currency(scenario);
 
         let mut initializer = migrator::new<_, QUOTE>(

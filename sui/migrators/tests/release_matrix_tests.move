@@ -34,7 +34,7 @@ fun the_cetus_and_bluefin_witnesses_are_admissible() {
 fun start(): MatrixFixture {
     let mut scenario = test_scenario::begin(ADMIN);
     let version = package_version::new_for_testing(scenario.ctx());
-    let config = launch_config::new_for_testing(scenario.ctx());
+    let config = launch_config::new_zero_fees_for_testing(scenario.ctx());
 
     MatrixFixture { scenario, version, config }
 }

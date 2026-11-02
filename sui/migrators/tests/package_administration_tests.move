@@ -156,7 +156,7 @@ fun start(): AdminFixtureState {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
     let package_admin = package_admin::new_for_testing(scenario.ctx());
-    let policy = lp_fee_policy::new_for_testing(scenario.ctx());
+    let policy = lp_fee_policy::new_zero_fees_for_testing(scenario.ctx());
 
     AdminFixtureState { scenario, package_version, package_admin, policy }
 }

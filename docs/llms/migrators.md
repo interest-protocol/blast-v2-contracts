@@ -419,6 +419,8 @@ generation.
 
 ### Economics
 
+Publication defaults follow the [Blast visual map](https://map.blast.fun/#fees): Blast receives 1,500 BPS (15%) of each collected LP-fee asset. The remaining 85% follows the vault split. Administrators can change the defaults and set per-coin overrides. Changing source defaults does not update an existing policy object.
+
 All amounts are atomic units. BPS are out of 10,000.
 
 #### Blast's LP-fee share

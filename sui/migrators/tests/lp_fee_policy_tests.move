@@ -37,16 +37,16 @@ public struct ExpectedChange has copy, drop {
 // === Tests ===
 
 #[test]
-fun publication_shares_one_eventless_zero_default_policy() {
+fun publication_shares_one_eventless_fifteen_percent_policy() {
     let mut fixture = start_init();
 
     fixture.next_tx!(PUBLISHER, |f| {
         let (live_meme_bps, live_quote_bps) = f.policy.shares<MemeA>();
-        assert_eq!(live_meme_bps.value(), 0);
-        assert_eq!(live_quote_bps.value(), 0);
+        assert_eq!(live_meme_bps.value(), 1_500);
+        assert_eq!(live_quote_bps.value(), 1_500);
         let (default_meme_bps, default_quote_bps) = f.policy.default_shares_for_testing();
-        assert_eq!(default_meme_bps.value(), 0);
-        assert_eq!(default_quote_bps.value(), 0);
+        assert_eq!(default_meme_bps.value(), 1_500);
+        assert_eq!(default_quote_bps.value(), 1_500);
         assert_eq!(f.policy.coin_count_for_testing(), 0);
     });
 
@@ -527,7 +527,7 @@ fun start_init(): InitFixture {
 fun start_policy(): PolicyFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let migrators_version = migrators_version::new_for_testing(scenario.ctx());
-    let policy = lp_fee_policy::new_for_testing(scenario.ctx());
+    let policy = lp_fee_policy::new_zero_fees_for_testing(scenario.ctx());
 
     PolicyFixture { scenario, migrators_version, policy }
 }

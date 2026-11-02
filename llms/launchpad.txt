@@ -20,8 +20,8 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 
 | Package | Product | Status | Package ID (`published-at`) | Type origin (`original-id`) |
 | --- | --- | --- | --- | --- |
-| `blast_fun` | Launchpad | live | `0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573` | `0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573` |
-| `blast_fun_migrators` | Migration and LP vaults | live | `0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53` | `0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53` |
+| `blast_fun` | Launchpad | live; source has changed since | `0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573` | `0x079a1b44c551613cbc63cc0406f8ff8d717407378dd6f17d43d9e1b3fd63a573` |
+| `blast_fun_migrators` | Migration and LP vaults | live; source has changed since | `0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53` | `0x4a5d11d8443e965d62abb3ff032e9b020d10aeaf4dfbc3bc59775b44a8af1f53` |
 | `blast_partners` | Partner codes | live | `0x163a96aa9b88afe77e51febc195a9e0fa8534a6122bc09c6bd46d176c91a99f9` | `0x163a96aa9b88afe77e51febc195a9e0fa8534a6122bc09c6bd46d176c91a99f9` |
 | `blast_admin` | Administration | live | `0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac` | `0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac` |
 
@@ -173,7 +173,7 @@ run) before signing it.
 
 ## Launchpad
 
-> **Deployment status:** `blast_fun` is live on mainnet.
+> **Deployment status:** `blast_fun` is live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package.
 
 ### What it is
 
@@ -575,6 +575,8 @@ allow/remove toggles for Quotes, decimals, and adapters instead abort inside the
 
 ### Economics
 
+Publication defaults follow the [Blast visual map](https://map.blast.fun/#fees): the curve charges 150 BPS of Quote and 0 BPS of Meme, and Blast receives 5,000 BPS of each collected trade fee (50/50 with the creator). The migration allocation defaults to 250 BPS of original Meme supply and 150 BPS of the final real Quote reserve. The creation fee defaults to zero. Administrators can change these settings; read the current objects before constructing a launch. Changing source defaults does not update existing objects or a finalized launch.
+
 All amounts are atomic units. Rates are BPS out of 10,000. `ceil` rounds up, `floor` rounds down.
 
 #### Supply
@@ -895,7 +897,7 @@ never reaches its target stays `Live`, and holders exit by selling to the curve.
 
 ## Migration and LP vaults
 
-> **Deployment status:** `blast_fun_migrators` is live on mainnet.
+> **Deployment status:** `blast_fun_migrators` is live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package.
 
 ### What it is
 
@@ -1315,6 +1317,8 @@ Type names keep the original package address. Upgrading this package leaves the 
 generation.
 
 ### Economics
+
+Publication defaults follow the [Blast visual map](https://map.blast.fun/#fees): Blast receives 1,500 BPS (15%) of each collected LP-fee asset. The remaining 85% follows the vault split. Administrators can change the defaults and set per-coin overrides. Changing source defaults does not update an existing policy object.
 
 All amounts are atomic units. BPS are out of 10,000.
 
@@ -1884,7 +1888,7 @@ where you like); Blast takes no cut of it.
 
 ## API reference: `blast_fun` (Launchpad)
 
-Live on mainnet. This reference matches the published source.
+Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
 
 Events: every payload is emitted inside `blast_fun::blast_events::Event<T>`; filter on that type.
 
@@ -2996,7 +3000,7 @@ public fun set_treasury(
 
 ## API reference: `blast_fun_migrators` (Migration and LP vaults)
 
-Live on mainnet. This reference matches the published source.
+Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
 
 Events: payload structs are emitted directly, each under its own type.
 

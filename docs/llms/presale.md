@@ -655,6 +655,8 @@ Integrators cannot call these; they explain state changes. Each takes the
 
 ### Economics
 
+Publication defaults follow the [Blast visual map](https://map.blast.fun/#fees): 200 BPS (2%) of the successful raise target, 100 BPS (1%) of total Meme supply, and 1,500 BPS (15%) of each collected LP-fee asset. Administrators can change the policy; sales snapshot their rates. Changing source defaults does not update an existing policy, sale or vault.
+
 All amounts are atomic units. All rates are BPS out of 10,000. `floor` rounds down.
 
 #### Largest-remainder apportionment

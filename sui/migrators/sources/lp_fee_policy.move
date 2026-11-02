@@ -147,7 +147,7 @@ fun new(ctx: &mut TxContext): LpFeePolicy {
     LpFeePolicy {
         id: object::new(ctx),
         destination: ctx.sender(),
-        defaults: SharePair { meme_bps: bps::new(0), quote_bps: bps::new(0) },
+        defaults: SharePair { meme_bps: bps::new(1_500), quote_bps: bps::new(1_500) },
         coins: table::new(ctx),
     }
 }
@@ -161,9 +161,17 @@ public fun init_for_testing(ctx: &mut TxContext) {
 }
 
 #[test_only]
-/// Creates unshared zero-share policy for focused and vault tests.
-public fun new_for_testing(ctx: &mut TxContext): LpFeePolicy {
-    new(ctx)
+/// Shares the explicit zero-fee fixture for multi-transaction tests.
+public fun init_zero_fees_for_testing(ctx: &mut TxContext) {
+    transfer::share_object(new_zero_fees_for_testing(ctx));
+}
+
+#[test_only]
+/// Explicit zero-share fixture, independent of publication defaults.
+public fun new_zero_fees_for_testing(ctx: &mut TxContext): LpFeePolicy {
+    let mut policy = new(ctx);
+    policy.defaults = SharePair { meme_bps: bps::new(0), quote_bps: bps::new(0) };
+    policy
 }
 
 #[test_only]

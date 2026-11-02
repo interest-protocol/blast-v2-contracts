@@ -80,13 +80,13 @@ public struct ConfigFixture {
 // === Tests ===
 
 #[test]
-fun package_init_creates_launch_config_with_six_and_nine_decimals() {
+fun package_init_uses_map_fees_with_six_and_nine_decimals() {
     let mut fixture = start_init();
 
     fixture.next_tx!(PUBLISHER, |f| {
         let (quote_fee_bps, meme_fee_bps) = f.config.rate_defaults_for_testing();
 
-        assert_eq!(quote_fee_bps, 0);
+        assert_eq!(quote_fee_bps, 150);
         assert_eq!(meme_fee_bps, 0);
         assert_eq!(f.config.allowed_quote_count_for_testing(), 0);
         assert_eq!(f.config.allowed_migration_witness_count_for_testing(), 0);
@@ -94,7 +94,7 @@ fun package_init_creates_launch_config_with_six_and_nine_decimals() {
         assert_eq!(f.config.creation_fee(), 0);
         assert_eq!(
             f.config.protocol_allocation(),
-            allocation::protocol_allocation(bps::new(0), bps::new(0)),
+            allocation::protocol_allocation(bps::new(250), bps::new(150)),
         );
     });
 
@@ -1203,11 +1203,11 @@ fun start_init(): InitFixture {
     InitFixture { scenario, config }
 }
 
-/// The shared configuration exactly as package initialization leaves it.
+/// Explicit zero-fee policy for administration boundary tests.
 fun start(): ConfigFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let package_version = package_version::new_for_testing(scenario.ctx());
-    launch_config::init_for_testing(scenario.ctx());
+    launch_config::init_zero_fees_for_testing(scenario.ctx());
 
     let mut clock = clock::create_for_testing(scenario.ctx());
     clock.set_for_testing(NOW_AT_MS);

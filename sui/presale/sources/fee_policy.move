@@ -137,10 +137,10 @@ fun new(ctx: &mut TxContext): FeePolicy {
         id: object::new(ctx),
         destination: ctx.sender(),
         fees: ProtocolFees {
-            raise_bps: bps::new(0),
-            token_bps: bps::new(0),
-            lp_fee_meme_bps: bps::new(0),
-            lp_fee_quote_bps: bps::new(0),
+            raise_bps: bps::new(200),
+            token_bps: bps::new(100),
+            lp_fee_meme_bps: bps::new(1_500),
+            lp_fee_quote_bps: bps::new(1_500),
         },
     }
 }
@@ -153,8 +153,11 @@ public fun init_for_testing(ctx: &mut TxContext) {
 }
 
 #[test_only]
-public fun new_for_testing(ctx: &mut TxContext): FeePolicy {
-    new(ctx)
+/// Explicit zero-fee fixture, independent of publication defaults.
+public fun new_zero_fees_for_testing(ctx: &mut TxContext): FeePolicy {
+    let mut policy = new(ctx);
+    policy.fees = protocol_fees(bps::new(0), bps::new(0), bps::new(0), bps::new(0));
+    policy
 }
 
 #[test_only]

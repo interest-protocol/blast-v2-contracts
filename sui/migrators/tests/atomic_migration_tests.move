@@ -244,9 +244,9 @@ fun start(): Fixture {
     let mut scenario = test_scenario::begin(@0x0);
     let version = package_version::new_for_testing(scenario.ctx());
     let migrators_version = migrators_version::new_for_testing(scenario.ctx());
-    launch_config::init_for_testing(scenario.ctx());
-    lp_fee_policy::init_for_testing(scenario.ctx());
-    let runtime = runtime_config::new_disabled_for_testing(scenario.ctx());
+    launch_config::init_zero_fees_for_testing(scenario.ctx());
+    lp_fee_policy::init_zero_fees_for_testing(scenario.ctx());
+    let runtime = runtime_config::new_zero_fee_share_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
 
     scenario.next_tx(ADMIN);

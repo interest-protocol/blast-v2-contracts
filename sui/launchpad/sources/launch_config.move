@@ -238,10 +238,10 @@ fun new(ctx: &mut TxContext): LaunchConfig {
         id: object::new(ctx),
         meme_decimals: vec_set::from_keys(vector[6, 9]),
         quotes: table::new(ctx),
-        quote_fee_bps: bps::new(0),
+        quote_fee_bps: bps::new(150),
         meme_fee_bps: bps::new(0),
         migration_witnesses: vec_set::empty(),
-        protocol_allocation: allocation::protocol_allocation(bps::new(0), bps::new(0)),
+        protocol_allocation: allocation::protocol_allocation(bps::new(250), bps::new(150)),
         creation_fee: 0,
     }
 }
@@ -254,8 +254,18 @@ public fun init_for_testing(ctx: &mut TxContext) {
 }
 
 #[test_only]
-public fun new_for_testing(ctx: &mut TxContext): LaunchConfig {
-    new(ctx)
+/// Shares the explicit zero-fee fixture for multi-transaction tests.
+public fun init_zero_fees_for_testing(ctx: &mut TxContext) {
+    transfer::share_object(new_zero_fees_for_testing(ctx));
+}
+
+#[test_only]
+/// Explicit zero-fee fixture, independent of publication defaults.
+public fun new_zero_fees_for_testing(ctx: &mut TxContext): LaunchConfig {
+    let mut config = new(ctx);
+    config.quote_fee_bps = bps::new(0);
+    config.protocol_allocation = allocation::protocol_allocation(bps::new(0), bps::new(0));
+    config
 }
 
 #[test_only]

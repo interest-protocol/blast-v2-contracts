@@ -20,7 +20,7 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 
 | Package | Product | Status | Package ID (`published-at`) | Type origin (`original-id`) |
 | --- | --- | --- | --- | --- |
-| `blast_presale` | Presale | live | `0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b` | `0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b` |
+| `blast_presale` | Presale | live; source has changed since | `0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b` | `0xb0279fbe54bfd1d920e985a4dba0916b2b73a5218514edeecb7b9dd30cf2863b` |
 | `blast_aftermath_dao_presale` | Aftermath DAO-pool presale migrator | live; source has changed since | `0x2fe674f6c42f49b7647be760a10f89f843396b9294af8fab5bfbc929fb7aab01` | `0x2fe674f6c42f49b7647be760a10f89f843396b9294af8fab5bfbc929fb7aab01` |
 | `blast_partners` | Partner codes | live | `0x163a96aa9b88afe77e51febc195a9e0fa8534a6122bc09c6bd46d176c91a99f9` | `0x163a96aa9b88afe77e51febc195a9e0fa8534a6122bc09c6bd46d176c91a99f9` |
 | `blast_admin` | Administration | live | `0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac` | `0x4a27d816998b2ff015cf897a249c069c34859a09e789e56ad3a38992cf00d7ac` |
@@ -173,7 +173,7 @@ run) before signing it.
 
 ## Presale
 
-> **Deployment status:** `blast_presale` is live on mainnet. `blast_aftermath_dao_presale` is live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package.
+> **Deployment status:** `blast_presale` and `blast_aftermath_dao_presale` are live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package.
 
 ### What it is
 
@@ -829,6 +829,8 @@ Integrators cannot call these; they explain state changes. Each takes the
 `blast_presale::package_admin::wrap` consumes the publication Bootstrap and never-upgraded matching cap once. Each upgrade increments both compiled generation constants and commits/advances in one PTB; old bytecode then rejects the advanced version. Existing dependency-only deployments require a fresh publication to adopt this design.
 
 ### Economics
+
+Publication defaults follow the [Blast visual map](https://map.blast.fun/#fees): 200 BPS (2%) of the successful raise target, 100 BPS (1%) of total Meme supply, and 1,500 BPS (15%) of each collected LP-fee asset. Administrators can change the policy; sales snapshot their rates. Changing source defaults does not update an existing policy, sale or vault.
 
 All amounts are atomic units. All rates are BPS out of 10,000. `floor` rounds down.
 
@@ -1574,7 +1576,7 @@ where you like); Blast takes no cut of it.
 
 ## API reference: `blast_presale` (Presale)
 
-Live on mainnet. This reference matches the published source.
+Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
 
 Events: payload structs are emitted directly, each under its own type.
 

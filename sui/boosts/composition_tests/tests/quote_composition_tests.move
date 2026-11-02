@@ -47,7 +47,7 @@ fun admitting_long_does_not_admit_the_distinct_short_vault_quote() {
 fun quote_round_trip<Quote>(admit_exact: bool) {
     let mut scenario = test_scenario::begin(@0x0);
     let version = package_version::new_for_testing(scenario.ctx());
-    launch_config::init_for_testing(scenario.ctx());
+    launch_config::init_zero_fees_for_testing(scenario.ctx());
     scenario.next_tx(@0xa);
     let listing_admin = blast_acl::witness_for_testing<ListingAdmin>();
     let adapter_admin = blast_acl::witness_for_testing<AdapterAdmin>();
@@ -58,7 +58,7 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
         config.set_quote_allowed<BlastBoost<Long2x>>(&version, &listing_admin, true);
     };
     config.set_migration_witness_allowed<Migration>(&version, &adapter_admin, true);
-    let runtime = runtime_config::new_disabled_for_testing(scenario.ctx());
+    let runtime = runtime_config::new_zero_fee_share_for_testing(scenario.ctx());
     let ticket = launch_ticket::new(
         test_utils::create_one_time_witness<QUOTE_COMPOSITION_TESTS>(), 9,
         b"MEME".to_string(), b"Composition".to_string(),

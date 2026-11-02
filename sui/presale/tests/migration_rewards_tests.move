@@ -85,7 +85,7 @@ fun collected_fees_pay_recipients_and_route_only_holder_meme() {
 fun collected_fees_pay_blast_its_share_first() {
     let mut scenario = test_scenario::begin(CREATOR);
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
-    let mut policy = fee_policy::new_for_testing(scenario.ctx());
+    let mut policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     policy.set_destination(&package_version, &treasury_admin(), TREASURY);
     let mut vault = vault_paying_blast(option::none(), &mut scenario);
 
@@ -231,7 +231,7 @@ fun held_lp_fees_go_to_the_destination_in_force_at_payout() {
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let partner = partners::new_for_testing(PARTNER_RECIPIENT, PARTNER_CUT_BPS, scenario.ctx());
     let mut vault = vault_paying_blast(option::some(object::id(&partner)), &mut scenario);
-    let mut policy = fee_policy::new_for_testing(scenario.ctx());
+    let mut policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     policy.set_destination(&package_version, &treasury_admin(), TREASURY);
     vault.credit_fees_for_testing(
         &policy,
@@ -341,7 +341,7 @@ fun a_vault_without_a_partner_has_no_partner_payout() {
 fun the_admin_changes_a_vaults_lp_fee_rates() {
     let mut scenario = test_scenario::begin(CREATOR);
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
-    let mut policy = fee_policy::new_for_testing(scenario.ctx());
+    let mut policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     policy.set_destination(&package_version, &treasury_admin(), TREASURY);
     let mut vault = vault_paying_blast(option::none(), &mut scenario);
 
@@ -410,7 +410,7 @@ fun the_admin_publishes_holder_rounds_from_the_holder_share() {
     );
     let clock = clock::create_for_testing(scenario.ctx());
 
-    let policy = fee_policy::new_for_testing(scenario.ctx());
+    let policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     vault.publish_round(
         &package_version,
         &rewards_admin(),
@@ -535,7 +535,7 @@ fun a_vault_without_a_presale_takes_the_policys_lp_rates() {
 fun no_presale_cap_reaches_a_vault_without_a_presale() {
     let mut scenario = test_scenario::begin(CREATOR);
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
-    let policy = fee_policy::new_for_testing(scenario.ctx());
+    let policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     let creation_policy = creation_policy::new_for_testing(scenario.ctx());
     new_vault_without_presale(&policy, option::none(), &creation_policy, 7, &mut scenario);
     scenario.next_tx(CREATOR);
@@ -553,7 +553,7 @@ fun no_presale_cap_reaches_a_vault_without_a_presale() {
 #[expected_failure(abort_code = vault::EZeroLiquidity, location = blast_presale::presale_vault)]
 fun a_vault_without_a_presale_needs_liquidity() {
     let mut scenario = test_scenario::begin(CREATOR);
-    let policy = fee_policy::new_for_testing(scenario.ctx());
+    let policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     let creation_policy = creation_policy::new_for_testing(scenario.ctx());
 
     new_vault_without_presale(&policy, option::none(), &creation_policy, 0, &mut scenario);
@@ -617,7 +617,7 @@ fun a_vault_without_a_presale_pays_its_partner_its_cut_of_blasts_lp_fees() {
 /// A vault created without a presale cannot name a partner Blast does not accept.
 fun a_vault_without_a_presale_cannot_name_an_unaccepted_partner() {
     let mut scenario = test_scenario::begin(CREATOR);
-    let policy = fee_policy::new_for_testing(scenario.ctx());
+    let policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     let creation_policy = creation_policy::new_for_testing(scenario.ctx());
 
     new_vault_without_presale(
@@ -751,7 +751,7 @@ fun a_round_needs_a_future_claim_deadline() {
     let mut clock = clock::create_for_testing(scenario.ctx());
     clock.set_for_testing(CLAIM_DEADLINE_AT_MS);
 
-    let policy = fee_policy::new_for_testing(scenario.ctx());
+    let policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     vault.publish_round(
         &package_version,
         &rewards_admin(),
@@ -852,7 +852,7 @@ fun collect_fees(
     scenario: &mut Scenario,
 ) {
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
-    let mut policy = fee_policy::new_for_testing(scenario.ctx());
+    let mut policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     policy.set_destination(&package_version, &treasury_admin(), TREASURY);
     self.credit_fees_for_testing(&policy, meme, quote, scenario.ctx());
     policy.destroy_for_testing();
@@ -868,7 +868,7 @@ fun pay_held_lp_fees(
     scenario: &mut Scenario,
 ) {
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
-    let mut policy = fee_policy::new_for_testing(scenario.ctx());
+    let mut policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     policy.set_destination(&package_version, &treasury_admin(), destination);
     let clock = clock::create_for_testing(scenario.ctx());
 
@@ -920,7 +920,7 @@ fun new_vault_without_presale(
 fun policy_with_lp_fees(meme_bps: u64, quote_bps: u64, scenario: &mut Scenario): FeePolicy {
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let result = {
-        let mut policy = fee_policy::new_for_testing(scenario.ctx());
+        let mut policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
         policy.set_fees(
             &package_version,
             &fee_admin(),
@@ -954,7 +954,7 @@ fun publish_test_round(
 ) {
     let package_version = blast_presale::blast_presale_package::new_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
-    let policy = fee_policy::new_for_testing(scenario.ctx());
+    let policy = fee_policy::new_zero_fees_for_testing(scenario.ctx());
     self.publish_round(
         &package_version,
         &rewards_admin(),

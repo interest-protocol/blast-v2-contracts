@@ -12,14 +12,14 @@ const TREASURY: address = @0x7EA5;
 // === Tests ===
 
 #[test]
-/// Publication shares one policy that charges nothing and pays the publisher.
-fun publication_shares_a_zero_rate_policy_paying_the_publisher() {
+/// Publication shares the map fee policy and pays the publisher.
+fun publication_shares_the_map_fee_policy_paying_the_publisher() {
     let mut scenario = test_scenario::begin(PUBLISHER);
     fee_policy::init_for_testing(scenario.ctx());
 
     scenario.next_tx(PUBLISHER);
     let policy = scenario.take_shared<FeePolicy>();
-    assert_eq!(policy.fees(), fee_policy::protocol_fees_for_testing(0, 0, 0, 0));
+    assert_eq!(policy.fees(), fee_policy::protocol_fees_for_testing(200, 100, 1_500, 1_500));
     assert_eq!(policy.destination(), PUBLISHER);
 
     test_scenario::return_shared(policy);
@@ -210,7 +210,7 @@ fun stale_version_cannot_set_fees() {
 fun new_policy(): FeePolicy {
     let mut ctx = tx_context::dummy();
 
-    fee_policy::new_for_testing(&mut ctx)
+    fee_policy::new_zero_fees_for_testing(&mut ctx)
 }
 
 fun set_fees(raise_bps: u64, token_bps: u64, lp_fee_meme_bps: u64, lp_fee_quote_bps: u64) {

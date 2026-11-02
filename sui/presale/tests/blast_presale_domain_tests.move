@@ -43,7 +43,7 @@ fun each_presale_role_signs_in_to_its_own_operations() {
     fixture.grant<ListingAdmin>();
     fixture.grant<AdapterAdmin>();
     fixture.grant<UpgradeAdmin>();
-    let mut fee_policy = fee_policy::new_for_testing(fixture.scenario.ctx());
+    let mut fee_policy = fee_policy::new_zero_fees_for_testing(fixture.scenario.ctx());
     let mut creation_policy = creation_policy::new_for_testing(fixture.scenario.ctx());
     let mut package_admin = package_admin::new_for_testing(fixture.scenario.ctx());
 

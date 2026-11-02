@@ -402,10 +402,10 @@ fun start(fee_split: FeeSplit): FeeSplitFixture {
     let mut scenario = test_scenario::begin(PROTOCOL);
     let version = package_version::new_for_testing(scenario.ctx());
     let migrators_version = migrators_version::new_for_testing(scenario.ctx());
-    let runtime = runtime_config::new_disabled_for_testing(scenario.ctx());
+    let runtime = runtime_config::new_zero_fee_share_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
-    let policy = lp_fee_policy::new_for_testing(scenario.ctx());
-    let mut config = launch_config::new_for_testing(scenario.ctx());
+    let policy = lp_fee_policy::new_zero_fees_for_testing(scenario.ctx());
+    let mut config = launch_config::new_zero_fees_for_testing(scenario.ctx());
 
     scenario.next_tx(ADMIN);
     config.admit<QUOTE, Venue>(&version);

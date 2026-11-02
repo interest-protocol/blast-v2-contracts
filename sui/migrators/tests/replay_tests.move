@@ -254,9 +254,9 @@ fun start(): ReplayFixture {
     let mut scenario = test_scenario::begin(PUBLISHER);
     let version = package_version::new_for_testing(scenario.ctx());
     let migrators_version = migrators_version::new_for_testing(scenario.ctx());
-    launch_config::init_for_testing(scenario.ctx());
-    lp_fee_policy::init_for_testing(scenario.ctx());
-    let runtime = runtime_config::new_disabled_for_testing(scenario.ctx());
+    launch_config::init_zero_fees_for_testing(scenario.ctx());
+    lp_fee_policy::init_zero_fees_for_testing(scenario.ctx());
+    let runtime = runtime_config::new_zero_fee_share_for_testing(scenario.ctx());
     let mut clock = clock::create_for_testing(scenario.ctx());
     clock.set_for_testing(PUBLIC_STARTS_AT_MS);
 

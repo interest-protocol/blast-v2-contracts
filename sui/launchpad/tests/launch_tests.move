@@ -2780,12 +2780,12 @@ fun start(): LaunchFixture {
     fixture
 }
 
-/// Configured launch policy with Blast's default zero protocol allocation, paying `TREASURY`.
+/// Configured launch policy with an explicit zero protocol allocation, paying `TREASURY`.
 fun start_with_zero_protocol_allocation(): LaunchFixture {
     let mut scenario = test_scenario::begin(@0x0);
     let package_version = package_version::new_for_testing(scenario.ctx());
-    launch_config::init_for_testing(scenario.ctx());
-    let mut runtime_config = runtime_config::new_disabled_for_testing(scenario.ctx());
+    launch_config::init_zero_fees_for_testing(scenario.ctx());
+    let mut runtime_config = runtime_config::new_zero_fee_share_for_testing(scenario.ctx());
     let clock = clock::create_for_testing(scenario.ctx());
 
     scenario.next_tx(PROTOCOL_ADMIN);

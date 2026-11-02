@@ -96,7 +96,7 @@ fun new(ctx: &mut TxContext): RuntimeConfig {
     RuntimeConfig {
         id: object::new(ctx),
         creator_claim_signer_public_key: vector[],
-        protocol_fee_share_bps: bps::new(0),
+        protocol_fee_share_bps: bps::new(5_000),
         treasury: ctx.sender(),
     }
 }
@@ -109,8 +109,11 @@ public fun init_for_testing(ctx: &mut TxContext) {
 }
 
 #[test_only]
-public fun new_disabled_for_testing(ctx: &mut TxContext): RuntimeConfig {
-    new(ctx)
+/// Explicit zero-share fixture with account claims disabled.
+public fun new_zero_fee_share_for_testing(ctx: &mut TxContext): RuntimeConfig {
+    let mut config = new(ctx);
+    config.protocol_fee_share_bps = bps::new(0);
+    config
 }
 
 #[test_only]
@@ -118,7 +121,7 @@ public fun new_for_testing(signer_public_key: vector<u8>, ctx: &mut TxContext): 
     RuntimeConfig {
         id: object::new(ctx),
         creator_claim_signer_public_key: signer_public_key,
-        protocol_fee_share_bps: bps::new(0),
+        protocol_fee_share_bps: bps::new(5_000),
         treasury: ctx.sender(),
     }
 }

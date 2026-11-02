@@ -824,9 +824,17 @@ if [[ "$(wc -l <<<"$runtime_config_mutation_event_payloads")" != 3 ]] \
   failures=$((failures + 1))
 fi
 
+# Test-only fixture publication does not add a production singleton.
+core_singleton_bodies="$(
+  for source_file in "${source_files[@]}"; do
+    [[ "$source_file" == sources/launch.move ]] && continue
+    move_facts "$source_file" | awk -F'\t' '$1 == "FN" && $6 == 0 { print $10 }'
+  done
+)"
+
 if [[ -f sources/creator_claim_config.move || -f sources/trade_fee_config.move ]] \
   || rg -n '\b(CreatorClaimConfig|TradeFeeConfig)\b' sources tests \
-  || [[ "$(rg -o 'transfer::share_object' sources --glob '*.move' --glob '!launch.move' | wc -l)" != 4 ]]; then
+  || [[ "$(count_occurrences 'transfer::share_object' <<<"$core_singleton_bodies")" != 4 ]]; then
   echo 'Core must keep exactly its four shared protocol singletons besides the launch terminal sink; the ACL is shared by blast_admin.' >&2
   failures=$((failures + 1))
 fi
@@ -835,7 +843,7 @@ launch_config_facts="$(move_facts sources/launch_config.move)"
 launch_config_source="$(move_normalized_source <<<"$launch_config_facts")"
 launch_config_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' sources/launch_config.move)"
 
-# Blast's allocation always exists, starts at zero, and may change only for future launches while
+# Blast's allocation starts at the map's 250/150 BPS and may change only for future launches,
 # leaving room for the curve and the pool.
 if [[ ! -f sources/launch_config.move ]] \
   || [[ "$(move_production_function_contract set_protocol_allocation <<<"$launch_config_facts")" != 'public:0:0:fun set_protocol_allocation( self: &mut LaunchConfig, package_version: &PackageVersion, _: &AdminWitness<TreasuryAdmin>,'* ]] \
@@ -843,12 +851,12 @@ if [[ ! -f sources/launch_config.move ]] \
   || rg -Fq 'protocol_allocation: Option<' sources/launch_config.move \
   || ! rg -Fq 'meme_bps.value() <= 9_998 && quote_bps.value() <= 9_999' <<<"$launch_config_source" \
   || ! rg -Fq 'self.protocol_allocation != protocol_allocation' <<<"$launch_config_source" \
-  || ! rg -Fq 'protocol_allocation: allocation::protocol_allocation(bps::new(0), bps::new(0))' <<<"$launch_config_source" \
+  || ! rg -Fq 'protocol_allocation: allocation::protocol_allocation(bps::new(250), bps::new(150))' <<<"$launch_config_source" \
   || [[ "$(count_occurrences 'self\.protocol_allocation = ' <<<"$launch_config_source")" != 1 ]] \
   || rg -n '\b(set_graduation_defaults|GraduationDefaultsChanged|protocol_(quote_migration|meme_graduation)_fee_bps|meme_liquidity_provision_bps|QuoteParameters|QuoteParametersChanged|min_graduation_target|max_graduation_target)\b' \
     sources/launch_config.move sources/lib/events.move \
   || rg -n '\b(AdminCap|ProtocolAuthority|sequence|schema_version|action_tag|nonce)\b' <<<"$launch_config_production"; then
-  echo 'LaunchConfig must own only future-launch settings plus an AdminWitness-gated Blast allocation that always exists and defaults to zero.' >&2
+  echo 'LaunchConfig must own only future-launch settings plus an AdminWitness-gated Blast allocation that always exists and defaults to 250/150 BPS.' >&2
   failures=$((failures + 1))
 fi
 
