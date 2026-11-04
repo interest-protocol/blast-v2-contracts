@@ -78,3 +78,31 @@ macro public(package) fun fun_rounding_reserve_mist(): u64 {
 macro public(package) fun fun_exit_low_water_mist(): u64 {
     2 * native_redemption_rounding_margin!()
 }
+
+/// Notice every upgrade or immutability action, and every redemption-fee change, waits from
+/// creation until its own notice is changed: 48 hours.
+macro public(package) fun initial_notice_ms(): u64 {
+    48 * 60 * 60 * 1_000
+}
+
+/// Pause flag for `vault::mint_fun_sui`.
+macro public(package) fun fun_mint_pause_bit(): u8 {
+    1
+}
+
+/// Pause flag for `vault::request_blast_sui`.
+macro public(package) fun blast_request_pause_bit(): u8 {
+    2
+}
+
+/// Pause flag for `vault::claim_blast_sui`; an unclaimed receipt still cancels to native SUI.
+macro public(package) fun blast_claim_pause_bit(): u8 {
+    4
+}
+
+/// Every supported deposit pause flag. No exit path has a flag.
+macro public(package) fun valid_pause_bits(): u8 {
+    blast_sui::constants::fun_mint_pause_bit!()
+        | blast_sui::constants::blast_request_pause_bit!()
+        | blast_sui::constants::blast_claim_pause_bit!()
+}

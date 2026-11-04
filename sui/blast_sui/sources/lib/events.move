@@ -37,13 +37,6 @@ public struct VaultCustody has copy, drop {
     blast_supply: u64,
 }
 
-/// Emitted after an active admin attaches one capability object to PackageAdmin.
-public struct PackageCapabilityAdded has copy, drop {
-    package_admin_id: ID,
-    capability_id: ID,
-    capability_type: TypeName,
-}
-
 /// Emitted after the single-validator vault is created from the owner seed.
 ///
 /// `fun_reserve_sui` is the protocol-funded fun safety reserve and
@@ -86,12 +79,15 @@ public struct BlastSuiDepositRequested has copy, drop {
 }
 
 /// Emitted after an activated receipt enters blast custody and mints blastSUI.
+///
+/// `claimed_pool_tokens` is the receipt's converted active stake joined to blast
+/// custody, and `contributed_sui` its floor valuation at the applied rate.
 public struct BlastSuiDepositClaimed has copy, drop {
     receipt_id: ID,
     vault_id: ID,
     principal_sui: u64,
     contributed_sui: u64,
-    pool_tokens: u64,
+    claimed_pool_tokens: u64,
     blast_out: u64,
     custody: VaultCustody,
 }
@@ -110,6 +106,12 @@ public struct BlastSuiDonated has copy, drop {
     custody: VaultCustody,
 }
 
+/// Emitted after SUI enters fun custody without minting, refreshing, or delegating.
+public struct FunReserveToppedUp has copy, drop {
+    sui_in: u64,
+    custody: VaultCustody,
+}
+
 /// Emitted after blastSUI shares are burned for their share of blast custody less the retained fee.
 public struct BlastSuiRedeemed has copy, drop {
     blast_in: u64,
@@ -120,17 +122,26 @@ public struct BlastSuiRedeemed has copy, drop {
 }
 
 /// Emitted after fun yield above the funSUI claim and reserve moved into blast custody.
+///
+/// `swept_liquid_sui` and `swept_pool_tokens` are the amounts moved, not balances;
+/// `swept_sui` is their total at the applied rate.
 public struct FunYieldSwept has copy, drop {
-    liquid_sui: u64,
-    pool_tokens: u64,
+    swept_liquid_sui: u64,
+    swept_pool_tokens: u64,
     swept_sui: u64,
     custody: VaultCustody,
 }
 
-/// Emitted after the `FeeAdmin` changes the blastSUI redemption fee.
-public struct RedeemFeeChanged has copy, drop {
-    old_redeem_fee_bps: u64,
-    new_redeem_fee_bps: u64,
+/// Emitted after `PauseAdmin` sets deposit pause flags; `paused` is the resulting mask.
+public struct Paused has copy, drop {
+    bits: u8,
+    paused: u8,
+}
+
+/// Emitted after `UnpauseAdmin` clears deposit pause flags; `paused` is the resulting mask.
+public struct Unpaused has copy, drop {
+    bits: u8,
+    paused: u8,
 }
 
 /// Emitted after a permissionless refresh, sweep, and idle delegation pass.
@@ -169,18 +180,6 @@ public(package) fun vault_custody(
     blast_supply: u64,
 ): VaultCustody {
     VaultCustody { fun_custody, blast_custody, exchange_rate, fun_supply, blast_supply }
-}
-
-/// Emits attachment of one typed capability to package custody.
-public(package) fun package_capability_added<Capability>(
-    package_admin_id: ID,
-    capability_id: ID,
-) {
-    blast_sui::blast_events::emit_event(PackageCapabilityAdded {
-        package_admin_id,
-        capability_id,
-        capability_type: std::type_name::with_original_ids<Capability>(),
-    });
 }
 
 /// Emits vault creation, locked bootstrap supply, and initial custody state.
@@ -241,7 +240,7 @@ public(package) fun blast_sui_deposit_claimed(
     vault_id: ID,
     principal_sui: u64,
     contributed_sui: u64,
-    pool_tokens: u64,
+    claimed_pool_tokens: u64,
     blast_out: u64,
     custody: VaultCustody,
 ) {
@@ -250,7 +249,7 @@ public(package) fun blast_sui_deposit_claimed(
         vault_id,
         principal_sui,
         contributed_sui,
-        pool_tokens,
+        claimed_pool_tokens,
         blast_out,
         custody,
     });
@@ -276,6 +275,11 @@ public(package) fun blast_sui_donated(sui_in: u64, custody: VaultCustody) {
     blast_sui::blast_events::emit_event(BlastSuiDonated { sui_in, custody });
 }
 
+/// Emits an uncompensated fun-custody top-up and the resulting custody state.
+public(package) fun fun_reserve_topped_up(sui_in: u64, custody: VaultCustody) {
+    blast_sui::blast_events::emit_event(FunReserveToppedUp { sui_in, custody });
+}
+
 /// Emits a blastSUI redemption quote, fee, payout, and resulting custody state.
 public(package) fun blast_sui_redeemed(
     blast_in: u64,
@@ -295,25 +299,27 @@ public(package) fun blast_sui_redeemed(
 
 /// Emits fun-custody yield moved into blast custody.
 public(package) fun fun_yield_swept(
-    liquid_sui: u64,
-    pool_tokens: u64,
+    swept_liquid_sui: u64,
+    swept_pool_tokens: u64,
     swept_sui: u64,
     custody: VaultCustody,
 ) {
     blast_sui::blast_events::emit_event(FunYieldSwept {
-        liquid_sui,
-        pool_tokens,
+        swept_liquid_sui,
+        swept_pool_tokens,
         swept_sui,
         custody,
     });
 }
 
-/// Emits a completed redemption-fee update.
-public(package) fun redeem_fee_changed(old_redeem_fee_bps: u64, new_redeem_fee_bps: u64) {
-    blast_sui::blast_events::emit_event(RedeemFeeChanged {
-        old_redeem_fee_bps,
-        new_redeem_fee_bps,
-    });
+/// Emits newly set deposit pause flags and the resulting mask.
+public(package) fun paused(bits: u8, paused: u8) {
+    blast_sui::blast_events::emit_event(Paused { bits, paused });
+}
+
+/// Emits newly cleared deposit pause flags and the resulting mask.
+public(package) fun unpaused(bits: u8, paused: u8) {
+    blast_sui::blast_events::emit_event(Unpaused { bits, paused });
 }
 
 /// Emits the canonical custody snapshot after a permissionless sync.
@@ -379,13 +385,6 @@ public fun vault_custody_fields(
 }
 
 #[test_only]
-public fun package_capability_added_fields(
-    self: &PackageCapabilityAdded,
-): (ID, ID, TypeName) {
-    (self.package_admin_id, self.capability_id, self.capability_type)
-}
-
-#[test_only]
 public fun vault_created_fields(
     self: &VaultCreated,
 ): (ID, address, ID, u64, u64, u64, u64, VaultCustody) {
@@ -434,7 +433,7 @@ public fun blast_sui_deposit_claimed_fields(
         self.vault_id,
         self.principal_sui,
         self.contributed_sui,
-        self.pool_tokens,
+        self.claimed_pool_tokens,
         self.blast_out,
         self.custody,
     )
@@ -453,6 +452,11 @@ public fun blast_sui_donated_fields(self: &BlastSuiDonated): (u64, VaultCustody)
 }
 
 #[test_only]
+public fun fun_reserve_topped_up_fields(self: &FunReserveToppedUp): (u64, VaultCustody) {
+    (self.sui_in, self.custody)
+}
+
+#[test_only]
 public fun blast_sui_redeemed_fields(
     self: &BlastSuiRedeemed,
 ): (u64, u64, u64, u64, VaultCustody) {
@@ -461,12 +465,17 @@ public fun blast_sui_redeemed_fields(
 
 #[test_only]
 public fun fun_yield_swept_fields(self: &FunYieldSwept): (u64, u64, u64, VaultCustody) {
-    (self.liquid_sui, self.pool_tokens, self.swept_sui, self.custody)
+    (self.swept_liquid_sui, self.swept_pool_tokens, self.swept_sui, self.custody)
 }
 
 #[test_only]
-public fun redeem_fee_changed_fields(self: &RedeemFeeChanged): (u64, u64) {
-    (self.old_redeem_fee_bps, self.new_redeem_fee_bps)
+public fun paused_fields(self: &Paused): (u8, u8) {
+    (self.bits, self.paused)
+}
+
+#[test_only]
+public fun unpaused_fields(self: &Unpaused): (u8, u8) {
+    (self.bits, self.paused)
 }
 
 #[test_only]
@@ -478,7 +487,3 @@ public fun vault_synced_custody(self: &VaultSynced): VaultCustody {
 public fun native_stake_unwound_custody(self: &NativeStakeUnwound): VaultCustody {
     self.custody
 }
-
-// === Imports ===
-
-use std::type_name::TypeName;

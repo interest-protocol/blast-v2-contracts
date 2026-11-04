@@ -53,17 +53,16 @@ public fun cancel(
     sui_out
 }
 
-/// Creates the receipt Display V2 and returns its update cap for package custody.
+// === Package Functions ===
+
+/// Creates and shares the receipt Display V2 and returns its update cap for package custody.
 ///
-/// This is a permissionless deployment step. The system registry derives one
-/// canonical display per type and rejects every later creation attempt.
-public fun create_display(
-    package_version: &PackageVersion,
+/// Only `package_admin::wrap` calls this; the system registry derives one canonical
+/// display per type and rejects every later creation attempt.
+public(package) fun new_display(
     registry: &mut DisplayRegistry,
     ctx: &mut TxContext,
 ): DisplayCap<BlastSuiDepositReceipt> {
-    package_version.assert_current();
-
     let (mut display, cap) = display_registry::new<BlastSuiDepositReceipt>(
         registry,
         internal::permit<BlastSuiDepositReceipt>(),
@@ -75,8 +74,6 @@ public fun create_display(
 
     cap
 }
-
-// === Package Functions ===
 
 /// Wraps native stake in a key-only receipt without transferring it.
 public(package) fun new(
@@ -180,7 +177,7 @@ public fun fields_for_testing(self: &BlastSuiDepositReceipt): (ID, ID, ID, u64, 
 
 // === Imports ===
 
-use blast_sui::{events, blast_sui_package::PackageVersion};
+use blast_sui::events;
 
 use std::string::String;
 

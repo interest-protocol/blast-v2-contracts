@@ -17,12 +17,14 @@ case "${1:-all}" in
     ;;
   boundaries)
     bash "$package_dir/scripts/check_source_boundaries.sh"
+    bash "$package_dir/scripts/test_error_registry.sh"
     ;;
   coverage)
     bash "$package_dir/scripts/check_coverage.sh"
     ;;
   all)
     bash "$package_dir/scripts/check_source_boundaries.sh"
+    bash "$package_dir/scripts/test_error_registry.sh"
     sui move build --path "$package_dir" --build-env mainnet
     sui move lint --path "$package_dir" --build-env mainnet --warnings-are-errors
     sui move test --path "$package_dir" --build-env mainnet --lint --warnings-are-errors

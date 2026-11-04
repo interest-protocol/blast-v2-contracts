@@ -99,6 +99,14 @@ fun rate_conversions_mirror_native_floors_and_empty_rate() {
 }
 
 #[test]
+fun only_rates_with_both_components_positive_are_usable() {
+    assert!(math::is_usable_rate(1, 1));
+    assert!(!math::is_usable_rate(0, 1));
+    assert!(!math::is_usable_rate(1, 0));
+    assert!(!math::is_usable_rate(0, 0));
+}
+
+#[test]
 fun fun_conversion_loss_bound_is_zero_at_the_native_empty_rate_and_rounds_up() {
     assert_eq!(math::fun_conversion_loss_bound_up(0, 0), 0);
     assert_eq!(math::fun_conversion_loss_bound_up(1, 1), 1);

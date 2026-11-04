@@ -97,7 +97,7 @@ Each ADR carries a `## Sources` table mapping the short refs it uses to full com
 | [0049](0049-audit-hardened-package-version-and-launch-intake.md) | Audit-hardened package cutover and launch intake | **accepted** |
 | [0050](0050-module-local-package-version-constant.md) | Module-local package-version constant | **accepted; amended in place 2026-10-02: the constant lives in the marker module** |
 | [0051](0051-generated-meme-package-template.md) | Generated Meme package template | **accepted; publish-time immutability amended by 0088; package renamed by 0108** |
-| [0053](0053-single-validator-funsui-and-blastsui.md) | Single-validator `funSUI` and `blastSUI` | **accepted; authority and receipt `DisplayCap` custody amended by 0060, 0061, and 0097** |
+| [0053](0053-single-validator-funsui-and-blastsui.md) | Single-validator `funSUI` and `blastSUI` | **accepted; authority and receipt `DisplayCap` custody amended by 0060, 0061, and 0097; fee, authority and pause amended by 0136** |
 | [0054](0054-v3-dex-migrators-and-locked-lp-fees.md) | V3 DEX migrators, exact seed pricing, and locked LP fees | **accepted; new-lineage admission and fee custody amended by 0088; superseded by 0137** |
 | [0056](0056-bounded-pending-stake-vector.md) | Bounded pending-stake vector in custody ledgers | **accepted** |
 | [0057](0057-admin-pinned-venue-tiers.md) | Admin-pinned venue tiers for permissionless migration | superseded by 0089 |
@@ -356,6 +356,14 @@ enter permanent, type-keyed dynamic object field custody under the vault, so
 standard Sui infrastructure can read their canonical supplies without exposing
 mint or burn authority outside vault transitions.
 
+ADR 0136 applies the launchpad audit's custody and delay findings to blastSUI
+before its first deployment. An owned `Publication` keeps the vault unusable
+until `wrap` seals custody. Upgrades and redemption-fee changes wait a 48-hour
+notice, and policy narrowing is removed because it would brick every gated call. A
+delayed, versionless repair action recovers a release that kept the old generation.
+A deposit-only pause starts set and never stops exits, and a refresh-free fun
+reserve top-up recovers a vault frozen by a backing shortfall.
+
 ADR 0067 retires Full Sail before the aggregate migrators package's first
 recorded production release. It removes the adapter, both local interface
 packages, all six routes, the venue-tier default, release checks, and SDK APIs.
@@ -447,6 +455,7 @@ test passes, and none is asserted as a cited fact in the records.
 | [0128](0128-reserve-aware-rebalance-increases.md) | Reserve-aware rebalance increases | **accepted** |
 | [0130](0130-protected-permissionless-shutdown.md) | Protected permissionless shutdown of a size-locked Boost | **accepted** |
 | [0134](0134-delayed-administration-pause-and-table-acl.md) | Delayed administration, pause, and a Table-backed ACL | proposed; amended by 0137 |
+| [0136](0136-blast-sui-custody-before-activation-and-delayed-administration.md) | Blast SUI custody before activation and delayed administration | **accepted** |
 | [0137](0137-shared-launch-stack-core-vault-and-venues.md) | Shared launch stack: core, vault, and venues | proposed |
 
 ## Consolidated utility packages

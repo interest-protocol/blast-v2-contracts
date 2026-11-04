@@ -10,8 +10,17 @@ module blast_sui::blast_sui_domain;
 
 // === Public Types ===
 
-/// Attaches package capabilities and authorizes, cuts over, restricts, or seals an upgrade.
+/// Schedules and runs upgrades and terminal immutability, and governs their notice.
 public struct UpgradeAdmin()
 
-/// Sets the blastSUI redemption fee.
+/// Schedules blastSUI redemption-fee changes.
 public struct FeeAdmin()
+
+/// May cancel any scheduled upgrade, immutability, notice or fee change.
+public struct CancelAdmin()
+
+/// May set deposit pause flags, never clear them.
+public struct PauseAdmin()
+
+/// May clear deposit pause flags once every notice is guarded.
+public struct UnpauseAdmin()

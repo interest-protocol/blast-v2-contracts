@@ -8,13 +8,15 @@ its package version and capability custody independently of the launchpad.
 
 Administration is not implemented here. `blast_admin` owns the singleton Blast
 ACL and the operational-generation and package-custody primitives; this package
-declares its two roles, `blast_sui_domain::UpgradeAdmin` and `FeeAdmin`
+declares its roles in `blast_sui_domain`
 ([ADR 0097](../../docs/decisions/0097-one-singleton-acl-with-typed-roles.md)).
 A role from any other package is a different type and cannot administer this
-package. `PackageAdmin` embeds
-the shared custody value while keeping the two metadata capabilities and the
-deposit-receipt display capability as sealed children, and it still refuses to
-be shared until all three are attached.
+package. Publication shares no usable package version: `package_admin::wrap`
+consumes the owned publication proof, seals the Publisher, UpgradeCap, both
+metadata capabilities and the deposit-receipt display capability, and shares the
+version with deposits paused. Upgrades and redemption-fee changes wait a 48-hour
+notice, and exits never pause
+([ADR 0136](../../docs/decisions/0136-blast-sui-custody-before-activation-and-delayed-administration.md)).
 
 Use the task-specific material only when needed:
 

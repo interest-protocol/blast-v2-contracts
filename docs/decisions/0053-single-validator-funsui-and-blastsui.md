@@ -3,7 +3,14 @@
 - Status: accepted; authority and receipt `DisplayCap` custody amended by 0060,
   0061, and 0097
 - Date: 2026-08-29
-- Amended by: [0056](0056-bounded-pending-stake-vector.md), [0060](0060-blastsui-metadata-cap-custody.md), [0061](0061-blastsui-routine-admin-and-composable-package-custody.md), [0065](0065-discoverable-blastsui-treasury-caps.md), [0097](0097-one-singleton-acl-with-typed-roles.md)
+- Amended by: [0056](0056-bounded-pending-stake-vector.md), [0060](0060-blastsui-metadata-cap-custody.md), [0061](0061-blastsui-routine-admin-and-composable-package-custody.md), [0065](0065-discoverable-blastsui-treasury-caps.md), [0097](0097-one-singleton-acl-with-typed-roles.md), [0136](0136-blast-sui-custody-before-activation-and-delayed-administration.md)
+
+> Custody, delay and pause update (2026-11-04): [ADR 0136](0136-blast-sui-custody-before-activation-and-delayed-administration.md)
+> restores an owned publication proof consumed by `wrap`, removes policy narrowing
+> (the "additive is the strictest exposed policy" rationale below is withdrawn: an
+> additive upgrade can never advance the generation again), delays upgrades and
+> redemption-fee changes behind a 48-hour notice, and adds a deposit-only pause.
+> "There is no pause" below now reads: exits never pause.
 
 > Authority and display-custody update (2026-10-05): the sections below record
 > the original decision. [ADR 0060](0060-blastsui-metadata-cap-custody.md)

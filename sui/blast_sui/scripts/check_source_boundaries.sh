@@ -33,64 +33,142 @@ if rg -n 'fun init\(|acl::new\(' "$package_dir/sources/blast_sui_domain.move"; t
   fail "blast_sui must not create administration state; the shared ACL already exists."
 fi
 [ "$(rg '^public struct ' "$package_dir/sources/blast_sui_domain.move" | sort)" == "$(printf '%s\n' \
+  'public struct CancelAdmin()' \
   'public struct FeeAdmin()' \
+  'public struct PauseAdmin()' \
+  'public struct UnpauseAdmin()' \
   'public struct UpgradeAdmin()' | sort)" ] \
   || fail "blast_sui_domain must declare exactly the reviewed ability-free roles."
 if rg -n '^[^/]*AdminWitness<' "$package_dir/sources" \
-  | rg -v 'AdminWitness<(UpgradeAdmin|FeeAdmin)>|use blast_admin::blast_acl'; then
+  | rg -v 'AdminWitness<(UpgradeAdmin|FeeAdmin|CancelAdmin|PauseAdmin|UnpauseAdmin)>|use blast_admin::'; then
   fail "Every administrator witness must name one concrete blast_sui role."
 fi
 
-# 4. Its generation container and custody hold the shared typed values, and no
-#    separate activation or capability escape survives.
-rg -q 'generation: OperationalVersion<BLAST_SUI_PACKAGE>,' "$package_dir/sources/blast_sui_package.move" \
+# 4. Publication custody: init keeps the Publisher and generation in an owned proof,
+#    only wrap consumes it, and wrap alone shares the usable version.
+package_source="$package_dir/sources/blast_sui_package.move"
+rg -q 'generation: OperationalVersion<BLAST_SUI_PACKAGE>,' "$package_source" \
   || fail "The generation value must be the shared typed value."
-rg -q '^const NEXT_PACKAGE_VERSION: u64 = 2;$' "$package_dir/sources/blast_sui_package.move" \
-  || fail "blast_sui must compile its cutover target constant."
-if rg -n '\.checked_add\(|fun activate\(' "$package_dir/sources/blast_sui_package.move"; then
-  fail "Generation arithmetic and separate activation belong to blast_admin."
+rg -q '^const NEXT_PACKAGE_VERSION: u64 = PACKAGE_VERSION \+ 1;$' "$package_source" \
+  || fail "The cutover target must be derived as exactly the next compiled generation."
+if rg -n '\.checked_add\(|fun activate\(|claim_and_keep\(' "$package_source"; then
+  fail "Generation arithmetic, activation and Publisher release belong elsewhere."
 fi
-rg -q 'custody: UpgradeCustody<BLAST_SUI_PACKAGE>,' "$package_dir/sources/package_admin.move" \
+init_body="$(sed -n '/^fun init(otw: BLAST_SUI_PACKAGE, ctx: &mut TxContext) {/,/^}/p' "$package_source")"
+grep -Fq 'transfer::transfer(Publication {' <<<"$init_body" \
+  || fail "init must transfer the owned Publication."
+if grep -Fq 'share_object' <<<"$init_body"; then
+  fail "Publication must share no PackageVersion."
+fi
+if rg -n 'Publication|share_version\(' "$package_dir/sources" \
+  | rg -v 'sources/blast_sui_package.move|sources/package_admin.move:'; then
+  fail "Only package_admin::wrap may consume Publication or share the package version."
+fi
+[ "$(rg -c 'publication\.destroy\(\)|generation\.share_version\(ctx\)' "$package_dir/sources/package_admin.move")" -eq 2 ] \
+  || fail "wrap must consume Publication and share the version exactly once."
+
+# 5. Package custody: sealed, delayed, no narrowing, and no capability escape.
+admin_source="$package_dir/sources/package_admin.move"
+admin_production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' "$admin_source")"
+rg -q 'custody: UpgradeCustody<BLAST_SUI_PACKAGE>,' <<<"$admin_production" \
   || fail "Package custody must hold the shared typed value."
-rg -q 'public fun commit_upgrade_and_advance\(' "$package_dir/sources/package_admin.move" \
-  || fail "blast_sui must expose one atomic commit-and-advance finalizer."
-if rg -n '^public fun commit_upgrade\(|^public fun activate' \
-  "$package_dir/sources/package_admin.move"; then
-  fail "A separate receipt commit or activation entry point is forbidden."
+rg -q 'upgrade: DelayedAction<UpgradeKey, UpgradeAction>,' <<<"$admin_production" \
+  || fail "Every upgrade action must wait the delayed slot's notice."
+rg -U -q 'public enum UpgradeAction has copy, drop, store \{\n    Upgrade\(vector<u8>\),\n    Repair\(vector<u8>\),\n    MakeImmutable,\n\}' \
+  <<<"$admin_production" || fail "Upgrade actions must be exactly Upgrade(digest), Repair(digest) and MakeImmutable."
+if rg -n '\brestrict_to_' <<<"$admin_production"; then
+  fail "No path may narrow the upgrade policy: a narrowed cap could never cut over again."
 fi
-# Production only: a test-only helper that mints a fresh foreign Publisher does
-# not release the sealed one.
-package_admin_production="$(sed '/^\/\/ === Test-Only Types ===/,$d' \
-  "$package_dir/sources/package_admin.move")"
-if rg -U -n '^public fun [^(]+\([^)]*\): (&)?(Publisher|UpgradeCap)' \
-  <<<"$package_admin_production"; then
+rg -q 'public fun commit_upgrade_and_advance\(' <<<"$admin_production" \
+  || fail "blast_sui must expose one atomic commit-and-advance finalizer."
+if rg -n '^public fun (commit_upgrade|activate|add_capability|share)\(' <<<"$admin_production"; then
+  fail "A separate commit, activation, capability attachment or share entry point is forbidden."
+fi
+if rg -U -n '^public fun [^(]+\([^)]*\): (&)?(Publisher|UpgradeCap)' <<<"$admin_production"; then
   fail "No custody path may release the sealed Publisher or UpgradeCap."
 fi
-if rg -n 'transfer::(public_)?transfer\(' <<<"$package_admin_production"; then
+if rg -n 'transfer::(public_)?transfer\(' <<<"$admin_production"; then
   fail "The framework UpgradeCap must never leave sealed custody."
 fi
-custody_role_gates="$(rg -c '^    _: &AdminWitness<UpgradeAdmin>,$' \
-  "$package_dir/sources/package_admin.move" || true)"
-[ "${custody_role_gates:-0}" -eq 5 ] \
-  || fail "Every governed custody transition must require the upgrade-admin role."
-
-# 5. Sharing still requires all three package-specific child capabilities.
-share_body="$(sed -n '/^public fun share(self: PackageAdmin) {/,/^}/p' \
-  "$package_dir/sources/package_admin.move")"
-for required in 'MetadataCap<FUN_SUI>' 'MetadataCap<BLAST_SUI>' \
-  'DisplayCap<BlastSuiDepositReceipt>'; do
-  grep -Fq "$required" <<<"$share_body" \
-    || fail "share must require the $required child capability."
+[ "$(rg -c '^    _: &AdminWitness<UpgradeAdmin>,$' <<<"$admin_production")" -eq 9 ] \
+  || fail "Every upgrade or repair schedule, notice change, authorization, commit and immutability must require UpgradeAdmin."
+# Only the repair path and cancellation skip the package version: they must stay reachable
+# when no bytecode matches the stored generation. Each repair authorization reaches only its
+# own finalizer, and only a repair finalizer skips the advance.
+versionless="$(awk '
+  /^public fun / { name = $3; sub(/\(.*/, "", name); in_sig = 1; mutable = 0; versioned = 0 }
+  in_sig && /self: &mut PackageAdmin/ { mutable = 1 }
+  in_sig && /package_version: &/ { versioned = 1 }
+  in_sig && /\{$/ { in_sig = 0; if (mutable && !versioned) print name }
+' <<<"$admin_production" | sort | tr '\n' ' ')"
+[ "$versionless" == 'authorize_repair cancel_upgrade_action commit_repair schedule_repair ' ] \
+  || fail "Only the repair path and cancellation may skip the package version, found: $versionless"
+[ "$(rg -c 'self\.repairing = true;' <<<"$admin_production")" -eq 1 ] \
+  && [ "$(rg -c 'self\.repairing = false;' <<<"$admin_production")" -eq 1 ] \
+  && sed -n '/^public fun authorize_repair(/,/^}/p' "$admin_source" | rg -q 'self\.repairing = true;' \
+  && sed -n '/^public fun commit_repair(/,/^}/p' "$admin_source" | rg -q 'self\.repairing = false;' \
+  && sed -n '/^public fun commit_upgrade_and_advance(/,/^}/p' "$admin_source" \
+    | rg -q 'assert!\(!self\.repairing, ' \
+  || fail "Only authorize_repair may open a repair, only commit_repair may close it, and the advancing finalizer must reject one."
+if sed -n '/^public fun commit_repair(/,/^}/p' "$admin_source" | rg -q 'advance\('; then
+  fail "A repair must never advance the operational generation."
+fi
+wrap_body="$(sed -n '/^public fun wrap(/,/^}/p' "$admin_source")"
+for required in 'id.add_capability(fun_metadata_cap);' 'id.add_capability(blast_metadata_cap);' \
+  'id.add_capability(deposit_receipt::new_display(display_registry, ctx));' \
+  'delayed_action::new(UpgradeKey(), &id, constants::initial_notice_ms!());'; do
+  grep -Fq "$required" <<<"$wrap_body" || fail "wrap must contain: $required"
 done
-[ "$(grep -c 'missing_package_capability' <<<"$share_body")" -eq 3 ] \
-  || fail "share must reject on each of the three missing child capabilities."
+[ "$(tail -2 <<<"$wrap_body" | head -1 | sed 's/^ *//')" == 'generation.share_version(ctx);' ] \
+  || fail "wrap must share the usable version last, after custody is sealed."
 
-# 3. Every event goes through the blast_events envelope.
+# 6. Pause flags stop deposits only, and only unpause clears them after every notice is guarded.
+vault_source="$package_dir/sources/vault.move"
+for deposit in mint_fun_sui request_blast_sui claim_blast_sui; do
+  [ "$(sed -n "/^public fun $deposit(/,/^}/p" "$vault_source" | grep -c 'assert_not_paused(')" -eq 1 ] \
+    || fail "$deposit must check its pause flag exactly once."
+done
+[ "$(rg -c 'assert_not_paused\(' "$vault_source")" -eq 3 ] \
+  || fail "Only the three deposit paths may check pause flags; exits never pause."
+if rg -n 'assert_not_paused\(' "$package_dir/sources" | rg -v 'sources/(vault|blast_sui_package)\.move'; then
+  fail "Pause flags gate vault deposits only."
+fi
+if rg -n 'clear_pause_bits\(' "$package_dir/sources" \
+  | rg -v 'sources/blast_sui_package.move|sources/package_admin.move:.*package_version\.clear_pause_bits\(bits\);'; then
+  fail "Only package_admin::unpause may clear pause flags."
+fi
+unpause_body="$(sed -n '/^public fun unpause(/,/^}/p' "$admin_source")"
+grep -Fq 'self.upgrade.is_guarded() && vault.is_redeem_fee_guarded(),' <<<"$unpause_body" \
+  || fail "unpause must require every notice to be guarded."
+
+# 7. Every public mutation that receives the package version checks it first: the
+#    current generation, or the exact next one for the upgrade finalizer.
+for source in "$vault_source" "$admin_source" "$package_dir/sources/deposit_receipt.move"; do
+  production="$(sed '/^\/\/ === Test-Only Functions ===/,$d' "$source")"
+  unguarded="$(awk '
+    /^public fun / { name = $3; sub(/\(.*/, "", name); in_sig = 1; has_version = 0 }
+    in_sig && /package_version: &/ { has_version = 1 }
+    in_sig && /\{$/ { in_sig = 0; want_first = has_version; next }
+    want_first && NF > 0 {
+      if ($0 !~ /^    package_version\.assert_(current|next)\(\);$/) print name
+      want_first = 0
+    }
+  ' <<<"$production")"
+  [ -z "$unguarded" ] || fail "These public functions must check the package version first: $unguarded"
+done
+if rg -n 'package_version' "$package_dir/sources/deposit_receipt.move"; then
+  fail "Receipt keep and cancel must stay independent of the vault and its package version."
+fi
+
+# 8. The error registry is sequential and every code has exactly one literal pin.
+bash "$package_dir/scripts/check_error_registry.sh"
+
+# 9. Every event goes through the blast_events envelope.
 if grep -rn "sui::event::emit" "$package_dir/sources" | grep -v "sources/lib/blast_events.move"; then
   fail "Only blast_events may call sui::event::emit."
 fi
 
-# 4. Functions with a natural first receiver use Move 2024 method syntax.
+# 10. Functions with a natural first receiver use Move 2024 method syntax.
 if rg -n 'dynamic_object_field::(add|borrow|borrow_mut|exists_with_type)\(' \
   "$package_dir/sources"; then
   fail "Dynamic-object-field operations must use semantic UID receiver aliases."

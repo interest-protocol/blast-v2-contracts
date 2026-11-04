@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// Canonical package provenance witness and the shared cutover that prevents stale package
-/// generations from mutating protocol state.
+// `blast_sui::errors` centralizes package abort codes through zero-cost macros. This narrow
+// suppression preserves caller-local abort locations and stable package error codes.
+#[allow(lint(abort_without_constant))]
+/// Canonical publication custody, deposit pause flags and the shared cutover that prevents
+/// stale package generations from mutating protocol state.
 ///
 /// The generation value, its checked arithmetic, and its replay event belong to
-/// `blast_admin::operational_version`; `init` seeds the value from the one-time witness before
-/// claiming the Publisher with it, so no other package can create this package's generation. This
-/// module owns only the canonical shared container and the two compiled constants that identify
-/// this bytecode and the bytecode a governed upgrade cuts over to.
+/// `blast_admin::operational_version`. The one-time witness seeds the generation and claims
+/// the Publisher; both stay in an owned `Publication` until `package_admin::wrap` seals the
+/// native capabilities and shares the usable `PackageVersion`, so no vault can exist before
+/// custody is sealed. Pause flags stop deposits only: redemptions, receipt cancellation,
+/// donations and sync never read them.
 module blast_sui::blast_sui_package;
 
 // === Constants ===
@@ -16,28 +20,93 @@ module blast_sui::blast_sui_package;
 /// Current package generation accepted by every protected mutation.
 const PACKAGE_VERSION: u64 = 1;
 
-/// The generation this bytecode hands over to in a governed upgrade.
-const NEXT_PACKAGE_VERSION: u64 = 2;
+/// The generation this bytecode hands over to in a governed upgrade, always the next one.
+const NEXT_PACKAGE_VERSION: u64 = PACKAGE_VERSION + 1;
 
 // === Public Types ===
 
 /// One-time witness: it seeds the package generation and claims this package's Publisher.
 public struct BLAST_SUI_PACKAGE() has drop;
 
-/// Singleton operational package generation.
+/// Publication-only custody; it cannot supply the PackageVersion every vault operation needs.
+public struct Publication has key {
+    id: UID,
+    publisher: Publisher,
+    generation: OperationalVersion<BLAST_SUI_PACKAGE>,
+}
+
+/// Singleton operational package generation and deposit pause flags.
 public struct PackageVersion has key {
     id: UID,
+    paused: u8,
     generation: OperationalVersion<BLAST_SUI_PACKAGE>,
 }
 
 // === Private Initialization ===
 
 fun init(otw: BLAST_SUI_PACKAGE, ctx: &mut TxContext) {
-    transfer::share_object(new(&otw, ctx));
-    sui::package::claim_and_keep(otw, ctx);
+    let generation = operational_version::new(&otw);
+    let publisher = sui::package::claim(otw, ctx);
+
+    transfer::transfer(Publication { id: object::new(ctx), publisher, generation }, ctx.sender());
+}
+
+// === Public Functions ===
+
+/// Stops the selected deposit paths immediately; does not authorize unpausing.
+public fun pause(self: &mut PackageVersion, _: &AdminWitness<PauseAdmin>, bits: u8) {
+    self.assert_current();
+
+    assert!(
+        bits != 0 && (bits & constants::valid_pause_bits!()) == bits,
+        blast_sui::errors::invalid_pause_bits!(),
+    );
+    assert!((self.paused | bits) != self.paused, blast_sui::errors::pause_unchanged!());
+    self.paused = self.paused | bits;
+
+    events::paused(bits, self.paused);
 }
 
 // === Package Functions ===
+
+/// Clears only the requested bits once `package_admin::unpause` has checked every notice.
+public(package) fun clear_pause_bits(self: &mut PackageVersion, bits: u8) {
+    assert!(
+        bits != 0 && (bits & constants::valid_pause_bits!()) == bits,
+        blast_sui::errors::invalid_pause_bits!(),
+    );
+    assert!((self.paused & bits) != 0, blast_sui::errors::pause_unchanged!());
+    self.paused = self.paused ^ (self.paused & bits);
+
+    events::unpaused(bits, self.paused);
+}
+
+/// Rejects a paused deposit path before its economic checks.
+public(package) fun assert_not_paused(self: &PackageVersion, bit: u8) {
+    assert!((self.paused & bit) == 0, blast_sui::errors::paused!());
+}
+
+/// Consumes the unique publication for package-admin custody intake.
+public(package) fun destroy(
+    self: Publication,
+): (Publisher, OperationalVersion<BLAST_SUI_PACKAGE>) {
+    let Publication { id, publisher, generation } = self;
+    id.delete();
+
+    (publisher, generation)
+}
+
+/// Shares the usable generation, every deposit paused, in the transaction that seals custody.
+public(package) fun share_version(
+    generation: OperationalVersion<BLAST_SUI_PACKAGE>,
+    ctx: &mut TxContext,
+) {
+    transfer::share_object(PackageVersion {
+        id: object::new(ctx),
+        paused: constants::valid_pause_bits!(),
+        generation,
+    });
+}
 
 /// Rejects callable bytecode from every package generation except the active one.
 public(package) fun assert_current(self: &PackageVersion) {
@@ -54,15 +123,6 @@ public(package) fun advance(self: &mut PackageVersion) {
     self.generation.advance(&self.id, NEXT_PACKAGE_VERSION);
 }
 
-// === Private Functions ===
-
-fun new(otw: &BLAST_SUI_PACKAGE, ctx: &mut TxContext): PackageVersion {
-    PackageVersion {
-        id: object::new(ctx),
-        generation: operational_version::new(otw),
-    }
-}
-
 // === Test-Only Functions ===
 
 #[test_only]
@@ -72,11 +132,26 @@ public fun init_for_testing(ctx: &mut TxContext) {
 }
 
 #[test_only]
-/// Creates unshared current package-version state for focused tests.
+/// Creates unshared, unpaused current package-version state for focused tests.
 public fun new_for_testing(ctx: &mut TxContext): PackageVersion {
     let otw = BLAST_SUI_PACKAGE();
 
-    new(&otw, ctx)
+    PackageVersion { id: object::new(ctx), paused: 0, generation: operational_version::new(&otw) }
+}
+
+#[test_only]
+/// Creates an owned publication proof without running package initialization.
+public fun publication_for_testing(ctx: &mut TxContext): Publication {
+    let otw = BLAST_SUI_PACKAGE();
+    let generation = operational_version::new(&otw);
+
+    Publication { id: object::new(ctx), publisher: sui::package::test_claim(otw, ctx), generation }
+}
+
+#[test_only]
+/// Inspects the canonical Publisher retained by initialization without releasing it.
+public fun publisher_for_publication_testing(self: &Publication): &Publisher {
+    &self.publisher
 }
 
 #[test_only]
@@ -92,6 +167,12 @@ public fun version_for_testing(self: &PackageVersion): u64 {
 }
 
 #[test_only]
+/// Returns the stored pause flags.
+public fun paused_for_testing(self: &PackageVersion): u8 {
+    self.paused
+}
+
+#[test_only]
 /// Exercises the compiled cutover target without a native upgrade fixture.
 public fun advance_for_testing(self: &mut PackageVersion) {
     self.advance();
@@ -104,11 +185,15 @@ public fun assert_next_for_testing(self: &PackageVersion) {
 }
 
 #[test_only]
-/// Claims the canonical Publisher without transferring it.
-public fun publisher_for_testing(ctx: &mut TxContext): sui::package::Publisher {
+/// Claims an additional canonical-module Publisher for package-administration fixtures.
+public fun publisher_for_testing(ctx: &mut TxContext): Publisher {
     sui::package::test_claim(BLAST_SUI_PACKAGE(), ctx)
 }
 
 // === Imports ===
 
-use blast_admin::operational_version::{Self, OperationalVersion};
+use blast_admin::{blast_acl::AdminWitness, operational_version::{Self, OperationalVersion}};
+
+use blast_sui::{blast_sui_domain::PauseAdmin, constants, events};
+
+use sui::package::Publisher;

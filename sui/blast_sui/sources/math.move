@@ -85,6 +85,14 @@ public(package) fun blast_redemption_quote(
     (gross_sui, fee, gross_sui - fee)
 }
 
+/// Whether a native exchange-rate entry can value stake: both components are positive.
+///
+/// Native pricing treats an empty entry as one MIST per pool token, which can value
+/// active stake below its last applied rate, so the vault never applies one.
+public(package) fun is_usable_rate(rate_sui: u64, rate_pool_tokens: u64): bool {
+    rate_sui > 0 && rate_pool_tokens > 0
+}
+
 /// Mirrors native `get_sui_amount`: floor, with one MIST per token at an empty rate.
 public(package) fun sui_at_rate_down(pool_tokens: u64, rate_sui: u64, rate_pool_tokens: u64): u64 {
     if (rate_sui == 0 || rate_pool_tokens == 0) return pool_tokens;

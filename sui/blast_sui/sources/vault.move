@@ -17,8 +17,9 @@ module blast_sui::vault;
 /// blastSUI supply is therefore never zero after creation. `rate_epoch`,
 /// `rate_sui`, and `rate_pool_tokens` cache the pool exchange-rate entry last
 /// observed for a current epoch; a refresh in an epoch without an entry keeps
-/// this conservative rate instead of scanning the table. `unwind_only` records
-/// that the validator left the active set.
+/// this conservative rate instead of scanning the table. `redeem_fee` is the
+/// blastSUI redemption fee; every change waits its applied notice, which starts
+/// at 48 hours. `unwind_only` records that the validator left the active set.
 public struct Vault has key {
     id: UID,
     pool_id: ID,
@@ -27,9 +28,12 @@ public struct Vault has key {
     rate_epoch: u64,
     rate_sui: u64,
     rate_pool_tokens: u64,
-    redeem_fee_bps: u64,
+    redeem_fee: Delayed<RedeemFeeKey, u64>,
     unwind_only: bool,
 }
+
+/// Keys the vault's delayed redemption-fee lifecycle.
+public struct RedeemFeeKey() has copy, drop, store;
 
 /// Type-derived key for a treasury cap owned as a discoverable child object.
 public struct TreasuryKey<phantom CoinType>() has copy, drop, store;
@@ -83,15 +87,22 @@ public fun create(
     let mut seed = owner_seed.into_balance();
     let fun_reserve = seed.split(fun_reserve_sui);
     let bootstrap_sui = seed.value();
+    let id = object::new(ctx);
+    let redeem_fee = delayed::new(
+        RedeemFeeKey(),
+        &id,
+        constants::default_redeem_fee_bps!(),
+        constants::initial_notice_ms!(),
+    );
     let mut self = Vault {
-        id: object::new(ctx),
+        id,
         pool_id,
         fun_custody: custody::new(),
         blast_custody: custody::new(),
         rate_epoch: epoch,
         rate_sui,
         rate_pool_tokens,
-        redeem_fee_bps: constants::default_redeem_fee_bps!(),
+        redeem_fee,
         unwind_only: false,
     };
 
@@ -110,7 +121,7 @@ public fun create(
         fun_reserve_sui,
         bootstrap_sui,
         locked_coin.value(),
-        self.redeem_fee_bps,
+        self.redeem_fee.value(),
         self.custody(),
     );
 
@@ -127,6 +138,7 @@ public fun mint_fun_sui(
     ctx: &mut TxContext,
 ): Coin<FUN_SUI> {
     package_version.assert_current();
+    package_version.assert_not_paused(constants::fun_mint_pause_bit!());
 
     let amount = sui_in.value();
     assert!(amount > 0, blast_sui::errors::zero_amount!());
@@ -189,6 +201,7 @@ public fun request_blast_sui(
     ctx: &mut TxContext,
 ): BlastSuiDepositReceipt {
     package_version.assert_current();
+    package_version.assert_not_paused(constants::blast_request_pause_bit!());
 
     let amount = sui_in.value();
     assert!(
@@ -233,6 +246,7 @@ public fun claim_blast_sui(
     ctx: &mut TxContext,
 ): Coin<BLAST_SUI> {
     package_version.assert_current();
+    package_version.assert_not_paused(constants::blast_claim_pause_bit!());
 
     receipt.assert_binding(self.id.to_inner(), self.pool_id);
     assert!(
@@ -311,11 +325,33 @@ public fun donate_sui(
     events::blast_sui_donated(amount, self.custody());
 }
 
+/// Adds SUI to fun custody without refreshing, minting, or delegating.
+///
+/// This is the recovery path for `fun_backing_below_supply`: every other entry point
+/// refreshes first and aborts while fun custody is below the funSUI supply, so a top-up
+/// that must not depend on that check restores 1:1 backing for every later call. Anyone
+/// may contribute; the caller receives nothing, and any amount above the supply plus the
+/// rounding reserve is swept to blast custody by the next refresh.
+public fun top_up_fun_reserve(
+    self: &mut Vault,
+    package_version: &PackageVersion,
+    sui_in: Coin<SUI>,
+) {
+    package_version.assert_current();
+
+    let amount = sui_in.value();
+    assert!(amount > 0, blast_sui::errors::zero_amount!());
+
+    self.fun_custody.deposit(sui_in.into_balance());
+
+    events::fun_reserve_topped_up(amount, self.custody());
+}
+
 /// Burns blastSUI for its pro-rata share of blast custody less the retained fee.
 ///
 /// Every redemption is partial against the total supply because the locked
-/// seed shares can never be presented, so every redemption pays the current
-/// `redeem_fee_bps`, which stays in blast custody. The quote uses the cached
+/// seed shares can never be presented, so every redemption pays the applied
+/// redemption fee, which stays in blast custody. Redemptions never pause. The quote uses the cached
 /// conservative valuation, so the caller's `min_sui_out` is its protection
 /// during a safe-mode epoch.
 public fun redeem_blast_sui(
@@ -336,7 +372,7 @@ public fun redeem_blast_sui(
         shares,
         self.blast_custody.assets(),
         self.treasury_cap<BLAST_SUI>().total_supply(),
-        self.redeem_fee_bps,
+        self.redeem_fee.value(),
     );
     assert!(net_sui > 0, blast_sui::errors::zero_sui_after_fee!());
     assert!(net_sui >= min_sui_out, blast_sui::errors::slippage_exceeded!());
@@ -358,12 +394,17 @@ public fun redeem_blast_sui(
     sui_out.into_coin(ctx)
 }
 
-/// Sets the blastSUI redemption fee for every later redemption.
-public fun set_redeem_fee(
+/// Schedules a redemption fee and the notice that applies once it does.
+///
+/// The change waits the currently applied notice; a shorter next notice, zero
+/// included, still waits it. A pending change is replaced and its wait restarts.
+public fun schedule_redeem_fee(
     self: &mut Vault,
     package_version: &PackageVersion,
     _: &AdminWitness<FeeAdmin>,
     redeem_fee_bps: u64,
+    delay_ms: u64,
+    clock: &Clock,
 ) {
     package_version.assert_current();
 
@@ -372,15 +413,39 @@ public fun set_redeem_fee(
         blast_sui::errors::redeem_fee_above_maximum!(),
     );
 
-    let old_redeem_fee_bps = self.redeem_fee_bps;
-    assert!(
-        redeem_fee_bps != old_redeem_fee_bps,
-        blast_sui::errors::redeem_fee_unchanged!(),
-    );
+    self.redeem_fee.schedule(redeem_fee_bps, delay_ms, clock);
+}
 
-    self.redeem_fee_bps = redeem_fee_bps;
+/// Applies the ready redemption-fee change; anyone may call it once the notice elapses.
+public fun apply_redeem_fee(
+    self: &mut Vault,
+    package_version: &PackageVersion,
+    clock: &Clock,
+) {
+    package_version.assert_current();
 
-    events::redeem_fee_changed(old_redeem_fee_bps, redeem_fee_bps);
+    self.redeem_fee.apply(clock);
+}
+
+/// Cancels a pending redemption-fee change, including after its notice elapsed.
+public fun cancel_redeem_fee(
+    self: &mut Vault,
+    package_version: &PackageVersion,
+    _: &AdminWitness<CancelAdmin>,
+) {
+    package_version.assert_current();
+
+    self.redeem_fee.cancel();
+}
+
+/// The applied blastSUI redemption fee in basis points.
+public fun redeem_fee_bps(self: &Vault): u64 {
+    self.redeem_fee.value()
+}
+
+/// The applied notice, in milliseconds, every redemption-fee change waits.
+public fun redeem_fee_delay_ms(self: &Vault): u64 {
+    self.redeem_fee.delay_ms()
 }
 
 /// Permissionless refresh: unwinds an inactive validator, converts activated
@@ -397,6 +462,13 @@ public fun sync(
     self.stake_idle(system_state, ctx);
 
     events::vault_synced(self.custody());
+}
+
+// === Package Functions ===
+
+/// True when every redemption-fee change still to come waits a nonzero notice.
+public(package) fun is_redeem_fee_guarded(self: &Vault): bool {
+    self.redeem_fee.is_guarded()
 }
 
 // === Private Functions ===
@@ -511,7 +583,10 @@ fun resolve_fun_receipts(
     };
 }
 
-/// Returns whether the pool has an exchange-rate entry for `epoch` and, if so, its primitives.
+/// Returns whether the pool has a usable exchange-rate entry for `epoch`, and its primitives.
+///
+/// An entry with a zero component counts as missing, exactly like a safe-mode epoch: the
+/// vault keeps its cached rate rather than valuing stake at one MIST per pool token.
 fun exchange_rate_at(
     system_state: &mut SuiSystemState,
     pool_id: &ID,
@@ -521,8 +596,9 @@ fun exchange_rate_at(
     if (!rates.contains(epoch)) return (false, 0, 0);
 
     let rate = &rates[epoch];
+    let (rate_sui, rate_pool_tokens) = (rate.sui_amount(), rate.pool_token_amount());
 
-    (true, rate.sui_amount(), rate.pool_token_amount())
+    (math::is_usable_rate(rate_sui, rate_pool_tokens), rate_sui, rate_pool_tokens)
 }
 
 /// Moves fun assets above the funSUI supply plus the rounding reserve into blast custody.
@@ -671,11 +747,6 @@ public fun exchange_rate_for_testing(self: &Vault): events::ExchangeRate {
 }
 
 #[test_only]
-public fun redeem_fee_bps_for_testing(self: &Vault): u64 {
-    self.redeem_fee_bps
-}
-
-#[test_only]
 public fun is_unwind_only_for_testing(self: &Vault): bool {
     self.unwind_only
 }
@@ -712,11 +783,11 @@ public fun add_blast_layers_for_testing(
 
 // === Imports ===
 
-use blast_admin::blast_acl::AdminWitness;
+use blast_admin::{blast_acl::AdminWitness, delayed::{Self, Delayed}};
 
 use blast_sui::{
     blast_sui::BLAST_SUI,
-    blast_sui_domain::FeeAdmin,
+    blast_sui_domain::{CancelAdmin, FeeAdmin},
     constants,
     custody::{Self, Custody},
     deposit_receipt::{Self, BlastSuiDepositReceipt},
@@ -726,7 +797,7 @@ use blast_sui::{
     blast_sui_package::PackageVersion,
 };
 
-use sui::{coin::{Coin, TreasuryCap}, dynamic_object_field, sui::SUI};
+use sui::{clock::Clock, coin::{Coin, TreasuryCap}, dynamic_object_field, sui::SUI};
 
 use sui_system::sui_system::SuiSystemState;
 
