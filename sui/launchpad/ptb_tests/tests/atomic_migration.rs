@@ -1123,6 +1123,8 @@ struct MigrationAllocationPaid {
     destination: SuiAddress,
     meme: u64,
     quote: u64,
+    _meme_vesting_id: Option<ObjectID>,
+    _quote_vesting_id: Option<ObjectID>,
 }
 
 /// Mirrors `blast_fun::events::ProtocolFeesAccrued`.

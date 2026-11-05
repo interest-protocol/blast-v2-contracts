@@ -74,6 +74,8 @@ fn uleb128(bytes: &mut &[u8]) -> u64 {
 fn payload_layout(payload: &StructTag) -> Layout {
     use Layout::{Address, Bool, Enum, Struct, U8, U64, Vector};
     let id = || Struct(vec![Address]);
+    // `Option<ID>`: a struct holding a vector of zero or one IDs.
+    let option_id = || Struct(vec![Vector(Box::new(id()))]);
     let bps = || Struct(vec![U64]);
     let type_name = || Struct(vec![Struct(vec![Vector(Box::new(U8))])]);
     // `blast_core::fee_split::FeeSplit`: routes of a `Destination` (an address, or one of four
@@ -105,10 +107,10 @@ fn payload_layout(payload: &StructTag) -> Layout {
             plan(),
             U64,
             U64,
-            Struct(vec![Vector(Box::new(id()))]),
+            option_id(),
         ]),
         "LaunchShared" => Struct(vec![id(), U64]),
-        "MigrationAllocationPaid" => Struct(vec![id(), Address, U64, U64]),
+        "MigrationAllocationPaid" => Struct(vec![id(), Address, U64, U64, option_id(), option_id()]),
         "ProtocolFeesAccrued" => Struct(vec![id(), U64, U64]),
         "Migrated" => Struct(vec![id(), U64, U64, U64, U64]),
         "LaunchTicketCreated" => Struct(vec![
