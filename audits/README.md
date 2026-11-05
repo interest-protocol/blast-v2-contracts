@@ -49,7 +49,8 @@ amendment of 5 November 2026): the vault's `unpause` is version-gated (L-1); eve
 `MigrationAllocationPaid` carries the vesting schedule IDs (I-2); holder-reward
 leaves are documented as account addresses (I-3); auto-LP compounding is the
 venues' own `compound_auto_lp`, apart from collection (I-4). H-1 can no longer
-block collection; exercising the add against venue bytecode is
+block collection, and the launchpad fork gate exercises the add on both venues
+after each collection; adversarial pool states are
 [#218](https://github.com/interest-protocol/blast-v2-contracts/issues/218).
 
 The proof-of-concept tests and run logs behind the report are held by Blast beside
@@ -60,5 +61,5 @@ the report's source, not in this repository.
 SHA-256 of the PDF:
 
 ```text
-feef4c84839c2bbfab3a632add487595ca9a86b9a1a38dcb3ae1bd5517a2a635
+f42835edd92decf8501f6d240134a81e96c1d1d93fb365fb54ffcc830a709535
 ```

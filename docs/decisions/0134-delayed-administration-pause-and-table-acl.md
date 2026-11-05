@@ -549,7 +549,7 @@ ABI or event decision, so they are recorded here. The owner chose to fix all fiv
 `unpause` changes signature in launchpad, presale and vault; `compound_auto_lp` is new in both
 venues and Cetus `collect_fees` drops its `Clock`; `MigrationAllocationPaid` adds two fields. SDK
 builders, blast-infra decoders, the admin console, the workers' collection job and the runbooks
-follow; a worker that collected and compounded in one call now sends two commands. The PTB fork
-gate does not yet exercise `compound_auto_lp` against venue bytecode; that stays open as the
-review's H-1.
+follow; a worker that collected and compounded in one call now sends two commands. The launchpad
+PTB fork gate appends `compound_auto_lp` to each collection against Cetus and Bluefin bytecode;
+adversarial pool states for the review's H-1 stay open.
 
