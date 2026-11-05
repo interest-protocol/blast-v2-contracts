@@ -1,9 +1,12 @@
 # Security audits
 
-No audit covers the current launch stack. The seven packages of
+One review covers the current launch stack: the Claude (Fable 5.1) security
+report below, at the stack's commit `4fe8d739`, with its findings remediated
+in #217. It is an AI-conducted review, not the external audit the vault's
+immutability waits for (#195): the seven packages of
 [ADR 0137](../docs/decisions/0137-shared-launch-stack-core-vault-and-venues.md),
-the templates and the vendors are a fresh lineage that awaits its own audit;
-the vault is made immutable only after that audit and a quiet period (#195).
+the templates and the vendors are a fresh lineage that still awaits that audit
+and a quiet period.
 
 Earlier reports covered launchpad code that no longer exists and were removed
 on 2026-11-05; they remain in Git history. Boosts' review record is
