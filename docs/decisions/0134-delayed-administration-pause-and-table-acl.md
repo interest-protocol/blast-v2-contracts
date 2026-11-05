@@ -517,3 +517,39 @@ PS-I2 and MG-I2 above now reach at most 30%, not 100%. Launchpad adds error 45
 `invalid_protocol_allocation`, `invalid_creation_fee` and presale `fee_policy::EInvalidFees`.
 `docs/vectors/fees.json` and `graduation.json` follow the new maxima.
 
+## Amendment 2026-11-05: internal deep-review fixes
+
+### Context
+
+The internal deep review of the six launch-stack packages at `4fe8d739`
+(`audits/README.md`) found one Low and four Informational issues. Each settles an authority,
+ABI or event decision, so they are recorded here. The owner chose to fix all five.
+
+### Decision
+
+- **Every `unpause` is version-gated.** `blast_vault_package::unpause` now calls `assert_current`
+  first, as the product wrappers and the vault's own `make_immutable` do (L-1). Superseded
+  bytecode can release nothing.
+- **The release gate covers the core treasury.** Each package's `unpause` takes the shared
+  `blast_core::blast_treasury::Treasury` and refuses with the package's own `unguarded_delay`
+  while the treasury's notice is unguarded (I-1). The treasury keeps no floor: a reduction
+  stays a visible, cancellable proposal, and the gate now catches one that reached zero before
+  release, as it does for each package's own notices.
+- **Compounding is its own call.** `collect_fees` and `settle_and_apply_fee_split` no longer add
+  auto-LP; anyone calls the venue's `compound_auto_lp`, so a venue refusing the add never blocks
+  collection (I-4). Cetus's `collect_fees` no longer takes the `Clock`.
+- **Migration payout events carry the schedules.** `MigrationAllocationPaid` gains
+  `meme_vesting_id` and `quote_vesting_id`, as the presale's allocation events have (I-2).
+- **Holder-reward leaves name accounts.** A claim pays by transfer, so Blast's allocation
+  excludes balances held by objects (I-3); nothing on chain tells the two apart, and the
+  module and guide say so.
+
+### Consequences
+
+`unpause` changes signature in launchpad, presale and vault; `compound_auto_lp` is new in both
+venues and Cetus `collect_fees` drops its `Clock`; `MigrationAllocationPaid` adds two fields. SDK
+builders, blast-infra decoders, the admin console, the workers' collection job and the runbooks
+follow; a worker that collected and compounded in one call now sends two commands. The PTB fork
+gate does not yet exercise `compound_auto_lp` against venue bytecode; that stays open as the
+review's H-1.
+

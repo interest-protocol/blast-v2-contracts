@@ -10,6 +10,11 @@
 /// anyone publishes it, reserving its Meme and Quote budget from the vault. Anyone can relay a
 /// proof afterwards; each leaf pays its committed beneficiary once, and anyone closes the round at
 /// its deadline, returning what is left to the vault.
+///
+/// A claim pays by transfer, so a leaf's beneficiary must be an account: a coin sent to an object's
+/// address (a pool, a vesting schedule, another vault) has no recovery path, and the claimed leaf
+/// never returns to the vault. Nothing on chain tells the two apart, so the allocation leaves
+/// object-held balances out.
 module blast_vault::holder_rewards;
 
 // === Public Types ===

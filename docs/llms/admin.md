@@ -199,8 +199,8 @@ discards whatever is pending, even when ready.
 1. `blast_admin::package_admin::pause` with the `PackageVersion<OTW>` by mutable
    reference, the `PauseAdmin<OTW>` witness and the bits sets them at once and emits
    `blast_admin_events::Paused`.
-2. Clearing goes through the package's own `unpause`, which checks the package's
-   own configuration notices, then calls
+2. Clearing goes through the package's own `unpause`, which checks the current
+   version, the package's own configuration notices and the core treasury's, then calls
    `blast_admin::package_admin::clear_pause_bits` with the `PackageAdmin<OTW>`, the
    `UnpauseAdmin<OTW>` witness, a value of the package witness type pinned at
    publication, the `PackageVersion<OTW>`, and the bits. Any other type aborts with
@@ -284,7 +284,7 @@ Rules shared by all four:
   `delayed_set::is_guarded` and `delayed_map::is_guarded` report whether every
   change still to come waits a nonzero notice (for a set or map, also that no
   admission or entry change is pending); each package's `unpause` requires it of
-  its policies.
+  its policies and of the core treasury destination.
 - **Ceiling.** No notice exceeds `delayed::max_delay_ms` (2,592,000,000 ms, 30
   days): constructors and every proposed next notice abort with code 15 above it,
   so any notice can always be changed again.

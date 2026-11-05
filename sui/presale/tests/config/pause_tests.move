@@ -3,9 +3,13 @@
 
 #[test_only]
 /// The presale's unpause: it clears bits through `blast_admin::package_admin` only while every
-/// presale delay is guarded. Pause-bit arithmetic and the upgrade delay are the generic
-/// administration's and are tested there.
+/// presale delay and the core treasury's delay are guarded. Pause-bit arithmetic and the upgrade
+/// delay are the generic administration's and are tested there.
 module blast_presale::pause_tests;
+
+// === Constants ===
+
+const TREASURY: address = @0x7EA5;
 
 // === Test-Only Types ===
 
@@ -14,6 +18,7 @@ public struct ReleaseFixture {
     package_admin: PackageAdmin<BLAST_PRESALE_PACKAGE>,
     fee_policy: FeePolicy,
     creation_policy: CreationPolicy,
+    treasury: Treasury,
 }
 
 public struct VENUE() has drop;
@@ -99,6 +104,17 @@ fun unpause_rejects_a_pending_venue_admission() {
 
 #[test]
 #[expected_failure(
+    abort_code = blast_presale::errors::EUnguardedDelay,
+    location = blast_presale::creation_policy,
+)]
+fun unpause_rejects_a_pending_change_to_a_zero_treasury_delay() {
+    let mut f = release_fixture().with_zero_delay_treasury_proposal();
+    f.unpause(constants::create_pause_bit!());
+    abort
+}
+
+#[test]
+#[expected_failure(
     abort_code = blast_admin::errors::EUnguardedUpgradeDelay,
     location = blast_admin::package_admin,
 )]
@@ -128,8 +144,8 @@ fun publication_wraps_into_a_fully_paused_version() {
 
 // === Test Helpers ===
 
-/// A fully paused version with the 48-hour upgrade delay and policies whose delays were raised
-/// to two days.
+/// A fully paused version with the 48-hour upgrade delay, policies whose delays were raised to
+/// two days, and the core treasury at its 48-hour publication delay.
 fun release_fixture(): ReleaseFixture {
     release_fixture_with(creation_policy::new_for_testing(&mut tx_context::dummy()))
 }
@@ -144,11 +160,12 @@ fun release_fixture_with(creation_policy: CreationPolicy): ReleaseFixture {
         package_admin: otw::package_admin_for_testing(ctx),
         fee_policy: fee_policy::new_zero_fees_for_testing(ctx),
         creation_policy,
+        treasury: blast_treasury::new_for_testing(TREASURY, ctx),
     }
 }
 
 fun with_zero_delay_fees_proposal(self: ReleaseFixture): ReleaseFixture {
-    let ReleaseFixture { version, package_admin, mut fee_policy, creation_policy } = self;
+    let ReleaseFixture { version, package_admin, mut fee_policy, creation_policy, treasury } = self;
     let clock = sui::clock::create_for_testing(&mut tx_context::dummy());
     fee_policy.schedule_fees(
         &version,
@@ -162,11 +179,11 @@ fun with_zero_delay_fees_proposal(self: ReleaseFixture): ReleaseFixture {
     );
     destroy(clock);
 
-    ReleaseFixture { version, package_admin, fee_policy, creation_policy }
+    ReleaseFixture { version, package_admin, fee_policy, creation_policy, treasury }
 }
 
 fun with_pending_venue_admission(self: ReleaseFixture): ReleaseFixture {
-    let ReleaseFixture { version, package_admin, fee_policy, mut creation_policy } = self;
+    let ReleaseFixture { version, package_admin, fee_policy, mut creation_policy, treasury } = self;
     let clock = sui::clock::create_for_testing(&mut tx_context::dummy());
     creation_policy.schedule_venue<VENUE>(
         &version,
@@ -175,11 +192,25 @@ fun with_pending_venue_admission(self: ReleaseFixture): ReleaseFixture {
     );
     destroy(clock);
 
-    ReleaseFixture { version, package_admin, fee_policy, creation_policy }
+    ReleaseFixture { version, package_admin, fee_policy, creation_policy, treasury }
+}
+
+fun with_zero_delay_treasury_proposal(self: ReleaseFixture): ReleaseFixture {
+    let ReleaseFixture { version, package_admin, fee_policy, creation_policy, mut treasury } = self;
+    let clock = sui::clock::create_for_testing(&mut tx_context::dummy());
+    treasury.schedule_destination(
+        &blast_acl::witness_for_testing<TreasuryAdmin>(),
+        TREASURY,
+        0,
+        &clock,
+    );
+    destroy(clock);
+
+    ReleaseFixture { version, package_admin, fee_policy, creation_policy, treasury }
 }
 
 fun with_zero_upgrade_delay_proposal(self: ReleaseFixture): ReleaseFixture {
-    let ReleaseFixture { version, mut package_admin, fee_policy, creation_policy } = self;
+    let ReleaseFixture { version, mut package_admin, fee_policy, creation_policy, treasury } = self;
     let clock = sui::clock::create_for_testing(&mut tx_context::dummy());
     package_admin.schedule_upgrade_delay(
         &blast_acl::witness_for_testing<UpgradeAdmin<BLAST_PRESALE_PACKAGE>>(),
@@ -188,7 +219,7 @@ fun with_zero_upgrade_delay_proposal(self: ReleaseFixture): ReleaseFixture {
     );
     destroy(clock);
 
-    ReleaseFixture { version, package_admin, fee_policy, creation_policy }
+    ReleaseFixture { version, package_admin, fee_policy, creation_policy, treasury }
 }
 
 fun unpause(self: &mut ReleaseFixture, bits: u8) {
@@ -197,6 +228,7 @@ fun unpause(self: &mut ReleaseFixture, bits: u8) {
         &blast_acl::witness_for_testing<UnpauseAdmin<BLAST_PRESALE_PACKAGE>>(),
         &self.package_admin,
         &self.fee_policy,
+        &self.treasury,
         bits,
     );
 }
@@ -217,7 +249,11 @@ use blast_admin::{
     package_version::{PackageVersion, Publication}
 };
 
-use blast_core::{blast_domain::{VenueAdmin, FeeAdmin}, bps};
+use blast_core::{
+    blast_domain::{VenueAdmin, FeeAdmin, TreasuryAdmin},
+    blast_treasury::{Self, Treasury},
+    bps
+};
 
 use blast_presale::{
     blast_presale_package::{Self as otw, BLAST_PRESALE_PACKAGE},

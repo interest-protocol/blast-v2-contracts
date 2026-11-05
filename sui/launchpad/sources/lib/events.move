@@ -200,12 +200,16 @@ public(package) fun migration_allocation_paid<Meme, Quote>(
     destination: address,
     meme_amount: u64,
     quote_amount: u64,
+    meme_vesting_id: Option<ID>,
+    quote_vesting_id: Option<ID>,
 ) {
     sui::event::emit(MigrationAllocationPaid<Meme, Quote> {
         launch_id,
         destination,
         meme_amount,
         quote_amount,
+        meme_vesting_id,
+        quote_vesting_id,
     });
 }
 
@@ -369,12 +373,15 @@ public struct Sold<phantom Meme, phantom Quote> has copy, drop {
     real_quote_reserve: u64,
 }
 
-/// One recipient's allocation, paid when migration begins.
+/// One recipient's allocation, paid when migration begins: as coins to `destination`, or into the
+/// vesting schedules named here when the recipient vests.
 public struct MigrationAllocationPaid<phantom Meme, phantom Quote> has copy, drop {
     launch_id: ID,
     destination: address,
     meme_amount: u64,
     quote_amount: u64,
+    meme_vesting_id: Option<ID>,
+    quote_vesting_id: Option<ID>,
 }
 
 /// Migration committed: the adapter received `meme_amount` and `quote_amount` for the pool, and

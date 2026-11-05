@@ -172,6 +172,23 @@ public fun settle_and_apply_fee_split<Meme, Quote>(
     self.apply_fee_split(&Venue(), vault_version, clock);
 }
 
+/// Adds the vault's waiting auto-LP Meme and Quote to its position in `pool` at the current price
+/// and keeps the rest for the next call. Anyone may call it, apart from collection, so a Bluefin
+/// refusal of the add never blocks collecting fees.
+public fun compound_auto_lp<Meme, Quote>(
+    self: &mut Vault<Meme, Quote>,
+    migrators_version: &PackageVersion<BLAST_MIGRATORS>,
+    vault_version: &PackageVersion<BLAST_VAULT_PACKAGE>,
+    bluefin_config: &GlobalConfig,
+    pool: &mut Pool<Meme, Quote>,
+    clock: &Clock,
+) {
+    migrators_version.assert_current(constants::version!());
+    assert!(self.pool_id() == object::id(pool), blast_migrators::errors::position_pool_mismatch!());
+
+    self.compound(vault_version, bluefin_config, pool, clock);
+}
+
 /// Swaps `quote_in` of the vault's burn Quote for Meme in its pool and burns it, under a buyback
 /// admin. Aborts unless `quote_in` is positive and at most the burn Quote held, and unless the swap
 /// returns at least `min_meme_out`; the admin sets it from an off-chain price, since anyone can move
@@ -296,7 +313,8 @@ fun seed_fixed_side(
     if (needed_a <= available_a && needed_b <= available_b) preferred else !preferred
 }
 
-/// Collects the position's fees, splits them through the vault, and adds the auto-LP share back.
+/// Collects the position's fees and splits them through the vault; the auto-LP share waits for
+/// `compound_auto_lp`.
 fun settle_fees<Meme, Quote>(
     self: &mut Vault<Meme, Quote>,
     vault_version: &PackageVersion<BLAST_VAULT_PACKAGE>,
@@ -309,7 +327,6 @@ fun settle_fees<Meme, Quote>(
 ) {
     let (meme_fee, quote_fee) = self.collect_position_fees(vault_version, bluefin_config, pool, clock);
     self.split_fees(&Venue(), vault_version, treasury, currency, meme_fee, quote_fee, ctx);
-    self.compound(vault_version, bluefin_config, pool, clock);
 }
 
 /// Collects the attached position's fees from `pool`, which must be the position's own pool.
@@ -330,7 +347,7 @@ fun collect_position_fees<Meme, Quote>(
 
 /// Adds as much of the waiting auto-LP balances as the position takes at the pool's current price,
 /// fixing the side the other can cover from the pool's and the position's bound sqrt prices, and
-/// keeps the rest for the next call. `collect_position_fees` already matched the pool.
+/// keeps the rest for the next call. `pool` is already matched to the vault.
 fun compound<Meme, Quote>(
     self: &mut Vault<Meme, Quote>,
     vault_version: &PackageVersion<BLAST_VAULT_PACKAGE>,

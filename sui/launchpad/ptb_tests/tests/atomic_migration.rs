@@ -124,6 +124,8 @@ struct World {
     root: ObjectID,
     admin_cap: ObjectID,
     package_admin: ObjectID,
+    /// `blast_core`'s shared `Treasury`, whose delay the launchpad's unpause also requires guarded.
+    treasury: ObjectID,
 }
 
 const ADMIN_DELAY_MS: u64 = 172_800_000;
@@ -1172,9 +1174,9 @@ fn world(work: &str) -> Result<World> {
     let (adapter, _) = h.publish(adapter_code.clone())?;
     let (version, package_admin) = h.wrap_launchpad(blast, published, admin, admin_published, core, sui(), parse_sui_type_tag(&format!("{adapter}::mock_adapter::Venue"))?)?;
     let project = build(&fixture.join("project"), &stack.linked(), &work)?;
-    h.unpause_launchpad(blast, admin, admin_published, version, package_admin, runtime, config, 7)?;
+    h.unpause_launchpad(blast, admin, admin_published, version, package_admin, runtime, config, stack.treasury, 7)?;
     let launchpad_code = stack.launchpad_code.clone();
-    let mut w = World { h, core, blast, adapter, version, runtime, config, launch_registry, launchpad_origin: blast, project, launchpad_code, adapter_code, admin, acl, root, admin_cap: ObjectID::ZERO, package_admin };
+    let mut w = World { h, core, blast, adapter, version, runtime, config, launch_registry, launchpad_origin: blast, project, launchpad_code, adapter_code, admin, acl, root, admin_cap: ObjectID::ZERO, package_admin, treasury: stack.treasury };
 
     // Production admin path: the configured root owner's SuperAdminCap grants one AdminCap and each role the
     // setters below take; the cap then signs in once per role.
@@ -1318,7 +1320,7 @@ impl World {
     fn append_pause(&self, b: &mut ProgrammableTransactionBuilder, pause: bool, bits: u8, role: &str) -> Result<()> {
         let witness = self.sign_in(b, role)?;
         if !pause {
-            return append_launchpad_unpause(&self.h, b, self.blast, self.package_admin, self.version, witness, self.runtime, self.config, bits);
+            return append_launchpad_unpause(&self.h, b, self.blast, self.package_admin, self.version, witness, self.runtime, self.config, self.treasury, bits);
         }
         let version = b.obj(self.h.shared(self.version, true))?;
         let bits = b.pure(bits)?;

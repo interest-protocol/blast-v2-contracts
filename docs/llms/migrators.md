@@ -60,6 +60,7 @@ vaults), which must also list each product's package witness, for launches
 | `blast_migrators::cetus::migrate`, `blast_migrators::bluefin::migrate` | anyone, with the `Migration` the product's `migrate` returned in the same PTB |
 | `blast_migrators::cetus::collect_fees`, `blast_migrators::bluefin::collect_fees` | anyone |
 | `blast_migrators::cetus::settle_and_apply_fee_split`, `blast_migrators::bluefin::settle_and_apply_fee_split` | anyone, once the vault's proposed split is ready |
+| `blast_migrators::cetus::compound_auto_lp`, `blast_migrators::bluefin::compound_auto_lp` | anyone |
 | `blast_migrators::cetus::buyback_and_burn`, `blast_migrators::bluefin::buyback_and_burn` | Blast admin: `blast_core::blast_domain::BuybackAdmin` |
 | `blast_admin::package_admin::schedule_upgrade`, `blast_admin::package_admin::authorize_upgrade`, `blast_admin::package_admin::commit_upgrade_and_advance`, `blast_admin::package_admin::schedule_make_immutable`, `blast_admin::package_admin::make_immutable`, `blast_admin::package_admin::schedule_upgrade_delay`, typed `<BLAST_MIGRATORS>` | Blast admin: `blast_admin::package_admin::UpgradeAdmin<BLAST_MIGRATORS>` |
 | `blast_admin::package_admin::cancel_upgrade_action<BLAST_MIGRATORS>` | Blast admin: `blast_admin::package_admin::CancelAdmin<BLAST_MIGRATORS>` |
@@ -82,9 +83,9 @@ admin signs in with `blast_acl::sign_in` on the shared `blast_acl::ACL` to get t
   upgrade could recover the sale. If Cetus stops registering the sale's tick spacing, migration
   aborts and the sale stays ready to migrate.
 - **Auto-LP price-move skim.** Auto-LP adds at the pool's current price. A caller can move the price
-  in the same transaction, collect, and move it back, skimming part of that call's auto-LP amount.
-  Frequent collection keeps each slice small. Buybacks are admin-only with a minimum output for the
-  same reason.
+  in the same transaction, compound, and move it back, skimming part of that call's auto-LP amount.
+  Frequent compounding keeps each slice small. Buybacks are admin-only with a minimum output for
+  the same reason.
 - **Buyback timing.** The burn route's Quote waits until a `BuybackAdmin` acts; nothing forces a
   buyback.
 
@@ -202,8 +203,8 @@ Anyone may collect, as often as they like. A collection that finds no fees is va
 
 - Cetus: `blast_migrators::cetus::collect_fees`, type arguments `<Meme, Quote, CoinA, CoinB>`,
   with the `Vault<Meme, Quote>` (mutable), migrators `PackageVersion`, vault `PackageVersion`,
-  `Treasury`, `Currency<Meme>` (mutable), Cetus `GlobalConfig`, LP Burn `BurnManager`, the vault's
-  Cetus `Pool<CoinA, CoinB>` (mutable), and `Clock`.
+  `Treasury`, `Currency<Meme>` (mutable), Cetus `GlobalConfig`, LP Burn `BurnManager`, and the
+  vault's Cetus `Pool<CoinA, CoinB>` (mutable). It takes no `Clock`.
 - Bluefin: `blast_migrators::bluefin::collect_fees`, type arguments `<Meme, Quote>`, with the
   `Vault<Meme, Quote>` (mutable), migrators `PackageVersion`, vault `PackageVersion`, `Treasury`,
   `Currency<Meme>` (mutable), Bluefin `GlobalConfig`, the vault's `Pool<Meme, Quote>` (mutable), and
@@ -220,8 +221,26 @@ Order of operations:
    over the vault's fee split. Address routes are paid as coins; the owner, auto-LP, and
    holder-reward routes accrue in the vault; the burn route's Meme is burned and its Quote kept for
    buybacks. A zero collection moves and emits nothing.
-4. Auto-LP: take every waiting auto-LP Meme and Quote (this collection's part plus anything left from
-   earlier calls) and add what the pool takes at its current price; keep the rest in the vault.
+
+Collection never adds liquidity: the auto-LP share waits in the vault for `compound_auto_lp`
+below, so a venue refusing an add can never block collecting fees.
+
+#### Compound auto-LP (anyone)
+
+Anyone may compound, as often as they like, in the same PTB as a collection or apart from it. A
+call that finds nothing the pool takes is valid and adds nothing.
+
+- Cetus: `blast_migrators::cetus::compound_auto_lp`, type arguments `<Meme, Quote, CoinA, CoinB>`,
+  with the `Vault<Meme, Quote>` (mutable), migrators `PackageVersion`, vault `PackageVersion`,
+  Cetus `GlobalConfig`, the vault's Cetus `Pool<CoinA, CoinB>` (mutable), and `Clock`.
+- Bluefin: `blast_migrators::bluefin::compound_auto_lp`, type arguments `<Meme, Quote>`, with the
+  `Vault<Meme, Quote>` (mutable), migrators `PackageVersion`, vault `PackageVersion`, Bluefin
+  `GlobalConfig`, the vault's `Pool<Meme, Quote>` (mutable), and `Clock`.
+
+It checks the pool is the vault's own (`blast_migrators::errors::EPositionPoolMismatch`), takes every
+waiting auto-LP Meme and Quote (every collection's part plus anything left from earlier calls), adds
+what the pool takes at its current price, and keeps the rest in the vault
+(`blast_vault_events::AutoLiquidityAdded`).
 
 Auto-LP per venue:
 
@@ -242,10 +261,11 @@ The owner proposes a split on the vault with an owner proof from the sale's prod
 is ready after a fixed 48-hour notice. Once ready, anyone calls
 `blast_migrators::cetus::settle_and_apply_fee_split` (`<Meme, Quote, CoinA, CoinB>`) or
 `blast_migrators::bluefin::settle_and_apply_fee_split` (`<Meme, Quote>`) with the same arguments
-as `collect_fees`. It checks the proposal is ready (`blast_vault::vault::assert_fee_split_ready`),
-collects and splits every position's fees under the current split, adds auto-LP, and then applies
-the new split (`blast_vault::vault::apply_fee_split`), so each fee follows the split it accrued
-under. The call takes no split of its own: it applies only the stored proposal.
+as `collect_fees`, plus the `Clock` on Cetus. It checks the proposal is ready
+(`blast_vault::vault::assert_fee_split_ready`), collects and splits every position's fees under the
+current split, and then applies the new split (`blast_vault::vault::apply_fee_split`), so each fee
+follows the split it accrued under. The call takes no split of its own: it applies only the stored
+proposal.
 
 #### Buyback and burn (Blast admin: `blast_core::blast_domain::BuybackAdmin`)
 
@@ -354,7 +374,7 @@ burn Quote. Every Meme bought is burned, or sent to `@0x0` under a fixed supply.
 | the product's migration events | the product's `migrate`, earlier in the same PTB | recipients paid, Blast's one-time fees, pool amounts (product guides) |
 | `blast_vault_events::VaultCreated` | `migrate` | `vault_id`, `pool_id`, `position_id`, `liquidity`, the sealed `terms`, residual amounts; type arguments `<Meme, Quote, Venue>` |
 | `blast_vault_events::FeesCollected` | `collect_fees`, `settle_and_apply_fee_split` | gross amounts, Blast's cut, each route's amounts in route order |
-| `blast_vault_events::AutoLpPositionOpened`, `blast_vault_events::AutoLiquidityAdded` | collections | Cetus's auto-LP position; liquidity added and what still waits |
+| `blast_vault_events::AutoLpPositionOpened`, `blast_vault_events::AutoLiquidityAdded` | `compound_auto_lp` | Cetus's auto-LP position; liquidity added and what still waits |
 | `blast_vault_events::BuybackBurned` | `buyback_and_burn` | `quote_spent`, `meme_burned`, burn Quote still waiting |
 | `blast_core::blast_core_events::ProtocolFeesPaid` | migration and collections on a vault without a partner | Blast's residuals and LP-fee cut paid to the treasury |
 | `delayed::DelayedApplied` | `settle_and_apply_fee_split` | keyed by `blast_vault::vault::FeeSplitKey` with the vault ID as `owner`: the previous and new split |
@@ -426,7 +446,8 @@ balances between the two orders.
 `Treasury` or held for the partner payout, or the owner, held in the vault.
 
 **How often should LP fees be collected?** As often as useful; collection is permissionless and
-cheap to retry. Frequent collection also keeps the auto-LP price-move exposure small.
+cheap to retry. Compound as often, with `compound_auto_lp`; frequent compounding keeps the auto-LP
+price-move exposure small.
 
 **How does the creator change the LP-fee split?** With an owner proof from the product (for a
 launch, the curve-fee cap and `launch::prove_owner`), call `blast_vault::vault::schedule_fee_split`

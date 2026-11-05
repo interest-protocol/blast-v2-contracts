@@ -419,15 +419,16 @@ if rg -U -n 'fun init\([^)]*\) \{[^}]*events::' sources --glob '*.move' \
 fi
 
 # Unpausing is the release gate: only launch_config::unpause clears pause bits, with the package
-# witness, after the version check and the guarded-delay check over both configurations.
+# witness, after the version check and the guarded-delay check over both configurations and the
+# core treasury.
 if [[ "$(for file in "${source_files[@]}"; do
       move_facts "$file" | awk -F'\t' -v module="$(basename "$file" .move)" \
         '$1 == "FN" && $6 == 0 && index($10, "clear_pause_bits(") > 0 { print module ":" $2 }'
     done | LC_ALL=C sort | tr '\n' ' ')" != 'launch_config:unpause ' ]] \
   || [[ "$(move_production_function_contract unpause <<<"$(move_facts sources/config/launch_config.move)")" \
-    != 'public:0:0:fun unpause( self: &LaunchConfig, package_version: &mut PackageVersion<BLAST_FUN>, unpause_admin: &AdminWitness<UnpauseAdmin<BLAST_FUN>>, package_admin: &PackageAdmin<BLAST_FUN>, runtime_config: &RuntimeConfig, bits: u8, )' ]] \
+    != 'public:0:0:fun unpause( self: &LaunchConfig, package_version: &mut PackageVersion<BLAST_FUN>, unpause_admin: &AdminWitness<UnpauseAdmin<BLAST_FUN>>, package_admin: &PackageAdmin<BLAST_FUN>, runtime_config: &RuntimeConfig, treasury: &Treasury, bits: u8, )' ]] \
   || [[ "$(move_production_body unpause <<<"$(move_facts sources/config/launch_config.move)")" \
-    != 'package_version.assert_current(constants::version!()); assert!( self.is_guarded() && runtime_config.is_guarded(), blast_fun::errors::unguarded_delay!(), ); package_admin.clear_pause_bits(unpause_admin, package_witness(), package_version, bits);' ]] \
+    != 'package_version.assert_current(constants::version!()); assert!( self.is_guarded() && runtime_config.is_guarded() && treasury.is_guarded(), blast_fun::errors::unguarded_delay!(), ); package_admin.clear_pause_bits(unpause_admin, package_witness(), package_version, bits);' ]] \
   || rg -n '\bpackage_admin::pause\(|\bset_pause_bits\(' sources --glob '*.move'; then
   echo 'Only launch_config::unpause may clear pause bits, after every delay is guarded; pausing is blast_admin::package_admin::pause.' >&2
   failures=$((failures + 1))

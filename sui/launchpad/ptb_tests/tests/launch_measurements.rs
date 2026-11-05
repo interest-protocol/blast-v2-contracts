@@ -207,7 +207,7 @@ impl World {
         let launch_registry = h.derived_registry(published, "launch", "LaunchRegistry")?;
         let (adapter, _) = stack.publish(&mut h, &fixture.join("adapter"), &work)?;
         let (version, package_admin) = h.wrap_launchpad(blast, published, admin, admin_published, core, sui(), parse_sui_type_tag(&format!("{adapter}::mock_adapter::Venue"))?)?;
-        h.unpause_launchpad(blast, admin, admin_published, version, package_admin, runtime, config, 7)?;
+        h.unpause_launchpad(blast, admin, admin_published, version, package_admin, runtime, config, stack.treasury, 7)?;
         let mut templates = Vec::new();
         for decimals in [6u8, 9] {
             templates.push((decimals, build(&generate_template(&work, decimals)?, &stack.linked(), &work)?));

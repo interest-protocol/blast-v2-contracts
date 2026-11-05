@@ -100,8 +100,9 @@ so Blast configures the stack before any release:
    48 hours and have no setter. `blast_core`'s treasury notice and each
    package's `PackageAdmin` upgrade notice start at 48 hours and need no raise.
 4. Unpause the vault (`blast_vault_package::unpause`), then the products
-   (`launch_config::unpause`, `creation_policy::unpause`). Each refuses while
-   one of its notices is unguarded.
+   (`launch_config::unpause`, `creation_policy::unpause`). Each takes the core
+   `Treasury` and refuses while one of its notices, or the treasury's, is
+   unguarded.
 
 Record the chosen fees, destinations, allowlists and applied-value events,
 Publication consumption, sealed custody, every applied notice, proposal state,

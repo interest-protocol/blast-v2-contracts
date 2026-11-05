@@ -55,7 +55,7 @@ fn only_fresh_matching_custody_enables_the_launchpad() -> Result<()> {
     let runtime = publication.created(&h, "runtime_config", "RuntimeConfig")[0];
     let venue = parse_sui_type_tag(&format!("{blast}::blast_fun::BLAST_FUN"))?;
     let (version, package_admin) = h.wrap_launchpad(blast, publication, admin, admin_publication, core, parse_sui_type_tag("0x2::sui::SUI")?, venue.clone())?;
-    h.unpause_launchpad(blast, admin, admin_publication, version, package_admin, runtime, config, 7)?;
+    h.unpause_launchpad(blast, admin, admin_publication, version, package_admin, runtime, config, stack.treasury, 7)?;
     h.shared(version, false);
     assert_eq!(h.contents(sui_types::SUI_CLOCK_OBJECT_ID), clock_before);
     // Simulacrum resolves historical owned inputs; test_scenario covers repeated intake.
@@ -66,7 +66,7 @@ fn only_fresh_matching_custody_enables_the_launchpad() -> Result<()> {
     // The vault package is released only after its venue delay is raised.
     let (vault, vault_publication) = stack.publish(&mut h, &sui_dir().join("vault"), &work)?;
     let vault_stack = h.wrap_vault(admin, vault, &vault_publication)?;
-    assert_vault_release_waits_for_the_delay(&mut h, admin, admin_publication, core, &vault_stack, venue)?;
+    assert_vault_release_waits_for_the_delay(&mut h, admin, admin_publication, core, &vault_stack, stack.treasury, venue)?;
     let later = parse_sui_type_tag(&format!("{blast}::blast_fun::PackageWitness"))?;
     assert_vault_admission_waits_the_raised_delay(&mut h, admin, admin_publication, core, &vault_stack, later)?;
 
@@ -117,20 +117,20 @@ fn assert_treasury_publication(h: &Harness, treasury: ObjectID) -> Result<()> {
 /// venue is listed at that delay and the delay is raised to 48 hours, the same unpause releases
 /// the package.
 fn assert_vault_release_waits_for_the_delay(h: &mut Harness, admin: ObjectID, publication: &Outcome, core: ObjectID,
-    vault: &VaultStack, venue: TypeTag,
+    vault: &VaultStack, treasury: ObjectID, venue: TypeTag,
 ) -> Result<()> {
     let role = vault.unpause_role(admin)?;
     let cap = h.grant_roles(admin, publication, std::slice::from_ref(&role))?;
     let mut b = ProgrammableTransactionBuilder::new();
     let witness = h.sign_in_as(&mut b, admin, publication, cap, role)?;
-    vault.append_unpause(h, &mut b, witness, 1)?;
+    vault.append_unpause(h, &mut b, witness, treasury, 1)?;
     h.assert_rolled_back(
         b.finish(),
         Expected::Abort { package: vault.package, module: "blast_vault_package", code: 2 },
-        &[vault.registry, vault.package_admin, vault.version, cap],
+        &[vault.registry, vault.package_admin, vault.version, treasury, cap],
         &[h.sender],
     )?;
-    h.release_vault(admin, publication, core, vault, &[venue])
+    h.release_vault(admin, publication, core, vault, treasury, &[venue])
 }
 
 /// After release, a new venue admission waits the raised 48-hour delay.

@@ -3767,11 +3767,18 @@ fun migration_pays_recipients_and_accrues_blast_allocation() {
         assert_eq!(paid.length(), 2);
         assert_eq!(
             bcs::to_bytes(&paid[0]),
-            allocation_paid_bytes(launch_id, CREATOR, 0, 1_875_000),
+            allocation_paid_bytes(launch_id, CREATOR, 0, 1_875_000, option::none(), option::none()),
         );
         assert_eq!(
             bcs::to_bytes(&paid[1]),
-            allocation_paid_bytes(launch_id, ALICE, 25_000_000__000_000_000, 0),
+            allocation_paid_bytes(
+                launch_id,
+                ALICE,
+                25_000_000__000_000_000,
+                0,
+                option::none(),
+                option::none(),
+            ),
         );
         assert_eq!(protocol_meme, protocol_meme_before + EXPECTED_PROTOCOL_MEME);
         assert_eq!(protocol_quote, protocol_quote_before + EXPECTED_PROTOCOL_QUOTE);
@@ -3827,25 +3834,35 @@ fun migration_vests_a_vesting_recipients_allocation() {
         f.share_launch(launch);
     });
 
+    let alice_paid;
     fixture.next_tx!(LAUNCHER, |f| {
         let mut launch = f.take_launch();
-        let launch_id = object::id(&launch);
         f.graduate(&mut launch);
         f.migrate(&mut launch);
 
-        let paid = collect<MigrationAllocationPaid<LAUNCH_TESTS, TEST_QUOTE>>();
-        assert_eq!(
-            bcs::to_bytes(&paid[1]),
-            allocation_paid_bytes(launch_id, ALICE, 25_000_000__000_000_000, 0),
-        );
+        alice_paid = bcs::to_bytes(&collect<MigrationAllocationPaid<LAUNCH_TESTS, TEST_QUOTE>>()[1]);
         launch.put_back();
     });
 
+    // The event names the Meme schedule shared by migration and no Quote schedule.
     fixture.next_tx!(LAUNCHER, |f| {
         assert_eq!(f.take_coin<TEST_QUOTE>(CREATOR).burn_for_testing(), 1_875_000);
         assert!(!f.has_coin<LAUNCH_TESTS>(ALICE));
         assert!(f.has_vesting<LAUNCH_TESTS>());
         assert!(!f.has_vesting<TEST_QUOTE>());
+        let launch = f.take_launch();
+        assert_eq!(
+            alice_paid,
+            allocation_paid_bytes(
+                object::id(&launch),
+                ALICE,
+                25_000_000__000_000_000,
+                0,
+                f.vesting_id<LAUNCH_TESTS>(),
+                option::none(),
+            ),
+        );
+        launch.put_back();
     });
 
     fixture.end();
@@ -3903,11 +3920,25 @@ fun migration_apportions_by_largest_remainder_and_conserves_both_assets() {
 
         assert_eq!(
             bcs::to_bytes(&paid[0]),
-            allocation_paid_bytes(launch_id, ALICE, 33_300_000__000_000_000, 2_777_501),
+            allocation_paid_bytes(
+                launch_id,
+                ALICE,
+                33_300_000__000_000_000,
+                2_777_501,
+                option::none(),
+                option::none(),
+            ),
         );
         assert_eq!(
             bcs::to_bytes(&paid[1]),
-            allocation_paid_bytes(launch_id, BOB, 58_300_000__000_000_000, 2_155_000),
+            allocation_paid_bytes(
+                launch_id,
+                BOB,
+                58_300_000__000_000_000,
+                2_155_000,
+                option::none(),
+                option::none(),
+            ),
         );
         assert_eq!(protocol_meme, protocol_fee + EXPECTED_PROTOCOL_MEME);
         assert_eq!(protocol_quote, protocol_quote_fee + 625_001);
@@ -4903,6 +4934,11 @@ fun launch_has_vesting<T>(_: &LaunchFixture): bool {
     test_scenario::has_most_recent_shared<Vesting<T>>()
 }
 
+/// The ID of the most recently shared `Vesting<T>`, or none.
+fun launch_vesting_id<T>(_: &LaunchFixture): Option<ID> {
+    test_scenario::most_recent_id_shared<Vesting<T>>()
+}
+
 fun launch_has_coin<T>(_: &LaunchFixture, owner: address): bool {
     test_scenario::has_most_recent_for_address<Coin<T>>(owner)
 }
@@ -5081,11 +5117,20 @@ fun launch_created_bytes_with(
     expected
 }
 
-fun allocation_paid_bytes(launch_id: ID, destination: address, meme: u64, quote: u64): vector<u8> {
+fun allocation_paid_bytes(
+    launch_id: ID,
+    destination: address,
+    meme: u64,
+    quote: u64,
+    meme_vesting_id: Option<ID>,
+    quote_vesting_id: Option<ID>,
+): vector<u8> {
     let mut expected = bcs::to_bytes(&launch_id);
     expected.append(bcs::to_bytes(&destination));
     expected.append(u64_bytes(meme));
     expected.append(u64_bytes(quote));
+    expected.append(bcs::to_bytes(&meme_vesting_id));
+    expected.append(bcs::to_bytes(&quote_vesting_id));
     expected
 }
 
@@ -5251,6 +5296,7 @@ use fun launch_take_coin as LaunchFixture.take_coin;
 use fun launch_has_coin as LaunchFixture.has_coin;
 
 use fun launch_has_vesting as LaunchFixture.has_vesting;
+use fun launch_vesting_id as LaunchFixture.vesting_id;
 
 use fun launch_burn_paid as LaunchFixture.burn_paid;
 

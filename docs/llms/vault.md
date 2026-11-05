@@ -125,8 +125,9 @@ shares the `Round`, and emits `blast_vault_events::RoundPublished`.
 The package is published fully paused. The admin pause bit stops Blast-share changes, buybacks,
 round scheduling and publication, and gas settlement. It never stops venue admissions, fee
 collection, owner claims, partner payouts, holder claims, round closing, or cancellations.
-Unpausing with `blast_vault_package::unpause` requires a nonzero witness admission notice, with no
-pending admission or change to zero.
+Unpausing with `blast_vault_package::unpause` runs only on the current version and requires a
+nonzero witness admission notice and a nonzero core `blast_core::blast_treasury::Treasury` notice,
+with no pending admission or change to zero; it takes the `Treasury` beside the registry.
 
 ### Upgrades and immutability
 
@@ -192,6 +193,10 @@ the `UpgradeCap`; no later upgrade or repair is possible.
 - The coins from an owner claim must be consumed in the same PTB.
 - An `OwnerProof` cannot be stored or dropped; create it in the PTB that uses it.
 - A claim relayed by anyone still pays the beneficiary in the leaf, never the relayer.
+- A leaf's beneficiary must be an account. A claim pays by coin transfer, so a beneficiary that is
+  an object (a pool, a vesting schedule, another vault) could never receive it, and the claimed
+  leaf never returns to the vault. Blast's allocation leaves object-held balances out; nothing on
+  chain tells the two apart.
 
 ### Q&A
 

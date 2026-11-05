@@ -154,11 +154,13 @@ require_text "$package_surface" \
     "the package's public and package functions must have exactly the pinned signatures" <<'EOF'
 bluefin:public:fun buyback_and_burn<Meme, Quote>( self: &mut Vault<Meme, Quote>, migrators_version: &PackageVersion<BLAST_MIGRATORS>, vault_version: &PackageVersion<BLAST_VAULT_PACKAGE>, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>, bluefin_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, quote_in: u64, min_meme_out: u64, clock: &Clock, ctx: &mut TxContext, )
 bluefin:public:fun collect_fees<Meme, Quote>( self: &mut Vault<Meme, Quote>, migrators_version: &PackageVersion<BLAST_MIGRATORS>, vault_version: &PackageVersion<BLAST_VAULT_PACKAGE>, treasury: &Treasury, currency: &mut Currency<Meme>, bluefin_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, clock: &Clock, ctx: &mut TxContext, )
+bluefin:public:fun compound_auto_lp<Meme, Quote>( self: &mut Vault<Meme, Quote>, migrators_version: &PackageVersion<BLAST_MIGRATORS>, vault_version: &PackageVersion<BLAST_VAULT_PACKAGE>, bluefin_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, clock: &Clock, )
 bluefin:public:fun migrate<Meme, Quote>( migration: Migration<Meme, Quote>, migrators_version: &PackageVersion<BLAST_MIGRATORS>, venue_config: &VenueConfig, currency: &Currency<Meme>, quote_currency: &Currency<Quote>, bluefin_config: &mut GlobalConfig, registry: &mut VaultRegistry, vault_version: &PackageVersion<BLAST_VAULT_PACKAGE>, treasury: &Treasury, creation_fee: Coin<SUI>, clock: &Clock, ctx: &mut TxContext, )
 bluefin:public:fun prepare<Meme, Quote>( migrators_version: &PackageVersion<BLAST_MIGRATORS>, venue_config: &mut VenueConfig, _: &TreasuryCap<Meme>, currency: &Currency<Meme>, tick_spacing: u32, fee_rate: u64, ): VenueTicket<Meme, Quote>
 bluefin:public:fun settle_and_apply_fee_split<Meme, Quote>( self: &mut Vault<Meme, Quote>, migrators_version: &PackageVersion<BLAST_MIGRATORS>, vault_version: &PackageVersion<BLAST_VAULT_PACKAGE>, treasury: &Treasury, currency: &mut Currency<Meme>, bluefin_config: &GlobalConfig, pool: &mut Pool<Meme, Quote>, clock: &Clock, ctx: &mut TxContext, )
 cetus:public:fun buyback_and_burn<Meme, Quote, CoinA, CoinB>( self: &mut Vault<Meme, Quote>, migrators_version: &PackageVersion<BLAST_MIGRATORS>, vault_version: &PackageVersion<BLAST_VAULT_PACKAGE>, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, pool: &mut Pool<CoinA, CoinB>, quote_in: u64, min_meme_out: u64, clock: &Clock, ctx: &mut TxContext, )
-cetus:public:fun collect_fees<Meme, Quote, CoinA, CoinB>( self: &mut Vault<Meme, Quote>, migrators_version: &PackageVersion<BLAST_MIGRATORS>, vault_version: &PackageVersion<BLAST_VAULT_PACKAGE>, treasury: &Treasury, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, burn_manager: &BurnManager, pool: &mut Pool<CoinA, CoinB>, clock: &Clock, ctx: &mut TxContext, )
+cetus:public:fun collect_fees<Meme, Quote, CoinA, CoinB>( self: &mut Vault<Meme, Quote>, migrators_version: &PackageVersion<BLAST_MIGRATORS>, vault_version: &PackageVersion<BLAST_VAULT_PACKAGE>, treasury: &Treasury, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, burn_manager: &BurnManager, pool: &mut Pool<CoinA, CoinB>, ctx: &mut TxContext, )
+cetus:public:fun compound_auto_lp<Meme, Quote, CoinA, CoinB>( self: &mut Vault<Meme, Quote>, migrators_version: &PackageVersion<BLAST_MIGRATORS>, vault_version: &PackageVersion<BLAST_VAULT_PACKAGE>, cetus_config: &GlobalConfig, pool: &mut Pool<CoinA, CoinB>, clock: &Clock, ctx: &mut TxContext, )
 cetus:public:fun migrate<Meme, Quote, CoinA, CoinB>( migration: Migration<Meme, Quote>, migrators_version: &PackageVersion<BLAST_MIGRATORS>, venue_config: &VenueConfig, cetus_config: &GlobalConfig, pools: &mut Pools, burn_manager: &mut BurnManager, registry: &mut VaultRegistry, vault_version: &PackageVersion<BLAST_VAULT_PACKAGE>, treasury: &Treasury, clock: &Clock, ctx: &mut TxContext, )
 cetus:public:fun prepare<Meme, Quote>( migrators_version: &PackageVersion<BLAST_MIGRATORS>, venue_config: &mut VenueConfig, cetus_config: &GlobalConfig, pools: &mut Pools, treasury_cap: &mut TreasuryCap<Meme>, tick_spacing: u32, ctx: &mut TxContext, ): VenueTicket<Meme, Quote>
 cetus:public:fun settle_and_apply_fee_split<Meme, Quote, CoinA, CoinB>( self: &mut Vault<Meme, Quote>, migrators_version: &PackageVersion<BLAST_MIGRATORS>, vault_version: &PackageVersion<BLAST_VAULT_PACKAGE>, treasury: &Treasury, currency: &mut Currency<Meme>, cetus_config: &GlobalConfig, burn_manager: &BurnManager, pool: &mut Pool<CoinA, CoinB>, clock: &Clock, ctx: &mut TxContext, )
@@ -460,19 +462,20 @@ done | LC_ALL=C sort | tr '\n' ' ')"
 
 require_pattern "$BLUEFIN_SOURCE" 'public struct Venue\(\) has drop;' 'sealed Bluefin venue witness'
 # Bluefin has exactly one preparation, one atomic migrate route, one collection entry, one settled
-# update entry, and one buyback entry. Preparation checks the creator's tier against Bluefin's
-# bounds, records it, emits the tier, and issues the ticket; migration reads that tier, redeems
-# the hand-off, creates and funds the pool, creates and shares the vault holding the venue
-# position, then shares the pool; and every fee exit splits the collected position's fees
-# through the vault and adds the auto-LP share back to the same position. The buyback swaps the
-# admin's `quote_in` of the vault's burn Quote for Meme in the vault's own pool and hands the
-# result to the vault, which checks the admin's minimum and burns it.
+# update entry, one compounding entry, and one buyback entry. Preparation checks the creator's
+# tier against Bluefin's bounds, records it, emits the tier, and issues the ticket; migration
+# reads that tier, redeems the hand-off, creates and funds the pool, creates and shares the vault
+# holding the venue position, then shares the pool; every fee exit splits the collected
+# position's fees through the vault and leaves the auto-LP share waiting; and compounding, on its
+# own, adds that share back to the same position so a venue refusal never blocks collection. The
+# buyback swaps the admin's `quote_in` of the vault's burn Quote for Meme in the vault's own pool
+# and hands the result to the vault, which checks the admin's minimum and burns it.
 bluefin_facts="$(move_facts "$BLUEFIN_SOURCE")"
 [[ "$bluefin_facts" != *MALFORMED* ]] || fail "the Move reader rejected bluefin.move"
 bluefin_public="$(awk -F'\t' '$1 == "FN" && $3 == "public" && $6 == 0 { print $2 }' <<<"$bluefin_facts" \
-    | sort | tr '\n' ' ')"
-[[ "$bluefin_public" == 'buyback_and_burn collect_fees migrate prepare settle_and_apply_fee_split ' ]] || \
-    fail "Bluefin must expose exactly prepare, migrate, collect_fees, settle_and_apply_fee_split, and buyback_and_burn"
+    | LC_ALL=C sort | tr '\n' ' ')"
+[[ "$bluefin_public" == 'buyback_and_burn collect_fees compound_auto_lp migrate prepare settle_and_apply_fee_split ' ]] || \
+    fail "Bluefin must expose exactly prepare, migrate, collect_fees, settle_and_apply_fee_split, compound_auto_lp, and buyback_and_burn"
 bluefin_body() {
     awk -F'\t' -v name="$1" '$1 == "FN" && $2 == name { print $10 }' <<<"$bluefin_facts" \
         | tr -d '[:space:]' | sed 's/,)/)/g'
@@ -508,12 +511,16 @@ bluefin_migrate_body="$(bluefin_body migrate)"
     && [[ "$(bluefin_body is_meme_seed_side)" == 'letprefer_meme=meme_amount>=quote_amount;let(_,needed_meme,needed_quote)=pool::get_liquidity_by_amount(position.lower_tick(),position.upper_tick(),pool.current_tick_index(),pool.current_sqrt_price(),if(prefer_meme)meme_amountelsequote_amount,prefer_meme);seed_fixed_side(prefer_meme,meme_amount,quote_amount,needed_meme,needed_quote)' ]] \
     && [[ "$(bluefin_body seed_fixed_side)" == 'if(needed_a<=available_a&&needed_b<=available_b)preferredelse!preferred' ]] || \
     fail "Bluefin migrate must fix the larger side, Meme on a tie, unless Bluefin's own math says it overdraws the other side"
-# Both fee exits settle through one helper: collect the position's fees, split them through the
-# vault under Bluefin's witness, and add the auto-LP share back. Application checks the stored
-# proposal readiness first and commits the new split only after settling under the current one.
-[[ "$(bluefin_body settle_fees)" == 'let(meme_fee,quote_fee)=self.collect_position_fees(vault_version,bluefin_config,pool,clock);self.split_fees(&Venue(),vault_version,treasury,currency,meme_fee,quote_fee,ctx);self.compound(vault_version,bluefin_config,pool,clock);' ]] \
+# Both fee exits settle through one helper: collect the position's fees and split them through the
+# vault under Bluefin's witness; neither adds liquidity. Application checks the stored proposal
+# readiness first and commits the new split only after settling under the current one.
+[[ "$(bluefin_body settle_fees)" == 'let(meme_fee,quote_fee)=self.collect_position_fees(vault_version,bluefin_config,pool,clock);self.split_fees(&Venue(),vault_version,treasury,currency,meme_fee,quote_fee,ctx);' ]] \
     && [[ "$(bluefin_body collect_fees)" == 'migrators_version.assert_current(constants::version!());self.settle_fees(vault_version,treasury,currency,bluefin_config,pool,clock,ctx);' ]] || \
-    fail "Bluefin collection must split the collected position's fees through the vault, then add the auto-LP share back"
+    fail "Bluefin collection must split the collected position's fees through the vault and never add liquidity"
+# Compounding is its own permissionless route: it checks the version and the vault's pool, then
+# adds the waiting auto-LP share, so a venue refusal of the add never blocks collection.
+[[ "$(bluefin_body compound_auto_lp)" == 'migrators_version.assert_current(constants::version!());assert!(self.pool_id()==object::id(pool),blast_migrators::errors::position_pool_mismatch!());self.compound(vault_version,bluefin_config,pool,clock);' ]] || \
+    fail "Bluefin compounding must check the version and the vault's pool, then add the waiting auto-LP share apart from collection"
 [[ "$(bluefin_body settle_and_apply_fee_split)" == 'migrators_version.assert_current(constants::version!());self.assert_fee_split_ready(clock);self.settle_fees(vault_version,treasury,currency,bluefin_config,pool,clock,ctx);self.apply_fee_split(&Venue(),vault_version,clock);' ]] || \
     fail "Bluefin settled application must check stored proposal readiness before collecting, then split the accrued fees under the current split before committing a new one"
 [[ "$(bluefin_body buyback_and_burn)" == 'migrators_version.assert_current(constants::version!());assert!(self.pool_id()==object::id(pool),blast_migrators::errors::position_pool_mismatch!());let(quote,receipt)=self.take_buyback_quote(&Venue(),admin_witness,vault_version,quote_in);let(meme,quote)=pool::swap(clock,bluefin_config,pool,balance::zero(),quote,false,true,quote_in,0,constants::max_swap_sqrt_price!());self.burn_buyback(&Venue(),vault_version,receipt,currency,meme,quote,min_meme_out,ctx);' ]] || \
@@ -534,11 +541,12 @@ in_order \
 # and the venue config first; migration takes the product's hand-off, this package's version,
 # then the venue config; every vault route takes the vault, this package's version,
 # then the vault version. Split application consumes only the stored ready proposal.
-for entry in prepare migrate collect_fees settle_and_apply_fee_split buyback_and_burn; do
+for entry in prepare migrate collect_fees settle_and_apply_fee_split compound_auto_lp buyback_and_burn; do
     case "$entry" in
         prepare) expected="( migrators_version: &PackageVersion<BLAST_MIGRATORS>, venue_config: &mut VenueConfig," ;;
         migrate) expected="( migration: Migration<Meme, Quote>, migrators_version: &PackageVersion<BLAST_MIGRATORS>, venue_config: &VenueConfig," ;;
         collect_fees|settle_and_apply_fee_split) expected="( self: &mut Vault<Meme, Quote>, migrators_version: &PackageVersion<BLAST_MIGRATORS>, vault_version: &PackageVersion<BLAST_VAULT_PACKAGE>, treasury: &Treasury, currency: &mut Currency<Meme>," ;;
+        compound_auto_lp) expected="( self: &mut Vault<Meme, Quote>, migrators_version: &PackageVersion<BLAST_MIGRATORS>, vault_version: &PackageVersion<BLAST_VAULT_PACKAGE>, bluefin_config: &GlobalConfig," ;;
         buyback_and_burn) expected="( self: &mut Vault<Meme, Quote>, migrators_version: &PackageVersion<BLAST_MIGRATORS>, vault_version: &PackageVersion<BLAST_VAULT_PACKAGE>, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>," ;;
         *) fail "unhandled venue entry ${entry}" ;;
     esac
@@ -584,17 +592,18 @@ require_pattern "$CETUS_SOURCE" 'public struct Venue\(\) has drop;' 'sealed Cetu
 # reserved cap at the recorded tick spacing, prices it from the handed-off balances in the pool's
 # coin order, fixes the larger side (Meme on a tie) unless Cetus's own liquidity math says it
 # overdraws the other, burns the position through Cetus LP Burn, and creates and shares a vault
-# holding the burn proof. Every fee exit collects the burn proof's and the auto-LP position's fees,
-# splits them through the vault, and adds the auto-LP share to the auto-LP position. Each buyback
-# checks the vault's own pool, swaps the admin's `quote_in` of the vault's burn Quote for Meme,
-# repays exactly what Cetus asks, and hands the result to the vault, which checks the admin's
-# minimum and burns it.
+# holding the burn proof. Every fee exit collects the burn proof's and the auto-LP position's fees
+# and splits them through the vault, leaving the auto-LP share waiting; compounding, on its own,
+# adds that share to the auto-LP position, so a Cetus refusal never blocks collection. Each
+# buyback checks the vault's own pool, swaps the admin's `quote_in` of the vault's burn Quote for
+# Meme, repays exactly what Cetus asks, and hands the result to the vault, which checks the
+# admin's minimum and burns it.
 cetus_facts="$(move_facts "$CETUS_SOURCE")"
 [[ "$cetus_facts" != *MALFORMED* ]] || fail "the Move reader rejected cetus.move"
 cetus_public="$(awk -F'\t' '$1 == "FN" && $3 == "public" && $6 == 0 { print $2 }' <<<"$cetus_facts" \
     | LC_ALL=C sort | tr '\n' ' ')"
-[[ "$cetus_public" == 'buyback_and_burn collect_fees migrate prepare settle_and_apply_fee_split ' ]] || \
-    fail "Cetus must expose exactly prepare and one migrate, collect, settled-update, and buyback route for both coin orders"
+[[ "$cetus_public" == 'buyback_and_burn collect_fees compound_auto_lp migrate prepare settle_and_apply_fee_split ' ]] || \
+    fail "Cetus must expose exactly prepare and one migrate, collect, settled-update, compounding, and buyback route for both coin orders"
 cetus_body() {
     awk -F'\t' -v name="$1" '$1 == "FN" && $2 == name && $6 == 0 { print $10 }' <<<"$cetus_facts" \
         | tr -d '[:space:]' | sed 's/,)/)/g'
@@ -623,11 +632,13 @@ pair_proof='letmeme_is_a=is_meme_coin_a<Meme,Quote,CoinA,CoinB>();'
     && [[ "$(cetus_body is_coin_a_seed_side)" == 'let(amount_a,amount_b)=if(meme_is_a)(meme_amount,quote_amount)else(quote_amount,meme_amount);letprefer_a=(meme_amount>=quote_amount)==meme_is_a;let(_,needed_a,needed_b)=clmm_math::get_liquidity_by_amount(i32::from_u32(tick_lower),i32::from_u32(tick_upper),i32::zero(),sqrt_price,if(prefer_a)amount_aelseamount_b,prefer_a);seed_fixed_side(prefer_a,amount_a,amount_b,needed_a,needed_b)' ]] \
     && [[ "$(cetus_body seed_fixed_side)" == 'if(needed_a<=available_a&&needed_b<=available_b)preferredelse!preferred' ]] || \
     fail "cetus::migrate must check the version, Cetus's coin order, and the pair first, then create the pool in that order with the reserved cap at the recorded tick spacing, fix the larger side (Meme on a tie) unless Cetus's own math says it overdraws the other, burn the position, and create the vault holding the burn proof"
-[[ "$(cetus_body settle_fees)" == 'let(meme_fee,quote_fee)=self.collect_position_fees(vault_version,cetus_config,burn_manager,pool,meme_is_a,ctx);self.split_fees(&Venue(),vault_version,treasury,currency,meme_fee,quote_fee,ctx);self.compound(vault_version,cetus_config,pool,meme_is_a,clock,ctx);' ]] \
-    && [[ "$(cetus_body collect_fees)" == "migrators_version.assert_current(constants::version!());${pair_proof}self.settle_fees(vault_version,treasury,currency,cetus_config,burn_manager,pool,meme_is_a,clock,ctx);" ]] || \
-    fail "cetus::collect_fees must check the version and the pair, split the collected fees through the vault, then add the auto-LP share back"
-[[ "$(cetus_body settle_and_apply_fee_split)" == "migrators_version.assert_current(constants::version!());${pair_proof}self.assert_fee_split_ready(clock);self.settle_fees(vault_version,treasury,currency,cetus_config,burn_manager,pool,meme_is_a,clock,ctx);self.apply_fee_split(&Venue(),vault_version,clock);" ]] || \
+[[ "$(cetus_body settle_fees)" == 'let(meme_fee,quote_fee)=self.collect_position_fees(vault_version,cetus_config,burn_manager,pool,meme_is_a,ctx);self.split_fees(&Venue(),vault_version,treasury,currency,meme_fee,quote_fee,ctx);' ]] \
+    && [[ "$(cetus_body collect_fees)" == "migrators_version.assert_current(constants::version!());${pair_proof}self.settle_fees(vault_version,treasury,currency,cetus_config,burn_manager,pool,meme_is_a,ctx);" ]] || \
+    fail "cetus::collect_fees must check the version and the pair, then split the collected fees through the vault and never add liquidity"
+[[ "$(cetus_body settle_and_apply_fee_split)" == "migrators_version.assert_current(constants::version!());${pair_proof}self.assert_fee_split_ready(clock);self.settle_fees(vault_version,treasury,currency,cetus_config,burn_manager,pool,meme_is_a,ctx);self.apply_fee_split(&Venue(),vault_version,clock);" ]] || \
     fail "cetus::settle_and_apply_fee_split must check the pair and stored proposal readiness before collecting, then split the accrued fees under the current split before committing a new one"
+[[ "$(cetus_body compound_auto_lp)" == "migrators_version.assert_current(constants::version!());${pair_proof}assert!(self.pool_id()==object::id(pool),blast_migrators::errors::position_pool_mismatch!());self.compound(vault_version,cetus_config,pool,meme_is_a,clock,ctx);" ]] || \
+    fail "cetus::compound_auto_lp must check the version, the pair, and the vault's pool, then add the waiting auto-LP share apart from collection"
 [[ "$(cetus_body buyback_and_burn)" == "migrators_version.assert_current(constants::version!());${pair_proof}assert!(self.pool_id()==object::id(pool),blast_migrators::errors::position_pool_mismatch!());let(quote,receipt)=self.take_buyback_quote(&Venue(),admin_witness,vault_version,quote_in);let(meme,quote)=pool.swap_quote_for_meme(cetus_config,quote,meme_is_a,clock,ctx);self.burn_buyback(&Venue(),vault_version,receipt,currency,meme,quote,min_meme_out,ctx);" ]] \
     && [[ "$(cetus_body swap_quote_for_meme)" == 'let(a,b)=reorder(balance::zero<Meme>(),quote,meme_is_a,ctx);let(a,b)=pool.swap(cetus_config,a,b,!meme_is_a,clock);reorder(a,b,meme_is_a,ctx)' ]] || \
     fail "cetus::buyback_and_burn must check the pair and the vault's pool, take the admin's quote_in of the burn Quote under the buyback admin, swap all of it Quote-to-Meme, and let the vault check and burn"
@@ -687,11 +698,12 @@ in_order \
     fail "Cetus buybacks must swap through one flash swap at the widest limit and repay exactly the receipt"
 # Cetus's public routes share Bluefin's parameter order, with the LP Burn manager among the venue
 # inputs.
-for entry in prepare migrate collect_fees settle_and_apply_fee_split buyback_and_burn; do
+for entry in prepare migrate collect_fees settle_and_apply_fee_split compound_auto_lp buyback_and_burn; do
     case "$entry" in
         prepare) expected="( migrators_version: &PackageVersion<BLAST_MIGRATORS>, venue_config: &mut VenueConfig," ;;
         migrate) expected="( migration: Migration<Meme, Quote>, migrators_version: &PackageVersion<BLAST_MIGRATORS>, venue_config: &VenueConfig," ;;
         collect_fees|settle_and_apply_fee_split) expected="( self: &mut Vault<Meme, Quote>, migrators_version: &PackageVersion<BLAST_MIGRATORS>, vault_version: &PackageVersion<BLAST_VAULT_PACKAGE>, treasury: &Treasury, currency: &mut Currency<Meme>," ;;
+        compound_auto_lp) expected="( self: &mut Vault<Meme, Quote>, migrators_version: &PackageVersion<BLAST_MIGRATORS>, vault_version: &PackageVersion<BLAST_VAULT_PACKAGE>, cetus_config: &GlobalConfig," ;;
         buyback_and_burn) expected="( self: &mut Vault<Meme, Quote>, migrators_version: &PackageVersion<BLAST_MIGRATORS>, vault_version: &PackageVersion<BLAST_VAULT_PACKAGE>, admin_witness: &AdminWitness<BuybackAdmin>, currency: &mut Currency<Meme>," ;;
         *) fail "unhandled venue entry ${entry}" ;;
     esac

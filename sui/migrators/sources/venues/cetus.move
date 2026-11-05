@@ -176,9 +176,9 @@ public fun migrate<Meme, Quote, CoinA, CoinB>(
         );
 }
 
-/// Collects the vault position's fees from its pool, splits them, burns the burn share's Meme, and
-/// adds the auto-LP share back to the position. Anyone may call it. `CoinA` and `CoinB` are the
-/// pool's coin order.
+/// Collects the vault position's fees from its pool, splits them, and burns the burn share's Meme;
+/// the auto-LP share waits in the vault for `compound_auto_lp`. Anyone may call it. `CoinA` and
+/// `CoinB` are the pool's coin order.
 public fun collect_fees<Meme, Quote, CoinA, CoinB>(
     self: &mut Vault<Meme, Quote>,
     migrators_version: &PackageVersion<BLAST_MIGRATORS>,
@@ -188,7 +188,6 @@ public fun collect_fees<Meme, Quote, CoinA, CoinB>(
     cetus_config: &GlobalConfig,
     burn_manager: &BurnManager,
     pool: &mut Pool<CoinA, CoinB>,
-    clock: &Clock,
     ctx: &mut TxContext,
 ) {
     migrators_version.assert_current(constants::version!());
@@ -202,7 +201,6 @@ public fun collect_fees<Meme, Quote, CoinA, CoinB>(
         burn_manager,
         pool,
         meme_is_a,
-        clock,
         ctx,
     );
 }
@@ -233,11 +231,30 @@ public fun settle_and_apply_fee_split<Meme, Quote, CoinA, CoinB>(
         burn_manager,
         pool,
         meme_is_a,
-        clock,
         ctx,
     );
 
     self.apply_fee_split(&Venue(), vault_version, clock);
+}
+
+/// Adds the vault's waiting auto-LP Meme and Quote to its auto-LP position in `pool` at the
+/// current price and keeps the rest for the next call. Anyone may call it, apart from collection,
+/// so a Cetus refusal of the add never blocks collecting fees. `CoinA` and `CoinB` are the pool's
+/// coin order.
+public fun compound_auto_lp<Meme, Quote, CoinA, CoinB>(
+    self: &mut Vault<Meme, Quote>,
+    migrators_version: &PackageVersion<BLAST_MIGRATORS>,
+    vault_version: &PackageVersion<BLAST_VAULT_PACKAGE>,
+    cetus_config: &GlobalConfig,
+    pool: &mut Pool<CoinA, CoinB>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    migrators_version.assert_current(constants::version!());
+    let meme_is_a = is_meme_coin_a<Meme, Quote, CoinA, CoinB>();
+    assert!(self.pool_id() == object::id(pool), blast_migrators::errors::position_pool_mismatch!());
+
+    self.compound(vault_version, cetus_config, pool, meme_is_a, clock, ctx);
 }
 
 /// Swaps `quote_in` of the vault's burn Quote for Meme in its pool and burns it, under a buyback
@@ -316,7 +333,8 @@ fun seed_fixed_side(
     if (needed_a <= available_a && needed_b <= available_b) preferred else !preferred
 }
 
-/// Collects the position's fees, splits them through the vault, and adds the auto-LP share back.
+/// Collects the position's fees and splits them through the vault; the auto-LP share waits for
+/// `compound_auto_lp`.
 fun settle_fees<Meme, Quote, CoinA, CoinB>(
     self: &mut Vault<Meme, Quote>,
     vault_version: &PackageVersion<BLAST_VAULT_PACKAGE>,
@@ -326,7 +344,6 @@ fun settle_fees<Meme, Quote, CoinA, CoinB>(
     burn_manager: &BurnManager,
     pool: &mut Pool<CoinA, CoinB>,
     meme_is_a: bool,
-    clock: &Clock,
     ctx: &mut TxContext,
 ) {
     let (meme_fee, quote_fee) = self.collect_position_fees(
@@ -338,7 +355,6 @@ fun settle_fees<Meme, Quote, CoinA, CoinB>(
         ctx,
     );
     self.split_fees(&Venue(), vault_version, treasury, currency, meme_fee, quote_fee, ctx);
-    self.compound(vault_version, cetus_config, pool, meme_is_a, clock, ctx);
 }
 
 /// Collects the burned migration position's fees and, once it exists, the auto-LP position's fees
@@ -374,7 +390,8 @@ fun collect_position_fees<Meme, Quote, CoinA, CoinB>(
     reorder(fee_a, fee_b, meme_is_a, ctx)
 }
 
-/// Adds the waiting auto-LP balances to the auto-LP position in the vault's pool.
+/// Adds the waiting auto-LP balances to the auto-LP position in `pool`, already matched to the
+/// vault.
 fun compound<Meme, Quote, CoinA, CoinB>(
     self: &mut Vault<Meme, Quote>,
     vault_version: &PackageVersion<BLAST_VAULT_PACKAGE>,

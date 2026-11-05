@@ -25,6 +25,7 @@ fun products_and_venues_are_listed_at_launch_while_the_package_is_paused() {
     let mut f = vault_fixture::start(&mut scenario);
     let mut registry = blast_vault_package::empty_registry_for_testing(scenario.ctx());
     let package_admin = new_package_admin(scenario.ctx());
+    let treasury = guarded_treasury(scenario.ctx());
     package_admin::pause(f.version_mut(), &pause_admin(), constants::valid_pause_bits!());
 
     registry.schedule_witness<NewVenue>(&venue_admin(), f.version(), f.clock());
@@ -37,6 +38,7 @@ fun products_and_venues_are_listed_at_launch_while_the_package_is_paused() {
         &unpause_admin(),
         &package_admin,
         f.version_mut(),
+        &treasury,
         constants::valid_pause_bits!(),
     );
 
@@ -50,6 +52,7 @@ fun products_and_venues_are_listed_at_launch_while_the_package_is_paused() {
         vault_fixture::pool_id(),
     );
     destroy(vault);
+    destroy(treasury);
     destroy(package_admin);
     destroy(registry);
     f.end();
@@ -66,12 +69,14 @@ fun unpause_waits_for_a_nonzero_admission_delay() {
     let mut f = vault_fixture::start(&mut scenario);
     let registry = blast_vault_package::empty_registry_for_testing(scenario.ctx());
     let package_admin = new_package_admin(scenario.ctx());
+    let treasury = guarded_treasury(scenario.ctx());
     package_admin::pause(f.version_mut(), &pause_admin(), constants::admin_pause_bit!());
 
     registry.unpause(
         &unpause_admin(),
         &package_admin,
         f.version_mut(),
+        &treasury,
         constants::admin_pause_bit!(),
     );
 
@@ -88,6 +93,7 @@ fun unpause_waits_while_a_zero_admission_delay_is_pending() {
     let mut f = vault_fixture::start(&mut scenario);
     let mut registry = guarded_registry(&f, scenario.ctx());
     let package_admin = new_package_admin(scenario.ctx());
+    let treasury = guarded_treasury(scenario.ctx());
     registry.schedule_witness_delay(&venue_admin(), f.version(), 0, f.clock());
     package_admin::pause(f.version_mut(), &pause_admin(), constants::admin_pause_bit!());
 
@@ -95,6 +101,7 @@ fun unpause_waits_while_a_zero_admission_delay_is_pending() {
         &unpause_admin(),
         &package_admin,
         f.version_mut(),
+        &treasury,
         constants::admin_pause_bit!(),
     );
 
@@ -113,6 +120,7 @@ fun unpause_waits_while_an_admission_is_pending() {
     let mut f = vault_fixture::start(&mut scenario);
     let mut registry = guarded_registry(&f, scenario.ctx());
     let package_admin = new_package_admin(scenario.ctx());
+    let treasury = guarded_treasury(scenario.ctx());
     registry.schedule_witness<NewVenue>(&venue_admin(), f.version(), f.clock());
     package_admin::pause(f.version_mut(), &pause_admin(), constants::admin_pause_bit!());
 
@@ -120,6 +128,61 @@ fun unpause_waits_while_an_admission_is_pending() {
         &unpause_admin(),
         &package_admin,
         f.version_mut(),
+        &treasury,
+        constants::admin_pause_bit!(),
+    );
+
+    abort
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_vault::errors::EUnguardedDelay,
+    location = blast_vault::blast_vault_package,
+)]
+/// The core treasury's delay is part of the vault's release gate: a pending change to zero keeps
+/// the package paused until it is cancelled.
+fun unpause_waits_while_a_zero_treasury_delay_is_pending() {
+    let mut scenario = vault_fixture::begin();
+    let mut f = vault_fixture::start(&mut scenario);
+    let registry = guarded_registry(&f, scenario.ctx());
+    let package_admin = new_package_admin(scenario.ctx());
+    let mut treasury = guarded_treasury(scenario.ctx());
+    let treasury_admin: AdminWitness<TreasuryAdmin> = blast_acl::witness_for_testing();
+    treasury.schedule_destination(&treasury_admin, vault_fixture::treasury_address(), 0, f.clock());
+    package_admin::pause(f.version_mut(), &pause_admin(), constants::admin_pause_bit!());
+
+    registry.unpause(
+        &unpause_admin(),
+        &package_admin,
+        f.version_mut(),
+        &treasury,
+        constants::admin_pause_bit!(),
+    );
+
+    abort
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EVersionMismatch,
+    location = blast_admin::package_version,
+)]
+/// Stale vault bytecode cannot release pause bits, whatever its own gate checked.
+fun unpause_rejects_a_stale_version() {
+    let mut scenario = vault_fixture::begin();
+    let mut f = vault_fixture::start(&mut scenario);
+    let registry = guarded_registry(&f, scenario.ctx());
+    let package_admin = new_package_admin(scenario.ctx());
+    let treasury = guarded_treasury(scenario.ctx());
+    package_admin::pause(f.version_mut(), &pause_admin(), constants::admin_pause_bit!());
+    f.version_mut().set_version_for_testing(constants::version!() + 1);
+
+    registry.unpause(
+        &unpause_admin(),
+        &package_admin,
+        f.version_mut(),
+        &treasury,
         constants::admin_pause_bit!(),
     );
 
@@ -291,16 +354,19 @@ fun unpause_clears_the_bits_while_every_delay_is_guarded() {
     let mut f = vault_fixture::start(&mut scenario);
     let registry = guarded_registry(&f, scenario.ctx());
     let package_admin = new_package_admin(scenario.ctx());
+    let treasury = guarded_treasury(scenario.ctx());
     package_admin::pause(f.version_mut(), &pause_admin(), constants::admin_pause_bit!());
 
     registry.unpause(
         &unpause_admin(),
         &package_admin,
         f.version_mut(),
+        &treasury,
         constants::admin_pause_bit!(),
     );
 
     assert_eq!(f.version().paused_for_testing(), 0);
+    destroy(treasury);
     destroy(package_admin);
     destroy(registry);
     f.end();
@@ -391,6 +457,11 @@ fun guarded_registry(f: &VaultFixture, ctx: &mut TxContext): VaultRegistry {
     registry
 }
 
+/// The core treasury at its 48-hour publication delay, as a released stack has it.
+fun guarded_treasury(ctx: &mut TxContext): Treasury {
+    blast_treasury::new_for_testing(vault_fixture::treasury_address(), ctx)
+}
+
 /// Package administration for the vault package with its production upgrade delay.
 fun new_package_admin(ctx: &mut TxContext): PackageAdmin<BLAST_VAULT_PACKAGE> {
     package_admin::new_for_testing(
@@ -423,7 +494,10 @@ use blast_admin::{
     package_admin::{Self, PackageAdmin, PauseAdmin, UnpauseAdmin, UpgradeAdmin}
 };
 
-use blast_core::blast_domain::{VenueAdmin, CancelAdmin};
+use blast_core::{
+    blast_domain::{VenueAdmin, CancelAdmin, TreasuryAdmin},
+    blast_treasury::{Self, Treasury}
+};
 
 use blast_vault::{
     blast_vault_package::{Self, BLAST_VAULT_PACKAGE, VaultRegistry},

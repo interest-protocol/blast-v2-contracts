@@ -178,9 +178,10 @@ or `Funded`. The vault never closes and its position is never removed.
    notice from wrap. Read back every operation's notice and configured value before release.
 5. Sign in as `UnpauseAdmin<BLAST_PRESALE_PACKAGE>` and clear the intended bits (all = 7) with
    `creation_policy::unpause(creation_policy, package_version, unpause_admin, package_admin,
-   fee_policy, bits)`. Unpause is immediate once every notice is guarded: the fee rates and
-   the venue set each need a nonzero applied notice, no pending proposal that would set it to
-   zero, and no pending venue admission; otherwise it aborts with
+   fee_policy, treasury, bits)`. Unpause is immediate once every notice is guarded: the fee rates,
+   the venue set, and the core treasury destination each need a nonzero applied notice, no
+   pending proposal that would set it to zero, and no pending venue admission; otherwise it
+   aborts with
    `blast_presale::errors::EUnguardedDelay` (0). The generic administration then requires the
    upgrade notice to be guarded too (`blast_admin::errors::EUnguardedUpgradeDelay`).
 
@@ -621,8 +622,9 @@ role-authorized setup; the PackageAdmin starts at 172,800,000 ms (48 hours), so
 no upgrade or immutability action can run without notice, even during setup. Configure
 and apply each other operation's intended notice, and drain or cancel all earlier setup
 proposals before release. `creation_policy::unpause` enforces the minimum: it aborts unless the
-fee rates and venue set each have a nonzero applied notice, no pending proposal that would set one
-to zero, and no pending venue admission; the generic administration then checks the upgrade slot.
+fee rates, the venue set, and the core treasury destination each have a nonzero applied notice, no
+pending proposal that would set one to zero, and no pending venue admission; the generic
+administration then checks the upgrade slot.
 Raising a notice never changes previously scheduled deadlines or next delays.
 Pausing and upgrades cannot reset notices. This source requires a fresh stack.
 
@@ -642,7 +644,8 @@ that is neither admitted nor pending, aborts with code 16 from `delayed_set`.
 A `PauseAdmin<BLAST_PRESALE_PACKAGE>` calls `blast_admin::package_admin::pause` to set selected
 bits on the shared version. Only `UnpauseAdmin<BLAST_PRESALE_PACKAGE>` may clear bits, with
 `creation_policy::unpause`, which takes the `CreationPolicy`, the `PackageVersion`, the
-`PackageAdmin` and the `FeePolicy` and first checks that every presale notice is guarded (see above). Bits:
+`PackageAdmin`, the `FeePolicy` and the core `blast_core::blast_treasury::Treasury` and first
+checks that every presale notice and the treasury's are guarded (see above). Bits:
 create is 1, commit is 2, migrate is 4. Pauses never expire; a paused call aborts with
 `blast_admin::errors::EPaused` from `blast_admin::package_version`, and pause and unpause events are
 `blast_admin::blast_admin_events::Paused` and `blast_admin::blast_admin_events::Unpaused`, typed

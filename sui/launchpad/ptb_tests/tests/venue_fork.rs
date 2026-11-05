@@ -596,9 +596,9 @@ impl World {
         let venue_type = tag(&format!("{migrators}::{}::Venue", case.module()));
         let issuer_type = tag(&format!("{blast}::blast_fun::PackageWitness"));
         let vault_stack = h.wrap_vault(admin, vault, &vault_publication)?;
-        h.release_vault(admin, admin_published, core, &vault_stack, &[venue_type.clone(), issuer_type])?;
+        h.release_vault(admin, admin_published, core, &vault_stack, stack.treasury, &[venue_type.clone(), issuer_type])?;
         let (version, package_admin) = h.wrap_launchpad(blast, published, admin, admin_published, core, case.quote(), venue_type)?;
-        h.unpause_launchpad(blast, admin, admin_published, version, package_admin, runtime, config, 7)?;
+        h.unpause_launchpad(blast, admin, admin_published, version, package_admin, runtime, config, stack.treasury, 7)?;
         let (fixture, project_token) = if burnable {
             ("fixture/burnable_project", "burnable_token::BURNABLE_TOKEN")
         } else {
@@ -1604,11 +1604,14 @@ impl World {
             args.push(self.shared(&mut b, self.venue("bluefin_global_config"), false)?);
         }
         args.push(self.shared(&mut b, pool, true)?);
-        args.push(self.clock(&mut b)?);
         let function = match update {
             Some(_) => "settle_and_apply_fee_split",
             None => "collect_fees",
         };
+        // Cetus's `collect_fees` neither compounds nor applies a split, so it takes no Clock.
+        if !(self.case.is_cetus() && update.is_none()) {
+            args.push(self.clock(&mut b)?);
+        }
         call(&mut b, self.migrators, self.case.module(), function, self.route_types(launch), args);
 
         Ok(b.finish())

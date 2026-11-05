@@ -172,23 +172,24 @@ public fun cancel_venue_delay(
     self.venues.cancel_delay();
 }
 
-/// Clears the requested pause bits once every presale delay is guarded: nonzero, with no
-/// pending change that would set one to zero and no pending admission. A delay left at its zero
-/// publication value therefore blocks release instead of going live; the generic administration
-/// then checks the upgrade delay and the pinned witness. Settlement, cancellation, refunds and
-/// claims never require unpausing.
+/// Clears the requested pause bits once every presale delay and the core treasury's delay are
+/// guarded: nonzero, with no pending change that would set one to zero and no pending admission.
+/// A delay left at its zero publication value therefore blocks release instead of going live; the
+/// generic administration then checks the upgrade delay and the pinned witness. Settlement,
+/// cancellation, refunds and claims never require unpausing.
 public fun unpause(
     self: &CreationPolicy,
     package_version: &mut PackageVersion<BLAST_PRESALE_PACKAGE>,
     unpause_admin: &AdminWitness<UnpauseAdmin<BLAST_PRESALE_PACKAGE>>,
     package_admin: &PackageAdmin<BLAST_PRESALE_PACKAGE>,
     fee_policy: &FeePolicy,
+    treasury: &Treasury,
     bits: u8,
 ) {
     package_version.assert_current(constants::version!());
 
     assert!(
-        self.is_guarded() && fee_policy.is_guarded(),
+        self.is_guarded() && fee_policy.is_guarded() && treasury.is_guarded(),
         blast_presale::errors::unguarded_delay!(),
     );
 
@@ -310,7 +311,10 @@ use blast_admin::{
     package_version::PackageVersion
 };
 
-use blast_core::blast_domain::{VenueAdmin, CancelAdmin, FeeAdmin, ListingAdmin};
+use blast_core::{
+    blast_domain::{VenueAdmin, CancelAdmin, FeeAdmin, ListingAdmin},
+    blast_treasury::Treasury
+};
 
 use blast_partners::{blast_partners::Partner, partner_list::{Self, PartnerList}};
 

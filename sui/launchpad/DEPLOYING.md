@@ -161,8 +161,9 @@ under the approved independent multisig arrangement: grant CancelAdmin and
 PauseAdmin to it before release so incident response can cancel pending proposals
 and pause. Grant `UnpauseAdmin<BLAST_FUN>` through the shared Blast ACL, sign in
 with its AdminCap, and call `launch_config::unpause` with the LaunchConfig, the
-RuntimeConfig, the witness, the shared `PackageAdmin<BLAST_FUN>`, the mutable
-`PackageVersion<BLAST_FUN>` and the selected bits (all = 7).
+RuntimeConfig, the core Treasury, the witness, the shared `PackageAdmin<BLAST_FUN>`,
+the mutable `PackageVersion<BLAST_FUN>` and the selected bits (all = 7). It refuses
+while the treasury's notice is unguarded, as it does for the launchpad's own.
 This release is immediate and needs no Clock; retain its events and readback.
 A later pause cannot recreate Publication or reset a notice. Later protected
 changes wait the operation's applied notice; changing that notice waits its old

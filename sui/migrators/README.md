@@ -55,7 +55,7 @@ sale's partner) and splits the rest by the vault's `FeeSplit`:
 | Route | Where it goes |
 | --- | --- |
 | Owner | accrues in the vault; the sale's owner claims it with an owner proof from the sale's product and `blast_vault::vault::claim_owner_balances` |
-| Auto-LP | added back at the pool's current price (Cetus: to a second position, because the migration position is burned through Cetus LP Burn; Bluefin: to the migration position); what the pool does not take waits for the next call |
+| Auto-LP | accrues in the vault until anyone calls the venue's `compound_auto_lp`, which adds it at the pool's current price (Cetus: to a second position, because the migration position is burned through Cetus LP Burn; Bluefin: to the migration position); what the pool does not take waits for the next call. Compounding is apart from collection, so a venue refusing the add never blocks collecting fees |
 | Holder rewards | accrues in the vault for holder-reward rounds |
 | Burn | the Meme is burned at once (paid to `@0x0` when the supply is fixed); the Quote waits for a buyback |
 | Address | paid directly to each address |
@@ -79,8 +79,8 @@ split before activating the stored replacement. Blast's share starts from
 the product's LP-fee policy, sealed into the `Migration`'s vault terms, is capped
 at 30% per asset, and changes only per vault after the vault's fixed 48-hour notice.
 Because auto-LP adds at the current price, a caller can move the price around a
-collection and skim part of that call's auto-LP amount; frequent collection
-keeps each slice small.
+compounding call and skim part of that call's auto-LP amount; frequent
+compounding keeps each slice small.
 
 ## Holder rewards
 

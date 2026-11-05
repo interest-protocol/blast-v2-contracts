@@ -375,23 +375,25 @@ public fun cancel_venue_delay(
     self.venues.cancel_delay();
 }
 
-/// Clears the requested pause bits once every launchpad delay is guarded: nonzero, with no
-/// pending change that would set one to zero and no pending admission. A delay left at its zero
-/// publication value therefore blocks release instead of going live; the generic administration
-/// then checks the upgrade delay and the pinned witness. Claims and opening-round delivery never
-/// require unpausing; settling an opening round needs the trading bit clear.
+/// Clears the requested pause bits once every launchpad delay and the core treasury's delay are
+/// guarded: nonzero, with no pending change that would set one to zero and no pending admission.
+/// A delay left at its zero publication value therefore blocks release instead of going live; the
+/// generic administration then checks the upgrade delay and the pinned witness. Claims and
+/// opening-round delivery never require unpausing; settling an opening round needs the trading
+/// bit clear.
 public fun unpause(
     self: &LaunchConfig,
     package_version: &mut PackageVersion<BLAST_FUN>,
     unpause_admin: &AdminWitness<UnpauseAdmin<BLAST_FUN>>,
     package_admin: &PackageAdmin<BLAST_FUN>,
     runtime_config: &RuntimeConfig,
+    treasury: &Treasury,
     bits: u8,
 ) {
     package_version.assert_current(constants::version!());
 
     assert!(
-        self.is_guarded() && runtime_config.is_guarded(),
+        self.is_guarded() && runtime_config.is_guarded() && treasury.is_guarded(),
         blast_fun::errors::unguarded_delay!(),
     );
 
@@ -657,6 +659,7 @@ use blast_admin::{
 
 use blast_core::{
     blast_domain::{VenueAdmin, CancelAdmin, FeeAdmin, ListingAdmin, TreasuryAdmin},
+    blast_treasury::Treasury,
     bps::{Self, Bps}
 };
 

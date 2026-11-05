@@ -143,16 +143,24 @@ public fun cancel_witness_delay(
     self.witnesses.cancel_delay();
 }
 
-/// Clears pause bits once the witness admission delay is guarded; the generic administration
-/// then checks the upgrade delay and the pinned witness.
+/// Clears pause bits once the witness admission delay and the core treasury's delay are guarded:
+/// nonzero, with no pending change that would set one to zero and no pending admission. It runs
+/// only on the live version; the generic administration then checks the upgrade delay and the
+/// pinned witness.
 public fun unpause(
     self: &VaultRegistry,
     unpause_admin: &AdminWitness<UnpauseAdmin<BLAST_VAULT_PACKAGE>>,
     package_admin: &PackageAdmin<BLAST_VAULT_PACKAGE>,
     package_version: &mut PackageVersion<BLAST_VAULT_PACKAGE>,
+    treasury: &Treasury,
     bits: u8,
 ) {
-    assert!(self.witnesses.is_guarded(), blast_vault::errors::unguarded_delay!());
+    package_version.assert_current(constants::version!());
+
+    assert!(
+        self.witnesses.is_guarded() && treasury.is_guarded(),
+        blast_vault::errors::unguarded_delay!(),
+    );
 
     package_admin.clear_pause_bits(unpause_admin, PackageWitness(), package_version, bits);
 }
@@ -247,7 +255,7 @@ use blast_admin::{
     package_version::{Self, PackageVersion}
 };
 
-use blast_core::blast_domain::{VenueAdmin, CancelAdmin};
+use blast_core::{blast_domain::{VenueAdmin, CancelAdmin}, blast_treasury::Treasury};
 
 use blast_vault::constants;
 

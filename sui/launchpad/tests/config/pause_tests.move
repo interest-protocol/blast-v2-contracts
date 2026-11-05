@@ -3,9 +3,13 @@
 
 #[test_only]
 /// The launchpad's unpause: it clears bits through `blast_admin::package_admin` only while every
-/// launchpad delay is guarded. Pause-bit arithmetic and the upgrade delay are the generic
-/// administration's and are tested there.
+/// launchpad delay and the core treasury's delay are guarded. Pause-bit arithmetic and the
+/// upgrade delay are the generic administration's and are tested there.
 module blast_fun::pause_tests;
+
+// === Constants ===
+
+const TREASURY: address = @0x7EA5;
 
 // === Test-Only Types ===
 
@@ -14,6 +18,7 @@ public struct ReleaseFixture {
     package_admin: PackageAdmin<BLAST_FUN>,
     runtime_config: RuntimeConfig,
     launch_config: LaunchConfig,
+    treasury: Treasury,
 }
 
 // === Tests ===
@@ -83,6 +88,14 @@ fun unpause_rejects_a_pending_signer_admission() {
 }
 
 #[test]
+#[expected_failure(abort_code = blast_fun::errors::EUnguardedDelay, location = blast_fun::launch_config)]
+fun unpause_rejects_a_pending_change_to_a_zero_treasury_delay() {
+    let mut f = release_fixture().with_zero_delay_treasury_proposal();
+    f.unpause(constants::create_pause_bit!());
+    abort
+}
+
+#[test]
 #[expected_failure(abort_code = blast_admin::errors::EUnguardedUpgradeDelay, location = blast_admin::package_admin)]
 fun unpause_rejects_a_pending_zero_upgrade_delay() {
     let mut f = release_fixture().with_zero_upgrade_delay_proposal();
@@ -100,8 +113,8 @@ fun pause_flags_name_three_independent_operations() {
 
 // === Test Helpers ===
 
-/// A fully paused version with the 48-hour upgrade delay and policies whose delays were raised
-/// to two days.
+/// A fully paused version with the 48-hour upgrade delay, policies whose delays were raised to
+/// two days, and the core treasury at its 48-hour publication delay.
 fun release_fixture(): ReleaseFixture {
     release_fixture_with(runtime_config::new_zero_fee_share_for_testing(&mut tx_context::dummy()))
 }
@@ -116,11 +129,18 @@ fun release_fixture_with(runtime_config: RuntimeConfig): ReleaseFixture {
         package_admin: otw::package_admin_for_testing(ctx),
         runtime_config,
         launch_config: launch_config::new_zero_fees_for_testing(ctx),
+        treasury: blast_treasury::new_for_testing(TREASURY, ctx),
     }
 }
 
 fun with_zero_delay_fee_share_proposal(self: ReleaseFixture): ReleaseFixture {
-    let ReleaseFixture { version, package_admin, mut runtime_config, launch_config } = self;
+    let ReleaseFixture {
+        version,
+        package_admin,
+        mut runtime_config,
+        launch_config,
+        treasury,
+    } = self;
     let clock = sui::clock::create_for_testing(&mut tx_context::dummy());
     runtime_config.schedule_protocol_fee_share(
         &version,
@@ -131,11 +151,17 @@ fun with_zero_delay_fee_share_proposal(self: ReleaseFixture): ReleaseFixture {
     );
     destroy(clock);
 
-    ReleaseFixture { version, package_admin, runtime_config, launch_config }
+    ReleaseFixture { version, package_admin, runtime_config, launch_config, treasury }
 }
 
 fun with_zero_delay_lp_fee_proposal(self: ReleaseFixture): ReleaseFixture {
-    let ReleaseFixture { version, package_admin, runtime_config, mut launch_config } = self;
+    let ReleaseFixture {
+        version,
+        package_admin,
+        runtime_config,
+        mut launch_config,
+        treasury,
+    } = self;
     let clock = sui::clock::create_for_testing(&mut tx_context::dummy());
     launch_config.schedule_protocol_lp_fees(
         &version,
@@ -147,11 +173,17 @@ fun with_zero_delay_lp_fee_proposal(self: ReleaseFixture): ReleaseFixture {
     );
     destroy(clock);
 
-    ReleaseFixture { version, package_admin, runtime_config, launch_config }
+    ReleaseFixture { version, package_admin, runtime_config, launch_config, treasury }
 }
 
 fun with_pending_signer_admission(self: ReleaseFixture): ReleaseFixture {
-    let ReleaseFixture { version, package_admin, mut runtime_config, launch_config } = self;
+    let ReleaseFixture {
+        version,
+        package_admin,
+        mut runtime_config,
+        launch_config,
+        treasury,
+    } = self;
     let clock = sui::clock::create_for_testing(&mut tx_context::dummy());
     runtime_config.schedule_creator_claim_signer(
         &version,
@@ -161,11 +193,37 @@ fun with_pending_signer_admission(self: ReleaseFixture): ReleaseFixture {
     );
     destroy(clock);
 
-    ReleaseFixture { version, package_admin, runtime_config, launch_config }
+    ReleaseFixture { version, package_admin, runtime_config, launch_config, treasury }
+}
+
+fun with_zero_delay_treasury_proposal(self: ReleaseFixture): ReleaseFixture {
+    let ReleaseFixture {
+        version,
+        package_admin,
+        runtime_config,
+        launch_config,
+        mut treasury,
+    } = self;
+    let clock = sui::clock::create_for_testing(&mut tx_context::dummy());
+    treasury.schedule_destination(
+        &blast_acl::witness_for_testing<TreasuryAdmin>(),
+        TREASURY,
+        0,
+        &clock,
+    );
+    destroy(clock);
+
+    ReleaseFixture { version, package_admin, runtime_config, launch_config, treasury }
 }
 
 fun with_zero_upgrade_delay_proposal(self: ReleaseFixture): ReleaseFixture {
-    let ReleaseFixture { version, mut package_admin, runtime_config, launch_config } = self;
+    let ReleaseFixture {
+        version,
+        mut package_admin,
+        runtime_config,
+        launch_config,
+        treasury,
+    } = self;
     let clock = sui::clock::create_for_testing(&mut tx_context::dummy());
     package_admin.schedule_upgrade_delay(
         &blast_acl::witness_for_testing<UpgradeAdmin<BLAST_FUN>>(),
@@ -174,7 +232,7 @@ fun with_zero_upgrade_delay_proposal(self: ReleaseFixture): ReleaseFixture {
     );
     destroy(clock);
 
-    ReleaseFixture { version, package_admin, runtime_config, launch_config }
+    ReleaseFixture { version, package_admin, runtime_config, launch_config, treasury }
 }
 
 fun unpause(self: &mut ReleaseFixture, bits: u8) {
@@ -183,6 +241,7 @@ fun unpause(self: &mut ReleaseFixture, bits: u8) {
         &blast_acl::witness_for_testing<UnpauseAdmin<BLAST_FUN>>(),
         &self.package_admin,
         &self.runtime_config,
+        &self.treasury,
         bits,
     );
 }
@@ -203,7 +262,11 @@ use blast_admin::{
     package_version::PackageVersion
 };
 
-use blast_core::{blast_domain::{ClaimSignerAdmin, FeeAdmin}, bps};
+use blast_core::{
+    blast_domain::{ClaimSignerAdmin, FeeAdmin, TreasuryAdmin},
+    blast_treasury::{Self, Treasury},
+    bps
+};
 
 use blast_fun::{
     blast_fun::{Self as otw, BLAST_FUN},

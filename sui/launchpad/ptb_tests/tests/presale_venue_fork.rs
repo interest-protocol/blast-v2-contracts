@@ -791,7 +791,7 @@ impl World {
         let venue_type = tag(&format!("{venues}::{}::Venue", route.module()));
         let issuer_type = tag(&format!("{presale}::blast_presale_package::PackageWitness"));
         let vault_stack = h.wrap_vault(admin, vault, &vault_publication)?;
-        h.release_vault(admin, admin_published, core, &vault_stack, &[venue_type.clone(), issuer_type])?;
+        h.release_vault(admin, admin_published, core, &vault_stack, stack.treasury, &[venue_type.clone(), issuer_type])?;
 
         // Publication keeps an owned generic Publication; `blast_admin::package_admin::wrap` seals
         // the UpgradeCap and shares the version with every presale bit paused.
@@ -840,7 +840,7 @@ impl World {
         call(&mut b, presale, "fee_policy", "schedule_fees", vec![], vec![fees, version_arg, fee_admin, zero_bps, zero_bps, zero_bps, zero_bps, delay, clock]);
         call(&mut b, presale, "fee_policy", "apply_fees", vec![], vec![fees, version_arg, clock]);
         h.execute(b.finish())?.assert_success();
-        h.unpause_presale(presale, admin, admin_published, version, package_admin[0], creation_policy[0], fee_policy[0], 7)?;
+        h.unpause_presale(presale, admin, admin_published, version, package_admin[0], creation_policy[0], fee_policy[0], stack.treasury, 7)?;
         ensure!(h.contents(SUI_CLOCK_OBJECT_ID) == clock_before);
 
         Ok(World {
@@ -969,7 +969,7 @@ impl World {
         let witness = self.sign_in(b, role)?;
         if !pause {
             return append_presale_unpause(&self.h, b, self.presale, self.package_admin, self.version, witness,
-                self.creation_policy, self.fee_policy, bits);
+                self.creation_policy, self.fee_policy, self.treasury, bits);
         }
         let version = b.obj(self.h.shared(self.version, true))?;
         let bits = b.pure(bits)?;
@@ -1816,7 +1816,10 @@ impl World {
             ]);
             let mut types = self.pair(sale);
             types.extend(self.pool_pair(&sale.meme));
-            args.push(self.clock(&mut b)?);
+            // Cetus's `collect_fees` neither compounds nor applies a split, so it takes no Clock.
+            if apply {
+                args.push(self.clock(&mut b)?);
+            }
             call(&mut b, self.venues, "cetus", function, types, args);
         } else {
             args.extend([

@@ -411,8 +411,8 @@ venue fails. `launch::migrate`:
 3. Pays every project recipient its Meme and Quote through `blast_core::payout::pay_or_vest`: as
    coins, or into one shared `blast_fun_vesting::blast_fun_linear_vesting::Vesting` per asset
    starting now for a vesting recipient (zero amounts are skipped). It emits
-   `blast_fun::events::MigrationAllocationPaid` for each recipient. The venue's migrate passes the
-   `Clock`.
+   `blast_fun::events::MigrationAllocationPaid` for each recipient, naming the Meme and Quote
+   schedule IDs when the recipient vests. The venue's migrate passes the `Clock`.
 4. Moves Blast's one-time Meme and Quote allocation into the launch's fee ledger and, when either is
    non-zero, emits `blast_fun::events::ProtocolFeesAccrued`.
 5. Disposes of the curve's unsold Meme plus `pending_burn`: burned through the Coin Registry when
@@ -560,12 +560,13 @@ and the vault's owner proofs follow the new curve-fee cap. Applying emits
 A `PauseAdmin<BLAST_FUN>` calls `blast_admin::package_admin::pause` to set bits on `PackageVersion`
 at once; it emits `blast_admin::blast_admin_events::Paused<BLAST_FUN>`. Only
 `UnpauseAdmin<BLAST_FUN>` clears bits, with `launch_config::unpause`, which takes `LaunchConfig`,
-`PackageVersion` (mutable), the witness, `PackageAdmin<BLAST_FUN>`, and `RuntimeConfig`. It checks
-the current version, then aborts with `blast_fun::errors::EUnguardedDelay` unless every
-launchpad notice is guarded: the claim-signer set, the trade-fee share, trade fees, the venue set,
-the migration allocation, the LP-fee share, and the creation fee each have a nonzero applied notice,
-no pending proposal would set one to zero, and no venue or signer admission is pending. The generic
-administration then requires the upgrade notice to be guarded too and emits
+`PackageVersion` (mutable), the witness, `PackageAdmin<BLAST_FUN>`, `RuntimeConfig`, and the core
+`blast_core::blast_treasury::Treasury`. It checks the current version, then aborts with
+`blast_fun::errors::EUnguardedDelay` unless every launchpad notice and the treasury's notice are
+guarded: the claim-signer set, the trade-fee share, trade fees, the venue set, the migration
+allocation, the LP-fee share, the creation fee, and the treasury destination each have a nonzero
+applied notice, no pending proposal would set one to zero, and no venue or signer admission is
+pending. The generic administration then requires the upgrade notice to be guarded too and emits
 `blast_admin::blast_admin_events::Unpaused<BLAST_FUN>`.
 
 Create is 1, Trading is 2, Migrate is 4; all together are 7. Create stops `launch::new`,
@@ -792,7 +793,7 @@ carry the transaction sender; take it from the transaction.
 | `blast_fun::events::MemeMetadataUpdated` | metadata setters | `launch_id`, current `name`, `description`, `icon_url` |
 | `blast_fun::events::CreatorFeesClaimed` | creator fee claim | `launch_id`, `meme_amount`, `quote_amount` |
 | `blast_core::blast_core_events::ProtocolFeesPaid` | Blast launch-fee claims | `package_witness` (`blast_fun::blast_fun::PackageWitness`), `origin` (the launch ID), `treasury` and its Meme, Quote, SUI amounts; `partner_id` and its amounts (0 without a partner) |
-| `blast_fun::events::MigrationAllocationPaid` | migration | one per recipient: `destination`, `meme_amount`, `quote_amount` |
+| `blast_fun::events::MigrationAllocationPaid` | migration | one per recipient: `destination`, `meme_amount`, `quote_amount`, and `meme_vesting_id`, `quote_vesting_id` (the shared `Vesting` IDs when the recipient vests, else none) |
 | `blast_fun::events::ProtocolFeesAccrued` | migration | Blast's one-time Meme and Quote allocation |
 | `blast_fun::events::Migrated` | migration | `meme_amount`, `quote_amount` handed to the venue for the pool, `disposed_meme`, `total_supply_after` |
 
@@ -815,7 +816,7 @@ fee-payout aborts from `blast_core`, and partner-list aborts from `blast_partner
 | any | 9 in `blast_admin::package_version` | call the launchpad's current package ID |
 | pause, unpause | 19 `EInvalidPauseBits`, 20 `EPauseUnchanged` from `blast_admin::package_version` | select nonzero supported bits that change the active mask |
 | create, buy, sell, join, settle, migrate | 21 `blast_admin::errors::EPaused` (`package_version`) | wait for an `UnpauseAdmin<BLAST_FUN>` to clear the operation's bit |
-| unpause | 32 `blast_fun::errors::EUnguardedDelay` (`launch_config`); 23 `EUnguardedUpgradeDelay` from `blast_admin::package_admin` | make every notice nonzero, cancel proposals that would zero one, settle pending admissions |
+| unpause | 32 `blast_fun::errors::EUnguardedDelay` (`launch_config`); 23 `EUnguardedUpgradeDelay` from `blast_admin::package_admin` | make every launchpad notice and the core treasury's nonzero, cancel proposals that would zero one, settle pending admissions |
 | package administration | 22 `EWrongUpgradeAction`, 11 `EInvalidPackageDigest` from `blast_admin::package_admin` | execute the exact scheduled action; use a 32-byte digest |
 | delayed administration | 13 `ENotReady`, 14 `ENoPending`, 15 `EInvalidDelay`, 16 `EUnchanged`, 18 `EWrongChange` from Blast admin's delayed modules | wait for `ready_at_ms`; schedule before applying or cancelling; choose a notice of at most 30 days; change the value or notice; apply with the call matching the pending change |
 | publish | 7 `blast_fun::errors::EInvalidSellBurnBps` (`launch_ticket`); 20 `blast_fun::errors::EInvalidCreatorRecipient`, 21 `blast_fun::errors::EInvalidAccountCommitment` (`creator_authority`); `EInvalidSymbol` in `sui::coin_registry`; arithmetic overflow | sell-burn at most 5,000; a non-zero address or a 32-byte commitment; an ASCII-printable symbol; decimals at most 10 |

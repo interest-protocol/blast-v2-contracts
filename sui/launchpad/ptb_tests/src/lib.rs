@@ -280,8 +280,8 @@ pub fn presale_role(admin: ObjectID, core: ObjectID, presale: ObjectID, role: &s
     Ok(sui_types::parse_sui_type_tag(&tag)?)
 }
 
-/// Appends `creation_policy::unpause`, which clears `bits` only while every presale delay and the
-/// package's upgrade delay are guarded.
+/// Appends `creation_policy::unpause`, which clears `bits` only while every presale delay, the
+/// core treasury's delay and the package's upgrade delay are guarded.
 #[allow(clippy::too_many_arguments)]
 pub fn append_presale_unpause(
     h: &Harness,
@@ -292,14 +292,16 @@ pub fn append_presale_unpause(
     witness: Argument,
     creation_policy: ObjectID,
     fee_policy: ObjectID,
+    treasury: ObjectID,
     bits: u8,
 ) -> Result<()> {
     let creation_policy = b.obj(h.shared(creation_policy, false))?;
     let version = b.obj(h.shared(version, true))?;
     let package_admin = b.obj(h.shared(package_admin, false))?;
     let fee_policy = b.obj(h.shared(fee_policy, false))?;
+    let treasury = b.obj(h.shared(treasury, false))?;
     let bits = b.pure(bits)?;
-    call(b, presale, "creation_policy", "unpause", vec![], vec![creation_policy, version, witness, package_admin, fee_policy, bits]);
+    call(b, presale, "creation_policy", "unpause", vec![], vec![creation_policy, version, witness, package_admin, fee_policy, treasury, bits]);
     Ok(())
 }
 
@@ -320,8 +322,8 @@ pub fn launchpad_role(admin: ObjectID, core: ObjectID, blast: ObjectID, role: &s
     Ok(sui_types::parse_sui_type_tag(&tag)?)
 }
 
-/// Appends `launch_config::unpause`, which clears `bits` only while every launchpad delay and the
-/// package's upgrade delay are guarded.
+/// Appends `launch_config::unpause`, which clears `bits` only while every launchpad delay, the
+/// core treasury's delay and the package's upgrade delay are guarded.
 #[allow(clippy::too_many_arguments)]
 pub fn append_launchpad_unpause(
     h: &Harness,
@@ -332,14 +334,16 @@ pub fn append_launchpad_unpause(
     witness: Argument,
     runtime: ObjectID,
     config: ObjectID,
+    treasury: ObjectID,
     bits: u8,
 ) -> Result<()> {
     let config = b.obj(h.shared(config, false))?;
     let runtime = b.obj(h.shared(runtime, false))?;
     let package_admin = b.obj(h.shared(package_admin, false))?;
     let version = b.obj(h.shared(version, true))?;
+    let treasury = b.obj(h.shared(treasury, false))?;
     let bits = b.pure(bits)?;
-    call(b, blast, "launch_config", "unpause", vec![], vec![config, version, witness, package_admin, runtime, bits]);
+    call(b, blast, "launch_config", "unpause", vec![], vec![config, version, witness, package_admin, runtime, treasury, bits]);
     Ok(())
 }
 
@@ -1050,17 +1054,17 @@ impl Harness {
 
     /// Releases `bits` of the launchpad through the real ACL: grants a fresh `AdminCap` the
     /// generic `UnpauseAdmin<BLAST_FUN>` and calls `launch_config::unpause`, which needs every
-    /// launchpad delay guarded, without advancing the Clock.
+    /// launchpad delay and the core treasury's guarded, without advancing the Clock.
     #[allow(clippy::too_many_arguments)]
     pub fn unpause_launchpad(&mut self, blast: ObjectID, admin: ObjectID, publication: &Outcome,
-        version: ObjectID, package_admin: ObjectID, runtime: ObjectID, config: ObjectID, bits: u8,
+        version: ObjectID, package_admin: ObjectID, runtime: ObjectID, config: ObjectID, treasury: ObjectID, bits: u8,
     ) -> Result<()> {
         let role = launchpad_role(admin, ObjectID::ZERO, blast, "UnpauseAdmin")?;
         let cap = self.grant_roles(admin, publication, std::slice::from_ref(&role))?;
         let clock_before = self.contents(sui_types::SUI_CLOCK_OBJECT_ID);
         let mut b = ProgrammableTransactionBuilder::new();
         let witness = self.sign_in_as(&mut b, admin, publication, cap, role)?;
-        append_launchpad_unpause(self, &mut b, blast, package_admin, version, witness, runtime, config, bits)?;
+        append_launchpad_unpause(self, &mut b, blast, package_admin, version, witness, runtime, config, treasury, bits)?;
         self.execute(b.finish())?.assert_success();
         assert_eq!(self.contents(sui_types::SUI_CLOCK_OBJECT_ID), clock_before);
         Ok(())
@@ -1157,7 +1161,7 @@ impl Harness {
     /// through its own unpause, through real ACL roles: `blast_core`'s `VenueAdmin` and the
     /// vault package's `UnpauseAdmin`.
     pub fn release_vault(&mut self, admin: ObjectID, admin_publication: &Outcome, core: ObjectID, stack: &VaultStack,
-        witnesses: &[sui_types::TypeTag],
+        treasury: ObjectID, witnesses: &[sui_types::TypeTag],
     ) -> Result<()> {
         let adapter_role = sui_types::parse_sui_type_tag(&format!("{core}::blast_domain::VenueAdmin"))?;
         let unpause_role = stack.unpause_role(admin)?;
@@ -1183,7 +1187,7 @@ impl Harness {
         let clock_before = self.contents(sui_types::SUI_CLOCK_OBJECT_ID);
         let mut b = ProgrammableTransactionBuilder::new();
         let witness = self.sign_in_as(&mut b, admin, admin_publication, cap, unpause_role)?;
-        stack.append_unpause(self, &mut b, witness, 1)?;
+        stack.append_unpause(self, &mut b, witness, treasury, 1)?;
         self.execute(b.finish())?.assert_success();
         let (_, _, paused, _, _): GenericPackageVersionContents = bcs::from_bytes(&self.contents(stack.version))?;
         ensure!(paused == 0, "the vault package is released");
@@ -1240,14 +1244,14 @@ impl Harness {
     /// presale delay guarded, without advancing the Clock.
     #[allow(clippy::too_many_arguments)]
     pub fn unpause_presale(&mut self, presale: ObjectID, admin: ObjectID, publication: &Outcome,
-        version: ObjectID, package_admin: ObjectID, creation_policy: ObjectID, fee_policy: ObjectID, bits: u8,
+        version: ObjectID, package_admin: ObjectID, creation_policy: ObjectID, fee_policy: ObjectID, treasury: ObjectID, bits: u8,
     ) -> Result<()> {
         let role = presale_role(admin, ObjectID::ZERO, presale, "UnpauseAdmin")?;
         let cap = self.grant_roles(admin, publication, std::slice::from_ref(&role))?;
         let clock_before = self.contents(sui_types::SUI_CLOCK_OBJECT_ID);
         let mut b = ProgrammableTransactionBuilder::new();
         let witness = self.sign_in_as(&mut b, admin, publication, cap, role)?;
-        append_presale_unpause(self, &mut b, presale, package_admin, version, witness, creation_policy, fee_policy, bits)?;
+        append_presale_unpause(self, &mut b, presale, package_admin, version, witness, creation_policy, fee_policy, treasury, bits)?;
         self.execute(b.finish())?.assert_success();
         assert_eq!(self.contents(sui_types::SUI_CLOCK_OBJECT_ID), clock_before);
         Ok(())
@@ -1345,12 +1349,13 @@ impl VaultStack {
 
     /// Appends `blast_vault_package::unpause`, which clears `bits` only while the registry's
     /// admission delay and the package's upgrade delay are guarded.
-    pub fn append_unpause(&self, h: &Harness, b: &mut ProgrammableTransactionBuilder, witness: Argument, bits: u8) -> Result<()> {
+    pub fn append_unpause(&self, h: &Harness, b: &mut ProgrammableTransactionBuilder, witness: Argument, treasury: ObjectID, bits: u8) -> Result<()> {
         let registry = b.obj(h.shared(self.registry, false))?;
         let package_admin = b.obj(h.shared(self.package_admin, false))?;
         let version = b.obj(h.shared(self.version, true))?;
+        let treasury = b.obj(h.shared(treasury, false))?;
         let bits = b.pure(bits)?;
-        call(b, self.package, "blast_vault_package", "unpause", vec![], vec![registry, witness, package_admin, version, bits]);
+        call(b, self.package, "blast_vault_package", "unpause", vec![], vec![registry, witness, package_admin, version, treasury, bits]);
         Ok(())
     }
 

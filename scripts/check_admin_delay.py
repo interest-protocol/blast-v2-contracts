@@ -85,10 +85,10 @@ signature, body = functions('launchpad', 'launch_config')['unpause']
 assert signature.split('(', 1)[1].replace(' ', '').replace('\n', '') == (
     'self:&LaunchConfig,package_version:&mutPackageVersion<BLAST_FUN>,'
     'unpause_admin:&AdminWitness<UnpauseAdmin<BLAST_FUN>>,package_admin:&PackageAdmin<BLAST_FUN>,'
-    'runtime_config:&RuntimeConfig,bits:u8,)'
+    'runtime_config:&RuntimeConfig,treasury:&Treasury,bits:u8,)'
 ), signature
 assert body.startswith(f'package_version.assert_current{LAUNCHPAD_CURRENT}'), body
-assert body.index('self.is_guarded() && runtime_config.is_guarded()') < body.index('clear_pause_bits('), body
+assert body.index('self.is_guarded() && runtime_config.is_guarded() && treasury.is_guarded()') < body.index('clear_pause_bits('), body
 require(body, 'package_admin.clear_pause_bits(unpause_admin, package_witness(), package_version, bits)')
 # The presale runs on the generic package administration too, and pays Blast's fees to the core
 # treasury, so it governs no destination of its own.
@@ -114,10 +114,10 @@ signature, body = functions('presale', 'creation_policy')['unpause']
 assert signature.split('(', 1)[1].replace(' ', '').replace('\n', '') == (
     'self:&CreationPolicy,package_version:&mutPackageVersion<BLAST_PRESALE_PACKAGE>,'
     'unpause_admin:&AdminWitness<UnpauseAdmin<BLAST_PRESALE_PACKAGE>>,'
-    'package_admin:&PackageAdmin<BLAST_PRESALE_PACKAGE>,fee_policy:&FeePolicy,bits:u8,)'
+    'package_admin:&PackageAdmin<BLAST_PRESALE_PACKAGE>,fee_policy:&FeePolicy,treasury:&Treasury,bits:u8,)'
 ), signature
 assert body.startswith(f'package_version.assert_current{PRESALE_CURRENT}'), body
-assert body.index('self.is_guarded() && fee_policy.is_guarded()') < body.index('clear_pause_bits('), body
+assert body.index('self.is_guarded() && fee_policy.is_guarded() && treasury.is_guarded()') < body.index('clear_pause_bits('), body
 require(body, 'package_admin.clear_pause_bits(unpause_admin, package_witness(), package_version, bits)')
 for path in (ROOT / 'sui/presale/sources').rglob('*.move'):
     production = path.read_text().split('// === Test-Only Functions ===')[0]
@@ -227,6 +227,20 @@ signature, body = functions('vault', 'blast_vault_package')['make_immutable']
 require(signature, '&AdminWitness<UpgradeAdmin<BLAST_VAULT_PACKAGE>>', 'package_version: &PackageVersion<BLAST_VAULT_PACKAGE>')
 assert body.startswith('package_version.assert_current(constants::version!());'), body
 require(body, 'package_admin.make_immutable(upgrade_admin, PackageWitness(), package_version, clock)')
+# The vault's unpause runs on its live version only and, like the products', refuses while its
+# own admission delay or the core treasury's delay is unguarded.
+vault_callers = [(path.stem, name) for path in (ROOT / 'sui/vault/sources').rglob('*.move')
+                 for name, (_, body) in functions('vault', path.stem).items() if 'clear_pause_bits(' in body]
+assert vault_callers == [('blast_vault_package', 'unpause')], vault_callers
+signature, body = functions('vault', 'blast_vault_package')['unpause']
+assert signature.split('(', 1)[1].replace(' ', '').replace('\n', '') == (
+    'self:&VaultRegistry,unpause_admin:&AdminWitness<UnpauseAdmin<BLAST_VAULT_PACKAGE>>,'
+    'package_admin:&PackageAdmin<BLAST_VAULT_PACKAGE>,package_version:&mutPackageVersion<BLAST_VAULT_PACKAGE>,'
+    'treasury:&Treasury,bits:u8,)'
+), signature
+assert body.startswith('package_version.assert_current(constants::version!());'), body
+assert body.index('self.witnesses.is_guarded() && treasury.is_guarded()') < body.index('clear_pause_bits('), body
+require(body, 'package_admin.clear_pause_bits(unpause_admin, PackageWitness(), package_version, bits)')
 for package in ('launchpad', 'presale', 'migrators'):
     for path in (ROOT / 'sui' / package / 'sources').rglob('*.move'):
         assert '.make_immutable(' not in path.read_text(), path
@@ -439,7 +453,9 @@ for path in migrators_sources.rglob('*.move'):
     assert 'PackageWitness()' not in production.replace('public struct PackageWitness() has drop;', ''), path
 for venue in ('bluefin', 'cetus'):
     routes = [row for row in facts('migrators', venue) if row[0] == 'FN' and row[2] == 'public' and row[5] == '0']
-    assert len(routes) == 5, venue
+    assert sorted(row[1] for row in routes) == [
+        'buyback_and_burn', 'collect_fees', 'compound_auto_lp', 'migrate', 'prepare', 'settle_and_apply_fee_split',
+    ], (venue, routes)
     for row in routes:
         require(row[8], 'migrators_version: &PackageVersion<BLAST_MIGRATORS>')
         assert row[9].startswith('migrators_version.assert_current(constants::version!());'), (venue, row[1])

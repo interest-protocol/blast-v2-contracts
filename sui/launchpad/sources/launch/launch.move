@@ -857,13 +857,16 @@ public fun migrate<Meme, Quote>(
 
     payees.length().do!(|i| {
         let (payee, meme, quote) = (&payees[i], recipient_meme[i], recipient_quote[i]);
-        payout::pay_or_vest(&mut self.allocated_meme, meme, payee, clock, ctx);
-        payout::pay_or_vest(&mut self.real_quote_reserve, quote, payee, clock, ctx);
+        let meme_vesting_id = payout::pay_or_vest(&mut self.allocated_meme, meme, payee, clock, ctx);
+        let quote_vesting_id =
+            payout::pay_or_vest(&mut self.real_quote_reserve, quote, payee, clock, ctx);
         events::migration_allocation_paid<Meme, Quote>(
             self.id.to_inner(),
             payee.destination(),
             meme,
             quote,
+            meme_vesting_id,
+            quote_vesting_id,
         );
     });
 
