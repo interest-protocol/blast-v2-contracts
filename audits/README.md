@@ -37,14 +37,15 @@ the evidence for venue behaviour.
 
 The report records **0 critical, 0 high, 0 medium, 1 low, and 4 informational**
 findings and one hypothesis (H-1, whether Bluefin's auto-LP add can ask more than
-the venue's local estimate). All five findings are **remediated** in the pull
-request that added this file (ADR 0134, amendment of 5 November 2026): the vault's
-`unpause` is version-gated (L-1); every `unpause` requires the core treasury's
-notice guarded (I-1); `MigrationAllocationPaid` carries the vesting schedule IDs
-(I-2); holder-reward leaves are documented as account addresses (I-3); auto-LP
-compounding is the venues' own `compound_auto_lp`, apart from collection (I-4).
-H-1 can no longer block collection; the add itself is not yet exercised against
-venue bytecode.
+the venue's local estimate). All five findings are **remediated** in
+[#217](https://github.com/interest-protocol/blast-v2-contracts/pull/217) (ADR 0134,
+amendment of 5 November 2026): the vault's `unpause` is version-gated (L-1); every
+`unpause` requires the core treasury's notice guarded (I-1);
+`MigrationAllocationPaid` carries the vesting schedule IDs (I-2); holder-reward
+leaves are documented as account addresses (I-3); auto-LP compounding is the
+venues' own `compound_auto_lp`, apart from collection (I-4). H-1 can no longer
+block collection; exercising the add against venue bytecode is
+[#218](https://github.com/interest-protocol/blast-v2-contracts/issues/218).
 
 The report's supporting records (system map, function inventory, checked-clean
 record, proof-of-concept tests and logs) are kept in the Blast workspace, not in
