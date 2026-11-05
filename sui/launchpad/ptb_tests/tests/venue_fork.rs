@@ -1698,8 +1698,10 @@ impl World {
             self.h.sim.advance_clock(std::time::Duration::from_millis(before.delay_ms));
             // A later failing command must roll back the ready application, venue collection,
             // payouts, and proposal consumption together.
+            // The apply is the PTB's first command; compounding follows it. A second apply finds
+            // no pending proposal.
             let mut rollback = self.collect_pt(launch, m, m.pool, update)?;
-            rollback.commands.push(rollback.commands.last().expect("apply").clone());
+            rollback.commands.push(rollback.commands.first().expect("apply").clone());
             let expected = Expected::Abort { package: self.admin, module: "delayed", code: 14 };
             self.h.assert_rolled_back(rollback, expected, &[m.vault, m.pool, launch.currency], &watched_payees)?;
         }
