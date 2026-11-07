@@ -130,6 +130,7 @@ records below it decide what 0137 does not restate.
 | [0137](0137-shared-launch-stack-core-vault-and-venues.md) | Shared launch stack: core, vault, and venues | proposed; amended 2026-11-05: seven packages, one `blast_migrators` venue package (Cetus and Bluefin) in place of `blast_venues`, the Aftermath DAO vendor as a plain venue, two-call migration, standalone vaults cut, one package witness and one package administration, no repair or policy narrowing, vault immutable after audit; amended by 0138 (sealed treasury caps) |
 | [0138](0138-sealed-treasury-caps-and-venue-admissions.md) | Sealed treasury caps and venue admissions | proposed |
 | [0139](0139-admin-bounded-auto-lp-compounding.md) | Admin-bounded auto-LP compounding | accepted |
+| [0140](0140-upgrade-cap-manager.md) | Digest-bound upgrades and immutability with a fixed 48-hour notice | accepted |
 
 ## Open premises
 

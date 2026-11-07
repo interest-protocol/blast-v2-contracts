@@ -6,7 +6,7 @@ gates; admin, partners, core and vault immutability awaits the final audit.
 
 > Sui Move contracts behind Blast (blast.fun): a bonding-curve launchpad whose graduated coins migrate into Cetus or Bluefin pools, standalone overflow presales, partner fee codes, Boost leverage coins on Aftermath perpetuals, and the funSUI/blastSUI staking vault. Sui mainnet only.
 
-**Integrators:** give your agent the self-contained reference for the product you build on: [presale](llms/presale.txt), [launchpad](llms/launchpad.txt), [shared core](llms/core.txt), [LP vault](llms/vault.txt), [partner codes](llms/partners.txt), [Boosts](llms/boosts.txt), [blastSUI and funSUI](llms/blast-sui.txt), or [administration](llms/admin.txt). Each covers how the product works end to end, plus every public function, type, event, and abort code of its packages and the packages they depend on, generated from source. [llms-full.txt](llms-full.txt) joins every product in one file for agents with a large context window.
+**Integrators:** give your agent the self-contained reference for the product you build on: [presale](llms/presale.txt), [launchpad](llms/launchpad.txt), [shared core](llms/core.txt), [LP vault](llms/vault.txt), [partner codes](llms/partners.txt), [Boosts](llms/boosts.txt), [blastSUI and funSUI](llms/blast-sui.txt), [administration](llms/admin.txt), or the [delayed UpgradeCap manager](llms/upgrade-cap-manager.txt). Each covers how the product works end to end, plus every public function, type, event, and abort code of its packages and the packages they depend on, generated from source. [llms-full.txt](llms-full.txt) joins every product in one file for agents with a large context window.
 
 This file routes agents. Find the branch that matches your task, open only what it names, and read Move source for anything concrete. Docs here record decisions and boundaries; functions, structs, events, errors, and constants are complete only in source.
 
@@ -70,3 +70,5 @@ Outside the product surface: `scratch-sui/` (parked native DEX), every `interfac
 - [Decision index](docs/decisions/README.md): every ADR with its status, plus the open premises still awaiting falsification tests.
 - [Leverage terminal record](docs/leverage-terminal-local.md): Boost shutdown, cash claims, and replay.
 - [Research](docs/research/): dated research and audits behind earlier decisions. Background only; accepted ADRs and source supersede it.
+
+- [Delayed UpgradeCap manager](sui/upgrade_cap_manager/README.md): framework-only native cap custody with a fixed 48-hour notice for digest-bound upgrades or terminal immutability. Independently verify the manager publication is immutable before enrollment; no publication is recorded.

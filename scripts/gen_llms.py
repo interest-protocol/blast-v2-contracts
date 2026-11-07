@@ -45,6 +45,7 @@ PACKAGES = [
     ("sui/core", "Shared core"),
     ("sui/vault", "LP vault"),
     ("sui/admin", "Administration"),
+    ("sui/upgrade_cap_manager", "Delayed UpgradeCap manager"),
     ("sui/vendors/aftermath_dao_presale", "Aftermath DAO-pool presale migrator"),
 ]
 # Packages kept out of regeneration, with the issue that brings each back. blast_sui (#191) and
@@ -69,6 +70,7 @@ GUIDES = [
     ("core.md", ["sui/core"]),
     ("vault.md", ["sui/vault"]),
     ("admin.md", ["sui/admin"]),
+    ("upgrade-cap-manager.md", ["sui/upgrade_cap_manager"]),
 ]
 
 
@@ -85,6 +87,13 @@ class Product:
 
 # One file per product under llms/. Every file opens with basics.md.
 PRODUCTS = [
+    Product(
+        "upgrade-cap-manager",
+        "Delayed UpgradeCap manager",
+        "native UpgradeCap custody with a fixed 48-hour notice for digest-bound upgrades and terminal immutability",
+        ["upgrade-cap-manager.md"],
+        ["sui/upgrade_cap_manager"],
+    ),
     Product(
         "presale",
         "Presale",

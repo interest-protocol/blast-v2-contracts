@@ -1,0 +1,479 @@
+# Blast contracts: Delayed UpgradeCap manager integrator reference
+
+> Everything an integrator needs to understand and call native UpgradeCap custody with a fixed 48-hour notice for digest-bound upgrades and terminal immutability. Sui mainnet only.
+
+This file is self-contained: give it to an AI agent and ask it anything about Delayed UpgradeCap manager. Other products are in [llms-full.txt](https://github.com/interest-protocol/blast-v2-contracts/blob/main/llms-full.txt), which joins every product in one file.
+
+How it is organized:
+
+1. **Packages and deployment status**: each package, whether it is live on Sui mainnet, and its IDs.
+2. **Guides**: how each product works end to end, starting with the calling conventions every product shares. Each product guide opens with its deployment status. Use them for behavior, flows, economics, and pitfalls.
+3. **API reference**: generated from the Move source. Every public function and type with its doc comment, every event, every abort code, and the package constants. Use it for exact signatures and field layouts.
+
+When the guides and the reference disagree, the reference is right: it is generated from the source on every change. When this file does not say a behavior exists, treat it as unsupported. Source for every module is linked from the reference ([repository](https://github.com/interest-protocol/blast-v2-contracts)).
+
+Conventions: amounts are atomic units of the coin named; rates are basis points (BPS) out of 10,000; timestamps are Unix milliseconds from Sui's shared `Clock` at `0x6`, while durations and delays are elapsed milliseconds. Types are written as Move: `module::Type` names a type in another module of the same package, `package::module::Type` one in another Blast package, and well-known Sui framework types appear bare.
+
+## Packages and deployment status
+
+Call a live package at its package ID (`published-at`). Types and events are named by the package that first defined them (`original-id`), which stays the same across upgrades.
+
+| Package | Product | Status | Package ID (`published-at`) | Type origin (`original-id`) |
+| --- | --- | --- | --- | --- |
+| `blast_upgrade_cap_manager` | Delayed UpgradeCap manager | not yet published | — | — |
+
+## Calling Blast contracts
+
+Every Blast product is a set of Sui Move packages called from programmable
+transaction blocks (PTBs). This section covers what every product shares. Each
+product guide below assumes it.
+
+### Products and packages
+
+| Product | What users do | Packages |
+| --- | --- | --- |
+| Presale | commit Quote to a capped or overflow sale, claim tokens or refunds, earn LP fees and holder rewards after migration | `blast_presale`; the shared venues `blast_migrators`; one-off partner venues such as `blast_aftermath_dao_presale`; `blast_vault` (LP vault, holder rewards) |
+| Launchpad | launch a coin on a bonding curve, trade it, graduate it into a DEX pool | `blast_fun` (curve, lifecycle, fees), a generated coin package per launch, `blast_migrators` (Cetus and Bluefin venues for both products: venue start, migration, LP fees), `blast_vault` (LP vault, holder rewards) |
+| Partner codes | earn a share of Blast's fee on the flow an app brings | `blast_partners` |
+| Boosts | hold a leveraged long or short coin backed by Aftermath perpetuals | `blast_boosts_core`, `blast_boosts_products`, `blast_boosts_aftermath` |
+| blastSUI | stake SUI with one validator through funSUI and blastSUI | `blast_sui` |
+| Administration | Blast's operators manage roles, fees, and upgrades | `blast_admin` |
+
+Each package and what it depends on:
+
+```text
+blast_migrators              -> blast_core, blast_vault, blast_admin, Cetus, Bluefin
+blast_aftermath_dao_presale  -> blast_core, Aftermath AMM
+blast_fun                    -> blast_core, blast_partners, blast_admin
+blast_presale                -> blast_core, blast_partners, blast_admin
+blast_vault                  -> blast_core, blast_partners, blast_admin
+blast_core                   -> blast_partners, blast_admin, blast_fun_vesting
+blast_partners               -> blast_admin
+blast_boosts_aftermath       -> blast_boosts_core, blast_partners, blast_admin, Aftermath perpetuals
+blast_boosts_core            -> blast_admin
+blast_sui                    -> blast_admin, Sui system
+blast_admin                  -> Sui framework only
+```
+
+No product imports a venue or the vault, and no venue imports a product. They
+compose inside one PTB through `blast_core` values: a venue's `prepare` returns
+the `VenueTicket` the product's creation call redeems, and at migration the
+product's `migrate` returns the `Migration` that the next command passes to the
+stored venue's `migrate`, which locks the liquidity in a
+`blast_vault::vault::Vault`.
+Use the presale guide for presale calls.
+
+`blast_fun_vesting` (used by `blast_core` for vesting payouts) lives in this repository at
+`sui/vesting` and is immutable on mainnet. The standalone
+OTC package lives at `sui/otc`. See the [utility integration guide](https://github.com/interest-protocol/blast-v2-contracts/blob/main/docs/utilities.md).
+
+### Time values
+
+Timestamp parameters ending in `_at_ms` are points in time measured in Unix
+milliseconds. Duration parameters ending in `_duration_ms` are lengths of time;
+`_delay_ms` parameters are offsets from the documented anchor. For example,
+`commitment_starts_at_ms + commitment_duration_ms` is the commitment window's
+end timestamp. Stored fields and event payloads retain their published names;
+read their documented meaning rather than assuming every `_ms` value is a
+timestamp. Framework calls such as `Clock::timestamp_ms` retain their native
+names.
+
+### Building a call
+
+- **Target.** A call is `moveCall` with target
+  `<package-id>::<module>::<function>`. Use the package ID (`published-at`) from
+  the deployment table.
+- **Type arguments.** Pass fully qualified type strings. A Blast type is named by
+  the package that first defined it (`original-id`), even after an upgrade.
+- **`TxContext`.** A trailing `ctx: &TxContext` or `&mut TxContext` parameter is
+  supplied by Sui. Leave it out of the arguments.
+- **Shared objects.** Pass a shared object by ID. A `&` parameter takes it
+  read-only, `&mut` or by value takes it mutably; mutable access orders the
+  transaction through consensus with every other writer of that object.
+- **System objects.** `Clock` is `0x6` (always `&Clock`), the Sui system state is
+  `0x5`, and the Coin Registry is `0xc`.
+- **Coins in.** A function that takes `Coin<T>` by value consumes it whole. Split
+  the exact amount first (`SplitCoins`; for SUI, split from the gas coin) and
+  merge several coins first when needed (`MergeCoins`).
+- **Values out.** Most Blast functions return coins and objects instead of
+  transferring them. Every returned value without the `drop` ability must be used
+  before the PTB ends: transfer it (`TransferObjects`), pass it to a later call,
+  or merge it. A value with no abilities at all (a "hot potato", such as a
+  launch initializer or a migration handoff) can only be consumed by the specific
+  later call that accepts it, so the whole sequence must sit in one PTB.
+- **Basis points.** The launch products and the vault share one validated
+  `Bps` type, `blast_core::bps::Bps`. Build one inside the PTB with
+  `blast_core::bps::new`, which aborts above 10,000.
+- **Options.** Pass `Option<T>` arguments with `0x1::option::some` or
+  `0x1::option::none` calls, or as pure BCS-encoded options.
+
+### Reading state
+
+- **Getters** are public functions that take `&` objects and return values. Run
+  them through a dev-inspect or simulated transaction to read without signing
+  or paying.
+- **Object fields** can be read directly from a full node and decoded with BCS.
+  The API reference prints every struct with its fields in declaration order,
+  which is the BCS order. Fields are readable on chain even though Move code
+  outside the module cannot access them.
+- **Per-user records** (commitments, claims) usually live in dynamic fields
+  keyed by a small key struct the reference lists; read them with the
+  dynamic-field RPC calls.
+- **Events** reconstruct history; contract state and completed events are the
+  source of truth, and any off-chain preview is an estimate.
+
+### Versions and upgrades
+
+Upgrade rules depend on the package lineage.
+
+| Posture | Packages | What callers do |
+| --- | --- | --- |
+| Deferred immutability | `blast_admin`, `blast_partners`, `blast_core` | The canonical publication retains raw compatible UpgradeCaps at the multisig until final audit. These caps have no enforced upgrade notice. Consult the deployment record before assuming immutability. |
+| Immutable | `blast_boosts_core`, `blast_aftermath_dao_presale` | Nothing: the code never changes. |
+| Dependency-only | Historical presale publications | These older lineages can relink venue packages and do not use a version object. |
+| Version-gated | `blast_presale`, `blast_fun`, `blast_vault`, `blast_migrators`, `blast_sui`, `blast_boosts_aftermath` | Mutating calls take the package's shared version object (for the launch packages, `blast_admin::package_version::PackageVersion<OTW>`). After an upgrade advances it, calls through an older package ID abort with a version mismatch, so always call the current ID. `blast_vault` is made immutable after its audit. |
+| Additive | `blast_boosts_products` | Upgrades only add product tags; it holds no state. |
+
+### Events
+
+- Query events by their Move type, named with the `original-id`.
+- `blast_sui` and `blast_boosts_aftermath` wrap every payload in the `Event<T>`
+  envelope of their own `blast_events` module (for example
+  `blast_sui::blast_events::Event`), so the event type is
+  `<original-id>::blast_events::Event<<original-id>::<module>::<Payload>>`.
+  Every other package, the launchpad included, emits payload structs directly.
+- Sui orders events by checkpoint, transaction, and event index within the
+  transaction; payloads carry no sequence numbers of their own.
+- The reference lists every event struct under its module with its fields.
+
+### Errors
+
+A failed call returns a Move abort naming the module and function that aborted
+and a `u64` code. Blast uses two styles:
+
+- **Named errors** (`#[error]` constants): `blast_aftermath_dao_presale`. Sui's RPC and SDKs
+  decode these into the constant's name and message; the reference lists each
+  module's constants with their messages.
+- **Numeric codes**: `blast_admin`, `blast_partners`, `blast_core`, `blast_vault`,
+  `blast_fun`, `blast_presale`, `blast_migrators`, `blast_sui`, `blast_boosts_core`,
+  and `blast_boosts_aftermath` abort with small integers. Look the
+  number up in that package's abort-code table in the reference.
+
+The abort names the module where it happened, which may be a package called
+underneath the one you called: a migrator call can abort inside `blast_core`,
+`blast_vault` or `blast_admin`, and an abort in a Cetus, Bluefin, or Aftermath
+module comes from the venue. Simulate a transaction before signing to see its abort without
+spending gas.
+
+### Network
+
+Blast deploys only to Sui mainnet. There is no testnet deployment, faucet, or
+test address. Try a transaction with a mainnet simulation (dev-inspect or dry
+run) before signing it.
+
+## Delayed UpgradeCap manager
+
+> **Deployment status:** `blast_upgrade_cap_manager` is not yet published on mainnet; its interface may change before publication.
+
+A framework-only manager holds several native UpgradeCaps. Each cap can have
+one pending exact-digest upgrade or terminal immutability request. Both wait a
+full 48 hours from their own request transaction. Several upgrades and
+immutability requests may wait concurrently, including requests created in one PTB.
+
+### Objects, authority and enrollment
+
+`blast_upgrade_cap_manager::UpgradeCapManager` is shared and holds an ObjectTable
+of up to 256 active caps, keyed by original UpgradeCap ID. Original cap objects
+remain discoverable below the embedded table UID. Requests are dynamic fields
+on the manager UID, keyed by that same cap ID. A package ID changes on upgrade;
+the original cap ID used to select actions does not.
+
+Its transferable `blast_upgrade_cap_manager::ManagerCap` authorizes enrollment,
+requests and cancellation for every cap in that manager. Keep it address-owned;
+sharing or freezing it exposes that borrowed authority publicly. Losing or
+destroying it prevents further enrollment, requests and cancellation across all
+managed caps. Already pending actions remain permissionlessly executable.
+
+Independently verify the manager publication immutable before valuable enrollment:
+destroy its own original native cap directly through Sui, verify its actual effects,
+cap/package binding, bytecode and publication history, and publish the transaction
+digest as an evidence locator. No proof object or enrollment gate enforces this.
+
+1. First cap holder: call `blast_upgrade_cap_manager::new` with a native cap,
+   share its returned manager through `blast_upgrade_cap_manager::share`, and
+   transfer its returned controller to the custodian in the same PTB.
+   `blast_upgrade_cap_manager::ManagerCreated` identifies manager and controller.
+2. Matching controller holder: call `blast_upgrade_cap_manager::add_upgrade_cap`
+   with manager, controller and an additional native cap. The original cap ID is
+   derived from the supplied object. Each enrollment, including the first, emits
+   `blast_upgrade_cap_manager::UpgradeCapAdded` with cap ID, package and policy.
+   No Blast Publication, OTW or target package import is needed. A cap with an
+   outstanding native ticket is rejected. Burning a cap frees an enrollment slot;
+   even a manager whose last cap was burned can enroll again.
+
+### Independent requests and cancellation
+
+Matching controller holder:
+
+- Call `blast_upgrade_cap_manager::request_upgrade` with manager, controller,
+  selected UpgradeCap ID, exact native 32-byte digest and immutable Clock at 0x6.
+  Compute the digest from actual modules and dependency package IDs through Sui
+  tooling. Publish reproducible artifacts for observers; a source commit is not
+  the native digest. `blast_upgrade_cap_manager::UpgradeRequested` records the
+  cap ID, digest, request timestamp and deadline.
+- Alternatively call `blast_upgrade_cap_manager::request_make_immutable` with
+  manager, controller, selected cap ID and Clock. Its
+  `blast_upgrade_cap_manager::ImmutabilityRequested` event records that cap's
+  timestamp and deadline. Check required application exits and dependency routes
+  before permanently ending native upgrades.
+- Call `blast_upgrade_cap_manager::cancel_request` with manager, controller and
+  cap ID to cancel only that cap's action. Cancellation is allowed after maturity
+  until execution wins transaction ordering; it has no priority over execution.
+  `blast_upgrade_cap_manager::RequestCancelled` preserves cap ID, original action
+  and original deadline. Explicit cancellation is required before replacement,
+  which starts a fresh full delay. Other caps' deadlines never reset.
+
+### Upgrade execution
+
+Anyone, without a controller, may execute a mature upgrade:
+
+1. Call `blast_upgrade_cap_manager::authorize_upgrade` with manager, selected
+   cap ID and Clock. It consumes only that cap's request and returns a native
+   UpgradeTicket bound to the stored digest and the cap's native policy.
+2. Feed the ticket into the native Upgrade command with exact modules,
+   dependencies and the cap's current package ID. Different bytes/dependencies
+   or a policy-incompatible upgrade abort. The result is a native UpgradeReceipt.
+3. Call `blast_upgrade_cap_manager::commit_upgrade` with manager and receipt.
+   The native receipt determines the cap ID; callers cannot redirect it. The
+   `blast_upgrade_cap_manager::UpgradeAuthorized` and
+   `blast_upgrade_cap_manager::UpgradeCommitted` events identify the cap and
+   consumed digest/deadline or new package/version, respectively.
+
+Several caps may have native tickets outstanding in one PTB and commit in any
+order. Every ticket and receipt must be consumed in that PTB. Any failure rolls
+back requests, native cap state and events atomically. A new request for a cap
+with an outstanding ticket is rejected; other caps remain usable. After that
+receipt commits, a fresh request for the same cap can begin, including in the
+same PTB. Target business-version activation and migration are separate.
+
+### Per-cap immutability and controller cleanup
+
+Anyone may call `blast_upgrade_cap_manager::make_immutable` with a mutable manager
+reference, selected cap ID and Clock after its immutability request matures. It
+removes and destroys only that native cap, its custody field and pending request,
+and emits `blast_upgrade_cap_manager::PackageMadeImmutable`. The manager,
+ObjectTable, controller, other caps and their pending requests survive. It ends
+native upgrades for the selected target; application objects retain their own
+rules. An upgrade request cannot authorize immutability, or vice versa.
+
+The controller holder may call `blast_upgrade_cap_manager::destroy_cap` to
+renounce enrollment, request and cancellation authority for the entire manager.
+All pending actions remain executable. Idle native caps become inaccessible if
+the sole controller is destroyed; controller destruction does not burn those caps.
+
+### Time, state and failures
+
+Every request stores canonical Clock plus 172,800,000 milliseconds. Execution is
+allowed inclusively at that deadline and has no expiry. Overflow is rejected.
+Independent deadlines still use Sui's ordering on the shared manager.
+
+`blast_upgrade_cap_manager::pending_request` takes manager and cap ID and returns
+that cap's optional request (none when idle or no longer managed).
+`blast_upgrade_cap_manager::action` and `blast_upgrade_cap_manager::ready_at_ms`
+read its action and deadline. Outside code cannot extract or mutably borrow a
+managed cap. Individual actions perform bounded lookups without iterating caps;
+pending requests cannot exceed the number of enrolled caps.
+
+Wrong controllers, unknown or removed caps, duplicate/absent requests, wrong
+actions, malformed digests, overflow, early execution and excess enrollment
+abort. Native digest, policy and receipt checks remain enforced. There is no
+raw-cap withdrawal, loan, delay setter, policy setter or emergency bypass. The
+package charges no protocol fee; ordinary Sui costs apply.
+
+## API reference: `blast_upgrade_cap_manager` (Delayed UpgradeCap manager)
+
+Not yet published on mainnet. Its interface may change before publication.
+
+Events: payload structs are emitted directly, each under its own type.
+
+### `blast_upgrade_cap_manager::blast_upgrade_cap_manager`
+
+Native UpgradeCap custody with an independent 48-hour notice per cap and action.
+
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/upgrade_cap_manager/sources/blast_upgrade_cap_manager.move
+
+#### Types
+
+```move
+/// Key-only custody for at most MAX_CAPS native caps, discoverable through the object table.
+/// Each cap ID has at most one pending Request in a dynamic field on this manager.
+public struct UpgradeCapManager has key {
+    id: UID,
+    caps: object_table::ObjectTable<ID, UpgradeCap>,
+}
+
+/// Transferable request, cancellation and enrollment authority for exactly one manager.
+public struct ManagerCap has key, store {
+    id: UID,
+    manager_id: ID,
+}
+
+/// One cap's authorized action and inclusive execution timestamp, in Clock milliseconds.
+public struct Request has copy, drop, store {
+    action: Action,
+    ready_at_ms: u64,
+}
+
+/// Mutually exclusive actions for one cap; other caps' requests remain independent.
+public enum Action has copy, drop, store {
+    Upgrade {
+        digest: vector<u8>,
+    },
+    MakeImmutable,
+}
+```
+
+#### Functions
+
+```move
+/// Creates a manager with its first native cap and an instance-bound controller.
+/// Before valuable enrollment, independently verify destruction of this package's own cap.
+public fun new(upgrade_cap: UpgradeCap, ctx: &mut TxContext): (UpgradeCapManager, ManagerCap)
+
+/// Shares a newly created manager; transfer its returned ManagerCap separately.
+public fun share(self: UpgradeCapManager)
+
+/// Controller only: enrolls another native cap, up to MAX_CAPS active caps per manager.
+/// The key is the original cap ID. No withdrawal path exists; native policy is preserved.
+public fun add_upgrade_cap(self: &mut UpgradeCapManager, cap: &ManagerCap, upgrade_cap: UpgradeCap)
+
+/// Controller only: requests this cap's exact native digest after a full 48 hours.
+/// Cancel this cap's existing request before replacement; other caps are unaffected.
+public fun request_upgrade(
+    self: &mut UpgradeCapManager,
+    cap: &ManagerCap,
+    upgrade_cap_id: ID,
+    digest: vector<u8>,
+    clock: &Clock,
+)
+
+/// Controller only: requests permanent immutability of this cap's target after 48 hours.
+public fun request_make_immutable(
+    self: &mut UpgradeCapManager,
+    cap: &ManagerCap,
+    upgrade_cap_id: ID,
+    clock: &Clock,
+)
+
+/// Controller only: cancels this cap's pending action, including after maturity.
+public fun cancel_request(self: &mut UpgradeCapManager, cap: &ManagerCap, upgrade_cap_id: ID)
+
+/// Anyone: consumes this cap's mature request and authorizes its exact digest and native policy.
+/// Consume the native ticket and commit its receipt in the same PTB; failures roll back atomically.
+public fun authorize_upgrade(
+    self: &mut UpgradeCapManager,
+    upgrade_cap_id: ID,
+    clock: &Clock,
+): UpgradeTicket
+
+/// Anyone: commits to the cap identified by the native receipt; callers cannot redirect it.
+public fun commit_upgrade(self: &mut UpgradeCapManager, receipt: UpgradeReceipt)
+
+/// Anyone: executes this cap's mature immutability request and permanently destroys that cap.
+/// Other caps, their requests and the shared manager survive. Application objects are not frozen.
+public fun make_immutable(self: &mut UpgradeCapManager, upgrade_cap_id: ID, clock: &Clock)
+
+/// Holder only: permanently renounces enrollment, request and cancellation authority.
+/// All pending actions remain executable; this does not cancel them or destroy native caps.
+public fun destroy_cap(cap: ManagerCap)
+
+/// This cap's pending action and deadline, or none when idle or no longer managed.
+public fun pending_request(self: &UpgradeCapManager, upgrade_cap_id: ID): Option<Request>
+
+/// The exact upgrade digest or terminal immutability action authorized by the request.
+public fun action(self: &Request): &Action
+
+/// Inclusive Clock timestamp when the request becomes executable.
+public fun ready_at_ms(self: &Request): u64
+```
+
+#### Events
+
+```move
+public struct ManagerCreated has copy, drop {
+    manager_id: ID,
+    controller_id: ID,
+}
+
+public struct UpgradeCapAdded has copy, drop {
+    manager_id: ID,
+    upgrade_cap_id: ID,
+    package_id: ID,
+    policy: u8,
+}
+
+public struct UpgradeRequested has copy, drop {
+    manager_id: ID,
+    upgrade_cap_id: ID,
+    digest: vector<u8>,
+    requested_at_ms: u64,
+    ready_at_ms: u64,
+}
+
+public struct RequestCancelled has copy, drop {
+    manager_id: ID,
+    upgrade_cap_id: ID,
+    action: Action,
+    ready_at_ms: u64,
+}
+
+public struct UpgradeAuthorized has copy, drop {
+    manager_id: ID,
+    upgrade_cap_id: ID,
+    digest: vector<u8>,
+    ready_at_ms: u64,
+}
+
+public struct UpgradeCommitted has copy, drop {
+    manager_id: ID,
+    upgrade_cap_id: ID,
+    package_id: ID,
+    version: u64,
+}
+
+public struct ImmutabilityRequested has copy, drop {
+    manager_id: ID,
+    upgrade_cap_id: ID,
+    requested_at_ms: u64,
+    ready_at_ms: u64,
+}
+
+public struct PackageMadeImmutable has copy, drop {
+    manager_id: ID,
+    upgrade_cap_id: ID,
+    package_id: ID,
+    ready_at_ms: u64,
+}
+```
+
+#### Errors
+
+| Constant | Code | Message |
+| --- | --- | --- |
+| `EAlreadyAuthorized` | 0 | An outstanding native upgrade ticket prevents enrollment or requests |
+| `EWrongController` | 1 | Controller belongs to a different manager |
+| `ERequestPending` | 2 | Cancel the existing request before requesting another |
+| `EInvalidDigest` | 3 | A native upgrade digest must contain 32 bytes |
+| `ETimestampOverflow` | 4 | The complete 48-hour delay exceeds the timestamp range |
+| `ENoRequest` | 5 | No action has been requested |
+| `EWrongAction` | 6 | The pending request authorizes a different action |
+| `ETooEarly` | 7 | The request's full 48-hour delay has not elapsed |
+| `EUnknownCap` | 8 | This UpgradeCap is not held by this manager |
+| `ECapacityReached` | 9 | This manager already holds the maximum number of UpgradeCaps |
+
+#### Constants
+
+- `MAX_CAPS: u64 = 256`: Maximum simultaneously custodied native caps; burning a cap frees a slot.
+- `DELAY_MS: u64 = 172_800_000`
+- `MAX_TIMESTAMP_MS: u64 = 18_446_744_073_709_551_615 - DELAY_MS`
+- `DIGEST_LENGTH: u64 = 32`

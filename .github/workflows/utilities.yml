@@ -3,9 +3,9 @@ name: Immutable utilities
 on:
   push:
     branches: [main]
-    paths: ['sui/otc/**', 'sui/vesting/**', 'sdk/**', '.github/workflows/utilities.yml']
+    paths: ['sui/otc/**', 'sui/vesting/**', 'sui/upgrade_cap_manager/**', 'sdk/**', '.github/workflows/utilities.yml']
   pull_request:
-    paths: ['sui/otc/**', 'sui/vesting/**', 'sdk/**', '.github/workflows/utilities.yml']
+    paths: ['sui/otc/**', 'sui/vesting/**', 'sui/upgrade_cap_manager/**', 'sdk/**', '.github/workflows/utilities.yml']
 
 jobs:
   verify:
@@ -29,9 +29,11 @@ jobs:
           mkdir -p "$HOME/.local/bin"
           tar -xzf sui.tgz -C "$HOME/.local/bin" ./sui
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Lint upgrade custody
+        run: sui move build --path sui/upgrade_cap_manager --lint --warnings-are-errors
       - name: Test immutable packages
         run: |
-          for package in otc vesting; do
+          for package in otc vesting upgrade_cap_manager; do
             sui move test --path "sui/$package" --threads 1
           done
       - name: Check utility SDK

@@ -52,6 +52,22 @@ gates.
 The package boundaries keep external dependencies and independently governed
 custody outside core.
 
+### Independent upgrade custody
+
+A standalone framework-only manager accepts any native UpgradeCap and enforces
+a fixed 48-hour notice for either an exact native upgrade digest or terminal
+target immutability ([ADR 0140](decisions/0140-upgrade-cap-manager.md)). It imports
+no Blast administration or business package. The controller requests or cancels;
+execution is permissionless after maturity. The raw cap is never withdrawn or
+lent. Upgrades use native tickets and matching receipts; terminal execution
+destroys only the selected cap and its pending request. Each manager holds up to
+256 native caps with independent pending actions and deadlines; its controller
+authorizes enrollment, requests and cancellation across all of them. The manager
+publication's own cap must be destroyed
+and independently verified before valuable enrollment; enrollment has no on-chain
+proof gate. This source records no change to live deployment custody; see the
+[package procedure](../sui/upgrade_cap_manager/README.md).
+
 ### Dependency direction
 
 **No product imports a venue or the vault, and the vault imports no product.**
