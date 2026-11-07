@@ -65,6 +65,17 @@ compounding after re-sharing, and runtime rejection of a getter after consuming 
 liquidity, residual and event conservation remain asserted by the lifecycle tests. Structural gates
 pin the only private entries, their complete signatures and guarded execution order.
 
+## 2026-11-07: Compounding stops by role revocation, not the vault pause bit
+
+Compounding is an administrator-driven economic operation like buybacks, protocol-share changes
+and holder-reward publication, but `vault::take_auto_lp` does not check the vault's
+`admin_pause_bit`, so a `PauseAdmin<BLAST_VAULT_PACKAGE>` pause stops those operations while a
+live `AutoLpAdmin` keeper can still compound. Owner decision after the 7 November 2026 targeted
+audit of #225: keep the code as deployed and record the control here. The stop for compounding
+is `blast_acl::revoke_role<AutoLpAdmin>` or revoking the keeper's administrator; both take effect
+on the keeper's next call and leave collection, claims and payouts untouched. Incident runbooks
+that pause the vault package must also revoke the compounding role when the keeper is in doubt.
+
 ## Sources
 
 | Ref | Immutable source |
