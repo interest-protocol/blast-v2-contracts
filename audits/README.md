@@ -1,6 +1,6 @@
 # Security audits
 
-This directory preserves five reports, each tied to its reviewed source:
+This directory preserves six reports, each tied to its reviewed source:
 
 | Report | Reviewed revision | Coverage |
 | --- | --- | --- |
@@ -9,6 +9,7 @@ This directory preserves five reports, each tied to its reviewed source:
 | [Astra using Trail of Bits skills - November 2026](blast-launch-stack-astra-nov-2026.pdf) | `d80f2834` | AI security review of the shared launch stack; one informational documentation finding corrected in the accompanying documentation changes |
 | [GiveRep / Eason Chen - November 2026](blast-launch-stack-giverep-nov-2026.pdf) | `850d8227`, `8c04789d`, `b50d0c3b` | Final launch-stack assessment with targeted remediation review through `af0765da`; supplied final PDF preserved unchanged |
 | [Claude (Fable 5.1) using the Cloudflare security-audit skill - November 2026](blast-launch-stack-claude-cloudflare-nov-2026.pdf) | `d80f2834` | AI source-only security review of the shared launch stack's production Move code; no confirmed findings, one operational upgrade-sequencing lead with an owner-defined mitigation |
+| [Claude (Fable 5.1) targeted review of #225 - November 2026](blast-launch-stack-claude-pr225-nov-2026.pdf) | `af0765da` (deployed source, identical to `86ee8cf9`) | AI targeted security review of the auto-LP compounding hardening, launchpad seed-price check and context reservations in #225, cross-checked against the GiveRep remediation review; no release blocker, two informational notes, one operational gap; F-1 recorded in ADR 0139 by owner decision |
 
 The Claude and Astra reports are AI-conducted reviews. The Astra review applies
 Trail of Bits' public skills; it was not performed or endorsed by Trail of Bits.
@@ -448,3 +449,53 @@ SHA-256 of the PDF:
 ```text
 b87022751801701f797db0295ddc1f21a9677c4394127a7c3b9b59cff37f8145
 ```
+
+## Claude (Fable 5.1) targeted review of #225 — Blast launch stack, November 2026
+
+[Download the complete report](blast-launch-stack-claude-pr225-nov-2026.pdf) (8 pages).
+An AI-conducted targeted security review by Claude Fable 5.1 (`claude-fable-5-1`),
+Anthropic's model, completed on 7 November 2026 at Blast's request, covering only
+the changes of [#225](https://github.com/interest-protocol/blast-v2-contracts/pull/225),
+their callers and the GiveRep remediation review of the same commit. Fable made every
+security judgement and ran the gates itself from a detached worktree. The Markdown
+source and the test logs are retained in the Blast workspace, not in this repository.
+SHA-256 of the PDF: `6b056a4056fea714c45aee679c1ea4c4d77709db8f048edcc66fc1f5d5f7abf6`.
+
+### Reviewed source
+
+- Repository: [interest-protocol/blast-v2-contracts](https://github.com/interest-protocol/blast-v2-contracts), branch `main`.
+- Reviewed commit: [`af0765dab18de741b130c52831c859717134f2c1`](https://github.com/interest-protocol/blast-v2-contracts/commit/af0765dab18de741b130c52831c859717134f2c1),
+  the merge of #225 and the last commit that changed the deployed Move source; its `sui/` tree is
+  byte-identical to the deployment record's `86ee8cf9`.
+- Toolchain: `sui 1.77.2-51d177ad7d65`; native venue fork against the committed mainnet snapshot.
+
+### Scope
+
+The production Move diff of #225 (`blast_core::blast_domain::AutoLpAdmin`, the private
+`compound_auto_lp` entries in `blast_migrators::cetus` and `::bluefin`, `EInvalidAutoLpPrice`,
+the launchpad `finalize` seed-price preflight, and the trailing `TxContext` reservations in
+launchpad, presale, vault and holder rewards), every caller and callee of those functions across
+the six connected packages, the venue interfaces and the Sui runtime natives ADR 0139 relies on,
+and the structural gates. Tests, fixtures and documentation changes were reviewed to classify
+what changed on chain. Packages whose production code #225 did not touch were not re-audited.
+
+### Findings and disposition
+
+No release blocker inside #225's scope. The `AutoLpAdmin` guard and the keeper's inclusive
+sqrt-price bounds are enforced in the only path that can move a vault's auto-LP balances, no
+other function or PTB composition bypasses them, the pool consume-and-re-share is accepted by the
+pinned runtime, and the launchpad preflight checks exactly the amounts migration later hands off.
+
+- **F-1 (informational):** `vault::take_auto_lp` does not check the vault's `admin_pause_bit`,
+  so a vault pause stops buybacks and reward publication but not a live `AutoLpAdmin` keeper.
+  **Project disposition: record in ADR only.** ADR 0139's 7 November 2026 amendment names
+  `AutoLpAdmin` revocation as the stop for compounding; no code change.
+- **F-2 (informational):** the launchpad reuses `EInvalidGraduationTarget` for an unseedable
+  allocation price where the presale has a dedicated code; documented, no change.
+- **F-3 (operational):** the mainnet deployment record grants no `AutoLpAdmin` and no keeper
+  builder exists for the new ABI; compounding cannot run until both exist. Release-checklist item.
+
+Checks run and passing: launchpad 449, migrators 40, vault 127, presale 287 and core 85 Move
+tests; the 11 native venue-fork tests; the style, error-registry, llms and all six source-boundary
+gates. The GiveRep remediation review agrees with this review on every point it covers and does
+not record F-1 or F-3.
