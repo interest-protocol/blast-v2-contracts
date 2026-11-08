@@ -127,6 +127,8 @@ fn migration_failures_commit_nothing() {
             for text, valid in ((source, True), (source.replace('code: INVALID_COIN_ORDER', 'code: 99'), False),
                                 (source.replace('u64 = 0', 'u64 = 1'), False),
                                 (source.replace('self.h.assert_rolled_back', '// self.h.assert_rolled_back'), False),
+                                (source.replace('self.h.assert_rolled_back(pt, expected);',
+                                                'let _ = "self.h.assert_rolled_back(pt, expected);";'), False),
                                 ('/*' + source + '*/', False)):
                 path.write_text(text)
                 self.assertEqual(native_oracle(root, 'blast_migrators::errors', error), valid)

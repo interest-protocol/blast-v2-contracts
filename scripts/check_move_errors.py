@@ -110,7 +110,7 @@ def native_oracle(root, module, error):
     return (
         compact(oracle) in compact(body)
         and compact(number) in compact(code_source)
-        and 'self.h.assert_rolled_back(' in body
+        and 'self.h.assert_rolled_back(' in masked[start:end]
     )
 
 
