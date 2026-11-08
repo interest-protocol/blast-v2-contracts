@@ -240,7 +240,7 @@ class Package:
 
 
 def package_name(path: str) -> str:
-    return tomllib.loads((ROOT / path / "Move.toml").read_text())["package"]["name"]
+    return tomllib.loads((ROOT / path / "Move.toml").read_text(encoding="utf-8"))["package"]["name"]
 
 
 def build_summaries(out: Path) -> None:
@@ -257,6 +257,7 @@ def build_summaries(out: Path) -> None:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
         )
         if result.returncode != 0:
             sys.exit(f"sui move summary failed for {path}:\n{result.stdout}\n{result.stderr}")
@@ -266,7 +267,7 @@ def load_package(path: str, title: str, summaries: Path) -> Package:
     name = package_name(path)
     pkg = Package(path=path, title=title, name=name)
     summary_root = summaries / name
-    addresses = json.loads((summary_root / "address_mapping.json").read_text())
+    addresses = json.loads((summary_root / "address_mapping.json").read_text(encoding="utf-8"))
     # The compiler may label the root modules with a genesis-recipient alias when
     # both addresses are 0x0. Resolve identity by address, then restore the source name.
     aliases = {alias for alias, address in addresses.items() if address == addresses[name]}
@@ -285,16 +286,16 @@ def load_package(path: str, title: str, summaries: Path) -> Package:
 
     for directory in summary_dirs:
         for file in sorted(directory.glob("*.json")):
-            module = canonicalize(json.loads(file.read_text()))
+            module = canonicalize(json.loads(file.read_text(encoding="utf-8")))
             pkg.modules[module["id"]["name"]] = module
     for file in sorted((ROOT / path / "sources").rglob("*.move")):
-        match = re.search(rf"^module\s+{name}::(\w+)", file.read_text(), re.M)
+        match = re.search(rf"^module\s+{name}::(\w+)", file.read_text(encoding="utf-8"), re.M)
         if match:
             pkg.sources[match.group(1)] = file
-    text = "\n".join(strip_tests(f.read_text()) for f in pkg.sources.values())
+    text = "\n".join(strip_tests(f.read_text(encoding="utf-8")) for f in pkg.sources.values())
     pkg.events = set(re.findall(r"\bemit\w*\s*\(\s*([A-Z]\w*)", text)) - {"Event"}
     pkg.envelope = "blast_events" in pkg.sources and re.search(
-        r"public struct Event<", pkg.sources["blast_events"].read_text()
+        r"public struct Event<", pkg.sources["blast_events"].read_text(encoding="utf-8")
     ) is not None
     return pkg
 
@@ -466,7 +467,7 @@ def legacy_package_path(path: str) -> str:
 
 def matches_publication(path: str, commit: str) -> bool | None:
     def git(*args: str) -> subprocess.CompletedProcess:
-        return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True)
+        return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, encoding="utf-8")
 
     manifest = git("show", f"{commit}:{path}/Move.toml")
     if manifest.returncode == 0:
@@ -490,7 +491,7 @@ def matches_publication(path: str, commit: str) -> bool | None:
 
         return re.sub(r'(\blocal\s*=\s*)"([^"]+)"', local_path, text)
 
-    current = (ROOT / path / "Move.toml").read_text()
+    current = (ROOT / path / "Move.toml").read_text(encoding="utf-8")
     if normalize_manifest(manifest.stdout, old, False) != normalize_manifest(current, path, True):
         return False
 
@@ -512,12 +513,12 @@ def deployment(path: str) -> dict:
     if not published.exists():
         return {"live": False}
     # A Published.toml without a mainnet table is a package awaiting a fresh publication.
-    entry = tomllib.loads(published.read_text()).get("published", {}).get("mainnet")
+    entry = tomllib.loads(published.read_text(encoding="utf-8")).get("published", {}).get("mainnet")
     if entry is None:
         return {"live": False}
     info = {"live": True, "published_at": entry["published-at"], "original_id": entry["original-id"], "matches": None}
     for record in sorted((ROOT / "deployments/sui/mainnet").glob("*.json")):
-        data = json.loads(record.read_text())
+        data = json.loads(record.read_text(encoding="utf-8"))
         kind = str(data.get("recordKind", ""))
         if "deployment" not in kind or "rehearsal" in kind or data.get("status") != "success":
             continue
@@ -607,7 +608,7 @@ def status_table(pkgs: list[Package]) -> list[str]:
 def module_reference(pkg: Package, mod: str, first_party: set[str]) -> list[str]:
     summary = pkg.modules[mod]
     r = TypeRenderer(pkg, mod, first_party)
-    source = pkg.sources[mod].read_text()
+    source = pkg.sources[mod].read_text(encoding="utf-8")
     events = {n: s for n, s in summary["structs"].items() if n in pkg.events}
     def position(name: str) -> int:
         match = re.search(rf"public\s+(?:struct|enum)\s+{name}\b", source)
@@ -624,7 +625,7 @@ def module_reference(pkg: Package, mod: str, first_party: set[str]) -> list[str]
     consts = [] if mod == "errors" else constants(source)
     if not (types or functions or events or errors or consts):
         return []
-    rel = pkg.sources[mod].relative_to(ROOT)
+    rel = pkg.sources[mod].relative_to(ROOT).as_posix()
     out = [f"### `{pkg.name}::{mod}`", ""]
     if summary.get("doc"):
         out += [" ".join(l.strip() for l in summary["doc"].split("\n")), ""]
@@ -661,7 +662,7 @@ def package_reference(pkg: Package, first_party: set[str]) -> list[str]:
     )
     out.append("")
     if "errors" in pkg.sources:
-        rows = registry_errors(pkg.sources["errors"].read_text())
+        rows = registry_errors(pkg.sources["errors"].read_text(encoding="utf-8"))
         out += [
             "Abort codes: this package aborts with the numeric codes below from whichever module detects "
             "the failure; the abort location names that module.",
@@ -692,7 +693,7 @@ def check_guides(guides: dict[str, str], pkgs: list[Package]) -> list[str]:
         s = p.modules[mod]
         public = {n for n, f in s["functions"].items() if f["visibility"] == "Public" or f["entry"]}
         names = public | set(s["structs"]) | set(s.get("enums", {}))
-        source = p.sources[mod].read_text()
+        source = p.sources[mod].read_text(encoding="utf-8")
         names |= {e[0] for e in clever_errors(source)} | {c[0] for c in constants(source)}
         if mod == "errors":
             names |= {e[1] for e in registry_errors(source)}
@@ -746,7 +747,7 @@ def frozen_guides() -> set[str]:
 
 
 def guide_heading(guide: str) -> str:
-    return (GUIDES_DIR / guide).read_text().split("\n", 1)[0]
+    return (GUIDES_DIR / guide).read_text(encoding="utf-8").split("\n", 1)[0]
 
 
 def reference_heading(pkg: Package) -> str:
@@ -781,7 +782,7 @@ def generate(summaries: Path) -> dict[Path, str]:
         for path, title in PACKAGES
     }
     first_party = {p.name for p in pkgs.values()}
-    raw = {g: (GUIDES_DIR / g).read_text().strip() for g, _ in GUIDES if (GUIDES_DIR / g).exists()}
+    raw = {g: (GUIDES_DIR / g).read_text(encoding="utf-8").strip() for g, _ in GUIDES if (GUIDES_DIR / g).exists()}
     missing = [g for g, _ in GUIDES if g not in raw]
     if missing:
         sys.exit(f"missing guides: {', '.join(missing)}")
@@ -793,7 +794,7 @@ def generate(summaries: Path) -> dict[Path, str]:
     if problems:
         sys.exit("guides name members that do not resolve:\n  " + "\n  ".join(problems))
     guides = {g: with_status(raw[g], [pkgs[p] for p in paths]) for g, paths in GUIDES}
-    committed = committed_sections(relocate_frozen_paths(OUTPUT.read_text())) if OUTPUT.exists() else {}
+    committed = committed_sections(relocate_frozen_paths(OUTPUT.read_text(encoding="utf-8"))) if OUTPUT.exists() else {}
     unknown = [p for product in PRODUCTS for p in product.packages + product.depends if p not in pkgs]
     unknown += [g for product in PRODUCTS for g in product.guides if g not in guides]
     if unknown:
@@ -810,7 +811,7 @@ def generate(summaries: Path) -> dict[Path, str]:
     for product in PRODUCTS:
         path = PRODUCT_DIR / f"{product.slug}.txt"
         if all(p in FROZEN for p in product.packages):
-            files[path] = relocate_frozen_paths(path.read_text())
+            files[path] = relocate_frozen_paths(path.read_text(encoding="utf-8"))
             continue
         depends = [f"`{pkgs[p].name}`" for p in product.depends]
         header = PRODUCT_HEADER.format(
@@ -840,7 +841,7 @@ def main() -> None:
         stale = []
         for path, text in files.items():
             name = str(path.relative_to(ROOT))
-            current = path.read_text() if path.exists() else ""
+            current = path.read_text(encoding="utf-8") if path.exists() else ""
             if current != text:
                 diff = difflib.unified_diff(
                     current.splitlines(), text.splitlines(), f"{name} (committed)", f"{name} (generated)", lineterm=""
@@ -856,7 +857,7 @@ def main() -> None:
     for path in extra:
         path.unlink()
     for path, text in files.items():
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8")
         print(f"wrote {path.relative_to(ROOT)} ({len(text.splitlines())} lines)")
 
 
