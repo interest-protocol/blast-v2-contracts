@@ -124,14 +124,29 @@ fn migration_failures_commit_nothing() {
             path = root / 'sui/launch/launchpad/ptb_tests/tests/venue_fork.rs'
             path.parent.mkdir(parents=True)
             error = {'name': 'EInvalidCoinOrder', 'code': 0}
-            for text, valid in ((source, True), (source.replace('code: INVALID_COIN_ORDER', 'code: 99'), False),
-                                (source.replace('u64 = 0', 'u64 = 1'), False),
-                                (source.replace('self.h.assert_rolled_back', '// self.h.assert_rolled_back'), False),
-                                (source.replace('self.h.assert_rolled_back(pt, expected);',
-                                                'let _ = "self.h.assert_rolled_back(pt, expected);";'), False),
-                                ('/*' + source + '*/', False)):
-                path.write_text(text)
-                self.assertEqual(native_oracle(root, 'blast_migrators::errors', error), valid)
+            call = "self.h.assert_rolled_back(pt, expected);"
+            raw = r'let _ = r"\"; '
+            quoted = 'let _ = "' + call + '";'
+            other_case = source[source.index("    let expected"):source.rindex("}")]
+            other_case = other_case.replace("code: INVALID_COIN_ORDER", "code: OTHER_ERROR")
+            cases = (
+                (source, True),
+                (source.replace('code: INVALID_COIN_ORDER', 'code: 99'), False),
+                (source.replace('u64 = 0', 'u64 = 1'), False),
+                (source.replace(call, "// " + call), False),
+                (source.replace(call, quoted), False),
+                (source.replace(call, raw + quoted), False),
+                (source.replace(call, raw + call), True),
+                (source.replace(call, '/* outer /* inner */ ' + call + ' */'), False),
+                (source.replace(call, quoted + "\n" + other_case), False),
+                (source.replace(call, "self.h.assert_rolled_back(expected, other);"), False),
+                (source.replace(call, "self.h.assert_rolled_back(pt, other);"), False),
+                ('/*' + source + '*/', False),
+            )
+            for text, valid in cases:
+                with self.subTest(source=text):
+                    path.write_text(text)
+                    self.assertEqual(native_oracle(root, 'blast_migrators::errors', error), valid)
 
     def test_rust_mask_preserves_function_after_char_literals_and_continued_strings(self):
         source = '''let quote = '"'; let lifetime: &'static str = "test";

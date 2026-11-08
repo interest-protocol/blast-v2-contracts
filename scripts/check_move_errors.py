@@ -50,11 +50,98 @@ def resolve(name, aliases):
     return "::".join([aliases.get(first, first), *rest])
 
 
+# Keep literals as single tokens so the oracle can compare "cetus" exactly
+# without interpreting text inside a literal as Rust code.
+RUST_TOKEN = re.compile(
+    r"""(?P<space>\s+)|(?P<comment>//[^\n]*|/\*)|"""
+    r"""(?P<raw>\b(?:br|r)(?P<hashes>\#*)")|"""
+    r"""(?P<literal>b?"(?:\\.|[^"\\])*"|b?'(?:\\.|[^'\\])')|"""
+    r"""(?P<word>\w+)|(?P<punct>::|.)""", re.S,
+)
+COMMENT_DELIMITER = re.compile(r"/\*|\*/")
+
+
+def rust_tokens(source):
+    pos = 0
+    while pos < len(source):
+        match = RUST_TOKEN.match(source, pos)
+        kind = match.lastgroup
+        end = match.end()
+        if match[0] == "/*":
+            depth = 1
+            for delimiter in COMMENT_DELIMITER.finditer(source, end):
+                depth += 1 if delimiter[0] == "/*" else -1
+                if not depth:
+                    end = delimiter.end()
+                    break
+            else:
+                end = len(source)
+        elif kind == "raw":
+            closing = '"' + match["hashes"]
+            close = source.find(closing, end)
+            end = len(source) if close < 0 else close + len(closing)
+        yield kind, source[pos:end]
+        pos = end
+
+
 def mask_rust(source):
-    # Rust character literals must be recognized before a quote inside one can
-    # start a string. Lifetimes such as 'static are not character literals.
-    pattern = r"""//[^\n]*|/\*[\s\S]*?\*/|b?r(?P<hash>#+)"[\s\S]*?"(?P=hash)|b?"(?:\\.|[^"\\])*"|b?'(?:\\.|[^'\\])'"""
-    return re.sub(pattern, lambda match: re.sub(r"[^\n]", " ", match[0]), source, flags=re.S)
+    return "".join(
+        re.sub(r"[^\n]", " ", token) if kind in ("comment", "raw", "literal") else token
+        for kind, token in rust_tokens(source)
+    )
+
+
+def code_tokens(source):
+    return [token for kind, token in rust_tokens(source) if kind not in ("space", "comment")]
+
+
+def matches_binding(body, before, name, oracle):
+    # Search the enclosing scopes, skipping completed sibling blocks. The
+    # nearest binding or reassignment wins when several cases reuse a name.
+    depth = 0
+    for i in range(before - 1, -1, -1):
+        token = body[i]
+        if token == "}":
+            depth += 1
+        elif token == "{" and depth:
+            depth -= 1
+        elif not depth and token == name:
+            if body[i + 1:i + 2] == ["="]:
+                return (body[i - 1:i] == ["let"]
+                        and body[i + 2:i + 3 + len(oracle)] == [*oracle, ";"])
+            if body[i - 1:i] in (["let"], ["mut"]):
+                return False
+    return False
+
+
+def has_rollback(body, oracle):
+    call = ["self", ".", "h", ".", "assert_rolled_back", "("]
+    for i, token in enumerate(body):
+        if token != "self" or body[i:i + len(call)] != call:
+            continue
+        # Skip the transaction argument, including nested calls and tuples.
+        depth = 0
+        for j in range(i + len(call), len(body)):
+            token = body[j]
+            if token == "," and depth == 0:
+                break
+            if token in ("(", "[", "{"):
+                depth += 1
+            elif token in (")", "]", "}"):
+                depth -= 1
+                if depth < 0:
+                    break
+        if token != ",":
+            continue
+        arg = j + 1
+        end = arg + len(oracle)
+        if body[arg:end] == oracle and body[end:end + 1] in ([","], [")"]):
+            return True
+        if body[arg + 1:arg + 2] not in ([","], [")"]):
+            continue
+        if matches_binding(body, i, body[arg], oracle):
+            return True
+    return False
 
 
 # These venue objects require the transaction runtime and captured venue bytecode,
@@ -104,14 +191,14 @@ def native_oracle(root, module, error):
     while depth and end < len(masked):
         depth += (masked[end] == '{') - (masked[end] == '}')
         end += 1
-    body = re.sub(r'//[^\n]*|/\*[\s\S]*?\*/', '', source[start:end])
-    code_source = re.sub(r'//[^\n]*|/\*[\s\S]*?\*/', '', source)
-    compact = lambda text: re.sub(r'\s+', '', text)
-    return (
-        compact(oracle) in compact(body)
-        and compact(number) in compact(code_source)
-        and 'self.h.assert_rolled_back(' in masked[start:end]
+    declaration = code_tokens(number)
+    tokens = code_tokens(source)
+    has_constant = any(
+        tokens[i:i + len(declaration)] == declaration
+        for i, token in enumerate(tokens) if token == "const"
     )
+    return has_constant and has_rollback(code_tokens(source[start:end]), code_tokens(oracle))
+
 
 
 def audit(root):
