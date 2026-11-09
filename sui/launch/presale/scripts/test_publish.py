@@ -32,6 +32,28 @@ class PublicationTests(unittest.TestCase):
                                     capture_output=True, text=True, check=False)
             self.assertEqual(result.returncode, 2)
 
+    def test_extra_arguments_are_rejected_before_invoking_sui(self):
+        scripts = Path(__file__).resolve().parent
+        commands = (
+            ('publish.sh', []),
+            ('wrap_package_admin.sh', ['0x1a', '0x10', '0x20', '0x30']),
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            fake_sui = Path(temp) / 'sui'
+            fake_sui.write_text('#!/bin/sh\nprintf "%s\\n" "unexpected sui invocation" >&2\nexit 99\n')
+            fake_sui.chmod(0o755)
+            for script, args in commands:
+                for modes in (['--execute', '--preview'], ['--preview', '--execute']):
+                    with self.subTest(script=script, modes=modes):
+                        result = subprocess.run(
+                            ['bash', str(scripts / script), *args, *modes],
+                            env={**os.environ, 'PATH': temp + os.pathsep + os.environ['PATH']},
+                            capture_output=True, text=True,
+                        )
+                        self.assertEqual(result.returncode, 2, result.stderr)
+                        self.assertIn('usage:', result.stderr)
+                        self.assertNotIn('unexpected sui invocation', result.stderr)
+
     def test_cli_and_transaction_status_must_both_succeed(self):
         package = Path(__file__).resolve().parent.parent
         success = '{"effects":{"status":{"status":"success"}}}'

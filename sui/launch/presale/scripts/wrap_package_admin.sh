@@ -9,9 +9,9 @@ publication_id="${3:-}"
 upgrade_cap_id="${4:-}"
 mode="${5:-}"
 
-if [[ -z "$admin_package_id" || -z "$package_id" || -z "$publication_id" || -z "$upgrade_cap_id" ]] \
+if [[ $# -ne 5 ]] || [[ -z "$admin_package_id" || -z "$package_id" || -z "$publication_id" || -z "$upgrade_cap_id" ]] \
   || [[ "$mode" != "--preview" && "$mode" != "--execute" ]]; then
-  printf 'usage: %s <admin-package-id> <presale-package-id> <publication-id> <upgrade-cap-id> [--preview|--execute]\n' "$0" >&2
+  printf 'usage: %s <admin-package-id> <presale-package-id> <publication-id> <upgrade-cap-id> <--preview|--execute>\n' "$0" >&2
   exit 2
 fi
 
