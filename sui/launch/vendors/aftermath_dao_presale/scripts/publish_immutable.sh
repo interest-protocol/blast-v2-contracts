@@ -6,8 +6,8 @@ set -euo pipefail
 package_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 mode="${1:-}"
 
-if [[ "$mode" != "--preview" && "$mode" != "--execute" ]]; then
-  printf 'usage: %s [--preview|--execute]\n' "$0" >&2
+if [[ $# -ne 1 ]] || [[ "$mode" != "--preview" && "$mode" != "--execute" ]]; then
+  printf 'usage: %s <--preview|--execute>\n' "$0" >&2
   exit 2
 fi
 
