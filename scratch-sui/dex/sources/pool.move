@@ -216,18 +216,20 @@ macro public fun all_hook_flags(): u8 { 0xff }
 
 /// Starts a pool that charges `lp_fee_ppm`, a protocol fee tier, on every swap.
 public fun new_with_fixed_fee<Asset, Quote>(
+    tiers: &BlastDexFeeTiers,
     tick_spacing: u32,
     lp_fee_ppm: u32,
     sqrt_price_x96: u256,
     ctx: &mut TxContext,
 ): PoolInitializer<Asset, Quote> {
-    new_initializer(tick_spacing, lp_fee::new_fixed(lp_fee_ppm), sqrt_price_x96, ctx)
+    new_initializer(tick_spacing, lp_fee::new_fixed(tiers, lp_fee_ppm), sqrt_price_x96, ctx)
 }
 
 /// Starts a pool whose LP fee rises from `base_fee_ppm` with the gap between each
 /// swap's projected price and the reference price, up to `max_fee_ppm`; see
 /// `lp_fee`. The settings never change and need no hook.
 public fun new_with_dynamic_fee<Asset, Quote>(
+    tiers: &BlastDexFeeTiers,
     tick_spacing: u32,
     base_fee_ppm: u32,
     max_fee_ppm: u32,
@@ -235,7 +237,7 @@ public fun new_with_dynamic_fee<Asset, Quote>(
     sqrt_price_x96: u256,
     ctx: &mut TxContext,
 ): PoolInitializer<Asset, Quote> {
-    let lp_fee = lp_fee::new_dynamic(base_fee_ppm, max_fee_ppm, sensitivity_ppm);
+    let lp_fee = lp_fee::new_dynamic(tiers, base_fee_ppm, max_fee_ppm, sensitivity_ppm);
 
     new_initializer(tick_spacing, lp_fee, sqrt_price_x96, ctx)
 }
@@ -1296,7 +1298,7 @@ public fun swapped_lp_fee_ppm_for_testing(event: &Swapped): u32 {
 
 // === Imports ===
 
-use blast_fun_dex::{hook_config::HookConfig, i32::I32, lp_fee::{Self, LpFee}, ppm::Ppm};
+use blast_fun_dex::{hook_config::HookConfig, i32::I32, lp_fee::{Self, BlastDexFeeTiers, LpFee}, ppm::Ppm};
 use std::type_name::{Self, TypeName};
 use sui::{balance::{Self, Balance}, clock::Clock, coin::Coin, dynamic_field, event};
 

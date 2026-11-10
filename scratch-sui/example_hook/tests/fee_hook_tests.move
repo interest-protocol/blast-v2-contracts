@@ -24,6 +24,7 @@ public struct Fixture {
     admin_cap: FeeHookAdminCap,
     config: HookConfig<FeeHook>,
     clock: Clock,
+    tiers: BlastDexFeeTiers,
 }
 
 // === Tests ===
@@ -98,6 +99,7 @@ fun hook_fee_rounds_up_and_is_kept_in_the_input_coin() {
 fun dynamic_fee_pool_charges_its_own_lp_fee_after_the_hook_fee() {
     let mut fixture = setup(FEE_BPS);
     let mut initializer = pool::new_with_dynamic_fee<ASSET, QUOTE>(
+        &fixture.tiers,
         60,
         3_000,
         20_000,
@@ -239,6 +241,7 @@ fun register_rejects_a_config_moved_to_a_newer_version() {
     let mut fixture = setup(FEE_BPS);
     fee_hook::set_version_for_testing(&mut fixture.config, 2);
     let mut initializer = pool::new_with_fixed_fee<ASSET, QUOTE>(
+        &fixture.tiers,
         60,
         3_000,
         SQRT_PRICE_ONE_X96,
@@ -338,11 +341,14 @@ fun setup(fee_bps: u64): Fixture {
     let config = scenario.take_shared<HookConfig<FeeHook>>();
     let clock = clock::create_for_testing(scenario.ctx());
 
-    Fixture { scenario, namespace, admin_cap, config, clock }
+    let tiers = lp_fee::new_fee_tiers_for_testing(scenario.ctx());
+
+    Fixture { scenario, namespace, admin_cap, config, clock, tiers }
 }
 
 fun teardown(self: Fixture) {
-    let Fixture { scenario, namespace, admin_cap, config, clock } = self;
+    let Fixture { scenario, namespace, admin_cap, config, clock, tiers } = self;
+    tiers.destroy_default_fee_tiers_for_testing();
     test_scenario::return_shared(config);
     destroy(admin_cap);
     destroy(namespace);
@@ -351,7 +357,7 @@ fun teardown(self: Fixture) {
 }
 
 fun fixed_fee_pool(self: &mut Fixture): Pool<ASSET, QUOTE> {
-    let mut initializer = pool::new_with_fixed_fee(60, 3_000, SQRT_PRICE_ONE_X96, self.scenario.ctx());
+    let mut initializer = pool::new_with_fixed_fee(&self.tiers, 60, 3_000, SQRT_PRICE_ONE_X96, self.scenario.ctx());
     fee_hook::register(&mut initializer, &self.config);
 
     initializer.finalize()
@@ -367,7 +373,12 @@ fun quote(self: &mut Fixture, value: u64): Coin<QUOTE> {
 
 // === Imports ===
 
-use blast_fun_dex::{hook_config::{Self, HookConfig, HookNamespace}, i32, pool::{Self, Pool}};
+use blast_fun_dex::{
+    hook_config::{Self, HookConfig, HookNamespace},
+    i32,
+    lp_fee::{Self, BlastDexFeeTiers},
+    pool::{Self, Pool},
+};
 use blast_fun_dex_example_hook::fee_hook::{Self, FeeHook, FeeHookAdminCap};
 use std::{type_name, unit_test::{assert_eq, destroy}};
 use sui::{

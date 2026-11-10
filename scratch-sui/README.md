@@ -33,6 +33,14 @@ the hook steps disappear from the transaction.
 The pool owns the sequence, so routers only need the DEX's own functions plus
 one hook call per bound slot.
 
+## LP fee tiers
+
+The shared fee tier registry starts with 0.1%, 0.3%, 1%, and 2%. The holder of
+the fee-tier admin capability can append a distinct rate from 1 to 100,000 ppm.
+Anyone can borrow the registry to create a pool with a registered fixed or
+dynamic base rate. Pools store their selected rates at creation. Tier additions
+are recorded as events and apply to future pool creation.
+
 ## Hook calling convention
 
 Every hook exposes the same `public` function for each slot it binds; the full

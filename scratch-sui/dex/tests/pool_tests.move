@@ -49,7 +49,7 @@ public struct Fixture {
 fun new_rejects_identical_tokens() {
     let mut ctx = tx_context::dummy();
 
-    let initializer = pool::new_with_fixed_fee<ASSET, ASSET>(TICK_SPACING, LP_FEE_PPM, SQRT_PRICE_ONE_X96, &mut ctx);
+    let initializer = new_fixed_pool<ASSET, ASSET>(TICK_SPACING, LP_FEE_PPM, SQRT_PRICE_ONE_X96, &mut ctx);
 
     destroy(initializer);
 }
@@ -59,7 +59,7 @@ fun new_rejects_identical_tokens() {
 fun new_rejects_zero_tick_spacing() {
     let mut ctx = tx_context::dummy();
 
-    let initializer = pool::new_with_fixed_fee<ASSET, QUOTE>(0, LP_FEE_PPM, SQRT_PRICE_ONE_X96, &mut ctx);
+    let initializer = new_fixed_pool<ASSET, QUOTE>(0, LP_FEE_PPM, SQRT_PRICE_ONE_X96, &mut ctx);
 
     destroy(initializer);
 }
@@ -69,7 +69,7 @@ fun new_rejects_zero_tick_spacing() {
 fun new_rejects_tick_spacing_above_the_maximum() {
     let mut ctx = tx_context::dummy();
 
-    let initializer = pool::new_with_fixed_fee<ASSET, QUOTE>(32_768, LP_FEE_PPM, SQRT_PRICE_ONE_X96, &mut ctx);
+    let initializer = new_fixed_pool<ASSET, QUOTE>(32_768, LP_FEE_PPM, SQRT_PRICE_ONE_X96, &mut ctx);
 
     destroy(initializer);
 }
@@ -79,7 +79,7 @@ fun new_rejects_tick_spacing_above_the_maximum() {
 fun new_with_fixed_fee_rejects_a_fee_off_the_tiers() {
     let mut ctx = tx_context::dummy();
 
-    let initializer = pool::new_with_fixed_fee<ASSET, QUOTE>(TICK_SPACING, 2_000, SQRT_PRICE_ONE_X96, &mut ctx);
+    let initializer = new_fixed_pool<ASSET, QUOTE>(TICK_SPACING, 2_000, SQRT_PRICE_ONE_X96, &mut ctx);
 
     destroy(initializer);
 }
@@ -89,7 +89,7 @@ fun new_with_fixed_fee_rejects_a_fee_off_the_tiers() {
 fun new_with_dynamic_fee_validates_its_settings() {
     let mut ctx = tx_context::dummy();
 
-    let initializer = pool::new_with_dynamic_fee<ASSET, QUOTE>(
+    let initializer = new_dynamic_pool<ASSET, QUOTE>(
         TICK_SPACING,
         BASE_FEE_PPM,
         MAX_FEE_PPM,
@@ -106,7 +106,7 @@ fun new_with_dynamic_fee_validates_its_settings() {
 fun new_rejects_price_below_the_minimum() {
     let mut ctx = tx_context::dummy();
 
-    let initializer = pool::new_with_fixed_fee<ASSET, QUOTE>(
+    let initializer = new_fixed_pool<ASSET, QUOTE>(
         TICK_SPACING,
         LP_FEE_PPM,
         MIN_SQRT_PRICE_X96 - 1,
@@ -121,7 +121,7 @@ fun new_rejects_price_below_the_minimum() {
 fun new_rejects_the_exclusive_maximum_price() {
     let mut ctx = tx_context::dummy();
 
-    let initializer = pool::new_with_fixed_fee<ASSET, QUOTE>(TICK_SPACING, LP_FEE_PPM, MAX_SQRT_PRICE_X96, &mut ctx);
+    let initializer = new_fixed_pool<ASSET, QUOTE>(TICK_SPACING, LP_FEE_PPM, MAX_SQRT_PRICE_X96, &mut ctx);
 
     destroy(initializer);
 }
@@ -130,11 +130,11 @@ fun new_rejects_the_exclusive_maximum_price() {
 fun new_accepts_every_boundary_value() {
     let mut ctx = tx_context::dummy();
 
-    let low = pool::new_with_fixed_fee<ASSET, QUOTE>(1, 20_000, MIN_SQRT_PRICE_X96, &mut ctx).finalize();
-    let high = pool::new_with_fixed_fee<ASSET, QUOTE>(32_767, 1_000, MAX_SQRT_PRICE_X96 - 1, &mut ctx).finalize();
+    let low = new_fixed_pool<ASSET, QUOTE>(1, 20_000, MIN_SQRT_PRICE_X96, &mut ctx).finalize();
+    let high = new_fixed_pool<ASSET, QUOTE>(32_767, 1_000, MAX_SQRT_PRICE_X96 - 1, &mut ctx).finalize();
 
-    assert_eq!(low.lp_fee(), lp_fee::new_fixed(20_000));
-    assert_eq!(high.lp_fee(), lp_fee::new_fixed(1_000));
+    assert_eq!(low.lp_fee().base_fee_ppm(), 20_000);
+    assert_eq!(high.lp_fee().base_fee_ppm(), 1_000);
     assert_eq!(high.sqrt_price_x96(), MAX_SQRT_PRICE_X96 - 1);
     destroy(low);
     destroy(high);
@@ -146,7 +146,9 @@ fun dynamic_fee_pool_finalizes_without_a_hook_and_reports_its_settings() {
 
     let pool = dynamic_pool(&mut ctx);
 
-    let expected = lp_fee::new_dynamic(BASE_FEE_PPM, MAX_FEE_PPM, SENSITIVITY_PPM);
+    let tiers = lp_fee::new_fee_tiers_for_testing(&mut ctx);
+    let expected = lp_fee::new_dynamic(&tiers, BASE_FEE_PPM, MAX_FEE_PPM, SENSITIVITY_PPM);
+    tiers.destroy_default_fee_tiers_for_testing();
     assert_eq!(pool.lp_fee(), expected);
     assert_eq!(pool.before_swap_hook_for_testing(), option::none());
     pool.assert_reference(SQRT_PRICE_ONE_X96, 0);
@@ -161,7 +163,7 @@ fun dynamic_fee_pool_finalizes_without_a_hook_and_reports_its_settings() {
 fun register_hook_rejects_empty_flags() {
     let mut ctx = tx_context::dummy();
     let fixture = new_fixture(&mut ctx);
-    let mut initializer = pool::new_with_fixed_fee<ASSET, QUOTE>(
+    let mut initializer = new_fixed_pool<ASSET, QUOTE>(
         TICK_SPACING,
         LP_FEE_PPM,
         SQRT_PRICE_ONE_X96,
@@ -179,7 +181,7 @@ fun register_hook_rejects_empty_flags() {
 fun register_hook_rejects_a_slot_bound_to_another_hook() {
     let mut ctx = tx_context::dummy();
     let fixture = new_fixture(&mut ctx);
-    let mut initializer = pool::new_with_fixed_fee<ASSET, QUOTE>(
+    let mut initializer = new_fixed_pool<ASSET, QUOTE>(
         TICK_SPACING,
         LP_FEE_PPM,
         SQRT_PRICE_ONE_X96,
@@ -802,7 +804,7 @@ fun reference_moves_without_aborting_between_extreme_prices() {
     let mut ctx = tx_context::dummy();
     let mut clock = clock::create_for_testing(&mut ctx);
     clock.set_for_testing(NOW_MS);
-    let mut pool = pool::new_with_dynamic_fee<ASSET, QUOTE>(
+    let mut pool = new_dynamic_pool<ASSET, QUOTE>(
         TICK_SPACING,
         BASE_FEE_PPM,
         MAX_FEE_PPM,
@@ -1142,7 +1144,7 @@ fun execute_donate_reaches_the_curve_seam() {
 fun hook_state_is_isolated_per_witness_and_writable_mid_operation() {
     let mut ctx = tx_context::dummy();
     let fixture = new_fixture(&mut ctx);
-    let mut initializer = pool::new_with_fixed_fee<ASSET, QUOTE>(
+    let mut initializer = new_fixed_pool<ASSET, QUOTE>(
         TICK_SPACING,
         LP_FEE_PPM,
         SQRT_PRICE_ONE_X96,
@@ -1182,6 +1184,42 @@ fun hook_state_rejects_a_hook_not_bound_to_the_pool() {
 
 // === Test Helpers ===
 
+fun new_fixed_pool<Asset, Quote>(
+    tick_spacing: u32,
+    fee_ppm: u32,
+    sqrt_price_x96: u256,
+    ctx: &mut TxContext,
+): PoolInitializer<Asset, Quote> {
+    let tiers = lp_fee::new_fee_tiers_for_testing(ctx);
+    let initializer = pool::new_with_fixed_fee(&tiers, tick_spacing, fee_ppm, sqrt_price_x96, ctx);
+    tiers.destroy_default_fee_tiers_for_testing();
+
+    initializer
+}
+
+fun new_dynamic_pool<Asset, Quote>(
+    tick_spacing: u32,
+    base_fee_ppm: u32,
+    max_fee_ppm: u32,
+    sensitivity_ppm: u32,
+    sqrt_price_x96: u256,
+    ctx: &mut TxContext,
+): PoolInitializer<Asset, Quote> {
+    let tiers = lp_fee::new_fee_tiers_for_testing(ctx);
+    let initializer = pool::new_with_dynamic_fee(
+        &tiers,
+        tick_spacing,
+        base_fee_ppm,
+        max_fee_ppm,
+        sensitivity_ppm,
+        sqrt_price_x96,
+        ctx,
+    );
+    tiers.destroy_default_fee_tiers_for_testing();
+
+    initializer
+}
+
 fun new_fixture(ctx: &mut TxContext): Fixture {
     let mut namespace = hook_config::new_namespace_for_testing(ctx);
     let test_config = hook_config::new(&mut namespace, TestHook(), 1);
@@ -1192,7 +1230,7 @@ fun new_fixture(ctx: &mut TxContext): Fixture {
 
 /// Fixed-fee pool with `TestHook` bound to `flags`.
 fun hooked_pool(self: &Fixture, flags: u8, ctx: &mut TxContext): Pool<ASSET, QUOTE> {
-    let mut initializer = pool::new_with_fixed_fee(TICK_SPACING, LP_FEE_PPM, SQRT_PRICE_ONE_X96, ctx);
+    let mut initializer = new_fixed_pool(TICK_SPACING, LP_FEE_PPM, SQRT_PRICE_ONE_X96, ctx);
     initializer.register_hook(&self.test_config, TestHook(), flags);
 
     initializer.finalize()
@@ -1200,7 +1238,7 @@ fun hooked_pool(self: &Fixture, flags: u8, ctx: &mut TxContext): Pool<ASSET, QUO
 
 /// Unhooked dynamic-fee pool at price 1.0.
 fun dynamic_pool(ctx: &mut TxContext): Pool<ASSET, QUOTE> {
-    pool::new_with_dynamic_fee(TICK_SPACING, BASE_FEE_PPM, MAX_FEE_PPM, SENSITIVITY_PPM, SQRT_PRICE_ONE_X96, ctx)
+    new_dynamic_pool(TICK_SPACING, BASE_FEE_PPM, MAX_FEE_PPM, SENSITIVITY_PPM, SQRT_PRICE_ONE_X96, ctx)
         .finalize()
 }
 
@@ -1274,7 +1312,7 @@ fun assert_reserves(pool: &Pool<ASSET, QUOTE>, asset_reserve: u64, quote_reserve
 }
 
 fun plain_pool(ctx: &mut TxContext): Pool<ASSET, QUOTE> {
-    pool::new_with_fixed_fee(TICK_SPACING, LP_FEE_PPM, SQRT_PRICE_ONE_X96, ctx).finalize()
+    new_fixed_pool(TICK_SPACING, LP_FEE_PPM, SQRT_PRICE_ONE_X96, ctx).finalize()
 }
 
 fun asset(value: u64, ctx: &mut TxContext): Coin<ASSET> {
@@ -1291,7 +1329,7 @@ use blast_fun_dex::{
     hook_config::{Self, HookConfig, HookNamespace},
     i32,
     lp_fee,
-    pool::{Self, Pool, PoolCreated, Swapped},
+    pool::{Self, Pool, PoolCreated, PoolInitializer, Swapped},
 };
 use std::{type_name, unit_test::{assert_eq, destroy}};
 use sui::{balance, clock::{Self, Clock}, coin::{Self, Coin}, event};

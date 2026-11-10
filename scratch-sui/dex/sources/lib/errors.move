@@ -102,7 +102,7 @@ const EVersionNotIncreasing: u64 = 21;
 // LP fee policy.
 
 #[test_only]
-/// LP fee must be 1,000, 3,000, 10,000 or 20,000 ppm.
+/// A pool's fixed or base LP fee must be a registered tier.
 const ENotFeeTier: u64 = 22;
 
 #[test_only]
@@ -124,6 +124,16 @@ const EMagnitudeTooLarge: u64 = 25;
 #[test_only]
 /// A ppm rate must be at most 1,000,000.
 const EInvalidPpm: u64 = 26;
+
+// LP fee tier registration.
+
+#[test_only]
+/// A fee tier must be between 1 and 100,000 ppm.
+const EInvalidFeeTierRate: u64 = 27;
+
+#[test_only]
+/// This fee tier is already registered.
+const EFeeTierAlreadyExists: u64 = 28;
 
 macro public(package) fun identical_tokens(): u64 { 0 }
 
@@ -178,3 +188,7 @@ macro public(package) fun invalid_sensitivity(): u64 { 24 }
 macro public(package) fun magnitude_too_large(): u64 { 25 }
 
 macro public(package) fun invalid_ppm(): u64 { 26 }
+
+macro public(package) fun invalid_fee_tier_rate(): u64 { 27 }
+
+macro public(package) fun fee_tier_already_exists(): u64 { 28 }

@@ -10,15 +10,15 @@
 /// grows with the square of the gap between the swap's projected price and a
 /// reference price, up to its maximum. The reference smooths the pool's own
 /// square-root price. Fees are in parts per million, where 1,000,000 is 100%.
-/// The tiers, bounds and window below are provisional.
+/// New pools choose a tier from the shared registry. The fee settings on
+/// an existing pool are independent of later tier additions.
 module blast_fun_dex::lp_fee;
 
 // === Constants ===
 
-/// Fee tiers a fixed fee or a dynamic base fee must use: 0.1%, 0.3%, 1% and 2%.
-const FEE_TIERS_PPM: vector<u32> = vector[1_000, 3_000, 10_000, 20_000];
-/// Highest maximum a dynamic fee may set: 10%.
-const MAX_DYNAMIC_FEE_PPM: u32 = 100_000;
+const DEFAULT_FEE_TIERS_PPM: vector<u32> = vector[1_000, 3_000, 10_000, 20_000];
+/// Upper bound for a registered tier and for a pool's dynamic maximum: 10%.
+const MAX_LP_FEE_PPM: u32 = 100_000;
 /// Sensitivity bounds, in ppm of fee per unit of squared price gap.
 const MIN_SENSITIVITY_PPM: u32 = 100_000;
 const MAX_SENSITIVITY_PPM: u32 = 100_000_000;
@@ -41,7 +41,44 @@ public enum LpFee has copy, drop, store {
     Dynamic { base_fee_ppm: Ppm, max_fee_ppm: Ppm, sensitivity_ppm: u32 },
 }
 
+/// The shared set of rates allowed for fixed and base fees. Entries are permanent.
+public struct BlastDexFeeTiers has key {
+    id: UID,
+    rates: Table<u32, bool>,
+}
+
+/// The sole capability to add tiers. Initialization sends it to the publisher.
+public struct BlastDexFeeTierAdminCap has key, store {
+    id: UID,
+}
+
+/// An additional rate became available to new pools.
+public struct BlastDexFeeTierAdded has copy, drop {
+    fee_ppm: u32,
+}
+
+// === Private Initialization ===
+
+fun init(ctx: &mut TxContext) {
+    transfer::share_object(new_fee_tiers(ctx));
+    transfer::transfer(BlastDexFeeTierAdminCap { id: object::new(ctx) }, ctx.sender());
+}
+
 // === Public Functions ===
+
+/// Whether a new pool can use this rate as its fixed or base fee.
+public fun is_fee_tier(self: &BlastDexFeeTiers, fee_ppm: u32): bool {
+    self.rates.contains(fee_ppm)
+}
+
+/// Adds a distinct tier between 1 and 100,000 ppm, inclusive.
+public fun add_fee_tier(self: &mut BlastDexFeeTiers, _cap: &BlastDexFeeTierAdminCap, fee_ppm: u32) {
+    assert!(fee_ppm > 0 && fee_ppm <= MAX_LP_FEE_PPM, blast_fun_dex::errors::invalid_fee_tier_rate!());
+    assert!(!self.is_fee_tier(fee_ppm), blast_fun_dex::errors::fee_tier_already_exists!());
+
+    self.rates.add(fee_ppm, true);
+    sui::event::emit(BlastDexFeeTierAdded { fee_ppm });
+}
 
 public fun is_dynamic(self: &LpFee): bool {
     match (self) {
@@ -73,18 +110,23 @@ public fun sensitivity_ppm(self: &LpFee): Option<u32> {
 
 // === Package Functions ===
 
-public(package) fun new_fixed(fee_ppm: u32): LpFee {
-    assert!(is_fee_tier(fee_ppm), blast_fun_dex::errors::not_fee_tier!());
+public(package) fun new_fixed(tiers: &BlastDexFeeTiers, fee_ppm: u32): LpFee {
+    assert!(tiers.is_fee_tier(fee_ppm), blast_fun_dex::errors::not_fee_tier!());
 
     LpFee::Fixed { fee_ppm: ppm::new(fee_ppm) }
 }
 
 /// `base_fee_ppm` must be a fee tier, `max_fee_ppm` between it and 100,000 ppm,
 /// and `sensitivity_ppm` between 100,000 and 100,000,000 ppm.
-public(package) fun new_dynamic(base_fee_ppm: u32, max_fee_ppm: u32, sensitivity_ppm: u32): LpFee {
-    assert!(is_fee_tier(base_fee_ppm), blast_fun_dex::errors::not_fee_tier!());
+public(package) fun new_dynamic(
+    tiers: &BlastDexFeeTiers,
+    base_fee_ppm: u32,
+    max_fee_ppm: u32,
+    sensitivity_ppm: u32,
+): LpFee {
+    assert!(tiers.is_fee_tier(base_fee_ppm), blast_fun_dex::errors::not_fee_tier!());
     assert!(
-        max_fee_ppm >= base_fee_ppm && max_fee_ppm <= MAX_DYNAMIC_FEE_PPM,
+        max_fee_ppm >= base_fee_ppm && max_fee_ppm <= MAX_LP_FEE_PPM,
         blast_fun_dex::errors::invalid_max_fee!(),
     );
     assert!(
@@ -173,10 +215,11 @@ public(package) fun moved_reference_sqrt_price_x96(
 
 // === Private Functions ===
 
-fun is_fee_tier(fee_ppm: u32): bool {
-    let fee_tiers_ppm = FEE_TIERS_PPM;
+fun new_fee_tiers(ctx: &mut TxContext): BlastDexFeeTiers {
+    let mut rates = table::new(ctx);
+    DEFAULT_FEE_TIERS_PPM.do!(|fee_ppm| rates.add(fee_ppm, true));
 
-    fee_tiers_ppm.contains(&fee_ppm)
+    BlastDexFeeTiers { id: object::new(ctx), rates }
 }
 
 /// abs(projected^2 - reference^2) / reference^2 in Q64, rounded down, from the
@@ -196,6 +239,29 @@ fun price_gap_x64_down(reference_sqrt_price_x96: u256, projected_sqrt_price_x96:
 
 // === Test-Only Functions ===
 
+#[test_only]
+public fun init_for_testing(ctx: &mut TxContext) {
+    init(ctx);
+}
+
+#[test_only]
+public fun new_fee_tiers_for_testing(ctx: &mut TxContext): BlastDexFeeTiers {
+    new_fee_tiers(ctx)
+}
+
+#[test_only]
+public fun destroy_default_fee_tiers_for_testing(self: BlastDexFeeTiers) {
+    let BlastDexFeeTiers { id, mut rates } = self;
+    DEFAULT_FEE_TIERS_PPM.do!(|fee_ppm| { rates.remove(fee_ppm); });
+    rates.destroy_empty();
+    id.delete();
+}
+
+#[test_only]
+public fun added_fee_ppm_for_testing(self: &BlastDexFeeTierAdded): u32 {
+    self.fee_ppm
+}
+
 /// Bypasses LP policy bounds while keeping both rates valid ppm values.
 #[test_only]
 public fun new_dynamic_unchecked_for_testing(base_fee_ppm: u32, max_fee_ppm: u32, sensitivity_ppm: u32): LpFee {
@@ -209,3 +275,4 @@ public fun new_dynamic_unchecked_for_testing(base_fee_ppm: u32, max_fee_ppm: u32
 // === Imports ===
 
 use blast_fun_dex::ppm::{Self, Ppm};
+use sui::table::{Self, Table};

@@ -96,8 +96,8 @@ fun fee_is_capped_at_the_maximum() {
 
 #[test]
 fun extreme_in_range_prices_saturate_at_the_maximum_without_aborting() {
-    let low_sensitivity = lp_fee::new_dynamic(1_000, 100_000, 100_000);
-    let high_sensitivity = lp_fee::new_dynamic(20_000, 20_000, 100_000_000);
+    let low_sensitivity = dynamic_fee(1_000, 100_000, 100_000);
+    let high_sensitivity = dynamic_fee(20_000, 20_000, 100_000_000);
     let table = table_fee();
     // A 1 ppm sensitivity still saturates the largest ppm rate above the reference.
     let widest = lp_fee::new_dynamic_unchecked_for_testing(1_000, 1_000_000, 1);
@@ -122,7 +122,7 @@ fun gap_is_measured_in_price_not_square_root_price() {
 
 #[test]
 fun rate_rounding_can_reduce_the_fee_by_one_ppm_at_an_exact_boundary() {
-    let fee = lp_fee::new_dynamic(3_000, 100_000, 100_035);
+    let fee = dynamic_fee(3_000, 100_000, 100_035);
     let reference_sqrt_price_x96 = 3 * SQRT_PRICE_ONE_X96;
 
     // The exact gaps are 7/9 and 5/9. Rounding them down puts each surcharge
@@ -133,7 +133,7 @@ fun rate_rounding_can_reduce_the_fee_by_one_ppm_at_an_exact_boundary() {
 
 #[test]
 fun fixed_fee_ignores_the_price_gap() {
-    let fee = lp_fee::new_fixed(3_000);
+    let fee = fixed_fee(3_000);
 
     assert_eq!(fee.fee_at_price(SQRT_PRICE_ONE_X96, SQRT_PRICE_ONE_X96).value(), 3_000);
     assert_eq!(fee.fee_at_price(MIN_SQRT_PRICE_X96, MAX_SQRT_PRICE_X96 - 1).value(), 3_000);
@@ -221,7 +221,7 @@ fun new_fixed_accepts_every_fee_tier() {
     let tiers = vector[1_000, 3_000, 10_000, 20_000];
 
     tiers.do!(|tier| {
-        let fee = lp_fee::new_fixed(tier);
+        let fee = fixed_fee(tier);
         assert!(!fee.is_dynamic());
         assert_eq!(fee.base_fee_ppm(), tier);
         assert_eq!(fee.max_fee_ppm(), tier);
@@ -232,19 +232,19 @@ fun new_fixed_accepts_every_fee_tier() {
 #[test]
 #[expected_failure(abort_code = blast_fun_dex::errors::ENotFeeTier, location = blast_fun_dex::lp_fee)]
 fun new_fixed_rejects_zero() {
-    lp_fee::new_fixed(0);
+    fixed_fee(0);
 }
 
 #[test]
 #[expected_failure(abort_code = blast_fun_dex::errors::ENotFeeTier, location = blast_fun_dex::lp_fee)]
 fun new_fixed_rejects_a_fee_next_to_a_tier() {
-    lp_fee::new_fixed(2_999);
+    fixed_fee(2_999);
 }
 
 #[test]
 #[expected_failure(abort_code = blast_fun_dex::errors::ENotFeeTier, location = blast_fun_dex::lp_fee)]
 fun new_fixed_rejects_a_fee_above_the_highest_tier() {
-    lp_fee::new_fixed(20_001);
+    fixed_fee(20_001);
 }
 
 // Dynamic settings.
@@ -253,10 +253,10 @@ fun new_fixed_rejects_a_fee_above_the_highest_tier() {
 fun new_dynamic_accepts_every_bound_at_its_edge() {
     let tiers = vector[1_000, 3_000, 10_000, 20_000];
     tiers.do!(|tier| {
-        lp_fee::new_dynamic(tier, tier, 100_000);
+        dynamic_fee(tier, tier, 100_000);
     });
 
-    let fee = lp_fee::new_dynamic(1_000, 100_000, 100_000_000);
+    let fee = dynamic_fee(1_000, 100_000, 100_000_000);
 
     assert!(fee.is_dynamic());
     assert_eq!(fee.base_fee_ppm(), 1_000);
@@ -267,40 +267,56 @@ fun new_dynamic_accepts_every_bound_at_its_edge() {
 #[test]
 #[expected_failure(abort_code = blast_fun_dex::errors::ENotFeeTier, location = blast_fun_dex::lp_fee)]
 fun new_dynamic_rejects_a_base_fee_off_the_tiers() {
-    lp_fee::new_dynamic(2_000, 10_000, 1_000_000);
+    dynamic_fee(2_000, 10_000, 1_000_000);
 }
 
 #[test]
 #[expected_failure(abort_code = blast_fun_dex::errors::EInvalidMaxFee, location = blast_fun_dex::lp_fee)]
 fun new_dynamic_rejects_a_maximum_below_the_base_fee() {
-    lp_fee::new_dynamic(3_000, 2_999, 1_000_000);
+    dynamic_fee(3_000, 2_999, 1_000_000);
 }
 
 #[test]
 #[expected_failure(abort_code = blast_fun_dex::errors::EInvalidMaxFee, location = blast_fun_dex::lp_fee)]
 fun new_dynamic_rejects_a_maximum_above_ten_percent() {
-    lp_fee::new_dynamic(3_000, 100_001, 1_000_000);
+    dynamic_fee(3_000, 100_001, 1_000_000);
 }
 
 #[test]
 #[expected_failure(abort_code = blast_fun_dex::errors::EInvalidSensitivity, location = blast_fun_dex::lp_fee)]
 fun new_dynamic_rejects_a_sensitivity_below_the_minimum() {
-    lp_fee::new_dynamic(3_000, 10_000, 99_999);
+    dynamic_fee(3_000, 10_000, 99_999);
 }
 
 #[test]
 #[expected_failure(abort_code = blast_fun_dex::errors::EInvalidSensitivity, location = blast_fun_dex::lp_fee)]
 fun new_dynamic_rejects_a_sensitivity_above_the_maximum() {
-    lp_fee::new_dynamic(3_000, 10_000, 100_000_001);
+    dynamic_fee(3_000, 10_000, 100_000_001);
 }
 
 #[test]
 #[expected_failure(abort_code = blast_fun_dex::errors::ENotFeeTier, location = blast_fun_dex::lp_fee)]
 fun new_dynamic_checks_the_base_fee_before_the_other_bounds() {
-    lp_fee::new_dynamic(2_000, 100_001, 0);
+    dynamic_fee(2_000, 100_001, 0);
 }
 
 // === Test Helpers ===
+
+fun fixed_fee(fee_ppm: u32): LpFee {
+    let tiers = lp_fee::new_fee_tiers_for_testing(&mut tx_context::dummy());
+    let fee = lp_fee::new_fixed(&tiers, fee_ppm);
+    tiers.destroy_default_fee_tiers_for_testing();
+
+    fee
+}
+
+fun dynamic_fee(base_fee_ppm: u32, max_fee_ppm: u32, sensitivity_ppm: u32): LpFee {
+    let tiers = lp_fee::new_fee_tiers_for_testing(&mut tx_context::dummy());
+    let fee = lp_fee::new_dynamic(&tiers, base_fee_ppm, max_fee_ppm, sensitivity_ppm);
+    tiers.destroy_default_fee_tiers_for_testing();
+
+    fee
+}
 
 fun table_fee(): LpFee {
     lp_fee::new_dynamic_unchecked_for_testing(TABLE_BASE_FEE_PPM, TABLE_MAX_FEE_PPM, TABLE_SENSITIVITY_PPM)
