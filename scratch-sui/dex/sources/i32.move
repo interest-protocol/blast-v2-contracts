@@ -7,11 +7,6 @@ module blast_fun_dex::i32;
 const SIGN_BIT: u32 = 0x8000_0000;
 const TWO_POW_32: u64 = 0x1_0000_0000;
 
-// === Errors ===
-
-#[error(code = 0)]
-const EMagnitudeTooLarge: vector<u8> = b"Magnitude does not fit the requested signed 32-bit value.";
-
 // === Public Types ===
 
 /// A signed 32-bit value stored as its two's-complement bits.
@@ -60,3 +55,8 @@ fun twos_complement(value: u32): u32 {
 
     (TWO_POW_32 - (value as u64)) as u32
 }
+
+// === Errors ===
+
+#[error(code = 0)]
+const EMagnitudeTooLarge: vector<u8> = b"Magnitude does not fit the requested signed 32-bit value.";

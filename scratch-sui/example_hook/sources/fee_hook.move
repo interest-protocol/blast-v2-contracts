@@ -48,15 +48,6 @@ const BPS_DENOMINATOR: u64 = 10_000;
 /// Hook fee ceiling: 10% of the swap input.
 const MAX_FEE_BPS: u64 = 1_000;
 
-// === Errors ===
-
-#[error(code = 0)]
-const EWrongVersion: vector<u8> = b"Hook configuration is not at this package's version.";
-#[error(code = 1)]
-const EFeeTooHigh: vector<u8> = b"Hook fee must not exceed 1,000 bps.";
-#[error(code = 2)]
-const ENoFeesCollected: vector<u8> = b"Pool has collected no hook fees in this coin.";
-
 // === Public Types ===
 
 /// The hook's witness. Only this module can construct it.
@@ -313,6 +304,15 @@ public fun init_for_testing(ctx: &mut TxContext) {
 public fun set_version_for_testing(config: &mut HookConfig<FeeHook>, version: u64) {
     config.set_version(FeeHook(), version);
 }
+
+// === Errors ===
+
+#[error(code = 0)]
+const EWrongVersion: vector<u8> = b"Hook configuration is not at this package's version.";
+#[error(code = 1)]
+const EFeeTooHigh: vector<u8> = b"Hook fee must not exceed 1,000 bps.";
+#[error(code = 2)]
+const ENoFeesCollected: vector<u8> = b"Pool has collected no hook fees in this coin.";
 
 // === Imports ===
 

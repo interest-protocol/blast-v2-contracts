@@ -39,49 +39,6 @@ const MAX_TICK: u32 = 887_272;
 const MIN_SQRT_PRICE_X96: u256 = 4_295_128_739;
 const MAX_SQRT_PRICE_X96: u256 = 1_461_446_703_485_210_103_287_273_052_203_988_822_378_723_970_342;
 
-// === Errors ===
-
-#[error(code = 0)]
-const EIdenticalTokens: vector<u8> = b"Pool tokens must be different types.";
-#[error(code = 1)]
-const EInvalidTickSpacing: vector<u8> = b"Tick spacing must be between 1 and 32,767.";
-#[error(code = 2)]
-const EInvalidSqrtPrice: vector<u8> = b"Square-root price is outside the supported range.";
-#[error(code = 3)]
-const EInvalidHookFlags: vector<u8> = b"Hook registration must select at least one slot.";
-#[error(code = 4)]
-const EHookSlotTaken: vector<u8> = b"Another hook is already bound to this slot.";
-#[error(code = 5)]
-const EInvalidTickRange: vector<u8> = b"Ticks must be ordered, in range and multiples of the tick spacing.";
-#[error(code = 6)]
-const EPositionNotEmpty: vector<u8> = b"Position still holds liquidity.";
-#[error(code = 7)]
-const EPoolInOperation: vector<u8> = b"Pool is already running an operation in this transaction.";
-#[error(code = 8)]
-const EWrongPool: vector<u8> = b"Value belongs to a different pool.";
-#[error(code = 9)]
-const EWrongPosition: vector<u8> = b"Position does not match the request.";
-#[error(code = 10)]
-const EZeroAmount: vector<u8> = b"Payment must not be zero.";
-#[error(code = 11)]
-const EInvalidPriceLimit: vector<u8> = b"Price limit is on the wrong side of the current price or out of range.";
-#[error(code = 12)]
-const EZeroLiquidity: vector<u8> = b"Liquidity must not be zero.";
-#[error(code = 13)]
-const EInsufficientLiquidity: vector<u8> = b"Position holds less liquidity than requested.";
-#[error(code = 14)]
-const EHookNotBound: vector<u8> = b"Witness is not the hook bound to this slot.";
-#[error(code = 15)]
-const EAlreadyApproved: vector<u8> = b"Hook has already approved this step.";
-#[error(code = 16)]
-const EMissingApproval: vector<u8> = b"The bound hook has not approved this step.";
-#[error(code = 17)]
-const EInsufficientPayment: vector<u8> = b"Payment is less than the liquidity requires.";
-#[error(code = 18)]
-const EInsufficientOutput: vector<u8> = b"Output is below the caller's minimum.";
-#[error(code = 19)]
-const ECurveMathUnavailable: vector<u8> = b"Curve math is not implemented; do not publish this package.";
-
 // === Public Types ===
 
 /// Shared pool. Hook bindings, tick spacing and LP fee settings never change after creation.
@@ -1243,6 +1200,49 @@ public fun reference_for_testing<Asset, Quote>(self: &Pool<Asset, Quote>): (u256
 public fun pool_created_lp_fee_for_testing(event: &PoolCreated): LpFee {
     event.lp_fee
 }
+
+// === Errors ===
+
+#[error(code = 0)]
+const EIdenticalTokens: vector<u8> = b"Pool tokens must be different types.";
+#[error(code = 1)]
+const EInvalidTickSpacing: vector<u8> = b"Tick spacing must be between 1 and 32,767.";
+#[error(code = 2)]
+const EInvalidSqrtPrice: vector<u8> = b"Square-root price is outside the supported range.";
+#[error(code = 3)]
+const EInvalidHookFlags: vector<u8> = b"Hook registration must select at least one slot.";
+#[error(code = 4)]
+const EHookSlotTaken: vector<u8> = b"Another hook is already bound to this slot.";
+#[error(code = 5)]
+const EInvalidTickRange: vector<u8> = b"Ticks must be ordered, in range and multiples of the tick spacing.";
+#[error(code = 6)]
+const EPositionNotEmpty: vector<u8> = b"Position still holds liquidity.";
+#[error(code = 7)]
+const EPoolInOperation: vector<u8> = b"Pool is already running an operation in this transaction.";
+#[error(code = 8)]
+const EWrongPool: vector<u8> = b"Value belongs to a different pool.";
+#[error(code = 9)]
+const EWrongPosition: vector<u8> = b"Position does not match the request.";
+#[error(code = 10)]
+const EZeroAmount: vector<u8> = b"Payment must not be zero.";
+#[error(code = 11)]
+const EInvalidPriceLimit: vector<u8> = b"Price limit is on the wrong side of the current price or out of range.";
+#[error(code = 12)]
+const EZeroLiquidity: vector<u8> = b"Liquidity must not be zero.";
+#[error(code = 13)]
+const EInsufficientLiquidity: vector<u8> = b"Position holds less liquidity than requested.";
+#[error(code = 14)]
+const EHookNotBound: vector<u8> = b"Witness is not the hook bound to this slot.";
+#[error(code = 15)]
+const EAlreadyApproved: vector<u8> = b"Hook has already approved this step.";
+#[error(code = 16)]
+const EMissingApproval: vector<u8> = b"The bound hook has not approved this step.";
+#[error(code = 17)]
+const EInsufficientPayment: vector<u8> = b"Payment is less than the liquidity requires.";
+#[error(code = 18)]
+const EInsufficientOutput: vector<u8> = b"Output is below the caller's minimum.";
+#[error(code = 19)]
+const ECurveMathUnavailable: vector<u8> = b"Curve math is not implemented; do not publish this package.";
 
 // === Imports ===
 
