@@ -31,5 +31,5 @@ deps = { Sui = "Sui", blast_admin = "blast_admin" }
 [pinned.mainnet.blast_fun_dex_example_hook]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "54FFDAA3BD730892C59E7947FBBE1AD8E2E736F9E86FEBDA128299AB8B26C634"
-deps = { Sui = "Sui", blast_fun_dex = "blast_fun_dex" }
+manifest_digest = "D4DBB5094341BEDD51DD99ADC0C1615B9AF06A016D14E3982DFC2CCADF27D622"
+deps = { Sui = "Sui", blast_admin = "blast_admin", blast_fun_dex = "blast_fun_dex" }

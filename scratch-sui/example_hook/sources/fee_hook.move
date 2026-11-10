@@ -13,18 +13,19 @@
 /// supplies bytes.
 ///
 /// ```text
-/// before_swap<A, Q>(pool, config, request: &mut SwapRequest<A, Q>, hook_data, clock, ctx)
-/// after_swap<A, Q>(pool, config, completion: &mut Completion<A, Q, Swap>, hook_data, clock, ctx)
-/// before_add_liquidity<A, Q>(pool, config, request: &mut AddLiquidityRequest<A, Q>, position, hook_data, clock, ctx)
-/// after_add_liquidity<A, Q>(pool, config, completion: &mut Completion<A, Q, AddLiquidity>, position, hook_data, clock, ctx)
-/// before_remove_liquidity<A, Q>(pool, config, request: &mut RemoveLiquidityRequest<A, Q>, position, hook_data, clock, ctx)
-/// after_remove_liquidity<A, Q>(pool, config, completion: &mut Completion<A, Q, RemoveLiquidity>, position, hook_data, clock, ctx)
-/// before_donate<A, Q>(pool, config, request: &mut DonateRequest<A, Q>, hook_data, clock, ctx)
-/// after_donate<A, Q>(pool, config, completion: &mut Completion<A, Q, Donate>, hook_data, clock, ctx)
+/// before_swap<A, Q>(pool, package_version, config, request: &mut SwapRequest<A, Q>, hook_data, clock, ctx)
+/// after_swap<A, Q>(pool, package_version, config, completion: &mut Completion<A, Q, Swap>, hook_data, clock, ctx)
+/// before_add_liquidity<A, Q>(pool, package_version, config, request: &mut AddLiquidityRequest<A, Q>, position, hook_data, clock, ctx)
+/// after_add_liquidity<A, Q>(pool, package_version, config, completion: &mut Completion<A, Q, AddLiquidity>, position, hook_data, clock, ctx)
+/// before_remove_liquidity<A, Q>(pool, package_version, config, request: &mut RemoveLiquidityRequest<A, Q>, position, hook_data, clock, ctx)
+/// after_remove_liquidity<A, Q>(pool, package_version, config, completion: &mut Completion<A, Q, RemoveLiquidity>, position, hook_data, clock, ctx)
+/// before_donate<A, Q>(pool, package_version, config, request: &mut DonateRequest<A, Q>, hook_data, clock, ctx)
+/// after_donate<A, Q>(pool, package_version, config, completion: &mut Completion<A, Q, Donate>, hook_data, clock, ctx)
 /// ```
 ///
-/// `pool` is `&mut Pool<A, Q>`, `config` is `&HookConfig<Witness>`, `position`
-/// is `&Position<A, Q>`, `hook_data` is `vector<u8>`, `clock` is `&Clock` and
+/// `pool` is `&mut Pool<A, Q>`, `package_version` is the shared DEX
+/// `&PackageVersion<BLAST_FUN_DEX>`, `config` is `&HookConfig<Witness>`,
+/// `position` is `&Position<A, Q>`, `hook_data` is `vector<u8>`, `clock` is `&Clock` and
 /// `ctx` is `&mut TxContext`.
 ///
 /// Every function first requires `config.version()` to equal the version
@@ -84,32 +85,43 @@ fun init(ctx: &mut TxContext) {
 /// Creates and shares the hook's configuration. Callable once.
 public fun create_config(
     namespace: &mut HookNamespace,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     _admin: &FeeHookAdminCap,
     fee_bps: u64,
 ) {
     assert!(fee_bps <= MAX_FEE_BPS, EFeeTooHigh);
 
-    let mut config = hook_config::new(namespace, FeeHook(), VERSION);
-    dynamic_field::add(config.uid_mut(&FeeHook()), SettingsKey(), Settings { fee_bps });
-    config.share();
+    let mut config = hook_config::new(package_version, namespace, FeeHook(), VERSION);
+    dynamic_field::add(config.uid_mut(package_version, &FeeHook()), SettingsKey(), Settings { fee_bps });
+    config.share(package_version);
 }
 
-public fun set_fee_bps(config: &mut HookConfig<FeeHook>, _admin: &FeeHookAdminCap, fee_bps: u64) {
+public fun set_fee_bps(
+    config: &mut HookConfig<FeeHook>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
+    _admin: &FeeHookAdminCap,
+    fee_bps: u64,
+) {
     assert_current_version(config);
     assert!(fee_bps <= MAX_FEE_BPS, EFeeTooHigh);
 
-    let settings: &mut Settings = dynamic_field::borrow_mut(config.uid_mut(&FeeHook()), SettingsKey());
+    let settings: &mut Settings = dynamic_field::borrow_mut(config.uid_mut(package_version, &FeeHook()), SettingsKey());
     settings.fee_bps = fee_bps;
 }
 
 /// After an upgrade, accepts this version and stops all older ones.
-public fun migrate(config: &mut HookConfig<FeeHook>, _admin: &FeeHookAdminCap) {
-    config.set_version(FeeHook(), VERSION);
+public fun migrate(
+    config: &mut HookConfig<FeeHook>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
+    _admin: &FeeHookAdminCap,
+) {
+    config.set_version(package_version, FeeHook(), VERSION);
 }
 
 /// Withdraws the hook fees a pool has collected in `CoinType`.
 public fun withdraw_fees<Asset, Quote, CoinType>(
     pool: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     config: &HookConfig<FeeHook>,
     _admin: &FeeHookAdminCap,
     ctx: &mut TxContext,
@@ -120,18 +132,19 @@ public fun withdraw_fees<Asset, Quote, CoinType>(
         ENoFeesCollected,
     );
 
-    let collected: &mut Balance<CoinType> = pool.hook_state_mut(&FeeHook(), CollectedFeesKey<CoinType>());
+    let collected: &mut Balance<CoinType> = pool.hook_state_mut(package_version, &FeeHook(), CollectedFeesKey<CoinType>());
     collected.withdraw_all().into_coin(ctx)
 }
 
 /// Binds this hook to every slot of a new pool. Accepts any pair and fee mode.
 public fun register<Asset, Quote>(
     initializer: &mut PoolInitializer<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     config: &HookConfig<FeeHook>,
 ) {
     assert_current_version(config);
 
-    initializer.register_hook(config, FeeHook(), pool::all_hook_flags!());
+    initializer.register_hook(package_version, config, FeeHook(), pool::all_hook_flags!());
 }
 
 // Swap slots.
@@ -139,6 +152,7 @@ public fun register<Asset, Quote>(
 /// Takes the hook fee from the input and approves.
 public fun before_swap<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     config: &HookConfig<FeeHook>,
     request: &mut SwapRequest<Asset, Quote>,
     _hook_data: vector<u8>,
@@ -150,19 +164,20 @@ public fun before_swap<Asset, Quote>(
     let settings: &Settings = dynamic_field::borrow(config.uid(), SettingsKey());
     let fee = request.input_value().mul_div_ceil(settings.fee_bps, BPS_DENOMINATOR);
     if (request.is_asset_input()) {
-        let fee_payment = request.take_asset_payment(pool, FeeHook(), fee);
-        pool.collect_fee(fee_payment);
+        let fee_payment = request.take_asset_payment(package_version, pool, FeeHook(), fee);
+        pool.collect_fee(package_version, fee_payment);
     } else {
-        let fee_payment = request.take_quote_payment(pool, FeeHook(), fee);
-        pool.collect_fee(fee_payment);
+        let fee_payment = request.take_quote_payment(package_version, pool, FeeHook(), fee);
+        pool.collect_fee(package_version, fee_payment);
     };
 
-    request.approve(pool, FeeHook());
+    request.approve(package_version, pool, FeeHook());
 }
 
 /// Counts the swap and approves its output unchanged.
 public fun after_swap<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     config: &HookConfig<FeeHook>,
     completion: &mut Completion<Asset, Quote, Swap>,
     _hook_data: vector<u8>,
@@ -171,17 +186,18 @@ public fun after_swap<Asset, Quote>(
 ) {
     assert_current_version(config);
 
-    if (!pool.has_hook_state(&FeeHook(), SwapCountKey())) pool.add_hook_state(&FeeHook(), SwapCountKey(), 0u64);
-    let swap_count: &mut u64 = pool.hook_state_mut(&FeeHook(), SwapCountKey());
+    if (!pool.has_hook_state(&FeeHook(), SwapCountKey())) pool.add_hook_state(package_version, &FeeHook(), SwapCountKey(), 0u64);
+    let swap_count: &mut u64 = pool.hook_state_mut(package_version, &FeeHook(), SwapCountKey());
     *swap_count = *swap_count + 1;
 
-    completion.approve(pool, FeeHook());
+    completion.approve(package_version, pool, FeeHook());
 }
 
 // Liquidity and donation slots.
 
 public fun before_add_liquidity<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     config: &HookConfig<FeeHook>,
     request: &mut AddLiquidityRequest<Asset, Quote>,
     _position: &Position<Asset, Quote>,
@@ -191,11 +207,12 @@ public fun before_add_liquidity<Asset, Quote>(
 ) {
     assert_current_version(config);
 
-    request.approve(pool, FeeHook());
+    request.approve(package_version, pool, FeeHook());
 }
 
 public fun after_add_liquidity<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     config: &HookConfig<FeeHook>,
     completion: &mut Completion<Asset, Quote, AddLiquidity>,
     _position: &Position<Asset, Quote>,
@@ -205,11 +222,12 @@ public fun after_add_liquidity<Asset, Quote>(
 ) {
     assert_current_version(config);
 
-    completion.approve(pool, FeeHook());
+    completion.approve(package_version, pool, FeeHook());
 }
 
 public fun before_remove_liquidity<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     config: &HookConfig<FeeHook>,
     request: &mut RemoveLiquidityRequest<Asset, Quote>,
     _position: &Position<Asset, Quote>,
@@ -219,11 +237,12 @@ public fun before_remove_liquidity<Asset, Quote>(
 ) {
     assert_current_version(config);
 
-    request.approve(pool, FeeHook());
+    request.approve(package_version, pool, FeeHook());
 }
 
 public fun after_remove_liquidity<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     config: &HookConfig<FeeHook>,
     completion: &mut Completion<Asset, Quote, RemoveLiquidity>,
     _position: &Position<Asset, Quote>,
@@ -233,11 +252,12 @@ public fun after_remove_liquidity<Asset, Quote>(
 ) {
     assert_current_version(config);
 
-    completion.approve(pool, FeeHook());
+    completion.approve(package_version, pool, FeeHook());
 }
 
 public fun before_donate<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     config: &HookConfig<FeeHook>,
     request: &mut DonateRequest<Asset, Quote>,
     _hook_data: vector<u8>,
@@ -246,11 +266,12 @@ public fun before_donate<Asset, Quote>(
 ) {
     assert_current_version(config);
 
-    request.approve(pool, FeeHook());
+    request.approve(package_version, pool, FeeHook());
 }
 
 public fun after_donate<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     config: &HookConfig<FeeHook>,
     completion: &mut Completion<Asset, Quote, Donate>,
     _hook_data: vector<u8>,
@@ -259,7 +280,7 @@ public fun after_donate<Asset, Quote>(
 ) {
     assert_current_version(config);
 
-    completion.approve(pool, FeeHook());
+    completion.approve(package_version, pool, FeeHook());
 }
 
 // Reads.
@@ -285,13 +306,17 @@ fun assert_current_version(config: &HookConfig<FeeHook>) {
     assert!(config.version() == VERSION, EWrongVersion);
 }
 
-fun collect_fee<Asset, Quote, CoinType>(pool: &mut Pool<Asset, Quote>, fee: Balance<CoinType>) {
+fun collect_fee<Asset, Quote, CoinType>(
+    pool: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
+    fee: Balance<CoinType>,
+) {
     if (!pool.has_hook_state(&FeeHook(), CollectedFeesKey<CoinType>())) {
-        pool.add_hook_state(&FeeHook(), CollectedFeesKey<CoinType>(), fee);
+        pool.add_hook_state(package_version, &FeeHook(), CollectedFeesKey<CoinType>(), fee);
         return
     };
 
-    let collected: &mut Balance<CoinType> = pool.hook_state_mut(&FeeHook(), CollectedFeesKey<CoinType>());
+    let collected: &mut Balance<CoinType> = pool.hook_state_mut(package_version, &FeeHook(), CollectedFeesKey<CoinType>());
     collected.join(fee);
 }
 
@@ -304,8 +329,12 @@ public fun init_for_testing(ctx: &mut TxContext) {
 
 /// Moves the configuration past this package's version, as a newer package would.
 #[test_only]
-public fun set_version_for_testing(config: &mut HookConfig<FeeHook>, version: u64) {
-    config.set_version(FeeHook(), version);
+public fun set_version_for_testing(
+    config: &mut HookConfig<FeeHook>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
+    version: u64,
+) {
+    config.set_version(package_version, FeeHook(), version);
 }
 
 // === Errors ===
@@ -319,7 +348,9 @@ const ENoFeesCollected: vector<u8> = b"Pool has collected no hook fees in this c
 
 // === Imports ===
 
+use blast_admin::package_version::PackageVersion;
 use blast_fun_dex::{
+    blast_fun_dex::BLAST_FUN_DEX,
     hook_config::{Self, HookConfig, HookNamespace},
     pool::{
         Self,

@@ -25,6 +25,7 @@ public struct Fixture {
     config: HookConfig<FeeHook>,
     clock: Clock,
     tiers: BlastDexFeeTiers,
+    version: PackageVersion<BLAST_FUN_DEX>,
 }
 
 // === Tests ===
@@ -48,10 +49,20 @@ fun swap_charges_the_hook_fee_and_counts_the_swap() {
     let mut pool = fixture.fixed_fee_pool();
     pool.join_reserves_for_testing(balance::zero(), balance::create_for_testing(1_000));
 
-    let mut request = pool.begin_swap_asset_to_quote(fixture.asset(1_000), BELOW_PRICE_X96);
-    fee_hook::before_swap(&mut pool, &fixture.config, &mut request, vector[], &fixture.clock, fixture.scenario.ctx());
+    let payment = fixture.asset(1_000);
+    let mut request = pool.begin_swap_asset_to_quote(&fixture.version, payment, BELOW_PRICE_X96);
+    fee_hook::before_swap(
+        &mut pool,
+        &fixture.version,
+        &fixture.config,
+        &mut request,
+        vector[],
+        &fixture.clock,
+        fixture.scenario.ctx(),
+    );
     assert_eq!(request.input_value(), 990);
     let mut completion = pool.execute_swap_with_amounts_for_testing(
+        &fixture.version,
         request,
         990,
         900,
@@ -60,8 +71,16 @@ fun swap_charges_the_hook_fee_and_counts_the_swap() {
         &fixture.clock,
         fixture.scenario.ctx(),
     );
-    fee_hook::after_swap(&mut pool, &fixture.config, &mut completion, vector[], &fixture.clock, fixture.scenario.ctx());
-    let (asset_coin, quote_coin) = pool.finish(completion, 0, 900, fixture.scenario.ctx());
+    fee_hook::after_swap(
+        &mut pool,
+        &fixture.version,
+        &fixture.config,
+        &mut completion,
+        vector[],
+        &fixture.clock,
+        fixture.scenario.ctx(),
+    );
+    let (asset_coin, quote_coin) = pool.finish(&fixture.version, completion, 0, 900, fixture.scenario.ctx());
 
     assert_eq!(asset_coin.burn_for_testing(), 0);
     assert_eq!(quote_coin.burn_for_testing(), 900);
@@ -69,6 +88,7 @@ fun swap_charges_the_hook_fee_and_counts_the_swap() {
     assert_eq!(fee_hook::swap_count(&pool), 1);
     let fees = fee_hook::withdraw_fees<_, _, ASSET>(
         &mut pool,
+        &fixture.version,
         &fixture.config,
         &fixture.admin_cap,
         fixture.scenario.ctx(),
@@ -85,8 +105,17 @@ fun hook_fee_rounds_up_and_is_kept_in_the_input_coin() {
     let mut pool = fixture.fixed_fee_pool();
 
     // 1% of 150 is 1.5; the hook takes 2.
-    let mut request = pool.begin_swap_quote_to_asset(fixture.quote(150), ABOVE_PRICE_X96);
-    fee_hook::before_swap(&mut pool, &fixture.config, &mut request, vector[], &fixture.clock, fixture.scenario.ctx());
+    let payment = fixture.quote(150);
+    let mut request = pool.begin_swap_quote_to_asset(&fixture.version, payment, ABOVE_PRICE_X96);
+    fee_hook::before_swap(
+        &mut pool,
+        &fixture.version,
+        &fixture.config,
+        &mut request,
+        vector[],
+        &fixture.clock,
+        fixture.scenario.ctx(),
+    );
 
     assert_eq!(request.input_value(), 148);
     assert_eq!(fee_hook::collected_fees<_, _, QUOTE>(&pool), 2);
@@ -100,6 +129,7 @@ fun hook_fee_rounds_up_and_is_kept_in_the_input_coin() {
 fun dynamic_pool_passes_remaining_payment_to_the_swap_after_the_hook_fee() {
     let mut fixture = setup(FEE_BPS);
     let mut initializer = pool::new_with_dynamic_fee<ASSET, QUOTE>(
+        &fixture.version,
         &fixture.tiers,
         60,
         3_000,
@@ -108,14 +138,24 @@ fun dynamic_pool_passes_remaining_payment_to_the_swap_after_the_hook_fee() {
         SQRT_PRICE_ONE_X96,
         fixture.scenario.ctx(),
     );
-    fee_hook::register(&mut initializer, &fixture.config);
-    let mut pool = initializer.finalize();
+    fee_hook::register(&mut initializer, &fixture.version, &fixture.config);
+    let mut pool = initializer.finalize(&fixture.version);
     pool.join_reserves_for_testing(balance::zero(), balance::create_for_testing(1_000));
 
-    let mut request = pool.begin_swap_asset_to_quote(fixture.asset(1_000), BELOW_PRICE_X96);
-    fee_hook::before_swap(&mut pool, &fixture.config, &mut request, vector[], &fixture.clock, fixture.scenario.ctx());
+    let payment = fixture.asset(1_000);
+    let mut request = pool.begin_swap_asset_to_quote(&fixture.version, payment, BELOW_PRICE_X96);
+    fee_hook::before_swap(
+        &mut pool,
+        &fixture.version,
+        &fixture.config,
+        &mut request,
+        vector[],
+        &fixture.clock,
+        fixture.scenario.ctx(),
+    );
     assert_eq!(request.input_value(), 990);
     let mut completion = pool.execute_swap_with_amounts_for_testing(
+        &fixture.version,
         request,
         990,
         900,
@@ -124,8 +164,16 @@ fun dynamic_pool_passes_remaining_payment_to_the_swap_after_the_hook_fee() {
         &fixture.clock,
         fixture.scenario.ctx(),
     );
-    fee_hook::after_swap(&mut pool, &fixture.config, &mut completion, vector[], &fixture.clock, fixture.scenario.ctx());
-    let (asset_coin, quote_coin) = pool.finish(completion, 0, 900, fixture.scenario.ctx());
+    fee_hook::after_swap(
+        &mut pool,
+        &fixture.version,
+        &fixture.config,
+        &mut completion,
+        vector[],
+        &fixture.clock,
+        fixture.scenario.ctx(),
+    );
+    let (asset_coin, quote_coin) = pool.finish(&fixture.version, completion, 0, 900, fixture.scenario.ctx());
 
     assert_eq!(fee_hook::collected_fees<_, _, ASSET>(&pool), 10);
     asset_coin.destroy_zero();
@@ -135,16 +183,17 @@ fun dynamic_pool_passes_remaining_payment_to_the_swap_after_the_hook_fee() {
 }
 
 #[test]
-fun liquidity_and_donation_slots_approve_every_step() {
+fun hooked_liquidity_removal_settles_while_fully_paused() {
     let mut fixture = setup(FEE_BPS);
     let mut pool = fixture.fixed_fee_pool();
-    let mut position = pool.new_position(i32::neg_from_u32(600), i32::from_u32(600), fixture.scenario.ctx());
+    let mut position = pool.new_position(&fixture.version, i32::neg_from_u32(600), i32::from_u32(600), fixture.scenario.ctx());
 
     let asset_payment = fixture.asset(100);
     let quote_payment = fixture.quote(100);
-    let mut add_request = pool.begin_add_liquidity(&position, 500, asset_payment, quote_payment);
+    let mut add_request = pool.begin_add_liquidity(&fixture.version, &position, 500, asset_payment, quote_payment);
     fee_hook::before_add_liquidity(
         &mut pool,
+        &fixture.version,
         &fixture.config,
         &mut add_request,
         &position,
@@ -152,9 +201,10 @@ fun liquidity_and_donation_slots_approve_every_step() {
         &fixture.clock,
         fixture.scenario.ctx(),
     );
-    let mut added = pool.execute_add_liquidity_with_amounts_for_testing(add_request, &mut position, 100, 100);
+    let mut added = pool.execute_add_liquidity_with_amounts_for_testing(&fixture.version, add_request, &mut position, 100, 100);
     fee_hook::after_add_liquidity(
         &mut pool,
+        &fixture.version,
         &fixture.config,
         &mut added,
         &position,
@@ -162,13 +212,41 @@ fun liquidity_and_donation_slots_approve_every_step() {
         &fixture.clock,
         fixture.scenario.ctx(),
     );
-    let (asset_refund, quote_refund) = pool.finish(added, 0, 0, fixture.scenario.ctx());
+    let (asset_refund, quote_refund) = pool.finish(&fixture.version, added, 0, 0, fixture.scenario.ctx());
     asset_refund.destroy_zero();
     quote_refund.destroy_zero();
 
-    let mut remove_request = pool.begin_remove_liquidity(&position, 500);
+    let donation = fixture.asset(7);
+    let no_quote = fixture.quote(0);
+    let mut donate_request = pool.begin_donate(&fixture.version, donation, no_quote);
+    fee_hook::before_donate(
+        &mut pool,
+        &fixture.version,
+        &fixture.config,
+        &mut donate_request,
+        vector[],
+        &fixture.clock,
+        fixture.scenario.ctx(),
+    );
+    let mut donated = pool.execute_donate_for_testing(&fixture.version, donate_request);
+    fee_hook::after_donate(
+        &mut pool,
+        &fixture.version,
+        &fixture.config,
+        &mut donated,
+        vector[],
+        &fixture.clock,
+        fixture.scenario.ctx(),
+    );
+    let (asset_coin, quote_coin) = pool.finish(&fixture.version, donated, 0, 0, fixture.scenario.ctx());
+    asset_coin.destroy_zero();
+    quote_coin.destroy_zero();
+
+    fixture.pause_dex();
+    let mut remove_request = pool.begin_remove_liquidity(&fixture.version, &position, 500);
     fee_hook::before_remove_liquidity(
         &mut pool,
+        &fixture.version,
         &fixture.config,
         &mut remove_request,
         &position,
@@ -176,9 +254,10 @@ fun liquidity_and_donation_slots_approve_every_step() {
         &fixture.clock,
         fixture.scenario.ctx(),
     );
-    let mut removed = pool.execute_remove_liquidity_with_amounts_for_testing(remove_request, &mut position, 100, 100);
+    let mut removed = pool.execute_remove_liquidity_with_amounts_for_testing(&fixture.version, remove_request, &mut position, 100, 100);
     fee_hook::after_remove_liquidity(
         &mut pool,
+        &fixture.version,
         &fixture.config,
         &mut removed,
         &position,
@@ -186,26 +265,9 @@ fun liquidity_and_donation_slots_approve_every_step() {
         &fixture.clock,
         fixture.scenario.ctx(),
     );
-    let (asset_out, quote_out) = pool.finish(removed, 100, 100, fixture.scenario.ctx());
+    let (asset_out, quote_out) = pool.finish(&fixture.version, removed, 100, 100, fixture.scenario.ctx());
     assert_eq!(asset_out.burn_for_testing(), 100);
     assert_eq!(quote_out.burn_for_testing(), 100);
-
-    let donation = fixture.asset(7);
-    let no_quote = fixture.quote(0);
-    let mut donate_request = pool.begin_donate(donation, no_quote);
-    fee_hook::before_donate(
-        &mut pool,
-        &fixture.config,
-        &mut donate_request,
-        vector[],
-        &fixture.clock,
-        fixture.scenario.ctx(),
-    );
-    let mut donated = pool.execute_donate_for_testing(donate_request);
-    fee_hook::after_donate(&mut pool, &fixture.config, &mut donated, vector[], &fixture.clock, fixture.scenario.ctx());
-    let (asset_coin, quote_coin) = pool.finish(donated, 0, 0, fixture.scenario.ctx());
-    asset_coin.destroy_zero();
-    quote_coin.destroy_zero();
 
     position.destroy_empty();
     destroy(pool);
@@ -220,10 +282,19 @@ fun liquidity_and_donation_slots_approve_every_step() {
 fun before_swap_rejects_a_config_moved_to_a_newer_version() {
     let mut fixture = setup(FEE_BPS);
     let mut pool = fixture.fixed_fee_pool();
-    fee_hook::set_version_for_testing(&mut fixture.config, 2);
-    let mut request = pool.begin_swap_asset_to_quote(fixture.asset(1_000), BELOW_PRICE_X96);
+    fixture.set_hook_version(2);
+    let payment = fixture.asset(1_000);
+    let mut request = pool.begin_swap_asset_to_quote(&fixture.version, payment, BELOW_PRICE_X96);
 
-    fee_hook::before_swap(&mut pool, &fixture.config, &mut request, vector[], &fixture.clock, fixture.scenario.ctx());
+    fee_hook::before_swap(
+        &mut pool,
+        &fixture.version,
+        &fixture.config,
+        &mut request,
+        vector[],
+        &fixture.clock,
+        fixture.scenario.ctx(),
+    );
 
     destroy(request);
     destroy(pool);
@@ -237,8 +308,9 @@ fun before_swap_rejects_a_config_moved_to_a_newer_version() {
 )]
 fun register_rejects_a_config_moved_to_a_newer_version() {
     let mut fixture = setup(FEE_BPS);
-    fee_hook::set_version_for_testing(&mut fixture.config, 2);
+    fixture.set_hook_version(2);
     let mut initializer = pool::new_with_fixed_fee<ASSET, QUOTE>(
+        &fixture.version,
         &fixture.tiers,
         60,
         3_000,
@@ -246,7 +318,7 @@ fun register_rejects_a_config_moved_to_a_newer_version() {
         fixture.scenario.ctx(),
     );
 
-    fee_hook::register(&mut initializer, &fixture.config);
+    fee_hook::register(&mut initializer, &fixture.version, &fixture.config);
 
     destroy(initializer);
     fixture.teardown();
@@ -257,8 +329,8 @@ fun register_rejects_a_config_moved_to_a_newer_version() {
 fun migrate_rejects_the_version_already_accepted() {
     let mut fixture = setup(FEE_BPS);
 
-    let Fixture { config, admin_cap, .. } = &mut fixture;
-    fee_hook::migrate(config, admin_cap);
+    let Fixture { config, admin_cap, version, .. } = &mut fixture;
+    fee_hook::migrate(config, version, admin_cap);
 
     fixture.teardown();
 }
@@ -279,11 +351,20 @@ fun set_fee_bps_changes_later_swaps() {
     let mut fixture = setup(FEE_BPS);
     let mut pool = fixture.fixed_fee_pool();
 
-    let Fixture { config, admin_cap, .. } = &mut fixture;
-    fee_hook::set_fee_bps(config, admin_cap, 1_000);
+    let Fixture { config, admin_cap, version, .. } = &mut fixture;
+    fee_hook::set_fee_bps(config, version, admin_cap, 1_000);
 
-    let mut request = pool.begin_swap_asset_to_quote(fixture.asset(1_000), BELOW_PRICE_X96);
-    fee_hook::before_swap(&mut pool, &fixture.config, &mut request, vector[], &fixture.clock, fixture.scenario.ctx());
+    let payment = fixture.asset(1_000);
+    let mut request = pool.begin_swap_asset_to_quote(&fixture.version, payment, BELOW_PRICE_X96);
+    fee_hook::before_swap(
+        &mut pool,
+        &fixture.version,
+        &fixture.config,
+        &mut request,
+        vector[],
+        &fixture.clock,
+        fixture.scenario.ctx(),
+    );
     assert_eq!(request.input_value(), 900);
     destroy(request);
     destroy(pool);
@@ -298,8 +379,8 @@ fun set_fee_bps_changes_later_swaps() {
 fun set_fee_bps_rejects_a_fee_above_ten_percent() {
     let mut fixture = setup(FEE_BPS);
 
-    let Fixture { config, admin_cap, .. } = &mut fixture;
-    fee_hook::set_fee_bps(config, admin_cap, 1_001);
+    let Fixture { config, admin_cap, version, .. } = &mut fixture;
+    fee_hook::set_fee_bps(config, version, admin_cap, 1_001);
 
     fixture.teardown();
 }
@@ -315,6 +396,7 @@ fun withdraw_fees_rejects_a_coin_with_no_fees() {
 
     let fees = fee_hook::withdraw_fees<_, _, QUOTE>(
         &mut pool,
+        &fixture.version,
         &fixture.config,
         &fixture.admin_cap,
         fixture.scenario.ctx(),
@@ -332,21 +414,23 @@ fun setup(fee_bps: u64): Fixture {
     let mut scenario = test_scenario::begin(ADMIN);
     fee_hook::init_for_testing(scenario.ctx());
     let mut namespace = hook_config::new_namespace_for_testing(scenario.ctx());
+    let version = dex::version_for_testing(scenario.ctx());
     scenario.next_tx(ADMIN);
     let admin_cap = scenario.take_from_sender<FeeHookAdminCap>();
-    fee_hook::create_config(&mut namespace, &admin_cap, fee_bps);
+    fee_hook::create_config(&mut namespace, &version, &admin_cap, fee_bps);
     scenario.next_tx(ADMIN);
     let config = scenario.take_shared<HookConfig<FeeHook>>();
     let clock = clock::create_for_testing(scenario.ctx());
 
     let tiers = lp_fee::new_fee_tiers_for_testing(scenario.ctx());
 
-    Fixture { scenario, namespace, admin_cap, config, clock, tiers }
+    Fixture { scenario, namespace, admin_cap, config, clock, tiers, version }
 }
 
 fun teardown(self: Fixture) {
-    let Fixture { scenario, namespace, admin_cap, config, clock, tiers } = self;
+    let Fixture { scenario, namespace, admin_cap, config, clock, tiers, version } = self;
     tiers.destroy_default_fee_tiers_for_testing();
+    destroy(version);
     test_scenario::return_shared(config);
     destroy(admin_cap);
     destroy(namespace);
@@ -355,10 +439,21 @@ fun teardown(self: Fixture) {
 }
 
 fun fixed_fee_pool(self: &mut Fixture): Pool<ASSET, QUOTE> {
-    let mut initializer = pool::new_with_fixed_fee(&self.tiers, 60, 3_000, SQRT_PRICE_ONE_X96, self.scenario.ctx());
-    fee_hook::register(&mut initializer, &self.config);
+    let mut initializer = pool::new_with_fixed_fee(&self.version, &self.tiers, 60, 3_000, SQRT_PRICE_ONE_X96, self.scenario.ctx());
+    fee_hook::register(&mut initializer, &self.version, &self.config);
 
-    initializer.finalize()
+    initializer.finalize(&self.version)
+}
+
+fun pause_dex(self: &mut Fixture) {
+    let bits = self.version.valid_pause_bits();
+    let pause_admin = blast_acl::witness_for_testing<PauseAdmin<BLAST_FUN_DEX>>();
+    self.version.pause(&pause_admin, bits);
+}
+
+fun set_hook_version(self: &mut Fixture, hook_version: u64) {
+    let Fixture { config, version, .. } = self;
+    fee_hook::set_version_for_testing(config, version, hook_version);
 }
 
 fun asset(self: &mut Fixture, value: u64): Coin<ASSET> {
@@ -371,7 +466,9 @@ fun quote(self: &mut Fixture, value: u64): Coin<QUOTE> {
 
 // === Imports ===
 
+use blast_admin::{blast_acl, package_admin::{Self, PauseAdmin}, package_version::PackageVersion};
 use blast_fun_dex::{
+    blast_fun_dex::{Self as dex, BLAST_FUN_DEX},
     hook_config::{Self, HookConfig, HookNamespace},
     i32,
     lp_fee::{Self, BlastDexFeeTiers},
@@ -386,3 +483,5 @@ use sui::{
     derived_object,
     test_scenario::{Self, Scenario},
 };
+
+use fun package_admin::pause as PackageVersion.pause;

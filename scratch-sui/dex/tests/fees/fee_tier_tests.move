@@ -20,17 +20,18 @@ public struct QUOTE has drop {}
 #[test]
 fun an_added_tier_is_available_to_new_pools_without_repricing_existing_pools() {
     let mut scenario = setup();
+    let version = dex::version_for_testing(scenario.ctx());
     scenario.grant_fee_tier_role();
     scenario.next_tx(ADMIN);
     let mut tiers = scenario.take_shared<BlastDexFeeTiers>();
     let witness = scenario.sign_in_as_fee_tier_admin();
-    let original = pool::new_with_fixed_fee<ASSET, QUOTE>(&tiers, 60, 3_000, SQRT_PRICE_ONE_X96, scenario.ctx());
-    original.finalize().share();
+    let original = pool::new_with_fixed_fee<ASSET, QUOTE>(&version, &tiers, 60, 3_000, SQRT_PRICE_ONE_X96, scenario.ctx());
+    original.finalize(&version).share(&version);
     assert!(!tiers.is_fee_tier(2_000));
 
-    tiers.add_fee_tier(&witness, 2_000);
-    tiers.add_fee_tier(&witness, 1);
-    tiers.add_fee_tier(&witness, 100_000);
+    tiers.add_fee_tier(&version, &witness, 2_000);
+    tiers.add_fee_tier(&version, &witness, 1);
+    tiers.add_fee_tier(&version, &witness, 100_000);
     let added = event::events_by_type<BlastDexFeeTierAdded>().map!(|event| event.added_fee_ppm_for_testing());
     assert_eq!(added, vector[2_000, 1, 100_000]);
     test_scenario::return_shared(tiers);
@@ -38,9 +39,10 @@ fun an_added_tier_is_available_to_new_pools_without_repricing_existing_pools() {
     scenario.next_tx(CREATOR);
     let tiers = scenario.take_shared<BlastDexFeeTiers>();
     let original = scenario.take_shared<Pool<ASSET, QUOTE>>();
-    let fixed = pool::new_with_fixed_fee<ASSET, QUOTE>(&tiers, 60, 2_000, SQRT_PRICE_ONE_X96, scenario.ctx())
-        .finalize();
+    let fixed = pool::new_with_fixed_fee<ASSET, QUOTE>(&version, &tiers, 60, 2_000, SQRT_PRICE_ONE_X96, scenario.ctx())
+        .finalize(&version);
     let dynamic = pool::new_with_dynamic_fee<ASSET, QUOTE>(
+        &version,
         &tiers,
         60,
         2_000,
@@ -48,7 +50,7 @@ fun an_added_tier_is_available_to_new_pools_without_repricing_existing_pools() {
         1_000_000,
         SQRT_PRICE_ONE_X96,
         scenario.ctx(),
-    ).finalize();
+    ).finalize(&version);
 
     assert_eq!(original.lp_fee().base_fee_ppm(), 3_000);
     assert_eq!(fixed.lp_fee().base_fee_ppm(), 2_000);
@@ -67,6 +69,7 @@ fun an_added_tier_is_available_to_new_pools_without_repricing_existing_pools() {
     test_scenario::return_shared(original);
     destroy(fixed);
     destroy(dynamic);
+    destroy(version);
     scenario.end();
 }
 
@@ -92,6 +95,7 @@ fun adding_an_existing_tier_aborts() {
 #[expected_failure(abort_code = blast_admin::errors::EAdminRoleNotGranted, location = blast_admin::blast_acl)]
 fun a_revoked_fee_tier_admin_cannot_add_a_tier() {
     let mut scenario = setup();
+    let version = dex::version_for_testing(scenario.ctx());
     scenario.grant_fee_tier_role();
     scenario.next_tx(@blast_acl_root);
     scenario.revoke_fee_tier_role();
@@ -99,9 +103,10 @@ fun a_revoked_fee_tier_admin_cannot_add_a_tier() {
     scenario.next_tx(ADMIN);
     let mut tiers = scenario.take_shared<BlastDexFeeTiers>();
     let witness = scenario.sign_in_as_fee_tier_admin();
-    tiers.add_fee_tier(&witness, 2_000);
+    tiers.add_fee_tier(&version, &witness, 2_000);
 
     test_scenario::return_shared(tiers);
+    destroy(version);
     scenario.end();
 }
 
@@ -152,11 +157,13 @@ fun sign_in_as_fee_tier_admin(scenario: &Scenario): AdminWitness<BlastDexFeeTier
 
 fun add_tier(fee_ppm: u32) {
     let mut ctx = tx_context::dummy();
+    let version = dex::version_for_testing(&mut ctx);
     let mut tiers = lp_fee::new_fee_tiers_for_testing(&mut ctx);
     let witness = blast_acl::witness_for_testing<BlastDexFeeTierAdmin>();
 
-    tiers.add_fee_tier(&witness, fee_ppm);
+    tiers.add_fee_tier(&version, &witness, fee_ppm);
 
+    destroy(version);
     destroy(tiers);
 }
 
@@ -164,6 +171,7 @@ fun add_tier(fee_ppm: u32) {
 
 use blast_admin::blast_acl::{Self, ACL, AdminCap, AdminWitness, SuperAdminCap};
 use blast_fun_dex::{
+    blast_fun_dex as dex,
     blast_events::BlastDexFeeTierAdded,
     lp_fee::{Self, BlastDexFeeTierAdmin, BlastDexFeeTiers},
     pool::{Self, Pool},

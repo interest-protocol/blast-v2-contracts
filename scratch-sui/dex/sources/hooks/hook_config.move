@@ -38,10 +38,13 @@ fun init(ctx: &mut TxContext) {
 /// aborts in the framework because the derived address is already claimed.
 /// The witness proves the caller is the hook package.
 public fun new<Witness: drop>(
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     namespace: &mut HookNamespace,
     _witness: Witness,
     version: u64,
 ): HookConfig<Witness> {
+    package_version.assert_current(constants::version!());
+
     let hook = type_name::with_defining_ids<Witness>();
     assert!(!hook.is_primitive(), blast_fun_dex::errors::primitive_witness!());
 
@@ -49,7 +52,12 @@ public fun new<Witness: drop>(
 }
 
 /// Defining-module sink for a new configuration.
-public fun share<Witness>(self: HookConfig<Witness>) {
+public fun share<Witness>(
+    self: HookConfig<Witness>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
+) {
+    package_version.assert_current(constants::version!());
+
     transfer::share_object(self);
 }
 
@@ -63,9 +71,12 @@ public fun version<Witness>(self: &HookConfig<Witness>): u64 {
 /// version stops older package versions from restoring themselves.
 public fun set_version<Witness: drop>(
     self: &mut HookConfig<Witness>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     _witness: Witness,
     version: u64,
 ) {
+    package_version.assert_current(constants::version!());
+
     assert!(version > self.version, blast_fun_dex::errors::version_not_increasing!());
 
     self.version = version;
@@ -77,7 +88,13 @@ public fun uid<Witness>(self: &HookConfig<Witness>): &UID {
 }
 
 /// Write access for the hook's dynamic fields.
-public fun uid_mut<Witness: drop>(self: &mut HookConfig<Witness>, _witness: &Witness): &mut UID {
+public fun uid_mut<Witness: drop>(
+    self: &mut HookConfig<Witness>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
+    _witness: &Witness,
+): &mut UID {
+    package_version.assert_current(constants::version!());
+
     &mut self.id
 }
 
@@ -95,5 +112,7 @@ public fun key_for_testing(hook: TypeName): HookConfigKey {
 
 // === Imports ===
 
+use blast_admin::package_version::PackageVersion;
+use blast_fun_dex::{blast_fun_dex::BLAST_FUN_DEX, constants};
 use std::type_name::{Self, TypeName};
 use sui::derived_object;

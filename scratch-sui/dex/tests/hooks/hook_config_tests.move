@@ -10,10 +10,11 @@ public struct TestHook() has drop;
 #[test]
 fun new_derives_one_address_per_witness_from_the_namespace() {
     let mut ctx = tx_context::dummy();
+    let version = dex::version_for_testing(&mut ctx);
     let mut namespace = hook_config::new_namespace_for_testing(&mut ctx);
     let namespace_id = object::id(&namespace);
 
-    let config = hook_config::new(&mut namespace, TestHook(), 7);
+    let config = hook_config::new(&version, &mut namespace, TestHook(), 7);
 
     let expected = derived_object::derive_address(
         namespace_id,
@@ -24,83 +25,96 @@ fun new_derives_one_address_per_witness_from_the_namespace() {
 
     destroy(config);
     destroy(namespace);
+    destroy(version);
 }
 
 #[test]
 #[expected_failure(abort_code = derived_object::EObjectAlreadyExists, location = sui::derived_object)]
 fun new_rejects_a_second_config_for_the_same_witness() {
     let mut ctx = tx_context::dummy();
+    let version = dex::version_for_testing(&mut ctx);
     let mut namespace = hook_config::new_namespace_for_testing(&mut ctx);
-    let first = hook_config::new(&mut namespace, TestHook(), 1);
+    let first = hook_config::new(&version, &mut namespace, TestHook(), 1);
 
-    let second = hook_config::new(&mut namespace, TestHook(), 1);
+    let second = hook_config::new(&version, &mut namespace, TestHook(), 1);
 
     destroy(first);
     destroy(second);
     destroy(namespace);
+    destroy(version);
 }
 
 #[test]
 #[expected_failure(abort_code = blast_fun_dex::errors::EPrimitiveWitness, location = blast_fun_dex::hook_config)]
 fun new_rejects_a_primitive_witness() {
     let mut ctx = tx_context::dummy();
+    let version = dex::version_for_testing(&mut ctx);
     let mut namespace = hook_config::new_namespace_for_testing(&mut ctx);
 
-    let config = hook_config::new(&mut namespace, 0u8, 1);
+    let config = hook_config::new(&version, &mut namespace, 0u8, 1);
 
     destroy(config);
     destroy(namespace);
+    destroy(version);
 }
 
 #[test]
 #[expected_failure(abort_code = blast_fun_dex::errors::EPrimitiveWitness, location = blast_fun_dex::hook_config)]
 fun new_rejects_a_vector_witness() {
     let mut ctx = tx_context::dummy();
+    let version = dex::version_for_testing(&mut ctx);
     let mut namespace = hook_config::new_namespace_for_testing(&mut ctx);
 
-    let config = hook_config::new(&mut namespace, vector<u8>[], 1);
+    let config = hook_config::new(&version, &mut namespace, vector<u8>[], 1);
 
     destroy(config);
     destroy(namespace);
+    destroy(version);
 }
 
 #[test]
 fun set_version_accepts_a_higher_version() {
     let mut ctx = tx_context::dummy();
+    let version = dex::version_for_testing(&mut ctx);
     let mut namespace = hook_config::new_namespace_for_testing(&mut ctx);
-    let mut config = hook_config::new(&mut namespace, TestHook(), 1);
+    let mut config = hook_config::new(&version, &mut namespace, TestHook(), 1);
 
-    config.set_version(TestHook(), 2);
+    config.set_version(&version, TestHook(), 2);
 
     assert_eq!(config.version(), 2);
     destroy(config);
     destroy(namespace);
+    destroy(version);
 }
 
 #[test]
 #[expected_failure(abort_code = blast_fun_dex::errors::EVersionNotIncreasing, location = blast_fun_dex::hook_config)]
 fun set_version_rejects_the_current_version() {
     let mut ctx = tx_context::dummy();
+    let version = dex::version_for_testing(&mut ctx);
     let mut namespace = hook_config::new_namespace_for_testing(&mut ctx);
-    let mut config = hook_config::new(&mut namespace, TestHook(), 2);
+    let mut config = hook_config::new(&version, &mut namespace, TestHook(), 2);
 
-    config.set_version(TestHook(), 2);
+    config.set_version(&version, TestHook(), 2);
 
     destroy(config);
     destroy(namespace);
+    destroy(version);
 }
 
 #[test]
 #[expected_failure(abort_code = blast_fun_dex::errors::EVersionNotIncreasing, location = blast_fun_dex::hook_config)]
 fun set_version_rejects_an_older_version() {
     let mut ctx = tx_context::dummy();
+    let version = dex::version_for_testing(&mut ctx);
     let mut namespace = hook_config::new_namespace_for_testing(&mut ctx);
-    let mut config = hook_config::new(&mut namespace, TestHook(), 2);
+    let mut config = hook_config::new(&version, &mut namespace, TestHook(), 2);
 
-    config.set_version(TestHook(), 1);
+    config.set_version(&version, TestHook(), 1);
 
     destroy(config);
     destroy(namespace);
+    destroy(version);
 }
 
 // === Test Helpers ===
@@ -112,6 +126,6 @@ fun hook_config_key<Witness>(): HookConfigKey {
 
 // === Imports ===
 
-use blast_fun_dex::hook_config::{Self, HookConfigKey};
+use blast_fun_dex::{blast_fun_dex as dex, hook_config::{Self, HookConfigKey}};
 use std::{type_name, unit_test::{assert_eq, destroy}};
 use sui::derived_object;

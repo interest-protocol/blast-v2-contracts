@@ -77,9 +77,12 @@ public fun is_fee_tier(self: &BlastDexFeeTiers, fee_ppm: u32): bool {
 /// the role witness from `blast_acl::sign_in` in the same transaction.
 public fun add_fee_tier(
     self: &mut BlastDexFeeTiers,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     _: &AdminWitness<BlastDexFeeTierAdmin>,
     fee_ppm: u32,
 ) {
+    package_version.assert_current(constants::version!());
+
     assert!(fee_ppm > 0 && fee_ppm <= MAX_LP_FEE_PPM, blast_fun_dex::errors::invalid_fee_tier_rate!());
     assert!(!self.is_fee_tier(fee_ppm), blast_fun_dex::errors::fee_tier_already_exists!());
 
@@ -345,6 +348,11 @@ public fun new_dynamic_unchecked_for_testing(base_fee_ppm: u32, max_fee_ppm: u32
 
 // === Imports ===
 
-use blast_admin::blast_acl::AdminWitness;
-use blast_fun_dex::{blast_events, ppm::{Self, Ppm}};
+use blast_admin::{blast_acl::AdminWitness, package_version::PackageVersion};
+use blast_fun_dex::{
+    blast_events,
+    blast_fun_dex::BLAST_FUN_DEX,
+    constants,
+    ppm::{Self, Ppm},
+};
 use sui::table::{Self, Table};

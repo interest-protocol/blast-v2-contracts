@@ -10,7 +10,36 @@ test-only seams, because the math functions abort.
 This scratch checkpoint replaces the parked full-range native V2 DEX source
 from [ADR 0076](../docs/decisions/0076-native-v2-and-auto-lp.md). The previous
 scratch source is [retained in Git history](https://github.com/interest-protocol/blast-v2-contracts/tree/45547cf8e795878659b92a316d8ee80c9045d519/scratch-sui/dex).
-Launchpad migration and DEX package administration are outside this checkpoint.
+Launchpad migration is outside this checkpoint.
+
+## Package lifecycle
+
+The DEX uses the launch stack's `blast_admin` lifecycle. Publication delivers
+`Publication<BLAST_FUN_DEX>` to the deployer and pins the DEX's `PackageWitness`.
+In a follow-up transaction, `package_admin::wrap` consumes the publication and
+native `UpgradeCap`, seals the cap and `Publisher`, and shares the package admin
+and version. The version starts at 1 with all three pause bits set.
+
+| Bit | Stops |
+| --- | --- |
+| 1 | Pool creation, binding hooks to new pools, finalization and sharing |
+| 2 | Swaps in either direction |
+| 4 | Adding liquidity and donating |
+
+The ACL grants `PauseAdmin<BLAST_FUN_DEX>` for immediate pausing and
+`UnpauseAdmin<BLAST_FUN_DEX>` for release through `blast_fun_dex::unpause`. Release
+checks the current version, supplies the pinned package witness and requires a
+guarded upgrade delay. The liquidity removal sequence stays open under the
+current version with all bits set, including both hook calls and payout.
+Fee-tier and hook configuration remain available during a pause.
+
+`UpgradeAdmin<BLAST_FUN_DEX>` schedules an exact digest under the shared
+upgrade delay, initially 48 hours. The upgrade PTB authorizes the digest,
+executes the native upgrade and calls `commit_upgrade_and_advance` with its
+receipt. The successor compiles the next version. Every DEX mutation that
+depends on the active package takes the same shared `PackageVersion<BLAST_FUN_DEX>`
+by reference. Coordinate hook upgrades that relink DEX calls with the DEX
+cutover so bound hooks can still approve removals.
 
 ## Why the pool is the entry point
 
@@ -28,7 +57,8 @@ pool::finish       needs the bound after-hook's approval and the caller's
                    minimum outputs; unlocks; returns both coins
 ```
 
-Requests and completions have no abilities, so skipping a step aborts the
+Pass the shared DEX package version to each mutating call. Requests and
+completions have no abilities, so skipping a step aborts the
 transaction. Approval and every hook mutation take the pool and check the
 request belongs to it, so a hook bound to several pools cannot be handed
 another pool's request. The pool stays locked from `begin_*` to `finish`, so
@@ -61,8 +91,9 @@ state alone, with no registry, templates or hook-specific code:
 1. Read the pool's `hooks` field: the witness type bound to each slot.
 2. Call the latest version of the witness's original package, in the witness's
    module, at the slot's fixed function name.
-3. Pass the `HookConfig<Witness>` at the address derived from `HookNamespace`
-   and the witness's defining-ID type name, the `Clock`, and empty `hook_data`.
+3. Pass the shared DEX package version, the `HookConfig<Witness>` at the address
+   derived from `HookNamespace` and the witness's defining-ID type name, the
+   `Clock`, and empty `hook_data`.
 
 Hooks gate every function on `HookConfig::version`, which only increases,
 because older package versions stay callable after an upgrade. `hook_data`

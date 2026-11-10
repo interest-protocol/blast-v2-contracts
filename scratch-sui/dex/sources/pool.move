@@ -21,6 +21,10 @@
 /// fixed public signature per slot, so routers resolve any hooked pool from
 /// chain state alone; `example_hook` documents that convention.
 ///
+/// Every call that mutates pool state checks the shared package version. The pause mask
+/// gates creation, swaps and liquidity inflows. Removal and completion remain
+/// available while paused.
+///
 /// The pool sets LP fees at creation and prices the payment remaining after
 /// the before-swap hook. Dynamic pools use their own time-weighted reference.
 ///
@@ -163,12 +167,16 @@ macro public fun all_hook_flags(): u8 { 0xff }
 
 /// Starts a pool that charges `lp_fee_ppm`, a protocol fee tier, on every swap.
 public fun new_with_fixed_fee<Asset, Quote>(
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     tiers: &BlastDexFeeTiers,
     tick_spacing: u32,
     lp_fee_ppm: u32,
     sqrt_price_x96: u256,
     ctx: &mut TxContext,
 ): PoolInitializer<Asset, Quote> {
+    package_version.assert_current(constants::version!());
+    package_version.assert_not_paused(constants::create_pause_bit!());
+
     new_initializer(tick_spacing, lp_fee::new_fixed(tiers, lp_fee_ppm), sqrt_price_x96, ctx)
 }
 
@@ -176,6 +184,7 @@ public fun new_with_fixed_fee<Asset, Quote>(
 /// price gap along the fill path, up to `max_fee_ppm`; see
 /// `lp_fee`. The settings never change and need no hook.
 public fun new_with_dynamic_fee<Asset, Quote>(
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     tiers: &BlastDexFeeTiers,
     tick_spacing: u32,
     base_fee_ppm: u32,
@@ -184,6 +193,9 @@ public fun new_with_dynamic_fee<Asset, Quote>(
     sqrt_price_x96: u256,
     ctx: &mut TxContext,
 ): PoolInitializer<Asset, Quote> {
+    package_version.assert_current(constants::version!());
+    package_version.assert_not_paused(constants::create_pause_bit!());
+
     let lp_fee = lp_fee::new_dynamic(tiers, base_fee_ppm, max_fee_ppm, sensitivity_ppm);
 
     new_initializer(tick_spacing, lp_fee, sqrt_price_x96, ctx)
@@ -194,10 +206,14 @@ public fun new_with_dynamic_fee<Asset, Quote>(
 /// hook's configuration exists, so routers can always derive and pass it.
 public fun register_hook<Asset, Quote, Witness: drop>(
     self: &mut PoolInitializer<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     _config: &HookConfig<Witness>,
     _witness: Witness,
     flags: u8,
 ) {
+    package_version.assert_current(constants::version!());
+    package_version.assert_not_paused(constants::create_pause_bit!());
+
     assert!(flags != 0, blast_fun_dex::errors::invalid_hook_flags!());
 
     let hook = type_name::with_defining_ids<Witness>();
@@ -213,7 +229,13 @@ public fun register_hook<Asset, Quote, Witness: drop>(
 }
 
 /// Freezes the hook bindings and returns the pool for `share`.
-public fun finalize<Asset, Quote>(self: PoolInitializer<Asset, Quote>): Pool<Asset, Quote> {
+public fun finalize<Asset, Quote>(
+    self: PoolInitializer<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
+): Pool<Asset, Quote> {
+    package_version.assert_current(constants::version!());
+    package_version.assert_not_paused(constants::create_pause_bit!());
+
     let PoolInitializer { pool } = self;
 
     blast_events::pool_created(
@@ -230,7 +252,13 @@ public fun finalize<Asset, Quote>(self: PoolInitializer<Asset, Quote>): Pool<Ass
 }
 
 /// Defining-module sink for a finalized pool.
-public fun share<Asset, Quote>(self: Pool<Asset, Quote>) {
+public fun share<Asset, Quote>(
+    self: Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
+) {
+    package_version.assert_current(constants::version!());
+    package_version.assert_not_paused(constants::create_pause_bit!());
+
     transfer::share_object(self);
 }
 
@@ -251,10 +279,13 @@ public fun lp_fee<Asset, Quote>(self: &Pool<Asset, Quote>): LpFee {
 /// within ±887,272.
 public fun new_position<Asset, Quote>(
     self: &Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     tick_lower: I32,
     tick_upper: I32,
     ctx: &mut TxContext,
 ): Position<Asset, Quote> {
+    package_version.assert_current(constants::version!());
+
     assert!(tick_lower.lt(&tick_upper), blast_fun_dex::errors::invalid_tick_range!());
     assert!(
         self.is_usable_tick(&tick_lower) && self.is_usable_tick(&tick_upper),
@@ -294,9 +325,13 @@ public fun position_liquidity<Asset, Quote>(self: &Position<Asset, Quote>): u128
 /// be below the current price.
 public fun begin_swap_asset_to_quote<Asset, Quote>(
     self: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     payment: Coin<Asset>,
     sqrt_price_limit_x96: u256,
 ): SwapRequest<Asset, Quote> {
+    package_version.assert_current(constants::version!());
+    package_version.assert_not_paused(constants::swap_pause_bit!());
+
     assert!(payment.value() > 0, blast_fun_dex::errors::zero_amount!());
     assert!(
         sqrt_price_limit_x96 < self.sqrt_price_x96 && sqrt_price_limit_x96 > MIN_SQRT_PRICE_X96,
@@ -311,9 +346,13 @@ public fun begin_swap_asset_to_quote<Asset, Quote>(
 /// be above the current price.
 public fun begin_swap_quote_to_asset<Asset, Quote>(
     self: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     payment: Coin<Quote>,
     sqrt_price_limit_x96: u256,
 ): SwapRequest<Asset, Quote> {
+    package_version.assert_current(constants::version!());
+    package_version.assert_not_paused(constants::swap_pause_bit!());
+
     assert!(payment.value() > 0, blast_fun_dex::errors::zero_amount!());
     assert!(
         sqrt_price_limit_x96 > self.sqrt_price_x96 && sqrt_price_limit_x96 < MAX_SQRT_PRICE_X96,
@@ -327,10 +366,13 @@ public fun begin_swap_quote_to_asset<Asset, Quote>(
 /// Before-swap hook: takes Asset from the payment, for example as a hook fee.
 public fun take_swap_asset_payment<Asset, Quote, Witness: drop>(
     self: &mut SwapRequest<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     pool: &Pool<Asset, Quote>,
     _witness: Witness,
     amount: u64,
 ): Balance<Asset> {
+    package_version.assert_current(constants::version!());
+
     assert!(self.pool_id == pool.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
     self.approval.assert_open<Witness>();
 
@@ -340,10 +382,13 @@ public fun take_swap_asset_payment<Asset, Quote, Witness: drop>(
 /// Before-swap hook: takes Quote from the payment, for example as a hook fee.
 public fun take_swap_quote_payment<Asset, Quote, Witness: drop>(
     self: &mut SwapRequest<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     pool: &Pool<Asset, Quote>,
     _witness: Witness,
     amount: u64,
 ): Balance<Quote> {
+    package_version.assert_current(constants::version!());
+
     assert!(self.pool_id == pool.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
     self.approval.assert_open<Witness>();
 
@@ -353,9 +398,12 @@ public fun take_swap_quote_payment<Asset, Quote, Witness: drop>(
 /// Before-swap hook: approves the request. It cannot be changed afterwards.
 public fun approve_swap<Asset, Quote, Witness: drop>(
     self: &mut SwapRequest<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     pool: &Pool<Asset, Quote>,
     _witness: Witness,
 ) {
+    package_version.assert_current(constants::version!());
+
     assert!(self.pool_id == pool.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
 
     self.approval.approve<Witness>();
@@ -379,11 +427,12 @@ public fun swap_sqrt_price_limit_x96<Asset, Quote>(self: &SwapRequest<Asset, Quo
 /// Unspent payment and the output travel in the completion.
 public fun execute_swap<Asset, Quote>(
     self: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     request: SwapRequest<Asset, Quote>,
     clock: &Clock,
     ctx: &mut TxContext,
 ): Completion<Asset, Quote, Swap> {
-    let (is_asset_input, asset_payment, quote_payment, sqrt_price_limit_x96) = self.open_swap(request);
+    let (is_asset_input, asset_payment, quote_payment, sqrt_price_limit_x96) = self.open_swap(package_version, request);
 
     let input_value = if (is_asset_input) asset_payment.value() else quote_payment.value();
     let fee_path = self.swap_fee_path(clock);
@@ -408,11 +457,15 @@ public fun execute_swap<Asset, Quote>(
 /// is returned.
 public fun begin_add_liquidity<Asset, Quote>(
     self: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     position: &Position<Asset, Quote>,
     liquidity: u128,
     asset_payment: Coin<Asset>,
     quote_payment: Coin<Quote>,
 ): AddLiquidityRequest<Asset, Quote> {
+    package_version.assert_current(constants::version!());
+    package_version.assert_not_paused(constants::liquidity_in_pause_bit!());
+
     assert!(position.pool_id == self.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
     assert!(liquidity > 0, blast_fun_dex::errors::zero_liquidity!());
 
@@ -430,9 +483,12 @@ public fun begin_add_liquidity<Asset, Quote>(
 /// Before-add-liquidity hook: approves the request.
 public fun approve_add_liquidity<Asset, Quote, Witness: drop>(
     self: &mut AddLiquidityRequest<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     pool: &Pool<Asset, Quote>,
     _witness: Witness,
 ) {
+    package_version.assert_current(constants::version!());
+
     assert!(self.pool_id == pool.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
 
     self.approval.approve<Witness>();
@@ -445,10 +501,11 @@ public fun add_liquidity_amount<Asset, Quote>(self: &AddLiquidityRequest<Asset, 
 /// Mints the liquidity, taking what it requires from the payment.
 public fun execute_add_liquidity<Asset, Quote>(
     self: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     request: AddLiquidityRequest<Asset, Quote>,
     position: &mut Position<Asset, Quote>,
 ): Completion<Asset, Quote, AddLiquidity> {
-    let (liquidity, asset_payment, quote_payment) = self.open_add_liquidity(request, position);
+    let (liquidity, asset_payment, quote_payment) = self.open_add_liquidity(package_version, request, position);
 
     let (asset_required, quote_required) = self.add_liquidity_amounts(position, liquidity);
 
@@ -460,9 +517,12 @@ public fun execute_add_liquidity<Asset, Quote>(
 /// Locks the pool and starts burning `liquidity` from `position`.
 public fun begin_remove_liquidity<Asset, Quote>(
     self: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     position: &Position<Asset, Quote>,
     liquidity: u128,
 ): RemoveLiquidityRequest<Asset, Quote> {
+    package_version.assert_current(constants::version!());
+
     assert!(position.pool_id == self.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
     assert!(liquidity > 0, blast_fun_dex::errors::zero_liquidity!());
     assert!(liquidity <= position.liquidity, blast_fun_dex::errors::insufficient_liquidity!());
@@ -479,9 +539,12 @@ public fun begin_remove_liquidity<Asset, Quote>(
 /// Before-remove-liquidity hook: approves the request.
 public fun approve_remove_liquidity<Asset, Quote, Witness: drop>(
     self: &mut RemoveLiquidityRequest<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     pool: &Pool<Asset, Quote>,
     _witness: Witness,
 ) {
+    package_version.assert_current(constants::version!());
+
     assert!(self.pool_id == pool.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
 
     self.approval.approve<Witness>();
@@ -494,10 +557,11 @@ public fun remove_liquidity_amount<Asset, Quote>(self: &RemoveLiquidityRequest<A
 /// Burns the liquidity and returns its tokens in the completion.
 public fun execute_remove_liquidity<Asset, Quote>(
     self: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     request: RemoveLiquidityRequest<Asset, Quote>,
     position: &mut Position<Asset, Quote>,
 ): Completion<Asset, Quote, RemoveLiquidity> {
-    let liquidity = self.open_remove_liquidity(request, position);
+    let liquidity = self.open_remove_liquidity(package_version, request, position);
 
     let (asset_amount, quote_amount) = self.remove_liquidity_amounts(position, liquidity);
 
@@ -509,9 +573,13 @@ public fun execute_remove_liquidity<Asset, Quote>(
 /// Locks the pool and starts donating to in-range liquidity providers.
 public fun begin_donate<Asset, Quote>(
     self: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     asset_payment: Coin<Asset>,
     quote_payment: Coin<Quote>,
 ): DonateRequest<Asset, Quote> {
+    package_version.assert_current(constants::version!());
+    package_version.assert_not_paused(constants::liquidity_in_pause_bit!());
+
     assert!(asset_payment.value() > 0 || quote_payment.value() > 0, blast_fun_dex::errors::zero_amount!());
 
     self.lock();
@@ -526,9 +594,12 @@ public fun begin_donate<Asset, Quote>(
 /// Before-donate hook: approves the request.
 public fun approve_donate<Asset, Quote, Witness: drop>(
     self: &mut DonateRequest<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     pool: &Pool<Asset, Quote>,
     _witness: Witness,
 ) {
+    package_version.assert_current(constants::version!());
+
     assert!(self.pool_id == pool.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
 
     self.approval.approve<Witness>();
@@ -545,9 +616,10 @@ public fun donate_quote_value<Asset, Quote>(self: &DonateRequest<Asset, Quote>):
 /// Credits the donation to in-range liquidity providers. The completion is empty.
 public fun execute_donate<Asset, Quote>(
     self: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     request: DonateRequest<Asset, Quote>,
 ): Completion<Asset, Quote, Donate> {
-    let (asset_payment, quote_payment) = self.open_donate(request);
+    let (asset_payment, quote_payment) = self.open_donate(package_version, request);
     let (asset_amount, quote_amount) = (asset_payment.value(), quote_payment.value());
 
     self.credit_donation(asset_payment, quote_payment);
@@ -560,10 +632,13 @@ public fun execute_donate<Asset, Quote>(
 /// After hook: takes Asset from the output, for example as a hook fee.
 public fun take_asset_output<Asset, Quote, Operation, Witness: drop>(
     self: &mut Completion<Asset, Quote, Operation>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     pool: &Pool<Asset, Quote>,
     _witness: Witness,
     amount: u64,
 ): Balance<Asset> {
+    package_version.assert_current(constants::version!());
+
     assert!(self.pool_id == pool.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
     self.approval.assert_open<Witness>();
 
@@ -573,10 +648,13 @@ public fun take_asset_output<Asset, Quote, Operation, Witness: drop>(
 /// After hook: takes Quote from the output, for example as a hook fee.
 public fun take_quote_output<Asset, Quote, Operation, Witness: drop>(
     self: &mut Completion<Asset, Quote, Operation>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     pool: &Pool<Asset, Quote>,
     _witness: Witness,
     amount: u64,
 ): Balance<Quote> {
+    package_version.assert_current(constants::version!());
+
     assert!(self.pool_id == pool.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
     self.approval.assert_open<Witness>();
 
@@ -586,10 +664,13 @@ public fun take_quote_output<Asset, Quote, Operation, Witness: drop>(
 /// After hook: adds Asset to the output, for example as a rebate.
 public fun join_asset_output<Asset, Quote, Operation, Witness: drop>(
     self: &mut Completion<Asset, Quote, Operation>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     pool: &Pool<Asset, Quote>,
     _witness: Witness,
     asset: Balance<Asset>,
 ) {
+    package_version.assert_current(constants::version!());
+
     assert!(self.pool_id == pool.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
     self.approval.assert_open<Witness>();
 
@@ -599,10 +680,13 @@ public fun join_asset_output<Asset, Quote, Operation, Witness: drop>(
 /// After hook: adds Quote to the output, for example as a rebate.
 public fun join_quote_output<Asset, Quote, Operation, Witness: drop>(
     self: &mut Completion<Asset, Quote, Operation>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     pool: &Pool<Asset, Quote>,
     _witness: Witness,
     quote: Balance<Quote>,
 ) {
+    package_version.assert_current(constants::version!());
+
     assert!(self.pool_id == pool.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
     self.approval.assert_open<Witness>();
 
@@ -612,9 +696,12 @@ public fun join_quote_output<Asset, Quote, Operation, Witness: drop>(
 /// After hook: approves the completion. It cannot be changed afterwards.
 public fun approve_completion<Asset, Quote, Operation, Witness: drop>(
     self: &mut Completion<Asset, Quote, Operation>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     pool: &Pool<Asset, Quote>,
     _witness: Witness,
 ) {
+    package_version.assert_current(constants::version!());
+
     assert!(self.pool_id == pool.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
 
     self.approval.approve<Witness>();
@@ -632,11 +719,14 @@ public fun quote_output_value<Asset, Quote, Operation>(self: &Completion<Asset, 
 /// minimum outputs, unlocks the pool and returns both coins, either may be zero.
 public fun finish<Asset, Quote, Operation>(
     self: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     completion: Completion<Asset, Quote, Operation>,
     min_asset_output: u64,
     min_quote_output: u64,
     ctx: &mut TxContext,
 ): (Coin<Asset>, Coin<Quote>) {
+    package_version.assert_current(constants::version!());
+
     let Completion { pool_id, asset_output, quote_output, approval } = completion;
     assert!(pool_id == self.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
     approval.assert_approved();
@@ -653,10 +743,13 @@ public fun finish<Asset, Quote, Operation>(
 
 public fun add_hook_state<Asset, Quote, Witness: drop, Name: copy + drop + store, State: store>(
     self: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     _witness: &Witness,
     name: Name,
     state: State,
 ) {
+    package_version.assert_current(constants::version!());
+
     let key = self.hook_state_key<_, _, Witness, _>(name);
 
     dynamic_field::add(&mut self.id, key, state);
@@ -684,9 +777,12 @@ public fun hook_state<Asset, Quote, Witness: drop, Name: copy + drop + store, St
 
 public fun hook_state_mut<Asset, Quote, Witness: drop, Name: copy + drop + store, State: store>(
     self: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     _witness: &Witness,
     name: Name,
 ): &mut State {
+    package_version.assert_current(constants::version!());
+
     let key = self.hook_state_key<_, _, Witness, _>(name);
 
     dynamic_field::borrow_mut(&mut self.id, key)
@@ -694,9 +790,12 @@ public fun hook_state_mut<Asset, Quote, Witness: drop, Name: copy + drop + store
 
 public fun remove_hook_state<Asset, Quote, Witness: drop, Name: copy + drop + store, State: store>(
     self: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     _witness: &Witness,
     name: Name,
 ): State {
+    package_version.assert_current(constants::version!());
+
     let key = self.hook_state_key<_, _, Witness, _>(name);
 
     dynamic_field::remove(&mut self.id, key)
@@ -830,8 +929,12 @@ fun hook_state_key<Asset, Quote, Witness, Name: copy + drop + store>(
 
 fun open_swap<Asset, Quote>(
     self: &Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     request: SwapRequest<Asset, Quote>,
 ): (bool, Balance<Asset>, Balance<Quote>, u256) {
+    package_version.assert_current(constants::version!());
+    package_version.assert_not_paused(constants::swap_pause_bit!());
+
     let SwapRequest { pool_id, is_asset_input, asset_payment, quote_payment, sqrt_price_limit_x96, approval } = request;
     assert!(pool_id == self.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
     approval.assert_approved();
@@ -852,9 +955,13 @@ fun swap_fee_path<Asset, Quote>(self: &mut Pool<Asset, Quote>, clock: &Clock): F
 
 fun open_add_liquidity<Asset, Quote>(
     self: &Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     request: AddLiquidityRequest<Asset, Quote>,
     position: &Position<Asset, Quote>,
 ): (u128, Balance<Asset>, Balance<Quote>) {
+    package_version.assert_current(constants::version!());
+    package_version.assert_not_paused(constants::liquidity_in_pause_bit!());
+
     let AddLiquidityRequest {
         pool_id,
         position_id,
@@ -872,9 +979,12 @@ fun open_add_liquidity<Asset, Quote>(
 
 fun open_remove_liquidity<Asset, Quote>(
     self: &Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     request: RemoveLiquidityRequest<Asset, Quote>,
     position: &Position<Asset, Quote>,
 ): u128 {
+    package_version.assert_current(constants::version!());
+
     let RemoveLiquidityRequest { pool_id, position_id, liquidity, approval } = request;
     assert!(pool_id == self.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
     assert!(position_id == position.id.to_inner(), blast_fun_dex::errors::wrong_position!());
@@ -885,8 +995,12 @@ fun open_remove_liquidity<Asset, Quote>(
 
 fun open_donate<Asset, Quote>(
     self: &Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     request: DonateRequest<Asset, Quote>,
 ): (Balance<Asset>, Balance<Quote>) {
+    package_version.assert_current(constants::version!());
+    package_version.assert_not_paused(constants::liquidity_in_pause_bit!());
+
     let DonateRequest { pool_id, asset_payment, quote_payment, approval } = request;
     assert!(pool_id == self.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
     approval.assert_approved();
@@ -1058,6 +1172,7 @@ fun credit_donation<Asset, Quote>(
 #[test_only]
 public fun execute_swap_with_amounts_for_testing<Asset, Quote>(
     self: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     request: SwapRequest<Asset, Quote>,
     input_spent: u64,
     output_amount: u64,
@@ -1066,7 +1181,7 @@ public fun execute_swap_with_amounts_for_testing<Asset, Quote>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Completion<Asset, Quote, Swap> {
-    let (is_asset_input, asset_payment, quote_payment, _) = self.open_swap(request);
+    let (is_asset_input, asset_payment, quote_payment, _) = self.open_swap(package_version, request);
     self.swap_fee_path(clock);
 
     self.settle_swap(
@@ -1085,12 +1200,13 @@ public fun execute_swap_with_amounts_for_testing<Asset, Quote>(
 #[test_only]
 public fun execute_add_liquidity_with_amounts_for_testing<Asset, Quote>(
     self: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     request: AddLiquidityRequest<Asset, Quote>,
     position: &mut Position<Asset, Quote>,
     asset_required: u64,
     quote_required: u64,
 ): Completion<Asset, Quote, AddLiquidity> {
-    let (liquidity, asset_payment, quote_payment) = self.open_add_liquidity(request, position);
+    let (liquidity, asset_payment, quote_payment) = self.open_add_liquidity(package_version, request, position);
 
     self.settle_add_liquidity(position, liquidity, asset_payment, quote_payment, asset_required, quote_required)
 }
@@ -1099,12 +1215,13 @@ public fun execute_add_liquidity_with_amounts_for_testing<Asset, Quote>(
 #[test_only]
 public fun execute_remove_liquidity_with_amounts_for_testing<Asset, Quote>(
     self: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     request: RemoveLiquidityRequest<Asset, Quote>,
     position: &mut Position<Asset, Quote>,
     asset_amount: u64,
     quote_amount: u64,
 ): Completion<Asset, Quote, RemoveLiquidity> {
-    let liquidity = self.open_remove_liquidity(request, position);
+    let liquidity = self.open_remove_liquidity(package_version, request, position);
 
     self.settle_remove_liquidity(position, liquidity, asset_amount, quote_amount)
 }
@@ -1113,9 +1230,10 @@ public fun execute_remove_liquidity_with_amounts_for_testing<Asset, Quote>(
 #[test_only]
 public fun execute_donate_for_testing<Asset, Quote>(
     self: &mut Pool<Asset, Quote>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
     request: DonateRequest<Asset, Quote>,
 ): Completion<Asset, Quote, Donate> {
-    let (asset_payment, quote_payment) = self.open_donate(request);
+    let (asset_payment, quote_payment) = self.open_donate(package_version, request);
     let (asset_amount, quote_amount) = (asset_payment.value(), quote_payment.value());
     self.asset_reserve.join(asset_payment);
     self.quote_reserve.join(quote_payment);
@@ -1166,8 +1284,11 @@ public fun reference_for_testing<Asset, Quote>(self: &Pool<Asset, Quote>): (u256
 
 // === Imports ===
 
+use blast_admin::package_version::PackageVersion;
 use blast_fun_dex::{
     blast_events,
+    blast_fun_dex::BLAST_FUN_DEX,
+    constants,
     hook_config::HookConfig,
     i32::I32,
     lp_fee::{Self, BlastDexFeeTiers, FeePath, LpFee},
