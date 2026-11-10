@@ -35,8 +35,9 @@ fun error_registry_is_stable() {
         errors::invalid_max_fee!(),
         errors::invalid_sensitivity!(),
         errors::magnitude_too_large!(),
+        errors::invalid_ppm!(),
     ];
-    assert_eq!(codes.length(), 26);
+    assert_eq!(codes.length(), 27);
     codes.length().do!(|i| assert_eq!(codes[i], i));
 }
 

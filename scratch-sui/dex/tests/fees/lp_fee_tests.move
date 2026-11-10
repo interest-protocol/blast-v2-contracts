@@ -38,34 +38,34 @@ const WINDOW_MS: u64 = 600_000;
 fun zero_gap_charges_the_base_fee() {
     let fee = table_fee();
 
-    assert_eq!(fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, SQRT_PRICE_ONE_X96), TABLE_BASE_FEE_PPM);
-    assert_eq!(fee.fee_ppm_at_price(MIN_SQRT_PRICE_X96, MIN_SQRT_PRICE_X96), TABLE_BASE_FEE_PPM);
-    assert_eq!(fee.fee_ppm_at_price(MAX_SQRT_PRICE_X96 - 1, MAX_SQRT_PRICE_X96 - 1), TABLE_BASE_FEE_PPM);
+    assert_eq!(fee.fee_at_price(SQRT_PRICE_ONE_X96, SQRT_PRICE_ONE_X96).value(), TABLE_BASE_FEE_PPM);
+    assert_eq!(fee.fee_at_price(MIN_SQRT_PRICE_X96, MIN_SQRT_PRICE_X96).value(), TABLE_BASE_FEE_PPM);
+    assert_eq!(fee.fee_at_price(MAX_SQRT_PRICE_X96 - 1, MAX_SQRT_PRICE_X96 - 1).value(), TABLE_BASE_FEE_PPM);
 }
 
 #[test]
 fun fee_matches_the_documented_table() {
     let fee = table_fee();
 
-    assert_eq!(fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, SQRT_PRICE_ONE_X96), 2_000);
-    assert_eq!(fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_2_PERCENT_X96), 2_400);
-    assert_eq!(fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_4_PERCENT_X96), 3_600);
-    assert_eq!(fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_8_PERCENT_X96), 8_400);
-    assert_eq!(fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_10_PERCENT_X96), 10_000);
+    assert_eq!(fee.fee_at_price(SQRT_PRICE_ONE_X96, SQRT_PRICE_ONE_X96).value(), 2_000);
+    assert_eq!(fee.fee_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_2_PERCENT_X96).value(), 2_400);
+    assert_eq!(fee.fee_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_4_PERCENT_X96).value(), 3_600);
+    assert_eq!(fee.fee_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_8_PERCENT_X96).value(), 8_400);
+    assert_eq!(fee.fee_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_10_PERCENT_X96).value(), 10_000);
 }
 
 #[test]
 fun equal_gaps_above_and_below_the_reference_charge_equal_fees() {
     let fee = table_fee();
 
-    assert_eq!(fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, PRICE_DOWN_1_PERCENT_X96), 2_100);
-    assert_eq!(fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_1_PERCENT_X96), 2_100);
-    assert_eq!(fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, PRICE_DOWN_2_PERCENT_X96), 2_400);
-    assert_eq!(fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_2_PERCENT_X96), 2_400);
-    assert_eq!(fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, PRICE_DOWN_4_PERCENT_X96), 3_600);
-    assert_eq!(fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_4_PERCENT_X96), 3_600);
-    assert_eq!(fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, PRICE_DOWN_8_PERCENT_X96), 8_400);
-    assert_eq!(fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_8_PERCENT_X96), 8_400);
+    assert_eq!(fee.fee_at_price(SQRT_PRICE_ONE_X96, PRICE_DOWN_1_PERCENT_X96).value(), 2_100);
+    assert_eq!(fee.fee_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_1_PERCENT_X96).value(), 2_100);
+    assert_eq!(fee.fee_at_price(SQRT_PRICE_ONE_X96, PRICE_DOWN_2_PERCENT_X96).value(), 2_400);
+    assert_eq!(fee.fee_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_2_PERCENT_X96).value(), 2_400);
+    assert_eq!(fee.fee_at_price(SQRT_PRICE_ONE_X96, PRICE_DOWN_4_PERCENT_X96).value(), 3_600);
+    assert_eq!(fee.fee_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_4_PERCENT_X96).value(), 3_600);
+    assert_eq!(fee.fee_at_price(SQRT_PRICE_ONE_X96, PRICE_DOWN_8_PERCENT_X96).value(), 8_400);
+    assert_eq!(fee.fee_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_8_PERCENT_X96).value(), 8_400);
 }
 
 #[test]
@@ -73,10 +73,10 @@ fun doubling_the_gap_quadruples_the_extra_fee() {
     // The maximum stays out of reach, so only the surcharge changes.
     let fee = lp_fee::new_dynamic_unchecked_for_testing(TABLE_BASE_FEE_PPM, 1_000_000, 100_000_000);
 
-    let extra_1_percent = fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_1_PERCENT_X96) - TABLE_BASE_FEE_PPM;
-    let extra_2_percent = fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_2_PERCENT_X96) - TABLE_BASE_FEE_PPM;
-    let extra_4_percent = fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_4_PERCENT_X96) - TABLE_BASE_FEE_PPM;
-    let extra_8_percent = fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_8_PERCENT_X96) - TABLE_BASE_FEE_PPM;
+    let extra_1_percent = fee.fee_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_1_PERCENT_X96).value() - TABLE_BASE_FEE_PPM;
+    let extra_2_percent = fee.fee_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_2_PERCENT_X96).value() - TABLE_BASE_FEE_PPM;
+    let extra_4_percent = fee.fee_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_4_PERCENT_X96).value() - TABLE_BASE_FEE_PPM;
+    let extra_8_percent = fee.fee_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_8_PERCENT_X96).value() - TABLE_BASE_FEE_PPM;
 
     assert_eq!(extra_1_percent, 10_000);
     assert_eq!(extra_2_percent, 4 * extra_1_percent);
@@ -89,9 +89,9 @@ fun fee_is_capped_at_the_maximum() {
     let fee = table_fee();
 
     // 10% adds exactly the 8,000 ppm headroom; anything further stays at the cap.
-    assert_eq!(fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_10_PERCENT_X96), TABLE_MAX_FEE_PPM);
-    assert_eq!(fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, 2 * SQRT_PRICE_ONE_X96), TABLE_MAX_FEE_PPM);
-    assert_eq!(fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, SQRT_PRICE_ONE_X96 / 2), TABLE_MAX_FEE_PPM);
+    assert_eq!(fee.fee_at_price(SQRT_PRICE_ONE_X96, PRICE_UP_10_PERCENT_X96).value(), TABLE_MAX_FEE_PPM);
+    assert_eq!(fee.fee_at_price(SQRT_PRICE_ONE_X96, 2 * SQRT_PRICE_ONE_X96).value(), TABLE_MAX_FEE_PPM);
+    assert_eq!(fee.fee_at_price(SQRT_PRICE_ONE_X96, SQRT_PRICE_ONE_X96 / 2).value(), TABLE_MAX_FEE_PPM);
 }
 
 #[test]
@@ -99,17 +99,17 @@ fun extreme_in_range_prices_saturate_at_the_maximum_without_aborting() {
     let low_sensitivity = lp_fee::new_dynamic(1_000, 100_000, 100_000);
     let high_sensitivity = lp_fee::new_dynamic(20_000, 20_000, 100_000_000);
     let table = table_fee();
-    // A 1 ppm sensitivity still saturates the largest u32 maximum above the reference.
-    let widest = lp_fee::new_dynamic_unchecked_for_testing(1_000, 4_294_967_295, 1);
+    // A 1 ppm sensitivity still saturates the largest ppm rate above the reference.
+    let widest = lp_fee::new_dynamic_unchecked_for_testing(1_000, 1_000_000, 1);
 
     let highest = MAX_SQRT_PRICE_X96 - 1;
-    assert_eq!(low_sensitivity.fee_ppm_at_price(MIN_SQRT_PRICE_X96, highest), 100_000);
-    assert_eq!(low_sensitivity.fee_ppm_at_price(highest, MIN_SQRT_PRICE_X96), 100_000);
-    assert_eq!(high_sensitivity.fee_ppm_at_price(MIN_SQRT_PRICE_X96, highest), 20_000);
-    assert_eq!(high_sensitivity.fee_ppm_at_price(highest, MIN_SQRT_PRICE_X96), 20_000);
-    assert_eq!(table.fee_ppm_at_price(MIN_SQRT_PRICE_X96, highest), TABLE_MAX_FEE_PPM);
-    assert_eq!(table.fee_ppm_at_price(highest, MIN_SQRT_PRICE_X96), TABLE_MAX_FEE_PPM);
-    assert_eq!(widest.fee_ppm_at_price(MIN_SQRT_PRICE_X96, highest), 4_294_967_295);
+    assert_eq!(low_sensitivity.fee_at_price(MIN_SQRT_PRICE_X96, highest).value(), 100_000);
+    assert_eq!(low_sensitivity.fee_at_price(highest, MIN_SQRT_PRICE_X96).value(), 100_000);
+    assert_eq!(high_sensitivity.fee_at_price(MIN_SQRT_PRICE_X96, highest).value(), 20_000);
+    assert_eq!(high_sensitivity.fee_at_price(highest, MIN_SQRT_PRICE_X96).value(), 20_000);
+    assert_eq!(table.fee_at_price(MIN_SQRT_PRICE_X96, highest).value(), TABLE_MAX_FEE_PPM);
+    assert_eq!(table.fee_at_price(highest, MIN_SQRT_PRICE_X96).value(), TABLE_MAX_FEE_PPM);
+    assert_eq!(widest.fee_at_price(MIN_SQRT_PRICE_X96, highest).value(), 1_000_000);
 }
 
 #[test]
@@ -117,7 +117,7 @@ fun gap_is_measured_in_price_not_square_root_price() {
     let fee = table_fee();
 
     // A 2% square-root move is a 4.04% price move: 1,000,000 * 0.0404^2 = 1,632.16 ppm.
-    assert_eq!(fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, SQRT_PRICE_UP_2_PERCENT_X96), 3_632);
+    assert_eq!(fee.fee_at_price(SQRT_PRICE_ONE_X96, SQRT_PRICE_UP_2_PERCENT_X96).value(), 3_632);
 }
 
 #[test]
@@ -127,16 +127,16 @@ fun rate_rounding_can_reduce_the_fee_by_one_ppm_at_an_exact_boundary() {
 
     // The exact gaps are 7/9 and 5/9. Rounding them down puts each surcharge
     // just below its exact integer value of 60,515 and 30,875 ppm, respectively.
-    assert_eq!(fee.fee_ppm_at_price(reference_sqrt_price_x96, 4 * SQRT_PRICE_ONE_X96), 63_514);
-    assert_eq!(fee.fee_ppm_at_price(reference_sqrt_price_x96, 2 * SQRT_PRICE_ONE_X96), 33_874);
+    assert_eq!(fee.fee_at_price(reference_sqrt_price_x96, 4 * SQRT_PRICE_ONE_X96).value(), 63_514);
+    assert_eq!(fee.fee_at_price(reference_sqrt_price_x96, 2 * SQRT_PRICE_ONE_X96).value(), 33_874);
 }
 
 #[test]
 fun fixed_fee_ignores_the_price_gap() {
     let fee = lp_fee::new_fixed(3_000);
 
-    assert_eq!(fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, SQRT_PRICE_ONE_X96), 3_000);
-    assert_eq!(fee.fee_ppm_at_price(MIN_SQRT_PRICE_X96, MAX_SQRT_PRICE_X96 - 1), 3_000);
+    assert_eq!(fee.fee_at_price(SQRT_PRICE_ONE_X96, SQRT_PRICE_ONE_X96).value(), 3_000);
+    assert_eq!(fee.fee_at_price(MIN_SQRT_PRICE_X96, MAX_SQRT_PRICE_X96 - 1).value(), 3_000);
 }
 
 // Reference price.

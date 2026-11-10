@@ -27,7 +27,7 @@ const REFERENCE_WINDOW_MS: u64 = 600_000;
 /// 1.0 in Q128.
 const ONE_X128: u256 = 340_282_366_920_938_463_463_374_607_431_768_211_456;
 /// Square-root price ratio 512 in Q64 (2^73): a price gap of 262,143, where a
-/// sensitivity of 1 ppm already adds more than any u32 maximum.
+/// sensitivity of 1 ppm already adds more than 100%.
 const MAX_SQRT_PRICE_RATIO_X64: u256 = 9_444_732_965_739_290_427_392;
 
 // === Public Types ===
@@ -35,10 +35,10 @@ const MAX_SQRT_PRICE_RATIO_X64: u256 = 9_444_732_965_739_290_427_392;
 /// A pool's LP fee settings, validated at construction.
 public enum LpFee has copy, drop, store {
     /// Charges `fee_ppm`, a fee tier, on every swap.
-    Fixed { fee_ppm: u32 },
+    Fixed { fee_ppm: Ppm },
     /// Charges `base_fee_ppm`, a fee tier, plus a surcharge of `sensitivity_ppm`
     /// times the squared price gap, up to `max_fee_ppm`.
-    Dynamic { base_fee_ppm: u32, max_fee_ppm: u32, sensitivity_ppm: u32 },
+    Dynamic { base_fee_ppm: Ppm, max_fee_ppm: Ppm, sensitivity_ppm: u32 },
 }
 
 // === Public Functions ===
@@ -52,17 +52,14 @@ public fun is_dynamic(self: &LpFee): bool {
 
 /// The fee at a zero price gap: the fixed fee, or the dynamic base fee.
 public fun base_fee_ppm(self: &LpFee): u32 {
-    match (*self) {
-        LpFee::Fixed { fee_ppm } => fee_ppm,
-        LpFee::Dynamic { base_fee_ppm, .. } => base_fee_ppm,
-    }
+    self.base_fee().value()
 }
 
 /// The highest fee a swap can pay: the fixed fee, or the dynamic maximum.
 public fun max_fee_ppm(self: &LpFee): u32 {
     match (*self) {
-        LpFee::Fixed { fee_ppm } => fee_ppm,
-        LpFee::Dynamic { max_fee_ppm, .. } => max_fee_ppm,
+        LpFee::Fixed { fee_ppm } => fee_ppm.value(),
+        LpFee::Dynamic { max_fee_ppm, .. } => max_fee_ppm.value(),
     }
 }
 
@@ -79,7 +76,7 @@ public fun sensitivity_ppm(self: &LpFee): Option<u32> {
 public(package) fun new_fixed(fee_ppm: u32): LpFee {
     assert!(is_fee_tier(fee_ppm), blast_fun_dex::errors::not_fee_tier!());
 
-    LpFee::Fixed { fee_ppm }
+    LpFee::Fixed { fee_ppm: ppm::new(fee_ppm) }
 }
 
 /// `base_fee_ppm` must be a fee tier, `max_fee_ppm` between it and 100,000 ppm,
@@ -95,7 +92,18 @@ public(package) fun new_dynamic(base_fee_ppm: u32, max_fee_ppm: u32, sensitivity
         blast_fun_dex::errors::invalid_sensitivity!(),
     );
 
-    LpFee::Dynamic { base_fee_ppm, max_fee_ppm, sensitivity_ppm }
+    LpFee::Dynamic {
+        base_fee_ppm: ppm::new(base_fee_ppm),
+        max_fee_ppm: ppm::new(max_fee_ppm),
+        sensitivity_ppm,
+    }
+}
+
+public(package) fun base_fee(self: &LpFee): Ppm {
+    match (*self) {
+        LpFee::Fixed { fee_ppm } => fee_ppm,
+        LpFee::Dynamic { base_fee_ppm, .. } => base_fee_ppm,
+    }
 }
 
 /// The LP fee rate for a projected post-swap price relative to the reference.
@@ -125,19 +133,20 @@ public(package) fun new_dynamic(base_fee_ppm: u32, max_fee_ppm: u32, sensitivity
 /// ratio r. With valid settings the fee equals the exact integer fee or falls
 /// short by one ppm. A gap of 262,143
 /// already reaches the maximum, so the ratio is clamped at 512.
-public(package) fun fee_ppm_at_price(
+public(package) fun fee_at_price(
     self: &LpFee,
     reference_sqrt_price_x96: u256,
     projected_sqrt_price_x96: u256,
-): u32 {
+): Ppm {
     match (*self) {
         LpFee::Fixed { fee_ppm } => fee_ppm,
         LpFee::Dynamic { base_fee_ppm, max_fee_ppm, sensitivity_ppm } => {
             let gap_x64 = price_gap_x64_down(reference_sqrt_price_x96, projected_sqrt_price_x96);
-            // At most 2^32 * (2^82)^2 = 2^196, then narrowed below `max_fee_ppm`.
+            // At most 2^32 * (2^82)^2 = 2^196, then clamped to the validated maximum.
             let extra_fee_ppm = ((sensitivity_ppm as u256) * gap_x64 * gap_x64) >> 128;
+            let fee_ppm = (base_fee_ppm.value() as u256) + extra_fee_ppm;
 
-            ((base_fee_ppm as u256) + extra_fee_ppm).min(max_fee_ppm as u256) as u32
+            ppm::new(fee_ppm.min(max_fee_ppm.value() as u256) as u32)
         },
     }
 }
@@ -187,8 +196,16 @@ fun price_gap_x64_down(reference_sqrt_price_x96: u256, projected_sqrt_price_x96:
 
 // === Test-Only Functions ===
 
-/// Dynamic settings without validation, for exercising the calculation alone.
+/// Bypasses LP policy bounds while keeping both rates valid ppm values.
 #[test_only]
 public fun new_dynamic_unchecked_for_testing(base_fee_ppm: u32, max_fee_ppm: u32, sensitivity_ppm: u32): LpFee {
-    LpFee::Dynamic { base_fee_ppm, max_fee_ppm, sensitivity_ppm }
+    LpFee::Dynamic {
+        base_fee_ppm: ppm::new(base_fee_ppm),
+        max_fee_ppm: ppm::new(max_fee_ppm),
+        sensitivity_ppm,
+    }
 }
+
+// === Imports ===
+
+use blast_fun_dex::ppm::{Self, Ppm};

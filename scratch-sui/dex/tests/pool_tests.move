@@ -691,7 +691,7 @@ fun half_a_window_moves_the_reference_halfway_up() {
 
     let halfway = SQRT_PRICE_ONE_X96 + (PRICE_UP_8_PERCENT_X96 - SQRT_PRICE_ONE_X96) / 2;
     pool.assert_reference(halfway, NOW_MS + WINDOW_MS / 2);
-    let charged_fee_ppm = pool.lp_fee().fee_ppm_at_price(halfway, PRICE_UP_8_PERCENT_X96);
+    let charged_fee_ppm = pool.lp_fee().fee_at_price(halfway, PRICE_UP_8_PERCENT_X96).value();
     // Measured from price 1.0396, price 1.08 is 3.885% away: 3,000 + 1,509 ppm.
     assert_eq!(charged_fee_ppm, 4_509);
     assert_eq!(priced_lp_fees_ppm, vector[BASE_FEE_PPM, charged_fee_ppm]);
@@ -718,7 +718,7 @@ fun half_a_window_moves_the_reference_halfway_down() {
 
     let halfway = SQRT_PRICE_ONE_X96 - (SQRT_PRICE_ONE_X96 - PRICE_DOWN_8_PERCENT_X96) / 2;
     pool.assert_reference(halfway, NOW_MS + WINDOW_MS / 2);
-    let charged_fee_ppm = pool.lp_fee().fee_ppm_at_price(halfway, PRICE_DOWN_8_PERCENT_X96);
+    let charged_fee_ppm = pool.lp_fee().fee_at_price(halfway, PRICE_DOWN_8_PERCENT_X96).value();
     // Measured from price 0.9596, price 0.92 is 4.125% away: 3,000 + 1,701 ppm.
     assert_eq!(charged_fee_ppm, 4_701);
     assert_eq!(priced_lp_fees_ppm, vector[BASE_FEE_PPM, charged_fee_ppm]);
@@ -790,7 +790,7 @@ fun same_timestamp_swaps_share_the_unmoved_reference_and_later_ones_see_it_move(
 
     let moved = SQRT_PRICE_ONE_X96 - (SQRT_PRICE_ONE_X96 - PRICE_DOWN_8_PERCENT_X96) / 10;
     pool.assert_reference(moved, NOW_MS + WINDOW_MS / 10);
-    let charged_fee_ppm = pool.lp_fee().fee_ppm_at_price(moved, PRICE_DOWN_8_PERCENT_X96);
+    let charged_fee_ppm = pool.lp_fee().fee_at_price(moved, PRICE_DOWN_8_PERCENT_X96).value();
     assert!(charged_fee_ppm < 9_400);
     assert_eq!(later, vector[BASE_FEE_PPM, charged_fee_ppm]);
     clock.destroy_for_testing();

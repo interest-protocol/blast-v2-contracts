@@ -437,17 +437,17 @@ public fun execute_swap<Asset, Quote>(
     let (is_asset_input, asset_payment, quote_payment, sqrt_price_limit_x96) = self.open_swap(request);
 
     let input_value = if (is_asset_input) asset_payment.value() else quote_payment.value();
-    let (input_spent, output_amount, sqrt_price_after_x96, lp_fee_ppm) = swap_amounts_and_lp_fee!(
+    let (input_spent, output_amount, sqrt_price_after_x96, lp_fee) = swap_amounts_and_lp_fee!(
         self.lp_fee,
         || self.move_reference_sqrt_price_x96(clock),
-        |lp_fee_ppm| self.swap_amounts(is_asset_input, input_value, sqrt_price_limit_x96, lp_fee_ppm),
+        |lp_fee| self.swap_amounts(is_asset_input, input_value, sqrt_price_limit_x96, lp_fee),
     );
 
     self.settle_swap(
         is_asset_input,
         asset_payment,
         quote_payment,
-        lp_fee_ppm,
+        lp_fee,
         input_spent,
         output_amount,
         sqrt_price_after_x96,
@@ -906,19 +906,20 @@ fun open_swap<Asset, Quote>(
 macro fun swap_amounts_and_lp_fee(
     $lp_fee: LpFee,
     $move_reference_sqrt_price_x96: || -> u256,
-    $swap_amounts: |u32| -> (u64, u64, u256),
-): (u64, u64, u256, u32) {
+    $swap_amounts: |Ppm| -> (u64, u64, u256),
+): (u64, u64, u256, Ppm) {
     let lp_fee = $lp_fee;
-    let lp_fee_ppm = if (lp_fee.is_dynamic()) {
+    let base_fee = lp_fee.base_fee();
+    let applied_fee = if (lp_fee.is_dynamic()) {
         let reference_sqrt_price_x96 = $move_reference_sqrt_price_x96();
-        let (_, _, projected_sqrt_price_x96) = $swap_amounts(lp_fee.base_fee_ppm());
-        lp_fee.fee_ppm_at_price(reference_sqrt_price_x96, projected_sqrt_price_x96)
+        let (_, _, projected_sqrt_price_x96) = $swap_amounts(base_fee);
+        lp_fee.fee_at_price(reference_sqrt_price_x96, projected_sqrt_price_x96)
     } else {
-        lp_fee.base_fee_ppm()
+        base_fee
     };
 
-    let (input_spent, output_amount, sqrt_price_after_x96) = $swap_amounts(lp_fee_ppm);
-    (input_spent, output_amount, sqrt_price_after_x96, lp_fee_ppm)
+    let (input_spent, output_amount, sqrt_price_after_x96) = $swap_amounts(applied_fee);
+    (input_spent, output_amount, sqrt_price_after_x96, applied_fee)
 }
 
 /// Updates the reference toward the pre-swap price using the time since the
@@ -988,7 +989,7 @@ fun settle_swap<Asset, Quote>(
     is_asset_input: bool,
     mut asset_payment: Balance<Asset>,
     mut quote_payment: Balance<Quote>,
-    lp_fee_ppm: u32,
+    lp_fee: Ppm,
     input_spent: u64,
     output_amount: u64,
     sqrt_price_after_x96: u256,
@@ -1009,7 +1010,7 @@ fun settle_swap<Asset, Quote>(
         is_asset_input,
         input_spent,
         output_amount,
-        lp_fee_ppm,
+        lp_fee_ppm: lp_fee.value(),
         sqrt_price_after_x96,
     });
 
@@ -1103,7 +1104,7 @@ fun swap_amounts<Asset, Quote>(
     _is_asset_input: bool,
     _input_value: u64,
     _sqrt_price_limit_x96: u256,
-    _lp_fee_ppm: u32,
+    _lp_fee: Ppm,
 ): (u64, u64, u256) {
     abort blast_fun_dex::errors::curve_math_unavailable!()
 }
@@ -1182,12 +1183,12 @@ public fun execute_swap_with_preview_for_testing<Asset, Quote>(
     let is_dynamic = self.lp_fee.is_dynamic();
     let mut priced_lp_fees_ppm = vector[];
 
-    let (input_spent, output_amount, sqrt_price_after_x96, lp_fee_ppm) = swap_amounts_and_lp_fee!(
+    let (input_spent, output_amount, sqrt_price_after_x96, lp_fee) = swap_amounts_and_lp_fee!(
         self.lp_fee,
         || self.move_reference_sqrt_price_x96(clock),
-        |lp_fee_ppm| {
+        |lp_fee| {
             let is_preview = is_dynamic && priced_lp_fees_ppm.is_empty();
-            priced_lp_fees_ppm.push_back(lp_fee_ppm);
+            priced_lp_fees_ppm.push_back(lp_fee.value());
             (input_spent, output_amount, if (is_preview) preview_sqrt_price_x96 else sqrt_price_after_x96)
         },
     );
@@ -1195,7 +1196,7 @@ public fun execute_swap_with_preview_for_testing<Asset, Quote>(
         is_asset_input,
         asset_payment,
         quote_payment,
-        lp_fee_ppm,
+        lp_fee,
         input_spent,
         output_amount,
         sqrt_price_after_x96,
@@ -1295,7 +1296,7 @@ public fun swapped_lp_fee_ppm_for_testing(event: &Swapped): u32 {
 
 // === Imports ===
 
-use blast_fun_dex::{hook_config::HookConfig, i32::I32, lp_fee::{Self, LpFee}};
+use blast_fun_dex::{hook_config::HookConfig, i32::I32, lp_fee::{Self, LpFee}, ppm::Ppm};
 use std::type_name::{Self, TypeName};
 use sui::{balance::{Self, Balance}, clock::Clock, coin::Coin, dynamic_field, event};
 

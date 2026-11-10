@@ -119,6 +119,12 @@ const EInvalidSensitivity: u64 = 24;
 /// Magnitude does not fit the requested signed 32-bit value.
 const EMagnitudeTooLarge: u64 = 25;
 
+// Rates.
+
+#[test_only]
+/// A ppm rate must be at most 1,000,000.
+const EInvalidPpm: u64 = 26;
+
 macro public(package) fun identical_tokens(): u64 { 0 }
 
 macro public(package) fun invalid_tick_spacing(): u64 { 1 }
@@ -170,3 +176,5 @@ macro public(package) fun invalid_max_fee(): u64 { 23 }
 macro public(package) fun invalid_sensitivity(): u64 { 24 }
 
 macro public(package) fun magnitude_too_large(): u64 { 25 }
+
+macro public(package) fun invalid_ppm(): u64 { 26 }
