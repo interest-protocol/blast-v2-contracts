@@ -1,3 +1,5 @@
+// The abort lint sees the shared error macros as numeric literals after expansion.
+#[allow(lint(abort_without_constant))]
 /// One shared configuration object per hook, at an address anyone can derive.
 ///
 /// `HookConfig<Witness>` is derived from the singleton `HookNamespace` with the
@@ -41,7 +43,7 @@ public fun new<Witness: drop>(
     version: u64,
 ): HookConfig<Witness> {
     let hook = type_name::with_defining_ids<Witness>();
-    assert!(!hook.is_primitive(), EPrimitiveWitness);
+    assert!(!hook.is_primitive(), blast_fun_dex::errors::primitive_witness!());
 
     HookConfig { id: derived_object::claim(&mut namespace.id, HookConfigKey(hook)), version }
 }
@@ -64,7 +66,7 @@ public fun set_version<Witness: drop>(
     _witness: Witness,
     version: u64,
 ) {
-    assert!(version > self.version, EVersionNotIncreasing);
+    assert!(version > self.version, blast_fun_dex::errors::version_not_increasing!());
 
     self.version = version;
 }
@@ -90,13 +92,6 @@ public fun new_namespace_for_testing(ctx: &mut TxContext): HookNamespace {
 public fun key_for_testing(hook: TypeName): HookConfigKey {
     HookConfigKey(hook)
 }
-
-// === Errors ===
-
-#[error(code = 0)]
-const EPrimitiveWitness: vector<u8> = b"Hook witness must be a struct type, not a primitive or vector.";
-#[error(code = 1)]
-const EVersionNotIncreasing: vector<u8> = b"Hook version must increase.";
 
 // === Imports ===
 

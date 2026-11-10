@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
+// The abort lint sees the shared error macros as numeric literals after expansion.
+#[allow(lint(abort_without_constant))]
 /// A pool's LP fee settings and the marginal rate along the swap path.
 ///
 /// Pools store a fixed tier or a bounded quadratic schedule at creation.
@@ -41,15 +43,8 @@ public struct BlastDexFeeTiers has key {
     rates: Table<u32, bool>,
 }
 
-/// The sole capability to add tiers. Initialization sends it to the publisher.
-public struct BlastDexFeeTierAdminCap has key, store {
-    id: UID,
-}
-
-/// An additional rate became available to new pools.
-public struct BlastDexFeeTierAdded has copy, drop {
-    fee_ppm: u32,
-}
+/// ACL role authorized to add rates to the shared DEX fee tier registry.
+public struct BlastDexFeeTierAdmin()
 
 /// The fee schedule with its reference fixed for one fill.
 public struct FeePath has drop {
@@ -69,7 +64,6 @@ public struct FeeStep has drop {
 
 fun init(ctx: &mut TxContext) {
     transfer::share_object(new_fee_tiers(ctx));
-    transfer::transfer(BlastDexFeeTierAdminCap { id: object::new(ctx) }, ctx.sender());
 }
 
 // === Public Functions ===
@@ -79,13 +73,18 @@ public fun is_fee_tier(self: &BlastDexFeeTiers, fee_ppm: u32): bool {
     self.rates.contains(fee_ppm)
 }
 
-/// Adds a distinct tier between 1 and 100,000 ppm, inclusive.
-public fun add_fee_tier(self: &mut BlastDexFeeTiers, _cap: &BlastDexFeeTierAdminCap, fee_ppm: u32) {
-    assert!(fee_ppm > 0 && fee_ppm <= MAX_LP_FEE_PPM, EInvalidFeeTierRate);
-    assert!(!self.is_fee_tier(fee_ppm), EFeeTierAlreadyExists);
+/// Adds a distinct tier between 1 and 100,000 ppm, inclusive. The caller obtains
+/// the role witness from `blast_acl::sign_in` in the same transaction.
+public fun add_fee_tier(
+    self: &mut BlastDexFeeTiers,
+    _: &AdminWitness<BlastDexFeeTierAdmin>,
+    fee_ppm: u32,
+) {
+    assert!(fee_ppm > 0 && fee_ppm <= MAX_LP_FEE_PPM, blast_fun_dex::errors::invalid_fee_tier_rate!());
+    assert!(!self.is_fee_tier(fee_ppm), blast_fun_dex::errors::fee_tier_already_exists!());
 
     self.rates.add(fee_ppm, true);
-    sui::event::emit(BlastDexFeeTierAdded { fee_ppm });
+    blast_events::fee_tier_added(fee_ppm);
 }
 
 public fun is_dynamic(self: &LpFee): bool {
@@ -116,7 +115,7 @@ public fun sensitivity_ppm(self: &LpFee): Option<u32> {
 // === Package Functions ===
 
 public(package) fun new_fixed(tiers: &BlastDexFeeTiers, fee_ppm: u32): LpFee {
-    assert!(tiers.is_fee_tier(fee_ppm), ENotFeeTier);
+    assert!(tiers.is_fee_tier(fee_ppm), blast_fun_dex::errors::not_fee_tier!());
 
     LpFee::Fixed { fee_ppm: ppm::new(fee_ppm) }
 }
@@ -129,14 +128,14 @@ public(package) fun new_dynamic(
     max_fee_ppm: u32,
     sensitivity_ppm: u32,
 ): LpFee {
-    assert!(tiers.is_fee_tier(base_fee_ppm), ENotFeeTier);
+    assert!(tiers.is_fee_tier(base_fee_ppm), blast_fun_dex::errors::not_fee_tier!());
     assert!(
         max_fee_ppm >= base_fee_ppm && max_fee_ppm <= MAX_LP_FEE_PPM,
-        EInvalidMaxFee,
+        blast_fun_dex::errors::invalid_max_fee!(),
     );
     assert!(
         sensitivity_ppm >= MIN_SENSITIVITY_PPM && sensitivity_ppm <= MAX_SENSITIVITY_PPM,
-        EInvalidSensitivity,
+        blast_fun_dex::errors::invalid_sensitivity!(),
     );
 
     LpFee::Dynamic {
@@ -334,11 +333,6 @@ public fun destroy_default_fee_tiers_for_testing(self: BlastDexFeeTiers) {
     id.delete();
 }
 
-#[test_only]
-public fun added_fee_ppm_for_testing(self: &BlastDexFeeTierAdded): u32 {
-    self.fee_ppm
-}
-
 /// Bypasses LP policy bounds while keeping both rates valid ppm values.
 #[test_only]
 public fun new_dynamic_unchecked_for_testing(base_fee_ppm: u32, max_fee_ppm: u32, sensitivity_ppm: u32): LpFee {
@@ -349,20 +343,8 @@ public fun new_dynamic_unchecked_for_testing(base_fee_ppm: u32, max_fee_ppm: u32
     }
 }
 
-// === Errors ===
-
-#[error(code = 0)]
-const ENotFeeTier: vector<u8> = b"A pool's fixed or base LP fee must be a registered tier.";
-#[error(code = 1)]
-const EInvalidMaxFee: vector<u8> = b"Dynamic maximum fee must be at least the base fee and at most 100,000 ppm.";
-#[error(code = 2)]
-const EInvalidSensitivity: vector<u8> = b"Dynamic fee sensitivity must be between 100,000 and 100,000,000 ppm.";
-#[error(code = 3)]
-const EInvalidFeeTierRate: vector<u8> = b"A fee tier must be between 1 and 100,000 ppm.";
-#[error(code = 4)]
-const EFeeTierAlreadyExists: vector<u8> = b"This fee tier is already registered.";
-
 // === Imports ===
 
-use blast_fun_dex::ppm::{Self, Ppm};
+use blast_admin::blast_acl::AdminWitness;
+use blast_fun_dex::{blast_events, ppm::{Self, Ppm}};
 use sui::table::{Self, Table};

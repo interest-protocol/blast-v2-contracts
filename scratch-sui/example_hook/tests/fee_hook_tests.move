@@ -253,7 +253,7 @@ fun register_rejects_a_config_moved_to_a_newer_version() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::hook_config::EVersionNotIncreasing, location = blast_fun_dex::hook_config)]
+#[expected_failure(abort_code = blast_fun_dex::errors::EVersionNotIncreasing, location = blast_fun_dex::hook_config)]
 fun migrate_rejects_the_version_already_accepted() {
     let mut fixture = setup(FEE_BPS);
 

@@ -10,7 +10,7 @@ test-only seams, because the math functions abort.
 This scratch checkpoint replaces the parked full-range native V2 DEX source
 from [ADR 0076](../docs/decisions/0076-native-v2-and-auto-lp.md). The previous
 scratch source is [retained in Git history](https://github.com/interest-protocol/blast-v2-contracts/tree/45547cf8e795878659b92a316d8ee80c9045d519/scratch-sui/dex).
-Launchpad migration and native pool administration are outside this checkpoint.
+Launchpad migration and DEX package administration are outside this checkpoint.
 
 ## Why the pool is the entry point
 
@@ -40,11 +40,16 @@ one hook call per bound slot.
 
 ## LP fee tiers
 
-The shared fee tier registry starts with 0.1%, 0.3%, 1%, and 2%. The holder of
-the fee-tier admin capability can append a distinct rate from 1 to 100,000 ppm.
+The shared fee tier registry starts with 0.1%, 0.3%, 1%, and 2%. The Blast ACL
+root grants the `lp_fee::BlastDexFeeTierAdmin` role to an operator's `AdminCap`.
+The operator calls `blast_acl::sign_in` for that role and passes the resulting
+`AdminWitness` to `lp_fee::add_fee_tier` in the same transaction. Each addition
+registers a distinct rate from 1 to 100,000 ppm and emits
+`blast_events::BlastDexFeeTierAdded`.
+
 Anyone can borrow the registry to create a pool with a registered fixed or
-dynamic base rate. Pools store their selected rates at creation. Tier additions
-are recorded as events and apply to future pool creation.
+dynamic base rate. Pools store their selected rates at creation. DEX events
+live in `blast_events`, and DEX abort codes live in `errors`.
 
 ## Hook calling convention
 

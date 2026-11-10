@@ -1,3 +1,5 @@
+// The abort lint sees the shared error macros as numeric literals after expansion.
+#[allow(lint(abort_without_constant))]
 /// Concentrated-liquidity pools with Uniswap-v4-style lifecycle hooks.
 ///
 /// Sui has no dynamic dispatch, so the pool cannot call a hook. The transaction
@@ -143,51 +145,6 @@ public struct HookStateKey<Name: copy + drop + store> has copy, drop, store {
     name: Name,
 }
 
-// Events.
-
-public struct PoolCreated has copy, drop {
-    pool_id: ID,
-    asset: TypeName,
-    quote: TypeName,
-    tick_spacing: u32,
-    lp_fee: LpFee,
-    sqrt_price_x96: u256,
-    hooks: Hooks,
-}
-
-public struct Swapped has copy, drop {
-    pool_id: ID,
-    sender: address,
-    is_asset_input: bool,
-    input_spent: u64,
-    output_amount: u64,
-    /// LP fee paid in atomic units of the input coin.
-    lp_fee_amount: u64,
-    sqrt_price_after_x96: u256,
-}
-
-public struct LiquidityAdded has copy, drop {
-    pool_id: ID,
-    position_id: ID,
-    liquidity: u128,
-    asset_amount: u64,
-    quote_amount: u64,
-}
-
-public struct LiquidityRemoved has copy, drop {
-    pool_id: ID,
-    position_id: ID,
-    liquidity: u128,
-    asset_amount: u64,
-    quote_amount: u64,
-}
-
-public struct Donated has copy, drop {
-    pool_id: ID,
-    asset_amount: u64,
-    quote_amount: u64,
-}
-
 // === Public Functions ===
 
 // Hook slot flags for `register_hook`. Combine with `|`.
@@ -241,7 +198,7 @@ public fun register_hook<Asset, Quote, Witness: drop>(
     _witness: Witness,
     flags: u8,
 ) {
-    assert!(flags != 0, EInvalidHookFlags);
+    assert!(flags != 0, blast_fun_dex::errors::invalid_hook_flags!());
 
     let hook = type_name::with_defining_ids<Witness>();
     let hooks = &mut self.pool.hooks;
@@ -259,15 +216,15 @@ public fun register_hook<Asset, Quote, Witness: drop>(
 public fun finalize<Asset, Quote>(self: PoolInitializer<Asset, Quote>): Pool<Asset, Quote> {
     let PoolInitializer { pool } = self;
 
-    event::emit(PoolCreated {
-        pool_id: pool.id.to_inner(),
-        asset: type_name::with_defining_ids<Asset>(),
-        quote: type_name::with_defining_ids<Quote>(),
-        tick_spacing: pool.tick_spacing,
-        lp_fee: pool.lp_fee,
-        sqrt_price_x96: pool.sqrt_price_x96,
-        hooks: pool.hooks,
-    });
+    blast_events::pool_created(
+        pool.id.to_inner(),
+        type_name::with_defining_ids<Asset>(),
+        type_name::with_defining_ids<Quote>(),
+        pool.tick_spacing,
+        pool.lp_fee,
+        pool.sqrt_price_x96,
+        pool.hooks,
+    );
 
     pool
 }
@@ -298,10 +255,10 @@ public fun new_position<Asset, Quote>(
     tick_upper: I32,
     ctx: &mut TxContext,
 ): Position<Asset, Quote> {
-    assert!(tick_lower.lt(&tick_upper), EInvalidTickRange);
+    assert!(tick_lower.lt(&tick_upper), blast_fun_dex::errors::invalid_tick_range!());
     assert!(
         self.is_usable_tick(&tick_lower) && self.is_usable_tick(&tick_upper),
-        EInvalidTickRange,
+        blast_fun_dex::errors::invalid_tick_range!(),
     );
 
     Position { id: object::new(ctx), pool_id: self.id.to_inner(), tick_lower, tick_upper, liquidity: 0 }
@@ -310,7 +267,7 @@ public fun new_position<Asset, Quote>(
 /// Deletes a position that holds no liquidity.
 public fun destroy_empty_position<Asset, Quote>(position: Position<Asset, Quote>) {
     let Position { id, pool_id: _, tick_lower: _, tick_upper: _, liquidity } = position;
-    assert!(liquidity == 0, EPositionNotEmpty);
+    assert!(liquidity == 0, blast_fun_dex::errors::position_not_empty!());
 
     id.delete();
 }
@@ -340,10 +297,10 @@ public fun begin_swap_asset_to_quote<Asset, Quote>(
     payment: Coin<Asset>,
     sqrt_price_limit_x96: u256,
 ): SwapRequest<Asset, Quote> {
-    assert!(payment.value() > 0, EZeroAmount);
+    assert!(payment.value() > 0, blast_fun_dex::errors::zero_amount!());
     assert!(
         sqrt_price_limit_x96 < self.sqrt_price_x96 && sqrt_price_limit_x96 > MIN_SQRT_PRICE_X96,
-        EInvalidPriceLimit,
+        blast_fun_dex::errors::invalid_price_limit!(),
     );
 
     self.lock();
@@ -357,10 +314,10 @@ public fun begin_swap_quote_to_asset<Asset, Quote>(
     payment: Coin<Quote>,
     sqrt_price_limit_x96: u256,
 ): SwapRequest<Asset, Quote> {
-    assert!(payment.value() > 0, EZeroAmount);
+    assert!(payment.value() > 0, blast_fun_dex::errors::zero_amount!());
     assert!(
         sqrt_price_limit_x96 > self.sqrt_price_x96 && sqrt_price_limit_x96 < MAX_SQRT_PRICE_X96,
-        EInvalidPriceLimit,
+        blast_fun_dex::errors::invalid_price_limit!(),
     );
 
     self.lock();
@@ -374,7 +331,7 @@ public fun take_swap_asset_payment<Asset, Quote, Witness: drop>(
     _witness: Witness,
     amount: u64,
 ): Balance<Asset> {
-    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
+    assert!(self.pool_id == pool.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
     self.approval.assert_open<Witness>();
 
     self.asset_payment.split(amount)
@@ -387,7 +344,7 @@ public fun take_swap_quote_payment<Asset, Quote, Witness: drop>(
     _witness: Witness,
     amount: u64,
 ): Balance<Quote> {
-    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
+    assert!(self.pool_id == pool.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
     self.approval.assert_open<Witness>();
 
     self.quote_payment.split(amount)
@@ -399,7 +356,7 @@ public fun approve_swap<Asset, Quote, Witness: drop>(
     pool: &Pool<Asset, Quote>,
     _witness: Witness,
 ) {
-    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
+    assert!(self.pool_id == pool.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
 
     self.approval.approve<Witness>();
 }
@@ -456,8 +413,8 @@ public fun begin_add_liquidity<Asset, Quote>(
     asset_payment: Coin<Asset>,
     quote_payment: Coin<Quote>,
 ): AddLiquidityRequest<Asset, Quote> {
-    assert!(position.pool_id == self.id.to_inner(), EWrongPool);
-    assert!(liquidity > 0, EZeroLiquidity);
+    assert!(position.pool_id == self.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
+    assert!(liquidity > 0, blast_fun_dex::errors::zero_liquidity!());
 
     self.lock();
     AddLiquidityRequest {
@@ -476,7 +433,7 @@ public fun approve_add_liquidity<Asset, Quote, Witness: drop>(
     pool: &Pool<Asset, Quote>,
     _witness: Witness,
 ) {
-    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
+    assert!(self.pool_id == pool.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
 
     self.approval.approve<Witness>();
 }
@@ -506,9 +463,9 @@ public fun begin_remove_liquidity<Asset, Quote>(
     position: &Position<Asset, Quote>,
     liquidity: u128,
 ): RemoveLiquidityRequest<Asset, Quote> {
-    assert!(position.pool_id == self.id.to_inner(), EWrongPool);
-    assert!(liquidity > 0, EZeroLiquidity);
-    assert!(liquidity <= position.liquidity, EInsufficientLiquidity);
+    assert!(position.pool_id == self.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
+    assert!(liquidity > 0, blast_fun_dex::errors::zero_liquidity!());
+    assert!(liquidity <= position.liquidity, blast_fun_dex::errors::insufficient_liquidity!());
 
     self.lock();
     RemoveLiquidityRequest {
@@ -525,7 +482,7 @@ public fun approve_remove_liquidity<Asset, Quote, Witness: drop>(
     pool: &Pool<Asset, Quote>,
     _witness: Witness,
 ) {
-    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
+    assert!(self.pool_id == pool.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
 
     self.approval.approve<Witness>();
 }
@@ -555,7 +512,7 @@ public fun begin_donate<Asset, Quote>(
     asset_payment: Coin<Asset>,
     quote_payment: Coin<Quote>,
 ): DonateRequest<Asset, Quote> {
-    assert!(asset_payment.value() > 0 || quote_payment.value() > 0, EZeroAmount);
+    assert!(asset_payment.value() > 0 || quote_payment.value() > 0, blast_fun_dex::errors::zero_amount!());
 
     self.lock();
     DonateRequest {
@@ -572,7 +529,7 @@ public fun approve_donate<Asset, Quote, Witness: drop>(
     pool: &Pool<Asset, Quote>,
     _witness: Witness,
 ) {
-    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
+    assert!(self.pool_id == pool.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
 
     self.approval.approve<Witness>();
 }
@@ -607,7 +564,7 @@ public fun take_asset_output<Asset, Quote, Operation, Witness: drop>(
     _witness: Witness,
     amount: u64,
 ): Balance<Asset> {
-    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
+    assert!(self.pool_id == pool.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
     self.approval.assert_open<Witness>();
 
     self.asset_output.split(amount)
@@ -620,7 +577,7 @@ public fun take_quote_output<Asset, Quote, Operation, Witness: drop>(
     _witness: Witness,
     amount: u64,
 ): Balance<Quote> {
-    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
+    assert!(self.pool_id == pool.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
     self.approval.assert_open<Witness>();
 
     self.quote_output.split(amount)
@@ -633,7 +590,7 @@ public fun join_asset_output<Asset, Quote, Operation, Witness: drop>(
     _witness: Witness,
     asset: Balance<Asset>,
 ) {
-    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
+    assert!(self.pool_id == pool.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
     self.approval.assert_open<Witness>();
 
     self.asset_output.join(asset);
@@ -646,7 +603,7 @@ public fun join_quote_output<Asset, Quote, Operation, Witness: drop>(
     _witness: Witness,
     quote: Balance<Quote>,
 ) {
-    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
+    assert!(self.pool_id == pool.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
     self.approval.assert_open<Witness>();
 
     self.quote_output.join(quote);
@@ -658,7 +615,7 @@ public fun approve_completion<Asset, Quote, Operation, Witness: drop>(
     pool: &Pool<Asset, Quote>,
     _witness: Witness,
 ) {
-    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
+    assert!(self.pool_id == pool.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
 
     self.approval.approve<Witness>();
 }
@@ -681,10 +638,10 @@ public fun finish<Asset, Quote, Operation>(
     ctx: &mut TxContext,
 ): (Coin<Asset>, Coin<Quote>) {
     let Completion { pool_id, asset_output, quote_output, approval } = completion;
-    assert!(pool_id == self.id.to_inner(), EWrongPool);
+    assert!(pool_id == self.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
     approval.assert_approved();
-    assert!(asset_output.value() >= min_asset_output, EInsufficientOutput);
-    assert!(quote_output.value() >= min_quote_output, EInsufficientOutput);
+    assert!(asset_output.value() >= min_asset_output, blast_fun_dex::errors::insufficient_output!());
+    assert!(quote_output.value() >= min_quote_output, blast_fun_dex::errors::insufficient_output!());
 
     self.is_in_operation = false;
 
@@ -755,12 +712,12 @@ fun new_initializer<Asset, Quote>(
 ): PoolInitializer<Asset, Quote> {
     assert!(
         type_name::with_defining_ids<Asset>() != type_name::with_defining_ids<Quote>(),
-        EIdenticalTokens,
+        blast_fun_dex::errors::identical_tokens!(),
     );
-    assert!(tick_spacing > 0 && tick_spacing <= MAX_TICK_SPACING, EInvalidTickSpacing);
+    assert!(tick_spacing > 0 && tick_spacing <= MAX_TICK_SPACING, blast_fun_dex::errors::invalid_tick_spacing!());
     assert!(
         sqrt_price_x96 >= MIN_SQRT_PRICE_X96 && sqrt_price_x96 < MAX_SQRT_PRICE_X96,
-        EInvalidSqrtPrice,
+        blast_fun_dex::errors::invalid_sqrt_price!(),
     );
 
     PoolInitializer {
@@ -788,7 +745,7 @@ fun new_initializer<Asset, Quote>(
 }
 
 fun bind(slot: &mut Option<TypeName>, hook: TypeName) {
-    assert!(slot.is_none(), EHookSlotTaken);
+    assert!(slot.is_none(), blast_fun_dex::errors::hook_slot_taken!());
 
     slot.fill(hook);
 }
@@ -800,7 +757,7 @@ fun is_usable_tick<Asset, Quote>(self: &Pool<Asset, Quote>, tick: &I32): bool {
 }
 
 fun lock<Asset, Quote>(self: &mut Pool<Asset, Quote>) {
-    assert!(!self.is_in_operation, EPoolInOperation);
+    assert!(!self.is_in_operation, blast_fun_dex::errors::pool_in_operation!());
 
     self.is_in_operation = true;
 }
@@ -826,9 +783,9 @@ fun new_swap_request<Asset, Quote>(
 fun assert_open<Witness>(self: &Approval) {
     assert!(
         self.hook == option::some(type_name::with_defining_ids<Witness>()),
-        EHookNotBound,
+        blast_fun_dex::errors::hook_not_bound!(),
     );
-    assert!(!self.is_approved, EAlreadyApproved);
+    assert!(!self.is_approved, blast_fun_dex::errors::already_approved!());
 }
 
 fun approve<Witness>(self: &mut Approval) {
@@ -839,7 +796,7 @@ fun approve<Witness>(self: &mut Approval) {
 
 /// An empty slot needs no approval.
 fun assert_approved(self: &Approval) {
-    assert!(self.hook.is_none() || self.is_approved, EMissingApproval);
+    assert!(self.hook.is_none() || self.is_approved, blast_fun_dex::errors::missing_approval!());
 }
 
 fun approval_for_completion(hook: Option<TypeName>): Approval {
@@ -864,7 +821,7 @@ fun hook_state_key<Asset, Quote, Witness, Name: copy + drop + store>(
     name: Name,
 ): HookStateKey<Name> {
     let hook = type_name::with_defining_ids<Witness>();
-    assert!(self.hooks.is_bound(hook), EHookNotBound);
+    assert!(self.hooks.is_bound(hook), blast_fun_dex::errors::hook_not_bound!());
 
     HookStateKey { hook, name }
 }
@@ -876,7 +833,7 @@ fun open_swap<Asset, Quote>(
     request: SwapRequest<Asset, Quote>,
 ): (bool, Balance<Asset>, Balance<Quote>, u256) {
     let SwapRequest { pool_id, is_asset_input, asset_payment, quote_payment, sqrt_price_limit_x96, approval } = request;
-    assert!(pool_id == self.id.to_inner(), EWrongPool);
+    assert!(pool_id == self.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
     approval.assert_approved();
 
     (is_asset_input, asset_payment, quote_payment, sqrt_price_limit_x96)
@@ -906,8 +863,8 @@ fun open_add_liquidity<Asset, Quote>(
         quote_payment,
         approval,
     } = request;
-    assert!(pool_id == self.id.to_inner(), EWrongPool);
-    assert!(position_id == position.id.to_inner(), EWrongPosition);
+    assert!(pool_id == self.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
+    assert!(position_id == position.id.to_inner(), blast_fun_dex::errors::wrong_position!());
     approval.assert_approved();
 
     (liquidity, asset_payment, quote_payment)
@@ -919,8 +876,8 @@ fun open_remove_liquidity<Asset, Quote>(
     position: &Position<Asset, Quote>,
 ): u128 {
     let RemoveLiquidityRequest { pool_id, position_id, liquidity, approval } = request;
-    assert!(pool_id == self.id.to_inner(), EWrongPool);
-    assert!(position_id == position.id.to_inner(), EWrongPosition);
+    assert!(pool_id == self.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
+    assert!(position_id == position.id.to_inner(), blast_fun_dex::errors::wrong_position!());
     approval.assert_approved();
 
     liquidity
@@ -931,7 +888,7 @@ fun open_donate<Asset, Quote>(
     request: DonateRequest<Asset, Quote>,
 ): (Balance<Asset>, Balance<Quote>) {
     let DonateRequest { pool_id, asset_payment, quote_payment, approval } = request;
-    assert!(pool_id == self.id.to_inner(), EWrongPool);
+    assert!(pool_id == self.id.to_inner(), blast_fun_dex::errors::wrong_pool!());
     approval.assert_approved();
 
     (asset_payment, quote_payment)
@@ -959,15 +916,15 @@ fun settle_swap<Asset, Quote>(
     };
     self.sqrt_price_x96 = sqrt_price_after_x96;
 
-    event::emit(Swapped {
-        pool_id: self.id.to_inner(),
-        sender: ctx.sender(),
+    blast_events::swapped(
+        self.id.to_inner(),
+        ctx.sender(),
         is_asset_input,
         input_spent,
         output_amount,
         lp_fee_amount,
         sqrt_price_after_x96,
-    });
+    );
 
     Completion {
         pool_id: self.id.to_inner(),
@@ -986,20 +943,20 @@ fun settle_add_liquidity<Asset, Quote>(
     asset_required: u64,
     quote_required: u64,
 ): Completion<Asset, Quote, AddLiquidity> {
-    assert!(asset_payment.value() >= asset_required, EInsufficientPayment);
-    assert!(quote_payment.value() >= quote_required, EInsufficientPayment);
+    assert!(asset_payment.value() >= asset_required, blast_fun_dex::errors::insufficient_payment!());
+    assert!(quote_payment.value() >= quote_required, blast_fun_dex::errors::insufficient_payment!());
 
     self.asset_reserve.join(asset_payment.split(asset_required));
     self.quote_reserve.join(quote_payment.split(quote_required));
     position.liquidity = position.liquidity + liquidity;
 
-    event::emit(LiquidityAdded {
-        pool_id: self.id.to_inner(),
-        position_id: position.id.to_inner(),
+    blast_events::liquidity_added(
+        self.id.to_inner(),
+        position.id.to_inner(),
         liquidity,
-        asset_amount: asset_required,
-        quote_amount: quote_required,
-    });
+        asset_required,
+        quote_required,
+    );
 
     Completion {
         pool_id: self.id.to_inner(),
@@ -1020,13 +977,13 @@ fun settle_remove_liquidity<Asset, Quote>(
     let asset_output = self.asset_reserve.split(asset_amount);
     let quote_output = self.quote_reserve.split(quote_amount);
 
-    event::emit(LiquidityRemoved {
-        pool_id: self.id.to_inner(),
-        position_id: position.id.to_inner(),
+    blast_events::liquidity_removed(
+        self.id.to_inner(),
+        position.id.to_inner(),
         liquidity,
         asset_amount,
         quote_amount,
-    });
+    );
 
     Completion {
         pool_id: self.id.to_inner(),
@@ -1041,7 +998,7 @@ fun settle_donate<Asset, Quote>(
     asset_amount: u64,
     quote_amount: u64,
 ): Completion<Asset, Quote, Donate> {
-    event::emit(Donated { pool_id: self.id.to_inner(), asset_amount, quote_amount });
+    blast_events::donated(self.id.to_inner(), asset_amount, quote_amount);
 
     Completion {
         pool_id: self.id.to_inner(),
@@ -1064,7 +1021,7 @@ fun swap_amounts<Asset, Quote>(
     _sqrt_price_limit_x96: u256,
     _fee_path: FeePath,
 ): (u64, u64, u256, u64) {
-    abort ECurveMathUnavailable
+    abort blast_fun_dex::errors::curve_math_unavailable!()
 }
 
 /// Returns the Asset and Quote that minting `liquidity` in the position requires,
@@ -1074,7 +1031,7 @@ fun add_liquidity_amounts<Asset, Quote>(
     _position: &Position<Asset, Quote>,
     _liquidity: u128,
 ): (u64, u64) {
-    abort ECurveMathUnavailable
+    abort blast_fun_dex::errors::curve_math_unavailable!()
 }
 
 /// Returns the Asset and Quote that burning `liquidity` releases, rounded down.
@@ -1083,7 +1040,7 @@ fun remove_liquidity_amounts<Asset, Quote>(
     _position: &Position<Asset, Quote>,
     _liquidity: u128,
 ): (u64, u64) {
-    abort ECurveMathUnavailable
+    abort blast_fun_dex::errors::curve_math_unavailable!()
 }
 
 /// Credits a donation to in-range liquidity providers' fee growth.
@@ -1092,7 +1049,7 @@ fun credit_donation<Asset, Quote>(
     _asset_payment: Balance<Asset>,
     _quote_payment: Balance<Quote>,
 ) {
-    abort ECurveMathUnavailable
+    abort blast_fun_dex::errors::curve_math_unavailable!()
 }
 
 // === Test-Only Functions ===
@@ -1187,6 +1144,11 @@ public fun is_in_operation_for_testing<Asset, Quote>(self: &Pool<Asset, Quote>):
 }
 
 #[test_only]
+public fun hooks_for_testing<Asset, Quote>(self: &Pool<Asset, Quote>): Hooks {
+    self.hooks
+}
+
+#[test_only]
 public fun before_swap_hook_for_testing<Asset, Quote>(self: &Pool<Asset, Quote>): Option<TypeName> {
     self.hooks.before_swap
 }
@@ -1202,69 +1164,17 @@ public fun reference_for_testing<Asset, Quote>(self: &Pool<Asset, Quote>): (u256
     self.price_reference.observation_for_testing()
 }
 
-#[test_only]
-public fun pool_created_lp_fee_for_testing(event: &PoolCreated): LpFee {
-    event.lp_fee
-}
-
-#[test_only]
-public fun swapped_lp_fee_amount_for_testing(event: &Swapped): u64 {
-    event.lp_fee_amount
-}
-
-// === Errors ===
-
-#[error(code = 0)]
-const EIdenticalTokens: vector<u8> = b"Pool tokens must be different types.";
-#[error(code = 1)]
-const EInvalidTickSpacing: vector<u8> = b"Tick spacing must be between 1 and 32,767.";
-#[error(code = 2)]
-const EInvalidSqrtPrice: vector<u8> = b"Square-root price is outside the supported range.";
-#[error(code = 3)]
-const EInvalidHookFlags: vector<u8> = b"Hook registration must select at least one slot.";
-#[error(code = 4)]
-const EHookSlotTaken: vector<u8> = b"Another hook is already bound to this slot.";
-#[error(code = 5)]
-const EInvalidTickRange: vector<u8> = b"Ticks must be ordered, in range and multiples of the tick spacing.";
-#[error(code = 6)]
-const EPositionNotEmpty: vector<u8> = b"Position still holds liquidity.";
-#[error(code = 7)]
-const EPoolInOperation: vector<u8> = b"Pool is already running an operation in this transaction.";
-#[error(code = 8)]
-const EWrongPool: vector<u8> = b"Value belongs to a different pool.";
-#[error(code = 9)]
-const EWrongPosition: vector<u8> = b"Position does not match the request.";
-#[error(code = 10)]
-const EZeroAmount: vector<u8> = b"Payment must not be zero.";
-#[error(code = 11)]
-const EInvalidPriceLimit: vector<u8> = b"Price limit is on the wrong side of the current price or out of range.";
-#[error(code = 12)]
-const EZeroLiquidity: vector<u8> = b"Liquidity must not be zero.";
-#[error(code = 13)]
-const EInsufficientLiquidity: vector<u8> = b"Position holds less liquidity than requested.";
-#[error(code = 14)]
-const EHookNotBound: vector<u8> = b"Witness is not the hook bound to this slot.";
-#[error(code = 15)]
-const EAlreadyApproved: vector<u8> = b"Hook has already approved this step.";
-#[error(code = 16)]
-const EMissingApproval: vector<u8> = b"The bound hook has not approved this step.";
-#[error(code = 17)]
-const EInsufficientPayment: vector<u8> = b"Payment is less than the liquidity requires.";
-#[error(code = 18)]
-const EInsufficientOutput: vector<u8> = b"Output is below the caller's minimum.";
-#[error(code = 19)]
-const ECurveMathUnavailable: vector<u8> = b"Curve math is not implemented; do not publish this package.";
-
 // === Imports ===
 
 use blast_fun_dex::{
+    blast_events,
     hook_config::HookConfig,
     i32::I32,
     lp_fee::{Self, BlastDexFeeTiers, FeePath, LpFee},
     price_reference::{Self, PriceReference},
 };
 use std::type_name::{Self, TypeName};
-use sui::{balance::{Self, Balance}, clock::Clock, coin::Coin, dynamic_field, event};
+use sui::{balance::{Self, Balance}, clock::Clock, coin::Coin, dynamic_field};
 
 public use fun take_swap_asset_payment as SwapRequest.take_asset_payment;
 public use fun take_swap_quote_payment as SwapRequest.take_quote_payment;
