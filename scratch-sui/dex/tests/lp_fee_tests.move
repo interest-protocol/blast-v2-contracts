@@ -121,6 +121,17 @@ fun gap_is_measured_in_price_not_square_root_price() {
 }
 
 #[test]
+fun rate_rounding_can_reduce_the_fee_by_one_ppm_at_an_exact_boundary() {
+    let fee = lp_fee::new_dynamic(3_000, 100_000, 100_035);
+    let reference_sqrt_price_x96 = 3 * SQRT_PRICE_ONE_X96;
+
+    // The exact gaps are 7/9 and 5/9. Rounding them down puts each surcharge
+    // just below its exact integer value of 60,515 and 30,875 ppm, respectively.
+    assert_eq!(fee.fee_ppm_at_price(reference_sqrt_price_x96, 4 * SQRT_PRICE_ONE_X96), 63_514);
+    assert_eq!(fee.fee_ppm_at_price(reference_sqrt_price_x96, 2 * SQRT_PRICE_ONE_X96), 33_874);
+}
+
+#[test]
 fun fixed_fee_ignores_the_price_gap() {
     let fee = lp_fee::new_fixed(3_000);
 
@@ -146,6 +157,17 @@ fun half_a_window_moves_the_reference_halfway_in_both_directions() {
     assert_eq!(up, SQRT_PRICE_ONE_X96 + 500);
     assert_eq!(down, SQRT_PRICE_ONE_X96 - 500);
     assert_eq!(tenth, SQRT_PRICE_ONE_X96 + 100);
+}
+
+#[test]
+fun splitting_a_window_changes_the_smoothed_reference() {
+    let spot_sqrt_price_x96 = SQRT_PRICE_ONE_X96 + 1_000;
+    let halfway = lp_fee::moved_reference_sqrt_price_x96(SQRT_PRICE_ONE_X96, spot_sqrt_price_x96, WINDOW_MS / 2);
+    let second_half = lp_fee::moved_reference_sqrt_price_x96(halfway, spot_sqrt_price_x96, WINDOW_MS / 2);
+    let full_window = lp_fee::moved_reference_sqrt_price_x96(SQRT_PRICE_ONE_X96, spot_sqrt_price_x96, WINDOW_MS);
+
+    assert_eq!(second_half, SQRT_PRICE_ONE_X96 + 750);
+    assert_eq!(full_window, spot_sqrt_price_x96);
 }
 
 #[test]

@@ -3,14 +3,12 @@
 
 /// A pool's LP fee settings and the fee each swap pays under them.
 ///
-/// The settings are chosen when the pool is created and never change; hooks
-/// cannot set or override them. A fixed-fee pool charges one protocol fee tier
-/// on every swap. A dynamic-fee pool charges its base fee plus a surcharge that
+/// The settings are fixed at pool creation. A fixed-fee pool charges one
+/// protocol fee tier. A dynamic-fee pool adds a surcharge to its base fee that
 /// grows with the square of the gap between the swap's projected price and a
-/// reference price, up to its maximum. The reference is the pool's own
-/// time-weighted price, moved by `moved_reference_sqrt_price_x96`. Fees are in
-/// parts per million; 1,000,000 is 100%. The tiers, bounds and window below are
-/// placeholders the protocol will tune.
+/// reference price, up to its maximum. The reference smooths the pool's own
+/// square-root price. Fees are in parts per million, where 1,000,000 is 100%.
+/// The tiers, bounds and window below are provisional.
 module blast_fun_dex::lp_fee;
 
 // === Constants ===
@@ -95,17 +93,18 @@ public(package) fun new_dynamic(base_fee_ppm: u32, max_fee_ppm: u32, sensitivity
     LpFee::Dynamic { base_fee_ppm, max_fee_ppm, sensitivity_ppm }
 }
 
-/// The fee for a swap that moves the price from the reference to the projected
-/// price. A fixed fee ignores both prices. A dynamic fee is
+/// The LP fee rate for a projected post-swap price relative to the reference.
+/// A fixed fee ignores both prices. A dynamic fee is
 ///
 /// ```text
 /// gap = abs(projected_price - reference_price) / reference_price
 /// fee = min(max_fee, base_fee + floor(sensitivity * gap^2))
 /// ```
 ///
-/// with prices the squares of the square-root prices, so the same gap above or
-/// below the reference pays the same fee. With base 2,000, sensitivity
-/// 1,000,000 and maximum 10,000 ppm:
+/// Prices are the squares of the square-root prices. The exact formula treats
+/// equal gaps above and below the reference alike. This table illustrates the
+/// formula using a hypothetical base of 2,000 ppm, sensitivity of 1,000,000
+/// and maximum of 10,000 ppm.
 ///
 /// ```text
 /// Price gap    Extra fee    Total fee
@@ -116,14 +115,11 @@ public(package) fun new_dynamic(base_fee_ppm: u32, max_fee_ppm: u32, sensitivity
 ///   10%         100 bps      100 bps (capped)
 /// ```
 ///
-/// Both prices must be in-range Q64.96 square-root prices; then the result
-/// never aborts. Every step rounds the gap down, so the fee never exceeds the
-/// exact formula. The gap carries at most (2 * ratio + 1) / 2^64 error, where
-/// ratio is the square-root price ratio; for valid settings below the maximum
-/// that moves the surcharge by under 1e-10 ppm, so the fee is the exact floor,
-/// or one ppm less only when the exact value lies within that error above a
-/// whole ppm. Gaps beyond 262,143 are clamped, where any nonzero sensitivity
-/// already reaches any maximum.
+/// The calculation is safe for in-range Q64.96 square-root prices. The gap
+/// rounds down by at most (2 * r + 2) / 2^64 for an unclamped square-root price
+/// ratio r. With valid settings the fee equals the exact integer fee or falls
+/// short by one ppm. A gap of 262,143
+/// already reaches the maximum, so the ratio is clamped at 512.
 public(package) fun fee_ppm_at_price(
     self: &LpFee,
     reference_sqrt_price_x96: u256,
@@ -142,10 +138,12 @@ public(package) fun fee_ppm_at_price(
 }
 
 /// The reference square-root price after `elapsed_ms` at the pool's
-/// square-root price: it moves `elapsed_ms / 600,000` of the way toward the pool
-/// price, and lands exactly on it once a full window has passed. The step is
-/// rounded down, toward the old reference, so it never overshoots. The product
-/// of a price gap below 2^161 and an elapsed time below the window fits in u256.
+/// square-root price. It moves `elapsed_ms / 600,000` of the way toward the pool
+/// price, and lands exactly on it after a full window between updates. Each
+/// update weights the remaining gap, so two half-window updates close three
+/// quarters of a constant gap before rounding. The step rounds toward the old
+/// reference. The product of a price gap below 2^161 and an elapsed time below
+/// the window fits in u256.
 public(package) fun moved_reference_sqrt_price_x96(
     reference_sqrt_price_x96: u256,
     pool_sqrt_price_x96: u256,

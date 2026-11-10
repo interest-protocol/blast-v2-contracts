@@ -7,13 +7,6 @@
 /// old package versions remain callable after an upgrade.
 module blast_fun_dex::hook_config;
 
-// === Errors ===
-
-#[error(code = 0)]
-const EPrimitiveWitness: vector<u8> = b"Hook witness must be a struct type, not a primitive or vector.";
-#[error(code = 1)]
-const EVersionNotIncreasing: vector<u8> = b"Hook version must increase.";
-
 // === Public Types ===
 
 /// Singleton derivation parent for every hook configuration.
@@ -97,6 +90,13 @@ public fun new_namespace_for_testing(ctx: &mut TxContext): HookNamespace {
 public fun key_for_testing(hook: TypeName): HookConfigKey {
     HookConfigKey(hook)
 }
+
+// === Errors ===
+
+#[error(code = 0)]
+const EPrimitiveWitness: vector<u8> = b"Hook witness must be a struct type, not a primitive or vector.";
+#[error(code = 1)]
+const EVersionNotIncreasing: vector<u8> = b"Hook version must increase.";
 
 // === Imports ===
 

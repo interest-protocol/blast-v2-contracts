@@ -545,11 +545,13 @@ fun fixed_fee_swaps_price_once_and_never_move_the_reference() {
     pool.join_reserves_for_testing(balance::create_for_testing(1_000), balance::create_for_testing(1_000));
 
     let first = pool.swap_asset_to_quote_and_priced_lp_fees(
-        PRICE_DOWN_4_PERCENT_X96,
+        PRICE_DOWN_8_PERCENT_X96,
         PRICE_DOWN_4_PERCENT_X96,
         &clock,
         &mut ctx,
     );
+    assert_eq!(pool.sqrt_price_x96(), PRICE_DOWN_4_PERCENT_X96);
+
     clock.increment_for_testing(2 * WINDOW_MS);
     let second = pool.swap_asset_to_quote_and_priced_lp_fees(
         PRICE_DOWN_8_PERCENT_X96,

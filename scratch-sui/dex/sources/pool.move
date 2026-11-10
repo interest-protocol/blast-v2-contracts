@@ -19,12 +19,11 @@
 /// fixed public signature per slot, so routers resolve any hooked pool from
 /// chain state alone; `example_hook` documents that convention.
 ///
-/// The LP fee belongs to the pool, not to hooks: its `LpFee` settings are
-/// fixed at creation, and every swap pays the fee they set, so no hook can
-/// lower the LP fee.
+/// The pool's `LpFee` settings are fixed at creation. Core computes the rate
+/// using the payment that remains after any before-swap hook.
 ///
-/// A dynamic-fee pool measures each swap against its own time-weighted price,
-/// which it moves at the start of every swap; see `move_reference_sqrt_price_x96`.
+/// A dynamic-fee pool measures each swap against a smoothed square-root price,
+/// which it updates before pricing the swap.
 ///
 /// The curve math is not implemented: `swap_amounts`, `add_liquidity_amounts`,
 /// `remove_liquidity_amounts` and `credit_donation` abort. This package must
@@ -40,49 +39,6 @@ const MAX_TICK: u32 = 887_272;
 const MIN_SQRT_PRICE_X96: u256 = 4_295_128_739;
 const MAX_SQRT_PRICE_X96: u256 = 1_461_446_703_485_210_103_287_273_052_203_988_822_378_723_970_342;
 
-// === Errors ===
-
-#[error(code = 0)]
-const EIdenticalTokens: vector<u8> = b"Pool tokens must be different types.";
-#[error(code = 1)]
-const EInvalidTickSpacing: vector<u8> = b"Tick spacing must be between 1 and 32,767.";
-#[error(code = 2)]
-const EInvalidSqrtPrice: vector<u8> = b"Square-root price is outside the supported range.";
-#[error(code = 3)]
-const EInvalidHookFlags: vector<u8> = b"Hook registration must select at least one slot.";
-#[error(code = 4)]
-const EHookSlotTaken: vector<u8> = b"Another hook is already bound to this slot.";
-#[error(code = 5)]
-const EInvalidTickRange: vector<u8> = b"Ticks must be ordered, in range and multiples of the tick spacing.";
-#[error(code = 6)]
-const EPositionNotEmpty: vector<u8> = b"Position still holds liquidity.";
-#[error(code = 7)]
-const EPoolInOperation: vector<u8> = b"Pool is already running an operation in this transaction.";
-#[error(code = 8)]
-const EWrongPool: vector<u8> = b"Value belongs to a different pool.";
-#[error(code = 9)]
-const EWrongPosition: vector<u8> = b"Position does not match the request.";
-#[error(code = 10)]
-const EZeroAmount: vector<u8> = b"Payment must not be zero.";
-#[error(code = 11)]
-const EInvalidPriceLimit: vector<u8> = b"Price limit is on the wrong side of the current price or out of range.";
-#[error(code = 12)]
-const EZeroLiquidity: vector<u8> = b"Liquidity must not be zero.";
-#[error(code = 13)]
-const EInsufficientLiquidity: vector<u8> = b"Position holds less liquidity than requested.";
-#[error(code = 14)]
-const EHookNotBound: vector<u8> = b"Witness is not the hook bound to this slot.";
-#[error(code = 15)]
-const EAlreadyApproved: vector<u8> = b"Hook has already approved this step.";
-#[error(code = 16)]
-const EMissingApproval: vector<u8> = b"The bound hook has not approved this step.";
-#[error(code = 17)]
-const EInsufficientPayment: vector<u8> = b"Payment is less than the liquidity requires.";
-#[error(code = 18)]
-const EInsufficientOutput: vector<u8> = b"Output is below the caller's minimum.";
-#[error(code = 19)]
-const ECurveMathUnavailable: vector<u8> = b"Curve math is not implemented; do not publish this package.";
-
 // === Public Types ===
 
 /// Shared pool. Hook bindings, tick spacing and LP fee settings never change after creation.
@@ -91,12 +47,11 @@ public struct Pool<phantom Asset, phantom Quote> has key {
     tick_spacing: u32,
     lp_fee: LpFee,
     sqrt_price_x96: u256,
-    /// Time-weighted square-root price a dynamic fee measures swaps against.
+    /// Smoothed square-root price a dynamic fee measures swaps against.
     /// Starts at the creation price; fixed-fee pools never move it.
     reference_sqrt_price_x96: u256,
-    /// When the reference last moved, in Unix epoch milliseconds. Zero until the
-    /// first swap, which therefore moves the reference all the way to the
-    /// pre-swap price.
+    /// When the reference last updated, in Unix epoch milliseconds. Zero until
+    /// the first update. Both prices start at the creation price.
     reference_moved_at_ms: u64,
     hooks: Hooks,
     asset_reserve: Balance<Asset>,
@@ -930,7 +885,7 @@ fun open_swap<Asset, Quote>(
     (is_asset_input, asset_payment, quote_payment, sqrt_price_limit_x96)
 }
 
-// The swap's LP fee, shared by execution, its test seams and any quote path.
+// The swap's LP fee, shared by execution and its test seam.
 
 /// Prices a swap and returns the input spent (including the LP fee), the
 /// output, the price after the swap and the LP fee charged. `$swap_amounts`
@@ -958,14 +913,10 @@ macro fun swap_amounts_and_lp_fee(
     (input_spent, output_amount, sqrt_price_after_x96, lp_fee_ppm)
 }
 
-/// Moves the reference toward the pool's price for the time since its last
-/// move, records the move and returns the moved reference. It runs before the
-/// swap prices, from the pre-swap price, and does nothing in the timestamp of
-/// the last move, so the reference excludes this swap and every earlier one in
-/// the same timestamp. Every price change happens in a swap that ran this step
-/// first, so since the last move the price changed only within that move's
-/// timestamp and then held at the pre-swap value for the whole elapsed time:
-/// each step adds exactly that interval's time-weighted contribution.
+/// Updates the reference toward the pre-swap price using the time since the
+/// last update. Swaps at the same Clock timestamp share the reference set by
+/// the first swap at that timestamp. The final spot at that timestamp can
+/// influence the reference at the next timestamp.
 fun move_reference_sqrt_price_x96<Asset, Quote>(self: &mut Pool<Asset, Quote>, clock: &Clock): u256 {
     let now_ms = clock.timestamp_ms();
     if (now_ms > self.reference_moved_at_ms) {
@@ -1205,7 +1156,7 @@ public fun execute_swap_with_amounts_for_testing<Asset, Quote>(
 }
 
 /// `execute_swap` with the curve's results supplied by the test. The curve's
-/// first pass ends at `preview_sqrt_price_x96` and any later pass at
+/// preview ends at `preview_sqrt_price_x96` and the settlement pass at
 /// `sqrt_price_after_x96`, with the same amounts. Also returns the LP fees the
 /// curve priced at, in order.
 #[test_only]
@@ -1220,14 +1171,15 @@ public fun execute_swap_with_preview_for_testing<Asset, Quote>(
     ctx: &mut TxContext,
 ): (Completion<Asset, Quote, Swap>, vector<u32>) {
     let (is_asset_input, asset_payment, quote_payment, _) = self.open_swap(request);
+    let is_dynamic = self.lp_fee.is_dynamic();
     let mut priced_lp_fees_ppm = vector[];
 
     let (input_spent, output_amount, sqrt_price_after_x96, lp_fee_ppm) = swap_amounts_and_lp_fee!(
         self.lp_fee,
         || self.move_reference_sqrt_price_x96(clock),
         |lp_fee_ppm| {
+            let is_preview = is_dynamic && priced_lp_fees_ppm.is_empty();
             priced_lp_fees_ppm.push_back(lp_fee_ppm);
-            let is_preview = priced_lp_fees_ppm.length() == 1;
             (input_spent, output_amount, if (is_preview) preview_sqrt_price_x96 else sqrt_price_after_x96)
         },
     );
@@ -1332,6 +1284,49 @@ public fun pool_created_lp_fee_for_testing(event: &PoolCreated): LpFee {
 public fun swapped_lp_fee_ppm_for_testing(event: &Swapped): u32 {
     event.lp_fee_ppm
 }
+
+// === Errors ===
+
+#[error(code = 0)]
+const EIdenticalTokens: vector<u8> = b"Pool tokens must be different types.";
+#[error(code = 1)]
+const EInvalidTickSpacing: vector<u8> = b"Tick spacing must be between 1 and 32,767.";
+#[error(code = 2)]
+const EInvalidSqrtPrice: vector<u8> = b"Square-root price is outside the supported range.";
+#[error(code = 3)]
+const EInvalidHookFlags: vector<u8> = b"Hook registration must select at least one slot.";
+#[error(code = 4)]
+const EHookSlotTaken: vector<u8> = b"Another hook is already bound to this slot.";
+#[error(code = 5)]
+const EInvalidTickRange: vector<u8> = b"Ticks must be ordered, in range and multiples of the tick spacing.";
+#[error(code = 6)]
+const EPositionNotEmpty: vector<u8> = b"Position still holds liquidity.";
+#[error(code = 7)]
+const EPoolInOperation: vector<u8> = b"Pool is already running an operation in this transaction.";
+#[error(code = 8)]
+const EWrongPool: vector<u8> = b"Value belongs to a different pool.";
+#[error(code = 9)]
+const EWrongPosition: vector<u8> = b"Position does not match the request.";
+#[error(code = 10)]
+const EZeroAmount: vector<u8> = b"Payment must not be zero.";
+#[error(code = 11)]
+const EInvalidPriceLimit: vector<u8> = b"Price limit is on the wrong side of the current price or out of range.";
+#[error(code = 12)]
+const EZeroLiquidity: vector<u8> = b"Liquidity must not be zero.";
+#[error(code = 13)]
+const EInsufficientLiquidity: vector<u8> = b"Position holds less liquidity than requested.";
+#[error(code = 14)]
+const EHookNotBound: vector<u8> = b"Witness is not the hook bound to this slot.";
+#[error(code = 15)]
+const EAlreadyApproved: vector<u8> = b"Hook has already approved this step.";
+#[error(code = 16)]
+const EMissingApproval: vector<u8> = b"The bound hook has not approved this step.";
+#[error(code = 17)]
+const EInsufficientPayment: vector<u8> = b"Payment is less than the liquidity requires.";
+#[error(code = 18)]
+const EInsufficientOutput: vector<u8> = b"Output is below the caller's minimum.";
+#[error(code = 19)]
+const ECurveMathUnavailable: vector<u8> = b"Curve math is not implemented; do not publish this package.";
 
 // === Imports ===
 
