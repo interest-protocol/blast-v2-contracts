@@ -71,10 +71,10 @@ one hook call per bound slot.
 ## LP fee tiers
 
 The shared fee tier registry starts with 0.1%, 0.3%, 1%, and 2%. The Blast ACL
-root grants the `lp_fee::BlastDexFeeTierAdmin` role to an operator's `AdminCap`.
-The operator calls `blast_acl::sign_in` for that role and passes the resulting
-`AdminWitness` to `lp_fee::add_fee_tier` in the same transaction. Each addition
-registers a distinct rate from 1 to 100,000 ppm and emits
+root grants `blast_fun_dex_domain::BlastDexFeeTierAdmin` to an operator's
+`AdminCap`. The operator signs in with `blast_acl::sign_in` and passes the
+resulting `AdminWitness` to `lp_fee::add_fee_tier` in the same transaction. Each
+addition registers a distinct rate from 1 to 100,000 ppm and emits
 `blast_events::BlastDexFeeTierAdded`.
 
 Anyone can borrow the registry to create a pool with a registered fixed or

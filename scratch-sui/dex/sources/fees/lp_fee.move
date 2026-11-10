@@ -43,9 +43,6 @@ public struct BlastDexFeeTiers has key {
     rates: Table<u32, bool>,
 }
 
-/// ACL role authorized to add rates to the shared DEX fee tier registry.
-public struct BlastDexFeeTierAdmin()
-
 /// The fee schedule with its reference fixed for one fill.
 public struct FeePath has drop {
     settings: LpFee,
@@ -352,6 +349,7 @@ use blast_admin::{blast_acl::AdminWitness, package_version::PackageVersion};
 use blast_fun_dex::{
     blast_events,
     blast_fun_dex::BLAST_FUN_DEX,
+    blast_fun_dex_domain::BlastDexFeeTierAdmin,
     constants,
     ppm::{Self, Ppm},
 };

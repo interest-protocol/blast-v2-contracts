@@ -171,9 +171,10 @@ fun add_tier(fee_ppm: u32) {
 
 use blast_admin::blast_acl::{Self, ACL, AdminCap, AdminWitness, SuperAdminCap};
 use blast_fun_dex::{
-    blast_fun_dex as dex,
     blast_events::BlastDexFeeTierAdded,
-    lp_fee::{Self, BlastDexFeeTierAdmin, BlastDexFeeTiers},
+    blast_fun_dex as dex,
+    blast_fun_dex_domain::BlastDexFeeTierAdmin,
+    lp_fee::{Self, BlastDexFeeTiers},
     pool::{Self, Pool},
 };
 use std::unit_test::{assert_eq, destroy};

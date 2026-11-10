@@ -151,9 +151,10 @@ the same `blast_events::Event<T>` envelope (ADR 0130).
 
 The [scratch DEX](../scratch-sui/README.md) sits outside the product surface.
 Its fee-tier registry is `BlastDexFeeTiers` and its ACL role is
-`BlastDexFeeTierAdmin`. Its one-time witness, `blast_fun_dex::BLAST_FUN_DEX`,
-identifies the generic package administration, version, and roles. The same
-module defines the `PackageWitness` pinned at publication.
+`blast_fun_dex_domain::BlastDexFeeTierAdmin`. Its one-time witness,
+`blast_fun_dex::BLAST_FUN_DEX`, identifies the generic package administration,
+version, and roles. The same module defines the `PackageWitness` pinned at
+publication.
 
 Presale activation (ADR 0137) types the generic `Publication`, `PackageVersion`
 and `PackageAdmin` by `blast_presale_package::BLAST_PRESALE_PACKAGE`. The
