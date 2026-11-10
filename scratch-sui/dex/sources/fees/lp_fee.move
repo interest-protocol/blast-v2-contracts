@@ -12,15 +12,6 @@ module blast_fun_dex::lp_fee;
 
 // === Constants ===
 
-const DEFAULT_FEE_TIERS_PPM: vector<u32> = vector[1_000, 3_000, 10_000, 20_000];
-const FEE_TIER_DELAY_MS: u64 = 48 * 60 * 60 * 1_000;
-/// Pending entries are stored inline in the registry.
-const MAX_PENDING_FEE_TIERS: u64 = 32;
-/// Upper bound for a registered tier and for a pool's dynamic maximum: 10%.
-const MAX_LP_FEE_PPM: u32 = 100_000;
-/// Sensitivity bounds, in ppm of fee per unit of squared price gap.
-const MIN_SENSITIVITY_PPM: u32 = 100_000;
-const MAX_SENSITIVITY_PPM: u32 = 100_000_000;
 const BANDS_PER_SIDE: u256 = 512;
 const ONE_X32: u128 = 1 << 32;
 /// 1.0 in Q128.
@@ -73,7 +64,7 @@ fun init(ctx: &mut TxContext) {
 
 /// Whether a new pool can use this rate as its fixed or base fee.
 public fun is_fee_tier(self: &BlastDexFeeTiers, fee_ppm: u32): bool {
-    let default_rates = DEFAULT_FEE_TIERS_PPM;
+    let default_rates = constants::default_fee_tiers_ppm!();
     default_rates.contains(&fee_ppm) || self.additions.contains(&fee_ppm)
 }
 
@@ -88,10 +79,10 @@ public fun schedule_fee_tier(
 ): u64 {
     package_version.assert_current(constants::version!());
 
-    assert!(fee_ppm > 0 && fee_ppm <= MAX_LP_FEE_PPM, blast_fun_dex::errors::invalid_fee_tier_rate!());
+    assert!(fee_ppm > 0 && fee_ppm <= constants::max_lp_fee_ppm!(), blast_fun_dex::errors::invalid_fee_tier_rate!());
     assert!(!self.is_fee_tier(fee_ppm), blast_fun_dex::errors::fee_tier_already_exists!());
     assert!(
-        self.additions.pending_count() < MAX_PENDING_FEE_TIERS || self.additions.is_pending(&fee_ppm),
+        self.additions.pending_count() < constants::max_pending_fee_tiers!() || self.additions.is_pending(&fee_ppm),
         blast_fun_dex::errors::too_many_pending_fee_tiers!(),
     );
 
@@ -166,11 +157,11 @@ public(package) fun new_dynamic(
 ): LpFee {
     assert!(tiers.is_fee_tier(base_fee_ppm), blast_fun_dex::errors::not_fee_tier!());
     assert!(
-        max_fee_ppm >= base_fee_ppm && max_fee_ppm <= MAX_LP_FEE_PPM,
+        max_fee_ppm >= base_fee_ppm && max_fee_ppm <= constants::max_lp_fee_ppm!(),
         blast_fun_dex::errors::invalid_max_fee!(),
     );
     assert!(
-        sensitivity_ppm >= MIN_SENSITIVITY_PPM && sensitivity_ppm <= MAX_SENSITIVITY_PPM,
+        sensitivity_ppm >= constants::min_sensitivity_ppm!() && sensitivity_ppm <= constants::max_sensitivity_ppm!(),
         blast_fun_dex::errors::invalid_sensitivity!(),
     );
 
@@ -305,7 +296,7 @@ public(package) fun fee_up(self: &FeeStep, net_input: u64): u64 {
 
 fun new_fee_tiers(ctx: &mut TxContext): BlastDexFeeTiers {
     let id = object::new(ctx);
-    let additions = delayed_map::new(FeeTierKey(), &id, FEE_TIER_DELAY_MS, ctx);
+    let additions = delayed_map::new(FeeTierKey(), &id, constants::fee_tier_delay_ms!(), ctx);
     BlastDexFeeTiers { id, additions }
 }
 

@@ -33,15 +33,6 @@
 /// not be published until they are.
 module blast_fun_dex::pool;
 
-// === Constants ===
-
-const MAX_TICK_SPACING: u32 = 32_767;
-/// Largest tick magnitude, as in Uniswap v4.
-const MAX_TICK: u32 = 887_272;
-/// Square-root price bounds in Q64.96, as in Uniswap v4. The maximum is exclusive.
-const MIN_SQRT_PRICE_X96: u256 = 4_295_128_739;
-const MAX_SQRT_PRICE_X96: u256 = 1_461_446_703_485_210_103_287_273_052_203_988_822_378_723_970_342;
-
 // === Public Types ===
 
 /// Shared pool. Hook bindings, tick spacing and LP fee settings never change after creation.
@@ -334,7 +325,7 @@ public fun begin_swap_asset_to_quote<Asset, Quote>(
 
     assert!(payment.value() > 0, blast_fun_dex::errors::zero_amount!());
     assert!(
-        sqrt_price_limit_x96 < self.sqrt_price_x96 && sqrt_price_limit_x96 > MIN_SQRT_PRICE_X96,
+        sqrt_price_limit_x96 < self.sqrt_price_x96 && sqrt_price_limit_x96 > constants::min_sqrt_price_x96!(),
         blast_fun_dex::errors::invalid_price_limit!(),
     );
 
@@ -355,7 +346,7 @@ public fun begin_swap_quote_to_asset<Asset, Quote>(
 
     assert!(payment.value() > 0, blast_fun_dex::errors::zero_amount!());
     assert!(
-        sqrt_price_limit_x96 > self.sqrt_price_x96 && sqrt_price_limit_x96 < MAX_SQRT_PRICE_X96,
+        sqrt_price_limit_x96 > self.sqrt_price_x96 && sqrt_price_limit_x96 < constants::max_sqrt_price_x96!(),
         blast_fun_dex::errors::invalid_price_limit!(),
     );
 
@@ -813,9 +804,9 @@ fun new_initializer<Asset, Quote>(
         type_name::with_defining_ids<Asset>() != type_name::with_defining_ids<Quote>(),
         blast_fun_dex::errors::identical_tokens!(),
     );
-    assert!(tick_spacing > 0 && tick_spacing <= MAX_TICK_SPACING, blast_fun_dex::errors::invalid_tick_spacing!());
+    assert!(tick_spacing > 0 && tick_spacing <= constants::max_tick_spacing!(), blast_fun_dex::errors::invalid_tick_spacing!());
     assert!(
-        sqrt_price_x96 >= MIN_SQRT_PRICE_X96 && sqrt_price_x96 < MAX_SQRT_PRICE_X96,
+        sqrt_price_x96 >= constants::min_sqrt_price_x96!() && sqrt_price_x96 < constants::max_sqrt_price_x96!(),
         blast_fun_dex::errors::invalid_sqrt_price!(),
     );
 
@@ -852,7 +843,7 @@ fun bind(slot: &mut Option<TypeName>, hook: TypeName) {
 fun is_usable_tick<Asset, Quote>(self: &Pool<Asset, Quote>, tick: &I32): bool {
     let magnitude = tick.magnitude();
 
-    magnitude <= MAX_TICK && magnitude % self.tick_spacing == 0
+    magnitude <= constants::max_tick!() && magnitude % self.tick_spacing == 0
 }
 
 fun lock<Asset, Quote>(self: &mut Pool<Asset, Quote>) {
