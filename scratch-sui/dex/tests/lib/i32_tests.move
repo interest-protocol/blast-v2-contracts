@@ -11,7 +11,7 @@ fun from_u32_keeps_nonnegative_values() {
 }
 
 #[test]
-#[expected_failure(abort_code = i32::EMagnitudeTooLarge, location = blast_fun_dex::i32)]
+#[expected_failure(abort_code = blast_fun_dex::errors::EMagnitudeTooLarge, location = blast_fun_dex::i32)]
 fun from_u32_rejects_two_pow_31() {
     i32::from_u32(0x8000_0000);
 }
@@ -27,7 +27,7 @@ fun neg_from_u32_round_trips_magnitude_up_to_the_minimum() {
 }
 
 #[test]
-#[expected_failure(abort_code = i32::EMagnitudeTooLarge, location = blast_fun_dex::i32)]
+#[expected_failure(abort_code = blast_fun_dex::errors::EMagnitudeTooLarge, location = blast_fun_dex::i32)]
 fun neg_from_u32_rejects_one_past_the_minimum() {
     i32::neg_from_u32(0x8000_0001);
 }

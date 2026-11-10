@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
+// Package error macros keep aborts in the module that checks the invariant.
+#[allow(lint(abort_without_constant))]
 /// A pool's LP fee settings and the fee each swap pays under them.
 ///
 /// The settings are fixed at pool creation. A fixed-fee pool charges one
@@ -75,7 +77,7 @@ public fun sensitivity_ppm(self: &LpFee): u32 {
 // === Package Functions ===
 
 public(package) fun new_fixed(fee_ppm: u32): LpFee {
-    assert!(is_fee_tier(fee_ppm), ENotFeeTier);
+    assert!(is_fee_tier(fee_ppm), blast_fun_dex::errors::not_fee_tier!());
 
     LpFee::Fixed { fee_ppm }
 }
@@ -83,11 +85,14 @@ public(package) fun new_fixed(fee_ppm: u32): LpFee {
 /// `base_fee_ppm` must be a fee tier, `max_fee_ppm` between it and 100,000 ppm,
 /// and `sensitivity_ppm` between 100,000 and 100,000,000 ppm.
 public(package) fun new_dynamic(base_fee_ppm: u32, max_fee_ppm: u32, sensitivity_ppm: u32): LpFee {
-    assert!(is_fee_tier(base_fee_ppm), ENotFeeTier);
-    assert!(max_fee_ppm >= base_fee_ppm && max_fee_ppm <= MAX_DYNAMIC_FEE_PPM, EInvalidMaxFee);
+    assert!(is_fee_tier(base_fee_ppm), blast_fun_dex::errors::not_fee_tier!());
+    assert!(
+        max_fee_ppm >= base_fee_ppm && max_fee_ppm <= MAX_DYNAMIC_FEE_PPM,
+        blast_fun_dex::errors::invalid_max_fee!(),
+    );
     assert!(
         sensitivity_ppm >= MIN_SENSITIVITY_PPM && sensitivity_ppm <= MAX_SENSITIVITY_PPM,
-        EInvalidSensitivity,
+        blast_fun_dex::errors::invalid_sensitivity!(),
     );
 
     LpFee::Dynamic { base_fee_ppm, max_fee_ppm, sensitivity_ppm }
@@ -187,12 +192,3 @@ fun price_gap_x64_down(reference_sqrt_price_x96: u256, projected_sqrt_price_x96:
 public fun new_dynamic_unchecked_for_testing(base_fee_ppm: u32, max_fee_ppm: u32, sensitivity_ppm: u32): LpFee {
     LpFee::Dynamic { base_fee_ppm, max_fee_ppm, sensitivity_ppm }
 }
-
-// === Errors ===
-
-#[error(code = 0)]
-const ENotFeeTier: vector<u8> = b"LP fee must be 1,000, 3,000, 10,000 or 20,000 ppm.";
-#[error(code = 1)]
-const EInvalidMaxFee: vector<u8> = b"Dynamic maximum fee must be at least the base fee and at most 100,000 ppm.";
-#[error(code = 2)]
-const EInvalidSensitivity: vector<u8> = b"Dynamic fee sensitivity must be between 100,000 and 100,000,000 ppm.";
