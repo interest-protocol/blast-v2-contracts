@@ -225,7 +225,7 @@ fun new_fixed_accepts_every_fee_tier() {
         assert!(!fee.is_dynamic());
         assert_eq!(fee.base_fee_ppm(), tier);
         assert_eq!(fee.max_fee_ppm(), tier);
-        assert_eq!(fee.sensitivity_ppm(), 0);
+        assert_eq!(fee.sensitivity_ppm(), option::none());
     });
 }
 
@@ -261,7 +261,7 @@ fun new_dynamic_accepts_every_bound_at_its_edge() {
     assert!(fee.is_dynamic());
     assert_eq!(fee.base_fee_ppm(), 1_000);
     assert_eq!(fee.max_fee_ppm(), 100_000);
-    assert_eq!(fee.sensitivity_ppm(), 100_000_000);
+    assert_eq!(fee.sensitivity_ppm(), option::some(100_000_000));
 }
 
 #[test]

@@ -66,11 +66,11 @@ public fun max_fee_ppm(self: &LpFee): u32 {
     }
 }
 
-/// Fee ppm per unit of squared price gap; zero for a fixed fee.
-public fun sensitivity_ppm(self: &LpFee): u32 {
+/// Fee ppm per unit of squared price gap. Fixed fees return `none`.
+public fun sensitivity_ppm(self: &LpFee): Option<u32> {
     match (*self) {
-        LpFee::Fixed { .. } => 0,
-        LpFee::Dynamic { sensitivity_ppm, .. } => sensitivity_ppm,
+        LpFee::Fixed { .. } => option::none(),
+        LpFee::Dynamic { sensitivity_ppm, .. } => option::some(sensitivity_ppm),
     }
 }
 
