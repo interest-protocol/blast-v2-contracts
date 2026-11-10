@@ -16,7 +16,8 @@ instead a fixed sequence of calls that the transaction makes:
 pool::begin_*      lock the pool; the request owns the payment
 hook::before_*     may take hook fees, then approves
 pool::execute_*    needs the bound before-hook's approval; runs the curve;
-                   the completion owns the output and unspent payment
+                   the completion owns the output and unspent payment;
+                   execute_swap takes the Clock for the dynamic fee
 hook::after_*      may take from or add to the output, then approves
 pool::finish       needs the bound after-hook's approval and the caller's
                    minimum outputs; unlocks; returns both coins
@@ -56,8 +57,7 @@ separate typed functions for hook-aware callers.
 Implement the four curve functions at the end of `dex/sources/pool.move`
 (swap stepping, liquidity amounts, donation fee growth) and the tick and fee
 growth state they need, including fee checks before a position is destroyed.
-Give dynamic-fee pools a reference price source in `reference_sqrt_price_x96`,
-also in `pool.move`. Then add PTB tests that run the hooked sequence through the transaction
+Then add PTB tests that run the hooked sequence through the transaction
 runtime and an SDK resolver, and an independent audit.
 
 Verify locally from the repository root:

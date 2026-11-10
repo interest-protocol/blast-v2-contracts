@@ -23,10 +23,12 @@
 /// fixed at creation, and every swap pays the fee they set, so no hook can
 /// lower the LP fee.
 ///
+/// A dynamic-fee pool measures each swap against its own time-weighted price,
+/// which it moves at the start of every swap; see `move_reference_sqrt_price_x96`.
+///
 /// The curve math is not implemented: `swap_amounts`, `add_liquidity_amounts`,
-/// `remove_liquidity_amounts` and `credit_donation` abort. Neither is the
-/// dynamic fee's reference price: `reference_sqrt_price_x96` aborts. This
-/// package must not be published until they are.
+/// `remove_liquidity_amounts` and `credit_donation` abort. This package must
+/// not be published until they are.
 module blast_fun_dex::pool;
 
 // === Constants ===
@@ -80,9 +82,6 @@ const EInsufficientPayment: vector<u8> = b"Payment is less than the liquidity re
 const EInsufficientOutput: vector<u8> = b"Output is below the caller's minimum.";
 #[error(code = 19)]
 const ECurveMathUnavailable: vector<u8> = b"Curve math is not implemented; do not publish this package.";
-#[error(code = 20)]
-const EReferencePriceUnavailable: vector<u8> =
-    b"Dynamic-fee reference price has no source yet; do not publish this package.";
 
 // === Public Types ===
 
@@ -92,6 +91,13 @@ public struct Pool<phantom Asset, phantom Quote> has key {
     tick_spacing: u32,
     lp_fee: LpFee,
     sqrt_price_x96: u256,
+    /// Time-weighted square-root price a dynamic fee measures swaps against.
+    /// Starts at the creation price; fixed-fee pools never move it.
+    reference_sqrt_price_x96: u256,
+    /// When the reference last moved, in Unix epoch milliseconds. Zero until the
+    /// first swap, which therefore moves the reference all the way to the
+    /// pre-swap price.
+    reference_moved_at_ms: u64,
     hooks: Hooks,
     asset_reserve: Balance<Asset>,
     quote_reserve: Balance<Quote>,
@@ -460,10 +466,12 @@ public fun swap_sqrt_price_limit_x96<Asset, Quote>(self: &SwapRequest<Asset, Quo
 }
 
 /// Swaps the remaining payment up to the price limit at the pool's LP fee.
+/// A dynamic-fee pool first moves its reference price by the `clock`.
 /// Unspent payment and the output travel in the completion.
 public fun execute_swap<Asset, Quote>(
     self: &mut Pool<Asset, Quote>,
     request: SwapRequest<Asset, Quote>,
+    clock: &Clock,
     ctx: &mut TxContext,
 ): Completion<Asset, Quote, Swap> {
     let (is_asset_input, asset_payment, quote_payment, sqrt_price_limit_x96) = self.open_swap(request);
@@ -471,7 +479,7 @@ public fun execute_swap<Asset, Quote>(
     let input_value = if (is_asset_input) asset_payment.value() else quote_payment.value();
     let (input_spent, output_amount, sqrt_price_after_x96, lp_fee_ppm) = swap_amounts_and_lp_fee!(
         self.lp_fee,
-        || self.reference_sqrt_price_x96(),
+        || self.move_reference_sqrt_price_x96(clock),
         |lp_fee_ppm| self.swap_amounts(is_asset_input, input_value, sqrt_price_limit_x96, lp_fee_ppm),
     );
 
@@ -811,6 +819,8 @@ fun new_initializer<Asset, Quote>(
             tick_spacing,
             lp_fee,
             sqrt_price_x96,
+            reference_sqrt_price_x96: sqrt_price_x96,
+            reference_moved_at_ms: 0,
             hooks: Hooks {
                 before_add_liquidity: option::none(),
                 after_add_liquidity: option::none(),
@@ -924,25 +934,48 @@ fun open_swap<Asset, Quote>(
 
 /// Prices a swap and returns the input spent (including the LP fee), the
 /// output, the price after the swap and the LP fee charged. `$swap_amounts`
-/// prices the swap at a given LP fee. A fixed-fee pool prices once at its fee.
-/// A dynamic-fee pool first previews the swap at its base fee, takes the fee
-/// for the previewed price against `$reference_sqrt_price_x96`, then prices
-/// the swap again at that fee. The trader's price limit is neither price.
+/// prices the swap at a given LP fee, and `$move_reference_sqrt_price_x96`
+/// moves the pool's reference price and returns it. A fixed-fee pool prices
+/// once at its fee and never moves its reference. A dynamic-fee pool moves its
+/// reference, previews the swap at its base fee, takes the fee for the
+/// previewed price against the reference, then prices the swap again at that
+/// fee. The trader's price limit is neither price.
 macro fun swap_amounts_and_lp_fee(
     $lp_fee: LpFee,
-    $reference_sqrt_price_x96: || -> u256,
+    $move_reference_sqrt_price_x96: || -> u256,
     $swap_amounts: |u32| -> (u64, u64, u256),
 ): (u64, u64, u256, u32) {
     let lp_fee = $lp_fee;
     let lp_fee_ppm = if (lp_fee.is_dynamic()) {
+        let reference_sqrt_price_x96 = $move_reference_sqrt_price_x96();
         let (_, _, projected_sqrt_price_x96) = $swap_amounts(lp_fee.base_fee_ppm());
-        lp_fee.fee_ppm_at_price($reference_sqrt_price_x96(), projected_sqrt_price_x96)
+        lp_fee.fee_ppm_at_price(reference_sqrt_price_x96, projected_sqrt_price_x96)
     } else {
         lp_fee.base_fee_ppm()
     };
 
     let (input_spent, output_amount, sqrt_price_after_x96) = $swap_amounts(lp_fee_ppm);
     (input_spent, output_amount, sqrt_price_after_x96, lp_fee_ppm)
+}
+
+/// Moves the reference toward the pool's price for the time since its last
+/// move, records the move and returns the moved reference. It runs before the
+/// swap prices, from the pre-swap price, and does nothing in the timestamp of
+/// the last move, so the reference excludes this swap and every earlier one in
+/// the same timestamp. Every price change happens in a swap that ran this step
+/// first, so since the last move the price changed only within that move's
+/// timestamp and then held at the pre-swap value for the whole elapsed time:
+/// each step adds exactly that interval's time-weighted contribution.
+fun move_reference_sqrt_price_x96<Asset, Quote>(self: &mut Pool<Asset, Quote>, clock: &Clock): u256 {
+    let now_ms = clock.timestamp_ms();
+    if (now_ms > self.reference_moved_at_ms) {
+        let elapsed_ms = now_ms - self.reference_moved_at_ms;
+        self.reference_sqrt_price_x96 =
+            lp_fee::moved_reference_sqrt_price_x96(self.reference_sqrt_price_x96, self.sqrt_price_x96, elapsed_ms);
+        self.reference_moved_at_ms = now_ms;
+    };
+
+    self.reference_sqrt_price_x96
 }
 
 fun open_add_liquidity<Asset, Quote>(
@@ -1144,20 +1177,10 @@ fun credit_donation<Asset, Quote>(
     abort ECurveMathUnavailable
 }
 
-// Reference price seam. It aborts until the DEX has a reference price source.
-
-/// Returns the square-root price, in Q64.96, that a dynamic fee measures each
-/// swap's projected price against. The DEX must supply this input before
-/// publication; no oracle or stored average exists yet. Fixed-fee pools never
-/// read it.
-fun reference_sqrt_price_x96<Asset, Quote>(_self: &Pool<Asset, Quote>): u256 {
-    abort EReferencePriceUnavailable
-}
-
 // === Test-Only Functions ===
 
 /// `execute_swap` with the curve's results supplied by the test, the same at
-/// every LP fee. A dynamic-fee pool still reads the reference price seam.
+/// every LP fee.
 #[test_only]
 public fun execute_swap_with_amounts_for_testing<Asset, Quote>(
     self: &mut Pool<Asset, Quote>,
@@ -1165,40 +1188,35 @@ public fun execute_swap_with_amounts_for_testing<Asset, Quote>(
     input_spent: u64,
     output_amount: u64,
     sqrt_price_after_x96: u256,
+    clock: &Clock,
     ctx: &mut TxContext,
 ): Completion<Asset, Quote, Swap> {
-    let (is_asset_input, asset_payment, quote_payment, _) = self.open_swap(request);
-
-    let (input_spent, output_amount, sqrt_price_after_x96, lp_fee_ppm) = swap_amounts_and_lp_fee!(
-        self.lp_fee,
-        || self.reference_sqrt_price_x96(),
-        |_| (input_spent, output_amount, sqrt_price_after_x96),
-    );
-    self.settle_swap(
-        is_asset_input,
-        asset_payment,
-        quote_payment,
-        lp_fee_ppm,
+    let (completion, _) = self.execute_swap_with_preview_for_testing(
+        request,
+        sqrt_price_after_x96,
         input_spent,
         output_amount,
         sqrt_price_after_x96,
+        clock,
         ctx,
-    )
+    );
+
+    completion
 }
 
-/// `execute_swap` with the reference price and the curve's results supplied by
-/// the test. The curve's first pass ends at `preview_sqrt_price_x96` and any
-/// later pass at `sqrt_price_after_x96`, with the same amounts. Also returns the
-/// LP fees the curve priced at, in order.
+/// `execute_swap` with the curve's results supplied by the test. The curve's
+/// first pass ends at `preview_sqrt_price_x96` and any later pass at
+/// `sqrt_price_after_x96`, with the same amounts. Also returns the LP fees the
+/// curve priced at, in order.
 #[test_only]
-public fun execute_swap_with_reference_for_testing<Asset, Quote>(
+public fun execute_swap_with_preview_for_testing<Asset, Quote>(
     self: &mut Pool<Asset, Quote>,
     request: SwapRequest<Asset, Quote>,
-    reference_sqrt_price_x96: u256,
     preview_sqrt_price_x96: u256,
     input_spent: u64,
     output_amount: u64,
     sqrt_price_after_x96: u256,
+    clock: &Clock,
     ctx: &mut TxContext,
 ): (Completion<Asset, Quote, Swap>, vector<u32>) {
     let (is_asset_input, asset_payment, quote_payment, _) = self.open_swap(request);
@@ -1206,7 +1224,7 @@ public fun execute_swap_with_reference_for_testing<Asset, Quote>(
 
     let (input_spent, output_amount, sqrt_price_after_x96, lp_fee_ppm) = swap_amounts_and_lp_fee!(
         self.lp_fee,
-        || reference_sqrt_price_x96,
+        || self.move_reference_sqrt_price_x96(clock),
         |lp_fee_ppm| {
             priced_lp_fees_ppm.push_back(lp_fee_ppm);
             let is_preview = priced_lp_fees_ppm.length() == 1;
@@ -1299,6 +1317,12 @@ public fun after_donate_hook_for_testing<Asset, Quote>(self: &Pool<Asset, Quote>
     self.hooks.after_donate
 }
 
+/// The reference square-root price and when it last moved.
+#[test_only]
+public fun reference_for_testing<Asset, Quote>(self: &Pool<Asset, Quote>): (u256, u64) {
+    (self.reference_sqrt_price_x96, self.reference_moved_at_ms)
+}
+
 #[test_only]
 public fun pool_created_lp_fee_for_testing(event: &PoolCreated): LpFee {
     event.lp_fee
@@ -1313,7 +1337,7 @@ public fun swapped_lp_fee_ppm_for_testing(event: &Swapped): u32 {
 
 use blast_fun_dex::{hook_config::HookConfig, i32::I32, lp_fee::{Self, LpFee}};
 use std::type_name::{Self, TypeName};
-use sui::{balance::{Self, Balance}, coin::Coin, dynamic_field, event};
+use sui::{balance::{Self, Balance}, clock::Clock, coin::Coin, dynamic_field, event};
 
 public use fun take_swap_asset_payment as SwapRequest.take_asset_payment;
 public use fun take_swap_quote_payment as SwapRequest.take_quote_payment;

@@ -7,8 +7,10 @@
 /// cannot set or override them. A fixed-fee pool charges one protocol fee tier
 /// on every swap. A dynamic-fee pool charges its base fee plus a surcharge that
 /// grows with the square of the gap between the swap's projected price and a
-/// reference price, up to its maximum. Fees are in parts per million; 1,000,000
-/// is 100%. The tiers and bounds below are placeholders the protocol will tune.
+/// reference price, up to its maximum. The reference is the pool's own
+/// time-weighted price, moved by `moved_reference_sqrt_price_x96`. Fees are in
+/// parts per million; 1,000,000 is 100%. The tiers, bounds and window below are
+/// placeholders the protocol will tune.
 module blast_fun_dex::lp_fee;
 
 // === Constants ===
@@ -20,6 +22,8 @@ const MAX_DYNAMIC_FEE_PPM: u32 = 100_000;
 /// Sensitivity bounds, in ppm of fee per unit of squared price gap.
 const MIN_SENSITIVITY_PPM: u32 = 100_000;
 const MAX_SENSITIVITY_PPM: u32 = 100_000_000;
+/// Time over which the reference price catches up with the pool's price: 10 minutes.
+const REFERENCE_WINDOW_MS: u64 = 600_000;
 /// 1.0 in Q128.
 const ONE_X128: u256 = 340_282_366_920_938_463_463_374_607_431_768_211_456;
 /// Square-root price ratio 512 in Q64 (2^73): a price gap of 262,143, where a
@@ -135,6 +139,24 @@ public(package) fun fee_ppm_at_price(
             ((base_fee_ppm as u256) + extra_fee_ppm).min(max_fee_ppm as u256) as u32
         },
     }
+}
+
+/// The reference square-root price after `elapsed_ms` at the pool's
+/// square-root price: it moves `elapsed_ms / 600,000` of the way toward the pool
+/// price, and lands exactly on it once a full window has passed. The step is
+/// rounded down, toward the old reference, so it never overshoots. The product
+/// of a price gap below 2^161 and an elapsed time below the window fits in u256.
+public(package) fun moved_reference_sqrt_price_x96(
+    reference_sqrt_price_x96: u256,
+    pool_sqrt_price_x96: u256,
+    elapsed_ms: u64,
+): u256 {
+    if (elapsed_ms >= REFERENCE_WINDOW_MS) return pool_sqrt_price_x96;
+
+    let step_x96 =
+        reference_sqrt_price_x96.diff(pool_sqrt_price_x96) * (elapsed_ms as u256) / (REFERENCE_WINDOW_MS as u256);
+    if (pool_sqrt_price_x96 >= reference_sqrt_price_x96) reference_sqrt_price_x96 + step_x96
+    else reference_sqrt_price_x96 - step_x96
 }
 
 // === Private Functions ===

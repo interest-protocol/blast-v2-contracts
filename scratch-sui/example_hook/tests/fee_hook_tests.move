@@ -55,6 +55,7 @@ fun swap_charges_the_hook_fee_and_counts_the_swap() {
         990,
         900,
         BELOW_PRICE_X96,
+        &fixture.clock,
         fixture.scenario.ctx(),
     );
     fee_hook::after_swap(&mut pool, &fixture.config, &mut completion, vector[], &fixture.clock, fixture.scenario.ctx());
@@ -111,14 +112,15 @@ fun dynamic_fee_pool_charges_its_own_lp_fee_after_the_hook_fee() {
     let mut request = pool.begin_swap_asset_to_quote(fixture.asset(1_000), BELOW_PRICE_X96);
     fee_hook::before_swap(&mut pool, &fixture.config, &mut request, vector[], &fixture.clock, fixture.scenario.ctx());
     assert_eq!(request.input_value(), 990);
-    // The preview drops the price 4%: 3,000 + 1,000,000 * 0.04^2 = 4,600 ppm.
-    let (mut completion, priced_lp_fees_ppm) = pool.execute_swap_with_reference_for_testing(
+    // Measured from the creation price, the preview drops the price 4%:
+    // 3,000 + 1,000,000 * 0.04^2 = 4,600 ppm.
+    let (mut completion, priced_lp_fees_ppm) = pool.execute_swap_with_preview_for_testing(
         request,
-        SQRT_PRICE_ONE_X96,
         PRICE_DOWN_4_PERCENT_X96,
         990,
         900,
         PRICE_DOWN_4_PERCENT_X96,
+        &fixture.clock,
         fixture.scenario.ctx(),
     );
     fee_hook::after_swap(&mut pool, &fixture.config, &mut completion, vector[], &fixture.clock, fixture.scenario.ctx());
