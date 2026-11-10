@@ -1,755 +1,1284 @@
-// SPDX-License-Identifier: BUSL-1.1
-// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
-
-/// Canonical full-range pools, separate LP fees and owned liquidity positions.
+/// Concentrated-liquidity pools with Uniswap-v4-style lifecycle hooks.
+///
+/// Sui has no dynamic dispatch, so the pool cannot call a hook. The transaction
+/// calls it instead, and the pool enforces that it did:
+///
+/// ```text
+/// begin_*   (pool)  locks the pool and returns a request that owns the payment
+/// before_*  (hook)  reads state, may take fees or set the LP fee, then approves
+/// execute_* (pool)  requires the bound before-hook's approval, runs the curve and
+///                   returns a completion that owns the output
+/// after_*   (hook)  may take from or add to the output, then approves
+/// finish    (pool)  requires the bound after-hook's approval and the caller's
+///                   minimum outputs, unlocks the pool and returns the coins
+/// ```
+///
+/// Requests and completions have no abilities, so a transaction aborts unless
+/// it runs every step. Each slot binds at most one hook witness, fixed when the
+/// pool is created. An empty slot needs no approval. Every hook implements one
+/// fixed public signature per slot, so routers resolve any hooked pool from
+/// chain state alone; `example_hook` documents that convention.
+///
+/// The curve math is not implemented: `swap_amounts`, `add_liquidity_amounts`,
+/// `remove_liquidity_amounts` and `credit_donation` abort. This package must
+/// not be published until they are.
 module blast_fun_dex::pool;
 
 // === Constants ===
 
-/// Current DEX generation accepted by every economic and administrative path.
-const PACKAGE_VERSION: u64 = 1;
-
-/// The generation this bytecode hands over to in a governed upgrade.
-const NEXT_PACKAGE_VERSION: u64 = 2;
-
-const MINIMUM_SHARES: u128 = 1_000;
-
-const DEFAULT_MAX_FEE_BPS: u64 = 200;
-
-const MAX_FEE_BPS: u64 = 500;
-
-const MAX_BURN_BPS: u64 = 500;
-
-const X64: u256 = 18_446_744_073_709_551_616;
-
-// === Public Types ===
-
-/// Publication-only uniqueness registry and operational generation authority.
-public struct Factory has key {
-    id: UID,
-    generation: OperationalVersion<PACKAGE_MARKER>,
-    pools: Table<TypeName, ID>,
-}
-
-/// Principal reserves exclude every accrued LP fee and optional native burn.
-public struct Pool<phantom Meme, phantom Quote> has key {
-    id: UID,
-    meme: Balance<Meme>,
-    quote: Balance<Quote>,
-    quote_fees: Balance<Quote>,
-    total_shares: u128,
-    fee_growth_x64: u128,
-    volume_x32: u128,
-    last_trade_seconds: u64,
-    volume_target: u64,
-    max_fee_bps: u64,
-    burn_bps: u64,
-}
-
-/// Transferable entitlement to one pool's principal and separately earned fees.
-public struct Position<phantom Meme, phantom Quote> has key, store {
-    id: UID,
-    pool_id: ID,
-    shares: u128,
-    fee_checkpoint_x64: u128,
-    fees_owed: u64,
-    fee_fraction_x64: u64,
-}
-
-/// Immutable proposed settlement, shared by burn and ordinary swap entrypoints.
-public struct Trade has copy, drop {
-    quote: u64,
-    meme: u64,
-    fee: u64,
-    burn: u64,
-    next_volume: u128,
-    timestamp_seconds: u64,
-}
-
-/// Initial pool seed, immutable burn policy and the original LP position.
-public struct PoolCreated<phantom Meme, phantom Quote> has copy, drop {
-    pool_id: ID,
-    position_id: ID,
-    meme: u64,
-    quote: u64,
-    total_shares: u128,
-    burn_bps: u64,
-    max_fee_bps: u64,
-    timestamp_seconds: u64,
-}
-
-/// An empty owned position begins at the current pool fee checkpoint.
-public struct PositionCreated has copy, drop { pool_id: ID, position_id: ID }
-
-/// An empty position is deleted; fractional dust stays unclaimable.
-public struct PositionClosed has copy, drop { pool_id: ID, position_id: ID }
-
-/// Executed principal, fees, burn and resulting reserves and volume.
-public struct Swapped has copy, drop {
-    pool_id: ID,
-    buy: bool,
-    meme_principal: u64,
-    quote_principal: u64,
-    quote_fee: u64,
-    meme_burn: u64,
-    meme_reserve: u64,
-    quote_reserve: u64,
-    fee_balance: u64,
-    volume_x32: u128,
-    timestamp_seconds: u64,
-}
-
-/// Actual paired contribution or withdrawal and resulting share supply.
-public struct LiquidityChanged has copy, drop {
-    pool_id: ID,
-    position_id: ID,
-    added: bool,
-    shares: u128,
-    meme: u64,
-    quote: u64,
-    total_shares: u128,
-}
-
-/// A positive Quote entitlement leaves the separate fee balance.
-public struct FeesClaimed has copy, drop { pool_id: ID, position_id: ID, quote: u64 }
-
-/// Only the future marginal fee maximum changes.
-public struct MaximumFeeChanged has copy, drop { pool_id: ID, previous_bps: u64, maximum_bps: u64 }
-
-// === Private Initialization ===
-
-// The generation-advance fact is emitted by `blast_admin::operational_version`
-// for every consumer package; no copy belongs here.
-
-fun init(ctx: &mut TxContext) { transfer::share_object(new_factory(ctx)); }
-
-// === Public Functions ===
-
-/// Rejects stale bytecode at every economic path, including adapter no-op paths.
-public fun assert_current(self: &Factory) { self.generation.assert_current(PACKAGE_VERSION); }
-
-/// Creates the post-migration fee destination under the launch's live curve-fee cap.
-/// The immutable burn applies in both swap directions; fees always use Quote.
-public fun create<Meme, Quote>(
-    self: &mut Factory,
-    curve_fee_cap: &CurveFeeCap<Meme>,
-    launch: &Launch<Meme, Quote>,
-    currency: &Currency<Meme>,
-    meme: Coin<Meme>,
-    quote: Coin<Quote>,
-    burn_bps: u64,
-    clock: &Clock,
-    ctx: &mut TxContext,
-): (Pool<Meme, Quote>, Position<Meme, Quote>) {
-    self.assert_available<Meme, Quote>();
-    launch.assert_migrated();
-    launch.assert_curve_fee_cap(curve_fee_cap);
-    assert!(
-        burn_bps <= MAX_BURN_BPS && (burn_bps == 0 || currency.is_supply_burn_only()),
-        EBurnPolicy,
-    );
-    create_from_balances(self, meme.into_balance(), quote.into_balance(), burn_bps, clock, ctx)
-}
-
-/// Publishes a constructed canonical pool into shared custody.
-public fun share<Meme, Quote>(self: Pool<Meme, Quote>) { transfer::share_object(self); }
-
-/// Creates an empty transferable position checkpointed at the current fee growth.
-public fun new_position<Meme, Quote>(
-    self: &Pool<Meme, Quote>,
-    ctx: &mut TxContext,
-): Position<Meme, Quote> {
-    let position = position(self.id.to_inner(), 0, self.fee_growth_x64, ctx);
-    event::emit(PositionCreated {
-        pool_id: self.id.to_inner(),
-        position_id: position.id.to_inner(),
-    });
-    position
-}
-
-/// Admins may change only future marginal rates; history and balances are untouched.
-public fun set_max_fee<Meme, Quote>(
-    self: &mut Pool<Meme, Quote>,
-    factory: &Factory,
-    _: &AdminWitness<DEX_DOMAIN>,
-    maximum_bps: u64,
-) {
-    factory.assert_current();
-    assert!(maximum_bps <= MAX_FEE_BPS, EFeeCap);
-    assert!(maximum_bps != self.max_fee_bps, EUnchangedFee);
-    let previous_bps = self.max_fee_bps;
-    self.max_fee_bps = maximum_bps;
-    event::emit(MaximumFeeChanged { pool_id: self.id.to_inner(), previous_bps, maximum_bps });
-}
-
-/// Computes an on-chain deposit bound for permissionless vault composition.
-public fun deposit_amounts<Meme, Quote>(
-    self: &Pool<Meme, Quote>,
-    meme_max: u64,
-    quote_max: u64,
-): (u64, u64, u128) {
-    math::deposit_amounts(
-        meme_max,
-        quote_max,
-        self.meme.value(),
-        self.quote.value(),
-        self.total_shares,
-    )
-}
-
-/// Deposits both supported amounts, settles prior fees and returns every excess coin.
-public fun add_liquidity<Meme, Quote>(
-    self: &mut Pool<Meme, Quote>,
-    factory: &Factory,
-    position: &mut Position<Meme, Quote>,
-    mut meme: Coin<Meme>,
-    mut quote: Coin<Quote>,
-    min_shares: u128,
-    deadline_ms: u64,
-    clock: &Clock,
-    ctx: &mut TxContext,
-): (Coin<Meme>, Coin<Quote>) {
-    factory.assert_current();
-    self.assert_position(position);
-    assert!(clock.timestamp_ms() <= deadline_ms, EExpired);
-    let (meme_amount, quote_amount, shares) = self.deposit_amounts(meme.value(), quote.value());
-    assert!(shares > 0 && shares >= min_shares, EMinimumShares);
-
-    self.settle_position(position);
-    self.meme.join(meme.split(meme_amount, ctx).into_balance());
-    self.quote.join(quote.split(quote_amount, ctx).into_balance());
-    self.total_shares = self.total_shares + shares;
-    position.shares = position.shares + shares;
-    self.emit_liquidity(position, true, shares, meme_amount, quote_amount);
-    (meme, quote)
-}
-
-/// Redeems principal only. Earned fees stay claimable from the same position.
-public fun remove_liquidity<Meme, Quote>(
-    self: &mut Pool<Meme, Quote>,
-    factory: &Factory,
-    position: &mut Position<Meme, Quote>,
-    shares: u128,
-    minimum_meme: u64,
-    minimum_quote: u64,
-    deadline_ms: u64,
-    clock: &Clock,
-    ctx: &mut TxContext,
-): (Coin<Meme>, Coin<Quote>) {
-    factory.assert_current();
-    self.assert_position(position);
-    assert!(clock.timestamp_ms() <= deadline_ms, EExpired);
-    assert!(shares > 0 && shares <= position.shares, EInsufficientShares);
-    let meme =
-        ((self.meme.value() as u256) * (shares as u256) / (self.total_shares as u256)) as u64;
-    let quote =
-        ((self.quote.value() as u256) * (shares as u256) / (self.total_shares as u256)) as u64;
-    assert!(meme > 0 && quote > 0, EZeroAmount);
-    assert!(meme >= minimum_meme && quote >= minimum_quote, EMinimumOutput);
-
-    self.settle_position(position);
-    position.shares = position.shares - shares;
-    self.total_shares = self.total_shares - shares;
-    let meme_coin = self.meme.split(meme).into_coin(ctx);
-    let quote_coin = self.quote.split(quote).into_coin(ctx);
-    self.emit_liquidity(position, false, shares, meme, quote);
-    (meme_coin, quote_coin)
-}
-
-/// Pays only this position's separately funded Quote entitlement; empty claims are zero.
-public fun claim_fees<Meme, Quote>(
-    self: &mut Pool<Meme, Quote>,
-    factory: &Factory,
-    position: &mut Position<Meme, Quote>,
-    ctx: &mut TxContext,
-): Coin<Quote> {
-    factory.assert_current();
-    self.assert_position(position);
-    self.settle_position(position);
-    let quote = position.fees_owed;
-    position.fees_owed = 0;
-    let result = self.quote_fees.split(quote).into_coin(ctx);
-    if (quote > 0) {
-        event::emit(FeesClaimed {
-            pool_id: self.id.to_inner(),
-            position_id: position.id.to_inner(),
-            quote,
-        });
-    };
-    result
-}
-
-/// Deletes an empty position; any sub-atom entitlement becomes unclaimable pool dust.
-public fun destroy_empty<Meme, Quote>(self: Position<Meme, Quote>) {
-    assert!(self.shares == 0 && self.fees_owed == 0, EPositionNotEmpty);
-    let Position { id, pool_id, .. } = self;
-    let position_id = id.to_inner();
-    id.delete();
-    event::emit(PositionClosed { pool_id, position_id });
-}
-
-/// Exact-input Quote buy for a pool whose immutable burn rate is zero.
-public fun buy<Meme, Quote>(
-    self: &mut Pool<Meme, Quote>,
-    factory: &Factory,
-    input: Coin<Quote>,
-    minimum_meme: u64,
-    maximum_fee_bps: u64,
-    deadline_ms: u64,
-    clock: &Clock,
-    ctx: &mut TxContext,
-): (Coin<Meme>, Coin<Quote>) {
-    factory.assert_current();
-    assert!(self.burn_bps == 0, EBurnPolicy);
-    let trade = self.prepare_buy(input.value(), minimum_meme, maximum_fee_bps, deadline_ms, clock);
-    let (meme, refund, burn) = self.execute_buy(input, trade, ctx);
-    burn.destroy_zero();
-    self.emit_swap(true, trade);
-    (meme, refund)
-}
-
-/// Exact-input Quote buy that executes native supply destruction atomically.
-public fun buy_and_burn<Meme, Quote>(
-    self: &mut Pool<Meme, Quote>,
-    factory: &Factory,
-    input: Coin<Quote>,
-    currency: &mut Currency<Meme>,
-    minimum_meme: u64,
-    maximum_fee_bps: u64,
-    deadline_ms: u64,
-    clock: &Clock,
-    ctx: &mut TxContext,
-): (Coin<Meme>, Coin<Quote>) {
-    factory.assert_current();
-    assert!(currency.is_supply_burn_only(), EBurnPolicy);
-    let trade = self.prepare_buy(input.value(), minimum_meme, maximum_fee_bps, deadline_ms, clock);
-    let (meme, refund, burn) = self.execute_buy(input, trade, ctx);
-    currency.burn_balance(burn);
-    self.emit_swap(true, trade);
-    (meme, refund)
-}
-
-/// Exact-input Meme sell for a pool whose immutable burn rate is zero.
-public fun sell<Meme, Quote>(
-    self: &mut Pool<Meme, Quote>,
-    factory: &Factory,
-    input: Coin<Meme>,
-    minimum_quote: u64,
-    maximum_fee_bps: u64,
-    deadline_ms: u64,
-    clock: &Clock,
-    ctx: &mut TxContext,
-): Coin<Quote> {
-    factory.assert_current();
-    assert!(self.burn_bps == 0, EBurnPolicy);
-    let trade = self.prepare_sell(
-        input.value(),
-        minimum_quote,
-        maximum_fee_bps,
-        deadline_ms,
-        clock,
-    );
-    let (quote, burn) = self.execute_sell(input, trade, ctx);
-    burn.destroy_zero();
-    self.emit_swap(false, trade);
-    quote
-}
-
-/// Burns incoming Meme first; Quote fee and minimum receipt use the remaining trade.
-public fun sell_and_burn<Meme, Quote>(
-    self: &mut Pool<Meme, Quote>,
-    factory: &Factory,
-    input: Coin<Meme>,
-    currency: &mut Currency<Meme>,
-    minimum_quote: u64,
-    maximum_fee_bps: u64,
-    deadline_ms: u64,
-    clock: &Clock,
-    ctx: &mut TxContext,
-): Coin<Quote> {
-    factory.assert_current();
-    assert!(currency.is_supply_burn_only(), EBurnPolicy);
-    let trade = self.prepare_sell(
-        input.value(),
-        minimum_quote,
-        maximum_fee_bps,
-        deadline_ms,
-        clock,
-    );
-    let (quote, burn) = self.execute_sell(input, trade, ctx);
-    currency.burn_balance(burn);
-    self.emit_swap(false, trade);
-    quote
-}
-
-// === Package Functions ===
-
-/// Proves the cutover target is exactly next before any upgrade finalizer effect.
-public(package) fun assert_next(self: &Factory) {
-    self.generation.assert_next(NEXT_PACKAGE_VERSION);
-}
-
-/// Advances the generation to the exact bytecode this upgrade installs.
-public(package) fun advance(self: &mut Factory) {
-    let container_id = self.id.to_inner();
-
-    self.generation.advance(container_id, NEXT_PACKAGE_VERSION);
-}
-
-/// Sealed migration routes check availability before consuming the core handoff.
-public(package) fun assert_available<Meme, Quote>(self: &Factory) {
-    self.assert_current();
-    let meme = type_name::with_original_ids<Meme>();
-    assert!(meme != type_name::with_original_ids<Quote>(), EIdenticalAssets);
-    assert!(!self.pools.contains(meme), EDuplicatePool);
-}
-
-/// Only creator-authorized construction or the sealed native route can seed a pool.
-public(package) fun create_from_balances<Meme, Quote>(
-    factory: &mut Factory,
-    meme: Balance<Meme>,
-    quote: Balance<Quote>,
-    burn_bps: u64,
-    clock: &Clock,
-    ctx: &mut TxContext,
-): (Pool<Meme, Quote>, Position<Meme, Quote>) {
-    factory.assert_available<Meme, Quote>();
-    assert!(burn_bps <= MAX_BURN_BPS, EBurnPolicy);
-    let meme_amount = meme.value();
-    let quote_amount = quote.value();
-    let shares = math::initial_shares(meme_amount, quote_amount);
-    assert!(meme_amount > 0 && quote_amount > 0 && shares > MINIMUM_SHARES, ESeedTooSmall);
-
-    let pool = Pool {
-        id: object::new(ctx),
-        meme,
-        quote,
-        quote_fees: balance::zero(),
-        total_shares: shares,
-        fee_growth_x64: 0,
-        volume_x32: 0,
-        last_trade_seconds: clock.timestamp_ms() / 1000,
-        volume_target: quote_amount,
-        max_fee_bps: DEFAULT_MAX_FEE_BPS,
-        burn_bps,
-    };
-    let position = position(pool.id.to_inner(), shares - MINIMUM_SHARES, 0, ctx);
-    factory.pools.add(type_name::with_original_ids<Meme>(), pool.id.to_inner());
-    event::emit(PoolCreated<Meme, Quote> {
-        pool_id: pool.id.to_inner(),
-        position_id: position.id.to_inner(),
-        meme: meme_amount,
-        quote: quote_amount,
-        total_shares: shares,
-        burn_bps,
-        max_fee_bps: DEFAULT_MAX_FEE_BPS,
-        timestamp_seconds: pool.last_trade_seconds,
-    });
-    (pool, position)
-}
-
-// === Private Functions ===
-
-fun new_factory(ctx: &mut TxContext): Factory {
-    Factory {
-        id: object::new(ctx),
-        generation: operational_version::new(),
-        pools: table::new(ctx),
-    }
-}
-
-fun position<Meme, Quote>(
-    pool_id: ID,
-    shares: u128,
-    checkpoint: u128,
-    ctx: &mut TxContext,
-): Position<Meme, Quote> {
-    Position {
-        id: object::new(ctx),
-        pool_id,
-        shares,
-        fee_checkpoint_x64: checkpoint,
-        fees_owed: 0,
-        fee_fraction_x64: 0,
-    }
-}
-
-fun assert_position<Meme, Quote>(self: &Pool<Meme, Quote>, position: &Position<Meme, Quote>) {
-    assert!(position.pool_id == self.id.to_inner(), EWrongPool);
-}
-
-fun settle_position<Meme, Quote>(self: &Pool<Meme, Quote>, position: &mut Position<Meme, Quote>) {
-    let earned_x64 =
-        (position.shares as u256) * ((self.fee_growth_x64 - position.fee_checkpoint_x64) as u256) + (position.fee_fraction_x64 as u256);
-    let earned = earned_x64 / X64;
-    assert!(earned <= (std::u64::max_value!() as u256), EAccountingOverflow);
-    position.fees_owed =
-        position.fees_owed.checked_add(earned as u64).destroy_or!(abort EAccountingOverflow);
-    position.fee_fraction_x64 = (earned_x64 % X64) as u64;
-    position.fee_checkpoint_x64 = self.fee_growth_x64;
-}
-
-fun aged_volume<Meme, Quote>(
-    self: &Pool<Meme, Quote>,
-    deadline_ms: u64,
-    clock: &Clock,
-): (u128, u64) {
-    assert!(clock.timestamp_ms() <= deadline_ms, EExpired);
-    let timestamp = clock.timestamp_ms() / 1000;
-    assert!(timestamp >= self.last_trade_seconds, EClockReversed);
-    (math::decay(self.volume_x32, timestamp - self.last_trade_seconds), timestamp)
-}
-
-fun assert_fee_limit(quote: u64, fee: u64, maximum_bps: u64) {
-    assert!(
-        maximum_bps <= 10_000 && fee <= bps::new(maximum_bps).apply_down(quote),
-        EFeeLimit,
-    );
-}
-
-fun prepare_buy<Meme, Quote>(
-    self: &Pool<Meme, Quote>,
-    input: u64,
-    minimum: u64,
-    maximum_fee: u64,
-    deadline: u64,
-    clock: &Clock,
-): Trade {
-    let (volume, timestamp_seconds) = self.aged_volume(deadline, clock);
-    assert!(input > 0, EZeroAmount);
-    let (quote, fee, _) = math::buy_principal(volume, self.volume_target, input, self.max_fee_bps);
-    assert!(quote > 0, EZeroAmount);
-    assert_fee_limit(quote, fee, maximum_fee);
-    let meme = math::amount_out(quote, self.quote.value(), self.meme.value());
-    let burn = bps::new(self.burn_bps).apply_up(meme);
-    assert!(meme > burn, EZeroAmount);
-    assert!(meme - burn >= minimum, EMinimumOutput);
-    Trade {
-        quote,
-        meme,
-        fee,
-        burn,
-        next_volume: math::next_volume(volume, self.volume_target, quote),
-        timestamp_seconds,
-    }
-}
-
-fun prepare_sell<Meme, Quote>(
-    self: &Pool<Meme, Quote>,
-    input: u64,
-    minimum: u64,
-    maximum_fee: u64,
-    deadline: u64,
-    clock: &Clock,
-): Trade {
-    let (volume, timestamp_seconds) = self.aged_volume(deadline, clock);
-    let burn = bps::new(self.burn_bps).apply_up(input);
-    assert!(input > burn, EZeroAmount);
-    let meme = input - burn;
-    let quote = math::amount_out(meme, self.meme.value(), self.quote.value());
-    let fee = math::fee_up(volume, self.volume_target, quote, self.max_fee_bps);
-    assert!(quote > fee, EZeroAmount);
-    assert_fee_limit(quote, fee, maximum_fee);
-    assert!(quote - fee >= minimum, EMinimumOutput);
-    Trade {
-        quote,
-        meme,
-        fee,
-        burn,
-        next_volume: math::next_volume(volume, self.volume_target, quote),
-        timestamp_seconds,
-    }
-}
-
-fun accrue<Meme, Quote>(self: &mut Pool<Meme, Quote>, fee: Balance<Quote>, trade: Trade) {
-    let growth = (((fee.value() as u256) * X64) / (self.total_shares as u256)) as u128;
-    self.fee_growth_x64 =
-        self.fee_growth_x64.checked_add(growth).destroy_or!(abort EAccountingOverflow);
-    self.quote_fees.join(fee);
-    self.volume_x32 = trade.next_volume;
-    self.last_trade_seconds = trade.timestamp_seconds;
-}
-
-fun execute_buy<Meme, Quote>(
-    self: &mut Pool<Meme, Quote>,
-    mut input: Coin<Quote>,
-    trade: Trade,
-    ctx: &mut TxContext,
-): (Coin<Meme>, Coin<Quote>, Balance<Meme>) {
-    let fee = input.split(trade.fee, ctx).into_balance();
-    self.quote.join(input.split(trade.quote, ctx).into_balance());
-    let mut output = self.meme.split(trade.meme);
-    let burn = output.split(trade.burn);
-    self.accrue(fee, trade);
-    (output.into_coin(ctx), input, burn)
-}
-
-fun execute_sell<Meme, Quote>(
-    self: &mut Pool<Meme, Quote>,
-    mut input: Coin<Meme>,
-    trade: Trade,
-    ctx: &mut TxContext,
-): (Coin<Quote>, Balance<Meme>) {
-    let burn = input.split(trade.burn, ctx).into_balance();
-    self.meme.join(input.into_balance());
-    let mut output = self.quote.split(trade.quote);
-    self.accrue(output.split(trade.fee), trade);
-    (output.into_coin(ctx), burn)
-}
-
-fun emit_swap<Meme, Quote>(self: &Pool<Meme, Quote>, buy: bool, trade: Trade) {
-    event::emit(Swapped {
-        pool_id: self.id.to_inner(),
-        buy,
-        meme_principal: trade.meme,
-        quote_principal: trade.quote,
-        quote_fee: trade.fee,
-        meme_burn: trade.burn,
-        meme_reserve: self.meme.value(),
-        quote_reserve: self.quote.value(),
-        fee_balance: self.quote_fees.value(),
-        volume_x32: self.volume_x32,
-        timestamp_seconds: trade.timestamp_seconds,
-    });
-}
-
-fun emit_liquidity<Meme, Quote>(
-    self: &Pool<Meme, Quote>,
-    position: &Position<Meme, Quote>,
-    added: bool,
-    shares: u128,
-    meme: u64,
-    quote: u64,
-) {
-    event::emit(LiquidityChanged {
-        pool_id: self.id.to_inner(),
-        position_id: position.id.to_inner(),
-        added,
-        shares,
-        meme,
-        quote,
-        total_shares: self.total_shares,
-    });
-}
-
-// === Test-Only Functions ===
-
-#[test_only]
-public fun new_for_testing(ctx: &mut TxContext): Factory { new_factory(ctx) }
-
-#[test_only]
-public fun balances_for_testing<Meme, Quote>(self: &Pool<Meme, Quote>): (u64, u64, u64) {
-    (self.meme.value(), self.quote.value(), self.quote_fees.value())
-}
-
-#[test_only]
-public fun shares_for_testing<Meme, Quote>(self: &Position<Meme, Quote>): u128 { self.shares }
-
-#[test_only]
-public fun foreign_position_for_testing<Meme, Quote>(ctx: &mut TxContext): Position<Meme, Quote> {
-    position(object::id_from_address(@0x99), 1, 0, ctx)
-}
-
-#[test_only]
-public fun init_for_testing(ctx: &mut TxContext) { init(ctx); }
-
-#[test_only]
-public fun set_version_for_testing(self: &mut Factory, version: u64) {
-    self.generation.set_generation_for_testing(version);
-}
-
-#[test_only]
-public fun version_for_testing(self: &Factory): u64 { self.generation.generation_for_testing() }
-
-#[test_only]
-/// Exercises the compiled cutover target without a native upgrade fixture.
-public fun advance_for_testing(self: &mut Factory) { self.advance(); }
-
-#[test_only]
-/// Exercises the finalizer's pre-commit proof without a native upgrade fixture.
-public fun assert_next_for_testing(self: &Factory) { self.assert_next(); }
-
-#[test_only]
-public fun policy_for_testing<Meme, Quote>(self: &Pool<Meme, Quote>): (u64, u64, u128, u64) {
-    (self.max_fee_bps, self.burn_bps, self.volume_x32, self.last_trade_seconds)
-}
-
-#[test_only]
-public fun set_fee_growth_for_testing<Meme, Quote>(self: &mut Pool<Meme, Quote>, growth: u128) {
-    self.fee_growth_x64 = growth;
-}
+/// LP fees are in parts per million; 1,000,000 is 100%.
+const MAX_LP_FEE_PPM: u32 = 1_000_000;
+const MAX_TICK_SPACING: u32 = 32_767;
+/// Largest tick magnitude, as in Uniswap v4.
+const MAX_TICK: u32 = 887_272;
+/// Square-root price bounds in Q64.96, as in Uniswap v4. The maximum is exclusive.
+const MIN_SQRT_PRICE_X96: u256 = 4_295_128_739;
+const MAX_SQRT_PRICE_X96: u256 = 1_461_446_703_485_210_103_287_273_052_203_988_822_378_723_970_342;
 
 // === Errors ===
 
 #[error(code = 0)]
-const EIdenticalAssets: vector<u8> = b"Meme and Quote must have different original types.";
-
+const EIdenticalTokens: vector<u8> = b"Pool tokens must be different types.";
 #[error(code = 1)]
-const EDuplicatePool: vector<u8> = b"A canonical pool already exists for this Meme.";
-
+const EInvalidTickSpacing: vector<u8> = b"Tick spacing must be between 1 and 32,767.";
 #[error(code = 2)]
-const ESeedTooSmall: vector<u8> =
-    b"Both seed assets and more than 1000 initial shares are required.";
-
+const EInvalidLpFee: vector<u8> = b"LP fee must not exceed 1,000,000 ppm.";
 #[error(code = 3)]
-const EBurnPolicy: vector<u8> = b"Burn must not exceed 500 bps and requires BurnOnly currency.";
-
+const EInvalidSqrtPrice: vector<u8> = b"Square-root price is outside the supported range.";
 #[error(code = 4)]
-const EFeeCap: vector<u8> = b"Pool maximum fee must not exceed 500 bps.";
-
+const EInvalidHookFlags: vector<u8> = b"Hook registration must select at least one slot.";
 #[error(code = 5)]
-const EUnchangedFee: vector<u8> = b"Maximum fee must change.";
-
+const EHookSlotTaken: vector<u8> = b"Another hook is already bound to this slot.";
 #[error(code = 6)]
-const EExpired: vector<u8> = b"Transaction deadline has passed.";
-
+const EDynamicFeeWithoutHook: vector<u8> = b"A dynamic-fee pool requires a before-swap hook.";
 #[error(code = 7)]
-const EZeroAmount: vector<u8> = b"Swap principal and net output must be positive.";
-
+const EInvalidTickRange: vector<u8> = b"Ticks must be ordered, in range and multiples of the tick spacing.";
 #[error(code = 8)]
-const EFeeLimit: vector<u8> = b"Rounded Quote fee exceeds the signed effective fee limit.";
-
+const EPositionNotEmpty: vector<u8> = b"Position still holds liquidity.";
 #[error(code = 9)]
-const EMinimumOutput: vector<u8> = b"Net received amount is below the signed minimum.";
-
+const EPoolInOperation: vector<u8> = b"Pool is already running an operation in this transaction.";
 #[error(code = 10)]
-const EWrongPool: vector<u8> = b"Position must belong to the supplied pool.";
-
+const EWrongPool: vector<u8> = b"Value belongs to a different pool.";
 #[error(code = 11)]
-const EMinimumShares: vector<u8> = b"Deposit must mint positive shares meeting the signed minimum.";
-
+const EWrongPosition: vector<u8> = b"Position does not match the request.";
 #[error(code = 12)]
-const EInsufficientShares: vector<u8> =
-    b"Withdrawal requires positive shares owned by the position.";
-
+const EZeroAmount: vector<u8> = b"Payment must not be zero.";
 #[error(code = 13)]
-const EPositionNotEmpty: vector<u8> =
-    b"Position must have no principal or whole-atom fee entitlement.";
-
+const EInvalidPriceLimit: vector<u8> = b"Price limit is on the wrong side of the current price or out of range.";
 #[error(code = 14)]
-const EAccountingOverflow: vector<u8> = b"Fee accounting must remain representable.";
-
+const EZeroLiquidity: vector<u8> = b"Liquidity must not be zero.";
 #[error(code = 15)]
-const EClockReversed: vector<u8> = b"Clock must not precede the last successful trade.";
+const EInsufficientLiquidity: vector<u8> = b"Position holds less liquidity than requested.";
+#[error(code = 16)]
+const EHookNotBound: vector<u8> = b"Witness is not the hook bound to this slot.";
+#[error(code = 17)]
+const EAlreadyApproved: vector<u8> = b"Hook has already approved this step.";
+#[error(code = 18)]
+const EMissingApproval: vector<u8> = b"The bound hook has not approved this step.";
+#[error(code = 19)]
+const EFixedLpFee: vector<u8> = b"Pool LP fee is fixed.";
+#[error(code = 20)]
+const EInsufficientPayment: vector<u8> = b"Payment is less than the liquidity requires.";
+#[error(code = 21)]
+const EInsufficientOutput: vector<u8> = b"Output is below the caller's minimum.";
+#[error(code = 22)]
+const ECurveMathUnavailable: vector<u8> = b"Curve math is not implemented; do not publish this package.";
+
+// === Public Types ===
+
+/// Shared pool. Hook bindings, tick spacing and fee mode never change after creation.
+public struct Pool<phantom Asset, phantom Quote> has key {
+    id: UID,
+    tick_spacing: u32,
+    /// Fixed rate, or the default a dynamic-fee before-swap hook may override per swap.
+    lp_fee_ppm: u32,
+    is_dynamic_fee: bool,
+    sqrt_price_x96: u256,
+    hooks: Hooks,
+    asset_reserve: Balance<Asset>,
+    quote_reserve: Balance<Quote>,
+    /// Set from `begin_*` to `finish`, so nothing interleaves with a hooked operation.
+    is_in_operation: bool,
+}
+
+/// The unfinished pool. No abilities: it must be finalized in the same transaction.
+/// Only this phase accepts hook registration.
+public struct PoolInitializer<phantom Asset, phantom Quote> {
+    pool: Pool<Asset, Quote>,
+}
+
+/// The witness type bound to each slot, by its defining-ID type name.
+/// Routers read these fields to find the hook package and module.
+public struct Hooks has copy, drop, store {
+    before_add_liquidity: Option<TypeName>,
+    after_add_liquidity: Option<TypeName>,
+    before_remove_liquidity: Option<TypeName>,
+    after_remove_liquidity: Option<TypeName>,
+    before_swap: Option<TypeName>,
+    after_swap: Option<TypeName>,
+    before_donate: Option<TypeName>,
+    after_donate: Option<TypeName>,
+}
+
+/// Caller-owned liquidity in one tick range of one pool.
+public struct Position<phantom Asset, phantom Quote> has key, store {
+    id: UID,
+    pool_id: ID,
+    tick_lower: I32,
+    tick_upper: I32,
+    liquidity: u128,
+}
+
+/// The slot's bound hook and whether it has approved this step.
+public struct Approval has drop {
+    hook: Option<TypeName>,
+    is_approved: bool,
+}
+
+/// No abilities. Owns the swap payment; the input side is the only nonzero balance.
+public struct SwapRequest<phantom Asset, phantom Quote> {
+    pool_id: ID,
+    is_asset_input: bool,
+    asset_payment: Balance<Asset>,
+    quote_payment: Balance<Quote>,
+    sqrt_price_limit_x96: u256,
+    lp_fee_ppm: u32,
+    approval: Approval,
+}
+
+/// No abilities. Owns the maximum payment for minting `liquidity` in a position.
+public struct AddLiquidityRequest<phantom Asset, phantom Quote> {
+    pool_id: ID,
+    position_id: ID,
+    liquidity: u128,
+    asset_payment: Balance<Asset>,
+    quote_payment: Balance<Quote>,
+    approval: Approval,
+}
+
+/// No abilities. Burns `liquidity` from a position.
+public struct RemoveLiquidityRequest<phantom Asset, phantom Quote> {
+    pool_id: ID,
+    position_id: ID,
+    liquidity: u128,
+    approval: Approval,
+}
+
+/// No abilities. Owns a donation to in-range liquidity providers.
+public struct DonateRequest<phantom Asset, phantom Quote> {
+    pool_id: ID,
+    asset_payment: Balance<Asset>,
+    quote_payment: Balance<Quote>,
+    approval: Approval,
+}
+
+/// No abilities. Owns an executed operation's output, including unspent payment.
+/// `Operation` is `Swap`, `AddLiquidity`, `RemoveLiquidity` or `Donate`.
+public struct Completion<phantom Asset, phantom Quote, phantom Operation> {
+    pool_id: ID,
+    asset_output: Balance<Asset>,
+    quote_output: Balance<Quote>,
+    approval: Approval,
+}
+
+/// Completion tags. They prevent passing one operation's completion as another's.
+public struct Swap()
+public struct AddLiquidity()
+public struct RemoveLiquidity()
+public struct Donate()
+
+/// Pool-local hook state key, namespaced by the hook's witness type.
+public struct HookStateKey<Name: copy + drop + store> has copy, drop, store {
+    hook: TypeName,
+    name: Name,
+}
+
+// Events.
+
+public struct PoolCreated has copy, drop {
+    pool_id: ID,
+    asset: TypeName,
+    quote: TypeName,
+    tick_spacing: u32,
+    lp_fee_ppm: u32,
+    is_dynamic_fee: bool,
+    sqrt_price_x96: u256,
+    hooks: Hooks,
+}
+
+public struct Swapped has copy, drop {
+    pool_id: ID,
+    sender: address,
+    is_asset_input: bool,
+    input_spent: u64,
+    output_amount: u64,
+    lp_fee_ppm: u32,
+    sqrt_price_after_x96: u256,
+}
+
+public struct LiquidityAdded has copy, drop {
+    pool_id: ID,
+    position_id: ID,
+    liquidity: u128,
+    asset_amount: u64,
+    quote_amount: u64,
+}
+
+public struct LiquidityRemoved has copy, drop {
+    pool_id: ID,
+    position_id: ID,
+    liquidity: u128,
+    asset_amount: u64,
+    quote_amount: u64,
+}
+
+public struct Donated has copy, drop {
+    pool_id: ID,
+    asset_amount: u64,
+    quote_amount: u64,
+}
+
+// === Public Functions ===
+
+// Hook slot flags for `register_hook`. Combine with `|`.
+
+macro public fun before_add_liquidity_flag(): u8 { 0x80 }
+macro public fun after_add_liquidity_flag(): u8 { 0x40 }
+macro public fun before_remove_liquidity_flag(): u8 { 0x20 }
+macro public fun after_remove_liquidity_flag(): u8 { 0x10 }
+macro public fun before_swap_flag(): u8 { 0x08 }
+macro public fun after_swap_flag(): u8 { 0x04 }
+macro public fun before_donate_flag(): u8 { 0x02 }
+macro public fun after_donate_flag(): u8 { 0x01 }
+macro public fun all_hook_flags(): u8 { 0xff }
+
+// Creation.
+
+/// Starts a pool whose LP fee never changes.
+public fun new_with_fixed_fee<Asset, Quote>(
+    tick_spacing: u32,
+    lp_fee_ppm: u32,
+    sqrt_price_x96: u256,
+    ctx: &mut TxContext,
+): PoolInitializer<Asset, Quote> {
+    new_initializer(tick_spacing, lp_fee_ppm, false, sqrt_price_x96, ctx)
+}
+
+/// Starts a pool whose before-swap hook may override `default_lp_fee_ppm` per swap.
+/// `finalize` requires a before-swap hook.
+public fun new_with_dynamic_fee<Asset, Quote>(
+    tick_spacing: u32,
+    default_lp_fee_ppm: u32,
+    sqrt_price_x96: u256,
+    ctx: &mut TxContext,
+): PoolInitializer<Asset, Quote> {
+    new_initializer(tick_spacing, default_lp_fee_ppm, true, sqrt_price_x96, ctx)
+}
+
+/// Binds `Witness` to every slot in `flags`. Only the hook's package can create
+/// its witness, so the hook decides which pools it joins. `_config` proves the
+/// hook's configuration exists, so routers can always derive and pass it.
+public fun register_hook<Asset, Quote, Witness: drop>(
+    self: &mut PoolInitializer<Asset, Quote>,
+    _config: &HookConfig<Witness>,
+    _witness: Witness,
+    flags: u8,
+) {
+    assert!(flags != 0, EInvalidHookFlags);
+
+    let hook = type_name::with_defining_ids<Witness>();
+    let hooks = &mut self.pool.hooks;
+    if ((flags & before_add_liquidity_flag!()) != 0) bind(&mut hooks.before_add_liquidity, hook);
+    if ((flags & after_add_liquidity_flag!()) != 0) bind(&mut hooks.after_add_liquidity, hook);
+    if ((flags & before_remove_liquidity_flag!()) != 0) bind(&mut hooks.before_remove_liquidity, hook);
+    if ((flags & after_remove_liquidity_flag!()) != 0) bind(&mut hooks.after_remove_liquidity, hook);
+    if ((flags & before_swap_flag!()) != 0) bind(&mut hooks.before_swap, hook);
+    if ((flags & after_swap_flag!()) != 0) bind(&mut hooks.after_swap, hook);
+    if ((flags & before_donate_flag!()) != 0) bind(&mut hooks.before_donate, hook);
+    if ((flags & after_donate_flag!()) != 0) bind(&mut hooks.after_donate, hook);
+}
+
+/// Freezes the hook bindings and returns the pool for `share`.
+public fun finalize<Asset, Quote>(self: PoolInitializer<Asset, Quote>): Pool<Asset, Quote> {
+    let PoolInitializer { pool } = self;
+    assert!(!pool.is_dynamic_fee || pool.hooks.before_swap.is_some(), EDynamicFeeWithoutHook);
+
+    event::emit(PoolCreated {
+        pool_id: pool.id.to_inner(),
+        asset: type_name::with_defining_ids<Asset>(),
+        quote: type_name::with_defining_ids<Quote>(),
+        tick_spacing: pool.tick_spacing,
+        lp_fee_ppm: pool.lp_fee_ppm,
+        is_dynamic_fee: pool.is_dynamic_fee,
+        sqrt_price_x96: pool.sqrt_price_x96,
+        hooks: pool.hooks,
+    });
+
+    pool
+}
+
+/// Defining-module sink for a finalized pool.
+public fun share<Asset, Quote>(self: Pool<Asset, Quote>) {
+    transfer::share_object(self);
+}
+
+// Pool reads.
+
+public fun sqrt_price_x96<Asset, Quote>(self: &Pool<Asset, Quote>): u256 {
+    self.sqrt_price_x96
+}
+
+/// The fixed rate, or the default before the before-swap hook's override.
+public fun lp_fee_ppm<Asset, Quote>(self: &Pool<Asset, Quote>): u32 {
+    self.lp_fee_ppm
+}
+
+/// Whether the before-swap hook may set each swap's LP fee.
+public fun is_dynamic_fee<Asset, Quote>(self: &Pool<Asset, Quote>): bool {
+    self.is_dynamic_fee
+}
+
+// Positions.
+
+/// Creates an empty position. Ticks must be ordered multiples of the tick spacing
+/// within ±887,272.
+public fun new_position<Asset, Quote>(
+    self: &Pool<Asset, Quote>,
+    tick_lower: I32,
+    tick_upper: I32,
+    ctx: &mut TxContext,
+): Position<Asset, Quote> {
+    assert!(tick_lower.lt(&tick_upper), EInvalidTickRange);
+    assert!(self.is_usable_tick(&tick_lower) && self.is_usable_tick(&tick_upper), EInvalidTickRange);
+
+    Position { id: object::new(ctx), pool_id: self.id.to_inner(), tick_lower, tick_upper, liquidity: 0 }
+}
+
+/// Deletes a position that holds no liquidity.
+public fun destroy_empty_position<Asset, Quote>(position: Position<Asset, Quote>) {
+    let Position { id, pool_id: _, tick_lower: _, tick_upper: _, liquidity } = position;
+    assert!(liquidity == 0, EPositionNotEmpty);
+
+    id.delete();
+}
+
+public fun position_pool_id<Asset, Quote>(self: &Position<Asset, Quote>): ID {
+    self.pool_id
+}
+
+public fun tick_lower<Asset, Quote>(self: &Position<Asset, Quote>): I32 {
+    self.tick_lower
+}
+
+public fun tick_upper<Asset, Quote>(self: &Position<Asset, Quote>): I32 {
+    self.tick_upper
+}
+
+public fun position_liquidity<Asset, Quote>(self: &Position<Asset, Quote>): u128 {
+    self.liquidity
+}
+
+// Swap.
+
+/// Locks the pool and starts selling `payment` for Quote. The price limit must
+/// be below the current price.
+public fun begin_swap_asset_to_quote<Asset, Quote>(
+    self: &mut Pool<Asset, Quote>,
+    payment: Coin<Asset>,
+    sqrt_price_limit_x96: u256,
+): SwapRequest<Asset, Quote> {
+    assert!(payment.value() > 0, EZeroAmount);
+    assert!(
+        sqrt_price_limit_x96 < self.sqrt_price_x96 && sqrt_price_limit_x96 > MIN_SQRT_PRICE_X96,
+        EInvalidPriceLimit,
+    );
+
+    self.lock();
+    self.new_swap_request(true, payment.into_balance(), balance::zero(), sqrt_price_limit_x96)
+}
+
+/// Locks the pool and starts selling `payment` for Asset. The price limit must
+/// be above the current price.
+public fun begin_swap_quote_to_asset<Asset, Quote>(
+    self: &mut Pool<Asset, Quote>,
+    payment: Coin<Quote>,
+    sqrt_price_limit_x96: u256,
+): SwapRequest<Asset, Quote> {
+    assert!(payment.value() > 0, EZeroAmount);
+    assert!(
+        sqrt_price_limit_x96 > self.sqrt_price_x96 && sqrt_price_limit_x96 < MAX_SQRT_PRICE_X96,
+        EInvalidPriceLimit,
+    );
+
+    self.lock();
+    self.new_swap_request(false, balance::zero(), payment.into_balance(), sqrt_price_limit_x96)
+}
+
+/// Before-swap hook: takes Asset from the payment, for example as a hook fee.
+public fun take_swap_asset_payment<Asset, Quote, Witness: drop>(
+    self: &mut SwapRequest<Asset, Quote>,
+    pool: &Pool<Asset, Quote>,
+    _witness: Witness,
+    amount: u64,
+): Balance<Asset> {
+    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
+    self.approval.assert_open<Witness>();
+
+    self.asset_payment.split(amount)
+}
+
+/// Before-swap hook: takes Quote from the payment, for example as a hook fee.
+public fun take_swap_quote_payment<Asset, Quote, Witness: drop>(
+    self: &mut SwapRequest<Asset, Quote>,
+    pool: &Pool<Asset, Quote>,
+    _witness: Witness,
+    amount: u64,
+): Balance<Quote> {
+    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
+    self.approval.assert_open<Witness>();
+
+    self.quote_payment.split(amount)
+}
+
+/// Before-swap hook on a dynamic-fee pool: sets this swap's LP fee.
+/// The pool's default rate does not change.
+public fun set_swap_lp_fee<Asset, Quote, Witness: drop>(
+    self: &mut SwapRequest<Asset, Quote>,
+    pool: &Pool<Asset, Quote>,
+    _witness: Witness,
+    lp_fee_ppm: u32,
+) {
+    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
+    self.approval.assert_open<Witness>();
+    assert!(pool.is_dynamic_fee, EFixedLpFee);
+    assert!(lp_fee_ppm <= MAX_LP_FEE_PPM, EInvalidLpFee);
+
+    self.lp_fee_ppm = lp_fee_ppm;
+}
+
+/// Before-swap hook: approves the request. It cannot be changed afterwards.
+public fun approve_swap<Asset, Quote, Witness: drop>(
+    self: &mut SwapRequest<Asset, Quote>,
+    pool: &Pool<Asset, Quote>,
+    _witness: Witness,
+) {
+    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
+
+    self.approval.approve<Witness>();
+}
+
+public fun swap_is_asset_input<Asset, Quote>(self: &SwapRequest<Asset, Quote>): bool {
+    self.is_asset_input
+}
+
+/// Remaining payment on the input side.
+public fun swap_input_value<Asset, Quote>(self: &SwapRequest<Asset, Quote>): u64 {
+    if (self.is_asset_input) self.asset_payment.value() else self.quote_payment.value()
+}
+
+public fun swap_sqrt_price_limit_x96<Asset, Quote>(self: &SwapRequest<Asset, Quote>): u256 {
+    self.sqrt_price_limit_x96
+}
+
+public fun swap_lp_fee_ppm<Asset, Quote>(self: &SwapRequest<Asset, Quote>): u32 {
+    self.lp_fee_ppm
+}
+
+/// Swaps the remaining payment up to the price limit. Unspent payment and the
+/// output travel in the completion.
+public fun execute_swap<Asset, Quote>(
+    self: &mut Pool<Asset, Quote>,
+    request: SwapRequest<Asset, Quote>,
+    ctx: &mut TxContext,
+): Completion<Asset, Quote, Swap> {
+    let (is_asset_input, asset_payment, quote_payment, sqrt_price_limit_x96, lp_fee_ppm) = self.open_swap(
+        request,
+    );
+
+    let input_value = if (is_asset_input) asset_payment.value() else quote_payment.value();
+    let (input_spent, output_amount, sqrt_price_after_x96) = self.swap_amounts(
+        is_asset_input,
+        input_value,
+        sqrt_price_limit_x96,
+        lp_fee_ppm,
+    );
+
+    self.settle_swap(
+        is_asset_input,
+        asset_payment,
+        quote_payment,
+        lp_fee_ppm,
+        input_spent,
+        output_amount,
+        sqrt_price_after_x96,
+        ctx,
+    )
+}
+
+// Add liquidity.
+
+/// Locks the pool and starts minting `liquidity` in `position`. Unused payment
+/// is returned.
+public fun begin_add_liquidity<Asset, Quote>(
+    self: &mut Pool<Asset, Quote>,
+    position: &Position<Asset, Quote>,
+    liquidity: u128,
+    asset_payment: Coin<Asset>,
+    quote_payment: Coin<Quote>,
+): AddLiquidityRequest<Asset, Quote> {
+    assert!(position.pool_id == self.id.to_inner(), EWrongPool);
+    assert!(liquidity > 0, EZeroLiquidity);
+
+    self.lock();
+    AddLiquidityRequest {
+        pool_id: self.id.to_inner(),
+        position_id: position.id.to_inner(),
+        liquidity,
+        asset_payment: asset_payment.into_balance(),
+        quote_payment: quote_payment.into_balance(),
+        approval: Approval { hook: self.hooks.before_add_liquidity, is_approved: false },
+    }
+}
+
+/// Before-add-liquidity hook: approves the request.
+public fun approve_add_liquidity<Asset, Quote, Witness: drop>(
+    self: &mut AddLiquidityRequest<Asset, Quote>,
+    pool: &Pool<Asset, Quote>,
+    _witness: Witness,
+) {
+    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
+
+    self.approval.approve<Witness>();
+}
+
+public fun add_liquidity_amount<Asset, Quote>(self: &AddLiquidityRequest<Asset, Quote>): u128 {
+    self.liquidity
+}
+
+/// Mints the liquidity, taking what it requires from the payment.
+public fun execute_add_liquidity<Asset, Quote>(
+    self: &mut Pool<Asset, Quote>,
+    request: AddLiquidityRequest<Asset, Quote>,
+    position: &mut Position<Asset, Quote>,
+): Completion<Asset, Quote, AddLiquidity> {
+    let (liquidity, asset_payment, quote_payment) = self.open_add_liquidity(request, position);
+
+    let (asset_required, quote_required) = self.add_liquidity_amounts(position, liquidity);
+
+    self.settle_add_liquidity(position, liquidity, asset_payment, quote_payment, asset_required, quote_required)
+}
+
+// Remove liquidity.
+
+/// Locks the pool and starts burning `liquidity` from `position`.
+public fun begin_remove_liquidity<Asset, Quote>(
+    self: &mut Pool<Asset, Quote>,
+    position: &Position<Asset, Quote>,
+    liquidity: u128,
+): RemoveLiquidityRequest<Asset, Quote> {
+    assert!(position.pool_id == self.id.to_inner(), EWrongPool);
+    assert!(liquidity > 0, EZeroLiquidity);
+    assert!(liquidity <= position.liquidity, EInsufficientLiquidity);
+
+    self.lock();
+    RemoveLiquidityRequest {
+        pool_id: self.id.to_inner(),
+        position_id: position.id.to_inner(),
+        liquidity,
+        approval: Approval { hook: self.hooks.before_remove_liquidity, is_approved: false },
+    }
+}
+
+/// Before-remove-liquidity hook: approves the request.
+public fun approve_remove_liquidity<Asset, Quote, Witness: drop>(
+    self: &mut RemoveLiquidityRequest<Asset, Quote>,
+    pool: &Pool<Asset, Quote>,
+    _witness: Witness,
+) {
+    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
+
+    self.approval.approve<Witness>();
+}
+
+public fun remove_liquidity_amount<Asset, Quote>(self: &RemoveLiquidityRequest<Asset, Quote>): u128 {
+    self.liquidity
+}
+
+/// Burns the liquidity and returns its tokens in the completion.
+public fun execute_remove_liquidity<Asset, Quote>(
+    self: &mut Pool<Asset, Quote>,
+    request: RemoveLiquidityRequest<Asset, Quote>,
+    position: &mut Position<Asset, Quote>,
+): Completion<Asset, Quote, RemoveLiquidity> {
+    let liquidity = self.open_remove_liquidity(request, position);
+
+    let (asset_amount, quote_amount) = self.remove_liquidity_amounts(position, liquidity);
+
+    self.settle_remove_liquidity(position, liquidity, asset_amount, quote_amount)
+}
+
+// Donate.
+
+/// Locks the pool and starts donating to in-range liquidity providers.
+public fun begin_donate<Asset, Quote>(
+    self: &mut Pool<Asset, Quote>,
+    asset_payment: Coin<Asset>,
+    quote_payment: Coin<Quote>,
+): DonateRequest<Asset, Quote> {
+    assert!(asset_payment.value() > 0 || quote_payment.value() > 0, EZeroAmount);
+
+    self.lock();
+    DonateRequest {
+        pool_id: self.id.to_inner(),
+        asset_payment: asset_payment.into_balance(),
+        quote_payment: quote_payment.into_balance(),
+        approval: Approval { hook: self.hooks.before_donate, is_approved: false },
+    }
+}
+
+/// Before-donate hook: approves the request.
+public fun approve_donate<Asset, Quote, Witness: drop>(
+    self: &mut DonateRequest<Asset, Quote>,
+    pool: &Pool<Asset, Quote>,
+    _witness: Witness,
+) {
+    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
+
+    self.approval.approve<Witness>();
+}
+
+public fun donate_asset_value<Asset, Quote>(self: &DonateRequest<Asset, Quote>): u64 {
+    self.asset_payment.value()
+}
+
+public fun donate_quote_value<Asset, Quote>(self: &DonateRequest<Asset, Quote>): u64 {
+    self.quote_payment.value()
+}
+
+/// Credits the donation to in-range liquidity providers. The completion is empty.
+public fun execute_donate<Asset, Quote>(
+    self: &mut Pool<Asset, Quote>,
+    request: DonateRequest<Asset, Quote>,
+): Completion<Asset, Quote, Donate> {
+    let (asset_payment, quote_payment) = self.open_donate(request);
+    let (asset_amount, quote_amount) = (asset_payment.value(), quote_payment.value());
+
+    self.credit_donation(asset_payment, quote_payment);
+
+    self.settle_donate(asset_amount, quote_amount)
+}
+
+// Completion.
+
+/// After hook: takes Asset from the output, for example as a hook fee.
+public fun take_asset_output<Asset, Quote, Operation, Witness: drop>(
+    self: &mut Completion<Asset, Quote, Operation>,
+    pool: &Pool<Asset, Quote>,
+    _witness: Witness,
+    amount: u64,
+): Balance<Asset> {
+    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
+    self.approval.assert_open<Witness>();
+
+    self.asset_output.split(amount)
+}
+
+/// After hook: takes Quote from the output, for example as a hook fee.
+public fun take_quote_output<Asset, Quote, Operation, Witness: drop>(
+    self: &mut Completion<Asset, Quote, Operation>,
+    pool: &Pool<Asset, Quote>,
+    _witness: Witness,
+    amount: u64,
+): Balance<Quote> {
+    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
+    self.approval.assert_open<Witness>();
+
+    self.quote_output.split(amount)
+}
+
+/// After hook: adds Asset to the output, for example as a rebate.
+public fun join_asset_output<Asset, Quote, Operation, Witness: drop>(
+    self: &mut Completion<Asset, Quote, Operation>,
+    pool: &Pool<Asset, Quote>,
+    _witness: Witness,
+    asset: Balance<Asset>,
+) {
+    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
+    self.approval.assert_open<Witness>();
+
+    self.asset_output.join(asset);
+}
+
+/// After hook: adds Quote to the output, for example as a rebate.
+public fun join_quote_output<Asset, Quote, Operation, Witness: drop>(
+    self: &mut Completion<Asset, Quote, Operation>,
+    pool: &Pool<Asset, Quote>,
+    _witness: Witness,
+    quote: Balance<Quote>,
+) {
+    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
+    self.approval.assert_open<Witness>();
+
+    self.quote_output.join(quote);
+}
+
+/// After hook: approves the completion. It cannot be changed afterwards.
+public fun approve_completion<Asset, Quote, Operation, Witness: drop>(
+    self: &mut Completion<Asset, Quote, Operation>,
+    pool: &Pool<Asset, Quote>,
+    _witness: Witness,
+) {
+    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
+
+    self.approval.approve<Witness>();
+}
+
+public fun asset_output_value<Asset, Quote, Operation>(self: &Completion<Asset, Quote, Operation>): u64 {
+    self.asset_output.value()
+}
+
+public fun quote_output_value<Asset, Quote, Operation>(self: &Completion<Asset, Quote, Operation>): u64 {
+    self.quote_output.value()
+}
+
+/// Ends any operation: requires the after hook's approval and the caller's
+/// minimum outputs, unlocks the pool and returns both coins, either may be zero.
+public fun finish<Asset, Quote, Operation>(
+    self: &mut Pool<Asset, Quote>,
+    completion: Completion<Asset, Quote, Operation>,
+    min_asset_output: u64,
+    min_quote_output: u64,
+    ctx: &mut TxContext,
+): (Coin<Asset>, Coin<Quote>) {
+    let Completion { pool_id, asset_output, quote_output, approval } = completion;
+    assert!(pool_id == self.id.to_inner(), EWrongPool);
+    approval.assert_approved();
+    assert!(asset_output.value() >= min_asset_output, EInsufficientOutput);
+    assert!(quote_output.value() >= min_quote_output, EInsufficientOutput);
+
+    self.is_in_operation = false;
+
+    (asset_output.into_coin(ctx), quote_output.into_coin(ctx))
+}
+
+// Pool-local hook state. Any hook bound to the pool owns one namespace keyed by
+// its witness type; the pool UID itself is never exposed.
+
+public fun add_hook_state<Asset, Quote, Witness: drop, Name: copy + drop + store, State: store>(
+    self: &mut Pool<Asset, Quote>,
+    _witness: &Witness,
+    name: Name,
+    state: State,
+) {
+    let key = self.hook_state_key<_, _, Witness, _>(name);
+
+    dynamic_field::add(&mut self.id, key, state);
+}
+
+public fun has_hook_state<Asset, Quote, Witness: drop, Name: copy + drop + store>(
+    self: &Pool<Asset, Quote>,
+    _witness: &Witness,
+    name: Name,
+): bool {
+    let key = self.hook_state_key<_, _, Witness, _>(name);
+
+    dynamic_field::exists(&self.id, key)
+}
+
+public fun hook_state<Asset, Quote, Witness: drop, Name: copy + drop + store, State: store>(
+    self: &Pool<Asset, Quote>,
+    _witness: &Witness,
+    name: Name,
+): &State {
+    let key = self.hook_state_key<_, _, Witness, _>(name);
+
+    dynamic_field::borrow(&self.id, key)
+}
+
+public fun hook_state_mut<Asset, Quote, Witness: drop, Name: copy + drop + store, State: store>(
+    self: &mut Pool<Asset, Quote>,
+    _witness: &Witness,
+    name: Name,
+): &mut State {
+    let key = self.hook_state_key<_, _, Witness, _>(name);
+
+    dynamic_field::borrow_mut(&mut self.id, key)
+}
+
+public fun remove_hook_state<Asset, Quote, Witness: drop, Name: copy + drop + store, State: store>(
+    self: &mut Pool<Asset, Quote>,
+    _witness: &Witness,
+    name: Name,
+): State {
+    let key = self.hook_state_key<_, _, Witness, _>(name);
+
+    dynamic_field::remove(&mut self.id, key)
+}
+
+// === Private Functions ===
+
+fun new_initializer<Asset, Quote>(
+    tick_spacing: u32,
+    lp_fee_ppm: u32,
+    is_dynamic_fee: bool,
+    sqrt_price_x96: u256,
+    ctx: &mut TxContext,
+): PoolInitializer<Asset, Quote> {
+    assert!(
+        type_name::with_defining_ids<Asset>() != type_name::with_defining_ids<Quote>(),
+        EIdenticalTokens,
+    );
+    assert!(tick_spacing > 0 && tick_spacing <= MAX_TICK_SPACING, EInvalidTickSpacing);
+    assert!(lp_fee_ppm <= MAX_LP_FEE_PPM, EInvalidLpFee);
+    assert!(
+        sqrt_price_x96 >= MIN_SQRT_PRICE_X96 && sqrt_price_x96 < MAX_SQRT_PRICE_X96,
+        EInvalidSqrtPrice,
+    );
+
+    PoolInitializer {
+        pool: Pool {
+            id: object::new(ctx),
+            tick_spacing,
+            lp_fee_ppm,
+            is_dynamic_fee,
+            sqrt_price_x96,
+            hooks: Hooks {
+                before_add_liquidity: option::none(),
+                after_add_liquidity: option::none(),
+                before_remove_liquidity: option::none(),
+                after_remove_liquidity: option::none(),
+                before_swap: option::none(),
+                after_swap: option::none(),
+                before_donate: option::none(),
+                after_donate: option::none(),
+            },
+            asset_reserve: balance::zero(),
+            quote_reserve: balance::zero(),
+            is_in_operation: false,
+        },
+    }
+}
+
+fun bind(slot: &mut Option<TypeName>, hook: TypeName) {
+    assert!(slot.is_none(), EHookSlotTaken);
+
+    slot.fill(hook);
+}
+
+fun is_usable_tick<Asset, Quote>(self: &Pool<Asset, Quote>, tick: &I32): bool {
+    let magnitude = tick.magnitude();
+
+    magnitude <= MAX_TICK && magnitude % self.tick_spacing == 0
+}
+
+fun lock<Asset, Quote>(self: &mut Pool<Asset, Quote>) {
+    assert!(!self.is_in_operation, EPoolInOperation);
+
+    self.is_in_operation = true;
+}
+
+fun new_swap_request<Asset, Quote>(
+    self: &Pool<Asset, Quote>,
+    is_asset_input: bool,
+    asset_payment: Balance<Asset>,
+    quote_payment: Balance<Quote>,
+    sqrt_price_limit_x96: u256,
+): SwapRequest<Asset, Quote> {
+    SwapRequest {
+        pool_id: self.id.to_inner(),
+        is_asset_input,
+        asset_payment,
+        quote_payment,
+        sqrt_price_limit_x96,
+        lp_fee_ppm: self.lp_fee_ppm,
+        approval: Approval { hook: self.hooks.before_swap, is_approved: false },
+    }
+}
+
+/// Bound to this slot and not yet approved, so the hook may still change the step.
+fun assert_open<Witness>(self: &Approval) {
+    assert!(self.hook == option::some(type_name::with_defining_ids<Witness>()), EHookNotBound);
+    assert!(!self.is_approved, EAlreadyApproved);
+}
+
+fun approve<Witness>(self: &mut Approval) {
+    self.assert_open<Witness>();
+
+    self.is_approved = true;
+}
+
+/// An empty slot needs no approval.
+fun assert_approved(self: &Approval) {
+    assert!(self.hook.is_none() || self.is_approved, EMissingApproval);
+}
+
+fun approval_for_completion(hook: Option<TypeName>): Approval {
+    Approval { hook, is_approved: false }
+}
+
+fun is_bound(self: &Hooks, hook: TypeName): bool {
+    let candidate = option::some(hook);
+
+    self.before_add_liquidity == candidate
+        || self.after_add_liquidity == candidate
+        || self.before_remove_liquidity == candidate
+        || self.after_remove_liquidity == candidate
+        || self.before_swap == candidate
+        || self.after_swap == candidate
+        || self.before_donate == candidate
+        || self.after_donate == candidate
+}
+
+fun hook_state_key<Asset, Quote, Witness, Name: copy + drop + store>(
+    self: &Pool<Asset, Quote>,
+    name: Name,
+): HookStateKey<Name> {
+    let hook = type_name::with_defining_ids<Witness>();
+    assert!(self.hooks.is_bound(hook), EHookNotBound);
+
+    HookStateKey { hook, name }
+}
+
+// Validation shared by execution and its test seam.
+
+fun open_swap<Asset, Quote>(
+    self: &Pool<Asset, Quote>,
+    request: SwapRequest<Asset, Quote>,
+): (bool, Balance<Asset>, Balance<Quote>, u256, u32) {
+    let SwapRequest {
+        pool_id,
+        is_asset_input,
+        asset_payment,
+        quote_payment,
+        sqrt_price_limit_x96,
+        lp_fee_ppm,
+        approval,
+    } = request;
+    assert!(pool_id == self.id.to_inner(), EWrongPool);
+    approval.assert_approved();
+
+    (is_asset_input, asset_payment, quote_payment, sqrt_price_limit_x96, lp_fee_ppm)
+}
+
+fun open_add_liquidity<Asset, Quote>(
+    self: &Pool<Asset, Quote>,
+    request: AddLiquidityRequest<Asset, Quote>,
+    position: &Position<Asset, Quote>,
+): (u128, Balance<Asset>, Balance<Quote>) {
+    let AddLiquidityRequest {
+        pool_id,
+        position_id,
+        liquidity,
+        asset_payment,
+        quote_payment,
+        approval,
+    } = request;
+    assert!(pool_id == self.id.to_inner(), EWrongPool);
+    assert!(position_id == position.id.to_inner(), EWrongPosition);
+    approval.assert_approved();
+
+    (liquidity, asset_payment, quote_payment)
+}
+
+fun open_remove_liquidity<Asset, Quote>(
+    self: &Pool<Asset, Quote>,
+    request: RemoveLiquidityRequest<Asset, Quote>,
+    position: &Position<Asset, Quote>,
+): u128 {
+    let RemoveLiquidityRequest { pool_id, position_id, liquidity, approval } = request;
+    assert!(pool_id == self.id.to_inner(), EWrongPool);
+    assert!(position_id == position.id.to_inner(), EWrongPosition);
+    approval.assert_approved();
+
+    liquidity
+}
+
+fun open_donate<Asset, Quote>(
+    self: &Pool<Asset, Quote>,
+    request: DonateRequest<Asset, Quote>,
+): (Balance<Asset>, Balance<Quote>) {
+    let DonateRequest { pool_id, asset_payment, quote_payment, approval } = request;
+    assert!(pool_id == self.id.to_inner(), EWrongPool);
+    approval.assert_approved();
+
+    (asset_payment, quote_payment)
+}
+
+// Custody and events after the curve has priced the operation.
+
+fun settle_swap<Asset, Quote>(
+    self: &mut Pool<Asset, Quote>,
+    is_asset_input: bool,
+    mut asset_payment: Balance<Asset>,
+    mut quote_payment: Balance<Quote>,
+    lp_fee_ppm: u32,
+    input_spent: u64,
+    output_amount: u64,
+    sqrt_price_after_x96: u256,
+    ctx: &TxContext,
+): Completion<Asset, Quote, Swap> {
+    if (is_asset_input) {
+        self.asset_reserve.join(asset_payment.split(input_spent));
+        quote_payment.join(self.quote_reserve.split(output_amount));
+    } else {
+        self.quote_reserve.join(quote_payment.split(input_spent));
+        asset_payment.join(self.asset_reserve.split(output_amount));
+    };
+    self.sqrt_price_x96 = sqrt_price_after_x96;
+
+    event::emit(Swapped {
+        pool_id: self.id.to_inner(),
+        sender: ctx.sender(),
+        is_asset_input,
+        input_spent,
+        output_amount,
+        lp_fee_ppm,
+        sqrt_price_after_x96,
+    });
+
+    Completion {
+        pool_id: self.id.to_inner(),
+        asset_output: asset_payment,
+        quote_output: quote_payment,
+        approval: approval_for_completion(self.hooks.after_swap),
+    }
+}
+
+fun settle_add_liquidity<Asset, Quote>(
+    self: &mut Pool<Asset, Quote>,
+    position: &mut Position<Asset, Quote>,
+    liquidity: u128,
+    mut asset_payment: Balance<Asset>,
+    mut quote_payment: Balance<Quote>,
+    asset_required: u64,
+    quote_required: u64,
+): Completion<Asset, Quote, AddLiquidity> {
+    assert!(asset_payment.value() >= asset_required, EInsufficientPayment);
+    assert!(quote_payment.value() >= quote_required, EInsufficientPayment);
+
+    self.asset_reserve.join(asset_payment.split(asset_required));
+    self.quote_reserve.join(quote_payment.split(quote_required));
+    position.liquidity = position.liquidity + liquidity;
+
+    event::emit(LiquidityAdded {
+        pool_id: self.id.to_inner(),
+        position_id: position.id.to_inner(),
+        liquidity,
+        asset_amount: asset_required,
+        quote_amount: quote_required,
+    });
+
+    Completion {
+        pool_id: self.id.to_inner(),
+        asset_output: asset_payment,
+        quote_output: quote_payment,
+        approval: approval_for_completion(self.hooks.after_add_liquidity),
+    }
+}
+
+fun settle_remove_liquidity<Asset, Quote>(
+    self: &mut Pool<Asset, Quote>,
+    position: &mut Position<Asset, Quote>,
+    liquidity: u128,
+    asset_amount: u64,
+    quote_amount: u64,
+): Completion<Asset, Quote, RemoveLiquidity> {
+    position.liquidity = position.liquidity - liquidity;
+    let asset_output = self.asset_reserve.split(asset_amount);
+    let quote_output = self.quote_reserve.split(quote_amount);
+
+    event::emit(LiquidityRemoved {
+        pool_id: self.id.to_inner(),
+        position_id: position.id.to_inner(),
+        liquidity,
+        asset_amount,
+        quote_amount,
+    });
+
+    Completion {
+        pool_id: self.id.to_inner(),
+        asset_output,
+        quote_output,
+        approval: approval_for_completion(self.hooks.after_remove_liquidity),
+    }
+}
+
+fun settle_donate<Asset, Quote>(
+    self: &Pool<Asset, Quote>,
+    asset_amount: u64,
+    quote_amount: u64,
+): Completion<Asset, Quote, Donate> {
+    event::emit(Donated { pool_id: self.id.to_inner(), asset_amount, quote_amount });
+
+    Completion {
+        pool_id: self.id.to_inner(),
+        asset_output: balance::zero(),
+        quote_output: balance::zero(),
+        approval: approval_for_completion(self.hooks.after_donate),
+    }
+}
+
+// Curve math seam. Each function aborts until concentrated-liquidity math lands.
+
+/// Returns the input spent (including the LP fee), the output and the new price.
+fun swap_amounts<Asset, Quote>(
+    _self: &Pool<Asset, Quote>,
+    _is_asset_input: bool,
+    _input_value: u64,
+    _sqrt_price_limit_x96: u256,
+    _lp_fee_ppm: u32,
+): (u64, u64, u256) {
+    abort ECurveMathUnavailable
+}
+
+/// Returns the Asset and Quote that minting `liquidity` in the position requires,
+/// rounded up.
+fun add_liquidity_amounts<Asset, Quote>(
+    _self: &Pool<Asset, Quote>,
+    _position: &Position<Asset, Quote>,
+    _liquidity: u128,
+): (u64, u64) {
+    abort ECurveMathUnavailable
+}
+
+/// Returns the Asset and Quote that burning `liquidity` releases, rounded down.
+fun remove_liquidity_amounts<Asset, Quote>(
+    _self: &Pool<Asset, Quote>,
+    _position: &Position<Asset, Quote>,
+    _liquidity: u128,
+): (u64, u64) {
+    abort ECurveMathUnavailable
+}
+
+/// Credits a donation to in-range liquidity providers' fee growth.
+fun credit_donation<Asset, Quote>(
+    _self: &mut Pool<Asset, Quote>,
+    _asset_payment: Balance<Asset>,
+    _quote_payment: Balance<Quote>,
+) {
+    abort ECurveMathUnavailable
+}
+
+// === Test-Only Functions ===
+
+/// `execute_swap` with the curve's results supplied by the test.
+#[test_only]
+public fun execute_swap_with_amounts_for_testing<Asset, Quote>(
+    self: &mut Pool<Asset, Quote>,
+    request: SwapRequest<Asset, Quote>,
+    input_spent: u64,
+    output_amount: u64,
+    sqrt_price_after_x96: u256,
+    ctx: &mut TxContext,
+): Completion<Asset, Quote, Swap> {
+    let (is_asset_input, asset_payment, quote_payment, _, lp_fee_ppm) = self.open_swap(request);
+
+    self.settle_swap(
+        is_asset_input,
+        asset_payment,
+        quote_payment,
+        lp_fee_ppm,
+        input_spent,
+        output_amount,
+        sqrt_price_after_x96,
+        ctx,
+    )
+}
+
+/// `execute_add_liquidity` with the curve's results supplied by the test.
+#[test_only]
+public fun execute_add_liquidity_with_amounts_for_testing<Asset, Quote>(
+    self: &mut Pool<Asset, Quote>,
+    request: AddLiquidityRequest<Asset, Quote>,
+    position: &mut Position<Asset, Quote>,
+    asset_required: u64,
+    quote_required: u64,
+): Completion<Asset, Quote, AddLiquidity> {
+    let (liquidity, asset_payment, quote_payment) = self.open_add_liquidity(request, position);
+
+    self.settle_add_liquidity(position, liquidity, asset_payment, quote_payment, asset_required, quote_required)
+}
+
+/// `execute_remove_liquidity` with the curve's results supplied by the test.
+#[test_only]
+public fun execute_remove_liquidity_with_amounts_for_testing<Asset, Quote>(
+    self: &mut Pool<Asset, Quote>,
+    request: RemoveLiquidityRequest<Asset, Quote>,
+    position: &mut Position<Asset, Quote>,
+    asset_amount: u64,
+    quote_amount: u64,
+): Completion<Asset, Quote, RemoveLiquidity> {
+    let liquidity = self.open_remove_liquidity(request, position);
+
+    self.settle_remove_liquidity(position, liquidity, asset_amount, quote_amount)
+}
+
+/// `execute_donate` with the donation joined to reserves instead of fee growth.
+#[test_only]
+public fun execute_donate_for_testing<Asset, Quote>(
+    self: &mut Pool<Asset, Quote>,
+    request: DonateRequest<Asset, Quote>,
+): Completion<Asset, Quote, Donate> {
+    let (asset_payment, quote_payment) = self.open_donate(request);
+    let (asset_amount, quote_amount) = (asset_payment.value(), quote_payment.value());
+    self.asset_reserve.join(asset_payment);
+    self.quote_reserve.join(quote_payment);
+
+    self.settle_donate(asset_amount, quote_amount)
+}
+
+#[test_only]
+public fun join_reserves_for_testing<Asset, Quote>(
+    self: &mut Pool<Asset, Quote>,
+    asset: Balance<Asset>,
+    quote: Balance<Quote>,
+) {
+    self.asset_reserve.join(asset);
+    self.quote_reserve.join(quote);
+}
+
+#[test_only]
+public fun reserves_for_testing<Asset, Quote>(self: &Pool<Asset, Quote>): (u64, u64) {
+    (self.asset_reserve.value(), self.quote_reserve.value())
+}
+
+#[test_only]
+public fun is_in_operation_for_testing<Asset, Quote>(self: &Pool<Asset, Quote>): bool {
+    self.is_in_operation
+}
+
+#[test_only]
+public fun before_swap_hook_for_testing<Asset, Quote>(self: &Pool<Asset, Quote>): Option<TypeName> {
+    self.hooks.before_swap
+}
+
+#[test_only]
+public fun after_donate_hook_for_testing<Asset, Quote>(self: &Pool<Asset, Quote>): Option<TypeName> {
+    self.hooks.after_donate
+}
 
 // === Imports ===
 
-use blast_admin::{
-    acl::AdminWitness,
-    operational_version::{Self, OperationalVersion}
-};
-
-use blast_fun::{bps, creator_authority::CurveFeeCap, launch::Launch};
-
-use blast_fun_dex::{dex_domain::DEX_DOMAIN, math, package_marker::PACKAGE_MARKER};
-
+use blast_fun_dex::{hook_config::HookConfig, i32::I32};
 use std::type_name::{Self, TypeName};
+use sui::{balance::{Self, Balance}, coin::Coin, dynamic_field, event};
 
-use sui::{
-    balance::{Self, Balance},
-    clock::Clock,
-    coin::Coin,
-    coin_registry::Currency,
-    event,
-    table::{Self, Table}
-};
+public use fun take_swap_asset_payment as SwapRequest.take_asset_payment;
+public use fun take_swap_quote_payment as SwapRequest.take_quote_payment;
+public use fun set_swap_lp_fee as SwapRequest.set_lp_fee;
+public use fun approve_swap as SwapRequest.approve;
+public use fun swap_is_asset_input as SwapRequest.is_asset_input;
+public use fun swap_input_value as SwapRequest.input_value;
+public use fun swap_sqrt_price_limit_x96 as SwapRequest.sqrt_price_limit_x96;
+public use fun swap_lp_fee_ppm as SwapRequest.lp_fee_ppm;
+public use fun approve_add_liquidity as AddLiquidityRequest.approve;
+public use fun add_liquidity_amount as AddLiquidityRequest.liquidity;
+public use fun approve_remove_liquidity as RemoveLiquidityRequest.approve;
+public use fun remove_liquidity_amount as RemoveLiquidityRequest.liquidity;
+public use fun approve_donate as DonateRequest.approve;
+public use fun donate_asset_value as DonateRequest.asset_value;
+public use fun donate_quote_value as DonateRequest.quote_value;
+public use fun approve_completion as Completion.approve;
+public use fun destroy_empty_position as Position.destroy_empty;
+public use fun position_pool_id as Position.pool_id;
+public use fun position_liquidity as Position.liquidity;

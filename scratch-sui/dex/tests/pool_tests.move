@@ -1,527 +1,890 @@
-// SPDX-License-Identifier: BUSL-1.1
-// Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
-
 #[test_only]
 module blast_fun_dex::pool_tests;
 
+// === Constants ===
+
+/// Price 1.0 in Q64.96.
+const SQRT_PRICE_ONE_X96: u256 = 79_228_162_514_264_337_593_543_950_336;
+const BELOW_PRICE_X96: u256 = 39_614_081_257_132_168_796_771_975_168;
+const ABOVE_PRICE_X96: u256 = 158_456_325_028_528_675_187_087_900_672;
+const MIN_SQRT_PRICE_X96: u256 = 4_295_128_739;
+const MAX_SQRT_PRICE_X96: u256 = 1_461_446_703_485_210_103_287_273_052_203_988_822_378_723_970_342;
+const LP_FEE_PPM: u32 = 3_000;
+const TICK_SPACING: u32 = 60;
+
 // === Test-Only Types ===
 
-public struct MEME() has drop;
+public struct ASSET has drop {}
+public struct QUOTE has drop {}
 
-public struct QUOTE() has drop;
+public struct TestHook() has drop;
+public struct OtherHook() has drop;
 
-public struct PoolFixture {
-    factory: Factory,
-    pool: Pool<MEME, QUOTE>,
-    position: Position<MEME, QUOTE>,
-    clock: Clock,
-    ctx: TxContext,
+public struct StateName() has copy, drop, store;
+
+/// Hook namespace and one configuration per test hook.
+public struct Fixture {
+    namespace: HookNamespace,
+    test_config: HookConfig<TestHook>,
+    other_config: HookConfig<OtherHook>,
 }
 
 // === Tests ===
 
-#[test]
-fun swaps_separate_fees_from_reserves_and_new_lp_cannot_claim_history() {
-    let mut f = start();
-    let input = coin::mint_for_testing<QUOTE>(101_000, f.ctx!());
-    let (output, refund) = f.buy(input, 50_000, 200);
-    assert_eq!(output.value(), 50_000);
-    assert_eq!(refund.value(), 0);
-    f.pool.assert_balances(50_000, 200_000, 1_000);
-    destroy(output);
-    destroy(refund);
-
-    let mut late = f.new_position();
-    let meme = coin::mint_for_testing<MEME>(50_000, f.ctx!());
-    let quote = coin::mint_for_testing<QUOTE>(200_000, f.ctx!());
-    let (meme, quote) = f.add_liquidity(&mut late, meme, quote, 100_000);
-    assert_eq!(meme.value(), 0);
-    assert_eq!(quote.value(), 0);
-    destroy(meme);
-    destroy(quote);
-    let late_fee = f.claim_fees(&mut late);
-    assert_eq!(late_fee.value(), 0);
-    destroy(late_fee);
-    let original_fee = f.claim_initial_fees();
-    assert_eq!(original_fee.value(), 989);
-    destroy(original_fee);
-    f.pool.assert_balances(100_000, 400_000, 11);
-    destroy(late);
-    f.end();
-}
+// Creation.
 
 #[test]
-fun deposits_return_excess_and_withdrawals_exclude_fee_pot() {
-    let mut f = start();
-    let mut position = f.new_position();
-    let meme = coin::mint_for_testing<MEME>(10_000, f.ctx!());
-    let quote = coin::mint_for_testing<QUOTE>(30_000, f.ctx!());
-    let (meme, quote) = f.add_liquidity(&mut position, meme, quote, 10_000);
-    assert_eq!(meme.value(), 0);
-    assert_eq!(quote.value(), 20_000);
-    destroy(meme);
-    destroy(quote);
-    let (meme, quote) = f.remove_liquidity(&mut position, 10_000, 10_000, 10_000);
-    assert_eq!(meme.value(), 10_000);
-    assert_eq!(quote.value(), 10_000);
-    destroy(meme);
-    destroy(quote);
-    position.destroy_empty();
-    f.pool.assert_balances(100_000, 100_000, 0);
-    f.end();
-}
-
-#[test]
-#[expected_failure(abort_code = pool::EFeeLimit, location = pool)]
-fun signed_fee_limit_rejects_a_more_expensive_trade() {
-    let mut f = start();
-    let input = coin::mint_for_testing<QUOTE>(101_000, f.ctx!());
-    let (output, refund) = f.buy(input, 1, 0);
-    destroy(output);
-    destroy(refund);
-    f.end();
-}
-
-#[test]
-#[expected_failure(abort_code = pool::EWrongPool, location = pool)]
-fun foreign_position_cannot_claim_pool_fees() {
-    let mut f = start();
-    let mut foreign = pool::foreign_position_for_testing<MEME, QUOTE>(f.ctx!());
-    let fees = f.claim_fees(&mut foreign);
-    destroy(fees);
-    destroy(foreign);
-    f.end();
-}
-
-#[test]
-#[expected_failure(abort_code = pool::EDuplicatePool, location = pool)]
-fun original_meme_type_has_only_one_canonical_pool() {
-    let mut f = start();
-    let (duplicate, position) = f.duplicate_pool();
-    destroy(duplicate);
-    destroy(position);
-    f.end();
-}
-
-#[test]
-fun events_replay_swaps_deposits_withdrawals_and_fee_claims() {
-    let mut f = start();
-    let pool_id = object::id(&f.pool);
-    let initial_id = object::id(&f.position);
-    let created = event::events_by_type<pool::PoolCreated<MEME, QUOTE>>();
-    let mut expected = bcs::to_bytes(&pool_id);
-    expected.append(bcs::to_bytes(&initial_id));
-    expected.append(bcs::to_bytes(&100_000u64));
-    expected.append(bcs::to_bytes(&100_000u64));
-    expected.append(bcs::to_bytes(&100_000u128));
-    expected.append(bcs::to_bytes(&0u64));
-    expected.append(bcs::to_bytes(&200u64));
-    expected.append(bcs::to_bytes(&0u64));
-    assert_eq!(created.length(), 1);
-    assert_eq!(bcs::to_bytes(&created[0]), expected);
-
-    let input = coin::mint_for_testing<QUOTE>(101_000, f.ctx!());
-    let (meme, refund) = f.buy(input, 50_000, 200);
-    destroy(meme);
-    destroy(refund);
-    let mut late = f.new_position();
-    let late_id = object::id(&late);
-    let positions = event::events_by_type<pool::PositionCreated>();
-    let mut expected = bcs::to_bytes(&pool_id);
-    expected.append(bcs::to_bytes(&late_id));
-    assert_eq!(positions.length(), 1);
-    assert_eq!(bcs::to_bytes(&positions[0]), expected);
-    let meme = coin::mint_for_testing<MEME>(5_000, f.ctx!());
-    let quote = coin::mint_for_testing<QUOTE>(20_000, f.ctx!());
-    let (meme, quote) = f.add_liquidity(&mut late, meme, quote, 10_000);
-    destroy(meme);
-    destroy(quote);
-    let input = coin::mint_for_testing<MEME>(55_000, f.ctx!());
-    let output = f.sell(input, 107_800, 200);
-    assert_eq!(output.value(), 107_800);
-    destroy(output);
-    let swaps = event::events_by_type<pool::Swapped>();
-    assert_eq!(swaps.length(), 2);
-    assert_eq!(
-        bcs::to_bytes(&swaps[0]),
-        swap_bytes(pool_id, true, 50_000, 100_000, 1_000, 50_000, 200_000, 1_000),
-    );
-    assert_eq!(
-        bcs::to_bytes(&swaps[1]),
-        swap_bytes(pool_id, false, 55_000, 110_000, 2_200, 110_000, 110_000, 3_200),
-    );
-    let (meme, quote) = f.remove_liquidity(&mut late, 10_000, 10_000, 10_000);
-    assert_eq!(meme.value(), 10_000);
-    assert_eq!(quote.value(), 10_000);
-    destroy(meme);
-    destroy(quote);
-    let changes = event::events_by_type<pool::LiquidityChanged>();
-    assert_eq!(changes.length(), 2);
-    assert_eq!(
-        bcs::to_bytes(&changes[0]),
-        liquidity_bytes(pool_id, late_id, true, 5_000, 20_000, 110_000),
-    );
-    assert_eq!(
-        bcs::to_bytes(&changes[1]),
-        liquidity_bytes(pool_id, late_id, false, 10_000, 10_000, 100_000),
-    );
-    let fee = f.claim_fees(&mut late);
-    assert_eq!(fee.value(), 199);
-    destroy(fee);
-    let fee = f.claim_initial_fees();
-    assert_eq!(fee.value(), 2_969);
-    destroy(fee);
-    let claims = event::events_by_type<pool::FeesClaimed>();
-    assert_eq!(claims.length(), 2);
-    let mut expected = bcs::to_bytes(&pool_id);
-    expected.append(bcs::to_bytes(&late_id));
-    expected.append(bcs::to_bytes(&199u64));
-    assert_eq!(bcs::to_bytes(&claims[0]), expected);
-    let mut expected = bcs::to_bytes(&pool_id);
-    expected.append(bcs::to_bytes(&initial_id));
-    expected.append(bcs::to_bytes(&2_969u64));
-    assert_eq!(bcs::to_bytes(&claims[1]), expected);
-    late.destroy_empty();
-    let closed = event::events_by_type<pool::PositionClosed>();
-    let mut expected = bcs::to_bytes(&pool_id);
-    expected.append(bcs::to_bytes(&late_id));
-    assert_eq!(closed.length(), 1);
-    assert_eq!(bcs::to_bytes(&closed[0]), expected);
-    f.pool.assert_balances(100_000, 100_000, 32);
-    f.end();
-}
-
-#[test]
-fun transferred_position_carries_earned_fees_to_its_new_owner() {
-    let mut scenario = sui::test_scenario::begin(@0xA);
-    let mut factory = pool::new_for_testing(scenario.ctx());
-    let clock = clock::create_for_testing(scenario.ctx());
-    let (mut pool, position) = pool::create_from_balances<MEME, QUOTE>(
-        &mut factory,
-        balance::create_for_testing(100_000),
-        balance::create_for_testing(100_000),
-        0,
-        &clock,
-        scenario.ctx(),
-    );
-    let position_id = object::id(&position);
-    let input = coin::mint_for_testing<QUOTE>(101_000, scenario.ctx());
-    let (meme, refund) = pool.buy(&factory, input, 50_000, 200, 0, &clock, scenario.ctx());
-    destroy(meme);
-    destroy(refund);
-    transfer::public_transfer(position, @0xB);
-    scenario.next_tx(@0xB);
-    let mut position = scenario.take_from_sender<Position<MEME, QUOTE>>();
-    assert_eq!(object::id(&position), position_id);
-    let fee = pool.claim_fees(&factory, &mut position, scenario.ctx());
-    assert_eq!(fee.value(), 989);
-    pool.assert_balances(50_000, 200_000, 11);
-    destroy(fee);
-    destroy(position);
-    destroy(pool);
-    destroy(factory);
-    clock.destroy_for_testing();
-    scenario.end();
-}
-
-#[test]
-#[expected_failure(abort_code = pool::EExpired, location = pool)]
-fun expired_deposit_rejects_before_zero_share_amounts() {
-    let mut f = start();
-    f.clock.increment_for_testing(1);
-    let mut position = f.new_position();
-    let meme = coin::mint_for_testing<MEME>(0, f.ctx!());
-    let quote = coin::mint_for_testing<QUOTE>(0, f.ctx!());
-    let (meme, quote) = f.add_liquidity(&mut position, meme, quote, 0);
-    destroy(meme);
-    destroy(quote);
-    destroy(position);
-    f.end();
-}
-
-#[test]
-#[expected_failure(abort_code = pool::EExpired, location = pool)]
-fun expired_withdrawal_precedes_empty_position() {
-    let mut f = start();
-    f.clock.increment_for_testing(1);
-    let mut position = f.new_position();
-    let (meme, quote) = f.remove_liquidity(&mut position, 1, 0, 0);
-    destroy(meme);
-    destroy(quote);
-    destroy(position);
-    f.end();
-}
-
-#[test]
-#[expected_failure(abort_code = pool::EInsufficientShares, location = pool)]
-fun withdrawal_cannot_redeem_another_positions_shares() {
-    let mut f = start();
-    let mut position = f.new_position();
-    let (meme, quote) = f.remove_liquidity(&mut position, 1, 0, 0);
-    destroy(meme);
-    destroy(quote);
-    destroy(position);
-    f.end();
-}
-
-#[test]
-#[expected_failure(abort_code = pool::EMinimumShares, location = pool)]
-fun paired_deposit_rejects_more_than_supported_minimum_shares() {
-    let mut f = start();
-    let mut position = f.new_position();
-    let meme = coin::mint_for_testing<MEME>(1, f.ctx!());
-    let quote = coin::mint_for_testing<QUOTE>(1, f.ctx!());
-    let (meme, quote) = f.add_liquidity(&mut position, meme, quote, 2);
-    destroy(meme);
-    destroy(quote);
-    destroy(position);
-    f.end();
-}
-
-#[test]
-#[expected_failure(abort_code = pool::EPositionNotEmpty, location = pool)]
-fun position_with_principal_cannot_be_destroyed() {
-    let mut f = start();
-    let mut position = f.new_position();
-    let meme = coin::mint_for_testing<MEME>(1, f.ctx!());
-    let quote = coin::mint_for_testing<QUOTE>(1, f.ctx!());
-    let (meme, quote) = f.add_liquidity(&mut position, meme, quote, 1);
-    destroy(meme);
-    destroy(quote);
-    position.destroy_empty();
-    f.end();
-}
-
-#[test]
-#[expected_failure(abort_code = pool::EMinimumOutput, location = pool)]
-fun withdrawal_checks_each_minimum_receipt() {
-    let mut f = start();
-    let mut position = f.new_position();
-    let meme = coin::mint_for_testing<MEME>(1000, f.ctx!());
-    let quote = coin::mint_for_testing<QUOTE>(1000, f.ctx!());
-    let (meme, quote) = f.add_liquidity(&mut position, meme, quote, 1000);
-    destroy(meme);
-    destroy(quote);
-    let (meme, quote) = f.remove_liquidity(&mut position, 1000, 1001, 1000);
-    destroy(meme);
-    destroy(quote);
-    destroy(position);
-    f.end();
-}
-
-#[test]
-#[expected_failure(abort_code = pool::EZeroAmount, location = pool)]
-fun withdrawal_rejects_a_zero_rounded_asset_receipt() {
-    let mut f = start();
-    let mut position = f.new_position();
-    let meme = coin::mint_for_testing<MEME>(1, f.ctx!());
-    let quote = coin::mint_for_testing<QUOTE>(1, f.ctx!());
-    let (meme, quote) = f.add_liquidity(&mut position, meme, quote, 1);
-    destroy(meme);
-    destroy(quote);
-    let input = coin::mint_for_testing<QUOTE>(101_001, f.ctx!());
-    let (meme, quote) = f.buy(input, 1, 500);
-    destroy(meme);
-    destroy(quote);
-    let (meme, quote) = f.remove_liquidity(&mut position, 1, 0, 0);
-    destroy(meme);
-    destroy(quote);
-    destroy(position);
-    f.end();
-}
-
-#[test]
-#[expected_failure(abort_code = pool::ESeedTooSmall, location = pool)]
-fun seed_equal_to_permanently_locked_shares_is_rejected() {
+#[expected_failure(abort_code = pool::EIdenticalTokens, location = blast_fun_dex::pool)]
+fun new_rejects_identical_tokens() {
     let mut ctx = tx_context::dummy();
-    let mut factory = pool::new_for_testing(&mut ctx);
-    let clock = clock::create_for_testing(&mut ctx);
-    let (pool, position) = pool::create_from_balances<MEME, QUOTE>(
-        &mut factory,
-        balance::create_for_testing(1000),
-        balance::create_for_testing(1000),
-        0,
-        &clock,
+
+    let initializer = pool::new_with_fixed_fee<ASSET, ASSET>(TICK_SPACING, LP_FEE_PPM, SQRT_PRICE_ONE_X96, &mut ctx);
+
+    destroy(initializer);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EInvalidTickSpacing, location = blast_fun_dex::pool)]
+fun new_rejects_zero_tick_spacing() {
+    let mut ctx = tx_context::dummy();
+
+    let initializer = pool::new_with_fixed_fee<ASSET, QUOTE>(0, LP_FEE_PPM, SQRT_PRICE_ONE_X96, &mut ctx);
+
+    destroy(initializer);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EInvalidTickSpacing, location = blast_fun_dex::pool)]
+fun new_rejects_tick_spacing_above_the_maximum() {
+    let mut ctx = tx_context::dummy();
+
+    let initializer = pool::new_with_fixed_fee<ASSET, QUOTE>(32_768, LP_FEE_PPM, SQRT_PRICE_ONE_X96, &mut ctx);
+
+    destroy(initializer);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EInvalidLpFee, location = blast_fun_dex::pool)]
+fun new_rejects_lp_fee_above_one_million_ppm() {
+    let mut ctx = tx_context::dummy();
+
+    let initializer = pool::new_with_fixed_fee<ASSET, QUOTE>(TICK_SPACING, 1_000_001, SQRT_PRICE_ONE_X96, &mut ctx);
+
+    destroy(initializer);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EInvalidSqrtPrice, location = blast_fun_dex::pool)]
+fun new_rejects_price_below_the_minimum() {
+    let mut ctx = tx_context::dummy();
+
+    let initializer = pool::new_with_fixed_fee<ASSET, QUOTE>(
+        TICK_SPACING,
+        LP_FEE_PPM,
+        MIN_SQRT_PRICE_X96 - 1,
         &mut ctx,
     );
-    destroy(pool);
-    destroy(position);
-    destroy(factory);
-    clock.destroy_for_testing();
+
+    destroy(initializer);
 }
 
 #[test]
-#[expected_failure(abort_code = pool::EIdenticalAssets, location = pool)]
-fun pool_cannot_use_identical_asset_types() {
+#[expected_failure(abort_code = pool::EInvalidSqrtPrice, location = blast_fun_dex::pool)]
+fun new_rejects_the_exclusive_maximum_price() {
     let mut ctx = tx_context::dummy();
-    let mut factory = pool::new_for_testing(&mut ctx);
-    let clock = clock::create_for_testing(&mut ctx);
-    let (pool, position) = pool::create_from_balances<MEME, MEME>(
-        &mut factory,
-        balance::create_for_testing(100_000),
-        balance::create_for_testing(100_000),
-        0,
-        &clock,
+
+    let initializer = pool::new_with_fixed_fee<ASSET, QUOTE>(TICK_SPACING, LP_FEE_PPM, MAX_SQRT_PRICE_X96, &mut ctx);
+
+    destroy(initializer);
+}
+
+#[test]
+fun new_accepts_every_boundary_value() {
+    let mut ctx = tx_context::dummy();
+
+    let low = pool::new_with_fixed_fee<ASSET, QUOTE>(1, 1_000_000, MIN_SQRT_PRICE_X96, &mut ctx).finalize();
+    let high = pool::new_with_fixed_fee<ASSET, QUOTE>(32_767, 0, MAX_SQRT_PRICE_X96 - 1, &mut ctx).finalize();
+
+    assert_eq!(low.lp_fee_ppm(), 1_000_000);
+    assert_eq!(high.sqrt_price_x96(), MAX_SQRT_PRICE_X96 - 1);
+    destroy(low);
+    destroy(high);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EDynamicFeeWithoutHook, location = blast_fun_dex::pool)]
+fun finalize_rejects_dynamic_fee_without_a_before_swap_hook() {
+    let mut ctx = tx_context::dummy();
+    let fixture = new_fixture(&mut ctx);
+    let mut initializer = pool::new_with_dynamic_fee<ASSET, QUOTE>(
+        TICK_SPACING,
+        LP_FEE_PPM,
+        SQRT_PRICE_ONE_X96,
         &mut ctx,
     );
+    initializer.register_hook(&fixture.test_config, TestHook(), pool::after_swap_flag!());
+
+    let pool = initializer.finalize();
+
     destroy(pool);
-    destroy(position);
-    destroy(factory);
-    clock.destroy_for_testing();
+    destroy(fixture);
 }
 
 #[test]
-#[expected_failure(abort_code = pool::EAccountingOverflow, location = pool)]
-fun fee_growth_rejects_an_unrepresentable_accumulation() {
-    let mut f = start();
-    f.pool.set_fee_growth_for_testing(std::u128::max_value!());
-    let input = coin::mint_for_testing<QUOTE>(101_000, f.ctx!());
-    let (meme, refund) = f.buy(input, 1, 500);
-    destroy(meme);
-    destroy(refund);
-    f.end();
+#[expected_failure(abort_code = pool::EInvalidHookFlags, location = blast_fun_dex::pool)]
+fun register_hook_rejects_empty_flags() {
+    let mut ctx = tx_context::dummy();
+    let fixture = new_fixture(&mut ctx);
+    let mut initializer = pool::new_with_fixed_fee<ASSET, QUOTE>(
+        TICK_SPACING,
+        LP_FEE_PPM,
+        SQRT_PRICE_ONE_X96,
+        &mut ctx,
+    );
+
+    initializer.register_hook(&fixture.test_config, TestHook(), 0);
+
+    destroy(initializer);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EHookSlotTaken, location = blast_fun_dex::pool)]
+fun register_hook_rejects_a_slot_bound_to_another_hook() {
+    let mut ctx = tx_context::dummy();
+    let fixture = new_fixture(&mut ctx);
+    let mut initializer = pool::new_with_fixed_fee<ASSET, QUOTE>(
+        TICK_SPACING,
+        LP_FEE_PPM,
+        SQRT_PRICE_ONE_X96,
+        &mut ctx,
+    );
+    initializer.register_hook(&fixture.test_config, TestHook(), pool::before_swap_flag!());
+
+    initializer.register_hook(
+        &fixture.other_config,
+        OtherHook(),
+        pool::before_swap_flag!() | pool::after_swap_flag!(),
+    );
+
+    destroy(initializer);
+    destroy(fixture);
+}
+
+#[test]
+fun register_hook_binds_only_the_selected_slots() {
+    let mut ctx = tx_context::dummy();
+    let fixture = new_fixture(&mut ctx);
+
+    let pool = fixture.hooked_pool(pool::before_swap_flag!(), &mut ctx);
+
+    assert_eq!(pool.before_swap_hook_for_testing(), option::some(type_name::with_defining_ids<TestHook>()));
+    assert_eq!(pool.after_donate_hook_for_testing(), option::none());
+    destroy(pool);
+    destroy(fixture);
+}
+
+// Positions.
+
+#[test]
+#[expected_failure(abort_code = pool::EInvalidTickRange, location = blast_fun_dex::pool)]
+fun new_position_rejects_equal_ticks() {
+    let mut ctx = tx_context::dummy();
+    let pool = plain_pool(&mut ctx);
+
+    let position = pool.new_position(i32::from_u32(60), i32::from_u32(60), &mut ctx);
+
+    destroy(position);
+    destroy(pool);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EInvalidTickRange, location = blast_fun_dex::pool)]
+fun new_position_rejects_a_tick_off_the_spacing() {
+    let mut ctx = tx_context::dummy();
+    let pool = plain_pool(&mut ctx);
+
+    let position = pool.new_position(i32::neg_from_u32(60), i32::from_u32(61), &mut ctx);
+
+    destroy(position);
+    destroy(pool);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EInvalidTickRange, location = blast_fun_dex::pool)]
+fun new_position_rejects_a_tick_beyond_the_maximum() {
+    let mut ctx = tx_context::dummy();
+    // 887,280 is a multiple of 60 just above the 887,272 maximum.
+    let pool = plain_pool(&mut ctx);
+
+    let position = pool.new_position(i32::neg_from_u32(887_280), i32::from_u32(60), &mut ctx);
+
+    destroy(position);
+    destroy(pool);
+}
+
+#[test]
+fun new_position_starts_empty_and_destroys() {
+    let mut ctx = tx_context::dummy();
+    let pool = plain_pool(&mut ctx);
+
+    let position = pool.new_position(i32::neg_from_u32(887_220), i32::from_u32(887_220), &mut ctx);
+
+    assert_eq!(position.pool_id(), object::id(&pool));
+    assert_eq!(position.liquidity(), 0);
+    position.destroy_empty();
+    destroy(pool);
+}
+
+// Swap.
+
+#[test]
+fun unhooked_swap_settles_reserves_and_returns_change() {
+    let mut ctx = tx_context::dummy();
+    let mut pool = plain_pool(&mut ctx);
+    pool.join_reserves_for_testing(balance::create_for_testing(0), balance::create_for_testing(1_000));
+
+    let request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
+    assert!(pool.is_in_operation_for_testing());
+    let completion = pool.execute_swap_with_amounts_for_testing(request, 60, 55, BELOW_PRICE_X96, &mut ctx);
+    let (asset_coin, quote_coin) = pool.finish(completion, 40, 55, &mut ctx);
+
+    assert_eq!(asset_coin.burn_for_testing(), 40);
+    assert_eq!(quote_coin.burn_for_testing(), 55);
+    pool.assert_reserves(60, 945);
+    assert_eq!(pool.sqrt_price_x96(), BELOW_PRICE_X96);
+    assert!(!pool.is_in_operation_for_testing());
+    destroy(pool);
+}
+
+#[test]
+fun quote_to_asset_swap_settles_the_other_side() {
+    let mut ctx = tx_context::dummy();
+    let mut pool = plain_pool(&mut ctx);
+    pool.join_reserves_for_testing(balance::create_for_testing(1_000), balance::create_for_testing(0));
+
+    let request = pool.begin_swap_quote_to_asset(quote(100, &mut ctx), ABOVE_PRICE_X96);
+    assert!(!request.is_asset_input());
+    let completion = pool.execute_swap_with_amounts_for_testing(request, 100, 90, ABOVE_PRICE_X96, &mut ctx);
+    let (asset_coin, quote_coin) = pool.finish(completion, 90, 0, &mut ctx);
+
+    assert_eq!(asset_coin.burn_for_testing(), 90);
+    assert_eq!(quote_coin.burn_for_testing(), 0);
+    pool.assert_reserves(910, 100);
+    destroy(pool);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::ECurveMathUnavailable, location = blast_fun_dex::pool)]
+fun execute_swap_reaches_the_curve_seam_once_approved() {
+    let mut ctx = tx_context::dummy();
+    let fixture = new_fixture(&mut ctx);
+    let mut pool = fixture.hooked_pool(pool::before_swap_flag!(), &mut ctx);
+    let mut request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
+    request.approve(&pool, TestHook());
+
+    let completion = pool.execute_swap(request, &mut ctx);
+
+    destroy(completion);
+    destroy(pool);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EPoolInOperation, location = blast_fun_dex::pool)]
+fun begin_rejects_a_second_operation_on_a_busy_pool() {
+    let mut ctx = tx_context::dummy();
+    let mut pool = plain_pool(&mut ctx);
+    let first = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
+
+    let second = pool.begin_donate(asset(1, &mut ctx), quote(0, &mut ctx));
+
+    destroy(first);
+    destroy(second);
+    destroy(pool);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EZeroAmount, location = blast_fun_dex::pool)]
+fun begin_swap_rejects_a_zero_payment() {
+    let mut ctx = tx_context::dummy();
+    let mut pool = plain_pool(&mut ctx);
+
+    let request = pool.begin_swap_asset_to_quote(asset(0, &mut ctx), BELOW_PRICE_X96);
+
+    destroy(request);
+    destroy(pool);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EZeroAmount, location = blast_fun_dex::pool)]
+fun begin_swap_checks_the_payment_before_the_price_limit() {
+    let mut ctx = tx_context::dummy();
+    let mut pool = plain_pool(&mut ctx);
+
+    let request = pool.begin_swap_asset_to_quote(asset(0, &mut ctx), ABOVE_PRICE_X96);
+
+    destroy(request);
+    destroy(pool);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EInvalidPriceLimit, location = blast_fun_dex::pool)]
+fun begin_swap_asset_to_quote_rejects_a_limit_above_the_price() {
+    let mut ctx = tx_context::dummy();
+    let mut pool = plain_pool(&mut ctx);
+
+    let request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), ABOVE_PRICE_X96);
+
+    destroy(request);
+    destroy(pool);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EInvalidPriceLimit, location = blast_fun_dex::pool)]
+fun begin_swap_asset_to_quote_rejects_the_minimum_price_limit() {
+    let mut ctx = tx_context::dummy();
+    let mut pool = plain_pool(&mut ctx);
+
+    let request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), MIN_SQRT_PRICE_X96);
+
+    destroy(request);
+    destroy(pool);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EInvalidPriceLimit, location = blast_fun_dex::pool)]
+fun begin_swap_quote_to_asset_rejects_the_current_price_as_limit() {
+    let mut ctx = tx_context::dummy();
+    let mut pool = plain_pool(&mut ctx);
+
+    let request = pool.begin_swap_quote_to_asset(quote(100, &mut ctx), SQRT_PRICE_ONE_X96);
+
+    destroy(request);
+    destroy(pool);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EMissingApproval, location = blast_fun_dex::pool)]
+fun execute_swap_rejects_a_request_the_bound_hook_did_not_approve() {
+    let mut ctx = tx_context::dummy();
+    let fixture = new_fixture(&mut ctx);
+    let mut pool = fixture.hooked_pool(pool::before_swap_flag!(), &mut ctx);
+    let request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
+
+    let completion = pool.execute_swap(request, &mut ctx);
+
+    destroy(completion);
+    destroy(pool);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EHookNotBound, location = blast_fun_dex::pool)]
+fun approve_rejects_a_witness_not_bound_to_the_slot() {
+    let mut ctx = tx_context::dummy();
+    let fixture = new_fixture(&mut ctx);
+    let mut pool = fixture.hooked_pool(pool::before_swap_flag!(), &mut ctx);
+    let mut request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
+
+    request.approve(&pool, OtherHook());
+
+    destroy(request);
+    destroy(pool);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EHookNotBound, location = blast_fun_dex::pool)]
+fun approve_rejects_any_witness_on_an_empty_slot() {
+    let mut ctx = tx_context::dummy();
+    let fixture = new_fixture(&mut ctx);
+    let mut pool = fixture.hooked_pool(pool::after_swap_flag!(), &mut ctx);
+    let mut request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
+
+    request.approve(&pool, TestHook());
+
+    destroy(request);
+    destroy(pool);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EAlreadyApproved, location = blast_fun_dex::pool)]
+fun approve_rejects_a_second_approval() {
+    let mut ctx = tx_context::dummy();
+    let fixture = new_fixture(&mut ctx);
+    let mut pool = fixture.hooked_pool(pool::before_swap_flag!(), &mut ctx);
+    let mut request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
+    request.approve(&pool, TestHook());
+
+    request.approve(&pool, TestHook());
+
+    destroy(request);
+    destroy(pool);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EAlreadyApproved, location = blast_fun_dex::pool)]
+fun take_payment_rejects_an_approved_request() {
+    let mut ctx = tx_context::dummy();
+    let fixture = new_fixture(&mut ctx);
+    let mut pool = fixture.hooked_pool(pool::before_swap_flag!(), &mut ctx);
+    let mut request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
+    request.approve(&pool, TestHook());
+
+    let taken = request.take_asset_payment(&pool, TestHook(), 1);
+
+    destroy(taken);
+    destroy(request);
+    destroy(pool);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EWrongPool, location = blast_fun_dex::pool)]
+fun approve_rejects_a_request_from_another_pool() {
+    let mut ctx = tx_context::dummy();
+    let fixture = new_fixture(&mut ctx);
+    let mut first_pool = fixture.hooked_pool(pool::before_swap_flag!(), &mut ctx);
+    let second_pool = fixture.hooked_pool(pool::before_swap_flag!(), &mut ctx);
+    let mut request = first_pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
+
+    request.approve(&second_pool, TestHook());
+
+    destroy(request);
+    destroy(first_pool);
+    destroy(second_pool);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EWrongPool, location = blast_fun_dex::pool)]
+fun execute_swap_rejects_a_request_from_another_pool() {
+    let mut ctx = tx_context::dummy();
+    let mut first_pool = plain_pool(&mut ctx);
+    let mut second_pool = plain_pool(&mut ctx);
+    let request = first_pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
+
+    let completion = second_pool.execute_swap(request, &mut ctx);
+
+    destroy(completion);
+    destroy(first_pool);
+    destroy(second_pool);
+}
+
+#[test]
+fun before_swap_hook_takes_payment_and_sets_the_dynamic_fee() {
+    let mut ctx = tx_context::dummy();
+    let fixture = new_fixture(&mut ctx);
+    let mut pool = fixture.dynamic_pool(&mut ctx);
+    pool.join_reserves_for_testing(balance::create_for_testing(0), balance::create_for_testing(1_000));
+    let mut request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
+    assert_eq!(request.lp_fee_ppm(), LP_FEE_PPM);
+
+    let hook_fee = request.take_asset_payment(&pool, TestHook(), 10);
+    request.set_lp_fee(&pool, TestHook(), 10_000);
+    request.approve(&pool, TestHook());
+
+    assert_eq!(hook_fee.destroy_for_testing(), 10);
+    assert_eq!(request.input_value(), 90);
+    assert_eq!(request.lp_fee_ppm(), 10_000);
+    assert_eq!(pool.lp_fee_ppm(), LP_FEE_PPM);
+    let completion = pool.execute_swap_with_amounts_for_testing(request, 90, 80, BELOW_PRICE_X96, &mut ctx);
+    let (asset_coin, quote_coin) = pool.finish(completion, 0, 80, &mut ctx);
+    assert_eq!(asset_coin.burn_for_testing(), 0);
+    assert_eq!(quote_coin.burn_for_testing(), 80);
+    destroy(pool);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EFixedLpFee, location = blast_fun_dex::pool)]
+fun set_lp_fee_rejects_a_fixed_fee_pool() {
+    let mut ctx = tx_context::dummy();
+    let fixture = new_fixture(&mut ctx);
+    let mut pool = fixture.hooked_pool(pool::before_swap_flag!(), &mut ctx);
+    let mut request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
+
+    request.set_lp_fee(&pool, TestHook(), 10_000);
+
+    destroy(request);
+    destroy(pool);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EInvalidLpFee, location = blast_fun_dex::pool)]
+fun set_lp_fee_rejects_a_fee_above_one_million_ppm() {
+    let mut ctx = tx_context::dummy();
+    let fixture = new_fixture(&mut ctx);
+    let mut pool = fixture.dynamic_pool(&mut ctx);
+    let mut request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
+
+    request.set_lp_fee(&pool, TestHook(), 1_000_001);
+
+    destroy(request);
+    destroy(pool);
+    destroy(fixture);
+}
+
+#[test]
+fun after_hook_adjusts_output_before_approving() {
+    let mut ctx = tx_context::dummy();
+    let fixture = new_fixture(&mut ctx);
+    let mut pool = fixture.hooked_pool(pool::after_swap_flag!(), &mut ctx);
+    pool.join_reserves_for_testing(balance::create_for_testing(0), balance::create_for_testing(1_000));
+    let request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
+    let mut completion = pool.execute_swap_with_amounts_for_testing(request, 100, 90, BELOW_PRICE_X96, &mut ctx);
+
+    let skimmed = completion.take_quote_output(&pool, TestHook(), 5);
+    completion.join_asset_output(&pool, TestHook(), balance::create_for_testing(2));
+    completion.approve(&pool, TestHook());
+
+    assert_eq!(skimmed.destroy_for_testing(), 5);
+    let (asset_coin, quote_coin) = pool.finish(completion, 2, 85, &mut ctx);
+    assert_eq!(asset_coin.burn_for_testing(), 2);
+    assert_eq!(quote_coin.burn_for_testing(), 85);
+    destroy(pool);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EMissingApproval, location = blast_fun_dex::pool)]
+fun finish_rejects_a_completion_the_after_hook_did_not_approve() {
+    let mut ctx = tx_context::dummy();
+    let fixture = new_fixture(&mut ctx);
+    let mut pool = fixture.hooked_pool(pool::after_swap_flag!(), &mut ctx);
+    pool.join_reserves_for_testing(balance::create_for_testing(0), balance::create_for_testing(1_000));
+    let request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
+    let completion = pool.execute_swap_with_amounts_for_testing(request, 100, 90, BELOW_PRICE_X96, &mut ctx);
+
+    let (asset_coin, quote_coin) = pool.finish(completion, 0, 0, &mut ctx);
+
+    destroy(asset_coin);
+    destroy(quote_coin);
+    destroy(pool);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EInsufficientOutput, location = blast_fun_dex::pool)]
+fun finish_rejects_output_below_the_minimum() {
+    let mut ctx = tx_context::dummy();
+    let mut pool = plain_pool(&mut ctx);
+    pool.join_reserves_for_testing(balance::create_for_testing(0), balance::create_for_testing(1_000));
+    let request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
+    let completion = pool.execute_swap_with_amounts_for_testing(request, 100, 90, BELOW_PRICE_X96, &mut ctx);
+
+    let (asset_coin, quote_coin) = pool.finish(completion, 0, 91, &mut ctx);
+
+    destroy(asset_coin);
+    destroy(quote_coin);
+    destroy(pool);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EWrongPool, location = blast_fun_dex::pool)]
+fun finish_rejects_a_completion_from_another_pool() {
+    let mut ctx = tx_context::dummy();
+    let mut first_pool = plain_pool(&mut ctx);
+    let mut second_pool = plain_pool(&mut ctx);
+    first_pool.join_reserves_for_testing(balance::create_for_testing(0), balance::create_for_testing(1_000));
+    let request = first_pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
+    let completion = first_pool.execute_swap_with_amounts_for_testing(request, 100, 90, BELOW_PRICE_X96, &mut ctx);
+
+    let (asset_coin, quote_coin) = second_pool.finish(completion, 0, 0, &mut ctx);
+
+    destroy(asset_coin);
+    destroy(quote_coin);
+    destroy(first_pool);
+    destroy(second_pool);
+}
+
+// Liquidity.
+
+#[test]
+fun add_and_remove_liquidity_move_reserves_and_position_liquidity() {
+    let mut ctx = tx_context::dummy();
+    let fixture = new_fixture(&mut ctx);
+    let mut pool = fixture.hooked_pool(pool::all_hook_flags!(), &mut ctx);
+    let mut position = pool.new_position(i32::neg_from_u32(600), i32::from_u32(600), &mut ctx);
+
+    let mut add_request = pool.begin_add_liquidity(&position, 500, asset(100, &mut ctx), quote(100, &mut ctx));
+    assert_eq!(add_request.liquidity(), 500);
+    add_request.approve(&pool, TestHook());
+    let mut added = pool.execute_add_liquidity_with_amounts_for_testing(add_request, &mut position, 70, 60);
+    added.approve(&pool, TestHook());
+    let (asset_refund, quote_refund) = pool.finish(added, 30, 40, &mut ctx);
+
+    assert_eq!(asset_refund.burn_for_testing(), 30);
+    assert_eq!(quote_refund.burn_for_testing(), 40);
+    assert_eq!(position.liquidity(), 500);
+    pool.assert_reserves(70, 60);
+
+    let mut remove_request = pool.begin_remove_liquidity(&position, 500);
+    remove_request.approve(&pool, TestHook());
+    let mut removed = pool.execute_remove_liquidity_with_amounts_for_testing(remove_request, &mut position, 69, 59);
+    removed.approve(&pool, TestHook());
+    let (asset_out, quote_out) = pool.finish(removed, 69, 59, &mut ctx);
+
+    assert_eq!(asset_out.burn_for_testing(), 69);
+    assert_eq!(quote_out.burn_for_testing(), 59);
+    pool.assert_reserves(1, 1);
+    position.destroy_empty();
+    destroy(pool);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::ECurveMathUnavailable, location = blast_fun_dex::pool)]
+fun execute_add_liquidity_reaches_the_curve_seam_once_approved() {
+    let mut ctx = tx_context::dummy();
+    let mut pool = plain_pool(&mut ctx);
+    let mut position = pool.new_position(i32::neg_from_u32(600), i32::from_u32(600), &mut ctx);
+    let request = pool.begin_add_liquidity(&position, 500, asset(100, &mut ctx), quote(100, &mut ctx));
+
+    let completion = pool.execute_add_liquidity(request, &mut position);
+
+    destroy(completion);
+    destroy(position);
+    destroy(pool);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EInsufficientPayment, location = blast_fun_dex::pool)]
+fun add_liquidity_rejects_a_payment_below_the_requirement() {
+    let mut ctx = tx_context::dummy();
+    let mut pool = plain_pool(&mut ctx);
+    let mut position = pool.new_position(i32::neg_from_u32(600), i32::from_u32(600), &mut ctx);
+    let request = pool.begin_add_liquidity(&position, 500, asset(100, &mut ctx), quote(100, &mut ctx));
+
+    let completion = pool.execute_add_liquidity_with_amounts_for_testing(request, &mut position, 101, 0);
+
+    destroy(completion);
+    destroy(position);
+    destroy(pool);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EWrongPosition, location = blast_fun_dex::pool)]
+fun execute_add_liquidity_rejects_a_different_position() {
+    let mut ctx = tx_context::dummy();
+    let mut pool = plain_pool(&mut ctx);
+    let position = pool.new_position(i32::neg_from_u32(600), i32::from_u32(600), &mut ctx);
+    let mut other_position = pool.new_position(i32::neg_from_u32(600), i32::from_u32(600), &mut ctx);
+    let request = pool.begin_add_liquidity(&position, 500, asset(100, &mut ctx), quote(100, &mut ctx));
+
+    let completion = pool.execute_add_liquidity(request, &mut other_position);
+
+    destroy(completion);
+    destroy(position);
+    destroy(other_position);
+    destroy(pool);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EWrongPool, location = blast_fun_dex::pool)]
+fun begin_add_liquidity_rejects_a_position_of_another_pool() {
+    let mut ctx = tx_context::dummy();
+    let mut pool = plain_pool(&mut ctx);
+    let other_pool = plain_pool(&mut ctx);
+    let position = other_pool.new_position(i32::neg_from_u32(600), i32::from_u32(600), &mut ctx);
+
+    let request = pool.begin_add_liquidity(&position, 500, asset(100, &mut ctx), quote(100, &mut ctx));
+
+    destroy(request);
+    destroy(position);
+    destroy(pool);
+    destroy(other_pool);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EZeroLiquidity, location = blast_fun_dex::pool)]
+fun begin_add_liquidity_rejects_zero_liquidity() {
+    let mut ctx = tx_context::dummy();
+    let mut pool = plain_pool(&mut ctx);
+    let position = pool.new_position(i32::neg_from_u32(600), i32::from_u32(600), &mut ctx);
+
+    let request = pool.begin_add_liquidity(&position, 0, asset(100, &mut ctx), quote(100, &mut ctx));
+
+    destroy(request);
+    destroy(position);
+    destroy(pool);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EInsufficientLiquidity, location = blast_fun_dex::pool)]
+fun begin_remove_liquidity_rejects_more_than_the_position_holds() {
+    let mut ctx = tx_context::dummy();
+    let mut pool = plain_pool(&mut ctx);
+    let position = pool.new_position(i32::neg_from_u32(600), i32::from_u32(600), &mut ctx);
+
+    let request = pool.begin_remove_liquidity(&position, 1);
+
+    destroy(request);
+    destroy(position);
+    destroy(pool);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EPositionNotEmpty, location = blast_fun_dex::pool)]
+fun destroy_empty_position_rejects_a_position_with_liquidity() {
+    let mut ctx = tx_context::dummy();
+    let mut pool = plain_pool(&mut ctx);
+    let mut position = pool.new_position(i32::neg_from_u32(600), i32::from_u32(600), &mut ctx);
+    let request = pool.begin_add_liquidity(&position, 500, asset(100, &mut ctx), quote(100, &mut ctx));
+    let completion = pool.execute_add_liquidity_with_amounts_for_testing(request, &mut position, 100, 100);
+    let (asset_refund, quote_refund) = pool.finish(completion, 0, 0, &mut ctx);
+    asset_refund.destroy_zero();
+    quote_refund.destroy_zero();
+
+    position.destroy_empty();
+
+    destroy(pool);
+}
+
+// Donate.
+
+#[test]
+fun donate_runs_both_hooks_and_returns_empty_coins() {
+    let mut ctx = tx_context::dummy();
+    let fixture = new_fixture(&mut ctx);
+    let mut pool = fixture.hooked_pool(pool::before_donate_flag!() | pool::after_donate_flag!(), &mut ctx);
+
+    let mut request = pool.begin_donate(asset(5, &mut ctx), quote(0, &mut ctx));
+    assert_eq!(request.asset_value(), 5);
+    assert_eq!(request.quote_value(), 0);
+    request.approve(&pool, TestHook());
+    let mut completion = pool.execute_donate_for_testing(request);
+    completion.approve(&pool, TestHook());
+    let (asset_coin, quote_coin) = pool.finish(completion, 0, 0, &mut ctx);
+
+    asset_coin.destroy_zero();
+    quote_coin.destroy_zero();
+    pool.assert_reserves(5, 0);
+    destroy(pool);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EZeroAmount, location = blast_fun_dex::pool)]
+fun begin_donate_rejects_an_empty_donation() {
+    let mut ctx = tx_context::dummy();
+    let mut pool = plain_pool(&mut ctx);
+
+    let request = pool.begin_donate(asset(0, &mut ctx), quote(0, &mut ctx));
+
+    destroy(request);
+    destroy(pool);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::ECurveMathUnavailable, location = blast_fun_dex::pool)]
+fun execute_donate_reaches_the_curve_seam() {
+    let mut ctx = tx_context::dummy();
+    let mut pool = plain_pool(&mut ctx);
+    let request = pool.begin_donate(asset(5, &mut ctx), quote(0, &mut ctx));
+
+    let completion = pool.execute_donate(request);
+
+    destroy(completion);
+    destroy(pool);
+}
+
+// Hook state.
+
+#[test]
+fun hook_state_is_isolated_per_witness_and_writable_mid_operation() {
+    let mut ctx = tx_context::dummy();
+    let fixture = new_fixture(&mut ctx);
+    let mut initializer = pool::new_with_fixed_fee<ASSET, QUOTE>(
+        TICK_SPACING,
+        LP_FEE_PPM,
+        SQRT_PRICE_ONE_X96,
+        &mut ctx,
+    );
+    initializer.register_hook(&fixture.test_config, TestHook(), pool::before_swap_flag!());
+    initializer.register_hook(&fixture.other_config, OtherHook(), pool::after_swap_flag!());
+    let mut pool = initializer.finalize();
+    let request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
+
+    pool.add_hook_state(&TestHook(), StateName(), 1u64);
+    pool.add_hook_state(&OtherHook(), StateName(), 2u64);
+    *pool.hook_state_mut<_, _, _, _, u64>(&TestHook(), StateName()) = 3;
+
+    assert_eq!(*pool.hook_state<_, _, _, _, u64>(&TestHook(), StateName()), 3);
+    assert_eq!(*pool.hook_state<_, _, _, _, u64>(&OtherHook(), StateName()), 2);
+    assert_eq!(pool.remove_hook_state<_, _, _, _, u64>(&OtherHook(), StateName()), 2);
+    assert!(!pool.has_hook_state(&OtherHook(), StateName()));
+    assert!(pool.has_hook_state(&TestHook(), StateName()));
+    destroy(request);
+    destroy(pool);
+    destroy(fixture);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EHookNotBound, location = blast_fun_dex::pool)]
+fun hook_state_rejects_a_hook_not_bound_to_the_pool() {
+    let mut ctx = tx_context::dummy();
+    let fixture = new_fixture(&mut ctx);
+    let mut pool = fixture.hooked_pool(pool::before_swap_flag!(), &mut ctx);
+
+    pool.add_hook_state(&OtherHook(), StateName(), 1u64);
+
+    destroy(pool);
+    destroy(fixture);
 }
 
 // === Test Helpers ===
 
-fun start(): PoolFixture {
-    let mut ctx = tx_context::dummy();
-    let mut factory = pool::new_for_testing(&mut ctx);
-    let clock = clock::create_for_testing(&mut ctx);
-    let (pool, position) = pool::create_from_balances<MEME, QUOTE>(
-        &mut factory,
-        balance::create_for_testing(100_000),
-        balance::create_for_testing(100_000),
-        0,
-        &clock,
-        &mut ctx,
-    );
-    PoolFixture { factory, pool, position, clock, ctx }
+fun new_fixture(ctx: &mut TxContext): Fixture {
+    let mut namespace = hook_config::new_namespace_for_testing(ctx);
+    let test_config = hook_config::new(&mut namespace, TestHook(), 1);
+    let other_config = hook_config::new(&mut namespace, OtherHook(), 1);
+
+    Fixture { namespace, test_config, other_config }
 }
 
-fun end(f: PoolFixture) { destroy(f); }
+/// Fixed-fee pool with `TestHook` bound to `flags`.
+fun hooked_pool(self: &Fixture, flags: u8, ctx: &mut TxContext): Pool<ASSET, QUOTE> {
+    let mut initializer = pool::new_with_fixed_fee(TICK_SPACING, LP_FEE_PPM, SQRT_PRICE_ONE_X96, ctx);
+    initializer.register_hook(&self.test_config, TestHook(), flags);
 
-fun assert_balances(pool: &Pool<MEME, QUOTE>, meme: u64, quote: u64, fees: u64) {
-    let (actual_meme, actual_quote, actual_fees) = pool.balances_for_testing();
-    assert_eq!(actual_meme, meme);
-    assert_eq!(actual_quote, quote);
-    assert_eq!(actual_fees, fees);
+    initializer.finalize()
 }
 
-fun swap_bytes(
-    pool_id: ID,
-    buy: bool,
-    meme: u64,
-    quote: u64,
-    fee: u64,
-    meme_reserve: u64,
-    quote_reserve: u64,
-    fee_balance: u64,
-): vector<u8> {
-    let mut bytes = bcs::to_bytes(&pool_id);
-    bytes.append(bcs::to_bytes(&buy));
-    bytes.append(bcs::to_bytes(&meme));
-    bytes.append(bcs::to_bytes(&quote));
-    bytes.append(bcs::to_bytes(&fee));
-    bytes.append(bcs::to_bytes(&0u64));
-    bytes.append(bcs::to_bytes(&meme_reserve));
-    bytes.append(bcs::to_bytes(&quote_reserve));
-    bytes.append(bcs::to_bytes(&fee_balance));
-    bytes.append(bcs::to_bytes(&(100_000u128 << 32)));
-    bytes.append(bcs::to_bytes(&0u64));
-    bytes
+/// Dynamic-fee pool with `TestHook` bound to before-swap.
+fun dynamic_pool(self: &Fixture, ctx: &mut TxContext): Pool<ASSET, QUOTE> {
+    let mut initializer = pool::new_with_dynamic_fee(TICK_SPACING, LP_FEE_PPM, SQRT_PRICE_ONE_X96, ctx);
+    initializer.register_hook(&self.test_config, TestHook(), pool::before_swap_flag!());
+
+    initializer.finalize()
 }
 
-fun liquidity_bytes(
-    pool_id: ID,
-    position_id: ID,
-    added: bool,
-    meme: u64,
-    quote: u64,
-    total: u128,
-): vector<u8> {
-    let mut bytes = bcs::to_bytes(&pool_id);
-    bytes.append(bcs::to_bytes(&position_id));
-    bytes.append(bcs::to_bytes(&added));
-    bytes.append(bcs::to_bytes(&10_000u128));
-    bytes.append(bcs::to_bytes(&meme));
-    bytes.append(bcs::to_bytes(&quote));
-    bytes.append(bcs::to_bytes(&total));
-    bytes
+fun assert_reserves(pool: &Pool<ASSET, QUOTE>, asset_reserve: u64, quote_reserve: u64) {
+    let (actual_asset, actual_quote) = pool.reserves_for_testing();
+    assert_eq!(actual_asset, asset_reserve);
+    assert_eq!(actual_quote, quote_reserve);
 }
 
-macro fun ctx($f: &mut PoolFixture): &mut TxContext { let f = $f; &mut f.ctx }
-
-fun buy(
-    f: &mut PoolFixture,
-    input: Coin<QUOTE>,
-    minimum: u64,
-    fee: u64,
-): (Coin<MEME>, Coin<QUOTE>) {
-    let PoolFixture { factory, pool, clock, ctx, .. } = f;
-    pool.buy(factory, input, minimum, fee, 0, clock, ctx)
+fun plain_pool(ctx: &mut TxContext): Pool<ASSET, QUOTE> {
+    pool::new_with_fixed_fee(TICK_SPACING, LP_FEE_PPM, SQRT_PRICE_ONE_X96, ctx).finalize()
 }
 
-fun sell(f: &mut PoolFixture, input: Coin<MEME>, minimum: u64, fee: u64): Coin<QUOTE> {
-    let PoolFixture { factory, pool, clock, ctx, .. } = f;
-    pool.sell(factory, input, minimum, fee, 0, clock, ctx)
+fun asset(value: u64, ctx: &mut TxContext): Coin<ASSET> {
+    coin::mint_for_testing(value, ctx)
 }
 
-fun new_position(f: &mut PoolFixture): Position<MEME, QUOTE> {
-    let PoolFixture { pool, ctx, .. } = f;
-    pool.new_position(ctx)
-}
-
-fun add_liquidity(
-    f: &mut PoolFixture,
-    position: &mut Position<MEME, QUOTE>,
-    meme: Coin<MEME>,
-    quote: Coin<QUOTE>,
-    minimum: u128,
-): (Coin<MEME>, Coin<QUOTE>) {
-    let PoolFixture { factory, pool, clock, ctx, .. } = f;
-    pool.add_liquidity(factory, position, meme, quote, minimum, 0, clock, ctx)
-}
-
-fun remove_liquidity(
-    f: &mut PoolFixture,
-    position: &mut Position<MEME, QUOTE>,
-    shares: u128,
-    meme: u64,
-    quote: u64,
-): (Coin<MEME>, Coin<QUOTE>) {
-    let PoolFixture { factory, pool, clock, ctx, .. } = f;
-    pool.remove_liquidity(factory, position, shares, meme, quote, 0, clock, ctx)
-}
-
-fun claim_fees(f: &mut PoolFixture, position: &mut Position<MEME, QUOTE>): Coin<QUOTE> {
-    let PoolFixture { factory, pool, ctx, .. } = f;
-    pool.claim_fees(factory, position, ctx)
-}
-
-fun claim_initial_fees(f: &mut PoolFixture): Coin<QUOTE> {
-    let PoolFixture { factory, pool, position, ctx, .. } = f;
-    pool.claim_fees(factory, position, ctx)
-}
-
-fun duplicate_pool(f: &mut PoolFixture): (Pool<MEME, QUOTE>, Position<MEME, QUOTE>) {
-    let PoolFixture { factory, clock, ctx, .. } = f;
-    pool::create_from_balances(
-        factory,
-        balance::create_for_testing(100_000),
-        balance::create_for_testing(100_000),
-        0,
-        clock,
-        ctx,
-    )
+fun quote(value: u64, ctx: &mut TxContext): Coin<QUOTE> {
+    coin::mint_for_testing(value, ctx)
 }
 
 // === Imports ===
 
-use blast_fun_dex::pool::{Self, Factory, Pool, Position};
+use blast_fun_dex::{hook_config::{Self, HookConfig, HookNamespace}, i32, pool::{Self, Pool}};
+use std::{type_name, unit_test::{assert_eq, destroy}};
+use sui::{balance, coin::{Self, Coin}};
 
-use std::{bcs, unit_test::{assert_eq, destroy}};
-
-use sui::{balance, clock::{Self, Clock}, coin::{Self, Coin}, event};
-
-use fun assert_balances as Pool.assert_balances;
+use fun assert_reserves as Pool.assert_reserves;
