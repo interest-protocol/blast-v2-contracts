@@ -15,6 +15,10 @@ public struct Ppm(u32) has copy, drop, store;
 
 // === Package Functions ===
 
+public(package) fun denominator(): u32 {
+    DENOMINATOR
+}
+
 public(package) fun new(value: u32): Ppm {
     assert!(value <= DENOMINATOR, EInvalidPpm);
 

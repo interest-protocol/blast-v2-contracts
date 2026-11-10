@@ -149,9 +149,10 @@ the same `blast_events::Event<T>` envelope (ADR 0130).
 
 ## Parked packages
 
-`scratch-sui/dex` is on hold outside every build. Its own one-time witnesses
-(`package_marker::PACKAGE_MARKER`, `dex_domain::DEX_DOMAIN`) and modules (`pool`,
-`migration`) are renamed when it returns to `sui/`.
+The [scratch DEX](../scratch-sui/README.md) sits outside the product surface.
+Its fee-tier registry and authority use `BlastDexFeeTiers` and
+`BlastDexFeeTierAdminCap`. The historical package and domain witnesses belonged
+to the full-range DEX described in [ADR 0076](decisions/0076-native-v2-and-auto-lp.md).
 
 Presale activation (ADR 0137) types the generic `Publication`, `PackageVersion`
 and `PackageAdmin` by `blast_presale_package::BLAST_PRESALE_PACKAGE`. The

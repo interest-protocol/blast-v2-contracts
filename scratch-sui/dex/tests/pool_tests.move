@@ -14,9 +14,8 @@ const LP_FEE_PPM: u32 = 3_000;
 const BASE_FEE_PPM: u32 = 3_000;
 const MAX_FEE_PPM: u32 = 20_000;
 const SENSITIVITY_PPM: u32 = 1_000_000;
-/// Prices 0.96, 1.08 and 0.92, each 1e-12 further from 1.0 so rounding cannot shrink the gap.
+/// Square-root prices at approximately 0.96 and 0.92 of the initial price in price terms.
 const PRICE_DOWN_4_PERCENT_X96: u256 = 77_627_428_567_259_243_148_980_294_874;
-const PRICE_UP_8_PERCENT_X96: u256 = 82_336_321_719_055_997_228_953_866_587;
 const PRICE_DOWN_8_PERCENT_X96: u256 = 75_992_983_863_969_107_875_071_309_058;
 /// The reference price window, and a realistic Unix epoch timestamp.
 const WINDOW_MS: u64 = 600_000;
@@ -275,7 +274,7 @@ fun unhooked_swap_settles_reserves_and_returns_change() {
 
     let request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
     assert!(pool.is_in_operation_for_testing());
-    let completion = pool.execute_swap_with_amounts_for_testing(request, 60, 55, BELOW_PRICE_X96, &clock, &mut ctx);
+    let completion = pool.execute_swap_with_amounts_for_testing(request, 60, 55, BELOW_PRICE_X96, 1, &clock, &mut ctx);
     let (asset_coin, quote_coin) = pool.finish(completion, 40, 55, &mut ctx);
 
     assert_eq!(asset_coin.burn_for_testing(), 40);
@@ -296,7 +295,7 @@ fun quote_to_asset_swap_settles_the_other_side() {
 
     let request = pool.begin_swap_quote_to_asset(quote(100, &mut ctx), ABOVE_PRICE_X96);
     assert!(!request.is_asset_input());
-    let completion = pool.execute_swap_with_amounts_for_testing(request, 100, 90, ABOVE_PRICE_X96, &clock, &mut ctx);
+    let completion = pool.execute_swap_with_amounts_for_testing(request, 100, 90, ABOVE_PRICE_X96, 1, &clock, &mut ctx);
     let (asset_coin, quote_coin) = pool.finish(completion, 90, 0, &mut ctx);
 
     assert_eq!(asset_coin.burn_for_testing(), 90);
@@ -513,7 +512,7 @@ fun execute_swap_rejects_a_request_from_another_pool() {
 }
 
 #[test]
-fun before_swap_hook_takes_payment_and_the_pool_keeps_its_lp_fee() {
+fun swap_event_reports_the_lp_fee_amount_after_the_hook_takes_payment() {
     let mut ctx = tx_context::dummy();
     let clock = clock::create_for_testing(&mut ctx);
     let fixture = new_fixture(&mut ctx);
@@ -526,11 +525,13 @@ fun before_swap_hook_takes_payment_and_the_pool_keeps_its_lp_fee() {
 
     assert_eq!(hook_fee.destroy_for_testing(), 10);
     assert_eq!(request.input_value(), 90);
-    let completion = pool.execute_swap_with_amounts_for_testing(request, 90, 80, BELOW_PRICE_X96, &clock, &mut ctx);
+    let completion = pool.execute_swap_with_amounts_for_testing(request, 90, 80, BELOW_PRICE_X96, 1, &clock, &mut ctx);
     let (asset_coin, quote_coin) = pool.finish(completion, 0, 80, &mut ctx);
     assert_eq!(asset_coin.burn_for_testing(), 0);
     assert_eq!(quote_coin.burn_for_testing(), 80);
-    assert_eq!(swapped_lp_fees_ppm(), vector[LP_FEE_PPM]);
+    let swaps = event::events_by_type<Swapped>();
+    assert_eq!(swaps.length(), 1);
+    assert_eq!(swaps[0].swapped_lp_fee_amount_for_testing(), 1);
     destroy(pool);
     destroy(fixture);
     clock.destroy_for_testing();
@@ -539,307 +540,46 @@ fun before_swap_hook_takes_payment_and_the_pool_keeps_its_lp_fee() {
 // LP fee.
 
 #[test]
-fun fixed_fee_swaps_price_once_and_never_move_the_reference() {
+fun fixed_fee_swaps_leave_the_reference_unobserved() {
     let mut ctx = tx_context::dummy();
     let mut clock = clock::create_for_testing(&mut ctx);
-    clock.set_for_testing(NOW_MS);
+    clock.set_for_testing(NOW_MS + 2 * WINDOW_MS);
     let mut pool = plain_pool(&mut ctx);
-    pool.join_reserves_for_testing(balance::create_for_testing(1_000), balance::create_for_testing(1_000));
+    pool.join_reserves_for_testing(balance::zero(), balance::create_for_testing(1_000));
 
-    let first = pool.swap_asset_to_quote_and_priced_lp_fees(
-        PRICE_DOWN_8_PERCENT_X96,
-        PRICE_DOWN_4_PERCENT_X96,
-        &clock,
-        &mut ctx,
-    );
-    assert_eq!(pool.sqrt_price_x96(), PRICE_DOWN_4_PERCENT_X96);
+    pool.swap_asset_for_testing(PRICE_DOWN_4_PERCENT_X96, &clock, &mut ctx);
 
-    clock.increment_for_testing(2 * WINDOW_MS);
-    let second = pool.swap_asset_to_quote_and_priced_lp_fees(
-        PRICE_DOWN_8_PERCENT_X96,
-        PRICE_DOWN_8_PERCENT_X96,
-        &clock,
-        &mut ctx,
-    );
-
-    assert_eq!(first, vector[LP_FEE_PPM]);
-    assert_eq!(second, vector[LP_FEE_PPM]);
-    assert_eq!(swapped_lp_fees_ppm(), vector[LP_FEE_PPM, LP_FEE_PPM]);
     pool.assert_reference(SQRT_PRICE_ONE_X96, 0);
     clock.destroy_for_testing();
     destroy(pool);
 }
 
 #[test]
-fun first_dynamic_swap_measures_against_the_creation_price() {
+fun dynamic_swaps_observe_the_pre_swap_spot_once_per_timestamp() {
     let mut ctx = tx_context::dummy();
     let mut clock = clock::create_for_testing(&mut ctx);
     clock.set_for_testing(NOW_MS);
     let mut pool = dynamic_pool(&mut ctx);
-    pool.join_reserves_for_testing(balance::create_for_testing(1_000), balance::create_for_testing(1_000));
+    pool.join_reserves_for_testing(balance::zero(), balance::create_for_testing(1_000));
 
-    // The reference starts at time zero, so the first swap moves it all the way
-    // to the pre-swap price, which is still the creation price.
-    let priced_lp_fees_ppm = pool.swap_asset_to_quote_and_priced_lp_fees(
-        PRICE_DOWN_4_PERCENT_X96,
-        PRICE_DOWN_4_PERCENT_X96,
-        &clock,
-        &mut ctx,
-    );
-
-    // 3,000 + 1,000,000 * 0.04^2 = 4,600 ppm.
-    assert_eq!(priced_lp_fees_ppm, vector[BASE_FEE_PPM, 4_600]);
-    assert_eq!(swapped_lp_fees_ppm(), vector[4_600]);
-    pool.assert_reference(SQRT_PRICE_ONE_X96, NOW_MS);
-    clock.destroy_for_testing();
-    destroy(pool);
-}
-
-#[test]
-fun dynamic_asset_to_quote_swap_previews_at_the_base_fee_and_charges_the_gap_fee() {
-    let mut ctx = tx_context::dummy();
-    let clock = clock::create_for_testing(&mut ctx);
-    let mut pool = dynamic_pool(&mut ctx);
-    pool.join_reserves_for_testing(balance::create_for_testing(0), balance::create_for_testing(1_000));
-    let request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
-
-    // The preview drops the price 4%: 3,000 + 1,000,000 * 0.04^2 = 4,600 ppm.
-    let (completion, priced_lp_fees_ppm) = pool.execute_swap_with_preview_for_testing(
-        request,
-        PRICE_DOWN_4_PERCENT_X96,
-        100,
-        90,
-        PRICE_DOWN_4_PERCENT_X96 + 1,
-        &clock,
-        &mut ctx,
-    );
-
-    assert_eq!(priced_lp_fees_ppm, vector[BASE_FEE_PPM, 4_600]);
-    assert_eq!(swapped_lp_fees_ppm(), vector[4_600]);
-    assert_eq!(pool.sqrt_price_x96(), PRICE_DOWN_4_PERCENT_X96 + 1);
-    let (asset_coin, quote_coin) = pool.finish(completion, 0, 90, &mut ctx);
-    asset_coin.destroy_zero();
-    assert_eq!(quote_coin.burn_for_testing(), 90);
-    pool.assert_reserves(100, 910);
-    clock.destroy_for_testing();
-    destroy(pool);
-}
-
-#[test]
-fun dynamic_quote_to_asset_swap_previews_at_the_base_fee_and_charges_the_gap_fee() {
-    let mut ctx = tx_context::dummy();
-    let clock = clock::create_for_testing(&mut ctx);
-    let mut pool = dynamic_pool(&mut ctx);
-    pool.join_reserves_for_testing(balance::create_for_testing(1_000), balance::create_for_testing(0));
-    let request = pool.begin_swap_quote_to_asset(quote(100, &mut ctx), ABOVE_PRICE_X96);
-
-    // The preview lifts the price 8%: 3,000 + 1,000,000 * 0.08^2 = 9,400 ppm.
-    let (completion, priced_lp_fees_ppm) = pool.execute_swap_with_preview_for_testing(
-        request,
-        PRICE_UP_8_PERCENT_X96,
-        100,
-        90,
-        PRICE_UP_8_PERCENT_X96 - 1,
-        &clock,
-        &mut ctx,
-    );
-
-    assert_eq!(priced_lp_fees_ppm, vector[BASE_FEE_PPM, 9_400]);
-    assert_eq!(swapped_lp_fees_ppm(), vector[9_400]);
-    assert_eq!(pool.sqrt_price_x96(), PRICE_UP_8_PERCENT_X96 - 1);
-    let (asset_coin, quote_coin) = pool.finish(completion, 90, 0, &mut ctx);
-    assert_eq!(asset_coin.burn_for_testing(), 90);
-    quote_coin.destroy_zero();
-    pool.assert_reserves(910, 100);
-    clock.destroy_for_testing();
-    destroy(pool);
-}
-
-#[test]
-fun dynamic_swap_charges_the_maximum_for_a_preview_far_from_the_reference() {
-    let mut ctx = tx_context::dummy();
-    let clock = clock::create_for_testing(&mut ctx);
-    let mut pool = dynamic_pool(&mut ctx);
-    pool.join_reserves_for_testing(balance::create_for_testing(1_000), balance::create_for_testing(1_000));
-
-    let priced_lp_fees_ppm = pool.swap_asset_to_quote_and_priced_lp_fees(
-        BELOW_PRICE_X96,
-        BELOW_PRICE_X96,
-        &clock,
-        &mut ctx,
-    );
-
-    assert_eq!(priced_lp_fees_ppm, vector[BASE_FEE_PPM, MAX_FEE_PPM]);
-    clock.destroy_for_testing();
-    destroy(pool);
-}
-
-#[test]
-fun half_a_window_moves_the_reference_halfway_up() {
-    let mut ctx = tx_context::dummy();
-    let mut clock = clock::create_for_testing(&mut ctx);
-    clock.set_for_testing(NOW_MS);
-    let mut pool = dynamic_pool(&mut ctx);
-    pool.join_reserves_for_testing(balance::create_for_testing(1_000), balance::create_for_testing(1_000));
-    pool.swap_quote_to_asset_and_priced_lp_fees(PRICE_UP_8_PERCENT_X96, PRICE_UP_8_PERCENT_X96, &clock, &mut ctx);
-
-    clock.increment_for_testing(WINDOW_MS / 2);
-    let priced_lp_fees_ppm = pool.swap_quote_to_asset_and_priced_lp_fees(
-        PRICE_UP_8_PERCENT_X96,
-        PRICE_UP_8_PERCENT_X96,
-        &clock,
-        &mut ctx,
-    );
-
-    let halfway = SQRT_PRICE_ONE_X96 + (PRICE_UP_8_PERCENT_X96 - SQRT_PRICE_ONE_X96) / 2;
-    pool.assert_reference(halfway, NOW_MS + WINDOW_MS / 2);
-    let charged_fee_ppm = pool.lp_fee().fee_at_price(halfway, PRICE_UP_8_PERCENT_X96).value();
-    // Measured from price 1.0396, price 1.08 is 3.885% away: 3,000 + 1,509 ppm.
-    assert_eq!(charged_fee_ppm, 4_509);
-    assert_eq!(priced_lp_fees_ppm, vector[BASE_FEE_PPM, charged_fee_ppm]);
-    clock.destroy_for_testing();
-    destroy(pool);
-}
-
-#[test]
-fun half_a_window_moves_the_reference_halfway_down() {
-    let mut ctx = tx_context::dummy();
-    let mut clock = clock::create_for_testing(&mut ctx);
-    clock.set_for_testing(NOW_MS);
-    let mut pool = dynamic_pool(&mut ctx);
-    pool.join_reserves_for_testing(balance::create_for_testing(1_000), balance::create_for_testing(1_000));
-    pool.swap_asset_to_quote_and_priced_lp_fees(PRICE_DOWN_8_PERCENT_X96, PRICE_DOWN_8_PERCENT_X96, &clock, &mut ctx);
-
-    clock.increment_for_testing(WINDOW_MS / 2);
-    let priced_lp_fees_ppm = pool.swap_asset_to_quote_and_priced_lp_fees(
-        PRICE_DOWN_8_PERCENT_X96,
-        PRICE_DOWN_8_PERCENT_X96,
-        &clock,
-        &mut ctx,
-    );
-
-    let halfway = SQRT_PRICE_ONE_X96 - (SQRT_PRICE_ONE_X96 - PRICE_DOWN_8_PERCENT_X96) / 2;
-    pool.assert_reference(halfway, NOW_MS + WINDOW_MS / 2);
-    let charged_fee_ppm = pool.lp_fee().fee_at_price(halfway, PRICE_DOWN_8_PERCENT_X96).value();
-    // Measured from price 0.9596, price 0.92 is 4.125% away: 3,000 + 1,701 ppm.
-    assert_eq!(charged_fee_ppm, 4_701);
-    assert_eq!(priced_lp_fees_ppm, vector[BASE_FEE_PPM, charged_fee_ppm]);
-    clock.destroy_for_testing();
-    destroy(pool);
-}
-
-#[test]
-fun a_full_window_or_more_lands_the_reference_on_the_pool_price() {
-    let mut ctx = tx_context::dummy();
-    let mut clock = clock::create_for_testing(&mut ctx);
-    clock.set_for_testing(NOW_MS);
-    let mut pool = dynamic_pool(&mut ctx);
-    pool.join_reserves_for_testing(balance::create_for_testing(1_000), balance::create_for_testing(1_000));
-    pool.swap_asset_to_quote_and_priced_lp_fees(PRICE_DOWN_4_PERCENT_X96, PRICE_DOWN_4_PERCENT_X96, &clock, &mut ctx);
-
-    // Exactly one window: the preview at the pre-swap price has no gap.
-    clock.increment_for_testing(WINDOW_MS);
-    let at_one_window = pool.swap_asset_to_quote_and_priced_lp_fees(
-        PRICE_DOWN_4_PERCENT_X96,
-        PRICE_DOWN_8_PERCENT_X96,
-        &clock,
-        &mut ctx,
-    );
-    pool.assert_reference(PRICE_DOWN_4_PERCENT_X96, NOW_MS + WINDOW_MS);
-
-    clock.increment_for_testing(10 * WINDOW_MS);
-    let after_ten_windows = pool.swap_asset_to_quote_and_priced_lp_fees(
-        PRICE_DOWN_8_PERCENT_X96,
-        PRICE_DOWN_8_PERCENT_X96,
-        &clock,
-        &mut ctx,
-    );
-
-    assert_eq!(at_one_window, vector[BASE_FEE_PPM, BASE_FEE_PPM]);
-    assert_eq!(after_ten_windows, vector[BASE_FEE_PPM, BASE_FEE_PPM]);
-    pool.assert_reference(PRICE_DOWN_8_PERCENT_X96, NOW_MS + 11 * WINDOW_MS);
-    clock.destroy_for_testing();
-    destroy(pool);
-}
-
-#[test]
-fun same_timestamp_swaps_share_the_unmoved_reference_and_later_ones_see_it_move() {
-    let mut ctx = tx_context::dummy();
-    let mut clock = clock::create_for_testing(&mut ctx);
-    clock.set_for_testing(NOW_MS);
-    let mut pool = dynamic_pool(&mut ctx);
-    pool.join_reserves_for_testing(balance::create_for_testing(1_000), balance::create_for_testing(1_000));
-    pool.swap_asset_to_quote_and_priced_lp_fees(PRICE_DOWN_4_PERCENT_X96, PRICE_DOWN_4_PERCENT_X96, &clock, &mut ctx);
-
-    // Same timestamp: the 4% move does not count, so 8% is measured from 1.0.
-    let same_timestamp = pool.swap_asset_to_quote_and_priced_lp_fees(
-        PRICE_DOWN_8_PERCENT_X96,
-        PRICE_DOWN_8_PERCENT_X96,
-        &clock,
-        &mut ctx,
-    );
-    assert_eq!(same_timestamp, vector[BASE_FEE_PPM, 9_400]);
+    pool.swap_asset_for_testing(PRICE_DOWN_4_PERCENT_X96, &clock, &mut ctx);
+    pool.swap_asset_for_testing(PRICE_DOWN_8_PERCENT_X96, &clock, &mut ctx);
     pool.assert_reference(SQRT_PRICE_ONE_X96, NOW_MS);
 
-    // A tenth of a window later the reference moves a tenth toward the 8% price.
-    clock.increment_for_testing(WINDOW_MS / 10);
-    let later = pool.swap_asset_to_quote_and_priced_lp_fees(
-        PRICE_DOWN_8_PERCENT_X96,
-        PRICE_DOWN_8_PERCENT_X96,
-        &clock,
-        &mut ctx,
-    );
+    clock.increment_for_testing(WINDOW_MS / 2);
+    pool.swap_asset_for_testing(PRICE_DOWN_8_PERCENT_X96, &clock, &mut ctx);
+    pool.assert_reference((SQRT_PRICE_ONE_X96 + PRICE_DOWN_8_PERCENT_X96) / 2, NOW_MS + WINDOW_MS / 2);
 
-    let moved = SQRT_PRICE_ONE_X96 - (SQRT_PRICE_ONE_X96 - PRICE_DOWN_8_PERCENT_X96) / 10;
-    pool.assert_reference(moved, NOW_MS + WINDOW_MS / 10);
-    let charged_fee_ppm = pool.lp_fee().fee_at_price(moved, PRICE_DOWN_8_PERCENT_X96).value();
-    assert!(charged_fee_ppm < 9_400);
-    assert_eq!(later, vector[BASE_FEE_PPM, charged_fee_ppm]);
-    clock.destroy_for_testing();
-    destroy(pool);
-}
-
-#[test]
-fun reference_moves_without_aborting_between_extreme_prices() {
-    let mut ctx = tx_context::dummy();
-    let mut clock = clock::create_for_testing(&mut ctx);
-    clock.set_for_testing(NOW_MS);
-    let mut pool = new_dynamic_pool<ASSET, QUOTE>(
-        TICK_SPACING,
-        BASE_FEE_PPM,
-        MAX_FEE_PPM,
-        SENSITIVITY_PPM,
-        MAX_SQRT_PRICE_X96 - 1,
-        &mut ctx,
-    ).finalize();
-    pool.join_reserves_for_testing(balance::create_for_testing(1_000), balance::create_for_testing(1_000));
-    let crash = pool.swap_asset_to_quote_and_priced_lp_fees(
-        MIN_SQRT_PRICE_X96 + 1,
-        MIN_SQRT_PRICE_X96 + 1,
-        &clock,
-        &mut ctx,
-    );
-
-    clock.increment_for_testing(WINDOW_MS - 1);
-    let recovery = pool.swap_quote_to_asset_and_priced_lp_fees(
-        MAX_SQRT_PRICE_X96 - 2,
-        MAX_SQRT_PRICE_X96 - 2,
-        &clock,
-        &mut ctx,
-    );
-
-    assert_eq!(crash, vector[BASE_FEE_PPM, MAX_FEE_PPM]);
-    assert_eq!(recovery, vector[BASE_FEE_PPM, MAX_FEE_PPM]);
-    let (reference_sqrt_price_x96, _) = pool.reference_for_testing();
-    assert!(reference_sqrt_price_x96 > MIN_SQRT_PRICE_X96 + 1);
-    assert!(reference_sqrt_price_x96 < MAX_SQRT_PRICE_X96 - 1);
+    clock.increment_for_testing(WINDOW_MS / 2);
+    pool.swap_asset_for_testing(PRICE_DOWN_8_PERCENT_X96, &clock, &mut ctx);
+    pool.assert_reference(PRICE_DOWN_8_PERCENT_X96, NOW_MS + WINDOW_MS);
     clock.destroy_for_testing();
     destroy(pool);
 }
 
 #[test]
 #[expected_failure(abort_code = blast_fun_dex::pool::ECurveMathUnavailable, location = blast_fun_dex::pool)]
-fun execute_dynamic_swap_reaches_the_curve_seam_for_the_preview() {
+fun execute_dynamic_swap_reaches_the_curve_seam() {
     let mut ctx = tx_context::dummy();
     let clock = clock::create_for_testing(&mut ctx);
     let mut pool = dynamic_pool(&mut ctx);
@@ -865,6 +605,7 @@ fun after_hook_adjusts_output_before_approving() {
         100,
         90,
         BELOW_PRICE_X96,
+        1,
         &clock,
         &mut ctx,
     );
@@ -891,7 +632,7 @@ fun finish_rejects_a_completion_the_after_hook_did_not_approve() {
     let mut pool = fixture.hooked_pool(pool::after_swap_flag!(), &mut ctx);
     pool.join_reserves_for_testing(balance::create_for_testing(0), balance::create_for_testing(1_000));
     let request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
-    let completion = pool.execute_swap_with_amounts_for_testing(request, 100, 90, BELOW_PRICE_X96, &clock, &mut ctx);
+    let completion = pool.execute_swap_with_amounts_for_testing(request, 100, 90, BELOW_PRICE_X96, 1, &clock, &mut ctx);
 
     let (asset_coin, quote_coin) = pool.finish(completion, 0, 0, &mut ctx);
 
@@ -910,7 +651,7 @@ fun finish_rejects_output_below_the_minimum() {
     let mut pool = plain_pool(&mut ctx);
     pool.join_reserves_for_testing(balance::create_for_testing(0), balance::create_for_testing(1_000));
     let request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
-    let completion = pool.execute_swap_with_amounts_for_testing(request, 100, 90, BELOW_PRICE_X96, &clock, &mut ctx);
+    let completion = pool.execute_swap_with_amounts_for_testing(request, 100, 90, BELOW_PRICE_X96, 1, &clock, &mut ctx);
 
     let (asset_coin, quote_coin) = pool.finish(completion, 0, 91, &mut ctx);
 
@@ -934,6 +675,7 @@ fun finish_rejects_a_completion_from_another_pool() {
         100,
         90,
         BELOW_PRICE_X96,
+        1,
         &clock,
         &mut ctx,
     );
@@ -1242,61 +984,18 @@ fun dynamic_pool(ctx: &mut TxContext): Pool<ASSET, QUOTE> {
         .finalize()
 }
 
-/// The LP fee every `Swapped` event so far reports, in order.
-fun swapped_lp_fees_ppm(): vector<u32> {
-    event::events_by_type<Swapped>().map!(|swapped| swapped.swapped_lp_fee_ppm_for_testing())
-}
-
-/// Swaps 100 Asset for 90 Quote through the curve seam with the given passes,
-/// returning the LP fees the curve priced at.
-fun swap_asset_to_quote_and_priced_lp_fees(
+/// Settles a fixture fill for 100 Asset and 90 Quote.
+fun swap_asset_for_testing(
     pool: &mut Pool<ASSET, QUOTE>,
-    preview_sqrt_price_x96: u256,
     sqrt_price_after_x96: u256,
     clock: &Clock,
     ctx: &mut TxContext,
-): vector<u32> {
+) {
     let request = pool.begin_swap_asset_to_quote(asset(100, ctx), MIN_SQRT_PRICE_X96 + 1);
-    let (completion, priced_lp_fees_ppm) = pool.execute_swap_with_preview_for_testing(
-        request,
-        preview_sqrt_price_x96,
-        100,
-        90,
-        sqrt_price_after_x96,
-        clock,
-        ctx,
-    );
+    let completion = pool.execute_swap_with_amounts_for_testing(request, 100, 90, sqrt_price_after_x96, 1, clock, ctx);
     let (asset_coin, quote_coin) = pool.finish(completion, 0, 90, ctx);
     asset_coin.destroy_zero();
     quote_coin.burn_for_testing();
-
-    priced_lp_fees_ppm
-}
-
-/// Swaps 100 Quote for 90 Asset through the curve seam with the given passes,
-/// returning the LP fees the curve priced at.
-fun swap_quote_to_asset_and_priced_lp_fees(
-    pool: &mut Pool<ASSET, QUOTE>,
-    preview_sqrt_price_x96: u256,
-    sqrt_price_after_x96: u256,
-    clock: &Clock,
-    ctx: &mut TxContext,
-): vector<u32> {
-    let request = pool.begin_swap_quote_to_asset(quote(100, ctx), MAX_SQRT_PRICE_X96 - 1);
-    let (completion, priced_lp_fees_ppm) = pool.execute_swap_with_preview_for_testing(
-        request,
-        preview_sqrt_price_x96,
-        100,
-        90,
-        sqrt_price_after_x96,
-        clock,
-        ctx,
-    );
-    let (asset_coin, quote_coin) = pool.finish(completion, 90, 0, ctx);
-    asset_coin.burn_for_testing();
-    quote_coin.destroy_zero();
-
-    priced_lp_fees_ppm
 }
 
 fun assert_reference(pool: &Pool<ASSET, QUOTE>, reference_sqrt_price_x96: u256, reference_moved_at_ms: u64) {
@@ -1336,5 +1035,4 @@ use sui::{balance, clock::{Self, Clock}, coin::{Self, Coin}, event};
 
 use fun assert_reference as Pool.assert_reference;
 use fun assert_reserves as Pool.assert_reserves;
-use fun swap_asset_to_quote_and_priced_lp_fees as Pool.swap_asset_to_quote_and_priced_lp_fees;
-use fun swap_quote_to_asset_and_priced_lp_fees as Pool.swap_quote_to_asset_and_priced_lp_fees;
+use fun swap_asset_for_testing as Pool.swap_asset_for_testing;

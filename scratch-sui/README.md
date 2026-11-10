@@ -7,6 +7,11 @@ Outside the production surface. Do not publish: the DEX's curve math aborts.
 packages build and their tests pass; the tests supply curve results through
 test-only seams, because the math functions abort.
 
+This scratch checkpoint replaces the parked full-range native V2 DEX source
+from [ADR 0076](../docs/decisions/0076-native-v2-and-auto-lp.md). The previous
+scratch source is [retained in Git history](https://github.com/interest-protocol/blast-v2-contracts/tree/45547cf8e795878659b92a316d8ee80c9045d519/scratch-sui/dex).
+Launchpad migration and native pool administration are outside this checkpoint.
+
 ## Why the pool is the entry point
 
 Sui has no dynamic dispatch, so the pool cannot call a hook. Every operation is
@@ -60,6 +65,45 @@ carries bytes from a hook's own service, such as a signed attestation; generic
 routers pass it empty. Hooks needing other objects or per-user arguments add
 separate typed functions for hook-aware callers.
 
+## Native LP fees and the curve boundary
+
+The swap core freezes the dynamic reference before pricing and passes a fee
+path to the curve. Hooks can charge their own fee before the core prices the
+remaining payment. Fixed pools use the registered rate throughout the fill and
+skip reference observations. Dynamic pools set a registered base rate, a cap
+from the base through 100,000 ppm, and a sensitivity from 100,000 through
+100,000,000 ppm of fee per unit of squared price gap. The sensitivity is an
+integer coefficient. `Ppm` stores validated rates, where 1,000,000 is 100%.
+
+The curve interface takes one fee path per fill. The reference uses exact sums for
+the current partial and previous complete 10-minute windows, aligned to Unix
+time. It blends the current integral with the unexpired fraction of the
+previous window's average and rounds down once. Observations within a timestamp
+add zero weight. A price-changing trade affects the reference only through
+the spot and the time that spot persists. The first pool price seeds the
+pre-swap history. This is a bucketed estimate of a rolling average from the
+pool's own spot price. A sustained price move can shift it, including in a
+thin pool.
+
+For each curve step, pass the current square-root price and the nearer of the
+next initialized tick and the user's limit to `lp_fee::next_step`. Use its
+limit and `net_budget_down` to price the step. Round the curve's net input up
+and output down. Charge `fee_up` on the net input actually consumed. Stop if
+the remaining gross input cannot advance the curve. When crossing a tick,
+credit the fee to the active liquidity before changing the range. Return the
+sum of charged LP fees in input units for the swap event.
+
+The reference fixes the bands for the whole path. Within a band, the rate is
+the quadratic rate at its farther edge, capped by the pool maximum. This
+approximates the continuous quadratic schedule with at most 512 bands on
+each side and one capped region beyond each. The approximation never exceeds
+the nominal cap. Each segment can round the fee up by less than one input atom.
+Adding a split inside one constant-liquidity, constant-rate segment can add at
+most one net-input atom and two fee atoms. Since both rounded amounts are
+monotone and subadditive under merging, a split cannot reduce the fee for the
+same directed price path and liquidity. The harness exercises the fee path
+with a single-range fill and a fill crossing an initialized tick.
+
 ## Before publication
 
 Implement the four curve functions at the end of `dex/sources/pool.move`
@@ -71,7 +115,7 @@ runtime and an SDK resolver, and an independent audit.
 Verify locally from the repository root:
 
 ```sh
-sui move test --path scratch-sui/dex --lint --warnings-are-errors
-sui move test --path scratch-sui/example_hook --lint --warnings-are-errors
+sui move test --path scratch-sui/dex --threads 1 --lint --warnings-are-errors
+sui move test --path scratch-sui/example_hook --threads 1 --lint --warnings-are-errors
 python3 scripts/check_move_style.py
 ```

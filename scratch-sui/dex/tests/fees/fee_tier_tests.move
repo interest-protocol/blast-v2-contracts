@@ -53,6 +53,13 @@ fun an_added_tier_is_available_to_new_pools_without_repricing_existing_pools() {
     assert_eq!(fixed.lp_fee().base_fee_ppm(), 2_000);
     assert_eq!(dynamic.lp_fee().base_fee_ppm(), 2_000);
     assert_eq!(dynamic.lp_fee().max_fee_ppm(), 10_000);
+
+    let fixed_path = lp_fee::new_fee_path(fixed.lp_fee(), SQRT_PRICE_ONE_X96);
+    let dynamic_path = lp_fee::new_fee_path(dynamic.lp_fee(), SQRT_PRICE_ONE_X96);
+    let end_x96 = 2 * SQRT_PRICE_ONE_X96;
+    assert_eq!(fixed_path.next_step(SQRT_PRICE_ONE_X96, end_x96).net_budget_down(10_000), 9_980);
+    assert_eq!(dynamic_path.next_step(SQRT_PRICE_ONE_X96, end_x96).net_budget_down(10_000), 9_980);
+    assert_eq!(dynamic_path.next_step(end_x96, 3 * SQRT_PRICE_ONE_X96).net_budget_down(10_000), 9_900);
     assert!(tiers.is_fee_tier(1));
     assert!(tiers.is_fee_tier(100_000));
     test_scenario::return_shared(tiers);
