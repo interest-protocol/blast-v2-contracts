@@ -9,6 +9,7 @@ const SQRT_PRICE_ONE_X96: u256 = 79_228_162_514_264_337_593_543_950_336;
 const BELOW_PRICE_X96: u256 = 39_614_081_257_132_168_796_771_975_168;
 const ABOVE_PRICE_X96: u256 = 158_456_325_028_528_675_187_087_900_672;
 const FEE_BPS: u64 = 100;
+const FEE_CHANGE_DELAY_MS: u64 = 48 * 60 * 60 * 1_000;
 /// Price 0.96, 1e-12 further from 1.0 so rounding cannot shrink the gap.
 const PRICE_DOWN_4_PERCENT_X96: u256 = 77_627_428_567_259_243_148_980_294_874;
 
@@ -347,27 +348,45 @@ fun create_config_rejects_a_fee_above_ten_percent() {
 }
 
 #[test]
-fun set_fee_bps_changes_later_swaps() {
+fun only_an_applied_fee_change_affects_later_swaps() {
     let mut fixture = setup(FEE_BPS);
     let mut pool = fixture.fixed_fee_pool();
 
-    let Fixture { config, admin_cap, version, .. } = &mut fixture;
-    fee_hook::set_fee_bps(config, version, admin_cap, 1_000);
+    let Fixture { config, admin_cap, version, clock, .. } = &mut fixture;
+    let ready_at_ms = config.schedule_fee_bps(version, admin_cap, 1_000, clock);
+    assert_eq!(ready_at_ms, FEE_CHANGE_DELAY_MS);
+    fixture.clock.set_for_testing(ready_at_ms);
 
-    let payment = fixture.asset(1_000);
-    let mut request = pool.begin_swap_asset_to_quote(&fixture.version, payment, BELOW_PRICE_X96);
-    fee_hook::before_swap(
-        &mut pool,
-        &fixture.version,
-        &fixture.config,
-        &mut request,
-        vector[],
-        &fixture.clock,
-        fixture.scenario.ctx(),
-    );
-    assert_eq!(request.input_value(), 900);
-    destroy(request);
+    assert_eq!(fixture.swap_input_after_fee(&mut pool), 990);
+    let Fixture { config, version, clock, .. } = &mut fixture;
+    config.apply_fee_bps(version, clock);
+    assert_eq!(fixture.swap_input_after_fee(&mut pool), 900);
     destroy(pool);
+    fixture.teardown();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::ENotReady, location = blast_admin::delayed)]
+fun a_hook_fee_cannot_apply_before_its_deadline() {
+    let mut fixture = setup(FEE_BPS);
+    let Fixture { config, admin_cap, version, clock, .. } = &mut fixture;
+    let ready_at_ms = config.schedule_fee_bps(version, admin_cap, 1_000, clock);
+    clock.set_for_testing(ready_at_ms - 1);
+
+    config.apply_fee_bps(version, clock);
+
+    fixture.teardown();
+}
+
+#[test, expected_failure(abort_code = blast_admin::errors::ENoPending, location = blast_admin::delayed)]
+fun a_ready_hook_fee_can_be_cancelled() {
+    let mut fixture = setup(FEE_BPS);
+    let Fixture { config, admin_cap, version, clock, .. } = &mut fixture;
+    let ready_at_ms = config.schedule_fee_bps(version, admin_cap, 1_000, clock);
+    clock.set_for_testing(ready_at_ms);
+
+    config.cancel_fee_bps(version, admin_cap);
+    config.apply_fee_bps(version, clock);
+
     fixture.teardown();
 }
 
@@ -376,11 +395,11 @@ fun set_fee_bps_changes_later_swaps() {
     abort_code = blast_fun_dex_example_hook::fee_hook::EFeeTooHigh,
     location = blast_fun_dex_example_hook::fee_hook,
 )]
-fun set_fee_bps_rejects_a_fee_above_ten_percent() {
+fun schedule_fee_bps_rejects_a_fee_above_ten_percent() {
     let mut fixture = setup(FEE_BPS);
 
-    let Fixture { config, admin_cap, version, .. } = &mut fixture;
-    fee_hook::set_fee_bps(config, version, admin_cap, 1_001);
+    let Fixture { config, admin_cap, version, clock, .. } = &mut fixture;
+    config.schedule_fee_bps(version, admin_cap, 1_001, clock);
 
     fixture.teardown();
 }
@@ -445,6 +464,23 @@ fun fixed_fee_pool(self: &mut Fixture): Pool<ASSET, QUOTE> {
     initializer.finalize(&self.version)
 }
 
+fun swap_input_after_fee(self: &mut Fixture, pool: &mut Pool<ASSET, QUOTE>): u64 {
+    let payment = self.asset(1_000);
+    let mut request = pool.begin_swap_asset_to_quote(&self.version, payment, BELOW_PRICE_X96);
+    fee_hook::before_swap(
+        pool,
+        &self.version,
+        &self.config,
+        &mut request,
+        vector[],
+        &self.clock,
+        self.scenario.ctx(),
+    );
+    let input_value = request.input_value();
+    destroy(request);
+    input_value
+}
+
 fun pause_dex(self: &mut Fixture) {
     let bits = self.version.valid_pause_bits();
     let pause_admin = blast_acl::witness_for_testing<PauseAdmin<BLAST_FUN_DEX>>();
@@ -485,3 +521,6 @@ use sui::{
 };
 
 use fun package_admin::pause as PackageVersion.pause;
+use fun fee_hook::schedule_fee_bps as HookConfig.schedule_fee_bps;
+use fun fee_hook::apply_fee_bps as HookConfig.apply_fee_bps;
+use fun fee_hook::cancel_fee_bps as HookConfig.cancel_fee_bps;

@@ -73,9 +73,15 @@ one hook call per bound slot.
 The shared fee tier registry starts with 0.1%, 0.3%, 1%, and 2%. The Blast ACL
 root grants `blast_fun_dex_domain::BlastDexFeeTierAdmin` to an operator's
 `AdminCap`. The operator signs in with `blast_acl::sign_in` and passes the
-resulting `AdminWitness` to `lp_fee::add_fee_tier` in the same transaction. Each
-addition registers a distinct rate from 1 to 100,000 ppm and emits
-`blast_events::BlastDexFeeTierAdded`.
+resulting `AdminWitness` to `lp_fee::schedule_fee_tier` with the shared Sui
+`Clock`. The proposal specifies a distinct rate from 1 to 100,000 ppm and
+returns its deadline. Each rate has its own 48-hour notice and rescheduling
+restarts that rate's notice. The registry holds up to 32 pending rates.
+`CancelAdmin<BLAST_FUN_DEX>` can discard a proposal by rate with
+`lp_fee::cancel_fee_tier`, even once ready. Anyone can call
+`lp_fee::apply_fee_tier` at or after the deadline to admit the rate and emit
+`blast_events::BlastDexFeeTierAdded`. The shared delayed map emits the
+proposal lifecycle keyed by the fee tier registry's ID and `lp_fee::FeeTierKey`.
 
 Anyone can borrow the registry to create a pool with a registered fixed or
 dynamic base rate. Pools store their selected rates at creation. DEX events
@@ -100,6 +106,12 @@ because older package versions stay callable after an upgrade. `hook_data`
 carries bytes from a hook's own service, such as a signed attestation; generic
 routers pass it empty. Hooks needing other objects or per-user arguments add
 separate typed functions for hook-aware callers.
+
+The example hook's `FeeHookAdminCap` holder sets the starting fee at configuration
+creation and uses `fee_hook::schedule_fee_bps` for later changes. Each proposal
+waits 48 hours and remains cancellable by the cap holder through
+`fee_hook::cancel_fee_bps`. Anyone can call `fee_hook::apply_fee_bps` once
+ready. Swaps use the applied fee until that call succeeds.
 
 ## Native LP fees and the curve boundary
 

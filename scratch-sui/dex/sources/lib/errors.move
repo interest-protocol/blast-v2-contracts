@@ -93,6 +93,9 @@ const EInvalidPpm: u64 = 27;
 #[test_only]
 const EMagnitudeTooLarge: u64 = 28;
 
+#[test_only]
+const ETooManyPendingFeeTiers: u64 = 29;
+
 /// Pool tokens must be different types.
 macro public(package) fun identical_tokens(): u64 { 0 }
 
@@ -179,3 +182,6 @@ macro public(package) fun invalid_ppm(): u64 { 27 }
 
 /// Magnitude does not fit the requested signed 32-bit value.
 macro public(package) fun magnitude_too_large(): u64 { 28 }
+
+/// The pending fee tier queue is full.
+macro public(package) fun too_many_pending_fee_tiers(): u64 { 29 }

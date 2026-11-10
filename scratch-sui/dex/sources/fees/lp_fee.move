@@ -13,6 +13,9 @@ module blast_fun_dex::lp_fee;
 // === Constants ===
 
 const DEFAULT_FEE_TIERS_PPM: vector<u32> = vector[1_000, 3_000, 10_000, 20_000];
+const FEE_TIER_DELAY_MS: u64 = 48 * 60 * 60 * 1_000;
+/// Pending entries are stored inline in the registry.
+const MAX_PENDING_FEE_TIERS: u64 = 32;
 /// Upper bound for a registered tier and for a pool's dynamic maximum: 10%.
 const MAX_LP_FEE_PPM: u32 = 100_000;
 /// Sensitivity bounds, in ppm of fee per unit of squared price gap.
@@ -40,8 +43,11 @@ public enum LpFee has copy, drop, store {
 /// The shared set of rates allowed for fixed and base fees. Entries are permanent.
 public struct BlastDexFeeTiers has key {
     id: UID,
-    rates: Table<u32, bool>,
+    additions: DelayedMap<FeeTierKey, u32, bool>,
 }
+
+/// Keys the delayed admission of a new LP fee tier.
+public struct FeeTierKey() has copy, drop, store;
 
 /// The fee schedule with its reference fixed for one fill.
 public struct FeePath has drop {
@@ -67,24 +73,54 @@ fun init(ctx: &mut TxContext) {
 
 /// Whether a new pool can use this rate as its fixed or base fee.
 public fun is_fee_tier(self: &BlastDexFeeTiers, fee_ppm: u32): bool {
-    self.rates.contains(fee_ppm)
+    let default_rates = DEFAULT_FEE_TIERS_PPM;
+    default_rates.contains(&fee_ppm) || self.additions.contains(&fee_ppm)
 }
 
-/// Adds a distinct tier between 1 and 100,000 ppm, inclusive. The caller obtains
-/// the role witness from `blast_acl::sign_in` in the same transaction.
-public fun add_fee_tier(
+/// Proposes a distinct tier between 1 and 100,000 ppm, inclusive, and returns its
+/// deadline. Rescheduling the same tier restarts its 48-hour wait.
+public fun schedule_fee_tier(
     self: &mut BlastDexFeeTiers,
     package_version: &PackageVersion<BLAST_FUN_DEX>,
     _: &AdminWitness<BlastDexFeeTierAdmin>,
     fee_ppm: u32,
-) {
+    clock: &Clock,
+): u64 {
     package_version.assert_current(constants::version!());
 
     assert!(fee_ppm > 0 && fee_ppm <= MAX_LP_FEE_PPM, blast_fun_dex::errors::invalid_fee_tier_rate!());
     assert!(!self.is_fee_tier(fee_ppm), blast_fun_dex::errors::fee_tier_already_exists!());
+    assert!(
+        self.additions.pending_count() < MAX_PENDING_FEE_TIERS || self.additions.is_pending(&fee_ppm),
+        blast_fun_dex::errors::too_many_pending_fee_tiers!(),
+    );
 
-    self.rates.add(fee_ppm, true);
+    self.additions.schedule(fee_ppm, option::some(true), clock)
+}
+
+/// Permissionlessly registers the proposed tier at or after its deadline.
+public fun apply_fee_tier(
+    self: &mut BlastDexFeeTiers,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
+    fee_ppm: u32,
+    clock: &Clock,
+) {
+    package_version.assert_current(constants::version!());
+
+    self.additions.apply(fee_ppm, clock);
     blast_events::fee_tier_added(fee_ppm);
+}
+
+/// Cancels the pending tier, including once it is ready.
+public fun cancel_fee_tier(
+    self: &mut BlastDexFeeTiers,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
+    _: &AdminWitness<CancelAdmin<BLAST_FUN_DEX>>,
+    fee_ppm: u32,
+) {
+    package_version.assert_current(constants::version!());
+
+    self.additions.cancel(fee_ppm);
 }
 
 public fun is_dynamic(self: &LpFee): bool {
@@ -268,10 +304,9 @@ public(package) fun fee_up(self: &FeeStep, net_input: u64): u64 {
 // === Private Functions ===
 
 fun new_fee_tiers(ctx: &mut TxContext): BlastDexFeeTiers {
-    let mut rates = table::new(ctx);
-    DEFAULT_FEE_TIERS_PPM.do!(|fee_ppm| rates.add(fee_ppm, true));
-
-    BlastDexFeeTiers { id: object::new(ctx), rates }
+    let id = object::new(ctx);
+    let additions = delayed_map::new(FeeTierKey(), &id, FEE_TIER_DELAY_MS, ctx);
+    BlastDexFeeTiers { id, additions }
 }
 
 fun base_fee(self: &LpFee): Ppm {
@@ -327,9 +362,8 @@ public fun new_fee_tiers_for_testing(ctx: &mut TxContext): BlastDexFeeTiers {
 
 #[test_only]
 public fun destroy_default_fee_tiers_for_testing(self: BlastDexFeeTiers) {
-    let BlastDexFeeTiers { id, mut rates } = self;
-    DEFAULT_FEE_TIERS_PPM.do!(|fee_ppm| { rates.remove(fee_ppm); });
-    rates.destroy_empty();
+    let BlastDexFeeTiers { id, additions } = self;
+    additions.destroy();
     id.delete();
 }
 
@@ -345,7 +379,12 @@ public fun new_dynamic_unchecked_for_testing(base_fee_ppm: u32, max_fee_ppm: u32
 
 // === Imports ===
 
-use blast_admin::{blast_acl::AdminWitness, package_version::PackageVersion};
+use blast_admin::{
+    blast_acl::AdminWitness,
+    delayed_map::{Self, DelayedMap},
+    package_admin::CancelAdmin,
+    package_version::PackageVersion,
+};
 use blast_fun_dex::{
     blast_events,
     blast_fun_dex::BLAST_FUN_DEX,
@@ -353,4 +392,4 @@ use blast_fun_dex::{
     constants,
     ppm::{Self, Ppm},
 };
-use sui::table::{Self, Table};
+use sui::clock::Clock;

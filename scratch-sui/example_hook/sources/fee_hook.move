@@ -46,6 +46,7 @@ module blast_fun_dex_example_hook::fee_hook;
 /// Version compiled into this package. `migrate` moves the configuration to it.
 const VERSION: u64 = 1;
 const BPS_DENOMINATOR: u64 = 10_000;
+const FEE_CHANGE_DELAY_MS: u64 = 48 * 60 * 60 * 1_000;
 /// Hook fee ceiling: 10% of the swap input.
 const MAX_FEE_BPS: u64 = 1_000;
 
@@ -54,17 +55,13 @@ const MAX_FEE_BPS: u64 = 1_000;
 /// The hook's witness. Only this module can construct it.
 public struct FeeHook() has drop;
 
-/// Sets the fee, migrates the configuration and withdraws collected fees.
+/// Schedules and cancels fee changes, migrates the configuration and withdraws fees.
 public struct FeeHookAdminCap has key, store {
     id: UID,
 }
 
-/// The hook's settings, a dynamic field on its `HookConfig`.
-public struct Settings has store {
-    fee_bps: u64,
-}
-
-public struct SettingsKey() has copy, drop, store;
+/// Keys the delayed hook fee stored as a dynamic field on its `HookConfig`.
+public struct FeeBpsKey() has copy, drop, store;
 
 /// Pool-local hook fees collected in `CoinType`.
 public struct CollectedFeesKey<phantom CoinType>() has copy, drop, store;
@@ -92,21 +89,41 @@ public fun create_config(
     assert!(fee_bps <= MAX_FEE_BPS, EFeeTooHigh);
 
     let mut config = hook_config::new(package_version, namespace, FeeHook(), VERSION);
-    dynamic_field::add(config.uid_mut(package_version, &FeeHook()), SettingsKey(), Settings { fee_bps });
+    let policy = delayed::new(FeeBpsKey(), config.uid(), fee_bps, FEE_CHANGE_DELAY_MS);
+    config.uid_mut(package_version, &FeeHook()).add_dynamic_field(FeeBpsKey(), policy);
     config.share(package_version);
 }
 
-public fun set_fee_bps(
+/// Proposes a fee up to 1,000 bps, ready after the fixed 48-hour delay.
+public fun schedule_fee_bps(
     config: &mut HookConfig<FeeHook>,
     package_version: &PackageVersion<BLAST_FUN_DEX>,
     _admin: &FeeHookAdminCap,
     fee_bps: u64,
-) {
-    assert_current_version(config);
+    clock: &Clock,
+): u64 {
+    let policy = fee_policy_mut(config, package_version);
     assert!(fee_bps <= MAX_FEE_BPS, EFeeTooHigh);
 
-    let settings: &mut Settings = dynamic_field::borrow_mut(config.uid_mut(package_version, &FeeHook()), SettingsKey());
-    settings.fee_bps = fee_bps;
+    policy.schedule_value(fee_bps, clock)
+}
+
+/// Permissionlessly applies the scheduled hook fee once ready.
+public fun apply_fee_bps(
+    config: &mut HookConfig<FeeHook>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
+    clock: &Clock,
+) {
+    fee_policy_mut(config, package_version).apply(clock);
+}
+
+/// Discards the pending hook fee, including once it is ready.
+public fun cancel_fee_bps(
+    config: &mut HookConfig<FeeHook>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
+    _admin: &FeeHookAdminCap,
+) {
+    fee_policy_mut(config, package_version).cancel();
 }
 
 /// After an upgrade, accepts this version and stops all older ones.
@@ -161,8 +178,8 @@ public fun before_swap<Asset, Quote>(
 ) {
     assert_current_version(config);
 
-    let settings: &Settings = dynamic_field::borrow(config.uid(), SettingsKey());
-    let fee = request.input_value().mul_div_ceil(settings.fee_bps, BPS_DENOMINATOR);
+    let policy: &Delayed<FeeBpsKey, u64> = config.uid().dynamic_field(FeeBpsKey());
+    let fee = request.input_value().mul_div_ceil(policy.value(), BPS_DENOMINATOR);
     if (request.is_asset_input()) {
         let fee_payment = request.take_asset_payment(package_version, pool, FeeHook(), fee);
         pool.collect_fee(package_version, fee_payment);
@@ -306,6 +323,15 @@ fun assert_current_version(config: &HookConfig<FeeHook>) {
     assert!(config.version() == VERSION, EWrongVersion);
 }
 
+fun fee_policy_mut(
+    config: &mut HookConfig<FeeHook>,
+    package_version: &PackageVersion<BLAST_FUN_DEX>,
+): &mut Delayed<FeeBpsKey, u64> {
+    assert_current_version(config);
+
+    config.uid_mut(package_version, &FeeHook()).dynamic_field_mut(FeeBpsKey())
+}
+
 fun collect_fee<Asset, Quote, CoinType>(
     pool: &mut Pool<Asset, Quote>,
     package_version: &PackageVersion<BLAST_FUN_DEX>,
@@ -348,7 +374,7 @@ const ENoFeesCollected: vector<u8> = b"Pool has collected no hook fees in this c
 
 // === Imports ===
 
-use blast_admin::package_version::PackageVersion;
+use blast_admin::{delayed::{Self, Delayed}, package_version::PackageVersion};
 use blast_fun_dex::{
     blast_fun_dex::BLAST_FUN_DEX,
     hook_config::{Self, HookConfig, HookNamespace},
@@ -371,3 +397,6 @@ use blast_fun_dex::{
 use sui::{balance::Balance, clock::Clock, coin::Coin, dynamic_field};
 
 use fun collect_fee as Pool.collect_fee;
+use fun dynamic_field::add as UID.add_dynamic_field;
+use fun dynamic_field::borrow as UID.dynamic_field;
+use fun dynamic_field::borrow_mut as UID.dynamic_field_mut;

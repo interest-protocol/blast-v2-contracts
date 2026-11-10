@@ -13,6 +13,7 @@
   migrators LP-fee policy, and consumption-time validation of presale terms
 - Amended: 2026-11-04 — accepted trust boundaries from the pre-audit's informational findings
 - Amended: 2026-11-04 — compiled maximums for every admin-set fee
+- Amended: 2026-11-10 — fixed notice for scratch DEX fee administration
 - Amends: [0088](0088-reusable-launch-accounting-and-atomic-migration.md) (delayed migrator
   immutability), [0097](0097-one-singleton-acl-with-typed-roles.md) (ACL storage and timelocked root
   transfer), and
@@ -552,4 +553,17 @@ builders, blast-infra decoders, the admin console, the workers' collection job a
 follow; a worker that collected and compounded in one call now sends two commands. The launchpad
 PTB fork gate appends `compound_auto_lp` to each collection against Cetus and Bluefin bytecode;
 adversarial pool states for the review's H-1 stay open.
+
+## Amendment 2026-11-10
+
+The scratch DEX and its example hook use a fixed 48-hour fee notice from
+initialization. The DEX registry stores additions in a delayed map keyed by
+rate. The four compiled default tiers are available from publication. Each
+additional rate gets its own deadline. A cap on pending entries bounds the
+inline state that pool creation reads. The fee-tier admin can reschedule a
+pending rate and the DEX package cancellation role can discard it. Applying the
+proposal adds a permanent tier for future pools.
+The example hook cap holder schedules or cancels changes to the hook's applied
+fee. For both packages anyone can apply a ready proposal. An elapsed deadline
+leaves the applied state in force until application.
 
