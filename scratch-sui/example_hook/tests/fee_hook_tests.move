@@ -216,7 +216,7 @@ fun liquidity_and_donation_slots_approve_every_step() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_dex_example_hook::errors::EWrongVersion,
+    abort_code = blast_fun_dex_example_hook::fee_hook::EWrongVersion,
     location = blast_fun_dex_example_hook::fee_hook,
 )]
 fun before_swap_rejects_a_config_moved_to_a_newer_version() {
@@ -234,7 +234,7 @@ fun before_swap_rejects_a_config_moved_to_a_newer_version() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_dex_example_hook::errors::EWrongVersion,
+    abort_code = blast_fun_dex_example_hook::fee_hook::EWrongVersion,
     location = blast_fun_dex_example_hook::fee_hook,
 )]
 fun register_rejects_a_config_moved_to_a_newer_version() {
@@ -255,7 +255,7 @@ fun register_rejects_a_config_moved_to_a_newer_version() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EVersionNotIncreasing, location = blast_fun_dex::hook_config)]
+#[expected_failure(abort_code = blast_fun_dex::hook_config::EVersionNotIncreasing, location = blast_fun_dex::hook_config)]
 fun migrate_rejects_the_version_already_accepted() {
     let mut fixture = setup(FEE_BPS);
 
@@ -267,7 +267,7 @@ fun migrate_rejects_the_version_already_accepted() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_dex_example_hook::errors::EFeeTooHigh,
+    abort_code = blast_fun_dex_example_hook::fee_hook::EFeeTooHigh,
     location = blast_fun_dex_example_hook::fee_hook,
 )]
 fun create_config_rejects_a_fee_above_ten_percent() {
@@ -294,7 +294,7 @@ fun set_fee_bps_changes_later_swaps() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_dex_example_hook::errors::EFeeTooHigh,
+    abort_code = blast_fun_dex_example_hook::fee_hook::EFeeTooHigh,
     location = blast_fun_dex_example_hook::fee_hook,
 )]
 fun set_fee_bps_rejects_a_fee_above_ten_percent() {
@@ -308,7 +308,7 @@ fun set_fee_bps_rejects_a_fee_above_ten_percent() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_fun_dex_example_hook::errors::ENoFeesCollected,
+    abort_code = blast_fun_dex_example_hook::fee_hook::ENoFeesCollected,
     location = blast_fun_dex_example_hook::fee_hook,
 )]
 fun withdraw_fees_rejects_a_coin_with_no_fees() {

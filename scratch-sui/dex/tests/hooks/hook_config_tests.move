@@ -41,7 +41,7 @@ fun new_rejects_a_second_config_for_the_same_witness() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EPrimitiveWitness, location = blast_fun_dex::hook_config)]
+#[expected_failure(abort_code = blast_fun_dex::hook_config::EPrimitiveWitness, location = blast_fun_dex::hook_config)]
 fun new_rejects_a_primitive_witness() {
     let mut ctx = tx_context::dummy();
     let mut namespace = hook_config::new_namespace_for_testing(&mut ctx);
@@ -53,7 +53,7 @@ fun new_rejects_a_primitive_witness() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EPrimitiveWitness, location = blast_fun_dex::hook_config)]
+#[expected_failure(abort_code = blast_fun_dex::hook_config::EPrimitiveWitness, location = blast_fun_dex::hook_config)]
 fun new_rejects_a_vector_witness() {
     let mut ctx = tx_context::dummy();
     let mut namespace = hook_config::new_namespace_for_testing(&mut ctx);
@@ -78,7 +78,7 @@ fun set_version_accepts_a_higher_version() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EVersionNotIncreasing, location = blast_fun_dex::hook_config)]
+#[expected_failure(abort_code = blast_fun_dex::hook_config::EVersionNotIncreasing, location = blast_fun_dex::hook_config)]
 fun set_version_rejects_the_current_version() {
     let mut ctx = tx_context::dummy();
     let mut namespace = hook_config::new_namespace_for_testing(&mut ctx);
@@ -91,7 +91,7 @@ fun set_version_rejects_the_current_version() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EVersionNotIncreasing, location = blast_fun_dex::hook_config)]
+#[expected_failure(abort_code = blast_fun_dex::hook_config::EVersionNotIncreasing, location = blast_fun_dex::hook_config)]
 fun set_version_rejects_an_older_version() {
     let mut ctx = tx_context::dummy();
     let mut namespace = hook_config::new_namespace_for_testing(&mut ctx);

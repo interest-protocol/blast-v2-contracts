@@ -63,19 +63,19 @@ fun an_added_tier_is_available_to_new_pools_without_repricing_existing_pools() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EInvalidFeeTierRate, location = blast_fun_dex::lp_fee)]
+#[expected_failure(abort_code = blast_fun_dex::lp_fee::EInvalidFeeTierRate, location = blast_fun_dex::lp_fee)]
 fun adding_a_zero_tier_aborts() {
     add_tier(0);
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EInvalidFeeTierRate, location = blast_fun_dex::lp_fee)]
+#[expected_failure(abort_code = blast_fun_dex::lp_fee::EInvalidFeeTierRate, location = blast_fun_dex::lp_fee)]
 fun adding_the_first_tier_above_the_cap_aborts() {
     add_tier(100_001);
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EFeeTierAlreadyExists, location = blast_fun_dex::lp_fee)]
+#[expected_failure(abort_code = blast_fun_dex::lp_fee::EFeeTierAlreadyExists, location = blast_fun_dex::lp_fee)]
 fun adding_an_existing_tier_aborts() {
     add_tier(3_000);
 }

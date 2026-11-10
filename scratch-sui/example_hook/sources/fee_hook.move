@@ -1,4 +1,3 @@
-// Package error macros keep aborts in the module that checks the invariant.
 /// Example hook: charges a hook fee on every swap input and counts swaps per
 /// pool. Its other slots only approve. The pool alone sets the LP fee.
 ///
@@ -38,7 +37,7 @@
 ///
 /// The convention fixes every slot's parameters, so slots that ignore the
 /// `Clock` still take it; the allowed lint would otherwise reject them.
-#[allow(lint(unused_object_with_fields, abort_without_constant))]
+#[allow(lint(unused_object_with_fields))]
 module blast_fun_dex_example_hook::fee_hook;
 
 // === Constants ===
@@ -88,7 +87,7 @@ public fun create_config(
     _admin: &FeeHookAdminCap,
     fee_bps: u64,
 ) {
-    assert!(fee_bps <= MAX_FEE_BPS, blast_fun_dex_example_hook::errors::fee_too_high!());
+    assert!(fee_bps <= MAX_FEE_BPS, EFeeTooHigh);
 
     let mut config = hook_config::new(namespace, FeeHook(), VERSION);
     dynamic_field::add(config.uid_mut(&FeeHook()), SettingsKey(), Settings { fee_bps });
@@ -97,7 +96,7 @@ public fun create_config(
 
 public fun set_fee_bps(config: &mut HookConfig<FeeHook>, _admin: &FeeHookAdminCap, fee_bps: u64) {
     assert_current_version(config);
-    assert!(fee_bps <= MAX_FEE_BPS, blast_fun_dex_example_hook::errors::fee_too_high!());
+    assert!(fee_bps <= MAX_FEE_BPS, EFeeTooHigh);
 
     let settings: &mut Settings = dynamic_field::borrow_mut(config.uid_mut(&FeeHook()), SettingsKey());
     settings.fee_bps = fee_bps;
@@ -118,7 +117,7 @@ public fun withdraw_fees<Asset, Quote, CoinType>(
     assert_current_version(config);
     assert!(
         pool.has_hook_state(&FeeHook(), CollectedFeesKey<CoinType>()),
-        blast_fun_dex_example_hook::errors::no_fees_collected!(),
+        ENoFeesCollected,
     );
 
     let collected: &mut Balance<CoinType> = pool.hook_state_mut(&FeeHook(), CollectedFeesKey<CoinType>());
@@ -283,7 +282,7 @@ public fun collected_fees<Asset, Quote, CoinType>(pool: &Pool<Asset, Quote>): u6
 // === Private Functions ===
 
 fun assert_current_version(config: &HookConfig<FeeHook>) {
-    assert!(config.version() == VERSION, blast_fun_dex_example_hook::errors::wrong_version!());
+    assert!(config.version() == VERSION, EWrongVersion);
 }
 
 fun collect_fee<Asset, Quote, CoinType>(pool: &mut Pool<Asset, Quote>, fee: Balance<CoinType>) {
@@ -308,6 +307,15 @@ public fun init_for_testing(ctx: &mut TxContext) {
 public fun set_version_for_testing(config: &mut HookConfig<FeeHook>, version: u64) {
     config.set_version(FeeHook(), version);
 }
+
+// === Errors ===
+
+#[error(code = 0)]
+const EWrongVersion: vector<u8> = b"Hook configuration is not at this package's version.";
+#[error(code = 1)]
+const EFeeTooHigh: vector<u8> = b"Hook fee must not exceed 1,000 bps.";
+#[error(code = 2)]
+const ENoFeesCollected: vector<u8> = b"Pool has collected no hook fees in this coin.";
 
 // === Imports ===
 

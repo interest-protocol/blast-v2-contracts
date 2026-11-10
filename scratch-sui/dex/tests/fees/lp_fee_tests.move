@@ -230,19 +230,19 @@ fun new_fixed_accepts_every_fee_tier() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::ENotFeeTier, location = blast_fun_dex::lp_fee)]
+#[expected_failure(abort_code = blast_fun_dex::lp_fee::ENotFeeTier, location = blast_fun_dex::lp_fee)]
 fun new_fixed_rejects_zero() {
     fixed_fee(0);
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::ENotFeeTier, location = blast_fun_dex::lp_fee)]
+#[expected_failure(abort_code = blast_fun_dex::lp_fee::ENotFeeTier, location = blast_fun_dex::lp_fee)]
 fun new_fixed_rejects_a_fee_next_to_a_tier() {
     fixed_fee(2_999);
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::ENotFeeTier, location = blast_fun_dex::lp_fee)]
+#[expected_failure(abort_code = blast_fun_dex::lp_fee::ENotFeeTier, location = blast_fun_dex::lp_fee)]
 fun new_fixed_rejects_a_fee_above_the_highest_tier() {
     fixed_fee(20_001);
 }
@@ -265,37 +265,37 @@ fun new_dynamic_accepts_every_bound_at_its_edge() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::ENotFeeTier, location = blast_fun_dex::lp_fee)]
+#[expected_failure(abort_code = blast_fun_dex::lp_fee::ENotFeeTier, location = blast_fun_dex::lp_fee)]
 fun new_dynamic_rejects_a_base_fee_off_the_tiers() {
     dynamic_fee(2_000, 10_000, 1_000_000);
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EInvalidMaxFee, location = blast_fun_dex::lp_fee)]
+#[expected_failure(abort_code = blast_fun_dex::lp_fee::EInvalidMaxFee, location = blast_fun_dex::lp_fee)]
 fun new_dynamic_rejects_a_maximum_below_the_base_fee() {
     dynamic_fee(3_000, 2_999, 1_000_000);
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EInvalidMaxFee, location = blast_fun_dex::lp_fee)]
+#[expected_failure(abort_code = blast_fun_dex::lp_fee::EInvalidMaxFee, location = blast_fun_dex::lp_fee)]
 fun new_dynamic_rejects_a_maximum_above_ten_percent() {
     dynamic_fee(3_000, 100_001, 1_000_000);
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EInvalidSensitivity, location = blast_fun_dex::lp_fee)]
+#[expected_failure(abort_code = blast_fun_dex::lp_fee::EInvalidSensitivity, location = blast_fun_dex::lp_fee)]
 fun new_dynamic_rejects_a_sensitivity_below_the_minimum() {
     dynamic_fee(3_000, 10_000, 99_999);
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EInvalidSensitivity, location = blast_fun_dex::lp_fee)]
+#[expected_failure(abort_code = blast_fun_dex::lp_fee::EInvalidSensitivity, location = blast_fun_dex::lp_fee)]
 fun new_dynamic_rejects_a_sensitivity_above_the_maximum() {
     dynamic_fee(3_000, 10_000, 100_000_001);
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::ENotFeeTier, location = blast_fun_dex::lp_fee)]
+#[expected_failure(abort_code = blast_fun_dex::lp_fee::ENotFeeTier, location = blast_fun_dex::lp_fee)]
 fun new_dynamic_checks_the_base_fee_before_the_other_bounds() {
     dynamic_fee(2_000, 100_001, 0);
 }

@@ -13,7 +13,7 @@ fun accepts_zero_and_one_hundred_percent() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EInvalidPpm, location = blast_fun_dex::ppm)]
+#[expected_failure(abort_code = blast_fun_dex::ppm::EInvalidPpm, location = blast_fun_dex::ppm)]
 fun rejects_the_first_rate_above_one_hundred_percent() {
     ppm::new(1_000_001);
 }

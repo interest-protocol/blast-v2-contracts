@@ -45,7 +45,7 @@ public struct Fixture {
 // Creation.
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EIdenticalTokens, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EIdenticalTokens, location = blast_fun_dex::pool)]
 fun new_rejects_identical_tokens() {
     let mut ctx = tx_context::dummy();
 
@@ -55,7 +55,7 @@ fun new_rejects_identical_tokens() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EInvalidTickSpacing, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EInvalidTickSpacing, location = blast_fun_dex::pool)]
 fun new_rejects_zero_tick_spacing() {
     let mut ctx = tx_context::dummy();
 
@@ -65,7 +65,7 @@ fun new_rejects_zero_tick_spacing() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EInvalidTickSpacing, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EInvalidTickSpacing, location = blast_fun_dex::pool)]
 fun new_rejects_tick_spacing_above_the_maximum() {
     let mut ctx = tx_context::dummy();
 
@@ -75,7 +75,7 @@ fun new_rejects_tick_spacing_above_the_maximum() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::ENotFeeTier, location = blast_fun_dex::lp_fee)]
+#[expected_failure(abort_code = blast_fun_dex::lp_fee::ENotFeeTier, location = blast_fun_dex::lp_fee)]
 fun new_with_fixed_fee_rejects_a_fee_off_the_tiers() {
     let mut ctx = tx_context::dummy();
 
@@ -85,7 +85,7 @@ fun new_with_fixed_fee_rejects_a_fee_off_the_tiers() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EInvalidSensitivity, location = blast_fun_dex::lp_fee)]
+#[expected_failure(abort_code = blast_fun_dex::lp_fee::EInvalidSensitivity, location = blast_fun_dex::lp_fee)]
 fun new_with_dynamic_fee_validates_its_settings() {
     let mut ctx = tx_context::dummy();
 
@@ -102,7 +102,7 @@ fun new_with_dynamic_fee_validates_its_settings() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EInvalidSqrtPrice, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EInvalidSqrtPrice, location = blast_fun_dex::pool)]
 fun new_rejects_price_below_the_minimum() {
     let mut ctx = tx_context::dummy();
 
@@ -117,7 +117,7 @@ fun new_rejects_price_below_the_minimum() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EInvalidSqrtPrice, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EInvalidSqrtPrice, location = blast_fun_dex::pool)]
 fun new_rejects_the_exclusive_maximum_price() {
     let mut ctx = tx_context::dummy();
 
@@ -159,7 +159,7 @@ fun dynamic_fee_pool_finalizes_without_a_hook_and_reports_its_settings() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EInvalidHookFlags, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EInvalidHookFlags, location = blast_fun_dex::pool)]
 fun register_hook_rejects_empty_flags() {
     let mut ctx = tx_context::dummy();
     let fixture = new_fixture(&mut ctx);
@@ -177,7 +177,7 @@ fun register_hook_rejects_empty_flags() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EHookSlotTaken, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EHookSlotTaken, location = blast_fun_dex::pool)]
 fun register_hook_rejects_a_slot_bound_to_another_hook() {
     let mut ctx = tx_context::dummy();
     let fixture = new_fixture(&mut ctx);
@@ -215,7 +215,7 @@ fun register_hook_binds_only_the_selected_slots() {
 // Positions.
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EInvalidTickRange, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EInvalidTickRange, location = blast_fun_dex::pool)]
 fun new_position_rejects_equal_ticks() {
     let mut ctx = tx_context::dummy();
     let pool = plain_pool(&mut ctx);
@@ -227,7 +227,7 @@ fun new_position_rejects_equal_ticks() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EInvalidTickRange, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EInvalidTickRange, location = blast_fun_dex::pool)]
 fun new_position_rejects_a_tick_off_the_spacing() {
     let mut ctx = tx_context::dummy();
     let pool = plain_pool(&mut ctx);
@@ -239,7 +239,7 @@ fun new_position_rejects_a_tick_off_the_spacing() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EInvalidTickRange, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EInvalidTickRange, location = blast_fun_dex::pool)]
 fun new_position_rejects_a_tick_beyond_the_maximum() {
     let mut ctx = tx_context::dummy();
     // 887,280 is a multiple of 60 just above the 887,272 maximum.
@@ -307,7 +307,7 @@ fun quote_to_asset_swap_settles_the_other_side() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::ECurveMathUnavailable, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::ECurveMathUnavailable, location = blast_fun_dex::pool)]
 fun execute_swap_reaches_the_curve_seam_once_approved() {
     let mut ctx = tx_context::dummy();
     let clock = clock::create_for_testing(&mut ctx);
@@ -325,7 +325,7 @@ fun execute_swap_reaches_the_curve_seam_once_approved() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EPoolInOperation, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EPoolInOperation, location = blast_fun_dex::pool)]
 fun begin_rejects_a_second_operation_on_a_busy_pool() {
     let mut ctx = tx_context::dummy();
     let mut pool = plain_pool(&mut ctx);
@@ -339,7 +339,7 @@ fun begin_rejects_a_second_operation_on_a_busy_pool() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EZeroAmount, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EZeroAmount, location = blast_fun_dex::pool)]
 fun begin_swap_rejects_a_zero_payment() {
     let mut ctx = tx_context::dummy();
     let mut pool = plain_pool(&mut ctx);
@@ -351,7 +351,7 @@ fun begin_swap_rejects_a_zero_payment() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EZeroAmount, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EZeroAmount, location = blast_fun_dex::pool)]
 fun begin_swap_checks_the_payment_before_the_price_limit() {
     let mut ctx = tx_context::dummy();
     let mut pool = plain_pool(&mut ctx);
@@ -363,7 +363,7 @@ fun begin_swap_checks_the_payment_before_the_price_limit() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EInvalidPriceLimit, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EInvalidPriceLimit, location = blast_fun_dex::pool)]
 fun begin_swap_asset_to_quote_rejects_a_limit_above_the_price() {
     let mut ctx = tx_context::dummy();
     let mut pool = plain_pool(&mut ctx);
@@ -375,7 +375,7 @@ fun begin_swap_asset_to_quote_rejects_a_limit_above_the_price() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EInvalidPriceLimit, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EInvalidPriceLimit, location = blast_fun_dex::pool)]
 fun begin_swap_asset_to_quote_rejects_the_minimum_price_limit() {
     let mut ctx = tx_context::dummy();
     let mut pool = plain_pool(&mut ctx);
@@ -387,7 +387,7 @@ fun begin_swap_asset_to_quote_rejects_the_minimum_price_limit() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EInvalidPriceLimit, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EInvalidPriceLimit, location = blast_fun_dex::pool)]
 fun begin_swap_quote_to_asset_rejects_the_current_price_as_limit() {
     let mut ctx = tx_context::dummy();
     let mut pool = plain_pool(&mut ctx);
@@ -399,7 +399,7 @@ fun begin_swap_quote_to_asset_rejects_the_current_price_as_limit() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EMissingApproval, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EMissingApproval, location = blast_fun_dex::pool)]
 fun execute_swap_rejects_a_request_the_bound_hook_did_not_approve() {
     let mut ctx = tx_context::dummy();
     let clock = clock::create_for_testing(&mut ctx);
@@ -416,7 +416,7 @@ fun execute_swap_rejects_a_request_the_bound_hook_did_not_approve() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EHookNotBound, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EHookNotBound, location = blast_fun_dex::pool)]
 fun approve_rejects_a_witness_not_bound_to_the_slot() {
     let mut ctx = tx_context::dummy();
     let fixture = new_fixture(&mut ctx);
@@ -431,7 +431,7 @@ fun approve_rejects_a_witness_not_bound_to_the_slot() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EHookNotBound, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EHookNotBound, location = blast_fun_dex::pool)]
 fun approve_rejects_any_witness_on_an_empty_slot() {
     let mut ctx = tx_context::dummy();
     let fixture = new_fixture(&mut ctx);
@@ -446,7 +446,7 @@ fun approve_rejects_any_witness_on_an_empty_slot() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EAlreadyApproved, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EAlreadyApproved, location = blast_fun_dex::pool)]
 fun approve_rejects_a_second_approval() {
     let mut ctx = tx_context::dummy();
     let fixture = new_fixture(&mut ctx);
@@ -462,7 +462,7 @@ fun approve_rejects_a_second_approval() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EAlreadyApproved, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EAlreadyApproved, location = blast_fun_dex::pool)]
 fun take_payment_rejects_an_approved_request() {
     let mut ctx = tx_context::dummy();
     let fixture = new_fixture(&mut ctx);
@@ -479,7 +479,7 @@ fun take_payment_rejects_an_approved_request() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EWrongPool, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EWrongPool, location = blast_fun_dex::pool)]
 fun approve_rejects_a_request_from_another_pool() {
     let mut ctx = tx_context::dummy();
     let fixture = new_fixture(&mut ctx);
@@ -496,7 +496,7 @@ fun approve_rejects_a_request_from_another_pool() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EWrongPool, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EWrongPool, location = blast_fun_dex::pool)]
 fun execute_swap_rejects_a_request_from_another_pool() {
     let mut ctx = tx_context::dummy();
     let clock = clock::create_for_testing(&mut ctx);
@@ -838,7 +838,7 @@ fun reference_moves_without_aborting_between_extreme_prices() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::ECurveMathUnavailable, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::ECurveMathUnavailable, location = blast_fun_dex::pool)]
 fun execute_dynamic_swap_reaches_the_curve_seam_for_the_preview() {
     let mut ctx = tx_context::dummy();
     let clock = clock::create_for_testing(&mut ctx);
@@ -883,7 +883,7 @@ fun after_hook_adjusts_output_before_approving() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EMissingApproval, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EMissingApproval, location = blast_fun_dex::pool)]
 fun finish_rejects_a_completion_the_after_hook_did_not_approve() {
     let mut ctx = tx_context::dummy();
     let clock = clock::create_for_testing(&mut ctx);
@@ -903,7 +903,7 @@ fun finish_rejects_a_completion_the_after_hook_did_not_approve() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EInsufficientOutput, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EInsufficientOutput, location = blast_fun_dex::pool)]
 fun finish_rejects_output_below_the_minimum() {
     let mut ctx = tx_context::dummy();
     let clock = clock::create_for_testing(&mut ctx);
@@ -921,7 +921,7 @@ fun finish_rejects_output_below_the_minimum() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EWrongPool, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EWrongPool, location = blast_fun_dex::pool)]
 fun finish_rejects_a_completion_from_another_pool() {
     let mut ctx = tx_context::dummy();
     let clock = clock::create_for_testing(&mut ctx);
@@ -983,7 +983,7 @@ fun add_and_remove_liquidity_move_reserves_and_position_liquidity() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::ECurveMathUnavailable, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::ECurveMathUnavailable, location = blast_fun_dex::pool)]
 fun execute_add_liquidity_reaches_the_curve_seam_once_approved() {
     let mut ctx = tx_context::dummy();
     let mut pool = plain_pool(&mut ctx);
@@ -998,7 +998,7 @@ fun execute_add_liquidity_reaches_the_curve_seam_once_approved() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EInsufficientPayment, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EInsufficientPayment, location = blast_fun_dex::pool)]
 fun add_liquidity_rejects_a_payment_below_the_requirement() {
     let mut ctx = tx_context::dummy();
     let mut pool = plain_pool(&mut ctx);
@@ -1013,7 +1013,7 @@ fun add_liquidity_rejects_a_payment_below_the_requirement() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EWrongPosition, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EWrongPosition, location = blast_fun_dex::pool)]
 fun execute_add_liquidity_rejects_a_different_position() {
     let mut ctx = tx_context::dummy();
     let mut pool = plain_pool(&mut ctx);
@@ -1030,7 +1030,7 @@ fun execute_add_liquidity_rejects_a_different_position() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EWrongPool, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EWrongPool, location = blast_fun_dex::pool)]
 fun begin_add_liquidity_rejects_a_position_of_another_pool() {
     let mut ctx = tx_context::dummy();
     let mut pool = plain_pool(&mut ctx);
@@ -1046,7 +1046,7 @@ fun begin_add_liquidity_rejects_a_position_of_another_pool() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EZeroLiquidity, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EZeroLiquidity, location = blast_fun_dex::pool)]
 fun begin_add_liquidity_rejects_zero_liquidity() {
     let mut ctx = tx_context::dummy();
     let mut pool = plain_pool(&mut ctx);
@@ -1060,7 +1060,7 @@ fun begin_add_liquidity_rejects_zero_liquidity() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EInsufficientLiquidity, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EInsufficientLiquidity, location = blast_fun_dex::pool)]
 fun begin_remove_liquidity_rejects_more_than_the_position_holds() {
     let mut ctx = tx_context::dummy();
     let mut pool = plain_pool(&mut ctx);
@@ -1074,7 +1074,7 @@ fun begin_remove_liquidity_rejects_more_than_the_position_holds() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EPositionNotEmpty, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EPositionNotEmpty, location = blast_fun_dex::pool)]
 fun destroy_empty_position_rejects_a_position_with_liquidity() {
     let mut ctx = tx_context::dummy();
     let mut pool = plain_pool(&mut ctx);
@@ -1114,7 +1114,7 @@ fun donate_runs_both_hooks_and_returns_empty_coins() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EZeroAmount, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EZeroAmount, location = blast_fun_dex::pool)]
 fun begin_donate_rejects_an_empty_donation() {
     let mut ctx = tx_context::dummy();
     let mut pool = plain_pool(&mut ctx);
@@ -1126,7 +1126,7 @@ fun begin_donate_rejects_an_empty_donation() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::ECurveMathUnavailable, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::ECurveMathUnavailable, location = blast_fun_dex::pool)]
 fun execute_donate_reaches_the_curve_seam() {
     let mut ctx = tx_context::dummy();
     let mut pool = plain_pool(&mut ctx);
@@ -1170,7 +1170,7 @@ fun hook_state_is_isolated_per_witness_and_writable_mid_operation() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EHookNotBound, location = blast_fun_dex::pool)]
+#[expected_failure(abort_code = blast_fun_dex::pool::EHookNotBound, location = blast_fun_dex::pool)]
 fun hook_state_rejects_a_hook_not_bound_to_the_pool() {
     let mut ctx = tx_context::dummy();
     let fixture = new_fixture(&mut ctx);

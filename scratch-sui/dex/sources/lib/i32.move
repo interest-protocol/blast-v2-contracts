@@ -1,5 +1,3 @@
-// Package error macros keep aborts in the module that checks the invariant.
-#[allow(lint(abort_without_constant))]
 /// Two's-complement signed 32-bit integer for pool ticks.
 /// Holds only the conversions and ordering that tick validation needs.
 module blast_fun_dex::i32;
@@ -19,7 +17,7 @@ public struct I32(u32) has copy, drop, store;
 
 /// Nonnegative value. Aborts above 2^31 - 1.
 public fun from_u32(value: u32): I32 {
-    assert!(value < SIGN_BIT, blast_fun_dex::errors::magnitude_too_large!());
+    assert!(value < SIGN_BIT, EMagnitudeTooLarge);
 
     I32(value)
 }
@@ -27,7 +25,7 @@ public fun from_u32(value: u32): I32 {
 /// Value with a negative sign and the given magnitude. Aborts above 2^31.
 /// A zero magnitude returns zero.
 public fun neg_from_u32(magnitude: u32): I32 {
-    assert!(magnitude <= SIGN_BIT, blast_fun_dex::errors::magnitude_too_large!());
+    assert!(magnitude <= SIGN_BIT, EMagnitudeTooLarge);
 
     I32(twos_complement(magnitude))
 }
@@ -57,3 +55,8 @@ fun twos_complement(value: u32): u32 {
 
     (TWO_POW_32 - (value as u64)) as u32
 }
+
+// === Errors ===
+
+#[error(code = 0)]
+const EMagnitudeTooLarge: vector<u8> = b"Magnitude does not fit the requested signed 32-bit value.";
