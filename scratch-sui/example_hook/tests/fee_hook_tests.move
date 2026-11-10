@@ -9,7 +9,8 @@ const SQRT_PRICE_ONE_X96: u256 = 79_228_162_514_264_337_593_543_950_336;
 const BELOW_PRICE_X96: u256 = 39_614_081_257_132_168_796_771_975_168;
 const ABOVE_PRICE_X96: u256 = 158_456_325_028_528_675_187_087_900_672;
 const FEE_BPS: u64 = 100;
-const DYNAMIC_LP_FEE_PPM: u32 = 5_000;
+/// Price 0.96, 1e-12 further from 1.0 so rounding cannot shrink the gap.
+const PRICE_DOWN_4_PERCENT_X96: u256 = 77_627_428_567_259_243_148_980_294_874;
 
 // === Test-Only Types ===
 
@@ -93,23 +94,40 @@ fun hook_fee_rounds_up_and_is_kept_in_the_input_coin() {
 }
 
 #[test]
-fun before_swap_sets_the_configured_fee_on_dynamic_fee_pools() {
+fun dynamic_fee_pool_charges_its_own_lp_fee_after_the_hook_fee() {
     let mut fixture = setup(FEE_BPS);
     let mut initializer = pool::new_with_dynamic_fee<ASSET, QUOTE>(
         60,
         3_000,
+        20_000,
+        1_000_000,
         SQRT_PRICE_ONE_X96,
         fixture.scenario.ctx(),
     );
     fee_hook::register(&mut initializer, &fixture.config);
     let mut pool = initializer.finalize();
+    pool.join_reserves_for_testing(balance::zero(), balance::create_for_testing(1_000));
 
     let mut request = pool.begin_swap_asset_to_quote(fixture.asset(1_000), BELOW_PRICE_X96);
     fee_hook::before_swap(&mut pool, &fixture.config, &mut request, vector[], &fixture.clock, fixture.scenario.ctx());
+    assert_eq!(request.input_value(), 990);
+    // The preview drops the price 4%: 3,000 + 1,000,000 * 0.04^2 = 4,600 ppm.
+    let (mut completion, priced_lp_fees_ppm) = pool.execute_swap_with_reference_for_testing(
+        request,
+        SQRT_PRICE_ONE_X96,
+        PRICE_DOWN_4_PERCENT_X96,
+        990,
+        900,
+        PRICE_DOWN_4_PERCENT_X96,
+        fixture.scenario.ctx(),
+    );
+    fee_hook::after_swap(&mut pool, &fixture.config, &mut completion, vector[], &fixture.clock, fixture.scenario.ctx());
+    let (asset_coin, quote_coin) = pool.finish(completion, 0, 900, fixture.scenario.ctx());
 
-    assert_eq!(request.lp_fee_ppm(), DYNAMIC_LP_FEE_PPM);
-    assert_eq!(pool.lp_fee_ppm(), 3_000);
-    destroy(request);
+    assert_eq!(priced_lp_fees_ppm, vector[3_000, 4_600]);
+    assert_eq!(fee_hook::collected_fees<_, _, ASSET>(&pool), 10);
+    asset_coin.destroy_zero();
+    assert_eq!(quote_coin.burn_for_testing(), 900);
     destroy(pool);
     fixture.teardown();
 }
@@ -298,7 +316,7 @@ fun setup(fee_bps: u64): Fixture {
     let mut namespace = hook_config::new_namespace_for_testing(scenario.ctx());
     scenario.next_tx(ADMIN);
     let admin_cap = scenario.take_from_sender<FeeHookAdminCap>();
-    fee_hook::create_config(&mut namespace, &admin_cap, fee_bps, DYNAMIC_LP_FEE_PPM);
+    fee_hook::create_config(&mut namespace, &admin_cap, fee_bps);
     scenario.next_tx(ADMIN);
     let config = scenario.take_shared<HookConfig<FeeHook>>();
     let clock = clock::create_for_testing(scenario.ctx());

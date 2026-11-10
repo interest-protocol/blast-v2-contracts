@@ -5,7 +5,7 @@
 ///
 /// ```text
 /// begin_*   (pool)  locks the pool and returns a request that owns the payment
-/// before_*  (hook)  reads state, may take fees or set the LP fee, then approves
+/// before_*  (hook)  reads state, may take hook fees, then approves
 /// execute_* (pool)  requires the bound before-hook's approval, runs the curve and
 ///                   returns a completion that owns the output
 /// after_*   (hook)  may take from or add to the output, then approves
@@ -19,15 +19,18 @@
 /// fixed public signature per slot, so routers resolve any hooked pool from
 /// chain state alone; `example_hook` documents that convention.
 ///
+/// The LP fee belongs to the pool, not to hooks: its `LpFee` settings are
+/// fixed at creation, and every swap pays the fee they set, so no hook can
+/// lower the LP fee.
+///
 /// The curve math is not implemented: `swap_amounts`, `add_liquidity_amounts`,
-/// `remove_liquidity_amounts` and `credit_donation` abort. This package must
-/// not be published until they are.
+/// `remove_liquidity_amounts` and `credit_donation` abort. Neither is the
+/// dynamic fee's reference price: `reference_sqrt_price_x96` aborts. This
+/// package must not be published until they are.
 module blast_fun_dex::pool;
 
 // === Constants ===
 
-/// LP fees are in parts per million; 1,000,000 is 100%.
-const MAX_LP_FEE_PPM: u32 = 1_000_000;
 const MAX_TICK_SPACING: u32 = 32_767;
 /// Largest tick magnitude, as in Uniswap v4.
 const MAX_TICK: u32 = 887_272;
@@ -42,57 +45,52 @@ const EIdenticalTokens: vector<u8> = b"Pool tokens must be different types.";
 #[error(code = 1)]
 const EInvalidTickSpacing: vector<u8> = b"Tick spacing must be between 1 and 32,767.";
 #[error(code = 2)]
-const EInvalidLpFee: vector<u8> = b"LP fee must not exceed 1,000,000 ppm.";
-#[error(code = 3)]
 const EInvalidSqrtPrice: vector<u8> = b"Square-root price is outside the supported range.";
-#[error(code = 4)]
+#[error(code = 3)]
 const EInvalidHookFlags: vector<u8> = b"Hook registration must select at least one slot.";
-#[error(code = 5)]
+#[error(code = 4)]
 const EHookSlotTaken: vector<u8> = b"Another hook is already bound to this slot.";
-#[error(code = 6)]
-const EDynamicFeeWithoutHook: vector<u8> = b"A dynamic-fee pool requires a before-swap hook.";
-#[error(code = 7)]
+#[error(code = 5)]
 const EInvalidTickRange: vector<u8> = b"Ticks must be ordered, in range and multiples of the tick spacing.";
-#[error(code = 8)]
+#[error(code = 6)]
 const EPositionNotEmpty: vector<u8> = b"Position still holds liquidity.";
-#[error(code = 9)]
+#[error(code = 7)]
 const EPoolInOperation: vector<u8> = b"Pool is already running an operation in this transaction.";
-#[error(code = 10)]
+#[error(code = 8)]
 const EWrongPool: vector<u8> = b"Value belongs to a different pool.";
-#[error(code = 11)]
+#[error(code = 9)]
 const EWrongPosition: vector<u8> = b"Position does not match the request.";
-#[error(code = 12)]
+#[error(code = 10)]
 const EZeroAmount: vector<u8> = b"Payment must not be zero.";
-#[error(code = 13)]
+#[error(code = 11)]
 const EInvalidPriceLimit: vector<u8> = b"Price limit is on the wrong side of the current price or out of range.";
-#[error(code = 14)]
+#[error(code = 12)]
 const EZeroLiquidity: vector<u8> = b"Liquidity must not be zero.";
-#[error(code = 15)]
+#[error(code = 13)]
 const EInsufficientLiquidity: vector<u8> = b"Position holds less liquidity than requested.";
-#[error(code = 16)]
+#[error(code = 14)]
 const EHookNotBound: vector<u8> = b"Witness is not the hook bound to this slot.";
-#[error(code = 17)]
+#[error(code = 15)]
 const EAlreadyApproved: vector<u8> = b"Hook has already approved this step.";
-#[error(code = 18)]
+#[error(code = 16)]
 const EMissingApproval: vector<u8> = b"The bound hook has not approved this step.";
-#[error(code = 19)]
-const EFixedLpFee: vector<u8> = b"Pool LP fee is fixed.";
-#[error(code = 20)]
+#[error(code = 17)]
 const EInsufficientPayment: vector<u8> = b"Payment is less than the liquidity requires.";
-#[error(code = 21)]
+#[error(code = 18)]
 const EInsufficientOutput: vector<u8> = b"Output is below the caller's minimum.";
-#[error(code = 22)]
+#[error(code = 19)]
 const ECurveMathUnavailable: vector<u8> = b"Curve math is not implemented; do not publish this package.";
+#[error(code = 20)]
+const EReferencePriceUnavailable: vector<u8> =
+    b"Dynamic-fee reference price has no source yet; do not publish this package.";
 
 // === Public Types ===
 
-/// Shared pool. Hook bindings, tick spacing and fee mode never change after creation.
+/// Shared pool. Hook bindings, tick spacing and LP fee settings never change after creation.
 public struct Pool<phantom Asset, phantom Quote> has key {
     id: UID,
     tick_spacing: u32,
-    /// Fixed rate, or the default a dynamic-fee before-swap hook may override per swap.
-    lp_fee_ppm: u32,
-    is_dynamic_fee: bool,
+    lp_fee: LpFee,
     sqrt_price_x96: u256,
     hooks: Hooks,
     asset_reserve: Balance<Asset>,
@@ -142,7 +140,6 @@ public struct SwapRequest<phantom Asset, phantom Quote> {
     asset_payment: Balance<Asset>,
     quote_payment: Balance<Quote>,
     sqrt_price_limit_x96: u256,
-    lp_fee_ppm: u32,
     approval: Approval,
 }
 
@@ -200,8 +197,7 @@ public struct PoolCreated has copy, drop {
     asset: TypeName,
     quote: TypeName,
     tick_spacing: u32,
-    lp_fee_ppm: u32,
-    is_dynamic_fee: bool,
+    lp_fee: LpFee,
     sqrt_price_x96: u256,
     hooks: Hooks,
 }
@@ -212,6 +208,7 @@ public struct Swapped has copy, drop {
     is_asset_input: bool,
     input_spent: u64,
     output_amount: u64,
+    /// The LP fee this swap paid.
     lp_fee_ppm: u32,
     sqrt_price_after_x96: u256,
 }
@@ -254,25 +251,30 @@ macro public fun all_hook_flags(): u8 { 0xff }
 
 // Creation.
 
-/// Starts a pool whose LP fee never changes.
+/// Starts a pool that charges `lp_fee_ppm`, a protocol fee tier, on every swap.
 public fun new_with_fixed_fee<Asset, Quote>(
     tick_spacing: u32,
     lp_fee_ppm: u32,
     sqrt_price_x96: u256,
     ctx: &mut TxContext,
 ): PoolInitializer<Asset, Quote> {
-    new_initializer(tick_spacing, lp_fee_ppm, false, sqrt_price_x96, ctx)
+    new_initializer(tick_spacing, lp_fee::new_fixed(lp_fee_ppm), sqrt_price_x96, ctx)
 }
 
-/// Starts a pool whose before-swap hook may override `default_lp_fee_ppm` per swap.
-/// `finalize` requires a before-swap hook.
+/// Starts a pool whose LP fee rises from `base_fee_ppm` with the gap between each
+/// swap's projected price and the reference price, up to `max_fee_ppm`; see
+/// `lp_fee`. The settings never change and need no hook.
 public fun new_with_dynamic_fee<Asset, Quote>(
     tick_spacing: u32,
-    default_lp_fee_ppm: u32,
+    base_fee_ppm: u32,
+    max_fee_ppm: u32,
+    sensitivity_ppm: u32,
     sqrt_price_x96: u256,
     ctx: &mut TxContext,
 ): PoolInitializer<Asset, Quote> {
-    new_initializer(tick_spacing, default_lp_fee_ppm, true, sqrt_price_x96, ctx)
+    let lp_fee = lp_fee::new_dynamic(base_fee_ppm, max_fee_ppm, sensitivity_ppm);
+
+    new_initializer(tick_spacing, lp_fee, sqrt_price_x96, ctx)
 }
 
 /// Binds `Witness` to every slot in `flags`. Only the hook's package can create
@@ -301,15 +303,13 @@ public fun register_hook<Asset, Quote, Witness: drop>(
 /// Freezes the hook bindings and returns the pool for `share`.
 public fun finalize<Asset, Quote>(self: PoolInitializer<Asset, Quote>): Pool<Asset, Quote> {
     let PoolInitializer { pool } = self;
-    assert!(!pool.is_dynamic_fee || pool.hooks.before_swap.is_some(), EDynamicFeeWithoutHook);
 
     event::emit(PoolCreated {
         pool_id: pool.id.to_inner(),
         asset: type_name::with_defining_ids<Asset>(),
         quote: type_name::with_defining_ids<Quote>(),
         tick_spacing: pool.tick_spacing,
-        lp_fee_ppm: pool.lp_fee_ppm,
-        is_dynamic_fee: pool.is_dynamic_fee,
+        lp_fee: pool.lp_fee,
         sqrt_price_x96: pool.sqrt_price_x96,
         hooks: pool.hooks,
     });
@@ -328,14 +328,9 @@ public fun sqrt_price_x96<Asset, Quote>(self: &Pool<Asset, Quote>): u256 {
     self.sqrt_price_x96
 }
 
-/// The fixed rate, or the default before the before-swap hook's override.
-public fun lp_fee_ppm<Asset, Quote>(self: &Pool<Asset, Quote>): u32 {
-    self.lp_fee_ppm
-}
-
-/// Whether the before-swap hook may set each swap's LP fee.
-public fun is_dynamic_fee<Asset, Quote>(self: &Pool<Asset, Quote>): bool {
-    self.is_dynamic_fee
+/// The LP fee settings every swap pays under.
+public fun lp_fee<Asset, Quote>(self: &Pool<Asset, Quote>): LpFee {
+    self.lp_fee
 }
 
 // Positions.
@@ -440,22 +435,6 @@ public fun take_swap_quote_payment<Asset, Quote, Witness: drop>(
     self.quote_payment.split(amount)
 }
 
-/// Before-swap hook on a dynamic-fee pool: sets this swap's LP fee.
-/// The pool's default rate does not change.
-public fun set_swap_lp_fee<Asset, Quote, Witness: drop>(
-    self: &mut SwapRequest<Asset, Quote>,
-    pool: &Pool<Asset, Quote>,
-    _witness: Witness,
-    lp_fee_ppm: u32,
-) {
-    assert!(self.pool_id == pool.id.to_inner(), EWrongPool);
-    self.approval.assert_open<Witness>();
-    assert!(pool.is_dynamic_fee, EFixedLpFee);
-    assert!(lp_fee_ppm <= MAX_LP_FEE_PPM, EInvalidLpFee);
-
-    self.lp_fee_ppm = lp_fee_ppm;
-}
-
 /// Before-swap hook: approves the request. It cannot be changed afterwards.
 public fun approve_swap<Asset, Quote, Witness: drop>(
     self: &mut SwapRequest<Asset, Quote>,
@@ -480,27 +459,20 @@ public fun swap_sqrt_price_limit_x96<Asset, Quote>(self: &SwapRequest<Asset, Quo
     self.sqrt_price_limit_x96
 }
 
-public fun swap_lp_fee_ppm<Asset, Quote>(self: &SwapRequest<Asset, Quote>): u32 {
-    self.lp_fee_ppm
-}
-
-/// Swaps the remaining payment up to the price limit. Unspent payment and the
-/// output travel in the completion.
+/// Swaps the remaining payment up to the price limit at the pool's LP fee.
+/// Unspent payment and the output travel in the completion.
 public fun execute_swap<Asset, Quote>(
     self: &mut Pool<Asset, Quote>,
     request: SwapRequest<Asset, Quote>,
     ctx: &mut TxContext,
 ): Completion<Asset, Quote, Swap> {
-    let (is_asset_input, asset_payment, quote_payment, sqrt_price_limit_x96, lp_fee_ppm) = self.open_swap(
-        request,
-    );
+    let (is_asset_input, asset_payment, quote_payment, sqrt_price_limit_x96) = self.open_swap(request);
 
     let input_value = if (is_asset_input) asset_payment.value() else quote_payment.value();
-    let (input_spent, output_amount, sqrt_price_after_x96) = self.swap_amounts(
-        is_asset_input,
-        input_value,
-        sqrt_price_limit_x96,
-        lp_fee_ppm,
+    let (input_spent, output_amount, sqrt_price_after_x96, lp_fee_ppm) = swap_amounts_and_lp_fee!(
+        self.lp_fee,
+        || self.reference_sqrt_price_x96(),
+        |lp_fee_ppm| self.swap_amounts(is_asset_input, input_value, sqrt_price_limit_x96, lp_fee_ppm),
     );
 
     self.settle_swap(
@@ -819,8 +791,7 @@ public fun remove_hook_state<Asset, Quote, Witness: drop, Name: copy + drop + st
 
 fun new_initializer<Asset, Quote>(
     tick_spacing: u32,
-    lp_fee_ppm: u32,
-    is_dynamic_fee: bool,
+    lp_fee: LpFee,
     sqrt_price_x96: u256,
     ctx: &mut TxContext,
 ): PoolInitializer<Asset, Quote> {
@@ -829,7 +800,6 @@ fun new_initializer<Asset, Quote>(
         EIdenticalTokens,
     );
     assert!(tick_spacing > 0 && tick_spacing <= MAX_TICK_SPACING, EInvalidTickSpacing);
-    assert!(lp_fee_ppm <= MAX_LP_FEE_PPM, EInvalidLpFee);
     assert!(
         sqrt_price_x96 >= MIN_SQRT_PRICE_X96 && sqrt_price_x96 < MAX_SQRT_PRICE_X96,
         EInvalidSqrtPrice,
@@ -839,8 +809,7 @@ fun new_initializer<Asset, Quote>(
         pool: Pool {
             id: object::new(ctx),
             tick_spacing,
-            lp_fee_ppm,
-            is_dynamic_fee,
+            lp_fee,
             sqrt_price_x96,
             hooks: Hooks {
                 before_add_liquidity: option::none(),
@@ -890,7 +859,6 @@ fun new_swap_request<Asset, Quote>(
         asset_payment,
         quote_payment,
         sqrt_price_limit_x96,
-        lp_fee_ppm: self.lp_fee_ppm,
         approval: Approval { hook: self.hooks.before_swap, is_approved: false },
     }
 }
@@ -944,20 +912,37 @@ fun hook_state_key<Asset, Quote, Witness, Name: copy + drop + store>(
 fun open_swap<Asset, Quote>(
     self: &Pool<Asset, Quote>,
     request: SwapRequest<Asset, Quote>,
-): (bool, Balance<Asset>, Balance<Quote>, u256, u32) {
-    let SwapRequest {
-        pool_id,
-        is_asset_input,
-        asset_payment,
-        quote_payment,
-        sqrt_price_limit_x96,
-        lp_fee_ppm,
-        approval,
-    } = request;
+): (bool, Balance<Asset>, Balance<Quote>, u256) {
+    let SwapRequest { pool_id, is_asset_input, asset_payment, quote_payment, sqrt_price_limit_x96, approval } = request;
     assert!(pool_id == self.id.to_inner(), EWrongPool);
     approval.assert_approved();
 
-    (is_asset_input, asset_payment, quote_payment, sqrt_price_limit_x96, lp_fee_ppm)
+    (is_asset_input, asset_payment, quote_payment, sqrt_price_limit_x96)
+}
+
+// The swap's LP fee, shared by execution, its test seams and any quote path.
+
+/// Prices a swap and returns the input spent (including the LP fee), the
+/// output, the price after the swap and the LP fee charged. `$swap_amounts`
+/// prices the swap at a given LP fee. A fixed-fee pool prices once at its fee.
+/// A dynamic-fee pool first previews the swap at its base fee, takes the fee
+/// for the previewed price against `$reference_sqrt_price_x96`, then prices
+/// the swap again at that fee. The trader's price limit is neither price.
+macro fun swap_amounts_and_lp_fee(
+    $lp_fee: LpFee,
+    $reference_sqrt_price_x96: || -> u256,
+    $swap_amounts: |u32| -> (u64, u64, u256),
+): (u64, u64, u256, u32) {
+    let lp_fee = $lp_fee;
+    let lp_fee_ppm = if (lp_fee.is_dynamic()) {
+        let (_, _, projected_sqrt_price_x96) = $swap_amounts(lp_fee.base_fee_ppm());
+        lp_fee.fee_ppm_at_price($reference_sqrt_price_x96(), projected_sqrt_price_x96)
+    } else {
+        lp_fee.base_fee_ppm()
+    };
+
+    let (input_spent, output_amount, sqrt_price_after_x96) = $swap_amounts(lp_fee_ppm);
+    (input_spent, output_amount, sqrt_price_after_x96, lp_fee_ppm)
 }
 
 fun open_add_liquidity<Asset, Quote>(
@@ -1159,9 +1144,20 @@ fun credit_donation<Asset, Quote>(
     abort ECurveMathUnavailable
 }
 
+// Reference price seam. It aborts until the DEX has a reference price source.
+
+/// Returns the square-root price, in Q64.96, that a dynamic fee measures each
+/// swap's projected price against. The DEX must supply this input before
+/// publication; no oracle or stored average exists yet. Fixed-fee pools never
+/// read it.
+fun reference_sqrt_price_x96<Asset, Quote>(_self: &Pool<Asset, Quote>): u256 {
+    abort EReferencePriceUnavailable
+}
+
 // === Test-Only Functions ===
 
-/// `execute_swap` with the curve's results supplied by the test.
+/// `execute_swap` with the curve's results supplied by the test, the same at
+/// every LP fee. A dynamic-fee pool still reads the reference price seam.
 #[test_only]
 public fun execute_swap_with_amounts_for_testing<Asset, Quote>(
     self: &mut Pool<Asset, Quote>,
@@ -1171,8 +1167,13 @@ public fun execute_swap_with_amounts_for_testing<Asset, Quote>(
     sqrt_price_after_x96: u256,
     ctx: &mut TxContext,
 ): Completion<Asset, Quote, Swap> {
-    let (is_asset_input, asset_payment, quote_payment, _, lp_fee_ppm) = self.open_swap(request);
+    let (is_asset_input, asset_payment, quote_payment, _) = self.open_swap(request);
 
+    let (input_spent, output_amount, sqrt_price_after_x96, lp_fee_ppm) = swap_amounts_and_lp_fee!(
+        self.lp_fee,
+        || self.reference_sqrt_price_x96(),
+        |_| (input_spent, output_amount, sqrt_price_after_x96),
+    );
     self.settle_swap(
         is_asset_input,
         asset_payment,
@@ -1183,6 +1184,47 @@ public fun execute_swap_with_amounts_for_testing<Asset, Quote>(
         sqrt_price_after_x96,
         ctx,
     )
+}
+
+/// `execute_swap` with the reference price and the curve's results supplied by
+/// the test. The curve's first pass ends at `preview_sqrt_price_x96` and any
+/// later pass at `sqrt_price_after_x96`, with the same amounts. Also returns the
+/// LP fees the curve priced at, in order.
+#[test_only]
+public fun execute_swap_with_reference_for_testing<Asset, Quote>(
+    self: &mut Pool<Asset, Quote>,
+    request: SwapRequest<Asset, Quote>,
+    reference_sqrt_price_x96: u256,
+    preview_sqrt_price_x96: u256,
+    input_spent: u64,
+    output_amount: u64,
+    sqrt_price_after_x96: u256,
+    ctx: &mut TxContext,
+): (Completion<Asset, Quote, Swap>, vector<u32>) {
+    let (is_asset_input, asset_payment, quote_payment, _) = self.open_swap(request);
+    let mut priced_lp_fees_ppm = vector[];
+
+    let (input_spent, output_amount, sqrt_price_after_x96, lp_fee_ppm) = swap_amounts_and_lp_fee!(
+        self.lp_fee,
+        || reference_sqrt_price_x96,
+        |lp_fee_ppm| {
+            priced_lp_fees_ppm.push_back(lp_fee_ppm);
+            let is_preview = priced_lp_fees_ppm.length() == 1;
+            (input_spent, output_amount, if (is_preview) preview_sqrt_price_x96 else sqrt_price_after_x96)
+        },
+    );
+    let completion = self.settle_swap(
+        is_asset_input,
+        asset_payment,
+        quote_payment,
+        lp_fee_ppm,
+        input_spent,
+        output_amount,
+        sqrt_price_after_x96,
+        ctx,
+    );
+
+    (completion, priced_lp_fees_ppm)
 }
 
 /// `execute_add_liquidity` with the curve's results supplied by the test.
@@ -1257,20 +1299,28 @@ public fun after_donate_hook_for_testing<Asset, Quote>(self: &Pool<Asset, Quote>
     self.hooks.after_donate
 }
 
+#[test_only]
+public fun pool_created_lp_fee_for_testing(event: &PoolCreated): LpFee {
+    event.lp_fee
+}
+
+#[test_only]
+public fun swapped_lp_fee_ppm_for_testing(event: &Swapped): u32 {
+    event.lp_fee_ppm
+}
+
 // === Imports ===
 
-use blast_fun_dex::{hook_config::HookConfig, i32::I32};
+use blast_fun_dex::{hook_config::HookConfig, i32::I32, lp_fee::{Self, LpFee}};
 use std::type_name::{Self, TypeName};
 use sui::{balance::{Self, Balance}, coin::Coin, dynamic_field, event};
 
 public use fun take_swap_asset_payment as SwapRequest.take_asset_payment;
 public use fun take_swap_quote_payment as SwapRequest.take_quote_payment;
-public use fun set_swap_lp_fee as SwapRequest.set_lp_fee;
 public use fun approve_swap as SwapRequest.approve;
 public use fun swap_is_asset_input as SwapRequest.is_asset_input;
 public use fun swap_input_value as SwapRequest.input_value;
 public use fun swap_sqrt_price_limit_x96 as SwapRequest.sqrt_price_limit_x96;
-public use fun swap_lp_fee_ppm as SwapRequest.lp_fee_ppm;
 public use fun approve_add_liquidity as AddLiquidityRequest.approve;
 public use fun add_liquidity_amount as AddLiquidityRequest.liquidity;
 public use fun approve_remove_liquidity as RemoveLiquidityRequest.approve;

@@ -14,7 +14,7 @@ instead a fixed sequence of calls that the transaction makes:
 
 ```text
 pool::begin_*      lock the pool; the request owns the payment
-hook::before_*     may take fees or set the LP fee, then approves
+hook::before_*     may take hook fees, then approves
 pool::execute_*    needs the bound before-hook's approval; runs the curve;
                    the completion owns the output and unspent payment
 hook::after_*      may take from or add to the output, then approves
@@ -56,7 +56,8 @@ separate typed functions for hook-aware callers.
 Implement the four curve functions at the end of `dex/sources/pool.move`
 (swap stepping, liquidity amounts, donation fee growth) and the tick and fee
 growth state they need, including fee checks before a position is destroyed.
-Then add PTB tests that run the hooked sequence through the transaction
+Give dynamic-fee pools a reference price source in `reference_sqrt_price_x96`,
+also in `pool.move`. Then add PTB tests that run the hooked sequence through the transaction
 runtime and an SDK resolver, and an independent audit.
 
 Verify locally from the repository root:

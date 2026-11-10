@@ -1,5 +1,5 @@
-/// Example hook: charges a hook fee on every swap input, sets dynamic-fee pools'
-/// LP fee, and counts swaps per pool. Its other slots only approve.
+/// Example hook: charges a hook fee on every swap input and counts swaps per
+/// pool. Its other slots only approve. The pool alone sets the LP fee.
 ///
 /// # The hook convention
 ///
@@ -70,8 +70,6 @@ public struct FeeHookAdminCap has key, store {
 /// The hook's settings, a dynamic field on its `HookConfig`.
 public struct Settings has store {
     fee_bps: u64,
-    /// LP fee this hook sets on dynamic-fee pools.
-    dynamic_lp_fee_ppm: u32,
 }
 
 public struct SettingsKey() has copy, drop, store;
@@ -97,12 +95,11 @@ public fun create_config(
     namespace: &mut HookNamespace,
     _admin: &FeeHookAdminCap,
     fee_bps: u64,
-    dynamic_lp_fee_ppm: u32,
 ) {
     assert!(fee_bps <= MAX_FEE_BPS, EFeeTooHigh);
 
     let mut config = hook_config::new(namespace, FeeHook(), VERSION);
-    dynamic_field::add(config.uid_mut(&FeeHook()), SettingsKey(), Settings { fee_bps, dynamic_lp_fee_ppm });
+    dynamic_field::add(config.uid_mut(&FeeHook()), SettingsKey(), Settings { fee_bps });
     config.share();
 }
 
@@ -145,7 +142,7 @@ public fun register<Asset, Quote>(
 
 // Swap slots.
 
-/// Takes the hook fee from the input, sets the LP fee on dynamic-fee pools, approves.
+/// Takes the hook fee from the input and approves.
 public fun before_swap<Asset, Quote>(
     pool: &mut Pool<Asset, Quote>,
     config: &HookConfig<FeeHook>,
@@ -165,7 +162,6 @@ public fun before_swap<Asset, Quote>(
         let fee_payment = request.take_quote_payment(pool, FeeHook(), fee);
         pool.collect_fee(fee_payment);
     };
-    if (pool.is_dynamic_fee()) request.set_lp_fee(pool, FeeHook(), settings.dynamic_lp_fee_ppm);
 
     request.approve(pool, FeeHook());
 }

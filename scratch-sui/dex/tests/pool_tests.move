@@ -10,6 +10,13 @@ const ABOVE_PRICE_X96: u256 = 158_456_325_028_528_675_187_087_900_672;
 const MIN_SQRT_PRICE_X96: u256 = 4_295_128_739;
 const MAX_SQRT_PRICE_X96: u256 = 1_461_446_703_485_210_103_287_273_052_203_988_822_378_723_970_342;
 const LP_FEE_PPM: u32 = 3_000;
+/// Dynamic settings: base 0.3%, maximum 2%, sensitivity 1,000,000 ppm.
+const BASE_FEE_PPM: u32 = 3_000;
+const MAX_FEE_PPM: u32 = 20_000;
+const SENSITIVITY_PPM: u32 = 1_000_000;
+/// Price 0.96 and 1.08, each 1e-12 further from 1.0 so rounding cannot shrink the gap.
+const PRICE_DOWN_4_PERCENT_X96: u256 = 77_627_428_567_259_243_148_980_294_874;
+const PRICE_UP_8_PERCENT_X96: u256 = 82_336_321_719_055_997_228_953_866_587;
 const TICK_SPACING: u32 = 60;
 
 // === Test-Only Types ===
@@ -64,11 +71,28 @@ fun new_rejects_tick_spacing_above_the_maximum() {
 }
 
 #[test]
-#[expected_failure(abort_code = pool::EInvalidLpFee, location = blast_fun_dex::pool)]
-fun new_rejects_lp_fee_above_one_million_ppm() {
+#[expected_failure(abort_code = lp_fee::ENotFeeTier, location = blast_fun_dex::lp_fee)]
+fun new_with_fixed_fee_rejects_a_fee_off_the_tiers() {
     let mut ctx = tx_context::dummy();
 
-    let initializer = pool::new_with_fixed_fee<ASSET, QUOTE>(TICK_SPACING, 1_000_001, SQRT_PRICE_ONE_X96, &mut ctx);
+    let initializer = pool::new_with_fixed_fee<ASSET, QUOTE>(TICK_SPACING, 2_000, SQRT_PRICE_ONE_X96, &mut ctx);
+
+    destroy(initializer);
+}
+
+#[test]
+#[expected_failure(abort_code = lp_fee::EInvalidSensitivity, location = blast_fun_dex::lp_fee)]
+fun new_with_dynamic_fee_validates_its_settings() {
+    let mut ctx = tx_context::dummy();
+
+    let initializer = pool::new_with_dynamic_fee<ASSET, QUOTE>(
+        TICK_SPACING,
+        BASE_FEE_PPM,
+        MAX_FEE_PPM,
+        99_999,
+        SQRT_PRICE_ONE_X96,
+        &mut ctx,
+    );
 
     destroy(initializer);
 }
@@ -102,32 +126,29 @@ fun new_rejects_the_exclusive_maximum_price() {
 fun new_accepts_every_boundary_value() {
     let mut ctx = tx_context::dummy();
 
-    let low = pool::new_with_fixed_fee<ASSET, QUOTE>(1, 1_000_000, MIN_SQRT_PRICE_X96, &mut ctx).finalize();
-    let high = pool::new_with_fixed_fee<ASSET, QUOTE>(32_767, 0, MAX_SQRT_PRICE_X96 - 1, &mut ctx).finalize();
+    let low = pool::new_with_fixed_fee<ASSET, QUOTE>(1, 20_000, MIN_SQRT_PRICE_X96, &mut ctx).finalize();
+    let high = pool::new_with_fixed_fee<ASSET, QUOTE>(32_767, 1_000, MAX_SQRT_PRICE_X96 - 1, &mut ctx).finalize();
 
-    assert_eq!(low.lp_fee_ppm(), 1_000_000);
+    assert_eq!(low.lp_fee(), lp_fee::new_fixed(20_000));
+    assert_eq!(high.lp_fee(), lp_fee::new_fixed(1_000));
     assert_eq!(high.sqrt_price_x96(), MAX_SQRT_PRICE_X96 - 1);
     destroy(low);
     destroy(high);
 }
 
 #[test]
-#[expected_failure(abort_code = pool::EDynamicFeeWithoutHook, location = blast_fun_dex::pool)]
-fun finalize_rejects_dynamic_fee_without_a_before_swap_hook() {
+fun dynamic_fee_pool_finalizes_without_a_hook_and_reports_its_settings() {
     let mut ctx = tx_context::dummy();
-    let fixture = new_fixture(&mut ctx);
-    let mut initializer = pool::new_with_dynamic_fee<ASSET, QUOTE>(
-        TICK_SPACING,
-        LP_FEE_PPM,
-        SQRT_PRICE_ONE_X96,
-        &mut ctx,
-    );
-    initializer.register_hook(&fixture.test_config, TestHook(), pool::after_swap_flag!());
 
-    let pool = initializer.finalize();
+    let pool = dynamic_pool(&mut ctx);
 
+    let expected = lp_fee::new_dynamic(BASE_FEE_PPM, MAX_FEE_PPM, SENSITIVITY_PPM);
+    assert_eq!(pool.lp_fee(), expected);
+    assert_eq!(pool.before_swap_hook_for_testing(), option::none());
+    let created = event::events_by_type<PoolCreated>();
+    assert_eq!(created.length(), 1);
+    assert_eq!(created[0].pool_created_lp_fee_for_testing(), expected);
     destroy(pool);
-    destroy(fixture);
 }
 
 #[test]
@@ -475,58 +496,158 @@ fun execute_swap_rejects_a_request_from_another_pool() {
 }
 
 #[test]
-fun before_swap_hook_takes_payment_and_sets_the_dynamic_fee() {
+fun before_swap_hook_takes_payment_and_the_pool_keeps_its_lp_fee() {
     let mut ctx = tx_context::dummy();
     let fixture = new_fixture(&mut ctx);
-    let mut pool = fixture.dynamic_pool(&mut ctx);
+    let mut pool = fixture.hooked_pool(pool::before_swap_flag!(), &mut ctx);
     pool.join_reserves_for_testing(balance::create_for_testing(0), balance::create_for_testing(1_000));
     let mut request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
-    assert_eq!(request.lp_fee_ppm(), LP_FEE_PPM);
 
     let hook_fee = request.take_asset_payment(&pool, TestHook(), 10);
-    request.set_lp_fee(&pool, TestHook(), 10_000);
     request.approve(&pool, TestHook());
 
     assert_eq!(hook_fee.destroy_for_testing(), 10);
     assert_eq!(request.input_value(), 90);
-    assert_eq!(request.lp_fee_ppm(), 10_000);
-    assert_eq!(pool.lp_fee_ppm(), LP_FEE_PPM);
     let completion = pool.execute_swap_with_amounts_for_testing(request, 90, 80, BELOW_PRICE_X96, &mut ctx);
     let (asset_coin, quote_coin) = pool.finish(completion, 0, 80, &mut ctx);
     assert_eq!(asset_coin.burn_for_testing(), 0);
     assert_eq!(quote_coin.burn_for_testing(), 80);
+    assert_eq!(swapped_lp_fees_ppm(), vector[LP_FEE_PPM]);
     destroy(pool);
     destroy(fixture);
 }
 
+// LP fee.
+
 #[test]
-#[expected_failure(abort_code = pool::EFixedLpFee, location = blast_fun_dex::pool)]
-fun set_lp_fee_rejects_a_fixed_fee_pool() {
+fun fixed_fee_swap_prices_once_at_the_fixed_fee() {
     let mut ctx = tx_context::dummy();
-    let fixture = new_fixture(&mut ctx);
-    let mut pool = fixture.hooked_pool(pool::before_swap_flag!(), &mut ctx);
-    let mut request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
+    let mut pool = plain_pool(&mut ctx);
+    pool.join_reserves_for_testing(balance::create_for_testing(0), balance::create_for_testing(1_000));
+    let request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
 
-    request.set_lp_fee(&pool, TestHook(), 10_000);
+    // A fixed-fee pool reads neither the reference nor a preview.
+    let (completion, priced_lp_fees_ppm) = pool.execute_swap_with_reference_for_testing(
+        request,
+        SQRT_PRICE_ONE_X96,
+        PRICE_DOWN_4_PERCENT_X96,
+        100,
+        90,
+        PRICE_DOWN_4_PERCENT_X96,
+        &mut ctx,
+    );
 
-    destroy(request);
+    assert_eq!(priced_lp_fees_ppm, vector[LP_FEE_PPM]);
+    assert_eq!(swapped_lp_fees_ppm(), vector[LP_FEE_PPM]);
+    let (asset_coin, quote_coin) = pool.finish(completion, 0, 90, &mut ctx);
+    asset_coin.destroy_zero();
+    assert_eq!(quote_coin.burn_for_testing(), 90);
     destroy(pool);
-    destroy(fixture);
 }
 
 #[test]
-#[expected_failure(abort_code = pool::EInvalidLpFee, location = blast_fun_dex::pool)]
-fun set_lp_fee_rejects_a_fee_above_one_million_ppm() {
+fun dynamic_asset_to_quote_swap_previews_at_the_base_fee_and_charges_the_gap_fee() {
     let mut ctx = tx_context::dummy();
-    let fixture = new_fixture(&mut ctx);
-    let mut pool = fixture.dynamic_pool(&mut ctx);
-    let mut request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
+    let mut pool = dynamic_pool(&mut ctx);
+    pool.join_reserves_for_testing(balance::create_for_testing(0), balance::create_for_testing(1_000));
+    let request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
 
-    request.set_lp_fee(&pool, TestHook(), 1_000_001);
+    // The preview drops the price 4%: 3,000 + 1,000,000 * 0.04^2 = 4,600 ppm.
+    let (completion, priced_lp_fees_ppm) = pool.execute_swap_with_reference_for_testing(
+        request,
+        SQRT_PRICE_ONE_X96,
+        PRICE_DOWN_4_PERCENT_X96,
+        100,
+        90,
+        PRICE_DOWN_4_PERCENT_X96 + 1,
+        &mut ctx,
+    );
 
-    destroy(request);
+    assert_eq!(priced_lp_fees_ppm, vector[BASE_FEE_PPM, 4_600]);
+    assert_eq!(swapped_lp_fees_ppm(), vector[4_600]);
+    assert_eq!(pool.sqrt_price_x96(), PRICE_DOWN_4_PERCENT_X96 + 1);
+    let (asset_coin, quote_coin) = pool.finish(completion, 0, 90, &mut ctx);
+    asset_coin.destroy_zero();
+    assert_eq!(quote_coin.burn_for_testing(), 90);
+    pool.assert_reserves(100, 910);
     destroy(pool);
-    destroy(fixture);
+}
+
+#[test]
+fun dynamic_quote_to_asset_swap_previews_at_the_base_fee_and_charges_the_gap_fee() {
+    let mut ctx = tx_context::dummy();
+    let mut pool = dynamic_pool(&mut ctx);
+    pool.join_reserves_for_testing(balance::create_for_testing(1_000), balance::create_for_testing(0));
+    let request = pool.begin_swap_quote_to_asset(quote(100, &mut ctx), ABOVE_PRICE_X96);
+
+    // The preview lifts the price 8%: 3,000 + 1,000,000 * 0.08^2 = 9,400 ppm.
+    let (completion, priced_lp_fees_ppm) = pool.execute_swap_with_reference_for_testing(
+        request,
+        SQRT_PRICE_ONE_X96,
+        PRICE_UP_8_PERCENT_X96,
+        100,
+        90,
+        PRICE_UP_8_PERCENT_X96 - 1,
+        &mut ctx,
+    );
+
+    assert_eq!(priced_lp_fees_ppm, vector[BASE_FEE_PPM, 9_400]);
+    assert_eq!(swapped_lp_fees_ppm(), vector[9_400]);
+    assert_eq!(pool.sqrt_price_x96(), PRICE_UP_8_PERCENT_X96 - 1);
+    let (asset_coin, quote_coin) = pool.finish(completion, 90, 0, &mut ctx);
+    assert_eq!(asset_coin.burn_for_testing(), 90);
+    quote_coin.destroy_zero();
+    pool.assert_reserves(910, 100);
+    destroy(pool);
+}
+
+#[test]
+fun dynamic_swap_charges_the_maximum_for_a_preview_far_from_the_reference() {
+    let mut ctx = tx_context::dummy();
+    let mut pool = dynamic_pool(&mut ctx);
+    pool.join_reserves_for_testing(balance::create_for_testing(0), balance::create_for_testing(1_000));
+    let request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
+
+    let (completion, priced_lp_fees_ppm) = pool.execute_swap_with_reference_for_testing(
+        request,
+        SQRT_PRICE_ONE_X96,
+        BELOW_PRICE_X96,
+        100,
+        90,
+        BELOW_PRICE_X96,
+        &mut ctx,
+    );
+
+    assert_eq!(priced_lp_fees_ppm, vector[BASE_FEE_PPM, MAX_FEE_PPM]);
+    destroy(completion);
+    destroy(pool);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::EReferencePriceUnavailable, location = blast_fun_dex::pool)]
+fun dynamic_swap_reaches_the_reference_price_seam_after_the_preview() {
+    let mut ctx = tx_context::dummy();
+    let mut pool = dynamic_pool(&mut ctx);
+    pool.join_reserves_for_testing(balance::create_for_testing(0), balance::create_for_testing(1_000));
+    let request = pool.begin_swap_asset_to_quote(asset(100, &mut ctx), BELOW_PRICE_X96);
+
+    let completion = pool.execute_swap_with_amounts_for_testing(request, 100, 90, BELOW_PRICE_X96, &mut ctx);
+
+    destroy(completion);
+    destroy(pool);
+}
+
+#[test]
+#[expected_failure(abort_code = pool::ECurveMathUnavailable, location = blast_fun_dex::pool)]
+fun execute_dynamic_swap_reaches_the_curve_seam_for_the_preview() {
+    let mut ctx = tx_context::dummy();
+    let mut pool = dynamic_pool(&mut ctx);
+    let request = pool.begin_swap_quote_to_asset(quote(100, &mut ctx), ABOVE_PRICE_X96);
+
+    let completion = pool.execute_swap(request, &mut ctx);
+
+    destroy(completion);
+    destroy(pool);
 }
 
 #[test]
@@ -855,12 +976,15 @@ fun hooked_pool(self: &Fixture, flags: u8, ctx: &mut TxContext): Pool<ASSET, QUO
     initializer.finalize()
 }
 
-/// Dynamic-fee pool with `TestHook` bound to before-swap.
-fun dynamic_pool(self: &Fixture, ctx: &mut TxContext): Pool<ASSET, QUOTE> {
-    let mut initializer = pool::new_with_dynamic_fee(TICK_SPACING, LP_FEE_PPM, SQRT_PRICE_ONE_X96, ctx);
-    initializer.register_hook(&self.test_config, TestHook(), pool::before_swap_flag!());
+/// Unhooked dynamic-fee pool at price 1.0.
+fun dynamic_pool(ctx: &mut TxContext): Pool<ASSET, QUOTE> {
+    pool::new_with_dynamic_fee(TICK_SPACING, BASE_FEE_PPM, MAX_FEE_PPM, SENSITIVITY_PPM, SQRT_PRICE_ONE_X96, ctx)
+        .finalize()
+}
 
-    initializer.finalize()
+/// The LP fee every `Swapped` event so far reports, in order.
+fun swapped_lp_fees_ppm(): vector<u32> {
+    event::events_by_type<Swapped>().map!(|swapped| swapped.swapped_lp_fee_ppm_for_testing())
 }
 
 fun assert_reserves(pool: &Pool<ASSET, QUOTE>, asset_reserve: u64, quote_reserve: u64) {
@@ -883,8 +1007,13 @@ fun quote(value: u64, ctx: &mut TxContext): Coin<QUOTE> {
 
 // === Imports ===
 
-use blast_fun_dex::{hook_config::{Self, HookConfig, HookNamespace}, i32, pool::{Self, Pool}};
+use blast_fun_dex::{
+    hook_config::{Self, HookConfig, HookNamespace},
+    i32,
+    lp_fee,
+    pool::{Self, Pool, PoolCreated, Swapped},
+};
 use std::{type_name, unit_test::{assert_eq, destroy}};
-use sui::{balance, coin::{Self, Coin}};
+use sui::{balance, coin::{Self, Coin}, event};
 
 use fun assert_reserves as Pool.assert_reserves;
