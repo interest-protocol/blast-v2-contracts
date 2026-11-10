@@ -52,6 +52,36 @@ carries bytes from a hook's own service, such as a signed attestation; generic
 routers pass it empty. Hooks needing other objects or per-user arguments add
 separate typed functions for hook-aware callers.
 
+## Native LP fees and the curve boundary
+
+The swap core freezes the dynamic reference before pricing and passes a fee
+path to the curve. There is one curve pass. The reference uses exact sums for
+the current partial and previous complete 10-minute windows, aligned to Unix
+time. It blends the current integral with the unexpired fraction of the
+previous window's average and rounds down once. Observations within a timestamp
+add zero weight. A price-changing trade affects the reference only through
+the spot and the time that spot persists. The first pool price seeds the
+pre-swap history. This is a bucketed estimate of a rolling average.
+
+For each curve step, pass the current square-root price and the nearer of the
+next initialized tick and the user's limit to `lp_fee::next_step`. Use its
+limit and `net_budget_down` to price the step. Round the curve's net input up
+and output down. Charge `fee_up` on the net input actually consumed. Stop if
+the remaining gross input cannot advance the curve. When crossing a tick,
+credit the fee to the active liquidity before changing the range. Return the
+sum of charged LP fees in input units for the swap event.
+
+The reference fixes the bands for the whole path. Within a band, the rate is
+the quadratic rate at its farther edge, capped by the pool maximum. This
+approximates the continuous quadratic schedule with at most 512 bands on
+each side and one capped region beyond each. The approximation never exceeds
+the nominal cap. Each segment can round the fee up by less than one input atom.
+Adding a split inside one constant-liquidity, constant-rate segment can add at
+most one net-input atom and two fee atoms. Since both rounded amounts are
+monotone and subadditive under merging, a split cannot reduce the fee for the
+same directed price path and liquidity. The harness exercises the fee path
+with a single-range fill and a fill crossing an initialized tick.
+
 ## Before publication
 
 Implement the four curve functions at the end of `dex/sources/pool.move`

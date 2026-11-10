@@ -95,7 +95,7 @@ fun hook_fee_rounds_up_and_is_kept_in_the_input_coin() {
 }
 
 #[test]
-fun dynamic_fee_pool_charges_its_own_lp_fee_after_the_hook_fee() {
+fun dynamic_pool_passes_remaining_payment_to_the_swap_after_the_hook_fee() {
     let mut fixture = setup(FEE_BPS);
     let mut initializer = pool::new_with_dynamic_fee<ASSET, QUOTE>(
         60,
@@ -112,11 +112,8 @@ fun dynamic_fee_pool_charges_its_own_lp_fee_after_the_hook_fee() {
     let mut request = pool.begin_swap_asset_to_quote(fixture.asset(1_000), BELOW_PRICE_X96);
     fee_hook::before_swap(&mut pool, &fixture.config, &mut request, vector[], &fixture.clock, fixture.scenario.ctx());
     assert_eq!(request.input_value(), 990);
-    // Measured from the creation price, the preview drops the price 4%:
-    // 3,000 + 1,000,000 * 0.04^2 = 4,600 ppm.
-    let (mut completion, priced_lp_fees_ppm) = pool.execute_swap_with_preview_for_testing(
+    let mut completion = pool.execute_swap_with_amounts_for_testing(
         request,
-        PRICE_DOWN_4_PERCENT_X96,
         990,
         900,
         PRICE_DOWN_4_PERCENT_X96,
@@ -126,7 +123,6 @@ fun dynamic_fee_pool_charges_its_own_lp_fee_after_the_hook_fee() {
     fee_hook::after_swap(&mut pool, &fixture.config, &mut completion, vector[], &fixture.clock, fixture.scenario.ctx());
     let (asset_coin, quote_coin) = pool.finish(completion, 0, 900, fixture.scenario.ctx());
 
-    assert_eq!(priced_lp_fees_ppm, vector[3_000, 4_600]);
     assert_eq!(fee_hook::collected_fees<_, _, ASSET>(&pool), 10);
     asset_coin.destroy_zero();
     assert_eq!(quote_coin.burn_for_testing(), 900);

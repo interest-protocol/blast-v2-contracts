@@ -27,8 +27,6 @@ const SQRT_PRICE_UP_2_PERCENT_X96: u256 = 80_812_725_764_549_624_345_414_829_342
 const TABLE_BASE_FEE_PPM: u32 = 2_000;
 const TABLE_MAX_FEE_PPM: u32 = 10_000;
 const TABLE_SENSITIVITY_PPM: u32 = 1_000_000;
-/// The reference price window.
-const WINDOW_MS: u64 = 600_000;
 
 // === Tests ===
 
@@ -126,70 +124,6 @@ fun fixed_fee_ignores_the_price_gap() {
 
     assert_eq!(fee.fee_ppm_at_price(SQRT_PRICE_ONE_X96, SQRT_PRICE_ONE_X96), 3_000);
     assert_eq!(fee.fee_ppm_at_price(MIN_SQRT_PRICE_X96, MAX_SQRT_PRICE_X96 - 1), 3_000);
-}
-
-// Reference price.
-
-#[test]
-fun reference_stays_put_when_no_time_has_passed() {
-    let moved = lp_fee::moved_reference_sqrt_price_x96(SQRT_PRICE_ONE_X96, PRICE_UP_8_PERCENT_X96, 0);
-
-    assert_eq!(moved, SQRT_PRICE_ONE_X96);
-}
-
-#[test]
-fun half_a_window_moves_the_reference_halfway_in_both_directions() {
-    let up = lp_fee::moved_reference_sqrt_price_x96(SQRT_PRICE_ONE_X96, SQRT_PRICE_ONE_X96 + 1_000, WINDOW_MS / 2);
-    let down = lp_fee::moved_reference_sqrt_price_x96(SQRT_PRICE_ONE_X96, SQRT_PRICE_ONE_X96 - 1_000, WINDOW_MS / 2);
-    let tenth = lp_fee::moved_reference_sqrt_price_x96(SQRT_PRICE_ONE_X96, SQRT_PRICE_ONE_X96 + 1_000, WINDOW_MS / 10);
-
-    assert_eq!(up, SQRT_PRICE_ONE_X96 + 500);
-    assert_eq!(down, SQRT_PRICE_ONE_X96 - 500);
-    assert_eq!(tenth, SQRT_PRICE_ONE_X96 + 100);
-}
-
-#[test]
-fun a_full_window_or_more_lands_exactly_on_the_pool_price() {
-    let pool_prices = vector[PRICE_UP_8_PERCENT_X96, PRICE_DOWN_8_PERCENT_X96];
-
-    pool_prices.do!(|pool_price| {
-        assert_eq!(lp_fee::moved_reference_sqrt_price_x96(SQRT_PRICE_ONE_X96, pool_price, WINDOW_MS), pool_price);
-        assert_eq!(lp_fee::moved_reference_sqrt_price_x96(SQRT_PRICE_ONE_X96, pool_price, WINDOW_MS + 1), pool_price);
-        assert_eq!(
-            lp_fee::moved_reference_sqrt_price_x96(SQRT_PRICE_ONE_X96, pool_price, std::u64::max_value!()),
-            pool_price,
-        );
-    });
-}
-
-#[test]
-fun reference_step_rounds_toward_the_old_reference() {
-    // Half of a 3-unit gap is 1.5; the reference moves 1 in either direction.
-    let up = lp_fee::moved_reference_sqrt_price_x96(SQRT_PRICE_ONE_X96, SQRT_PRICE_ONE_X96 + 3, WINDOW_MS / 2);
-    let down = lp_fee::moved_reference_sqrt_price_x96(SQRT_PRICE_ONE_X96, SQRT_PRICE_ONE_X96 - 3, WINDOW_MS / 2);
-    // One millisecond short of a window still leaves a 1-unit gap in place.
-    let almost_up = lp_fee::moved_reference_sqrt_price_x96(SQRT_PRICE_ONE_X96, SQRT_PRICE_ONE_X96 + 1, WINDOW_MS - 1);
-    let almost_down = lp_fee::moved_reference_sqrt_price_x96(SQRT_PRICE_ONE_X96, SQRT_PRICE_ONE_X96 - 1, WINDOW_MS - 1);
-
-    assert_eq!(up, SQRT_PRICE_ONE_X96 + 1);
-    assert_eq!(down, SQRT_PRICE_ONE_X96 - 1);
-    assert_eq!(almost_up, SQRT_PRICE_ONE_X96);
-    assert_eq!(almost_down, SQRT_PRICE_ONE_X96);
-}
-
-#[test]
-fun reference_moves_between_extreme_prices_without_aborting() {
-    let highest = MAX_SQRT_PRICE_X96 - 1;
-    let gap = highest - MIN_SQRT_PRICE_X96;
-
-    let up = lp_fee::moved_reference_sqrt_price_x96(MIN_SQRT_PRICE_X96, highest, WINDOW_MS - 1);
-    let down = lp_fee::moved_reference_sqrt_price_x96(highest, MIN_SQRT_PRICE_X96, WINDOW_MS - 1);
-
-    let step = gap * ((WINDOW_MS - 1) as u256) / (WINDOW_MS as u256);
-    assert_eq!(up, MIN_SQRT_PRICE_X96 + step);
-    assert_eq!(down, highest - step);
-    assert!(up < highest);
-    assert!(down > MIN_SQRT_PRICE_X96);
 }
 
 // Fixed settings.
