@@ -350,18 +350,20 @@ fun create_config_rejects_a_fee_above_ten_percent() {
 #[test]
 fun only_an_applied_fee_change_affects_later_swaps() {
     let mut fixture = setup(FEE_BPS);
-    let mut pool = fixture.fixed_fee_pool();
+    let mut first_pool = fixture.fixed_fee_pool();
+    let mut second_pool = fixture.fixed_fee_pool();
 
     let Fixture { config, admin_cap, version, clock, .. } = &mut fixture;
     let ready_at_ms = config.schedule_fee_bps(version, admin_cap, 1_000, clock);
     assert_eq!(ready_at_ms, FEE_CHANGE_DELAY_MS);
     fixture.clock.set_for_testing(ready_at_ms);
 
-    assert_eq!(fixture.swap_input_after_fee(&mut pool), 990);
+    assert_eq!(fixture.swap_input_after_fee(&mut first_pool), 990);
     let Fixture { config, version, clock, .. } = &mut fixture;
     config.apply_fee_bps(version, clock);
-    assert_eq!(fixture.swap_input_after_fee(&mut pool), 900);
-    destroy(pool);
+    assert_eq!(fixture.swap_input_after_fee(&mut second_pool), 900);
+    destroy(first_pool);
+    destroy(second_pool);
     fixture.teardown();
 }
 
