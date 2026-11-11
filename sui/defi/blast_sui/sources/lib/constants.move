@@ -42,6 +42,11 @@ macro public(package) fun default_redeem_fee_bps(): u64 {
     2
 }
 
+/// Initial wait for changes to the redemption fee or its delay.
+macro public(package) fun initial_redeem_fee_delay_ms(): u64 {
+    48 * 60 * 60 * 1_000
+}
+
 /// Immutable ceiling for the blastSUI redemption fee.
 macro public(package) fun max_redeem_fee_bps(): u64 {
     100

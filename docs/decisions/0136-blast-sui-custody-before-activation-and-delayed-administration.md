@@ -49,13 +49,13 @@ package-only and has this one caller.
 
 **Delayed redemption fee.** `Vault.redeem_fee` is a
 `blast_admin::delayed::Delayed<RedeemFeeKey, u64>`, created with the compiled 2-BPS default and
-a zero delay. `FeeAdmin` schedules a fee (at most 100 BPS) and its next delay; anyone applies
+a 48-hour delay. `FeeAdmin` schedules a fee (at most 100 BPS) and its next delay; anyone applies
 it after the applied delay; `CancelAdmin` cancels. The immediate setter and its event are
 removed. `blast_admin` emits the lifecycle facts, keyed by the vault ID.
 
-**A zero opening delay guarded by release.** This follows the structure of `launch_config`: the
-deployment raises the delay while deposits are still paused, and `vault::unpause` refuses to
-release any bit while the delay is zero or a pending change would make it zero.
+**A guarded delay at creation.** The 48-hour initial delay applies to the first fee or delay
+change and lets Blast release deposits as soon as the vault is created. `vault::unpause` still
+refuses to release any bit while the delay is zero or a pending change would make it zero.
 
 **Deposit-only pause.** `PackageVersion` carries three pause bits, one each for `mint_fun_sui`,
 `request_blast_sui`, and `claim_blast_sui`. `PauseAdmin<BLAST_SUI_PACKAGE>` sets them
@@ -84,8 +84,8 @@ per code. `scripts/check_admin_delay.py` covers the fee's delayed value and the 
 - **A runbook alone for L-1.** It cannot stop the vault going live before custody.
 - **A package-local repair action.** 0137 removed repair and policy narrowing across the stack;
   one package carrying its own path would split the upgrade model.
-- **A 48-hour delay at creation.** It would differ from every other delayed value in the stack.
-  The release guard gives the same guarantee before any user can deposit.
+- **A zero delay at creation.** This would require the deployer to set a nonzero delay before
+  releasing deposits.
 - **Pausing exits as well.** Holders must always be able to leave.
 
 ## Consequences

@@ -21,7 +21,7 @@ const BOOTSTRAP: u64 = 10 * MIST_PER_SUI;
 /// USER's ordinary blast deposit: the only redeemable shares in a funded vault.
 const DEPOSIT: u64 = 8 * MIST_PER_SUI;
 
-/// The 48-hour delay the runbook sets before deposits are released.
+/// The initial 48-hour delay for redemption-fee changes.
 const DELAY_MS: u64 = 172_800_000;
 
 // === Test-Only Types ===
@@ -128,9 +128,9 @@ fun create_returns_no_seed_coin_and_locks_every_bootstrap_share_at_the_zero_addr
 }
 
 /// Both metadata caps and the display cap become children of the vault, and the fee opens
-/// at its default with a zero delay.
+/// at its default with a 48-hour delay.
 #[test]
-fun create_seals_every_package_capability_and_opens_the_fee_at_a_zero_delay() {
+fun create_seals_every_package_capability_and_sets_the_initial_fee_delay() {
     let mut fixture = start_create();
     let validator = fixture.validator();
 
@@ -151,8 +151,8 @@ fun create_seals_every_package_capability_and_opens_the_fee_at_a_zero_delay() {
         assert!(f.vault!().has_capability_for_testing<DisplayCap<BlastSuiDepositReceipt>>());
         assert_eq!(parent, object::id(f.vault!()));
         assert_eq!(fee, constants::default_redeem_fee_bps!());
-        assert_eq!(delay_ms, 0);
-        assert_eq!(f.vault!().redeem_fee_delay_ms_for_testing(), 0);
+        assert_eq!(delay_ms, DELAY_MS);
+        assert_eq!(f.vault!().redeem_fee_delay_ms_for_testing(), DELAY_MS);
     });
 
     fixture.end();
@@ -2031,7 +2031,6 @@ fun stale_package_version_rejects_vault_mutation() {
 fun a_fee_change_applies_after_its_delay_and_later_exits_use_and_retain_it() {
     let mut fixture = start_vault();
     fixture.mint_blast(4 * MIST_PER_SUI);
-    fixture.set_fee_delay(DELAY_MS);
 
     fixture.next_tx!(OWNER, |f| {
         assert_eq!(f.vault!().redeem_fee_bps_for_testing(), constants::default_redeem_fee_bps!());
@@ -2127,7 +2126,7 @@ fun unchanged_fee_and_delay_are_rejected() {
             &f.version,
             &fee_admin(),
             constants::default_redeem_fee_bps!(),
-            0,
+            DELAY_MS,
             &clock,
         );
         clock.destroy_for_testing();
@@ -2140,7 +2139,6 @@ fun unchanged_fee_and_delay_are_rejected() {
 #[expected_failure(abort_code = blast_admin::errors::ENotReady, location = blast_admin::delayed)]
 fun a_fee_change_waits_the_full_applied_delay_even_toward_a_zero_delay() {
     let mut fixture = start_vault();
-    fixture.set_fee_delay(DELAY_MS);
 
     fixture.next_tx!(OWNER, |f| {
         let mut clock = clock::create_for_testing(f.ctx!());
@@ -2166,7 +2164,8 @@ fun anyone_applies_a_ready_fee_change() {
     fixture.schedule_fee_change(constants::max_redeem_fee_bps!(), 0);
 
     fixture.next_tx!(USER, |f| {
-        let clock = clock::create_for_testing(f.ctx!());
+        let mut clock = clock::create_for_testing(f.ctx!());
+        clock.set_for_testing(DELAY_MS);
         f.vault!().apply_redeem_fee(&f.version, &clock);
         clock.destroy_for_testing();
         assert_eq!(f.vault!().redeem_fee_bps_for_testing(), constants::max_redeem_fee_bps!());
@@ -2183,7 +2182,8 @@ fun cancellation_discards_a_ready_fee_change() {
     fixture.schedule_fee_change(constants::max_redeem_fee_bps!(), 0);
 
     fixture.next_tx!(OWNER, |f| {
-        let clock = clock::create_for_testing(f.ctx!());
+        let mut clock = clock::create_for_testing(f.ctx!());
+        clock.set_for_testing(DELAY_MS);
         f.vault!().cancel_redeem_fee(&f.version, &cancel_admin());
         assert_eq!(f.vault!().redeem_fee_bps_for_testing(), constants::default_redeem_fee_bps!());
 
@@ -2198,18 +2198,19 @@ fun cancellation_discards_a_ready_fee_change() {
 #[test]
 fun a_delay_change_keeps_the_fee_and_governs_the_next_change() {
     let mut fixture = start_vault();
-    fixture.set_fee_delay(DELAY_MS);
+    let next_delay_ms = DELAY_MS / 2;
+    fixture.set_fee_delay(next_delay_ms);
 
     fixture.next_tx!(OWNER, |f| {
         assert_eq!(f.vault!().redeem_fee_bps_for_testing(), constants::default_redeem_fee_bps!());
-        assert_eq!(f.vault!().redeem_fee_delay_ms_for_testing(), DELAY_MS);
+        assert_eq!(f.vault!().redeem_fee_delay_ms_for_testing(), next_delay_ms);
 
         let clock = clock::create_for_testing(f.ctx!());
         f.vault!().schedule_redeem_fee(
             &f.version,
             &fee_admin(),
             constants::max_redeem_fee_bps!(),
-            DELAY_MS,
+            next_delay_ms,
             &clock,
         );
         clock.destroy_for_testing();
@@ -2217,8 +2218,8 @@ fun a_delay_change_keeps_the_fee_and_governs_the_next_change() {
         let (parent, _, fee, delay_ms, ready_at_ms) = fee_scheduled().delayed_scheduled_fields();
         assert_eq!(parent, object::id(f.vault!()));
         assert_eq!(fee, constants::max_redeem_fee_bps!());
-        assert_eq!(delay_ms, DELAY_MS);
-        assert_eq!(ready_at_ms, DELAY_MS);
+        assert_eq!(delay_ms, next_delay_ms);
+        assert_eq!(ready_at_ms, next_delay_ms);
     });
 
     fixture.end();
@@ -2560,10 +2561,9 @@ fun exits_stay_live_while_every_deposit_path_is_paused() {
     fixture.end();
 }
 
-/// The deployment order: a fully paused version creates the vault, the delay is raised, and
-/// only then do deposits open.
+/// The initial fee delay lets the deployment open deposits after creating the vault.
 #[test]
-fun a_paused_deployment_creates_the_vault_and_opens_only_after_the_delay_is_set() {
+fun a_paused_deployment_can_open_deposits_after_vault_creation() {
     let mut fixture = start_create();
     let validator = fixture.validator();
 
@@ -2574,7 +2574,6 @@ fun a_paused_deployment_creates_the_vault_and_opens_only_after_the_delay_is_set(
     });
 
     let mut fixture = fixture.into_vault_fixture();
-    fixture.set_fee_delay(DELAY_MS);
     fixture.unpause(constants::valid_pause_bits!());
     fixture.mint_fun(MIST_PER_SUI);
 
@@ -2585,7 +2584,6 @@ fun a_paused_deployment_creates_the_vault_and_opens_only_after_the_delay_is_set(
 /// Release clears only the requested bits once the delay is guarded.
 fun unpause_releases_only_the_requested_bits() {
     let mut fixture = start_vault();
-    fixture.set_fee_delay(DELAY_MS);
     fixture.pause(constants::valid_pause_bits!());
 
     fixture.unpause(constants::fun_mint_pause_bit!());
@@ -2606,6 +2604,7 @@ fun unpause_releases_only_the_requested_bits() {
 fun unpause_refuses_while_the_fee_delay_is_zero() {
     let mut fixture = start_vault();
     fixture.pause(constants::fun_mint_pause_bit!());
+    fixture.set_fee_delay(0);
 
     fixture.unpause(constants::fun_mint_pause_bit!());
 
@@ -2617,7 +2616,6 @@ fun unpause_refuses_while_the_fee_delay_is_zero() {
 /// A pending fee change that would drop the delay to zero blocks release.
 fun unpause_refuses_a_pending_change_to_a_zero_fee_delay() {
     let mut fixture = start_vault();
-    fixture.set_fee_delay(DELAY_MS);
     fixture.pause(constants::fun_mint_pause_bit!());
     fixture.schedule_fee_change(constants::max_redeem_fee_bps!(), 0);
 
@@ -2630,7 +2628,6 @@ fun unpause_refuses_a_pending_change_to_a_zero_fee_delay() {
 #[expected_failure(abort_code = blast_admin::errors::EInvalidPauseBits, location = blast_admin::package_version)]
 fun unpause_rejects_an_undefined_bit() {
     let mut fixture = start_vault();
-    fixture.set_fee_delay(DELAY_MS);
 
     fixture.unpause(8);
 
@@ -2641,7 +2638,6 @@ fun unpause_rejects_an_undefined_bit() {
 #[expected_failure(abort_code = blast_admin::errors::EPauseUnchanged, location = blast_admin::package_version)]
 fun unpause_rejects_bits_that_are_not_set() {
     let mut fixture = start_vault();
-    fixture.set_fee_delay(DELAY_MS);
 
     fixture.unpause(constants::fun_mint_pause_bit!());
 
@@ -3026,7 +3022,7 @@ fun into_vault_fixture(self: CreateFixture): VaultFixture {
     }
 }
 
-/// Schedules `fee` and `delay_ms` at time zero; a zero applied delay makes it ready at once.
+/// Schedules `fee` and `delay_ms` using a test clock at time zero.
 fun schedule_fee_change(self: &mut VaultFixture, fee: u64, delay_ms: u64) {
     self.next_tx!(OWNER, |f| {
         let clock = clock::create_for_testing(f.ctx!());

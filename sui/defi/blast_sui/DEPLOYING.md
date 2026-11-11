@@ -18,13 +18,10 @@ result in the format required by [`deployments/README.md`](../../../deployments/
 5. After the selected validator has a current exchange-rate entry, call
    `vault::create` with both treasury caps, both metadata caps, and the Display
    registry. Verify the pool binding, seed split, locked shares, initial redemption
-   fee, zero fee delay, and that the vault holds all three sealed capabilities.
-6. Raise the fee delay to 48 hours: `vault::schedule_redeem_fee` with the unchanged
-   fee and the new delay, then `vault::apply_redeem_fee`. At a zero applied delay
-   the change is ready at once.
-7. Release deposits with `vault::unpause` and the bits to open. It refuses while the
+   fee, 48-hour fee delay, and that the vault holds all three sealed capabilities.
+6. Release deposits with `vault::unpause` and the bits to open. It refuses while the
    fee delay is zero or a pending change would make it zero.
-8. Run the complete `scripts/verify.sh` gate and record publication, source
+7. Run the complete `scripts/verify.sh` gate and record publication, source
    verification, object IDs, transaction digests, and post-deploy checks.
 
 The package behavior and exact callable signatures live in source. The rationale
