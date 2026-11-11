@@ -34,10 +34,51 @@ QUALIFIED_TYPE = re.compile(r"\b[a-z_][a-z0-9_]*::[A-Z]\w*")
 
 def mask(source):
     """Keep offsets and newlines while hiding comments and string literals."""
-    return re.sub(
-        r'//[^\n]*|/\*[\s\S]*?\*/|b?"(?:\\.|[^"\\])*"',
-        lambda match: re.sub(r"[^\n]", " ", match[0]), source,
-    )
+    result = list(source)
+    pos = 0
+    length = len(source)
+    while pos < length:
+        if source[pos:pos + 2] == "//":
+            end = source.find("\n", pos + 2)
+            if end == -1:
+                end = length
+            for i in range(pos, end):
+                result[i] = " "
+            pos = end
+        elif source[pos:pos + 2] == "/*":
+            depth = 1
+            cursor = pos + 2
+            while depth > 0 and cursor < length:
+                if source[cursor:cursor + 2] == "/*":
+                    depth += 1
+                    cursor += 2
+                elif source[cursor:cursor + 2] == "*/":
+                    depth -= 1
+                    cursor += 2
+                else:
+                    cursor += 1
+            for i in range(pos, cursor):
+                if result[i] != "\n":
+                    result[i] = " "
+            pos = cursor
+        elif source[pos] == '"' or (source[pos] in ("b", "x") and pos + 1 < length and source[pos + 1] == '"'):
+            start = pos
+            cursor = pos + 1 if source[pos] == '"' else pos + 2
+            while cursor < length:
+                if source[cursor] == "\\":
+                    cursor += 2
+                elif source[cursor] == '"':
+                    cursor += 1
+                    break
+                else:
+                    cursor += 1
+            for i in range(start, cursor):
+                if result[i] != "\n":
+                    result[i] = " "
+            pos = cursor
+        else:
+            pos += 1
+    return "".join(result)
 
 
 def mask_attributes_and_uses(text):
@@ -125,12 +166,12 @@ def section_for(path, test_module, kind, attributes, declaration, events):
     if path.name == "constants.move" and "macro" in declaration.split("fun")[0]:
         return "Package Constants"
     if kind in ("struct", "enum"):
-        if test_module or "#[test_only]" in attributes:
+        if test_module or re.search(r"\btest_only\b", attributes):
             return "Test-Only Types"
         return "Events" if re.search(r"\b(?:struct|enum)\s+(\w+)", declaration)[1] in events else "Public Types"
     if test_module:
         return "Tests" if re.search(r"#\[\s*test(?:\s*[,\]])", attributes) else "Test Helpers"
-    if "#[test_only]" in attributes:
+    if re.search(r"\btest_only\b", attributes):
         return "Test-Only Functions"
     if re.match(r"fun init\b", declaration):
         return "Private Initialization"
@@ -146,10 +187,10 @@ def check_event_types(path, items):
     if not path.stem.endswith("events"):
         return
     production = [mask(declaration) for _, _, attributes, declaration in items
-                  if "#[test_only]" not in attributes]
+                  if not re.search(r"\btest_only\b", attributes)]
     types = {}
     for _, kind, attributes, declaration in items:
-        if kind not in ("struct", "enum") or "#[test_only]" in attributes:
+        if kind not in ("struct", "enum") or re.search(r"\btest_only\b", attributes):
             continue
         text = mask(declaration)
         name = re.search(r"\b(?:struct|enum)\s+(\w+)", text)[1]
@@ -176,8 +217,9 @@ def check(path):
     source = path.read_text()
     items = list(declarations(source))
     check_event_types(path, items)
-    module_start = re.search(r"\bmodule\b", mask(source)).start()
-    test_module = "#[test_only]" in source[:module_start]
+    masked = mask(source)
+    module_start = re.search(r"\bmodule\b", masked).start()
+    test_module = bool(re.search(r"#\[[^\]]*\btest_only\b[^\]]*\]", masked[:module_start]))
     headings = list(re.finditer(r"^// === (.*?) ===$", source, re.M))
     names = [heading[1] for heading in headings]
     if any(name not in TAIL_SECTIONS for name in names):
@@ -186,7 +228,7 @@ def check(path):
         [order.index(name) for name in names] == sorted({order.index(name) for name in names})
     )
     # A module with an Events section keeps every struct it emits there.
-    events = set(re.findall(r"event::emit\(\s*(\w+)", mask(source))) if "Events" in names else set()
+    events = set(re.findall(r"event::emit\(\s*(\w+)", masked)) if "Events" in names else set()
     utility_layout = any(
         path.resolve().is_relative_to(ROOT / "sui/utilities" / package)
         for package in ("otc", "vesting")
@@ -213,11 +255,11 @@ def check(path):
             closed_constant_sections.add(previous_section)
         previous_kind = kind
         previous_section = section
-    codes = [int(code) for code in re.findall(r"#\[error\(code = (\d+)\)\]", mask(source))]
+    codes = [int(code) for code in re.findall(r"#\[error\(code = (\d+)\)\]", masked)]
     if codes != list(range(len(codes))):
         raise ValueError("local error codes must be sequential from zero")
     numeric_codes = [
-        int(code) for code in re.findall(rf"\bconst {ERROR_NAME}: u64 = (\d+);", mask(source))
+        int(code) for code in re.findall(rf"\bconst {ERROR_NAME}: u64 = (\d+);", masked)
     ]
     if numeric_codes != list(range(len(numeric_codes))):
         raise ValueError("numeric error codes must be sequential from zero")
@@ -229,7 +271,7 @@ def check(path):
         for _, kind, attributes, declaration in items:
             if kind == "const":
                 match = re.fullmatch(r"const (E\w+): u64 = (\d+);", declaration)
-                if not match or "#[test_only]" not in attributes:
+                if not match or not re.search(r"\btest_only\b", attributes):
                     raise ValueError("registry constants must be test-only numeric errors")
                 constants.append((match[1], int(match[2])))
             elif kind == "fun":

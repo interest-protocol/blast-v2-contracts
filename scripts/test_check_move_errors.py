@@ -143,6 +143,25 @@ fn example() { let text = r#"{ }"#; }
         self.assertNotIn('continued', masked)
         self.assertNotIn('\n    message', masked)
 
+    def test_test_only_attribute_formatting_and_leading_comments(self):
+        val = '''// Note: do not use #[test_only] on this module
+module example::value;
+// === Public Functions ===
+public fun require(value: bool) { assert!(value, EInvalid); }
+// === Errors ===
+#[error(code = 0)]
+const EInvalid: vector<u8> = b"Invalid value.";
+'''
+        test = '''#[test_only, allow(lint(abort_without_constant))]
+module example::value_tests;
+// === Tests ===
+#[test, expected_failure(abort_code = value::EInvalid, location = value)]
+fun invalid() { value::require(false); }
+// === Imports ===
+use example::{value::{Self}};
+'''
+        self.assertEqual(self.audit_sources(value=val, test=test), ([], 1, 0))
+
 
 if __name__ == '__main__':
     unittest.main()

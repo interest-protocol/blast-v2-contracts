@@ -257,6 +257,45 @@ public fun make(): payout::Recipient { abort }
                     else:
                         check(path)
 
+    def test_test_only_attribute_variants_and_comments(self):
+        # Leading comment mentioning #[test_only] does not make the module test-only.
+        source = """// Note: do not use #[test_only] on this production module
+module example::value;
+// === Public Functions ===
+public fun foo() {}
+"""
+        self.check_source(source, "value.move")
+
+        # Comma-separated or spaced test_only attributes on module are recognized.
+        source = """#[test_only, allow(lint(abort_without_constant))]
+module example::value_tests;
+// === Tests ===
+#[test]
+fun it_works() {}
+"""
+        self.check_source(source, "value_tests.move")
+
+        # Comma-separated test_only on functions and types belong to Test-Only sections.
+        source = """module example::value;
+// === Public Functions ===
+public fun foo() {}
+// === Test-Only Functions ===
+#[test_only, allow(lint(abort_without_constant))]
+public fun helper() {}
+"""
+        self.check_source(source, "value.move")
+
+    def test_nested_block_comments_are_masked(self):
+        source = """module example::value;
+/* outer block comment
+    /* nested block comment with public fun bad() {} */
+    still part of the outer comment
+*/
+// === Public Functions ===
+public fun foo() {}
+"""
+        self.check_source(source, "value.move")
+
 
 if __name__ == "__main__":
     unittest.main()
