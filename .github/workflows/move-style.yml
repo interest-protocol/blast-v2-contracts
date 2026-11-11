@@ -2,9 +2,9 @@ name: Move style
 
 on:
   push:
-    paths: ['sui/**', 'scratch-sui/**', 'scripts/**', 'AGENTS.md', '.github/workflows/move-style.yml']
+    paths: ['sui/**', 'scripts/**', 'AGENTS.md', '.github/workflows/move-style.yml']
   pull_request:
-    paths: ['sui/**', 'scratch-sui/**', 'scripts/**', 'AGENTS.md', '.github/workflows/move-style.yml']
+    paths: ['sui/**', 'scripts/**', 'AGENTS.md', '.github/workflows/move-style.yml']
 
 jobs:
   check:

@@ -147,14 +147,7 @@ the same `blast_events::Event<T>` envelope (ADR 0130).
 | `blast_boosts_aftermath` | `protocol::PartnerKey` | `blast_boosts_aftermath::PartnerKey` (ADR 0095) | dynamic-field key under `Protocol`, one per Blast partner Boosts accepts; the value is the time it stops being accepted |
 | `blast_boosts_products` | `<TICKER>_<SIDE>_<LEVERAGE>` tags such as `NVDA_BULL_2X` | bull and bear 2X per Aftermath market | inner type of every Boost coin |
 
-## Parked packages
-
-The [scratch DEX](../scratch-sui/README.md) sits outside the product surface.
-Its fee-tier registry is `BlastDexFeeTiers` and its ACL role is
-`blast_fun_dex_domain::BlastDexFeeTierAdmin`. Its one-time witness,
-`blast_fun_dex::BLAST_FUN_DEX`, identifies the generic package administration,
-version, and roles. The same module defines the `PackageWitness` pinned at
-publication.
+## Presale activation
 
 Presale activation (ADR 0137) types the generic `Publication`, `PackageVersion`
 and `PackageAdmin` by `blast_presale_package::BLAST_PRESALE_PACKAGE`. The

@@ -247,7 +247,7 @@ public fun make(): payout::Recipient { abort }
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             with patch("check_move_style.ROOT", root):
-                for package in ("sui/defi/blast_sui", "sui/defi/boosts/core", "scratch-sui/dex", "sui/launch/launchpad"):
+                for package in ("sui/defi/blast_sui", "sui/defi/boosts/core", "sui/launch/launchpad"):
                     path = root / package / "sources" / "value.move"
                     path.parent.mkdir(parents=True)
                     path.write_text(source)

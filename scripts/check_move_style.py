@@ -23,9 +23,8 @@ UTILITY_SECTIONS = [
 ERROR_NAME = r"E[A-Z](?=[A-Za-z0-9]*[a-z])[A-Za-z0-9]*"
 # Exempt from the qualified-type rule only; every other style check still applies.
 # blast_sui adopted the generic administration but keeps this exemption until its
-# validator work resolves it; boosts is out of the one-way stack scope; scratch-sui
-# is parked, out of scope.
-QUALIFIED_TYPES_EXEMPT = ("sui/defi/blast_sui", "sui/defi/boosts", "scratch-sui")
+# validator work resolves it. Boosts is out of the one-way stack scope.
+QUALIFIED_TYPES_EXEMPT = ("sui/defi/blast_sui", "sui/defi/boosts")
 # A lowercase module segment followed by a type segment: `module::Type`,
 # `pkg::module::Type`, `module::Type::Variant`. Calls through a module
 # (`payout::pay_or_vest`, `errors::x!`) and `Enum::Variant` stay allowed.
@@ -243,8 +242,7 @@ def check(path):
 
 def main():
     files = sorted(
-        path for directory in ("sui", "scratch-sui")
-        for path in (ROOT / directory).rglob("*.move")
+        path for path in (ROOT / "sui").rglob("*.move")
         if not {"build", "interfaces", "target"}.intersection(path.parts)
     )
     failures = []

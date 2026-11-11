@@ -63,7 +63,7 @@ Each line gives the directory, the on-chain package name, its boundary, and wher
 
 The presale is a separate product. It shares no state or code with the launchpad; both build on `blast_core`, take the product roles from `blast_core::blast_domain`, migrate through venues that import neither, and keep LP in `blast_vault::vault::Vault`. Answer presale questions from `sui/launch/presale`, the packages its `Move.toml` names, and the venue and vault it migrates into, never from launchpad code.
 
-Outside the product surface: [`scratch-sui/`](scratch-sui/README.md) (unpublished DEX prototype), every `interfaces/` directory (local stubs of external venue ABIs that prove types, never behavior), and the `tests/`, `ptb_tests/`, and `sui/defi/boosts/composition_tests/` test packages.
+Outside the product surface: every `interfaces/` directory (local stubs of external venue ABIs that prove types, never behavior), and the `tests/`, `ptb_tests/`, and `sui/defi/boosts/composition_tests/` test packages.
 
 ## External dependencies
 

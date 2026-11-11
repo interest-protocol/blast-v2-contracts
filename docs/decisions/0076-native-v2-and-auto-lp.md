@@ -10,10 +10,9 @@ volume-fee design and requested implementation. This authorizes development,
 not publication. The earlier explicit 0%–2% default resolves the subsequent
 ambiguous “0.2” wording; no further clarification blocks implementation.
 
-The [concentrated-liquidity scratch checkpoint](../../scratch-sui/README.md)
-replaces the full-range prototype in the working tree. This record describes
-that earlier design, including its launchpad migration and auto-LP integration.
-The scratch checkpoint has no publication binding.
+This record describes the earlier full-range prototype, including its
+launchpad migration and auto-LP integration. A later unpublished
+concentrated-liquidity prototype superseded it.
 
 ## Decision
 

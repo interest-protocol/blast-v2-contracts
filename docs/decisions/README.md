@@ -82,7 +82,7 @@ records below it decide what 0137 does not restate.
 | [0072](0072-series-one-package-capability-custody.md) | Series1 package-capability custody | **superseded** |
 | [0073](0073-series-one-adapter-owned-vaults.md) | Series1 core with adapter-owned product Vaults | **accepted** |
 | [0074](0074-aftermath-vault-activation-and-health.md) | Aftermath Vault activation and health evidence | **accepted for dependency and raw-field normalization** |
-| [0076](0076-native-v2-and-auto-lp.md) | Native V2 and automatic liquidity deposits | **accepted; native DEX parked in `scratch-sui/`; auto-LP now lives in the vault and venues (0137)** |
+| [0076](0076-native-v2-and-auto-lp.md) | Native V2 and automatic liquidity deposits | **accepted; native DEX prototype superseded; auto-LP now lives in the vault and venues (0137)** |
 | [0077](0077-fixed-creator-selected-sell-burn.md) | Fixed creator-selected sell burn | **accepted** |
 | [0079](0079-compact-launch-state-and-events.md) | Compact launch state and events before publication | **accepted; amended by 0088** |
 | [0080](0080-provider-independent-creator-recipient.md) | Provider-independent creator recipients | **accepted** |
