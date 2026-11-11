@@ -4541,7 +4541,11 @@ holders earned before your stake activated stay with them.
 
 1. `blast_sui::vault::top_up_fun_reserve` with `PackageVersion` and a positive
    `Coin<SUI>`. It joins fun custody without a refresh, so it works even while
-   fun custody is below the funSUI supply and every other call aborts. Emits
+   fun custody is below the funSUI supply and every other call aborts. While
+   fun custody holds active stake, the top-up must exceed the gap by more than
+   `fun_exit_low_water_mist` (61 MIST over the gap), so the next refresh skips
+   the protective unwind, whose rounding could drop custody below the supply
+   again. A smaller top-up loses nothing, and a larger one still recovers. Emits
    `FunReserveToppedUp`. The caller gets nothing back; anything above `F + R`
    moves to blast custody at the next refresh.
 
@@ -4703,7 +4707,7 @@ Codes are plain `u64` values, raised in the `blast_sui` module that detects them
 | 9 | `EBlastAssetsDepleted` | claim, redeem blastSUI | blast custody holds nothing to price shares |
 | 10 | `EBootstrapBelowNativeMinimum` | create | seed at least 1.1 SUI |
 | 11 | `ERedeemFeeAboveMaximum` | schedule fee | at most 100 BPS |
-| 12 | `EFunBackingBelowSupply` | any refresh, funSUI mint or redeem | fun custody fell below supply; `blast_sui::vault::top_up_fun_reserve` restores it |
+| 12 | `EFunBackingBelowSupply` | any refresh, funSUI mint or redeem | fun custody fell below supply; `blast_sui::vault::top_up_fun_reserve` restores it, and with active stake must exceed the gap by more than `fun_exit_low_water_mist` (61 MIST over the gap) |
 | 13 | `EStaleExchangeRate` | claim, create | safe-mode epoch; retry in the next normal epoch |
 | 14 | `EBlastDepositBelowNativeMinimum` | request | deposit at least 1 SUI |
 | 15 | `EBlastDepositNotActive` | claim | wait for `activation_epoch` |
@@ -5236,12 +5240,14 @@ or with different type arguments, are different roles.
 | --- | --- | --- |
 | `blast_admin::package_admin` | `blast_admin::package_admin::UpgradeAdmin<OTW>` (schedule, authorize and commit upgrades, schedule and execute immutability, change the upgrade notice), `blast_admin::package_admin::PauseAdmin<OTW>` (set pause bits), `blast_admin::package_admin::UnpauseAdmin<OTW>` (clear pause bits through the package's own unpause), `blast_admin::package_admin::CancelAdmin<OTW>` (cancel the pending upgrade action or notice change) | every upgradeable package, typed by its one-time witness `OTW` |
 | `blast_core::blast_domain` | `blast_domain::TreasuryAdmin`, `blast_domain::FeeAdmin`, `blast_domain::ListingAdmin`, `blast_domain::VenueAdmin`, `blast_domain::RewardsAdmin`, `blast_domain::BuybackAdmin`, `blast_domain::AutoLpAdmin`, `blast_domain::CreatorAdmin`, `blast_domain::ClaimSignerAdmin`, `blast_domain::CancelAdmin` | the launch products, the vault and the migrators |
+| `blast_sui::blast_sui_domain` | `blast_sui_domain::FeeAdmin` (schedule the redemption fee and its delay), `blast_sui_domain::CancelAdmin` (cancel a scheduled change to the vault's delayed values), `blast_sui_domain::ValidatorAdmin` (no function takes it yet) | Blast SUI |
 | `blast_partners` | `blast_partners::blast_partners::PartnerAdmin` (register partners, schedule shares and caps) | partners |
 | `blast_boosts_core` | `blast_boosts_core::blast_boosts_core::VaultIssuer`, `blast_boosts_core::blast_boosts_core::RiskAdmin`, `blast_boosts_core::blast_boosts_core::ShutdownAdmin`, `blast_boosts_core::blast_boosts_core::UpgradeAdmin` | Boosts |
 
-Two `CancelAdmin` roles exist by design: `blast_admin::package_admin::CancelAdmin<OTW>`
+Three `CancelAdmin` roles exist by design: `blast_admin::package_admin::CancelAdmin<OTW>`
 cancels one package's upgrade actions; `blast_domain::CancelAdmin` cancels product
-proposals.
+proposals; `blast_sui_domain::CancelAdmin` cancels a scheduled change to the Blast SUI
+vault's delayed values.
 
 ### Lifecycle
 
@@ -5369,8 +5375,8 @@ own code can therefore end its upgrades. Each package that may end them wraps
 the call in a thin function that first runs
 `package_version::assert_current(constants::version!())`, so only its live
 bytecode can: the vault does, with `blast_vault::blast_vault_package::make_immutable`.
-The launchpad, presale and migrators are upgradeable and have no such wrapper
-yet; one of their upgrades must add it before they can be made immutable.
+The launchpad, presale, migrators and Blast SUI are upgradeable and have no such
+wrapper yet; one of their upgrades must add it before they can be made immutable.
 `blast_admin::package_admin::schedule_upgrade_delay` proposes only a new notice,
 which anyone applies with `blast_admin::package_admin::apply_upgrade_delay` once
 ready; `blast_admin::package_admin::cancel_upgrade_action` (`CancelAdmin<OTW>`)
@@ -10908,7 +10914,7 @@ public struct ValidatorAdmin {}
 
 ### `blast_sui::blast_sui_package`
 
-Blast SUI's publication and its package witness.  Publication hands the deployer an owned `Publication<BLAST_SUI_PACKAGE>`, which `blast_admin::package_admin::wrap` turns into the shared `PackageAdmin<BLAST_SUI_PACKAGE>` and the shared `PackageVersion<BLAST_SUI_PACKAGE>`, with every deposit paused. Pausing, upgrades, and immutability go through `blast_admin::package_admin` under the package-scoped roles `PauseAdmin<BLAST_SUI_PACKAGE>`, `UpgradeAdmin<BLAST_SUI_PACKAGE>`, and `CancelAdmin<BLAST_SUI_PACKAGE>`.  The publication pins `PackageWitness`, the one witness the package passes to the generic administration's pause release. `vault::unpause` releases pause bits once the vault's delays are guarded; it lives beside the state it reads.
+Blast SUI's publication and its package witness.  Publication hands the deployer an owned `Publication<BLAST_SUI_PACKAGE>`, which `blast_admin::package_admin::wrap` turns into the shared `PackageAdmin<BLAST_SUI_PACKAGE>` and the shared `PackageVersion<BLAST_SUI_PACKAGE>`, with every deposit paused. Pausing and upgrades go through `blast_admin::package_admin` under the package-scoped roles `PauseAdmin<BLAST_SUI_PACKAGE>`, `UpgradeAdmin<BLAST_SUI_PACKAGE>`, and `CancelAdmin<BLAST_SUI_PACKAGE>`. Making the package immutable needs a wrapper that passes the package witness, and this package ships none.  The publication pins `PackageWitness`, the one witness the package passes to the generic administration's pause release. `vault::unpause` releases pause bits once the vault's delays are guarded; it lives beside the state it reads.
 
 Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/blast_sui/sources/blast_sui_package.move
 
@@ -11300,9 +11306,13 @@ public fun donate_sui(
 ///
 /// This is the recovery path for `fun_backing_below_supply`: every other entry point
 /// refreshes first and aborts while fun custody is below the funSUI supply, so a top-up
-/// that must not depend on that check restores 1:1 backing for every later call. Anyone
-/// may contribute; the caller receives nothing, and any amount above the supply plus the
-/// rounding reserve is swept to blast custody by the next refresh.
+/// that must not depend on that check restores 1:1 backing for every later call. While fun
+/// custody holds active stake, the top-up must exceed the gap by more than
+/// `fun_exit_low_water_mist` (61 MIST over the gap), so the next refresh skips the protective
+/// unwind, whose rounding could drop custody below the supply again. A smaller top-up loses
+/// nothing, and a larger one still recovers. Anyone may contribute; the caller receives
+/// nothing, and any amount above the supply plus the rounding reserve is swept to blast
+/// custody by the next refresh.
 public fun top_up_fun_reserve(
     self: &mut Vault,
     package_version: &blast_admin::package_version::PackageVersion<blast_sui_package::BLAST_SUI_PACKAGE>,

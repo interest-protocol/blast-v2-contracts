@@ -43,9 +43,9 @@ identified only through its package one-time witness (OTW); ADR 0085 records why
 The Publisher object shows `module_name` of the claiming module. The launch
 stack's `blast_admin::package_admin::PackageAdmin<OTW>`,
 `blast_admin::package_version::PackageVersion<OTW>` and `Publication<OTW>`
-take the OTW as their type argument, while `blast_sui` and boosts objects
-show it inside `UpgradeCustody<OTW>` and `OperationalVersion<OTW>` until
-they adopt the generic administration (#191, #205). Either way the OTW name
+and the same objects in `blast_sui` take the OTW as their type argument, while
+boosts objects show it inside `UpgradeCustody<OTW>` and
+`OperationalVersion<OTW>`. Either way the OTW name
 is what an auditor reads on every package-administration object.
 
 ## Coin types

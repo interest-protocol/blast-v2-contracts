@@ -4,6 +4,8 @@
 - Date: 2026-11-10
 - Amends: [0053](0053-single-validator-funsui-and-blastsui.md) (redemption fee,
   package-local authority, withdrawal guarantees),
+  [0060](0060-blastsui-metadata-cap-custody.md) (capabilities move from `PackageAdmin` to the
+  vault),
   [0061](0061-blastsui-routine-admin-and-composable-package-custody.md) (composable
   construct, attach and share custody)
 - Follows: [0134](0134-delayed-administration-pause-and-table-acl.md),
@@ -63,8 +65,11 @@ needs neither the vault nor the version.
 
 **Fun-reserve recovery.** `vault::top_up_fun_reserve` adds SUI to fun custody without refreshing,
 minting, or delegating. If fun custody falls below the funSUI supply, anyone can cover the gap in
-one call and every exit reopens without an upgrade. Any excess above the supply plus the reserve
-moves to blast custody at the next refresh.
+one call and every exit reopens without an upgrade. While fun custody holds active stake, the
+top-up must exceed the gap by more than `fun_exit_low_water_mist` (61 MIST over the gap), so the
+next refresh skips the protective unwind, whose rounding could drop custody below the supply
+again. A smaller top-up loses nothing, and a larger one still recovers. Any excess above the
+supply plus the reserve moves to blast custody at the next refresh.
 
 **Unusable rate entries.** An entry with a zero component counts as missing, exactly like a
 safe-mode epoch. `create` rejects it and refresh keeps the cached rate.
@@ -104,5 +109,6 @@ Residual risks that this decision does not close:
 Move tests cover publication without a shared version, a fully paused wrap, delay enforcement,
 cancellation of a ready change, delay changes, version precedence on every mutator, pause scope,
 guarded release, exits while fully paused, the paused deployment order, and recovery of a frozen
-vault through `top_up_fun_reserve`. A vault-level zero rate entry is unreachable in
-`test_scenario`, so `math::is_usable_rate` has a unit test and the source gate pins its use.
+vault through `top_up_fun_reserve`. `create` has a direct test against a zero rate entry. Such
+an entry is unreachable for refresh in `test_scenario`, so `math::is_usable_rate` has a unit test
+and the source gate pins its use.

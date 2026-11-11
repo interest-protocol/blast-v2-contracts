@@ -22,9 +22,9 @@ UTILITY_SECTIONS = [
 ]
 ERROR_NAME = r"E[A-Z](?=[A-Za-z0-9]*[a-z])[A-Za-z0-9]*"
 # Exempt from the qualified-type rule only; every other style check still applies.
-# blast_sui and boosts are out of the one-way stack scope and adopt the type
-# import rule with their own administration rework (#191, #205); scratch-sui is
-# parked, out of scope.
+# blast_sui adopted the generic administration but keeps this exemption until its
+# validator work resolves it; boosts is out of the one-way stack scope; scratch-sui
+# is parked, out of scope.
 QUALIFIED_TYPES_EXEMPT = ("sui/defi/blast_sui", "sui/defi/boosts", "scratch-sui")
 # A lowercase module segment followed by a type segment: `module::Type`,
 # `pkg::module::Type`, `module::Type::Variant`. Calls through a module

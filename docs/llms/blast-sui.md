@@ -211,7 +211,11 @@ holders earned before your stake activated stay with them.
 
 1. `blast_sui::vault::top_up_fun_reserve` with `PackageVersion` and a positive
    `Coin<SUI>`. It joins fun custody without a refresh, so it works even while
-   fun custody is below the funSUI supply and every other call aborts. Emits
+   fun custody is below the funSUI supply and every other call aborts. While
+   fun custody holds active stake, the top-up must exceed the gap by more than
+   `fun_exit_low_water_mist` (61 MIST over the gap), so the next refresh skips
+   the protective unwind, whose rounding could drop custody below the supply
+   again. A smaller top-up loses nothing, and a larger one still recovers. Emits
    `FunReserveToppedUp`. The caller gets nothing back; anything above `F + R`
    moves to blast custody at the next refresh.
 
@@ -373,7 +377,7 @@ Codes are plain `u64` values, raised in the `blast_sui` module that detects them
 | 9 | `EBlastAssetsDepleted` | claim, redeem blastSUI | blast custody holds nothing to price shares |
 | 10 | `EBootstrapBelowNativeMinimum` | create | seed at least 1.1 SUI |
 | 11 | `ERedeemFeeAboveMaximum` | schedule fee | at most 100 BPS |
-| 12 | `EFunBackingBelowSupply` | any refresh, funSUI mint or redeem | fun custody fell below supply; `blast_sui::vault::top_up_fun_reserve` restores it |
+| 12 | `EFunBackingBelowSupply` | any refresh, funSUI mint or redeem | fun custody fell below supply; `blast_sui::vault::top_up_fun_reserve` restores it, and with active stake must exceed the gap by more than `fun_exit_low_water_mist` (61 MIST over the gap) |
 | 13 | `EStaleExchangeRate` | claim, create | safe-mode epoch; retry in the next normal epoch |
 | 14 | `EBlastDepositBelowNativeMinimum` | request | deposit at least 1 SUI |
 | 15 | `EBlastDepositNotActive` | claim | wait for `activation_epoch` |

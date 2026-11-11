@@ -5,10 +5,11 @@
 ///
 /// Publication hands the deployer an owned `Publication<BLAST_SUI_PACKAGE>`, which
 /// `blast_admin::package_admin::wrap` turns into the shared `PackageAdmin<BLAST_SUI_PACKAGE>` and
-/// the shared `PackageVersion<BLAST_SUI_PACKAGE>`, with every deposit paused. Pausing, upgrades,
-/// and immutability go through `blast_admin::package_admin` under the package-scoped roles
+/// the shared `PackageVersion<BLAST_SUI_PACKAGE>`, with every deposit paused. Pausing and upgrades
+/// go through `blast_admin::package_admin` under the package-scoped roles
 /// `PauseAdmin<BLAST_SUI_PACKAGE>`, `UpgradeAdmin<BLAST_SUI_PACKAGE>`, and
-/// `CancelAdmin<BLAST_SUI_PACKAGE>`.
+/// `CancelAdmin<BLAST_SUI_PACKAGE>`. Making the package immutable needs a wrapper that passes the
+/// package witness, and this package ships none.
 ///
 /// The publication pins `PackageWitness`, the one witness the package passes to the generic
 /// administration's pause release. `vault::unpause` releases pause bits once the vault's delays

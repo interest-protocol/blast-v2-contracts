@@ -339,9 +339,13 @@ public fun donate_sui(
 ///
 /// This is the recovery path for `fun_backing_below_supply`: every other entry point
 /// refreshes first and aborts while fun custody is below the funSUI supply, so a top-up
-/// that must not depend on that check restores 1:1 backing for every later call. Anyone
-/// may contribute; the caller receives nothing, and any amount above the supply plus the
-/// rounding reserve is swept to blast custody by the next refresh.
+/// that must not depend on that check restores 1:1 backing for every later call. While fun
+/// custody holds active stake, the top-up must exceed the gap by more than
+/// `fun_exit_low_water_mist` (61 MIST over the gap), so the next refresh skips the protective
+/// unwind, whose rounding could drop custody below the supply again. A smaller top-up loses
+/// nothing, and a larger one still recovers. Anyone may contribute; the caller receives
+/// nothing, and any amount above the supply plus the rounding reserve is swept to blast
+/// custody by the next refresh.
 public fun top_up_fun_reserve(
     self: &mut Vault,
     package_version: &PackageVersion<BLAST_SUI_PACKAGE>,

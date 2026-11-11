@@ -3,7 +3,7 @@
 - Status: **accepted**
 - Date: 2026-08-31
 - Amends: [0053](0053-single-validator-funsui-and-blastsui.md)
-- Amended by: [0061](0061-blastsui-routine-admin-and-composable-package-custody.md)
+- Amended by: [0061](0061-blastsui-routine-admin-and-composable-package-custody.md), [0136](0136-blast-sui-custody-before-activation-and-delayed-administration.md)
 
 ## Sources
 

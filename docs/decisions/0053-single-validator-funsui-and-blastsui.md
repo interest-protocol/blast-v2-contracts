@@ -1,9 +1,9 @@
 # 0053: Single-validator `funSUI` and `blastSUI`
 
 - Status: accepted; authority and receipt `DisplayCap` custody amended by 0060,
-  0061, and 0097
+  0061, 0097, and 0136
 - Date: 2026-08-29
-- Amended by: [0056](0056-bounded-pending-stake-vector.md), [0060](0060-blastsui-metadata-cap-custody.md), [0061](0061-blastsui-routine-admin-and-composable-package-custody.md), [0065](0065-discoverable-blastsui-treasury-caps.md), [0097](0097-one-singleton-acl-with-typed-roles.md)
+- Amended by: [0056](0056-bounded-pending-stake-vector.md), [0060](0060-blastsui-metadata-cap-custody.md), [0061](0061-blastsui-routine-admin-and-composable-package-custody.md), [0065](0065-discoverable-blastsui-treasury-caps.md), [0097](0097-one-singleton-acl-with-typed-roles.md), [0136](0136-blast-sui-custody-before-activation-and-delayed-administration.md)
 
 > Authority and display-custody update (2026-10-05): the sections below record
 > the original decision. [ADR 0060](0060-blastsui-metadata-cap-custody.md)
@@ -21,6 +21,13 @@
 > policy restriction; `FeeAdmin` sets the redemption fee. Root rotation and its
 > delay belong to `blast_admin`. Where this ADR gives a power to the
 > `SuperAdminCap` or a package-local authority, read the matching role.
+
+> Administration update (2026-11-10):
+> [ADR 0136](0136-blast-sui-custody-before-activation-and-delayed-administration.md)
+> replaces the local `PackageAdmin` and `PackageVersion` with `blast_admin`'s
+> generic ones, seals the metadata and Display capabilities under the vault,
+> delays fee changes, and adds a deposit-only pause. It supersedes the package
+> custody and "no pause" statements below; exits still never pause.
 
 ## Sources
 

@@ -54,12 +54,14 @@ or with different type arguments, are different roles.
 | --- | --- | --- |
 | `blast_admin::package_admin` | `blast_admin::package_admin::UpgradeAdmin<OTW>` (schedule, authorize and commit upgrades, schedule and execute immutability, change the upgrade notice), `blast_admin::package_admin::PauseAdmin<OTW>` (set pause bits), `blast_admin::package_admin::UnpauseAdmin<OTW>` (clear pause bits through the package's own unpause), `blast_admin::package_admin::CancelAdmin<OTW>` (cancel the pending upgrade action or notice change) | every upgradeable package, typed by its one-time witness `OTW` |
 | `blast_core::blast_domain` | `blast_domain::TreasuryAdmin`, `blast_domain::FeeAdmin`, `blast_domain::ListingAdmin`, `blast_domain::VenueAdmin`, `blast_domain::RewardsAdmin`, `blast_domain::BuybackAdmin`, `blast_domain::AutoLpAdmin`, `blast_domain::CreatorAdmin`, `blast_domain::ClaimSignerAdmin`, `blast_domain::CancelAdmin` | the launch products, the vault and the migrators |
+| `blast_sui::blast_sui_domain` | `blast_sui_domain::FeeAdmin` (schedule the redemption fee and its delay), `blast_sui_domain::CancelAdmin` (cancel a scheduled change to the vault's delayed values), `blast_sui_domain::ValidatorAdmin` (no function takes it yet) | Blast SUI |
 | `blast_partners` | `blast_partners::blast_partners::PartnerAdmin` (register partners, schedule shares and caps) | partners |
 | `blast_boosts_core` | `blast_boosts_core::blast_boosts_core::VaultIssuer`, `blast_boosts_core::blast_boosts_core::RiskAdmin`, `blast_boosts_core::blast_boosts_core::ShutdownAdmin`, `blast_boosts_core::blast_boosts_core::UpgradeAdmin` | Boosts |
 
-Two `CancelAdmin` roles exist by design: `blast_admin::package_admin::CancelAdmin<OTW>`
+Three `CancelAdmin` roles exist by design: `blast_admin::package_admin::CancelAdmin<OTW>`
 cancels one package's upgrade actions; `blast_domain::CancelAdmin` cancels product
-proposals.
+proposals; `blast_sui_domain::CancelAdmin` cancels a scheduled change to the Blast SUI
+vault's delayed values.
 
 ### Lifecycle
 
@@ -187,8 +189,8 @@ own code can therefore end its upgrades. Each package that may end them wraps
 the call in a thin function that first runs
 `package_version::assert_current(constants::version!())`, so only its live
 bytecode can: the vault does, with `blast_vault::blast_vault_package::make_immutable`.
-The launchpad, presale and migrators are upgradeable and have no such wrapper
-yet; one of their upgrades must add it before they can be made immutable.
+The launchpad, presale, migrators and Blast SUI are upgradeable and have no such
+wrapper yet; one of their upgrades must add it before they can be made immutable.
 `blast_admin::package_admin::schedule_upgrade_delay` proposes only a new notice,
 which anyone applies with `blast_admin::package_admin::apply_upgrade_delay` once
 ready; `blast_admin::package_admin::cancel_upgrade_action` (`CancelAdmin<OTW>`)

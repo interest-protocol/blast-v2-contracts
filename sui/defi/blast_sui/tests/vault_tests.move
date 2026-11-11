@@ -190,6 +190,25 @@ fun create_rejects_a_pool_without_a_current_epoch_exchange_rate() {
     fixture.end();
 }
 
+/// A genesis-epoch entry is present but has a zero component, so it counts as missing.
+#[test]
+#[expected_failure(abort_code = errors::EStaleExchangeRate, location = blast_sui::vault)]
+fun create_rejects_a_current_entry_with_a_zero_component() {
+    let mut fixture = start_create_in_genesis_epoch();
+    let validator = fixture.validator();
+
+    fixture.next_tx!(OWNER, |f| {
+        let pool_id = f.system!().validator_staking_pool_id(validator);
+        let epoch = f.ctx!().epoch();
+        let rates = f.system!().pool_exchange_rates(&pool_id);
+        assert!(rates.contains(epoch));
+        assert_eq!(rates[epoch].sui_amount(), 0);
+        f.create_vault(validator, pool_id, BOOTSTRAP, 0);
+    });
+
+    fixture.end();
+}
+
 #[test]
 #[expected_failure(abort_code = errors::EValidatorNotActive, location = blast_sui::vault)]
 fun create_rejects_an_inactive_validator() {
@@ -872,6 +891,40 @@ fun a_fun_reserve_top_up_recovers_a_vault_frozen_by_a_native_loss() {
 
     fixture.sync();
     fixture.redeem_fun(MIST_PER_SUI / 2);
+    fixture.end();
+}
+
+/// A top-up of exactly the gap leaves the buffer at the low-water mark or below, so the next
+/// refresh unwinds active stake and the unwind's rounding freezes the vault again.
+#[test]
+#[expected_failure(abort_code = errors::EFunBackingBelowSupply, location = blast_sui::vault)]
+fun an_exact_gap_top_up_leaves_a_vault_with_active_stake_frozen() {
+    let mut fixture = start_vault_one_mist_below_fun_supply();
+
+    fixture.next_tx!(OWNER, |f| {
+        f.vault!().top_up_fun_reserve(&f.version, coin::mint_for_testing(1, f.ctx!()));
+    });
+    fixture.sync();
+
+    fixture.end();
+}
+
+/// A top-up one MIST above the gap plus the low-water mark skips the protective unwind.
+#[test]
+fun a_top_up_above_the_low_water_mark_recovers_a_vault_with_active_stake() {
+    let mut fixture = start_vault_one_mist_below_fun_supply();
+    let headroom = constants::fun_exit_low_water_mist!() + 1;
+
+    fixture.next_tx!(OWNER, |f| {
+        f.vault!().top_up_fun_reserve(&f.version, coin::mint_for_testing(1 + headroom, f.ctx!()));
+    });
+
+    let custody = fixture.sync();
+    let (fun_custody, _, _, fun_supply, _) = custody.vault_custody_fields();
+    let (_, _, tokens, _) = fun_custody.pool_custody_fields();
+    assert!(tokens > 0);
+    assert_eq!(fun_custody.pool_assets(), fun_supply + headroom);
+
     fixture.end();
 }
 
@@ -2830,6 +2883,13 @@ macro fun vault_system($fixture: &mut VaultFixture): &mut SuiSystemState {
 
 /// Two genesis validators with 100 SUI each, advanced once so both pools have a rate entry.
 fun start_create(): CreateFixture {
+    let mut fixture = start_create_in_genesis_epoch();
+    fixture.advance_epoch();
+    fixture
+}
+
+/// Stops before the first epoch change, while genesis pool rate entries are still zero.
+fun start_create_in_genesis_epoch(): CreateFixture {
     let mut runner = test_runner::new()
         .validators(
             vector[
@@ -2839,7 +2899,6 @@ fun start_create(): CreateFixture {
         )
         .build();
     runner.scenario_mut().create_system_objects();
-    runner.advance_runner_epoch();
     let version = blast_sui_package::version_for_testing(runner.ctx());
 
     CreateFixture { runner, version, system_state: option::none() }
@@ -3149,6 +3208,34 @@ fun rejoin_validator_at_same_address(self: &mut VaultFixture) {
     self.runner.set_sender(USER).stake_with(validator, 100);
     self.runner.set_sender(validator).add_validator();
     self.advance_epoch();
+}
+
+/// Leaves active fun stake with fun custody one MIST below the funSUI supply.
+///
+/// These amounts pin a rate at which the protective unwind rounds custody below the supply;
+/// the unwind survives at other rates.
+fun start_vault_one_mist_below_fun_supply(): VaultFixture {
+    let mut fixture = start_vault();
+    let fun_supply = 33_333_333_337;
+
+    fixture.advance_epoch();
+    fixture.sync();
+    fixture.advance_epoch_with_rewards(77);
+    fixture.sync();
+    fixture.mint_fun(fun_supply);
+    fixture.advance_epoch();
+    fixture.sync();
+
+    fixture.next_tx!(USER, |f| {
+        let buffer = f.vault!().fun_custody_for_testing().pool_assets() - fun_supply;
+        f.vault!().consume_fun_buffer_for_testing(buffer);
+        f.vault!().simulate_native_loss_for_testing(1);
+
+        let (_, _, tokens, _) = f.vault!().fun_custody_for_testing().pool_custody_fields();
+        assert!(tokens > 0);
+    });
+
+    fixture
 }
 
 /// USER mints funSUI and returns the emitted custody snapshot.
