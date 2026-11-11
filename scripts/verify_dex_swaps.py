@@ -7,6 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 
 from dex_curve_proof import prove_curve
+from dex_fee_bytecode import check_fee_weight_bytecode, prove_fee_partition, prove_fee_weight
 from dex_fee_enclosure import prove_fee_enclosure
 from dex_fee_width import prove_fee_width
 from dex_mul_div_bytecode import check_bytecode, prove_compiled_branches
@@ -14,7 +15,7 @@ from dex_owned_bytecode import check_owned_bytecode
 from dex_price_bytecode import prove_inverse
 from dex_solvency import check_tick_prices, prove_solvency
 from dex_solvency_induction import prove_abort_boundary, prove_induction, prove_position_keys
-from dex_swap_progress import prove_swap_progress
+from dex_swap_progress import check_swap_loop_bytecode, prove_output_accumulator, prove_swap_progress
 from dex_bitmap_bytecode import check_bitmap_bytecode
 from dex_tick_proof import prove_tick_lookup
 
@@ -529,6 +530,7 @@ def check_source_hashes():
         actual = sha256((SOURCE / path).read_bytes()).hexdigest()
         if actual != expected:
             raise SystemExit(f"{path} changed. Review the model against the new source before updating its pin.")
+    print(f"PASS source hashes for {len(SOURCE_HASHES)} pinned DEX modules", flush=True)
 
 
 def main():
@@ -539,7 +541,9 @@ def main():
     if args.compiled_module:
         check_bytecode(args.compiled_module)
         check_bitmap_bytecode(args.compiled_module.with_name("curve.mv"))
+        check_fee_weight_bytecode(args.compiled_module.with_name("continuous_fee.mv"))
         check_owned_bytecode(args.compiled_module)
+        check_swap_loop_bytecode(args.compiled_module.with_name("pool.mv"))
     else:
         print("Model-only run. Pass --compiled-module to also check compiled tick and price arithmetic.", flush=True)
     check_tick_prices(SOURCE, args.compiled_module)
@@ -549,11 +553,14 @@ def main():
     prove_inverse(prover)
     price_and_output(prover)
     prove_fee_enclosure(prover)
+    prove_fee_weight(prover)
+    prove_fee_partition(prover)
     prove_fee_width(prover)
     fees_and_search(prover)
     prove_curve(prover)
     prove_tick_lookup(prover)
     prove_swap_progress(prover)
+    prove_output_accumulator(prover)
     settlement(prover)
     prove_solvency(prover)
     prove_position_keys(prover)

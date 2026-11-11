@@ -84,13 +84,18 @@ presence invariant also discharge the lookup's checked casts, additions,
 and table borrows.
 
 The Sui Prover value check matches successful compiled lookups to a trace.
-The separate no-abort check assumes live selected child keys and uses
+The separate no-abort check also matches the compiled result to the
+trace. It assumes live, nonzero selected child bitmaps and uses
 summaries for the masks and the deterministic scan, including the scan
 result range `0..255`. The compiled bytecode checks and Z3 bitvector
 lemmas justify those summaries. The child-key precondition follows from
 the source-level reachability argument under the pinned `Table` semantics. The
 reachability induction composes the checked contracts and the source's
-mutation sites. VM transaction semantics are outside this proof.
+mutation sites. A staged extraction of the swap loop's read-only
+target selection checks that lookup, the selected tick's table read, and
+directional clipping return with live keys. Applying that condition at
+every loop header still requires a compiled invariant. VM transaction
+semantics are outside this proof.
 
 ## Reproduce
 
@@ -102,7 +107,7 @@ the [formal verification instructions](README.md#swap-arithmetic-proof).
 python3 scripts/verify_dex_swaps.py
 python3 scripts/verify_dex_swaps_move.py /path/to/sui-prover /path/to/prover-checkout /path/to/sui-checkout \
   --functions curve::new_bitmap_spec --functions curve::next_tick_spec \
-  --functions curve::next_tick_return_spec \
+  --functions curve::next_tick_return_spec --functions pool::swap_target_return_spec \
   --functions curve::change_bitmap_spec --functions curve::set_initialized_spec \
   --functions curve::change_tick_spec --functions curve::cross_spec \
   --functions curve::cross_total_frame_spec --functions curve::move_inside_grid_spec

@@ -27,8 +27,14 @@ from dex_solvency_specs import (
     instrument_liquidity_execution, instrument_swap_fee_funding, liquidity_execution_specs,
 )
 from dex_swap_progress_specs import CURSOR_ACCESSOR, LOOKUP_FOR_PROGRESS, PROGRESS_SPEC, instrument_swap_progress
-from dex_fee_return_specs import FEE_RETURN_SPECS, INTERVAL_RETURN_SPECS, QUOTE_ENTRY_SPECS
-from dex_tick_specs import LOOKUP_RETURN_BPL, LOOKUP_RETURN_SPECS, LOOKUP_SPECS, LOOKUP_TOTAL_SPECS, SCAN_BPL
+from dex_fee_return_specs import (
+    CAPPED_COORDINATE_SPECS, DYNAMIC_LEAF_SPECS, FEE_RETURN_SPECS, INTERVAL_RETURN_SPECS,
+    ORDERED_INTERVAL, QUOTE_CLAMP_SPEC, QUOTE_ENTRY_SPECS, RECIPROCAL_RETURN_SPEC, isolate_quote_clamp,
+)
+from dex_tick_specs import (
+    LOOKUP_RETURN_BPL, LOOKUP_RETURN_SPECS, LOOKUP_SPECS, LOOKUP_TOTAL_SPECS, SCAN_BPL,
+    SWAP_TARGET_SPEC, TICK_TARGET_READINESS, isolate_swap_target,
+)
 from verify_dex_swaps import SOURCE, check_source_hashes
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -810,6 +816,7 @@ def main():
         liquidity = "curve::change_liquidity_spec"
         lookup_specs = {"next_tick_spec", "new_bitmap_spec"}
         lookup_total_specs = {"stored_tick_price_total_spec", "next_tick_return_spec"}
+        swap_target_spec = "swap_target_return_spec"
         progress_spec = "swap_progress_spec"
         funding_spec = "swap_fee_funding_spec"
         names = {name.split("::")[-1] for name in args.functions}
@@ -818,6 +825,13 @@ def main():
             "multiply_return_spec", "divide_return_spec", "subtract_return_spec",
             "coordinate_return_spec", "quote_constant_or_zero_return_spec",
         }
+        dynamic_leaf_specs = {
+            "fee_on_net_return_spec", "reciprocal_return_spec", "rate_at_coordinate_return_spec",
+            "multiply_for_rate_spec",
+            "pointwise_average_return_spec",
+        }
+        capped_spec = "quote_capped_coordinates_return_spec"
+        quote_clamp_spec = "clamp_quote_return_spec"
         search_total_spec = "search_total_spec"
         trial_total_spec = "trial_total_spec"
         cursor_specs = {"floor_grid_spec": "tick_math", "move_inside_grid_spec": "curve", "swap_grid_spec": "pool"}
@@ -844,7 +858,8 @@ def main():
         execution_specs = {"execute_add_backing_spec", "execute_remove_backing_spec"}
         other = [name for name in args.functions
                  if name.split("::")[-1] not in {"change_liquidity_spec", progress_spec, funding_spec}
-                 | fee_total_specs | lookup_specs | lookup_total_specs | {search_total_spec, trial_total_spec}
+                 | fee_total_specs | dynamic_leaf_specs | lookup_specs | lookup_total_specs
+                 | {capped_spec, quote_clamp_spec, search_total_spec, trial_total_spec, swap_target_spec}
                  | custody_specs | execution_specs | cursor_specs.keys()
                  | principal_specs | {pricing_spec, total_settlement} | step_principal_specs | frame_specs | owned_specs.keys()]
         runs = []
@@ -873,6 +888,39 @@ def main():
             filters = [arg for name in sorted(fee_total_specs if not args.functions else fee_total_specs & names)
                        for arg in ("--functions", f"continuous_fee::{name}")]
             result = subprocess.run(command + filters, cwd=work, env=env, check=False)
+            status = status or result.returncode
+            fee_path.write_text(fee_source)
+            insert_specs(fee_path, "// === Test-Only Types ===", FEE_SPECS)
+        if not args.functions or dynamic_leaf_specs & names:
+            pool_path.write_text(pool_source)
+            curve_path.write_text(curve_source)
+            fee_path.write_text(fee_source)
+            insert_specs(fee_path, "// === Test-Only Types ===",
+                         ORDERED_INTERVAL + RECIPROCAL_RETURN_SPEC + DYNAMIC_LEAF_SPECS)
+            filters = [arg for name in sorted(dynamic_leaf_specs if not args.functions else dynamic_leaf_specs & names)
+                       for arg in ("--functions", f"continuous_fee::{name}")]
+            result = subprocess.run(command + filters, cwd=work, env=env, check=False)
+            status = status or result.returncode
+            fee_path.write_text(fee_source)
+            insert_specs(fee_path, "// === Test-Only Types ===", FEE_SPECS)
+        if not args.functions or capped_spec in names:
+            pool_path.write_text(pool_source)
+            curve_path.write_text(curve_source)
+            fee_path.write_text(fee_source)
+            insert_specs(fee_path, "// === Test-Only Types ===",
+                         ORDERED_INTERVAL + RECIPROCAL_RETURN_SPEC + FEE_RETURN_SPECS + CAPPED_COORDINATE_SPECS)
+            result = subprocess.run(command + ["--functions", f"continuous_fee::{capped_spec}"],
+                                    cwd=work, env=env, check=False)
+            status = status or result.returncode
+            fee_path.write_text(fee_source)
+            insert_specs(fee_path, "// === Test-Only Types ===", FEE_SPECS)
+        if not args.functions or quote_clamp_spec in names:
+            pool_path.write_text(pool_source)
+            curve_path.write_text(curve_source)
+            fee_path.write_text(isolate_quote_clamp(fee_source))
+            insert_specs(fee_path, "// === Test-Only Types ===", ORDERED_INTERVAL + FEE_RETURN_SPECS + QUOTE_CLAMP_SPEC)
+            result = subprocess.run(command + ["--functions", f"continuous_fee::{quote_clamp_spec}"],
+                                    cwd=work, env=env, check=False)
             status = status or result.returncode
             fee_path.write_text(fee_source)
             insert_specs(fee_path, "// === Test-Only Types ===", FEE_SPECS)
@@ -910,13 +958,18 @@ def main():
                        for arg in ("--functions", f"curve::{name}")]
             result = subprocess.run(command + filters, cwd=work, env=env, check=False)
             status = status or result.returncode
-        if not args.functions or lookup_total_specs & names:
-            pool_path.write_text(pool_source)
+        if not args.functions or (lookup_total_specs | {swap_target_spec}) & names:
+            prove_target = not args.functions or swap_target_spec in names
+            pool_path.write_text(isolate_swap_target(pool_source) if prove_target else pool_source)
+            if prove_target:
+                insert_specs(pool_path, "// === Test-Only Functions ===", SWAP_TARGET_SPEC)
             curve_path.write_text(curve_source)
             curve_path.with_name("lookup_return.bpl").write_text(LOOKUP_RETURN_BPL)
-            insert_specs(curve_path, "// === Imports ===", LOOKUP_TOTAL_SPECS + LOOKUP_RETURN_SPECS)
+            insert_specs(curve_path, "// === Imports ===", LOOKUP_TOTAL_SPECS + LOOKUP_RETURN_SPECS + TICK_TARGET_READINESS)
             filters = [arg for name in sorted(lookup_total_specs if not args.functions else lookup_total_specs & names)
                        for arg in ("--functions", f"curve::{name}")]
+            if prove_target:
+                filters.extend(("--functions", f"pool::{swap_target_spec}"))
             result = subprocess.run(command + filters, cwd=work, env=env, check=False)
             status = status or result.returncode
         if not args.functions or progress_spec in names:

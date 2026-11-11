@@ -71,6 +71,24 @@ iteration counts, fixed-size vectors, or shrinking integer intervals.
 The loop bound describes program control flow. Transaction gas and
 successful settlement depend on execution conditions.
 
+## Output accumulator
+
+With spot in the admitted price range, define the directional potential as
+the floor of `spot / 2^32` for downward swaps or `2^160 / spot` for upward
+swaps. Each priced step's Q64 output is bounded by its liquidity times
+the decrease in the exact potential. Replacing both endpoints with their
+floors adds at most one potential unit per step to that bound. A gap
+crossing consumes an iteration while preserving accumulated output.
+
+Z3 checks that the initial integer potential plus 128 stays below
+`2^128` and that the potential decrease with the per-step allowance
+bounds the sum below `2^256`. The release bytecode check binds the
+corresponding counter, pricing call, accumulator operations, crossing,
+and terminal output check in `swap_amounts`. The arithmetic induction
+assumes each successful priced step supplies a monotone, bounded price
+and conservative output. A compiled loop invariant discharging those
+premises together with the lookup precondition remains open.
+
 ## Reproduce
 
 Run from the repository root with the [pinned prover setup](README.md#swap-arithmetic-proof).

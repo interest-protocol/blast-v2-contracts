@@ -262,16 +262,20 @@ balance model, Z3 finds that a valid spend and positive backed output can
 still exceed the output join's `u64` limit when the request already carries
 the output token. A per-token aggregate balance bound implies all three
 joins fit, but the generic proof keeps headroom as an explicit condition.
-The local proofs leave open a single compiled
-no-unexpected-abort theorem connecting fee construction, numerical probes,
-tick lookup, and the full swap loop to settlement. The separate compiled
-bitmap check proves lookup return with live selected child keys and the
-Z3-checked mask and scan contracts. Sui Prover checks several leaf
-operations in [the fee quote](continuous-fee-proof.md#return-conditions-in-compiled-move).
-The dynamic quote and path constructor still need compiled return
-contracts. The swap loop still needs a single inductive proof linking the
-lookup and numerical contracts to safe crossing, accumulator bounds, and
-the execution conditions for settlement. Hooks and Sui gas and native
+The compiled bitmap check proves lookup return with live selected child
+keys and the Z3-checked mask and scan contracts. The same return contract
+and the stored tick-price contract cover the swap loop's target-selection
+prefix under the live-key condition. The release bytecode check binds
+the accumulator operations and call sites, and Z3 proves an integer
+potential bound for Q64 output with monotone prices and conservative
+step output. Sui Prover covers the pointwise and capped quote paths
+under their explicit [fee conditions](continuous-fee-proof.md#return-conditions-in-compiled-move).
+
+The single compiled no-unexpected-abort theorem remains open. It
+requires compiled return for the dynamic path constructor and all
+analytic quote branches, plus a loop invariant that establishes the
+lookup, numerical, and crossing preconditions at each iteration and
+delivers the conditions for settlement. Hooks and Sui gas and native
 limits sit outside this proof.
 
 Run both verifiers with the [DEX proof commands](README.md#swap-arithmetic-proof).

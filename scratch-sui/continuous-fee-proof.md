@@ -226,14 +226,26 @@ or Sui VM transaction semantics.
 The series check assumes an ordered Q96 argument in `[0, ONE / 2]` and an
 offset of one or three. Its loop invariant bounds the power and sum and
 keeps `sum * offset + offset - 1 >= power` to cover the alternating
-subtraction. Sui Prover checks the loop and its tail under these conditions.
+subtraction. Sui Prover checks the loop and its tail under these conditions
+and bounds the returned interval by `128 * ONE`.
 Separate contracts check coordinate normalization, constant-fee arithmetic,
 and the zero-input and constant-fee quote paths. Positive input requires
 distinct endpoint prices because `quote` checks that condition before
 choosing the constant-fee branch.
 
-The dynamic quote requires a compiled proof that path construction, cap
-splitting, and the analytic average establish the arithmetic preconditions
-at each call. The rational enclosure and width certificate supply the
-mathematical bounds. The connection to these exact Move call sites remains
-open.
+Sui Prover also checks the pointwise path under explicit bounds on the
+rate, sensitivity, and cap fields. It checks the constant-cap early
+return for the upward comparisons in `quote_coordinates` and for
+sufficient downward thresholds. A separate check extracts the final
+quote arithmetic in the staged prover package and discharges its
+assertion and checked arithmetic given ordered, bounded intervals and
+overlap between the padded average and the base-to-cap interval.
+
+Z3 checks the three-limb weight against the released `bounded_fraction`
+instructions and checks the arithmetic for a strictly increasing path
+partition. Each partition lemma assumes its stated segment and prefix
+bounds. The cut-vector loop, the bounds at calls to `analytic_average`,
+and the constructor including integer square root still need compiled
+proofs. The compiled analytic return check timed out. The remaining
+connection is from the real enclosure to the integer conditions at
+these call sites, including the final clamp's overlap conditions.
