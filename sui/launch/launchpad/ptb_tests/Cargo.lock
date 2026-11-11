@@ -1154,6 +1154,7 @@ dependencies = [
  "simulacrum",
  "sui-config",
  "sui-execution",
+ "sui-swarm-config",
  "sui-transaction-checks",
  "sui-types",
 ]

@@ -70,7 +70,7 @@ records below it decide what 0137 does not restate.
 | [0047](0047-coin-registry-authoritative-supply-mode.md) | Coin Registry authoritative supply mode | **accepted; supply-mode timing amended by 0088** |
 | [0048](0048-sui-package-workspace.md) | Sui package workspace | **accepted** |
 | [0051](0051-generated-meme-package-template.md) | Generated Meme package template | **accepted; publish-time immutability amended by 0088; package renamed by 0108** |
-| [0053](0053-single-validator-funsui-and-blastsui.md) | Single-validator `funSUI` and `blastSUI` | **accepted; authority and receipt `DisplayCap` custody amended by 0060, 0061, 0097, and 0136** |
+| [0053](0053-single-validator-funsui-and-blastsui.md) | Single-validator `funSUI` and `blastSUI` | **accepted; authority and receipt `DisplayCap` custody amended by 0060, 0061, 0097, and 0136; single validator replaced by 0141** |
 | [0056](0056-bounded-pending-stake-vector.md) | Bounded pending-stake vector in custody ledgers | **accepted** |
 | [0058](0058-eventless-package-initialization.md) | Eventless package initialization | **accepted** |
 | [0060](0060-blastsui-metadata-cap-custody.md) | Retain currency and receipt update capabilities in package-admin custody | **accepted** |
@@ -132,6 +132,7 @@ records below it decide what 0137 does not restate.
 | [0138](0138-sealed-treasury-caps-and-venue-admissions.md) | Sealed treasury caps and venue admissions | proposed |
 | [0139](0139-admin-bounded-auto-lp-compounding.md) | Admin-bounded auto-LP compounding | accepted |
 | [0140](0140-upgrade-cap-manager.md) | Digest-bound upgrades and immutability with a fixed 48-hour notice | accepted |
+| [0141](0141-blast-sui-validator-list.md) | Blast SUI stakes across a short delayed validator list | proposed |
 
 ## Open premises
 

@@ -2,8 +2,10 @@
 
 ### What it is
 
-Package `blast_sui` is a liquid-staking vault that delegates its SUI to the
-staking pool of one validator chosen at creation and issues two coins against it:
+Package `blast_sui` is a liquid-staking vault that delegates its SUI across a
+short list of validator staking pools and issues two coins against it. Each
+deposit picks a listed pool, the pick directs that deposit's stake only, and all
+holders share one pooled yield:
 
 - **funSUI** (`fun_sui::FUN_SUI`) is a stable SUI unit: mint it with SUI and
   redeem it for SUI exactly one-to-one, with no fee. It earns no yield. It is
@@ -23,7 +25,7 @@ Registry.
 
 | Object | Kind | Notes |
 | --- | --- | --- |
-| `blast_sui::vault::Vault` | shared singleton | holds both treasury caps (as dynamic object fields keyed `blast_sui::vault::TreasuryKey<CoinType>`), both coins' metadata caps and the receipt's display cap (keyed `blast_sui::vault::CapabilityKey<Capability>`), the fun and blast custody ledgers, the cached exchange rate, the delayed `redeem_fee`, and `unwind_only`. Only one can exist: `blast_sui::vault::create` consumes both treasury caps. No call releases any capability. Every vault call takes it mutably, except `blast_sui::vault::unpause`. |
+| `blast_sui::vault::Vault` | shared singleton | holds both treasury caps (as dynamic object fields keyed `blast_sui::vault::TreasuryKey<CoinType>`), both coins' metadata caps and the receipt's display cap (keyed `blast_sui::vault::CapabilityKey<Capability>`), the delayed `validators` list, each listed pool's cached exchange rate (`pool_rates`), the fun and blast custody ledgers, and the delayed `redeem_fee`. Only one can exist: `blast_sui::vault::create` consumes both treasury caps. No call releases any capability. Every vault call takes it mutably, except `blast_sui::vault::unpause`. |
 | `package_version::PackageVersion<BLAST_SUI_PACKAGE>` | shared singleton | the active version and the three deposit pause bits; every vault call takes it and aborts on outdated bytecode |
 | `deposit_receipt::BlastSuiDepositReceipt` | owned, `key` only | a pending blastSUI deposit: `vault_id` and the native `StakedSui`. It cannot be transferred, wrapped, or deleted except by this package's calls. |
 | `blast_admin::package_admin::PackageAdmin<BLAST_SUI_PACKAGE>` | shared | seals the package `Publisher` and `UpgradeCap`, and holds the delayed upgrade slot |
@@ -34,7 +36,10 @@ Roles in Blast's shared ACL (see the administration guide):
 
 - `blast_sui_domain::FeeAdmin`: schedules the blastSUI redemption fee and its
   delay.
-- `blast_sui_domain::CancelAdmin`: cancels a pending fee change.
+- `blast_sui_domain::ValidatorAdmin`: schedules validator admissions and their
+  delay, and removes validators immediately.
+- `blast_sui_domain::CancelAdmin`: cancels a pending fee change, validator
+  admission, or validator delay.
 - `blast_admin::package_admin::PauseAdmin<BLAST_SUI_PACKAGE>`: pauses deposits.
 - `blast_admin::package_admin::UnpauseAdmin<BLAST_SUI_PACKAGE>`: releases deposits
   through `blast_sui::vault::unpause`.
@@ -42,9 +47,9 @@ Roles in Blast's shared ACL (see the administration guide):
   `blast_admin::package_admin::CancelAdmin<BLAST_SUI_PACKAGE>`: schedule and
   cancel upgrades.
 
-Pausing covers deposits only. There is no administrative withdrawal, no way to
-change the validator, and no claim on the reserve or on fees in the current
-source.
+Pausing covers deposits only. There is no administrative withdrawal and no claim
+on the reserve or on fees in the current source. At most 15 validators can be
+listed and pending together.
 
 ### Custody model
 
@@ -55,60 +60,66 @@ The vault keeps two separate ledgers, each a `custody::Custody`:
 - **blast custody** backs blastSUI, including the bootstrap seed whose shares
   are locked forever at `0x0`.
 
-Each ledger has four layers:
+Each ledger holds `liquid_sui`, SUI at face value, and one position per listed
+pool. A position has three layers:
 
-- `liquid_sui`: SUI at face value.
 - `pending_stakes`: up to three native `StakedSui` receipts waiting to activate,
   each counted at its principal, ordered by activation epoch. Requests in the
   same epoch join one receipt.
-- `active_stake`: at most one `FungibleStakedSui` of the vault's pool.
+- `active_stake`: at most one `FungibleStakedSui` of that pool.
 - `active_sui`: the conservative SUI value of the active pool tokens:
-  `floor(active_pool_tokens * rate_sui / rate_pool_tokens)` at the vault's
+  `floor(active_pool_tokens * rate_sui / rate_pool_tokens)` at that pool's
   cached rate, recomputed at every refresh and after every movement of active
   tokens (zero after a full exit).
 
-A ledger's assets are `A = liquid_sui + pending principal + active_sui`. Write
+A ledger's assets are `A = liquid_sui` plus every position's pending principal
+and `active_sui`. Write
 `A_f`, `F` for fun assets and funSUI supply, and `A_b`, `B` for blast assets and
 blastSUI supply.
 
 Every vault call except `blast_sui::vault::create`,
-`blast_sui::vault::top_up_fun_reserve`, `blast_sui::vault::unpause`, and the three
-redemption-fee calls first **refreshes** the vault:
+`blast_sui::vault::top_up_fun_reserve`, `blast_sui::vault::unpause`, and the
+schedule, apply, and cancel calls for delayed settings first **refreshes** the vault:
 
-1. If the validator has left the active set, both ledgers unwind every native
-   position into liquid SUI and the vault becomes `unwind_only` (emits
-   `NativeStakeUnwound`). That refresh and every later one skip steps 2 and 3.
-2. If the pool has a usable exchange-rate entry for the current epoch (both
-   components positive), the vault
-   caches it (`rate_epoch`, `rate_sui`, `rate_pool_tokens`) and converts every
-   arrived blast pending receipt into the active position. Without an entry (a
-   safe-mode epoch), it keeps the cached rate, which never exceeds the live one.
-3. Both ledgers are revalued at the cached rate. With a current entry, arrived
-   fun receipts convert oldest-first while fun custody's buffer `A_f - F`,
+1. Each listed pool whose validator address left the active set, or that has no
+   exchange-rate entry this epoch while another listed pool has one, has departed:
+   both ledgers unwind its positions into liquid SUI and it leaves the list (emits
+   `PoolUnwound`). The vault keeps running on the others.
+2. For each remaining pool with a usable entry for the current epoch (both
+   components positive), the vault caches it and converts every arrived blast
+   pending receipt into the active position. Without an entry (a safe-mode epoch),
+   it keeps the cached rate, which never exceeds the live one.
+3. Both ledgers are revalued at each pool's cached rate. With a current entry,
+   arrived fun receipts convert oldest-first while fun custody's buffer `A_f - F`,
    minus the conversion's worst-case rounding loss
-   `ceil(rate_sui / rate_pool_tokens)`, stays above 60 MIST. A receipt that
-   cannot convert safely waits through its activation epoch and is then
-   withdrawn to liquid SUI with its rewards in a later epoch that has a current
-   rate.
+   `ceil(rate_sui / rate_pool_tokens)`, stays above `fun_exit_low_water_mist`
+   (900 MIST). A receipt that cannot convert safely waits through its activation
+   epoch and is then withdrawn to liquid SUI with its rewards in a later epoch
+   that has a current rate.
 4. **Fun yield sweep**: fun assets above `F + R` move to blast custody, liquid
-   SUI first (keeping `R` liquid), then active pool tokens worth at most the
-   remaining surplus at the cached rate (emits `FunYieldSwept`). Fun principal
-   never moves, and nothing ever moves from blast to fun.
+   SUI first (keeping `R` liquid), then active pool tokens, pool by pool in list
+   order, each worth at most the remaining surplus at that pool's cached rate
+   (emits `FunYieldSwept`). Fun principal never moves, and nothing ever moves from
+   blast to fun.
 5. If funSUI exists, fun custody holds active pool tokens, and the fun buffer
-   `A_f - F` is at most 60 MIST, every fun native position (pending receipts
+   `A_f - F` is at most 900 MIST, every fun native position (pending receipts
    and active pool tokens) unwinds to liquid SUI to protect exact redemptions.
 6. The vault asserts `A_f >= F`.
 
-After the operation, idle SUI is delegated, but only when `rate_epoch` is the
-current epoch and the vault is not `unwind_only`: fun custody stakes liquid SUI
-above `R`, blast custody stakes all liquid SUI, each only when that excess is at
-least 1 SUI. When a ledger already holds three pending receipts and the newest
-cannot be joined, the excess stays liquid instead of aborting.
+After the operation, idle SUI is delegated across the listed pools that have a
+current rate and a free pending slot: fun custody stakes liquid SUI above `R`,
+blast custody stakes all liquid SUI, each only when that excess is at least 1 SUI.
+If an even split gives each pool at least 1 SUI, each takes its share and the last
+in list order takes the remainder. Otherwise it all goes to the pool with the
+smallest position, the earliest on a tie. With no eligible pool, it stays liquid
+instead of aborting.
 
-Withdrawals take liquid SUI first, then pending receipts (newest first,
-splitting a receipt when both halves stay at least 1 SUI), then active pool
-tokens (requesting enough for the amount plus a 30-MIST rounding margin, rounded
-up). Any excess withdrawn stays liquid in the same ledger.
+Withdrawals follow the vault's order, never the caller's. Liquid SUI first. Then
+pending receipts, visiting positions by pending principal, largest first (within a
+position newest first, splitting a receipt when both halves stay at least 1 SUI).
+Then active pool tokens, visiting positions by `active_sui`, largest first
+(requesting enough for the amount plus a 30-MIST rounding margin, rounded up). Ties
+go by list order. Any excess withdrawn stays liquid in the same ledger.
 
 ### Lifecycle
 
@@ -119,40 +130,46 @@ up). Any excess withdrawn stays liquid in the same ledger.
    paused.
 2. **Creation.** `blast_sui::vault::create` (holder of both treasury caps and both
    metadata caps) takes the Display registry, an owner seed of at least 1.1 SUI,
-   and a pool ID. The pool's validator must be active and the pool must have a
-   usable current-epoch rate. `R` goes to fun custody; the rest goes to blast
+   the first pool ID, and the `Clock`. The pool's validator must be active and the
+   pool must have a usable current-epoch rate. `R` goes to fun custody; the rest goes to blast
    custody, mints one blastSUI per MIST, is staked, and every minted blastSUI is
    sent to `0x0`. blastSUI supply is therefore never zero, and the seed's backing
    can never be redeemed. The redemption fee starts with a 48-hour delay for
-   changes. Blast can release deposits once the vault is created.
+   changes. Blast then lists its other validators, raises the validator delay, and
+   releases deposits.
 3. **Normal.** All flows below are open.
 4. **Safe-mode epoch** (no usable current rate entry). funSUI mints, both redemptions,
    deposit requests, donations, cancellations, and `sync` work on the cached
    rate; claims abort; new SUI stays liquid until a normal epoch.
-5. **Unwind-only** (validator left the active set). Mints, deposit requests, and
-   claims abort; both redemptions, donations, `sync`, and receipt cancellation
-   keep working. All SUI stays liquid. Nothing in the current source clears
-   `unwind_only`.
+5. **A validator leaves.** Departed or removed pools drop off the list; picking
+   one aborts with `EValidatorNotAccepted`, and its receipts can only be cancelled.
+6. **Empty list.** With no validator listed, mints, deposit requests, and claims
+   abort; both redemptions, donations, top-ups, `sync`, and receipt cancellation
+   keep working, and all SUI stays liquid until a validator is admitted.
 
 ### Flows
 
 Every `vault` user call below (mint, redeem, request, claim, donate, `sync`)
 takes the shared `Vault` (mutable), the shared `PackageVersion` (immutable), and
-`SuiSystemState` at `0x5` (mutable). Only the redemption-fee schedule and apply
-calls take the `Clock`.
+`SuiSystemState` at `0x5` (mutable). Only the delayed schedule and apply calls
+take the `Clock`. Mints and deposit requests also take the picked `pool_id`, which
+must be listed.
 
 #### Mint funSUI (anyone)
 
 1. Split the exact SUI amount from a gas or SUI coin.
-2. `blast_sui::vault::mint_fun_sui` with that `Coin<SUI>`. Returns
-   `Coin<FUN_SUI>` of the same value; emits `FunSuiMinted`.
+2. `blast_sui::vault::mint_fun_sui` with the picked `pool_id` and that
+   `Coin<SUI>`. Returns `Coin<FUN_SUI>` of the same value; emits `FunSuiMinted`.
+   Up to that amount, keeping `R` liquid, is staked to the pick when it reaches 1
+   SUI and the pool has a current rate and a free slot. Otherwise it stays liquid
+   for the idle rule; the mint still succeeds.
 3. Transfer the returned coin or pass it to the next command.
 
 #### Redeem funSUI (anyone)
 
 1. `blast_sui::vault::redeem_fun_sui` with a `Coin<FUN_SUI>` (positive value).
    Returns `Coin<SUI>` of exactly the same value; emits `FunSuiRedeemed`. No
-   fee, no minimum-out parameter. Works in safe mode and unwind-only.
+   fee, no minimum-out parameter. Works in safe mode and with an empty list.
 
 #### Deposit SUI for blastSUI (anyone)
 
@@ -160,8 +177,8 @@ Transaction 1, epoch `E`:
 
 1. Split at least 1 SUI (1,000,000,000 MIST) from a SUI coin. The whole coin is
    staked; no change is returned.
-2. `blast_sui::vault::request_blast_sui` with that coin. It delegates the SUI to
-   the vault's validator immediately and returns a `BlastSuiDepositReceipt`
+2. `blast_sui::vault::request_blast_sui` with the picked `pool_id` and that coin.
+   It delegates the SUI to that pool immediately and returns a `BlastSuiDepositReceipt`
    whose stake activates at epoch `E + 1`. Emits `BlastSuiDepositRequested` with
    `receipt_id`, `principal_sui`, and `activation_epoch`.
 3. `deposit_receipt::keep` with the receipt: it moves to the sender's account.
@@ -172,7 +189,8 @@ Transaction 2, any epoch from `activation_epoch` on with a current rate entry:
 
 1. `blast_sui::vault::claim_blast_sui` with the owned receipt (by value) and
    `min_blast_out`. Returns `Coin<BLAST_SUI>`; emits `BlastSuiDepositClaimed`.
-   The receipt is consumed and its stake joins blast custody.
+   The receipt is consumed and its stake joins blast custody. Its pool must still
+   be listed, and every listed pool must have a current rate.
 
 The receipt's own stake keeps earning rewards until you claim, and the claim
 values it at the current rate, so waiting loses nothing. Rewards that existing
@@ -183,8 +201,8 @@ holders earned before your stake activated stay with them.
 1. `deposit_receipt::cancel` with the owned receipt and `SuiSystemState`. It
    needs neither the vault nor `PackageVersion`. Returns `Coin<SUI>`: the
    principal before activation, principal plus rewards after. Emits
-   `BlastSuiDepositCancelled`. Works at any time, including in safe mode, in
-   unwind-only, and after the validator is removed.
+   `BlastSuiDepositCancelled`. Works at any time, including in safe mode and
+   after the validator is removed.
 
 #### Redeem blastSUI (anyone)
 
@@ -193,7 +211,7 @@ holders earned before your stake activated stay with them.
 2. `blast_sui::vault::redeem_blast_sui` with a `Coin<BLAST_SUI>` and
    `min_sui_out`. Returns `Coin<SUI>`; emits `BlastSuiRedeemed` with
    `gross_sui`, `fee_sui`, and `net_sui`. Works in safe mode (on the cached
-   rate) and unwind-only.
+   rates) and with an empty list.
 
 #### Donate SUI to blastSUI holders (anyone)
 
@@ -214,7 +232,7 @@ holders earned before your stake activated stay with them.
    `Coin<SUI>`. It joins fun custody without a refresh, so it works even while
    fun custody is below the funSUI supply and every other call aborts. While
    fun custody holds active stake, the top-up must exceed the gap by more than
-   `fun_exit_low_water_mist` (61 MIST over the gap), so the next refresh skips
+   `fun_exit_low_water_mist` (901 MIST over the gap), so the next refresh skips
    the protective unwind, whose rounding could drop custody below the supply
    again. A smaller top-up loses nothing, and a larger one still recovers. Emits
    `FunReserveToppedUp`. The caller gets nothing back; anything above `F + R`
@@ -236,6 +254,28 @@ holders earned before your stake activated stay with them.
 The fee's lifecycle events come from `blast_admin::delayed`, typed by
 `blast_sui::vault::RedeemFeeKey`, with the vault's ID as their parent.
 
+#### List and remove validators (Blast admin, `ValidatorAdmin`)
+
+1. `blast_sui::vault::schedule_validator` with the witness, the `pool_id`, and the
+   `Clock`. Admitted and pending pools together cannot exceed 15. Rescheduling a
+   pending pool restarts its wait and takes no new slot.
+2. After the applied delay, *anyone* calls `blast_sui::vault::apply_validator` with
+   `SuiSystemState`, the `pool_id`, and the `Clock`. The pool must be active with a
+   usable current-epoch rate. It emits `VaultSynced` including the new pool, without
+   refreshing the others, so their rates may predate the current epoch.
+3. A holder of `blast_sui_domain::CancelAdmin` may call
+   `blast_sui::vault::cancel_validator` at any time before it applies.
+4. `blast_sui::vault::remove_validator` takes effect at once, because removing
+   reduces risk. It refreshes, unwinds both positions, and re-delegates the SUI
+   across the remaining pools. Removal during a safe-mode epoch can forfeit deferred
+   rewards. It also discards a pending admission.
+5. `blast_sui::vault::schedule_validator_delay`,
+   `blast_sui::vault::apply_validator_delay`, and
+   `blast_sui::vault::cancel_validator_delay` change the delay.
+
+Admission lifecycle events come from `blast_admin::delayed_set`, typed by
+`blast_sui::vault::ValidatorKey`, with the vault's ID as their parent.
+
 #### Pause and release (Blast admin)
 
 - `blast_admin::package_admin::pause` (`PauseAdmin<BLAST_SUI_PACKAGE>`) sets any
@@ -244,8 +284,8 @@ The fee's lifecycle events come from `blast_admin::delayed`, typed by
   `blast_sui::vault::claim_blast_sui`. Nothing else reads them: both redemptions,
   donations, top-ups, `sync`, and receipt cancellation stay open.
 - `blast_sui::vault::unpause` (`UnpauseAdmin<BLAST_SUI_PACKAGE>`) clears bits. It
-  aborts with `EUnguardedDelay` while the fee delay is zero or a pending change
-  would make it zero.
+  aborts with `EUnguardedDelay` while the fee or validator delay is zero, a
+  pending change would make one zero, or an admission is pending.
 
 #### Package custody and upgrades (Blast admin)
 
@@ -264,7 +304,8 @@ blastSUI). BPS are out of 10,000.
 - **blastSUI value**: one blastSUI is worth `A_b / B` SUI at the conservative
   valuation.
 - **Claim**: the receipt's stake converts natively to `pool_tokens`; then
-  `contributed_sui = floor(pool_tokens * rate_sui / rate_pool_tokens)` and
+  `contributed_sui = floor(pool_tokens * rate_sui / rate_pool_tokens)` at that
+  receipt's own pool's rate and
   `blast_out = floor(contributed_sui * B / A_b)`, with `A_b` and `B` measured
   after the refresh and before the deposit joins. `blast_out` must be positive
   and at least `min_blast_out`.
@@ -278,6 +319,8 @@ blastSUI). BPS are out of 10,000.
 - **Dust**: every rounding favors the vault's remaining holders: share minting
   rounds down, redemption gross rounds down, the fee rounds up, and pool-token
   valuations round down. Over-withdrawn SUI stays liquid in the ledger.
+- **Picks**: a pick directs stake only. Yield from every pool is shared by every
+  blastSUI holder, and a pick pays no one.
 - **Yield**: blast custody keeps its own staking rewards, every redemption fee,
   and every donation, and receives fun custody's yield above `F + R`. The locked
   seed shares earn their pro-rata part forever.
@@ -289,13 +332,13 @@ blastSUI). BPS are out of 10,000.
 
 - Native stake requested in epoch `E` activates at `E + 1`. A receipt can be
   claimed when `activation_epoch <= current epoch`.
-- A claim also needs the vault's cached rate to be the current epoch's
-  (`rate_epoch == current epoch`), which the claim's own refresh provides in any
-  normal epoch. In a safe-mode epoch the claim aborts; retry in the next normal
-  epoch.
+- A claim also needs every listed pool's cached rate to be the current epoch's,
+  which the claim's own refresh provides in any normal epoch. In a safe-mode epoch
+  the claim aborts; retry in the next normal epoch.
 - `blast_sui::vault::create` requires the pool to have a usable current-epoch
   rate entry.
-- A redemption-fee change waits the delay applied when it was scheduled.
+- A redemption-fee change or validator admission waits the delay applied when it
+  was scheduled. Validator removal has no delay.
 - New SUI is delegated only in an epoch with a current rate; in a safe-mode
   epoch it stays liquid (still counted at face value) until a later call.
 - Cancellation has no time limit and no epoch requirement.
@@ -304,21 +347,22 @@ blastSUI). BPS are out of 10,000.
 
 The vault has no public getters; read object content over RPC, or use events.
 
-- Vault fields: `pool_id` (the fixed staking pool), `fun_custody` and
-  `blast_custody` (`liquid_sui`, `pending_stakes`, `active_stake`,
-  `active_sui`), `rate_epoch`, `rate_sui`, `rate_pool_tokens`, `redeem_fee` (its
-  `value`, `delay_ms`, and any pending change), `unwind_only`.
+- Vault fields: `validators` (the listed pools, any pending admissions, and the
+  delay), `pool_rates` (per pool: `epoch`, `sui`, `pool_tokens`), `fun_custody` and
+  `blast_custody` (`liquid_sui`, and `positions`, each with `pending_stakes`,
+  `active_stake`, `active_sui`), `redeem_fee` (its `value`, `delay_ms`, and any
+  pending change).
 - Supplies: the `total_supply` of the treasury caps under the vault's dynamic
   object fields `TreasuryKey<FUN_SUI>` and `TreasuryKey<BLAST_SUI>`, or
   `fun_supply` and `blast_supply` in the latest event snapshot.
-- blastSUI price: `A_b / B`, from the latest `custody` snapshot: the sum of
-  `blast_custody.liquid_sui`, `blast_custody.pending_sui`, and
-  `blast_custody.active_sui`, over `blast_supply`.
+- blastSUI price: `A_b / B`, from the latest `custody` snapshot: `blast_liquid`
+  plus every entry of `pools`' `blast_position.pending_sui` and
+  `blast_position.active_sui`, over `blast_supply`.
 - Fresh numbers: dev-inspect `blast_sui::vault::sync` and read its
   `VaultSynced`; or dev-inspect the exact claim or redemption with a zero
   minimum.
-- Validator: derive it from `pool_id` through the Sui system state;
-  `VaultCreated` records it at creation.
+- Validators: derive each from its pool ID through the Sui system state;
+  `VaultCreated` records the first.
 - A receipt: `vault_id` and `staked_sui` (`pool_id`, `stake_activation_epoch`,
   `principal`).
 - Locked seed: `VaultCreated.locked_blast_sui`.
@@ -330,11 +374,13 @@ filter on the envelope type with the payload as its type argument.
 
 Snapshot types embedded in most events:
 
-- `blast_sui::events::VaultCustody`: `fun_custody`, `blast_custody`,
-  `exchange_rate`, `fun_supply`, `blast_supply`.
-- `blast_sui::events::PoolCustody`: `liquid_sui`, `pending_sui`,
-  `active_pool_tokens`, `active_sui`. The ledger's assets are
-  `liquid_sui + pending_sui + active_sui`.
+- `blast_sui::events::VaultCustody`: `fun_liquid`, `blast_liquid`, `pools`,
+  `fun_supply`, `blast_supply`.
+- `blast_sui::events::PoolSnapshot`: `pool_id`, `exchange_rate`, `fun_position`,
+  `blast_position`, one per listed pool.
+- `blast_sui::events::PositionCustody`: `pending_sui`, `active_pool_tokens`,
+  `active_sui`. A ledger's assets are its liquid plus every position's
+  `pending_sui + active_sui`.
 - `blast_sui::events::ExchangeRate`: `epoch`, `sui_amount`, `pool_token_amount`,
   the rate entry applied; `epoch` may trail the transaction's epoch after a
   safe-mode epoch.
@@ -342,19 +388,19 @@ Snapshot types embedded in most events:
 | Event | Emitted by | Key fields |
 | --- | --- | --- |
 | `blast_sui::events::VaultCreated` | `create` | `vault_id`, `validator`, `pool_id`, `fun_reserve_sui`, `bootstrap_sui`, `locked_blast_sui`, `redeem_fee_bps`, `custody` |
-| `blast_sui::events::FunSuiMinted` | `mint_fun_sui` | `sui_in`, `custody` |
+| `blast_sui::events::FunSuiMinted` | `mint_fun_sui` | `pool_id`, `sui_in`, `delegated_sui`, `custody` |
 | `blast_sui::events::FunSuiRedeemed` | `redeem_fun_sui` | `fun_in`, `custody` |
 | `blast_sui::events::BlastSuiDepositRequested` | `request_blast_sui` | `receipt_id`, `vault_id`, `pool_id`, `principal_sui`, `activation_epoch`, `custody` |
 | `blast_sui::events::BlastSuiDepositClaimed` | `claim_blast_sui` | `receipt_id`, `principal_sui`, `contributed_sui`, `claimed_pool_tokens`, `blast_out`, `custody` |
 | `blast_sui::events::BlastSuiDepositCancelled` | `deposit_receipt::cancel` | `receipt_id`, `vault_id`, `principal_sui`, `returned_sui` (no snapshot: the vault is untouched) |
 | `blast_sui::events::BlastSuiDonated` | `donate_sui` | `sui_in`, `custody` |
 | `blast_sui::events::BlastSuiRedeemed` | `redeem_blast_sui` | `blast_in`, `gross_sui`, `fee_sui`, `net_sui`, `custody` |
-| `blast_sui::events::FunYieldSwept` | any refresh that moves yield | `swept_liquid_sui`, `swept_pool_tokens`, `swept_sui`, `custody` at that point |
-| `blast_sui::events::NativeStakeUnwound` | the refresh that observes a departed validator | `custody` |
-| `blast_sui::events::VaultSynced` | `sync` | `custody` |
+| `blast_sui::events::FunYieldSwept` | any refresh that moves yield | `swept_liquid_sui`, `swept_active_sui`, `swept_sui`, `custody` at that point |
+| `blast_sui::events::PoolUnwound` | a refresh that observes a departed pool, or `remove_validator` | `pool_id`, `custody` after it left |
+| `blast_sui::events::VaultSynced` | `sync`, `remove_validator` (after a refresh), `apply_validator` (no refresh) | `custody` |
 | `blast_sui::events::FunReserveToppedUp` | `top_up_fun_reserve` | `sui_in`, `custody` |
 
-Redemption-fee lifecycle, pause, and upgrade events come from `blast_admin`
+Redemption-fee, validator-list, pause, and upgrade events come from `blast_admin`
 without an envelope. An indexer gets the vault's full state after each transition from the
 last snapshot in the transaction, and links a deposit's request, claim, or
 cancellation by `receipt_id`.
@@ -370,23 +416,23 @@ Codes are plain `u64` values, raised in the `blast_sui` module that detects them
 | 1 | `EInvalidShareAmount` | redeem blastSUI | cannot exceed supply (unreachable in practice) |
 | 2 | `EZeroBlastShares` | claim | the deposit rounded to zero shares |
 | 3 | `EZeroSuiRedemption` | redeem blastSUI | redeem more shares |
-| 4 | `EUnwindOnly` | mint funSUI, request, claim | the validator left; redeem or cancel instead |
-| 5 | `EValidatorNotActive` | create | choose an active validator |
+| 4 | `EValidatorNotAccepted` | mint funSUI, request, claim, remove validator | pick a listed pool; a removed pool's receipt can only be cancelled |
+| 5 | `EValidatorNotActive` | create, apply validator | choose an active validator |
 | 6 | `ENonzeroInitialSupply` | create | treasury caps must have zero supply |
 | 7 | `ESlippageExceeded` | claim, redeem blastSUI | lower the minimum or retry |
 | 8 | `EInsufficientNativeRedemption` | redemptions | native output fell short of the valuation; the vault fails closed |
 | 9 | `EBlastAssetsDepleted` | claim, redeem blastSUI | blast custody holds nothing to price shares |
 | 10 | `EBootstrapBelowNativeMinimum` | create | seed at least 1.1 SUI |
 | 11 | `ERedeemFeeAboveMaximum` | schedule fee | at most 100 BPS |
-| 12 | `EFunBackingBelowSupply` | any refresh, funSUI mint or redeem | fun custody fell below supply; `blast_sui::vault::top_up_fun_reserve` restores it, and with active stake must exceed the gap by more than `fun_exit_low_water_mist` (61 MIST over the gap) |
-| 13 | `EStaleExchangeRate` | claim, create | safe-mode epoch; retry in the next normal epoch |
+| 12 | `EFunBackingBelowSupply` | any refresh, funSUI mint or redeem | fun custody fell below supply; `blast_sui::vault::top_up_fun_reserve` restores it, and with active stake must exceed the gap by more than `fun_exit_low_water_mist` (901 MIST over the gap) |
+| 13 | `EStaleExchangeRate` | claim, create, apply validator | safe-mode epoch or a pool in its first epoch; retry in the next normal epoch |
 | 14 | `EBlastDepositBelowNativeMinimum` | request | deposit at least 1 SUI |
 | 15 | `EBlastDepositNotActive` | claim | wait for `activation_epoch` |
 | 16 | `EWrongReceiptVault` | claim | the receipt belongs to another vault |
-| 17 | `EWrongReceiptPool` | claim | the receipt's stake is from another pool |
-| 18 | `EZeroSuiAfterFee` | redeem blastSUI | the fee consumed the payout; redeem more |
-| 19 | `EWrongDelegationPool` | request, or any call that stakes | the validator address now runs a different pool than the vault's; deposits stay closed, redeem or cancel instead |
-| 20 | `EUnguardedDelay` | `blast_sui::vault::unpause` | raise the fee delay above zero first |
+| 17 | `EZeroSuiAfterFee` | redeem blastSUI | the fee consumed the payout; redeem more |
+| 18 | `EWrongDelegationPool` | request, or any call that stakes | the validator address now runs a different pool than the listed one; pick another pool, redeem, or cancel |
+| 19 | `EUnguardedDelay` | `blast_sui::vault::unpause` | raise both delays above zero and clear pending admissions first |
+| 20 | `EMaxValidatorsReached` | schedule validator | remove or cancel one first |
 
 Calls into outdated bytecode after an upgrade abort with code 9 from
 `blast_admin`'s `package_version` module: rebuild the PTB against the latest
@@ -403,7 +449,8 @@ role failure in `blast_acl::sign_in` aborts with `blast_admin` code 1 or 5.
   claim or cancel it.
 - A claim in the request's epoch or in a safe-mode epoch aborts (codes 15, 13).
 - funSUI does not earn yield; blastSUI does.
-- The blastSUI price uses a conservative valuation at the cached rate. Always
+- Exits ignore the pool you picked: they follow the vault's order.
+- The blastSUI price uses a conservative valuation at the cached rates. Always
   set `min_sui_out` and `min_blast_out`, ideally from a dev-inspect of the same
   call.
 - The fee applies to every blastSUI redemption, however small or large.
@@ -437,12 +484,14 @@ MIST per unit with no fee, from fun custody only. The vault checks fun custody
 covers the funSUI supply after every operation; if it ever did not, the call
 would abort rather than underpay.
 
-**Which validator does the vault use, and can it change?** The staking pool set
-at creation (`pool_id`). No call changes it.
+**Which validators does the vault use, and can they change?** The pools in
+`validators`, up to 15. Blast admits a pool after a delay and can remove one at once.
+Each deposit picks one of them, and all holders share the yield.
 
-**What happens if the validator leaves the active set?** The next refresh
-unwinds all stake to liquid SUI and the vault becomes unwind-only: redemptions,
-donations, and cancellations work; mints, deposits, and claims abort.
+**What happens if a validator leaves the active set?** The next refresh unwinds
+that pool to liquid SUI, drops it from the list, and re-delegates across the rest.
+If the last one leaves, redemptions, donations, and cancellations work; mints,
+deposits, and claims abort until another is listed.
 
 **Can Blast pause the vault or take user funds?** Blast can pause deposits only:
 funSUI mints, deposit requests, and claims. Redemptions, donations, and receipt
@@ -451,8 +500,9 @@ and receipt owners. Blast's `UpgradeAdmin<BLAST_SUI_PACKAGE>` can upgrade the
 package after its 48-hour delay.
 
 **How do I compute the blastSUI to SUI rate?** Divide blast custody's assets
-(`liquid_sui + pending_sui + active_sui`) by `blast_supply`, from the latest
-event snapshot or a dev-inspected `sync`.
+(`blast_liquid` plus every pool's `blast_position.pending_sui` and
+`blast_position.active_sui`) by `blast_supply`, from the latest event snapshot or a
+dev-inspected `sync`.
 
 **Why can't blastSUI supply reach zero?** Creation sends the bootstrap shares to
 `0x0`, where no one can redeem them. This removes every empty-vault edge case,

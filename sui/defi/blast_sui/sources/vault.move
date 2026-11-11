@@ -4,7 +4,7 @@
 // `blast_sui::errors` centralizes package abort codes through zero-cost macros. This narrow
 // suppression preserves caller-local abort locations and stable package error codes.
 #[allow(lint(abort_without_constant))]
-/// Single-validator custody of the 1:1 funSUI ledger and the blastSUI share ledger.
+/// Custody of the 1:1 funSUI ledger and the blastSUI share ledger across user-picked validators.
 module blast_sui::vault;
 
 // === Public Types ===
@@ -12,26 +12,24 @@ module blast_sui::vault;
 /// Shared owner of the treasury-cap, metadata-cap and display-cap child objects and the two
 /// native custody ledgers.
 ///
-/// `fun_custody` backs only funSUI plus the protocol-funded rounding reserve,
-/// and `blast_custody` backs only blastSUI, including the seed shares locked
-/// at `@0x0` by `create`; both delegate only through `pool_id`.
-/// blastSUI supply is therefore never zero after creation. `rate_epoch`,
-/// `rate_sui`, and `rate_pool_tokens` cache the pool exchange-rate entry last
-/// observed for a current epoch; a refresh in an epoch without an entry keeps
-/// this conservative rate instead of scanning the table. `redeem_fee` is the
-/// blastSUI redemption fee; every change waits its applied delay. `unwind_only`
-/// records that the validator left the active set.
+/// `fun_custody` backs only funSUI plus the protocol-funded rounding reserve, and
+/// `blast_custody` backs only blastSUI, including the seed shares locked at `@0x0` by `create`;
+/// blastSUI supply is therefore never zero after creation. `validators` lists the staking pools
+/// users may pick: admission waits its delay and removal is immediate. `pool_rates` caches each
+/// admitted pool's last usable exchange-rate entry; its keys always equal the admitted members,
+/// and a refresh in an epoch without a usable entry keeps the conservative cached rate.
+/// `redeem_fee` is the blastSUI redemption fee; every change waits its applied delay.
 public struct Vault has key {
     id: UID,
-    pool_id: ID,
+    validators: DelayedSet<ValidatorKey, ID>,
+    pool_rates: VecMap<ID, PoolRate>,
     fun_custody: Custody,
     blast_custody: Custody,
-    rate_epoch: u64,
-    rate_sui: u64,
-    rate_pool_tokens: u64,
     redeem_fee: Delayed<RedeemFeeKey, u64>,
-    unwind_only: bool,
 }
+
+/// Keys the validator admissions' delayed lifecycle.
+public struct ValidatorKey() has copy, drop, store;
 
 /// Keys the redemption fee's delayed lifecycle.
 public struct RedeemFeeKey() has copy, drop, store;
@@ -46,8 +44,9 @@ public struct CapabilityKey<phantom Capability>() has copy, drop, store;
 
 /// Creates and shares the vault from the owner seed, locking every seed share.
 ///
-/// Both treasury caps must be empty. The pool's canonical validator must be
-/// active and the pool must have an exchange-rate entry for the current epoch.
+/// Both treasury caps must be empty. The first validator is admitted here, at the zero
+/// notice: its pool's validator must be active and the pool must have a usable exchange-rate
+/// entry for the current epoch.
 /// The seed must cover the fun rounding reserve plus a blast bootstrap of at
 /// least the native minimum stake: the reserve enters fun custody as liquid
 /// protocol capital that mints nothing, and the remainder enters blast custody,
@@ -58,9 +57,10 @@ public struct CapabilityKey<phantom Capability>() has copy, drop, store;
 /// `VaultCreated` fact record the locked amount.
 ///
 /// Both metadata caps and the deposit-receipt display cap are sealed as children of
-/// the vault with no accessor. The default redemption fee applies immediately.
-/// Changes to the fee or its delay initially wait 48 hours. Deposits stay
-/// paused until `unpause`.
+/// the vault with no accessor. The default redemption fee applies immediately, and changes
+/// to the fee or its delay initially wait 48 hours. The validator delay starts at zero so the
+/// bootstrap can list validators; deposits stay paused until `unpause`, which refuses while
+/// it is zero.
 public fun create(
     package_version: &PackageVersion<BLAST_SUI_PACKAGE>,
     system_state: &mut SuiSystemState,
@@ -71,6 +71,7 @@ public fun create(
     blast_metadata_cap: MetadataCap<BLAST_SUI>,
     owner_seed: Coin<SUI>,
     pool_id: ID,
+    clock: &Clock,
     ctx: &mut TxContext,
 ) {
     package_version.assert_current(constants::version!());
@@ -86,16 +87,6 @@ public fun create(
         blast_sui::errors::bootstrap_below_native_minimum!(),
     );
 
-    let validator = system_state.validator_address_by_pool_id(&pool_id);
-    assert!(
-        system_state.active_validator_addresses_ref().contains(&validator),
-        blast_sui::errors::validator_not_active!(),
-    );
-
-    let epoch = ctx.epoch();
-    let (is_current, rate_sui, rate_pool_tokens) = system_state.exchange_rate_at(&pool_id, epoch);
-    assert!(is_current, blast_sui::errors::stale_exchange_rate!());
-
     let mut seed = owner_seed.into_balance();
     let fun_reserve = seed.split(fun_reserve_sui);
     let bootstrap_sui = seed.value();
@@ -106,18 +97,18 @@ public fun create(
         constants::default_redeem_fee_bps!(),
         constants::initial_redeem_fee_delay_ms!(),
     );
+    let validators = delayed_set::new(ValidatorKey(), &id, 0);
     let mut self = Vault {
         id,
-        pool_id,
+        validators,
+        pool_rates: vec_map::empty(),
         fun_custody: custody::new(),
         blast_custody: custody::new(),
-        rate_epoch: epoch,
-        rate_sui,
-        rate_pool_tokens,
         redeem_fee,
-        unwind_only: false,
     };
 
+    self.validators.schedule_add(pool_id, clock);
+    self.admit_pool(system_state, pool_id, clock, ctx);
     self.add_treasury_cap(fun_cap);
     self.add_treasury_cap(blast_cap);
     self.add_capability(fun_metadata_cap);
@@ -125,13 +116,12 @@ public fun create(
     self.add_capability(deposit_receipt::create_display(display_registry, ctx));
     self.fun_custody.deposit(fun_reserve);
     self.blast_custody.deposit(seed);
-    let vault_pool_id = self.pool_id;
-    self.blast_custody.stake_idle(system_state, validator, &vault_pool_id, 0, ctx);
+    self.stake_idle(system_state, ctx);
     let locked_coin = self.treasury_cap_mut<BLAST_SUI>().mint(bootstrap_sui, ctx);
 
     events::vault_created(
         self.id.to_inner(),
-        validator,
+        system_state.validator_address_by_pool_id(&pool_id),
         pool_id,
         fun_reserve_sui,
         bootstrap_sui,
@@ -144,11 +134,16 @@ public fun create(
     transfer::share_object(self);
 }
 
-/// Mints funSUI one-to-one for SUI held in fun custody.
+/// Mints funSUI one-to-one for SUI held in fun custody, delegating it to the picked pool.
+///
+/// The pick directs only this deposit: up to `sui_in`, keeping the reserve liquid, is staked
+/// to `pool_id` when it reaches the native minimum, the pool has a current rate and a free
+/// pending slot. Otherwise it stays liquid for the idle rule. Exits follow the vault's order.
 public fun mint_fun_sui(
     self: &mut Vault,
     package_version: &PackageVersion<BLAST_SUI_PACKAGE>,
     system_state: &mut SuiSystemState,
+    pool_id: ID,
     sui_in: Coin<SUI>,
     ctx: &mut TxContext,
 ): Coin<FUN_SUI> {
@@ -158,14 +153,24 @@ public fun mint_fun_sui(
     let amount = sui_in.value();
     assert!(amount > 0, blast_sui::errors::zero_amount!());
     self.refresh(system_state, ctx);
-    self.assert_accepts_mints();
+    self.assert_accepted(&pool_id);
 
     self.fun_custody.deposit(sui_in.into_balance());
     let fun_coin = self.treasury_cap_mut<FUN_SUI>().mint(amount, ctx);
     self.assert_fun_backed();
+    let delegated_sui = self
+        .fun_custody
+        .stake_pick(
+            system_state,
+            &pool_id,
+            self.pool_rates[&pool_id],
+            amount,
+            constants::fun_rounding_reserve_mist!(),
+            ctx,
+        );
     self.stake_idle(system_state, ctx);
 
-    events::fun_sui_minted(amount, self.custody());
+    events::fun_sui_minted(pool_id, amount, delegated_sui, self.custody());
 
     fun_coin
 }
@@ -186,13 +191,7 @@ public fun redeem_fun_sui(
 
     let sui_out = self
         .fun_custody
-        .withdraw_exact(
-            system_state,
-            amount,
-            self.rate_sui,
-            self.rate_pool_tokens,
-            ctx,
-        );
+        .withdraw_exact(system_state, amount, &self.pool_rates, ctx);
     self.treasury_cap_mut<FUN_SUI>().burn(fun_in);
     self.protect_fun_exit_liquidity(system_state, ctx);
     self.stake_idle(system_state, ctx);
@@ -203,7 +202,7 @@ public fun redeem_fun_sui(
     sui_out.into_coin(ctx)
 }
 
-/// Delegates SUI into a key-only receipt that remains outside vault custody.
+/// Delegates SUI to the picked pool in a key-only receipt that remains outside vault custody.
 ///
 /// The receipt is returned for transaction composition. It can be claimed for
 /// blastSUI from its activation epoch, cancelled for native SUI at any time, or
@@ -212,6 +211,7 @@ public fun request_blast_sui(
     self: &mut Vault,
     package_version: &PackageVersion<BLAST_SUI_PACKAGE>,
     system_state: &mut SuiSystemState,
+    pool_id: ID,
     sui_in: Coin<SUI>,
     ctx: &mut TxContext,
 ): BlastSuiDepositReceipt {
@@ -224,14 +224,11 @@ public fun request_blast_sui(
         blast_sui::errors::blast_deposit_below_native_minimum!(),
     );
     self.refresh(system_state, ctx);
-    self.assert_accepts_mints();
+    self.assert_accepted(&pool_id);
 
-    let validator = system_state.validator_address_by_pool_id(&self.pool_id);
+    let validator = system_state.validator_address_by_pool_id(&pool_id);
     let staked_sui = system_state.request_add_stake_non_entry(sui_in, validator, ctx);
-    assert!(
-        staked_sui.pool_id() == self.pool_id,
-        blast_sui::errors::wrong_delegation_pool!(),
-    );
+    assert!(staked_sui.pool_id() == pool_id, blast_sui::errors::wrong_delegation_pool!());
 
     let receipt = deposit_receipt::new(self.id.to_inner(), staked_sui, ctx);
     self.stake_idle(system_state, ctx);
@@ -251,7 +248,9 @@ public fun request_blast_sui(
 /// Consumes an activated receipt and mints blastSUI at the current fair rate.
 ///
 /// The receipt's native stake is external to blast custody until this call.
-/// Existing holders therefore keep every reward earned before its activation.
+/// Existing holders therefore keep every reward earned before its activation. Every admitted
+/// pool must have a current rate: a stale one understates blast assets and would over-mint.
+/// A removed pool's receipt cannot be claimed; `deposit_receipt::cancel` stays open.
 public fun claim_blast_sui(
     self: &mut Vault,
     package_version: &PackageVersion<BLAST_SUI_PACKAGE>,
@@ -263,15 +262,16 @@ public fun claim_blast_sui(
     package_version.assert_current(constants::version!());
     package_version.assert_not_paused(constants::blast_claim_pause_bit!());
 
-    receipt.assert_binding(self.id.to_inner(), self.pool_id);
+    receipt.assert_vault(self.id.to_inner());
     assert!(
         receipt.activation_epoch() <= ctx.epoch(),
         blast_sui::errors::blast_deposit_not_active!(),
     );
 
     self.refresh(system_state, ctx);
-    self.assert_accepts_mints();
-    assert!(self.rate_epoch == ctx.epoch(), blast_sui::errors::stale_exchange_rate!());
+    let pool_id = receipt.pool_id();
+    self.assert_accepted(&pool_id);
+    assert!(self.has_every_rate_at(ctx.epoch()), blast_sui::errors::stale_exchange_rate!());
 
     let (receipt_id, principal_sui) = (receipt.id(), receipt.principal_sui());
     let active_stake = system_state.convert_to_fungible_staked_sui(
@@ -279,12 +279,9 @@ public fun claim_blast_sui(
         ctx,
     );
 
+    let rate = self.pool_rates[&pool_id];
     let pool_tokens = active_stake.value();
-    let contributed_sui = math::sui_at_rate_down(
-        pool_tokens,
-        self.rate_sui,
-        self.rate_pool_tokens,
-    );
+    let contributed_sui = math::sui_at_rate_down(pool_tokens, rate.sui(), rate.pool_tokens());
     let blast_out = math::blast_shares_out_down(
         contributed_sui,
         self.blast_custody.assets(),
@@ -292,13 +289,7 @@ public fun claim_blast_sui(
     );
     assert!(blast_out >= min_blast_out, blast_sui::errors::slippage_exceeded!());
 
-    self
-        .blast_custody
-        .join_active_at_rate(
-            active_stake,
-            self.rate_sui,
-            self.rate_pool_tokens,
-        );
+    self.blast_custody.join_active_at_rate(&pool_id, active_stake, rate);
     let blast_coin = self.treasury_cap_mut<BLAST_SUI>().mint(blast_out, ctx);
     self.stake_idle(system_state, ctx);
 
@@ -319,8 +310,8 @@ public fun claim_blast_sui(
 ///
 /// The donation increases assets per existing share, including the permanently
 /// locked bootstrap shares. Anyone may donate; the caller receives no receipt,
-/// shares, or withdrawal authority. Idle donations are delegated when a current
-/// rate proves the pool is active and remain liquid otherwise.
+/// shares, or withdrawal authority. Idle donations are delegated to pools with a
+/// current rate and remain liquid otherwise.
 public fun donate_sui(
     self: &mut Vault,
     package_version: &PackageVersion<BLAST_SUI_PACKAGE>,
@@ -346,7 +337,7 @@ public fun donate_sui(
 /// refreshes first and aborts while fun custody is below the funSUI supply, so a top-up
 /// that must not depend on that check restores 1:1 backing for every later call. While fun
 /// custody holds active stake, the top-up must exceed the gap by more than
-/// `fun_exit_low_water_mist` (61 MIST over the gap), so the next refresh skips the protective
+/// `fun_exit_low_water_mist`, so the next refresh skips the protective
 /// unwind, whose rounding could drop custody below the supply again. A smaller top-up loses
 /// nothing, and a larger one still recovers. Anyone may contribute; the caller receives
 /// nothing, and any amount above the supply plus the rounding reserve is swept to blast
@@ -398,13 +389,7 @@ public fun redeem_blast_sui(
 
     let sui_out = self
         .blast_custody
-        .withdraw_exact(
-            system_state,
-            net_sui,
-            self.rate_sui,
-            self.rate_pool_tokens,
-            ctx,
-        );
+        .withdraw_exact(system_state, net_sui, &self.pool_rates, ctx);
     self.treasury_cap_mut<BLAST_SUI>().burn(blast_in);
     self.stake_idle(system_state, ctx);
 
@@ -455,6 +440,126 @@ public fun cancel_redeem_fee(
     self.redeem_fee.cancel();
 }
 
+/// Schedules a validator's admission after the applied delay. Rescheduling a pending
+/// admission restarts its delay and takes no new slot.
+public fun schedule_validator(
+    self: &mut Vault,
+    package_version: &PackageVersion<BLAST_SUI_PACKAGE>,
+    _: &AdminWitness<ValidatorAdmin>,
+    pool_id: ID,
+    clock: &Clock,
+) {
+    package_version.assert_current(constants::version!());
+
+    assert!(
+        self.validators.is_pending(&pool_id)
+            || self.validators.contains(&pool_id)
+            || self.validators.length() + self.validators.pending_count()
+                < constants::max_validators!(),
+        blast_sui::errors::max_validators_reached!(),
+    );
+
+    self.validators.schedule_add(pool_id, clock);
+}
+
+/// Admits a scheduled validator permissionlessly once ready, while its pool is active with a
+/// usable rate for this epoch.
+public fun apply_validator(
+    self: &mut Vault,
+    package_version: &PackageVersion<BLAST_SUI_PACKAGE>,
+    system_state: &mut SuiSystemState,
+    pool_id: ID,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    package_version.assert_current(constants::version!());
+
+    self.admit_pool(system_state, pool_id, clock, ctx);
+
+    events::vault_synced(self.custody());
+}
+
+/// Cancels a pending validator admission, including after its delay has elapsed.
+public fun cancel_validator(
+    self: &mut Vault,
+    package_version: &PackageVersion<BLAST_SUI_PACKAGE>,
+    _: &AdminWitness<CancelAdmin>,
+    pool_id: ID,
+) {
+    package_version.assert_current(constants::version!());
+
+    self.validators.cancel_add(pool_id);
+}
+
+/// Removes a validator immediately, because reducing risk is never delayed.
+///
+/// A member's positions unwind in this call and its SUI re-delegates to the remaining members;
+/// a pending admission is discarded. Removal during safe mode can forfeit deferred rewards.
+/// A member that the refresh itself finds departed is already gone, and the call succeeds.
+public fun remove_validator(
+    self: &mut Vault,
+    package_version: &PackageVersion<BLAST_SUI_PACKAGE>,
+    _: &AdminWitness<ValidatorAdmin>,
+    system_state: &mut SuiSystemState,
+    pool_id: ID,
+    ctx: &mut TxContext,
+) {
+    package_version.assert_current(constants::version!());
+
+    let is_pending = self.validators.is_pending(&pool_id);
+    assert!(
+        is_pending || self.validators.contains(&pool_id),
+        blast_sui::errors::validator_not_accepted!(),
+    );
+    self.refresh(system_state, ctx);
+
+    if (is_pending) {
+        self.validators.remove(pool_id);
+    } else if (self.validators.contains(&pool_id)) {
+        self.retire_pool(system_state, pool_id, ctx);
+        self.protect_fun_exit_liquidity(system_state, ctx);
+        self.assert_fun_backed();
+    };
+    self.stake_idle(system_state, ctx);
+
+    events::vault_synced(self.custody());
+}
+
+/// Schedules the delay for later validator admissions, ready after the applied one.
+public fun schedule_validator_delay(
+    self: &mut Vault,
+    package_version: &PackageVersion<BLAST_SUI_PACKAGE>,
+    _: &AdminWitness<ValidatorAdmin>,
+    delay_ms: u64,
+    clock: &Clock,
+) {
+    package_version.assert_current(constants::version!());
+
+    self.validators.schedule_delay(delay_ms, clock);
+}
+
+/// Applies the scheduled validator delay permissionlessly once ready.
+public fun apply_validator_delay(
+    self: &mut Vault,
+    package_version: &PackageVersion<BLAST_SUI_PACKAGE>,
+    clock: &Clock,
+) {
+    package_version.assert_current(constants::version!());
+
+    self.validators.apply_delay(clock);
+}
+
+/// Cancels a pending validator-delay change, including after its delay has elapsed.
+public fun cancel_validator_delay(
+    self: &mut Vault,
+    package_version: &PackageVersion<BLAST_SUI_PACKAGE>,
+    _: &AdminWitness<CancelAdmin>,
+) {
+    package_version.assert_current(constants::version!());
+
+    self.validators.cancel_delay();
+}
+
 /// Releases deposit pause `bits` once every delay is guarded. Exits have no pause bit, so
 /// this never gates them.
 public fun unpause(
@@ -466,13 +571,16 @@ public fun unpause(
 ) {
     package_version.assert_current(constants::version!());
 
-    assert!(self.redeem_fee.is_guarded(), blast_sui::errors::unguarded_delay!());
+    assert!(
+        self.redeem_fee.is_guarded() && self.validators.is_guarded(),
+        blast_sui::errors::unguarded_delay!(),
+    );
 
     package_admin.clear_pause_bits(unpause_admin, package_witness(), package_version, bits);
 }
 
-/// Permissionless refresh: unwinds an inactive validator, converts activated
-/// stake, revalues both ledgers, sweeps fun yield, and delegates idle SUI.
+/// Permissionless refresh: retires departed pools, converts activated stake,
+/// revalues both ledgers, sweeps fun yield, and delegates idle SUI.
 public fun sync(
     self: &mut Vault,
     package_version: &PackageVersion<BLAST_SUI_PACKAGE>,
@@ -509,81 +617,131 @@ fun treasury_cap_mut<CoinType>(self: &mut Vault): &mut TreasuryCap<CoinType> {
     self.id.dynamic_object_field_mut(TreasuryKey<CoinType>())
 }
 
-/// Brings both ledgers to the current epoch with exactly one exchange-rate table lookup.
-///
-/// A usable current-epoch entry replaces the cache; a missing or empty entry
-/// keeps the cached rate, which never exceeds the live rate because pool rates
-/// only grow. Both ledgers are revalued at the applied rate before the sweep.
+/// Proves a scheduled pool active and current, then admits it with an empty position per
+/// ledger. The only place, with `retire_pool`, that changes the set of tracked pools.
+fun admit_pool(
+    self: &mut Vault,
+    system_state: &mut SuiSystemState,
+    pool_id: ID,
+    clock: &Clock,
+    ctx: &TxContext,
+) {
+    self.validators.apply_add(pool_id, clock);
+
+    let validator = system_state.validator_address_by_pool_id(&pool_id);
+    assert!(
+        system_state.active_validator_addresses_ref().contains(&validator),
+        blast_sui::errors::validator_not_active!(),
+    );
+
+    let entry = system_state.exchange_rate_at(&pool_id, ctx.epoch());
+    assert!(is_usable_entry(&entry), blast_sui::errors::stale_exchange_rate!());
+
+    self.pool_rates.insert(pool_id, entry.destroy_some());
+    self.fun_custody.add_position(pool_id);
+    self.blast_custody.add_position(pool_id);
+}
+
+/// Unwinds a pool's positions into ledger liquid and stops tracking it, in one step: a pool
+/// is either a member with positions or gone.
+fun retire_pool(
+    self: &mut Vault,
+    system_state: &mut SuiSystemState,
+    pool_id: ID,
+    ctx: &mut TxContext,
+) {
+    self.fun_custody.retire_position(system_state, &pool_id, ctx);
+    self.blast_custody.retire_position(system_state, &pool_id, ctx);
+    self.validators.remove(pool_id);
+    self.pool_rates.remove(&pool_id);
+
+    events::pool_unwound(pool_id, self.custody());
+}
+
+/// Brings both ledgers to the current epoch, then settles fun yield and exit liquidity.
 fun refresh(self: &mut Vault, system_state: &mut SuiSystemState, ctx: &mut TxContext) {
-    if (!self.unwind_only) self.refresh_native(system_state, ctx);
+    self.refresh_pools(system_state, ctx);
+    self.resolve_all_fun_receipts(system_state, ctx);
 
     self.sweep_fun_yield(ctx);
     self.protect_fun_exit_liquidity(system_state, ctx);
     self.assert_fun_backed();
 }
 
-/// Unwinds an inactive validator or applies one current rate without scanning backward.
-fun refresh_native(self: &mut Vault, system_state: &mut SuiSystemState, ctx: &mut TxContext) {
-    let validator = system_state.validator_address_by_pool_id(&self.pool_id);
-    if (!system_state.active_validator_addresses_ref().contains(&validator)) {
-        self.unwind_native(system_state, ctx);
-    } else {
-        self.refresh_active_native(system_state, ctx);
+/// Retires every departed pool and applies each remaining pool's current rate.
+///
+/// A pool has departed when its validator address left the active set, or when it has no raw
+/// entry this epoch while some tracked pool has one: only safe mode leaves every pool without
+/// an entry, so a lone gap means the address now belongs to a different pool. A zero entry is
+/// present but unusable, so it is not departure.
+fun refresh_pools(self: &mut Vault, system_state: &mut SuiSystemState, ctx: &mut TxContext) {
+    let epoch = ctx.epoch();
+    let active = system_state.active_validator_addresses_ref();
+    let pools = self.pool_rates.keys();
+    let mut entries = pools.map_ref!(|pool_id| system_state.exchange_rate_at(pool_id, epoch));
+    let has_some_entry = entries.any!(|entry| entry.is_some());
+
+    pools.do!(|pool_id| {
+        let entry = entries.remove(0);
+        let validator = system_state.validator_address_by_pool_id(&pool_id);
+        if (!active.contains(&validator) || (entry.is_none() && has_some_entry)) {
+            self.retire_pool(system_state, pool_id, ctx);
+        } else {
+            self.refresh_pool(system_state, pool_id, entry, ctx);
+        };
+    });
+}
+
+/// Applies a usable entry, activates arrived blast receipts, and revalues both positions.
+///
+/// A missing or empty entry keeps the cached rate, which never exceeds the live rate because
+/// pool rates only grow.
+fun refresh_pool(
+    self: &mut Vault,
+    system_state: &mut SuiSystemState,
+    pool_id: ID,
+    entry: Option<PoolRate>,
+    ctx: &mut TxContext,
+) {
+    if (is_usable_entry(&entry)) {
+        *&mut self.pool_rates[&pool_id] = entry.destroy_some();
+        self.blast_custody.activate_pending(system_state, &pool_id, ctx);
     };
+
+    let rate = self.pool_rates[&pool_id];
+    self.fun_custody.revalue(&pool_id, rate);
+    self.blast_custody.revalue(&pool_id, rate);
 }
 
-fun unwind_native(self: &mut Vault, system_state: &mut SuiSystemState, ctx: &mut TxContext) {
-    self.fun_custody.unwind(system_state, ctx);
-    self.blast_custody.unwind(system_state, ctx);
-    self.unwind_only = true;
-
-    events::native_stake_unwound(self.custody());
-}
-
-fun refresh_active_native(
+/// Resolves arrived fun receipts of every pool with a current rate.
+fun resolve_all_fun_receipts(
     self: &mut Vault,
     system_state: &mut SuiSystemState,
     ctx: &mut TxContext,
 ) {
-    let epoch = ctx.epoch();
-    let (is_current, rate_sui, rate_pool_tokens) =
-        system_state.exchange_rate_at(
-        &self.pool_id,
-        epoch
-    );
-    if (is_current) {
-        self.rate_epoch = epoch;
-        self.rate_sui = rate_sui;
-        self.rate_pool_tokens = rate_pool_tokens;
-    };
-
-    // After the active-address check in `refresh_native`, a current entry proves
-    // that the immutable pool itself is active. Address membership alone is not
-    // enough because an address can return with a different pool.
-    if (is_current) self.blast_custody.activate_pending(system_state, ctx);
-    self.fun_custody.revalue(self.rate_sui, self.rate_pool_tokens);
-    self.blast_custody.revalue(self.rate_sui, self.rate_pool_tokens);
-
-    if (is_current) self.resolve_fun_receipts(system_state, epoch, ctx);
+    self.pool_rates.keys().do!(|pool_id| {
+        if (self.pool_rates[&pool_id].epoch() == ctx.epoch()) {
+            self.resolve_fun_receipts(system_state, pool_id, ctx);
+        };
+    });
 }
 
-/// Resolves arrived fun receipts oldest-first while preserving the exit buffer.
+/// Resolves a pool's arrived fun receipts oldest-first while preserving the exit buffer.
 ///
-/// The pending-ledger cap bounds the loop. It stops at the first retained
+/// The pending-position cap bounds the loop. It stops at the first retained
 /// receipt because later receipts activate no earlier.
 fun resolve_fun_receipts(
     self: &mut Vault,
     system_state: &mut SuiSystemState,
-    epoch: u64,
+    pool_id: ID,
     ctx: &mut TxContext,
 ) {
-    let loss_bound = math::fun_conversion_loss_bound_up(
-        self.rate_sui,
-        self.rate_pool_tokens,
-    );
+    let epoch = ctx.epoch();
+    let rate = self.pool_rates[&pool_id];
+    let loss_bound = math::fun_conversion_loss_bound_up(rate.sui(), rate.pool_tokens());
 
     loop {
-        let fun_activation_epoch = self.fun_custody.oldest_pending_activation_epoch();
+        let fun_activation_epoch = self.fun_custody.oldest_pending_activation_epoch(&pool_id);
         if (fun_activation_epoch.is_none() || *fun_activation_epoch.borrow() > epoch) {
             break
         };
@@ -593,105 +751,101 @@ fun resolve_fun_receipts(
             buffer >= loss_bound
                 && buffer - loss_bound > constants::fun_exit_low_water_mist!()
         ) {
-            self.fun_custody.activate_oldest_pending(system_state, ctx);
-            self.fun_custody.revalue(self.rate_sui, self.rate_pool_tokens);
+            self.fun_custody.activate_oldest_pending(system_state, &pool_id, ctx);
+            self.fun_custody.revalue(&pool_id, rate);
         } else if (activation_epoch < epoch) {
             // Withdrawing during the activation epoch forfeits that epoch's
             // reward. Withdrawing during safe mode can also forfeit deferred
             // rewards. Recover only after a full epoch with a current rate.
-            self.fun_custody.realize_oldest_pending(system_state, ctx);
+            self.fun_custody.realize_oldest_pending(system_state, &pool_id, ctx);
         } else break;
     };
 }
 
-/// Returns whether the pool has a usable exchange-rate entry for `epoch`, and its primitives.
-///
-/// An entry with a zero component counts as missing, exactly like a safe-mode epoch: the
-/// vault keeps its cached rate rather than valuing stake at one MIST per pool token.
+/// Returns the pool's raw exchange-rate entry for `epoch`, if the table has one.
 fun exchange_rate_at(
     system_state: &mut SuiSystemState,
     pool_id: &ID,
     epoch: u64,
-): (bool, u64, u64) {
+): Option<PoolRate> {
     let rates = system_state.pool_exchange_rates(pool_id);
-    if (!rates.contains(epoch)) return (false, 0, 0);
+    if (!rates.contains(epoch)) return option::none();
 
     let rate = &rates[epoch];
-    let (rate_sui, rate_pool_tokens) = (rate.sui_amount(), rate.pool_token_amount());
 
-    (math::is_usable_rate(rate_sui, rate_pool_tokens), rate_sui, rate_pool_tokens)
+    option::some(custody::new_rate(epoch, rate.sui_amount(), rate.pool_token_amount()))
+}
+
+/// Whether an entry can value stake. An entry with a zero component counts as missing for
+/// pricing, exactly like a safe-mode epoch: the vault keeps its cached rate rather than
+/// valuing stake at one MIST per pool token.
+fun is_usable_entry(entry: &Option<PoolRate>): bool {
+    entry.is_some_and!(|rate| math::is_usable_rate(rate.sui(), rate.pool_tokens()))
 }
 
 /// Moves fun assets above the funSUI supply plus the rounding reserve into blast custody.
 ///
-/// Liquid SUI above the reserve moves first, so the reserve stays liquid. The
-/// remainder moves as active pool tokens worth at most the remaining surplus at
-/// the cached rate, so fun custody keeps at least the supply plus reserve at its
-/// conservative valuation: retained yield is what replenishes the reserve. Fun
-/// principal never moves.
+/// Liquid SUI above the reserve moves first, so the reserve stays liquid. The remainder moves
+/// as active pool tokens, position by position in list order, each worth at most the surplus
+/// at that pool's cached rate. The surplus is recomputed after every move: flooring can only
+/// leave fun custody at or above the supply plus reserve, whereas decrementing by the moved
+/// value could over-sweep. Retained yield is what replenishes the reserve; fun principal never
+/// moves.
 fun sweep_fun_yield(self: &mut Vault, ctx: &mut TxContext) {
     let reserve = constants::fun_rounding_reserve_mist!();
     let retained = self.treasury_cap<FUN_SUI>().total_supply() + reserve;
     let assets = self.fun_custody.assets();
     if (assets <= retained) return;
 
-    let surplus = assets - retained;
-    let liquid_sui = surplus.min(self.fun_custody.liquid_sui().saturating_sub(reserve));
+    let liquid_sui = (assets - retained).min(
+        self.fun_custody.liquid_sui().saturating_sub(reserve),
+    );
     if (liquid_sui > 0) {
         self.fun_custody.transfer_liquid(&mut self.blast_custody, liquid_sui);
     };
 
-    let pool_tokens = math::pool_tokens_at_rate_down(
-        surplus - liquid_sui,
-        self.rate_sui,
-        self.rate_pool_tokens,
-    ).min(self.fun_custody.active_pool_tokens());
-    if (pool_tokens > 0) {
-        self
-            .fun_custody
-            .transfer_active_tokens(
-                &mut self.blast_custody,
-                pool_tokens,
-                self.rate_sui,
-                self.rate_pool_tokens,
-                ctx,
-            );
-    };
+    let mut active_sui = 0;
+    self.pool_rates.keys().do!(|pool_id| {
+        active_sui = active_sui + self.sweep_pool_yield(pool_id, retained, ctx);
+    });
 
-    let swept_sui =
-        liquid_sui + math::sui_at_rate_down(
-        pool_tokens,
-        self.rate_sui,
-        self.rate_pool_tokens,
-    );
-    if (swept_sui > 0) {
-        events::fun_yield_swept(liquid_sui, pool_tokens, swept_sui, self.custody());
+    if (liquid_sui + active_sui > 0) {
+        events::fun_yield_swept(liquid_sui, active_sui, liquid_sui + active_sui, self.custody());
     };
 }
 
-/// Delegates both ledgers' idle SUI only with current immutable-pool proof.
+/// Moves one pool's active tokens worth at most the live surplus; returns their value.
+fun sweep_pool_yield(self: &mut Vault, pool_id: ID, retained: u64, ctx: &mut TxContext): u64 {
+    let rate = self.pool_rates[&pool_id];
+    let pool_tokens = math::pool_tokens_at_rate_down(
+        self.fun_custody.assets().saturating_sub(retained),
+        rate.sui(),
+        rate.pool_tokens(),
+    ).min(self.fun_custody.active_pool_tokens(&pool_id));
+    if (pool_tokens == 0) return 0;
+
+    self
+        .fun_custody
+        .transfer_active_tokens(&mut self.blast_custody, &pool_id, pool_tokens, rate, ctx);
+
+    math::sui_at_rate_down(pool_tokens, rate.sui(), rate.pool_tokens())
+}
+
+/// Delegates both ledgers' idle SUI across the pools with a current rate.
 ///
 /// Fun custody keeps the rounding reserve liquid; blast custody stakes
 /// everything. Safe mode can temporarily leave new SUI liquid; the next normal
 /// sync delegates it.
 fun stake_idle(self: &mut Vault, system_state: &mut SuiSystemState, ctx: &mut TxContext) {
-    // Together with refresh's active-address check, a current exchange-rate
-    // entry proves that `pool_id`, not merely its old validator address, is
-    // active. Safe mode defers delegation until the next normal sync.
-    if (self.unwind_only || self.rate_epoch != ctx.epoch()) return;
-
-    let pool_id = self.pool_id;
-    let validator = system_state.validator_address_by_pool_id(&pool_id);
     self
         .fun_custody
         .stake_idle(
             system_state,
-            validator,
-            &pool_id,
+            &self.pool_rates,
             constants::fun_rounding_reserve_mist!(),
             ctx,
         );
-    self.blast_custody.stake_idle(system_state, validator, &pool_id, 0, ctx);
+    self.blast_custody.stake_idle(system_state, &self.pool_rates, 0, ctx);
 }
 
 /// Unwinds fun stake before another native rounding loss could consume its 1:1 backing.
@@ -701,14 +855,19 @@ fun protect_fun_exit_liquidity(
     ctx: &mut TxContext,
 ) {
     let fun_supply = self.treasury_cap<FUN_SUI>().total_supply();
-    if (fun_supply == 0 || self.fun_custody.active_pool_tokens() == 0) return;
+    if (fun_supply == 0 || !self.fun_custody.has_active_stake()) return;
     if (self.fun_backing_buffer() > constants::fun_exit_low_water_mist!()) return;
 
     self.fun_custody.unwind(system_state, ctx);
 }
 
-fun assert_accepts_mints(self: &Vault) {
-    assert!(!self.unwind_only, blast_sui::errors::unwind_only!());
+fun assert_accepted(self: &Vault, pool_id: &ID) {
+    assert!(self.validators.contains(pool_id), blast_sui::errors::validator_not_accepted!());
+}
+
+/// Whether every admitted pool's rate was read at `epoch`.
+fun has_every_rate_at(self: &Vault, epoch: u64): bool {
+    self.pool_rates.keys().all!(|pool_id| self.pool_rates[pool_id].epoch() == epoch)
 }
 
 /// Fun custody's conservative assets must cover the exact 1:1 funSUI claim.
@@ -726,10 +885,21 @@ fun fun_backing_buffer(self: &Vault): u64 {
 }
 
 fun custody(self: &Vault): events::VaultCustody {
+    let pools = self.pool_rates.keys().map!(|pool_id| {
+        let rate = self.pool_rates[&pool_id];
+
+        events::pool_snapshot(
+            pool_id,
+            events::exchange_rate(rate.epoch(), rate.sui(), rate.pool_tokens()),
+            self.fun_custody.position_custody(&pool_id),
+            self.blast_custody.position_custody(&pool_id),
+        )
+    });
+
     events::vault_custody(
-        self.fun_custody.pool_custody(),
-        self.blast_custody.pool_custody(),
-        events::exchange_rate(self.rate_epoch, self.rate_sui, self.rate_pool_tokens),
+        self.fun_custody.liquid_sui(),
+        self.blast_custody.liquid_sui(),
+        pools,
         self.treasury_cap<FUN_SUI>().total_supply(),
         self.treasury_cap<BLAST_SUI>().total_supply(),
     )
@@ -748,23 +918,52 @@ public fun blast_supply_for_testing(self: &Vault): u64 {
 }
 
 #[test_only]
-public fun fun_custody_for_testing(self: &Vault): events::PoolCustody {
-    self.fun_custody.pool_custody()
+public fun custody_for_testing(self: &Vault): events::VaultCustody {
+    self.custody()
 }
 
 #[test_only]
-public fun blast_custody_for_testing(self: &Vault): events::PoolCustody {
-    self.blast_custody.pool_custody()
+public fun fun_assets_for_testing(self: &Vault): u64 {
+    self.fun_custody.assets()
 }
 
 #[test_only]
+public fun blast_assets_for_testing(self: &Vault): u64 {
+    self.blast_custody.assets()
+}
+
+#[test_only]
+public fun fun_custody_for_testing(self: &Vault): events::LedgerTotals {
+    self.custody().fun_totals()
+}
+
+#[test_only]
+public fun blast_custody_for_testing(self: &Vault): events::LedgerTotals {
+    self.custody().blast_totals()
+}
+
+#[test_only]
+/// The first admitted pool.
 public fun pool_id_for_testing(self: &Vault): ID {
-    self.pool_id
+    self.pool_rates.keys()[0]
 }
 
 #[test_only]
+/// The first admitted pool's applied rate, or zero with no pool.
 public fun exchange_rate_for_testing(self: &Vault): events::ExchangeRate {
-    events::exchange_rate(self.rate_epoch, self.rate_sui, self.rate_pool_tokens)
+    let (_, _, rate, _, _) = self.custody().vault_custody_fields();
+
+    rate
+}
+
+#[test_only]
+public fun pools_for_testing(self: &Vault): vector<ID> {
+    self.pool_rates.keys()
+}
+
+#[test_only]
+public fun validators_for_testing(self: &Vault): &DelayedSet<ValidatorKey, ID> {
+    &self.validators
 }
 
 #[test_only]
@@ -780,11 +979,6 @@ public fun redeem_fee_delay_ms_for_testing(self: &Vault): u64 {
 #[test_only]
 public fun has_capability_for_testing<Capability: key + store>(self: &Vault): bool {
     self.id.has_dynamic_object_field_with_type<_, Capability>(CapabilityKey<Capability>())
-}
-
-#[test_only]
-public fun is_unwind_only_for_testing(self: &Vault): bool {
-    self.unwind_only
 }
 
 #[test_only]
@@ -810,10 +1004,8 @@ public fun add_blast_layers_for_testing(
     liquid_in: Coin<SUI>,
     ctx: &mut TxContext,
 ) {
-    let pool_id = self.pool_id;
-    let validator = system_state.validator_address_by_pool_id(&pool_id);
     self.blast_custody.deposit(pending_in.into_balance());
-    self.blast_custody.stake_idle(system_state, validator, &pool_id, 0, ctx);
+    self.blast_custody.stake_idle(system_state, &self.pool_rates, 0, ctx);
     self.blast_custody.deposit(liquid_in.into_balance());
 }
 
@@ -822,16 +1014,17 @@ public fun add_blast_layers_for_testing(
 use blast_admin::{
     blast_acl::AdminWitness,
     delayed::{Self, Delayed},
+    delayed_set::{Self, DelayedSet},
     package_admin::{PackageAdmin, UnpauseAdmin},
     package_version::PackageVersion,
 };
 
 use blast_sui::{
     blast_sui::BLAST_SUI,
-    blast_sui_domain::{CancelAdmin, FeeAdmin},
+    blast_sui_domain::{CancelAdmin, FeeAdmin, ValidatorAdmin},
     blast_sui_package::{BLAST_SUI_PACKAGE, package_witness},
     constants,
-    custody::{Self, Custody},
+    custody::{Self, Custody, PoolRate},
     deposit_receipt::{Self, BlastSuiDepositReceipt},
     events,
     fun_sui::FUN_SUI,
@@ -845,6 +1038,7 @@ use sui::{
     display_registry::DisplayRegistry,
     dynamic_object_field,
     sui::SUI,
+    vec_map::{Self, VecMap},
 };
 
 use sui_system::sui_system::SuiSystemState;

@@ -23,11 +23,11 @@ const EZeroBlastShares: u64 = 2;
 const EZeroSuiRedemption: u64 = 3;
 
 #[test_only]
-/// The validator left the active set, so the vault accepts redemptions only.
-const EUnwindOnly: u64 = 4;
+/// The picked validator pool is not admitted by the vault.
+const EValidatorNotAccepted: u64 = 4;
 
 #[test_only]
-/// The fixed validator is not in the active validator set.
+/// A staking pool's validator is not in the active validator set.
 const EValidatorNotActive: u64 = 5;
 
 #[test_only]
@@ -59,7 +59,7 @@ const ERedeemFeeAboveMaximum: u64 = 11;
 const EFunBackingBelowSupply: u64 = 12;
 
 #[test_only]
-/// The staking pool has no usable exchange-rate entry for the current epoch.
+/// A staking pool has no usable exchange-rate entry for the current epoch.
 const EStaleExchangeRate: u64 = 13;
 
 #[test_only]
@@ -75,20 +75,20 @@ const EBlastDepositNotActive: u64 = 15;
 const EWrongReceiptVault: u64 = 16;
 
 #[test_only]
-/// A blastSUI deposit receipt contains stake from another validator pool.
-const EWrongReceiptPool: u64 = 17;
-
-#[test_only]
 /// The blastSUI redemption fee consumed the complete atomic payout.
-const EZeroSuiAfterFee: u64 = 18;
+const EZeroSuiAfterFee: u64 = 17;
 
 #[test_only]
-/// Native delegation returned stake from a pool other than the vault's immutable pool.
-const EWrongDelegationPool: u64 = 19;
+/// Native delegation returned stake from a pool other than the one picked.
+const EWrongDelegationPool: u64 = 18;
 
 #[test_only]
 /// A change still to come could wait a zero delay, so deposits cannot be released.
-const EUnguardedDelay: u64 = 20;
+const EUnguardedDelay: u64 = 19;
+
+#[test_only]
+/// Admitted and pending validators already fill the hard cap.
+const EMaxValidatorsReached: u64 = 20;
 
 macro public(package) fun zero_amount(): u64 { 0 }
 
@@ -98,7 +98,7 @@ macro public(package) fun zero_blast_shares(): u64 { 2 }
 
 macro public(package) fun zero_sui_redemption(): u64 { 3 }
 
-macro public(package) fun unwind_only(): u64 { 4 }
+macro public(package) fun validator_not_accepted(): u64 { 4 }
 
 macro public(package) fun validator_not_active(): u64 { 5 }
 
@@ -124,10 +124,10 @@ macro public(package) fun blast_deposit_not_active(): u64 { 15 }
 
 macro public(package) fun wrong_receipt_vault(): u64 { 16 }
 
-macro public(package) fun wrong_receipt_pool(): u64 { 17 }
+macro public(package) fun zero_sui_after_fee(): u64 { 17 }
 
-macro public(package) fun zero_sui_after_fee(): u64 { 18 }
+macro public(package) fun wrong_delegation_pool(): u64 { 18 }
 
-macro public(package) fun wrong_delegation_pool(): u64 { 19 }
+macro public(package) fun unguarded_delay(): u64 { 19 }
 
-macro public(package) fun unguarded_delay(): u64 { 20 }
+macro public(package) fun max_validators_reached(): u64 { 20 }

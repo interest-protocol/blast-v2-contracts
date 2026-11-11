@@ -91,7 +91,7 @@ fun create_seeds_the_fun_reserve_and_stakes_the_bootstrap_in_blast_custody_only(
         assert_pool(&blast_custody, 0, BOOTSTRAP, 0, 0);
         assert_eq!(fun_supply, 0);
         assert_eq!(blast_supply, BOOTSTRAP);
-        assert!(!f.vault!().is_unwind_only_for_testing());
+        assert!(!f.vault!().pools_for_testing().is_empty());
 
         // The cache holds the current epoch's native entry, field for field.
         let (rate_epoch, rate_sui, rate_pool_tokens) = rate.exchange_rate_fields();
@@ -301,9 +301,11 @@ fun returned_receipt_composes_into_same_transaction_cancellation_without_keep() 
     let returned_sui;
 
     fixture.next_tx!(USER, |f| {
+        let pick = f.pick();
         let receipt = f.vault!().request_blast_sui(
             &f.version,
             f.system!(),
+            pick,
             coin::mint_for_testing(principal, f.ctx!()),
             f.ctx!(),
         );
@@ -432,8 +434,8 @@ fun claim_rejects_a_receipt_bound_to_another_vault_before_refresh() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EWrongReceiptPool, location = blast_sui::deposit_receipt)]
-fun claim_rejects_native_stake_from_another_validator_pool_before_refresh() {
+#[expected_failure(abort_code = errors::EValidatorNotAccepted, location = blast_sui::vault)]
+fun claim_rejects_native_stake_from_a_pool_the_vault_never_admitted() {
     let mut fixture = start_vault();
     let vault_id = fixture.vault_id();
     fixture.issue_test_receipt(vault_id, 0, 2 * MIST_PER_SUI);
@@ -565,7 +567,7 @@ fun pending_withdrawal_below_one_sui_uses_the_native_minimum_split() {
     let redeem = reserve + 1;
     let custody = fixture.redeem_fun(redeem);
     let (fun_custody, _, _, fun_supply, _) = custody.vault_custody_fields();
-    let (liquid, pending, tokens, _) = fun_custody.pool_custody_fields();
+    let (liquid, pending, tokens, _) = fun_custody.ledger_totals_fields();
     assert_eq!(liquid, MIST_PER_SUI - 1);
     assert_eq!(pending, 19 * MIST_PER_SUI);
     assert_eq!(tokens, 0);
@@ -586,7 +588,7 @@ fun pending_withdrawal_extracts_whole_receipt_when_remainder_would_be_too_small(
     let redeem = 19 * MIST_PER_SUI + reserve + 1;
     let custody = fixture.redeem_fun(redeem);
     let (fun_custody, _, _, fun_supply, _) = custody.vault_custody_fields();
-    let (liquid, pending, tokens, _) = fun_custody.pool_custody_fields();
+    let (liquid, pending, tokens, _) = fun_custody.ledger_totals_fields();
     assert_eq!(liquid, MIST_PER_SUI - 1);
     assert_eq!(pending, 0);
     assert_eq!(tokens, 0);
@@ -613,7 +615,7 @@ fun fun_sui_redeems_exactly_from_active_stake_after_a_reward_sweep() {
     let custody = fixture.redeem_fun(7 * MIST_PER_SUI);
 
     let (fun_custody, blast_custody, _, fun_supply, _) = custody.vault_custody_fields();
-    let (liquid, pending, tokens, _) = fun_custody.pool_custody_fields();
+    let (liquid, pending, tokens, _) = fun_custody.ledger_totals_fields();
     assert_eq!(fun_supply, 13 * MIST_PER_SUI);
     assert_eq!(pending, 0);
     assert!(tokens > 0);
@@ -639,7 +641,7 @@ fun full_fun_exit_after_a_reward_sweep_redeems_every_active_token_exactly() {
     let blast_assets_before;
     fixture.next_tx!(USER, |f| {
         let fun_custody = f.vault!().fun_custody_for_testing();
-        let (liquid, pending, tokens, active_sui) = fun_custody.pool_custody_fields();
+        let (liquid, pending, tokens, active_sui) = fun_custody.ledger_totals_fields();
         assert_eq!(liquid, reserve);
         assert_eq!(pending, 0);
         assert!(tokens > 0);
@@ -651,7 +653,7 @@ fun full_fun_exit_after_a_reward_sweep_redeems_every_active_token_exactly() {
 
     // Only the reserve remains in fun custody, partly as the unredeemed token dust.
     let (fun_custody, blast_custody, _, fun_supply, _) = custody.vault_custody_fields();
-    let (_, pending, _, _) = fun_custody.pool_custody_fields();
+    let (_, pending, _, _) = fun_custody.ledger_totals_fields();
     assert_eq!(fun_supply, 0);
     assert_eq!(pending, 0);
     assert!(fun_custody.pool_assets() >= reserve - constants::native_redemption_rounding_margin!());
@@ -685,7 +687,7 @@ fun full_fun_exit_before_the_first_reward_is_exact_from_the_seeded_reserve() {
     fixture.advance_epoch();
     let custody = fixture.sync();
     let (fun_custody, _, _, _, _) = custody.vault_custody_fields();
-    let (liquid, _, tokens, active_sui) = fun_custody.pool_custody_fields();
+    let (liquid, _, tokens, active_sui) = fun_custody.ledger_totals_fields();
     assert_eq!(liquid, reserve);
     assert_eq!(tokens, 500_000_000);
     assert_eq!(active_sui, MIST_PER_SUI);
@@ -716,7 +718,7 @@ fun retained_yield_replenishes_the_reserve_before_any_sweep() {
         let retained = 20 * MIST_PER_SUI + reserve;
         assert!(fun_custody.pool_assets() >= retained);
         assert!(fun_custody.pool_assets() <= retained + 2);
-        let (liquid, _, _, _) = fun_custody.pool_custody_fields();
+        let (liquid, _, _, _) = fun_custody.ledger_totals_fields();
         assert_eq!(liquid, reserve);
     });
 
@@ -729,9 +731,9 @@ fun fun_sui_redemption_stays_live_after_the_validator_left() {
     let reserve = constants::fun_rounding_reserve_mist!();
 
     fixture.next_tx!(USER, |f| {
-        assert!(f.vault!().is_unwind_only_for_testing());
+        assert!(f.vault!().pools_for_testing().is_empty());
         let fun_custody = f.vault!().fun_custody_for_testing();
-        let (liquid, pending, tokens, _) = fun_custody.pool_custody_fields();
+        let (liquid, pending, tokens, _) = fun_custody.ledger_totals_fields();
         assert_eq!(pending, 0);
         assert_eq!(tokens, 0);
         assert_eq!(liquid, fun_custody.pool_assets());
@@ -777,7 +779,7 @@ fun fun_sui_pending_activation_stays_withdrawable_when_the_current_rate_is_missi
 
     fixture.next_tx!(USER, |f| {
         let fun_custody = f.vault!().fun_custody_for_testing();
-        let (_, pending, tokens, _) = fun_custody.pool_custody_fields();
+        let (_, pending, tokens, _) = fun_custody.ledger_totals_fields();
         assert_eq!(pending, 20 * MIST_PER_SUI);
         assert_eq!(tokens, 0);
     });
@@ -804,7 +806,7 @@ fun fun_sui_mint_keeps_activated_receipt_during_safe_mode() {
 
     let custody = fixture.mint_fun(MIST_PER_SUI);
     let (fun_custody, _, rate, fun_supply, _) = custody.vault_custody_fields();
-    let (liquid, pending, tokens, _) = fun_custody.pool_custody_fields();
+    let (liquid, pending, tokens, _) = fun_custody.ledger_totals_fields();
     let (rate_epoch, _, _) = rate.exchange_rate_fields();
     assert_eq!(liquid, reserve + MIST_PER_SUI);
     assert_eq!(pending, 20 * MIST_PER_SUI);
@@ -816,7 +818,7 @@ fun fun_sui_mint_keeps_activated_receipt_during_safe_mode() {
     fixture.advance_epoch_with_rewards(130);
     let custody = fixture.sync();
     let (fun_custody, blast_custody, rate, fun_supply, _) = custody.vault_custody_fields();
-    let (liquid, pending, tokens, _) = fun_custody.pool_custody_fields();
+    let (liquid, pending, tokens, _) = fun_custody.ledger_totals_fields();
     let (rate_epoch, _, _) = rate.exchange_rate_fields();
     assert_eq!(liquid, reserve);
     assert_eq!(pending, 0);
@@ -843,7 +845,7 @@ fun zero_buffer_retains_the_receipt_through_its_activation_epoch() {
 
     let custody = fixture.sync();
     let (fun_custody, _, _, fun_supply, _) = custody.vault_custody_fields();
-    let (liquid, pending, tokens, _) = fun_custody.pool_custody_fields();
+    let (liquid, pending, tokens, _) = fun_custody.ledger_totals_fields();
     assert_eq!(liquid, 0);
     assert_eq!(pending, 20 * MIST_PER_SUI);
     assert_eq!(tokens, 0);
@@ -921,7 +923,7 @@ fun a_top_up_above_the_low_water_mark_recovers_a_vault_with_active_stake() {
 
     let custody = fixture.sync();
     let (fun_custody, _, _, fun_supply, _) = custody.vault_custody_fields();
-    let (_, _, tokens, _) = fun_custody.pool_custody_fields();
+    let (_, _, tokens, _) = fun_custody.ledger_totals_fields();
     assert!(tokens > 0);
     assert_eq!(fun_custody.pool_assets(), fun_supply + headroom);
 
@@ -956,7 +958,7 @@ fun buffer_above_the_low_water_mark_keeps_active_fun_stake() {
 
     let custody = fixture.sync();
     let (fun_custody, _, _, fun_supply, _) = custody.vault_custody_fields();
-    let (_, pending, tokens, _) = fun_custody.pool_custody_fields();
+    let (_, pending, tokens, _) = fun_custody.ledger_totals_fields();
     assert_eq!(pending, 0);
     assert!(tokens > 0);
     assert_eq!(fun_custody.pool_assets(), fun_supply + low_water + 1);
@@ -984,7 +986,7 @@ fun depleted_fun_buffer_recovers_without_forfeiting_every_activation_epoch() {
 
     let custody = fixture.sync();
     let (fun_custody, _, _, fun_supply, _) = custody.vault_custody_fields();
-    let (liquid, pending, tokens, _) = fun_custody.pool_custody_fields();
+    let (liquid, pending, tokens, _) = fun_custody.ledger_totals_fields();
     assert_eq!(fun_supply, 20 * MIST_PER_SUI);
     assert_eq!(liquid, reserve);
     assert!(pending >= 19 * MIST_PER_SUI);
@@ -996,7 +998,7 @@ fun depleted_fun_buffer_recovers_without_forfeiting_every_activation_epoch() {
     fixture.advance_epoch_with_rewards(130);
     let custody = fixture.sync();
     let (fun_custody, _, _, fun_supply, _) = custody.vault_custody_fields();
-    let (liquid, pending, tokens, _) = fun_custody.pool_custody_fields();
+    let (liquid, pending, tokens, _) = fun_custody.ledger_totals_fields();
     assert_eq!(liquid, reserve);
     assert!(pending >= 19 * MIST_PER_SUI);
     assert_eq!(tokens, 0);
@@ -1007,7 +1009,7 @@ fun depleted_fun_buffer_recovers_without_forfeiting_every_activation_epoch() {
     // so the deposit takes a free pending slot instead of waiting liquid.
     let custody = fixture.mint_fun(MIST_PER_SUI);
     let (fun_custody, _, _, fun_supply, _) = custody.vault_custody_fields();
-    let (liquid, pending, tokens, _) = fun_custody.pool_custody_fields();
+    let (liquid, pending, tokens, _) = fun_custody.ledger_totals_fields();
     assert_eq!(liquid, reserve);
     assert!(pending >= 20 * MIST_PER_SUI);
     assert_eq!(tokens, 0);
@@ -1019,7 +1021,7 @@ fun depleted_fun_buffer_recovers_without_forfeiting_every_activation_epoch() {
     // the newer receipt queued behind it untouched.
     let custody = fixture.sync();
     let (fun_custody, _, _, _, _) = custody.vault_custody_fields();
-    let (liquid, pending, tokens, _) = fun_custody.pool_custody_fields();
+    let (liquid, pending, tokens, _) = fun_custody.ledger_totals_fields();
     assert_eq!(liquid, reserve);
     assert_eq!(pending, pending_before_resync);
     assert_eq!(tokens, 0);
@@ -1030,7 +1032,7 @@ fun depleted_fun_buffer_recovers_without_forfeiting_every_activation_epoch() {
     fixture.advance_epoch_with_rewards(130);
     let custody = fixture.sync();
     let (fun_custody, _, _, fun_supply, _) = custody.vault_custody_fields();
-    let (liquid, pending, tokens, _) = fun_custody.pool_custody_fields();
+    let (liquid, pending, tokens, _) = fun_custody.ledger_totals_fields();
     assert_eq!(liquid, reserve);
     assert!(pending >= 19 * MIST_PER_SUI);
     assert!(tokens > 0);
@@ -1041,7 +1043,7 @@ fun depleted_fun_buffer_recovers_without_forfeiting_every_activation_epoch() {
     fixture.advance_epoch();
     let custody = fixture.sync();
     let (fun_custody, _, _, fun_supply, _) = custody.vault_custody_fields();
-    let (_, pending, tokens, _) = fun_custody.pool_custody_fields();
+    let (_, pending, tokens, _) = fun_custody.ledger_totals_fields();
     assert_eq!(pending, 0);
     assert!(tokens > 0);
     assert!(fun_custody.pool_assets() >= fun_supply);
@@ -1073,7 +1075,7 @@ fun blast_request_restakes_realized_fun_and_emits_final_custody() {
     let (_, _, _, principal, _, custody) = requested.blast_sui_deposit_requested_fields();
     assert_eq!(principal, 5 * MIST_PER_SUI);
     let (fun_custody, _, _, fun_supply, _) = custody.vault_custody_fields();
-    let (liquid, pending, tokens, _) = fun_custody.pool_custody_fields();
+    let (liquid, pending, tokens, _) = fun_custody.ledger_totals_fields();
     assert_eq!(liquid, reserve);
     assert!(pending >= 20 * MIST_PER_SUI);
     assert_eq!(tokens, 0);
@@ -1085,7 +1087,7 @@ fun blast_request_restakes_realized_fun_and_emits_final_custody() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EUnwindOnly, location = blast_sui::vault)]
+#[expected_failure(abort_code = errors::EValidatorNotAccepted, location = blast_sui::vault)]
 fun fun_sui_mint_is_rejected_after_the_validator_left() {
     let mut fixture = start_unwound_vault(0);
     fixture.mint_fun(MIST_PER_SUI);
@@ -1139,7 +1141,7 @@ fun donation_increases_blast_assets_without_minting_shares() {
 
     let custody = fixture.donate(donation);
     let (fun_custody, blast_custody, _, _, blast_supply) = custody.vault_custody_fields();
-    let (_, pending, tokens, _) = blast_custody.pool_custody_fields();
+    let (_, pending, tokens, _) = blast_custody.ledger_totals_fields();
     assert_eq!(fun_custody.pool_assets(), fun_before);
     assert_eq!(blast_custody.pool_assets(), assets_before + donation);
     assert_eq!(blast_supply, supply_before);
@@ -1212,7 +1214,7 @@ fun donation_stays_open_and_liquid_after_the_validator_left() {
 
     let custody = fixture.donate(amount);
     let (_, blast_custody, _, _, blast_supply) = custody.vault_custody_fields();
-    let (liquid, pending, tokens, _) = blast_custody.pool_custody_fields();
+    let (liquid, pending, tokens, _) = blast_custody.ledger_totals_fields();
     assert_eq!(blast_custody.pool_assets(), assets_before + amount);
     assert_eq!(liquid, assets_before + amount);
     assert_eq!(pending, 0);
@@ -1230,13 +1232,13 @@ fun donation_is_the_first_mutation_that_unwinds_a_departed_validator() {
     fixture.advance_epoch();
 
     let custody = fixture.donate(amount);
-    let unwound = events::collect_one<events::NativeStakeUnwound>(0);
-    let before_donation = unwound.native_stake_unwound_custody();
+    let unwound = events::collect_one<events::PoolUnwound>(0);
+    let (_, before_donation) = unwound.pool_unwound_fields();
     let (_, blast_before, _, _, supply_before) = before_donation.vault_custody_fields();
     let (_, blast_after, _, _, supply_after) = custody.vault_custody_fields();
     assert_eq!(blast_after.pool_assets(), blast_before.pool_assets() + amount);
     assert_eq!(supply_after, supply_before);
-    let (liquid, pending, tokens, _) = blast_after.pool_custody_fields();
+    let (liquid, pending, tokens, _) = blast_after.ledger_totals_fields();
     assert_eq!(liquid, blast_after.pool_assets());
     assert_eq!(pending, 0);
     assert_eq!(tokens, 0);
@@ -1262,7 +1264,7 @@ fun validator_address_reuse_cannot_mix_pools_or_brick_mutations() {
 
     let custody = fixture.donate(MIST_PER_SUI);
     let (_, blast_custody, rate, _, blast_supply) = custody.vault_custody_fields();
-    let (liquid, pending, tokens, _) = blast_custody.pool_custody_fields();
+    let (liquid, pending, tokens, _) = blast_custody.ledger_totals_fields();
     let (rate_epoch, _, _) = rate.exchange_rate_fields();
     assert_eq!(rate_epoch, 2);
     assert_eq!(liquid, MIST_PER_SUI);
@@ -1273,7 +1275,7 @@ fun validator_address_reuse_cannot_mix_pools_or_brick_mutations() {
     fixture.advance_epoch();
     let custody = fixture.sync();
     let (_, blast_custody, rate, _, _) = custody.vault_custody_fields();
-    let (liquid, pending, tokens, _) = blast_custody.pool_custody_fields();
+    let (liquid, pending, tokens, _) = blast_custody.ledger_totals_fields();
     let (rate_epoch, _, _) = rate.exchange_rate_fields();
     assert_eq!(rate_epoch, 2);
     assert_eq!(liquid, MIST_PER_SUI);
@@ -1424,7 +1426,7 @@ fun later_blast_sui_deposit_prices_on_blast_custody_only() {
         claimed.blast_sui_deposit_claimed_fields();
     let expected_shares = math::blast_shares_out_down(contributed, blast_assets, blast_supply);
     let (_, blast_custody, _, _, final_supply) = custody.vault_custody_fields();
-    let (_, pending, active_tokens, _) = blast_custody.pool_custody_fields();
+    let (_, pending, active_tokens, _) = blast_custody.ledger_totals_fields();
     assert_eq!(principal, deposit);
     assert_eq!(shares, expected_shares);
     assert_eq!(emitted_shares, shares);
@@ -1469,7 +1471,7 @@ fun blast_exit_from_active_stake_preserves_the_remainder() {
 
     let (_, blast_custody, _, _, blast_supply) = custody.vault_custody_fields();
     assert_eq!(net, 4 * MIST_PER_SUI - 800_000);
-    let (_, pending, tokens, _) = blast_custody.pool_custody_fields();
+    let (_, pending, tokens, _) = blast_custody.ledger_totals_fields();
     assert_eq!(pending, 0);
     assert!(tokens > 0);
     assert!(blast_custody.pool_assets() >= BOOTSTRAP + DEPOSIT - net);
@@ -1493,7 +1495,7 @@ fun blast_redemption_can_draw_from_liquid_pending_and_active_in_one_call() {
             f.ctx!(),
         );
         let custody = f.vault!().blast_custody_for_testing();
-        let (liquid, pending, active_tokens, _) = custody.pool_custody_fields();
+        let (liquid, pending, active_tokens, _) = custody.ledger_totals_fields();
         assert_eq!(liquid, MIST_PER_SUI / 2);
         assert_eq!(pending, 2 * MIST_PER_SUI);
         assert!(active_tokens > 0);
@@ -1512,7 +1514,7 @@ fun blast_redemption_can_draw_from_liquid_pending_and_active_in_one_call() {
     assert!(expected_net > 2 * MIST_PER_SUI + MIST_PER_SUI / 2);
     let (net, custody) = fixture.redeem_blast(redeem_shares);
     let (_, blast_custody, _, _, _) = custody.vault_custody_fields();
-    let (liquid, pending, active_tokens, _) = blast_custody.pool_custody_fields();
+    let (liquid, pending, active_tokens, _) = blast_custody.ledger_totals_fields();
     assert_eq!(net, expected_net);
     assert_eq!(pending, 0);
     assert!(liquid < MIST_PER_SUI);
@@ -1594,7 +1596,7 @@ fun redeeming_every_user_share_leaves_the_locked_supply_and_its_backing() {
     let (net, custody) = fixture.redeem_blast(DEPOSIT);
 
     let (fun_custody, blast_custody, _, fun_supply, blast_supply) = custody.vault_custody_fields();
-    let (_, _, fun_tokens, _) = fun_custody.pool_custody_fields();
+    let (_, _, fun_tokens, _) = fun_custody.ledger_totals_fields();
     assert_eq!(blast_supply, BOOTSTRAP);
     assert!(net < blast_assets - locked_claim);
     assert!(blast_custody.pool_assets() > locked_claim);
@@ -1604,7 +1606,7 @@ fun redeeming_every_user_share_leaves_the_locked_supply_and_its_backing() {
     fixture.next_tx!(USER, |f| {
         assert!(!has_blast_coin(USER));
         assert_eq!(f.locked_blast_sui(), BOOTSTRAP);
-        assert!(!f.vault!().is_unwind_only_for_testing());
+        assert!(!f.vault!().pools_for_testing().is_empty());
     });
 
     // The locked supply keeps earning both ledgers' yield afterwards.
@@ -1627,7 +1629,7 @@ fun locked_backing_cannot_be_drained_by_user_redemptions() {
     let (net, custody) = fixture.redeem_blast(DEPOSIT);
     let (_, blast_custody, _, _, blast_supply) = custody.vault_custody_fields();
     assert_eq!(net, DEPOSIT);
-    let (_, pending, tokens, _) = blast_custody.pool_custody_fields();
+    let (_, pending, tokens, _) = blast_custody.ledger_totals_fields();
     assert_eq!(pending, 0);
     assert!(tokens > 0);
     assert!(blast_custody.pool_assets() >= BOOTSTRAP);
@@ -1639,7 +1641,7 @@ fun locked_backing_cannot_be_drained_by_user_redemptions() {
     let (net, custody) = fixture.redeem_blast(DEPOSIT);
     let (_, blast_custody, _, _, blast_supply) = custody.vault_custody_fields();
     assert_eq!(net, DEPOSIT);
-    let (_, pending, tokens, _) = blast_custody.pool_custody_fields();
+    let (_, pending, tokens, _) = blast_custody.ledger_totals_fields();
     assert_eq!(pending, 0);
     assert!(tokens > 0);
     assert!(blast_custody.pool_assets() >= BOOTSTRAP);
@@ -1662,7 +1664,7 @@ fun blast_sui_redemption_stays_live_after_the_validator_left() {
     let (_, blast_custody, _, _, blast_supply) = custody.vault_custody_fields();
     assert!(net > 0);
     assert_eq!(blast_supply, BOOTSTRAP + DEPOSIT - 4 * MIST_PER_SUI);
-    let (liquid, pending, tokens, _) = blast_custody.pool_custody_fields();
+    let (liquid, pending, tokens, _) = blast_custody.ledger_totals_fields();
     assert_eq!(pending, 0);
     assert_eq!(tokens, 0);
     assert_eq!(liquid, blast_custody.pool_assets());
@@ -1683,15 +1685,14 @@ fun validator_removal_unwinds_both_ledgers_and_records_the_unwind() {
     fixture.next_tx!(USER, |f| {
         f.vault!().sync(&f.version, f.system!(), f.ctx!());
 
-        assert!(f.vault!().is_unwind_only_for_testing());
-        let unwound = events::collect_one<events::NativeStakeUnwound>(0);
-        let custody = unwound.native_stake_unwound_custody();
-        let (fun_custody, blast_custody, rate, fun_supply, blast_supply) =
+        assert!(f.vault!().pools_for_testing().is_empty());
+        let unwound = events::collect_one<events::PoolUnwound>(0);
+        let (_, custody) = unwound.pool_unwound_fields();
+        let (fun_custody, blast_custody, _, fun_supply, blast_supply) =
             custody.vault_custody_fields();
-        let (fun_liquid, fun_pending, fun_tokens, _) = fun_custody.pool_custody_fields();
-        let (blast_liquid, blast_pending, blast_tokens, _) = blast_custody.pool_custody_fields();
-        let (rate_epoch, _, _) = rate.exchange_rate_fields();
-        assert_eq!(rate_epoch, 2);
+        let (fun_liquid, fun_pending, fun_tokens, _) = fun_custody.ledger_totals_fields();
+        let (blast_liquid, blast_pending, blast_tokens, _) = blast_custody.ledger_totals_fields();
+        assert!(custody.vault_custody_pools().is_empty());
         assert_eq!(fun_pending + fun_tokens + blast_pending + blast_tokens, 0);
         assert!(fun_liquid >= 20 * MIST_PER_SUI);
         assert!(blast_liquid >= BOOTSTRAP);
@@ -1719,7 +1720,7 @@ fun validator_removal_before_activation_withdraws_pending_principal() {
 }
 
 #[test]
-#[expected_failure(abort_code = errors::EUnwindOnly, location = blast_sui::vault)]
+#[expected_failure(abort_code = errors::EValidatorNotAccepted, location = blast_sui::vault)]
 fun blast_sui_mint_is_rejected_after_the_validator_left() {
     let mut fixture = start_unwound_vault(0);
     fixture.mint_blast(MIST_PER_SUI);
@@ -1876,7 +1877,7 @@ fun a_safe_mode_request_claims_when_the_next_normal_epoch_refreshes_the_cache() 
         assert_eq!(rate_pool_tokens, pool_rate.pool_token_amount());
         blast_assets = f.vault!().blast_custody_for_testing().pool_assets();
         blast_supply = f.vault!().blast_supply_for_testing();
-        let (_, _, tokens, active_sui) = f.vault!().blast_custody_for_testing().pool_custody_fields();
+        let (_, _, tokens, active_sui) = f.vault!().blast_custody_for_testing().ledger_totals_fields();
         assert_eq!(active_sui, tokens.mul_div(pool_rate.sui_amount(), pool_rate.pool_token_amount()));
         assert!(blast_assets > BOOTSTRAP);
     });
@@ -1909,8 +1910,8 @@ fun skipped_epochs_refresh_to_the_current_rate_and_convert_pending_stake() {
     let synced = fixture.sync();
 
     let (fun_custody, blast_custody, rate, _, _) = synced.vault_custody_fields();
-    let (_, fun_pending, fun_tokens, _) = fun_custody.pool_custody_fields();
-    let (_, blast_pending, blast_tokens, _) = blast_custody.pool_custody_fields();
+    let (_, fun_pending, fun_tokens, _) = fun_custody.ledger_totals_fields();
+    let (_, blast_pending, blast_tokens, _) = blast_custody.ledger_totals_fields();
     let (rate_epoch, _, _) = rate.exchange_rate_fields();
     assert_eq!(rate_epoch, 4);
     assert_eq!(fun_pending + blast_pending, 0);
@@ -2314,9 +2315,11 @@ fun stale_package_version_rejects_a_paused_fun_mint_before_its_pause_check() {
 
     fixture.next_tx!(USER, |f| {
         f.version.set_version_for_testing(2);
+        let pick = f.pick();
         let fun_coin = f.vault!().mint_fun_sui(
             &f.version,
             f.system!(),
+            pick,
             coin::zero(f.ctx!()),
             f.ctx!(),
         );
@@ -2358,9 +2361,11 @@ fun stale_package_version_rejects_a_blast_request_before_its_minimum_check() {
 
     fixture.next_tx!(USER, |f| {
         f.version.set_version_for_testing(2);
+        let pick = f.pick();
         let receipt = f.vault!().request_blast_sui(
             &f.version,
             f.system!(),
+            pick,
             coin::zero(f.ctx!()),
             f.ctx!(),
         );
@@ -2461,9 +2466,11 @@ fun a_paused_fun_mint_is_rejected_before_its_amount_check() {
     fixture.pause(constants::fun_mint_pause_bit!());
 
     fixture.next_tx!(USER, |f| {
+        let pick = f.pick();
         let fun_coin = f.vault!().mint_fun_sui(
             &f.version,
             f.system!(),
+            pick,
             coin::zero(f.ctx!()),
             f.ctx!(),
         );
@@ -2480,9 +2487,11 @@ fun a_paused_blast_request_is_rejected_before_its_minimum_check() {
     fixture.pause(constants::blast_request_pause_bit!());
 
     fixture.next_tx!(USER, |f| {
+        let pick = f.pick();
         let receipt = f.vault!().request_blast_sui(
             &f.version,
             f.system!(),
+            pick,
             coin::zero(f.ctx!()),
             f.ctx!(),
         );
@@ -2574,6 +2583,7 @@ fun a_paused_deployment_can_open_deposits_after_vault_creation() {
     });
 
     let mut fixture = fixture.into_vault_fixture();
+    fixture.set_validator_delay(DELAY_MS);
     fixture.unpause(constants::valid_pause_bits!());
     fixture.mint_fun(MIST_PER_SUI);
 
@@ -2584,6 +2594,7 @@ fun a_paused_deployment_can_open_deposits_after_vault_creation() {
 /// Release clears only the requested bits once the delay is guarded.
 fun unpause_releases_only_the_requested_bits() {
     let mut fixture = start_vault();
+    fixture.set_validator_delay(DELAY_MS);
     fixture.pause(constants::valid_pause_bits!());
 
     fixture.unpause(constants::fun_mint_pause_bit!());
@@ -2616,6 +2627,7 @@ fun unpause_refuses_while_the_fee_delay_is_zero() {
 /// A pending fee change that would drop the delay to zero blocks release.
 fun unpause_refuses_a_pending_change_to_a_zero_fee_delay() {
     let mut fixture = start_vault();
+    fixture.set_validator_delay(DELAY_MS);
     fixture.pause(constants::fun_mint_pause_bit!());
     fixture.schedule_fee_change(constants::max_redeem_fee_bps!(), 0);
 
@@ -2628,6 +2640,7 @@ fun unpause_refuses_a_pending_change_to_a_zero_fee_delay() {
 #[expected_failure(abort_code = blast_admin::errors::EInvalidPauseBits, location = blast_admin::package_version)]
 fun unpause_rejects_an_undefined_bit() {
     let mut fixture = start_vault();
+    fixture.set_validator_delay(DELAY_MS);
 
     fixture.unpause(8);
 
@@ -2638,6 +2651,7 @@ fun unpause_rejects_an_undefined_bit() {
 #[expected_failure(abort_code = blast_admin::errors::EPauseUnchanged, location = blast_admin::package_version)]
 fun unpause_rejects_bits_that_are_not_set() {
     let mut fixture = start_vault();
+    fixture.set_validator_delay(DELAY_MS);
 
     fixture.unpause(constants::fun_mint_pause_bit!());
 
@@ -2671,8 +2685,8 @@ fun every_mutation_emits_a_custody_snapshot_that_replays_to_live_state() {
     assert_eq!(blast_supply, BOOTSTRAP);
 
     let (fun_custody, blast_custody, rate, _, _) = after_first_sync.vault_custody_fields();
-    let (_, _, fun_tokens, fun_active) = fun_custody.pool_custody_fields();
-    let (_, _, blast_tokens, blast_active) = blast_custody.pool_custody_fields();
+    let (_, _, fun_tokens, fun_active) = fun_custody.ledger_totals_fields();
+    let (_, _, blast_tokens, blast_active) = blast_custody.ledger_totals_fields();
     assert_eq!(fun_tokens, 20 * MIST_PER_SUI);
     assert_eq!(fun_active, 20 * MIST_PER_SUI);
     assert_eq!(blast_tokens, BOOTSTRAP);
@@ -2682,7 +2696,7 @@ fun every_mutation_emits_a_custody_snapshot_that_replays_to_live_state() {
 
     let (fun_custody, blast_custody, rate, fun_supply, blast_supply) =
         after_blast_mint.vault_custody_fields();
-    let (_, blast_pending, blast_tokens, blast_active) = blast_custody.pool_custody_fields();
+    let (_, blast_pending, blast_tokens, blast_active) = blast_custody.ledger_totals_fields();
     let (rate_epoch, _, _) = rate.exchange_rate_fields();
     assert_eq!(rate_epoch, 4);
     assert!(shares < 2 * MIST_PER_SUI);
@@ -2694,7 +2708,7 @@ fun every_mutation_emits_a_custody_snapshot_that_replays_to_live_state() {
     assert_eq!(blast_supply, BOOTSTRAP + shares);
 
     let (fun_custody, _, _, fun_supply, _) = after_fun_redeem.vault_custody_fields();
-    let (fun_liquid, fun_pending, _, _) = fun_custody.pool_custody_fields();
+    let (fun_liquid, fun_pending, _, _) = fun_custody.ledger_totals_fields();
     assert_eq!(fun_supply, 13 * MIST_PER_SUI);
     assert!(fun_liquid <= constants::native_redemption_rounding_margin!() + 2);
     assert_eq!(fun_pending, 0);
@@ -2991,6 +3005,7 @@ fun create_vault(
     let (blast_cap, blast_metadata_cap) = blast_coin::new_for_testing(self.ctx!());
     let premint = fun_cap.mint(fun_premint, self.ctx!());
     let mut display_registry = self.runner.scenario_mut().take_shared<DisplayRegistry>();
+    let clock = clock::create_for_testing(self.ctx!());
     vault::create(
         &self.version,
         self.system!(),
@@ -3001,9 +3016,11 @@ fun create_vault(
         blast_metadata_cap,
         coin::mint_for_testing(bootstrap + constants::fun_rounding_reserve_mist!(), self.ctx!()),
         pool_id,
+        &clock,
         self.ctx!(),
     );
 
+    clock.destroy_for_testing();
     test_scenario::return_shared(display_registry);
     destroy(premint);
     events::collect_one<events::VaultCreated>(0)
@@ -3055,6 +3072,17 @@ fun set_fee_delay(self: &mut VaultFixture, delay_ms: u64) {
     let fee;
     self.next_tx!(OWNER, |f| fee = f.vault!().redeem_fee_bps_for_testing());
     self.apply_fee_change(fee, delay_ms);
+}
+
+/// Raises the validator-admission delay from its zero start; ready at once.
+fun set_validator_delay(self: &mut VaultFixture, delay_ms: u64) {
+    self.next_tx!(OWNER, |f| {
+        let clock = clock::create_for_testing(f.ctx!());
+        let admin = blast_acl::witness_for_testing<ValidatorAdmin>();
+        f.vault!().schedule_validator_delay(&f.version, &admin, delay_ms, &clock);
+        f.vault!().apply_validator_delay(&f.version, &clock);
+        clock.destroy_for_testing();
+    });
 }
 
 /// `PauseAdmin` sets `bits` on the package version.
@@ -3122,6 +3150,12 @@ fun locked_blast_sui(self: &mut VaultFixture): u64 {
     test_scenario::return_to_address(ZERO_ADDRESS, locked);
 
     value
+}
+
+/// The pool USER picks: the first admitted, or an unlisted ID once none is left.
+fun pick(self: &mut VaultFixture): ID {
+    let pools = self.vault!().pools_for_testing();
+    if (pools.is_empty()) object::id_from_address(@0xDEAD) else pools[0]
 }
 
 fun pool_id(self: &mut VaultFixture): ID {
@@ -3227,7 +3261,7 @@ fun start_vault_one_mist_below_fun_supply(): VaultFixture {
         f.vault!().consume_fun_buffer_for_testing(buffer);
         f.vault!().simulate_native_loss_for_testing(1);
 
-        let (_, _, tokens, _) = f.vault!().fun_custody_for_testing().pool_custody_fields();
+        let (_, _, tokens, _) = f.vault!().fun_custody_for_testing().ledger_totals_fields();
         assert!(tokens > 0);
     });
 
@@ -3237,11 +3271,13 @@ fun start_vault_one_mist_below_fun_supply(): VaultFixture {
 /// USER mints funSUI and returns the emitted custody snapshot.
 fun mint_fun(self: &mut VaultFixture, amount: u64): events::VaultCustody {
     self.next_tx!(USER, |f| {
+        let pick = f.pick();
         let fun_coin = f
             .vault!()
             .mint_fun_sui(
                 &f.version,
                 f.system!(),
+                pick,
                 coin::mint_for_testing(amount, f.ctx!()),
                 f.ctx!(),
             );
@@ -3251,7 +3287,7 @@ fun mint_fun(self: &mut VaultFixture, amount: u64): events::VaultCustody {
     });
 
     let minted = events::collect_one<events::FunSuiMinted>(0);
-    let (sui_in, custody) = minted.fun_sui_minted_fields();
+    let (_, sui_in, _, custody) = minted.fun_sui_minted_fields();
     assert_eq!(sui_in, amount);
     custody
 }
@@ -3259,9 +3295,11 @@ fun mint_fun(self: &mut VaultFixture, amount: u64): events::VaultCustody {
 /// USER delegates SUI and receives one key-only blastSUI deposit receipt.
 fun request_blast(self: &mut VaultFixture, amount: u64): events::BlastSuiDepositRequested {
     self.next_tx!(USER, |f| {
+        let pick = f.pick();
         let receipt = f.vault!().request_blast_sui(
             &f.version,
             f.system!(),
+            pick,
             coin::mint_for_testing(amount, f.ctx!()),
             f.ctx!(),
         );
@@ -3414,7 +3452,7 @@ fun return_or_destroy_zero<T>(coin: Coin<T>, recipient: address) {
 }
 
 fun assert_pool(
-    custody: &events::PoolCustody,
+    custody: &events::LedgerTotals,
     liquid: u64,
     pending: u64,
     tokens: u64,
@@ -3426,7 +3464,7 @@ fun assert_pool(
         actual_tokens,
         actual_active_sui
     ) =
-        custody.pool_custody_fields();
+        custody.ledger_totals_fields();
     assert_eq!(actual_liquid, liquid);
     assert_eq!(actual_pending, pending);
     assert_eq!(actual_tokens, tokens);
@@ -3442,6 +3480,7 @@ fun assert_custody_matches(custody: &events::VaultCustody, vault: &Vault) {
         blast_supply
     ) =
         custody.vault_custody_fields();
+    assert_eq!(*custody, vault.custody_for_testing());
     assert_eq!(fun_custody, vault.fun_custody_for_testing());
     assert_eq!(blast_custody, vault.blast_custody_for_testing());
     assert_eq!(rate, vault.exchange_rate_for_testing());
@@ -3460,7 +3499,7 @@ use blast_admin::{
 
 use blast_sui::{
     blast_sui::{Self as blast_coin, BLAST_SUI},
-    blast_sui_domain::{CancelAdmin, FeeAdmin},
+    blast_sui_domain::{CancelAdmin, FeeAdmin, ValidatorAdmin},
     blast_sui_package::{Self, BLAST_SUI_PACKAGE},
     constants,
     deposit_receipt::{Self, BlastSuiDepositReceipt},

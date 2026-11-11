@@ -82,6 +82,7 @@ done
 [ "$(rg -c 'clear_pause_bits\(' "$vault")" -eq 1 ] || fail "The vault must clear pause bits once."
 unpause_body="$(function_text "$vault" unpause)"
 grep -Fq 'self.redeem_fee.is_guarded()' <<<"$unpause_body" || fail "unpause must require a guarded fee delay."
+grep -Fq 'self.validators.is_guarded()' <<<"$unpause_body" || fail "unpause must require a guarded validator delay."
 grep -Fq 'clear_pause_bits(' <<<"$unpause_body" || fail "unpause must clear through the package admin."
 
 # 8. Every public function that takes the package version checks it first.
@@ -99,8 +100,12 @@ awk '
 ' "$vault" || fail "A vault function reads state before its version check."
 
 # 9. An unusable rate never prices stake: the rate read uses the one predicate.
-function_text "$vault" exchange_rate_at | grep -q 'math::is_usable_rate(' \
-  || fail "exchange_rate_at must reject unusable rates."
+function_text "$vault" is_usable_entry | grep -q 'math::is_usable_rate(' \
+  || fail "is_usable_entry must reject unusable rates."
+for rate_writer in admit_pool refresh_pool; do
+  function_text "$vault" "$rate_writer" | grep -q 'is_usable_entry(' \
+    || fail "$rate_writer must apply only usable rates."
+done
 
 # 10. The error registry is sequential and pinned.
 bash "$package_dir/scripts/check_error_registry.sh"
