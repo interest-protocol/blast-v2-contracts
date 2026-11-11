@@ -1,9 +1,15 @@
 # 0053: Single-validator `funSUI` and `blastSUI`
 
 - Status: accepted; authority and receipt `DisplayCap` custody amended by 0060,
-  0061, 0097, and 0136
+  0061, 0097, and 0136; the single validator replaced by 0141
 - Date: 2026-08-29
-- Amended by: [0056](0056-bounded-pending-stake-vector.md), [0060](0060-blastsui-metadata-cap-custody.md), [0061](0061-blastsui-routine-admin-and-composable-package-custody.md), [0065](0065-discoverable-blastsui-treasury-caps.md), [0097](0097-one-singleton-acl-with-typed-roles.md), [0136](0136-blast-sui-custody-before-activation-and-delayed-administration.md)
+- Amended by: [0056](0056-bounded-pending-stake-vector.md), [0060](0060-blastsui-metadata-cap-custody.md), [0061](0061-blastsui-routine-admin-and-composable-package-custody.md), [0065](0065-discoverable-blastsui-treasury-caps.md), [0097](0097-one-singleton-acl-with-typed-roles.md), [0136](0136-blast-sui-custody-before-activation-and-delayed-administration.md), [0141](0141-blast-sui-validator-list.md)
+
+> Validator list update (2026-11-11):
+> [ADR 0141](0141-blast-sui-validator-list.md) replaces the one fixed pool with a
+> short delayed list that users pick from. Its unwind-only terminal state is gone: a
+> departed pool leaves the list and the vault keeps running. Read each single-pool
+> statement below as applying per listed pool.
 
 > Authority and display-custody update (2026-10-05): the sections below record
 > the original decision. [ADR 0060](0060-blastsui-metadata-cap-custody.md)

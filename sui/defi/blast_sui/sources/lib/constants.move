@@ -60,14 +60,23 @@ macro public(package) fun native_min_stake_mist(): u64 {
     1_000_000_000
 }
 
-/// Most pending native receipts one custody ledger holds at once.
+/// Most validators, admitted and pending together, the vault can track.
+///
+/// Refresh runs inside every exit and visits each pool, so this bounds the worst-case gas
+/// of an exit. Every fun safety bound is written against this compile-time value, so a change
+/// in the live count can never invalidate it.
+macro public(package) fun max_validators(): u64 {
+    15
+}
+
+/// Most pending native receipts one custody position holds at once.
 ///
 /// Same-epoch requests join the newest receipt, refresh drains every arrived
 /// receipt at the first current-rate epoch, and delegation is gated by that
 /// same current-rate proof, so at most two receipts — one buffer-deferred and
 /// one current-epoch — can coexist. Three carries one slot of slack, and
-/// `stake_idle` skips delegation instead of aborting when the ledger is full,
-/// so an unexpected third receipt costs deferred yield, never a user abort.
+/// delegation skips a full position instead of aborting, so an unexpected
+/// third receipt costs deferred yield, never a user abort.
 macro public(package) fun max_pending_stakes(): u64 {
     3
 }
@@ -100,8 +109,9 @@ macro public(package) fun fun_rounding_reserve_mist(): u64 {
 
 /// Buffer at which active fun stake is unwound before another redemption can exhaust backing.
 ///
-/// One redemption can lose at most the native margin. Keeping twice that
-/// amount lets a partial redemption and the protective unwind each absorb it.
+/// One redemption touches at most `max_validators` positions and loses at most the native
+/// margin on each. Keeping twice that total lets a redemption across every position and the
+/// protective unwind of every position each absorb it.
 macro public(package) fun fun_exit_low_water_mist(): u64 {
-    2 * native_redemption_rounding_margin!()
+    2 * max_validators!() * native_redemption_rounding_margin!()
 }

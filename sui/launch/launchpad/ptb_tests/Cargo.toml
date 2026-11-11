@@ -15,6 +15,7 @@ serde_json = { version = "1.0.95", features = ["preserve_order"] }
 move-binary-format = { git = "https://github.com/MystenLabs/sui.git", rev = "51d177ad7d65102fc368b582408f466d97b31548" }
 move-core-types = { git = "https://github.com/MystenLabs/sui.git", rev = "51d177ad7d65102fc368b582408f466d97b31548" }
 simulacrum = { git = "https://github.com/MystenLabs/sui.git", rev = "51d177ad7d65102fc368b582408f466d97b31548" }
+sui-swarm-config = { git = "https://github.com/MystenLabs/sui.git", rev = "51d177ad7d65102fc368b582408f466d97b31548" }
 sui-types = { git = "https://github.com/MystenLabs/sui.git", rev = "51d177ad7d65102fc368b582408f466d97b31548" }
 
 move-coverage = { git = "https://github.com/MystenLabs/sui.git", rev = "51d177ad7d65102fc368b582408f466d97b31548", optional = true }

@@ -12,11 +12,13 @@
 
 #[cfg(feature = "fork-coverage")]
 pub mod coverage;
+pub mod blast_sui;
 pub mod fork;
 pub mod measure;
 
 use std::{
     collections::BTreeMap,
+    num::NonZeroUsize,
     path::{Path, PathBuf},
     process::Command,
     sync::Mutex,
@@ -27,7 +29,8 @@ use base64::Engine;
 use move_binary_format::CompiledModule;
 use move_core_types::{account_address::AccountAddress, identifier::Identifier, language_storage::StructTag};
 use rand::{SeedableRng, rngs::StdRng};
-use simulacrum::Simulacrum;
+use simulacrum::{InMemoryStore, Simulacrum};
+use sui_swarm_config::network_config_builder::ConfigBuilder;
 use sui_types::{
     base_types::{ObjectID, SuiAddress},
     crypto::AccountKeyPair,
@@ -791,6 +794,29 @@ impl Harness {
         })
     }
 
+    /// A harness whose genesis committee has `committee_size` validators, so a test can reach
+    /// a mainnet-sized active set and several distinct staking pools.
+    pub fn with_committee(committee_size: usize) -> Result<Self> {
+        let mut rng = StdRng::seed_from_u64(0xB1A57);
+        let config = ConfigBuilder::new_with_temp_dir()
+            .rng(&mut rng)
+            .with_chain_start_timestamp_ms(1)
+            .deterministic_committee_size(NonZeroUsize::new(committee_size).context("committee size")?)
+            .build();
+        let store = InMemoryStore::new(&config.genesis);
+        let mut sim = Simulacrum::new_with_network_config_store(&config, rng, store);
+        let (sender, key, gas) = sim.funded_account(1_000 * MIST_PER_SUI)?;
+        Ok(Self {
+            sim,
+            sender,
+            key,
+            gas: gas.0,
+            registries: Vec::new(),
+            #[cfg(feature = "fork-coverage")]
+            replay: coverage::ReplayEngine::default(),
+        })
+    }
+
     pub fn gas_id(&self) -> ObjectID {
         self.gas
     }
@@ -896,11 +922,17 @@ impl Harness {
     /// Ownership checks still run; this provides no evidence about real root signatures.
     pub fn impersonate_cap_owner(&mut self, cap: ObjectID, pt: ProgrammableTransaction) -> Result<Outcome> {
         let sender = self.object(cap).owner().get_address_owner_address()?;
+        self.impersonate(sender, pt)
+    }
+
+    /// Executes `pt` as `sender` without its private key, for fixture setup such as a genesis
+    /// validator's own request. Ownership checks still run.
+    pub fn impersonate(&mut self, sender: SuiAddress, pt: ProgrammableTransaction) -> Result<Outcome> {
         let funded = self.sim.request_gas(sender, 100 * MIST_PER_SUI)?;
-        ensure!(funded.status().is_ok(), "fund capability owner");
+        ensure!(funded.status().is_ok(), "fund impersonated sender");
         let gas = funded.created().into_iter()
             .find_map(|(object, owner)| (owner == Owner::AddressOwner(sender)).then_some(object))
-            .context("capability owner's gas")?;
+            .context("impersonated sender's gas")?;
         let data = TransactionData::new_programmable(
             sender, vec![gas], pt, 50 * MIST_PER_SUI, self.sim.reference_gas_price(),
         );

@@ -109,17 +109,9 @@ public(package) fun pool_id(self: &BlastSuiDepositReceipt): ID {
     self.staked_sui.pool_id()
 }
 
-/// Validates the receipt's immutable vault and validator-pool binding.
-public(package) fun assert_binding(
-    self: &BlastSuiDepositReceipt,
-    expected_vault_id: ID,
-    expected_pool_id: ID,
-) {
+/// Validates the receipt's immutable vault binding.
+public(package) fun assert_vault(self: &BlastSuiDepositReceipt, expected_vault_id: ID) {
     assert!(self.vault_id == expected_vault_id, blast_sui::errors::wrong_receipt_vault!());
-    assert!(
-        self.staked_sui.pool_id() == expected_pool_id,
-        blast_sui::errors::wrong_receipt_pool!()
-    );
 }
 
 /// Deletes a validated receipt wrapper and releases its native stake.
@@ -151,7 +143,7 @@ fun display_metadata(): (vector<String>, vector<String>) {
         ],
         vector[
             b"blastSUI Deposit Receipt".to_string(),
-            b"SUI delegated to the Blast validator. Claim blastSUI after activation, or cancel for SUI at any time.".to_string(),
+            b"SUI delegated to a Blast validator. Claim blastSUI after activation, or cancel for SUI at any time.".to_string(),
             b"https://www.blast.fun/art/generated/blast-sui-mark-gpt-v4.png".to_string(),
             b"https://www.blast.fun".to_string(),
         ],

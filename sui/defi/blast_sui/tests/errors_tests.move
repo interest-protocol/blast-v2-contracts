@@ -12,7 +12,7 @@ fun shared_error_codes_are_stable() {
     assert_eq!(errors::invalid_share_amount!(), 1);
     assert_eq!(errors::zero_blast_shares!(), 2);
     assert_eq!(errors::zero_sui_redemption!(), 3);
-    assert_eq!(errors::unwind_only!(), 4);
+    assert_eq!(errors::validator_not_accepted!(), 4);
     assert_eq!(errors::validator_not_active!(), 5);
     assert_eq!(errors::nonzero_initial_supply!(), 6);
     assert_eq!(errors::slippage_exceeded!(), 7);
@@ -25,10 +25,10 @@ fun shared_error_codes_are_stable() {
     assert_eq!(errors::blast_deposit_below_native_minimum!(), 14);
     assert_eq!(errors::blast_deposit_not_active!(), 15);
     assert_eq!(errors::wrong_receipt_vault!(), 16);
-    assert_eq!(errors::wrong_receipt_pool!(), 17);
-    assert_eq!(errors::zero_sui_after_fee!(), 18);
-    assert_eq!(errors::wrong_delegation_pool!(), 19);
-    assert_eq!(errors::unguarded_delay!(), 20);
+    assert_eq!(errors::zero_sui_after_fee!(), 17);
+    assert_eq!(errors::wrong_delegation_pool!(), 18);
+    assert_eq!(errors::unguarded_delay!(), 19);
+    assert_eq!(errors::max_validators_reached!(), 20);
 }
 
 // === Imports ===

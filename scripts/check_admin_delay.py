@@ -294,7 +294,35 @@ require(signature, '&AdminWitness<UnpauseAdmin<BLAST_SUI_PACKAGE>>', '&PackageAd
         'package_version: &mut PackageVersion<BLAST_SUI_PACKAGE>')
 assert body.startswith(blast_sui_current), body
 assert body.index('self.redeem_fee.is_guarded()') < body.index('clear_pause_bits('), body
+assert body.index('self.validators.is_guarded()') < body.index('clear_pause_bits('), body
 require(body, 'package_admin.clear_pause_bits(unpause_admin, package_witness(), package_version, bits)')
+# Validator admissions wait a shared delay; removal reduces risk, so it is immediate.
+blast_sui_source = module_path('blast_sui', 'vault').read_text()
+require(blast_sui_source, 'validators: DelayedSet<ValidatorKey, ID>,')
+signature, body = blast_sui_vault['schedule_validator']
+require(signature, '&AdminWitness<ValidatorAdmin>', 'clock: &Clock')
+assert 'delay_ms: u64' not in signature, signature
+assert body.startswith(blast_sui_current), body
+require(body, 'constants::max_validators!()', 'self.validators.schedule_add(pool_id, clock)')
+assert body.index('max_validators') < body.index('schedule_add'), body
+signature, body = blast_sui_vault['apply_validator']
+assert 'AdminWitness' not in signature and body.startswith(blast_sui_current), signature
+require(signature, 'clock: &Clock')
+require(blast_sui_vault['admit_pool'][1], 'self.validators.apply_add(pool_id, clock)')
+for name, role, call in [('cancel_validator', 'CancelAdmin', 'self.validators.cancel_add(pool_id)'),
+                         ('schedule_validator_delay', 'ValidatorAdmin', 'self.validators.schedule_delay(delay_ms, clock)'),
+                         ('cancel_validator_delay', 'CancelAdmin', 'self.validators.cancel_delay()')]:
+    signature, body = blast_sui_vault[name]
+    require(signature, f'&AdminWitness<{role}>')
+    assert body.startswith(blast_sui_current), name
+    require(body, call)
+signature, body = blast_sui_vault['apply_validator_delay']
+assert 'AdminWitness' not in signature and body.startswith(blast_sui_current), signature
+require(body, 'self.validators.apply_delay(clock)')
+signature, body = blast_sui_vault['remove_validator']
+require(signature, '&AdminWitness<ValidatorAdmin>')
+assert 'clock' not in signature and body.startswith(blast_sui_current), signature
+require(body, 'self.retire_pool(system_state, pool_id, ctx)', 'self.validators.remove(pool_id)')
 blast_sui_init = functions('blast_sui', 'blast_sui_package')['init']
 require(blast_sui_init[1], '.keep(ctx)')
 assert 'share_object' not in blast_sui_init[1] and blast_sui_init[0].startswith('fun init(')

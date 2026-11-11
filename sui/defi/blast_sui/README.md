@@ -1,8 +1,10 @@
 # Blast SUI
 
-This independently deployed package implements the single-validator `funSUI`
-and `blastSUI` vault accepted in
-[ADR 0053](../../../docs/decisions/0053-single-validator-funsui-and-blastsui.md).
+This independently deployed package implements the `funSUI` and `blastSUI` vault
+accepted in
+[ADR 0053](../../../docs/decisions/0053-single-validator-funsui-and-blastsui.md),
+staking across the short list of validators set by
+[ADR 0141](../../../docs/decisions/0141-blast-sui-validator-list.md).
 It depends only on `SuiSystem` and the workspace `blast_admin` package.
 
 Administration is not implemented here. `blast_admin` owns the singleton Blast
