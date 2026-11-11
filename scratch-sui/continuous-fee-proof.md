@@ -228,7 +228,9 @@ offset of one or three. Its loop invariant bounds the power and sum and
 keeps `sum * offset + offset - 1 >= power` to cover the alternating
 subtraction. Sui Prover checks the loop and its tail under these conditions.
 Separate contracts check coordinate normalization, constant-fee arithmetic,
-and the zero-input and constant-fee quote paths.
+and the zero-input and constant-fee quote paths. Positive input requires
+distinct endpoint prices because `quote` checks that condition before
+choosing the constant-fee branch.
 
 The dynamic quote requires a compiled proof that path construction, cap
 splitting, and the analytic average establish the arithmetic preconditions

@@ -83,15 +83,12 @@ lookup returns an empty option. The reconstruction bounds and the child
 presence invariant also discharge the lookup's checked casts, additions,
 and table borrows.
 
-The source-pinned Z3 model supplies the bit arithmetic, interval and
-order lemmas. The Sui Prover lookup specification checks the compiled
-control flow on successful returns against a trace with an abstract
-deterministic bit scan. The eight-step bitvector argument instantiates
-that scan. A separate compiled no-abort check factors out the deterministic
-masks and scan, then checks `next_tick` with live selected child keys. The
-Z3 bitvector and ordering lemmas support the source-level argument that
-these child keys exist on reachable states under the pinned `Table`
-semantics. The compiled check takes child presence as a precondition. The
+The Sui Prover value check matches successful compiled lookups to a trace.
+The separate no-abort check assumes live selected child keys and uses
+summaries for the masks and the deterministic scan, including the scan
+result range `0..255`. The compiled bytecode checks and Z3 bitvector
+lemmas justify those summaries. The child-key precondition follows from
+the source-level reachability argument under the pinned `Table` semantics. The
 reachability induction composes the checked contracts and the source's
 mutation sites. VM transaction semantics are outside this proof.
 
