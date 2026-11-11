@@ -85,35 +85,36 @@ public(package) fun blast_redemption_quote(
     (gross_sui, fee, gross_sui - fee)
 }
 
-/// Mirrors native `get_sui_amount`: floor, with one MIST per token at an empty rate.
-public(package) fun sui_at_rate_down(pool_tokens: u64, rate_sui: u64, rate_pool_tokens: u64): u64 {
-    if (rate_sui == 0 || rate_pool_tokens == 0) return pool_tokens;
+/// Whether a native exchange-rate entry can value stake: both components are positive.
+///
+/// Native pricing treats an empty entry as one MIST per pool token, which can value
+/// active stake below its last applied rate, so the vault never applies one.
+public(package) fun is_usable_rate(rate_sui: u64, rate_pool_tokens: u64): bool {
+    rate_sui > 0 && rate_pool_tokens > 0
+}
 
+/// Mirrors native `get_sui_amount` at a usable rate, flooring.
+public(package) fun sui_at_rate_down(pool_tokens: u64, rate_sui: u64, rate_pool_tokens: u64): u64 {
     pool_tokens.mul_div(rate_sui, rate_pool_tokens)
 }
 
-/// Mirrors native `get_token_amount`: pool tokens worth at most `sui_amount` at the rate.
+/// Mirrors native `get_token_amount` at a usable rate: pool tokens worth at most `sui_amount`.
 public(package) fun pool_tokens_at_rate_down(
     sui_amount: u64,
     rate_sui: u64,
     rate_pool_tokens: u64,
 ): u64 {
-    if (rate_sui == 0 || rate_pool_tokens == 0) return sui_amount;
-
     sui_amount.mul_div(rate_pool_tokens, rate_sui)
 }
 
-/// Maximum MIST that one StakedSui-to-pool-token conversion can lose at `rate`.
+/// Maximum MIST that one StakedSui-to-pool-token conversion can lose at a usable rate.
 ///
 /// Native conversion floors pool tokens, so valuing those tokens back loses
-/// less than one SUI-per-token unit. The ceiling is conservative. The native
-/// empty rate is one-to-one and loses nothing.
+/// less than one SUI-per-token unit. The ceiling is conservative.
 public(package) fun fun_conversion_loss_bound_up(
     rate_sui: u64,
     rate_pool_tokens: u64,
 ): u64 {
-    if (rate_sui == 0 || rate_pool_tokens == 0) return 0;
-
     rate_sui.div_ceil(rate_pool_tokens)
 }
 

@@ -21,7 +21,7 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 | Package | Product | Status | Package ID (`published-at`) | Type origin (`original-id`) |
 | --- | --- | --- | --- | --- |
 | `blast_sui` | blastSUI and funSUI | not yet published | — | — |
-| `blast_admin` | Administration | not yet published | — | — |
+| `blast_admin` | Administration | live | `0xb4c52669d7a07ce26d8fc91ba577b0a05f1f3d0cb9b1ba230c6419fb7ddd55fd` | `0xb4c52669d7a07ce26d8fc91ba577b0a05f1f3d0cb9b1ba230c6419fb7ddd55fd` |
 
 ## Calling Blast contracts
 
@@ -33,7 +33,7 @@ product guide below assumes it.
 
 | Product | What users do | Packages |
 | --- | --- | --- |
-| Presale | commit Quote to a capped or overflow sale, claim tokens or refunds, earn LP fees and holder rewards after migration | `blast_presale`; the shared venues `blast_migrators`; one-off partner venues such as `blast_aftermath_dao_presale` |
+| Presale | commit Quote to a capped or overflow sale, claim tokens or refunds, earn LP fees and holder rewards after migration | `blast_presale`; the shared venues `blast_migrators`; one-off partner venues such as `blast_aftermath_dao_presale`; `blast_vault` (LP vault, holder rewards) |
 | Launchpad | launch a coin on a bonding curve, trade it, graduate it into a DEX pool | `blast_fun` (curve, lifecycle, fees), a generated coin package per launch, `blast_migrators` (Cetus and Bluefin venues for both products: venue start, migration, LP fees), `blast_vault` (LP vault, holder rewards) |
 | Partner codes | earn a share of Blast's fee on the flow an app brings | `blast_partners` |
 | Boosts | hold a leveraged long or short coin backed by Aftermath perpetuals | `blast_boosts_core`, `blast_boosts_products`, `blast_boosts_aftermath` |
@@ -44,23 +44,27 @@ Each package and what it depends on:
 
 ```text
 blast_migrators              -> blast_core, blast_vault, blast_admin, Cetus, Bluefin
-blast_fun                    -> blast_partners, blast_admin
+blast_aftermath_dao_presale  -> blast_core, Aftermath AMM
+blast_fun                    -> blast_core, blast_partners, blast_admin
+blast_presale                -> blast_core, blast_partners, blast_admin
+blast_vault                  -> blast_core, blast_partners, blast_admin
+blast_core                   -> blast_partners, blast_admin, blast_fun_vesting
 blast_partners               -> blast_admin
-blast_presale                -> blast_admin, blast_partners, blast_fun_vesting, Cetus, Bluefin, Aftermath
-blast_aftermath_dao_presale  -> blast_presale, Aftermath AMM
 blast_boosts_aftermath       -> blast_boosts_core, blast_partners, blast_admin, Aftermath perpetuals
 blast_boosts_core            -> blast_admin
 blast_sui                    -> blast_admin, Sui system
 blast_admin                  -> Sui framework only
 ```
 
-The launchpad imports no DEX. A migrator package depends on the launchpad and
-composes with it inside one PTB. Presale uses typed roles from the shared
-`blast_admin` ACL. Both products hand migrated liquidity to a venue, which locks
-it in a `blast_vault::vault::Vault`.
+No product imports a venue or the vault, and no venue imports a product. They
+compose inside one PTB through `blast_core` values: a venue's `prepare` returns
+the `VenueTicket` the product's creation call redeems, and at migration the
+product's `migrate` returns the `Migration` that the next command passes to the
+stored venue's `migrate`, which locks the liquidity in a
+`blast_vault::vault::Vault`.
 Use the presale guide for presale calls.
 
-`blast_fun_vesting` (used by `blast_presale`) lives in this repository at
+`blast_fun_vesting` (used by `blast_core` for vesting payouts) lives in this repository at
 `sui/utilities/vesting` and is immutable on mainnet. The standalone
 OTC package lives at `sui/utilities/otc`. See the [utility integration guide](https://github.com/interest-protocol/blast-v2-contracts/blob/main/docs/utilities.md).
 
@@ -125,9 +129,10 @@ Upgrade rules depend on the package lineage.
 
 | Posture | Packages | What callers do |
 | --- | --- | --- |
-| Immutable | `blast_admin`, `blast_partners`, `blast_boosts_core`, `blast_aftermath_dao_presale` | Nothing: the code never changes. |
-| Dependency-only | Historical presale publications | These older lineages can relink venue packages and do not use an operational version object. |
-| Version-gated | `blast_presale`, `blast_fun`, `blast_migrators`, `blast_sui`, `blast_boosts_aftermath` | Mutating calls take the package's shared version object. After an upgrade advances it, calls through an older package ID abort with a version mismatch, so always call the current ID. |
+| Shared UpgradeCap manager | `blast_admin`, `blast_partners`, `blast_core`, `blast_aftermath_dao_presale` | The manager holds the compatible UpgradeCaps. Each upgrade or immutability request waits 48 hours. The Blast multisig holds the controller. |
+| Immutable | `blast_boosts_core`, `blast_upgrade_cap_manager` | The code never changes. |
+| Dependency-only | Historical presale publications | These older lineages can relink venue packages and do not use a version object. |
+| Version-gated | `blast_presale`, `blast_fun`, `blast_vault`, `blast_migrators`, `blast_sui`, `blast_boosts_aftermath` | Mutating calls take the package's shared version object (for the launch packages, `blast_admin::package_version::PackageVersion<OTW>`). After an upgrade advances it, calls through an older package ID abort with a version mismatch, so always call the current ID. `blast_vault` is made immutable after its audit. |
 | Additive | `blast_boosts_products` | Upgrades only add product tags; it holds no state. |
 
 ### Events
@@ -147,18 +152,18 @@ Upgrade rules depend on the package lineage.
 A failed call returns a Move abort naming the module and function that aborted
 and a `u64` code. Blast uses two styles:
 
-- **Named errors** (`#[error]` constants): `blast_partners` and
-  `blast_aftermath_dao_presale`. Sui's RPC and SDKs
+- **Named errors** (`#[error]` constants): `blast_aftermath_dao_presale`. Sui's RPC and SDKs
   decode these into the constant's name and message; the reference lists each
   module's constants with their messages.
-- **Numeric codes**: `blast_fun`, `blast_presale`, `blast_sui`, `blast_boosts_core`,
-  `blast_boosts_aftermath`, and `blast_admin` abort with small integers. Look the
+- **Numeric codes**: `blast_admin`, `blast_partners`, `blast_core`, `blast_vault`,
+  `blast_fun`, `blast_presale`, `blast_migrators`, `blast_sui`, `blast_boosts_core`,
+  and `blast_boosts_aftermath` abort with small integers. Look the
   number up in that package's abort-code table in the reference.
 
 The abort names the module where it happened, which may be a package called
-underneath the one you called: a migrator call can abort inside `blast_fun` or
-`blast_admin`, and an abort in a Cetus, Bluefin, or Aftermath module comes from
-the venue. Simulate a transaction before signing to see its abort without
+underneath the one you called: a migrator call can abort inside `blast_core`,
+`blast_vault` or `blast_admin`, and an abort in a Cetus, Bluefin, or Aftermath
+module comes from the venue. Simulate a transaction before signing to see its abort without
 spending gas.
 
 ### Network
@@ -194,22 +199,28 @@ Registry.
 
 | Object | Kind | Notes |
 | --- | --- | --- |
-| `blast_sui::vault::Vault` | shared singleton | holds both treasury caps (as dynamic object fields keyed `blast_sui::vault::TreasuryKey<CoinType>`), the fun and blast custody ledgers, the cached exchange rate, `redeem_fee_bps`, and `unwind_only`. Only one can exist: `blast_sui::vault::create` consumes both treasury caps. Every vault call takes it mutably. |
-| `blast_sui_package::PackageVersion` | shared singleton | the operational generation; every vault call takes it by immutable reference and aborts on outdated bytecode |
+| `blast_sui::vault::Vault` | shared singleton | holds both treasury caps (as dynamic object fields keyed `blast_sui::vault::TreasuryKey<CoinType>`), both coins' metadata caps and the receipt's display cap (keyed `blast_sui::vault::CapabilityKey<Capability>`), the fun and blast custody ledgers, the cached exchange rate, the delayed `redeem_fee`, and `unwind_only`. Only one can exist: `blast_sui::vault::create` consumes both treasury caps. No call releases any capability. Every vault call takes it mutably, except `blast_sui::vault::unpause`. |
+| `package_version::PackageVersion<BLAST_SUI_PACKAGE>` | shared singleton | the active version and the three deposit pause bits; every vault call takes it and aborts on outdated bytecode |
 | `deposit_receipt::BlastSuiDepositReceipt` | owned, `key` only | a pending blastSUI deposit: `vault_id` and the native `StakedSui`. It cannot be transferred, wrapped, or deleted except by this package's calls. |
-| `blast_sui::package_admin::PackageAdmin` | shared | seals the package `Publisher` and `UpgradeCap`, plus both coins' metadata caps and the receipt's display cap (dynamic object fields keyed `blast_sui::package_admin::CapabilityKey<Capability>`). No call releases any of them. |
+| `blast_admin::package_admin::PackageAdmin<BLAST_SUI_PACKAGE>` | shared | seals the package `Publisher` and `UpgradeCap`, and holds the delayed upgrade slot |
 | `Coin<FUN_SUI>`, `Coin<BLAST_SUI>` | owned coins | unrestricted |
 | `SuiSystemState` | Sui system object at `0x5` | passed mutably to every staking call |
 
 Roles in Blast's shared ACL (see the administration guide):
 
-- `blast_sui_domain::UpgradeAdmin`: attaches capabilities to `PackageAdmin` and
-  authorizes, commits, restricts, or seals upgrades.
-- `blast_sui_domain::FeeAdmin`: sets the blastSUI redemption fee.
+- `blast_sui_domain::FeeAdmin`: schedules the blastSUI redemption fee and its
+  delay.
+- `blast_sui_domain::CancelAdmin`: cancels a pending fee change.
+- `blast_admin::package_admin::PauseAdmin<BLAST_SUI_PACKAGE>`: pauses deposits.
+- `blast_admin::package_admin::UnpauseAdmin<BLAST_SUI_PACKAGE>`: releases deposits
+  through `blast_sui::vault::unpause`.
+- `blast_admin::package_admin::UpgradeAdmin<BLAST_SUI_PACKAGE>` and
+  `blast_admin::package_admin::CancelAdmin<BLAST_SUI_PACKAGE>`: schedule and
+  cancel upgrades.
 
-There is no pause, no administrative withdrawal, no way to change the validator,
-and no claim on the reserve or on fees in the current source. The package stays
-upgradeable by `UpgradeAdmin` until `blast_sui::package_admin::make_immutable`.
+Pausing covers deposits only. There is no administrative withdrawal, no way to
+change the validator, and no claim on the reserve or on fees in the current
+source.
 
 ### Custody model
 
@@ -236,13 +247,15 @@ A ledger's assets are `A = liquid_sui + pending principal + active_sui`. Write
 `A_f`, `F` for fun assets and funSUI supply, and `A_b`, `B` for blast assets and
 blastSUI supply.
 
-Every vault call except `blast_sui::vault::create` and
-`blast_sui::vault::set_redeem_fee` first **refreshes** the vault:
+Every vault call except `blast_sui::vault::create`,
+`blast_sui::vault::top_up_fun_reserve`, `blast_sui::vault::unpause`, and the three
+redemption-fee calls first **refreshes** the vault:
 
 1. If the validator has left the active set, both ledgers unwind every native
    position into liquid SUI and the vault becomes `unwind_only` (emits
    `NativeStakeUnwound`). That refresh and every later one skip steps 2 and 3.
-2. If the pool has an exchange-rate entry for the current epoch, the vault
+2. If the pool has a usable exchange-rate entry for the current epoch (both
+   components positive), the vault
    caches it (`rate_epoch`, `rate_sui`, `rate_pool_tokens`) and converts every
    arrived blast pending receipt into the active position. Without an entry (a
    safe-mode epoch), it keeps the cached rate, which never exceeds the live one.
@@ -275,17 +288,20 @@ up). Any excess withdrawn stays liquid in the same ledger.
 
 ### Lifecycle
 
-1. **Deployment.** Publishing sends both treasury caps and metadata caps to the
-   publisher and shares `PackageVersion`. Blast creates the receipt display,
-   builds `PackageAdmin`, attaches the three capabilities, and shares it.
-2. **Creation.** `blast_sui::vault::create` (holder of both treasury caps) takes
-   an owner seed of at least 1.1 SUI and a pool ID. The pool's validator must be
-   active and the pool must have a current-epoch rate. `R` goes to fun custody;
-   the rest goes to blast custody, mints one blastSUI per MIST, is staked, and
-   every minted blastSUI is sent to `0x0`. blastSUI supply is therefore never
-   zero, and the seed's backing can never be redeemed.
+1. **Deployment.** Publishing sends both treasury caps and metadata caps and a
+   `package_version::Publication<BLAST_SUI_PACKAGE>` to the publisher.
+   `blast_admin::package_admin::wrap` turns the publication and the `UpgradeCap`
+   into the shared `PackageAdmin` and a `PackageVersion` with every deposit bit
+   paused.
+2. **Creation.** `blast_sui::vault::create` (holder of both treasury caps and both
+   metadata caps) takes the Display registry, an owner seed of at least 1.1 SUI,
+   and a pool ID. The pool's validator must be active and the pool must have a
+   usable current-epoch rate. `R` goes to fun custody; the rest goes to blast
+   custody, mints one blastSUI per MIST, is staked, and every minted blastSUI is
+   sent to `0x0`. blastSUI supply is therefore never zero, and the seed's backing
+   can never be redeemed. Blast then raises the fee delay and releases deposits.
 3. **Normal.** All flows below are open.
-4. **Safe-mode epoch** (no current rate entry). funSUI mints, both redemptions,
+4. **Safe-mode epoch** (no usable current rate entry). funSUI mints, both redemptions,
    deposit requests, donations, cancellations, and `sync` work on the cached
    rate; claims abort; new SUI stays liquid until a normal epoch.
 5. **Unwind-only** (validator left the active set). Mints, deposit requests, and
@@ -297,7 +313,8 @@ up). Any excess withdrawn stays liquid in the same ledger.
 
 Every `vault` user call below (mint, redeem, request, claim, donate, `sync`)
 takes the shared `Vault` (mutable), the shared `PackageVersion` (immutable), and
-`SuiSystemState` at `0x5` (mutable). No call in this package takes the `Clock`.
+`SuiSystemState` at `0x5` (mutable). Only the redemption-fee schedule and apply
+calls take the `Clock`.
 
 #### Mint funSUI (anyone)
 
@@ -366,31 +383,47 @@ holders earned before your stake activated stay with them.
    `VaultSynced` with the full custody snapshot. Use it to observe a departed
    validator, convert arrived stake, or get a fresh snapshot (dev-inspect).
 
-#### Set the redemption fee (Blast admin, `FeeAdmin`)
+#### Top up the fun reserve (anyone)
+
+1. `blast_sui::vault::top_up_fun_reserve` with `PackageVersion` and a positive
+   `Coin<SUI>`. It joins fun custody without a refresh, so it works even while
+   fun custody is below the funSUI supply and every other call aborts. Emits
+   `FunReserveToppedUp`. The caller gets nothing back; anything above `F + R`
+   moves to blast custody at the next refresh.
+
+#### Change the redemption fee (Blast admin, `FeeAdmin`)
 
 1. `blast_acl::sign_in` with type argument `blast_sui_domain::FeeAdmin`.
-2. `blast_sui::vault::set_redeem_fee` with the vault, `PackageVersion`, the
-   witness, and the new BPS (0 to 100, different from the current one). Applies
-   to every later redemption; emits `RedeemFeeChanged`.
+2. `blast_sui::vault::schedule_redeem_fee` with the vault, `PackageVersion`, the
+   witness, the new BPS (0 to 100), the delay in force after this change, and the
+   `Clock`. A new schedule replaces a pending one and restarts its wait. A change
+   of neither value aborts with code 16 from `blast_admin`'s `delayed` module.
+3. After the applied delay, *anyone* calls `blast_sui::vault::apply_redeem_fee`
+   with the vault, `PackageVersion`, and the `Clock`.
+4. A holder of `blast_sui_domain::CancelAdmin` may call
+   `blast_sui::vault::cancel_redeem_fee` at any time before it applies, even once
+   ready.
 
-#### Package custody and upgrades (Blast admin, `UpgradeAdmin`)
+The fee's lifecycle events come from `blast_admin::delayed`, typed by
+`blast_sui::vault::RedeemFeeKey`, with the vault's ID as their parent.
 
-- `blast_sui::package_admin::new` (holder of the original `Publisher` and
-  never-upgraded `UpgradeCap`) returns a `PackageAdmin`. In the same PTB,
-  `blast_sui::package_admin::add_capability` (`UpgradeAdmin`) attaches
-  `MetadataCap<FUN_SUI>`, `MetadataCap<BLAST_SUI>`, and
-  `DisplayCap<BlastSuiDepositReceipt>`, then `blast_sui::package_admin::share`
-  shares it; `share` aborts unless all three are attached.
-- `deposit_receipt::create_display` (*anyone*, once per type) creates the
-  receipt's Display and returns its `DisplayCap`.
-- Upgrade, in one PTB: sign in as `UpgradeAdmin`,
-  `blast_sui::package_admin::authorize_upgrade` with the 32-byte digest, the
-  native `Upgrade` command, then
-  `blast_sui::package_admin::commit_upgrade_and_advance` with the receipt. The
-  generation advances in the same transaction.
-- `blast_sui::package_admin::restrict_to_additive` (irreversible; the strictest
-  policy this package exposes) and `blast_sui::package_admin::make_immutable`
-  (irreversible; the capabilities stay sealed).
+#### Pause and release (Blast admin)
+
+- `blast_admin::package_admin::pause` (`PauseAdmin<BLAST_SUI_PACKAGE>`) sets any
+  of three bits immediately: 1 stops `blast_sui::vault::mint_fun_sui`, 2 stops
+  `blast_sui::vault::request_blast_sui`, 4 stops
+  `blast_sui::vault::claim_blast_sui`. Nothing else reads them: both redemptions,
+  donations, top-ups, `sync`, and receipt cancellation stay open.
+- `blast_sui::vault::unpause` (`UnpauseAdmin<BLAST_SUI_PACKAGE>`) clears bits. It
+  aborts with `EUnguardedDelay` while the fee delay is zero or a pending change
+  would make it zero.
+
+#### Package custody and upgrades (Blast admin)
+
+Upgrades use the generic `blast_admin::package_admin` calls typed by
+`BLAST_SUI_PACKAGE`: `UpgradeAdmin<BLAST_SUI_PACKAGE>` schedules the exact digest,
+waits the applied delay (48 hours at wrap), then authorizes, upgrades, and commits
+in one PTB, which advances the version. See the administration guide.
 
 ### Economics
 
@@ -411,10 +444,8 @@ blastSUI). BPS are out of 10,000.
   must be positive and at least `min_sui_out`. The fee stays in blast custody.
   Because the seed shares are never presented, every redemption is partial and
   pays the fee.
-- **Redemption fee**: default 2 BPS, maximum 100 BPS (1%), set by `FeeAdmin`.
-  Zero is the only fee-free setting.
-- **Rate fallback**: when a cached rate component is zero, one pool token counts
-  as one MIST.
+- **Redemption fee**: default 2 BPS, maximum 100 BPS (1%), changed by `FeeAdmin`
+  after its delay. Zero is the only fee-free setting.
 - **Dust**: every rounding favors the vault's remaining holders: share minting
   rounds down, redemption gross rounds down, the fee rounds up, and pool-token
   valuations round down. Over-withdrawn SUI stays liquid in the ledger.
@@ -433,8 +464,9 @@ blastSUI). BPS are out of 10,000.
   (`rate_epoch == current epoch`), which the claim's own refresh provides in any
   normal epoch. In a safe-mode epoch the claim aborts; retry in the next normal
   epoch.
-- `blast_sui::vault::create` requires the pool to have a current-epoch rate
-  entry.
+- `blast_sui::vault::create` requires the pool to have a usable current-epoch
+  rate entry.
+- A redemption-fee change waits the delay applied when it was scheduled.
 - New SUI is delegated only in an epoch with a current rate; in a safe-mode
   epoch it stays liquid (still counted at face value) until a later call.
 - Cancellation has no time limit and no epoch requirement.
@@ -442,12 +474,11 @@ blastSUI). BPS are out of 10,000.
 ### Reading state
 
 The vault has no public getters; read object content over RPC, or use events.
-The only public read function is `blast_sui::package_admin::has_upgrade_cap`.
 
 - Vault fields: `pool_id` (the fixed staking pool), `fun_custody` and
   `blast_custody` (`liquid_sui`, `pending_stakes`, `active_stake`,
-  `active_sui`), `rate_epoch`, `rate_sui`, `rate_pool_tokens`, `redeem_fee_bps`,
-  `unwind_only`.
+  `active_sui`), `rate_epoch`, `rate_sui`, `rate_pool_tokens`, `redeem_fee` (its
+  `value`, `delay_ms`, and any pending change), `unwind_only`.
 - Supplies: the `total_supply` of the treasury caps under the vault's dynamic
   object fields `TreasuryKey<FUN_SUI>` and `TreasuryKey<BLAST_SUI>`, or
   `fun_supply` and `blast_supply` in the latest event snapshot.
@@ -485,58 +516,53 @@ Snapshot types embedded in most events:
 | `blast_sui::events::FunSuiMinted` | `mint_fun_sui` | `sui_in`, `custody` |
 | `blast_sui::events::FunSuiRedeemed` | `redeem_fun_sui` | `fun_in`, `custody` |
 | `blast_sui::events::BlastSuiDepositRequested` | `request_blast_sui` | `receipt_id`, `vault_id`, `pool_id`, `principal_sui`, `activation_epoch`, `custody` |
-| `blast_sui::events::BlastSuiDepositClaimed` | `claim_blast_sui` | `receipt_id`, `principal_sui`, `contributed_sui`, `pool_tokens`, `blast_out`, `custody` |
+| `blast_sui::events::BlastSuiDepositClaimed` | `claim_blast_sui` | `receipt_id`, `principal_sui`, `contributed_sui`, `claimed_pool_tokens`, `blast_out`, `custody` |
 | `blast_sui::events::BlastSuiDepositCancelled` | `deposit_receipt::cancel` | `receipt_id`, `vault_id`, `principal_sui`, `returned_sui` (no snapshot: the vault is untouched) |
 | `blast_sui::events::BlastSuiDonated` | `donate_sui` | `sui_in`, `custody` |
 | `blast_sui::events::BlastSuiRedeemed` | `redeem_blast_sui` | `blast_in`, `gross_sui`, `fee_sui`, `net_sui`, `custody` |
-| `blast_sui::events::FunYieldSwept` | any refresh that moves yield | `liquid_sui`, `pool_tokens`, `swept_sui`, `custody` at that point |
+| `blast_sui::events::FunYieldSwept` | any refresh that moves yield | `swept_liquid_sui`, `swept_pool_tokens`, `swept_sui`, `custody` at that point |
 | `blast_sui::events::NativeStakeUnwound` | the refresh that observes a departed validator | `custody` |
 | `blast_sui::events::VaultSynced` | `sync` | `custody` |
-| `blast_sui::events::RedeemFeeChanged` | `set_redeem_fee` | `old_redeem_fee_bps`, `new_redeem_fee_bps` |
-| `blast_sui::events::PackageCapabilityAdded` | `add_capability` | `package_admin_id`, `capability_id`, `capability_type` |
+| `blast_sui::events::FunReserveToppedUp` | `top_up_fun_reserve` | `sui_in`, `custody` |
 
-Upgrade events (`UpgradeAuthorized`, `UpgradeCommitted`,
-`OperationalVersionAdvanced`, and others) come from `blast_admin` without an
-envelope. An indexer gets the vault's full state after each transition from the
+Redemption-fee lifecycle, pause, and upgrade events come from `blast_admin`
+without an envelope. An indexer gets the vault's full state after each transition from the
 last snapshot in the transaction, and links a deposit's request, claim, or
 cancellation by `receipt_id`.
 
 ### Aborts
 
 Codes are plain `u64` values, raised in the `blast_sui` module that detects them
-(`vault`, `custody`, `math`, `deposit_receipt`, or `package_admin`).
+(`vault`, `custody`, `math`, or `deposit_receipt`).
 
 | Code | Name | Typical flow | Fix |
 | --- | --- | --- | --- |
-| 0 | `EZeroAmount` | any mint, redeem, donation | pass a positive coin |
+| 0 | `EZeroAmount` | any mint, redeem, donation, top-up | pass a positive coin |
 | 1 | `EInvalidShareAmount` | redeem blastSUI | cannot exceed supply (unreachable in practice) |
 | 2 | `EZeroBlastShares` | claim | the deposit rounded to zero shares |
 | 3 | `EZeroSuiRedemption` | redeem blastSUI | redeem more shares |
-| 4 | `EInvalidPackagePublisher` | `blast_sui::package_admin::new` | pass this package's `Publisher` from module `blast_sui_package` |
-| 5 | `EUnwindOnly` | mint funSUI, request, claim | the validator left; redeem or cancel instead |
-| 6 | `EValidatorNotActive` | create | choose an active validator |
-| 7 | `ENonzeroInitialSupply` | create | treasury caps must have zero supply |
-| 8 | `ESlippageExceeded` | claim, redeem blastSUI | lower the minimum or retry |
-| 9 | `EInsufficientNativeRedemption` | redemptions | native output fell short of the valuation; the vault fails closed |
-| 10 | `EBlastAssetsDepleted` | claim, redeem blastSUI | blast custody holds nothing to price shares |
-| 11 | `EBootstrapBelowNativeMinimum` | create | seed at least 1.1 SUI |
-| 12 | `ERedeemFeeAboveMaximum` | set fee | at most 100 BPS |
-| 13 | `ERedeemFeeUnchanged` | set fee | pass a different rate |
-| 14 | `EFunBackingBelowSupply` | any refresh, funSUI mint or redeem | fun custody fell below supply; the vault fails closed |
-| 15 | `EStaleExchangeRate` | claim, create | safe-mode epoch; retry in the next normal epoch |
-| 16 | `EBlastDepositBelowNativeMinimum` | request | deposit at least 1 SUI |
-| 17 | `EBlastDepositNotActive` | claim | wait for `activation_epoch` |
-| 18 | `EWrongReceiptVault` | claim | the receipt belongs to another vault |
-| 19 | `EWrongReceiptPool` | claim | the receipt's stake is from another pool |
-| 20 | `EZeroSuiAfterFee` | redeem blastSUI | the fee consumed the payout; redeem more |
-| 21 | `EWrongDelegationPool` | request, or any call that stakes | the validator address now runs a different pool than the vault's; deposits stay closed, redeem or cancel instead |
-| 22 | `EMissingPackageCapability` | `blast_sui::package_admin::share` | attach all three capabilities first |
-| 23 | `EPackageCapabilityAlreadyExists` | `blast_sui::package_admin::add_capability` | each capability type is attached once |
+| 4 | `EUnwindOnly` | mint funSUI, request, claim | the validator left; redeem or cancel instead |
+| 5 | `EValidatorNotActive` | create | choose an active validator |
+| 6 | `ENonzeroInitialSupply` | create | treasury caps must have zero supply |
+| 7 | `ESlippageExceeded` | claim, redeem blastSUI | lower the minimum or retry |
+| 8 | `EInsufficientNativeRedemption` | redemptions | native output fell short of the valuation; the vault fails closed |
+| 9 | `EBlastAssetsDepleted` | claim, redeem blastSUI | blast custody holds nothing to price shares |
+| 10 | `EBootstrapBelowNativeMinimum` | create | seed at least 1.1 SUI |
+| 11 | `ERedeemFeeAboveMaximum` | schedule fee | at most 100 BPS |
+| 12 | `EFunBackingBelowSupply` | any refresh, funSUI mint or redeem | fun custody fell below supply; `blast_sui::vault::top_up_fun_reserve` restores it |
+| 13 | `EStaleExchangeRate` | claim, create | safe-mode epoch; retry in the next normal epoch |
+| 14 | `EBlastDepositBelowNativeMinimum` | request | deposit at least 1 SUI |
+| 15 | `EBlastDepositNotActive` | claim | wait for `activation_epoch` |
+| 16 | `EWrongReceiptVault` | claim | the receipt belongs to another vault |
+| 17 | `EWrongReceiptPool` | claim | the receipt's stake is from another pool |
+| 18 | `EZeroSuiAfterFee` | redeem blastSUI | the fee consumed the payout; redeem more |
+| 19 | `EWrongDelegationPool` | request, or any call that stakes | the validator address now runs a different pool than the vault's; deposits stay closed, redeem or cancel instead |
+| 20 | `EUnguardedDelay` | `blast_sui::vault::unpause` | raise the fee delay above zero first |
 
-Calls into outdated bytecode after an upgrade abort with code 12 from
-`blast_admin`'s `operational_version` module: rebuild the PTB against the latest
-package version. A role failure in `blast_acl::sign_in` aborts with
-`blast_admin` code 1 or 5.
+Calls into outdated bytecode after an upgrade abort with code 9 from
+`blast_admin`'s `package_version` module: rebuild the PTB against the latest
+package version. A paused deposit aborts with code 21 from the same module. A
+role failure in `blast_acl::sign_in` aborts with `blast_admin` code 1 or 5.
 
 ### Pitfalls
 
@@ -546,16 +572,16 @@ package version. A role failure in `blast_acl::sign_in` aborts with
   command on the receipt fails, and an unconsumed receipt aborts the PTB.
 - A receipt cannot be given to another account; only the requesting account can
   claim or cancel it.
-- A claim in the request's epoch or in a safe-mode epoch aborts (codes 17, 15).
+- A claim in the request's epoch or in a safe-mode epoch aborts (codes 15, 13).
 - funSUI does not earn yield; blastSUI does.
 - The blastSUI price uses a conservative valuation at the cached rate. Always
   set `min_sui_out` and `min_blast_out`, ideally from a dev-inspect of the same
   call.
 - The fee applies to every blastSUI redemption, however small or large.
-- Every vault call takes the shared `Vault` mutably, so vault transactions are
+- Vault calls take the shared `Vault` mutably, so vault transactions are
   sequenced through consensus.
-- After an upgrade, PTBs pinned to the old package ID abort (code 12 from
-  `operational_version`).
+- After an upgrade, PTBs pinned to the old package ID abort (code 9 from
+  `package_version`).
 
 ### Q&A
 
@@ -589,10 +615,11 @@ at creation (`pool_id`). No call changes it.
 unwinds all stake to liquid SUI and the vault becomes unwind-only: redemptions,
 donations, and cancellations work; mints, deposits, and claims abort.
 
-**Can Blast pause the vault or take user funds?** The current source has no
-pause and no withdrawal path for anyone but coin holders and receipt owners.
-Blast's `UpgradeAdmin` can upgrade the package until it is made immutable; check
-`blast_sui::package_admin::has_upgrade_cap`.
+**Can Blast pause the vault or take user funds?** Blast can pause deposits only:
+funSUI mints, deposit requests, and claims. Redemptions, donations, and receipt
+cancellation never pause, and no call withdraws funds for anyone but coin holders
+and receipt owners. Blast's `UpgradeAdmin<BLAST_SUI_PACKAGE>` can upgrade the
+package after its 48-hour delay.
 
 **How do I compute the blastSUI to SUI rate?** Divide blast custody's assets
 (`liquid_sui + pending_sui + active_sui`) by `blast_supply`, from the latest
@@ -616,26 +643,23 @@ Abort codes: this package aborts with the numeric codes below from whichever mod
 | 1 | `EInvalidShareAmount` | The number of shares exceeds the live blastSUI supply. |
 | 2 | `EZeroBlastShares` | A positive SUI deposit rounded down to zero blastSUI shares. |
 | 3 | `EZeroSuiRedemption` | A positive blastSUI redemption rounded down to zero SUI. |
-| 4 | `EInvalidPackagePublisher` | The supplied Publisher was not claimed by this package's canonical module. |
-| 5 | `EUnwindOnly` | The validator left the active set, so the vault accepts redemptions only. |
-| 6 | `EValidatorNotActive` | The fixed validator is not in the active validator set. |
-| 7 | `ENonzeroInitialSupply` | A treasury cap entering vault custody already has supply. |
-| 8 | `ESlippageExceeded` | The output is below the caller's minimum. |
-| 9 | `EInsufficientNativeRedemption` | Native redemption returned less SUI than the custody ledger's conservative valuation. |
-| 10 | `EBlastAssetsDepleted` | blastSUI shares exist but blast custody holds no assets to price them. |
-| 11 | `EBootstrapBelowNativeMinimum` | The protocol bootstrap deposit is below the native one-SUI stake minimum. |
-| 12 | `ERedeemFeeAboveMaximum` | The requested redemption fee exceeds the immutable maximum. |
-| 13 | `ERedeemFeeUnchanged` | The requested redemption fee equals the live rate. |
-| 14 | `EFunBackingBelowSupply` | Fun custody's conservative assets fell below the funSUI supply. |
-| 15 | `EStaleExchangeRate` | The staking pool has no exchange-rate entry for the current epoch. |
-| 16 | `EBlastDepositBelowNativeMinimum` | A blastSUI deposit is below the native one-SUI staking minimum. |
-| 17 | `EBlastDepositNotActive` | A blastSUI deposit receipt has not reached its native activation epoch. |
-| 18 | `EWrongReceiptVault` | A blastSUI deposit receipt belongs to another vault. |
-| 19 | `EWrongReceiptPool` | A blastSUI deposit receipt contains stake from another validator pool. |
-| 20 | `EZeroSuiAfterFee` | The blastSUI redemption fee consumed the complete atomic payout. |
-| 21 | `EWrongDelegationPool` | Native delegation returned stake from a pool other than the vault's immutable pool. |
-| 22 | `EMissingPackageCapability` | PackageAdmin cannot be shared before every required capability is attached. |
-| 23 | `EPackageCapabilityAlreadyExists` | PackageAdmin already owns a capability object of this exact type. |
+| 4 | `EUnwindOnly` | The validator left the active set, so the vault accepts redemptions only. |
+| 5 | `EValidatorNotActive` | The fixed validator is not in the active validator set. |
+| 6 | `ENonzeroInitialSupply` | A treasury cap entering vault custody already has supply. |
+| 7 | `ESlippageExceeded` | The output is below the caller's minimum. |
+| 8 | `EInsufficientNativeRedemption` | Native redemption returned less SUI than the custody ledger's conservative valuation. |
+| 9 | `EBlastAssetsDepleted` | blastSUI shares exist but blast custody holds no assets to price them. |
+| 10 | `EBootstrapBelowNativeMinimum` | The protocol bootstrap deposit is below the native one-SUI stake minimum. |
+| 11 | `ERedeemFeeAboveMaximum` | The requested redemption fee exceeds the immutable maximum. |
+| 12 | `EFunBackingBelowSupply` | Fun custody's conservative assets fell below the funSUI supply. |
+| 13 | `EStaleExchangeRate` | The staking pool has no usable exchange-rate entry for the current epoch. |
+| 14 | `EBlastDepositBelowNativeMinimum` | A blastSUI deposit is below the native one-SUI staking minimum. |
+| 15 | `EBlastDepositNotActive` | A blastSUI deposit receipt has not reached its native activation epoch. |
+| 16 | `EWrongReceiptVault` | A blastSUI deposit receipt belongs to another vault. |
+| 17 | `EWrongReceiptPool` | A blastSUI deposit receipt contains stake from another validator pool. |
+| 18 | `EZeroSuiAfterFee` | The blastSUI redemption fee consumed the complete atomic payout. |
+| 19 | `EWrongDelegationPool` | Native delegation returned stake from a pool other than the vault's immutable pool. |
+| 20 | `EUnguardedDelay` | A change still to come could wait a zero delay, so deposits cannot be released. |
 
 ### `blast_sui::blast_events`
 
@@ -663,43 +687,40 @@ public struct BLAST_SUI() has drop;
 
 ### `blast_sui::blast_sui_domain`
 
-Blast SUI's administration roles in the shared Blast ACL.  A role is a type. An `AdminCap` holding `Role` signs in to `AdminWitness<Role>`, and a function's witness parameter names the one role it accepts, so a role from any other package is a different type and cannot reach these operations.
+Blast SUI's administration roles in the shared Blast ACL.  A role is a type. An `AdminCap` holding `Role` signs in to `AdminWitness<Role>`, and a function's witness parameter names the one role it accepts, so a role from any other package is a different type and cannot reach these operations. Upgrades and pausing use the generic `blast_admin::package_admin` roles typed by `BLAST_SUI_PACKAGE`.
 
 Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/blast_sui/sources/blast_sui_domain.move
 
 #### Types
 
 ```move
-/// Attaches package capabilities and authorizes, cuts over, restricts, or seals an upgrade.
-public struct UpgradeAdmin {}
-
-/// Sets the blastSUI redemption fee.
+/// Schedules the blastSUI redemption fee and its delay.
 public struct FeeAdmin {}
+
+/// Cancels a scheduled change to the vault's delayed values.
+public struct CancelAdmin {}
+
+/// Admits and removes the validators users may pick.
+public struct ValidatorAdmin {}
 ```
 
 ### `blast_sui::blast_sui_package`
 
-Canonical package provenance witness and the shared cutover that prevents stale package generations from mutating protocol state.  The generation value, its checked arithmetic, and its replay event belong to `blast_admin::operational_version`; `init` seeds the value from the one-time witness before claiming the Publisher with it, so no other package can create this package's generation. This module owns only the canonical shared container and the two compiled constants that identify this bytecode and the bytecode a governed upgrade cuts over to.
+Blast SUI's publication and its package witness.  Publication hands the deployer an owned `Publication<BLAST_SUI_PACKAGE>`, which `blast_admin::package_admin::wrap` turns into the shared `PackageAdmin<BLAST_SUI_PACKAGE>` and the shared `PackageVersion<BLAST_SUI_PACKAGE>`, with every deposit paused. Pausing, upgrades, and immutability go through `blast_admin::package_admin` under the package-scoped roles `PauseAdmin<BLAST_SUI_PACKAGE>`, `UpgradeAdmin<BLAST_SUI_PACKAGE>`, and `CancelAdmin<BLAST_SUI_PACKAGE>`.  The publication pins `PackageWitness`, the one witness the package passes to the generic administration's pause release. `vault::unpause` releases pause bits once the vault's delays are guarded; it lives beside the state it reads.
 
 Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/blast_sui/sources/blast_sui_package.move
 
 #### Types
 
 ```move
-/// One-time witness: it seeds the package generation and claims this package's Publisher.
+/// The package's one-time witness (OTW), typing its version, publication, and roles.
 public struct BLAST_SUI_PACKAGE() has drop;
 
-/// Singleton operational package generation.
-public struct PackageVersion has key {
-    id: UID,
-    generation: blast_admin::operational_version::OperationalVersion<BLAST_SUI_PACKAGE>,
-}
+/// The package witness. Only this package constructs it, through `package_witness`; its one
+/// caller passes it straight into the release call, and no function stores it or returns it
+/// outside this package.
+public struct PackageWitness() has drop;
 ```
-
-#### Constants
-
-- `PACKAGE_VERSION: u64 = 1`: Current package generation accepted by every protected mutation.
-- `NEXT_PACKAGE_VERSION: u64 = 2`: The generation this bytecode hands over to in a governed upgrade.
 
 ### `blast_sui::constants`
 
@@ -707,10 +728,14 @@ Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/de
 
 #### Constants
 
+- `version: u64 = 1`: The package version this bytecode serves.
+- `fun_mint_pause_bit: u8 = 1`: Stops funSUI minting.
+- `blast_request_pause_bit: u8 = 2`: Stops new blastSUI deposit requests.
+- `blast_claim_pause_bit: u8 = 4`: Stops claiming activated blastSUI deposit receipts.
+- `valid_pause_bits: u8 = blast_sui::constants::fun_mint_pause_bit!() | blast_sui::constants::blast_request_pause_bit!() | blast_sui::constants::blast_claim_pause_bit!()`: Every supported deposit pause flag. Exits have no flag: they never pause.
 - `basis_points_denominator: u64 = 10_000`: Denominator for protocol rates expressed in basis points.
 - `default_redeem_fee_bps: u64 = 2`: blastSUI redemption fee a new vault starts with.
 - `max_redeem_fee_bps: u64 = 100`: Immutable ceiling for the blastSUI redemption fee.
-- `package_digest_length: u64 = 32`: Exact byte length of a Sui package digest.
 - `native_min_stake_mist: u64 = 1_000_000_000`: Smallest SUI amount the native validator set accepts as one new stake request.  It is also the minimum protocol bootstrap deposit: a smaller bootstrap could not be delegated and would leave blast custody idle.
 - `max_pending_stakes: u64 = 3`: Most pending native receipts one custody ledger holds at once.  Same-epoch requests join the newest receipt, refresh drains every arrived receipt at the first current-rate epoch, and delegation is gated by that same current-rate proof, so at most two receipts — one buffer-deferred and one current-epoch — can coexist. Three carries one slot of slack, and `stake_idle` skips delegation instead of aborting when the ledger is full, so an unexpected third receipt costs deferred yield, never a user abort.
 - `native_redemption_rounding_margin: u64 = 30`: Extra MIST requested from one native FungibleStakedSui redemption.  Native redemption floors the pool's total SUI value, then floors the principal and reward portions separately, so redeeming `v` pool tokens returns at least `floor(v * sui / tokens) - 3` MIST at the current rate. Requesting ceil pool tokens for `amount + 3` therefore funds `amount`. The constant carries ten times that proven bound: the vault calls the live system package, and headroom keeps exact redemption alive if a system upgrade drifts native rounding by a few MIST. Over-requested residue stays liquid in custody. An unbounded rate decrease is not a rounding drift and still fails closed.
@@ -771,16 +796,6 @@ public fun cancel(
     system_state: &mut sui_system::SuiSystemState,
     ctx: &mut TxContext,
 ): Coin<sui::SUI>
-
-/// Creates the receipt Display V2 and returns its update cap for package custody.
-///
-/// This is a permissionless deployment step. The system registry derives one
-/// canonical display per type and rejects every later creation attempt.
-public fun create_display(
-    package_version: &blast_sui_package::PackageVersion,
-    registry: &mut display_registry::DisplayRegistry,
-    ctx: &mut TxContext,
-): display_registry::DisplayCap<BlastSuiDepositReceipt>
 ```
 
 ### `blast_sui::events`
@@ -826,13 +841,6 @@ public struct VaultCustody has copy, drop {
 #### Events
 
 ```move
-/// Emitted after an active admin attaches one capability object to PackageAdmin.
-public struct PackageCapabilityAdded has copy, drop {
-    package_admin_id: ID,
-    capability_id: ID,
-    capability_type: TypeName,
-}
-
 /// Emitted after the single-validator vault is created from the owner seed.
 ///
 /// `fun_reserve_sui` is the protocol-funded fun safety reserve and
@@ -875,12 +883,15 @@ public struct BlastSuiDepositRequested has copy, drop {
 }
 
 /// Emitted after an activated receipt enters blast custody and mints blastSUI.
+///
+/// `claimed_pool_tokens` is the receipt's converted active stake joined to blast
+/// custody, and `contributed_sui` its floor valuation at the applied rate.
 public struct BlastSuiDepositClaimed has copy, drop {
     receipt_id: ID,
     vault_id: ID,
     principal_sui: u64,
     contributed_sui: u64,
-    pool_tokens: u64,
+    claimed_pool_tokens: u64,
     blast_out: u64,
     custody: VaultCustody,
 }
@@ -899,6 +910,12 @@ public struct BlastSuiDonated has copy, drop {
     custody: VaultCustody,
 }
 
+/// Emitted after SUI enters fun custody without minting, refreshing, or delegating.
+public struct FunReserveToppedUp has copy, drop {
+    sui_in: u64,
+    custody: VaultCustody,
+}
+
 /// Emitted after blastSUI shares are burned for their share of blast custody less the retained fee.
 public struct BlastSuiRedeemed has copy, drop {
     blast_in: u64,
@@ -909,17 +926,14 @@ public struct BlastSuiRedeemed has copy, drop {
 }
 
 /// Emitted after fun yield above the funSUI claim and reserve moved into blast custody.
+///
+/// `swept_liquid_sui` and `swept_pool_tokens` are the amounts moved, not balances;
+/// `swept_sui` is their total at the applied rate.
 public struct FunYieldSwept has copy, drop {
-    liquid_sui: u64,
-    pool_tokens: u64,
+    swept_liquid_sui: u64,
+    swept_pool_tokens: u64,
     swept_sui: u64,
     custody: VaultCustody,
-}
-
-/// Emitted after the `FeeAdmin` changes the blastSUI redemption fee.
-public struct RedeemFeeChanged has copy, drop {
-    old_redeem_fee_bps: u64,
-    new_redeem_fee_bps: u64,
 }
 
 /// Emitted after a permissionless refresh, sweep, and idle delegation pass.
@@ -946,94 +960,6 @@ Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/de
 public struct FUN_SUI() has drop;
 ```
 
-### `blast_sui::package_admin`
-
-Permanent shared custody for package capabilities.
-
-Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/blast_sui/sources/package_admin.move
-
-#### Types
-
-```move
-/// Shared, non-releasable custody for package and update authority.
-///
-/// The reusable Publisher/UpgradeCap seal is the shared custody value; the
-/// package-specific metadata and display capabilities remain dynamic object
-/// children of this wrapper.
-public struct PackageAdmin has key {
-    id: UID,
-    custody: blast_admin::upgrade_custody::UpgradeCustody<blast_sui_package::BLAST_SUI_PACKAGE>,
-}
-
-/// Type-derived key for a capability owned as a dynamic object field.
-public struct CapabilityKey<phantom Capability>() has copy, drop, store;
-```
-
-#### Functions
-
-```move
-/// Validates the fixed package capabilities and returns composable custody.
-///
-/// Deployment must call this before any raw-cap upgrade. The returned key-only
-/// object must receive its required child capabilities before `share`.
-public fun new(publisher: Publisher, upgrade_cap: UpgradeCap, ctx: &mut TxContext): PackageAdmin
-
-/// Attaches one exact capability type under upgrade-admin authority.
-public fun add_capability<Capability: key + store>(
-    self: &mut PackageAdmin,
-    package_version: &blast_sui_package::PackageVersion,
-    _: &blast_admin::blast_acl::AdminWitness<blast_sui_domain::UpgradeAdmin>,
-    capability: Capability,
-)
-
-/// Verifies required bootstrap capabilities and irreversibly shares custody.
-public fun share(self: PackageAdmin)
-
-/// Authorizes the exact package digest under the wrapped cap's current policy.
-public fun authorize_upgrade(
-    self: &mut PackageAdmin,
-    package_version: &blast_sui_package::PackageVersion,
-    _: &blast_admin::blast_acl::AdminWitness<blast_sui_domain::UpgradeAdmin>,
-    digest: vector<u8>,
-): UpgradeTicket
-
-/// Commits the native receipt and advances one operational generation at once.
-///
-/// This is the only upgrade finalizer. Both mutations belong to the same
-/// transaction, so a failure at either step rolls back the whole upgrade.
-public fun commit_upgrade_and_advance(
-    self: &mut PackageAdmin,
-    package_version: &mut blast_sui_package::PackageVersion,
-    _: &blast_admin::blast_acl::AdminWitness<blast_sui_domain::UpgradeAdmin>,
-    receipt: UpgradeReceipt,
-)
-
-/// Irreversibly narrows upgrades to additive changes.
-///
-/// Additive is the strictest exposed policy. A dependency-only restriction
-/// is deliberately not exposed: it would foreclose adding a rescue entry
-/// point if a defensive invariant abort ever froze the vault, while
-/// additive still permits new code beside the frozen path.
-public fun restrict_to_additive(
-    self: &mut PackageAdmin,
-    package_version: &blast_sui_package::PackageVersion,
-    _: &blast_admin::blast_acl::AdminWitness<blast_sui_domain::UpgradeAdmin>,
-)
-
-/// Irreversibly destroys native upgrade authority for this package.
-///
-/// Publisher custody and every sealed child capability survive, so metadata and
-/// display administration continue at the final operational generation.
-public fun make_immutable(
-    self: &mut PackageAdmin,
-    package_version: &blast_sui_package::PackageVersion,
-    _: &blast_admin::blast_acl::AdminWitness<blast_sui_domain::UpgradeAdmin>,
-)
-
-/// Reports whether native upgrade authority remains sealed in custody.
-public fun has_upgrade_cap(self: &PackageAdmin): bool
-```
-
 ### `blast_sui::vault`
 
 Single-validator custody of the 1:1 funSUI ledger and the blastSUI share ledger.
@@ -1043,7 +969,8 @@ Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/de
 #### Types
 
 ```move
-/// Shared owner of both treasury-cap child objects and the two native custody ledgers.
+/// Shared owner of the treasury-cap, metadata-cap and display-cap child objects and the two
+/// native custody ledgers.
 ///
 /// `fun_custody` backs only funSUI plus the protocol-funded rounding reserve,
 /// and `blast_custody` backs only blastSUI, including the seed shares locked
@@ -1051,8 +978,9 @@ Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/de
 /// blastSUI supply is therefore never zero after creation. `rate_epoch`,
 /// `rate_sui`, and `rate_pool_tokens` cache the pool exchange-rate entry last
 /// observed for a current epoch; a refresh in an epoch without an entry keeps
-/// this conservative rate instead of scanning the table. `unwind_only` records
-/// that the validator left the active set.
+/// this conservative rate instead of scanning the table. `redeem_fee` is the
+/// blastSUI redemption fee; every change waits its applied delay. `unwind_only`
+/// records that the validator left the active set.
 public struct Vault has key {
     id: UID,
     pool_id: ID,
@@ -1061,12 +989,18 @@ public struct Vault has key {
     rate_epoch: u64,
     rate_sui: u64,
     rate_pool_tokens: u64,
-    redeem_fee_bps: u64,
+    redeem_fee: blast_admin::delayed::Delayed<RedeemFeeKey, u64>,
     unwind_only: bool,
 }
 
+/// Keys the redemption fee's delayed lifecycle.
+public struct RedeemFeeKey() has copy, drop, store;
+
 /// Type-derived key for a treasury cap owned as a discoverable child object.
 public struct TreasuryKey<phantom CoinType>() has copy, drop, store;
+
+/// Type-derived key for a metadata or display capability sealed as a discoverable child object.
+public struct CapabilityKey<phantom Capability>() has copy, drop, store;
 ```
 
 #### Functions
@@ -1084,11 +1018,19 @@ public struct TreasuryKey<phantom CoinType>() has copy, drop, store;
 /// blastSUI supply stays permanently positive and the bootstrap backing can
 /// never be redeemed. Nothing is returned; the treasury total supply and the
 /// `VaultCreated` fact record the locked amount.
+///
+/// Both metadata caps and the deposit-receipt display cap are sealed as children of
+/// the vault with no accessor. The redemption-fee delay starts at zero so the
+/// bootstrap transaction can configure it; deposits stay paused until `unpause`,
+/// which refuses while that delay is zero.
 public fun create(
-    package_version: &blast_sui_package::PackageVersion,
+    package_version: &blast_admin::package_version::PackageVersion<blast_sui_package::BLAST_SUI_PACKAGE>,
     system_state: &mut sui_system::SuiSystemState,
+    display_registry: &mut display_registry::DisplayRegistry,
     fun_cap: TreasuryCap<fun_sui::FUN_SUI>,
     blast_cap: TreasuryCap<blast_sui::BLAST_SUI>,
+    fun_metadata_cap: MetadataCap<fun_sui::FUN_SUI>,
+    blast_metadata_cap: MetadataCap<blast_sui::BLAST_SUI>,
     owner_seed: Coin<sui::SUI>,
     pool_id: ID,
     ctx: &mut TxContext,
@@ -1097,7 +1039,7 @@ public fun create(
 /// Mints funSUI one-to-one for SUI held in fun custody.
 public fun mint_fun_sui(
     self: &mut Vault,
-    package_version: &blast_sui_package::PackageVersion,
+    package_version: &blast_admin::package_version::PackageVersion<blast_sui_package::BLAST_SUI_PACKAGE>,
     system_state: &mut sui_system::SuiSystemState,
     sui_in: Coin<sui::SUI>,
     ctx: &mut TxContext,
@@ -1106,7 +1048,7 @@ public fun mint_fun_sui(
 /// Burns funSUI and returns exactly one MIST per unit from fun custody.
 public fun redeem_fun_sui(
     self: &mut Vault,
-    package_version: &blast_sui_package::PackageVersion,
+    package_version: &blast_admin::package_version::PackageVersion<blast_sui_package::BLAST_SUI_PACKAGE>,
     system_state: &mut sui_system::SuiSystemState,
     fun_in: Coin<fun_sui::FUN_SUI>,
     ctx: &mut TxContext,
@@ -1119,7 +1061,7 @@ public fun redeem_fun_sui(
 /// placed in the caller's account through `deposit_receipt::keep`.
 public fun request_blast_sui(
     self: &mut Vault,
-    package_version: &blast_sui_package::PackageVersion,
+    package_version: &blast_admin::package_version::PackageVersion<blast_sui_package::BLAST_SUI_PACKAGE>,
     system_state: &mut sui_system::SuiSystemState,
     sui_in: Coin<sui::SUI>,
     ctx: &mut TxContext,
@@ -1131,7 +1073,7 @@ public fun request_blast_sui(
 /// Existing holders therefore keep every reward earned before its activation.
 public fun claim_blast_sui(
     self: &mut Vault,
-    package_version: &blast_sui_package::PackageVersion,
+    package_version: &blast_admin::package_version::PackageVersion<blast_sui_package::BLAST_SUI_PACKAGE>,
     system_state: &mut sui_system::SuiSystemState,
     receipt: deposit_receipt::BlastSuiDepositReceipt,
     min_blast_out: u64,
@@ -1146,41 +1088,81 @@ public fun claim_blast_sui(
 /// rate proves the pool is active and remain liquid otherwise.
 public fun donate_sui(
     self: &mut Vault,
-    package_version: &blast_sui_package::PackageVersion,
+    package_version: &blast_admin::package_version::PackageVersion<blast_sui_package::BLAST_SUI_PACKAGE>,
     system_state: &mut sui_system::SuiSystemState,
     sui_in: Coin<sui::SUI>,
     ctx: &mut TxContext,
 )
 
+/// Adds SUI to fun custody without refreshing, minting, or delegating.
+///
+/// This is the recovery path for `fun_backing_below_supply`: every other entry point
+/// refreshes first and aborts while fun custody is below the funSUI supply, so a top-up
+/// that must not depend on that check restores 1:1 backing for every later call. Anyone
+/// may contribute; the caller receives nothing, and any amount above the supply plus the
+/// rounding reserve is swept to blast custody by the next refresh.
+public fun top_up_fun_reserve(
+    self: &mut Vault,
+    package_version: &blast_admin::package_version::PackageVersion<blast_sui_package::BLAST_SUI_PACKAGE>,
+    sui_in: Coin<sui::SUI>,
+)
+
 /// Burns blastSUI for its pro-rata share of blast custody less the retained fee.
 ///
 /// Every redemption is partial against the total supply because the locked
-/// seed shares can never be presented, so every redemption pays the current
-/// `redeem_fee_bps`, which stays in blast custody. The quote uses the cached
-/// conservative valuation, so the caller's `min_sui_out` is its protection
-/// during a safe-mode epoch.
+/// seed shares can never be presented, so every redemption pays the applied
+/// redemption fee, which stays in blast custody. Redemptions never pause. The
+/// quote uses the cached conservative valuation, so the caller's `min_sui_out`
+/// is its protection during a safe-mode epoch.
 public fun redeem_blast_sui(
     self: &mut Vault,
-    package_version: &blast_sui_package::PackageVersion,
+    package_version: &blast_admin::package_version::PackageVersion<blast_sui_package::BLAST_SUI_PACKAGE>,
     system_state: &mut sui_system::SuiSystemState,
     blast_in: Coin<blast_sui::BLAST_SUI>,
     min_sui_out: u64,
     ctx: &mut TxContext,
 ): Coin<sui::SUI>
 
-/// Sets the blastSUI redemption fee for every later redemption.
-public fun set_redeem_fee(
+/// Schedules a redemption fee of at most `max_redeem_fee_bps` and the delay in force once it
+/// applies, ready after the applied delay. A pending change is replaced and its wait restarts.
+public fun schedule_redeem_fee(
     self: &mut Vault,
-    package_version: &blast_sui_package::PackageVersion,
+    package_version: &blast_admin::package_version::PackageVersion<blast_sui_package::BLAST_SUI_PACKAGE>,
     _: &blast_admin::blast_acl::AdminWitness<blast_sui_domain::FeeAdmin>,
     redeem_fee_bps: u64,
+    delay_ms: u64,
+    clock: &Clock,
+)
+
+/// Applies the scheduled redemption fee permissionlessly once ready.
+public fun apply_redeem_fee(
+    self: &mut Vault,
+    package_version: &blast_admin::package_version::PackageVersion<blast_sui_package::BLAST_SUI_PACKAGE>,
+    clock: &Clock,
+)
+
+/// Cancels a pending redemption-fee change, including after its delay has elapsed.
+public fun cancel_redeem_fee(
+    self: &mut Vault,
+    package_version: &blast_admin::package_version::PackageVersion<blast_sui_package::BLAST_SUI_PACKAGE>,
+    _: &blast_admin::blast_acl::AdminWitness<blast_sui_domain::CancelAdmin>,
+)
+
+/// Releases deposit pause `bits` once every delay is guarded. Exits have no pause bit, so
+/// this never gates them.
+public fun unpause(
+    self: &Vault,
+    package_version: &mut blast_admin::package_version::PackageVersion<blast_sui_package::BLAST_SUI_PACKAGE>,
+    unpause_admin: &blast_admin::blast_acl::AdminWitness<blast_admin::package_admin::UnpauseAdmin<blast_sui_package::BLAST_SUI_PACKAGE>>,
+    package_admin: &blast_admin::package_admin::PackageAdmin<blast_sui_package::BLAST_SUI_PACKAGE>,
+    bits: u8,
 )
 
 /// Permissionless refresh: unwinds an inactive validator, converts activated
 /// stake, revalues both ledgers, sweeps fun yield, and delegates idle SUI.
 public fun sync(
     self: &mut Vault,
-    package_version: &blast_sui_package::PackageVersion,
+    package_version: &blast_admin::package_version::PackageVersion<blast_sui_package::BLAST_SUI_PACKAGE>,
     system_state: &mut sui_system::SuiSystemState,
     ctx: &mut TxContext,
 )
@@ -1188,7 +1170,7 @@ public fun sync(
 
 ## API reference: `blast_admin` (Administration)
 
-Not yet published on mainnet. Its interface may change before publication.
+Live on mainnet. This reference matches the published source.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -1205,7 +1187,7 @@ Abort codes: this package aborts with the numeric codes below from whichever mod
 | 6 | `EInvalidSuperAdminRecipient` |  |
 | 7 | `ENotPendingSuperAdminRecipient` |  |
 | 8 | `ESuperAdminCapStillActive` |  |
-| 9 | `EOperationalVersionMismatch` |  |
+| 9 | `EVersionMismatch` |  |
 | 10 | `EInvalidUpgradeCap` |  |
 | 11 | `EInvalidPackageDigest` |  |
 | 12 | `EUpgradeCapUnavailable` |  |
@@ -1219,16 +1201,16 @@ Abort codes: this package aborts with the numeric codes below from whichever mod
 | 20 | `EPauseUnchanged` |  |
 | 21 | `EPaused` |  |
 | 22 | `EWrongUpgradeAction` |  |
-| 23 | `EUnguardedUpgradeNotice` |  |
+| 23 | `EUnguardedUpgradeDelay` |  |
 | 24 | `EInvalidPackageWitness` |  |
 | 25 | `EWrongUnpauseWitness` |  |
-| 26 | `EWrongPublisherWitness` |  |
+| 26 | `EWrongPackageWitness` |  |
 
 ### `blast_admin::blast_acl`
 
 The one access-control list for every Blast package: one cold root and role-typed admins.  A role is a type that its consumer package declares. `AdminWitness<Role>` in a function signature is that function's role check, and a role from one package can never satisfy another package's signature.
 
-Source: https://github.com/interest-protocol/blast-v2-contracts/blob/6c808227837a2e80dba0e112b71265a27c871d28/sui/admin/sources/blast_acl.move
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/governance/admin/sources/blast_acl.move
 
 #### Types
 
@@ -1320,7 +1302,7 @@ public fun admin_roles(self: &ACL, admin_cap_id: ID): vector<TypeName>
 /// How many live administrators exist.
 public fun admin_count(self: &ACL): u64
 
-/// The root transfer's delayed slot: its fixed notice and any pending nominee.
+/// The root transfer's delayed slot: its fixed delay and any pending nominee.
 public fun super_admin_transfer(
     self: &ACL,
 ): &delayed_action::DelayedAction<SuperAdminTransfer, address>
@@ -1341,7 +1323,7 @@ public fun super_admin_transfer_delay_ms(): u64
 
 Replay-complete typed facts for shared administration transitions.
 
-Source: https://github.com/interest-protocol/blast-v2-contracts/blob/6c808227837a2e80dba0e112b71265a27c871d28/sui/admin/sources/blast_admin_events.move
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/governance/admin/sources/lib/blast_admin_events.move
 
 #### Events
 
@@ -1382,58 +1364,69 @@ public struct SuperAdminCapDestroyed has copy, drop {
     super_admin_cap_id: ID,
 }
 
-/// A package version moved to its next generation; `container_id` is that `PackageVersion`.
-public struct OperationalVersionAdvanced<phantom PackageMarker: drop> has copy, drop {
+/// A package version moved to its next version; `container_id` is that `PackageVersion`.
+public struct VersionAdvanced<phantom OTW: drop> has copy, drop {
     container_id: ID,
     original_package_id: address,
-    previous_generation: u64,
-    new_generation: u64,
+    previous_version: u64,
+    new_version: u64,
 }
 
-public struct UpgradeCustodyCreated<phantom PackageMarker: drop> has copy, drop {
-    custodian_id: ID,
+/// A package version was created at wrap, beside the administration `package_admin_id`, with its
+/// defined and paused bits, pinned package witness and first version.
+public struct PackageVersionCreated<phantom OTW: drop> has copy, drop {
+    package_version_id: ID,
+    package_admin_id: ID,
+    valid_pause_bits: u8,
+    paused: u8,
+    package_witness: TypeName,
+    version: u64,
+}
+
+public struct PackageAdminCreated<phantom OTW: drop> has copy, drop {
+    package_admin_id: ID,
     publisher_id: ID,
     upgrade_cap_id: ID,
     original_package_id: ID,
-    native_version: u64,
+    upgrade_cap_version: u64,
     policy: u8,
 }
 
-public struct UpgradeAuthorized<phantom PackageMarker: drop> has copy, drop {
-    custodian_id: ID,
+public struct UpgradeAuthorized<phantom OTW: drop> has copy, drop {
+    package_admin_id: ID,
     upgrade_cap_id: ID,
     current_package_id: ID,
-    native_version: u64,
+    upgrade_cap_version: u64,
     policy: u8,
     digest: vector<u8>,
 }
 
-public struct UpgradeCommitted<phantom PackageMarker: drop> has copy, drop {
-    custodian_id: ID,
+public struct UpgradeCommitted<phantom OTW: drop> has copy, drop {
+    package_admin_id: ID,
     upgrade_cap_id: ID,
     original_package_id: address,
     new_package_id: ID,
-    previous_native_version: u64,
-    new_native_version: u64,
+    previous_upgrade_cap_version: u64,
+    new_upgrade_cap_version: u64,
 }
 
-public struct UpgradeCapDestroyed<phantom PackageMarker: drop> has copy, drop {
-    custodian_id: ID,
+public struct UpgradeCapDestroyed<phantom OTW: drop> has copy, drop {
+    package_admin_id: ID,
     upgrade_cap_id: ID,
     original_package_id: address,
-    final_native_version: u64,
+    final_upgrade_cap_version: u64,
     final_policy: u8,
 }
 
 /// Pause bits were set on a package version; `paused` is the resulting mask.
-public struct Paused<phantom PackageMarker: drop> has copy, drop {
+public struct Paused<phantom OTW: drop> has copy, drop {
     package_version_id: ID,
     bits: u8,
     paused: u8,
 }
 
 /// Pause bits were cleared on a package version; `paused` is the resulting mask.
-public struct Unpaused<phantom PackageMarker: drop> has copy, drop {
+public struct Unpaused<phantom OTW: drop> has copy, drop {
     package_version_id: ID,
     bits: u8,
     paused: u8,
@@ -1442,32 +1435,38 @@ public struct Unpaused<phantom PackageMarker: drop> has copy, drop {
 
 ### `blast_admin::delayed`
 
-Settings that change only after their applied notice, and the deadline rules every delayed type shares.  A timelock in the Compound/OpenZeppelin sense: schedule, wait the applied notice, then apply; cancellable until applied. Settings live here; one-shot actions in `delayed_action`, allowlists in `delayed_set` and keyed values in `delayed_map`.  Every value carries an owner-defined key `K` and the ID of the object that stores it. Constructors take that object's `&UID`, which only the code creating or holding the object has, so no package can attribute a value or its events to another's object. Owners use a struct without a public constructor as `K`, so only their module can pack it. Each delayed module emits every lifecycle fact of its type, generic in `K` and carrying `owner`; owners emit only their own side effects.  Every change, a shorter notice included, waits the notice applied when it was scheduled. A notice can start at zero, so a schedule and its apply in one transaction then act as a setter; there is no other mutation path. No notice exceeds `max_delay_ms`, so a notice can always be changed again. Readers need no Clock.
+Settings that change only after their applied delay, and the deadline rules every delayed type shares.  A timelock in the Compound/OpenZeppelin sense: schedule, wait the applied delay, then apply; cancellable until applied. Settings live here; one-shot actions in `delayed_action`, allowlists in `delayed_set` and keyed values in `delayed_map`.  Every value carries a module-defined key `K` and the ID of the object that stores it. Constructors take that object's `&UID`, which only the code creating or holding the object has, so no package can attribute a value or its events to another's object. Embedding modules use a struct without a public constructor as `K`, so only their module can pack it. Each delayed module emits every lifecycle fact of its type, generic in `K` and carrying `parent`; embedding modules emit only their own side effects.  Every change, a shorter delay included, waits the delay applied when it was scheduled. A delay can start at zero, so a schedule and its apply in one transaction then act as a setter; there is no other mutation path. No delay exceeds `max_delay_ms`, so a delay can always be changed again. Readers need no Clock.
 
-Source: https://github.com/interest-protocol/blast-v2-contracts/blob/6c808227837a2e80dba0e112b71265a27c871d28/sui/admin/sources/delayed/delayed.move
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/governance/admin/sources/delayed/delayed.move
 
 #### Types
 
 ```move
-/// An applied setting, its applied notice and at most one proposed replacement.
+/// An applied setting, its applied delay and at most one proposed replacement.
 public struct Delayed<K: copy + drop + store, T: copy + drop + store> has store {
-    owner: ID,
+    parent: ID,
     key: K,
     value: T,
     delay_ms: u64,
     pending: Option<Proposal<T>>,
 }
 
-/// A proposed value and the notice in force once it applies, ready from `ready_at_ms`.
+/// A proposed value and the delay in force once it applies, ready from `ready_at_ms`.
 public struct Proposal<T: copy + drop + store> has copy, drop, store {
     value: T,
     delay_ms: u64,
     ready_at_ms: u64,
 }
 
-/// A notice period and the time it elapses: the notice an admission or entry change waits,
-/// or a proposed next notice. Either is ready from `ready_at_ms`.
-public struct Notice has copy, drop, store {
+/// A proposed next delay, ready from `ready_at_ms`; the delay stays representable at apply.
+public struct PendingDelay has copy, drop, store {
+    delay_ms: u64,
+    ready_at_ms: u64,
+}
+
+/// A fixed deadline and the applied delay a change was scheduled under; a later delay change
+/// never moves it.
+public struct Deadline has copy, drop, store {
     delay_ms: u64,
     ready_at_ms: u64,
 }
@@ -1476,24 +1475,24 @@ public struct Notice has copy, drop, store {
 #### Functions
 
 ```move
-/// A setting in force at once; every later change waits the applied notice.
+/// A setting in force at once; every later change waits the applied delay.
 public fun new<K: copy + drop + store, T: copy + drop + store>(
     key: K,
-    owner: &UID,
+    parent: &UID,
     value: T,
     delay_ms: u64,
 ): Delayed<K, T>
 
-/// The longest notice any delayed type accepts, in milliseconds.
+/// The longest delay any delayed type accepts, in milliseconds.
 public fun max_delay_ms(): u64
 
 /// The applied value.
 public fun value<K: copy + drop + store, T: copy + drop + store>(self: &Delayed<K, T>): T
 
-/// The applied notice in milliseconds.
+/// The applied delay in milliseconds.
 public fun delay_ms<K: copy + drop + store, T: copy + drop + store>(self: &Delayed<K, T>): u64
 
-/// True when every change still to come waits a nonzero notice: the applied notice is nonzero
+/// True when every change still to come waits a nonzero delay: the applied delay is nonzero
 /// and no proposal would set it to zero.
 public fun is_guarded<K: copy + drop + store, T: copy + drop + store>(self: &Delayed<K, T>): bool
 
@@ -1502,9 +1501,9 @@ public fun pending<K: copy + drop + store, T: copy + drop + store>(
     self: &Delayed<K, T>,
 ): Option<Proposal<T>>
 
-/// Proposes `value` and the next notice `delay_ms`, ready after the applied notice, and
-/// returns when. A replaced proposal is cancelled and the full applied notice restarts.
-/// Aborts when the proposal would change neither the value nor the notice.
+/// Proposes `value` and the next delay `delay_ms`, ready after the applied delay, and
+/// returns when. A replaced proposal is cancelled and the full applied delay restarts.
+/// Aborts when the proposal would change neither the value nor the delay.
 public fun schedule<K: copy + drop + store, T: copy + drop + store>(
     self: &mut Delayed<K, T>,
     value: T,
@@ -1512,14 +1511,14 @@ public fun schedule<K: copy + drop + store, T: copy + drop + store>(
     clock: &Clock,
 ): u64
 
-/// Proposes only a new value, keeping the applied notice.
+/// Proposes only a new value, keeping the applied delay.
 public fun schedule_value<K: copy + drop + store, T: copy + drop + store>(
     self: &mut Delayed<K, T>,
     value: T,
     clock: &Clock,
 ): u64
 
-/// Proposes only a new notice, keeping the applied value. A shorter notice, zero included,
+/// Proposes only a new delay, keeping the applied value. A shorter delay, zero included,
 /// still waits the applied one.
 public fun schedule_delay<K: copy + drop + store, T: copy + drop + store>(
     self: &mut Delayed<K, T>,
@@ -1527,20 +1526,20 @@ public fun schedule_delay<K: copy + drop + store, T: copy + drop + store>(
     clock: &Clock,
 ): u64
 
-/// Checks that `apply` would succeed now, changing nothing. Owners call it before
+/// Checks that `apply` would succeed now, changing nothing. Embedding modules call it before
 /// settling accrued economics under the applied value in the same transaction.
 public fun assert_ready<K: copy + drop + store, T: copy + drop + store>(
     self: &Delayed<K, T>,
     clock: &Clock,
 )
 
-/// Applies the ready proposal's value and notice together and returns the new value.
+/// Applies the ready proposal's value and delay together and returns the new value.
 public fun apply<K: copy + drop + store, T: copy + drop + store>(
     self: &mut Delayed<K, T>,
     clock: &Clock,
 ): T
 
-/// Discards the proposal, even a ready one, leaving the applied value and notice.
+/// Discards the proposal, even a ready one, leaving the applied value and delay.
 public fun cancel<K: copy + drop + store, T: copy + drop + store>(self: &mut Delayed<K, T>)
 
 /// Deletes a setting with no proposal and records its end; cancel a proposal first.
@@ -1549,26 +1548,32 @@ public fun destroy<K: copy + drop + store, T: copy + drop + store>(self: Delayed
 /// The proposed value, or the proposed change for an action slot.
 public fun proposal_value<T: copy + drop + store>(self: &Proposal<T>): T
 
-/// The notice in force once the proposal applies.
+/// The delay in force once the proposal applies.
 public fun proposal_delay_ms<T: copy + drop + store>(self: &Proposal<T>): u64
 
 /// The Unix millisecond time from which the proposal can apply.
-public fun ready_at_ms<T: copy + drop + store>(self: &Proposal<T>): u64
+public fun proposal_ready_at_ms<T: copy + drop + store>(self: &Proposal<T>): u64
 
-/// The notice waited, or the proposed next notice.
-public fun notice_delay_ms(self: &Notice): u64
+/// The proposed next delay.
+public fun pending_delay_ms(self: &PendingDelay): u64
+
+/// The Unix millisecond time from which the proposed delay can apply.
+public fun pending_delay_ready_at_ms(self: &PendingDelay): u64
+
+/// The applied delay the change waits, as its Scheduled event reported.
+public fun deadline_delay_ms(self: &Deadline): u64
 
 /// The Unix millisecond time from which the change can apply.
-public fun notice_ready_at_ms(self: &Notice): u64
+public fun deadline_ready_at_ms(self: &Deadline): u64
 
 /// The ID of the object that stores this setting.
-public fun owner<K: copy + drop + store, T: copy + drop + store>(self: &Delayed<K, T>): ID
+public fun parent<K: copy + drop + store, T: copy + drop + store>(self: &Delayed<K, T>): ID
 
-/// The owner-defined key of this setting.
+/// The module-defined key of this setting.
 public fun key<K: copy + drop + store, T: copy + drop + store>(self: &Delayed<K, T>): K
 
 /// Whether `apply` would succeed now: a proposal is pending, its `ready_at_ms` has passed, and
-/// its notice still fits in a Unix millisecond timestamp.
+/// its delay still fits in a Unix millisecond timestamp.
 public fun is_ready<K: copy + drop + store, T: copy + drop + store>(
     self: &Delayed<K, T>,
     clock: &Clock,
@@ -1578,17 +1583,17 @@ public fun is_ready<K: copy + drop + store, T: copy + drop + store>(
 #### Events
 
 ```move
-/// A setting was created with its first applied value and notice.
+/// A setting was created with its first applied value and delay.
 public struct DelayedCreated<K: copy + drop + store, T: copy + drop + store> has copy, drop {
-    owner: ID,
+    parent: ID,
     key: K,
     value: T,
     delay_ms: u64,
 }
 
-/// A replacement value and next notice were proposed, ready from `ready_at_ms`.
+/// A replacement value and next delay were proposed, ready from `ready_at_ms`.
 public struct DelayedScheduled<K: copy + drop + store, T: copy + drop + store> has copy, drop {
-    owner: ID,
+    parent: ID,
     key: K,
     value: T,
     delay_ms: u64,
@@ -1597,16 +1602,16 @@ public struct DelayedScheduled<K: copy + drop + store, T: copy + drop + store> h
 
 /// A proposal was discarded, by cancellation or by a replacing schedule.
 public struct DelayedCancelled<K: copy + drop + store, T: copy + drop + store> has copy, drop {
-    owner: ID,
+    parent: ID,
     key: K,
     value: T,
     delay_ms: u64,
     ready_at_ms: u64,
 }
 
-/// A ready proposal became the applied value and notice.
+/// A ready proposal became the applied value and delay.
 public struct DelayedApplied<K: copy + drop + store, T: copy + drop + store> has copy, drop {
-    owner: ID,
+    parent: ID,
     key: K,
     previous_value: T,
     value: T,
@@ -1615,27 +1620,27 @@ public struct DelayedApplied<K: copy + drop + store, T: copy + drop + store> has
 
 /// A setting was deleted with nothing pending.
 public struct DelayedDestroyed<K: copy + drop + store, phantom T: copy + drop + store> has copy, drop {
-    owner: ID,
+    parent: ID,
     key: K,
 }
 ```
 
 #### Constants
 
-- `MAX_DELAY_MS: u64 = 30 * 24 * 60 * 60 * 1_000`: The longest notice any delayed value, action, set or map accepts: 30 days.
+- `MAX_DELAY_MS: u64 = 30 * 24 * 60 * 60 * 1_000`: The longest delay any delayed value, action, set or map accepts: 30 days.
 
 ### `blast_admin::delayed_action`
 
-One-shot actions, such as an upgrade or a capability reassignment, that run only after their slot's applied notice. The slot also governs its own notice. See `delayed` for the rules every delayed type shares.
+One-shot actions, such as an upgrade or a capability reassignment, that run only after their slot's applied delay. The slot also governs its own delay. See `delayed` for the rules every delayed type shares.
 
-Source: https://github.com/interest-protocol/blast-v2-contracts/blob/6c808227837a2e80dba0e112b71265a27c871d28/sui/admin/sources/delayed/delayed_action.move
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/governance/admin/sources/delayed/delayed_action.move
 
 #### Types
 
 ```move
-/// An applied notice and at most one proposed one-shot action or notice change.
+/// An applied delay and at most one proposed one-shot action or delay change.
 public struct DelayedAction<K: copy + drop + store, A: copy + drop + store> has store {
-    owner: ID,
+    parent: ID,
     key: K,
     delay_ms: u64,
     pending: Option<delayed::Proposal<Change<A>>>,
@@ -1643,9 +1648,9 @@ public struct DelayedAction<K: copy + drop + store, A: copy + drop + store> has 
 
 /// What a proposal does once applied.
 public enum Change<A: copy + drop + store> has copy, drop, store {
-    /// Hands the owner its action; the notice stays as applied.
+    /// Hands the embedding module its action; the delay stays as applied.
     Action(A),
-    /// Changes only the notice, to the proposal's `delay_ms`.
+    /// Changes only the delay, to the proposal's `delay_ms`.
     Delay,
 }
 ```
@@ -1653,126 +1658,126 @@ public enum Change<A: copy + drop + store> has copy, drop, store {
 #### Functions
 
 ```move
-/// An action slot with nothing proposed; every action waits the applied notice.
+/// An action slot with nothing proposed; every action waits the applied delay.
 public fun new<K: copy + drop + store, A: copy + drop + store>(
     key: K,
-    owner: &UID,
+    parent: &UID,
     delay_ms: u64,
 ): DelayedAction<K, A>
 
-/// The applied notice in milliseconds.
+/// The applied delay in milliseconds.
 public fun delay_ms<K: copy + drop + store, A: copy + drop + store>(self: &DelayedAction<K, A>): u64
 
-/// True when every action still to come waits a nonzero notice: the applied notice is nonzero
+/// True when every action still to come waits a nonzero delay: the applied delay is nonzero
 /// and no proposal would set it to zero.
 public fun is_guarded<K: copy + drop + store, A: copy + drop + store>(
     self: &DelayedAction<K, A>,
 ): bool
 
-/// The proposed action or notice change, if any.
+/// The proposed action or delay change, if any.
 public fun pending<K: copy + drop + store, A: copy + drop + store>(
     self: &DelayedAction<K, A>,
 ): Option<delayed::Proposal<Change<A>>>
 
-/// Proposes `action`, ready after the applied notice, and returns when. A replaced
-/// proposal is cancelled and the full applied notice restarts.
+/// Proposes `action`, ready after the applied delay, and returns when. A replaced
+/// proposal is cancelled and the full applied delay restarts.
 public fun schedule<K: copy + drop + store, A: copy + drop + store>(
     self: &mut DelayedAction<K, A>,
     action: A,
     clock: &Clock,
 ): u64
 
-/// Proposes only a new notice, ready after the applied one, replacing any proposed action.
+/// Proposes only a new delay, ready after the applied one, replacing any proposed action.
 public fun schedule_delay<K: copy + drop + store, A: copy + drop + store>(
     self: &mut DelayedAction<K, A>,
     delay_ms: u64,
     clock: &Clock,
 ): u64
 
-/// Consumes the ready proposed action and returns it for the owner to perform.
-/// Aborts when the proposal is a notice change.
+/// Consumes the ready proposed action and returns it for the embedding module to perform.
+/// Aborts when the proposal is a delay change.
 public fun take_action<K: copy + drop + store, A: copy + drop + store>(
     self: &mut DelayedAction<K, A>,
     clock: &Clock,
 ): A
 
-/// Applies the ready proposed notice. Aborts when the proposal is an action.
+/// Applies the ready proposed delay. Aborts when the proposal is an action.
 public fun apply_delay<K: copy + drop + store, A: copy + drop + store>(
     self: &mut DelayedAction<K, A>,
     clock: &Clock,
 )
 
-/// Discards the proposal, even a ready one, leaving the applied notice.
+/// Discards the proposal, even a ready one, leaving the applied delay.
 public fun cancel<K: copy + drop + store, A: copy + drop + store>(self: &mut DelayedAction<K, A>)
 
 /// Deletes an action slot with no proposal and records its end; cancel a proposal first.
 public fun destroy<K: copy + drop + store, A: copy + drop + store>(self: DelayedAction<K, A>)
 
-/// The proposed action, or none for a notice change.
+/// The proposed action, or none for a delay change.
 public fun action<A: copy + drop + store>(self: &Change<A>): Option<A>
 
-/// The proposed action, or none when nothing or a notice change is pending.
+/// The proposed action, or none when nothing or a delay change is pending.
 public fun pending_action<K: copy + drop + store, A: copy + drop + store>(
     self: &DelayedAction<K, A>,
 ): Option<A>
 
-/// The proposed next notice and when it becomes ready, or none when nothing or an action is
+/// The proposed next delay and when it becomes ready, or none when nothing or an action is
 /// pending.
 public fun pending_delay<K: copy + drop + store, A: copy + drop + store>(
     self: &DelayedAction<K, A>,
-): Option<delayed::Notice>
+): Option<delayed::PendingDelay>
 
-/// Whether the pending proposal, an action or a notice change, would apply now.
+/// Whether the pending proposal, an action or a delay change, would apply now.
 public fun is_ready<K: copy + drop + store, A: copy + drop + store>(
     self: &DelayedAction<K, A>,
     clock: &Clock,
 ): bool
 
-/// Whether a pending notice change would apply now.
+/// Whether a pending delay change would apply now.
 public fun is_delay_ready<K: copy + drop + store, A: copy + drop + store>(
     self: &DelayedAction<K, A>,
     clock: &Clock,
 ): bool
 
 /// The ID of the object that stores this action slot.
-public fun owner<K: copy + drop + store, A: copy + drop + store>(self: &DelayedAction<K, A>): ID
+public fun parent<K: copy + drop + store, A: copy + drop + store>(self: &DelayedAction<K, A>): ID
 
-/// The owner-defined key of this action slot.
+/// The module-defined key of this action slot.
 public fun key<K: copy + drop + store, A: copy + drop + store>(self: &DelayedAction<K, A>): K
 ```
 
 #### Events
 
 ```move
-/// An action slot was created with its first applied notice.
+/// An action slot was created with its first applied delay.
 public struct ActionCreated<K: copy + drop + store, phantom A: copy + drop + store> has copy, drop {
-    owner: ID,
+    parent: ID,
     key: K,
     delay_ms: u64,
 }
 
-/// An action or notice change was proposed, ready from `ready_at_ms`; `delay_ms` is the
-/// notice in force once it applies.
+/// An action or delay change was proposed, ready from `ready_at_ms`; `delay_ms` is the
+/// delay in force once it applies.
 public struct ActionScheduled<K: copy + drop + store, A: copy + drop + store> has copy, drop {
-    owner: ID,
+    parent: ID,
     key: K,
     change: Change<A>,
     delay_ms: u64,
     ready_at_ms: u64,
 }
 
-/// A proposed action or notice change was discarded, by cancellation or replacement.
+/// A proposed action or delay change was discarded, by cancellation or replacement.
 public struct ActionCancelled<K: copy + drop + store, A: copy + drop + store> has copy, drop {
-    owner: ID,
+    parent: ID,
     key: K,
     change: Change<A>,
     delay_ms: u64,
     ready_at_ms: u64,
 }
 
-/// A ready action was handed to its owner, or a notice change applied.
+/// A ready action was handed to its embedding module, or a delay change applied.
 public struct ActionApplied<K: copy + drop + store, A: copy + drop + store> has copy, drop {
-    owner: ID,
+    parent: ID,
     key: K,
     change: Change<A>,
     delay_ms: u64,
@@ -1780,36 +1785,36 @@ public struct ActionApplied<K: copy + drop + store, A: copy + drop + store> has 
 
 /// An action slot was deleted with nothing pending.
 public struct ActionDestroyed<K: copy + drop + store, phantom A: copy + drop + store> has copy, drop {
-    owner: ID,
+    parent: ID,
     key: K,
 }
 ```
 
 ### `blast_admin::delayed_map`
 
-Keyed values under one shared notice, such as per-coin overrides. Every entry change, setting or clearing, waits the notice applied when it was scheduled, and its deadline is fixed then; a later notice change never moves it. See `delayed` for the shared rules.
+Keyed values under one shared delay, such as per-coin overrides. Every entry change, setting or clearing, waits the delay applied when it was scheduled, and its deadline is fixed then; a later delay change never moves it. See `delayed` for the shared rules.
 
-Source: https://github.com/interest-protocol/blast-v2-contracts/blob/6c808227837a2e80dba0e112b71265a27c871d28/sui/admin/sources/delayed/delayed_map.move
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/governance/admin/sources/delayed/delayed_map.move
 
 #### Types
 
 ```move
-/// Applied values by entry, one applied notice, at most one pending change per entry, and at
-/// most one proposed notice. Values live in a Table, so reads cost one entry and the map
+/// Applied values by entry, one applied delay, at most one pending change per entry, and at
+/// most one proposed delay. Values live in a Table, so reads cost one entry and the map
 /// grows without bound; pending changes are few and live inline.
 public struct DelayedMap<K: copy + drop + store, E: copy + drop + store, V: copy + drop + store> has store {
-    owner: ID,
+    parent: ID,
     key: K,
     entries: Table<E, V>,
     delay_ms: u64,
     pending: VecMap<E, EntryProposal<V>>,
-    pending_delay: Option<delayed::Notice>,
+    pending_delay: Option<delayed::PendingDelay>,
 }
 
-/// A proposed entry value, or none to clear the entry, and the notice it waits.
+/// A proposed entry value, or none to clear the entry, and its fixed deadline.
 public struct EntryProposal<V: copy + drop + store> has copy, drop, store {
     value: Option<V>,
-    notice: delayed::Notice,
+    deadline: delayed::Deadline,
 }
 
 /// What a map proposal does once applied.
@@ -1819,7 +1824,7 @@ public enum MapChange<E: copy + drop + store, V: copy + drop + store> has copy, 
         entry: E,
         value: Option<V>,
     },
-    /// Changes the notice for later entry changes.
+    /// Changes the delay for later entry changes.
     Delay,
 }
 ```
@@ -1827,10 +1832,10 @@ public enum MapChange<E: copy + drop + store, V: copy + drop + store> has copy, 
 #### Functions
 
 ```move
-/// An empty map; every entry change waits the applied notice.
+/// An empty map; every entry change waits the applied delay.
 public fun new<K: copy + drop + store, E: copy + drop + store, V: copy + drop + store>(
     key: K,
-    owner: &UID,
+    parent: &UID,
     delay_ms: u64,
     ctx: &mut TxContext,
 ): DelayedMap<K, E, V>
@@ -1841,7 +1846,7 @@ public fun value<K: copy + drop + store, E: copy + drop + store, V: copy + drop 
     entry: &E,
 ): Option<V>
 
-/// The applied notice for entry changes, in milliseconds.
+/// The applied delay for entry changes, in milliseconds.
 public fun delay_ms<K: copy + drop + store, E: copy + drop + store, V: copy + drop + store>(
     self: &DelayedMap<K, E, V>,
 ): u64
@@ -1852,13 +1857,13 @@ public fun pending<K: copy + drop + store, E: copy + drop + store, V: copy + dro
     entry: &E,
 ): Option<EntryProposal<V>>
 
-/// The proposed next notice, if any.
+/// The proposed next delay, if any.
 public fun pending_delay<K: copy + drop + store, E: copy + drop + store, V: copy + drop + store>(
     self: &DelayedMap<K, E, V>,
-): Option<delayed::Notice>
+): Option<delayed::PendingDelay>
 
-/// Proposes setting `entry` to `value` (none clears it) after the applied notice, and
-/// returns when. A replaced change is cancelled and the full notice restarts. Aborts when
+/// Proposes setting `entry` to `value` (none clears it) after the applied delay, and
+/// returns when. A replaced change is cancelled and the full delay restarts. Aborts when
 /// `value` is already the applied value.
 public fun schedule<K: copy + drop + store, E: copy + drop + store, V: copy + drop + store>(
     self: &mut DelayedMap<K, E, V>,
@@ -1880,7 +1885,7 @@ public fun cancel<K: copy + drop + store, E: copy + drop + store, V: copy + drop
     entry: E,
 )
 
-/// Proposes only a new notice, ready after the applied one, and returns when. Pending
+/// Proposes only a new delay, ready after the applied one, and returns when. Pending
 /// entry changes keep their deadlines.
 public fun schedule_delay<K: copy + drop + store, E: copy + drop + store, V: copy + drop + store>(
     self: &mut DelayedMap<K, E, V>,
@@ -1888,18 +1893,18 @@ public fun schedule_delay<K: copy + drop + store, E: copy + drop + store, V: cop
     clock: &Clock,
 ): u64
 
-/// Applies the ready proposed notice to later entry changes.
+/// Applies the ready proposed delay to later entry changes.
 public fun apply_delay<K: copy + drop + store, E: copy + drop + store, V: copy + drop + store>(
     self: &mut DelayedMap<K, E, V>,
     clock: &Clock,
 )
 
-/// Discards the proposed notice, even a ready one.
+/// Discards the proposed delay, even a ready one.
 public fun cancel_delay<K: copy + drop + store, E: copy + drop + store, V: copy + drop + store>(
     self: &mut DelayedMap<K, E, V>,
 )
 
-/// Deletes a map with no pending entry or notice change and records its end, which also
+/// Deletes a map with no pending entry or delay change and records its end, which also
 /// ends every remaining entry.
 public fun destroy<K: copy + drop + store, E: copy + drop + store, V: copy + drop + store>(
     self: DelayedMap<K, E, V>,
@@ -1908,8 +1913,10 @@ public fun destroy<K: copy + drop + store, E: copy + drop + store, V: copy + dro
 /// The proposed value, or none when the change clears the entry.
 public fun entry_proposal_value<V: copy + drop + store>(self: &EntryProposal<V>): Option<V>
 
-/// The notice the change waits and when it becomes ready.
-public fun entry_proposal_notice<V: copy + drop + store>(self: &EntryProposal<V>): delayed::Notice
+/// The deadline the change waits.
+public fun entry_proposal_deadline<V: copy + drop + store>(
+    self: &EntryProposal<V>,
+): delayed::Deadline
 
 /// Whether `entry` has a pending change.
 public fun is_pending<K: copy + drop + store, E: copy + drop + store, V: copy + drop + store>(
@@ -1930,18 +1937,18 @@ public fun is_ready<K: copy + drop + store, E: copy + drop + store, V: copy + dr
     clock: &Clock,
 ): bool
 
-/// Whether a pending notice change would apply now.
+/// Whether a pending delay change would apply now.
 public fun is_delay_ready<K: copy + drop + store, E: copy + drop + store, V: copy + drop + store>(
     self: &DelayedMap<K, E, V>,
     clock: &Clock,
 ): bool
 
 /// The ID of the object that stores this map.
-public fun owner<K: copy + drop + store, E: copy + drop + store, V: copy + drop + store>(
+public fun parent<K: copy + drop + store, E: copy + drop + store, V: copy + drop + store>(
     self: &DelayedMap<K, E, V>,
 ): ID
 
-/// The owner-defined key of this map.
+/// The module-defined key of this map.
 public fun key<K: copy + drop + store, E: copy + drop + store, V: copy + drop + store>(
     self: &DelayedMap<K, E, V>,
 ): K
@@ -1953,7 +1960,7 @@ public fun contains<K: copy + drop + store, E: copy + drop + store, V: copy + dr
 ): bool
 
 /// How many entries have an applied value.
-public fun entry_count<K: copy + drop + store, E: copy + drop + store, V: copy + drop + store>(
+public fun length<K: copy + drop + store, E: copy + drop + store, V: copy + drop + store>(
     self: &DelayedMap<K, E, V>,
 ): u64
 
@@ -1962,37 +1969,38 @@ public fun pending_count<K: copy + drop + store, E: copy + drop + store, V: copy
     self: &DelayedMap<K, E, V>,
 ): u64
 
-/// True when every change still to come waits a nonzero notice: the applied notice is nonzero,
+/// True when every change still to come waits a nonzero delay: the applied delay is nonzero,
 /// no proposal would set it to zero, and no entry change scheduled earlier is pending.
 public fun is_guarded<K: copy + drop + store, E: copy + drop + store, V: copy + drop + store>(
     self: &DelayedMap<K, E, V>,
 ): bool
 
-/// The entry a change touches, or none for a notice change.
+/// The entry a change touches, or none for a delay change.
 public fun changed_entry<E: copy + drop + store, V: copy + drop + store>(
     self: &MapChange<E, V>,
 ): Option<E>
 
-/// The value an entry change proposes (none clears), or none for a notice change.
+/// The value an entry change proposes, whose inner none clears the entry, or none for a delay
+/// change.
 public fun changed_value<E: copy + drop + store, V: copy + drop + store>(
     self: &MapChange<E, V>,
-): Option<V>
+): Option<Option<V>>
 ```
 
 #### Events
 
 ```move
-/// A map was created empty with its first applied notice.
+/// A map was created empty with its first applied delay.
 public struct MapCreated<K: copy + drop + store, phantom E: copy + drop + store, phantom V: copy + drop + store> has copy, drop {
-    owner: ID,
+    parent: ID,
     key: K,
     delay_ms: u64,
 }
 
-/// An entry change or notice change was proposed, ready from `ready_at_ms`. `delay_ms` is
-/// the notice an entry change waits, or the proposed next notice.
+/// An entry change or delay change was proposed, ready from `ready_at_ms`. `delay_ms` is
+/// the delay an entry change waits, or the proposed next delay.
 public struct MapScheduled<K: copy + drop + store, E: copy + drop + store, V: copy + drop + store> has copy, drop {
-    owner: ID,
+    parent: ID,
     key: K,
     change: MapChange<E, V>,
     delay_ms: u64,
@@ -2002,17 +2010,17 @@ public struct MapScheduled<K: copy + drop + store, E: copy + drop + store, V: co
 /// A proposed change was discarded, by cancellation or replacement; its fields match its
 /// `MapScheduled`.
 public struct MapCancelled<K: copy + drop + store, E: copy + drop + store, V: copy + drop + store> has copy, drop {
-    owner: ID,
+    parent: ID,
     key: K,
     change: MapChange<E, V>,
     delay_ms: u64,
     ready_at_ms: u64,
 }
 
-/// An entry was set or cleared, or a notice change applied; `delay_ms` matches its
+/// An entry was set or cleared, or a delay change applied; `delay_ms` matches its
 /// `MapScheduled`.
 public struct MapApplied<K: copy + drop + store, E: copy + drop + store, V: copy + drop + store> has copy, drop {
-    owner: ID,
+    parent: ID,
     key: K,
     change: MapChange<E, V>,
     delay_ms: u64,
@@ -2020,36 +2028,36 @@ public struct MapApplied<K: copy + drop + store, E: copy + drop + store, V: copy
 
 /// A map was deleted with nothing pending, ending every remaining entry.
 public struct MapDestroyed<K: copy + drop + store, phantom E: copy + drop + store, phantom V: copy + drop + store> has copy, drop {
-    owner: ID,
+    parent: ID,
     key: K,
 }
 ```
 
 ### `blast_admin::delayed_set`
 
-Allowlists whose members join only after the applied notice and leave at once. See `delayed` for the rules every delayed type shares.
+Allowlists whose members join only after the applied delay and leave at once. See `delayed` for the rules every delayed type shares.
 
-Source: https://github.com/interest-protocol/blast-v2-contracts/blob/6c808227837a2e80dba0e112b71265a27c871d28/sui/admin/sources/delayed/delayed_set.move
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/governance/admin/sources/delayed/delayed_set.move
 
 #### Types
 
 ```move
-/// Admitted members, one applied notice for new admissions, pending admissions with fixed
-/// deadlines, and at most one proposed notice. A notice change never moves a deadline.
+/// Admitted members, one applied delay for new admissions, pending admissions with fixed
+/// deadlines, and at most one proposed delay. A delay change never moves a deadline.
 public struct DelayedSet<K: copy + drop + store, E: copy + drop + store> has store {
-    owner: ID,
+    parent: ID,
     key: K,
     members: VecSet<E>,
     delay_ms: u64,
-    admissions: VecMap<E, delayed::Notice>,
-    pending_delay: Option<delayed::Notice>,
+    admissions: VecMap<E, delayed::Deadline>,
+    pending_delay: Option<delayed::PendingDelay>,
 }
 
 /// What a set proposal does once applied.
 public enum SetChange<E: copy + drop + store> has copy, drop, store {
     /// Admits the member.
     Admission(E),
-    /// Changes the notice for later admissions.
+    /// Changes the delay for later admissions.
     Delay,
 }
 ```
@@ -2057,10 +2065,10 @@ public enum SetChange<E: copy + drop + store> has copy, drop, store {
 #### Functions
 
 ```move
-/// An empty set; every admission waits the applied notice.
+/// An empty set; every admission waits the applied delay.
 public fun new<K: copy + drop + store, E: copy + drop + store>(
     key: K,
-    owner: &UID,
+    parent: &UID,
     delay_ms: u64,
 ): DelayedSet<K, E>
 
@@ -2075,7 +2083,7 @@ public fun members<K: copy + drop + store, E: copy + drop + store>(
     self: &DelayedSet<K, E>,
 ): VecSet<E>
 
-/// The applied notice for new admissions, in milliseconds.
+/// The applied delay for new admissions, in milliseconds.
 public fun delay_ms<K: copy + drop + store, E: copy + drop + store>(self: &DelayedSet<K, E>): u64
 
 /// When `member`'s pending admission becomes ready, if one is pending.
@@ -2089,17 +2097,17 @@ public fun pending_count<K: copy + drop + store, E: copy + drop + store>(
     self: &DelayedSet<K, E>,
 ): u64
 
-/// True when every admission still to come waits a nonzero notice: the applied notice is
+/// True when every admission still to come waits a nonzero delay: the applied delay is
 /// nonzero, no proposal would set it to zero, and no admission scheduled earlier is pending.
 public fun is_guarded<K: copy + drop + store, E: copy + drop + store>(self: &DelayedSet<K, E>): bool
 
-/// The proposed next notice, if any.
+/// The proposed next delay, if any.
 public fun pending_delay<K: copy + drop + store, E: copy + drop + store>(
     self: &DelayedSet<K, E>,
-): Option<delayed::Notice>
+): Option<delayed::PendingDelay>
 
-/// Proposes admitting `member` after the applied notice (never a proposed one) and returns
-/// when. Rescheduling a pending member cancels its admission and restarts the notice.
+/// Proposes admitting `member` after the applied delay (never a proposed one) and returns
+/// when. Rescheduling a pending member cancels its admission and restarts the delay.
 /// Aborts when `member` is already admitted.
 public fun schedule_add<K: copy + drop + store, E: copy + drop + store>(
     self: &mut DelayedSet<K, E>,
@@ -2120,14 +2128,14 @@ public fun cancel_add<K: copy + drop + store, E: copy + drop + store>(
     member: E,
 )
 
-/// Removes `member` at once and discards its pending admission, leaving the notice.
+/// Removes `member` at once and discards its pending admission, leaving the delay.
 /// Aborts when `member` is neither admitted nor pending.
 public fun remove<K: copy + drop + store, E: copy + drop + store>(
     self: &mut DelayedSet<K, E>,
     member: E,
 )
 
-/// Proposes only a new notice, ready after the applied one, and returns when. Pending
+/// Proposes only a new delay, ready after the applied one, and returns when. Pending
 /// admissions keep their deadlines.
 public fun schedule_delay<K: copy + drop + store, E: copy + drop + store>(
     self: &mut DelayedSet<K, E>,
@@ -2135,23 +2143,21 @@ public fun schedule_delay<K: copy + drop + store, E: copy + drop + store>(
     clock: &Clock,
 ): u64
 
-/// Applies the ready proposed notice to later admissions.
+/// Applies the ready proposed delay to later admissions.
 public fun apply_delay<K: copy + drop + store, E: copy + drop + store>(
     self: &mut DelayedSet<K, E>,
     clock: &Clock,
 )
 
-/// Discards the proposed notice, even a ready one.
+/// Discards the proposed delay, even a ready one.
 public fun cancel_delay<K: copy + drop + store, E: copy + drop + store>(self: &mut DelayedSet<K, E>)
 
-/// Deletes a set with no pending admission or notice change and records its end, which
+/// Deletes a set with no pending admission or delay change and records its end, which
 /// also ends every remaining membership.
 public fun destroy<K: copy + drop + store, E: copy + drop + store>(self: DelayedSet<K, E>)
 
 /// How many members are admitted.
-public fun member_count<K: copy + drop + store, E: copy + drop + store>(
-    self: &DelayedSet<K, E>,
-): u64
+public fun length<K: copy + drop + store, E: copy + drop + store>(self: &DelayedSet<K, E>): u64
 
 /// Whether `member` has a pending admission.
 public fun is_pending<K: copy + drop + store, E: copy + drop + store>(
@@ -2166,61 +2172,61 @@ public fun is_ready<K: copy + drop + store, E: copy + drop + store>(
     clock: &Clock,
 ): bool
 
-/// Whether a pending notice change would apply now.
+/// Whether a pending delay change would apply now.
 public fun is_delay_ready<K: copy + drop + store, E: copy + drop + store>(
     self: &DelayedSet<K, E>,
     clock: &Clock,
 ): bool
 
 /// The ID of the object that stores this set.
-public fun owner<K: copy + drop + store, E: copy + drop + store>(self: &DelayedSet<K, E>): ID
+public fun parent<K: copy + drop + store, E: copy + drop + store>(self: &DelayedSet<K, E>): ID
 
-/// The owner-defined key of this set.
+/// The module-defined key of this set.
 public fun key<K: copy + drop + store, E: copy + drop + store>(self: &DelayedSet<K, E>): K
 
-/// The notice `member`'s pending admission waits and when it becomes ready, if one is pending.
-public fun admission_notice<K: copy + drop + store, E: copy + drop + store>(
+/// The deadline of `member`'s pending admission, if one is pending.
+public fun admission_deadline<K: copy + drop + store, E: copy + drop + store>(
     self: &DelayedSet<K, E>,
     member: &E,
-): Option<delayed::Notice>
+): Option<delayed::Deadline>
 
-/// The member a change admits, or none for a notice change.
+/// The member a change admits, or none for a delay change.
 public fun member<E: copy + drop + store>(self: &SetChange<E>): Option<E>
 ```
 
 #### Events
 
 ```move
-/// A set was created empty with its first applied notice.
+/// A set was created empty with its first applied delay.
 public struct SetCreated<K: copy + drop + store, phantom E: copy + drop + store> has copy, drop {
-    owner: ID,
+    parent: ID,
     key: K,
     delay_ms: u64,
 }
 
-/// An admission or notice change was proposed, ready from `ready_at_ms`. `delay_ms` is the
-/// notice an admission waits, or the proposed next notice.
+/// An admission or delay change was proposed, ready from `ready_at_ms`. `delay_ms` is the
+/// delay an admission waits, or the proposed next delay.
 public struct SetScheduled<K: copy + drop + store, E: copy + drop + store> has copy, drop {
-    owner: ID,
+    parent: ID,
     key: K,
     change: SetChange<E>,
     delay_ms: u64,
     ready_at_ms: u64,
 }
 
-/// A proposed admission or notice change was discarded, by cancellation, replacement or
+/// A proposed admission or delay change was discarded, by cancellation, replacement or
 /// removal; its fields match its `SetScheduled`.
 public struct SetCancelled<K: copy + drop + store, E: copy + drop + store> has copy, drop {
-    owner: ID,
+    parent: ID,
     key: K,
     change: SetChange<E>,
     delay_ms: u64,
     ready_at_ms: u64,
 }
 
-/// A member was admitted, or a notice change applied; `delay_ms` matches its `SetScheduled`.
+/// A member was admitted, or a delay change applied; `delay_ms` matches its `SetScheduled`.
 public struct SetApplied<K: copy + drop + store, E: copy + drop + store> has copy, drop {
-    owner: ID,
+    parent: ID,
     key: K,
     change: SetChange<E>,
     delay_ms: u64,
@@ -2228,23 +2234,23 @@ public struct SetApplied<K: copy + drop + store, E: copy + drop + store> has cop
 
 /// A member left the set at once.
 public struct MemberRemoved<K: copy + drop + store, E: copy + drop + store> has copy, drop {
-    owner: ID,
+    parent: ID,
     key: K,
     member: E,
 }
 
 /// A set was deleted with nothing pending; its remaining members leave with it.
 public struct SetDestroyed<K: copy + drop + store, phantom E: copy + drop + store> has copy, drop {
-    owner: ID,
+    parent: ID,
     key: K,
 }
 ```
 
 ### `blast_admin::package_admin`
 
-One package's sealed Publisher and UpgradeCap, its delayed upgrade decisions, and the role-gated pause controls of its `PackageVersion`, typed by the package's one-time witness.  The native capabilities never leave the shared `PackageAdmin`: only the package itself, with its package witness, borrows the Publisher by immutable reference, nothing lends the UpgradeCap, and the cap acts only through a scheduled upgrade or the one terminal `make_immutable`. Each role is generic over the package marker, so the ACL stores `UpgradeAdmin<A>` and `UpgradeAdmin<B>` as distinct grants and one package's administrator never reaches another's custody. This package is immutable: no consumer bytecode generation gates these calls, and a consumer whose new bytecode compiles the wrong generation can still schedule a repair.
+One package's sealed Publisher and UpgradeCap, its delayed upgrade decisions, and the role-gated pause controls of its `PackageVersion`, typed by the package's one-time witness.  The native capabilities never leave the shared `PackageAdmin`: only the package itself, with its package witness, borrows the Publisher by immutable reference, nothing lends the UpgradeCap, and the cap acts only through a scheduled upgrade or the one terminal `make_immutable`. Each role is generic over the package's OTW, so the ACL stores `UpgradeAdmin<A>` and `UpgradeAdmin<B>` as distinct grants and one package's administrator never reaches another's PackageAdmin. This package is immutable: no consumer bytecode version gates these calls, and a consumer whose new bytecode compiles the wrong version can still schedule a repair.
 
-Source: https://github.com/interest-protocol/blast-v2-contracts/blob/6c808227837a2e80dba0e112b71265a27c871d28/sui/admin/sources/package_admin.move
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/governance/admin/sources/package/package_admin.move
 
 #### Types
 
@@ -2255,226 +2261,229 @@ public enum UpgradeAction has copy, drop, store {
     MakeImmutable,
 }
 
-/// Keys the delayed lifecycle of one package's upgrade actions and their notice.
-public struct UpgradeKey<phantom PackageMarker: drop>() has copy, drop, store;
+/// Keys the delayed lifecycle of one package's upgrade actions and their delay.
+public struct UpgradeKey<phantom OTW: drop>() has copy, drop, store;
 
-/// Shared custody for one package's framework Publisher and UpgradeCap. It has no destructor:
+/// One package's shared administration, sealing its framework Publisher and UpgradeCap. It has no destructor:
 /// deleting it would release or strand the native capabilities it seals.
-public struct PackageAdmin<phantom PackageMarker: drop> has key {
+public struct PackageAdmin<phantom OTW: drop> has key {
     id: UID,
     publisher: Publisher,
     /// Native upgrade authority; `none` once the package is immutable.
     upgrade_cap: Option<UpgradeCap>,
-    upgrade: delayed_action::DelayedAction<UpgradeKey<PackageMarker>, UpgradeAction>,
+    upgrade: delayed_action::DelayedAction<UpgradeKey<OTW>, UpgradeAction>,
 }
 
-/// Schedules and executes the package's upgrades and immutability, and changes their notice.
-public struct UpgradeAdmin<phantom PackageMarker> {}
+/// Schedules and executes the package's upgrades and immutability, and changes their delay.
+public struct UpgradeAdmin<phantom OTW> {}
 
 /// May set the package's pause bits immediately, never clear them.
-public struct PauseAdmin<phantom PackageMarker> {}
+public struct PauseAdmin<phantom OTW> {}
 
 /// May clear the package's pause bits, only through the package's own unpause.
-public struct UnpauseAdmin<phantom PackageMarker> {}
+public struct UnpauseAdmin<phantom OTW> {}
 
-/// May cancel the package's scheduled upgrade action or notice change.
-public struct CancelAdmin<phantom PackageMarker> {}
+/// May cancel the package's scheduled upgrade action or delay change.
+public struct CancelAdmin<phantom OTW> {}
 ```
 
 #### Functions
 
 ```move
-/// Consumes the unique publication proof, seals the never-upgraded native cap of the marker's
+/// Consumes the unique publication proof, seals the never-upgraded native cap of the OTW's
 /// package beside its Publisher, and shares both the administration and the package version.
 /// The version starts with every defined bit paused; an `UnpauseAdmin` releases it through the
 /// package's own unpause.
-public fun wrap<PackageMarker: drop>(
-    publication: package_version::Publication<PackageMarker>,
+public fun wrap<OTW: drop>(
+    publication: package_version::Publication<OTW>,
     upgrade_cap: UpgradeCap,
     ctx: &mut TxContext,
 )
 
-/// Schedules one exact code digest under the applied notice, replacing any previous action.
-/// Changing the notice requires a separate notice-only proposal. Aborts once the package is
+/// Schedules one exact code digest under the applied delay, replacing any previous action.
+/// Changing the delay requires a separate delay-only proposal. Aborts once the package is
 /// immutable.
-public fun schedule_upgrade<PackageMarker: drop>(
-    self: &mut PackageAdmin<PackageMarker>,
-    _: &blast_acl::AdminWitness<UpgradeAdmin<PackageMarker>>,
+public fun schedule_upgrade<OTW: drop>(
+    self: &mut PackageAdmin<OTW>,
+    _: &blast_acl::AdminWitness<UpgradeAdmin<OTW>>,
     digest: vector<u8>,
     clock: &Clock,
 )
 
-/// Schedules the irreversible destruction of upgrade authority under the applied notice.
+/// Schedules the irreversible destruction of upgrade authority under the applied delay.
 /// Aborts once the package is immutable.
-public fun schedule_make_immutable<PackageMarker: drop>(
-    self: &mut PackageAdmin<PackageMarker>,
-    _: &blast_acl::AdminWitness<UpgradeAdmin<PackageMarker>>,
+public fun schedule_make_immutable<OTW: drop>(
+    self: &mut PackageAdmin<OTW>,
+    _: &blast_acl::AdminWitness<UpgradeAdmin<OTW>>,
     clock: &Clock,
 )
 
-/// Cancels the scheduled action or notice change, even after its execution threshold.
-public fun cancel_upgrade_action<PackageMarker: drop>(
-    self: &mut PackageAdmin<PackageMarker>,
-    _: &blast_acl::AdminWitness<CancelAdmin<PackageMarker>>,
+/// Cancels the scheduled action or delay change, even after its execution threshold.
+public fun cancel_upgrade_action<OTW: drop>(
+    self: &mut PackageAdmin<OTW>,
+    _: &blast_acl::AdminWitness<CancelAdmin<OTW>>,
 )
 
 /// Consumes the ready upgrade action for exactly `digest` and authorizes it under the sealed
 /// cap's current policy. A scheduled upgrade implies the cap: scheduling requires it, and only a
 /// consumed immutability action removes it.
-public fun authorize_upgrade<PackageMarker: drop>(
-    self: &mut PackageAdmin<PackageMarker>,
-    _: &blast_acl::AdminWitness<UpgradeAdmin<PackageMarker>>,
+public fun authorize_upgrade<OTW: drop>(
+    self: &mut PackageAdmin<OTW>,
+    _: &blast_acl::AdminWitness<UpgradeAdmin<OTW>>,
     digest: vector<u8>,
     clock: &Clock,
 ): UpgradeTicket
 
 /// Commits the native receipt into the sealed cap that authorized it, then advances the package
-/// version by one generation in the same call. The new bytecode must compile that generation; bytecode
+/// version by one in the same call. The new bytecode must compile that version; bytecode
 /// compiling any other fails every `assert_current`, while these calls stay available to schedule
 /// a repair.
-public fun commit_upgrade_and_advance<PackageMarker: drop>(
-    self: &mut PackageAdmin<PackageMarker>,
-    _: &blast_acl::AdminWitness<UpgradeAdmin<PackageMarker>>,
-    package_version: &mut package_version::PackageVersion<PackageMarker>,
+public fun commit_upgrade_and_advance<OTW: drop>(
+    self: &mut PackageAdmin<OTW>,
+    _: &blast_acl::AdminWitness<UpgradeAdmin<OTW>>,
+    package_version: &mut package_version::PackageVersion<OTW>,
     receipt: UpgradeReceipt,
 )
 
 /// Consumes the ready immutability action and irreversibly destroys native upgrade authority;
 /// the Publisher stays sealed. This is the one terminal upgrade action: the cap's policy is
-/// never narrowed in between.
-public fun make_immutable<PackageMarker: drop>(
-    self: &mut PackageAdmin<PackageMarker>,
-    _: &blast_acl::AdminWitness<UpgradeAdmin<PackageMarker>>,
+/// never narrowed in between. The package itself must pass its package witness (aborts with
+/// `EWrongPackageWitness` otherwise), so only its own code can end its upgrades. Each package
+/// that may end its upgrades wraps this call in a thin function that first runs
+/// `package_version.assert_current(constants::version!())`, so only its live bytecode can.
+public fun make_immutable<OTW: drop, PackageWitness: drop>(
+    self: &mut PackageAdmin<OTW>,
+    _: &blast_acl::AdminWitness<UpgradeAdmin<OTW>>,
+    _: PackageWitness,
+    package_version: &package_version::PackageVersion<OTW>,
     clock: &Clock,
 )
 
-/// Proposes only a new upgrade notice, ready after the applied one; replaces any pending
+/// Proposes only a new upgrade delay, ready after the applied one; replaces any pending
 /// upgrade or immutability action.
-public fun schedule_upgrade_delay<PackageMarker: drop>(
-    self: &mut PackageAdmin<PackageMarker>,
-    _: &blast_acl::AdminWitness<UpgradeAdmin<PackageMarker>>,
+public fun schedule_upgrade_delay<OTW: drop>(
+    self: &mut PackageAdmin<OTW>,
+    _: &blast_acl::AdminWitness<UpgradeAdmin<OTW>>,
     delay_ms: u64,
     clock: &Clock,
 )
 
-/// Applies a ready notice-only proposal; anyone may call it, and it cannot consume an action.
-public fun apply_upgrade_delay<PackageMarker: drop>(
-    self: &mut PackageAdmin<PackageMarker>,
-    clock: &Clock,
-)
+/// Applies a ready delay-only proposal; anyone may call it, and it cannot consume an action.
+public fun apply_upgrade_delay<OTW: drop>(self: &mut PackageAdmin<OTW>, clock: &Clock)
 
 /// Sets the requested pause bits immediately.
-public fun pause<PackageMarker: drop>(
-    package_version: &mut package_version::PackageVersion<PackageMarker>,
-    _: &blast_acl::AdminWitness<PauseAdmin<PackageMarker>>,
+public fun pause<OTW: drop>(
+    package_version: &mut package_version::PackageVersion<OTW>,
+    _: &blast_acl::AdminWitness<PauseAdmin<OTW>>,
     bits: u8,
 )
 
 /// Clears the requested pause bits for the package's own unpause, which first checks its own
-/// configuration notices and then passes a value of its package witness, the type pinned at
-/// publication. Aborts while any upgrade notice still to come could be zero. Only the package's
+/// configuration delays and then passes a value of its package witness, the type pinned at
+/// publication. Aborts while any upgrade delay still to come could be zero. Only the package's
 /// own code constructs that type, so a role alone cannot skip its checks.
-public fun clear_pause_bits<PackageMarker: drop, PackageWitness: drop>(
-    self: &PackageAdmin<PackageMarker>,
-    _: &blast_acl::AdminWitness<UnpauseAdmin<PackageMarker>>,
+public fun clear_pause_bits<OTW: drop, PackageWitness: drop>(
+    self: &PackageAdmin<OTW>,
+    _: &blast_acl::AdminWitness<UnpauseAdmin<OTW>>,
     _: PackageWitness,
-    package_version: &mut package_version::PackageVersion<PackageMarker>,
+    package_version: &mut package_version::PackageVersion<OTW>,
     bits: u8,
 )
 
-/// Borrows the sealed Publisher for package `PackageMarker` itself, which passes a value of its
+/// Borrows the sealed Publisher for package `OTW` itself, which passes a value of its
 /// package witness, the type pinned at publication, to create Display or transfer policies for
 /// its own types. The reference cannot move, mutate or burn the Publisher.
-public fun publisher<PackageMarker: drop, PackageWitness: drop>(
-    self: &PackageAdmin<PackageMarker>,
+public fun publisher<OTW: drop, PackageWitness: drop>(
+    self: &PackageAdmin<OTW>,
     _: PackageWitness,
-    package_version: &package_version::PackageVersion<PackageMarker>,
+    package_version: &package_version::PackageVersion<OTW>,
 ): &Publisher
 
-/// Borrows the sealed Publisher mutably for package `PackageMarker` itself, gated exactly like
-/// `publisher` (aborts with `EWrongPublisherWitness`), for framework calls that take
+/// Borrows the sealed Publisher mutably for package `OTW` itself, gated exactly like
+/// `publisher` (aborts with `EWrongPackageWitness`), for framework calls that take
 /// `&mut Publisher` such as `sui::display_registry::new_with_publisher`. A Publisher has no
 /// `drop`, so a mutable reference cannot overwrite it, and the pinned framework has no call that
 /// moves a value out from behind one. If a later framework adds a generic swap, only the package
-/// holding its witness could use it, and the Publisher would then leave this custody.
-public fun publisher_mut<PackageMarker: drop, PackageWitness: drop>(
-    self: &mut PackageAdmin<PackageMarker>,
+/// holding its witness could use it, and the Publisher would then leave this PackageAdmin.
+public fun publisher_mut<OTW: drop, PackageWitness: drop>(
+    self: &mut PackageAdmin<OTW>,
     _: PackageWitness,
-    package_version: &package_version::PackageVersion<PackageMarker>,
+    package_version: &package_version::PackageVersion<OTW>,
 ): &mut Publisher
 
-/// The applied upgrade notice, in milliseconds.
-public fun upgrade_delay_ms<PackageMarker: drop>(self: &PackageAdmin<PackageMarker>): u64
+/// The applied upgrade delay, in milliseconds.
+public fun upgrade_delay_ms<OTW: drop>(self: &PackageAdmin<OTW>): u64
 
-/// The pending upgrade action or notice change, if any.
-public fun pending_upgrade<PackageMarker: drop>(
-    self: &PackageAdmin<PackageMarker>,
+/// The pending upgrade action or delay change, if any.
+public fun pending_upgrade<OTW: drop>(
+    self: &PackageAdmin<OTW>,
 ): Option<delayed::Proposal<delayed_action::Change<UpgradeAction>>>
 
-/// True when every upgrade action still to come waits a nonzero notice.
-public fun is_upgrade_notice_guarded<PackageMarker: drop>(self: &PackageAdmin<PackageMarker>): bool
+/// True when every upgrade action still to come waits a nonzero delay.
+public fun is_upgrade_delay_guarded<OTW: drop>(self: &PackageAdmin<OTW>): bool
 
 /// Whether native upgrade authority remains; false once the package is immutable.
-public fun has_upgrade_cap<PackageMarker: drop>(self: &PackageAdmin<PackageMarker>): bool
+public fun has_upgrade_cap<OTW: drop>(self: &PackageAdmin<OTW>): bool
 
 /// The sealed UpgradeCap's ID, or none once the package is immutable.
-public fun upgrade_cap_id<PackageMarker: drop>(self: &PackageAdmin<PackageMarker>): Option<ID>
+public fun upgrade_cap_id<OTW: drop>(self: &PackageAdmin<OTW>): Option<ID>
 
 /// The package ID the next upgrade starts from, or none once the package is immutable.
-public fun current_package_id<PackageMarker: drop>(self: &PackageAdmin<PackageMarker>): Option<ID>
+public fun current_package_id<OTW: drop>(self: &PackageAdmin<OTW>): Option<ID>
 
 /// The native upgrade count plus one, or none once the package is immutable.
-public fun native_version<PackageMarker: drop>(self: &PackageAdmin<PackageMarker>): Option<u64>
+public fun upgrade_cap_version<OTW: drop>(self: &PackageAdmin<OTW>): Option<u64>
 
 /// The native upgrade policy, or none once the package is immutable.
-public fun upgrade_policy<PackageMarker: drop>(self: &PackageAdmin<PackageMarker>): Option<u8>
+public fun upgrade_policy<OTW: drop>(self: &PackageAdmin<OTW>): Option<u8>
 
 /// The sealed Publisher's ID.
-public fun publisher_id<PackageMarker: drop>(self: &PackageAdmin<PackageMarker>): ID
+public fun publisher_id<OTW: drop>(self: &PackageAdmin<OTW>): ID
 
 /// The digest an upgrade action approves, or none for immutability.
 public fun upgrade_digest(self: &UpgradeAction): Option<vector<u8>>
 
-/// The notice every package's upgrade actions wait from wrap until changed, in milliseconds.
+/// The delay every package's upgrade actions wait from wrap until changed, in milliseconds.
 public fun initial_upgrade_delay_ms(): u64
 ```
 
 #### Constants
 
-- `INITIAL_UPGRADE_DELAY_MS: u64 = 48 * 60 * 60 * 1_000`: The notice every upgrade or immutability action waits from publication until changed.
+- `INITIAL_UPGRADE_DELAY_MS: u64 = 48 * 60 * 60 * 1_000`: The delay every upgrade or immutability action waits from publication until changed.
 - `PACKAGE_DIGEST_LENGTH: u64 = 32`: The byte length of a package digest, the only length `schedule_upgrade` accepts.
-- `INITIAL_NATIVE_VERSION: u64 = 1`: The framework stamps a freshly published package's `UpgradeCap` with version one.
+- `INITIAL_UPGRADE_CAP_VERSION: u64 = 1`: The framework stamps a freshly published package's `UpgradeCap` with version one.
 
 ### `blast_admin::package_version`
 
-One package's publication proof, operational generation and pause bits, typed by its one-time witness.  The consumer's initializer turns its one-time witness into an owned `Publication`, which `package_admin::wrap` later converts into the shared `PackageVersion`, fully paused at generation one. The consumer compiles its own generation constant and checks it with `assert_current`; it also chooses which pause bits exist and pins its package witness, the one type whose value its own code passes to clear pause bits or to borrow its Publisher. Setting and clearing bits and advancing the generation are sealed here and reached only through `package_admin`'s role-gated calls, so no package can build a second version or move a generation by any other path.
+One package's publication proof, version and pause bits, typed by its one-time witness.  The consumer's initializer turns its one-time witness into an owned `Publication`, which `package_admin::wrap` later converts into the shared `PackageVersion`, fully paused at version one. The consumer compiles its own version constant and checks it with `assert_current`; it also chooses which pause bits exist and pins its package witness, the one type whose value its own code passes to clear pause bits or to borrow its Publisher. Setting and clearing bits and advancing the version are sealed here and reached only through `package_admin`'s role-gated calls, so no package can build a second version or move a version by any other path.
 
-Source: https://github.com/interest-protocol/blast-v2-contracts/blob/6c808227837a2e80dba0e112b71265a27c871d28/sui/admin/sources/package_version.move
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/governance/admin/sources/package/package_version.move
 
 #### Types
 
 ```move
 /// Owned publication custody; it cannot supply the `PackageVersion` that operations require. It has
 /// no destructor: it holds the package's Publisher, whose one exit is `package_admin::wrap`.
-public struct Publication<phantom PackageMarker: drop> has key {
+public struct Publication<phantom OTW: drop> has key {
     id: UID,
     publisher: Publisher,
     valid_pause_bits: u8,
     package_witness: TypeName,
 }
 
-/// The package's shared operational generation and pause bits. It has no destructor: every
+/// The package's shared version and pause bits. It has no destructor: every
 /// version-gated call of the package reads it.
-public struct PackageVersion<phantom PackageMarker: drop> has key {
+public struct PackageVersion<phantom OTW: drop> has key {
     id: UID,
     /// The bits this package defines; every pause or unpause request must fall within them.
     valid_pause_bits: u8,
     paused: u8,
     /// The package witness: the exact type, with defining IDs, whose value only the package's own
-    /// code passes to `package_admin::clear_pause_bits` and `package_admin::publisher`.
+    /// code passes to `package_admin::clear_pause_bits`, `package_admin::publisher` and
+    /// `package_admin::make_immutable`.
     package_witness: TypeName,
-    /// The only generation whose compiled bytecode passes `assert_current`.
-    generation: u64,
+    /// The only version whose compiled bytecode passes `assert_current`.
+    version: u64,
 }
 ```
 
@@ -2485,52 +2494,50 @@ public struct PackageVersion<phantom PackageMarker: drop> has key {
 /// existence inside that package's initializer; the framework rejects any other witness.
 /// `valid_pause_bits` fixes the bits the package defines, and zero defines none.
 /// `PackageWitness` pins the package witness, the one type that clears those bits and borrows the
-/// Publisher: a struct the package defines, other than its marker, that only the package's own
+/// Publisher: a struct the package defines, other than its OTW, that only the package's own
 /// code constructs and that it never returns or stores.
-public fun new_publication<PackageMarker: drop, PackageWitness: drop>(
-    otw: PackageMarker,
+public fun new_publication<OTW: drop, PackageWitness: drop>(
+    otw: OTW,
     valid_pause_bits: u8,
     ctx: &mut TxContext,
-): Publication<PackageMarker>
+): Publication<OTW>
 
 /// Transfers the publication to the transaction sender, who later wraps it with the
 /// package's `UpgradeCap`.
-public fun keep<PackageMarker: drop>(self: Publication<PackageMarker>, ctx: &mut TxContext)
+public fun keep<OTW: drop>(self: Publication<OTW>, ctx: &mut TxContext)
 
-/// Rejects callable bytecode whose compiled generation is not the active one.
-public fun assert_current<PackageMarker: drop>(
-    self: &PackageVersion<PackageMarker>,
-    compiled_generation: u64,
-)
+/// Rejects callable bytecode whose compiled version is not the active one.
+public fun assert_current<OTW: drop>(self: &PackageVersion<OTW>, compiled_version: u64)
 
 /// Rejects an operation whose pause bit is set, before its lifecycle or economic checks. This is a
 /// mask check only: a bit the package never defined is never set, so it never aborts.
-public fun assert_not_paused<PackageMarker: drop>(self: &PackageVersion<PackageMarker>, bit: u8)
+public fun assert_not_paused<OTW: drop>(self: &PackageVersion<OTW>, bit: u8)
 
-/// The active generation; only bytecode compiling it passes `assert_current`.
-public fun generation<PackageMarker: drop>(self: &PackageVersion<PackageMarker>): u64
+/// The active version; only bytecode compiling it passes `assert_current`.
+public fun version<OTW: drop>(self: &PackageVersion<OTW>): u64
 
 /// The pause bits the package defines.
-public fun valid_pause_bits<PackageMarker: drop>(self: &PackageVersion<PackageMarker>): u8
+public fun valid_pause_bits<OTW: drop>(self: &PackageVersion<OTW>): u8
 
 /// The pause bits currently set.
-public fun paused<PackageMarker: drop>(self: &PackageVersion<PackageMarker>): u8
+public fun paused<OTW: drop>(self: &PackageVersion<OTW>): u8
 
 /// True when any of `bits` is set.
-public fun is_paused<PackageMarker: drop>(self: &PackageVersion<PackageMarker>, bits: u8): bool
+public fun is_paused<OTW: drop>(self: &PackageVersion<OTW>, bits: u8): bool
 
 /// The package witness type, with defining IDs, pinned at publication.
-public fun package_witness<PackageMarker: drop>(self: &PackageVersion<PackageMarker>): TypeName
+public fun package_witness<OTW: drop>(self: &PackageVersion<OTW>): TypeName
 
 /// The pause bits the publication will define once wrapped.
-public fun publication_valid_pause_bits<PackageMarker: drop>(self: &Publication<PackageMarker>): u8
+public fun publication_valid_pause_bits<OTW: drop>(self: &Publication<OTW>): u8
+
+/// The ID of the Publisher the publication holds.
+public fun publication_publisher_id<OTW: drop>(self: &Publication<OTW>): ID
 
 /// The package witness type, with defining IDs, the publication pins.
-public fun publication_package_witness<PackageMarker: drop>(
-    self: &Publication<PackageMarker>,
-): TypeName
+public fun publication_package_witness<OTW: drop>(self: &Publication<OTW>): TypeName
 ```
 
 #### Constants
 
-- `INITIAL_GENERATION: u64 = 1`
+- `INITIAL_VERSION: u64 = 1`

@@ -69,7 +69,7 @@ settlement transitions, venue preparation, vault construction and reward-round c
 when the implementation does not use it yet. Compatible upgrades cannot add an argument to an
 existing public function. Direct Move callers forward their context; Sui injects it into PTB
 calls. An unused context adds no authorization or PTB isolation. This decision applies to the
-unpublished launch stack; published Blast SUI and Boosts are outside its scope.
+unpublished launch stack; Blast SUI and published Boosts are outside its scope.
 
 ### One implementation per money concept
 

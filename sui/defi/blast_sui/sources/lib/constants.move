@@ -5,6 +5,33 @@ module blast_sui::constants;
 
 // === Package Constants ===
 
+/// The package version this bytecode serves.
+macro public(package) fun version(): u64 {
+    1
+}
+
+/// Stops funSUI minting.
+macro public(package) fun fun_mint_pause_bit(): u8 {
+    1
+}
+
+/// Stops new blastSUI deposit requests.
+macro public(package) fun blast_request_pause_bit(): u8 {
+    2
+}
+
+/// Stops claiming activated blastSUI deposit receipts.
+macro public(package) fun blast_claim_pause_bit(): u8 {
+    4
+}
+
+/// Every supported deposit pause flag. Exits have no flag: they never pause.
+macro public(package) fun valid_pause_bits(): u8 {
+    blast_sui::constants::fun_mint_pause_bit!()
+        | blast_sui::constants::blast_request_pause_bit!()
+        | blast_sui::constants::blast_claim_pause_bit!()
+}
+
 /// Denominator for protocol rates expressed in basis points.
 macro public(package) fun basis_points_denominator(): u64 {
     10_000
@@ -18,11 +45,6 @@ macro public(package) fun default_redeem_fee_bps(): u64 {
 /// Immutable ceiling for the blastSUI redemption fee.
 macro public(package) fun max_redeem_fee_bps(): u64 {
     100
-}
-
-/// Exact byte length of a Sui package digest.
-macro public(package) fun package_digest_length(): u64 {
-    32
 }
 
 /// Smallest SUI amount the native validator set accepts as one new stake request.

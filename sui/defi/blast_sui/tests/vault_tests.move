@@ -21,12 +21,15 @@ const BOOTSTRAP: u64 = 10 * MIST_PER_SUI;
 /// USER's ordinary blast deposit: the only redeemable shares in a funded vault.
 const DEPOSIT: u64 = 8 * MIST_PER_SUI;
 
+/// The 48-hour delay the runbook sets before deposits are released.
+const DELAY_MS: u64 = 172_800_000;
+
 // === Test-Only Types ===
 
 /// Native system with two genesis validators and no vault yet; exercises `vault::create`.
 public struct CreateFixture {
     runner: TestRunner,
-    version: PackageVersion,
+    version: PackageVersion<BLAST_SUI_PACKAGE>,
     system_state: Option<SuiSystemState>,
 }
 
@@ -37,7 +40,7 @@ public struct CreateFixture {
 /// vault and system state for exactly one transaction.
 public struct VaultFixture {
     runner: TestRunner,
-    version: PackageVersion,
+    version: PackageVersion<BLAST_SUI_PACKAGE>,
     vault: Option<Vault>,
     system_state: Option<SuiSystemState>,
 }
@@ -119,6 +122,37 @@ fun create_returns_no_seed_coin_and_locks_every_bootstrap_share_at_the_zero_addr
         assert!(!has_blast_coin(USER));
         assert_eq!(f.locked_blast_sui(), BOOTSTRAP);
         assert_eq!(f.vault!().blast_supply_for_testing(), BOOTSTRAP);
+    });
+
+    fixture.end();
+}
+
+/// Both metadata caps and the display cap become children of the vault, and the fee opens
+/// at its default with a zero delay.
+#[test]
+fun create_seals_every_package_capability_and_opens_the_fee_at_a_zero_delay() {
+    let mut fixture = start_create();
+    let validator = fixture.validator();
+
+    fixture.next_tx!(OWNER, |f| {
+        let pool_id = f.system!().validator_staking_pool_id(validator);
+        f.create_vault(validator, pool_id, BOOTSTRAP, 0);
+    });
+
+    let mut created_events = event::events_by_type<DelayedCreated<RedeemFeeKey, u64>>();
+    assert_eq!(created_events.length(), 1);
+    let (parent, _, fee, delay_ms) = created_events.pop_back().delayed_created_fields();
+
+    let mut fixture = fixture.into_vault_fixture();
+
+    fixture.next_tx!(OWNER, |f| {
+        assert!(f.vault!().has_capability_for_testing<MetadataCap<FUN_SUI>>());
+        assert!(f.vault!().has_capability_for_testing<MetadataCap<BLAST_SUI>>());
+        assert!(f.vault!().has_capability_for_testing<DisplayCap<BlastSuiDepositReceipt>>());
+        assert_eq!(parent, object::id(f.vault!()));
+        assert_eq!(fee, constants::default_redeem_fee_bps!());
+        assert_eq!(delay_ms, 0);
+        assert_eq!(f.vault!().redeem_fee_delay_ms_for_testing(), 0);
     });
 
     fixture.end();
@@ -817,6 +851,42 @@ fun a_native_loss_beyond_every_buffer_freezes_the_vault_closed() {
     fixture.end();
 }
 
+/// A fun-custody top-up, which runs no refresh, restores backing so every exit reopens.
+#[test]
+fun a_fun_reserve_top_up_recovers_a_vault_frozen_by_a_native_loss() {
+    let mut fixture = start_vault();
+    fixture.mint_fun(MIST_PER_SUI / 2);
+    let loss = constants::fun_rounding_reserve_mist!() + 1;
+
+    fixture.next_tx!(USER, |f| f.vault!().simulate_native_loss_for_testing(loss));
+    fixture.next_tx!(OWNER, |f| {
+        f.vault!().top_up_fun_reserve(&f.version, coin::mint_for_testing(loss, f.ctx!()));
+
+        let (sui_in, custody) = events::collect_one<events::FunReserveToppedUp>(0)
+            .fun_reserve_topped_up_fields();
+        assert_eq!(sui_in, loss);
+        assert_custody_matches(&custody, f.vault!());
+        let (_, _, _, fun_supply, _) = custody.vault_custody_fields();
+        assert_eq!(fun_supply, MIST_PER_SUI / 2);
+    });
+
+    fixture.sync();
+    fixture.redeem_fun(MIST_PER_SUI / 2);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EZeroAmount, location = blast_sui::vault)]
+fun a_zero_fun_reserve_top_up_is_rejected() {
+    let mut fixture = start_vault();
+
+    fixture.next_tx!(OWNER, |f| {
+        f.vault!().top_up_fun_reserve(&f.version, coin::zero(f.ctx!()));
+    });
+
+    fixture.end();
+}
+
 /// One MIST above the low-water mark keeps the active fun position intact.
 #[test]
 fun buffer_above_the_low_water_mark_keeps_active_fun_stake() {
@@ -1228,14 +1298,14 @@ fun zero_donation_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_admin::errors::EOperationalVersionMismatch,
-    location = blast_admin::operational_version,
+    abort_code = blast_admin::errors::EVersionMismatch,
+    location = blast_admin::package_version,
 )]
 fun stale_package_version_rejects_donation() {
     let mut fixture = start_vault();
 
     fixture.next_tx!(USER, |f| {
-        f.version.set_for_testing(2);
+        f.version.set_version_for_testing(2);
         f.vault!().donate_sui(
             &f.version,
             f.system!(),
@@ -1499,15 +1569,7 @@ fun redeeming_every_user_share_leaves_the_locked_supply_and_its_backing() {
 #[test]
 fun locked_backing_cannot_be_drained_by_user_redemptions() {
     let mut fixture = start_vault_with_deposit();
-
-    fixture.next_tx!(OWNER, |f| {
-        let admin_witness = fee_admin();
-        f.vault!().set_redeem_fee(
-            &f.version,
-            &admin_witness,
-            0,
-        );
-    });
+    fixture.set_redeem_fee_after_delay(0);
 
     let (net, custody) = fixture.redeem_blast(DEPOSIT);
     let (_, blast_custody, _, _, blast_supply) = custody.vault_custody_fields();
@@ -1895,14 +1957,14 @@ fun one_mist_blast_redemption_cannot_burn_for_zero_sui_after_fee() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_admin::errors::EOperationalVersionMismatch,
-    location = blast_admin::operational_version,
+    abort_code = blast_admin::errors::EVersionMismatch,
+    location = blast_admin::package_version,
 )]
 fun stale_package_version_rejects_vault_mutation() {
     let mut fixture = start_vault();
 
     fixture.next_tx!(USER, |f| {
-        f.version.set_for_testing(2);
+        f.version.set_version_for_testing(2);
         f.vault!().sync(&f.version, f.system!(), f.ctx!());
     });
 
@@ -1913,23 +1975,33 @@ fun stale_package_version_rejects_vault_mutation() {
 
 /// A zero rate is the only fee-free user redemption; every other exit retains its fee.
 #[test]
-fun routine_admin_updates_the_fee_and_later_exits_use_and_retain_it() {
+fun a_fee_change_applies_after_its_delay_and_later_exits_use_and_retain_it() {
     let mut fixture = start_vault();
     fixture.mint_blast(4 * MIST_PER_SUI);
+    fixture.set_fee_delay(DELAY_MS);
 
     fixture.next_tx!(OWNER, |f| {
         assert_eq!(f.vault!().redeem_fee_bps_for_testing(), constants::default_redeem_fee_bps!());
-        let admin_witness = fee_admin();
-        f.vault!().set_redeem_fee(
+        let mut clock = clock::create_for_testing(f.ctx!());
+        f.vault!().schedule_redeem_fee(
             &f.version,
-            &admin_witness,
+            &fee_admin(),
             constants::max_redeem_fee_bps!(),
+            DELAY_MS,
+            &clock,
         );
+        // Scheduling changes nothing until the delay elapses and someone applies it.
+        assert_eq!(f.vault!().redeem_fee_bps_for_testing(), constants::default_redeem_fee_bps!());
 
-        let changed = events::collect_one<events::RedeemFeeChanged>(0);
-        let (old_fee, new_fee) = changed.redeem_fee_changed_fields();
+        clock.set_for_testing(DELAY_MS);
+        f.vault!().apply_redeem_fee(&f.version, &clock);
+        clock.destroy_for_testing();
+
+        let (parent, _, old_fee, new_fee, delay_ms) = fee_applied().delayed_applied_fields();
+        assert_eq!(parent, object::id(f.vault!()));
         assert_eq!(old_fee, constants::default_redeem_fee_bps!());
         assert_eq!(new_fee, constants::max_redeem_fee_bps!());
+        assert_eq!(delay_ms, DELAY_MS);
         assert_eq!(f.vault!().redeem_fee_bps_for_testing(), constants::max_redeem_fee_bps!());
     });
 
@@ -1950,15 +2022,8 @@ fun routine_admin_updates_the_fee_and_later_exits_use_and_retain_it() {
     assert_eq!(net, expected_net);
     assert!(blast_custody.pool_assets() >= assets_before - net);
 
-    fixture.next_tx!(OWNER, |f| {
-        let admin_witness = fee_admin();
-        f.vault!().set_redeem_fee(
-            &f.version,
-            &admin_witness,
-            0,
-        );
-        assert_eq!(f.vault!().redeem_fee_bps_for_testing(), 0);
-    });
+    fixture.set_redeem_fee_after_delay(0);
+    fixture.next_tx!(OWNER, |f| assert_eq!(f.vault!().redeem_fee_bps_for_testing(), 0));
 
     // The retained fee raised assets per share, and a zero rate charges nothing.
     let (assets_before, supply_before);
@@ -1984,29 +2049,149 @@ fun fee_above_the_immutable_maximum_is_rejected() {
     let mut fixture = start_vault();
 
     fixture.next_tx!(OWNER, |f| {
-        let admin_witness = fee_admin();
-        f.vault!().set_redeem_fee(
+        let clock = clock::create_for_testing(f.ctx!());
+        f.vault!().schedule_redeem_fee(
             &f.version,
-            &admin_witness,
+            &fee_admin(),
             constants::max_redeem_fee_bps!() + 1,
+            DELAY_MS,
+            &clock,
         );
+        clock.destroy_for_testing();
     });
 
     fixture.end();
 }
 
 #[test]
-#[expected_failure(abort_code = errors::ERedeemFeeUnchanged, location = blast_sui::vault)]
-fun unchanged_fee_is_rejected() {
+#[expected_failure(abort_code = blast_admin::errors::EUnchanged, location = blast_admin::delayed)]
+fun unchanged_fee_and_delay_are_rejected() {
     let mut fixture = start_vault();
 
     fixture.next_tx!(OWNER, |f| {
-        let admin_witness = fee_admin();
-        f.vault!().set_redeem_fee(
+        let clock = clock::create_for_testing(f.ctx!());
+        f.vault!().schedule_redeem_fee(
             &f.version,
-            &admin_witness,
+            &fee_admin(),
             constants::default_redeem_fee_bps!(),
+            0,
+            &clock,
         );
+        clock.destroy_for_testing();
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = blast_admin::errors::ENotReady, location = blast_admin::delayed)]
+fun a_fee_change_waits_the_full_applied_delay_even_toward_a_zero_delay() {
+    let mut fixture = start_vault();
+    fixture.set_fee_delay(DELAY_MS);
+
+    fixture.next_tx!(OWNER, |f| {
+        let mut clock = clock::create_for_testing(f.ctx!());
+        f.vault!().schedule_redeem_fee(
+            &f.version,
+            &fee_admin(),
+            constants::max_redeem_fee_bps!(),
+            0,
+            &clock,
+        );
+        clock.set_for_testing(DELAY_MS - 1);
+        f.vault!().apply_redeem_fee(&f.version, &clock);
+        clock.destroy_for_testing();
+    });
+
+    fixture.end();
+}
+
+/// Applying takes no role: a user with no admin witness applies a ready change.
+#[test]
+fun anyone_applies_a_ready_fee_change() {
+    let mut fixture = start_vault();
+    fixture.schedule_fee_change(constants::max_redeem_fee_bps!(), 0);
+
+    fixture.next_tx!(USER, |f| {
+        let clock = clock::create_for_testing(f.ctx!());
+        f.vault!().apply_redeem_fee(&f.version, &clock);
+        clock.destroy_for_testing();
+        assert_eq!(f.vault!().redeem_fee_bps_for_testing(), constants::max_redeem_fee_bps!());
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = blast_admin::errors::ENoPending, location = blast_admin::delayed)]
+/// Cancellation discards even a ready fee change, so it can no longer apply.
+fun cancellation_discards_a_ready_fee_change() {
+    let mut fixture = start_vault();
+    fixture.schedule_fee_change(constants::max_redeem_fee_bps!(), 0);
+
+    fixture.next_tx!(OWNER, |f| {
+        let clock = clock::create_for_testing(f.ctx!());
+        f.vault!().cancel_redeem_fee(&f.version, &cancel_admin());
+        assert_eq!(f.vault!().redeem_fee_bps_for_testing(), constants::default_redeem_fee_bps!());
+
+        f.vault!().apply_redeem_fee(&f.version, &clock);
+        clock.destroy_for_testing();
+    });
+
+    fixture.end();
+}
+
+/// A delay-only change keeps the fee, then governs the next change.
+#[test]
+fun a_delay_change_keeps_the_fee_and_governs_the_next_change() {
+    let mut fixture = start_vault();
+    fixture.set_fee_delay(DELAY_MS);
+
+    fixture.next_tx!(OWNER, |f| {
+        assert_eq!(f.vault!().redeem_fee_bps_for_testing(), constants::default_redeem_fee_bps!());
+        assert_eq!(f.vault!().redeem_fee_delay_ms_for_testing(), DELAY_MS);
+
+        let clock = clock::create_for_testing(f.ctx!());
+        f.vault!().schedule_redeem_fee(
+            &f.version,
+            &fee_admin(),
+            constants::max_redeem_fee_bps!(),
+            DELAY_MS,
+            &clock,
+        );
+        clock.destroy_for_testing();
+
+        let (parent, _, fee, delay_ms, ready_at_ms) = fee_scheduled().delayed_scheduled_fields();
+        assert_eq!(parent, object::id(f.vault!()));
+        assert_eq!(fee, constants::max_redeem_fee_bps!());
+        assert_eq!(delay_ms, DELAY_MS);
+        assert_eq!(ready_at_ms, DELAY_MS);
+    });
+
+    fixture.end();
+}
+
+// Version Tests
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EVersionMismatch,
+    location = blast_admin::package_version,
+)]
+fun stale_package_version_rejects_fee_scheduling_before_its_cap() {
+    let mut fixture = start_vault();
+
+    fixture.next_tx!(OWNER, |f| {
+        let clock = clock::create_for_testing(f.ctx!());
+        f.version.set_version_for_testing(2);
+        f.vault!().schedule_redeem_fee(
+            &f.version,
+            &fee_admin(),
+            constants::max_redeem_fee_bps!() + 1,
+            DELAY_MS,
+            &clock,
+        );
+        clock.destroy_for_testing();
     });
 
     fixture.end();
@@ -2014,21 +2199,398 @@ fun unchanged_fee_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_admin::errors::EOperationalVersionMismatch,
-    location = blast_admin::operational_version,
+    abort_code = blast_admin::errors::EVersionMismatch,
+    location = blast_admin::package_version,
 )]
-fun stale_package_version_rejects_fee_changes() {
+fun stale_package_version_rejects_fee_application_before_its_readiness() {
+    let mut fixture = start_vault();
+
+    fixture.next_tx!(USER, |f| {
+        let clock = clock::create_for_testing(f.ctx!());
+        f.version.set_version_for_testing(2);
+        f.vault!().apply_redeem_fee(&f.version, &clock);
+        clock.destroy_for_testing();
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EVersionMismatch,
+    location = blast_admin::package_version,
+)]
+fun stale_package_version_rejects_fee_cancellation_before_its_pending_check() {
     let mut fixture = start_vault();
 
     fixture.next_tx!(OWNER, |f| {
-        let admin_witness = fee_admin();
-        f.version.set_for_testing(2);
-        f.vault!().set_redeem_fee(
+        f.version.set_version_for_testing(2);
+        f.vault!().cancel_redeem_fee(&f.version, &cancel_admin());
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EVersionMismatch,
+    location = blast_admin::package_version,
+)]
+fun stale_package_version_rejects_create_before_its_supply_checks() {
+    let mut fixture = start_create();
+    let validator = fixture.validator();
+
+    fixture.next_tx!(OWNER, |f| {
+        let pool_id = f.system!().validator_staking_pool_id(validator);
+        f.version.set_version_for_testing(2);
+        f.create_vault(validator, pool_id, BOOTSTRAP, 1);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EVersionMismatch,
+    location = blast_admin::package_version,
+)]
+fun stale_package_version_rejects_a_paused_fun_mint_before_its_pause_check() {
+    let mut fixture = start_vault();
+    fixture.pause(constants::fun_mint_pause_bit!());
+
+    fixture.next_tx!(USER, |f| {
+        f.version.set_version_for_testing(2);
+        let fun_coin = f.vault!().mint_fun_sui(
             &f.version,
-            &admin_witness,
-            5,
+            f.system!(),
+            coin::zero(f.ctx!()),
+            f.ctx!(),
+        );
+        destroy(fun_coin);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EVersionMismatch,
+    location = blast_admin::package_version,
+)]
+fun stale_package_version_rejects_fun_redemption_before_its_amount_check() {
+    let mut fixture = start_vault();
+
+    fixture.next_tx!(USER, |f| {
+        f.version.set_version_for_testing(2);
+        let sui_out = f.vault!().redeem_fun_sui(
+            &f.version,
+            f.system!(),
+            coin::zero(f.ctx!()),
+            f.ctx!(),
+        );
+        destroy(sui_out);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EVersionMismatch,
+    location = blast_admin::package_version,
+)]
+fun stale_package_version_rejects_a_blast_request_before_its_minimum_check() {
+    let mut fixture = start_vault();
+
+    fixture.next_tx!(USER, |f| {
+        f.version.set_version_for_testing(2);
+        let receipt = f.vault!().request_blast_sui(
+            &f.version,
+            f.system!(),
+            coin::zero(f.ctx!()),
+            f.ctx!(),
+        );
+        receipt.keep(f.ctx!());
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EVersionMismatch,
+    location = blast_admin::package_version,
+)]
+fun stale_package_version_rejects_a_blast_claim_before_its_binding_checks() {
+    let mut fixture = start_vault();
+    fixture.request_blast(DEPOSIT);
+    fixture.advance_epoch();
+
+    fixture.next_tx!(USER, |f| {
+        let receipt = f.runner.scenario_mut().take_from_sender<BlastSuiDepositReceipt>();
+        f.version.set_version_for_testing(2);
+        let blast_coin = f.vault!().claim_blast_sui(&f.version, f.system!(), receipt, 0, f.ctx!());
+        destroy(blast_coin);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EVersionMismatch,
+    location = blast_admin::package_version,
+)]
+fun stale_package_version_rejects_blast_redemption_before_its_amount_check() {
+    let mut fixture = start_vault();
+
+    fixture.next_tx!(USER, |f| {
+        f.version.set_version_for_testing(2);
+        let sui_out = f.vault!().redeem_blast_sui(
+            &f.version,
+            f.system!(),
+            coin::zero(f.ctx!()),
+            0,
+            f.ctx!(),
+        );
+        destroy(sui_out);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EVersionMismatch,
+    location = blast_admin::package_version,
+)]
+fun stale_package_version_rejects_a_fun_top_up_before_its_amount_check() {
+    let mut fixture = start_vault();
+
+    fixture.next_tx!(USER, |f| {
+        f.version.set_version_for_testing(2);
+        f.vault!().top_up_fun_reserve(&f.version, coin::zero(f.ctx!()));
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(
+    abort_code = blast_admin::errors::EVersionMismatch,
+    location = blast_admin::package_version,
+)]
+fun stale_package_version_rejects_unpause_before_its_guard_check() {
+    let mut fixture = start_vault();
+
+    fixture.next_tx!(OWNER, |f| {
+        let package_admin = blast_sui_package::package_admin_for_testing(f.ctx!());
+        f.version.set_version_for_testing(2);
+        f.vault!().unpause(
+            &mut f.version,
+            &unpause_admin(),
+            &package_admin,
+            constants::fun_mint_pause_bit!(),
+        );
+        destroy(package_admin);
+    });
+
+    fixture.end();
+}
+
+// Pause Tests
+
+#[test]
+#[expected_failure(abort_code = blast_admin::errors::EPaused, location = blast_admin::package_version)]
+fun a_paused_fun_mint_is_rejected_before_its_amount_check() {
+    let mut fixture = start_vault();
+    fixture.pause(constants::fun_mint_pause_bit!());
+
+    fixture.next_tx!(USER, |f| {
+        let fun_coin = f.vault!().mint_fun_sui(
+            &f.version,
+            f.system!(),
+            coin::zero(f.ctx!()),
+            f.ctx!(),
+        );
+        destroy(fun_coin);
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = blast_admin::errors::EPaused, location = blast_admin::package_version)]
+fun a_paused_blast_request_is_rejected_before_its_minimum_check() {
+    let mut fixture = start_vault();
+    fixture.pause(constants::blast_request_pause_bit!());
+
+    fixture.next_tx!(USER, |f| {
+        let receipt = f.vault!().request_blast_sui(
+            &f.version,
+            f.system!(),
+            coin::zero(f.ctx!()),
+            f.ctx!(),
+        );
+        receipt.keep(f.ctx!());
+    });
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = blast_admin::errors::EPaused, location = blast_admin::package_version)]
+fun a_paused_blast_claim_is_rejected_before_its_activation_check() {
+    let mut fixture = start_vault();
+    fixture.request_blast(DEPOSIT);
+    fixture.pause(constants::blast_claim_pause_bit!());
+
+    fixture.claim_blast(0);
+
+    fixture.end();
+}
+
+/// Each bit stops only its own deposit path.
+#[test]
+fun a_fun_mint_pause_leaves_blast_deposits_open() {
+    let mut fixture = start_vault();
+    fixture.pause(constants::fun_mint_pause_bit!());
+
+    fixture.mint_blast(DEPOSIT);
+
+    fixture.end();
+}
+
+#[test]
+fun a_blast_request_pause_leaves_fun_mints_and_claims_open() {
+    let mut fixture = start_vault();
+    fixture.request_blast(DEPOSIT);
+    fixture.advance_epoch();
+    fixture.pause(constants::blast_request_pause_bit!());
+
+    fixture.mint_fun(MIST_PER_SUI);
+    fixture.claim_blast(0);
+
+    fixture.end();
+}
+
+#[test]
+fun a_blast_claim_pause_leaves_fun_mints_and_requests_open() {
+    let mut fixture = start_vault();
+    fixture.pause(constants::blast_claim_pause_bit!());
+
+    fixture.mint_fun(MIST_PER_SUI);
+    fixture.request_blast(DEPOSIT);
+
+    fixture.end();
+}
+
+/// Every exit, donation, top-up and sync stays live while every deposit path is paused, and
+/// an unclaimed receipt still cancels to native SUI.
+#[test]
+fun exits_stay_live_while_every_deposit_path_is_paused() {
+    let mut fixture = start_vault_with_deposit();
+    fixture.mint_fun(3 * MIST_PER_SUI);
+    fixture.request_blast(DEPOSIT);
+    fixture.pause(constants::valid_pause_bits!());
+
+    fixture.redeem_fun(MIST_PER_SUI);
+    let (net, _) = fixture.redeem_blast(DEPOSIT / 2);
+    assert!(net > 0);
+    fixture.donate(MIST_PER_SUI);
+    fixture.next_tx!(USER, |f| {
+        f.vault!().top_up_fun_reserve(&f.version, coin::mint_for_testing(1, f.ctx!()));
+    });
+    fixture.sync();
+    assert_eq!(fixture.cancel_blast(), DEPOSIT);
+
+    fixture.end();
+}
+
+/// The deployment order: a fully paused version creates the vault, the delay is raised, and
+/// only then do deposits open.
+#[test]
+fun a_paused_deployment_creates_the_vault_and_opens_only_after_the_delay_is_set() {
+    let mut fixture = start_create();
+    let validator = fixture.validator();
+
+    fixture.next_tx!(OWNER, |f| {
+        package_admin::pause(&mut f.version, &pause_admin(), constants::valid_pause_bits!());
+        let pool_id = f.system!().validator_staking_pool_id(validator);
+        f.create_vault(validator, pool_id, BOOTSTRAP, 0);
+    });
+
+    let mut fixture = fixture.into_vault_fixture();
+    fixture.set_fee_delay(DELAY_MS);
+    fixture.unpause(constants::valid_pause_bits!());
+    fixture.mint_fun(MIST_PER_SUI);
+
+    fixture.end();
+}
+
+#[test]
+/// Release clears only the requested bits once the delay is guarded.
+fun unpause_releases_only_the_requested_bits() {
+    let mut fixture = start_vault();
+    fixture.set_fee_delay(DELAY_MS);
+    fixture.pause(constants::valid_pause_bits!());
+
+    fixture.unpause(constants::fun_mint_pause_bit!());
+
+    fixture.next_tx!(OWNER, |f| {
+        assert_eq!(
+            f.version.paused_for_testing(),
+            constants::blast_request_pause_bit!() | constants::blast_claim_pause_bit!(),
         );
     });
+    fixture.mint_fun(MIST_PER_SUI);
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EUnguardedDelay, location = blast_sui::vault)]
+fun unpause_refuses_while_the_fee_delay_is_zero() {
+    let mut fixture = start_vault();
+    fixture.pause(constants::fun_mint_pause_bit!());
+
+    fixture.unpause(constants::fun_mint_pause_bit!());
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = errors::EUnguardedDelay, location = blast_sui::vault)]
+/// A pending fee change that would drop the delay to zero blocks release.
+fun unpause_refuses_a_pending_change_to_a_zero_fee_delay() {
+    let mut fixture = start_vault();
+    fixture.set_fee_delay(DELAY_MS);
+    fixture.pause(constants::fun_mint_pause_bit!());
+    fixture.schedule_fee_change(constants::max_redeem_fee_bps!(), 0);
+
+    fixture.unpause(constants::fun_mint_pause_bit!());
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = blast_admin::errors::EInvalidPauseBits, location = blast_admin::package_version)]
+fun unpause_rejects_an_undefined_bit() {
+    let mut fixture = start_vault();
+    fixture.set_fee_delay(DELAY_MS);
+
+    fixture.unpause(8);
+
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = blast_admin::errors::EPauseUnchanged, location = blast_admin::package_version)]
+fun unpause_rejects_bits_that_are_not_set() {
+    let mut fixture = start_vault();
+    fixture.set_fee_delay(DELAY_MS);
+
+    fixture.unpause(constants::fun_mint_pause_bit!());
 
     fixture.end();
 }
@@ -2112,7 +2674,7 @@ fun every_mutation_emits_a_custody_snapshot_that_replays_to_live_state() {
     fixture.end();
 }
 
-/// The fee rate replays from the creation fact plus ordered change facts.
+/// The fee rate replays from the creation fact plus ordered applied-change facts.
 #[test]
 fun fee_rate_replays_from_creation_and_change_facts() {
     let mut fixture = start_create();
@@ -2128,16 +2690,8 @@ fun fee_rate_replays_from_creation_and_change_facts() {
     let (_, _, _, _, _, _, mut replayed_fee, _) = created.vault_created_fields();
     let (shares, _) = fixture.mint_blast(DEPOSIT);
 
-    fixture.next_tx!(OWNER, |f| {
-        let admin_witness = fee_admin();
-        f.vault!().set_redeem_fee(
-            &f.version,
-            &admin_witness,
-            constants::max_redeem_fee_bps!(),
-        );
-    });
-    let changed = events::collect_one<events::RedeemFeeChanged>(0);
-    let (old_fee, new_fee) = changed.redeem_fee_changed_fields();
+    fixture.set_redeem_fee_after_delay(constants::max_redeem_fee_bps!());
+    let (_, _, old_fee, new_fee, _) = fee_applied().delayed_applied_fields();
     assert_eq!(old_fee, replayed_fee);
     replayed_fee = new_fee;
 
@@ -2284,8 +2838,9 @@ fun start_create(): CreateFixture {
             ],
         )
         .build();
+    runner.scenario_mut().create_system_objects();
     runner.advance_runner_epoch();
-    let version = package_version::new_for_testing(runner.ctx());
+    let version = blast_sui_package::version_for_testing(runner.ctx());
 
     CreateFixture { runner, version, system_state: option::none() }
 }
@@ -2378,20 +2933,23 @@ fun create_vault(
     fun_premint: u64,
 ): events::VaultCreated {
     let (mut fun_cap, fun_metadata_cap) = fun_sui::new_for_testing(self.ctx!());
-    destroy(fun_metadata_cap);
     let (blast_cap, blast_metadata_cap) = blast_coin::new_for_testing(self.ctx!());
-    destroy(blast_metadata_cap);
     let premint = fun_cap.mint(fun_premint, self.ctx!());
+    let mut display_registry = self.runner.scenario_mut().take_shared<DisplayRegistry>();
     vault::create(
         &self.version,
         self.system!(),
+        &mut display_registry,
         fun_cap,
         blast_cap,
+        fun_metadata_cap,
+        blast_metadata_cap,
         coin::mint_for_testing(bootstrap + constants::fun_rounding_reserve_mist!(), self.ctx!()),
         pool_id,
         self.ctx!(),
     );
 
+    test_scenario::return_shared(display_registry);
     destroy(premint);
     events::collect_one<events::VaultCreated>(0)
 }
@@ -2409,7 +2967,82 @@ fun into_vault_fixture(self: CreateFixture): VaultFixture {
     }
 }
 
+/// Schedules `fee` and `delay_ms` at time zero; a zero applied delay makes it ready at once.
+fun schedule_fee_change(self: &mut VaultFixture, fee: u64, delay_ms: u64) {
+    self.next_tx!(OWNER, |f| {
+        let clock = clock::create_for_testing(f.ctx!());
+        f.vault!().schedule_redeem_fee(&f.version, &fee_admin(), fee, delay_ms, &clock);
+        clock.destroy_for_testing();
+    });
+}
+
+/// Schedules `fee` and `delay_ms` under the applied delay and applies them once it elapses.
+fun apply_fee_change(self: &mut VaultFixture, fee: u64, delay_ms: u64) {
+    self.next_tx!(OWNER, |f| {
+        let mut clock = clock::create_for_testing(f.ctx!());
+        let applied_delay_ms = f.vault!().redeem_fee_delay_ms_for_testing();
+        f.vault!().schedule_redeem_fee(&f.version, &fee_admin(), fee, delay_ms, &clock);
+        clock.set_for_testing(applied_delay_ms);
+        f.vault!().apply_redeem_fee(&f.version, &clock);
+        clock.destroy_for_testing();
+    });
+}
+
+/// Changes only the fee, keeping the applied delay.
+fun set_redeem_fee_after_delay(self: &mut VaultFixture, fee: u64) {
+    let delay_ms;
+    self.next_tx!(OWNER, |f| delay_ms = f.vault!().redeem_fee_delay_ms_for_testing());
+    self.apply_fee_change(fee, delay_ms);
+}
+
+/// Changes only the delay, keeping the applied fee.
+fun set_fee_delay(self: &mut VaultFixture, delay_ms: u64) {
+    let fee;
+    self.next_tx!(OWNER, |f| fee = f.vault!().redeem_fee_bps_for_testing());
+    self.apply_fee_change(fee, delay_ms);
+}
+
+/// `PauseAdmin` sets `bits` on the package version.
+fun pause(self: &mut VaultFixture, bits: u8) {
+    self.next_tx!(OWNER, |f| package_admin::pause(&mut f.version, &pause_admin(), bits));
+}
+
+/// `UnpauseAdmin` releases `bits` through the vault.
+fun unpause(self: &mut VaultFixture, bits: u8) {
+    self.next_tx!(OWNER, |f| {
+        let package_admin = blast_sui_package::package_admin_for_testing(f.ctx!());
+        f.vault!().unpause(&mut f.version, &unpause_admin(), &package_admin, bits);
+        destroy(package_admin);
+    });
+}
+
+/// The one fee application of the current transaction.
+fun fee_applied(): DelayedApplied<RedeemFeeKey, u64> {
+    let mut applied = event::events_by_type<DelayedApplied<RedeemFeeKey, u64>>();
+    assert_eq!(applied.length(), 1);
+    applied.pop_back()
+}
+
+/// The one fee scheduling of the current transaction.
+fun fee_scheduled(): DelayedScheduled<RedeemFeeKey, u64> {
+    let mut scheduled = event::events_by_type<DelayedScheduled<RedeemFeeKey, u64>>();
+    assert_eq!(scheduled.length(), 1);
+    scheduled.pop_back()
+}
+
 fun fee_admin(): AdminWitness<FeeAdmin> {
+    blast_acl::witness_for_testing()
+}
+
+fun cancel_admin(): AdminWitness<CancelAdmin> {
+    blast_acl::witness_for_testing()
+}
+
+fun pause_admin(): AdminWitness<PauseAdmin<BLAST_SUI_PACKAGE>> {
+    blast_acl::witness_for_testing()
+}
+
+fun unpause_admin(): AdminWitness<UnpauseAdmin<BLAST_SUI_PACKAGE>> {
     blast_acl::witness_for_testing()
 }
 
@@ -2735,24 +3368,36 @@ fun assert_custody_matches(custody: &events::VaultCustody, vault: &Vault) {
 
 // === Imports ===
 
-use blast_admin::blast_acl::{Self, AdminWitness};
+use blast_admin::{
+    blast_acl::{Self, AdminWitness},
+    delayed::{DelayedApplied, DelayedCreated, DelayedScheduled},
+    package_admin::{Self, PauseAdmin, UnpauseAdmin},
+    package_version::PackageVersion,
+};
 
 use blast_sui::{
     blast_sui::{Self as blast_coin, BLAST_SUI},
-    blast_sui_domain::FeeAdmin,
+    blast_sui_domain::{CancelAdmin, FeeAdmin},
+    blast_sui_package::{Self, BLAST_SUI_PACKAGE},
     constants,
     deposit_receipt::{Self, BlastSuiDepositReceipt},
     errors,
     events,
     fun_sui::{Self, FUN_SUI},
     math,
-    blast_sui_package::{Self as package_version, PackageVersion},
-    vault::{Self, Vault},
+    vault::{Self, RedeemFeeKey, Vault},
 };
 
 use std::unit_test::{assert_eq, destroy};
 
-use sui::{coin::{Self, Coin}, test_scenario};
+use sui::{
+    clock,
+    coin::{Self, Coin},
+    coin_registry::MetadataCap,
+    display_registry::{DisplayCap, DisplayRegistry},
+    event,
+    test_scenario,
+};
 
 use sui_system::{
     sui_system::SuiSystemState,

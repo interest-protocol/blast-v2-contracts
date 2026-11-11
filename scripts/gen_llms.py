@@ -48,12 +48,11 @@ PACKAGES = [
     ("sui/governance/upgrade_cap_manager", "Delayed UpgradeCap manager"),
     ("sui/launch/vendors/aftermath_dao_presale", "Aftermath DAO-pool presale migrator"),
 ]
-# Packages kept out of regeneration, with the issue that brings each back. blast_sui (#191) and
-# Boosts (#205) are outside the launch-stack scope and do not yet build against the folded
-# blast_admin, so they are neither built nor regenerated. Their committed references keep their
-# content, with source paths updated for the workspace layout. Their guide names are not checked.
+# Packages kept out of regeneration, with the issue that brings each back. Boosts (#205) is
+# outside the launch-stack scope and does not yet build against the folded blast_admin, so it
+# is neither built nor regenerated. Its committed references keep their content, with source
+# paths updated for the workspace layout. Its guide names are not checked.
 FROZEN = {
-    "sui/defi/blast_sui": "#191",
     "sui/defi/boosts/core": "#205",
     "sui/defi/boosts/products": "#205",
     "sui/defi/boosts/aftermath_adapter": "#205",

@@ -50,18 +50,18 @@ class SummaryIdentityTests(unittest.TestCase):
 
 
 class FrozenPackageTests(unittest.TestCase):
-    """blast_sui (#191) and Boosts (#205) are kept verbatim until they adopt the folded admin."""
+    """Boosts (#205) is kept verbatim until it adopts the folded admin."""
 
     def test_frozen_packages_are_the_out_of_scope_products(self):
         self.assertEqual(
             set(gen_llms.FROZEN),
-            {'sui/defi/blast_sui', 'sui/defi/boosts/core', 'sui/defi/boosts/products', 'sui/defi/boosts/aftermath_adapter'},
+            {'sui/defi/boosts/core', 'sui/defi/boosts/products', 'sui/defi/boosts/aftermath_adapter'},
         )
-        self.assertEqual(gen_llms.frozen_guides(), {'blast-sui.md', 'boosts.md'})
+        self.assertEqual(gen_llms.frozen_guides(), {'boosts.md'})
 
     def test_summaries_skip_frozen_packages(self):
         with (
-            patch.object(gen_llms, 'PACKAGES', [('sui/defi/blast_sui', 'Frozen'), ('sui/example', 'Example')]),
+            patch.object(gen_llms, 'PACKAGES', [('sui/defi/boosts/core', 'Frozen'), ('sui/example', 'Example')]),
             patch.object(gen_llms, 'package_name', return_value='example'),
             patch.object(gen_llms.subprocess, 'run') as run,
         ):
@@ -73,8 +73,8 @@ class FrozenPackageTests(unittest.TestCase):
         self.assertTrue(Path(command[command.index('-p') + 1]).as_posix().endswith('sui/example'))
 
     def test_frozen_guide_and_reference_sections_are_copied_verbatim(self):
-        frozen = gen_llms.Package(path='sui/defi/blast_sui', title='blastSUI and funSUI', name='blast_sui')
-        guide_heading = gen_llms.guide_heading('blast-sui.md')
+        frozen = gen_llms.Package(path='sui/defi/boosts/core', title='Boosts core', name='boosts')
+        guide_heading = gen_llms.guide_heading('boosts.md')
         committed_text = '\n'.join([
             '# header', '',
             guide_heading, '', 'committed guide, stale on purpose', '',
@@ -85,7 +85,7 @@ class FrozenPackageTests(unittest.TestCase):
             patch.object(gen_llms, 'deployment', return_value={'live': False}),
             patch.object(gen_llms, 'package_reference', side_effect=AssertionError('frozen package rebuilt')),
         ):
-            text = gen_llms.assemble('# header\n', ['blast-sui.md'], [frozen], {}, {'blast_sui'}, committed)
+            text = gen_llms.assemble('# header\n', ['boosts.md'], [frozen], {}, {'boosts'}, committed)
 
         self.assertIn('\n'.join(committed[guide_heading]), text)
         self.assertIn('committed reference', text)

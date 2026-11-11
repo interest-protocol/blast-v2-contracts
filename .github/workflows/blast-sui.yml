@@ -3,9 +3,9 @@ name: blast_sui
 on:
   push:
     branches: [main]
-    paths: ['sui/defi/blast_sui/**', '.github/workflows/blast-sui.yml']
+    paths: ['sui/defi/blast_sui/**', 'sui/governance/admin/**', '.github/workflows/blast-sui.yml']
   pull_request:
-    paths: ['sui/defi/blast_sui/**', '.github/workflows/blast-sui.yml']
+    paths: ['sui/defi/blast_sui/**', 'sui/governance/admin/**', '.github/workflows/blast-sui.yml']
 
 jobs:
   verify:

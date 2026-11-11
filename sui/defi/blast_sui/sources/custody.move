@@ -237,10 +237,7 @@ public(package) fun unwind(
     ctx: &mut TxContext,
 ) {
     while (!self.pending_stakes.is_empty()) self.realize_oldest_pending(system_state, ctx);
-    if (self.active_stake.is_some()) {
-        let held_pool_tokens = self.active_pool_tokens();
-        self.redeem_active(system_state, held_pool_tokens, 0, 0, ctx);
-    };
+    if (self.active_stake.is_some()) self.redeem_all_active(system_state, ctx);
 }
 
 /// Moves exact liquid SUI between two internal ledgers.
@@ -288,19 +285,24 @@ fun redeem_active(
     rate_pool_tokens: u64,
     ctx: &mut TxContext,
 ) {
-    let held_pool_tokens = self.active_pool_tokens();
-    let redeemed = if (pool_tokens >= held_pool_tokens) {
-        self.active_stake.extract()
-    } else {
-        self.active_stake.borrow_mut().split(pool_tokens, ctx)
-    };
+    if (pool_tokens >= self.active_pool_tokens()) return self.redeem_all_active(system_state, ctx);
+
+    let redeemed = self.active_stake.borrow_mut().split(pool_tokens, ctx);
     let sui_out = system_state.redeem_fungible_staked_sui(redeemed, ctx);
 
-    if (pool_tokens >= held_pool_tokens) {
-        self.active_sui = 0;
-    } else {
-        self.revalue(rate_sui, rate_pool_tokens);
-    };
+    self.revalue(rate_sui, rate_pool_tokens);
+    self.liquid_sui.join(sui_out);
+}
+
+/// Redeems the whole active position, which leaves nothing to revalue.
+fun redeem_all_active(
+    self: &mut Custody,
+    system_state: &mut SuiSystemState,
+    ctx: &TxContext,
+) {
+    let sui_out = system_state.redeem_fungible_staked_sui(self.active_stake.extract(), ctx);
+
+    self.active_sui = 0;
     self.liquid_sui.join(sui_out);
 }
 

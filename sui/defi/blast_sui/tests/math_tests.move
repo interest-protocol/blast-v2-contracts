@@ -87,20 +87,24 @@ fun redemption_quote_always_retains_the_live_fee() {
 
 /// Catches diverging from the native floor conversions between pool tokens and SUI.
 #[test]
-fun rate_conversions_mirror_native_floors_and_empty_rate() {
+fun rate_conversions_mirror_native_floors() {
     assert_eq!(math::sui_at_rate_down(500_000_000, 3_000_000_001, 1_500_000_000), 1_000_000_000);
-    assert_eq!(math::sui_at_rate_down(7, 0, 0), 7);
-    assert_eq!(math::sui_at_rate_down(7, 10, 0), 7);
     assert_eq!(
         math::pool_tokens_at_rate_down(1_000_000_001, 3_000_000_001, 1_500_000_000),
         500_000_000,
     );
-    assert_eq!(math::pool_tokens_at_rate_down(7, 0, 5), 7);
 }
 
 #[test]
-fun fun_conversion_loss_bound_is_zero_at_the_native_empty_rate_and_rounds_up() {
-    assert_eq!(math::fun_conversion_loss_bound_up(0, 0), 0);
+fun only_rates_with_both_components_positive_are_usable() {
+    assert!(math::is_usable_rate(1, 1));
+    assert!(!math::is_usable_rate(0, 1));
+    assert!(!math::is_usable_rate(1, 0));
+    assert!(!math::is_usable_rate(0, 0));
+}
+
+#[test]
+fun fun_conversion_loss_bound_rounds_up() {
     assert_eq!(math::fun_conversion_loss_bound_up(1, 1), 1);
     assert_eq!(math::fun_conversion_loss_bound_up(3, 2), 2);
     assert_eq!(

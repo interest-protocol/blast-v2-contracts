@@ -67,6 +67,34 @@ fun withdraw_exact_fails_closed_when_native_output_lags_the_valuation() {
     fixture.end();
 }
 
+/// The rounding margin pushes a withdrawal of the whole position past the held tokens, so the
+/// entire native position redeems and nothing is left to value.
+#[test]
+fun withdraw_exact_redeems_the_whole_active_position_when_the_margin_exceeds_it() {
+    let mut fixture = start();
+    let mut ledger = option::none();
+
+    fixture.next_tx!(USER, |f| {
+        ledger.fill(f.new_staked_ledger(2 * MIST_PER_SUI));
+    });
+    fixture.advance_epoch();
+    fixture.next_tx!(USER, |f| {
+        let ledger = ledger.borrow_mut();
+        ledger.activate_pending(f.system!(), f.ctx!());
+        assert_eq!(ledger.active_pool_tokens(), 2 * MIST_PER_SUI);
+
+        let sui_out = ledger.withdraw_exact(f.system!(), 2 * MIST_PER_SUI, 1, 1, f.ctx!());
+
+        assert_eq!(sui_out.value(), 2 * MIST_PER_SUI);
+        assert_eq!(ledger.active_pool_tokens(), 0);
+        assert_eq!(ledger.assets(), 0);
+        destroy(sui_out);
+    });
+
+    destroy(ledger);
+    fixture.end();
+}
+
 #[test]
 fun transferring_every_active_token_moves_the_whole_native_position() {
     let mut fixture = start();

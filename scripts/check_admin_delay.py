@@ -11,7 +11,8 @@ READER = LAUNCH / 'launchpad/scripts/move_facts.awk'
 
 def module_path(package, module):
     """The one source file declaring `module`, at any depth under the package's sources."""
-    package_dir = ROOT / 'sui/governance/admin' if package == 'admin' else LAUNCH / package
+    package_dir = {'admin': ROOT / 'sui/governance/admin',
+                   'blast_sui': ROOT / 'sui/defi/blast_sui'}.get(package, LAUNCH / package)
     paths = list((package_dir / 'sources').rglob(f'{module}.move'))
     assert len(paths) == 1, (package, module, paths)
     return paths[0]
@@ -276,6 +277,27 @@ assert not any(word in generic_source for word in ('only_additive_upgrades', 'on
 acl = (ROOT / 'sui/governance/admin/sources/blast_acl.move').read_text()
 require(acl, 'admins: Table<ID, VecSet<TypeName>>,', 'super_admin_transfer: DelayedAction<SuperAdminTransfer, address>,')
 assert 'MAX_ADMINS' not in acl and 'Timelocked' not in acl
+
+# Blast SUI uses the same generic administration: a delayed fee, deposit-only pause, and a
+# release that refuses while the fee delay is unguarded.
+governed('blast_sui', 'vault', {'redeem_fee': 'FeeAdmin'}, current='(constants::version!());')
+blast_sui_vault = functions('blast_sui', 'vault')
+blast_sui_current = 'package_version.assert_current(constants::version!());'
+for name, bit in [('mint_fun_sui', 'fun_mint'), ('request_blast_sui', 'blast_request'), ('claim_blast_sui', 'blast_claim')]:
+    assert blast_sui_vault[name][1].startswith(
+        f'{blast_sui_current} package_version.assert_not_paused(constants::{bit}_pause_bit!());'), name
+for name, (_, body) in blast_sui_vault.items():
+    if name not in ('mint_fun_sui', 'request_blast_sui', 'claim_blast_sui'):
+        assert 'assert_not_paused' not in body, name
+signature, body = blast_sui_vault['unpause']
+require(signature, '&AdminWitness<UnpauseAdmin<BLAST_SUI_PACKAGE>>', '&PackageAdmin<BLAST_SUI_PACKAGE>',
+        'package_version: &mut PackageVersion<BLAST_SUI_PACKAGE>')
+assert body.startswith(blast_sui_current), body
+assert body.index('self.redeem_fee.is_guarded()') < body.index('clear_pause_bits('), body
+require(body, 'package_admin.clear_pause_bits(unpause_admin, package_witness(), package_version, bits)')
+blast_sui_init = functions('blast_sui', 'blast_sui_package')['init']
+require(blast_sui_init[1], '.keep(ctx)')
+assert 'share_object' not in blast_sui_init[1] and blast_sui_init[0].startswith('fun init(')
 print('ADR 0134 administration boundaries: OK')
 
 # Publication proves unique native custody intake; it never authorizes policy changes.

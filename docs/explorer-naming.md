@@ -19,7 +19,7 @@ identified only through its package one-time witness (OTW); ADR 0085 records why
 | Package | Role | Before | After |
 | --- | --- | --- | --- |
 | `blast_sui` | Publisher one-time witness | `blast::BLAST` | `blast_sui_package::BLAST_SUI_PACKAGE` |
-| `blast_sui` | administration roles (ADR 0097) | `blast_sui_domain::BLAST_SUI_DOMAIN` | `blast_sui_domain::UpgradeAdmin`, `FeeAdmin` |
+| `blast_sui` | administration roles (ADR 0097) | `blast_sui_domain::BLAST_SUI_DOMAIN` | `blast_sui_domain::FeeAdmin`, `CancelAdmin`, `ValidatorAdmin` |
 | `blast_fun` (launchpad) | Publisher one-time witness | `blast::BLAST` | `blast_fun::BLAST_FUN` |
 | `blast_fun` | administration roles (ADR 0137) | `blast_fun_domain::BLAST_FUN_DOMAIN` | none of its own: product roles from `blast_core::blast_domain`; package roles `blast_admin::package_admin::UpgradeAdmin`, `PauseAdmin`, `UnpauseAdmin`, `CancelAdmin`, each typed `<BLAST_FUN>` |
 | `blast_fun` | package witness (ADR 0137) | — | `blast_fun::PackageWitness` |
@@ -67,8 +67,8 @@ is what an auditor reads on every package-administration object.
 | `blast_admin` | `acl::AdminCap<Domain>` | `blast_acl::AdminCap`; its roles are listed in the ACL | module |
 | `blast_sui` | `vault::Vault` | unchanged | *residual*; package OTW |
 | `blast_sui` | `deposit_receipt::BlastSuiDepositReceipt` | unchanged | struct |
-| `blast_sui` | `package_admin::PackageAdmin` | unchanged | holds `UpgradeCustody<BLAST_SUI_PACKAGE>` |
-| `blast_sui` | `package_version::PackageVersion` | `blast_sui_package::PackageVersion` | module; holds `OperationalVersion<BLAST_SUI_PACKAGE>` |
+| `blast_sui` | `package_admin::PackageAdmin` | `blast_admin::package_admin::PackageAdmin<BLAST_SUI_PACKAGE>` | generic administration, ADR 0136 |
+| `blast_sui` | `package_version::PackageVersion` | `blast_admin::package_version::PackageVersion<BLAST_SUI_PACKAGE>` | generic administration, ADR 0136 |
 | `blast_fun` | `launch::Launch<Meme, Quote>` | unchanged | *residual*; `Quote` is usually `fun_sui::FUN_SUI` |
 | `blast_fun` | `launch_config::LaunchConfig` | unchanged | *residual* |
 | `blast_fun` | `runtime_config::RuntimeConfig` | unchanged | *residual* |
@@ -135,7 +135,7 @@ the same `blast_events::Event<T>` envelope (ADR 0130).
 | --- | --- | --- | --- |
 | `blast_admin` | `Role` parameter of `AdminWitness` | — | always a role declared in a Blast `*_domain` module above, or one of `package_admin`'s package roles typed by a Blast OTW, such as `package_admin::UpgradeAdmin<BLAST_VAULT_PACKAGE>` (ADR 0137) |
 | `blast_admin` | `OTW` parameter of `Publication`, `PackageVersion`, `PackageAdmin`, the package roles and the custody, version and pause events | — | always a Blast OTW above |
-| `blast_sui` | `vault::TreasuryKey<CoinType>`, `package_admin::CapabilityKey<Capability>` | unchanged | dynamic-field keys under `Vault` and `PackageAdmin` |
+| `blast_sui` | `vault::TreasuryKey<CoinType>`, `vault::CapabilityKey<Capability>` | unchanged | dynamic-field keys under `Vault` |
 | `blast_migrators` | `cetus::Venue`, `bluefin::Venue` | unchanged | the shared venue witnesses of both products (ADR 0137); appear as `TypeName` values in `LaunchConfig`, `CreationPolicy`, `VaultRegistry` and events, and type the vault's position keys; the module names the venue |
 | `blast_migrators` | `cetus::CreationCapKey<Meme>` | unchanged | dynamic-object-field key under `VenueConfig` for the Meme type's Cetus `PoolCreationCap`; the cap keeps its own object ID |
 | `blast_migrators` | `cetus::CastKey` | new (ADR 0100) | transient dynamic-field key on a UID created and deleted within one Cetus route call; retypes a coin or balance between Meme/Quote and pool coin order |

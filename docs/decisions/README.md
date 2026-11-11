@@ -70,7 +70,7 @@ records below it decide what 0137 does not restate.
 | [0047](0047-coin-registry-authoritative-supply-mode.md) | Coin Registry authoritative supply mode | **accepted; supply-mode timing amended by 0088** |
 | [0048](0048-sui-package-workspace.md) | Sui package workspace | **accepted** |
 | [0051](0051-generated-meme-package-template.md) | Generated Meme package template | **accepted; publish-time immutability amended by 0088; package renamed by 0108** |
-| [0053](0053-single-validator-funsui-and-blastsui.md) | Single-validator `funSUI` and `blastSUI` | **accepted; authority and receipt `DisplayCap` custody amended by 0060, 0061, and 0097** |
+| [0053](0053-single-validator-funsui-and-blastsui.md) | Single-validator `funSUI` and `blastSUI` | **accepted; authority and receipt `DisplayCap` custody amended by 0060, 0061, 0097, and 0136** |
 | [0056](0056-bounded-pending-stake-vector.md) | Bounded pending-stake vector in custody ledgers | **accepted** |
 | [0058](0058-eventless-package-initialization.md) | Eventless package initialization | **accepted** |
 | [0060](0060-blastsui-metadata-cap-custody.md) | Retain currency and receipt update capabilities in package-admin custody | **accepted** |
@@ -127,6 +127,7 @@ records below it decide what 0137 does not restate.
 | [0132](0132-closed-market-funding-accounting.md) | Book funding settled inside a closed-market unwind | **accepted** |
 | [0133](0133-required-order-fill-proof.md) | Require consumption of every order fill receipt | **accepted** |
 | [0134](0134-delayed-administration-pause-and-table-acl.md) | Delayed administration, pause, and a Table-backed ACL | proposed; amended by 0137 |
+| [0136](0136-blast-sui-custody-before-activation-and-delayed-administration.md) | Blast SUI custody before activation, generic administration, delayed fee, deposit-only pause | proposed |
 | [0137](0137-shared-launch-stack-core-vault-and-venues.md) | Shared launch stack: core, vault, and venues | proposed; amended 2026-11-05: seven packages, one `blast_migrators` venue package (Cetus and Bluefin) in place of `blast_venues`, the Aftermath DAO vendor as a plain venue, two-call migration, standalone vaults cut, one package witness and one package administration, no repair or policy narrowing, vault immutable after audit; amended by 0138 (sealed treasury caps) |
 | [0138](0138-sealed-treasury-caps-and-venue-admissions.md) | Sealed treasury caps and venue admissions | proposed |
 | [0139](0139-admin-bounded-auto-lp-compounding.md) | Admin-bounded auto-LP compounding | accepted |
