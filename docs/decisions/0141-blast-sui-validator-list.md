@@ -20,7 +20,8 @@ The package is unpublished, so its layouts, events and errors change in place.
 **List.** `Vault.validators` is a `DelayedSet<ValidatorKey, ID>` of staking pools, capped by
 `constants::max_validators!()` across admitted and pending together. `ValidatorAdmin` schedules
 an admission, which waits its delay because it routes user funds. Anyone applies it once ready,
-with the pool proven active and current. Removal is immediate, because reducing risk is never
+with the pool proven active and current; applying emits a custody snapshot that includes the
+pool without refreshing the others. Removal is immediate, because reducing risk is never
 delayed: it unwinds both positions in the same call and re-delegates the SUI. `unpause` refuses
 while the validator delay is unguarded or an admission is pending.
 

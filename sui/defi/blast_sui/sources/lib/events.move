@@ -146,7 +146,9 @@ public struct FunYieldSwept has copy, drop {
     custody: VaultCustody,
 }
 
-/// Emitted after a permissionless refresh, sweep, and idle delegation pass.
+/// The vault's full custody snapshot. `sync` and `remove_validator` emit it after refreshing
+/// every pool; `apply_validator` emits it without a refresh, so other pools' rates may predate
+/// the current epoch.
 public struct VaultSynced has copy, drop {
     custody: VaultCustody,
 }

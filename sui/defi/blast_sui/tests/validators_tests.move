@@ -215,6 +215,21 @@ fun an_admission_cannot_apply_before_its_delay() {
 }
 
 #[test]
+#[expected_failure(abort_code = blast_admin::errors::ENotReady, location = blast_admin::delayed_set)]
+fun an_early_admission_reports_not_ready_before_its_validator_departure() {
+    let mut fixture = start(3, 1);
+    let departing = fixture.pool_of(2);
+
+    fixture.set_validator_delay(DELAY_MS);
+    fixture.schedule(departing);
+    fixture.depart(2);
+    fixture.advance_epoch();
+    fixture.apply_at(departing, DELAY_MS - 1);
+
+    fixture.end();
+}
+
+#[test]
 fun anyone_can_apply_an_admission_once_its_delay_elapses() {
     let mut fixture = start(2, 1);
     let pool = fixture.pool_of(1);

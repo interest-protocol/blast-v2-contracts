@@ -261,7 +261,8 @@ The fee's lifecycle events come from `blast_admin::delayed`, typed by
    pending pool restarts its wait and takes no new slot.
 2. After the applied delay, *anyone* calls `blast_sui::vault::apply_validator` with
    `SuiSystemState`, the `pool_id`, and the `Clock`. The pool must be active with a
-   usable current-epoch rate.
+   usable current-epoch rate. It emits `VaultSynced` including the new pool, without
+   refreshing the others, so their rates may predate the current epoch.
 3. A holder of `blast_sui_domain::CancelAdmin` may call
    `blast_sui::vault::cancel_validator` at any time before it applies.
 4. `blast_sui::vault::remove_validator` takes effect at once, because removing
@@ -396,7 +397,7 @@ Snapshot types embedded in most events:
 | `blast_sui::events::BlastSuiRedeemed` | `redeem_blast_sui` | `blast_in`, `gross_sui`, `fee_sui`, `net_sui`, `custody` |
 | `blast_sui::events::FunYieldSwept` | any refresh that moves yield | `swept_liquid_sui`, `swept_active_sui`, `swept_sui`, `custody` at that point |
 | `blast_sui::events::PoolUnwound` | a refresh that observes a departed pool, or `remove_validator` | `pool_id`, `custody` after it left |
-| `blast_sui::events::VaultSynced` | `sync`, `apply_validator`, `remove_validator` | `custody` |
+| `blast_sui::events::VaultSynced` | `sync`, `remove_validator` (after a refresh), `apply_validator` (no refresh) | `custody` |
 | `blast_sui::events::FunReserveToppedUp` | `top_up_fun_reserve` | `sui_in`, `custody` |
 
 Redemption-fee, validator-list, pause, and upgrade events come from `blast_admin`
