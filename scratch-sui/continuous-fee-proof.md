@@ -220,3 +220,18 @@ The calculus and interval composition are written here, with the local
 algebraic steps checked by Z3. Sui Prover checks selected integer operations
 against compiled Move. Its proof does not model real-valued integration
 or Sui VM transaction semantics.
+
+## Return conditions in compiled Move
+
+The series check assumes an ordered Q96 argument in `[0, ONE / 2]` and an
+offset of one or three. Its loop invariant bounds the power and sum and
+keeps `sum * offset + offset - 1 >= power` to cover the alternating
+subtraction. Sui Prover checks the loop and its tail under these conditions.
+Separate contracts check coordinate normalization, constant-fee arithmetic,
+and the zero-input and constant-fee quote paths.
+
+The dynamic quote requires a compiled proof that path construction, cap
+splitting, and the analytic average establish the arithmetic preconditions
+at each call. The rational enclosure and width certificate supply the
+mathematical bounds. The connection to these exact Move call sites remains
+open.

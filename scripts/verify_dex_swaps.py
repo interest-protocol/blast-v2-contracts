@@ -15,6 +15,7 @@ from dex_price_bytecode import prove_inverse
 from dex_solvency import check_tick_prices, prove_solvency
 from dex_solvency_induction import prove_abort_boundary, prove_induction, prove_position_keys
 from dex_swap_progress import prove_swap_progress
+from dex_bitmap_bytecode import check_bitmap_bytecode
 from dex_tick_proof import prove_tick_lookup
 
 SOURCE = Path(__file__).resolve().parents[1] / "scratch-sui/dex/sources"
@@ -537,6 +538,7 @@ def main():
     check_source_hashes()
     if args.compiled_module:
         check_bytecode(args.compiled_module)
+        check_bitmap_bytecode(args.compiled_module.with_name("curve.mv"))
         check_owned_bytecode(args.compiled_module)
     else:
         print("Model-only run. Pass --compiled-module to also check compiled tick and price arithmetic.", flush=True)

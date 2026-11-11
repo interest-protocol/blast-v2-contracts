@@ -266,7 +266,12 @@ The local proofs leave open a single compiled
 no-unexpected-abort theorem connecting fee construction, numerical probes,
 tick lookup, and the full swap loop to settlement. The separate compiled
 bitmap check proves lookup return with live selected child keys and the
-Z3-checked mask and scan contracts. Hooks and Sui gas and native limits sit
-outside this proof.
+Z3-checked mask and scan contracts. Sui Prover checks several leaf
+operations in [the fee quote](continuous-fee-proof.md#return-conditions-in-compiled-move).
+The dynamic quote and path constructor still need compiled return
+contracts. The swap loop still needs a single inductive proof linking the
+lookup and numerical contracts to safe crossing, accumulator bounds, and
+the execution conditions for settlement. Hooks and Sui gas and native
+limits sit outside this proof.
 
 Run both verifiers with the [DEX proof commands](README.md#swap-arithmetic-proof).

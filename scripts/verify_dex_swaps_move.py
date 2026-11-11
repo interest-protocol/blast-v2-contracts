@@ -27,6 +27,7 @@ from dex_solvency_specs import (
     instrument_liquidity_execution, instrument_swap_fee_funding, liquidity_execution_specs,
 )
 from dex_swap_progress_specs import CURSOR_ACCESSOR, LOOKUP_FOR_PROGRESS, PROGRESS_SPEC, instrument_swap_progress
+from dex_fee_return_specs import FEE_RETURN_SPECS, INTERVAL_RETURN_SPECS, QUOTE_ENTRY_SPECS
 from dex_tick_specs import LOOKUP_RETURN_BPL, LOOKUP_RETURN_SPECS, LOOKUP_SPECS, LOOKUP_TOTAL_SPECS, SCAN_BPL
 from verify_dex_swaps import SOURCE, check_source_hashes
 
@@ -812,7 +813,11 @@ def main():
         progress_spec = "swap_progress_spec"
         funding_spec = "swap_fee_funding_spec"
         names = {name.split("::")[-1] for name in args.functions}
-        fee_total_specs = {"preceding_budget_total_spec", "fee_up_total_spec"}
+        fee_total_specs = {
+            "preceding_budget_total_spec", "fee_up_total_spec", "series_return_spec", "constant_fee_return_spec",
+            "multiply_return_spec", "divide_return_spec", "subtract_return_spec",
+            "coordinate_return_spec", "quote_constant_or_zero_return_spec",
+        }
         search_total_spec = "search_total_spec"
         trial_total_spec = "trial_total_spec"
         cursor_specs = {"floor_grid_spec": "tick_math", "move_inside_grid_spec": "curve", "swap_grid_spec": "pool"}
@@ -864,7 +869,7 @@ def main():
         if not args.functions or fee_total_specs & names:
             pool_path.write_text(pool_source)
             fee_path.write_text(fee_source)
-            insert_specs(fee_path, "// === Test-Only Types ===", FEE_TOTAL_SPECS)
+            insert_specs(fee_path, "// === Test-Only Types ===", FEE_TOTAL_SPECS + FEE_RETURN_SPECS + INTERVAL_RETURN_SPECS + QUOTE_ENTRY_SPECS)
             filters = [arg for name in sorted(fee_total_specs if not args.functions else fee_total_specs & names)
                        for arg in ("--functions", f"continuous_fee::{name}")]
             result = subprocess.run(command + filters, cwd=work, env=env, check=False)

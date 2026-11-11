@@ -2,6 +2,7 @@
 
 MAX_INDEX = 1_774_544
 WIDTH = 256
+SCAN_SHIFTS = (128, 64, 32, 16, 8, 4, 2, 1)
 
 
 def bv(value):
@@ -37,7 +38,7 @@ def masks_and_scan(prover):
     # Check the exact support of each half at all eight production shifts.
     # Extremality follows by induction: a nonempty preferred half wins;
     # translation by the split size preserves order inside the high half.
-    for shift in (128, 64, 32, 16, 8, 4, 2, 1):
+    for shift in SCAN_SHIFTS:
         half = bv(shift)
         low = f"(bvand bits {bv((1 << shift) - 1)})"
         high = f"(bvlshr bits {half})"
@@ -49,6 +50,31 @@ def masks_and_scan(prover):
                      (= {occupied(high, 'probe')} {occupied('bits', f'(bvadd probe {half})')})
                      (= (= bits {bv(0)}) (and (= {low} {bv(0)}) (= {high} {bv(0)}))))""",
             logic="QF_BV")
+    # Either preference selects a nonempty half whenever the parent is
+    # nonempty. Any occupied result in that half lifts to an occupied bit
+    # of the parent at the exact offset used by the Move scan.
+    for shift in SCAN_SHIFTS:
+        split = bv(shift)
+        low = f"(bvand bits {bv((1 << shift) - 1)})"
+        high = f"(bvlshr bits {split})"
+        for up in (True, False):
+            take_high = f"(= {low} {bv(0)})" if up else f"(distinct {high} {bv(0)})"
+            selected = f"(ite {take_high} {high} {low})"
+            original = f"(ite {take_high} (bvadd result {split}) result)"
+            direction = "up" if up else "down"
+            prover.prove(f"{direction} scan split {shift} retains a live half and lifts its result",
+                "bits result", f"(distinct bits {bv(0)}) (bvult result {split})",
+                f"(and (distinct {selected} {bv(0)})"
+                f" (=> {occupied(selected, 'result')} {occupied('bits', original)}))",
+                logic="QF_BV")
+    prover.prove("the final nonempty bitmap half has its only bit set",
+        "bits", f"(distinct bits {bv(0)}) (bvult bits {bv(2)})",
+        occupied("bits", bv(0)), logic="QF_BV")
+    prover.prove("masking intersects the original word with the eligible positions",
+        "bits mask probe", f"(bvult probe {bv(WIDTH)})",
+        f"(= {occupied('(bvand bits mask)', 'probe')}"
+        f" (and {occupied('bits', 'probe')} {occupied('mask', 'probe')}))",
+        logic="QF_BV")
     prover.prove("scan offset preserves the extreme index in the preferred nonempty half",
         "split extreme translated other first_high low_live high_live",
         """(> split 0) (<= 0 translated) (< translated split)
