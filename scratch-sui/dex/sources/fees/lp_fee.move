@@ -6,18 +6,22 @@
 /// A pool's LP fee settings and the marginal rate along the swap path.
 ///
 /// Pools store a fixed tier or a bounded quadratic schedule at creation.
-/// Dynamic rates use price bands anchored to a pool-local reference. Tier
+/// Dynamic rates use a pool-local reference. Tier
 /// additions affect future pool creation.
 module blast_fun_dex::lp_fee;
 
 // === Constants ===
 
+#[test_only]
 const BANDS_PER_SIDE: u256 = 512;
+#[test_only]
 const ONE_X32: u128 = 1 << 32;
 /// 1.0 in Q128.
+#[test_only]
 const ONE_X128: u256 = 340_282_366_920_938_463_463_374_607_431_768_211_456;
 /// Square-root price ratio 512 in Q64 (2^73): a price gap of 262,143, where a
 /// sensitivity of 1 ppm already adds more than 100%.
+#[test_only]
 const MAX_SQRT_PRICE_RATIO_X64: u256 = 9_444_732_965_739_290_427_392;
 
 // === Public Types ===
@@ -39,20 +43,6 @@ public struct BlastDexFeeTiers has key {
 
 /// Keys the delayed admission of a new LP fee tier.
 public struct FeeTierKey() has copy, drop, store;
-
-/// The fee schedule with its reference fixed for one fill.
-public struct FeePath has drop {
-    settings: LpFee,
-    reference_x96: u256,
-    upper_width_x96: u256,
-    lower_width_x96: u256,
-}
-
-/// A constant-rate segment clipped to the curve's range or price limit.
-public struct FeeStep has drop {
-    limit_x96: u256,
-    rate: Ppm,
-}
 
 // === Private Initialization ===
 
@@ -139,9 +129,8 @@ public fun sensitivity_ppm(self: &LpFee): Option<u32> {
     }
 }
 
-// === Package Functions ===
-
-public(package) fun new_fixed(tiers: &BlastDexFeeTiers, fee_ppm: u32): LpFee {
+/// Creates validated fixed LP fee settings from an admitted fee tier.
+public fun new_fixed(tiers: &BlastDexFeeTiers, fee_ppm: u32): LpFee {
     assert!(tiers.is_fee_tier(fee_ppm), blast_fun_dex::errors::not_fee_tier!());
 
     LpFee::Fixed { fee_ppm: ppm::new(fee_ppm) }
@@ -149,7 +138,7 @@ public(package) fun new_fixed(tiers: &BlastDexFeeTiers, fee_ppm: u32): LpFee {
 
 /// `base_fee_ppm` must be a fee tier, `max_fee_ppm` between it and 100,000 ppm,
 /// and `sensitivity_ppm` between 100,000 and 100,000,000 ppm.
-public(package) fun new_dynamic(
+public fun new_dynamic(
     tiers: &BlastDexFeeTiers,
     base_fee_ppm: u32,
     max_fee_ppm: u32,
@@ -171,6 +160,48 @@ public(package) fun new_dynamic(
         sensitivity_ppm,
     }
 }
+
+// === Private Functions ===
+
+fun new_fee_tiers(ctx: &mut TxContext): BlastDexFeeTiers {
+    let id = object::new(ctx);
+    let additions = delayed_map::new(FeeTierKey(), &id, constants::fee_tier_delay_ms!(), ctx);
+    BlastDexFeeTiers { id, additions }
+}
+
+fun base_fee(self: &LpFee): Ppm {
+    match (*self) {
+        LpFee::Fixed { fee_ppm } => fee_ppm,
+        LpFee::Dynamic { base_fee_ppm, .. } => base_fee_ppm,
+    }
+}
+
+fun max_fee(self: &LpFee): Ppm {
+    match (*self) {
+        LpFee::Fixed { fee_ppm } => fee_ppm,
+        LpFee::Dynamic { max_fee_ppm, .. } => max_fee_ppm,
+    }
+}
+
+// === Test-Only Types ===
+
+/// The fee schedule with its reference fixed for one fill.
+#[test_only]
+public struct FeePath has drop {
+    settings: LpFee,
+    reference_x96: u256,
+    upper_width_x96: u256,
+    lower_width_x96: u256,
+}
+
+/// A constant-rate segment clipped to the curve's range or price limit.
+#[test_only]
+public struct FeeStep has drop {
+    limit_x96: u256,
+    rate: Ppm,
+}
+
+// === Test-Only Functions ===
 
 /// The marginal rate at a price, sampled at the outer edge of a fee band.
 /// A fixed fee ignores both prices. A dynamic fee is
@@ -199,6 +230,7 @@ public(package) fun new_dynamic(
 /// ratio r. With valid settings the fee equals the exact integer fee or falls
 /// short by one ppm. A gap of 262,143 already reaches the maximum, so the
 /// ratio is clamped at 512.
+#[test_only]
 public(package) fun fee_at_price(
     self: &LpFee,
     reference_sqrt_price_x96: u256,
@@ -218,6 +250,7 @@ public(package) fun fee_at_price(
 }
 
 /// Freeze the reference and construct a grid on each side out to the cap.
+#[test_only]
 public(package) fun new_fee_path(settings: LpFee, reference_x96: u256): FeePath {
     let headroom = (settings.max_fee_ppm() - settings.base_fee_ppm()) as u128;
     let (upper_width_x96, lower_width_x96) = if (headroom == 0) {
@@ -237,10 +270,11 @@ public(package) fun new_fee_path(settings: LpFee, reference_x96: u256): FeePath 
     FeePath { settings, reference_x96, upper_width_x96, lower_width_x96 }
 }
 
-// The curve stub does not walk these steps yet. The fee harness exercises them.
+// Historical constant-rate grid retained for arithmetic benchmarks.
 #[allow(unused_function)]
 /// The curve supplies the nearer of the next initialized tick and the user's
 /// limit. An additional split inside this segment always uses the same rate.
+#[test_only]
 public(package) fun next_step(self: &FeePath, start_x96: u256, curve_limit_x96: u256): FeeStep {
     if (self.upper_width_x96 == 0) {
         return FeeStep { limit_x96: curve_limit_x96, rate: self.settings.base_fee() }
@@ -271,10 +305,12 @@ public(package) fun next_step(self: &FeePath, start_x96: u256, curve_limit_x96: 
 }
 
 #[allow(unused_function)]
+#[test_only]
 public(package) fun limit_x96(self: &FeeStep): u256 { self.limit_x96 }
 
 #[allow(unused_function)]
 /// Maximum net input affordable at this step's rate.
+#[test_only]
 public(package) fun net_budget_down(self: &FeeStep, gross_budget: u64): u64 {
     let rate = self.rate.value() as u64;
     let denominator = ppm::denominator() as u64;
@@ -285,6 +321,7 @@ public(package) fun net_budget_down(self: &FeeStep, gross_budget: u64): u64 {
 #[allow(unused_function)]
 /// Fee on net input, rounded up. The curve rounds the net input delta up
 /// and checks it against its net budget before adding this fee.
+#[test_only]
 public(package) fun fee_up(self: &FeeStep, net_input: u64): u64 {
     let rate = self.rate.value() as u64;
     let denominator = ppm::denominator() as u64;
@@ -292,34 +329,15 @@ public(package) fun fee_up(self: &FeeStep, net_input: u64): u64 {
     net_input.mul_div_ceil(rate, denominator - rate)
 }
 
-// === Private Functions ===
-
-fun new_fee_tiers(ctx: &mut TxContext): BlastDexFeeTiers {
-    let id = object::new(ctx);
-    let additions = delayed_map::new(FeeTierKey(), &id, constants::fee_tier_delay_ms!(), ctx);
-    BlastDexFeeTiers { id, additions }
-}
-
-fun base_fee(self: &LpFee): Ppm {
-    match (*self) {
-        LpFee::Fixed { fee_ppm } => fee_ppm,
-        LpFee::Dynamic { base_fee_ppm, .. } => base_fee_ppm,
-    }
-}
-
-fun max_fee(self: &LpFee): Ppm {
-    match (*self) {
-        LpFee::Fixed { fee_ppm } => fee_ppm,
-        LpFee::Dynamic { max_fee_ppm, .. } => max_fee_ppm,
-    }
-}
-
+#[test_only]
 fun sqrt_up(value: u128): u128 { (value - 1).sqrt() + 1 }
 
+#[test_only]
 fun price_at_distance(reference_x96: u256, distance_x96: u256, above: bool): u256 {
     if (above) reference_x96 + distance_x96 else reference_x96 - distance_x96
 }
 
+#[test_only]
 fun clip_limit(curve_limit_x96: u256, boundary_x96: u256, up: bool): u256 {
     if (up) curve_limit_x96.min(boundary_x96) else curve_limit_x96.max(boundary_x96)
 }
@@ -329,6 +347,7 @@ fun clip_limit(curve_limit_x96: u256, boundary_x96: u256, up: bool): u256 {
 /// and is clamped at 512; below it the ratio rounds up, so both sides
 /// underestimate the gap. Shifting a sqrt price below 2^161 by 64 bits and
 /// squaring a ratio of at most 2^73 both fit in u256.
+#[test_only]
 fun price_gap_x64_down(reference_sqrt_price_x96: u256, sqrt_price_x96: u256): u256 {
     if (sqrt_price_x96 >= reference_sqrt_price_x96) {
         let ratio_x64 = ((sqrt_price_x96 << 64) / reference_sqrt_price_x96).min(MAX_SQRT_PRICE_RATIO_X64);
@@ -338,8 +357,6 @@ fun price_gap_x64_down(reference_sqrt_price_x96: u256, sqrt_price_x96: u256): u2
         (ONE_X128 - ratio_x64 * ratio_x64) >> 64
     }
 }
-
-// === Test-Only Functions ===
 
 #[test_only]
 public fun init_for_testing(ctx: &mut TxContext) {

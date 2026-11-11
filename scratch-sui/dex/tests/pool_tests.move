@@ -45,12 +45,12 @@ public struct Fixture {
 
 #[test]
 #[expected_failure(abort_code = blast_admin::errors::EPaused, location = blast_admin::package_version)]
-fun creation_pause_precedes_fee_and_tick_validation() {
+fun creation_pause_precedes_pool_parameter_validation() {
     let mut ctx = tx_context::dummy();
     let mut version = dex::version_for_testing(&mut ctx);
     version.pause_for_testing(constants::create_pause_bit!());
 
-    let initializer = new_fixed_pool<ASSET, QUOTE>(&version, 0, 2_000, SQRT_PRICE_ONE_X96, &mut ctx);
+    let initializer = new_fixed_pool<ASSET, QUOTE>(&version, 0, LP_FEE_PPM, SQRT_PRICE_ONE_X96, &mut ctx);
 
     destroy(initializer);
     destroy(version);
@@ -94,7 +94,7 @@ fun new_rejects_tick_spacing_above_the_maximum() {
 
 #[test]
 #[expected_failure(abort_code = blast_fun_dex::errors::ENotFeeTier, location = blast_fun_dex::lp_fee)]
-fun new_with_fixed_fee_rejects_a_fee_off_the_tiers() {
+fun fixed_fee_settings_reject_a_fee_off_the_tiers() {
     let mut ctx = tx_context::dummy();
     let version = dex::version_for_testing(&mut ctx);
 
@@ -106,7 +106,7 @@ fun new_with_fixed_fee_rejects_a_fee_off_the_tiers() {
 
 #[test]
 #[expected_failure(abort_code = blast_fun_dex::errors::EInvalidSensitivity, location = blast_fun_dex::lp_fee)]
-fun new_with_dynamic_fee_validates_its_settings() {
+fun dynamic_fee_settings_validate_their_parameters() {
     let mut ctx = tx_context::dummy();
     let version = dex::version_for_testing(&mut ctx);
 
@@ -231,13 +231,13 @@ fun register_hook_rejects_a_slot_bound_to_another_hook() {
         SQRT_PRICE_ONE_X96,
         &mut ctx,
     );
-    initializer.register_hook(&version, &fixture.test_config, TestHook(), pool::before_swap_flag!());
+    initializer.register_hook(&version, &fixture.test_config, TestHook(), constants::before_swap_flag!());
 
     initializer.register_hook(
         &version,
         &fixture.other_config,
         OtherHook(),
-        pool::before_swap_flag!() | pool::after_swap_flag!(),
+        constants::before_swap_flag!() | constants::after_swap_flag!(),
     );
 
     destroy(initializer);
@@ -251,7 +251,7 @@ fun register_hook_binds_only_the_selected_slots() {
     let version = dex::version_for_testing(&mut ctx);
     let fixture = new_fixture(&version, &mut ctx);
 
-    let pool = fixture.hooked_pool(&version, pool::before_swap_flag!(), &mut ctx);
+    let pool = fixture.hooked_pool(&version, constants::before_swap_flag!(), &mut ctx);
 
     assert_eq!(pool.before_swap_hook_for_testing(), option::some(type_name::with_defining_ids<TestHook>()));
     assert_eq!(pool.after_donate_hook_for_testing(), option::none());
@@ -404,13 +404,13 @@ fun quote_to_asset_swap_settles_the_other_side() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::ECurveMathUnavailable, location = blast_fun_dex::pool)]
-fun execute_swap_reaches_the_curve_seam_once_approved() {
+#[expected_failure(abort_code = blast_fun_dex::errors::EInsufficientOutput, location = blast_fun_dex::pool)]
+fun approved_swap_without_liquidity_cannot_settle() {
     let mut ctx = tx_context::dummy();
     let version = dex::version_for_testing(&mut ctx);
     let clock = clock::create_for_testing(&mut ctx);
     let fixture = new_fixture(&version, &mut ctx);
-    let mut pool = fixture.hooked_pool(&version, pool::before_swap_flag!(), &mut ctx);
+    let mut pool = fixture.hooked_pool(&version, constants::before_swap_flag!(), &mut ctx);
     let mut request = pool.begin_swap_asset_to_quote(&version, asset(100, &mut ctx), BELOW_PRICE_X96);
     request.approve(&version, &pool, TestHook());
 
@@ -440,13 +440,44 @@ fun begin_rejects_a_second_operation_on_a_busy_pool() {
 }
 
 #[test]
+#[expected_failure(abort_code = blast_admin::errors::EVersionMismatch, location = blast_admin::package_version)]
+fun begin_swap_checks_version_before_pause_payment_and_price_limit() {
+    let mut ctx = tx_context::dummy();
+    let mut version = dex::version_for_testing(&mut ctx);
+    let mut pool = plain_pool(&version, &mut ctx);
+    version.pause_for_testing(constants::swap_pause_bit!());
+    version.set_version_for_testing(constants::version!() + 1);
+
+    let request = pool.begin_swap_asset_to_quote(&version, asset(0, &mut ctx), ABOVE_PRICE_X96);
+
+    destroy(request);
+    destroy(pool);
+    destroy(version);
+}
+
+#[test]
+#[expected_failure(abort_code = blast_admin::errors::EPaused, location = blast_admin::package_version)]
+fun begin_swap_checks_pause_before_payment_and_price_limit() {
+    let mut ctx = tx_context::dummy();
+    let mut version = dex::version_for_testing(&mut ctx);
+    let mut pool = plain_pool(&version, &mut ctx);
+    version.pause_for_testing(constants::swap_pause_bit!());
+
+    let request = pool.begin_swap_quote_to_asset(&version, quote(0, &mut ctx), BELOW_PRICE_X96);
+
+    destroy(request);
+    destroy(pool);
+    destroy(version);
+}
+
+#[test]
 #[expected_failure(abort_code = blast_fun_dex::errors::EZeroAmount, location = blast_fun_dex::pool)]
-fun begin_swap_rejects_a_zero_payment() {
+fun begin_swap_quote_to_asset_rejects_a_zero_payment() {
     let mut ctx = tx_context::dummy();
     let version = dex::version_for_testing(&mut ctx);
     let mut pool = plain_pool(&version, &mut ctx);
 
-    let request = pool.begin_swap_asset_to_quote(&version, asset(0, &mut ctx), BELOW_PRICE_X96);
+    let request = pool.begin_swap_quote_to_asset(&version, quote(0, &mut ctx), ABOVE_PRICE_X96);
 
     destroy(request);
     destroy(pool);
@@ -516,7 +547,7 @@ fun execute_swap_rejects_a_request_the_bound_hook_did_not_approve() {
     let version = dex::version_for_testing(&mut ctx);
     let clock = clock::create_for_testing(&mut ctx);
     let fixture = new_fixture(&version, &mut ctx);
-    let mut pool = fixture.hooked_pool(&version, pool::before_swap_flag!(), &mut ctx);
+    let mut pool = fixture.hooked_pool(&version, constants::before_swap_flag!(), &mut ctx);
     let request = pool.begin_swap_asset_to_quote(&version, asset(100, &mut ctx), BELOW_PRICE_X96);
 
     let completion = pool.execute_swap(&version, request, &clock, &mut ctx);
@@ -534,7 +565,7 @@ fun approve_rejects_a_witness_not_bound_to_the_slot() {
     let mut ctx = tx_context::dummy();
     let version = dex::version_for_testing(&mut ctx);
     let fixture = new_fixture(&version, &mut ctx);
-    let mut pool = fixture.hooked_pool(&version, pool::before_swap_flag!(), &mut ctx);
+    let mut pool = fixture.hooked_pool(&version, constants::before_swap_flag!(), &mut ctx);
     let mut request = pool.begin_swap_asset_to_quote(&version, asset(100, &mut ctx), BELOW_PRICE_X96);
 
     request.approve(&version, &pool, OtherHook());
@@ -551,7 +582,7 @@ fun approve_rejects_any_witness_on_an_empty_slot() {
     let mut ctx = tx_context::dummy();
     let version = dex::version_for_testing(&mut ctx);
     let fixture = new_fixture(&version, &mut ctx);
-    let mut pool = fixture.hooked_pool(&version, pool::after_swap_flag!(), &mut ctx);
+    let mut pool = fixture.hooked_pool(&version, constants::after_swap_flag!(), &mut ctx);
     let mut request = pool.begin_swap_asset_to_quote(&version, asset(100, &mut ctx), BELOW_PRICE_X96);
 
     request.approve(&version, &pool, TestHook());
@@ -568,7 +599,7 @@ fun approve_rejects_a_second_approval() {
     let mut ctx = tx_context::dummy();
     let version = dex::version_for_testing(&mut ctx);
     let fixture = new_fixture(&version, &mut ctx);
-    let mut pool = fixture.hooked_pool(&version, pool::before_swap_flag!(), &mut ctx);
+    let mut pool = fixture.hooked_pool(&version, constants::before_swap_flag!(), &mut ctx);
     let mut request = pool.begin_swap_asset_to_quote(&version, asset(100, &mut ctx), BELOW_PRICE_X96);
     request.approve(&version, &pool, TestHook());
 
@@ -582,15 +613,15 @@ fun approve_rejects_a_second_approval() {
 
 #[test]
 #[expected_failure(abort_code = blast_fun_dex::errors::EAlreadyApproved, location = blast_fun_dex::pool)]
-fun take_payment_rejects_an_approved_request() {
+fun payment_mut_rejects_an_approved_request() {
     let mut ctx = tx_context::dummy();
     let version = dex::version_for_testing(&mut ctx);
     let fixture = new_fixture(&version, &mut ctx);
-    let mut pool = fixture.hooked_pool(&version, pool::before_swap_flag!(), &mut ctx);
+    let mut pool = fixture.hooked_pool(&version, constants::before_swap_flag!(), &mut ctx);
     let mut request = pool.begin_swap_asset_to_quote(&version, asset(100, &mut ctx), BELOW_PRICE_X96);
     request.approve(&version, &pool, TestHook());
 
-    let taken = request.take_asset_payment(&version, &pool, TestHook(), 1);
+    let taken = request.asset_payment_mut(&version, &pool, TestHook()).split(1);
 
     destroy(taken);
     destroy(request);
@@ -600,16 +631,66 @@ fun take_payment_rejects_an_approved_request() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::EWrongPool, location = blast_fun_dex::pool)]
-fun approve_rejects_a_request_from_another_pool() {
+#[expected_failure(abort_code = blast_fun_dex::errors::EHookNotBound, location = blast_fun_dex::pool)]
+fun payment_mut_rejects_a_witness_not_bound_to_the_slot() {
     let mut ctx = tx_context::dummy();
     let version = dex::version_for_testing(&mut ctx);
     let fixture = new_fixture(&version, &mut ctx);
-    let mut first_pool = fixture.hooked_pool(&version, pool::before_swap_flag!(), &mut ctx);
-    let second_pool = fixture.hooked_pool(&version, pool::before_swap_flag!(), &mut ctx);
+    let mut pool = fixture.hooked_pool(&version, constants::before_swap_flag!(), &mut ctx);
+    let mut request = pool.begin_swap_quote_to_asset(&version, quote(100, &mut ctx), ABOVE_PRICE_X96);
+
+    request.quote_payment_mut(&version, &pool, OtherHook()).join(balance::zero());
+
+    destroy(request);
+    destroy(pool);
+    destroy(fixture);
+    destroy(version);
+}
+
+#[test]
+fun before_hook_can_split_and_join_both_payment_balances() {
+    let mut ctx = tx_context::dummy();
+    let version = dex::version_for_testing(&mut ctx);
+    let clock = clock::create_for_testing(&mut ctx);
+    let fixture = new_fixture(&version, &mut ctx);
+    let mut pool = fixture.hooked_pool(&version, constants::before_swap_flag!(), &mut ctx);
+    pool.join_reserves_for_testing(balance::create_for_testing(1_000), balance::zero());
+    let mut request = pool.begin_swap_quote_to_asset(&version, quote(100, &mut ctx), ABOVE_PRICE_X96);
+
+    let quote_fee = request.quote_payment_mut(&version, &pool, TestHook()).split(10);
+    request.quote_payment_mut(&version, &pool, TestHook()).join(balance::create_for_testing(4));
+    request.asset_payment_mut(&version, &pool, TestHook()).join(balance::create_for_testing(3));
+    let asset_fee = request.asset_payment_mut(&version, &pool, TestHook()).split(1);
+
+    assert!(!request.is_asset_input());
+    assert_eq!(request.sqrt_price_limit_x96(), ABOVE_PRICE_X96);
+    assert_eq!(request.input_value(), 94);
+    request.approve(&version, &pool, TestHook());
+    let completion = pool.execute_swap_with_amounts_for_testing(&version, request, 90, 80, ABOVE_PRICE_X96, 1, &clock, &mut ctx);
+    let (asset_coin, quote_coin) = pool.finish(&version, completion, 82, 4, &mut ctx);
+
+    assert_eq!(quote_fee.destroy_for_testing(), 10);
+    assert_eq!(asset_fee.destroy_for_testing(), 1);
+    assert_eq!(asset_coin.burn_for_testing(), 82);
+    assert_eq!(quote_coin.burn_for_testing(), 4);
+    pool.assert_reserves(920, 90);
+    destroy(pool);
+    destroy(fixture);
+    clock.destroy_for_testing();
+    destroy(version);
+}
+
+#[test]
+#[expected_failure(abort_code = blast_fun_dex::errors::EWrongPool, location = blast_fun_dex::pool)]
+fun approve_checks_pool_before_hook_witness() {
+    let mut ctx = tx_context::dummy();
+    let version = dex::version_for_testing(&mut ctx);
+    let fixture = new_fixture(&version, &mut ctx);
+    let mut first_pool = fixture.hooked_pool(&version, constants::before_swap_flag!(), &mut ctx);
+    let second_pool = fixture.hooked_pool(&version, constants::before_swap_flag!(), &mut ctx);
     let mut request = first_pool.begin_swap_asset_to_quote(&version, asset(100, &mut ctx), BELOW_PRICE_X96);
 
-    request.approve(&version, &second_pool, TestHook());
+    request.approve(&version, &second_pool, OtherHook());
 
     destroy(request);
     destroy(first_pool);
@@ -643,11 +724,11 @@ fun swap_event_reports_the_lp_fee_amount_after_the_hook_takes_payment() {
     let version = dex::version_for_testing(&mut ctx);
     let clock = clock::create_for_testing(&mut ctx);
     let fixture = new_fixture(&version, &mut ctx);
-    let mut pool = fixture.hooked_pool(&version, pool::before_swap_flag!(), &mut ctx);
+    let mut pool = fixture.hooked_pool(&version, constants::before_swap_flag!(), &mut ctx);
     pool.join_reserves_for_testing(balance::create_for_testing(0), balance::create_for_testing(1_000));
     let mut request = pool.begin_swap_asset_to_quote(&version, asset(100, &mut ctx), BELOW_PRICE_X96);
 
-    let hook_fee = request.take_asset_payment(&version, &pool, TestHook(), 10);
+    let hook_fee = request.asset_payment_mut(&version, &pool, TestHook()).split(10);
     request.approve(&version, &pool, TestHook());
 
     assert_eq!(hook_fee.destroy_for_testing(), 10);
@@ -717,8 +798,8 @@ fun dynamic_swaps_observe_the_pre_swap_spot_once_per_timestamp() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::ECurveMathUnavailable, location = blast_fun_dex::pool)]
-fun execute_dynamic_swap_reaches_the_curve_seam() {
+#[expected_failure(abort_code = blast_fun_dex::errors::EInsufficientOutput, location = blast_fun_dex::pool)]
+fun dynamic_swap_without_liquidity_cannot_settle() {
     let mut ctx = tx_context::dummy();
     let version = dex::version_for_testing(&mut ctx);
     let clock = clock::create_for_testing(&mut ctx);
@@ -739,7 +820,7 @@ fun after_hook_adjusts_output_before_approving() {
     let version = dex::version_for_testing(&mut ctx);
     let clock = clock::create_for_testing(&mut ctx);
     let fixture = new_fixture(&version, &mut ctx);
-    let mut pool = fixture.hooked_pool(&version, pool::after_swap_flag!(), &mut ctx);
+    let mut pool = fixture.hooked_pool(&version, constants::after_swap_flag!(), &mut ctx);
     pool.join_reserves_for_testing(balance::create_for_testing(0), balance::create_for_testing(1_000));
     let request = pool.begin_swap_asset_to_quote(&version, asset(100, &mut ctx), BELOW_PRICE_X96);
     let mut completion = pool.execute_swap_with_amounts_for_testing(
@@ -753,17 +834,83 @@ fun after_hook_adjusts_output_before_approving() {
         &mut ctx,
     );
 
-    let skimmed = completion.take_quote_output(&version, &pool, TestHook(), 5);
-    completion.join_asset_output(&version, &pool, TestHook(), balance::create_for_testing(2));
+    let quote_fee = completion.quote_output_mut(&version, &pool, TestHook()).split(5);
+    completion.quote_output_mut(&version, &pool, TestHook()).join(balance::create_for_testing(3));
+    completion.asset_output_mut(&version, &pool, TestHook()).join(balance::create_for_testing(2));
+    let asset_fee = completion.asset_output_mut(&version, &pool, TestHook()).split(1);
     completion.approve(&version, &pool, TestHook());
 
-    assert_eq!(skimmed.destroy_for_testing(), 5);
-    let (asset_coin, quote_coin) = pool.finish(&version, completion, 2, 85, &mut ctx);
-    assert_eq!(asset_coin.burn_for_testing(), 2);
-    assert_eq!(quote_coin.burn_for_testing(), 85);
+    assert_eq!(quote_fee.destroy_for_testing(), 5);
+    assert_eq!(asset_fee.destroy_for_testing(), 1);
+    let (asset_coin, quote_coin) = pool.finish(&version, completion, 1, 88, &mut ctx);
+    assert_eq!(asset_coin.burn_for_testing(), 1);
+    assert_eq!(quote_coin.burn_for_testing(), 88);
+    pool.assert_reserves(100, 910);
     destroy(pool);
     destroy(fixture);
     clock.destroy_for_testing();
+    destroy(version);
+}
+
+#[test]
+#[expected_failure(abort_code = blast_fun_dex::errors::EAlreadyApproved, location = blast_fun_dex::pool)]
+fun output_mut_rejects_an_approved_completion() {
+    let mut ctx = tx_context::dummy();
+    let version = dex::version_for_testing(&mut ctx);
+    let fixture = new_fixture(&version, &mut ctx);
+    let mut pool = fixture.hooked_pool(&version, constants::after_donate_flag!(), &mut ctx);
+    let request = pool.begin_donate(&version, asset(1, &mut ctx), quote(0, &mut ctx));
+    let mut completion = pool.execute_donate_for_testing(&version, request);
+    completion.approve(&version, &pool, TestHook());
+
+    completion.asset_output_mut(&version, &pool, TestHook()).join(balance::zero());
+
+    destroy(completion);
+    destroy(pool);
+    destroy(fixture);
+    destroy(version);
+}
+
+#[test]
+#[expected_failure(abort_code = blast_admin::errors::EVersionMismatch, location = blast_admin::package_version)]
+fun output_mut_checks_version_before_pool_hook_and_balance() {
+    let mut ctx = tx_context::dummy();
+    let mut version = dex::version_for_testing(&mut ctx);
+    let fixture = new_fixture(&version, &mut ctx);
+    let mut first_pool = fixture.hooked_pool(&version, constants::after_donate_flag!(), &mut ctx);
+    let second_pool = plain_pool(&version, &mut ctx);
+    let request = first_pool.begin_donate(&version, asset(1, &mut ctx), quote(0, &mut ctx));
+    let mut completion = first_pool.execute_donate_for_testing(&version, request);
+    version.set_version_for_testing(constants::version!() + 1);
+
+    let taken = completion.asset_output_mut(&version, &second_pool, OtherHook()).split(1);
+
+    destroy(taken);
+    destroy(completion);
+    destroy(first_pool);
+    destroy(second_pool);
+    destroy(fixture);
+    destroy(version);
+}
+
+#[test]
+#[expected_failure(abort_code = blast_fun_dex::errors::EWrongPool, location = blast_fun_dex::pool)]
+fun output_mut_checks_pool_before_hook_and_balance() {
+    let mut ctx = tx_context::dummy();
+    let version = dex::version_for_testing(&mut ctx);
+    let fixture = new_fixture(&version, &mut ctx);
+    let mut first_pool = fixture.hooked_pool(&version, constants::after_donate_flag!(), &mut ctx);
+    let second_pool = plain_pool(&version, &mut ctx);
+    let request = first_pool.begin_donate(&version, asset(1, &mut ctx), quote(0, &mut ctx));
+    let mut completion = first_pool.execute_donate_for_testing(&version, request);
+
+    let taken = completion.quote_output_mut(&version, &second_pool, OtherHook()).split(1);
+
+    destroy(taken);
+    destroy(completion);
+    destroy(first_pool);
+    destroy(second_pool);
+    destroy(fixture);
     destroy(version);
 }
 
@@ -774,7 +921,7 @@ fun finish_rejects_a_completion_the_after_hook_did_not_approve() {
     let version = dex::version_for_testing(&mut ctx);
     let clock = clock::create_for_testing(&mut ctx);
     let fixture = new_fixture(&version, &mut ctx);
-    let mut pool = fixture.hooked_pool(&version, pool::after_swap_flag!(), &mut ctx);
+    let mut pool = fixture.hooked_pool(&version, constants::after_swap_flag!(), &mut ctx);
     pool.join_reserves_for_testing(balance::create_for_testing(0), balance::create_for_testing(1_000));
     let request = pool.begin_swap_asset_to_quote(&version, asset(100, &mut ctx), BELOW_PRICE_X96);
     let completion = pool.execute_swap_with_amounts_for_testing(&version, request, 100, 90, BELOW_PRICE_X96, 1, &clock, &mut ctx);
@@ -791,20 +938,25 @@ fun finish_rejects_a_completion_the_after_hook_did_not_approve() {
 
 #[test]
 #[expected_failure(abort_code = blast_fun_dex::errors::EInsufficientOutput, location = blast_fun_dex::pool)]
-fun finish_rejects_output_below_the_minimum() {
+fun finish_checks_minimum_after_hook_balance_changes() {
     let mut ctx = tx_context::dummy();
     let version = dex::version_for_testing(&mut ctx);
     let clock = clock::create_for_testing(&mut ctx);
-    let mut pool = plain_pool(&version, &mut ctx);
+    let fixture = new_fixture(&version, &mut ctx);
+    let mut pool = fixture.hooked_pool(&version, constants::after_swap_flag!(), &mut ctx);
     pool.join_reserves_for_testing(balance::create_for_testing(0), balance::create_for_testing(1_000));
     let request = pool.begin_swap_asset_to_quote(&version, asset(100, &mut ctx), BELOW_PRICE_X96);
-    let completion = pool.execute_swap_with_amounts_for_testing(&version, request, 100, 90, BELOW_PRICE_X96, 1, &clock, &mut ctx);
+    let mut completion = pool.execute_swap_with_amounts_for_testing(&version, request, 100, 90, BELOW_PRICE_X96, 1, &clock, &mut ctx);
+    let hook_fee = completion.quote_output_mut(&version, &pool, TestHook()).split(1);
+    completion.approve(&version, &pool, TestHook());
 
-    let (asset_coin, quote_coin) = pool.finish(&version, completion, 0, 91, &mut ctx);
+    let (asset_coin, quote_coin) = pool.finish(&version, completion, 0, 90, &mut ctx);
 
+    destroy(hook_fee);
     destroy(asset_coin);
     destroy(quote_coin);
     destroy(pool);
+    destroy(fixture);
     clock.destroy_for_testing();
     destroy(version);
 }
@@ -865,7 +1017,7 @@ fun liquidity_removal_settles_and_cleans_up_even_with_every_bit_paused() {
     let mut ctx = tx_context::dummy();
     let mut version = dex::version_for_testing(&mut ctx);
     let fixture = new_fixture(&version, &mut ctx);
-    let mut pool = fixture.hooked_pool(&version, pool::all_hook_flags!(), &mut ctx);
+    let mut pool = fixture.hooked_pool(&version, constants::all_hook_flags!(), &mut ctx);
     let mut position = pool.new_position(&version, i32::neg_from_u32(600), i32::from_u32(600), &mut ctx);
 
     let mut add_request = pool.begin_add_liquidity(&version, &position, 500, asset(100, &mut ctx), quote(100, &mut ctx));
@@ -946,13 +1098,13 @@ fun liquidity_in_pause_blocks_donations() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::ECurveMathUnavailable, location = blast_fun_dex::pool)]
-fun execute_add_liquidity_reaches_the_curve_seam_once_approved() {
+#[expected_failure(abort_code = blast_fun_dex::errors::EInsufficientPayment, location = blast_fun_dex::pool)]
+fun execute_add_liquidity_checks_calculated_principal() {
     let mut ctx = tx_context::dummy();
     let version = dex::version_for_testing(&mut ctx);
     let mut pool = plain_pool(&version, &mut ctx);
     let mut position = pool.new_position(&version, i32::neg_from_u32(600), i32::from_u32(600), &mut ctx);
-    let request = pool.begin_add_liquidity(&version, &position, 500, asset(100, &mut ctx), quote(100, &mut ctx));
+    let request = pool.begin_add_liquidity(&version, &position, 500, asset(14, &mut ctx), quote(100, &mut ctx));
 
     let completion = pool.execute_add_liquidity(&version, request, &mut position);
 
@@ -1074,7 +1226,7 @@ fun donate_runs_both_hooks_and_returns_empty_coins() {
     let mut ctx = tx_context::dummy();
     let version = dex::version_for_testing(&mut ctx);
     let fixture = new_fixture(&version, &mut ctx);
-    let mut pool = fixture.hooked_pool(&version, pool::before_donate_flag!() | pool::after_donate_flag!(), &mut ctx);
+    let mut pool = fixture.hooked_pool(&version, constants::before_donate_flag!() | constants::after_donate_flag!(), &mut ctx);
 
     let mut request = pool.begin_donate(&version, asset(5, &mut ctx), quote(0, &mut ctx));
     assert_eq!(request.asset_value(), 5);
@@ -1113,8 +1265,8 @@ fun begin_donate_rejects_an_empty_donation() {
 }
 
 #[test]
-#[expected_failure(abort_code = blast_fun_dex::errors::ECurveMathUnavailable, location = blast_fun_dex::pool)]
-fun execute_donate_reaches_the_curve_seam() {
+#[expected_failure(abort_code = blast_fun_dex::errors::EInsufficientLiquidity, location = blast_fun_dex::curve)]
+fun execute_donate_rejects_an_empty_active_range() {
     let mut ctx = tx_context::dummy();
     let version = dex::version_for_testing(&mut ctx);
     let mut pool = plain_pool(&version, &mut ctx);
@@ -1141,8 +1293,8 @@ fun hook_state_is_isolated_per_witness_and_writable_mid_operation() {
         SQRT_PRICE_ONE_X96,
         &mut ctx,
     );
-    initializer.register_hook(&version, &fixture.test_config, TestHook(), pool::before_swap_flag!());
-    initializer.register_hook(&version, &fixture.other_config, OtherHook(), pool::after_swap_flag!());
+    initializer.register_hook(&version, &fixture.test_config, TestHook(), constants::before_swap_flag!());
+    initializer.register_hook(&version, &fixture.other_config, OtherHook(), constants::after_swap_flag!());
     let mut pool = initializer.finalize(&version);
     let request = pool.begin_swap_asset_to_quote(&version, asset(100, &mut ctx), BELOW_PRICE_X96);
 
@@ -1167,7 +1319,7 @@ fun hook_state_rejects_a_hook_not_bound_to_the_pool() {
     let mut ctx = tx_context::dummy();
     let version = dex::version_for_testing(&mut ctx);
     let fixture = new_fixture(&version, &mut ctx);
-    let mut pool = fixture.hooked_pool(&version, pool::before_swap_flag!(), &mut ctx);
+    let mut pool = fixture.hooked_pool(&version, constants::before_swap_flag!(), &mut ctx);
 
     pool.add_hook_state(&version, &OtherHook(), StateName(), 1u64);
 
@@ -1176,7 +1328,184 @@ fun hook_state_rejects_a_hook_not_bound_to_the_pool() {
     destroy(version);
 }
 
+#[test]
+fun continuous_swaps_cross_and_reverse_then_distribute_fees_to_the_correct_ranges() {
+    let mut ctx = tx_context::dummy();
+    let version = dex::version_for_testing(&mut ctx);
+    let mut pool = new_dynamic_pool<ASSET, QUOTE>(
+        &version, TICK_SPACING, BASE_FEE_PPM, MAX_FEE_PPM, SENSITIVITY_PPM, SQRT_PRICE_ONE_X96, &mut ctx,
+    ).finalize(&version);
+    let clock = clock::create_for_testing(&mut ctx);
+    let mut lower = pool.new_position(&version, i32::neg_from_u32(600), i32::from_u32(0), &mut ctx);
+    let mut upper = pool.new_position(&version, i32::from_u32(0), i32::from_u32(600), &mut ctx);
+    let liquidity = 1u128 << 20;
+    let (asset_paid, quote_paid) = fund_position(&mut pool, &version, &mut lower, liquidity, &mut ctx);
+    assert_eq!(asset_paid, 0);
+    assert_eq!(quote_paid, 30_989);
+    let (asset_paid, quote_paid) = fund_position(&mut pool, &version, &mut upper, liquidity, &mut ctx);
+    assert_eq!(asset_paid, 30_989);
+    assert_eq!(quote_paid, 0);
+
+    let up = tick_math::sqrt_price_x96(constants::max_tick!() + 120);
+    let request = pool.begin_swap_quote_to_asset(&version, quote(10_000, &mut ctx), up);
+    let completion = pool.execute_swap(&version, request, &clock, &mut ctx);
+    let (out, refund) = pool.finish(&version, completion, 6_272, 0, &mut ctx);
+    assert_eq!(out.burn_for_testing(), 6_272);
+    let quote_spent = 10_000 - refund.burn_for_testing();
+    assert_eq!(pool.sqrt_price_x96(), up);
+
+    let down = tick_math::sqrt_price_x96(constants::max_tick!() - 120);
+    let request = pool.begin_swap_asset_to_quote(&version, asset(20_000, &mut ctx), down);
+    let completion = pool.execute_swap(&version, request, &clock, &mut ctx);
+    let (refund, out) = pool.finish(&version, completion, 0, 12_582, &mut ctx);
+    let asset_spent = 20_000 - refund.burn_for_testing();
+    let quote_out = out.burn_for_testing();
+    assert_eq!(quote_out, 12_582);
+    assert_eq!(pool.sqrt_price_x96(), down);
+
+    let request = pool.begin_donate(&version, asset(17, &mut ctx), quote(23, &mut ctx));
+    let completion = pool.execute_donate(&version, request);
+    let (asset_out, quote_out_coin) = pool.finish(&version, completion, 0, 0, &mut ctx);
+    assert_eq!(asset_out.burn_for_testing(), 0);
+    assert_eq!(quote_out_coin.burn_for_testing(), 0);
+    let (upper_asset, upper_quote) = burn_position(&mut pool, &version, &mut upper, liquidity, &mut ctx);
+    assert!(upper_asset > 30_989 && upper_quote > 0);
+    let (lower_asset, lower_quote) = burn_position(&mut pool, &version, &mut lower, liquidity, &mut ctx);
+    assert!(lower_asset > 6_310 && lower_quote > 24_716);
+    let (asset_left, quote_left) = pool.reserves_for_testing();
+    assert_eq!(upper_asset + lower_asset + asset_left + 6_272, 30_989 + asset_spent + 17);
+    assert_eq!(upper_quote + lower_quote + quote_left + quote_out, 30_989 + quote_spent + 23);
+    assert!(asset_left <= 3 && quote_left <= 3);
+    pool::destroy_empty_position(upper);
+    pool::destroy_empty_position(lower);
+    clock.destroy_for_testing();
+    destroy(pool);
+    destroy(version);
+}
+
+#[test]
+fun tiny_burns_cannot_release_more_principal_than_a_combined_burn() {
+    let mut ctx = tx_context::dummy();
+    let version = dex::version_for_testing(&mut ctx);
+    let mut pool = plain_pool(&version, &mut ctx);
+    let mut position = pool.new_position(&version, i32::neg_from_u32(600), i32::from_u32(600), &mut ctx);
+    let (paid_asset, paid_quote) = fund_position(&mut pool, &version, &mut position, 10_000, &mut ctx);
+
+    64u64.do!(|_| {
+        let (asset_out, quote_out) = burn_position(&mut pool, &version, &mut position, 1, &mut ctx);
+        assert_eq!(asset_out, 0);
+        assert_eq!(quote_out, 0);
+    });
+    assert_eq!(position.position_liquidity(), 9_936);
+    let mut control = plain_pool(&version, &mut ctx);
+    let mut other = control.new_position(&version, i32::neg_from_u32(600), i32::from_u32(600), &mut ctx);
+    fund_position(&mut control, &version, &mut other, 10_000, &mut ctx);
+    let (asset_out, quote_out) = burn_position(&mut control, &version, &mut other, 64, &mut ctx);
+    assert_eq!(asset_out, 1);
+    assert_eq!(quote_out, 1);
+
+    let clock = clock::create_for_testing(&mut ctx);
+    let request = pool.begin_swap_quote_to_asset(&version, quote(100, &mut ctx), ABOVE_PRICE_X96);
+    let actual = pool.execute_swap(&version, request, &clock, &mut ctx);
+    let request = control.begin_swap_quote_to_asset(&version, quote(100, &mut ctx), ABOVE_PRICE_X96);
+    let expected = control.execute_swap(&version, request, &clock, &mut ctx);
+    assert_eq!(pool.sqrt_price_x96(), control.sqrt_price_x96());
+    let (actual_asset, actual_quote) = pool.finish(&version, actual, 1, 0, &mut ctx);
+    let (expected_asset, expected_quote) = control.finish(&version, expected, 1, 0, &mut ctx);
+    let output = actual_asset.burn_for_testing();
+    let refund = actual_quote.burn_for_testing();
+    assert_eq!(output, expected_asset.burn_for_testing());
+    assert_eq!(refund, expected_quote.burn_for_testing());
+
+    let (asset_back, quote_back) = burn_position(&mut pool, &version, &mut position, 9_936, &mut ctx);
+    let (asset_left, quote_left) = pool.reserves_for_testing();
+    assert_eq!(asset_back + asset_left + output, paid_asset);
+    assert_eq!(quote_back + quote_left + refund, paid_quote + 100);
+    pool::destroy_empty_position(position);
+    clock.destroy_for_testing();
+    destroy(other);
+    destroy(control);
+    destroy(pool);
+    destroy(version);
+}
+
+#[test]
+#[expected_failure(abort_code = blast_fun_dex::errors::EInsufficientPayment, location = blast_fun_dex::pool)]
+fun oversized_mint_is_rejected_before_narrowing_its_wide_obligation() {
+    let mut ctx = tx_context::dummy();
+    let version = dex::version_for_testing(&mut ctx);
+    let mut pool = new_fixed_pool<ASSET, QUOTE>(&version, 1, LP_FEE_PPM, MIN_SQRT_PRICE_X96, &mut ctx).finalize(&version);
+    let mut position = pool.new_position(&version, i32::neg_from_u32(887_272), i32::from_u32(887_272), &mut ctx);
+    let request = pool.begin_add_liquidity(
+        &version, &position, u128::max_value!(), asset(u64::max_value!(), &mut ctx), quote(0, &mut ctx),
+    );
+    destroy(pool.execute_add_liquidity(&version, request, &mut position));
+    destroy(position);
+    destroy(pool);
+    destroy(version);
+}
+
+#[test]
+fun paid_partial_fill_advances_through_thin_ranges_at_the_traversal_limit() {
+    let mut ctx = tx_context::dummy();
+    let version = dex::version_for_testing(&mut ctx);
+    let mut pool = new_fixed_pool<ASSET, QUOTE>(&version, 1, LP_FEE_PPM, SQRT_PRICE_ONE_X96, &mut ctx).finalize(&version);
+    let mut funded = pool.new_position(&version, i32::from_u32(1_000), i32::from_u32(2_000), &mut ctx);
+    fund_position(&mut pool, &version, &mut funded, 1_000_000, &mut ctx);
+    64u64.do!(|index| {
+        let lower = 2 * (index as u32) + 1;
+        let mut thin = pool.new_position(&version, i32::from_u32(lower), i32::from_u32(lower + 1), &mut ctx);
+        fund_position(&mut pool, &version, &mut thin, 1, &mut ctx);
+        destroy(thin);
+    });
+
+    let clock = clock::create_for_testing(&mut ctx);
+    let limit = tick_math::sqrt_price_x96(constants::max_tick!() + 1_200);
+    let request = pool.begin_swap_quote_to_asset(&version, quote(1_000, &mut ctx), limit);
+    let completion = pool.execute_swap_partial(&version, request, &clock, &mut ctx);
+    let (out, refund) = pool.finish(&version, completion, 0, 0, &mut ctx);
+    assert_eq!(out.burn_for_testing(), 0);
+    assert_eq!(refund.burn_for_testing(), 872);
+    assert_eq!(pool.sqrt_price_x96(), tick_math::sqrt_price_x96(constants::max_tick!() + 128));
+
+    let request = pool.begin_swap_quote_to_asset(&version, quote(1_000, &mut ctx), limit);
+    let completion = pool.execute_swap(&version, request, &clock, &mut ctx);
+    let (out, refund) = pool.finish(&version, completion, 1, 0, &mut ctx);
+    assert!(out.burn_for_testing() > 0);
+    assert_eq!(refund.burn_for_testing(), 0);
+    clock.destroy_for_testing();
+    destroy(funded);
+    destroy(pool);
+    destroy(version);
+}
+
 // === Test Helpers ===
+
+fun fund_position(
+    pool: &mut Pool<ASSET, QUOTE>,
+    version: &PackageVersion<BLAST_FUN_DEX>,
+    position: &mut Position<ASSET, QUOTE>,
+    liquidity: u128,
+    ctx: &mut TxContext,
+): (u64, u64) {
+    let request = pool.begin_add_liquidity(version, position, liquidity, asset(1_000_000, ctx), quote(1_000_000, ctx));
+    let completion = pool.execute_add_liquidity(version, request, position);
+    let (asset_refund, quote_refund) = pool.finish(version, completion, 0, 0, ctx);
+    (1_000_000 - asset_refund.burn_for_testing(), 1_000_000 - quote_refund.burn_for_testing())
+}
+
+fun burn_position(
+    pool: &mut Pool<ASSET, QUOTE>,
+    version: &PackageVersion<BLAST_FUN_DEX>,
+    position: &mut Position<ASSET, QUOTE>,
+    liquidity: u128,
+    ctx: &mut TxContext,
+): (u64, u64) {
+    let request = pool.begin_remove_liquidity(version, position, liquidity);
+    let completion = pool.execute_remove_liquidity(version, request, position);
+    let (asset_out, quote_out) = pool.finish(version, completion, 0, 0, ctx);
+    (asset_out.burn_for_testing(), quote_out.burn_for_testing())
+}
 
 fun new_fixed_pool<Asset, Quote>(
     version: &PackageVersion<BLAST_FUN_DEX>,
@@ -1186,7 +1515,7 @@ fun new_fixed_pool<Asset, Quote>(
     ctx: &mut TxContext,
 ): PoolInitializer<Asset, Quote> {
     let tiers = lp_fee::new_fee_tiers_for_testing(ctx);
-    let initializer = pool::new_with_fixed_fee(version, &tiers, tick_spacing, fee_ppm, sqrt_price_x96, ctx);
+    let initializer = pool::new(version, tick_spacing, lp_fee::new_fixed(&tiers, fee_ppm), sqrt_price_x96, ctx);
     tiers.destroy_default_fee_tiers_for_testing();
 
     initializer
@@ -1202,13 +1531,10 @@ fun new_dynamic_pool<Asset, Quote>(
     ctx: &mut TxContext,
 ): PoolInitializer<Asset, Quote> {
     let tiers = lp_fee::new_fee_tiers_for_testing(ctx);
-    let initializer = pool::new_with_dynamic_fee(
+    let initializer = pool::new(
         version,
-        &tiers,
         tick_spacing,
-        base_fee_ppm,
-        max_fee_ppm,
-        sensitivity_ppm,
+        lp_fee::new_dynamic(&tiers, base_fee_ppm, max_fee_ppm, sensitivity_ppm),
         sqrt_price_x96,
         ctx,
     );
@@ -1295,12 +1621,13 @@ use blast_fun_dex::{
     blast_fun_dex::{Self as dex, BLAST_FUN_DEX},
     blast_events::{Donated, LiquidityAdded, LiquidityRemoved, PoolCreated, Swapped},
     constants,
+    tick_math,
     hook_config::{Self, HookConfig, HookNamespace},
     i32,
     lp_fee::{Self, LpFee},
-    pool::{Self, Hooks, Pool, PoolInitializer},
+    pool::{Self, Hooks, Pool, PoolInitializer, Position},
 };
-use std::{type_name, unit_test::{assert_eq, destroy}};
+use std::{u128, u64, type_name, unit_test::{assert_eq, destroy}};
 use sui::{balance, clock::{Self, Clock}, coin::{Self, Coin}, event};
 
 use fun assert_reference as Pool.assert_reference;

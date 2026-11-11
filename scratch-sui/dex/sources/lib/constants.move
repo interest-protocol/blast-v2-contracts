@@ -1,10 +1,22 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-/// DEX protocol parameters, package version and pause domains.
+/// DEX protocol parameters, hook flags, package version and pause domains.
 module blast_fun_dex::constants;
 
 // === Package Constants ===
+
+// Hook slot flags for `pool::register_hook`. Combine with `|`.
+
+macro public fun before_add_liquidity_flag(): u8 { 0x80 }
+macro public fun after_add_liquidity_flag(): u8 { 0x40 }
+macro public fun before_remove_liquidity_flag(): u8 { 0x20 }
+macro public fun after_remove_liquidity_flag(): u8 { 0x10 }
+macro public fun before_swap_flag(): u8 { 0x08 }
+macro public fun after_swap_flag(): u8 { 0x04 }
+macro public fun before_donate_flag(): u8 { 0x02 }
+macro public fun after_donate_flag(): u8 { 0x01 }
+macro public fun all_hook_flags(): u8 { 0xff }
 
 /// The package version this bytecode serves.
 macro public(package) fun version(): u64 { 1 }
@@ -79,3 +91,6 @@ macro public(package) fun min_sqrt_price_x96(): u256 {
 macro public(package) fun max_sqrt_price_x96(): u256 {
     1_461_446_703_485_210_103_287_273_052_203_988_822_378_723_970_342
 }
+
+/// Bound range traversal per swap. Any remaining input is refunded.
+macro public(package) fun max_swap_steps(): u64 { 128 }

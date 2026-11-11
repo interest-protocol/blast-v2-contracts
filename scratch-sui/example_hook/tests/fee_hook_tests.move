@@ -129,13 +129,10 @@ fun hook_fee_rounds_up_and_is_kept_in_the_input_coin() {
 #[test]
 fun dynamic_pool_passes_remaining_payment_to_the_swap_after_the_hook_fee() {
     let mut fixture = setup(FEE_BPS);
-    let mut initializer = pool::new_with_dynamic_fee<ASSET, QUOTE>(
+    let mut initializer = pool::new<ASSET, QUOTE>(
         &fixture.version,
-        &fixture.tiers,
         60,
-        3_000,
-        20_000,
-        1_000_000,
+        lp_fee::new_dynamic(&fixture.tiers, 3_000, 20_000, 1_000_000),
         SQRT_PRICE_ONE_X96,
         fixture.scenario.ctx(),
     );
@@ -310,11 +307,10 @@ fun before_swap_rejects_a_config_moved_to_a_newer_version() {
 fun register_rejects_a_config_moved_to_a_newer_version() {
     let mut fixture = setup(FEE_BPS);
     fixture.set_hook_version(2);
-    let mut initializer = pool::new_with_fixed_fee<ASSET, QUOTE>(
+    let mut initializer = pool::new<ASSET, QUOTE>(
         &fixture.version,
-        &fixture.tiers,
         60,
-        3_000,
+        lp_fee::new_fixed(&fixture.tiers, 3_000),
         SQRT_PRICE_ONE_X96,
         fixture.scenario.ctx(),
     );
@@ -460,7 +456,7 @@ fun teardown(self: Fixture) {
 }
 
 fun fixed_fee_pool(self: &mut Fixture): Pool<ASSET, QUOTE> {
-    let mut initializer = pool::new_with_fixed_fee(&self.version, &self.tiers, 60, 3_000, SQRT_PRICE_ONE_X96, self.scenario.ctx());
+    let mut initializer = pool::new(&self.version, 60, lp_fee::new_fixed(&self.tiers, 3_000), SQRT_PRICE_ONE_X96, self.scenario.ctx());
     fee_hook::register(&mut initializer, &self.version, &self.config);
 
     initializer.finalize(&self.version)

@@ -1,11 +1,7 @@
 # Scratch Sui packages
 
-Outside the production surface. Do not publish: the DEX's curve math aborts.
-
-`dex` holds a concentrated-liquidity pool with Uniswap-v4-style lifecycle hooks.
-`example_hook` is a hook that follows the calling convention below. Both
-packages build and their tests pass; the tests supply curve results through
-test-only seams, because the math functions abort.
+The DEX and example hook are unpublished and outside the launch stack.
+The pool implements concentrated liquidity with Uniswap-v4-style lifecycle hooks.
 
 This scratch checkpoint replaces the parked full-range native V2 DEX source
 from [ADR 0076](../docs/decisions/0076-native-v2-and-auto-lp.md). The previous
@@ -68,6 +64,23 @@ the hook steps disappear from the transaction.
 The pool owns the sequence, so routers only need the DEX's own functions plus
 one hook call per bound slot.
 
+Within hook Move code, checked getters borrow the payment or completion
+balances mutably. Hooks use the standard `Balance` operations to split fees or
+join funds. Each getter checks the active DEX version, pool identity, bound
+hook witness and unapproved state before returning the reference. The borrow
+must end before approval; subsequent borrows fail once the step is approved.
+Pool identity, swap direction, price limit and liquidity parameters stay
+private to the pool module, and `finish` checks minimum outputs after all hook
+adjustments.
+
+This follows Uniswap v4's separation between fixed operation parameters and
+hook-adjustable token accounting. The prototype keeps its existing permission
+model: before-swap hooks may adjust both payment balances, and every bound after
+hook may adjust both completion balances, including refunds. It uses funded
+balances rather than v4's signed return deltas and separate return-delta
+permissions; LP fees remain pool policy. These reference getters are for calls
+inside hook Move code; routers call the hook's transaction functions.
+
 ## LP fee tiers
 
 The shared fee tier registry starts with 0.1%, 0.3%, 1%, and 2%. The Blast ACL
@@ -83,9 +96,11 @@ restarts that rate's notice. The registry holds up to 32 pending rates.
 `blast_events::BlastDexFeeTierAdded`. The shared delayed map emits the
 proposal lifecycle keyed by the fee tier registry's ID and `lp_fee::FeeTierKey`.
 
-Anyone can borrow the registry to create a pool with a registered fixed or
-dynamic base rate. Pools store their selected rates at creation. DEX events
-live in `blast_events`, and DEX abort codes live in `errors`.
+Anyone can borrow the registry to construct validated fee settings with
+`lp_fee::new_fixed` or `lp_fee::new_dynamic`, then pass them to `pool::new`.
+The pool constructor checks the active DEX version, creation pause, token pair,
+tick spacing and starting price. Pools store their selected rates at creation.
+DEX events live in `blast_events`, and DEX abort codes live in `errors`.
 
 ## Hook calling convention
 
@@ -133,37 +148,115 @@ pre-swap history. This is a bucketed estimate of a rolling average from the
 pool's own spot price. A sustained price move can shift it, including in a
 thin pool.
 
-For each curve step, pass the current square-root price and the nearer of the
-next initialized tick and the user's limit to `lp_fee::next_step`. Use its
-limit and `net_budget_down` to price the step. Round the curve's net input up
-and output down. Charge `fee_up` on the net input actually consumed. Stop if
-the remaining gross input cannot advance the curve. When crossing a tick,
-credit the fee to the active liquidity before changing the range. Return the
-sum of charged LP fees in input units for the swap event.
+At square-root price `s` and frozen reference `r`, the fee rate is
+`min(cap, base + sensitivity * ((s / r)^2 - 1)^2)`. The pool integrates
+`rate / (1 - rate)` over the net input in each constant-liquidity interval.
+It rounds the resulting fee up to an input atom and credits the active range
+before crossing a tick. The swap event reports total gross input and the LP
+fee separately. The continuous schedule supersedes the band approximation.
 
-The reference fixes the bands for the whole path. Within a band, the rate is
-the quadratic rate at its farther edge, capped by the pool maximum. This
-approximates the continuous quadratic schedule with at most 512 bands on
-each side and one capped region beyond each. The approximation never exceeds
-the nominal cap. Each segment can round the fee up by less than one input atom.
-Adding a split inside one constant-liquidity, constant-rate segment can add at
-most one net-input atom and two fee atoms. Since both rounded amounts are
-monotone and subadditive under merging, a split cannot reduce the fee for the
-same directed price path and liquidity. The harness exercises the fee path
-with a single-range fill and a fill crossing an initialized tick.
+The exact-input solver searches rounded Q96 prices indirectly through integer
+net budgets. Net input rounds up, the search checks each candidate's actual
+gross charge, and the completion returns any unspent payment. Output rounds
+down once after accumulating conservative Q64 amounts across ranges.
+Each swap visits up to 128 ranges or empty gaps. Continue a partial fill
+with a fresh swap. The explicit `execute_swap_partial` entry point allows
+paid progress at the traversal cap when the output is below one atom. The
+ordinary entry point requires positive curve output, and `finish` enforces
+the caller's minimums after hooks in either case.
+
+Mint funding rounds up and is checked in u256 before narrowing. Withdrawals
+round principal down. Initialized ticks and position amounts determine active
+liquidity. Swap fees and donations use separate balances and accrue only to
+active positions. A removal pays the position's whole-atom fees in addition to
+principal. Fractional accrual carries across partial removals. Full removal
+relinquishes any sub-atom fraction, and residual rounding stays in the pool.
+
+[ADR 0143](../docs/decisions/0143-dex-continuous-lp-fees.md) records the fee and
+settlement policy. The [arithmetic benchmarks](../docs/research/dex-dynamic-fee-comparison-2026-11-11.md)
+preserve the prior bands comparison.
+
+## Swap arithmetic proof
+
+With the Z3 shared library installed (`libz3-4` on Ubuntu), run the model and
+compiled tick-grid, price-inverse and `mul_div` checks from the repository root.
+
+```sh
+dex_proof_build=$(mktemp -d)
+CARGO_BUILD_JOBS=1 RAYON_NUM_THREADS=1 sui move build --path scratch-sui/dex --install-dir "$dex_proof_build"
+python3 scripts/verify_dex_swaps.py --compiled-module "$dex_proof_build/build/blast_fun_dex/bytecode_modules/sqrt_price_math.mv"
+```
+
+Pass the module from the production build directory so the verifier can
+also inspect its sibling tick module and compiled standard-library
+dependencies, and check the compiled pool and curve lifecycle. Omit
+`--compiled-module` for a model-only run. The verifier
+checks source hashes and rejects unsatisfiable premises, counterexamples,
+and solver timeouts. Review the corresponding model before refreshing a
+changed hash.
+
+The [fee enclosure derivation](continuous-fee-proof.md) relates both Q96
+endpoints to the exact continuous integral. The source-pinned Z3 model checks
+the algebraic and rounding bounds, price inverses in both directions, output
+rounding, budget search and token conservation. The search uses the runtime
+quarter-atom width guard. The rational width certificate proves that every
+admitted fee path passes it, with an enclosure narrower than 0.019 atom at
+the largest net input. The swap model assumes ordered ticks and positive
+liquidity in priced ranges. The [solvency derivation](swap-solvency-proof.md)
+connects the reserve and fee-vault induction to the custody transitions and
+the UID-keyed projection of all live positions, including wrapped positions.
+
+Set `BOOGIE_EXE` and `Z3_EXE` for
+[Sui Prover](https://github.com/asymptotic-code/sui-prover) and run the Move
+contracts with a checkout at the Sui revision in the DEX manifest.
+
+```sh
+python3 scripts/verify_dex_swaps_move.py /path/to/sui-prover /path/to/prover-checkout /path/to/sui-checkout
+```
+
+The runner stages the DEX and its specs in a temporary package. It adds the
+prover's table spec declarations to a copy of the pinned Sui framework. The
+tested prover revision is `949d14419515038d341d440e9c01c0737adf2ff0`.
+The liquidity proof uses the verified tick postconditions in a dedicated
+solver context. Use `--functions curve::change_liquidity_spec` to rerun it
+independently, or `--timeout` to set the per-check limit in seconds.
+
+The Move contracts check directed Q96 multiplication and division, the
+fee ceiling, both price inverses and the successful swap lifecycle.
+They cover locked request creation in both directions, the per-step and
+aggregate budget bounds, refund and fee routing, per-token conservation,
+and finish-time approval, minimum outputs and unlocking.
+
+The curve model partitions active liquidity into positions that remain active
+and positions that leave at a tick. The crossing subtracts the leaving
+liquidity before adding the entering liquidity. Its cursor lands on the tick
+when moving up and one below it when moving down, preserving the half-open
+range convention. Outside fee growth flips to global growth minus its old
+value modulo `2^256`. The Z3 model proves this preserves the inside fee
+growth at either boundary, even when growth wraps.
+
+Sui Prover checks the curve's crossing, global fee credit, tick and bitmap
+updates, inside fee growth, position liquidity changes, and fee withdrawal.
+For a valid position range with accrual that fits in `u256`, the liquidity
+contract checks active and total liquidity, accrual at the old stake, and
+checkpoint initialization for new positions. The fee withdrawal contract
+checks whole-atom payouts and partial-withdrawal remainders given that accrued
+whole atoms fit in `u64`. The swap loop proof uses the verified crossing and
+fee credit contracts.
+
+The Move contracts abstract pricing probes for the budget proof. The
+calculus proof and Z3 model cover the pricing arithmetic. The
+[tick bitmap proof](tick-bitmap-proof.md) covers nearest-tick selection in
+both directions for every reachable bitmap state. The
+[swap progress proof](swap-progress-proof.md) bounds the loop at 128 iterations
+and verifies cursor progress across zero-liquidity gaps. The formal scope
+excludes Sui VM transaction semantics and hook internals. The
+[runtime verification results](../docs/research/dex-dynamic-fee-comparison-2026-11-11.md#integrated-runtime-verification)
+cover representative swap transactions. The
+[128-step gas benchmark](swap-gas-benchmark.md) covers dense tick layouts,
+zero-liquidity gaps, and large continuous-fee fills on mainnet's gas model.
 
 ## Before publication
 
-Implement the four curve functions at the end of `dex/sources/pool.move`
-(swap stepping, liquidity amounts, donation fee growth) and the tick and fee
-growth state they need, including fee checks before a position is destroyed.
-Then add PTB tests that run the hooked sequence through the transaction
-runtime and an SDK resolver, and an independent audit.
-
-Verify locally from the repository root:
-
-```sh
-sui move test --path scratch-sui/dex --threads 1 --lint --warnings-are-errors
-sui move test --path scratch-sui/example_hook --threads 1 --lint --warnings-are-errors
-python3 scripts/check_move_style.py
-```
+Independently audit the curve, fee, and custody invariants and exercise the
+hook lifecycle through the production SDK resolver.

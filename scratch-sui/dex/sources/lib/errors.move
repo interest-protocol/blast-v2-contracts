@@ -64,7 +64,7 @@ const EInsufficientPayment: u64 = 17;
 const EInsufficientOutput: u64 = 18;
 
 #[test_only]
-const ECurveMathUnavailable: u64 = 19;
+const ELiquidityLimit: u64 = 19;
 
 #[test_only]
 const ENotFeeTier: u64 = 20;
@@ -153,8 +153,8 @@ macro public(package) fun insufficient_payment(): u64 { 17 }
 /// Output is below the caller's minimum.
 macro public(package) fun insufficient_output(): u64 { 18 }
 
-/// Curve math is not implemented; do not publish this package.
-macro public(package) fun curve_math_unavailable(): u64 { 19 }
+/// Total registered liquidity would exceed the u128 limit.
+macro public(package) fun liquidity_limit(): u64 { 19 }
 
 /// A pool's fixed or base LP fee must be a registered tier.
 macro public(package) fun not_fee_tier(): u64 { 20 }

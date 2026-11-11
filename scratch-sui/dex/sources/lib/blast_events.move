@@ -36,6 +36,8 @@ public struct Swapped has copy, drop {
 public struct LiquidityAdded has copy, drop {
     pool_id: ID,
     position_id: ID,
+    tick_lower: I32,
+    tick_upper: I32,
     liquidity: u128,
     asset_amount: u64,
     quote_amount: u64,
@@ -44,9 +46,13 @@ public struct LiquidityAdded has copy, drop {
 public struct LiquidityRemoved has copy, drop {
     pool_id: ID,
     position_id: ID,
+    tick_lower: I32,
+    tick_upper: I32,
     liquidity: u128,
     asset_amount: u64,
     quote_amount: u64,
+    asset_fee: u64,
+    quote_fee: u64,
 }
 
 public struct Donated has copy, drop {
@@ -96,21 +102,29 @@ public(package) fun swapped(
 public(package) fun liquidity_added(
     pool_id: ID,
     position_id: ID,
+    tick_lower: I32,
+    tick_upper: I32,
     liquidity: u128,
     asset_amount: u64,
     quote_amount: u64,
 ) {
-    event::emit(LiquidityAdded { pool_id, position_id, liquidity, asset_amount, quote_amount });
+    event::emit(LiquidityAdded { pool_id, position_id, tick_lower, tick_upper, liquidity, asset_amount, quote_amount });
 }
 
 public(package) fun liquidity_removed(
     pool_id: ID,
     position_id: ID,
+    tick_lower: I32,
+    tick_upper: I32,
     liquidity: u128,
     asset_amount: u64,
     quote_amount: u64,
+    asset_fee: u64,
+    quote_fee: u64,
 ) {
-    event::emit(LiquidityRemoved { pool_id, position_id, liquidity, asset_amount, quote_amount });
+    event::emit(LiquidityRemoved {
+        pool_id, position_id, tick_lower, tick_upper, liquidity, asset_amount, quote_amount, asset_fee, quote_fee,
+    });
 }
 
 public(package) fun donated(pool_id: ID, asset_amount: u64, quote_amount: u64) {
@@ -161,5 +175,6 @@ public fun donated_fields(self: &Donated): (ID, u64, u64) {
 
 // === Imports ===
 
+use blast_fun_dex::i32::I32;
 use std::type_name::TypeName;
 use sui::event;

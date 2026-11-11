@@ -133,6 +133,8 @@ records below it decide what 0137 does not restate.
 | [0139](0139-admin-bounded-auto-lp-compounding.md) | Admin-bounded auto-LP compounding | accepted |
 | [0140](0140-upgrade-cap-manager.md) | Digest-bound upgrades and immutability with a fixed 48-hour notice | accepted |
 | [0141](0141-blast-sui-validator-list.md) | Blast SUI stakes across a short delayed validator list | proposed |
+| [0142](0142-dex-dynamic-fee-band-count.md) | Dynamic LP fee band count | superseded by 0143 |
+| [0143](0143-dex-continuous-lp-fees.md) | Continuous DEX LP fees and settlement rounding | accepted |
 
 ## Open premises
 

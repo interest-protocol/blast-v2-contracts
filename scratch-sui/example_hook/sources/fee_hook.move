@@ -161,7 +161,7 @@ public fun register<Asset, Quote>(
 ) {
     assert_current_version(config);
 
-    initializer.register_hook(package_version, config, FeeHook(), pool::all_hook_flags!());
+    initializer.register_hook(package_version, config, FeeHook(), constants::all_hook_flags!());
 }
 
 // Swap slots.
@@ -181,10 +181,10 @@ public fun before_swap<Asset, Quote>(
     let policy: &Delayed<FeeBpsKey, u64> = config.uid().dynamic_field(FeeBpsKey());
     let fee = request.input_value().mul_div_ceil(policy.value(), BPS_DENOMINATOR);
     if (request.is_asset_input()) {
-        let fee_payment = request.take_asset_payment(package_version, pool, FeeHook(), fee);
+        let fee_payment = request.asset_payment_mut(package_version, pool, FeeHook()).split(fee);
         pool.collect_fee(package_version, fee_payment);
     } else {
-        let fee_payment = request.take_quote_payment(package_version, pool, FeeHook(), fee);
+        let fee_payment = request.quote_payment_mut(package_version, pool, FeeHook()).split(fee);
         pool.collect_fee(package_version, fee_payment);
     };
 
@@ -377,6 +377,7 @@ const ENoFeesCollected: vector<u8> = b"Pool has collected no hook fees in this c
 use blast_admin::{delayed::{Self, Delayed}, package_version::PackageVersion};
 use blast_fun_dex::{
     blast_fun_dex::BLAST_FUN_DEX,
+    constants,
     hook_config::{Self, HookConfig, HookNamespace},
     pool::{
         Self,

@@ -27,7 +27,7 @@ fun an_added_tier_is_available_to_new_pools_without_repricing_existing_pools() {
     scenario.next_tx(ADMIN);
     let mut tiers = scenario.take_shared<BlastDexFeeTiers>();
     let witness = scenario.sign_in_as_fee_tier_admin();
-    let original = pool::new_with_fixed_fee<ASSET, QUOTE>(&version, &tiers, 60, 3_000, SQRT_PRICE_ONE_X96, scenario.ctx());
+    let original = pool::new<ASSET, QUOTE>(&version, 60, lp_fee::new_fixed(&tiers, 3_000), SQRT_PRICE_ONE_X96, scenario.ctx());
     original.finalize(&version).share(&version);
     let mut clock = clock::create_for_testing(scenario.ctx());
     let ready_at_ms = tiers.schedule_fee_tier(&version, &witness, 2_000, &clock);
@@ -44,15 +44,12 @@ fun an_added_tier_is_available_to_new_pools_without_repricing_existing_pools() {
     let added = event::events_by_type<BlastDexFeeTierAdded>().map!(|event| event.added_fee_ppm_for_testing());
     assert_eq!(added, vector[2_000]);
     let original = scenario.take_shared<Pool<ASSET, QUOTE>>();
-    let fixed = pool::new_with_fixed_fee<ASSET, QUOTE>(&version, &tiers, 60, 2_000, SQRT_PRICE_ONE_X96, scenario.ctx())
+    let fixed = pool::new<ASSET, QUOTE>(&version, 60, lp_fee::new_fixed(&tiers, 2_000), SQRT_PRICE_ONE_X96, scenario.ctx())
         .finalize(&version);
-    let dynamic = pool::new_with_dynamic_fee<ASSET, QUOTE>(
+    let dynamic = pool::new<ASSET, QUOTE>(
         &version,
-        &tiers,
         60,
-        2_000,
-        10_000,
-        1_000_000,
+        lp_fee::new_dynamic(&tiers, 2_000, 10_000, 1_000_000),
         SQRT_PRICE_ONE_X96,
         scenario.ctx(),
     ).finalize(&version);
