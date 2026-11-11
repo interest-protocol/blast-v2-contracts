@@ -58,9 +58,9 @@ public struct CapabilityKey<phantom Capability>() has copy, drop, store;
 /// `VaultCreated` fact record the locked amount.
 ///
 /// Both metadata caps and the deposit-receipt display cap are sealed as children of
-/// the vault with no accessor. The redemption-fee delay starts at zero so the
-/// bootstrap transaction can configure it; deposits stay paused until `unpause`,
-/// which refuses while that delay is zero.
+/// the vault with no accessor. The default redemption fee applies immediately.
+/// Changes to the fee or its delay initially wait 48 hours. Deposits stay
+/// paused until `unpause`.
 public fun create(
     package_version: &PackageVersion<BLAST_SUI_PACKAGE>,
     system_state: &mut SuiSystemState,
@@ -100,7 +100,12 @@ public fun create(
     let fun_reserve = seed.split(fun_reserve_sui);
     let bootstrap_sui = seed.value();
     let id = object::new(ctx);
-    let redeem_fee = delayed::new(RedeemFeeKey(), &id, constants::default_redeem_fee_bps!(), 0);
+    let redeem_fee = delayed::new(
+        RedeemFeeKey(),
+        &id,
+        constants::default_redeem_fee_bps!(),
+        constants::initial_redeem_fee_delay_ms!(),
+    );
     let mut self = Vault {
         id,
         pool_id,

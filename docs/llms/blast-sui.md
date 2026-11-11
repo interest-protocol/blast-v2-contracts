@@ -123,7 +123,8 @@ up). Any excess withdrawn stays liquid in the same ledger.
    usable current-epoch rate. `R` goes to fun custody; the rest goes to blast
    custody, mints one blastSUI per MIST, is staked, and every minted blastSUI is
    sent to `0x0`. blastSUI supply is therefore never zero, and the seed's backing
-   can never be redeemed. Blast then raises the fee delay and releases deposits.
+   can never be redeemed. The redemption fee starts with a 48-hour delay for
+   changes. Blast can release deposits once the vault is created.
 3. **Normal.** All flows below are open.
 4. **Safe-mode epoch** (no usable current rate entry). funSUI mints, both redemptions,
    deposit requests, donations, cancellations, and `sync` work on the cached

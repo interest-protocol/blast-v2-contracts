@@ -299,7 +299,8 @@ up). Any excess withdrawn stays liquid in the same ledger.
    usable current-epoch rate. `R` goes to fun custody; the rest goes to blast
    custody, mints one blastSUI per MIST, is staked, and every minted blastSUI is
    sent to `0x0`. blastSUI supply is therefore never zero, and the seed's backing
-   can never be redeemed. Blast then raises the fee delay and releases deposits.
+   can never be redeemed. The redemption fee starts with a 48-hour delay for
+   changes. Blast can release deposits once the vault is created.
 3. **Normal.** All flows below are open.
 4. **Safe-mode epoch** (no usable current rate entry). funSUI mints, both redemptions,
    deposit requests, donations, cancellations, and `sync` work on the cached
@@ -739,6 +740,7 @@ Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/de
 - `valid_pause_bits: u8 = blast_sui::constants::fun_mint_pause_bit!() | blast_sui::constants::blast_request_pause_bit!() | blast_sui::constants::blast_claim_pause_bit!()`: Every supported deposit pause flag. Exits have no flag: they never pause.
 - `basis_points_denominator: u64 = 10_000`: Denominator for protocol rates expressed in basis points.
 - `default_redeem_fee_bps: u64 = 2`: blastSUI redemption fee a new vault starts with.
+- `initial_redeem_fee_delay_ms: u64 = 48 * 60 * 60 * 1_000`: Initial wait for changes to the redemption fee or its delay.
 - `max_redeem_fee_bps: u64 = 100`: Immutable ceiling for the blastSUI redemption fee.
 - `native_min_stake_mist: u64 = 1_000_000_000`: Smallest SUI amount the native validator set accepts as one new stake request.  It is also the minimum protocol bootstrap deposit: a smaller bootstrap could not be delegated and would leave blast custody idle.
 - `max_pending_stakes: u64 = 3`: Most pending native receipts one custody ledger holds at once.  Same-epoch requests join the newest receipt, refresh drains every arrived receipt at the first current-rate epoch, and delegation is gated by that same current-rate proof, so at most two receipts — one buffer-deferred and one current-epoch — can coexist. Three carries one slot of slack, and `stake_idle` skips delegation instead of aborting when the ledger is full, so an unexpected third receipt costs deferred yield, never a user abort.
@@ -1024,9 +1026,9 @@ public struct CapabilityKey<phantom Capability>() has copy, drop, store;
 /// `VaultCreated` fact record the locked amount.
 ///
 /// Both metadata caps and the deposit-receipt display cap are sealed as children of
-/// the vault with no accessor. The redemption-fee delay starts at zero so the
-/// bootstrap transaction can configure it; deposits stay paused until `unpause`,
-/// which refuses while that delay is zero.
+/// the vault with no accessor. The default redemption fee applies immediately.
+/// Changes to the fee or its delay initially wait 48 hours. Deposits stay
+/// paused until `unpause`.
 public fun create(
     package_version: &blast_admin::package_version::PackageVersion<blast_sui_package::BLAST_SUI_PACKAGE>,
     system_state: &mut sui_system::SuiSystemState,
