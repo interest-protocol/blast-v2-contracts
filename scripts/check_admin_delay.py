@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 """Check the ADR 0134 authority, storage and pause boundaries against production functions."""
+# This checker enforces its invariants with `assert`; Python compiles `assert`
+# statements out under `-O`, which would make the whole checker a silent no-op that
+# prints "OK" while checking nothing. Refuse to run optimized instead.
+if not __debug__:
+    raise SystemExit("check_admin_delay.py must run without -O: its checks are assertions")
 from pathlib import Path
 import re
 import subprocess
