@@ -118,18 +118,22 @@ def packages(node):
 
 for environment, address in entries:
     records = sorted((deployments / "sui" / environment).glob("*.json"))
+    # Only publication records participate: an object that names the package without recording
+    # a source digest (for example an upgrade-custody enrollment reference) attests nothing
+    # about the published source and must not enter the digest set as a null entry.
     recorded = [
         package
         for record in records
         for package in packages(json.loads(record.read_text()))
-        if str(package["packageId"]).lower() == address
+        if str(package["packageId"]).lower() == address and "sourceDigest" in package
     ]
     if not recorded:
         sys.exit(
             f"Published.toml names {address} on {environment} but no deployments/sui/{environment} record "
-            "carries that packageId; record the publication (deployments/README.md) or remove the stale entry."
+            "carries that packageId with a recorded sourceDigest; record the publication "
+            "(deployments/README.md) or remove the stale entry."
         )
-    digests = {package.get("sourceDigest") for package in recorded}
+    digests = {package["sourceDigest"] for package in recorded}
     if digests != {digest}:
         sys.exit(
             f"Published.toml names {address} on {environment}, whose recorded sourceDigest "
