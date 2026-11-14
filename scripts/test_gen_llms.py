@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -47,6 +48,43 @@ class SummaryIdentityTests(unittest.TestCase):
             self.assertEqual(module['references'], [{'address': 'example'}, {'address': 'sui'}])
             self.assertEqual(module['doc'], 'treasury')
             self.assertEqual(set(result.sources), {'policy'})
+
+
+class ReferenceRoundTripTests(unittest.TestCase):
+    def test_generate_and_check_utf8_reference_with_nested_source_url(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package = root / 'sui/example'
+            source = package / 'sources/nested/policy.move'
+            source.parent.mkdir(parents=True)
+            source.write_text('module example::policy;\nconst LIMIT: u64 = 1;\n', encoding='utf-8')
+            (package / 'Move.toml').write_text('[package]\nname = "example"\n', encoding='utf-8')
+            summaries = root / 'summaries'
+            summary = summaries / 'example'
+            (summary / 'example').mkdir(parents=True)
+            (summary / 'address_mapping.json').write_text('{"example":"0x0"}', encoding='utf-8')
+            doc = 'Policy \u2014 \u03c0'
+            (summary / 'example/policy.json').write_text(json.dumps({
+                'id': {'name': 'policy'}, 'doc': doc, 'structs': {}, 'functions': {},
+            }, ensure_ascii=False), encoding='utf-8')
+            (root / 'intro.md').write_text('## Introduction\n', encoding='utf-8')
+            output = root / 'llms-full.txt'
+            argv = ['gen_llms.py', '--summaries', str(summaries)]
+            with (
+                patch.multiple(gen_llms, ROOT=root, GUIDES_DIR=root, OUTPUT=output,
+                               PRODUCT_DIR=root / 'llms', GUIDES=[('intro.md', [])],
+                               PACKAGES=[('sui/example', 'Example')], PRODUCTS=[]),
+                patch.object(sys, 'argv', argv),
+            ):
+                self.addCleanup(gen_llms.deployment.cache_clear)
+                gen_llms.main()
+                data = output.read_bytes()
+                self.assertIn('not yet published | \u2014 | \u2014'.encode('utf-8'), data)
+                self.assertIn(doc.encode('utf-8'), data)
+                self.assertIn(b'/sui/example/sources/nested/policy.move', data)
+                self.assertNotIn(b'\r\n', data)
+                argv.append('--check')
+                gen_llms.main()
 
 
 class FrozenPackageTests(unittest.TestCase):
