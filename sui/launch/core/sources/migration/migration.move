@@ -211,8 +211,10 @@ public fun sqrt_price_x64(meme_amount: u64, quote_amount: u64, meme_is_coin_a: b
 /// full range aligned inward to a tick spacing. The bounds are reciprocal, so either coin order
 /// agrees.
 public fun is_seedable_price(sqrt_price_x64: u128): bool {
-    sqrt_price_x64 >= constants::min_sqrt_price_x64!() * 2
-        && sqrt_price_x64 <= constants::max_sqrt_price_x64!() / 2
+    let min_seed = constants::min_sqrt_price_x64!() * 2;
+    let max_seed = ((1u256 << 128) / ((min_seed + 1) as u256)) as u128;
+
+    sqrt_price_x64 > min_seed && sqrt_price_x64 <= max_seed
 }
 
 // === Test-Only Types ===

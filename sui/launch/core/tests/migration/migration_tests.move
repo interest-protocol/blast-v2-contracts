@@ -334,12 +334,14 @@ fun the_seed_price_rejects_zero_quote_as_coin_a() {
 #[test]
 fun a_price_is_seedable_exactly_inside_the_halved_tick_range() {
     let min = 4_295_048_016;
-    let max = 79_226_673_515_401_279_992_447_579_055;
+    let min_seed = min * 2;
+    let max_seed = ((1u256 << 128) / ((min_seed + 1) as u256)) as u128;
 
-    assert!(migration::is_seedable_price(min * 2));
-    assert!(!migration::is_seedable_price(min * 2 - 1));
-    assert!(migration::is_seedable_price(max / 2));
-    assert!(!migration::is_seedable_price(max / 2 + 1));
+    assert!(!migration::is_seedable_price(min_seed));
+    assert!(migration::is_seedable_price(min_seed + 1));
+    assert!(!migration::is_seedable_price(min_seed - 1));
+    assert!(migration::is_seedable_price(max_seed));
+    assert!(!migration::is_seedable_price(max_seed + 1));
     assert!(migration::is_seedable_price(1 << 64));
     assert!(!migration::is_seedable_price(0));
 }
@@ -349,6 +351,12 @@ fun seedability_agrees_for_both_coin_orders() {
     vector[
         vector[1, 1],
         vector[1, 1_000_000_000],
+        vector[1, 4_611_512_677_774_425_882],
+        vector[4_611_512_677_774_425_882, 1],
+        vector[1, 4_611_512_677_360_306_403],
+        vector[4_611_512_677_360_306_403, 1],
+        vector[1, 4_611_512_678_433_987_689],
+        vector[4_611_512_678_433_987_689, 1],
         vector[200_000_000_000_000_001, 2_970_000_000],
         vector[std::u64::max_value!(), 1],
         vector[1, std::u64::max_value!()],
