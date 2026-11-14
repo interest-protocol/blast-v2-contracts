@@ -1,6 +1,6 @@
-"""Summary identities must survive the zero-valued genesis address placeholders."""
+"""Generated references must not depend on the host platform, locale, or line endings."""
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import subprocess
 import tempfile
 import unittest
@@ -158,6 +158,40 @@ class PublicationPathTests(unittest.TestCase):
                 manifest.write_text(manifest.read_text().replace('/other', '/admin'))
                 (current / source).write_text('module example::changed;\n')
                 self.assertFalse(gen_llms.matches_publication('sui/launch/core', commit))
+
+
+class PlatformConsistencyTests(unittest.TestCase):
+    """#254: the same sources must render the same reference text on Windows and Linux."""
+
+    def test_source_urls_keep_forward_slashes_for_windows_paths(self):
+        relative = 'sui/launch/presale/sources/blast_presale.move'
+        for flavour in (PurePosixPath, PureWindowsPath):
+            with patch.object(gen_llms, 'ROOT', flavour('/repo')):
+                url = gen_llms.source_url(flavour('/repo') / relative)
+            self.assertEqual(url, f'{gen_llms.REPO_URL}/{relative}')
+
+    def test_repository_text_decodes_as_utf8(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'llms-full.txt'
+            path.write_bytes('| `blast_presale` | live | — |'.encode('utf-8'))
+            self.assertEqual(gen_llms.read_repo_text(path), '| `blast_presale` | live | — |')
+
+    def test_repository_text_is_written_as_utf8_with_lf(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'llms-full.txt'
+            gen_llms.write_repo_text(path, 'presale — live\n')
+            self.assertEqual(path.read_bytes(), 'presale — live\n'.encode('utf-8'))
+
+    def test_repository_text_io_never_falls_back_to_the_host_encoding(self):
+        # The host locale cannot be replayed on POSIX, so pin the encoding the readers name.
+        with (
+            patch.object(Path, 'read_text', autospec=True, return_value='') as read,
+            patch.object(Path, 'write_text', autospec=True) as write,
+        ):
+            gen_llms.read_repo_text(Path('llms-full.txt'))
+            gen_llms.write_repo_text(Path('llms-full.txt'), 'text')
+        self.assertEqual(read.call_args.kwargs, {'encoding': 'utf-8'})
+        self.assertEqual(write.call_args.kwargs, {'encoding': 'utf-8', 'newline': '\n'})
 
 
 if __name__ == '__main__':
