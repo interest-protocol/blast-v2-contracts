@@ -160,5 +160,64 @@ class PublicationPathTests(unittest.TestCase):
                 self.assertFalse(gen_llms.matches_publication('sui/launch/core', commit))
 
 
+class PlatformReferenceTests(unittest.TestCase):
+    """#254: the same inputs render identical reference text on every platform."""
+
+    def test_module_reference_url_is_repo_relative_and_forward_slashed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / 'sui' / 'launch' / 'presale' / 'sources' / 'blast_presale.move'
+            source.parent.mkdir(parents=True)
+            source.write_text('module blast_presale::presale;\n', encoding='utf-8')
+            pkg = gen_llms.Package(
+                path='sui/launch/presale',
+                title='Presale',
+                name='blast_presale',
+                modules={'presale': {'id': {'name': 'presale'}, 'structs': {
+                    'Terms': {'fields': {'fields': {}, 'positional_fields': False},
+                              'abilities': [], 'type_parameters': [], 'doc': None},
+                }, 'functions': {}}},
+                sources={'presale': source},
+            )
+            with patch.object(gen_llms, 'ROOT', root):
+                lines = gen_llms.module_reference(pkg, 'presale', set())
+
+        url = next(line for line in lines if line.startswith('Source: '))
+        self.assertIn('/sui/launch/presale/sources/blast_presale.move', url)
+        self.assertNotIn('\\', url)
+        self.assertNotIn(root.as_posix() + '/', url)
+
+    def test_repo_path_uses_forward_slashes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / 'sui' / 'launch' / 'presale' / 'sources' / 'blast_presale.move'
+            with patch.object(gen_llms, 'ROOT', root):
+                rel = gen_llms.repo_path(source)
+        self.assertEqual(rel, 'sui/launch/presale/sources/blast_presale.move')
+        self.assertNotIn('\\', rel)
+
+    def test_repo_path_normalizes_windows_paths(self):
+        # The old code interpolated a native relative Path straight into the URL; a Windows
+        # checkout rendered `sui\launch\...` (backslashes). repo_path must emit forward slashes.
+        from pathlib import PureWindowsPath
+        root = PureWindowsPath('C:/repo')
+        source = PureWindowsPath('C:/repo/sui/launch/presale/sources/blast_presale.move')
+        with patch.object(gen_llms, 'ROOT', root):
+            rel = gen_llms.repo_path(source)
+        self.assertEqual(rel, 'sui/launch/presale/sources/blast_presale.move')
+        self.assertNotIn('\\', rel)
+
+    def test_write_then_read_preserves_utf8_and_lf(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'ref.txt'
+            # Em dashes in the committed package status table must survive a
+            # write/read round trip on a CP1252-locale Windows checkout.
+            text = 'Live on mainnet \u2014 em dash \u2014 r\u00e9sum\u00e9\n'
+            gen_llms.write_text(path, text)
+            self.assertEqual(gen_llms.read_text(path), text)
+            self.assertEqual(path.read_bytes(), text.encode('utf-8'))
+            self.assertNotIn(b'\r\n', path.read_bytes())
+
+
 if __name__ == '__main__':
     unittest.main()
