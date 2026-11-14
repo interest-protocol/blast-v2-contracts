@@ -1,7 +1,11 @@
 """Summary identities must survive the zero-valued genesis address placeholders."""
+from contextlib import redirect_stdout
+import io
 import json
-from pathlib import Path
+import os
+from pathlib import Path, PureWindowsPath
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -158,6 +162,148 @@ class PublicationPathTests(unittest.TestCase):
                 manifest.write_text(manifest.read_text().replace('/other', '/admin'))
                 (current / source).write_text('module example::changed;\n')
                 self.assertFalse(gen_llms.matches_publication('sui/launch/core', commit))
+
+
+class WindowsConsistencyTests(unittest.TestCase):
+    def test_module_reference_renders_posix_url_and_handles_cp1252_encoding(self):
+        root = PureWindowsPath('C:/repo')
+
+        class WindowsSource(PureWindowsPath):
+            def read_text(self, encoding=None, errors=None):
+                raw = (
+                    'module example::policy;\n'
+                    '/// error — comment\n'
+                    'const E_PRICE: u64 = 0;\n'
+                ).encode('utf-8')
+                return raw.decode('cp1252' if encoding is None else encoding)
+
+        source = WindowsSource('C:/repo/sui/launch/presale/sources/policy.move')
+        self.assertEqual(
+            str(source.relative_to(root)),
+            'sui\\launch\\presale\\sources\\policy.move',
+        )
+        package = gen_llms.Package(
+            path='sui/launch/presale',
+            title='Presale',
+            name='example',
+            modules={'policy': {'structs': {}, 'functions': {}}},
+            sources={'policy': source},
+        )
+        with patch.object(gen_llms, 'ROOT', root):
+            lines = gen_llms.module_reference(package, 'policy', set())
+
+        self.assertIn(
+            'Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/'
+            'sui/launch/presale/sources/policy.move',
+            lines,
+        )
+        self.assertIn('- `E_PRICE: u64 = 0`: error — comment', lines)
+
+    def test_check_and_guides_read_utf8_when_locale_read_is_cp1252(self):
+        dash = '—'
+        committed = f'| not yet published | {dash} | {dash} |\n'
+        heading = f'# Presale {dash} buying in\n'
+        self.assertEqual(committed.encode('utf-8').decode('cp1252'), '| not yet published | â€” | â€” |\n')
+        original = Path.read_text
+
+        def cp1252_read(self, encoding=None, errors=None, **kwargs):
+            if encoding is None:
+                encoding = 'cp1252'
+            return original(self, encoding=encoding, errors=errors, **kwargs)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            reference = root / 'llms-full.txt'
+            guides = root / 'docs' / 'llms'
+            guides.mkdir(parents=True)
+            reference.write_bytes(committed.encode('utf-8'))
+            (guides / 'presale.md').write_bytes(heading.encode('utf-8'))
+            with (
+                patch.object(gen_llms, 'ROOT', root),
+                patch.object(gen_llms, 'GUIDES_DIR', guides),
+                patch.object(Path, 'read_text', cp1252_read),
+            ):
+                self.assertEqual(gen_llms.stale_references({reference: committed}, []), [])
+                self.assertEqual(gen_llms.guide_heading('presale.md'), heading.split('\n', 1)[0])
+
+    def test_stale_names_keep_forward_slashes_for_windows_paths(self):
+        root = PureWindowsPath('C:/repo')
+
+        class Missing(PureWindowsPath):
+            def exists(self):
+                return False
+
+        missing = Missing('C:/repo/llms/presale.txt')
+        removed = PureWindowsPath('C:/repo/llms/old.txt')
+        output = io.StringIO()
+        with patch.object(gen_llms, 'ROOT', root), redirect_stdout(output):
+            stale = gen_llms.stale_references({missing: 'generated\n'}, [removed])
+
+        self.assertEqual(stale, ['llms/presale.txt', 'llms/old.txt (no longer generated)'])
+        self.assertIn('--- llms/presale.txt (committed)', output.getvalue())
+        self.assertIn('+++ llms/presale.txt (generated)', output.getvalue())
+
+    def test_written_reference_is_utf8_lf_when_text_defaults_are_cp1252_crlf(self):
+        text = 'Presale — buying in\nnext\n'
+        original = Path.write_text
+
+        def windows_write(self, data, encoding=None, errors=None, newline=None):
+            if encoding is None:
+                encoding = 'cp1252'
+            if newline is None:
+                data = data.replace('\n', '\r\n')
+            return original(self, data, encoding=encoding, errors=errors, newline='\n')
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'llms-full.txt'
+            with patch.object(Path, 'write_text', windows_write):
+                gen_llms.write_text(path, text)
+            self.assertEqual(path.read_bytes(), text.encode('utf-8'))
+
+    def test_utf8_io_under_ascii_locale_with_utf8_mode_off(self):
+        script = r'''
+import os, sys, tempfile
+from pathlib import Path
+sys.path.insert(0, os.environ["SCRIPTS"])
+import gen_llms
+dash = "\u2014"
+text = "Presale " + dash + "\n"
+with tempfile.TemporaryDirectory() as tmp:
+    root = Path(tmp)
+    path = root / "llms-full.txt"
+    gen_llms.ROOT = root
+    gen_llms.write_text(path, text)
+    assert path.read_bytes() == text.encode("utf-8"), path.read_bytes()
+    assert gen_llms.stale_references({path: text}, []) == []
+print("ok")
+'''
+        env = os.environ.copy()
+        env.update(PYTHONUTF8='0', LC_ALL='C', LANG='C', SCRIPTS=str(Path(gen_llms.__file__).resolve().parent))
+        result = subprocess.run(
+            [sys.executable, '-X', 'utf8=0', '-c', script],
+            env=env, capture_output=True, text=True, encoding='utf-8',
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_stale_references_diff_survives_legacy_stdout_encoding(self):
+        unicode_line = "formula: price \u2212 fee \u2264 max\n"
+        buffer = io.BytesIO()
+        wrapper = io.TextIOWrapper(buffer, encoding="cp1252", errors="strict")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            reference = root / "llms-full.txt"
+            reference.write_bytes(unicode_line.encode("utf-8"))
+            with (
+                patch.object(gen_llms, "ROOT", root),
+                patch("sys.stdout", wrapper),
+            ):
+                stale = gen_llms.stale_references({reference: "changed\n"}, [])
+            self.assertEqual(stale, ["llms-full.txt"])
+            wrapper.flush()
+            output = buffer.getvalue().decode("cp1252")
+            self.assertIn("--- llms-full.txt (committed)", output)
+            self.assertIn("+++ llms-full.txt (generated)", output)
+            self.assertIn("?", output)
 
 
 if __name__ == '__main__':
