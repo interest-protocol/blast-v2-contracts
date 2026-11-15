@@ -1,1 +1,1 @@
-export const AFTERMATH_PACKAGE = '0x3ec740df8428aa9c93aaef7f8cc1542ac3194fd014826b51bfe245346d64efc7';
+export const AFTERMATH_PACKAGE = '0xe54757433d663835bda85cfc89c6c44bc8d952e941affa5ae57bba0baa226c1b';

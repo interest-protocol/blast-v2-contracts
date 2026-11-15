@@ -7,10 +7,15 @@ callable ABI of the mainnet packages with `abort 404` bodies. `Move.toml`,
 so each package keeps its mainnet published address and `check_mainnet_abi.mjs`
 keeps gating the modules the adapter calls against mainnet bytecode.
 
-Three deliberate differences:
+Four deliberate differences:
 
 - Each `Published.toml` drops the upstream `[published.testnet]` section;
   Blast deploys only to mainnet.
+- `iperps/perpetuals` points at Aftermath's version 2 upgrade: `Move.toml` and
+  `Published.toml` carry `published-at = 0xe5475743…226c1b` and `version = 2`,
+  while `original-id` and the `[addresses]` entry stay `0x3ec740df…`, where
+  every type keeps its origin. The public ABI the adapter calls is identical
+  to version 1; only the `clearing_house` bytecode changed.
 - `authority-cap` reads `AuthorityCap.for` instead of aborting and adds a
   `#[test_only]` constructor, so adapter tests can hold real venue custody.
   Marked in its file.

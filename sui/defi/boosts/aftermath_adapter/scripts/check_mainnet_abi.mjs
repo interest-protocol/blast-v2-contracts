@@ -27,13 +27,13 @@ const PACKAGES = [
     {
         label: 'Aftermath perpetuals',
         originalId: '0x3ec740df8428aa9c93aaef7f8cc1542ac3194fd014826b51bfe245346d64efc7',
-        currentId: '0x3ec740df8428aa9c93aaef7f8cc1542ac3194fd014826b51bfe245346d64efc7',
-        version: 1,
-        digest: '2Fa3q1WFk6oNpStaemJFujknbThnnA89GcneuRwAf4vT',
-        previousTransaction: 'EwwGij6nQ1R8zHzSTcSsJXpAh45otaGKQNHqCGTM7tFx',
+        currentId: '0xe54757433d663835bda85cfc89c6c44bc8d952e941affa5ae57bba0baa226c1b',
+        version: 2,
+        digest: 'P1HVKJzj5VQBMF3DSHtXC82MzxwY86pNPZbT9yXEBqu',
+        previousTransaction: 'eJk8yV9f5p43s41PWVvbgpN7Fm3CX1bMYsYJ6FRRQbf',
         modules: [
             { name: 'account', sha256: 'e94916287e63c4dbd2c8bb8b4939d306834740e50668eaca1ccc4bf3951ec23e', functions: ['create_account', 'consume_policy_and_share_account', 'deposit_collateral', 'withdraw_collateral', 'account_id', 'collateral_balance'] },
-            { name: 'clearing_house', sha256: '56290307f97f6d974b1a4edadd2d62963ac678e76c7b4b3193cbd379c7825eaf', functions: ['allocate_collateral', 'create_market_position', 'set_position_initial_margin_ratio', 'settle_position_funding', 'start_session', 'place_limit_order', 'end_session', 'share', 'position', 'market_params', 'market_state', 'market_pause_mode', 'is_frozen', 'is_market_paused', 'filled_base_and_quote', 'base_filled_bid', 'base_filled_ask', 'posted_orders', 'execution_price', 'liquidated_size', 'liquidation_bad_debt', 'mark_price', 'update_funding', 'deallocate_collateral', 'settlement_valuation_prices', 'close_position_at_settlement_prices'] },
+            { name: 'clearing_house', sha256: '6f5ba02e6f0a818ca64a02923c5a66badb17ae35db29149e9a6d8b110dca80a7', functions: ['allocate_collateral', 'create_market_position', 'set_position_initial_margin_ratio', 'settle_position_funding', 'start_session', 'place_limit_order', 'end_session', 'share', 'position', 'market_params', 'market_state', 'market_pause_mode', 'is_frozen', 'is_market_paused', 'filled_base_and_quote', 'base_filled_bid', 'base_filled_ask', 'posted_orders', 'execution_price', 'liquidated_size', 'liquidation_bad_debt', 'mark_price', 'update_funding', 'deallocate_collateral', 'settlement_valuation_prices', 'close_position_at_settlement_prices'] },
             { name: 'market', sha256: '7b48781611318e2fe87686166925780cd0c73517d0f2a474be9d58761c340985', functions: ['lot_size', 'tick_size', 'scaling_factor', 'base_storage_id', 'collateral_storage_id', 'base_source_id', 'collateral_source_id', 'margin_ratio_initial', 'margin_ratio_maintenance', 'collateral_haircut', 'cum_funding_rates', 'base_oracle_price', 'collateral_oracle_price', 'calculate_mark_price', 'funding_params', 'funding_last_upd_ms', 'is_time_to_update', 'next_funding_update_time', 'taker_fee', 'priority_taker_fee'] },
         ],
     },
@@ -593,7 +593,7 @@ function selfTest() {
     const wrongCurrent = goodPackageData(expected); wrongCurrent.latest.address = `0x${'a'.repeat(64)}`;
     reject('wrong current package id', `${expected.label}: current package id drift\n    expected: ${expected.currentId}\n    actual:   0x${'a'.repeat(64)}`, () => validatePackageData(expected, wrongCurrent));
     const wrongVersion = goodPackageData(expected); wrongVersion.latest.version += 1;
-    reject('wrong version', `${expected.label}: package version drift\n    expected: 1\n    actual:   2`, () => validatePackageData(expected, wrongVersion));
+    reject('wrong version', `${expected.label}: package version drift\n    expected: ${expected.version}\n    actual:   ${expected.version + 1}`, () => validatePackageData(expected, wrongVersion));
     const missing = structuredClone(goodModule); missing.package.module.f0 = null;
     reject('missing function', `${expected.label}: fixture::f is missing`, () => validateModuleData(expected, module, missing, true));
     const changed = structuredClone(goodModule); changed.package.module.f0.return[0].signature.body = 'u128';

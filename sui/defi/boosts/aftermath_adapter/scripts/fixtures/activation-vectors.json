@@ -182,7 +182,7 @@
         "assign": null
       },
       {
-        "target": "0x3ec740df8428aa9c93aaef7f8cc1542ac3194fd014826b51bfe245346d64efc7::clearing_house::share",
+        "target": "0xe54757433d663835bda85cfc89c6c44bc8d952e941affa5ae57bba0baa226c1b::clearing_house::share",
         "typeArguments": [
           "0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC"
         ],
@@ -278,7 +278,7 @@
     "<0x1111111111111111111111111111111111111111111111111111111111111111::fixture::SUI_BULL_2X,0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
     "activation.0",
     "--move-call",
-    "0x3ec740df8428aa9c93aaef7f8cc1542ac3194fd014826b51bfe245346d64efc7::clearing_house::share",
+    "0xe54757433d663835bda85cfc89c6c44bc8d952e941affa5ae57bba0baa226c1b::clearing_house::share",
     "<0x2222222222222222222222222222222222222222222222222222222222222222::usdc::USDC>",
     "activation.1",
     "--serialize-unsigned-transaction",
