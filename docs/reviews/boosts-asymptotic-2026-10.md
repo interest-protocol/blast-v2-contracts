@@ -161,12 +161,12 @@ house", ADR 0115) changed three things the audit relies on:
 
 - The checkpoint classifier now copies the pause mode, frozen flag and both
   market margin ratios from the live clearing house before comparing
-  ([checkpoint::with_venue_policy_of](../../sui/defi/boosts/aftermath_adapter/sources/checkpoint.move#L355)).
+  ([checkpoint::with_venue_policy_of](../../sui/defi/boosts/aftermath_adapter/sources/venue/checkpoint.move#L355)).
   This closes the first trigger of M-1 (Aftermath re-tunes margin ratios) and
   the "before the close" half of A-4 (the pause-mode mismatch).
 - The `Binding` no longer stores oracle feed origin ids. Each capture checks
   the storages it is given against the clearing house's current parameters
-  ([venue_account::assert_market_oracles](../../sui/defi/boosts/aftermath_adapter/sources/venue_account.move#L70)),
+  ([venue_account::assert_market_oracles](../../sui/defi/boosts/aftermath_adapter/sources/venue/venue_account.move#L70)),
   and the `oracle_feed_mismatch` error is gone. This closes M-7.
 - The lot size is still compared exactly, by decision: a venue-side lot change
   is still reported as drift.
@@ -207,16 +207,16 @@ exit except through the irreversible shutdown path.
 
 **Where it is.**
 
-- [operations::synchronize_or_fail](../../sui/defi/boosts/aftermath_adapter/sources/operations.move#L859)
+- [operations::synchronize_or_fail](../../sui/defi/boosts/aftermath_adapter/sources/trading/operations.move#L859)
   runs before every priced operation and aborts with `unresolved_checkpoint`
   unless the stored checkpoint equals the live one.
-- [operations::apply_post_capture](../../sui/defi/boosts/aftermath_adapter/sources/operations.move#L776)
+- [operations::apply_post_capture](../../sui/defi/boosts/aftermath_adapter/sources/trading/operations.move#L776)
   adopts a new checkpoint only when the change is clean; otherwise it emits
   `CheckpointDrifted` and keeps the old one.
-- [checkpoint::classify_preexisting](../../sui/defi/boosts/aftermath_adapter/sources/checkpoint.move#L184)
+- [checkpoint::classify_preexisting](../../sui/defi/boosts/aftermath_adapter/sources/venue/checkpoint.move#L184)
   decides what counts as clean. Position, collateral, orders, funding
   snapshots and lot size must match exactly.
-- [operations::needs_rebalance](../../sui/defi/boosts/aftermath_adapter/sources/operations.move#L311)
+- [operations::needs_rebalance](../../sui/defi/boosts/aftermath_adapter/sources/trading/operations.move#L311)
   applies the same check.
 
 **The fix.** Give a legitimate, persistent venue change a non-terminal way to
@@ -282,12 +282,12 @@ or the admin shutdown restores payouts.
 
 **Where it is.**
 
-- [operations::redeem](../../sui/defi/boosts/aftermath_adapter/sources/operations.move#L122)
+- [operations::redeem](../../sui/defi/boosts/aftermath_adapter/sources/trading/operations.move#L122)
   prices on the post-sell observation, then withdraws `net + admin`.
-- [venue_account::withdraw](../../sui/defi/boosts/aftermath_adapter/sources/venue_account.move#L198)
+- [venue_account::withdraw](../../sui/defi/boosts/aftermath_adapter/sources/venue/venue_account.move#L198)
   calls the venue's `deallocate_collateral` for whatever free cash does not
   cover and requires the exact amount back.
-- [snapshot::position_economics](../../sui/defi/boosts/aftermath_adapter/sources/snapshot.move#L185)
+- [snapshot::position_economics](../../sui/defi/boosts/aftermath_adapter/sources/venue/snapshot.move#L185)
   computes `margin_safe` from the venue's margin figure, which includes the
   profit, so the adapter's own gate does not catch this.
 
@@ -339,12 +339,12 @@ upgrade, not a permissionless call.
 
 **Where it is.**
 
-- [package_admin::commit_upgrade_and_advance](../../sui/defi/boosts/aftermath_adapter/sources/package_admin.move#L60)
+- [package_admin::commit_upgrade_and_advance](../../sui/defi/boosts/aftermath_adapter/sources/config/package_admin.move#L60)
   commits the receipt and advances in one call.
-- [package_admin::restrict_to_additive](../../sui/defi/boosts/aftermath_adapter/sources/package_admin.move#L73)
-  and [package_admin::restrict_to_dependency_only](../../sui/defi/boosts/aftermath_adapter/sources/package_admin.move#L84).
-- [package_admin::authorize_upgrade](../../sui/defi/boosts/aftermath_adapter/sources/package_admin.move#L45)
-  and [package_admin::make_immutable](../../sui/defi/boosts/aftermath_adapter/sources/package_admin.move#L95)
+- [package_admin::restrict_to_additive](../../sui/defi/boosts/aftermath_adapter/sources/config/package_admin.move#L73)
+  and [package_admin::restrict_to_dependency_only](../../sui/defi/boosts/aftermath_adapter/sources/config/package_admin.move#L84).
+- [package_admin::authorize_upgrade](../../sui/defi/boosts/aftermath_adapter/sources/config/package_admin.move#L45)
+  and [package_admin::make_immutable](../../sui/defi/boosts/aftermath_adapter/sources/config/package_admin.move#L95)
   both call `assert_current` first, so they are unreachable once the
   generation is wrong.
 - [blast_boosts_aftermath::assert_current](../../sui/defi/boosts/aftermath_adapter/sources/blast_boosts_aftermath.move#L51),
@@ -394,16 +394,16 @@ non-flat redemption.
 
 **Where it is.**
 
-- [vault::set_max_order_notional](../../sui/defi/boosts/aftermath_adapter/sources/vault.move#L200)
-  and [state::set_max_order_notional](../../sui/defi/boosts/core/sources/state.move#L787)
+- [vault::set_max_order_notional](../../sui/defi/boosts/aftermath_adapter/sources/vault/vault.move#L200)
+  and [state::set_max_order_notional](../../sui/defi/boosts/core/sources/vault/state.move#L787)
   accept any positive value.
-- [state::max_order_base](../../sui/defi/boosts/core/sources/state.move#L259),
-  [state::seed_terms](../../sui/defi/boosts/core/sources/state.move#L163) and
-  [state::unwind_constraints](../../sui/defi/boosts/core/sources/state.move#L696)
+- [state::max_order_base](../../sui/defi/boosts/core/sources/vault/state.move#L259),
+  [state::seed_terms](../../sui/defi/boosts/core/sources/vault/state.move#L163) and
+  [state::unwind_constraints](../../sui/defi/boosts/core/sources/vault/state.move#L696)
   derive the whole-lot size, which floors to zero.
-- [orders::active_order_size](../../sui/defi/boosts/aftermath_adapter/sources/orders.move#L368)
+- [orders::active_order_size](../../sui/defi/boosts/aftermath_adapter/sources/trading/orders.move#L368)
   aborts on `max_order_base == 0` with `fill_mismatch`; the seed path's
-  [orders::order_sizes](../../sui/defi/boosts/aftermath_adapter/sources/orders.move#L321)
+  [orders::order_sizes](../../sui/defi/boosts/aftermath_adapter/sources/trading/orders.move#L321)
   aborts with its own code.
 
 **The fix.** Bound the per-order size where it is computed, not only in the
@@ -445,15 +445,15 @@ irreversible shutdown.
 
 **Where it is.**
 
-- [snapshot::into_observation](../../sui/defi/boosts/aftermath_adapter/sources/snapshot.move#L117)
+- [snapshot::into_observation](../../sui/defi/boosts/aftermath_adapter/sources/venue/snapshot.move#L117)
   requires `margin_safe`.
-- [snapshot::position_economics](../../sui/defi/boosts/aftermath_adapter/sources/snapshot.move#L185)
+- [snapshot::position_economics](../../sui/defi/boosts/aftermath_adapter/sources/venue/snapshot.move#L185)
   computes it with the effective IMR.
-- [operations::rebalance](../../sui/defi/boosts/aftermath_adapter/sources/operations.move#L270)
-  and [operations::donate](../../sui/defi/boosts/aftermath_adapter/sources/operations.move#L337)
-  go through it. [state::prepare_rebalance](../../sui/defi/boosts/core/sources/state.move#L501)
+- [operations::rebalance](../../sui/defi/boosts/aftermath_adapter/sources/trading/operations.move#L270)
+  and [operations::donate](../../sui/defi/boosts/aftermath_adapter/sources/trading/operations.move#L337)
+  go through it. [state::prepare_rebalance](../../sui/defi/boosts/core/sources/vault/state.move#L501)
   decides `emergency`.
-- [operations::assert_position_imr](../../sui/defi/boosts/aftermath_adapter/sources/operations.move#L512)
+- [operations::assert_position_imr](../../sui/defi/boosts/aftermath_adapter/sources/trading/operations.move#L512)
   checks only the sign at activation.
 
 **The fix.** Deleveraging must stay possible on a venue that is only below the
@@ -509,17 +509,17 @@ policy is immutable, so only an adapter upgrade can tighten it.
 
 **Where it is.**
 
-- [orders::place_order](../../sui/defi/boosts/aftermath_adapter/sources/orders.move#L406)
+- [orders::place_order](../../sui/defi/boosts/aftermath_adapter/sources/trading/orders.move#L406)
   is the shared fix point: it calls
-  [venue_account::execute_order](../../sui/defi/boosts/aftermath_adapter/sources/venue_account.move#L152),
+  [venue_account::execute_order](../../sui/defi/boosts/aftermath_adapter/sources/venue/venue_account.move#L152),
   which places a `place_market_order` with no price, then checks the fill
-  with [state::assert_execution](../../sui/defi/boosts/core/sources/state.move#L271).
-- [state::next_rebalance_order](../../sui/defi/boosts/core/sources/state.move#L513)
+  with [state::assert_execution](../../sui/defi/boosts/core/sources/vault/state.move#L271).
+- [state::next_rebalance_order](../../sui/defi/boosts/core/sources/vault/state.move#L513)
   sizes the emergency order to the full cap and the whole order is judged
   under the wide bound.
-- [orders::close_orders](../../sui/defi/boosts/aftermath_adapter/sources/orders.move#L199)
+- [orders::close_orders](../../sui/defi/boosts/aftermath_adapter/sources/trading/orders.move#L199)
   hard-codes `emergency = true` for every shutdown order.
-- [operations::assert_gas_price](../../sui/defi/boosts/aftermath_adapter/sources/operations.move#L638)
+- [operations::assert_gas_price](../../sui/defi/boosts/aftermath_adapter/sources/trading/operations.move#L638)
   is the only other gate, and it does not look at the book.
 
 **The fix.** The accepted slippage must not be a price the composer chooses.
@@ -570,11 +570,11 @@ until an adapter upgrade.
 **What changed.** The `Binding` now holds only the account, registry and
 clearing house ids. Each capture checks the storages it is handed against the
 clearing house's current storage ids
-([venue_account::assert_market_oracles](../../sui/defi/boosts/aftermath_adapter/sources/venue_account.move))
+([venue_account::assert_market_oracles](../../sui/defi/boosts/aftermath_adapter/sources/venue/venue_account.move))
 and reads the feed at the market's current source id
-([snapshot::capture](../../sui/defi/boosts/aftermath_adapter/sources/snapshot.move)).
+([snapshot::capture](../../sui/defi/boosts/aftermath_adapter/sources/venue/snapshot.move)).
 The terminal path
-([snapshot::capture_checkpoint](../../sui/defi/boosts/aftermath_adapter/sources/snapshot.move))
+([snapshot::capture_checkpoint](../../sui/defi/boosts/aftermath_adapter/sources/venue/snapshot.move))
 reads no feed at all. A removed feed still aborts the live-price `capture`,
 which is fail-closed and intended.
 
@@ -618,17 +618,17 @@ contradicting the stated design that the cap does not limit deposits.
 
 **Where it is.**
 
-- [state::max_order_base](../../sui/defi/boosts/core/sources/state.move#L259) and
-  [state::unwind_constraints](../../sui/defi/boosts/core/sources/state.move#L709)
-  size with [rebalance_math::base_for_oracle_notional_down](../../sui/defi/boosts/core/sources/lib/rebalance_math.move#L33)
-  at the oracle price; [state::seed_terms](../../sui/defi/boosts/core/sources/state.move#L173)
-  and the headroom in [rebalance_math::increase_base_down](../../sui/defi/boosts/core/sources/lib/rebalance_math.move#L69)
+- [state::max_order_base](../../sui/defi/boosts/core/sources/vault/state.move#L259) and
+  [state::unwind_constraints](../../sui/defi/boosts/core/sources/vault/state.move#L709)
+  size with [rebalance_math::base_for_oracle_notional_down](../../sui/defi/boosts/core/sources/math/rebalance_math.move#L33)
+  at the oracle price; [state::seed_terms](../../sui/defi/boosts/core/sources/vault/state.move#L173)
+  and the headroom in [rebalance_math::increase_base_down](../../sui/defi/boosts/core/sources/math/rebalance_math.move#L69)
   do the same.
-- [orders::place_order](../../sui/defi/boosts/aftermath_adapter/sources/orders.move#L432)
+- [orders::place_order](../../sui/defi/boosts/aftermath_adapter/sources/trading/orders.move#L432)
   checks the executed notional with
-  [state::assert_order_notional_allowed](../../sui/defi/boosts/core/sources/state.move#L264)
-  one line before [state::assert_execution](../../sui/defi/boosts/core/sources/state.move#L271).
-- [orders::close_orders](../../sui/defi/boosts/aftermath_adapter/sources/orders.move#L199)
+  [state::assert_order_notional_allowed](../../sui/defi/boosts/core/sources/vault/state.move#L264)
+  one line before [state::assert_execution](../../sui/defi/boosts/core/sources/vault/state.move#L271).
+- [orders::close_orders](../../sui/defi/boosts/aftermath_adapter/sources/trading/orders.move#L199)
   closes with full-cap orders under the emergency bound.
 
 **The fix.** Make per-order sizing and the post-fill notional check agree on
@@ -674,9 +674,9 @@ resumes when the traffic stops.
 
 **Where it is.**
 
-- [operations::assert_gas_price](../../sui/defi/boosts/aftermath_adapter/sources/operations.move#L638).
-- Called from [operations::rebalance](../../sui/defi/boosts/aftermath_adapter/sources/operations.move#L283)
-  and [operations::unwind](../../sui/defi/boosts/aftermath_adapter/sources/operations.move#L409).
+- [operations::assert_gas_price](../../sui/defi/boosts/aftermath_adapter/sources/trading/operations.move#L638).
+- Called from [operations::rebalance](../../sui/defi/boosts/aftermath_adapter/sources/trading/operations.move#L283)
+  and [operations::unwind](../../sui/defi/boosts/aftermath_adapter/sources/trading/operations.move#L409).
 
 **The fix.** Decide whether maintenance and shutdown close-out should yield to
 above-RGP traffic, fixing the shutdown path first because `unwind` gates every
@@ -730,9 +730,9 @@ the fill.
 
 **Where it is.**
 
-- [accounting_math::mint_base_to_buy_down](../../sui/defi/boosts/core/sources/lib/accounting_math.move#L226).
-- [state::prepare_mint](../../sui/defi/boosts/core/sources/state.move#L292) band
-  gate before the trade; [state::complete_mint](../../sui/defi/boosts/core/sources/state.move#L365)
+- [accounting_math::mint_base_to_buy_down](../../sui/defi/boosts/core/sources/math/accounting_math.move#L226).
+- [state::prepare_mint](../../sui/defi/boosts/core/sources/vault/state.move#L292) band
+  gate before the trade; [state::complete_mint](../../sui/defi/boosts/core/sources/vault/state.move#L365)
   checks only the hard cap after.
 
 **The fix.**
@@ -762,13 +762,13 @@ from price drift alone. A `RiskAdmin` can recover by lowering the cap.
 
 **Where it is.**
 
-- [rebalance_math::base_for_oracle_notional_down](../../sui/defi/boosts/core/sources/lib/rebalance_math.move#L46)
+- [rebalance_math::base_for_oracle_notional_down](../../sui/defi/boosts/core/sources/math/rebalance_math.move#L46)
   asserts the result fits.
-- Callers: [state::max_order_base](../../sui/defi/boosts/core/sources/state.move#L259),
-  [state::reduction_order](../../sui/defi/boosts/core/sources/state.move#L945),
-  [state::seed_terms](../../sui/defi/boosts/core/sources/state.move#L173),
-  [state::unwind_constraints](../../sui/defi/boosts/core/sources/state.move#L709).
-- [state::set_max_order_notional](../../sui/defi/boosts/core/sources/state.move#L787)
+- Callers: [state::max_order_base](../../sui/defi/boosts/core/sources/vault/state.move#L259),
+  [state::reduction_order](../../sui/defi/boosts/core/sources/vault/state.move#L945),
+  [state::seed_terms](../../sui/defi/boosts/core/sources/vault/state.move#L173),
+  [state::unwind_constraints](../../sui/defi/boosts/core/sources/vault/state.move#L709).
+- [state::set_max_order_notional](../../sui/defi/boosts/core/sources/vault/state.move#L787)
   accepts any positive value.
 
 **The fix.** Make the conversion saturate: clamp the converted base to
@@ -799,14 +799,14 @@ leverage back into the band or someone donates enough NAV.
 
 **Where it is.**
 
-- [state::prepare_rebalance](../../sui/defi/boosts/core/sources/state.move#L476).
-- [rebalance_math::increase_base_down](../../sui/defi/boosts/core/sources/lib/rebalance_math.move#L53)
+- [state::prepare_rebalance](../../sui/defi/boosts/core/sources/vault/state.move#L476).
+- [rebalance_math::increase_base_down](../../sui/defi/boosts/core/sources/math/rebalance_math.move#L53)
   returns zero when one lot overshoots.
-- [orders::rebalance_orders](../../sui/defi/boosts/aftermath_adapter/sources/orders.move#L155)
-  places nothing; [state::complete_rebalance](../../sui/defi/boosts/core/sources/state.move#L589)
+- [orders::rebalance_orders](../../sui/defi/boosts/aftermath_adapter/sources/trading/orders.move#L155)
+  places nothing; [state::complete_rebalance](../../sui/defi/boosts/core/sources/vault/state.move#L589)
   aborts.
-- [state::prepare_mint](../../sui/defi/boosts/core/sources/state.move#L292) band
-  gate; [state::needs_rebalance](../../sui/defi/boosts/core/sources/state.move#L467).
+- [state::prepare_mint](../../sui/defi/boosts/core/sources/vault/state.move#L292) band
+  gate; [state::needs_rebalance](../../sui/defi/boosts/core/sources/vault/state.move#L467).
 
 **The fix.** A band breach that no whole-lot rebalance can close should not
 lock the vault. Have `prepare_rebalance` and `needs_rebalance` treat a zero
@@ -838,14 +838,14 @@ and mint, redeem and rebalance abort while equity looks healthy.
 
 **Where it is.**
 
-- [operations::donate](../../sui/defi/boosts/aftermath_adapter/sources/operations.move#L357)
+- [operations::donate](../../sui/defi/boosts/aftermath_adapter/sources/trading/operations.move#L357)
   calls only `deposit`.
-- [operations::fund_mint](../../sui/defi/boosts/aftermath_adapter/sources/operations.move#L608)
+- [operations::fund_mint](../../sui/defi/boosts/aftermath_adapter/sources/trading/operations.move#L608)
   is the deposit-and-allocate pattern to copy.
-- [operations::complete_donation](../../sui/defi/boosts/aftermath_adapter/sources/operations.move#L761)
-  proves with [checkpoint::assert_deposit_checkpoint](../../sui/defi/boosts/aftermath_adapter/sources/checkpoint.move#L101);
-  the allocated variant is [checkpoint::assert_allocated_deposit_checkpoint](../../sui/defi/boosts/aftermath_adapter/sources/checkpoint.move#L109).
-- [state::donate](../../sui/defi/boosts/core/sources/state.move#L659) credits the
+- [operations::complete_donation](../../sui/defi/boosts/aftermath_adapter/sources/trading/operations.move#L761)
+  proves with [checkpoint::assert_deposit_checkpoint](../../sui/defi/boosts/aftermath_adapter/sources/venue/checkpoint.move#L101);
+  the allocated variant is [checkpoint::assert_allocated_deposit_checkpoint](../../sui/defi/boosts/aftermath_adapter/sources/venue/checkpoint.move#L109).
+- [state::donate](../../sui/defi/boosts/core/sources/vault/state.move#L659) credits the
   reserve.
 
 **The fix.** Allocate the donation in the same call, as `fund_mint` does, and
@@ -872,9 +872,9 @@ lower ratio widens the profit-side redemption window of ticket 2.
 
 **Where it is.**
 
-- [operations::initialize](../../sui/defi/boosts/aftermath_adapter/sources/operations.move#L41)
-  and [operations::assert_position_imr](../../sui/defi/boosts/aftermath_adapter/sources/operations.move#L512).
-- [operations::fund_venue_account](../../sui/defi/boosts/aftermath_adapter/sources/operations.move#L548)
+- [operations::initialize](../../sui/defi/boosts/aftermath_adapter/sources/trading/operations.move#L41)
+  and [operations::assert_position_imr](../../sui/defi/boosts/aftermath_adapter/sources/trading/operations.move#L512).
+- [operations::fund_venue_account](../../sui/defi/boosts/aftermath_adapter/sources/trading/operations.move#L548)
   sets it on the venue.
 - The hard cap lives in core `policy` and `max_leverage_bps` is
   `public(package)` there, so the adapter cannot read it today.
@@ -909,12 +909,12 @@ ordinary reduction on a large vault.
 
 **Where it is.**
 
-- [state::complete_rebalance](../../sui/defi/boosts/core/sources/state.move#L583)
+- [state::complete_rebalance](../../sui/defi/boosts/core/sources/vault/state.move#L583)
   discards `emergency` and requires
-  [rebalance_math::reduction_is_sufficient](../../sui/defi/boosts/core/sources/lib/rebalance_math.move#L107).
-- [state::next_rebalance_order](../../sui/defi/boosts/core/sources/state.move#L526)
+  [rebalance_math::reduction_is_sufficient](../../sui/defi/boosts/core/sources/math/rebalance_math.move#L107).
+- [state::next_rebalance_order](../../sui/defi/boosts/core/sources/vault/state.move#L526)
   stops the emergency plan at the cap.
-- [policy::new_rebalance_policy](../../sui/defi/boosts/core/sources/policy.move#L102)
+- [policy::new_rebalance_policy](../../sui/defi/boosts/core/sources/config/policy.move#L102)
   checks only `min_leverage_improvement_bps > 0`.
 
 **The fix.** Any plan that makes the progress its stopping rule and order
@@ -1000,11 +1000,11 @@ only; it heals when the TWAP catches up.
 
 **Where it is.**
 
-- [state::assert_observation_priced](../../sui/defi/boosts/core/sources/state.move#L998),
+- [state::assert_observation_priced](../../sui/defi/boosts/core/sources/vault/state.move#L998),
   the divergence call at line 1003, through
-  [state::validated_active_position](../../sui/defi/boosts/core/sources/state.move#L959).
-- [policy::max_mark_divergence_bps](../../sui/defi/boosts/core/sources/policy.move#L645).
-- [state::unwind_constraints](../../sui/defi/boosts/core/sources/state.move#L705)
+  [state::validated_active_position](../../sui/defi/boosts/core/sources/vault/state.move#L959).
+- [policy::max_mark_divergence_bps](../../sui/defi/boosts/core/sources/config/policy.move#L645).
+- [state::unwind_constraints](../../sui/defi/boosts/core/sources/vault/state.move#L705)
   uses only the freshness checks, which is the pattern to copy.
 
 **The fix.** Exempt the emergency rebalance from the divergence check, as the
@@ -1053,11 +1053,11 @@ the next rebalance corrects.
 
 **Where it is.**
 
-- [state::accept_rebalance_fill](../../sui/defi/boosts/core/sources/state.move#L567)
+- [state::accept_rebalance_fill](../../sui/defi/boosts/core/sources/vault/state.move#L567)
   increase branch, using `plan.reserve_priced`.
-- [state::prepare_rebalance](../../sui/defi/boosts/core/sources/state.move#L489)
-  fixes it. [state::admitted_reserve](../../sui/defi/boosts/core/sources/state.move#L905).
-- [state::complete_mint](../../sui/defi/boosts/core/sources/state.move#L349) is the
+- [state::prepare_rebalance](../../sui/defi/boosts/core/sources/vault/state.move#L489)
+  fixes it. [state::admitted_reserve](../../sui/defi/boosts/core/sources/vault/state.move#L905).
+- [state::complete_mint](../../sui/defi/boosts/core/sources/vault/state.move#L349) is the
   correct pattern.
 
 **The fix.** Check the increase branch's hard cap and target against the
@@ -1098,11 +1098,11 @@ validation admits them.
 
 **Where it is.**
 
-- [state::complete_rebalance](../../sui/defi/boosts/core/sources/state.move#L591)
+- [state::complete_rebalance](../../sui/defi/boosts/core/sources/vault/state.move#L591)
   computes before and after NAV on `reserve_priced`.
-- [state::next_rebalance_order](../../sui/defi/boosts/core/sources/state.move#L515)
-  the same. [rebalance_math::reduction_is_sufficient](../../sui/defi/boosts/core/sources/lib/rebalance_math.move#L107).
-- [state::accept_rebalance_fill](../../sui/defi/boosts/core/sources/state.move#L544)
+- [state::next_rebalance_order](../../sui/defi/boosts/core/sources/vault/state.move#L515)
+  the same. [rebalance_math::reduction_is_sufficient](../../sui/defi/boosts/core/sources/math/rebalance_math.move#L107).
+- [state::accept_rebalance_fill](../../sui/defi/boosts/core/sources/vault/state.move#L544)
   reduce branch does no reserve check.
 
 **The fix.** Decide and document the reserve basis reductions complete
@@ -1168,13 +1168,13 @@ deployment obligation the code does not enforce.
 
 **Where it is.**
 
-- [state::prepare_redemption](../../sui/defi/boosts/core/sources/state.move#L382)
-  through [accounting_math::redemption_base_bounds](../../sui/defi/boosts/core/sources/lib/accounting_math.move#L378),
+- [state::prepare_redemption](../../sui/defi/boosts/core/sources/vault/state.move#L382)
+  through [accounting_math::redemption_base_bounds](../../sui/defi/boosts/core/sources/math/accounting_math.move#L378),
   which aborts with `order_below_min_lots`.
-- [state::reduction_order](../../sui/defi/boosts/core/sources/state.move#L939) has
+- [state::reduction_order](../../sui/defi/boosts/core/sources/vault/state.move#L939) has
   no minimum-order check.
-- [accounting_math::is_base_above_min_order](../../sui/defi/boosts/core/sources/lib/accounting_math.move#L92),
-  called only from [state::activate](../../sui/defi/boosts/core/sources/state.move#L228).
+- [accounting_math::is_base_above_min_order](../../sui/defi/boosts/core/sources/math/accounting_math.move#L92),
+  called only from [state::activate](../../sui/defi/boosts/core/sources/vault/state.move#L228).
 
 **The fix.** Give ordinary holders a way out of a sub-minimum position without
 admin action, either:
@@ -1230,7 +1230,7 @@ reverted transactions never advance the checkpoint.
 
 **Where it is.**
 
-- [state::settle_funding](../../sui/defi/boosts/core/sources/state.move#L650), the
+- [state::settle_funding](../../sui/defi/boosts/core/sources/vault/state.move#L650), the
   `assert_invariant` on the credit branch.
 
 **The fix.** Evaluate the conservation check in a width that cannot overflow
@@ -1271,7 +1271,7 @@ Fresh Opus 5.5 review (`claude-opus-5-5`, session
 A1 addressed in source. This is source remediation, not a historical package
 upgrade, deployment or original-auditor acceptance.
 
-**Where (audit-time finding).** [ifixed_math::to_u64](../../sui/defi/boosts/aftermath_adapter/sources/lib/ifixed_math.move#L45)
+**Where (audit-time finding).** [ifixed_math::to_u64](../../sui/defi/boosts/aftermath_adapter/sources/math/ifixed_math.move#L45)
 was `public(package)` but only `fixed_to_u64_down` and `fixed_to_u64_up` in the
 same module called it.
 
@@ -1317,8 +1317,8 @@ report out of band where `rebalance` finds in band (the keeper's call aborts
 with `rebalance_inside_band`); a credit does the reverse and a due rebalance
 is skipped. The error is one interval's funding and zero at the reserve cap.
 
-**Where.** [operations::needs_rebalance](../../sui/defi/boosts/aftermath_adapter/sources/operations.move#L311)
-and [state::needs_rebalance](../../sui/defi/boosts/core/sources/state.move#L467).
+**Where.** [operations::needs_rebalance](../../sui/defi/boosts/aftermath_adapter/sources/trading/operations.move#L311)
+and [state::needs_rebalance](../../sui/defi/boosts/core/sources/vault/state.move#L467).
 
 **Fix.** Apply the classified pre-existing funding to a local copy of the
 reserve before the band test, so the dry run prices the same pair as
@@ -1337,9 +1337,9 @@ A3 implementation is included with A4. Original-auditor acceptance is separate.
 so on such a market it returns true while `rebalance` aborts before any order.
 Only keeper tooling is affected.
 
-**Where.** [operations::needs_rebalance](../../sui/defi/boosts/aftermath_adapter/sources/operations.move#L311)
-versus [orders::live_venue_fee_bps](../../sui/defi/boosts/aftermath_adapter/sources/orders.move#L107),
-called by [operations::rebalance](../../sui/defi/boosts/aftermath_adapter/sources/operations.move#L289).
+**Where.** [operations::needs_rebalance](../../sui/defi/boosts/aftermath_adapter/sources/trading/operations.move#L311)
+versus [orders::live_venue_fee_bps](../../sui/defi/boosts/aftermath_adapter/sources/trading/orders.move#L107),
+called by [operations::rebalance](../../sui/defi/boosts/aftermath_adapter/sources/trading/operations.move#L289).
 
 **Fix.** Call `live_venue_fee_bps` in the dry run so both abort on the same
 market state, or narrow its documentation to what it checks.
@@ -1504,9 +1504,9 @@ and the vault stays under-levered. Reductions, emergency reductions and
 redemptions still work. The threshold is at least 1.84e11 whole USDC, so no
 realistic vault reaches it.
 
-**Where.** [policy::assert_nav_cap_valid](../../sui/defi/boosts/core/sources/policy.move#L348),
-[accounting_math::target_notional_down](../../sui/defi/boosts/core/sources/lib/accounting_math.move#L179),
-[state::increase_order](../../sui/defi/boosts/core/sources/state.move#L928).
+**Where.** [policy::assert_nav_cap_valid](../../sui/defi/boosts/core/sources/config/policy.move#L348),
+[accounting_math::target_notional_down](../../sui/defi/boosts/core/sources/math/accounting_math.move#L179),
+[state::increase_order](../../sui/defi/boosts/core/sources/vault/state.move#L928).
 
 **Fix.** Make the target computation hold for live NAV, not only the cap:
 bound live NAV against the `u64` limit the target leverage implies, or
@@ -1539,7 +1539,7 @@ covers only pause and freeze, so a stale feed aborts `capture` inside the
 venue and `sync_health` aborts instead of reporting. No measurable impact; the
 inaccurate contract could mislead a future caller.
 
-**Where.** [snapshot::capture](../../sui/defi/boosts/aftermath_adapter/sources/snapshot.move#L172)
+**Where.** [snapshot::capture](../../sui/defi/boosts/aftermath_adapter/sources/venue/snapshot.move#L172)
 doc comment and venue price calls immediately below it.
 
 **Fix.** Amend the doc comment: a stale feed or an index/TWAP divergence
@@ -1586,8 +1586,8 @@ improvement. No caller can trigger it today: `State` is exposed only through
 `public(package)` accessors and the sole production path builds each order
 from the plan it advances.
 
-**Where.** [state::accept_rebalance_fill](../../sui/defi/boosts/core/sources/state.move#L676),
-[orders::rebalance_orders](../../sui/defi/boosts/aftermath_adapter/sources/orders.move#L165).
+**Where.** [state::accept_rebalance_fill](../../sui/defi/boosts/core/sources/vault/state.move#L676),
+[orders::rebalance_orders](../../sui/defi/boosts/aftermath_adapter/sources/trading/orders.move#L165).
 
 **Fix.** Take direction and emergency status from the plan inside
 `accept_rebalance_fill`, or reject orders whose values differ from

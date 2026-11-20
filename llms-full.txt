@@ -8811,7 +8811,7 @@ Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/de
 
 Irreversible lifecycle and operation permissions for one Vault.
 
-Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/core/sources/lifecycle.move
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/core/sources/vault/lifecycle.move
 
 #### Types
 
@@ -8849,7 +8849,7 @@ public fun observed_venue_change_reason(): ShutdownReason
 
 Operation-scoped observations supplied by a venue adapter.  These values prove neither source identity nor caller authority. The adapter authenticates its venue and oracle sources before it constructs them; the core reads them during the enclosing operation and never stores one.
 
-Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/core/sources/observation.move
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/core/sources/vault/observation.move
 
 #### Types
 
@@ -8916,7 +8916,7 @@ public fun funding_cost(amount: u64): FundingSettlement
 
 Immutable core policy values and pure policy gates.  This slice selects no production value, authenticates no price source, and owns no Vault or venue state.
 
-Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/core/sources/policy.move
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/core/sources/config/policy.move
 
 #### Types
 
@@ -9106,7 +9106,7 @@ public fun assert_execution(self: &ExecutionBound, reference_price: u64, execute
 
 Venue-neutral state for one core leveraged product.  The selected adapter stores this value inside its own shared Vault. Only functions in this module can inspect or change the private core fields. Currency, venue custody, ACL routing, and versioning belong to the adapter. The core reads no clock: every `now_ms` is the adapter's `Clock::timestamp_ms()` for the transaction, and oracle freshness is judged against it.
 
-Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/core/sources/state.move
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/core/sources/vault/state.move
 
 #### Types
 
@@ -9892,7 +9892,7 @@ Abort codes: this package aborts with the numeric codes below from whichever mod
 
 The share currency type of every Boost this adapter issues.  Wallets, explorers, and indexers identify a coin by its type argument, so `Coin<BlastBoost<Product>>` is the name a holder reads. The shared `vault::Vault<Product>` custodies the product; it is not the currency.
 
-Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/aftermath_adapter/sources/blast_boost.move
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/aftermath_adapter/sources/vault/blast_boost.move
 
 #### Types
 
@@ -9959,7 +9959,7 @@ public struct Event<T: copy + drop>(T) has copy, drop;
 
 The raw venue checkpoint the adapter proves every venue mutation against: how one is read, what may change between two, and what each operation must leave behind.
 
-Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/aftermath_adapter/sources/checkpoint.move
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/aftermath_adapter/sources/venue/checkpoint.move
 
 #### Types
 
@@ -10021,7 +10021,7 @@ Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/de
 
 Replay-complete Aftermath adapter events.
 
-Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/aftermath_adapter/sources/events.move
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/aftermath_adapter/sources/vault/events.move
 
 #### Events
 
@@ -10293,7 +10293,7 @@ public struct AdminFeesWithdrawn<phantom Product> has copy, drop {
 
 Atomic Aftermath operations for adapter-owned leverage Vaults.
 
-Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/aftermath_adapter/sources/operations.move
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/aftermath_adapter/sources/trading/operations.move
 
 #### Functions
 
@@ -10586,7 +10586,7 @@ entry fun unwind<Product, Collateral>(
 
 Order placement for one operation: the sealed terms, the whole-lot sizing, the price limit of each order, each venue session, and the proof of every fill against the checkpoint.
 
-Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/aftermath_adapter/sources/orders.move
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/aftermath_adapter/sources/trading/orders.move
 
 #### Types
 
@@ -10619,7 +10619,7 @@ public struct FillReceipt {
 
 The generic PackageAdmin owns native upgrade custody, the digest timelock and pause roles. The Boosts Protocol owns the serving generation so a repairable bad build cannot block exits.
 
-Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/aftermath_adapter/sources/package_admin.move
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/aftermath_adapter/sources/config/package_admin.move
 
 #### Functions
 
@@ -10650,7 +10650,7 @@ public fun make_immutable(
 
 Authenticated Aftermath capture: proves every source is the bound one, reads the raw checkpoint, and normalizes prices and equity into the adapter's units.
 
-Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/aftermath_adapter/sources/snapshot.move
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/aftermath_adapter/sources/venue/snapshot.move
 
 #### Types
 
@@ -10691,7 +10691,7 @@ public struct CashLiquidity has copy, drop {
 
 Adapter-owned Vault: custody of the core state, the venue account, the share currency and the retained cash, plus the public surface that needs no venue object (issuance, shutdown begin and claim, administration). Every venue-touching operation is driven by `operations`; this module never reads the venue, advances a checkpoint or completes a core plan.
 
-Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/aftermath_adapter/sources/vault.move
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/aftermath_adapter/sources/vault/vault.move
 
 #### Types
 
@@ -10901,7 +10901,7 @@ public fun cancel_max_order_notional<Product, Collateral>(
 
 Exact Aftermath account custody under its immutable venue binding: every deposit, allocation, order and withdrawal the Vault makes goes through here.
 
-Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/aftermath_adapter/sources/venue_account.move
+Source: https://github.com/interest-protocol/blast-v2-contracts/blob/main/sui/defi/boosts/aftermath_adapter/sources/venue/venue_account.move
 
 #### Types
 

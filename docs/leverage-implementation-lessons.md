@@ -151,7 +151,7 @@ and is a release gate on the seed slice.
 
 ### 1.10 Run every price gate at the one operation checkpoint
 
-The `PricePolicy` type in `sui/defi/boosts/core/sources/policy.move` owns the freshness,
+The `PricePolicy` type in `sui/defi/boosts/core/sources/config/policy.move` owns the freshness,
 confidence, and mark-divergence rules, but it cannot see how many times or
 against what a caller applies them. The Series and adapter must:
 

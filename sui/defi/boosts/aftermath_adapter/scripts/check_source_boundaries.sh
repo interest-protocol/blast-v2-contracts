@@ -33,8 +33,8 @@ if grep -rq 'blast_boosts_aftermath' "$core_dir/Move.toml" "$core_dir/sources"; 
 fi
 
 # --- One linear hierarchy per package ---
-# Every module names its layer; a module may import only modules of a strictly
-# lower layer of its own package, and a lib/ module only other lib/ modules.
+# Within a package, imports must point to a lower layer. Modules in lib/ may
+# import only from lib/. Modules in math/ may import from math/ and lib/.
 
 # Layer lookups are functions, not associative arrays, so the gate runs on the
 # bash 3.2 macOS ships. Each prints a module's layer, or fails for an unknown one.
@@ -64,7 +64,7 @@ adapter_layer() {
 check_hierarchy() {
   local package="$1" dir="$2" layer_of="$3"
   local file module dep module_layer dep_layer
-  for file in "$dir"/sources/*.move "$dir"/sources/lib/*.move; do
+  while IFS= read -r -d '' file; do
     module="$(basename "$file" .move)"
     module_layer="$("$layer_of" "$module")" \
       || fail "$package::$module has no layer; add it to the hierarchy table in this gate."
@@ -72,25 +72,26 @@ check_hierarchy() {
       dep_layer="$("$layer_of" "$dep")" || continue
       (( dep_layer < module_layer )) \
         || fail "$package::$module (layer $module_layer) imports $package::$dep (layer $dep_layer); modules build only on lower layers."
-      if [[ "$file" == */lib/* && ! -f "$dir/sources/lib/$dep.move" ]]; then
+      if [[ "$file" == "$dir/sources/lib/"* && ! -f "$dir/sources/lib/$dep.move" ]]; then
         fail "$package::$module lives in lib/ and may import only lib/ modules, not $dep."
+      elif [[ "$file" == "$dir/sources/math/"* && ! -f "$dir/sources/math/$dep.move" && ! -f "$dir/sources/lib/$dep.move" ]]; then
+        fail "$package::$module lives in math/ and may import only math/ or lib/ modules, not $dep."
       fi
     done
-  done
+  done < <(find "$dir/sources" -type f -name '*.move' -print0)
 }
 
 check_hierarchy blast_boosts_core "$core_dir" core_layer
 check_hierarchy blast_boosts_aftermath "$package_dir" adapter_layer
 
-for file in "$core_dir"/sources/*.move "$core_dir"/sources/lib/*.move \
-            "$package_dir"/sources/*.move "$package_dir"/sources/lib/*.move; do
+while IFS= read -r -d '' file; do
   if grep -qE '^use ' "$file"; then
     first_use="$(grep -m1 -nE '^use ' "$file" | cut -d: -f1)"
     imports_header="$(grep -m1 -nF '// === Imports ===' "$file" | cut -d: -f1 || true)"
     [[ -n "$imports_header" && "$first_use" -gt "$imports_header" ]] \
       || fail "$file must keep every import under a trailing // === Imports === section."
   fi
-done
+done < <(find "$core_dir/sources" "$package_dir/sources" -type f -name '*.move' -print0)
 
 # --- Public surface ---
 # Callers see three modules: vault (issuance, administration, shutdown),
@@ -99,23 +100,23 @@ done
 # package-private. Permissionless maintenance ends market use in private entry
 # functions; callers cannot wrap it or reuse its clearing house (ADR 0118).
 
-for file in "$package_dir"/sources/*.move "$package_dir"/sources/lib/*.move; do
+while IFS= read -r -d '' file; do
   module="$(basename "$file" .move)"
   case "$module" in vault|operations|package_admin) continue ;; esac
   if grep -qE '^public fun ' <<<"$(production "$file")"; then
     fail "$module exposes a public function; only vault, operations and package_admin are callable."
   fi
-done
+done < <(find "$package_dir/sources" -type f -name '*.move' -print0)
 entry_functions="$(grep -rHE '\bentry fun ' "$core_dir/sources" "$package_dir/sources" || true)"
-expected_entries="$package_dir/sources/operations.move:entry fun realize_profit<Product, Collateral>(
-$package_dir/sources/operations.move:entry fun rebalance<Product, Collateral>(
-$package_dir/sources/operations.move:entry fun unwind<Product, Collateral>("
+expected_entries="$package_dir/sources/trading/operations.move:entry fun realize_profit<Product, Collateral>(
+$package_dir/sources/trading/operations.move:entry fun rebalance<Product, Collateral>(
+$package_dir/sources/trading/operations.move:entry fun unwind<Product, Collateral>("
 [[ "$entry_functions" == "$expected_entries" ]] \
   || fail "Only operations::realize_profit, operations::rebalance and operations::unwind may be private entry functions."
 
 # Venue interfaces cannot execute the entry functions locally. Pin the gas
 # policy at their production call sites as well as testing real prepared plans.
-python3 - "$package_dir/sources/operations.move" <<'PY'
+python3 - "$package_dir/sources/trading/operations.move" "$package_dir/sources/vault/vault.move" <<'PY'
 from pathlib import Path
 import sys
 import re
@@ -176,7 +177,7 @@ assert '.capture(' not in dust and '.into_observation(' not in dust and 'AdminWi
 dust_completion = function(source, 'fun begin_protected_shutdown_from_checkpoint<')
 assert dust_completion.index('.classify_preexisting(&checkpoint).is_unchanged()') < dust_completion.index('.base_to_close(') < dust_completion.index('.begin_protected_shutdown(') < dust_completion.index('.replace_checkpoint(') < dust_completion.index('events::protected_shutdown_begun')
 assert '.total_share_supply()' in dust_completion and '.locked_shares()' in dust_completion
-custody = Path(sys.argv[1]).with_name('vault.move').read_text().split('// === Test-Only Functions ===')[0]
+custody = Path(sys.argv[2]).read_text().split('// === Test-Only Functions ===')[0]
 assert custody.count('self.protected_cash.') == 1 and 'self.protected_cash.join(recovered.split(protected_amount))' in custody
 assert '.protected_cash.split(' not in custody, 'Protected cash must have no holder or administrator withdrawal path.'
 PY
@@ -203,11 +204,11 @@ foreign_admin_witnesses="$(
 )"
 [[ -z "$foreign_admin_witnesses" ]] \
   || fail "Every administrator witness must name one concrete Boosts role: $foreign_admin_witnesses"
-[[ "$(grep -Fc 'AdminWitness<UpgradeAdmin<BLAST_BOOSTS_AFTERMATH>>' "$package_dir/sources/package_admin.move")" -eq 2 ]] \
+[[ "$(grep -Fc 'AdminWitness<UpgradeAdmin<BLAST_BOOSTS_AFTERMATH>>' "$package_dir/sources/config/package_admin.move")" -eq 2 ]] \
   || fail "Activation and immutability require the adapter-scoped upgrade role."
 
 # Policy narrowing would prevent future operational version changes (ADR 0123).
-if grep -nE 'restrict_to_|commit_upgrade_and_advance' <<<"$(production "$package_dir/sources/package_admin.move")"; then
+if grep -nE 'restrict_to_|commit_upgrade_and_advance' <<<"$(production "$package_dir/sources/config/package_admin.move")"; then
   fail "The adapter must keep repairable upgrades and separate receipt commit from activation."
 fi
 
@@ -223,9 +224,9 @@ fi
 if grep -rn 'new_currency<Vault<' "$package_dir/sources"; then
   fail "The shared Vault type must never be a currency."
 fi
-[[ "$(grep -rl 'new_currency<' "$package_dir/sources" | sort | tr '\n' ' ')" == "$package_dir/sources/blast_boost.move $package_dir/sources/vault.move " ]] \
+[[ "$(grep -rl 'new_currency<' "$package_dir/sources" | sort | tr '\n' ' ')" == "$package_dir/sources/vault/blast_boost.move $package_dir/sources/vault/vault.move " ]] \
   || fail "Share currencies are registered by blast_boost and only issuance in vault calls it."
-if grep -nE 'transfer::(public_)?transfer|burn_publisher' <<<"$(production "$package_dir/sources/package_admin.move")"; then
+if grep -nE 'transfer::(public_)?transfer|burn_publisher' <<<"$(production "$package_dir/sources/config/package_admin.move")"; then
   fail "Package administration must expose no capability escape."
 fi
 
@@ -233,12 +234,12 @@ fi
 # vault stores; it never reads the venue. operations alone advances a
 # checkpoint or completes a core plan.
 
-if grep -q 'perpetuals' "$package_dir/sources/vault.move"; then
+if grep -q 'perpetuals' "$package_dir/sources/vault/vault.move"; then
   fail "vault is custody only and must not import the venue."
 fi
-[[ "$(grep -rl 'replace_checkpoint(' "$package_dir/sources" | sort | tr '\n' ' ')" == "$package_dir/sources/operations.move $package_dir/sources/venue_account.move " ]] \
+[[ "$(grep -rl 'replace_checkpoint(' "$package_dir/sources" | sort | tr '\n' ' ')" == "$package_dir/sources/trading/operations.move $package_dir/sources/venue/venue_account.move " ]] \
   || fail "Only operations advances a checkpoint."
-[[ "$(grep -rlE '\.(complete_(mint|redemption|rebalance|donation)|finalize_shutdown)\(' "$package_dir/sources" | tr '\n' ' ')" == "$package_dir/sources/operations.move " ]] \
+[[ "$(grep -rlE '\.(complete_(mint|redemption|rebalance|donation)|finalize_shutdown)\(' "$package_dir/sources" | tr '\n' ' ')" == "$package_dir/sources/trading/operations.move " ]] \
   || fail "Only operations completes a core plan."
 
 # --- Partner codes (ADR 0095) ---
@@ -249,7 +250,7 @@ fi
 if grep -q 'blast_boosts' "$package_dir/../../../launch/partners/Move.toml"; then
   fail "blast_partners must never depend on a Boost package."
 fi
-[[ "$(grep -rl '\.pay(' "$package_dir/sources" | tr '\n' ' ')" == "$package_dir/sources/operations.move " ]] \
+[[ "$(grep -rl '\.pay(' "$package_dir/sources" | tr '\n' ' ')" == "$package_dir/sources/trading/operations.move " ]] \
   || fail "Only operations pays a partner."
 if grep -rn 'send_funds(' "$package_dir/sources"; then
   fail "The adapter never sends funds itself; blast_partners pays partners."
@@ -260,15 +261,14 @@ fi
 # section; production text carries no test accommodation. The error registries
 # are gap-free from zero while the packages are unpublished.
 
-for file in "$core_dir"/sources/*.move "$core_dir"/sources/lib/*.move \
-            "$package_dir"/sources/*.move "$package_dir"/sources/lib/*.move; do
+while IFS= read -r -d '' file; do
   if grep -nE 'for_testing|test_scenario|test_utils' <<<"$(production "$file")"; then
     fail "$file leaks test accommodation into production text."
   fi
   if [[ "$(basename "$file")" != errors.move ]] && grep -qF '#[test_only]' <<<"$(production "$file")"; then
     fail "$file must keep #[test_only] items under its Test-Only section."
   fi
-done
+done < <(find "$core_dir/sources" "$package_dir/sources" -type f -name '*.move' -print0)
 
 check_error_registry() {
   local file="$1"

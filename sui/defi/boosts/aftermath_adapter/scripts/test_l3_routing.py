@@ -29,19 +29,19 @@ def check_routes(operations, snapshot):
 
 class FeeRoutingTests(unittest.TestCase):
     def test_live_calls_use_the_market_fee(self):
-        check_routes((SOURCES / "operations.move").read_text(), (SOURCES / "snapshot.move").read_text())
+        check_routes((SOURCES / "trading" / "operations.move").read_text(), (SOURCES / "venue" / "snapshot.move").read_text())
 
     def test_comparing_the_stored_checkpoint_to_itself_is_rejected(self):
-        operations = (SOURCES / "operations.move").read_text()
+        operations = (SOURCES / "trading" / "operations.move").read_text()
         mutated = replace_code(operations, "classify_preexisting(&capture.checkpoint())",
                                      "classify_preexisting(vault.venue().checkpoint())")
         self.assertNotEqual(operations, mutated)
         with self.assertRaises(AssertionError):
-            check_routes(mutated, (SOURCES / "snapshot.move").read_text())
+            check_routes(mutated, (SOURCES / "venue" / "snapshot.move").read_text())
 
     def test_replacing_any_authenticated_fee_or_commenting_out_a_call_fails(self):
-        operations = (SOURCES / "operations.move").read_text()
-        snapshot = (SOURCES / "snapshot.move").read_text()
+        operations = (SOURCES / "trading" / "operations.move").read_text()
+        snapshot = (SOURCES / "venue" / "snapshot.move").read_text()
         mutations = [
             (replace_code(operations, "minimum_shares, clearing_house.live_venue_fee_bps()", "minimum_shares, 0"), snapshot),
             (replace_code(operations, "vault.state(), funding, clearing_house.live_venue_fee_bps()",

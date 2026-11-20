@@ -7,7 +7,7 @@ import unittest
 from move_source import replace_code
 
 
-ORDERS = Path(__file__).resolve().parents[1] / "sources/orders.move"
+ORDERS = Path(__file__).resolve().parents[1] / "sources/trading/orders.move"
 
 
 def function(source, name):

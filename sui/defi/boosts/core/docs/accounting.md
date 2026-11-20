@@ -21,7 +21,7 @@ coins target approximately 2x exposure and can be liquidated.
 
 ## Modules
 
-- `lib/accounting_math.move` — pure share, fee, leverage, exposure, shareholder-NAV,
+- `math/accounting_math.move` — pure share, fee, leverage, exposure, shareholder-NAV,
   reserve-credit, and exact negative-funding absorption arithmetic. The mint and
   redemption quotes derive shareholder NAV from venue equity and reserve; the
   leverage, target-notional, and mint-exposure formulas take a shareholder NAV

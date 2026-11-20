@@ -7,7 +7,7 @@ import unittest
 from move_source import replace_code
 
 
-OPERATIONS = Path(__file__).resolve().parents[1] / "sources" / "operations.move"
+OPERATIONS = Path(__file__).resolve().parents[1] / "sources" / "trading" / "operations.move"
 
 
 def check_route(source):

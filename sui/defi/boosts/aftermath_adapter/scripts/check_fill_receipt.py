@@ -55,7 +55,7 @@ def main():
         args.log_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="boosts-a5-") as temporary:
         package = copy_packages(Path(temporary))
-        path = package / "sources/orders.move"
+        path = package / "sources/trading/orders.move"
         source = path.read_text()
         for caller in (None, *CALLERS):
             name = caller or "control"

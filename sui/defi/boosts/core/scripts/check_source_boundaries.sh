@@ -26,10 +26,10 @@ if grep -qE -- 'transfer-objects|public_transfer|transfer::' "$publication_scrip
 fi
 
 domain_file="$package_dir/sources/blast_boosts_core.move"
-state_file="$package_dir/sources/state.move"
-policy_file="$package_dir/sources/policy.move"
-lifecycle_file="$package_dir/sources/lifecycle.move"
-observation_file="$package_dir/sources/observation.move"
+state_file="$package_dir/sources/vault/state.move"
+policy_file="$package_dir/sources/config/policy.move"
+lifecycle_file="$package_dir/sources/vault/lifecycle.move"
+observation_file="$package_dir/sources/vault/observation.move"
 
 # Production text of a module: everything before its Test-Only section.
 production() { sed '/^\/\/ === Test-Only Functions ===/,$d' "$1"; }
@@ -66,8 +66,8 @@ for required in \
   "$policy_file" \
   "$lifecycle_file" \
   "$observation_file" \
-  "$package_dir/sources/lib/accounting_math.move" \
-  "$package_dir/sources/lib/rebalance_math.move"; do
+  "$package_dir/sources/math/accounting_math.move" \
+  "$package_dir/sources/math/rebalance_math.move"; do
   [[ -f "$required" ]] || fail "Missing required core source: $required"
 done
 
@@ -78,7 +78,7 @@ for forbidden in \
   protocol.move \
   core.move \
   vault.move; do
-  [[ ! -e "$package_dir/sources/$forbidden" ]] \
+  [[ -z "$(find "$package_dir/sources" -name "$forbidden" -print -quit)" ]] \
     || fail "$forbidden belongs outside the venue-neutral core."
 done
 
@@ -87,9 +87,9 @@ for forbidden in \
   acl.move \
   upgrade.move \
   package_marker.move \
-  lib/events.move \
-  lib/blast_events.move; do
-  [[ ! -e "$package_dir/sources/$forbidden" ]] \
+  events.move \
+  blast_events.move; do
+  [[ -z "$(find "$package_dir/sources" -name "$forbidden" -print -quit)" ]] \
     || fail "$forbidden reintroduces administration or replay state that blast_admin owns."
 done
 

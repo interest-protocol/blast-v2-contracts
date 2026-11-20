@@ -150,7 +150,7 @@ for (const path of ['vendor/vendor/sources/init.move',
 }
 const adminManifest = join(adminPath, 'Move.toml');
 writeFileSync(adminManifest, readFileSync(adminManifest, 'utf8').replace(/blast_acl_root = "[^"]+"/, `blast_acl_root = "${address}"`));
-save('source-provenance', Object.fromEntries(['sources/package_admin.move', 'sources/blast_boosts_aftermath.move'].map((path) => {
+save('source-provenance', Object.fromEntries(['sources/config/package_admin.move', 'sources/blast_boosts_aftermath.move'].map((path) => {
   const source = readFileSync(join(repo, 'sui/defi/boosts/aftermath_adapter', path));
   assert.deepEqual(readFileSync(join(adapterPath, path)), source);
   return [path, createHash('sha256').update(source).digest('hex')];

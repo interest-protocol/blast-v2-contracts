@@ -23,7 +23,7 @@ Four deliberate differences:
   deployed mainnet module, transcribed from its disassembly
   (`docs/research/aftermath-ifixed-bytecode-2026-09-19.md`), so adapter tests
   execute the production sign-decoding paths instead of seams that copy them.
-  `tests/ifixed_port_tests.move` pins those bodies to two's-complement
+  `tests/math/ifixed_port_tests.move` pins those bodies to two's-complement
   reference semantics. Marked in its file.
 
 Nothing else is edited; refresh by re-copying the pinned revision and
