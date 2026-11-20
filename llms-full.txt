@@ -28,7 +28,7 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 | `blast_boosts_products` | Boost product tags | live; source has changed since | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` | `0xe9b3d42d4e4f6a97aaa43884b155c42abd8c2c62bba9a51e8847d7b05f3717ba` |
 | `blast_boosts_aftermath` | Boosts Aftermath adapter | not yet published | — | — |
 | `blast_sui` | blastSUI and funSUI | not yet published | — | — |
-| `blast_core` | Shared core | live | `0xd70a8d11582fd1997380bc59bfd56a2f9028ebe11da74514ea3d386258d932fc` | `0xd70a8d11582fd1997380bc59bfd56a2f9028ebe11da74514ea3d386258d932fc` |
+| `blast_core` | Shared core | live; source has changed since | `0xd70a8d11582fd1997380bc59bfd56a2f9028ebe11da74514ea3d386258d932fc` | `0xd70a8d11582fd1997380bc59bfd56a2f9028ebe11da74514ea3d386258d932fc` |
 | `blast_vault` | LP vault | live | `0xe99278bb86aa754d9a0496b2842d0fb9ac14a7ddec075d472baa069671efdecd` | `0xe99278bb86aa754d9a0496b2842d0fb9ac14a7ddec075d472baa069671efdecd` |
 | `blast_admin` | Administration | live | `0xb4c52669d7a07ce26d8fc91ba577b0a05f1f3d0cb9b1ba230c6419fb7ddd55fd` | `0xb4c52669d7a07ce26d8fc91ba577b0a05f1f3d0cb9b1ba230c6419fb7ddd55fd` |
 | `blast_upgrade_cap_manager` | Delayed UpgradeCap manager | live | `0x6a00f462d690add7632ab159280474c3e2176c05e42f3494e37ce451de472958` | `0x6a00f462d690add7632ab159280474c3e2176c05e42f3494e37ce451de472958` |
@@ -4840,7 +4840,7 @@ and those shares keep their pro-rata part of the vault forever.
 
 ## Shared core
 
-> **Deployment status:** `blast_core` is live on mainnet.
+> **Deployment status:** `blast_core` is live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package.
 
 ### What it is
 
@@ -11541,7 +11541,7 @@ public fun sync(
 
 ## API reference: `blast_core` (Shared core)
 
-Live on mainnet. This reference matches the published source.
+Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
 
 Events: payload structs are emitted directly, each under its own type.
 
