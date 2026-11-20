@@ -126,7 +126,7 @@ PRODUCTS = [
     Product(
         "blast-sui",
         "blastSUI and funSUI",
-        "the funSUI/blastSUI liquid-staking vault on Sui: stake SUI with one validator, hold funSUI, "
+        "the funSUI/blastSUI liquid-staking vault on Sui: stake SUI across a short validator list, hold funSUI, "
         "and convert between funSUI and blastSUI",
         ["blast-sui.md"],
         ["sui/defi/blast_sui"],

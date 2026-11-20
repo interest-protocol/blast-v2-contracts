@@ -97,6 +97,29 @@ class FrozenPackageTests(unittest.TestCase):
         self.assertEqual(sections['## B'], ['## B', 'b', ''])
 
 
+class BlastSuiIndexTests(unittest.TestCase):
+    def test_indexes_describe_the_validator_list(self):
+        # ADR 0141 replaced the single pool. The product guide already says so;
+        # the shared index, the generator summary, and the package route must too.
+        root = Path(__file__).resolve().parents[1]
+        basics = (root / 'docs/llms/basics.md').read_text()
+        row = next(line for line in basics.splitlines() if line.startswith('| blastSUI |'))
+        guide = (root / 'docs/llms/blast-sui.md').read_text()
+        summary = next(product.summary for product in gen_llms.PRODUCTS if product.slug == 'blast-sui')
+        route = next(line for line in (root / 'llms.txt').read_text().splitlines() if '`blast_sui`' in line)
+        description = route.split('. [ADR')[0]
+        self.assertIn('short list of validator staking pools', guide)
+        for text in (row, summary, description):
+            self.assertIn('short validator list', text)
+            self.assertNotIn('one validator', text)
+            self.assertNotIn('single-validator', text)
+        for path in [root / 'llms-full.txt', *sorted((root / 'llms').glob('*.txt'))]:
+            copied = next(line for line in path.read_text().splitlines() if line.startswith('| blastSUI |'))
+            self.assertEqual(copied, row, path)
+        header = (root / 'llms/blast-sui.txt').read_text().splitlines()[2]
+        self.assertIn(summary, header)
+
+
 class PublicationPathTests(unittest.TestCase):
     def test_dependency_does_not_override_its_own_publication(self):
         with tempfile.TemporaryDirectory() as tmp:
