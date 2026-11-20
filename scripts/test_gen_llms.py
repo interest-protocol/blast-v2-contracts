@@ -1,6 +1,6 @@
 """Summary identities must survive the zero-valued genesis address placeholders."""
 import json
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import subprocess
 import tempfile
 import unittest
@@ -158,6 +158,28 @@ class PublicationPathTests(unittest.TestCase):
                 manifest.write_text(manifest.read_text().replace('/other', '/admin'))
                 (current / source).write_text('module example::changed;\n')
                 self.assertFalse(gen_llms.matches_publication('sui/launch/core', commit))
+
+
+class PlatformConsistencyTests(unittest.TestCase):
+    """The same inputs must generate the same references on every platform (#254)."""
+
+    def test_repo_path_uses_forward_slashes_for_a_windows_path(self):
+        root = PureWindowsPath('C:/repo')
+        source = root / 'sui/launch/presale/sources/blast_presale.move'
+        with patch.object(gen_llms, 'ROOT', root):
+            self.assertEqual(
+                gen_llms.repo_path(source),
+                'sui/launch/presale/sources/blast_presale.move',
+            )
+
+    def test_guide_heading_reads_a_utf8_guide(self):
+        # Written as raw UTF-8 bytes: a locale-encoded read (e.g. CP1252 on
+        # Windows) would hand back mojibake for the em dash instead.
+        with tempfile.TemporaryDirectory() as tmp:
+            guides = Path(tmp)
+            (guides / 'presale.md').write_bytes('# Presale — buying in\n'.encode('utf-8'))
+            with patch.object(gen_llms, 'GUIDES_DIR', guides):
+                self.assertEqual(gen_llms.guide_heading('presale.md'), '# Presale — buying in')
 
 
 if __name__ == '__main__':
