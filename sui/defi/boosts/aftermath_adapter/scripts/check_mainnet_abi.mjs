@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
+import { AFTERMATH_PACKAGE } from './aftermath.mjs';
 
 const ENDPOINT = 'https://graphql.mainnet.sui.io/graphql';
 const CHAIN_IDENTIFIER = '4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S';
@@ -27,7 +28,7 @@ const PACKAGES = [
     {
         label: 'Aftermath perpetuals',
         originalId: '0x3ec740df8428aa9c93aaef7f8cc1542ac3194fd014826b51bfe245346d64efc7',
-        currentId: '0xe54757433d663835bda85cfc89c6c44bc8d952e941affa5ae57bba0baa226c1b',
+        currentId: AFTERMATH_PACKAGE,
         version: 2,
         digest: 'P1HVKJzj5VQBMF3DSHtXC82MzxwY86pNPZbT9yXEBqu',
         previousTransaction: 'eJk8yV9f5p43s41PWVvbgpN7Fm3CX1bMYsYJ6FRRQbf',
@@ -439,6 +440,23 @@ function validateManifestSource(source) {
     equal(recordString(tables.get('addresses')), expectedRecordString({ blast_boosts_aftermath: '0x0' }), `${label}: named address drift`);
 }
 
+// Check the Move compiler's publication bindings as well as the PTB call target.
+function validatePerpetualsPin(manifestSource, publicationSource) {
+    const expected = PACKAGES[0];
+    const manifest = parseToml(manifestSource, 'perpetuals/Move.toml');
+    const published = parseToml(publicationSource, 'perpetuals/Published.toml').get('published.mainnet');
+    equal(manifest.get('package')?.get('published-at'), expected.currentId, 'perpetuals manifest call target');
+    equal(manifest.get('addresses')?.get('perpetuals'), expected.originalId, 'perpetuals named address');
+    equal(published?.get('chain-id'), '35834a8a', 'perpetuals publication chain');
+    equal(published?.get('published-at'), expected.currentId, 'perpetuals published call target');
+    equal(published?.get('original-id'), expected.originalId, 'perpetuals published type origin');
+    equal(published?.get('version'), expected.version, 'perpetuals publication version');
+}
+
+function readPerpetualsFile(name) {
+    return readFileSync(join(PACKAGE_DIR, DIRECT_DEPENDENCIES.perpetuals.local, name), 'utf8');
+}
+
 function validateLockSource(source) {
     const label = 'Move.lock';
     const tables = parseToml(source, label);
@@ -588,6 +606,12 @@ function selfTest() {
     const reject = (name, message, run) => tests.push({ name, run, message });
     accept('checked-in Move.toml', () => validateManifestSource(manifestSource));
     accept('checked-in Move.lock', () => validateLockSource(lockSource));
+    const perpsManifest = readPerpetualsFile('Move.toml');
+    const perpsPublication = readPerpetualsFile('Published.toml');
+    accept('checked-in perpetuals pin', () => validatePerpetualsPin(perpsManifest, perpsPublication));
+    const stalePublication = perpsPublication.replace(expected.currentId, expected.originalId);
+    reject('stale perpetuals publication', `perpetuals published call target\n    expected: ${expected.currentId}\n    actual:   ${expected.originalId}`,
+        () => validatePerpetualsPin(perpsManifest, stalePublication));
     accept('correct chain identifier', () => validateChainData({ chainIdentifier: CHAIN_IDENTIFIER }));
     reject('wrong original package id', `${expected.label}: original package id does not resolve`, () => validatePackageData(expected, { latest: null, pinned: null }));
     const wrongCurrent = goodPackageData(expected); wrongCurrent.latest.address = `0x${'a'.repeat(64)}`;
@@ -657,6 +681,7 @@ async function main() {
     if (args[0] === '--self-test') selfTest();
     validateManifestSource(readFileSync(join(PACKAGE_DIR, 'Move.toml'), 'utf8'));
     validateLockSource(readFileSync(join(PACKAGE_DIR, 'Move.lock'), 'utf8'));
+    validatePerpetualsPin(readPerpetualsFile('Move.toml'), readPerpetualsFile('Published.toml'));
     validateChainData(await graphql('query { chainIdentifier }', {}));
     const observations = [];
     for (const expected of PACKAGES) {

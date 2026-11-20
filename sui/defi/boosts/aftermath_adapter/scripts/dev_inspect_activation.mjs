@@ -454,7 +454,8 @@ function verifyProductionPhaseOrder() {
         const start = source.indexOf(span.from);
         const end = start < 0 ? -1 : source.indexOf(span.to, start + span.from.length);
         if (start < 0 || end < 0) fail(`${span.path}: ${span.from.trim()} body is unavailable`);
-        const body = source.slice(start, end);
+        // Move formatters may wrap a receiver and its method onto separate lines.
+        const body = source.slice(start, end).replace(/\s+\./g, '.');
         let cursor = 0;
         for (const marker of span.markers) {
             const next = body.indexOf(marker, cursor);
