@@ -246,7 +246,7 @@ What happens, in order, all atomic:
 2. Synchronize: refresh Aftermath's cumulative funding if due, settle the
    position's funding, book it to the reserve (see Funding), and require that
    the venue still matches the accepted checkpoint. Any unexplained change
-   aborts (adapter code 32).
+   aborts (adapter code 31).
 3. Price the position at the bound oracle pair; reject stale, future-dated or
    divergent prices, unsafe margin, resting orders, or a paused or frozen
    market.
@@ -311,7 +311,7 @@ whole lots, base)`. Orders are limit orders priced inside the ordinary bound
 and face the order cap, with an exception for exactly one live venue lot
 when closing (see Caps).
 It then prices the payout (see Economics), checks `net >= minimum_collateral`
-and that the venue can release `net + admin_fee` (adapter code 39 otherwise),
+and that the venue can release `net + admin_fee` (adapter code 36 otherwise),
 withdraws `net + admin_fee` from the venue (free collateral first, then
 deallocation), keeps `admin_fee` as admin cash, burns the shares, emits
 `Redeemed`, and returns `net`.
@@ -324,7 +324,7 @@ Aftermath account. On mint the adapter’s `PackageVersion` precedes the partner
 On redemption the protocol precedes the partner.
 
 1. The call first requires the partner to be accepted by Boosts at
-   `Clock` time (adapter code 38 otherwise).
+   `Clock` time (code 4 in `blast_partners::partner_list` otherwise).
 2. It runs the plain operation unchanged: same shares, same payout, same
    reserve fee.
 3. It then pays the partner from the admin fee this operation just retained:
@@ -384,7 +384,7 @@ and returns nothing; no earlier trading session may supply its market and no
 later command may reuse that market. Use a separate transaction for another
 rebalance or a mint on the same market. No reward, direction or size argument.
 Ordinary rebalances require a gas price **at or below the reference gas
-price** (adapter code 35 otherwise). A rebalance whose authenticated starting
+price** (adapter code 34 otherwise). A rebalance whose authenticated starting
 leverage is strictly above `max_leverage_bps` may use a higher gas price.
 Holders pay Aftermath's configured priority trading surcharge on those fills.
 The caller pays the network gas bill. The extra trading rate is set by the
@@ -604,7 +604,7 @@ active checks still apply. No shares, no fees. Emits `Donated`.
    collateral_oracle, clock)`. Any gas price is allowed, including a higher
    bid to compete during congestion. Holders pay the venue's priority trading
    surcharge on those fills; the caller pays network gas. The call is refused
-   while the clearing house is frozen (adapter code 33). This private `entry`
+   while the clearing house is frozen (adapter code 32). This private `entry`
    call shares the clearing house internally and returns nothing. Pass the
    shared market directly, without a preceding trading session. Repeat unwind
    and finalize in separate transactions because the market cannot be reused
@@ -616,12 +616,12 @@ active checks still apply. No shares, no fees. Emits `Donated`.
      starts at `max_slippage_bps` when shutdown begins and widens linearly to
      `emergency_max_slippage_bps` over the following 24 hours, where it stays.
      Emits `OrderFilled` per order and `UnwindProgress`. Positive NAV and the
-     reserve do not gate it. A flat position aborts (adapter code 32): go to
+     reserve do not gate it. A flat position aborts (adapter code 31): go to
      finalize.
    - Market paused by Aftermath: once Aftermath has enabled positive
      settlement prices, the step closes the position at those prices without a
      venue order (`UnwindProgress` with `market_orders = 0`,
-     `filled_quote = none`). Before that it aborts (adapter code 33).
+     `filled_quote = none`). Before that it aborts (adapter code 30).
 3. **Finalize** (anyone). `operations::finalize_shutdown<Product,
    Collateral>(vault, protocol, account, registry, clearing_house, base_oracle,
    collateral_oracle, clock)`. Requires exactly zero base and quote, no orders,
@@ -634,7 +634,7 @@ active checks still apply. No shares, no fees. Emits `Donated`.
    closure retains its existing allocation, including admin cash when no
    eligible shares exist. Emits `ShutdownFinalized`, including both protected
    amounts (explicitly zero for admin shutdown). If position funding is
-   not fully settled it aborts with adapter code 33; on a live market, settle
+   not fully settled it aborts with adapter code 30; on a live market, settle
    it first, for example with `operations::sync_health` earlier in the same
    PTB.
 4. **Claim** (any holder). `blast_boosts_aftermath::vault::redeem_shutdown<Product,
@@ -857,7 +857,7 @@ does not. Admin cash never enters the holder pool.
 ### Time rules
 
 - `deadline_ms` (mint, redeem, partner variants, `redeem_shutdown`):
-  inclusive; `Clock` time greater than it aborts (adapter code 28).
+  inclusive; `Clock` time greater than it aborts (adapter code 25).
 - Price freshness: each oracle's publish time must lie in
   `[now - max_price_age_ms, now + max_price_ahead_ms]`, inclusive. Older aborts
   with core code 27; further ahead aborts with core code 28. The confidence
@@ -964,29 +964,29 @@ stale serving generation aborts in the adapter marker module with code 0.
 
 | Code | Meaning | Fix |
 | --- | --- | --- |
-| 0-1, 11-15, 17-18 | Deployment, issuance, activation input or seed problems | Issuer only. |
-| 2-8 | An Aftermath object (account, registry, clearing house, oracle storage or feed) is not the bound one | Pass the objects from the Vault's binding. |
-| 9 | The venue's price is not the bound feed's | Same; use the bound feed storage. |
-| 10 | A venue value cannot be represented, or its collateral haircut is outside the supported range | Inspect account equity and venue rates. |
-| 16 | Initial margin is outside (0, 1], below the market minimum, or changed while seeding | Correct issuance settings; the exchange minimum applies. |
-| 19 | Zero coin or amount | Pass a positive coin. |
-| 20 | Admin withdrawal above admin cash | Lower the amount. |
-| 21 | A cash move did not match the venue exactly | Retry; the venue changed mid-transaction. |
-| 22, 23, 24 | Fill not whole-lot, a resting order left, or a liquidation during the order | Retry later; the book or margin did not support the order. |
-| 25 | The operation needed more than 16 orders | Trade a smaller amount or wait for a larger order cap. |
-| 26 | Deadline passed | Use a later `deadline_ms`. |
-| 27 | A fill changed venue fields it should not | Retry. |
-| 29 | The market's trading fee is not a usable rate (initialization, rebalance or profit realization) | Wait; venue configuration. |
-| 30 | Unaccepted account change, or unrepresentable net funding at direct settlement | Before protected entry, use `sync_health` for already-settled attributable funding while the venue permits it. For unexplained drift inspect `CheckpointDrifted`; RiskAdmin may recover an admitted forced reduction with `operations::rebaseline`. |
-| 31 | Terminal step not possible: orders open, funding unsettled, settlement prices not enabled, or wrong order count | Settle funding with `sync_health` first, or wait for Aftermath. |
-| 32 | Unwind or protected entry found no exact whole-lot position on the bound side (including flat) | During Unwinding, finalize if fully settled. During Active, protected entry is unavailable; use the applicable ordinary or admin recovery path. |
-| 33 | Venue not ready: resting orders, paused/frozen market, or insufficient opening margin on a strict path | Reductions and donations need no opening margin; other guards still apply. |
-| 34, 37 | Metadata or partner list update changes nothing | Admin only. |
-| 35 | Ordinary rebalance or profit realization above the reference gas price | Submit at the reference gas price. |
-| 36 | Partner not accepted | Use the plain call. |
-| 38 | Recovery does not match the admitted forced-reduction shape | RiskAdmin must review the venue event; recovery cannot accept arbitrary drift. |
-| 39 | Redemption payout exceeds cash the venue can release | Realize profit first when eligible, then obtain a fresh quote; never discount the agreed payout. |
-| 40 | Profit realization did not sufficiently improve cash | Wait for better execution or cash conditions. |
+| 0, 10-14, 16-17 | Deployment, issuance, activation input or seed problems | Issuer only. |
+| 1-7 | An Aftermath object (account, registry, clearing house, oracle storage or feed) is not the bound one | Pass the objects from the Vault's binding. |
+| 8 | The venue's price is not the bound feed's | Same; use the bound feed storage. |
+| 9 | A venue value cannot be represented, or its collateral haircut is outside the supported range | Inspect account equity and venue rates. |
+| 15 | Initial margin is outside (0, 1], below the market minimum, or changed while seeding | Correct issuance settings; the exchange minimum applies. |
+| 18 | Zero coin or amount | Pass a positive coin. |
+| 19 | Admin withdrawal above admin cash | Lower the amount. |
+| 20 | A cash move did not match the venue exactly | Retry; the venue changed mid-transaction. |
+| 21, 22, 23 | Fill not whole-lot, a resting order left, or a liquidation during the order | Retry later; the book or margin did not support the order. |
+| 24 | The operation needed more than 16 orders | Trade a smaller amount or wait for a larger order cap. |
+| 25 | Deadline passed | Use a later `deadline_ms`. |
+| 26 | A fill changed venue fields it should not | Retry. |
+| 27 | The share coin amount differs from the sealed redemption amount | Use the share amount from the redemption plan. |
+| 28 | The market's trading fee is not a usable rate (initialization, rebalance or profit realization) | Wait; venue configuration. |
+| 29 | Unaccepted account change, or unrepresentable net funding at direct settlement | Before protected entry, use `sync_health` for already-settled attributable funding while the venue permits it. For unexplained drift inspect `CheckpointDrifted`; RiskAdmin may recover an admitted forced reduction with `operations::rebaseline`. |
+| 30 | Terminal step not possible: orders open, funding unsettled, settlement prices not enabled, or wrong order count | Settle funding with `sync_health` first, or wait for Aftermath. |
+| 31 | Unwind or protected entry found no exact whole-lot position on the bound side (including flat) | During Unwinding, finalize if fully settled. During Active, protected entry is unavailable; use the applicable ordinary or admin recovery path. |
+| 32 | Venue not ready: resting orders, paused/frozen market, or insufficient opening margin on a strict path | Reductions and donations need no opening margin; other guards still apply. |
+| 33 | Metadata update changes nothing | Admin only. |
+| 34 | Ordinary rebalance or profit realization above the reference gas price | Submit at the reference gas price. |
+| 35 | Recovery does not match the admitted forced-reduction shape | RiskAdmin must review the venue event; recovery cannot accept arbitrary drift. |
+| 36 | Redemption payout exceeds cash the venue can release | Realize profit first when eligible, then obtain a fresh quote; never discount the agreed payout. |
+| 37 | Profit realization did not sufficiently improve cash | Wait for better execution or cash conditions. |
 
 #### Core (`blast_boosts_core`)
 
@@ -1017,7 +1017,7 @@ stale serving generation aborts in the adapter marker module with code 0.
 | 64 | No positive cash shortfall or profit to realize | No recovery trade is needed or possible. |
 | 65 | Profit realization is uneconomic or exceeds its cost allowance | Wait for better prices or sufficient profit. |
 | 66 | Initial margin leaves no cushion under the issuance policy and live venue rates | Choose compatible issuance settings before activation; the venue minimum still applies. |
-| 71 | Permissionless shutdown found no exact redemption size lock | Use an ordinary exit or reconcile the position first; seed-only positions are ineligible. Flat or malformed base aborts earlier with adapter code 32. |
+| 71 | Permissionless shutdown found no exact redemption size lock | Use an ordinary exit or reconcile the position first; seed-only positions are ineligible. Flat or malformed base aborts earlier with adapter code 31. |
 | 17, 23, 39, 40, 47, 48, 58 | Admin transition or setting rejected (wrong state, invalid, above cap, unchanged) | Admin only. |
 
 ### Pitfalls
@@ -1027,7 +1027,7 @@ stale serving generation aborts in the adapter marker module with code 0.
   mint floors shares and execution costs vary; set a floor from a fresh dry run.
 - Expecting to mint at any time. Mints abort if starting or final leverage is
   outside the band (49), above the NAV cap (36), or while the checkpoint is
-  drifted (32). A minimum-sized mint is not guaranteed to pass. At an exact
+  drifted (adapter code 29). A minimum-sized mint is not guaranteed to pass. At an exact
   band edge, a rounded mint may fail while rebalance remains unavailable.
 - Tiny trades. Mints and redemptions below `lot_size * min_order_lots` of base
   abort (12). If every accessible ordinary burn fails this size guard, anyone
@@ -1037,7 +1037,7 @@ stale serving generation aborts in the adapter marker module with code 0.
   order that finds nothing to fill inside its limit (Aftermath aborts the empty
   session), or a fill above the cap outside the one-lot closing exception
   aborts the whole transaction.
-- Submitting an ordinary `rebalance` with a priority gas price (35).
+- Submitting an ordinary `rebalance` with a priority gas price (34).
   Emergency rebalances and `unwind` permit it, and holders bear the extra
   venue trading fee. Venue priority support, usable liquidity and the existing
   price, margin and progress checks still apply; permission to bid higher is
