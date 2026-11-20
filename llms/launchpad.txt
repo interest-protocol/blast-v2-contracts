@@ -22,7 +22,7 @@ Call a live package at its package ID (`published-at`). Types and events are nam
 | --- | --- | --- | --- | --- |
 | `blast_fun` | Launchpad | live | `0x9c2cef371c0e80648136f7ae65378ac9476e3fdb860538d00290e6e4f975b192` | `0x9c2cef371c0e80648136f7ae65378ac9476e3fdb860538d00290e6e4f975b192` |
 | `blast_migrators` | Cetus and Bluefin venues | live | `0xb8146388d5098524e767a8708354e5390d69ebb2840835d4426cd180df898df4` | `0xb8146388d5098524e767a8708354e5390d69ebb2840835d4426cd180df898df4` |
-| `blast_core` | Shared core | live | `0xd70a8d11582fd1997380bc59bfd56a2f9028ebe11da74514ea3d386258d932fc` | `0xd70a8d11582fd1997380bc59bfd56a2f9028ebe11da74514ea3d386258d932fc` |
+| `blast_core` | Shared core | live; source has changed since | `0xd70a8d11582fd1997380bc59bfd56a2f9028ebe11da74514ea3d386258d932fc` | `0xd70a8d11582fd1997380bc59bfd56a2f9028ebe11da74514ea3d386258d932fc` |
 | `blast_vault` | LP vault | live | `0xe99278bb86aa754d9a0496b2842d0fb9ac14a7ddec075d472baa069671efdecd` | `0xe99278bb86aa754d9a0496b2842d0fb9ac14a7ddec075d472baa069671efdecd` |
 | `blast_partners` | Partner codes | live | `0x2998c10c91e46082548b2f3205f84f09377bbbedf2b0f617f70575a09ec69a54` | `0x2998c10c91e46082548b2f3205f84f09377bbbedf2b0f617f70575a09ec69a54` |
 | `blast_admin` | Administration | live | `0xb4c52669d7a07ce26d8fc91ba577b0a05f1f3d0cb9b1ba230c6419fb7ddd55fd` | `0xb4c52669d7a07ce26d8fc91ba577b0a05f1f3d0cb9b1ba230c6419fb7ddd55fd` |
@@ -1859,7 +1859,7 @@ notice and only for fees collected afterwards.
 
 ## Shared core
 
-> **Deployment status:** `blast_core` is live on mainnet.
+> **Deployment status:** `blast_core` is live on mainnet, published from an earlier revision; the source described here has changed since, so confirm signatures against the live package.
 
 ### What it is
 
@@ -1996,10 +1996,15 @@ read an admission.
 seeds a migrated pool at, from the migration's atomic Meme and Quote amounts:
 `floor(sqrt(B / A) * 2^64)`, where B / A is Quote / Meme when Meme is coin A and Meme / Quote
 otherwise. Display decimals never enter it, and the divisor amount must be positive.
-`migration::is_seedable_price` says whether both venues can seed a full-range pool at that price:
-it must lie within half of their shared sqrt-price range (from 2 x 4,295,048,016 to
-79,226,673,515,401,279,992,447,579,055 / 2). A product uses it to refuse a sale that could never
-migrate. Both are pure reads anyone may call.
+`migration::is_seedable_price` says whether a sqrt price can seed a full-range pool: strictly above
+2 × 4,295,048,016 and at most `floor(2^128 / (2 × 4,295,048,016 + 1))`, which is
+39,613,336,755,921,976,950,891,976,999. That upper bound is below half the venue maximum
+(79,226,673,515,401,279,992,447,579,055 / 2). Presale and launch check only the Meme-as-coin-A
+order. `migrate` does not repeat the check; it prices the pool in the venue's coin order. For
+every positive amount pair the other order is on the same side of these bounds. 1 Meme atom
+against 4,611,512,677,774,425,882 Quote atoms is still under half the maximum in one order and
+exactly twice the minimum in the other, so both orders are refused. A product uses the check to
+refuse a sale that is outside this range in either coin order. Both are pure reads anyone may call.
 
 ### Merkle proofs
 
@@ -3994,7 +3999,7 @@ public struct VenueConfig has key {
 
 ## API reference: `blast_core` (Shared core)
 
-Live on mainnet. This reference matches the published source.
+Live on mainnet, published from an earlier revision. The source documented here has changed since; until it is republished, confirm signatures against the live package.
 
 Events: payload structs are emitted directly, each under its own type.
 
@@ -4457,10 +4462,18 @@ public fun is_owner(self: &ResidualPolicy): bool
 /// is coin A, Quote otherwise) aborts with an arithmetic error.
 public fun sqrt_price_x64(meme_amount: u64, quote_amount: u64, meme_is_coin_a: bool): u128
 
-/// Whether Cetus and Bluefin can both seed a full-range pool at `sqrt_price_x64`. Both venues
-/// share the same `tick_math` sqrt-price bounds; halving the range keeps the price inside any
-/// full range aligned inward to a tick spacing. The bounds are reciprocal, so either coin order
-/// agrees.
+/// Whether `sqrt_price_x64` is inside the range a full-range Cetus or Bluefin seed uses.
+/// Both venues share the same `tick_math` bounds; halving that range keeps the price inside any
+/// full range aligned inward to a tick spacing. The price must be strictly above twice the venue
+/// minimum. The upper bound is `floor(2^128 / (2 * min + 1))`, the reciprocal of that exclusive
+/// minimum, and it is below half the venue maximum.
+///
+/// Presale and launch check only the Meme-as-coin-A order. `migrate` does not repeat this check:
+/// it passes the venue's own coin-order price to the pool. For every positive `u64` amount pair
+/// the two orders are on the same side of these bounds, so that one-sided check accepts a pair
+/// only when the other order would pass too. Half the venue maximum is not a tight enough cap:
+/// 1 Meme atom against 4,611,512,677,774,425,882 Quote atoms is still under that half and passes,
+/// while the other order is exactly twice the minimum and fails.
 public fun is_seedable_price(sqrt_price_x64: u128): bool
 ```
 
