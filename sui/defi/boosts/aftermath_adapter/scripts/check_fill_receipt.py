@@ -18,7 +18,7 @@ CALLERS = ("fill_orders", "rebalance_orders", "close_orders", "fill_exact_order"
 
 
 def copy_packages(target):
-    for relative in ("sui/defi/boosts/core", "sui/defi/boosts/aftermath_adapter"):
+    for relative in ("sui/governance/admin", "sui/launch/core", "sui/utilities/vesting", "sui/launch/partners", "sui/defi/boosts/core", "sui/defi/boosts/aftermath_adapter"):
         shutil.copytree(
             REPO / relative, target / relative,
             ignore=shutil.ignore_patterns("build", "node_modules", ".git", "__pycache__"),

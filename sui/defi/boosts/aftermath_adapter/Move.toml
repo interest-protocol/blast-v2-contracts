@@ -5,11 +5,10 @@ license = "BUSL-1.1"
 authors = ["Jose Cerqueira (jose@interestprotocol.com)"]
 
 [dependencies]
-# Pre-fold administration for this source lineage (issue #223).
-blast_admin = { git = "https://github.com/interest-protocol/blast-v2-contracts.git", subdir = "sui/admin", rev = "c4b86a9f3b1fcfb0d4a7b4e9a3d07e2fa78901f3" }
+blast_core = { local = "../../../launch/core" }
+blast_admin = { local = "../../../governance/admin" }
 blast_boosts_core = { local = "../core" }
-# Partners must resolve the same admin as the adapter and core.
-blast_partners = { git = "https://github.com/interest-protocol/blast-v2-contracts.git", subdir = "sui/partners", rev = "c4b86a9f3b1fcfb0d4a7b4e9a3d07e2fa78901f3" }
+blast_partners = { local = "../../../launch/partners" }
 # Verbatim copy of AftermathFinance/move-interfaces at f62e74aa862ef65b8950a70d83aac8cb71c19837
 # (see interfaces/aftermath/README.md); check_mainnet_abi.mjs gates it against mainnet.
 perpetuals = { local = "interfaces/aftermath/iperps/perpetuals" }

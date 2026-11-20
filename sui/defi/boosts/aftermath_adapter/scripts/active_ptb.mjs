@@ -42,9 +42,10 @@ export function buildActivePlan(input) {
     const objects = input.objects;
     if (!objects || typeof objects !== 'object' || Array.isArray(objects)) throw Error('bound objects required');
     // A mint or redeem may name a Blast partner, which switches it to the `_with_partner` entry
-    // point with the partner right after the protocol object; maintenance takes none.
+    // point. A mint also requires the adapter pause state.
     const maintenance = operation === 'rebalance' || operation === 'realize_profit';
-    const allowed = [...BOUND_OBJECTS, 'clock', 'inputCoin', ...(maintenance ? [] : ['partner'])];
+    const mints = operation === 'mint' || operation === 'mint_buy';
+    const allowed = [...BOUND_OBJECTS, ...(mints ? ['packageVersion'] : []), 'clock', 'inputCoin', ...(maintenance ? [] : ['partner'])];
     for (const key of Object.keys(objects)) {
         if (!allowed.includes(key)) throw Error(`unexpected object field ${key}`);
     }
@@ -56,7 +57,8 @@ export function buildActivePlan(input) {
         ], transfers: []};
     }
     const partnered = objects.partner !== undefined;
-    const traded = partnered ? [...bound.slice(0, 2), `@${address(objects.partner)}`, ...bound.slice(2)] : bound;
+    const traded = [...bound.slice(0, 2), ...(mints ? [`@${address(objects.packageVersion)}`] : []),
+        ...(partnered ? [`@${address(objects.partner)}`] : []), ...bound.slice(2)];
     const entry = (name) => `${adapter}::operations::${name}${partnered ? '_with_partner' : ''}`;
     const coin = `@${address(objects.inputCoin)}`;
     const limits = [u64(input.minimumOutput), u64(input.deadlineMs), clock];

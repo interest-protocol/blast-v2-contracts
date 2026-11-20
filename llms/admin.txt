@@ -231,7 +231,7 @@ or with different type arguments, are different roles.
 | `blast_core::blast_domain` | `blast_domain::TreasuryAdmin`, `blast_domain::FeeAdmin`, `blast_domain::ListingAdmin`, `blast_domain::VenueAdmin`, `blast_domain::RewardsAdmin`, `blast_domain::BuybackAdmin`, `blast_domain::AutoLpAdmin`, `blast_domain::CreatorAdmin`, `blast_domain::ClaimSignerAdmin`, `blast_domain::CancelAdmin` | the launch products, the vault and the migrators |
 | `blast_sui::blast_sui_domain` | `blast_sui_domain::FeeAdmin` (schedule the redemption fee and its delay), `blast_sui_domain::CancelAdmin` (cancel a scheduled change to the vault's delayed values), `blast_sui_domain::ValidatorAdmin` (no function takes it yet) | Blast SUI |
 | `blast_partners` | `blast_partners::blast_partners::PartnerAdmin` (register partners, schedule shares and caps) | partners |
-| `blast_boosts_core` | `blast_boosts_core::blast_boosts_core::VaultIssuer`, `blast_boosts_core::blast_boosts_core::RiskAdmin`, `blast_boosts_core::blast_boosts_core::ShutdownAdmin`, `blast_boosts_core::blast_boosts_core::UpgradeAdmin` | Boosts |
+| `blast_boosts_core` | `blast_boosts_core::blast_boosts_core::VaultIssuer`, `blast_boosts_core::blast_boosts_core::RiskAdmin`, `blast_boosts_core::blast_boosts_core::ShutdownAdmin` | Boosts |
 
 Three `CancelAdmin` roles exist by design: `blast_admin::package_admin::CancelAdmin<OTW>`
 cancels one package's upgrade actions; `blast_domain::CancelAdmin` cancels product

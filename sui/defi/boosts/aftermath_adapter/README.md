@@ -148,15 +148,13 @@ temporary CLI wallet in the genesis directory with that endpoint and the genesis
 signer already active. Stop the task-owned node and remove its private genesis
 keys when done.
 
-The runner archives admin and partners from the shared Git revision pinned in the
-Boosts manifests. Run from a checkout containing that revision. It rewrites the
-copied Boosts manifests to use those local copies and publishes one admin package
-for core, partners and the adapter. It sets the copied ACL root recipient to the
-local signer and disables the three copied venue-interface initializers for local
-publication. Actual partner administration exercises the adapter's operational
-gate. Live redemption and dependency verification are separate deployment gates.
-Every transaction result, version transition, rollback, dependency revision and
-source hash is recorded in the output directory. The compile-only publication
+The runner copies the launchpad admin, core, partners and vesting packages from
+the same checkout as Boosts. The disposable copy gives the local signer the ACL
+root and shortens the initial upgrade notice to one second. Move unit tests
+check the full production notice. The harness disables three venue-interface
+initializers in its copy so the packages can be published on loopback. It records
+each transaction, the two version counts and the adapter governance source hashes.
+The compile-only publication
 file uses mainnet's dependency environment label with localnet package IDs.
 
 ## Margin recovery

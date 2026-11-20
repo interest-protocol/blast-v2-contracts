@@ -50,16 +50,15 @@ grep -q '^name = "blast_boosts_core"$' "$package_dir/Move.toml" \
   || fail "Move.toml must name blast_boosts_core."
 grep -q '^edition = "2024"$' "$package_dir/Move.toml" \
   || fail "Move.toml must use edition 2024."
-# The pinned pre-fold administration source is the only permitted dependency
+# The shared launchpad administration source is the only permitted dependency
 # beyond the implicit framework.
 declared_dependencies="$(
   sed -n '/^\[dependencies\]$/,/^\[/p' "$package_dir/Move.toml" \
     | grep -E '^[A-Za-z_][A-Za-z0-9_]* *=' \
     || true
 )"
-admin_dependency_pattern='^blast_admin = \{ git = "https://github\.com/interest-protocol/blast-v2-contracts\.git", subdir = "sui/admin", rev = "[0-9a-f]{40}" \}$'
-[[ "$declared_dependencies" =~ $admin_dependency_pattern ]] \
-  || fail "The core may depend only on blast_admin pinned by commit."
+[[ "$declared_dependencies" == 'blast_admin = { local = "../../../governance/admin" }' ]] \
+  || fail "Boosts must resolve the launchpad's blast_admin package."
 
 for required in \
   "$domain_file" \
@@ -107,7 +106,7 @@ if grep -rniE 'AdapterRoot|AdapterDomain|adapter_witness|venue_handoff' \
 fi
 
 # Administration is the shared blast_admin ACL. This package only names the
-# four roles every Boost adapter shares, and every administrator function takes
+# roles every Boost adapter shares, and every administrator function takes
 # one of them as its witness type.
 if grep -rnE '^public struct (ACL|ProtocolAuthority|Authority|SuperAdminCap|AdminCap|AdminWitness)\b' \
   "$package_dir/sources"; then
@@ -121,17 +120,16 @@ fi
 [[ "$(grep -E '^public struct ' "$domain_file" | sort)" == "$(printf '%s\n' \
   'public struct RiskAdmin()' \
   'public struct ShutdownAdmin()' \
-  'public struct UpgradeAdmin()' \
   'public struct VaultIssuer()' | sort)" ]] \
-  || fail "blast_boosts_core.move must declare exactly the four reviewed ability-free roles."
+  || fail "blast_boosts_core.move must declare exactly the reviewed ability-free roles."
 if sed -E 's://.*$::' "$domain_file" | grep -nE '(^|[[:space:]])fun[[:space:]]|^const[[:space:]]'; then
   fail "blast_boosts_core.move declares only roles: no init, constant, or function; the shared ACL already exists."
 fi
-if grep -rnE 'struct (VaultIssuer|RiskAdmin|ShutdownAdmin|UpgradeAdmin)\b' "$package_dir/sources" \
+if grep -rnE 'struct (VaultIssuer|RiskAdmin|ShutdownAdmin|FeeAdmin|TreasuryAdmin|CancelAdmin)\b' "$package_dir/sources" \
   | grep -vF "$domain_file:"; then
   fail "Only blast_boosts_core.move may declare a Boosts role."
 fi
-if grep -rnE 'AdminWitness[[:space:]]+as[[:space:]]|[[:space:]]as[[:space:]]+(VaultIssuer|RiskAdmin|ShutdownAdmin|UpgradeAdmin)\b' \
+if grep -rnE 'AdminWitness[[:space:]]+as[[:space:]]|[[:space:]]as[[:space:]]+(VaultIssuer|RiskAdmin|ShutdownAdmin|FeeAdmin|TreasuryAdmin|CancelAdmin)\b' \
   "$package_dir/sources"; then
   fail "Neither AdminWitness nor a Boosts role may be aliased around the role scanner."
 fi
@@ -140,7 +138,7 @@ fi
 foreign_admin_witnesses="$(
   find "$package_dir/sources" -type f -name '*.move' -exec sed -E 's://.*$::' {} + \
     | grep -oE 'AdminWitness[[:space:]]*<[^>]*>' \
-    | grep -vxE 'AdminWitness<(VaultIssuer|RiskAdmin|ShutdownAdmin|UpgradeAdmin)>' \
+    | grep -vxE 'AdminWitness<(VaultIssuer|RiskAdmin|ShutdownAdmin|FeeAdmin|TreasuryAdmin|CancelAdmin)>' \
     || true
 )"
 [[ -z "$foreign_admin_witnesses" ]] \
@@ -289,6 +287,8 @@ expected_state_public="$(printf '%s\n' \
   seed_execution_bound \
   seed_side \
   seed_terms \
+  assert_fee_update \
+  assert_nav_cap_update \
   set_fees \
   set_max_order_notional \
   set_nav_cap \

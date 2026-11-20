@@ -263,12 +263,12 @@ working and simply pay it nothing.
 
 **Product acceptance.** Each product accepts a partner in its own shared config,
 mapping the partner's ID to the time it stops being accepted (`u64::MAX` until
-removed): a dynamic field keyed by `PartnerKey(partner_id)`, or, for the presale,
-the `acceptance_ends_at_ms` table of a `blast_partners::partner_list::PartnerList`:
+removed) in the `acceptance_ends_at_ms` table of a `blast_partners::partner_list::PartnerList`:
 
 | Product | Config object and key | Admin |
 | --- | --- | --- |
-| Boosts | `blast_boosts_aftermath::blast_boosts_aftermath::Protocol`, `blast_boosts_aftermath::blast_boosts_aftermath::PartnerKey` | `RiskAdmin` role (`operations::add_partner`, `operations::remove_partner`) |
+| Boosts | `blast_boosts_aftermath::blast_boosts_aftermath::Protocol`, its embedded `PartnerList` | core `FeeAdmin` role (`operations::add_partner`, `operations::remove_partner`) |
+| Launchpad | `launch_config::LaunchConfig`, its embedded `PartnerList` | core `FeeAdmin` role |
 | Presale | `creation_policy::CreationPolicy`, its `partners` `blast_partners::partner_list::PartnerList` | core `FeeAdmin` role (`creation_policy::add_partner`, `creation_policy::remove_partner`) |
 
 Adding applies at once (and cancels a pending removal). Removing sets the value
@@ -366,7 +366,7 @@ never call `pay` directly; products call it inside their own partnered functions
 
 | Product | When the partner is named | Blast fee divided | Payment |
 | --- | --- | --- | --- |
-| Boosts | on each trade: `operations::mint_with_partner` or `operations::redeem_with_partner`, passing the `Partner` right after the `Protocol` | Blast's admin fee that trade retained; never the reserve fee | push: paid in the same call |
+| Boosts | on each trade: `operations::mint_with_partner` or `operations::redeem_with_partner`, passing the `Partner` immediately before the Aftermath account | Blast's admin fee that trade retained; never the reserve fee | push: paid in the same call |
 | Launchpad | once, at creation: `launch::set_partner` on the `LaunchInitializer` before `launch::finalize`; fixed for good | Blast's whole fee ledger on the launch: the creation fee (SUI), Blast's share of every curve trade fee (Meme and Quote), and Blast's one-time migration fee | held in the launch; paid when anyone calls `launch::claim_protocol_fees_with_partner` |
 | LP vault (launchpad and presale) | inherited from the launch or sale at migration, in its vault terms | Blast's LP fees on each collection, and protocol migration residuals | held in the vault; paid when anyone calls `blast_vault::vault::pay_protocol_fees_with_partner` |
 | Presale | once, at creation: `blast_presale::blast_presale::set_partner` on the `PresaleInitializer` before `blast_presale::blast_presale::finalize`; fixed for good | Blast's raise fee (Quote) only; Blast's token fee is never divided | held at migration; paid when anyone calls `blast_presale::blast_presale::pay_protocol_fees_with_partner` (once) |
@@ -438,9 +438,8 @@ object's content over RPC, or replay the events below.
   `cap_id.pending`.
 - Whether a product's `PartnerList` accepts a partner now:
   `blast_partners::partner_list::is_accepted`.
-- Whether a product accepts a partner: read the product config's dynamic field
-  `PartnerKey(partner_id)`, or the entry for `partner_id` in its embedded
-  `PartnerList` table; accepted while it exists and `now < value`.
+- Whether a product accepts a partner: read the entry for `partner_id` in the product config’s
+  embedded `PartnerList` table. Acceptance lasts while the entry exists and `now < value`.
 - Which partner a launch, sale, or vault names: its `partner_id: Option<ID>`
   field; a vault's comes from its terms, recorded in
   `blast_vault::blast_vault_events::VaultCreated`.

@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // Run under the workspace heavy-job guard against a disposable, task-owned localnet.
 // Required: M3_LOCALNET_CONFIG (directory), M3_OUTPUT_DIR, M3_SDK_PATH (@mysten/sui 2.35.0).
-// Stages complete first-party packages with admin and partners from the Boosts Git pins.
-// Rewrites the copied dependency paths and ACL root for local publication, disables
+// Stages complete first-party packages with the shared launchpad admin, treasury and partners.
+// Rewrites the copied ACL root and shortens the upgrade delay to one second for local publication, disables
 // copied interface initializers, and changes successor PACKAGE_VERSION constants.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
@@ -108,39 +108,34 @@ writeFileSync(walletConfig, JSON.stringify({
 const cli = ['client', '--client.config', walletConfig];
 
 // Keep the Boosts layout while excluding build products and deployment IDs.
-for (const path of ['sui/defi/boosts/core', 'sui/defi/boosts/aftermath_adapter']) {
+for (const path of ['sui/defi/boosts/core', 'sui/defi/boosts/aftermath_adapter', 'sui/governance/admin',
+  'sui/launch/core', 'sui/launch/partners', 'sui/utilities/vesting']) {
   cpSync(join(repo, path), join(packageRoot, path), {
     recursive: true,
     filter: (path) => !/(?:^|\/)(?:build|tests|scripts|node_modules|release|Published\.toml)(?:\/|$)/.test(path),
   });
 }
-const adminPath = join(packageRoot, 'sui/admin');
+const adminPath = join(packageRoot, 'sui/governance/admin');
 const corePath = join(packageRoot, 'sui/defi/boosts/core');
-const partnersPath = join(packageRoot, 'sui/partners');
+const partnersPath = join(packageRoot, 'sui/launch/partners');
 const adapterPath = join(packageRoot, 'sui/defi/boosts/aftermath_adapter');
 
-function localizeDependency(packagePath, name, subdir) {
-  const manifestPath = join(packagePath, 'Move.toml');
-  const manifest = readFileSync(manifestPath, 'utf8');
-  const pin = manifest.match(new RegExp(
-    `^${name} = \\{ git = "([^"]+)", subdir = "${subdir}", rev = "([0-9a-f]{40})" \\}$`, 'm',
-  ));
-  assert.equal(pin?.[1], 'https://github.com/interest-protocol/blast-v2-contracts.git',
-    `Expected a commit pin for ${name} in ${manifestPath}`);
-  const local = relative(packagePath, join(packageRoot, subdir));
-  writeFileSync(manifestPath, manifest.replace(pin[0], `${name} = { local = "${local}" }`));
-  return pin[2];
-}
+// The Move tests cover the production 48-hour boundary. Shorten only this
+// disposable validator fixture to exercise multiple native upgrades in one run.
+const delayPath = join(adminPath, 'sources/package/package_admin.move');
+const sharedSource = readFileSync(delayPath, 'utf8');
+const productionDelay = 'const INITIAL_UPGRADE_DELAY_MS: u64 = 48 * 60 * 60 * 1_000;';
+assert(sharedSource.includes(productionDelay));
+writeFileSync(delayPath, sharedSource.replace(productionDelay, 'const INITIAL_UPGRADE_DELAY_MS: u64 = 1_000;'));
 
-// Archive the pinned sources with partners' ../admin path intact, so every
-// consumer resolves the same admin package and its localnet publication.
-const dependencyRevision = localizeDependency(corePath, 'blast_admin', 'sui/admin');
-assert.equal(localizeDependency(adapterPath, 'blast_admin', 'sui/admin'), dependencyRevision);
-assert.equal(localizeDependency(adapterPath, 'blast_partners', 'sui/partners'), dependencyRevision);
-const archive = spawnSync('git', ['-C', repo, 'archive', dependencyRevision, 'sui/admin', 'sui/partners']);
-assert.equal(archive.status, 0, `Cannot archive Boosts dependency pin ${dependencyRevision}: ${archive.stderr}`);
-const extract = spawnSync('tar', ['-x', '-C', packageRoot, '--exclude=Published.toml'], { input: archive.stdout });
-assert.equal(extract.status, 0, `Cannot extract Boosts dependency sources: ${extract.stderr}`);
+async function waitForNotice(startedAt) {
+  const readyAt = BigInt(startedAt) + 1_000n;
+  const deadline = Date.now() + 30_000;
+  while (BigInt((await fields('0x6')).timestamp_ms) < readyAt) {
+    assert(Date.now() < deadline, 'The disposable validator clock stopped advancing');
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}
 
 // Upstream link stubs intentionally abort publication. Disable only their three
 // initializers in the disposable copy; preserve all first-party logic and ABI.
@@ -172,34 +167,45 @@ const adminPublish = publish('publish-admin', adminPath);
 const admin = published(adminPublish, 'blast_acl');
 const acl = created(adminPublish, '::blast_acl::ACL');
 const root = created(adminPublish, '::blast_acl::SuperAdminCap');
-const core = published(publish('publish-core', corePath), 'blast_boosts_core');
+publish('publish-core', corePath);
 const partners = published(publish('publish-partners', partnersPath), 'blast_partners');
+const launchCore = published(publish('publish-launch-core', join(packageRoot, 'sui/launch/core')), 'blast_domain');
 const adapterPublish = publish('publish-adapter', adapterPath);
 const original = published(adapterPublish, 'blast_boosts_aftermath');
 const protocol = created(adapterPublish, '::blast_boosts_aftermath::Protocol');
-const publisher = created(adapterPublish, '::package::Publisher');
-const cap = created(adapterPublish, '::package::UpgradeCap');
+const otw = `${original}::blast_boosts_aftermath::BLAST_BOOSTS_AFTERMATH`;
+const publication = created(adapterPublish, `::package_version::Publication<${otw}>`);
+const caps = adapterPublish.objectChanges.filter((change) =>
+  change.type === 'created' && change.objectType.endsWith('::package::UpgradeCap'));
+const matchingCaps = [];
+for (const cap of caps) {
+  if ((await fields(cap.objectId)).package === original) matchingCaps.push(cap.objectId);
+}
+assert.equal(matchingCaps.length, 1, 'Expected the native cap for the adapter');
 let tx = new Transaction();
-tx.moveCall({ target: `${original}::package_admin::wrap`, arguments: [tx.object(publisher), tx.object(cap)] });
-const custody = created(await execute('wrap', tx), '::package_admin::PackageAdmin');
+tx.moveCall({ target: `${admin}::package_admin::wrap`, typeArguments: [otw],
+  arguments: [tx.object(publication), tx.object(matchingCaps[0])] });
+const wrapped = await execute('wrap', tx);
+const custody = created(wrapped, `::package_admin::PackageAdmin<${otw}>`);
+const packageVersion = created(wrapped, `::package_version::PackageVersion<${otw}>`);
 tx = new Transaction();
 tx.moveCall({ target: `${admin}::blast_acl::grant_admin`, arguments: [tx.object(acl), tx.object(root), tx.pure.address(address)] });
 const adminCap = created(await execute('grant-admin', tx), '::blast_acl::AdminCap');
-const upgradeRole = `${core}::blast_boosts_core::UpgradeAdmin`;
-const riskRole = `${core}::blast_boosts_core::RiskAdmin`;
+const upgradeRole = `${admin}::package_admin::UpgradeAdmin<${otw}>`;
+const feeRole = `${launchCore}::blast_domain::FeeAdmin`;
 const partnerRole = `${partners}::blast_partners::PartnerAdmin`;
 function roleChange(tx, action, role) {
   tx.moveCall({ target: `${admin}::blast_acl::${action}`, typeArguments: [role],
     arguments: [tx.object(acl), tx.object(root), tx.pure.id(adminCap)] });
 }
 tx = new Transaction();
-for (const role of [upgradeRole, riskRole, partnerRole]) roleChange(tx, 'grant_role', role);
+for (const role of [upgradeRole, feeRole, partnerRole]) roleChange(tx, 'grant_role', role);
 await execute('grant-roles', tx);
 function witness(tx, role = upgradeRole) {
   return tx.moveCall({ target: `${admin}::blast_acl::sign_in`, typeArguments: [role], arguments: [tx.object(acl), tx.object(adminCap)] });
 }
 async function activeGeneration() {
-  return Number((await fields(protocol)).generation.fields.generation);
+  return Number((await fields(protocol)).generation);
 }
 async function ordinaryOperation(name, packageId, abort) {
   const before = await fields(protocol);
@@ -208,20 +214,20 @@ async function ordinaryOperation(name, packageId, abort) {
     arguments: [witness(tx, partnerRole), tx.pure.id(adminCap), tx.pure.address(address), tx.pure.u64(0)] });
   const partner = created(await execute(`${name}-partner`, tx), '::blast_partners::Partner');
   const add = new Transaction();
-  add.moveCall({ target: `${packageId}::operations::add_partner`, arguments: [add.object(protocol), witness(add, riskRole), add.object(partner)] });
+  add.moveCall({ target: `${packageId}::operations::add_partner`, arguments: [add.object(protocol), witness(add, feeRole), add.object(partner)] });
   await execute(name, add, abort);
   if (abort) assert.deepEqual(await fields(protocol), before, 'Failed operation preserves Protocol.');
 }
-// These exact aborts come from the pinned blast_admin error registry.
-const mismatch = /name: Identifier\("operational_version"\).*}, 9\)/s;
+// Assert the defining modules and exact abort codes.
+const mismatch = /name: Identifier\("blast_boosts_aftermath"\).*}, 0\)/s;
 const noRole = /name: Identifier\("blast_acl"\).*}, 5\)/s;
-const unavailableCap = /name: Identifier\("upgrade_custody"\).*}, 14\)/s;
+const unavailableCap = /name: Identifier\("package_admin"\).*}, 12\)/s;
 await ordinaryOperation('initial-operation', original);
 let latest = original;
 let nativeCount = 1;
 const markerPath = join(adapterPath, 'sources/blast_boosts_aftermath.move');
 const markerSource = readFileSync(markerPath, 'utf8');
-async function upgrade(name, generation, authorizationPackage = latest, abort) {
+async function upgrade(name, generation, abort) {
   writeFileSync(markerPath, markerSource.replace('const PACKAGE_VERSION: u64 = 1;', `const PACKAGE_VERSION: u64 = ${generation};`));
   // The standalone compiler selects mainnet's pinned dependency environment.
   // Its pubfile needs that environment's chain label, while the IDs still refer
@@ -231,20 +237,27 @@ async function upgrade(name, generation, authorizationPackage = latest, abort) {
   const compiled = JSON.parse(command(`${name}-build`, ['move', 'build', '--path', adapterPath,
     '--build-env', 'mainnet', '--pubfile-path', compilePubfile, '--dump', '--no-tree-shaking']));
   const before = await fields(protocol);
-  const tx = new Transaction();
-  const ticket = tx.moveCall({ target: `${authorizationPackage}::package_admin::authorize_upgrade`,
-    arguments: [tx.object(custody), witness(tx), tx.pure.vector('u8', compiled.digest)] });
-  const receipt = tx.upgrade({ modules: compiled.modules, dependencies: compiled.dependencies, package: latest, ticket });
-  tx.moveCall({ target: `${authorizationPackage}::package_admin::commit_upgrade`, arguments: [tx.object(custody), receipt] });
-  const response = await execute(name, tx, abort);
-  assert.deepEqual(await fields(protocol), before, 'Receipt commit must not advance Protocol.');
+  const proposal = new Transaction();
+  proposal.moveCall({ target: `${admin}::package_admin::schedule_upgrade`, typeArguments: [otw],
+    arguments: [proposal.object(custody), witness(proposal), proposal.pure.vector('u8', compiled.digest), proposal.object('0x6')] });
+  await execute(`${name}-schedule`, proposal, abort);
   if (abort) return latest;
+  await waitForNotice((await fields('0x6')).timestamp_ms);
+  const tx = new Transaction();
+  const authority = witness(tx);
+  const ticket = tx.moveCall({ target: `${admin}::package_admin::authorize_upgrade`, typeArguments: [otw],
+    arguments: [tx.object(custody), authority, tx.pure.vector('u8', compiled.digest), tx.object('0x6')] });
+  const receipt = tx.upgrade({ modules: compiled.modules, dependencies: compiled.dependencies, package: latest, ticket });
+  tx.moveCall({ target: `${admin}::package_admin::commit_upgrade_and_advance`, typeArguments: [otw],
+    arguments: [tx.object(custody), authority, tx.object(packageVersion), receipt] });
+  const response = await execute(name, tx);
+  assert.deepEqual(await fields(protocol), before, 'Receipt commit must not advance Protocol.');
   latest = published(response, 'blast_boosts_aftermath');
   nativeCount++;
   assert.equal(response.objectChanges.filter((x) => x.type === 'created' && x.objectType?.endsWith('::Protocol')).length, 0, 'Upgrade must not rerun init.');
-  assert.equal(response.events.filter((x) => x.type.includes('::OperationalVersionAdvanced<')).length, 0);
+  assert.equal(response.events.filter((x) => x.type.includes('::GenerationActivated')).length, 0);
   const committed = event(response, '::UpgradeCommitted<');
-  assert.equal(Number(committed.new_native_version), nativeCount);
+  assert.equal(Number(committed.new_upgrade_cap_version), nativeCount);
   assert.equal(committed.new_package_id, latest);
   return latest;
 }
@@ -255,11 +268,10 @@ async function activate(name, packageId, abort) {
   const response = await execute(name, tx, abort);
   if (abort) assert.deepEqual(await fields(protocol), before, 'Activation abort preserves Protocol.');
   else {
-    const advanced = event(response, '::OperationalVersionAdvanced<');
-    assert.equal(Number(advanced.previous_generation), Number(before.generation.fields.generation));
-    assert.equal(Number(advanced.new_generation), await activeGeneration());
-    assert.equal(advanced.container_id, protocol);
-    assert.equal(advanced.original_package_id, original);
+    const advanced = event(response, '::GenerationActivated').pos0;
+    assert.equal(Number(advanced.previous), Number(before.generation));
+    assert.equal(Number(advanced.current), await activeGeneration());
+    assert.equal(advanced.protocol, protocol);
   }
 }
 await upgrade('wrong-version-upgrade', 1);
@@ -277,26 +289,31 @@ await activate('activation-replay', repaired, mismatch);
 await ordinaryOperation('old-operation-after-activation', original, mismatch);
 await ordinaryOperation('new-operation-after-activation', repaired);
 
-// Repair authorization AND receipt finalization from stale code remain usable.
-const next = await upgrade('repair-through-stale-code', 3, original);
+// The shared admin package can install a repair after the serving generation changes.
+const next = await upgrade('repair-through-shared-admin', 3);
 tx = new Transaction();
-tx.moveCall({ target: `${original}::package_admin::make_immutable`, arguments: [tx.object(custody), tx.object(protocol), witness(tx)] });
+tx.moveCall({ target: `${original}::package_admin::make_immutable`, arguments: [tx.object(custody), tx.object(protocol), tx.object(packageVersion), witness(tx), tx.object('0x6')] });
 await execute('stale-code-cannot-burn-repair', tx, mismatch);
 tx = new Transaction();
 roleChange(tx, 'revoke_role', upgradeRole);
 await execute('revoke-upgrade-role', tx);
 await activate('revoked-role-cannot-activate', next, noRole);
-await upgrade('revoked-role-cannot-authorize-old-code', 3, original, noRole);
+await upgrade('revoked-role-cannot-authorize-old-code', 3, noRole);
 tx = new Transaction();
 roleChange(tx, 'grant_role', upgradeRole);
 await execute('restore-upgrade-role', tx);
 await activate('next-activation', next);
 await ordinaryOperation('next-operation', next);
 tx = new Transaction();
-tx.moveCall({ target: `${next}::package_admin::make_immutable`, arguments: [tx.object(custody), tx.object(protocol), witness(tx)] });
+tx.moveCall({ target: `${admin}::package_admin::schedule_make_immutable`, typeArguments: [otw],
+  arguments: [tx.object(custody), witness(tx), tx.object('0x6')] });
+await execute('schedule-immutability', tx);
+await waitForNotice((await fields('0x6')).timestamp_ms);
+tx = new Transaction();
+tx.moveCall({ target: `${next}::package_admin::make_immutable`, arguments: [tx.object(custody), tx.object(protocol), tx.object(packageVersion), witness(tx), tx.object('0x6')] });
 await execute('current-code-makes-immutable', tx);
 await ordinaryOperation('operations-survive-immutability', next);
-await upgrade('burned-cap-prevents-repair', 4, original, unavailableCap);
-save('summary', { version, sdk: '2.35.0', dependencyRevision, original, latest, nativeCount, activeGeneration: await activeGeneration(),
-  transactions: results.length, scope: 'Complete adapter production bytecode and real ACL. Partner administration exercises the operational gate. No venue trades or user-fund exits executed.' });
+await upgrade('burned-cap-prevents-repair', 4, unavailableCap);
+save('summary', { version, sdk: '2.35.0', fixtureUpgradeDelayMs: 1000, original, latest, nativeCount, activeGeneration: await activeGeneration(),
+  transactions: results.length, scope: 'Adapter source and real ACL with a one-second rehearsal notice. Partner administration exercises the operational gate. No venue trades or user-fund exits executed.' });
 console.log(`PASS: ${results.length} runtime transactions; native ${nativeCount}, operational ${await activeGeneration()}.`);

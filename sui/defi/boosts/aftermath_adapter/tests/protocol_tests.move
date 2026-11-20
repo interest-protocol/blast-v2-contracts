@@ -4,9 +4,6 @@
 #[test_only]
 /// Tests for the adapter's own operational generation.
 ///
-/// The checked arithmetic and the replay event belong to
-/// `blast_admin::operational_version`. These tests prove only that this
-/// package's activation uses its own compiled generation and typed authority.
 module blast_boosts_aftermath::protocol_tests;
 
 // === Constants ===
@@ -68,24 +65,17 @@ fun activation_uses_the_running_compiled_generation() {
     fixture.protocol.activate_upgrade(&upgrade_admin());
     fixture.protocol.assert_current_for_testing();
 
-    let advanced = blast_admin::blast_admin_events::collect_one<
-        blast_admin::blast_admin_events::OperationalVersionAdvanced<BLAST_BOOSTS_AFTERMATH>,
-    >(0);
-    let (container_id, package_id, previous_generation, new_generation) =
-        advanced.operational_version_advanced_fields();
-    assert_eq!(container_id, fixture.protocol.id_for_testing());
-    assert_eq!(package_id, std::type_name::original_id<BLAST_BOOSTS_AFTERMATH>());
-    assert_eq!(previous_generation, 0);
-    assert_eq!(new_generation, 1);
-    assert_eq!(new_generation, fixture.protocol.version_for_testing());
+    let activated = blast_boosts_aftermath::events::collect_one<protocol::GenerationActivated>(0);
+    let (id, previous, current) = activated.fields_for_testing();
+    assert!(id == object::id(&fixture.protocol) && previous == 0 && current == 1);
 
     fixture.end();
 }
 
 #[test]
 #[expected_failure(
-    abort_code = blast_admin::errors::EOperationalVersionMismatch,
-    location = blast_admin::operational_version,
+    abort_code = blast_boosts_aftermath::blast_boosts_aftermath::EGenerationMismatch,
+    location = blast_boosts_aftermath::blast_boosts_aftermath,
 )]
 fun activation_rejects_a_build_that_kept_the_current_generation() {
     let mut fixture = start();
@@ -97,8 +87,8 @@ fun activation_rejects_a_build_that_kept_the_current_generation() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_admin::errors::EOperationalVersionMismatch,
-    location = blast_admin::operational_version,
+    abort_code = blast_boosts_aftermath::blast_boosts_aftermath::EGenerationMismatch,
+    location = blast_boosts_aftermath::blast_boosts_aftermath,
 )]
 fun activation_cannot_be_replayed() {
     let mut fixture = start();
@@ -112,8 +102,8 @@ fun activation_cannot_be_replayed() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_admin::errors::EOperationalVersionMismatch,
-    location = blast_admin::operational_version,
+    abort_code = blast_boosts_aftermath::blast_boosts_aftermath::EGenerationMismatch,
+    location = blast_boosts_aftermath::blast_boosts_aftermath,
 )]
 fun the_cutover_rejects_a_skipped_generation() {
     let mut fixture = start();
@@ -127,8 +117,8 @@ fun the_cutover_rejects_a_skipped_generation() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_admin::errors::EOperationalVersionOverflow,
-    location = blast_admin::operational_version,
+    abort_code = blast_boosts_aftermath::blast_boosts_aftermath::EGenerationOverflow,
+    location = blast_boosts_aftermath::blast_boosts_aftermath,
 )]
 fun the_cutover_rejects_a_generation_overflow() {
     let mut fixture = start();
@@ -142,8 +132,8 @@ fun the_cutover_rejects_a_generation_overflow() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_admin::errors::EOperationalVersionMismatch,
-    location = blast_admin::operational_version,
+    abort_code = blast_boosts_aftermath::blast_boosts_aftermath::EGenerationMismatch,
+    location = blast_boosts_aftermath::blast_boosts_aftermath,
 )]
 fun a_stale_generation_rejects_this_bytecode() {
     let mut fixture = start();
@@ -206,7 +196,7 @@ fun end(self: Fixture) {
     scenario.end();
 }
 
-fun upgrade_admin(): AdminWitness<UpgradeAdmin> {
+fun upgrade_admin(): AdminWitness<UpgradeAdmin<BLAST_BOOSTS_AFTERMATH>> {
     blast_acl::witness_for_testing()
 }
 
@@ -214,7 +204,7 @@ fun upgrade_admin(): AdminWitness<UpgradeAdmin> {
 
 use blast_admin::blast_acl::{Self, AdminWitness};
 
-use blast_boosts_core::blast_boosts_core::UpgradeAdmin;
+use blast_admin::package_admin::UpgradeAdmin;
 
 use blast_boosts_aftermath::{
     blast_boosts_aftermath::{Self as protocol, BLAST_BOOSTS_AFTERMATH, Protocol},

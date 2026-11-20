@@ -159,26 +159,19 @@ reductions wait the old notice.
 
 ## Boosts adapter upgrades
 
-The current adapter builds against pinned pre-fold admin and partners sources.
-Before a release, verify their on-chain bindings and the published Boosts core
-linkage under [#223](https://github.com/interest-protocol/blast-v2-contracts/issues/223).
+The governance source uses the launchpad's admin, core and partners packages.
+It needs a fresh Boosts core and adapter lineage. The old core's publication
+record identifies the historical immutable code. Verify the full dependency
+graph before a future release under [#223](https://github.com/interest-protocol/blast-v2-contracts/issues/223).
 
-[ADR 0123](../docs/decisions/0123-successor-activated-boosts-upgrades.md) applies
-to the fresh adapter lineage, not the historical deployed package. After
-publication and before the first upgrade or vault funding, seal the canonical
-Publisher and raw UpgradeCap through `package_admin::wrap`. The initializer
-delivers the Publisher to the publisher; wrapping uses it in a follow-up
-transaction. The supported policy remains compatible.
-
-1. Read the active version from `Protocol`, the native count
-   from the sealed cap, and the live UpgradeAdmin role. Compile the successor's
-   `PACKAGE_VERSION` as **active version + 1**, even after failed native
-   upgrades. Review its exact digest, dependency pins and compatibility. Never
-   substitute the native upgrade count for the version.
-2. Sign in on the immutable ACL. In one transaction, pass that witness and exact
-   digest to `package_admin::authorize_upgrade`, consume the ticket with the
-   native upgrade command, and consume its receipt with `package_admin::commit_upgrade`
-   on the same PackageAdmin. This does not change the active version.
+1. Wrap the adapter's single publication proof and original native UpgradeCap
+   through the shared admin package. Record the typed PackageAdmin and PackageVersion.
+   Check the live Blast ACL grants and treasury destination before releasing deposits.
+2. For an upgrade, compile the successor with the active Protocol generation plus one.
+   Schedule its exact digest through the shared PackageAdmin. Once ready, the
+   scoped UpgradeAdmin authorizes the digest, upgrades, and calls
+   `commit_upgrade_and_advance` with the receipt and PackageVersion. The
+   native count advances while the active Protocol generation stays the same.
 3. From the newly installed package ID, in a **second transaction**, sign in
    again and call `package_admin::activate_upgrade(protocol, witness)`. It checks
    its own compiled version; no caller supplies a version number. Failure leaves
@@ -186,7 +179,7 @@ transaction. The supported policy remains compatible.
    repair path and retry; native and operational counts can diverge.
 4. Record both transaction digests, original and installed package IDs, exact
    source/toolchain/digest, dependencies, native count, version,
-   custody/Protocol IDs, UpgradeCommitted and VersionAdvanced events,
+   custody/Protocol IDs, UpgradeCommitted and GenerationActivated events,
    and before/after checks of old rejection, new operations and required exits.
    Direct callers and dependent packages to the reviewed activated release.
 
@@ -200,7 +193,7 @@ Activate only the package ID reviewed for the current cutover and record all
 superseded candidate IDs: a rejected candidate compiled ahead of the active
 version can become activatable after a later cutover.
 
-`make_immutable` is a deliberate terminal action. Keep its current-version
+Schedule immutability and wait its notice before calling `make_immutable`. Keep its current-version
 check; verify intended release, dependencies and exits before burning the cap.
 It checks a version match only and does not prove that no upgrade is pending or
 that the latest installed code is correct. No later repair is possible once the

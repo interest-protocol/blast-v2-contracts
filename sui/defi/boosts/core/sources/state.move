@@ -1315,6 +1315,17 @@ public fun shutdown_claim_quote<Product>(
 
 // --- Administration ---
 
+/// Validates the same immutable fee limits at proposal and execution.
+public fun assert_fee_update<Product>(self: &State<Product>, mint_fee_bps: u64, redeem_fee_bps: u64, admin_share_bps: u64) {
+    self.lifecycle.assert_active();
+    self.vault_policy.assert_fee_limits(mint_fee_bps, redeem_fee_bps, admin_share_bps);
+
+    assert!(
+        self.mint_fee_bps != mint_fee_bps || self.redeem_fee_bps != redeem_fee_bps || self.admin_share_bps != admin_share_bps,
+        blast_boosts_core::errors::fee_settings_unchanged!(),
+    );
+}
+
 /// Updates future fee collections under immutable issuance caps.
 /// Adapter custody owns authentication; no assets or past allocations move.
 public fun set_fees<Product>(
@@ -1323,20 +1334,8 @@ public fun set_fees<Product>(
     redeem_fee_bps: u64,
     admin_share_bps: u64,
 ): (u64, u64, u64) {
-    self.lifecycle.assert_active();
-    self.vault_policy.assert_fee_limits(mint_fee_bps, redeem_fee_bps, admin_share_bps);
-
-    let (previous_mint, previous_redeem, previous_admin) =
-        (
-        self.mint_fee_bps,
-        self.redeem_fee_bps,
-        self.admin_share_bps
-    );
-    assert!(
-        previous_mint != mint_fee_bps || previous_redeem != redeem_fee_bps || previous_admin != admin_share_bps,
-        blast_boosts_core::errors::fee_settings_unchanged!(),
-    );
-
+    self.assert_fee_update(mint_fee_bps, redeem_fee_bps, admin_share_bps);
+    let (previous_mint, previous_redeem, previous_admin) = (self.mint_fee_bps, self.redeem_fee_bps, self.admin_share_bps);
     self.mint_fee_bps = mint_fee_bps;
     self.redeem_fee_bps = redeem_fee_bps;
     self.admin_share_bps = admin_share_bps;
@@ -1397,20 +1396,24 @@ public fun set_max_order_notional<Product>(
     previous
 }
 
+/// Validates a proposed NAV cap against current capacity.
+public fun assert_nav_cap_update<Product>(self: &State<Product>, nav_cap: u64) {
+    assert!(nav_cap != self.nav_cap, blast_boosts_core::errors::nav_cap_unchanged!());
+    self.vault_policy.rebalance_policy().assert_nav_cap_valid(nav_cap);
+    self
+        .vault_policy
+        .rebalance_policy()
+        .assert_rebalance_capacity(self.max_order_notional, nav_cap);
+}
+
 /// Replaces the NAV cap and returns the previous one.
 ///
 /// Adapter custody owns authentication. The new cap must satisfy the same
 /// bound issuance applies; it may be lowered below the current NAV, which
 /// only blocks further mints.
 public fun set_nav_cap<Product>(self: &mut State<Product>, nav_cap: u64): u64 {
+    self.assert_nav_cap_update(nav_cap);
     let previous = self.nav_cap;
-    assert!(nav_cap != previous, blast_boosts_core::errors::nav_cap_unchanged!());
-    self.vault_policy.rebalance_policy().assert_nav_cap_valid(nav_cap);
-    self
-        .vault_policy
-        .rebalance_policy()
-        .assert_rebalance_capacity(self.max_order_notional, nav_cap);
-
     self.nav_cap = nav_cap;
 
     previous

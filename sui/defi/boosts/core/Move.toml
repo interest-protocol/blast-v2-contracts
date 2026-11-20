@@ -5,8 +5,7 @@ license = "BUSL-1.1"
 authors = ["Jose Cerqueira (jose@interestprotocol.com)"]
 
 [dependencies]
-# Pre-fold administration for this source lineage (issue #223).
-blast_admin = { git = "https://github.com/interest-protocol/blast-v2-contracts.git", subdir = "sui/admin", rev = "c4b86a9f3b1fcfb0d4a7b4e9a3d07e2fa78901f3" }
+blast_admin = { local = "../../../governance/admin" }
 
 [addresses]
 blast_boosts_core = "0x0"

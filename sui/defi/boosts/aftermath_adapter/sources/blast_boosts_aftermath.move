@@ -1,161 +1,111 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2026 Jose Manuel Vasconcelos Cerqueira
 
-// `errors` intentionally centralizes package-wide abort codes through zero-cost macros.
-// W04005 sees the expanded literal; this suppression preserves stable codes and local checks.
-#[allow(lint(abort_without_constant))]
-/// Canonical package marker for this adapter, its operational generation, and the partners Boosts
-/// accepts.
-///
-/// The generation value, its checked arithmetic, and its replay event belong to
-/// `blast_admin::operational_version`; `init` seeds the value from the one-time witness before
-/// claiming the Publisher with it, so no other package can create this adapter's generation. This
-/// module owns the shared container, the compiled generation that identifies this bytecode,
-/// and the list of accepted Blast partners, one
-/// dynamic field per partner so the container's layout never changes.
 module blast_boosts_aftermath::blast_boosts_aftermath;
 
 // === Constants ===
 
-/// Current adapter generation accepted by every protected mutation.
 const PACKAGE_VERSION: u64 = 1;
 
 // === Public Types ===
 
-/// One-time witness: it seeds the adapter generation and claims this package's Publisher.
 public struct BLAST_BOOSTS_AFTERMATH() has drop;
 
-/// Shared operational generation for the Aftermath adapter package.
+public struct PackageWitness() has drop;
+
+/// The serving generation advances only when the successor activates (ADR 0123).
 public struct Protocol has key {
     id: UID,
-    generation: OperationalVersion<BLAST_BOOSTS_AFTERMATH>,
+    generation: u64,
+    partners: PartnerList,
 }
 
-/// Dynamic-field key of a Blast partner Boosts accepts. Its value is the time
-/// the partner stops being accepted: `u64::MAX` until Blast removes it.
-public struct PartnerKey(ID) has copy, drop, store;
+public struct GenerationActivated has copy, drop {
+    protocol: ID,
+    previous: u64,
+    current: u64,
+}
 
 // === Private Initialization ===
 
 fun init(otw: BLAST_BOOSTS_AFTERMATH, ctx: &mut TxContext) {
-    transfer::share_object(new(&otw, ctx));
-    sui::package::claim_and_keep(otw, ctx);
+    transfer::share_object(new(ctx));
+    package_version::new_publication<_, PackageWitness>(otw, deposits!(), ctx).keep(ctx);
 }
 
 // === Package Functions ===
 
-/// Rejects bytecode that is not the active adapter generation.
+/// Pauses issuance and minting without interrupting existing holders' exits.
+macro public(package) fun deposits(): u8 { 1 }
+
+public(package) fun package_witness(): PackageWitness { PackageWitness() }
+
 public(package) fun assert_current(self: &Protocol) {
-    self.generation.assert_current(PACKAGE_VERSION);
+    assert!(self.generation == PACKAGE_VERSION, EGenerationMismatch);
 }
 
-/// Activates this bytecode only when its own generation is exactly next.
 public(package) fun activate(self: &mut Protocol) {
-    self.generation.advance(&self.id, PACKAGE_VERSION);
+    assert!(self.generation < std::u64::max_value!(), EGenerationOverflow);
+    let previous = self.generation;
+    assert!(previous + 1 == PACKAGE_VERSION, EGenerationMismatch);
+    self.generation = PACKAGE_VERSION;
+    blast_boosts_aftermath::blast_events::emit_event(GenerationActivated { protocol: self.id.to_inner(), previous, current: PACKAGE_VERSION });
 }
 
-/// Accepts `partner_id` at once. Adding a partner whose removal is pending
-/// cancels the removal; adding a removed partner accepts it again.
-public(package) fun add_partner(self: &mut Protocol, partner_id: ID) {
-    let key = PartnerKey(partner_id);
+public(package) fun partners(self: &Protocol): &PartnerList { &self.partners }
 
-    if (self.id.exists_dynamic_field(key)) {
-        let acceptance_ends_at_ms: &mut u64 = self.id.borrow_dynamic_field_mut(key);
-        assert!(*acceptance_ends_at_ms != std::u64::max_value!(), errors::partner_unchanged!());
-        *acceptance_ends_at_ms = std::u64::max_value!();
-    } else {
-        self.id.add_dynamic_field(key, std::u64::max_value!());
-    }
-}
-
-/// Stops accepting `partner_id` from `accepted_until_ms`. The partner must be
-/// accepted at `now_ms` with no removal pending.
-public(package) fun remove_partner(
-    self: &mut Protocol,
-    partner_id: ID,
-    now_at_ms: u64,
-    acceptance_ends_at_ms: u64,
-) {
-    self.assert_partner(partner_id, now_at_ms);
-
-    let current: &mut u64 = self.id.borrow_dynamic_field_mut(PartnerKey(partner_id));
-    assert!(*current == std::u64::max_value!(), errors::partner_unchanged!());
-    *current = acceptance_ends_at_ms;
-}
-
-/// Aborts unless Boosts accepts `partner_id` at `now_ms`.
-public(package) fun assert_partner(self: &Protocol, partner_id: ID, now_at_ms: u64) {
-    let key = PartnerKey(partner_id);
-
-    assert!(self.id.exists_dynamic_field(key), errors::partner_not_accepted!());
-    let acceptance_ends_at_ms: u64 = *self.id.borrow_dynamic_field(key);
-    assert!(now_at_ms < acceptance_ends_at_ms, errors::partner_not_accepted!());
-}
+public(package) fun partners_mut(self: &mut Protocol): &mut PartnerList { &mut self.partners }
 
 // === Private Functions ===
 
-fun new(otw: &BLAST_BOOSTS_AFTERMATH, ctx: &mut TxContext): Protocol {
-    Protocol { id: object::new(ctx), generation: operational_version::new(otw) }
+fun new(ctx: &mut TxContext): Protocol {
+    let id = object::new(ctx);
+    let partners = partner_list::new(&id, ctx);
+    Protocol { id, generation: 1, partners }
 }
 
 // === Test-Only Functions ===
 
 #[test_only]
-/// Runs package initialization with a genuine test one-time witness.
-public fun init_for_testing(ctx: &mut TxContext) {
-    init(sui::test_utils::create_one_time_witness<BLAST_BOOSTS_AFTERMATH>(), ctx);
+public fun init_for_testing(ctx: &mut TxContext) { init(BLAST_BOOSTS_AFTERMATH(), ctx) }
+
+#[test_only]
+public fun new_for_testing(ctx: &mut TxContext): Protocol { new(ctx) }
+
+#[test_only]
+public fun version_for_testing(self: &Protocol): u64 { self.generation }
+
+#[test_only]
+public fun set_version_for_testing(self: &mut Protocol, version: u64) { self.generation = version }
+
+#[test_only]
+public fun assert_current_for_testing(self: &Protocol) { self.assert_current() }
+
+#[test_only]
+public fun assert_partner_for_testing(self: &Protocol, id: ID, clock: &sui::clock::Clock) {
+    self.partners.assert_accepted(id, clock);
 }
 
 #[test_only]
-public fun new_for_testing(ctx: &mut TxContext): Protocol {
-    let otw = sui::test_utils::create_one_time_witness<BLAST_BOOSTS_AFTERMATH>();
-    let mut protocol = new(&otw, ctx);
-    protocol.generation.set_generation_for_testing(PACKAGE_VERSION);
-    protocol
+public fun active_version_for_testing(ctx: &mut TxContext): PackageVersion<BLAST_BOOSTS_AFTERMATH> {
+    package_version::new_for_testing<_, PackageWitness>(deposits!(), ctx)
 }
 
 #[test_only]
-public fun id_for_testing(self: &Protocol): ID {
-    self.id.to_inner()
+public fun fields_for_testing(self: &GenerationActivated): (ID, u64, u64) {
+    (self.protocol, self.previous, self.current)
 }
 
-#[test_only]
-public fun version_for_testing(self: &Protocol): u64 {
-    self.generation.generation_for_testing()
-}
+// === Errors ===
 
-#[test_only]
-public fun set_version_for_testing(self: &mut Protocol, version: u64) {
-    self.generation.set_generation_for_testing(version);
-}
-
-#[test_only]
-/// Exercises the generation guard every protected mutation runs first.
-public fun assert_current_for_testing(self: &Protocol) {
-    self.assert_current();
-}
-
-#[test_only]
-/// Exercises the guard every trade that names a partner runs first.
-public fun assert_partner_for_testing(self: &Protocol, partner_id: ID, now_at_ms: u64) {
-    self.assert_partner(partner_id, now_at_ms);
-}
-
-#[test_only]
-/// Creates the canonical Publisher without transferring it.
-public fun publisher_for_testing(ctx: &mut TxContext): Publisher {
-    sui::package::test_claim(BLAST_BOOSTS_AFTERMATH(), ctx)
-}
+const EGenerationMismatch: u64 = 0;
+const EGenerationOverflow: u64 = 1;
 
 // === Imports ===
 
-use blast_admin::operational_version::{Self, OperationalVersion};
+use blast_admin::package_version;
 
-use blast_boosts_aftermath::errors;
+#[test_only]
+use blast_admin::package_version::PackageVersion;
 
-use sui::{dynamic_field, package::Publisher};
-
-use fun dynamic_field::add as UID.add_dynamic_field;
-use fun dynamic_field::borrow as UID.borrow_dynamic_field;
-use fun dynamic_field::borrow_mut as UID.borrow_dynamic_field_mut;
-use fun dynamic_field::exists as UID.exists_dynamic_field;
+use blast_partners::partner_list::{Self, PartnerList};

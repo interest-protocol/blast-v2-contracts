@@ -8,7 +8,7 @@ const input = (operation) => ({
     productType: `${address(1)}::product::Product<${address(1)}::tags::Long2x>`,
     collateralType: `${address(3)}::usdc::USDC`,
     objects: Object.fromEntries(['vault', 'protocol', 'account', 'registry', 'clearingHouse',
-        'baseOracle', 'collateralOracle', 'clock', 'inputCoin']
+        'baseOracle', 'collateralOracle', 'clock', 'inputCoin', ...(['mint', 'mint_buy'].includes(operation) ? ['packageVersion'] : [])]
         .map((role, i) => [role, address(10 + i)])),
     minimumOutput: '1', deadlineMs: '100000',
 });
@@ -103,7 +103,7 @@ test('mint and redemption bind public argument order and transfer only the retur
         const plan = buildActivePlan(value);
         assert.equal(plan.commands[0].target, `${address(1)}::operations::${operation}`);
         assert.deepEqual(plan.commands[0].arguments, [
-            ...['vault', 'protocol', 'account', 'registry', 'clearingHouse', 'baseOracle', 'collateralOracle']
+            ...['vault', 'protocol', ...(operation === 'mint' ? ['packageVersion'] : []), 'account', 'registry', 'clearingHouse', 'baseOracle', 'collateralOracle']
                 .map((key) => `@${value.objects[key]}`),
             `@${value.objects.inputCoin}`, '1', '100000', `@${value.objects.clock}`,
         ]);
@@ -117,14 +117,14 @@ test('mint and redemption bind public argument order and transfer only the retur
     }
 });
 
-test('naming a partner switches mint and redemption to the partner entry points, partner after protocol', () => {
+test('naming a partner switches mint and redemption to the partner entry points, partner before the venue account', () => {
     for (const operation of ['mint', 'redeem']) {
         const value = input(operation);
         value.objects.partner = address(40);
         const plan = buildActivePlan(value);
         assert.equal(plan.commands[0].target, `${address(1)}::operations::${operation}_with_partner`);
         assert.deepEqual(plan.commands[0].arguments, [
-            ...['vault', 'protocol', 'partner', 'account', 'registry', 'clearingHouse', 'baseOracle', 'collateralOracle']
+            ...['vault', 'protocol', ...(operation === 'mint' ? ['packageVersion'] : []), 'partner', 'account', 'registry', 'clearingHouse', 'baseOracle', 'collateralOracle']
                 .map((key) => `@${value.objects[key]}`),
             `@${value.objects.inputCoin}`, '1', '100000', `@${value.objects.clock}`,
         ]);

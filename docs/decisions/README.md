@@ -133,6 +133,7 @@ records below it decide what 0137 does not restate.
 | [0139](0139-admin-bounded-auto-lp-compounding.md) | Admin-bounded auto-LP compounding | accepted |
 | [0140](0140-upgrade-cap-manager.md) | Digest-bound upgrades and immutability with a fixed 48-hour notice | accepted |
 | [0141](0141-blast-sui-validator-list.md) | Blast SUI stakes across a short delayed validator list | proposed |
+| [0142](0142-boosts-shared-governance.md) | Boosts uses launchpad governance | accepted |
 
 ## Open premises
 

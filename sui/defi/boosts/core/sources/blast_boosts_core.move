@@ -7,8 +7,7 @@
 /// and a function's witness parameter names the one role it accepts, so a role
 /// from any other package is a different type and cannot reach these operations.
 ///
-/// The core package is published immutably, so `UpgradeAdmin` governs adapter
-/// package custody rather than any transition in this package.
+/// Package administration uses the shared ACL roles scoped to each adapter witness.
 module blast_boosts_core::blast_boosts_core;
 
 // === Public Types ===
@@ -16,11 +15,8 @@ module blast_boosts_core::blast_boosts_core;
 /// Issues an adapter Vault and its share currency, and updates that currency's metadata.
 public struct VaultIssuer()
 
-/// Sets a Vault's fees, NAV cap and maximum order notional, and withdraws its admin fees.
+/// Schedules changes to a Vault's NAV and order caps and reviews venue recovery.
 public struct RiskAdmin()
 
 /// Irreversibly begins a Vault's shutdown.
 public struct ShutdownAdmin()
-
-/// Authorizes and activates adapter upgrades, or permanently ends them.
-public struct UpgradeAdmin()

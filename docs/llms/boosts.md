@@ -53,8 +53,9 @@ Three packages implement it:
 | Object | Type | Created by | Role |
 | --- | --- | --- | --- |
 | Vault | `blast_boosts_aftermath::vault::Vault<Product, Collateral>` | Blast issuer, once per product | Custody of the core `State`, the bound venue account, the share `TreasuryCap` and `MetadataCap` (dynamic object fields under `TreasuryKey<Product>` and `MetadataKey<Product>`), the locked seed count, earned admin cash, post-shutdown holder cash, and protected cash with no exposed withdrawal path from a size-locked exit. |
-| Protocol | `blast_boosts_aftermath::blast_boosts_aftermath::Protocol` | package publish | The adapter's operational generation (ordinary calls require the current generation; upgrade activation requires exactly the next one) and the accepted partners, one dynamic field per partner keyed by `blast_boosts_aftermath::blast_boosts_aftermath::PartnerKey`. |
-| PackageAdmin | `blast_boosts_aftermath::package_admin::PackageAdmin` | deployment | Sealed Publisher and UpgradeCap of the adapter. |
+| Protocol | `blast_boosts_aftermath::blast_boosts_aftermath::Protocol` | package publish | The adapter's operational generation (ordinary calls require the current generation; upgrade activation requires exactly the next one) and the Boosts acceptance list of canonical Blast partner objects. |
+| PackageAdmin | `blast_admin::package_admin::PackageAdmin` | deployment | Sealed Publisher and UpgradeCap of the adapter. |
+| Package version | `blast_admin::package_version::PackageVersion` for the adapter | custody wrap | Gates issuance and minting with the deposit pause bit. |
 | Blast ACL | `blast_acl::ACL` | `blast_admin` | Role membership for every Blast admin. |
 
 `Vault` fields: `state` (core `state::State<Product>`), `venue_account`
@@ -93,7 +94,7 @@ everywhere a call takes one. This ABI requires a fresh publication.
 
 #### Roles
 
-Admin roles are types in `blast_boosts_core`. A Blast admin holding a
+The launchpad and Boosts use the same ACL, fee administrator, treasury administrator, and cancellation role. A Blast admin holding a
 `blast_acl::AdminCap` that the ACL granted the role calls
 `blast_acl::sign_in<Role>` and passes the returned `blast_acl::AdminWitness<Role>`
 to the call. Integrators cannot obtain these witnesses.
@@ -101,9 +102,12 @@ to the call. Integrators cannot obtain these witnesses.
 | Role | Authorizes |
 | --- | --- |
 | `blast_boosts_core::blast_boosts_core::VaultIssuer` | `blast_boosts_aftermath::vault::issue` (new Boost), `blast_boosts_aftermath::vault::update_metadata` |
-| `blast_boosts_core::blast_boosts_core::RiskAdmin` | `blast_boosts_aftermath::vault::set_fees`, `blast_boosts_aftermath::vault::set_nav_cap`, `operations::set_max_order_notional`, `operations::rebaseline`, `blast_boosts_aftermath::vault::withdraw_admin_fees`, `operations::add_partner`, `operations::remove_partner` |
+| `blast_boosts_core::blast_boosts_core::RiskAdmin` | Schedule NAV and order caps and rebaseline the venue checkpoint. |
+| `blast_core::blast_domain::FeeAdmin` | Schedule vault fees and manage the Boosts list of accepted Blast partners. |
+| `blast_core::blast_domain::TreasuryAdmin` | Pay earned collateral to the shared treasury destination. |
+| `blast_core::blast_domain::CancelAdmin` | Cancel a pending fee or cap change. |
 | `blast_boosts_core::blast_boosts_core::ShutdownAdmin` | `blast_boosts_aftermath::vault::begin_shutdown` |
-| `blast_boosts_core::blast_boosts_core::UpgradeAdmin` | adapter upgrades through `blast_boosts_aftermath::package_admin` |
+| Adapter-scoped `blast_admin::package_admin::UpgradeAdmin`, `PauseAdmin`, `UnpauseAdmin`, and `CancelAdmin` | Schedule and execute upgrades, pause deposits, release deposits, or veto a package proposal according to the grant. |
 
 Everything else (mint, redeem, realize profit, rebalance, donate, sync, unwind, finalize,
 shutdown claims) is *anyone*. No keeper role, keeper reward, or caller-chosen
@@ -156,10 +160,10 @@ only from activation, so it is born `Active`.
 | State | Entered by | Allowed |
 | --- | --- | --- |
 | `Active` | `operations::initialize` | mint, redeem (plain and partner), `realize_profit`, rebalance, `needs_rebalance`, donate, `sync_health`, RiskAdmin `rebaseline`, all admin settings, `begin_shutdown`, `begin_protected_shutdown` |
-| `Unwinding` | `blast_boosts_aftermath::vault::begin_shutdown` (ShutdownAdmin) or `operations::begin_protected_shutdown` (anyone, proven size lock) | `operations::unwind`, `operations::sync_health`, `operations::finalize_shutdown`, `set_nav_cap`, `set_max_order_notional`, `update_metadata`, `withdraw_admin_fees` |
-| `Settled` | `operations::finalize_shutdown` (anyone) | `blast_boosts_aftermath::vault::redeem_shutdown`, `set_nav_cap`, `set_max_order_notional`, `update_metadata`, `withdraw_admin_fees` |
+| `Unwinding` | `blast_boosts_aftermath::vault::begin_shutdown` (ShutdownAdmin) or `operations::begin_protected_shutdown` (anyone, proven size lock) | `operations::unwind`, `operations::sync_health`, `operations::finalize_shutdown`, `apply_nav_cap`, `apply_max_order_notional`, `update_metadata`, `withdraw_admin_fees` |
+| `Settled` | `operations::finalize_shutdown` (anyone) | `blast_boosts_aftermath::vault::redeem_shutdown`, `apply_nav_cap`, `apply_max_order_notional`, `update_metadata`, `withdraw_admin_fees` |
 
-`set_fees` works only in `Active`. Nothing reopens a Vault. Health reporting
+`apply_fees` works only in `Active`. Nothing reopens a Vault. Health reporting
 (`sync_health`, `CheckpointDrifted`) never changes lifecycle. ShutdownAdmin or
 an explicit, proven permissionless size-lock trigger moves `Active` to
 `Unwinding`. Entry seals whether settlement protects the seed and reserves.
@@ -179,7 +183,7 @@ and activation succeed or fail together.
    initial_mint_fee_bps, initial_redeem_fee_bps, mint_fee_cap_bps,
    redeem_fee_cap_bps, admin_share_cap_bps, min_order_lots, max_reserve_bps)`
    returns the `VaultPolicy`.
-3. `blast_boosts_aftermath::vault::issue<Product, Collateral>` takes `Protocol`,
+3. `blast_boosts_aftermath::vault::issue<Product, Collateral>` takes `Protocol`, the adapter’s shared `PackageVersion`,
    the witness, the Coin Registry (`0xc`), the policy, `max_order_notional`,
    `nav_cap`, and the coin's `symbol`, `name`, `description`, `icon_url`.
    `Product` must be a non-primitive type. It registers the 9-decimal currency,
@@ -222,7 +226,7 @@ PTB:
 
 1. `SplitCoins` the user's `Coin<Collateral>` into the deposit `cash` (any
    positive amount).
-2. `operations::mint<Product, Collateral>(vault, protocol, account, registry,
+2. `operations::mint<Product, Collateral>(vault, protocol, package_version, account, registry,
    clearing_house, base_oracle, collateral_oracle, cash, minimum_shares,
    deadline_ms, clock)`. Objects: `Vault` (shared, mutable), `Protocol`
    (shared, read), `Account<Collateral>` (shared, mutable), `Registry` (shared,
@@ -315,11 +319,9 @@ deallocation), keeps `admin_fee` as admin cash, burns the shares, emits
 #### Mint or redeem with a partner code (anyone)
 
 `operations::mint_with_partner` and `operations::redeem_with_partner` take the
-same arguments as `mint` and `redeem`, plus the partner's shared
-`blast_partners::blast_partners::Partner` object (read only) placed right after
-`Protocol`:
-`(vault, protocol, partner, account, registry, clearing_house, base_oracle,
-collateral_oracle, coin, minimum, deadline_ms, clock)`.
+same arguments as their plain counterparts. Insert the shared `Partner` before the
+Aftermath account. On mint the adapter’s `PackageVersion` precedes the partner.
+On redemption the protocol precedes the partner.
 
 1. The call first requires the partner to be accepted by Boosts at
    `Clock` time (adapter code 38 otherwise).
@@ -333,8 +335,7 @@ collateral_oracle, coin, minimum, deadline_ms, clock)`.
    when nonzero. Blast keeps the rest as admin cash. Emits `PartnerFeePaid`
    (even when the payment is zero).
 
-Before building a partner trade, check acceptance: read the `Protocol`
-dynamic field with name `PartnerKey(partner_id)`. The partner is accepted
+Before building a partner trade, read the acceptance end time for the partner ID in the `Protocol` partner list. The partner is accepted
 while the field exists and `now_ms < value` (the value is `u64::MAX` until
 Blast removes the partner). Otherwise use the plain calls. While a Vault's
 `admin_share_bps` is 0 the partner earns nothing.
@@ -648,39 +649,31 @@ venue objects and prices.
 
 | Call | Role | Effect | Event |
 | --- | --- | --- | --- |
-| `blast_boosts_aftermath::vault::set_fees(vault, protocol, witness, mint_fee_bps, redeem_fee_bps, admin_share_bps)` | RiskAdmin | Sets all three live rates within the policy caps; at least one must change; `Active` only. Affects only future operations. | `FeesUpdated` |
-| `blast_boosts_aftermath::vault::set_nav_cap(vault, protocol, witness, nav_cap)` | RiskAdmin | Replaces the NAV cap (positive, changed, and `nav_cap * max_leverage_bps / 10,000` fits in `u64`, and the rebalance capacity bound holds); may be set below current NAV, which only blocks mints. Any lifecycle. | `NavCapUpdated` |
-| `operations::set_max_order_notional` | RiskAdmin | Replaces the per-order cap in collateral atoms. Takes the bound account, registry, market, both oracle objects and Clock; requires fresh prices and capacity for `min_order_lots` live lots under the ordinary execution bound. Positive and changed; must also preserve the rebalance capacity bound. Any lifecycle, no cooldown, no current-NAV or margin gate. | `MaxOrderNotionalUpdated` |
-| `blast_boosts_aftermath::vault::withdraw_admin_fees(vault, protocol, witness, amount)` | RiskAdmin | Returns `Coin<Collateral>` from admin cash only. Any lifecycle. | `AdminFeesWithdrawn` |
+| `blast_boosts_aftermath::vault::schedule_fees` / `blast_boosts_aftermath::vault::apply_fees` | FeeAdmin / anyone | Apply future rates within issuance caps while active. | `FeesUpdated` |
+| `blast_boosts_aftermath::vault::schedule_nav_cap` / `blast_boosts_aftermath::vault::apply_nav_cap` | RiskAdmin / anyone | Apply a positive NAV cap within the current order capacity. | `NavCapUpdated` |
+| `blast_boosts_aftermath::vault::schedule_max_order_notional` / `operations::apply_max_order_notional` | RiskAdmin / anyone | Apply the proposed cap using fresh bound venue prices and lot size. | `MaxOrderNotionalUpdated` |
+| `blast_boosts_aftermath::vault::withdraw_admin_fees` | TreasuryAdmin | Transfer earned collateral to the current destination of the shared `blast_treasury::Treasury`. | `AdminFeesWithdrawn` |
 | `blast_boosts_aftermath::vault::update_metadata(vault, protocol, witness, currency, name, description, icon_url)` | VaultIssuer | Updates the share coin's name, description and icon in its Coin Registry `Currency<BlastBoost<Product>>`; the symbol is fixed. At least one must change. | `MetadataUpdated` |
-| `operations::add_partner(protocol, witness, partner)` | RiskAdmin | Accepts a `Partner` at once, or cancels its pending removal. | `PartnerAdded` |
-| `operations::remove_partner(protocol, witness, partner, clock)` | RiskAdmin | Partner stays accepted until `now + blast_partners::blast_partners::delay_ms()` (seven days). | `PartnerRemoved` |
+| `operations::add_partner(protocol, witness, partner)` | FeeAdmin | Accepts a `Partner` at once, or cancels its pending removal. | `PartnerAdded` |
+| `operations::remove_partner(protocol, witness, partner, clock)` | FeeAdmin | Partner stays accepted until `now + blast_partners::blast_partners::delay_ms()` (seven days). | `PartnerRemoved` |
 
-Upgrades: at deployment, the holder of the adapter's Publisher and UpgradeCap
-calls `blast_boosts_aftermath::package_admin::wrap` to seal them into the shared
-`PackageAdmin`. A Blast admin signs in with the UpgradeAdmin role, then calls
-`blast_boosts_aftermath::package_admin::authorize_upgrade` for one digest. Its
-`UpgradeTicket` feeds the native upgrade command, whose `UpgradeReceipt` feeds
-`blast_boosts_aftermath::package_admin::commit_upgrade` in the same transaction.
-Commit needs no second witness: the receipt binds the authorized upgrade to the
-same cap. Neither operation checks or changes `Protocol`, so repair remains
-possible during a version mismatch.
+Each vault proposal has a separate 48-hour notice. Replacement restarts the clock.
+The shared CancelAdmin can veto even a ready proposal. Anyone can apply the
+scheduled value when ready. Current limits and lifecycle rules still apply.
 
-In a follow-up transaction a Blast UpgradeAdmin calls the new package's
-`blast_boosts_aftermath::package_admin::activate_upgrade` with the shared
-`Protocol` and a fresh witness. It accepts only the running code's compiled
-generation equal to the active generation plus one. A wrong build cannot
-advance it; the previous generation remains usable. Successful activation emits
-`blast_admin::blast_admin_events::OperationalVersionAdvanced` and rejects older
-operational generations on ordinary paths. The native upgrade count may exceed
-the active generation after a failed attempt; they are separate values.
+At publication the adapter issues a typed publication proof. The publisher
+wraps it with its native upgrade cap through `blast_admin::package_admin::wrap`.
+Issuance and mints start paused. The adapter’s `blast_boosts_aftermath::package_admin::unpause`
+requires guarded upgrade and treasury delays. Exits and risk reduction stay available during a pause.
 
-There is no policy-narrowing path. A Blast UpgradeAdmin may permanently destroy
-the cap through `blast_boosts_aftermath::package_admin::make_immutable`, but only
-from code matching the active generation. This proves a version match, not the
-absence of other bugs or that this is the latest installed package. Historical
-repair-authorization paths still require the live ACL role; changing the active
-generation does not revoke that role. The core package is immutable.
+The adapter-scoped upgrade administrator schedules the exact digest, waits the applied
+notice (initially 48 hours), then calls `blast_admin::package_admin::authorize_upgrade`.
+Commit the native receipt with `blast_admin::package_admin::commit_upgrade_and_advance`.
+Call `blast_boosts_aftermath::package_admin::activate_upgrade` on the installed successor
+in a second transaction. The serving generation advances only by one and emits
+`blast_boosts_aftermath::blast_boosts_aftermath::GenerationActivated`. A failed activation
+leaves the previous generation available. Immutability also requires notice and a call
+from the serving generation. The core remains immutable.
 
 ### Economics
 
@@ -752,7 +745,7 @@ account.
 - Reserve fee: stays in the venue account as maintenance reserve. It protects
   holders and is never paid to anyone during normal operation.
 - Admin fee: kept as native `admin_cash` in the Vault, never sent to the
-  venue. Only RiskAdmin withdraws it. With a partner code, up to 80% of each
+  venue. TreasuryAdmin pays it to the shared treasury. With a partner code, up to 80% of each
   operation's admin fee goes to the partner, rounded down; Blast keeps the
   dust.
 - Rounding: fees round up; the admin share rounds down, so the reserve gets
@@ -903,7 +896,7 @@ events and dry runs.
 | Locked seed | Vault `locked_shares`; `VaultInitialized.locked_shares`. |
 | Admin cash, holder cash after shutdown, protected cash | Vault `admin_cash`, `terminal_cash`, `protected_cash`. |
 | Last accepted venue state | Vault `venue_account.checkpoint` (`checkpoint::Checkpoint`). |
-| Is a partner accepted | `Protocol` dynamic field `PartnerKey(partner_id)` holding `accepted_until_ms`. |
+| Is a partner accepted | The entry for the partner ID in the acceptance table of the embedded `partner_list::PartnerList`. |
 | Coin name, symbol, decimals | Coin Registry `Currency<BlastBoost<Product>>` (9 decimals). |
 | Needs rebalance | dev-inspect `operations::needs_rebalance`. |
 | Exact quote | dry-run the mint or redeem PTB with `minimum_shares` or `minimum_collateral` set to 0 and read `Minted.shares` or `Redeemed.net`. |
@@ -965,8 +958,7 @@ Codes repeat across packages. Decode by the aborting module: modules
 `observation` belong to `blast_boosts_core`; `operations`, `vault`, `orders`,
 `checkpoint`, `snapshot`, `venue_account`, `blast_boosts_aftermath`,
 `package_admin` belong to `blast_boosts_aftermath`. A call through an
-outdated adapter package aborts in the `operational_version` module of the
-`blast_admin` package with code 12.
+stale serving generation aborts in the adapter marker module with code 0.
 
 #### Adapter (`blast_boosts_aftermath`)
 
@@ -1058,7 +1050,7 @@ outdated adapter package aborts in the `operational_version` module of the
   admitted forced reduction; other drift may require ShutdownAdmin to shut
   the Boost down. Market-wide margin changes are accepted automatically.
 - Decoding an abort by code alone. Core and adapter codes overlap.
-- Calling an old adapter generation after activation (blast_admin code 12). Types
+- Calling an old adapter generation after activation (adapter marker code 0). Types
   keep their original package IDs; calls must target the current package.
 - Treating the tag name as the policy. `NVDA_BULL_2X` is a label; read `side`
   and `target_leverage_bps` from the Vault.
@@ -1071,11 +1063,11 @@ outdated adapter package aborts in the `operational_version` module of the
 ### Q&A
 
 **How do I mint a Boost?** Split a collateral coin and call `operations::mint`
-with the Vault, `Protocol`, the five bound Aftermath objects, the coin, a
+with the Vault, `Protocol`, adapter `PackageVersion`, the five bound Aftermath objects, the coin, a
 `minimum_shares` floor, an inclusive `deadline_ms`, and the `Clock`. Transfer
 the returned coin and re-share the returned clearing house after its final
 use. With a partner code call
-`operations::mint_with_partner` and put the `Partner` after `Protocol`.
+`operations::mint_with_partner` and put the `Partner` after the adapter’s `PackageVersion`.
 
 **How many shares will I get?** `floor(S * contribution / N)`, where
 `contribution` is your deposit minus the mint fee, reduced by any execution

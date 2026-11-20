@@ -115,6 +115,7 @@ public fun initialize<Product, Collateral>(
 public fun mint<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
+    version: &PackageVersion<BLAST_BOOSTS_AFTERMATH>,
     account: &mut Account<Collateral>,
     registry: &Registry,
     mut clearing_house: ClearingHouse<Collateral>,
@@ -127,6 +128,7 @@ public fun mint<Product, Collateral>(
     ctx: &mut TxContext,
 ): (Coin<BlastBoost<Product>>, ClearingHouse<Collateral>) {
     protocol.assert_current();
+    version.assert_not_paused(marker::deposits!());
 
     vault.state().assert_active();
     let deposit = cash.value();
@@ -333,13 +335,13 @@ public fun redeem<Product, Collateral>(
 /// partner whose removal is pending cancels the removal.
 public fun add_partner(
     protocol: &mut Protocol,
-    _: &AdminWitness<RiskAdmin>,
+    _: &AdminWitness<FeeAdmin>,
     partner: &Partner,
 ) {
     protocol.assert_current();
 
     let partner_id = object::id(partner);
-    protocol.add_partner(partner_id);
+    protocol.partners_mut().add(partner);
 
     events::partner_added(partner_id);
 }
@@ -349,16 +351,15 @@ public fun add_partner(
 /// paid, for `blast_partners::delay_ms()`.
 public fun remove_partner(
     protocol: &mut Protocol,
-    _: &AdminWitness<RiskAdmin>,
+    _: &AdminWitness<FeeAdmin>,
     partner: &Partner,
     clock: &Clock,
 ) {
     protocol.assert_current();
 
     let partner_id = object::id(partner);
-    let now_at_ms = clock.timestamp_ms();
-    let acceptance_ends_at_ms = now_at_ms + partners::delay_ms();
-    protocol.remove_partner(partner_id, now_at_ms, acceptance_ends_at_ms);
+    protocol.partners_mut().remove(partner_id, clock);
+    let acceptance_ends_at_ms = protocol.partners().acceptance_ends_at_ms(partner_id);
 
     events::partner_removed(partner_id, acceptance_ends_at_ms);
 }
@@ -369,6 +370,7 @@ public fun remove_partner(
 public fun mint_with_partner<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
+    version: &PackageVersion<BLAST_BOOSTS_AFTERMATH>,
     partner: &Partner,
     account: &mut Account<Collateral>,
     registry: &Registry,
@@ -381,11 +383,12 @@ public fun mint_with_partner<Product, Collateral>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Coin<BlastBoost<Product>>, ClearingHouse<Collateral>) {
-    protocol.assert_partner(object::id(partner), clock.timestamp_ms());
+    protocol.partners().assert_accepted(object::id(partner), clock);
     let admin_cash_before = vault.admin_cash_balance<_, Collateral>();
 
     let (shares, clearing_house) = vault.mint(
         protocol,
+        version,
         account,
         registry,
         clearing_house,
@@ -420,7 +423,7 @@ public fun redeem_with_partner<Product, Collateral>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Coin<Collateral>, ClearingHouse<Collateral>) {
-    protocol.assert_partner(object::id(partner), clock.timestamp_ms());
+    protocol.partners().assert_accepted(object::id(partner), clock);
     let admin_cash_before = vault.admin_cash_balance<_, Collateral>();
 
     let (cash, clearing_house) = vault.redeem(
@@ -484,22 +487,19 @@ public fun needs_rebalance<Product, Collateral>(
 
 /// Updates the order cap after checking the live bound market's prices and lot.
 /// Risk administration remains available without healthy margin or positive NAV.
-public fun set_max_order_notional<Product, Collateral>(
+public fun apply_max_order_notional<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
-    witness: &AdminWitness<RiskAdmin>,
     account: &Account<Collateral>,
     registry: &Registry,
     clearing_house: &ClearingHouse<Collateral>,
     base_oracle: &PriceFeedStorage,
     collateral_oracle: &PriceFeedStorage,
-    max_order_notional: u64,
     clock: &Clock,
 ) {
     protocol.assert_current();
 
     let binding = vault.venue().binding();
-    vault.state().assert_max_order_notional_update(max_order_notional);
     let (base_price, collateral_price, lot_size) = binding.capture_order_capacity(
         account,
         registry,
@@ -509,14 +509,12 @@ public fun set_max_order_notional<Product, Collateral>(
         clock,
     );
 
-    vault.set_max_order_notional(
+    vault.apply_order_cap(
         protocol,
-        witness,
-        max_order_notional,
+        clock,
         base_price,
         collateral_price,
         lot_size,
-        clock.timestamp_ms(),
     );
 }
 
@@ -1996,7 +1994,9 @@ public fun complete_finalization_for_testing<Product, Collateral>(
 
 use authority_cap::authority::{ADMIN, AuthorityCap};
 
-use blast_admin::blast_acl::AdminWitness;
+use blast_core::blast_domain::FeeAdmin;
+
+use blast_admin::{blast_acl::AdminWitness, package_version::PackageVersion};
 
 use blast_boosts_aftermath::{
     blast_boost::BlastBoost,
@@ -2005,7 +2005,7 @@ use blast_boosts_aftermath::{
     ifixed_math,
     events,
     orders,
-    blast_boosts_aftermath::Protocol,
+    blast_boosts_aftermath::{Self as marker, BLAST_BOOSTS_AFTERMATH, Protocol},
     snapshot::{Self, CapturedSnapshot, CashLiquidity},
     vault::{Vault, VaultIssuance},
     venue_account::{Self, Binding},
@@ -2049,7 +2049,7 @@ use blast_boosts_core::{
     state::{ActivePosition, Issuance, MintPlan, ProfitRealizationPlan, RebalancePlan, RedemptionPlan},
 };
 
-use blast_partners::blast_partners::{Self as partners, Partner};
+use blast_partners::blast_partners::Partner;
 
 use ifixed::ifixed;
 

@@ -43,19 +43,19 @@ deps = { Sui = "Sui" }
 [pinned.mainnet.blast_boosts_aftermath]
 source = { local = "../aftermath_adapter" }
 use_environment = "mainnet"
-manifest_digest = "6B9FDC94DC8A6AAACF7D42FC225E2138B300E30449C91D67DB557568D609A8E4"
-deps = { authority_cap = "authority_cap", blast_admin = "blast_admin", blast_boosts_core = "blast_boosts_core", blast_partners = "blast_partners", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", perpetuals = "perpetuals", position = "position", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "C8D00B8C30E15B09E3169C7D00C69BDDE41C19CDF873D08311EA50FF31C9A4B5"
+deps = { authority_cap = "authority_cap", blast_admin = "blast_admin", blast_boosts_core = "blast_boosts_core", blast_core = "blast_core", blast_partners = "blast_partners", ifixed = "ifixed", oracle_aggregator = "oracle_aggregator", perpetuals = "perpetuals", position = "position", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.blast_boosts_composition_tests]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "FC8F4B25B91AABDC8D9FC7965B0D426818DBC4BF37F5C33B94084DEDCC2E66EA"
-deps = { blast_admin = "blast_admin", blast_boosts_aftermath = "blast_boosts_aftermath", blast_boosts_products = "blast_boosts_products", blast_fun = "blast_fun", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "15C36E88DB68DA499E4553F1094824B7FF08552B839C8D864DCDD3B24687F43B"
+deps = { blast_admin = "blast_admin", blast_boosts_aftermath = "blast_boosts_aftermath", blast_boosts_products = "blast_boosts_products", blast_core = "blast_core", blast_fun = "blast_fun", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.blast_boosts_core]
 source = { local = "../core" }
 use_environment = "mainnet"
-manifest_digest = "1D81A242A868996BDA2D034470EFF798AACC5958CF9958C94BAAACC9C2C92DC8"
+manifest_digest = "521A12BE3FE938279BEF91AA7B68767C2E8592BBF74C8FB5F2925290712D46C9"
 deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.blast_boosts_products]
@@ -64,16 +64,28 @@ use_environment = "mainnet"
 manifest_digest = "294D98BBBEFA7E526C52FD7F30B5691CD30B86738DDC489AC065D612D0E5F9EF"
 deps = { Sui = "Sui" }
 
+[pinned.mainnet.blast_core]
+source = { local = "../../../launch/core" }
+use_environment = "mainnet"
+manifest_digest = "54CB30832867631BB9143E071CF7A1D6D18017C70ECDCF43D1B9D37B9E945053"
+deps = { blast_admin = "blast_admin", blast_fun_vesting = "blast_fun_vesting", blast_partners = "blast_partners", std = "MoveStdlib", sui = "Sui" }
+
 [pinned.mainnet.blast_fun]
 source = { local = "../../../launch/launchpad" }
 use_environment = "mainnet"
-manifest_digest = "E2577746AFF27E65313264EBF8DA126BE85E0CA5B00BD503983E8F7DE9806C5A"
-deps = { blast_admin = "blast_admin", blast_partners = "blast_partners", std = "MoveStdlib", sui = "Sui" }
+manifest_digest = "6223027AE5CBD74806107F901615DD7B2EBFDE4110B7E46B819712FC54B7F80B"
+deps = { blast_admin = "blast_admin", blast_core = "blast_core", blast_partners = "blast_partners", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.mainnet.blast_fun_vesting]
+source = { local = "../../../utilities/vesting" }
+use_environment = "mainnet"
+manifest_digest = "E41BBD67BE8940D26C79D78B028477EF5B33BA217A1282C78ACB344CF8A5ECF6"
+deps = { std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.blast_partners]
 source = { local = "../../../launch/partners" }
 use_environment = "mainnet"
-manifest_digest = "2EE0BE6CC23D1718E36913BC8AFF07AB623F8E972B9E6253C5BE9AFEE9962448"
+manifest_digest = "6314E4C05FDEA489F3DBA810029C66D1C6561E5DE4962FE77001F481127140E7"
 deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }
 
 [pinned.mainnet.ifixed]

@@ -82,8 +82,7 @@ fun risk_admin_updates_live_fees_with_a_completed_event_and_no_asset_movement() 
 
     fixture.next_tx!(ISSUER, |fixture| {
         let mut vault = fixture.take_vault<Sui2x>();
-        let witness = risk_admin();
-        vault.set_fees(&fixture.protocol, &witness, 0, 0, 0);
+        vault.change_fees(&fixture.protocol, 0, 0, 0, fixture.ctx!());
         let event = events::collect_one<events::FeesUpdated<Sui2x>>(0);
         let (id, old_mint, old_redeem, old_admin, mint, redeem, admin) = event.fees_updated_fields();
         assert_eq!(id, vault.id());
@@ -103,8 +102,7 @@ fun risk_admin_updates_the_nav_cap_with_a_completed_event() {
 
     fixture.next_tx!(ISSUER, |fixture| {
         let mut vault = fixture.take_vault<Sui2x>();
-        let witness = risk_admin();
-        vault.set_nav_cap(&fixture.protocol, &witness, 2_000_000);
+        vault.change_nav_cap(&fixture.protocol, 2_000_000, fixture.ctx!());
         let (id, previous, current) =
             events::collect_one<events::NavCapUpdated<Sui2x>>(0).nav_cap_updated_fields();
         assert_eq!(id, vault.id());
@@ -118,8 +116,8 @@ fun risk_admin_updates_the_nav_cap_with_a_completed_event() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_admin::errors::EOperationalVersionMismatch,
-    location = blast_admin::operational_version,
+    abort_code = blast_boosts_aftermath::blast_boosts_aftermath::EGenerationMismatch,
+    location = blast_boosts_aftermath::blast_boosts_aftermath,
 )]
 fun stale_adapter_version_precedes_fee_validation() {
     let mut fixture = start();
@@ -127,10 +125,9 @@ fun stale_adapter_version_precedes_fee_validation() {
 
     fixture.next_tx!(ISSUER, |fixture| {
         let mut vault = fixture.take_vault<Sui2x>();
-        let admin_witness = risk_admin();
         fixture.protocol.set_version_for_testing(3);
 
-        vault.set_fees(&fixture.protocol, &admin_witness, 10_000, 10_000, 10_001);
+        vault.change_fees(&fixture.protocol, 10_000, 10_000, 10_001, fixture.ctx!());
 
         fixture.return_vault(vault);
     });
@@ -151,7 +148,7 @@ fun fees_cannot_change_once_shutdown_has_begun() {
         let mut vault = fixture.take_vault<Sui2x>();
         fixture.begin_shutdown_now(&mut vault);
 
-        vault.set_fees(&fixture.protocol, &risk_admin(), 0, 0, 0);
+        vault.change_fees(&fixture.protocol, 0, 0, 0, fixture.ctx!());
 
         fixture.return_vault(vault);
     });
@@ -161,8 +158,8 @@ fun fees_cannot_change_once_shutdown_has_begun() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_admin::errors::EOperationalVersionMismatch,
-    location = blast_admin::operational_version,
+    abort_code = blast_boosts_aftermath::blast_boosts_aftermath::EGenerationMismatch,
+    location = blast_boosts_aftermath::blast_boosts_aftermath,
 )]
 fun stale_adapter_version_precedes_nav_cap_validation() {
     let mut fixture = start();
@@ -170,10 +167,9 @@ fun stale_adapter_version_precedes_nav_cap_validation() {
 
     fixture.next_tx!(ISSUER, |fixture| {
         let mut vault = fixture.take_vault<Sui2x>();
-        let admin_witness = risk_admin();
         fixture.protocol.set_version_for_testing(3);
 
-        vault.set_nav_cap(&fixture.protocol, &admin_witness, 0);
+        vault.change_nav_cap(&fixture.protocol, 0, fixture.ctx!());
 
         fixture.return_vault(vault);
     });
@@ -192,9 +188,8 @@ fun the_risk_admin_cannot_repeat_the_current_nav_cap() {
 
     fixture.next_tx!(ISSUER, |fixture| {
         let mut vault = fixture.take_vault<Sui2x>();
-        let admin_witness = risk_admin();
 
-        vault.set_nav_cap(&fixture.protocol, &admin_witness, NAV_CAP);
+        vault.change_nav_cap(&fixture.protocol, NAV_CAP, fixture.ctx!());
 
         fixture.return_vault(vault);
     });
@@ -255,8 +250,8 @@ fun a_metadata_update_that_repeats_every_current_value_is_refused() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_admin::errors::EOperationalVersionMismatch,
-    location = blast_admin::operational_version,
+    abort_code = blast_boosts_aftermath::blast_boosts_aftermath::EGenerationMismatch,
+    location = blast_boosts_aftermath::blast_boosts_aftermath,
 )]
 fun stale_adapter_version_precedes_metadata_validation() {
     let mut fixture = start();
@@ -280,8 +275,8 @@ fun stale_adapter_version_precedes_metadata_validation() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_admin::errors::EOperationalVersionMismatch,
-    location = blast_admin::operational_version,
+    abort_code = blast_boosts_aftermath::blast_boosts_aftermath::EGenerationMismatch,
+    location = blast_boosts_aftermath::blast_boosts_aftermath,
 )]
 fun stale_adapter_version_precedes_admin_fee_validation() {
     let mut fixture = start();
@@ -289,10 +284,9 @@ fun stale_adapter_version_precedes_admin_fee_validation() {
 
     fixture.next_tx!(ISSUER, |fixture| {
         let mut vault = fixture.take_vault<Sui2x>();
-        let admin_witness = risk_admin();
         fixture.protocol.set_version_for_testing(3);
 
-        destroy(vault.withdraw_admin_fees(&fixture.protocol, &admin_witness, 1, fixture.ctx!()));
+        destroy(vault.take_admin_fees_for_testing(&fixture.protocol, &blast_acl::witness_for_testing(), 1, fixture.ctx!()));
 
         fixture.return_vault(vault);
     });
@@ -308,10 +302,9 @@ fun admin_fee_withdrawal_one_atom_above_earnings_is_rejected() {
 
     fixture.next_tx!(ISSUER, |fixture| {
         let mut vault = fixture.take_vault<Sui2x>();
-        let admin_witness = risk_admin();
         vault.retain_admin_cash(sui::balance::create_for_testing<SUI>(25));
 
-        destroy(vault.withdraw_admin_fees(&fixture.protocol, &admin_witness, 26, fixture.ctx!()));
+        destroy(vault.take_admin_fees_for_testing(&fixture.protocol, &blast_acl::witness_for_testing(), 26, fixture.ctx!()));
 
         fixture.return_vault(vault);
     });
@@ -404,7 +397,7 @@ fun the_risk_admin_updates_max_order_notional_and_emits_the_change() {
         let vault_id = vault.id();
         let admin_witness = risk_admin();
 
-        vault.set_test_order_cap(&fixture.protocol, &admin_witness, MAX_ORDER_NOTIONAL * 4);
+        vault.set_test_order_cap(&fixture.protocol, &admin_witness, MAX_ORDER_NOTIONAL * 4, fixture.ctx!());
 
         assert_eq!(vault.max_order_notional_for_testing(), MAX_ORDER_NOTIONAL * 4);
         let updated = events::collect_one<events::MaxOrderNotionalUpdated<Sui2x>>(0);
@@ -428,7 +421,7 @@ fun max_order_notional_can_change_while_unwinding() {
         let mut vault = fixture.take_vault<Sui2x>();
         fixture.begin_shutdown_now(&mut vault);
 
-        vault.set_test_order_cap(&fixture.protocol, &risk_admin(), MAX_ORDER_NOTIONAL * 4);
+        vault.set_test_order_cap(&fixture.protocol, &risk_admin(), MAX_ORDER_NOTIONAL * 4, fixture.ctx!());
 
         assert!(vault.is_unwinding_for_testing());
         assert_eq!(vault.max_order_notional_for_testing(), MAX_ORDER_NOTIONAL * 4);
@@ -568,7 +561,7 @@ fun the_risk_admin_cannot_repeat_the_current_max_order_notional() {
         let mut vault = fixture.take_vault<Sui2x>();
         let admin_witness = risk_admin();
 
-        vault.set_test_order_cap(&fixture.protocol, &admin_witness, MAX_ORDER_NOTIONAL);
+        vault.set_test_order_cap(&fixture.protocol, &admin_witness, MAX_ORDER_NOTIONAL, fixture.ctx!());
 
         fixture.return_vault(vault);
     });
@@ -589,7 +582,7 @@ fun the_risk_admin_cannot_zero_the_max_order_notional() {
         let mut vault = fixture.take_vault<Sui2x>();
         let admin_witness = risk_admin();
 
-        vault.set_test_order_cap(&fixture.protocol, &admin_witness, 0);
+        vault.set_test_order_cap(&fixture.protocol, &admin_witness, 0, fixture.ctx!());
 
         fixture.return_vault(vault);
     });
@@ -599,8 +592,8 @@ fun the_risk_admin_cannot_zero_the_max_order_notional() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_admin::errors::EOperationalVersionMismatch,
-    location = blast_admin::operational_version,
+    abort_code = blast_boosts_aftermath::blast_boosts_aftermath::EGenerationMismatch,
+    location = blast_boosts_aftermath::blast_boosts_aftermath,
 )]
 fun stale_adapter_version_precedes_max_order_notional_validation() {
     let mut fixture = start();
@@ -611,7 +604,7 @@ fun stale_adapter_version_precedes_max_order_notional_validation() {
         let admin_witness = risk_admin();
         fixture.protocol.set_version_for_testing(3);
 
-        vault.set_test_order_cap(&fixture.protocol, &admin_witness, 0);
+        vault.set_test_order_cap(&fixture.protocol, &admin_witness, 0, fixture.ctx!());
 
         fixture.return_vault(vault);
     });
@@ -645,8 +638,8 @@ fun shutdown_admin_moves_an_active_vault_to_unwinding() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_admin::errors::EOperationalVersionMismatch,
-    location = blast_admin::operational_version,
+    abort_code = blast_boosts_aftermath::blast_boosts_aftermath::EGenerationMismatch,
+    location = blast_boosts_aftermath::blast_boosts_aftermath,
 )]
 fun stale_version_precedes_an_already_unwinding_vault() {
     let mut fixture = start();
@@ -709,8 +702,8 @@ fun primitive_product_witness_is_rejected() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_admin::errors::EOperationalVersionMismatch,
-    location = blast_admin::operational_version,
+    abort_code = blast_boosts_aftermath::blast_boosts_aftermath::EGenerationMismatch,
+    location = blast_boosts_aftermath::blast_boosts_aftermath,
 )]
 fun stale_adapter_version_precedes_primitive_witness_rejection() {
     let mut fixture = start();
@@ -734,8 +727,8 @@ fun primitive_witness_precedes_core_issuance_validation() {
 
 #[test]
 #[expected_failure(
-    abort_code = blast_admin::errors::EOperationalVersionMismatch,
-    location = blast_admin::operational_version,
+    abort_code = blast_boosts_aftermath::blast_boosts_aftermath::EGenerationMismatch,
+    location = blast_boosts_aftermath::blast_boosts_aftermath,
 )]
 /// Issuance is a protected mutation, so it stops serving the moment a governed
 /// upgrade advances the adapter generation past this bytecode.
@@ -748,15 +741,112 @@ fun vault_issuance_stops_after_the_adapter_generation_advances() {
     fixture.end();
 }
 
+#[test]
+#[expected_failure(abort_code = blast_admin::errors::EPaused, location = blast_admin::package_version)]
+fun a_deposit_pause_stops_issuance_before_registering_the_currency() {
+    let mut fixture = start();
+    let mut version = protocol::active_version_for_testing(fixture.ctx!());
+    blast_admin::package_admin::pause(&mut version, &blast_acl::witness_for_testing(), protocol::deposits!());
+    destroy(vault::issue<Sui2x, SUI>(
+        &fixture.protocol, &version, &vault_issuer(), &mut fixture.registry,
+        standard_vault_policy(), MAX_ORDER_NOTIONAL, NAV_CAP, b"SUI2X".to_string(),
+        b"SUI 2x".to_string(), b"".to_string(), b"".to_string(), fixture.ctx!(),
+    ));
+    destroy(version);
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = blast_admin::errors::ENotReady, location = blast_admin::delayed)]
+fun replacing_a_fee_proposal_restarts_the_full_notice() {
+    let mut fixture = start();
+    fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
+    fixture.next_tx!(ISSUER, |fixture| {
+        let mut vault = fixture.take_vault<Sui2x>();
+        let mut clock = sui::clock::create_for_testing(fixture.ctx!());
+        let admin = blast_acl::witness_for_testing();
+        vault.schedule_fees(&fixture.protocol, &admin, 0, 0, 0, &clock);
+        clock.set_for_testing(1);
+        vault.schedule_fees(&fixture.protocol, &admin, 1, 1, 0, &clock);
+        clock.set_for_testing(172_800_000);
+        vault.apply_fees(&fixture.protocol, &clock);
+        clock.destroy_for_testing();
+        fixture.return_vault(vault);
+    });
+    fixture.end();
+}
+
+#[test]
+#[expected_failure(abort_code = blast_admin::errors::ENoPending, location = blast_admin::delayed_action)]
+fun a_ready_fee_change_can_be_vetoed_without_cancelling_the_nav_change() {
+    let mut fixture = start();
+    fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
+    fixture.next_tx!(ISSUER, |fixture| {
+        let mut vault = fixture.take_vault<Sui2x>();
+        let mut clock = sui::clock::create_for_testing(fixture.ctx!());
+        vault.schedule_fees(&fixture.protocol, &blast_acl::witness_for_testing(), 0, 0, 0, &clock);
+        vault.schedule_nav_cap(&fixture.protocol, &risk_admin(), 2_000_000, &clock);
+        clock.set_for_testing(172_800_000);
+        vault.cancel_fees(&fixture.protocol, &blast_acl::witness_for_testing());
+        vault.apply_nav_cap(&fixture.protocol, &clock);
+        vault.apply_fees(&fixture.protocol, &clock);
+        clock.destroy_for_testing();
+        fixture.return_vault(vault);
+    });
+    fixture.end();
+}
+
+#[test]
+fun earned_fees_arrive_at_the_shared_treasury_destination() {
+    let mut fixture = start();
+    fixture.issue_and_share<Sui2x>(b"SUI2X".to_string());
+    fixture.next_tx!(ISSUER, |fixture| {
+        let mut vault = fixture.take_vault<Sui2x>();
+        let treasury = blast_core::blast_treasury::new_for_testing(@0xBEEF, fixture.ctx!());
+        vault.retain_admin_cash(sui::balance::create_for_testing<SUI>(25));
+        vault.withdraw_admin_fees(&fixture.protocol, &blast_acl::witness_for_testing(), &treasury, 15, fixture.ctx!());
+        assert!(vault.admin_cash_balance() == 10);
+        destroy(treasury);
+        fixture.return_vault(vault);
+    });
+    fixture.next_tx!(@0xBEEF, |fixture| {
+        let earned = fixture.scenario.take_from_sender<sui::coin::Coin<SUI>>();
+        assert!(earned.value() == 15);
+        sui::coin::burn_for_testing(earned);
+    });
+    fixture.end();
+}
+
 // === Test Helpers ===
 
+public fun change_fees<P, C>(vault: &mut Vault<P, C>, protocol: &Protocol, mint: u64, redeem: u64, admin: u64, ctx: &mut TxContext) {
+    let mut clock = sui::clock::create_for_testing(ctx);
+    vault.schedule_fees(protocol, &blast_acl::witness_for_testing(), mint, redeem, admin, &clock);
+    clock.set_for_testing(172_800_000);
+    vault.apply_fees(protocol, &clock);
+    clock.destroy_for_testing();
+}
+
+fun change_nav_cap<P, C>(vault: &mut Vault<P, C>, protocol: &Protocol, value: u64, ctx: &mut TxContext) {
+    let mut clock = sui::clock::create_for_testing(ctx);
+    vault.schedule_nav_cap(protocol, &risk_admin(), value, &clock);
+    clock.set_for_testing(172_800_000);
+    vault.apply_nav_cap(protocol, &clock);
+    clock.destroy_for_testing();
+}
+
+
 fun set_test_order_cap<Product>(
-    self: &mut Vault<Product, SUI>, protocol: &Protocol, witness: &AdminWitness<RiskAdmin>, cap: u64,
+    self: &mut Vault<Product, SUI>, protocol: &Protocol, witness: &AdminWitness<RiskAdmin>, cap: u64, ctx: &mut TxContext,
 ) {
-    self.set_max_order_notional(
-        protocol, witness, cap, observation::new_price(PRICE, 0, REFERENCE_AT_MS),
-        observation::new_price(PRICE, 0, REFERENCE_AT_MS), LOT_SIZE, REFERENCE_AT_MS,
+    let mut clock = sui::clock::create_for_testing(ctx);
+    self.schedule_max_order_notional(protocol, witness, cap, &clock);
+    clock.set_for_testing(172_800_000);
+    self.apply_order_cap(
+        protocol, &clock, observation::new_price(PRICE, 0, clock.timestamp_ms()),
+        observation::new_price(PRICE, 0, clock.timestamp_ms()), LOT_SIZE,
     );
+    clock.destroy_for_testing();
 }
 
 
@@ -923,8 +1013,10 @@ fun issue_with_order_cap<Product>(
     max_order_notional: u64,
 ): VaultIssuance<Product, SUI> {
     let Fixture { scenario, registry, protocol } = self;
-    vault::issue<Product, SUI>(
+    let version = protocol::active_version_for_testing(scenario.ctx());
+    let issuance = vault::issue<Product, SUI>(
         protocol,
+        &version,
         &vault_issuer(),
         registry,
         vault_policy,
@@ -935,7 +1027,9 @@ fun issue_with_order_cap<Product>(
         b"Blast leverage coin".to_string(),
         b"".to_string(),
         scenario.ctx(),
-    )
+    );
+    destroy(version);
+    issuance
 }
 
 /// A bound account with a flat, order-free checkpoint and a minted admin cap; no test here reads the venue.
@@ -1020,3 +1114,6 @@ use sui::{
 use fun set_test_order_cap as Vault.set_test_order_cap;
 
 use fun operations::complete_finalization_for_testing as Vault.complete_finalization_for_testing;
+
+use fun change_fees as Vault.change_fees;
+use fun change_nav_cap as Vault.change_nav_cap;

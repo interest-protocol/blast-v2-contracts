@@ -13,11 +13,24 @@ module blast_boosts_aftermath::vault;
 
 // === Constants ===
 
-/// Converts six-decimal seed NAV atoms to nine-decimal share atoms:
+/// Minimum notice for a change to an issued vault’s economic terms.
+const POLICY_NOTICE_MS: u64 = 48 * 60 * 60 * 1_000;
+
 /// `10^(share_decimals - collateral_decimals)` for the two precisions this adapter fixes.
 const SEED_SHARE_SCALE: u64 = 1_000;
 
 // === Public Types ===
+
+/// Independent notices for the three mutable vault policies.
+public struct FeesKey() has copy, drop, store;
+public struct NavCapKey() has copy, drop, store;
+public struct OrderCapKey() has copy, drop, store;
+
+public struct Fees has copy, drop, store {
+    mint_bps: u64,
+    redeem_bps: u64,
+    admin_share_bps: u64,
+}
 
 /// One issued Boost currency before its venue account exists.
 ///
@@ -40,6 +53,9 @@ public struct VaultIssuance<phantom Product, phantom Collateral> {
 public struct Vault<phantom Product, phantom Collateral> has key {
     id: UID,
     state: State<Product>,
+    fees: DelayedAction<FeesKey, Fees>,
+    nav_cap: DelayedAction<NavCapKey, u64>,
+    order_cap: DelayedAction<OrderCapKey, u64>,
     /// The bound account's identity, last accepted checkpoint and admin authority.
     venue_account: VenueAccount,
     /// The seed shares minted to the burn address at activation; never redeemable.
@@ -73,6 +89,7 @@ public struct MetadataKey<phantom Product>() has copy, drop, store;
 /// package does not already own.
 public fun issue<Product, Collateral>(
     protocol: &Protocol,
+    version: &PackageVersion<BLAST_BOOSTS_AFTERMATH>,
     admin_witness: &AdminWitness<VaultIssuer>,
     registry: &mut CoinRegistry,
     vault_policy: VaultPolicy,
@@ -85,6 +102,7 @@ public fun issue<Product, Collateral>(
     ctx: &mut TxContext,
 ): VaultIssuance<Product, Collateral> {
     protocol.assert_current();
+    version.assert_not_paused(marker::deposits!());
 
     assert!(
         !type_name::with_original_ids<Product>().is_primitive(),
@@ -188,16 +206,36 @@ public fun redeem_shutdown<Product, Collateral>(
 
 /// Updates only future fee collections under the immutable issuance caps.
 /// This local administrative edge requires neither venue objects nor prices.
-public fun set_fees<Product, Collateral>(
+public fun schedule_fees<Product, Collateral>(
     self: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
-    _: &AdminWitness<RiskAdmin>,
+    _: &AdminWitness<FeeAdmin>,
     mint_fee_bps: u64,
     redeem_fee_bps: u64,
     admin_share_bps: u64,
+    clock: &Clock,
 ) {
     protocol.assert_current();
+    self.state.assert_fee_update(mint_fee_bps, redeem_fee_bps, admin_share_bps);
+    self.fees.schedule(Fees { mint_bps: mint_fee_bps, redeem_bps: redeem_fee_bps, admin_share_bps }, clock);
+}
 
+public fun cancel_fees<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>,
+    protocol: &Protocol,
+    _: &AdminWitness<CancelAdmin>,
+) {
+    protocol.assert_current();
+    self.fees.cancel();
+}
+
+public fun apply_fees<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>,
+    protocol: &Protocol,
+    clock: &Clock,
+) {
+    protocol.assert_current();
+    let Fees { mint_bps: mint_fee_bps, redeem_bps: redeem_fee_bps, admin_share_bps } = self.fees.take_action(clock);
     let (previous_mint, previous_redeem, previous_admin) =
         self
         .state
@@ -216,14 +254,34 @@ public fun set_fees<Product, Collateral>(
 
 /// Replaces the NAV cap that bounds post-mint shareholder NAV.
 /// This local administrative edge requires neither venue objects nor prices.
-public fun set_nav_cap<Product, Collateral>(
+public fun schedule_nav_cap<Product, Collateral>(
     self: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
     _: &AdminWitness<RiskAdmin>,
     nav_cap: u64,
+    clock: &Clock,
 ) {
     protocol.assert_current();
+    self.state.assert_nav_cap_update(nav_cap);
+    self.nav_cap.schedule(nav_cap, clock);
+}
 
+public fun cancel_nav_cap<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>,
+    protocol: &Protocol,
+    _: &AdminWitness<CancelAdmin>,
+) {
+    protocol.assert_current();
+    self.nav_cap.cancel();
+}
+
+public fun apply_nav_cap<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>,
+    protocol: &Protocol,
+    clock: &Clock,
+) {
+    protocol.assert_current();
+    let nav_cap = self.nav_cap.take_action(clock);
     let previous = self.state.set_nav_cap(nav_cap);
 
     events::nav_cap_updated<Product>(self.id.to_inner(), previous, nav_cap);
@@ -257,26 +315,39 @@ public fun update_metadata<Product, Collateral>(
     events::metadata_updated<Product>(self.id.to_inner(), name, description, icon_url);
 }
 
-/// Returns only earned local admin collateral, including during venue/oracle outages.
+/// Pays earned collateral to the current shared Blast treasury destination.
 public fun withdraw_admin_fees<Product, Collateral>(
     self: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
-    _: &AdminWitness<RiskAdmin>,
+    witness: &AdminWitness<TreasuryAdmin>,
+    treasury: &Treasury,
     amount: u64,
     ctx: &mut TxContext,
-): Coin<Collateral> {
+) {
+    let earnings = self.take_admin_fees(protocol, witness, amount, ctx);
+    transfer::public_transfer(earnings, treasury.destination());
+}
+
+/// Schedules a new order cap. Execution checks current venue prices and lot size.
+public fun schedule_max_order_notional<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>,
+    protocol: &Protocol,
+    _: &AdminWitness<RiskAdmin>,
+    value: u64,
+    clock: &Clock,
+) {
     protocol.assert_current();
+    self.state.assert_max_order_notional_update(value);
+    self.order_cap.schedule(value, clock);
+}
 
-    assert!(amount > 0, blast_boosts_aftermath::errors::zero_amount!());
-
-    let available = self.admin_cash.value();
-    assert!(amount <= available, blast_boosts_aftermath::errors::insufficient_admin_cash!());
-
-    let output = self.admin_cash.split(amount).into_coin(ctx);
-
-    events::admin_fees_withdrawn<Product>(self.id.to_inner(), amount, available - amount);
-
-    output
+public fun cancel_max_order_notional<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>,
+    protocol: &Protocol,
+    _: &AdminWitness<CancelAdmin>,
+) {
+    protocol.assert_current();
+    self.order_cap.cancel();
 }
 
 // === Package Functions ===
@@ -285,21 +356,19 @@ public fun withdraw_admin_fees<Product, Collateral>(
 ///
 /// The cap uses collateral atoms and does not limit total open exposure.
 /// An exact one-lot reduce-only fill may exceed it; price checks still apply.
-/// The risk administrator may raise or lower the current value without a
-/// cooldown. This transition changes no live position exposure and therefore
+/// Execution uses current venue capacity after the scheduled notice. It changes no exposure and therefore
 /// remains available in every lifecycle state.
-public(package) fun set_max_order_notional<Product, Collateral>(
+public(package) fun apply_order_cap<Product, Collateral>(
     self: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
-    _: &AdminWitness<RiskAdmin>,
-    max_order_notional: u64,
+    clock: &Clock,
     base_oracle: PriceObservation,
     collateral_oracle: PriceObservation,
     lot_size: u64,
-    now_at_ms: u64,
 ) {
     protocol.assert_current();
 
+    let max_order_notional = self.order_cap.take_action(clock);
     let previous = self
         .state
         .set_max_order_notional(
@@ -307,7 +376,7 @@ public(package) fun set_max_order_notional<Product, Collateral>(
             base_oracle,
             collateral_oracle,
             lot_size,
-            now_at_ms,
+            clock.timestamp_ms(),
         );
 
     events::max_order_notional_updated<Product>(self.id.to_inner(), previous, max_order_notional);
@@ -361,8 +430,15 @@ public(package) fun activate<Product, Collateral>(
     let locked_shares = seed_shares(seed_nav);
     transfer::public_transfer(treasury_cap.mint(locked_shares, ctx), @0x0);
 
+    let id = object::new(ctx);
+    let fees = delayed_action::new(FeesKey(), &id, POLICY_NOTICE_MS);
+    let nav_cap = delayed_action::new(NavCapKey(), &id, POLICY_NOTICE_MS);
+    let order_cap = delayed_action::new(OrderCapKey(), &id, POLICY_NOTICE_MS);
     let mut vault = Vault {
-        id: object::new(ctx),
+        id,
+        fees,
+        nav_cap,
+        order_cap,
         state,
         venue_account,
         locked_shares,
@@ -473,6 +549,28 @@ public(package) fun locked_shares<Product, Collateral>(self: &Vault<Product, Col
 
 // === Private Functions ===
 
+/// Returns only earned local admin collateral, including during venue/oracle outages.
+fun take_admin_fees<Product, Collateral>(
+    self: &mut Vault<Product, Collateral>,
+    protocol: &Protocol,
+    _: &AdminWitness<TreasuryAdmin>,
+    amount: u64,
+    ctx: &mut TxContext,
+): Coin<Collateral> {
+    protocol.assert_current();
+
+    assert!(amount > 0, blast_boosts_aftermath::errors::zero_amount!());
+
+    let available = self.admin_cash.value();
+    assert!(amount <= available, blast_boosts_aftermath::errors::insufficient_admin_cash!());
+
+    let output = self.admin_cash.split(amount).into_coin(ctx);
+
+    events::admin_fees_withdrawn<Product>(self.id.to_inner(), amount, available - amount);
+
+    output
+}
+
 /// Six-decimal seed NAV atoms as nine-decimal share atoms; the seed is never dust.
 fun seed_shares(seed_nav: u64): u64 {
     seed_nav
@@ -499,6 +597,14 @@ fun metadata_cap<Product, Collateral>(
 }
 
 // === Test-Only Functions ===
+
+#[test_only]
+public fun take_admin_fees_for_testing<P, C>(
+    self: &mut Vault<P, C>, protocol: &Protocol, witness: &AdminWitness<TreasuryAdmin>,
+    amount: u64, ctx: &mut TxContext,
+): Coin<C> {
+    self.take_admin_fees(protocol, witness, amount, ctx)
+}
 
 #[test_only]
 public fun seed_shares_for_testing(seed_nav: u64): u64 {
@@ -563,13 +669,15 @@ public fun is_unwinding_for_testing<Product, Collateral>(self: &Vault<Product, C
 
 // === Imports ===
 
-use blast_admin::blast_acl::AdminWitness;
+use blast_core::{blast_domain::{CancelAdmin, FeeAdmin, TreasuryAdmin}, blast_treasury::Treasury};
+
+use blast_admin::{blast_acl::AdminWitness, delayed_action::{Self, DelayedAction}, package_version::PackageVersion};
 
 use blast_boosts_aftermath::{
     blast_boost::{Self, BlastBoost},
     constants,
     events,
-    blast_boosts_aftermath::Protocol,
+    blast_boosts_aftermath::{Self as marker, BLAST_BOOSTS_AFTERMATH, Protocol},
     venue_account::VenueAccount,
 };
 

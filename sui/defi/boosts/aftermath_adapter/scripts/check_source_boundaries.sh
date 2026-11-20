@@ -185,28 +185,26 @@ if grep -rnE 'AdapterRoot|AdapterDomain|venue_handoff|struct [A-Za-z0-9_]*AdminC
 fi
 
 # --- Administration roles ---
-# The core declares the four Boosts roles; every adapter witness names one of
-# them. A generic `AdminWitness<Role>` would accept any role and must fail here.
+# Witnesses name a Boosts role, a shared launchpad role or an adapter-scoped
+# package role. A generic `AdminWitness<Role>` would accept any role and must fail here.
 
-if grep -rnE 'struct (VaultIssuer|RiskAdmin|ShutdownAdmin|UpgradeAdmin)\b' "$package_dir/sources"; then
-  fail "Boosts roles are declared once, in blast_boosts_core::blast_boosts_core."
+if grep -rnE 'struct (VaultIssuer|RiskAdmin|ShutdownAdmin|FeeAdmin|TreasuryAdmin|CancelAdmin)\b' "$package_dir/sources"; then
+  fail "Product and launchpad roles must use their canonical defining module."
 fi
-if grep -rnE 'AdminWitness[[:space:]]+as[[:space:]]|[[:space:]]as[[:space:]]+(VaultIssuer|RiskAdmin|ShutdownAdmin|UpgradeAdmin)\b' \
+if grep -rnE 'AdminWitness[[:space:]]+as[[:space:]]|[[:space:]]as[[:space:]]+(VaultIssuer|RiskAdmin|ShutdownAdmin|FeeAdmin|TreasuryAdmin|CancelAdmin)\b' \
   "$package_dir/sources"; then
   fail "Neither AdminWitness nor a Boosts role may be aliased around the role scanner."
 fi
 foreign_admin_witnesses="$(
   find "$package_dir/sources" -type f -name '*.move' -exec sed -E 's://.*$::' {} + \
     | grep -oE 'AdminWitness[[:space:]]*<[^>]*>' \
-    | grep -vxE 'AdminWitness<(VaultIssuer|RiskAdmin|ShutdownAdmin|UpgradeAdmin)>' \
+    | grep -vxE 'AdminWitness<((VaultIssuer|RiskAdmin|ShutdownAdmin|FeeAdmin|TreasuryAdmin|CancelAdmin)>|(UpgradeAdmin|UnpauseAdmin)<BLAST_BOOSTS_AFTERMATH>)' \
     || true
 )"
 [[ -z "$foreign_admin_witnesses" ]] \
   || fail "Every administrator witness must name one concrete Boosts role: $foreign_admin_witnesses"
-upgrade_role_gates="$(grep -c '^    _: &AdminWitness<UpgradeAdmin>,$' \
-  "$package_dir/sources/package_admin.move" || true)"
-[[ "${upgrade_role_gates:-0}" -eq 3 ]] \
-  || fail "Authorization, activation and immutability must require the upgrade-admin role; receipt commit carries its own proof."
+[[ "$(grep -Fc 'AdminWitness<UpgradeAdmin<BLAST_BOOSTS_AFTERMATH>>' "$package_dir/sources/package_admin.move")" -eq 2 ]] \
+  || fail "Activation and immutability require the adapter-scoped upgrade role."
 
 # Policy narrowing would prevent future operational version changes (ADR 0123).
 if grep -nE 'restrict_to_|commit_upgrade_and_advance' <<<"$(production "$package_dir/sources/package_admin.move")"; then
@@ -217,8 +215,8 @@ fi
 
 grep -q '^public struct BLAST_BOOSTS_AFTERMATH() has drop;$' "$package_dir/sources/blast_boosts_aftermath.move" \
   || fail "The package one-time witness must be BLAST_BOOSTS_AFTERMATH."
-grep -q 'sui::package::claim_and_keep(otw, ctx);' "$package_dir/sources/blast_boosts_aftermath.move" \
-  || fail "Adapter initialization must claim and keep its Publisher."
+grep -q 'package_version::new_publication<_, PackageWitness>(otw, deposits!(), ctx).keep(ctx);' "$package_dir/sources/blast_boosts_aftermath.move" \
+  || fail "Adapter initialization must keep the canonical typed Publication."
 if grep -rnE 'BlastBoost(<[^>]*>)? *[({]' "$package_dir/sources"; then
   fail "BlastBoost is a never-constructed currency marker."
 fi

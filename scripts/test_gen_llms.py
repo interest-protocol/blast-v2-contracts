@@ -50,17 +50,15 @@ class SummaryIdentityTests(unittest.TestCase):
 
 
 class FrozenPackageTests(unittest.TestCase):
-    """Boosts (#205) is kept verbatim until it adopts the folded admin."""
-
-    def test_frozen_packages_are_the_out_of_scope_products(self):
-        self.assertEqual(
-            set(gen_llms.FROZEN),
-            {'sui/defi/boosts/core', 'sui/defi/boosts/products', 'sui/defi/boosts/aftermath_adapter'},
-        )
-        self.assertEqual(gen_llms.frozen_guides(), {'boosts.md'})
+    def test_boosts_reference_is_generated_from_local_sources(self):
+        self.assertNotIn('boosts.md', gen_llms.frozen_guides())
+        for path, _ in gen_llms.PACKAGES:
+            if path.startswith('sui/defi/boosts/'):
+                self.assertNotIn(path, gen_llms.FROZEN)
 
     def test_summaries_skip_frozen_packages(self):
         with (
+            patch.object(gen_llms, 'FROZEN', {'sui/defi/boosts/core': 'example'}),
             patch.object(gen_llms, 'PACKAGES', [('sui/defi/boosts/core', 'Frozen'), ('sui/example', 'Example')]),
             patch.object(gen_llms, 'package_name', return_value='example'),
             patch.object(gen_llms.subprocess, 'run') as run,
@@ -83,6 +81,8 @@ class FrozenPackageTests(unittest.TestCase):
         committed = gen_llms.committed_sections(committed_text)
         with (
             patch.object(gen_llms, 'deployment', return_value={'live': False}),
+            patch.object(gen_llms, 'FROZEN', {frozen.path: 'example'}),
+            patch.object(gen_llms, 'GUIDES', [('boosts.md', [frozen.path])]),
             patch.object(gen_llms, 'package_reference', side_effect=AssertionError('frozen package rebuilt')),
         ):
             text = gen_llms.assemble('# header\n', ['boosts.md'], [frozen], {}, {'boosts'}, committed)

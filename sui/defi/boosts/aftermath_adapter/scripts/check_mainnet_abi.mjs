@@ -13,8 +13,6 @@ const ENDPOINT = 'https://graphql.mainnet.sui.io/graphql';
 const CHAIN_IDENTIFIER = '4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S';
 const AFTERMATH_GIT = 'https://github.com/AftermathFinance/move-interfaces.git';
 const AFTERMATH_REV = 'f62e74aa862ef65b8950a70d83aac8cb71c19837';
-const BLAST_CONTRACTS_GIT = 'https://github.com/interest-protocol/blast-v2-contracts.git';
-const BLAST_PRE_FOLD_REV = 'c4b86a9f3b1fcfb0d4a7b4e9a3d07e2fa78901f3';
 const SUI_GIT = 'https://github.com/MystenLabs/sui.git';
 const SUI_REV = '06734f6ff0af45d8632a14a4dc4b100197f6b1a2';
 const STD_ADDRESS = `0x${'0'.repeat(63)}1`;
@@ -161,9 +159,10 @@ const ABI = {
 // The Aftermath interfaces are vendored verbatim from AFTERMATH_GIT at AFTERMATH_REV under
 // interfaces/aftermath (see its README); the module hashes below still gate them against mainnet.
 const DIRECT_DEPENDENCIES = {
-    blast_admin: { git: BLAST_CONTRACTS_GIT, subdir: 'sui/admin', rev: BLAST_PRE_FOLD_REV },
+    blast_core: { local: '../../../launch/core' },
+    blast_admin: { local: '../../../governance/admin' },
     blast_boosts_core: { local: '../core' },
-    blast_partners: { git: BLAST_CONTRACTS_GIT, subdir: 'sui/partners', rev: BLAST_PRE_FOLD_REV },
+    blast_partners: { local: '../../../launch/partners' },
     perpetuals: { local: 'interfaces/aftermath/iperps/perpetuals' },
     position: { local: 'interfaces/aftermath/iperps/position' },
     authority_cap: { local: 'interfaces/aftermath/authority-cap/authority-cap' },
@@ -177,6 +176,8 @@ const LOCK_SOURCES = {
     MoveStdlib: { git: SUI_GIT, subdir: 'crates/sui-framework/packages/move-stdlib', rev: SUI_REV },
     Sui: { git: SUI_GIT, subdir: 'crates/sui-framework/packages/sui-framework', rev: SUI_REV },
     authority_cap: DIRECT_DEPENDENCIES.authority_cap,
+    blast_core: DIRECT_DEPENDENCIES.blast_core,
+    blast_fun_vesting: { local: '../../../utilities/vesting' },
     blast_admin: DIRECT_DEPENDENCIES.blast_admin,
     blast_boosts_aftermath: { root: true },
     blast_boosts_core: DIRECT_DEPENDENCIES.blast_boosts_core,
@@ -195,8 +196,10 @@ const LOCK_DEPS = {
     Sui: { MoveStdlib: 'MoveStdlib' },
     authority_cap: { std: 'MoveStdlib', sui: 'Sui' },
     blast_admin: { Sui: 'Sui' },
-    blast_boosts_aftermath: { authority_cap: 'authority_cap', blast_admin: 'blast_admin', blast_boosts_core: 'blast_boosts_core', blast_partners: 'blast_partners', ifixed: 'ifixed', oracle_aggregator: 'oracle_aggregator', perpetuals: 'perpetuals', position: 'position', std: 'MoveStdlib', sui: 'Sui' },
+    blast_boosts_aftermath: { blast_core: 'blast_core', authority_cap: 'authority_cap', blast_admin: 'blast_admin', blast_boosts_core: 'blast_boosts_core', blast_partners: 'blast_partners', ifixed: 'ifixed', oracle_aggregator: 'oracle_aggregator', perpetuals: 'perpetuals', position: 'position', std: 'MoveStdlib', sui: 'Sui' },
     blast_boosts_core: { blast_admin: 'blast_admin', std: 'MoveStdlib', sui: 'Sui' },
+    blast_core: { blast_admin: 'blast_admin', blast_fun_vesting: 'blast_fun_vesting', blast_partners: 'blast_partners', std: 'MoveStdlib', sui: 'Sui' },
+    blast_fun_vesting: { std: 'MoveStdlib', sui: 'Sui' },
     blast_partners: { blast_admin: 'blast_admin', std: 'MoveStdlib', sui: 'Sui' },
     ifixed: { std: 'MoveStdlib', sui: 'Sui' },
     oracle_aggregator: { authority_cap: 'authority_cap', std: 'MoveStdlib', sui: 'Sui', vendor: 'vendor' },

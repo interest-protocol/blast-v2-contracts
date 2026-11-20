@@ -36,15 +36,54 @@ fun admitting_long_does_not_admit_the_distinct_short_vault_quote() {
     quote_round_trip<BlastBoost<Short2x>>(false);
 }
 
+#[test]
+fun the_same_fee_admin_and_partner_work_with_independent_product_lists() {
+    let mut scenario = test_scenario::begin(@0xA);
+    let (root, mut acl) = blast_acl::new_for_testing(scenario.ctx());
+    acl.grant_admin(&root, @0xA, scenario.ctx());
+    scenario.next_tx(@0xA);
+    let cap = scenario.take_from_sender<blast_acl::AdminCap>();
+    acl.grant_role<FeeAdmin>(&root, object::id(&cap));
+    acl.grant_role<partners::PartnerAdmin>(&root, object::id(&cap));
+    partners::register(&acl.sign_in<partners::PartnerAdmin>(&cap), object::id(&cap), @0xB, 200, scenario.ctx());
+    scenario.return_to_sender(cap);
+    scenario.next_tx(@0xA);
+    let cap = scenario.take_from_sender<blast_acl::AdminCap>();
+    let partner = scenario.take_shared<partners::Partner>();
+    let fee_admin = acl.sign_in<FeeAdmin>(&cap);
+    let mut launch = launch_config::new_zero_fees_for_testing(scenario.ctx());
+    let version = package_version::version_for_testing(scenario.ctx());
+    let mut protocol = boosts::new_for_testing(scenario.ctx());
+    launch.add_partner(&version, &fee_admin, &partner);
+    operations::add_partner(&mut protocol, &fee_admin, &partner);
+
+    let mut clock = clock::create_for_testing(scenario.ctx());
+    launch.remove_partner(&version, &fee_admin, &partner, &clock);
+    clock.set_for_testing(partners::delay_ms());
+    protocol.assert_partner_for_testing(object::id(&partner), &clock);
+    // Launchpad can admit the expired partner again, while Boosts kept accepting it.
+    launch.add_partner(&version, &fee_admin, &partner);
+
+    clock.destroy_for_testing();
+    destroy(version);
+    destroy(launch);
+    destroy(protocol);
+    test_scenario::return_shared(partner);
+    scenario.return_to_sender(cap);
+    destroy(acl);
+    destroy(root);
+    scenario.end();
+}
+
 // === Test Helpers ===
 
 fun quote_round_trip<Quote>(admit_exact: bool) {
     let mut scenario = test_scenario::begin(@0x0);
-    let version = package_version::new_for_testing(scenario.ctx());
+    let version = package_version::version_for_testing(scenario.ctx());
     launch_config::init_zero_fees_for_testing(scenario.ctx());
     scenario.next_tx(@0xa);
     let listing_admin = blast_acl::witness_for_testing<ListingAdmin>();
-    let adapter_admin = blast_acl::witness_for_testing<AdapterAdmin>();
+    let adapter_admin = blast_acl::witness_for_testing<VenueAdmin>();
     let clock = clock::create_for_testing(scenario.ctx());
     let mut config = scenario.take_shared<LaunchConfig>();
     if (admit_exact) {
@@ -52,8 +91,7 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
     } else {
         config.set_quote_allowed<BlastBoost<Long2x>>(&version, &listing_admin, true);
     };
-    config.schedule_venue<TestVenue>(&version, &adapter_admin, &clock);
-    config.apply_venue<TestVenue>(&version, &clock);
+    config.set_venue_allowed_for_testing<TestVenue>(&version, &adapter_admin, true, scenario.ctx());
     let runtime = runtime_config::new_zero_fee_share_for_testing(scenario.ctx());
     let (ticket, treasury_cap) = launch_ticket::new(
         test_utils::create_one_time_witness<QUOTE_COMPOSITION_TESTS>(),
@@ -82,8 +120,8 @@ fun quote_round_trip<Quote>(admit_exact: bool) {
     initializer.set_lp_fee_split(&version, default_fee_split());
     let creation_fee = coin::zero(scenario.ctx());
     let mut registry = launch::registry_for_testing(scenario.ctx());
-    let market = initializer.finalize(&version, &mut registry, &mut currency, &config, creation_fee);
-    market.share(&version, &clock);
+    let market = initializer.finalize(&version, &mut registry, &mut currency, &config, creation_fee, scenario.ctx());
+    market.share(&version, &clock, scenario.ctx());
     test_scenario::return_shared(config);
     test_scenario::return_to_address(@0xc, currency);
     scenario.next_tx(@0xa);
@@ -118,7 +156,7 @@ fun default_fee_split(): FeeSplit {
 /// This typechecks the actual terminal ABI without requiring a venue or oracle object.
 public fun sell_and_redeem_shutdown<Product, Collateral, Meme>(
     market: &mut Launch<Meme, BlastBoost<Product>>,
-    version: &PackageVersion,
+    version: &PackageVersion<BLAST_FUN>,
     runtime: &RuntimeConfig,
     meme: Coin<Meme>,
     minimum_shares: u64,
@@ -137,6 +175,7 @@ public fun sell_and_redeem_shutdown<Product, Collateral, Meme>(
 /// abilities; requires the issuer's live objects to run.
 public fun issue_published_product<Collateral>(
     protocol: &Protocol,
+    boosts_version: &PackageVersion<BLAST_BOOSTS_AFTERMATH>,
     admin_witness: &AdminWitness<VaultIssuer>,
     registry: &mut CoinRegistry,
     vault_policy: VaultPolicy,
@@ -145,7 +184,7 @@ public fun issue_published_product<Collateral>(
     ctx: &mut TxContext,
 ): VaultIssuance<BTC_BULL_2X, Collateral> {
     vault::issue<BTC_BULL_2X, Collateral>(
-        protocol, admin_witness, registry, vault_policy, max_order_notional, nav_cap,
+        protocol, boosts_version, admin_witness, registry, vault_policy, max_order_notional, nav_cap,
         b"BTC2X".to_string(), b"BTC 2x Bull".to_string(), b"Two times BTC".to_string(), b"".to_string(), ctx,
     )
 }
@@ -154,6 +193,7 @@ public fun issue_published_product<Collateral>(
 public fun mint_and_buy<Product, Collateral, Meme>(
     vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
+    boosts_version: &PackageVersion<BLAST_BOOSTS_AFTERMATH>,
     account: &mut Account<Collateral>,
     registry: &Registry,
     clearing_house: ClearingHouse<Collateral>,
@@ -163,14 +203,14 @@ public fun mint_and_buy<Product, Collateral, Meme>(
     minimum_shares: u64,
     deadline_at_ms: u64,
     market: &mut Launch<Meme, BlastBoost<Product>>,
-    version: &PackageVersion,
+    version: &PackageVersion<BLAST_FUN>,
     runtime: &RuntimeConfig,
     minimum_meme: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): (Coin<Meme>, Coin<BlastBoost<Product>>) {
     let (shares, clearing_house) = vault.mint(
-        protocol, account, registry, clearing_house,
+        protocol, boosts_version, account, registry, clearing_house,
         base_oracle, collateral_oracle, cash,
         minimum_shares, deadline_at_ms, clock, ctx);
     let (meme, refund) = market.buy(version, runtime, shares, minimum_meme, ctx);
@@ -181,7 +221,7 @@ public fun mint_and_buy<Product, Collateral, Meme>(
 /// Typechecks the atomic launch sell -> redemption handoff without a receipt currency.
 public fun sell_and_redeem<Product, Collateral, Meme>(
     market: &mut Launch<Meme, BlastBoost<Product>>,
-    version: &PackageVersion,
+    version: &PackageVersion<BLAST_FUN>,
     runtime: &RuntimeConfig,
     meme: Coin<Meme>,
     minimum_shares: u64,
@@ -210,6 +250,7 @@ public fun sell_and_redeem<Product, Collateral, Meme>(
 public fun mint_and_redeem<Product, Collateral>(
     vault: &mut Vault<Product, Collateral>,
     protocol: &Protocol,
+    boosts_version: &PackageVersion<BLAST_BOOSTS_AFTERMATH>,
     account: &mut Account<Collateral>,
     registry: &Registry,
     clearing_house: ClearingHouse<Collateral>,
@@ -223,7 +264,7 @@ public fun mint_and_redeem<Product, Collateral>(
     ctx: &mut TxContext,
 ): Coin<Collateral> {
     let (shares, clearing_house) = vault.mint(
-        protocol, account, registry, clearing_house, base_oracle, collateral_oracle,
+        protocol, boosts_version, account, registry, clearing_house, base_oracle, collateral_oracle,
         cash, minimum_shares, deadline_at_ms, clock, ctx,
     );
     let (cash, clearing_house) = vault.redeem(
@@ -236,9 +277,10 @@ public fun mint_and_redeem<Product, Collateral>(
 
 // === Imports ===
 
+use blast_admin::package_version::PackageVersion;
 use blast_admin::blast_acl::{Self, AdminWitness};
 
-use blast_core::{bps, fee_split::{Self, FeeSplit}, migration};
+use blast_core::{blast_domain::{FeeAdmin, ListingAdmin, VenueAdmin}, bps, fee_split::{Self, FeeSplit}, migration};
 
 use blast_fun::{
     allocation::{Self, AllocationPlan},
@@ -246,22 +288,23 @@ use blast_fun::{
     launch::{Self, Launch},
     launch_config::{Self, LaunchConfig},
     launch_ticket,
-    blast_fun_domain::{AdapterAdmin, ListingAdmin},
-    blast_fun::{Self as package_version, PackageVersion},
+    blast_fun::{Self as package_version, BLAST_FUN},
     runtime_config::{Self, RuntimeConfig},
 };
 
-use blast_boosts_aftermath::{blast_boost::BlastBoost, operations, blast_boosts_aftermath::Protocol, vault::{Self, Vault, VaultIssuance}};
+use blast_boosts_aftermath::{blast_boost::BlastBoost, operations, blast_boosts_aftermath::{Self as boosts, Protocol, BLAST_BOOSTS_AFTERMATH}, vault::{Self, Vault, VaultIssuance}};
 
 use blast_boosts_core::{blast_boosts_core::VaultIssuer, policy::VaultPolicy};
 
 use blast_boosts_products::blast_boosts_products::BTC_BULL_2X;
 
+use blast_partners::blast_partners as partners;
+
 use oracle_aggregator::price_feed_storage::PriceFeedStorage;
 
 use perpetuals::{account::Account, clearing_house::ClearingHouse, registry::Registry};
 
-use std::{type_name, unit_test::{assert_eq, destroy}};
+use std::unit_test::{assert_eq, destroy};
 
 use sui::{
     clock::{Self, Clock},

@@ -7,7 +7,7 @@ capabilities, and outer `Vault<Product>` objects.
 
 Administration belongs to the singleton Blast ACL in the immutable `blast_admin`
 package. This package declares only the role types every Series1 adapter shares:
-`VaultIssuer`, `RiskAdmin`, `ShutdownAdmin`, and `UpgradeAdmin`
+`VaultIssuer`, `RiskAdmin`, and `ShutdownAdmin`
 ([ADR 0097](../../../../docs/decisions/0097-one-singleton-acl-with-typed-roles.md)).
 Series1 is published immutably, so it holds no operational generation, no
 package custody, and no surviving `UpgradeCap`; an adapter that uses these roles

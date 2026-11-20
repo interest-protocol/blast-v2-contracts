@@ -48,15 +48,8 @@ PACKAGES = [
     ("sui/governance/upgrade_cap_manager", "Delayed UpgradeCap manager"),
     ("sui/launch/vendors/aftermath_dao_presale", "Aftermath DAO-pool presale migrator"),
 ]
-# Packages kept out of regeneration, with the issue that brings each back. Boosts (#205) is
-# outside the launch-stack scope and does not yet build against the folded blast_admin, so it
-# is neither built nor regenerated. Its committed references keep their content, with source
-# paths updated for the workspace layout. Its guide names are not checked.
-FROZEN = {
-    "sui/defi/boosts/core": "#205",
-    "sui/defi/boosts/products": "#205",
-    "sui/defi/boosts/aftermath_adapter": "#205",
-}
+# Map a package to its tracking issue only while its source reference must stay frozen.
+FROZEN: dict[str, str] = {}
 # Each guide with the packages whose deployment status it opens with.
 GUIDES = [
     ("basics.md", []),
@@ -128,7 +121,7 @@ PRODUCTS = [
         "Aftermath perpetuals",
         ["boosts.md", "partners.md"],
         ["sui/defi/boosts/core", "sui/defi/boosts/products", "sui/defi/boosts/aftermath_adapter"],
-        ["sui/launch/partners", "sui/governance/admin"],
+        ["sui/launch/core", "sui/launch/partners", "sui/governance/admin"],
     ),
     Product(
         "blast-sui",

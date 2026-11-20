@@ -34,6 +34,7 @@ const OBJECT_ROLES = [
     'acl',
     'adminCap',
     'protocol',
+    'packageVersion',
     'coinRegistry',
     'currency',
     'registry',
@@ -359,6 +360,7 @@ function buildPlan(input) {
                 productArguments,
                 [
                     object('protocol'),
+                    object('packageVersion'),
                     'admin_witness',
                     object('coinRegistry'),
                     'vault_policy',

@@ -17,7 +17,7 @@ manifest_digest = "CD547CB1ACCE0880C835DAED2D8FFCB91D56C833AE5240D3AA5B918398263
 deps = { MoveStdlib = "MoveStdlib" }
 
 [pinned.mainnet.blast_admin]
-source = { git = "https://github.com/interest-protocol/blast-v2-contracts.git", subdir = "sui/admin", rev = "c4b86a9f3b1fcfb0d4a7b4e9a3d07e2fa78901f3" }
+source = { local = "../../../governance/admin" }
 use_environment = "mainnet"
 manifest_digest = "294D98BBBEFA7E526C52FD7F30B5691CD30B86738DDC489AC065D612D0E5F9EF"
 deps = { Sui = "Sui" }
@@ -25,5 +25,5 @@ deps = { Sui = "Sui" }
 [pinned.mainnet.blast_boosts_core]
 source = { root = true }
 use_environment = "mainnet"
-manifest_digest = "4DF70CB60125C7B605EDED045FA857EB6F0D5194BFC37E16E4F3535DF0B0F2DD"
+manifest_digest = "521A12BE3FE938279BEF91AA7B68767C2E8592BBF74C8FB5F2925290712D46C9"
 deps = { blast_admin = "blast_admin", std = "MoveStdlib", sui = "Sui" }

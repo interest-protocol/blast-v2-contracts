@@ -61,7 +61,7 @@ jobs:
         run: python3 scripts/test_gen_llms.py
       - name: Check llms-full.txt and llms/ are current
         run: python3 scripts/gen_llms.py --check
-      # Boosts pins its own admin source, so only changes under Boosts need this compile gate.
+      # The adapter and its shared Move dependencies affect the fill-proof compile.
       # An unknown base still runs the gate.
       - name: Reject omitted fill proofs with the pinned compiler
         env:
@@ -69,8 +69,8 @@ jobs:
         run: |
           if [ -n "$BASE_SHA" ] && [ -n "${BASE_SHA//0/}" ] \
             && git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null \
-            && git diff --quiet "$BASE_SHA" HEAD -- sui/defi/boosts; then
-            echo "No change under sui/defi/boosts: skipping the Boosts fill-proof compile."
+            && git diff --quiet "$BASE_SHA" HEAD -- sui/defi/boosts sui/governance/admin sui/launch/core sui/launch/partners sui/utilities/vesting; then
+            echo "Boosts and its shared dependencies are unchanged: skipping the Boosts fill-proof compile."
             exit 0
           fi
           bash sui/defi/boosts/aftermath_adapter/scripts/verify.sh fill-proof

@@ -6,9 +6,10 @@
   "chainIdentifier": null,
   "suiCliVersion": null,
   "aftermathInterfacesRevision": "f62e74aa862ef65b8950a70d83aac8cb71c19837",
-  "packages": {"seriesOne": null, "adapter": null, "immutableRiskModule": null, "launchpad": null},
-  "roles": {"issuer": null, "riskAdmin": null, "keeper": null, "seedFunder": null},
+  "packages": {"seriesOne": null, "adapter": null, "immutableRiskModule": null, "launchpad": null, "admin": null, "partners": null, "blastCore": null},
+  "roles": {"issuer": null, "riskAdmin": null, "feeAdmin": null, "treasuryAdmin": null, "cancelAdmin": null, "keeper": null, "seedFunder": null},
   "bindings": {
+    "adapterPackageVersion": null, "adapterPackageAdmin": null, "protocol": null, "treasury": null,
     "collateralType": null, "collateralDecimals": 6,
     "registryId": null, "clearingHouseId": null,
     "baseOracleStorageId": null, "baseOracleSourceId": null, "basePythPriceInfoId": null,
