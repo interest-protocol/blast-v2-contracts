@@ -279,11 +279,11 @@ contract tests were rerun for this file replacement.
 | INFO-08 | Protocol-share application does not settle first, unlike fee-split changes. | Retained documented policy: the new share applies on the next collection. |
 | INFO-09 | `destroy_cap` lacks a generation check. | Retained cleanup of the caller-owned inert cancelled-sale cap; no asset-protection benefit established for a new gate. |
 | INFO-10 | Frozen `venue_fork` test fails during sealed-cap setup before migration assertions. | **Execution coverage restored**: GiveRep's fresh rebuild at `af0765da` passes all 11 venue-fork tests. The earlier setup failure was not reproduced; no separate fixture-lookup source repair is attributed to the project. |
-| INFO-11 | `blast_sui` imports deleted admin modules and does not compile. | Remains open in [#223](https://github.com/interest-protocol/blast-v2-contracts/issues/223). Outside #225's launch-stack fixes; no current native liquid-staking coverage claimed. |
-| INFO-12 | Boosts' Aftermath adapter has the same stale-admin compile break. | Also tracked in [#223](https://github.com/interest-protocol/blast-v2-contracts/issues/223); not fixed by #225. |
+| INFO-11 | `blast_sui` imports deleted admin modules and does not compile. | **Build restored** in [#277](https://github.com/interest-protocol/blast-v2-contracts/pull/277). Outside #225's launch-stack fixes; no native liquid-staking coverage is claimed. |
+| INFO-12 | Boosts' Aftermath adapter has the same stale-admin compile break. | **Compile break resolved** in [#238](https://github.com/interest-protocol/blast-v2-contracts/pull/238); not fixed by #225. |
 | INFO-13 | Single-validator concentration and monotone-rate assumptions can stop redemptions after a slash. | Retained liquid-staking design concern; no deployed slash or exploitable current state established. |
-| INFO-14 | Liquid-staking redemption-fee authority is immediate (100 BPS cap); deleted modules prevent verifying its upgrade policy. | Remains outside launch-stack remediation. [#170](https://github.com/interest-protocol/blast-v2-contracts/pull/170) contains separate proposed work, not a merged fix at this record's source revision. |
-| INFO-15 | Near-full liquid-staking redemption fails closed at a residual of at most 3 MIST. | Retained bounded rounding observation, not evidence of inflation or lost conservation; the compile break prevents release assurance. |
+| INFO-14 | Liquid-staking redemption-fee authority is immediate (100 BPS cap); deleted modules prevent verifying its upgrade policy. | [#170](https://github.com/interest-protocol/blast-v2-contracts/pull/170) was closed without merging. Its delayed fee and generic admin landed in [#277](https://github.com/interest-protocol/blast-v2-contracts/pull/277). This record still claims no native liquid-staking coverage. |
+| INFO-15 | Near-full liquid-staking redemption fails closed at a residual of at most 3 MIST. | Retained bounded rounding observation, not evidence of inflation or lost conservation. |
 
 REP-01 is a **third-party/maintainer report**, not a GiveRep discovery or an
 additional severity-rated finding. The final PDF marks repeated
@@ -347,9 +347,13 @@ All results above are **reported by GiveRep**, not newly rerun for this file
 replacement. Execution used offline simulation, deterministic fixture keys and
 fictitious balances. Venue bytecode came from the committed mainnet snapshot at
 checkpoint `339033808`, with framework linkage adapted for simulation; it was
-not current-mainnet replay. `blast_sui` and Boosts' Aftermath adapter still fail
-compilation on stale administration APIs; no passing coverage is claimed for
-them. SDK integration of the changed compounding ABI is tracked separately in
+not current-mainnet replay. GiveRep claimed no passing coverage for `blast_sui`
+or Boosts' Aftermath adapter; both failed compilation on stale administration
+APIs in that run. The `blast_sui` build was later restored in
+[#277](https://github.com/interest-protocol/blast-v2-contracts/pull/277), and
+the adapter build in
+[#238](https://github.com/interest-protocol/blast-v2-contracts/pull/238). SDK
+integration of the changed compounding ABI is tracked separately in
 [SDK #104](https://github.com/interest-protocol/blast-v2-sdk/issues/104).
 
 Neither the report nor this record establishes deployed-source parity, current

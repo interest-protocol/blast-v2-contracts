@@ -161,7 +161,7 @@ reductions wait the old notice.
 
 The current adapter builds against pinned pre-fold admin and partners sources.
 Before a release, verify their on-chain bindings and the published Boosts core
-linkage under [#223](https://github.com/interest-protocol/blast-v2-contracts/issues/223).
+linkage for that release.
 
 [ADR 0123](../docs/decisions/0123-successor-activated-boosts-upgrades.md) applies
 to the fresh adapter lineage, not the historical deployed package. After
