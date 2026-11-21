@@ -1,6 +1,8 @@
 """Summary identities must survive the zero-valued genesis address placeholders."""
 import json
-from pathlib import Path
+import os
+import sys
+from pathlib import Path, PureWindowsPath
 import subprocess
 import tempfile
 import unittest
@@ -158,6 +160,78 @@ class PublicationPathTests(unittest.TestCase):
                 manifest.write_text(manifest.read_text().replace('/other', '/admin'))
                 (current / source).write_text('module example::changed;\n')
                 self.assertFalse(gen_llms.matches_publication('sui/launch/core', commit))
+
+
+class WindowsConsistencyTests(unittest.TestCase):
+    """Issue #254: generated references must be identical on Windows and Linux."""
+
+    def test_module_reference_source_url_uses_forward_slashes(self):
+        source = "module blast_presale::blast_presale;\n"
+
+        class WindowsPath:
+            """A source path whose native rendering uses backslashes."""
+
+            def read_text(self, encoding=None):
+                return source
+
+            def relative_to(self, other):
+                return PureWindowsPath("sui/launch/presale/sources/blast_presale.move")
+
+        summary = {
+            "doc": None,
+            "structs": {},
+            "enums": {},
+            "functions": {
+                "new": {
+                    "visibility": "Public",
+                    "entry": False,
+                    "type_parameters": [],
+                    "parameters": [],
+                    "return_": [],
+                    "doc": None,
+                    "source_index": 0,
+                },
+            },
+        }
+        pkg = gen_llms.Package(
+            path="sui/launch/presale",
+            title="Presale",
+            name="blast_presale",
+            modules={"blast_presale": summary},
+            sources={"blast_presale": WindowsPath()},
+        )
+        lines = gen_llms.module_reference(pkg, "blast_presale", {"blast_presale"})
+        source_lines = [line for line in lines if line.startswith("Source: ")]
+        self.assertEqual(
+            source_lines,
+            [f"Source: {gen_llms.REPO_URL}/sui/launch/presale/sources/blast_presale.move"],
+        )
+
+    def test_repository_text_is_read_as_utf8_under_a_non_utf8_locale(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            guides = Path(tmp) / "docs" / "llms"
+            guides.mkdir(parents=True)
+            (guides / "basics.md").write_bytes("# Basics \u2014 intro\nbody\n".encode("utf-8"))
+            probe = Path(tmp) / "probe.py"
+            probe.write_text(
+                "import sys\n"
+                "sys.path.insert(0, 'scripts')\n"
+                "from pathlib import Path\n"
+                "import gen_llms\n"
+                f"gen_llms.GUIDES_DIR = Path({str(guides)!r})\n"
+                "heading = gen_llms.guide_heading('basics.md')\n"
+                "assert heading == '# Basics \\u2014 intro', repr(heading)\n",
+                encoding="utf-8",
+            )
+            env = dict(os.environ, LC_ALL="C", PYTHONCOERCECLOCALE="0", PYTHONUTF8="0")
+            result = subprocess.run(
+                [sys.executable, str(probe)],
+                capture_output=True,
+                text=True,
+                env=env,
+                cwd=str(gen_llms.ROOT),
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == '__main__':
