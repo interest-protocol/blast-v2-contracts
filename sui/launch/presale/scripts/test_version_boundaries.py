@@ -10,14 +10,36 @@ import unittest
 
 
 class VersionBoundaryTests(unittest.TestCase):
-    def test_nested_module_cannot_define_package_administration(self):
+    def copy_checker(self, temp):
         package = Path(__file__).resolve().parent.parent
+        root = Path(temp) / 'presale'
+        shutil.copytree(package / 'sources', root / 'sources')
+        (root / 'scripts').mkdir()
+        check = root / 'scripts/check_version_boundaries.py'
+        shutil.copyfile(package / 'scripts' / check.name, check)
+        reader = Path('launchpad/scripts/move_facts.awk')
+        (root.parent / reader.parent).mkdir(parents=True)
+        shutil.copyfile(package.parent / reader, root.parent / reader)
+        return root, check
+
+    def test_unreviewed_mutable_entry_is_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            shutil.copytree(package / 'sources', root / 'sources')
-            (root / 'scripts').mkdir()
-            check = root / 'scripts/check_version_boundaries.py'
-            shutil.copyfile(package / 'scripts' / check.name, check)
+            root, check = self.copy_checker(temp)
+            policy = root / 'sources/config/creation_policy.move'
+            original = policy.read_text()
+            marker = '// === Public Functions ==='
+            for modifier in ('entry', 'public entry', 'public(package) entry'):
+                with self.subTest(modifier=modifier):
+                    function = (f'{modifier} fun reset_quotes(self: &mut CreationPolicy) {{\n'
+                                '    self.allowed_quotes = vec_set::empty();\n}')
+                    policy.write_text(original.replace(marker, marker + '\n' + function))
+                    result = subprocess.run([sys.executable, str(check)], capture_output=True, text=True)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('Unreviewed mutable entry point: creation_policy::reset_quotes', result.stderr)
+
+    def test_nested_module_cannot_define_package_administration(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root, check = self.copy_checker(temp)
             rogue = root / 'sources/config/rogue.move'
             rogue.write_text('module blast_presale::rogue;\npublic struct PackageAdmin() has drop;\n')
             result = subprocess.run([sys.executable, str(check)], capture_output=True, text=True)
@@ -33,11 +55,7 @@ class VersionBoundaryTests(unittest.TestCase):
                        and any(isinstance(target, ast.Name) and target.id == 'GUARDED'
                                for target in node.targets))
         with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            shutil.copytree(package / 'sources', root / 'sources')
-            (root / 'scripts').mkdir()
-            check = root / 'scripts' / script.name
-            shutil.copyfile(script, check)
+            root, check = self.copy_checker(temp)
             baseline = subprocess.run([sys.executable, str(check)], capture_output=True)
             self.assertEqual(baseline.returncode, 0, baseline.stderr)
             for module, functions in guarded.items():
