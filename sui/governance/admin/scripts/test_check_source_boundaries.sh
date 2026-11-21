@@ -117,6 +117,21 @@ case_dir="$(new_case publication_with_matching_record)"
 publish_record "$case_dir" "$(bash "$package_dir/scripts/source_digest.sh" "$case_dir")"
 expect_accepted "$case_dir"
 
+case_dir="$(new_case publication_with_matching_record_and_bare_reference)"
+publish_record "$case_dir" "$(bash "$package_dir/scripts/source_digest.sh" "$case_dir")"
+# A later custody record may name the same packageId without recording a source digest (an
+# enrollment reference, not a publication); it must not enter the digest set as a null entry.
+printf '%s\n' '{"upgradeCustody":{"enrollments":[{"packagesEnrolled":{"admin":{"packageId":"0x1","upgradeCapId":"0x2"}}}]}}' \
+  > "$case_dir/deployments/sui/mainnet/reference.json"
+expect_accepted "$case_dir"
+
+case_dir="$(new_case publication_with_bare_reference_only)"
+printf '[published.mainnet]\npublished-at = "0x1"\noriginal-id = "0x1"\n' > "$case_dir/Published.toml"
+mkdir -p "$case_dir/deployments/sui/mainnet"
+printf '%s\n' '{"upgradeCustody":{"enrollments":[{"packagesEnrolled":{"admin":{"packageId":"0x1","upgradeCapId":"0x2"}}}]}}' \
+  > "$case_dir/deployments/sui/mainnet/reference.json"
+expect_rejected "$case_dir"
+
 case_dir="$(new_case unclaimed_publication)"
 edit 's/sui::package::claim(otw, ctx)/sui::package::test_claim(otw, ctx)/' "$case_dir/sources/package/package_version.move"
 expect_rejected "$case_dir"
