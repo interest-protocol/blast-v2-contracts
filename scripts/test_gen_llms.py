@@ -1,7 +1,10 @@
-"""Summary identities must survive the zero-valued genesis address placeholders."""
+"""Summary identities, frozen packages, publication status, and platform-independent references."""
+import ast
+import io
 import json
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -129,27 +132,33 @@ class PublicationPathTests(unittest.TestCase):
                 self.assertTrue(gen_llms.deployment('sui/example')['matches'])
                 matches.assert_called_once_with('sui/example', 'example-revision')
 
+    @staticmethod
+    def publish_then_move(root: Path) -> str:
+        """Commits `sui/core`, then moves it to `sui/launch/core` with its edge rewritten."""
+        old = root / 'sui/core'
+        (old / 'sources').mkdir(parents=True)
+        (old / 'sources/core.move').write_text('module example::core;\n')
+        (old / 'Move.toml').write_text('[dependencies]\nAdmin = { local = "../admin" }\n')
+
+        def git(*args):
+            return subprocess.check_output(['git', *args], cwd=root, text=True)
+
+        git('init', '-q')
+        git('add', '.')
+        git('-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-qm', 'publication')
+        current = root / 'sui/launch/core'
+        current.parent.mkdir()
+        old.rename(current)
+        (current / 'Move.toml').write_text('[dependencies]\nAdmin = { local = "../../governance/admin" }\n')
+        return git('rev-parse', 'HEAD').strip()
+
     def test_moved_package_matches_its_publication_only_with_the_same_sources_and_edges(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            old = root / 'sui/core'
-            (old / 'sources').mkdir(parents=True)
-            source = 'sources/core.move'
-            (old / source).write_text('module example::core;\n')
-            (old / 'Move.toml').write_text('[dependencies]\nAdmin = { local = "../admin" }\n')
-
-            def git(*args):
-                return subprocess.check_output(['git', *args], cwd=root, text=True)
-
-            git('init', '-q')
-            git('add', '.')
-            git('-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-qm', 'publication')
-            commit = git('rev-parse', 'HEAD').strip()
+            commit = self.publish_then_move(root)
             current = root / 'sui/launch/core'
-            current.parent.mkdir()
-            old.rename(current)
+            source = 'sources/core.move'
             manifest = current / 'Move.toml'
-            manifest.write_text('[dependencies]\nAdmin = { local = "../../governance/admin" }\n')
 
             with patch.object(gen_llms, 'ROOT', root):
                 self.assertTrue(gen_llms.matches_publication('sui/launch/core', commit))
@@ -158,6 +167,130 @@ class PublicationPathTests(unittest.TestCase):
                 manifest.write_text(manifest.read_text().replace('/other', '/admin'))
                 (current / source).write_text('module example::changed;\n')
                 self.assertFalse(gen_llms.matches_publication('sui/launch/core', commit))
+
+    def test_moved_package_matches_its_publication_through_an_unresolved_root(self):
+        # A symlinked checkout, like a Windows 8.3 short-name temp root, resolves to another prefix.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / 'checkout'
+            root.mkdir()
+            alias = Path(tmp) / 'alias'
+            try:
+                alias.symlink_to(root, target_is_directory=True)
+            except OSError:
+                self.skipTest('symlinks are unavailable')
+            commit = self.publish_then_move(root)
+            with patch.object(gen_llms, 'ROOT', alias):
+                self.assertTrue(gen_llms.matches_publication('sui/launch/core', commit))
+
+
+class PlatformConsistencyTests(unittest.TestCase):
+    """#254: the same sources render the same reference bytes on Windows and Linux."""
+
+    def test_source_url_uses_forward_slashes_for_a_windows_checkout(self):
+        class WindowsSource(PureWindowsPath):
+            def read_text(self, encoding=None, errors=None):
+                return 'module example::policy;\nconst LIMIT: u64 = 1;\n'
+
+        root = PureWindowsPath('C:/repo')
+        source = WindowsSource('C:/repo/sui/launch/presale/sources/policy.move')
+        self.assertIn('\\', str(source.relative_to(root)))
+        pkg = gen_llms.Package(
+            path='sui/launch/presale', title='Presale', name='example',
+            modules={'policy': {'structs': {}, 'functions': {}}}, sources={'policy': source},
+        )
+        with patch.object(gen_llms, 'ROOT', root):
+            lines = gen_llms.module_reference(pkg, 'policy', set())
+            self.assertIn(f'Source: {gen_llms.REPO_URL}/sui/launch/presale/sources/policy.move', lines)
+            # The helper `--check` uses to name stale references.
+            self.assertEqual(gen_llms.repo_path(root / 'llms/presale.txt'), 'llms/presale.txt')
+
+    def test_generate_and_check_round_trip_on_a_cp1252_crlf_host(self):
+        # A Windows host without UTF-8 mode: CP1252 is the default text encoding, writes translate
+        # LF to CRLF, and redirected stdout encodes CP1252 strictly.
+        read, write = Path.read_text, Path.write_text
+
+        def host_read(self, encoding=None, errors=None, **kwargs):
+            return read(self, encoding=encoding or 'cp1252', errors=errors, **kwargs)
+
+        def host_write(self, data, encoding=None, errors=None, newline=None):
+            return write(self, data, encoding=encoding or 'cp1252', errors=errors,
+                         newline='\r\n' if newline is None else newline)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            package = root / 'sui/example'
+            (package / 'sources/nested').mkdir(parents=True)
+            (package / 'Move.toml').write_bytes(b'[package]\nname = "example"\n')
+            (package / 'sources/nested/policy.move').write_bytes(
+                'module example::policy;\n/// Price \u2212 fee.\nconst LIMIT: u64 = 1;\n'.encode('utf-8')
+            )
+            guides = root / 'docs/llms'
+            guides.mkdir(parents=True)
+            (guides / 'basics.md').write_bytes('# Basics\n\nAmounts \u2264 the cap.\n'.encode('utf-8'))
+            summary = root / 'summaries/example'
+            (summary / 'example').mkdir(parents=True)
+            (summary / 'address_mapping.json').write_bytes(b'{"example": "0x0"}')
+            (summary / 'example/policy.json').write_bytes(json.dumps({
+                'id': {'address': 'example', 'name': 'policy'}, 'structs': {}, 'functions': {},
+            }).encode('utf-8'))
+            output = root / 'llms-full.txt'
+            stdout = io.TextIOWrapper(io.BytesIO(), encoding='cp1252', errors='strict')
+
+            def run(*flags):
+                with patch.object(sys, 'argv', ['gen_llms.py', '--summaries', str(root / 'summaries'), *flags]):
+                    gen_llms.main()
+
+            gen_llms.deployment.cache_clear()
+            self.addCleanup(gen_llms.deployment.cache_clear)
+            with (
+                patch.multiple(
+                    gen_llms, ROOT=root, OUTPUT=output, PRODUCT_DIR=root / 'llms', GUIDES_DIR=guides,
+                    PACKAGES=[('sui/example', 'Example')], FROZEN={}, GUIDES=[('basics.md', [])], PRODUCTS=[],
+                ),
+                patch.object(Path, 'read_text', host_read),
+                patch.object(Path, 'write_text', host_write),
+                patch.object(sys, 'stdout', stdout),
+            ):
+                run()
+                data = output.read_bytes()
+                run('--check')
+                output.write_bytes(data.replace('Price \u2212 fee'.encode('utf-8'), 'Price \u2212 tax'.encode('utf-8')))
+                with self.assertRaises(SystemExit) as stale:
+                    run('--check')
+
+        self.assertNotIn(b'\r\n', data)
+        text = data.decode('utf-8')
+        self.assertIn('| `example` | Example | not yet published | \u2014 | \u2014 |', text)
+        self.assertIn('Amounts \u2264 the cap.', text)
+        self.assertIn('- `LIMIT: u64 = 1`: Price \u2212 fee.', text)
+        self.assertIn(f'Source: {gen_llms.REPO_URL}/sui/example/sources/nested/policy.move', text)
+        self.assertEqual(str(stale.exception), 'stale: llms-full.txt: run python3 scripts/gen_llms.py')
+        stdout.flush()
+        printed = stdout.buffer.getvalue().decode('cp1252')
+        self.assertIn('llms-full.txt and llms/ are current.', printed)
+        self.assertIn('+- `LIMIT: u64 = 1`: Price \\u2212 fee.', printed)
+
+    def test_text_io_names_its_encoding(self):
+        # A call that leaves the encoding to the host decodes the same bytes differently on Windows.
+        tree = ast.parse(Path(gen_llms.__file__).read_text(encoding='utf-8'))
+        def name(call):
+            return call.func.attr if isinstance(call.func, ast.Attribute) else getattr(call.func, 'id', None)
+
+        calls = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and name(node) in {'read_text', 'write_text', 'open', 'run', 'check_output'}
+        ]
+        self.assertTrue(calls)
+        for call in calls:
+            keywords = {keyword.arg for keyword in call.keywords}
+            if name(call) in {'run', 'check_output'} and not keywords & {'text', 'encoding', 'universal_newlines'}:
+                continue  # bytes output
+            if name(call) in {'read_text', 'write_text'} and isinstance(call.func, ast.Name):
+                continue  # the module's own UTF-8 helpers
+            with self.subTest(call=ast.unparse(call)):
+                self.assertIn('encoding', keywords)
+                if name(call) == 'write_text':
+                    self.assertIn('newline', keywords)
 
 
 if __name__ == '__main__':
