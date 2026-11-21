@@ -53,7 +53,7 @@ def resolve(name, aliases):
 def mask_rust(source):
     # Rust character literals must be recognized before a quote inside one can
     # start a string. Lifetimes such as 'static are not character literals.
-    pattern = r"""//[^\n]*|/\*[\s\S]*?\*/|b?r(?P<hash>#+)"[\s\S]*?"(?P=hash)|b?"(?:\\.|[^"\\])*"|b?'(?:\\.|[^'\\])'"""
+    pattern = r"""//[^\n]*|/\*[\s\S]*?\*/|b?r(?P<hash>#+)"[\s\S]*?"(?P=hash)|r"[^"]*"|b?"(?:\\.|[^"\\])*"|b?'(?:\\.|[^'\\])'"""
     return re.sub(pattern, lambda match: re.sub(r"[^\n]", " ", match[0]), source, flags=re.S)
 
 

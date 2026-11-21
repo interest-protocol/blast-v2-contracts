@@ -196,6 +196,16 @@ public fun text(): vector<u8> { TEXT }
 '''
         self.check_source(source, "value.move")
 
+    def test_hex_strings_are_masked_like_byte_strings(self):
+        # Move's hex literal x"..." must not leak its prefix into the masked
+        # source; a bare `x` that survives masking is indistinguishable from an
+        # identifier and could feed a later pattern.
+        from check_move_style import mask
+        self.assertEqual(
+            mask('let digest = b"deadbeef";'),
+            mask('let digest = x"deadbeef";'),
+        )
+
     def test_uppercase_constants_starting_with_e_are_not_errors(self):
         source = '''#[test_only]
 module example::fixture;

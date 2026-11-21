@@ -34,7 +34,7 @@ QUALIFIED_TYPE = re.compile(r"\b[a-z_][a-z0-9_]*::[A-Z]\w*")
 def mask(source):
     """Keep offsets and newlines while hiding comments and string literals."""
     return re.sub(
-        r'//[^\n]*|/\*[\s\S]*?\*/|b?"(?:\\.|[^"\\])*"',
+        r'//[^\n]*|/\*[\s\S]*?\*/|(?:b|x)?"(?:\\.|[^"\\])*"',
         lambda match: re.sub(r"[^\n]", " ", match[0]), source,
     )
 

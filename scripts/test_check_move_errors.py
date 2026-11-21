@@ -143,6 +143,15 @@ fn example() { let text = r#"{ }"#; }
         self.assertNotIn('continued', masked)
         self.assertNotIn('\n    message', masked)
 
+    def test_rust_mask_hides_plain_raw_string_prefix(self):
+        # A plain raw string r"..." (no hash) must mask its prefix exactly like a
+        # byte string; a surviving `r` is indistinguishable from an identifier and
+        # could shift brace matching inside native_oracle.
+        self.assertEqual(
+            mask_rust('let text = r"payload";'),
+            mask_rust('let text = b"payload";'),
+        )
+
 
 if __name__ == '__main__':
     unittest.main()
