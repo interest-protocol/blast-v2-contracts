@@ -34,6 +34,7 @@ import hashlib
 import json
 import shutil
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -280,21 +281,19 @@ def fetch(checkpoint):
     return snapshot
 
 
-def write(snapshot, timestamp):
-    if OUT.exists():
-        shutil.rmtree(OUT)
-    (OUT / "packages").mkdir(parents=True)
-    (OUT / "objects").mkdir()
+def write_files(snapshot, timestamp, directory):
+    (directory / "packages").mkdir(parents=True)
+    (directory / "objects").mkdir()
     packages = []
     for address, found in sorted(snapshot.packages.items()):
         path = f"packages/{address}.bcs"
-        (OUT / path).write_bytes(found["raw"])
+        (directory / path).write_bytes(found["raw"])
         packages.append({"id": address, "version": found["version"], "digest": found["digest"],
                          "role": found["role"], "file": path, "bytes": len(found["raw"])})
     objects = []
     for name, found in sorted(snapshot.objects.items()):
         path = f"objects/{name}.bcs"
-        (OUT / path).write_bytes(found["raw"])
+        (directory / path).write_bytes(found["raw"])
         objects.append({"name": name, "id": found["address"], "version": found["version"],
                         "digest": found["digest"],
                         "type": found["asMoveObject"]["contents"]["type"]["repr"],
@@ -309,10 +308,40 @@ def write(snapshot, timestamp):
         "absent_fields": [{"name": name, "id": address}
                           for name, address in sorted(snapshot.absent.items())],
     }
-    (OUT / "manifest.json").write_text(json.dumps(manifest, indent=1, sort_keys=True) + "\n")
-    total = sum(entry["bytes"] for entry in packages + objects)
-    print(f"checkpoint {snapshot.checkpoint} ({timestamp}): {len(packages)} packages, "
-          f"{len(objects)} objects, {len(snapshot.absent)} absent fields, {total} bytes")
+    (directory / "manifest.json").write_text(json.dumps(manifest, indent=1, sort_keys=True) + "\n")
+    return sum(entry["bytes"] for entry in packages + objects)
+
+
+def write(snapshot, timestamp):
+    with tempfile.TemporaryDirectory(dir=OUT.parent, prefix=".snapshot-stage-") as tmp:
+        staged = Path(tmp) / "new"
+        staged.mkdir()
+        total = write_files(snapshot, timestamp, staged)
+
+        # Reserve the swap so concurrent refreshes cannot move each other's backup.
+        swap = OUT.with_name(f".{OUT.name}-swap")
+        try:
+            swap.mkdir()
+        except FileExistsError:
+            raise RuntimeError(f"snapshot refresh in progress or interrupted; inspect {swap}") from None
+        previous = swap / "previous"
+        try:
+            if OUT.exists():
+                OUT.rename(previous)
+            try:
+                staged.rename(OUT)
+            except BaseException:
+                if previous.exists():
+                    previous.rename(OUT)
+                raise
+            if previous.exists():
+                shutil.rmtree(previous)
+        finally:
+            # Leave a recoverable copy if restoring or removing it failed.
+            if not previous.exists():
+                swap.rmdir()
+    print(f"checkpoint {snapshot.checkpoint} ({timestamp}): {len(snapshot.packages)} packages, "
+          f"{len(snapshot.objects)} objects, {len(snapshot.absent)} absent fields, {total} bytes")
 
 
 def main():
