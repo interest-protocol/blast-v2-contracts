@@ -161,8 +161,10 @@ reductions wait the old notice.
 
 The governance source uses the launchpad's admin, core and partners packages.
 It needs a fresh Boosts core and adapter lineage. The old core's publication
-record identifies the historical immutable code. Verify the full dependency
-graph before a future release under [#223](https://github.com/interest-protocol/blast-v2-contracts/issues/223).
+record identifies the historical immutable code. Before publishing, verify that the
+adapter links to the fresh Boosts core and that both packages resolve to the
+intended launchpad governance and other mainnet dependencies for that release.
+Record the verified package IDs with the release evidence.
 
 1. Wrap the adapter's single publication proof and original native UpgradeCap
    through the shared admin package. Record the typed PackageAdmin and PackageVersion.
