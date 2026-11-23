@@ -121,14 +121,15 @@ def audit(root):
             continue
         check(path)
         source = path.read_text()
-        module_match = re.search(r'\bmodule\s+([\w:]+)\s*;', mask(source))
+        masked = mask(source)
+        module_match = re.search(r'\bmodule\s+([\w:]+)\s*;', masked)
         module = module_match[1]
         items = list(declarations(source))
         aliases = imports(source)
-        test_module = '#[test_only]' in source[:module_match.start()]
+        test_module = bool(re.search(r'#\[[^\]]*\btest_only\b[^\]]*\]', masked[:module_match.start()]))
         production = '\n'.join(
             mask(declaration) for _, kind, attributes, declaration in items
-            if not test_module and '#[test_only]' not in attributes
+            if not test_module and not re.search(r'\btest_only\b', attributes)
             and not re.search(r'#\[\s*test\b', attributes)
             and kind not in ('const', 'use')
         )
