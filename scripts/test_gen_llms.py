@@ -1,6 +1,8 @@
-"""Summary identities must survive the zero-valued genesis address placeholders."""
+"""Verify reference generation, summary identities and publication status."""
+import io
 import json
-from pathlib import Path
+from functools import partialmethod
+from pathlib import Path, PureWindowsPath
 import subprocess
 import tempfile
 import unittest
@@ -47,6 +49,50 @@ class SummaryIdentityTests(unittest.TestCase):
             self.assertEqual(module['references'], [{'address': 'example'}, {'address': 'sui'}])
             self.assertEqual(module['doc'], 'treasury')
             self.assertEqual(set(result.sources), {'policy'})
+
+
+class ReferencePortabilityTests(unittest.TestCase):
+    def test_module_source_link_uses_forward_slashes_on_windows(self):
+        root = PureWindowsPath('C:/checkout')
+        source = root / 'sui/launch/presale/sources/example.move'
+        package = gen_llms.Package(path='sui/launch/presale', title='Example', name='example')
+        package.sources['example'] = source
+        package.modules['example'] = {'structs': {}, 'functions': {}}
+
+        with (
+            patch.object(gen_llms, 'ROOT', root),
+            patch.object(PureWindowsPath, 'read_text', create=True, return_value='const MAX: u64 = 1;'),
+        ):
+            lines = gen_llms.module_reference(package, 'example', {'example'})
+
+        self.assertIn(f'Source: {gen_llms.REPO_URL}/sui/launch/presale/sources/example.move', lines)
+
+    def test_check_and_write_work_with_windows_text_defaults(self):
+        with tempfile.TemporaryDirectory() as tmp, io.TextIOWrapper(io.BytesIO(), encoding='cp1252') as stdout:
+            root = Path(tmp)
+            output = root / 'llms-full.txt'
+            argv = ['gen_llms.py', '--summaries', tmp]
+            with (
+                patch.object(gen_llms, 'ROOT', root),
+                patch.object(gen_llms, 'PRODUCT_DIR', root / 'llms'),
+                patch.object(gen_llms, 'generate', return_value={output: 'Status — current\n'}),
+                patch.object(Path, 'read_text', partialmethod(Path.read_text, encoding='cp1252')),
+                patch.object(Path, 'write_text', partialmethod(Path.write_text, encoding='cp1252', newline='\r\n')),
+                patch.object(gen_llms.sys, 'stdout', stdout),
+                patch.object(gen_llms.sys, 'argv', argv),
+            ):
+                gen_llms.main()
+                self.assertEqual(output.read_bytes(), 'Status — current\n'.encode('utf-8'))
+
+                argv.append('--check')
+                output.write_bytes('Status — current\r\n'.encode('utf-8'))
+                gen_llms.main()
+
+                output.write_bytes('Status → stale\r\n'.encode('utf-8'))
+                with self.assertRaisesRegex(SystemExit, r'^stale: llms-full\.txt:'):
+                    gen_llms.main()
+                stdout.flush()
+                self.assertIn(b'Status \\u2192 stale', stdout.buffer.getvalue())
 
 
 class FrozenPackageTests(unittest.TestCase):
@@ -131,7 +177,7 @@ class PublicationPathTests(unittest.TestCase):
 
     def test_moved_package_matches_its_publication_only_with_the_same_sources_and_edges(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
+            root = Path(tmp).resolve()
             old = root / 'sui/core'
             (old / 'sources').mkdir(parents=True)
             source = 'sources/core.move'
