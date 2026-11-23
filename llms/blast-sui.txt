@@ -1,6 +1,6 @@
 # Blast contracts: blastSUI and funSUI integrator reference
 
-> Everything an integrator needs to understand and call the funSUI/blastSUI liquid-staking vault on Sui: stake SUI with one validator, hold funSUI, and convert between funSUI and blastSUI. Sui mainnet only.
+> Everything an integrator needs to understand and call the funSUI/blastSUI liquid-staking vault on Sui: stake SUI across a short validator list, hold funSUI, and convert between funSUI and blastSUI. Sui mainnet only.
 
 This file is self-contained: give it to an AI agent and ask it anything about blastSUI and funSUI. It also covers the packages its calls depend on: `blast_admin`. Other products are in [llms-full.txt](https://github.com/interest-protocol/blast-v2-contracts/blob/main/llms-full.txt), which joins every product in one file.
 
@@ -37,7 +37,7 @@ product guide below assumes it.
 | Launchpad | launch a coin on a bonding curve, trade it, graduate it into a DEX pool | `blast_fun` (curve, lifecycle, fees), a generated coin package per launch, `blast_migrators` (Cetus and Bluefin venues for both products: venue start, migration, LP fees), `blast_vault` (LP vault, holder rewards) |
 | Partner codes | earn a share of Blast's fee on the flow an app brings | `blast_partners` |
 | Boosts | hold a leveraged long or short coin backed by Aftermath perpetuals | `blast_boosts_core`, `blast_boosts_products`, `blast_boosts_aftermath` |
-| blastSUI | stake SUI with one validator through funSUI and blastSUI | `blast_sui` |
+| blastSUI | stake SUI across a short validator list through funSUI and blastSUI | `blast_sui` |
 | Administration | Blast's operators manage roles, fees, and upgrades | `blast_admin` |
 
 Each package and what it depends on:
